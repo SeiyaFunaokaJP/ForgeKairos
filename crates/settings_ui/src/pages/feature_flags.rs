@@ -59,7 +59,7 @@ fn render_flag_row(
                     ))
                     .when(forced_on, |this| {
                         this.child(
-                            Label::new("全ユーザーで有効")
+                            Label::new(i18n::t!("enabled for all"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -68,11 +68,14 @@ fn render_flag_row(
             .when(has_override && !forced_on, |this| {
                 let name = descriptor.name;
                 this.child(
-                    Button::new(SharedString::from(format!("reset-{}", name)), "リセット")
-                        .label_size(LabelSize::Small)
-                        .on_click(cx.listener(move |_, _, _, cx| {
-                            FeatureFlagStore::clear_override(name, <dyn Fs>::global(cx), cx);
-                        })),
+                    Button::new(
+                        SharedString::from(format!("reset-{}", name)),
+                        i18n::t!("Reset"),
+                    )
+                    .label_size(LabelSize::Small)
+                    .on_click(cx.listener(move |_, _, _, cx| {
+                        FeatureFlagStore::clear_override(name, <dyn Fs>::global(cx), cx);
+                    })),
                 )
             });
 

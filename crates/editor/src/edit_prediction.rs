@@ -1156,7 +1156,7 @@ impl Editor {
                 let target_display_point = range.end.to_display_point(editor_snapshot);
 
                 self.render_edit_prediction_end_of_line_popover(
-                    "採用",
+                    i18n::t!("Accept"),
                     editor_snapshot,
                     visible_row_range,
                     target_display_point,
@@ -1280,7 +1280,7 @@ impl Editor {
                                     .bg(Self::edit_prediction_line_popover_bg_color(cx))
                                     .when(keybind_display.show_hold_label, |el| {
                                         el.child(
-                                            Label::new("長押し")
+                                            Label::new(i18n::t!("Hold"))
                                                 .size(LabelSize::Small)
                                                 .when(
                                                     keybind_display.missing_accept_keystroke,
@@ -1400,7 +1400,7 @@ impl Editor {
                                     .child(self.render_edit_prediction_popover_keystroke(
                                         keystroke, key_color, cx,
                                     ))
-                                    .child(Label::new("プレビュー").into_any_element())
+                                    .child(Label::new(i18n::t!("Preview")).into_any_element())
                                     .opacity(if has_completion { 1.0 } else { 0.4 }),
                             )
                         } else {
@@ -1758,13 +1758,13 @@ impl Editor {
             .items_end()
             .when(flag_on_right, |el| el.items_start())
             .child(if flag_on_right {
-                self.render_edit_prediction_line_popover("移動", None, window, cx)
+                self.render_edit_prediction_line_popover(i18n::t!("Jump"), None, window, cx)
                     .rounded_bl(px(0.))
                     .rounded_tl(px(0.))
                     .border_l_2()
                     .border_color(border_color)
             } else {
-                self.render_edit_prediction_line_popover("移動", None, window, cx)
+                self.render_edit_prediction_line_popover(i18n::t!("Jump"), None, window, cx)
                     .rounded_br(px(0.))
                     .rounded_tr(px(0.))
                     .border_r_2()
@@ -1804,7 +1804,7 @@ impl Editor {
         cx: &mut App,
     ) -> Option<(AnyElement, gpui::Point<Pixels>)> {
         let mut element = self
-            .render_edit_prediction_line_popover("スクロール", Some(scroll_icon), window, cx)
+            .render_edit_prediction_line_popover(i18n::t!("Scroll"), Some(scroll_icon), window, cx)
             .into_any();
 
         let size = element.layout_as_root(AvailableSpace::min_size(), window, cx);
@@ -1840,7 +1840,7 @@ impl Editor {
         if target_display_point.row().as_f64() < scroll_top {
             let mut element = self
                 .render_edit_prediction_line_popover(
-                    "編集箇所へ移動",
+                    i18n::t!("Jump to Edit"),
                     Some(IconName::ArrowUp),
                     window,
                     cx,
@@ -1859,7 +1859,7 @@ impl Editor {
         } else if (target_display_point.row().as_f64() + 1.) > scroll_bottom {
             let mut element = self
                 .render_edit_prediction_line_popover(
-                    "編集箇所へ移動",
+                    i18n::t!("Jump to Edit"),
                     Some(IconName::ArrowDown),
                     window,
                     cx,
@@ -1877,7 +1877,7 @@ impl Editor {
             Some((element, origin))
         } else {
             self.render_edit_prediction_end_of_line_popover(
-                "編集箇所へ移動",
+                i18n::t!("Jump to Edit"),
                 editor_snapshot,
                 visible_row_range,
                 target_display_point,
@@ -2434,7 +2434,7 @@ impl Editor {
                         } else {
                             Icon::new(icons.up)
                         })
-                        .child(Label::new("編集箇所へ移動")),
+                        .child(Label::new(i18n::t!("Jump to Edit"))),
                 )
             }
             EditPrediction::MoveOutside { snapshot, .. } => {
@@ -2448,7 +2448,7 @@ impl Editor {
                         .gap_2()
                         .flex_1()
                         .child(Icon::new(icons.base))
-                        .child(Label::new(format!("{file_name} へ移動"))),
+                        .child(Label::new(i18n::t!("Jump to {file_name}"))),
                 )
             }
             EditPrediction::Edit {
@@ -2536,8 +2536,8 @@ impl Render for MissingEditPredictionKeybindingTooltip {
                     v_flex()
                         .flex_1()
                         .text_ui_sm(cx)
-                        .child(Label::new("採用のキーバインドが競合しています"))
-                        .child("現在のキーマップが既定の採用キーバインドを上書きしています。続けるには `editor::AcceptEditPrediction` アクションにキーバインドを 1 つ割り当ててください。")
+                        .child(Label::new(i18n::t!("Conflict with Accept Keybinding")))
+                        .child(i18n::t!("Your keymap currently overrides the default accept keybinding. To continue, assign one keybinding for the `editor::AcceptEditPrediction` action."))
                 )
                 .child(
                     h_flex()
@@ -2545,10 +2545,10 @@ impl Render for MissingEditPredictionKeybindingTooltip {
                         .gap_1()
                         .items_end()
                         .w_full()
-                        .child(Button::new("open-keymap", "キーバインドを割り当て").size(ButtonSize::Compact).on_click(|_ev, window, cx| {
+                        .child(Button::new("open-keymap", i18n::t!("Assign Keybinding")).size(ButtonSize::Compact).on_click(|_ev, window, cx| {
                             window.dispatch_action(zed_actions::OpenKeymapFile.boxed_clone(), cx)
                         }))
-                        .child(Button::new("see-docs", "ドキュメントを見る").size(ButtonSize::Compact).on_click(|_ev, _window, cx| {
+                        .child(Button::new("see-docs", i18n::t!("See Docs")).size(ButtonSize::Compact).on_click(|_ev, _window, cx| {
                             cx.open_url("https://zed.dev/docs/completions#edit-predictions-missing-keybinding");
                         })),
                 )

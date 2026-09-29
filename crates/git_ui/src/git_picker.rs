@@ -31,8 +31,8 @@ impl Display for GitPickerTab {
         // タブの表示ラベル専用。要素 ID は `ToggleButtonGroup` 側で
         // (グループ名, インデックス) から作られるので翻訳しても影響しない。
         let label = match self {
-            GitPickerTab::Branches => "ブランチ",
-            GitPickerTab::Stashes => "スタッシュ",
+            GitPickerTab::Branches => i18n::t!("Branches"),
+            GitPickerTab::Stashes => i18n::t!("Stashes"),
         };
         write!(f, "{}", label)
     }
@@ -215,7 +215,7 @@ impl GitPicker {
                         )
                         .tooltip(move |_, cx| {
                             Tooltip::for_action_in(
-                                "ブランチピッカーを切り替え",
+                                i18n::t!("Toggle Branch Picker"),
                                 &ActivateBranchesTab,
                                 &branches_focus_handle,
                                 cx,
@@ -232,7 +232,7 @@ impl GitPicker {
                         )
                         .tooltip(move |_, cx| {
                             Tooltip::for_action_in(
-                                "スタッシュピッカーを切り替え",
+                                i18n::t!("Toggle Stash Picker"),
                                 &ActivateStashTab,
                                 &stash_focus_handle,
                                 cx,
@@ -252,7 +252,7 @@ impl GitPicker {
             .child(
                 // The branch button is where people look for "what happened on this branch", and
                 // the graph is otherwise only reachable from a small icon in the git panel.
-                Button::new("git-picker-open-graph", "グラフ")
+                Button::new("git-picker-open-graph", i18n::t!("Graph"))
                     .label_size(LabelSize::Small)
                     .start_icon(
                         Icon::new(IconName::GitGraph)
@@ -260,7 +260,7 @@ impl GitPicker {
                             .color(Color::Muted),
                     )
                     .tooltip(|_window, cx| {
-                        Tooltip::for_action("コミットグラフを開く", &crate::git_graph::Open, cx)
+                        Tooltip::for_action(i18n::t!("Open Git Graph"), &crate::git_graph::Open, cx)
                     })
                     .on_click(cx.listener(|_, _, window, cx| {
                         window.dispatch_action(crate::git_graph::Open.boxed_clone(), cx);

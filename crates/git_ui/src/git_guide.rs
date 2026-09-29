@@ -12,13 +12,16 @@ use crate::git_panel::GitPanel;
 use git::repository::LogSource;
 
 /// What the grip beside a graph row says it can be dragged to.
-pub(crate) const COMMIT_DRAG_HINT: &str =
-    "ドラッグ: ブランチに落とすと取り込み / 別の行に落とすと並べ替え / MR の箱へ";
+pub(crate) const COMMIT_DRAG_HINT: &str = i18n::msg!(
+    "Drag: onto a branch to cherry-pick / onto another row to reorder / into the MR box"
+);
 /// What the grip beside a git panel file says it can be dragged to.
-pub(crate) const FILE_DRAG_HINT: &str = "ドラッグ: ステージ済みへ / コミットに落とすと fixup";
+pub(crate) const FILE_DRAG_HINT: &str =
+    i18n::msg!("Drag: into Staged / onto a commit to fix it up");
 
 /// The ⋮⋮ that says "this row can be dragged", with what dropping it does in its tooltip. The
 /// caller decides when it shows; it is only a signpost, the drag itself belongs to the row.
+/// `hint` is one of the hints above, in English: it is translated here.
 pub(crate) fn drag_grip(id: ElementId, hint: &'static str) -> Stateful<Div> {
     div()
         .id(id)
@@ -31,13 +34,11 @@ pub(crate) fn drag_grip(id: ElementId, hint: &'static str) -> Stateful<Div> {
                 .size(IconSize::XSmall)
                 .color(Color::Muted),
         )
-        .tooltip(Tooltip::text(hint))
+        .tooltip(Tooltip::text(i18n::tr(hint)))
 }
 
 /// The `topic` of `git::ShowGuide` that the MR box's "?" asks for.
 pub(crate) const MERGE_REQUEST_TOPIC: &str = "merge_request";
-
-const GUIDE_BUTTON_TOOLTIP: &str = "Git の操作ガイド (やりたいことから操作を探せます)";
 
 /// The "?" that opens the guide from wherever the user is stuck, with the entries about `topic`
 /// first.
@@ -48,13 +49,20 @@ pub(crate) fn guide_button(id: impl Into<ElementId>, topic: Option<&'static str>
     IconButton::new(id, IconName::CircleHelp)
         .icon_size(IconSize::Small)
         // The binding people can press anywhere is the plain one, not this topic's.
-        .tooltip(|_window, cx| Tooltip::for_action(GUIDE_BUTTON_TOOLTIP, &git::ShowGuide, cx))
+        .tooltip(|_window, cx| {
+            Tooltip::for_action(
+                i18n::t!("Git Guide (find an operation by what you want to do)"),
+                &git::ShowGuide,
+                cx,
+            )
+        })
         .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
 }
 
 /// One entry of the guide: something the user wants to do, how to do it, and the action that
 /// starts it when there is one.
 pub(crate) struct GuideTopic {
+    /// English, translated where it is shown, as is `description`.
     pub(crate) title: &'static str,
     pub(crate) description: &'static str,
     pub(crate) action: Option<fn() -> Box<dyn Action>>,
@@ -64,98 +72,130 @@ pub(crate) struct GuideTopic {
 
 pub(crate) const GUIDE_TOPICS: &[GuideTopic] = &[
     GuideTopic {
-        title: "直前のコミットを直したい (amend)",
-        description: "コミットした直後に書き漏れや入れ忘れに気づいたとき。Git パネルの「直前のコミットを修正 (amend)」にチェックを入れると直前のメッセージが入り、コミットすると直前のコミットが置き換わります。",
+        title: i18n::msg!("Fix the last commit (amend)"),
+        description: i18n::msg!(
+            "For when you notice something missing right after committing. Check \"Amend\" in the Git panel and the last commit's message comes back; committing then replaces the last commit."
+        ),
         action: Some(|| git::StartAmend.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "昔のコミットに修正を足したい (fixup)",
-        description: "数個前のコミットに入れるべき修正を用意したら、コミットグラフでそのコミットを選んで「今の変更を入れる (fixup)」を押します。Git パネルのファイルをコミットの行にドラッグしても入れられます。",
+        title: i18n::msg!("Add a fix to an older commit (fixup)"),
+        description: i18n::msg!(
+            "Once you have a fix that belongs in a commit a few back, pick that commit in the Git Graph and press \"Add Current Changes (fixup)\". You can also drag files from the Git panel onto the commit's row."
+        ),
         action: Some(|| git::ChooseFixupCommit.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "コミットメッセージを直したい (reword)",
-        description: "直前のコミットのメッセージを書き換える画面を開きます。昔のコミットは、コミットグラフで選んで「メッセージを書き換え」を押します (以降のコミットの SHA が変わります)。",
+        title: i18n::msg!("Fix a commit message (reword)"),
+        description: i18n::msg!(
+            "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
+        ),
         action: Some(|| git::RewordCommit::default().boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "コミットをまとめたい・並べ替えたい・捨てたい (squash / drop)",
-        description: "コミットグラフで Ctrl / Shift を押しながら行を選び、上の「並べ替え / まとめる / 捨てる…」を押すと、順番・まとめ方・メッセージを編集できます。1 件を別の行にドラッグしても並べ替えられます。捨てたコミットの変更は消えるので注意してください (以降のコミットの SHA が変わります)。",
+        title: i18n::msg!("Squash, reorder or drop commits (squash / drop)"),
+        description: i18n::msg!(
+            "In the Git Graph, pick rows while holding Ctrl / Shift and press \"Reorder / Squash / Drop…\" above to edit the order, what to squash and the messages. You can also reorder a single commit by dragging it onto another row. Mind that the changes of dropped commits are lost (the SHAs of the commits from there on change)."
+        ),
         action: Some(|| crate::git_graph::Open.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "別のブランチのコミットを持ってきたい (cherry-pick)",
-        description: "コミットグラフで持ってきたいコミットを選び「取り込む (cherry-pick)」を押すと、その変更を現在のブランチに新しいコミットとして積みます。Ctrl / Shift で複数選ぶと「N 件を取り込む」で古い順に積みます。行をブランチ名にドラッグしても取り込めます。同じ場所を変えているとコンフリクトになることがあります。",
+        title: i18n::msg!("Bring over a commit from another branch (cherry-pick)"),
+        description: i18n::msg!(
+            "Pick the commit in the Git Graph and press \"Cherry-Pick\" to add its changes to the current branch as a new commit. With several picked through Ctrl / Shift, \"Cherry-Pick N Commits\" adds them oldest first. You can also drag a row onto a branch name. Changes to the same places can end in a conflict."
+        ),
         action: Some(|| crate::git_graph::Open.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "MR 用に 1 コミットにしたい (MR の箱)",
-        description: "開発ブランチのコミットを「MR の箱」に集めると、MR 用の新しいブランチに 1 コミットとしてまとめます。元のブランチはそのまま残ります。",
+        title: i18n::msg!("Make one commit for an MR (MR box)"),
+        description: i18n::msg!(
+            "Collect a development branch's commits in the \"MR box\" and they are squashed into one commit on a new branch for the MR. The original branch stays as it is."
+        ),
         action: Some(|| git::OpenMergeRequestBox.boxed_clone()),
         topics: &[MERGE_REQUEST_TOPIC],
     },
     GuideTopic {
-        title: "MR の箱の使い方 (入れる・除外・作成して比較)",
-        description: "1. 「開発ブランチ」(コミットの出どころ) と「基点」(MR の向け先) を選びます。2. コミットグラフの行を箱にドラッグするか、選んで「MR の箱に入れる」を押します。MR に入れないものは、行を右クリックして「MR から除外する」で脇に置きます。3. 箱の下の「未配置」が 0 件なら入れ忘れはありません (未配置の行はグラフに小さな ● が付き、「最初の未配置へ」で移動できます)。4. メッセージと MR ブランチ名を入れて「作成して比較」を押すと、基点の上で 1 コミットにまとめた MR ブランチを作り、開発ブランチと比べます。未コミットの変更があると作れないので、先にコミットかスタッシュしてください。",
+        title: i18n::msg!("Using the MR box (add, exclude, create and compare)"),
+        description: i18n::msg!(
+            "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to First Unplaced\" jumps there). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
+        ),
         action: Some(|| git::OpenMergeRequestBox.boxed_clone()),
         topics: &[MERGE_REQUEST_TOPIC],
     },
     GuideTopic {
-        title: "MR ブランチを作り直したい",
-        description: "同じ MR ブランチ名で作るときは「既存の … を作り直す」にチェックを入れます。プッシュ済みの MR ブランチを作り直したら、強制プッシュ (lease 付き) が必要です。元の MR ブランチは reflog から戻せます。",
+        title: i18n::msg!("Recreate an MR branch"),
+        description: i18n::msg!(
+            "To create it under the same MR branch name, check \"Recreate the existing …\". An MR branch that was already pushed needs a force push (with lease) once recreated. The old MR branch can be restored from the reflog."
+        ),
         action: Some(|| git::OpenMergeRequestBox.boxed_clone()),
         topics: &[MERGE_REQUEST_TOPIC],
     },
     GuideTopic {
-        title: "ブランチを作りたい・切り替えたい",
-        description: "ブランチの一覧から切り替えます。一覧に無い名前を入力すると新しいブランチを作れます。昔のコミットから作るときは、コミットグラフでそのコミットを選んで「ここからブランチ」を押します。",
+        title: i18n::msg!("Create or switch branches"),
+        description: i18n::msg!(
+            "Switch from the branch list. Type a name that is not in the list to create a new branch. To start from an older commit, pick that commit in the Git Graph and press \"Branch from Here\"."
+        ),
         action: Some(|| zed_actions::git::Switch.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "昔のコミットの状態を見たい (チェックアウト)",
-        description: "コミットグラフでコミットを選んで「チェックアウト」を押すと、作業ツリーがそのコミットの状態になります (detached HEAD)。このままコミットするとどのブランチにも属さないので、続けて作業するなら「ここからブランチ」を使ってください。戻るときはブランチの一覧から元のブランチに切り替えます。",
+        title: i18n::msg!("See an older commit as it was (checkout)"),
+        description: i18n::msg!(
+            "Pick a commit in the Git Graph and press \"Check Out\" to put the working tree in that commit's state (detached HEAD). Commits made from there belong to no branch, so to keep working, use \"Branch from Here\". To go back, switch to the original branch from the branch list."
+        ),
         action: Some(|| crate::git_graph::Open.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "間違えたので戻したい (reset / revert / 元に戻す)",
-        description: "コミットグラフでコミットを選び、変更を打ち消すコミットを作るなら「打ち消す (revert)」、ブランチごと戻すなら「このコミットまで戻す ▾」(hard は変更を捨てます)。書き換えの後はトーストの「元に戻す」か reflog から戻せます。",
+        title: i18n::msg!("Undo a mistake (reset / revert / undo)"),
+        description: i18n::msg!(
+            "Pick a commit in the Git Graph, then press \"Revert\" to make a commit that undoes its changes, or \"Reset to This Commit ▾\" to move the branch back (hard throws the changes away). After a rewrite, \"Undo…\" on the notification or the reflog brings things back."
+        ),
         action: Some(|| crate::git_graph::Open.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "「このコミットまで戻す」の soft / mixed / hard の違い",
-        description: "どれも現在のブランチを選んだコミットまで戻し、それより後のコミットを取り消します。soft は取り消したコミットの変更をステージ済みに、mixed は未ステージの変更として残すので、コミットし直せます。hard は取り消したコミットの変更も、まだコミットしていない変更も捨てます (未コミットの変更は元に戻せません)。",
+        title: i18n::msg!("How soft / mixed / hard differ in \"Reset to This Commit\""),
+        description: i18n::msg!(
+            "All three move the current branch back to the chosen commit and undo the commits after it. soft keeps the undone commits' changes as staged changes and mixed as unstaged ones, so you can commit them again. hard throws away the undone commits' changes and the changes you have not committed yet as well (uncommitted changes cannot be recovered)."
+        ),
         action: None,
         topics: &[],
     },
     GuideTopic {
-        title: "プッシュ済みのコミットを直した",
-        description: "amend・fixup・並べ替えなどでプッシュ済みのコミットを書き換えたら、「強制プッシュ (lease 付き)」でプッシュします。lease 付きなので、他の人が先にプッシュしたコミットは上書きしません。",
+        title: i18n::msg!("I changed commits I had already pushed"),
+        description: i18n::msg!(
+            "After rewriting pushed commits with amend, fixup, reordering and so on, push with \"Force Push (with lease)\". Because of the lease, commits someone else pushed first are not overwritten."
+        ),
         action: Some(|| git::ConfirmForcePush.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "2 つのブランチを比べたい",
-        description: "2 つのブランチ / タグを選ぶと、片方にしか無いコミットと中身の差を一覧にします。移植漏れの確認に使えます。",
+        title: i18n::msg!("Compare two branches"),
+        description: i18n::msg!(
+            "Choose two branches / tags to list the commits only one of them has and how their contents differ. Useful to check that nothing was left out when porting."
+        ),
         action: Some(|| git::CompareRefs.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "タグを探したい・付けたい (tag)",
-        description: "コミットグラフの「タグ一覧」でタグを検索して選ぶと、そのコミットまで移動します。タグを付けるときは、コミットの行を右クリックして「ここにタグを付ける…」を選びます (メッセージを空にすると軽量タグ)。",
+        title: i18n::msg!("Find or add a tag (tag)"),
+        description: i18n::msg!(
+            "Search for a tag in the Git Graph's \"Tags\" and pick it to jump to its commit. To add a tag, right-click the commit's row and choose \"Tag Here…\" (an empty message makes a lightweight tag)."
+        ),
         action: Some(|| crate::git_graph::Open.boxed_clone()),
         topics: &[],
     },
     GuideTopic {
-        title: "過去の変更を探したい (検索)",
-        description: "コミットグラフの検索欄で探します。著者: タグ: ブランチ: ファイル: 以降: 以前: 変更: マージ: を付けると絞り込めます (例: 著者:山田 ファイル:src/main.rs 以降:2026-01-01)。",
+        title: i18n::msg!("Find past changes (search)"),
+        description: i18n::msg!(
+            "Search in the Git Graph's search box. Add author: tag: branch: file: since: until: change: merge: to narrow it down (for example author:alice file:src/main.rs since:2026-01-01)."
+        ),
         action: Some(|| crate::git_graph::Open.boxed_clone()),
         topics: &[],
     },
@@ -225,9 +265,9 @@ impl GitGuide {
                     .flex_1()
                     .min_w_0()
                     .gap_0p5()
-                    .child(Label::new(topic.title))
+                    .child(Label::new(i18n::tr(topic.title)))
                     .child(
-                        Label::new(topic.description)
+                        Label::new(i18n::tr(topic.description))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),
@@ -238,7 +278,7 @@ impl GitGuide {
                         .flex_none()
                         .debug_selector(move || format!("git-guide-try-{index}"))
                         .child(
-                            Button::new(("git-guide-try", index), "やってみる")
+                            Button::new(("git-guide-try", index), i18n::t!("Try It"))
                                 .style(ButtonStyle::Outlined)
                                 .label_size(LabelSize::Small)
                                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -290,12 +330,14 @@ impl Render for GitGuide {
                 h_flex()
                     .gap_1p5()
                     .child(Icon::new(IconName::GitBranch).size(IconSize::Small))
-                    .child(Headline::new("Git の操作ガイド").size(HeadlineSize::Small)),
+                    .child(Headline::new(i18n::t!("Git Guide")).size(HeadlineSize::Small)),
             )
             .child(
-                Label::new("やりたいことを探して「やってみる」を押すと、その操作を始めます。")
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
+                Label::new(i18n::t!(
+                    "Find what you want to do and press \"Try It\" to start that operation."
+                ))
+                .size(LabelSize::Small)
+                .color(Color::Muted),
             )
             .child(
                 div()
@@ -325,14 +367,14 @@ pub(crate) fn register(workspace: &mut Workspace) {
         if !started {
             show_toast(
                 workspace,
-                "まだコミットがありません。修正 (amend) できるのはコミットがあるときだけです。",
+                i18n::t!("There are no commits yet. You can only amend once there is a commit."),
                 cx,
             );
         }
     });
     workspace.register_action(|workspace, _: &git::ChooseFixupCommit, window, cx| {
         let Some(repository) = workspace.project().read(cx).active_repository(cx) else {
-            show_toast(workspace, NO_REPOSITORY, cx);
+            show_toast(workspace, no_repository(), cx);
             return;
         };
         if let Some(reason) = crate::commit_context_menu::fixup_menu_refusal(repository.read(cx))
@@ -345,13 +387,15 @@ pub(crate) fn register(workspace: &mut Workspace) {
         }
         show_toast(
             workspace,
-            "今の変更を入れる先のコミットを選び、上の「今の変更を入れる (fixup)」を押してください。",
+            i18n::t!(
+                "Pick the commit to add your current changes to, then press \"Add Current Changes (fixup)\" above."
+            ),
             cx,
         );
     });
     workspace.register_action(|workspace, _: &git::CompareRefs, window, cx| {
         let Some(repository) = workspace.project().read(cx).active_repository(cx) else {
-            show_toast(workspace, NO_REPOSITORY, cx);
+            show_toast(workspace, no_repository(), cx);
             return;
         };
         let Some(graph) = open_graph(workspace, &repository, window, cx) else {
@@ -365,7 +409,9 @@ pub(crate) fn register(workspace: &mut Workspace) {
     });
 }
 
-const NO_REPOSITORY: &str = "Git リポジトリが開かれていません。";
+fn no_repository() -> &'static str {
+    i18n::t!("No Git repository is open.")
+}
 
 /// The whole-history graph of `repository`, opened (or brought forward) in the workspace.
 fn open_graph(
@@ -436,7 +482,7 @@ mod tests {
         );
     }
 
-    /// Every "やってみる" dispatches the action its topic names, and closes the guide. Entries
+    /// Every "Try It" dispatches the action its topic names, and closes the guide. Entries
     /// that only explain have no button.
     #[gpui::test]
     async fn test_guide_buttons_dispatch_their_actions(cx: &mut TestAppContext) {

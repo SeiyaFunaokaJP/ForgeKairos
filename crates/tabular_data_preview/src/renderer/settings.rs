@@ -31,17 +31,17 @@ impl TabularDataPreviewPane {
             .child(
                 Button::new(
                     ElementId::Name("tabular-open-as-text".into()),
-                    "テキストを横に開く",
+                    i18n::t!("Open Text Beside"),
                 )
                 .style(ButtonStyle::Subtle)
                 .size(ButtonSize::Compact)
                 .start_icon(Icon::new(IconName::FileTextOutlined).size(IconSize::Small))
                 .tooltip(|_window, cx| {
                     Tooltip::with_meta(
-                        "元のテキストを隣のペインで開きます",
+                        i18n::t!("Opens the underlying text in the adjacent pane"),
                         Some(&OpenAsText::default()),
-                        format!(
-                            "{} でこのタブを切り替える",
+                        i18n::t!(
+                            "{} to switch this tab instead",
                             text_for_keystroke(&Modifiers::alt(), "click", cx)
                         ),
                         cx,
@@ -65,8 +65,10 @@ impl TabularDataPreviewPane {
                         ToggleState::Unselected
                     },
                 )
-                .label("先頭行を見出しにする")
-                .tooltip(Tooltip::text("オフにすると 1 行目もデータとして扱います"))
+                .label(i18n::t!("Use First Row as Header"))
+                .tooltip(Tooltip::text(i18n::t!(
+                    "When off, the first row is treated as data too"
+                )))
                 .on_click(|_state, window, cx| {
                     window.dispatch_action(ToggleHeaderRow.boxed_clone(), cx);
                 }),
@@ -85,48 +87,56 @@ impl TabularDataPreviewPane {
         h_flex()
             .gap_1()
             .items_center()
-            .child(Label::new("行").size(LabelSize::Small).color(Color::Muted))
+            .child(
+                Label::new(i18n::t!("Rows"))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
             .child(toolbar_action_button(
                 "tabular-insert-row-above",
                 IconName::ArrowUp,
-                "上に行を挿入",
+                i18n::tc!("table grid", "Insert Row Above"),
                 InsertRowAbove.boxed_clone(),
             ))
             .child(toolbar_action_button(
                 "tabular-insert-row-below",
                 IconName::ArrowDown,
-                "下に行を挿入",
+                i18n::tc!("table grid", "Insert Row Below"),
                 InsertRowBelow.boxed_clone(),
             ))
             .child(toolbar_action_button(
                 "tabular-delete-rows",
                 IconName::Trash,
-                "選択中の行を削除",
+                i18n::t!("Delete Selected Rows"),
                 DeleteRows.boxed_clone(),
             ))
-            .child(Label::new("列").size(LabelSize::Small).color(Color::Muted))
+            .child(
+                Label::new(i18n::t!("Columns"))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
             .child(toolbar_action_button(
                 "tabular-insert-column-left",
                 IconName::ArrowLeft,
-                "左に列を挿入",
+                i18n::tc!("table grid", "Insert Column Left"),
                 InsertColumnLeft.boxed_clone(),
             ))
             .child(toolbar_action_button(
                 "tabular-insert-column-right",
                 IconName::ArrowRight,
-                "右に列を挿入",
+                i18n::tc!("table grid", "Insert Column Right"),
                 InsertColumnRight.boxed_clone(),
             ))
             .child(toolbar_action_button(
                 "tabular-delete-columns",
                 IconName::Trash,
-                "選択中の列を削除",
+                i18n::t!("Delete Selected Columns"),
                 DeleteColumns.boxed_clone(),
             ))
             .child(toolbar_action_button(
                 "tabular-clear-cells",
                 IconName::Eraser,
-                "選択範囲の内容を消去",
+                i18n::t!("Clear Selection Contents"),
                 ClearCells.boxed_clone(),
             ))
             .into_any_element()
@@ -141,15 +151,15 @@ impl TabularDataPreviewPane {
     fn render_clear_filters_button(&self) -> AnyElement {
         Button::new(
             ElementId::Name("tabular-clear-all-filters".into()),
-            "絞り込みを解除",
+            i18n::t!("Clear Filters"),
         )
         .style(ButtonStyle::Subtle)
         .size(ButtonSize::Compact)
         .start_icon(Icon::new(IconName::Filter).size(IconSize::Small))
         .disabled(!self.engine.has_any_filters())
-        .tooltip(Tooltip::text(
-            "すべての列の絞り込みを解除します。列ごとの絞り込みは見出しの ▾ から",
-        ))
+        .tooltip(Tooltip::text(i18n::t!(
+            "Clears the filters of every column. Filter a single column from the ▾ in its heading"
+        )))
         .on_click(|_event, window, cx| {
             window.dispatch_action(ClearAllFilters.boxed_clone(), cx);
         })
@@ -161,11 +171,17 @@ impl TabularDataPreviewPane {
         let total_rows = self.engine.contents.rows.len() + header_rows;
         let shown_rows = self.body_row_count() + header_rows;
         let cols = self.grid_column_count();
-        let counts = if shown_rows == total_rows {
-            format!("{total_rows} 行 × {cols} 列")
+        let rows = if shown_rows == total_rows {
+            i18n::tn!(total_rows, "{count} row", "{count} rows")
         } else {
-            format!("{shown_rows} / {total_rows} 行 × {cols} 列")
+            i18n::tn!(
+                total_rows,
+                "{shown_rows} of {count} row",
+                "{shown_rows} of {count} rows"
+            )
         };
+        let columns = i18n::tn!(cols, "{count} column", "{count} columns");
+        let counts = format!("{rows} × {columns}");
 
         h_flex()
             .gap_2()
@@ -182,7 +198,7 @@ impl TabularDataPreviewPane {
             )
             .when(self.cell_editor_is_multiline(cx), |this| {
                 this.child(
-                    Label::new("セル内改行は Alt+Enter")
+                    Label::new(i18n::t!("Alt+Enter for a line break in a cell"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -196,7 +212,7 @@ impl TabularDataPreviewPane {
             })
             .when(self.is_parsing, |this| {
                 this.child(
-                    Label::new("読み込み中…")
+                    Label::new(i18n::t!("Loading…"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )

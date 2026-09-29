@@ -185,10 +185,12 @@ impl RenderOnce for TerminalToolHeader {
                             .icon_color(Color::Error)
                             .tooltip(move |_window, cx| {
                                 Tooltip::with_meta(
-                                    "このコマンドを停止",
+                                    i18n::t!("Stop This Command"),
                                     None,
-                                    "ターミナル内にカーソルを置いて通常のターミナルのキーバインドを\
-                                     使うこともできます。",
+                                    i18n::t!(
+                                        "Also possible by placing your cursor inside the terminal \
+                                         and using regular terminal bindings."
+                                    ),
                                     cx,
                                 )
                             })
@@ -213,7 +215,7 @@ impl RenderOnce for TerminalToolHeader {
                         .icon_size(IconSize::Small)
                         .icon_color(Color::Error)
                         .when_some(exit_code, |this, code| {
-                            this.tooltip(Tooltip::text(format!("終了コード {code} で終了しました")))
+                            this.tooltip(Tooltip::text(i18n::t!("Exited with code {code}")))
                         }),
                 )
             })
@@ -230,9 +232,7 @@ impl RenderOnce for TerminalToolHeader {
                             Tooltip::with_meta(
                                 title.clone(),
                                 None,
-                                format!(
-                                    "{detail} クリックするとサンドボックスの詳細を確認できます。"
-                                ),
+                                i18n::t!("{detail} Click to learn more about sandboxing."),
                                 cx,
                             )
                         })
@@ -286,10 +286,11 @@ impl Component for TerminalToolHeader {
 
         let sandbox_warning = || {
             TerminalSandboxWarning {
-            title: "サンドボックスなしで実行されました".into(),
-            detail: "以前のバージョンで、サンドボックスを作れなかったときに許可されて実行されたコマンドです。\
-                     現在は常にサンドボックスの中で実行します。"
-                .into(),
+            title: i18n::t!("Ran without sandbox").into(),
+            detail: i18n::t!(
+                "This command ran without a sandbox, allowed by an earlier version when the sandbox could not be created. Commands now always run inside the sandbox."
+            )
+            .into(),
             docs_url: "https://zed.dev/docs/ai/sandboxing".into(),
         }
         };

@@ -59,12 +59,14 @@ impl Render for EditPredictionOnboarding {
                 .gap_1()
                 .child(
                     Label::new(
-                        "GitHub Copilot も編集予測のプロバイダーとして使えますが、外部の AI サービスです。「AI」ページの「プロバイダーの設定」で編集予測を有効にし、学習リスクの警告を確認してください。",
+                        i18n::t!(
+                            "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
+                        ),
                     )
                     .color(Color::Muted),
                 )
                 .child(
-                    Button::new("configure-copilot", "「プロバイダーの設定」を開く")
+                    Button::new("configure-copilot", i18n::t!("Open Configure Providers"))
                         .full_width()
                         .style(ButtonStyle::Outlined)
                         .on_click(|_, window, cx| {
@@ -82,17 +84,21 @@ impl Render for EditPredictionOnboarding {
             v_flex()
                 .gap_1()
                 .child(Label::new(if self.copilot_is_configured {
-                    "GitHub Copilot は設定済みのため、そのまま使い続けることもできます。"
+                    i18n::t!(
+                        "Alternatively, you can continue to use GitHub Copilot as that's already set up."
+                    )
                 } else {
-                    "編集予測のプロバイダーとして GitHub Copilot を使うこともできます。"
+                    i18n::t!(
+                        "Alternatively, you can use GitHub Copilot as your edit prediction provider."
+                    )
                 }))
                 .child(
                     Button::new(
                         "configure-copilot",
                         if self.copilot_is_configured {
-                            "Copilot を使用"
+                            i18n::t!("Use Copilot")
                         } else {
-                            "Copilot を設定"
+                            i18n::t!("Configure Copilot")
                         },
                     )
                     .full_width()

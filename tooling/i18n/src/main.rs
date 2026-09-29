@@ -1,7 +1,10 @@
+mod check;
 mod git;
 mod lexer;
 mod placeholders;
+mod po_document;
 mod restore_pairs;
+mod sources;
 mod token_diff;
 
 use anyhow::{Context as _, Result};
@@ -47,6 +50,71 @@ enum Command {
         #[arg(long)]
         skip_tests: bool,
     },
+    /// List string literals with Japanese in them in `crates/`, split into test and non-test code.
+    Scan {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Only these crates (the directory names under `crates/`). Repeatable.
+        #[arg(long = "crate")]
+        crates: Vec<String>,
+        /// Print every literal with its file and line.
+        #[arg(long)]
+        list: bool,
+        /// Exit with 1 when a literal outside tests remains, except in the i18n crates and
+        /// allowed files.
+        #[arg(long)]
+        fail_on_prod: bool,
+        /// A file (or a directory ending in `/`) whose literals are allowed, relative to the
+        /// repository. Repeatable.
+        #[arg(long)]
+        allow: Vec<String>,
+        /// A file listing allowed paths, one per line (`#` starts a comment).
+        #[arg(long)]
+        allow_list: Option<PathBuf>,
+    },
+    /// Write a `.pot` template per crate from the `t!`, `tn!`, `tc!`, `tcn!` and `msg!` calls.
+    Extract {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long = "crate")]
+        crates: Vec<String>,
+        /// Also write messages that only tests use.
+        #[arg(long)]
+        include_tests: bool,
+    },
+    /// Compare the messages in the sources with `locales/<language>/*.po`.
+    Check {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Only these languages (directory names under `locales/`). Repeatable.
+        #[arg(long = "lang")]
+        languages: Vec<String>,
+        /// Only these crates' PO files; the `_` files are checked only without this option.
+        #[arg(long = "crate")]
+        crates: Vec<String>,
+        /// Also fail on untranslated and obsolete messages.
+        #[arg(long)]
+        strict: bool,
+    },
+    /// Merge PO files into one, sorted. Exits with 1 without writing when they disagree.
+    PoUnion {
+        #[arg(required = true, num_args = 1..)]
+        inputs: Vec<PathBuf>,
+        /// May be one of the inputs.
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Rewrite PO files in the repository's layout (sorted, one line per string, LF).
+    PoFormat {
+        /// Files, or directories whose `.po` files to format.
+        #[arg(required = true, num_args = 1..)]
+        paths: Vec<PathBuf>,
+        /// Change nothing; exit with 1 when a file would change.
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -64,7 +132,271 @@ fn main() -> Result<()> {
             seed,
             skip_tests,
         } => sample(&pairs, &kind, count, seed, skip_tests),
+        Command::Scan {
+            repo,
+            crates,
+            list,
+            fail_on_prod,
+            allow,
+            allow_list,
+        } => scan(
+            &repo,
+            &crates,
+            list,
+            fail_on_prod,
+            allow,
+            allow_list.as_deref(),
+        ),
+        Command::Extract {
+            repo,
+            out,
+            crates,
+            include_tests,
+        } => extract(&repo, &out, &crates, include_tests),
+        Command::Check {
+            repo,
+            languages,
+            crates,
+            strict,
+        } => run_check(&repo, &languages, &crates, strict),
+        Command::PoUnion { inputs, out } => po_union(&inputs, &out),
+        Command::PoFormat { paths, check } => po_format(&paths, check),
     }
+}
+
+/// Crates whose Japanese belongs to the translation machinery itself (test catalogs, examples).
+const I18N_CRATES: [&str; 4] = ["i18n", "i18n_catalog", "i18n_settings", "i18n_macros"];
+
+fn scan(
+    repository: &Path,
+    crates: &[String],
+    list: bool,
+    fail_on_prod: bool,
+    mut allowed: Vec<String>,
+    allow_list: Option<&Path>,
+) -> Result<()> {
+    if let Some(allow_list) = allow_list {
+        let text = fs::read_to_string(allow_list)
+            .with_context(|| format!("reading {}", allow_list.display()))?;
+        allowed.extend(
+            text.lines()
+                .map(|line| line.split('#').next().unwrap_or_default().trim())
+                .filter(|line| !line.is_empty())
+                .map(str::to_string),
+        );
+    }
+    let allowed: Vec<String> = allowed
+        .into_iter()
+        .map(|path| path.replace('\\', "/"))
+        .collect();
+    let is_allowed = |crate_name: &str, path: &str| {
+        I18N_CRATES.contains(&crate_name)
+            || allowed.iter().any(|allowed| {
+                path == allowed || (allowed.ends_with('/') && path.starts_with(allowed.as_str()))
+            })
+    };
+    let files = sources::load_crates(repository, crates)?;
+    let literals = sources::japanese_literals(&files);
+    let mut counts: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    for literal in &literals {
+        let entry = counts.entry(literal.crate_name.as_str()).or_default();
+        if literal.in_test {
+            entry.1 += 1;
+        } else {
+            entry.0 += 1;
+        }
+    }
+    if list {
+        for literal in &literals {
+            println!(
+                "{}:{}: {} {:?}",
+                literal.path,
+                literal.line,
+                if literal.in_test { "test" } else { "prod" },
+                literal.value
+            );
+        }
+        println!();
+    }
+    let width = counts
+        .keys()
+        .map(|name| name.len())
+        .max()
+        .unwrap_or(5)
+        .max(5);
+    println!("{:<width$} {:>6} {:>6}", "crate", "prod", "test");
+    for (crate_name, (production, test)) in &counts {
+        println!("{crate_name:<width$} {production:>6} {test:>6}");
+    }
+    let production_total: usize = counts.values().map(|(production, _)| production).sum();
+    let test_total: usize = counts.values().map(|(_, test)| test).sum();
+    println!("{:<width$} {production_total:>6} {test_total:>6}", "total");
+    if fail_on_prod {
+        let offending = literals
+            .iter()
+            .filter(|literal| !literal.in_test && !is_allowed(&literal.crate_name, &literal.path))
+            .count();
+        if offending > 0 {
+            eprintln!("{offending} Japanese literals outside tests (run with --list to see them)");
+            std::process::exit(1);
+        }
+    }
+    Ok(())
+}
+
+fn print_extract_warnings(extraction: &sources::Extraction) {
+    for warning in &extraction.warnings {
+        eprintln!(
+            "warning: {}:{}: {}",
+            warning.path, warning.line, warning.message
+        );
+    }
+}
+
+fn extract(repository: &Path, out: &Path, crates: &[String], include_tests: bool) -> Result<()> {
+    let files = sources::load_crates(repository, crates)?;
+    let extraction = sources::extract(&files);
+    print_extract_warnings(&extraction);
+    fs::create_dir_all(out).with_context(|| format!("creating {}", out.display()))?;
+    let mut written = 0;
+    for (crate_name, messages) in &extraction.crates {
+        let entries: Vec<po_document::DocumentEntry> = messages
+            .iter()
+            .filter(|message| include_tests || !message.only_in_tests())
+            .filter(|message| !check::is_area_message(message))
+            .map(|message| po_document::DocumentEntry {
+                comments: Vec::new(),
+                entry: i18n_catalog::PoEntry {
+                    context: message.key.context.clone(),
+                    msgid: message.key.msgid.clone(),
+                    msgstr: if message.msgid_plural.is_some() {
+                        vec![String::new(), String::new()]
+                    } else {
+                        vec![String::new()]
+                    },
+                    msgid_plural: message.msgid_plural.clone(),
+                    fuzzy: false,
+                    line: 0,
+                },
+            })
+            .collect();
+        if entries.is_empty() {
+            continue;
+        }
+        let document = po_document::PoDocument {
+            header: Some(vec![(
+                "Content-Type".to_string(),
+                "text/plain; charset=UTF-8".to_string(),
+            )]),
+            entries,
+            ..po_document::PoDocument::default()
+        };
+        let path = out.join(format!("{crate_name}.pot"));
+        let text = po_document::format_document(&path.display().to_string(), document)?;
+        fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
+        written += 1;
+    }
+    eprintln!("wrote {written} templates to {}", out.display());
+    Ok(())
+}
+
+fn run_check(
+    repository: &Path,
+    languages: &[String],
+    crates: &[String],
+    strict: bool,
+) -> Result<()> {
+    let files = sources::load_crates(repository, crates)?;
+    let extraction = sources::extract(&files);
+    print_extract_warnings(&extraction);
+    let results = check::check(
+        repository,
+        &extraction,
+        &check::CheckOptions { languages, crates },
+    )?;
+    let (output, failed) = check::report(&results, strict);
+    print!("{output}");
+    if failed {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn read_po_document(path: &Path) -> Result<po_document::PoDocument> {
+    let text = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    po_document::read_document(&path.display().to_string(), &text).map_err(|errors| {
+        let messages: Vec<String> = errors.iter().map(ToString::to_string).collect();
+        anyhow::anyhow!("{}", messages.join("\n"))
+    })
+}
+
+fn po_union(inputs: &[PathBuf], out: &Path) -> Result<()> {
+    let mut documents = Vec::new();
+    for input in inputs {
+        documents.push((input.display().to_string(), read_po_document(input)?));
+    }
+    match po_document::union(&documents) {
+        Ok(document) => {
+            fs::write(out, po_document::render(&document))
+                .with_context(|| format!("writing {}", out.display()))?;
+            eprintln!(
+                "wrote {} entries to {}",
+                document.entries.len(),
+                out.display()
+            );
+            Ok(())
+        }
+        Err(conflicts) => {
+            for conflict in &conflicts {
+                eprintln!("conflict: {}", conflict.description);
+            }
+            eprintln!("{} conflicts; nothing was written", conflicts.len());
+            std::process::exit(1);
+        }
+    }
+}
+
+fn po_format(paths: &[PathBuf], check_only: bool) -> Result<()> {
+    let mut files = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            let mut found = Vec::new();
+            for entry in fs::read_dir(path)? {
+                let entry_path = entry?.path();
+                if entry_path
+                    .extension()
+                    .is_some_and(|extension| extension == "po")
+                {
+                    found.push(entry_path);
+                }
+            }
+            found.sort();
+            files.extend(found);
+        } else {
+            files.push(path.clone());
+        }
+    }
+    let mut changed = 0;
+    for path in &files {
+        let text =
+            fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+        let formatted =
+            po_document::format_document(&path.display().to_string(), read_po_document(path)?)?;
+        if formatted == text {
+            continue;
+        }
+        changed += 1;
+        if check_only {
+            println!("{} is not formatted", path.display());
+        } else {
+            fs::write(path, formatted).with_context(|| format!("writing {}", path.display()))?;
+            println!("formatted {}", path.display());
+        }
+    }
+    if check_only && changed > 0 {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 fn crate_of(path: &str) -> Option<&str> {

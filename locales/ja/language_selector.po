@@ -1,0 +1,21 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " (current)"
+msgstr " (現在)"
+
+msgid "Language: {active_language_text}"
+msgstr "言語: {active_language_text}"
+
+msgid "Select Language"
+msgstr "言語モードを選択"
+
+msgid "Select a language…"
+msgstr "言語を選択…"
+
+msgid "Unknown"
+msgstr "不明"

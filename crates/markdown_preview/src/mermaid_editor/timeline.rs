@@ -22,9 +22,14 @@ use super::{
 
 /// The texts new rows are added with, so that they are visible in the drawing
 /// before anything has been typed into them.
-const NEW_PERIOD_LABEL: &str = "新しい期間";
-const NEW_EVENT: &str = "出来事";
-const NEW_SECTION_NAME: &str = "新しいセクション";
+const NEW_PERIOD_LABEL: &str = i18n::msg!("New period");
+const NEW_SECTION_NAME: &str = i18n::msg!("New section");
+
+// A function rather than a `const` like the others: "Event" needs a context to
+// keep it apart from the event modeling diagram's events.
+fn new_event() -> &'static str {
+    i18n::tc!("mermaid timeline", "Event")
+}
 
 pub(super) struct TimelineForm {
     pub(super) document: TimelineDocument,
@@ -191,10 +196,11 @@ impl MermaidEditor {
             .iter()
             .filter_map(|section| section.name.as_deref())
             .collect::<Vec<_>>();
-        let name = std::iter::once(NEW_SECTION_NAME.to_string())
-            .chain((2..).map(|number| format!("{NEW_SECTION_NAME} {number}")))
+        let base = i18n::tr(NEW_SECTION_NAME);
+        let name = std::iter::once(base.to_string())
+            .chain((2..).map(|number| format!("{base} {number}")))
             .find(|name| !taken.contains(&name.as_str()))
-            .unwrap_or_else(|| NEW_SECTION_NAME.to_string());
+            .unwrap_or_else(|| base.to_string());
         let field = self.new_field(&name, window, cx);
         let Some(form) = self.timeline_mut() else {
             return;
@@ -263,8 +269,8 @@ impl MermaidEditor {
             return;
         }
         let band = needs_band.then(|| self.new_field("", window, cx));
-        let label = self.new_field(NEW_PERIOD_LABEL, window, cx);
-        let event = self.new_field(NEW_EVENT, window, cx);
+        let label = self.new_field(i18n::tr(NEW_PERIOD_LABEL), window, cx);
+        let event = self.new_field(new_event(), window, cx);
         let Some(form) = self.timeline_mut() else {
             return;
         };
@@ -285,8 +291,8 @@ impl MermaidEditor {
             return;
         };
         periods.periods.push(TimelinePeriod {
-            label: NEW_PERIOD_LABEL.to_string(),
-            events: vec![NEW_EVENT.to_string()],
+            label: i18n::tr(NEW_PERIOD_LABEL).to_string(),
+            events: vec![new_event().to_string()],
         });
         rows.periods.push(PeriodRow {
             label: label.clone(),
@@ -409,7 +415,7 @@ impl MermaidEditor {
         {
             return;
         }
-        let field = self.new_field(NEW_EVENT, window, cx);
+        let field = self.new_field(new_event(), window, cx);
         let Some(form) = self.timeline_mut() else {
             return;
         };
@@ -424,7 +430,7 @@ impl MermaidEditor {
         ) else {
             return;
         };
-        document_period.events.push(NEW_EVENT.to_string());
+        document_period.events.push(new_event().to_string());
         row.events.push(field.clone());
         field.focus_handle(cx).focus(window, cx);
         self.timeline_changed(cx);
@@ -473,7 +479,7 @@ impl MermaidEditor {
             h_flex()
                 .w_full()
                 .gap_2()
-                .child(section_title("タイトル"))
+                .child(section_title(i18n::t!("Title")))
                 .child(
                     field_frame(
                         &form.title,
@@ -503,7 +509,7 @@ impl MermaidEditor {
         let mut list = v_flex()
             .w_full()
             .gap_2()
-            .child(section_title("セクションと期間"));
+            .child(section_title(i18n::t!("Sections and Periods")));
 
         for index in 0..form.sections.len() {
             let (Some(row), Some(section)) =
@@ -539,7 +545,7 @@ impl MermaidEditor {
                         h_flex()
                             .w_full()
                             .gap_1()
-                            .child(section_title("セクション"))
+                            .child(section_title(i18n::t!("Section")))
                             .child(
                                 field_frame(
                                     &row.name,
@@ -560,7 +566,7 @@ impl MermaidEditor {
                                 index,
                                 !section_may_move(&current.sections, index, false),
                                 !section_may_move(&current.sections, index, true),
-                                "セクションとその中の期間を削除",
+                                i18n::t!("Delete Section and Its Periods"),
                                 cx.listener(move |this, _, _window, cx| {
                                     this.move_timeline_section(index, false, cx)
                                 }),
@@ -575,7 +581,7 @@ impl MermaidEditor {
                     .child(periods)
                     .child(div().pl_4().child(add_button(
                         SharedString::from(format!("mermaid-timeline-add-period-{index}")),
-                        "期間を追加",
+                        i18n::t!("Add Period"),
                         cx.listener(move |this, _, window, cx| {
                             this.add_timeline_period(index, window, cx)
                         }),
@@ -586,14 +592,14 @@ impl MermaidEditor {
         if form.sections.is_empty() {
             list = list.child(add_button(
                 "mermaid-timeline-add-first-period",
-                "期間を追加",
+                i18n::t!("Add Period"),
                 cx.listener(|this, _, window, cx| this.add_timeline_period(0, window, cx)),
             ));
         }
 
         list.child(add_button(
             "mermaid-timeline-add-section",
-            "セクションを追加",
+            i18n::t!("Add Section"),
             cx.listener(|this, _, window, cx| this.add_timeline_section(window, cx)),
         ))
         .into_any_element()
@@ -635,7 +641,7 @@ impl MermaidEditor {
                         )
                         .shape(IconButtonShape::Square)
                         .icon_size(IconSize::XSmall)
-                        .tooltip(Tooltip::text("出来事を削除"))
+                        .tooltip(Tooltip::text(i18n::t!("Delete Event")))
                         .on_click(cx.listener(
                             move |this, _, _window, cx| {
                                 this.remove_timeline_event(section, index, event_index, cx)
@@ -646,7 +652,7 @@ impl MermaidEditor {
         }
         events = events.child(add_button(
             SharedString::from(format!("mermaid-timeline-add-event-{section}-{index}")),
-            "出来事を追加",
+            i18n::t!("Add Event"),
             cx.listener(move |this, _, window, cx| {
                 this.add_timeline_event(section, index, window, cx)
             }),
@@ -659,7 +665,7 @@ impl MermaidEditor {
                 h_flex()
                     .w_full()
                     .gap_1()
-                    .child(section_title("期間"))
+                    .child(section_title(i18n::t!("Period")))
                     .child(
                         field_frame(
                             &row.label,

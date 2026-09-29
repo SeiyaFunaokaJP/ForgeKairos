@@ -1,0 +1,54 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Character Count (Selection)"
+msgstr "文字数 (選択範囲)"
+
+msgid "Character Count (Whole Document)"
+msgstr "文字数 (文書全体)"
+
+msgid "Current Line: {} of {} (column {})"
+msgstr "現在の行: {} / {} (列 {})"
+
+msgid "Go to Line/Column"
+msgstr "行/列へ移動"
+
+msgid "Go to line {line}"
+msgstr "{line} 行目へ移動"
+
+msgid "Go to line {line}, character {character}"
+msgstr "{line} 行 {character} 文字目へ移動"
+
+msgid "Go to line {target_line} ({offset} from current)"
+msgstr "{target_line} 行目へ移動 (現在位置から {offset})"
+
+msgid "Line {}, column {}"
+msgstr "{} 行 {} 列"
+
+msgid "{count} character"
+msgid_plural "{count} characters"
+msgstr[0] "{count} 文字"
+
+msgid "{count} line"
+msgid_plural "{count} lines"
+msgstr[0] "{count} 行"
+
+msgid "{count} selection"
+msgid_plural "{count} selections"
+msgstr[0] "{count} 選択範囲"
+
+msgctxt "abbreviated count"
+msgid "{characters} c"
+msgstr "{characters} 字"
+
+msgctxt "abbreviated count"
+msgid "{lines} l"
+msgstr "{lines} 行"
+
+msgctxt "abbreviated count"
+msgid "{selections} s"
+msgstr "{selections} 選択"

@@ -59,7 +59,7 @@ fn render_theme_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement
         .child(
             h_flex()
                 .justify_between()
-                .child(Label::new("テーマ"))
+                .child(Label::new(i18n::t!("Theme")))
                 .child(
                     ToggleButtonGroup::single_row(
                         "theme-selector-onboarding-dark-light",
@@ -69,13 +69,13 @@ fn render_theme_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement
                             ThemeAppearanceMode::System,
                         ]
                         .map(|mode| {
-                            const MODE_NAMES: [SharedString; 3] = [
-                                SharedString::new_static("ライト"),
-                                SharedString::new_static("ダーク"),
-                                SharedString::new_static("システム"),
+                            const MODE_NAMES: [&str; 3] = [
+                                i18n::msg!("Light"),
+                                i18n::msg!("Dark"),
+                                i18n::msg!("System"),
                             ];
                             ToggleButtonSimple::new(
-                                MODE_NAMES[mode as usize].clone(),
+                                i18n::tr(MODE_NAMES[mode as usize]),
                                 move |_, _, cx| {
                                     write_mode_change(mode, cx);
 
@@ -253,7 +253,7 @@ fn render_telemetry_section(tab_index: &mut isize, cx: &App) -> impl IntoElement
             SwitchField::new(
                 "onboarding-telemetry-metrics",
                 None::<&str>,
-                Some("使用状況の匿名データを送信して Zed の改善に協力する".into()),
+                Some(i18n::t!("Help improve Zed by sending anonymous usage data").into()),
                 if TelemetrySettings::get_global(cx).metrics {
                     ui::ToggleState::Selected
                 } else {
@@ -292,7 +292,12 @@ fn render_telemetry_section(tab_index: &mut isize, cx: &App) -> impl IntoElement
             SwitchField::new(
                 "onboarding-telemetry-crash-reports",
                 None::<&str>,
-                Some("クラッシュレポートを送信して重大な問題の早期修正に協力する".into()),
+                Some(
+                    i18n::t!(
+                        "Help fix Zed by sending crash reports so we can fix critical issues fast"
+                    )
+                    .into(),
+                ),
                 if TelemetrySettings::get_global(cx).diagnostics {
                     ui::ToggleState::Selected
                 } else {
@@ -344,7 +349,7 @@ fn render_base_keymap_section(tab_index: &mut isize, cx: &mut App) -> impl IntoE
 
     return v_flex()
         .gap_2()
-        .child(Label::new("ベースキーマップ"))
+        .child(Label::new(i18n::t!("Base Keymap")))
         .child(
             ToggleButtonGroup::two_rows(
                 "base_keymap_selection",
@@ -413,8 +418,8 @@ fn render_vim_mode_switch(tab_index: &mut isize, cx: &mut App) -> impl IntoEleme
     };
     SwitchField::new(
         "onboarding-vim-mode",
-        Some("Vim モード"),
-        Some("Neovim から移行しますか? Zed の本格的な Vim モード実装を利用できます".into()),
+        Some(i18n::t!("Vim Mode")),
+        Some(i18n::t!("Coming from Neovim? Use our first-class implementation of Vim Mode").into()),
         toggle_state,
         {
             let fs = <dyn Fs>::global(cx);
@@ -450,12 +455,17 @@ fn render_worktree_auto_trust_switch(tab_index: &mut isize, cx: &mut App) -> imp
         ui::ToggleState::Unselected
     };
 
-    let tooltip_description = "新しいプロジェクトを信頼済みにするまで、Zed は言語サーバー・プロジェクト設定・MCP サーバーなどのサービスを実行しません。";
+    let tooltip_description = i18n::t!(
+        "Zed can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted."
+    );
 
     SwitchField::new(
         "onboarding-auto-trust-worktrees",
-        Some("すべてのプロジェクトを既定で信頼する"),
-        Some("新しいプロジェクトを自動的に信頼済みにして Zed のすべての機能を有効にする".into()),
+        Some(i18n::t!("Trust All Projects By Default")),
+        Some(
+            i18n::t!("Automatically mark all new projects as trusted to unlock all Zed's features")
+                .into(),
+        ),
         toggle_state,
         {
             let fs = <dyn Fs>::global(cx);
@@ -538,9 +548,12 @@ fn render_import_settings_section(tab_index: &mut isize, cx: &mut App) -> impl I
             v_flex()
                 .gap_0p5()
                 .max_w_5_6()
-                .child(Label::new("設定のインポート"))
+                .child(Label::new(i18n::t!("Import Settings")))
                 .child(
-                    Label::new("他のエディターから設定を自動的に取り込みます").color(Color::Muted),
+                    Label::new(i18n::t!(
+                        "Automatically pull your settings from other editors"
+                    ))
+                    .color(Color::Muted),
                 ),
         )
         .child(h_flex().gap_1().child(vscode).child(cursor))
@@ -572,7 +585,7 @@ fn render_registry_agent_button(
             .color(Color::Success)
             .into_any_element()
     } else {
-        Label::new("インストール")
+        Label::new(i18n::t!("Install"))
             .size(LabelSize::XSmall)
             .color(Color::Muted)
             .into_any_element()
@@ -628,12 +641,12 @@ fn render_zed_agent_button(user_store: &Entity<UserStore>, cx: &mut App) -> impl
     let is_signed_in = !is_signed_out;
 
     let state_element = if is_signed_out {
-        Label::new("サインイン")
+        Label::new(i18n::t!("Sign In"))
             .size(LabelSize::XSmall)
             .color(Color::Muted)
             .into_any_element()
     } else if is_signing_in {
-        Label::new("サインイン中…")
+        Label::new(i18n::t!("Signing In…"))
             .size(LabelSize::XSmall)
             .color(Color::Muted)
             .with_animation(
@@ -645,7 +658,7 @@ fn render_zed_agent_button(user_store: &Entity<UserStore>, cx: &mut App) -> impl
             )
             .into_any_element()
     } else if is_signed_in && is_free {
-        Label::new("無料トライアルを開始")
+        Label::new(i18n::t!("Start Free Trial"))
             .size(LabelSize::XSmall)
             .color(Color::Muted)
             .into_any_element()
@@ -716,10 +729,12 @@ fn render_ai_section(user_store: &Entity<UserStore>, cx: &mut App) -> impl IntoE
 
     v_flex()
         .gap_0p5()
-        .child(Label::new("エージェントの設定"))
+        .child(Label::new(i18n::t!("Agent Setup")))
         .child(
-            Label::new("よく使うエージェントをインストールして最初のスレッドを開始しましょう。")
-                .color(Color::Muted),
+            Label::new(i18n::t!(
+                "Install your favorite agents and start your first thread."
+            ))
+            .color(Color::Muted),
         )
         .child(grid)
 }

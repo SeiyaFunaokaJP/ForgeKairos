@@ -383,7 +383,7 @@ impl PickerDelegate for ThemeSelectorDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "テーマを選択...".into()
+        i18n::t!("Select Theme...").into()
     }
 
     fn match_count(&self) -> usize {
@@ -541,7 +541,7 @@ impl PickerDelegate for ThemeSelectorDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("docs", "テーマのドキュメントを表示")
+                    Button::new("docs", i18n::t!("View Theme Docs"))
                         .end_icon(
                             Icon::new(IconName::ArrowUpRight)
                                 .size(IconSize::Small)
@@ -552,7 +552,7 @@ impl PickerDelegate for ThemeSelectorDelegate {
                         })),
                 )
                 .child(
-                    Button::new("more-themes", "テーマをインストール").on_click(cx.listener({
+                    Button::new("more-themes", i18n::t!("Install Themes")).on_click(cx.listener({
                         move |_, _, window, cx| {
                             window.dispatch_action(
                                 Box::new(Extensions {

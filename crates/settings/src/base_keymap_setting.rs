@@ -74,25 +74,25 @@ impl Display for BaseKeymap {
 impl BaseKeymap {
     #[cfg(target_os = "macos")]
     pub const OPTIONS: [(&'static str, Self); 8] = [
-        ("Zed (既定)", Self::Zed),
+        (i18n::msg!("Zed (Default)"), Self::Zed),
         ("VS Code", Self::VSCode),
         ("Atom", Self::Atom),
         ("JetBrains", Self::JetBrains),
         ("Sublime Text", Self::SublimeText),
-        ("Emacs (ベータ)", Self::Emacs),
+        (i18n::msg!("Emacs (beta)"), Self::Emacs),
         ("TextMate", Self::TextMate),
-        ("Cursor (ベータ)", Self::Cursor),
+        ("Cursor", Self::Cursor),
     ];
 
     #[cfg(not(target_os = "macos"))]
     pub const OPTIONS: [(&'static str, Self); 7] = [
-        ("Zed (既定)", Self::Zed),
+        (i18n::msg!("Zed (Default)"), Self::Zed),
         ("VS Code", Self::VSCode),
         ("Atom", Self::Atom),
         ("JetBrains", Self::JetBrains),
         ("Sublime Text", Self::SublimeText),
-        ("Emacs (ベータ)", Self::Emacs),
-        ("Cursor (ベータ)", Self::Cursor),
+        (i18n::msg!("Emacs (beta)"), Self::Emacs),
+        ("Cursor", Self::Cursor),
     ];
 
     pub fn asset_path(&self) -> Option<&'static str> {
@@ -124,15 +124,39 @@ impl BaseKeymap {
     }
 
     pub fn names() -> impl Iterator<Item = &'static str> {
-        Self::OPTIONS.iter().map(|(name, _)| *name)
+        Self::OPTIONS
+            .iter()
+            .map(|(name, value)| value.translated_option_name(name))
     }
 
     pub fn from_names(option: &str) -> BaseKeymap {
         Self::OPTIONS
             .iter()
             .copied()
-            .find_map(|(name, value)| (name == option).then_some(value))
+            .find_map(|(name, value)| {
+                (value.translated_option_name(name) == option).then_some(value)
+            })
+            // A label shown before the language was switched to one that
+            // translates it is still the English one.
+            .or_else(|| {
+                Self::OPTIONS
+                    .iter()
+                    .copied()
+                    .find_map(|(name, value)| (name == option).then_some(value))
+            })
             .unwrap_or_default()
+    }
+
+    // The onboarding picker shows `names()` and hands the chosen label back to
+    // `from_names`, so both sides translate the same way. The vendors' names are
+    // not messages and stay as they are.
+    fn translated_option_name(self, name: &'static str) -> &'static str {
+        match self {
+            BaseKeymap::Zed | BaseKeymap::Emacs => i18n::tr(name),
+            // "Cursor" alone would also be the text cursor.
+            BaseKeymap::Cursor => i18n::tc!("BaseKeymap", "Cursor"),
+            _ => name,
+        }
     }
 }
 
@@ -146,6 +170,12 @@ impl Settings for BaseKeymap {
 mod tests {
     use super::*;
 
+    fn japanese() -> i18n::test_support::LocaleOverride {
+        i18n::test_support::LocaleOverride::new(Some(i18n_catalog::test_support::bundled_catalog(
+            "ja",
+        )))
+    }
+
     #[test]
     fn every_option_name_resolves_back_to_its_own_variant() {
         // `from_names` takes the label the onboarding picker showed and looks
@@ -153,9 +183,35 @@ mod tests {
         // and otherwise falling back to `Zed`. Two labels that collide would
         // therefore hand the user a keymap they did not pick, without any
         // error — the one way translating the labels can go wrong.
+        let check = || {
+            let names = BaseKeymap::names().collect::<Vec<_>>();
+            assert_eq!(names.len(), BaseKeymap::OPTIONS.len());
+            for (name, (_, value)) in names.into_iter().zip(BaseKeymap::OPTIONS) {
+                assert_eq!(BaseKeymap::from_names(name), value, "name: {name}");
+            }
+        };
+        check();
+        let _locale = japanese();
+        check();
+
+        // The picker keeps the labels it drew; after a switch to Japanese they
+        // are still the English ones and must not fall back to `Zed`.
         for (name, value) in BaseKeymap::OPTIONS {
             assert_eq!(BaseKeymap::from_names(name), value, "name: {name}");
         }
+    }
+
+    #[test]
+    fn the_picker_labels_are_upstreams_in_english() {
+        let names = BaseKeymap::names().collect::<Vec<_>>();
+        let options = BaseKeymap::OPTIONS
+            .iter()
+            .map(|(name, _)| *name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, options);
+        assert!(names.contains(&"Zed (Default)"), "{names:?}");
+        assert!(names.contains(&"Emacs (beta)"), "{names:?}");
+        assert!(names.contains(&"Cursor"), "{names:?}");
     }
 
     #[test]
@@ -164,6 +220,7 @@ mod tests {
         // palette are the only places these strings show up, so nothing else
         // would notice them turning back into English on an upstream-shaped
         // edit.
+        let _locale = japanese();
         let names = BaseKeymap::names().collect::<Vec<_>>();
         assert!(names.contains(&"Zed (既定)"), "{names:?}");
         assert!(names.contains(&"Emacs (ベータ)"), "{names:?}");
@@ -179,10 +236,11 @@ mod tests {
 
     #[test]
     fn the_telemetry_display_stays_in_english() {
+        let _locale = japanese();
         // `Display` is what `base_keymap_picker.rs` and `main.rs` report to
         // telemetry (ADR §5.11); translating it would change the values Zed
         // Industries already collects, so only `OPTIONS` (this UI's labels) is
-        // Japanese. `BaseKeymapContent::VARIANTS` (the settings UI's) is English
+        // translated. `BaseKeymapContent::VARIANTS` (the settings UI's) is English
         // and translated from `locales/ja/_settings.po` when the dropdown is drawn.
         assert_eq!(BaseKeymap::Zed.to_string(), "Zed");
         assert_eq!(BaseKeymap::Emacs.to_string(), "Emacs (beta)");

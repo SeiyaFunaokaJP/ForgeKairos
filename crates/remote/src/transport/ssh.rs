@@ -536,14 +536,14 @@ impl RemoteConnection for SshRemoteConnection {
             // Both `No space left on device` and `Permission denied` surface
             // here, so the wording has to be one the user can act on rather
             // than a transport name and a typo.
-            anyhow::bail!(
-                "リモートへのディレクトリ転送に失敗しました ({src_path_display} -> {dest_path_str}): \
+            anyhow::bail!(i18n::t!(
+                "Failed to upload the directory to the remote ({src_path_display} -> {dest_path_str}): \
                  SCP: {scp}{sftp}",
                 scp = stderr.trim(),
                 sftp = sftp_failure
                     .map(|reason| format!(" / SFTP: {reason}"))
                     .unwrap_or_default(),
-            );
+            ));
         })
     }
 
@@ -558,12 +558,10 @@ impl RemoteConnection for SshRemoteConnection {
         cx: &mut AsyncApp,
     ) -> Task<Result<i32>> {
         const VARS: [&str; 3] = ["RUST_LOG", "RUST_BACKTRACE", "ZED_GENERATE_MINIDUMPS"];
-        delegate.set_status(Some("プロキシを起動しています"), cx);
+        delegate.set_status(Some(i18n::t!("Starting proxy")), cx);
 
         let Some(remote_binary_path) = self.remote_binary_path.clone() else {
-            return Task::ready(Err(anyhow!(
-                "リモート開発サーバーのパスが未設定です (接続の初期化に失敗しています)"
-            )));
+            return Task::ready(Err(anyhow!(i18n::t!("Remote binary path not set"))));
         };
 
         let mut ssh_command = if self.ssh_platform.os.is_windows() {
@@ -744,7 +742,7 @@ impl SshRemoteConnection {
 
         #[cfg(not(windows))]
         let (socket, master_process_option) = if let Some(reused_path) = reused_socket {
-            delegate.set_status(Some("接続しています (既存の SSH セッションを再利用)"), cx);
+            delegate.set_status(Some(i18n::t!("Connecting (reusing session)")), cx);
             log::info!("reusing existing ControlMaster, skipping authentication");
             let socket = SshSocket::new(connection_options, reused_path).await?;
             (socket, None)
@@ -760,7 +758,7 @@ impl SshRemoteConnection {
                 askpass::AskPassSession::new(cx.background_executor().clone(), askpass_delegate)
                     .await?;
 
-            delegate.set_status(Some("接続しています"), cx);
+            delegate.set_status(Some(i18n::t!("Connecting")), cx);
 
             // Start the master SSH process, which does not do anything except
             // for establish the connection and keep it open, allowing other ssh
@@ -778,10 +776,10 @@ impl SshRemoteConnection {
                     match result {
                         AskPassResult::CancelledByUser => {
                             master_process.as_mut().kill().ok();
-                            anyhow::bail!("SSH 接続がキャンセルされました")
+                            anyhow::bail!(i18n::t!("SSH connection canceled"))
                         }
                         AskPassResult::Timedout => {
-                            anyhow::bail!("ホストへの接続がタイムアウトしました")
+                            anyhow::bail!(i18n::t!("connecting to host timed out"))
                         }
                     }
                 }
@@ -791,7 +789,7 @@ impl SshRemoteConnection {
             };
 
             if let Err(e) = result {
-                return Err(e.context("ホストに接続できませんでした"));
+                return Err(e.context(i18n::t!("Failed to connect to host")));
             }
 
             if master_process.as_mut().try_status()?.is_some() {
@@ -799,8 +797,8 @@ impl SshRemoteConnection {
                 let mut stderr = master_process.as_mut().stderr.take().unwrap();
                 stderr.read_to_end(&mut output).await?;
 
-                let error_message = format!(
-                    "接続できませんでした: {}",
+                let error_message = i18n::t!(
+                    "failed to connect: {}",
                     String::from_utf8_lossy(&output).trim()
                 );
                 anyhow::bail!(error_message);
@@ -824,7 +822,7 @@ impl SshRemoteConnection {
                 askpass::AskPassSession::new(cx.background_executor().clone(), askpass_delegate)
                     .await?;
 
-            delegate.set_status(Some("接続しています"), cx);
+            delegate.set_status(Some(i18n::t!("Connecting")), cx);
 
             let mut master_process = MasterProcess::new(
                 askpass.script_path().as_ref(),
@@ -838,10 +836,10 @@ impl SshRemoteConnection {
                     match result {
                         AskPassResult::CancelledByUser => {
                             master_process.as_mut().kill().ok();
-                            anyhow::bail!("SSH 接続がキャンセルされました")
+                            anyhow::bail!(i18n::t!("SSH connection canceled"))
                         }
                         AskPassResult::Timedout => {
-                            anyhow::bail!("ホストへの接続がタイムアウトしました")
+                            anyhow::bail!(i18n::t!("connecting to host timed out"))
                         }
                     }
                 }
@@ -851,7 +849,7 @@ impl SshRemoteConnection {
             };
 
             if let Err(e) = result {
-                return Err(e.context("ホストに接続できませんでした"));
+                return Err(e.context(i18n::t!("Failed to connect to host")));
             }
 
             // Without ControlMaster the master process only exists to drive
@@ -868,8 +866,8 @@ impl SshRemoteConnection {
                 let mut stderr = master_process.as_mut().stderr.take().unwrap();
                 stderr.read_to_end(&mut output).await?;
 
-                let error_message = format!(
-                    "接続できませんでした: {}",
+                let error_message = i18n::t!(
+                    "failed to connect: {}",
                     String::from_utf8_lossy(&output).trim()
                 );
                 anyhow::bail!(error_message);
@@ -897,7 +895,7 @@ impl SshRemoteConnection {
         let (release_channel, version) =
             cx.update(|cx| (ReleaseChannel::global(cx), AppVersion::global(cx)));
 
-        delegate.set_status(Some("リモート環境を確認しています"), cx);
+        delegate.set_status(Some(i18n::t!("Checking the remote environment")), cx);
         let probe_started = Instant::now();
         // Tried before anything else because on a POSIX remote it answers, in
         // one round trip, what the sequence below needs four for — plus the two
@@ -1140,8 +1138,8 @@ impl SshRemoteConnection {
             }
             Ok(None) => {
                 let build_remote_server = std::env::var("ZED_BUILD_REMOTE_SERVER")
-                    .unwrap_or_else(|_| "nocompress (既定)".to_string());
-                format!("実行せず (ZED_BUILD_REMOTE_SERVER={build_remote_server})")
+                    .unwrap_or_else(|_| i18n::t!("nocompress (default)").to_string());
+                i18n::t!("not run (ZED_BUILD_REMOTE_SERVER={build_remote_server})")
             }
             // A missing cross-compilation toolchain (zig, cargo-zigbuild, cmake) must not be
             // fatal here: the bundled artifact below is exactly the fallback for that case.
@@ -1154,7 +1152,8 @@ impl SshRemoteConnection {
             }
         };
         #[cfg(not(any(debug_assertions, feature = "build-remote-server-binary")))]
-        let source_build_status = "このビルドにはソースビルド機能が含まれていません".to_string();
+        let source_build_status =
+            i18n::t!("this build cannot build the remote server from source").to_string();
 
         if binary_exists_on_server {
             log::info!(
@@ -1192,20 +1191,20 @@ impl SshRemoteConnection {
                             .join(" / ")
                     })
                     .unwrap_or_else(|| {
-                        "実行ファイルの場所を特定できなかったため未検索".to_string()
+                        i18n::t!("not searched, because the executable's location is unknown")
+                            .to_string()
                     });
-                anyhow::bail!(
-                    "リモートサーバーのバイナリが用意できませんでした。\
-                     リモート側 {} に無し / \
-                     同梱アーティファクト `{}` が {} に無し / \
-                     ソースからのビルド: {}。\
-                     cmake や zig が PATH に無いと自動ビルドが失敗します。\
-                     script\\build-dev.ps1 でビルドすると同梱アーティファクトを用意できます。",
-                    dst_path.display(self.path_style()),
-                    bundled_artifact_name,
-                    bundled_search_dirs,
-                    source_build_status,
-                )
+                anyhow::bail!(i18n::t!(
+                    "No remote server binary is available. \
+                     Not on the remote at {remote_path} / \
+                     bundled artifact `{artifact}` not found in {search_dirs} / \
+                     build from source: {source_build_status}. \
+                     The automatic build fails when cmake or zig is not on PATH. \
+                     Building with script\\build-dev.ps1 prepares the bundled artifact.",
+                    remote_path = dst_path.display(self.path_style()),
+                    artifact = bundled_artifact_name,
+                    search_dirs = bundled_search_dirs,
+                ))
             }
             _ => Ok(Some(AppVersion::global(cx))),
         })?;
@@ -1243,7 +1242,7 @@ impl SshRemoteConnection {
                 Ok(_) => {
                     self.extract_server_binary(&dst_path, &tmp_path_compressed, delegate, cx)
                         .await
-                        .context("リモートサーバーのバイナリを展開できませんでした")?;
+                        .context(i18n::t!("extracting server binary"))?;
                     return Ok(dst_path.into());
                 }
                 Err(e) => {
@@ -1269,18 +1268,18 @@ impl SshRemoteConnection {
                 cx,
             )
             .await
-            .context("リモートサーバーのバイナリをローカルにダウンロードできませんでした")
-            .context(
-                "同梱アーティファクト (ADR-F15) も無く、ダウンロードにも失敗しました。\
-                 script\\build-dev.ps1 でビルドして同梱アーティファクトを用意するか、\
-                 この PC から配信元に接続できることを確認してください",
-            )?;
+            .context(i18n::t!("downloading server binary locally"))
+            .context(i18n::t!(
+                "There is no bundled artifact (ADR-F15) and the download failed as well. \
+                 Build with script\\build-dev.ps1 to prepare the bundled artifact, \
+                 or check that this computer can reach the download server"
+            ))?;
         self.upload_local_server_binary(&src_path, &tmp_path_compressed, delegate, cx)
             .await
-            .context("リモートサーバーのバイナリをアップロードできませんでした")?;
+            .context(i18n::t!("uploading server binary"))?;
         self.extract_server_binary(&dst_path, &tmp_path_compressed, delegate, cx)
             .await
-            .context("リモートサーバーのバイナリを展開できませんでした")?;
+            .context(i18n::t!("extracting server binary"))?;
         Ok(dst_path.into())
     }
 
@@ -1362,7 +1361,7 @@ impl SshRemoteConnection {
 
         // Without this the "building" status would stay up for the hashing too,
         // which for an incremental no-op build is the longer of the two steps.
-        delegate.set_status(Some("リモート開発サーバーを照合しています"), cx);
+        delegate.set_status(Some(i18n::t!("Verifying remote development server")), cx);
 
         let local_digest = {
             let src_path = src_path.to_path_buf();
@@ -1617,7 +1616,7 @@ impl SshRemoteConnection {
         }
 
         delegate.set_status(
-            Some("リモートホスト上でリモート開発サーバーをダウンロードしています"),
+            Some(i18n::t!("Downloading remote development server on host")),
             cx,
         );
 
@@ -1686,9 +1685,7 @@ impl SshRemoteConnection {
                         {
                             return Err(e);
                         } else {
-                            anyhow::bail!(
-                                "リモートホストに curl も wget もありません \n                                 (リモート開発サーバーをダウンロードできません)"
-                            );
+                            anyhow::bail!(i18n::t!("Neither curl nor wget is available"));
                         }
                     }
                 }
@@ -1712,7 +1709,7 @@ impl SshRemoteConnection {
         let file_name = src_path
             .file_name()
             .with_context(|| {
-                format!("リモート開発サーバーのパスにファイル名がありません: {src_path:?}")
+                i18n::t!("The remote development server path has no file name: {src_path:?}")
             })?
             .to_string_lossy()
             .into_owned();
@@ -1738,7 +1735,7 @@ impl SshRemoteConnection {
         }
 
         let src_stat = fs::metadata(&src_path).await.with_context(|| {
-            format!("リモート開発サーバーのファイルを読めませんでした: {src_path:?}")
+            i18n::t!("Could not read the remote development server file: {src_path:?}")
         })?;
         let size = src_stat.len();
 
@@ -1761,12 +1758,12 @@ impl SshRemoteConnection {
                 if removed.is_empty() {
                     anyhow::bail!(message);
                 }
-                anyhow::bail!(
+                anyhow::bail!(i18n::t!(
                     "{message}\n\
-                     他チャンネルのリモートサーバー ({}) は自動削除しましたが、\
-                     まだ足りません。",
-                    removed.join(", ")
-                );
+                     Remote servers of other release channels ({removed}) were removed \
+                     automatically, but there is still not enough space.",
+                    removed = removed.join(", ")
+                ));
             }
             log::info!(
                 "the remote had {} MB free, too little for a {} MB transfer; after removing [{}] \
@@ -1785,9 +1782,9 @@ impl SshRemoteConnection {
         // spinner with no indication of scale is what made that wait look like the
         // connection had stalled or restarted.
         delegate.set_status(
-            Some(&format!(
-                "リモート開発サーバーを転送しています ({})",
-                format_transfer_size(size)
+            Some(&i18n::t!(
+                "Uploading remote development server ({size})",
+                size = format_transfer_size(size)
             )),
             cx,
         );
@@ -1802,7 +1799,7 @@ impl SshRemoteConnection {
             // message never names.
             return Err(error
                 .context(self.free_space_hint().await)
-                .context("リモート開発サーバーを転送できませんでした"));
+                .context(i18n::t!("failed to upload server binary")));
         }
         log::info!("uploaded remote development server in {:?}", t0.elapsed());
         Ok(())
@@ -1827,9 +1824,9 @@ impl SshRemoteConnection {
                 log::debug!("ignoring mkdir failure on a Windows remote for {dir}: {error:#}");
                 Ok(())
             }
-            Err(error) => Err(error.context(format!(
-                "リモートにディレクトリを作成できませんでした \
-                 (ディスクの空き容量または権限を確認してください): {dir}"
+            Err(error) => Err(error.context(i18n::t!(
+                "Could not create a directory on the remote \
+                 (check the free disk space and the permissions): {dir}"
             ))),
         }
     }
@@ -1841,7 +1838,7 @@ impl SshRemoteConnection {
         delegate: &Arc<dyn RemoteClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
-        delegate.set_status(Some("リモート開発サーバーを展開しています"), cx);
+        delegate.set_status(Some(i18n::t!("Extracting remote development server")), cx);
 
         let result = if self.ssh_platform.os.is_windows() {
             self.extract_server_binary_windows(dst_path, tmp_path).await
@@ -1922,12 +1919,12 @@ impl SshRemoteConnection {
     async fn free_space_hint(&self) -> String {
         match self.remote_free_space().await {
             Some(free_space) => {
-                format!("リモートの空き容量が不足している可能性があります (現在: {free_space})")
+                i18n::t!("The remote may be out of disk space (currently: {free_space})")
             }
-            None => {
-                "リモートの空き容量が不足している可能性があります (空き容量は取得できませんでした)"
-                    .to_string()
-            }
+            None => i18n::t!(
+                "The remote may be out of disk space (the free space could not be determined)"
+            )
+            .to_string(),
         }
     }
 
@@ -1938,7 +1935,7 @@ impl SshRemoteConnection {
             let free_space = self
                 .windows_free_space("'{0:N1} GB' -f ($free / 1GB)")
                 .await?;
-            return Some(format!("空き {free_space}"));
+            return Some(i18n::t!("{free_space} free"));
         }
         parse_df_free_space(&self.posix_df("-Ph").await?)
     }
@@ -2185,14 +2182,14 @@ impl SshRemoteConnection {
         );
         // `No space left on device` and `Permission denied` both arrive here,
         // and this text reaches the connection-failure dialog (ADR-F07).
-        anyhow::bail!(
-            "リモートへのファイル転送に失敗しました ({src_path_display} -> {dest_path_str}): \
+        anyhow::bail!(i18n::t!(
+            "Failed to upload the file to the remote ({src_path_display} -> {dest_path_str}): \
              SCP: {scp}{sftp}",
             scp = stderr.trim(),
             sftp = sftp_failure
                 .map(|reason| format!(" / SFTP: {reason}"))
                 .unwrap_or_default(),
-        );
+        ));
     }
 
     async fn is_sftp_available() -> bool {
@@ -3042,7 +3039,7 @@ fn parse_df_free_space(output: &str) -> Option<String> {
     if !available.starts_with(|c: char| c.is_ascii_digit()) || !capacity.ends_with('%') {
         return None;
     }
-    Some(format!("空き {available}、使用率 {capacity}"))
+    Some(i18n::t!("{available} free, {capacity} used"))
 }
 
 /// The directories to ask `df` about, in order.
@@ -3083,11 +3080,11 @@ fn windows_free_space_script(path_style: PathStyle, render: &str) -> String {
 fn insufficient_free_space_message(file_size: u64, free_space: u64) -> Option<String> {
     let required = file_size.saturating_mul(2);
     (free_space < required).then(|| {
-        format!(
-            "リモートの空き容量が不足しています (必要 約 {} MB、空き {} MB)。\
-             リモートホストの不要なファイルを削除してから再接続してください。",
-            required.div_ceil(BYTES_PER_MEGABYTE),
-            free_space / BYTES_PER_MEGABYTE,
+        i18n::t!(
+            "The remote does not have enough free disk space (about {required} MB needed, {free} MB free). \
+             Delete files you no longer need on the remote host, then reconnect.",
+            required = required.div_ceil(BYTES_PER_MEGABYTE),
+            free = free_space / BYTES_PER_MEGABYTE,
         )
     })
 }
@@ -3806,7 +3803,7 @@ mod tests {
                  /dev/root        31G   30G  512M  99% /\n"
             )
             .as_deref(),
-            Some("空き 512M、使用率 99%")
+            Some("512M free, 99% used")
         );
         // A mount point with a space in it still parses: only the columns
         // before it are read.
@@ -3816,7 +3813,7 @@ mod tests {
                  /dev/sdb1 100G 1G 99G 1% /mnt/my disk\n"
             )
             .as_deref(),
-            Some("空き 99G、使用率 1%")
+            Some("99G free, 1% used")
         );
         // Header only, no output, and non-`df` noise all mean "cannot tell".
         assert_eq!(
@@ -3874,11 +3871,11 @@ mod tests {
         let message = insufficient_free_space_message(50 * 1024 * 1024, 60 * 1024 * 1024)
             .expect("60 MB cannot hold a 50 MB archive and what it unpacks to");
         assert!(
-            message.contains("リモートの空き容量が不足しています"),
+            message.contains("does not have enough free disk space"),
             "{message}"
         );
-        assert!(message.contains("必要 約 100 MB"), "{message}");
-        assert!(message.contains("空き 60 MB"), "{message}");
+        assert!(message.contains("about 100 MB needed"), "{message}");
+        assert!(message.contains("60 MB free"), "{message}");
         // Nothing readable still refuses rather than dividing to zero.
         assert!(insufficient_free_space_message(1, 0).is_some());
     }

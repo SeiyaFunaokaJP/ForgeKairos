@@ -81,8 +81,8 @@ pub(crate) fn commit_context_menu(
         cx,
     );
     let header = match &ref_name {
-        Some(ref_name) => format!("ref {ref_name}"),
-        None => format!("コミット {sha_short}"),
+        Some(ref_name) => i18n::t!("Ref {ref_name}"),
+        None => i18n::t!("Commit {sha_short}"),
     };
     let facts = repository
         .as_ref()
@@ -94,7 +94,7 @@ pub(crate) fn commit_context_menu(
         context_menu
             .context(focus_handle)
             .header(header)
-            .entry("差分を表示", Some(OpenCommitView.boxed_clone()), {
+            .entry(i18n::t!("View Diff"), Some(OpenCommitView.boxed_clone()), {
                 let repository = repository.clone();
                 let workspace = workspace.clone();
                 move |window, cx| {
@@ -113,21 +113,21 @@ pub(crate) fn commit_context_menu(
                 }
             })
             .entry(
-                "SHA をコピー",
+                i18n::t!("Copy SHA"),
                 Some(CopyCommitSha.boxed_clone()),
                 move |_window, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(sha.to_string()));
                 },
             )
             .when_some(ref_name.clone(), |menu, ref_name| {
-                menu.entry("ref 名をコピー", None, move |_window, cx| {
+                menu.entry(i18n::t!("Copy Ref Name"), None, move |_window, cx| {
                     cx.write_to_clipboard(ClipboardItem::new_string(ref_name.to_string()));
                 })
             })
             .when(ref_name.is_none(), |menu| {
                 menu.map(|menu| {
                     let tag_names = commit.tag_names.clone();
-                    let copy_tag_label = "タグをコピー";
+                    let copy_tag_label = i18n::t!("Copy Tag");
 
                     match tag_names.as_slice() {
                         [] => menu.item(
@@ -165,7 +165,7 @@ pub(crate) fn commit_context_menu(
                 })
             })
             .when(source == CommitContextMenuSource::GitPanel, |menu| {
-                menu.entry("コミットグラフで表示", None, move |window, cx| {
+                menu.entry(i18n::t!("Show in Git Graph"), None, move |window, cx| {
                     window.dispatch_action(
                         Box::new(crate::git_graph::OpenAtCommit {
                             sha: sha.to_string(),
@@ -183,11 +183,11 @@ pub(crate) fn commit_context_menu(
             })
             .map(extra_entries)
             .map(|mut menu| {
-                menu = menu.separator().header("カスタムコマンド");
+                menu = menu.separator().header(i18n::t!("Custom Commands"));
 
                 if git_tasks.is_empty() {
                     return menu.item(
-                        ContextMenuEntry::new("詳細")
+                        ContextMenuEntry::new(i18n::t!("Learn More"))
                             .icon(IconName::ArrowUpRight)
                             .icon_color(Color::Muted)
                             .icon_position(IconPosition::End)
@@ -335,14 +335,14 @@ pub(crate) fn commit_operation_refusal(
     facts: &CommitFacts,
 ) -> Option<SharedString> {
     match operation {
-        CommitMenuOperation::CherryPick if facts.is_head => {
-            Some("現在のブランチの先頭のコミットです。取り込むものがありません。".into())
-        }
+        CommitMenuOperation::CherryPick if facts.is_head => Some(
+            i18n::t!("This is the tip of the current branch. There is nothing to pick.").into(),
+        ),
         CommitMenuOperation::CherryPick if facts.is_merge == Some(true) => {
-            Some("マージコミットは取り込めません。".into())
+            Some(i18n::t!("A merge commit cannot be cherry-picked.").into())
         }
         CommitMenuOperation::Revert if facts.is_merge == Some(true) => {
-            Some("マージコミットは打ち消せません。".into())
+            Some(i18n::t!("A merge commit cannot be reverted.").into())
         }
         CommitMenuOperation::Fixup => facts.fixup_refusal.clone(),
         _ => None,
@@ -396,53 +396,70 @@ fn commit_rewrite_entries(
             ),
         }
     };
-    let fixup_label = "今の変更をこのコミットに入れる (fixup)…";
+    let fixup_label = i18n::t!("Fold Current Changes into This Commit (fixup)…");
     let menu = menu.separator();
     let menu = entry(
         menu,
-        "ここからブランチを作成…",
+        i18n::t!("Create Branch Here…"),
         CommitMenuOperation::CreateBranch,
     );
     let menu = entry(
         menu,
-        "このコミットをチェックアウト (detached)",
+        i18n::t!("Check Out This Commit (detached)"),
         CommitMenuOperation::Checkout,
     );
-    let menu = entry(menu, "ここにタグを付ける…", CommitMenuOperation::CreateTag);
+    let menu = entry(menu, i18n::t!("Tag Here…"), CommitMenuOperation::CreateTag);
     let menu = menu.separator();
     let menu = entry(
         menu,
-        "このコミットを現在のブランチに取り込む (cherry-pick)",
+        i18n::t!("Cherry-Pick This Commit onto the Current Branch"),
         CommitMenuOperation::CherryPick,
     );
     let menu = entry(
         menu,
-        "このコミットを打ち消す (revert)",
+        i18n::t!("Revert This Commit"),
         CommitMenuOperation::Revert,
     );
-    let menu = entry(menu, "メッセージを書き換える…", CommitMenuOperation::Reword);
+    let menu = entry(
+        menu,
+        i18n::t!("Reword Message…"),
+        CommitMenuOperation::Reword,
+    );
     let menu = entry(menu, fixup_label, CommitMenuOperation::Fixup);
-    let menu = entry(menu, "このコミットを捨てる…", CommitMenuOperation::Drop);
+    let menu = entry(
+        menu,
+        i18n::t!("Drop This Commit…"),
+        CommitMenuOperation::Drop,
+    );
     let menu = menu.separator();
     let menu = entry(
         menu,
-        &format!("このコミットまで戻す (soft: {RESET_SOFT_SUMMARY})"),
+        &i18n::t!(
+            "Reset to This Commit (soft: {summary})",
+            summary = i18n::tr(RESET_SOFT_SUMMARY)
+        ),
         CommitMenuOperation::ResetSoft,
     );
     let menu = entry(
         menu,
-        &format!("このコミットまで戻す (mixed: {RESET_MIXED_SUMMARY})"),
+        &i18n::t!(
+            "Reset to This Commit (mixed: {summary})",
+            summary = i18n::tr(RESET_MIXED_SUMMARY)
+        ),
         CommitMenuOperation::ResetMixed,
     );
     let menu = entry(
         menu,
-        &format!("このコミットまで戻す (hard: {RESET_HARD_SUMMARY})…"),
+        &i18n::t!(
+            "Reset to This Commit (hard: {summary})…",
+            summary = i18n::tr(RESET_HARD_SUMMARY)
+        ),
         CommitMenuOperation::ResetHard,
     );
     let menu = menu.separator();
     entry(
         menu,
-        "直近のタグからの距離をコピー",
+        i18n::t!("Copy Distance from Latest Tag"),
         CommitMenuOperation::CopyTagDistance,
     )
 }
@@ -480,7 +497,7 @@ pub(crate) fn register_commit_actions(workspace: &mut Workspace) {
         };
         let Some(sha) = commit_for_action(workspace, sha, &repository, cx) else {
             let toast = commit_status_toast(
-                "コミットを選んでください (履歴タブかコミットグラフで右クリック)",
+                i18n::t!("Choose a commit (right-click one in the history tab or the Git Graph)"),
                 IconName::GitBranch,
                 Color::Muted,
                 cx,
@@ -621,15 +638,15 @@ fn create_branch_from_commit(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let title = format!("{} からブランチを作成", short_sha(&sha));
+    let title = i18n::t!("Create Branch from {}", short_sha(&sha));
     let host = workspace.clone();
     open_commit_text_modal(
         &host,
         CommitTextModalOptions {
             title: title.into(),
-            name_placeholder: Some("新しいブランチ名".into()),
+            name_placeholder: Some(i18n::t!("New branch name").into()),
             message: None,
-            confirm_label: "作成…".into(),
+            confirm_label: i18n::t!("Create…").into(),
         },
         move |input, window, cx| {
             let name = input.name.trim().to_string();
@@ -655,9 +672,13 @@ fn confirm_and_create_branch(
 ) {
     let prompt = window.prompt(
         PromptLevel::Info,
-        &format!("ブランチ「{name}」を作成しますか?"),
-        Some(&format!("基点にするコミット: {}", short_sha(&sha))),
-        &["作成して切り替える", "作成のみ", "キャンセル"],
+        &i18n::t!("Create branch \"{name}\"?"),
+        Some(&i18n::t!("Base commit: {}", short_sha(&sha))),
+        &[
+            i18n::t!("Create and Switch"),
+            i18n::t!("Create Only"),
+            i18n::t!("Cancel"),
+        ],
         cx,
     );
     cx.spawn(async move |cx| {
@@ -673,11 +694,7 @@ fn confirm_and_create_branch(
             return;
         }
         if !switch_to_branch {
-            report_success(
-                &workspace,
-                format!("ブランチ「{name}」を作成しました。"),
-                cx,
-            );
+            report_success(&workspace, i18n::t!("Created branch \"{name}\"."), cx);
             return;
         }
         let switched =
@@ -685,7 +702,7 @@ fn confirm_and_create_branch(
         match await_receiver(switched).await {
             Ok(()) => report_success(
                 &workspace,
-                format!("ブランチ「{name}」を作成して切り替えました。"),
+                i18n::t!("Created branch \"{name}\" and switched to it."),
                 cx,
             ),
             Err(error) => {
@@ -709,10 +726,7 @@ fn checkout_commit(
     report_command(
         workspace,
         "checkout",
-        format!(
-            "{} をチェックアウトしました (detached HEAD)。",
-            short_sha(&sha)
-        ),
+        i18n::t!("Checked out {} (detached HEAD).", short_sha(&sha)),
         receiver,
         None,
         cx,
@@ -726,15 +740,18 @@ fn create_tag_at_commit(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let title = format!("{} にタグを付ける", short_sha(&sha));
+    let title = i18n::t!("Create Tag at {}", short_sha(&sha));
     let host = workspace.clone();
     open_commit_text_modal(
         &host,
         CommitTextModalOptions {
             title: title.into(),
-            name_placeholder: Some("タグ名 (例: v1.2.3)".into()),
-            message: Some(("メッセージ (空なら軽量タグ)".into(), String::new())),
-            confirm_label: "タグを付ける".into(),
+            name_placeholder: Some(i18n::t!("Tag name (e.g. v1.2.3)").into()),
+            message: Some((
+                i18n::t!("Message (leave empty for a lightweight tag)").into(),
+                String::new(),
+            )),
+            confirm_label: i18n::t!("Create Tag").into(),
         },
         move |input, _window, cx| {
             let name = input.name.trim().to_string();
@@ -749,7 +766,7 @@ fn create_tag_at_commit(
             report_command(
                 workspace,
                 "tag",
-                format!("タグ「{name}」を付けました。"),
+                i18n::t!("Created tag \"{name}\"."),
                 receiver,
                 None,
                 cx,
@@ -773,7 +790,7 @@ fn cherry_pick_commit(
     report_command(
         workspace,
         "cherry-pick",
-        format!("{} を取り込みました。", short_sha(&sha)),
+        i18n::t!("Cherry-picked {}.", short_sha(&sha)),
         receiver,
         None,
         cx,
@@ -793,7 +810,7 @@ fn revert_commit(
     report_command(
         workspace,
         "revert",
-        format!("{} を打ち消しました。", short_sha(&sha)),
+        i18n::t!("Reverted {}.", short_sha(&sha)),
         receiver,
         None,
         cx,
@@ -819,14 +836,17 @@ fn reword_commit(
             workspace
                 .update_in(cx, |workspace, window, cx| {
                     let workspace_entity = cx.entity();
-                    let title = format!("{} のメッセージを書き換える", short_sha(&sha));
+                    let title = i18n::t!("Reword the Message of {}", short_sha(&sha));
                     workspace.toggle_modal(window, cx, |window, cx| {
                         CommitTextModal::new(
                             CommitTextModalOptions {
                                 title: title.into(),
                                 name_placeholder: None,
-                                message: Some(("新しいコミットメッセージ".into(), current_message)),
-                                confirm_label: "書き換える".into(),
+                                message: Some((
+                                    i18n::t!("New commit message").into(),
+                                    current_message,
+                                )),
+                                confirm_label: i18n::t!("Rewrite").into(),
                             },
                             Box::new(move |input, _window, cx| {
                                 let message = input.message.trim().to_string();
@@ -844,7 +864,7 @@ fn reword_commit(
                                 report_command(
                                     workspace_entity,
                                     "commit-tree",
-                                    format!("{} のメッセージを書き換えました。", short_sha(&sha)),
+                                    i18n::t!("Reworded the message of {}.", short_sha(&sha)),
                                     receiver,
                                     Some(pushed),
                                     cx,
@@ -873,11 +893,11 @@ fn drop_commit(
     let short = short_sha(&sha);
     let prompt = window.prompt(
         PromptLevel::Warning,
-        &format!("{short} を履歴から取り除きますか?"),
-        Some(&format!(
-            "{short} の変更が無かったことになり、その後のコミットの SHA はすべて変わります。\nプッシュ済みのブランチなら、この後に強制プッシュが必要です。"
+        &i18n::t!("Drop {short} from the history?"),
+        Some(&i18n::t!(
+            "The changes of {short} are undone, and every commit after it gets a new SHA.\nIf the branch was pushed, it needs a force push afterwards."
         )),
-        &["取り除く", "キャンセル"],
+        &[i18n::tc!("git history", "Drop"), i18n::t!("Cancel")],
         cx,
     );
     cx.spawn(async move |cx| {
@@ -892,7 +912,7 @@ fn drop_commit(
             report_command(
                 workspace,
                 "rebase",
-                format!("{} を履歴から取り除きました。", short_sha(&sha)),
+                i18n::t!("Dropped {} from the history.", short_sha(&sha)),
                 receiver,
                 Some(pushed),
                 cx,
@@ -934,7 +954,7 @@ pub(crate) fn fixup_commit(
                     }),
                 }
             }
-            Some(paths) if paths.is_empty() => Err("入れるファイルがありません。"),
+            Some(paths) if paths.is_empty() => Err(i18n::t!("There are no files to fold in.")),
             Some(paths) => {
                 let other_staged = repository.cached_status().any(|entry| {
                     entry.status.staging().has_staged()
@@ -966,7 +986,7 @@ pub(crate) fn fixup_commit(
                     workspace
                         .update(cx, |workspace, cx| {
                             let toast = commit_status_toast(
-                                format!("fixup できません: {}", fixup_error_message(&error)),
+                                i18n::t!("Cannot fixup: {}", fixup_error_message(&error)),
                                 IconName::Warning,
                                 Color::Warning,
                                 cx,
@@ -1051,11 +1071,15 @@ pub(crate) fn fixup_menu_refusal(repository: &Repository) -> Option<SharedString
 
 fn fixup_refusal_for(counts: FixupChangeCounts, on_branch: bool) -> Option<&'static str> {
     if !on_branch {
-        Some("detached HEAD では使えません。先にブランチに切り替えてください。")
+        Some(i18n::t!(
+            "Not available on a detached HEAD. Switch to a branch first."
+        ))
     } else if counts.conflicted > 0 {
-        Some("コンフリクトしているファイルがあります。解決してから使えます。")
+        Some(i18n::t!("Some files have conflicts. Resolve them first."))
     } else if counts.tracked == 0 {
-        Some("コミットに入れる変更がありません。未追跡のファイルはステージすると入れられます。")
+        Some(i18n::t!(
+            "There are no changes to put in the commit. Untracked files can be put in once they are staged."
+        ))
     } else {
         None
     }
@@ -1067,8 +1091,10 @@ fn fixup_refusal_for(counts: FixupChangeCounts, on_branch: bool) -> Option<&'sta
 fn fixup_error_message(error: &anyhow::Error) -> String {
     let message = format!("{error:#}");
     if message.contains("unsupported git command:") {
-        return "接続先の Zed のサーバーが古いため、この操作は使えません。サーバーを更新してください。"
-            .to_string();
+        return i18n::t!(
+            "The Zed server on the remote host is too old for this operation. Update the server."
+        )
+        .to_string();
     }
     message
 }
@@ -1144,14 +1170,14 @@ fn report_fixup(
                     })
                     .ok();
             });
-            (SharedString::from("git の出力を表示"), open)
+            (SharedString::from(i18n::t!("Show Git Output")), open)
         })
     };
 
     match outcome {
         Ok(FixupOutcome::Folded { old_head, new_head }) => {
-            let message = format!(
-                "{short} に変更を入れました。元の先頭: {} (reflog から戻せます)",
+            let message = i18n::t!(
+                "Folded the changes into {short}. Previous tip: {} (recoverable from the reflog)",
                 short_sha(&old_head)
             );
             show_rewrite_succeeded(
@@ -1164,11 +1190,13 @@ fn report_fixup(
         }
         Ok(FixupOutcome::NotCommitted { output, head_moved }) => {
             let headline = if head_moved {
-                "コミットできませんでした。ただし HEAD が動いています。git reflog で確かめてください。"
+                i18n::t!("Could not commit, but HEAD has moved. Check it with git reflog.")
                     .to_string()
             } else {
-                "コミットできませんでした (フックなど)。履歴は変わっておらず、変更も残っています。"
-                    .to_string()
+                i18n::t!(
+                    "Could not commit (a hook, for example). The history is unchanged and the changes are still there."
+                )
+                .to_string()
             };
             show_fixup_problem(
                 workspace,
@@ -1182,10 +1210,10 @@ fn report_fixup(
             old_head,
             fixup_commit,
         }) => {
-            let headline = format!(
-                "{short} に入れる途中でリベースが止まりました (コンフリクトなど)。Git パネルのバナーから続行か中止をしてください。\
-                 中止しても、変更は「{fixup_subject}」コミット ({}) として先頭に残ります。\
-                 そのコミットでスキップすると変更は履歴から外れます (git reflog から戻せます)。元の先頭: {}",
+            let headline = i18n::t!(
+                "The rebase stopped while folding into {short} (a conflict, for example). Continue or abort it from the Git panel's banner. \
+                 Even after aborting, the changes stay at the tip as the \"{fixup_subject}\" commit ({}). \
+                 Skipping that commit takes the changes out of the history (recoverable from git reflog). Previous tip: {}",
                 short_sha(&fixup_commit),
                 short_sha(&old_head)
             );
@@ -1196,42 +1224,46 @@ fn report_fixup(
             rolled_back,
         }) => {
             let headline = if rolled_back {
-                format!(
-                    "{short} に入れられませんでした (リベースを始められませんでした)。履歴は元のままで、変更はステージされた状態で残っています。"
+                i18n::t!(
+                    "Could not fold into {short} (the rebase could not start). The history is unchanged and the changes are left staged."
                 )
             } else {
-                format!(
-                    "{short} に入れられませんでした (リベースが失敗しました)。変更は「{fixup_subject}」コミットとして先頭に残っています。作業ツリーの状態も git status で確かめてください。"
+                i18n::t!(
+                    "Could not fold into {short} (the rebase failed). The changes are left at the tip as the \"{fixup_subject}\" commit. Check the working tree with git status too."
                 )
             };
             show_fixup_problem(workspace, headline, git_output_follow_up(message), cx);
         }
         Ok(FixupOutcome::LeftUnfolded { old_head, new_head }) => {
-            let headline = format!(
-                "リベースは終わりましたが、「{fixup_subject}」コミットが {short} に畳まれずに残りました。元の先頭: {} (reflog から戻せます)",
+            let headline = i18n::t!(
+                "The rebase finished, but the \"{fixup_subject}\" commit was not squashed into {short}. Previous tip: {} (recoverable from the reflog)",
                 short_sha(&old_head)
             );
             show_fixup_problem(
                 workspace,
                 headline,
-                Some((SharedString::from("元に戻す…"), undo(old_head, new_head))),
+                Some((
+                    SharedString::from(i18n::t!("Undo…")),
+                    undo(old_head, new_head),
+                )),
                 cx,
             );
         }
         Ok(FixupOutcome::ChangesLeftInStash { old_head, .. }) => {
-            let mut headline = format!(
-                "{short} に変更を入れました。ただし、{}\n元の先頭: {} (reflog から戻せます)",
+            let mut headline = i18n::t!(
+                "Folded the changes into {short}. However, {}\nPrevious tip: {} (recoverable from the reflog)",
                 ChangesLeftInStash,
                 short_sha(&old_head)
             );
             if target.pushed {
-                headline.push_str(FORCE_PUSH_NEEDED);
+                headline.push('\n');
+                headline.push_str(i18n::tr(FORCE_PUSH_NEEDED));
             }
             show_fixup_problem(workspace, headline, None, cx);
         }
         Err(error) => show_warning_toast(
             workspace,
-            format!("fixup できませんでした: {}", fixup_error_message(&error)),
+            i18n::t!("Could not fixup: {}", fixup_error_message(&error)),
             cx,
         ),
     }
@@ -1272,11 +1304,11 @@ fn undo_fixup(
     let short_new = short_sha(&new_head);
     let prompt = window.prompt(
         PromptLevel::Warning,
-        "fixup する前の状態に戻しますか?",
-        Some(&format!(
-            "現在の先頭 {short_new} を離れて {short_old} に戻します (git reset --soft)。\n入れた変更は、ステージされた変更として残ります。"
+        i18n::t!("Go back to before the fixup?"),
+        Some(&i18n::t!(
+            "Leaves the current tip {short_new} and goes back to {short_old} (git reset --soft).\nThe folded changes stay as staged changes."
         )),
-        &["戻す", "キャンセル"],
+        &[i18n::tc!("git history", "Go Back"), i18n::t!("Cancel")],
         cx,
     );
     cx.spawn(async move |cx| {
@@ -1301,7 +1333,9 @@ fn undo_fixup(
                 cx.update(|cx| {
                     show_warning_toast(
                         &workspace,
-                        "fixup の後に HEAD が動いたか別のブランチに切り替わっているため、ここからは戻せません。git reflog から手で戻してください。",
+                        i18n::t!(
+                            "HEAD has moved or another branch was checked out since the fixup, so it cannot be undone from here. Undo it by hand with git reflog."
+                        ),
                         cx,
                     )
                 });
@@ -1319,7 +1353,7 @@ fn undo_fixup(
             report_command(
                 workspace,
                 "reset",
-                format!("{short_old} に戻しました。入れた変更はステージされています。"),
+                i18n::t!("Went back to {short_old}. The folded changes are staged."),
                 receiver,
                 None,
                 cx,
@@ -1341,15 +1375,17 @@ pub(crate) fn show_rewrite_left_changes_in_stash(
     needs_force_push: bool,
     cx: &mut App,
 ) {
-    let mut headline = format!("{success}\nただし、{ChangesLeftInStash}");
+    let mut headline = i18n::t!("{}\nHowever, {}", success, ChangesLeftInStash);
     if let Some(old_head) = old_head {
-        headline.push_str(&format!(
-            "\n元の先頭: {} (reflog から戻せます)",
+        headline.push('\n');
+        headline.push_str(&i18n::t!(
+            "Previous tip: {} (recoverable from the reflog)",
             short_sha(old_head)
         ));
     }
     if needs_force_push {
-        headline.push_str(FORCE_PUSH_NEEDED);
+        headline.push('\n');
+        headline.push_str(i18n::tr(FORCE_PUSH_NEEDED));
     }
     show_fixup_problem(workspace, headline, None, cx);
 }
@@ -1408,9 +1444,9 @@ fn reset_to_commit(
 ) {
     let short = short_sha(&sha);
     let (flag, kept) = match mode {
-        ResetMode::Soft => ("--soft", "変更はステージに残ります。"),
-        ResetMode::Mixed => ("--mixed", "変更は作業ツリーに残ります。"),
-        ResetMode::Hard => ("--hard", "コミットしていない変更はすべて失われます。"),
+        ResetMode::Soft => ("--soft", i18n::t!("The changes stay staged.")),
+        ResetMode::Mixed => ("--mixed", i18n::t!("The changes stay in the working tree.")),
+        ResetMode::Hard => ("--hard", i18n::t!("Every uncommitted change is lost.")),
     };
     let run = move |cx: &mut App| {
         let receiver = repository.update(cx, |repository, cx| {
@@ -1419,7 +1455,7 @@ fn reset_to_commit(
         report_command(
             workspace,
             "reset",
-            format!("{} まで戻しました ({flag})。", short_sha(&sha)),
+            i18n::t!("Reset to {} ({flag}).", short_sha(&sha)),
             receiver,
             None,
             cx,
@@ -1433,9 +1469,9 @@ fn reset_to_commit(
     // Only `--hard` throws work away, so it is the only one that asks first.
     let prompt = window.prompt(
         PromptLevel::Warning,
-        &format!("{short} まで戻しますか?"),
-        Some(&format!("git reset {flag} {short} を実行します。\n{kept}")),
-        &["戻す (変更を捨てる)", "キャンセル"],
+        &i18n::t!("Reset to {short}?"),
+        Some(&i18n::t!("Runs git reset {flag} {short}.\n{kept}")),
+        &[i18n::t!("Reset (Discard Changes)"), i18n::t!("Cancel")],
         cx,
     );
     cx.spawn(async move |cx| {
@@ -1464,9 +1500,9 @@ fn copy_tag_distance(
                     distance.tag, distance.commits_since, distance.short_sha
                 );
                 cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
-                show_success_toast(&workspace, format!("{text} をコピーしました。"), cx);
+                show_success_toast(&workspace, i18n::t!("Copied {text}."), cx);
             }
-            Ok(None) => show_success_toast(&workspace, "タグがありません。", cx),
+            Ok(None) => show_success_toast(&workspace, i18n::t!("There are no tags."), cx),
             Err(error) => show_error_toast(workspace.clone(), "describe", error, cx),
         });
     })
@@ -1545,7 +1581,7 @@ fn refresh_sequencer_banner(workspace: &Entity<Workspace>, cx: &mut App) {
 async fn await_receiver<T>(receiver: oneshot::Receiver<Result<T>>) -> Result<T> {
     receiver
         .await
-        .map_err(|_| anyhow!("git の実行が中断されました。"))?
+        .map_err(|_| anyhow!(i18n::t!("The git command was interrupted.")))?
 }
 
 fn report_success(
@@ -1587,10 +1623,10 @@ fn commit_status_toast(
 /// Something a toast offers to do next.
 pub(crate) type FollowUp = Rc<dyn Fn(&mut Window, &mut App)>;
 
-const FORCE_PUSH_LABEL: &str = "強制プッシュ (lease 付き)";
+const FORCE_PUSH_LABEL: &str = i18n::msg!("Force Push (with lease)");
 const NO_UPSTREAM_NOTE: &str =
-    "このブランチには追跡ブランチがないため、プッシュ済みかどうかは確かめていません。";
-const FORCE_PUSH_NEEDED: &str = "\nプッシュ済みなので、強制プッシュ (lease 付き) が必要です。";
+    i18n::msg!("This branch has no upstream, so whether it was pushed was not checked.");
+const FORCE_PUSH_NEEDED: &str = i18n::msg!("It was pushed, so it needs a force push (with lease).");
 
 /// Says a history rewrite worked, with what the user may want next: taking it back (`undo`), and
 /// a force push when the rewritten commits had been pushed (`needs_force_push`, which has to be
@@ -1609,7 +1645,8 @@ pub(crate) fn show_rewrite_succeeded(
 
     let mut message = message.into().to_string();
     if needs_force_push {
-        message.push_str(FORCE_PUSH_NEEDED);
+        message.push('\n');
+        message.push_str(i18n::tr(FORCE_PUSH_NEEDED));
     }
     let force_push = |window: &mut Window, cx: &mut App| {
         window.dispatch_action(git::ForcePush.boxed_clone(), cx);
@@ -1624,9 +1661,9 @@ pub(crate) fn show_rewrite_succeeded(
                         MessageNotification::new(message, cx)
                             .content_icon(IconName::GitBranch, Color::Muted)
                             .show_suppress_button(false)
-                            .primary_message(FORCE_PUSH_LABEL)
+                            .primary_message(i18n::tr(FORCE_PUSH_LABEL))
                             .primary_on_click(move |window, cx| force_push(window, cx))
-                            .secondary_message("元に戻す…")
+                            .secondary_message(i18n::t!("Undo…"))
                             .secondary_on_click(move |window, cx| undo(window, cx))
                     })
                 },
@@ -1644,13 +1681,13 @@ pub(crate) fn show_rewrite_succeeded(
                 if needs_force_push {
                     return this
                         .auto_dismiss(false)
-                        .action(FORCE_PUSH_LABEL, force_push);
+                        .action(i18n::tr(FORCE_PUSH_LABEL), force_push);
                 }
                 match undo {
                     // Long enough to read and decide: undoing moves the branch back.
                     Some(undo) => this
                         .auto_dismiss(false)
-                        .action("元に戻す…", move |window, cx| undo(window, cx)),
+                        .action(i18n::t!("Undo…"), move |window, cx| undo(window, cx)),
                     None => this,
                 }
             });
@@ -1757,8 +1794,10 @@ impl CommitTextModal {
         // git takes a ref name starting with `-` for an option, so the branch or tag would either
         // fail to be created or mean something else entirely.
         self.name_error = match name.as_deref() {
-            Some("") => Some("名前を入力してください。".into()),
-            Some(name) if name.starts_with('-') => Some("先頭に - は使えません。".into()),
+            Some("") => Some(i18n::t!("Enter a name.").into()),
+            Some(name) if name.starts_with('-') => {
+                Some(i18n::t!("A name cannot start with -.").into())
+            }
             _ => None,
         };
         if self.name_error.is_some() {
@@ -1898,11 +1937,11 @@ impl Render for CommitTextModal {
                     .gap_1()
                     .justify_end()
                     .child(
-                        Button::new("commit-text-cancel", "キャンセル").on_click(cx.listener(
-                            |_, _, _window, cx| {
+                        Button::new("commit-text-cancel", i18n::t!("Cancel")).on_click(
+                            cx.listener(|_, _, _window, cx| {
                                 cx.emit(DismissEvent);
-                            },
-                        )),
+                            }),
+                        ),
                     )
                     .child(
                         Button::new("commit-text-confirm", self.confirm_label.clone())
@@ -1915,7 +1954,12 @@ impl Render for CommitTextModal {
                                     .map(|editor| editor.focus_handle(cx)),
                                 |button, focus_handle| {
                                     button.tooltip(move |_window, cx| {
-                                        Tooltip::for_action_in("確定", &Confirm, &focus_handle, cx)
+                                        Tooltip::for_action_in(
+                                            i18n::t!("Confirm"),
+                                            &Confirm,
+                                            &focus_handle,
+                                            cx,
+                                        )
                                     })
                                 },
                             )
@@ -2074,21 +2118,31 @@ impl FixupModal {
                 .when(counts.staged > 0, |list| {
                     list.child(self.render_choice(
                         FixupChoice::Staged,
-                        format!("ステージ済みの変更だけ ({} ファイル)", counts.staged),
+                        i18n::tn!(
+                            counts.staged,
+                            "Only the staged changes ({count} file)",
+                            "Only the staged changes ({count} files)"
+                        ),
                         *selected == FixupChoice::Staged,
                         cx,
                     ))
                 })
                 .child(self.render_choice(
                     FixupChoice::AllTracked,
-                    format!("すべての変更 (追跡中のファイル {} 個)", counts.tracked),
+                    i18n::tn!(
+                        counts.tracked,
+                        "All changes ({count} tracked file)",
+                        "All changes ({count} tracked files)"
+                    ),
                     *selected == FixupChoice::AllTracked,
                     cx,
                 ))
                 .child(
-                    Label::new("未追跡のファイルは、ステージしない限り入りません。")
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
+                    Label::new(i18n::t!(
+                        "Untracked files are not included unless they are staged."
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
                 )
                 .into_any_element(),
             FixupModalChanges::Paths {
@@ -2099,9 +2153,10 @@ impl FixupModal {
                 v_flex()
                     .gap_0p5()
                     .child(
-                        Label::new(format!(
-                            "選んだ {} 個のファイル (ステージの有無を問わず、そのままの内容で)",
-                            paths.len()
+                        Label::new(i18n::tn!(
+                            paths.len(),
+                            "The {count} chosen file (staged or not, as it is now)",
+                            "The {count} chosen files (staged or not, as they are now)"
                         ))
                         .size(LabelSize::Small),
                     )
@@ -2116,7 +2171,7 @@ impl FixupModal {
                     .when(left_out > 0, |list| {
                         list.child(
                             div().pl_2().child(
-                                Label::new(format!("ほか {left_out} 個"))
+                                Label::new(i18n::t!("and {left_out} more"))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             ),
@@ -2124,9 +2179,9 @@ impl FixupModal {
                     })
                     .when(*other_staged, |list| {
                         list.child(
-                            Label::new(
-                                "ほかのステージ済みの変更は入りません (書き換えた後はステージが外れた状態で残ります)。",
-                            )
+                            Label::new(i18n::t!(
+                                "Other staged changes are not included (after the rewrite they are left unstaged)."
+                            ))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                         )
@@ -2189,7 +2244,7 @@ impl Render for FixupModal {
                     .gap_1p5()
                     .child(Icon::new(IconName::GitBranch).size(IconSize::XSmall))
                     .child(
-                        Headline::new(format!("{short} に今の変更を入れる (fixup)"))
+                        Headline::new(i18n::t!("Fold Current Changes into {short} (fixup)"))
                             .size(HeadlineSize::XSmall),
                     ),
             )
@@ -2211,23 +2266,23 @@ impl Render for FixupModal {
                     ),
             )
             .child(
-                Label::new("入れる変更")
+                Label::new(i18n::t!("Changes to Fold In"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
             .child(self.render_changes(cx))
-            .child(warning(format!(
-                "{short} 以降のコミットの SHA が変わります。"
+            .child(warning(i18n::t!(
+                "Every commit after {short} gets a new SHA."
             )))
             .when(self.target.pushed, |modal| {
                 modal.child(warning(
-                    "プッシュ済みなので、この後に強制プッシュ (lease 付き) が必要です。"
+                    i18n::t!("It was pushed, so it needs a force push (with lease) afterwards.")
                         .to_string(),
                 ))
             })
             .when(!self.target.has_upstream, |modal| {
                 modal.child(
-                    Label::new(NO_UPSTREAM_NOTE)
+                    Label::new(i18n::tr(NO_UPSTREAM_NOTE))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -2238,14 +2293,14 @@ impl Render for FixupModal {
                     .justify_end()
                     .gap_1()
                     .child(
-                        Button::new("fixup-cancel", "キャンセル").on_click(cx.listener(
+                        Button::new("fixup-cancel", i18n::t!("Cancel")).on_click(cx.listener(
                             |_, _, _window, cx| {
                                 cx.emit(DismissEvent);
                             },
                         )),
                     )
                     .child(
-                        Button::new("fixup-confirm", "コミットに入れる")
+                        Button::new("fixup-confirm", i18n::t!("Fold into Commit"))
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _, window, cx| this.submit(window, cx))),
                     ),
@@ -2403,12 +2458,12 @@ mod tests {
                 },
                 true
             )
-            .is_some_and(|reason| reason.contains("コンフリクト"))
+            .is_some_and(|reason| reason.contains("conflicts"))
         );
         // Untracked files alone are not something the menu's fixup can take.
         assert!(
             fixup_refusal_for(FixupChangeCounts::default(), true)
-                .is_some_and(|reason| reason.contains("変更がありません"))
+                .is_some_and(|reason| reason.contains("no changes"))
         );
     }
 
@@ -2432,7 +2487,7 @@ mod tests {
     #[test]
     fn test_fixup_error_message_explains_an_old_server() {
         let old_server = anyhow!("unsupported git command: add");
-        assert!(fixup_error_message(&old_server).contains("サーバーが古い"));
+        assert!(fixup_error_message(&old_server).contains("too old"));
 
         let refusal = anyhow!("detached HEAD では使えません。");
         assert_eq!(

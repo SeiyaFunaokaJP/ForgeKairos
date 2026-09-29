@@ -22,14 +22,20 @@ use super::{
 
 /// The values new points are added with, so that they are visible in the
 /// middle of the drawing before anything has been typed into them.
-const NEW_POINT_NAME: &str = "新しい点";
+const NEW_POINT_NAME: &str = i18n::msg!("New point");
 const NEW_POINT_COORDINATE: &str = "0.5";
 
 /// The quadrants in the order the form lays them out, left to right and top
 /// to bottom, with the number Mermaid gives each.
 const QUADRANT_LAYOUT: [[(usize, &str); 2]; 2] = [
-    [(1, "左上 (2)"), (0, "右上 (1)")],
-    [(2, "左下 (3)"), (3, "右下 (4)")],
+    [
+        (1, i18n::msg!("Top Left (2)")),
+        (0, i18n::msg!("Top Right (1)")),
+    ],
+    [
+        (2, i18n::msg!("Bottom Left (3)")),
+        (3, i18n::msg!("Bottom Right (4)")),
+    ],
 ];
 
 pub(super) struct QuadrantForm {
@@ -246,7 +252,7 @@ impl MermaidEditor {
             return;
         }
         let point = QuadrantPoint {
-            name: NEW_POINT_NAME.to_string(),
+            name: i18n::tr(NEW_POINT_NAME).to_string(),
             class: None,
             x: NEW_POINT_COORDINATE.to_string(),
             y: NEW_POINT_COORDINATE.to_string(),
@@ -307,10 +313,9 @@ impl MermaidEditor {
         };
         let current = form.current_document(cx);
 
-        let mut quadrants = v_flex()
-            .w_full()
-            .gap_1()
-            .child(section_title("象限のラベル (1〜4 は Mermaid の番号)"));
+        let mut quadrants = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Quadrant Labels (1–4 are Mermaid's quadrant numbers)"
+        )));
         for row in QUADRANT_LAYOUT {
             let mut line = h_flex().w_full().gap_1();
             for (index, label) in row {
@@ -320,19 +325,23 @@ impl MermaidEditor {
                     continue;
                 };
                 line = line.child(
-                    h_flex().flex_1().gap_1().child(section_title(label)).child(
-                        field_frame(
-                            field,
-                            LABEL_FIELD_WIDTH,
-                            value
-                                .as_ref()
-                                .is_none_or(|value| is_valid_quadrant_label(value)),
-                            window,
-                            cx,
-                        )
+                    h_flex()
                         .flex_1()
-                        .child(field.clone()),
-                    ),
+                        .gap_1()
+                        .child(section_title(i18n::tr(label)))
+                        .child(
+                            field_frame(
+                                field,
+                                LABEL_FIELD_WIDTH,
+                                value
+                                    .as_ref()
+                                    .is_none_or(|value| is_valid_quadrant_label(value)),
+                                window,
+                                cx,
+                            )
+                            .flex_1()
+                            .child(field.clone()),
+                        ),
                 );
             }
             quadrants = quadrants.child(line);
@@ -342,7 +351,7 @@ impl MermaidEditor {
             h_flex()
                 .w_full()
                 .gap_2()
-                .child(section_title("タイトル"))
+                .child(section_title(i18n::t!("Title")))
                 .child(
                     field_frame(
                         &form.title,
@@ -361,16 +370,18 @@ impl MermaidEditor {
             v_flex()
                 .w_full()
                 .gap_1()
-                .child(section_title("軸のラベル (空なら描きません)"))
+                .child(section_title(i18n::t!(
+                    "Axis Labels (an empty axis is not drawn)"
+                )))
                 .child(self.render_quadrant_axis(
-                    "横軸 左→右",
+                    i18n::t!("x-axis, left → right"),
                     &form.x_axis,
                     current.x_axis.as_ref(),
                     window,
                     cx,
                 ))
                 .child(self.render_quadrant_axis(
-                    "縦軸 下→上",
+                    i18n::t!("y-axis, bottom → top"),
                     &form.y_axis,
                     current.y_axis.as_ref(),
                     window,
@@ -416,10 +427,9 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut list = v_flex()
-            .w_full()
-            .gap_2()
-            .child(section_title("点 (名前・横・縦。座標は 0〜1)"));
+        let mut list = v_flex().w_full().gap_2().child(section_title(i18n::t!(
+            "Points (name, x, y; coordinates run from 0 to 1)"
+        )));
         let length = form.points.len();
         for (index, row) in form.points.iter().enumerate() {
             let Some(point) = current.points.get(index) else {
@@ -487,7 +497,7 @@ impl MermaidEditor {
                             .w_full()
                             .gap_1()
                             .pl_4()
-                            .child(section_title("クラス"))
+                            .child(section_title(i18n::t!("Class")))
                             .child(
                                 field_frame(
                                     &row.class,
@@ -498,7 +508,7 @@ impl MermaidEditor {
                                 )
                                 .child(row.class.clone()),
                             )
-                            .child(section_title("スタイル"))
+                            .child(section_title(i18n::t!("Style")))
                             .child(
                                 field_frame(
                                     &row.styles,
@@ -515,7 +525,7 @@ impl MermaidEditor {
         }
         list.child(add_button(
             "mermaid-quadrant-add-point",
-            "点を追加",
+            i18n::t!("Add Point"),
             cx.listener(|this, _, window, cx| this.add_quadrant_point(window, cx)),
         ))
         .into_any_element()

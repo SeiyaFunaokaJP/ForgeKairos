@@ -296,6 +296,18 @@ impl GlobalCopilotAuth {
 }
 impl Global for GlobalCopilotAuth {}
 
+/// Whether Copilot edit predictions wait for the user to accept Copilot's external AI warning
+/// (zed-jp-enhance: `docs/jp-enhance/DESIGN.md` ADR-F10). Until then the language server is not
+/// started, since starting it signs in with credentials already on this machine and contacts
+/// GitHub. Unlike the self-hosted providers, a loopback `enterprise_uri` is no exemption: the
+/// language server's own traffic is outside the egress allowlist.
+pub fn edit_prediction_awaits_external_ai_consent(cx: &App) -> bool {
+    !settings::external_ai_provider_is_acknowledged(
+        settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY,
+        cx,
+    )
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CompletionSource {
     NextEditSuggestion,
@@ -383,10 +395,11 @@ impl Copilot {
         };
         this.start_copilot(true, false, cx);
         cx.observe_global::<SettingsStore>(move |this, cx| {
-            let ai_disabled = DisableAiSettings::get_global(cx).disable_ai;
+            let server_must_stop = DisableAiSettings::get_global(cx).disable_ai
+                || edit_prediction_awaits_external_ai_consent(cx);
 
-            if ai_disabled {
-                // Stop the server if AI is disabled
+            if server_must_stop {
+                // Stop the server if AI is disabled or Copilot's consent was withdrawn
                 if !matches!(this.server, CopilotServer::Disabled) {
                     let shutdown = match mem::replace(&mut this.server, CopilotServer::Disabled) {
                         CopilotServer::Running(server) => {
@@ -446,6 +459,10 @@ impl Copilot {
         cx: &mut Context<Self>,
     ) {
         if DisableAiSettings::get_global(cx).disable_ai {
+            return;
+        }
+        if edit_prediction_awaits_external_ai_consent(cx) {
+            log::debug!("not starting Copilot: its external AI warning has not been accepted");
             return;
         }
         if !matches!(self.server, CopilotServer::Disabled) {
@@ -636,15 +653,7 @@ impl Copilot {
                 })
                 .detach();
 
-            server
-                .on_request::<lsp::request::ShowDocument, _, _>(move |params, cx| {
-                    if params.external.unwrap_or(false) {
-                        let url = params.uri.to_string();
-                        cx.update(|cx| cx.open_url(&url));
-                    }
-                    async move { Ok(lsp::ShowDocumentResult { success: true }) }
-                })
-                .detach();
+            register_show_document_handler(&server);
 
             let configuration = lsp::DidChangeConfigurationParams {
                 settings: Default::default(),
@@ -701,33 +710,52 @@ impl Copilot {
 
         let server = start_language_server.await;
         this.update(cx, |this, cx| {
-            cx.notify();
-
-            if env::var("ZED_FORCE_COPILOT_ERROR").is_ok() {
-                this.server = CopilotServer::Error(
-                    "Forced error for testing (ZED_FORCE_COPILOT_ERROR)".into(),
-                );
-                return;
-            }
-
-            match server {
-                Ok((server, status)) => {
-                    this.server = CopilotServer::Running(RunningCopilotServer {
-                        lsp: server,
-                        sign_in_status: SignInStatus::SignedOut {
-                            awaiting_signing_in: awaiting_sign_in_after_start,
-                        },
-                        registered_buffers: Default::default(),
-                    });
-                    this.update_sign_in_status(status, cx);
-                }
-                Err(error) => {
-                    this.server = CopilotServer::Error(error.to_string().into());
-                    cx.notify()
-                }
-            }
+            this.finish_starting(server, awaiting_sign_in_after_start, cx)
         })
         .ok();
+    }
+
+    fn finish_starting(
+        &mut self,
+        server: Result<(Arc<LanguageServer>, request::SignInStatus)>,
+        awaiting_sign_in_after_start: bool,
+        cx: &mut Context<Self>,
+    ) {
+        cx.notify();
+
+        if env::var("ZED_FORCE_COPILOT_ERROR").is_ok() {
+            self.server =
+                CopilotServer::Error("Forced error for testing (ZED_FORCE_COPILOT_ERROR)".into());
+            return;
+        }
+
+        match server {
+            Ok((server, status)) => {
+                // AI may have been disabled, or Copilot's consent withdrawn, while the server was
+                // starting; the settings observer could only stop a server that was not running yet.
+                if DisableAiSettings::get_global(cx).disable_ai
+                    || edit_prediction_awaits_external_ai_consent(cx)
+                {
+                    self.server = CopilotServer::Disabled;
+                    if let Some(shutdown) = server.shutdown() {
+                        cx.background_spawn(shutdown).detach();
+                    }
+                    return;
+                }
+                self.server = CopilotServer::Running(RunningCopilotServer {
+                    lsp: server,
+                    sign_in_status: SignInStatus::SignedOut {
+                        awaiting_signing_in: awaiting_sign_in_after_start,
+                    },
+                    registered_buffers: Default::default(),
+                });
+                self.update_sign_in_status(status, cx);
+            }
+            Err(error) => {
+                self.server = CopilotServer::Error(error.to_string().into());
+                cx.notify()
+            }
+        }
     }
 
     pub fn is_authenticated(&self) -> bool {
@@ -839,6 +867,10 @@ impl Copilot {
     }
 
     pub fn reinstall(&mut self, cx: &mut Context<Self>) -> Shared<Task<()>> {
+        if edit_prediction_awaits_external_ai_consent(cx) {
+            log::debug!("not reinstalling Copilot: its external AI warning has not been accepted");
+            return Task::ready(()).shared();
+        }
         let language_settings = all_language_settings(None, cx);
         let env = self.build_env(&language_settings.edit_predictions.copilot);
         let start_task = cx
@@ -1014,6 +1046,12 @@ impl Copilot {
         position: Anchor,
         cx: &mut Context<Self>,
     ) -> Task<Result<Vec<CopilotEditPrediction>>> {
+        if edit_prediction_awaits_external_ai_consent(cx) {
+            return Task::ready(Err(anyhow!(
+                "not requesting Copilot edit predictions: the external AI warning for Copilot \
+                 edit predictions has not been accepted"
+            )));
+        }
         self.register_buffer(buffer, cx);
 
         let server = match self.server.as_authenticated() {
@@ -1408,11 +1446,64 @@ fn copilot_lsp_native_binary_path() -> anyhow::Result<PathBuf> {
         .join(executable_name))
 }
 
+/// zed-jp-enhance: Copilot's server asks to open addresses outside the
+/// project's language servers, so it goes through the same checks and
+/// confirmation as they do (`workspace::server_links`) instead of opening any
+/// scheme without asking. Documents inside Zed (`external: false`) are not
+/// opened, as upstream.
+fn register_show_document_handler(server: &LanguageServer) {
+    let server_name = server.name().to_string();
+    server
+        .on_request::<lsp::request::ShowDocument, _, _>(move |params, cx| {
+            let opened = if params.external.unwrap_or(false) {
+                cx.update(|cx| show_external_document(&server_name, &params.uri, cx))
+            } else {
+                Task::ready(true)
+            };
+            async move {
+                Ok(lsp::ShowDocumentResult {
+                    success: opened.await,
+                })
+            }
+        })
+        .detach();
+}
+
+fn show_external_document(server_name: &str, uri: &lsp::Uri, cx: &mut App) -> Task<bool> {
+    // Copilot belongs to no window; the prompt goes where the user is looking.
+    let Some(window) = cx
+        .active_window()
+        .or_else(|| cx.windows().into_iter().next())
+    else {
+        log::warn!(
+            "not opening {} for language server {server_name}: no window to ask in",
+            uri.as_str()
+        );
+        return Task::ready(false);
+    };
+    window
+        .update(cx, |_, window, cx| {
+            workspace::server_links::confirm_and_open_server_link(
+                server_name,
+                uri.as_str(),
+                window,
+                cx,
+            )
+        })
+        .unwrap_or_else(|error| {
+            log::warn!(
+                "not opening {} for language server {server_name}: {error:#}",
+                uri.as_str()
+            );
+            Task::ready(false)
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use fs::FakeFs;
-    use gpui::TestAppContext;
+    use gpui::{TestAppContext, UpdateGlobal as _};
     use language::language_settings::AllLanguageSettings;
     use node_runtime::NodeRuntime;
     use settings::{Settings, SettingsStore};
@@ -1775,6 +1866,10 @@ mod tests {
             cx.set_global(store);
             DisableAiSettings::register(cx);
             AllLanguageSettings::register(cx);
+            set_acknowledged_external_ai_providers(
+                &[settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY],
+                cx,
+            );
 
             // AI is initially disabled
             DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
@@ -1828,6 +1923,222 @@ mod tests {
         });
     }
 
+    fn set_acknowledged_external_ai_providers(keys: &[&str], cx: &mut App) {
+        let keys = keys.iter().map(|key| key.to_string()).collect::<Vec<_>>();
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .get_or_insert_default()
+                    .provider = Some(EditPredictionProvider::Copilot);
+                settings.acknowledged_external_ai_providers = Some(keys);
+            });
+        });
+    }
+
+    fn is_disabled(copilot: &Entity<Copilot>, cx: &mut TestAppContext) -> bool {
+        copilot.read_with(cx, |copilot, _| {
+            matches!(copilot.server, CopilotServer::Disabled)
+        })
+    }
+
+    /// Starting the language server signs in with the credentials already on this machine, so
+    /// it waits for the consent to Copilot's external AI warning, and follows the consent
+    /// without a restart.
+    #[gpui::test]
+    async fn test_copilot_waits_for_edit_prediction_consent(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let store = SettingsStore::test(cx);
+            cx.set_global(store);
+            command_palette_hooks::init(cx);
+            DisableAiSettings::register(cx);
+            AllLanguageSettings::register(cx);
+            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+            // The agent's Copilot Chat consent and another edit prediction provider's consent
+            // are not Copilot's.
+            set_acknowledged_external_ai_providers(
+                &["copilot_chat", "copilot", "edit_prediction:codestral"],
+                cx,
+            );
+        });
+
+        let copilot = cx.new(|cx| {
+            Copilot::new(
+                None,
+                LanguageServerId(0),
+                FakeFs::new(cx.background_executor().clone()),
+                NodeRuntime::unavailable(),
+                cx,
+            )
+        });
+        assert!(
+            is_disabled(&copilot, cx),
+            "the language server is not started before consent"
+        );
+
+        copilot.update(cx, |copilot, cx| {
+            copilot.start_copilot(false, true, cx);
+            drop(copilot.reinstall(cx));
+        });
+        assert!(
+            is_disabled(&copilot, cx),
+            "signing in and reinstalling do not start it either"
+        );
+
+        cx.update(|cx| {
+            set_acknowledged_external_ai_providers(
+                &[settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY],
+                cx,
+            )
+        });
+        assert!(
+            !is_disabled(&copilot, cx),
+            "the consent starts the language server without a restart"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_copilot_stops_when_consent_is_withdrawn(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let store = SettingsStore::test(cx);
+            cx.set_global(store);
+            command_palette_hooks::init(cx);
+            DisableAiSettings::register(cx);
+            AllLanguageSettings::register(cx);
+            DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+            set_acknowledged_external_ai_providers(
+                &[settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY],
+                cx,
+            );
+        });
+        let copilot = cx.new(|cx| {
+            Copilot::new(
+                None,
+                LanguageServerId(0),
+                FakeFs::new(cx.background_executor().clone()),
+                NodeRuntime::unavailable(),
+                cx,
+            )
+        });
+        assert!(!is_disabled(&copilot, cx));
+
+        cx.update(|cx| set_acknowledged_external_ai_providers(&[], cx));
+        assert!(is_disabled(&copilot, cx));
+    }
+
+    /// A server that finished starting after AI was disabled, or after Copilot's consent was
+    /// withdrawn, is shut down instead of becoming the running one: the settings observer
+    /// could only stop it while it was still starting.
+    #[gpui::test]
+    async fn test_copilot_started_after_withdrawal_does_not_run(cx: &mut TestAppContext) {
+        enum Withdrawal {
+            None,
+            Consent,
+            DisableAi,
+        }
+        for withdrawal in [Withdrawal::None, Withdrawal::Consent, Withdrawal::DisableAi] {
+            cx.update(|cx| {
+                let store = SettingsStore::test(cx);
+                cx.set_global(store);
+                command_palette_hooks::init(cx);
+                DisableAiSettings::register(cx);
+                AllLanguageSettings::register(cx);
+                DisableAiSettings::override_global(DisableAiSettings { disable_ai: false }, cx);
+                set_acknowledged_external_ai_providers(
+                    &[settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY],
+                    cx,
+                );
+            });
+            let copilot = cx.new(|cx| {
+                Copilot::new(
+                    None,
+                    LanguageServerId(0),
+                    FakeFs::new(cx.background_executor().clone()),
+                    NodeRuntime::unavailable(),
+                    cx,
+                )
+            });
+            let started = copilot.read_with(cx, |copilot, _| {
+                matches!(copilot.server, CopilotServer::Starting { .. })
+            });
+            assert!(started);
+
+            cx.update(|cx| match withdrawal {
+                Withdrawal::None => {}
+                Withdrawal::Consent => set_acknowledged_external_ai_providers(&[], cx),
+                Withdrawal::DisableAi => {
+                    DisableAiSettings::override_global(DisableAiSettings { disable_ai: true }, cx);
+                    SettingsStore::update_global(cx, |store, cx| {
+                        store.update_user_settings(cx, |_| {});
+                    });
+                }
+            });
+
+            let (server, _fake_server) = show_document_test_server(cx);
+            copilot.update(cx, |copilot, cx| {
+                copilot.finish_starting(
+                    Ok((
+                        Arc::new(server),
+                        request::SignInStatus::Ok {
+                            user: Some("user".to_string()),
+                        },
+                    )),
+                    false,
+                    cx,
+                )
+            });
+            let running = copilot.read_with(cx, |copilot, _| {
+                matches!(copilot.server, CopilotServer::Running(_))
+            });
+            match withdrawal {
+                Withdrawal::None => assert!(running, "the control case runs"),
+                Withdrawal::Consent => assert!(!running, "consent withdrawn while starting"),
+                Withdrawal::DisableAi => assert!(!running, "AI disabled while starting"),
+            }
+        }
+    }
+
+    #[gpui::test]
+    async fn test_copilot_completions_wait_for_consent(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| {
+            AllLanguageSettings::register(cx);
+            set_acknowledged_external_ai_providers(&[], cx);
+        });
+        let (copilot, lsp) = Copilot::fake(cx);
+        let requests = Arc::new(Mutex::new(0_usize));
+        lsp.set_request_handler::<NextEditSuggestions, _, _>({
+            let requests = requests.clone();
+            move |_params, _cx| {
+                *requests.lock() += 1;
+                async move { Ok(crate::request::NextEditSuggestionsResult { edits: Vec::new() }) }
+            }
+        });
+        let buffer = cx.new(|cx| Buffer::local("Hello", cx));
+        let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(0));
+
+        let result = copilot
+            .update(cx, |copilot, cx| copilot.completions(&buffer, position, cx))
+            .await;
+        cx.run_until_parked();
+        assert!(result.is_err(), "held back before consent");
+        assert_eq!(*requests.lock(), 0);
+
+        cx.update(|cx| {
+            set_acknowledged_external_ai_providers(
+                &[settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY],
+                cx,
+            )
+        });
+        let completions =
+            copilot.update(cx, |copilot, cx| copilot.completions(&buffer, position, cx));
+        cx.run_until_parked();
+        drop(completions);
+        assert_eq!(*requests.lock(), 1, "sent after consent");
+    }
+
     fn init_test(cx: &mut TestAppContext) {
         zlog::init_test();
 
@@ -1835,5 +2146,160 @@ mod tests {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
         });
+    }
+
+    fn show_document_test_server(
+        cx: &mut TestAppContext,
+    ) -> (LanguageServer, lsp::FakeLanguageServer) {
+        let (server, fake_server) = lsp::FakeLanguageServer::new(
+            LanguageServerId(0),
+            LanguageServerBinary {
+                path: "path/to/copilot".into(),
+                arguments: vec![],
+                env: None,
+            },
+            "copilot".into(),
+            Default::default(),
+            &mut cx.to_async(),
+        );
+        register_show_document_handler(&server);
+        (server, fake_server)
+    }
+
+    fn show_external(
+        uri: &str,
+        fake_server: &lsp::FakeLanguageServer,
+    ) -> impl Future<Output = lsp::ShowDocumentResult> {
+        let response = fake_server.server.request::<lsp::request::ShowDocument>(
+            lsp::ShowDocumentParams {
+                uri: uri.parse::<lsp::Uri>().expect("test uri should parse"),
+                external: Some(true),
+                take_focus: None,
+                selection: None,
+            },
+            lsp::DEFAULT_LSP_REQUEST_TIMEOUT,
+        );
+        async move {
+            response
+                .await
+                .into_response()
+                .expect("show document request should not error")
+        }
+    }
+
+    #[gpui::test]
+    async fn test_show_document_asks_before_opening_a_web_address(cx: &mut TestAppContext) {
+        let (_server, fake_server) = show_document_test_server(cx);
+        let cx = cx.add_empty_window();
+
+        let response = show_external("https://github.com/login/device", &fake_server);
+        cx.run_until_parked();
+        let (_, detail) = cx
+            .pending_prompt()
+            .expect("a web address should be confirmed before it is opened");
+        assert!(
+            detail.contains("https://github.com/login/device") && detail.contains("copilot"),
+            "the prompt should show the whole address and the server that asked: {detail:?}"
+        );
+        assert_eq!(cx.opened_url(), None, "nothing is opened before the answer");
+        cx.simulate_prompt_answer("Open");
+        assert_eq!(response.await, lsp::ShowDocumentResult { success: true });
+        assert_eq!(
+            cx.opened_url(),
+            Some("https://github.com/login/device".to_string())
+        );
+    }
+
+    #[gpui::test]
+    async fn test_show_document_opens_what_it_showed(cx: &mut TestAppContext) {
+        let (_server, fake_server) = show_document_test_server(cx);
+        let cx = cx.add_empty_window();
+
+        let response = show_external("HTTPS://GitHub.COM:443/login/./device", &fake_server);
+        cx.run_until_parked();
+        let (_, detail) = cx
+            .pending_prompt()
+            .expect("a web address should be confirmed");
+        assert!(
+            detail.ends_with(
+                "
+
+https://github.com/login/device"
+            ),
+            "the prompt should show the address in the form that is opened: {detail:?}"
+        );
+        cx.simulate_prompt_answer("Open");
+        assert_eq!(response.await, lsp::ShowDocumentResult { success: true });
+        assert_eq!(
+            cx.opened_url(),
+            Some("https://github.com/login/device".to_string())
+        );
+    }
+
+    #[gpui::test]
+    async fn test_show_document_declined(cx: &mut TestAppContext) {
+        let (_server, fake_server) = show_document_test_server(cx);
+        let cx = cx.add_empty_window();
+
+        let response = show_external("https://github.com/login/device", &fake_server);
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Cancel");
+        assert_eq!(response.await, lsp::ShowDocumentResult { success: false });
+        assert_eq!(cx.opened_url(), None);
+    }
+
+    #[gpui::test]
+    async fn test_show_document_refuses_other_schemes(cx: &mut TestAppContext) {
+        let (_server, fake_server) = show_document_test_server(cx);
+        let cx = cx.add_empty_window();
+
+        for uri in [
+            "file:///etc/passwd",
+            "ms-settings:privacy",
+            "javascript:alert(1)",
+            "ftp://example.com/file",
+            "https://github.com@evil.example/login/device",
+        ] {
+            let response = show_external(uri, &fake_server);
+            cx.run_until_parked();
+            assert!(
+                !cx.has_pending_prompt(),
+                "{uri} should be refused without asking"
+            );
+            assert_eq!(
+                response.await,
+                lsp::ShowDocumentResult { success: false },
+                "{uri}"
+            );
+            assert_eq!(cx.opened_url(), None, "{uri}");
+        }
+    }
+
+    #[gpui::test]
+    async fn test_show_document_does_not_replace_an_open_prompt(cx: &mut TestAppContext) {
+        let (_server, fake_server) = show_document_test_server(cx);
+        let cx = cx.add_empty_window();
+
+        // Only prompts GPUI renders in the window can be replaced, so the
+        // user's question is one of those.
+        let mut save_answer = cx.update(|window, cx| {
+            cx.set_prompt_builder(gpui::fallback_prompt_renderer);
+            window.prompt(
+                gpui::PromptLevel::Warning,
+                "Save changes?",
+                None,
+                &["Save", "Cancel"],
+                cx,
+            )
+        });
+        let response = show_external("https://github.com/login/device", &fake_server);
+        cx.run_until_parked();
+        assert_eq!(response.await, lsp::ShowDocumentResult { success: false });
+        assert!(
+            matches!(save_answer.try_recv(), Ok(None)),
+            "the prompt the user was answering should still be waiting for them"
+        );
+        assert!(cx.update(|window, _| window.has_active_prompt()));
+        assert_eq!(cx.opened_url(), None);
     }
 }

@@ -13,7 +13,7 @@ pub struct ExtensionSettingsContent {
     /// This is used to make functionality provided by extensions (e.g., language support)
     /// available out-of-the-box.
     ///
-    /// Default: { "html": true }
+    /// Default: {}
     #[serde(default)]
     pub auto_install_extensions: HashMap<Arc<str>, bool>,
     #[serde(default)]

@@ -1,0 +1,59 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Just now"
+msgstr "たった今"
+
+msgid "Today"
+msgstr "今日"
+
+msgid "Today at {}"
+msgstr "今日 {}"
+
+msgid "Yesterday"
+msgstr "昨日"
+
+msgid "Yesterday at {}"
+msgstr "昨日 {}"
+
+msgid "{count} day ago"
+msgid_plural "{count} days ago"
+msgstr[0] "{count} 日前"
+
+msgid "{count} hour ago"
+msgid_plural "{count} hours ago"
+msgstr[0] "{count} 時間前"
+
+msgid "{count} minute ago"
+msgid_plural "{count} minutes ago"
+msgstr[0] "{count} 分前"
+
+msgid "{count} month"
+msgid_plural "{count} months"
+msgstr[0] "{count} か月"
+
+msgid "{count} month ago"
+msgid_plural "{count} months ago"
+msgstr[0] "{count} か月前"
+
+msgid "{count} week ago"
+msgid_plural "{count} weeks ago"
+msgstr[0] "{count} 週間前"
+
+msgid "{count} year"
+msgid_plural "{count} years"
+msgstr[0] "{count} 年"
+
+msgid "{count} year ago"
+msgid_plural "{count} years ago"
+msgstr[0] "{count} 年前"
+
+msgid "{month}/{day}/{year}"
+msgstr "{year}年{month}月{day}日"
+
+msgid "{years}, {months} ago"
+msgstr "{years} {months}前"

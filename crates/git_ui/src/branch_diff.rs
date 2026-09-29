@@ -98,7 +98,7 @@ impl BranchDiff {
             let workspace = cx.entity().downgrade();
             window
                 .spawn(cx, async |_cx| {
-                    let result: Result<()> = Err(anyhow!("アクティブなリポジトリがありません。"));
+                    let result: Result<()> = Err(anyhow!(i18n::t!("No active repository")));
                     result
                 })
                 .detach_and_notify_err(workspace, window, cx);
@@ -156,7 +156,7 @@ impl BranchDiff {
             let workspace = cx.entity().downgrade();
             window
                 .spawn(cx, async |_cx| {
-                    let result: Result<()> = Err(anyhow!("アクティブなリポジトリがありません。"));
+                    let result: Result<()> = Err(anyhow!(i18n::t!("No active repository")));
                     result
                 })
                 .detach_and_notify_err(workspace, window, cx);
@@ -263,7 +263,7 @@ impl BranchDiff {
         cx: &mut App,
     ) -> Task<Result<Entity<Self>>> {
         let Some(repo) = project.read(cx).git_store().read(cx).active_repository() else {
-            return Task::ready(Err(anyhow!("アクティブなリポジトリがありません。")));
+            return Task::ready(Err(anyhow!(i18n::t!("No active repository"))));
         };
         let main_branch = repo.update(cx, |repo, _| repo.default_branch(true));
         window.spawn(cx, async move |cx| {
@@ -346,7 +346,7 @@ impl BranchDiff {
             DiffMultibuffer::new(
                 branch_diff,
                 Capability::ReadWrite,
-                "変更はありません",
+                i18n::t!("No changes"),
                 move |editor, cx| {
                     editor.set_diff_hunk_renderer(Some(Arc::new(HiddenDiffHunkRenderer)), cx);
                     editor.rhs_editor().update(cx, move |rhs_editor, _cx| {
@@ -487,8 +487,8 @@ impl Item for BranchDiff {
 
     fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
         match self.diff_base(cx) {
-            DiffBase::Merge { base_ref } => format!("{} 以降の変更", base_ref).into(),
-            DiffBase::Head | DiffBase::Index | DiffBase::Staged => "変更".into(),
+            DiffBase::Merge { base_ref } => i18n::t!("Changes since {}", base_ref).into(),
+            DiffBase::Head | DiffBase::Index | DiffBase::Staged => i18n::t!("Changes").into(),
         }
     }
 
@@ -784,7 +784,7 @@ impl Render for BranchDiffToolbar {
             return div();
         };
         let selected_base_ref = base_ref.clone();
-        let base_ref_label = format!("基準: {base_ref}");
+        let base_ref_label = i18n::t!("Base: {base_ref}");
         let repository = branch_diff.read(cx).repo(cx);
         let workspace = branch_diff.read(cx).workspace.clone();
         let project = branch_diff.read(cx).project.clone();
@@ -879,13 +879,13 @@ impl Render for BranchDiffToolbar {
                                 .size(IconSize::XSmall)
                                 .color(Color::Muted),
                         ),
-                        Tooltip::text("基準ブランチを選択"),
+                        Tooltip::text(i18n::t!("Select Base Branch")),
                     ),
             )
             .when(show_review_button, |this| {
                 let focus_handle = focus_handle.clone();
                 this.child(Divider::vertical()).child(
-                    Button::new("review-diff", "差分をレビュー")
+                    Button::new("review-diff", i18n::t!("Review Diff"))
                         .start_icon(
                             Icon::new(IconName::ZedAssistant)
                                 .size(IconSize::Small)
@@ -893,9 +893,9 @@ impl Render for BranchDiffToolbar {
                         )
                         .tooltip(move |_, cx| {
                             Tooltip::with_meta_in(
-                                "差分をレビュー",
+                                i18n::t!("Review Diff"),
                                 Some(&ReviewDiff),
-                                "この差分を直前のエージェントに送ってレビューしてもらいます。",
+                                i18n::t!("Send this diff for your last agent to review."),
                                 &focus_handle,
                                 cx,
                             )
@@ -1229,7 +1229,7 @@ mod tests {
         let target_branch_diff = cx
             .update(|window, cx| {
                 let Some(repository) = project.read(cx).active_repository(cx) else {
-                    return Task::ready(Err(anyhow!("アクティブなリポジトリがありません。")));
+                    return Task::ready(Err(anyhow!("No active repository")));
                 };
                 BranchDiff::new_with_branch_base(
                     project.clone(),
@@ -1724,7 +1724,7 @@ mod tests {
         comparison.read_with(cx, |comparison, _| {
             assert_eq!(
                 comparison.file_diff_error.as_deref(),
-                Some("大きすぎるため表示できません。")
+                Some("Too large to show.")
             );
             assert!(
                 comparison.file_diff_editor.is_none(),
@@ -1957,7 +1957,7 @@ mod tests {
         comparison.read_with(cx, |comparison, _| {
             assert_eq!(
                 comparison.file_diff_error.as_deref(),
-                Some("ファイルの中身を取得できませんでした。"),
+                Some("Could not get the file's contents."),
                 "a side git refused to print must not be shown as an empty file"
             );
             assert!(comparison.file_diff_editor.is_none());
@@ -2261,11 +2261,11 @@ mod tests {
         };
         assert_eq!(
             all_ported.summary(),
-            "開発ブランチの変更 12 ファイル: 一致 11 / 不一致 1 (除外 1)"
+            "12 files changed on the development branch: 11 matching / 1 not matching (1 excluded)"
         );
         assert_eq!(
             all_ported.verdict(),
-            ("入れ忘れはありません".to_string(), Color::Success)
+            ("Nothing is missing".to_string(), Color::Success)
         );
 
         let missing = MergeRequestCheckCounts {
@@ -2279,14 +2279,11 @@ mod tests {
         };
         assert_eq!(
             missing.summary(),
-            "開発ブランチの変更 5 ファイル: 一致 3 / 不一致 2 (入れ忘れの疑い 1、基点側でも変更 1)。開発ブランチに無い変更 2 ファイル"
+            "5 files changed on the development branch: 3 matching / 2 not matching (1 possibly missing, 1 also changed on the base). 2 changed files not from the development branch"
         );
         assert_eq!(
             missing.verdict(),
-            (
-                "入れ忘れの疑いが 1 ファイルあります".to_string(),
-                Color::Error
-            )
+            ("1 file possibly missing".to_string(), Color::Error)
         );
 
         let only_in_merge_request = MergeRequestCheckCounts {
@@ -2296,7 +2293,7 @@ mod tests {
         assert_eq!(
             only_in_merge_request.verdict(),
             (
-                "入れ忘れはありませんが、確認が必要なファイルが 1 件あります".to_string(),
+                "Nothing is missing, but 1 file needs a look".to_string(),
                 Color::Warning
             ),
             "a change the development branch never had is not 'nothing missing'"
@@ -2311,12 +2308,12 @@ mod tests {
         };
         assert_eq!(
             base_change_maybe_dropped.summary(),
-            "開発ブランチの変更 3 ファイル: 一致 2 / 不一致 0 / 基点の変更が入っていない可能性 1。開発ブランチに無い変更 2 ファイル"
+            "3 files changed on the development branch: 2 matching / 0 not matching / 1 base change possibly missing. 2 changed files not from the development branch"
         );
         assert_eq!(
             base_change_maybe_dropped.verdict(),
             (
-                "入れ忘れはありませんが、確認が必要なファイルが 3 件あります".to_string(),
+                "Nothing is missing, but 3 files need a look".to_string(),
                 Color::Warning
             ),
             "a merge request that may undo the base's change is not 'nothing missing'"
@@ -2337,10 +2334,7 @@ mod tests {
                 ..MergeRequestCheckCounts::default()
             }
             .verdict(),
-            (
-                "入れ忘れの疑いが 1 ファイルあります".to_string(),
-                Color::Error
-            ),
+            ("1 file possibly missing".to_string(), Color::Error),
             "a file suspected missing outranks the warnings"
         );
     }
@@ -2369,24 +2363,31 @@ mod tests {
         assert_eq!(merge_request_behind_notice(0), None);
         assert_eq!(
             merge_request_behind_notice(3).as_deref(),
-            Some("MR ブランチは基点の最新から作られていません (基点が 3 コミット進んでいます)")
+            Some(
+                "The MR branch was not created from the tip of its base (the base is 3 commits ahead)"
+            )
         );
         assert_eq!(
             merge_request_behind_notice(MAX_COUNTED_BASE_COMMITS).as_deref(),
-            Some("MR ブランチは基点の最新から作られていません (基点が 1000 コミット進んでいます)")
+            Some(
+                "The MR branch was not created from the tip of its base (the base is 1000 commits ahead)"
+            )
         );
         assert_eq!(
             merge_request_behind_notice(MAX_COUNTED_BASE_COMMITS + 1).as_deref(),
             Some(
-                "MR ブランチは基点の最新から作られていません (基点が 1000 コミット以上進んでいます)"
+                "The MR branch was not created from the tip of its base (the base is at least 1000 commits ahead)"
             )
         );
 
         let behind = MergeRequestFileVerdict::OnlyInMergeRequest.description(true);
         let up_to_date = MergeRequestFileVerdict::OnlyInMergeRequest.description(false);
-        assert!(behind.contains("基点の最新から作られていない"), "{behind}");
         assert!(
-            !up_to_date.contains("基点の最新から作られていない"),
+            behind.contains("not created from the tip of its base"),
+            "{behind}"
+        );
+        assert!(
+            !up_to_date.contains("not created from the tip of its base"),
             "a merge request built from the base's tip must not be blamed for lagging: {up_to_date}"
         );
     }
@@ -2413,7 +2414,7 @@ mod tests {
 
         let taken = cx.update(|window, cx| {
             crate::picker_prompt::prompt(
-                "基点",
+                "Base",
                 vec!["main".into()],
                 workspace.downgrade(),
                 window,
@@ -2430,7 +2431,7 @@ mod tests {
 
         let _asked = cx.update(|window, cx| {
             crate::picker_prompt::prompt_even_for_one(
-                "MR の基点 (マージ先) のブランチ",
+                "MR's Base (Merge Target) Branch",
                 vec!["main".into()],
                 workspace.downgrade(),
                 window,
@@ -2499,7 +2500,7 @@ mod tests {
         let unrelated = parse_single_merge_base(&tips, "main", "dev")
             .expect_err("unrelated histories have no merge base");
         assert!(
-            unrelated.to_string().contains("共通の祖先がありません"),
+            unrelated.to_string().contains("no common ancestor"),
             "{unrelated}"
         );
         let criss_cross = parse_single_merge_base(
@@ -2508,7 +2509,10 @@ mod tests {
             "dev",
         )
         .expect_err("two merge bases leave the starting point ambiguous");
-        assert!(criss_cross.to_string().contains("2 個"), "{criss_cross}");
+        assert!(
+            criss_cross.to_string().contains("have 2 common ancestors"),
+            "{criss_cross}"
+        );
     }
 
     #[test]
@@ -2611,9 +2615,7 @@ mod tests {
     fn test_old_server_refusal_is_explained() {
         let refused = explain_old_server_refusal(anyhow!("unsupported git command: rev-parse"));
         assert!(
-            refused
-                .to_string()
-                .contains("接続先の Zed のサーバーが古いため"),
+            refused.to_string().contains("too old for the MR check"),
             "{refused}"
         );
         let other = explain_old_server_refusal(anyhow!("fatal: bad revision"));
@@ -3091,7 +3093,7 @@ mod tests {
         check.read_with(cx, |check, _| {
             assert_eq!(
                 check.file_diff_error.as_deref(),
-                Some("開発ブランチでも MR ブランチでも削除されています。")
+                Some("Deleted on both the development branch and the MR branch.")
             );
         });
 
@@ -3149,7 +3151,7 @@ mod tests {
             )
         );
         assert_eq!(counts.suspected_missing, 0);
-        assert_eq!(counts.verdict().0, "入れ忘れはありません");
+        assert_eq!(counts.verdict().0, "Nothing is missing");
 
         // The mode, the base and the excluded commits survive a restart; the diff is taken
         // again, and the picked row is only reopened once it is known what kind of row it is.
@@ -3194,7 +3196,7 @@ mod tests {
             );
             assert_eq!(
                 restored.file_diff_error.as_deref(),
-                Some("開発ブランチでも MR ブランチでも削除されています。"),
+                Some("Deleted on both the development branch and the MR branch."),
                 "the restored pick must be opened as the row it is, not before the list is known"
             );
         });
@@ -3236,7 +3238,7 @@ mod tests {
         refused.read_with(cx, |refused, _| match &refused.state {
             RefComparisonState::Failed(error) => {
                 assert!(
-                    error.contains("除外したコミットを読み込めませんでした"),
+                    error.contains("Could not read the excluded commits"),
                     "{error}"
                 )
             }
@@ -3250,7 +3252,7 @@ mod tests {
         let (counts, verdicts) = checked(&full, cx);
         assert_eq!(counts.suspected_missing, 0);
         assert_eq!(counts.only_in_merge_request, 0);
-        assert_eq!(counts.verdict().0, "入れ忘れはありません");
+        assert_eq!(counts.verdict().0, "Nothing is missing");
         assert_eq!(
             verdicts.first(),
             Some(&("shared.txt".to_string(), explained_by_base))
@@ -3299,7 +3301,7 @@ mod tests {
         load_task.await;
         unrelated.read_with(cx, |unrelated, _| match &unrelated.state {
             RefComparisonState::Failed(error) => {
-                assert!(error.contains("共通の祖先がありません"), "{error}")
+                assert!(error.contains("no common ancestor"), "{error}")
             }
             _ => panic!("a check against an unrelated history must fail with the reason"),
         });
@@ -3336,7 +3338,7 @@ mod tests {
         assert_eq!(
             counts.verdict(),
             (
-                "入れ忘れはありませんが、確認が必要なファイルが 1 件あります".to_string(),
+                "Nothing is missing, but 1 file needs a look".to_string(),
                 Color::Warning
             )
         );
@@ -3495,9 +3497,9 @@ struct RefComparisonEntry {
 impl RefComparisonEntry {
     fn status_label(&self) -> &'static str {
         match self.status {
-            TreeDiffStatus::Added => "追加",
-            TreeDiffStatus::Modified { .. } => "変更",
-            TreeDiffStatus::Deleted { .. } => "削除",
+            TreeDiffStatus::Added => i18n::tc!("file status", "Added"),
+            TreeDiffStatus::Modified { .. } => i18n::tc!("file status", "Modified"),
+            TreeDiffStatus::Deleted { .. } => i18n::tc!("file status", "Deleted"),
         }
     }
 
@@ -3609,19 +3611,19 @@ impl MergeRequestFileVerdict {
 
     fn label(self) -> &'static str {
         match self {
-            Self::SuspectedMissing => "入れ忘れの疑い",
-            Self::BaseChangeMaybeDropped => "基点の変更が MR に入っていない可能性があります",
+            Self::SuspectedMissing => i18n::t!("Possibly missing"),
+            Self::BaseChangeMaybeDropped => i18n::t!("A base change may be missing from the MR"),
             Self::Explained {
                 changed_on_base: true,
                 changed_by_excluded: true,
-            } => "基点側でも変更あり・除外したコミットの変更",
+            } => i18n::t!("Also changed on the base · changed by an excluded commit"),
             Self::Explained {
                 changed_on_base: true,
                 changed_by_excluded: false,
-            } => "基点側でも変更あり: 差分に基点の変更が混ざります",
-            Self::Explained { .. } => "除外したコミットの変更",
-            Self::OnlyInMergeRequest => "開発ブランチに無い変更",
-            Self::Matched { .. } => "一致",
+            } => i18n::t!("Also changed on the base: the diff includes the base's changes"),
+            Self::Explained { .. } => i18n::t!("Changed by an excluded commit"),
+            Self::OnlyInMergeRequest => i18n::t!("Not from the development branch"),
+            Self::Matched { .. } => i18n::t!("Matches"),
         }
     }
 
@@ -3639,31 +3641,43 @@ impl MergeRequestFileVerdict {
     fn description(self, merge_request_is_behind: bool) -> &'static str {
         match self {
             Self::SuspectedMissing => {
-                "開発ブランチで変えたのに、MR ブランチでは中身が違います。下のコミットが入っていないかもしれません。"
+                i18n::t!(
+                    "Changed on the development branch, but different on the MR branch. The commits below may be missing."
+                )
             }
             Self::BaseChangeMaybeDropped => {
-                "MR ブランチは開発ブランチと同じ中身ですが、基点側もこのファイルを変えていて、基点とは中身が違います。MR をマージすると基点の変更を戻してしまうかもしれません。左に基点、右に MR ブランチを並べます。"
+                i18n::t!(
+                    "The MR branch matches the development branch, but the base changed this file too and differs from it. Merging the MR may undo the base's change. The base is on the left, the MR branch on the right."
+                )
             }
             Self::Explained {
                 changed_on_base: true,
                 changed_by_excluded: true,
             } => {
-                "基点側でもこのファイルが変わり、除外したコミットも触っています。差分には両方が混ざります。"
+                i18n::t!(
+                    "This file changed on the base too, and an excluded commit touched it. The diff mixes both."
+                )
             }
             Self::Explained {
                 changed_on_base: true,
                 ..
             } => {
-                "基点側でもこのファイルが変わったため、差分に基点の変更が混ざります (多くは問題ありません)。"
+                i18n::t!(
+                    "This file changed on the base too, so the diff includes the base's changes (usually fine)."
+                )
             }
-            Self::Explained { .. } => "除外したコミットが触ったファイルです (意図どおり)。",
+            Self::Explained { .. } => i18n::t!("A file an excluded commit touched (as intended)."),
             Self::OnlyInMergeRequest if merge_request_is_behind => {
-                "開発ブランチでは変えていないのに、MR ブランチでは基点と中身が違います。MR ブランチが基点の最新から作られていないため、基点の新しい変更が MR ブランチに無いだけのことがあります (コンフリクトの解消で入った変更のこともあります)。左に基点、右に MR ブランチを並べます。"
+                i18n::t!(
+                    "Not changed on the development branch, yet the MR branch differs from the base. The MR branch was not created from the tip of its base, so it may only lack the base's newer changes (or the change came in while resolving a conflict). The base is on the left, the MR branch on the right."
+                )
             }
             Self::OnlyInMergeRequest => {
-                "開発ブランチでは変えていないのに、MR ブランチでは基点と中身が違います (コンフリクトの解消などで入った変更)。左に基点、右に MR ブランチを並べます。"
+                i18n::t!(
+                    "Not changed on the development branch, yet the MR branch differs from the base (a change that came in while resolving a conflict, for example). The base is on the left, the MR branch on the right."
+                )
             }
-            Self::Matched { .. } => "開発ブランチと同じ中身です。",
+            Self::Matched { .. } => i18n::t!("Same contents as on the development branch."),
         }
     }
 }
@@ -3720,32 +3734,50 @@ struct MergeRequestCheckCounts {
 
 impl MergeRequestCheckCounts {
     fn summary(&self) -> String {
-        let mut summary = format!(
-            "開発ブランチの変更 {} ファイル: 一致 {} / 不一致 {}",
-            self.source_files, self.matched, self.mismatched
+        let mut summary = i18n::tn!(
+            self.source_files,
+            "{count} file changed on the development branch: {matched} matching / {mismatched} not matching",
+            "{count} files changed on the development branch: {matched} matching / {mismatched} not matching",
+            matched = self.matched,
+            mismatched = self.mismatched
         );
         let reasons = [
-            ("入れ忘れの疑い", self.suspected_missing),
-            ("基点側でも変更", self.changed_on_base),
-            ("除外", self.changed_by_excluded),
+            (
+                self.suspected_missing,
+                i18n::t!("{} possibly missing", self.suspected_missing),
+            ),
+            (
+                self.changed_on_base,
+                i18n::t!("{} also changed on the base", self.changed_on_base),
+            ),
+            (
+                self.changed_by_excluded,
+                i18n::t!("{} excluded", self.changed_by_excluded),
+            ),
         ]
         .into_iter()
-        .filter(|(_, count)| *count > 0)
-        .map(|(reason, count)| format!("{reason} {count}"))
+        .filter(|(count, _)| *count > 0)
+        .map(|(_, reason)| reason)
         .collect::<Vec<_>>();
         if !reasons.is_empty() {
-            summary.push_str(&format!(" ({})", reasons.join("、")));
+            summary.push_str(&format!(
+                " ({})",
+                reasons.join(i18n::tc!("list separator", ", "))
+            ));
         }
         if self.base_change_maybe_dropped > 0 {
-            summary.push_str(&format!(
-                " / 基点の変更が入っていない可能性 {}",
-                self.base_change_maybe_dropped
+            summary.push_str(" / ");
+            summary.push_str(&i18n::tn!(
+                self.base_change_maybe_dropped,
+                "{count} base change possibly missing",
+                "{count} base changes possibly missing"
             ));
         }
         if self.only_in_merge_request > 0 {
-            summary.push_str(&format!(
-                "。開発ブランチに無い変更 {} ファイル",
-                self.only_in_merge_request
+            summary.push_str(&i18n::tn!(
+                self.only_in_merge_request,
+                ". {count} changed file not from the development branch",
+                ". {count} changed files not from the development branch"
             ));
         }
         summary
@@ -3754,22 +3786,24 @@ impl MergeRequestCheckCounts {
     fn verdict(&self) -> (String, Color) {
         if self.suspected_missing > 0 {
             (
-                format!(
-                    "入れ忘れの疑いが {} ファイルあります",
-                    self.suspected_missing
+                i18n::tn!(
+                    self.suspected_missing,
+                    "{count} file possibly missing",
+                    "{count} files possibly missing"
                 ),
                 Color::Error,
             )
         } else if self.base_change_maybe_dropped + self.only_in_merge_request > 0 {
             (
-                format!(
-                    "入れ忘れはありませんが、確認が必要なファイルが {} 件あります",
-                    self.base_change_maybe_dropped + self.only_in_merge_request
+                i18n::tn!(
+                    self.base_change_maybe_dropped + self.only_in_merge_request,
+                    "Nothing is missing, but {count} file needs a look",
+                    "Nothing is missing, but {count} files need a look"
                 ),
                 Color::Warning,
             )
         } else {
-            ("入れ忘れはありません".to_string(), Color::Success)
+            (i18n::t!("Nothing is missing").to_string(), Color::Success)
         }
     }
 }
@@ -3790,8 +3824,9 @@ struct MergeRequestCheck {
     base_commits_ahead: usize,
 }
 
-const MERGE_REQUEST_HAS_BASE_VERSION_NOTE: &str =
-    "MR は基点と同じ中身です (基点側で同じ変更を取り込み済みなら問題ありません)";
+const MERGE_REQUEST_HAS_BASE_VERSION_NOTE: &str = i18n::msg!(
+    "The MR has the same contents as the base (fine if the base already took the same change)"
+);
 
 /// Counting how far the merge-request branch lags its base stops here: past it, the headline
 /// only needs to say "at least".
@@ -3820,11 +3855,13 @@ fn count_listed_commits(output: &str) -> usize {
 fn merge_request_behind_notice(base_commits_ahead: usize) -> Option<String> {
     match base_commits_ahead {
         0 => None,
-        count if count > MAX_COUNTED_BASE_COMMITS => Some(format!(
-            "MR ブランチは基点の最新から作られていません (基点が {MAX_COUNTED_BASE_COMMITS} コミット以上進んでいます)"
+        count if count > MAX_COUNTED_BASE_COMMITS => Some(i18n::t!(
+            "The MR branch was not created from the tip of its base (the base is at least {MAX_COUNTED_BASE_COMMITS} commits ahead)"
         )),
-        count => Some(format!(
-            "MR ブランチは基点の最新から作られていません (基点が {count} コミット進んでいます)"
+        count => Some(i18n::tn!(
+            count,
+            "The MR branch was not created from the tip of its base (the base is {count} commit ahead)",
+            "The MR branch was not created from the tip of its base (the base is {count} commits ahead)"
         )),
     }
 }
@@ -4048,14 +4085,20 @@ fn parse_single_merge_base(
         .collect::<Vec<_>>();
     match merge_bases.as_slice() {
         [] => anyhow::bail!(
-            "{merge_request_base} と {source} には共通の祖先がありません (関係の無い履歴です)。MR チェックはできません。"
+            "{}",
+            i18n::t!(
+                "{merge_request_base} and {source} have no common ancestor (unrelated histories). The MR check cannot run."
+            )
         ),
         [merge_base] => merge_base
             .parse::<git::Oid>()
-            .with_context(|| format!("共通の祖先を読み取れませんでした: {merge_base}")),
+            .with_context(|| i18n::t!("Could not read the common ancestor: {merge_base}")),
         _ => anyhow::bail!(
-            "{merge_request_base} と {source} の共通の祖先が {} 個あります (交差したマージ)。どこから比べるか決められないため、MR チェックはできません。",
-            merge_bases.len()
+            "{}",
+            i18n::t!(
+                "{merge_request_base} and {source} have {} common ancestors (a criss-cross merge). The MR check cannot tell where to compare from, so it cannot run.",
+                merge_bases.len()
+            )
         ),
     }
 }
@@ -4064,9 +4107,9 @@ fn parse_single_merge_base(
 /// not tell the user what to do about it.
 fn explain_old_server_refusal(error: anyhow::Error) -> anyhow::Error {
     if format!("{error:#}").contains("unsupported git command") {
-        anyhow!(
-            "接続先の Zed のサーバーが古いため、MR チェックは使えません (git rev-parse を受け付けません)。接続先の Zed を更新してください。"
-        )
+        anyhow!(i18n::t!(
+            "The Zed server on the remote host is too old for the MR check (it refuses git rev-parse). Update Zed on the remote host."
+        ))
     } else {
         error
     }
@@ -4097,8 +4140,11 @@ async fn load_merge_request_check(
         .map_err(explain_old_server_refusal)?;
     anyhow::ensure!(
         merge_bases.succeeded(),
-        "{merge_request_base} と {source} を読み込めませんでした: {}",
-        merge_bases.failure_message()
+        "{}",
+        i18n::t!(
+            "Could not read {merge_request_base} and {source}: {}",
+            merge_bases.failure_message()
+        )
     );
     let merge_base = parse_single_merge_base(&merge_bases.stdout, &merge_request_base, &source)?;
     let merge_base_ref = SharedString::from(merge_base.to_string());
@@ -4132,27 +4178,33 @@ async fn load_merge_request_check(
     });
     let source_changes = source_changes
         .await?
-        .context("開発ブランチの変更を読み込めませんでした")?;
+        .context(i18n::t!("Could not read the development branch's changes"))?;
     let base_changes = base_changes
         .await?
-        .context("基点側の変更を読み込めませんでした")?;
-    let source_to_merge_request = source_to_merge_request
-        .await?
-        .context("開発ブランチと MR ブランチを比べられませんでした")?;
+        .context(i18n::t!("Could not read the changes on the base"))?;
+    let source_to_merge_request = source_to_merge_request.await?.context(i18n::t!(
+        "Could not compare the development branch and the MR branch"
+    ))?;
     let base_to_merge_request = base_to_merge_request
         .await?
-        .context("基点と MR ブランチを比べられませんでした")?;
+        .context(i18n::t!("Could not compare the base and the MR branch"))?;
     let history = history.await??;
     anyhow::ensure!(
         history.succeeded(),
-        "開発ブランチの履歴を読み込めませんでした: {}",
-        history.failure_message()
+        "{}",
+        i18n::t!(
+            "Could not read the development branch's history: {}",
+            history.failure_message()
+        )
     );
     let base_ahead = base_ahead.await??;
     anyhow::ensure!(
         base_ahead.succeeded(),
-        "基点と MR ブランチの履歴を比べられませんでした: {}",
-        base_ahead.failure_message()
+        "{}",
+        i18n::t!(
+            "Could not compare the histories of the base and the MR branch: {}",
+            base_ahead.failure_message()
+        )
     );
     let base_commits_ahead = count_listed_commits(&base_ahead.stdout);
 
@@ -4169,8 +4221,11 @@ async fn load_merge_request_check(
     if !not_in_history.is_empty() {
         anyhow::ensure!(
             not_in_history.len() <= MAX_EXCLUDED_COMMIT_LOOKUPS,
-            "除外したコミットのうち {} 件が開発ブランチの最近の履歴にありません (一度に調べられるのは {MAX_EXCLUDED_COMMIT_LOOKUPS} 件までです)。",
-            not_in_history.len()
+            "{}",
+            i18n::t!(
+                "{} of the excluded commits are not in the recent history of the development branch (at most {MAX_EXCLUDED_COMMIT_LOOKUPS} can be looked up at once).",
+                not_in_history.len()
+            )
         );
         let lookup = repository
             .update(cx, |repository, _| {
@@ -4185,15 +4240,21 @@ async fn load_merge_request_check(
             .await??;
         anyhow::ensure!(
             lookup.succeeded(),
-            "除外したコミットを読み込めませんでした: {}",
-            lookup.failure_message()
+            "{}",
+            i18n::t!(
+                "Could not read the excluded commits: {}",
+                lookup.failure_message()
+            )
         );
         let looked_up = parse_commits_with_paths(&lookup.stdout);
         let (paths, still_missing) = paths_changed_by_excluded(&looked_up, &not_in_history);
         if let Some(missing) = still_missing.first() {
             anyhow::bail!(
-                "除外したコミット {} が見つかりませんでした。",
-                missing.display_short()
+                "{}",
+                i18n::t!(
+                    "The excluded commit {} was not found.",
+                    missing.display_short()
+                )
             );
         }
         excluded_paths.extend(paths);
@@ -4579,9 +4640,10 @@ impl RefComparison {
                             row.status.as_ref(),
                         ))
                     }
-                    MergeRequestFileVerdict::Matched { deleted: true } => {
-                        Err("開発ブランチでも MR ブランチでも削除されています。".into())
-                    }
+                    MergeRequestFileVerdict::Matched { deleted: true } => Err(i18n::t!(
+                        "Deleted on both the development branch and the MR branch."
+                    )
+                    .into()),
                     MergeRequestFileVerdict::Matched { deleted: false } => Ok(FileDiffSides {
                         left: base,
                         right: head,
@@ -4650,7 +4712,8 @@ impl RefComparison {
             {
                 this.update(cx, |this, cx| {
                     this.file_diff_editor = None;
-                    this.file_diff_error = Some("ファイルの中身を取得できませんでした。".into());
+                    this.file_diff_error =
+                        Some(i18n::t!("Could not get the file's contents.").into());
                     this.unavailable_paths.insert(path);
                     cx.notify();
                 })
@@ -4665,7 +4728,7 @@ impl RefComparison {
                 let path = path.clone();
                 this.update(cx, |this, cx| {
                     this.file_diff_editor = None;
-                    this.file_diff_error = Some("大きすぎるため表示できません。".into());
+                    this.file_diff_error = Some(i18n::t!("Too large to show.").into());
                     this.unavailable_paths.insert(path);
                     cx.notify();
                 })
@@ -4676,7 +4739,8 @@ impl RefComparison {
                 let path = path.clone();
                 this.update(cx, |this, cx| {
                     this.file_diff_editor = None;
-                    this.file_diff_error = Some("バイナリファイルは並べて表示できません。".into());
+                    this.file_diff_error =
+                        Some(i18n::t!("Binary files cannot be shown side by side.").into());
                     this.unavailable_paths.insert(path);
                     cx.notify();
                 })
@@ -4821,7 +4885,7 @@ impl RefComparison {
             &self.head,
         );
         let prompt = crate::picker_prompt::prompt_even_for_one(
-            "MR の基点 (マージ先) のブランチ",
+            i18n::t!("MR's Base (Merge Target) Branch"),
             options.clone(),
             workspace.downgrade(),
             window,
@@ -4862,18 +4926,24 @@ impl RefComparison {
         else {
             return Empty.into_any_element();
         };
-        let mut scope = format!(
-            "{merge_request_base} (基点) から分かれた後に {} で変わったファイルだけを比べます。",
+        let mut scope = i18n::t!(
+            "Compares only the files {} changed after it branched off {merge_request_base} (the base).",
             self.base
         );
         if let RefComparisonState::MergeRequestChecked(check) = &self.state {
-            scope.push_str(&format!(
-                " 分かれた所: {}。",
+            scope.push(' ');
+            scope.push_str(&i18n::t!(
+                "Branched off at {}.",
                 check.merge_base.display_short()
             ));
         }
         if !excluded.is_empty() {
-            scope.push_str(&format!(" 除外したコミット {} 件。", excluded.len()));
+            scope.push(' ');
+            scope.push_str(&i18n::tn!(
+                excluded.len(),
+                "{count} excluded commit.",
+                "{count} excluded commits."
+            ));
         }
         let show_all_files = self.show_all_files;
         v_flex()
@@ -4887,30 +4957,41 @@ impl RefComparison {
                     .w_full()
                     .gap_2()
                     .justify_between()
-                    .child(Label::new(format!(
-                        "MR チェック: {} (開発ブランチ) → {} (MR ブランチ)",
-                        self.base, self.head
+                    .child(Label::new(i18n::t!(
+                        "MR Check: {} (development branch) → {} (MR branch)",
+                        self.base,
+                        self.head
                     )))
                     .child(
                         h_flex()
                             .gap_1()
                             .child(
-                                Button::new("merge-request-check-mismatched-only", "不一致だけ")
-                                    .label_size(LabelSize::Small)
-                                    .toggle_state(!show_all_files)
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                Button::new(
+                                    "merge-request-check-mismatched-only",
+                                    i18n::t!("Mismatches Only"),
+                                )
+                                .label_size(LabelSize::Small)
+                                .toggle_state(!show_all_files)
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.show_all_files = false;
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             )
                             .child(
-                                Button::new("merge-request-check-all", "すべて")
-                                    .label_size(LabelSize::Small)
-                                    .toggle_state(show_all_files)
-                                    .on_click(cx.listener(|this, _, _, cx| {
+                                Button::new(
+                                    "merge-request-check-all",
+                                    i18n::tc!("merge request check", "All"),
+                                )
+                                .label_size(LabelSize::Small)
+                                .toggle_state(show_all_files)
+                                .on_click(cx.listener(
+                                    |this, _, _, cx| {
                                         this.show_all_files = true;
                                         cx.notify();
-                                    })),
+                                    },
+                                )),
                             ),
                     ),
             )
@@ -4990,9 +5071,13 @@ impl RefComparison {
                 list = list.child(
                     div().px_2().pt_2().pb_1().child(
                         Label::new(if merge_request_is_behind {
-                            "開発ブランチに無い変更 (基点の新しい変更が MR ブランチに無いものを含みます)"
+                            i18n::t!(
+                                "Not from the development branch (includes newer base changes the MR branch lacks)"
+                            )
                         } else {
-                            "開発ブランチに無い変更 (コンフリクトの解消などで入ったもの)"
+                            i18n::t!(
+                                "Not from the development branch (came in while resolving conflicts, for example)"
+                            )
                         })
                         .size(LabelSize::XSmall)
                         .color(Color::Warning),
@@ -5011,7 +5096,7 @@ impl RefComparison {
         list.when(check.omitted_count > 0, |this| {
             this.child(
                 div().px_2().py_1().child(
-                    Label::new(format!("ほか {} 件は省略しました", check.omitted_count))
+                    Label::new(i18n::t!("{} more omitted", check.omitted_count))
                         .size(LabelSize::XSmall)
                         .color(Color::Muted),
                 ),
@@ -5038,11 +5123,14 @@ impl RefComparison {
             .unwrap_or_else(|| row.path.as_unix_str().to_string());
         let is_missing = row.verdict == MergeRequestFileVerdict::SuspectedMissing;
         let no_commits_reason = if history_truncated {
-            format!(
-                "触ったコミットは、読み込んだ履歴 (新しい方から {MAX_MERGE_REQUEST_HISTORY_COMMITS} 件) にありません。"
+            i18n::t!(
+                "The commits that touched it are not in the loaded history (the newest {MAX_MERGE_REQUEST_HISTORY_COMMITS} commits)."
             )
         } else {
-            "触ったコミットを特定できませんでした (マージで入った変更かもしれません)。".to_string()
+            i18n::t!(
+                "Could not tell which commits touched it (it may have come in through a merge)."
+            )
+            .to_string()
         };
         let description = row.verdict.description(merge_request_is_behind);
         ListItem::new(("merge-request-check-file", index))
@@ -5052,7 +5140,7 @@ impl RefComparison {
                 let mut text = format!("{}\n{description}", row.path.as_unix_str());
                 if row.merge_request_has_base_version {
                     text.push('\n');
-                    text.push_str(MERGE_REQUEST_HAS_BASE_VERSION_NOTE);
+                    text.push_str(i18n::tr(MERGE_REQUEST_HAS_BASE_VERSION_NOTE));
                 }
                 move |_, cx| Tooltip::simple(text.clone(), cx)
             })
@@ -5067,7 +5155,7 @@ impl RefComparison {
                     )
                     .when(row.merge_request_has_base_version, |this| {
                         this.child(
-                            Label::new(MERGE_REQUEST_HAS_BASE_VERSION_NOTE)
+                            Label::new(i18n::tr(MERGE_REQUEST_HAS_BASE_VERSION_NOTE))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Muted),
                         )
@@ -5092,9 +5180,10 @@ impl RefComparison {
                         }))
                         .when(row.omitted_commit_count > 0, |this| {
                             this.child(
-                                Label::new(format!(
-                                    "ほか {} 件のコミット",
-                                    row.omitted_commit_count
+                                Label::new(i18n::tn!(
+                                    row.omitted_commit_count,
+                                    "{count} more commit",
+                                    "{count} more commits"
                                 ))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Muted),
@@ -5143,7 +5232,7 @@ impl RefComparison {
                 .when_some(sides, |this, sides| {
                     this.child(
                         div().px_2().py_1().child(
-                            Label::new(format!("左: {} / 右: {}", sides.left, sides.right))
+                            Label::new(i18n::t!("Left: {} / Right: {}", sides.left, sides.right))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Muted),
                         ),
@@ -5156,11 +5245,13 @@ impl RefComparison {
             self.show_all_files || !matches!(row.verdict, MergeRequestFileVerdict::Matched { .. })
         });
         let message = if has_listed_rows {
-            "左の一覧から選ぶと、開発ブランチ (左) と MR ブランチ (右) の中身を並べて表示します。警告色の行は、基点 (左) と MR ブランチ (右) を並べます。"
+            i18n::t!(
+                "Choose a file from the list on the left to show the development branch (left) and the MR branch (right) side by side. Rows in the warning color show the base (left) and the MR branch (right)."
+            )
         } else if check.rows.is_empty() {
-            "開発ブランチで変わったファイルはありません。"
+            i18n::t!("No files changed on the development branch.")
         } else {
-            "不一致のファイルはありません。「すべて」で一致したファイルも表示します。"
+            i18n::t!("No files mismatch. \"All\" also shows the matching files.")
         };
         v_flex()
             .flex_1()
@@ -5172,9 +5263,9 @@ impl RefComparison {
             .when(has_listed_rows, |this| {
                 // `diff-tree` runs with `--no-renames`, so a renamed file shows up twice.
                 this.child(
-                    Label::new(
-                        "名前を変えたファイルは、消した名前と付けた名前の 2 行に分かれます。",
-                    )
+                    Label::new(i18n::t!(
+                        "A renamed file is split into two rows: its old name and its new name."
+                    ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
                 )
@@ -5238,7 +5329,7 @@ impl RefComparison {
             .when(*omitted_count > 0, |this| {
                 this.child(
                     div().px_2().py_1().child(
-                        Label::new(format!("ほか {omitted_count} 件は省略しました"))
+                        Label::new(i18n::t!("{} more omitted", omitted_count))
                             .size(LabelSize::XSmall)
                             .color(Color::Muted),
                     ),
@@ -5265,9 +5356,11 @@ impl Item for RefComparison {
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
         match self.mode {
-            RefComparisonMode::Refs => format!("{} と {} の比較", self.base, self.head).into(),
+            RefComparisonMode::Refs => {
+                i18n::t!("Comparison of {} and {}", self.base, self.head).into()
+            }
             RefComparisonMode::MergeRequestCheck { .. } => {
-                format!("{} → {} の MR チェック", self.base, self.head).into()
+                i18n::t!("MR Check {} → {}", self.base, self.head).into()
             }
         }
     }
@@ -5303,25 +5396,25 @@ impl Render for RefComparison {
                 .child(
                     v_flex()
                         .gap_0p5()
-                        .child(Label::new(format!(
-                            "{} (移植元) と {} (移植先) の比較",
+                        .child(Label::new(i18n::t!(
+                            "Comparison of {} (source) and {} (target)",
                             self.base, self.head
                         )))
                         .child(
-                            Label::new(
-                                "2 つのブランチ / タグの中身そのものを比べます。差分が無ければ、すべて移植できています。",
-                            )
+                            Label::new(i18n::t!(
+                                "Compares the contents of two branches or tags themselves. If there are no differences, everything has been ported."
+                            ))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                         ),
                 )
                 .child(
-                    Button::new("ref-comparison-open-merge-request-check", "MR チェックとして見る…")
+                    Button::new("ref-comparison-open-merge-request-check", i18n::t!("View as MR Check…"))
                         .label_size(LabelSize::Small)
                         .disabled(!has_merge_request_bases)
-                        .tooltip(Tooltip::text(
-                            "MR の基点 (マージ先) を選んで、基点側の変更に埋もれない比較で開き直します。",
-                        ))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Choose the MR's base (merge target) and reopen as a comparison that the base's own changes do not bury."
+                        )))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.reopen_as_merge_request_check(window, cx);
                         })),
@@ -5334,7 +5427,7 @@ impl Render for RefComparison {
                 .size_full()
                 .justify_center()
                 .child(
-                    Label::new("比較を読み込み中…")
+                    Label::new(i18n::t!("Loading comparison…"))
                         .color(Color::Muted)
                         .size(LabelSize::Large),
                 )
@@ -5345,14 +5438,18 @@ impl Render for RefComparison {
                 .items_center()
                 .gap_1()
                 .child(
-                    Label::new("差分はありません (全部移植できています)")
+                    Label::new(i18n::t!("No differences (everything has been ported)"))
                         .color(Color::Success)
                         .size(LabelSize::Large),
                 )
                 .child(
-                    Label::new(format!("{} と {} は同じ中身です。", self.base, self.head))
-                        .color(Color::Muted)
-                        .size(LabelSize::Small),
+                    Label::new(i18n::t!(
+                        "{} and {} have the same contents.",
+                        self.base,
+                        self.head
+                    ))
+                    .color(Color::Muted)
+                    .size(LabelSize::Small),
                 )
                 .into_any_element(),
             RefComparisonState::Failed(error) => v_flex()
@@ -5362,9 +5459,9 @@ impl Render for RefComparison {
                 .gap_1()
                 .child(
                     Label::new(if is_merge_request_check {
-                        "MR チェックできませんでした"
+                        i18n::t!("Could not run the MR check")
                     } else {
-                        "比較できませんでした"
+                        i18n::t!("Could not compare")
                     })
                     .color(Color::Error)
                     .size(LabelSize::Large),
@@ -5405,17 +5502,19 @@ impl Render for RefComparison {
                             .items_center()
                             .gap_1()
                             .child(
-                                Label::new(format!(
-                                    "{count} 個のファイルに差分があります。左の一覧から選ぶと中身を並べて表示します。"
+                                Label::new(i18n::tn!(
+                                    count,
+                                    "{count} file differs. Choose it from the list on the left to show the contents side by side.",
+                                    "{count} files differ. Choose one from the list on the left to show the contents side by side."
                                 ))
                                 .color(Color::Muted),
                             )
                             // `diff-tree` runs with `--no-renames`, so a renamed
                             // file shows up twice and the count looks inflated.
                             .child(
-                                Label::new(
-                                    "名前を変えたファイルは「削除」と「追加」の 2 行に分かれます。",
-                                )
+                                Label::new(i18n::t!(
+                                    "A renamed file is split into two rows, \"Deleted\" and \"Added\"."
+                                ))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                             )
@@ -5467,7 +5566,7 @@ impl SerializableItem for RefComparison {
         let Some((repo_working_path, base, head, selected_path, merge_request_base, excluded)) =
             db.get_ref_comparison(item_id, workspace_id).ok().flatten()
         else {
-            return Task::ready(Err(anyhow!("復元する比較タブが見つかりませんでした。")));
+            return Task::ready(Err(anyhow!("no ref comparison to restore")));
         };
         let mode = match merge_request_base {
             None => RefComparisonMode::Refs,
@@ -5511,7 +5610,7 @@ impl SerializableItem for RefComparison {
                     })
                     .cloned();
                 let Some(repository) = repository else {
-                    anyhow::bail!("リポジトリが見つかりませんでした: {path:?}");
+                    anyhow::bail!("repository not found: {path:?}");
                 };
 
                 let comparison = cx.new(|cx| {
@@ -5613,7 +5712,7 @@ mod persistence {
             .split_whitespace()
             .map(|sha| {
                 sha.parse::<git::Oid>()
-                    .with_context(|| format!("保存された除外コミットを読み込めませんでした: {sha}"))
+                    .with_context(|| format!("could not read a saved excluded commit: {sha}"))
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(super::normalize_excluded_commits(excluded))

@@ -26,28 +26,41 @@ use util::ResultExt as _;
 use crate::SettingsWindow;
 use crate::components::{SettingsInputField, SettingsSectionHeader};
 
-const HOSTS_DESCRIPTION: &str = "各項目は完全一致のホスト名 (api.anthropic.com)、先頭の *. によるサブドメインのワイルドカード (*.corp.example。親ドメイン自身にはマッチしません)、または IP アドレス (10.0.0.5 / [fd00::1]) です。大文字と小文字は区別せず、ポートは指定しません。";
+const HOSTS_DESCRIPTION: &str = i18n::msg!(
+    "Each entry is an exact host name (api.anthropic.com), a subdomain wildcard with a leading *. (*.corp.example, which does not match the parent domain itself), or an IP address (10.0.0.5 / [fd00::1]). Entries are case-insensitive and take no port."
+);
 
 /// See `docs/jp-enhance/DESIGN.md` §4.14 (ADR-F14) for what this actually covers.
-const PROXY_CHILD_PROCESSES_DESCRIPTION: &str = "有効にすると、ACP エージェント・MCP サーバー・AI エージェントのインストールに使う npm の各子プロセスに、ループバックのプロキシを渡してその外部通信も上の許可リストで判定します。既定は有効です。無効にすると、これらの子プロセスの外部通信は許可リストの統制外になります (IDE 本体からの AI 通信は統制されたままです)。";
+const PROXY_CHILD_PROCESSES_DESCRIPTION: &str = i18n::msg!(
+    "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
+);
 
-const PROXY_CHILD_PROCESSES_NOTE: &str = "変更は次に起動する子プロセスから反映されます (再起動は不要)。プロキシ設定を無視するプロセスは有効にしても統制できません。言語サーバーや拡張機能が使う npm など、AI と無関係な子プロセスは有効にしても対象外です。";
+const PROXY_CHILD_PROCESSES_NOTE: &str = i18n::msg!(
+    "Changes take effect from the next child process that starts (no restart needed). Processes that ignore proxy settings cannot be controlled even when this is enabled. Child processes unrelated to AI, such as npm used by language servers or extensions, are not covered even when this is enabled."
+);
 
 /// Written when the file has to be created before it can be opened in the
 /// editor, so the user lands on something they can edit rather than a blank
 /// buffer.
-const FILE_TEMPLATE: &str = "\
-// zed-jp-enhance 外部通信の許可リスト (docs/jp-enhance/DESIGN.md §4)
+const FILE_TEMPLATE_HEADER: &str = i18n::msg!(
+    "\
+// zed-jp-enhance egress allowlist (docs/jp-enhance/DESIGN.md §4)
 //
-// AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・
-// 外部エージェントのプロセス) は、ここに書いたホストだけが許可されます。
-// 言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。
-// 127.0.0.1 / ::1 / localhost は書かなくても常に許可されます。
-// // コメントと末尾のカンマを書けます。変更は保存した時点で反映されます。
-{
-  \"allowed_hosts\": []
+// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,
+// external agent processes) is allowed only to the hosts written here.
+// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.
+// 127.0.0.1 / ::1 / localhost are always allowed without being written here.
+// You can use // comments and trailing commas. Changes take effect when you save.
+"
+);
+
+/// Kept out of the translated header: a catalog message is checked as a format
+/// string, and the braces of the JSON would read as a placeholder.
+const FILE_TEMPLATE_BODY: &str = "{\n  \"allowed_hosts\": []\n}\n";
+
+fn file_template() -> String {
+    format!("{}{FILE_TEMPLATE_BODY}", i18n::tr(FILE_TEMPLATE_HEADER))
 }
-";
 
 /// What the settings window knows about `network_allowlist.json`.
 pub(crate) struct NetworkAllowlistState {
@@ -279,8 +292,9 @@ async fn apply(
             })
             .await;
             if let Err(write_error) = written {
-                error = Some(SharedString::from(format!(
-                    "許可リストを保存できませんでした: {write_error:#}"
+                let write_error = format!("{write_error:#}");
+                error = Some(SharedString::from(i18n::t!(
+                    "Failed to save the allowlist: {write_error}"
                 )));
             }
         }
@@ -290,8 +304,9 @@ async fn apply(
             })
             .await;
             if let Err(write_error) = written {
-                error = Some(SharedString::from(format!(
-                    "子プロセスのプロキシ設定を保存できませんでした: {write_error:#}"
+                let write_error = format!("{write_error:#}");
+                error = Some(SharedString::from(i18n::t!(
+                    "Failed to save the child process proxy setting: {write_error}"
                 )));
             }
         }
@@ -302,15 +317,17 @@ async fn apply(
         // assume this page has been opened.
         Operation::Add(hosts) => {
             if let Err(write_error) = egress_policy::add_allowed_hosts(&fs, path, &hosts).await {
-                error = Some(SharedString::from(format!(
-                    "許可リストを保存できませんでした: {write_error:#}"
+                let write_error = format!("{write_error:#}");
+                error = Some(SharedString::from(i18n::t!(
+                    "Failed to save the allowlist: {write_error}"
                 )));
             }
         }
         Operation::Remove(hosts) => {
             if let Err(write_error) = egress_policy::remove_allowed_hosts(&fs, path, &hosts).await {
-                error = Some(SharedString::from(format!(
-                    "許可リストを保存できませんでした: {write_error:#}"
+                let write_error = format!("{write_error:#}");
+                error = Some(SharedString::from(i18n::t!(
+                    "Failed to save the allowlist: {write_error}"
                 )));
             }
         }
@@ -336,8 +353,9 @@ async fn read(fs: &Arc<dyn Fs>, path: &Path) -> Loaded {
     let contents = match fs.load(path).await {
         Ok(contents) => contents,
         Err(error) => {
+            let error = format!("{error:#}");
             return denied_by_default(Status::Unusable(
-                format!("network_allowlist.json を読み込めませんでした: {error:#}").into(),
+                i18n::t!("Failed to read network_allowlist.json: {error}").into(),
             ));
         }
     };
@@ -353,7 +371,7 @@ async fn read(fs: &Arc<dyn Fs>, path: &Path) -> Loaded {
             proxy_child_processes: file.proxy_child_processes.unwrap_or(true),
         },
         Err(error) => denied_by_default(Status::Unusable(
-            format!("network_allowlist.json を解析できませんでした: {error}").into(),
+            i18n::t!("Failed to parse network_allowlist.json: {error}").into(),
         )),
     }
 }
@@ -370,7 +388,7 @@ async fn write(
     let existing = if exists {
         fs.load(path)
             .await
-            .context("network_allowlist.json を読み込めませんでした")?
+            .context(i18n::t!("Failed to read network_allowlist.json"))?
     } else {
         String::new()
     };
@@ -378,7 +396,7 @@ async fn write(
     // away whatever the user was in the middle of hand-editing.
     if !existing.trim().is_empty() {
         settings_json::parse_json_with_comments::<NetworkAllowlistFile>(&existing)
-            .context("network_allowlist.json を解析できませんでした")?;
+            .context(i18n::t!("Failed to parse network_allowlist.json"))?;
     }
 
     let new_text = replace(&existing)?;
@@ -399,7 +417,7 @@ async fn write(
     };
     fs.atomic_write(target, new_text)
         .await
-        .context("network_allowlist.json に書き込めませんでした")
+        .context(i18n::t!("Failed to write network_allowlist.json"))
 }
 
 /// Rewrites only the `allowed_hosts` value, so the rest of the file — including
@@ -437,7 +455,7 @@ fn key_replaced(existing: &str, key: &str, value: &serde_json::Value) -> Result<
         range.end <= existing.len()
             && existing.is_char_boundary(range.start)
             && existing.is_char_boundary(range.end),
-        "書き換える範囲を特定できませんでした"
+        i18n::t!("Could not determine the range to rewrite")
     );
     let mut text = existing.to_string();
     text.replace_range(range, &replacement);
@@ -460,14 +478,17 @@ fn canonicalize_host(input: &str) -> Result<String, SharedString> {
 fn rejection_reason(input: &str) -> SharedString {
     let trimmed = input.trim();
     if trimmed.is_empty() {
-        return "ホストを入力してください。".into();
+        return i18n::t!("Enter a host.").into();
     }
     let (has_wildcard, rest) = match trimmed.strip_prefix("*.") {
         Some(rest) => (true, rest),
         None => (false, trimmed),
     };
     if rest.contains('*') {
-        return "ワイルドカードは先頭の `*.` にのみ指定できます (例: *.corp.example)。".into();
+        return i18n::t!(
+            "A wildcard is allowed only as a leading `*.` (for example, *.corp.example)."
+        )
+        .into();
     }
     if has_wildcard
         && matches!(
@@ -475,10 +496,12 @@ fn rejection_reason(input: &str) -> SharedString {
             Some(http_client::RequestHost::Ip(_))
         )
     {
-        return "`*.` は IP アドレスには指定できません。".into();
+        return i18n::t!("`*.` cannot be used with an IP address.").into();
     }
-    "有効なホスト名または IP アドレスではありません。例: api.anthropic.com、*.corp.example、10.0.0.5"
-        .into()
+    i18n::t!(
+        "Not a valid host name or IP address. Examples: api.anthropic.com, *.corp.example, 10.0.0.5"
+    )
+    .into()
 }
 
 fn add_host(settings_window: &mut SettingsWindow, input: &str, cx: &mut Context<SettingsWindow>) {
@@ -493,7 +516,7 @@ fn add_host(settings_window: &mut SettingsWindow, input: &str, cx: &mut Context<
     let mut entries = settings_window.network_allowlist.entries.clone();
     if entries.iter().any(|entry| entry == &host) {
         settings_window.network_allowlist.error =
-            Some(format!("{host} はすでに許可リストにあります。").into());
+            Some(i18n::t!("{host} is already in the allowlist.").into());
         cx.notify();
         return;
     }
@@ -516,7 +539,7 @@ pub(crate) fn add_allowed_hosts(
             Ok(host) => canonical.push(host),
             Err(reason) => {
                 settings_window.network_allowlist.error =
-                    Some(format!("{host} を追加できません: {reason}").into());
+                    Some(i18n::t!("Cannot add {host}: {reason}").into());
                 settings_window.network_allowlist.error_from_consent = true;
                 cx.notify();
                 return;
@@ -608,7 +631,7 @@ fn update_host(
         .any(|(other, value)| other != index && value == &host)
     {
         settings_window.network_allowlist.error =
-            Some(format!("{host} はすでに許可リストにあります。").into());
+            Some(i18n::t!("{host} is already in the allowlist.").into());
         cx.notify();
         return;
     }
@@ -686,7 +709,7 @@ pub(crate) fn render_network_allowlist_page(
                     .severity(Severity::Warning)
                     .child(Label::new(error).size(LabelSize::Small))
                     .action_slot(
-                        Button::new("network-allowlist-dismiss-error", "閉じる")
+                        Button::new("network-allowlist-dismiss-error", i18n::t!("Dismiss"))
                             .style(ButtonStyle::Tinted(ui::TintColor::Warning))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 dismiss_error(this, cx);
@@ -696,14 +719,16 @@ pub(crate) fn render_network_allowlist_page(
         })
         .map(|this| match &state.status {
             Status::Loading => this.child(
-                Label::new("読み込み中…")
+                Label::new(i18n::t!("Loading…"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             ),
             Status::Missing => this.child(
                 Banner::new().severity(Severity::Info).child(
                     Label::new(
-                        "network_allowlist.json はまだありません。許可リストは空 (ループバックのみ許可) として扱われます。ホストを追加すると作成されます。",
+                        i18n::t!(
+                            "network_allowlist.json does not exist yet. The allowlist is treated as empty (only loopback is allowed). The file is created when you add a host."
+                        ),
                     )
                     .size(LabelSize::Small),
                 ),
@@ -716,7 +741,9 @@ pub(crate) fn render_network_allowlist_page(
                         .child(Label::new(message.clone()).size(LabelSize::Small))
                         .child(
                             Label::new(
-                                "解析できない間は許可リストが空 (ループバックのみ許可) として扱われます。ファイルを直接修正してください。この画面からの編集は無効です。",
+                                i18n::t!(
+                                    "While the file cannot be parsed, the allowlist is treated as empty (only loopback is allowed). Fix the file directly. Editing from this page is disabled."
+                                ),
                             )
                             .size(LabelSize::Small)
                             .color(Color::Muted),
@@ -728,16 +755,20 @@ pub(crate) fn render_network_allowlist_page(
             this.child(
                 v_flex()
                     .gap_4()
-                    .child(SettingsSectionHeader::new("許可するホスト").no_padding(true))
+                    .child(SettingsSectionHeader::new(i18n::t!("Allowed Hosts")).no_padding(true))
                     .child(
                         v_flex()
                             .gap_0p5()
                             .child(
-                                Label::new(format!("登録済み: {entry_count} 件"))
+                                Label::new(i18n::tn!(
+                                    entry_count,
+                                    "{count} entry registered",
+                                    "{count} entries registered"
+                                ))
                                     .size(LabelSize::Small),
                             )
                             .child(
-                                Label::new(HOSTS_DESCRIPTION)
+                                Label::new(i18n::tr(HOSTS_DESCRIPTION))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
@@ -773,25 +804,33 @@ fn render_intro(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
     v_flex()
         .gap_1()
         .child(Label::new(
-            "AI が起点になる外部通信だけを統制します。対象の通信は既定ですべて拒否され、ここに登録したホストだけが許可されます。",
+            i18n::t!(
+                "Controls only outbound traffic that AI initiates. All such traffic is denied by default, and only the hosts registered here are allowed."
+            ),
         ))
         .child(
             Label::new(
-                "対象は、AI プロバイダー (LLM)・エージェントのツール (fetch / ウェブ検索)・MCP サーバー・外部エージェント (ACP) のプロセス・エージェントがサンドボックスで実行するコマンドの外部通信です。言語サーバー・フォーマッタ・デバッグアダプター・拡張機能・本体の更新・リモート開発サーバー・Git・ブラウザーパネルなど、IDE 自身の道具立ての通信は対象外で、制限しません。",
+                i18n::t!(
+                    "This covers outbound traffic from AI providers (LLMs), agent tools (fetch / web search), MCP servers, external agent (ACP) processes, and commands that agents run in the sandbox. Traffic from the IDE's own tooling, such as language servers, formatters, debug adapters, extensions, app updates, remote development servers, Git, and the browser panel, is not covered and is not restricted."
+                ),
             )
             .size(LabelSize::Small)
             .color(Color::Muted),
         )
         .child(
             Label::new(
-                "127.0.0.1 / ::1 / localhost は登録しなくても常に許可されるため、ローカルの LLM サーバー (Ollama など) は許可リストが空のままでも利用できます。外部エージェント (ACP) のレジストリなど、ごく一部のホストは組み込みで許可済みです。リダイレクト先も 1 ホップごとに同じ判定を受けます。",
+                i18n::t!(
+                    "127.0.0.1 / ::1 / localhost are always allowed without being registered, so local LLM servers (such as Ollama) work even with an empty allowlist. A small number of hosts, such as the external agent (ACP) registry, are allowed by built-in rules. Every redirect target is checked the same way, one hop at a time."
+                ),
             )
             .size(LabelSize::Small)
             .color(Color::Muted),
         )
         .child(
             Label::new(
-                "「AI」ページの「サンドボックス」は、エージェントが実行するコマンドの隔離 (アクセスできるドメインと書き込み先の制限) を扱う別の設定です。ただし、そちらで許可したドメインが効くのはこのリストの範囲内だけです。サンドボックス側は許可を広げるのではなく、この範囲をさらに狭めるものと考えてください。",
+                i18n::t!(
+                    "\"Sandbox\" on the \"AI\" page is a separate setting that isolates the commands agents run (restricting which domains they can reach and where they can write). However, domains allowed there take effect only within this list. Think of the sandbox as narrowing this scope further rather than widening what is allowed."
+                ),
             )
             .size(LabelSize::Small)
             .color(Color::Muted),
@@ -809,15 +848,18 @@ fn render_child_process_proxy(enabled: bool, cx: &mut Context<SettingsWindow>) -
 
     v_flex()
         .gap_4()
-        .child(SettingsSectionHeader::new("子プロセスの外部通信").no_padding(true))
+        .child(
+            SettingsSectionHeader::new(i18n::t!("Outbound Traffic from Child Processes"))
+                .no_padding(true),
+        )
         .child(
             v_flex()
                 .gap_1()
                 .child(
                     SwitchField::new(
                         "network-allowlist-proxy-child-processes",
-                        Some("AI エージェントの子プロセスにプロキシを適用"),
-                        Some(PROXY_CHILD_PROCESSES_DESCRIPTION.into()),
+                        Some(i18n::t!("Apply the Proxy to AI Agent Child Processes")),
+                        Some(i18n::tr(PROXY_CHILD_PROCESSES_DESCRIPTION).into()),
                         enabled,
                         move |state, _window, cx| {
                             let enabled = *state == ToggleState::Selected;
@@ -831,7 +873,7 @@ fn render_child_process_proxy(enabled: bool, cx: &mut Context<SettingsWindow>) -
                     .tab_index(0),
                 )
                 .child(
-                    Label::new(PROXY_CHILD_PROCESSES_NOTE)
+                    Label::new(i18n::tr(PROXY_CHILD_PROCESSES_NOTE))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 ),
@@ -850,7 +892,7 @@ fn render_file_actions(
     h_flex()
         .gap_1()
         .child(
-            Button::new("network-allowlist-reload", "再読み込み")
+            Button::new("network-allowlist-reload", i18n::t!("Reload"))
                 .label_size(LabelSize::Small)
                 .color(Color::Muted)
                 .disabled(is_loading)
@@ -859,7 +901,7 @@ fn render_file_actions(
                         .color(Color::Muted)
                         .size(IconSize::XSmall),
                 )
-                .tooltip(Tooltip::text("ファイルを読み直します"))
+                .tooltip(Tooltip::text(i18n::t!("Read the file again")))
                 .on_click(cx.listener(|this, _, _, cx| {
                     load_network_allowlist(this, cx);
                 })),
@@ -867,7 +909,7 @@ fn render_file_actions(
         .child(
             Button::new(
                 "network-allowlist-open-file",
-                "network_allowlist.json をエディターで開く",
+                i18n::t!("Open network_allowlist.json in Editor"),
             )
             .label_size(LabelSize::Small)
             .color(Color::Muted)
@@ -878,10 +920,12 @@ fn render_file_actions(
                     .size(IconSize::XSmall),
             )
             .tooltip(Tooltip::text(
-                "設定ウィンドウを閉じ、ファイルをエディターで開きます。ファイルが無い場合は作成します",
+                i18n::t!(
+                    "Closes the settings window and opens the file in the editor. Creates the file if it does not exist"
+                ),
             ))
             .on_click(cx.listener(|this, _, window, cx| {
-                this.open_network_allowlist_file(FILE_TEMPLATE, window, cx);
+                this.open_network_allowlist_file(file_template(), window, cx);
             })),
         )
 }
@@ -894,9 +938,11 @@ fn render_empty_state(border_color: gpui::Hsla) -> AnyElement {
         .border_dashed()
         .border_color(border_color)
         .child(
-            Label::new("設定されていません (ループバック以外はすべて拒否されます)")
-                .size(LabelSize::Small)
-                .color(Color::Disabled),
+            Label::new(i18n::t!(
+                "No hosts configured (everything except loopback is denied)"
+            ))
+            .size(LabelSize::Small)
+            .color(Color::Disabled),
         )
         .into_any_element()
 }
@@ -914,7 +960,7 @@ fn render_host_row(index: usize, host: String, cx: &mut Context<SettingsWindow>)
         } else {
             Color::Error
         })
-        .aria_label("許可するホスト")
+        .aria_label(i18n::t!("Allowed host"))
         .action_slot(
             IconButton::new(
                 format!("network-allowlist-host-delete-{index}"),
@@ -922,7 +968,7 @@ fn render_host_row(index: usize, host: String, cx: &mut Context<SettingsWindow>)
             )
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
-            .tooltip(Tooltip::text("ホストを削除"))
+            .tooltip(Tooltip::text(i18n::t!("Remove Host")))
             .on_click(cx.listener(move |this, _, _, cx| {
                 remove_host(this, index, cx);
             })),
@@ -945,9 +991,11 @@ fn render_host_row(index: usize, host: String, cx: &mut Context<SettingsWindow>)
             .gap_0p5()
             .child(field)
             .child(
-                Label::new("形式が正しくないため、この項目は無視されます。")
-                    .size(LabelSize::Small)
-                    .color(Color::Error),
+                Label::new(i18n::t!(
+                    "This entry is ignored because its format is invalid."
+                ))
+                .size(LabelSize::Small)
+                .color(Color::Error),
             )
             .into_any_element()
     }
@@ -957,7 +1005,9 @@ fn render_add_host_input(cx: &mut Context<SettingsWindow>) -> AnyElement {
     let settings_window = cx.entity().downgrade();
 
     SettingsInputField::new("network-allowlist-host-new")
-        .with_placeholder("ホストを追加 (例: api.anthropic.com、*.corp.example)…")
+        .with_placeholder(i18n::t!(
+            "Add a host (for example, api.anthropic.com, *.corp.example)…"
+        ))
         .tab_index(0)
         .with_buffer_font()
         .display_clear_button()
@@ -1363,6 +1413,31 @@ mod tests {
             broken,
             "a file that cannot be parsed must be left exactly as it was"
         );
+    }
+
+    /// The header is translated and the body is not; the file created from the
+    /// two has to be an empty allowlist.
+    #[test]
+    fn the_file_template_is_an_empty_allowlist() {
+        let template = file_template();
+        assert!(template.starts_with(FILE_TEMPLATE_HEADER));
+        let parsed: NetworkAllowlistFile =
+            settings_json::parse_json_with_comments(&template).expect("the template should parse");
+        assert!(parsed.allowed_hosts.is_empty());
+        assert_eq!(parsed.proxy_child_processes, None);
+
+        // Built when the button is clicked, so it follows a language switch.
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let japanese = file_template();
+        assert!(
+            japanese.starts_with("// zed-jp-enhance 外部通信の許可リスト"),
+            "{japanese}"
+        );
+        let parsed: NetworkAllowlistFile = settings_json::parse_json_with_comments(&japanese)
+            .expect("the translated template should parse");
+        assert!(parsed.allowed_hosts.is_empty());
     }
 
     #[test]

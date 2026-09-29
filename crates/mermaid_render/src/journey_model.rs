@@ -124,7 +124,7 @@ impl JourneyDocument {
             && !is_valid_journey_title(title)
         {
             return Some(
-                "タイトルに改行と `#` `;` は使えません (前後の空白だけにもできません)。"
+                i18n::t!("The title cannot contain line breaks, `#` or `;` (and cannot start or end with whitespace).")
                     .to_string(),
             );
         }
@@ -132,13 +132,13 @@ impl JourneyDocument {
         for (index, section) in self.sections.iter().enumerate() {
             match &section.name {
                 Some(name) if !is_valid_journey_section_name(name) => {
-                    return Some(format!(
-                        "セクション名 `{name}` は使えません (`:` `#` `;` と改行は不可、空にもできません)。"
+                    return Some(i18n::t!(
+                        "The section name `{name}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty)."
                     ));
                 }
                 None if index > 0 => {
                     return Some(
-                        "2 つ目以降のセクションには名前が必要です (名前が無いと 1 つ上のセクションと 1 つになります)。"
+                        i18n::t!("Every section after the first needs a name (without one, it merges with the section above).")
                             .to_string(),
                     );
                 }
@@ -148,20 +148,21 @@ impl JourneyDocument {
 
         for task in self.tasks() {
             if !is_valid_journey_task_name(&task.name) {
-                return Some(format!(
-                    "作業名 `{}` は使えません (`:` `#` `;` と改行は不可、空にもできません。`title ` `section ` `accTitle` `accDescr` `%%` で始めることもできません)。",
+                return Some(i18n::t!(
+                    "The task name `{}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty. It also cannot start with `title `, `section `, `accTitle`, `accDescr` or `%%`).",
                     task.name
                 ));
             }
             if !JOURNEY_SCORES.contains(&task.score) {
-                return Some(format!(
-                    "作業 `{}` の満足度 {} は 1〜5 にしてください。",
-                    task.name, task.score
+                return Some(i18n::t!(
+                    "Task `{}` has a score of {}. Use a score from 1 to 5.",
+                    task.name,
+                    task.score
                 ));
             }
             if !are_valid_journey_people(&task.people) {
-                return Some(format!(
-                    "作業 `{}` の担当者 `{}` は書けません (名前に `:` `,` `#` `;` と改行は不可、空の名前も不可)。",
+                return Some(i18n::t!(
+                    "Task `{}` cannot list the people `{}` (names cannot contain `:`, `,`, `#`, `;` or line breaks, and cannot be empty).",
                     task.name,
                     task.people.join(", ")
                 ));
@@ -186,11 +187,13 @@ pub fn parse_journey(source: &str) -> Result<JourneyDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Journey(_)) {
-            bail!("この図はユーザージャーニーではありません。");
+            bail!(i18n::t!("This diagram is not a user journey."));
         }
     }
 
@@ -209,12 +212,14 @@ fn scan_journey(source: &str) -> Result<JourneyDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = keyword_tail(header, HEADER) else {
-        bail!("ユーザージャーニーではありません (`journey` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a user journey (only diagrams that start with `journey` can be edited in the structured editor)."
+        ));
     };
     if !tail.is_empty() {
-        bail!(
-            "`journey` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "`{tail}` on the `journey` line is not supported by the structured editor. Edit it as text."
+        ));
     }
 
     let mut index = header_index + 1;
@@ -238,9 +243,9 @@ fn scan_journey(source: &str) -> Result<JourneyDocument> {
             }
             let text = join_lines(lines.get(start..index).unwrap_or_default());
             if let Some(rest) = text_after_directive(&text) {
-                bail!(
-                    "指示子 `%%{{…}}%%` の後ろの `{rest}` は Mermaid が文として読みますが、構造化編集ではコメントと一緒に動いてしまいます。指示子を独立した行にしてください。"
-                );
+                bail!(i18n::t!(
+                    "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a statement, but the structured editor would move it along with the comments. Put the directive on a line of its own."
+                ));
             }
             document
                 .preserved_lines
@@ -251,9 +256,9 @@ fn scan_journey(source: &str) -> Result<JourneyDocument> {
             // Mermaid turns `#name;` into an entity before it reads the line,
             // so such a line is not the comment it looks like.
             if entity_length(trimmed.as_bytes()).is_some() {
-                bail!(
-                    "`{trimmed}` は Mermaid が文字参照として読むので、コメントとして残せません。テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "Mermaid reads `{trimmed}` as a character reference, so it cannot be kept as a comment. Edit it as text."
+                ));
             }
             document.preserved_lines.push(PreservedLine {
                 position,
@@ -263,18 +268,18 @@ fn scan_journey(source: &str) -> Result<JourneyDocument> {
         }
 
         if drops_hex_style_semicolon(line) {
-            bail!(
-                "`style` か `classDef` の後の `:#…` に続く `;` は Mermaid が消してから読むので、書き戻すと意味が変わります ({trimmed})。`:` の後に空白を入れるか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Mermaid removes the `;` that follows `:#…` after `style` or `classDef` before reading the line, so writing it back would change its meaning ({trimmed}). Add a space after the `:`, or edit it as text."
+            ));
         }
         let statement = match statement_end(line) {
             Some(end) => {
                 // A lone `;` at the end is a statement separator with nothing
                 // after it, so dropping it loses nothing.
                 if line.get(end..).unwrap_or_default().trim() != ";" {
-                    bail!(
-                        "`#` や `;` から先は Mermaid が読み飛ばします ({trimmed})。消すか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "Mermaid skips everything from `#` or `;` on ({trimmed}). Remove it, or edit it as text."
+                    ));
                 }
                 line.get(..end).unwrap_or_default()
             }
@@ -301,9 +306,9 @@ fn scan_journey(source: &str) -> Result<JourneyDocument> {
                 // empty one, which clears the title — would make writing the
                 // journey back drop a line the user can see.
                 if seen_title {
-                    bail!(
-                        "`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`title` is written twice. Merge them into one, then open it again."
+                    ));
                 }
                 seen_title = true;
                 let value = value.trim();
@@ -313,15 +318,15 @@ fn scan_journey(source: &str) -> Result<JourneyDocument> {
             }
             Statement::Section(value) => {
                 if value.contains(':') {
-                    bail!(
-                        "セクション名の `:` から先は Mermaid が読み飛ばします ({trimmed})。`:` を消すか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "Mermaid skips everything in a section name from `:` on ({trimmed}). Delete the `:`, or edit it as text."
+                    ));
                 }
                 let name = value.trim();
                 if name.is_empty() {
-                    bail!(
-                        "名前の無い `section` は構造化編集に対応していません ({trimmed})。名前を付けるか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "A `section` without a name is not supported by the structured editor ({trimmed}). Give it a name, or edit it as text."
+                    ));
                 }
                 document.sections.push(JourneySection {
                     name: Some(name.to_string()),
@@ -343,9 +348,9 @@ fn scan_journey(source: &str) -> Result<JourneyDocument> {
                 position = PreservedPosition::Bottom;
             }
             Statement::Unknown => {
-                bail!(
-                    "`{trimmed}` は作業 (`名前: 満足度: 担当者`) としても他の文としても読めません。テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "`{trimmed}` cannot be read as a task (`name: score: people`) or as any other statement. Edit it as text."
+                ));
             }
         }
     }
@@ -501,15 +506,15 @@ fn statement_end(text: &str) -> Option<usize> {
 fn parse_task(name: &str, data: &str, trimmed: &str) -> Result<JourneyTask> {
     let name = name.trim();
     if name.is_empty() {
-        bail!(
-            "作業名の無い行は Mermaid が読み飛ばします ({trimmed})。名前を付けるか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid skips a line without a task name ({trimmed}). Give it a name, or edit it as text."
+        ));
     }
     let pieces = data.split(':').collect::<Vec<_>>();
     if pieces.len() > 2 {
-        bail!(
-            "3 つ目の `:` から先は Mermaid が読み飛ばします ({trimmed})。`:` を消すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid skips everything from the third `:` on ({trimmed}). Remove the `:`, or edit it as text."
+        ));
     }
     let score_text = pieces.first().copied().unwrap_or_default().trim();
     let score = score_text
@@ -519,9 +524,9 @@ fn parse_task(name: &str, data: &str, trimmed: &str) -> Result<JourneyTask> {
             score_text.bytes().all(|byte| byte.is_ascii_digit()) && JOURNEY_SCORES.contains(score)
         })
         .ok_or_else(|| {
-            anyhow!(
-                "満足度 `{score_text}` は構造化編集に対応していません ({trimmed})。1〜5 の整数にするか、テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "The score `{score_text}` is not supported by the structured editor ({trimmed}). Use a whole number from 1 to 5, or edit it as text."
+            ))
         })?;
     let people = match pieces.get(1) {
         None => Vec::new(),
@@ -531,9 +536,9 @@ fn parse_task(name: &str, data: &str, trimmed: &str) -> Result<JourneyTask> {
                 .map(|person| person.trim().to_string())
                 .collect::<Vec<_>>();
             if people.len() > 1 && people.iter().any(String::is_empty) {
-                bail!(
-                    "空の担当者名があります ({trimmed})。消すか、テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "One of the people has an empty name ({trimmed}). Remove it, or edit it as text."
+                ));
             }
             people
         }
@@ -872,29 +877,32 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
         for (source, expected) in [
-            ("journey\n    title a\n    title b", "2 回"),
-            ("journey\n    title a\n    title ", "2 回"),
-            ("journey\n    section 前半: 補足\n    A: 5", "`:` から先"),
-            ("journey\n    section \n    A: 5", "名前の無い"),
-            ("journey\n    A: 5: Me # メモ", "`#` や `;`"),
-            ("journey\n    A: 5: Me; B: 3: Me", "`#` や `;`"),
-            ("journey\n    A: 5: Me: 補足", "3 つ目"),
-            ("journey\n    A: 7: Me", "満足度 `7`"),
-            ("journey\n    A: 2.5: Me", "満足度 `2.5`"),
-            ("journey\n    A: : Me", "満足度 ``"),
-            ("journey\n    A:", "満足度 ``"),
-            ("journey\n    A: 5: Me, , You", "空の担当者名"),
-            ("journey\n    : 5: Me", "作業名の無い"),
-            ("journey\n    #x; 何か: 5", "文字参照"),
-            ("journey\n    作業だけ", "読めません"),
-            ("journey LR\n    A: 5", "`journey` の行"),
+            ("journey\n    title a\n    title b", "written twice"),
+            ("journey\n    title a\n    title ", "written twice"),
+            (
+                "journey\n    section 前半: 補足\n    A: 5",
+                "section name from `:` on",
+            ),
+            ("journey\n    section \n    A: 5", "without a name"),
+            ("journey\n    A: 5: Me # メモ", "from `#` or `;` on"),
+            ("journey\n    A: 5: Me; B: 3: Me", "from `#` or `;` on"),
+            ("journey\n    A: 5: Me: 補足", "third `:`"),
+            ("journey\n    A: 7: Me", "score `7`"),
+            ("journey\n    A: 2.5: Me", "score `2.5`"),
+            ("journey\n    A: : Me", "score ``"),
+            ("journey\n    A:", "score ``"),
+            ("journey\n    A: 5: Me, , You", "empty name"),
+            ("journey\n    : 5: Me", "without a task name"),
+            ("journey\n    #x; 何か: 5", "character reference"),
+            ("journey\n    作業だけ", "cannot be read as a task"),
+            ("journey LR\n    A: 5", "on the `journey` line"),
             (
                 "journey\n    section 前半\n      A: 3\n    %%{init: {}}%% section 後半\n      B: 4",
-                "指示子",
+                "after the directive",
             ),
             (
                 "journey\n    title 甲\n    %%{init: {}}%% title 乙",
-                "指示子",
+                "after the directive",
             ),
             ("journey\n    Lifestyle: 3:#9829;", "`style`"),
         ] {
@@ -979,35 +987,35 @@ mod tests {
         assert_eq!(document.structure_error(), None);
 
         let edits: [(&str, fn(&mut JourneyDocument)); 7] = [
-            ("タイトル", |document| {
+            ("The title", |document| {
                 document.title = Some("a # b".to_string())
             }),
-            ("セクション名", |document| {
+            ("section name", |document| {
                 if let Some(section) = document.sections.get_mut(0) {
                     section.name = Some("a: b".to_string());
                 }
             }),
-            ("2 つ目以降", |document| {
+            ("after the first", |document| {
                 if let Some(section) = document.sections.get_mut(1) {
                     section.name = None;
                 }
             }),
-            ("作業名", |document| {
+            ("task name", |document| {
                 if let Some(task) = first_task(document) {
                     task.name = "section 次".to_string();
                 }
             }),
-            ("作業名", |document| {
+            ("task name", |document| {
                 if let Some(task) = first_task(document) {
                     task.name = "a: b".to_string();
                 }
             }),
-            ("満足度", |document| {
+            ("score of", |document| {
                 if let Some(task) = first_task(document) {
                     task.score = 0;
                 }
             }),
-            ("担当者", |document| {
+            ("cannot list the people", |document| {
                 if let Some(task) = first_task(document) {
                     task.people = vec!["a".to_string(), String::new()];
                 }

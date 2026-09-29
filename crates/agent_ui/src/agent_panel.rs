@@ -1037,7 +1037,7 @@ pub fn init(cx: &mut App) {
                     // nothing is sent.
                     let Some(repository) = project.read(cx).active_repository(cx) else {
                         workspace.show_error(
-                            anyhow::anyhow!("レビューするリポジトリが見つかりません。"),
+                            anyhow::anyhow!(i18n::t!("Could not find a repository to review.")),
                             cx,
                         );
                         return;
@@ -1542,19 +1542,19 @@ fn format_timestamp_human(dt: &DateTime<Utc>) -> String {
     let duration = now.signed_duration_since(*dt);
 
     let relative = if duration.num_seconds() < 0 {
-        "未来".to_string()
+        i18n::t!("in the future").to_string()
     } else if duration.num_seconds() < 60 {
         let seconds = duration.num_seconds();
-        format!("{seconds} 秒前")
+        i18n::t!("{seconds} seconds ago")
     } else if duration.num_minutes() < 60 {
         let minutes = duration.num_minutes();
-        format!("{minutes} 分前")
+        i18n::t!("{minutes} minutes ago")
     } else if duration.num_hours() < 24 {
         let hours = duration.num_hours();
-        format!("{hours} 時間前")
+        i18n::t!("{hours} hours ago")
     } else {
         let days = duration.num_days();
-        format!("{days} 日前")
+        i18n::t!("{days} days ago")
     };
 
     format!("{} ({})", dt.to_rfc3339(), relative)
@@ -4873,7 +4873,7 @@ impl AgentPanel {
         let Some(thread) = self.active_native_agent_thread(cx) else {
             Self::show_deferred_toast(
                 &self.workspace,
-                "コピーできるネイティブスレッドがありません。",
+                i18n::t!("No active native thread to copy"),
                 cx,
             );
             return;
@@ -4896,7 +4896,7 @@ impl AgentPanel {
                         workspace.show_toast(
                             workspace::Toast::new(
                                 workspace::notifications::NotificationId::unique::<ThreadCopiedToast>(),
-                                "スレッドをクリップボードにコピーしました (base64 エンコード)。",
+                                i18n::t!("Thread copied to clipboard (base64 encoded)"),
                             )
                             .autohide(),
                             cx,
@@ -4937,21 +4937,25 @@ impl AgentPanel {
         if !self.has_open_project(cx) {
             Self::show_deferred_toast(
                 &self.workspace,
-                "スレッドを読み込むにはプロジェクトを開いてください。",
+                i18n::t!("Open a project to load a thread"),
                 cx,
             );
             return;
         }
 
         let Some(clipboard) = cx.read_from_clipboard() else {
-            Self::show_deferred_toast(&self.workspace, "クリップボードに内容がありません。", cx);
+            Self::show_deferred_toast(
+                &self.workspace,
+                i18n::t!("No clipboard content available"),
+                cx,
+            );
             return;
         };
 
         let Some(encoded) = clipboard.text() else {
             Self::show_deferred_toast(
                 &self.workspace,
-                "クリップボードにテキストが含まれていません。",
+                i18n::t!("Clipboard does not contain text"),
                 cx,
             );
             return;
@@ -4963,7 +4967,7 @@ impl AgentPanel {
             Err(_) => {
                 Self::show_deferred_toast(
                     &self.workspace,
-                    "クリップボードの内容をデコードできませんでした (base64 が必要です)。",
+                    i18n::t!("Failed to decode clipboard content (expected base64)"),
                     cx,
                 );
                 return;
@@ -4975,7 +4979,7 @@ impl AgentPanel {
             Err(_) => {
                 Self::show_deferred_toast(
                     &self.workspace,
-                    "クリップボードのスレッドデータを解析できませんでした。",
+                    i18n::t!("Failed to parse thread data from clipboard"),
                     cx,
                 );
                 return;
@@ -5006,7 +5010,7 @@ impl AgentPanel {
                         workspace.show_toast(
                             workspace::Toast::new(
                                 workspace::notifications::NotificationId::unique::<ThreadLoadedToast>(),
-                                "クリップボードからスレッドを読み込みました。",
+                                i18n::t!("Thread loaded from clipboard"),
                             )
                             .autohide(),
                             cx,
@@ -6282,7 +6286,7 @@ impl AgentPanel {
             .read(cx)
             .active_item()
             .map(|item| item.tab_content_text(0, cx))
-            .unwrap_or_else(|| SharedString::new_static("タブ"))
+            .unwrap_or_else(|| SharedString::new_static(i18n::t!("Tab")))
     }
 
     fn visible_font_size(&self) -> WhichFontSize {
@@ -7016,7 +7020,7 @@ fn new_thread_pane(
                                 .icon_size(IconSize::Small)
                                 .tooltip(move |_, cx| {
                                     Tooltip::for_action_in(
-                                        "新しいスレッド",
+                                        i18n::t!("New Thread"),
                                         &NewThread,
                                         &focus_handle,
                                         cx,
@@ -7041,7 +7045,7 @@ fn new_thread_pane(
                         .child(
                             IconButton::new("agent-panel-split-right", IconName::Split)
                                 .icon_size(IconSize::Small)
-                                .tooltip(Tooltip::text("右に分割"))
+                                .tooltip(Tooltip::text(i18n::t!("Split Right")))
                                 .on_click(move |_, window, cx| {
                                     split_panel
                                         .update(cx, |panel, cx| {
@@ -7199,7 +7203,7 @@ impl Panel for AgentPanel {
     }
 
     fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("エージェントパネル")
+        Some(i18n::t!("Agent Panel"))
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {
@@ -7613,7 +7617,9 @@ impl AgentPanel {
                                         .icon_size(IconSize::Small)
                                         .tooltip(move |_window, cx| {
                                             Tooltip::with_meta(
-                                                "タイトルの生成に失敗しました。クリックすると再試行します。",
+                                                i18n::t!(
+                                                    "Title generation failed. Click to retry."
+                                                ),
                                                 None,
                                                 title_generation_error.clone(),
                                                 cx,
@@ -7681,7 +7687,7 @@ impl AgentPanel {
                             .into_any_element()
                     }
                 } else {
-                    Label::new("ターミナル").into_any_element()
+                    Label::new(i18n::t!("Terminal")).into_any_element()
                 }
             }
             VisibleSurface::PaneItem => Label::new(self.pane_item_toolbar_title(cx))
@@ -7690,7 +7696,7 @@ impl AgentPanel {
                 .into_any_element(),
 
             VisibleSurface::Uninitialized => {
-                Label::new("エージェント").truncate().into_any_element()
+                Label::new(i18n::t!("Agent")).truncate().into_any_element()
             }
         };
 
@@ -7725,7 +7731,7 @@ impl AgentPanel {
                             .child(
                                 IconButton::new("edit_tile", IconName::Pencil)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("スレッドタイトルを編集")),
+                                    .tooltip(Tooltip::text(i18n::t!("Edit Thread Title"))),
                             ),
                     )
             })
@@ -7735,7 +7741,7 @@ impl AgentPanel {
     fn show_no_thread_summary_model_toast(workspace: Entity<Workspace>, cx: &mut App) {
         workspace.update(cx, |workspace, cx| {
             let toast = StatusToast::new(
-                "スレッドタイトルの要約に使用するモデルが構成されていません。",
+                i18n::t!("No model is configured for summarizing thread titles."),
                 cx,
                 |this, _cx| {
                     this.icon(
@@ -7828,7 +7834,7 @@ impl AgentPanel {
                     .icon_size(IconSize::Small),
                 move |_window, cx| {
                     Tooltip::for_action_in(
-                        "エージェントメニューの表示切り替え",
+                        i18n::t!("Toggle Agent Menu"),
                         &ToggleOptionsMenu,
                         &focus_handle,
                         cx,
@@ -7847,9 +7853,12 @@ impl AgentPanel {
                         // ドラッグ / 別ウィンドウ) が効く。
                         if conversation_view.is_some() {
                             menu = menu
-                                .header("表示")
-                                .action("スレッドをタブで開く", Box::new(OpenThreadInTab))
-                                .action("スレッドを右に分割して開く", Box::new(OpenThreadInSplit))
+                                .header(i18n::t!("View"))
+                                .action(i18n::t!("Open Thread in Tab"), Box::new(OpenThreadInTab))
+                                .action(
+                                    i18n::t!("Open Thread in Right Split"),
+                                    Box::new(OpenThreadInSplit),
+                                )
                                 .separator();
                         }
 
@@ -7860,9 +7869,11 @@ impl AgentPanel {
                         {
                             let conversation_view = conversation_view.downgrade();
                             menu = menu
-                                .header("サンドボックス")
+                                .header(i18n::t!("Sandbox"))
                                 .entry(
-                                    crate::conversation_view::RESTART_OUTSIDE_SANDBOX_LABEL,
+                                    i18n::tr(
+                                        crate::conversation_view::RESTART_OUTSIDE_SANDBOX_LABEL,
+                                    ),
                                     None,
                                     move |window, cx| {
                                         conversation_view
@@ -7876,29 +7887,28 @@ impl AgentPanel {
                         }
 
                         if has_thread_messages {
-                            menu = menu.header("現在のスレッド");
+                            menu = menu.header(i18n::t!("Current Thread"));
 
                             if let Some(conversation_view) = conversation_view.as_ref() {
                                 if can_regenerate_thread_title {
-                                    menu =
-                                        menu.entry("スレッドタイトルを再生成", None, {
-                                            let conversation_view = conversation_view.clone();
-                                            let workspace = workspace.clone();
-                                            move |_, cx| {
-                                                Self::handle_regenerate_thread_title(
-                                                    conversation_view.clone(),
-                                                    workspace.clone(),
-                                                    cx,
-                                                );
-                                            }
-                                        });
+                                    menu = menu.entry(i18n::t!("Regenerate Thread Title"), None, {
+                                        let conversation_view = conversation_view.clone();
+                                        let workspace = workspace.clone();
+                                        move |_, cx| {
+                                            Self::handle_regenerate_thread_title(
+                                                conversation_view.clone(),
+                                                workspace.clone(),
+                                                cx,
+                                            );
+                                        }
+                                    });
                                 }
 
                                 let root_thread_view =
                                     conversation_view.read(cx).root_thread_view();
                                 if let Some(thread_view) = root_thread_view {
                                     let workspace = workspace.clone();
-                                    menu = menu.entry("スレッドを Markdown で開く", None, {
+                                    menu = menu.entry(i18n::t!("Open Thread as Markdown"), None, {
                                         move |window, cx| {
                                             if let Some(workspace) = workspace.upgrade() {
                                                 thread_view.update(cx, |thread_view, cx| {
@@ -7919,16 +7929,16 @@ impl AgentPanel {
 
                         if !showing_terminal {
                             menu = menu
-                                .header("MCP サーバー")
+                                .header(i18n::t!("MCP Servers"))
                                 .action(
-                                    "サーバーを追加…",
+                                    i18n::t!("Add Server…"),
                                     Box::new(zed_actions::OpenSettingsAt {
                                         path: "context_servers".to_string(),
                                         target: None,
                                     }),
                                 )
                                 .action(
-                                    "新しいサーバーをインストール…",
+                                    i18n::t!("Install New Servers…"),
                                     Box::new(zed_actions::Extensions {
                                         category_filter: Some(
                                             zed_actions::ExtensionCategoryFilter::ContextServers,
@@ -7937,8 +7947,8 @@ impl AgentPanel {
                                     }),
                                 )
                                 .separator()
-                                .header("コンテキスト")
-                                .action("スキル", Box::new(ManageSkills));
+                                .header(i18n::t!("Context"))
+                                .action(i18n::t!("Skills"), Box::new(ManageSkills));
 
                             if project_agents_md_path.is_some() || global_agents_md_loaded {
                                 if global_agents_md_loaded {
@@ -7949,7 +7959,7 @@ impl AgentPanel {
                                             h_flex()
                                                 .w_full()
                                                 .gap_1()
-                                                .child(Label::new("グローバルルールを開く"))
+                                                .child(Label::new(i18n::t!("Open Global Rules")))
                                                 .child(
                                                     Label::new("(AGENTS.md)")
                                                         .color(Color::Muted)
@@ -7974,7 +7984,7 @@ impl AgentPanel {
                                             h_flex()
                                                 .w_full()
                                                 .gap_1()
-                                                .child(Label::new("プロジェクトルールを開く"))
+                                                .child(Label::new(i18n::t!("Open Project Rules")))
                                                 .child(
                                                     Label::new("(AGENTS.md)")
                                                         .color(Color::Muted)
@@ -7995,24 +8005,24 @@ impl AgentPanel {
 
                             menu = menu
                                 .separator()
-                                .action("プロファイル", Box::new(ManageProfiles::default()));
+                                .action(i18n::t!("Profiles"), Box::new(ManageProfiles::default()));
                         }
 
                         menu = menu
-                            .action("設定", Box::new(OpenSettings))
+                            .action(i18n::t!("Settings"), Box::new(OpenSettings))
                             .separator()
                             .action(
-                                "パネル内のスレッド履歴の切り替え",
+                                i18n::t!("Toggle Thread History in Panel"),
                                 Box::new(TogglePanelThreadHistory),
                             )
-                            .submenu("タブバー", {
+                            .submenu(i18n::t!("Tab Bar"), {
                                 let fs = fs.clone();
                                 move |mut menu, _window, cx| {
                                     let current = AgentSettings::get_global(cx).panel_tab_bar;
                                     for (mode, label) in [
-                                        (PanelTabBar::Auto, "自動"),
-                                        (PanelTabBar::Always, "常に表示"),
-                                        (PanelTabBar::Never, "表示しない"),
+                                        (PanelTabBar::Auto, i18n::tc!("PanelTabBar", "Auto")),
+                                        (PanelTabBar::Always, i18n::tc!("PanelTabBar", "Always")),
+                                        (PanelTabBar::Never, i18n::tc!("PanelTabBar", "Never")),
                                     ] {
                                         let fs = fs.clone();
                                         menu = menu.toggleable_entry(
@@ -8039,7 +8049,7 @@ impl AgentPanel {
                             })
                             .when(AgentSettings::get_global(cx).sidebar_enabled, |menu| {
                                 menu.action(
-                                    "スレッドサイドバーの切り替え",
+                                    i18n::t!("Toggle Threads Sidebar"),
                                     Box::new(ToggleWorkspaceSidebar),
                                 )
                             });
@@ -8048,10 +8058,11 @@ impl AgentPanel {
                             menu = menu.separator()
                         }
                         if has_auth_methods {
-                            menu = menu.action("再認証", Box::new(ReauthenticateAgent))
+                            menu = menu
+                                .action(i18n::t!("Reauthenticate"), Box::new(ReauthenticateAgent))
                         }
                         if supports_logout {
-                            menu = menu.action("ログアウト", Box::new(LogoutAgent))
+                            menu = menu.action(i18n::t!("Log Out"), Box::new(LogoutAgent))
                         }
 
                         if let Some(conversation_view) = conversation_view.as_ref() {
@@ -8075,7 +8086,7 @@ impl AgentPanel {
         let focus_handle = self.focus_handle(cx);
 
         ProjectEmptyState::new(
-            "エージェントパネル",
+            i18n::t!("Agent Panel"),
             focus_handle.clone(),
             KeyBinding::for_action_in(&workspace::Open::default(), &focus_handle, cx),
         )
@@ -8100,7 +8111,7 @@ impl AgentPanel {
         let showing_pane_item = matches!(self.visible_surface(), VisibleSurface::PaneItem);
 
         let (selected_agent_custom_icon, selected_agent_label) = if showing_terminal {
-            (None, SharedString::from("ターミナル"))
+            (None, SharedString::from(i18n::t!("Terminal")))
         } else if showing_pane_item {
             (None, self.pane_item_toolbar_title(cx))
         } else if let Agent::Custom { id, .. } = &self.selected_agent {
@@ -8167,7 +8178,7 @@ impl AgentPanel {
                         )
                         .when(supports_terminal, |menu| {
                             menu.item(
-                                ContextMenuEntry::new("ターミナル")
+                                ContextMenuEntry::new(i18n::t!("Terminal"))
                                     .when(showing_terminal, |this| this.action(Box::new(NewThread)))
                                     .when(!showing_terminal, |this| {
                                         this.action(Box::new(NewTerminalThread))
@@ -8200,7 +8211,7 @@ impl AgentPanel {
                             // 起動は `LaunchClaudeCode` に任せる: ここでパネルを
                             // 直接触るとペインのリースが二重になる。
                             .item(
-                                ContextMenuEntry::new("Claude Code を起動")
+                                ContextMenuEntry::new(i18n::t!("Launch Claude Code"))
                                     .action(Box::new(
                                         zed_actions::terminal::LaunchClaudeCode::default(),
                                     ))
@@ -8209,10 +8220,9 @@ impl AgentPanel {
                                     .documentation_aside(
                                         crate::ui::documentation_aside_side(cx),
                                         |_| {
-                                            Label::new(
-                                                "公式の Claude Code CLI をこのパネルのタブで\
-                                                 起動します。ログインは CLI の画面で行います。",
-                                            )
+                                            Label::new(i18n::t!(
+                                                "Launches the official Claude Code CLI in a tab of this panel. You sign in on the CLI's screen."
+                                            ))
                                             .into_any_element()
                                         },
                                     )
@@ -8229,7 +8239,9 @@ impl AgentPanel {
                             // 外で動かしたい人の入口。確認はアクション側で毎回
                             // (設定で常に外にしていれば出さない)。
                             .item(
-                                ContextMenuEntry::new("Claude Code をサンドボックスの外で起動…")
+                                ContextMenuEntry::new(i18n::t!(
+                                    "Launch Claude Code Outside the Sandbox…"
+                                ))
                                     .action(Box::new(
                                         zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
                                     ))
@@ -8238,11 +8250,9 @@ impl AgentPanel {
                                     .documentation_aside(
                                         crate::ui::documentation_aside_side(cx),
                                         |_| {
-                                            Label::new(
-                                                "書き込みの制限がなくなり、通信の制限は\
-                                                 プロキシを読むものにだけ効きます。\n\
-                                                 ログインは普段の Claude Code と共有します。",
-                                            )
+                                            Label::new(i18n::t!(
+                                                "Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings.\nThe sign-in is shared with your usual Claude Code."
+                                            ))
                                             .into_any_element()
                                         },
                                     )
@@ -8261,7 +8271,7 @@ impl AgentPanel {
                                 external_agent_menu_items(agent_server_store.read(cx), cx);
 
                             if !agent_items.is_empty() {
-                                menu = menu.separator().header("外部エージェント");
+                                menu = menu.separator().header(i18n::t!("External Agents"));
                             }
                             for item in &agent_items {
                                 let mut entry = ContextMenuEntry::new(item.display_name.clone());
@@ -8313,7 +8323,7 @@ impl AgentPanel {
                         })
                         .separator()
                         .item(
-                            ContextMenuEntry::new("エージェントを追加")
+                            ContextMenuEntry::new(i18n::t!("Add More Agents"))
                                 .icon(IconName::Plus)
                                 .icon_color(Color::Muted)
                                 .handler({
@@ -8363,7 +8373,7 @@ impl AgentPanel {
                 Tooltip::with_meta(
                     selected_agent_label_for_tooltip.clone(),
                     None,
-                    "選択中のエージェント",
+                    i18n::t!("Selected Agent"),
                     cx,
                 )
             });
@@ -8402,9 +8412,9 @@ impl AgentPanel {
 
         let is_full_screen = self.is_zoomed(window, cx);
         let (icon_name, tooltip_text) = if is_full_screen {
-            (IconName::Minimize, "全画面表示を解除")
+            (IconName::Minimize, i18n::t!("Disable Full Screen"))
         } else {
-            (IconName::Maximize, "全画面表示")
+            (IconName::Maximize, i18n::t!("Enable Full Screen"))
         };
         let full_screen_button = IconButton::new("toggle-full-screen", icon_name)
             .icon_size(IconSize::Small)
@@ -8433,7 +8443,11 @@ impl AgentPanel {
                     )
                     .icon_size(IconSize::Small)
                     .tooltip(|_window, cx| {
-                        Tooltip::for_action("スレッドの一覧を開く", &TogglePanelThreadHistory, cx)
+                        Tooltip::for_action(
+                            i18n::t!("Open Thread List"),
+                            &TogglePanelThreadHistory,
+                            cx,
+                        )
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.toggle_panel_thread_history(&TogglePanelThreadHistory, window, cx);
@@ -8453,7 +8467,7 @@ impl AgentPanel {
             .justify_between();
 
         let empty_thread_title = matches!(mode, ToolbarMode::EmptyThread).then(|| {
-            Label::new(format!("{} の新規スレッド", selected_agent_label))
+            Label::new(i18n::t!("New {} Thread", selected_agent_label))
                 .color(Color::Muted)
                 .truncate()
                 .into_any_element()
@@ -8467,7 +8481,7 @@ impl AgentPanel {
                     {
                         move |_window, cx| {
                             Tooltip::for_action_in(
-                                "新規スレッド\u{2026}",
+                                i18n::t!("New Thread\u{2026}"),
                                 &ToggleNewThreadMenu,
                                 &focus_handle,
                                 cx,
@@ -8500,9 +8514,9 @@ impl AgentPanel {
             .tooltip(move |_window, cx| {
                 Tooltip::for_action(
                     if thread_history_enabled {
-                        "パネル内のスレッド履歴を非表示"
+                        i18n::t!("Hide Thread History in Panel")
                     } else {
-                        "パネル内のスレッド履歴を表示"
+                        i18n::t!("Show Thread History in Panel")
                     },
                     &TogglePanelThreadHistory,
                     cx,
@@ -10470,8 +10484,8 @@ mod tests {
         });
 
         for (answer, expected) in [
-            ("キャンセル", Vec::<Vec<u8>>::new()),
-            ("起動 (今回のみ)", vec![b"codex\r".to_vec()]),
+            ("Cancel", Vec::<Vec<u8>>::new()),
+            ("Start (This Time Only)", vec![b"codex\r".to_vec()]),
         ] {
             let terminal_id = TerminalId::new();
             panel
@@ -10496,7 +10510,7 @@ mod tests {
                 .pending_prompt()
                 .unwrap_or_else(|| panic!("it asks before `{answer}`"));
             assert!(message.contains("`codex`"), "it names the CLI: {message}");
-            assert!(detail.contains("この PC の `codex`"), "{detail}");
+            assert!(detail.contains("`codex` on this PC"), "{detail}");
             cx.simulate_prompt_answer(answer);
             cx.run_until_parked();
 
@@ -14394,7 +14408,7 @@ mod tests {
         cx.run_until_parked();
 
         assert!(
-            cx.debug_bounds("MENU_ITEM-スキル").is_some(),
+            cx.debug_bounds("MENU_ITEM-Skills").is_some(),
             "Skills menu item should be visible"
         );
         assert!(

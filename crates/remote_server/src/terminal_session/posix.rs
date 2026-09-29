@@ -6,17 +6,17 @@ use super::wire::{
     encode_preamble,
 };
 use super::{
-    EXIT_DETACHED, EXIT_FAILURE, EXIT_TAKEN_OVER, RESUMED_WITHOUT_SHELL_NOTICE,
-    SESSION_ENDED_REASON, TAKEN_OVER_NOTICE, TerminalSessionCommand, attach_failure_log,
-    clamp_replay_bytes, fits_unix_socket_path, print_error, replay_begin_marker, replay_end_marker,
-    session_file_stem, shell_exited_while_detached_notice,
+    EXIT_DETACHED, EXIT_FAILURE, EXIT_TAKEN_OVER, SESSION_ENDED_REASON, TerminalSessionCommand,
+    attach_failure_log, clamp_replay_bytes, fits_unix_socket_path, print_error,
+    replay_begin_marker, replay_end_marker, resumed_without_shell_notice, session_file_stem,
+    shell_exited_while_detached_notice, taken_over_notice,
 };
 use anyhow::{Context as _, Result, bail};
 use std::ffi::{CStr, CString, OsStr, OsString};
 use std::fs::File;
 use std::io::{self, Read as _, Write as _};
 use std::os::fd::{AsRawFd as _, FromRawFd as _, IntoRawFd as _, OwnedFd, RawFd};
-use std::os::unix::ffi::OsStrExt as _;
+use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
 use std::os::unix::fs::{
     DirBuilderExt as _, MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _,
 };
@@ -1398,6 +1398,12 @@ impl Holder {
         let mut argv: Vec<*const libc::c_char> =
             arguments.iter().map(|argument| argument.as_ptr()).collect();
         argv.push(std::ptr::null());
+        let environment = shell_environment(std::env::vars_os())?;
+        let mut envp: Vec<*const libc::c_char> = environment
+            .iter()
+            .map(|variable| variable.as_ptr())
+            .collect();
+        envp.push(std::ptr::null());
 
         let (master, slave) = open_pty(self.size).context("opening a pseudo-terminal")?;
         // SAFETY: the child only makes async-signal-safe calls before `exec`,
@@ -1408,7 +1414,7 @@ impl Holder {
         }
         if pid == 0 {
             // SAFETY: this is the child of the fork above.
-            unsafe { exec_shell(slave.as_raw_fd(), &path, &argv) }
+            unsafe { exec_shell(slave.as_raw_fd(), &path, &argv, &envp) }
         }
         log::info!("started the shell (pid {pid})");
         self.shell = Shell::Running(RunningShell {
@@ -1498,6 +1504,23 @@ fn signal_shell(shell: libc::pid_t, foreground_group: libc::pid_t, signal: libc:
             }
         }
     }
+}
+
+/// The holder's environment for its shell, without the display language
+/// the client gave this process, which is not the user's to see.
+fn shell_environment(
+    variables: impl IntoIterator<Item = (OsString, OsString)>,
+) -> Result<Vec<CString>> {
+    variables
+        .into_iter()
+        .filter(|(name, _)| name != remote::DISPLAY_LANGUAGE_ENV_VAR)
+        .map(|(name, value)| {
+            let mut variable = name.into_vec();
+            variable.push(b'=');
+            variable.extend_from_slice(value.as_bytes());
+            CString::new(variable).context("an environment variable with NUL")
+        })
+        .collect()
 }
 
 fn find_program(program: &OsStr) -> Result<PathBuf> {
@@ -1613,7 +1636,12 @@ fn pty_name(master: RawFd) -> io::Result<CString> {
 /// # Safety
 ///
 /// Must be called in the child right after `fork`.
-unsafe fn exec_shell(slave: RawFd, path: &CStr, argv: &[*const libc::c_char]) -> ! {
+unsafe fn exec_shell(
+    slave: RawFd,
+    path: &CStr,
+    argv: &[*const libc::c_char],
+    envp: &[*const libc::c_char],
+) -> ! {
     // SAFETY: all of these are async-signal-safe, and their arguments were
     // prepared before the fork.
     unsafe {
@@ -1628,7 +1656,7 @@ unsafe fn exec_shell(slave: RawFd, path: &CStr, argv: &[*const libc::c_char]) ->
         for signal in 1..32 {
             libc::signal(signal, libc::SIG_DFL);
         }
-        libc::execv(path.as_ptr(), argv.as_ptr());
+        libc::execve(path.as_ptr(), argv.as_ptr(), envp.as_ptr());
         let message = b"zed: could not start the shell\r\n";
         libc::write(2, message.as_ptr().cast(), message.len());
         libc::_exit(127)
@@ -1975,7 +2003,7 @@ fn relay(mut stream: UnixStream, tell_resumed: bool, nonce: &str, signals: &Sign
                     ToAttach::ReplayEnd => {
                         let mut bytes = replay_end_marker(nonce);
                         if tell_resumed {
-                            bytes.extend_from_slice(RESUMED_WITHOUT_SHELL_NOTICE.as_bytes());
+                            bytes.extend_from_slice(resumed_without_shell_notice().as_bytes());
                         }
                         write_stdout(&bytes)
                     }
@@ -1990,7 +2018,7 @@ fn relay(mut stream: UnixStream, tell_resumed: bool, nonce: &str, signals: &Sign
                         return Outcome::Exit(status.attach_exit_code());
                     }
                     ToAttach::TakenOver => {
-                        write_stdout(TAKEN_OVER_NOTICE.as_bytes()).ok();
+                        write_stdout(taken_over_notice().as_bytes()).ok();
                         return Outcome::Exit(EXIT_TAKEN_OVER);
                     }
                     ToAttach::Error(reason) => return Outcome::Fail(reason),

@@ -43,23 +43,23 @@ impl QuickActionBar {
             match &preview_target {
                 PreviewTarget::Markdown(_) => (
                     "toggle-markdown-preview",
-                    "Markdown プレビューを開く",
+                    i18n::t!("Preview Markdown"),
                     &markdown_preview::OpenPreview as &dyn gpui::Action,
-                    "{} で横に開く",
+                    i18n::msg!("{} to open in a split"),
                 ),
                 PreviewTarget::Svg(_) => (
                     "toggle-svg-preview",
-                    "SVG をプレビュー",
+                    i18n::t!("Preview SVG"),
                     &svg_preview::OpenPreviewToTheSide as &dyn gpui::Action,
-                    "{} で同じタブグループに開く",
+                    i18n::msg!("{} to open in the same tab group"),
                 ),
                 // A grid and a text tab for one file cannot share a pane, so Alt swaps this
                 // tab instead of adding one next to it.
                 PreviewTarget::TabularData(_) => (
                     "toggle-tabular-preview",
-                    "表を横に開く",
+                    i18n::t!("Preview Tabular Data"),
                     &tabular_data_preview::OpenPreviewToTheSide as &dyn gpui::Action,
-                    "{} でこのタブを切り替える",
+                    i18n::msg!("{} to switch this tab"),
                 ),
             };
 
@@ -79,7 +79,7 @@ impl QuickActionBar {
                 Tooltip::with_meta(
                     tooltip_text,
                     Some(open_action_for_tooltip),
-                    modified_click_meta.replace(
+                    i18n::tr(modified_click_meta).replace(
                         "{}",
                         &text_for_keystroke(&modified_click.modifiers, &modified_click.key, cx),
                     ),
@@ -154,7 +154,11 @@ impl QuickActionBar {
             .icon_size(IconSize::Small)
             .style(ButtonStyle::Subtle)
             .tooltip(|_window, cx| {
-                Tooltip::for_action("PDF に書き出す", &markdown_preview::ExportToPdf, cx)
+                Tooltip::for_action(
+                    i18n::t!("Export to PDF"),
+                    &markdown_preview::ExportToPdf,
+                    cx,
+                )
             })
             .on_click({
                 let workspace_handle = self.workspace.clone();

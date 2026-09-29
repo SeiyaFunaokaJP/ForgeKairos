@@ -16,7 +16,7 @@ pub mod visual_tests;
 #[cfg(target_os = "windows")]
 pub(crate) mod windows_only_instance;
 
-use agent_settings::{UserAgentsMdState, init_user_agents_md};
+use agent_settings::{AgentSettings, UserAgentsMdState, init_user_agents_md};
 use agent_ui::AgentDiffToolbar;
 use anyhow::Context as _;
 pub use app_menus::*;
@@ -793,19 +793,17 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
 #[allow(unused)]
 fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Workspace>) {
     if let Err(e) = fs.start_native_watcher() {
-        let message = format!(
-            db::indoc! {r#"
-            inotify_init が {} を返しました
-
-            システム全体の inotify インスタンス数の上限が原因の可能性があります。対処方法: https://zed.dev/docs/linux
-            "#},
+        let message = i18n::t!(
+            "inotify_init returned {}\n\n\
+             This may be due to system-wide limits on inotify instances. \
+             For troubleshooting see: https://zed.dev/docs/linux\n",
             e
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "inotify を開始できませんでした",
+            i18n::t!("Could not start inotify"),
             Some(&message),
-            &["対処方法を確認して終了"],
+            &[i18n::t!("Troubleshoot and Quit")],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -824,19 +822,17 @@ fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Wo
 #[allow(unused)]
 fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Workspace>) {
     if let Err(e) = fs.start_native_watcher() {
-        let message = format!(
-            db::indoc! {r#"
-            ReadDirectoryChangesW の初期化に失敗しました: {}
-
-            ネットワークファイルシステムや WSL のパスで発生することがあります。対処方法: https://zed.dev/docs/windows
-            "#},
+        let message = i18n::t!(
+            "ReadDirectoryChangesW initialization failed: {}\n\n\
+             This may occur on network filesystems and WSL paths. \
+             For troubleshooting see: https://zed.dev/docs/windows\n",
             e
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "ReadDirectoryChangesW を開始できませんでした",
+            i18n::t!("Could not start ReadDirectoryChangesW"),
             Some(&message),
-            &["対処方法を確認して終了"],
+            &[i18n::t!("Troubleshoot and Quit")],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -870,23 +866,21 @@ fn show_software_emulation_warning_if_needed(
                 "https://zed.dev/docs/linux#zed-fails-to-open-windows",
             )
         };
-        let message = format!(
-            db::indoc! {r#"
-            Zed は描画に {} を使用するため、対応した GPU が必要です。
-
-            現在はソフトウェアエミュレーションの GPU ({}) を使用しており、
-            動作が極端に遅くなります。
-
-            対処方法: {}
-            常に無視するには環境変数 ZED_ALLOW_EMULATED_GPU=1 を設定してください。
-            "#},
-            graphics_api, specs.device_name, docs_url
+        let message = i18n::t!(
+            "Zed uses {} for rendering and requires a compatible GPU.\n\n\
+             Currently you are using a software emulated GPU ({}) which\n\
+             will result in awful performance.\n\n\
+             For troubleshooting see: {}\n\
+             Set ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.\n",
+            graphics_api,
+            specs.device_name,
+            docs_url
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "サポートされていない GPU",
+            i18n::t!("Unsupported GPU"),
             Some(&message),
-            &["スキップ", "対処方法を確認して終了"],
+            &[i18n::t!("Skip"), i18n::t!("Troubleshoot and Quit")],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -1410,8 +1404,7 @@ fn register_actions(
                     workspace.show_toast(
                         Toast::new(
                             NotificationId::unique::<RegisterZedScheme>(),
-                            format!(
-                                "zed:// のリンクは今後 {} で開きます。",
+                            i18n::t!("zed:// links will now open in {}.",
                                 ReleaseChannel::global(cx).display_name()
                             ),
                         ),
@@ -1421,7 +1414,7 @@ fn register_actions(
                 Ok(())
             })
             .detach_and_prompt_err(
-                "zed:// スキームの登録に失敗しました",
+                i18n::t!("Error registering zed:// scheme"),
                 window,
                 cx,
                 |_, _, _| None,
@@ -1753,14 +1746,14 @@ fn open_about_window(cx: &mut App) {
                             .child(Headline::new(self.message.clone()))
                             .when_some(self.commit.clone(), |this, commit| {
                                 this.child(
-                                    Label::new("コミット")
+                                    Label::new(i18n::t!("Commit"))
                                         .color(Color::Muted)
                                         .size(LabelSize::XSmall),
                                 )
                                 .child(Label::new(commit).size(LabelSize::Small))
                             })
                             .child(
-                                Label::new("バージョン")
+                                Label::new(i18n::t!("Version"))
                                     .color(Color::Muted)
                                     .size(LabelSize::XSmall),
                             )
@@ -1798,7 +1791,7 @@ fn open_about_window(cx: &mut App) {
                                         },
                                     ))
                                     .child(
-                                        Button::new("copy", "コピー")
+                                        Button::new("copy", i18n::t!("Copy"))
                                             .full_width()
                                             .style(ButtonStyle::Tinted(TintColor::Accent))
                                             .toggle_state(copy_is_focused)
@@ -1903,9 +1896,9 @@ fn quit(_: &Quit, cx: &mut App) {
                 .update(cx, |_, window, cx| {
                     window.prompt(
                         PromptLevel::Info,
-                        "終了してもよろしいですか?",
+                        i18n::t!("Are you sure you want to quit?"),
                         None,
-                        &["終了", "キャンセル"],
+                        &[i18n::t!("Quit"), i18n::t!("Cancel")],
                         cx,
                     )
                 })
@@ -2267,14 +2260,19 @@ pub fn handle_keymap_file_changes(
     let mut old_vim_enabled = VimModeSetting::get_global(cx).0;
     let mut old_helix_enabled = vim_mode_setting::HelixModeSetting::get_global(cx).0;
     let mut old_disable_ai = DisableAiSettings::get_global(cx).disable_ai;
+    let mut old_agent_enabled = AgentSettings::get_global(cx).enabled(cx);
 
     cx.observe_global::<SettingsStore>(move |cx| {
         let new_base_keymap = *BaseKeymap::get_global(cx);
         let new_vim_enabled = VimModeSetting::get_global(cx).0;
         let new_helix_enabled = vim_mode_setting::HelixModeSetting::get_global(cx).0;
         let new_disable_ai = DisableAiSettings::get_global(cx).disable_ai;
+        // zed-jp-enhance: the View menu's Agent Panel follows `agent.enabled`
+        // (ADR-F09), which changes without `disable_ai` changing.
+        let new_agent_enabled = AgentSettings::get_global(cx).enabled(cx);
 
-        if new_disable_ai != old_disable_ai {
+        if new_disable_ai != old_disable_ai || new_agent_enabled != old_agent_enabled {
+            old_agent_enabled = new_agent_enabled;
             reload_menus(cx);
         }
 
@@ -2465,7 +2463,7 @@ fn reload_keymaps(cx: &mut App, mut user_key_bindings: Vec<KeyBinding>) {
     // On Windows, this is set in the `update_jump_list` method of the `HistoryManager`.
     #[cfg(not(target_os = "windows"))]
     cx.set_dock_menu(vec![gpui::MenuItem::action(
-        "新規ウィンドウ",
+        i18n::t!("New Window"),
         workspace::NewWindow,
     )]);
     // todo: nicer api here?
@@ -3093,7 +3091,7 @@ mod tests {
         indicator.update(cx, |indicator, cx| {
             assert_eq!(
                 indicator.message_to_render(cx),
-                Some("部分的なファイルインデックス".to_string())
+                Some("Partial file index".to_string())
             );
         });
 
@@ -3110,7 +3108,7 @@ mod tests {
         indicator.update(cx, |indicator, cx| {
             assert_eq!(
                 indicator.message_to_render(cx),
-                Some("部分的なファイルインデックス".to_string())
+                Some("Partial file index".to_string())
             );
         });
 
@@ -3282,7 +3280,7 @@ mod tests {
             1,
             "create_new_window: false should reuse the current window"
         );
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         executor.run_until_parked();
     }
 
@@ -3671,7 +3669,7 @@ mod tests {
             .unwrap();
         executor.run_until_parked();
 
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         close.await.unwrap();
 
         // Advance the clock to ensure that the item has been serialized and dropped from the queue
@@ -3737,7 +3735,7 @@ mod tests {
         assert_eq!(cx.update(|cx| cx.windows().len()), 1);
 
         // The window is successfully closed after the user dismisses the prompt.
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         executor.run_until_parked();
         assert_eq!(cx.update(|cx| cx.windows().len()), 0);
     }
@@ -4599,7 +4597,7 @@ mod tests {
             })
             .unwrap();
         cx.background_executor.run_until_parked();
-        cx.simulate_prompt_answer("上書き");
+        cx.simulate_prompt_answer("Overwrite");
         save_task.await.unwrap();
         window
             .update(cx, |_, _, cx| {
@@ -4925,7 +4923,7 @@ mod tests {
             close_pinned: false,
         });
         cx.background_executor.run_until_parked();
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         cx.background_executor.run_until_parked();
 
         workspace.read_with(cx, |workspace, cx| {
@@ -7598,7 +7596,7 @@ mod tests {
             "Case 1: Should prompt to save dirty item in active workspace"
         );
 
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
 
         assert_eq!(
@@ -7618,7 +7616,7 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         close_task.await.ok();
         cx.run_until_parked();
 
@@ -7680,7 +7678,7 @@ mod tests {
             "Case 2: Should prompt to save dirty item in non-active workspace"
         );
 
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
 
         assert_eq!(
@@ -7700,7 +7698,7 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         close_task.await.ok();
         cx.run_until_parked();
 
@@ -7764,7 +7762,7 @@ mod tests {
             "Case 3: Should prompt to save dirty item in non-active window"
         );
 
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
 
         assert_eq!(
@@ -7886,7 +7884,7 @@ mod tests {
             "Reload should prompt to save the dirty item in the non-active workspace"
         );
 
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
 
         assert_eq!(
@@ -7911,7 +7909,7 @@ mod tests {
             cx.has_pending_prompt(),
             "Reload should prompt again for the dirty item"
         );
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         cx.run_until_parked();
 
         will_restart
@@ -8807,6 +8805,143 @@ mod tests {
                 "expected Diagnostics to remain in the View menu"
             );
         });
+    }
+
+    #[gpui::test]
+    async fn test_agent_panel_menu_follows_agent_enabled(cx: &mut TestAppContext) {
+        let executor = cx.executor();
+        let app_state = init_keymap_test(cx);
+        let set_agent_enabled = |enabled: bool, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                SettingsStore::update_global(cx, |settings_store, cx| {
+                    settings_store.update_user_settings(cx, |settings| {
+                        settings.agent.get_or_insert_default().enabled = Some(enabled);
+                    });
+                });
+            });
+        };
+        set_agent_enabled(false, cx);
+        cx.update(|cx| {
+            let (keymap_rx, keymap_watcher) = watch_config_file(
+                &executor,
+                app_state.fs.clone(),
+                PathBuf::from("/keymap.json"),
+            );
+            handle_keymap_file_changes(keymap_rx, keymap_watcher, cx);
+            reload_keymaps(cx, Vec::new());
+        });
+        executor.run_until_parked();
+
+        cx.update(|cx| {
+            assert!(
+                !DisableAiSettings::get_global(cx).disable_ai,
+                "the fork turns AI off without `disable_ai`"
+            );
+            assert!(
+                !has_view_item(cx, "Agent Panel"),
+                "expected no Agent Panel in the View menu while `agent.enabled` is false"
+            );
+            assert!(has_view_item(cx, "Diagnostics"));
+        });
+
+        set_agent_enabled(true, cx);
+        executor.run_until_parked();
+        cx.update(|cx| {
+            assert!(
+                has_view_item(cx, "Agent Panel"),
+                "expected the menus to be rebuilt with Agent Panel once the agent is enabled"
+            );
+        });
+
+        set_agent_enabled(false, cx);
+        executor.run_until_parked();
+        cx.update(|cx| {
+            assert!(
+                !has_view_item(cx, "Agent Panel"),
+                "expected the menus to be rebuilt without Agent Panel once the agent is disabled"
+            );
+        });
+    }
+
+    /// Windows and Linux draw the menus in the title bar from a copy of the platform
+    /// menus; the copy has to follow `agent.enabled` too, not only `cx.get_menus()`.
+    #[gpui::test]
+    async fn test_title_bar_menu_follows_agent_enabled(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        let set_agent_enabled = |enabled: bool, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                SettingsStore::update_global(cx, |settings_store, cx| {
+                    settings_store.update_user_settings(cx, |settings| {
+                        settings.agent.get_or_insert_default().enabled = Some(enabled);
+                    });
+                });
+            });
+            cx.run_until_parked();
+        };
+        set_agent_enabled(true, cx);
+        cx.update(|cx| {
+            title_bar::init(cx);
+            let (keymap_rx, keymap_watcher) = watch_config_file(
+                cx.background_executor(),
+                app_state.fs.clone(),
+                PathBuf::from("/keymap.json"),
+            );
+            handle_keymap_file_changes(keymap_rx, keymap_watcher, cx);
+            reload_keymaps(cx, Vec::new());
+        });
+        cx.update(|cx| workspace::open_new(Default::default(), app_state.clone(), cx, |_, _, _| {}))
+            .await
+            .expect("the workspace window opens");
+        cx.run_until_parked();
+        let multi_workspace = cx
+            .update(|cx| {
+                cx.windows()
+                    .into_iter()
+                    .find_map(|window| window.downcast::<MultiWorkspace>())
+            })
+            .expect("a workspace window is open");
+        let title_bar_view_items = |cx: &mut TestAppContext| {
+            multi_workspace
+                .update(cx, |multi_workspace, _, cx| {
+                    multi_workspace
+                        .workspace()
+                        .read(cx)
+                        .titlebar_item()
+                        .and_then(|item| item.downcast::<title_bar::TitleBar>().ok())
+                        .map(|title_bar| {
+                            title_bar
+                                .read(cx)
+                                .application_menu_item_names("View", cx)
+                        })
+                })
+                .expect("the window is open")
+                .expect("the workspace has a title bar")
+        };
+
+        for (enabled, expect_agent_panel) in [(true, true), (false, false), (true, true)] {
+            set_agent_enabled(enabled, cx);
+            let platform_has_agent_panel = cx.update(|cx| has_view_item(cx, "Agent Panel"));
+            assert_eq!(
+                platform_has_agent_panel, expect_agent_panel,
+                "platform menus with `agent.enabled: {enabled}`"
+            );
+            let title_bar_items = title_bar_view_items(cx);
+            if cfg!(target_os = "macos") {
+                assert_eq!(title_bar_items, None, "macOS draws the menus itself");
+            } else {
+                let title_bar_items =
+                    title_bar_items.expect("Windows and Linux draw the View menu in the title bar");
+                assert!(
+                    title_bar_items.iter().any(|name| name == "Diagnostics"),
+                    "title bar View menu: {title_bar_items:?}"
+                );
+                assert_eq!(
+                    title_bar_items.iter().any(|name| name == "Agent Panel"),
+                    expect_agent_panel,
+                    "title bar View menu with `agent.enabled: {enabled}`: {title_bar_items:?}"
+                );
+            }
+        }
     }
 
     #[gpui::test]

@@ -18,6 +18,7 @@ test-support = []
 [dependencies]
 anyhow.workspace = true
 gpui.workspace = true
+i18n.workspace = true
 merman = { version = "=0.8.0-alpha.5", default-features = false, features = [
     "layout-cytoscape",
     "svg",
@@ -29,6 +30,7 @@ ztracing.workspace = true
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+i18n_catalog = { workspace = true, features = ["test-support"] }
 mermaid_render = { path = ".", features = ["test-support"] }
 usvg.workspace = true
 

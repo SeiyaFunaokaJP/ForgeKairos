@@ -25,9 +25,11 @@ use super::{
 
 /// The texts new rows are added with, so that they are visible in the drawing
 /// before anything has been typed into them.
-const NEW_TASK_NAME: &str = "新しい作業";
+fn new_task_name() -> &'static str {
+    i18n::tc!("mermaid journey", "New task")
+}
 const NEW_TASK_SCORE: u8 = 3;
-const NEW_SECTION_NAME: &str = "新しいセクション";
+const NEW_SECTION_NAME: &str = i18n::msg!("New section");
 
 pub(super) struct JourneyForm {
     pub(super) document: JourneyDocument,
@@ -141,9 +143,9 @@ fn section_may_move(sections: &[JourneySection], index: usize, forward: bool) ->
 
 fn score_label(score: u8) -> SharedString {
     match score {
-        5 => "5 (とても良い)".into(),
-        3 => "3 (ふつう)".into(),
-        1 => "1 (とても悪い)".into(),
+        5 => i18n::t!("5 (Very Good)").into(),
+        3 => i18n::t!("3 (Neutral)").into(),
+        1 => i18n::t!("1 (Very Bad)").into(),
         score => score.to_string().into(),
     }
 }
@@ -238,10 +240,11 @@ impl MermaidEditor {
             .iter()
             .filter_map(|section| section.name.as_deref())
             .collect::<Vec<_>>();
-        let name = std::iter::once(NEW_SECTION_NAME.to_string())
-            .chain((2..).map(|number| format!("{NEW_SECTION_NAME} {number}")))
+        let new_section_name = i18n::tr(NEW_SECTION_NAME);
+        let name = std::iter::once(new_section_name.to_string())
+            .chain((2..).map(|number| format!("{new_section_name} {number}")))
             .find(|name| !taken.contains(&name.as_str()))
-            .unwrap_or_else(|| NEW_SECTION_NAME.to_string());
+            .unwrap_or_else(|| new_section_name.to_string());
         let field = self.new_field(&name, window, cx);
         let Some(form) = self.journey_mut() else {
             return;
@@ -311,7 +314,7 @@ impl MermaidEditor {
         }
         let band = needs_band.then(|| self.new_field("", window, cx));
         let task = JourneyTask {
-            name: NEW_TASK_NAME.to_string(),
+            name: new_task_name().to_string(),
             score: NEW_TASK_SCORE,
             people: Vec::new(),
         };
@@ -524,7 +527,7 @@ impl MermaidEditor {
             h_flex()
                 .w_full()
                 .gap_2()
-                .child(section_title("タイトル"))
+                .child(section_title(i18n::t!("Title")))
                 .child(
                     field_frame(
                         &form.title,
@@ -552,9 +555,10 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut list = v_flex().w_full().gap_2().child(section_title(
-            "セクションと作業 (作業名・満足度・担当者をカンマ区切り)",
-        ));
+        let mut list = v_flex().w_full().gap_2().child(section_title(i18n::tc!(
+            "mermaid journey",
+            "Sections and Tasks (task name, score and people, separated by commas)",
+        )));
 
         for index in 0..form.sections.len() {
             let (Some(row), Some(section)) =
@@ -589,7 +593,7 @@ impl MermaidEditor {
                         h_flex()
                             .w_full()
                             .gap_1()
-                            .child(section_title("セクション"))
+                            .child(section_title(i18n::t!("Section")))
                             .child(
                                 field_frame(
                                     &row.name,
@@ -610,7 +614,7 @@ impl MermaidEditor {
                                 index,
                                 !section_may_move(&current.sections, index, false),
                                 !section_may_move(&current.sections, index, true),
-                                "セクションとその中の作業を削除",
+                                i18n::tc!("mermaid journey", "Delete the Section and Its Tasks"),
                                 cx.listener(move |this, _, _window, cx| {
                                     this.move_journey_section(index, false, cx)
                                 }),
@@ -625,7 +629,7 @@ impl MermaidEditor {
                     .child(tasks)
                     .child(div().pl_4().child(add_button(
                         SharedString::from(format!("mermaid-journey-add-task-{index}")),
-                        "作業を追加",
+                        i18n::tc!("mermaid journey", "Add Task"),
                         cx.listener(move |this, _, window, cx| {
                             this.add_journey_task(index, window, cx)
                         }),
@@ -636,14 +640,14 @@ impl MermaidEditor {
         if form.sections.is_empty() {
             list = list.child(add_button(
                 "mermaid-journey-add-first-task",
-                "作業を追加",
+                i18n::tc!("mermaid journey", "Add Task"),
                 cx.listener(|this, _, window, cx| this.add_journey_task(0, window, cx)),
             ));
         }
 
         list.child(add_button(
             "mermaid-journey-add-section",
-            "セクションを追加",
+            i18n::t!("Add Section"),
             cx.listener(|this, _, window, cx| this.add_journey_section(window, cx)),
         ))
         .into_any_element()
@@ -734,7 +738,7 @@ impl MermaidEditor {
 
         DropdownMenu::new(
             SharedString::from(format!("mermaid-journey-score-{section}-{index}")),
-            SharedString::from(format!("満足度 {current}")),
+            SharedString::from(i18n::t!("Score {current}")),
             menu,
         )
         .style(DropdownStyle::Outlined)
@@ -755,12 +759,12 @@ impl MermaidEditor {
         let mut block = v_flex()
             .w_full()
             .gap_1()
-            .child(section_title("担当者"))
+            .child(section_title(i18n::t!("People")))
             .child(
                 Label::new(if people.is_empty() {
-                    "(まだいません)".to_string()
+                    i18n::t!("(None yet)").to_string()
                 } else {
-                    people.join("、")
+                    people.join(i18n::tc!("list separator", ", "))
                 })
                 .size(LabelSize::Small),
             );
@@ -819,7 +823,7 @@ impl MermaidEditor {
                     .child(form.rename_to.clone()),
                 )
                 .child(
-                    Button::new("mermaid-journey-rename", "全作業で名前を変更")
+                    Button::new("mermaid-journey-rename", i18n::t!("Rename in All Tasks"))
                         .label_size(LabelSize::Small)
                         .disabled(!can_rename)
                         .on_click(cx.listener(move |this, _, window, cx| {

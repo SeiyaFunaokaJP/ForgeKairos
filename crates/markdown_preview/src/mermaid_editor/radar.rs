@@ -183,19 +183,23 @@ fn unused_id(prefix: &str, taken: &[String]) -> String {
 }
 
 fn graticule_label(graticule: Option<RadarGraticule>) -> &'static str {
-    graticule.map_or("指定なし (円)", RadarGraticule::label)
+    graticule.map_or(i18n::t!("Not Set (Circle)"), RadarGraticule::label)
 }
 
 fn legend_label(shown: Option<bool>) -> &'static str {
     match shown {
-        None => "指定なし (表示)",
-        Some(true) => "表示",
-        Some(false) => "非表示",
+        None => i18n::t!("Not Set (Shown)"),
+        Some(true) => i18n::t!("Shown"),
+        Some(false) => i18n::t!("Hidden"),
     }
 }
 
 fn keyed_label(keyed: bool) -> &'static str {
-    if keyed { "軸名付き" } else { "軸の順" }
+    if keyed {
+        i18n::t!("By Axis Name")
+    } else {
+        i18n::t!("In Axis Order")
+    }
 }
 
 impl MermaidEditor {
@@ -331,7 +335,7 @@ impl MermaidEditor {
             .map(|axis| axis.id.clone())
             .collect::<Vec<_>>();
         let id_text = unused_id("axis", &taken);
-        let label_text = format!("軸{}", taken.len() + 1);
+        let label_text = i18n::t!("Axis {number}", number = taken.len() + 1);
         let axis_count = form.axis_count();
         let claims_extra_row = axis_count < form.rows.len();
         let row_index = form.rows.len();
@@ -492,7 +496,7 @@ impl MermaidEditor {
             h_flex()
                 .w_full()
                 .gap_2()
-                .child(section_title("タイトル"))
+                .child(section_title(i18n::t!("Title")))
                 .child(
                     field_frame(
                         &form.title,
@@ -511,7 +515,7 @@ impl MermaidEditor {
             h_flex()
                 .w_full()
                 .gap_1()
-                .child(section_title("最小"))
+                .child(section_title(i18n::t!("Min")))
                 .child(
                     field_frame(
                         &form.min,
@@ -522,7 +526,7 @@ impl MermaidEditor {
                     )
                     .child(form.min.clone()),
                 )
-                .child(section_title("最大"))
+                .child(section_title(i18n::t!("Max")))
                 .child(
                     field_frame(
                         &form.max,
@@ -533,7 +537,7 @@ impl MermaidEditor {
                     )
                     .child(form.max.clone()),
                 )
-                .child(section_title("目盛りの数"))
+                .child(section_title(i18n::t!("Ticks")))
                 .child(
                     field_frame(
                         &form.ticks,
@@ -545,7 +549,7 @@ impl MermaidEditor {
                     .child(form.ticks.clone()),
                 )
                 .child(
-                    Label::new("(空なら既定)")
+                    Label::new(i18n::t!("(default when empty)"))
                         .size(LabelSize::XSmall)
                         .color(Color::Muted),
                 )
@@ -562,9 +566,9 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut list = v_flex().w_full().gap_1().child(section_title(
-            "系列 (ID と凡例の名前。名前が空なら ID を表示)",
-        ));
+        let mut list = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Series (ID and legend name; the ID is shown when the name is empty)"
+        )));
         let count = form.curves.len();
         for (column, curve) in form.curves.iter().enumerate() {
             let document_curve = current.curves.get(column);
@@ -626,7 +630,7 @@ impl MermaidEditor {
         }
         list.child(add_button(
             "mermaid-radar-add-curve",
-            "系列を追加",
+            i18n::t!("Add Series"),
             cx.listener(|this, _, window, cx| this.add_radar_curve(window, cx)),
         ))
         .into_any_element()
@@ -656,13 +660,13 @@ impl MermaidEditor {
                 div()
                     .w(ID_FIELD_WIDTH)
                     .flex_none()
-                    .child(section_title("軸の ID")),
+                    .child(section_title(i18n::t!("Axis ID"))),
             )
             .child(
                 div()
                     .w(LABEL_FIELD_WIDTH)
                     .flex_none()
-                    .child(section_title("ラベル")),
+                    .child(section_title(i18n::t!("Label"))),
             );
         for (column, curve) in current.curves.iter().enumerate() {
             let name = curve.label.clone().unwrap_or_else(|| curve.id.clone());
@@ -714,7 +718,7 @@ impl MermaidEditor {
                             .w(Rems(ID_FIELD_WIDTH.0 + LABEL_FIELD_WIDTH.0 + 0.25))
                             .flex_none()
                             .child(
-                                Label::new("(軸なし・描かれません)")
+                                Label::new(i18n::t!("(no axis; not drawn)"))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             ),
@@ -749,9 +753,9 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_1()
-            .child(section_title(
-                "軸と値 (軸を消すと全系列のその値も消えます。末尾の空欄は最小値として描かれます)",
-            ))
+            .child(section_title(i18n::t!(
+                "Axes and Values (deleting an axis also deletes its value in every series; empty cells at the end are drawn as the minimum)"
+            )))
             .child(
                 div()
                     .id("mermaid-radar-table")
@@ -761,7 +765,9 @@ impl MermaidEditor {
             );
         if axis_count < form.rows.len() {
             section = section.child(
-                Label::new("軸の数より多い値は描かれません。軸を追加するとその値に軸が付きます。")
+                Label::new(i18n::t!(
+                    "Values beyond the number of axes are not drawn. Adding an axis gives those values an axis."
+                ))
                     .size(LabelSize::XSmall)
                     .color(Color::Muted),
             );
@@ -769,7 +775,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-radar-add-axis",
-                "軸を追加",
+                i18n::t!("Add Axis"),
                 cx.listener(|this, _, window, cx| this.add_radar_axis(window, cx)),
             ))
             .into_any_element()
@@ -787,7 +793,7 @@ impl MermaidEditor {
         let shown = form.document.options.show_legend;
         h_flex()
             .gap_2()
-            .child(section_title("目盛りの形"))
+            .child(section_title(i18n::t!("Graticule")))
             .child(render_choice_menu(
                 "mermaid-radar-graticule".into(),
                 graticule_label(graticule).into(),
@@ -801,7 +807,7 @@ impl MermaidEditor {
                 window,
                 cx,
             ))
-            .child(section_title("凡例"))
+            .child(section_title(i18n::t!("Legend")))
             .child(render_choice_menu(
                 "mermaid-radar-legend".into(),
                 legend_label(shown).into(),

@@ -447,11 +447,11 @@ fn remove_state_class(scope: &mut StateScope, rows: &mut ScopeRows, id: &str, cl
 pub(super) fn problem(document: &StateDocument) -> Option<SharedString> {
     for id in document.state_ids() {
         if id.is_empty() {
-            return Some("ID が空の状態があります。".into());
+            return Some(i18n::t!("A state has an empty ID.").into());
         }
         if !is_valid_state_id(&id) {
             return Some(
-                format!("ID「{id}」は使えません (記号と Mermaid の予約語は不可)。").into(),
+                i18n::t!("The ID \"{id}\" is not valid (no symbols or Mermaid keywords).").into(),
             );
         }
     }
@@ -468,14 +468,19 @@ fn scope_problem(scope: &StateScope, declared: &mut Vec<String>) -> Option<Share
         };
         if let Some(id) = id {
             if declared.contains(id) {
-                return Some(format!("ID「{id}」が重複しています。").into());
+                return Some(i18n::t!("The ID \"{id}\" is used more than once.").into());
             }
             declared.push(id.clone());
         }
         if let StateItem::Note(note) = item
             && !is_valid_note_text(&note.text)
         {
-            return Some("ノートの文章に使えない文字があります (前後の空白や改行、`%%{`)。".into());
+            return Some(
+                i18n::t!(
+                    "The note text contains characters that are not allowed (leading or trailing whitespace, line breaks, or `%%{{`)."
+                )
+                .into(),
+            );
         }
         if let StateItem::Composite(composite) = item
             && let Some(problem) = scope_problem(&composite.body, declared)
@@ -709,9 +714,9 @@ impl MermaidEditor {
         let Some(form) = self.state() else {
             return;
         };
-        // Not "state": Mermaid reads that word as the start of a statement, so
-        // `is_valid_state_id` refuses it.
-        let id = form.current_document(cx).unused_id("状態");
+        // Not "state" in any case: Mermaid reads that word as the start of a
+        // statement, so `is_valid_state_id` refuses it.
+        let id = form.current_document(cx).unused_id(i18n::t!("NewState"));
         let row = ItemRow::State {
             description: self.new_field("", window, cx),
         };
@@ -795,19 +800,20 @@ impl MermaidEditor {
             return;
         };
         let Some(target) = form.current_document(cx).state_ids().first().cloned() else {
-            self.message = Some("先に状態を追加してください。".into());
+            self.message = Some(i18n::t!("Add a state first.").into());
             cx.notify();
             return;
         };
+        let text = i18n::t!("Memo");
         let row = ItemRow::Note {
-            text: self.new_field("メモ", window, cx),
+            text: self.new_field(text, window, cx),
         };
         self.push_state_item(
             &path,
             StateItem::Note(StateNote {
                 placement: NotePlacement::RightOf,
                 target,
-                text: "メモ".to_string(),
+                text: text.to_string(),
             }),
             row,
             window,
@@ -817,14 +823,16 @@ impl MermaidEditor {
 
     fn add_composite(&mut self, path: Vec<usize>, window: &mut Window, cx: &mut Context<Self>) {
         if path.len() + 1 >= MAX_DEPTH {
-            self.message = Some("複合状態の入れ子が深すぎます。".into());
+            self.message = Some(i18n::t!("Composite states are nested too deeply.").into());
             cx.notify();
             return;
         }
         let Some(form) = self.state() else {
             return;
         };
-        let id = form.current_document(cx).unused_id("複合状態");
+        let id = form
+            .current_document(cx)
+            .unused_id(i18n::t!("CompositeState"));
         let row = ItemRow::Composite {
             description: self.new_field("", window, cx),
             body: ScopeRows::default(),
@@ -995,7 +1003,7 @@ impl MermaidEditor {
         h_flex()
             .gap_2()
             .child(
-                Label::new("方向")
+                Label::new(i18n::t!("Direction"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -1027,10 +1035,9 @@ impl MermaidEditor {
 
         let candidates = form.class_candidates(cx);
         let this = cx.entity().downgrade();
-        let mut id_list = v_flex()
-            .w_full()
-            .gap_1()
-            .child(section_title("状態の ID (変えると参照も追随します)"));
+        let mut id_list = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "State IDs (renaming updates the references too)"
+        )));
         for (index, row) in form.ids.iter().enumerate() {
             let valid = is_valid_state_id(row.field.read(cx).text(cx).trim());
             let mut assigned = Vec::new();
@@ -1074,7 +1081,7 @@ impl MermaidEditor {
             v_flex()
                 .w_full()
                 .gap_1()
-                .child(section_title("図の中身"))
+                .child(section_title(i18n::t!("Diagram Content")))
                 .child(self.render_scope(&[], &form.document.body, &form.body, &ids, window, cx))
                 .into_any_element(),
         ]
@@ -1103,8 +1110,10 @@ impl MermaidEditor {
                 // Deleting a composite state takes the whole scope inside it,
                 // which the row does not otherwise show.
                 let remove_tooltip = match item {
-                    StateItem::Composite(_) => "削除 (中の状態と遷移も削除されます)",
-                    _ => "削除",
+                    StateItem::Composite(_) => {
+                        i18n::t!("Delete (the states and transitions inside are deleted too)")
+                    }
+                    _ => i18n::t!("Delete"),
                 };
                 row_controls_labelled(
                     &row_prefix,
@@ -1173,7 +1182,7 @@ impl MermaidEditor {
                         .w_full()
                         .gap_1()
                         .child(
-                            Label::new("ノート")
+                            Label::new(i18n::t!("Note"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -1204,7 +1213,7 @@ impl MermaidEditor {
                                     .w_full()
                                     .gap_1()
                                     .child(
-                                        Label::new("複合")
+                                        Label::new(i18n::t!("Composite"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     )
@@ -1243,7 +1252,7 @@ impl MermaidEditor {
                         .w_full()
                         .gap_1()
                         .child(
-                            Label::new("並行区切り (--)")
+                            Label::new(i18n::t!("Concurrency Divider (--)"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -1260,11 +1269,23 @@ impl MermaidEditor {
         let in_composite = !path.is_empty();
         let mut buttons = h_flex().w_full().flex_wrap().gap_1();
         for (id, label, kind) in [
-            ("state", "状態", AddKind::State),
-            ("transition", "遷移", AddKind::Transition),
-            ("note", "ノート", AddKind::Note),
-            ("composite", "複合状態", AddKind::Composite),
-            ("divider", "並行区切り", AddKind::Divider),
+            ("state", i18n::t!("Add State"), AddKind::State),
+            (
+                "transition",
+                i18n::t!("Add Transition"),
+                AddKind::Transition,
+            ),
+            ("note", i18n::t!("Add Note"), AddKind::Note),
+            (
+                "composite",
+                i18n::t!("Add Composite State"),
+                AddKind::Composite,
+            ),
+            (
+                "divider",
+                i18n::t!("Add Concurrency Divider"),
+                AddKind::Divider,
+            ),
         ] {
             // `--` only means something inside a composite state.
             if matches!(kind, AddKind::Divider) && !in_composite {
@@ -1273,7 +1294,7 @@ impl MermaidEditor {
             let path = path.to_vec();
             buttons = buttons.child(add_button(
                 SharedString::from(format!("mermaid-state-add-{id}-{key}")),
-                SharedString::from(format!("{label}を追加")),
+                SharedString::from(label),
                 cx.listener(move |this, _, window, cx| {
                     let path = path.clone();
                     match kind {
@@ -1523,13 +1544,13 @@ fn id_label(id: &str) -> Label {
 fn direction_label(direction: Option<FlowDirection>) -> &'static str {
     match direction {
         Some(direction) => direction.label(),
-        None => "指定なし",
+        None => i18n::t!("Not Set"),
     }
 }
 
 fn endpoint_label(id: &str) -> SharedString {
     if id == TERMINAL_STATE {
-        "[*] 開始 / 終了".into()
+        i18n::t!("[*] Start / End").into()
     } else {
         SharedString::from(id.to_string())
     }

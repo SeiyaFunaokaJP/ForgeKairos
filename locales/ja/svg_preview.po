@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Failed to load SVG image"
+msgstr "SVG 画像を読み込めませんでした。"
+
+msgid "No SVG file selected"
+msgstr "SVG ファイルが選択されていません。"
+
+msgid "Preview {}"
+msgstr "{} のプレビュー"
+
+msgid "SVG Preview"
+msgstr "SVG プレビュー"

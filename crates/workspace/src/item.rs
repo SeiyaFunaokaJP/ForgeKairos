@@ -1443,9 +1443,9 @@ pub mod test {
         item::{ItemBufferKind, SaveOptions},
     };
     use gpui::{
-        AnyElement, App, AppContext as _, Context, Entity, EntityId, EventEmitter, Focusable,
-        InteractiveElement, IntoElement, ParentElement, Render, SharedString, Subscription, Task,
-        WeakEntity, Window, WindowId,
+        Action, AnyElement, App, AppContext as _, Context, Entity, EntityId, EventEmitter,
+        Focusable, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+        Subscription, Task, WeakEntity, Window, WindowId,
     };
     use language::Capability;
     use project::{Project, ProjectEntryId, ProjectPath, WorktreeId};
@@ -1474,6 +1474,8 @@ pub mod test {
         pub project_items: Vec<Entity<TestProjectItem>>,
         pub nav_history: Option<ItemNavHistory>,
         pub tab_descriptions: Option<Vec<&'static str>>,
+        /// Built on every call, as items build their labels in the current language.
+        pub tab_extra_actions: Vec<fn() -> (SharedString, Box<dyn Action>)>,
         pub tab_detail: Cell<Option<usize>>,
         serialize: Option<Box<dyn Fn() -> Option<Task<anyhow::Result<()>>>>>,
         focus_handle: gpui::FocusHandle,
@@ -1576,6 +1578,7 @@ pub mod test {
                 buffer_kind: ItemBufferKind::Singleton,
                 nav_history: None,
                 tab_descriptions: None,
+                tab_extra_actions: Vec::new(),
                 tab_detail: Default::default(),
                 workspace_id: Default::default(),
                 focus_handle: cx.focus_handle(),
@@ -1713,6 +1716,17 @@ pub mod test {
             self.bind_focus_listener(window, cx);
         }
 
+        fn tab_extra_context_menu_actions(
+            &self,
+            _window: &mut Window,
+            _cx: &mut Context<Self>,
+        ) -> Vec<(SharedString, Box<dyn Action>)> {
+            self.tab_extra_actions
+                .iter()
+                .map(|build_action| build_action())
+                .collect()
+        }
+
         fn tab_content_text(&self, detail: usize, _cx: &App) -> SharedString {
             self.tab_descriptions
                 .as_ref()
@@ -1808,6 +1822,7 @@ pub mod test {
                     project_items: self.project_items.clone(),
                     nav_history: None,
                     tab_descriptions: None,
+                    tab_extra_actions: self.tab_extra_actions.clone(),
                     tab_detail: Default::default(),
                     workspace_id: self.workspace_id,
                     focus_handle: cx.focus_handle(),

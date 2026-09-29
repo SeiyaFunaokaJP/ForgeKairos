@@ -13,6 +13,7 @@ bitflags.workspace = true
 collections.workspace = true
 gpui_shared_string.workspace = true
 gpui_util.workspace = true
+i18n.workspace = true
 log.workspace = true
 lru.workspace = true
 parking_lot.workspace = true

@@ -428,11 +428,11 @@ pub(crate) fn remote_upload_temp_path(src_path: &Path) -> Result<Arc<RelPath>> {
 /// are looking at.
 pub(crate) fn warn_slirp4netns_not_installed(error: &anyhow::Error) {
     log::warn!("could not install slirp4netns for the remote sandbox: {error:#}");
-    ssh::CONNECTION_WARNINGS.lock().push(format!(
-        "リモートのサンドボックス用ヘルパー (slirp4netns) を配置できませんでした。\
-         ネットワークを使うエージェントのコマンドはサンドボックスを作れないため実行されません。\
-         リモートの `~/.zed_server/` に書き込めるか (空き容量・権限) と、Zed 本体と同じフォルダーに\
-         同梱の slirp4netns があるかを確認して再接続してください: {error:#}"
+    ssh::CONNECTION_WARNINGS.lock().push(i18n::t!(
+        "Could not install the remote sandbox helper (slirp4netns). \
+         Agent commands that use the network will not run, because no sandbox can be created for them. \
+         Check that the remote `~/.zed_server/` is writable (free space and permissions) and that \
+         the bundled slirp4netns is in the same folder as Zed, then reconnect: {error:#}"
     ));
 }
 
@@ -502,17 +502,17 @@ async fn build_remote_server_from_source(
     // defect rather than as Rust's name for "no vendor", and was reported as
     // one; the same facts are spelled out for the user instead.
     let platform_label = {
+        let mut label = format!("{} {}", platform.os.display_name(), platform.arch.as_str());
         let libc = match (platform.os, use_musl) {
-            (RemoteOs::Linux, true) => "、musl",
-            (RemoteOs::Linux, false) => "、glibc",
-            _ => "",
+            (RemoteOs::Linux, true) => Some("musl"),
+            (RemoteOs::Linux, false) => Some("glibc"),
+            _ => None,
         };
-        format!(
-            "{} {}{}",
-            platform.os.display_name(),
-            platform.arch.as_str(),
-            libc
-        )
+        if let Some(libc) = libc {
+            label.push_str(i18n::tc!("list separator", ", "));
+            label.push_str(libc);
+        }
+        label
     };
     let triple = format!(
         "{}-{}",
@@ -548,8 +548,8 @@ async fn build_remote_server_from_source(
         && platform.os.as_str() == std::env::consts::OS
     {
         delegate.set_status(
-            Some(&format!(
-                "開発ビルドのため、リモート開発サーバー ({platform_label} 向け) をソースからビルドしています"
+            Some(&i18n::t!(
+                "Building remote server binary from source for {platform_label} (development build)"
             )),
             cx,
         );
@@ -592,7 +592,7 @@ async fn build_remote_server_from_source(
             .await?
             .context("rustup not found on $PATH, install rustup (see https://rustup.rs/)")?;
         delegate.set_status(
-            Some("クロスコンパイル用の rustup ターゲットを追加しています"),
+            Some(i18n::t!("Adding rustup target for cross-compilation")),
             cx,
         );
         log::info!("adding rustup target {triple}");
@@ -600,7 +600,7 @@ async fn build_remote_server_from_source(
 
         if which("cargo-zigbuild", cx).await?.is_none() {
             delegate.set_status(
-                Some("クロスコンパイル用の cargo-zigbuild を導入しています"),
+                Some(i18n::t!("Installing cargo-zigbuild for cross-compilation")),
                 cx,
             );
             log::info!("installing cargo-zigbuild");
@@ -608,8 +608,8 @@ async fn build_remote_server_from_source(
         }
 
         delegate.set_status(
-            Some(&format!(
-                "開発ビルドのため、リモート開発サーバー ({platform_label} 向け) を Zig でビルドしています"
+            Some(&i18n::t!(
+                "Building remote binary from source for {platform_label} with Zig (development build)"
             )),
             cx,
         );
@@ -650,7 +650,7 @@ async fn build_remote_server_from_source(
         .with_extension(if platform.os.is_windows() { "exe" } else { "" });
 
     let path = if !build_remote_server.contains("nocompress") {
-        delegate.set_status(Some("リモート開発サーバーを圧縮しています"), cx);
+        delegate.set_status(Some(i18n::t!("Compressing binary")), cx);
 
         #[cfg(not(target_os = "windows"))]
         let archive_path = {
@@ -1005,20 +1005,21 @@ async fn ensure_cmake_available(cx: &mut AsyncApp) -> Result<Option<std::ffi::Os
             let existing_path = std::env::var_os("PATH").unwrap_or_default();
             let mut paths = vec![cmake_dir];
             paths.extend(std::env::split_paths(&existing_path));
-            let joined = std::env::join_paths(paths)
-                .context("cmake のディレクトリを含む PATH を組み立てられませんでした")?;
+            let joined = std::env::join_paths(paths).context(i18n::t!(
+                "Could not build a PATH that includes the cmake directory"
+            ))?;
             return Ok(Some(joined));
         }
-        anyhow::bail!(
-            "cmake が PATH にありません (remote_server のビルドに必要です)。Visual Studio 同梱の \
-             CMake (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) を PATH に \
-             追加するか、script\\build-dev.ps1 でビルドして同梱アーティファクトを用意してください"
-        );
+        anyhow::bail!(i18n::t!(
+            "cmake is not on PATH (it is needed to build remote_server). Add the CMake that comes with \
+             Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) to PATH, \
+             or build with script\\build-dev.ps1 to prepare the bundled artifact"
+        ));
     }
     #[cfg(not(windows))]
-    anyhow::bail!(
-        "cmake が PATH にありません (remote_server のビルドに必要です)。cmake をインストールしてください"
-    );
+    anyhow::bail!(i18n::t!(
+        "cmake is not on PATH (it is needed to build remote_server). Install cmake"
+    ));
 }
 
 /// Directories where Visual Studio 2022 ships its own copy of CMake, most

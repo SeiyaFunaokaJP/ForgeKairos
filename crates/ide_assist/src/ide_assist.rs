@@ -105,7 +105,7 @@ impl CodeDisplay for EditorCodeDisplay {
     ) -> Task<Result<DisplayOutcome>> {
         if highlights.len() > MAX_HIGHLIGHTS {
             return Task::ready(Err(anyhow!(
-                "ハイライトは一度に {MAX_HIGHLIGHTS} 件までです ({} 件が指定されました)",
+                "At most {MAX_HIGHLIGHTS} highlights can be shown at once ({} were given)",
                 highlights.len()
             )));
         }
@@ -139,7 +139,7 @@ impl CodeDisplay for EditorCodeDisplay {
                     }),
                     Err(reason) => skipped.push(SkippedDisplay {
                         path: highlight.path,
-                        reason,
+                        reason: reason.for_agent,
                     }),
                 }
             }
@@ -160,7 +160,7 @@ impl CodeDisplay for EditorCodeDisplay {
     ) -> Task<Result<DisplayOutcome>> {
         if annotations.len() > MAX_ANNOTATIONS {
             return Task::ready(Err(anyhow!(
-                "注釈は一度に {MAX_ANNOTATIONS} 件までです ({} 件が指定されました)",
+                "At most {MAX_ANNOTATIONS} annotations can be shown at once ({} were given)",
                 annotations.len()
             )));
         }
@@ -190,7 +190,7 @@ impl CodeDisplay for EditorCodeDisplay {
                     }),
                     Err(reason) => skipped.push(SkippedDisplay {
                         path: annotation.path,
-                        reason,
+                        reason: reason.for_agent,
                     }),
                 }
             }
@@ -210,11 +210,11 @@ impl CodeDisplay for EditorCodeDisplay {
         cx: &mut App,
     ) -> Task<Result<DisplayOutcome>> {
         if tour.steps.is_empty() {
-            return Task::ready(Err(anyhow!("ツアーにステップがありません")));
+            return Task::ready(Err(anyhow!("The tour has no steps")));
         }
         if tour.steps.len() > MAX_TOUR_STEPS {
             return Task::ready(Err(anyhow!(
-                "ツアーのステップは {MAX_TOUR_STEPS} 個までです ({} 個が指定されました)",
+                "A tour can have at most {MAX_TOUR_STEPS} steps ({} were given)",
                 tour.steps.len()
             )));
         }
@@ -237,14 +237,14 @@ impl CodeDisplay for EditorCodeDisplay {
                 if let Err(reason) = &target {
                     skipped.push(SkippedDisplay {
                         path: step.path.clone(),
-                        reason: reason.clone(),
+                        reason: reason.for_agent.clone(),
                     });
                 }
                 steps.push(PendingTourStep {
                     path: step.path,
                     title: single_line(&step.title, MAX_TITLE_CHARS),
                     markdown: DisplayMarkdown::new(&step.markdown),
-                    target: target.map_err(SharedString::from),
+                    target: target.map_err(|reason| reason.for_display),
                 });
             }
             let shown = steps.iter().filter(|step| step.target.is_ok()).count();
@@ -296,10 +296,17 @@ fn workspace_assist(workspace: &Workspace, cx: &App) -> Option<Entity<WorkspaceA
 }
 
 fn assist_for_project(project: &Entity<Project>, cx: &App) -> Result<Entity<WorkspaceAssist>> {
-    let workspace = workspace_for_project(project, cx)
-        .context("このプロジェクトを開いている Zed のウィンドウが見つかりません")?;
-    workspace_assist(workspace.read(cx), cx)
-        .context("このウィンドウにはエージェントの表示を出せません")
+    let workspace =
+        workspace_for_project(project, cx).context("No Zed window has this project open")?;
+    workspace_assist(workspace.read(cx), cx).context("This window can't show the agent's displays")
+}
+
+/// Why a target can't be shown. The agent that asked is told in English whatever language
+/// the tour card shows it in, so that the UI language does not change what the model reads.
+#[derive(Clone, Debug)]
+struct Unavailable {
+    for_agent: String,
+    for_display: SharedString,
 }
 
 #[derive(Clone, Debug)]
@@ -317,7 +324,7 @@ async fn resolve_targets(
     project: &Entity<Project>,
     requests: Vec<(ProjectPath, LineRange)>,
     cx: &AsyncApp,
-) -> Vec<Result<ResolvedTarget, String>> {
+) -> Vec<Result<ResolvedTarget, Unavailable>> {
     futures::future::join_all(requests.into_iter().map(|(path, lines)| {
         let project = project.clone();
         let mut cx = cx.clone();
@@ -331,18 +338,32 @@ async fn resolve_target(
     path: &ProjectPath,
     lines: LineRange,
     cx: &mut AsyncApp,
-) -> Result<ResolvedTarget, String> {
+) -> Result<ResolvedTarget, Unavailable> {
     if lines.start_line == 0 || lines.end_line < lines.start_line {
-        return Err(format!(
-            "行の範囲が正しくありません ({}-{} 行目)",
-            lines.start_line, lines.end_line
-        ));
+        return Err(Unavailable {
+            for_agent: format!(
+                "Invalid line range (lines {}-{})",
+                lines.start_line, lines.end_line
+            ),
+            for_display: i18n::t!(
+                "Invalid line range (lines {}-{})",
+                lines.start_line,
+                lines.end_line
+            )
+            .into(),
+        });
     }
     cx.update(|cx| check_entry(project, path, cx))?;
     let buffer = project
         .update(cx, |project, cx| project.open_buffer(path.clone(), cx))
         .await
-        .map_err(|error| format!("ファイルを開けませんでした ({error:#})"))?;
+        .map_err(|error| {
+            let error = format!("{error:#}");
+            Unavailable {
+                for_agent: format!("Couldn't open the file ({error})"),
+                for_display: i18n::t!("Couldn't open the file ({error})").into(),
+            }
+        })?;
     let (range, first_line_end, lines) =
         buffer.read_with(cx, |buffer, _| line_anchors(buffer, lines))?;
     Ok(ResolvedTarget {
@@ -353,18 +374,31 @@ async fn resolve_target(
     })
 }
 
-fn check_entry(project: &Entity<Project>, path: &ProjectPath, cx: &App) -> Result<(), String> {
+fn check_entry(project: &Entity<Project>, path: &ProjectPath, cx: &App) -> Result<(), Unavailable> {
+    let unavailable = |for_agent: &str, for_display: &'static str| Unavailable {
+        for_agent: for_agent.to_string(),
+        for_display: for_display.into(),
+    };
     let Some(entry) = project.read(cx).entry_for_path(path, cx) else {
-        return Err("ファイルが見つかりません".to_string());
+        return Err(unavailable("File not found", i18n::t!("File not found")));
     };
     if entry.is_dir() {
-        return Err("フォルダーは表示できません".to_string());
+        return Err(unavailable(
+            "Folders can't be shown",
+            i18n::t!("Folders can't be shown"),
+        ));
     }
     if entry.is_fifo {
-        return Err("通常のファイルではありません".to_string());
+        return Err(unavailable(
+            "Not a regular file",
+            i18n::t!("Not a regular file"),
+        ));
     }
     if entry.size > MAX_DISPLAY_FILE_BYTES {
-        return Err("ファイルが大きすぎます (4 MiB 超)".to_string());
+        return Err(unavailable(
+            "The file is too large (over 4 MiB)",
+            i18n::t!("The file is too large (over 4 MiB)"),
+        ));
     }
     Ok(())
 }
@@ -372,13 +406,19 @@ fn check_entry(project: &Entity<Project>, path: &ProjectPath, cx: &App) -> Resul
 fn line_anchors(
     buffer: &Buffer,
     lines: LineRange,
-) -> Result<(Range<language::Anchor>, language::Anchor, LineRange), String> {
+) -> Result<(Range<language::Anchor>, language::Anchor, LineRange), Unavailable> {
     let line_count = buffer.max_point().row + 1;
     if lines.start_line > line_count {
-        return Err(format!(
-            "{} 行目はファイルの外です (このファイルは {line_count} 行)",
-            lines.start_line
-        ));
+        let start_line = lines.start_line;
+        return Err(Unavailable {
+            for_agent: format!(
+                "Line {start_line} is past the end of the file ({line_count} lines)"
+            ),
+            for_display: i18n::t!(
+                "Line {start_line} is past the end of the file ({line_count} lines)"
+            )
+            .into(),
+        });
     }
     let start_row = lines.start_line - 1;
     let end_row = lines.end_line.min(line_count) - 1;
@@ -490,9 +530,9 @@ fn strip_markdown(source: &str) -> String {
             MarkdownEvent::Start(MarkdownTag::Image { .. }) => {
                 let alt = text_within(events.get(index + 1..).unwrap_or_default(), range, source);
                 if alt.trim().is_empty() {
-                    "(画像)".to_string()
+                    i18n::t!("(image)").to_string()
                 } else {
-                    format!("(画像: {alt})")
+                    i18n::t!("(image: {alt})")
                 }
             }
             MarkdownEvent::Html | MarkdownEvent::InlineHtml => {
@@ -553,14 +593,14 @@ fn single_line(text: &str, max_chars: usize) -> SharedString {
 
 fn lines_label(lines: LineRange) -> String {
     if lines.start_line == lines.end_line {
-        format!("{} 行目", lines.start_line)
+        i18n::t!("Line {}", lines.start_line)
     } else {
-        format!("{}-{} 行目", lines.start_line, lines.end_line)
+        i18n::t!("Lines {}-{}", lines.start_line, lines.end_line)
     }
 }
 
 fn tour_status_label(current: usize, total: usize) -> String {
-    format!("ツアー {}/{}", current + 1, total)
+    i18n::t!("Tour {}/{}", current + 1, total)
 }
 
 /// Links, images and selection stay inert; see [`sanitize_markdown`] for why links still reach
@@ -1009,9 +1049,7 @@ impl WorkspaceAssist {
     ) -> Task<Result<Option<Entity<Editor>>>> {
         let workspace = self.workspace.clone();
         cx.spawn(async move |_, cx| {
-            let workspace = workspace
-                .upgrade()
-                .context("ワークスペースが閉じられました")?;
+            let workspace = workspace.upgrade().context("The workspace was closed")?;
             let open = cx
                 .update(|cx| {
                     cx.with_window(workspace.entity_id(), |window, cx| {
@@ -1020,7 +1058,7 @@ impl WorkspaceAssist {
                         })
                     })
                 })
-                .context("ワークスペースのウィンドウが見つかりません")?;
+                .context("The workspace's window wasn't found")?;
             match open {
                 Some(open) => Ok(Some(open.await?)),
                 None => Ok(None),
@@ -1190,7 +1228,7 @@ fn open_or_activate(
     Some(cx.spawn(async move |_, _| {
         let item = open.await?;
         item.downcast::<Editor>()
-            .context("テキストエディターで開けないファイルです")
+            .context("This file can't be opened in a text editor")
     }))
 }
 
@@ -1430,8 +1468,9 @@ fn frame_header(icon: IconName, title: String) -> impl IntoElement {
 }
 
 fn truncation_notice() -> impl IntoElement {
-    Label::new(format!(
-        "長すぎるため {MAX_DISPLAY_MARKDOWN_CHARS} 文字で切り詰めました"
+    Label::new(i18n::t!(
+        "Too long, cut to {max_chars} characters",
+        max_chars = MAX_DISPLAY_MARKDOWN_CHARS
     ))
     .size(LabelSize::XSmall)
     .color(Color::Muted)
@@ -1488,7 +1527,10 @@ fn render_annotation(
                 .child(
                     h_flex()
                         .gap_2()
-                        .child(frame_header(IconName::Sparkle, format!("{label} の注釈")))
+                        .child(frame_header(
+                            IconName::Sparkle,
+                            i18n::t!("Annotation from {label}"),
+                        ))
                         .child(
                             Label::new(lines_label(lines))
                                 .size(LabelSize::XSmall)
@@ -1518,7 +1560,7 @@ fn render_tour_card(card: &TourCard, cx: &mut BlockContext) -> AnyElement {
             .when(*truncated, |this| this.child(truncation_notice()))
             .into_any_element(),
         TourCardBody::Unavailable(reason) => {
-            Label::new(format!("このステップは開けません ({reason})"))
+            Label::new(i18n::t!("Can't open this step ({reason})"))
                 .size(LabelSize::Small)
                 .color(Color::Warning)
                 .into_any_element()
@@ -1537,9 +1579,9 @@ fn render_tour_card(card: &TourCard, cx: &mut BlockContext) -> AnyElement {
     };
     let end_button = {
         let assist = card.assist.clone();
-        Button::new("ide-assist-tour-end", "終了")
+        Button::new("ide-assist-tour-end", i18n::tc!("tour", "End"))
             .label_size(LabelSize::Small)
-            .tooltip(Tooltip::for_action_title("ツアーを終了", &EndTour))
+            .tooltip(Tooltip::for_action_title(i18n::t!("End Tour"), &EndTour))
             .on_click(move |_, _, cx| {
                 if let Some(assist) = assist.upgrade() {
                     assist.update(cx, |assist, cx| assist.end_tour(cx));
@@ -1563,7 +1605,7 @@ fn render_tour_card(card: &TourCard, cx: &mut BlockContext) -> AnyElement {
                 .bg(colors.surface_background)
                 .child(frame_header(
                     IconName::Sparkle,
-                    format!("{} のツアー: {}", card.source_label, card.tour_title),
+                    i18n::t!("Tour from {}: {}", card.source_label, card.tour_title),
                 ))
                 .child(Label::new(card.step_title.clone()).weight(FontWeight::SEMIBOLD))
                 .child(body)
@@ -1576,13 +1618,13 @@ fn render_tour_card(card: &TourCard, cx: &mut BlockContext) -> AnyElement {
                                 .child(
                                     step_button(
                                         "ide-assist-tour-previous",
-                                        "‹ 前へ",
+                                        i18n::t!("‹ Previous"),
                                         -1,
                                         card.step == 0,
                                     )
                                     .tooltip(
                                         Tooltip::for_action_title(
-                                            "前のステップ",
+                                            i18n::t!("Previous Step"),
                                             &PreviousTourStep,
                                         ),
                                     ),
@@ -1599,12 +1641,15 @@ fn render_tour_card(card: &TourCard, cx: &mut BlockContext) -> AnyElement {
                                 .child(
                                     step_button(
                                         "ide-assist-tour-next",
-                                        "次へ ›",
+                                        i18n::t!("Next ›"),
                                         1,
                                         card.step + 1 >= card.total,
                                     )
                                     .tooltip(
-                                        Tooltip::for_action_title("次のステップ", &NextTourStep),
+                                        Tooltip::for_action_title(
+                                            i18n::t!("Next Step"),
+                                            &NextTourStep,
+                                        ),
                                     ),
                                 ),
                         )
@@ -1625,9 +1670,10 @@ impl Render for WorkspaceAssist {
             tour_status_label(tour.current, tour.steps.len()),
         )
         .label_size(LabelSize::Small)
-        .tooltip(Tooltip::text(format!(
-            "{} のツアー: {} (クリックで現在のステップへ)",
-            tour.source.label, tour.title
+        .tooltip(Tooltip::text(i18n::t!(
+            "Tour from {}: {} (click to go to the current step)",
+            tour.source.label,
+            tour.title
         )))
         .on_click(cx.listener(|this, _, _, cx| this.return_to_current_step(cx)))
         .into_any_element()

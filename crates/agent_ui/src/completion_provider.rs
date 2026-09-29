@@ -179,7 +179,7 @@ impl PromptContextAction {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::AddSelections => "選択範囲",
+            Self::AddSelections => i18n::t!("Selection"),
         }
     }
 
@@ -211,18 +211,22 @@ impl PromptLocalCommand {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::ThumbsUp => "高評価のフィードバック",
-            Self::ThumbsDown => "低評価のフィードバック",
+            Self::ThumbsUp => i18n::t!("Positive Feedback"),
+            Self::ThumbsDown => i18n::t!("Negative Feedback"),
         }
     }
 
     pub fn description(&self) -> &'static str {
         match self {
             Self::ThumbsUp => {
-                "この応答を「役に立った」と評価します。現在の会話を Zed チームに送信します。"
+                i18n::t!(
+                    "Rate this response as helpful. Sends the current conversation to the Zed team."
+                )
             }
             Self::ThumbsDown => {
-                "この応答を「役に立たなかった」と評価します。現在の会話を Zed チームに送信します。"
+                i18n::t!(
+                    "Rate this response as not helpful. Sends the current conversation to the Zed team."
+                )
             }
         }
     }
@@ -267,13 +271,13 @@ impl PromptContextType {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::File => "ファイルとディレクトリ",
-            Self::Symbol => "シンボル",
-            Self::Fetch => "URL を取得",
-            Self::Thread => "スレッド",
-            Self::Skill => "スキル",
-            Self::Diagnostics => "診断",
-            Self::BranchDiff => "ブランチの差分",
+            Self::File => i18n::t!("Files & Directories"),
+            Self::Symbol => i18n::t!("Symbols"),
+            Self::Fetch => i18n::tc!("mention type", "Fetch"),
+            Self::Thread => i18n::t!("Threads"),
+            Self::Skill => i18n::t!("Skills"),
+            Self::Diagnostics => i18n::t!("Diagnostics"),
+            Self::BranchDiff => i18n::t!("Branch Diff"),
         }
     }
 
@@ -332,10 +336,21 @@ pub struct EntryMatch {
     entry: PromptContextEntry,
 }
 
+/// The title a thread mention carries. It goes into the message as the link
+/// text, so an untitled thread keeps the English placeholder whatever the
+/// display language is (ADR-F64 decision 8).
 fn session_title(title: Option<SharedString>) -> SharedString {
     title
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| SharedString::new_static(DEFAULT_THREAD_TITLE))
+}
+
+fn session_label(title: &SharedString) -> String {
+    if crate::is_default_thread_title(title) {
+        i18n::tr(DEFAULT_THREAD_TITLE).to_string()
+    } else {
+        title.to_string()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -396,9 +411,11 @@ impl AvailableCommand {
     /// Completion group key and header label for this command's category.
     fn group(&self) -> CompletionGroup {
         let (key, label) = match self.category {
-            Some(acp_thread::CommandCategory::Native) => ("commands", "コマンド"),
-            Some(acp_thread::CommandCategory::Mcp) => ("mcp-commands", "MCP サーバーのコマンド"),
-            None => ("acp-commands", "コマンド"),
+            Some(acp_thread::CommandCategory::Native) => ("commands", i18n::t!("Commands")),
+            Some(acp_thread::CommandCategory::Mcp) => {
+                ("mcp-commands", i18n::t!("MCP Server Commands"))
+            }
+            None => ("acp-commands", i18n::t!("Commands")),
         };
         CompletionGroup {
             key: key.into(),
@@ -569,7 +586,7 @@ impl<T: PromptCompletionProviderDelegate> PromptCompletionProvider<T> {
         Completion {
             replace_range: source_range.clone(),
             new_text,
-            label: CodeLabel::plain(title.to_string(), None),
+            label: CodeLabel::plain(session_label(&title), None),
             documentation: None,
             insert_text_mode: None,
             source: project::CompletionSource::Custom,
@@ -1549,7 +1566,7 @@ impl<T: PromptCompletionProviderDelegate> CompletionProvider for PromptCompletio
                                     confirm: Some(confirm),
                                     group: show_section_headers.then(|| CompletionGroup {
                                         key: "skills".into(),
-                                        label: Some("スキル".into()),
+                                        label: Some(i18n::t!("Skills").into()),
                                     }),
                                 }
                             }
@@ -1618,7 +1635,7 @@ impl<T: PromptCompletionProviderDelegate> CompletionProvider for PromptCompletio
                             SlashCompletionCandidate::LocalCommand(command) => {
                                 let group = show_section_headers.then(|| CompletionGroup {
                                     key: "local-commands".into(),
-                                    label: Some("アクション".into()),
+                                    label: Some(i18n::t!("Actions").into()),
                                 });
 
                                 Completion {
@@ -2203,14 +2220,23 @@ fn diagnostics_submenu_label(
     include_warnings: bool,
 ) -> String {
     match (include_errors, include_warnings) {
-        (true, true) => format!(
-            "エラー {} 件、警告 {} 件",
-            summary.error_count, summary.warning_count
+        (true, true) => i18n::t!(
+            "{errors} & {warnings}",
+            errors = diagnostics_error_count(summary),
+            warnings = diagnostics_warning_count(summary)
         ),
-        (true, _) => format!("エラー {} 件", summary.error_count),
-        (_, true) => format!("警告 {} 件", summary.warning_count),
-        _ => "診断".into(),
+        (true, _) => diagnostics_error_count(summary),
+        (_, true) => diagnostics_warning_count(summary),
+        _ => i18n::t!("Diagnostics").into(),
     }
+}
+
+fn diagnostics_error_count(summary: DiagnosticSummary) -> String {
+    i18n::tn!(summary.error_count, "{count} error", "{count} errors")
+}
+
+fn diagnostics_warning_count(summary: DiagnosticSummary) -> String {
+    i18n::tn!(summary.warning_count, "{count} warning", "{count} warnings")
 }
 
 fn diagnostics_crease_label(
@@ -2839,6 +2865,50 @@ fn completion_text_for_terminal_selections(
 mod tests {
     use super::*;
     use gpui::TestAppContext;
+
+    struct DefaultTitleCatalog;
+
+    impl i18n::Catalog for DefaultTitleCatalog {
+        fn locale(&self) -> &str {
+            "fr"
+        }
+
+        fn lookup(&self, context: Option<&str>, msgid: &str) -> Option<&'static str> {
+            (context.is_none() && msgid == DEFAULT_THREAD_TITLE).then_some("Nouveau fil d'agent")
+        }
+
+        fn lookup_plural(
+            &self,
+            _context: Option<&str>,
+            _msgid: &str,
+            _msgid_plural: &str,
+            _count: u64,
+        ) -> Option<&'static str> {
+            None
+        }
+    }
+
+    #[test]
+    fn test_untitled_thread_mention_keeps_english_link_text() {
+        static CATALOG: DefaultTitleCatalog = DefaultTitleCatalog;
+        let _locale = i18n::test_support::LocaleOverride::new(Some(&CATALOG));
+
+        let title = session_title(None);
+        let uri = MentionUri::Thread {
+            id: acp::SessionId::new("session"),
+            name: title.to_string(),
+        };
+        assert!(
+            uri.as_link().to_string().contains(DEFAULT_THREAD_TITLE),
+            "the model sees the same link text in every language: {}",
+            uri.as_link()
+        );
+        assert_eq!(session_label(&title), "Nouveau fil d'agent");
+
+        let named = session_title(Some("Refactor the parser".into()));
+        assert_eq!(named.as_ref(), "Refactor the parser");
+        assert_eq!(session_label(&named), "Refactor the parser");
+    }
 
     #[test]
     fn test_prompt_completion_parse() {

@@ -6,11 +6,11 @@ use workspace::{HideStatusItem, StatusItemView, item::ItemHandle, ui::prelude::*
 
 use crate::{ToggleHelixMode, ToggleVimMode, Vim, VimEvent, VimGlobals};
 
-const DISABLE_TITLE: &str = "Vim モードを無効にします";
+const DISABLE_TITLE: &str = i18n::msg!("Disable Vim Mode");
 const DISABLE_META: &str =
-    "無効にすると VSCode と同じように、ファイルを開いた直後からそのまま文字を入力できます。";
-const ENABLE_TITLE: &str = "Vim モードを有効にします";
-const ENABLE_META: &str = "有効にすると Vim のキーバインドで操作します。";
+    i18n::msg!("When disabled, you can type as soon as you open a file, just like in VSCode.");
+const ENABLE_TITLE: &str = i18n::msg!("Enable Vim Mode");
+const ENABLE_META: &str = i18n::msg!("When enabled, you edit with Vim key bindings.");
 
 /// The ModeIndicator displays the current mode in the status bar.
 pub struct ModeIndicator {
@@ -95,10 +95,11 @@ impl ModeIndicator {
         let action = Self::toggle_action(cx);
         let tooltip_action = action.boxed_clone();
         let (label, title, meta) = if enabled {
-            ("Vim: オン", DISABLE_TITLE, DISABLE_META)
+            (i18n::t!("Vim: On"), DISABLE_TITLE, DISABLE_META)
         } else {
-            ("Vim: オフ", ENABLE_TITLE, ENABLE_META)
+            (i18n::t!("Vim: Off"), ENABLE_TITLE, ENABLE_META)
         };
+        let (title, meta) = (i18n::tr(title), i18n::tr(meta));
 
         Button::new("vim-mode-toggle", label)
             .label_size(LabelSize::Small)
@@ -206,9 +207,14 @@ impl Render for ModeIndicator {
 
         ButtonLike::new("vim-mode-indicator")
             .tab_index(0isize)
-            .aria_label(DISABLE_TITLE)
+            .aria_label(i18n::tr(DISABLE_TITLE))
             .tooltip(move |_window, cx| {
-                Tooltip::with_meta(DISABLE_TITLE, Some(&*tooltip_action), DISABLE_META, cx)
+                Tooltip::with_meta(
+                    i18n::tr(DISABLE_TITLE),
+                    Some(&*tooltip_action),
+                    i18n::tr(DISABLE_META),
+                    cx,
+                )
             })
             .on_click(move |_, window, cx| window.dispatch_action(action.boxed_clone(), cx))
             .child(

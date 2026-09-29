@@ -3907,7 +3907,7 @@ async fn the_assist_endpoint_follows_the_setting(cx: &mut TestAppContext) {
     assert!(
         body["error"]["message"]
             .as_str()
-            .is_some_and(|message| message.contains("無効")),
+            .is_some_and(|message| message.contains("disabled")),
         "{body}"
     );
 }
@@ -4140,18 +4140,21 @@ async fn the_assist_tools_refuse_what_the_checks_refuse(cx: &mut TestAppContext)
     let display = install_fake_display(cx);
 
     let refused = [
-        (format!("{CLIENT_OUTSIDE}/secret.rs"), "外"),
-        (format!("{CLIENT_ROOT}/../outside/secret.rs"), "`..` を含む"),
-        (format!("{CLIENT_ROOT}/link.rs"), "リンク"),
-        (format!("{CLIENT_ROOT}/.git/config"), "走査"),
+        (format!("{CLIENT_OUTSIDE}/secret.rs"), "outside"),
+        (
+            format!("{CLIENT_ROOT}/../outside/secret.rs"),
+            "contains `..`",
+        ),
+        (format!("{CLIENT_ROOT}/link.rs"), "link"),
+        (format!("{CLIENT_ROOT}/.git/config"), "doesn't scan"),
         (format!("{CLIENT_ROOT}/.env"), "private_files"),
         (".env".to_string(), "private_files"),
         (format!("{CLIENT_ROOT}/huge.txt"), "4 MiB"),
-        (format!("{CLIENT_ROOT}/src"), "ディレクトリ"),
-        (format!("{CLIENT_ROOT}/missing.rs"), "見つかりません"),
-        ("../outside/secret.rs".to_string(), "`..` を含む"),
-        ("src/../../outside/secret.rs".to_string(), "`..` を含む"),
-        (String::new(), "空"),
+        (format!("{CLIENT_ROOT}/src"), "is a directory"),
+        (format!("{CLIENT_ROOT}/missing.rs"), "wasn't found"),
+        ("../outside/secret.rs".to_string(), "contains `..`"),
+        ("src/../../outside/secret.rs".to_string(), "contains `..`"),
+        (String::new(), "is empty"),
     ];
     for (path, reason) in &refused {
         for (tool, arguments) in [
@@ -4195,7 +4198,7 @@ async fn the_assist_tools_refuse_what_the_checks_refuse(cx: &mut TestAppContext)
     .await;
     let text = tool_error_text(&response);
     assert!(
-        !text.contains("扱えません") && !text.contains("見つかりません"),
+        !text.contains("can't be used") && !text.contains("wasn't found"),
         "{text}"
     );
 }
@@ -4242,9 +4245,9 @@ fn query_failures_tell_a_missing_language_server_apart() {
             &query_failure(sandboxed, "getHover", not_running()),
             &scope,
         );
-        assert!(text.contains("言語サーバーが起動していません"), "{text}");
+        assert!(text.contains("The language server isn't running"), "{text}");
         assert!(
-            text.contains("もう一度呼んでください"),
+            text.contains("then call again"),
             "the agent is told to wait and ask again: {text}"
         );
         assert!(!text.contains("test/main.rs"), "{text}");
@@ -4372,13 +4375,13 @@ async fn the_assist_tools_enforce_their_limits(cx: &mut TestAppContext) {
         (
             "highlightCode",
             json!({ "items": vec![item.clone(); ide_query::MAX_HIGHLIGHTS + 1] }),
-            "件まで",
+            "items (it had",
         ),
-        ("highlightCode", json!({ "items": [] }), "空"),
+        ("highlightCode", json!({ "items": [] }), "is empty"),
         (
             "highlightCode",
             json!({ "items": [{ "path": "main.rs", "startLine": 1, "endLine": 1, "note": too_long }] }),
-            "文字まで",
+            "characters (it was",
         ),
         (
             "highlightCode",
@@ -4393,17 +4396,17 @@ async fn the_assist_tools_enforce_their_limits(cx: &mut TestAppContext) {
         (
             "annotateCode",
             json!({ "items": vec![annotation; ide_query::MAX_ANNOTATIONS + 1] }),
-            "件まで",
+            "items (it had",
         ),
         (
             "annotateCode",
             json!({ "items": [{ "path": "main.rs", "startLine": 1, "endLine": 1, "markdown": too_long }] }),
-            "文字まで",
+            "characters (it was",
         ),
         (
             "startCodeTour",
             json!({ "title": "t", "steps": vec![step; ide_query::MAX_TOUR_STEPS + 1] }),
-            "件まで",
+            "items (it had",
         ),
         (
             "searchSymbols",
@@ -4413,9 +4416,9 @@ async fn the_assist_tools_enforce_their_limits(cx: &mut TestAppContext) {
         (
             "searchSymbols",
             json!({ "query": "x".repeat(1001) }),
-            "文字まで",
+            "characters (it was",
         ),
-        ("searchSymbols", json!({ "query": " " }), "空"),
+        ("searchSymbols", json!({ "query": " " }), "is empty"),
         ("getHover", json!({ "path": "main.rs", "line": 0 }), "line"),
         (
             "getHover",
@@ -4884,7 +4887,7 @@ async fn each_host_assist_client_is_known_by_its_own_token(cx: &mut TestAppConte
         label_for(&token_of(&second_endpoint), cx).as_ref(),
         "Gemini CLI"
     );
-    assert_eq!(label_for(&server_token, cx).as_ref(), "外部エージェント");
+    assert_eq!(label_for(&server_token, cx).as_ref(), "External Agent");
     assert_eq!(credentials.authenticate(&client_id_of(&first, cx)), None);
 
     drop(first);
@@ -5085,7 +5088,7 @@ async fn the_frame_label_is_never_what_the_client_claims(cx: &mut TestAppContext
             .assist
             .expect("with the assist tools")
             .label;
-        assert_eq!(label.as_ref(), "外部エージェント", "{forged:?}");
+        assert_eq!(label.as_ref(), "External Agent", "{forged:?}");
     }
 }
 

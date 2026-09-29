@@ -1,0 +1,25 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Adapter Logs"
+msgstr "アダプターログ"
+
+msgid "DAP Logs"
+msgstr "DAP ログ"
+
+msgid "Initialization Sequence"
+msgstr "初期化シーケンス"
+
+msgid "No adapter selected"
+msgstr "アダプターが選択されていません"
+
+msgid "RPC Messages"
+msgstr "RPC メッセージ"
+
+msgctxt "dap log"
+msgid "Clear"
+msgstr "消去"

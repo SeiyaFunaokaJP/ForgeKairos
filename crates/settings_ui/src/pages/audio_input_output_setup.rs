@@ -8,7 +8,7 @@ use util::ResultExt;
 
 use crate::{SettingField, SettingsFieldMetadata, SettingsUiFile, update_settings_file};
 
-pub(crate) const SYSTEM_DEFAULT: &str = "システム既定";
+pub(crate) const SYSTEM_DEFAULT: &str = i18n::msg!("System Default");
 
 pub(crate) fn get_current_device(
     current_id: Option<&DeviceId>,
@@ -46,7 +46,7 @@ where
         move |mut menu, _, _cx| {
             let is_system_default = current_device.is_none();
             menu = menu.toggleable_entry(
-                SYSTEM_DEFAULT,
+                i18n::tr(SYSTEM_DEFAULT),
                 is_system_default,
                 IconPosition::Start,
                 None,
@@ -86,7 +86,7 @@ where
         dropdown_id,
         current_device
             .map(|info| info.desc.name().to_string())
-            .unwrap_or(SYSTEM_DEFAULT.to_string()),
+            .unwrap_or(i18n::tr(SYSTEM_DEFAULT).to_string()),
         menu,
     )
     .style(DropdownStyle::Outlined)

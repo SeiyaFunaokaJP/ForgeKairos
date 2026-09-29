@@ -1032,7 +1032,7 @@ impl SearchCommitArgs {
             .iter()
             .map(|author| {
                 let author = author.trim();
-                anyhow::ensure!(!author.is_empty(), "著者の指定が空です。");
+                anyhow::ensure!(!author.is_empty(), i18n::t!("The author filter is empty."));
                 Ok(author)
             })
             .collect()
@@ -1045,23 +1045,28 @@ impl SearchCommitArgs {
         if let Some(branch) = self.branch.as_deref() {
             anyhow::ensure!(
                 commit_search::is_searchable_branch_ref(branch),
-                "ブランチ「{branch}」は検索に使えません。"
+                i18n::t!("Branch \"{branch}\" cannot be used in a search.")
             );
         }
         if let Some(path) = self.path.as_deref() {
             anyhow::ensure!(
                 commit_search::normalize_search_path(path).is_some(),
-                "ファイルの指定「{path}」はリポジトリ全体を指すため、絞り込みになりません。"
+                i18n::t!(
+                    "The file filter \"{path}\" names the whole repository, so it does not narrow the search."
+                )
             );
         }
         if let Some(change) = self.change.as_deref() {
-            anyhow::ensure!(!change.is_empty(), "変更内容の指定が空です。");
+            anyhow::ensure!(
+                !change.is_empty(),
+                i18n::t!("The changed-text filter is empty.")
+            );
         }
         if let Some(sha_prefix) = self.sha_prefix.as_deref() {
             anyhow::ensure!(
                 (4..=40).contains(&sha_prefix.len())
                     && sha_prefix.bytes().all(|byte| byte.is_ascii_hexdigit()),
-                "sha の指定「{sha_prefix}」は 16 進数ではありません。"
+                i18n::t!("The sha filter \"{sha_prefix}\" is not hexadecimal.")
             );
         }
         Ok(())
@@ -1139,7 +1144,9 @@ fn format_search_date(timestamp: i64) -> Result<String> {
 /// a glob. A glob with no `/` matches at any depth, as in `.gitignore`.
 fn search_pathspec(path: &str) -> Result<String> {
     let Some(path) = commit_search::normalize_search_path(path) else {
-        bail!("ファイルの指定「{path}」はリポジトリ全体を指すため、絞り込みになりません。");
+        bail!(i18n::t!(
+            "The file filter \"{path}\" names the whole repository, so it does not narrow the search."
+        ));
     };
     Ok(if !path.contains('*') {
         format!(":(literal){path}")
@@ -1185,7 +1192,8 @@ fn commit_search_log_args(
         }
     }
     if let Some(change) = search_args.change.as_deref() {
-        GitFeature::PickaxeRegex.require(version, "変更内容での検索")?;
+        GitFeature::PickaxeRegex
+            .require(version, i18n::tc!("git result", "Search by changed text"))?;
         args.push(format!(
             "-G{}",
             commit_search::change_search_pattern(change, search_args.case_sensitive)
@@ -1212,8 +1220,14 @@ fn commit_search_log_args(
         revisions.truncate(index);
     }
     if let Some(path) = search_args.path.as_deref() {
-        anyhow::ensure!(!has_pathspec, "ファイルの履歴では「ファイル:」は使えません。");
-        GitFeature::PathspecMagic.require(version, "ファイルでの絞り込み")?;
+        anyhow::ensure!(
+            !has_pathspec,
+            i18n::t!(
+                "\"{prefix}:\" cannot be used in a file's history.",
+                prefix = commit_search::CommitSearchConditionKind::Path.query_prefix()
+            )
+        );
+        GitFeature::PathspecMagic.require(version, i18n::tc!("git result", "Filter by file"))?;
         args.extend(revisions);
         args.push("--".to_string());
         args.push(search_pathspec(path)?);
@@ -1240,7 +1254,7 @@ fn branch_search_revisions(
         .unwrap_or(branch);
     anyhow::ensure!(
         commit_search::is_searchable_branch_ref(branch) && existing_refs.contains(branch),
-        "ブランチ「{short_name}」はありません。"
+        i18n::t!("There is no branch \"{branch}\".", branch = short_name)
     );
     let default_ref = default_branch.and_then(|default_branch| {
         [
@@ -1253,7 +1267,10 @@ fn branch_search_revisions(
         })
     });
     let Some(default_ref) = default_ref else {
-        bail!("デフォルトブランチが見つからないため、「ブランチ:」では絞り込めません。");
+        bail!(i18n::t!(
+            "The default branch was not found, so \"{prefix}:\" cannot narrow the search.",
+            prefix = commit_search::CommitSearchConditionKind::Branch.query_prefix()
+        ));
     };
     // A local `main` whose default is `origin/main` is the default branch too.
     let default_local_name = default_ref.strip_prefix("refs/heads/").or_else(|| {
@@ -1314,8 +1331,8 @@ impl GitCommandOutput {
             return message;
         }
         match self.exit_code {
-            Some(code) => format!("git がステータス {code} で終了しました。"),
-            None => "git が異常終了しました。".to_string(),
+            Some(code) => i18n::t!("git exited with status {code}."),
+            None => i18n::t!("git terminated abnormally.").to_string(),
         }
     }
 }
@@ -1362,18 +1379,31 @@ pub const ALLOWED_GIT_COMMANDS: &[&str] = &[
 pub const ALLOWED_GIT_COMMAND_ENV: &[&str] =
     &["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE"];
 
-/// Subcommands of [`ALLOWED_GIT_COMMANDS`] that run repository hooks, with the Japanese name of
-/// the operation for the error an untrusted project gets on a git too old to disable them
-/// (ADR-F47).
-pub const HOOK_RUNNING_GIT_COMMANDS: &[(&str, &str)] = &[
-    ("checkout", "チェックアウト"),
-    ("cherry-pick", "コミットの取り込み (cherry-pick)"),
-    ("commit", "コミット"),
-    ("merge", "マージ"),
-    ("rebase", "リベース"),
-    ("revert", "コミットの打ち消し (revert)"),
-    ("switch", "ブランチの切り替え"),
+/// Subcommands of [`ALLOWED_GIT_COMMANDS`] that run repository hooks, so that an untrusted project
+/// on a git too old to disable them gets an error instead (ADR-F47).
+pub const HOOK_RUNNING_GIT_COMMANDS: &[&str] = &[
+    "checkout",
+    "cherry-pick",
+    "commit",
+    "merge",
+    "rebase",
+    "revert",
+    "switch",
 ];
+
+/// The name of a [`HOOK_RUNNING_GIT_COMMANDS`] operation for that error.
+fn hook_running_operation_name(subcommand: &str) -> Option<&'static str> {
+    Some(match subcommand {
+        "checkout" => i18n::tc!("git result", "Checkout"),
+        "cherry-pick" => i18n::tc!("git result", "Cherry-pick"),
+        "commit" => i18n::tc!("git result", "Commit"),
+        "merge" => i18n::tc!("git result", "Merge"),
+        "rebase" => i18n::tc!("git result", "Rebase"),
+        "revert" => i18n::tc!("git result", "Revert"),
+        "switch" => i18n::tc!("git result", "Switch branch"),
+        _ => return None,
+    })
+}
 
 /// Options [`validate_git_command`] refuses wherever they appear.
 ///
@@ -1669,9 +1699,9 @@ impl SequencerKind {
     /// Name shown to the user, in the git panel's banner and in error messages.
     pub fn label(self) -> &'static str {
         match self {
-            Self::CherryPick => "コミットの取り込み (cherry-pick)",
-            Self::Revert => "コミットの打ち消し (revert)",
-            Self::Rebase => "リベース (rebase)",
+            Self::CherryPick => i18n::tc!("git sequencer", "cherry-pick"),
+            Self::Revert => i18n::tc!("git sequencer", "revert"),
+            Self::Rebase => i18n::tc!("git sequencer", "rebase"),
         }
     }
 
@@ -1753,9 +1783,10 @@ pub fn sequencer_state_from_probes(probes: SequencerProbes) -> Option<SequencerS
 /// stopped rebase apart from leftover conflicts.
 pub fn uncertain_rebase_message() -> String {
     let since = GitFeature::RebaseHeadRef.minimum_version();
-    format!(
-        "リベースが途中で止まっている可能性があります (git {}.{} より前ではこれ以上判別できません)",
-        since.major, since.minor
+    i18n::t!(
+        "A rebase may have stopped partway (git before {major}.{minor} cannot tell for sure)",
+        major = since.major,
+        minor = since.minor
     )
 }
 
@@ -1823,7 +1854,7 @@ fn ensure_arguments_are_supported(
     if matches!(subcommand, "cherry-pick" | "revert")
         && args.iter().any(|argument| argument == "--skip")
     {
-        GitFeature::SequencerSkip.require(version, "このコミットのスキップ")?;
+        GitFeature::SequencerSkip.require(version, i18n::tc!("git result", "Skip this commit"))?;
     }
     Ok(())
 }
@@ -1972,7 +2003,7 @@ pub fn fixup_commit_commands(
 ) -> Result<Vec<Vec<String>>> {
     anyhow::ensure!(
         !target.is_empty(),
-        "変更を入れる先のコミットが分かりません。"
+        i18n::t!("The commit to fold the changes into is unknown.")
     );
     let mut commit = vec!["commit".to_string(), format!("--fixup={target}")];
     Ok(match changes {
@@ -1982,7 +2013,10 @@ pub fn fixup_commit_commands(
             vec![commit]
         }
         FixupChanges::Paths(paths) => {
-            anyhow::ensure!(!paths.is_empty(), "入れるファイルがありません。");
+            anyhow::ensure!(
+                !paths.is_empty(),
+                i18n::t!("There are no files to fold in.")
+            );
             let mut commands = Vec::with_capacity(2);
             if !untracked.is_empty() {
                 let mut add = vec!["add".to_string(), "--".to_string()];
@@ -2152,11 +2186,13 @@ pub enum FixupOutcome {
 pub fn rewrite_cleanup_commands(branch: &str, scratch_branch: &str) -> Result<Vec<Vec<String>>> {
     anyhow::ensure!(
         is_rewrite_scratch_branch(scratch_branch) && branch != scratch_branch,
-        "一時ブランチではないブランチ「{scratch_branch}」は削除できません。"
+        i18n::t!("\"{scratch_branch}\" is not a scratch branch, so it cannot be deleted.")
     );
     anyhow::ensure!(
         !branch.is_empty(),
-        "戻り先のブランチが分からないため、一時ブランチから戻れません。"
+        i18n::t!(
+            "The branch to go back to is unknown, so there is no way back from the scratch branch."
+        )
     );
     Ok(vec![
         vec!["switch".to_string(), branch.to_string()],
@@ -2187,7 +2223,7 @@ pub fn rewrite_range_commands(
 ) -> Result<Vec<RewriteCommand>> {
     anyhow::ensure!(
         !branch.is_empty() && !base.is_empty() && !upstream.is_empty(),
-        "書き換える範囲を特定できませんでした。"
+        i18n::t!("Could not determine the range to rewrite.")
     );
     // git counts ignored files as expendable: without `--no-overwrite-ignore`, a file the user's
     // branch ignores (a local `.env`, say) but `base` still tracks would be overwritten here, and
@@ -2203,14 +2239,14 @@ pub fn rewrite_range_commands(
         let (first, rest) = group
             .shas
             .split_first()
-            .context("コミットを 1 件も含まない行があります。")?;
+            .context(i18n::t!("A row has no commits."))?;
         match &group.message {
             // Plain `cherry-pick` writes the commit itself, keeping both its message and its
             // author, so a commit that is only being moved needs nothing else.
             None => {
                 anyhow::ensure!(
                     rest.is_empty(),
-                    "まとめたコミットにはメッセージが必要です。"
+                    i18n::t!("Squashed commits need a message.")
                 );
                 commands.push(RewriteCommand::plain(vec![
                     "cherry-pick".to_string(),
@@ -2341,20 +2377,24 @@ pub fn ignored_files_refusal(ignored: &[String]) -> Option<String> {
     if ignored.is_empty() {
         return None;
     }
-    let mut names = ignored
+    let names = ignored
         .iter()
         .take(IGNORED_FILES_NAMED)
         .map(String::as_str)
         .collect::<Vec<_>>()
-        .join("、");
-    if ignored.len() > IGNORED_FILES_NAMED {
-        names.push_str(&format!(" ほか {} 個", ignored.len() - IGNORED_FILES_NAMED));
+        .join(i18n::tc!("list separator", ", "));
+    Some(if ignored.len() > IGNORED_FILES_NAMED {
+        i18n::t!(
+            "Stopped because the ignored local files {names} and {count} more would be overwritten \
+             and lost during the rewrite. Move them somewhere else and try again.",
+            count = ignored.len() - IGNORED_FILES_NAMED
+        )
     } else {
-        names.push(' ');
-    }
-    Some(format!(
-        "無視されているローカルのファイル {names}が、書き換えの途中で上書きされて失われるため中止しました。別の場所に退避してからやり直してください。"
-    ))
+        i18n::t!(
+            "Stopped because the ignored local files {names} would be overwritten and lost during \
+             the rewrite. Move them somewhere else and try again."
+        )
+    })
 }
 
 /// What sets a merge-request build's scratch branch apart from a history rewrite's inside
@@ -2389,49 +2429,55 @@ pub fn is_merge_request_scratch_branch(branch: &str) -> bool {
 /// could then only be thrown away together with the conflict resolution. The rules are
 /// `git check-ref-format --branch`'s.
 pub fn validate_merge_request_branch_name(name: &str) -> Result<()> {
-    anyhow::ensure!(!name.trim().is_empty(), "MR ブランチ名を入力してください。");
+    anyhow::ensure!(
+        !name.trim().is_empty(),
+        i18n::t!("Enter an MR branch name.")
+    );
     anyhow::ensure!(
         !name.starts_with('-'),
-        "「-」で始まるブランチ名は使えません。"
+        i18n::t!("A branch name cannot start with \"-\".")
     );
     anyhow::ensure!(
         !name
             .chars()
             .any(|character| character.is_whitespace() || character.is_control()),
-        "空白を含むブランチ名は使えません。"
+        i18n::t!("A branch name cannot contain spaces.")
     );
     anyhow::ensure!(
         name != "HEAD" && name != "@",
-        "「{name}」はブランチ名に使えません。"
+        i18n::t!("\"{name}\" cannot be used as a branch name.")
     );
     anyhow::ensure!(
         !name.starts_with(REWRITE_SCRATCH_BRANCH_PREFIX),
-        "「{REWRITE_SCRATCH_BRANCH_PREFIX}」で始まる名前は一時ブランチ用のため使えません。"
+        i18n::t!(
+            "Names starting with \"{prefix}\" are kept for scratch branches.",
+            prefix = REWRITE_SCRATCH_BRANCH_PREFIX
+        )
     );
     // `refs/heads/x` would become the branch `refs/heads/refs/heads/x`, and pushing it by that
     // name would push the branch `x` instead.
     anyhow::ensure!(
         !name.starts_with("refs/"),
-        "「refs/」で始まるブランチ名は使えません。"
+        i18n::t!("A branch name cannot start with \"refs/\".")
     );
     anyhow::ensure!(
         !name
             .chars()
             .any(|character| matches!(character, '~' | '^' | ':' | '?' | '*' | '[' | '\\')),
-        "ブランチ名に ~ ^ : ? * [ \\ は使えません。"
+        i18n::t!("A branch name cannot contain ~ ^ : ? * [ \\.")
     );
     anyhow::ensure!(
         !name.contains("..") && !name.contains("@{") && !name.contains("//"),
-        "ブランチ名に「..」「@{{」「//」は使えません。"
+        i18n::t!("A branch name cannot contain \"..\", \"@{{\" or \"//\".")
     );
     anyhow::ensure!(
         !name.starts_with('/') && !name.ends_with('/') && !name.ends_with('.'),
-        "ブランチ名の先頭と末尾に「/」、末尾に「.」は使えません。"
+        i18n::t!("A branch name cannot start or end with \"/\", or end with \".\".")
     );
     anyhow::ensure!(
         name.split('/')
             .all(|component| !component.starts_with('.') && !component.ends_with(".lock")),
-        "「.」で始まる部分や「.lock」で終わる部分を含むブランチ名は使えません。"
+        i18n::t!("A branch name cannot have a part that starts with \".\" or ends with \".lock\".")
     );
     Ok(())
 }
@@ -2446,7 +2492,9 @@ pub fn ensure_merge_request_branch_is_not_default(
 ) -> Result<()> {
     anyhow::ensure!(
         default_branch != Some(name),
-        "「{name}」はリポジトリのデフォルトブランチのため、MR ブランチにはできません。別の名前にしてください。"
+        i18n::t!(
+            "\"{name}\" is the repository's default branch, so it cannot be the MR branch. Choose another name."
+        )
     );
     Ok(())
 }
@@ -2466,18 +2514,23 @@ pub fn merge_request_pick_commands(
 ) -> Result<Vec<Vec<String>>> {
     anyhow::ensure!(
         is_merge_request_scratch_branch(scratch_branch),
-        "一時ブランチではないブランチ「{scratch_branch}」の上では MR ブランチを組み立てられません。"
+        i18n::t!(
+            "\"{scratch_branch}\" is not a scratch branch, so the MR branch cannot be built on it."
+        )
     );
     anyhow::ensure!(
         !base_sha.is_empty() && !base_sha.starts_with('-'),
-        "基点のコミットを特定できませんでした。"
+        i18n::t!("Could not determine the base commit.")
     );
-    anyhow::ensure!(!shas_oldest_first.is_empty(), "箱にコミットがありません。");
+    anyhow::ensure!(
+        !shas_oldest_first.is_empty(),
+        i18n::t!("The MR box has no commits.")
+    );
     anyhow::ensure!(
         shas_oldest_first
             .iter()
             .all(|sha| !sha.is_empty() && !sha.starts_with('-')),
-        "箱のコミットを特定できませんでした。"
+        i18n::t!("Could not determine the commits in the MR box.")
     );
     let mut cherry_pick = vec![
         "cherry-pick".to_string(),
@@ -2531,21 +2584,25 @@ pub fn merge_request_finish_commands(
     validate_merge_request_branch_name(merge_request_branch)?;
     anyhow::ensure!(
         !message.trim().is_empty(),
-        "コミットメッセージを入力してください。"
+        i18n::t!("Enter a commit message.")
     );
     anyhow::ensure!(
         !base_sha.is_empty() && !base_sha.starts_with('-'),
-        "基点のコミットを特定できませんでした。"
+        i18n::t!("Could not determine the base commit.")
     );
     // The scratch branch is checked out while the merge-request branch is moved, so `branch -f`
     // would happily move the branch the user started from.
     anyhow::ensure!(
         merge_request_branch != origin_branch,
-        "元のブランチ「{origin_branch}」を MR ブランチにはできません。別の名前にしてください。"
+        i18n::t!(
+            "The original branch \"{origin_branch}\" cannot be the MR branch. Choose another name."
+        )
     );
     anyhow::ensure!(
         is_merge_request_scratch_branch(scratch_branch),
-        "一時ブランチではないブランチ「{scratch_branch}」の上では MR ブランチを組み立てられません。"
+        i18n::t!(
+            "\"{scratch_branch}\" is not a scratch branch, so the MR branch cannot be built on it."
+        )
     );
     let mut point = vec!["branch".to_string()];
     if recreate {
@@ -3421,7 +3478,7 @@ impl GitRepository for RealGitRepository {
             if paths.is_empty() {
                 return Ok(());
             }
-            git.ensure_hooks_are_disabled_if_untrusted("ファイルの復元")
+            git.ensure_hooks_are_disabled_if_untrusted(i18n::tc!("git result", "Restore files"))
                 .await?;
 
             let output = git
@@ -4116,11 +4173,17 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
-                GitFeature::WorktreeAdd.require(git.version().await, "ワークツリーの作成")?;
+                GitFeature::WorktreeAdd.require(
+                    git.version().await,
+                    i18n::tc!("git result", "Create worktree"),
+                )?;
                 // `git worktree add` checks the new worktree out, which runs the post-checkout
                 // hook.
-                git.ensure_hooks_are_disabled_if_untrusted("ワークツリーの作成")
-                    .await?;
+                git.ensure_hooks_are_disabled_if_untrusted(i18n::tc!(
+                    "git result",
+                    "Create worktree"
+                ))
+                .await?;
                 std::fs::create_dir_all(path.parent().unwrap_or(&path))?;
                 let output = git.build_command(&args).await.output().await?;
                 if output.status.success() {
@@ -4138,7 +4201,10 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
-                GitFeature::WorktreeRemove.require(git.version().await, "ワークツリーの削除")?;
+                GitFeature::WorktreeRemove.require(
+                    git.version().await,
+                    i18n::tc!("git result", "Remove worktree"),
+                )?;
                 let mut args: Vec<OsString> = vec!["worktree".into(), "remove".into()];
                 if force {
                     args.push("--force".into());
@@ -4156,7 +4222,10 @@ impl GitRepository for RealGitRepository {
 
         self.executor
             .spawn(async move {
-                GitFeature::WorktreeRemove.require(git.version().await, "ワークツリーの移動")?;
+                GitFeature::WorktreeRemove.require(
+                    git.version().await,
+                    i18n::tc!("git result", "Move worktree"),
+                )?;
                 let args: Vec<OsString> = vec![
                     "worktree".into(),
                     "move".into(),
@@ -4187,7 +4256,10 @@ impl GitRepository for RealGitRepository {
         self.executor
             .spawn(async move {
                 git_binary
-                    .ensure_hooks_are_disabled_if_untrusted("ブランチの切り替え")
+                    .ensure_hooks_are_disabled_if_untrusted(i18n::tc!(
+                        "git result",
+                        "Switch branch"
+                    ))
                     .await?;
                 if create {
                     git_binary.run(&["checkout", "-b", &branch_name]).await?;
@@ -4205,7 +4277,10 @@ impl GitRepository for RealGitRepository {
             .spawn(async move {
                 let git_binary = git_binary?;
                 git_binary
-                    .ensure_hooks_are_disabled_if_untrusted("ブランチの切り替え")
+                    .ensure_hooks_are_disabled_if_untrusted(i18n::tc!(
+                        "git result",
+                        "Switch branch"
+                    ))
                     .await?;
                 let local_ref = format!("refs/heads/{name}");
                 if git_binary
@@ -4274,7 +4349,10 @@ impl GitRepository for RealGitRepository {
             .spawn(async move {
                 let git_binary = git_binary?;
                 git_binary
-                    .ensure_hooks_are_disabled_if_untrusted("ブランチの作成")
+                    .ensure_hooks_are_disabled_if_untrusted(i18n::tc!(
+                        "git result",
+                        "Create branch"
+                    ))
                     .await?;
                 let mut args =
                     if GitFeature::SwitchAndRestore.is_supported_by(git_binary.version().await) {
@@ -4409,10 +4487,7 @@ impl GitRepository for RealGitRepository {
                 validate_git_command_env(&command_env)?;
 
                 let git = git?;
-                if let Some((_, operation)) = HOOK_RUNNING_GIT_COMMANDS
-                    .iter()
-                    .find(|(name, _)| *name == subcommand)
-                {
+                if let Some(operation) = hook_running_operation_name(subcommand) {
                     git.ensure_hooks_are_disabled_if_untrusted(operation).await?;
                 }
 
@@ -4427,14 +4502,18 @@ impl GitRepository for RealGitRepository {
                         .await
                         .output()
                         .await?;
-                    anyhow::ensure!(
-                        status.stdout.is_empty(),
-                        "この git ({}) は rebase --autostash に対応していないため、作業ツリーの変更をコミットかスタッシュしてから実行してください (git {} 以上が必要です)。",
-                        git.version()
-                            .await
-                            .map_or_else(|| "版不明".to_string(), |version| version.to_string()),
-                        GitFeature::RebaseAutostash.minimum_version()
-                    );
+                    if !status.stdout.is_empty() {
+                        let version = git.version().await.map_or_else(
+                            || i18n::t!("unknown version").to_string(),
+                            |version| version.to_string(),
+                        );
+                        bail!(i18n::t!(
+                            "This git ({version}) does not support rebase --autostash, so commit or \
+                             stash the changes in the working tree first (git {minimum} or later is \
+                             needed).",
+                            minimum = GitFeature::RebaseAutostash.minimum_version()
+                        ));
+                    }
                 }
 
                 let mut command = git.build_command(&adapted.args).await;
@@ -4621,8 +4700,10 @@ impl GitRepository for RealGitRepository {
         self.executor
             .spawn(async move {
                 let git = git?;
-                GitFeature::StashStaged
-                    .require(git.version().await, "ステージ済みの変更のスタッシュ")?;
+                GitFeature::StashStaged.require(
+                    git.version().await,
+                    i18n::tc!("git result", "Stash staged changes"),
+                )?;
                 // `--staged` cannot be expressed as a pathspec: a partially staged
                 // file would otherwise have its unstaged hunks stashed too.
                 let mut args = vec!["stash", "push", "--quiet", "--staged"];
@@ -4750,7 +4831,7 @@ impl GitRepository for RealGitRepository {
         // which we want to block on.
         async move {
             let git = git?;
-            git.ensure_hooks_are_disabled_if_untrusted("コミット")
+            git.ensure_hooks_are_disabled_if_untrusted(i18n::tc!("git result", "Commit"))
                 .await?;
             let (mut cmd, untrusted_overrides) = git
                 .build_command_with_overrides(&["commit", "--quiet", "-m"])
@@ -4803,7 +4884,10 @@ impl GitRepository for RealGitRepository {
         let git = self.git_binary();
         self.executor
             .spawn(async move {
-                GitFeature::WorktreeRepair.require(git.version().await, "ワークツリーの修復")?;
+                GitFeature::WorktreeRepair.require(
+                    git.version().await,
+                    i18n::tc!("git result", "Repair worktree"),
+                )?;
                 let args: Vec<OsString> = vec!["worktree".into(), "repair".into()];
                 git.run(&args).await?;
                 Ok(())
@@ -4837,11 +4921,13 @@ impl GitRepository for RealGitRepository {
                 executor.clone(),
                 is_trusted,
             );
-            git.ensure_transports_are_restricted_if_untrusted("プッシュ")
+            git.ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Push"))
                 .await?;
             if options == Some(PushOptions::Force) {
-                GitFeature::ForceWithLease
-                    .require(git.version().await, "強制プッシュ (--force-with-lease)")?;
+                GitFeature::ForceWithLease.require(
+                    git.version().await,
+                    i18n::tc!("git result", "Force push (--force-with-lease)"),
+                )?;
             }
             let mut command = git.build_command(&["push"]).await;
             command
@@ -4883,7 +4969,7 @@ impl GitRepository for RealGitRepository {
                 executor.clone(),
                 is_trusted,
             );
-            git.ensure_transports_are_restricted_if_untrusted("プル")
+            git.ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Pull"))
                 .await?;
             let mut command = git.build_command(&["pull"]).await;
             command.envs(env.iter());
@@ -4927,7 +5013,7 @@ impl GitRepository for RealGitRepository {
                 executor.clone(),
                 is_trusted,
             );
-            git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+            git.ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Fetch"))
                 .await?;
             let mut command = git.build_command(&["fetch", &remote_name]).await;
             command
@@ -5117,8 +5203,11 @@ impl GitRepository for RealGitRepository {
         self.executor
             .spawn(async move {
                 let mut git = git?;
-                git.ensure_hooks_are_disabled_if_untrusted("チェックポイントの復元")
-                    .await?;
+                git.ensure_hooks_are_disabled_if_untrusted(i18n::tc!(
+                    "git result",
+                    "Restore checkpoint"
+                ))
+                .await?;
                 let commit_sha = checkpoint.commit_sha.to_string();
                 if GitFeature::SwitchAndRestore.is_supported_by(git.version().await) {
                     git.run(&["restore", "--source", &commit_sha, "--worktree", "."])
@@ -5503,7 +5592,11 @@ impl GitRepository for RealGitRepository {
                 Some(branch) => {
                     anyhow::ensure!(
                         matches!(log_source, LogSource::All),
-                        "「ブランチ:」はすべてのブランチを表示しているグラフでだけ使えます。"
+                        i18n::t!(
+                            "\"{prefix}:\" can only be used while the graph shows all branches.",
+                            prefix =
+                                commit_search::CommitSearchConditionKind::Branch.query_prefix()
+                        )
                     );
                     let default_branch = self.default_branch(true).await?;
                     let mut patterns = vec![
@@ -5629,7 +5722,10 @@ impl GitRepository for RealGitRepository {
             let status = child.status().await?;
             if !status.success() {
                 let stderr_output = stderr_task.await;
-                bail!("コミットを検索できませんでした: {}", stderr_output.trim());
+                bail!(i18n::t!(
+                    "Could not search the commits: {error}",
+                    error = stderr_output.trim()
+                ));
             }
             Ok(())
         }
@@ -6069,10 +6165,10 @@ impl GitFeature {
     /// Fails with an explanation when `version` is known to predate this feature.
     fn require(self, version: Option<GitVersion>, what: &str) -> Result<()> {
         match version {
-            Some(version) if !self.is_supported_by(Some(version)) => bail!(
-                "{what}には git {} 以上が必要です (いまの git は {version})。",
-                self.minimum_version()
-            ),
+            Some(version) if !self.is_supported_by(Some(version)) => bail!(i18n::t!(
+                "\"{what}\" needs git {minimum} or later (this git is {version}).",
+                minimum = self.minimum_version()
+            )),
             _ => Ok(()),
         }
     }
@@ -6361,30 +6457,70 @@ fn command_may_contact_remotes<S: AsRef<OsStr>>(args: &[S]) -> bool {
 
 /// What a git command refused for [`GitBinary::untrusted_config_overrides`] failing says, as the
 /// `-c` key without a section that makes git stop before running anything.
-const UNTRUSTED_FILTERS_NOT_DISABLED: &str =
-    "未信頼のリポジトリの filter を無効化できなかったため、git を実行しませんでした";
+const UNTRUSTED_FILTERS_NOT_DISABLED: &str = i18n::msg!(
+    "git was not run because the filters of the untrusted repository could not be turned off"
+);
 
 /// What a command that may connect to another repository says when the untrusted repository (or
 /// a submodule) sets `remote.<name>.uploadpack` or `receivepack`, as a `-c` key without a
 /// section, like [`UNTRUSTED_FILTERS_NOT_DISABLED`].
-const UNTRUSTED_REMOTE_PROGRAMS_REFUSED: &str = "未信頼のリポジトリの uploadpack / receivepack 設定はプログラムを起動しうるため、リモートに接続する git を実行しませんでした";
+const UNTRUSTED_REMOTE_PROGRAMS_REFUSED: &str = i18n::msg!(
+    "git that connects to a remote was not run because the uploadpack / receivepack settings of the untrusted repository can start programs"
+);
+
+/// The `-c` options that make git refuse to run anything and say `refusal`: git fails on a key
+/// without a section before it runs anything, and its error quotes the first such key. The
+/// English key, which is always passed and always last, is what refuses. The translation before
+/// it only changes what the error says, because the catalog can come from the user's
+/// configuration directory, which is not trusted, and a translation with a `.` would be a key git
+/// accepts. A translation git would not quote as a key without a section is left out.
+fn refusal_config_args(refusal: &'static str) -> Vec<&'static str> {
+    let translated = i18n::tr(refusal);
+    let mut args = Vec::with_capacity(4);
+    if translated != refusal
+        && !translated.trim().is_empty()
+        && translated.len() <= 1024
+        && !translated.contains(['.', '=', '\0'])
+    {
+        args.extend(["-c", translated]);
+    }
+    args.extend(["-c", refusal]);
+    args
+}
 
 /// Why a commit in an untrusted repository was made without the signature its configuration asks
-/// for. The commit itself was made.
-pub const UNTRUSTED_GPG_CONFIG_IGNORED: &str =
+/// for. The commit itself was made. Shown through `i18n::tr`, also on a remote server, which
+/// translates it with its own bundled catalog into the display language the client sent, and
+/// leaves it in English when the client sent none.
+pub const UNTRUSTED_GPG_CONFIG_IGNORED: &str = i18n::msg!(
+    "The gpg settings of the untrusted repository are not used. Committed without a signature."
+);
+
+/// What a remote server from before [`UNTRUSTED_GPG_CONFIG_IGNORED`] was in English sends instead.
+const UNTRUSTED_GPG_CONFIG_IGNORED_BEFORE_TRANSLATION: &str =
     "未信頼のリポジトリの gpg 設定は使いません。署名せずにコミットしました。";
 
 /// A commit that worked, but unsigned for [`UNTRUSTED_GPG_CONFIG_IGNORED`]. Returned as an error so
 /// that the reason reaches the user, also from a remote server, which sends errors as text.
 #[derive(Debug, Error)]
-#[error("{UNTRUSTED_GPG_CONFIG_IGNORED}")]
+#[error("{}", i18n::tr(UNTRUSTED_GPG_CONFIG_IGNORED))]
 pub struct CommittedWithoutSignature;
 
 /// Whether an error from a commit is [`CommittedWithoutSignature`], also when it came from a
-/// remote server as text.
+/// remote server as text. A current server also tags the error, so its sentence may be in any
+/// language; an older one sends only the sentence, in Japanese.
 pub fn is_committed_without_signature(error: &anyhow::Error) -> bool {
-    error.downcast_ref::<CommittedWithoutSignature>().is_some()
-        || format!("{error:#}").contains(UNTRUSTED_GPG_CONFIG_IGNORED)
+    if error.downcast_ref::<CommittedWithoutSignature>().is_some() {
+        return true;
+    }
+    let text = format!("{error:#}");
+    [
+        UNTRUSTED_GPG_CONFIG_IGNORED,
+        i18n::tr(UNTRUSTED_GPG_CONFIG_IGNORED),
+        UNTRUSTED_GPG_CONFIG_IGNORED_BEFORE_TRANSLATION,
+    ]
+    .iter()
+    .any(|message| text.contains(message))
 }
 
 /// The value git uses for a signing setting nobody set, for each setting that names a program
@@ -7006,8 +7142,10 @@ fn legacy_stash_command(
 ) -> Result<StashCommand> {
     let mut args = vec!["stash".to_string()];
     if requests_untracked_files(requested_paths, status) {
-        GitFeature::CleanKeepsIgnoredFiles
-            .require(version, "追跡されていないファイルを含むスタッシュ")?;
+        GitFeature::CleanKeepsIgnoredFiles.require(
+            version,
+            i18n::tc!("git result", "Stash including untracked files"),
+        )?;
         args.extend(["save", "--quiet", "--include-untracked"].map(String::from));
         if let Some(message) = message {
             args.extend(stash_save_message_args(message));
@@ -7042,7 +7180,7 @@ fn legacy_stash_command(
     if takes_unrequested_new_files {
         GitFeature::StashPush.require(
             version,
-            "新しくステージしたファイルを残したままのスタッシュ",
+            i18n::tc!("git result", "Stash that leaves newly staged files"),
         )?;
     }
     args.extend(["save", "--quiet"].map(String::from));
@@ -7317,38 +7455,43 @@ impl GitBinary {
     /// git ignores before 2.9, so with such a git the operations that run hooks wait for the
     /// project to be trusted.
     async fn ensure_hooks_are_disabled_if_untrusted(&self, operation: &str) -> Result<()> {
-        self.ensure_untrusted_protection(GitFeature::HooksPath, operation, "フックを止められず")
-            .await
+        let feature = GitFeature::HooksPath;
+        if let Some(version) = self.untrusted_version_without(feature).await {
+            bail!(i18n::t!(
+                "This project is not trusted, and an old git (older than {minimum}; this one is \
+                 {version}) cannot turn off hooks, so \"{operation}\" cannot run. Trust the \
+                 project to run it.",
+                minimum = feature.minimum_version()
+            ));
+        }
+        Ok(())
     }
 
     /// In an untrusted repository, remote operations rely on `protocol.ext.allow` (git 2.12)
     /// and on resetting `credential.helper` (git 2.9) to keep the repository's configuration
     /// from running programs; older git ignores both.
     async fn ensure_transports_are_restricted_if_untrusted(&self, operation: &str) -> Result<()> {
-        self.ensure_untrusted_protection(
-            GitFeature::ProtocolAllow,
-            operation,
-            "リポジトリの設定からプログラムが実行されるのを止められず",
-        )
-        .await
+        let feature = GitFeature::ProtocolAllow;
+        if let Some(version) = self.untrusted_version_without(feature).await {
+            bail!(i18n::t!(
+                "This project is not trusted, and an old git (older than {minimum}; this one is \
+                 {version}) cannot stop the repository's settings from running programs, so \
+                 \"{operation}\" cannot run. Trust the project to run it.",
+                minimum = feature.minimum_version()
+            ));
+        }
+        Ok(())
     }
 
-    async fn ensure_untrusted_protection(
-        &self,
-        feature: GitFeature,
-        operation: &str,
-        protection: &str,
-    ) -> Result<()> {
+    /// The version of git when the repository is untrusted and that git is known to lack
+    /// `feature`.
+    async fn untrusted_version_without(&self, feature: GitFeature) -> Option<GitVersion> {
         if self.is_trusted {
-            return Ok(());
+            return None;
         }
-        match self.version().await {
-            Some(version) if !feature.is_supported_by(Some(version)) => bail!(
-                "このプロジェクトは信頼されていないため、古い git ({} 未満。いまの git は {version}) では{protection}、{operation}を実行できません。プロジェクトを信頼すると実行できます。",
-                feature.minimum_version()
-            ),
-            _ => Ok(()),
-        }
+        self.version()
+            .await
+            .filter(|version| !feature.is_supported_by(Some(*version)))
     }
 
     pub async fn with_temp_index<R>(
@@ -7612,7 +7755,7 @@ impl GitBinary {
                             "refusing a git command in an untrusted repository that sets {:?}",
                             overrides.remote_programs
                         );
-                        command.args(["-c", UNTRUSTED_REMOTE_PROGRAMS_REFUSED]);
+                        command.args(refusal_config_args(UNTRUSTED_REMOTE_PROGRAMS_REFUSED));
                     }
                     command.args(overrides.args());
                     applied_overrides = Some(overrides);
@@ -7623,7 +7766,7 @@ impl GitBinary {
                     );
                     // A key without a section fails the command before it can start a driver,
                     // and git's error quotes the key, so it says why.
-                    command.args(["-c", UNTRUSTED_FILTERS_NOT_DISABLED]);
+                    command.args(refusal_config_args(UNTRUSTED_FILTERS_NOT_DISABLED));
                 }
             }
         } else if !self.is_trusted && is_partial_clone(&self.git_directory).await {
@@ -9746,12 +9889,18 @@ mod tests {
     /// The hook guard can only fire for commands `run_command` accepts in the first place.
     #[test]
     fn test_hook_running_commands_are_all_allowed() {
-        for (subcommand, operation) in HOOK_RUNNING_GIT_COMMANDS {
+        for subcommand in HOOK_RUNNING_GIT_COMMANDS {
             assert!(
                 ALLOWED_GIT_COMMANDS.contains(subcommand),
                 "{subcommand} runs hooks but is not in the allowlist"
             );
-            assert!(!operation.is_empty());
+        }
+        for subcommand in ALLOWED_GIT_COMMANDS {
+            assert_eq!(
+                hook_running_operation_name(subcommand).is_some(),
+                HOOK_RUNNING_GIT_COMMANDS.contains(subcommand),
+                "{subcommand} needs a name exactly when it runs hooks"
+            );
         }
     }
 
@@ -10371,6 +10520,34 @@ mod tests {
         );
     }
 
+    /// A remote server writes the sentence in the display language the client sent it, with the
+    /// same bundled catalog: the text alone is recognized whichever language the client shows.
+    #[test]
+    fn test_committed_without_signature_is_recognized_in_the_servers_language() {
+        let japanese_sentence = {
+            let _japanese = i18n::test_support::LocaleOverride::new(Some(
+                i18n_catalog::test_support::bundled_catalog("ja"),
+            ));
+            let sentence = CommittedWithoutSignature.to_string();
+            assert!(
+                is_committed_without_signature(&anyhow!("{sentence}")),
+                "{sentence}"
+            );
+            sentence
+        };
+        let english_sentence = CommittedWithoutSignature.to_string();
+        assert_ne!(japanese_sentence, english_sentence);
+        for sentence in [&japanese_sentence, &english_sentence] {
+            assert!(
+                is_committed_without_signature(&anyhow!("{sentence}")),
+                "{sentence}"
+            );
+        }
+        assert!(!is_committed_without_signature(&anyhow!(
+            "the commit failed"
+        )));
+    }
+
     /// Git running inside a submodule, which `add -A` and `describe --dirty` start in order to
     /// tell whether the submodule changed, gets the superproject's `-c` options: they must also
     /// disable the filter drivers of every submodule, however deep.
@@ -10504,6 +10681,87 @@ mod tests {
             !String::from_utf8_lossy(&output.stderr).contains(UNTRUSTED_FILTERS_NOT_DISABLED),
             "status does not look inside submodules, so it needs no submodule's configuration"
         );
+    }
+
+    /// The refusal holds whatever the catalog translates it into, and says why in the display
+    /// language when the translation can be quoted.
+    #[gpui::test]
+    async fn test_untrusted_refusal_holds_with_any_translation(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        let marker = temp_dir.path().join("program-ran");
+        git_command(
+            &repo_dir,
+            [
+                "config",
+                "filter.x=y.clean",
+                &format!(
+                    "sh -c 'echo clean >> \"{}\"; cat'",
+                    marker.to_string_lossy().replace('\\', "/")
+                ),
+            ],
+        );
+        fs::write(repo_dir.join(".git/info/attributes"), "*.txt filter=x=y\n").unwrap();
+        fs::write(repo_dir.join("f.txt"), "one\n").unwrap();
+
+        let git = GitBinary::new(
+            PathBuf::from("git"),
+            repo_dir.clone(),
+            repo_dir.join(".git"),
+            cx.executor(),
+            false,
+        );
+        let japanese = {
+            let _japanese = i18n::test_support::LocaleOverride::new(Some(
+                i18n_catalog::test_support::bundled_catalog("ja"),
+            ));
+            i18n::tr(UNTRUSTED_FILTERS_NOT_DISABLED)
+        };
+        // Each catalog, with the key git's error quotes: the translation when it is passed on.
+        let mut catalogs: Vec<(String, &'static dyn i18n::Catalog, String)> = vec![(
+            japanese.to_string(),
+            i18n_catalog::test_support::bundled_catalog("ja"),
+            japanese.to_string(),
+        )];
+        for (translation, passed_on) in hostile_translations() {
+            let quoted = if passed_on && !translation.contains('\n') {
+                translation.trim().to_string()
+            } else if passed_on {
+                "line one".to_string()
+            } else {
+                UNTRUSTED_FILTERS_NOT_DISABLED.to_string()
+            };
+            catalogs.push((
+                translation.clone(),
+                catalog_translating_everything_into(&translation),
+                quoted,
+            ));
+        }
+        let mut unexplained = Vec::new();
+        for (translation, catalog, quoted) in catalogs {
+            let _locale = i18n::test_support::LocaleOverride::new(Some(catalog));
+            let output = git
+                .build_command(&["hash-object", "--path", "f.txt", "f.txt"])
+                .await
+                .output()
+                .await;
+            assert!(!marker.exists(), "{translation:?} let the filter run");
+            match output {
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    assert!(!output.status.success(), "{translation:?}: {stderr}");
+                    if !stderr.contains(&quoted) {
+                        unexplained.push(format!("{translation:?}: {stderr}"));
+                    }
+                }
+                Err(error) => unexplained.push(format!("{translation:?}: {error}")),
+            }
+        }
+        assert!(unexplained.is_empty(), "{unexplained:#?}");
     }
 
     fn forward_slashes(path: &Path) -> String {
@@ -12605,9 +12863,7 @@ mod tests {
             let error = untrusted_commit
                 .expect_err("a git that can't skip hooks must not commit in untrusted repos");
             assert!(
-                error
-                    .to_string()
-                    .contains("プロジェクトを信頼すると実行できます"),
+                error.to_string().contains("Trust the project to run it."),
                 "unexpected error: {error:#}"
             );
         }
@@ -13856,17 +14112,17 @@ mod tests {
         assert!(!GitFeature::UnixDateFormat.is_supported_by(version(2, 9, 3)));
 
         let error = GitFeature::WorktreeRemove
-            .require(version(2, 7, 4), "ワークツリーの削除")
+            .require(version(2, 7, 4), "Remove worktree")
             .expect_err("git 2.7 has no `git worktree remove`");
         assert_eq!(
             error.to_string(),
-            "ワークツリーの削除には git 2.17.0 以上が必要です (いまの git は 2.7.4)。"
+            "\"Remove worktree\" needs git 2.17.0 or later (this git is 2.7.4)."
         );
         GitFeature::WorktreeRemove
-            .require(version(2, 17, 0), "ワークツリーの削除")
+            .require(version(2, 17, 0), "Remove worktree")
             .unwrap();
         GitFeature::WorktreeRemove
-            .require(None, "ワークツリーの削除")
+            .require(None, "Remove worktree")
             .unwrap();
     }
 
@@ -14070,7 +14326,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .starts_with("変更内容での検索には git 1.7.4 以上が必要です"),
+                .starts_with("\"Search by changed text\" needs git 1.7.4 or later"),
             "{error}"
         );
         let path = SearchCommitArgs {
@@ -14549,7 +14805,7 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(
-            error.starts_with("コミットを検索できませんでした: ") && error.contains("outside"),
+            error.starts_with("Could not search the commits: ") && error.contains("outside"),
             "git's own reason reaches the search box: {error}"
         );
     }
@@ -14771,38 +15027,64 @@ mod tests {
     ) {
         let git = pretend_git_binary("git-2.8.6-for-trust", GitVersion::new(2, 8, 6), false, cx);
         let error = git
-            .ensure_hooks_are_disabled_if_untrusted("コミット")
+            .ensure_hooks_are_disabled_if_untrusted("Commit")
             .await
             .expect_err("git 2.8 ignores core.hooksPath");
         assert_eq!(
             error.to_string(),
-            "このプロジェクトは信頼されていないため、古い git (2.9.0 未満。いまの git は 2.8.6) ではフックを止められず、コミットを実行できません。プロジェクトを信頼すると実行できます。"
+            "This project is not trusted, and an old git (older than 2.9.0; this one is 2.8.6) cannot turn off hooks, so \"Commit\" cannot run. Trust the project to run it."
         );
-        git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+        let error = git
+            .ensure_transports_are_restricted_if_untrusted("Fetch")
             .await
             .expect_err("git 2.8 ignores protocol.ext.allow");
+        assert_eq!(
+            error.to_string(),
+            "This project is not trusted, and an old git (older than 2.12.0; this one is 2.8.6) cannot stop the repository's settings from running programs, so \"Fetch\" cannot run. Trust the project to run it."
+        );
+        {
+            let _japanese = i18n::test_support::LocaleOverride::new(Some(
+                i18n_catalog::test_support::bundled_catalog("ja"),
+            ));
+            let error = git
+                .ensure_hooks_are_disabled_if_untrusted(i18n::tc!("git result", "Commit"))
+                .await
+                .expect_err("git 2.8 ignores core.hooksPath");
+            assert_eq!(
+                error.to_string(),
+                "このプロジェクトは信頼されていないため、古い git (2.9.0 未満。いまの git は 2.8.6) ではフックを止められず、コミットを実行できません。プロジェクトを信頼すると実行できます。"
+            );
+            let error = git
+                .ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Fetch"))
+                .await
+                .expect_err("git 2.8 ignores protocol.ext.allow");
+            assert_eq!(
+                error.to_string(),
+                "このプロジェクトは信頼されていないため、古い git (2.12.0 未満。いまの git は 2.8.6) ではリポジトリの設定からプログラムが実行されるのを止められず、フェッチを実行できません。プロジェクトを信頼すると実行できます。"
+            );
+        }
 
         let git = pretend_git_binary("git-2.8.6-for-trust", GitVersion::new(2, 8, 6), true, cx);
-        git.ensure_hooks_are_disabled_if_untrusted("コミット")
+        git.ensure_hooks_are_disabled_if_untrusted("Commit")
             .await
             .unwrap();
-        git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+        git.ensure_transports_are_restricted_if_untrusted("Fetch")
             .await
             .unwrap();
 
         let git = pretend_git_binary("git-2.10.0-for-trust", GitVersion::new(2, 10, 0), false, cx);
-        git.ensure_hooks_are_disabled_if_untrusted("コミット")
+        git.ensure_hooks_are_disabled_if_untrusted("Commit")
             .await
             .unwrap();
-        git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+        git.ensure_transports_are_restricted_if_untrusted("Fetch")
             .await
             .expect_err("git 2.10 ignores protocol.ext.allow");
 
         let git = pretend_git_binary("git-2.12.0-for-trust", GitVersion::new(2, 12, 0), false, cx);
-        git.ensure_hooks_are_disabled_if_untrusted("コミット")
+        git.ensure_hooks_are_disabled_if_untrusted("Commit")
             .await
             .unwrap();
-        git.ensure_transports_are_restricted_if_untrusted("フェッチ")
+        git.ensure_transports_are_restricted_if_untrusted("Fetch")
             .await
             .unwrap();
     }
@@ -15273,7 +15555,7 @@ mod tests {
         .expect_err("git before 2.14 deletes the ignored files in untracked directories");
         assert_eq!(
             error.to_string(),
-            "追跡されていないファイルを含むスタッシュには git 2.14.0 以上が必要です (いまの git は 2.13.4)。"
+            "\"Stash including untracked files\" needs git 2.14.0 or later (this git is 2.13.4)."
         );
         // A change the panel hasn't seen yet doesn't make the request a partial one.
         assert_eq!(
@@ -15302,7 +15584,7 @@ mod tests {
             .expect_err("`git stash save` would take the staged new file too");
         assert_eq!(
             error.to_string(),
-            "新しくステージしたファイルを残したままのスタッシュには git 2.13.0 以上が必要です (いまの git は 1.8.3)。"
+            "\"Stash that leaves newly staged files\" needs git 2.13.0 or later (this git is 1.8.3)."
         );
         assert_eq!(
             command(&["tracked", "added"], &status, None, version(1, 8, 3)).unwrap(),
@@ -15630,7 +15912,7 @@ mod tests {
         } else {
             let error = created.expect_err("git before 2.5 has no linked worktrees");
             assert!(
-                error.to_string().contains("git 2.5.0 以上が必要です"),
+                error.to_string().contains("git 2.5.0 or later"),
                 "unexpected error: {error:#}"
             );
         }
@@ -15641,7 +15923,7 @@ mod tests {
         } else {
             let error = removed.expect_err("git before 2.17 has no `git worktree remove`");
             assert!(
-                error.to_string().contains("git 2.17.0 以上が必要です"),
+                error.to_string().contains("git 2.17.0 or later"),
                 "unexpected error: {error:#}"
             );
         }
@@ -15652,7 +15934,7 @@ mod tests {
         } else {
             let error = repaired.expect_err("git before 2.29 has no `git worktree repair`");
             assert!(
-                error.to_string().contains("git 2.29.0 以上が必要です"),
+                error.to_string().contains("git 2.29.0 or later"),
                 "unexpected error: {error:#}"
             );
         }
@@ -15958,7 +16240,7 @@ mod tests {
         } else {
             let error = stash_everything.expect_err("git before 2.14 would lose ignored files");
             assert!(
-                error.to_string().contains("git 2.14.0 以上が必要です"),
+                error.to_string().contains("git 2.14.0 or later"),
                 "unexpected error: {error:#}"
             );
             assert!(repository.stash_entries().await.unwrap().entries.is_empty());
@@ -16000,7 +16282,7 @@ mod tests {
         } else {
             let error = partial_stash.expect_err("git before 2.13 can't stash only some changes");
             assert!(
-                error.to_string().contains("git 2.13.0 以上が必要です"),
+                error.to_string().contains("git 2.13.0 or later"),
                 "unexpected error: {error:#}"
             );
         }
@@ -16118,7 +16400,7 @@ mod tests {
         } else {
             let error = stash_everything.expect_err("git before 2.14 would delete ignored files");
             assert!(
-                error.to_string().contains("git 2.14.0 以上が必要です"),
+                error.to_string().contains("git 2.14.0 or later"),
                 "unexpected error: {error:#}"
             );
             assert!(repository.stash_entries().await.unwrap().entries.is_empty());
@@ -16267,7 +16549,7 @@ mod tests {
             rewrite_range_commands("base", &groups, "newest", "main", "zed-rewrite/scratch")
                 .expect_err("a fold without a message must be refused");
         assert!(
-            error.to_string().contains("メッセージが必要です"),
+            error.to_string().contains("need a message"),
             "unexpected error: {error:#}"
         );
 
@@ -16418,17 +16700,122 @@ mod tests {
         assert_eq!(
             ignored_files_refusal(&[".env".to_string()]).as_deref(),
             Some(
-                "無視されているローカルのファイル .env が、書き換えの途中で上書きされて失われるため中止しました。別の場所に退避してからやり直してください。"
+                "Stopped because the ignored local files .env would be overwritten and lost during the rewrite. Move them somewhere else and try again."
             )
         );
         let files = (1..=7).map(|index| format!("f{index}")).collect::<Vec<_>>();
         let refusal = ignored_files_refusal(&files).unwrap();
         assert!(
-            refusal
-                .starts_with("無視されているローカルのファイル f1、f2、f3、f4、f5 ほか 2 個が、"),
+            refusal.starts_with(
+                "Stopped because the ignored local files f1, f2, f3, f4, f5 and 2 more would be"
+            ),
             "{refusal}"
         );
         assert!(!refusal.contains("f6"), "{refusal}");
+
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(
+            ignored_files_refusal(&[".env".to_string()]).as_deref(),
+            Some(
+                "無視されているローカルのファイル .env が、書き換えの途中で上書きされて失われるため中止しました。別の場所に退避してからやり直してください。"
+            )
+        );
+        assert!(
+            ignored_files_refusal(&files)
+                .unwrap()
+                .starts_with("無視されているローカルのファイル f1、f2、f3、f4、f5 ほか 2 個が、"),
+        );
+    }
+
+    /// A catalog that translates every message into `translation`, as a catalog in the user's
+    /// configuration directory, which is not trusted, can.
+    struct EverythingCatalog {
+        translation: &'static str,
+    }
+
+    impl i18n::Catalog for EverythingCatalog {
+        fn locale(&self) -> &str {
+            "xx"
+        }
+        fn lookup(&self, _context: Option<&str>, _msgid: &str) -> Option<&'static str> {
+            Some(self.translation)
+        }
+        fn lookup_plural(
+            &self,
+            _context: Option<&str>,
+            _msgid: &str,
+            _msgid_plural: &str,
+            _count: u64,
+        ) -> Option<&'static str> {
+            None
+        }
+    }
+
+    fn catalog_translating_everything_into(translation: &str) -> &'static EverythingCatalog {
+        Box::leak(Box::new(EverythingCatalog {
+            translation: Box::leak(translation.to_string().into_boxed_str()),
+        }))
+    }
+
+    /// Translations that would give the key a section or a value, would not reach git as one
+    /// argument, would be no key at all, or look like an option, each with whether git is still
+    /// given it to quote.
+    fn hostile_translations() -> Vec<(String, bool)> {
+        vec![
+            (".".to_string(), false),
+            ("section.name".to_string(), false),
+            ("core.hooksPath".to_string(), false),
+            ("=".to_string(), false),
+            ("x=y".to_string(), false),
+            ("core.sshCommand=touch pwned".to_string(), false),
+            (String::new(), false),
+            (" \n\t".to_string(), false),
+            ("nul\0inside".to_string(), false),
+            ("x".repeat(40_000), false),
+            ("line one\nline two".to_string(), true),
+            ("spaces and\ttabs".to_string(), true),
+            ("'single' \"double\" `back`".to_string(), true),
+            ("-".to_string(), true),
+            ("--version".to_string(), true),
+        ]
+    }
+
+    #[test]
+    fn test_untrusted_refusals_always_end_with_the_english_key() {
+        for refusal in [
+            UNTRUSTED_FILTERS_NOT_DISABLED,
+            UNTRUSTED_REMOTE_PROGRAMS_REFUSED,
+        ] {
+            assert!(!refusal.contains(['.', '=']), "{refusal:?}");
+            assert_eq!(refusal_config_args(refusal), ["-c", refusal]);
+
+            {
+                let _japanese = i18n::test_support::LocaleOverride::new(Some(
+                    i18n_catalog::test_support::bundled_catalog("ja"),
+                ));
+                let translated = i18n::tr(refusal);
+                assert_ne!(translated, refusal, "the refusal is translated");
+                assert_eq!(
+                    refusal_config_args(refusal),
+                    ["-c", translated, "-c", refusal],
+                    "git quotes the first key, so the translation goes first"
+                );
+            }
+
+            for (translation, passed_on) in hostile_translations() {
+                let _hostile = i18n::test_support::LocaleOverride::new(Some(
+                    catalog_translating_everything_into(&translation),
+                ));
+                let expected = if passed_on {
+                    vec!["-c", translation.as_str(), "-c", refusal]
+                } else {
+                    vec!["-c", refusal]
+                };
+                assert_eq!(refusal_config_args(refusal), expected, "{translation:?}");
+            }
+        }
     }
 
     /// Only the refusal of the subcommand itself counts as an older server not knowing it.
@@ -16546,10 +16933,7 @@ mod tests {
     fn test_merge_request_branch_is_never_the_default_branch() {
         let refusal = ensure_merge_request_branch_is_not_default("main", Some("main"))
             .expect_err("the default branch may not be the merge-request branch");
-        assert!(
-            refusal.to_string().contains("デフォルトブランチ"),
-            "{refusal}"
-        );
+        assert!(refusal.to_string().contains("default branch"), "{refusal}");
         ensure_merge_request_branch_is_not_default("mr/main", Some("main")).unwrap();
         ensure_merge_request_branch_is_not_default("main", None).unwrap();
     }

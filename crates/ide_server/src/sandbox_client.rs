@@ -231,7 +231,7 @@ impl SessionKind {
     fn default_assist_label(self) -> &'static str {
         match self {
             SessionKind::ClaudeCodeCli => "Claude Code",
-            SessionKind::Restricted => "エージェント",
+            SessionKind::Restricted => i18n::t!("Agent"),
         }
     }
 

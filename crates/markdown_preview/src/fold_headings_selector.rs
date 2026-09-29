@@ -88,9 +88,9 @@ impl FoldHeadingsChoice {
 
     fn label(self) -> String {
         match self {
-            Self::Level(level) => format!("見出しレベル {level} で畳む"),
-            Self::Everything => "見出しをすべて畳む".to_string(),
-            Self::Unfold => "見出しをすべて展開".to_string(),
+            Self::Level(level) => i18n::t!("Fold Headings at Level {level}"),
+            Self::Everything => i18n::t!("Fold All Headings").to_string(),
+            Self::Unfold => i18n::t!("Unfold All Headings").to_string(),
         }
     }
 
@@ -105,7 +105,7 @@ impl FoldHeadingsChoice {
 
     fn matches_query(self, query: &str) -> bool {
         query.is_empty()
-            || self.label().contains(query)
+            || self.label().to_lowercase().contains(&query.to_lowercase())
             || self.hint().is_some_and(|hint| hint == query)
     }
 }
@@ -125,7 +125,7 @@ impl PickerDelegate for FoldHeadingsSelectorDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "畳む見出しのレベルを選択…".into()
+        i18n::t!("Select a heading level to fold…").into()
     }
 
     fn match_count(&self) -> usize {
@@ -249,9 +249,9 @@ mod tests {
 
         assert_eq!(matching("3"), vec![FoldHeadingsChoice::Level(3)]);
         assert_eq!(matching("###"), vec![FoldHeadingsChoice::Level(3)]);
-        assert_eq!(matching("展開"), vec![FoldHeadingsChoice::Unfold]);
+        assert_eq!(matching("unfold"), vec![FoldHeadingsChoice::Unfold]);
         assert_eq!(
-            matching("すべて"),
+            matching("All"),
             vec![FoldHeadingsChoice::Everything, FoldHeadingsChoice::Unfold]
         );
         assert_eq!(matching("").len(), 8);
@@ -327,7 +327,7 @@ mod tests {
     async fn confirming_the_last_two_rows_folds_and_unfolds_everything(cx: &mut TestAppContext) {
         let (mut cx, selector, _app_state) = open_picker(cx).await;
 
-        confirm_row(&selector, "すべて畳む", &mut cx.cx);
+        confirm_row(&selector, "Fold All", &mut cx.cx);
         cx.update_editor(|editor, _window, cx| {
             assert_eq!(
                 editor.display_text(cx),
@@ -338,7 +338,7 @@ mod tests {
             );
         });
 
-        confirm_row(&selector, "すべて展開", &mut cx.cx);
+        confirm_row(&selector, "Unfold All", &mut cx.cx);
         cx.update_editor(|editor, _window, cx| {
             assert_eq!(editor.display_text(cx), HEADINGS);
         });

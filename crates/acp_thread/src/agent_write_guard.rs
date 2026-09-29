@@ -457,10 +457,10 @@ fn is_agent_configuration(path: &Path, rules: NameRules) -> bool {
 fn confirmation_title(path: &Path, kind: SensitiveWrite) -> String {
     let path = path.display();
     match kind {
-        SensitiveWrite::ProjectSettings => format!("{path} を編集 (プロジェクトの設定)"),
-        SensitiveWrite::Settings => format!("{path} を編集 (設定)"),
-        SensitiveWrite::AgentSkills => format!("{path} を編集 (エージェントのスキル)"),
-        SensitiveWrite::AgentConfiguration => format!("{path} を編集 (エージェントの設定)"),
+        SensitiveWrite::ProjectSettings => i18n::t!("Edit {path} (local settings)"),
+        SensitiveWrite::Settings => i18n::t!("Edit {path} (settings)"),
+        SensitiveWrite::AgentSkills => i18n::t!("Edit {path} (agent skills)"),
+        SensitiveWrite::AgentConfiguration => i18n::t!("Edit {path} (agent configuration)"),
     }
 }
 

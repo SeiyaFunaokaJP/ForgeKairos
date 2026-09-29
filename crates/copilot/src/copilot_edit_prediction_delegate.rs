@@ -1173,6 +1173,9 @@ mod tests {
                         .get_or_insert_default()
                         .prediction_debounce =
                         Some(DelayMs(COPILOT_TEST_DEBOUNCE.as_millis() as u64));
+                    settings.acknowledged_external_ai_providers = Some(vec![
+                        ::settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY.to_string(),
+                    ]);
                     f(&mut settings.project.all_languages);
                 });
             });

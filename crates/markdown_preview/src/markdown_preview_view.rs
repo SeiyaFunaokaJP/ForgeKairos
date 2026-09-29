@@ -110,7 +110,7 @@ struct MermaidLabelEditor {
     encode: Box<dyn Fn(&str) -> String>,
     /// Why the typed text cannot be written into this token at all, checked
     /// before the edit rather than letting the diagram lose it silently.
-    write_refusal: Box<dyn Fn(&str) -> Option<&'static str>>,
+    write_refusal: Box<dyn Fn(&str) -> Option<Cow<'static, str>>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -308,7 +308,7 @@ impl MarkdownPreviewView {
         let Some(buffer) = editor.read(cx).buffer().read(cx).as_singleton() else {
             Self::show_pdf_export_toast(
                 workspace,
-                "PDF に書き出せるのは、1 つのファイルを開いているタブだけです。",
+                i18n::t!("Only a tab with a single file open can be exported to PDF."),
                 cx,
             );
             return;
@@ -320,7 +320,9 @@ impl MarkdownPreviewView {
             }
             PdfSource::Remote => Self::show_pdf_export_toast(
                 workspace,
-                "リモートのファイルは PDF に書き出せません。ローカルに保存してから実行してください。",
+                i18n::t!(
+                    "A remote file cannot be exported to PDF. Save it locally, then run this again."
+                ),
                 cx,
             ),
             PdfSource::Untitled => {
@@ -355,7 +357,7 @@ impl MarkdownPreviewView {
         let Some(pane) = workspace.pane_for(&editor) else {
             Self::show_pdf_export_toast(
                 workspace,
-                "PDF に書き出す前に、名前を付けてファイルを保存してください。",
+                i18n::t!("Save the file with a name before exporting it to PDF."),
                 cx,
             );
             return;
@@ -374,7 +376,7 @@ impl MarkdownPreviewView {
                     }
                     PdfSource::Remote | PdfSource::Untitled => Self::show_pdf_export_toast(
                         workspace,
-                        "保存先を特定できなかったため、PDF に書き出せませんでした。",
+                        i18n::t!("The saved location could not be determined, so the file was not exported to PDF."),
                         cx,
                     ),
                 }
@@ -395,7 +397,7 @@ impl MarkdownPreviewView {
         let fs = workspace.project().read(cx).fs().clone();
         let soft_break_as_hard_break =
             MarkdownPreviewSettings::get_global(cx).soft_break_as_hard_break;
-        Self::show_pdf_export_toast(workspace, "PDF を書き出しています…", cx);
+        Self::show_pdf_export_toast(workspace, i18n::t!("Exporting to PDF…"), cx);
 
         cx.spawn(async move |workspace, cx| {
             let result = markdown_export::export_to_pdf(
@@ -415,11 +417,12 @@ impl MarkdownPreviewView {
                     }
                     Err(error) => {
                         let message = if error.to_string() == markdown_export::NO_CONVERTER {
-                            "PDF に変換できません。Microsoft Edge (msedge.exe) か pandoc \
-                             をインストールしてください。"
-                                .to_owned()
+                            i18n::t!(
+                                "Cannot convert to PDF. Install Microsoft Edge (msedge.exe) or pandoc."
+                            )
+                            .to_owned()
                         } else {
-                            format!("PDF の書き出しに失敗しました: {error}")
+                            i18n::t!("Failed to export to PDF: {error}")
                         };
                         Self::show_pdf_export_toast(workspace, message, cx);
                     }
@@ -440,12 +443,9 @@ impl MarkdownPreviewView {
         workspace.show_toast(
             Toast::new(
                 NotificationId::named(PDF_EXPORT_NOTIFICATION_ID.into()),
-                format!(
-                    "PDF を書き出しました: {} — クリックで開く",
-                    output_path.display()
-                ),
+                i18n::t!("Exported to PDF: {} — click to open", output_path.display()),
             )
-            .on_click("開く", move |_window, cx| {
+            .on_click(i18n::t!("Open"), move |_window, cx| {
                 cx.open_with_system(&output_path);
             })
             .autohide(),
@@ -1561,7 +1561,11 @@ impl MarkdownPreviewView {
         cx.notify();
     }
 
-    fn report_mermaid_label_edit_refused(&self, message: &'static str, cx: &mut Context<Self>) {
+    fn report_mermaid_label_edit_refused(
+        &self,
+        message: impl Into<Cow<'static, str>>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(workspace) = self.workspace.upgrade() else {
             return;
         };
@@ -1622,7 +1626,7 @@ impl MarkdownPreviewView {
         });
         if !applied {
             self.report_mermaid_label_edit_refused(
-                "ソースが変更されたため、このラベルを書き換えられませんでした。",
+                i18n::t!("The source changed, so this label could not be rewritten."),
                 cx,
             );
         }
@@ -1766,7 +1770,7 @@ fn open_preview_url(
                 workspace.show_toast(
                     Toast::new(
                         NotificationId::unique::<LinkSchemeRefused>(),
-                        "このリンクの種類はプレビューから開けません",
+                        i18n::t!("This kind of link cannot be opened from the preview"),
                     ),
                     cx,
                 );
@@ -2165,9 +2169,9 @@ impl Item for MarkdownPreviewView {
             .map(|editor_state| {
                 let buffer = editor_state.editor.read(cx).buffer().read(cx);
                 let title = buffer.title(cx);
-                format!("{} のプレビュー", title).into()
+                i18n::t!("Preview {}", title).into()
             })
-            .unwrap_or_else(|| SharedString::from("Markdown プレビュー"))
+            .unwrap_or_else(|| SharedString::from(i18n::t!("Markdown Preview")))
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -2364,7 +2368,7 @@ impl Render for MarkdownPreviewView {
                                         menu.when_some(focus, |menu, focus| menu.context(focus))
                                             .when_some(selected_text, |menu, text| {
                                                 menu.entry(
-                                                    "コピー",
+                                                    i18n::t!("Copy"),
                                                     Some(Box::new(markdown::Copy)),
                                                     move |_, cx| {
                                                         cx.write_to_clipboard(
@@ -2377,7 +2381,7 @@ impl Render for MarkdownPreviewView {
                                             })
                                             .when_some(selected_markdown, |menu, text| {
                                                 menu.entry(
-                                                    "Markdown としてコピー",
+                                                    i18n::t!("Copy as Markdown"),
                                                     Some(Box::new(markdown::CopyAsMarkdown)),
                                                     move |_, cx| {
                                                         cx.write_to_clipboard(
@@ -2390,7 +2394,7 @@ impl Render for MarkdownPreviewView {
                                             })
                                             .when_some(context_menu_link, |menu, url| {
                                                 menu.entry(
-                                                    "リンクをコピー",
+                                                    i18n::t!("Copy Link"),
                                                     None,
                                                     move |_, cx| {
                                                         cx.write_to_clipboard(
@@ -2784,7 +2788,7 @@ impl Render for MarkdownPreviewToolbarControls {
         IconButton::new("export-markdown-to-pdf", IconName::Download)
             .icon_size(IconSize::Small)
             .style(ButtonStyle::Subtle)
-            .tooltip(|_window, cx| Tooltip::for_action("PDF に書き出す", &ExportToPdf, cx))
+            .tooltip(|_window, cx| Tooltip::for_action(i18n::t!("Export to PDF"), &ExportToPdf, cx))
             .on_click({
                 let preview_view = preview_view.downgrade();
                 move |_, window, cx| {

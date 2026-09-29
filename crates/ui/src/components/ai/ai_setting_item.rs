@@ -19,14 +19,14 @@ pub enum AiSettingItemStatus {
 impl AiSettingItemStatus {
     fn tooltip_text(&self) -> &'static str {
         match self {
-            Self::Stopped => "サーバーは停止しています。",
-            Self::Starting => "サーバーを起動しています。",
-            Self::Running => "サーバーは動作中です。",
-            Self::Error => "サーバーでエラーが発生しています。",
-            Self::AuthRequired => "認証が必要です。",
-            Self::ClientSecretRequired => "クライアントシークレットが必要です。",
-            Self::Authenticating => "認証の完了を待っています…",
-            Self::ApprovalRequired => "承認待ちです。",
+            Self::Stopped => i18n::t!("Server is stopped."),
+            Self::Starting => i18n::t!("Server is starting."),
+            Self::Running => i18n::t!("Server is active."),
+            Self::Error => i18n::t!("Server has an error."),
+            Self::AuthRequired => i18n::t!("Authentication Required."),
+            Self::ClientSecretRequired => i18n::t!("Client Secret Required."),
+            Self::Authenticating => i18n::t!("Waiting for Authorization…"),
+            Self::ApprovalRequired => i18n::t!("Waiting for approval."),
         }
     }
 
@@ -68,10 +68,10 @@ impl AiSettingItemSource {
 
     fn tooltip_text(&self, label: &str) -> String {
         match self {
-            Self::Extension => format!("{label} は拡張機能からインストールされました。"),
-            Self::Registry => format!("{label} は ACP レジストリからインストールされました。"),
-            Self::Custom => format!("{label} は手動で設定されました。"),
-            Self::Project => format!("{label} はプロジェクトの設定で定義されています。"),
+            Self::Extension => i18n::t!("{label} was installed from an extension."),
+            Self::Registry => i18n::t!("{label} was installed from the ACP registry."),
+            Self::Custom => i18n::t!("{label} was configured manually."),
+            Self::Project => i18n::t!("{label} is defined in the project's settings."),
         }
     }
 }

@@ -43,6 +43,12 @@ pub enum FormatFailure {
     NoFormattingLanguageServer {
         /// The server the settings asked for by name, when they named one.
         requested: Option<String>,
+        /// A selection was to be formatted and no server offers
+        /// `textDocument/rangeFormatting`, but one can format the whole file.
+        /// Defaulted so a payload from a remote server that predates the field
+        /// still decodes.
+        #[serde(default)]
+        only_whole_buffer_formatting: bool,
     },
 }
 
@@ -108,34 +114,46 @@ impl FormatFailure {
             } => format!(
                 "external formatter `{command}` failed with exit code {exit_code:?}: {stderr}"
             ),
-            FormatFailure::NoFormattingLanguageServer { requested } => match requested {
+            FormatFailure::NoFormattingLanguageServer {
+                requested,
+                only_whole_buffer_formatting,
+            } => match requested {
                 Some(name) => {
                     format!("language server `{name}` is not running or cannot format this buffer")
+                }
+                None if *only_whole_buffer_formatting => {
+                    "no running language server can format a selection in this buffer, \
+                     though one can format the whole buffer"
+                        .to_string()
                 }
                 None => "no running language server can format this buffer".to_string(),
             },
         }
     }
 
-    /// The short Japanese line the status bar shows next to
+    /// The short line (in the display language) the status bar shows next to
     /// 「フォーマットに失敗しました:」. It has no room for install hints, and the
     /// store that keeps it does not know which host it is talking about.
     pub fn status_message(&self) -> String {
         match self {
             FormatFailure::ExternalCommandNotFound { command, .. } => {
-                format!("フォーマッタ `{command}` が見つかりません")
+                i18n::t!("Formatter `{command}` was not found")
             }
             FormatFailure::ExternalCommandFailed {
                 command, exit_code, ..
             } => match exit_code {
-                Some(code) => {
-                    format!("フォーマッタ `{command}` が終了コード {code} で失敗しました")
-                }
-                None => format!("フォーマッタ `{command}` が異常終了しました"),
+                Some(code) => i18n::t!("Formatter `{command}` failed with exit code {code}"),
+                None => i18n::t!("Formatter `{command}` terminated abnormally"),
             },
-            FormatFailure::NoFormattingLanguageServer { requested } => match requested {
-                Some(name) => format!("言語サーバー `{name}` はフォーマットに使えません"),
-                None => "このファイルをフォーマットできる言語サーバーがありません".to_string(),
+            FormatFailure::NoFormattingLanguageServer {
+                requested,
+                only_whole_buffer_formatting,
+            } => match requested {
+                Some(name) => i18n::t!("Language server `{name}` cannot format"),
+                None if *only_whole_buffer_formatting => {
+                    i18n::t!("No language server can format a selection").to_string()
+                }
+                None => i18n::t!("No language server can format this file").to_string(),
             },
         }
     }
@@ -146,52 +164,41 @@ impl FormatFailure {
     /// most confusing thing about formatting over a remote connection.
     pub fn user_message(&self, remote_host: Option<&str>) -> String {
         match self {
-            FormatFailure::ExternalCommandNotFound { command, searched } => {
-                let mut message = format!("フォーマッタ `{command}` が見つかりません。");
-                match remote_host {
-                    Some(host) => {
-                        message
-                            .push_str(&format!("接続先 ({host}) にインストールされていません。"));
-                        // ADR-F39: `sudo apt install` is the wrong advice for
-                        // the hosts this fork is aimed at — it needs root (so
-                        // it affects every other account) and it needs the
-                        // remote to be online, which is exactly what it is not.
-                        if crate::lsp_store::dev_tools::tool_by_command(command)
-                            .is_some_and(|tool| tool.can_install())
-                        {
-                            message.push_str(
-                                "通知の「リモートにインストール」から、\
-                                 管理者権限なしで接続先のホームディレクトリに導入できます。",
-                            );
-                        } else {
-                            message.push_str(&format!(
-                                "接続先で `{command}` を PATH の通った場所に置いてください。"
-                            ));
-                        }
-                    }
-                    None => {
-                        if searched.is_empty() {
-                            message.push_str("PATH から見つかりませんでした。");
-                        } else {
-                            message.push_str(&format!(
-                                "次の場所と PATH を探しました: {}。",
-                                searched.join(", ")
-                            ));
-                        }
-                    }
+            FormatFailure::ExternalCommandNotFound { command, searched } => match remote_host {
+                // ADR-F39: `sudo apt install` is the wrong advice for
+                // the hosts this fork is aimed at — it needs root (so
+                // it affects every other account) and it needs the
+                // remote to be online, which is exactly what it is not.
+                Some(host)
+                    if crate::lsp_store::dev_tools::tool_by_command(command)
+                        .is_some_and(|tool| tool.can_install()) =>
+                {
+                    i18n::t!(
+                        "Formatter `{command}` was not found. It is not installed on the remote \
+                         host ({host}). \"Install on Remote\" in the notification installs it in \
+                         the remote home directory without administrator rights."
+                    )
                 }
-                message
-            }
+                Some(host) => i18n::t!(
+                    "Formatter `{command}` was not found. It is not installed on the remote host \
+                     ({host}). Put `{command}` in a directory on PATH on the remote host."
+                ),
+                None if searched.is_empty() => {
+                    i18n::t!("Formatter `{command}` was not found. It is not on PATH.")
+                }
+                None => i18n::t!(
+                    "Formatter `{command}` was not found. Searched these places and PATH: {places}.",
+                    places = searched.join(", ")
+                ),
+            },
             FormatFailure::ExternalCommandFailed {
                 command,
                 exit_code,
                 stderr,
             } => {
                 let mut message = match exit_code {
-                    Some(code) => {
-                        format!("フォーマッタ `{command}` が終了コード {code} で失敗しました。")
-                    }
-                    None => format!("フォーマッタ `{command}` が異常終了しました。"),
+                    Some(code) => i18n::t!("Formatter `{command}` failed with exit code {code}."),
+                    None => i18n::t!("Formatter `{command}` terminated abnormally."),
                 };
                 let stderr = stderr.trim();
                 if !stderr.is_empty() {
@@ -200,20 +207,26 @@ impl FormatFailure {
                 }
                 message
             }
-            FormatFailure::NoFormattingLanguageServer { requested } => match requested {
-                Some(name) => format!(
-                    "言語サーバー `{name}` が起動していないか、フォーマットに対応していません。"
+            FormatFailure::NoFormattingLanguageServer {
+                requested,
+                only_whole_buffer_formatting,
+            } => match requested {
+                Some(name) => i18n::t!(
+                    "Language server `{name}` is not running or does not support formatting."
                 ),
-                None => {
-                    let mut message =
-                        "このファイルをフォーマットできる言語サーバーがありません。".to_string();
-                    if let Some(host) = remote_host {
-                        message.push_str(&format!(
-                            "接続先 ({host}) に言語サーバーをインストールしてください。"
-                        ));
-                    }
-                    message
-                }
+                // A server is running, so there is nothing to install on the
+                // remote host; the user can format the whole file instead.
+                None if *only_whole_buffer_formatting => i18n::t!(
+                    "No running language server can format a selection in this file. The whole file can be formatted."
+                )
+                .to_string(),
+                None => match remote_host {
+                    Some(host) => i18n::t!(
+                        "No language server can format this file. Install a language server on \
+                         the remote host ({host})."
+                    ),
+                    None => i18n::t!("No language server can format this file.").to_string(),
+                },
             },
         }
     }
@@ -240,11 +253,11 @@ pub fn truncate_stderr(stderr: &str) -> String {
 
 /// What to tell the user about a formatting failure, whether or not it carried a
 /// structured reason. Errors without one keep their English detail after a
-/// Japanese lead-in, because they are the failures nobody anticipated.
+/// translated lead-in, because they are the failures nobody anticipated.
 pub fn format_failure_message(error: &anyhow::Error, remote_host: Option<&str>) -> String {
     match FormatFailure::from_error(error) {
         Some(failure) => failure.user_message(remote_host),
-        None => format!("フォーマットに失敗しました: {error:#}"),
+        None => i18n::t!("Formatting failed: {error}", error = format!("{error:#}")),
     }
 }
 
@@ -298,7 +311,38 @@ mod tests {
         assert_eq!(FormatFailure::from_error(&error), None);
         assert_eq!(
             format_failure_message(&error, None),
-            "フォーマットに失敗しました: something else went wrong"
+            "Formatting failed: something else went wrong"
+        );
+    }
+
+    #[test]
+    fn test_messages_follow_the_display_language() {
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(
+            not_found().user_message(Some("192.168.100.150")),
+            "フォーマッタ `clang-format` が見つかりません。接続先 (192.168.100.150) にインストールされていません。通知の「リモートにインストール」から、管理者権限なしで接続先のホームディレクトリに導入できます。"
+        );
+        assert_eq!(
+            not_found().user_message(None),
+            "フォーマッタ `clang-format` が見つかりません。次の場所と PATH を探しました: C:\\Zed, C:\\Zed\\bin。"
+        );
+        assert_eq!(
+            not_found().status_message(),
+            "フォーマッタ `clang-format` が見つかりません"
+        );
+        let nothing = FormatFailure::NoFormattingLanguageServer {
+            requested: None,
+            only_whole_buffer_formatting: false,
+        };
+        assert_eq!(
+            nothing.user_message(Some("host")),
+            "このファイルをフォーマットできる言語サーバーがありません。接続先 (host) に言語サーバーをインストールしてください。"
+        );
+        assert_eq!(
+            format_failure_message(&anyhow::anyhow!("boom"), None),
+            "フォーマットに失敗しました: boom"
         );
     }
 
@@ -313,11 +357,72 @@ mod tests {
         // ADR-F39: a catalogued tool is offered as a one-button install rather
         // than as a `sudo` command that needs root and a network the host may
         // not have.
-        assert!(remote.contains("リモートにインストール"), "{remote}");
+        assert!(remote.contains("Install on Remote"), "{remote}");
         assert!(!remote.contains("sudo"), "{remote}");
         // The local search paths are meaningless for a project on another
         // machine, so they must not be offered as somewhere to look.
         assert!(!remote.contains("C:\\Zed"), "{remote}");
+    }
+
+    #[test]
+    fn test_selection_only_failure_does_not_claim_nothing_can_format() {
+        let whole_file_only = FormatFailure::NoFormattingLanguageServer {
+            requested: None,
+            only_whole_buffer_formatting: true,
+        };
+        let nothing = FormatFailure::NoFormattingLanguageServer {
+            requested: None,
+            only_whole_buffer_formatting: false,
+        };
+        let remote = whole_file_only.user_message(Some("192.168.100.150"));
+        assert_eq!(
+            remote,
+            "No running language server can format a selection in this file. The whole file can be formatted."
+        );
+        // A server is already running there, so asking for one to be
+        // installed on the host would send the user the wrong way.
+        assert_ne!(remote, nothing.user_message(Some("192.168.100.150")));
+        assert_eq!(
+            whole_file_only.status_message(),
+            "No language server can format a selection"
+        );
+        assert_ne!(whole_file_only.log_message(), nothing.log_message());
+    }
+
+    #[test]
+    fn test_payload_without_whole_buffer_flag_still_decodes() {
+        // What a remote server from before the flag existed sends.
+        let payload = br#"{"kind":"no_formatting_language_server","requested":null}"#;
+        let value = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload);
+        assert_eq!(
+            FormatFailure::from_tag_value(&value),
+            Some(FormatFailure::NoFormattingLanguageServer {
+                requested: None,
+                only_whole_buffer_formatting: false,
+            })
+        );
+
+        let failure = FormatFailure::NoFormattingLanguageServer {
+            requested: None,
+            only_whole_buffer_formatting: true,
+        };
+        let received =
+            rpc::RpcError::from_proto(&failure.clone().into_error().to_proto(), "FormatBuffers");
+        assert_eq!(FormatFailure::from_error(&received), Some(failure.clone()));
+
+        // What a client from before the flag existed makes of the new payload.
+        #[derive(Debug, PartialEq, Deserialize)]
+        #[serde(tag = "kind", rename_all = "snake_case")]
+        enum FormatFailureBeforeFlag {
+            NoFormattingLanguageServer { requested: Option<String> },
+        }
+        let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(failure.tag_value())
+            .expect("the tag is base64");
+        assert_eq!(
+            serde_json::from_slice::<FormatFailureBeforeFlag>(&decoded).ok(),
+            Some(FormatFailureBeforeFlag::NoFormattingLanguageServer { requested: None })
+        );
     }
 
     #[test]

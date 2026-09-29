@@ -92,31 +92,41 @@ fn build_grouped_entries(store: &ReplStore, worktree_id: WorktreeId) -> Vec<Kern
 
     // Recommended section
     if let Some(rec) = recommended_entry {
-        entries.push(KernelPickerEntry::SectionHeader("推奨".into()));
+        entries.push(KernelPickerEntry::SectionHeader(
+            i18n::t!("Recommended").into(),
+        ));
         entries.push(rec);
     }
 
     // Python Environments section
     if !python_envs.is_empty() {
-        entries.push(KernelPickerEntry::SectionHeader("Python 環境".into()));
+        entries.push(KernelPickerEntry::SectionHeader(
+            i18n::t!("Python Environments").into(),
+        ));
         entries.extend(python_envs);
     }
 
     // Jupyter Kernels section
     if !jupyter_kernels.is_empty() {
-        entries.push(KernelPickerEntry::SectionHeader("Jupyter カーネル".into()));
+        entries.push(KernelPickerEntry::SectionHeader(
+            i18n::t!("Jupyter Kernels").into(),
+        ));
         entries.extend(jupyter_kernels);
     }
 
     // WSL Kernels section
     if !wsl_kernels.is_empty() {
-        entries.push(KernelPickerEntry::SectionHeader("WSL カーネル".into()));
+        entries.push(KernelPickerEntry::SectionHeader(
+            i18n::t!("WSL Kernels").into(),
+        ));
         entries.extend(wsl_kernels);
     }
 
     // Remote section
     if !remote_kernels.is_empty() {
-        entries.push(KernelPickerEntry::SectionHeader("リモートサーバー".into()));
+        entries.push(KernelPickerEntry::SectionHeader(
+            i18n::t!("Remote Servers").into(),
+        ));
         entries.extend(remote_kernels);
     }
 
@@ -240,7 +250,7 @@ impl PickerDelegate for KernelPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "カーネルを選択...".into()
+        i18n::t!("Select a kernel...").into()
     }
 
     fn update_matches(
@@ -383,16 +393,18 @@ impl PickerDelegate for KernelPickerDelegate {
                                                 )
                                                 .when(*is_recommended, |flex| {
                                                     flex.child(
-                                                        Label::new("推奨")
+                                                        Label::new(i18n::t!("Recommended"))
                                                             .size(LabelSize::XSmall)
                                                             .color(Color::Accent),
                                                     )
                                                 })
                                                 .when(!has_ipykernel, |flex| {
                                                     flex.child(
-                                                        Label::new("ipykernel が未インストール")
-                                                            .size(LabelSize::XSmall)
-                                                            .color(Color::Warning),
+                                                        Label::new(i18n::t!(
+                                                            "ipykernel not installed"
+                                                        ))
+                                                        .size(LabelSize::XSmall)
+                                                        .color(Color::Warning),
                                                     )
                                                 }),
                                         )
@@ -432,7 +444,7 @@ impl PickerDelegate for KernelPickerDelegate {
                 .p_1()
                 .gap_4()
                 .child(
-                    Button::new("kernel-docs", "カーネルのドキュメント")
+                    Button::new("kernel-docs", i18n::t!("Kernel Docs"))
                         .end_icon(
                             Icon::new(IconName::ArrowUpRight)
                                 .size(IconSize::Small)

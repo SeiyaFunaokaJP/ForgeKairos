@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add Keybinding…"
+msgstr "キーバインドを追加…"
+
+msgid "Change Keybinding…"
+msgstr "キーバインドを変更…"
+
+msgid "Execute a command..."
+msgstr "コマンドを実行..."
+
+msgid "Run"
+msgstr "実行"

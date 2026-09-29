@@ -66,19 +66,27 @@ pub(super) fn problem(document: &PieDocument) -> Option<SharedString> {
     if let Some(title) = &document.title
         && !is_valid_pie_title(title)
     {
-        return Some("タイトルに `%%` と改行は使えません (前後の空白も不可)。".into());
+        return Some(
+            i18n::t!("The title cannot contain `%%` or line breaks (nor spaces at either end).")
+                .into(),
+        );
     }
     for slice in &document.slices {
         if !is_valid_pie_label(&slice.label) {
             return Some(
-                format!("ラベル「{}」は使えません (空と `%%` は不可)。", slice.label).into(),
+                i18n::t!(
+                    "The label \"{label}\" is not valid (it cannot be empty or contain `%%`).",
+                    label = slice.label
+                )
+                .into(),
             );
         }
         if !is_valid_pie_value(&slice.value) {
             return Some(
-                format!(
-                    "「{}」の値「{}」は使えません (0 以上の小数だけ)。",
-                    slice.label, slice.value
+                i18n::t!(
+                    "The value \"{value}\" of \"{label}\" is not valid (only decimal numbers of 0 or more).",
+                    label = slice.label,
+                    value = slice.value
                 )
                 .into(),
             );
@@ -196,7 +204,7 @@ impl MermaidEditor {
         let header = h_flex()
             .w_full()
             .gap_2()
-            .child(section_title("タイトル"))
+            .child(section_title(i18n::t!("Title")))
             .child(
                 field_frame(
                     &form.title,
@@ -213,7 +221,7 @@ impl MermaidEditor {
             )
             .child(
                 Checkbox::new("mermaid-pie-show-data", form.document.show_data.into())
-                    .label("値を表示")
+                    .label(i18n::t!("Show Values"))
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, state: &ToggleState, _window, cx| {
                         this.set_show_data(*state == ToggleState::Selected, cx);
@@ -221,7 +229,10 @@ impl MermaidEditor {
             )
             .into_any_element();
 
-        let mut section = v_flex().w_full().gap_1().child(section_title("項目"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Items")));
         for index in 0..form.slices.len() {
             let Some(row) = form.slices.get(index) else {
                 continue;
@@ -273,7 +284,7 @@ impl MermaidEditor {
         let section = section
             .child(add_button(
                 "mermaid-pie-add-slice",
-                "項目を追加",
+                i18n::t!("Add Item"),
                 cx.listener(|this, _, window, cx| this.add_slice(window, cx)),
             ))
             .into_any_element();

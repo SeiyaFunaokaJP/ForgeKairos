@@ -86,9 +86,17 @@ const CURSOR_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 /// Labels for the recording controls, shared by the menus and the tab bar
 /// toggle so both name the same command the same way. The one that opens a save
 /// dialog is the one that ends in `…`.
-pub(crate) const START_SESSION_LOG_LABEL: &str = "ログの記録を開始 (既定の保存先)";
-pub(crate) const CHOOSE_SESSION_LOG_PATH_LABEL: &str = "ログの記録を開始 (保存先を選ぶ)…";
-pub(crate) const STOP_SESSION_LOG_LABEL: &str = "ログの記録を停止";
+pub(crate) fn start_session_log_label() -> &'static str {
+    i18n::t!("Start Logging (Default Location)")
+}
+
+pub(crate) fn choose_session_log_path_label() -> &'static str {
+    i18n::t!("Start Logging (Choose Location)…")
+}
+
+pub(crate) fn stop_session_log_label() -> &'static str {
+    i18n::t!("Stop Logging")
+}
 
 /// Event to transmit the scroll from the element to the view
 #[derive(Clone, Debug, PartialEq)]
@@ -267,16 +275,16 @@ fn macro_progress_label(name: &str, progress: MacroProgress) -> String {
     let step = format!("{}/{}", progress.step_index + 1, progress.step_count);
     let mut detail = match progress.iteration_count {
         Some(1) => step,
-        Some(count) => format!("{}/{count} 回目、ステップ {step}", progress.iteration),
-        None => format!("{} 回目、ステップ {step}", progress.iteration),
+        Some(count) => i18n::t!("run {}/{count}, step {step}", progress.iteration),
+        None => i18n::t!("run {}, step {step}", progress.iteration),
     };
     if let Some(nested) = progress.nested {
         let inner_iteration = match nested.iteration_count {
-            Some(count) => format!("繰り返し {}/{count} のステップ", nested.iteration),
-            None => format!("繰り返し {} 回目のステップ", nested.iteration),
+            Some(count) => i18n::t!("repeat {}/{count}, step", nested.iteration),
+            None => i18n::t!("repeat {}, step", nested.iteration),
         };
-        detail = format!(
-            "{detail} → {inner_iteration} {}/{}「{}」",
+        detail = i18n::t!(
+            "{detail} → {inner_iteration} {}/{} “{}”",
             nested.step_index + 1,
             nested.step_count,
             nested.kind_label
@@ -286,9 +294,9 @@ fn macro_progress_label(name: &str, progress: MacroProgress) -> String {
     // an annotation on the position above, and a branch may sit either side of
     // a 繰り返し in the nesting.
     if let Some(branch) = progress.branch {
-        detail = format!("{detail}、分岐: {}", branch.label());
+        detail = i18n::t!("{detail}, branch: {}", branch.label());
     }
-    format!("マクロ「{name}」実行中 ({detail})")
+    i18n::t!("Running macro “{name}” ({detail})")
 }
 
 #[derive(Default, Clone)]
@@ -808,7 +816,7 @@ impl TerminalView {
                 terminal.stop_session_log(cx);
             });
         } else if let Err(error) = self.start_session_log_at_default_path(None, cx) {
-            self.report_error(format!("ログを開始できませんでした: {error}"), cx);
+            self.report_error(i18n::t!("Couldn't start logging: {error}"), cx);
         }
         cx.notify();
     }
@@ -845,7 +853,7 @@ impl TerminalView {
                 Ok(Ok(None)) => return,
                 Ok(Err(error)) => {
                     this.update(cx, |this, cx| {
-                        this.report_error(format!("保存先を選べませんでした: {error}"), cx);
+                        this.report_error(i18n::t!("Couldn't choose a location: {error}"), cx);
                     })
                     .ok();
                     return;
@@ -857,7 +865,7 @@ impl TerminalView {
                     terminal.start_session_log(path, options, cx)
                 });
                 if let Err(error) = started {
-                    this.report_error(format!("ログを開始できませんでした: {error}"), cx);
+                    this.report_error(i18n::t!("Couldn't start logging: {error}"), cx);
                 }
                 cx.notify();
             })
@@ -910,7 +918,7 @@ impl TerminalView {
                 Ok(item) => item,
                 Err(error) => {
                     this.update(cx, |this, cx| {
-                        this.report_error(format!("ログを開けませんでした: {error}"), cx);
+                        this.report_error(i18n::t!("Couldn't open the log: {error}"), cx);
                     })
                     .ok();
                     return;
@@ -1034,11 +1042,9 @@ impl TerminalView {
                 this.update(cx, |this, cx| {
                     this.macro_run = None;
                     this.macro_status = Some(match result {
-                        Ok(()) => {
-                            MacroStatus::Finished(format!("マクロ「{name}」が完了しました").into())
-                        }
+                        Ok(()) => MacroStatus::Finished(i18n::t!("Macro “{name}” finished").into()),
                         Err(error) => {
-                            MacroStatus::Failed(format!("マクロ「{name}」: {error}").into())
+                            MacroStatus::Failed(i18n::t!("Macro “{name}”: {error}").into())
                         }
                     });
                     cx.notify();
@@ -1066,7 +1072,7 @@ impl TerminalView {
     fn cancel_macro(&mut self, _: &CancelMacro, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(run) = self.macro_run.take() {
             self.macro_status = Some(MacroStatus::Failed(
-                format!("マクロ「{}」を中止しました", run.name).into(),
+                i18n::t!("Stopped macro “{}”", run.name).into(),
             ));
             cx.notify();
         }
@@ -1152,17 +1158,15 @@ impl TerminalView {
                                 terminal.start_session_log(path, options, cx)
                             });
                             if let Err(error) = started {
-                                this.report_error(
-                                    format!("ログを再開できませんでした: {error}"),
-                                    cx,
-                                );
+                                this.report_error(i18n::t!("Couldn't resume logging: {error}"), cx);
                             }
                         }
                         cx.emit(ItemEvent::UpdateTab);
                         cx.notify();
                     }
-                    Err(error) => this
-                        .report_error(format!("ターミナルを再起動できませんでした: {error}"), cx),
+                    Err(error) => {
+                        this.report_error(i18n::t!("Couldn't restart the terminal: {error}"), cx)
+                    }
                 }
             })
             .ok();
@@ -1327,7 +1331,7 @@ impl TerminalView {
                             .color(Color::Accent),
                     )
                     .child(
-                        Label::new("同時入力中")
+                        Label::new(i18n::t!("Broadcasting input"))
                             .size(LabelSize::Small)
                             .color(Color::Accent),
                     ),
@@ -1350,10 +1354,10 @@ impl TerminalView {
                         .color(Color::Error),
                 )
                 .child(
-                    Button::new("session-log-path", format!("記録中: {file_name}"))
+                    Button::new("session-log-path", i18n::t!("Logging to {file_name}"))
                         .label_size(LabelSize::Small)
-                        .tooltip(Tooltip::text(format!(
-                            "{display_path}\nクリックするとエディターで開き、末尾に追従します。"
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "{display_path}\nClick to open it in the editor and follow its end."
                         )))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.tail_session_log(&TailSessionLog, window, cx);
@@ -1364,11 +1368,11 @@ impl TerminalView {
                         "session-log-timestamps",
                         self.session_log_timestamps(cx).unwrap_or(false).into(),
                     )
-                    .label("タイムスタンプ")
+                    .label(i18n::t!("Timestamps"))
                     .label_size(LabelSize::Small)
-                    .tooltip(Tooltip::text(
-                        "記録中のログの行頭に時刻を付けます。次の行から反映されます。",
-                    ))
+                    .tooltip(Tooltip::text(i18n::t!(
+                        "Prefixes each line of the log being recorded with the time. Takes effect from the next line."
+                    )))
                     .on_click(cx.listener(
                         move |this, _: &ToggleState, _, cx| {
                             this.toggle_session_log_timestamps(cx);
@@ -1376,7 +1380,7 @@ impl TerminalView {
                     )),
                 )
                 .child(
-                    Button::new("session-log-stop", "記録を停止")
+                    Button::new("session-log-stop", i18n::tc!("terminal", "Stop Logging"))
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.stop_session_log(&StopSessionLog, window, cx);
@@ -1392,7 +1396,7 @@ impl TerminalView {
                         .size(LabelSize::Small),
                 )
                 .child(
-                    Button::new("macro-cancel", "中止")
+                    Button::new("macro-cancel", i18n::tc!("terminal macro", "Cancel"))
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.cancel_macro(&CancelMacro, window, cx);
@@ -1406,7 +1410,7 @@ impl TerminalView {
             bar = bar
                 .child(Label::new(message).size(LabelSize::Small).color(color))
                 .child(
-                    Button::new("macro-status-dismiss", "閉じる")
+                    Button::new("macro-status-dismiss", i18n::t!("Close"))
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.macro_status = None;
@@ -1434,43 +1438,46 @@ impl TerminalView {
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .when(self.shows_workspace_actions(), |menu| {
-                    menu.action("新規ターミナル", Box::new(NewTerminal::default()))
+                    menu.action(i18n::t!("New Terminal"), Box::new(NewTerminal::default()))
                         .action(
-                            "中央ペインに新規ターミナル",
+                            i18n::t!("New Center Terminal"),
                             Box::new(NewCenterTerminal::default()),
                         )
                         .separator()
                 })
-                .action("コピー", Box::new(Copy))
+                .action(i18n::t!("Copy"), Box::new(Copy))
                 .when(
                     !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| {
-                        menu.action("貼り付け", Box::new(Paste))
-                            .action("テキストとして貼り付け", Box::new(PasteText))
+                        menu.action(i18n::t!("Paste"), Box::new(Paste))
+                            .action(i18n::t!("Paste Text"), Box::new(PasteText))
                     },
                 )
-                .action("すべて選択", Box::new(SelectAll))
+                .action(i18n::t!("Select All"), Box::new(SelectAll))
                 .when(
                     !matches!(self.mode, TerminalMode::Embedded { .. }),
-                    |menu| menu.action("画面を消去", Box::new(Clear)),
+                    |menu| menu.action(i18n::tc!("terminal", "Clear"), Box::new(Clear)),
                 )
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.separator()
                         .when(!recording, |menu| {
-                            menu.action(START_SESSION_LOG_LABEL, Box::new(ToggleSessionLog))
-                                .action(CHOOSE_SESSION_LOG_PATH_LABEL, Box::new(StartSessionLog))
+                            menu.action(start_session_log_label(), Box::new(ToggleSessionLog))
+                                .action(choose_session_log_path_label(), Box::new(StartSessionLog))
                         })
                         .when(recording, |menu| {
-                            menu.action(STOP_SESSION_LOG_LABEL, Box::new(StopSessionLog))
-                                .action("ログをエディターで開く", Box::new(TailSessionLog))
-                                .action("ログファイルの場所を開く", Box::new(OpenSessionLog))
+                            menu.action(stop_session_log_label(), Box::new(StopSessionLog))
+                                .action(i18n::t!("Open Log in Editor"), Box::new(TailSessionLog))
+                                .action(
+                                    i18n::t!("Open Log File Location"),
+                                    Box::new(OpenSessionLog),
+                                )
                         })
-                        .action("マクロを実行…", Box::new(session_tools::RunMacro))
+                        .action(i18n::t!("Run Macro…"), Box::new(session_tools::RunMacro))
                         // ADR-F28. The handler lives in the `file_transfer`
                         // crate; dispatching the action keeps this crate free
                         // of a dependency on it.
                         .action(
-                            "ファイル転送…",
+                            i18n::t!("File Transfer…"),
                             Box::new(zed_actions::terminal::OpenFileTransfer::default()),
                         )
                 })
@@ -1478,10 +1485,10 @@ impl TerminalView {
                     assistant_enabled && !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| {
                         menu.separator()
-                            .action("インラインアシスト", Box::new(InlineAssist::default()))
+                            .action(i18n::t!("Inline Assist"), Box::new(InlineAssist::default()))
                             .when(has_selection && self.shows_workspace_actions(), |menu| {
                                 menu.action(
-                                    "エージェントのスレッドに追加",
+                                    i18n::tc!("terminal", "Add to Agent Thread"),
                                     Box::new(AddSelectionToThread),
                                 )
                             })
@@ -1489,7 +1496,7 @@ impl TerminalView {
                 )
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.separator().action(
-                        "ターミナルタブを閉じる",
+                        i18n::t!("Close Terminal Tab"),
                         Box::new(CloseActiveItem {
                             save_intent: None,
                             close_pinned: true,
@@ -2026,7 +2033,9 @@ impl TerminalView {
                 .size(ButtonSize::Compact)
                 .icon_color(Color::Default)
                 .shape(ui::IconButtonShape::Square)
-                .tooltip(move |_window, cx| Tooltip::for_action("タスクを再実行", &RerunTask, cx))
+                .tooltip(move |_window, cx| {
+                    Tooltip::for_action(i18n::t!("Rerun task"), &RerunTask, cx)
+                })
                 .on_click(move |_, window, cx| {
                     window.dispatch_action(Box::new(terminal_rerun_override(&task_id)), cx);
                 }),
@@ -2066,15 +2075,21 @@ fn recovery_from_session_failure(
     match failure {
         RemoteSessionFailure::Unsupported => (
             SessionRestart::WithoutSession,
-            "リモートの Zed サーバーが切断対策に対応していないため、通常のシェルで起動し直しました。",
+            i18n::t!(
+                "The remote Zed server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
+            ),
         ),
         RemoteSessionFailure::Unreachable if !already_retried => (
             SessionRestart::NewSession,
-            "リモートのシェルに接続できなかったため、新しいシェルで起動し直しました。",
+            i18n::t!(
+                "Couldn't reach the remote shell, so the terminal restarted with a new shell."
+            ),
         ),
         RemoteSessionFailure::Unreachable => (
             SessionRestart::WithoutSession,
-            "リモートのシェルに接続できなかったため、切断対策なしで起動し直しました。",
+            i18n::t!(
+                "Couldn't reach the remote shell, so the terminal restarted without surviving disconnects."
+            ),
         ),
     }
 }
@@ -2109,9 +2124,11 @@ impl ConnectionLostBanner {
     fn for_terminal(terminal: &Terminal) -> Option<Self> {
         if terminal.remote_session_taken_over() {
             return Some(Self {
-                message: "別の接続がこのシェルを引き継ぎました",
-                button: "再接続",
-                tooltip: "このタブにシェルを取り戻します (もう一方の接続は切り離されます)",
+                message: i18n::t!("Another connection took over this shell"),
+                button: i18n::t!("Reconnect"),
+                tooltip: i18n::t!(
+                    "Brings the shell back to this tab (the other connection is detached)"
+                ),
             });
         }
         if !terminal.remote_connection_lost() {
@@ -2120,15 +2137,17 @@ impl ConnectionLostBanner {
         // Only an attach that got through knows the shell is on the host.
         Some(if terminal.remote_session_attached() {
             Self {
-                message: "リモート接続が切れました。シェルはリモートで動き続けています。再接続すると続きから表示します",
-                button: "再接続",
-                tooltip: "リモートのシェルにつなぎ直して、続きから表示します",
+                message: i18n::t!(
+                    "Remote connection lost. The shell keeps running on the remote host; reconnect to resume its output"
+                ),
+                button: i18n::t!("Reconnect"),
+                tooltip: i18n::t!("Reconnects to the remote shell and resumes its output"),
             }
         } else {
             Self {
-                message: "リモート接続が切れました",
-                button: "再起動",
-                tooltip: "同じ作業ディレクトリでシェルを起動し直します",
+                message: i18n::t!("Remote connection lost"),
+                button: i18n::t!("Restart"),
+                tooltip: i18n::t!("Restarts the shell in the same working directory"),
             }
         })
     }
@@ -2569,7 +2588,7 @@ impl Item for TerminalView {
                     .child(Label::new(title.clone()))
                     .child(h_flex().flex_grow_1().child(Divider::horizontal()))
                     .child(
-                        Label::new(format!("プロセス ID (PID): {}", pid))
+                        Label::new(i18n::t!("Process ID (PID): {}", pid))
                             .color(Color::Muted)
                             .size(LabelSize::Small),
                     )
@@ -2791,24 +2810,33 @@ impl Item for TerminalView {
         cx: &mut Context<Self>,
     ) -> Vec<(SharedString, Box<dyn gpui::Action>)> {
         let terminal = self.terminal.read(cx);
-        // NOTE: `workspace::pane` compares the "名前の変更" label to decide
-        // where to place this entry; leave that string alone.
+        // NOTE: a double-click on the tab finds the rename entry by comparing its
+        // label with `i18n::t!("Rename")` in `workspace::pane`; keep that message.
         let mut actions: Vec<(SharedString, Box<dyn gpui::Action>)> = Vec::new();
         if terminal.task().is_none() {
-            actions.push(("名前の変更".into(), Box::new(RenameTerminal)));
+            actions.push((i18n::t!("Rename").into(), Box::new(RenameTerminal)));
         }
         if terminal.session_log_path().is_some() {
-            actions.push((STOP_SESSION_LOG_LABEL.into(), Box::new(StopSessionLog)));
-            actions.push(("ログをエディターで開く".into(), Box::new(TailSessionLog)));
-            actions.push(("ログファイルの場所を開く".into(), Box::new(OpenSessionLog)));
-        } else {
-            actions.push((START_SESSION_LOG_LABEL.into(), Box::new(ToggleSessionLog)));
+            actions.push((stop_session_log_label().into(), Box::new(StopSessionLog)));
             actions.push((
-                CHOOSE_SESSION_LOG_PATH_LABEL.into(),
+                i18n::t!("Open Log in Editor").into(),
+                Box::new(TailSessionLog),
+            ));
+            actions.push((
+                i18n::t!("Open Log File Location").into(),
+                Box::new(OpenSessionLog),
+            ));
+        } else {
+            actions.push((start_session_log_label().into(), Box::new(ToggleSessionLog)));
+            actions.push((
+                choose_session_log_path_label().into(),
                 Box::new(StartSessionLog),
             ));
         }
-        actions.push(("マクロを実行…".into(), Box::new(session_tools::RunMacro)));
+        actions.push((
+            i18n::t!("Run Macro…").into(),
+            Box::new(session_tools::RunMacro),
+        ));
         actions
     }
 
@@ -3315,7 +3343,7 @@ mod tests {
         };
         assert_eq!(
             macro_progress_label("再起動", progress),
-            "マクロ「再起動」実行中 (2/5 回目、ステップ 2/3)"
+            "Running macro “再起動” (run 2/5, step 2/3)"
         );
 
         let nested = MacroProgress {
@@ -3324,13 +3352,13 @@ mod tests {
                 iteration_count: Some(4),
                 step_index: 0,
                 step_count: 2,
-                kind_label: "送信",
+                kind_label: "Send",
             }),
             ..progress
         };
         assert_eq!(
             macro_progress_label("再起動", nested),
-            "マクロ「再起動」実行中 (2/5 回目、ステップ 2/3 → 繰り返し 1/4 のステップ 1/2「送信」)"
+            "Running macro “再起動” (run 2/5, step 2/3 → repeat 1/4, step 1/2 “Send”)"
         );
 
         let endless_nested = MacroProgress {
@@ -3340,13 +3368,13 @@ mod tests {
                 iteration_count: None,
                 step_index: 1,
                 step_count: 2,
-                kind_label: "画面を消去",
+                kind_label: "Clear Screen",
             }),
             ..progress
         };
         assert_eq!(
             macro_progress_label("巡回", endless_nested),
-            "マクロ「巡回」実行中 (2/3 → 繰り返し 7 回目のステップ 2/2「画面を消去」)"
+            "Running macro “巡回” (2/3 → repeat 7, step 2/2 “Clear Screen”)"
         );
     }
 
@@ -3362,7 +3390,7 @@ mod tests {
         };
         assert_eq!(
             macro_progress_label("復旧", progress),
-            "マクロ「復旧」実行中 (2/3、分岐: 一致 → そのとき)"
+            "Running macro “復旧” (2/3, branch: Match → Then)"
         );
 
         let missed = MacroProgress {
@@ -3371,7 +3399,7 @@ mod tests {
         };
         assert_eq!(
             macro_progress_label("復旧", missed),
-            "マクロ「復旧」実行中 (2/3、分岐: 不一致 → それ以外)"
+            "Running macro “復旧” (2/3, branch: No match → Else)"
         );
 
         // A 分岐 inside a 繰り返し keeps both, so the strip says where the run
@@ -3382,14 +3410,14 @@ mod tests {
                 iteration_count: Some(4),
                 step_index: 0,
                 step_count: 2,
-                kind_label: "分岐",
+                kind_label: "Branch",
             }),
             branch: Some(terminal::terminal_macro::MacroBranch::Timeout),
             ..progress
         };
         assert_eq!(
             macro_progress_label("復旧", inside_a_repeat),
-            "マクロ「復旧」実行中 (2/3 → 繰り返し 2/4 のステップ 1/2「分岐」、分岐: タイムアウト → 続行)"
+            "Running macro “復旧” (2/3 → repeat 2/4, step 1/2 “Branch”, branch: Timeout → Continue)"
         );
     }
 
@@ -4275,25 +4303,25 @@ mod tests {
                 .expect("a banner for a dropped connection");
             assert_eq!(
                 banner.message,
-                "リモート接続が切れました。シェルはリモートで動き続けています。再接続すると続きから表示します"
+                "Remote connection lost. The shell keeps running on the remote host; reconnect to resume its output"
             );
-            assert_eq!(banner.button, "再接続");
+            assert_eq!(banner.button, "Reconnect");
 
             let banner = ConnectionLostBanner::for_terminal(plain.read(cx))
                 .expect("a banner for a dropped connection");
-            assert_eq!(banner.message, "リモート接続が切れました");
-            assert_eq!(banner.button, "再起動");
+            assert_eq!(banner.message, "Remote connection lost");
+            assert_eq!(banner.button, "Restart");
 
             // The first `ssh` never got through: nothing is known of a shell.
             let banner = ConnectionLostBanner::for_terminal(never_attached.read(cx))
                 .expect("a banner for a dropped connection");
-            assert_eq!(banner.message, "リモート接続が切れました");
-            assert_eq!(banner.button, "再起動");
+            assert_eq!(banner.message, "Remote connection lost");
+            assert_eq!(banner.button, "Restart");
 
             let banner = ConnectionLostBanner::for_terminal(taken_over.read(cx))
                 .expect("a banner for a shell another attach took");
-            assert_eq!(banner.message, "別の接続がこのシェルを引き継ぎました");
-            assert_eq!(banner.button, "再接続");
+            assert_eq!(banner.message, "Another connection took over this shell");
+            assert_eq!(banner.button, "Reconnect");
 
             assert_eq!(ConnectionLostBanner::for_terminal(ended.read(cx)), None);
         });

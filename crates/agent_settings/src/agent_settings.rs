@@ -639,7 +639,8 @@ impl CompiledRegex {
     }
 }
 
-pub const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "組み込みのセキュリティルールによりブロックされました。この操作は許可するには危険すぎると判断されており、設定で上書きすることはできません。";
+pub const HARDCODED_SECURITY_DENIAL_MESSAGE: &str = "Blocked by built-in security rule. This operation is considered too \
+     harmful to be allowed, and cannot be overridden by settings.";
 
 /// Security rules that are always enforced and cannot be overridden by any setting.
 /// These protect against catastrophic operations like wiping filesystems.

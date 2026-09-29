@@ -53,7 +53,7 @@ impl AgentTool for GoToDefinitionTool {
         if let Ok(input) = input {
             go_to_definition_title(&input.symbol.symbol_name).into()
         } else {
-            "定義へ移動".into()
+            i18n::t!("Go to definition").into()
         }
     }
 
@@ -88,7 +88,7 @@ impl AgentTool for GoToDefinitionTool {
                         &go_to_definition_title(&input.symbol.symbol_name),
                     );
                     return Ok(no_language_server_message(
-                        "定義の検索",
+                        "find the definition",
                         &input.symbol.file_path,
                     ));
                 }
@@ -126,5 +126,5 @@ impl AgentTool for GoToDefinitionTool {
 }
 
 fn go_to_definition_title(symbol_name: &str) -> String {
-    format!("`{symbol_name}` の定義へ移動")
+    i18n::t!("Go to definition of `{symbol_name}`")
 }

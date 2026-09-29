@@ -1446,9 +1446,9 @@ fn test_permission_options_terminal_with_pattern() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"ターミナルは常に"));
-    assert!(labels.contains(&"`cargo build` コマンドは常に"));
-    assert!(labels.contains(&"今回のみ"));
+    assert!(labels.contains(&"Always for terminal"));
+    assert!(labels.contains(&"Always for `cargo build` commands"));
+    assert!(labels.contains(&"Only this time"));
 }
 
 #[test]
@@ -1466,9 +1466,9 @@ fn test_permission_options_terminal_command_with_flag_second_token() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"ターミナルは常に"));
-    assert!(labels.contains(&"`ls` コマンドは常に"));
-    assert!(labels.contains(&"今回のみ"));
+    assert!(labels.contains(&"Always for terminal"));
+    assert!(labels.contains(&"Always for `ls` commands"));
+    assert!(labels.contains(&"Only this time"));
 }
 
 #[test]
@@ -1486,9 +1486,9 @@ fn test_permission_options_terminal_single_word_command() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"ターミナルは常に"));
-    assert!(labels.contains(&"`whoami` コマンドは常に"));
-    assert!(labels.contains(&"今回のみ"));
+    assert!(labels.contains(&"Always for terminal"));
+    assert!(labels.contains(&"Always for `whoami` commands"));
+    assert!(labels.contains(&"Only this time"));
 }
 
 #[test]
@@ -1505,8 +1505,8 @@ fn test_permission_options_edit_file_with_path_pattern() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"ファイル編集は常に"));
-    assert!(labels.contains(&"`src/` は常に"));
+    assert!(labels.contains(&"Always for edit file"));
+    assert!(labels.contains(&"Always for `src/`"));
 }
 
 #[test]
@@ -1523,8 +1523,8 @@ fn test_permission_options_fetch_with_domain_pattern() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"URL の取得は常に"));
-    assert!(labels.contains(&"`docs.rs` は常に"));
+    assert!(labels.contains(&"Always for fetch"));
+    assert!(labels.contains(&"Always for `docs.rs`"));
 }
 
 #[test]
@@ -1544,8 +1544,8 @@ fn test_permission_options_without_pattern() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"ターミナルは常に"));
-    assert!(labels.contains(&"今回のみ"));
+    assert!(labels.contains(&"Always for terminal"));
+    assert!(labels.contains(&"Only this time"));
     assert!(!labels.iter().any(|label| label.contains("commands")));
 }
 
@@ -1631,8 +1631,8 @@ fn test_permission_options_terminal_pipeline_produces_dropdown_with_patterns() {
         .iter()
         .map(|choice| choice.allow.name.as_ref())
         .collect();
-    assert!(labels.contains(&"ターミナルは常に"));
-    assert!(labels.contains(&"今回のみ"));
+    assert!(labels.contains(&"Always for terminal"));
+    assert!(labels.contains(&"Only this time"));
 
     // Should have per-command patterns for "cargo test" and "tail"
     assert_eq!(patterns.len(), 2);
@@ -5571,9 +5571,9 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
             result.is_err(),
             "expected command to be blocked by deny rule"
         );
-        let err_msg = result.unwrap_err();
+        let err_msg = result.unwrap_err().to_lowercase();
         assert!(
-            err_msg.contains("ブロック"),
+            err_msg.contains("blocked"),
             "error should mention the command was blocked"
         );
     }
@@ -5697,7 +5697,7 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
             .await
             .expect_err("the \"deny\" default should refuse a command no allow pattern matches");
         assert!(
-            error.contains("無効になっています"),
+            error.contains("tool is disabled"),
             "error should mention the tool is disabled, got: {error}"
         );
     }
@@ -5798,9 +5798,9 @@ async fn test_terminal_tool_permission_rules(cx: &mut TestAppContext) {
             result.is_err(),
             "expected command to be blocked by tool-specific deny default"
         );
-        let err_msg = result.unwrap_err();
+        let err_msg = result.unwrap_err().to_lowercase();
         assert!(
-            err_msg.contains("無効になっています"),
+            err_msg.contains("disabled"),
             "error should mention the tool is disabled, got: {err_msg}"
         );
     }
@@ -6813,7 +6813,7 @@ async fn test_lsp_tools_report_a_missing_language_server(cx: &mut TestAppContext
         .await
         .expect("find_references should explain the missing server, not fail");
     assert!(
-        output.contains("言語サーバーが起動していません") && output.contains("`grep`"),
+        output.contains("no language server is running") && output.contains("`grep`"),
         "expected the missing-language-server explanation, got: {output}"
     );
     // The explanation itself sits in the card's collapsed output, so the title
@@ -6822,7 +6822,7 @@ async fn test_lsp_tools_report_a_missing_language_server(cx: &mut TestAppContext
     assert!(
         title
             .as_deref()
-            .is_some_and(|title| title.contains("言語サーバーなし")),
+            .is_some_and(|title| title.contains("(no language server)")),
         "expected the card title to say the language server is missing, got: {title:?}"
     );
 
@@ -6845,7 +6845,7 @@ async fn test_lsp_tools_report_a_missing_language_server(cx: &mut TestAppContext
         .await
         .expect("rename_symbol should explain the missing server, not fail");
     assert!(
-        output.contains("言語サーバーが起動していません"),
+        output.contains("no language server is running"),
         "expected the missing-language-server explanation, got: {output}"
     );
     assert!(
@@ -7504,10 +7504,7 @@ async fn test_edit_file_tool_deny_rule_blocks_edit(cx: &mut TestAppContext) {
     let result = task.await;
     assert!(result.is_err(), "expected edit to be blocked");
     assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("ブロックされました"),
+        result.unwrap_err().to_string().contains("blocked"),
         "error should mention the edit was blocked"
     );
 }
@@ -7555,7 +7552,7 @@ async fn test_delete_path_tool_deny_rule_blocks_deletion(cx: &mut TestAppContext
     let result = task.await;
     assert!(result.is_err(), "expected deletion to be blocked");
     assert!(
-        result.unwrap_err().contains("ブロックされました"),
+        result.unwrap_err().contains("blocked"),
         "error should mention the deletion was blocked"
     );
 }
@@ -7611,7 +7608,7 @@ async fn test_move_path_tool_denies_if_destination_denied(cx: &mut TestAppContex
         "expected move to be blocked due to destination path"
     );
     assert!(
-        result.unwrap_err().contains("ブロックされました"),
+        result.unwrap_err().contains("blocked"),
         "error should mention the move was blocked"
     );
 }
@@ -7667,7 +7664,7 @@ async fn test_move_path_tool_denies_if_source_denied(cx: &mut TestAppContext) {
         "expected move to be blocked due to source path"
     );
     assert!(
-        result.unwrap_err().contains("ブロックされました"),
+        result.unwrap_err().contains("blocked"),
         "error should mention the move was blocked"
     );
 }
@@ -7722,7 +7719,7 @@ async fn test_copy_path_tool_deny_rule_blocks_copy(cx: &mut TestAppContext) {
     let result = task.await;
     assert!(result.is_err(), "expected copy to be blocked");
     assert!(
-        result.unwrap_err().contains("ブロックされました"),
+        result.unwrap_err().contains("blocked"),
         "error should mention the copy was blocked"
     );
 }
@@ -7853,7 +7850,7 @@ async fn test_web_search_tool_deny_rule_blocks_search(cx: &mut TestAppContext) {
     match result.unwrap_err() {
         crate::WebSearchToolOutput::Error { error } => {
             assert!(
-                error.contains("ブロックされました"),
+                error.contains("blocked"),
                 "error should mention the search was blocked"
             );
         }
@@ -8121,7 +8118,7 @@ async fn test_edit_file_tool_sensitive_settings_card_offers_only_once_only_choic
         panic!("機微な設定のカードは許可 / 拒否の 2 択のはず");
     };
     let labels: Vec<&str> = options.iter().map(|option| option.name.as_ref()).collect();
-    assert_eq!(labels, vec!["許可", "拒否"]);
+    assert_eq!(labels, vec!["Allow", "Deny"]);
 }
 
 /// Zed loads `.vscode/tasks.json` and `.vscode/launch.json` as its own tasks
@@ -8160,13 +8157,13 @@ async fn test_edit_file_tool_vscode_run_configs_are_sensitive(cx: &mut TestAppCo
         let authorization = next_permission_card(&mut rx).await;
         assert_eq!(
             authorization.tool_call.fields.title,
-            Some(format!("`{path}` を編集 (プロジェクトの設定)")),
+            Some(format!("Edit `{path}` (local settings)")),
         );
         let PermissionOptions::Flat(options) = authorization.options else {
             panic!("{path}: 機微な設定のカードは許可 / 拒否の 2 択のはず");
         };
         let labels: Vec<&str> = options.iter().map(|option| option.name.as_ref()).collect();
-        assert_eq!(labels, vec!["許可", "拒否"]);
+        assert_eq!(labels, vec!["Allow", "Deny"]);
     }
 }
 
@@ -8274,7 +8271,7 @@ async fn test_write_file_tool_allow_still_prompts_for_new_path_with_two_worktree
     assert_eq!(
         authorization.tool_call.fields.title,
         Some(format!(
-            "`notes.md` を編集 (どのワークツリーか曖昧: 承認すると `{}` に書かれます)",
+            "Edit `notes.md` (which worktree is ambiguous: approving writes it to `{}`)",
             display_project_path("root/notes.md")
         ))
     );
@@ -8330,7 +8327,7 @@ async fn test_write_file_tool_card_names_the_worktree_a_new_path_would_land_in(
     assert_eq!(
         authorization.tool_call.fields.title,
         Some(format!(
-            "`src/new.rs` を編集 (どのワークツリーか曖昧: 承認すると `{}` に書かれます)",
+            "Edit `src/new.rs` (which worktree is ambiguous: approving writes it to `{}`)",
             display_project_path("root/src/new.rs")
         ))
     );
@@ -8364,7 +8361,7 @@ async fn test_write_file_tool_allow_still_prompts_for_relative_path_with_dotdot(
     let authorization = next_permission_card(&mut rx).await;
     assert_eq!(
         authorization.tool_call.fields.title,
-        Some("`src/../notes.md` を編集 (プロジェクトの外)".into())
+        Some("Edit `src/../notes.md` (outside the project)".into())
     );
 
     // A path that leaves the worktree is refused before the card: the tool
@@ -8425,7 +8422,7 @@ async fn test_write_file_tool_allow_still_prompts_for_a_new_path_under_dot_git(
     let authorization = next_permission_card(&mut rx).await;
     assert_eq!(
         authorization.tool_call.fields.title,
-        Some("`.git/hooks-note` を編集 (プロジェクトの外)".into())
+        Some("Edit `.git/hooks-note` (outside the project)".into())
     );
 }
 
@@ -8464,7 +8461,7 @@ async fn test_fetch_tool_deny_rule_blocks_url(cx: &mut TestAppContext) {
     let result = task.await;
     assert!(result.is_err(), "expected fetch to be blocked");
     assert!(
-        result.unwrap_err().contains("ブロックされました"),
+        result.unwrap_err().contains("blocked"),
         "error should mention the fetch was blocked"
     );
 }
@@ -8639,7 +8636,7 @@ async fn test_fetch_tool_refuses_loopback_without_unsandboxed(cx: &mut TestAppCo
         .await
         .expect_err("expected a loopback fetch to be refused");
     assert!(
-        error.contains("isn't allowed") && error.contains("許可するドメイン"),
+        error.contains("isn't allowed") && error.contains("Allowed Domains"),
         "error should say the host isn't allowed and where domains are added: {error}"
     );
     assert!(

@@ -1333,17 +1333,17 @@ impl Fs for RealFs {
         async fn run_git_init_step(
             working_directory: &Path,
             args: &[&str],
-            step_description: &str,
+            failure_message: &str,
         ) -> Result<()> {
             let output = new_command("git")
                 .current_dir(working_directory)
                 .args(args)
                 .output()
                 .await
-                .with_context(|| format!("{step_description}に失敗しました"))?;
+                .with_context(|| failure_message.to_string())?;
             anyhow::ensure!(
                 output.status.success(),
-                "{step_description}に失敗しました: {}",
+                "{failure_message}: {}",
                 String::from_utf8_lossy(&output.stderr).trim()
             );
             Ok(())
@@ -1355,13 +1355,18 @@ impl Fs for RealFs {
             self.metadata(&abs_work_directory_path.join(".git")).await,
             Ok(Some(_))
         );
-        run_git_init_step(abs_work_directory_path, &["init"], "リポジトリの初期化").await?;
+        run_git_init_step(
+            abs_work_directory_path,
+            &["init"],
+            i18n::t!("Failed to initialize the repository"),
+        )
+        .await?;
         if !already_initialized {
             let head = format!("refs/heads/{}", branch_name.trim());
             run_git_init_step(
                 abs_work_directory_path,
                 &["symbolic-ref", "HEAD", &head],
-                "初期ブランチの設定",
+                i18n::t!("Failed to set the initial branch"),
             )
             .await?;
         }

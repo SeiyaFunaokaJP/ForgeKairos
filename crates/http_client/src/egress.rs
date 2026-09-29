@@ -215,6 +215,20 @@ impl RequestHost {
     }
 }
 
+/// Whether a configured endpoint (such as a self-hosted model server's
+/// `api_url`) is on this machine. Anything that does not parse is not.
+///
+/// zed-jp-enhance: shared by the surfaces that may reach a self-hosted AI
+/// endpoint without the external-AI consent only while it is local (ADR-F10).
+/// The host is read exactly as [`EgressPolicyHandle::check_url`] reads it, so
+/// this never calls local what the allowlist would treat as remote.
+pub fn endpoint_is_loopback(api_url: &str) -> bool {
+    Url::parse(api_url)
+        .ok()
+        .and_then(|url| url.host().map(RequestHost::from_url_host))
+        .is_some_and(|host| host.is_loopback())
+}
+
 impl fmt::Display for RequestHost {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -1141,6 +1155,65 @@ mod tests {
 
     fn host(raw: &str) -> RequestHost {
         RequestHost::parse(raw).expect("host should parse")
+    }
+
+    #[test]
+    fn endpoint_is_loopback_only_for_this_machine() {
+        // Whatever this calls local, the AI lane must let through with no
+        // user policy at all; whatever it calls remote, the AI lane must stop.
+        let empty_policy = policy(&[]);
+        let allowed_on_the_ai_lane = |api_url: &str| {
+            Url::parse(api_url)
+                .ok()
+                .is_some_and(|url| empty_policy.check_url(&url).is_ok())
+        };
+        for local in [
+            "http://localhost:11434",
+            " http://127.0.0.1:11434 ",
+            "http://[::1]:11434",
+            "http://127.8.9.10",
+            "http://LOCALHOST:11434/api",
+            "http://localhost.:11434",
+            "http://127.1:11434",
+            "http://2130706433:11434",
+            "http://0x7f.1:11434",
+            "http://0177.0.0.1:11434",
+            "http://[::ffff:127.0.0.1]:11434",
+            "http://[0:0:0:0:0:0:0:1]/v1",
+            "https://localhost/ollama?x=1#y",
+            "http://%6c%6fcalhost:11434",
+        ] {
+            assert!(endpoint_is_loopback(local), "{local}");
+            assert!(allowed_on_the_ai_lane(local), "{local}");
+        }
+        for remote in [
+            "http://192.168.1.10:11434",
+            "https://ollama.example.com",
+            "http://localhost.example.com:11434",
+            "http://localhost.evil.example",
+            "http://api.localhost:11434",
+            "http://127.0.0.1.nip.io:11434",
+            "http://127.0.0.1@evil.example/",
+            "http://localhost:11434@evil.example/",
+            "http://evil.example#@localhost",
+            r"http://evil.example\@localhost",
+            "http://0.0.0.0:11434",
+            "http://[::]:11434",
+            "http://[::ffff:10.0.0.1]:11434",
+            "http://128.0.0.1",
+            "http://2147483648",
+            "localhost:11434",
+            "127.0.0.1:11434",
+            "//localhost:11434",
+            "file://localhost/etc/passwd",
+            "",
+            "   ",
+            "not a url",
+            "http://",
+        ] {
+            assert!(!endpoint_is_loopback(remote), "{remote}");
+            assert!(!allowed_on_the_ai_lane(remote), "{remote}");
+        }
     }
 
     /// `Response<AsyncBody>` is not `Debug`, so `expect_err` is unavailable.

@@ -34,8 +34,8 @@ use super::{
 
 /// The texts new rows are added with, so that they are visible in the drawing
 /// before anything has been typed into them.
-const NEW_BLOCK_LABEL: &str = "新しいブロック";
-const NEW_ARROW_LABEL: &str = "矢印";
+const NEW_BLOCK_LABEL: &str = i18n::msg!("New block");
+const NEW_ARROW_LABEL: &str = i18n::msg!("Arrow");
 const NEW_STYLE: &str = "fill:#f9f,stroke:#333";
 
 /// How far each level of groups pushes its rows to the right.
@@ -255,13 +255,13 @@ pub(super) fn problem(_document: &BlockDocument) -> Option<SharedString> {
 fn shape_label(shape: Option<BlockShape>) -> &'static str {
     match shape {
         Some(shape) => shape.label(),
-        None => "形なし (ID を表示)",
+        None => i18n::t!("No Shape (Shows the ID)"),
     }
 }
 
 fn link_label(link: &str) -> SharedString {
     match BLOCK_LINKS.iter().find(|(spelling, _)| *spelling == link) {
-        Some((spelling, name)) => format!("{spelling} {name}").into(),
+        Some((spelling, name)) => format!("{spelling} {}", i18n::tr(name)).into(),
         None => link.to_string().into(),
     }
 }
@@ -458,12 +458,12 @@ impl MermaidEditor {
             BlockItemKind::Node => BlockItem::Node(BlockNode {
                 id,
                 shape: Some(BlockShape::Square),
-                label: NEW_BLOCK_LABEL.to_string(),
+                label: i18n::tr(NEW_BLOCK_LABEL).to_string(),
                 width: None,
             }),
             BlockItemKind::Arrow => BlockItem::Arrow(BlockArrow {
                 id,
-                label: NEW_ARROW_LABEL.to_string(),
+                label: i18n::tr(NEW_ARROW_LABEL).to_string(),
                 directions: vec![BlockArrowDirection::Right],
                 width: None,
             }),
@@ -626,7 +626,7 @@ impl MermaidEditor {
     pub(super) fn add_block_edge(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let ids = self.block_ids(cx);
         let Some(from) = ids.first().cloned() else {
-            self.message = Some("先にブロックを追加してください。".into());
+            self.message = Some(i18n::t!("Add a block first.").into());
             cx.notify();
             return;
         };
@@ -645,7 +645,7 @@ impl MermaidEditor {
 
     pub(super) fn add_block_style(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(target) = self.block_ids(cx).first().cloned() else {
-            self.message = Some("先にブロックを追加してください。".into());
+            self.message = Some(i18n::t!("Add a block first.").into());
             cx.notify();
             return;
         };
@@ -692,7 +692,7 @@ impl MermaidEditor {
 
     pub(super) fn add_block_class(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(target) = self.block_ids(cx).first().cloned() else {
-            self.message = Some("先にブロックを追加してください。".into());
+            self.message = Some(i18n::t!("Add a block first.").into());
             cx.notify();
             return;
         };
@@ -789,7 +789,7 @@ impl MermaidEditor {
         let text = field_text(&form.columns, cx);
         h_flex()
             .gap_2()
-            .child(section_title("列数"))
+            .child(section_title(i18n::t!("Number of Columns")))
             .child(
                 field_frame(
                     &form.columns,
@@ -800,7 +800,9 @@ impl MermaidEditor {
                 )
                 .child(form.columns.clone()),
             )
-            .child(section_title("空欄は 1 行に並べる (auto も可)"))
+            .child(section_title(i18n::t!(
+                "Leave empty to put everything in one row (auto also works)"
+            )))
             .into_any_element()
     }
 
@@ -831,9 +833,9 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut list = v_flex().w_full().gap_2().child(section_title(
-            "ブロック (書いた順に左上から並ぶ。右にずれているほど深いグループの中)",
-        ));
+        let mut list = v_flex().w_full().gap_2().child(section_title(i18n::t!(
+            "Blocks (laid out from the top left in the order written; indented rows are nested deeper in groups)"
+        )));
         for index in 0..form.entries.len() {
             if let Some(row) = form.entries.get(index) {
                 list = list.child(self.render_block_row(form, index, row, window, cx));
@@ -843,7 +845,7 @@ impl MermaidEditor {
         for kind in BlockItemKind::ALL {
             buttons = buttons.child(add_button(
                 SharedString::from(format!("mermaid-block-add-{}", kind.id_prefix())),
-                format!("{}を追加", kind.label()),
+                i18n::t!("Add {label}", label = kind.label()),
                 cx.listener(move |this, _, window, cx| this.add_block_item(kind, window, cx)),
             ));
         }
@@ -882,7 +884,7 @@ impl MermaidEditor {
                 button(
                     "outdent",
                     IconName::ArrowLeft,
-                    "グループの外へ (グループの次へ)",
+                    i18n::t!("Move Out of the Group (After the Group)"),
                     depth == 0,
                 )
                 .on_click(
@@ -893,7 +895,7 @@ impl MermaidEditor {
                 button(
                     "indent",
                     IconName::ArrowRight,
-                    "上のグループへ入れる",
+                    i18n::t!("Move into the Group Above"),
                     !can_indent,
                 )
                 .on_click(
@@ -901,14 +903,20 @@ impl MermaidEditor {
                 ),
             )
             .child(
-                button("up", IconName::ArrowUp, "上へ移動", !can_move_up).on_click(
+                button("up", IconName::ArrowUp, i18n::t!("Move Up"), !can_move_up).on_click(
                     cx.listener(move |this, _, _window, cx| {
                         this.move_block_entry(index, false, cx)
                     }),
                 ),
             )
             .child(
-                button("down", IconName::ArrowDown, "下へ移動", !can_move_down).on_click(
+                button(
+                    "down",
+                    IconName::ArrowDown,
+                    i18n::t!("Move Down"),
+                    !can_move_down,
+                )
+                .on_click(
                     cx.listener(move |this, _, _window, cx| this.move_block_entry(index, true, cx)),
                 ),
             )
@@ -917,9 +925,11 @@ impl MermaidEditor {
                     "remove",
                     IconName::Trash,
                     if is_group {
-                        "このグループを中身ごと削除 (つながる辺・スタイルも)"
+                        i18n::t!(
+                            "Delete This Group and Its Contents (connected edges and styles are deleted too)"
+                        )
                     } else {
-                        "削除 (つながる辺・スタイルも)"
+                        i18n::t!("Delete (connected edges and styles are deleted too)")
                     },
                     false,
                 )
@@ -935,7 +945,7 @@ impl MermaidEditor {
             h_flex()
                 .flex_none()
                 .gap_1()
-                .child(section_title("幅"))
+                .child(section_title(i18n::t!("Width")))
                 .child(
                     field_frame(
                         &row.width,
@@ -968,7 +978,11 @@ impl MermaidEditor {
                         .child(row.label.clone()),
                     )
                 } else {
-                    first_line.child(div().flex_1().child(section_title("ID をそのまま表示")))
+                    first_line.child(
+                        div()
+                            .flex_1()
+                            .child(section_title(i18n::t!("Shows the ID as is"))),
+                    )
                 };
                 second_line = Some(
                     h_flex()
@@ -999,7 +1013,7 @@ impl MermaidEditor {
                         .w_full()
                         .gap_1()
                         .pl_4()
-                        .child(section_title("向き"))
+                        .child(section_title(i18n::tc!("mermaid block arrow", "Direction")))
                         .child(
                             field_frame(
                                 &row.extra,
@@ -1010,9 +1024,9 @@ impl MermaidEditor {
                             )
                             .child(row.extra.clone()),
                         )
-                        .child(section_title(
-                            "right / left / up / down / x / y を , 区切り",
-                        ))
+                        .child(section_title(i18n::t!(
+                            "right / left / up / down / x / y, separated by commas"
+                        )))
                         .child(width_fields(window, cx)),
                 );
             }
@@ -1046,9 +1060,9 @@ impl MermaidEditor {
                         .w_full()
                         .gap_1()
                         .pl_4()
-                        .child(section_title("ID とラベルは省略可"))
+                        .child(section_title(i18n::t!("ID and label are optional")))
                         .child(width_fields(window, cx))
-                        .child(section_title("列数"))
+                        .child(section_title(i18n::t!("Number of Columns")))
                         .child(
                             field_frame(
                                 &row.extra,
@@ -1067,7 +1081,7 @@ impl MermaidEditor {
                         div()
                             .flex_none()
                             .w(rems(4.))
-                            .child(section_title("コメント")),
+                            .child(section_title(i18n::t!("Comment"))),
                     )
                     .child(
                         field_frame(
@@ -1216,7 +1230,10 @@ impl MermaidEditor {
             .filter(|(_, statement)| matches!(statement, BlockStatement::Edge(_)))
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
-        let mut section = v_flex().w_full().gap_1().child(section_title("辺"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Edges")));
         for (position, &index) in edge_indices.iter().enumerate() {
             let (Some(BlockStatement::Edge(edge)), Some(row)) =
                 (current.statements.get(index), form.statements.get(index))
@@ -1290,7 +1307,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-block-add-edge",
-                "辺を追加",
+                i18n::t!("Add Edge"),
                 cx.listener(|this, _, window, cx| this.add_block_edge(window, cx)),
             ))
             .into_any_element()
@@ -1389,7 +1406,7 @@ impl MermaidEditor {
             menu
         });
         let label = if targets.is_empty() {
-            "付けるブロック".to_string()
+            i18n::t!("Blocks to Apply To").to_string()
         } else {
             targets.join(",")
         };
@@ -1411,9 +1428,9 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut section = v_flex().w_full().gap_1().child(section_title(
-            "スタイル (classDef でクラスを定義し、class で付ける。style は 1 つに直接)",
-        ));
+        let mut section = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Styles (classDef defines a class and class applies it; style styles one block directly)"
+        )));
         for (index, (statement, row)) in current.statements.iter().zip(&form.statements).enumerate()
         {
             let keyword = match statement {
@@ -1513,7 +1530,7 @@ impl MermaidEditor {
                     )
                     .shape(IconButtonShape::Square)
                     .icon_size(IconSize::XSmall)
-                    .tooltip(Tooltip::text("削除"))
+                    .tooltip(Tooltip::text(i18n::t!("Delete")))
                     .on_click(cx.listener(move |this, _, _window, cx| {
                         this.remove_block_statement(index, cx)
                     })),
@@ -1528,17 +1545,17 @@ impl MermaidEditor {
                     .gap_1()
                     .child(add_button(
                         "mermaid-block-add-style",
-                        "style を追加",
+                        i18n::t!("Add style"),
                         cx.listener(|this, _, window, cx| this.add_block_style(window, cx)),
                     ))
                     .child(add_button(
                         "mermaid-block-add-class-def",
-                        "classDef を追加",
+                        i18n::t!("Add classDef"),
                         cx.listener(|this, _, window, cx| this.add_block_class_def(window, cx)),
                     ))
                     .child(add_button(
                         "mermaid-block-add-class",
-                        "class を追加",
+                        i18n::t!("Add class"),
                         cx.listener(|this, _, window, cx| this.add_block_class(window, cx)),
                     )),
             )

@@ -19,7 +19,7 @@ pub fn clone_and_open(
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("クローン先として選択".into()),
+            prompt: Some(i18n::t!("Select as Repository Destination").into()),
             starting_directory: None,
         },
         cx,
@@ -75,11 +75,11 @@ pub fn clone_and_open(
                 cx.update(|window, cx| {
                     window.prompt(
                         gpui::PromptLevel::Info,
-                        &format!("Git クローン: {}", repo_name),
+                        &i18n::t!("Git Clone: {}", repo_name),
                         None,
                         &[
-                            "プロジェクトにリポジトリを追加",
-                            "新しいプロジェクトでリポジトリを開く",
+                            i18n::t!("Add repo to project"),
+                            i18n::t!("Open repo in new project"),
                         ],
                         cx,
                     )

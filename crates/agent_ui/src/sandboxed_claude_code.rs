@@ -39,44 +39,54 @@ pub(crate) use session::cli_tab_session_key;
 
 /// The program the launch actions start.
 const CLAUDE_PROGRAM: &str = "claude";
-const OUTSIDE_SANDBOX_MESSAGE: &str = "Claude Code をサンドボックスの外で起動しますか？";
+const OUTSIDE_SANDBOX_MESSAGE: &str = i18n::msg!("Start Claude Code outside the sandbox?");
 /// ADR-F46 A-3 の帯と同じ言い回し。
-const OUTSIDE_SANDBOX_NOTICE: &str = "サンドボックスの外 (Zed 本体の権限) で実行されます";
+const OUTSIDE_SANDBOX_NOTICE: &str =
+    i18n::msg!("Runs outside the sandbox (with Zed's own permissions)");
 /// 外で失うもの。通信はこの PC のプロキシを指す環境変数を渡すだけで、読まない
 /// プログラムには効かない (ADR-F13 の協力方式) ので「強制ではない」と言い切る。
-const OUTSIDE_SANDBOX_LIMITS_LOCAL: &str = "書き込みの制限がなくなります。通信の制限はプロキシの\
-     設定を読むプログラムにだけ効きます (強制ではありません)。";
+const OUTSIDE_SANDBOX_LIMITS_LOCAL: &str = i18n::msg!(
+    "Writes are no longer restricted. Network restrictions only apply to programs that read the proxy settings (they are not enforced)."
+);
 /// 接続先のプロセスには、この PC のプロキシも許可リストも届かない。
-const OUTSIDE_SANDBOX_LIMITS_REMOTE: &str =
-    "書き込みと通信の制限はありません (接続先では Zed の統制が効きません)。";
+const OUTSIDE_SANDBOX_LIMITS_REMOTE: &str = i18n::msg!(
+    "Writes and network access are not restricted (Zed's controls do not apply on the remote host)."
+);
 const OUTSIDE_SANDBOX_CLAUDE_LOGIN: &str =
-    "ログインは普段の Claude Code と共有します (`~/.claude`)。";
-const OUTSIDE_SANDBOX_OTHER_LOGIN: &str = "設定とログインは普段のものをそのまま使います。";
-const OUTSIDE_SANDBOX_ONCE: &str = "今回の起動だけです。常に外で起動するには、設定の「AI」\
-     ページで切り替えます。";
+    i18n::msg!("The sign-in is shared with your usual Claude Code (`~/.claude`).");
+const OUTSIDE_SANDBOX_OTHER_LOGIN: &str =
+    i18n::msg!("Your usual settings and sign-in are used as they are.");
+const OUTSIDE_SANDBOX_ONCE: &str = i18n::msg!(
+    "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
+);
 /// 設定フォルダーが中 (`config`) と外 (`~/.claude` など) で違うので、動いている
 /// スレッドを外へ移すと会話の続きは読み込めない。
-const OUTSIDE_SANDBOX_NEW_SESSION: &str = "新しいセッションになります (この会話の続きには\
-     なりません)。";
-const LAUNCH_ONCE_LABEL: &str = "起動 (今回のみ)";
+const OUTSIDE_SANDBOX_NEW_SESSION: &str =
+    i18n::msg!("This starts a new session (it does not continue this conversation).");
+const LAUNCH_ONCE_LABEL: &str = i18n::msg!("Start (This Time Only)");
 /// ACP のスレッドの同意は記録され、そのスレッドは次から聞かずに外で起動する。
-const OUTSIDE_SANDBOX_THIS_THREAD: &str = "このスレッドだけです (次からは確認しません。同意は設定の「AI」ページで取り消せます)。常に外で起動するには、設定の「AI」ページで切り替えます。";
-pub(crate) const LAUNCH_FOR_THIS_THREAD_LABEL: &str = "起動 (このスレッドのみ)";
-const CANCEL_LABEL: &str = "キャンセル";
+const OUTSIDE_SANDBOX_THIS_THREAD: &str = i18n::msg!(
+    "This applies to this thread only (you will not be asked again; you can revoke the consent on the AI page in Settings). To always start outside the sandbox, switch it on the AI page in Settings."
+);
+pub(crate) const LAUNCH_FOR_THIS_THREAD_LABEL: &str = i18n::msg!("Start (This Thread Only)");
+const CANCEL_LABEL: &str = i18n::msg!("Cancel");
 /// サンドボックスでの起動に失敗した通知のボタン。押すと「外で起動」の確認に進む。
-const LAUNCH_OUTSIDE_AFTER_FAILURE_LABEL: &str = "サンドボックスの外で起動…";
+const LAUNCH_OUTSIDE_AFTER_FAILURE_LABEL: &str = i18n::msg!("Start Outside the Sandbox…");
 
-const COLLABORATION_REASON: &str =
-    "共同編集中のプロジェクトでは、サンドボックスの Claude Code は使えません。";
+const COLLABORATION_REASON: &str = i18n::msg!(
+    "The sandboxed Claude Code is not available in a project that is being edited collaboratively."
+);
 /// SSH 以外の接続 (WSL リモート接続・Docker など)。置き場も待ち合わせもそれぞれ違うので、
 /// この段では外へ回す。
 const REMOTE_CONNECTION_REASON: &str =
-    "この接続方法では、サンドボックスの Claude Code はまだ使えません。";
-const REMOTE_NOT_LINUX_REASON: &str =
-    "接続先が Linux ではないため、サンドボックスの Claude Code は使えません。";
-const UNSUPPORTED_OS_REASON: &str = "この OS では、サンドボックスの Claude Code はまだ使えません。";
+    i18n::msg!("The sandboxed Claude Code is not available yet for this type of connection.");
+const REMOTE_NOT_LINUX_REASON: &str = i18n::msg!(
+    "The sandboxed Claude Code is not available because the remote host is not running Linux."
+);
+const UNSUPPORTED_OS_REASON: &str =
+    i18n::msg!("The sandboxed Claude Code is not available yet on this OS.");
 const NO_FOLDER_REASON: &str =
-    "フォルダーを開いていないため、サンドボックスの Claude Code は使えません。";
+    i18n::msg!("The sandboxed Claude Code is not available because no folder is open.");
 
 /// Starts the CLI outside the sandbox, once the user has confirmed it. A
 /// parameter so that tests can observe the launch without a real terminal.
@@ -254,9 +264,9 @@ fn sandbox_roots(project: &Project, cx: &App) -> Vec<PathBuf> {
 /// CLI an agent panel terminal's init command starts.
 fn outside_sandbox_message(program: &str) -> String {
     if program == CLAUDE_PROGRAM {
-        OUTSIDE_SANDBOX_MESSAGE.to_string()
+        i18n::tr(OUTSIDE_SANDBOX_MESSAGE).to_string()
     } else {
-        format!("`{program}` をサンドボックスの外で起動しますか？")
+        i18n::t!("Start `{program}` outside the sandbox?")
     }
 }
 
@@ -296,44 +306,46 @@ fn outside_sandbox_detail(
     start: OutsideSandboxStart,
 ) -> String {
     let mut lines = vec![if on_remote_host {
-        format!(
-            "接続先のホストの `{program}` を、そのホストのユーザーの権限で (サンドボックスの外で) \
-             実行します。"
+        i18n::t!(
+            "Runs `{program}` on the remote host with that host user's permissions (outside the sandbox)."
         )
     } else {
-        format!(
-            "{OUTSIDE_SANDBOX_NOTICE}。この PC の `{program}` をプロジェクトのフォルダーで起動します。"
+        i18n::t!(
+            "{notice}. Starts `{program}` on this PC in the project folder.",
+            notice = i18n::tr(OUTSIDE_SANDBOX_NOTICE)
         )
     }];
     if let Some(reason) = reason {
-        lines.push(reason.to_string());
+        lines.push(i18n::tr(reason).to_string());
     }
     lines.push(
-        if on_remote_host {
+        i18n::tr(if on_remote_host {
             OUTSIDE_SANDBOX_LIMITS_REMOTE
         } else {
             OUTSIDE_SANDBOX_LIMITS_LOCAL
-        }
+        })
         .to_string(),
     );
     lines.push(
-        if program == CLAUDE_PROGRAM || program == agent_servers::CLAUDE_AGENT_ID {
-            OUTSIDE_SANDBOX_CLAUDE_LOGIN
-        } else {
-            OUTSIDE_SANDBOX_OTHER_LOGIN
-        }
+        i18n::tr(
+            if program == CLAUDE_PROGRAM || program == agent_servers::CLAUDE_AGENT_ID {
+                OUTSIDE_SANDBOX_CLAUDE_LOGIN
+            } else {
+                OUTSIDE_SANDBOX_OTHER_LOGIN
+            },
+        )
         .to_string(),
     );
     lines.push(
-        if start.is_kept_for_the_thread() {
+        i18n::tr(if start.is_kept_for_the_thread() {
             OUTSIDE_SANDBOX_THIS_THREAD
         } else {
             OUTSIDE_SANDBOX_ONCE
-        }
+        })
         .to_string(),
     );
     if start == OutsideSandboxStart::RestartingThread {
-        lines.push(OUTSIDE_SANDBOX_NEW_SESSION.to_string());
+        lines.push(i18n::tr(OUTSIDE_SANDBOX_NEW_SESSION).to_string());
     }
     lines.join("\n")
 }
@@ -375,12 +387,12 @@ pub(crate) fn confirm_starting_outside_sandbox(
         &message,
         Some(&detail),
         &[
-            PromptButton::ok(if start.is_kept_for_the_thread() {
+            PromptButton::ok(i18n::tr(if start.is_kept_for_the_thread() {
                 LAUNCH_FOR_THIS_THREAD_LABEL
             } else {
                 LAUNCH_ONCE_LABEL
-            }),
-            PromptButton::cancel(CANCEL_LABEL),
+            })),
+            PromptButton::cancel(i18n::tr(CANCEL_LABEL)),
         ],
         cx,
     );
@@ -426,7 +438,7 @@ impl WorkspaceError for SandboxLaunchFailure {
 
     fn primary_action(&self) -> ErrorAction {
         ErrorAction::new(
-            LAUNCH_OUTSIDE_AFTER_FAILURE_LABEL,
+            i18n::tr(LAUNCH_OUTSIDE_AFTER_FAILURE_LABEL),
             LaunchClaudeCodeOutsideSandbox {
                 effort: self.effort.clone(),
             },
@@ -678,7 +690,7 @@ fn launch_on_host_in_tab(
                 workspace
                     .update(cx, |workspace, cx| {
                         workspace.show_error(
-                            format!("ターミナルでコマンドを実行できませんでした: {error:#}"),
+                            i18n::t!("Could not run the command in the terminal: {error:#}"),
                             cx,
                         )
                     })
@@ -808,10 +820,13 @@ exec "$0" "$@""#;
         ) -> Result<Self> {
             ensure!(
                 is_project_key(project_key),
-                "プロジェクトの識別子が不正です (内部エラー): {project_key:?}"
+                i18n::t!("Invalid project identifier (internal error): {project_key:?}")
             );
-            let unexpected =
-                || format!("IDE の待ち合わせパスの形が想定と違います (内部エラー): {rendezvous:?}");
+            let unexpected = || {
+                i18n::t!(
+                    "Unexpected shape of the IDE rendezvous path (internal error): {rendezvous:?}"
+                )
+            };
             let rendezvous_directory = rendezvous
                 .strip_suffix(&format!("/{session_id}/{RENDEZVOUS_SOCKET_NAME}"))
                 .with_context(unexpected)?;
@@ -839,11 +854,11 @@ exec "$0" "$@""#;
     pub(super) fn config_paths(home: &str, project_key: &str) -> Result<(String, String)> {
         ensure!(
             is_project_key(project_key),
-            "プロジェクトの識別子が不正です (内部エラー): {project_key:?}"
+            i18n::t!("Invalid project identifier (internal error): {project_key:?}")
         );
         ensure!(
             home.starts_with('/') && !home.ends_with('/') && !home.contains(['\n', '\0']),
-            "接続先のホームディレクトリの形が想定と違います (内部エラー): {home:?}"
+            i18n::t!("Unexpected shape of the remote home directory (internal error): {home:?}")
         );
         let config_root = format!("{home}/{PROJECTS_HOME_RELATIVE}/{project_key}");
         let config_dir = format!("{config_root}/{CONFIG_DIR_NAME}");
@@ -857,11 +872,11 @@ exec "$0" "$@""#;
     pub(super) fn rendezvous_path(home: &str, session_id: &str) -> Result<String> {
         ensure!(
             is_session_id(session_id),
-            "IDE セッションの識別子が不正です (内部エラー): {session_id:?}"
+            i18n::t!("Invalid IDE session identifier (internal error): {session_id:?}")
         );
         ensure!(
             home.starts_with('/') && !home.ends_with('/') && !home.contains(['\n', '\0']),
-            "接続先のホームディレクトリの形が想定と違います (内部エラー): {home:?}"
+            i18n::t!("Unexpected shape of the remote home directory (internal error): {home:?}")
         );
         Ok(format!(
             "{home}/{RENDEZVOUS_HOME_RELATIVE}/{session_id}/{RENDEZVOUS_SOCKET_NAME}"
@@ -931,8 +946,9 @@ exec "$0" "$@""#;
     ) -> Result<(String, Vec<String>)> {
         ensure!(
             claude_path.starts_with('/') && !claude_path.contains(['\n', '\0']),
-            "サンドボックスで使う Claude Code の場所が絶対パスではありません (内部エラー): \
-             {claude_path:?}"
+            i18n::t!(
+                "The location of the Claude Code used in the sandbox is not an absolute path (internal error): {claude_path:?}"
+            )
         );
         let mut args = vec![
             "-c".to_string(),
@@ -974,7 +990,7 @@ exec "$0" "$@""#;
     ) -> Result<SessionPlan> {
         let first_root = roots
             .first()
-            .context("Claude Code を実行するフォルダーがありません。")?;
+            .context(i18n::t!("There is no folder to run Claude Code in."))?;
         let (program, args) =
             launch_invocation(claude_path, effort, assist_tools.then_some(inner_port))?;
         let mut writable_paths = roots.to_vec();
@@ -1003,19 +1019,16 @@ exec "$0" "$@""#;
         let hosts = CLAUDE_HOSTS
             .iter()
             .map(|host| {
-                let state = if missing.iter().any(|missing| missing.as_ref() == *host) {
-                    "未登録"
+                if missing.iter().any(|missing| missing.as_ref() == *host) {
+                    i18n::t!("{host} (not added)")
                 } else {
-                    "登録済み"
-                };
-                format!("{host} ({state})")
+                    i18n::t!("{host} (added)")
+                }
             })
             .collect::<Vec<_>>()
-            .join("、");
-        format!(
-            "サンドボックスの Claude Code は Anthropic の次のホストにだけ接続します。\
-             これらのホストは IDE 全体の許可リストに追加し、内蔵エージェントのコマンドにも\
-             適用されます。\n許可が必要なホスト: {hosts}"
+            .join(i18n::tc!("list separator", ", "));
+        i18n::t!(
+            "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
         )
     }
 
@@ -1230,13 +1243,15 @@ exec "$0" "$@""#;
     }
 
     pub(super) const LAUNCH_FAILED_PREFIX: &str =
-        "Claude Code (サンドボックス) を起動できませんでした: ";
-    pub(super) const PREPARING_MESSAGE: &str = "Claude Code (サンドボックス) を準備しています…";
-    pub(super) const PREPARING_SANDBOX_MESSAGE: &str = "サンドボックスと IDE 連携を準備しています…";
-    pub(super) const SANDBOX_TAB_LABEL: &str = "Claude Code (サンドボックス)";
-    const HOSTS_MESSAGE: &str = "Claude Code (サンドボックス) の通信に許可リストへの追加が必要です";
-    const ADD_HOSTS_LABEL: &str = "許可リストに追加して起動";
-    const DECLINE_HOSTS_LABEL: &str = "追加せず中止";
+        i18n::msg!("Could not start Claude Code (sandbox): ");
+    pub(super) const PREPARING_MESSAGE: &str = i18n::msg!("Preparing Claude Code (sandbox)…");
+    pub(super) const PREPARING_SANDBOX_MESSAGE: &str =
+        i18n::msg!("Preparing the sandbox and IDE integration…");
+    pub(super) const SANDBOX_TAB_LABEL: &str = i18n::msg!("Claude Code (Sandbox)");
+    const HOSTS_MESSAGE: &str =
+        i18n::msg!("Claude Code (sandbox) needs hosts added to the allowlist to connect");
+    const ADD_HOSTS_LABEL: &str = i18n::msg!("Add to Allowlist and Start");
+    const DECLINE_HOSTS_LABEL: &str = i18n::msg!("Cancel Without Adding");
 
     struct SandboxLaunchProgress;
 
@@ -1252,8 +1267,9 @@ exec "$0" "$@""#;
         workspace.show_toast(Toast::new(progress_id(), message.to_string()), cx);
     }
 
-    pub(super) const STILL_STARTING_MESSAGE: &str = "このプロジェクトの Claude Code (サンドボックス) を起動しています。\
-         起動が終わってからもう一度お試しください。";
+    pub(super) const STILL_STARTING_MESSAGE: &str = i18n::msg!(
+        "Claude Code (sandbox) is still starting for this project. Try again once it has started."
+    );
 
     struct StillStarting;
 
@@ -1269,7 +1285,7 @@ exec "$0" "$@""#;
 
     impl std::fmt::Display for LaunchStillStarting {
         fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str(STILL_STARTING_MESSAGE)
+            formatter.write_str(i18n::tr(STILL_STARTING_MESSAGE))
         }
     }
 
@@ -1288,8 +1304,11 @@ exec "$0" "$@""#;
             workspace
                 .update(cx, |workspace, cx| {
                     workspace.show_toast(
-                        Toast::new(still_starting_id(), STILL_STARTING_MESSAGE.to_string())
-                            .autohide(),
+                        Toast::new(
+                            still_starting_id(),
+                            i18n::tr(STILL_STARTING_MESSAGE).to_string(),
+                        )
+                        .autohide(),
                         cx,
                     );
                 })
@@ -1332,11 +1351,11 @@ exec "$0" "$@""#;
         let detail = hosts_detail(&missing);
         let answer = cx.prompt(
             PromptLevel::Warning,
-            HOSTS_MESSAGE,
+            i18n::tr(HOSTS_MESSAGE),
             Some(&detail),
             &[
-                PromptButton::ok(ADD_HOSTS_LABEL),
-                PromptButton::cancel(DECLINE_HOSTS_LABEL),
+                PromptButton::ok(i18n::tr(ADD_HOSTS_LABEL)),
+                PromptButton::cancel(i18n::tr(DECLINE_HOSTS_LABEL)),
             ],
         );
         if !answer.await.is_ok_and(|index| index == 0) {
@@ -1400,11 +1419,11 @@ exec "$0" "$@""#;
     ) -> Result<Entity<Terminal>> {
         let spawn_task = SpawnInTerminal {
             id: TaskId(format!("{SANDBOX_TASK_ID_PREFIX}{session_id}")),
-            full_label: SANDBOX_TAB_LABEL.to_string(),
-            label: SANDBOX_TAB_LABEL.to_string(),
+            full_label: i18n::tr(SANDBOX_TAB_LABEL).to_string(),
+            label: i18n::tr(SANDBOX_TAB_LABEL).to_string(),
             command: Some(program),
             args,
-            command_label: SANDBOX_TAB_LABEL.to_string(),
+            command_label: i18n::tr(SANDBOX_TAB_LABEL).to_string(),
             env: environment.into_iter().collect(),
             use_new_terminal: true,
             allow_concurrent_runs: true,
@@ -1434,7 +1453,7 @@ exec "$0" "$@""#;
 
         let terminal_panel = workspace
             .read_with(cx, |workspace, cx| workspace.panel::<TerminalPanel>(cx))?
-            .context("ターミナルパネルが利用できません。")?;
+            .context(i18n::t!("The terminal panel is not available."))?;
         let terminal = terminal_panel
             .update_in(cx, |terminal_panel, window, cx| {
                 terminal_panel.add_terminal_with(
@@ -1445,9 +1464,9 @@ exec "$0" "$@""#;
                 )
             })?
             .await?;
-        terminal
-            .upgrade()
-            .context("セッションのターミナルが開いた直後に閉じられました。")
+        terminal.upgrade().context(i18n::t!(
+            "The session's terminal was closed right after it opened."
+        ))
     }
 
     /// The IDE channel, which both sandboxes have: WSL's (ADR-F49 決定 3) and an
@@ -1621,13 +1640,17 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         let Some(remote_client) = remote_client else {
             super::show_launch_failure(
                 workspace,
-                format!("{LAUNCH_FAILED_PREFIX}プロジェクトは接続先のホストに繋がっていません。"),
+                format!(
+                    "{}{}",
+                    i18n::tr(LAUNCH_FAILED_PREFIX),
+                    i18n::t!("The project is not connected to the remote host.")
+                ),
                 effort,
                 cx,
             );
             return;
         };
-        show_progress(workspace, PREPARING_MESSAGE, cx);
+        show_progress(workspace, i18n::tr(PREPARING_MESSAGE), cx);
         cx.spawn_in(window, async move |workspace, cx| {
             let outcome = start_session(
                 workspace.clone(),
@@ -1652,7 +1675,7 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                     if let Err(error) = outcome {
                         super::show_launch_failure(
                             workspace,
-                            format!("{LAUNCH_FAILED_PREFIX}{error:#}"),
+                            format!("{}{error:#}", i18n::tr(LAUNCH_FAILED_PREFIX)),
                             effort,
                             cx,
                         );
@@ -1678,7 +1701,7 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         cx: &mut AsyncWindowContext,
     ) -> Result<()> {
         if roots.is_empty() {
-            bail!("Claude Code を実行するフォルダーがありません。");
+            bail!(i18n::t!("There is no folder to run Claude Code in."));
         }
         // The key is the project's folders, not the session's writable ones,
         // and is left in the host's own spelling: resolving links is the host's
@@ -1692,10 +1715,9 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                 remote_client.remote_server_binary_path(),
             )
         });
-        let remote_binary = remote_binary.context(
-            "接続先のホストの Zed サーバーがまだ用意されていません。接続が終わるまで待ってから\
-             もう一度お試しください。",
-        )?;
+        let remote_binary = remote_binary.context(i18n::t!(
+            "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
+        ))?;
         // Held only while this launch starts: a session that runs does not
         // stop another from starting on the same configuration.
         let key = session_key(Some(&connection), &project_key);
@@ -1711,15 +1733,15 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         let binary = claude_binary(workspace.clone(), remote_client.clone(), cx)
             .await
             .map_err(|error| {
-                log::warn!("[claude-sandbox] Claude Code を用意できませんでした: {error:#}");
+                log::warn!("[claude-sandbox] could not prepare Claude Code: {error:#}");
                 anyhow!("{error}")
             })?;
-        let home = binary
-            .home_on_host
-            .context("接続先のホームディレクトリが分かりませんでした (内部エラー)。")?;
+        let home = binary.home_on_host.context(i18n::t!(
+            "Could not determine the home directory on the remote host (internal error)."
+        ))?;
         let (config_root, config_dir) = config_paths(&home, &project_key)?;
         workspace.update(cx, |workspace, cx| {
-            show_progress(workspace, PREPARING_SANDBOX_MESSAGE, cx)
+            show_progress(workspace, i18n::tr(PREPARING_SANDBOX_MESSAGE), cx)
         })?;
         // The helper skips a write grant that is not there yet (it logs and
         // carries on), so the CLI would start unable to write its own
@@ -1733,7 +1755,9 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             cx,
         )
         .await
-        .context("接続先に Claude Code の設定フォルダーを作成できませんでした。")?;
+        .context(i18n::t!(
+            "Could not create the Claude Code settings folder on the remote host."
+        ))?;
 
         let session_id = new_session_id();
         // ADR-F53: the IDE channel. Everything of it that can fail does so
@@ -1755,7 +1779,8 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                 log::warn!("[claude-sandbox] the IDE bridge did not start: {error:#}");
                 workspace
                     .update(cx, |workspace, cx| {
-                        workspace.show_error(format!("{IDE_UNAVAILABLE_PREFIX}{error}"), cx)
+                        workspace
+                            .show_error(format!("{}{error}", i18n::tr(IDE_UNAVAILABLE_PREFIX)), cx)
                     })
                     .log_err();
                 None
@@ -1770,7 +1795,7 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         let environment = session_environment(&config_dir, ide_port, assist_port.is_some());
         let first_root = roots
             .first()
-            .context("Claude Code を実行するフォルダーがありません。")?
+            .context(i18n::t!("There is no folder to run Claude Code in."))?
             .clone();
         let wrap = acp_thread::SandboxWrap {
             writable_paths: roots
@@ -1786,7 +1811,9 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                         .map(|host| http_proxy::HostPattern::parse(host))
                         .collect::<std::result::Result<Vec<_>, _>>()
                         .map_err(|error| {
-                            anyhow!("Claude Code の接続先が不正です (内部エラー): {error}")
+                            anyhow!(i18n::t!(
+                                "Invalid host for Claude Code to connect to (internal error): {error}"
+                            ))
                         })?,
                 ),
             ),
@@ -1904,7 +1931,8 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         roots: &[PathBuf],
         cx: &mut AsyncWindowContext,
     ) -> Result<RemoteIdeChannel> {
-        const PREAMBLE_FAILED: &str = "IDE 連携の中継に接続情報を渡せませんでした";
+        const PREAMBLE_FAILED: &str =
+            i18n::msg!("Could not pass the connection details to the IDE integration relay");
 
         let inner_port = sandbox::new_inner_ide_port();
         let rendezvous = rendezvous_path(home, session_id)?;
@@ -1914,10 +1942,9 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         // unable to start at all. A project whose folder *is* the account's
         // home is exactly that case, so the channel is left out with a reason.
         if let Some(root) = writable_root_holding(roots, &rendezvous) {
-            bail!(
-                "プロジェクトのフォルダー ({root}) が IDE 連携の待ち合わせ場所を含んでいるため、\
-                 中継を起動できません。"
-            );
+            bail!(i18n::t!(
+                "The relay cannot be started because the project folder ({root}) contains the IDE integration's rendezvous location."
+            ));
         }
 
         // Taken before the process is started, and given back by every path out
@@ -1927,11 +1954,10 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                 "refusing an IDE bridge: {} are already running",
                 sandbox::MAX_IDE_BRIDGES
             );
-            bail!(
-                "IDE 連携の中継がすでに {} 本動いているため、これ以上は起動できません。\
-                 使っていないエージェントのスレッドやターミナルを閉じてからやり直してください。",
-                sandbox::MAX_IDE_BRIDGES
-            );
+            bail!(i18n::t!(
+                "{count} IDE integration relays are already running, so no more can be started. Close the agent threads and terminals you are not using and try again.",
+                count = sandbox::MAX_IDE_BRIDGES
+            ));
         };
 
         let layout =
@@ -1955,9 +1981,9 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             &workspace_folders,
         ));
         let template = remote_client.read_with(cx, |remote_client, _| {
-            let helper = remote_client
-                .remote_server_binary_path()
-                .context("接続先のホストの Zed サーバーがまだ用意されていません (内部エラー)。")?;
+            let helper = remote_client.remote_server_binary_path().context(i18n::t!(
+                "The Zed server on the remote host is not ready yet (internal error)."
+            ))?;
             // No exclusive directory: sessions on the same configuration run
             // side by side, each with its own port and lock file.
             let arguments =
@@ -1980,9 +2006,9 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             .stdout(util::command::Stdio::piped())
             .stderr(util::command::Stdio::piped())
             .kill_on_drop(true);
-        let mut bridge = command
-            .spawn()
-            .context("IDE 連携の中継を接続先で起動できませんでした")?;
+        let mut bridge = command.spawn().context(i18n::t!(
+            "Could not start the IDE integration relay on the remote host"
+        ))?;
         let (Some(mut stdin), Some(stdout), Some(stderr)) = (
             bridge.stdin.take(),
             bridge.stdout.take(),
@@ -1990,8 +2016,11 @@ chmod 700 "$1" "$2" 2>/dev/null || true
         ) else {
             bail!("bug: the IDE bridge's standard I/O is not piped");
         };
-        stdin.write_all(&preamble).await.context(PREAMBLE_FAILED)?;
-        stdin.flush().await.context(PREAMBLE_FAILED)?;
+        stdin
+            .write_all(&preamble)
+            .await
+            .context(i18n::tr(PREAMBLE_FAILED))?;
+        stdin.flush().await.context(i18n::tr(PREAMBLE_FAILED))?;
 
         let executor = cx.background_executor().clone();
         let bridge_log = sandbox::wait_for_ide_bridge_ready(
@@ -2035,8 +2064,9 @@ chmod 700 "$1" "$2" 2>/dev/null || true
     /// ADR-F53: the prefix of the toast shown when the session starts but its
     /// IDE channel could not, so that the CLI's own diff tabs and diagnostics
     /// are missing for a reason the user can read.
-    const IDE_UNAVAILABLE_PREFIX: &str =
-        "Claude Code は起動しますが、IDE 連携 (差分タブ・診断) は使えません: ";
+    const IDE_UNAVAILABLE_PREFIX: &str = i18n::msg!(
+        "Claude Code will start, but the IDE integration (diff tabs and diagnostics) is not available: "
+    );
 
     /// ADR-F53: the IDE channel of a session on an SSH host, and everything that
     /// keeps it alive. Dropping it ends the bridge's stdin, so the bridge
@@ -2094,7 +2124,7 @@ chmod 700 "$1" "$2" 2>/dev/null || true
                 .and_then(|code| u32::try_from(code).ok());
             let message = terminal
                 .read_with(cx, |terminal, _| {
-                    acp_thread::remote_sandbox_setup_failure_message(
+                    acp_thread::remote_sandbox_setup_failure_display_message(
                         exit_code,
                         &terminal.get_content(),
                     )
@@ -2219,7 +2249,7 @@ shift 3
             Err(error) => {
                 super::show_launch_failure(
                     workspace,
-                    format!("{LAUNCH_FAILED_PREFIX}{error:#}"),
+                    format!("{}{error:#}", i18n::tr(LAUNCH_FAILED_PREFIX)),
                     effort,
                     cx,
                 );
@@ -2227,7 +2257,7 @@ shift 3
             }
         };
         let fs = workspace.app_state().fs.clone();
-        show_progress(workspace, PREPARING_MESSAGE, cx);
+        show_progress(workspace, i18n::tr(PREPARING_MESSAGE), cx);
         cx.spawn_in(window, async move |workspace, cx| {
             let outcome = start_session(
                 workspace.clone(),
@@ -2252,7 +2282,7 @@ shift 3
                     if let Err(error) = outcome {
                         super::show_launch_failure(
                             workspace,
-                            format!("{LAUNCH_FAILED_PREFIX}{error:#}"),
+                            format!("{}{error:#}", i18n::tr(LAUNCH_FAILED_PREFIX)),
                             effort,
                             cx,
                         );
@@ -2280,7 +2310,7 @@ shift 3
         cx: &mut AsyncWindowContext,
     ) -> Result<()> {
         if roots.is_empty() {
-            bail!("Claude Code を実行するフォルダーがありません。");
+            bail!(i18n::t!("There is no folder to run Claude Code in."));
         }
         let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
         // The key's folders are the project's, not the session's writable
@@ -2316,11 +2346,11 @@ shift 3
         let claude_path = claude_path(workspace.clone(), distro.clone(), cx)
             .await
             .map_err(|error| {
-                log::warn!("[claude-sandbox] Claude Code を用意できませんでした: {error:#}");
+                log::warn!("[claude-sandbox] could not prepare Claude Code: {error:#}");
                 anyhow!("{error}")
             })?;
         workspace.update(cx, |workspace, cx| {
-            show_progress(workspace, PREPARING_SANDBOX_MESSAGE, cx)
+            show_progress(workspace, i18n::tr(PREPARING_SANDBOX_MESSAGE), cx)
         })?;
 
         let executor = cx.background_executor().clone();
@@ -2487,11 +2517,10 @@ shift 3
             .with_timeout(WSL_STEP_TIMEOUT, executor)
             .await
             .map_err(|_| {
-                anyhow!(
-                    "WSL が {} 秒以内に応答しませんでした。しばらく待ってから再試行し、\
-                     改善しない場合は `wsl --shutdown` で WSL を再起動してください。",
-                    WSL_STEP_TIMEOUT.as_secs()
-                )
+                anyhow!(i18n::t!(
+                    "WSL did not respond within {seconds} seconds. Wait a moment and try again; if that does not help, restart WSL with `wsl --shutdown`.",
+                    seconds = WSL_STEP_TIMEOUT.as_secs()
+                ))
             })?
     }
 
@@ -2565,9 +2594,9 @@ shift 3
         for path in &plan.writable_paths {
             writable_paths.push(sandbox::HostFilesystemLocation::capture(path).with_context(
                 || {
-                    format!(
-                        "書込を許可するフォルダー `{}` を確認できませんでした",
-                        path.display()
+                    i18n::t!(
+                        "Could not check the folder `{path}` that writes are allowed to",
+                        path = path.display()
                     )
                 },
             )?);
@@ -3079,7 +3108,7 @@ mod tests {
             OutsideSandboxStart::Once,
         );
         assert!(local.starts_with(OUTSIDE_SANDBOX_NOTICE), "{local}");
-        assert!(local.contains("この PC の `claude`"), "{local}");
+        assert!(local.contains("`claude` on this PC"), "{local}");
         assert_eq!(
             local.lines().skip(1).collect::<Vec<_>>(),
             [
@@ -3098,11 +3127,11 @@ mod tests {
             OutsideSandboxStart::Once,
         );
         assert!(
-            remote.starts_with("接続先のホストの `claude` を"),
+            remote.starts_with("Runs `claude` on the remote host"),
             "{remote}"
         );
         assert!(
-            !remote.contains("この PC") && !remote.contains("Zed 本体の権限"),
+            !remote.contains("this PC") && !remote.contains("Zed's own permissions"),
             "{remote}"
         );
         assert!(
@@ -3152,13 +3181,13 @@ mod tests {
         let detail = hosts_detail(&["api.anthropic.com".into()]);
         assert!(
             detail.contains(
-                "IDE 全体の許可リストに追加し、内蔵エージェントのコマンドにも適用されます"
+                "added to the IDE-wide allowlist and also apply to the built-in agent's commands"
             ),
             "{detail}"
         );
         assert!(
             detail.ends_with(
-                "許可が必要なホスト: api.anthropic.com (未登録)、platform.claude.com (登録済み)"
+                "Hosts that need to be allowed: api.anthropic.com (not added), platform.claude.com (added)"
             ),
             "{detail}"
         );
@@ -3606,7 +3635,7 @@ mod tests {
     fn a_refused_sandbox_is_explained_from_the_screen() {
         let screen = "\nzed-wsl-sandbox: ide-forward-invalid: the rendezvous is not private\n";
         let message = helper_failure_message(Some(126), screen).expect("the helper's signature");
-        assert!(message.contains("IDE 連携"), "{message}");
+        assert!(message.contains("carries the IDE integration"), "{message}");
         assert!(helper_failure_message(Some(0), screen).is_none());
         assert!(
             helper_failure_message(Some(126), "claude: zed-wsl-sandbox: x: y").is_none(),
@@ -3697,7 +3726,7 @@ mod tests {
         let (message, detail) = cx.pending_prompt().expect("the launch asks first");
         assert_eq!(message, OUTSIDE_SANDBOX_MESSAGE);
         assert!(detail.contains(OUTSIDE_SANDBOX_NOTICE), "{detail}");
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         assert!(launches.borrow().is_empty(), "declining starts nothing");
 
@@ -3707,7 +3736,7 @@ mod tests {
             });
             cx.run_until_parked();
             assert!(cx.has_pending_prompt(), "launch {launch} asks again");
-            cx.simulate_prompt_answer("起動 (今回のみ)");
+            cx.simulate_prompt_answer("Start (This Time Only)");
             cx.run_until_parked();
             assert_eq!(launches.borrow().len(), launch);
         }
@@ -3758,7 +3787,7 @@ mod tests {
             cx.has_pending_prompt(),
             "asked again once the choice is gone"
         );
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         assert_eq!(launches.borrow().len(), 2);
     }
@@ -3800,7 +3829,7 @@ mod tests {
         cx.dispatch_action(LaunchClaudeCodeOutsideSandbox { effort: None });
         cx.run_until_parked();
         assert!(cx.has_pending_prompt(), "still asked");
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         assert!(launches.borrow().is_empty());
     }
@@ -3818,7 +3847,7 @@ mod tests {
         workspace.update(&mut cx, |workspace, cx| {
             show_launch_failure(
                 workspace,
-                "Claude Code (サンドボックス) を起動できませんでした: WSL がありません".to_string(),
+                "Could not start Claude Code (sandbox): WSL is not installed".to_string(),
                 Some("high".to_string()),
                 cx,
             );
@@ -3835,7 +3864,7 @@ mod tests {
             effort: Some("high".to_string()),
         };
         let action = workspace::workspace_error::WorkspaceError::primary_action(&failure);
-        assert_eq!(action.label.as_ref(), "サンドボックスの外で起動…");
+        assert_eq!(action.label.as_ref(), "Start Outside the Sandbox…");
         let workspace::workspace_error::ErrorActionHandler::Action(action) = action.handler else {
             panic!("the button starts something");
         };
@@ -3847,7 +3876,7 @@ mod tests {
             "the start outside is still confirmed"
         );
         assert!(launches.borrow().is_empty());
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer("Start (This Time Only)");
         cx.run_until_parked();
         assert_eq!(*launches.borrow(), [Some("high".to_string())]);
     }
@@ -3882,7 +3911,7 @@ mod tests {
         });
         cx.run_until_parked();
         assert!(cx.has_pending_prompt(), "起動のたびに確認する");
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer("Start (This Time Only)");
         cx.run_until_parked();
 
         assert_eq!(
@@ -3919,7 +3948,7 @@ mod tests {
         assert!(says_still_starting(&mut cx));
         assert_eq!(
             STILL_STARTING_MESSAGE,
-            "このプロジェクトの Claude Code (サンドボックス) を起動しています。起動が終わってからもう一度お試しください。"
+            "Claude Code (sandbox) is still starting for this project. Try again once it has started."
         );
 
         cx.executor()
@@ -3956,7 +3985,7 @@ mod tests {
             UNSUPPORTED_OS_REASON
         };
         assert!(detail.contains(reason), "{detail}");
-        cx.simulate_prompt_answer("起動 (今回のみ)");
+        cx.simulate_prompt_answer("Start (This Time Only)");
         cx.run_until_parked();
         assert_eq!(*launches.borrow(), [None]);
     }

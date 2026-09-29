@@ -120,7 +120,7 @@ pub fn set_subscription_sign_in_allowed(
     cx.background_spawn(async move {
         written
             .await
-            .context("設定ファイルへの書き込みが終わりませんでした")?
+            .context(i18n::t!("Writing to the settings file didn't finish"))?
     })
 }
 
@@ -143,16 +143,19 @@ pub fn set_env_var(
     fs: Arc<dyn Fs>,
     cx: &App,
 ) -> Result<Task<Result<()>>> {
-    anyhow::ensure!(!name.is_empty(), "環境変数の名前が空です (内部エラー)");
+    anyhow::ensure!(
+        !name.is_empty(),
+        i18n::t!("The environment variable has no name (internal error)")
+    );
     let value = value.trim();
-    anyhow::ensure!(!value.is_empty(), "{name} の値が空です");
+    anyhow::ensure!(!value.is_empty(), i18n::t!("{name} has no value"));
     // 1 行の入力欄は貼り付けられた改行を畳んで見せるだけで、中身には残す。
     // 端を落としただけでは改行やタブが値に残り、settings.json への書き込みは
     // 通るのにエージェントへは壊れた環境が渡る (NUL ならプロセスの起動自体が
     // 失敗する)。黙って壊れた値を持たせないよう断る。
     anyhow::ensure!(
         !value.chars().any(char::is_control),
-        "{name} の値に改行や制御文字が含まれています"
+        i18n::t!("The value of {name} contains a line break or a control character")
     );
 
     let agent_id = agent_id.to_string();
@@ -175,7 +178,7 @@ pub fn set_env_var(
     Ok(cx.background_spawn(async move {
         written
             .await
-            .context("設定ファイルへの書き込みが終わりませんでした")?
+            .context(i18n::t!("Writing to the settings file didn't finish"))?
     }))
 }
 
@@ -206,7 +209,7 @@ pub fn remove_env_var(agent_id: &str, name: &str, fs: Arc<dyn Fs>, cx: &App) -> 
     cx.background_spawn(async move {
         written
             .await
-            .context("設定ファイルへの書き込みが終わりませんでした")?
+            .context(i18n::t!("Writing to the settings file didn't finish"))?
     })
 }
 

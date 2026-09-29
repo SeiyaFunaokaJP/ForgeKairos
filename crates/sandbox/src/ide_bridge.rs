@@ -794,7 +794,9 @@ pub struct IdeBridgeSessionRunning;
 
 impl std::fmt::Display for IdeBridgeSessionRunning {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("この構成の IDE 連携の中継はすでに実行中です")
+        formatter.write_str(i18n::t!(
+            "The IDE integration relay for this configuration is already running"
+        ))
     }
 }
 
@@ -815,8 +817,8 @@ impl BridgeHost {
     /// possessive that reads in front of a path.
     fn home_of(self) -> &'static str {
         match self {
-            Self::WslDistro => "WSL の",
-            Self::RemoteHost => "接続先の",
+            Self::WslDistro => i18n::tc!("ide bridge host", "in WSL"),
+            Self::RemoteHost => i18n::tc!("ide bridge host", "on the remote host"),
         }
     }
 }
@@ -847,21 +849,29 @@ pub(crate) fn parse_bridge_status(line: &str) -> Option<BridgeStatus<'_>> {
 pub(crate) fn bridge_failure_message(code: &str, host: BridgeHost) -> String {
     let home = host.home_of();
     match code {
-        "bad-args" => "IDE 連携の中継の起動引数が不正です (内部エラー)。".to_string(),
-        "signals-failed" => "IDE 連携の中継のシグナル処理を設定できませんでした。".to_string(),
-        "home-unknown" => format!(
-            "{home}ホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
+        "bad-args" => i18n::t!(
+            "The IDE integration relay was started with invalid arguments (internal error)."
+        )
+        .to_string(),
+        "signals-failed" => {
+            i18n::t!("The IDE integration relay could not set up its signal handling.").to_string()
+        }
+        "home-unknown" => i18n::t!(
+            "The IDE integration relay could not be started because the home directory {home} could not be determined."
         ),
-        "rendezvous-failed" => format!(
-            "IDE 連携の受け渡し用のソケットを作成できませんでした \
-             ({home} ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+        "rendezvous-failed" => i18n::t!(
+            "Could not create the IDE integration's rendezvous socket \
+             (check the owner and permissions of ~/.cache/zed-jp-enhance/ide {home})."
         ),
-        "lock-preamble-failed" => "IDE 連携の中継に接続情報を渡せませんでした。".to_string(),
-        "lock-file-failed" => format!(
-            "IDE 連携のロックファイルを作成できませんでした ({home} ~/.zed-jp-enhance-claude の\
-             所有者と権限、シンボリックリンクになっていないかを確認してください)。"
+        "lock-preamble-failed" => {
+            i18n::t!("Could not pass the connection details to the IDE integration relay.")
+                .to_string()
+        }
+        "lock-file-failed" => i18n::t!(
+            "Could not create the IDE integration lock file (check the owner and permissions of \
+             ~/.zed-jp-enhance-claude {home}, and that it is not a symbolic link)."
         ),
-        other => format!("IDE 連携の中継を起動できませんでした (不明な理由: {other})。"),
+        other => i18n::t!("Could not start the IDE integration relay (unknown reason: {other})."),
     }
 }
 
@@ -908,16 +918,18 @@ where
                     None => log::info!("[ide-bridge] {line}"),
                 }
             }
-            bail!("IDE 連携の中継が準備を終える前に終了しました。")
+            bail!(i18n::t!(
+                "The IDE integration relay exited before it was ready."
+            ))
         };
         futures::pin_mut!(setup);
         futures::pin_mut!(ready_timeout);
         match futures::future::select(setup, ready_timeout).await {
             Either::Left((outcome, _)) => outcome,
-            Either::Right(((), _)) => Err(anyhow!(
-                "IDE 連携の中継が {} 秒以内に準備を終えませんでした。",
-                IDE_BRIDGE_READY_TIMEOUT.as_secs()
-            )),
+            Either::Right(((), _)) => Err(anyhow!(i18n::t!(
+                "The IDE integration relay was not ready within {seconds} seconds.",
+                seconds = IDE_BRIDGE_READY_TIMEOUT.as_secs()
+            ))),
         }
     };
     ready?;
@@ -2764,7 +2776,7 @@ mod tests {
         ] {
             let message = bridge_failure_message(code, BridgeHost::WslDistro);
             assert!(
-                !message.contains("不明な理由") && !message.contains(code),
+                !message.contains("unknown reason") && !message.contains(code),
                 "{code}: {message}"
             );
         }
@@ -2773,28 +2785,52 @@ mod tests {
         // ASCII のパスなら分かち書きし、日本語が続くなら詰める)。
         assert_eq!(
             bridge_failure_message("home-unknown", BridgeHost::WslDistro),
-            "WSL のホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
+            "The IDE integration relay could not be started because the home directory in WSL \
+             could not be determined."
         );
         assert_eq!(
             bridge_failure_message("rendezvous-failed", BridgeHost::WslDistro),
-            "IDE 連携の受け渡し用のソケットを作成できませんでした \
-             (WSL の ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+            "Could not create the IDE integration's rendezvous socket \
+             (check the owner and permissions of ~/.cache/zed-jp-enhance/ide in WSL)."
         );
         assert_eq!(
             bridge_failure_message("lock-file-failed", BridgeHost::WslDistro),
-            "IDE 連携のロックファイルを作成できませんでした (WSL の ~/.zed-jp-enhance-claude の\
-             所有者と権限、シンボリックリンクになっていないかを確認してください)。"
+            "Could not create the IDE integration lock file (check the owner and permissions of \
+             ~/.zed-jp-enhance-claude in WSL, and that it is not a symbolic link)."
         );
         // ADR-F53: the same codes, said about the machine the bridge is on.
         for code in ["home-unknown", "rendezvous-failed", "lock-file-failed"] {
             assert!(
-                bridge_failure_message(code, BridgeHost::WslDistro).contains("WSL の"),
+                bridge_failure_message(code, BridgeHost::WslDistro).contains("in WSL"),
                 "{code}"
             );
             let remote = bridge_failure_message(code, BridgeHost::RemoteHost);
             assert!(
-                remote.contains("接続先の") && !remote.contains("WSL"),
+                remote.contains("on the remote host") && !remote.contains("WSL"),
                 "{code}: {remote}"
+            );
+        }
+        {
+            let _japanese = i18n::test_support::LocaleOverride::new(Some(
+                i18n_catalog::test_support::bundled_catalog("ja"),
+            ));
+            assert_eq!(
+                bridge_failure_message("home-unknown", BridgeHost::WslDistro),
+                "WSL のホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
+            );
+            assert_eq!(
+                bridge_failure_message("home-unknown", BridgeHost::RemoteHost),
+                "接続先のホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
+            );
+            assert_eq!(
+                bridge_failure_message("rendezvous-failed", BridgeHost::WslDistro),
+                "IDE 連携の受け渡し用のソケットを作成できませんでした \
+                 (WSL の ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+            );
+            assert_eq!(
+                bridge_failure_message("lock-file-failed", BridgeHost::RemoteHost),
+                "IDE 連携のロックファイルを作成できませんでした (接続先の ~/.zed-jp-enhance-claude の\
+                 所有者と権限、シンボリックリンクになっていないかを確認してください)。"
             );
         }
         // The one the Windows side turns into "the session already runs".
@@ -2878,7 +2914,7 @@ mod tests {
             BridgeHost::RemoteHost,
         ));
         assert!(
-            format!("{gone}").contains("準備を終える前に終了しました"),
+            format!("{gone}").contains("exited before it was ready"),
             "{gone}"
         );
 
@@ -2889,8 +2925,10 @@ mod tests {
             futures::future::ready(()),
         )));
         assert!(
-            format!("{timed_out}")
-                .contains(&format!("{} 秒以内", IDE_BRIDGE_READY_TIMEOUT.as_secs())),
+            format!("{timed_out}").contains(&format!(
+                "within {} seconds",
+                IDE_BRIDGE_READY_TIMEOUT.as_secs()
+            )),
             "{timed_out}"
         );
     }

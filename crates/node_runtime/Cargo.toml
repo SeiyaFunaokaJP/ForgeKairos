@@ -23,6 +23,7 @@ async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
 http_client.workspace = true
+i18n.workspace = true
 log.workspace = true
 paths.workspace = true
 semver.workspace = true

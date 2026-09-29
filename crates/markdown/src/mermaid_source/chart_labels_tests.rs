@@ -379,6 +379,12 @@ fn an_er_attribute_is_its_name_in_the_entities_blocks() {
             "{word:?} is not an attribute name"
         );
     }
+    // The message goes through a format template, where a brace has to be
+    // doubled; the reader must still see one.
+    let refusal = write_refusal(MermaidLabelQuoting::ErAttributeName, "a{b", &[])
+        .expect("a brace is refused");
+    assert!(refusal.contains("`{`, `}`"), "{refusal}");
+    assert!(!refusal.contains("{{"), "{refusal}");
 }
 
 #[test]

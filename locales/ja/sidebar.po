@@ -1,0 +1,142 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " and "
+msgstr " と "
+
+msgid "-click"
+msgstr "-クリック"
+
+msgid "Add Project"
+msgstr "プロジェクトを追加"
+
+msgid "Archive Thread"
+msgstr "スレッドをアーカイブ"
+
+msgid "Based on {}"
+msgstr "{} を基に作成"
+
+msgid "Clear Search"
+msgstr "検索をクリア"
+
+msgid "Close Terminal"
+msgstr "ターミナルを閉じる"
+
+msgid "Close Worktree"
+msgstr "ワークツリーを閉じる"
+
+msgid "Create New Worktree…"
+msgstr "新規ワークツリーを作成…"
+
+msgid "Discard Draft"
+msgstr "下書きを破棄"
+
+msgid "Failed to regenerate thread title."
+msgstr "スレッドタイトルの再生成に失敗しました。"
+
+msgid "Failed to restore worktree: {error}"
+msgstr "ワークツリーの復元に失敗しました: {error}"
+
+msgid "Focus Last Project"
+msgstr "最後のプロジェクトにフォーカス"
+
+msgid "Focus Project"
+msgstr "プロジェクトにフォーカス"
+
+msgid "Focus Sidebar"
+msgstr "サイドバーにフォーカス"
+
+msgid "Hide Thread History"
+msgstr "スレッド履歴を非表示"
+
+msgid "Import Threads"
+msgstr "スレッドをインポート"
+
+msgid "Import Threads from External Agents"
+msgstr "外部エージェントのスレッドをインポート"
+
+msgid "Import Threads from Other Channels"
+msgstr "他のチャンネルのスレッドをインポート"
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client."
+msgstr "Zed で開始したものでも他のクライアントで開始したものでも、Claude Agent や Codex などのエージェントからスレッドをインポートします。"
+
+msgid "Import threads from {} to continue where you left off."
+msgstr "{} からスレッドをインポートすると、続きから再開できます。"
+
+msgid "Looking for threads from external agents?"
+msgstr "外部エージェントのスレッドをお探しですか?"
+
+msgid "Move Down"
+msgstr "下へ移動"
+
+msgid "Move Up"
+msgstr "上へ移動"
+
+msgid "New Thread In…"
+msgstr "新規スレッドの作成先…"
+
+msgid "No model is configured for summarizing thread titles."
+msgstr "スレッドタイトルの要約に使用するモデルが設定されていません。"
+
+msgid "No threads match your search."
+msgstr "検索に一致するスレッドがありません。"
+
+msgid "No threads yet"
+msgstr "スレッドがありません"
+
+msgid "Open Project in New Window"
+msgstr "プロジェクトを新しいウィンドウで開く"
+
+msgid "Open Thread as Markdown"
+msgstr "スレッドを Markdown で開く"
+
+msgid "Open Worktrees"
+msgstr "開いているワークツリー"
+
+msgid "Regenerate Thread Title"
+msgstr "スレッドタイトルを再生成"
+
+msgid "Remote Project"
+msgstr "リモートプロジェクト"
+
+msgid "Remove"
+msgstr "削除"
+
+msgid "Rename Thread"
+msgstr "スレッドの名前変更"
+
+msgid "Rename Title"
+msgstr "タイトルの名前変更"
+
+msgid "Running outside the sandbox"
+msgstr "サンドボックスの外で実行中"
+
+msgid "Search threads…"
+msgstr "スレッドを検索…"
+
+msgid "Show Thread History"
+msgstr "スレッド履歴を表示"
+
+msgid "Start New Agent Thread"
+msgstr "エージェントの新規スレッドを開始"
+
+msgid "Stop Generation"
+msgstr "生成を停止"
+
+msgid "Threads Sidebar"
+msgstr "スレッドサイドバー"
+
+msgid "Threads found from other channels"
+msgstr "他のチャンネルのスレッドが見つかりました"
+
+msgid "Toggle Sidebar"
+msgstr "サイドバーの表示切り替え"
+
+msgid "{count} thread is waiting for confirmation"
+msgid_plural "{count} threads are waiting for confirmation"
+msgstr[0] "{count} 件のスレッドが確認待ちです"

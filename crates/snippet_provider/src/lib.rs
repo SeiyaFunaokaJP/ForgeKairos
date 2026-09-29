@@ -4,17 +4,19 @@ mod registry;
 
 use std::{
     path::{Path, PathBuf},
-    sync::{Arc, OnceLock},
+    sync::{Arc, LazyLock},
     time::Duration,
 };
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use format::VsSnippetsFile;
 use fs::Fs;
 use futures::stream::StreamExt;
 use gpui::{App, AppContext as _, AsyncApp, Context, Entity, Task, WeakEntity};
+use parking_lot::Mutex;
 pub use registry::*;
+use rust_embed::RustEmbed;
 use util::ResultExt;
 
 pub fn init(cx: &mut App) {
@@ -62,32 +64,88 @@ pub fn file_to_snippets(
         })
 }
 
-/// The snippet files that ship with the editor, keyed by the language name
-/// their file would have under the user's `snippets/` directory.
-const BUILT_IN_SNIPPET_FILES: &[(&str, &str)] = &[(
-    "markdown",
-    include_str!("../../../assets/snippets/markdown.json"),
-)];
+/// The snippet files that ship with the editor. `<language>.json` at the top is
+/// the English original; `<tag>/<language>.json` translates it for a display
+/// language, named by its BCP 47 tag as under `locales/`.
+#[derive(RustEmbed)]
+#[folder = "../../assets/snippets"]
+#[include = "*.json"]
+struct BuiltInSnippetFiles;
 
-/// The built-in snippets, parsed once and shared by every provider.
-fn built_in_snippets() -> &'static HashMap<SnippetKind, Vec<Arc<Snippet>>> {
-    static BUILT_IN_SNIPPETS: OnceLock<HashMap<SnippetKind, Vec<Arc<Snippet>>>> = OnceLock::new();
-    BUILT_IN_SNIPPETS.get_or_init(|| {
-        let mut snippets_by_kind: HashMap<SnippetKind, Vec<Arc<Snippet>>> = HashMap::default();
-        for (name, contents) in BUILT_IN_SNIPPET_FILES {
-            let source = PathBuf::from(format!("assets/snippets/{name}.json"));
-            let Some(file_contents) =
-                serde_json_lenient::from_str::<VsSnippetsFile>(contents).log_err()
-            else {
-                continue;
-            };
-            snippets_by_kind
-                .entry(file_stem_to_key(name))
-                .or_default()
-                .extend(file_to_snippets(file_contents, &source).filter_map(Result::log_err));
+type SnippetsByKind = HashMap<SnippetKind, Vec<Arc<Snippet>>>;
+
+/// The built-in snippets for the current display language, parsed once per
+/// language and shared by every provider. Looked up on every request rather
+/// than kept, so a change of display language shows from the next completion.
+fn built_in_snippets() -> Arc<SnippetsByKind> {
+    static BY_LOCALE: LazyLock<Mutex<HashMap<String, Arc<SnippetsByKind>>>> =
+        LazyLock::new(Default::default);
+    let locale = i18n::current_locale();
+    let mut by_locale = BY_LOCALE.lock();
+    if let Some(snippets) = by_locale.get(locale) {
+        return snippets.clone();
+    }
+    let snippets = Arc::new(load_built_in_snippets(
+        locale,
+        &BuiltInSnippetFiles::iter().collect::<Vec<_>>(),
+        |path| {
+            let file = BuiltInSnippetFiles::get(path)?;
+            Some(String::from_utf8_lossy(&file.data).into_owned())
+        },
+    ));
+    by_locale.insert(locale.to_owned(), snippets.clone());
+    snippets
+}
+
+/// For each English file among `paths`, parses the translation of the most
+/// specific tag of `locale` that has one (`pt-BR`, then `pt`), or else the
+/// English file itself.
+fn load_built_in_snippets(
+    locale: &str,
+    paths: &[impl AsRef<str>],
+    load: impl Fn(&str) -> Option<String>,
+) -> SnippetsByKind {
+    let mut fallback_tags = vec![locale];
+    let mut rest = locale;
+    while let Some(position) = rest.rfind('-') {
+        rest = &rest[..position];
+        fallback_tags.push(rest);
+    }
+
+    let mut snippets_by_kind = SnippetsByKind::default();
+    for english_path in paths.iter().map(AsRef::as_ref) {
+        if english_path.contains('/') {
+            continue;
         }
+        let Some(stem) = english_path.strip_suffix(".json") else {
+            continue;
+        };
+        let translated_path = fallback_tags.iter().find_map(|tag| {
+            paths.iter().map(AsRef::as_ref).find(|path| {
+                path.split_once('/').is_some_and(|(directory, file)| {
+                    directory.eq_ignore_ascii_case(tag) && file == english_path
+                })
+            })
+        });
+        let path = translated_path.unwrap_or(english_path);
+        let source = PathBuf::from(format!("assets/snippets/{path}"));
+        let Some(contents) = load(path)
+            .with_context(|| format!("built-in snippet file {source:?} could not be read"))
+            .log_err()
+        else {
+            continue;
+        };
+        let Some(file_contents) =
+            serde_json_lenient::from_str::<VsSnippetsFile>(&contents).log_err()
+        else {
+            continue;
+        };
         snippets_by_kind
-    })
+            .entry(file_stem_to_key(stem))
+            .or_default()
+            .extend(file_to_snippets(file_contents, &source).filter_map(Result::log_err));
+    }
+    snippets_by_kind
 }
 
 // Snippet with all of the metadata
@@ -449,9 +507,198 @@ mod tests {
                 assert!(
                     snippets
                         .iter()
-                        .any(|snippet| snippet.name == "Mermaid シーケンス図")
+                        .any(|snippet| snippet.name == "Mermaid Sequence Diagram")
                 );
             });
         });
+    }
+
+    struct LocaleOnlyCatalog(&'static str);
+
+    impl i18n::Catalog for LocaleOnlyCatalog {
+        fn locale(&self) -> &str {
+            self.0
+        }
+
+        fn lookup(&self, _context: Option<&str>, _msgid: &str) -> Option<&'static str> {
+            None
+        }
+
+        fn lookup_plural(
+            &self,
+            _context: Option<&str>,
+            _msgid: &str,
+            _msgid_plural: &str,
+            _count: u64,
+        ) -> Option<&'static str> {
+            None
+        }
+    }
+
+    fn built_in_markdown_names(provider: &SnippetProvider, cx: &App) -> Vec<String> {
+        provider
+            .snippets_for(Some("markdown".to_owned()), cx)
+            .iter()
+            .filter(|snippet| {
+                snippet
+                    .prefix
+                    .iter()
+                    .any(|prefix| prefix == "mermaid-sequence")
+            })
+            .map(|snippet| snippet.name.clone())
+            .collect()
+    }
+
+    #[gpui::test]
+    fn test_built_in_snippets_follow_display_language(cx: &mut TestAppContext) {
+        static JAPANESE: LocaleOnlyCatalog = LocaleOnlyCatalog("ja");
+        static JAPANESE_IN_JAPAN: LocaleOnlyCatalog = LocaleOnlyCatalog("ja-JP");
+        static BRAZILIAN_PORTUGUESE: LocaleOnlyCatalog = LocaleOnlyCatalog("pt-BR");
+
+        let fs = FakeFs::new(cx.background_executor.clone());
+        cx.update(|cx| {
+            SnippetRegistry::init_global(cx);
+            let provider = SnippetProvider::new(fs.clone(), Default::default(), cx);
+            let provider = provider.read(cx);
+
+            assert_eq!(
+                built_in_markdown_names(provider, cx),
+                ["Mermaid Sequence Diagram"]
+            );
+            {
+                let _locale = i18n::test_support::LocaleOverride::new(Some(&JAPANESE));
+                assert_eq!(
+                    built_in_markdown_names(provider, cx),
+                    ["Mermaid シーケンス図"]
+                );
+            }
+            {
+                let _locale = i18n::test_support::LocaleOverride::new(Some(&JAPANESE_IN_JAPAN));
+                assert_eq!(
+                    built_in_markdown_names(provider, cx),
+                    ["Mermaid シーケンス図"]
+                );
+            }
+            {
+                let _locale = i18n::test_support::LocaleOverride::new(Some(&BRAZILIAN_PORTUGUESE));
+                assert_eq!(
+                    built_in_markdown_names(provider, cx),
+                    ["Mermaid Sequence Diagram"]
+                );
+            }
+            assert_eq!(
+                built_in_markdown_names(provider, cx),
+                ["Mermaid Sequence Diagram"]
+            );
+        });
+    }
+
+    #[test]
+    fn test_built_in_snippet_files_fall_back_to_the_base_language_then_english() {
+        let paths = [
+            "markdown.json",
+            "rust.json",
+            "go.json",
+            "PT/markdown.json",
+            "pt/go.json",
+            "pt-BR/go.json",
+            "pt-BR/rust.json",
+            "pt-BR/python.json",
+            "pt-BR/nested/markdown.json",
+        ];
+        let load = |path: &str| {
+            let language = path.rsplit('/').next()?.strip_suffix(".json")?;
+            Some(format!(
+                r#"{{ "{path}": {{ "prefix": "{language}", "body": "{path}" }} }}"#
+            ))
+        };
+        let names = |locale: &str| {
+            let mut names = load_built_in_snippets(locale, &paths, load)
+                .into_iter()
+                .map(|(kind, snippets)| {
+                    let names = snippets
+                        .iter()
+                        .map(|snippet| snippet.name.clone())
+                        .collect::<Vec<_>>();
+                    (kind, names)
+                })
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+
+        assert_eq!(
+            names("pt-BR"),
+            [
+                (Some("go".to_owned()), vec!["pt-BR/go.json".to_owned()]),
+                (
+                    Some("markdown".to_owned()),
+                    vec!["PT/markdown.json".to_owned()]
+                ),
+                (Some("rust".to_owned()), vec!["pt-BR/rust.json".to_owned()]),
+            ]
+        );
+        assert_eq!(
+            names("pt"),
+            [
+                (Some("go".to_owned()), vec!["pt/go.json".to_owned()]),
+                (
+                    Some("markdown".to_owned()),
+                    vec!["PT/markdown.json".to_owned()]
+                ),
+                (Some("rust".to_owned()), vec!["rust.json".to_owned()]),
+            ]
+        );
+        assert_eq!(
+            names("en"),
+            [
+                (Some("go".to_owned()), vec!["go.json".to_owned()]),
+                (
+                    Some("markdown".to_owned()),
+                    vec!["markdown.json".to_owned()]
+                ),
+                (Some("rust".to_owned()), vec!["rust.json".to_owned()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_every_built_in_translation_offers_the_english_prefixes() {
+        let prefixes = |path: &str| {
+            let file = BuiltInSnippetFiles::get(path)
+                .unwrap_or_else(|| panic!("{path} is not a built-in snippet file"));
+            let contents: VsSnippetsFile =
+                serde_json_lenient::from_str(&String::from_utf8_lossy(&file.data))
+                    .unwrap_or_else(|error| panic!("{path} does not parse: {error}"));
+            let mut prefixes = file_to_snippets(contents, Path::new(path))
+                .map(|snippet| {
+                    snippet
+                        .unwrap_or_else(|error| panic!("{error:#}"))
+                        .prefix
+                        .clone()
+                })
+                .collect::<Vec<_>>();
+            prefixes.sort();
+            prefixes
+        };
+
+        let paths = BuiltInSnippetFiles::iter().collect::<Vec<_>>();
+        let mut translations = 0;
+        for path in &paths {
+            let Some((_tag, english_path)) = path.split_once('/') else {
+                continue;
+            };
+            assert!(
+                paths.iter().any(|path| path == english_path),
+                "{path} translates {english_path}, which does not exist"
+            );
+            assert_eq!(
+                prefixes(path),
+                prefixes(english_path),
+                "{path} does not offer the same snippets as {english_path}"
+            );
+            translations += 1;
+        }
+        assert!(translations > 0, "no translated snippet file was found");
     }
 }

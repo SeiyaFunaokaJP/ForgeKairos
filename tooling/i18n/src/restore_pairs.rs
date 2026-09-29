@@ -172,14 +172,14 @@ impl SourceFile {
             .unwrap_or("")
     }
 
-    fn is_punct(&self, index: usize, punct: &str) -> bool {
+    pub(crate) fn is_punct(&self, index: usize, punct: &str) -> bool {
         self.code
             .get(index)
             .is_some_and(|token| token.kind == TokenKind::Punct)
             && self.token_text(index) == punct
     }
 
-    fn is_ident(&self, index: usize) -> bool {
+    pub(crate) fn is_ident(&self, index: usize) -> bool {
         self.code
             .get(index)
             .is_some_and(|token| token.kind == TokenKind::Ident)
@@ -579,7 +579,7 @@ impl SourceFile {
     }
 
     /// The `,`-separated arguments of the group opened at `open`, as inclusive token ranges.
-    fn arguments(&self, open: usize) -> Vec<(usize, usize)> {
+    pub(crate) fn arguments(&self, open: usize) -> Vec<(usize, usize)> {
         let Some(close) = self.matching.get(open).copied().flatten() else {
             return Vec::new();
         };
@@ -689,7 +689,7 @@ impl SourceFile {
 
     /// Token ranges covered by `#[cfg(test)]` (or `#[test]`-like) items, with the item's extent
     /// taken from bracket matching.
-    fn test_ranges(&self) -> Vec<(usize, usize)> {
+    pub(crate) fn test_ranges(&self) -> Vec<(usize, usize)> {
         let mut ranges = Vec::new();
         let mut index = 0;
         while index + 1 < self.code.len() {
@@ -720,13 +720,21 @@ impl SourceFile {
                     None => break,
                 }
             }
+            // A field, an enum variant, a match arm or an argument ends at the next `,`; an item
+            // may have commas in its generics. Neither extends past the group that holds it, or a
+            // `#[cfg(test)]` field would take the next item's body with it.
+            let ends_at_comma = !self.starts_item(cursor);
             let mut end = self.code.len().saturating_sub(1);
             while cursor < self.code.len() {
+                if self.is_closer(cursor) {
+                    end = cursor.saturating_sub(1).max(index);
+                    break;
+                }
                 if self.is_punct(cursor, "{") {
                     end = self.matching.get(cursor).copied().flatten().unwrap_or(end);
                     break;
                 }
-                if self.is_punct(cursor, ";") {
+                if self.is_punct(cursor, ";") || (ends_at_comma && self.is_punct(cursor, ",")) {
                     end = cursor;
                     break;
                 }
@@ -746,16 +754,17 @@ impl SourceFile {
         ranges
     }
 
-    fn is_test_attribute(&self, low: usize, close: usize) -> bool {
+    pub(crate) fn is_test_attribute(&self, low: usize, close: usize) -> bool {
         if low >= close {
             return false;
         }
         if self.token_text(low) == "cfg" && self.is_ident(low) {
-            let identifiers: Vec<&str> = (low..close)
-                .filter(|index| self.is_ident(*index))
-                .map(|index| self.token_text(index))
-                .collect();
-            return identifiers.contains(&"test") && !identifiers.contains(&"not");
+            let Some(predicate_close) = self.matching.get(low + 1).copied().flatten() else {
+                return false;
+            };
+            return self.is_punct(low + 1, "(")
+                && predicate_close == close - 1
+                && self.cfg_implies_test(low + 2, predicate_close - 1);
         }
         let mut cursor = low;
         let mut last_identifier = "";
@@ -770,6 +779,80 @@ impl SourceFile {
             }
         }
         last_identifier == "test" && (cursor == close || self.is_punct(cursor, "("))
+    }
+
+    /// Whether the `cfg` predicate in `low..=high` can hold only when compiling tests.
+    /// `any(test, target_os = "linux")` also holds in a release build for Linux, so it does not;
+    /// `feature = "test-support"` counts as a test, since only test builds enable that feature.
+    fn cfg_implies_test(&self, low: usize, high: usize) -> bool {
+        if low > high {
+            return false;
+        }
+        if low == high {
+            return self.is_ident(low) && self.token_text(low) == "test";
+        }
+        if self.is_ident(low)
+            && self.token_text(low) == "feature"
+            && self.is_punct(low + 1, "=")
+            && low + 2 == high
+        {
+            return self
+                .literal(high)
+                .is_some_and(|literal| literal.value == "test-support");
+        }
+        if !self.is_ident(low)
+            || !self.is_punct(low + 1, "(")
+            || self.matching.get(low + 1).copied().flatten() != Some(high)
+        {
+            return false;
+        }
+        let arguments = self.arguments(low + 1);
+        match self.token_text(low) {
+            "all" => arguments
+                .iter()
+                .any(|(first, last)| self.cfg_implies_test(*first, *last)),
+            "any" => {
+                !arguments.is_empty()
+                    && arguments
+                        .iter()
+                        .all(|(first, last)| self.cfg_implies_test(*first, *last))
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether the tokens from `index` start an item (or a `let` statement), which ends at its
+    /// body or its `;` rather than at a `,`.
+    fn starts_item(&self, mut index: usize) -> bool {
+        if self.is_ident(index) && self.token_text(index) == "pub" {
+            index += 1;
+            if self.is_punct(index, "(") {
+                match self.matching.get(index).copied().flatten() {
+                    Some(close) => index = close + 1,
+                    None => return false,
+                }
+            }
+        }
+        self.is_ident(index)
+            && matches!(
+                self.token_text(index),
+                "fn" | "mod"
+                    | "impl"
+                    | "struct"
+                    | "enum"
+                    | "union"
+                    | "trait"
+                    | "type"
+                    | "const"
+                    | "static"
+                    | "use"
+                    | "extern"
+                    | "async"
+                    | "unsafe"
+                    | "default"
+                    | "macro_rules"
+                    | "let"
+            )
     }
 
     fn snippet(&self, low: usize, high: usize, focus: usize) -> String {

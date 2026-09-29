@@ -5,5 +5,236 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Actions"
+msgstr "アクション"
+
+msgid "Add your feedback…"
+msgstr "フィードバックを入力…"
+
+msgid "All Files"
+msgstr "すべてのファイル"
+
+msgid "Bad Prediction"
+msgstr "不適切な予測"
+
+msgid "Check your payment status or contact us at billing-support@zed.dev to continue using this feature."
+msgstr "この機能を継続して利用するには、支払い状況を確認するか billing-support@zed.dev までご連絡ください。"
+
+msgid "Choose a Plan"
+msgstr "プランを選択"
+
+msgid "Configure Excluded Files"
+msgstr "除外ファイルを設定"
+
+msgid "Configure Providers"
+msgstr "プロバイダーを設定"
+
+msgid "Configure a Provider"
+msgstr "プロバイダーを設定"
+
+msgid "Copilot Edit Predictions can't be started: {}"
+msgstr "Copilot Edit Predictions を起動できません: {}"
+
+msgid "Copilot: Next Edit Suggestions"
+msgstr "Copilot: 次の編集候補"
+
+msgid "Disable Copilot Edit Predictions"
+msgstr "Copilot Edit Predictions を無効化"
+
+msgid "Disabled For This File"
+msgstr "このファイルでは無効"
+
+msgid "Display Modes"
+msgstr "表示モード"
+
 msgid "Display predictions inline only when holding a modifier key ({} by default)."
 msgstr "修飾キー (既定では {}) を押している間だけ、予測をインラインで表示します。"
+
+msgid "Display predictions inline when there are no language server completions available."
+msgstr "言語サーバーの補完候補がないときに、予測をインラインで表示します。"
+
+msgid "Edit Prediction"
+msgstr "編集予測"
+
+msgid "Edit Predictions"
+msgstr "編集予測"
+
+msgid "Edit predictions are disabled for this organization."
+msgstr "この組織では編集予測が無効になっています。"
+
+msgid "Edit predictions are disabled for {}"
+msgstr "{} では編集予測が無効になっています"
+
+msgid "Edits Available"
+msgstr "編集あり"
+
+msgid "Enable to Use"
+msgstr "使用するには有効化"
+
+msgid "Expected Patch"
+msgstr "期待されるパッチ"
+
+msgid "Explain what's bad about it before reporting it"
+msgstr "報告する前に、何が問題かを説明してください"
+
+msgid "Explain why this completion is good or bad. If it's negative, describe what you expected instead."
+msgstr "この補完が良い/悪い理由を説明してください。否定的な場合は、代わりに期待していた内容を記述してください。"
+
+msgid "External AI warning not accepted"
+msgstr "外部 AI の警告を承諾していません"
+
+msgid "Free tier limit reached"
+msgstr "無料枠の上限に達しました"
+
+msgid "From most recent to oldest"
+msgstr "新しい順"
+
+msgid "Go to Copilot Settings"
+msgstr "Copilot の設定を開く"
+
+msgid "Good Prediction"
+msgstr "良好な予測"
+
+msgid "Help us improve our open dataset model by sharing data from open source repositories. Zed must detect a license file in your repo for this setting to take effect. Files with sensitive data and secrets are excluded by default."
+msgstr "オープンソースリポジトリのデータを共有して、オープンデータセットモデルの改善にご協力ください。この設定を有効にするには、リポジトリ内のライセンスファイルを Zed が検出できる必要があります。機微なデータやシークレットを含むファイルは既定で除外されます。"
+
+msgid "Issue"
+msgstr "問題"
+
+msgid "Learn More"
+msgstr "詳細"
+
+msgid "Mercury free tier limit reached"
+msgstr "Mercury の無料枠の上限に達しました"
+
+msgid "Missing API key for Codestral"
+msgstr "Codestral の API キーがありません"
+
+msgid "Missing API key for Mercury"
+msgstr "Mercury の API キーがありません"
+
+msgid "No Edits Produced"
+msgstr "編集は生成されませんでした"
+
+msgid "No active completion"
+msgstr "アクティブな補完はありません"
+
+msgid "No completions yet. Use the editor to generate some, and make sure to rate them!"
+msgstr "補完はまだありません。エディターで生成して、必ず評価してください。"
+
+msgid "No data captured."
+msgstr "データは収集されません。"
+
+msgid "No edits produced."
+msgstr "編集は生成されませんでした。"
+
+msgid "Ollama model not configured — configure a model before use"
+msgstr "Ollama のモデルが未設定です。使用する前にモデルを設定してください。"
+
+msgid "Open your settings to add sensitive paths for which Zed will never predict edits."
+msgstr "Zed が編集を予測しない機微なパスを追加するために、設定を開きます。"
+
+msgid "Powered by Codestral"
+msgstr "Codestral を使用"
+
+msgid "Powered by Mercury"
+msgstr "Mercury を使用"
+
+msgid "Powered by Ollama ({})"
+msgstr "Ollama を使用 ({})"
+
+msgid "Powered by Zeta"
+msgstr "Zeta を使用"
+
+msgid "Predict Edit at Cursor"
+msgstr "カーソル位置の編集を予測"
+
+msgid "Predicted Patch"
+msgstr "予測されたパッチ"
+
+msgid "Privacy"
+msgstr "プライバシー"
+
+msgid "Project identified as open source, and you're sharing data."
+msgstr "プロジェクトはオープンソースと判定され、データを共有しています。"
+
+msgid "Project identified as open source, but you're not sharing data."
+msgstr "プロジェクトはオープンソースと判定されましたが、データは共有していません。"
+
+msgid "Project not identified as open source, and setting turned off."
+msgstr "プロジェクトはオープンソースと判定されておらず、設定も無効です。"
+
+msgid "Project not identified as open source. No data captured."
+msgstr "プロジェクトはオープンソースと判定されていません。データは収集されません。"
+
+msgid "Providers"
+msgstr "プロバイダー"
+
+msgid "Rate Predictions"
+msgstr "予測を評価"
+
+msgid "Rated Prediction"
+msgstr "評価済みの予測"
+
+msgid "Rated completion."
+msgstr "評価済みの補完です。"
+
+msgid "Recorded Events & Input"
+msgstr "記録されたイベントと入力"
+
+msgid "Reinstall Copilot Edit Predictions"
+msgstr "Copilot Edit Predictions を再インストール"
+
+msgid "Show Edit Predictions For"
+msgstr "編集予測を表示する対象"
+
+msgid "Sign In & Start Using"
+msgstr "サインインして使い始める"
+
+msgid "Sign In Or Configure a Provider"
+msgstr "サインインまたはプロバイダーを設定"
+
+msgid "Sign In to Copilot Edit Predictions"
+msgstr "Copilot Edit Predictions にサインイン"
+
+msgid "Sign Out"
+msgstr "サインアウト"
+
+msgid "Subscribe to increase your limit"
+msgstr "上限を引き上げるにはサブスクリプションを購入"
+
+msgid "Suggested Edits"
+msgstr "提案された編集"
+
+msgid "This Buffer"
+msgstr "このバッファー"
+
+msgid "This file is excluded."
+msgstr "このファイルは除外されています。"
+
+msgid "Training Data Collection"
+msgstr "学習データの収集"
+
+msgid "Upgrade to Zed Pro or contact us."
+msgstr "Zed Pro にアップグレードするか、お問い合わせください。"
+
+msgid "Upgrade to a paid plan to continue using the service"
+msgstr "サービスを継続して利用するには有料プランにアップグレードしてください"
+
+msgid "Usage"
+msgstr "使用状況"
+
+msgid "View Docs"
+msgstr "ドキュメントを表示"
+
+msgid "You get 2,000 accepted suggestions at every keystroke for free, powered by Zeta, our open-source, open-data model"
+msgstr "オープンソース・オープンデータのモデル Zeta により、キー入力のたびに採用される候補を無料で 2,000 件利用できます"
+
+msgid "You have an outstanding invoice"
+msgstr "未払いの請求書があります"
+
+msgid "Your GitHub account is less than 30 days old."
+msgstr "GitHub アカウントの作成から 30 日が経過していません。"
+
+msgid "{tooltip_text} • Trigger: {trigger_tooltip}"
+msgstr "{tooltip_text} • トリガー: {trigger_tooltip}"

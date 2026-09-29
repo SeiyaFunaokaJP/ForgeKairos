@@ -49,11 +49,13 @@ pub(crate) fn render_external_agents_page(
         .pb_16()
         .track_scroll(scroll_handle)
         .overflow_y_scroll()
-        .child(Label::new("外部エージェント"))
+        .child(Label::new(i18n::t!("External Agents")))
         .child(
-            Label::new("Agent Client Protocol で接続されたエージェントです。")
-                .size(LabelSize::Small)
-                .color(Color::Muted),
+            Label::new(i18n::t!(
+                "Agents connected through the Agent Client Protocol."
+            ))
+            .size(LabelSize::Small)
+            .color(Color::Muted),
         )
         .child(agent_list)
         .child(render_claude_subscription_sign_in(cx))
@@ -84,10 +86,12 @@ fn render_claude_subscription_sign_in(cx: &mut Context<SettingsWindow>) -> impl 
     v_flex().pt_6().child(
         SwitchField::new(
             "claude-acp-allow-subscription-sign-in",
-            Some("Claude (ACP) でサブスクリプションのログインを使う"),
+            Some(i18n::t!("Use Subscription Sign-In for Claude (ACP)")),
             Some(
-                "サブスクリプション (Claude Pro / Max など) での利用は、Anthropic が 2026-06-15 に「これまでどおり」と告知しています。ログインは Claude Code 自身の画面で行われ、Zed は認証情報を見も保存も中継もしません。ここを切るとログインのボタンが認証カードから消えます (API キーでの利用はそのまま使えます)。"
-                    .into(),
+                i18n::t!(
+                    "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
+                )
+                .into(),
             ),
             allowed,
             move |state, _window, cx| {
@@ -136,8 +140,8 @@ fn render_run_outside_sandbox(id: &AgentId, cx: &mut Context<SettingsWindow>) ->
     let id = id.clone();
     SwitchField::new(
         format!("run-outside-sandbox-{}", id.0),
-        Some(RUN_OUTSIDE_SANDBOX_LABEL),
-        Some(RUN_OUTSIDE_SANDBOX_DESCRIPTION.into()),
+        Some(i18n::tr(RUN_OUTSIDE_SANDBOX_LABEL)),
+        Some(i18n::tr(RUN_OUTSIDE_SANDBOX_DESCRIPTION).into()),
         enabled,
         move |state, _window, cx| {
             set_run_outside_sandbox(&id, *state == ToggleState::Selected, cx);
@@ -146,10 +150,10 @@ fn render_run_outside_sandbox(id: &AgentId, cx: &mut Context<SettingsWindow>) ->
     .tab_index(0)
 }
 
-const RUN_OUTSIDE_SANDBOX_LABEL: &str = "常にサンドボックスの外で起動";
-const RUN_OUTSIDE_SANDBOX_DESCRIPTION: &str = "確認なしで、このエージェントを毎回サンドボックスの\
-     外で起動します。書き込みの制限がなくなり、通信の制限はプロキシの設定を読むものにだけ効きます \
-     (SSH の接続先では統制が効きません)。ユーザー設定にだけ保存されます。";
+const RUN_OUTSIDE_SANDBOX_LABEL: &str = i18n::msg!("Always Launch Outside the Sandbox");
+const RUN_OUTSIDE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
+    "Launches this agent outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Saved only in your user settings."
+);
 
 fn set_run_outside_sandbox(id: &AgentId, enabled: bool, cx: &mut App) {
     let fs = <dyn fs::Fs>::global(cx);
@@ -241,9 +245,11 @@ fn render_empty_state(cx: &App) -> AnyElement {
         .border_color(cx.theme().colors().border.opacity(0.6))
         .rounded_sm()
         .child(
-            Label::new("外部エージェントはまだ追加されていません。「エージェントを追加」から始めてください。")
-                .color(Color::Muted)
-                .size(LabelSize::Small),
+            Label::new(i18n::t!(
+                "No external agents added yet. Click \"Add Agent\" to get started."
+            ))
+            .color(Color::Muted)
+            .size(LabelSize::Small),
         )
         .into_any_element()
 }
@@ -257,9 +263,11 @@ fn render_no_project_state(cx: &App) -> AnyElement {
         .border_color(cx.theme().colors().border.opacity(0.6))
         .rounded_sm()
         .child(
-            Label::new("アクティブなプロジェクトがありません。外部エージェントを管理するにはワークスペースを開いてください。")
-                .color(Color::Muted)
-                .size(LabelSize::Small),
+            Label::new(i18n::t!(
+                "No active project found. Open a workspace to manage external agents."
+            ))
+            .color(Color::Muted)
+            .size(LabelSize::Small),
         )
         .into_any_element()
 }
@@ -306,7 +314,7 @@ fn render_agent(
             .icon_size(IconSize::Small)
             .size(ButtonSize::Medium)
             .tab_index(0isize)
-            .tooltip(Tooltip::text("エージェントを設定"))
+            .tooltip(Tooltip::text(i18n::t!("Configure Agent")))
             .on_click(cx.listener({
                 let id = id.clone();
                 move |this, _event, window, cx| {
@@ -318,8 +326,8 @@ fn render_agent(
     });
 
     let remove_tooltip = match source {
-        ExternalAgentSource::Registry => "レジストリのエージェントを削除",
-        ExternalAgentSource::Custom => "カスタムエージェントを削除",
+        ExternalAgentSource::Registry => i18n::t!("Remove Registry Agent"),
+        ExternalAgentSource::Custom => i18n::t!("Remove Custom Agent"),
     };
 
     let remove_button = IconButton::new(format!("uninstall-{}", id_string), IconName::Trash)
@@ -397,7 +405,7 @@ pub(crate) fn render_add_agent_popover(
 
     let popover = PopoverMenu::new("add-agent-server-popover")
         .trigger(
-            Button::new("add-agent", "エージェントを追加")
+            Button::new("add-agent", i18n::t!("Add Agent"))
                 .style(ButtonStyle::Outlined)
                 .track_focus(&focus_handle)
                 .start_icon(
@@ -412,7 +420,7 @@ pub(crate) fn render_add_agent_popover(
             let settings_window = settings_window.clone();
             Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
                 menu.entry(
-                    "レジストリからインストール",
+                    i18n::t!("Install from Registry"),
                     None,
                     move |_window, cx| {
                         if let Some(original_window) = original_window {
@@ -426,21 +434,17 @@ pub(crate) fn render_add_agent_popover(
                         }
                     },
                 )
-                .entry(
-                    "カスタムエージェントを追加",
-                    None,
-                    move |window, cx| {
-                        settings_window
-                            .update(cx, |this, cx| {
-                                open_custom_agent_form(this, None, window, cx);
-                            })
-                            .log_err();
-                    },
-                )
+                .entry(i18n::t!("Add Custom Agent"), None, move |window, cx| {
+                    settings_window
+                        .update(cx, |this, cx| {
+                            open_custom_agent_form(this, None, window, cx);
+                        })
+                        .log_err();
+                })
                 .separator()
-                .header("詳細")
+                .header(i18n::t!("Learn More"))
                 .item(
-                    ContextMenuEntry::new("ACP のドキュメント")
+                    ContextMenuEntry::new(i18n::t!("ACP Docs"))
                         .icon(IconName::ArrowUpRight)
                         .icon_color(Color::Muted)
                         .icon_position(IconPosition::End)
@@ -603,8 +607,8 @@ fn new_kv_row(
     cx: &mut Context<SettingsWindow>,
 ) -> KeyValueRow {
     KeyValueRow {
-        key: new_input("キー", key, window, cx),
-        value: new_input("値", value, window, cx),
+        key: new_input(i18n::t!("Key"), key, window, cx),
+        value: new_input(i18n::t!("Value"), value, window, cx),
     }
 }
 
@@ -619,14 +623,14 @@ pub(crate) fn open_custom_agent_form(
     settings_window.custom_agent_form = Some(CustomAgentForm::new(existing, window, cx));
 
     let title = if is_edit {
-        "外部エージェントの設定"
+        i18n::t!("Configure External Agent")
     } else {
-        "カスタムエージェントの追加"
+        i18n::tc!("page title", "Add Custom Agent")
     };
 
     settings_window.push_dynamic_sub_page(
         title,
-        "エージェントの設定",
+        "Agent Configuration",
         Some("agent_servers"),
         false,
         render_custom_agent_form_page,
@@ -652,8 +656,8 @@ fn render_custom_agent_form_page(
         .child(
             crate::render_settings_item_layout(
                 settings_window,
-                "エージェント名",
-                "必須。このエージェントを識別する一意の名前です。",
+                "Agent Name",
+                "Required. A unique name used to identify this agent.",
                 input_box(&form.name, cx).into_any_element(),
                 None,
                 None,
@@ -666,8 +670,8 @@ fn render_custom_agent_form_page(
         .child(
             crate::render_settings_item_layout(
                 settings_window,
-                "コマンド",
-                "必須。エージェントを起動する実行ファイルのパスです。",
+                "Command",
+                "Required. Path to the executable that launches the agent.",
                 input_box(&form.command, cx).into_any_element(),
                 None,
                 None,
@@ -680,8 +684,8 @@ fn render_custom_agent_form_page(
         .child(
             crate::render_settings_item_layout(
                 settings_window,
-                "引数",
-                "コマンドに渡す引数です。半角スペースで区切ります。",
+                "Arguments",
+                "Space-separated arguments passed to the command.",
                 input_box(&form.args, cx).into_any_element(),
                 None,
                 None,
@@ -729,7 +733,7 @@ fn render_env_section(
                             .icon_size(IconSize::Small)
                             .icon_color(Color::Muted)
                             .tab_index(0isize)
-                            .tooltip(Tooltip::text("削除"))
+                            .tooltip(Tooltip::text(i18n::t!("Remove")))
                             .on_click(cx.listener(move |this, _, _window, cx| {
                                 if let Some(form) = this.custom_agent_form.as_mut()
                                     && ix < form.env.len()
@@ -742,7 +746,7 @@ fn render_env_section(
             )
         }))
         .child(
-            Button::new("custom-agent-env-add", "追加")
+            Button::new("custom-agent-env-add", i18n::t!("Add"))
                 .style(ButtonStyle::Outlined)
                 .label_size(LabelSize::Small)
                 .tab_index(0isize)
@@ -767,8 +771,8 @@ fn render_env_section(
 
     crate::render_settings_item_layout(
         settings_window,
-        "環境変数",
-        "エージェントのプロセスに渡す環境変数です。",
+        "Environment Variables",
+        "Environment variables provided to the agent process.",
         control,
         None,
         None,
@@ -813,7 +817,7 @@ fn render_form_actions(
                 .border_1()
                 .border_color(cancel_border)
                 .child(
-                    Button::new("custom-agent-form-cancel", "キャンセル")
+                    Button::new("custom-agent-form-cancel", i18n::t!("Cancel"))
                         .style(ButtonStyle::Subtle)
                         .track_focus(&cancel_handle)
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -828,7 +832,7 @@ fn render_form_actions(
                 .border_1()
                 .border_color(save_border)
                 .child(
-                    Button::new("custom-agent-form-save", "保存")
+                    Button::new("custom-agent-form-save", i18n::t!("Save"))
                         .style(ButtonStyle::Filled)
                         .track_focus(&save_handle)
                         .on_click(cx.listener(|this, _, window, cx| {
@@ -884,8 +888,7 @@ fn save_custom_agent_form(
         });
     if collides_with_other_agent {
         if let Some(form) = settings_window.custom_agent_form.as_mut() {
-            form.error =
-                Some(format!("「{}」という名前のエージェントは既に存在します。", id.0).into());
+            form.error = Some(i18n::t!("An agent named \"{}\" already exists.", id.0).into());
         }
         cx.notify();
         return;
@@ -951,12 +954,12 @@ fn build_settings_from_values(
 ) -> Result<(AgentId, Option<AgentId>, CustomAgentServerSettings), SharedString> {
     let name = values.name.trim().to_string();
     if name.is_empty() {
-        return Err("エージェント名を入力してください。".into());
+        return Err(i18n::t!("Agent name is required.").into());
     }
 
     let command = values.command.trim().to_string();
     if command.is_empty() {
-        return Err("コマンドを入力してください。".into());
+        return Err(i18n::t!("Command is required.").into());
     }
 
     let args = values
@@ -964,7 +967,7 @@ fn build_settings_from_values(
         .split_whitespace()
         .map(|arg| arg.to_string())
         .collect::<Vec<_>>();
-    let env = collect_kv(&values.env, "環境変数")?;
+    let env = collect_kv(&values.env, i18n::t!("environment variable"))?;
 
     let content = CustomAgentServerSettings::Custom {
         path: command.into(),
@@ -1002,7 +1005,7 @@ fn collect_kv(
             continue;
         }
         if map.contains_key(&key) {
-            return Err(format!("{label}「{key}」が重複しています。").into());
+            return Err(i18n::t!("Duplicate {label} \"{key}\".").into());
         }
         map.insert(key, value.clone());
     }
@@ -1201,7 +1204,7 @@ mod tests {
         values.name = "   ".into();
         assert_eq!(
             build_settings_from_values(values).unwrap_err().as_ref(),
-            "エージェント名を入力してください。"
+            "Agent name is required."
         );
     }
 
@@ -1211,7 +1214,7 @@ mod tests {
         values.command = "   ".into();
         assert_eq!(
             build_settings_from_values(values).unwrap_err().as_ref(),
-            "コマンドを入力してください。"
+            "Command is required."
         );
     }
 
@@ -1221,7 +1224,7 @@ mod tests {
         values.env = vec![("FOO".into(), "1".into()), ("FOO".into(), "2".into())];
         assert_eq!(
             build_settings_from_values(values).unwrap_err().as_ref(),
-            "環境変数「FOO」が重複しています。"
+            "Duplicate environment variable \"FOO\"."
         );
     }
 
@@ -1302,25 +1305,29 @@ mod tests {
             cx.set_global(store);
             <dyn fs::Fs>::set_global(fs.clone(), cx);
         });
-        fs.create_dir(paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent directory"),
+        )
+        .await
+        .expect("the settings directory can be created");
 
         // 書いた形をそのまま読み戻す: 保存先の変種が変われば落ちる。
         async fn written(fs: &std::sync::Arc<fs::FakeFs>) -> ReadBack {
             let text = fs
                 .load(paths::settings_file())
                 .await
-                .expect("設定ファイルを読める");
+                .expect("the settings file can be read");
             let content: serde_json::Value =
-                serde_json::from_str(&text).expect("設定ファイルは JSON");
+                serde_json::from_str(&text).expect("the settings file is JSON");
             let entry = content
                 .get("agent_servers")
                 .and_then(|agent_servers| agent_servers.get(CLAUDE_AGENT_ID))
-                .expect("claude-acp の項目がある")
+                .expect("there is a claude-acp entry")
                 .clone();
             serde_json::from_value::<CustomAgentServerSettings>(entry)
-                .expect("設定の型として読める")
+                .expect("the entry reads as agent server settings")
                 .into()
         }
 
@@ -1345,14 +1352,14 @@ mod tests {
                     let text = serde_json::to_string(&serde_json::json!({
                         "agent_servers": { CLAUDE_AGENT_ID: seed },
                     }))
-                    .expect("設定を JSON にできる");
+                    .expect("the settings serialize to JSON");
                     fs.save(
                         paths::settings_file(),
                         &text.as_str().into(),
                         language::LineEnding::Unix,
                     )
                     .await
-                    .expect("設定ファイルを置ける");
+                    .expect("the settings file can be written");
                 }
                 None => {
                     fs.save(
@@ -1361,7 +1368,7 @@ mod tests {
                         language::LineEnding::Unix,
                     )
                     .await
-                    .expect("設定ファイルを置ける");
+                    .expect("the settings file can be written");
                 }
             }
 
@@ -1371,7 +1378,7 @@ mod tests {
                 assert_eq!(
                     written(&fs).await.allow_subscription_sign_in(),
                     Some(allowed),
-                    "{shape} の項目に {allowed} を書いて読み戻せる"
+                    "{allowed} written to a {shape} entry reads back"
                 );
             }
 
@@ -1383,12 +1390,12 @@ mod tests {
                 assert_eq!(
                     read_back.run_outside_sandbox(),
                     Some(enabled),
-                    "{shape} の項目に {enabled} を書いて読み戻せる"
+                    "{enabled} written to a {shape} entry reads back"
                 );
                 assert_eq!(
                     read_back.allow_subscription_sign_in(),
                     Some(true),
-                    "{shape} の項目のほかの設定は残る"
+                    "the other settings of a {shape} entry survive"
                 );
             }
         }

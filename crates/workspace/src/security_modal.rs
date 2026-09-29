@@ -85,9 +85,9 @@ impl Render for SecurityModal {
 
         let restricted_count = self.restricted_paths.len();
         let header_label: SharedString = if restricted_count == 1 {
-            "未確認のプロジェクト".into()
+            i18n::t!("Unrecognized Project").into()
         } else {
-            format!("未確認のプロジェクト ({} 件)", restricted_count).into()
+            i18n::t!("Unrecognized Projects ({})", restricted_count).into()
         };
 
         let trust_label = self.build_trust_label();
@@ -187,23 +187,23 @@ impl Render for SecurityModal {
                         v_flex()
                             .child(
                                 Label::new(
-                                    "システムを保護するため、信頼されていないプロジェクトは制限モードで開かれます。",
+                                    i18n::t!("Untrusted projects are opened in Restricted Mode to protect your system."),
                                 )
                                 .color(Color::Muted),
                             )
                             .child(
                                 Label::new(
-                                    "このプロジェクトが設定する拡張機能やコマンドがないか、.zed/settings.json を確認してください。",
+                                    i18n::t!("Review .zed/settings.json for any extensions or commands configured by this project."),
                                 )
                                 .color(Color::Muted),
                             ),
                     )
                     .child(
                         v_flex()
-                            .child(Label::new("制限モードでは、次のことができません:").color(Color::Muted))
-                            .child(ListBulletItem::new("プロジェクト設定の適用"))
-                            .child(ListBulletItem::new("言語サーバーの実行"))
-                            .child(ListBulletItem::new("MCP サーバー連携のインストール")),
+                            .child(Label::new(i18n::t!("Restricted Mode prevents:")).color(Color::Muted))
+                            .child(ListBulletItem::new(i18n::t!("Project settings from being applied")))
+                            .child(ListBulletItem::new(i18n::t!("Language servers from running")))
+                            .child(ListBulletItem::new(i18n::t!("MCP Server integrations from installing"))),
                     )
                     .map(|this| {
                         let Some(trust_label) = trust_label else {
@@ -226,7 +226,7 @@ impl Render for SecurityModal {
                                             "trust-parents",
                                             ToggleState::from(self.trust_parents),
                                         )
-                                        .label("次のフォルダーを信頼:")
+                                        .label(i18n::t!("Trust all projects in"))
                                         .on_click(cx.listener(
                                             |security_modal, state: &ToggleState, _, cx| {
                                                 let trust_parents = state.selected();
@@ -273,7 +273,7 @@ impl Render for SecurityModal {
                     .gap_1()
                     .justify_end()
                     .child(
-                        Button::new("rm", "制限モードのまま")
+                        Button::new("rm", i18n::t!("Stay in Restricted Mode"))
                             .key_binding(
                                 KeyBinding::for_action(
                                     &ToggleWorktreeSecurity,
@@ -288,7 +288,7 @@ impl Render for SecurityModal {
                             })),
                     )
                     .child(
-                        Button::new("tc", "信頼して続行")
+                        Button::new("tc", i18n::t!("Trust and Continue"))
                             .style(ButtonStyle::Filled)
                             .layer(ui::ElevationIndex::ModalSurface)
                             .key_binding(
@@ -312,7 +312,8 @@ impl SecurityModal {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let trust_path_input = cx.new(|cx| InputField::new(window, cx, "信頼するフォルダー"));
+        let trust_path_input =
+            cx.new(|cx| InputField::new(window, cx, i18n::t!("Folder to trust")));
         let mut this = Self {
             worktree_store,
             remote_host: remote_host.map(|host| host.into()),
@@ -354,16 +355,18 @@ impl SecurityModal {
         match available_parents.len() {
             0 => {
                 if has_restricted_files {
-                    Some(Cow::Borrowed("すべての単一ファイルを信頼"))
+                    Some(Cow::Borrowed(i18n::t!("Trust all single files")))
                 } else {
                     None
                 }
             }
-            1 => Some(Cow::Owned(format!(
-                "{:} フォルダー内のすべてのプロジェクトを信頼",
+            1 => Some(Cow::Owned(i18n::t!(
+                "Trust all projects in the {:} folder",
                 self.shorten_path(available_parents[0]).display()
             ))),
-            _ => Some(Cow::Borrowed("親フォルダー内のすべてのプロジェクトを信頼")),
+            _ => Some(Cow::Borrowed(i18n::t!(
+                "Trust all projects in the parent folders"
+            ))),
         }
     }
 
@@ -509,7 +512,7 @@ fn validate_trust_scope(
 ) -> Result<PathBuf, SharedString> {
     let trimmed = typed.trim();
     if trimmed.is_empty() {
-        return Err("信頼するフォルダーを入力してください。".into());
+        return Err(i18n::t!("Enter a folder to trust").into());
     }
     let expanded = match (trimmed.strip_prefix('~'), home_dir) {
         (Some(rest), Some(home_dir)) => home_dir.join(
@@ -519,10 +522,10 @@ fn validate_trust_scope(
         _ => PathBuf::from(trimmed),
     };
     if !util::paths::is_absolute(&expanded.to_string_lossy(), path_style) {
-        return Err("絶対パスのフォルダーを入力してください。".into());
+        return Err(i18n::t!("Enter an absolute folder path").into());
     }
     if !project.starts_with(&expanded) {
-        return Err("プロジェクトの親フォルダーを指定してください。".into());
+        return Err(i18n::t!("Must be a parent folder of the project").into());
     }
     Ok(expanded)
 }

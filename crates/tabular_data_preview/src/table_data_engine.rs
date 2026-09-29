@@ -697,7 +697,7 @@ mod tests {
         let condition = restored
             .text_filter(AnyColumn(1))
             .expect("the text condition should come back");
-        assert_eq!(condition.description(), "「x」を含む または 空白以外");
+        assert_eq!(condition.description(), "contains \"x\" or is not blank");
         assert_eq!(
             restored
                 .applied_sorting

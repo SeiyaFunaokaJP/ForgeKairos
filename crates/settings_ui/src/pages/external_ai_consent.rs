@@ -22,11 +22,6 @@ use ui::{Banner, Checkbox, Divider, ToggleState, Tooltip, prelude::*};
 use crate::SettingsWindow;
 use crate::pages::network_allowlist;
 
-/// Prefix that keeps edit prediction consent independent from the agent's LLM
-/// provider consent. The two surfaces are configured separately (F2-4), and
-/// their provider ids would otherwise collide (`ollama`, `copilot`).
-const EDIT_PREDICTION_PREFIX: &str = "edit_prediction:";
-
 /// One provider the user has to opt into before it can be configured.
 #[derive(Clone)]
 pub(crate) struct ConsentTarget {
@@ -39,7 +34,8 @@ pub(crate) struct ConsentTarget {
     /// endpoints that the API URL does not reveal.
     pub hosts: Vec<SharedString>,
     /// Extra caveat shown under the host list, for providers whose real
-    /// endpoint cannot be derived from settings.
+    /// endpoint cannot be derived from settings. English marked with
+    /// `i18n::msg!`, translated where it is shown.
     pub note: Option<&'static str>,
 }
 
@@ -181,9 +177,9 @@ const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         default_api_url: None,
         extra_hosts: &[],
         always_external: true,
-        note: Some(
-            "接続先は AWS のリージョンによって変わります (例: bedrock-runtime.us-east-1.amazonaws.com)。実際に使用するリージョンのホストを許可リストに登録してください。",
-        ),
+        note: Some(i18n::msg!(
+            "The endpoint depends on the AWS region (for example, bedrock-runtime.us-east-1.amazonaws.com). Register the host for the region you actually use in the allowlist."
+        )),
     },
     BuiltinProvider {
         id: "copilot_chat",
@@ -293,10 +289,13 @@ fn release_hosts(
         return;
     }
 
-    let mut notice = format!("許可リストから削除しました: {}", joined(&release));
-    if !kept.is_empty() {
-        notice.push_str(&format!("。{}", kept_notice(&kept)));
-    }
+    let removed = joined(&release);
+    let notice = if kept.is_empty() {
+        i18n::t!("Removed from the allowlist: {removed}")
+    } else {
+        let kept = kept_notice(&kept);
+        i18n::t!("Removed from the allowlist: {removed}. {kept}")
+    };
     network_allowlist::remove_allowed_hosts(
         settings_window,
         &release,
@@ -310,15 +309,12 @@ fn joined(hosts: &[SharedString]) -> String {
         .iter()
         .map(SharedString::to_string)
         .collect::<Vec<_>>()
-        .join("、")
+        .join(i18n::tc!("list separator", ", "))
 }
 
 fn kept_notice(kept: &[SharedString]) -> SharedString {
-    format!(
-        "他の承諾済みプロバイダーが使用しているため、次のホストは残しました: {}",
-        joined(kept)
-    )
-    .into()
+    let hosts = joined(kept);
+    i18n::t!("Kept these hosts because another provider you consented to uses them: {hosts}").into()
 }
 
 /// Splits `hosts` into the ones to drop from the allowlist and the ones to keep.
@@ -382,10 +378,12 @@ fn hosts_needed_by_other_acknowledged_providers(key: &SharedString, cx: &App) ->
 /// `acknowledged_external_ai_providers`, so that a surface holding only the key
 /// — the acknowledged-providers list — can still say which hosts it opened.
 fn target_for_acknowledged_key(key: &SharedString, cx: &App) -> Option<ConsentTarget> {
-    if let Some(id) = key.as_ref().strip_prefix(EDIT_PREDICTION_PREFIX) {
+    if let Some(id) = edit_prediction::external_ai_consent_provider_id(key) {
         return super::edit_prediction_provider_setup::edit_prediction_consent_targets(cx)
             .into_iter()
-            .find(|target| target.key.as_ref().strip_prefix(EDIT_PREDICTION_PREFIX) == Some(id));
+            .find(|target| {
+                edit_prediction::external_ai_consent_provider_id(&target.key) == Some(id)
+            });
     }
     llm_provider_target(key, display_name_for_acknowledged_key(key, cx), cx)
 }
@@ -410,6 +408,8 @@ fn is_loopback(host: &str) -> bool {
 
 /// Builds a target from an endpoint the user typed or configured. Returns
 /// `None` when the endpoint is loopback, i.e. a local LLM that needs no warning.
+/// An endpoint without a host that can be read is not known to be local, so it
+/// still needs consent, with no host of its own to add to the allowlist.
 fn target_for_api_url(
     key: SharedString,
     name: SharedString,
@@ -417,11 +417,13 @@ fn target_for_api_url(
     extra_hosts: &[&'static str],
     note: Option<&'static str>,
 ) -> Option<ConsentTarget> {
-    let host = host_of(api_url)?;
-    if is_loopback(&host) {
-        return None;
+    let mut hosts = Vec::new();
+    if let Some(host) = host_of(api_url) {
+        if is_loopback(&host) {
+            return None;
+        }
+        hosts.push(host);
     }
-    let mut hosts = vec![host];
     hosts.extend(extra_hosts.iter().map(|host| SharedString::from(*host)));
     Some(ConsentTarget {
         key,
@@ -526,9 +528,9 @@ pub(crate) fn llm_provider_target(
         key,
         name: provider_name,
         hosts: Vec::new(),
-        note: Some(
-            "このプロバイダーの接続先は設定から特定できません。送信先を確認したうえで有効にしてください。",
-        ),
+        note: Some(i18n::msg!(
+            "This provider's endpoint cannot be determined from settings. Verify where your data will be sent before enabling it."
+        )),
     })
 }
 
@@ -557,7 +559,9 @@ pub(crate) fn edit_prediction_target(
     extra_hosts: &[&'static str],
     note: Option<&'static str>,
 ) -> Option<ConsentTarget> {
-    let key = SharedString::from(format!("{EDIT_PREDICTION_PREFIX}{provider}"));
+    // Edit prediction consent is kept apart from the agent's (F2-4), whose provider ids would
+    // otherwise collide (`ollama`, `copilot`); the key is the one the requests are checked against.
+    let key = SharedString::from(edit_prediction::external_ai_consent_key(provider));
     let name = SharedString::from(provider_name);
     match api_url {
         Some(api_url) => target_for_api_url(key, name, api_url, extra_hosts, note),
@@ -575,12 +579,12 @@ pub(crate) fn edit_prediction_target(
 }
 
 fn warning_headline(name: &SharedString) -> SharedString {
-    format!("{name} は外部の AI サービスです").into()
+    i18n::t!("{name} is an external AI service").into()
 }
 
 fn warning_body(name: &SharedString) -> SharedString {
-    format!(
-        "有効にすると、入力したコードや会話の内容が {name} のサーバーへ送信されます。事業者の方針によっては保存され、モデルの学習に利用される可能性があります。業務で利用する場合は、所属組織のポリシーを必ず確認してください。"
+    i18n::t!(
+        "When enabled, the code you enter and the content of your conversations are sent to {name}'s servers. Depending on the provider's policies, they may be stored and used to train models. If you use this for work, be sure to check your organization's policies."
     )
     .into()
 }
@@ -603,7 +607,11 @@ pub(crate) fn render_warning_content(
         )
         .child(render_hosts(settings_window, target, cx))
         .when_some(target.note, |this, note| {
-            this.child(Label::new(note).size(LabelSize::Small).color(Color::Muted))
+            this.child(
+                Label::new(i18n::tr(note))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
         })
         .into_any_element()
 }
@@ -653,11 +661,11 @@ pub(crate) fn render_hosts(
         .iter()
         .map(|host| {
             let state = if !is_loaded {
-                ""
+                String::new()
             } else if allowlist.allows(host) {
-                " (登録済み)"
+                format!(" {}", i18n::t!("(added)"))
             } else {
-                " (未登録)"
+                format!(" {}", i18n::t!("(not added)"))
             };
             h_flex()
                 .gap_0p5()
@@ -678,14 +686,14 @@ pub(crate) fn render_hosts(
                 .flex_wrap()
                 .gap_1p5()
                 .child(
-                    Label::new("許可が必要なホスト:")
+                    Label::new(i18n::t!("Hosts that need to be allowed:"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
                 .children(host_labels)
                 .when(!is_loaded, |this| {
                     this.child(
-                        Label::new("(許可リストを読み込み中です)")
+                        Label::new(i18n::t!("(loading the allowlist)"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -693,7 +701,7 @@ pub(crate) fn render_hosts(
                 .child(
                     Button::new(
                         SharedString::from(format!("external-ai-allowlist-{}", target.key)),
-                        "許可リストに追加",
+                        i18n::t!("Add to Allowlist"),
                     )
                     .label_size(LabelSize::Small)
                     .style(ButtonStyle::Outlined)
@@ -704,7 +712,9 @@ pub(crate) fn render_hosts(
                             .color(Color::Muted),
                     )
                     .tooltip(Tooltip::text(
-                        "network_allowlist.json に追加します。追加しない場合、このプロバイダーへの通信は拒否されたままになります",
+                        i18n::t!(
+                            "Adds them to network_allowlist.json. If you don't add them, traffic to this provider stays denied"
+                        ),
                     ))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         network_allowlist::add_allowed_hosts(this, &missing, cx);
@@ -750,7 +760,7 @@ fn render_consent_message(
         .child(
             Button::new(
                 SharedString::from(format!("external-ai-allowlist-{id}-{}", target.key)),
-                "閉じる",
+                i18n::t!("Dismiss"),
             )
             .label_size(LabelSize::Small)
             .on_click(cx.listener(|this, _, _, cx| {
@@ -775,14 +785,16 @@ fn render_release_hosts_row(
         .flex_wrap()
         .gap_1p5()
         .child(
-            Label::new("承諾していませんが、上のホストは許可リストに登録されたままです。")
+            Label::new(i18n::t!(
+                "You have not given consent, but the hosts above are still in the allowlist."
+            ))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         )
         .child(
             Button::new(
                 SharedString::from(format!("external-ai-allowlist-remove-{key}")),
-                "許可ホストを削除",
+                i18n::t!("Remove Allowed Hosts"),
             )
             .label_size(LabelSize::Small)
             .style(ButtonStyle::Outlined)
@@ -792,7 +804,9 @@ fn render_release_hosts_row(
                     .color(Color::Muted),
             )
             .tooltip(Tooltip::text(
-                "このプロバイダーのホストを network_allowlist.json から削除します。他の承諾済みプロバイダーが必要とするホストと、ワイルドカードなど別に書かれた項目は残します",
+                i18n::t!(
+                    "Removes this provider's hosts from network_allowlist.json. Hosts that another provider you consented to needs, and separately written entries such as wildcards, are kept"
+                ),
             ))
             .on_click(cx.listener(move |this, _, _, cx| {
                 release_hosts(this, &key, &registered, cx);
@@ -827,8 +841,8 @@ pub(crate) fn render_consent_gate(
                             SharedString::from(format!("external-ai-consent-{key}")),
                             ToggleState::Unselected,
                         )
-                        .label(format!(
-                            "上記のリスクを理解したうえで、{name} を有効にします"
+                        .label(i18n::t!(
+                            "I understand the risks above and want to enable {name}"
                         ))
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(
@@ -856,11 +870,13 @@ pub(crate) fn render_revoke_button(
     hosts: Vec<SharedString>,
     cx: &mut Context<SettingsWindow>,
 ) -> Button {
-    Button::new(id, "承諾を取り消す")
+    Button::new(id, i18n::t!("Revoke Consent"))
         .label_size(LabelSize::Small)
         .style(ButtonStyle::Outlined)
         .tooltip(Tooltip::text(
-            "承諾を取り消すと、再び警告が表示され設定できなくなります。このプロバイダーのために許可リストへ登録したホストも削除します",
+            i18n::t!(
+                "Revoking consent shows the warning again, and the provider can no longer be configured. Also removes the hosts registered in the allowlist for this provider"
+            ),
         ))
         .on_click(cx.listener(move |this, _, _, cx| {
             revoke(this, key.clone(), &hosts, cx);
@@ -886,9 +902,11 @@ pub(crate) fn render_acknowledged_row(
                 .color(Color::Muted),
         )
         .child(
-            Label::new("外部の AI サービスとして利用することを承諾済みです。")
-                .size(LabelSize::Small)
-                .color(Color::Muted),
+            Label::new(i18n::t!(
+                "You have consented to using this as an external AI service."
+            ))
+            .size(LabelSize::Small)
+            .color(Color::Muted),
         )
         .child(render_revoke_button(
             SharedString::from(format!("external-ai-revoke-{key}")),
@@ -944,7 +962,7 @@ fn display_name_for_acknowledged_key(key: &SharedString, cx: &App) -> SharedStri
         return "Zed".into();
     }
 
-    if let Some(id) = key.as_ref().strip_prefix(EDIT_PREDICTION_PREFIX) {
+    if let Some(id) = edit_prediction::external_ai_consent_provider_id(key) {
         // Mirrors the display names passed to `edit_prediction_target` at each
         // call site in `edit_prediction_provider_setup.rs`; there is no shared
         // registry of edit prediction provider names to look these up from.
@@ -956,7 +974,7 @@ fn display_name_for_acknowledged_key(key: &SharedString, cx: &App) -> SharedStri
             "ollama" => "Ollama",
             _ => id,
         };
-        return format!("{name} (編集予測)").into();
+        return i18n::t!("{name} (Edit Prediction)").into();
     }
 
     LanguageModelRegistry::read_global(cx)
@@ -999,20 +1017,23 @@ pub(crate) fn render_acknowledged_ai_providers_page(
                             .color(Color::Muted),
                     )
                     .child(
-                        Button::new("acknowledged-ai-providers-dismiss-notice", "閉じる")
-                            .label_size(LabelSize::Small)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                network_allowlist::dismiss_error(this, cx);
-                            })),
+                        Button::new(
+                            "acknowledged-ai-providers-dismiss-notice",
+                            i18n::t!("Dismiss"),
+                        )
+                        .label_size(LabelSize::Small)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            network_allowlist::dismiss_error(this, cx);
+                        })),
                     ),
             )
         })
         .map(|this| {
             if keys.is_empty() {
-                this.px_8()
-                    .items_center()
-                    .justify_center()
-                    .child(Label::new("承諾済みのプロバイダーはありません。").color(Color::Muted))
+                this.px_8().items_center().justify_center().child(
+                    Label::new(i18n::t!("You have not consented to any providers."))
+                        .color(Color::Muted),
+                )
             } else {
                 let row_count = keys.len();
                 this.track_scroll(scroll_handle)
@@ -1075,10 +1096,13 @@ fn render_acknowledged_provider_row(
                 })
                 .when(!registered.is_empty(), |this| {
                     this.child(
-                        Label::new(format!("許可リストに登録済み: {}", joined(&registered)))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .buffer_font(cx),
+                        Label::new(i18n::t!(
+                            "Registered in the allowlist: {hosts}",
+                            hosts = joined(&registered)
+                        ))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted)
+                        .buffer_font(cx),
                     )
                 }),
         )
@@ -1147,6 +1171,19 @@ mod tests {
             assert!(
                 target_for_api_url("k".into(), "n".into(), api_url, &[], None).is_none(),
                 "{api_url} should count as local"
+            );
+        }
+    }
+
+    #[test]
+    fn an_endpoint_that_does_not_parse_still_needs_consent() {
+        for api_url in ["", "localhost:11434", "not a url", "http://"] {
+            let target = target_for_api_url("k".into(), "n".into(), api_url, &["github.com"], None)
+                .unwrap_or_else(|| panic!("{api_url:?} is not known to be local"));
+            assert_eq!(
+                target.hosts,
+                vec![SharedString::from("github.com")],
+                "{api_url:?} has no host of its own to allow"
             );
         }
     }
@@ -1440,12 +1477,12 @@ mod tests {
             );
             assert_eq!(
                 display_name_for_acknowledged_key(&keys[1], cx),
-                SharedString::from("GitHub Copilot (編集予測)")
+                SharedString::from("GitHub Copilot (Edit Prediction)")
             );
             assert_eq!(
                 display_name_for_acknowledged_key(&keys[2], cx),
-                SharedString::from("mystery-provider (編集予測)"),
-                "an unknown edit prediction id should still get the (編集予測) suffix"
+                SharedString::from("mystery-provider (Edit Prediction)"),
+                "an unknown edit prediction id should still get the (Edit Prediction) suffix"
             );
             assert_eq!(
                 display_name_for_acknowledged_key(&keys[3], cx),

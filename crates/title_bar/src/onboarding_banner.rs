@@ -46,7 +46,7 @@ impl OnboardingBanner {
                 action,
                 icon_name,
                 label: label.into(),
-                subtitle: subtitle.or(Some(SharedString::from("新機能:"))),
+                subtitle: subtitle.or(Some(SharedString::from(i18n::t!("Introducing:")))),
             },
             visible_when: None,
             dismissed: get_dismissed(source, cx),
@@ -164,9 +164,9 @@ impl Render for OnboardingBanner {
                         }))
                         .tooltip(|_window, cx| {
                             Tooltip::with_meta(
-                                "お知らせバナーを閉じる",
+                                i18n::t!("Close Announcement Banner"),
                                 None,
-                                "この機能については再表示されません",
+                                i18n::t!("It won't show again for this feature"),
                                 cx,
                             )
                         }),

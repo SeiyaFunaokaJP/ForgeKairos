@@ -1,0 +1,148 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(none)"
+msgstr "(なし)"
+
+msgid "(not given)"
+msgstr "(指定なし)"
+
+msgid "Agents can't be started in a sandbox in a project that has no folder open."
+msgstr "フォルダーを開いていないプロジェクトでは、エージェントをサンドボックスで起動できません。"
+
+msgid "Agents can't be started in a sandbox on this remote host (it isn't a Linux host, or the sandbox helper can't be put on it)."
+msgstr "このリモートホストでは、エージェントをサンドボックスで起動できません (Linux 以外のホストか、サンドボックスのヘルパーを置けないホストです)。"
+
+msgid "An I/O error occurred while preparing the sandbox."
+msgstr "サンドボックスの準備中に入出力エラーが発生しました。"
+
+msgid "Arguments (one per line)"
+msgstr "引数 (1 行に 1 つ)"
+
+msgid "Command"
+msgstr "コマンド"
+
+msgid "Couldn't check the agent's install folder `{}`"
+msgstr "エージェントのインストール先 `{}` を確認できませんでした"
+
+msgid "Couldn't check the folder `{}` that writing is allowed in"
+msgstr "書込を許可するフォルダー `{}` を確認できませんでした"
+
+msgid "Couldn't create the sandbox."
+msgstr "サンドボックスを作成できませんでした。"
+
+msgid "Couldn't prepare the agent's configuration folder"
+msgstr "エージェントの設定フォルダーを用意できませんでした"
+
+msgid "Couldn't prepare the agent's configuration folder."
+msgstr "エージェントの設定フォルダーを用意できませんでした。"
+
+msgid "Couldn't put the sandbox configuration together"
+msgstr "サンドボックスの構成を組み立てられませんでした"
+
+msgid "Couldn't start the agent in the sandbox"
+msgstr "エージェントをサンドボックスで起動できませんでした"
+
+msgid "Couldn't start the sign-in in the sandbox"
+msgstr "サインインをサンドボックスで起動できませんでした"
+
+msgid "Environment Variables the Agent Sets"
+msgstr "エージェントが設定する環境変数"
+
+msgid "Parts of this are left out because it is long. If you allow it, it runs in full, including the parts left out."
+msgstr "表示が長いため一部を省略しています。許可すると、省略した部分も含めてそのまま実行されます。"
+
+msgid "Technical details"
+msgstr "技術的な詳細"
+
+msgid "The Zed server on the remote host is too old to start agents in a sandbox. Reconnect to update the server."
+msgstr "接続先の Zed のサーバーが古いため、エージェントをサンドボックスで起動できません。接続し直してサーバーを更新してください。"
+
+msgid "The agent was started outside the sandbox (on this PC), so its commands run on this PC too (Windows commands don't run in the WSL sandbox)"
+msgstr "エージェントをサンドボックスの外 (この PC) で起動しているため、コマンドもこの PC で実行します (WSL のサンドボックスでは Windows のコマンドが動かないため)"
+
+msgid "The environment variable has no name (internal error)"
+msgstr "環境変数の名前が空です (内部エラー)"
+
+msgid "The folder {} can't be shown to the sandbox"
+msgstr "フォルダー {} をサンドボックスから見せられません"
+
+msgid "The project is in the WSL distribution `{project}`, but the name of the default distribution the sandbox runs in isn't known."
+msgstr "プロジェクトは WSL ディストリビューション `{project}` にありますが、サンドボックスが動く既定のディストリビューションの名前が分かりません。"
+
+msgid "The project is in the WSL distribution `{project}`, but the sandbox runs in `{sandbox}`."
+msgstr "プロジェクトは WSL ディストリビューション `{project}` にありますが、サンドボックスは `{sandbox}` で動いています。"
+
+msgid "The project's folders span two WSL distributions (`{first}`, `{second}`), and the sandbox runs in only one."
+msgstr "プロジェクトのフォルダーが 2 つの WSL ディストリビューション (`{first}`、`{second}`) にまたがっており、サンドボックスは 1 つのディストリビューションでしか動きません。"
+
+msgid "The reason was written to Zed's log."
+msgstr "理由は Zed のログに記録しました。"
+
+msgid "The request to the sandbox is invalid."
+msgstr "サンドボックスへの要求の内容が不正です。"
+
+msgid "The requested sandbox configuration can't be applied in this environment."
+msgstr "この環境では、要求されたサンドボックスの構成を適用できません。"
+
+msgid "The sandbox is turned off in the settings. The agent runs inside WSL, so its commands run in the same WSL, without the write and network restrictions"
+msgstr "設定でサンドボックスが無効になっています。エージェントは WSL の中で動いているため、コマンドも同じ WSL の中で書き込みと通信の制限を外して実行します"
+
+msgid "The sandbox's bridge executable wasn't found. Zed's installation may be damaged."
+msgstr "サンドボックスのブリッジ実行ファイルを見つけられませんでした。Zed のインストールが壊れている可能性があります。"
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "設定でファイルシステムへの書き込みがすべて許可されています"
+
+msgid "The value of {name} contains a line break or a control character"
+msgstr "{name} の値に改行や制御文字が含まれています"
+
+msgid "There's no sandbox implementation for this OS."
+msgstr "この OS 向けのサンドボックスの実装がありません。"
+
+msgid "This project's folders can't be shown to the WSL sandbox: {}"
+msgstr "このプロジェクトのフォルダーを WSL のサンドボックスから見せられません: {}"
+
+msgid "This way of starting the agent can't use the WSL sandbox (on Windows, agents run as their Linux versions inside WSL)."
+msgstr "この起動方法では WSL のサンドボックスを使えません (Windows ではエージェントを WSL の中の Linux 版で動かします)。"
+
+msgid "WSL didn't respond within {} seconds. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
+msgstr "WSL が {} 秒以内に応答しませんでした。しばらく待ってから再試行し、改善しない場合は `wsl --shutdown` で WSL を再起動してください。"
+
+msgid "Working Directory"
+msgstr "作業ディレクトリ"
+
+msgid "Writing to the settings file didn't finish"
+msgstr "設定ファイルへの書き込みが終わりませんでした"
+
+msgid "`{name}` can't be used as a WSL distribution name."
+msgstr "`{name}` は WSL ディストリビューション名として使えません。"
+
+msgid "{headline}."
+msgstr "{headline}。"
+
+msgid "{headline}: {reason}"
+msgstr "{headline}: {reason}"
+
+msgid "{kept}… ({count} byte left out)"
+msgid_plural "{kept}… ({count} bytes left out)"
+msgstr[0] "{kept}… ({count} バイト省略)"
+
+msgid "{name} has no value"
+msgstr "{name} の値が空です"
+
+msgid "{} is a Windows drive seen through WSL. Open it by its drive letter."
+msgstr "{} は WSL 経由で見えている Windows のドライブです。ドライブ文字で開いてください。"
+
+msgid "{} is on a network share, which the WSL sandbox can't reach."
+msgstr "{} はネットワーク共有上にあり、WSL のサンドボックスからは届きません。"
+
+msgid "{} isn't an absolute Windows path."
+msgstr "{} は Windows の絶対パスではありません。"
+
+msgid "… ({remaining} more)"
+msgstr "… (残り {remaining} 件)"

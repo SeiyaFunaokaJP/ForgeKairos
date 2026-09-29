@@ -110,7 +110,7 @@ impl PanelThreadHistory {
     ) -> Self {
         let filter_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("スレッドを検索…", window, cx);
+            editor.set_placeholder_text(i18n::t!("Search threads…"), window, cx);
             editor
         });
 
@@ -375,7 +375,7 @@ impl PanelThreadHistory {
                                 .icon_size(IconSize::Small)
                                 .tooltip(move |_window, cx| {
                                     Tooltip::for_action_in(
-                                        "スレッドをアーカイブ",
+                                        i18n::t!("Archive Thread"),
                                         &ArchiveSelectedThread,
                                         &focus_handle,
                                         cx,
@@ -408,7 +408,7 @@ impl PanelThreadHistory {
                         let history = history.clone();
                         let thread = thread.clone();
                         ContextMenu::build(window, cx, move |menu, _window, _cx| {
-                            menu.entry("タブで開く", None, {
+                            menu.entry(i18n::t!("Open in Tab"), None, {
                                 let history = history.clone();
                                 let thread = thread.clone();
                                 move |_window, cx| {
@@ -420,16 +420,20 @@ impl PanelThreadHistory {
                                     });
                                 }
                             })
-                            .entry("右に分割して開く", None, {
-                                move |_window, cx| {
-                                    history.update(cx, |_this, cx| {
-                                        cx.emit(PanelThreadHistoryEvent::OpenInTab {
-                                            thread: thread.clone(),
-                                            split: true,
+                            .entry(
+                                i18n::t!("Open in Right Split"),
+                                None,
+                                {
+                                    move |_window, cx| {
+                                        history.update(cx, |_this, cx| {
+                                            cx.emit(PanelThreadHistoryEvent::OpenInTab {
+                                                thread: thread.clone(),
+                                                split: true,
+                                            });
                                         });
-                                    });
-                                }
-                            })
+                                    }
+                                },
+                            )
                         })
                     })
                     .into_any_element()
@@ -451,7 +455,7 @@ impl PanelThreadHistory {
                     .gap_1()
                     .child(
                         div().flex_1().min_w_0().child(
-                            Button::new("panel-history-new-thread", "新規スレッド")
+                            Button::new("panel-history-new-thread", i18n::t!("New Thread"))
                                 .start_icon(Icon::new(IconName::Plus).size(IconSize::Small))
                                 .label_size(LabelSize::Small)
                                 .full_width()
@@ -463,7 +467,7 @@ impl PanelThreadHistory {
                     .child(
                         IconButton::new("panel-history-collapse", IconName::ChevronLeft)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("スレッド履歴を閉じる"))
+                            .tooltip(Tooltip::text(i18n::t!("Close Thread History")))
                             .on_click(cx.listener(|_this, _, _window, cx| {
                                 cx.emit(PanelThreadHistoryEvent::Collapse);
                             })),
@@ -483,7 +487,7 @@ impl PanelThreadHistory {
                         this.child(
                             IconButton::new("panel-history-clear-filter", IconName::Close)
                                 .icon_size(IconSize::Small)
-                                .tooltip(Tooltip::text("検索をクリア"))
+                                .tooltip(Tooltip::text(i18n::t!("Clear Search")))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.filter_editor.update(cx, |editor, cx| {
                                         editor.set_text("", window, cx);
@@ -526,7 +530,7 @@ impl PanelThreadHistory {
                         .end_slot_on_hover(
                             IconButton::new(("panel-open-tab-close", index), IconName::Close)
                                 .icon_size(IconSize::Small)
-                                .tooltip(Tooltip::text("タブを閉じる"))
+                                .tooltip(Tooltip::text(i18n::t!("Close Tab")))
                                 .on_click(cx.listener(move |_this, _, _window, cx| {
                                     cx.emit(PanelThreadHistoryEvent::CloseOpenTab(id));
                                     cx.stop_propagation();
@@ -548,7 +552,7 @@ impl PanelThreadHistory {
                 .border_color(cx.theme().colors().border)
                 .child(
                     div().px_2().pt_1p5().pb_0p5().child(
-                        Label::new("開いているタブ")
+                        Label::new(i18n::t!("Open Tabs"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),
@@ -622,9 +626,9 @@ impl Render for PanelThreadHistory {
 
         let body = if self.items.is_empty() {
             let message = if has_query {
-                "検索条件に一致するスレッドはありません。"
+                i18n::t!("No threads match your search.")
             } else {
-                "まだスレッドはありません。"
+                i18n::t!("No threads yet.")
             };
 
             v_flex()

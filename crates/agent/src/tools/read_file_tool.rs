@@ -229,16 +229,16 @@ impl AgentTool for ReadFileTool {
         {
             match (input.start_line, input.end_line) {
                 (Some(start), Some(end)) => {
-                    format!("ファイル `{path}` を読み込み ({}-{} 行)", start, end,)
+                    i18n::t!("Read file `{path}` (lines {}-{})", start, end,)
                 }
                 (Some(start), None) => {
-                    format!("ファイル `{path}` を読み込み ({} 行目以降)", start)
+                    i18n::t!("Read file `{path}` (from line {})", start)
                 }
-                _ => format!("ファイル `{path}` を読み込み"),
+                _ => i18n::t!("Read file `{path}`"),
             }
             .into()
         } else {
-            "ファイルを読み込み".into()
+            i18n::t!("Read file").into()
         }
     }
 
@@ -1286,7 +1286,7 @@ mod test {
                 .fields
                 .title
                 .as_deref()
-                .is_some_and(|title| title.contains("プロジェクトの外を指しています")),
+                .is_some_and(|title| title.contains("points outside the project")),
             "Expected symlink escape authorization before reading the image"
         );
         authorization
@@ -1580,7 +1580,7 @@ mod test {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています"),
+            title.contains("points outside the project"),
             "title: {title}"
         );
 

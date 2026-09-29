@@ -204,7 +204,7 @@ impl PickerDelegate for ScopeSelectorDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _: &mut App) -> Arc<str> {
-        "スニペットの適用範囲を選択...".into()
+        i18n::t!("Select snippet scope...").into()
     }
 
     fn match_count(&self) -> usize {

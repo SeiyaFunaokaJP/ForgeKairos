@@ -168,7 +168,7 @@ impl ThreadSearchBar {
     ) -> Self {
         let query_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("このスレッドを検索…", window, cx);
+            editor.set_placeholder_text(i18n::t!("Search this thread…"), window, cx);
             editor
         });
         let editor_subscription = cx.subscribe_in(
@@ -777,7 +777,7 @@ impl Render for ThreadSearchBar {
                         "thread-search-prev",
                         IconName::ChevronLeft,
                         !has_matches,
-                        "前の一致",
+                        i18n::t!("Previous Match"),
                         &SelectPreviousThreadMatch,
                         focus_handle.clone(),
                     ))
@@ -785,7 +785,7 @@ impl Render for ThreadSearchBar {
                         "thread-search-next",
                         IconName::ChevronRight,
                         !has_matches,
-                        "次の一致",
+                        i18n::t!("Next Match"),
                         &SelectNextThreadMatch,
                         focus_handle.clone(),
                     ))
@@ -800,7 +800,7 @@ impl Render for ThreadSearchBar {
                         "thread-search-dismiss",
                         IconName::Close,
                         false,
-                        "検索を閉じる",
+                        i18n::t!("Close Search"),
                         &DismissThreadSearch,
                         focus_handle,
                     )),

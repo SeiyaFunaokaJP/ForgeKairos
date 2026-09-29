@@ -5,5 +5,155 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Add to Allowlist and Update"
+msgstr "許可リストに追加して更新"
+
+msgid "Agentic"
+msgstr "エージェント"
+
+msgid "Application menu"
+msgstr "アプリケーションメニュー"
+
+msgid "Branch & Stash"
+msgstr "ブランチとスタッシュ"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Classic"
+msgstr "クラシック"
+
+msgid "Click to Follow"
+msgstr "クリックすると追従します"
+
+msgid "Close Announcement Banner"
+msgstr "お知らせバナーを閉じる"
+
+msgid "Connected to: {host}"
+msgstr "{host} に接続済み"
+
+msgid "Connecting to: {host}"
+msgstr "{host} に接続しています"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "{host} への応答がありません。再試行しています..."
+
+msgid "Create Branch"
+msgstr "ブランチを作成"
+
+msgid "Creating {}…"
+msgstr "{} を作成しています…"
+
+msgid "Currently Checked Out: {}"
+msgstr "チェックアウト中: {}"
+
+msgid "Currently In Use: {}"
+msgstr "使用中: {}"
+
+msgid "Custom"
+msgstr "カスタム"
+
+msgid "Dev Container"
+msgstr "開発コンテナー"
+
+msgid "Disconnected"
+msgstr "切断されました"
+
+msgid "Disconnected from {host}"
+msgstr "{host} から切断されました"
+
+msgid "Downloading the update needs network access"
+msgstr "更新のダウンロードにはネットワークの許可が必要です"
+
+msgid "Extensions"
+msgstr "拡張機能"
+
+msgid "Icon Themes…"
+msgstr "アイコンテーマ…"
+
+msgid "Introducing:"
+msgstr "新機能:"
+
+msgid "It won't show again for this feature"
+msgstr "この機能については再表示されません"
+
+msgid "Keymap"
+msgstr "キーマップ"
+
+msgid "Loading {}…"
+msgstr "{} を読み込んでいます…"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "{host} との接続が切れました。再接続しています..."
+
+msgid "Mark this project as trusted and unlock all features"
+msgstr "このプロジェクトを信頼済みにしてすべての機能を有効にします"
+
+msgid "Open Application Menu"
+msgstr "アプリケーションメニューを開く"
+
+msgid "Open Recent Project"
+msgstr "最近のプロジェクトを開く"
+
 msgid "Organization"
 msgstr "組織"
+
+msgid "Panel Layout"
+msgstr "パネルレイアウト"
+
+msgid "Please restart Zed to Collaborate"
+msgstr "Zed を再起動して更新を適用"
+
+msgid "Please update Zed to Collaborate"
+msgstr "Zed を最新版に更新してください"
+
+msgid "Recent Projects"
+msgstr "最近のプロジェクト"
+
+msgid "Remote Project"
+msgstr "リモートプロジェクト"
+
+msgid "Restart to update Zed"
+msgstr "再起動して Zed を更新"
+
+msgid "Restricted Mode"
+msgstr "制限モード"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Sign In"
+msgstr "サインイン"
+
+msgid "Sign Out"
+msgstr "サインアウト"
+
+msgid "Signing in…"
+msgstr "サインインしています…"
+
+msgid "Themes…"
+msgstr "テーマ…"
+
+msgid "To download version {version}, these hosts must be added to the network allowlist:\n\n{hosts}\n\nOnce added, connections to them are always allowed. You can remove them at any time on the Network page of the settings."
+msgstr "バージョン {version} をダウンロードするには、次のホストをネットワーク許可リストに追加する必要があります。\n\n{hosts}\n\n追加すると、これらのホストへの通信は以後常に許可されます。設定の「ネットワーク」ページでいつでも取り消せます。"
+
+msgid "Toggle AI chat"
+msgstr "AI チャットを開閉"
+
+msgid "Update Needs Permission"
+msgstr "更新には許可が必要です"
+
+msgid "Updating..."
+msgstr "更新しています..."
+
+msgid "User menu"
+msgstr "ユーザーメニュー"
+
+msgid "Worktree"
+msgstr "ワークツリー"
+
+msgid "You're in Restricted Mode"
+msgstr "制限モードで開いています"
+
+msgid "{} is sharing this project. Click to follow."
+msgstr "{} がこのプロジェクトを共有しています。"

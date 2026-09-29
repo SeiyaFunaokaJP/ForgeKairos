@@ -568,4 +568,3 @@ msgstr "拡大"
 msgctxt "menu"
 msgid "Zoom Out"
 msgstr "縮小"
-

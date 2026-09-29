@@ -58,8 +58,8 @@ pub enum PaneSide {
 impl PaneSide {
     fn label(self) -> &'static str {
         match self {
-            PaneSide::Local => "ローカル",
-            PaneSide::Remote => "リモート",
+            PaneSide::Local => i18n::t!("Local"),
+            PaneSide::Remote => i18n::t!("Remote"),
         }
     }
 }
@@ -136,10 +136,10 @@ enum JobStatus {
 impl JobStatus {
     fn label(&self) -> &'static str {
         match self {
-            JobStatus::Pending => "待機中",
-            JobStatus::Running => "実行中",
-            JobStatus::Done => "完了",
-            JobStatus::Failed(_) => "失敗",
+            JobStatus::Pending => i18n::t!("Queued"),
+            JobStatus::Running => i18n::t!("Running"),
+            JobStatus::Done => i18n::t!("Done"),
+            JobStatus::Failed(_) => i18n::t!("Failed"),
         }
     }
 
@@ -375,19 +375,19 @@ impl FileTransferModal {
             .as_ref()
             .map(|target| target.protocol)
             .unwrap_or_default();
-        let host = single_line("ホスト名 / IP アドレス", window, cx);
-        let user = single_line("ユーザー名", window, cx);
+        let host = single_line(i18n::t!("Host name / IP address"), window, cx);
+        let user = single_line(i18n::t!("User name"), window, cx);
         let port = cx.new(|cx| Editor::single_line(window, cx));
         let password = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
             // Optional: an SSH host that takes a key never asks for one, and
             // the field only matters when it does (第 12 便).
-            editor.set_placeholder_text("パスワード (省略可)", window, cx);
+            editor.set_placeholder_text(i18n::t!("Password (optional)"), window, cx);
             editor.set_masked(true, cx);
             editor
         });
-        let preset_name = single_line("接続名", window, cx);
-        let preset_folder = single_line("フォルダー (例: 拠点/本社)", window, cx);
+        let preset_name = single_line(i18n::t!("Connection name"), window, cx);
+        let preset_folder = single_line(i18n::t!("Folder (e.g. Offices/Head Office)"), window, cx);
         let local_path = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
             editor.set_text(local_root, window, cx);
@@ -538,7 +538,7 @@ impl FileTransferModal {
                 plain.zeroize();
                 cx.notify();
             }
-            Err(error) => log::warn!("保存されたパスワードを復号できませんでした: {error:#}"),
+            Err(error) => log::warn!("could not decrypt the saved password: {error:#}"),
         }
     }
 
@@ -579,7 +579,7 @@ impl FileTransferModal {
                         Ok(())
                     }
                     Err(error) => {
-                        log::warn!("入力されたパスワードを渡せませんでした: {error:#}");
+                        log::warn!("could not pass on the entered password: {error:#}");
                         Err(AskPassResponder::Encrypted(sender))
                     }
                 }
@@ -613,7 +613,7 @@ impl FileTransferModal {
                         Ok(())
                     }
                     Err(error) => {
-                        log::warn!("保存されたパスワードを復号できませんでした: {error:#}");
+                        log::warn!("could not decrypt the saved password: {error:#}");
                         Err(AskPassResponder::Plain(sender))
                     }
                 }
@@ -670,7 +670,7 @@ impl FileTransferModal {
                     Ok(()) => {
                         this.stored_password = None;
                         this.stored_password_key = None;
-                        this.status = Some("保存されたパスワードを消しました。".into());
+                        this.status = Some(i18n::t!("Removed the saved password.").into());
                         if this.protocol.uses_password() {
                             this.password
                                 .update(cx, |editor, cx| editor.set_text("", window, cx));
@@ -699,7 +699,7 @@ impl FileTransferModal {
         } else {
             port_text
                 .parse::<u16>()
-                .map_err(|_| SharedString::from("ポート番号が不正です。"))?
+                .map_err(|_| SharedString::from(i18n::t!("The port number is invalid.")))?
         };
         Ok(RemoteTarget {
             protocol: self.protocol,
@@ -810,9 +810,9 @@ impl FileTransferModal {
             StoredPasswordUse::Rejected => {
                 self.status = Some(
                     if self.typed_password(cx).is_some() {
-                        "入力したパスワードが拒否されました。入力し直してください。"
+                        i18n::t!("The password you entered was rejected. Enter it again.")
                     } else {
-                        "保存されたパスワードが拒否されました。入力し直してください。"
+                        i18n::t!("The saved password was rejected. Enter it again.")
                     }
                     .into(),
                 );
@@ -833,7 +833,8 @@ impl FileTransferModal {
                 kind: PromptKind::AskPass {
                     responder: Some(responder),
                 },
-                title: "このホストの鍵は初めてです。接続を続けますか?".into(),
+                title: i18n::t!("This host's key has not been seen before. Continue connecting?")
+                    .into(),
                 detail: Some(prompt.into()),
                 editor: None,
                 buttons: PromptButtons::YesNo,
@@ -898,7 +899,7 @@ impl FileTransferModal {
         // Every attempt gets one go at the password in hand.
         self.password_answered = false;
         self.connecting = true;
-        self.status = Some(format!("{} に接続しています…", target.describe()).into());
+        self.status = Some(i18n::t!("Connecting to {target}…", target = target.describe()).into());
         cx.notify();
 
         // Looked up here as well as on every form change, so a hand-typed host
@@ -989,14 +990,16 @@ impl FileTransferModal {
         self.draining = false;
         for job in &mut self.jobs {
             if job.status.is_unfinished() {
-                job.status = JobStatus::Failed("切断されたため中止しました。".into());
+                job.status = JobStatus::Failed(
+                    i18n::t!("Stopped because the connection was closed.").into(),
+                );
             }
         }
         self.remote = PaneState::default();
         self.prompt = None;
         self.password
             .update(cx, |editor, cx| editor.set_text("", window, cx));
-        self.status = Some("切断しました。".into());
+        self.status = Some(i18n::t!("Disconnected.").into());
         cx.notify();
     }
 
@@ -1075,7 +1078,8 @@ impl FileTransferModal {
         // whatever little the store happens to hold, the same trap the quick
         // connect modal guards against.
         if !self.store.read(cx).is_loaded() {
-            self.status = Some("接続先の一覧をまだ読み込めていません。".into());
+            self.status =
+                Some(i18n::t!("The list of saved connections has not loaded yet.").into());
             cx.notify();
             return;
         }
@@ -1120,8 +1124,8 @@ impl FileTransferModal {
             let result = write.await;
             this.update(cx, |this, cx| {
                 this.status = Some(match result {
-                    Ok(()) => format!("接続先「{name}」を保存しました。").into(),
-                    Err(error) => format!("接続先を保存できませんでした: {error}").into(),
+                    Ok(()) => i18n::t!("Saved the connection \"{name}\".").into(),
+                    Err(error) => i18n::t!("Could not save the connection: {error}").into(),
                 });
                 cx.notify();
             })
@@ -1133,7 +1137,8 @@ impl FileTransferModal {
     /// lives in the file, so the quick connect modal shows the same one.
     fn move_preset(&mut self, index: usize, up: bool, cx: &mut Context<Self>) {
         if !self.store.read(cx).is_loaded() {
-            self.status = Some("接続先の一覧をまだ読み込めていません。".into());
+            self.status =
+                Some(i18n::t!("The list of saved connections has not loaded yet.").into());
             cx.notify();
             return;
         }
@@ -1149,7 +1154,7 @@ impl FileTransferModal {
         self._preset_work = Some(cx.spawn(async move |this, cx| {
             if let Err(error) = write.await {
                 this.update(cx, |this, cx| {
-                    this.status = Some(format!("並び順を保存できませんでした: {error}").into());
+                    this.status = Some(i18n::t!("Could not save the order: {error}").into());
                     cx.notify();
                 })
                 .log_err();
@@ -1208,7 +1213,7 @@ impl FileTransferModal {
                     Ok(entries) => this.local.replace(entries),
                     Err(error) => this
                         .local
-                        .fail(format!("フォルダーを開けませんでした: {error:#}").into()),
+                        .fail(i18n::t!("Could not open the folder: {error:#}").into()),
                 }
                 cx.notify();
             })
@@ -1218,7 +1223,7 @@ impl FileTransferModal {
 
     fn refresh_remote(&mut self, cx: &mut Context<Self>) {
         let Some(backend) = self.backend.clone() else {
-            self.status = Some("先に接続してください。".into());
+            self.status = Some(i18n::t!("Connect first.").into());
             cx.notify();
             return;
         };
@@ -1233,12 +1238,16 @@ impl FileTransferModal {
                     Ok(entries) => {
                         this.remote.replace(entries);
                         this.status = Some(
-                            format!("{} に接続しました。", backend.target().describe()).into(),
+                            i18n::t!(
+                                "Connected to {target}.",
+                                target = backend.target().describe()
+                            )
+                            .into(),
                         );
                     }
                     Err(error) => {
                         this.remote.fail(format!("{error:#}").into());
-                        this.status = Some("リモートの一覧を取得できませんでした。".into());
+                        this.status = Some(i18n::t!("Could not list the remote folder.").into());
                     }
                 }
                 cx.notify();
@@ -1482,7 +1491,7 @@ impl FileTransferModal {
         let side = self.active_side;
         self.open_prompt(
             PromptKind::NewFolder(side),
-            format!("{}に作成するフォルダー名", side.label()),
+            i18n::t!("Name of the new folder ({side})", side = side.label()),
             Some(String::new()),
             window,
             cx,
@@ -1493,12 +1502,12 @@ impl FileTransferModal {
         let side = self.active_side;
         let selected = self.pane(side).selected_entries();
         if selected.len() > 1 {
-            self.status = Some("名前の変更は 1 件ずつ行ってください。".into());
+            self.status = Some(i18n::t!("Rename one item at a time.").into());
             cx.notify();
             return;
         }
         let Some(entry) = selected.into_iter().next() else {
-            self.status = Some("名前を変更する項目を選んでください。".into());
+            self.status = Some(i18n::t!("Select the item to rename.").into());
             cx.notify();
             return;
         };
@@ -1507,7 +1516,7 @@ impl FileTransferModal {
                 side,
                 from: entry.name.clone(),
             },
-            format!("「{}」の新しい名前", entry.name),
+            i18n::t!("New name for \"{name}\"", name = entry.name),
             Some(entry.name),
             window,
             cx,
@@ -1518,7 +1527,7 @@ impl FileTransferModal {
         let side = self.active_side;
         let selected = self.pane(side).selected_entries();
         if selected.is_empty() {
-            self.status = Some("削除する項目を選んでください。".into());
+            self.status = Some(i18n::t!("Select the items to delete.").into());
             cx.notify();
             return;
         }
@@ -1526,7 +1535,7 @@ impl FileTransferModal {
             .iter()
             .map(|entry| entry.name.clone())
             .collect::<Vec<_>>()
-            .join("、");
+            .join(i18n::tc!("list separator", ", "));
         self.open_prompt(
             PromptKind::Delete {
                 side,
@@ -1535,7 +1544,7 @@ impl FileTransferModal {
                     .map(|entry| (entry.name, entry.kind))
                     .collect(),
             },
-            format!("{}の「{names}」を削除しますか?", side.label()),
+            i18n::t!("Delete \"{names}\" ({side})?", side = side.label()),
             None,
             window,
             cx,
@@ -1578,7 +1587,7 @@ impl FileTransferModal {
                             }
                             Err(error) => {
                                 self.status =
-                                    Some(format!("入力を渡せませんでした: {error}").into())
+                                    Some(i18n::t!("Could not pass on the input: {error}").into())
                             }
                         }
                     }
@@ -1623,7 +1632,7 @@ impl FileTransferModal {
         cx: &mut Context<Self>,
     ) {
         if side == PaneSide::Remote && self.backend.is_none() {
-            self.status = Some("先に接続してください。".into());
+            self.status = Some(i18n::t!("Connect first.").into());
             cx.notify();
             return;
         }
@@ -1650,7 +1659,7 @@ impl FileTransferModal {
             this.update(cx, |this, cx| {
                 if let Err(error) = result {
                     this.pane_mut(side).loading = false;
-                    this.status = Some(format!("操作に失敗しました:\n{error:#}").into());
+                    this.status = Some(i18n::t!("The operation failed:\n{error:#}").into());
                 }
                 this.refresh(side, cx);
             })
@@ -1667,7 +1676,7 @@ impl FileTransferModal {
 
     fn start_transfer(&mut self, upload: bool, cx: &mut Context<Self>) {
         if self.backend.is_none() {
-            self.status = Some("先に接続してください。".into());
+            self.status = Some(i18n::t!("Connect first.").into());
             cx.notify();
             return;
         }
@@ -1680,9 +1689,9 @@ impl FileTransferModal {
         if selected.is_empty() {
             self.status = Some(
                 if upload {
-                    "アップロードする項目をローカル側で選んでください。"
+                    i18n::t!("Select the items to upload on the local side.")
                 } else {
-                    "ダウンロードする項目をリモート側で選んでください。"
+                    i18n::t!("Select the items to download on the remote side.")
                 }
                 .into(),
             );
@@ -1699,9 +1708,9 @@ impl FileTransferModal {
                 label: format!(
                     "{}: {}",
                     if upload {
-                        "アップロード"
+                        i18n::t!("Upload")
                     } else {
-                        "ダウンロード"
+                        i18n::t!("Download")
                     },
                     entry.name
                 )
@@ -1913,16 +1922,16 @@ impl FileTransferModal {
                     .gap_1()
                     .flex_wrap()
                     .child(
-                        Button::new("presets", "接続先")
+                        Button::new("presets", i18n::t!("Connections"))
                             .end_icon(Icon::new(if self.presets_open {
                                 IconName::ChevronUp
                             } else {
                                 IconName::ChevronDown
                             }))
                             .toggle_state(self.presets_open)
-                            .tooltip(Tooltip::text(
-                                "保存済みの接続先とリモート SSH の一覧を開きます",
-                            ))
+                            .tooltip(Tooltip::text(i18n::t!(
+                                "Opens the list of saved connections and Remote SSH hosts"
+                            )))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.presets_open = !this.presets_open;
                                 cx.notify();
@@ -1950,7 +1959,7 @@ impl FileTransferModal {
                             .child(self.host.clone()),
                     )
                     .child(
-                        Label::new("ポート")
+                        Label::new(i18n::t!("Port"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -1995,14 +2004,20 @@ impl FileTransferModal {
                             .child(self.password.clone()),
                     )
                     .child(
-                        Button::new("connect", if connected { "再接続" } else { "接続" }).on_click(
-                            cx.listener(|this, _, window, cx| {
-                                this.connect(window, cx);
-                            }),
-                        ),
+                        Button::new(
+                            "connect",
+                            if connected {
+                                i18n::t!("Reconnect")
+                            } else {
+                                i18n::t!("Connect")
+                            },
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.connect(window, cx);
+                        })),
                     )
                     .child(
-                        Button::new("disconnect", "切断")
+                        Button::new("disconnect", i18n::t!("Disconnect"))
                             .disabled(self.backend.is_none())
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.disconnect(window, cx);
@@ -2022,11 +2037,11 @@ impl FileTransferModal {
             .flex_wrap()
             .child(
                 Checkbox::new("remember-password", self.remember_password.into())
-                    .label("パスワードを記憶する")
-                    .tooltip(Tooltip::text(
-                        "パスワードは OS の資格情報マネージャーに保存され、\
-                         クイック接続と共有されます",
-                    ))
+                    .label(i18n::t!("Remember password"))
+                    .tooltip(Tooltip::text(i18n::t!(
+                        "The password is stored in the operating system's credential manager \
+                             and shared with Quick Connect"
+                    )))
                     .on_click(cx.listener(|this, state: &ToggleState, _, cx| {
                         let checked = *state == ToggleState::Selected;
                         if this.remember_password != checked {
@@ -2037,14 +2052,16 @@ impl FileTransferModal {
             )
             .when(stored, |this| {
                 this.child(
-                    Label::new("保存済み")
+                    Label::new(i18n::t!("Saved"))
                         .size(LabelSize::XSmall)
                         .color(Color::Accent),
                 )
                 .child(
                     IconButton::new("forget-password", IconName::LockOff)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("この接続先の保存済みパスワードを消します"))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Removes the saved password of this connection"
+                        )))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.forget_password(window, cx);
                         })),
@@ -2078,7 +2095,7 @@ impl FileTransferModal {
             .gap_0p5();
         if groups.is_empty() {
             list = list.child(
-                Label::new("保存された接続先はまだありません。")
+                Label::new(i18n::t!("No saved connections yet."))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             );
@@ -2114,7 +2131,7 @@ impl FileTransferModal {
                         .gap_1()
                         .flex_wrap()
                         .child(
-                            Label::new("この接続先を保存")
+                            Label::new(i18n::t!("Save this connection"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -2143,9 +2160,11 @@ impl FileTransferModal {
                                 .child(self.preset_folder.clone()),
                         )
                         .child(
-                            Button::new("save-preset", "保存")
+                            Button::new("save-preset", i18n::t!("Save"))
                                 .start_icon(Icon::new(IconName::Plus))
-                                .tooltip(Tooltip::text("クイック接続と共通の一覧に書き込みます"))
+                                .tooltip(Tooltip::text(i18n::t!(
+                                    "Writes to the list shared with Quick Connect"
+                                )))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.save_preset(window, cx);
                                 })),
@@ -2200,7 +2219,9 @@ impl FileTransferModal {
                     IconButton::new(("preset-up", row_id), IconName::ArrowUp)
                         .icon_size(IconSize::Small)
                         .disabled(!can_move_up)
-                        .tooltip(Tooltip::text("同じフォルダーの中で 1 つ上へ移動します"))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Moves up one place within the same folder"
+                        )))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.move_preset(index, true, cx);
                         })),
@@ -2209,7 +2230,9 @@ impl FileTransferModal {
                     IconButton::new(("preset-down", row_id), IconName::ArrowDown)
                         .icon_size(IconSize::Small)
                         .disabled(!can_move_down)
-                        .tooltip(Tooltip::text("同じフォルダーの中で 1 つ下へ移動します"))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Moves down one place within the same folder"
+                        )))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.move_preset(index, false, cx);
                         })),
@@ -2229,7 +2252,7 @@ impl FileTransferModal {
             (LocalSide::IdeHost, self.ide_host.label()),
         ];
         let mut row = h_flex().gap_1().flex_wrap().child(
-            Label::new("ローカル側")
+            Label::new(i18n::t!("Local side"))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         );
@@ -2297,7 +2320,7 @@ impl FileTransferModal {
                     .child(
                         IconButton::new(("go-up", side as usize), IconName::ArrowUp)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("上のフォルダーへ"))
+                            .tooltip(Tooltip::text(i18n::t!("Go to Parent Folder")))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.go_up(side, window, cx);
                             })),
@@ -2305,7 +2328,7 @@ impl FileTransferModal {
                     .child(
                         IconButton::new(("reload", side as usize), IconName::RotateCw)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("更新"))
+                            .tooltip(Tooltip::text(i18n::tc!("file transfer", "Refresh")))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.refresh(side, cx);
                             })),
@@ -2325,7 +2348,7 @@ impl FileTransferModal {
                     .child(if loading {
                         div()
                             .p_2()
-                            .child(Label::new("読み込み中…").color(Color::Muted))
+                            .child(Label::new(i18n::t!("Loading…")).color(Color::Muted))
                             .into_any_element()
                     } else if let Some(message) = message {
                         div()
@@ -2338,7 +2361,7 @@ impl FileTransferModal {
                     } else if entry_count == 0 {
                         div()
                             .p_2()
-                            .child(Label::new("項目がありません").color(Color::Muted))
+                            .child(Label::new(i18n::t!("No items")).color(Color::Muted))
                             .into_any_element()
                     } else {
                         uniform_list(
@@ -2437,26 +2460,26 @@ impl FileTransferModal {
             .gap_1()
             .flex_wrap()
             .child(
-                Label::new(format!("操作対象: {}", self.active_side.label()))
+                Label::new(i18n::t!("Target: {side}", side = self.active_side.label()))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
             .child(
-                Button::new("new-folder", "フォルダー作成")
+                Button::new("new-folder", i18n::tc!("file transfer", "New Folder"))
                     .start_icon(Icon::new(IconName::FolderAdd))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.start_new_folder(window, cx);
                     })),
             )
             .child(
-                Button::new("rename", "名前変更")
+                Button::new("rename", i18n::tc!("file transfer", "Rename"))
                     .start_icon(Icon::new(IconName::Pencil))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.start_rename(window, cx);
                     })),
             )
             .child(
-                Button::new("delete", "削除")
+                Button::new("delete", i18n::t!("Delete"))
                     .start_icon(Icon::new(IconName::Trash))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.start_delete(window, cx);
@@ -2464,19 +2487,21 @@ impl FileTransferModal {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("upload", "アップロード")
+                Button::new("upload", i18n::t!("Upload"))
                     .end_icon(Icon::new(IconName::ArrowRight))
-                    .tooltip(Tooltip::text("ローカルで選んだ項目をリモートへ送ります"))
+                    .tooltip(Tooltip::text(i18n::t!(
+                        "Sends the items selected on the local side to the remote"
+                    )))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.start_transfer(true, cx);
                     })),
             )
             .child(
-                Button::new("download", "ダウンロード")
+                Button::new("download", i18n::t!("Download"))
                     .start_icon(Icon::new(IconName::ArrowLeft))
-                    .tooltip(Tooltip::text(
-                        "リモートで選んだ項目をローカルへ取り込みます",
-                    ))
+                    .tooltip(Tooltip::text(i18n::t!(
+                        "Brings the items selected on the remote side to the local side"
+                    )))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.start_transfer(false, cx);
                     })),
@@ -2521,7 +2546,7 @@ impl FileTransferModal {
                     },
                 )))
                 .child(
-                    Button::new("prompt-cancel", "キャンセル").on_click(cx.listener(
+                    Button::new("prompt-cancel", i18n::t!("Cancel")).on_click(cx.listener(
                         |this, _, window, cx| {
                             this.cancel_prompt(window, cx);
                         },
@@ -2530,17 +2555,17 @@ impl FileTransferModal {
             PromptButtons::YesNo => h_flex()
                 .gap_1()
                 .child(
-                    Button::new("prompt-yes", "はい")
+                    Button::new("prompt-yes", i18n::t!("Yes"))
                         .tooltip(Tooltip::text(
-                            "この鍵を受け入れて接続を続けます (known_hosts に記録されます)",
+                            i18n::t!("Accepts this key and continues connecting (the key is recorded in known_hosts)"),
                         ))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.answer_prompt(Some(HOST_KEY_ACCEPTED), window, cx);
                         })),
                 )
                 .child(
-                    Button::new("prompt-no", "いいえ")
-                        .tooltip(Tooltip::text("接続を中止します"))
+                    Button::new("prompt-no", i18n::t!("No"))
+                        .tooltip(Tooltip::text(i18n::t!("Stops connecting")))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.answer_prompt(Some(HOST_KEY_REFUSED), window, cx);
                         })),
@@ -2611,12 +2636,12 @@ impl FileTransferModal {
                     h_flex()
                         .gap_1()
                         .child(
-                            Label::new("進行状況")
+                            Label::new(i18n::t!("Progress"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
                         .child(
-                            Button::new("clear-jobs", "終わった行を消す")
+                            Button::new("clear-jobs", i18n::t!("Clear Finished"))
                                 .label_size(LabelSize::Small)
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.clear_finished_jobs(cx);
@@ -2692,7 +2717,7 @@ impl Render for FileTransferModal {
                 h_flex()
                     .gap_1()
                     .child(Icon::new(IconName::Server).size(IconSize::Small))
-                    .child(Headline::new("ファイル転送").size(HeadlineSize::XSmall)),
+                    .child(Headline::new(i18n::t!("File Transfer")).size(HeadlineSize::XSmall)),
             )
             .child(connection_bar)
             .children(local_side_selector)

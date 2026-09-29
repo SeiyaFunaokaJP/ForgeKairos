@@ -484,8 +484,8 @@ impl PickerDelegate for OpenPathDelegate {
                                 Err(error) => DirectoryState::List {
                                     entries: Vec::new(),
                                     parent_path: dir.clone(),
-                                    error: Some(SharedString::from(format!(
-                                        "{dir} を開けません: {error}"
+                                    error: Some(SharedString::from(i18n::t!(
+                                        "Cannot open {dir}: {error}"
                                     ))),
                                 },
                             },
@@ -891,12 +891,11 @@ impl PickerDelegate for OpenPathDelegate {
                         self.should_dismiss = false;
                         let answer = window.prompt(
                             gpui::PromptLevel::Critical,
-                            &format!("{prompted_path:?} はすでに存在します。置き換えますか?"),
+                            &i18n::t!("{prompted_path:?} already exists. Do you want to replace it?"),
                             Some(
-                                "同じ名前のファイルまたはフォルダーがすでに存在します。置き換えると現在の内容が上書きされます。",
+                                i18n::t!("A file or folder with the same name already exists. Replacing it will overwrite its current contents."),
                             ),
-                            // 上書き確認のボタンは F1-1 の project_panel に合わせて「置き換える」
-                            &["置き換える", "キャンセル"],
+                            &[i18n::t!("Replace"), i18n::t!("Cancel")],
                             cx
                         );
                         self.replace_prompt = cx.spawn_in(window, async move |picker, cx| {
@@ -1002,12 +1001,12 @@ impl PickerDelegate for OpenPathDelegate {
         match &self.directory_state {
             DirectoryState::List { parent_path, .. } => {
                 let (label, indices) = if is_current_dir_candidate {
-                    ("このフォルダーを開く".to_string(), vec![])
+                    (i18n::t!("open this directory").to_string(), vec![])
                 } else if is_parent_dir_candidate {
                     (
                         match self.parent_query() {
-                            Some(parent) => format!("上の階層へ移動 ({parent})"),
-                            None => "上の階層へ移動".to_string(),
+                            Some(parent) => i18n::t!("go to parent directory ({parent})"),
+                            None => i18n::t!("go to parent directory").to_string(),
                         },
                         vec![],
                     )
@@ -1056,7 +1055,7 @@ impl PickerDelegate for OpenPathDelegate {
                                 let label = if user_input.is_dir {
                                     label
                                 } else {
-                                    format!("{label} (置換)")
+                                    i18n::t!("{label} (replace)")
                                 };
                                 StyledText::new(label)
                                     .with_default_highlights(
@@ -1068,7 +1067,7 @@ impl PickerDelegate for OpenPathDelegate {
                                     )
                                     .into_any_element()
                             } else {
-                                StyledText::new(format!("{label} (作成)"))
+                                StyledText::new(i18n::t!("{label} (create)"))
                                     .with_default_highlights(
                                         &window.text_style(),
                                         vec![(
@@ -1124,9 +1123,9 @@ impl PickerDelegate for OpenPathDelegate {
             .get_entry(self.selected_index)
             .is_some_and(|candidate| self.should_browse_into(&candidate));
         let confirm_hint = if selected_is_directory {
-            "Enter: フォルダーの中へ"
+            i18n::t!("Enter: Go into Folder")
         } else {
-            "Enter: 開く"
+            i18n::t!("Enter: Open")
         };
 
         Some(
@@ -1138,24 +1137,26 @@ impl PickerDelegate for OpenPathDelegate {
                         .gap_2()
                         .justify_between()
                         .child(
-                            Label::new(format!(
-                                "{confirm_hint} / Ctrl+Enter: 選択中のフォルダーに決定"
+                            Label::new(i18n::t!(
+                                "{confirm_hint} / Ctrl+Enter: Choose Selected Folder"
                             ))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                         )
                         .child(
-                            Button::new("open-path-prompt-choose-folder", "このフォルダーを開く")
-                                .label_size(LabelSize::Small)
-                                .tooltip(move |_window, cx| {
-                                    Tooltip::simple(
-                                        format!("{listed_directory} をこのまま開きます"),
-                                        cx,
-                                    )
-                                })
-                                .on_click(cx.listener(|picker, _, _window, cx| {
+                            Button::new(
+                                "open-path-prompt-choose-folder",
+                                i18n::t!("Open This Folder"),
+                            )
+                            .label_size(LabelSize::Small)
+                            .tooltip(move |_window, cx| {
+                                Tooltip::simple(i18n::t!("Open {listed_directory} itself"), cx)
+                            })
+                            .on_click(cx.listener(
+                                |picker, _, _window, cx| {
                                     picker.delegate.confirm_listed_directory(cx);
-                                })),
+                                },
+                            )),
                         ),
                 )
                 .into_any(),
@@ -1164,20 +1165,20 @@ impl PickerDelegate for OpenPathDelegate {
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
         Some(match &self.directory_state {
-            DirectoryState::Create { .. } => SharedString::from("パスを入力してください…"),
+            DirectoryState::Create { .. } => SharedString::from(i18n::t!("Type a path…")),
             DirectoryState::List {
                 error: Some(error), ..
             } => error.clone(),
             DirectoryState::List { .. } | DirectoryState::None { .. } => {
-                SharedString::from("該当するファイルまたはディレクトリはありません。")
+                SharedString::from(i18n::t!("No such file or directory"))
             }
         })
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
         Arc::from(
-            format!(
-                "[ディレクトリ{}]ファイル名.拡張子",
+            i18n::t!(
+                "[directory{}]filename.ext",
                 self.path_style.primary_separator()
             )
             .as_str(),

@@ -148,8 +148,10 @@ pub async fn download_verified_file(
         .with_context(|| format!("downloading {url}"))?;
     anyhow::ensure!(
         response.status().is_success(),
-        "{url} を取得できませんでした (HTTP {})。",
-        response.status()
+        i18n::t!(
+            "Could not download {url} (HTTP {status}).",
+            status = response.status()
+        )
     );
 
     // Streamed through a hasher into the file, so neither the archive nor its
@@ -199,12 +201,12 @@ pub async fn download_verified_file(
         && !digest.eq_ignore_ascii_case(expected)
     {
         fs::remove_file(destination).await.ok();
-        bail!(
-            "{url} から取得したファイルの SHA-256 が想定と一致しません \
-             (想定 {expected}、実際 {digest})。改ざんされている可能性があるため、\
-             取得したファイルを削除しました。ネットワーク経路 (プロキシ・社内の TLS 傍受) を\
-             確認してから、もう一度お試しください。"
-        );
+        bail!(i18n::t!(
+            "The SHA-256 of the file downloaded from {url} does not match the expected one \
+             (expected {expected}, got {digest}). It may have been tampered with, so the \
+             downloaded file was deleted. Check the network path (proxies, corporate TLS \
+             interception) and try again."
+        ));
     }
     Ok(digest)
 }

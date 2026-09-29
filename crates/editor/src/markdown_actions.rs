@@ -41,7 +41,7 @@ const DETAILS_OPEN: &str = "<details><summary>";
 
 /// The `<summary>` text `insert_markdown_details` writes, left selected so it
 /// can be typed over.
-const DETAILS_SUMMARY: &str = "開く";
+const DETAILS_SUMMARY: &str = i18n::msg!("Open");
 
 /// The shortest code fence CommonMark accepts.
 const MINIMUM_FENCE_LENGTH: usize = 3;
@@ -304,6 +304,7 @@ impl Editor {
 
         let snapshot = self.buffer.read(cx).snapshot(cx);
         let max_row = snapshot.max_point().row;
+        let summary = i18n::tr(DETAILS_SUMMARY);
 
         let mut edits = Vec::new();
         // The anchor the opening text was inserted at, paired with the byte
@@ -343,7 +344,7 @@ impl Editor {
                 ""
             };
             let summary_offset = leading.len() + DETAILS_OPEN.len();
-            let open = format!("{leading}{DETAILS_OPEN}{DETAILS_SUMMARY}</summary>\n\n{fence}\n");
+            let open = format!("{leading}{DETAILS_OPEN}{summary}</summary>\n\n{fence}\n");
 
             let mut close = format!("\n{fence}\n</details>");
             if selection.is_empty()
@@ -383,7 +384,7 @@ impl Editor {
                 .into_iter()
                 .map(|(anchor, offset)| {
                     let start = anchor.to_offset(&buffer) + offset;
-                    start..start + DETAILS_SUMMARY.len()
+                    start..start + summary.len()
                 })
                 .collect::<Vec<_>>();
 
@@ -849,32 +850,32 @@ impl MermaidDiagramKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Flowchart => "フローチャート",
-            Self::Sequence => "シーケンス図",
-            Self::Class => "クラス図",
-            Self::State => "状態遷移図",
-            Self::EntityRelationship => "ER 図",
-            Self::Gantt => "ガントチャート",
-            Self::Pie => "円グラフ",
-            Self::GitGraph => "Git グラフ",
-            Self::Mindmap => "マインドマップ",
-            Self::Timeline => "タイムライン",
-            Self::Journey => "ユーザージャーニー",
-            Self::QuadrantChart => "4 象限チャート",
-            Self::XyChart => "XY チャート (棒・折れ線)",
-            Self::Radar => "レーダーチャート",
-            Self::Requirement => "要求図",
-            Self::C4 => "C4 図",
-            Self::Block => "ブロック図",
-            Self::Sankey => "サンキー図",
-            Self::Packet => "パケット図",
-            Self::Venn => "ベン図",
-            Self::Kanban => "かんばん",
-            Self::Treemap => "ツリーマップ",
-            Self::Architecture => "アーキテクチャ図",
-            Self::TreeView => "ツリービュー",
-            Self::Ishikawa => "特性要因図",
-            Self::EventModeling => "イベントモデリング",
+            Self::Flowchart => i18n::tc!("mermaid diagram", "Flowchart"),
+            Self::Sequence => i18n::tc!("mermaid diagram", "Sequence Diagram"),
+            Self::Class => i18n::tc!("mermaid diagram", "Class Diagram"),
+            Self::State => i18n::tc!("mermaid diagram", "State Diagram"),
+            Self::EntityRelationship => i18n::tc!("mermaid diagram", "ER Diagram"),
+            Self::Gantt => i18n::tc!("mermaid diagram", "Gantt Chart"),
+            Self::Pie => i18n::tc!("mermaid diagram", "Pie Chart"),
+            Self::GitGraph => i18n::tc!("mermaid diagram", "Git Graph"),
+            Self::Mindmap => i18n::tc!("mermaid diagram", "Mindmap"),
+            Self::Timeline => i18n::tc!("mermaid diagram", "Timeline"),
+            Self::Journey => i18n::tc!("mermaid diagram", "User Journey"),
+            Self::QuadrantChart => i18n::tc!("mermaid diagram", "Quadrant Chart"),
+            Self::XyChart => i18n::tc!("mermaid diagram", "XY Chart (Bar/Line)"),
+            Self::Radar => i18n::tc!("mermaid diagram", "Radar Chart"),
+            Self::Requirement => i18n::tc!("mermaid diagram", "Requirement Diagram"),
+            Self::C4 => i18n::tc!("mermaid diagram", "C4 Diagram"),
+            Self::Block => i18n::tc!("mermaid diagram", "Block Diagram"),
+            Self::Sankey => i18n::tc!("mermaid diagram", "Sankey Diagram"),
+            Self::Packet => i18n::tc!("mermaid diagram", "Packet Diagram"),
+            Self::Venn => i18n::tc!("mermaid diagram", "Venn Diagram"),
+            Self::Kanban => i18n::tc!("mermaid diagram", "Kanban"),
+            Self::Treemap => i18n::tc!("mermaid diagram", "Treemap"),
+            Self::Architecture => i18n::tc!("mermaid diagram", "Architecture Diagram"),
+            Self::TreeView => i18n::tc!("mermaid diagram", "Tree View"),
+            Self::Ishikawa => i18n::tc!("mermaid diagram", "Ishikawa Diagram"),
+            Self::EventModeling => i18n::tc!("mermaid diagram", "Event Modeling"),
         }
     }
 
@@ -885,263 +886,352 @@ impl MermaidDiagramKind {
     /// renderer draws; a template starting with anything else would be inserted
     /// as a code block that never turns into a picture.
     pub fn template(self) -> &'static str {
-        match self {
+        let template = match self {
             Self::Flowchart => {
-                r#"flowchart TD
-    %% [] は処理、{} は分岐。|ラベル| で分岐に注釈を付ける
-    start[開始] --> condition{条件}
-    condition -->|はい| work[処理]
-    condition -->|いいえ| finish[終了]
+                i18n::t!(
+                    r#"flowchart TD
+    %% [] is a step and {{}} a decision. |label| annotates a branch
+    start[Start] --> condition{{Condition}}
+    condition -->|Yes| work[Process]
+    condition -->|No| finish[End]
     work --> finish"#
+                )
             }
             Self::Sequence => {
-                r#"sequenceDiagram
-    %% ->> は呼び出し、-->> は応答
-    participant User as 利用者
-    participant App as アプリ
-    User->>App: 要求
-    App-->>User: 応答
-    Note over App: 補足"#
+                i18n::t!(
+                    r#"sequenceDiagram
+    %% ->> is a call and -->> a reply
+    participant User as User
+    participant App as App
+    User->>App: Request
+    App-->>User: Response
+    Note over App: Note"#
+                )
+                .to_string()
             }
             Self::Class => {
-                r#"classDiagram
-    %% <|-- は継承、*-- は合成、o-- は集約
-    class Base {
+                i18n::t!(
+                    r#"classDiagram
+    %% <|-- is inheritance, *-- composition and o-- aggregation
+    class Base {{
         +field: Type
         +method()
-    }
-    class Derived {
+    }}
+    class Derived {{
         +extra()
-    }
+    }}
     Base <|-- Derived"#
+                )
             }
             Self::State => {
-                r#"stateDiagram-v2
-    %% [*] は開始と終了。矢印のあとの : がイベント名
+                i18n::t!(
+                    r#"stateDiagram-v2
+    %% [*] is the start and the end. The text after : on an arrow is the event name
     [*] --> Idle
-    Idle --> Running: 開始
-    Running --> Idle: 完了
-    Running --> [*]: 中止"#
+    Idle --> Running: Start
+    Running --> Idle: Finish
+    Running --> [*]: Abort"#
+                )
+                .to_string()
             }
             Self::EntityRelationship => {
-                r#"erDiagram
-    %% ||--o{ は 1 対多、}o--o{ は多対多
-    CUSTOMER ||--o{ ORDER : "発注する"
-    ORDER ||--|{ ORDER_ITEM : "含む"
-    CUSTOMER {
+                i18n::t!(
+                    r#"erDiagram
+    %% ||--o{{ is one-to-many and }}o--o{{ many-to-many
+    CUSTOMER ||--o{{ ORDER : "places"
+    ORDER ||--|{{ ORDER_ITEM : "contains"
+    CUSTOMER {{
         int id
         string name
-    }"#
+    }}"#
+                )
             }
             Self::Gantt => {
-                r#"gantt
-    title 開発スケジュール
+                i18n::t!(
+                    r#"gantt
+    title Development Schedule
     dateFormat YYYY-MM-DD
     axisFormat %m/%d
-    section 設計
-    要件定義 :done, req, 2026-01-06, 5d
-    基本設計 :active, design, after req, 7d
-    section 実装
-    実装 :impl, after design, 10d"#
+    section Design
+    Requirements :done, req, 2026-01-06, 5d
+    Basic design :active, design, after req, 7d
+    section Implementation
+    Implementation :impl, after design, 10d"#
+                )
+                .to_string()
             }
             Self::Pie => {
-                r#"pie title 内訳
-    "設計" : 30
-    "実装" : 50
-    "テスト" : 20"#
+                i18n::t!(
+                    r#"pie title Breakdown
+    "Design" : 30
+    "Implementation" : 50
+    "Testing" : 20"#
+                )
+                .to_string()
             }
             Self::GitGraph => {
-                r#"gitGraph
-    commit id: "初期化"
+                i18n::t!(
+                    r#"gitGraph
+    commit id: "Initial commit"
     branch feature
     checkout feature
-    commit id: "機能を追加"
+    commit id: "Add a feature"
     checkout main
     merge feature"#
+                )
+                .to_string()
             }
             Self::Mindmap => {
                 // Mindmap nesting is expressed with indentation, so the two
                 // space steps below are syntax rather than formatting.
-                r#"mindmap
-  root((中心テーマ))
-    分類A
-      項目1
-      項目2
-    分類B
-      項目3"#
+                i18n::t!(
+                    r#"mindmap
+  root((Central Topic))
+    Category A
+      Item 1
+      Item 2
+    Category B
+      Item 3"#
+                )
+                .to_string()
             }
             Self::Timeline => {
-                r#"timeline
-    title 沿革
-    2024 : 企画
-    2025 : 開発 : 公開
-    2026 : 運用"#
+                i18n::t!(
+                    r#"timeline
+    title History
+    2024 : Planning
+    2025 : Development : Release
+    2026 : Operation"#
+                )
+                .to_string()
             }
             Self::Journey => {
-                r#"journey
-    %% 作業 : 満足度 (1〜5) : 関わる人
-    title 購入までの流れ
-    section 探す
-      商品を検索する: 4: 利用者
-      比較する: 3: 利用者
-    section 買う
-      カートに入れる: 5: 利用者
-      支払う: 2: 利用者, 店舗"#
+                i18n::t!(
+                    r#"journey
+    %% Task : Satisfaction (1 to 5) : People involved
+    title Path to Purchase
+    section Find
+      Search for a product: 4: Customer
+      Compare: 3: Customer
+    section Buy
+      Add to cart: 5: Customer
+      Pay: 2: Customer, Store"#
+                )
+                .to_string()
             }
             Self::QuadrantChart => {
-                r#"quadrantChart
-    %% 点は 名前: [横, 縦] で、どちらも 0〜1
-    title 施策の優先度
-    x-axis 労力が小さい --> 労力が大きい
-    y-axis 効果が小さい --> 効果が大きい
-    quadrant-1 計画して進める
-    quadrant-2 すぐやる
-    quadrant-3 後回し
-    quadrant-4 見直す
-    施策A: [0.3, 0.8]
-    施策B: [0.7, 0.6]
-    施策C: [0.2, 0.3]"#
+                i18n::t!(
+                    r#"quadrantChart
+    %% A point is Name: [x, y], both from 0 to 1
+    title Initiative Priorities
+    x-axis Low Effort --> High Effort
+    y-axis Low Impact --> High Impact
+    quadrant-1 Plan and Do
+    quadrant-2 Do Now
+    quadrant-3 Do Later
+    quadrant-4 Reconsider
+    Initiative A: [0.3, 0.8]
+    Initiative B: [0.7, 0.6]
+    Initiative C: [0.2, 0.3]"#
+                )
+                .to_string()
             }
             Self::XyChart => {
-                r#"xychart-beta
-    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える
-    title "月別の売上"
-    x-axis ["1月", "2月", "3月", "4月"]
-    y-axis "売上 (万円)" 0 --> 100
+                i18n::t!(
+                    r#"xychart-beta
+    %% bar draws bars and line a line. Give as many values as the x-axis has items
+    title "Monthly Sales"
+    x-axis ["Jan", "Feb", "Mar", "Apr"]
+    y-axis "Sales (USD thousands)" 0 --> 100
     bar [30, 45, 60, 80]
     line [30, 45, 60, 80]"#
+                )
+                .to_string()
             }
             Self::Radar => {
-                r#"radar-beta
-    %% axis で軸、curve で系列。値は軸の順に並べる
-    title スキルの比較
-    axis design["設計"], build["実装"], test["テスト"], ops["運用"]
-    curve a["Aさん"]{4, 3, 5, 2}
-    curve b["Bさん"]{2, 5, 3, 4}
+                i18n::t!(
+                    r#"radar-beta
+    %% axis defines the axes and curve a series. List the values in the order of the axes
+    title Skill Comparison
+    axis design["Design"], build["Implementation"], test["Testing"], ops["Operations"]
+    curve a["Person A"]{{4, 3, 5, 2}}
+    curve b["Person B"]{{2, 5, 3, 4}}
     max 5"#
+                )
             }
             Self::Requirement => {
-                r#"requirementDiagram
-    %% requirement は要求、element は満たす側。- satisfies -> で結ぶ
-    requirement login {
+                i18n::t!(
+                    r#"requirementDiagram
+    %% requirement declares a requirement; element declares what satisfies it. Connect them with - satisfies ->
+    requirement login {{
         id: 1
-        text: "ログインできること"
+        text: "Users can log in"
         risk: high
         verifymethod: test
-    }
-    element login_page {
-        type: "画面"
-    }
+    }}
+    element login_page {{
+        type: "Screen"
+    }}
     login_page - satisfies -> login"#
+                )
             }
             Self::C4 => {
-                r#"C4Context
-    %% Person は利用者、System は自システム、System_Ext は外部、Rel は関係
-    title 受注システムの全体像
-    Person(customer, "顧客", "商品を注文する")
-    System(shop, "受注システム", "注文を受け付ける")
-    System_Ext(mail, "メール配信", "通知を送る")
-    Rel(customer, shop, "注文する")
-    Rel(shop, mail, "通知を依頼する")"#
+                i18n::t!(
+                    r#"C4Context
+    %% Person is a user, System your system, System_Ext an external one and Rel a relationship
+    title Order System Overview
+    Person(customer, "Customer", "Orders products")
+    System(shop, "Order System", "Accepts orders")
+    System_Ext(mail, "Mail Delivery", "Sends notifications")
+    Rel(customer, shop, "Places orders")
+    Rel(shop, mail, "Requests notifications")"#
+                )
+                .to_string()
             }
             Self::Block => {
-                r#"block-beta
-    %% columns で列の数を決め、space は空きマス、--> で矢印
+                i18n::t!(
+                    r#"block-beta
+    %% columns sets the number of columns, space is an empty cell and --> an arrow
     columns 3
-    input["入力"] process["処理"] output["出力"]
-    space log["記録"] space
+    input["Input"] process["Process"] output["Output"]
+    space log["Log"] space
     input --> process
     process --> output
     process --> log"#
+                )
+                .to_string()
             }
             Self::Sankey => {
-                r#"sankey-beta
-    %% 1 行が 流れ元,流れ先,量。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+                i18n::t!(
+                    r#"sankey-beta
+    %% Each line is source,target,amount. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)
     Power,Home,30
     Power,Factory,50
     Gas,Home,20
     Gas,Factory,10"#
+                )
+                .to_string()
             }
             Self::Packet => {
-                r#"packet-beta
-    %% 開始ビット-終了ビット: "項目名"
-    title UDP ヘッダー
-    0-15: "送信元ポート"
-    16-31: "宛先ポート"
-    32-47: "長さ"
-    48-63: "チェックサム"
-    64-95: "データ (可変長)""#
+                i18n::t!(
+                    r#"packet-beta
+    %% start bit-end bit: "Field name"
+    title UDP Header
+    0-15: "Source Port"
+    16-31: "Destination Port"
+    32-47: "Length"
+    48-63: "Checksum"
+    64-95: "Data (variable length)""#
+                )
+                .to_string()
             }
             Self::Venn => {
-                r#"venn-beta
-    %% set で集合、union で重なりに名前を付ける
-    title 担当の重なり
-    set Front["フロントエンド"]
-    set Back["バックエンド"]
+                i18n::t!(
+                    r#"venn-beta
+    %% set defines a set and union names an overlap
+    title Overlapping Responsibilities
+    set Front["Frontend"]
+    set Back["Backend"]
     union Front,Back["API"]"#
+                )
+                .to_string()
             }
             Self::Kanban => {
-                r#"kanban
-    %% 字下げの浅い行が列、深い行がカード
-    todo[未着手]
-        spec[仕様を書く]
-        screen[画面を作る]
-    doing[作業中]
-        api[API を作る]
-    done[完了]
-        setup[環境を整える]"#
+                i18n::t!(
+                    r#"kanban
+    %% Less indented lines are columns and more indented lines cards
+    todo[To Do]
+        spec[Write the spec]
+        screen[Build the screen]
+    doing[In Progress]
+        api[Build the API]
+    done[Done]
+        setup[Set up the environment]"#
+                )
+                .to_string()
             }
             Self::Treemap => {
-                r#"treemap-beta
-    %% 字下げで入れ子。末端の項目に : で値を付ける
-    "開発費"
-        "設計": 30
-        "実装": 50
-    "運用費"
-        "保守": 15
-        "監視": 5"#
+                i18n::t!(
+                    r#"treemap-beta
+    %% Indentation nests items. Give each leaf a value after :
+    "Development"
+        "Design": 30
+        "Implementation": 50
+    "Operations"
+        "Maintenance": 15
+        "Monitoring": 5"#
+                )
+                .to_string()
             }
             Self::Architecture => {
-                r#"architecture-beta
-    %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める
-    group app(cloud)["アプリ"]
-    service web(server)["Web サーバー"] in app
-    service db(database)["データベース"] in app
-    service disk(disk)["ストレージ"] in app
+                i18n::t!(
+                    r#"architecture-beta
+    %% group is a grouping and service a component. :L :R :T :B choose the side a line connects to
+    group app(cloud)[App]
+    service web(server)[Web Server] in app
+    service db(database)[Database] in app
+    service disk(disk)[Storage] in app
     web:R -- L:db
     web:B -- T:disk"#
+                )
+                .to_string()
             }
             Self::TreeView => {
-                r#"treeView-beta
-    %% 字下げで階層を表す
-    "プロジェクト"
+                i18n::t!(
+                    r#"treeView-beta
+    %% Indentation shows the hierarchy
+    "Project"
         "src"
             "main.rs"
             "lib.rs"
         "docs"
             "README.md""#
+                )
+                .to_string()
             }
             Self::Ishikawa => {
-                r#"ishikawa-beta
-    %% 最初の行が結果、字下げした行が要因
-    不良品が多い
-        人
-            経験が浅い
-        方法
-            手順書が古い
-        材料
-            仕入れ先のばらつき"#
+                i18n::t!(
+                    r#"ishikawa-beta
+    %% The first line is the effect and indented lines its causes
+    Too many defects
+        People
+            Little experience
+        Method
+            Outdated procedures
+        Material
+            Inconsistent suppliers"#
+                )
+                .to_string()
             }
             Self::EventModeling => {
-                r#"eventmodeling
-    %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)
+                i18n::t!(
+                    r#"eventmodeling
+    %% tf number type name. ui is a screen, cmd a command, evt an event and rmo a read model. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)
     tf 01 ui CartScreen
     tf 02 cmd AddItem
     tf 03 evt ItemAdded
     tf 04 rmo CartItems ->> 03"#
+                )
+                .to_string()
             }
-        }
+        };
+        intern_template(template)
     }
+}
+
+/// `template` hands out `&'static str`, but `t!` formats a template that holds
+/// braces into a new `String`. Each distinct text is leaked once and reused, so
+/// the leak is bounded by one text per diagram per display language.
+fn intern_template(template: String) -> &'static str {
+    static INTERNED: std::sync::LazyLock<parking_lot::Mutex<collections::HashSet<&'static str>>> =
+        std::sync::LazyLock::new(Default::default);
+    let mut interned = INTERNED.lock();
+    if let Some(existing) = interned.get(template.as_str()) {
+        return existing;
+    }
+    let leaked: &'static str = template.leak();
+    interned.insert(leaked);
+    leaked
 }
 
 impl MarkdownTextColor {
@@ -1159,14 +1249,14 @@ impl MarkdownTextColor {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Red => "赤",
-            Self::Orange => "橙",
-            Self::Yellow => "黄",
-            Self::Green => "緑",
-            Self::Blue => "青",
-            Self::Purple => "紫",
-            Self::Pink => "桃",
-            Self::Gray => "灰",
+            Self::Red => i18n::tc!("markdown color", "Red"),
+            Self::Orange => i18n::tc!("markdown color", "Orange"),
+            Self::Yellow => i18n::tc!("markdown color", "Yellow"),
+            Self::Green => i18n::tc!("markdown color", "Green"),
+            Self::Blue => i18n::tc!("markdown color", "Blue"),
+            Self::Purple => i18n::tc!("markdown color", "Purple"),
+            Self::Pink => i18n::tc!("markdown color", "Pink"),
+            Self::Gray => i18n::tc!("markdown color", "Gray"),
         }
     }
 
@@ -1201,10 +1291,10 @@ impl MarkdownMarkerColor {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Yellow => "黄",
-            Self::Green => "緑",
-            Self::Blue => "青",
-            Self::Pink => "桃",
+            Self::Yellow => i18n::tc!("markdown color", "Yellow"),
+            Self::Green => i18n::tc!("markdown color", "Green"),
+            Self::Blue => i18n::tc!("markdown color", "Blue"),
+            Self::Pink => i18n::tc!("markdown color", "Pink"),
         }
     }
 
@@ -1235,9 +1325,9 @@ impl MarkdownTextSize {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Small => "小",
-            Self::Large => "大",
-            Self::ExtraLarge => "特大",
+            Self::Small => i18n::tc!("markdown text size", "Small"),
+            Self::Large => i18n::tc!("markdown text size", "Large"),
+            Self::ExtraLarge => i18n::tc!("markdown text size", "Extra Large"),
         }
     }
 
@@ -1474,33 +1564,45 @@ enum StyleRefusal {
 impl StyleRefusal {
     fn message(self) -> &'static str {
         match self {
-            Self::InsideCode => "コードの中は書式を変更できません。",
-            Self::InsideTag => "HTML のタグやコメントの中には書式を付けられません。",
+            Self::InsideCode => i18n::t!("Formatting can't be changed inside code."),
+            Self::InsideTag => {
+                i18n::t!("Formatting can't be applied inside an HTML tag or comment.")
+            }
             Self::CrossesTags => {
-                "選択範囲が既存の HTML タグ (文字色・マーカーなど) をまたいでいるため、変更できません。"
+                i18n::t!(
+                    "Can't change this because the selection crosses an existing HTML tag (such as a text color or a marker)."
+                )
             }
-            Self::CrossesTableCells => "表のセルをまたぐ範囲には書式を付けられません。",
+            Self::CrossesTableCells => i18n::t!("Formatting can't be applied across table cells."),
             Self::CrossesLink => {
-                "選択範囲がリンクや画像の書き方 ([文字](URL) など) の一部だけにかかっているため、変更できません。リンク全体か、リンクの文字だけを選んでください。"
+                i18n::t!(
+                    "Can't change this because the selection covers only part of a link or image syntax (such as [text](URL)). Select the whole link, or only its text."
+                )
             }
-            Self::InsideLink => "リンクの URL や画像の書き方の中には書式を付けられません。",
+            Self::InsideLink => {
+                i18n::t!("Formatting can't be applied inside a link's URL or an image's syntax.")
+            }
             Self::StartsHtmlBlock => {
-                "HTML ブロックの先頭からタグで包むと HTML ブロックが段落に変わってしまうため、変更できません。要素の中の文字だけを選んでください。"
+                i18n::t!(
+                    "Can't change this because wrapping an HTML block in a tag from its start would turn it into a paragraph. Select only the text inside the element."
+                )
             }
-            Self::NothingSelected => "書式を付ける文字がありません。",
-            Self::NoTextColor => "選択範囲に文字色の付いた部分がありません。",
-            Self::NoMarker => "選択範囲にマーカーの付いた部分がありません。",
+            Self::NothingSelected => i18n::t!("There is no text to format."),
+            Self::NoTextColor => i18n::t!("No part of the selection has a text color."),
+            Self::NoMarker => i18n::t!("No part of the selection has a marker."),
             Self::NoParagraph => {
-                "文字サイズは段落にだけ付けられます (見出し・コードブロック・表・HTML ブロックは対象外です)。"
+                i18n::t!(
+                    "Text size can only be set on paragraphs (not on headings, code blocks, tables, or HTML blocks)."
+                )
             }
-            Self::NoTextSize => "文字サイズの指定された段落がありません。",
+            Self::NoTextSize => i18n::t!("No paragraph has a text size set."),
         }
     }
 
     /// Why part of the selection was left as it was while the rest was styled.
     fn partial_message(self) -> String {
-        format!(
-            "選択範囲の一部には書式を付けられませんでした: {}",
+        i18n::t!(
+            "Part of the selection couldn't be formatted: {}",
             self.message()
         )
     }
@@ -4632,10 +4734,10 @@ pub enum MarkdownTableAlignment {
 impl MarkdownTableAlignment {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Unspecified => "既定",
-            Self::Left => "左",
-            Self::Center => "中央",
-            Self::Right => "右",
+            Self::Unspecified => i18n::tc!("table alignment", "Default"),
+            Self::Left => i18n::tc!("table alignment", "Left"),
+            Self::Center => i18n::tc!("table alignment", "Center"),
+            Self::Right => i18n::tc!("table alignment", "Right"),
         }
     }
 
@@ -5260,11 +5362,11 @@ impl Editor {
     ) -> Result<()> {
         anyhow::ensure!(
             !self.read_only(cx),
-            "このバッファーは読み取り専用のため、図を書き戻せません。"
+            i18n::t!("This buffer is read-only, so the diagram can't be written back.")
         );
         anyhow::ensure!(
             self.mermaid_fence_body(target, cx) == target.source,
-            "図のテキストが編集中に変更されました。もう一度開き直してください。"
+            i18n::t!("The diagram text changed while it was being edited. Open it again.")
         );
 
         let mut text = String::new();

@@ -92,27 +92,32 @@ impl PacketDocument {
         if let Some(title) = &self.title
             && !is_valid_packet_title(title)
         {
-            return Some("タイトルに `%%` と改行は使えません (前後の空白も不可)。".to_string());
+            return Some(
+                i18n::t!(
+                    "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+                )
+                .to_string(),
+            );
         }
         let mut total = 0u64;
         for field in &self.fields {
             if !is_valid_packet_label(&field.label) {
-                return Some(format!(
-                    "ラベル「{}」は使えません (`%%` と改行は不可)。",
+                return Some(i18n::t!(
+                    "The label “{}” cannot be used (`%%` and line breaks are not allowed).",
                     field.label
                 ));
             }
             if field.bits == 0 {
-                return Some(format!(
-                    "「{}」のビット数は 1 以上の整数で書いてください。",
+                return Some(i18n::t!(
+                    "Write the number of bits of “{}” as a whole number of 1 or more.",
                     field.label
                 ));
             }
             total = total.saturating_add(field.bits);
         }
         if total > MAX_PACKET_BITS {
-            return Some(format!(
-                "ビット数の合計 ({total}) が多すぎます。Mermaid が描けるのは {MAX_PACKET_BITS} ビットまでです。"
+            return Some(i18n::t!(
+                "The total number of bits ({total}) is too large. Mermaid can draw up to {MAX_PACKET_BITS} bits."
             ));
         }
         None
@@ -149,9 +154,9 @@ pub fn parse_packet(source: &str) -> Result<PacketDocument> {
     reject_trailing_comment(header)?;
     document.keyword = match HEADERS.iter().find(|keyword| **keyword == header) {
         Some(keyword) => keyword,
-        None => bail!(
-            "`{header}` はパケット図の見出しとして読めません (`packet-beta` だけを 1 行に書きます)。"
-        ),
+        None => bail!(i18n::t!(
+            "`{header}` cannot be read as the heading of a packet diagram (write only `packet-beta` on its line)."
+        )),
     };
 
     let mut index = header_index + 1;
@@ -191,7 +196,9 @@ pub fn parse_packet(source: &str) -> Result<PacketDocument> {
         }
         if let Some(rest) = keyword_tail(trimmed, "title") {
             if document.title.is_some() {
-                bail!("`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。");
+                bail!(i18n::t!(
+                    "`title` is written twice. Merge them into one, then open it again."
+                ));
             }
             document.title = Some(rest.trim().to_string());
             continue;
@@ -207,14 +214,14 @@ pub fn parse_packet(source: &str) -> Result<PacketDocument> {
     }
     let emitted = emit_packet(&document);
     let written = merman_packet(&emitted).map_err(|error| {
-        anyhow!(
-            "書き戻した図を Mermaid が読めませんでした ({error})。テキストのまま編集してください。"
-        )
+        anyhow!(i18n::t!(
+            "Mermaid could not read the diagram written back ({error}). Edit it as text."
+        ))
     })?;
     if original != written {
-        bail!(
-            "この図は構造化エディターで読むと Mermaid と違うパケットになります。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Read by the structured editor, this diagram would become a different packet than Mermaid reads. Edit it as text."
+        ));
     }
     Ok(document)
 }
@@ -223,13 +230,13 @@ pub fn parse_packet(source: &str) -> Result<PacketDocument> {
 fn merman_packet(source: &str) -> Result<serde_json::Value> {
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| {
-            anyhow!(
-                "Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "Mermaid could not parse this diagram ({error}). Edit it as text."
+            ))
         })?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
     let RenderSemanticModel::Packet(model) = parsed.into_parts().1 else {
-        bail!("この図はパケット図ではありません。");
+        bail!(i18n::t!("This diagram is not a packet diagram."));
     };
     serde_json::to_value(&model).map_err(|error| anyhow!("{error}"))
 }
@@ -238,23 +245,25 @@ fn merman_packet(source: &str) -> Result<serde_json::Value> {
 /// trailing comment would disappear on the next emit.
 fn reject_trailing_comment(statement: &str) -> Result<()> {
     if statement.contains("%%") {
-        bail!(
-            "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+        ));
     }
     Ok(())
 }
 
 fn parse_field(statement: &str, next_bit: u64) -> Result<PacketField> {
     let refuse = || {
-        anyhow!(
-            "パケット図の行として読めませんでした ({statement})。`0-15: \"ラベル\"` か `+8: \"ラベル\"` の形で書いてください。"
-        )
+        anyhow!(i18n::t!(
+            "This line could not be read as a field of a packet diagram ({statement}). Write it as `0-15: \"label\"` or `+8: \"label\"`."
+        ))
     };
     let (notation, start, end, rest) = if let Some(after_plus) = statement.strip_prefix('+') {
         let (bits, rest) = read_number(after_plus.trim_start()).ok_or_else(refuse)?;
         if bits == 0 {
-            bail!("ビット数 0 の項目は書けません ({statement})。");
+            bail!(i18n::t!(
+                "A field of 0 bits cannot be written ({statement})."
+            ));
         }
         (
             PacketNotation::Length,
@@ -274,12 +283,14 @@ fn parse_field(statement: &str, next_bit: u64) -> Result<PacketField> {
         }
     };
     if end < start {
-        bail!("終了ビットが開始ビットより前です ({statement})。");
+        bail!(i18n::t!(
+            "The end bit comes before the start bit ({statement})."
+        ));
     }
     if start != next_bit {
-        bail!(
-            "項目が前の項目に続いていません ({statement})。{next_bit} ビット目から始めてください。"
-        );
+        bail!(i18n::t!(
+            "The field does not continue from the previous field ({statement}). Start it at bit {next_bit}."
+        ));
     }
     let after_colon = rest
         .trim_start()
@@ -546,6 +557,7 @@ mod tests {
 
     #[test]
     fn gaps_overlaps_and_empty_fields_are_refused_as_merman_refuses_them() {
+        let _japanese = crate::mermaid_model::japanese_for_this_thread();
         for source in [
             "packet-beta\n    0-15: \"a\"\n    17-31: \"b\"",
             "packet-beta\n    0-15: \"a\"\n    10-31: \"b\"",
@@ -628,6 +640,7 @@ mod tests {
 
     #[test]
     fn what_cannot_be_held_is_refused_with_a_japanese_reason() {
+        let _japanese = crate::mermaid_model::japanese_for_this_thread();
         for source in [
             "packet-beta\n    0-7: \"a\" %% メモ",
             "packet-beta %% メモ\n    0-7: \"a\"",

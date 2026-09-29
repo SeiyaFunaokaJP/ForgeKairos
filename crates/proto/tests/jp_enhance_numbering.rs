@@ -599,7 +599,10 @@ fn retired_fork_numbers_stay_reserved_and_unused() {
 fn a_wire_revision_check_is_on_the_wire_under_its_fork_number() {
     let bytes = Envelope {
         payload: Some(envelope::Payload::CheckWireRevision(
-            proto::CheckWireRevision { revision: 1 },
+            proto::CheckWireRevision {
+                revision: 1,
+                display_language: None,
+            },
         )),
         ..Default::default()
     }
@@ -622,7 +625,11 @@ fn the_wire_revision_check_keeps_its_numbers_across_revisions() {
     for (message, bytes) in [
         (
             "CheckWireRevision",
-            proto::CheckWireRevision { revision: 7 }.encode_to_vec(),
+            proto::CheckWireRevision {
+                revision: 7,
+                display_language: None,
+            }
+            .encode_to_vec(),
         ),
         (
             "CheckWireRevisionResponse",
@@ -631,4 +638,41 @@ fn the_wire_revision_check_keeps_its_numbers_across_revisions() {
     ] {
         assert_eq!(bytes, [0x08, 7], "{message}.revision must stay field 1");
     }
+}
+
+/// The display language rides on the check without a new revision, so both
+/// directions have to keep working: a server from before the field reads a
+/// check that carries it, and a server with the field reads a check from a
+/// client without it as carrying none.
+#[test]
+fn the_display_language_is_optional_on_the_wire() {
+    let with_language = proto::CheckWireRevision {
+        revision: 7,
+        display_language: Some("ja".to_string()),
+    }
+    .encode_to_vec();
+    assert_eq!(&with_language[..2], [0x08, 7]);
+    // `CheckWireRevisionResponse` has the same field 1 and nothing else,
+    // which is what the check was to a server from before the field.
+    let read_by_an_older_server =
+        proto::CheckWireRevisionResponse::decode(with_language.as_slice())
+            .expect("an unknown field is skipped");
+    assert_eq!(read_by_an_older_server.revision, 7);
+
+    let from_an_older_client = proto::CheckWireRevision::decode([0x08, 7].as_slice())
+        .expect("a check without the field decodes");
+    assert_eq!(from_an_older_client.revision, 7);
+    assert_eq!(from_an_older_client.display_language, None);
+
+    let english = proto::CheckWireRevision {
+        revision: 7,
+        display_language: Some("en".to_string()),
+    };
+    let decoded = proto::CheckWireRevision::decode(english.encode_to_vec().as_slice())
+        .expect("the check round-trips");
+    assert_eq!(
+        decoded.display_language.as_deref(),
+        Some("en"),
+        "an explicit English is not the same as no language"
+    );
 }

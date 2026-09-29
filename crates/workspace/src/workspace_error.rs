@@ -81,7 +81,7 @@ impl ErrorAction {
     /// recovery affordance beyond closing the notification.
     pub fn dismiss() -> Self {
         Self {
-            label: "閉じる".into(),
+            label: i18n::t!("Dismiss").into(),
             icon: None,
             tooltip: None,
             handler: ErrorActionHandler::Dismiss,
@@ -197,7 +197,7 @@ impl WorkspaceError for PortalError {
 
     fn primary_action(&self) -> ErrorAction {
         ErrorAction::link(
-            "ドキュメントを見る",
+            i18n::t!("See docs"),
             "https://zed.dev/docs/linux#i-cant-open-any-files",
         )
     }

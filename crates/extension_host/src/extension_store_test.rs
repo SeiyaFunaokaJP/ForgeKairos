@@ -22,7 +22,10 @@ use extension::{
 };
 use fs::{FakeFs, Fs, RealFs, RemoveOptions};
 use futures::{AsyncReadExt, FutureExt, StreamExt, io::BufReader};
-use gpui::{AppContext as _, BackgroundExecutor, Entity, EntityId, TaskExt, TestAppContext};
+use gpui::{
+    AppContext as _, BackgroundExecutor, Entity, EntityId, TaskExt, TestAppContext,
+    UpdateGlobal as _,
+};
 use http_client::{FakeHttpClient, Response};
 use language::{
     BinaryStatus, LanguageConfig, LanguageMatcher, LanguageName, LanguageRegistry, QueryFiles,
@@ -3514,6 +3517,47 @@ async fn test_index_change_without_remote_relevant_extensions_does_not_sync(
 }
 
 #[gpui::test]
+async fn test_watcher_reports_changes_when_installed_dir_is_created_by_store(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+    let (store, fs) = create_extension_store(cx);
+    let installed_ids = |cx: &mut TestAppContext| {
+        store.read_with(cx, |store, _| {
+            store
+                .installed_extensions()
+                .keys()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+        })
+    };
+
+    fs.insert_tree(
+        "/extensions/installed/plain-ext",
+        json!({
+            "extension.toml": "id = \"plain-ext\"\nname = \"plain-ext\"\nversion = \"1.0.0\"\nschema_version = 1\n",
+        }),
+    )
+    .await;
+    cx.executor().advance_clock(RELOAD_DEBOUNCE_DURATION);
+    cx.run_until_parked();
+    assert_eq!(installed_ids(cx), vec!["plain-ext".to_string()]);
+
+    fs.remove_dir(
+        Path::new("/extensions/installed/plain-ext"),
+        RemoveOptions {
+            recursive: true,
+            ignore_if_not_exists: false,
+        },
+    )
+    .await
+    .unwrap();
+    cx.executor().advance_clock(RELOAD_DEBOUNCE_DURATION);
+    cx.run_until_parked();
+    assert_eq!(installed_ids(cx), Vec::<String>::new());
+}
+
+#[gpui::test]
 async fn test_uninstalling_extension_restores_surviving_extensions_language(
     cx: &mut TestAppContext,
 ) {
@@ -4282,4 +4326,90 @@ impl Extension for FakeExtension {
     ) -> anyhow::Result<DebugRequest> {
         anyhow::bail!("not supported by FakeExtension")
     }
+}
+
+fn create_extension_store_counting_requests(
+    fs: Arc<FakeFs>,
+    cx: &mut TestAppContext,
+) -> (Entity<ExtensionStore>, Arc<AtomicUsize>) {
+    let request_count = Arc::new(AtomicUsize::new(0));
+    let http_client = FakeHttpClient::create({
+        let request_count = request_count.clone();
+        move |_| {
+            request_count.fetch_add(1, Ordering::SeqCst);
+            async move { Ok(Response::builder().status(404).body("".into())?) }
+        }
+    });
+    let store = cx.new(|cx| {
+        ExtensionStore::new(
+            PathBuf::from("/extensions"),
+            None,
+            Arc::new(ExtensionHostProxy::new()),
+            fs,
+            http_client.clone(),
+            http_client,
+            None,
+            NodeRuntime::unavailable(),
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    cx.executor().advance_clock(RELOAD_DEBOUNCE_DURATION);
+    cx.run_until_parked();
+    (store, request_count)
+}
+
+#[gpui::test]
+async fn test_startup_without_extensions_makes_no_requests(cx: &mut TestAppContext) {
+    init_test(cx);
+    let (_store, request_count) =
+        create_extension_store_counting_requests(FakeFs::new(cx.executor()), cx);
+
+    assert_eq!(request_count.load(Ordering::SeqCst), 0);
+}
+
+#[gpui::test]
+async fn test_startup_checks_updates_for_installed_extensions(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    insert_remote_relevant_extension(&fs, "foo").await;
+    let (store, request_count) = create_extension_store_counting_requests(fs, cx);
+
+    store.read_with(cx, |store, _| {
+        assert!(store.installed_extensions().contains_key("foo"));
+    });
+    assert_eq!(request_count.load(Ordering::SeqCst), 1);
+}
+
+#[gpui::test]
+async fn test_default_settings_auto_install_nothing(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    insert_remote_relevant_extension(&fs, "foo").await;
+    let store = create_extension_store_with(fs, Arc::new(ExtensionHostProxy::new()), cx);
+
+    store.read_with(cx, |store, cx| {
+        assert!(store.installed_extensions().contains_key("foo"));
+        assert_eq!(store.extensions_to_auto_install(cx), Vec::<Arc<str>>::new());
+    });
+
+    // Naming an extension in the user's own settings is the request to fetch
+    // it; already installed and explicitly declined ones are still skipped.
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |settings, cx| {
+            settings.update_user_settings(cx, |content| {
+                content.extension.auto_install_extensions.extend([
+                    (Arc::from("foo"), true),
+                    (Arc::from("bar"), false),
+                    (Arc::from("baz"), true),
+                ]);
+            });
+        });
+    });
+    store.read_with(cx, |store, cx| {
+        assert_eq!(
+            store.extensions_to_auto_install(cx),
+            vec![Arc::<str>::from("baz")]
+        );
+    });
 }

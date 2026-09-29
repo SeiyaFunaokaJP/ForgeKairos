@@ -71,6 +71,46 @@ pub struct WireRevisionAnswerForTests(pub Option<u32>);
 #[cfg(any(test, feature = "test-support"))]
 impl gpui::Global for WireRevisionAnswerForTests {}
 
+/// Set on a remote server's app to apply the display language a client sends
+/// with the check: the tag it sent, or `None` when it sent none (a client
+/// from before the field), which means English. The catalogs live in a crate
+/// this one does not depend on, hence the function.
+///
+/// Called before the check is answered, so everything the server sends the
+/// client after that is in the client's language. The language is the
+/// process's, and a server shared by several connections writes in the
+/// language of the one that connected last.
+pub struct DisplayLanguageHandler(pub fn(Option<&str>));
+
+impl gpui::Global for DisplayLanguageHandler {}
+
+/// The environment variable that tells the processes `terminal-session`
+/// starts on the remote host the client's display language. A server from
+/// before it ignores it.
+pub const DISPLAY_LANGUAGE_ENV_VAR: &str = "ZED_UI_LOCALE";
+
+/// Makes the client send this display language with the check (`None`:
+/// send none, as a client from before the field), instead of the one its UI
+/// is shown in. Set on the client's app.
+#[cfg(any(test, feature = "test-support"))]
+pub struct DisplayLanguageForTests(pub Option<String>);
+
+#[cfg(any(test, feature = "test-support"))]
+impl gpui::Global for DisplayLanguageForTests {}
+
+/// The display language the client sends with the check.
+pub(super) fn display_language(cx: &AsyncApp) -> Option<String> {
+    #[cfg(any(test, feature = "test-support"))]
+    if let Some(language) =
+        cx.try_read_global::<DisplayLanguageForTests, _>(|language, _| language.0.clone())
+    {
+        return language;
+    }
+    #[cfg(not(any(test, feature = "test-support")))]
+    let _ = cx;
+    Some(i18n::current_locale().to_string())
+}
+
 impl ChannelClient {
     /// Handles nothing from the peer but pings and the check until the peer
     /// has shown this build's wire revision.
@@ -200,7 +240,13 @@ pub(super) fn intercept(this: &Arc<ChannelClient>, incoming: &Envelope, cx: &Asy
     }
     match &incoming.payload {
         Some(Payload::CheckWireRevision(check)) => {
-            answer(this, incoming.id, check.revision, cx);
+            answer(
+                this,
+                incoming.id,
+                check.revision,
+                check.display_language.as_deref(),
+                cx,
+            );
             true
         }
         // What the connection is known to be alive by, which carries nothing.
@@ -242,7 +288,13 @@ pub(super) fn intercept(this: &Arc<ChannelClient>, incoming: &Envelope, cx: &Asy
     }
 }
 
-fn answer(this: &Arc<ChannelClient>, request_id: u32, revision: u32, cx: &AsyncApp) {
+fn answer(
+    this: &Arc<ChannelClient>,
+    request_id: u32,
+    revision: u32,
+    display_language: Option<&str>,
+    cx: &AsyncApp,
+) {
     #[cfg(any(test, feature = "test-support"))]
     let ours = match cx.try_read_global::<WireRevisionAnswerForTests, _>(|answer, _| answer.0) {
         Some(Some(revision)) => revision,
@@ -257,7 +309,12 @@ fn answer(this: &Arc<ChannelClient>, request_id: u32, revision: u32, cx: &AsyncA
 
     let matches = revision == ours;
     this.wire_revision.confirmed.store(matches, SeqCst);
-    if !matches {
+    if matches {
+        if let Some(apply) = cx.try_read_global::<DisplayLanguageHandler, _>(|handler, _| handler.0)
+        {
+            apply(display_language);
+        }
+    } else {
         log::warn!(
             "{}: the peer speaks wire revision {revision} and this build {ours}; \
              nothing but pings will be handled",
@@ -287,10 +344,14 @@ fn answer(this: &Arc<ChannelClient>, request_id: u32, revision: u32, cx: &AsyncA
 /// though: the server's messages in the meantime acknowledge the client's
 /// acknowledgement of the new connection, which is newer than the messages
 /// still waiting to be replayed, and would drop them from the replay buffer.
-pub(super) fn confirm(client: &Arc<ChannelClient>) -> impl Future<Output = Result<()>> {
+pub(super) fn confirm(
+    client: &Arc<ChannelClient>,
+    display_language: Option<String>,
+) -> impl Future<Output = Result<()>> {
     let response = client.request_internal(
         proto::CheckWireRevision {
             revision: JP_ENHANCE_WIRE_REVISION,
+            display_language,
         },
         false,
     );
@@ -342,18 +403,18 @@ async fn confirmed(
         Ok(Answer::Unanswered) => {
             if let Err(error) = still_there.await {
                 client.wire_revision.confirmed.store(false, SeqCst);
-                return Err(error.context(
-                    "通信の版を問い合わせている間にリモートサーバーとの接続が切れました",
-                ));
+                return Err(error.context(i18n::t!(
+                    "The connection to the remote server was lost while checking its protocol revision"
+                )));
             }
             log::warn!("the remote server did not answer the wire revision check");
             None
         }
         Err(error) => {
             client.wire_revision.confirmed.store(false, SeqCst);
-            return Err(
-                error.context("通信の版を問い合わせている間にリモートサーバーとの接続が切れました")
-            );
+            return Err(error.context(i18n::t!(
+                "The connection to the remote server was lost while checking its protocol revision"
+            )));
         }
     };
     let matches = theirs == Some(JP_ENHANCE_WIRE_REVISION);
@@ -380,16 +441,14 @@ pub struct WireRevisionMismatch {
 impl fmt::Display for WireRevisionMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.theirs {
-            Some(theirs) => write!(
-                f,
-                "リモートサーバーがこの Zed と合っていません (通信の版: この Zed は {}、サーバーは {theirs})。",
-                self.ours
-            ),
-            None => write!(
-                f,
-                "リモートサーバーがこの Zed と合っていません (通信の版の問い合わせに応答がありません。\
-                 公式版の Zed のサーバーか、この Zed より古い版のサーバーが動いている可能性があります)。"
-            ),
+            Some(theirs) => f.write_str(&i18n::t!(
+                "The remote server does not match this Zed (protocol revision: {ours} in this Zed, {theirs} on the server).",
+                ours = self.ours
+            )),
+            None => f.write_str(i18n::t!(
+                "The remote server does not match this Zed (it did not answer the protocol revision check; \
+                 it may be a server from the official Zed or from an older version of this Zed)."
+            )),
         }
     }
 }
@@ -433,19 +492,21 @@ where
         Ok(connection) => connection,
         Err(ReinstallFailure::Cancelled) => return Ok(T::default()),
         Err(ReinstallFailure::NotPossible) => {
-            return Err(anyhow!(
-                "{mismatch}この接続先では自動で入れ直せません。{steps}"
-            ));
+            return Err(anyhow!(i18n::t!(
+                "{mismatch} The server cannot be reinstalled automatically on this host. {steps}"
+            )));
         }
         Err(ReinstallFailure::Failed(error)) => {
-            return Err(error.context(format!("{mismatch}サーバーを入れ直せませんでした。{steps}")));
+            return Err(error.context(i18n::t!(
+                "{mismatch} The server could not be reinstalled. {steps}"
+            )));
         }
     };
     match retry(connection).await {
         Err(error) => match error.downcast_ref::<WireRevisionMismatch>() {
-            Some(again) => Err(anyhow!(
-                "{again}サーバーを入れ直しても合いませんでした。{steps_after_reinstall}"
-            )),
+            Some(again) => Err(anyhow!(i18n::t!(
+                "{again} The server still does not match after it was reinstalled. {steps_after_reinstall}"
+            ))),
             None => Err(error),
         },
         done => done,
@@ -458,9 +519,9 @@ fn manual_reinstall_steps(connection: &dyn RemoteConnection) -> String {
     } else {
         "~/.zed_server"
     };
-    format!(
-        "接続先の {folder} から名前が zed-remote-server- で始まるファイルを削除してから、\
-         接続し直してください。"
+    i18n::t!(
+        "On the remote host, delete the files in {folder} whose names start with zed-remote-server-, \
+         then reconnect."
     )
 }
 
@@ -468,10 +529,10 @@ fn manual_reinstall_steps(connection: &dyn RemoteConnection) -> String {
 /// the copy it uploads comes from this machine's cache (or, for a build from
 /// source, from the build itself).
 fn steps_after_reinstall() -> String {
-    format!(
-        "この Zed が接続先に入れるサーバー自体が合っていない可能性があります。\
-         この PC の {} を削除してから接続し直すか、Zed を更新してください。",
-        paths::remote_servers_dir().display()
+    i18n::t!(
+        "The server that this Zed installs on the remote host may itself not match. \
+         Delete {folder} on this computer and reconnect, or update Zed.",
+        folder = paths::remote_servers_dir().display()
     )
 }
 
@@ -487,7 +548,9 @@ async fn reinstall_server(
     };
     let template = template.map_err(ReinstallFailure::Failed)?;
     delegate.set_status(
-        Some("リモートサーバーがこの Zed と合わないため、入れ直しています"),
+        Some(i18n::t!(
+            "Reinstalling the remote server because it does not match this Zed"
+        )),
         cx,
     );
     let output = cx
@@ -505,19 +568,21 @@ async fn reinstall_server(
         .with_timeout(REMOVE_SERVER_BINARY_TIMEOUT, cx.background_executor())
         .await
         .map_err(|_| {
-            ReinstallFailure::Failed(anyhow!(
-                "接続先がサーバーのファイルの削除に {}秒以内に応えませんでした",
-                REMOVE_SERVER_BINARY_TIMEOUT.as_secs()
-            ))
+            ReinstallFailure::Failed(anyhow!(i18n::t!(
+                "The remote host did not finish deleting the server file within {seconds} seconds",
+                seconds = REMOVE_SERVER_BINARY_TIMEOUT.as_secs()
+            )))
         })?
-        .context("サーバーのファイルを削除するコマンドを起動できませんでした")
+        .context(i18n::t!(
+            "Could not start the command that deletes the server file"
+        ))
         .map_err(ReinstallFailure::Failed)?;
     if !output.status.success() {
-        return Err(ReinstallFailure::Failed(anyhow!(
-            "接続先でサーバーのファイルを削除できませんでした ({}): {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
+        return Err(ReinstallFailure::Failed(anyhow!(i18n::t!(
+            "Could not delete the server file on the remote host ({status}): {error}",
+            status = output.status,
+            error = String::from_utf8_lossy(&output.stderr).trim()
+        ))));
     }
     // The server binary is only installed when a connection is made, and the
     // pool would hand this one back. It is forgotten rather than killed: WSL's
@@ -621,8 +686,8 @@ mod tests {
                     Ok(Some(7))
                 }
             },
-            "手順".to_string(),
-            "入れ直した後の手順".to_string(),
+            "the steps".to_string(),
+            "the steps after reinstalling".to_string(),
         ));
         assert_eq!(result.expect("the retry connected"), Some(7));
         assert_eq!((reinstalls.get(), retries.get()), (1, 1));
@@ -638,18 +703,21 @@ mod tests {
                 Ok(())
             },
             |()| async { Err(mismatch(Some(1))) },
-            "手順".to_string(),
-            "入れ直した後の手順".to_string(),
+            "the steps".to_string(),
+            "the steps after reinstalling".to_string(),
         ));
         let error = result.expect_err("the second mismatch is final");
         assert_eq!(reinstalls.get(), 1);
         let message = format!("{error:#}");
         assert!(
-            message.contains("入れ直しても合いませんでした"),
+            message.contains("still does not match after it was reinstalled"),
             "{message}"
         );
-        assert!(message.contains("入れ直した後の手順"), "{message}");
-        assert!(message.contains("サーバーは 1"), "{message}");
+        assert!(
+            message.contains("the steps after reinstalling"),
+            "{message}"
+        );
+        assert!(message.contains("1 on the server"), "{message}");
     }
 
     #[test]
@@ -693,12 +761,15 @@ mod tests {
                 retried.set(true);
                 Ok(Some(1))
             },
-            "手順".to_string(),
-            "入れ直した後の手順".to_string(),
+            "the steps".to_string(),
+            "the steps after reinstalling".to_string(),
         ));
         let message = format!("{:#}", result.expect_err("nothing to retry with"));
-        assert!(message.contains("自動で入れ直せません"), "{message}");
-        assert!(message.contains("手順"), "{message}");
+        assert!(
+            message.contains("cannot be reinstalled automatically"),
+            "{message}"
+        );
+        assert!(message.contains("the steps"), "{message}");
         assert!(!retried.get());
 
         let cancelled: Result<Option<u32>> = smol::block_on(with_one_reinstall(
@@ -1037,9 +1108,9 @@ mod tests {
         let (result, received) =
             connect_to(ScriptedServer::Answers(JP_ENHANCE_WIRE_REVISION - 1), cx).await;
         let message = format!("{:#}", result.expect_err("the revisions differ"));
-        assert!(message.contains("合っていません"), "{message}");
+        assert!(message.contains("does not match this Zed"), "{message}");
         assert!(
-            message.contains(&format!("サーバーは {}", JP_ENHANCE_WIRE_REVISION - 1)),
+            message.contains(&format!("{} on the server", JP_ENHANCE_WIRE_REVISION - 1)),
             "{message}"
         );
         // Nothing to remove on this connection, so the user is told how.
@@ -1053,7 +1124,10 @@ mod tests {
     ) {
         let (result, received) = connect_to(ScriptedServer::Silent, cx).await;
         let message = format!("{:#}", result.expect_err("no answer is no match"));
-        assert!(message.contains("応答がありません"), "{message}");
+        assert!(
+            message.contains("did not answer the protocol revision check"),
+            "{message}"
+        );
         assert!(
             position(&received, "CheckWireRevision").is_some(),
             "{received:?}"
@@ -1072,8 +1146,11 @@ mod tests {
             "{error:#}"
         );
         let message = format!("{error:#}");
-        assert!(message.contains("接続が切れました"), "{message}");
-        assert!(!message.contains("合っていません"), "{message}");
+        assert!(
+            message.contains("connection to the remote server was lost"),
+            "{message}"
+        );
+        assert!(!message.contains("does not match this Zed"), "{message}");
         assert_eq!(
             received.iter().filter(|name| *name == "Ping").count(),
             2,
@@ -1118,7 +1195,10 @@ mod tests {
         server_cx.run_until_parked();
         cx.run_until_parked();
         let message = format!("{:#}", connecting.await.expect_err("no answer is no match"));
-        assert!(message.contains("応答がありません"), "{message}");
+        assert!(
+            message.contains("did not answer the protocol revision check"),
+            "{message}"
+        );
     }
 
     /// The server end serves nothing but the check until a client of its own
@@ -1165,8 +1245,13 @@ mod tests {
         };
         let allocate =
             |id| proto::AllocateWorktreeId { project_id: 0 }.into_envelope(id, None, None);
-        let check =
-            |id, revision| proto::CheckWireRevision { revision }.into_envelope(id, None, None);
+        let check = |id, revision| {
+            proto::CheckWireRevision {
+                revision,
+                display_language: None,
+            }
+            .into_envelope(id, None, None)
+        };
         let is_error = |envelope: &Envelope| matches!(envelope.payload, Some(Payload::Error(_)));
 
         let refused = answer_to(allocate(1), cx).await;

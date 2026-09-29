@@ -2114,7 +2114,7 @@ fn run_agent_thread_view_test(
     connection.set_next_prompt_updates(vec![acp::SessionUpdate::ToolCall(
         acp::ToolCall::new(
             "read_file",
-            format!("ファイル `{}/test-image.png` を読み込み", worktree_name),
+            format!("Read file `{}/test-image.png`", worktree_name),
         )
         .kind(acp::ToolKind::Read)
         .status(acp::ToolCallStatus::Completed)

@@ -270,16 +270,16 @@ impl<S: ApiCompatibleProviderSettings> Render for ApiCompatibleProviderConfigura
                 .border_color(cx.theme().colors().border)
                 .bg(cx.theme().colors().background)
                 .child(Icon::new(IconName::Check).color(Color::Success))
-                .child(Label::new(format!(
-                    "{} には API キーなしで接続します (認証不要のサーバー)",
+                .child(Label::new(i18n::t!(
+                    "Connecting to {} without an API key (the server needs no authentication)",
                     state.settings.api_url()
                 )))
                 .into_any()
         } else if self.should_render_editor(cx) {
             v_flex()
                 .on_action(cx.listener(Self::save_api_key))
-                .child(Label::new(format!(
-                    "{provider_name} 互換のプロバイダーをエージェントで使うには、API キーが必要です。"
+                .child(Label::new(i18n::t!(
+                    "To use Zed's agent with an {provider_name}-compatible provider, you need to add an API key."
                 )))
                 .child(
                     div()
@@ -287,8 +287,8 @@ impl<S: ApiCompatibleProviderSettings> Render for ApiCompatibleProviderConfigura
                         .child(self.api_key_editor.clone()),
                 )
                 .child(
-                    Label::new(format!(
-                        "または環境変数 {env_var_name} を設定し、Zed を再起動すると反映されます。",
+                    Label::new(i18n::t!(
+                        "You can also set the {env_var_name} environment variable and restart Zed.",
                     ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
@@ -312,22 +312,22 @@ impl<S: ApiCompatibleProviderSettings> Render for ApiCompatibleProviderConfigura
                         .child(
                             div().w_full().overflow_x_hidden().text_ellipsis().child(Label::new(
                                 if env_var_set {
-                                    format!("API キーは環境変数 {env_var_name} で設定されています")
+                                    i18n::t!("API key set in {env_var_name} environment variable")
                                 } else {
-                                    format!("{} の API キーは設定済み", state.settings.api_url())
+                                    i18n::t!("API key configured for {}", state.settings.api_url())
                                 },
                             )),
                         ),
                 )
                 .child(
                     h_flex().flex_shrink_0().child(
-                        Button::new("reset-api-key", "キーをリセット")
+                        Button::new("reset-api-key", i18n::t!("Reset API Key"))
                             .label_size(LabelSize::Small)
                             .start_icon(Icon::new(IconName::Undo).size(IconSize::Small))
                             .layer(ElevationIndex::ModalSurface)
                             .when(env_var_set, |this| {
-                                this.tooltip(Tooltip::text(format!(
-                                    "API キーをリセットするには、環境変数 {env_var_name} を解除してください。",
+                                this.tooltip(Tooltip::text(i18n::t!(
+                                    "To reset your API key, unset the {env_var_name} environment variable.",
                                 )))
                             })
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -342,7 +342,7 @@ impl<S: ApiCompatibleProviderSettings> Render for ApiCompatibleProviderConfigura
 
         if self.load_credentials_task.is_some() {
             div()
-                .child(Label::new("認証情報を読み込んでいます…"))
+                .child(Label::new(i18n::t!("Loading credentials…")))
                 .into_any()
         } else {
             v_flex()
@@ -351,12 +351,12 @@ impl<S: ApiCompatibleProviderSettings> Render for ApiCompatibleProviderConfigura
                 .child(
                     v_flex().gap_2().child(api_key_section).child(
                         Checkbox::new("compatible-provider-no-api-key", no_api_key.into())
-                            .label("API キーなしで接続する (認証不要のサーバー)")
+                            .label(i18n::t!("Connect without an API key (the server needs no authentication)"))
                             .label_size(LabelSize::Small)
                             .disabled(env_var_set)
                             .when(env_var_set, |this| {
-                                this.tooltip(Tooltip::text(format!(
-                                    "環境変数 {env_var_name} で API キーが設定されているため変更できません。",
+                                this.tooltip(Tooltip::text(i18n::t!(
+                                    "This can't be changed while an API key is set in the {env_var_name} environment variable.",
                                 )))
                             })
                             .on_click(cx.listener(|this, checked: &ToggleState, _window, cx| {
@@ -366,7 +366,7 @@ impl<S: ApiCompatibleProviderSettings> Render for ApiCompatibleProviderConfigura
                 )
                 .child(
                     h_flex().w_full().justify_end().child(
-                        Button::new("remove-compatible-provider", "プロバイダーを削除")
+                        Button::new("remove-compatible-provider", i18n::t!("Remove Provider"))
                             .style(ButtonStyle::OutlinedGhost)
                             .label_size(LabelSize::Small)
                             .start_icon(

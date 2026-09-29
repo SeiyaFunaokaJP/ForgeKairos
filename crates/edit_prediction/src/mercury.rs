@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::{mem, ops::Range, path::Path, sync::Arc};
 use zeta_prompt::Zeta2PromptInput;
 
-const MERCURY_API_URL: &str = "https://api.inceptionlabs.ai/v1/edit/completions";
+pub(crate) const MERCURY_API_URL: &str = "https://api.inceptionlabs.ai/v1/edit/completions";
 
 pub struct Mercury {
     pub api_token: Entity<ApiKeyState>,
@@ -58,6 +58,9 @@ impl Mercury {
         credentials_provider: Arc<dyn CredentialsProvider>,
         cx: &mut Context<EditPredictionStore>,
     ) -> Task<Result<Option<EditPredictionResult>>> {
+        if let Err(error) = crate::ensure_mercury_consent(cx) {
+            return Task::ready(Err(error));
+        }
         self.api_token.update(cx, |key_state, cx| {
             _ = key_state.load_if_needed(MERCURY_CREDENTIALS_URL, |s| s, credentials_provider, cx);
         });
@@ -453,6 +456,10 @@ fn send_feedback(
     http_client: Arc<dyn HttpClient>,
     cx: &App,
 ) {
+    if let Err(error) = crate::ensure_mercury_consent(cx) {
+        log::debug!("not sending Mercury feedback: {error}");
+        return;
+    }
     let request_id = prediction_id.0;
     let app_version = AppVersion::global(cx);
     cx.background_spawn(async move {

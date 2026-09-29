@@ -71,11 +71,11 @@ impl C4DiagramType {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Context => "コンテキスト図",
-            Self::Container => "コンテナー図",
-            Self::Component => "コンポーネント図",
-            Self::Dynamic => "動的図",
-            Self::Deployment => "配置図",
+            Self::Context => i18n::t!("Context diagram"),
+            Self::Container => i18n::t!("Container diagram"),
+            Self::Component => i18n::t!("Component diagram"),
+            Self::Dynamic => i18n::t!("Dynamic diagram"),
+            Self::Deployment => i18n::t!("Deployment diagram"),
         }
     }
 
@@ -180,43 +180,43 @@ pub const C4_OFFERED_RELATION_MACROS: [&str; 7] = [
 
 const STYLE_MACROS: [&str; 3] = ["UpdateElementStyle", "UpdateRelStyle", "UpdateLayoutConfig"];
 
-/// A short Japanese name for a macro, shown beside the macro in the menus.
+/// A short name for a macro, shown beside the macro in the menus.
 pub fn c4_macro_label(name: &str) -> &'static str {
     match name {
-        "Person" => "人",
-        "Person_Ext" => "外部の人",
-        "System" => "システム",
-        "SystemDb" => "システム (DB)",
-        "SystemQueue" => "システム (キュー)",
-        "System_Ext" => "外部システム",
-        "SystemDb_Ext" => "外部システム (DB)",
-        "SystemQueue_Ext" => "外部システム (キュー)",
-        "Container" => "コンテナー",
-        "ContainerDb" => "コンテナー (DB)",
-        "ContainerQueue" => "コンテナー (キュー)",
-        "Container_Ext" => "外部コンテナー",
-        "ContainerDb_Ext" => "外部コンテナー (DB)",
-        "ContainerQueue_Ext" => "外部コンテナー (キュー)",
-        "Component" => "コンポーネント",
-        "ComponentDb" => "コンポーネント (DB)",
-        "ComponentQueue" => "コンポーネント (キュー)",
-        "Component_Ext" => "外部コンポーネント",
-        "ComponentDb_Ext" => "外部コンポーネント (DB)",
-        "ComponentQueue_Ext" => "外部コンポーネント (キュー)",
-        "Boundary" => "境界",
-        "Enterprise_Boundary" => "企業の境界",
-        "System_Boundary" => "システムの境界",
-        "Container_Boundary" => "コンテナーの境界",
-        "Node" | "Deployment_Node" => "配置ノード",
-        "Node_L" => "配置ノード (左寄せ)",
-        "Node_R" => "配置ノード (右寄せ)",
-        "Rel" | "RelIndex" => "関係",
-        "BiRel" => "双方向",
-        "Rel_U" | "Rel_Up" => "上向き",
-        "Rel_D" | "Rel_Down" => "下向き",
-        "Rel_L" | "Rel_Left" => "左向き",
-        "Rel_R" | "Rel_Right" => "右向き",
-        "Rel_Back" => "逆向き",
+        "Person" => i18n::tc!("C4 element", "Person"),
+        "Person_Ext" => i18n::tc!("C4 element", "External person"),
+        "System" => i18n::tc!("C4 element", "System"),
+        "SystemDb" => i18n::tc!("C4 element", "System (DB)"),
+        "SystemQueue" => i18n::tc!("C4 element", "System (queue)"),
+        "System_Ext" => i18n::tc!("C4 element", "External system"),
+        "SystemDb_Ext" => i18n::tc!("C4 element", "External system (DB)"),
+        "SystemQueue_Ext" => i18n::tc!("C4 element", "External system (queue)"),
+        "Container" => i18n::tc!("C4 element", "Container"),
+        "ContainerDb" => i18n::tc!("C4 element", "Container (DB)"),
+        "ContainerQueue" => i18n::tc!("C4 element", "Container (queue)"),
+        "Container_Ext" => i18n::tc!("C4 element", "External container"),
+        "ContainerDb_Ext" => i18n::tc!("C4 element", "External container (DB)"),
+        "ContainerQueue_Ext" => i18n::tc!("C4 element", "External container (queue)"),
+        "Component" => i18n::tc!("C4 element", "Component"),
+        "ComponentDb" => i18n::tc!("C4 element", "Component (DB)"),
+        "ComponentQueue" => i18n::tc!("C4 element", "Component (queue)"),
+        "Component_Ext" => i18n::tc!("C4 element", "External component"),
+        "ComponentDb_Ext" => i18n::tc!("C4 element", "External component (DB)"),
+        "ComponentQueue_Ext" => i18n::tc!("C4 element", "External component (queue)"),
+        "Boundary" => i18n::tc!("C4 element", "Boundary"),
+        "Enterprise_Boundary" => i18n::tc!("C4 element", "Enterprise boundary"),
+        "System_Boundary" => i18n::tc!("C4 element", "System boundary"),
+        "Container_Boundary" => i18n::tc!("C4 element", "Container boundary"),
+        "Node" | "Deployment_Node" => i18n::tc!("C4 element", "Deployment node"),
+        "Node_L" => i18n::tc!("C4 element", "Deployment node (left-aligned)"),
+        "Node_R" => i18n::tc!("C4 element", "Deployment node (right-aligned)"),
+        "Rel" | "RelIndex" => i18n::tc!("C4 element", "Relationship"),
+        "BiRel" => i18n::tc!("C4 element", "Bidirectional"),
+        "Rel_U" | "Rel_Up" => i18n::tc!("C4 element", "Upward"),
+        "Rel_D" | "Rel_Down" => i18n::tc!("C4 element", "Downward"),
+        "Rel_L" | "Rel_Left" => i18n::tc!("C4 element", "Leftward"),
+        "Rel_R" | "Rel_Right" => i18n::tc!("C4 element", "Rightward"),
+        "Rel_Back" => i18n::tc!("C4 element", "Reverse"),
         _ => "",
     }
 }
@@ -1153,7 +1153,7 @@ impl C4Document {
     }
 
     /// Why the document cannot be written back as a diagram Mermaid draws the
-    /// way the form shows it, in Japanese, or `None` when it can.
+    /// way the form shows it, or `None` when it can.
     pub fn structure_error(&self) -> Option<String> {
         let mut depth = 0usize;
         let mut titles = 0usize;
@@ -1162,15 +1162,15 @@ impl C4Document {
                 C4Item::BoundaryStart(_) => depth += 1,
                 C4Item::BoundaryEnd => {
                     if depth == 0 {
-                        return Some("対応する境界の無い `}` があります。".to_string());
+                        return Some(i18n::t!("There is a `}}` without a matching boundary."));
                     }
                     depth -= 1;
                 }
                 C4Item::Title(title) => {
                     titles += 1;
                     if !is_valid_c4_title(title) {
-                        return Some(format!(
-                            "タイトル `{title}` は書けません (改行と `%%` は不可、空にもできません)。"
+                        return Some(i18n::t!(
+                            "The title `{title}` cannot be used (line breaks and `%%` are not allowed, and it cannot be empty)."
                         ));
                     }
                 }
@@ -1178,17 +1178,19 @@ impl C4Document {
             }
         }
         if depth != 0 {
-            return Some("閉じていない境界があります。".to_string());
+            return Some(i18n::t!("There is a boundary that is not closed.").to_string());
         }
         if let Some(error) = self.boundary_content_error() {
             return Some(error);
         }
         if titles > 1 {
-            return Some("`title` が 2 つあります。後のものだけが使われます。".to_string());
+            return Some(
+                i18n::t!("There are two `title`s. Only the last one is used.").to_string(),
+            );
         }
         if titles == 1 && self.title_comes_from_accessible_title() {
             return Some(
-                "`title` より後の `accTitle` が図のタイトルになるので、`title` は使われません。"
+                i18n::t!("An `accTitle` after `title` becomes the diagram's title, so `title` is not used.")
                     .to_string(),
             );
         }
@@ -1200,23 +1202,23 @@ impl C4Document {
                 continue;
             };
             let Some(alias) = statement.alias() else {
-                return Some(format!("`{}` に別名がありません。", statement.name));
+                return Some(i18n::t!("`{}` has no alias.", statement.name));
             };
             if !is_valid_c4_alias(alias) {
-                return Some(format!(
-                    "別名 `{alias}` は使えません (空白・`\"` `,` `(` `)` `{{` `}}` と、`$` で始まる名前は不可)。"
+                return Some(i18n::t!(
+                    "The alias `{alias}` cannot be used (spaces, `\"` `,` `(` `)` `{{` `}}` and names starting with `$` are not allowed)."
                 ));
             }
             if declared.contains(&alias) {
                 // `merman` merges two declarations of one alias into one box,
                 // drawn where the first one was with what the last one says.
-                return Some(format!(
-                    "別名 `{alias}` が 2 回宣言されています。別の名前にしてください。"
+                return Some(i18n::t!(
+                    "The alias `{alias}` is declared twice. Use a different name."
                 ));
             }
             if matches!(item, C4Item::BoundaryStart(_)) && alias == "global" {
                 return Some(
-                    "`global` は図全体を表す名前なので、境界の別名には使えません。".to_string(),
+                    i18n::t!("`global` is the name of the whole diagram, so it cannot be used as the alias of a boundary.").to_string(),
                 );
             }
             declared.push(alias);
@@ -1234,23 +1236,28 @@ impl C4Document {
                     if let Some(alias) = statement.alias()
                         && styled_declarations.contains(&alias)
                     {
-                        return Some(format!(
-                            "`UpdateElementStyle({alias}, …)` が `{alias}` の宣言より前にあるので効きません。宣言の後ろへ移してください。"
+                        return Some(i18n::t!(
+                            "`UpdateElementStyle({alias}, …)` comes before the declaration of `{alias}`, so it has no effect. Move it after the declaration."
                         ));
                     }
                 }
                 C4Item::Relation(statement) => {
                     let Some((from, to)) = statement.relation_ends() else {
-                        return Some(format!("`{}` の両端が読めません。", statement.name));
+                        return Some(i18n::t!(
+                            "Could not read both ends of `{}`.",
+                            statement.name
+                        ));
                     };
                     for end in [from, to] {
                         if !elements.contains(&end) {
                             return Some(if declared.contains(&end) {
-                                format!(
-                                    "関係の端 `{end}` は境界です。関係は要素どうしにしか引けません。"
+                                i18n::t!(
+                                    "The end `{end}` of a relationship is a boundary. Relationships can only connect elements."
                                 )
                             } else {
-                                format!("関係の端 `{end}` という要素がありません。")
+                                i18n::t!(
+                                    "There is no element `{end}` for the end of a relationship."
+                                )
                             });
                         }
                     }
@@ -1258,8 +1265,8 @@ impl C4Document {
                     // first one's kind and texts in `merman`, which the source
                     // order written back keeps; the form notes it on the row.
                     if styled_pairs.contains(&(from, to)) {
-                        return Some(format!(
-                            "`UpdateRelStyle({from}, {to}, …)` が関係より前にあるので効きません。関係の後ろへ移してください。"
+                        return Some(i18n::t!(
+                            "`UpdateRelStyle({from}, {to}, …)` comes before the relationship, so it has no effect. Move it after the relationship."
                         ));
                     }
                     pairs.push((from, to));
@@ -1292,14 +1299,19 @@ impl C4Document {
 
         for statement in self.items.iter().filter_map(C4Item::statement) {
             if statement.arguments.len() < minimum_arguments(&statement.name) {
-                return Some(format!("`{}` の引数が足りません。", statement.name));
+                return Some(i18n::t!(
+                    "`{}` does not have enough arguments.",
+                    statement.name
+                ));
             }
             for argument in &statement.arguments {
                 if !is_valid_c4_argument(argument) {
                     let text = match argument {
                         C4Argument::Text { value, .. } | C4Argument::Named { value, .. } => value,
                     };
-                    return Some(format!("`{text}` は書けません (`\"` と改行は使えません)。"));
+                    return Some(i18n::t!(
+                        "`{text}` cannot be used (`\"` and line breaks are not allowed)."
+                    ));
                 }
             }
         }
@@ -1327,8 +1339,8 @@ impl C4Document {
                 }
                 C4Item::BoundaryEnd => {
                     if let Some((alias, false)) = open.pop() {
-                        return Some(format!(
-                            "境界 `{alias}` の中が空です。Mermaid は空の境界を描けないので、要素を 1 つ以上入れるか、境界を削除してください。"
+                        return Some(i18n::t!(
+                            "The boundary `{alias}` is empty. Mermaid cannot draw an empty boundary, so put at least one element in it or delete the boundary."
                         ));
                     }
                     continue;
@@ -1346,8 +1358,8 @@ impl C4Document {
             if is_macro {
                 *has_macro = true;
             } else if !*has_macro {
-                return Some(format!(
-                    "境界 `{alias}` の中では、`title` や `accTitle` などを最初の要素より後ろに書いてください (Mermaid が受け付けません)。"
+                return Some(i18n::t!(
+                    "Inside the boundary `{alias}`, write `title`, `accTitle` and the like after the first element (Mermaid does not accept them otherwise)."
                 ));
             }
         }
@@ -1411,11 +1423,13 @@ pub fn parse_c4(source: &str) -> Result<C4Document> {
     if has_statements {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         let RenderSemanticModel::C4(model) = parsed.model() else {
-            bail!("この図は C4 図ではありません。");
+            bail!(i18n::t!("This diagram is not a C4 diagram."));
         };
         // Mermaid cuts `%%{…}%%` out of the middle of a line, and across lines,
         // before the C4 parser reads what is left, so a line this module keeps
@@ -1441,9 +1455,9 @@ pub fn parse_c4(source: &str) -> Result<C4Document> {
             || document.declarations_as_merman_reads_them(true) != boundaries
             || document.relation_pairs_as_merman_reads_them() != relations
         {
-            bail!(
-                "`%%{{…}}%%` などの書き方のせいで、構造化エディターの読み取りが Mermaid の描く図と一致しません。テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Because of how `%%{{…}}%%` or similar is written, what the structured editor reads does not match the diagram Mermaid draws. Edit it as text."
+            ));
         }
     }
 
@@ -1461,9 +1475,9 @@ fn scan_c4(source: &str) -> Result<C4Document> {
     };
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(diagram_type) = C4DiagramType::from_keyword(header) else {
-        bail!(
-            "`{header}` の行は構造化編集に対応していません (`C4Context` などの見出しだけの行にしてください)。"
-        );
+        bail!(i18n::t!(
+            "The `{header}` line is not supported by the structured editor (leave only the heading, such as `C4Context`, on the line)."
+        ));
     };
     document.diagram_type = diagram_type;
 
@@ -1496,10 +1510,10 @@ fn scan_c4(source: &str) -> Result<C4Document> {
             // a statement, which a kept line would hide from the form.
             let rest = without_directives(&text);
             if text.starts_with("%%{") && !rest.trim().is_empty() && !is_removed_comment(&rest) {
-                bail!(
-                    "`%%{{…}}%%` の後ろに同じ行で文が続いています ({} 行目)。指示子を 1 行に分けてから開いてください。",
+                bail!(i18n::t!(
+                    "A statement follows `%%{{…}}%%` on the same line (line {}). Put the directive on its own line, then open it.",
                     start + 1
-                );
+                ));
             }
             document.items.push(C4Item::Preserved(text));
             continue;
@@ -1516,10 +1530,10 @@ fn scan_c4(source: &str) -> Result<C4Document> {
 
         if statement == "}" {
             if open_boundaries == 0 {
-                bail!(
-                    "対応する境界の無い `}}` があります ({} 行目)。テキストのまま編集してください。",
+                bail!(i18n::t!(
+                    "There is a `}}` without a matching boundary (line {}). Edit it as text.",
                     start + 1
-                );
+                ));
             }
             open_boundaries -= 1;
             document.items.push(C4Item::BoundaryEnd);
@@ -1563,14 +1577,16 @@ fn scan_c4(source: &str) -> Result<C4Document> {
             }
         }
         if is_direction_statement(statement) {
-            bail!(
-                "`{statement}` は C4 図では使えません ({} 行目。Mermaid が受け付けません)。行を消すか、テキストのまま編集してください。",
+            bail!(i18n::t!(
+                "`{statement}` cannot be used in a C4 diagram (line {}; Mermaid does not accept it). Delete the line, or edit it as text.",
                 start + 1
-            );
+            ));
         }
 
         let Some((name, arguments_text, has_brace)) = split_macro(statement)? else {
-            bail!("`{statement}` は C4 図の文として読めません。テキストのまま編集してください。");
+            bail!(i18n::t!(
+                "Could not read `{statement}` as a C4 diagram statement. Edit it as text."
+            ));
         };
         let parsed = C4Statement {
             name: name.to_string(),
@@ -1579,16 +1595,16 @@ fn scan_c4(source: &str) -> Result<C4Document> {
 
         if boundary_family(name).is_some() {
             if parsed.arguments.len() < minimum_arguments(name) {
-                bail!(
-                    "`{statement}` には別名とラベルの 2 つが必要です。テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "`{statement}` needs both an alias and a label. Edit it as text."
+                ));
             }
             require_alias(&parsed, statement)?;
             let mut moved_comments = Vec::new();
             if !has_brace {
                 loop {
                     let Some(next) = lines.get(index).copied() else {
-                        bail!("`{statement}` の後に `{{` がありません。");
+                        bail!(i18n::t!("There is no `{{` after `{statement}`."));
                     };
                     index += 1;
                     if next.trim().is_empty() {
@@ -1601,7 +1617,7 @@ fn scan_c4(source: &str) -> Result<C4Document> {
                     if next.trim() == "{" {
                         break;
                     }
-                    bail!("`{statement}` の後に `{{` がありません。");
+                    bail!(i18n::t!("There is no `{{` after `{statement}`."));
                 }
             }
             open_boundaries += 1;
@@ -1611,9 +1627,9 @@ fn scan_c4(source: &str) -> Result<C4Document> {
             continue;
         }
         if has_brace {
-            bail!(
-                "`{{` を付けられるのは境界だけです ({statement})。テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Only boundaries can have `{{` ({statement}). Edit it as text."
+            ));
         }
         if element_family(name).is_some() {
             require_alias(&parsed, statement)?;
@@ -1627,14 +1643,16 @@ fn scan_c4(source: &str) -> Result<C4Document> {
                     .push(C4Item::Preserved(statement.to_string()));
             } else {
                 if parsed.relation_ends().is_none() {
-                    bail!("`{statement}` の両端が読めません。");
+                    bail!(i18n::t!("Could not read both ends of `{statement}`."));
                 }
                 document.items.push(C4Item::Relation(parsed));
             }
         } else if STYLE_MACROS.contains(&name) {
             document.items.push(C4Item::Style(parsed));
         } else {
-            bail!("`{name}` は C4 図のマクロではありません。テキストのまま編集してください。");
+            bail!(i18n::t!(
+                "`{name}` is not a C4 diagram macro. Edit it as text."
+            ));
         }
         document.items.extend(comment_item);
     }
@@ -1642,26 +1660,30 @@ fn scan_c4(source: &str) -> Result<C4Document> {
     // Both set the title and the last one is drawn, so a `title` that is not
     // the last would be a field whose edits change nothing.
     if titles > 1 {
-        bail!(
-            "`title` が 2 回書かれています。後のものだけが使われるので、1 つにまとめてからもう一度開いてください。"
-        );
+        bail!(i18n::t!(
+            "`title` is written twice. Only the last one is used, so merge them into one, then open it again."
+        ));
     }
     if titles == 1 && document.title_comes_from_accessible_title() {
-        bail!(
-            "`title` の後の `accTitle` が図のタイトルになっています。`accTitle` を `title` より前へ移すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "The `accTitle` after `title` is used as the diagram's title. Move `accTitle` before `title`, or edit it as text."
+        ));
     }
     // `merman` 0.7 closed what was still open at the end of the fence; 0.8
     // refuses it.
     if open_boundaries > 0 {
-        bail!("閉じていない境界があります (`}}` がありません)。テキストのまま編集してください。");
+        bail!(i18n::t!(
+            "There is a boundary that is not closed (`}}` is missing). Edit it as text."
+        ));
     }
     Ok(document)
 }
 
 fn require_alias(statement: &C4Statement, text: &str) -> Result<()> {
     if statement.alias().is_none() {
-        bail!("`{text}` の別名が読めません (別名は最初の引数に `$…=` 無しで書きます)。");
+        bail!(i18n::t!(
+            "Could not read the alias of `{text}` (write the alias as the first argument, without `$…=`)."
+        ));
     }
     Ok(())
 }
@@ -1731,15 +1753,19 @@ fn split_macro(statement: &str) -> Result<Option<(&str, &str, bool)>> {
     }
     let after = statement.get(open + 1..).unwrap_or_default();
     let Some(close) = after.rfind(')') else {
-        bail!("`{statement}` の `)` がありません。");
+        bail!(i18n::t!("The `)` of `{statement}` is missing."));
     };
     let arguments = after.get(..close).unwrap_or_default();
     let rest = after.get(close + 1..).unwrap_or_default().trim();
     let has_brace = match rest.strip_prefix('{') {
         Some(after_brace) if after_brace.trim().is_empty() => true,
-        Some(_) => bail!("`{statement}` の `{{` の後ろには何も書けません。"),
+        Some(_) => bail!(i18n::t!(
+            "Nothing can be written after the `{{` of `{statement}`."
+        )),
         None if rest.is_empty() => false,
-        None => bail!("`{statement}` の `)` の後ろの `{rest}` は読めません。"),
+        None => bail!(i18n::t!(
+            "Could not read `{rest}` after the `)` of `{statement}`."
+        )),
     };
     Ok(Some((name, arguments, has_brace)))
 }
@@ -1782,11 +1808,13 @@ fn parse_argument(segment: &str) -> Result<C4Argument> {
     }
     if let Some(rest) = segment.strip_prefix('$') {
         let Some(equals) = rest.find('=') else {
-            bail!("`{segment}` は `$名前=\"値\"` の形になっていません。");
+            bail!(i18n::t!(
+                "`{segment}` is not in the form `$name=\"value\"`."
+            ));
         };
         let key = rest.get(..equals).unwrap_or_default().trim();
         if key.is_empty() {
-            bail!("`{segment}` に名前がありません。");
+            bail!(i18n::t!("`{segment}` has no name."));
         }
         let value = parse_quoted(rest.get(equals + 1..).unwrap_or_default())?;
         return Ok(C4Argument::Named {
@@ -1803,14 +1831,16 @@ fn parse_argument(segment: &str) -> Result<C4Argument> {
 fn parse_quoted(input: &str) -> Result<String> {
     let input = input.trim();
     let Some(rest) = input.strip_prefix('"') else {
-        bail!("`{input}` は `\"` で囲まれていません。");
+        bail!(i18n::t!("`{input}` is not enclosed in `\"`."));
     };
     let Some(end) = rest.find('"') else {
-        bail!("`{input}` の `\"` が閉じていません。");
+        bail!(i18n::t!("The `\"` of `{input}` is not closed."));
     };
     let trailing = rest.get(end + 1..).unwrap_or_default().trim();
     if !trailing.is_empty() {
-        bail!("`{input}` の `\"` の後ろの `{trailing}` は読めません。");
+        bail!(i18n::t!(
+            "Could not read `{trailing}` after the `\"` of `{input}`."
+        ));
     }
     Ok(rest.get(..end).unwrap_or_default().to_string())
 }
@@ -2106,7 +2136,10 @@ mod tests {
         let source = "C4Context\n    Boundary(b, \"B\") {\n    Person(p, \"P\")";
         assert!(render_to_svg(source, &MermaidTheme::default()).is_err());
         let error = parse_c4(source).expect_err("an open boundary should be refused");
-        assert!(error.to_string().contains("閉じていない境界"), "{error}");
+        assert!(
+            error.to_string().contains("a boundary that is not closed"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -2121,25 +2154,34 @@ mod tests {
     #[test]
     fn constructs_that_would_change_meaning_are_refused() {
         for (source, expected) in [
-            ("C4Context\n    title a\n    title b", "2 回"),
+            ("C4Context\n    title a\n    title b", "written twice"),
             ("C4Context\n    title a\n    accTitle: b", "accTitle"),
-            ("C4Context\n    }", "境界の無い"),
-            ("C4Context\n    Person(a, \"A\") {\n    }", "境界だけ"),
-            ("C4Context\n    Actor(a, \"A\")", "マクロではありません"),
-            ("C4Context\n    something", "読めません"),
-            ("C4Context\n    System_Boundary(b) {\n    }", "2 つ"),
+            ("C4Context\n    }", "without a matching boundary"),
+            (
+                "C4Context\n    Person(a, \"A\") {\n    }",
+                "Only boundaries can have",
+            ),
+            (
+                "C4Context\n    Actor(a, \"A\")",
+                "is not a C4 diagram macro",
+            ),
+            ("C4Context\n    something", "Could not read"),
+            (
+                "C4Context\n    System_Boundary(b) {\n    }",
+                "both an alias and a label",
+            ),
             (
                 "C4Context\n    Boundary(b, \"B\")\n    Person(a, \"A\")",
                 "`{`",
             ),
-            ("C4Context\n    Person($label=\"x\", \"A\")", "別名"),
-            ("C4Context\n    Person(a, \"A\" x)", "読めません"),
-            ("C4Context\n    Person(a, $x)", "$名前"),
-            ("C4Context title x", "見出し"),
+            ("C4Context\n    Person($label=\"x\", \"A\")", "alias"),
+            ("C4Context\n    Person(a, \"A\" x)", "Could not read"),
+            ("C4Context\n    Person(a, $x)", "$name"),
+            ("C4Context title x", "heading"),
             // `merman` 0.8 refuses `direction` in a C4 diagram.
             (
                 "C4Context\n    direction LR\n    Person(a, \"A\")",
-                "C4 図では使えません",
+                "cannot be used in a C4 diagram",
             ),
         ] {
             let error = parse_c4(source)
@@ -2158,11 +2200,11 @@ mod tests {
         for (source, expected) in [
             (
                 "C4Context\n    Person(a, \"A\")\n    Person(a, \"B\")",
-                "2 回宣言",
+                "declared twice",
             ),
             (
                 "C4Context\n    Person(a, \"A\")\n    Boundary(a, \"B\") {\n        Person(c, \"C\")\n    }",
-                "2 回宣言",
+                "declared twice",
             ),
             (
                 "C4Context\n    Boundary(global, \"B\") {\n        Person(c, \"C\")\n    }",
@@ -2170,21 +2212,21 @@ mod tests {
             ),
             (
                 "C4Context\n    Person(a, \"A\")\n    Rel(a, b, \"x\")",
-                "要素がありません",
+                "There is no element",
             ),
             (
                 "C4Context\n    Person(a, \"A\")\n    Boundary(b, \"B\") {\n        Person(c, \"C\")\n    }\n    Rel(a, b, \"x\")",
-                "境界です",
+                "is a boundary",
             ),
             (
                 "C4Context\n    UpdateElementStyle(a, $bgColor=\"red\")\n    Person(a, \"A\")",
-                "宣言より前",
+                "before the declaration",
             ),
             (
                 "C4Context\n    Person(a, \"A\")\n    Person(b, \"B\")\n    UpdateRelStyle(a, b, $textColor=\"red\")\n    Rel(a, b, \"x\")",
-                "関係より前",
+                "before the relationship",
             ),
-            ("C4Context\n    Person(\"a b\", \"A\")", "別名"),
+            ("C4Context\n    Person(\"a b\", \"A\")", "alias"),
         ] {
             let document = parse(source);
             let error = document
@@ -2204,7 +2246,7 @@ mod tests {
             C4Statement::declaration("Boundary", "b1", "境界"),
         );
         let error = document.structure_error().expect("an empty boundary");
-        assert!(error.contains("`b1` の中が空"), "{error}");
+        assert!(error.contains("`b1` is empty"), "{error}");
         assert!(render_to_svg(&emit_c4(&document), &MermaidTheme::default()).is_err());
         let start = document.insertion_point(None) - 2;
         document
@@ -2217,13 +2259,13 @@ mod tests {
         let error = document
             .structure_error()
             .expect("a title before the element");
-        assert!(error.contains("最初の要素より後ろ"), "{error}");
+        assert!(error.contains("after the first element"), "{error}");
         assert!(render_to_svg(&emit_c4(&document), &MermaidTheme::default()).is_err());
         document.items.swap(start + 1, start + 2);
         assert!(
             document
                 .structure_error()
-                .is_some_and(|error| error.contains("2 つ"))
+                .is_some_and(|error| error.contains("two `title`s"))
         );
         document.items.remove(start + 2);
         assert_eq!(document.structure_error(), None);
@@ -2263,19 +2305,19 @@ mod tests {
         for (source, expected) in [
             (
                 "C4Context\n    %%{wrap}%% Person(x, \"X\")\n    Person(a, \"A\")",
-                "同じ行",
+                "on the same line",
             ),
             (
                 "C4Context\n    Boundary(b, \"B\") {\n    Person(a, \"A\")\n    %%{wrap}%% }\n    Person(c, \"C\")",
-                "同じ行",
+                "on the same line",
             ),
             (
                 "C4Context\n    Person(a, \"A\")\n    %%{init: {\n    }}%% UpdateElementStyle(a, $bgColor=\"red\")",
-                "同じ行",
+                "on the same line",
             ),
             (
                 "C4Context\n    Person(a, \"A\")\n    %% メモ %%{\n    Person(b, \"B\")\n    %% }%%",
-                "一致しません",
+                "does not match",
             ),
         ] {
             let error = parse_c4(source)
@@ -2474,7 +2516,7 @@ mod tests {
         assert!(
             document
                 .structure_error()
-                .is_some_and(|error| error.contains("`d` の中が空"))
+                .is_some_and(|error| error.contains("`d` is empty"))
         );
 
         let mut document = parse("C4Context\n    Rel(a, b, \"x\")");

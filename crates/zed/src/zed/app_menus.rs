@@ -1,5 +1,5 @@
+use agent_settings::AgentSettings;
 use gpui::{App, Menu, MenuItem, OsAction};
-use project::DisableAiSettings;
 use release_channel::ReleaseChannel;
 use settings::Settings;
 use terminal_view::terminal_panel;
@@ -45,7 +45,9 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         MenuItem::action("Debugger Panel", debug_panel::ToggleFocus),
     ];
 
-    if !DisableAiSettings::get_global(cx).disable_ai {
+    // zed-jp-enhance: AI is off by default through `agent.enabled`, not
+    // `disable_ai` (ADR-F09), so the menu follows the same switch as the panel.
+    if AgentSettings::get_global(cx).enabled(cx) {
         view_items.push(MenuItem::action("Agent Panel", assistant::ToggleFocus));
     }
 

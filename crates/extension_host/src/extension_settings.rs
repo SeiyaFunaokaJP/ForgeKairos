@@ -12,7 +12,8 @@ pub struct ExtensionSettings {
     /// This is used to make functionality provided by extensions (e.g., language support)
     /// available out-of-the-box.
     ///
-    /// Default: { "html": true }
+    /// Default: {} (upstream ships { "html": true }; this fork downloads nothing
+    /// at startup that the user did not ask for)
     pub auto_install_extensions: HashMap<Arc<str>, bool>,
     pub auto_update_extensions: HashMap<Arc<str>, bool>,
     pub granted_capabilities: Vec<ExtensionCapability>,

@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "許可リストへの追加に失敗しました: {error}"
+
+msgid "Downloading remote server"
+msgstr "リモート開発サーバーをダウンロードしています"
+
+msgid "Fetching remote server release"
+msgstr "リモート開発サーバーのリリース情報を取得しています"

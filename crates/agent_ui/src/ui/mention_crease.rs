@@ -191,9 +191,9 @@ impl RenderOnce for MentionCrease {
                     let on_mode_change = on_mode_change.clone();
                     ContextMenu::build(window, cx, move |mut menu, _, _| {
                         for (mode, label) in [
-                            (AttachmentMode::Auto, "自動 (大きければアウトライン)"),
-                            (AttachmentMode::Full, "全文で送る"),
-                            (AttachmentMode::Summary, "要約で送る"),
+                            (AttachmentMode::Auto, i18n::t!("Auto (Outline If Large)")),
+                            (AttachmentMode::Full, i18n::t!("Send in Full")),
+                            (AttachmentMode::Summary, i18n::t!("Send as Summary")),
                         ] {
                             let on_mode_change = on_mode_change.clone();
                             menu = menu.toggleable_entry(
@@ -218,13 +218,13 @@ impl RenderOnce for MentionCrease {
 /// size.
 fn estimate_label(estimate: &AttachmentEstimate) -> Option<String> {
     if estimate.link_only {
-        return Some("リンクのみ".to_string());
+        return Some(i18n::t!("Link only").to_string());
     }
     let tokens = (estimate.bytes > 0).then(|| format_token_estimate(estimate.tokens()));
     let mode = match estimate.mode {
         AttachmentMode::Auto => None,
-        AttachmentMode::Full => Some("全文"),
-        AttachmentMode::Summary => Some("要約"),
+        AttachmentMode::Full => Some(i18n::tc!("attachment mode", "Full")),
+        AttachmentMode::Summary => Some(i18n::tc!("attachment mode", "Summary")),
     };
     match (tokens, mode) {
         (Some(tokens), Some(mode)) => Some(format!("{tokens} {mode}")),
@@ -243,22 +243,27 @@ fn estimate_tooltip(
         .unwrap_or_default();
     if estimate.link_only {
         lines.push(
-            "リンクだけを送り、中身はエージェントがツールで読みます (見積もりなし)".to_string(),
+            i18n::t!(
+                "Only a link is sent, and the agent reads the contents with its tools (no estimate)"
+            )
+            .to_string(),
         );
     }
     if estimate.bytes > 0 {
-        lines.push(format!(
-            "概算 {} トークン",
-            format_token_estimate(estimate.tokens()).trim_start_matches('~')
+        lines.push(i18n::t!(
+            "About {tokens} tokens",
+            tokens = format_token_estimate(estimate.tokens()).trim_start_matches('~')
         ));
     }
     if estimate.reduced_for_budget {
         // Selections, symbols and web pages are reduced to a reference with no
         // content at all, which "outline" alone would hide.
-        lines.push("大きいのでアウトライン (または参照だけ) で送ります".to_string());
+        lines.push(
+            i18n::t!("Sent as an outline (or just a reference) because it is large").to_string(),
+        );
     }
     if estimate.switchable {
-        lines.push("右クリックで全文 / 要約を切り替え".to_string());
+        lines.push(i18n::t!("Right-click to switch between full text and summary").to_string());
     }
     (!lines.is_empty()).then(|| lines.join("\n").into())
 }
@@ -274,13 +279,20 @@ pub fn attachment_total(
     }
     let tokens = format_token_estimate(estimated_tokens(estimate.bytes));
     let reduced_count = estimate.reduced_count;
-    let mut tooltip = "添付の概算トークン数です (4 バイトを 1 トークンとして概算)。".to_string();
+    let mut tooltip =
+        i18n::t!("Estimated tokens for the attachments (at 4 bytes per token).").to_string();
     if estimate.includes_active_file {
-        tooltip.push_str("\n自動で添付するアクティブなファイルを含みます。");
+        tooltip.push('\n');
+        tooltip.push_str(i18n::t!(
+            "Includes the active file, which is attached automatically."
+        ));
     }
     if reduced_count > 0 {
-        tooltip.push_str(&format!(
-            "\n1 メッセージの上限を超えるため、大きい添付 {reduced_count} 件をアウトラインや参照に減らして送ります。"
+        tooltip.push('\n');
+        tooltip.push_str(&i18n::tn!(
+            reduced_count,
+            "The message is over its size limit, so {count} large attachment is reduced to an outline or a reference.",
+            "The message is over its size limit, so {count} large attachments are reduced to outlines or references."
         ));
     }
     Some(
@@ -288,7 +300,7 @@ pub fn attachment_total(
             .id(id)
             .flex_none()
             .child(
-                Label::new(format!("添付 {tokens}"))
+                Label::new(i18n::t!("Attachments {tokens}"))
                     .size(LabelSize::Small)
                     .color(if reduced_count > 0 {
                         Color::Warning
@@ -381,9 +393,9 @@ pub(crate) fn open_migrated_rule(
     workspace.show_toast(
         workspace::Toast::new(
             workspace::notifications::NotificationId::unique::<RulesMigratedToSkillsToast>(),
-            "ルールはスキルに移行されました。",
+            i18n::t!("Rules have been migrated to Skills."),
         )
-        .on_click("ドキュメントを表示", |_, cx| {
+        .on_click(i18n::t!("View docs"), |_, cx| {
             cx.open_url("https://zed.dev/docs/ai/skills");
         })
         .autohide(),
@@ -557,9 +569,12 @@ mod tests {
             switchable: false,
             link_only: true,
         };
-        assert_eq!(estimate_label(&estimate).as_deref(), Some("リンクのみ"));
+        assert_eq!(estimate_label(&estimate).as_deref(), Some("Link only"));
         let tooltip = estimate_tooltip(None, &estimate).unwrap_or_default();
-        assert!(tooltip.contains("ツールで読みます"), "{tooltip}");
+        assert!(
+            tooltip.contains("reads the contents with its tools"),
+            "{tooltip}"
+        );
 
         let measured = AttachmentEstimate {
             bytes: 4_100,

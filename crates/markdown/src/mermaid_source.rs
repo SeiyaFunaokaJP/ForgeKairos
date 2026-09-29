@@ -400,19 +400,19 @@ pub(crate) fn write_refusal(quoting: MermaidLabelQuoting, new_label: &str) -> Op
         // merman would draw it, but the structured editor refuses to open a
         // relation label holding one, so writing it would lock the diagram out
         // of that editor.
-        MermaidLabelQuoting::ClassRelationLabel if new_label.contains("%%") => {
-            Some("クラス図の関係ラベルには %% を書けません。別の記号に置き換えてください。")
-        }
+        MermaidLabelQuoting::ClassRelationLabel if new_label.contains("%%") => Some(i18n::t!(
+            "A class diagram relationship label cannot contain %%. Use a different symbol instead."
+        )),
         MermaidLabelQuoting::SequenceText
             if sequence::wrap_directive_length(new_label.trim()).is_some() =>
         {
-            Some(
-                "シーケンス図では先頭の wrap: / nowrap: が折り返しの指定として読まれるため、この文字では始められません。",
-            )
+            Some(i18n::t!(
+                "In a sequence diagram, a leading wrap: or nowrap: is read as a wrapping directive, so the text cannot start with it."
+            ))
         }
-        MermaidLabelQuoting::SequenceText if new_label.trim().is_empty() => {
-            Some("シーケンス図の文字は空にできません。「Mermaid 図を編集」から編集してください。")
-        }
+        MermaidLabelQuoting::SequenceText if new_label.trim().is_empty() => Some(i18n::t!(
+            "Sequence diagram text cannot be empty. Edit it in \"Edit Mermaid Diagram\"."
+        )),
         _ => None,
     }
 }

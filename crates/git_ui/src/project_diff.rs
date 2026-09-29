@@ -243,7 +243,7 @@ impl ProjectDiff {
             DiffMultibuffer::new(
                 branch_diff,
                 Capability::ReadWrite,
-                "未コミットの変更はありません",
+                i18n::t!("No uncommitted changes"),
                 move |editor, cx| {
                     editor.set_diff_hunk_renderer(Some(Arc::new(DefaultDiffHunkRenderer)), cx);
                     editor.rhs_editor().update(cx, |rhs_editor, _cx| {
@@ -448,7 +448,7 @@ impl Item for ProjectDiff {
     }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "未コミットの変更".into()
+        i18n::t!("Uncommitted Changes").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -848,7 +848,7 @@ impl Render for ProjectDiffToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "前の変更箇所へ移動",
+                                i18n::t!("Go to Previous Hunk"),
                                 &GoToPreviousHunk,
                                 &focus_handle,
                             ))
@@ -861,7 +861,7 @@ impl Render for ProjectDiffToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "次の変更箇所へ移動",
+                                i18n::t!("Go to Next Hunk"),
                                 &GoToHunk,
                                 &focus_handle,
                             ))
@@ -875,9 +875,9 @@ impl Render for ProjectDiffToolbar {
                 h_group_sm()
                     .when(button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "ステージ状態を切り替え")
+                            Button::new("stage", i18n::t!("Toggle Staged"))
                                 .tooltip(help_tooltip(
-                                    "ステージ状態を切り替え",
+                                    i18n::t!("Toggle Staged"),
                                     panel_operation_help(PanelOperation::ToggleHunkStaged)
                                         .sentence(),
                                     Some(Box::new(ToggleStaged)),
@@ -891,10 +891,10 @@ impl Render for ProjectDiffToolbar {
                     })
                     .when(!button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "ステージ")
+                            Button::new("stage", i18n::t!("Stage"))
                                 .disabled(!button_states.stage)
                                 .tooltip(help_tooltip(
-                                    "ステージして次の変更箇所へ移動",
+                                    i18n::t!("Stage and Go to Next Hunk"),
                                     panel_operation_help(PanelOperation::StageHunk).sentence(),
                                     Some(Box::new(StageAndNext)),
                                     Some(focus_handle.clone()),
@@ -904,10 +904,10 @@ impl Render for ProjectDiffToolbar {
                                 })),
                         )
                         .child(
-                            Button::new("unstage", "アンステージ")
+                            Button::new("unstage", i18n::t!("Unstage"))
                                 .disabled(!button_states.unstage)
                                 .tooltip(help_tooltip(
-                                    "アンステージして次の変更箇所へ移動",
+                                    i18n::t!("Unstage and Go to Next Hunk"),
                                     panel_operation_help(PanelOperation::UnstageHunk).sentence(),
                                     Some(Box::new(UnstageAndNext)),
                                     Some(focus_handle.clone()),
@@ -923,10 +923,10 @@ impl Render for ProjectDiffToolbar {
                 button_states.unstage_all && !button_states.stage_all,
                 |this| {
                     this.child(
-                        Button::new("unstage-all", "すべてアンステージ")
+                        Button::new("unstage-all", i18n::t!("Unstage All"))
                             .width(stage_all_button_width)
                             .tooltip(help_tooltip(
-                                "すべての変更をアンステージ",
+                                i18n::t!("Unstage All Changes"),
                                 panel_operation_help(PanelOperation::UnstageAll).sentence(),
                                 Some(Box::new(UnstageAll)),
                                 Some(focus_handle.clone()),
@@ -941,11 +941,11 @@ impl Render for ProjectDiffToolbar {
                 !button_states.unstage_all || button_states.stage_all,
                 |this| {
                     this.child(
-                        Button::new("stage-all", "すべてステージ")
+                        Button::new("stage-all", i18n::t!("Stage All"))
                             .width(stage_all_button_width)
                             .disabled(!button_states.stage_all)
                             .tooltip(help_tooltip(
-                                "すべての変更をステージ",
+                                i18n::t!("Stage All Changes"),
                                 panel_operation_help(PanelOperation::StageAll).sentence(),
                                 Some(Box::new(StageAll)),
                                 Some(focus_handle.clone()),
@@ -958,9 +958,9 @@ impl Render for ProjectDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "コミット")
+                Button::new("commit", i18n::t!("Commit"))
                     .tooltip(help_tooltip(
-                        "コミット",
+                        i18n::t!("Commit"),
                         panel_operation_help(PanelOperation::Commit).sentence(),
                         Some(Box::new(Commit)),
                         Some(focus_handle.clone()),
@@ -987,7 +987,7 @@ pub(crate) fn render_send_review_to_agent_button(
 ) -> Button {
     Button::new(
         "send-review",
-        format!("レビューをエージェントへ送信 ({})", review_count),
+        i18n::t!("Send Review to Agent ({})", review_count),
     )
     .start_icon(
         Icon::new(IconName::ZedAssistant)
@@ -995,7 +995,7 @@ pub(crate) fn render_send_review_to_agent_button(
             .color(Color::Muted),
     )
     .tooltip(Tooltip::for_action_title_in(
-        "すべてのレビューコメントをエージェントパネルへ送信します",
+        i18n::t!("Send all review comments to the Agent panel"),
         &SendReviewToAgent,
         focus_handle,
     ))
@@ -1481,7 +1481,7 @@ mod tests {
         assert_ne!(diff_item.entity_id(), unstaged_item.entity_id());
         let unstaged_editor = workspace.update(cx, |workspace, cx| {
             let active_item = workspace.active_item(cx).unwrap();
-            assert_eq!(active_item.tab_content_text(0, cx), "未ステージの変更");
+            assert_eq!(active_item.tab_content_text(0, cx), "Unstaged Changes");
             active_item
                 .act_as::<DiffMultibuffer>(cx)
                 .unwrap()
@@ -1514,7 +1514,7 @@ mod tests {
         assert_eq!(diff_item.entity_id(), uncommitted_item.entity_id());
         assert_eq!(
             uncommitted_item.read_with(cx, |diff, cx| diff.tab_content_text(0, cx)),
-            "未コミットの変更"
+            "Uncommitted Changes"
         );
         let uncommitted_editor = uncommitted_item
             .read_with(cx, |diff, cx| diff.editor(cx).read(cx).rhs_editor().clone());
@@ -1541,7 +1541,7 @@ mod tests {
         let staged_editor = workspace.update(cx, |workspace, cx| {
             workspace.active_item_as::<StagedDiff>(cx).unwrap();
             let active_item = workspace.active_item(cx).unwrap();
-            assert_eq!(active_item.tab_content_text(0, cx), "ステージ済みの変更");
+            assert_eq!(active_item.tab_content_text(0, cx), "Staged Changes");
             active_item
                 .act_as::<DiffMultibuffer>(cx)
                 .unwrap()

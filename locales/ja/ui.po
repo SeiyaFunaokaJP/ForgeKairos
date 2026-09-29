@@ -1,0 +1,208 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "1 day"
+msgstr "1 日"
+
+msgid "1 hour"
+msgstr "1 時間"
+
+msgid "1 minute"
+msgstr "1 分"
+
+msgid "1 month"
+msgstr "1 か月"
+
+msgid "1 year"
+msgstr "1 年"
+
+msgid "10 seconds"
+msgstr "10 秒"
+
+msgid "2 months"
+msgstr "2 か月"
+
+msgid "2 years"
+msgstr "2 年"
+
+msgid "20 seconds"
+msgstr "20 秒"
+
+msgid "5 seconds"
+msgstr "5 秒"
+
+msgid "Authentication Required."
+msgstr "認証が必要です。"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Checking for Zed Updates…"
+msgstr "Zed の更新を確認しています…"
+
+msgid "Choose one of the options below to use the {}"
+msgstr "{}を使うには、以下のいずれかを選択してください"
+
+msgid "Client Secret Required."
+msgstr "クライアントシークレットが必要です。"
+
+msgid "Clone Repository"
+msgstr "リポジトリをクローン"
+
+msgid "Copied!"
+msgstr "コピーしました"
+
+msgid "Copy"
+msgstr "コピー"
+
+msgid "Dismiss"
+msgstr "閉じる"
+
+msgid "Downloading Zed Update…"
+msgstr "Zed の更新をダウンロードしています…"
+
+msgid "Downloading version {version} needs network access to {hosts}"
+msgstr "バージョン {version} をダウンロードするには {hosts} への通信の許可が必要です"
+
+msgid "Failed to Update"
+msgstr "更新に失敗しました"
+
+msgid "Installing Zed Update…"
+msgstr "Zed の更新をインストールしています…"
+
+msgid "Learn More"
+msgstr "詳細"
+
+msgid "Open Project"
+msgstr "プロジェクトを開く"
+
+msgid "Restart to Update"
+msgstr "再起動して更新"
+
+msgid "Reveal in File Explorer"
+msgstr "エクスプローラーで表示"
+
+msgid "Reveal in File Manager"
+msgstr "ファイルマネージャーで表示"
+
+msgid "Reveal in Finder"
+msgstr "Finder で表示"
+
+msgid "Server has an error."
+msgstr "サーバーでエラーが発生しています。"
+
+msgid "Server is active."
+msgstr "サーバーは動作中です。"
+
+msgid "Server is starting."
+msgstr "サーバーを起動しています。"
+
+msgid "Server is stopped."
+msgstr "サーバーは停止しています。"
+
+msgid "Update Needs Permission"
+msgstr "更新には許可が必要です"
+
+msgid "Update to Version: {version}"
+msgstr "バージョン {version} に更新"
+
+msgid "Waiting for Authorization…"
+msgstr "認証の完了を待っています…"
+
+msgid "Waiting for approval."
+msgstr "承認待ちです。"
+
+msgid "a minute"
+msgstr "1 分"
+
+msgid "about 1 hour"
+msgstr "約 1 時間"
+
+msgid "about 1 month"
+msgstr "約 1 か月"
+
+msgid "about 1 year"
+msgstr "約 1 年"
+
+msgid "about 2 months"
+msgstr "約 2 か月"
+
+msgid "about {} hours"
+msgstr "約 {} 時間"
+
+msgid "about {} years"
+msgstr "約 {} 年"
+
+msgid "almost 2 years"
+msgstr "2 年近く"
+
+msgid "almost {} years"
+msgstr "{} 年近く"
+
+msgid "half a minute"
+msgstr "30 秒"
+
+msgid "less than 10 seconds"
+msgstr "10 秒未満"
+
+msgid "less than 20 seconds"
+msgstr "20 秒未満"
+
+msgid "less than 5 seconds"
+msgstr "5 秒未満"
+
+msgid "less than a minute"
+msgstr "1 分未満"
+
+msgid "or"
+msgstr "または"
+
+msgid "over 1 year"
+msgstr "1 年以上"
+
+msgid "over {} years"
+msgstr "{} 年以上"
+
+msgid "{label} is defined in the project's settings."
+msgstr "{label} はプロジェクトの設定で定義されています。"
+
+msgid "{label} was configured manually."
+msgstr "{label} は手動で設定されました。"
+
+msgid "{label} was installed from an extension."
+msgstr "{label} は拡張機能からインストールされました。"
+
+msgid "{label} was installed from the ACP registry."
+msgstr "{label} は ACP レジストリからインストールされました。"
+
+msgid "{message} ({}% downloaded)"
+msgstr "{message} (ダウンロード済み {}%)"
+
+msgid "{string} ago"
+msgstr "{string}前"
+
+msgid "{string} from now"
+msgstr "{string}後"
+
+msgid "{} days"
+msgstr "{} 日"
+
+msgid "{} hours"
+msgstr "{} 時間"
+
+msgid "{} minutes"
+msgstr "{} 分"
+
+msgid "{} months"
+msgstr "{} か月"
+
+msgid "{} years"
+msgstr "{} 年"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

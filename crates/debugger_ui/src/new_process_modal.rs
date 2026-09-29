@@ -455,7 +455,7 @@ impl NewProcessModal {
             })
         })
         .detach_and_prompt_err(
-            "debug.json の編集に失敗しました",
+            i18n::t!("Failed to edit debug.json"),
             window,
             cx,
             |_, _, _| None,
@@ -499,7 +499,7 @@ impl NewProcessModal {
             .debugger
             .as_ref()
             .map(|d| d.0.clone())
-            .unwrap_or_else(|| SELECT_DEBUGGER_LABEL.clone());
+            .unwrap_or_else(|| SharedString::new_static(i18n::tr(SELECT_DEBUGGER_LABEL)));
 
         DropdownMenu::new(
             "dap-adapter-picker",
@@ -536,7 +536,7 @@ impl NewProcessModal {
     }
 }
 
-static SELECT_DEBUGGER_LABEL: SharedString = SharedString::new_static("デバッガーを選択");
+static SELECT_DEBUGGER_LABEL: &str = i18n::msg!("Select Debugger");
 
 #[derive(Clone, Copy)]
 pub(crate) enum NewProcessMode {
@@ -549,10 +549,10 @@ pub(crate) enum NewProcessMode {
 impl std::fmt::Display for NewProcessMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mode = match self {
-            NewProcessMode::Task => "実行",
-            NewProcessMode::Debug => "デバッグ",
-            NewProcessMode::Attach => "アタッチ",
-            NewProcessMode::Launch => "起動",
+            NewProcessMode::Task => i18n::t!("Run"),
+            NewProcessMode::Debug => i18n::t!("Debug"),
+            NewProcessMode::Attach => i18n::t!("Attach"),
+            NewProcessMode::Launch => i18n::t!("Launch"),
         };
 
         write!(f, "{}", mode)
@@ -647,7 +647,7 @@ impl Render for NewProcessModal {
                             )
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
-                                    "定義済みのタスクを実行",
+                                    i18n::t!("Run predefined task"),
                                     &ActivateTaskTab,
                                     &task_focus_handle,
                                     cx,
@@ -663,7 +663,7 @@ impl Render for NewProcessModal {
                             )
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
-                                    "定義済みのデバッグシナリオを開始",
+                                    i18n::t!("Start a predefined debug scenario"),
                                     &ActivateDebugTab,
                                     &debug_focus_handle,
                                     cx,
@@ -688,7 +688,7 @@ impl Render for NewProcessModal {
                             )
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
-                                    "実行中のプロセスにデバッガーをアタッチ",
+                                    i18n::t!("Attach the debugger to a running process"),
                                     &ActivateAttachTab,
                                     &attach_focus_handle,
                                     cx,
@@ -704,7 +704,7 @@ impl Render for NewProcessModal {
                             )
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
-                                    "デバッガーで新しいプロセスを起動",
+                                    i18n::t!("Launch a new process with a debugger"),
                                     &ActivateLaunchTab,
                                     &launch_focus_handle,
                                     cx,
@@ -738,24 +738,27 @@ impl Render for NewProcessModal {
                         container
                             .child(
                                 h_flex().child(
-                                    Button::new("edit-custom-debug", "debug.json で編集")
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.save_debug_scenario(window, cx);
-                                        }))
-                                        .key_binding(KeyBinding::for_action(&*secondary_action, cx))
-                                        .disabled(
-                                            self.debugger.is_none()
-                                                || self
-                                                    .configure_mode
-                                                    .read(cx)
-                                                    .program
-                                                    .read(cx)
-                                                    .is_empty(cx),
-                                        ),
+                                    Button::new(
+                                        "edit-custom-debug",
+                                        i18n::t!("Edit in debug.json"),
+                                    )
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.save_debug_scenario(window, cx);
+                                    }))
+                                    .key_binding(KeyBinding::for_action(&*secondary_action, cx))
+                                    .disabled(
+                                        self.debugger.is_none()
+                                            || self
+                                                .configure_mode
+                                                .read(cx)
+                                                .program
+                                                .read(cx)
+                                                .is_empty(cx),
+                                    ),
                                 ),
                             )
                             .child(
-                                Button::new("debugger-spawn", "開始")
+                                Button::new("debugger-spawn", i18n::t!("Start"))
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.start_new_session(window, cx)
                                     }))
@@ -785,7 +788,7 @@ impl Render for NewProcessModal {
                         let secondary_action = menu::SecondaryConfirm.boxed_clone();
                         container
                             .child(div().child({
-                                Button::new("edit-attach-task", "debug.json で編集")
+                                Button::new("edit-attach-task", i18n::t!("Edit in debug.json"))
                                     .key_binding(KeyBinding::for_action(&*secondary_action, cx))
                                     .on_click(move |_, window, cx| {
                                         window.dispatch_action(secondary_action.boxed_clone(), cx)
@@ -834,14 +837,14 @@ impl ConfigureMode {
     pub(super) fn new(window: &mut Window, cx: &mut App) -> Entity<Self> {
         let program = cx.new(|cx| {
             InputField::new(window, cx, "ENV=Zed ~/bin/program --option")
-                .label("プログラム")
+                .label(i18n::t!("Program"))
                 .tab_stop(true)
                 .tab_index(1)
         });
 
         let cwd = cx.new(|cx| {
             InputField::new(window, cx, "Ex: $ZED_WORKTREE_ROOT")
-                .label("作業ディレクトリ")
+                .label(i18n::t!("Working Directory"))
                 .tab_stop(true)
                 .tab_index(2)
         });
@@ -938,7 +941,7 @@ impl ConfigureMode {
             .child(
                 h_flex()
                     .gap_1()
-                    .child(Label::new("デバッガー:").color(Color::Muted))
+                    .child(Label::new(i18n::t!("Debugger:")).color(Color::Muted))
                     .child(adapter_menu),
             )
             .child(self.program.clone())
@@ -946,7 +949,7 @@ impl ConfigureMode {
             .child(
                 Switch::new("debugger-stop-on-entry", self.stop_on_entry)
                     .tab_index(3_isize)
-                    .label("エントリで停止")
+                    .label(i18n::t!("Stop on Entry"))
                     .label_position(SwitchLabelPosition::Start)
                     .label_size(LabelSize::Default)
                     .on_click({
@@ -1090,17 +1093,17 @@ impl DebugDelegate {
             Some(TaskSourceKind::Lsp { language_name, .. }) => {
                 Some(format!("LSP: {language_name}"))
             }
-            Some(TaskSourceKind::Language { name }) => Some(format!("言語: {name}")),
+            Some(TaskSourceKind::Language { name }) => Some(i18n::t!("Language: {name}")),
             _ => context.clone().and_then(|ctx| {
                 ctx.task_context
                     .task_variables
                     .get(&VariableName::RelativeFile)
-                    .map(|f| format!("{f} 内"))
+                    .map(|f| i18n::t!("in {f}"))
                     .or_else(|| {
                         ctx.task_context
                             .task_variables
                             .get(&VariableName::Dirname)
-                            .map(|d| format!("{d}/ 内"))
+                            .map(|d| i18n::t!("in {d}/"))
                     })
             }),
         }
@@ -1235,7 +1238,7 @@ impl PickerDelegate for DebugDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> std::sync::Arc<str> {
-        "デバッグタスクを検索、またはコマンドをデバッグ".into()
+        i18n::t!("Find a debug task, or debug a command").into()
     }
 
     fn update_matches(
@@ -1495,17 +1498,17 @@ impl PickerDelegate for DebugDelegate {
             .child({
                 let action = menu::SecondaryConfirm.boxed_clone();
                 if self.matches.is_empty() {
-                    Button::new("edit-debug-json", "debug.json を編集").on_click(cx.listener(
-                        |_picker, _, window, cx| {
+                    Button::new("edit-debug-json", i18n::t!("Edit debug.json")).on_click(
+                        cx.listener(|_picker, _, window, cx| {
                             window.dispatch_action(
                                 zed_actions::OpenProjectDebugTasks.boxed_clone(),
                                 cx,
                             );
                             cx.emit(DismissEvent);
-                        },
-                    ))
+                        }),
+                    )
                 } else {
-                    Button::new("edit-debug-task", "debug.json で編集")
+                    Button::new("edit-debug-task", i18n::t!("Edit in debug.json"))
                         .key_binding(KeyBinding::for_action(&*action, cx))
                         .on_click(move |_, window, cx| {
                             window.dispatch_action(action.boxed_clone(), cx)
@@ -1516,7 +1519,7 @@ impl PickerDelegate for DebugDelegate {
                 if (current_modifiers.alt || self.matches.is_empty()) && !self.prompt.is_empty() {
                     let action = picker::ConfirmInput { secondary: false }.boxed_clone();
                     this.child({
-                        Button::new("launch-custom", "カスタム起動")
+                        Button::new("launch-custom", i18n::t!("Launch Custom"))
                             .key_binding(KeyBinding::for_action(&*action, cx))
                             .on_click(move |_, window, cx| {
                                 window.dispatch_action(action.boxed_clone(), cx)
@@ -1526,9 +1529,9 @@ impl PickerDelegate for DebugDelegate {
                     this.child({
                         let is_recent_selected = self.divider_index >= Some(self.selected_index);
                         let run_entry_label = if is_recent_selected {
-                            "再実行"
+                            i18n::t!("Rerun")
                         } else {
-                            "実行"
+                            i18n::t!("Spawn")
                         };
 
                         Button::new("spawn", run_entry_label)

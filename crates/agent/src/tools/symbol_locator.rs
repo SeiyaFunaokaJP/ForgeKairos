@@ -45,14 +45,13 @@ pub struct PendingCodeActions {
 /// longer one of them: it stopped covering language servers in ADR-F38.
 pub fn no_language_server_message(action: &str, file_path: &str) -> String {
     format!(
-        "{action}できませんでした: `{file_path}` に対応する言語サーバーが起動していません \
-         (この言語の言語サーバーが未インストールか、自動ダウンロードに失敗しました)。\
-         これはエディターや LSP の設定を変更しても解決しません。言語サーバーの\
-         インストールが必要であることを、まずユーザーに伝えてください。\
-         そのうえで、シンボルを探すだけなら `grep` \
-         ツールを使ってください。書き換えが必要な場合は `grep` で全出現箇所を確認してから \
-         `edit_file` を使い、意味解析なしの単純な文字列置換であることをユーザーに明示して\
-         ください。"
+        "Couldn't {action}: no language server is running for `{file_path}` (no language \
+         server for this language is installed, or its automatic download failed). Changing \
+         editor or LSP settings won't fix this. First tell the user that a language server \
+         needs to be installed. Then, to just find the symbol, use the `grep` tool. If you \
+         need to rewrite it, find every occurrence with `grep` first, then use `edit_file`, \
+         and tell the user plainly that this is a plain text replacement without semantic \
+         analysis."
     )
 }
 
@@ -64,7 +63,7 @@ pub fn no_language_server_message(action: &str, file_path: &str) -> String {
 /// language server, or allow its download).
 pub fn mark_card_missing_language_server(event_stream: &ToolCallEventStream, title: &str) {
     event_stream.update_fields(
-        acp::ToolCallUpdateFields::new().title(format!("{title} (言語サーバーなし)")),
+        acp::ToolCallUpdateFields::new().title(i18n::t!("{title} (no language server)")),
     );
 }
 

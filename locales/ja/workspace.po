@@ -5,14 +5,562 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "'{path}' does not exist"
+msgstr "'{path}' は存在しません"
+
+msgid "A language server"
+msgstr "言語サーバー"
+
+msgid "Are you sure you want to restart?"
+msgstr "再起動してもよろしいですか?"
+
+msgid "Body Text"
+msgstr "本文"
+
+msgid "Bottom"
+msgstr "下"
+
+msgid "Bottom dock"
+msgstr "下ドック"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cannot drop files on a remote project"
+msgstr "リモートプロジェクトにはファイルをドロップできません"
+
+msgid "Cannot drop local files on a remote SSH/Docker project"
+msgstr "リモートの SSH/Docker プロジェクトにローカルファイルはドロップできません"
+
+msgid "Click to Close"
+msgstr "クリックで閉じます"
+
+msgid "Click to close"
+msgstr "クリックで閉じます"
+
+msgid "Clone Repository"
+msgstr "リポジトリをクローン"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Close All"
+msgstr "すべてのタブを閉じる"
+
+msgid "Close Clean"
+msgstr "未編集のタブを閉じる"
+
+msgid "Close Left"
+msgstr "左側のタブを閉じる"
+
+msgid "Close Multibuffers"
+msgstr "マルチバッファーを閉じる"
+
+msgid "Close Others"
+msgstr "ほかのタブを閉じる"
+
+msgid "Close Right"
+msgstr "右側のタブを閉じる"
+
+msgid "Close Tab"
+msgstr "タブを閉じる"
+
+msgid "Close Without Saving"
+msgstr "保存せずに閉じる"
+
+msgid "Close window and hang up"
+msgstr "ウィンドウを閉じて退出"
+
+msgid "Close {} Dock"
+msgstr "{}ドックを閉じる"
+
+msgid "Collaborate with Agents"
+msgstr "エージェントと協働する"
+
+msgid "Colors"
+msgstr "カラー"
+
+msgid "Configure"
+msgstr "設定"
+
+msgid "Copy Description"
+msgstr "説明をコピー"
+
 msgid "Copy File Permalink"
 msgstr "ファイルの永続リンクをコピー"
+
+msgid "Copy Message"
+msgstr "メッセージをコピー"
+
+msgid "Copy Path"
+msgstr "パスをコピー"
+
+msgid "Copy Relative Path"
+msgstr "相対パスをコピー"
+
+msgid "Could not open file"
+msgstr "ファイルを開けませんでした"
+
+msgid "Could not translate the dropped paths into WSL paths"
+msgstr "ドロップされたパスを WSL のパスに変換できませんでした"
+
+msgid "Customize Keymaps"
+msgstr "キーマップをカスタマイズ"
+
+msgid "Discard Edits"
+msgstr "変更を破棄"
+
+msgid "Discard all"
+msgstr "すべて破棄"
+
+msgid "Dismiss"
+msgstr "閉じる"
+
+msgid "Do you want to leave the current call?"
+msgstr "現在の通話から退出しますか?"
+
+msgid "Do you want to save all changes in the following files?"
+msgstr "次のファイルの変更をすべて保存しますか?"
+
+msgid "Do you want to save changes to the following files?"
+msgstr "次のファイルの変更を保存しますか?"
+
+msgid "Do you want to switch channels?"
+msgstr "チャンネルを切り替えますか?"
+
+msgid "Dock {}"
+msgstr "{}にドッキング"
+
+msgid "Don't Save"
+msgstr "保存しない"
+
+msgid "Drag to move to another dock"
+msgstr "ドラッグで別のドックへ移動"
+
+msgid "Editor"
+msgstr "エディター"
+
+msgid "Enter a folder to trust"
+msgstr "信頼するフォルダーを入力してください。"
+
+msgid "Enter an absolute folder path"
+msgstr "絶対パスのフォルダーを入力してください。"
+
+msgid "Explore Extensions"
+msgstr "拡張機能を探す"
+
+msgid "Failed to join channel"
+msgstr "チャンネルに参加できませんでした"
+
+msgid "Failed to join project"
+msgstr "プロジェクトに参加できませんでした"
+
+msgid "Failed to load the database file."
+msgstr "データベースファイルを読み込めませんでした。"
 
 msgid "Failed to save"
 msgstr "保存できませんでした"
 
+msgid "File an Issue"
+msgstr "問題を報告"
+
+msgid "Fixed Width"
+msgstr "幅を固定する"
+
+msgid "Flex Width"
+msgstr "幅を可変にする"
+
+msgid "Folder to trust"
+msgstr "信頼するフォルダー"
+
+msgid "Follow {} to their active project"
+msgstr "{} をフォローしてアクティブなプロジェクトを表示"
+
+msgid "Get Started"
+msgstr "はじめに"
+
+msgid "Go Back"
+msgstr "戻る"
+
+msgid "Go Forward"
+msgstr "進む"
+
+msgid "Headline 1"
+msgstr "見出し 1"
+
+msgid "Headline 2"
+msgstr "見出し 2"
+
+msgid "Headline 3"
+msgstr "見出し 3"
+
+msgid "Headline 4"
+msgstr "見出し 4"
+
+msgid "Headline 5"
+msgstr "見出し 5"
+
+msgid "Headline Sizes"
+msgstr "見出しサイズ"
+
+msgid "Hide Button"
+msgstr "ボタンを非表示"
+
+msgid "Hide {icon_tooltip}"
+msgstr "{icon_tooltip}を隠す"
+
+msgid "Language servers from running"
+msgstr "言語サーバーの実行"
+
+msgid "Leaving this call will unshare your current project."
+msgstr "この通話から退出すると、現在のプロジェクトの共有が解除されます。"
+
+msgid "Left"
+msgstr "左"
+
+msgid "Left dock"
+msgstr "左ドック"
+
+msgid "Locked Tab"
+msgstr "ロックされたタブ"
+
+msgid "MCP Server integrations from installing"
+msgstr "MCP サーバー連携のインストール"
+
+msgid "Make Tab Editable"
+msgstr "タブを編集可能にする"
+
+msgid "Make Tab Read-Only"
+msgstr "タブを読み取り専用にする"
+
+msgid "Move to New Window"
+msgstr "新しいウィンドウへ移動"
+
+msgid "Move to {} Dock"
+msgstr "{}ドックへ移動"
+
+msgid "Must be a parent folder of the project"
+msgstr "プロジェクトの親フォルダーを指定してください。"
+
+msgid "New Center Terminal"
+msgstr "中央ペインに新規ターミナル"
+
+msgid "New File"
+msgstr "新規ファイル"
+
+msgid "New Terminal"
+msgstr "新規ターミナル"
+
+msgid "New Window"
+msgstr "新規ウィンドウ"
+
+msgid "New…"
+msgstr "新規…"
+
+msgid "No matching channel was found. Please check the link and try again."
+msgstr "一致するチャンネルが見つかりませんでした。リンクを確認してもう一度お試しください。"
+
+msgid "Open"
+msgstr "開く"
+
+msgid "Open Agent Panel"
+msgstr "エージェントパネルを開く"
+
+msgid "Open Command Palette"
+msgstr "コマンドパレットを開く"
+
+msgid "Open File"
+msgstr "ファイルを開く"
+
 msgid "Open File Permalink"
 msgstr "ファイルの永続リンクを開く"
 
+msgid "Open Project"
+msgstr "プロジェクトを開く"
+
+msgid "Open Settings"
+msgstr "設定を開く"
+
+msgid "Open Threads Sidebar"
+msgstr "スレッドサイドバーを開く"
+
+msgid "Open a link from a language server?"
+msgstr "言語サーバーからのリンクを開きますか?"
+
+msgid "Open in Default App"
+msgstr "既定のアプリで開く"
+
+msgid "Open in Terminal"
+msgstr "ターミナルで開く"
+
+msgid "Open in WSL"
+msgstr "WSL で開く"
+
+msgid "Open threads sidebar"
+msgstr "スレッドサイドバーを開く"
+
+msgid "Overview"
+msgstr "概要"
+
+msgid "Overwrite"
+msgstr "上書き"
+
+msgid "Pin Tab"
+msgstr "タブをピン留め"
+
+msgid "Please check your internet connection and try again."
+msgstr "インターネット接続を確認してもう一度お試しください。"
+
+msgid "Please sign in to continue."
+msgstr "続行するにはサインインしてください。"
+
+msgid "Pop Out to New Window"
+msgstr "新しいウィンドウへ切り出す"
+
+msgid "Project settings from being applied"
+msgstr "プロジェクト設定の適用"
+
+msgid "Read-Only Tab"
+msgstr "読み取り専用のタブ"
+
+msgid "Recent Projects"
+msgstr "最近のプロジェクト"
+
+msgid "Rename"
+msgstr "名前の変更"
+
+msgid "Restart"
+msgstr "再起動"
+
+msgid "Restricted Mode prevents:"
+msgstr "制限モードでは、次のことができません:"
+
+msgid "Return to Onboarding"
+msgstr "初期設定に戻る"
+
+msgid "Reveal In Project Panel"
+msgstr "プロジェクトパネルで表示"
+
+msgid "Review .zed/settings.json for any extensions or commands configured by this project."
+msgstr "このプロジェクトが設定する拡張機能やコマンドがないか、.zed/settings.json を確認してください。"
+
+msgid "Right"
+msgstr "右"
+
+msgid "Right dock"
+msgstr "右ドック"
+
+msgid "Right-click or Shift-click to stack below"
+msgstr "右クリック / Shift+クリックで下に並べて表示"
+
+msgid "Right-click or Shift-click to stack side by side"
+msgstr "右クリック / Shift+クリックで横に並べて表示"
+
+msgid "Run multiple threads at once, mix and match any ACP-compatible agent, and keep work conflict-free with worktrees."
+msgstr "複数のスレッドを同時に実行し、ACP 対応の任意のエージェントを組み合わせ、ワークツリーで作業のコンフリクトを防げます。"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save all"
+msgstr "すべて保存"
+
+msgid "Search Project"
+msgstr "プロジェクト内を検索"
+
+msgid "Search Symbols"
+msgstr "シンボルを検索"
+
+msgid "See docs"
+msgstr "ドキュメントを見る"
+
+msgid "Shift-click to Suppress"
+msgstr "Shift + クリックで今後表示しなくなります"
+
+msgid "Split Down"
+msgstr "下に分割"
+
+msgid "Split Left"
+msgstr "左に分割"
+
+msgid "Split Pane"
+msgstr "ペインを分割"
+
+msgid "Split Right"
+msgstr "右に分割"
+
+msgid "Split Up"
+msgstr "上に分割"
+
+msgid "Stack Below"
+msgstr "下に並べて表示"
+
+msgid "Stack Side by Side"
+msgstr "横に並べて表示"
+
+msgid "Stack in {} Dock"
+msgstr "{}ドックに並べて表示"
+
+msgid "Stack {icon_tooltip} Below"
+msgstr "{icon_tooltip}を下に並べて表示"
+
+msgid "Stack {icon_tooltip} Side by Side"
+msgstr "{icon_tooltip}を横に並べて表示"
+
+msgid "Status bar"
+msgstr "ステータスバー"
+
+msgid "Stay in Restricted Mode"
+msgstr "制限モードのまま"
+
+msgid "Suppress"
+msgstr "今後表示しない"
+
+msgid "Suppress with shift-click"
+msgstr "Shift + クリックで今後表示しなくなります"
+
+msgid "Task spawn failed: {e}"
+msgstr "タスクを起動できませんでした: {e}"
+
+msgid "Text"
+msgstr "テキスト"
+
+msgid "Text Colors"
+msgstr "テキストカラー"
+
+msgid "The editor for what's next"
+msgstr "次の時代のエディター"
+
+msgid "The folders were not changed because the selected folders could not be opened"
+msgstr "選択したフォルダーを開けなかったため、フォルダーは変更されませんでした"
+
+msgid "Theme Preview"
+msgstr "テーマプレビュー"
+
+msgid "This buffer contains unsaved edits. Do you want to save it?"
+msgstr "このバッファーに保存されていない変更があります。保存しますか?"
+
+msgid "This channel is private, and you do not have access. Please ask someone to add you and try again."
+msgstr "このチャンネルは非公開で、アクセス権がありません。追加を依頼してからもう一度お試しください。"
+
+msgid "This file has been deleted on disk since you started editing it. Do you want to recreate it?"
+msgstr "このファイルは編集開始後にディスク上で削除されました。作成し直しますか?"
+
+msgid "This file has changed on disk since you started editing it. Do you want to overwrite it?"
+msgstr "このファイルは編集開始後にディスク上で変更されました。上書きしますか?"
+
+msgid "This tab is read-only"
+msgstr "このタブは読み取り専用です"
+
+msgid "This will make this tab editable"
+msgstr "このタブを編集可能にします"
+
+msgid "Title bar"
+msgstr "タイトルバー"
+
+msgid "Trust all projects in"
+msgstr "次のフォルダーを信頼:"
+
+msgid "Trust all projects in the parent folders"
+msgstr "親フォルダー内のすべてのプロジェクトを信頼"
+
+msgid "Trust all projects in the {} folder"
+msgstr "{} フォルダー内のすべてのプロジェクトを信頼"
+
+msgid "Trust all single files"
+msgstr "すべての単一ファイルを信頼"
+
+msgid "Trust and Continue"
+msgstr "信頼して続行"
+
+msgid "Typography"
+msgstr "タイポグラフィ"
+
+msgid "Unable to save file: {err}"
+msgstr "ファイルを保存できません: {err}"
+
+msgid "Unlock Tab"
+msgstr "タブのロックを解除"
+
+msgid "Unpin Tab"
+msgstr "タブのピン留めを解除"
+
+msgid "Unrecognized Project"
+msgstr "未確認のプロジェクト"
+
+msgid "Unrecognized Projects ({})"
+msgstr "未確認のプロジェクト ({} 件)"
+
+msgid "Unstack"
+msgstr "並べ表示をやめる"
+
+msgid "Untitled"
+msgstr "無題"
+
+msgid "Untrusted projects are opened in Restricted Mode to protect your system."
+msgstr "システムを保護するため、信頼されていないプロジェクトは制限モードで開かれます。"
+
+msgid "Welcome"
+msgstr "ようこそ"
+
+msgid "Welcome back to Zed"
+msgstr "おかえりなさい"
+
+msgid "Welcome to Zed"
+msgstr "Zed へようこそ"
+
+msgid "Wrapping Text"
+msgstr "折り返しテキスト"
+
+msgid "Yes, Join Channel"
+msgstr "チャンネルに参加"
+
+msgid "You cannot add folders to someone else's project"
+msgstr "他のユーザーのプロジェクトにはフォルダーを追加できません"
+
+msgid "You cannot change the folders of someone else's project"
+msgstr "他のユーザーのプロジェクトのフォルダーは変更できません"
+
+msgid "Your are running an unsupported version of Zed. Please update to continue."
+msgstr "サポートされていないバージョンの Zed を使用しています。続行するには更新してください。"
+
 msgid "empty project"
 msgstr "空のプロジェクト"
+
+msgid "{display_path} is inside a WSL filesystem, some features may not work unless you open it with WSL remote"
+msgstr "{display_path} は WSL のファイルシステム上にあります。WSL リモートで開かないと一部の機能が動作しない場合があります"
+
+msgid "{server} asks to open this address in your browser:\n\n{url}"
+msgstr "{server} が、このアドレスをブラウザーで開くよう求めています:\n\n{url}"
+
+msgid "{}\n\nPlease try again."
+msgstr "{}\n\nもう一度お試しください。"
+
+msgid "{}\n.. and {} more"
+msgstr "{}\n.. ほか {} 件"
+
+msgid "{} Preview"
+msgstr "{} プレビュー"
+
+msgid "{} contains unsaved edits. Do you want to save it?"
+msgstr "{} に保存されていない変更があります。保存しますか?"
+
+msgid "{} is in an unshared pane"
+msgstr "{} は共有されていないペインを表示しています"
+
+msgid "{} is viewing a window outside of Zed"
+msgstr "{} は Zed 以外のウィンドウを表示しています"
+
+msgid "{} is viewing an unshared Zed project"
+msgstr "{} は共有されていない Zed プロジェクトを表示しています"
+
+msgid "{}'s screen"
+msgstr "{} の画面"
+
+msgctxt "pane"
+msgid "Zoom In"
+msgstr "ズーム"
+
+msgctxt "pane"
+msgid "Zoom Out"
+msgstr "ズーム解除"

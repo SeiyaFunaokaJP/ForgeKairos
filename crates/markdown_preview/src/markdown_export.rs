@@ -168,7 +168,7 @@ pub(crate) fn print_mermaid_theme() -> mermaid_render::MermaidTheme {
 /// The SVG for a fenced mermaid block, or the reason it could not be drawn.
 fn render_mermaid_block(contents: &str) -> Result<String, String> {
     if !markdown::is_supported_diagram_type(contents) {
-        return Err("未対応の図の種類です".to_owned());
+        return Err(i18n::t!("Unsupported diagram type").to_owned());
     }
 
     mermaid_render::render_to_svg(contents, &print_mermaid_theme())
@@ -268,8 +268,13 @@ fn render_body(
                             }
                             Err(reason) => {
                                 output.push_str("<p class=\"mermaid-error\">");
-                                escape_text("Mermaid 図を描画できませんでした: ", output);
-                                escape_text(&reason, output);
+                                escape_text(
+                                    &i18n::t!(
+                                        "Failed to render the Mermaid diagram: {error}",
+                                        error = reason
+                                    ),
+                                    output,
+                                );
                                 output.push_str("</p>\n");
                             }
                         }
@@ -896,7 +901,7 @@ mod tests {
     fn test_undrawable_mermaid_block_falls_back_to_code() {
         let broken = render("```mermaid\nflowchart TD\n    A --> --> B\n```\n");
         assert!(
-            broken.starts_with("<p class=\"mermaid-error\">Mermaid 図を描画できませんでした: "),
+            broken.starts_with("<p class=\"mermaid-error\">Failed to render the Mermaid diagram: "),
             "{broken}"
         );
         assert!(
@@ -908,7 +913,7 @@ mod tests {
         let unsupported = render("```mermaid\nzenuml\n    A->B: x\n```\n");
         assert!(
             unsupported.starts_with(
-                "<p class=\"mermaid-error\">Mermaid 図を描画できませんでした: 未対応の図の種類です</p>\n"
+                "<p class=\"mermaid-error\">Failed to render the Mermaid diagram: Unsupported diagram type</p>\n"
             ),
             "{unsupported}"
         );

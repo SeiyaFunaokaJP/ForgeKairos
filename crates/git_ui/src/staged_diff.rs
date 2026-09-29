@@ -69,10 +69,10 @@ impl DiffHunkRenderer for StagedDiffHunkRenderer {
             .block_mouse_except_scroll()
             .shadow_md()
             .child(
-                Button::new(("unstage", row as u64), "アンステージ")
+                Button::new(("unstage", row as u64), i18n::t!("Unstage"))
                     .alpha(if status.is_pending() { 0.66 } else { 1.0 })
                     .tooltip(help_tooltip(
-                        "変更箇所をアンステージ",
+                        i18n::t!("Unstage Hunk"),
                         panel_operation_help(PanelOperation::UnstageHunk).sentence(),
                         None,
                         None,
@@ -190,7 +190,7 @@ impl StagedDiff {
             DiffMultibuffer::new(
                 branch_diff,
                 Capability::ReadOnly,
-                "ステージ済みの変更はありません",
+                i18n::t!("No staged changes"),
                 move |editor, cx| {
                     editor.set_diff_hunk_renderer(Some(Arc::new(StagedDiffHunkRenderer)), cx);
                     editor.rhs_editor().update(cx, |rhs_editor, _cx| {
@@ -309,11 +309,11 @@ impl Item for StagedDiff {
     }
 
     fn tab_tooltip_text(&self, _: &App) -> Option<SharedString> {
-        Some("ステージ済みの変更".into())
+        Some(i18n::t!("Staged Changes").into())
     }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "ステージ済みの変更".into()
+        i18n::t!("Staged Changes").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -616,7 +616,7 @@ impl Render for StagedDiffToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "前の変更箇所へ移動",
+                                i18n::t!("Go to Previous Hunk"),
                                 &GoToPreviousHunk,
                                 &focus_handle,
                             ))
@@ -629,7 +629,7 @@ impl Render for StagedDiffToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "次の変更箇所へ移動",
+                                i18n::t!("Go to Next Hunk"),
                                 &GoToHunk,
                                 &focus_handle,
                             ))
@@ -643,10 +643,10 @@ impl Render for StagedDiffToolbar {
                 h_group_sm()
                     .when(button_states.selection, |this| {
                         this.child(
-                            Button::new("unstage", "アンステージ")
+                            Button::new("unstage", i18n::t!("Unstage"))
                                 .disabled(!button_states.unstage)
                                 .tooltip(help_tooltip(
-                                    "選択した変更箇所をアンステージ",
+                                    i18n::t!("Unstage Selected Hunks"),
                                     panel_operation_help(PanelOperation::UnstageHunk).sentence(),
                                     None,
                                     None,
@@ -658,10 +658,10 @@ impl Render for StagedDiffToolbar {
                     })
                     .when(!button_states.selection, |this| {
                         this.child(
-                            Button::new("unstage", "アンステージ")
+                            Button::new("unstage", i18n::t!("Unstage"))
                                 .disabled(!button_states.unstage)
                                 .tooltip(help_tooltip(
-                                    "アンステージして次の変更箇所へ移動",
+                                    i18n::t!("Unstage and Go to Next Hunk"),
                                     panel_operation_help(PanelOperation::UnstageHunk).sentence(),
                                     Some(Box::new(UnstageAndNext)),
                                     Some(focus_handle.clone()),
@@ -674,11 +674,11 @@ impl Render for StagedDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("unstage-all", "すべてアンステージ")
+                Button::new("unstage-all", i18n::t!("Unstage All"))
                     .width(rems_from_px(152_f32))
                     .disabled(!button_states.unstage_all)
                     .tooltip(help_tooltip(
-                        "すべての変更をアンステージ",
+                        i18n::t!("Unstage All Changes"),
                         panel_operation_help(PanelOperation::UnstageAll).sentence(),
                         Some(Box::new(UnstageAll)),
                         Some(focus_handle.clone()),
@@ -687,9 +687,9 @@ impl Render for StagedDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "コミット")
+                Button::new("commit", i18n::t!("Commit"))
                     .tooltip(help_tooltip(
-                        "コミット",
+                        i18n::t!("Commit"),
                         panel_operation_help(PanelOperation::Commit).sentence(),
                         Some(Box::new(Commit)),
                         Some(focus_handle.clone()),
@@ -826,7 +826,7 @@ mod tests {
                     .serialized_item_kind(),
                 "StagedDiff"
             );
-            assert_eq!(active_item.tab_content_text(0, cx), "ステージ済みの変更");
+            assert_eq!(active_item.tab_content_text(0, cx), "Staged Changes");
             assert!(!active_item.can_save(cx));
         });
     }
@@ -1049,7 +1049,7 @@ mod tests {
                     .serialized_item_kind(),
                 "StagedDiff"
             );
-            assert_eq!(active_item.tab_content_text(0, cx), "ステージ済みの変更");
+            assert_eq!(active_item.tab_content_text(0, cx), "Staged Changes");
             assert!(!active_item.can_save(cx));
             assert_eq!(workspace.items_of_type::<ProjectDiff>(cx).count(), 0);
             assert_eq!(workspace.items_of_type::<StagedDiff>(cx).count(), 1);

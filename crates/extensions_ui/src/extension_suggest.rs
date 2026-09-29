@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
 use db::kvp::KeyValueStore;
 use editor::Editor;
 use extension_host::{ExtensionSettings, ExtensionStore};
-use gpui::{App, AppContext as _, Context, Entity, SharedString};
+use gpui::{App, AppContext as _, Context, Entity, Global, SharedString, WeakEntity};
 use language::{Buffer, PLAIN_TEXT};
 use markdown::{Markdown, MarkdownElement};
 use project::lsp_store::LspStoreEvent;
@@ -370,11 +370,13 @@ fn show_suggestion(
             .get(extension_id)
             == Some(&true)
         || suggestion_dismissed(extension_id, cx)
+        || install_failed_this_session(extension_id, cx)
     {
         return;
     }
 
     let extension_id = Arc::<str>::from(extension_id);
+    let workspace_handle = cx.entity().downgrade();
     workspace.show_notification(notification_id, cx, |cx| {
         cx.new(|cx| {
             build_notification(cx)
@@ -383,9 +385,11 @@ fn show_suggestion(
                 .primary_on_click({
                     let extension_id = extension_id.clone();
                     move |_window, cx| {
-                        ExtensionStore::global(cx).update(cx, |store, cx| {
-                            store.install_latest_extension(extension_id.clone(), cx);
-                        });
+                        install_suggested_extension(
+                            extension_id.clone(),
+                            workspace_handle.clone(),
+                            cx,
+                        );
                     }
                 })
                 .secondary_icon(IconName::Close)
@@ -393,6 +397,74 @@ fn show_suggestion(
                 .secondary_on_click(move |_window, cx| dismiss_suggestion(&extension_id, cx))
         })
     });
+}
+
+/// Suggestions whose install, started from the suggestion itself, failed in
+/// this session. Offering them again on the next file would only repeat the
+/// same failure (typically no network), so they stay quiet until restart.
+#[derive(Default)]
+struct FailedSuggestionInstalls(HashSet<Arc<str>>);
+
+impl Global for FailedSuggestionInstalls {}
+
+struct ExtensionInstallFailedNotification;
+
+fn install_failed_this_session(extension_id: &str, cx: &App) -> bool {
+    cx.try_global::<FailedSuggestionInstalls>()
+        .is_some_and(|failed| failed.0.contains(extension_id))
+}
+
+fn install_failed_notification_id(extension_id: &str) -> NotificationId {
+    NotificationId::composite::<ExtensionInstallFailedNotification>(SharedString::from(
+        extension_id.to_string(),
+    ))
+}
+
+fn install_suggested_extension(
+    extension_id: Arc<str>,
+    workspace: WeakEntity<Workspace>,
+    cx: &mut App,
+) {
+    let install = ExtensionStore::global(cx).update(cx, |store, cx| {
+        store.try_install_latest_extension(extension_id.clone(), cx)
+    });
+    cx.spawn(async move |cx| {
+        let Err(error) = install.await else {
+            return;
+        };
+        log::error!("failed to install suggested extension {extension_id}: {error:#}");
+        let message = install_failure_message(&extension_id, &error);
+        cx.update(|cx| {
+            cx.default_global::<FailedSuggestionInstalls>()
+                .0
+                .insert(extension_id.clone());
+            workspace
+                .update(cx, |workspace, cx| {
+                    workspace.show_notification(
+                        install_failed_notification_id(&extension_id),
+                        cx,
+                        |cx| cx.new(|cx| MessageNotification::new(message, cx)),
+                    );
+                })
+                .log_err();
+        });
+    })
+    .detach();
+}
+
+fn install_failure_message(extension_id: &str, error: &anyhow::Error) -> String {
+    match http_client::egress_denied_hosts(error) {
+        Some(hosts) => {
+            let hosts = hosts.join(", ");
+            i18n::t!(
+                "Couldn't install the '{extension_id}' extension: the network allowlist blocked the connection to {hosts}."
+            )
+        }
+        None => {
+            let error = format!("{error:#}");
+            i18n::t!("Couldn't install the '{extension_id}' extension: {error}")
+        }
+    }
 }
 
 #[cfg(test)]
@@ -927,6 +999,86 @@ mod tests {
         open_file(&workspace, "main.gleam", cx).await;
 
         assert_eq!(notification_ids(&workspace, cx), Vec::new());
+    }
+
+    #[gpui::test]
+    async fn test_failed_install_from_suggestion_is_reported_once(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        let scratch = util::test::TempTree::new(json!({}));
+        cx.update(|cx| {
+            ExtensionStore::global(cx).update(cx, |store, _| {
+                store.installed_dir = scratch.path().join("installed");
+                store.staging_dir = scratch.path().join("staging");
+            });
+        });
+        app_state
+            .client
+            .http_client()
+            .as_fake()
+            .replace_handler(|_, _| async {
+                Err(anyhow::Error::new(http_client::EgressDenied {
+                    host: "api.zed.dev".to_string(),
+                    url: "https://api.zed.dev/extensions/gleam/download".to_string(),
+                }))
+            });
+        let (workspace, cx) = open_test_workspace(&app_state, cx).await;
+        open_file(&workspace, "main.gleam", cx).await;
+        assert_eq!(
+            notification_ids(&workspace, cx),
+            vec![notification_id("gleam")]
+        );
+
+        let weak_workspace = workspace.downgrade();
+        workspace.update(cx, |workspace, cx| {
+            workspace.dismiss_notification(&notification_id("gleam"), cx);
+            install_suggested_extension(Arc::from("gleam"), weak_workspace, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            notification_ids(&workspace, cx),
+            vec![install_failed_notification_id("gleam")]
+        );
+        cx.update(|_, cx| {
+            let store = ExtensionStore::global(cx);
+            assert_eq!(store.read(cx).outstanding_operations().len(), 0);
+            assert!(install_failed_this_session("gleam", cx));
+            assert!(!install_failed_this_session(EMMET_EXTENSION_ID, cx));
+        });
+
+        workspace.update(cx, |workspace, cx| {
+            workspace.dismiss_notification(&install_failed_notification_id("gleam"), cx);
+        });
+        let buffer = workspace.read_with(cx, |workspace, cx| {
+            let editor = workspace.active_item_as::<Editor>(cx).unwrap();
+            editor.read(cx).buffer().read(cx).as_singleton().unwrap()
+        });
+        workspace.update(cx, |workspace, cx| {
+            suggest_for_buffer(workspace, buffer, cx);
+        });
+        cx.run_until_parked();
+
+        assert_eq!(notification_ids(&workspace, cx), Vec::new());
+    }
+
+    #[test]
+    fn test_install_failure_message_names_the_blocked_host() {
+        let denied = anyhow::Error::new(http_client::EgressDenied {
+            host: "api.zed.dev".to_string(),
+            url: "https://api.zed.dev/extensions/gleam/download".to_string(),
+        })
+        .context("downloading extension");
+        assert_eq!(
+            install_failure_message("gleam", &denied),
+            "Couldn't install the 'gleam' extension: the network allowlist blocked the \
+             connection to api.zed.dev."
+        );
+
+        let offline = anyhow::anyhow!("connection refused").context("downloading extension");
+        assert_eq!(
+            install_failure_message("gleam", &offline),
+            "Couldn't install the 'gleam' extension: downloading extension: connection refused"
+        );
     }
 
     fn init_test(cx: &mut TestAppContext) -> Arc<AppState> {

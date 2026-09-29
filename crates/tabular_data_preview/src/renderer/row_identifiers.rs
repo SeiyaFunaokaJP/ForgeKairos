@@ -164,7 +164,7 @@ impl TabularDataPreviewPane {
                     .text_color(cx.theme().colors().text_muted)
                     .font_buffer(cx)
                     .child("◤")
-                    .tooltip(Tooltip::text("すべてのセルを選択"))
+                    .tooltip(Tooltip::text(i18n::t!("Select All Cells")))
                     .on_click(cx.listener(|this, _event, _window, cx| {
                         this.select_all_cells(cx);
                     })),

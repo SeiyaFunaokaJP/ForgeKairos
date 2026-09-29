@@ -1,0 +1,178 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add code block"
+msgstr "コードブロックを追加"
+
+msgid "Add code cell"
+msgstr "コードセルを追加"
+
+msgid "Add markdown block"
+msgstr "Markdown ブロックを追加"
+
+msgid "Add markdown cell"
+msgstr "Markdown セルを追加"
+
+msgid "Clear all outputs"
+msgstr "すべての出力を消去"
+
+msgid "Close output area"
+msgstr "出力領域を閉じる"
+
+msgid "Connecting to kernel..."
+msgstr "カーネルに接続しています..."
+
+msgid "Copy Full Error"
+msgstr "エラー全体をコピー"
+
+msgid "Copy Output"
+msgstr "出力をコピー"
+
+msgid "Delete cell"
+msgstr "セルを削除"
+
+msgid "Error: {err}"
+msgstr "エラー: {err}"
+
+msgid "Execute all cells"
+msgstr "すべてのセルを実行"
+
+msgid "Executing..."
+msgstr "実行しています..."
+
+msgid "Failed to install ipykernel in {}: {}"
+msgstr "{} への ipykernel のインストールに失敗しました: {}"
+
+msgid "Input:"
+msgstr "入力:"
+
+msgid "Install Kernels"
+msgstr "カーネルをインストール"
+
+msgid "Installing ipykernel in {}..."
+msgstr "{} に ipykernel をインストールしています..."
+
+msgid "Interrupt"
+msgstr "中断"
+
+msgid "Interrupt Kernel"
+msgstr "カーネルを中断"
+
+msgid "Jupyter Kernel Sessions"
+msgstr "Jupyter カーネルセッション"
+
+msgid "Jupyter Kernels"
+msgstr "Jupyter カーネル"
+
+msgid "Kernel Docs"
+msgstr "カーネルのドキュメント"
+
+msgid "Kernel error: {}"
+msgstr "カーネルエラー: {}"
+
+msgid "Kernel restarting..."
+msgstr "カーネルを再起動しています..."
+
+msgid "Kernel shutdown"
+msgstr "カーネルは終了しました"
+
+msgid "Kernel shutting down..."
+msgstr "カーネルを終了しています..."
+
+msgid "Kernel: {} ({}). Click to change."
+msgstr "カーネル: {} ({})。クリックして変更します。"
+
+msgid "More options"
+msgstr "その他のオプション"
+
+msgid "Move cell down"
+msgstr "セルを下へ移動"
+
+msgid "Move cell up"
+msgstr "セルを上へ移動"
+
+msgid "No Jupyter Kernel Sessions"
+msgstr "Jupyter カーネルセッションがありません"
+
+msgid "No Jupyter Kernels Available"
+msgstr "利用可能な Jupyter カーネルがありません"
+
+msgid "Open Full Error in Buffer"
+msgstr "エラー全体をバッファーで開く"
+
+msgid "Open in Buffer"
+msgstr "バッファーで開く"
+
+msgid "Python Environments"
+msgstr "Python 環境"
+
+msgid "Queued..."
+msgstr "待機中..."
+
+msgid "REPL Sessions"
+msgstr "REPL セッション"
+
+msgid "Recommended"
+msgstr "推奨"
+
+msgid "Remote Servers"
+msgstr "リモートサーバー"
+
+msgid "Restart Kernel"
+msgstr "カーネルを再起動"
+
+msgid "Restarting"
+msgstr "再起動中"
+
+msgid "Running..."
+msgstr "実行中..."
+
+msgid "Select Kernel"
+msgstr "カーネルを選択"
+
+msgid "Select a kernel..."
+msgstr "カーネルを選択..."
+
+msgid "Shutdown"
+msgstr "終了"
+
+msgid "Shutting Down"
+msgstr "終了中"
+
+msgid "Starting"
+msgstr "起動中"
+
+msgid "This notebook is empty."
+msgstr "このノートブックは空です。"
+
+msgid "To run code in a Jupyter kernel, select some code and use the 'repl::Run' command."
+msgstr "Jupyter カーネルでコードを実行するには、コードを選択して 'repl::Run' コマンドを使用します。"
+
+msgid "To start interactively running code in your editor, you need to install and configure Jupyter kernels."
+msgstr "エディターでコードを対話的に実行するには、Jupyter カーネルをインストールして設定する必要があります。"
+
+msgid "Type here and press Enter"
+msgstr "ここに入力して Enter を押してください"
+
+msgid "Unknown status"
+msgstr "不明な状態"
+
+msgid "WSL Kernels"
+msgstr "WSL カーネル"
+
+msgid "ipykernel installed in {}"
+msgstr "{} に ipykernel をインストールしました"
+
+msgid "ipykernel not installed"
+msgstr "ipykernel が未インストール"
+
+msgid "{} ({}). Click to change kernel."
+msgstr "{} ({})。クリックしてカーネルを変更します。"
+
+msgctxt "kernel status"
+msgid "Shutdown"
+msgstr "終了済み"

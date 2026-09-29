@@ -57,6 +57,9 @@ pub fn request_prediction(
     }) else {
         return Task::ready(Err(anyhow!("Unsupported edit prediction provider for FIM")));
     };
+    if let Err(error) = crate::ensure_self_hosted_consent(provider, &settings, cx) {
+        return Task::ready(Err(error));
+    }
 
     let api_key = load_open_ai_compatible_api_key_if_needed(provider, cx);
 

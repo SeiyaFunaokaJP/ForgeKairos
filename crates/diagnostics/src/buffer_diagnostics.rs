@@ -865,14 +865,14 @@ impl Item for BufferDiagnosticsEditor {
     }
 
     fn tab_content_text(&self, _detail: usize, _app: &App) -> SharedString {
-        "バッファーの診断".into()
+        i18n::t!("Buffer Diagnostics").into()
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
         let path_style = self.project.read(cx).path_style(cx);
         Some(
-            format!(
-                "バッファーの診断 - {}",
+            i18n::t!(
+                "Buffer Diagnostics - {}",
                 self.project_path.path.display(path_style)
             )
             .into(),
@@ -888,6 +888,22 @@ impl Item for BufferDiagnosticsEditor {
     }
 }
 
+/// Returns the text shown before and after the file name button. A translation
+/// without exactly one `{file}` would lose or repeat the file name, so the
+/// English sentence is used instead.
+pub(crate) fn split_around_file<'a>(translation: &'a str, english: &'a str) -> (&'a str, &'a str) {
+    let split = |sentence: &'a str| {
+        let (before_file, after_file) = sentence.split_once("{file}")?;
+        if after_file.contains("{file}") {
+            return None;
+        }
+        Some((before_file.trim_end(), after_file.trim_start()))
+    };
+    split(translation)
+        .or_else(|| split(english))
+        .unwrap_or((english, ""))
+}
+
 impl Render for BufferDiagnosticsEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let path_style = self.project.read(cx).path_style(cx);
@@ -899,10 +915,14 @@ impl Render for BufferDiagnosticsEditor {
         };
 
         let child = if error_count + warning_count == 0 {
-            let label = match warning_count {
-                0 => "に問題はありません",
-                _ => "にエラーはありません",
+            // The file name is a button inside the sentence, and languages put it in
+            // different places, so the translation carries the whole sentence.
+            let english = match warning_count {
+                0 => i18n::msg!("No problems in {file}"),
+                _ => i18n::msg!("No errors in {file}"),
             };
+            let (label_before_file, label_after_file) =
+                split_around_file(i18n::tr(english), english);
 
             v_flex()
                 .key_context("EmptyPane")
@@ -915,10 +935,13 @@ impl Render for BufferDiagnosticsEditor {
                 .child(
                     div()
                         .h_flex()
+                        .when(!label_before_file.is_empty(), |this| {
+                            this.child(Label::new(label_before_file).color(Color::Muted))
+                        })
                         .child(
                             Button::new("open-file", filename)
                                 .style(ButtonStyle::Transparent)
-                                .tooltip(Tooltip::text("ファイルを開く"))
+                                .tooltip(Tooltip::text(i18n::t!("Open File")))
                                 .on_click(cx.listener(|buffer_diagnostics, _, window, cx| {
                                     if let Some(workspace) = Workspace::for_window(window, cx) {
                                         workspace.update(cx, |workspace, cx| {
@@ -935,13 +958,16 @@ impl Render for BufferDiagnosticsEditor {
                                     }
                                 })),
                         )
-                        .child(Label::new(label).color(Color::Muted)),
+                        .when(!label_after_file.is_empty(), |this| {
+                            this.child(Label::new(label_after_file).color(Color::Muted))
+                        }),
                 )
                 .when(self.summary.warning_count > 0, |div| {
-                    let label = match self.summary.warning_count {
-                        1 => "警告 1 件を表示".into(),
-                        warning_count => format!("警告 {} 件を表示", warning_count),
-                    };
+                    let label = i18n::tn!(
+                        self.summary.warning_count,
+                        "Show {count} warning",
+                        "Show {count} warnings"
+                    );
 
                     div.child(
                         Button::new("diagnostics-show-warning-label", label).on_click(cx.listener(

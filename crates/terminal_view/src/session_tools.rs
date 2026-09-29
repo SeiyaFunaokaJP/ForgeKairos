@@ -354,7 +354,7 @@ fn claude_code_spawn(
                 CLAUDE_CODE_PACKAGE.to_string(),
             ],
             "terminal::install-claude-code",
-            "Claude Code をインストール".to_string(),
+            i18n::t!("Install Claude Code").to_string(),
         ),
         ClaudeCodeCommand::Launch { effort } => {
             let mut args = Vec::new();
@@ -380,7 +380,7 @@ fn claude_code_spawn(
                 CLAUDE_CODE_PROGRAM.to_string(),
                 args,
                 "terminal::launch-claude-code",
-                "Claude Code (サンドボックスの外)".to_string(),
+                i18n::t!("Claude Code (Outside the Sandbox)").to_string(),
             )
         }
     };
@@ -451,7 +451,10 @@ fn spawn_claude_code_command(
         let Some(spawn) = spawn_task_in_terminal_panel(&workspace, &spawn_task, cx) else {
             workspace
                 .update(cx, |workspace, cx| {
-                    workspace.show_error("ターミナルパネルが利用できません。".to_string(), cx)
+                    workspace.show_error(
+                        i18n::t!("The terminal panel is unavailable.").to_string(),
+                        cx,
+                    )
                 })
                 .ok();
             return;
@@ -473,7 +476,7 @@ fn spawn_claude_code_command(
                 workspace
                     .update(cx, |workspace, cx| {
                         workspace.show_error(
-                            format!("ターミナルでコマンドを実行できませんでした: {error}"),
+                            i18n::t!("Couldn't run the command in the terminal: {error}"),
                             cx,
                         )
                     })
@@ -553,23 +556,28 @@ impl ProgramLookup {
 
 fn claude_code_missing_program_message(program: &str, on_remote_host: bool) -> String {
     match (program, on_remote_host) {
-        (NPM_PROGRAM, false) => {
-            "npm が PATH 上に見つかりません。Claude Code のインストールには Node.js が必要です。\
-             https://nodejs.org/ から Node.js をインストールしてから、もう一度お試しください。"
-                .to_string()
-        }
-        (NPM_PROGRAM, true) => "接続先のホストに npm が見つかりません。接続先のターミナルで \
-             Node.js をインストールしてから、もう一度お試しください。"
-            .to_string(),
-        (_, false) => "claude が PATH 上に見つかりません。先に「Claude Code をインストール \
-             (公式コマンド)」を実行してください。"
-            .to_string(),
+        (NPM_PROGRAM, false) => i18n::t!(
+            "npm was not found on PATH. Installing Claude Code requires Node.js. \
+             Install Node.js from https://nodejs.org/ and try again."
+        )
+        .to_string(),
+        (NPM_PROGRAM, true) => i18n::t!(
+            "npm was not found on the remote host. \
+             Install Node.js in a terminal on the remote host and try again."
+        )
+        .to_string(),
+        (_, false) => i18n::t!(
+            "claude was not found on PATH. Run “terminal: install claude code” from the command palette first."
+        )
+        .to_string(),
         // ADR-F49 決定 6: 接続先へこちらから勝手にインストールはしない。公式手順を案内する。
-        (_, true) => "接続先のホストに claude が見つかりません。接続先のターミナルで次の\
-             コマンドを実行してインストールしてください。\n\
+        (_, true) => i18n::t!(
+            "claude was not found on the remote host. \
+             Install it by running this command in a terminal on the remote host:\n\
              curl -fsSL https://claude.ai/install.sh | bash\n\
-             インストールすると `~/.local/bin/claude` に入り、この起動から使えるようになります。"
-            .to_string(),
+             It is installed to `~/.local/bin/claude` and can be launched from then on."
+        )
+        .to_string(),
     }
 }
 
@@ -626,7 +634,9 @@ fn run_macro_on_active_terminal(
     cx: &mut App,
 ) -> Result<(), &'static str> {
     let Some(view) = active_terminal_view(workspace, window, cx) else {
-        return Err("マクロを実行するターミナルがありません。ターミナルを開いてください。");
+        return Err(i18n::t!(
+            "There is no terminal to run the macro in. Open a terminal."
+        ));
     };
     view.update(cx, |view, cx| view.run_macro(terminal_macro, cx));
     Ok(())
@@ -736,7 +746,7 @@ enum MacroPickerEntry {
 impl MacroPickerEntry {
     /// 「ルータ用 (2)」, the heading the picker draws.
     fn heading_label(folder: Option<&str>, count: usize) -> String {
-        format!("{} ({count})", folder.unwrap_or(UNFILED_FOLDER))
+        format!("{} ({count})", folder.unwrap_or(unfiled_folder()))
     }
 }
 
@@ -1082,12 +1092,13 @@ impl MacroRunOptions {
 
     fn run(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Ok(repeat) = self.count.read(cx).text(cx).trim().parse::<u32>() else {
-            self.error = Some("繰り返し回数は 0 以上の整数で入力してください。".into());
+            self.error =
+                Some(i18n::t!("Enter the repeat count as a whole number, 0 or more.").into());
             cx.notify();
             return;
         };
         let Some(repeat_interval_ms) = parse_seconds(&self.interval.read(cx).text(cx)) else {
-            self.error = Some("間隔は 0 以上の秒数で入力してください。".into());
+            self.error = Some(i18n::t!("Enter the interval in seconds, 0 or more.").into());
             cx.notify();
             return;
         };
@@ -1134,8 +1145,8 @@ impl Render for MacroRunOptions {
                 Modal::new("terminal-macro-run-options", None)
                     .header(
                         ModalHeader::new()
-                            .headline("回数を指定して実行")
-                            .description(format!("マクロ「{name}」を繰り返し実行します。")),
+                            .headline(i18n::t!("Run Repeatedly"))
+                            .description(i18n::t!("Runs the macro “{name}” repeatedly.")),
                     )
                     .section(
                         Section::new().child(
@@ -1145,13 +1156,13 @@ impl Render for MacroRunOptions {
                                     h_flex()
                                         .gap_2()
                                         .child(
-                                            Label::new("繰り返し回数")
+                                            Label::new(i18n::t!("Repeat Count"))
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
                                         .child(count_field)
                                         .child(
-                                            Label::new("(0 は中止まで繰り返します)")
+                                            Label::new(i18n::t!("(0 repeats until stopped)"))
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         ),
@@ -1160,7 +1171,7 @@ impl Render for MacroRunOptions {
                                     h_flex()
                                         .gap_2()
                                         .child(
-                                            Label::new("間隔 (秒)")
+                                            Label::new(i18n::t!("Interval (seconds)"))
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
@@ -1176,10 +1187,10 @@ impl Render for MacroRunOptions {
                             h_flex()
                                 .gap_1()
                                 .child(
-                                    Button::new("cancel", "キャンセル")
+                                    Button::new("cancel", i18n::t!("Cancel"))
                                         .on_click(cx.listener(|_, _, _, cx| cx.emit(DismissEvent))),
                                 )
-                                .child(Button::new("run", "実行").on_click(cx.listener(
+                                .child(Button::new("run", i18n::t!("Run")).on_click(cx.listener(
                                     |this, _, window, cx| {
                                         this.run(window, cx);
                                     },
@@ -1237,7 +1248,7 @@ impl PickerDelegate for MacroPickerDelegate {
     }
 
     fn placeholder_text(&self, _: &mut Window, _: &mut App) -> Arc<str> {
-        "フォルダー / 名前 / タグで絞り込み…".into()
+        i18n::t!("Filter by folder, name, or tag…").into()
     }
 
     /// 「すべて展開 / すべて折りたたむ」. Sits on the query row so it is always
@@ -1256,9 +1267,9 @@ impl PickerDelegate for MacroPickerDelegate {
         }
         let collapsed = self.every_folder_collapsed();
         let (icon, label) = if collapsed {
-            (IconName::ChevronUpDown, "すべて展開")
+            (IconName::ChevronUpDown, i18n::t!("Expand All"))
         } else {
-            (IconName::ChevronDownUp, "すべて折りたたむ")
+            (IconName::ChevronDownUp, i18n::t!("Collapse All"))
         };
         Some(
             IconButton::new("macro-picker-toggle-all-folders", icon)
@@ -1273,9 +1284,9 @@ impl PickerDelegate for MacroPickerDelegate {
 
     fn no_matches_text(&self, _: &mut Window, cx: &mut App) -> Option<SharedString> {
         if self.store.read(cx).is_loaded() {
-            Some("保存済みのマクロがありません".into())
+            Some(i18n::t!("No saved macros").into())
         } else {
-            Some("読み込み中…".into())
+            Some(i18n::t!("Loading…").into())
         }
     }
 
@@ -1473,10 +1484,10 @@ impl PickerDelegate for MacroPickerDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("run-macro-repeatedly", "回数を指定して実行…")
-                        .tooltip(Tooltip::text(
-                            "繰り返し回数と間隔を指定して、このマクロを実行します。",
-                        ))
+                    Button::new("run-macro-repeatedly", i18n::t!("Run Repeatedly…"))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Runs this macro with a repeat count and interval you choose."
+                        )))
                         .on_click(cx.listener(|picker, _, window, cx| {
                             let selected = picker.delegate.selected_macro().cloned();
                             if let Some(terminal_macro) = selected {
@@ -1484,19 +1495,23 @@ impl PickerDelegate for MacroPickerDelegate {
                             }
                         })),
                 )
-                .child(Button::new("edit-macro", "編集").on_click(cx.listener(
-                    |picker, _, window, cx| {
-                        let edited = picker.delegate.selected_macro().cloned();
-                        if edited.is_some() {
-                            picker.delegate.open_editor(edited, window, cx);
-                        }
-                    },
-                )))
-                .child(Button::new("new-macro", "新規作成").on_click(cx.listener(
-                    |picker, _, window, cx| {
-                        picker.delegate.open_editor(None, window, cx);
-                    },
-                )))
+                .child(
+                    Button::new("edit-macro", i18n::t!("Edit")).on_click(cx.listener(
+                        |picker, _, window, cx| {
+                            let edited = picker.delegate.selected_macro().cloned();
+                            if edited.is_some() {
+                                picker.delegate.open_editor(edited, window, cx);
+                            }
+                        },
+                    )),
+                )
+                .child(
+                    Button::new("new-macro", i18n::t!("Create New")).on_click(cx.listener(
+                        |picker, _, window, cx| {
+                            picker.delegate.open_editor(None, window, cx);
+                        },
+                    )),
+                )
                 .into_any_element(),
         )
     }
@@ -1505,11 +1520,11 @@ impl PickerDelegate for MacroPickerDelegate {
 /// The muted right-hand side of a picker row: how many steps the macro has, and
 /// how often it repeats when that is not once.
 fn macro_row_detail(terminal_macro: &TerminalMacro) -> String {
-    let steps = format!("{} ステップ", terminal_macro.steps.len());
+    let steps = i18n::tn!(terminal_macro.steps.len(), "{count} step", "{count} steps");
     match terminal_macro.iteration_count() {
         Some(1) => steps,
-        Some(count) => format!("{steps} / {count} 回"),
-        None => format!("{steps} / 中止まで"),
+        Some(times) => i18n::t!("{steps} / ×{times}"),
+        None => i18n::t!("{steps} / until stopped"),
     }
 }
 
@@ -1550,8 +1565,9 @@ fn name_highlights(terminal_macro: &TerminalMacro, positions: &[usize]) -> Vec<u
 
 /// Shown when a save is attempted before `terminal_sessions.json` has been read
 /// once; writing then would rewrite the file from an empty in-memory copy.
-const LOADING_ERROR: &str =
-    "設定ファイルの読み込みが終わっていません。少し待ってからもう一度お試しください。";
+fn loading_error() -> &'static str {
+    i18n::t!("The settings file hasn't finished loading. Wait a moment and try again.")
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum StepKind {
@@ -1567,28 +1583,35 @@ enum StepKind {
 impl StepKind {
     fn label(&self) -> &'static str {
         match self {
-            StepKind::Send => "送信",
-            StepKind::WaitFor => "期待文字を待つ",
-            StepKind::Sleep => "秒待ち",
-            StepKind::Clear => "画面を消去",
-            StepKind::Repeat => "繰り返し",
-            StepKind::If => "分岐",
-            StepKind::SetVariable => "変数に設定",
+            StepKind::Send => i18n::tc!("terminal macro step", "Send"),
+            StepKind::WaitFor => i18n::tc!("terminal macro step", "Wait for Text"),
+            StepKind::Sleep => i18n::tc!("terminal macro step", "Sleep"),
+            StepKind::Clear => i18n::tc!("terminal macro step", "Clear Screen"),
+            StepKind::Repeat => i18n::tc!("terminal macro step", "Repeat"),
+            StepKind::If => i18n::tc!("terminal macro step", "Branch"),
+            StepKind::SetVariable => i18n::tc!("terminal macro step", "Set Variable"),
         }
     }
 
     /// The tooltip of the kind's 「追加」 button.
-    fn description(&self) -> &'static str {
+    fn description(&self) -> String {
         match self {
-            StepKind::Send => "端末へ文字列を送ります",
-            StepKind::WaitFor => "指定した文字が出力に出るまで待ちます",
-            StepKind::Sleep => "指定した秒数だけ待ちます",
-            StepKind::Clear => "画面とスクロールバックを消します",
-            StepKind::Repeat => "中のステップを指定した回数だけ繰り返します",
-            StepKind::If => "出力や変数に文字があるかどうかで、実行するステップを分けます",
-            StepKind::SetVariable => {
-                "変数に値を入れます。後のステップで ${変数名} と書いたところがその値になります"
+            StepKind::Send => i18n::t!("Sends text to the terminal").to_string(),
+            StepKind::WaitFor => {
+                i18n::t!("Waits until the given text appears in the output").to_string()
             }
+            StepKind::Sleep => i18n::t!("Waits for the given number of seconds").to_string(),
+            StepKind::Clear => i18n::t!("Clears the screen and the scrollback").to_string(),
+            StepKind::Repeat => {
+                i18n::t!("Repeats the steps inside it the given number of times").to_string()
+            }
+            StepKind::If => i18n::t!(
+                "Chooses the steps to run by whether the output or a variable contains some text"
+            )
+            .to_string(),
+            StepKind::SetVariable => i18n::t!(
+                "Sets a variable. Wherever a later step says ${{name}}, it becomes the value"
+            ),
         }
     }
 
@@ -1649,13 +1672,13 @@ impl StepKind {
 
     /// The grey hint of the row's text field. It names the field and says that
     /// variables may be spliced in.
-    fn text_placeholder(&self) -> &'static str {
+    fn text_placeholder(&self) -> String {
         match self {
-            StepKind::Send => "送信する文字列 (${変数} が使えます)",
-            StepKind::WaitFor => "期待文字 (${変数} が使えます)",
-            StepKind::If => "判定する文字列 (${変数} が使えます)",
-            StepKind::SetVariable => "入れる値 (${変数} も使えます)",
-            StepKind::Sleep | StepKind::Clear | StepKind::Repeat => "",
+            StepKind::Send => i18n::t!("Text to send (${{variable}} allowed)"),
+            StepKind::WaitFor => i18n::t!("Expected text (${{variable}} allowed)"),
+            StepKind::If => i18n::t!("Text to match (${{variable}} allowed)"),
+            StepKind::SetVariable => i18n::t!("Value to set (${{variable}} allowed too)"),
+            StepKind::Sleep | StepKind::Clear | StepKind::Repeat => String::new(),
         }
     }
 
@@ -1663,8 +1686,8 @@ impl StepKind {
     /// leave empty but a 変数に設定 cannot.
     fn capture_placeholder(&self) -> &'static str {
         match self {
-            StepKind::SetVariable => VARIABLE_NAME_PLACEHOLDER,
-            _ => CAPTURE_PLACEHOLDER,
+            StepKind::SetVariable => variable_name_placeholder(),
+            _ => capture_placeholder(),
         }
     }
 
@@ -1734,13 +1757,38 @@ fn parse_variable_name(value: &str) -> Result<Option<String>, ()> {
 }
 
 /// The 「分岐と変数の使い方」 panel, one paragraph per entry.
-const MACRO_HELP: [&str; 5] = [
-    "分岐: 「対象」(直前の出力 / 画面全体 / 変数) に「判定する文字列」があれば「そのとき」、なければ「それ以外」のステップを実行します。待たずにその場で調べるので、応答を待ってから調べるときは前に「期待文字を待つ」を置きます。",
-    "変数に値を入れる: 「変数に設定」ステップ、または「期待文字を待つ」「分岐」の「取り込む変数名」(見つかった行、正規表現なら一致した部分が入ります)。正規表現の名前付きグループ (?<名前>…) は、一致した部分がその名前の変数に入ります。",
-    "変数を使う: 送信する文字列・期待文字・判定する文字列・入れる値に ${名前} と書くと、実行時にその値に置き換わります。${ を文字として送るときは $${ と書きます。",
-    "値で分ける: 分岐の「対象」を「変数」にすると、その変数の値を調べます。まだ値が入っていない変数は「それ以外」になります。正規表現の名前付きグループを使うと、値の一部を別の変数に取り出せます。",
-    "例: 送信「show version」→ 期待文字を待つ「Version (?<ver>[0-9.]+)」(正規表現) → 分岐 (対象: 変数 ver、判定する文字列「^15\\.」、正規表現) → そのとき: 送信「…」",
-];
+fn macro_help() -> [String; 5] {
+    [
+        i18n::t!(
+            "Branch: runs the “Then” steps if the “Target” (output since last send / whole screen / variable) \
+             contains the “Text to match”, and the “Else” steps if not. It checks right away without waiting, \
+             so to check a response, put a “Wait for Text” step before it."
+        )
+        .to_string(),
+        i18n::t!(
+            "Setting variables: a “Set Variable” step, or the “Capture Into” field of “Wait for Text” and \
+             “Branch” (it gets the line found, or the matched part for a regular expression). \
+             A named group (?<name>…) of a regular expression puts the part it matched into the variable of that name."
+        )
+        .to_string(),
+        i18n::t!(
+            "Using variables: write ${{name}} in the text to send, the expected text, the text to match, \
+             or the value to set, and it is replaced by the value when the macro runs. \
+             To send ${{ as text, write $${{."
+        ),
+        i18n::t!(
+            "Branching on a value: set the branch's “Target” to “Variable” to check the value of that variable. \
+             A variable that has no value yet takes “Else”. Named groups of a regular expression \
+             can pull part of a value out into another variable."
+        )
+        .to_string(),
+        i18n::t!(
+            "Example: Send “show version” → Wait for Text “Version (?<ver>[0-9.]+)” (regular expression) → \
+             Branch (Target: variable ver, text to match “^15\\.”, regular expression) → Then: Send “…”"
+        )
+        .to_string(),
+    ]
+}
 
 /// Which of a row's child lists a path descends into.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -2056,23 +2104,26 @@ impl StepRow {
             _ => Vec::new(),
         };
 
-        let single_line =
-            |value: String, placeholder: &'static str, window: &mut Window, cx: &mut App| {
-                cx.new(|cx| {
-                    let mut editor = Editor::single_line(window, cx);
-                    editor.set_text(value, window, cx);
-                    if !placeholder.is_empty() {
-                        editor.set_placeholder_text(placeholder, window, cx);
-                    }
-                    editor
-                })
-            };
-        let text = single_line(text_value, kind.text_placeholder(), window, cx);
+        let single_line = |value: String, placeholder: &str, window: &mut Window, cx: &mut App| {
+            cx.new(|cx| {
+                let mut editor = Editor::single_line(window, cx);
+                editor.set_text(value, window, cx);
+                if !placeholder.is_empty() {
+                    editor.set_placeholder_text(placeholder, window, cx);
+                }
+                editor
+            })
+        };
+        let text = single_line(text_value, &kind.text_placeholder(), window, cx);
         let number = single_line(number_value, "", window, cx);
         let count = single_line(count_value, "", window, cx);
         let capture = single_line(capture_value, kind.capture_placeholder(), window, cx);
-        let scope_variable =
-            single_line(scope_variable_value, VARIABLE_NAME_PLACEHOLDER, window, cx);
+        let scope_variable = single_line(
+            scope_variable_value,
+            variable_name_placeholder(),
+            window,
+            cx,
+        );
 
         Self {
             kind,
@@ -2197,14 +2248,15 @@ impl StepRow {
             Ok::<_, String>(steps)
         };
         let capture = |cx: &App| -> Result<Option<String>, String> {
-            parse_variable_name(&self.capture.read(cx).text(cx))
-                .map_err(|()| format!("ステップ {label}: 取り込む変数名に $ {{ }} は使えません。"))
+            parse_variable_name(&self.capture.read(cx).text(cx)).map_err(|()| {
+                i18n::t!("Step {label}: the variable to capture into can't contain $, {{ or }}.")
+            })
         };
         // A `${name}` in the pattern is only known at run time, so the check
         // compiles the pattern with each reference standing for a literal.
         let check_pattern = |text: &str| {
             if self.regex && check_pattern_regex(text).is_err() {
-                Err(format!("ステップ {label}: 正規表現が不正です。"))
+                Err(i18n::t!("Step {label}: invalid regular expression."))
             } else {
                 Ok(())
             }
@@ -2216,14 +2268,14 @@ impl StepRow {
             }),
             StepKind::WaitFor => {
                 if text.trim().is_empty() {
-                    return Err(format!("ステップ {label}: 期待文字を入力してください。"));
+                    return Err(i18n::t!("Step {label}: enter the expected text."));
                 }
                 check_pattern(&text)?;
                 Ok(MacroStep::WaitFor {
                     pattern: text,
                     regex: self.regex,
                     timeout_ms: parse_seconds(&self.number.read(cx).text(cx))
-                        .ok_or_else(|| format!("ステップ {label}: 秒数が不正です。"))?,
+                        .ok_or_else(|| i18n::t!("Step {label}: invalid number of seconds."))?,
                     capture: capture(cx)?,
                     on_timeout: self
                         .continue_on_timeout
@@ -2233,7 +2285,7 @@ impl StepRow {
             }
             StepKind::Sleep => Ok(MacroStep::Sleep {
                 ms: parse_seconds(&self.number.read(cx).text(cx))
-                    .ok_or_else(|| format!("ステップ {label}: 秒数が不正です。"))?,
+                    .ok_or_else(|| i18n::t!("Step {label}: invalid number of seconds."))?,
             }),
             StepKind::Clear => Ok(MacroStep::Clear {}),
             StepKind::Repeat => {
@@ -2244,7 +2296,9 @@ impl StepRow {
                     .trim()
                     .parse::<u32>()
                     .map_err(|_| {
-                        format!("ステップ {label}: 繰り返し回数は 0 以上の整数で入力してください。")
+                        i18n::t!(
+                            "Step {label}: enter the repeat count as a whole number, 0 or more."
+                        )
                     })?;
                 Ok(MacroStep::Repeat {
                     count,
@@ -2253,20 +2307,18 @@ impl StepRow {
             }
             StepKind::If => {
                 if text.trim().is_empty() {
-                    return Err(format!(
-                        "ステップ {label}: 判定する文字列を入力してください。"
-                    ));
+                    return Err(i18n::t!("Step {label}: enter the text to match."));
                 }
                 check_pattern(&text)?;
                 let variable = match self.scope {
                     ScopeChoice::Variable => {
                         parse_variable_name(&self.scope_variable.read(cx).text(cx))
                             .map_err(|()| {
-                                format!("ステップ {label}: 調べる変数名に $ {{ }} は使えません。")
+                                i18n::t!(
+                                    "Step {label}: the variable to check can't contain $, {{ or }}."
+                                )
                             })?
-                            .ok_or_else(|| {
-                                format!("ステップ {label}: 調べる変数名を入力してください。")
-                            })?
+                            .ok_or_else(|| i18n::t!("Step {label}: enter the variable to check."))?
                     }
                     ScopeChoice::SinceLastSend | ScopeChoice::Screen => String::new(),
                 };
@@ -2281,8 +2333,10 @@ impl StepRow {
             }
             StepKind::SetVariable => {
                 let name = parse_variable_name(&self.capture.read(cx).text(cx))
-                    .map_err(|()| format!("ステップ {label}: 変数名に $ {{ }} は使えません。"))?
-                    .ok_or_else(|| format!("ステップ {label}: 変数名を入力してください。"))?;
+                    .map_err(|()| {
+                        i18n::t!("Step {label}: the variable name can't contain $, {{ or }}.")
+                    })?
+                    .ok_or_else(|| i18n::t!("Step {label}: enter a variable name."))?;
                 Ok(MacroStep::SetVariable { name, value: text })
             }
         }
@@ -2294,19 +2348,23 @@ impl StepRow {
         let text = self.text.read(cx).text(cx);
         let quoted = |fallback: &str| {
             if text.trim().is_empty() {
-                format!("「{fallback}」")
+                i18n::t!("“{fallback}”")
             } else {
-                format!("『{text}』")
+                i18n::t!("“{text}”")
             }
         };
         let variable =
             |field: &Entity<Editor>| parse_variable_name(&field.read(cx).text(cx)).ok().flatten();
-        let captured = |sentence: &mut String, when: &str| {
+        let captured = |sentence: &mut String, on_match: bool| {
             if let Some(name) = variable(&self.capture) {
-                let what = if self.regex { "部分" } else { "行" };
-                sentence.push_str(&format!(
-                    "{when}見つかった{what}を ${{{name}}} に入れます。"
-                ));
+                sentence.push_str(&match (on_match, self.regex) {
+                    (false, false) => i18n::t!(" Puts the line found into ${{{name}}}."),
+                    (false, true) => i18n::t!(" Puts the matched part into ${{{name}}}."),
+                    (true, false) => i18n::t!(" On a match, puts the line found into ${{{name}}}."),
+                    (true, true) => {
+                        i18n::t!(" On a match, puts the matched part into ${{{name}}}.")
+                    }
+                });
             }
         };
         match self.kind {
@@ -2319,57 +2377,58 @@ impl StepRow {
                     "" => "?",
                     seconds => seconds,
                 };
-                let mut sentence = format!(
-                    "{}が新しく出力されるまで、最大 {seconds} 秒待ちます。{}",
-                    quoted("期待文字"),
+                let mut sentence = i18n::t!(
+                    "Waits up to {seconds} s for {} to appear in new output.{}",
+                    quoted(i18n::t!("the expected text")),
                     if self.continue_on_timeout {
-                        "出なければ「タイムアウト時」を実行して次へ進みます。"
+                        i18n::t!(" If it doesn't, runs the “On Timeout” steps and moves on.")
                     } else {
-                        "出なければマクロを中止します。"
+                        i18n::t!(" If it doesn't, stops the macro.")
                     }
                 );
-                captured(&mut sentence, "");
+                captured(&mut sentence, false);
                 Some(sentence)
             }
             StepKind::If => {
                 let target = match self.scope {
-                    ScopeChoice::SinceLastSend => "直前の送信のあとの出力".to_string(),
-                    ScopeChoice::Screen => "画面全体".to_string(),
+                    ScopeChoice::SinceLastSend => {
+                        i18n::t!("the output after the last send").to_string()
+                    }
+                    ScopeChoice::Screen => i18n::t!("the whole screen").to_string(),
                     ScopeChoice::Variable => match variable(&self.scope_variable) {
-                        Some(name) => format!("変数 ${{{name}}} の値"),
-                        None => "変数の値".to_string(),
+                        Some(name) => i18n::t!("the value of ${{{name}}}"),
+                        None => i18n::t!("the variable's value").to_string(),
                     },
                 };
                 let mut sentence = if self.regex {
-                    format!(
-                        "{target}が正規表現{}に一致すれば「そのとき」を、一致しなければ「それ以外」を実行します。",
-                        quoted("判定する文字列")
+                    i18n::t!(
+                        "Runs “Then” if {target} matches the regular expression {}, and “Else” if not.",
+                        quoted(i18n::t!("the text to match"))
                     )
                 } else {
-                    format!(
-                        "{target}に{}が含まれていれば「そのとき」を、含まれていなければ「それ以外」を実行します。",
-                        quoted("判定する文字列")
+                    i18n::t!(
+                        "Runs “Then” if {target} contains {}, and “Else” if not.",
+                        quoted(i18n::t!("the text to match"))
                     )
                 };
                 if self.scope != ScopeChoice::Variable {
-                    sentence.push_str("待たずにその場で調べます。");
+                    sentence.push_str(i18n::t!(" Checks right away without waiting."));
                 }
-                captured(&mut sentence, "一致したときは");
+                captured(&mut sentence, true);
                 Some(sentence)
             }
             StepKind::SetVariable => Some(match variable(&self.capture) {
-                Some(name) => format!(
-                    "${{{name}}} に{}を入れます。後のステップで ${{{name}}} と書いたところがこの値になります。",
+                Some(name) => i18n::t!(
+                    "Sets ${{{name}}} to {}. Wherever a later step says ${{{name}}}, it becomes this value.",
                     if text.is_empty() {
-                        "空の文字列".to_string()
+                        i18n::t!("an empty string").to_string()
                     } else {
-                        format!("『{text}』")
+                        i18n::t!("“{text}”")
                     }
                 ),
-                None => {
-                    "変数名と値を入れると、後のステップで ${変数名} と書いたところがその値になります。"
-                        .to_string()
-                }
+                None => i18n::t!(
+                    "Enter a variable name and a value. Wherever a later step says ${{name}}, it becomes the value."
+                ),
             }),
             StepKind::Send | StepKind::Sleep | StepKind::Clear | StepKind::Repeat => None,
         }
@@ -2514,22 +2573,22 @@ impl StepRow {
     fn summary(&self, cx: &App) -> String {
         if let Some(step) = &self.unknown {
             return match step.unknown_kind() {
-                Some(kind) => format!("この版では扱えない種類のステップ「{kind}」です"),
-                None => "この版では扱えない種類のステップです".to_string(),
+                Some(kind) => i18n::t!("A step of a kind this version can't run (“{kind}”)"),
+                None => i18n::t!("A step of a kind this version can't run").to_string(),
             };
         }
         match self.kind {
             StepKind::Sleep => {
                 let seconds = self.number.read(cx).text(cx);
                 match seconds.trim() {
-                    "" => self.kind.description().to_string(),
-                    seconds => format!("{seconds} 秒待ちます"),
+                    "" => self.kind.description(),
+                    seconds => i18n::t!("Waits {seconds} s"),
                 }
             }
             StepKind::Repeat => match self.count.read(cx).text(cx).trim().parse::<u32>() {
-                Ok(0) => "中止まで繰り返します".to_string(),
-                Ok(count) => format!("{count} 回繰り返します"),
-                Err(_) => "繰り返し回数が未入力です".to_string(),
+                Ok(0) => i18n::t!("Repeats until stopped").to_string(),
+                Ok(count) => i18n::tn!(count, "Repeats {count} time", "Repeats {count} times"),
+                Err(_) => i18n::t!("The repeat count is empty").to_string(),
             },
             _ => {
                 if let Some(description) = self.describe(cx) {
@@ -2538,7 +2597,7 @@ impl StepRow {
                 let text = self.text.read(cx).text(cx);
                 let text = text.trim();
                 if text.is_empty() {
-                    return self.kind.description().to_string();
+                    return self.kind.description();
                 }
                 let mut summary = text.chars().take(SUMMARY_LENGTH).collect::<String>();
                 if text.chars().count() > SUMMARY_LENGTH {
@@ -2557,9 +2616,9 @@ const SUMMARY_LENGTH: usize = 60;
 /// heading of its lane put it.
 fn repeat_times_label(count: &str) -> String {
     match count.trim().parse::<u32>() {
-        Ok(0) => "中止まで".to_string(),
-        Ok(count) => format!("{count} 回"),
-        Err(_) => "回数が未入力".to_string(),
+        Ok(0) => i18n::t!("until stopped").to_string(),
+        Ok(count) => i18n::tn!(count, "{count} time", "{count} times"),
+        Err(_) => i18n::t!("no count").to_string(),
     }
 }
 
@@ -2613,9 +2672,13 @@ impl VariableReach {
     }
 }
 
-const CAPTURE_PLACEHOLDER: &str = "省略可";
+fn capture_placeholder() -> &'static str {
+    i18n::t!("Optional")
+}
 
-const VARIABLE_NAME_PLACEHOLDER: &str = "変数名";
+fn variable_name_placeholder() -> &'static str {
+    i18n::t!("Variable name")
+}
 
 fn format_seconds(milliseconds: u64) -> String {
     let seconds = milliseconds as f64 / 1000.0;
@@ -2637,13 +2700,19 @@ fn parse_seconds(value: &str) -> Option<u64> {
 /// Heading the tree files macros without a folder under. Only drawn once at
 /// least one folder exists, so a user who never made a folder is not shown a
 /// grouping they did not ask for.
-const UNFILED_FOLDER: &str = "未分類";
+fn unfiled_folder() -> &'static str {
+    i18n::t!("Unfiled")
+}
 
 /// Stands in for the macros of a folder the user made but has not filled yet.
-const EMPTY_FOLDER_ROW: &str = "マクロがありません — ここに追加";
+fn empty_folder_row() -> &'static str {
+    i18n::t!("No macros — add one here")
+}
 
 /// The form's folder dropdown entry for 未分類.
-const NO_FOLDER: &str = "(フォルダーなし)";
+fn no_folder() -> &'static str {
+    i18n::t!("(No folder)")
+}
 
 /// A macro dragged from the tree onto a folder heading.
 #[derive(Clone)]
@@ -2863,12 +2932,13 @@ impl MacroEditor {
             })
         };
 
-        let name = placeholder_editor("マクロ名", window, cx);
-        let tags = placeholder_editor("タグ (カンマ区切り、省略可)", window, cx);
-        let description = placeholder_editor("説明 (省略可)", window, cx);
+        let name = placeholder_editor(i18n::t!("Macro name"), window, cx);
+        let tags = placeholder_editor(i18n::t!("Tags (comma-separated, optional)"), window, cx);
+        let description = placeholder_editor(i18n::t!("Description (optional)"), window, cx);
         let repeat = cx.new(|cx| Editor::single_line(window, cx));
         let repeat_interval = cx.new(|cx| Editor::single_line(window, cx));
-        let list_filter = placeholder_editor("フォルダー / 名前 / タグで絞り込み", window, cx);
+        let list_filter =
+            placeholder_editor(i18n::t!("Filter by folder, name, or tag"), window, cx);
 
         let focus_handle = cx.focus_handle();
         // `terminal_sessions.json` is read asynchronously, so an editor opened
@@ -2963,8 +3033,8 @@ impl MacroEditor {
     /// place that does while the tree is hidden.
     fn form_heading(&self) -> String {
         match &self.original_key {
-            Some((_, name)) => format!("『{name}』を編集"),
-            None => "新規マクロ".to_string(),
+            Some((_, name)) => i18n::t!("Edit “{name}”"),
+            None => i18n::t!("New Macro").to_string(),
         }
     }
 
@@ -3044,10 +3114,14 @@ impl MacroEditor {
     /// its own is what makes 「A-PC用/ls」 and 「B-PC用/ls」 both keep their name.
     fn unused_copy_name(&self, base: &str, cx: &App) -> String {
         let base = base.trim();
-        let base = if base.is_empty() { "マクロ" } else { base };
+        let base = if base.is_empty() {
+            i18n::t!("Macro")
+        } else {
+            base
+        };
         let folder = self.form_folder.as_deref();
         let taken = |candidate: &str| self.store.read(cx).macro_named(folder, candidate).is_some();
-        let candidate = format!("{base} のコピー");
+        let candidate = i18n::t!("{base} (copy)");
         if !taken(&candidate) {
             return candidate;
         }
@@ -3055,7 +3129,7 @@ impl MacroEditor {
         // these suffixes is always free.
         let limit = self.store.read(cx).macros().len() + 2;
         for suffix in 2..=limit {
-            let numbered = format!("{base} のコピー {suffix}");
+            let numbered = i18n::t!("{base} (copy {suffix})");
             if !taken(&numbered) {
                 return numbered;
             }
@@ -3472,7 +3546,7 @@ impl MacroEditor {
         cx.spawn(async move |this, cx| {
             if let Err(error) = write.await {
                 this.update(cx, |this, cx| {
-                    this.error = Some(format!("{what}できませんでした: {error}").into());
+                    this.error = Some(format!("{what}: {error}").into());
                     cx.notify();
                 })
                 .ok();
@@ -3524,13 +3598,17 @@ impl MacroEditor {
             .iter()
             .any(|candidate| candidate.name == folder && candidate.collapsed);
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             cx.notify();
             return;
         }
         let store = self.store.clone();
         if let Some(write) = write_folder_collapsed(&store, &folder, !collapsed, cx) {
-            self.report_write_failure(write, "フォルダーの開閉を保存", cx);
+            self.report_write_failure(
+                write,
+                i18n::t!("Couldn't save whether the folder is open"),
+                cx,
+            );
         }
         cx.notify();
     }
@@ -3546,7 +3624,7 @@ impl MacroEditor {
     ) {
         let field = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("フォルダー名", window, cx);
+            editor.set_placeholder_text(i18n::t!("Folder name"), window, cx);
             editor
         });
         window.focus(&field.focus_handle(cx), cx);
@@ -3564,7 +3642,7 @@ impl MacroEditor {
             return;
         };
         let Some(name) = normalize_folder(&entry.field.read(cx).text(cx)) else {
-            self.error = Some("フォルダー名を入力してください。".into());
+            self.error = Some(i18n::t!("Enter a folder name.").into());
             self.new_folder = Some(entry);
             cx.notify();
             return;
@@ -3572,13 +3650,13 @@ impl MacroEditor {
         // Writing before the first read would rewrite the file from an empty
         // in-memory copy, dropping every macro and connection already in it.
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             self.new_folder = Some(entry);
             cx.notify();
             return;
         }
         if self.store.read(cx).file().has_folder(&name) {
-            self.error = Some("同じ名前のフォルダーがあります。".into());
+            self.error = Some(i18n::t!("A folder with this name already exists.").into());
             self.new_folder = Some(entry);
             cx.notify();
             return;
@@ -3591,7 +3669,7 @@ impl MacroEditor {
         }
         self.error = None;
         let write = self.store.update(cx, |store, cx| store.write(file, cx));
-        self.report_write_failure(write, "フォルダーを作成", cx);
+        self.report_write_failure(write, i18n::t!("Couldn't create the folder"), cx);
         cx.notify();
     }
 
@@ -3599,7 +3677,7 @@ impl MacroEditor {
     /// the picker follow: the position in `macro_folders` is the display order.
     fn move_folder(&mut self, folder: &str, up: bool, cx: &mut Context<Self>) {
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             cx.notify();
             return;
         }
@@ -3617,7 +3695,7 @@ impl MacroEditor {
         file.macro_folders.swap(index, target);
         self.error = None;
         let write = self.store.update(cx, |store, cx| store.write(file, cx));
-        self.report_write_failure(write, "フォルダーを移動", cx);
+        self.report_write_failure(write, i18n::t!("Couldn't move the folder"), cx);
         cx.notify();
     }
 
@@ -3656,7 +3734,7 @@ impl MacroEditor {
     ) {
         self.pending_folder_delete = None;
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             cx.notify();
             return;
         }
@@ -3697,7 +3775,7 @@ impl MacroEditor {
             }
             self.error = None;
             let write = self.store.update(cx, |store, cx| store.write(file, cx));
-            self.report_write_failure(write, "フォルダーを削除", cx);
+            self.report_write_failure(write, i18n::t!("Couldn't delete the folder"), cx);
             cx.notify();
             return;
         }
@@ -3779,7 +3857,7 @@ impl MacroEditor {
         self.error = None;
 
         let write = self.store.update(cx, |store, cx| store.write(file, cx));
-        self.report_write_failure(write, "フォルダーを削除", cx);
+        self.report_write_failure(write, i18n::t!("Couldn't delete the folder"), cx);
         cx.notify();
     }
 
@@ -3806,7 +3884,7 @@ impl MacroEditor {
             return;
         };
         let Some(renamed) = normalize_folder(&field.read(cx).text(cx)) else {
-            self.error = Some("フォルダー名を入力してください。".into());
+            self.error = Some(i18n::t!("Enter a folder name.").into());
             self.renaming_folder = Some((from, field));
             cx.notify();
             return;
@@ -3818,7 +3896,7 @@ impl MacroEditor {
         // Writing before the first read would rewrite the file from an empty
         // in-memory copy, dropping every macro and connection already in it.
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             self.renaming_folder = Some((from, field));
             cx.notify();
             return;
@@ -3849,7 +3927,7 @@ impl MacroEditor {
             })
         });
         if collides || self.store.read(cx).file().has_folder(&renamed) {
-            self.error = Some("同じ名前のフォルダーがあります。".into());
+            self.error = Some(i18n::t!("A folder with this name already exists.").into());
             self.renaming_folder = Some((from, field));
             cx.notify();
             return;
@@ -3906,7 +3984,7 @@ impl MacroEditor {
         self.error = None;
 
         let write = self.store.update(cx, |store, cx| store.write(file, cx));
-        self.report_write_failure(write, "フォルダー名を変更", cx);
+        self.report_write_failure(write, i18n::t!("Couldn't rename the folder"), cx);
         cx.notify();
     }
 
@@ -3922,7 +4000,7 @@ impl MacroEditor {
         cx: &mut Context<Self>,
     ) {
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             cx.notify();
             return;
         }
@@ -3977,7 +4055,7 @@ impl MacroEditor {
         self.error = None;
 
         let write = self.store.update(cx, |store, cx| store.write(file, cx));
-        self.report_write_failure(write, "フォルダーを移動", cx);
+        self.report_write_failure(write, i18n::t!("Couldn't move the folder"), cx);
         cx.notify();
     }
 
@@ -3985,14 +4063,14 @@ impl MacroEditor {
         // Writing before the first read would rewrite the file from an empty
         // in-memory copy, dropping every macro and connection already in it.
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             cx.notify();
             return;
         }
 
         let name = self.name.read(cx).text(cx).trim().to_string();
         if name.is_empty() {
-            self.error = Some("マクロ名を入力してください。".into());
+            self.error = Some(i18n::t!("Enter a macro name.").into());
             cx.notify();
             return;
         }
@@ -4010,13 +4088,14 @@ impl MacroEditor {
         }
 
         let Ok(repeat) = self.repeat.read(cx).text(cx).trim().parse::<u32>() else {
-            self.error = Some("繰り返し回数は 0 以上の整数で入力してください。".into());
+            self.error =
+                Some(i18n::t!("Enter the repeat count as a whole number, 0 or more.").into());
             cx.notify();
             return;
         };
         let Some(repeat_interval_ms) = parse_seconds(&self.repeat_interval.read(cx).text(cx))
         else {
-            self.error = Some("繰り返しの間隔は 0 以上の秒数で入力してください。".into());
+            self.error = Some(i18n::t!("Enter the repeat interval in seconds, 0 or more.").into());
             cx.notify();
             return;
         };
@@ -4044,7 +4123,7 @@ impl MacroEditor {
             .iter()
             .position(|candidate| candidate.key() == key);
         if taken.is_some() && original_key.as_ref() != Some(&key) {
-            self.error = Some("同じフォルダーに同名のマクロがあります。".into());
+            self.error = Some(i18n::t!("This folder already has a macro with this name.").into());
             cx.notify();
             return;
         }
@@ -4088,7 +4167,7 @@ impl MacroEditor {
             }
             Err(error) => {
                 this.update(cx, |this, cx| {
-                    this.error = Some(format!("保存できませんでした: {error}").into());
+                    this.error = Some(i18n::t!("Couldn't save: {error}").into());
                     cx.notify();
                 })
                 .ok();
@@ -4108,7 +4187,7 @@ impl MacroEditor {
             return;
         };
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             cx.notify();
             return;
         }
@@ -4138,7 +4217,7 @@ impl MacroEditor {
         }
         cx.notify();
 
-        self.report_write_failure(write, "削除", cx);
+        self.report_write_failure(write, i18n::t!("Couldn't delete"), cx);
     }
 
     /// Opens a blank form already filed under `folder` — what 「新しいマクロ」 on
@@ -4164,7 +4243,7 @@ impl MacroEditor {
     /// collapse, rename, reorder, take drops and carry a right-click menu.
     fn render_macro_tree(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         if !self.store.read(cx).is_loaded() {
-            return Label::new("読み込み中…")
+            return Label::new(i18n::t!("Loading…"))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element();
@@ -4174,9 +4253,9 @@ impl MacroEditor {
         if rows.is_empty() {
             let filtered = !self.list_filter.read(cx).text(cx).trim().is_empty();
             return Label::new(if filtered {
-                "絞り込みに一致するマクロがありません"
+                i18n::t!("No macros match the filter")
             } else {
-                "保存済みのマクロがありません"
+                i18n::t!("No saved macros")
             })
             .size(LabelSize::Small)
             .color(Color::Muted)
@@ -4212,8 +4291,8 @@ impl MacroEditor {
                         tree = tree.child(self.render_folder_name_field(
                             index,
                             &field,
-                            "この名前に変更します",
-                            "名前の変更をやめます",
+                            i18n::t!("Rename to this name"),
+                            i18n::t!("Cancel renaming"),
                             |this, window, cx| this.confirm_folder_rename(window, cx),
                             |this, _| this.renaming_folder = None,
                             window,
@@ -4258,7 +4337,7 @@ impl MacroEditor {
                                 this.new_macro_in_folder(Some(filled.clone()), window, cx);
                             }))
                             .child(
-                                Label::new(EMPTY_FOLDER_ROW)
+                                Label::new(empty_folder_row())
                                     .size(LabelSize::XSmall)
                                     .color(Color::Muted),
                             ),
@@ -4268,7 +4347,8 @@ impl MacroEditor {
                     let key = terminal_macro.key();
                     let name = terminal_macro.name.clone();
                     let selected = editing.as_ref() == Some(&key);
-                    let detail = format!("{} ステップ", terminal_macro.steps.len());
+                    let detail =
+                        i18n::tn!(terminal_macro.steps.len(), "{count} step", "{count} steps");
                     tree = tree.child(
                         div()
                             .id(("saved-macro-row", index))
@@ -4313,7 +4393,9 @@ impl MacroEditor {
         folder_count: usize,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let heading = folder.clone().unwrap_or_else(|| UNFILED_FOLDER.to_string());
+        let heading = folder
+            .clone()
+            .unwrap_or_else(|| unfiled_folder().to_string());
         let disclosure_folder = folder.clone();
         let label_folder = folder.clone();
         let row = h_flex()
@@ -4368,9 +4450,9 @@ impl MacroEditor {
                 this.child(
                     IconButton::new(("rename-folder", index), IconName::Pencil)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text(
-                            "フォルダー名を変更します (中のマクロをまとめて移動します)",
-                        ))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Renames the folder (the macros in it move along)"
+                        )))
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.begin_folder_rename(folder.clone(), window, cx);
                         })),
@@ -4393,7 +4475,7 @@ impl MacroEditor {
                 let name = name.clone();
                 let view = view.clone();
                 ContextMenu::build(window, cx, move |mut menu, _, _| {
-                    menu = menu.entry("新しいマクロ", None, {
+                    menu = menu.entry(i18n::t!("New Macro in Folder"), None, {
                         let name = name.clone();
                         let view = view.clone();
                         move |window, cx| {
@@ -4404,7 +4486,7 @@ impl MacroEditor {
                             .ok();
                         }
                     });
-                    menu = menu.entry("名前を変更", None, {
+                    menu = menu.entry(i18n::t!("Rename Folder"), None, {
                         let name = name.clone();
                         let view = view.clone();
                         move |window, cx| {
@@ -4416,7 +4498,7 @@ impl MacroEditor {
                         }
                     });
                     if position > 0 {
-                        menu = menu.entry("上へ移動", None, {
+                        menu = menu.entry(i18n::t!("Move Up"), None, {
                             let name = name.clone();
                             let view = view.clone();
                             move |_, cx| {
@@ -4426,7 +4508,7 @@ impl MacroEditor {
                         });
                     }
                     if position + 1 < folder_count {
-                        menu = menu.entry("下へ移動", None, {
+                        menu = menu.entry(i18n::t!("Move Down"), None, {
                             let name = name.clone();
                             let view = view.clone();
                             move |_, cx| {
@@ -4435,7 +4517,7 @@ impl MacroEditor {
                             }
                         });
                     }
-                    menu.separator().entry("削除…", None, {
+                    menu.separator().entry(i18n::t!("Delete…"), None, {
                         move |window, cx| {
                             let name = name.clone();
                             view.update(cx, |this, cx| {
@@ -4504,10 +4586,10 @@ impl MacroEditor {
         let selected = self
             .form_folder
             .clone()
-            .unwrap_or_else(|| NO_FOLDER.to_string());
+            .unwrap_or_else(|| no_folder().to_string());
         let view = cx.weak_entity();
         let menu = ContextMenu::build(window, cx, move |mut menu, _, _| {
-            menu = menu.entry(NO_FOLDER, None, {
+            menu = menu.entry(no_folder(), None, {
                 let view = view.clone();
                 move |_, cx| {
                     view.update(cx, |this, cx| {
@@ -4529,7 +4611,7 @@ impl MacroEditor {
                     .ok();
                 });
             }
-            menu.separator().entry("新しいフォルダー…", None, {
+            menu.separator().entry(i18n::t!("New Folder…"), None, {
                 move |window, cx| {
                     view.update(cx, |this, cx| this.begin_new_folder(true, window, cx))
                         .ok();
@@ -4574,8 +4656,10 @@ impl MacroEditor {
             return frame
                 .p_1()
                 .child(
-                    Label::new(format!(
-                        "{heading}: {child_count} ステップ (これより深い入れ子は JSON で編集してください)"
+                    Label::new(i18n::tn!(
+                        child_count,
+                        "{heading}: {count} step (edit deeper nesting in the JSON file)",
+                        "{heading}: {count} steps (edit deeper nesting in the JSON file)"
                     ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
@@ -4703,7 +4787,7 @@ impl MacroEditor {
                                 IconButton::new("step-insert-button", IconName::Plus)
                                     .icon_size(IconSize::XSmall)
                                     .style(ButtonStyle::Outlined),
-                                Tooltip::text("ここにステップを追加します"),
+                                Tooltip::text(i18n::t!("Add a step here")),
                             )
                             .menu(move |window, cx| {
                                 let view = view.clone();
@@ -4739,7 +4823,7 @@ impl MacroEditor {
                     )
                     .when(empty_lane, |this| {
                         this.child(
-                            Label::new("ステップを追加")
+                            Label::new(i18n::t!("Add Step"))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Muted),
                         )
@@ -4757,14 +4841,15 @@ impl MacroEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let variables = if defined.is_empty() {
-            "変数: まだありません (「変数に設定」か「取り込む変数名」で作れます)".to_string()
+            i18n::t!("Variables: none yet (create them with “Set Variable” or “Capture Into”)")
+                .to_string()
         } else {
             let listed = defined
                 .iter()
-                .map(|(name, path)| format!("${{{name}}} (ステップ {})", path.label()))
+                .map(|(name, path)| i18n::t!("${{{name}}} (step {})", path.label()))
                 .collect::<Vec<_>>()
-                .join("、");
-            format!("変数: {listed}")
+                .join(i18n::tc!("list separator", ", "));
+            i18n::t!("Variables: {listed}")
         };
         let colors = cx.theme().colors();
         let (border, background) = (colors.border, colors.surface_background);
@@ -4784,24 +4869,26 @@ impl MacroEditor {
                             .gap_1()
                             .flex_wrap()
                             .child(
-                                Label::new(format!("ステップ ({} 個)", self.steps.len()))
+                                Label::new(i18n::t!("Steps ({})", self.steps.len()))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
                             .child(
-                                Button::new("macro-expand-all", "すべて展開")
+                                Button::new("macro-expand-all", i18n::t!("Expand All"))
                                     .label_size(LabelSize::Small)
-                                    .tooltip(Tooltip::text("すべてのステップの入力欄を表示します"))
+                                    .tooltip(Tooltip::text(i18n::t!(
+                                        "Shows the fields of every step"
+                                    )))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_all_expanded(true, cx);
                                     })),
                             )
                             .child(
-                                Button::new("macro-collapse-all", "すべて折りたたむ")
+                                Button::new("macro-collapse-all", i18n::t!("Collapse All"))
                                     .label_size(LabelSize::Small)
-                                    .tooltip(Tooltip::text(
-                                        "すべてのステップを見出しと要約だけにします",
-                                    ))
+                                    .tooltip(Tooltip::text(i18n::t!(
+                                        "Shows only the heading and summary of every step"
+                                    )))
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.set_all_expanded(false, cx);
                                     })),
@@ -4811,9 +4898,9 @@ impl MacroEditor {
                         Button::new(
                             "macro-help",
                             if self.show_help {
-                                "使い方を閉じる"
+                                i18n::t!("Close Help")
                             } else {
-                                "分岐と変数の使い方"
+                                i18n::t!("How Branches and Variables Work")
                             },
                         )
                         .label_size(LabelSize::Small)
@@ -4837,9 +4924,9 @@ impl MacroEditor {
                         .bg(background)
                         .debug_selector(|| "macro-help-panel".into())
                         .children(
-                            MACRO_HELP
-                                .iter()
-                                .map(|paragraph| Label::new(*paragraph).size(LabelSize::Small)),
+                            macro_help()
+                                .into_iter()
+                                .map(|paragraph| Label::new(paragraph).size(LabelSize::Small)),
                         ),
                 )
             })
@@ -4856,12 +4943,17 @@ impl MacroEditor {
     fn step_notes(&self, row: &StepRow, reach: &VariableReach, cx: &App) -> Vec<(String, Color)> {
         let mut notes = Vec::new();
         if let Some(error) = row.pattern_error(cx) {
-            notes.push((format!("正規表現が不正です: {error}"), Color::Error));
+            notes.push((
+                i18n::t!("Invalid regular expression: {error}"),
+                Color::Error,
+            ));
         }
         for name in row.repeated_references(cx) {
             notes.push((
-                format!(
-                    "${{{name}}} の直後の繰り返し指定は値の最後の 1 文字にしか掛からず、値が空のときは前の文字に掛かるか、正規表現が不正になります。値全体に掛けるときは (?:${{{name}}}) と囲みます。"
+                i18n::t!(
+                    "A repetition right after ${{{name}}} applies only to the last character of its value, \
+                     and when the value is empty it applies to the character before it or makes the regular expression invalid. \
+                     To apply it to the whole value, wrap it as (?:${{{name}}})."
                 ),
                 Color::Warning,
             ));
@@ -4873,13 +4965,11 @@ impl MacroEditor {
             let name = unset.name;
             notes.push((
                 if unset.set_later {
-                    format!(
-                        "${{{name}}} に値が入るのはこの分岐より後のため、ここでは「それ以外」を実行します。"
+                    i18n::t!(
+                        "${{{name}}} gets its value only after this branch, so “Else” runs here."
                     )
                 } else {
-                    format!(
-                        "${{{name}}} に値を入れるステップがないため、この分岐は常に「それ以外」を実行します。"
-                    )
+                    i18n::t!("No step sets ${{{name}}}, so this branch always runs “Else”.")
                 },
                 Color::Warning,
             ));
@@ -4913,9 +5003,9 @@ impl MacroEditor {
             };
             menu.item(
                 ContextMenuEntry::new(if expanded {
-                    "折りたたむ"
+                    i18n::tc!("terminal macro", "Collapse")
                 } else {
-                    "展開"
+                    i18n::tc!("terminal macro", "Expand")
                 })
                 .handler(action(|this, path| {
                     this.row_mut(path)
@@ -4925,20 +5015,20 @@ impl MacroEditor {
             )
             .separator()
             .item(
-                ContextMenuEntry::new("上へ移動")
+                ContextMenuEntry::new(i18n::t!("Move Up"))
                     .icon(IconName::ArrowUp)
                     .disabled(!can_move_up)
                     .handler(action(|this, path| this.move_step_by_one(path, true))),
             )
             .item(
-                ContextMenuEntry::new("下へ移動")
+                ContextMenuEntry::new(i18n::t!("Move Down"))
                     .icon(IconName::ArrowDown)
                     .disabled(!can_move_down)
                     .handler(action(|this, path| this.move_step_by_one(path, false))),
             )
             .separator()
             .item(
-                ContextMenuEntry::new("削除")
+                ContextMenuEntry::new(i18n::t!("Delete"))
                     .icon(IconName::Trash)
                     .handler(action(|this, path| this.delete_step(path))),
             )
@@ -5011,7 +5101,7 @@ impl MacroEditor {
                                     // kind the row was just switched to.
                                     let placeholder = candidate.text_placeholder();
                                     row.text.update(cx, |editor, cx| {
-                                        editor.set_placeholder_text(placeholder, window, cx);
+                                        editor.set_placeholder_text(&placeholder, window, cx);
                                     });
                                     let placeholder = candidate.capture_placeholder();
                                     row.capture.update(cx, |editor, cx| {
@@ -5065,7 +5155,7 @@ impl MacroEditor {
                     let view = view.clone();
                     let path = path.clone();
                     menu = menu.toggleable_entry(
-                        label,
+                        i18n::tr(label),
                         candidate == selected,
                         IconPosition::Start,
                         None,
@@ -5100,8 +5190,8 @@ impl MacroEditor {
             StepKind::Repeat => vec![self.render_child_list(
                 path,
                 StepList::Main,
-                format!(
-                    "繰り返す内容 ({})",
+                i18n::t!(
+                    "Steps to Repeat ({})",
                     repeat_times_label(&row.count.read(cx).text(cx))
                 ),
                 inner_width,
@@ -5121,7 +5211,7 @@ impl MacroEditor {
                     self.render_child_list(
                         path,
                         StepList::Main,
-                        "そのとき".to_string(),
+                        i18n::tc!("terminal macro", "Then").to_string(),
                         then_width,
                         reach,
                         window,
@@ -5130,7 +5220,7 @@ impl MacroEditor {
                     self.render_child_list(
                         path,
                         StepList::Else,
-                        "それ以外".to_string(),
+                        i18n::tc!("terminal macro", "Else").to_string(),
                         else_width,
                         reach,
                         window,
@@ -5141,7 +5231,7 @@ impl MacroEditor {
             StepKind::WaitFor if row.continue_on_timeout => vec![self.render_child_list(
                 path,
                 StepList::Timeout,
-                "タイムアウト時".to_string(),
+                i18n::tc!("terminal macro", "On Timeout").to_string(),
                 inner_width,
                 reach,
                 window,
@@ -5181,7 +5271,7 @@ impl MacroEditor {
         let notes = self.step_notes(row, reach, cx);
         let summary = row.summary(cx);
         let kind_label: SharedString = if unknown_kind.is_some() {
-            "不明なステップ".into()
+            i18n::tc!("terminal macro step", "Unknown Step").into()
         } else {
             kind.label().into()
         };
@@ -5312,7 +5402,7 @@ impl MacroEditor {
                     .trigger_with_tooltip(
                         IconButton::new(("step-more", element_id), IconName::Ellipsis)
                             .icon_size(IconSize::Small),
-                        Tooltip::text("移動や折りたたみのメニューを開きます"),
+                        Tooltip::text(i18n::t!("Opens the menu for moving and folding")),
                     )
                     .menu({
                         let view = cx.weak_entity();
@@ -5333,7 +5423,7 @@ impl MacroEditor {
             .child(
                 IconButton::new(("step-delete", element_id), IconName::Trash)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("このステップを削除します"))
+                    .tooltip(Tooltip::text(i18n::t!("Deletes this step")))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         if this.delete_step(&delete) {
                             cx.notify();
@@ -5345,9 +5435,9 @@ impl MacroEditor {
                     .id(("step-grip", element_id))
                     .flex_none()
                     .cursor_grab()
-                    .tooltip(Tooltip::text(
-                        "ドラッグして、線の途中や末尾の「+」に落とすと移動します",
-                    ))
+                    .tooltip(Tooltip::text(i18n::t!(
+                        "Drag onto a “+” along or at the end of a line to move the step"
+                    )))
                     .child(
                         Icon::new(IconName::Menu)
                             .size(IconSize::Small)
@@ -5368,221 +5458,235 @@ impl MacroEditor {
                 )
             });
 
-        let body = expanded.then(|| {
-            v_flex()
-                .w_full()
-                .gap_1()
-                .when_some(kind_menu, |this, kind_menu| {
-                    this.child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Label::new("種類")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                            )
-                            .child(
-                                DropdownMenu::new(
-                                    ("step-kind", element_id),
-                                    kind.label(),
-                                    kind_menu,
-                                )
-                                .style(DropdownStyle::Outlined),
-                            ),
-                    )
-                })
-                .when_some(unknown_kind, |this, unknown_kind| {
-                    let kind = unknown_kind
-                        .map(|kind| format!("「{kind}」"))
-                        .unwrap_or_default();
-                    // Switching the kind would throw away what the later
-                    // version wrote, so the card only offers moving and
-                    // deleting.
-                    this.child(
-                        Label::new(format!(
-                            "この版では扱えない種類のステップ{kind}です。保存しても元の内容のまま残りますが、このステップを含むマクロは実行できません。"
-                        ))
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
-                    )
-                })
-                .when_some(description, |this, description| {
-                    this.child(
-                        Label::new(description)
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
-                    )
-                })
-                .when(kind == StepKind::SetVariable, |this| {
-                    this.child(
-                        h_flex()
-                            .w_full()
-                            .gap_2()
-                            .child(
-                                Label::new("変数名")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                            )
-                            .child(small_field(&row.capture, rems(10.), window, cx))
-                            .child(
-                                Label::new("値")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                            )
-                            .child(
-                                input_frame_sized(
-                                    InputFrameSize::Compact,
-                                    row.text.focus_handle(cx).contains_focused(window, cx),
-                                    cx,
-                                )
-                                .flex_1()
-                                .min_w_0()
-                                .child(row.text.clone()),
-                            ),
-                    )
-                })
-                .when(kind.has_text() && kind != StepKind::SetVariable, |this| {
-                    this.child(
-                        input_frame_sized(
-                            InputFrameSize::Compact,
-                            row.text.focus_handle(cx).contains_focused(window, cx),
-                            cx,
-                        )
-                        .child(row.text.clone()),
-                    )
-                })
-                .when(kind == StepKind::Send, |this| {
-                    this.child(
-                        Checkbox::new(("step-newline", element_id), row.newline.into())
-                            .label("末尾で Enter を送る")
-                            .label_size(LabelSize::Small)
-                            .on_click(cx.listener(move |this, state: &ToggleState, _, cx| {
-                                let checked = *state == ToggleState::Selected;
-                                if let Some(row) = this.row_mut(&newline_path)
-                                    && row.newline != checked
-                                {
-                                    row.newline = checked;
-                                    cx.notify();
-                                }
-                            })),
-                    )
-                })
-                .when(kind == StepKind::Repeat, |this| {
-                    this.child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Label::new("繰り返し回数")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                            )
-                            .child(small_field(&row.count, rems(4.), window, cx))
-                            .child(
-                                Label::new("(0 回は中止まで繰り返します)")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
-                            ),
-                    )
-                })
-                .when(kind.has_duration(), |this| {
-                    this.child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Label::new(if kind == StepKind::WaitFor {
-                                    "タイムアウト (秒)"
-                                } else {
-                                    "秒数"
-                                })
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                            )
-                            .child(small_field(&row.number, rems(6.), window, cx)),
-                    )
-                })
-                .when(kind.has_pattern(), |this| {
-                    this.child(
-                        h_flex()
-                            .flex_wrap()
-                            .gap_2()
-                            .child(
-                                Checkbox::new(("step-regex", element_id), row.regex.into())
-                                    .label("正規表現")
-                                    .label_size(LabelSize::Small)
-                                    .on_click(cx.listener(
-                                        move |this, state: &ToggleState, _, cx| {
-                                            let checked = *state == ToggleState::Selected;
-                                            if let Some(row) = this.row_mut(&regex_path)
-                                                && row.regex != checked
-                                            {
-                                                row.regex = checked;
-                                                cx.notify();
-                                            }
-                                        },
-                                    )),
-                            )
-                            .when_some(scope_menu, |this, menu| {
-                                this.child(
-                                    Label::new("対象")
+        let body =
+            expanded.then(|| {
+                v_flex()
+                    .w_full()
+                    .gap_1()
+                    .when_some(kind_menu, |this, kind_menu| {
+                        this.child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Label::new(i18n::t!("Kind"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
                                 .child(
                                     DropdownMenu::new(
-                                        ("step-scope", element_id),
-                                        row.scope.label(),
-                                        menu,
+                                        ("step-kind", element_id),
+                                        kind.label(),
+                                        kind_menu,
                                     )
                                     .style(DropdownStyle::Outlined),
-                                )
-                            })
-                            .when(
-                                kind == StepKind::If && row.scope == ScopeChoice::Variable,
-                                |this| {
-                                    this.child(
-                                        Label::new("調べる変数名")
-                                            .size(LabelSize::Small)
-                                            .color(Color::Muted),
-                                    )
-                                    .child(small_field(&row.scope_variable, rems(8.), window, cx))
-                                },
+                                ),
+                        )
+                    })
+                    .when_some(unknown_kind, |this, unknown_kind| {
+                        let message = match unknown_kind {
+                            Some(kind) => i18n::t!(
+                                "A step of a kind this version can't run (“{kind}”). \
+                                 Saving keeps it as it was, but a macro that contains it can't be run."
                             ),
-                    )
-                })
-                .when(kind == StepKind::WaitFor || kind == StepKind::If, |this| {
-                    this.child(
-                        h_flex()
-                            .flex_wrap()
-                            .gap_2()
-                            .child(
-                                Label::new("取り込む変数名")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
+                            None => i18n::t!(
+                                "A step of a kind this version can't run. \
+                                 Saving keeps it as it was, but a macro that contains it can't be run."
                             )
-                            .child(small_field(&row.capture, rems(8.), window, cx))
-                            .when(kind == StepKind::WaitFor, |this| {
-                                this.child(
-                                    Label::new("タイムアウト時")
+                            .to_string(),
+                        };
+                        // Switching the kind would throw away what the later
+                        // version wrote, so the card only offers moving and
+                        // deleting.
+                        this.child(
+                            Label::new(message)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                        )
+                    })
+                    .when_some(description, |this, description| {
+                        this.child(
+                            Label::new(description)
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
+                    })
+                    .when(kind == StepKind::SetVariable, |this| {
+                        this.child(
+                            h_flex()
+                                .w_full()
+                                .gap_2()
+                                .child(
+                                    Label::new(i18n::t!("Variable name"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
-                                .when_some(timeout_menu, |this, menu| {
+                                .child(small_field(&row.capture, rems(10.), window, cx))
+                                .child(
+                                    Label::new(i18n::t!("Value"))
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .child(
+                                    input_frame_sized(
+                                        InputFrameSize::Compact,
+                                        row.text.focus_handle(cx).contains_focused(window, cx),
+                                        cx,
+                                    )
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(row.text.clone()),
+                                ),
+                        )
+                    })
+                    .when(kind.has_text() && kind != StepKind::SetVariable, |this| {
+                        this.child(
+                            input_frame_sized(
+                                InputFrameSize::Compact,
+                                row.text.focus_handle(cx).contains_focused(window, cx),
+                                cx,
+                            )
+                            .child(row.text.clone()),
+                        )
+                    })
+                    .when(kind == StepKind::Send, |this| {
+                        this.child(
+                            Checkbox::new(("step-newline", element_id), row.newline.into())
+                                .label(i18n::t!("Send Enter at the End"))
+                                .label_size(LabelSize::Small)
+                                .on_click(cx.listener(move |this, state: &ToggleState, _, cx| {
+                                    let checked = *state == ToggleState::Selected;
+                                    if let Some(row) = this.row_mut(&newline_path)
+                                        && row.newline != checked
+                                    {
+                                        row.newline = checked;
+                                        cx.notify();
+                                    }
+                                })),
+                        )
+                    })
+                    .when(kind == StepKind::Repeat, |this| {
+                        this.child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Label::new(i18n::t!("Repeat Count"))
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .child(small_field(&row.count, rems(4.), window, cx))
+                                .child(
+                                    Label::new(i18n::t!("(0 = repeat until stopped)"))
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                ),
+                        )
+                    })
+                    .when(kind.has_duration(), |this| {
+                        this.child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Label::new(if kind == StepKind::WaitFor {
+                                        i18n::t!("Timeout (seconds)")
+                                    } else {
+                                        i18n::t!("Seconds")
+                                    })
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                                )
+                                .child(small_field(&row.number, rems(6.), window, cx)),
+                        )
+                    })
+                    .when(kind.has_pattern(), |this| {
+                        this.child(
+                            h_flex()
+                                .flex_wrap()
+                                .gap_2()
+                                .child(
+                                    Checkbox::new(("step-regex", element_id), row.regex.into())
+                                        .label(i18n::t!("Regular Expression"))
+                                        .label_size(LabelSize::Small)
+                                        .on_click(cx.listener(
+                                            move |this, state: &ToggleState, _, cx| {
+                                                let checked = *state == ToggleState::Selected;
+                                                if let Some(row) = this.row_mut(&regex_path)
+                                                    && row.regex != checked
+                                                {
+                                                    row.regex = checked;
+                                                    cx.notify();
+                                                }
+                                            },
+                                        )),
+                                )
+                                .when_some(scope_menu, |this, menu| {
                                     this.child(
+                                        Label::new(i18n::tc!("terminal macro", "Target"))
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted),
+                                    )
+                                    .child(
                                         DropdownMenu::new(
-                                            ("step-timeout", element_id),
-                                            timeout_choice_label(row.continue_on_timeout),
+                                            ("step-scope", element_id),
+                                            row.scope.label(),
                                             menu,
                                         )
                                         .style(DropdownStyle::Outlined),
                                     )
                                 })
-                            }),
+                                .when(
+                                    kind == StepKind::If && row.scope == ScopeChoice::Variable,
+                                    |this| {
+                                        this.child(
+                                            Label::new(i18n::t!("Variable to Check"))
+                                                .size(LabelSize::Small)
+                                                .color(Color::Muted),
+                                        )
+                                        .child(
+                                            small_field(&row.scope_variable, rems(8.), window, cx),
+                                        )
+                                    },
+                                ),
+                        )
+                    })
+                    .when(kind == StepKind::WaitFor || kind == StepKind::If, |this| {
+                        this.child(
+                            h_flex()
+                                .flex_wrap()
+                                .gap_2()
+                                .child(
+                                    Label::new(i18n::t!("Capture Into"))
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
+                                )
+                                .child(small_field(&row.capture, rems(8.), window, cx))
+                                .when(kind == StepKind::WaitFor, |this| {
+                                    this.child(
+                                        Label::new(i18n::tc!("terminal macro", "On Timeout"))
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted),
+                                    )
+                                    .when_some(
+                                        timeout_menu,
+                                        |this, menu| {
+                                            this.child(
+                                                DropdownMenu::new(
+                                                    ("step-timeout", element_id),
+                                                    timeout_choice_label(row.continue_on_timeout),
+                                                    menu,
+                                                )
+                                                .style(DropdownStyle::Outlined),
+                                            )
+                                        },
+                                    )
+                                }),
+                        )
+                    })
+                    .children(
+                        notes.into_iter().map(|(note, color)| {
+                            Label::new(note).size(LabelSize::Small).color(color)
+                        }),
                     )
-                })
-                .children(notes.into_iter().map(|(note, color)| {
-                    Label::new(note).size(LabelSize::Small).color(color)
-                }))
-        });
+            });
 
         let colors = cx.theme().colors();
         let stripe = if unknown_kind.is_some() {
@@ -5736,14 +5840,14 @@ fn unset_reference_warnings(unset: &[Unset]) -> Vec<String> {
     let mut warnings = Vec::new();
     let nowhere = names(false);
     if !nowhere.is_empty() {
-        warnings.push(format!(
-            "{nowhere} に値を入れるステップがありません。実行時は書いたままの文字になります。"
+        warnings.push(i18n::t!(
+            "No step sets {nowhere}. When the macro runs, it stays as written."
         ));
     }
     let later = names(true);
     if !later.is_empty() {
-        warnings.push(format!(
-            "{later} に値が入るのはこのステップより後です。ここでは書いたままの文字になります。"
+        warnings.push(i18n::t!(
+            "{later} gets its value only after this step. Here it stays as written."
         ));
     }
     warnings
@@ -5756,15 +5860,15 @@ const MAX_EDITABLE_STEP_DEPTH: usize = 5;
 
 /// What 「タイムアウト時」 offers, `continue_on_timeout` first.
 const TIMEOUT_CHOICES: [(bool, &str); 2] = [
-    (false, "マクロを中止する"),
-    (true, "次のステップを実行する"),
+    (false, i18n::msg!("Stop the Macro")),
+    (true, i18n::msg!("Run the Next Step")),
 ];
 
 fn timeout_choice_label(continue_on_timeout: bool) -> &'static str {
     TIMEOUT_CHOICES
         .iter()
         .find(|(candidate, _)| *candidate == continue_on_timeout)
-        .map(|(_, label)| *label)
+        .map(|(_, label)| i18n::tr(label))
         .unwrap_or_default()
 }
 
@@ -5804,9 +5908,9 @@ impl Render for MacroEditor {
         let listed = self.listed_macros(cx).len();
         let total = self.store.read(cx).macros().len();
         let tree_header = if listed == total {
-            format!("保存済みのマクロ ({total} 件)")
+            i18n::t!("Saved Macros ({total})")
         } else {
-            format!("保存済みのマクロ ({listed} / {total} 件)")
+            i18n::t!("Saved Macros ({listed} / {total})")
         };
         let form_header = self.form_heading();
         let show_macro_list = self.show_macro_list;
@@ -5823,8 +5927,8 @@ impl Render for MacroEditor {
                 self.render_folder_name_field(
                     usize::MAX,
                     &entry.field,
-                    "この名前でフォルダーを作ります",
-                    "フォルダーの作成をやめます",
+                    i18n::t!("Create a folder with this name"),
+                    i18n::t!("Cancel creating the folder"),
                     |this, _, cx| this.confirm_new_folder(cx),
                     |this, _| this.new_folder = None,
                     window,
@@ -5861,7 +5965,7 @@ impl Render for MacroEditor {
             .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| cx.emit(DismissEvent)))
             .child(
                 Modal::new("terminal-macro-editor", None)
-                    .header(ModalHeader::new().headline("マクロの編集"))
+                    .header(ModalHeader::new().headline(i18n::t!("Edit Macros")))
                     .child(
                         h_flex()
                             .w_full()
@@ -5895,11 +5999,14 @@ impl Render for MacroEditor {
                                                 h_flex()
                                                     .gap_1()
                                                     .child(
-                                                        Button::new("new-macro", "新規")
+                                                        Button::new(
+                                                            "new-macro",
+                                                            i18n::tc!("terminal macro", "New"),
+                                                        )
                                                             .label_size(LabelSize::Small)
                                                             .start_icon(Icon::new(IconName::Plus))
                                                             .tooltip(Tooltip::text(
-                                                                "空のマクロを右側に開きます",
+                                                                i18n::t!("Opens an empty macro on the right"),
                                                             ))
                                                             .on_click(cx.listener(
                                                                 |this, _, window, cx| {
@@ -5910,11 +6017,11 @@ impl Render for MacroEditor {
                                                             )),
                                                     )
                                                     .child(
-                                                        Button::new("new-folder", "フォルダー")
+                                                        Button::new("new-folder", i18n::t!("Folder"))
                                                             .label_size(LabelSize::Small)
                                                             .start_icon(Icon::new(IconName::Plus))
                                                             .tooltip(Tooltip::text(
-                                                                "マクロをまとめるフォルダーを作ります",
+                                                                i18n::t!("Creates a folder to group macros"),
                                                             ))
                                                             .on_click(cx.listener(
                                                                 |this, _, window, cx| {
@@ -5963,9 +6070,9 @@ impl Render for MacroEditor {
                                                         .toggle_state(show_macro_list)
                                                         .tooltip(Tooltip::text(
                                                             if show_macro_list {
-                                                                "保存済みのマクロの一覧を隠して、編集欄を広げます"
+                                                                i18n::t!("Hides the list of saved macros to widen the editor")
                                                             } else {
-                                                                "保存済みのマクロの一覧を表示します"
+                                                                i18n::t!("Shows the list of saved macros")
                                                             },
                                                         ))
                                                         .on_click(cx.listener(|this, _, _, cx| {
@@ -5993,13 +6100,13 @@ impl Render for MacroEditor {
                                                     h_flex()
                                                         .gap_1()
                                                         .child(
-                                                            Button::new("duplicate-macro", "複製")
+                                                            Button::new("duplicate-macro", i18n::t!("Duplicate"))
                                                                 .label_size(LabelSize::Small)
                                                                 .start_icon(Icon::new(
                                                                     IconName::Copy,
                                                                 ))
                                                                 .tooltip(Tooltip::text(
-                                                                    "同じ内容の新しいマクロとして開きます",
+                                                                    i18n::t!("Opens a new macro with the same contents"),
                                                                 ))
                                                                 .on_click(cx.listener(
                                                                     |this, _, window, cx| {
@@ -6010,7 +6117,7 @@ impl Render for MacroEditor {
                                                                 )),
                                                         )
                                                         .child(
-                                                            Button::new("delete-macro", "削除")
+                                                            Button::new("delete-macro", i18n::t!("Delete"))
                                                                 .label_size(LabelSize::Small)
                                                                 .color(Color::Error)
                                                                 .start_icon(Icon::new(
@@ -6050,7 +6157,7 @@ impl Render for MacroEditor {
                                                         h_flex()
                                                             .gap_2()
                                                             .child(
-                                                                Label::new("フォルダー")
+                                                                Label::new(i18n::t!("Folder"))
                                                                     .size(LabelSize::Small)
                                                                     .color(Color::Muted),
                                                             )
@@ -6063,19 +6170,19 @@ impl Render for MacroEditor {
                                                         h_flex()
                                                             .gap_2()
                                                             .child(
-                                                                Label::new("繰り返し回数")
+                                                                Label::new(i18n::t!("Repeat Count"))
                                                                     .size(LabelSize::Small)
                                                                     .color(Color::Muted),
                                                             )
                                                             .child(repeat_field)
                                                             .child(
-                                                                Label::new("間隔 (秒)")
+                                                                Label::new(i18n::t!("Interval (seconds)"))
                                                                     .size(LabelSize::Small)
                                                                     .color(Color::Muted),
                                                             )
                                                             .child(repeat_interval_field)
                                                             .child(
-                                                                Label::new("(0 回は中止まで繰り返します)")
+                                                                Label::new(i18n::t!("(0 = repeat until stopped)"))
                                                                     .size(LabelSize::Small)
                                                                     .color(Color::Muted),
                                                             ),
@@ -6091,12 +6198,14 @@ impl Render for MacroEditor {
                                             .as_ref()
                                             .filter(|edited| !edited.name.is_empty())
                                         {
-                                            Some(edited) => format!(
-                                                "編集中の内容は保存されていません。破棄して『{}』を開きますか？",
+                                            Some(edited) => i18n::t!(
+                                                "Your changes haven't been saved. Discard them and open “{}”?",
                                                 edited.name
                                             ),
-                                            None => "編集中の内容は保存されていません。破棄して新規マクロを開きますか？"
-                                                .to_string(),
+                                            None => i18n::t!(
+                                                "Your changes haven't been saved. Discard them and open a new macro?"
+                                            )
+                                            .to_string(),
                                         };
                                         this.child(
                                             v_flex()
@@ -6113,7 +6222,7 @@ impl Render for MacroEditor {
                                                         .child(
                                                             Button::new(
                                                                 "confirm-selection",
-                                                                "破棄して切り替え",
+                                                                i18n::t!("Discard and Switch"),
                                                             )
                                                             .on_click(cx.listener(
                                                                 |this, _, window, cx| {
@@ -6126,7 +6235,7 @@ impl Render for MacroEditor {
                                                         .child(
                                                             Button::new(
                                                                 "cancel-selection",
-                                                                "編集を続ける",
+                                                                i18n::t!("Keep Editing"),
                                                             )
                                                             .on_click(cx.listener(
                                                                 |this, _, _, cx| {
@@ -6146,8 +6255,8 @@ impl Render for MacroEditor {
                                                 .w_full()
                                                 .gap_1()
                                                 .child(
-                                                    Label::new(format!(
-                                                        "フォルダー『{folder}』を削除します。中のマクロをどうしますか？"
+                                                    Label::new(i18n::t!(
+                                                        "Deleting the folder “{folder}”. What should happen to the macros in it?"
                                                     ))
                                                     .size(LabelSize::Small)
                                                     .color(Color::Warning),
@@ -6158,7 +6267,7 @@ impl Render for MacroEditor {
                                                         .child(
                                                             Button::new(
                                                                 "folder-delete-keep",
-                                                                "マクロを未分類へ移す",
+                                                                i18n::t!("Move Macros to Unfiled"),
                                                             )
                                                             .on_click(cx.listener(
                                                                 move |this, _, window, cx| {
@@ -6171,7 +6280,7 @@ impl Render for MacroEditor {
                                                         .child(
                                                             Button::new(
                                                                 "folder-delete-all",
-                                                                "マクロごと削除",
+                                                                i18n::t!("Delete with Macros"),
                                                             )
                                                             .color(Color::Error)
                                                             .on_click(cx.listener(
@@ -6186,7 +6295,7 @@ impl Render for MacroEditor {
                                                         .child(
                                                             Button::new(
                                                                 "folder-delete-cancel",
-                                                                "キャンセル",
+                                                                i18n::t!("Cancel"),
                                                             )
                                                             .on_click(cx.listener(
                                                                 |this, _, _, cx| {
@@ -6207,16 +6316,14 @@ impl Render for MacroEditor {
                                                 .gap_1()
                                                 .justify_between()
                                                 .child(
-                                                    Label::new(format!(
-                                                        "『{name}』を削除しますか？"
-                                                    ))
+                                                    Label::new(i18n::t!("Delete “{name}”?"))
                                                     .size(LabelSize::Small),
                                                 )
                                                 .child(
                                                     h_flex()
                                                         .gap_1()
                                                         .child(
-                                                            Button::new("confirm-delete", "削除")
+                                                            Button::new("confirm-delete", i18n::t!("Delete"))
                                                                 .color(Color::Error)
                                                                 .on_click(cx.listener(
                                                                     |this, _, window, cx| {
@@ -6229,7 +6336,7 @@ impl Render for MacroEditor {
                                                         .child(
                                                             Button::new(
                                                                 "cancel-delete",
-                                                                "キャンセル",
+                                                                i18n::t!("Cancel"),
                                                             )
                                                             .on_click(cx.listener(
                                                                 |this, _, _, cx| {
@@ -6255,10 +6362,10 @@ impl Render for MacroEditor {
                             h_flex()
                                 .gap_1()
                                 .debug_selector(|| "macro-editor-buttons".into())
-                                .child(Button::new("cancel", "キャンセル").on_click(
+                                .child(Button::new("cancel", i18n::t!("Cancel")).on_click(
                                     cx.listener(|_, _, _, cx| cx.emit(DismissEvent)),
                                 ))
-                                .child(Button::new("save", "保存").on_click(cx.listener(
+                                .child(Button::new("save", i18n::t!("Save")).on_click(cx.listener(
                                     |this, _, _, cx| {
                                         this.save(cx);
                                     },
@@ -6289,14 +6396,16 @@ impl ModalView for MacroEditor {}
 /// the spawned command line is assembled without quoting.
 fn validate_host(host: &str) -> Result<(), &'static str> {
     if host.is_empty() {
-        return Err("ホスト名または IP アドレスを入力してください。");
+        return Err(i18n::t!("Enter a host name or IP address."));
     }
     if host.chars().all(|character| {
         character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_' | ':' | '[' | ']')
     }) {
         Ok(())
     } else {
-        Err("ホスト名に使用できない文字が含まれています。")
+        Err(i18n::t!(
+            "The host name contains characters that aren't allowed."
+        ))
     }
 }
 
@@ -6307,7 +6416,9 @@ fn validate_user(user: &str) -> Result<(), &'static str> {
     {
         Ok(())
     } else {
-        Err("ユーザー名に使用できない文字が含まれています。")
+        Err(i18n::t!(
+            "The user name contains characters that aren't allowed."
+        ))
     }
 }
 
@@ -6353,18 +6464,18 @@ impl QuickConnectModal {
             })
         };
 
-        let name = single_line("接続名 (保存するとき)", window, cx);
-        let folder = single_line("フォルダー (例: 拠点/本社。省略可)", window, cx);
-        let host = single_line("ホスト名 / IP アドレス", window, cx);
+        let name = single_line(i18n::t!("Connection name (for saving)"), window, cx);
+        let folder = single_line(i18n::t!("Folder (e.g. Sites/HQ; optional)"), window, cx);
+        let host = single_line(i18n::t!("Host name / IP address"), window, cx);
         let port = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
             editor.set_text("22", window, cx);
             editor
         });
-        let user = single_line("ユーザー名 (SSH)", window, cx);
+        let user = single_line(i18n::t!("User name (SSH)"), window, cx);
         let password = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("パスワード (省略可)", window, cx);
+            editor.set_placeholder_text(i18n::t!("Password (optional)"), window, cx);
             editor.set_masked(true, cx);
             editor
         });
@@ -6483,7 +6594,7 @@ impl QuickConnectModal {
             Some(
                 port_text
                     .parse::<u16>()
-                    .map_err(|_| SharedString::from("ポート番号が不正です。"))?,
+                    .map_err(|_| SharedString::from(i18n::t!("Invalid port number.")))?,
             )
         };
         let name = self.name.read(cx).text(cx).trim().to_string();
@@ -6571,7 +6682,7 @@ impl QuickConnectModal {
         // See `MacroEditor::save`: writing before the first read truncates the
         // file to whatever little the store happens to hold.
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             cx.notify();
             return;
         }
@@ -6600,7 +6711,7 @@ impl QuickConnectModal {
         cx.spawn(async move |this, cx| {
             if let Err(error) = write.await {
                 this.update(cx, |this, cx| {
-                    this.error = Some(format!("保存できませんでした: {error}").into());
+                    this.error = Some(i18n::t!("Couldn't save: {error}").into());
                     cx.notify();
                 })
                 .ok();
@@ -6631,7 +6742,7 @@ impl QuickConnectModal {
 
     fn delete_connection(&mut self, connection: SavedConnection, cx: &mut Context<Self>) {
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(LOADING_ERROR.into());
+            self.error = Some(loading_error().into());
             cx.notify();
             return;
         }
@@ -6842,7 +6953,7 @@ pub fn connect_and_run_with_password(
                     {
                         Ok(askpass) => Some(askpass),
                         Err(error) => {
-                            log::warn!("askpass の準備に失敗しました: {error:#}");
+                            log::warn!("failed to prepare askpass: {error:#}");
                             None
                         }
                     }
@@ -6882,7 +6993,10 @@ pub fn connect_and_run_with_password(
             let Some(spawn) = spawn_task_in_terminal_panel(&workspace, &spawn_task, cx) else {
                 workspace
                     .update(cx, |workspace, cx| {
-                        workspace.show_error("ターミナルパネルが利用できません。".to_string(), cx)
+                        workspace.show_error(
+                            i18n::t!("The terminal panel is unavailable.").to_string(),
+                            cx,
+                        )
                     })
                     .ok();
                 return;
@@ -6893,7 +7007,7 @@ pub fn connect_and_run_with_password(
                 Err(error) => {
                     workspace
                         .update(cx, |workspace, cx| {
-                            workspace.show_error(format!("接続できませんでした: {error}"), cx)
+                            workspace.show_error(i18n::t!("Couldn't connect: {error}"), cx)
                         })
                         .ok();
                     return;
@@ -7004,7 +7118,7 @@ fn finish_connection(
                     }),
                 };
                 if let Err(error) = started {
-                    workspace.show_error(format!("ログを開始できませんでした: {error}"), cx);
+                    workspace.show_error(i18n::t!("Couldn't start logging: {error}"), cx);
                 }
             }
 
@@ -7026,19 +7140,21 @@ fn finish_connection(
 
 fn missing_program_message(program: &str) -> String {
     if program == "telnet" && cfg!(target_os = "windows") {
-        "telnet が見つかりません。Windows の「オプション機能」から「Telnet クライアント」を \
-         追加するか、管理者権限の PowerShell で \
-         `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` を実行してください。"
-            .to_string()
+        i18n::t!(
+            "telnet was not found. Add “Telnet Client” from Windows “Optional features”, \
+             or run `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` \
+             in PowerShell as an administrator."
+        )
+        .to_string()
     } else {
-        format!("{program} が PATH 上に見つかりません。")
+        i18n::t!("{program} was not found on PATH.")
     }
 }
 
 impl QuickConnectModal {
     fn render_saved_connections(&self, cx: &mut Context<Self>) -> AnyElement {
         if !self.store.read(cx).is_loaded() {
-            return Label::new("読み込み中…")
+            return Label::new(i18n::t!("Loading…"))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element();
@@ -7102,14 +7218,16 @@ impl QuickConnectModal {
                     )
                     .when(has_password, |this| {
                         this.child(
-                            Label::new("保存済み")
+                            Label::new(i18n::t!("Saved"))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Accent),
                         )
                         .child(
                             IconButton::new(("forget-password", index), IconName::LockOff)
                                 .icon_size(IconSize::Small)
-                                .tooltip(Tooltip::text("この接続先の保存済みパスワードを消します"))
+                                .tooltip(Tooltip::text(i18n::t!(
+                                    "Forgets the saved password of this connection"
+                                )))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.forget_password(connection.clone(), cx);
                                 })),
@@ -7118,9 +7236,9 @@ impl QuickConnectModal {
                     .child(
                         IconButton::new(("delete-connection", index), IconName::Trash)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text(
-                                "この接続先を削除します (保存済みパスワードも消えます)",
-                            ))
+                            .tooltip(Tooltip::text(i18n::t!(
+                                "Deletes this connection (and its saved password)"
+                            )))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.delete_connection(deleted.clone(), cx);
                             })),
@@ -7141,12 +7259,12 @@ impl Render for QuickConnectModal {
         let selected_macro_label = match &self.macro_key {
             Some((Some(folder), name)) => format!("{folder} / {name}"),
             Some((None, name)) => name.clone(),
-            None => "(なし)".to_string(),
+            None => i18n::t!("(None)").to_string(),
         };
         let view = cx.weak_entity();
         let macro_menu = ContextMenu::build(window, cx, {
             move |mut menu, _, _| {
-                menu = menu.entry("(なし)", None, {
+                menu = menu.entry(i18n::t!("(None)"), None, {
                     let view = view.clone();
                     move |_, cx| {
                         view.update(cx, |this, cx| {
@@ -7212,8 +7330,10 @@ impl Render for QuickConnectModal {
                 Modal::new("terminal-quick-connect", None)
                     .header(
                         ModalHeader::new()
-                            .headline("クイック接続")
-                            .description("SSH または Telnet でネットワーク機器に接続します。"),
+                            .headline(i18n::t!("Quick Connect"))
+                            .description(i18n::t!(
+                                "Connects to network devices over SSH or Telnet."
+                            )),
                     )
                     .section(
                         Section::new().child(
@@ -7252,7 +7372,7 @@ impl Render for QuickConnectModal {
                                         .gap_2()
                                         .child(host_field.flex_1())
                                         .child(
-                                            Label::new("ポート")
+                                            Label::new(i18n::t!("Port"))
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
@@ -7264,7 +7384,7 @@ impl Render for QuickConnectModal {
                                     h_flex()
                                         .gap_2()
                                         .child(
-                                            Label::new("接続後に実行するマクロ")
+                                            Label::new(i18n::t!("Macro to Run After Connecting"))
                                                 .size(LabelSize::Small)
                                                 .color(Color::Muted),
                                         )
@@ -7282,7 +7402,7 @@ impl Render for QuickConnectModal {
                                         .gap_3()
                                         .child(
                                             Checkbox::new("quick-connect-log", self.log.into())
-                                                .label("ログを記録する")
+                                                .label(i18n::t!("Record a Log"))
                                                 .on_click(cx.listener(
                                                     |this, state: &ToggleState, _, cx| {
                                                         let checked =
@@ -7299,20 +7419,20 @@ impl Render for QuickConnectModal {
                                                 "quick-connect-remember-password",
                                                 self.remember_password.into(),
                                             )
-                                            .label("パスワードを記憶する")
-                                            .tooltip(Tooltip::text(
-                                                "パスワードは OS の資格情報マネージャーに保存され、\
-                                                 terminal_sessions.json には書き込まれません",
-                                            ))
-                                            .on_click(cx.listener(
-                                                |this, state: &ToggleState, _, cx| {
+                                            .label(i18n::t!("Remember password"))
+                                            .tooltip(Tooltip::text(i18n::t!(
+                                                "The password is kept in the OS credential manager \
+                                                 and is never written to terminal_sessions.json"
+                                            )))
+                                            .on_click(
+                                                cx.listener(|this, state: &ToggleState, _, cx| {
                                                     let checked = *state == ToggleState::Selected;
                                                     if this.remember_password != checked {
                                                         this.remember_password = checked;
                                                         cx.notify();
                                                     }
-                                                },
-                                            )),
+                                                }),
+                                            ),
                                         ),
                                 )
                                 .child(name_field)
@@ -7324,7 +7444,7 @@ impl Render for QuickConnectModal {
                     )
                     .section(
                         Section::new()
-                            .header("保存済みの接続先".into())
+                            .header(i18n::t!("Saved Connections").into())
                             .child(saved),
                     )
                     .footer(
@@ -7332,34 +7452,41 @@ impl Render for QuickConnectModal {
                             .start_slot(
                                 h_flex()
                                     .gap_1()
-                                    .child(Button::new("save-connection", "保存").on_click(
-                                        cx.listener(|this, _, _, cx| {
-                                            this.save_connection(cx);
-                                        }),
-                                    ))
                                     .child(
-                                        Button::new("open-file-transfer", "ファイル転送を開く")
-                                            .tooltip(Tooltip::text(
-                                                "このホストと SFTP / FTP でファイルをやり取りします",
-                                            ))
-                                            .on_click(cx.listener(|this, _, window, cx| {
+                                        Button::new("save-connection", i18n::t!("Save")).on_click(
+                                            cx.listener(|this, _, _, cx| {
+                                                this.save_connection(cx);
+                                            }),
+                                        ),
+                                    )
+                                    .child(
+                                        Button::new(
+                                            "open-file-transfer",
+                                            i18n::t!("Open File Transfer"),
+                                        )
+                                        .tooltip(Tooltip::text(i18n::t!(
+                                            "Transfers files with this host over SFTP / FTP"
+                                        )))
+                                        .on_click(
+                                            cx.listener(|this, _, window, cx| {
                                                 this.open_file_transfer(window, cx);
-                                            })),
+                                            }),
+                                        ),
                                     ),
                             )
                             .end_slot(
                                 h_flex()
                                     .gap_1()
                                     .child(
-                                        Button::new("cancel", "キャンセル").on_click(
+                                        Button::new("cancel", i18n::t!("Cancel")).on_click(
                                             cx.listener(|_, _, _, cx| cx.emit(DismissEvent)),
                                         ),
                                     )
-                                    .child(Button::new("connect", "接続").on_click(cx.listener(
-                                        |this, _, window, cx| {
+                                    .child(Button::new("connect", i18n::t!("Connect")).on_click(
+                                        cx.listener(|this, _, window, cx| {
                                             this.connect(window, cx);
-                                        },
-                                    ))),
+                                        }),
+                                    )),
                             ),
                     ),
             )
@@ -7643,7 +7770,7 @@ mod tests {
                 "拠点/本社 (2)",
                 "ログイン",
                 "設定保存",
-                "未分類 (1)",
+                "Unfiled (1)",
                 "メモ",
             ]
         );
@@ -8294,8 +8421,8 @@ mod tests {
             assert_eq!(branch.kind, StepKind::If);
             assert_eq!(branch.scope, ScopeChoice::Screen);
             assert_eq!(branch.capture.read(cx).text(cx), "reason");
-            assert_eq!(branch.children.len(), 1, "「そのとき」 keeps its repeat");
-            assert_eq!(branch.else_children.len(), 1, "「それ以外」 keeps its send");
+            assert_eq!(branch.children.len(), 1, "“Then” keeps its repeat");
+            assert_eq!(branch.else_children.len(), 1, "“Else” keeps its send");
             let wait = &branch.children[0].children[0];
             assert_eq!(wait.capture.read(cx).text(cx), "banner");
             assert!(wait.continue_on_timeout);
@@ -8385,7 +8512,7 @@ mod tests {
             .expect("the form should have been drawn");
         let buttons = cx
             .debug_bounds("macro-editor-buttons")
-            .expect("the 保存 / キャンセル buttons should have been drawn");
+            .expect("the Save / Cancel buttons should have been drawn");
         assert!(
             form.bottom() <= modal.bottom(),
             "the form ends at {} but the modal at {}, so its tail is clipped instead of scrolled",
@@ -8394,7 +8521,7 @@ mod tests {
         );
         assert!(
             buttons.bottom() <= modal.bottom(),
-            "保存 ends at {} but the modal at {}, so it cannot be clicked",
+            "Save ends at {} but the modal at {}, so it cannot be clicked",
             buttons.bottom(),
             modal.bottom()
         );
@@ -8450,7 +8577,7 @@ mod tests {
                     .text
                     .focus_handle(cx)
                     .contains_focused(window, cx),
-                "the new 分岐 should be ready to type its 判定する文字列 into"
+                "the new branch should be ready to type its text to match into"
             );
         });
     }
@@ -8619,7 +8746,7 @@ mod tests {
             editor.save(cx);
             assert_eq!(
                 editor.error.as_deref(),
-                Some("ステップ 1: 変数名を入力してください。")
+                Some("Step 1: enter a variable name.")
             );
 
             editor.steps[0].capture.update(cx, |capture, cx| {
@@ -8633,7 +8760,7 @@ mod tests {
             editor.save(cx);
             assert_eq!(
                 editor.error.as_deref(),
-                Some("ステップ 2: 調べる変数名を入力してください。")
+                Some("Step 2: enter the variable to check.")
             );
         });
     }
@@ -8705,7 +8832,7 @@ mod tests {
             assert_eq!(
                 editor.steps[1].describe(cx).as_deref(),
                 Some(
-                    "画面全体が正規表現『Version (?<ver>\\S+)』に一致すれば「そのとき」を、一致しなければ「それ以外」を実行します。待たずにその場で調べます。一致したときは見つかった部分を ${banner} に入れます。"
+                    "Runs “Then” if the whole screen matches the regular expression “Version (?<ver>\\S+)”, and “Else” if not. Checks right away without waiting. On a match, puts the matched part into ${banner}."
                 )
             );
         });
@@ -8733,7 +8860,7 @@ mod tests {
         cx.run_until_parked();
         assert!(
             cx.debug_bounds("macro-help-panel").is_some(),
-            "「分岐と変数の使い方」 should open its panel"
+            "“How Branches and Variables Work” should open its panel"
         );
     }
 
@@ -8784,7 +8911,7 @@ mod tests {
                     name: "hots".to_string(),
                     set_later: false,
                 }),
-                "a misspelt 調べる変数名 would take 「それ以外」 every time without a word"
+                "a misspelt variable to check would take “Else” every time without a word"
             );
             assert_eq!(editor.steps[2].undefined_scope_variable(&reach, cx), None);
             assert_eq!(editor.steps[3].undefined_scope_variable(&reach, cx), None);
@@ -8872,7 +8999,7 @@ mod tests {
             assert_eq!(
                 unset(&editor.steps[1].else_children[0]),
                 vec![("own".to_string(), true)],
-                "「それ以外」 runs with nothing captured"
+                "“Else” runs with nothing captured"
             );
             assert_eq!(unset(&editor.steps[2]), Vec::new());
             assert_eq!(unset(&editor.steps[3].children[0]), Vec::new());
@@ -8906,9 +9033,8 @@ mod tests {
                 },
             ]),
             vec![
-                "${typo} に値を入れるステップがありません。実行時は書いたままの文字になります。"
-                    .to_string(),
-                "${late} に値が入るのはこのステップより後です。ここでは書いたままの文字になります。"
+                "No step sets ${typo}. When the macro runs, it stays as written.".to_string(),
+                "${late} gets its value only after this step. Here it stays as written."
                     .to_string(),
             ]
         );
@@ -9107,13 +9233,13 @@ mod tests {
         // A wide form puts the two sides next to each other…
         let then_side = cx
             .debug_bounds("macro-step-2-1")
-            .expect("the 「そのとき」 row should have been drawn");
+            .expect("the “Then” row should have been drawn");
         let else_side = cx
             .debug_bounds("macro-step-2-e1")
-            .expect("the 「それ以外」 row should have been drawn");
+            .expect("the “Else” row should have been drawn");
         assert!(
             then_side.right() <= else_side.left() && then_side.top() == else_side.top(),
-            "「そのとき」 spans {:?} and 「それ以外」 {:?}, which are not side by side",
+            "“Then” spans {:?} and “Else” {:?}, which are not side by side",
             then_side,
             else_side
         );
@@ -9123,13 +9249,13 @@ mod tests {
         cx.run_until_parked();
         let then_side = cx
             .debug_bounds("macro-step-2-1")
-            .expect("the 「そのとき」 row should have been drawn");
+            .expect("the “Then” row should have been drawn");
         let else_side = cx
             .debug_bounds("macro-step-2-e1")
-            .expect("the 「それ以外」 row should have been drawn");
+            .expect("the “Else” row should have been drawn");
         assert!(
             then_side.bottom() <= else_side.top(),
-            "「そのとき」 ends at {} but 「それ以外」 starts at {}",
+            "“Then” ends at {} but “Else” starts at {}",
             then_side.bottom(),
             else_side.top()
         );
@@ -9210,7 +9336,7 @@ mod tests {
         for selector in ["macro-step-1-1-1-1-t1-1", "macro-step-1-1-1-1-t1-e1"] {
             assert!(
                 cx.debug_bounds(selector).is_none(),
-                "{selector} is past 深さ {MAX_EDITABLE_STEP_DEPTH} and is only editable as JSON"
+                "{selector} is past depth {MAX_EDITABLE_STEP_DEPTH} and is only editable as JSON"
             );
         }
 
@@ -9273,7 +9399,7 @@ mod tests {
             let moved = StepPath::top(0).child(StepList::Else, 2);
             let siblings = editor
                 .siblings_mut(&moved)
-                .expect("the 「それ以外」 list is the row's own list");
+                .expect("the “Else” list is the row's own list");
             // Bound-checked the way the button is, so a list mixup shows up as
             // the wrong steps rather than as a panic.
             if moved.index() > 0 && moved.index() < siblings.len() {
@@ -9287,7 +9413,7 @@ mod tests {
                 .child(StepList::Timeout, 0);
             let siblings = editor
                 .siblings_mut(&deleted)
-                .expect("the 「タイムアウト時」 list is the row's own list");
+                .expect("the “On Timeout” list is the row's own list");
             if deleted.index() < siblings.len() {
                 siblings.remove(deleted.index());
             }
@@ -9403,7 +9529,7 @@ mod tests {
                 Some("c a b 分岐(t1 t2 | e1) 繰り返し(r1)"),
             ),
             (
-                "the 「+」 at the end of its own list",
+                "the “+” at the end of its own list",
                 StepPath::top(0),
                 at(None, 5),
                 Some("b 分岐(t1 t2 | e1) 繰り返し(r1) c a"),
@@ -9421,13 +9547,13 @@ mod tests {
                 Some("a 分岐(b t1 t2 | e1) 繰り返し(r1) c"),
             ),
             (
-                "out of a 繰り返し to the top of the macro",
+                "out of a repeat to the top of the macro",
                 repeat.child(StepList::Main, 0),
                 at(None, 0),
                 Some("r1 a b 分岐(t1 t2 | e1) 繰り返し() c"),
             ),
             (
-                "out of 「それ以外」 to just after its 分岐",
+                "out of “Else” to just after its branch",
                 branch.child(StepList::Else, 0),
                 at(None, 3),
                 Some("a b 分岐(t1 t2 | ) e1 繰り返し(r1) c"),
@@ -9439,25 +9565,25 @@ mod tests {
                 Some("a b 分岐(t1 | e1) 繰り返し(r1 t2) c"),
             ),
             (
-                "into its own 「そのとき」",
+                "into its own “Then”",
                 branch.clone(),
                 at(Some((branch.clone(), StepList::Main)), 0),
                 None,
             ),
             (
-                "into its own 「それ以外」, at the end",
+                "into its own “Else”, at the end",
                 branch.clone(),
                 at(Some((branch, StepList::Else)), 1),
                 None,
             ),
             (
-                "onto the 「+」 right before itself",
+                "onto the “+” right before itself",
                 StepPath::top(1),
                 at(None, 1),
                 None,
             ),
             (
-                "onto the 「+」 right after itself",
+                "onto the “+” right after itself",
                 StepPath::top(1),
                 at(None, 2),
                 None,
@@ -9643,7 +9769,7 @@ mod tests {
         cx.run_until_parked();
         let to = cx
             .debug_bounds("macro-insert-top-3")
-            .expect("the 「+」 at the end should be on screen");
+            .expect("the “+” at the end should be on screen");
         cx.simulate_mouse_move(to.center(), MouseButton::Left, Modifiers::none());
         cx.simulate_mouse_up(to.center(), MouseButton::Left, Modifiers::none());
         cx.run_until_parked();
@@ -9687,37 +9813,37 @@ mod tests {
         let second = StepPath::top(1);
         let cases: Vec<(&str, StepPath, InsertionPoint, &str)> = vec![
             (
-                "into the 繰り返し after it in the same 「そのとき」, which moves up one",
+                "into the repeat after it in the same “Then”, which moves up one",
                 first.child(StepList::Main, 0),
                 at(Some((first.child(StepList::Main, 1), StepList::Main)), 0),
                 "分岐(繰り返し(t1 r1) | e1 繰り返し(q1)) 分岐(u1 繰り返し(w1) | )",
             ),
             (
-                "from 「それ以外」 into the 繰り返し of 「そのとき」, which stays put",
+                "from “Else” into the repeat of “Then”, which stays put",
                 first.child(StepList::Else, 0),
                 at(Some((first.child(StepList::Main, 1), StepList::Main)), 1),
                 "分岐(t1 繰り返し(r1 e1) | 繰り返し(q1)) 分岐(u1 繰り返し(w1) | )",
             ),
             (
-                "into the second 分岐's 繰り返し, whose path only looks like a later sibling's",
+                "into the second branch's repeat, whose path only looks like a later sibling's",
                 first.child(StepList::Main, 0),
                 at(Some((second.child(StepList::Main, 1), StepList::Main)), 0),
                 "分岐(繰り返し(r1) | e1 繰り返し(q1)) 分岐(u1 繰り返し(t1 w1) | )",
             ),
             (
-                "into the next 分岐 from inside the first, which does not shift it",
+                "into the next branch from inside the first, which does not shift it",
                 first.child(StepList::Main, 0),
                 at(Some((second.clone(), StepList::Main)), 0),
                 "分岐(繰り返し(r1) | e1 繰り返し(q1)) 分岐(t1 u1 繰り返し(w1) | )",
             ),
             (
-                "two levels up, to the other side of its 分岐",
+                "two levels up, to the other side of its branch",
                 first.child(StepList::Main, 1).child(StepList::Main, 0),
                 at(Some((first.clone(), StepList::Else)), 0),
                 "分岐(t1 繰り返し() | r1 e1 繰り返し(q1)) 分岐(u1 繰り返し(w1) | )",
             ),
             (
-                "a whole 分岐 into a list two levels inside the card after it",
+                "a whole branch into a list two levels inside the card after it",
                 first,
                 at(Some((second.child(StepList::Main, 1), StepList::Main)), 1),
                 "分岐(u1 繰り返し(w1 分岐(t1 繰り返し(r1) | e1 繰り返し(q1))) | )",
@@ -9770,7 +9896,7 @@ mod tests {
         });
         cx.run_until_parked();
         editor.update_in(cx, |editor, window, cx| {
-            assert_eq!(outline(&editor.steps, cx), "a 秒待ち b 分岐(t1 | )");
+            assert_eq!(outline(&editor.steps, cx), "a Sleep b 分岐(t1 | )");
             let inserted = &editor.steps[1];
             assert!(inserted.expanded, "a new card opens unfolded");
             assert!(
@@ -9778,7 +9904,7 @@ mod tests {
                     .number
                     .focus_handle(cx)
                     .contains_focused(window, cx),
-                "the new 秒待ち should be ready to type its 秒数 into"
+                "the new sleep should be ready to type its seconds into"
             );
         });
         let first = cx
@@ -9796,7 +9922,7 @@ mod tests {
         );
         assert!(
             cx.debug_bounds("macro-step-4-1").is_some(),
-            "the 分岐 is step 4 now, and its 「そのとき」 is numbered after it"
+            "the branch is step 4 now, and its “Then” is numbered after it"
         );
 
         // Into the empty 「それ以外」 lane, through its 「+」.
@@ -9813,14 +9939,14 @@ mod tests {
         editor.update_in(cx, |editor, window, cx| {
             assert_eq!(
                 outline(&editor.steps, cx),
-                "a 秒待ち b 分岐(t1 | 変数に設定)"
+                "a Sleep b 分岐(t1 | Set Variable)"
             );
             assert!(
                 editor.steps[3].else_children[0]
                     .capture
                     .focus_handle(cx)
                     .contains_focused(window, cx),
-                "the new 変数に設定 should be ready to type its 変数名 into"
+                "the new set-variable step should be ready to type its variable name into"
             );
         });
         assert!(cx.debug_bounds("macro-step-4-e1").is_some());
@@ -9944,14 +10070,14 @@ mod tests {
             );
             let insert = cx
                 .debug_bounds(empty_insert)
-                .expect("the empty side keeps its 「+」");
+                .expect("the empty side keeps its “+”");
             assert!(
                 insert.size.width > px(0.)
                     && insert.left() >= empty.left()
                     && insert.right() <= empty.right()
                     && insert.top() >= empty.top()
                     && insert.bottom() <= empty.bottom(),
-                "the 「+」 {insert:?} should be inside the empty side {empty:?}"
+                "the “+” {insert:?} should be inside the empty side {empty:?}"
             );
         }
 
@@ -9964,10 +10090,10 @@ mod tests {
             cx.run_until_parked();
             let then_lane = cx
                 .debug_bounds("macro-lane-1-main")
-                .expect("「そのとき」 should have been drawn");
+                .expect("“Then” should have been drawn");
             let else_lane = cx
                 .debug_bounds("macro-lane-1-else")
-                .expect("「それ以外」 should have been drawn");
+                .expect("“Else” should have been drawn");
             assert!((then_lane.top() - else_lane.top()).abs() < px(1.));
             assert!(
                 (then_lane.size.width - else_lane.size.width).abs() <= px(1.),
@@ -9995,13 +10121,13 @@ mod tests {
         cx.run_until_parked();
         let outer = cx
             .debug_bounds("macro-lane-1-main")
-            .expect("the outer 「そのとき」 should have been drawn");
+            .expect("the outer “Then” should have been drawn");
         let then_lane = cx
             .debug_bounds("macro-lane-1-1-main")
-            .expect("the inner 「そのとき」 should have been drawn");
+            .expect("the inner “Then” should have been drawn");
         let else_lane = cx
             .debug_bounds("macro-lane-1-1-else")
-            .expect("the inner 「それ以外」 should have been drawn");
+            .expect("the inner “Else” should have been drawn");
         let min_lane = cx.update(|window, _| rems(MIN_LANE_WIDTH).to_pixels(window.rem_size()));
         assert!(
             outer.size.width / 2. < min_lane * 2.,
@@ -10065,7 +10191,7 @@ mod tests {
             let reach = editor.variable_reach(&defined, cx);
             let notes = editor.step_notes(&editor.steps[0], &reach, cx);
             assert!(
-                matches!(notes.first(), Some((note, Color::Error)) if note.starts_with("正規表現が不正です")),
+                matches!(notes.first(), Some((note, Color::Error)) if note.starts_with("Invalid regular expression")),
                 "{notes:?}"
             );
         });
@@ -10141,7 +10267,7 @@ mod tests {
         );
         editor.read_with(cx, |editor, _| {
             assert!(!editor.show_macro_list);
-            assert_eq!(editor.form_heading(), "『ルーター』を編集");
+            assert_eq!(editor.form_heading(), "Edit “ルーター”");
         });
         let modal = cx
             .debug_bounds("macro-editor")
@@ -10208,7 +10334,7 @@ mod tests {
         editor.read_with(cx, |editor, _| {
             assert_eq!(
                 editor.error.as_deref(),
-                Some("ステップ 2: 判定する文字列を入力してください。")
+                Some("Step 2: enter the text to match.")
             );
         });
     }
@@ -10238,7 +10364,7 @@ mod tests {
         editor.read_with(cx, |editor, _| {
             assert_eq!(
                 editor.error.as_deref(),
-                Some("ステップ 1: 取り込む変数名に $ { } は使えません。")
+                Some("Step 1: the variable to capture into can't contain $, { or }.")
             );
         });
     }
@@ -10268,7 +10394,7 @@ mod tests {
         editor.read_with(cx, |editor, _| {
             assert_eq!(
                 editor.error.as_deref(),
-                Some("ステップ 1: 取り込む変数名に $ { } は使えません。")
+                Some("Step 1: the variable to capture into can't contain $, { or }.")
             );
         });
     }
@@ -10319,7 +10445,7 @@ mod tests {
         editor.read_with(cx, |editor, _| {
             assert_eq!(
                 editor.error.as_deref(),
-                Some("ステップ 1-e1-t1: 取り込む変数名に $ { } は使えません。")
+                Some("Step 1-e1-t1: the variable to capture into can't contain $, { or }.")
             );
         });
     }
@@ -10370,7 +10496,7 @@ mod tests {
         editor.read_with(cx, |editor, _| {
             assert_eq!(
                 editor.error.as_deref(),
-                Some("ステップ 1: 繰り返し回数は 0 以上の整数で入力してください。")
+                Some("Step 1: enter the repeat count as a whole number, 0 or more.")
             );
         });
     }
@@ -10498,7 +10624,7 @@ mod tests {
                 .map(|row| match row {
                     MacroTreeRow::Folder { folder, count, .. } => format!(
                         "{}/ ({count})",
-                        folder.unwrap_or_else(|| UNFILED_FOLDER.to_string())
+                        folder.unwrap_or_else(|| unfiled_folder().to_string())
                     ),
                     MacroTreeRow::EmptyFolder { folder } => format!("{folder}/ (空)"),
                     MacroTreeRow::Macro(terminal_macro) => terminal_macro.name,
@@ -10518,7 +10644,7 @@ mod tests {
                 .store
                 .read(cx)
                 .macro_named(folder, name)
-                .unwrap_or_else(|| panic!("『{name}』 should be in the store"))
+                .unwrap_or_else(|| panic!("“{name}” should be in the store"))
                 .clone()
         })
     }
@@ -10569,7 +10695,7 @@ mod tests {
                 "拠点/本社/ (2)",
                 "ログイン",
                 "設定保存",
-                "未分類/ (1)",
+                "Unfiled/ (1)",
                 "メモ",
             ]
         );
@@ -10586,7 +10712,7 @@ mod tests {
                 "拠点/大阪/ (1)",
                 "再起動",
                 "拠点/本社/ (2)",
-                "未分類/ (1)",
+                "Unfiled/ (1)",
                 "メモ",
             ]
         );
@@ -10605,7 +10731,7 @@ mod tests {
         });
         assert_eq!(
             tree_rows(&editor, cx),
-            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "未分類/ (1)",]
+            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "Unfiled/ (1)",]
         );
     }
 
@@ -10830,10 +10956,7 @@ mod tests {
                 editor.renaming_folder.is_some(),
                 "the field stays open so the name can be fixed"
             );
-            assert_eq!(
-                editor.error.as_deref(),
-                Some("フォルダー名を入力してください。")
-            );
+            assert_eq!(editor.error.as_deref(), Some("Enter a folder name."));
         });
     }
 
@@ -10947,8 +11070,8 @@ mod tests {
                         "folder": "拠点/本社",
                         "steps": [{ "type": "send", "text": "enable" }]
                     },
-                    { "name": "ログイン のコピー", "folder": "拠点/本社", "steps": [] },
-                    { "name": "ログイン のコピー 2", "steps": [] }
+                    { "name": "ログイン (copy)", "folder": "拠点/本社", "steps": [] },
+                    { "name": "ログイン (copy 2)", "steps": [] }
                 ]
             }"#,
         )
@@ -10968,12 +11091,12 @@ mod tests {
             assert_eq!(editor.original_key, None, "a copy is a new macro");
             // 「ログイン のコピー 2」 is taken, but under 未分類, so it is free
             // here: names only have to be unique inside their folder.
-            assert_eq!(editor.name.read(cx).text(cx), "ログイン のコピー 2");
+            assert_eq!(editor.name.read(cx).text(cx), "ログイン (copy 2)");
             assert_eq!(editor.form_folder.as_deref(), Some("拠点/本社"));
             assert_eq!(editor.steps.len(), 1);
             assert!(
                 editor.has_unsaved_edits(cx),
-                "a copy is unsaved until 保存, so switching away must warn"
+                "a copy is unsaved until Save, so switching away must warn"
             );
         });
 
@@ -10992,9 +11115,9 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 (Some("拠点/本社"), "ログイン"),
-                (Some("拠点/本社"), "ログイン のコピー"),
-                (None, "ログイン のコピー 2"),
-                (Some("拠点/本社"), "ログイン のコピー 2"),
+                (Some("拠点/本社"), "ログイン (copy)"),
+                (None, "ログイン (copy 2)"),
+                (Some("拠点/本社"), "ログイン (copy 2)"),
             ]
         );
         assert_eq!(
@@ -11005,6 +11128,42 @@ mod tests {
             }],
             "the copy carries the steps it was made from"
         );
+    }
+
+    /// Copy names are saved as macro names, so the ones written by builds that
+    /// only spoke Japanese are still in users' files and must keep counting as
+    /// taken under the Japanese catalog.
+    #[gpui::test]
+    async fn duplicating_under_japanese_skips_copy_names_already_in_the_file(
+        cx: &mut TestAppContext,
+    ) {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{
+                "macros": [
+                    { "name": "ログイン", "steps": [{ "type": "send", "text": "enable" }] },
+                    { "name": "ログイン のコピー", "steps": [] },
+                    { "name": "ログイン (copy)", "steps": [] }
+                ]
+            }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let login = stored_macro(&editor, None, "ログイン", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_macro(Some(login), window, cx);
+            editor.duplicate_macro(window, cx);
+        });
+        editor.update(cx, |editor, cx| {
+            assert_eq!(editor.name.read(cx).text(cx), "ログイン のコピー 2");
+        });
     }
 
     #[gpui::test]
@@ -11032,7 +11191,7 @@ mod tests {
         // An empty folder is a real row that invites something to be put in it.
         assert_eq!(
             tree_rows(&editor, cx),
-            vec!["ルータ用/ (0)", "ルータ用/ (空)", "未分類/ (1)", "メモ"]
+            vec!["ルータ用/ (0)", "ルータ用/ (空)", "Unfiled/ (1)", "メモ"]
         );
         assert_eq!(
             saved_file(&fs).await.macro_folders,
@@ -11054,7 +11213,7 @@ mod tests {
         editor.update(cx, |editor, _| {
             assert_eq!(
                 editor.error.as_deref(),
-                Some("同じ名前のフォルダーがあります。")
+                Some("A folder with this name already exists.")
             );
             assert!(editor.new_folder.is_some(), "the field stays open");
         });
@@ -11313,7 +11472,7 @@ mod tests {
         editor.update(cx, |editor, _| {
             assert_eq!(
                 editor.error.as_deref(),
-                Some("同じフォルダーに同名のマクロがあります。")
+                Some("This folder already has a macro with this name.")
             );
         });
         assert_eq!(
@@ -11603,7 +11762,7 @@ mod tests {
         editor.update(cx, |editor, _| {
             assert_eq!(
                 editor.error.as_deref(),
-                Some("同じ名前のフォルダーがあります。")
+                Some("A folder with this name already exists.")
             );
             assert!(
                 editor.renaming_folder.is_some(),
@@ -11632,7 +11791,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             tree_rows(&editor, cx),
-            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "未分類/ (1)"]
+            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "Unfiled/ (1)"]
         );
 
         // A heading that says 1 件 must have that one row under it, folded or
@@ -11662,13 +11821,13 @@ mod tests {
         // 未分類 keeps its collapse in the modal rather than the file, and has
         // to follow the same rule.
         filter(&editor, "メモ", cx);
-        assert_eq!(tree_rows(&editor, cx), vec!["未分類/ (1)", "メモ"]);
+        assert_eq!(tree_rows(&editor, cx), vec!["Unfiled/ (1)", "メモ"]);
 
         // Clearing the filter puts both back the way the user folded them.
         filter(&editor, "", cx);
         assert_eq!(
             tree_rows(&editor, cx),
-            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "未分類/ (1)"]
+            vec!["拠点/大阪/ (1)", "再起動", "拠点/本社/ (2)", "Unfiled/ (1)"]
         );
     }
 
@@ -12015,13 +12174,13 @@ mod tests {
         executor.advance_clock(expected - Duration::from_secs(1));
         assert!(
             !answered.load(std::sync::atomic::Ordering::SeqCst),
-            "期限の手前ではまだ答えを待っている"
+            "before the deadline it is still waiting for the answer"
         );
         executor.advance_clock(Duration::from_secs(2));
         assert_eq!(
             message.await,
             None,
-            "確かめられなかったときは止めずに起動へ進む"
+            "when it could not tell, it goes on to launch instead of stopping"
         );
         assert!(REMOTE_LOOKUP_TIMEOUT_WITHOUT_CONTROL_MASTER > REMOTE_LOOKUP_TIMEOUT);
     }
@@ -12052,25 +12211,59 @@ mod tests {
                 CLAUDE_CODE_PROGRAM,
                 true
             )),
-            "無いと分かったときは案内文を出して止める"
+            "when it knows the program is missing, it stops with a message"
         );
+    }
+
+    /// The labels kept in tables and the texts that spell `${…}` go through the
+    /// catalog at the point they are drawn, braces and all.
+    #[test]
+    fn table_labels_and_variable_hints_follow_the_catalog() {
+        assert_eq!(timeout_choice_label(false), "Stop the Macro");
+        assert_eq!(
+            StepKind::SetVariable.text_placeholder(),
+            "Value to set (${variable} allowed too)"
+        );
+
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(timeout_choice_label(false), "マクロを中止する");
+        assert_eq!(timeout_choice_label(true), "次のステップを実行する");
+        assert_eq!(
+            StepKind::SetVariable.text_placeholder(),
+            "入れる値 (${変数} も使えます)"
+        );
+        assert_eq!(
+            StepKind::SetVariable.description(),
+            "変数に値を入れます。後のステップで ${変数名} と書いたところがその値になります"
+        );
+        assert_eq!(
+            macro_help()[2],
+            "変数を使う: 送信する文字列・期待文字・判定する文字列・入れる値に ${名前} と書くと、\
+             実行時にその値に置き換わります。${ を文字として送るときは $${ と書きます。"
+        );
+        assert_eq!(unfiled_folder(), "未分類");
     }
 
     /// 接続先に CLI が無いときは、こちらからインストールせず公式手順を案内する。
     #[test]
     fn the_missing_cli_message_names_where_to_install_it() {
         let on_host = claude_code_missing_program_message(CLAUDE_CODE_PROGRAM, true);
-        assert!(on_host.contains("接続先のターミナル"), "{on_host}");
+        assert!(
+            on_host.contains("in a terminal on the remote host"),
+            "{on_host}"
+        );
         assert!(
             on_host.contains("https://claude.ai/install.sh"),
             "{on_host}"
         );
         assert!(on_host.contains("~/.local/bin/claude"), "{on_host}");
         let here = claude_code_missing_program_message(CLAUDE_CODE_PROGRAM, false);
-        assert!(!here.contains("接続先"), "{here}");
+        assert!(!here.contains("remote host"), "{here}");
         let npm_on_host = claude_code_missing_program_message(NPM_PROGRAM, true);
         assert!(npm_on_host.contains("npm"), "{npm_on_host}");
-        assert!(npm_on_host.contains("接続先"), "{npm_on_host}");
+        assert!(npm_on_host.contains("remote host"), "{npm_on_host}");
     }
 
     #[test]

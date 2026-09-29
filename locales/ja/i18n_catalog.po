@@ -5,10 +5,6 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-msgctxt "i18n_catalog test"
-msgid "Open"
-msgstr "開く (文脈つき)"
-
 msgid "i18n_catalog test: Goodbye"
 msgstr "さようなら (同梱)"
 
@@ -18,3 +14,7 @@ msgstr "こんにちは (同梱)"
 msgid "i18n_catalog test: {count} file"
 msgid_plural "i18n_catalog test: {count} files"
 msgstr[0] "ファイル {count} 個"
+
+msgctxt "i18n_catalog test"
+msgid "Open"
+msgstr "開く (文脈つき)"

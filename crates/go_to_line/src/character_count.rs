@@ -93,11 +93,11 @@ impl CharacterCount {
 impl Render for CharacterCount {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div().when_some(self.state, |el, state| {
-            let text = format!("{} 文字", state.count);
+            let text = i18n::tn!(state.count, "{count} character", "{count} characters");
             let tooltip_text = if state.is_selection {
-                "文字数 (選択範囲)"
+                i18n::t!("Character Count (Selection)")
             } else {
-                "文字数 (文書全体)"
+                i18n::t!("Character Count (Whole Document)")
             };
 
             el.child(

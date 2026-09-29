@@ -1,0 +1,277 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\nUnsaved changes are stored locally."
+msgstr "\n未保存の変更はローカルに保存されています。"
+
+msgid "Actions"
+msgstr "アクション"
+
+msgid "Activate"
+msgstr "切り替え"
+
+msgid "Add Folder to this Project"
+msgstr "このプロジェクトにフォルダーを追加"
+
+msgid "Add Folders to this Project"
+msgstr "このプロジェクトに複数のフォルダーを追加"
+
+msgid "Add Nickname to Server"
+msgstr "サーバーにニックネームを追加"
+
+msgid "Add WSL Distro"
+msgstr "WSL ディストリビューションを追加"
+
+msgid "Add a nickname for this server"
+msgstr "このサーバーのニックネームを入力"
+
+msgid "As a multi-root folder"
+msgstr "マルチルートフォルダーとして追加します"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cannot open Dev Container from remote project"
+msgstr "リモートプロジェクトから Dev Container を開くことはできません"
+
+msgid "Close Window"
+msgstr "ウィンドウを閉じる"
+
+msgid "Connect Dev Container"
+msgstr "Dev Container に接続"
+
+msgid "Connect SSH Server"
+msgstr "SSH サーバーに接続"
+
+msgid "Connect to Remote"
+msgstr "リモートに接続"
+
+msgid "Connect to a remote host"
+msgstr "リモートに接続します"
+
+msgid "Connected to: {host}"
+msgstr "{host} に接続済み"
+
+msgid "Connecting to: {host}"
+msgstr "{host} に接続しています"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "{host} への応答がありません。再試行しています..."
+
+msgid "Copied server address ({}) to clipboard"
+msgstr "サーバーアドレス ({}) をクリップボードにコピーしました"
+
+msgid "Copy Server Address"
+msgstr "サーバーアドレスをコピー"
+
+msgid "Creating Dev Container"
+msgstr "Dev Container を作成しています"
+
+msgid "Current Folders"
+msgstr "現在のフォルダー"
+
+msgid "Delete Remote Project"
+msgstr "リモートプロジェクトを削除"
+
+msgid "Disconnected"
+msgstr "切断されました"
+
+msgid "Disconnected from {host}"
+msgstr "{host} から切断されました"
+
+msgid "Don't Show Again"
+msgstr "今後表示しない"
+
+msgid "Edit Nickname"
+msgstr "ニックネームを編集"
+
+msgid "Enter WSL distro name"
+msgstr "WSL ディストリビューション名を入力"
+
+msgid "Enter the command you use to SSH into this server."
+msgstr "このサーバーへ SSH 接続するコマンドを入力してください。"
+
+msgid "Error Creating Dev Container:"
+msgstr "Dev Container の作成エラー:"
+
+msgid "Exit"
+msgstr "終了"
+
+msgid "Failed to connect"
+msgstr "接続できませんでした"
+
+msgid "Failed to connect over SSH"
+msgstr "SSH で接続できませんでした"
+
+msgid "Failed to connect to Dev Container"
+msgstr "Dev Container に接続できませんでした"
+
+msgid "Failed to connect to WSL"
+msgstr "WSL に接続できませんでした"
+
+msgid "Failed to connect to the remote host"
+msgstr "リモートホストに接続できませんでした"
+
+msgid "Failed to open project"
+msgstr "プロジェクトを開けませんでした"
+
+msgid "Failed to reconnect"
+msgstr "再接続できませんでした"
+
+msgid "Failed to start Dev Container. See logs for details"
+msgstr "Dev Container を起動できませんでした。詳細はログを確認してください"
+
+msgid "Go Back"
+msgstr "戻る"
+
+msgid "Invalid path"
+msgstr "無効なパス"
+
+msgid "Invalid path specified when trying to open a folder inside WSL.\n\nPlease note that Zed currently does not support opening network share folders inside wsl.\n"
+msgstr "WSL 内のフォルダーを開こうとしたときに無効なパスが指定されました。\n\n現在 Zed は WSL 内でネットワーク共有フォルダーを開くことに対応していません。\n"
+
+msgid "Learn More"
+msgstr "詳細"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "{host} との接続が切れました。再接続しています..."
+
+msgid "No matches"
+msgstr "一致なし"
+
+msgid "No matching remote projects."
+msgstr "一致するリモートプロジェクトはありません。"
+
+msgid "No, keep it"
+msgstr "削除しない"
+
+msgid "Open"
+msgstr "開く"
+
+msgid "Open Folder"
+msgstr "フォルダーを開く"
+
+msgid "Open Local Folders"
+msgstr "ローカルフォルダーを開く"
+
+msgid "Open Project in This Window"
+msgstr "このウィンドウでプロジェクトを開く"
+
+msgid "Open Remote Folder"
+msgstr "リモートフォルダーを開く"
+
+msgid "Open Zed Log"
+msgstr "Zed のログを開く"
+
+msgid "Open devcontainer.json"
+msgstr "devcontainer.json を開く"
+
+msgid "Open in New Window"
+msgstr "新しいウィンドウで開く"
+
+msgid "Open projects over SSH, in WSL, or in Dev Containers."
+msgstr "SSH・WSL・開発コンテナーのプロジェクトを開きます。"
+
+msgid "Recent Projects"
+msgstr "最近のプロジェクト"
+
+msgid "Recently opened projects will show up here"
+msgstr "最近開いたプロジェクトがここに表示されます"
+
+msgid "Reconnect"
+msgstr "再接続"
+
+msgid "Remote: {host}"
+msgstr "リモート: {host}"
+
+msgid "Remove"
+msgstr "削除"
+
+msgid "Remove Distro"
+msgstr "ディストリビューションを削除"
+
+msgid "Remove Folder"
+msgstr "フォルダーを削除"
+
+msgid "Remove Folder from Project"
+msgstr "プロジェクトからフォルダーを削除"
+
+msgid "Remove Project from Window"
+msgstr "ウィンドウからプロジェクトを削除"
+
+msgid "Remove Server"
+msgstr "サーバーを削除"
+
+msgid "Remove WSL distro `{}`?"
+msgstr "WSL ディストリビューション `{}` を削除しますか?"
+
+msgid "Remove from Recent Projects"
+msgstr "最近のプロジェクトから削除"
+
+msgid "Remove from Window"
+msgstr "ウィンドウから削除"
+
+msgid "Remove server `{}`?"
+msgstr "サーバー `{}` を削除しますか?"
+
+msgid "Retry"
+msgstr "再試行"
+
+msgid "Search projects…"
+msgstr "プロジェクトを検索…"
+
+msgid "Search remote projects…"
+msgstr "リモートプロジェクトを検索…"
+
+msgid "Select"
+msgstr "選択"
+
+msgid "Select Dev Container Configuration"
+msgstr "Dev Container の構成を選択"
+
+msgid "Start Dev Container"
+msgstr "Dev Container を起動"
+
+msgid "This Window"
+msgstr "このウィンドウ"
+
+msgid "View Server Options"
+msgstr "サーバーオプションを表示"
+
+msgid "Yes, Open in Container"
+msgstr "コンテナーで開く"
+
+msgid "Yes, remove it"
+msgstr "削除する"
+
+msgid "Your connection to the remote project has been lost."
+msgstr "リモートプロジェクトへの接続が切断されました。"
+
+msgid "Your connection to {} has been lost due to the server {reason}.{autosave}"
+msgstr "{reason}、{} への接続が切断されました。{autosave}"
+
+msgid "could not parse: {}"
+msgstr "解析できませんでした: {}"
+
+msgid "{worktree_name} contains a Dev Container configuration file. Would you like to re-open it in a container?"
+msgstr "{worktree_name} に Dev Container の構成ファイルがあります。コンテナー内で開き直しますか?"
+
+msgctxt "disconnect reason"
+msgid "not responding"
+msgstr "サーバーが応答しないため"
+
+msgctxt "disconnect reason"
+msgid "process exiting unexpectedly"
+msgstr "サーバーのプロセスが予期せず終了したため"
+
+msgctxt "project picker"
+msgid "New Window"
+msgstr "新しいウィンドウ"
+
+msgctxt "project picker"
+msgid "Open Project in New Window"
+msgstr "新しいウィンドウでプロジェクトを開く"

@@ -90,10 +90,10 @@ enum RewriteRowAction {
 impl RewriteRowAction {
     fn label(self) -> &'static str {
         match self {
-            Self::Keep => "そのまま",
-            Self::Fold => "直前にまとめる",
-            Self::Reword => "メッセージを変更",
-            Self::Drop => "捨てる",
+            Self::Keep => i18n::tc!("git rewrite", "Keep"),
+            Self::Fold => i18n::t!("Fold into Previous"),
+            Self::Reword => i18n::tc!("git rewrite", "Reword"),
+            Self::Drop => i18n::t!("Drop Commit"),
         }
     }
 
@@ -143,10 +143,10 @@ fn build_rewrite_groups(entries: &[TodoEntry]) -> Result<Vec<RewriteGroup>, Shar
             RewriteRowAction::Drop => continue,
             RewriteRowAction::Fold => {
                 let Some(group) = groups.last_mut() else {
-                    return Err(
-                        "一番上のコミットは「直前にまとめる」にできません。まとめる先のコミットを上に置いてください。"
-                            .into(),
-                    );
+                    return Err(i18n::t!(
+                        "The top commit cannot be folded into a previous one. Put the commit to fold into above it."
+                    )
+                    .into());
                 };
                 group.shas.push(entry.sha.clone());
             }
@@ -154,8 +154,8 @@ fn build_rewrite_groups(entries: &[TodoEntry]) -> Result<Vec<RewriteGroup>, Shar
                 let message = match &entry.reworded {
                     Some(message) => {
                         if message.trim().is_empty() {
-                            return Err(format!(
-                                "{} のメッセージが空です。入力してください。",
+                            return Err(i18n::t!(
+                                "The message of {} is empty. Enter a message.",
                                 short_sha(&entry.sha)
                             )
                             .into());
@@ -338,8 +338,12 @@ impl RewriteRangeModal {
                     rows.len()
                 );
                 modal.rows = rows;
-                modal.error =
-                    Some("ドラッグした並びを再現できなかったため、元の並びで開いています。".into());
+                modal.error = Some(
+                    i18n::t!(
+                        "The dragged order could not be reproduced, so the list opened in the original order."
+                    )
+                    .into(),
+                );
             }
         }
         modal
@@ -434,7 +438,9 @@ impl RewriteRangeModal {
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let entries = self.entries(cx);
         if is_unchanged(&entries, &self.original_shas) {
-            self.error = Some("変更がありません。並べ替えるか、操作を選んでください。".into());
+            self.error = Some(
+                i18n::t!("Nothing has changed. Reorder the commits or choose an action.").into(),
+            );
             cx.notify();
             return;
         }
@@ -550,7 +556,7 @@ impl RewriteRangeModal {
                         IconButton::new(("rewrite-row-up", index), IconName::ArrowUp)
                             .icon_size(IconSize::XSmall)
                             .disabled(is_first)
-                            .tooltip(Tooltip::text("1 つ上へ"))
+                            .tooltip(Tooltip::text(i18n::tc!("git rewrite", "Move Up")))
                             .on_click(cx.listener(move |this, _, _window, cx| {
                                 this.move_row(index, -1, cx);
                             })),
@@ -559,7 +565,7 @@ impl RewriteRangeModal {
                         IconButton::new(("rewrite-row-down", index), IconName::ArrowDown)
                             .icon_size(IconSize::XSmall)
                             .disabled(is_last)
-                            .tooltip(Tooltip::text("1 つ下へ"))
+                            .tooltip(Tooltip::text(i18n::tc!("git rewrite", "Move Down")))
                             .on_click(cx.listener(move |this, _, _window, cx| {
                                 this.move_row(index, 1, cx);
                             })),
@@ -681,19 +687,19 @@ impl Render for RewriteRangeModal {
             .on_action(cx.listener(Self::secondary_confirm))
             .capture_action(cx.listener(Self::focus_next_message))
             .capture_action(cx.listener(Self::focus_previous_message))
-            .child(Label::new(format!("{count} 件のコミットを編集")).size(LabelSize::Large))
+            .child(Label::new(i18n::tn!(count, "Edit {count} Commit", "Edit {count} Commits")).size(LabelSize::Large))
             .child(
-                Label::new(
-                    "上が古いコミットです。行をドラッグするか ↑↓ で並べ替え、まとめる・メッセージの変更・捨てるを選んでから実行してください。",
-                )
+                Label::new(i18n::t!(
+                    "The oldest commit is at the top. Drag the rows or use ↑↓ to reorder them, choose to fold, reword or drop, then run the rewrite."
+                ))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
             )
             .when(self.opened_reordered, |this| {
                 this.child(
-                    Label::new(
-                        "ドラッグした結果の並びにしてあります。このまま実行するか、ここで直してください。",
-                    )
+                    Label::new(i18n::t!(
+                        "The list is in the order you dragged the commits into. Run it as it is or adjust it here."
+                    ))
                     .size(LabelSize::Small)
                     .color(Color::Accent),
                 )
@@ -718,14 +724,14 @@ impl Render for RewriteRangeModal {
                     .justify_end()
                     .gap_1()
                     .child(
-                        Button::new("rewrite-range-cancel", "キャンセル").on_click(cx.listener(
+                        Button::new("rewrite-range-cancel", i18n::t!("Cancel")).on_click(cx.listener(
                             |_, _, _window, cx| {
                                 cx.emit(DismissEvent);
                             },
                         )),
                     )
                     .child(
-                        Button::new("rewrite-range-confirm", "この内容で書き換える…")
+                        Button::new("rewrite-range-confirm", i18n::t!("Rewrite History…"))
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.submit(window, cx);
@@ -835,7 +841,7 @@ mod tests {
 
         entries[0].reworded = Some("   ".to_string());
         let error = build_rewrite_groups(&entries).expect_err("an empty message must be refused");
-        assert!(error.contains("メッセージが空です"), "{error}");
+        assert!(error.contains("is empty"), "{error}");
     }
 
     /// There is nothing above the first commit to fold it into, so the list is refused rather than
@@ -848,7 +854,7 @@ mod tests {
         ];
         let error = build_rewrite_groups(&entries)
             .expect_err("nothing comes before the first kept commit to fold into");
-        assert!(error.contains("一番上のコミット"), "{error}");
+        assert!(error.contains("The top commit"), "{error}");
     }
 
     /// Dropping everything is a rewrite too: the range goes away.

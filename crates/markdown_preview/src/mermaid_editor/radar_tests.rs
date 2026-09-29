@@ -72,10 +72,20 @@ fn fence_text(cx: &mut EditorTestContext) -> String {
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let chart = parse_radar(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_radar(&chart), template);
+    };
+    check(editor::actions::MermaidDiagramKind::Radar.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::Radar.template();
-    let chart = parse_radar(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_radar(&chart), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -118,7 +128,7 @@ async fn axes_and_curves_move_their_values_together(cx: &mut TestAppContext) {
 
     assert_eq!(
         fence_text(&mut cx),
-        "```mermaid\nradar-beta\n    %% axis で軸、curve で系列。値は軸の順に並べる\n    title スキルの比較\n    axis impl[\"実装\"], test[\"テスト\"], ops[\"運用\"], axis1[\"軸5\"]\n    curve b[\"Bさん\"]{5, 3, 4, 0}\n    curve a[\"Aさん\"]{3, 5, 2, 0}\n    curve curve1{0, 0, 0, 0}\n    graticule polygon\n    max 5\n```\n"
+        "```mermaid\nradar-beta\n    %% axis で軸、curve で系列。値は軸の順に並べる\n    title スキルの比較\n    axis impl[\"実装\"], test[\"テスト\"], ops[\"運用\"], axis1[\"Axis 5\"]\n    curve b[\"Bさん\"]{5, 3, 4, 0}\n    curve a[\"Aさん\"]{3, 5, 2, 0}\n    curve curve1{0, 0, 0, 0}\n    graticule polygon\n    max 5\n```\n"
     );
 }
 
@@ -162,7 +172,7 @@ async fn what_mermaid_cannot_read_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("`design` が 2 つ")),
+            .is_some_and(|message| message.contains("Two axes have the ID `design`")),
         "the modal should name the duplicate axis, got {message:?}"
     );
 
@@ -185,7 +195,7 @@ async fn what_mermaid_cannot_read_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("すべての軸に値が必要")),
+            .is_some_and(|message| message.contains("every axis needs a value")),
         "the modal should say the keyed curve needs every value, got {message:?}"
     );
 }

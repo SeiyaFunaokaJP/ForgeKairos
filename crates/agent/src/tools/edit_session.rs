@@ -367,9 +367,9 @@ impl EditSessionContext {
             if entries.is_empty() {
                 return String::new();
             }
-            let mut output = format!("保存後の診断:\n{}", entries.join("\n"));
+            let mut output = format!("Diagnostics after saving:\n{}", entries.join("\n"));
             if skipped > 0 {
-                output.push_str(&format!("\n…ほか {skipped} 件"));
+                output.push_str(&format!("\n…and {skipped} more"));
             }
             output
         })

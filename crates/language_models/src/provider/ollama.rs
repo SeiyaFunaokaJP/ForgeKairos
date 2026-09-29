@@ -118,6 +118,17 @@ impl State {
         let api_key = self.api_key_state.key(&api_url);
         let extra_headers = settings.custom_headers.clone();
 
+        // zed-jp-enhance: the list is fetched at startup without the user asking,
+        // so an endpoint off this machine is not contacted until the user has
+        // accepted the external AI warning for it (ADR-F10).
+        if !OllamaLanguageModelProvider::endpoint_is_local_or_acknowledged(&api_url, cx) {
+            self.fetched_models.clear();
+            return Task::ready(Err(anyhow!(
+                "not fetching Ollama models from {api_url}: it is not on this machine and \
+                 the external AI warning for Ollama has not been accepted"
+            )));
+        }
+
         // As a proxy for the server being "authenticated", we'll check if its up by fetching the models
         cx.spawn(async move |this, cx| {
             let models = get_models(
@@ -203,7 +214,25 @@ impl OllamaLanguageModelProvider {
             state: cx.new(|cx| {
                 cx.observe_global::<SettingsStore>({
                     let mut last_settings = OllamaLanguageModelProvider::settings(cx).clone();
+                    let mut last_reachable = Self::endpoint_is_local_or_acknowledged(
+                        &OllamaLanguageModelProvider::api_url(cx),
+                        cx,
+                    );
                     move |this: &mut State, cx| {
+                        // Accepting or revoking the warning changes no Ollama
+                        // setting, yet decides whether the endpoint may be asked.
+                        let reachable = Self::endpoint_is_local_or_acknowledged(
+                            &OllamaLanguageModelProvider::api_url(cx),
+                            cx,
+                        );
+                        let reachability_changed = reachable != last_reachable;
+                        last_reachable = reachable;
+                        if reachability_changed
+                            && OllamaLanguageModelProvider::settings(cx) == &last_settings
+                        {
+                            this.restart_fetch_models_task(cx);
+                            cx.notify();
+                        }
                         let current_settings = OllamaLanguageModelProvider::settings(cx);
                         let settings_changed = current_settings != &last_settings;
                         if settings_changed {
@@ -250,6 +279,13 @@ impl OllamaLanguageModelProvider {
         } else {
             SharedString::new(api_url.as_str())
         }
+    }
+
+    /// The same test the edit prediction menu applies to its self-hosted
+    /// providers, under the consent key of this provider.
+    fn endpoint_is_local_or_acknowledged(api_url: &str, cx: &App) -> bool {
+        http_client::endpoint_is_loopback(api_url)
+            || settings::external_ai_provider_is_acknowledged(PROVIDER_ID.0.as_ref(), cx)
     }
 
     fn has_custom_url(cx: &App) -> bool {
@@ -617,13 +653,33 @@ impl LanguageModel for OllamaLanguageModel {
         };
 
         let http_client = self.http_client.clone();
-        let (api_key, api_url, extra_headers) = self.state.read_with(cx, |state, cx| {
+        let (api_key, api_url, extra_headers, reachable) = self.state.read_with(cx, |state, cx| {
             let api_url = OllamaLanguageModelProvider::api_url(cx);
             let extra_headers = OllamaLanguageModelProvider::settings(cx)
                 .custom_headers
                 .clone();
-            (state.api_key_state.key(&api_url), api_url, extra_headers)
+            // zed-jp-enhance: models listed in the settings can be chosen
+            // without the list ever being fetched, so the request itself
+            // is held to the same consent (ADR-F10).
+            let reachable =
+                OllamaLanguageModelProvider::endpoint_is_local_or_acknowledged(&api_url, cx);
+            (
+                state.api_key_state.key(&api_url),
+                api_url,
+                extra_headers,
+                reachable,
+            )
         });
+        if !reachable {
+            return async move {
+                Err(anyhow!(
+                    "not sending the request to Ollama at {api_url}: it is not on this machine \
+                     and the external AI warning for Ollama has not been accepted"
+                )
+                .into())
+            }
+            .boxed();
+        }
 
         let future = self.request_limiter.stream(async move {
             let stream = stream_chat_completion(
@@ -1239,6 +1295,7 @@ fn tool_into_ollama(tool: LanguageModelRequestTool) -> Result<ollama::OllamaTool
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::Future;
 
     #[test]
     fn test_merge_settings_preserves_display_names_for_similar_models() {
@@ -1350,7 +1407,7 @@ mod tests {
                 .iter()
                 .map(|level| level.display_name())
                 .collect::<Vec<_>>(),
-            vec!["低", "中", "高"]
+            vec!["Low", "Medium", "High"]
         );
         assert_eq!(
             levels
@@ -1370,7 +1427,10 @@ mod tests {
                 .iter()
                 .map(|level| (level.value.as_ref(), level.display_name(), level.is_default))
                 .collect::<Vec<_>>(),
-            vec![("low", "低".into(), true), ("ultra", "ultra".into(), false)],
+            vec![
+                ("low", "Low".into(), true),
+                ("ultra", "ultra".into(), false)
+            ],
             "レベルに medium が無ければ先頭が既定になり、独自レベルの表示名は原文のまま"
         );
 
@@ -1444,6 +1504,267 @@ mod tests {
         assert_eq!(
             selected_thinking_level(&discovered_model("qwen3:8b"), Some("high")),
             None
+        );
+    }
+
+    struct NoCredentials;
+
+    impl CredentialsProvider for NoCredentials {
+        fn read_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<(String, Vec<u8>)>>> + 'a>> {
+            Box::pin(async { Ok(None) })
+        }
+
+        fn write_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _username: &'a str,
+            _password: &'a [u8],
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn delete_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    /// Builds the provider against `api_url` and returns the hosts of every
+    /// request it sends.
+    fn provider_recording_requests(
+        api_url: &str,
+        cx: &mut gpui::TestAppContext,
+    ) -> (
+        OllamaLanguageModelProvider,
+        Arc<parking_lot::Mutex<Vec<String>>>,
+    ) {
+        provider_recording_requests_through(api_url, None, cx)
+    }
+
+    /// Like [`provider_recording_requests`], with the requests going through
+    /// the egress allowlist when `egress_policy` is given, as they do in Zed.
+    /// The settings also list one model, which can be chosen without the list
+    /// ever being fetched.
+    fn provider_recording_requests_through(
+        api_url: &str,
+        egress_policy: Option<http_client::EgressPolicyHandle>,
+        cx: &mut gpui::TestAppContext,
+    ) -> (
+        OllamaLanguageModelProvider,
+        Arc<parking_lot::Mutex<Vec<String>>>,
+    ) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+        });
+        set_user_settings(cx, {
+            let api_url = api_url.to_string();
+            move |settings| {
+                settings
+                    .language_models
+                    .get_or_insert_default()
+                    .ollama
+                    .get_or_insert_default();
+                let ollama = settings
+                    .language_models
+                    .get_or_insert_default()
+                    .ollama
+                    .get_or_insert_default();
+                ollama.api_url = Some(api_url);
+                ollama.available_models = Some(vec![settings::OllamaAvailableModel {
+                    name: "listed-in-settings".to_string(),
+                    display_name: None,
+                    max_tokens: 4096,
+                    keep_alive: None,
+                    supports_tools: None,
+                    supports_images: None,
+                    supports_thinking: None,
+                    thinking_levels: None,
+                }]);
+            }
+        });
+        let requested_hosts = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let http_client = http_client::FakeHttpClient::create({
+            let requested_hosts = requested_hosts.clone();
+            move |request| {
+                requested_hosts
+                    .lock()
+                    .push(request.uri().host().unwrap_or_default().to_string());
+                async move {
+                    Ok(http_client::Response::builder()
+                        .status(404)
+                        .body(http_client::AsyncBody::default())?)
+                }
+            }
+        });
+        let http_client: Arc<dyn HttpClient> = match egress_policy {
+            Some(policy) => Arc::new(http_client::AllowlistedHttpClient::new(http_client, policy)),
+            None => http_client,
+        };
+        let provider = cx.update(|cx| {
+            OllamaLanguageModelProvider::new(http_client, Arc::new(NoCredentials), cx)
+        });
+        (provider, requested_hosts)
+    }
+
+    fn set_user_settings(
+        cx: &mut gpui::TestAppContext,
+        update: impl FnOnce(&mut settings::SettingsContent),
+    ) {
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, update);
+            });
+        });
+    }
+
+    #[gpui::test]
+    async fn test_remote_model_list_waits_for_consent(cx: &mut gpui::TestAppContext) {
+        let (provider, requested_hosts) =
+            provider_recording_requests("http://ollama.example.com:11434", cx);
+
+        cx.update(|cx| provider.authenticate(cx)).await.ok();
+        cx.run_until_parked();
+        assert_eq!(
+            *requested_hosts.lock(),
+            Vec::<String>::new(),
+            "a remote endpoint must not be asked for its models before consent"
+        );
+
+        set_user_settings(cx, |settings| {
+            settings.acknowledged_external_ai_providers = Some(vec!["ollama".to_string()]);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            *requested_hosts.lock(),
+            vec!["ollama.example.com".to_string()],
+            "accepting the warning should fetch the list without another action"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_consent_for_another_provider_does_not_open_ollama(cx: &mut gpui::TestAppContext) {
+        let (provider, requested_hosts) =
+            provider_recording_requests("http://ollama.example.com:11434", cx);
+        set_user_settings(cx, |settings| {
+            settings.acknowledged_external_ai_providers =
+                Some(vec!["edit_prediction:ollama".to_string()]);
+        });
+
+        cx.update(|cx| provider.authenticate(cx)).await.ok();
+        cx.run_until_parked();
+        assert_eq!(*requested_hosts.lock(), Vec::<String>::new());
+    }
+
+    #[gpui::test]
+    async fn test_local_model_list_needs_no_consent(cx: &mut gpui::TestAppContext) {
+        let (provider, requested_hosts) = provider_recording_requests("http://127.0.0.1:11434", cx);
+
+        cx.update(|cx| provider.authenticate(cx)).await.ok();
+        cx.run_until_parked();
+        assert_eq!(*requested_hosts.lock(), vec!["127.0.0.1".to_string()]);
+    }
+
+    async fn send_to_listed_model(
+        provider: &OllamaLanguageModelProvider,
+        cx: &mut gpui::TestAppContext,
+    ) -> Result<(), LanguageModelCompletionError> {
+        let model = cx
+            .update(|cx| provider.provided_models(cx))
+            .into_iter()
+            .find(|model| model.id().0.as_ref() == "listed-in-settings")
+            .expect("the model listed in the settings should be offered");
+        let response = model.stream_completion(LanguageModelRequest::default(), &cx.to_async());
+        let result = response.await.map(|_| ());
+        cx.run_until_parked();
+        result
+    }
+
+    #[gpui::test]
+    async fn test_remote_completion_waits_for_consent(cx: &mut gpui::TestAppContext) {
+        let (provider, requested_hosts) =
+            provider_recording_requests("http://ollama.example.com:11434", cx);
+        cx.run_until_parked();
+
+        let error = send_to_listed_model(&provider, cx)
+            .await
+            .expect_err("a remote endpoint must not be sent a request before consent");
+        assert!(
+            error.to_string().contains("external AI warning"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(*requested_hosts.lock(), Vec::<String>::new());
+
+        set_user_settings(cx, |settings| {
+            settings.acknowledged_external_ai_providers = Some(vec!["ollama".to_string()]);
+        });
+        cx.run_until_parked();
+        requested_hosts.lock().clear();
+        send_to_listed_model(&provider, cx).await.ok();
+        assert_eq!(
+            *requested_hosts.lock(),
+            vec!["ollama.example.com".to_string()],
+            "after consent the request goes out"
+        );
+    }
+
+    /// Consent is a warning the user reads, not the network control: with it
+    /// given but the host not in the allowlist, nothing reaches the server.
+    #[gpui::test]
+    async fn test_egress_allowlist_still_stops_remote_ollama_after_consent(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let empty_policy = http_client::EgressPolicyHandle::new(
+            http_client::EgressPolicy::from_host_strings(Vec::<String>::new()).0,
+        );
+        let (provider, requested_hosts) = provider_recording_requests_through(
+            "http://ollama.example.com:11434",
+            Some(empty_policy),
+            cx,
+        );
+        set_user_settings(cx, |settings| {
+            settings.acknowledged_external_ai_providers = Some(vec!["ollama".to_string()]);
+        });
+        cx.update(|cx| provider.authenticate(cx)).await.ok();
+        cx.run_until_parked();
+
+        let error = send_to_listed_model(&provider, cx)
+            .await
+            .expect_err("the egress allowlist should refuse the host");
+        let error = format!("{error:?}");
+        assert!(
+            error.contains("`ollama.example.com` is not on the network allowlist"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(
+            *requested_hosts.lock(),
+            Vec::<String>::new(),
+            "neither the model list nor the completion should reach the server"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_egress_allowlist_lets_local_ollama_through(cx: &mut gpui::TestAppContext) {
+        let empty_policy = http_client::EgressPolicyHandle::new(
+            http_client::EgressPolicy::from_host_strings(Vec::<String>::new()).0,
+        );
+        let (provider, requested_hosts) =
+            provider_recording_requests_through("http://127.0.0.1:11434", Some(empty_policy), cx);
+        cx.update(|cx| provider.authenticate(cx)).await.ok();
+        cx.run_until_parked();
+        send_to_listed_model(&provider, cx).await.ok();
+        assert_eq!(
+            *requested_hosts.lock(),
+            vec!["127.0.0.1".to_string(), "127.0.0.1".to_string()],
+            "the model list and the completion both go to the local server"
         );
     }
 }

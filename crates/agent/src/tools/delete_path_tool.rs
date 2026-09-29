@@ -68,9 +68,9 @@ impl AgentTool for DeletePathTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("“`{}`” を削除", input.path).into()
+            i18n::t!("Delete “`{}`”", input.path).into()
         } else {
-            "パスを削除".into()
+            i18n::t!("Delete path").into()
         }
     }
 
@@ -148,7 +148,7 @@ impl AgentTool for DeletePathTool {
             } else if outside_project {
                 Some(cx.update(|cx| {
                     let context = crate::ToolPermissionContext::new(Self::NAME, vec![path.clone()]);
-                    let title = format!("{} を削除", MarkdownInlineCode(&path));
+                    let title = i18n::t!("Delete {}", MarkdownInlineCode(&path));
                     event_stream.authorize_outside_project(&title, context, cx)
                 }))
             } else {
@@ -159,7 +159,7 @@ impl AgentTool for DeletePathTool {
                     ToolPermissionDecision::Confirm | ToolPermissionDecision::Judge => Some(cx.update(|cx| {
                         let context =
                             crate::ToolPermissionContext::new(Self::NAME, vec![path.clone()]);
-                        let title = format!("{} を削除", MarkdownInlineCode(&path));
+                        let title = i18n::t!("Delete {}", MarkdownInlineCode(&path));
                         authorize_with_sensitive_settings(
                             settings_kind,
                             context,
@@ -348,7 +348,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("エージェントのスキル"),
+            title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -505,8 +505,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています")
-                || title.contains("シンボリックリンク"),
+            title.contains("points outside the project") || title.contains("symlink"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 
@@ -636,8 +635,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています")
-                || title.contains("シンボリックリンク"),
+            title.contains("points outside the project") || title.contains("symlink"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 

@@ -52,19 +52,34 @@ impl CommitSearchConditionKind {
         }
     }
 
-    /// The name the condition goes by in the search box's chips and messages.
+    /// The name the condition goes by in the search box's chips and messages, in the display
+    /// language.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Author => "著者",
-            Self::Tag => "タグ",
-            Self::Branch => "ブランチ",
-            Self::Path => "ファイル",
-            Self::Since => "以降",
-            Self::Until => "以前",
-            Self::Change => "変更",
-            Self::Merge => "マージ",
+            Self::Author => i18n::tc!("commit search", "Author"),
+            Self::Tag => i18n::tc!("commit search", "Tag"),
+            Self::Branch => i18n::tc!("commit search", "Branch"),
+            Self::Path => i18n::tc!("commit search", "File"),
+            Self::Since => i18n::tc!("commit search", "Since"),
+            Self::Until => i18n::tc!("commit search", "Until"),
+            Self::Change => i18n::tc!("commit search", "Change"),
+            Self::Merge => i18n::tc!("commit search", "Merge"),
             Self::Sha => "sha",
         }
+    }
+
+    /// The word the search box writes before the colon: the label, when the query takes it,
+    /// and otherwise the English word, so that a condition written in a language the query
+    /// does not read still reads back.
+    pub fn query_prefix(self) -> &'static str {
+        let label = self.label();
+        let words = self.prefix_words();
+        words
+            .iter()
+            .find(|word| word.eq_ignore_ascii_case(label))
+            .or_else(|| words.first())
+            .copied()
+            .unwrap_or(label)
     }
 }
 
@@ -108,12 +123,18 @@ impl MergeFilter {
         }
     }
 
-    /// The value the advanced search form writes into the query.
+    /// The value the advanced search form writes into the query, in the display language when
+    /// [`Self::parse`] reads it back.
     pub fn query_value(self) -> &'static str {
-        match self {
-            Self::Include => "はい",
-            Self::Exclude => "いいえ",
-            Self::Only => "だけ",
+        let (translated, english) = match self {
+            Self::Include => (i18n::tc!("commit search", "yes"), "yes"),
+            Self::Exclude => (i18n::tc!("commit search", "no"), "no"),
+            Self::Only => (i18n::tc!("commit search", "only"), "only"),
+        };
+        if Self::parse(translated) == Some(self) {
+            translated
+        } else {
+            english
         }
     }
 }
@@ -221,7 +242,7 @@ pub fn format_commit_search_condition(
     if needs_quotes && value.contains('"') {
         return None;
     }
-    let prefix = kind.label();
+    let prefix = kind.query_prefix();
     Some(if needs_quotes {
         format!("{prefix}:\"{value}\"")
     } else {
@@ -489,7 +510,10 @@ pub fn plan_commit_search(
             .count()
             > 1
         {
-            problems.push(format!("「{}:」は 1 つだけ指定できます。", kind.label()));
+            problems.push(i18n::t!(
+                "Only one \"{prefix}:\" condition can be given.",
+                prefix = kind.query_prefix()
+            ));
         }
     }
 
@@ -497,7 +521,7 @@ pub fn plan_commit_search(
     let mut merges = None;
     for condition in &parsed.conditions {
         let value = condition.value.as_str();
-        let label = condition.kind.label();
+        let prefix = condition.kind.query_prefix();
         match condition.kind {
             Kind::Author => args.authors.push(value.to_string().into()),
             Kind::Tag => {
@@ -513,7 +537,7 @@ pub fn plan_commit_search(
                     .filter(|oid| tagged.insert(*oid))
                     .collect::<Vec<_>>();
                 if commits.is_empty() {
-                    problems.push(format!("名前に「{value}」を含むタグはありません。"));
+                    problems.push(i18n::t!("No tag has \"{value}\" in its name."));
                     continue;
                 }
                 args.commits = Some(match args.commits.take() {
@@ -526,10 +550,9 @@ pub fn plan_commit_search(
             }
             Kind::Branch => {
                 if !matches!(environment.log_source, LogSource::All) {
-                    problems.push(
-                        "「ブランチ:」はすべてのブランチを表示しているグラフでだけ使えます。"
-                            .to_string(),
-                    );
+                    problems.push(i18n::t!(
+                        "\"{prefix}:\" can only be used while the graph shows all branches."
+                    ));
                     continue;
                 }
                 let branch = environment
@@ -541,20 +564,26 @@ pub fn plan_commit_search(
                     Some(branch) if is_searchable_branch_ref(&branch.ref_name) => {
                         args.branch = Some(branch.ref_name.clone());
                     }
-                    Some(_) => {
-                        problems.push(format!("ブランチ「{value}」の名前は検索に使えません。"))
+                    Some(_) => problems.push(i18n::t!(
+                        "The name of branch \"{branch}\" cannot be used in a search.",
+                        branch = value
+                    )),
+                    None => {
+                        problems.push(i18n::t!("There is no branch \"{branch}\".", branch = value))
                     }
-                    None => problems.push(format!("ブランチ「{value}」はありません。")),
                 }
             }
             Kind::Path => {
                 if is_file_history {
-                    problems.push("ファイルの履歴では「ファイル:」は使えません。".to_string());
+                    problems.push(i18n::t!(
+                        "\"{prefix}:\" cannot be used in a file's history."
+                    ));
                 } else if let Some(path) = normalize_search_path(value) {
                     args.path = Some(path.into());
                 } else {
-                    problems.push(format!(
-                        "「ファイル:{value}」はリポジトリ全体を指すため、絞り込みになりません。ファイルかフォルダーの名前を書いてください。"
+                    problems.push(i18n::t!(
+                        "\"{prefix}:{value}\" names the whole repository, so it does not narrow \
+                         the search. Write the name of a file or folder."
                     ));
                 }
             }
@@ -566,18 +595,20 @@ pub fn plan_commit_search(
                 };
                 let Some(timestamp) = parse_commit_search_date(value, bound, environment.now)
                 else {
-                    problems.push(format!(
-                        "「{label}:{value}」の日付を読めません。2026-09-01、\"2026-09-01 12:00\"、\
-                         3日・2週間・1か月・1年 (3d・2w・1m・1y) のように書いてください。"
+                    problems.push(i18n::t!(
+                        "Cannot read the date in \"{prefix}:{value}\". Write it like 2026-09-01, \
+                         \"2026-09-01 12:00\", or 3d, 2w, 1m, 1y."
                     ));
                     continue;
                 };
                 match bound {
                     DateBound::Since => {
-                        args.since = Some(args.since.map_or(timestamp, |since| since.max(timestamp)))
+                        args.since =
+                            Some(args.since.map_or(timestamp, |since| since.max(timestamp)))
                     }
                     DateBound::Until => {
-                        args.until = Some(args.until.map_or(timestamp, |until| until.min(timestamp)))
+                        args.until =
+                            Some(args.until.map_or(timestamp, |until| until.min(timestamp)))
                     }
                 }
             }
@@ -586,9 +617,11 @@ pub fn plan_commit_search(
                 Some(filter) if merges.is_none_or(|previous| previous == filter) => {
                     merges = Some(filter)
                 }
-                Some(_) => problems.push("「マージ:」の指定が食い違っています。".to_string()),
-                None => problems.push(format!(
-                    "「マージ:{value}」は読めません。はい・いいえ・だけ (yes・no・only) のどれかを書いてください。"
+                Some(_) => problems.push(i18n::t!(
+                    "The \"{prefix}:\" conditions contradict each other."
+                )),
+                None => problems.push(i18n::t!(
+                    "Cannot read \"{prefix}:{value}\". Write one of yes, no or only."
                 )),
             },
             Kind::Sha => {
@@ -597,8 +630,8 @@ pub fn plan_commit_search(
                 {
                     args.sha_prefix = Some(value.to_ascii_lowercase().into());
                 } else {
-                    problems.push(format!(
-                        "「sha:{value}」は読めません。4〜40 桁の 16 進数を書いてください。"
+                    problems.push(i18n::t!(
+                        "Cannot read \"sha:{value}\". Write 4 to 40 hexadecimal digits."
                     ));
                 }
             }
@@ -609,7 +642,11 @@ pub fn plan_commit_search(
     if let (Some(since), Some(until)) = (args.since, args.until)
         && since > until
     {
-        problems.push("期間の指定が逆です (「以降」が「以前」より後になっています)。".to_string());
+        problems.push(i18n::t!(
+            "The period is reversed (\"{since_word}\" is later than \"{until_word}\").",
+            since_word = Kind::Since.query_prefix(),
+            until_word = Kind::Until.query_prefix()
+        ));
     }
 
     if !problems.is_empty() {
@@ -748,11 +785,11 @@ mod tests {
     fn test_format_and_edit_conditions() {
         assert_eq!(
             format_commit_search_condition(Kind::Author, "山田 太郎").as_deref(),
-            Some("著者:\"山田 太郎\"")
+            Some("author:\"山田 太郎\"")
         );
         assert_eq!(
             format_commit_search_condition(Kind::Path, "src/").as_deref(),
-            Some("ファイル:src/")
+            Some("file:src/")
         );
         assert_eq!(
             format_commit_search_condition(Kind::Change, "a \"b\""),
@@ -760,13 +797,13 @@ mod tests {
         );
         assert_eq!(
             format_commit_search_condition(Kind::Change, "a\"b").as_deref(),
-            Some("変更:a\"b")
+            Some("change:a\"b")
         );
 
         let query = "直した 著者:山田 tag:v1";
         assert_eq!(
             set_commit_search_condition(query, Kind::Author, "鈴木 花子").as_deref(),
-            Some("直した tag:v1 著者:\"鈴木 花子\"")
+            Some("直した tag:v1 author:\"鈴木 花子\"")
         );
         assert_eq!(
             set_commit_search_condition(query, Kind::Tag, "").as_deref(),
@@ -774,7 +811,7 @@ mod tests {
         );
         assert_eq!(
             set_commit_search_condition("", Kind::Merge, "だけ").as_deref(),
-            Some("マージ:だけ")
+            Some("merge:だけ")
         );
         for value in ["鈴木 花子", "src/a b.rs", "2026-09-01 12:00"] {
             for kind in Kind::ALL {
@@ -820,6 +857,104 @@ mod tests {
         ] {
             assert_eq!(MergeFilter::parse(filter.query_value()), Some(filter));
         }
+    }
+
+    /// A catalog in the user's configuration directory can translate the words into anything,
+    /// including another condition's word, a word with a colon, or nothing the query reads.
+    #[test]
+    fn test_search_box_writes_words_the_query_reads_whatever_the_catalog() {
+        struct EverythingCatalog(&'static str);
+        impl i18n::Catalog for EverythingCatalog {
+            fn locale(&self) -> &str {
+                "xx"
+            }
+            fn lookup(&self, _context: Option<&str>, _msgid: &str) -> Option<&'static str> {
+                Some(self.0)
+            }
+            fn lookup_plural(
+                &self,
+                _context: Option<&str>,
+                _msgid: &str,
+                _msgid_plural: &str,
+                _count: u64,
+            ) -> Option<&'static str> {
+                None
+            }
+        }
+        static CATALOGS: [EverythingCatalog; 8] = [
+            EverythingCatalog("Autor"),
+            EverythingCatalog("tag"),
+            EverythingCatalog("マージ"),
+            EverythingCatalog("only"),
+            EverythingCatalog("a:b"),
+            EverythingCatalog("\"x y\""),
+            EverythingCatalog(""),
+            EverythingCatalog(" "),
+        ];
+        for catalog in &CATALOGS {
+            let _locale = i18n::test_support::LocaleOverride::new(Some(catalog));
+            for kind in Kind::ALL {
+                let written = set_commit_search_condition("x", kind, "abcd").unwrap();
+                assert_eq!(
+                    conditions(&written),
+                    [(kind, "abcd".to_string())],
+                    "{:?}: {written:?}",
+                    catalog.0
+                );
+            }
+            for filter in [
+                MergeFilter::Include,
+                MergeFilter::Exclude,
+                MergeFilter::Only,
+            ] {
+                assert_eq!(
+                    MergeFilter::parse(filter.query_value()),
+                    Some(filter),
+                    "{:?}",
+                    catalog.0
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_search_box_writes_the_display_language() {
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(Kind::Author.label(), "著者");
+        assert_eq!(
+            format_commit_search_condition(Kind::Author, "山田 太郎").as_deref(),
+            Some("著者:\"山田 太郎\"")
+        );
+        assert_eq!(
+            set_commit_search_condition("直した", Kind::Merge, MergeFilter::Only.query_value())
+                .as_deref(),
+            Some("直した マージ:だけ")
+        );
+        for kind in Kind::ALL {
+            let written = set_commit_search_condition("x", kind, "abcd").unwrap();
+            assert_eq!(
+                conditions(&written),
+                [(kind, "abcd".to_string())],
+                "{written:?} must read back as what the form wrote"
+            );
+        }
+        for filter in [
+            MergeFilter::Include,
+            MergeFilter::Exclude,
+            MergeFilter::Only,
+        ] {
+            assert_eq!(MergeFilter::parse(filter.query_value()), Some(filter));
+        }
+        assert_eq!(
+            problems(plan(
+                "branch:main branch:feature",
+                Some(&[]),
+                &LogSource::All
+            )),
+            ["「ブランチ:」は 1 つだけ指定できます。"]
+        );
     }
 
     #[test]
@@ -1098,25 +1233,34 @@ mod tests {
         );
 
         for (query, expected) in [
-            ("branch:nope", "ブランチ「nope」はありません。"),
-            ("tag:v9", "名前に「v9」を含むタグはありません。"),
-            ("以降:きのう", "「以降:きのう」の日付を読めません。"),
-            ("merge:maybe", "「マージ:maybe」は読めません。"),
+            ("branch:nope", "There is no branch \"nope\"."),
+            ("tag:v9", "No tag has \"v9\" in its name."),
+            ("以降:きのう", "Cannot read the date in \"since:きのう\"."),
+            ("merge:maybe", "Cannot read \"merge:maybe\"."),
             (
                 "merge:yes merge:no",
-                "「マージ:」の指定が食い違っています。",
+                "The \"merge:\" conditions contradict each other.",
             ),
-            ("sha:xyz1", "「sha:xyz1」は読めません。"),
-            ("sha:abc", "「sha:abc」は読めません。"),
+            ("sha:xyz1", "Cannot read \"sha:xyz1\"."),
+            ("sha:abc", "Cannot read \"sha:abc\"."),
             (
                 "branch:main branch:feature",
-                "「ブランチ:」は 1 つだけ指定できます。",
+                "Only one \"branch:\" condition can be given.",
             ),
-            ("file:a file:b", "「ファイル:」は 1 つだけ指定できます。"),
-            ("change:a change:b", "「変更:」は 1 つだけ指定できます。"),
-            ("file:./", "「ファイル:./」はリポジトリ全体を指すため"),
-            ("ファイル:/", "「ファイル:/」はリポジトリ全体を指すため"),
-            ("以降:2026-09-10 以前:2026-09-01", "期間の指定が逆です"),
+            (
+                "file:a file:b",
+                "Only one \"file:\" condition can be given.",
+            ),
+            (
+                "change:a change:b",
+                "Only one \"change:\" condition can be given.",
+            ),
+            ("file:./", "\"file:./\" names the whole repository"),
+            ("ファイル:/", "\"file:/\" names the whole repository"),
+            (
+                "以降:2026-09-10 以前:2026-09-01",
+                "The period is reversed (\"since\" is later than \"until\").",
+            ),
         ] {
             let problems = problems(plan(query, Some(&tags), &all));
             assert!(

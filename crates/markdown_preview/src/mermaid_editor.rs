@@ -84,7 +84,7 @@ pub fn register(workspace: &mut Workspace) {
             // pane is an active item of its own, so the message asks for the
             // editor rather than for the file.
             workspace.show_error(
-                anyhow::anyhow!("Markdown のエディターを選んでから実行してください。"),
+                anyhow::anyhow!(i18n::t!("Select a Markdown editor, then run this again.")),
                 cx,
             );
             return;
@@ -117,7 +117,7 @@ pub fn open(
 ) {
     let Some(target) = target else {
         workspace.show_error(
-            anyhow::anyhow!("Mermaid 図のコードブロックが見つかりません。"),
+            anyhow::anyhow!(i18n::t!("No Mermaid diagram code block was found.")),
             cx,
         );
         return;
@@ -128,7 +128,9 @@ pub fn open(
     // diagram and watch the result go nowhere.
     if editor.read(cx).read_only(cx) {
         workspace.show_error(
-            anyhow::anyhow!("このバッファーは読み取り専用のため、図を編集できません。"),
+            anyhow::anyhow!(i18n::t!(
+                "This buffer is read-only, so the diagram cannot be edited."
+            )),
             cx,
         );
         return;
@@ -149,7 +151,9 @@ pub fn open(
             // fence is left exactly as it was.
             Err(error) => {
                 workspace.show_error(
-                    anyhow::anyhow!("Mermaid 図を構造化編集で開けません: {error}"),
+                    anyhow::anyhow!(i18n::t!(
+                        "Cannot open the Mermaid diagram in the structured editor: {error}"
+                    )),
                     cx,
                 );
                 return;
@@ -170,9 +174,9 @@ fn unsupported_kind_message() -> String {
         .iter()
         .map(|kind| kind.label())
         .collect::<Vec<_>>()
-        .join("、");
-    format!(
-        "この図は構造化エディターに対応していません。テキストのまま編集してください。(構造化編集できる図: {kinds})"
+        .join(i18n::tc!("list separator", ", "));
+    i18n::t!(
+        "This diagram is not supported by the structured editor. Edit it as text. (Diagrams the structured editor supports: {kinds})"
     )
 }
 
@@ -513,7 +517,7 @@ impl MermaidEditor {
     ) -> Entity<Editor> {
         let field = self.new_field(style, window, cx);
         field.update(cx, |field, cx| {
-            field.set_placeholder_text("例: fill:#f96,stroke:#333", window, cx);
+            field.set_placeholder_text(i18n::t!("e.g. fill:#f96,stroke:#333"), window, cx);
         });
         field
     }
@@ -527,7 +531,7 @@ impl MermaidEditor {
     ) -> EdgeFields {
         let style = self.new_field(style, window, cx);
         style.update(cx, |style, cx| {
-            style.set_placeholder_text("例: stroke:#f00,stroke-width:2px", window, cx);
+            style.set_placeholder_text(i18n::t!("e.g. stroke:#f00,stroke-width:2px"), window, cx);
         });
         EdgeFields {
             id: self.new_field(id, window, cx),
@@ -879,18 +883,18 @@ impl MermaidEditor {
             .chain(document.subgraphs.iter().map(|group| group.id.as_str()))
         {
             if id.is_empty() {
-                return Some("ID が空の要素があります。".into());
+                return Some(i18n::t!("An element has an empty ID.").into());
             }
             if !is_valid_node_id(id) {
                 return Some(
-                    format!(
-                        "ID「{id}」は使えません (半角英数字と _ のみ、Mermaid の予約語は不可)。"
+                    i18n::t!(
+                        "The ID \"{id}\" is not valid (ASCII letters, digits and _ only; no Mermaid keywords)."
                     )
                     .into(),
                 );
             }
             if seen.contains(&id) {
-                return Some(format!("ID「{id}」が重複しています。").into());
+                return Some(i18n::t!("The ID \"{id}\" is used more than once.").into());
             }
             seen.push(id);
         }
@@ -907,14 +911,14 @@ impl MermaidEditor {
             if let Some(id) = edge.user_id.as_deref() {
                 if !is_valid_node_id(id) {
                     return Some(
-                        format!(
-                            "{position} 番目のつながりの ID「{id}」は使えません (半角英数字と _ のみ、Mermaid の予約語は不可)。"
+                        i18n::t!(
+                            "The ID \"{id}\" of link {position} is not valid (ASCII letters, digits and _ only; no Mermaid keywords)."
                         )
                         .into(),
                     );
                 }
                 if seen.contains(&id) {
-                    return Some(format!("つながりの ID「{id}」が重複しています。").into());
+                    return Some(i18n::t!("The link ID \"{id}\" is used more than once.").into());
                 }
                 // `id@{ … }` goes to the edge whenever an edge has that id, so
                 // a node of the same name would lose its shape to it.
@@ -922,7 +926,7 @@ impl MermaidEditor {
                     || document.subgraphs.iter().any(|group| group.id == id)
                 {
                     return Some(
-                        format!("つながりの ID「{id}」がノードまたはグループの ID と同じです。")
+                        i18n::t!("The link ID \"{id}\" is the same as the ID of a node or group.")
                             .into(),
                     );
                 }
@@ -933,16 +937,16 @@ impl MermaidEditor {
             };
             if !is_valid_style_text(style) || style.starts_with(',') {
                 return Some(
-                    format!(
-                        "{position} 番目のつながりの線のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {{、先頭のカンマ)。"
+                    i18n::t!(
+                        "The line style of link {position} has characters that cannot be used (; or %%, an unclosed quote, a trailing {{, or a leading comma)."
                     )
                     .into(),
                 );
             }
             if styled_elsewhere.contains(&index) {
                 return Some(
-                    format!(
-                        "{position} 番目のつながりは、テキストのまま残した linkStyle 行でスタイルが指定されています。"
+                    i18n::t!(
+                        "Link {position} is already styled by a linkStyle line that is kept as text."
                     )
                     .into(),
                 );
@@ -957,9 +961,9 @@ impl MermaidEditor {
             });
             if has_metadata && style.contains("interpolate") {
                 return Some(
-                    format!(
-                        "{position} 番目のつながりは {}@{{ … }} の行があるため、線のスタイルに interpolate (曲線) を書けません。",
-                        edge.user_id.as_deref().unwrap_or_default()
+                    i18n::t!(
+                        "Link {position} has a {id}@{{ … }} line, so its line style cannot set interpolate (the curve).",
+                        id = edge.user_id.as_deref().unwrap_or_default()
                     )
                     .into(),
                 );
@@ -974,24 +978,26 @@ impl MermaidEditor {
         for definition in &document.class_defs {
             let name = definition.name.as_str();
             if name.is_empty() {
-                return Some("名前が空のクラス定義があります。".into());
+                return Some(i18n::t!("A class definition has an empty name.").into());
             }
             if !is_valid_class_name(name) {
                 return Some(
-                    format!(
-                        "クラス定義の名前「{name}」は使えません (空白や , ; : # % などの記号は不可)。"
+                    i18n::t!(
+                        "The class definition name \"{name}\" is not valid (no whitespace or symbols such as , ; : # %)."
                     )
                     .into(),
                 );
             }
             if seen.contains(&name) {
-                return Some(format!("クラス定義「{name}」が重複しています。").into());
+                return Some(
+                    i18n::t!("The class definition \"{name}\" is defined more than once.").into(),
+                );
             }
             seen.push(name);
             if !is_valid_style_text(&definition.style) {
                 return Some(
-                    format!(
-                        "クラス定義「{name}」のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {{)。"
+                    i18n::t!(
+                        "The style of the class definition \"{name}\" has characters that cannot be used (; or %%, an unclosed quote, or a trailing {{)."
                     )
                     .into(),
                 );
@@ -1150,7 +1156,7 @@ impl MermaidEditor {
             return;
         };
         let Some(first) = form.document.nodes.first().map(|node| node.id.clone()) else {
-            self.message = Some("先にノードを追加してください。".into());
+            self.message = Some(i18n::t!("Add a node first.").into());
             cx.notify();
             return;
         };
@@ -1370,7 +1376,7 @@ impl MermaidEditor {
 
     fn confirm(&mut self, _: &menu::SecondaryConfirm, window: &mut Window, cx: &mut Context<Self>) {
         let Some(document) = self.current_document(cx) else {
-            self.message = Some("図の種類を選んでください。".into());
+            self.message = Some(i18n::t!("Choose a diagram type.").into());
             cx.notify();
             return;
         };
@@ -1385,7 +1391,7 @@ impl MermaidEditor {
         // cannot read back would leave the fence in a state the editor could
         // not reopen, so it is not written at all.
         if let Err(error) = parse_document(&source) {
-            self.message = Some(format!("この内容は書き戻せません: {error}").into());
+            self.message = Some(i18n::t!("This content cannot be written back: {error}").into());
             cx.notify();
             return;
         }
@@ -1530,13 +1536,13 @@ impl MermaidEditor {
         v_flex()
             .w_full()
             .gap_2()
-            .child(section_title("図の種類"))
+            .child(section_title(i18n::t!("Diagram Type")))
             .child(buttons)
             // The form is built from the kind that was picked and there is no
             // way back to this screen, so the way out is said here.
-            .child(section_title(
-                "選び直すには、キャンセルしてもう一度開いてください。",
-            ))
+            .child(section_title(i18n::t!(
+                "To choose again, cancel and open the editor again."
+            )))
             .into_any_element()
     }
 
@@ -1572,7 +1578,7 @@ impl MermaidEditor {
         h_flex()
             .gap_2()
             .child(
-                Label::new("方向")
+                Label::new(i18n::t!("Direction"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -1591,7 +1597,10 @@ impl MermaidEditor {
         let last = form.nodes.len().saturating_sub(1);
         let candidates = self.class_candidates(cx);
         let current = Self::current_flowchart(form, cx);
-        let mut section = v_flex().w_full().gap_1().child(section_title("ノード"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Nodes")));
         for index in 0..form.nodes.len() {
             let Some(row) = form.nodes.get(index) else {
                 continue;
@@ -1637,7 +1646,7 @@ impl MermaidEditor {
         let typed_is_valid = typed.trim().is_empty() || is_valid_class_name(typed.trim());
         section
             .child(
-                Button::new("mermaid-add-node", "ノードを追加")
+                Button::new("mermaid-add-node", i18n::t!("Add Node"))
                     .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, _, window, cx| this.add_node(window, cx))),
@@ -1649,7 +1658,7 @@ impl MermaidEditor {
                 h_flex()
                     .w_full()
                     .gap_1()
-                    .child(section_title("クラス名"))
+                    .child(section_title(i18n::t!("Class Name")))
                     .child(
                         field_frame(
                             &form.class_input,
@@ -1660,9 +1669,9 @@ impl MermaidEditor {
                         )
                         .child(form.class_input.clone()),
                     )
-                    .child(section_title(
-                        "classDef の名前と、ここに入力した名前が「クラス」の候補になります。",
-                    )),
+                    .child(section_title(i18n::t!(
+                        "The classDef names and the name typed here are offered under \"Class\"."
+                    ))),
             )
             .into_any_element()
     }
@@ -1684,7 +1693,9 @@ impl MermaidEditor {
         let candidates = candidates.to_vec();
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
             if candidates.is_empty() {
-                return menu.label("classDef を書くか、「クラス名」に入力してください。");
+                return menu.label(i18n::t!(
+                    "Write a classDef, or type a name in \"Class Name\"."
+                ));
             }
             for name in candidates.clone() {
                 let this = this.clone();
@@ -1773,7 +1784,10 @@ impl MermaidEditor {
         };
         let last = form.document.edges.len().saturating_sub(1);
         let node_ids = self.node_ids(cx);
-        let mut section = v_flex().w_full().gap_1().child(section_title("つながり"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Links")));
         for index in 0..form.document.edges.len() {
             let Some(edge) = form.document.edges.get(index) else {
                 continue;
@@ -1813,7 +1827,7 @@ impl MermaidEditor {
         }
         section
             .child(
-                Button::new("mermaid-add-edge", "つながりを追加")
+                Button::new("mermaid-add-edge", i18n::t!("Add Link"))
                     .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, _, window, cx| this.add_edge(window, cx))),
@@ -1838,7 +1852,7 @@ impl MermaidEditor {
             // A statement naming several edges, or several naming this one,
             // stays as the user wrote it, and a second one would apply beside
             // it.
-            Label::new("テキストの linkStyle 行で指定済み")
+            Label::new(i18n::t!("Set by a linkStyle line in the text"))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element()
@@ -1862,7 +1876,7 @@ impl MermaidEditor {
                     field_frame(&fields.id, ID_FIELD_WIDTH, id_is_valid, window, cx)
                         .child(fields.id.clone()),
                 )
-                .child(section_title("線のスタイル"))
+                .child(section_title(i18n::t!("Line Style")))
                 .child(style)
                 .into_any_element(),
         )
@@ -1877,7 +1891,7 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_1()
-            .child(section_title("クラス定義 (classDef)"));
+            .child(section_title(i18n::t!("Class Definitions (classDef)")));
         let locked = form.class_defs.is_empty()
             && form
                 .document
@@ -1886,9 +1900,9 @@ impl MermaidEditor {
                 .any(|line| line.text.trim_start().starts_with("classDef"));
         if locked {
             return section
-                .child(section_title(
-                    "1 行に複数の名前がある・同じ名前が重複しているなどの classDef 行があるため、ここでは編集できません (テキストのまま残ります)。",
-                ))
+                .child(section_title(i18n::t!(
+                    "Some classDef lines cannot be edited here, such as a line with several names or a name defined more than once (they are kept as text)."
+                )))
                 .into_any_element();
         }
         let last = form.class_defs.len().saturating_sub(1);
@@ -1928,7 +1942,7 @@ impl MermaidEditor {
                         index,
                         index == 0,
                         index >= last,
-                        "定義を削除 (付けたクラスは残ります)",
+                        i18n::t!("Delete Definition (classes already applied stay)"),
                         cx.listener(move |this, _, _window, cx| {
                             this.move_class_def(index, false, cx)
                         }),
@@ -1942,7 +1956,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-add-class-def",
-                "クラス定義を追加",
+                i18n::t!("Add Class Definition"),
                 cx.listener(|this, _, window, cx| this.add_class_def(window, cx)),
             ))
             .into_any_element()
@@ -2016,7 +2030,7 @@ impl MermaidEditor {
                 let is_selected = preset.operator == selected.as_ref();
                 let (arrow, stroke) = (preset.arrow, preset.stroke);
                 menu = menu.toggleable_entry(
-                    format!("{}  {}", preset.operator, preset.label),
+                    format!("{}  {}", preset.operator, i18n::tr(preset.label)),
                     is_selected,
                     IconPosition::Start,
                     None,
@@ -2051,7 +2065,10 @@ impl MermaidEditor {
         let node_ids = self.node_ids(cx);
         let candidates = self.class_candidates(cx);
         let current = Self::current_flowchart(form, cx);
-        let mut section = v_flex().w_full().gap_1().child(section_title("グループ"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Groups")));
         for index in 0..form.subgraphs.len() {
             let Some(row) = form.subgraphs.get(index) else {
                 continue;
@@ -2121,7 +2138,7 @@ impl MermaidEditor {
                                 )
                                 .shape(IconButtonShape::Square)
                                 .icon_size(IconSize::XSmall)
-                                .tooltip(Tooltip::text("グループを削除"))
+                                .tooltip(Tooltip::text(i18n::t!("Delete Group")))
                                 .on_click(cx.listener(
                                     move |this, _, _window, cx| this.remove_subgraph(index, cx),
                                 )),
@@ -2132,7 +2149,7 @@ impl MermaidEditor {
         }
         section
             .child(
-                Button::new("mermaid-add-subgraph", "グループを追加")
+                Button::new("mermaid-add-subgraph", i18n::t!("Add Group"))
                     .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, _, window, cx| this.add_subgraph(window, cx))),
@@ -2256,7 +2273,7 @@ impl MermaidEditor {
             .w(PREVIEW_WIDTH)
             .flex_none()
             .gap_1()
-            .child(section_title("プレビュー"));
+            .child(section_title(i18n::t!("Preview")));
 
         if let Some(error) = &self.preview.error {
             pane = pane.child(
@@ -2285,8 +2302,8 @@ impl MermaidEditor {
         } else if self.preview.error.is_none() {
             pane = pane.child(
                 Label::new(match self.form {
-                    Form::Choosing => "図の種類を選ぶと表示されます",
-                    _ => "描画中…",
+                    Form::Choosing => i18n::t!("Shown once a diagram type is chosen"),
+                    _ => i18n::t!("Rendering…"),
                 })
                 .size(LabelSize::Small)
                 .color(Color::Muted),
@@ -2299,18 +2316,18 @@ impl MermaidEditor {
     fn render_footer(&self, cx: &mut Context<Self>) -> ModalFooter {
         ModalFooter::new()
             .start_slot::<Label>(
-                Label::new("Tab で項目を移動。Ctrl+Enter で反映")
+                Label::new(i18n::t!("Tab moves between fields. Ctrl+Enter applies."))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
             .end_slot::<AnyElement>(
                 h_flex()
                     .gap_1()
-                    .child(Button::new("mermaid-cancel", "キャンセル").on_click(
+                    .child(Button::new("mermaid-cancel", i18n::t!("Cancel")).on_click(
                         cx.listener(|this, _, window, cx| this.cancel(&menu::Cancel, window, cx)),
                     ))
                     .child(
-                        Button::new("mermaid-confirm", "反映")
+                        Button::new("mermaid-confirm", i18n::tc!("mermaid editor", "Apply"))
                             .style(ButtonStyle::Filled)
                             .disabled(matches!(self.form, Form::Choosing))
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -2368,7 +2385,14 @@ fn row_controls(
     remove: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     row_controls_labelled(
-        prefix, index, at_start, at_end, "削除", move_up, move_down, remove,
+        prefix,
+        index,
+        at_start,
+        at_end,
+        i18n::t!("Delete"),
+        move_up,
+        move_down,
+        remove,
     )
 }
 
@@ -2396,7 +2420,7 @@ fn row_controls_labelled(
             .shape(IconButtonShape::Square)
             .icon_size(IconSize::XSmall)
             .disabled(at_start)
-            .tooltip(Tooltip::text("上へ移動"))
+            .tooltip(Tooltip::text(i18n::t!("Move Up")))
             .on_click(move_up),
         )
         .child(
@@ -2407,7 +2431,7 @@ fn row_controls_labelled(
             .shape(IconButtonShape::Square)
             .icon_size(IconSize::XSmall)
             .disabled(at_end)
-            .tooltip(Tooltip::text("下へ移動"))
+            .tooltip(Tooltip::text(i18n::t!("Move Down")))
             .on_click(move_down),
         )
         .child(
@@ -2454,7 +2478,7 @@ impl ClassTarget {
 /// off the form, so it is cut short rather than shown in full.
 fn class_menu_label(classes: &[String]) -> SharedString {
     if classes.is_empty() {
-        return "クラス".into();
+        return i18n::t!("Class").into();
     }
     let joined = classes.join(",");
     let mut cut = joined.chars().take(CLASS_LABEL_CHARS).collect::<String>();
@@ -2712,7 +2736,7 @@ fn edge_operator_label(edge: &FlowchartEdge) -> SharedString {
 fn subgraph_direction_label(direction: Option<FlowDirection>) -> &'static str {
     match direction {
         Some(direction) => direction.label(),
-        None => "指定なし",
+        None => i18n::t!("Not Set"),
     }
 }
 
@@ -2734,8 +2758,8 @@ impl Render for MermaidEditor {
         let footer = self.render_footer(cx);
         let message = self.message.clone();
         let headline = match &self.form {
-            Form::Choosing => SharedString::from("Mermaid 図を作成"),
-            _ => SharedString::from("Mermaid 図を編集"),
+            Form::Choosing => SharedString::from(i18n::t!("Create Mermaid Diagram")),
+            _ => SharedString::from(i18n::t!("Edit Mermaid Diagram")),
         };
 
         div()
@@ -2749,9 +2773,9 @@ impl Render for MermaidEditor {
             .capture_action(cx.listener(Self::focus_previous_field))
             .child(
                 Modal::new("mermaid-editor", None)
-                    .header(ModalHeader::new().headline(headline).description(
-                        "Mermaid は配置を自動で決めます (座標は持てません)。ここでは図の要素・つながり・文字を編集します。",
-                    ))
+                    .header(ModalHeader::new().headline(headline).description(i18n::t!(
+                        "Mermaid lays out diagrams automatically (positions cannot be set). Here you edit the diagram's elements, links and text."
+                    )))
                     .section(
                         Section::new()
                             .child(toolbar)

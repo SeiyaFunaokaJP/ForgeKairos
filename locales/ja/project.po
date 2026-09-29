@@ -1,0 +1,630 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " (environment variables: {names})"
+msgstr " (環境変数: {names})"
+
+msgid " (headers: {names})"
+msgstr " (ヘッダー: {names})"
+
+msgid "(the language server's default executable)"
+msgstr "(言語サーバーの既定の実行ファイル)"
+
+msgid "A commit that is not in the history of the current branch cannot be rewritten. Switch to a branch that has it, then try again."
+msgstr "現在のブランチの履歴に無いコミットは書き換えられません。そのコミットを含むブランチに切り替えてからやり直してください。"
+
+msgid "A detached HEAD cannot be reordered. Switch to a branch first."
+msgstr "detached HEAD では並べ替えられません。先にブランチに切り替えてください。"
+
+msgid "A launch of language server \"{name}\", which this IDE does not know, cannot be approved"
+msgstr "この IDE が知らない言語サーバー「{name}」の起動は承認できません"
+
+msgid "A launch request from the remote host does not say where it is defined"
+msgstr "接続先からの起動の問い合わせに定義元がありません"
+
+msgid "A launch request from the remote host has no name or program"
+msgstr "接続先からの起動の問い合わせに名前かプログラムがありません"
+
+msgid "A merge commit is among the commits newer than the chosen range, so it cannot be rewritten (rewriting would break that merge). Choose only commits newer than the merge."
+msgstr "選んだ範囲より新しいコミットの中にマージコミットがあるため、書き換えられません (書き換えるとそのマージが崩れます)。マージより新しいコミットだけを選び直してください。"
+
+msgid "A merge is in progress. Finish or abort the merge, then try again."
+msgstr "マージの途中です。マージを終えるか中止してからやり直してください。"
+
+msgid "A merge stopped partway. Finish or abort the merge first."
+msgstr "マージが途中で止まっています。先にマージを完了するか中止してください。"
+
+msgid "A range with a merge commit cannot be rewritten. Choose a range without merges."
+msgstr "マージコミットを含む範囲は書き換えられません。マージを含まない範囲を選び直してください。"
+
+msgid "A range with the first commit cannot be reordered. Choose again from the commit after it."
+msgstr "最初のコミットを含む範囲は並べ替えられません。1 つ後のコミットから選び直してください。"
+
+msgid "A warning from the remote host has no program name"
+msgstr "接続先から届いた警告にプログラム名がありません"
+
+msgid "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch}\"."
+msgstr "ブランチ「{merge_request_branch}」は既にあります。作り直すには「既存の {merge_request_branch} を作り直す」にチェックを入れてください。"
+
+msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+msgstr "detached HEAD では MR ブランチを作れません。先にブランチに切り替えてください。"
+
+msgid "Cannot interpret the push option {option}."
+msgstr "プッシュの指定 {option} を解釈できません。"
+
+msgid "Cannot read the merge filter ({merges})."
+msgstr "マージの指定 ({merges}) を読めません。"
+
+msgid "Cannot read this as a commit SHA: {sha}"
+msgstr "コミットの SHA として読めません: {sha}"
+
+msgid "Cannot start in folders that span several WSL distributions ({existing}, {root_distro})."
+msgstr "複数の WSL ディストリビューション ({existing}、{root_distro}) にまたがるフォルダーでは起動できません。"
+
+msgid "Commit {sha} was not found."
+msgstr "コミット {sha} が見つかりません。"
+
+msgid "Commit {short} is included twice. Check the list."
+msgstr "コミット {short} が 2 回含まれています。一覧を確認してください。"
+
+msgid "Commit {short} is not in the range to rewrite. Choose the range again."
+msgstr "書き換える範囲に無いコミット {short} が含まれています。範囲を選び直してください。"
+
+msgid "Could not build the commands for the rewrite."
+msgstr "書き換えるコマンドを組み立てられませんでした。"
+
+msgid "Could not check the created MR branch \"{merge_request_branch}\"."
+msgstr "作った MR ブランチ「{merge_request_branch}」を確認できませんでした。"
+
+msgid "Could not check the current branch: {error}"
+msgstr "現在のブランチを確認できませんでした: {error}"
+
+msgid "Could not check whether the commit is on the current branch: {error}"
+msgstr "コミットが現在のブランチ上にあるか調べられませんでした: {error}"
+
+msgid "Could not check {path}."
+msgstr "{path} を確認できませんでした。"
+
+msgid "Could not confirm the launch approval with the IDE"
+msgstr "IDE から起動の承認を確かめられませんでした"
+
+msgid "Could not create the directory to install tools in: {path}"
+msgstr "ツールの導入先を作成できませんでした: {path}"
+
+msgid "Could not create the download location for language servers (check the free disk space and permissions): {path}: {error}"
+msgstr "言語サーバーの保存先を作成できませんでした (ディスクの空き容量または権限を確認してください): {path}: {error}"
+
+msgid "Could not create the working directory {directory} of the MCP server"
+msgstr "MCP サーバーの作業フォルダー {directory} を作れませんでした"
+
+msgid "Could not create {path}."
+msgstr "{path} を作成できませんでした。"
+
+msgid "Could not download Node.js for Linux ({url}). Check that the editor's allowlist of connections includes `nodejs.org`."
+msgstr "Linux 版 Node.js ({url}) を取得できませんでした。エディターの接続許可リストに `nodejs.org` が含まれているか確認してください。"
+
+msgid "Could not download {archive_url}."
+msgstr "{archive_url} を取得できませんでした。"
+
+msgid "Could not download {tool}"
+msgstr "{tool} を取得できませんでした"
+
+msgid "Could not examine the changes to fold in: {error}"
+msgstr "入れる変更を調べられませんでした: {error}"
+
+msgid "Could not examine the commits after the range to rewrite: {error}"
+msgstr "書き換える範囲より後のコミットを調べられませんでした: {error}"
+
+msgid "Could not examine the files the rewrite changes: {error}"
+msgstr "書き換えで変わるファイルを調べられませんでした: {error}"
+
+msgid "Could not examine the ignored local files: {error}"
+msgstr "無視されているローカルのファイルを調べられませんでした: {error}"
+
+msgid "Could not examine the range to rewrite: {error}"
+msgstr "書き換える範囲を調べられませんでした: {error}"
+
+msgid "Could not examine the rewritten range: {error}"
+msgstr "書き換えた範囲を調べられませんでした: {error}"
+
+msgid "Could not examine the state of the working tree: {error}"
+msgstr "作業ツリーの状態を調べられませんでした: {error}"
+
+msgid "Could not fetch the release information of {project} {version}"
+msgstr "{project} {version} の配布情報を取得できませんでした"
+
+msgid "Could not fetch the release information of {project} {version} (HTTP {status})"
+msgstr "{project} {version} の配布情報を取得できませんでした (HTTP {status})"
+
+msgid "Could not get the author of the original commit: cannot interpret the output of git log."
+msgstr "元のコミットの作者を取得できませんでした: git log の出力を解釈できません。"
+
+msgid "Could not get the author of the original commit: {error}"
+msgstr "元のコミットの作者を取得できませんでした: {error}"
+
+msgid "Could not get the commits in the range to rewrite: {error}"
+msgstr "書き換える範囲のコミットを取得できませんでした: {error}"
+
+msgid "Could not get the list of tags: {error}"
+msgstr "タグ一覧を取得できませんでした: {error}"
+
+msgid "Could not install `{package_spec}` inside the WSL sandbox. Check that the editor's allowlist of connections includes `{NPM_REGISTRY_HOST}`."
+msgstr "`{package_spec}` を WSL のサンドボックスの中でインストールできませんでした。エディターの接続許可リストに `{NPM_REGISTRY_HOST}` が含まれているか確認してください。"
+
+msgid "Could not interpret the output of git describe: {described}"
+msgstr "git describe の出力を解釈できませんでした: {described}"
+
+msgid "Could not look up the default branch"
+msgstr "デフォルトブランチを調べられませんでした"
+
+msgid "Could not make {destination} executable"
+msgstr "{destination} に実行権限を付けられませんでした"
+
+msgid "Could not move {file_name} to {destination}"
+msgstr "{file_name} を {destination} へ移動できませんでした"
+
+msgid "Could not open {path} (it has to be a real folder, not a link)."
+msgstr "{path} を開けませんでした (リンクではなく実体のフォルダーである必要があります)。"
+
+msgid "Could not open {path}."
+msgstr "{path} を開けませんでした。"
+
+msgid "Could not parse the release information of {project} {version}"
+msgstr "{project} {version} の配布情報を解釈できませんでした"
+
+msgid "Could not prepare the agent's settings folder on the remote host: {error}"
+msgstr "接続先でエージェントの設定フォルダーを用意できませんでした: {error}"
+
+msgid "Could not prepare the commands that build the MR branch."
+msgstr "MR ブランチを組み立てるコマンドを用意できませんでした。"
+
+msgid "Could not read the commit subject: {error}"
+msgstr "コミットの件名を読めませんでした: {error}"
+
+msgid "Could not read the release information of {project} {version}"
+msgstr "{project} {version} の配布情報を読めませんでした"
+
+msgid "Could not resolve HEAD: {error}"
+msgstr "HEAD を解決できませんでした: {error}"
+
+msgid "Could not revoke the launch approval"
+msgstr "起動の承認を取り消せませんでした"
+
+msgid "Could not save the launch approval"
+msgstr "起動の承認を保存できませんでした"
+
+msgid "Distributions for the WSL architecture `{other}` are not supported, so the agent cannot start inside the sandbox."
+msgstr "WSL のアーキテクチャ `{other}` 向けの配布物は扱えないため、サンドボックスの中でエージェントを起動できません。"
+
+msgid "Downloading Node.js for Linux…"
+msgstr "Linux 版 Node.js を取得しています…"
+
+msgid "Downloading the agent for Linux…"
+msgstr "Linux 版のエージェントを取得しています…"
+
+msgid "Formatter `{command}` failed with exit code {code}"
+msgstr "フォーマッタ `{command}` が終了コード {code} で失敗しました"
+
+msgid "Formatter `{command}` failed with exit code {code}."
+msgstr "フォーマッタ `{command}` が終了コード {code} で失敗しました。"
+
+msgid "Formatter `{command}` terminated abnormally"
+msgstr "フォーマッタ `{command}` が異常終了しました"
+
+msgid "Formatter `{command}` terminated abnormally."
+msgstr "フォーマッタ `{command}` が異常終了しました。"
+
+msgid "Formatter `{command}` was not found"
+msgstr "フォーマッタ `{command}` が見つかりません"
+
+msgid "Formatter `{command}` was not found. It is not installed on the remote host ({host}). \"Install on Remote\" in the notification installs it in the remote home directory without administrator rights."
+msgstr "フォーマッタ `{command}` が見つかりません。接続先 ({host}) にインストールされていません。通知の「リモートにインストール」から、管理者権限なしで接続先のホームディレクトリに導入できます。"
+
+msgid "Formatter `{command}` was not found. It is not installed on the remote host ({host}). Put `{command}` in a directory on PATH on the remote host."
+msgstr "フォーマッタ `{command}` が見つかりません。接続先 ({host}) にインストールされていません。接続先で `{command}` を PATH の通った場所に置いてください。"
+
+msgid "Formatter `{command}` was not found. It is not on PATH."
+msgstr "フォーマッタ `{command}` が見つかりません。PATH から見つかりませんでした。"
+
+msgid "Formatter `{command}` was not found. Searched these places and PATH: {places}."
+msgstr "フォーマッタ `{command}` が見つかりません。次の場所と PATH を探しました: {places}。"
+
+msgid "Formatter `{missing_command}` was not found, so the language server ({server_name}) formatted the file."
+msgstr "フォーマッタ `{missing_command}` が見つからないため、言語サーバー ({server_name}) でフォーマットしました。"
+
+msgid "Formatting failed: {error}"
+msgstr "フォーマットに失敗しました: {error}"
+
+msgid "Go toolchain"
+msgstr "Go ツールチェーン"
+
+msgid "Language server `{name}` cannot format"
+msgstr "言語サーバー `{name}` はフォーマットに使えません"
+
+msgid "Language server `{name}` is not running or does not support formatting."
+msgstr "言語サーバー `{name}` が起動していないか、フォーマットに対応していません。"
+
+msgid "Loading the launch approvals"
+msgstr "起動の承認を読み込んでいます"
+
+msgid "MCP server \"{id}\" has no project definition that an approval could apply to"
+msgstr "MCP サーバー「{id}」には、承認の対象になるプロジェクトの定義がありません"
+
+msgid "MCP server \"{id}\" is defined in the project settings, and this definition has not been approved yet"
+msgstr "MCP サーバー「{id}」はプロジェクトの設定で定義されていて、この内容はまだ承認されていません"
+
+msgid "MCP server \"{id}\" is waiting for approval. A server defined in the project settings does not start until what it runs is checked and allowed on the \"MCP Servers\" page of the settings."
+msgstr "MCP サーバー「{id}」は承認待ちです。プロジェクトの設定で定義されたサーバーは、設定の「MCP サーバー」ページで起動する内容を確認して許可するまで起動しません。"
+
+msgid "No download location is set for language servers"
+msgstr "言語サーバーの保存先が設定されていません"
+
+msgid "No language server can format a selection"
+msgstr "選択範囲をフォーマットできる言語サーバーがありません"
+
+msgid "No language server can format this file"
+msgstr "このファイルをフォーマットできる言語サーバーがありません"
+
+msgid "No language server can format this file."
+msgstr "このファイルをフォーマットできる言語サーバーがありません。"
+
+msgid "No language server can format this file. Install a language server on the remote host ({host})."
+msgstr "このファイルをフォーマットできる言語サーバーがありません。接続先 ({host}) に言語サーバーをインストールしてください。"
+
+msgid "No running language server can format a selection in this file. The whole file can be formatted."
+msgstr "選択範囲のフォーマットに対応した言語サーバーがありません。ファイル全体ならフォーマットできます。"
+
+msgid "Node.js for Linux is a zip archive (unexpected)."
+msgstr "Linux 向けの Node.js が zip 形式です (想定外)。"
+
+msgid "Node.js is not distributed for the WSL architecture `{other}`, so the agent cannot start inside the sandbox."
+msgstr "WSL のアーキテクチャ `{other}` 向けの Node.js は配布されていないため、サンドボックスの中でエージェントを起動できません。"
+
+msgid "Not available on a detached HEAD. Switch to a branch first."
+msgstr "detached HEAD では使えません。先にブランチに切り替えてください。"
+
+msgid "On this OS, the agent's settings folder cannot be created for the sandbox."
+msgstr "この OS では、エージェントの設定フォルダーをサンドボックス用に作成できません。"
+
+msgid "Placing Node.js for Linux in WSL…"
+msgstr "Linux 版 Node.js を WSL に配置しています…"
+
+msgid "Placing the agent for Linux in WSL…"
+msgstr "Linux 版のエージェントを WSL に配置しています…"
+
+msgid "Running npm install inside the sandbox…"
+msgstr "サンドボックスの中で npm install を実行しています…"
+
+msgid "Some changes could not be put back, so they were kept in the stash (stash@{{0}}). Restore them from the stash in the Git panel."
+msgstr "変更の一部を元に戻せなかったため、stash に退避しました (stash@{{0}})。Git パネルの stash から戻してください。"
+
+msgid "Some files have conflicts. Resolve them, then try again."
+msgstr "コンフリクトしているファイルがあります。解決してからやり直してください。"
+
+msgid "Some files have unresolved conflicts. Resolve them first."
+msgstr "コンフリクトが解決されていないファイルがあります。先に解決してください。"
+
+msgid "Starting MCP server `{id}` timed out. See the Zed log for details."
+msgstr "MCP サーバー `{id}` の起動がタイムアウトしました。詳細は Zed のログを確認してください。"
+
+msgid "Starting language server \"{server_name}\" was called off, so the approval of its executable is not awaited"
+msgstr "言語サーバー「{server_name}」の起動は取りやめられたため、実行ファイルの承認を待ちません"
+
+msgid "Starting this MCP server needs approval"
+msgstr "この MCP サーバーの起動には承認が必要です"
+
+msgid "The IDE cannot approve launches"
+msgstr "IDE で起動を承認できません"
+
+msgid "The IDE cannot check the launch approval, so the external formatter \"{command}\" was not run ({reason})"
+msgstr "IDE で起動の承認を確認できないため、外部フォーマッター「{command}」を実行しませんでした ({reason})"
+
+msgid "The IDE did not answer within {seconds} seconds"
+msgstr "IDE が {seconds} 秒以内に応答しませんでした"
+
+msgid "The IDE is not answering launch requests (asked again once the IDE answers or reconnects)"
+msgstr "IDE が起動の問い合わせに応答していません (IDE が応答するか再接続すると、もう一度問い合わせます)"
+
+msgid "The IDE is not responding, so the approval of the executable of language server \"{server_name}\" cannot be checked. It starts once the IDE responds ({reason})"
+msgstr "IDE が応答しないため、言語サーバー「{server_name}」の実行ファイルの承認を確認できません。IDE が応答すると起動します ({reason})"
+
+msgid "The MCP server command the remote host returned does not match the approved definition"
+msgstr "接続先が返した MCP サーバーのコマンドが、承認した定義と一致しません"
+
+msgid "The MCP server stopped"
+msgstr "MCP サーバーが停止しました"
+
+msgid "The MCP server store was dropped"
+msgstr "MCP サーバーストアが破棄されました"
+
+msgid "The Windows program `{path}` cannot run inside the WSL sandbox. Set the absolute path of a Linux program (such as `/usr/local/bin/...`) in the agent's settings, or start it outside the sandbox."
+msgstr "Windows のプログラム `{path}` は WSL のサンドボックスの中では実行できません。エージェントの設定で Linux のプログラムの絶対パス (`/usr/local/bin/...` など) を指定するか、サンドボックスの外で起動してください。"
+
+msgid "The Zed server on the remote host is too old for this rewrite. Update Zed on the remote host."
+msgstr "接続先の Zed のサーバーが古いため、この書き換えは使えません。接続先の Zed を更新してください。"
+
+msgid "The Zed server on the remote host is too old to search with these conditions. Update Zed on the remote host."
+msgstr "接続先の Zed のサーバーが古いため、この条件では検索できません。接続先の Zed を更新してください。"
+
+msgid "The agent cannot start in a sandbox in a project that has no folder open."
+msgstr "フォルダーを開いていないプロジェクトでは、エージェントをサンドボックスで起動できません。"
+
+msgid "The agent sandbox the remote host prepared does not fit this editor's policy: {error}"
+msgstr "接続先が用意したエージェントのサンドボックスは、このエディターの方針と合いません: {error}"
+
+msgid "The agent's executable `{command}` has to be a relative path starting with `./`."
+msgstr "エージェントの実行ファイルの指定 `{command}` は `./` で始まる相対パスである必要があります。"
+
+msgid "The approval of the executable of language server \"{server_name}\" was revoked, so it is not started"
+msgstr "言語サーバー「{server_name}」の実行ファイルの承認は取り消されたため、起動しません"
+
+msgid "The base \"{base}\" was not found."
+msgstr "基点「{base}」が見つかりません。"
+
+msgid "The base already has every change of the commits in the MR box. There is no difference to make an MR of."
+msgstr "箱のコミットの変更はすべて基点に入っています。MR にする差分がありません。"
+
+msgid "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
+msgstr "基点のブランチ「{merge_request_branch}」を MR ブランチにはできません。別の名前にしてください。"
+
+msgid "The checked-out branch has changed to \"{current}\" (expected \"{branch}\"). Try again."
+msgstr "チェックアウトしているブランチが「{current}」に変わっています (想定は「{branch}」)。もう一度お試しください。"
+
+msgid "The chosen files have no changes."
+msgstr "選んだファイルには変更がありません。"
+
+msgid "The connected remote host does not support file transfer. Update zed-remote-server."
+msgstr "接続中のリモートホストはファイル転送に対応していません。zed-remote-server を更新してください。"
+
+msgid "The connection to the remote host is closed"
+msgstr "接続先との接続は閉じられています"
+
+msgid "The content has changed. Check it again"
+msgstr "内容が変わりました。もう一度確認してください"
+
+msgid "The database that records launch approvals is not open"
+msgstr "起動の承認を記録するデータベースが開かれていません"
+
+msgid "The download of language server {name} did not finish within {seconds} seconds. The download continues, so wait a while and then restart the language server."
+msgstr "言語サーバー {name} のダウンロードが {seconds} 秒以内に完了しませんでした。ダウンロードは継続しているので、しばらく待ってから言語サーバーを再起動してください。"
+
+msgid "The downloaded distribution did not contain {file_name} ({archive})"
+msgstr "取得した配布物に {file_name} が入っていませんでした ({archive})"
+
+msgid "The executable of language server \"{server_name}\" from the project settings is not allowed, so it is not started"
+msgstr "プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは許可されていないため、起動しません"
+
+msgid "The first commit cannot be dropped. The repository's first commit has no parent."
+msgstr "最初のコミットは捨てられません。リポジトリの最初のコミットには親がありません。"
+
+msgid "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started"
+msgstr "起動の承認を確認できないため、プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは起動しません"
+
+msgid "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started ({reason})"
+msgstr "起動の承認を確認できないため、プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは起動しません ({reason})"
+
+msgid "The launch approval key from the remote host is malformed"
+msgstr "接続先から届いた起動の承認キーの形式が正しくありません"
+
+msgid "The launch definition has a string longer than {MAX_STRING_BYTES} bytes"
+msgstr "起動の定義に {MAX_STRING_BYTES} バイトを超える文字列があります"
+
+msgid "The launch definition has too many arguments ({count}, at most {MAX_ARGUMENTS})"
+msgstr "起動の定義の引数が多すぎます ({count} 個、上限 {MAX_ARGUMENTS} 個)"
+
+msgid "The launch definition has too many entries (at most {MAX_LIST_ENTRIES})"
+msgstr "起動の定義の項目が多すぎます (上限 {MAX_LIST_ENTRIES} 個)"
+
+msgid "The launch definition is too large ({total_bytes} bytes, at most {MAX_TOTAL_BYTES} bytes)"
+msgstr "起動の定義が大きすぎます ({total_bytes} バイト、上限 {MAX_TOTAL_BYTES} バイト)"
+
+msgid "The listed commits do not match the actual range (the git history). Commits may have been added to or removed from the range. Refresh the graph and choose again."
+msgstr "一覧に表示したコミットと、実際の範囲 (git の履歴) が一致しません。範囲の途中でコミットが増えたか減った可能性があります。グラフを更新してから選び直してください。"
+
+msgid "The oldest commit of the chosen range is not in the history of the newest one. Choose the range again."
+msgstr "選んだ範囲の最も古いコミットが、最も新しいコミットの履歴にありません。範囲を選び直してください。"
+
+msgid "The project identifier {project_key} is invalid."
+msgstr "プロジェクトの識別子 {project_key} が不正です。"
+
+msgid "The project is closed"
+msgstr "プロジェクトは閉じられています"
+
+msgid "The range to rewrite has \"{subject}\". This operation would fold fixup! / squash! commits in along with it, so deal with them first, then try again."
+msgstr "書き換える範囲に「{subject}」があります。fixup! / squash! のコミットはこの操作で一緒に畳まれてしまうため、先に片付けてからやり直してください。"
+
+msgid "The remote host asked about a kind of launch this IDE does not know"
+msgstr "接続先から、この IDE が知らない種類の起動の問い合わせが届きました"
+
+msgid "The remote host does not ask about connecting to URLs"
+msgstr "URL への接続は接続先から問い合わせません"
+
+msgid "The remote host does not ask about launching MCP servers"
+msgstr "MCP サーバーの起動は接続先から問い合わせません"
+
+msgid "The remote host is disconnected, so the revocation reaches it when it reconnects"
+msgstr "接続先と切断されているため、承認の取り消しは再接続したときに接続先へ伝わります"
+
+msgid "The remote host is not responding."
+msgstr "リモートホストが応答しません。"
+
+msgid "The remote host sent a kind of warning this IDE cannot show"
+msgstr "接続先から、この IDE が表示できない種類の警告が届きました"
+
+msgid "The scratch branch \"{scratch_branch}\" does not start at the base, so it cannot go into the MR branch."
+msgstr "一時ブランチ「{scratch_branch}」が基点から始まっていないため、MR ブランチに反映できません。"
+
+msgid "The scratch branch \"{scratch_branch}\" has unstaged changes. Stage or discard them, then try again."
+msgstr "一時ブランチ「{scratch_branch}」にステージしていない変更があります。ステージするか取り消してから、もう一度お試しください。"
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
+msgstr "前回の一時ブランチ「{scratch_branch}」が残っています。中身を確認して削除してからやり直してください。"
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous rewrite is still there. Check its contents and delete it, then try again."
+msgstr "前回の書き換えの一時ブランチ「{scratch_branch}」が残っています。中身を確認して削除してからやり直してください。"
+
+msgid "The working directory of the launch the remote host asked about ({working_directory}) is not where the worktree ({known}) is"
+msgstr "接続先が問い合わせた起動の作業ディレクトリ ({working_directory}) がワークツリー ({known}) の場所と一致しません"
+
+msgid "The worktree the remote host asked about (ID {id}) is not in this project"
+msgstr "接続先が問い合わせたワークツリー (ID {id}) はこのプロジェクトにありません"
+
+msgid "The worktree the remote host asked about ({requested}) does not match the worktree this IDE has open under the same ID ({known})"
+msgstr "接続先が問い合わせたワークツリー ({requested}) は、この IDE が同じ ID で開いているワークツリー ({known}) と一致しません"
+
+msgid "The {kind} stopped partway. Continue or abort it in the Git panel's banner first."
+msgstr "{kind}が途中で止まっています。先に Git パネルのバナーで続行するか中止してください。"
+
+msgid "The {kind} stopped partway. Continue or abort it in the Git panel, then try again."
+msgstr "{kind}が途中で止まっています。Git パネルで続行か中止をしてからやり直してください。"
+
+msgid "There are no changes to put in the commit (untracked files go in only once staged)."
+msgstr "コミットに入れる変更がありません (未追跡のファイルはステージしない限り入りません)。"
+
+msgid "There are no staged changes."
+msgstr "ステージ済みの変更がありません。"
+
+msgid "There are uncommitted changes. Commit or stash them before creating the MR branch."
+msgstr "未コミットの変更があります。MR ブランチを作る前に、コミットかスタッシュしてください。"
+
+msgid "There is no download information for Node.js for Linux ({architecture})."
+msgstr "Linux ({architecture}) 向けの Node.js の取得情報がありません。"
+
+msgid "There is no folder to open."
+msgstr "開くフォルダーがありません。"
+
+msgid "This agent has no distribution for {platform_key}, so it cannot start inside the WSL sandbox (available: {available})."
+msgstr "このエージェントには {platform_key} 向けの配布物がないため、WSL のサンドボックスの中では起動できません (用意されているのは {available})。"
+
+msgid "This distribution is a zip archive, so it cannot be unpacked in the WSL sandbox (the WSL distribution has no `unzip`). Choose an agent with a tar.gz distribution for Linux, or start it outside the sandbox."
+msgstr "この配布物は zip 形式のため、WSL のサンドボックスでは展開できません (ディストリビューションに `unzip` がありません)。tar.gz 形式の Linux 向け配布物を持つエージェントを選ぶか、サンドボックスの外で起動してください。"
+
+msgid "This distribution's format cannot be unpacked in the WSL sandbox. Choose an agent with a tar.gz distribution for Linux, or start it outside the sandbox."
+msgstr "この配布物の形式は WSL のサンドボックスでは展開できません。tar.gz 形式の Linux 向け配布物を持つエージェントを選ぶか、サンドボックスの外で起動してください。"
+
+msgid "This project is not connected to a remote host."
+msgstr "このプロジェクトはリモートホストに接続していません。"
+
+msgid "Too many approved launches were asked about by the remote host (at most {MAX_REMEMBERED_LAUNCHES})"
+msgstr "接続先から問い合わせのあった承認済みの起動が多すぎます (上限 {MAX_REMEMBERED_LAUNCHES} 件)"
+
+msgid "Too many launches are waiting for approval in the IDE"
+msgstr "IDE で承認待ちの起動が多すぎます"
+
+msgid "Too many launches are waiting for approval in the IDE, so the approval of the executable of language server \"{server_name}\" cannot be asked for yet. It is asked for once fewer are waiting ({reason})"
+msgstr "IDE で承認待ちの起動が多すぎるため、言語サーバー「{server_name}」の実行ファイルの承認をまだ問い合わせられません。承認待ちが減ると問い合わせます ({reason})"
+
+msgid "Too many launches from the remote host are waiting for approval (at most {MAX_PENDING_LAUNCHES})"
+msgstr "接続先から承認待ちの起動が多すぎます (上限 {MAX_PENDING_LAUNCHES} 件)"
+
+msgid "`{package_name}` is not installed in WSL."
+msgstr "WSL に `{package_name}` がインストールされていません。"
+
+msgid "git commit-tree did not return a new commit."
+msgstr "git commit-tree が新しいコミットを返しませんでした。"
+
+msgid "gopls (the Go language server) is built with the Go toolchain, so go is needed first. Ask an administrator, or unpack the official distribution and put it on PATH."
+msgstr "gopls (Go の言語サーバー) は Go ツールチェーンで組み立てられるため、先に go が要ります。管理者に依頼するか、公式配布物を展開して PATH に通してください。"
+
+msgid "{path} belongs to another account."
+msgstr "{path} は他のアカウントのものです。"
+
+msgid "{path} can be modified by other accounts."
+msgstr "{path} は他のアカウントから書き換えられる状態です。"
+
+msgid "{path} contains a NUL byte."
+msgstr "{path} に NUL バイトが含まれています。"
+
+msgid "{path} has an unexpected path component."
+msgstr "{path} に想定外のパス成分があります。"
+
+msgid "{path} is not a folder."
+msgstr "{path} はフォルダーではありません。"
+
+msgid "{path} is not a regular file (it must not be a link)."
+msgstr "{path} は通常のファイルではありません (リンクであってはいけません)。"
+
+msgid "{path} is not below the settings folder."
+msgstr "{path} は設定フォルダーの下にありません。"
+
+msgid "{path} is not below {base}."
+msgstr "{path} は {base} の下にありません。"
+
+msgid "{project} {version} has no distribution for this environment ({os} {arch})"
+msgstr "{project} {version} には、この環境 ({os} {arch}) 向けの配布物がありません"
+
+msgid "{tool_id} is not in the list of tools that can be installed"
+msgstr "{tool_id} は導入できるツールの一覧にありません"
+
+msgid "{tool} can only be installed by the machine that has the files"
+msgstr "{tool} を導入できるのは、ファイルを持っているマシンだけです"
+
+msgid "{tool} is not a tool that can be downloaded and installed"
+msgstr "{tool} はダウンロードして導入できるツールではありません"
+
+msgid "{what} did not finish within {seconds} seconds. Wait a while and try again, and if that does not help, restart WSL with `wsl --shutdown`."
+msgstr "{what}が {seconds} 秒以内に終わりませんでした。しばらく待ってから再試行し、改善しない場合は `wsl --shutdown` で WSL を再起動してください。"
+
+msgctxt "dev tool purpose"
+msgid "Diagnostics"
+msgstr "エラーチェック"
+
+msgctxt "dev tool purpose"
+msgid "Formatting"
+msgstr "整形"
+
+msgctxt "dev tool purpose"
+msgid "Type Checking"
+msgstr "型チェック"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "wsl step"
+msgid "Checking Node.js in WSL"
+msgstr "WSL の Node.js の確認"
+
+msgctxt "wsl step"
+msgid "Checking the WSL architecture"
+msgstr "WSL のアーキテクチャの確認"
+
+msgctxt "wsl step"
+msgid "Checking the agent's executable"
+msgstr "エージェントの実行ファイルの確認"
+
+msgctxt "wsl step"
+msgid "Checking the agent's runtime in WSL"
+msgstr "WSL のエージェントの実行環境の確認"
+
+msgctxt "wsl step"
+msgid "Checking the data folder in WSL"
+msgstr "WSL のデータフォルダーの確認"
+
+msgctxt "wsl step"
+msgid "Checking the installed npm package"
+msgstr "インストール済みの npm パッケージの確認"
+
+msgctxt "wsl step"
+msgid "Checking the npm package"
+msgstr "npm パッケージの確認"
+
+msgctxt "wsl step"
+msgid "Checking the npm package's executable"
+msgstr "npm パッケージの実行ファイルの確認"
+
+msgctxt "wsl step"
+msgid "Placing Node.js for Linux in WSL"
+msgstr "Linux 版 Node.js の WSL への配置"
+
+msgctxt "wsl step"
+msgid "Placing the agent for Linux in WSL"
+msgstr "Linux 版のエージェントの WSL への配置"
+
+msgctxt "wsl step"
+msgid "npm install inside the sandbox"
+msgstr "サンドボックスの中での npm install"

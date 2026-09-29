@@ -58,7 +58,7 @@ impl SoloDiffView {
         cx: &mut App,
     ) -> Task<Result<Entity<Self>>> {
         let Some(workspace_entity) = workspace.upgrade() else {
-            return Task::ready(Err(anyhow::anyhow!("ワークスペースがありません。")));
+            return Task::ready(Err(anyhow::anyhow!("workspace was dropped")));
         };
 
         let existing = workspace_entity
@@ -633,9 +633,9 @@ impl Render for SoloDiffStyleToolbar {
             GitPanelSettings::get_global(cx).status_style != StatusStyle::LabelColor;
 
         let (expand_icon, expand_tooltip) = if showing_full_file {
-            (IconName::ChevronDownUp, "変更箇所のみ表示")
+            (IconName::ChevronDownUp, i18n::t!("Show Changes Only"))
         } else {
-            (IconName::ChevronUpDown, "ファイル全体を表示")
+            (IconName::ChevronUpDown, i18n::t!("Show Full File"))
         };
 
         h_flex()
@@ -796,7 +796,7 @@ impl Render for SoloDiffGitToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "前の変更箇所へ移動",
+                                i18n::t!("Go to Previous Hunk"),
                                 &GoToPreviousHunk,
                                 &focus_handle,
                             ))
@@ -809,7 +809,7 @@ impl Render for SoloDiffGitToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "次の変更箇所へ移動",
+                                i18n::t!("Go to Next Hunk"),
                                 &GoToHunk,
                                 &focus_handle,
                             ))
@@ -823,10 +823,10 @@ impl Render for SoloDiffGitToolbar {
                 h_group_sm()
                     .when(button_states.selection, |el| {
                         el.child(
-                            Button::new("stage", "ステージ状態を切り替え")
+                            Button::new("stage", i18n::t!("Toggle Staged"))
                                 .disabled(!button_states.stage && !button_states.unstage)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "ステージ状態を切り替え",
+                                    i18n::t!("Toggle Staged"),
                                     &ToggleStaged,
                                     &focus_handle,
                                 ))
@@ -837,10 +837,10 @@ impl Render for SoloDiffGitToolbar {
                     })
                     .when(!button_states.selection, |el| {
                         el.child(
-                            Button::new("stage", "ステージ")
+                            Button::new("stage", i18n::t!("Stage"))
                                 .disabled(!button_states.stage)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "ステージして次の変更箇所へ移動",
+                                    i18n::t!("Stage and Go to Next Hunk"),
                                     &StageAndNext,
                                     &focus_handle,
                                 ))
@@ -849,10 +849,10 @@ impl Render for SoloDiffGitToolbar {
                                 })),
                         )
                         .child(
-                            Button::new("unstage", "アンステージ")
+                            Button::new("unstage", i18n::t!("Unstage"))
                                 .disabled(!button_states.unstage)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "アンステージして次の変更箇所へ移動",
+                                    i18n::t!("Unstage and Go to Next Hunk"),
                                     &UnstageAndNext,
                                     &focus_handle,
                                 ))
@@ -862,9 +862,9 @@ impl Render for SoloDiffGitToolbar {
                         )
                     })
                     .child(
-                        Button::new("restore", "元に戻す")
+                        Button::new("restore", i18n::t!("Restore"))
                             .tooltip(Tooltip::for_action_title_in(
-                                "選択した変更箇所を元に戻す",
+                                i18n::t!("Restore selected hunk"),
                                 &Restore,
                                 &focus_handle,
                             ))
@@ -876,21 +876,21 @@ impl Render for SoloDiffGitToolbar {
             )
             .child(Divider::vertical())
             .child(h_group_sm().child(if button_states.stage_file {
-                Button::new("stage-file", "すべてステージ")
+                Button::new("stage-file", i18n::t!("Stage All"))
                     .width(rems_from_px(152_f32))
                     .disabled(!button_states.stage_file)
                     .tooltip(Tooltip::for_action_title_in(
-                        "すべてステージ",
+                        i18n::t!("Stage All"),
                         &StageFile,
                         &focus_handle,
                     ))
                     .on_click(cx.listener(|this, _, window, cx| this.stage_file(window, cx)))
             } else {
-                Button::new("unstage-file", "すべてアンステージ")
+                Button::new("unstage-file", i18n::t!("Unstage All"))
                     .width(rems_from_px(152_f32))
                     .disabled(!button_states.unstage_file)
                     .tooltip(Tooltip::for_action_title_in(
-                        "すべてアンステージ",
+                        i18n::t!("Unstage All"),
                         &UnstageFile,
                         &focus_handle,
                     ))
@@ -898,9 +898,9 @@ impl Render for SoloDiffGitToolbar {
             }))
             .child(Divider::vertical())
             .child(
-                Button::new("commit", "コミット")
+                Button::new("commit", i18n::t!("Commit"))
                     .tooltip(Tooltip::for_action_title_in(
-                        "コミット",
+                        i18n::t!("Commit"),
                         &Commit,
                         &focus_handle,
                     ))

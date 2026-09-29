@@ -351,19 +351,21 @@ impl Render for Onboarding {
                                             .child(
                                                 v_flex()
                                                     .child(
-                                                        Headline::new("Zed へようこそ")
+                                                        Headline::new(i18n::t!("Welcome to Zed"))
                                                             .size(HeadlineSize::Small),
                                                     )
                                                     .child(
-                                                        Label::new("次の時代のエディター")
-                                                            .color(Color::Muted)
-                                                            .size(LabelSize::Small)
-                                                            .italic(),
+                                                        Label::new(i18n::t!(
+                                                            "The editor for what's next"
+                                                        ))
+                                                        .color(Color::Muted)
+                                                        .size(LabelSize::Small)
+                                                        .italic(),
                                                     ),
                                             ),
                                     )
                                     .child({
-                                        Button::new("finish_setup", "セットアップを完了")
+                                        Button::new("finish_setup", i18n::t!("Finish Setup"))
                                             .style(ButtonStyle::Filled)
                                             .size(ButtonSize::Medium)
                                             .width(rems_from_px(200_f32))
@@ -397,7 +399,7 @@ impl Item for Onboarding {
     type Event = ItemEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "初期設定".into()
+        i18n::t!("Onboarding").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -484,7 +486,7 @@ pub async fn handle_import_vscode_settings(
                 zlog::error!("{err:?}");
                 let _ = cx.prompt(
                     gpui::PromptLevel::Info,
-                    &format!("{source} の設定ファイルが見つからないか、読み込めませんでした"),
+                    &i18n::t!("Could not find or load a {source} settings file"),
                     None,
                     &["OK"],
                 );
@@ -495,14 +497,14 @@ pub async fn handle_import_vscode_settings(
     if !skip_prompt {
         let prompt = cx.prompt(
             gpui::PromptLevel::Warning,
-            &format!(
-                "{} の設定をインポートすると、既存の設定が上書きされる場合があります。\
-                {} から設定をインポートします",
+            &i18n::t!(
+                "Importing {} settings may overwrite your existing settings. \
+                Will import settings from {}",
                 vscode_settings.source,
                 truncate_and_remove_front(&vscode_settings.path.to_string_lossy(), 128),
             ),
             None,
-            &["インポート", "キャンセル"],
+            &[i18n::t!("Import"), i18n::t!("Cancel")],
         );
         let result = cx.spawn(async move |_| prompt.await.ok()).await;
         if result != Some(0) {
@@ -527,7 +529,7 @@ pub async fn handle_import_vscode_settings(
         .update_in(cx, |workspace, _, cx| match result {
             Ok(_) => {
                 let confirmation_toast = StatusToast::new(
-                    format!("{} の設定をインポートしました。", source),
+                    i18n::t!("Your {} settings were successfully imported.", source),
                     cx,
                     |this, _| {
                         this.icon(
@@ -550,7 +552,7 @@ pub async fn handle_import_vscode_settings(
             }
             Err(_) => {
                 let error_toast = StatusToast::new(
-                    "設定のインポートに失敗しました。詳細はログを確認してください",
+                    i18n::t!("Failed to import settings. See log for details"),
                     cx,
                     |this, _| {
                         this.icon(
@@ -558,7 +560,7 @@ pub async fn handle_import_vscode_settings(
                                 .size(IconSize::Small)
                                 .color(Color::Error),
                         )
-                        .action("ログを開く", |window, cx| {
+                        .action(i18n::t!("Open Log"), |window, cx| {
                             window.dispatch_action(workspace::OpenLog.boxed_clone(), cx)
                         })
                         .dismiss_button(true)

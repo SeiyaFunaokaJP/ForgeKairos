@@ -1,7 +1,8 @@
 use super::tool_permissions::{
-    ambiguous_worktree_note, authorize_symlink_escapes, canonicalize_worktree_roots,
-    collect_symlink_escapes, resolve_creatable_global_skill_descendant_path,
-    resolve_global_skill_descendant_path, resolve_new_path_in_the_project, sensitive_settings_kind,
+    AmbiguousWrite, ambiguous_worktree_note, authorize_symlink_escapes,
+    canonicalize_worktree_roots, collect_symlink_escapes,
+    resolve_creatable_global_skill_descendant_path, resolve_global_skill_descendant_path,
+    resolve_new_path_in_the_project, sensitive_settings_kind,
 };
 use crate::{
     AgentTool, ToolCallEventStream, ToolInput, ToolPermissionDecision,
@@ -76,9 +77,9 @@ impl AgentTool for CopyPathTool {
         if let Ok(input) = input {
             let src = MarkdownInlineCode(&input.source_path);
             let dest = MarkdownInlineCode(&input.destination_path);
-            format!("{src} を {dest} にコピー").into()
+            i18n::t!("Copy {src} to {dest}").into()
         } else {
-            "パスをコピー".into()
+            i18n::t!("Copy path").into()
         }
     }
 
@@ -183,7 +184,7 @@ impl AgentTool for CopyPathTool {
                         project.short_full_path_for_project_path(project_path, cx)
                     })
                 })
-                .map(|destination| ambiguous_worktree_note(&destination, "コピーされます"));
+                .map(|destination| ambiguous_worktree_note(&destination, AmbiguousWrite::Copy));
 
             // A judged decision reaches the same authorization call, which
             // re-evaluates the settings and runs the judge there; treating it
@@ -209,7 +210,7 @@ impl AgentTool for CopyPathTool {
                         Self::NAME,
                         vec![input.source_path.clone(), input.destination_path.clone()],
                     );
-                    let title = format!("{src} を {dest} にコピー");
+                    let title = i18n::t!("Copy {src} to {dest}");
                     if let Some(note) = &ambiguous_destination_note {
                         event_stream.authorize_with_note(&title, note, context, cx)
                     } else if outside_project {
@@ -449,7 +450,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("エージェントのスキル"),
+            title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -515,7 +516,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("エージェントのスキル"),
+            title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -587,8 +588,8 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています")
-                || title.contains("プロジェクト外へのシンボリックリンク"),
+            title.contains("points outside the project")
+                || title.contains("symlinks outside project"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 
@@ -696,8 +697,8 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています")
-                || title.contains("プロジェクト外へのシンボリックリンク"),
+            title.contains("points outside the project")
+                || title.contains("symlinks outside project"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 

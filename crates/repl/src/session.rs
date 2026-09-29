@@ -183,7 +183,7 @@ impl EditorBlock {
                         .icon_color(Color::Muted)
                         .size(ButtonSize::Compact)
                         .shape(IconButtonShape::Square)
-                        .tooltip(Tooltip::text("出力領域を閉じる"))
+                        .tooltip(Tooltip::text(i18n::t!("Close output area")))
                         .on_click(move |_, window, cx| {
                             if let BlockId::Custom(block_id) = block_id {
                                 (on_close)(block_id, window, cx)
@@ -928,18 +928,18 @@ impl Render for Session {
                     .as_ref()
                     .map(|info| info.language_info.name.clone()),
                 Some(
-                    Button::new("interrupt", "中断")
+                    Button::new("interrupt", i18n::t!("Interrupt"))
                         .style(ButtonStyle::Subtle)
                         .on_click(cx.listener(move |session, _, _, cx| {
                             session.interrupt(cx);
                         })),
                 ),
             ),
-            Kernel::StartingKernel(_) => (Some("起動中".into()), None),
-            Kernel::ErroredLaunch(err) => (Some(format!("エラー: {err}")), None),
-            Kernel::ShuttingDown => (Some("終了中".into()), None),
-            Kernel::Shutdown => (Some("終了済み".into()), None),
-            Kernel::Restarting => (Some("再起動中".into()), None),
+            Kernel::StartingKernel(_) => (Some(i18n::t!("Starting").into()), None),
+            Kernel::ErroredLaunch(err) => (Some(i18n::t!("Error: {err}")), None),
+            Kernel::ShuttingDown => (Some(i18n::t!("Shutting Down").into()), None),
+            Kernel::Shutdown => (Some(i18n::tc!("kernel status", "Shutdown").into()), None),
+            Kernel::Restarting => (Some(i18n::t!("Restarting").into()), None),
         };
 
         KernelListItem::new(self.kernel_specification.clone())
@@ -964,7 +964,7 @@ impl Render for Session {
             .child(Label::new(self.kernel_specification.name()))
             .children(status_text.map(|status_text| Label::new(format!("({status_text})"))))
             .button(
-                Button::new("shutdown", "終了")
+                Button::new("shutdown", i18n::t!("Shutdown"))
                     .style(ButtonStyle::Subtle)
                     .disabled(self.kernel.is_shutting_down())
                     .on_click(cx.listener(move |session, _, window, cx| {

@@ -500,9 +500,9 @@ impl From<TerminalDockPosition> for DockPosition {
 impl DockPosition {
     pub(crate) fn label(&self) -> &'static str {
         match self {
-            Self::Left => "左",
-            Self::Bottom => "下",
-            Self::Right => "右",
+            Self::Left => i18n::msg!("Left"),
+            Self::Bottom => i18n::msg!("Bottom"),
+            Self::Right => i18n::msg!("Right"),
         }
     }
 
@@ -2358,12 +2358,20 @@ impl Render for PanelButtons {
         let active_index = dock.active_panel_index;
         let secondary_index = dock.secondary_panel_index();
         let hidden_stacked_index = dock.hidden_stacked_panel_index();
-        let stack_entry_label = match dock.stack_axis() {
-            Axis::Vertical => "下に並べて表示",
-            Axis::Horizontal => "横に並べて表示",
+        // Whole phrases per axis rather than one pieced together, so each
+        // language can order the words its own way.
+        let stacks_below = matches!(dock.stack_axis(), Axis::Vertical);
+        let stack_entry_label = if stacks_below {
+            i18n::t!("Stack Below")
+        } else {
+            i18n::t!("Stack Side by Side")
         };
-        let stack_hint_meta: SharedString =
-            format!("右クリック / Shift+クリックで{stack_entry_label}").into();
+        let stack_hint_meta: SharedString = if stacks_below {
+            i18n::t!("Right-click or Shift-click to stack below")
+        } else {
+            i18n::t!("Right-click or Shift-click to stack side by side")
+        }
+        .into();
         let is_open = dock.is_open;
         let dock_position = dock.position;
         // Arranging by hand the dock the fork pairs panels in answers the
@@ -2411,7 +2419,7 @@ impl Render for PanelButtons {
                     let action = dock.toggle_action();
 
                     let tooltip: SharedString =
-                        format!("{}ドックを閉じる", dock.position.label()).into();
+                        i18n::t!("Close {} Dock", i18n::tr(dock.position.label())).into();
 
                     (action, tooltip)
                 } else {
@@ -2428,10 +2436,15 @@ impl Render for PanelButtons {
                     Option<Box<dyn Action>>,
                     Option<SharedString>,
                 ) = if shows_in_pair {
-                    (format!("{icon_tooltip}を隠す").into(), None, None)
+                    (i18n::t!("Hide {icon_tooltip}").into(), None, None)
                 } else if is_restorable {
                     (
-                        format!("{icon_tooltip}を{stack_entry_label}").into(),
+                        if stacks_below {
+                            i18n::t!("Stack {icon_tooltip} Below")
+                        } else {
+                            i18n::t!("Stack {icon_tooltip} Side by Side")
+                        }
+                        .into(),
                         None,
                         None,
                     )
@@ -2445,7 +2458,9 @@ impl Render for PanelButtons {
                     (
                         tooltip,
                         Some(action.boxed_clone()),
-                        Some(SharedString::new_static("ドラッグで別のドックへ移動")),
+                        Some(SharedString::new_static(i18n::t!(
+                            "Drag to move to another dock"
+                        ))),
                     )
                 };
 
@@ -2472,7 +2487,7 @@ impl Render for PanelButtons {
                                         let is_current = position == dock_position;
                                         let panel = panel.clone();
                                         menu = menu.toggleable_entry(
-                                            format!("{}にドッキング", position.label()),
+                                            i18n::t!("Dock {}", i18n::tr(position.label())),
                                             is_current,
                                             IconPosition::Start,
                                             None,
@@ -2493,7 +2508,7 @@ impl Render for PanelButtons {
                                     let dock_for_flex = dock_for_menu.clone();
                                     let workspace_for_flex = workspace_for_menu.clone();
                                     menu = menu.toggleable_entry(
-                                        "幅を可変にする",
+                                        i18n::t!("Flex Width"),
                                         currently_flexible,
                                         IconPosition::Start,
                                         None,
@@ -2516,7 +2531,7 @@ impl Render for PanelButtons {
                                     let dock_for_fixed = dock_for_menu.clone();
                                     let workspace_for_fixed = workspace_for_menu.clone();
                                     menu = menu.toggleable_entry(
-                                        "幅を固定する",
+                                        i18n::t!("Fixed Width"),
                                         !currently_flexible,
                                         IconPosition::Start,
                                         None,
@@ -2540,7 +2555,7 @@ impl Render for PanelButtons {
                                     let dock_for_unstack = dock_for_menu.clone();
                                     let workspace_for_unstack = workspace_for_menu.clone();
                                     menu = menu.separator().entry(
-                                        "並べ表示をやめる",
+                                        i18n::t!("Unstack"),
                                         None,
                                         move |window, cx| {
                                             dock_for_unstack.update(cx, |dock, cx| {
@@ -2584,7 +2599,7 @@ impl Render for PanelButtons {
                                     let panel_for_window = panel.clone();
                                     let workspace_for_window = workspace_for_menu.clone();
                                     menu = menu.separator().entry(
-                                        "新しいウィンドウへ切り出す",
+                                        i18n::t!("Pop Out to New Window"),
                                         None,
                                         move |window, cx| {
                                             let panel = panel_for_window.clone();

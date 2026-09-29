@@ -32,8 +32,8 @@ use super::{
 /// The icon fields hold a short name, so they get less room than a title.
 const ICON_FIELD_WIDTH: gpui::Rems = rems(6.);
 
-const NEW_GROUP_TITLE: &str = "グループ";
-const NEW_SERVICE_TITLE: &str = "サービス";
+const NEW_GROUP_TITLE: &str = i18n::msg!("Group");
+const NEW_SERVICE_TITLE: &str = i18n::msg!("Service");
 
 pub(super) struct ArchitectureForm {
     pub(super) document: ArchitectureDocument,
@@ -140,7 +140,7 @@ impl ArchitectureForm {
 /// gone — comes from [`ArchitectureDocument::structure_error`].
 pub(super) fn problem(document: &ArchitectureDocument) -> Option<SharedString> {
     if document.groups.is_empty() && document.nodes.is_empty() {
-        return Some("グループかサービスを 1 つ以上追加してください。".into());
+        return Some(i18n::t!("Add at least one group or service.").into());
     }
     None
 }
@@ -295,7 +295,7 @@ impl MermaidEditor {
         let group = ArchitectureGroup {
             id: form.document.unused_id("group"),
             icon: Some("cloud".to_string()),
-            title: Some(NEW_GROUP_TITLE.to_string()),
+            title: Some(i18n::tr(NEW_GROUP_TITLE).to_string()),
             parent: None,
             comment: None,
         };
@@ -325,7 +325,8 @@ impl MermaidEditor {
             id: form.document.unused_id(kind.keyword()),
             icon: (kind == ArchitectureNodeKind::Service)
                 .then(|| ArchitectureIcon::Named("server".to_string())),
-            title: (kind == ArchitectureNodeKind::Service).then(|| NEW_SERVICE_TITLE.to_string()),
+            title: (kind == ArchitectureNodeKind::Service)
+                .then(|| i18n::tr(NEW_SERVICE_TITLE).to_string()),
             parent: None,
             comment: None,
         };
@@ -569,7 +570,7 @@ impl MermaidEditor {
             h_flex()
                 .w_full()
                 .gap_2()
-                .child(section_title("タイトル"))
+                .child(section_title(i18n::t!("Title")))
                 .child(
                     field_frame(
                         &form.title,
@@ -600,10 +601,14 @@ impl MermaidEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (rows, heading, prefix) = match list {
-            ItemList::Groups => (&form.groups, "グループ", "mermaid-architecture-group"),
+            ItemList::Groups => (
+                &form.groups,
+                i18n::t!("Groups"),
+                "mermaid-architecture-group",
+            ),
             ItemList::Nodes => (
                 &form.nodes,
-                "サービスとジャンクション",
+                i18n::t!("Services and Junctions"),
                 "mermaid-architecture-node",
             ),
         };
@@ -692,8 +697,8 @@ impl MermaidEditor {
                 line = line.child(div().flex_1());
             }
             let remove_tooltip = match list {
-                ItemList::Groups => "削除 (中身は 1 つ外のグループへ)",
-                ItemList::Nodes => "削除 (つながっている辺も削除)",
+                ItemList::Groups => i18n::t!("Delete (the contents move to the enclosing group)"),
+                ItemList::Nodes => i18n::t!("Delete (connected edges are deleted too)"),
             };
             line = line
                 .child(self.render_architecture_parent_menu(
@@ -726,21 +731,21 @@ impl MermaidEditor {
         let buttons = match list {
             ItemList::Groups => h_flex().gap_1().child(add_button(
                 "mermaid-architecture-add-group",
-                "グループを追加",
+                i18n::t!("Add Group"),
                 cx.listener(|this, _, window, cx| this.add_architecture_group(window, cx)),
             )),
             ItemList::Nodes => h_flex()
                 .gap_1()
                 .child(add_button(
                     "mermaid-architecture-add-service",
-                    "サービスを追加",
+                    i18n::t!("Add Service"),
                     cx.listener(|this, _, window, cx| {
                         this.add_architecture_node(ArchitectureNodeKind::Service, window, cx)
                     }),
                 ))
                 .child(add_button(
                     "mermaid-architecture-add-junction",
-                    "ジャンクションを追加",
+                    i18n::t!("Add Junction"),
                     cx.listener(|this, _, window, cx| {
                         this.add_architecture_node(ArchitectureNodeKind::Junction, window, cx)
                     }),
@@ -760,15 +765,19 @@ impl MermaidEditor {
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
             for (name, label) in KNOWN_ICONS {
                 let this = this.clone();
-                menu = menu.entry(format!("{label} ({name})"), None, move |window, cx| {
-                    this.update(cx, |this, cx| {
-                        this.set_architecture_icon(list, index, name, window, cx)
-                    })
-                    .log_err();
-                });
+                menu = menu.entry(
+                    format!("{} ({name})", i18n::tr(label)),
+                    None,
+                    move |window, cx| {
+                        this.update(cx, |this, cx| {
+                            this.set_architecture_icon(list, index, name, window, cx)
+                        })
+                        .log_err();
+                    },
+                );
             }
             let this = this.clone();
-            menu.entry("アイコンなし", None, move |window, cx| {
+            menu.entry(i18n::t!("No Icon"), None, move |window, cx| {
                 this.update(cx, |this, cx| {
                     this.set_architecture_icon(list, index, "", window, cx)
                 })
@@ -781,12 +790,12 @@ impl MermaidEditor {
         };
         DropdownMenu::new(
             SharedString::from(format!("{prefix}-{index}")),
-            "候補",
+            i18n::t!("Suggestions"),
             menu,
         )
         .style(DropdownStyle::Outlined)
         .trigger_size(ButtonSize::Compact)
-        .trigger_tooltip(Tooltip::text("よく使うアイコン"))
+        .trigger_tooltip(Tooltip::text(i18n::t!("Common Icons")))
         .into_any_element()
     }
 
@@ -806,7 +815,9 @@ impl MermaidEditor {
             let options = std::iter::once(None).chain(choices.iter().cloned().map(Some));
             for option in options {
                 let this = this.clone();
-                let label = option.clone().unwrap_or_else(|| "所属なし".to_string());
+                let label = option
+                    .clone()
+                    .unwrap_or_else(|| i18n::t!("No Group").to_string());
                 let is_selected = option == selected;
                 menu = menu.toggleable_entry(
                     label,
@@ -830,12 +841,12 @@ impl MermaidEditor {
         };
         let label = match current {
             Some(parent) => format!("in {parent}"),
-            None => "所属なし".to_string(),
+            None => i18n::t!("No Group").to_string(),
         };
         DropdownMenu::new(SharedString::from(format!("{prefix}-{index}")), label, menu)
             .style(DropdownStyle::Outlined)
             .trigger_size(ButtonSize::Compact)
-            .trigger_tooltip(Tooltip::text("中に置くグループ"))
+            .trigger_tooltip(Tooltip::text(i18n::t!("Parent Group")))
             .into_any_element()
     }
 
@@ -854,7 +865,10 @@ impl MermaidEditor {
             .map(|node| node.id.clone())
             .collect::<Vec<_>>();
         let last = form.edges.len().saturating_sub(1);
-        let mut section = v_flex().w_full().gap_1().child(section_title("辺"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Edges")));
         for (index, row) in form.edges.iter().enumerate() {
             let Some(edge) = current.edges.get(index) else {
                 continue;
@@ -911,7 +925,7 @@ impl MermaidEditor {
             .child(
                 add_button(
                     "mermaid-architecture-add-edge",
-                    "辺を追加",
+                    i18n::t!("Add Edge"),
                     cx.listener(|this, _, window, cx| this.add_architecture_edge(window, cx)),
                 )
                 .into_any_element(),
@@ -1004,7 +1018,11 @@ impl MermaidEditor {
                 div()
                     .w(rems(1.5))
                     .flex_none()
-                    .child(section_title(if is_from { "元" } else { "先" })),
+                    .child(section_title(if is_from {
+                        i18n::tc!("mermaid edge end", "From")
+                    } else {
+                        i18n::tc!("mermaid edge end", "To")
+                    })),
             )
             .child(
                 DropdownMenu::new(
@@ -1023,7 +1041,7 @@ impl MermaidEditor {
                 )
                 .style(DropdownStyle::Outlined)
                 .trigger_size(ButtonSize::Compact)
-                .trigger_tooltip(Tooltip::text("線をつなぐ辺")),
+                .trigger_tooltip(Tooltip::text(i18n::t!("Connection Side"))),
             )
             .child(
                 IconButton::new(
@@ -1038,9 +1056,9 @@ impl MermaidEditor {
                 .icon_size(IconSize::XSmall)
                 .toggle_state(arrow)
                 .tooltip(Tooltip::text(if arrow {
-                    "矢印あり。押すと矢印なし"
+                    i18n::t!("Arrow on. Click to remove the arrow.")
                 } else {
-                    "矢印なし。押すと矢印あり"
+                    i18n::t!("No arrow. Click to add an arrow.")
                 }))
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     this.update_architecture_edge(
@@ -1055,7 +1073,7 @@ impl MermaidEditor {
                     ("mermaid-architecture-edge-group", slot),
                     ToggleState::from(group_boundary),
                 )
-                .label("グループ端")
+                .label(i18n::t!("Group Edge"))
                 .label_size(LabelSize::Small)
                 .on_click(cx.listener(
                     move |this, state: &ToggleState, _window, cx| {

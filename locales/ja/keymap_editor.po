@@ -5,8 +5,232 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "<global>"
+msgstr "<グローバル>"
+
+msgid "<no arguments>"
+msgstr "<引数なし>"
+
+msgid "Action"
+msgstr "アクション"
+
+msgid "Action '{}' not found"
+msgstr "アクション「{}」が見つかりません。"
+
+msgid "Action Arguments"
+msgstr "アクションの引数"
+
+msgid "Action name is required"
+msgstr "アクション名を入力してください。"
+
+msgid "Arguments"
+msgstr "引数"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cannot remove a keybinding that does not exist"
+msgstr "存在しないキーバインドは削除できません。"
+
+msgid "Clear Keystrokes"
+msgstr "キーストロークを消去"
+
+msgid "Context"
+msgstr "コンテキスト"
+
+msgid "Copy Action"
+msgstr "アクション名をコピー"
+
+msgid "Copy Context"
+msgstr "コンテキストをコピー"
+
+msgid "Could not save updated keybinding"
+msgstr "更新後のキーバインドを保存できませんでした。"
+
+msgid "Create Keybinding"
+msgstr "キーバインドを追加"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Edit"
+msgstr "編集"
+
+msgid "Edit Arguments"
+msgstr "引数を編集"
+
+msgid "Edit Context"
+msgstr "コンテキストを編集"
+
+msgid "Edit Keybinding"
+msgstr "キーバインドを編集"
+
+msgid "Edit Keystroke"
+msgstr "キーストロークを編集"
+
+msgid "Edit in JSON"
+msgstr "JSON で編集"
+
+msgid "Edit this binding"
+msgstr "このキーバインドを編集"
+
+msgid "Failed to load keymap file"
+msgstr "キーマップファイルの読み込みに失敗しました。"
+
+msgid "Failed to parse action arguments as JSON"
+msgstr "アクションの引数を JSON として解析できませんでした。"
+
+msgid "Failed to parse key context"
+msgstr "キーコンテキストを解析できませんでした。"
+
+msgid "Failed to update keybinding"
+msgstr "キーバインドの更新に失敗しました。"
+
+msgid "Failed to validate action arguments"
+msgstr "アクションの引数を検証できませんでした。"
+
+msgid "Failed to write keymap file"
+msgstr "キーマップファイルの書き込みに失敗しました。"
+
+msgid "Filter action names…"
+msgstr "アクション名で絞り込み…"
+
+msgid "Filters"
+msgstr "フィルター"
+
+msgid "Hit it three times to execute"
+msgstr "3 回押すと実行されます"
+
+msgid "Keybinding Context"
+msgstr "キーバインドのコンテキスト"
+
+msgid "Keymap Editor"
+msgstr "キーマップエディター"
+
+msgid "Keystrokes"
+msgstr "キーストローク"
+
+msgid "Keystrokes cannot be empty"
+msgstr "キーストロークを入力してください。"
+
+msgid "No Action"
+msgstr "アクションなし"
+
+msgid "No conflicting keybinds found"
+msgstr "競合したキーバインドはありません"
+
+msgid "No conflicting keybinds found that match the provided query"
+msgstr "入力したクエリに一致する競合したキーバインドはありません"
+
+msgid "No keybinds found matching the entered keystrokes"
+msgstr "入力したキーストロークに一致するキーバインドはありません"
+
+msgid "No matches found for the provided query"
+msgstr "入力したクエリに一致するものはありません"
+
+msgid "REC"
+msgstr "記録中"
+
+msgid "SEARCH"
+msgstr "検索中"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Saved edits to the {} action."
+msgstr "{} アクションの変更を保存しました。"
+
+msgid "Search by Keystrokes"
+msgstr "キーストロークで検索"
+
+msgid "Show Matching Keybindings"
+msgstr "一致するキーバインドを表示"
+
+msgid "Show matching keybinds"
+msgstr "一致するキーバインドを表示"
+
+msgid "Source"
+msgstr "ソース"
+
+msgid "Start Recording"
+msgstr "記録を開始"
+
+msgid "Start Searching"
+msgstr "検索を開始"
+
+msgid "Stop Recording"
+msgstr "記録を停止"
+
+msgid "Stop Searching"
+msgstr "検索を停止"
+
+msgid "There is {count} binding with the same keystrokes."
+msgid_plural "There are {count} bindings with the same keystrokes."
+msgstr[0] "同じキーストロークのキーバインドが {count} 件あります。"
+
+msgid "This action is unbound"
+msgstr "このアクションにはキーが割り当てられていません"
+
+msgid "This binding is overridden by other bindings."
+msgstr "このキーバインドは他のキーバインドによって上書きされています。"
+
 msgid "This binding is overridden by other bindings.\nUse {}+click to edit this binding"
 msgstr "このキーバインドは他のキーバインドによって上書きされています。\n{}+クリックでこのキーバインドを編集します"
 
+msgid "This binding is overridden."
+msgstr "このキーバインドは上書きされています。"
+
+msgid "This keybinding is overridden by the '{}' binding from {}."
+msgstr "このキーバインドは{1}の '{0}' によって上書きされています。"
+
+msgid "Toggle Exact Match Mode"
+msgstr "完全一致モードを切り替え"
+
+msgid "Type an action name"
+msgstr "アクション名を入力"
+
 msgid "Use {}+click to show all conflicts"
 msgstr "{}+クリックですべての競合を表示します"
+
+msgid "User"
+msgstr "ユーザー"
+
+msgid "View"
+msgstr "表示"
+
+msgid "View conflicts"
+msgstr "競合を表示"
+
+msgid "Your keybind would conflict with other actions"
+msgstr "このキーバインドは他のアクションと競合します"
+
+msgid "Your keybind would conflict with the \"{}\" action"
+msgstr "このキーバインドは \"{}\" アクションと競合します"
+
+msgid "Your keybind would conflict with the \"{}\" action and {} other bindings"
+msgstr "このキーバインドは \"{}\" アクションおよび他の {} 件のキーバインドと競合します"
+
+msgid "the vim keymap"
+msgstr "Vim キーマップ"
+
+msgid "your base keymap"
+msgstr "ベースキーマップ"
+
+msgid "your keymap"
+msgstr "ユーザーキーマップ"
+
+msgctxt "keybinding"
+msgid "Categories"
+msgstr "カテゴリ"
+
+msgctxt "keybinding"
+msgid "Conflicts"
+msgstr "競合"
+
+msgctxt "keybinding"
+msgid "Create"
+msgstr "追加"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "既定"

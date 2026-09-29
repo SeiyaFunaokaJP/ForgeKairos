@@ -507,7 +507,10 @@ async fn test_requests_over_the_limits_are_refused(cx: &mut TestAppContext) {
     let error = show_highlights(&project, source("a"), too_many, cx)
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("50 件まで"), "{error}");
+    assert!(
+        error.to_string().contains("At most 50 highlights"),
+        "{error}"
+    );
     let assist = assist(&workspace, cx);
     assert_eq!(
         assist.read_with(cx, |assist, _| assist.displays.len()),
@@ -529,7 +532,10 @@ async fn test_requests_over_the_limits_are_refused(cx: &mut TestAppContext) {
     let error = show_annotations(&project, source("a"), too_many, cx)
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("20 件まで"), "{error}");
+    assert!(
+        error.to_string().contains("At most 20 annotations"),
+        "{error}"
+    );
 
     let too_many = (0..=MAX_TOUR_STEPS)
         .map(|_| step(worktree_id, "a.rs", 2, 2, "x"))
@@ -537,13 +543,13 @@ async fn test_requests_over_the_limits_are_refused(cx: &mut TestAppContext) {
     let error = start_tour(&project, source("a"), "多すぎる", too_many, cx)
         .await
         .unwrap_err();
-    assert!(error.to_string().contains("30 個まで"), "{error}");
+    assert!(error.to_string().contains("at most 30 steps"), "{error}");
 
     let error = start_tour(&project, source("a"), "空", Vec::new(), cx)
         .await
         .unwrap_err();
     assert!(
-        error.to_string().contains("ステップがありません"),
+        error.to_string().contains("The tour has no steps"),
         "{error}"
     );
     assert!(assist.read_with(cx, |assist, _| assist.tour.is_none()));
@@ -583,26 +589,23 @@ async fn test_unshowable_targets_are_skipped_with_reasons(cx: &mut TestAppContex
     assert_eq!(
         reasons,
         vec![
-            (
-                "missing.rs".to_string(),
-                "ファイルが見つかりません".to_string()
-            ),
-            ("dir".to_string(), "フォルダーは表示できません".to_string()),
+            ("missing.rs".to_string(), "File not found".to_string()),
+            ("dir".to_string(), "Folders can't be shown".to_string()),
             (
                 "big.txt".to_string(),
-                "ファイルが大きすぎます (4 MiB 超)".to_string()
+                "The file is too large (over 4 MiB)".to_string()
             ),
             (
                 "a.rs".to_string(),
-                "30 行目はファイルの外です (このファイルは 20 行)".to_string()
+                "Line 30 is past the end of the file (20 lines)".to_string()
             ),
             (
                 "a.rs".to_string(),
-                "行の範囲が正しくありません (0-1 行目)".to_string()
+                "Invalid line range (lines 0-1)".to_string()
             ),
             (
                 "a.rs".to_string(),
-                "行の範囲が正しくありません (3-2 行目)".to_string()
+                "Invalid line range (lines 3-2)".to_string()
             ),
         ]
     );
@@ -768,7 +771,7 @@ async fn test_nothing_opens_while_a_modal_is_open(cx: &mut TestAppContext) {
     assert_eq!(tour.shown, 1);
     assert!(editor_for(&workspace, "b.rs", cx).is_none());
     let assist = assist(&workspace, cx);
-    assert_eq!(tour_position(&assist, cx).as_deref(), Some("ツアー 1/1"));
+    assert_eq!(tour_position(&assist, cx).as_deref(), Some("Tour 1/1"));
 
     workspace.update_in(cx, |workspace, window, cx| {
         workspace.toggle_modal(window, cx, TestModal::new);
@@ -820,8 +823,8 @@ fn test_sanitize_markdown_leaves_no_images_hidden_links_or_html() {
         .collect::<String>();
     for expected in [
         "the docs",
-        "(画像: logo)",
-        "(画像)",
+        "(image: logo)",
+        "(image)",
         "<b>bold</b>",
         "<img src=x onerror=alert(1)>",
         "ref link",
@@ -856,9 +859,9 @@ fn test_single_line_collapses_and_cuts() {
     );
     assert_eq!(single_line("あいうえお", 3).as_ref(), "あいう…");
     assert_eq!(single_line("あいう", 3).as_ref(), "あいう");
-    assert_eq!(tour_status_label(1, 10), "ツアー 2/10");
-    assert_eq!(lines_label(lines(3, 3)), "3 行目");
-    assert_eq!(lines_label(lines(3, 5)), "3-5 行目");
+    assert_eq!(tour_status_label(1, 10), "Tour 2/10");
+    assert_eq!(lines_label(lines(3, 3)), "Line 3");
+    assert_eq!(lines_label(lines(3, 5)), "Lines 3-5");
 }
 
 #[gpui::test]
@@ -909,7 +912,7 @@ async fn test_tour_steps_forward_and_back(cx: &mut TestAppContext) {
         }
     );
     let assist = assist(&workspace, cx);
-    assert_eq!(tour_position(&assist, cx).as_deref(), Some("ツアー 1/3"));
+    assert_eq!(tour_position(&assist, cx).as_deref(), Some("Tour 1/3"));
     let editor_a = editor_for(&workspace, "a.rs", cx).unwrap();
     assert_eq!(card_in(&assist, &editor_a, cx), Some((0, 3, None)));
     assert_eq!(rows::<TourStepRows>(&editor_a, cx), vec![(1, 2)]);
@@ -920,7 +923,7 @@ async fn test_tour_steps_forward_and_back(cx: &mut TestAppContext) {
 
     assist.update(cx, |assist, cx| assist.step_by(1, cx));
     cx.run_until_parked();
-    assert_eq!(tour_position(&assist, cx).as_deref(), Some("ツアー 2/3"));
+    assert_eq!(tour_position(&assist, cx).as_deref(), Some("Tour 2/3"));
     let editor_b = editor_for(&workspace, "b.rs", cx).unwrap();
     assert_eq!(card_in(&assist, &editor_b, cx), Some((1, 3, None)));
     assert_eq!(rows::<TourStepRows>(&editor_b, cx), vec![(0, 1)]);
@@ -943,7 +946,7 @@ async fn test_tour_steps_forward_and_back(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(
         tour_position(&assist, cx).as_deref(),
-        Some("ツアー 3/3"),
+        Some("Tour 3/3"),
         "next on the last step stays there"
     );
 
@@ -953,7 +956,7 @@ async fn test_tour_steps_forward_and_back(cx: &mut TestAppContext) {
     }
     assert_eq!(
         tour_position(&assist, cx).as_deref(),
-        Some("ツアー 1/3"),
+        Some("Tour 1/3"),
         "previous on the first step stays there"
     );
     let editor_a = editor_for(&workspace, "a.rs", cx).unwrap();
@@ -1005,10 +1008,10 @@ async fn test_tour_keys_work_in_the_step_editor(cx: &mut TestAppContext) {
     focus(&editor_a, cx);
     cx.simulate_keystrokes("ctrl-alt-]");
     cx.run_until_parked();
-    assert_eq!(tour_position(&assist, cx).as_deref(), Some("ツアー 2/2"));
+    assert_eq!(tour_position(&assist, cx).as_deref(), Some("Tour 2/2"));
     cx.simulate_keystrokes("ctrl-alt-[");
     cx.run_until_parked();
-    assert_eq!(tour_position(&assist, cx).as_deref(), Some("ツアー 1/2"));
+    assert_eq!(tour_position(&assist, cx).as_deref(), Some("Tour 1/2"));
 
     assist.update(cx, |assist, cx| assist.end_tour(cx));
     cx.run_until_parked();
@@ -1100,7 +1103,7 @@ async fn test_tour_step_that_cannot_open(cx: &mut TestAppContext) {
     let assist = assist(&workspace, cx);
     assert_eq!(
         tour_position(&assist, cx).as_deref(),
-        Some("ツアー 2/4"),
+        Some("Tour 2/4"),
         "the tour starts at the first step that opens"
     );
     let editor_a = editor_for(&workspace, "a.rs", cx).unwrap();
@@ -1108,10 +1111,10 @@ async fn test_tour_step_that_cannot_open(cx: &mut TestAppContext) {
 
     assist.update(cx, |assist, cx| assist.step_by(1, cx));
     cx.run_until_parked();
-    assert_eq!(tour_position(&assist, cx).as_deref(), Some("ツアー 3/4"));
+    assert_eq!(tour_position(&assist, cx).as_deref(), Some("Tour 3/4"));
     assert_eq!(
         card_in(&assist, &editor_a, cx),
-        Some((2, 4, Some("ファイルが見つかりません".into()))),
+        Some((2, 4, Some("File not found".into()))),
         "the card stays put and says why"
     );
     assert!(rows::<TourStepRows>(&editor_a, cx).is_empty());
@@ -1133,8 +1136,49 @@ async fn test_tour_step_that_cannot_open(cx: &mut TestAppContext) {
     assert_eq!(outcome.shown, 0);
     assert_eq!(
         tour_position(&assist, cx).as_deref(),
-        Some("ツアー 4/4"),
+        Some("Tour 4/4"),
         "a tour with nothing to show does not replace the running one"
+    );
+}
+
+/// The agent is told why a step can't open in English whatever the UI
+/// language, while the tour card says it in the UI language.
+#[gpui::test]
+async fn test_unopenable_step_reason_is_english_for_the_agent_and_translated_on_the_card(
+    cx: &mut TestAppContext,
+) {
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
+    let (project, workspace, worktree_id, cx) = setup(cx).await;
+    let outcome = start_tour(
+        &project,
+        source("a"),
+        "穴あき",
+        vec![
+            step(worktree_id, "a.rs", 2, 3, "一"),
+            step(worktree_id, "missing.rs", 1, 1, "無い"),
+        ],
+        cx,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        outcome
+            .skipped
+            .iter()
+            .map(|skipped| skipped.reason.as_str())
+            .collect::<Vec<_>>(),
+        vec!["File not found"]
+    );
+
+    let assist = assist(&workspace, cx);
+    let editor_a = editor_for(&workspace, "a.rs", cx).unwrap();
+    assist.update(cx, |assist, cx| assist.step_by(1, cx));
+    cx.run_until_parked();
+    assert_eq!(
+        card_in(&assist, &editor_a, cx),
+        Some((1, 2, Some("ファイルが見つかりません".into())))
     );
 }
 
@@ -1319,10 +1363,7 @@ async fn test_missing_workspace_is_reported_in_japanese(cx: &mut TestAppContext)
         )
     });
     let error = task.await.unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "このプロジェクトを開いている Zed のウィンドウが見つかりません"
-    );
+    assert_eq!(error.to_string(), "No Zed window has this project open");
 }
 
 #[gpui::test]
@@ -1499,7 +1540,7 @@ async fn test_tour_card_buttons(cx: &mut TestAppContext) {
         .expect("the tour card is on screen");
     cx.simulate_click(next.center(), Modifiers::none());
     cx.run_until_parked();
-    assert_eq!(tour_position(&assist, cx).as_deref(), Some("ツアー 2/2"));
+    assert_eq!(tour_position(&assist, cx).as_deref(), Some("Tour 2/2"));
     assert_eq!(card_in(&assist, &editor, cx), Some((1, 2, None)));
 }
 
@@ -1706,10 +1747,7 @@ async fn test_request_for_a_closed_window_fails_quietly(cx: &mut TestAppContext)
         pending
     });
     let error = pending.await.unwrap_err();
-    assert_eq!(
-        error.to_string(),
-        "このプロジェクトを開いている Zed のウィンドウが見つかりません"
-    );
+    assert_eq!(error.to_string(), "No Zed window has this project open");
     cx.cx.update(|cx| display.clear(&project, &source("a"), cx));
     cx.cx.run_until_parked();
 }
@@ -1800,7 +1838,7 @@ async fn test_multibyte_file_shortened_under_the_displays(cx: &mut TestAppContex
             .skipped
             .first()
             .map(|skipped| skipped.reason.as_str()),
-        Some("9 行目はファイルの外です (このファイルは 4 行)")
+        Some("Line 9 is past the end of the file (4 lines)")
     );
 }
 
@@ -1828,7 +1866,7 @@ async fn test_tour_step_whose_file_was_deleted(cx: &mut TestAppContext) {
     assist.update(cx, |assist, cx| assist.step_by(1, cx));
     cx.run_until_parked();
     draw(cx);
-    assert_eq!(tour_position(&assist, cx).as_deref(), Some("ツアー 2/2"));
+    assert_eq!(tour_position(&assist, cx).as_deref(), Some("Tour 2/2"));
     let card = workspace.read_with(cx, |workspace, cx| {
         workspace.items_of_type::<Editor>(cx).collect::<Vec<_>>()
     });

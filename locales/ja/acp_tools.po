@@ -1,0 +1,36 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Clear Messages"
+msgstr "メッセージをクリア"
+
+msgid "Copy All Messages"
+msgstr "すべてのメッセージをコピー"
+
+msgid "Disconnected"
+msgstr "切断されました"
+
+msgid "No active connection"
+msgstr "アクティブな接続がありません"
+
+msgid "No active connections"
+msgstr "アクティブな接続がありません"
+
+msgid "No connection selected"
+msgstr "接続が選択されていません"
+
+msgid "No messages recorded yet"
+msgstr "まだメッセージが記録されていません"
+
+msgid "Reconnecting to {}"
+msgstr "{} に再接続しています…"
+
+msgid "Restart Connection"
+msgstr "接続を再起動"
+
+msgid "[unrecognized response]"
+msgstr "[認識できない応答]"

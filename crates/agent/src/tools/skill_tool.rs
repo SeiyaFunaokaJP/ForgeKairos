@@ -155,9 +155,9 @@ impl AgentTool for SkillTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("`{}` スキル", input.name).into()
+            i18n::t!("`{}` Skill", input.name).into()
         } else {
-            "スキル".into()
+            i18n::t!("Skill").into()
         }
     }
 
@@ -210,7 +210,7 @@ impl AgentTool for SkillTool {
             } else {
                 (self.body_resolver)(skill.clone(), cx).await.map_err(|e| {
                     SkillToolOutput::Error {
-                        error: e.to_string(),
+                        error: i18n::in_english(|| e.to_string()),
                     }
                 })?
             };
@@ -586,6 +586,62 @@ mod tests {
             }
             SkillToolOutput::Error { error } => panic!("expected Found, got: {error}"),
         }
+    }
+
+    /// A SKILL.md that no longer validates when it is read again is refused
+    /// to the model in English, while the same refusal reads in the UI
+    /// language where a slash command shows it.
+    #[gpui::test]
+    async fn test_skill_tool_refusal_is_english_in_a_japanese_ui(cx: &mut TestAppContext) {
+        init_test(cx);
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        const EDITED: &str = "---\nname: edited\ndescription: \"\"\n---\n\nBody";
+
+        let (skill, _body) = create_test_skill("edited", "Was valid when loaded", "Body");
+        let shown = agent_skills::read_skill_body_from_content_for_either_reader(
+            &skill.skill_file_path,
+            EDITED,
+        )
+        .expect_err("an empty description is refused")
+        .to_string();
+        assert!(
+            shown.contains("スキルの説明を入力してください。"),
+            "the UI wording: {shown}"
+        );
+
+        let skills = Arc::new(vec![skill]);
+        let tool = Arc::new(SkillTool::with_body_resolver(
+            move |_cx| skills.clone(),
+            |skill: Skill, _cx: &mut AsyncApp| {
+                Task::ready(
+                    agent_skills::read_skill_body_from_content_for_either_reader(
+                        &skill.skill_file_path,
+                        EDITED,
+                    ),
+                )
+            },
+        ));
+        let (mut sender, input) = ToolInput::<SkillToolInput>::test();
+        sender.send_full(json!({"name": "edited"}));
+        let (event_stream, _rx) = ToolCallEventStream::test();
+        let task = cx.update(|cx| tool.run(input, event_stream, cx));
+        let error = match task.await {
+            Err(SkillToolOutput::Error { error }) => error,
+            other => panic!("expected Error variant, got: {other:?}"),
+        };
+        assert!(
+            error.contains("Skill description cannot be empty"),
+            "{error}"
+        );
+        assert!(
+            !error.chars().any(|character| matches!(
+                character,
+                '\u{3000}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}' | '\u{ff00}'..='\u{ffef}'
+            )),
+            "Japanese left in {error}"
+        );
     }
 
     #[gpui::test]

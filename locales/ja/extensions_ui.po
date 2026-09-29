@@ -5,11 +5,210 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Agent Servers"
+msgstr "エージェントサーバー"
+
+msgid "All"
+msgstr "すべて"
+
+msgid "Basedpyright (Python language server) support is built-in to Zed!"
+msgstr "Basedpyright (Python 言語サーバー) のサポートは Zed に組み込まれています。"
+
+msgid "C support is built-in to Zed!"
+msgstr "C のサポートは Zed に組み込まれています。"
+
+msgid "C++ support is built-in to Zed!"
+msgstr "C++ のサポートは Zed に組み込まれています。"
+
+msgid "Claude Agent support is built-in to Zed!"
+msgstr "Claude Agent のサポートは Zed に組み込まれています。"
+
+msgid "Codex CLI support is built-in to Zed!"
+msgstr "Codex CLI のサポートは Zed に組み込まれています。"
+
+msgid "Copy Author Info"
+msgstr "作者情報をコピー"
+
+msgid "Copy Extension ID"
+msgstr "拡張機能 ID をコピー"
+
+msgid "Couldn't install the '{extension_id}' extension: the network allowlist blocked the connection to {hosts}."
+msgstr "拡張機能 '{extension_id}' をインストールできませんでした。ネットワーク許可リストにより {hosts} への接続が止められました。"
+
+msgid "Couldn't install the '{extension_id}' extension: {error}"
+msgstr "拡張機能 '{extension_id}' をインストールできませんでした: {error}"
+
+msgid "Debug Adapters"
+msgstr "デバッグアダプター"
+
+msgid "Dev extension '{extension_id}' is not installed."
+msgstr "開発中の拡張機能 '{extension_id}' はインストールされていません。"
+
 msgid "Do you want to install the recommended '{extension_id}' extension for '{file_name_or_extension}' files?"
 msgstr "'{file_name_or_extension}' ファイル向けの推奨拡張機能 '{extension_id}' をインストールしますか?"
+
+msgid "Downloads: {}"
+msgstr "ダウンロード数: {}"
+
+msgid "Enable Vim mode"
+msgstr "Vim モードを有効化"
+
+msgid "Extensions"
+msgstr "拡張機能"
+
+msgid "Failed to install dev extension: {}"
+msgstr "開発中の拡張機能のインストールに失敗しました: {}"
+
+msgid "Failed to load extensions. Please check your connection and try again."
+msgstr "拡張機能の読み込みに失敗しました。接続を確認してもう一度お試しください。"
+
+msgid "Gemini CLI support is built-in to Zed!"
+msgstr "Gemini CLI のサポートは Zed に組み込まれています。"
+
+msgid "Go support is built-in to Zed!"
+msgstr "Go のサポートは Zed に組み込まれています。"
+
+msgid "Grammars"
+msgstr "文法"
+
+msgid "Icon Themes"
+msgstr "アイコンテーマ"
+
+msgid "Incompatible"
+msgstr "非互換"
+
+msgid "Indexed Docs Providers"
+msgstr "インデックス済みドキュメントプロバイダー"
+
+msgid "Install"
+msgstr "インストール"
+
+msgid "Install Another Version..."
+msgstr "別のバージョンをインストール..."
+
+msgid "Install Dev Extension"
+msgstr "開発中の拡張機能をインストール"
+
+msgid "Installed"
+msgstr "インストール済み"
+
+msgid "Language Servers"
+msgstr "言語サーバー"
+
+msgid "Languages"
+msgstr "言語"
+
+msgid "Loading extensions…"
+msgstr "拡張機能を読み込んでいます…"
+
+msgid "MCP Servers"
+msgstr "MCP サーバー"
+
+msgid "No dev extensions are installed."
+msgstr "開発中の拡張機能はインストールされていません。"
+
+msgid "No dev extensions found"
+msgstr "開発中の拡張機能が見つかりません"
+
+msgid "No extensions that match your search."
+msgstr "検索条件に一致する拡張機能はありません。"
+
+msgid "No extensions."
+msgstr "拡張機能はありません。"
+
+msgid "No installed extensions that match your search."
+msgstr "検索条件に一致するインストール済みの拡張機能はありません。"
+
+msgid "No installed extensions."
+msgstr "インストール済みの拡張機能はありません。"
+
+msgid "No not installed extensions that match your search."
+msgstr "検索条件に一致する未インストールの拡張機能はありません。"
+
+msgid "No not installed extensions."
+msgstr "未インストールの拡張機能はありません。"
 
 msgid "No, don't install it"
 msgstr "インストールしない"
 
+msgid "Not Installed"
+msgstr "未インストール"
+
+msgid "Overridden by dev extension."
+msgstr "開発中の拡張機能によって上書きされています。"
+
+msgid "Python support is built-in to Zed!"
+msgstr "Python のサポートは Zed に組み込まれています。"
+
+msgid "React support is built-in to Zed!"
+msgstr "React のサポートは Zed に組み込まれています。"
+
+msgid "Rebuild"
+msgstr "再ビルド"
+
+msgid "Rebuild dev extension…"
+msgstr "開発中の拡張機能を再ビルド…"
+
+msgid "Ruff (linter for Python) support is built-in to Zed!"
+msgstr "Ruff (Python 用リンター) のサポートは Zed に組み込まれています。"
+
+msgid "Rust support is built-in to Zed!"
+msgstr "Rust のサポートは Zed に組み込まれています。"
+
+msgid "Search extensions..."
+msgstr "拡張機能を検索..."
+
+msgid "Select extension version..."
+msgstr "拡張機能のバージョンを選択..."
+
+msgid "Shell support is built-in to Zed!"
+msgstr "シェルのサポートは Zed に組み込まれています。"
+
+msgid "Slash Commands"
+msgstr "スラッシュコマンド"
+
+msgid "Snippets"
+msgstr "スニペット"
+
+msgid "Tailwind CSS support is built-in to Zed!"
+msgstr "Tailwind CSS のサポートは Zed に組み込まれています。"
+
+msgid "Themes"
+msgstr "テーマ"
+
+msgid "Ty (Python language server) support is built-in to Zed!"
+msgstr "Ty (Python 言語サーバー) のサポートは Zed に組み込まれています。"
+
+msgid "Typescript support is built-in to Zed!"
+msgstr "TypeScript のサポートは Zed に組み込まれています。"
+
+msgid "Uninstall"
+msgstr "アンインストール"
+
+msgid "Upgrade"
+msgstr "アップグレード"
+
+msgid "View Documentation"
+msgstr "ドキュメントを表示"
+
+msgid "Vim support is built-in to Zed!"
+msgstr "Vim のサポートは Zed に組み込まれています。"
+
+msgid "Visit Extension Repository"
+msgstr "拡張機能のリポジトリを開きます"
+
 msgid "Yes, install extension"
 msgstr "インストール"
+
+msgid "Zed comes with basic Git support—more features are coming in the future."
+msgstr "Zed には基本的な Git サポートが付属しています。今後さらに機能が追加されます。"
+
+msgid "Zed supports linking to a source line on GitHub and others."
+msgstr "Zed は GitHub などのソース行へのリンク作成に対応しています。"
+
+msgid "v{version} is not compatible with this version of Zed."
+msgstr "v{version} はこのバージョンの Zed と互換性がありません。"
+
+msgctxt "extension card"
+msgid "Configure"
+msgstr "構成"

@@ -165,7 +165,7 @@ impl Addon for CommitDiffAddon {
         menu.when_some(file_to_open, |menu, file| {
             let commit_view = self.commit_view.clone();
             menu.entry(
-                "プロジェクト内のファイルを開く",
+                i18n::t!("Open File in Project"),
                 Some(Box::new(OpenFileAtHead)),
                 move |window, cx| {
                     commit_view
@@ -354,7 +354,7 @@ impl CommitView {
                 let is_binary = file.is_binary;
 
                 let new_text = if is_binary {
-                    "(バイナリファイルのため表示されません)".to_string()
+                    i18n::t!("(binary file not shown)").to_string()
                 } else {
                     raw_new_text
                 };
@@ -755,9 +755,9 @@ impl CommitView {
         let has_more = self.commit.message.trim().contains('\n');
         let is_expanded = self.message_expanded;
         let expand_tooltip = if is_expanded {
-            "コミットの説明を折りたたむ"
+            i18n::t!("Fold Commit Description")
         } else {
-            "コミットの説明を展開"
+            i18n::t!("Expand Commit Description")
         };
 
         v_flex()
@@ -830,7 +830,7 @@ impl CommitView {
                     )
                     .when(self.stash.is_none(), |this| {
                         this.child(
-                            Button::new("sha", "コミット SHA")
+                            Button::new("sha", i18n::t!("Commit SHA"))
                                 .start_icon(
                                     Icon::new(copy_icon)
                                         .size(IconSize::Small)
@@ -840,7 +840,7 @@ impl CommitView {
                                     let commit_sha = commit_sha.clone();
                                     move |_, cx| {
                                         Tooltip::with_meta(
-                                            "コミット SHA をコピー",
+                                            i18n::t!("Copy Commit SHA"),
                                             None,
                                             commit_sha.clone(),
                                             cx,
@@ -910,8 +910,8 @@ impl CommitView {
     fn apply_stash(workspace: &mut Workspace, window: &mut Window, cx: &mut App) {
         Self::stash_action(
             workspace,
-            "適用",
-            "適用し",
+            i18n::t!("Apply"),
+            |stash| i18n::t!("Apply stash@{{{}}}?", stash),
             window,
             cx,
             async move |repository, sha, stash, commit_view, workspace, cx| {
@@ -938,8 +938,8 @@ impl CommitView {
     fn pop_stash(workspace: &mut Workspace, window: &mut Window, cx: &mut App) {
         Self::stash_action(
             workspace,
-            "取り出す",
-            "取り出し",
+            i18n::t!("Pop"),
+            |stash| i18n::t!("Pop stash@{{{}}}?", stash),
             window,
             cx,
             async move |repository, sha, stash, commit_view, workspace, cx| {
@@ -966,8 +966,8 @@ impl CommitView {
     fn remove_stash(workspace: &mut Workspace, window: &mut Window, cx: &mut App) {
         Self::stash_action(
             workspace,
-            "破棄",
-            "破棄し",
+            i18n::t!("Drop"),
+            |stash| i18n::t!("Drop stash@{{{}}}?", stash),
             window,
             cx,
             async move |repository, sha, stash, commit_view, workspace, cx| {
@@ -991,13 +991,12 @@ impl CommitView {
         );
     }
 
-    /// `confirm_label` は確認プロンプトのボタンラベル (体言止め)、
-    /// `prompt_verb` は「〜ますか?」に続く連用形 (例: 「適用し」)。
-    /// 日本語では動詞が文末に来るため、表示用に 2 つに分けている。
+    /// The question is a whole message per action, since languages put the verb in
+    /// different places around the stash name.
     fn stash_action<AsyncFn>(
         workspace: &mut Workspace,
-        confirm_label: &str,
-        prompt_verb: &str,
+        str_action: &str,
+        prompt_message: fn(usize) -> String,
         window: &mut Window,
         cx: &mut App,
         callback: AsyncFn,
@@ -1021,9 +1020,9 @@ impl CommitView {
         let sha = commit_view.read(cx).commit.sha.clone();
         let answer = window.prompt(
             PromptLevel::Info,
-            &format!("stash@{{{}}} を{}ますか?", stash, prompt_verb),
+            &prompt_message(stash),
             None,
-            &[confirm_label, "キャンセル"],
+            &[str_action, i18n::t!("Cancel")],
             cx,
         );
 
@@ -1467,7 +1466,7 @@ impl Render for CommitViewToolbar {
                     .icon_size(IconSize::Small)
                     .tooltip(move |_, cx| {
                         Tooltip::for_action(
-                            "ファイル内を検索",
+                            i18n::t!("Buffer Search"),
                             &zed_actions::buffer_search::Deploy::find(),
                             cx,
                         )
@@ -1483,7 +1482,7 @@ impl Render for CommitViewToolbar {
                 this.child(
                     IconButton::new("show-in-git-graph", IconName::GitGraph)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("コミットグラフで表示"))
+                        .tooltip(Tooltip::text(i18n::t!("Show in Git Graph")))
                         .on_click(move |_, window, cx| {
                             window.dispatch_action(
                                 Box::new(crate::git_graph::OpenAtCommit {
@@ -1498,7 +1497,7 @@ impl Render for CommitViewToolbar {
 
                     IconButton::new("view_on_provider", icon)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text(format!("{} で表示", provider_name)))
+                        .tooltip(Tooltip::text(i18n::t!("View on {}", provider_name)))
                         .on_click(move |_, _, cx| cx.open_url(&url))
                 }))
             })

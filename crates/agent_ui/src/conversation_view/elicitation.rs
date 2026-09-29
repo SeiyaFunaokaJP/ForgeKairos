@@ -238,7 +238,7 @@ impl ElicitationFormSubmission {
                 ) => {
                     if value.is_empty() {
                         if is_required {
-                            Err(format!("{} は必須です。", property_title(name, property)).into())
+                            Err(i18n::t!("{} is required", property_title(name, property)).into())
                         } else {
                             Ok(None)
                         }
@@ -258,7 +258,7 @@ impl ElicitationFormSubmission {
                             })
                             .map(|()| Some(value.clone().into()))
                     } else if is_required {
-                        Err(format!("{} は必須です。", property_title(name, property)).into())
+                        Err(i18n::t!("{} is required", property_title(name, property)).into())
                     } else {
                         Ok(None)
                     }
@@ -270,7 +270,7 @@ impl ElicitationFormSubmission {
                     let value = value.trim();
                     if value.is_empty() {
                         if is_required {
-                            Err(format!("{} は必須です。", property_title(name, property)).into())
+                            Err(i18n::t!("{} is required", property_title(name, property)).into())
                         } else {
                             Ok(None)
                         }
@@ -286,7 +286,7 @@ impl ElicitationFormSubmission {
                     let value = value.trim();
                     if value.is_empty() {
                         if is_required {
-                            Err(format!("{} は必須です。", property_title(name, property)).into())
+                            Err(i18n::t!("{} is required", property_title(name, property)).into())
                         } else {
                             Ok(None)
                         }
@@ -322,17 +322,16 @@ impl ElicitationFormSubmission {
                         .min_items
                         .is_some_and(|min_items| values.len() < min_items as usize)
                     {
-                        Err(format!(
-                            "{} の選択数が不足しています。",
-                            property_title(name, property)
+                        Err(
+                            i18n::t!("{} needs more selections", property_title(name, property))
+                                .into(),
                         )
-                        .into())
                     } else if schema
                         .max_items
                         .is_some_and(|max_items| values.len() > max_items as usize)
                     {
                         Err(
-                            format!("{} の選択数が多すぎます。", property_title(name, property))
+                            i18n::t!("{} has too many selections", property_title(name, property))
                                 .into(),
                         )
                     } else {
@@ -376,7 +375,7 @@ mod tests {
             validate_string_value("Email".into(), &schema, "not-an-email")
                 .expect_err("invalid email should be rejected")
                 .to_string(),
-            "Email はメールアドレスである必要があります。"
+            "Email must be an email address"
         );
     }
 
@@ -390,7 +389,7 @@ mod tests {
             validate_string_value("Environment".into(), &schema, "dev-42")
                 .expect_err("pattern mismatch should be rejected")
                 .to_string(),
-            "Environment が要求されたパターンに一致しません。"
+            "Environment does not match the requested pattern"
         );
     }
 
@@ -404,7 +403,7 @@ mod tests {
             validate_string_value("Environment".into(), &schema, "prod-45")
                 .expect_err("backreference mismatch should be rejected")
                 .to_string(),
-            "Environment が要求されたパターンに一致しません。"
+            "Environment does not match the requested pattern"
         );
     }
 
@@ -416,7 +415,7 @@ mod tests {
             validate_string_value("Value".into(), &oversized_pattern, "a")
                 .expect_err("oversized pattern should be rejected")
                 .to_string(),
-            "Value の検証パターンが不正です。"
+            "Value has an invalid validation pattern"
         );
 
         let schema = acp::StringPropertySchema::new().pattern(".*");
@@ -425,7 +424,7 @@ mod tests {
             validate_string_value("Value".into(), &schema, &oversized_value)
                 .expect_err("oversized pattern input should be rejected")
                 .to_string(),
-            "Value が長すぎるため安全に検証できません。"
+            "Value is too long to validate safely"
         );
     }
 
@@ -444,7 +443,7 @@ mod tests {
                 validate_number_value("Amount".into(), &schema, value)
                     .expect_err("non-finite number should be rejected")
                     .to_string(),
-                "Amount は有限の数値である必要があります。"
+                "Amount must be a finite number"
             );
         }
     }
@@ -762,7 +761,7 @@ mod tests {
                     .get("environment")
                     .expect("environment should have an error")
                     .to_string(),
-                "Environment は選択肢のいずれかである必要があります。"
+                "Environment must be one of the provided options"
             );
 
             Editor::single_line(window, cx)
@@ -802,21 +801,21 @@ mod tests {
                     .get("account")
                     .expect("account should have an error")
                     .to_string(),
-                "account は必須です。"
+                "account is required"
             );
             assert_eq!(
                 errors
                     .get("age")
                     .expect("age should have an error")
                     .to_string(),
-                "Age は整数である必要があります。"
+                "Age must be an integer"
             );
             assert_eq!(
                 errors
                     .get("environment")
                     .expect("environment should have an error")
                     .to_string(),
-                "Environment は選択肢のいずれかである必要があります。"
+                "Environment must be one of the provided options"
             );
 
             Editor::single_line(window, cx)
@@ -1108,19 +1107,19 @@ fn validate_number_value(
 ) -> Result<f64, SharedString> {
     let parsed = value
         .parse::<f64>()
-        .map_err(|_| SharedString::from(format!("{title} は数値である必要があります。")))?;
+        .map_err(|_| SharedString::from(i18n::t!("{title} must be a number")))?;
     if !parsed.is_finite() {
-        return Err(format!("{title} は有限の数値である必要があります。").into());
+        return Err(i18n::t!("{title} must be a finite number").into());
     }
     if let Some(minimum) = schema.minimum
         && parsed < minimum
     {
-        return Err(format!("{title} は {minimum} 以上である必要があります。").into());
+        return Err(i18n::t!("{title} must be at least {minimum}").into());
     }
     if let Some(maximum) = schema.maximum
         && parsed > maximum
     {
-        return Err(format!("{title} は {maximum} 以下である必要があります。").into());
+        return Err(i18n::t!("{title} must be at most {maximum}").into());
     }
 
     Ok(parsed)
@@ -1133,16 +1132,16 @@ fn validate_integer_value(
 ) -> Result<i64, SharedString> {
     let parsed = value
         .parse::<i64>()
-        .map_err(|_| SharedString::from(format!("{title} は整数である必要があります。")))?;
+        .map_err(|_| SharedString::from(i18n::t!("{title} must be an integer")))?;
     if let Some(minimum) = schema.minimum
         && parsed < minimum
     {
-        return Err(format!("{title} は {minimum} 以上である必要があります。").into());
+        return Err(i18n::t!("{title} must be at least {minimum}").into());
     }
     if let Some(maximum) = schema.maximum
         && parsed > maximum
     {
-        return Err(format!("{title} は {maximum} 以下である必要があります。").into());
+        return Err(i18n::t!("{title} must be at most {maximum}").into());
     }
 
     Ok(parsed)
@@ -1158,13 +1157,13 @@ fn validate_string_value(
         .min_length
         .is_some_and(|min_length| length < min_length as usize)
     {
-        return Err(format!("{title} が短すぎます。").into());
+        return Err(i18n::t!("{title} is too short").into());
     }
     if schema
         .max_length
         .is_some_and(|max_length| length > max_length as usize)
     {
-        return Err(format!("{title} が長すぎます。").into());
+        return Err(i18n::t!("{title} is too long").into());
     }
 
     validate_string_pattern_and_format(title, schema, value)
@@ -1179,7 +1178,7 @@ fn validate_single_select_value(
     if options.iter().any(|option| option.value.as_str() == value) {
         Ok(())
     } else {
-        Err(format!("{title} は選択肢のいずれかである必要があります。").into())
+        Err(i18n::t!("{title} must be one of the provided options").into())
     }
 }
 
@@ -1202,10 +1201,10 @@ fn validate_string_pattern_and_format(
         .as_ref()
         .is_some_and(|pattern| pattern.len() > MAX_ELICITATION_PATTERN_BYTES)
     {
-        return Err(format!("{title} の検証パターンが不正です。").into());
+        return Err(i18n::t!("{title} has an invalid validation pattern").into());
     }
     if schema.pattern.is_some() && value.len() > MAX_ELICITATION_PATTERN_INPUT_BYTES {
-        return Err(format!("{title} が長すぎるため安全に検証できません。").into());
+        return Err(i18n::t!("{title} is too long to validate safely").into());
     }
 
     let mut validation_schema = serde_json::Map::new();
@@ -1238,9 +1237,9 @@ fn validate_string_pattern_and_format(
         .build(&validation_schema)
         .map_err(|_| {
             if schema.pattern.is_some() {
-                format!("{title} の検証パターンが不正です。")
+                i18n::t!("{title} has an invalid validation pattern")
             } else {
-                format!("{title} の検証形式が不正です。")
+                i18n::t!("{title} has an invalid validation format")
             }
         })?;
     let value = serde_json::Value::String(value.to_string());
@@ -1249,7 +1248,7 @@ fn validate_string_pattern_and_format(
             error.kind(),
             jsonschema::error::ValidationErrorKind::BacktrackLimitExceeded { .. }
         ) {
-            return Err(format!("{title} の検証パターンが複雑すぎます。").into());
+            return Err(i18n::t!("{title} has a validation pattern that is too complex").into());
         }
     } else {
         return Ok(());
@@ -1259,9 +1258,9 @@ fn validate_string_pattern_and_format(
         schema.pattern.is_some(),
         schema.format.and_then(string_format_label),
     ) {
-        (true, Some(_)) => Err(format!("{title} が要求された制約に一致しません。").into()),
-        (true, None) => Err(format!("{title} が要求されたパターンに一致しません。").into()),
-        (false, Some(format)) => Err(format!("{title} は{format}である必要があります。").into()),
+        (true, Some(_)) => Err(i18n::t!("{title} does not match the requested constraints").into()),
+        (true, None) => Err(i18n::t!("{title} does not match the requested pattern").into()),
+        (false, Some(format)) => Err(i18n::t!("{title} must be {format}").into()),
         (false, None) => Ok(()),
     }
 }
@@ -1278,10 +1277,10 @@ fn string_format_json_name(format: acp::StringFormat) -> Option<&'static str> {
 
 fn string_format_label(format: acp::StringFormat) -> Option<&'static str> {
     match format {
-        acp::StringFormat::Email => Some("メールアドレス"),
-        acp::StringFormat::Uri => Some("URI"),
-        acp::StringFormat::Date => Some("日付"),
-        acp::StringFormat::DateTime => Some("日時"),
+        acp::StringFormat::Email => Some(i18n::t!("an email address")),
+        acp::StringFormat::Uri => Some(i18n::t!("a URI")),
+        acp::StringFormat::Date => Some(i18n::t!("a date")),
+        acp::StringFormat::DateTime => Some(i18n::t!("a date and time")),
         _ => None,
     }
 }
@@ -1465,14 +1464,22 @@ impl<'a> ElicitationCard<'a> {
             (ElicitationStatus::Accepted, acp::ElicitationMode::Url(_))
         );
         let (status_label, status_icon, status_color) = match &self.elicitation.status {
-            ElicitationStatus::Pending { .. } => ("入力待ち", IconName::Info, Color::Info),
-            ElicitationStatus::Accepted if is_accepted_url => {
-                ("完了待ち", IconName::Info, Color::Info)
+            ElicitationStatus::Pending { .. } => (
+                i18n::tc!("elicitation status", "Waiting for input"),
+                IconName::Info,
+                Color::Info,
+            ),
+            ElicitationStatus::Accepted if is_accepted_url => (
+                i18n::t!("Waiting for completion"),
+                IconName::Info,
+                Color::Info,
+            ),
+            ElicitationStatus::Accepted => (i18n::t!("Submitted"), IconName::Check, Color::Success),
+            ElicitationStatus::Declined => (i18n::t!("Declined"), IconName::Close, Color::Muted),
+            ElicitationStatus::Canceled => (i18n::t!("Canceled"), IconName::Circle, Color::Muted),
+            ElicitationStatus::Completed => {
+                (i18n::t!("Completed"), IconName::Check, Color::Success)
             }
-            ElicitationStatus::Accepted => ("送信済み", IconName::Check, Color::Success),
-            ElicitationStatus::Declined => ("拒否済み", IconName::Close, Color::Muted),
-            ElicitationStatus::Canceled => ("キャンセル済み", IconName::Circle, Color::Muted),
-            ElicitationStatus::Completed => ("完了", IconName::Check, Color::Success),
         };
 
         let body = v_flex()
@@ -1514,7 +1521,7 @@ impl<'a> ElicitationCard<'a> {
                                     .color(status_color),
                             )
                             .child(
-                                Label::new(format!("{} からの入力要求", self.requester_name))
+                                Label::new(i18n::t!("Input Requested by {}", self.requester_name))
                                     .size(LabelSize::Custom(tool_name_font_size))
                                     .truncate(),
                             ),
@@ -1885,7 +1892,7 @@ impl<'a> ElicitationCard<'a> {
                             h_flex()
                                 .gap_1()
                                 .child(
-                                    Label::new("接続先")
+                                    Label::new(i18n::t!("Destination"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
@@ -1904,8 +1911,8 @@ impl<'a> ElicitationCard<'a> {
                                                 .color(Color::Warning),
                                         )
                                         .child(
-                                            Label::new(format!(
-                                                "この国際化アドレスは {decoded_host} と表示されます。よく確認してください。"
+                                            Label::new(i18n::t!(
+                                                "This internationalized address displays as {decoded_host}. Verify it carefully."
                                             ))
                                             .size(LabelSize::Small)
                                             .color(Color::Warning),
@@ -1951,11 +1958,11 @@ impl<'a> ElicitationCard<'a> {
             open_url.is_some() && matches!(self.elicitation.status, ElicitationStatus::Accepted);
         let is_submitting = self.form_state.is_some_and(|state| state.is_submitting);
         let (accept_label, accept_icon, accept_icon_color) = if is_accepted_url {
-            ("もう一度開く", IconName::ArrowUpRight, Color::Muted)
+            (i18n::t!("Open Again"), IconName::ArrowUpRight, Color::Muted)
         } else if open_url.is_some() {
-            ("開く", IconName::ArrowUpRight, Color::Muted)
+            (i18n::t!("Open"), IconName::ArrowUpRight, Color::Muted)
         } else {
-            ("送信", IconName::Check, Color::Success)
+            (i18n::t!("Submit"), IconName::Check, Color::Success)
         };
         let border_color = cx.theme().colors().border.opacity(0.8);
         let on_submit = self.handlers.on_submit.clone();
@@ -1997,7 +2004,7 @@ impl<'a> ElicitationCard<'a> {
             )
             .when(!is_accepted_url, |this| {
                 this.child(
-                    Button::new(("elicitation-decline", self.entry_ix), "拒否")
+                    Button::new(("elicitation-decline", self.entry_ix), i18n::t!("Decline"))
                         .start_icon(
                             Icon::new(IconName::Close)
                                 .size(IconSize::XSmall)
@@ -2009,7 +2016,7 @@ impl<'a> ElicitationCard<'a> {
                         }),
                 )
                 .child(
-                    Button::new(("elicitation-cancel", self.entry_ix), "キャンセル")
+                    Button::new(("elicitation-cancel", self.entry_ix), i18n::t!("Cancel"))
                         .label_size(LabelSize::Small)
                         .on_click(move |_, window, cx| {
                             on_cancel(cancel_id.clone(), window, cx);
@@ -2018,11 +2025,14 @@ impl<'a> ElicitationCard<'a> {
             })
             .when(is_accepted_url, |this| {
                 this.child(
-                    Button::new(("elicitation-dismiss-url", self.entry_ix), "キャンセル")
-                        .label_size(LabelSize::Small)
-                        .on_click(move |_, window, cx| {
-                            on_dismiss_url(dismiss_id.clone(), window, cx);
-                        }),
+                    Button::new(
+                        ("elicitation-dismiss-url", self.entry_ix),
+                        i18n::t!("Cancel"),
+                    )
+                    .label_size(LabelSize::Small)
+                    .on_click(move |_, window, cx| {
+                        on_dismiss_url(dismiss_id.clone(), window, cx);
+                    }),
                 )
             })
             .into_any_element()

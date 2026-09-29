@@ -184,7 +184,7 @@ impl ManageProfilesModal {
     ) {
         let name_editor = cx.new(|cx| Editor::single_line(window, cx));
         name_editor.update(cx, |editor, cx| {
-            editor.set_placeholder_text("プロファイル名", window, cx);
+            editor.set_placeholder_text(i18n::t!("Profile name"), window, cx);
         });
 
         self.mode = Mode::NewProfile(NewProfileMode {
@@ -545,7 +545,7 @@ impl ManageProfilesModal {
                             h_flex()
                                 .gap_1()
                                 .child(
-                                    Label::new("カスタマイズ")
+                                    Label::new(i18n::t!("Customize"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
@@ -575,7 +575,7 @@ impl ManageProfilesModal {
             div()
                 .track_focus(&self.focus_handle(cx))
                 .size_full()
-                .child(ProfileModalHeader::new("エージェントプロファイル", None))
+                .child(ProfileModalHeader::new(i18n::t!("Agent Profiles"), None))
                 .child(
                     v_flex()
                         .pb_1()
@@ -589,7 +589,7 @@ impl ManageProfilesModal {
                             this.child(ListSeparator)
                                 .child(
                                     div().pl_2().pb_1().child(
-                                        Label::new("カスタムプロファイル")
+                                        Label::new(i18n::t!("Custom Profiles"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     ),
@@ -618,7 +618,7 @@ impl ManageProfilesModal {
                                         .inset(true)
                                         .spacing(ListItemSpacing::Sparse)
                                         .start_slot(Icon::new(IconName::Plus))
-                                        .child(Label::new("新しいプロファイルを追加"))
+                                        .child(Label::new(i18n::t!("Add New Profile")))
                                         .on_click({
                                             cx.listener(move |this, _, window, cx| {
                                                 this.new_profile(None, window, cx);
@@ -655,7 +655,7 @@ impl ManageProfilesModal {
                 .profiles
                 .get(base_profile_id)
                 .map(|profile| profile.name.clone())
-                .unwrap_or_else(|| "不明".into())
+                .unwrap_or_else(|| i18n::t!("Unknown").into())
         });
 
         v_flex()
@@ -663,8 +663,8 @@ impl ManageProfilesModal {
             .track_focus(&self.focus_handle(cx))
             .child(ProfileModalHeader::new(
                 match &base_profile_name {
-                    Some(base_profile) => format!("{base_profile} を基に作成"),
-                    None => "新しいプロファイル".into(),
+                    Some(base_profile) => i18n::t!("Fork {base_profile}"),
+                    None => i18n::t!("New Profile").into(),
                 },
                 match base_profile_name {
                     Some(_) => Some(IconName::Scissors),
@@ -687,7 +687,7 @@ impl ManageProfilesModal {
             .profiles
             .get(&mode.profile_id)
             .map(|profile| profile.name.clone())
-            .unwrap_or_else(|| "不明".into());
+            .unwrap_or_else(|| i18n::t!("Unknown").into());
 
         let icon = match mode.profile_id.as_str() {
             "write" => IconName::Pencil,
@@ -728,7 +728,7 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("このプロファイルを基に作成"))
+                                        .child(Label::new(i18n::t!("Fork Profile")))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
                                             cx.listener(move |this, _, window, cx| {
@@ -769,7 +769,7 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("既定のモデルを構成"))
+                                        .child(Label::new(i18n::t!("Configure Default Model")))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
                                             cx.listener(move |this, _, window, cx| {
@@ -810,7 +810,7 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("組み込みツールを構成"))
+                                        .child(Label::new(i18n::t!("Configure Built-in Tools")))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
                                             cx.listener(move |this, _, window, cx| {
@@ -847,7 +847,7 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("MCP ツールを構成"))
+                                        .child(Label::new(i18n::t!("Configure MCP Tools")))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
                                             cx.listener(move |this, _, window, cx| {
@@ -884,7 +884,10 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Error),
                                         )
-                                        .child(Label::new("プロファイルを削除").color(Color::Error))
+                                        .child(
+                                            Label::new(i18n::t!("Delete Profile"))
+                                                .color(Color::Error),
+                                        )
                                         .disabled(builtin_profiles::is_builtin(&mode.profile_id))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
@@ -918,7 +921,7 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("戻る"))
+                                        .child(Label::new(i18n::t!("Go Back")))
                                         .end_slot(
                                             div().child(
                                                 KeyBinding::for_action_in(
@@ -970,7 +973,7 @@ impl Render for ManageProfilesModal {
                             .size(IconSize::Small)
                             .color(Color::Muted),
                     )
-                    .child(Label::new("戻る"))
+                    .child(Label::new(i18n::t!("Go Back")))
                     .end_slot(
                         div().child(
                             KeyBinding::for_action_in(&menu::Cancel, &self.focus_handle, cx)
@@ -1013,12 +1016,12 @@ impl Render for ManageProfilesModal {
                         .profiles
                         .get(profile_id)
                         .map(|profile| profile.name.clone())
-                        .unwrap_or_else(|| "不明".into());
+                        .unwrap_or_else(|| i18n::t!("Unknown").into());
 
                     v_flex()
                         .pb_1()
                         .child(ProfileModalHeader::new(
-                            format!("{profile_name} — 組み込みツールを構成"),
+                            i18n::t!("{profile_name} — Configure Built-in Tools"),
                             Some(IconName::Settings),
                         ))
                         .child(ListSeparator)
@@ -1036,12 +1039,12 @@ impl Render for ManageProfilesModal {
                         .profiles
                         .get(profile_id)
                         .map(|profile| profile.name.clone())
-                        .unwrap_or_else(|| "不明".into());
+                        .unwrap_or_else(|| i18n::t!("Unknown").into());
 
                     v_flex()
                         .pb_1()
                         .child(ProfileModalHeader::new(
-                            format!("{profile_name} — 既定のモデルを構成"),
+                            i18n::t!("{profile_name} — Configure Default Model"),
                             Some(IconName::ZedAgent),
                         ))
                         .child(ListSeparator)
@@ -1059,12 +1062,12 @@ impl Render for ManageProfilesModal {
                         .profiles
                         .get(profile_id)
                         .map(|profile| profile.name.clone())
-                        .unwrap_or_else(|| "不明".into());
+                        .unwrap_or_else(|| i18n::t!("Unknown").into());
 
                     v_flex()
                         .pb_1()
                         .child(ProfileModalHeader::new(
-                            format!("{profile_name} — MCP ツールを構成"),
+                            i18n::t!("{profile_name} — Configure MCP Tools"),
                             Some(IconName::ToolHammer),
                         ))
                         .child(ListSeparator)

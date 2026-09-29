@@ -31,6 +31,7 @@ fs.workspace = true
 futures.workspace = true
 futures-lite.workspace = true
 gpui.workspace = true
+i18n.workspace = true
 itertools.workspace = true
 libc.workspace = true
 log.workspace = true
@@ -63,6 +64,7 @@ windows.workspace = true
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
+i18n_catalog = { workspace = true, features = ["test-support"] }
 rand.workspace = true
 settings = { workspace = true, features = ["test-support"] }
 util_macros.workspace = true

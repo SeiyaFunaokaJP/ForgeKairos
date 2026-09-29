@@ -1,0 +1,66 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "同じ名前のファイルまたはフォルダーがすでに存在します。置き換えると現在の内容が上書きされます。"
+
+msgid "Argument required"
+msgstr "引数が必要です"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Disable Vim Mode"
+msgstr "Vim モードを無効にします"
+
+msgid "Enable Vim Mode"
+msgstr "Vim モードを有効にします"
+
+msgid "Failed to :w"
+msgstr ":w を実行できませんでした"
+
+msgid "Failed to save"
+msgstr "保存できませんでした"
+
+msgid "Failed to write lines"
+msgstr "行を書き出せませんでした"
+
+msgid "Invalid argument: {}"
+msgstr "引数が不正です: {}"
+
+msgid "No file name"
+msgstr "ファイル名がありません"
+
+msgid "Overwriting the current file with selected buffer content requires '!'."
+msgstr "選択範囲の内容で現在のファイルを上書きするには '!' を付けてください。"
+
+msgid "Partial buffer write requires file name."
+msgstr "バッファーの一部を書き出すにはファイル名が必要です。"
+
+msgid "Replace"
+msgstr "置き換える"
+
+msgid "Use ! to write partial buffer"
+msgstr "バッファーの一部を書き出すには ! が必要です"
+
+msgid "Vim: Off"
+msgstr "Vim: オフ"
+
+msgid "Vim: On"
+msgstr "Vim: オン"
+
+msgid "When disabled, you can type as soon as you open a file, just like in VSCode."
+msgstr "無効にすると VSCode と同じように、ファイルを開いた直後からそのまま文字を入力できます。"
+
+msgid "When enabled, you edit with Vim key bindings."
+msgstr "有効にすると Vim のキーバインドで操作します。"
+
+msgid "{path} already exists. Do you want to replace it?"
+msgstr "{path} はすでに存在します。置き換えますか?"
+
+msgid "{} already exists. Do you want to replace it?"
+msgstr "{} はすでに存在します。置き換えますか?"

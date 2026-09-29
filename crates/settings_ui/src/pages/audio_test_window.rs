@@ -133,9 +133,9 @@ impl Render for AudioTestWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_testing = self._stop_playback.is_some();
         let button_text = if is_testing {
-            "テストを停止"
+            i18n::t!("Stop Testing")
         } else {
-            "テストを開始"
+            i18n::t!("Start Testing")
         };
 
         let button_style = if is_testing {
@@ -219,13 +219,13 @@ impl Render for AudioTestWindow {
             .child(
                 v_flex()
                     .gap_1()
-                    .child(Label::new("出力デバイス"))
+                    .child(Label::new(i18n::t!("Output Device")))
                     .child(output_dropdown),
             )
             .child(
                 v_flex()
                     .gap_1()
-                    .child(Label::new("入力デバイス"))
+                    .child(Label::new(i18n::t!("Input Device")))
                     .child(input_dropdown),
             )
             .child(
@@ -286,7 +286,7 @@ pub fn open_audio_test_window(_window: &mut Window, cx: &mut App) {
     cx.open_window(
         WindowOptions {
             titlebar: Some(gpui::TitlebarOptions {
-                title: Some("音声のテスト".into()),
+                title: Some(i18n::t!("Audio Test").into()),
                 appears_transparent: true,
                 traffic_light_position: Some(gpui::point(px(12.0), px(12.0))),
             }),

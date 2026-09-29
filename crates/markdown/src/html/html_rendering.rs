@@ -16,7 +16,7 @@ use crate::html::html_parser::{
 use crate::{MarkdownElement, MarkdownElementBuilder, TableColumnMinWidths};
 
 /// Shown in place of a missing `<summary>`, matching what a browser puts there.
-const DEFAULT_DETAILS_SUMMARY: &str = "詳細";
+const DEFAULT_DETAILS_SUMMARY: &str = i18n::msg!("Details");
 
 pub(crate) struct HtmlSourceAllocator {
     source_range: Range<usize>,
@@ -570,8 +570,9 @@ impl MarkdownElement {
         );
 
         if details.summary.is_empty() {
-            let summary_range = source_allocator.allocate(DEFAULT_DETAILS_SUMMARY.len());
-            builder.push_text(DEFAULT_DETAILS_SUMMARY, summary_range);
+            let summary = i18n::tr(DEFAULT_DETAILS_SUMMARY);
+            let summary_range = source_allocator.allocate(summary.len());
+            builder.push_text(summary, summary_range);
         } else {
             self.render_html_paragraph(
                 &details.summary,
@@ -1556,7 +1557,7 @@ mod tests {
     #[gpui::test]
     fn test_details_without_summary_falls_back_to_a_label(cx: &mut TestAppContext) {
         let collapsed = render_html_preview("<details>本文だけ</details>", None, cx);
-        assert!(collapsed.contains("詳細"), "got: {collapsed:?}");
+        assert!(collapsed.contains("Details"), "got: {collapsed:?}");
         assert!(!collapsed.contains("本文だけ"), "got: {collapsed:?}");
     }
 

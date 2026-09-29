@@ -20,8 +20,8 @@ use super::{Form, LABEL_FIELD_WIDTH, MermaidEditor, add_button, field_frame, sec
 
 /// The texts a cause and an effect are added with, so that a new row is
 /// visible in the drawing before anything has been typed into it.
-const NEW_MAIN_BONE: &str = "新しい要因";
-const NEW_CAUSE: &str = "新しい小要因";
+const NEW_MAIN_BONE: &str = i18n::msg!("New cause");
+const NEW_CAUSE: &str = i18n::msg!("New sub-cause");
 
 pub(super) struct IshikawaForm {
     /// The keyword as the fence spells it, which the form does not edit.
@@ -147,7 +147,7 @@ impl MermaidEditor {
         if self.ishikawa().is_none() {
             return;
         }
-        let row = self.new_ishikawa_row(IshikawaCause::new(NEW_MAIN_BONE), window, cx);
+        let row = self.new_ishikawa_row(IshikawaCause::new(i18n::tr(NEW_MAIN_BONE)), window, cx);
         let focus = row.text.focus_handle(cx);
         if let Some(form) = self.ishikawa_mut() {
             form.rows.push(row);
@@ -176,7 +176,7 @@ impl MermaidEditor {
             } else {
                 NEW_CAUSE
             };
-            self.new_ishikawa_row(IshikawaCause::new(text), window, cx)
+            self.new_ishikawa_row(IshikawaCause::new(i18n::tr(text)), window, cx)
         });
         let Some(form) = self.ishikawa_mut() else {
             return;
@@ -203,7 +203,7 @@ impl MermaidEditor {
         let effect_row = h_flex()
             .w_full()
             .gap_2()
-            .child(section_title("結果 (問題)"))
+            .child(section_title(i18n::t!("Effect (Problem)")))
             .child(
                 field_frame(
                     &form.effect,
@@ -218,17 +218,16 @@ impl MermaidEditor {
                 .child(form.effect.clone()),
             );
 
-        let mut list = v_flex()
-            .w_full()
-            .gap_2()
-            .child(section_title("要因 (左端が大骨、右にずれるほど細かい要因)"));
+        let mut list = v_flex().w_full().gap_2().child(section_title(i18n::t!(
+            "Causes (the leftmost rows are the main bones; indented rows are finer causes)"
+        )));
         for (index, row) in form.rows.iter().enumerate() {
             let cause = row.current_cause(cx);
             let controls = outline_row_controls(
                 "mermaid-ishikawa",
                 &form.rows,
                 index,
-                "細かい要因を追加",
+                i18n::t!("Add a Finer Cause"),
                 cx.listener(move |this, edit: &OutlineEdit, window, cx| {
                     this.edit_ishikawa(index, *edit, window, cx)
                 }),
@@ -256,7 +255,7 @@ impl MermaidEditor {
         }
         list = list.child(add_button(
             "mermaid-ishikawa-add-main-bone",
-            "大骨 (要因) を追加",
+            i18n::t!("Add Main Bone (Cause)"),
             cx.listener(|this, _, window, cx| this.add_ishikawa_main_bone(window, cx)),
         ));
 

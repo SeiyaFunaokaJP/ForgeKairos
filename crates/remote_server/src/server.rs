@@ -1,4 +1,5 @@
 mod daemon;
+pub mod display_language;
 mod headless_project;
 mod stale_files;
 pub mod terminal_session;
@@ -515,6 +516,7 @@ pub fn execute_daemon(log_file: PathBuf, state_dir: PathBuf) -> Result<()> {
         gpui_tokio::init(cx);
 
         HeadlessProject::init(cx);
+        display_language::init(cx);
 
         let is_wsl_interop = if cfg!(target_os = "linux") {
             // See: https://learn.microsoft.com/en-us/windows/wsl/filesystems#disable-interoperability

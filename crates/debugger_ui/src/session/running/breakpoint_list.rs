@@ -199,9 +199,9 @@ impl BreakpointList {
     ) {
         self.strip_mode = Some(prop);
         let placeholder = match prop {
-            ActiveBreakpointStripMode::Log => "ログメッセージを設定",
-            ActiveBreakpointStripMode::Condition => "条件を設定",
-            ActiveBreakpointStripMode::HitCondition => "ヒット条件を設定",
+            ActiveBreakpointStripMode::Log => i18n::t!("Set Log Message"),
+            ActiveBreakpointStripMode::Condition => i18n::t!("Set Condition"),
+            ActiveBreakpointStripMode::HitCondition => i18n::t!("Set Hit Condition"),
         };
         let mut is_exception_breakpoint = true;
         let active_value = self.selected_ix.and_then(|ix| {
@@ -587,21 +587,25 @@ impl BreakpointList {
         let focus_handle = self.focus_handle.clone();
 
         let remove_breakpoint_tooltip = selection_kind.map(|(kind, _)| match kind {
-            SelectedBreakpointKind::Source => "ブレークポイントを一覧から削除します",
-            SelectedBreakpointKind::Exception => "例外ブレークポイントは一覧から削除できません",
-            SelectedBreakpointKind::Data => "データブレークポイントを一覧から削除します",
+            SelectedBreakpointKind::Source => i18n::t!("Remove breakpoint from a breakpoint list"),
+            SelectedBreakpointKind::Exception => {
+                i18n::t!("Exception Breakpoints cannot be removed from the breakpoint list")
+            }
+            SelectedBreakpointKind::Data => {
+                i18n::t!("Remove data breakpoint from a breakpoint list")
+            }
         });
 
         let toggle_label = selection_kind.map(|(_, is_enabled)| {
             if is_enabled {
                 (
-                    "ブレークポイントを無効化",
-                    "一覧から削除せずにブレークポイントを無効にします",
+                    i18n::t!("Disable Breakpoint"),
+                    i18n::t!("Disable a breakpoint without removing it from the list"),
                 )
             } else {
                 (
-                    "ブレークポイントを有効化",
-                    "ブレークポイントを再度有効にします",
+                    i18n::t!("Enable Breakpoint"),
+                    i18n::t!("Re-enable a breakpoint"),
                 )
             }
         });
@@ -644,7 +648,7 @@ impl BreakpointList {
                             let focus_handle = focus_handle.clone();
                             move |_window, cx| {
                                 Tooltip::with_meta_in(
-                                    "ブレークポイントを削除",
+                                    i18n::t!("Remove Breakpoint"),
                                     Some(&UnsetBreakpoint),
                                     tooltip,
                                     &focus_handle,
@@ -859,9 +863,9 @@ impl LineBreakpoint {
                 move |_window, cx| {
                     Tooltip::for_action_in(
                         if is_enabled {
-                            "ブレークポイントを無効化"
+                            i18n::t!("Disable Breakpoint")
                         } else {
-                            "ブレークポイントを有効化"
+                            i18n::t!("Enable Breakpoint")
                         },
                         &ToggleEnableBreakpoint,
                         &focus_handle,
@@ -942,8 +946,8 @@ impl LineBreakpoint {
                                 .truncate()
                         }))
                         .when_some(self.dir.as_ref(), |this, parent_dir| {
-                            this.tooltip(Tooltip::text(format!(
-                                "ワークツリーの親パス: {parent_dir}"
+                            this.tooltip(Tooltip::text(i18n::t!(
+                                "Worktree parent path: {parent_dir}"
                             )))
                         }),
                 )
@@ -1012,9 +1016,9 @@ impl DataBreakpoint {
                     move |_window, cx| {
                         Tooltip::for_action_in(
                             if is_enabled {
-                                "データブレークポイントを無効化"
+                                i18n::t!("Disable Data Breakpoint")
                             } else {
-                                "データブレークポイントを有効化"
+                                i18n::t!("Enable Data Breakpoint")
                             },
                             &ToggleEnableBreakpoint,
                             &focus_handle,
@@ -1116,9 +1120,9 @@ impl ExceptionBreakpoint {
                     move |_window, cx| {
                         Tooltip::for_action_in(
                             if is_enabled {
-                                "例外ブレークポイントを無効化"
+                                i18n::t!("Disable Exception Breakpoint")
                             } else {
-                                "例外ブレークポイントを有効化"
+                                i18n::t!("Enable Exception Breakpoint")
                             },
                             &ToggleEnableBreakpoint,
                             &focus_handle,
@@ -1432,9 +1436,9 @@ impl RenderOnce for BreakpointOptionsStrip {
                         .on_click(self.on_click_callback(ActiveBreakpointStripMode::Log))
                         .tooltip(|_window, cx|  {
                             Tooltip::with_meta(
-                                "ログメッセージを設定",
+                                i18n::t!("Set Log Message"),
                                 None,
-                                "ブレークポイントに到達したときに、停止する代わりに表示するログメッセージを設定します。",
+                                i18n::t!("Set log message to display (instead of stopping) when a breakpoint is hit."),
                                 cx,
                             )
                         }),
@@ -1468,9 +1472,9 @@ impl RenderOnce for BreakpointOptionsStrip {
                             .on_click(self.on_click_callback(ActiveBreakpointStripMode::Condition))
                             .tooltip(|_window, cx|  {
                                 Tooltip::with_meta(
-                                    "条件を設定",
+                                    i18n::t!("Set Condition"),
                                     None,
-                                    "ブレークポイントに到達したときに評価する条件を設定します。条件を満たしたときだけプログラムの実行が停止します。",
+                                    i18n::t!("Set condition to evaluate when a breakpoint is hit. Program execution will stop only when the condition is met."),
                                     cx,
                                 )
                             }),
@@ -1503,9 +1507,9 @@ impl RenderOnce for BreakpointOptionsStrip {
                         .on_click(self.on_click_callback(ActiveBreakpointStripMode::HitCondition))
                         .tooltip(|_window, cx|  {
                             Tooltip::with_meta(
-                                "ヒット条件を設定",
+                                i18n::t!("Set Hit Condition"),
                                 None,
-                                "ブレークポイントのヒットを何回無視するかを制御する式を設定します。",
+                                i18n::t!("Set expression that controls how many hits of the breakpoint are ignored."),
                                 cx,
                             )
                         }),

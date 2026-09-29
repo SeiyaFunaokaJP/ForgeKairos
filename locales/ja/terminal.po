@@ -1,0 +1,156 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid ", capture into ${{{capture}}}"
+msgstr "、${{{capture}}} に取り込む"
+
+msgid ", on a match capture into ${{{capture}}}"
+msgstr "、一致時は ${{{capture}}} に取り込む"
+
+msgid ", {count} step on timeout"
+msgid_plural ", {count} steps on timeout"
+msgstr[0] "、タイムアウト時 {count} ステップ"
+
+msgid "A saved password can't answer the host key confirmation of a first connection. Connect once with “Remember password” turned off and confirm the host key."
+msgstr "初回接続のホスト鍵の確認は、保存されたパスワードでは応答できません。「パスワードを記憶する」を外して一度接続し、ホスト鍵を確認してください。"
+
+msgid "Branch: if “{pattern}” is in {target}, run {} step(s), otherwise {} step(s)"
+msgstr "分岐: 『{pattern}』が{target}にあれば {} ステップ、なければ {} ステップ"
+
+msgid "Clear screen"
+msgstr "画面を消去"
+
+msgid "Couldn't delete the password ({url})"
+msgstr "パスワードを削除できませんでした ({url})"
+
+msgid "Couldn't read the password ({url})"
+msgstr "パスワードを読み出せませんでした ({url})"
+
+msgid "Couldn't save the password ({url})"
+msgstr "パスワードを保存できませんでした ({url})"
+
+msgid "Couldn't write terminal_sessions.json"
+msgstr "terminal_sessions.json を書き込めませんでした"
+
+msgid "Match → Then"
+msgstr "一致 → そのとき"
+
+msgid "No match → Else"
+msgstr "不一致 → それ以外"
+
+msgid "Output since last send"
+msgstr "直前の出力"
+
+msgid "Repeat: until stopped ({count} step)"
+msgid_plural "Repeat: until stopped ({count} steps)"
+msgstr[0] "繰り返し: 中止まで ({count} ステップ)"
+
+msgid "Repeat: ×{times} ({count} step)"
+msgid_plural "Repeat: ×{times} ({count} steps)"
+msgstr[0] "繰り返し: {times} 回 ({count} ステップ)"
+
+msgid "Send: {text}"
+msgstr "送信: {text}"
+
+msgid "Sleep: {} s"
+msgstr "待機: {} 秒"
+
+msgid "Step {label} is of a kind this version can't run (“{kind}”). The macro was not run."
+msgstr "ステップ {label} はこの版では扱えない種類のステップ「{kind}」です。マクロは実行していません。"
+
+msgid "Step {label} is of a kind this version can't run. The macro was not run."
+msgstr "ステップ {label} はこの版では扱えない種類のステップです。マクロは実行していません。"
+
+msgid "Step {step_label}: the regular expression “{display_pattern}” is invalid ({error})"
+msgstr "ステップ {step_label}: 『{display_pattern}』の正規表現が不正です ({error})"
+
+msgid "Step {}: the terminal exited while waiting for “{display_pattern}”"
+msgstr "ステップ {}: 『{display_pattern}』を待っている間にターミナルが終了しました"
+
+msgid "Step {}: this version can't run this kind of step"
+msgstr "ステップ {}: この版では扱えない種類のステップです"
+
+msgid "Step {}: “{display_pattern}” did not appear within {} s"
+msgstr "ステップ {}: 『{display_pattern}』が {} 秒以内に現れませんでした"
+
+msgid "The saved password was rejected. Enter the password again in Quick Connect."
+msgstr "保存されたパスワードが拒否されました。クイック接続でパスワードを入力し直してください。"
+
+msgid "This terminal can't record its output (it has no PTY)"
+msgstr "このターミナルは出力を記録できません (PTY がありません)"
+
+msgid "Timeout → Continue"
+msgstr "タイムアウト → 続行"
+
+msgid "Unknown step (this version can't run it)"
+msgstr "不明なステップ (この版では扱えません)"
+
+msgid "Unknown step “{kind}” (this version can't run it)"
+msgstr "不明なステップ「{kind}」(この版では扱えません)"
+
+msgid "Variable: ${{{name}}} = “{value}”"
+msgstr "変数: ${{{name}}} に『{value}』"
+
+msgid "Wait for “{pattern}” (up to {} s)"
+msgstr "待機: 『{pattern}』 ({} 秒以内)"
+
+msgid "Whole screen"
+msgstr "画面全体"
+
+msgid "[Remote connection lost. The shell keeps running on the remote host; its output will resume after reconnecting]"
+msgstr "[リモート接続が切れました。シェルはリモートで動き続けています。再接続後に続きから表示します]"
+
+msgid "[Remote connection lost. The shell will restart after reconnecting]"
+msgstr "[リモート接続が切れました。再接続後に再起動します]"
+
+msgid "[password input omitted]"
+msgstr "[パスワード入力を省略]"
+
+msgid "[{working_directory} was not found, so the shell started in the home directory]"
+msgstr "[{working_directory} が見つからないため、ホームディレクトリで起動しました]"
+
+msgid "the output since the last send"
+msgstr "直前の出力"
+
+msgid "the whole screen"
+msgstr "画面全体"
+
+msgctxt "terminal macro"
+msgid "Variable"
+msgstr "変数"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "分岐"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "画面を消去"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "繰り返し"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "送信"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "変数に設定"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "秒待ち"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "不明なステップ"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "期待文字を待つ"

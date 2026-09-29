@@ -3,7 +3,7 @@
 
 use std::collections::VecDeque;
 
-use super::TRUNCATED_REPLAY_NOTICE;
+use super::truncated_replay_notice;
 
 const ESC: u8 = 0x1b;
 const BEL: u8 = 0x07;
@@ -63,9 +63,14 @@ impl OutputHistory {
 
     pub fn replay(&mut self) -> Replay {
         let retained = self.buffer.make_contiguous();
-        let mut bytes = Vec::with_capacity(retained.len() + TRUNCATED_REPLAY_NOTICE.len());
+        let notice = if self.dropped {
+            truncated_replay_notice()
+        } else {
+            String::new()
+        };
+        let mut bytes = Vec::with_capacity(retained.len() + notice.len());
         let retained = if self.dropped {
-            bytes.extend_from_slice(TRUNCATED_REPLAY_NOTICE.as_bytes());
+            bytes.extend_from_slice(notice.as_bytes());
             &retained[replay_start(retained)..]
         } else {
             &retained[..]
@@ -694,7 +699,7 @@ mod tests {
         let mut history = OutputHistory::new(16);
         history.push(b"line one\r\nline two\r\nline three\r\n");
         let replay = history.replay();
-        let mut expected = TRUNCATED_REPLAY_NOTICE.as_bytes().to_vec();
+        let mut expected = truncated_replay_notice().as_bytes().to_vec();
         expected.extend(b"line three\r\n");
         assert_eq!(replay.bytes, expected);
 
@@ -702,7 +707,7 @@ mod tests {
         let mut history = OutputHistory::new(20);
         history.push(b"\x1b[38;5;196mred text\r\n\x1b[1mbold\x1b[0m\r\n");
         let replay = history.replay();
-        let mut expected = TRUNCATED_REPLAY_NOTICE.as_bytes().to_vec();
+        let mut expected = truncated_replay_notice().as_bytes().to_vec();
         expected.extend(b"\x1b[1mbold\x1b[0m\r\n");
         assert_eq!(replay.bytes, expected);
     }
@@ -721,7 +726,7 @@ mod tests {
         }
         history.push(b"\r\nafter the flood\r\n$ ");
         let replay = history.replay();
-        let mut expected = TRUNCATED_REPLAY_NOTICE.as_bytes().to_vec();
+        let mut expected = truncated_replay_notice().as_bytes().to_vec();
         expected.extend(b"after the flood\r\n$ ");
         assert_eq!(
             String::from_utf8_lossy(&replay.bytes),
@@ -740,7 +745,7 @@ mod tests {
         history.push(b"abcdefgh");
         assert_eq!(
             history.replay().bytes,
-            TRUNCATED_REPLAY_NOTICE.as_bytes().to_vec()
+            truncated_replay_notice().as_bytes().to_vec()
         );
     }
 

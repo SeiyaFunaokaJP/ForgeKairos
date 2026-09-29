@@ -90,8 +90,8 @@ Paths may be absolute or relative to a workspace folder; lines are 1-based and i
 Annotations are not saved, and calling a display tool again replaces what you showed before.";
 
 pub(crate) const ASSIST_UNAVAILABLE_MESSAGE: &str =
-    "IDE ツール (zed) は Zed の設定で無効になっています。";
-pub(crate) const IDE_SERVER_DISABLED_MESSAGE: &str = "Zed の IDE サーバーは無効になっています。";
+    "The IDE tools (zed) are disabled in Zed's settings.";
+pub(crate) const IDE_SERVER_DISABLED_MESSAGE: &str = "Zed's IDE server is disabled.";
 
 /// CLI の `--mcp-config` に渡す JSON。URL だけが具体的で、`Authorization` の値は
 /// [`ASSIST_BEARER_ENV_VAR`] を CLI に展開させる。空白を含まない (理由は
@@ -370,7 +370,7 @@ pub(crate) async fn run_assist_tool_with(
 
 fn code_display(cx: &mut AsyncApp) -> Result<std::sync::Arc<dyn CodeDisplay>> {
     cx.update(|cx| ide_query::code_display(cx))
-        .ok_or_else(|| client_error("このウィンドウでは、エディターに表示する機能が使えません。"))
+        .ok_or_else(|| client_error("This window can't show anything in the editor."))
 }
 
 async fn highlight_code(
@@ -475,7 +475,7 @@ async fn search_symbols(
 ) -> Result<Value> {
     let query = required_text(arguments, "query", MAX_QUERY_TEXT_CHARS)?;
     if query.trim().is_empty() {
-        return Err(client_error("query が空です。"));
+        return Err(client_error("query is empty."));
     }
     let limit = search_limit(arguments)?;
     let path_prefix = match optional_string(arguments, "pathPrefix")? {
@@ -549,11 +549,11 @@ impl AssistContext<'_> {
     async fn resolve(&mut self, text: &str, cx: &mut AsyncApp) -> Result<ProjectPath> {
         let text = text.trim();
         if text.is_empty() {
-            return Err(client_error("path が空です。"));
+            return Err(client_error("path is empty."));
         }
         if text.chars().count() > MAX_PATH_CHARS {
             return Err(client_error(format!(
-                "path は {MAX_PATH_CHARS} 文字までにしてください。"
+                "path must be at most {MAX_PATH_CHARS} characters."
             )));
         }
         let project_path = match &self.paths {
@@ -573,7 +573,7 @@ impl AssistContext<'_> {
                         "ide_server: refused an assist path for a sandboxed client: {error:#}"
                     );
                     return Err(client_error(format!(
-                        "{text} はリンクを経由しているか、確かめられないため扱えません。"
+                        "{text} goes through a link or can't be checked, so it can't be used."
                     )));
                 }
                 self.project
@@ -597,7 +597,7 @@ impl AssistContext<'_> {
         let text = text.trim();
         if text.chars().count() > MAX_PATH_CHARS {
             return Err(client_error(format!(
-                "pathPrefix は {MAX_PATH_CHARS} 文字までにしてください。"
+                "pathPrefix must be at most {MAX_PATH_CHARS} characters."
             )));
         }
         let project_path = match &self.paths {
@@ -806,7 +806,7 @@ pub(crate) fn search_limit(arguments: &Value) -> Result<usize> {
             .as_u64()
             .filter(|limit| *limit >= 1)
             .map(|limit| usize::try_from(limit).unwrap_or(usize::MAX))
-            .ok_or_else(|| client_error("limit は 1 以上の整数にしてください。"))?
+            .ok_or_else(|| client_error("limit must be an integer of 1 or more."))?
             .min(MAX_QUERY_RESULTS),
     })
 }
@@ -831,20 +831,20 @@ pub(crate) fn query_failure(sandboxed: bool, tool: &str, error: anyhow::Error) -
         .is_some()
     {
         return client_error(
-            "言語サーバーが起動していません (未インストール・起動中・承認待ち)。\
-             起動を待ってから、もう一度呼んでください。",
+            "The language server isn't running (it is not installed, is starting, or is \
+             waiting for approval). Wait for it to start, then call again.",
         );
     }
     if sandboxed {
         log::debug!("ide_server: {tool} failed for a sandboxed client: {error:#}");
         client_error(format!("{error}"))
     } else {
-        error.context("言語サーバーから結果を得られませんでした")
+        error.context("Couldn't get a result from the language server")
     }
 }
 
 fn outside_message(text: &str) -> String {
-    format!("{text} はワークスペースのフォルダーの外です。")
+    format!("{text} is outside the workspace folders.")
 }
 
 /// `..` を含む相対パスは、ルートの外を指しうるので受けない。
@@ -860,7 +860,7 @@ fn host_project_path(project: &Project, text: &str, cx: &App) -> Result<ProjectP
     let path_text = path.to_string_lossy();
     if has_parent_component(&path_text) {
         return Err(client_error(format!(
-            "{text} は `..` を含むので扱えません。ルートからのパスで指定してください。"
+            "{text} contains `..`, so it can't be used. Give the path from a root."
         )));
     }
     if util::paths::is_absolute(&path_text, path_style) {
@@ -897,7 +897,7 @@ fn host_project_path(project: &Project, text: &str, cx: &App) -> Result<ProjectP
         }
         first.get_or_insert(candidate);
     }
-    first.ok_or_else(|| client_error("ワークスペースにフォルダーが開かれていません。"))
+    first.ok_or_else(|| client_error("No folder is open in the workspace."))
 }
 
 /// サンドボックスのクライアントのパスを、サンドボックスから見た絶対パスにする。相対パスは
@@ -910,7 +910,7 @@ fn sandbox_client_text(
 ) -> Result<String> {
     if has_parent_component(text) {
         return Err(client_error(format!(
-            "{text} は `..` を含むので扱えません。ルートからのパスで指定してください。"
+            "{text} contains `..`, so it can't be used. Give the path from a root."
         )));
     }
     if text.starts_with('/') || text.starts_with("file://") {
@@ -954,7 +954,7 @@ fn sandbox_client_text(
         None => candidates
             .into_iter()
             .next()
-            .ok_or_else(|| client_error("ワークスペースにフォルダーが開かれていません。")),
+            .ok_or_else(|| client_error("No folder is open in the workspace.")),
     }
 }
 
@@ -975,7 +975,7 @@ fn entry_refusal(
     if !worktree.is_visible() {
         return Some(outside_message(text));
     }
-    let link_message = || format!("{text} はリンクを経由しているため扱えません。");
+    let link_message = || format!("{text} goes through a link, so it can't be used.");
     let goes_through_link = project_path.path.ancestors().skip(1).any(|ancestor| {
         worktree
             .entry_for_path(ancestor)
@@ -993,30 +993,30 @@ fn entry_refusal(
             || WorktreeSettings::get(Some(project_path.into()), cx)
                 .is_path_excluded(&project_path.path);
         return Some(if in_git_directory || excluded {
-            format!("{text} は Zed が走査しない場所 (.git や除外設定の対象) にあるため扱えません。")
+            format!(
+                "{text} is somewhere Zed doesn't scan (.git or an excluded path), so it can't be used."
+            )
         } else {
-            format!("{text} は見つかりません。")
+            format!("{text} wasn't found.")
         });
     };
     if entry.is_dir() {
-        return Some(format!(
-            "{text} はディレクトリです。ファイルを指定してください。"
-        ));
+        return Some(format!("{text} is a directory. Specify a file."));
     }
     if entry.is_external || entry.canonical_path.is_some() {
         return Some(link_message());
     }
     if entry.is_fifo {
-        return Some(format!("{text} は通常のファイルではありません。"));
+        return Some(format!("{text} isn't a regular file."));
     }
     if is_private_file(project_path, Some(entry), cx) {
         return Some(format!(
-            "{text} は private_files の設定 (.env など) に当たるため扱えません。"
+            "{text} matches the private_files setting (.env and the like), so it can't be used."
         ));
     }
     if check_size && entry.size > MAX_SANDBOX_FILE_BYTES {
         return Some(format!(
-            "{text} は {} MiB を超えているため扱えません。",
+            "{text} is larger than {} MiB, so it can't be used.",
             MAX_SANDBOX_FILE_BYTES / (1024 * 1024)
         ));
     }
@@ -1027,14 +1027,14 @@ fn string_field<'a>(object: &'a Value, key: &str) -> Result<&'a str> {
     object
         .get(key)
         .and_then(Value::as_str)
-        .ok_or_else(|| client_error(format!("{key} (文字列) が必要です。")))
+        .ok_or_else(|| client_error(format!("{key} (a string) is required.")))
 }
 
 fn optional_string<'a>(object: &'a Value, key: &str) -> Result<Option<&'a str>> {
     match object.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(text)) => Ok(Some(text)),
-        Some(_) => Err(client_error(format!("{key} は文字列にしてください。"))),
+        Some(_) => Err(client_error(format!("{key} must be a string."))),
     }
 }
 
@@ -1053,7 +1053,7 @@ fn within_limit(text: &str, key: &str, max_chars: usize) -> Result<String> {
     let count = text.chars().count();
     if count > max_chars {
         return Err(client_error(format!(
-            "{key} は {max_chars} 文字までにしてください ({count} 文字でした)。"
+            "{key} must be at most {max_chars} characters (it was {count})."
         )));
     }
     Ok(text.to_string())
@@ -1063,13 +1063,13 @@ fn array_field<'a>(object: &'a Value, key: &str, max_items: usize) -> Result<&'a
     let items = object
         .get(key)
         .and_then(Value::as_array)
-        .ok_or_else(|| client_error(format!("{key} (配列) が必要です。")))?;
+        .ok_or_else(|| client_error(format!("{key} (an array) is required.")))?;
     if items.is_empty() {
-        return Err(client_error(format!("{key} が空です。")));
+        return Err(client_error(format!("{key} is empty.")));
     }
     if items.len() > max_items {
         return Err(client_error(format!(
-            "{key} は {max_items} 件までにしてください ({} 件でした)。",
+            "{key} must have at most {max_items} items (it had {}).",
             items.len()
         )));
     }
@@ -1082,7 +1082,7 @@ fn line_field(object: &Value, key: &str) -> Result<u32> {
         .and_then(Value::as_u64)
         .filter(|line| *line >= 1)
         .and_then(|line| u32::try_from(line).ok())
-        .ok_or_else(|| client_error(format!("{key} は 1 以上の整数にしてください。")))
+        .ok_or_else(|| client_error(format!("{key} must be an integer of 1 or more.")))
 }
 
 fn line_range(item: &Value) -> Result<LineRange> {
@@ -1090,7 +1090,7 @@ fn line_range(item: &Value) -> Result<LineRange> {
     let end_line = line_field(item, "endLine")?;
     if end_line < start_line {
         return Err(client_error(
-            "endLine は startLine 以上にしてください (行は 1 始まりで、両端を含みます)。",
+            "endLine must be at least startLine (lines are 1-based and inclusive).",
         ));
     }
     Ok(LineRange {

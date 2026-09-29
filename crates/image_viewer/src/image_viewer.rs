@@ -944,7 +944,7 @@ impl Render for ImageViewToolbarControls {
             .child(
                 IconButton::new("zoom-out", IconName::Dash)
                     .icon_size(IconSize::Small)
-                    .tooltip(|_window, cx| Tooltip::for_action("縮小", &ZoomOut, cx))
+                    .tooltip(|_window, cx| Tooltip::for_action(i18n::t!("Zoom Out"), &ZoomOut, cx))
                     .on_click({
                         let image_view = image_view.downgrade();
                         move |_, window, cx| {
@@ -1002,9 +1002,9 @@ impl Render for ImageViewToolbarControls {
                     .id("zoom-label")
                     .tooltip(|_window, cx| {
                         Tooltip::with_meta(
-                            "ズーム率を編集",
+                            i18n::t!("Edit Zoom"),
                             None,
-                            "右クリックで 100% に戻します。",
+                            i18n::t!("Right-click to reset to 100%."),
                             cx,
                         )
                     })
@@ -1026,7 +1026,7 @@ impl Render for ImageViewToolbarControls {
             .child(
                 IconButton::new("zoom-in", IconName::Plus)
                     .icon_size(IconSize::Small)
-                    .tooltip(|_, cx| Tooltip::for_action("拡大", &ZoomIn, cx))
+                    .tooltip(|_, cx| Tooltip::for_action(i18n::t!("Zoom In"), &ZoomIn, cx))
                     .on_click({
                         let image_view = image_view.downgrade();
                         move |_, window, cx| {
@@ -1041,7 +1041,9 @@ impl Render for ImageViewToolbarControls {
             .child(
                 IconButton::new("fit-to-view", IconName::Maximize)
                     .icon_size(IconSize::Small)
-                    .tooltip(|_window, cx| Tooltip::for_action("ビューに合わせる", &FitToView, cx))
+                    .tooltip(|_window, cx| {
+                        Tooltip::for_action(i18n::t!("Fit to View"), &FitToView, cx)
+                    })
                     .on_click({
                         let image_view = image_view.downgrade();
                         move |_, window, cx| {

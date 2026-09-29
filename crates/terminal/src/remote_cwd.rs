@@ -97,7 +97,7 @@ impl RemoteCwdTracker {
 /// [`crate::REMOTE_CONNECTION_LOST_NOTICE`] so it reads as Zed's own line rather
 /// than as output of the shell.
 fn missing_directory_notice(working_directory: &str) -> String {
-    format!("[{working_directory} が見つからないため、ホームディレクトリで起動しました]")
+    i18n::t!("[{working_directory} was not found, so the shell started in the home directory]")
 }
 
 /// The command that starts a remote login shell in `working_directory`, or in
@@ -471,7 +471,7 @@ mod tests {
         assert_eq!(
             script,
             "cd '/srv/my app' 2>/dev/null || { printf '%s\\r\\n' \
-             '[/srv/my app が見つからないため、ホームディレクトリで起動しました]'; cd; }; \
+             '[/srv/my app was not found, so the shell started in the home directory]'; cd; }; \
              exec /usr/bin/fish -l"
         );
     }

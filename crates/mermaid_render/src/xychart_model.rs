@@ -72,8 +72,8 @@ impl XyOrientation {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Vertical => "縦 (vertical)",
-            Self::Horizontal => "横 (horizontal)",
+            Self::Vertical => i18n::tc!("xychart orientation", "Vertical"),
+            Self::Horizontal => i18n::tc!("xychart orientation", "Horizontal"),
         }
     }
 }
@@ -167,8 +167,8 @@ impl XySeriesKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Bar => "棒",
-            Self::Line => "折れ線",
+            Self::Bar => i18n::tc!("xychart series", "Bar"),
+            Self::Line => i18n::tc!("xychart series", "Line"),
         }
     }
 }
@@ -223,21 +223,22 @@ impl XyChartDocument {
     }
 
     /// Why the document cannot be written back as a diagram Mermaid accepts, in
-    /// Japanese, or `None` when it can.
+    /// the display language, or `None` when it can.
     pub fn structure_error(&self) -> Option<String> {
+        let text_rule = text_rule();
         if let Some(title) = &self.title
             && !is_valid_xychart_text(title)
         {
-            return Some(format!(
-                "タイトル `{}` は書けません。{TEXT_RULE}",
+            return Some(i18n::t!(
+                "The title `{}` cannot be written. {text_rule}",
                 title.text
             ));
         }
         if let Some(title) = &self.x_axis.title
             && !is_valid_xychart_text(title)
         {
-            return Some(format!(
-                "x 軸の名前 `{}` は書けません。{TEXT_RULE}",
+            return Some(i18n::t!(
+                "The x-axis name `{}` cannot be written. {text_rule}",
                 title.text
             ));
         }
@@ -246,14 +247,14 @@ impl XyChartDocument {
             XyXAxisData::Categories(categories) => {
                 if categories.is_empty() {
                     return Some(
-                        "x 軸の項目が 1 つもありません。項目を追加するか、x 軸の目盛りを「なし」にしてください。"
+                        i18n::t!("The x axis has no categories. Add a category, or set the x-axis “Scale” to “None (1, 2, 3…)”.")
                             .to_string(),
                     );
                 }
                 for category in categories {
                     if !is_valid_xychart_text(category) {
-                        return Some(format!(
-                            "x 軸の項目 `{}` は書けません。{TEXT_RULE}",
+                        return Some(i18n::t!(
+                            "The x-axis category `{}` cannot be written. {text_rule}",
                             category.text
                         ));
                     }
@@ -261,8 +262,8 @@ impl XyChartDocument {
             }
             XyXAxisData::Range { min, max } => {
                 if !is_valid_xychart_number(min) || !is_valid_xychart_number(max) {
-                    return Some(format!(
-                        "x 軸の範囲 `{min}` → `{max}` は数値で書いてください。"
+                    return Some(i18n::t!(
+                        "Write the x-axis range `{min}` → `{max}` as numbers."
                     ));
                 }
             }
@@ -270,17 +271,18 @@ impl XyChartDocument {
         if let Some(title) = &self.y_axis.title
             && !is_valid_xychart_text(title)
         {
-            return Some(format!(
-                "y 軸の名前 `{}` は書けません。{TEXT_RULE}",
+            return Some(i18n::t!(
+                "The y-axis name `{}` cannot be written. {text_rule}",
                 title.text
             ));
         }
         if let Some(range) = &self.y_axis.range
             && (!is_valid_xychart_number(&range.min) || !is_valid_xychart_number(&range.max))
         {
-            return Some(format!(
-                "y 軸の範囲 `{}` → `{}` は数値で書いてください (自動にするなら両方を空に)。",
-                range.min, range.max
+            return Some(i18n::t!(
+                "Write the y-axis range `{}` → `{}` as numbers (leave both empty to set it automatically).",
+                range.min,
+                range.max
             ));
         }
 
@@ -289,26 +291,26 @@ impl XyChartDocument {
             if let Some(name) = &series.name
                 && !is_valid_xychart_text(name)
             {
-                return Some(format!(
-                    "系列 {number} の名前 `{}` は書けません。{TEXT_RULE}",
+                return Some(i18n::t!(
+                    "The name `{}` of series {number} cannot be written. {text_rule}",
                     name.text
                 ));
             }
             if series.values.is_empty() {
-                return Some(format!(
-                    "系列 {number} に値が 1 つもありません。Mermaid は値の無い系列を描けません。"
+                return Some(i18n::t!(
+                    "Series {number} has no values. Mermaid cannot draw a series without values."
                 ));
             }
             for (position, value) in series.values.iter().enumerate() {
                 if value.is_empty() {
-                    return Some(format!(
-                        "系列 {number} の {} 番目の値が空です。途中の値は空にできません (末尾の空欄は値なしとして扱います)。",
+                    return Some(i18n::t!(
+                        "Series {number}: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value).",
                         position + 1
                     ));
                 }
                 if !is_valid_xychart_number(value) {
-                    return Some(format!(
-                        "系列 {number} の値 `{value}` は数値ではありません (例: 12、-3.5、.5)。"
+                    return Some(i18n::t!(
+                        "The value `{value}` of series {number} is not a number (for example 12, -3.5, .5)."
                     ));
                 }
             }
@@ -343,17 +345,21 @@ impl XyChartDocument {
         })?;
         let number = index + 1;
         Some(match &self.x_axis.data {
-            XyXAxisData::Range { min, max } => format!(
-                "x 軸の範囲 `{min}` → `{max}` の幅では Mermaid が系列 {number} の値を並べられず、描画が終わりません。範囲の両端を離してください。"
+            XyXAxisData::Range { min, max } => i18n::t!(
+                "With the x-axis range `{min}` → `{max}`, Mermaid cannot place the values of series {number} and never finishes drawing. Move the ends of the range apart."
             ),
-            _ => format!(
-                "x 軸に項目も範囲も無いと、Mermaid は最初の系列の値の数で x 軸を作ります。最初の系列の値が 1 つだけでは系列 {number} の値を並べられず、描画が終わりません。最初の系列に値を足すか、x 軸に項目か範囲を指定してください。"
+            _ => i18n::t!(
+                "Without categories or a range on the x axis, Mermaid builds the x axis from the number of values in the first series. With only one value in the first series, it cannot place the values of series {number} and never finishes drawing. Add values to the first series, or give the x axis categories or a range."
             ),
         })
     }
 }
 
-const TEXT_RULE: &str = "`\"` `%%` と改行は使えず、前後の空白も書けません。";
+fn text_rule() -> &'static str {
+    i18n::t!(
+        "`\"`, `%%` and line breaks are not allowed, and it cannot start or end with whitespace."
+    )
+}
 
 /// Whether `source` is a XY chart: its first statement is `xychart-beta` or `xychart`.
 pub fn is_xychart_source(source: &str) -> bool {
@@ -377,11 +383,13 @@ pub fn parse_xychart(source: &str) -> Result<XyChartDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::XyChart(_)) {
-            bail!("この図は XY チャートではありません。");
+            bail!(i18n::t!("This diagram is not an XY chart."));
         }
     }
 
@@ -431,9 +439,9 @@ fn scan_xychart(source: &str) -> Result<XyChartDocument> {
         }
         if is_accessibility_statement(trimmed) {
             if trimmed.contains(';') {
-                bail!(
-                    "`;` のある行の accTitle / accDescr は構造化編集に対応していません ({trimmed})。1 行に 1 つずつ書いてください。"
-                );
+                bail!(i18n::t!(
+                    "accTitle / accDescr on a line with `;` is not supported by the structured editor ({trimmed}). Write one per line."
+                ));
             }
             if statement_keyword(trimmed, "accDescr").is_some_and(|rest| rest.starts_with('{'))
                 && !trimmed.contains('}')
@@ -450,9 +458,9 @@ fn scan_xychart(source: &str) -> Result<XyChartDocument> {
             // into the lines below, which the form would show as statements
             // of their own.
             if is_open(&block) {
-                bail!(
-                    "閉じていない `\"` や `[` のある accTitle / accDescr は構造化編集に対応していません ({trimmed})。Mermaid は後ろの行まで説明として読みます。"
-                );
+                bail!(i18n::t!(
+                    "accTitle / accDescr with an unclosed `\"` or `[` is not supported by the structured editor ({trimmed}). Mermaid reads the lines after it as part of the description."
+                ));
             }
             pending.push(block);
             continue;
@@ -466,18 +474,18 @@ fn scan_xychart(source: &str) -> Result<XyChartDocument> {
                 break;
             };
             if next.trim_start().starts_with("%%") {
-                bail!(
-                    "複数行にわたる文の途中のコメントは構造化編集で失われます ({trimmed})。コメントを文の外へ移すか、テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "A comment inside a statement that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside the statement, or edit it as text."
+                ));
             }
             text.push('\n');
             text.push_str(next.trim_end());
             index += 1;
         }
         if text.contains("%%") {
-            bail!(
-                "文の途中や末尾のコメントは構造化編集で失われます ({trimmed})。コメントを独立した行に移すか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "A comment in the middle or at the end of a statement is lost in the structured editor ({trimmed}). Move the comment to a line of its own, or edit it as text."
+            ));
         }
 
         for statement in split_top_level(&text, ';') {
@@ -528,7 +536,9 @@ fn parse_header(header: &str, document: &mut XyChartDocument) -> Result<()> {
     } else if let Some(tail) = keyword_tail(header, "xychart") {
         (XyChartKeyword::Plain, tail)
     } else {
-        bail!("XY チャートではありません (`xychart-beta` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not an XY chart (only diagrams that start with `xychart-beta` can be edited in the structured editor)."
+        ));
     };
     document.keyword = keyword;
     let tail = tail.trim();
@@ -540,10 +550,10 @@ fn parse_header(header: &str, document: &mut XyChartDocument) -> Result<()> {
     } else if tail.eq_ignore_ascii_case("horizontal") {
         document.orientation = Some(XyOrientation::Horizontal);
     } else {
-        bail!(
-            "`{}` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。",
+        bail!(i18n::t!(
+            "`{tail}` on the `{}` line is not supported by the structured editor. Edit it as text.",
             keyword.keyword()
-        );
+        ));
     }
     Ok(())
 }
@@ -561,7 +571,9 @@ fn parse_statement(
 ) -> Result<bool> {
     if let Some(rest) = keyword_rest(statement, "title") {
         if seen.title {
-            bail!("`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。");
+            bail!(i18n::t!(
+                "`title` is written twice. Merge them into one, then open it again."
+            ));
         }
         seen.title = true;
         document.title = Some(read_whole_text(rest, statement)?);
@@ -569,22 +581,26 @@ fn parse_statement(
     }
     if let Some(rest) = keyword_rest(statement, "x-axis") {
         if seen.x_axis {
-            bail!("`x-axis` が 2 回書かれています。1 つにまとめてからもう一度開いてください。");
+            bail!(i18n::t!(
+                "`x-axis` is written twice. Merge them into one, then open it again."
+            ));
         }
         seen.x_axis = true;
         document.x_axis = parse_x_axis(rest, statement)?;
         // Mermaid pairs a series' values with the x axis as it stands when the
         // series is read, and the form writes the axes before the series.
         if !document.series.is_empty() && document.x_axis.data != XyXAxisData::None {
-            bail!(
-                "`x-axis` の目盛りが系列 (bar / line) より後に書かれています。Mermaid は先に書かれた系列の値を 1, 2, 3… の位置に並べるので、構造化編集で並べ替えると図が変わります。`x-axis` を系列より前に移してからもう一度開いてください。"
-            );
+            bail!(i18n::t!(
+                "The `x-axis` ticks are written after a series (bar / line). Mermaid places the values of the series written before them at 1, 2, 3…, so reordering them in the structured editor would change the chart. Move `x-axis` before the series, then open it again."
+            ));
         }
         return Ok(false);
     }
     if let Some(rest) = keyword_rest(statement, "y-axis") {
         if seen.y_axis {
-            bail!("`y-axis` が 2 回書かれています。1 つにまとめてからもう一度開いてください。");
+            bail!(i18n::t!(
+                "`y-axis` is written twice. Merge them into one, then open it again."
+            ));
         }
         seen.y_axis = true;
         document.y_axis = parse_y_axis(rest, statement)?;
@@ -602,7 +618,9 @@ fn parse_statement(
             return Ok(true);
         }
     }
-    bail!("XY チャートの文として読めませんでした ({statement})。テキストのまま編集してください。")
+    bail!(i18n::t!(
+        "Could not read this as an XY chart statement ({statement}). Edit it as text."
+    ))
 }
 
 /// What follows `keyword` at the start of a statement. Mermaid matches the
@@ -627,7 +645,9 @@ fn keyword_rest<'a>(statement: &'a str, keyword: &str) -> Option<&'a str> {
 fn parse_x_axis(rest: &str, statement: &str) -> Result<XyXAxis> {
     let text = rest.trim();
     if text.is_empty() {
-        bail!("`x-axis` に名前も目盛りもありません ({statement})。");
+        bail!(i18n::t!(
+            "`x-axis` has neither a name nor ticks ({statement})."
+        ));
     }
     if text.starts_with('[') {
         return Ok(XyXAxis {
@@ -650,7 +670,7 @@ fn parse_x_axis(rest: &str, statement: &str) -> Result<XyXAxis> {
     } else if let Some((min, max)) = read_range(tail, statement)? {
         XyXAxisData::Range { min, max }
     } else {
-        bail!("x 軸の目盛りとして読めませんでした ({statement})。");
+        bail!(i18n::t!("Could not read the x-axis ticks ({statement})."));
     };
     Ok(XyXAxis {
         title: Some(title),
@@ -661,7 +681,9 @@ fn parse_x_axis(rest: &str, statement: &str) -> Result<XyXAxis> {
 fn parse_y_axis(rest: &str, statement: &str) -> Result<XyYAxis> {
     let text = rest.trim();
     if text.is_empty() {
-        bail!("`y-axis` に名前も範囲もありません ({statement})。");
+        bail!(i18n::t!(
+            "`y-axis` has neither a name nor a range ({statement})."
+        ));
     }
     if let Some((min, max)) = read_range(text, statement)? {
         return Ok(XyYAxis {
@@ -670,7 +692,7 @@ fn parse_y_axis(rest: &str, statement: &str) -> Result<XyYAxis> {
         });
     }
     if text.starts_with('[') {
-        bail!("y 軸に項目は書けません ({statement})。");
+        bail!(i18n::t!("The y axis cannot have categories ({statement})."));
     }
     let (title, tail) = read_text_prefix(text, statement)?;
     let tail = tail.trim();
@@ -679,7 +701,9 @@ fn parse_y_axis(rest: &str, statement: &str) -> Result<XyYAxis> {
     } else if let Some((min, max)) = read_range(tail, statement)? {
         Some(XyRange { min, max })
     } else {
-        bail!("y 軸の範囲として読めませんでした ({statement})。`0 --> 100` の形で書いてください。");
+        bail!(i18n::t!(
+            "Could not read the y-axis range ({statement}). Write it as `0 --> 100`."
+        ));
     };
     Ok(XyYAxis {
         title: Some(title),
@@ -693,20 +717,24 @@ fn parse_series(rest: &str, statement: &str) -> Result<(Option<XyText>, Vec<Stri
         (None, text)
     } else {
         if text.is_empty() {
-            bail!("系列に値がありません ({statement})。");
+            bail!(i18n::t!("The series has no values ({statement})."));
         }
         let (name, tail) = read_text_prefix(text, statement)?;
         (Some(name), tail.trim())
     };
     if !list.starts_with('[') {
-        bail!("系列の値が `[1, 2, 3]` の形で書かれていません ({statement})。");
+        bail!(i18n::t!(
+            "The series values are not written as `[1, 2, 3]` ({statement})."
+        ));
     }
     let inner = bracket_inner(list, statement)?;
     let mut values = Vec::new();
     for part in split_top_level(inner, ',') {
         let value = part.trim();
         if !is_valid_xychart_number(value) {
-            bail!("系列の値 `{value}` は数値として読めません ({statement})。");
+            bail!(i18n::t!(
+                "The series value `{value}` cannot be read as a number ({statement})."
+            ));
         }
         values.push(value.to_string());
     }
@@ -719,11 +747,11 @@ fn read_categories(text: &str, statement: &str) -> Result<Vec<XyText>> {
     for part in split_top_level(inner, ',') {
         let part = part.trim();
         if part.is_empty() {
-            bail!("x 軸に空の項目があります ({statement})。");
+            bail!(i18n::t!("The x axis has an empty category ({statement})."));
         }
         let category = read_whole_text(part, statement)?;
         if category.text.is_empty() {
-            bail!("x 軸に空の項目があります ({statement})。");
+            bail!(i18n::t!("The x axis has an empty category ({statement})."));
         }
         categories.push(category);
     }
@@ -737,20 +765,20 @@ fn read_whole_text(input: &str, statement: &str) -> Result<XyText> {
     if text.starts_with('"') {
         let (value, rest) = read_text_prefix(text, statement)?;
         if !rest.trim().is_empty() {
-            bail!(
-                "引用符の後の `{}` は読めません ({statement})。",
+            bail!(i18n::t!(
+                "Could not read `{}` after the quotes ({statement}).",
                 rest.trim()
-            );
+            ));
         }
         return Ok(value);
     }
     if text.is_empty() {
-        bail!("文字が空です ({statement})。");
+        bail!(i18n::t!("The text is empty ({statement})."));
     }
     if text.contains(char::is_whitespace) {
-        bail!(
-            "引用符の無い `{text}` は Mermaid が空白を詰めて描きます ({statement})。`\"{text}\"` のように `\"` で囲んでからもう一度開いてください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid collapses the spaces in the unquoted `{text}` when drawing it ({statement}). Enclose it in `\"`, like `\"{text}\"`, then open it again."
+        ));
     }
     Ok(unquoted_text(text))
 }
@@ -774,7 +802,7 @@ fn read_text_prefix<'a>(input: &'a str, statement: &str) -> Result<(XyText, &'a 
     let text = input.trim_start();
     if let Some(body) = text.strip_prefix("\"`") {
         let Some(end) = body.find("`\"") else {
-            bail!("閉じていない \"` があります ({statement})。");
+            bail!(i18n::t!("There is an unclosed \"` ({statement})."));
         };
         let value = body.get(..end).unwrap_or_default();
         let rest = body.get(end + 2..).unwrap_or_default();
@@ -782,7 +810,7 @@ fn read_text_prefix<'a>(input: &'a str, statement: &str) -> Result<(XyText, &'a 
     }
     if let Some(body) = text.strip_prefix('"') {
         let Some(end) = body.find('"') else {
-            bail!("閉じていない `\"` があります ({statement})。");
+            bail!(i18n::t!("There is an unclosed `\"` ({statement})."));
         };
         let value = body.get(..end).unwrap_or_default();
         let rest = body.get(end + 1..).unwrap_or_default();
@@ -793,7 +821,7 @@ fn read_text_prefix<'a>(input: &'a str, statement: &str) -> Result<(XyText, &'a 
         .unwrap_or(text.len());
     let value = text.get(..end).unwrap_or_default();
     if value.is_empty() {
-        bail!("名前が空です ({statement})。");
+        bail!(i18n::t!("The name is empty ({statement})."));
     }
     Ok((unquoted_text(value), text.get(end..).unwrap_or_default()))
 }
@@ -809,13 +837,18 @@ fn read_range(input: &str, statement: &str) -> Result<Option<(String, String)>> 
         return Ok(None);
     };
     let Some((max, tail)) = number_token(after_arrow.trim_start()) else {
-        bail!("`-->` の後に数値がありません ({statement})。");
+        bail!(i18n::t!("There is no number after `-->` ({statement})."));
     };
     if !tail.trim().is_empty() {
-        bail!("範囲の後の `{}` は読めません ({statement})。", tail.trim());
+        bail!(i18n::t!(
+            "Could not read `{}` after the range ({statement}).",
+            tail.trim()
+        ));
     }
     if !is_valid_xychart_number(min) || !is_valid_xychart_number(max) {
-        bail!("範囲 `{min} --> {max}` を数値として読めません ({statement})。");
+        bail!(i18n::t!(
+            "Could not read the range `{min} --> {max}` as numbers ({statement})."
+        ));
     }
     Ok(Some((min.to_string(), max.to_string())))
 }
@@ -888,7 +921,7 @@ impl Quote {
 /// What is between `[` and its `]`, which has to end the statement.
 fn bracket_inner<'a>(text: &'a str, statement: &str) -> Result<&'a str> {
     let Some(body) = text.strip_prefix('[') else {
-        bail!("`[` がありません ({statement})。");
+        bail!(i18n::t!("`[` is missing ({statement})."));
     };
     let mut quote = Quote::None;
     for (offset, character) in body.char_indices() {
@@ -896,18 +929,21 @@ fn bracket_inner<'a>(text: &'a str, statement: &str) -> Result<&'a str> {
             continue;
         }
         match character {
-            '[' => bail!("`[` の中に `[` があります ({statement})。"),
+            '[' => bail!(i18n::t!("There is a `[` inside `[` ({statement}).")),
             ']' => {
                 let after = body.get(offset + 1..).unwrap_or_default();
                 if !after.trim().is_empty() {
-                    bail!("`]` の後の `{}` は読めません ({statement})。", after.trim());
+                    bail!(i18n::t!(
+                        "Could not read `{}` after `]` ({statement}).",
+                        after.trim()
+                    ));
                 }
                 return Ok(body.get(..offset).unwrap_or_default());
             }
             _ => {}
         }
     }
-    bail!("`]` で閉じていません ({statement})。")
+    bail!(i18n::t!("It is not closed with `]` ({statement})."))
 }
 
 /// Splits `text` at `delimiter` where it is outside strings and brackets.
@@ -948,8 +984,8 @@ pub(crate) fn statement_after_directives(block: &str) -> Option<&str> {
 }
 
 pub(crate) fn directive_statement_error(statement: &str) -> String {
-    format!(
-        "指示子 `%%{{…}}%%` の後ろに同じ行で書かれた `{statement}` は構造化編集に対応していません。Mermaid は指示子を取り除いてこの文を読みます。指示子の後ろで改行してからもう一度開いてください。"
+    i18n::t!(
+        "`{statement}`, written after the directive `%%{{…}}%%` on the same line, is not supported by the structured editor. Mermaid removes the directive and reads this statement. Break the line after the directive, then open it again."
     )
 }
 
@@ -1419,15 +1455,24 @@ mod tests {
     #[test]
     fn constructs_that_would_change_are_refused() {
         for (source, reason) in [
-            ("xychart\n  title Sales Revenue\n  bar [1]", "空白を詰めて"),
-            ("xychart\n  x-axis [cat2 asdf]\n  bar [1]", "空白を詰めて"),
-            ("xychart\n  title a\n  title b", "2 回"),
-            ("xychart\n  x-axis [a]\n  x-axis [b]", "2 回"),
-            ("xychart\n  bar [1, 2] %% メモ", "コメント"),
-            ("xychart\n  bar [1,\n  %% メモ\n  2]", "コメント"),
-            ("xychart\n  barTitle [1]", "読めません"),
-            ("xychart abc\n  bar [1]", "対応していません"),
-            ("xychart\n  x-axis [\"\"]\n  bar [1]", "空の項目"),
+            (
+                "xychart\n  title Sales Revenue\n  bar [1]",
+                "collapses the spaces",
+            ),
+            (
+                "xychart\n  x-axis [cat2 asdf]\n  bar [1]",
+                "collapses the spaces",
+            ),
+            ("xychart\n  title a\n  title b", "written twice"),
+            ("xychart\n  x-axis [a]\n  x-axis [b]", "written twice"),
+            ("xychart\n  bar [1, 2] %% メモ", "comment"),
+            ("xychart\n  bar [1,\n  %% メモ\n  2]", "comment"),
+            ("xychart\n  barTitle [1]", "Could not read"),
+            (
+                "xychart abc\n  bar [1]",
+                "not supported by the structured editor",
+            ),
+            ("xychart\n  x-axis [\"\"]\n  bar [1]", "empty category"),
             ("xychart\n  accTitle: a; bar [1]", "`;`"),
         ] {
             let error = parse_xychart(source)
@@ -1515,13 +1560,13 @@ mod tests {
                 Box::new(|document| {
                     document.title = Some(XyText::new("引用 \" あり", XyTextStyle::Quoted))
                 }),
-                "タイトル",
+                "The title",
             ),
             (
                 Box::new(|document| {
                     document.x_axis.data = XyXAxisData::Categories(Vec::new());
                 }),
-                "項目が 1 つも",
+                "has no categories",
             ),
             (
                 Box::new(|document| {
@@ -1530,7 +1575,7 @@ mod tests {
                         max: "2".to_string(),
                     };
                 }),
-                "x 軸の範囲",
+                "x-axis range",
             ),
             (
                 Box::new(|document| {
@@ -1539,7 +1584,7 @@ mod tests {
                         max: "2".to_string(),
                     });
                 }),
-                "y 軸の範囲",
+                "y-axis range",
             ),
             (
                 Box::new(|document| {
@@ -1547,7 +1592,7 @@ mod tests {
                         series.values = vec!["1".to_string(), String::new(), "3".to_string()];
                     }
                 }),
-                "2 番目の値が空",
+                "value 2 is empty",
             ),
             (
                 Box::new(|document| {
@@ -1555,7 +1600,7 @@ mod tests {
                         series.values = vec!["1e3".to_string()];
                     }
                 }),
-                "数値ではありません",
+                "is not a number",
             ),
             (
                 Box::new(|document| {
@@ -1563,7 +1608,7 @@ mod tests {
                         series.values.clear();
                     }
                 }),
-                "値が 1 つも",
+                "has no values",
             ),
         ];
         for (change, reason) in cases {
@@ -1679,7 +1724,7 @@ mod tests {
                     .err()
                     .unwrap_or_else(|| panic!("`{source}` should be refused"))
             );
-            assert!(message.contains("系列 (bar / line) より後"), "{message}");
+            assert!(message.contains("after a series (bar / line)"), "{message}");
         }
 
         let source = "xychart\n  bar [10, 20]\n  x-axis \"月\"";
@@ -1707,7 +1752,7 @@ mod tests {
                     .err()
                     .unwrap_or_else(|| panic!("`{source}` should be refused"))
             );
-            assert!(message.contains("描画が終わりません"), "{message}");
+            assert!(message.contains("never finishes drawing"), "{message}");
         }
 
         let mut document = parse("xychart\n  bar [1, 2]\n  line [1, 2]");
@@ -1718,7 +1763,7 @@ mod tests {
         assert!(
             document
                 .structure_error()
-                .is_some_and(|error| error.contains("最初の系列")),
+                .is_some_and(|error| error.contains("first series")),
             "{:?}",
             document.structure_error()
         );
@@ -1745,7 +1790,7 @@ mod tests {
         let source = "xychart\n  bar [1]\n%%{init: {}}%%   line [2]\n  bar [3]";
         assert_eq!(merman_model(source).map(|model| model.plots.len()), Some(3));
         let message = format!("{}", parse_xychart(source).err().expect("refused"));
-        assert!(message.contains("指示子"), "{message}");
+        assert!(message.contains("after the directive"), "{message}");
         assert!(parse_xychart("xychart\n%%{init: {\n}}%% bar [1]").is_err());
 
         let source = "xychart\n  bar [1]\n%%{init: {}}%% %% メモ\n%%{init: {}}%%";

@@ -5,8 +5,42 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid " ({count} row hidden)"
+msgid_plural " ({count} rows hidden)"
+msgstr[0] " ({count} 行を非表示)"
+
+msgid "(Blank)"
+msgstr "(空白)"
+
+msgid "A single cell is compared against the clipboard, but the clipboard is empty (select several ranges with Ctrl, or two or more columns or rows, to compare within them)"
+msgstr "1 つのセルはクリップボードと比べますが、クリップボードが空です (Ctrl で複数の範囲を選ぶか、2 列以上か 2 行以上を選ぶと、その中で比べます)"
+
 msgid "A-Z, then Count"
 msgstr "名前順"
+
+msgid "Add Column"
+msgstr "列を追加"
+
+msgid "Add Row"
+msgstr "行を追加"
+
+msgid "Add a column at the end"
+msgstr "末尾に 1 列追加"
+
+msgid "Add a row at the end"
+msgstr "末尾に 1 行追加"
+
+msgid "Alt+Enter for a line break in a cell"
+msgstr "セル内改行は Alt+Enter"
+
+msgid "Begins With"
+msgstr "前方一致"
+
+msgid "Blank"
+msgstr "空白"
+
+msgid "Cell Comparison ({} ↔ {})"
+msgstr "セルの比較 ({} ↔ {})"
 
 msgid "Center"
 msgstr "中央寄せ"
@@ -17,24 +51,251 @@ msgstr "絞り込みのメニューに並べる値の順序を選びます"
 msgid "Choose vertical text alignment within cells"
 msgstr "セルの中で文字を縦のどこに寄せるかを選びます"
 
+msgid "Choose what to compare on this side"
+msgstr "この側で比べるものを選びます"
+
+msgid "Clear Colors"
+msgstr "色をクリア"
+
+msgid "Clear Contents"
+msgstr "内容を消去"
+
+msgid "Clear Filters"
+msgstr "絞り込みを解除"
+
+msgid "Clear Second"
+msgstr "2 つ目を解除"
+
+msgid "Clear Selection Contents"
+msgstr "選択範囲の内容を消去"
+
+msgid "Clear Sort"
+msgstr "並べ替えを解除"
+
+msgid "Clears the filters of every column. Filter a single column from the ▾ in its heading"
+msgstr "すべての列の絞り込みを解除します。列ごとの絞り込みは見出しの ▾ から"
+
+msgid "Clears this column's filters"
+msgstr "この列の絞り込みを解除します"
+
+msgid "Clipboard"
+msgstr "クリップボード"
+
+msgid "Color"
+msgstr "色"
+
+msgid "Colors aren't saved for this file"
+msgstr "このファイルの色は保存されません"
+
+msgid "Column {label}"
+msgstr "列 {label}"
+
+msgid "Columns"
+msgstr "列"
+
+msgid "Compare"
+msgstr "比較する"
+
+msgid "Compare Again"
+msgstr "再比較"
+
+msgid "Compare Selected Cells"
+msgstr "選択したセルを比較"
+
+msgid "Compare this table with another version or another file"
+msgstr "この表を別の版や別のファイルと見比べます"
+
+msgid "Compare with File…"
+msgstr "ファイルと比較…"
+
+msgid "Compare with HEAD"
+msgstr "HEAD と比較"
+
+msgid "Comparing…"
+msgstr "比較中…"
+
+msgid "Condition: {}"
+msgstr "条件: {}"
+
+msgid "Contains"
+msgstr "含む"
+
+msgid "Copy"
+msgstr "コピー"
+
+msgid "Couldn't read the chosen file"
+msgstr "選んだファイルを読み込めませんでした"
+
 msgid "Count, then A-Z"
 msgstr "件数順"
 
-msgid ""
-"Dev-only section used for debugging purposes.\n"
-"Will be removed on public release of the tabular data preview feature"
-msgstr ""
-"デバッグ用の開発者向けの項目です。\n"
-"表のプレビューの一般公開時に削除されます"
+msgid "Creates the first row"
+msgstr "1 行目を作ります"
+
+msgid "Cut"
+msgstr "切り取り"
+
+msgid "Delete Columns"
+msgstr "列を削除"
+
+msgid "Delete Rows"
+msgstr "行を削除"
+
+msgid "Delete Selected Columns"
+msgstr "選択中の列を削除"
+
+msgid "Delete Selected Rows"
+msgstr "選択中の行を削除"
+
+msgid "Dev-only section used for debugging purposes.\nWill be removed on public release of the tabular data preview feature"
+msgstr "デバッグ用の開発者向けの項目です。\n表のプレビューの一般公開時に削除されます"
 
 msgid "Dev-only: Rendering Mode"
 msgstr "開発用: 描画方式"
 
+msgid "Diff"
+msgstr "差分"
+
+msgid "Diff of {} and {}"
+msgstr "{} と {} の差分"
+
 msgid "Display multiline rows"
 msgstr "複数行のセルをすべて表示"
 
+msgid "Does Not Contain"
+msgstr "含まない"
+
+msgid "Ends With"
+msgstr "後方一致"
+
+msgid "Equals"
+msgstr "等しい"
+
+msgid "Fill Color"
+msgstr "塗りつぶしの色"
+
 msgid "Filter Sort"
 msgstr "絞り込みの並び"
+
+msgid "Filter and sort menu (Alt+↓)"
+msgstr "絞り込み・並べ替えのメニュー (Alt+↓)"
+
+msgid "Filtered by the chosen values. Click to change"
+msgstr "選んだ値で絞り込み中。クリックで変更"
+
+msgid "Filtering by this condition. Click to clear"
+msgstr "この条件で絞り込み中。クリックで解除"
+
+msgid "Filtering: {}. Click to change"
+msgstr "絞り込み中: {}。クリックで変更"
+
+msgid "Filters to only the values listed now (use it together with the search)"
+msgstr "いま一覧に出ている値だけに絞り込みます (検索と組み合わせて使います)"
+
+msgid "Filter…"
+msgstr "絞り込み…"
+
+msgid "First Row Is Header"
+msgstr "先頭行を見出し"
+
+msgid "Hidden by other filters"
+msgstr "他の絞り込みで非表示"
+
+msgid "Insert a column here"
+msgstr "ここに 1 列挿入"
+
+msgid "Insert a row here"
+msgstr "ここに 1 行挿入"
+
+msgid "Joins the first condition with \"{}\" to show {}"
+msgstr "1 つ目の条件と「{}」でつないで、{}を表示します"
+
+msgid "Joins the two conditions with \"{}\""
+msgstr "2 つの条件を「{}」でつなぎます"
+
+msgid "Loading…"
+msgstr "読み込み中…"
+
+msgid "Makes the next condition you press the second, joined with \"{}\""
+msgstr "次に押す条件を「{}」でつないだ 2 つ目にします"
+
+msgid "Next Difference"
+msgstr "次の差分"
+
+msgid "No differences"
+msgstr "差分なし"
+
+msgid "No matching values. The conditions below can still use this text"
+msgstr "一致する値はありません。下の条件では使えます"
+
+msgid "Not Blank"
+msgstr "空白以外"
+
+msgid "Not sorted. Click to sort ascending"
+msgstr "並べ替えなし。クリックで昇順"
+
+msgid "Nothing to compare"
+msgstr "比べるものがありません"
+
+msgid "Only the first {} rows were compared"
+msgstr "先頭 {} 行だけを比較しました"
+
+msgid "Open Text Beside"
+msgstr "テキストを横に開く"
+
+msgid "Opens the underlying text in the adjacent pane"
+msgstr "元のテキストを隣のペインで開きます"
+
+msgid "Paste"
+msgstr "貼り付け"
+
+msgid "Pick values, or filter with the conditions below"
+msgstr "値を選ぶか、下の条件で絞り込みます"
+
+msgid "Previous Difference"
+msgstr "前の差分"
+
+msgid "Reads both sides again and compares them"
+msgstr "両側をもう一度読み直して比べます"
+
+msgid "Removes the second condition and filters by the first one only"
+msgstr "2 つ目の条件を外して、1 つ目だけで絞り込みます"
+
+msgid "Restored the previous filters"
+msgstr "前回の絞り込みを復元しました"
+
+msgid "Restored the previous filters and sorting"
+msgstr "前回の絞り込みと並べ替えを復元しました"
+
+msgid "Restored the previous sorting"
+msgstr "前回の並べ替えを復元しました"
+
+msgid "Row {number}"
+msgstr "行 {number}"
+
+msgid "Row {}"
+msgstr "行 {}"
+
+msgid "Rows"
+msgstr "行"
+
+msgid "Rows can't be inserted above the header row"
+msgstr "見出し行の上には行を挿入できません"
+
+msgid "Search {} values, or type text for a condition"
+msgstr "{} 件の値を検索 / 条件の文字"
+
+msgid "Second Condition"
+msgstr "2 つ目の条件"
+
+msgid "Select All"
+msgstr "すべて選択"
+
+msgid "Select All Cells"
+msgstr "すべてのセルを選択"
+
+msgid "Show Only Rows with Differences"
+msgstr "差分のある行だけ表示"
 
 msgid "Show cell positions"
 msgstr "セルの位置を表示"
@@ -42,19 +303,26 @@ msgstr "セルの位置を表示"
 msgid "Show perf metrics"
 msgstr "性能指標を表示"
 
-msgid ""
-"Showing file line numbers.\n"
-"Click to show sequential row numbers."
-msgstr ""
-"元の行番号を表示しています。\n"
-"クリックすると通し番号を表示します。"
+msgid "Showing file line numbers.\nClick to show sequential row numbers."
+msgstr "元の行番号を表示しています。\nクリックすると通し番号を表示します。"
 
-msgid ""
-"Showing sequential row numbers.\n"
-"Click to show file line numbers."
-msgstr ""
-"通し番号を表示しています。\n"
-"クリックすると元の行番号を表示します。"
+msgid "Showing sequential row numbers.\nClick to show file line numbers."
+msgstr "通し番号を表示しています。\nクリックすると元の行番号を表示します。"
+
+msgid "Shows only {kept}"
+msgstr "{kept}だけを表示します"
+
+msgid "Sort Ascending"
+msgstr "昇順で並べ替え"
+
+msgid "Sort Descending"
+msgstr "降順で並べ替え"
+
+msgid "Sorted ascending. Click to sort descending"
+msgstr "昇順で並べ替え中。クリックで降順"
+
+msgid "Sorted descending. Click to clear"
+msgstr "降順で並べ替え中。クリックで解除"
 
 msgid "Table Settings"
 msgstr "表の設定"
@@ -62,14 +330,211 @@ msgstr "表の設定"
 msgid "Text Alignment"
 msgstr "セル内の配置"
 
+msgid "That makes {count} things to compare. Select again so that there are at most {MAX_CELL_CANDIDATES} (the candidates are the ranges selected with Ctrl, the rows selected by their numbers, the columns when two or more are selected, or the cells of a single column)"
+msgstr "比べる候補が {count} 個になります。{MAX_CELL_CANDIDATES} 個までになるように選び直してください (Ctrl で選んだ範囲、行番号で選んだ行、2 列以上なら列、1 列ならセルが候補です)"
+
+msgid "The added row is hidden by the filters"
+msgstr "追加した行は絞り込みで表示されていません"
+
+msgid "The candidates add up to {} cells. Comparing three or more is limited to {} cells (select a smaller range, or only two columns, two rows or two ranges to compare)"
+msgstr "比べる候補のセルが合わせて {} 個になります。3 つ以上を比べるときは {} セルまでです (範囲を小さくするか、比べる 2 列、2 行、2 つの範囲のどれかだけを選んでください)"
+
+msgid "The next condition you press becomes the second, joined with \"{}\". Press again to cancel"
+msgstr "次に押す条件が「{}」でつないだ 2 つ目になります。もう一度押すと取り消します"
+
+msgid "The original table's tab is closed, so this can't be redone"
+msgstr "元の表のタブが閉じているため取り直せません"
+
+msgid "The original table's tab is closed, so this comparison can't be redone"
+msgstr "元の表のタブが閉じているため、この比較は取り直せません"
+
+msgid "The selection is too large (up to {limit} cells) to set colors"
+msgstr "選択範囲が大きすぎます (最大 {limit} セル)。色は設定できません"
+
+msgid "The selection is too large (up to {limit} cells). Open the text beside the grid to edit it"
+msgstr "選択範囲が大きすぎます (最大 {limit} セル)。テキストを横に開いて編集してください"
+
+msgid "This file is empty. Typing in a cell creates the first row"
+msgstr "空のファイルです。セルに入力すると 1 行目が作られます"
+
+msgid "This file isn't tracked by git or has never been committed"
+msgstr "git の管理下にないか、まだ一度もコミットされていないファイルです"
+
+msgid "This file no longer exists in {} (showing the last contents that could be read)"
+msgstr "{} にこのファイルがなくなりました (最後に読めた内容を表示しています)"
+
+msgid "This operation can't be performed on multiple selections."
+msgstr "複数の選択範囲に対してはこの操作を実行できません。"
+
+msgid "Too many matches; only the first 100,000 are included"
+msgstr "一致が多すぎるため先頭 100,000 件だけ対象です"
+
 msgid "Top"
 msgstr "上寄せ"
 
+msgid "Type in the search box, then press \"{}\""
+msgstr "検索欄に文字を入れてから「{}」を押します"
+
 msgid "Uniform Height"
 msgstr "均一行高で描画"
+
+msgid "Untitled"
+msgstr "無題"
+
+msgid "Use First Row as Header"
+msgstr "先頭行を見出しにする"
+
+msgid "Used as the second condition. Click to clear"
+msgstr "2 つ目の条件に使用中。クリックで解除"
 
 msgid "Variable Height"
 msgstr "可変行高で描画"
 
 msgid "When enabled, row height grows to show all content. When disabled, only the first line is visible — hover a cell to see the rest."
 msgstr "オンにすると、行の高さが広がって内容をすべて表示します。オフにすると 1 行目だけを表示し、残りはセルにポインターを重ねると表示されます。"
+
+msgid "When off, the first row is treated as data too"
+msgstr "オフにすると 1 行目もデータとして扱います"
+
+msgid "begins with \"{needle}\""
+msgstr "「{needle}」で始まる"
+
+msgid "contains \"{needle}\""
+msgstr "「{needle}」を含む"
+
+msgid "does not contain \"{needle}\""
+msgstr "「{needle}」を含まない"
+
+msgid "ends with \"{needle}\""
+msgstr "「{needle}」で終わる"
+
+msgid "equals \"{needle}\""
+msgstr "「{needle}」と等しい"
+
+msgid "is blank"
+msgstr "空白"
+
+msgid "is not blank"
+msgstr "空白以外"
+
+msgid "rows where the cell {}"
+msgstr "{}行"
+
+msgid "rows with blank cells"
+msgstr "空白のセルの行"
+
+msgid "rows with non-blank cells"
+msgstr "空白以外のセルの行"
+
+msgid "{count} cell wasn't replaced because its content had changed"
+msgid_plural "{count} cells weren't replaced because their content had changed"
+msgstr[0] "{count} 件は内容が変わっていたため置換しませんでした"
+
+msgid "{count} column"
+msgid_plural "{count} columns"
+msgstr[0] "{count} 列"
+
+msgid "{count} difference ({} added / {} removed / {} changed)"
+msgid_plural "{count} differences ({} added / {} removed / {} changed)"
+msgstr[0] "{count} 件の差分 (追加 {} / 削除 {} / 変更 {})"
+
+msgid "{count} row"
+msgid_plural "{count} rows"
+msgstr[0] "{count} 行"
+
+msgid "{selected_rows} of {count} row selected"
+msgid_plural "{selected_rows} of {count} rows selected"
+msgstr[0] "{count} 行中 {selected_rows} 行を選択中"
+
+msgid "{shown_rows} of {count} row"
+msgid_plural "{shown_rows} of {count} rows"
+msgstr[0] "{shown_rows} / {count} 行"
+
+msgid "{} (read at {})"
+msgstr "{} ({} 取得)"
+
+msgid "{} to switch this tab instead"
+msgstr "{} でこのタブを切り替える"
+
+msgid "{} wasn't found (showing the last contents that could be read)"
+msgstr "{} が見つかりません (最後に読めた内容を表示しています)"
+
+msgctxt "cell color"
+msgid "Blue"
+msgstr "青"
+
+msgctxt "cell color"
+msgid "Gray"
+msgstr "灰"
+
+msgctxt "cell color"
+msgid "Green"
+msgstr "緑"
+
+msgctxt "cell color"
+msgid "None"
+msgstr "なし"
+
+msgctxt "cell color"
+msgid "Orange"
+msgstr "橙"
+
+msgctxt "cell color"
+msgid "Purple"
+msgstr "紫"
+
+msgctxt "cell color"
+msgid "Red"
+msgstr "赤"
+
+msgctxt "cell color"
+msgid "Text Color"
+msgstr "文字の色"
+
+msgctxt "cell color"
+msgid "Yellow"
+msgstr "黄"
+
+msgctxt "table diff"
+msgid "Current"
+msgstr "現在"
+
+msgctxt "table diff"
+msgid "{current} of {total}"
+msgstr "{current} / {total} 箇所目"
+
+msgctxt "table filter"
+msgid "And"
+msgstr "かつ"
+
+msgctxt "table filter"
+msgid "Clear All"
+msgstr "すべて解除"
+
+msgctxt "table filter"
+msgid "Or"
+msgstr "または"
+
+msgctxt "table filter"
+msgid "{} and {}"
+msgstr "{} かつ {}"
+
+msgctxt "table filter"
+msgid "{} or {}"
+msgstr "{} または {}"
+
+msgctxt "table grid"
+msgid "Insert Column Left"
+msgstr "左に列を挿入"
+
+msgctxt "table grid"
+msgid "Insert Column Right"
+msgstr "右に列を挿入"
+
+msgctxt "table grid"
+msgid "Insert Row Above"
+msgstr "上に行を挿入"
+
+msgctxt "table grid"
+msgid "Insert Row Below"
+msgstr "下に行を挿入"

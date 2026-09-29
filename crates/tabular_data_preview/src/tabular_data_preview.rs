@@ -149,9 +149,10 @@ impl TabularDataPreviewPane {
         let cols = self.table_column_count();
         let line_number_width = self.calculate_row_identifier_column_width();
 
+        let append_width = append_column_width(cx);
         let mut widths: Vec<AbsoluteLength> = self.calculate_data_column_widths();
         widths.insert(0, AbsoluteLength::Pixels(px(line_number_width)));
-        widths.push(append_column_width(cx));
+        widths.push(append_width);
 
         let mut resize_behaviors = vec![TableResizeBehavior::Resizable; cols];
         resize_behaviors[0] = TableResizeBehavior::None;
@@ -170,6 +171,13 @@ impl TabularDataPreviewPane {
                     AbsoluteLength::Pixels(px(line_number_width)),
                     TableResizeBehavior::None,
                 );
+                if let Some(append_column) = cols.checked_sub(1) {
+                    state.set_column_configuration(
+                        append_column,
+                        append_width,
+                        TableResizeBehavior::None,
+                    );
+                }
             }
         });
     }
@@ -545,6 +553,9 @@ impl PerformanceMetrics {
 /// Holds state of column widths for a table component in the tabular data preview.
 pub(crate) struct ColumnWidths {
     pub widths: Entity<ResizableColumnsState>,
+    /// The catalog the "+" column's width was worked out for: its label changes
+    /// length with the UI language, which switches without reopening the file.
+    pub append_column_i18n_generation: u64,
 }
 
 impl ColumnWidths {
@@ -557,6 +568,7 @@ impl ColumnWidths {
                     vec![ui::TableResizeBehavior::Resizable; cols],
                 )
             }),
+            append_column_i18n_generation: i18n::generation(),
         }
     }
 }

@@ -387,7 +387,7 @@ fn terminal_initial_title(input: Result<String, serde_json::Value>) -> SharedStr
             .and_then(|command| command.as_str())
             .filter(|command| !command.trim().is_empty())
             .map(SharedString::new)
-            .unwrap_or_else(|| "ターミナルコマンド".into()),
+            .unwrap_or_else(|| i18n::t!("Terminal command").into()),
     }
 }
 
@@ -404,7 +404,9 @@ fn linux_sandbox_error_offers_retry(error: &acp_thread::LinuxWslSandboxError) ->
         acp_thread::LinuxWslSandboxError::BwrapNotFound
         | acp_thread::LinuxWslSandboxError::SetuidRejected
         | acp_thread::LinuxWslSandboxError::SandboxProbeFailed => true,
-        acp_thread::LinuxWslSandboxError::Other(_) => false,
+        acp_thread::LinuxWslSandboxError::WslTimedOut { .. }
+        | acp_thread::LinuxWslSandboxError::WslUnavailable { .. }
+        | acp_thread::LinuxWslSandboxError::Other(_) => false,
     }
 }
 
@@ -424,7 +426,7 @@ async fn retry_or_cancel_after_sandbox_failure(
         .update(|cx| {
             event_stream.ask_to_retry_sandbox_creation(
                 Some(command.to_string()),
-                error.user_facing_message(),
+                error.display_message(),
                 Some(error.docs_section().to_string()),
                 retries,
                 cx,
@@ -443,13 +445,30 @@ async fn retry_or_cancel_after_sandbox_failure(
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 fn sandbox_unavailable_message(error: &acp_thread::LinuxWslSandboxError) -> String {
-    format!(
-        "The command was not run: the sandbox for terminal commands could not be created on \
+    i18n::in_english(|| {
+        format!(
+            "The command was not run: the sandbox for terminal commands could not be created on \
          this machine ({}). Commands only run inside the sandbox, so the user has to fix the \
          environment before any command can run. Tell the user what failed instead of running \
          the command again.",
-        error.user_facing_message()
-    )
+            error.user_facing_message()
+        )
+    })
+}
+
+/// The WSL environment problem behind a failed terminal creation, if that is
+/// what it was.
+#[cfg(any(target_os = "windows", test))]
+fn wsl_sandbox_unavailable(error: &anyhow::Error) -> Option<acp_thread::LinuxWslSandboxError> {
+    if let Some(timed_out) = error.downcast_ref::<acp_thread::WslSandboxTimedOut>() {
+        return Some((*timed_out).into());
+    }
+    match error.downcast_ref::<sandbox::SandboxError>()? {
+        error @ sandbox::SandboxError::WslUnavailable(_) => {
+            Some(acp_thread::LinuxWslSandboxError::from(error.clone()))
+        }
+        _ => None,
+    }
 }
 
 /// Windows: create the terminal, and when the WSL sandbox reports that its
@@ -475,16 +494,11 @@ async fn create_terminal_retrying_sandbox_creation(
             Err(error) => error,
         };
 
-        let wsl_unavailable = error
-            .downcast_ref::<sandbox::SandboxError>()
-            .and_then(|error| match error {
-                sandbox::SandboxError::WslUnavailable(message) => Some(message.clone()),
-                _ => None,
-            });
-        let Some(message) = wsl_unavailable.filter(|_| sandboxed) else {
-            return Err(format!("{error:#}"));
+        let Some(sandbox_error) = wsl_sandbox_unavailable(&error).filter(|_| sandboxed) else {
+            // `acp_thread` builds the sandbox's errors in English; a WSL
+            // environment failure carries both languages and is read here.
+            return Err(i18n::in_english(|| format!("{error:#}")));
         };
-        let sandbox_error = acp_thread::LinuxWslSandboxError::Other(message);
         log::warn!("Failed to create a WSL sandbox for an agent terminal command: {error:?}");
         // WSL probe failures aren't cached, so each retry probes the current
         // environment again.
@@ -520,7 +534,7 @@ async fn run_terminal_tool(
             let authorize = if unrestricted_writes {
                 event_stream.authorize_unsandboxed_command(
                     input.command.clone(),
-                    "設定でファイルシステムへの書き込みがすべて許可されています".to_string(),
+                    i18n::t!("The settings allow writing anywhere in the file system").to_string(),
                     true,
                     cx,
                 )
@@ -693,7 +707,7 @@ async fn run_terminal_tool(
             // the folder the user approves is the folder the command can write.
             let session_distro = cx.update(|cx| {
                 let project = project.read(cx);
-                project::agent_sandbox::wsl_distro_for_roots(&session_distro_paths(
+                wsl_session_distro(&session_distro_paths(
                     sandbox_worktree_writable_paths(project, cx),
                     working_dir.as_deref(),
                     sandbox_git_dirs(project, cx),
@@ -719,7 +733,9 @@ async fn run_terminal_tool(
                     // `wrap_invocation` refuses the command with the same
                     // reason a moment later.
                     if !write_paths.is_empty() {
-                        return Err(format!("{}{error}", unresolved_grant_refusal(&write_paths)));
+                        return Err(i18n::in_english(|| {
+                            format!("{}{error}", unresolved_grant_refusal(&write_paths))
+                        }));
                     }
                     None
                 }
@@ -728,12 +744,7 @@ async fn run_terminal_tool(
             let mut refused = Vec::new();
             if let Some(session_distro) = session_distro {
                 for requested in write_paths {
-                    match sandbox::resolve_canonical_for_grant(
-                        requested.clone(),
-                        session_distro.clone(),
-                    )
-                    .await
-                    {
+                    match resolve_grant_for_model(requested.clone(), session_distro.clone()).await {
                         Ok(resolved) => {
                             resolved_paths.push(settings::GrantedWritePath::resolved_on_fs(
                                 requested,
@@ -743,10 +754,10 @@ async fn run_terminal_tool(
                         }
                         Err(error) => {
                             log::warn!(
-                                "could not resolve sandbox write path {} in WSL: {error:#}",
+                                "could not resolve sandbox write path {} in WSL: {error}",
                                 requested.display()
                             );
-                            refused.push(format!("{error:#}"));
+                            refused.push(error);
                         }
                     }
                 }
@@ -755,10 +766,11 @@ async fn run_terminal_tool(
             // could not be resolved is one the command will not have.
             if !refused.is_empty() {
                 return Err(format!(
-                    "サンドボックスの書き込み許可を解決できなかったため、コマンドを実行しませんでした。\n\
+                    "The command was not run, because its sandbox write grants couldn't be \
+                     resolved.\n\
                      {}\n\
-                     許可を求める場所を、このセッションが動いている WSL ディストリビューションの中の\
-                     既存のフォルダーに変えてから、もう一度実行してください。",
+                     Ask for existing folders in the WSL distribution this session runs in, then \
+                     run it again.",
                     refused.join("\n")
                 ));
             }
@@ -889,7 +901,7 @@ async fn run_terminal_tool(
                     let probe_wrap = wrap.clone();
                     let error = match cx
                         .background_executor()
-                        .spawn(async move { probe_wrap.can_create_sandbox() })
+                        .spawn(async move { i18n::in_english(|| probe_wrap.can_create_sandbox()) })
                         .await
                     {
                         Ok(()) => break Some(wrap),
@@ -921,7 +933,7 @@ async fn run_terminal_tool(
                 let probe_wrap = wrap.clone();
                 match cx
                     .background_executor()
-                    .spawn(async move { probe_wrap.can_create_sandbox() })
+                    .spawn(async move { i18n::in_english(|| probe_wrap.can_create_sandbox()) })
                     .await
                 {
                     Ok(()) => Some(wrap),
@@ -1067,21 +1079,43 @@ fn resolve_write_paths(
     join_write_paths(raw_paths, base.as_deref(), windows_paths)
 }
 
+/// The WSL distribution a session's paths pick (ADR-F49 decision 33). Its
+/// refusal becomes the tool's result, which the model reads, so it is worded in
+/// English.
+#[cfg(target_os = "windows")]
+fn wsl_session_distro(paths: &[PathBuf]) -> anyhow::Result<Option<String>> {
+    i18n::in_english(|| project::agent_sandbox::wsl_distro_for_roots(paths))
+}
+
+/// Resolves a requested write grant, with the refusal the model is told in
+/// English: the sandbox words it while the resolution is polled.
+#[cfg(target_os = "windows")]
+async fn resolve_grant_for_model(
+    requested: PathBuf,
+    session_distro: sandbox::WslSessionDistro,
+) -> Result<sandbox::ResolvedGrant, String> {
+    i18n::in_english_while_polling(sandbox::resolve_canonical_for_grant(
+        requested,
+        session_distro,
+    ))
+    .await
+    .map_err(|error| i18n::in_english(|| format!("{error:#}")))
+}
+
 /// ADR-F49 決定 34: what the model is told when the write grants it asked for
 /// cannot be resolved because this project's folders name more than one WSL
-/// distribution. It ends without a full stop: the (Japanese) reason follows.
+/// distribution. It ends without a full stop: the reason, in English, follows.
 #[cfg(target_os = "windows")]
 fn unresolved_grant_refusal(requested: &[PathBuf]) -> String {
     let paths = requested
         .iter()
         .map(|path| format!("`{}`", path.display()))
         .collect::<Vec<_>>()
-        .join("、");
+        .join(", ");
     format!(
-        "{paths} への書き込み許可を、このセッションの WSL ディストリビューションで解決できません\
-         でした。承認されていない場所を承認済みとして扱わないため、コマンドは実行していません。\
-         1 つの WSL ディストリビューションのフォルダーだけを開いてから、もう一度実行してください。\
-         理由: "
+        "The write grants for {paths} couldn't be resolved in this session's WSL distribution. \
+         The command was not run, so that a place nobody approved isn't treated as approved. \
+         Open the folders of a single WSL distribution only, then run it again. Reason: "
     )
 }
 
@@ -1371,7 +1405,7 @@ fn process_content(
         // and a `zed-remote-sandbox: <code>:` marker line when it cannot build
         // the isolation, so the command never ran. Recognize that exact
         // signature (never a plain non-zero exit) and explain the reason in
-        // Japanese — plus how to opt out — instead of the generic "failed with
+        // English — plus what the host needs — instead of the generic "failed with
         // exit code 126", which would read as if the command itself failed.
         // `acp_thread` already weaves the same reason and hint into the output
         // it hands back (`annotate_sandbox_setup_failure`), so only prepend
@@ -2223,7 +2257,7 @@ mod tests {
         );
 
         assert!(
-            result.contains("リモートホストでサンドボックスを作成できませんでした"),
+            result.contains("Couldn't create the sandbox on the remote host"),
             "Expected the JP sandbox-failure lead-in, got: {result}"
         );
         // The wording belongs to acp_thread's helper-failure table; this test only
@@ -2269,7 +2303,7 @@ mod tests {
             "Expected the ordinary failure message, got: {result}"
         );
         assert!(
-            !result.contains("サンドボックス"),
+            !result.contains("Couldn't create the sandbox"),
             "Must not surface the sandbox explanation for a plain failure, got: {result}"
         );
     }
@@ -2446,8 +2480,8 @@ mod tests {
         let result = task.await;
         let error = result.expect_err("expected invalid terminal command to be rejected");
         assert!(
-            error.contains("シェルの置換・展開")
-                && error.contains("ユーザー自身のターミナルで実行"),
+            error.contains("substitutions or interpolations")
+                && error.contains("in their own terminal"),
             "expected explicit invalid-command message, got: {error}"
         );
         assert!(
@@ -2618,7 +2652,7 @@ mod tests {
         );
         assert_eq!(
             terminal_initial_title(Err(serde_json::json!({ "cd": "root" }))).as_ref(),
-            "ターミナルコマンド"
+            "Terminal command"
         );
     }
 
@@ -2669,8 +2703,8 @@ mod tests {
             .await
             .expect_err("a substitution outside the sandbox must be rejected");
         assert!(
-            error.contains("シェルの置換・展開")
-                && error.contains("ユーザー自身のターミナルで実行"),
+            error.contains("substitutions or interpolations")
+                && error.contains("in their own terminal"),
             "expected the invalid-command message, got: {error}"
         );
         assert_eq!(environment.terminal_creation_count(), 0);
@@ -2787,7 +2821,7 @@ mod tests {
             .await
             .expect_err("hardcoded denial should override unconditional allow-all");
         assert!(
-            error.contains("組み込みのセキュリティルール"),
+            error.contains("built-in security rule"),
             "expected hardcoded denial message, got: {error}"
         );
         assert!(
@@ -2887,7 +2921,7 @@ mod tests {
                 .expect("the card should say the command runs outside the sandbox");
         assert_eq!(
             details.outside_sandbox_reason.as_deref(),
-            Some("設定でサンドボックスが無効になっています")
+            Some("The sandbox is turned off in the settings")
         );
         let acp_thread::PermissionOptions::Flat(options) = &authorization.options else {
             panic!("expected flat options without an \"always\" choice");
@@ -3228,8 +3262,8 @@ mod tests {
         let result = task.await;
         let error = result.unwrap_err();
         assert!(
-            error.contains("シェルの置換・展開")
-                && error.contains("ユーザー自身のターミナルで実行"),
+            error.contains("substitutions or interpolations")
+                && error.contains("in their own terminal"),
             "command {command:?} should be rejected with substitution message, got: {error}"
         );
         assert!(
@@ -3400,8 +3434,8 @@ mod tests {
             .await
             .expect_err("a substitution outside the sandbox must be rejected");
         assert!(
-            error.contains("シェルの置換・展開")
-                && error.contains("ユーザー自身のターミナルで実行"),
+            error.contains("substitutions or interpolations")
+                && error.contains("in their own terminal"),
             "expected the invalid-command message, got: {error}"
         );
         assert_eq!(environment.terminal_creation_count(), 0);
@@ -3468,7 +3502,7 @@ mod tests {
             .await
             .expect_err("different env-var value should not match allow pattern");
         assert!(
-            error.contains("無効になっています") || error.contains("ブロックされました"),
+            error.contains("is disabled") || error.to_lowercase().contains("blocked"),
             "expected denial for mismatched env value, got: {error}"
         );
         assert!(
@@ -3545,13 +3579,142 @@ mod tests {
         assert_eq!(joined, vec![PathBuf::from("/mnt/c/example/write-root")]);
     }
 
+    #[cfg(target_os = "windows")]
+    fn has_japanese(text: &str) -> bool {
+        text.chars().any(|character| {
+            matches!(
+                character,
+                '\u{3000}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}' | '\u{ff00}'..='\u{ffef}'
+            )
+        })
+    }
+
+    #[cfg(target_os = "windows")]
+    fn japanese_catalog() -> i18n::test_support::LocaleOverride {
+        i18n::test_support::LocaleOverride::new(Some(i18n_catalog::test_support::bundled_catalog(
+            "ja",
+        )))
+    }
+
+    /// The refusals the sandbox words while a command's write grants are being
+    /// resolved reach the model as the tool's result, so they stay English in a
+    /// Japanese UI. Each is checked against the same call made for the UI, which
+    /// has to come out in Japanese for the check to mean anything.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_grant_refusals_the_model_reads_are_english_in_a_japanese_ui() {
+        let _japanese = japanese_catalog();
+
+        let paths = [
+            PathBuf::from(r"\\wsl.localhost\Ubuntu\root\project"),
+            PathBuf::from(r"\\wsl.localhost\Debian\home\me\build"),
+        ];
+        let shown = project::agent_sandbox::wsl_distro_for_roots(&paths)
+            .expect_err("two distributions")
+            .to_string();
+        assert!(has_japanese(&shown), "the UI wording: {shown}");
+        let told = wsl_session_distro(&paths)
+            .expect_err("two distributions")
+            .to_string();
+        assert!(!has_japanese(&told), "Japanese left in {told}");
+        assert!(told.contains("several WSL distributions"), "{told}");
+
+        // Refused before Windows is asked, whose own error would be in the
+        // Windows display language.
+        let requested = PathBuf::from("relative-folder");
+        let shown = futures::executor::block_on(sandbox::resolve_canonical_for_grant(
+            requested.clone(),
+            sandbox::WslSessionDistro::default_distro(),
+        ))
+        .map(|_| ())
+        .expect_err("a relative path is refused");
+        let shown = format!("{shown:#}");
+        assert!(has_japanese(&shown), "the UI wording: {shown}");
+        let told = futures::executor::block_on(resolve_grant_for_model(
+            requested,
+            sandbox::WslSessionDistro::default_distro(),
+        ))
+        .map(|_| ())
+        .expect_err("a relative path is refused");
+        assert!(!has_japanese(&told), "Japanese left in {told}");
+        assert!(
+            told.contains("cannot be allowed: only a path on a Windows drive"),
+            "{told}"
+        );
+    }
+
+    /// A WSL environment failure is both shown on the retry card and told to the
+    /// model: the card keeps the UI language and the model gets English.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_wsl_unavailable_is_english_for_the_model_and_translated_on_the_card() {
+        let _japanese = japanese_catalog();
+        let reason =
+            || i18n::t!("The settings allow writing anywhere in the file system").to_string();
+        // Built the way `acp_thread` builds it: while the sandbox is prepared
+        // in English.
+        let error = i18n::in_english(|| {
+            anyhow::Error::new(sandbox::SandboxError::WslUnavailable(i18n::Bilingual::new(
+                reason,
+            )))
+        });
+        let sandbox_error = wsl_sandbox_unavailable(&error).expect("an environment failure");
+
+        let card = sandbox_error.display_message();
+        assert_eq!(card, reason(), "the card is in the UI language");
+        assert!(has_japanese(&card), "{card}");
+        let told = sandbox_unavailable_message(&sandbox_error);
+        assert!(!has_japanese(&told), "Japanese left in {told}");
+        assert!(
+            told.contains("(The settings allow writing anywhere in the file system)"),
+            "{told}"
+        );
+    }
+
+    /// Without a sandbox there is no card, and the failure goes straight back
+    /// to the model, in English.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn test_a_failure_without_a_card_is_english_for_the_model(cx: &mut gpui::TestAppContext) {
+        crate::tests::init_test(cx);
+        let _japanese = japanese_catalog();
+        let sandbox_error = sandbox::SandboxError::WslUnavailable(i18n::Bilingual::new(|| {
+            i18n::t!("The settings allow writing anywhere in the file system").to_string()
+        }));
+        assert!(has_japanese(&sandbox_error.to_string()));
+
+        let (event_stream, _receiver) = crate::ToolCallEventStream::test();
+        let result = cx
+            .spawn(async move |mut cx| {
+                create_terminal_retrying_sandbox_creation(
+                    &event_stream,
+                    "echo hi",
+                    false,
+                    &mut cx,
+                    |_cx| Task::ready(Err(anyhow::Error::new(sandbox_error.clone()))),
+                )
+                .await
+                .map(|_| ())
+            })
+            .await;
+        let told = result.expect_err("the terminal was not created");
+        assert!(!has_japanese(&told), "Japanese left in {told}");
+        assert_eq!(
+            told,
+            "The settings allow writing anywhere in the file system"
+        );
+    }
+
     /// ADR-F49 決定 34: grants that cannot be resolved are not quietly
     /// dropped. What the model is told names every path it asked for, says the
-    /// command did not run, and says what to do — in Japanese (ADR-F07), with
-    /// the reason appended by the caller.
+    /// command did not run, and says what to do — in English whatever the UI
+    /// language, with the reason appended by the caller.
     #[cfg(target_os = "windows")]
     #[test]
     fn test_unresolved_grant_refusal_names_the_paths_and_what_to_do() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
         let refusal = unresolved_grant_refusal(&[
             PathBuf::from("/home/me/cache"),
             PathBuf::from(r"\\wsl.localhost\Debian\home\me\build"),
@@ -3563,18 +3726,24 @@ mod tests {
             "{refusal}"
         );
         assert!(
-            refusal.contains("コマンドは実行していません"),
+            refusal.contains("The command was not run"),
             "the model has to learn the command did not run: {refusal}"
         );
         assert!(
-            refusal.contains("もう一度実行してください"),
+            refusal.contains("run it again"),
             "and what would make it run: {refusal}"
         );
-        // The (Japanese) reason is appended to this, so it ends open.
-        assert!(refusal.ends_with("理由: "), "{refusal}");
-        for english in [" the ", " a ", " is ", " cannot "] {
-            assert!(!refusal.contains(english), "{english:?} left in {refusal}");
-        }
+        // The reason is appended to this, so it ends open.
+        assert!(refusal.ends_with("Reason: "), "{refusal}");
+        // One language only: the Japanese UI doesn't leak into what the model
+        // reads (the paths are ASCII here, so any Japanese came from the text).
+        assert!(
+            !refusal.chars().any(|character| matches!(
+                character,
+                '\u{3000}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}' | '\u{ff00}'..='\u{ffef}'
+            )),
+            "Japanese left in {refusal}"
+        );
     }
 
     /// ADR-F49 decision 33: the distribution a bare `/…` grant is resolved (and
@@ -3752,6 +3921,66 @@ mod tests {
                 "cannot re-verify approved sandbox write grant `build`".to_string()
             )
         ));
+        assert!(!linux_sandbox_error_offers_retry(
+            &LinuxWslSandboxError::WslTimedOut {
+                seconds: 60,
+                attempts: 2
+            }
+        ));
+    }
+
+    /// A WSL sandbox that never answered is told to the model in English
+    /// whatever the UI language, while the card says it in the UI language.
+    #[test]
+    fn test_wsl_sandbox_timeout_is_english_for_the_model_and_translated_on_the_card() {
+        use acp_thread::{LinuxWslSandboxError, WslSandboxTimedOut};
+
+        let timed_out = WslSandboxTimedOut {
+            seconds: 60,
+            attempts: 2,
+        };
+        let error = wsl_sandbox_unavailable(&anyhow::Error::new(timed_out))
+            .expect("a timeout is a WSL environment problem");
+        assert_eq!(
+            error,
+            LinuxWslSandboxError::WslTimedOut {
+                seconds: 60,
+                attempts: 2
+            }
+        );
+        let english = "Could not create the sandbox in WSL: WSL didn't respond within 60 seconds \
+                       (2 attempts). WSL may be slow to start. Wait a moment and try again, and \
+                       if that doesn't help, restart WSL with `wsl --shutdown`.";
+        assert_eq!(error.user_facing_message(), english);
+        assert_eq!(error.display_message(), english);
+
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(error.user_facing_message(), english);
+        assert_eq!(
+            error.display_message(),
+            "WSL でサンドボックスを作成できませんでした: WSL が 60 秒以内に応答しませんでした \
+             (2 回試行)。WSL の起動に時間がかかっている可能性があります。しばらく待ってから再試行し、\
+             改善しない場合は `wsl --shutdown` で WSL を再起動してください。"
+        );
+
+        assert_eq!(
+            wsl_sandbox_unavailable(&anyhow::Error::new(sandbox::SandboxError::WslUnavailable(
+                i18n::Bilingual::new(|| "WSL is not installed".to_string())
+            ))),
+            Some(LinuxWslSandboxError::WslUnavailable {
+                english: "WSL is not installed".to_string(),
+                display: "WSL is not installed".to_string(),
+            })
+        );
+        assert_eq!(
+            wsl_sandbox_unavailable(&anyhow::Error::new(sandbox::SandboxError::InvalidRequest(
+                "mixed distributions".to_string()
+            ))),
+            None,
+            "a bad request goes back to the model without a retry card"
+        );
     }
 
     #[test]
@@ -3851,12 +4080,8 @@ mod tests {
         assert_eq!(
             options,
             vec![
-                (
-                    "allow",
-                    "許可 (今回のみ)",
-                    acp::PermissionOptionKind::AllowOnce
-                ),
-                ("deny", "拒否", acp::PermissionOptionKind::RejectOnce),
+                ("allow", "Allow once", acp::PermissionOptionKind::AllowOnce),
+                ("deny", "Deny", acp::PermissionOptionKind::RejectOnce),
             ]
         );
 
@@ -4094,9 +4319,9 @@ mod tests {
 
     #[cfg(target_os = "windows")]
     fn wsl_unavailable() -> anyhow::Error {
-        anyhow::Error::new(sandbox::SandboxError::WslUnavailable(
-            "WSL is not installed".to_string(),
-        ))
+        anyhow::Error::new(sandbox::SandboxError::WslUnavailable(i18n::Bilingual::new(
+            || "WSL is not installed".to_string(),
+        )))
     }
 
     /// ADR-F46: a WSL sandbox that can't be set up shows a card with only
@@ -4236,7 +4461,9 @@ mod tests {
             ),
             (
                 false,
-                sandbox::SandboxError::WslUnavailable("WSL is not installed".to_string()),
+                sandbox::SandboxError::WslUnavailable(i18n::Bilingual::new(|| {
+                    "WSL is not installed".to_string()
+                })),
             ),
         ];
         for (sandboxed, sandbox_error) in cases {
@@ -4337,7 +4564,7 @@ mod tests {
         assert!(details.allow_fs_write_all);
         assert_eq!(
             details.outside_sandbox_reason.as_deref(),
-            Some("設定でファイルシステムへの書き込みがすべて許可されています")
+            Some("The settings allow writing anywhere in the file system")
         );
         let acp_thread::PermissionOptions::Flat(options) = &authorization.options else {
             panic!("expected flat options");

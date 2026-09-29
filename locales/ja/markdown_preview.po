@@ -1,0 +1,1713 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"{word}\" cannot be used as an attribute type or name (no whitespace, symbols, or PK / FK / UK)."
+msgstr "「{word}」は属性の型や名前として使えません (空白・記号と PK / FK / UK は不可)。"
+
+msgid "(None yet)"
+msgstr "(まだいません)"
+
+msgid "(Not Set)"
+msgstr "(指定なし)"
+
+msgid "(Select)"
+msgstr "(選択)"
+
+msgid "(automatic when empty)"
+msgstr "(空なら自動)"
+
+msgid "(default when empty)"
+msgstr "(空なら既定)"
+
+msgid "(no axis; not drawn)"
+msgstr "(軸なし・描かれません)"
+
+msgid "(no category; not drawn)"
+msgstr "(項目なし・描かれません)"
+
+msgid "(set by name with $name=; kept as is)"
+msgstr "($名前= で指定。そのまま残す)"
+
+msgid "(to rename it, change mainBranchName in the configuration as text)"
+msgstr "(名前は設定の mainBranchName をテキストで変更)"
+
+msgid "+method()"
+msgstr "+メソッド()"
+
+msgid "1 (Very Bad)"
+msgstr "1 (とても悪い)"
+
+msgid "3 (Neutral)"
+msgstr "3 (ふつう)"
+
+msgid "5 (Very Good)"
+msgstr "5 (とても良い)"
+
+msgid "A `namespace` has an empty name."
+msgstr "名前が空の `namespace` があります。"
+
+msgid "A class definition has an empty name."
+msgstr "名前が空のクラス定義があります。"
+
+msgid "A class has an empty name."
+msgstr "名前が空のクラスがあります。"
+
+msgid "A file on this machine is copied to images/ in the remote Markdown file's folder, because the remote cannot refer to files on this machine."
+msgstr "このマシンのファイルは、リモートの Markdown と同じフォルダーの images/ にコピーします。リモートからはこのマシンのファイルを参照できないためです。"
+
+msgid "A folder cannot be saved as an image: {}"
+msgstr "フォルダーは画像として保存できません: {}"
+
+msgid "A later {from} → {to} relationship overrides this one (the later one's kind and text are drawn)."
+msgstr "後にある {from} → {to} の関係に上書きされます (種類と文字は後のものが描かれます)。"
+
+msgid "A multiplicity cannot contain `\"`, `%%{{` or line breaks."
+msgstr "多重度に `\"`・`%%{{` と改行は使えません。"
+
+msgid "A participant has an empty ID."
+msgstr "ID が空の参加者があります。"
+
+msgid "A relationship label cannot contain line breaks, `%%{{`, or leading or trailing whitespace."
+msgstr "関係のラベルに改行・`%%{{` と前後の空白は使えません。"
+
+msgid "A remote file cannot be exported to PDF. Save it locally, then run this again."
+msgstr "リモートのファイルは PDF に書き出せません。ローカルに保存してから実行してください。"
+
+msgid "A row cannot be inserted above the header row"
+msgstr "ヘッダー行の上には行を挿入できません"
+
+msgid "A state has an empty ID."
+msgstr "ID が空の状態があります。"
+
+msgid "A time frame with no arrow gets one automatically from the closest earlier frame in another lane"
+msgstr "矢印の無い時間フレームには、直前の別レーンのフレームから自動で矢印が引かれます"
+
+msgid "Activation"
+msgstr "活性化"
+
+msgid "Add Activation"
+msgstr "活性化を追加"
+
+msgid "Add Annotation"
+msgstr "注釈を追加"
+
+msgid "Add Arrow"
+msgstr "矢印を追加"
+
+msgid "Add Attribute"
+msgstr "属性を追加"
+
+msgid "Add Autonumber"
+msgstr "自動番号を追加"
+
+msgid "Add Axis"
+msgstr "軸を追加"
+
+msgid "Add Bar"
+msgstr "棒を追加"
+
+msgid "Add Block Branch"
+msgstr "分岐を追加"
+
+msgid "Add Block End"
+msgstr "ブロック終了を追加"
+
+msgid "Add Block Start"
+msgstr "ブロック開始を追加"
+
+msgid "Add Boundary"
+msgstr "境界を追加"
+
+msgid "Add Card"
+msgstr "カードを追加"
+
+msgid "Add Category"
+msgstr "項目を追加"
+
+msgid "Add Central Node"
+msgstr "中心ノードを追加"
+
+msgid "Add Child"
+msgstr "子を追加"
+
+msgid "Add Class"
+msgstr "クラスを追加"
+
+msgid "Add Class Definition"
+msgstr "クラス定義を追加"
+
+msgid "Add Column"
+msgstr "列を追加"
+
+msgid "Add Column at End"
+msgstr "末尾に列を追加"
+
+msgid "Add Composite State"
+msgstr "複合状態を追加"
+
+msgid "Add Concurrency Divider"
+msgstr "並行区切りを追加"
+
+msgid "Add Data"
+msgstr "データを追加"
+
+msgid "Add Deactivation"
+msgstr "活性化の終了を追加"
+
+msgid "Add Edge"
+msgstr "辺を追加"
+
+msgid "Add Element"
+msgstr "要素を追加"
+
+msgid "Add Entity"
+msgstr "エンティティを追加"
+
+msgid "Add Event"
+msgstr "出来事を追加"
+
+msgid "Add Flow"
+msgstr "流れを追加"
+
+msgid "Add Frame"
+msgstr "フレームを追加"
+
+msgid "Add Group"
+msgstr "グループを追加"
+
+msgid "Add Item"
+msgstr "項目を追加"
+
+msgid "Add Item Below at the Same Level"
+msgstr "下に同じ階層の項目を追加"
+
+msgid "Add Item Inside (Only Items Without a Value)"
+msgstr "中に項目を追加 (値のない項目だけ)"
+
+msgid "Add Junction"
+msgstr "ジャンクションを追加"
+
+msgid "Add Line"
+msgstr "折れ線を追加"
+
+msgid "Add Link"
+msgstr "つながりを追加"
+
+msgid "Add Main Bone (Cause)"
+msgstr "大骨 (要因) を追加"
+
+msgid "Add Member"
+msgstr "メンバーを追加"
+
+msgid "Add Member Line"
+msgstr "メンバー行を追加"
+
+msgid "Add Message"
+msgstr "メッセージを追加"
+
+msgid "Add Node"
+msgstr "ノードを追加"
+
+msgid "Add Note"
+msgstr "ノートを追加"
+
+msgid "Add Overlap"
+msgstr "重なりを追加"
+
+msgid "Add Participant"
+msgstr "参加者を追加"
+
+msgid "Add Participant Creation"
+msgstr "参加者の作成を追加"
+
+msgid "Add Participant Destruction"
+msgstr "参加者の破棄を追加"
+
+msgid "Add Period"
+msgstr "期間を追加"
+
+msgid "Add Point"
+msgstr "点を追加"
+
+msgid "Add Relationship"
+msgstr "関係を追加"
+
+msgid "Add Requirement"
+msgstr "要求を追加"
+
+msgid "Add Row"
+msgstr "行を追加"
+
+msgid "Add Row Below at the Same Level"
+msgstr "下に同じ段を追加"
+
+msgid "Add Row at End"
+msgstr "末尾に行を追加"
+
+msgid "Add Section"
+msgstr "セクションを追加"
+
+msgid "Add Series"
+msgstr "系列を追加"
+
+msgid "Add Service"
+msgstr "サービスを追加"
+
+msgid "Add Set"
+msgstr "集合を追加"
+
+msgid "Add Sibling Below"
+msgstr "下に兄弟を追加"
+
+msgid "Add State"
+msgstr "状態を追加"
+
+msgid "Add Task"
+msgstr "タスクを追加"
+
+msgid "Add Top-Level Node"
+msgstr "最上位にノードを追加"
+
+msgid "Add Transition"
+msgstr "遷移を追加"
+
+msgid "Add a Finer Cause"
+msgstr "細かい要因を追加"
+
+msgid "Add a block first."
+msgstr "先にブロックを追加してください。"
+
+msgid "Add a class first."
+msgstr "先にクラスを追加してください。"
+
+msgid "Add a node first."
+msgstr "先にノードを追加してください。"
+
+msgid "Add a participant first."
+msgstr "先に参加者を追加してください。"
+
+msgid "Add a requirement or an element first."
+msgstr "先に要求か要素を追加してください。"
+
+msgid "Add a state first."
+msgstr "先に状態を追加してください。"
+
+msgid "Add an Element Inside This Boundary"
+msgstr "この境界の中に要素を追加"
+
+msgid "Add an element first."
+msgstr "先に要素を追加してください。"
+
+msgid "Add an entity first."
+msgstr "先にエンティティを追加してください。"
+
+msgid "Add at least one class."
+msgstr "クラスを 1 つ以上追加してください。"
+
+msgid "Add at least one element or boundary."
+msgstr "要素か境界を 1 つ以上追加してください。"
+
+msgid "Add at least one entity."
+msgstr "エンティティを 1 つ以上追加してください。"
+
+msgid "Add at least one flow."
+msgstr "流れを 1 つ以上追加してください。"
+
+msgid "Add at least one frame."
+msgstr "フレームを 1 つ以上追加してください。"
+
+msgid "Add at least one group or service."
+msgstr "グループかサービスを 1 つ以上追加してください。"
+
+msgid "Add at least one participant."
+msgstr "参加者を 1 つ以上追加してください。"
+
+msgid "Add at least two sets first."
+msgstr "先に集合を 2 つ以上追加してください。"
+
+msgid "Add box"
+msgstr "box を追加"
+
+msgid "Add class"
+msgstr "class を追加"
+
+msgid "Add classDef"
+msgstr "classDef を追加"
+
+msgid "Add namespace"
+msgstr "namespaceを追加"
+
+msgid "Add style"
+msgstr "style を追加"
+
+msgid "Add {label}"
+msgstr "{label}を追加"
+
+msgid "Alignment"
+msgstr "配置"
+
+msgid "Alt Text"
+msgstr "代替テキスト"
+
+msgid "An aligned image goes after the paragraph the cursor is in."
+msgstr "配置を指定した画像は、カーソルのある段落の後ろに入ります。"
+
+msgid "An aligned image goes after the paragraph the cursor is in. The selected text stays as it is."
+msgstr "配置を指定した画像は、カーソルのある段落の後ろに入ります。選択した文字列はそのまま残ります。"
+
+msgid "An element has an empty ID."
+msgstr "ID が空の要素があります。"
+
+msgid "An entity has an empty name."
+msgstr "名前が空のエンティティがあります。"
+
+msgid "An image inside HTML cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "HTML の中の画像には配置を指定できません。配置を「指定なし」にしてください。"
+
+msgid "An image inside a link cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "リンクの中の画像には配置を指定できません。配置を「指定なし」にしてください。"
+
+msgid "An image inside a table cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "表の中の画像には配置を指定できません。配置を「指定なし」にしてください。"
+
+msgid "An overlap needs at least two sets."
+msgstr "重なりには集合が 2 つ以上必要です。"
+
+msgid "Annotation"
+msgstr "注釈"
+
+msgid "Arrow"
+msgstr "矢印"
+
+msgid "Arrow on. Click to remove the arrow."
+msgstr "矢印あり。押すと矢印なし"
+
+msgid "Arrows"
+msgstr "矢印"
+
+msgid "Assignee"
+msgstr "担当"
+
+msgid "Autonumber Start"
+msgstr "自動番号 開始"
+
+msgid "Axes (an empty name is not written)"
+msgstr "軸 (名前は空なら書きません)"
+
+msgid "Axes and Values (deleting an axis also deletes its value in every series; empty cells at the end are drawn as the minimum)"
+msgstr "軸と値 (軸を消すと全系列のその値も消えます。末尾の空欄は最小値として描かれます)"
+
+msgid "Axis Format"
+msgstr "軸の書式"
+
+msgid "Axis ID"
+msgstr "軸の ID"
+
+msgid "Axis Labels (an empty axis is not drawn)"
+msgstr "軸のラベル (空なら描きません)"
+
+msgid "Axis {number}"
+msgstr "軸{number}"
+
+msgid "Blocks (laid out from the top left in the order written; indented rows are nested deeper in groups)"
+msgstr "ブロック (書いた順に左上から並ぶ。右にずれているほど深いグループの中)"
+
+msgid "Blocks to Apply To"
+msgstr "付けるブロック"
+
+msgid "Bottom Left (3)"
+msgstr "左下 (3)"
+
+msgid "Bottom Right (4)"
+msgstr "右下 (4)"
+
+msgid "Browse…"
+msgstr "参照…"
+
+msgid "By Axis Name"
+msgstr "軸名付き"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cannot build a path to the copied image."
+msgstr "コピーした画像へのパスを作れません。"
+
+msgid "Cannot build the path: {}"
+msgstr "パスを組み立てられません: {}"
+
+msgid "Cannot convert to PDF. Install Microsoft Edge (msedge.exe) or pandoc."
+msgstr "PDF に変換できません。Microsoft Edge (msedge.exe) か pandoc をインストールしてください。"
+
+msgid "Cannot create the image file: {}"
+msgstr "画像ファイルを作れません: {}"
+
+msgid "Cannot create the images folder: {}"
+msgstr "images フォルダーを作れません: {}"
+
+msgid "Cannot insert the image link: {reason}"
+msgstr "画像のリンクを挿入できません: {reason}"
+
+msgid "Cannot load the image"
+msgstr "画像を読み込めません"
+
+msgid "Cannot open the Mermaid diagram in the structured editor: {error}"
+msgstr "Mermaid 図を構造化編集で開けません: {error}"
+
+msgid "Cannot paste the image: {reason}"
+msgstr "画像を貼り付けられません: {reason}"
+
+msgid "Cannot read the file name: {}"
+msgstr "ファイル名を読み取れません: {}"
+
+msgid "Cannot read the image file: {}"
+msgstr "画像ファイルを読み込めません: {}"
+
+msgid "Cannot remove the image saved on the remote: {}"
+msgstr "リモートの画像を取り消せません: {}"
+
+msgid "Categories"
+msgstr "項目"
+
+msgid "Category"
+msgstr "項目"
+
+msgid "Category {number}"
+msgstr "項目{number}"
+
+msgid "Causes (the leftmost rows are the main bones; indented rows are finer causes)"
+msgstr "要因 (左端が大骨、右にずれるほど細かい要因)"
+
+msgid "Central topic"
+msgstr "中心テーマ"
+
+msgid "Checking…"
+msgstr "確認しています…"
+
+msgid "Choose a diagram type."
+msgstr "図の種類を選んでください。"
+
+msgid "Choose an image file in the system dialog."
+msgstr "OS のダイアログで画像ファイルを選びます。"
+
+msgid "Choose an image file on this machine in the system dialog and copy it to images/ on the remote."
+msgstr "このマシンの画像ファイルを OS のダイアログで選び、リモートの images/ にコピーします。"
+
+msgid "Class"
+msgstr "クラス"
+
+msgid "Class Definitions (classDef)"
+msgstr "クラス定義 (classDef)"
+
+msgid "Class Name"
+msgstr "クラス名"
+
+msgid "Class Names (renaming updates the references too)"
+msgstr "クラス名 (変えると参照も追随します)"
+
+msgid "Classes (classDef)"
+msgstr "クラス (classDef)"
+
+msgid "Column"
+msgstr "列"
+
+msgid "Column alignment (click to cycle: default → left → center → right)"
+msgstr "列の配置 (クリックで 既定 → 左 → 中央 → 右)"
+
+msgid "Columns and Cards (columns higher up are drawn further left)"
+msgstr "列とカード (上にある列ほど左に描かれます)"
+
+msgid "Comment"
+msgstr "コメント"
+
+msgid "Commit"
+msgstr "コミット"
+
+msgid "Common Icons"
+msgstr "よく使うアイコン"
+
+msgid "Composite"
+msgstr "複合"
+
+msgid "Composite states are nested too deeply."
+msgstr "複合状態の入れ子が深すぎます。"
+
+msgid "CompositeState"
+msgstr "複合状態"
+
+msgid "Concurrency Divider (--)"
+msgstr "並行区切り (--)"
+
+msgid "Connection Side"
+msgstr "線をつなぐ辺"
+
+msgid "Copy"
+msgstr "コピー"
+
+msgid "Copy Link"
+msgstr "リンクをコピー"
+
+msgid "Copy as Markdown"
+msgstr "Markdown としてコピー"
+
+msgid "Copy to images/ in the Markdown file's folder"
+msgstr "Markdown と同じフォルダーの images/ にコピーする"
+
+msgid "Copying the image…"
+msgstr "画像をコピーしています…"
+
+msgid "Create Mermaid Diagram"
+msgstr "Mermaid 図を作成"
+
+msgid "Created by create"
+msgstr "create で作成"
+
+msgid "Dashed line (non-identifying relationship). Click for a solid line."
+msgstr "破線 (弱い関係)。押すと実線"
+
+msgid "Data"
+msgstr "データ"
+
+msgid "Data (referenced from frames)"
+msgstr "データ (フレームから参照)"
+
+msgid "Date"
+msgstr "日付"
+
+msgid "Date Format"
+msgstr "日付書式"
+
+msgid "Date or Duration"
+msgstr "日付か長さ"
+
+msgid "Deactivation"
+msgstr "活性化の終了"
+
+msgid "Default (Left to Right)"
+msgstr "既定 (左から右)"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete (also deletes the overlaps, text and style statements that include this set)"
+msgstr "削除 (この集合を含む重なり・text・style も削除)"
+
+msgid "Delete (also deletes this node's flows)"
+msgstr "削除 (このノードの流れも削除)"
+
+msgid "Delete (also removes the relationships and styles that use this name)"
+msgstr "削除 (この名前を使う関係とスタイル指定も消えます)"
+
+msgid "Delete (arrows from this frame are deleted too)"
+msgstr "削除 (このフレームから出る矢印も消えます)"
+
+msgid "Delete (connected edges and styles are deleted too)"
+msgstr "削除 (つながる辺・スタイルも)"
+
+msgid "Delete (connected edges are deleted too)"
+msgstr "削除 (つながっている辺も削除)"
+
+msgid "Delete (references to this data are removed too)"
+msgstr "削除 (このデータへの参照も外れます)"
+
+msgid "Delete (statements that refer to this class are deleted too)"
+msgstr "削除 (このクラスを指す文も削除されます)"
+
+msgid "Delete (the classes inside are deleted too)"
+msgstr "削除 (中のクラスも削除されます)"
+
+msgid "Delete (the contents move to the enclosing group)"
+msgstr "削除 (中身は 1 つ外のグループへ)"
+
+msgid "Delete (the participants inside are kept)"
+msgstr "削除 (中の参加者は残ります)"
+
+msgid "Delete (the states and transitions inside are deleted too)"
+msgstr "削除 (中の状態と遷移も削除されます)"
+
+msgid "Delete Card"
+msgstr "カードを削除"
+
+msgid "Delete Column"
+msgstr "列を削除"
+
+msgid "Delete Column and Its Cards"
+msgstr "列とその中のカードを削除"
+
+msgid "Delete Definition (classes already applied stay)"
+msgstr "定義を削除 (付けたクラスは残ります)"
+
+msgid "Delete Event"
+msgstr "出来事を削除"
+
+msgid "Delete Group"
+msgstr "グループを削除"
+
+msgid "Delete Relationship"
+msgstr "関係を削除"
+
+msgid "Delete Row"
+msgstr "行を削除"
+
+msgid "Delete Section and Its Periods"
+msgstr "セクションとその中の期間を削除"
+
+msgid "Delete Task (tasks that refer to this one with after / until get a date at the same point in time instead)"
+msgstr "タスクを削除 (このタスクを after / until で参照しているタスクは、同じ日時の日付に置き換わります)"
+
+msgid "Delete This Group and Its Contents (connected edges and styles are deleted too)"
+msgstr "このグループを中身ごと削除 (つながる辺・スタイルも)"
+
+msgid "Delete This Item and All Items Inside It"
+msgstr "この項目と中の項目をすべて削除"
+
+msgid "Delete This Node and Everything Under It"
+msgstr "このノードとその下のノードをすべて削除"
+
+msgid "Delete This Row and All Rows Under It"
+msgstr "この行とその下の行をすべて削除"
+
+msgid "Delete the Boundary (the elements inside are kept)"
+msgstr "境界を削除 (中の要素は残す)"
+
+msgid "Delete the Element and Its Relationships"
+msgstr "要素と、それを結ぶ関係を削除"
+
+msgid "Delete the Section and Its Tasks"
+msgstr "セクションとその中のタスクを削除"
+
+msgid "Description"
+msgstr "説明"
+
+msgid "Diagram Content"
+msgstr "図の中身"
+
+msgid "Diagram Type"
+msgstr "図の種類"
+
+msgid "Direction"
+msgstr "方向"
+
+msgid "Display Name (as)"
+msgstr "表示名 (as)"
+
+msgid "Document reference (docref)"
+msgstr "文書の参照 (docref)"
+
+msgid "Edges"
+msgstr "辺"
+
+msgid "Edit Image"
+msgstr "画像を編集"
+
+msgid "Edit Mermaid Diagram"
+msgstr "Mermaid 図を編集"
+
+msgid "Edit Table"
+msgstr "表を編集"
+
+msgid "Edit the cells directly. Pasting a range from Excel or a spreadsheet spreads it across the table."
+msgstr "セルを直接編集できます。Excel やスプレッドシートの範囲をそのまま貼り付けると、表に展開します。"
+
+msgid "Effect (Problem)"
+msgstr "結果 (問題)"
+
+msgid "Element"
+msgstr "要素"
+
+msgid "Element type (type)"
+msgstr "種類 (type)"
+
+msgid "Elements (what satisfies or verifies a requirement)"
+msgstr "要素 (要求を満たす・検証するもの)"
+
+msgid "Elements and Boundaries (indented inside a boundary)"
+msgstr "要素と境界 (境界の中は字下げ)"
+
+msgid "End"
+msgstr "終了"
+
+msgid "Enter a number (px) or a number with %. Leave empty to not set it."
+msgstr "数値 (px) か % 付きで入力します。空欄なら指定しません。"
+
+msgid "Enter the height as a number or a number with %, such as 200 or 50%."
+msgstr "高さは 200 や 50% のように、数値か % 付きの数値で入力してください。"
+
+msgid "Enter the width as a number or a number with %, such as 300 or 50%."
+msgstr "幅は 300 や 50% のように、数値か % 付きの数値で入力してください。"
+
+msgid "Entities"
+msgstr "エンティティ"
+
+msgid "Entity"
+msgstr "エンティティ"
+
+msgid "Export to PDF"
+msgstr "PDF に書き出す"
+
+msgid "Exported to PDF: {} — click to open"
+msgstr "PDF を書き出しました: {} — クリックで開く"
+
+msgid "Exporting to PDF…"
+msgstr "PDF を書き出しています…"
+
+msgid "Failed to check the remote files."
+msgstr "リモートのファイルを確認できませんでした。"
+
+msgid "Failed to copy the image on the remote: {}"
+msgstr "接続先で画像をコピーできませんでした: {}"
+
+msgid "Failed to copy the image: {error}"
+msgstr "画像をコピーできませんでした: {error}"
+
+msgid "Failed to export to PDF: {error}"
+msgstr "PDF の書き出しに失敗しました: {error}"
+
+msgid "Failed to open the file dialog: {error}"
+msgstr "ファイルを選ぶダイアログを開けませんでした: {error}"
+
+msgid "Failed to render the Mermaid diagram: {error}"
+msgstr "Mermaid 図を描画できませんでした: {error}"
+
+msgid "Failed to save the image: {}"
+msgstr "画像を保存できませんでした: {}"
+
+msgid "Flows (source → target, amount)"
+msgstr "流れ (流れ元 → 流れ先、量)"
+
+msgid "Fold All Headings"
+msgstr "見出しをすべて畳む"
+
+msgid "Fold Headings at Level {level}"
+msgstr "見出しレベル {level} で畳む"
+
+msgid "Follows the Previous Task"
+msgstr "前のタスクに続く"
+
+msgid "Frames (in time order from the top)"
+msgstr "フレーム (上から時間順)"
+
+msgid "Graticule"
+msgstr "目盛りの形"
+
+msgid "Group"
+msgstr "グループ"
+
+msgid "Group Edge"
+msgstr "グループ端"
+
+msgid "Groups"
+msgstr "グループ"
+
+msgid "Header Row"
+msgstr "ヘッダー行"
+
+msgid "Height"
+msgstr "高さ"
+
+msgid "Hidden"
+msgstr "非表示"
+
+msgid "How the end is written: Date or Duration (5d = 5 days, 2h = 2 hours, 1w = 1 week) / until = until another task starts"
+msgstr "終了の書き方: 日付か長さ (5d = 5 日、2h = 2 時間、1w = 1 週間) / until = 別のタスクが始まるまで"
+
+msgid "How the start is written: Date / after = when another task ends / Follows the Previous Task = from the end of the task just before it"
+msgstr "開始の書き方: 日付 / after = 別のタスクが終わったら / 前のタスクに続く = 直前のタスクの終わりから"
+
+msgid "How the task is drawn: Done = done / In progress = active / Critical = crit / Milestone = milestone / Vertical line = vert"
+msgstr "タスクの描き方: 完了 = done / 進行中 = active / 重要 = crit / マイルストーン = milestone / 縦線 = vert"
+
+msgid "ID and label are optional"
+msgstr "ID とラベルは省略可"
+
+msgid "Icon"
+msgstr "アイコン"
+
+msgid "Image File"
+msgstr "画像ファイル"
+
+msgid "Image description"
+msgstr "画像の説明"
+
+msgid "Image file not found: {}"
+msgstr "画像ファイルが見つかりません: {}"
+
+msgid "Images are saved in the images folder next to the document. Save the file first."
+msgstr "画像はドキュメントの隣の images フォルダーに保存します。先にファイルを保存してください。"
+
+msgid "Images cannot be saved in a project you joined for collaboration."
+msgstr "共同編集で参加しているプロジェクトには画像を保存できません。"
+
+msgid "Images cannot be saved next to a Markdown file opened on its own. Open the folder that contains the Markdown file."
+msgstr "単独で開いた Markdown の隣には画像を保存できません。Markdown のあるフォルダーを開いてください。"
+
+msgid "Images from a URL are not shown here."
+msgstr "URL の画像はここでは表示しません。"
+
+msgid "In Axis Order"
+msgstr "軸の順"
+
+msgid "Indent (Make Child of the Sibling Above)"
+msgstr "一段深く (上の兄弟の子へ)"
+
+msgid "Indent (Move into the Item Above That Has No Value)"
+msgstr "一段深く (上の値のない項目の中へ)"
+
+msgid "Insert"
+msgstr "挿入"
+
+msgid "Insert Column to the Left"
+msgstr "この列の左に列を挿入"
+
+msgid "Insert Column to the Right"
+msgstr "この列の右に列を挿入"
+
+msgid "Insert Image"
+msgstr "画像を挿入"
+
+msgid "Insert Row Above"
+msgstr "この行の上に行を挿入"
+
+msgid "Insert Row Below"
+msgstr "この行の下に行を挿入"
+
+msgid "Inserts an image at the cursor. Setting an alignment or a size writes it as HTML."
+msgstr "カーソル位置に画像を挿入します。配置やサイズを指定すると HTML で書き込みます。"
+
+msgid "Interactions"
+msgstr "やりとり"
+
+msgid "Items"
+msgstr "項目"
+
+msgid "Items (indented rows are nested deeper; an item with a value is a box at the end of the tree, an item without a value is a section around them)"
+msgstr "項目 (右にずれているほど深い階層。値のある項目が末端の箱、値のない項目がそれを囲む区分)"
+
+msgid "Items (length in bits and label; the ranges are worked out from the top)"
+msgstr "項目 (ビット数とラベル。範囲は上から自動で決まります)"
+
+msgid "Label"
+msgstr "ラベル"
+
+msgid "Leave empty to put everything in one row (auto also works)"
+msgstr "空欄は 1 行に並べる (auto も可)"
+
+msgid "Legend"
+msgstr "凡例"
+
+msgid "Line Style"
+msgstr "線のスタイル"
+
+msgid "Link {position} has a {id}@{{ … }} line, so its line style cannot set interpolate (the curve)."
+msgstr "{position} 番目のつながりは {id}@{{ … }} の行があるため、線のスタイルに interpolate (曲線) を書けません。"
+
+msgid "Link {position} is already styled by a linkStyle line that is kept as text."
+msgstr "{position} 番目のつながりは、テキストのまま残した linkStyle 行でスタイルが指定されています。"
+
+msgid "Links"
+msgstr "つながり"
+
+msgid "Looking for image files in the project…"
+msgstr "プロジェクトの画像ファイルを探しています…"
+
+msgid "Main Branch: {branch}"
+msgstr "主ブランチ: {branch}"
+
+msgid "Markdown Preview"
+msgstr "Markdown プレビュー"
+
+msgid "Max"
+msgstr "最大"
+
+msgid "Member"
+msgstr "メンバー"
+
+msgid "Memo"
+msgstr "メモ"
+
+msgid "Merge In"
+msgstr "取り込む"
+
+msgid "Mermaid lays out diagrams automatically (positions cannot be set). Here you edit the diagram's elements, links and text."
+msgstr "Mermaid は配置を自動で決めます (座標は持てません)。ここでは図の要素・つながり・文字を編集します。"
+
+msgid "Min"
+msgstr "最小"
+
+msgid "Move Column Left"
+msgstr "列を左へ移動"
+
+msgid "Move Column Right"
+msgstr "列を右へ移動"
+
+msgid "Move Down"
+msgstr "下へ移動"
+
+msgid "Move Left"
+msgstr "左へ移動"
+
+msgid "Move Out of the Group (After the Group)"
+msgstr "グループの外へ (グループの次へ)"
+
+msgid "Move Right"
+msgstr "右へ移動"
+
+msgid "Move Row Down"
+msgstr "行を下へ移動"
+
+msgid "Move Row Up"
+msgstr "行を上へ移動"
+
+msgid "Move Up"
+msgstr "上へ移動"
+
+msgid "Move into the Group Above"
+msgstr "上のグループへ入れる"
+
+msgid "Move to Left Column"
+msgstr "左の列へ移動"
+
+msgid "Move to Right Column"
+msgstr "右の列へ移動"
+
+msgid "Namespace"
+msgstr "名前空間"
+
+msgid "New block"
+msgstr "新しいブロック"
+
+msgid "New boundary"
+msgstr "新しい境界"
+
+msgid "New box…"
+msgstr "新しい box…"
+
+msgid "New card"
+msgstr "新しいカード"
+
+msgid "New cause"
+msgstr "新しい要因"
+
+msgid "New column"
+msgstr "新しい列"
+
+msgid "New element"
+msgstr "新しい要素"
+
+msgid "New item"
+msgstr "新しい項目"
+
+msgid "New node"
+msgstr "新しいノード"
+
+msgid "New period"
+msgstr "新しい期間"
+
+msgid "New point"
+msgstr "新しい点"
+
+msgid "New section"
+msgstr "新しいセクション"
+
+msgid "New sub-cause"
+msgstr "新しい小要因"
+
+msgid "New task"
+msgstr "新しいタスク"
+
+msgid "NewParticipant"
+msgstr "参加者"
+
+msgid "NewState"
+msgstr "状態"
+
+msgid "No Box"
+msgstr "所属なし"
+
+msgid "No Class"
+msgstr "クラスなし"
+
+msgid "No Group"
+msgstr "所属なし"
+
+msgid "No Icon"
+msgstr "アイコンなし"
+
+msgid "No Mermaid diagram code block was found."
+msgstr "Mermaid 図のコードブロックが見つかりません。"
+
+msgid "No Priority"
+msgstr "優先度なし"
+
+msgid "No Reference"
+msgstr "参照なし"
+
+msgid "No Shape (Shows the ID)"
+msgstr "形なし (ID を表示)"
+
+msgid "No arrow. Click to add an arrow."
+msgstr "矢印なし。押すと矢印あり"
+
+msgid "No file was found at this path."
+msgstr "このパスにファイルが見つかりません。"
+
+msgid "No free name was found in the images folder: {file_name}"
+msgstr "images フォルダーに使える名前が見つかりません: {file_name}"
+
+msgid "No matching image files."
+msgstr "一致する画像ファイルがありません。"
+
+msgid "Nodes"
+msgstr "ノード"
+
+msgid "Nodes (indented rows are nested deeper)"
+msgstr "ノード (右にずれているほど深い階層)"
+
+msgid "Nodes (renaming a node updates all of its flows)"
+msgstr "ノード (名前を変えると、そのノードの流れがすべて追随します)"
+
+msgid "Nodes with the same name are merged into one when applied"
+msgstr "同じ名前のノードは反映時に 1 つにまとまります"
+
+msgid "None"
+msgstr "なし"
+
+msgid "None (1, 2, 3…)"
+msgstr "なし (1, 2, 3…)"
+
+msgid "Not Set"
+msgstr "指定なし"
+
+msgid "Not Set (Circle)"
+msgstr "指定なし (円)"
+
+msgid "Not Set (Shown)"
+msgstr "指定なし (表示)"
+
+msgid "Not Set (Vertical)"
+msgstr "指定なし (縦)"
+
+msgid "Not an image file: {}"
+msgstr "画像ファイルではありません: {}"
+
+msgid "Note"
+msgstr "ノート"
+
+msgid "Number"
+msgstr "番号"
+
+msgid "Number of Columns"
+msgstr "列数"
+
+msgid "Number, separator, type, lane (optional), name. The second line is data in {{ }}."
+msgstr "番号・区切り・種類・レーン (省略可)・名前。2 行目は {{ }} で囲んだデータ"
+
+msgid "Numeric Range"
+msgstr "数値の範囲"
+
+msgid "Only a tab with a single file open can be exported to PDF."
+msgstr "PDF に書き出せるのは、1 つのファイルを開いているタブだけです。"
+
+msgid "Open"
+msgstr "開く"
+
+msgid "Operations (run from top to bottom)"
+msgstr "操作 (上から順に実行)"
+
+msgid "Order"
+msgstr "順序"
+
+msgid "Orientation"
+msgstr "向き"
+
+msgid "Original size: {width} × {height}"
+msgstr "元のサイズ: {width} × {height}"
+
+msgid "Outdent (Move After the Parent)"
+msgstr "一段浅く (親の次へ)"
+
+msgid "Overlaps (sets, label, size)"
+msgstr "重なり (集合・ラベル・大きさ)"
+
+msgid "Parent"
+msgstr "親"
+
+msgid "Parent Group"
+msgstr "中に置くグループ"
+
+msgid "Participant Creation"
+msgstr "参加者の作成"
+
+msgid "Participant Destruction"
+msgstr "参加者の破棄"
+
+msgid "Participants (listed top to bottom, drawn left to right)"
+msgstr "参加者 (上から順に左の列)"
+
+msgid "Paste Whole Table"
+msgstr "表全体を貼り付け"
+
+msgid "People"
+msgstr "担当者"
+
+msgid "Period"
+msgstr "期間"
+
+msgid "Points (name, x, y; coordinates run from 0 to 1)"
+msgstr "点 (名前・横・縦。座標は 0〜1)"
+
+msgid "Preview"
+msgstr "プレビュー"
+
+msgid "Preview {}"
+msgstr "{} のプレビュー"
+
+msgid "Priority: {label}"
+msgstr "優先度: {label}"
+
+msgid "Quadrant Labels (1–4 are Mermaid's quadrant numbers)"
+msgstr "象限のラベル (1〜4 は Mermaid の番号)"
+
+msgid "Range"
+msgstr "範囲"
+
+msgid "Reference: {shown}"
+msgstr "参照: {shown}"
+
+msgid "Relationship"
+msgstr "関係"
+
+msgid "Relationships"
+msgstr "関係"
+
+msgid "Rename in All Tasks"
+msgstr "全作業で名前を変更"
+
+msgid "Rendering…"
+msgstr "描画中…"
+
+msgid "Replaces the whole table with the Excel / CSV contents of the clipboard."
+msgstr "クリップボードの Excel / CSV の内容で表全体を置き換えます。"
+
+msgid "Requirement"
+msgstr "要求"
+
+msgid "Requirement text (text)"
+msgstr "本文 (text)"
+
+msgid "Requirements"
+msgstr "要求"
+
+msgid "Reset (rf): takes no arrow and starts a new flow"
+msgstr "リセット (rf): 矢印を受けず流れを区切る"
+
+msgid "Rewrite the reference definition {head} (this also changes {count} other place)"
+msgid_plural "Rewrite the reference definition {head} (this also changes {count} other places)"
+msgstr[0] "参照定義 {head} を書き換える (ほかの {count} か所も変わります)"
+
+msgid "Rewrites the path in the reference definition {head}."
+msgstr "参照定義 {head} のパスを書き換えます。"
+
+msgid "Risk: Not Set"
+msgstr "リスク: 未指定"
+
+msgid "Save the file with a name before exporting it to PDF."
+msgstr "PDF に書き出す前に、名前を付けてファイルを保存してください。"
+
+msgid "Saving the image was interrupted."
+msgstr "画像の保存が中断されました。"
+
+msgid "Scale"
+msgstr "目盛り"
+
+msgid "Score {current}"
+msgstr "満足度 {current}"
+
+msgid "Section"
+msgstr "セクション"
+
+msgid "Sections and Periods"
+msgstr "セクションと期間"
+
+msgid "Sections and Tasks"
+msgstr "セクションとタスク"
+
+msgid "Select Image"
+msgstr "画像を選択"
+
+msgid "Select a Markdown editor, then run this again."
+msgstr "Markdown のエディターを選んでから実行してください。"
+
+msgid "Select a Mermaid diagram type to insert…"
+msgstr "挿入する Mermaid 図の種類を選択…"
+
+msgid "Select a heading level to fold…"
+msgstr "畳む見出しのレベルを選択…"
+
+msgid "Series (ID and legend name; the ID is shown when the name is empty)"
+msgstr "系列 (ID と凡例の名前。名前が空なら ID を表示)"
+
+msgid "Series (in drawing order; names do not appear in the diagram)"
+msgstr "系列 (描く順。名前は図には出ません)"
+
+msgid "Service"
+msgstr "サービス"
+
+msgid "Services and Junctions"
+msgstr "サービスとジャンクション"
+
+msgid "Set by a linkStyle line in the text"
+msgstr "テキストの linkStyle 行で指定済み"
+
+msgid "Sets (ID, label, size)"
+msgstr "集合 (ID・ラベル・大きさ)"
+
+msgid "Settings @{{{settings}}}"
+msgstr "設定 @{{{settings}}}"
+
+msgid "Show Numbers"
+msgstr "番号を表示"
+
+msgid "Show Values"
+msgstr "値を表示"
+
+msgid "Shown"
+msgstr "表示"
+
+msgid "Shown once a diagram type is chosen"
+msgstr "図の種類を選ぶと表示されます"
+
+msgid "Shows the ID as is"
+msgstr "ID をそのまま表示"
+
+msgid "Size"
+msgstr "サイズ"
+
+msgid "Size and alignment cannot be written in the reference form ![…][…], so this image is written as HTML. The reference definition {head} stays as it is."
+msgstr "サイズや配置は参照の形 ![…][…] では書けないため、この画像は HTML で書き込みます。参照定義 {head} はそのまま残ります。"
+
+msgid "Solid line (identifying relationship). Click for a dashed line."
+msgstr "実線 (強い関係)。押すと破線"
+
+msgid "Some classDef lines cannot be edited here, such as a line with several names or a name defined more than once (they are kept as text)."
+msgstr "1 行に複数の名前がある・同じ名前が重複しているなどの classDef 行があるため、ここでは編集できません (テキストのまま残ります)。"
+
+msgid "Specify an image file."
+msgstr "画像ファイルを指定してください。"
+
+msgid "Start"
+msgstr "開始"
+
+msgid "State IDs (renaming updates the references too)"
+msgstr "状態の ID (変えると参照も追随します)"
+
+msgid "Step"
+msgstr "刻み"
+
+msgid "Style"
+msgstr "スタイル"
+
+msgid "Styles (classDef defines a class and class applies it; style styles one block directly)"
+msgstr "スタイル (classDef でクラスを定義し、class で付ける。style は 1 つに直接)"
+
+msgid "Suggestions"
+msgstr "候補"
+
+msgid "Tab / arrow keys move between cells. Ctrl+Enter writes the table."
+msgstr "Tab / 矢印キーでセルを移動。Ctrl+Enter で書き出し"
+
+msgid "Tab moves between fields. Ctrl+Enter applies."
+msgstr "Tab で項目を移動。Ctrl+Enter で反映"
+
+msgid "Tag"
+msgstr "タグ"
+
+msgid "Tags"
+msgstr "タグ"
+
+msgid "Technology"
+msgstr "技術"
+
+msgid "The ID \"{id}\" is not valid (ASCII letters, digits and _ only; no Mermaid keywords)."
+msgstr "ID「{id}」は使えません (半角英数字と _ のみ、Mermaid の予約語は不可)。"
+
+msgid "The ID \"{id}\" is not valid (no symbols or Mermaid keywords)."
+msgstr "ID「{id}」は使えません (記号と Mermaid の予約語は不可)。"
+
+msgid "The ID \"{id}\" is not valid (no symbols, and it cannot start with a digit)."
+msgstr "ID「{id}」は使えません (記号と先頭の数字は不可)。"
+
+msgid "The ID \"{id}\" is used more than once."
+msgstr "ID「{id}」が重複しています。"
+
+msgid "The ID \"{id}\" of link {position} is not valid (ASCII letters, digits and _ only; no Mermaid keywords)."
+msgstr "{position} 番目のつながりの ID「{id}」は使えません (半角英数字と _ のみ、Mermaid の予約語は不可)。"
+
+msgid "The Markdown buffer could not be found."
+msgstr "Markdown のバッファーが見つかりません。"
+
+msgid "The Markdown file is not saved, so the image cannot be copied. Save it first."
+msgstr "Markdown が未保存のため、画像をコピーできません。先に保存してください。"
+
+msgid "The Markdown file is not saved, so the path is written as entered. The image may not show, depending on where the file is saved."
+msgstr "Markdown が未保存のため、パスは入力どおりに書き込みます。保存先によっては表示されません。"
+
+msgid "The Markdown file is not saved."
+msgstr "Markdown が未保存です。"
+
+msgid "The `namespace` \"{name}\" is empty. Put a class in it or delete the `namespace` (Mermaid cannot draw an empty `namespace`)."
+msgstr "`namespace` の「{name}」の中が空です。クラスを入れるか、`namespace` を削除してください (Mermaid は空の `namespace` を描けません)。"
+
+msgid "The `namespace` name \"{name}\" is not valid."
+msgstr "`namespace` の名前「{name}」は使えません。"
+
+msgid "The annotation \"{annotation}\" is not valid (no `<`, `>`, `\"`, `%%`, or leading or trailing whitespace)."
+msgstr "注釈「{annotation}」は使えません (`<`・`>`・`\"`・`%%` と前後の空白は不可)。"
+
+msgid "The buffer became read-only, so the image link could not be inserted."
+msgstr "バッファーが読み取り専用になったため、画像のリンクを挿入できませんでした。"
+
+msgid "The class definition \"{name}\" is defined more than once."
+msgstr "クラス定義「{name}」が重複しています。"
+
+msgid "The class definition name \"{name}\" is not valid (no whitespace or symbols such as , ; : # %)."
+msgstr "クラス定義の名前「{name}」は使えません (空白や , ; : # % などの記号は不可)。"
+
+msgid "The class name \"{name}\" is not valid (no whitespace, symbols or Mermaid keywords)."
+msgstr "クラス名「{name}」は使えません (空白・記号と Mermaid の予約語は不可)。"
+
+msgid "The classDef names and the name typed here are offered under \"Class\"."
+msgstr "classDef の名前と、ここに入力した名前が「クラス」の候補になります。"
+
+msgid "The clipboard has nothing that can be read as a table."
+msgstr "クリップボードに表として読み取れる内容がありません。"
+
+msgid "The display name of a `namespace` cannot contain `\"` or `%%{{`."
+msgstr "`namespace` の表示名に `\"` と `%%{{` は使えません。"
+
+msgid "The display name of a class cannot contain `\"`, `%%{{` or line breaks."
+msgstr "クラスの表示名に `\"`・`%%{{` と改行は使えません。"
+
+msgid "The generic type \"{generic}\" is not valid."
+msgstr "総称型「{generic}」は使えません。"
+
+msgid "The image at the cursor was loaded. Change it and click \"Update\" to rewrite it."
+msgstr "カーソル位置の画像を読み込みました。変更して「更新」を押すと書き換えます。"
+
+msgid "The image is too large ({} MiB). Images of up to {} MiB can be saved."
+msgstr "画像が大きすぎます ({} MiB)。保存できるのは {} MiB までです。"
+
+msgid "The image's reference definition changed after the dialog was opened. Open the dialog again."
+msgstr "ダイアログを開いた後に、画像の参照定義が変更されました。ダイアログを開き直してください。"
+
+msgid "The label \"{label}\" is not valid (it cannot be empty or contain `%%`)."
+msgstr "ラベル「{label}」は使えません (空と `%%` は不可)。"
+
+msgid "The line style of link {position} has characters that cannot be used (; or %%, an unclosed quote, a trailing {{, or a leading comma)."
+msgstr "{position} 番目のつながりの線のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {{、先頭のカンマ)。"
+
+msgid "The link ID \"{id}\" is the same as the ID of a node or group."
+msgstr "つながりの ID「{id}」がノードまたはグループの ID と同じです。"
+
+msgid "The link ID \"{id}\" is used more than once."
+msgstr "つながりの ID「{id}」が重複しています。"
+
+msgid "The member \"{member}\" is not valid (no line starting with `}}`, no `%%{{`, and no leading or trailing whitespace)."
+msgstr "メンバー「{member}」は使えません (`}}` で始まる行、`%%{{` と前後の空白は不可)。"
+
+msgid "The member \"{text}\" is not valid (no leading or trailing whitespace, no `%%{{`, and not a line of only `}}`)."
+msgstr "メンバー「{text}」は使えません (前後の空白、`%%{{` と `}}` だけの行は不可)。"
+
+msgid "The note text cannot contain `\"`, `%%{{` or line breaks."
+msgstr "ノートの本文に `\"`・`%%{{` と改行は使えません。"
+
+msgid "The note text contains characters that are not allowed (leading or trailing whitespace, line breaks, or `%%{{`)."
+msgstr "ノートの文章に使えない文字があります (前後の空白や改行、`%%{{`)。"
+
+msgid "The path cannot be made relative to the Markdown file, so it is written as an absolute path. The image will not show on other machines."
+msgstr "Markdown からの相対パスにできないため、絶対パスで書き込みます。他の環境では表示されません。"
+
+msgid "The path contains characters that cannot be handled."
+msgstr "パスに扱えない文字が含まれています。"
+
+msgid "The previous image is still being saved. Try again when it finishes."
+msgstr "前の画像を保存しています。終わってからもう一度お試しください。"
+
+msgid "The project has no image files."
+msgstr "プロジェクトに画像ファイルがありません。"
+
+msgid "The project was closed."
+msgstr "プロジェクトが閉じられました。"
+
+msgid "The reference definition {head} is also used in {count} other place, so only this image is rewritten in the inline form ![…](…)."
+msgid_plural "The reference definition {head} is also used in {count} other places, so only this image is rewritten in the inline form ![…](…)."
+msgstr[0] "参照定義 {head} はほかの {count} か所でも使われているため、この画像だけをインラインの形 ![…](…) で書き換えます。"
+
+msgid "The relationship symbol \"{arrow}\" is not valid."
+msgstr "関係の記号「{arrow}」は使えません。"
+
+msgid "The remote connection could not be found."
+msgstr "リモートの接続が見つかりません。"
+
+msgid "The saved location could not be determined, so the file was not exported to PDF."
+msgstr "保存先を特定できなかったため、PDF に書き出せませんでした。"
+
+msgid "The selected image is shown here."
+msgstr "画像を選ぶとここに表示します。"
+
+msgid "The source changed, so this label could not be rewritten."
+msgstr "ソースが変更されたため、このラベルを書き換えられませんでした。"
+
+msgid "The style of the class definition \"{name}\" has characters that cannot be used (; or %%, an unclosed quote, or a trailing {{)."
+msgstr "クラス定義「{name}」のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {{)。"
+
+msgid "The text to write to changed after the dialog was opened. Open the dialog again."
+msgstr "ダイアログを開いた後に、書き込み先のテキストが変更されました。ダイアログを開き直してください。"
+
+msgid "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+msgstr "タイトルに `%%` と改行は使えません (前後の空白も不可)。"
+
+msgid "The value \"{value}\" of \"{label}\" is not valid (only decimal numbers of 0 or more)."
+msgstr "「{label}」の値「{value}」は使えません (0 以上の小数だけ)。"
+
+msgid "The worktree that contains the Markdown file could not be found."
+msgstr "Markdown のあるワークツリーが見つかりません。"
+
+msgid "The worktree that contains the Markdown file was closed."
+msgstr "Markdown のあるワークツリーが閉じられました。"
+
+msgid "There is no pair of frames to add an arrow between. Add a frame first."
+msgstr "矢印を足せる組がありません。先にフレームを追加してください。"
+
+msgid "This buffer does not belong to a project, so there is nowhere to save the image."
+msgstr "プロジェクトに属さないバッファーのため、画像を保存する場所がありません。"
+
+msgid "This buffer is read-only, so an image cannot be inserted."
+msgstr "このバッファーは読み取り専用のため、画像を挿入できません。"
+
+msgid "This buffer is read-only, so the diagram cannot be edited."
+msgstr "このバッファーは読み取り専用のため、図を編集できません。"
+
+msgid "This content cannot be written back: {error}"
+msgstr "この内容は書き戻せません: {error}"
+
+msgid "This diagram is not supported by the structured editor. Edit it as text. (Diagrams the structured editor supports: {kinds})"
+msgstr "この図は構造化エディターに対応していません。テキストのまま編集してください。(構造化編集できる図: {kinds})"
+
+msgid "This kind of link cannot be opened from the preview"
+msgstr "このリンクの種類はプレビューから開けません"
+
+msgid "Ticket"
+msgstr "チケット"
+
+msgid "Ticks"
+msgstr "目盛りの数"
+
+msgid "Time (tf): an arrow continues from the previous frame"
+msgstr "時間 (tf): 前のフレームから矢印が続く"
+
+msgid "Title"
+msgstr "タイトル"
+
+msgid "To choose again, cancel and open the editor again."
+msgstr "選び直すには、キャンセルしてもう一度開いてください。"
+
+msgid "Top Left (2)"
+msgstr "左上 (2)"
+
+msgid "Top Level"
+msgstr "最上位"
+
+msgid "Top Right (1)"
+msgstr "右上 (1)"
+
+msgid "Type"
+msgstr "種類"
+
+msgid "Type: Default"
+msgstr "種類: 既定"
+
+msgid "Unfold All Headings"
+msgstr "見出しをすべて展開"
+
+msgid "Unsupported diagram type"
+msgstr "未対応の図の種類です"
+
+msgid "Unused (not written until a flow uses it)"
+msgstr "未使用 (流れで使うまで書き出されません)"
+
+msgid "Update"
+msgstr "更新"
+
+msgid "Values (deleting a row also deletes its value in every series)"
+msgstr "値 (行を消すと全系列のその値も消えます)"
+
+msgid "Values beyond the number of axes are not drawn. Adding an axis gives those values an axis."
+msgstr "軸の数より多い値は描かれません。軸を追加するとその値に軸が付きます。"
+
+msgid "Values beyond the number of categories are not drawn. Adding a category gives those values a name."
+msgstr "項目の数より多い値は描かれません。項目を追加するとその値に名前が付きます。"
+
+msgid "Verification: Not Set"
+msgstr "検証: 未指定"
+
+msgid "When only one side is set, the aspect ratio is kept."
+msgstr "片方だけを指定すると、縦横比は保たれます。"
+
+msgid "Width"
+msgstr "幅"
+
+msgid "Wrap"
+msgstr "折り返し"
+
+msgid "Write a classDef, or type a name in \"Class Name\"."
+msgstr "classDef を書くか、「クラス名」に入力してください。"
+
+msgid "X Axis"
+msgstr "x 軸"
+
+msgid "Y Axis"
+msgstr "y 軸"
+
+msgid "[*] Start / End"
+msgstr "[*] 開始 / 終了"
+
+msgid "`namespace` blocks are nested too deeply."
+msgstr "`namespace` の入れ子が深すぎます。"
+
+msgid "after (After Another Task)"
+msgstr "after (別のタスクの後)"
+
+msgid "bits"
+msgstr "ビット"
+
+msgid "box (Group of Participants)"
+msgstr "box (参加者のまとまり)"
+
+msgid "e.g. 200"
+msgstr "例: 200"
+
+msgid "e.g. 300 / 50%"
+msgstr "例: 300 / 50%"
+
+msgid "e.g. fill:#f96,stroke:#333"
+msgstr "例: fill:#f96,stroke:#333"
+
+msgid "e.g. stroke:#f00,stroke-width:2px"
+msgstr "例: stroke:#f00,stroke-width:2px"
+
+msgid "end (End of Block)"
+msgstr "end (ブロックの終わり)"
+
+msgid "right / left / up / down / x / y, separated by commas"
+msgstr "right / left / up / down / x / y を , 区切り"
+
+msgid "until (Until Another Task Starts)"
+msgstr "until (別のタスクの開始まで)"
+
+msgid "x-axis, left → right"
+msgstr "横軸 左→右"
+
+msgid "y-axis, bottom → top"
+msgstr "縦軸 下→上"
+
+msgid "{count} line of data (edit multiple lines as text)"
+msgid_plural "{count} lines of data (edit multiple lines as text)"
+msgstr[0] "{count} 行のデータ (複数行はテキストで編集)"
+
+msgid "{count} style statement (UpdateElementStyle and the like) is kept as is and follows alias changes."
+msgid_plural "{count} style statements (UpdateElementStyle and the like) are kept as is and follow alias changes."
+msgstr[0] "スタイル指定 (UpdateElementStyle など) {count} 行はそのまま残し、別名の変更に追随します。"
+
+msgid "{count} text or style statement is kept as is and follows sets that are renamed or deleted."
+msgid_plural "{count} text and style statements are kept as is and follow sets that are renamed or deleted."
+msgstr[0] "text・style の文 {count} 件はそのまま残し、集合の改名と削除に追随させます。"
+
+msgid "{count} text statement"
+msgid_plural "{count} text statements"
+msgstr[0] "text {count} 件"
+
+msgid "{label} (Unnamed)"
+msgstr "{label} (名前なし)"
+
+msgid "{refusal} The image is referenced without being copied."
+msgstr "{refusal} 画像はコピーせずに参照します。"
+
+msgid "{}: cannot make a path relative to the document"
+msgstr "{}: ドキュメントからの相対パスを作れません"
+
+msgctxt "event modeling frame"
+msgid "Reset"
+msgstr "リセット"
+
+msgctxt "event modeling frame"
+msgid "Time"
+msgstr "時間"
+
+msgctxt "image alignment"
+msgid "Center"
+msgstr "中央"
+
+msgctxt "image alignment"
+msgid "Left"
+msgstr "左"
+
+msgctxt "image alignment"
+msgid "Right"
+msgstr "右"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "mermaid block arrow"
+msgid "Direction"
+msgstr "向き"
+
+msgctxt "mermaid c4 element"
+msgid "Parent"
+msgstr "所属"
+
+msgctxt "mermaid edge end"
+msgid "From"
+msgstr "元"
+
+msgctxt "mermaid edge end"
+msgid "To"
+msgstr "先"
+
+msgctxt "mermaid editor"
+msgid "Apply"
+msgstr "反映"
+
+msgctxt "mermaid gantt tag separator"
+msgid ", "
+msgstr "・"
+
+msgctxt "mermaid journey"
+msgid "Add Task"
+msgstr "作業を追加"
+
+msgctxt "mermaid journey"
+msgid "Delete the Section and Its Tasks"
+msgstr "セクションとその中の作業を削除"
+
+msgctxt "mermaid journey"
+msgid "New task"
+msgstr "新しい作業"
+
+msgctxt "mermaid journey"
+msgid "Sections and Tasks (task name, score and people, separated by commas)"
+msgstr "セクションと作業 (作業名・満足度・担当者をカンマ区切り)"
+
+msgctxt "mermaid timeline"
+msgid "Event"
+msgstr "出来事"
+
+msgctxt "xychart series heading"
+msgid "{kind} {number}"
+msgstr "{kind}{number}"

@@ -265,10 +265,13 @@ pub fn deploy_context_menu(
             let builder = menu
                 .on_blur_subscription(Subscription::new(|| {}))
                 .when(run_to_cursor, |builder| {
-                    builder.action("カーソル位置まで実行", Box::new(RunToCursor))
+                    builder.action(i18n::t!("Run to Cursor"), Box::new(RunToCursor))
                 })
                 .when(evaluate_selection && has_selections, |builder| {
-                    builder.action("選択範囲を評価", Box::new(EvaluateSelectedText))
+                    builder.action(
+                        i18n::t!("Evaluate Selection"),
+                        Box::new(EvaluateSelectedText),
+                    )
                 })
                 .when(
                     run_to_cursor || (evaluate_selection && has_selections),
@@ -303,40 +306,49 @@ pub fn deploy_context_menu(
                     Box::new(zed_actions::ShowOutgoingCalls),
                 )
                 .separator()
-                .action("シンボルの名前変更", Box::new(Rename))
-                .action("バッファーをフォーマット", Box::new(Format))
+                .action(i18n::t!("Rename Symbol"), Box::new(Rename))
+                .action(i18n::t!("Format Buffer"), Box::new(Format))
                 .when(format_selections, |cx| {
-                    cx.action("選択範囲をフォーマット", Box::new(FormatSelections))
+                    cx.action(i18n::t!("Format Selections"), Box::new(FormatSelections))
                 })
                 .action(
-                    "コードアクションを表示",
+                    i18n::t!("Show Code Actions"),
                     Box::new(ToggleCodeActions {
                         deployed_from: None,
                         quick_launch: false,
                     }),
                 )
                 .when(!disable_ai && has_selections, |this| {
-                    this.action("エージェントスレッドに追加", Box::new(AddSelectionToThread))
+                    this.action(
+                        i18n::t!("Add to Agent Thread"),
+                        Box::new(AddSelectionToThread),
+                    )
                 })
                 .when(claude_code_connected, |this| {
                     this.action(
-                        "選択範囲を Claude Code に送る",
+                        i18n::t!("Send Selection to Claude Code"),
                         Box::new(SendSelectionToClaudeCode),
                     )
                 })
                 // 内蔵ブラウザー (ADR-F19)。ハンドラは `browser_panel` 側にある。
                 .when(has_selections, |this| {
-                    this.action("選択テキストを Web で検索", Box::new(SearchSelection))
-                        .action("選択テキストを Copilot に聞く", Box::new(AskCopilot))
+                    this.action(
+                        i18n::t!("Search Selection on the Web"),
+                        Box::new(SearchSelection),
+                    )
+                    .action(
+                        i18n::t!("Ask Copilot About Selection"),
+                        Box::new(AskCopilot),
+                    )
                 })
                 .separator()
-                .action("切り取り", Box::new(Cut))
-                .action("コピー", Box::new(Copy))
-                .action("余白を削ってコピー", Box::new(CopyAndTrim))
-                .action("貼り付け", Box::new(Paste))
+                .action(i18n::t!("Cut"), Box::new(Cut))
+                .action(i18n::t!("Copy"), Box::new(Copy))
+                .action(i18n::t!("Copy and Trim"), Box::new(CopyAndTrim))
+                .action(i18n::t!("Paste"), Box::new(Paste))
                 .separator()
-                .action("インデント", Box::new(Indent))
-                .action("インデント解除", Box::new(Outdent))
+                .action(i18n::t!("Indent"), Box::new(Indent))
+                .action(i18n::t!("Outdent"), Box::new(Outdent))
                 .separator()
                 .action_disabled_when(
                     !has_reveal_target,
@@ -345,45 +357,55 @@ pub fn deploy_context_menu(
                 )
                 .when(is_markdown, |builder| {
                     builder
-                        .action("Markdown プレビューを開く", Box::new(OpenMarkdownPreview))
                         .action(
-                            "Markdown プレビューを横に開く",
+                            i18n::t!("Open Markdown Preview"),
+                            Box::new(OpenMarkdownPreview),
+                        )
+                        .action(
+                            i18n::t!("Open Markdown Preview to the Side"),
                             Box::new(OpenMarkdownPreviewToTheSide),
                         )
-                        .action("表を編集…", Box::new(EditTable))
+                        .action(i18n::t!("Edit Table…"), Box::new(EditTable))
                         .action_disabled_when(
                             !can_edit_mermaid,
-                            "Mermaid 図を編集…",
+                            i18n::t!("Edit Mermaid Diagram…"),
                             Box::new(EditMermaid),
                         )
-                        .submenu("Mermaid 図を挿入", |mut menu, _window, _cx| {
-                            for (index, diagram) in MermaidDiagramKind::ALL.into_iter().enumerate()
-                            {
-                                if index == MermaidDiagramKind::EVERYDAY_COUNT {
-                                    menu = menu.separator();
+                        .submenu(
+                            i18n::t!("Insert Mermaid Diagram"),
+                            |mut menu, _window, _cx| {
+                                for (index, diagram) in
+                                    MermaidDiagramKind::ALL.into_iter().enumerate()
+                                {
+                                    if index == MermaidDiagramKind::EVERYDAY_COUNT {
+                                        menu = menu.separator();
+                                    }
+                                    menu = menu.action(
+                                        diagram.label(),
+                                        Box::new(InsertMermaidDiagram { diagram }),
+                                    );
                                 }
-                                menu = menu.action(
-                                    diagram.label(),
-                                    Box::new(InsertMermaidDiagram { diagram }),
-                                );
-                            }
-                            menu
-                        })
-                        .action("折り畳み (details) を挿入", Box::new(InsertDetails))
+                                menu
+                            },
+                        )
+                        .action(
+                            i18n::t!("Insert Collapsible Section (details)"),
+                            Box::new(InsertDetails),
+                        )
                         // The formatting bar has no heading-fold menu any more,
                         // so these two keep a mouse-only route to it.
-                        .action("見出しをすべて畳む", Box::new(FoldAllHeadings))
-                        .action("見出しをすべて展開", Box::new(UnfoldAllHeadings))
+                        .action(i18n::t!("Fold All Headings"), Box::new(FoldAllHeadings))
+                        .action(i18n::t!("Unfold All Headings"), Box::new(UnfoldAllHeadings))
                 })
                 .when(is_svg, |builder| {
                     builder.action(
-                        "SVG プレビューを横に開く",
+                        i18n::t!("Open SVG Preview to the Side"),
                         Box::new(OpenSvgPreviewToTheSide),
                     )
                 })
                 .action_disabled_when(
                     !has_reveal_target,
-                    "ターミナルで開く",
+                    i18n::t!("Open in Terminal"),
                     Box::new(OpenInTerminal),
                 )
                 .action_disabled_when(
@@ -393,7 +415,7 @@ pub fn deploy_context_menu(
                 )
                 .action_disabled_when(
                     !has_git_repo,
-                    "ファイルの履歴を表示",
+                    i18n::t!("View File History"),
                     Box::new(git::FileHistory),
                 );
             match focus {
@@ -528,7 +550,6 @@ mod tests {
         });
         cx.run_until_parked();
 
-        // `ContextMenu` の debug selector はラベル文字列から作られるため日本語ラベルに追随する
-        assert!(cx.debug_bounds("MENU_ITEM-コピー").is_some());
+        assert!(cx.debug_bounds("MENU_ITEM-Copy").is_some());
     }
 }

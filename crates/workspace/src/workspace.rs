@@ -17,6 +17,7 @@ pub mod path_link;
 mod persistence;
 pub mod searchable;
 pub mod security_modal;
+pub mod server_links;
 pub mod shared_screen;
 pub use shared_screen::SharedScreen;
 pub mod focus_follows_mouse;
@@ -3261,9 +3262,9 @@ impl Workspace {
                     )
                     .children(zone.map(|zone| {
                         let label = if stacking {
-                            format!("{}ドックに並べて表示", zone.position.label())
+                            i18n::t!("Stack in {} Dock", i18n::tr(zone.position.label()))
                         } else {
-                            format!("{}ドックへ移動", zone.position.label())
+                            i18n::t!("Move to {} Dock", i18n::tr(zone.position.label()))
                         };
                         div()
                             .absolute()
@@ -4723,9 +4724,9 @@ impl Workspace {
                     let answer = cx.update(|window, cx| {
                         window.prompt(
                             PromptLevel::Warning,
-                            "現在の通話から退出しますか?",
+                            i18n::t!("Do you want to leave the current call?"),
                             None,
-                            &["ウィンドウを閉じて退出", "キャンセル"],
+                            &[i18n::t!("Close window and hang up"), i18n::t!("Cancel")],
                             cx,
                         )
                     })?;
@@ -4971,9 +4972,13 @@ impl Workspace {
                         );
                         window.prompt(
                             PromptLevel::Warning,
-                            "次のファイルの変更をすべて保存しますか?",
+                            i18n::t!("Do you want to save all changes in the following files?"),
                             Some(&detail),
-                            &["すべて保存", "すべて破棄", "キャンセル"],
+                            &[
+                                i18n::t!("Save all"),
+                                i18n::t!("Discard all"),
+                                i18n::t!("Cancel"),
+                            ],
                             cx,
                         )
                     })?;
@@ -5276,7 +5281,7 @@ impl Workspace {
         let project = self.project.read(cx);
         if project.is_via_collab() {
             self.show_error(
-                "他のユーザーのプロジェクトにはフォルダーを追加できません",
+                i18n::t!("You cannot add folders to someone else's project"),
                 cx,
             );
             return;
@@ -5331,7 +5336,10 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         if self.project.read(cx).is_via_collab() {
-            self.show_error("他のユーザーのプロジェクトのフォルダーは変更できません", cx);
+            self.show_error(
+                i18n::t!("You cannot change the folders of someone else's project"),
+                cx,
+            );
             return;
         }
         let previous_worktree_ids: HashSet<WorktreeId> = self
@@ -5433,7 +5441,9 @@ impl Workspace {
                 }
                 this.update_in(cx, |this, _, cx| {
                     this.show_error(
-                        "選択したフォルダーを開けなかったため、フォルダーは変更されませんでした",
+                        i18n::t!(
+                            "The folders were not changed because the selected folders could not be opened"
+                        ),
                         cx,
                     );
                 })?;
@@ -8348,7 +8358,7 @@ impl Workspace {
                     cx,
                 )
                 .detach_and_prompt_err(
-                    "プロジェクトに参加できませんでした",
+                    i18n::t!("Failed to join project"),
                     window,
                     cx,
                     |error, _, _| Some(format!("{error:#}")),
@@ -9977,7 +9987,7 @@ impl Workspace {
             .on_action(cx.listener(|workspace, _: &SaveAs, window, cx| {
                 workspace
                     .save_active_item(SaveIntent::SaveAs, window, cx)
-                    .detach_and_prompt_err("保存できませんでした", window, cx, |_, _, _| None);
+                    .detach_and_prompt_err(i18n::t!("Failed to save"), window, cx, |_, _, _| None);
             }))
             .on_action(
                 cx.listener(|workspace, _: &ActivatePreviousPane, window, cx| {
@@ -10527,9 +10537,9 @@ impl Workspace {
         // window. We only make it focusable in that case so it never adds a
         // hitbox or intercepts mouse focus for other users.
         let (dock_element_id, dock_label) = match position {
-            DockPosition::Left => ("left-dock", "左ドック"),
-            DockPosition::Right => ("right-dock", "右ドック"),
-            DockPosition::Bottom => ("bottom-dock", "下ドック"),
+            DockPosition::Left => ("left-dock", i18n::t!("Left dock")),
+            DockPosition::Right => ("right-dock", i18n::t!("Right dock")),
+            DockPosition::Bottom => ("bottom-dock", i18n::t!("Bottom dock")),
         };
         let dock_is_open = dock.read(cx).is_open();
         let a11y_active = window.is_a11y_active();
@@ -10780,7 +10790,7 @@ impl Workspace {
         div()
             .id("editor-region")
             .role(gpui::Role::Main)
-            .aria_label("エディター")
+            .aria_label(i18n::t!("Editor"))
             .when(window.is_a11y_active(), |this| {
                 this.track_focus(&self.region_focus_handles.editor)
             })
@@ -11370,10 +11380,10 @@ fn notify_if_database_failed(window: WindowHandle<MultiWorkspace>, cx: &mut Asyn
                         |cx| {
                             cx.new(|cx| {
                                 MessageNotification::new(
-                                    "データベースファイルを読み込めませんでした。",
+                                    i18n::t!("Failed to load the database file."),
                                     cx,
                                 )
-                                .primary_message("問題を報告")
+                                .primary_message(i18n::t!("File an Issue"))
                                 .primary_icon(IconName::Plus)
                                 .primary_on_click(|window, cx| {
                                     window.dispatch_action(Box::new(FileBugReport), cx)
@@ -11556,7 +11566,7 @@ impl Render for Workspace {
                         .track_focus(&self.titlebar_focus_handle)
                         .tab_group()
                         .role(gpui::Role::Toolbar)
-                        .aria_label("タイトルバー")
+                        .aria_label(i18n::t!("Title bar"))
                         .on_key_down(cx.listener(
                             |workspace, event: &gpui::KeyDownEvent, window, cx| {
                                 if event.keystroke.modifiers.modified() {
@@ -12410,9 +12420,11 @@ async fn join_channel_internal(
                 .update(cx, |_, window, cx| {
                     window.prompt(
                         PromptLevel::Warning,
-                        "チャンネルを切り替えますか?",
-                        Some("この通話から退出すると、現在のプロジェクトの共有が解除されます。"),
-                        &["チャンネルに参加", "キャンセル"],
+                        i18n::t!("Do you want to switch channels?"),
+                        Some(i18n::t!(
+                            "Leaving this call will unshare your current project."
+                        )),
+                        &[i18n::t!("Yes, Join Channel"), i18n::t!("Cancel")],
                         cx,
                     )
                 })?
@@ -12617,30 +12629,28 @@ pub fn join_channel(
                 active_window
                     .update(cx, |_, window, cx| {
                         let detail: SharedString = match err.error_code() {
-                            ErrorCode::SignedOut => "続行するにはサインインしてください。".into(),
-                            ErrorCode::UpgradeRequired => concat!(
-                                "サポートされていないバージョンの Zed を使用しています。",
-                                "続行するには更新してください。"
+                            ErrorCode::SignedOut => i18n::t!("Please sign in to continue.").into(),
+                            ErrorCode::UpgradeRequired => i18n::t!(
+                                "Your are running an unsupported version of Zed. Please update to continue."
                             )
                             .into(),
-                            ErrorCode::NoSuchChannel => concat!(
-                                "一致するチャンネルが見つかりませんでした。",
-                                "リンクを確認してもう一度お試しください。"
+                            ErrorCode::NoSuchChannel => i18n::t!(
+                                "No matching channel was found. Please check the link and try again."
                             )
                             .into(),
-                            ErrorCode::Forbidden => concat!(
-                                "このチャンネルは非公開で、アクセス権がありません。",
-                                "追加を依頼してからもう一度お試しください。"
+                            ErrorCode::Forbidden => i18n::t!(
+                                "This channel is private, and you do not have access. Please ask someone to add you and try again."
                             )
                             .into(),
                             ErrorCode::Disconnected => {
-                                "インターネット接続を確認してもう一度お試しください。".into()
+                                i18n::t!("Please check your internet connection and try again.")
+                                    .into()
                             }
-                            _ => format!("{}\n\nもう一度お試しください。", err).into(),
+                            _ => i18n::t!("{}\n\nPlease try again.", err).into(),
                         };
                         window.prompt(
                             PromptLevel::Critical,
-                            "チャンネルに参加できませんでした",
+                            i18n::t!("Failed to join channel"),
                             Some(&detail),
                             &["OK"],
                             cx,
@@ -13198,10 +13208,10 @@ pub fn open_paths(
                     workspace.update(cx, |workspace, cx| {
                         workspace.show_notification(NotificationId::unique::<OpenInWsl>(), cx, move |cx| {
                             let display_path = util::markdown::MarkdownInlineCode(&path.to_string_lossy());
-                            let msg = format!("{display_path} は WSL のファイルシステム上にあります。WSL リモートで開かないと一部の機能が動作しない場合があります");
+                            let msg = i18n::t!("{display_path} is inside a WSL filesystem, some features may not work unless you open it with WSL remote");
                             cx.new(move |cx| {
                                 MessageNotification::new(msg, cx)
-                                    .primary_message("WSL で開く")
+                                    .primary_message(i18n::t!("Open in WSL"))
                                     .primary_icon(IconName::FolderOpen)
                                     .primary_on_click(move |window, cx| {
                                         window.dispatch_action(Box::new(remote::OpenWslPath {
@@ -13488,7 +13498,7 @@ async fn open_remote_project_inner(
         for error in project_path_errors {
             if error.error_code() == proto::ErrorCode::DevServerProjectPathDoesNotExist {
                 if let Some(path) = error.error_tag("path") {
-                    workspace.show_error(format!("'{path}' は存在しません"), cx)
+                    workspace.show_error(i18n::t!("'{path}' does not exist"), cx)
                 }
             } else {
                 workspace.show_error(format!("{error}"), cx)
@@ -13639,9 +13649,9 @@ pub fn reload(cx: &mut App) {
             .update(cx, |_, window, cx| {
                 window.prompt(
                     PromptLevel::Info,
-                    "再起動してもよろしいですか?",
+                    i18n::t!("Are you sure you want to restart?"),
                     None,
-                    &["再起動", "キャンセル"],
+                    &[i18n::t!("Restart"), i18n::t!("Cancel")],
                     cx,
                 )
             })
@@ -15108,10 +15118,87 @@ mod tests {
             w.prepare_to_close(CloseIntent::CloseWindow, window, cx)
         });
         cx.executor().run_until_parked();
-        cx.simulate_prompt_answer("キャンセル"); // cancel save all
+        cx.simulate_prompt_answer("Cancel"); // cancel save all
         cx.executor().run_until_parked();
         assert!(!cx.has_pending_prompt());
         assert!(!task.await.unwrap());
+    }
+
+    #[gpui::test]
+    async fn test_close_window_prompt_in_japanese(cx: &mut TestAppContext) {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree("/root", json!({ "one": "" })).await;
+
+        let project = Project::test(fs, ["root".as_ref()], cx).await;
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+
+        let add_dirty_items = |cx: &mut VisualTestContext| {
+            let items = [(1, "1.txt"), (2, "2.txt")].map(|(id, path)| {
+                cx.new(|cx| {
+                    TestItem::new(cx)
+                        .with_dirty(true)
+                        .with_project_items(&[TestProjectItem::new(id, path, cx)])
+                })
+            });
+            workspace.update_in(cx, |workspace, window, cx| {
+                for item in &items {
+                    workspace.add_item_to_active_pane(
+                        Box::new(item.clone()),
+                        None,
+                        true,
+                        window,
+                        cx,
+                    );
+                }
+            });
+            items
+        };
+        let prepare_to_close = |cx: &mut VisualTestContext| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.prepare_to_close(CloseIntent::CloseWindow, window, cx)
+            })
+        };
+        let save_counts = |items: &[Entity<TestItem>; 2], cx: &mut VisualTestContext| {
+            items
+                .clone()
+                .map(|item| item.read_with(cx, |item, _| item.save_count))
+        };
+
+        let items = add_dirty_items(cx);
+        let task = prepare_to_close(cx);
+        cx.executor().run_until_parked();
+        assert_eq!(
+            cx.pending_prompt().map(|(message, _)| message),
+            Some("次のファイルの変更をすべて保存しますか?".to_string())
+        );
+        cx.simulate_prompt_answer("キャンセル");
+        cx.executor().run_until_parked();
+        assert!(!cx.has_pending_prompt());
+        assert!(!task.await.unwrap());
+        assert_eq!(save_counts(&items, cx), [0, 0]);
+
+        let task = prepare_to_close(cx);
+        cx.executor().run_until_parked();
+        cx.simulate_prompt_answer("すべて保存");
+        cx.executor().run_until_parked();
+        assert!(!cx.has_pending_prompt());
+        assert!(task.await.unwrap());
+        assert_eq!(save_counts(&items, cx), [1, 1]);
+
+        let items = add_dirty_items(cx);
+        let task = prepare_to_close(cx);
+        cx.executor().run_until_parked();
+        cx.simulate_prompt_answer("すべて破棄");
+        cx.executor().run_until_parked();
+        assert!(!cx.has_pending_prompt());
+        assert!(task.await.unwrap());
+        assert_eq!(save_counts(&items, cx), [0, 0]);
     }
 
     #[gpui::test]
@@ -15191,7 +15278,7 @@ mod tests {
             .unwrap();
 
         // User cancels the save prompt from workspace B
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
 
         // Window should still exist because workspace B's close was cancelled
@@ -15268,7 +15355,7 @@ mod tests {
             .unwrap();
 
         // Cancel the prompt — user stays on workspace B.
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         let removed = remove_task.await.unwrap();
         assert!(!removed, "removal should have been cancelled");
@@ -15300,7 +15387,7 @@ mod tests {
         cx.run_until_parked();
 
         // Accept the save prompt.
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         cx.run_until_parked();
         let removed = remove_task.await.unwrap();
         assert!(removed, "removal should have succeeded");
@@ -15394,7 +15481,7 @@ mod tests {
             "closing a no-folder workspace with a dirty serializable item should prompt, \
              since the workspace will not be reachable after close"
         );
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         cx.executor().run_until_parked();
 
         assert!(task.await.unwrap());
@@ -15464,8 +15551,7 @@ mod tests {
         cx.executor().run_until_parked();
 
         assert!(cx.has_pending_prompt());
-        // The fork's save prompt still labels its buttons in Japanese.
-        cx.simulate_prompt_answer("保存");
+        cx.simulate_prompt_answer("Save");
         cx.executor().run_until_parked();
 
         assert!(!workspace.read_with(cx, |workspace, _| workspace.removing));
@@ -15541,7 +15627,7 @@ mod tests {
             "replacing a workspace with a dirty serializable item should prompt, \
              since the workspace will be detached afterwards"
         );
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         cx.executor().run_until_parked();
 
         assert!(task.await.unwrap());
@@ -15620,7 +15706,7 @@ mod tests {
             "a save/discard prompt should be shown for the dirty scratch item \
              when its serialization fails"
         );
-        cx.simulate_prompt_answer("保存しない");
+        cx.simulate_prompt_answer("Don't Save");
         cx.executor().run_until_parked();
 
         // Preparing to close succeeds, even though serialization failed.
@@ -15682,7 +15768,7 @@ mod tests {
         cx.executor().run_until_parked();
 
         assert!(cx.has_pending_prompt());
-        cx.simulate_prompt_answer("すべて保存");
+        cx.simulate_prompt_answer("Save all");
 
         cx.executor().run_until_parked();
 
@@ -15697,7 +15783,7 @@ mod tests {
         assert!(cx.has_pending_prompt());
 
         // Cancel saving item 3.
-        cx.simulate_prompt_answer("変更を破棄");
+        cx.simulate_prompt_answer("Discard Edits");
         cx.executor().run_until_parked();
 
         // Item 3 is reloaded. There's a prompt to save item 4.
@@ -15839,7 +15925,7 @@ mod tests {
 
         // With best-effort close, cancelling item 1 keeps it open but items 4
         // and (3,4) still close since their entries exist in left pane.
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         close.await;
 
         right_pane.read_with(cx, |pane, _| {
@@ -15873,7 +15959,7 @@ mod tests {
         // But we can only save whole items, so saving (2,3) for entry 3 includes 2.
         // assert!(!details.contains("2.txt"));
 
-        cx.simulate_prompt_answer("すべて保存");
+        cx.simulate_prompt_answer("Save all");
         cx.executor().run_until_parked();
         close.await;
 
@@ -21490,7 +21576,7 @@ mod tests {
             cx.has_pending_prompt(),
             "Dirty multi buffer should prompt a save dialog"
         );
-        cx.simulate_prompt_answer("保存");
+        cx.simulate_prompt_answer("Save");
         cx.background_executor.run_until_parked();
         close_multi_buffer_task
             .await

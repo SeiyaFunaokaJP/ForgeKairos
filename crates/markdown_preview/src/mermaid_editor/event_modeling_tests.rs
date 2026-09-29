@@ -76,11 +76,21 @@ const TEMPLATE_FENCE: &str = indoc! {"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let document = parse_event_modeling(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_event_modeling(&document), template);
+        assert_eq!(document.structure_error(), None);
+    };
+    check(editor::actions::MermaidDiagramKind::EventModeling.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::EventModeling.template();
-    let document = parse_event_modeling(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_event_modeling(&document), template);
-    assert_eq!(document.structure_error(), None);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -212,7 +222,7 @@ async fn what_would_be_drawn_differently_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("前のフレーム")),
+            .is_some_and(|message| message.contains("earlier frame")),
         "the modal should say the arrow's source comes later, got {message:?}"
     );
 

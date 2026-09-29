@@ -27,8 +27,8 @@ use super::{
 
 /// The label a node is added with, so that a new row is visible in the drawing
 /// before anything has been typed into it.
-const NEW_NODE_LABEL: &str = "新しいノード";
-const NEW_ROOT_LABEL: &str = "中心テーマ";
+const NEW_NODE_LABEL: &str = i18n::msg!("New node");
+const NEW_ROOT_LABEL: &str = i18n::msg!("Central topic");
 
 /// How far each level of the tree pushes its rows to the right.
 const DEPTH_INDENT_REMS: f32 = 1.;
@@ -197,7 +197,11 @@ impl MermaidEditor {
         if self.mindmap().is_none_or(|form| !form.rows.is_empty()) {
             return;
         }
-        let row = self.new_mindmap_row(Self::new_mindmap_entry(NEW_ROOT_LABEL), window, cx);
+        let row = self.new_mindmap_row(
+            Self::new_mindmap_entry(i18n::tr(NEW_ROOT_LABEL)),
+            window,
+            cx,
+        );
         if let Some(form) = self.mindmap_mut() {
             form.rows.push(row);
         }
@@ -213,7 +217,11 @@ impl MermaidEditor {
         if self.mindmap().is_none_or(|form| index >= form.rows.len()) {
             return;
         }
-        let row = self.new_mindmap_row(Self::new_mindmap_entry(NEW_NODE_LABEL), window, cx);
+        let row = self.new_mindmap_row(
+            Self::new_mindmap_entry(i18n::tr(NEW_NODE_LABEL)),
+            window,
+            cx,
+        );
         let added = self
             .mindmap_mut()
             .and_then(|form| outline_add_child(&mut form.rows, index, row));
@@ -233,7 +241,11 @@ impl MermaidEditor {
         {
             return;
         }
-        let row = self.new_mindmap_row(Self::new_mindmap_entry(NEW_NODE_LABEL), window, cx);
+        let row = self.new_mindmap_row(
+            Self::new_mindmap_entry(i18n::tr(NEW_NODE_LABEL)),
+            window,
+            cx,
+        );
         let added = self
             .mindmap_mut()
             .and_then(|form| outline_add_sibling(&mut form.rows, index, row));
@@ -320,10 +332,9 @@ impl MermaidEditor {
         let Some(form) = self.mindmap() else {
             return Vec::new();
         };
-        let mut list = v_flex()
-            .w_full()
-            .gap_2()
-            .child(section_title("ノード (右にずれているほど深い階層)"));
+        let mut list = v_flex().w_full().gap_2().child(section_title(i18n::t!(
+            "Nodes (indented rows are nested deeper)"
+        )));
 
         for index in 0..form.rows.len() {
             if let Some(row) = form.rows.get(index) {
@@ -334,7 +345,7 @@ impl MermaidEditor {
         if form.rows.is_empty() {
             list = list.child(add_button(
                 "mermaid-mindmap-add-root",
-                "中心ノードを追加",
+                i18n::t!("Add Central Node"),
                 cx.listener(|this, _, window, cx| this.add_mindmap_root(window, cx)),
             ));
         }
@@ -374,7 +385,7 @@ impl MermaidEditor {
                 button(
                     "outdent",
                     IconName::ArrowLeft,
-                    "一段浅く (親の次へ)",
+                    i18n::t!("Outdent (Move After the Parent)"),
                     !can_outdent,
                 )
                 .on_click(
@@ -385,7 +396,7 @@ impl MermaidEditor {
                 button(
                     "indent",
                     IconName::ArrowRight,
-                    "一段深く (上の兄弟の子へ)",
+                    i18n::t!("Indent (Make Child of the Sibling Above)"),
                     !can_indent,
                 )
                 .on_click(
@@ -393,36 +404,54 @@ impl MermaidEditor {
                 ),
             )
             .child(
-                button("up", IconName::ArrowUp, "上へ移動", !can_move_up).on_click(cx.listener(
-                    move |this, _, _window, cx| this.move_mindmap_node(index, false, cx),
-                )),
+                button("up", IconName::ArrowUp, i18n::t!("Move Up"), !can_move_up).on_click(
+                    cx.listener(move |this, _, _window, cx| {
+                        this.move_mindmap_node(index, false, cx)
+                    }),
+                ),
             )
             .child(
-                button("down", IconName::ArrowDown, "下へ移動", !can_move_down).on_click(
+                button(
+                    "down",
+                    IconName::ArrowDown,
+                    i18n::t!("Move Down"),
+                    !can_move_down,
+                )
+                .on_click(
                     cx.listener(move |this, _, _window, cx| {
                         this.move_mindmap_node(index, true, cx)
                     }),
                 ),
             )
             .child(
-                button("add-child", IconName::ArrowDownRight, "子を追加", false).on_click(
+                button(
+                    "add-child",
+                    IconName::ArrowDownRight,
+                    i18n::t!("Add Child"),
+                    false,
+                )
+                .on_click(
                     cx.listener(move |this, _, window, cx| {
                         this.add_mindmap_child(index, window, cx)
                     }),
                 ),
             )
             .child(
-                button("add-sibling", IconName::Plus, "下に兄弟を追加", is_root).on_click(
-                    cx.listener(move |this, _, window, cx| {
-                        this.add_mindmap_sibling(index, window, cx)
-                    }),
-                ),
+                button(
+                    "add-sibling",
+                    IconName::Plus,
+                    i18n::t!("Add Sibling Below"),
+                    is_root,
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.add_mindmap_sibling(index, window, cx)
+                })),
             )
             .child(
                 button(
                     "remove",
                     IconName::Trash,
-                    "このノードとその下のノードをすべて削除",
+                    i18n::t!("Delete This Node and Everything Under It"),
                     is_root,
                 )
                 .on_click(
@@ -457,7 +486,7 @@ impl MermaidEditor {
                     .w_full()
                     .gap_1()
                     .pl_4()
-                    .child(section_title("アイコン"))
+                    .child(section_title(i18n::t!("Icon")))
                     .child(
                         field_frame(
                             &row.icon,
@@ -468,7 +497,7 @@ impl MermaidEditor {
                         )
                         .child(row.icon.clone()),
                     )
-                    .child(section_title("クラス"))
+                    .child(section_title(i18n::t!("Class")))
                     .child(
                         field_frame(
                             &row.classes,

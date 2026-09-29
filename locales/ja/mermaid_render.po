@@ -1,0 +1,3105 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A Note has no target."
+msgstr "対象のない Note が含まれています。"
+
+msgid "A `%%{{` directive is on the same line as a statement or a comment (Mermaid cuts out only the directive and reads the rest as a statement). Write the directive on a line of its own, or edit it as text."
+msgstr "`%%{{` の指示子が文やコメントと同じ行にあります (Mermaid は指示子だけを切り取って残りを文として読みます)。指示子を 1 行に単独で書くか、テキストのまま編集してください。"
+
+msgid "A `%%{{` inside a comment runs on to the next line ({line}). Mermaid does not read the lines in between, so the structured editor cannot handle it."
+msgstr "コメントの中の `%%{{` が次の行まで続いています ({line})。Mermaid はその間の行を読まないため、構造化編集では扱えません。"
+
+msgid "A `block` group is not closed with `end`. Edit it as text."
+msgstr "`block` のグループが `end` で閉じられていません。テキストのまま編集してください。"
+
+msgid "A `section` without a name is not supported by the structured editor ({statement}). Give it a name, or edit it as text."
+msgstr "名前の無い `section` は構造化編集に対応していません ({statement})。名前を付けるか、テキストのまま編集してください。"
+
+msgid "A `section` without a name is not supported by the structured editor ({trimmed}). Give it a name, or edit it as text."
+msgstr "名前の無い `section` は構造化編集に対応していません ({trimmed})。名前を付けるか、テキストのまま編集してください。"
+
+msgid "A comment at the end of a frame line is lost in the structured editor ({line}). Move the comment to a line of its own, then open it again."
+msgstr "フレームの行の末尾のコメントは構造化編集で失われます ({line})。コメントを独立した行に移してから開いてください。"
+
+msgid "A comment in the middle or at the end of a statement is lost in the structured editor ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "文の途中や末尾のコメントは構造化編集で失われます ({trimmed})。コメントを独立した行に移すか、テキストのまま編集してください。"
+
+msgid "A comment inside a `curve` that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside, or edit it as text."
+msgstr "複数行にわたる `curve` の途中のコメントは構造化編集で失われます ({trimmed})。コメントを外へ移すか、テキストのまま編集してください。"
+
+msgid "A comment inside a statement that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside the statement, or edit it as text."
+msgstr "複数行にわたる文の途中のコメントは構造化編集で失われます ({trimmed})。コメントを文の外へ移すか、テキストのまま編集してください。"
+
+msgid "A comment must be a single line that starts with `%%`."
+msgstr "コメントは `%%` で始まる 1 行にしてください。"
+
+msgid "A date cannot be written into `{other}` of `dateFormat`"
+msgstr "`dateFormat` の `{other}` には日付を書き込めません"
+
+msgid "A deactivate has no target."
+msgstr "対象のない deactivate が含まれています。"
+
+msgid "A field of 0 bits cannot be written ({statement})."
+msgstr "ビット数 0 の項目は書けません ({statement})。"
+
+msgid "A frame whose name contains %% cannot be handled by the structured editor ({line})."
+msgstr "名前に %% を含むフレームは構造化編集で扱えません ({line})。"
+
+msgid "A group without an ID cannot have a label or a width. Give it an ID."
+msgstr "ID の無いグループにはラベルも幅も付けられません。ID を付けてください。"
+
+msgid "A line of the Sankey diagram has a fourth column ({}). Write only the three columns `source,target,value`."
+msgstr "サンキー図の行に 4 つ目の欄があります ({})。`流れ元,流れ先,量` の 3 つだけを書いてください。"
+
+msgid "A line that contains `end note` cannot be written in the text of a note ({trimmed}). Edit it as text."
+msgstr "`end note` を含む行はノートの本文に書けません ({trimmed})。テキストのまま編集してください。"
+
+msgid "A multi-line `@{{` is supported only when its first line ends with `@{{` and the lines after it are written as `key: value`."
+msgstr "複数行の `@{{` は、1 行目を `@{{` で終えて次の行から `キー: 値` を書く形だけに対応しています。"
+
+msgid "A node label cannot contain line breaks."
+msgstr "ノードのラベルに改行は使えません。"
+
+msgid "A node name cannot contain line breaks."
+msgstr "ノードの名前に改行は使えません。"
+
+msgid "A space is needed after `:` ({trimmed})."
+msgstr "`:` のあとに空白が必要です ({trimmed})。"
+
+msgid "A statement follows `%%{{…}}%%` on the same line (line {}). Put the directive on its own line, then open it."
+msgstr "`%%{{…}}%%` の後ろに同じ行で文が続いています ({} 行目)。指示子を 1 行に分けてから開いてください。"
+
+msgid "A statement follows `%%{{…}}%%` on the same line ({}). Put the directive and the statement on separate lines, then open the editor."
+msgstr "`%%{{…}}%%` の後ろに同じ行で文が続いています ({})。指示子と文を別の行に分けてから開いてください。"
+
+msgid "A {what} has an empty ID."
+msgstr "ID が空の{what}があります。"
+
+msgid "Aggregation (left is whole)"
+msgstr "集約 (左が全体)"
+
+msgid "Aggregation (right is whole)"
+msgstr "集約 (右が全体)"
+
+msgid "Alternative (alt)"
+msgstr "分岐 (alt)"
+
+msgid "An `accTitle` after `title` becomes the diagram's title, so `title` is not used."
+msgstr "`title` より後の `accTitle` が図のタイトルになるので、`title` は使われません。"
+
+msgid "An activate has no target."
+msgstr "対象のない activate が含まれています。"
+
+msgid "An arrow has no receiver."
+msgstr "宛先のない矢印が含まれています。"
+
+msgid "An arrow has no sender."
+msgstr "送信元のない矢印が含まれています。"
+
+msgid "An empty `\"\"` after `-->` is not supported by the structured editor. Remove it, or edit it as text."
+msgstr "`-->` の後の空の `\"\"` は構造化編集に対応していません。消すか、テキストのまま編集してください。"
+
+msgid "An empty label `[\"\"]` is not supported by the structured editor ({line}). Write a label or remove `[\"\"]`, then open it again."
+msgstr "空のラベル `[\"\"]` は構造化編集に対応していません ({line})。ラベルを書くか `[\"\"]` を消してから開いてください。"
+
+msgid "An item outside any group is indented. Use “Move into the Group Above” to put it into a group."
+msgstr "グループの外の項目が字下げされています。グループの中へは「上のグループへ入れる」で移してください。"
+
+msgid "Arrow"
+msgstr "矢印"
+
+msgid "Association (line only)"
+msgstr "関連 (線のみ)"
+
+msgid "Association (pointing left)"
+msgstr "関連 (左向き)"
+
+msgid "Association (pointing right)"
+msgstr "関連 (右向き)"
+
+msgid "At the same time (and)"
+msgstr "同時に (and)"
+
+msgid "Automation (pcr)"
+msgstr "自動処理 (pcr)"
+
+msgid "Background (rect)"
+msgstr "背景 (rect)"
+
+msgid "Bang )) (("
+msgstr "爆発 )) (("
+
+msgid "Because of how `%%{{…}}%%` or similar is written, what the structured editor reads does not match the diagram Mermaid draws. Edit it as text."
+msgstr "`%%{{…}}%%` などの書き方のせいで、構造化エディターの読み取りが Mermaid の描く図と一致しません。テキストのまま編集してください。"
+
+msgid "Block"
+msgstr "ブロック"
+
+msgid "Both inline data and a data reference are written ({line}). Keep only one, then open it again."
+msgstr "データの直書きと参照の両方が書かれています ({line})。片方にしてから開いてください。"
+
+msgid "Bottom to top (BT)"
+msgstr "下から上 (BT)"
+
+msgid "Box (participant)"
+msgstr "箱 (participant)"
+
+msgid "Branch `{name}` is referenced by operation {list}. Delete it first, or point it at another branch."
+msgid_plural "Branch `{name}` is referenced by operations {list}. Delete them first, or point them at another branch."
+msgstr[0] "ブランチ「{name}」は {list} 番目の操作から参照されています。先にそれらを削除するか、別のブランチに向けてください。"
+
+msgid "Break (break)"
+msgstr "中断 (break)"
+
+msgid "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated."
+msgstr "{what} を参照しているタスクの日付を計算できないため、削除できません。"
+
+msgid "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated. The diagram cannot be drawn with its current content ({error}). Fix the fields outlined in red first."
+msgstr "{what} を参照しているタスクの日付を計算できないため、削除できません。今の内容では図を描けません ({error})。先に赤枠の欄を直してください。"
+
+msgid "Cannot delete {what}."
+msgstr "{what} を削除できません。"
+
+msgid "Cannot delete {what}: the end of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+msgstr "{what} を削除すると、それを参照しているタスク `{task}` の終了が変わってしまうため、削除できません。先に `{task}` の `after` / `until` を日付に書き換えてください。"
+
+msgid "Cannot delete {what}: the end of task `{}` would have to be written as a date, which is not possible ({error})."
+msgstr "{what} を削除すると、タスク `{}` の終了を日付で書く必要があり、それができないため削除できません ({error})。"
+
+msgid "Cannot delete {what}: the start of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+msgstr "{what} を削除すると、それを参照しているタスク `{task}` の開始が変わってしまうため、削除できません。先に `{task}` の `after` / `until` を日付に書き換えてください。"
+
+msgid "Cannot delete {what}: the start of task `{}` would have to be written as a date, which is not possible ({error})."
+msgstr "{what} を削除すると、タスク `{}` の開始を日付で書く必要があり、それができないため削除できません ({error})。"
+
+msgid "Central connections written with `()` are not supported by the structured editor. Edit it as text."
+msgstr "`()` を使った中央接続は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "Choice (option)"
+msgstr "選択肢 (option)"
+
+msgid "Choice <<choice>>"
+msgstr "分岐 <<choice>>"
+
+msgid "Choose the commit to cherry-pick."
+msgstr "チェリーピックするコミットを選んでください。"
+
+msgid "Circle"
+msgstr "○ 印"
+
+msgid "Circle (( ))"
+msgstr "円 (( ))"
+
+msgid "Circle ((point))"
+msgstr "円 ((点))"
+
+msgid "Circle end"
+msgstr "○印"
+
+msgid "Close a one-line `namespace` with `}}` on the same line ({statement}). Split it into several lines, or edit it as text."
+msgstr "1 行で書いた `namespace` は同じ行の `}}` で閉じてください ({statement})。複数行に分けるか、テキストのまま編集してください。"
+
+msgid "Close the arrow block in `{line}` with `]>`."
+msgstr "`{line}` の矢印ブロックは `]>` で閉じてください。"
+
+msgid "Close the arrow direction in `{line}` with `)`."
+msgstr "`{line}` の矢印の向きは `)` で閉じてください。"
+
+msgid "Cloud"
+msgstr "クラウド"
+
+msgid "Cloud ) ("
+msgstr "雲 ) ("
+
+msgid "Command (cmd)"
+msgstr "コマンド (cmd)"
+
+msgid "Comments at the end of a statement (from `#` or `%%` onward) would be lost in the structured editor ({}). Move the comment to its own line, or enclose values that contain `#` in `\"`."
+msgstr "文の末尾のコメント (`#` または `%%` 以降) は構造化編集で失われます ({})。コメントを独立した行に移すか、`#` を含む値は `\"` で囲んでください。"
+
+msgid "Comments inside an attribute block would be lost in the structured editor ({statement}). Move the comment out of the block, or edit it as text."
+msgstr "属性ブロックの中のコメントは構造化編集で失われます ({statement})。コメントをブロックの外に移すか、テキストのまま編集してください。"
+
+msgid "Commit `{id}` is referenced by the cherry-pick at operation {list}. Delete it first."
+msgid_plural "Commit `{id}` is referenced by the cherry-picks at operations {list}. Delete them first."
+msgstr[0] "コミット「{id}」は {list} 番目のチェリーピックから参照されています。先にそちらを削除してください。"
+
+msgid "Component diagram"
+msgstr "コンポーネント図"
+
+msgid "Composite states are nested too deeply. Edit it as text."
+msgstr "複合状態の入れ子が深すぎます。テキストのまま編集してください。"
+
+msgid "Composition (left is whole)"
+msgstr "合成 (左が全体)"
+
+msgid "Composition (right is whole)"
+msgstr "合成 (右が全体)"
+
+msgid "Container diagram"
+msgstr "コンテナー図"
+
+msgid "Contains (contains)"
+msgstr "含む (contains)"
+
+msgid "Context diagram"
+msgstr "コンテキスト図"
+
+msgid "Copies (copies)"
+msgstr "複製する (copies)"
+
+msgid "Could not determine which item the end-of-line comment ({comment}) belongs to. Move the comment to its own line, or edit it as text."
+msgstr "行末のコメント ({comment}) がどの項目のものか決められませんでした。コメントを独立した行に移すか、テキストのまま編集してください。"
+
+msgid "Could not find the details of participant `{model_id}`."
+msgstr "参加者 `{model_id}` の情報が見つかりませんでした。"
+
+msgid "Could not find the entity on the left side of a relationship."
+msgstr "関係の左側のエンティティが見つかりませんでした。"
+
+msgid "Could not find the entity on the right side of a relationship."
+msgstr "関係の右側のエンティティが見つかりませんでした。"
+
+msgid "Could not read `{other}` as a requirement field."
+msgstr "`{other}` は要求の項目として読めません。"
+
+msgid "Could not read `{other}` as an element field."
+msgstr "`{other}` は要素の項目として読めません。"
+
+msgid "Could not read `{rest}` after the `)` of `{statement}`."
+msgstr "`{statement}` の `)` の後ろの `{rest}` は読めません。"
+
+msgid "Could not read `{rest}` after the `class` statement ({statement})."
+msgstr "`class` の文のあとの `{rest}` が読めません ({statement})。"
+
+msgid "Could not read `{rest}` after the relation ({statement})."
+msgstr "関係の文のあとの `{rest}` が読めません ({statement})。"
+
+msgid "Could not read `{statement}` as a C4 diagram statement. Edit it as text."
+msgstr "`{statement}` は C4 図の文として読めません。テキストのまま編集してください。"
+
+msgid "Could not read `{statement}` as a class assignment."
+msgstr "`{statement}` はクラスの指定として読めません。"
+
+msgid "Could not read `{statement}` as a relationship."
+msgstr "`{statement}` は関係として読めません。"
+
+msgid "Could not read `{statement}` as a requirement diagram statement. Edit it as text."
+msgstr "`{statement}` は要求図の文として読めません。テキストのまま編集してください。"
+
+msgid "Could not read `{statement}` as an item of a block (`{opening}`)."
+msgstr "`{statement}` はブロックの項目として読めません (`{opening}`)。"
+
+msgid "Could not read `{statement}`. A class diagram statement is one of `class A`, `A : member`, `A --> B`, `<<annotation>> A` and `note for A \"…\"`."
+msgstr "`{statement}` が読めません。クラス図の文は `class A`・`A : メンバー`・`A --> B`・`<<注釈>> A`・`note for A \"…\"` のどれかです。"
+
+msgid "Could not read `{trailing}` after the `\"` of `{input}`."
+msgstr "`{input}` の `\"` の後ろの `{trailing}` は読めません。"
+
+msgid "Could not read `{value}` of `{name}` ({line}). {number_rule}"
+msgstr "`{name}` の `{value}` は読めません ({line})。{number_rule}"
+
+msgid "Could not read `{}` after `<<annotation>> ClassName` ({statement})."
+msgstr "`<<注釈>> クラス名` のあとの `{}` が読めません ({statement})。"
+
+msgid "Could not read `{}` after `]` ({statement})."
+msgstr "`]` の後の `{}` は読めません ({statement})。"
+
+msgid "Could not read `{}` after axis `{id}` ({line})."
+msgstr "軸 `{id}` の後の `{}` は読めません ({line})。"
+
+msgid "Could not read `{}` after the note ({statement})."
+msgstr "ノートのあとの `{}` が読めません ({statement})。"
+
+msgid "Could not read `{}` after the quotes ({statement})."
+msgstr "引用符の後の `{}` は読めません ({statement})。"
+
+msgid "Could not read `{}` after the range ({statement})."
+msgstr "範囲の後の `{}` は読めません ({statement})。"
+
+msgid "Could not read `{}` as a risk."
+msgstr "`{}` はリスクとして読めません。"
+
+msgid "Could not read `{}` as a verification method."
+msgstr "`{}` は検証方法として読めません。"
+
+msgid "Could not read `{}` in `{statement}`."
+msgstr "`{statement}` の `{}` が読めません。"
+
+msgid "Could not read `{}` the way Mermaid does. Edit it as text."
+msgstr "`{}` を Mermaid と同じように読めませんでした。テキストのまま編集してください。"
+
+msgid "Could not read both ends of `{statement}`."
+msgstr "`{statement}` の両端が読めません。"
+
+msgid "Could not read both ends of `{}`."
+msgstr "`{}` の両端が読めません。"
+
+msgid "Could not read the ID of an edge end ({statement})."
+msgstr "辺の端の ID が読めません ({statement})。"
+
+msgid "Could not read the ID of the junction ({statement})."
+msgstr "ジャンクションの ID が読めません ({statement})。"
+
+msgid "Could not read the ID of the service ({statement})."
+msgstr "サービスの ID が読めません ({statement})。"
+
+msgid "Could not read the alias of `{text}` (write the alias as the first argument, without `$…=`)."
+msgstr "`{text}` の別名が読めません (別名は最初の引数に `$…=` 無しで書きます)。"
+
+msgid "Could not read the axis ID ({line})."
+msgstr "軸の ID として読めませんでした ({line})。"
+
+msgid "Could not read the class name ({statement})."
+msgstr "クラス名が読めません ({statement})。"
+
+msgid "Could not read the class name `{keyword}` applies to ({statement}). Names enclosed in `` ` `` are not supported by the structured editor. Edit it as text."
+msgstr "`{keyword}` の対象のクラス名が読めません ({statement})。`` ` `` で囲んだ名前は構造化エディターに対応していません。テキストのまま編集してください。"
+
+msgid "Could not read the curve ID ({line})."
+msgstr "系列の ID として読めませんでした ({line})。"
+
+msgid "Could not read the date and time"
+msgstr "日時を読み取れませんでした"
+
+msgid "Could not read the end `{end}` ({statement})."
+msgstr "終了 `{end}` を読めませんでした ({statement})。"
+
+msgid "Could not read the group ID ({statement})."
+msgstr "グループの ID が読めません ({statement})。"
+
+msgid "Could not read the group ID after `in` ({statement})."
+msgstr "`in` の後ろのグループ ID が読めません ({statement})。"
+
+msgid "Could not read the one-line `namespace` ({statement})."
+msgstr "1 行で書いた `namespace` が読めません ({statement})。"
+
+msgid "Could not read the position of a Note."
+msgstr "Note の位置を解釈できませんでした。"
+
+msgid "Could not read the range `{min} --> {max}` as numbers ({statement})."
+msgstr "範囲 `{min} --> {max}` を数値として読めません ({statement})。"
+
+msgid "Could not read the start `{text}` ({statement})."
+msgstr "開始 `{text}` を読めませんでした ({statement})。"
+
+msgid "Could not read the target of the style assignment ({text})."
+msgstr "スタイル指定の対象が読めません ({text})。"
+
+msgid "Could not read the targets `{}` of `{keyword}`. Write IDs made of ASCII letters, digits, `_` and `-`, separated by spaces."
+msgstr "`{keyword}` の参照先 `{}` を読めませんでした。半角英数字と `_` `-` の ID を空白で区切って書いてください。"
+
+msgid "Could not read the task fields `{}` ({statement}). Of `tags, ID, start, end`, write 1 to 3 fields, not counting the tags."
+msgstr "タスクの指定 `{}` を読めませんでした ({statement})。`タグ, ID, 開始, 終了` のうち、タグを除いて 1〜3 個にしてください。"
+
+msgid "Could not read the value `{entry}` of curve `{curve}` ({line}). {number_rule}"
+msgstr "系列 `{curve}` の値 `{entry}` は読めません ({line})。{number_rule}"
+
+msgid "Could not read the x-axis ticks ({statement})."
+msgstr "x 軸の目盛りとして読めませんでした ({statement})。"
+
+msgid "Could not read the y-axis range ({statement}). Write it as `0 --> 100`."
+msgstr "y 軸の範囲として読めませんでした ({statement})。`0 --> 100` の形で書いてください。"
+
+msgid "Could not read this as a Gantt chart line ({statement}). Write it as `task name :start, end`."
+msgstr "ガントの行として読めませんでした ({statement})。`タスク名 :開始, 終了` の形で書いてください。"
+
+msgid "Could not read this as a kanban node ({node_part}). Edit it as text."
+msgstr "かんばんのノードとして読めませんでした ({node_part})。テキストのまま編集してください。"
+
+msgid "Could not read this as a radar chart statement ({trimmed}). Edit it as text."
+msgstr "レーダーチャートの文として読めませんでした ({trimmed})。テキストのまま編集してください。"
+
+msgid "Could not read this as a style assignment ({text})."
+msgstr "スタイル指定として読めません ({text})。"
+
+msgid "Could not read this as an XY chart statement ({statement}). Edit it as text."
+msgstr "XY チャートの文として読めませんでした ({statement})。テキストのまま編集してください。"
+
+msgid "Cross"
+msgstr "× 印"
+
+msgid "Cross end"
+msgstr "×印"
+
+msgid "Curve `{id}` mixes values with and without axis names ({line})."
+msgstr "系列 `{id}` で軸の名前付きの値と名前なしの値が混ざっています ({line})。"
+
+msgid "Curve `{}` has a value for `{axis}`, but there is no such axis ({line}). Mermaid does not draw this value, so remove it or add the axis, then open it again."
+msgstr "系列 `{}` の `{axis}` という軸はありません ({line})。Mermaid はこの値を描かないので、消すか軸を足してから開いてください。"
+
+msgid "Curve `{}` has no value for axis `{}` ({line})."
+msgstr "系列 `{}` に軸 `{}` の値がありません ({line})。"
+
+msgid "Curve `{}` has no values. Write at least one value (Mermaid does not accept an empty curve)."
+msgstr "系列 `{}` に値がありません。値を 1 つ以上書いてください (Mermaid は空の系列を受け付けません)。"
+
+msgid "Curve `{}` has two values for axis `{axis}` ({line}). Mermaid draws only the first one, so keep one, then open it again."
+msgstr "系列 `{}` に軸 `{axis}` の値が 2 つあります ({line})。Mermaid は 1 つ目だけを描くので、1 つにしてから開いてください。"
+
+msgid "Curve `{}` writes its values with axis names, but there are no axes."
+msgstr "系列 `{}` は軸の名前付きで値を書いていますが、軸がありません。"
+
+msgid "Curve `{}` writes its values with axis names, so every axis needs a value."
+msgstr "系列 `{}` は軸の名前付きで値を書いているので、すべての軸に値が必要です。"
+
+msgid "Curve `{}`: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value)."
+msgstr "系列 `{}` の {} 番目の値が空です。途中の値は空にできません (末尾の空欄は値なしとして扱います)。"
+
+msgid "Cylinder [( )]"
+msgstr "円柱 [( )]"
+
+msgid "Dashed (line only)"
+msgstr "破線 (線のみ)"
+
+msgid "Data `{name}` cannot be handled by the structured editor. Start it with the line `data {name} {{` and end it with a line that is only `}}` at the start (Mermaid does not accept a one-line block)."
+msgstr "データ「{name}」は構造化編集で扱えません。`data {name} {{` の行から始めて、行頭の `}}` だけの行で終えてください (Mermaid は 1 行のブロックを受け付けません)。"
+
+msgid "Data `{name}` has no contents."
+msgstr "データ「{name}」の中身がありません。"
+
+msgid "Database"
+msgstr "データベース"
+
+msgid "Database [(store)]"
+msgstr "データベース [(保存)]"
+
+msgid "Dependency (pointing left)"
+msgstr "依存 (左向き)"
+
+msgid "Dependency (pointing right)"
+msgstr "依存 (右向き)"
+
+msgid "Deployment diagram"
+msgstr "配置図"
+
+msgid "Derives (derives)"
+msgstr "派生する (derives)"
+
+msgid "Diagrams that give classes style classes with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "`:::` でスタイルクラスを付けた図は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
+
+msgid "Diagrams that use edge IDs (`{target}@`) are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "エッジ ID (`{target}@`) を使った図は構造化編集に対応していません ({statement})。テキストのまま編集してください。"
+
+msgid "Diagrams where the edge ID `{id}` is the same as a node or group ID are not supported by the structured editor. Edit it as text."
+msgstr "エッジ ID「{id}」がノードまたはグループの ID と同じ図は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "Diagrams with a class on an edge ({edge}) are not supported by the structured editor. Edit it as text."
+msgstr "エッジ ({edge}) にクラスを付けた図は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "Diagrams with a duplicate edge ID `{id}` are not supported by the structured editor. Edit it as text."
+msgstr "エッジ ID「{id}」が重複している図は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "Diamond { }"
+msgstr "ひし形 { }"
+
+msgid "Disk"
+msgstr "ディスク"
+
+msgid "Dotted arrow"
+msgstr "点線の矢印"
+
+msgid "Dotted arrow (reply)"
+msgstr "点線の矢印 (応答)"
+
+msgid "Dotted async"
+msgstr "点線の非同期"
+
+msgid "Dotted bidirectional"
+msgstr "点線の両向き"
+
+msgid "Dotted cross"
+msgstr "点線の×印"
+
+msgid "Dotted line"
+msgstr "点線の線"
+
+msgid "Double Circle ((( )))"
+msgstr "二重円 ((( )))"
+
+msgid "Double circle (((end)))"
+msgstr "二重丸 (((終端)))"
+
+msgid "Dynamic diagram"
+msgstr "動的図"
+
+msgid "Ellipse (-ellipse-)"
+msgstr "楕円 (-楕円-)"
+
+msgid "Enclose the HTML attributes in `{text}` in `'` (Mermaid rewrites `\"` to `'`, which changes where the values are separated)."
+msgstr "`{text}` の HTML の属性は `'` で囲んでください (`\"` は Mermaid が `'` に書き換えるので、区切りの読み方が変わります)。"
+
+msgid "Enclose the label in `{line}` in `\"` (labels in a block diagram need quotes)."
+msgstr "`{line}` のラベルは `\"` で囲んでください (ブロック図のラベルには引用符が必要です)。"
+
+msgid "Enter the end of task `{}` (a date or a duration such as `5d`)."
+msgstr "タスク `{}` の終了 (日付か `5d` のような長さ) を入力してください。"
+
+msgid "Enter the start date of task `{}`."
+msgstr "タスク `{}` の開始日を入力してください。"
+
+msgid "Entity `{name}` is not defined."
+msgstr "エンティティ `{name}` が定義されていません。"
+
+msgid "Entity `{}` is defined twice."
+msgstr "エンティティ `{}` が二重に定義されています。"
+
+msgid "Event (evt)"
+msgstr "イベント (evt)"
+
+msgid "Every section after the first needs a name (without one, it merges with the section above)."
+msgstr "2 つ目以降のセクションには名前が必要です (名前が無いと 1 つ上のセクションと 1 つになります)。"
+
+msgid "Exactly one"
+msgstr "ちょうど 1"
+
+msgid "Flag > ]"
+msgstr "旗形 > ]"
+
+msgid "Flag >note]"
+msgstr "旗 >注記]"
+
+msgid "For an `accDescr {{ … }}` closed on one line, Mermaid reads up to the next `}}` line as the description ({trimmed}). Split it over several lines, or edit it as text."
+msgstr "1 行で閉じた `accDescr {{ … }}` は、Mermaid が次の `}}` の行までを説明として読みます ({trimmed})。複数行に分けるか、テキストのまま編集してください。"
+
+msgid "Foreign key (FK)"
+msgstr "外部キー (FK)"
+
+msgid "Fork <<fork>>"
+msgstr "分流 <<fork>>"
+
+msgid "Frame `{}` has both inline data and a data reference. Keep only one."
+msgstr "フレーム「{}」はデータの直書きと参照の両方を持っています。片方にしてください。"
+
+msgid "Frame `{}` refers to the data `{reference}`, which does not exist."
+msgstr "フレーム「{}」が参照するデータ「{reference}」がありません。"
+
+msgid "Give the point two coordinates, `[x, y]` (Mermaid skips any from the third on)."
+msgstr "点の座標は `[x, y]` の 2 つにしてください (3 つ目以降は Mermaid が読み飛ばします)。"
+
+msgid "Group"
+msgstr "グループ"
+
+msgid "Hexagon {{ }}"
+msgstr "六角形 {{ }}"
+
+msgid "Hexagon {{{{prepare}}}}"
+msgstr "六角形 {{{{準備}}}}"
+
+msgid "High"
+msgstr "高"
+
+msgid "IDs referred to by `after` / `until` can only contain ASCII letters, digits, `_` and `-` (`{reference}` in task `{}`)."
+msgstr "`after` / `until` で参照する ID は英数字・`_`・`-` だけです (タスク `{}` の `{reference}`)。"
+
+msgid "Inheritance (left is parent)"
+msgstr "継承 (左が親)"
+
+msgid "Inheritance (right is parent)"
+msgstr "継承 (右が親)"
+
+msgid "Inside the boundary `{alias}`, write `title`, `accTitle` and the like after the first element (Mermaid does not accept them otherwise)."
+msgstr "境界 `{alias}` の中では、`title` や `accTitle` などを最初の要素より後ろに書いてください (Mermaid が受け付けません)。"
+
+msgid "Internet"
+msgstr "インターネット"
+
+msgid "Inverted Trapezoid [\\ /]"
+msgstr "逆台形 [\\ /]"
+
+msgid "Invisible (for alignment)"
+msgstr "非表示 (位置合わせ)"
+
+msgid "It cannot contain `%%` or line breaks, and it cannot be empty."
+msgstr "`%%` と改行は使えず、空にもできません。"
+
+msgid "It is not closed with `]` ({statement})."
+msgstr "`]` で閉じていません ({statement})。"
+
+msgid "Items cannot be placed under the item `{}`, which has a value. To put items inside it, leave its value empty."
+msgstr "値のある項目 `{}` の下に項目は置けません。中に項目を入れるときは値を空にしてください。"
+
+msgid "Join <<join>>"
+msgstr "合流 <<join>>"
+
+msgid "Junction `{}` cannot have an icon or a title."
+msgstr "ジャンクション `{}` にはアイコンもタイトルも付けられません。"
+
+msgid "Lavender"
+msgstr "藤色"
+
+msgid "Lean Left [\\ \\]"
+msgstr "左傾き [\\ \\]"
+
+msgid "Lean Right [/ /]"
+msgstr "右傾き [/ /]"
+
+msgid "Left to right (LR)"
+msgstr "左から右 (LR)"
+
+msgid "Light blue"
+msgstr "薄い青"
+
+msgid "Light gray"
+msgstr "薄い灰"
+
+msgid "Light green"
+msgstr "薄い緑"
+
+msgid "Light pink"
+msgstr "薄い桃"
+
+msgid "Light yellow"
+msgstr "薄い黄"
+
+msgid "Line Only"
+msgstr "線だけ"
+
+msgid "Line only"
+msgstr "線のみ"
+
+msgid "Loop (loop)"
+msgstr "繰り返し (loop)"
+
+msgid "Low"
+msgstr "低"
+
+msgid "Maximum (max)"
+msgstr "最大 (max)"
+
+msgid "Medium"
+msgstr "中"
+
+msgid "Mermaid and the structured editor read this diagram differently. Edit it as text."
+msgstr "この図は Mermaid の読み方と構造化エディターの読み方が一致しません。テキストのまま編集してください。"
+
+msgid "Mermaid cannot read `{word}` on the frame line ({line}). Names cannot contain spaces, so remove it or make it one word, then open it again."
+msgstr "フレームの行の「{word}」は Mermaid が読めません ({line})。名前に空白は使えないので、削除するか 1 語にしてから開いてください。"
+
+msgid "Mermaid cannot read the `:` after the edge in `{line}`."
+msgstr "`{line}` の辺の後ろの `:` は Mermaid が読めません。"
+
+msgid "Mermaid cannot read the coordinate `{value}` (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
+msgstr "座標 `{value}` は Mermaid が読めません (0 から 1 まで。`0`、`1`、`0.` で始まる小数だけ)。"
+
+msgid "Mermaid collapses the spaces in the unquoted `{text}` when drawing it ({statement}). Enclose it in `\"`, like `\"{text}\"`, then open it again."
+msgstr "引用符の無い `{text}` は Mermaid が空白を詰めて描きます ({statement})。`\"{text}\"` のように `\"` で囲んでからもう一度開いてください。"
+
+msgid "Mermaid could not parse this diagram ({error}). Edit it as text."
+msgstr "Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。"
+
+msgid "Mermaid could not read the diagram written back ({error}). Edit it as text."
+msgstr "書き戻した図を Mermaid が読めませんでした ({error})。テキストのまま編集してください。"
+
+msgid "Mermaid could not read this as a diagram"
+msgstr "Mermaid の図として解釈できませんでした"
+
+msgid "Mermaid could not read this as a diagram."
+msgstr "Mermaid の図として解釈できませんでした。"
+
+msgid "Mermaid does not accept `{tail}` on the `treeView-beta` line. Edit it as text."
+msgstr "`treeView-beta` の行の `{tail}` は Mermaid が受け付けません。テキストのまま編集してください。"
+
+msgid "Mermaid does not know the type `{type_keyword}` and only draws it as a red box ({line}). Use one of ui / pcr / cmd / evt / rmo."
+msgstr "種類「{type_keyword}」は Mermaid が赤い箱で描くだけの未知の種類です ({line})。ui / pcr / cmd / evt / rmo のどれかにしてください。"
+
+msgid "Mermaid does not read the pair `{start_delimiter}…{end_delimiter}` in `{line}` as a shape (it is drawn as a plain box). Change it to `[ ]` or another shape, then open the editor again."
+msgstr "`{line}` の `{start_delimiter}…{end_delimiter}` は Mermaid が形として読まない組み合わせです (普通の四角で描かれます)。`[ ]` などに直してからもう一度開いてください。"
+
+msgid "Mermaid draws a line of only `%%` as a period, so the structured editor does not support it. Delete it or edit it as text."
+msgstr "中身の無い `%%` の行は Mermaid が期間として描くので、構造化編集に対応していません。消すかテキストのまま編集してください。"
+
+msgid "Mermaid ignores `{}` after `\"{name}\"`, so it is not supported by the structured editor."
+msgstr "`\"{name}\"` の後ろの `{}` は Mermaid が無視するため、構造化編集できません。"
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the `axisFormat` value `{value}`. Edit it as text."
+msgstr "`axisFormat` の `{value}` は `#` か `;` から先が読み飛ばされます。テキストのまま編集してください。"
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the `dateFormat` value `{value}`. Edit it as text."
+msgstr "`dateFormat` の `{value}` は `#` か `;` から先が読み飛ばされます。テキストのまま編集してください。"
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the fields of a task ({statement}). Edit it as text."
+msgstr "タスクの指定は `#` と `;` から先が読み飛ばされます ({statement})。テキストのまま編集してください。"
+
+msgid "Mermaid read this kanban board as {} nodes, but the structured editor read {}. Edit it as text."
+msgstr "Mermaid はこのかんばんを {} 個のノードとして読みましたが、構造化エディターは {} 個と読みました。テキストのまま編集してください。"
+
+msgid "Mermaid read this treemap as {} items, but the structured editor read {}. Edit it as text."
+msgstr "Mermaid はこのツリーマップを {} 個の項目として読みましたが、構造化エディターは {} 個と読みました。テキストのまま編集してください。"
+
+msgid "Mermaid reads `{line}` as an edge that continues from the block on the previous line. Write an edge on the same line as the blocks at both of its ends."
+msgstr "`{line}` は、Mermaid が前の行のブロックから続く辺として読みます。辺は両端のブロックと同じ行に書いてください。"
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a cause, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+msgstr "指示子 `%%{{…}}%%` の後ろの `{rest}` は Mermaid が要因として読みますが、構造化編集ではコメントと一緒に動いてしまいます。指示子を独立した行にしてください。"
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a node, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+msgstr "指示子 `%%{{…}}%%` の後ろの `{rest}` は Mermaid がノードとして読みますが、構造化編集ではコメントと一緒に動いてしまいます。指示子を独立した行にしてください。"
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a statement, but the structured editor would move it along with the comments. Put the directive on a line of its own."
+msgstr "指示子 `%%{{…}}%%` の後ろの `{rest}` は Mermaid が文として読みますが、構造化編集ではコメントと一緒に動いてしまいます。指示子を独立した行にしてください。"
+
+msgid "Mermaid reads `{tail}` on the `{keyword}` line as the text of the effect, but written back it would become a comment. Edit it as text."
+msgstr "`{keyword}` の行の `{tail}` は Mermaid が結果の文字として読みますが、書き戻すとコメントになります。テキストのまま編集してください。"
+
+msgid "Mermaid reads `{trimmed}` as a character reference, so it cannot be kept as a comment. Edit it as text."
+msgstr "`{trimmed}` は Mermaid が文字参照として読むので、コメントとして残せません。テキストのまま編集してください。"
+
+msgid "Mermaid reads the `\"` of `<tag attribute=\"…\">` as `'`, which changes which quotes pair up ({line}). Enclose the attribute in `'`."
+msgstr "`<タグ 属性=\"…\">` の `\"` を Mermaid は `'` に書き換えて読むため、引用符の対応が変わります ({line})。属性を `'` で囲んでください。"
+
+msgid "Mermaid reads the rest of the `eventmodeling` line ({tail}) as the first frame. Move it to the next line, then open it again."
+msgstr "`eventmodeling` の行の続き ({tail}) は Mermaid が最初のフレームとして読みます。次の行に移してから開いてください。"
+
+msgid "Mermaid reads the second `space` in `{line}` as a block named `space`. The structured editor does not support it."
+msgstr "`{line}` の 2 つ目の `space` は、Mermaid が `space` という名前のブロックとして読みます。構造化編集に対応していません。"
+
+msgid "Mermaid removes the `;` that follows `:#…` after `style` or `classDef` before reading the line, so writing it back would change its meaning ({trimmed}). Add a space after the `:`, or edit it as text."
+msgstr "`style` か `classDef` の後の `:#…` に続く `;` は Mermaid が消してから読むので、書き戻すと意味が変わります ({trimmed})。`:` の後に空白を入れるか、テキストのまま編集してください。"
+
+msgid "Mermaid skips `{after}` after `direction {}` ({statement}). Remove it, then open it again."
+msgstr "`direction {}` のあとの `{after}` は Mermaid が読み飛ばします ({statement})。消してからもう一度開いてください。"
+
+msgid "Mermaid skips `{tail}` after `::icon(…)` ({rest}). Delete it or edit it as text."
+msgstr "`::icon(…)` のあとの `{tail}` は Mermaid が読み飛ばします ({rest})。消すかテキストのまま編集してください。"
+
+msgid "Mermaid skips `{tail}` after `@{{ … }}`. Remove it or edit it as text."
+msgstr "`@{{ … }}` のあとの `{tail}` は Mermaid が読み飛ばします。消すかテキストのまま編集してください。"
+
+msgid "Mermaid skips a line without a task name ({trimmed}). Give it a name, or edit it as text."
+msgstr "作業名の無い行は Mermaid が読み飛ばします ({trimmed})。名前を付けるか、テキストのまま編集してください。"
+
+msgid "Mermaid skips a period from its `#` on as a comment ({trimmed}). Delete the `#`, or edit it as text."
+msgstr "期間の `#` から先は Mermaid がコメントとして読み飛ばします ({trimmed})。`#` を消すか、テキストのまま編集してください。"
+
+msgid "Mermaid skips everything after a `%%` in the middle of a line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "行の途中の `%%` から先は Mermaid が読み飛ばします ({trimmed})。コメントを別の行に移すか、テキストのまま編集してください。"
+
+msgid "Mermaid skips everything from `#` or `;` on ({trimmed}). Remove it, or edit it as text."
+msgstr "`#` や `;` から先は Mermaid が読み飛ばします ({trimmed})。消すか、テキストのまま編集してください。"
+
+msgid "Mermaid skips everything from the third `:` on ({trimmed}). Remove the `:`, or edit it as text."
+msgstr "3 つ目の `:` から先は Mermaid が読み飛ばします ({trimmed})。`:` を消すか、テキストのまま編集してください。"
+
+msgid "Mermaid skips everything in a section name from `:` on ({trimmed}). Delete the `:`, or edit it as text."
+msgstr "セクション名の `:` から先は Mermaid が読み飛ばします ({trimmed})。`:` を消すか、テキストのまま編集してください。"
+
+msgid "Mermaid skips what follows the `;` in `{statement}`. Delete it or edit it as text."
+msgstr "`{statement}` の `;` のあとは Mermaid が読み飛ばします。消すかテキストのまま編集してください。"
+
+msgid "Mermaid would no longer read the comment after `{statement}` as a comment. Close the quotes (`\"` `'`), or stop using the tag attribute `=\"…\"`."
+msgstr "`{statement}` の後ろのコメントが Mermaid に読まれなくなります。引用符 (`\"` `'`) を閉じるか、タグの属性 `=\"…\"` をやめてください。"
+
+msgid "Minimum (min)"
+msgstr "最小 (min)"
+
+msgid "Names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "`` ` `` で囲んだ名前は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
+
+msgid "None (transparent)"
+msgstr "なし (透明)"
+
+msgid "Normal State"
+msgstr "通常の状態"
+
+msgid "Nothing can be written after the `{{` of `{statement}`."
+msgstr "`{statement}` の `{{` の後ろには何も書けません。"
+
+msgid "One of the people has an empty name ({trimmed}). Remove it, or edit it as text."
+msgstr "空の担当者名があります ({trimmed})。消すか、テキストのまま編集してください。"
+
+msgid "One or more"
+msgstr "1 以上"
+
+msgid "Only boundaries can have `{{` ({statement}). Edit it as text."
+msgstr "`{{` を付けられるのは境界だけです ({statement})。テキストのまま編集してください。"
+
+msgid "Only class declarations, notes and nested `namespace`s can be written inside a `namespace` ({line})."
+msgstr "`namespace` の中に書けるのはクラス宣言・ノート・入れ子の `namespace` だけです ({line})。"
+
+msgid "Operation {number} (branch): branch `{}` already exists (to switch to it, use a checkout)."
+msgstr "{number} 番目のブランチ作成: ブランチ「{}」は既にあります (切り替えるだけならチェックアウトを使ってください)。"
+
+msgid "Operation {number} (checkout): branch `{}` has not been created yet (create it with a branch operation first)."
+msgstr "{number} 番目のチェックアウト: ブランチ「{}」はまだ作られていません (先にブランチ作成が必要です)。"
+
+msgid "Operation {number} (cherry-pick): `{parent}` is not a direct parent of `{}`."
+msgstr "{number} 番目のチェリーピック: 「{parent}」は「{}」の直接の親ではありません。"
+
+msgid "Operation {number} (cherry-pick): `{}` is a merge commit, so specify its parent."
+msgstr "{number} 番目のチェリーピック: 「{}」はマージコミットなので、親を指定してください。"
+
+msgid "Operation {number} (cherry-pick): `{}` is already on the current branch `{current}`."
+msgstr "{number} 番目のチェリーピック: 「{}」は既に今のブランチ「{current}」の上にあります。"
+
+msgid "Operation {number} (cherry-pick): commit `{}` does not come before it."
+msgstr "{number} 番目のチェリーピック: コミット「{}」はこれより前にありません。"
+
+msgid "Operation {number} (cherry-pick): the current branch `{current}` has no commits yet."
+msgstr "{number} 番目のチェリーピック: 今のブランチ「{current}」にまだコミットがありません。"
+
+msgid "Operation {number} (commit): the ID `{id}` is used more than once."
+msgstr "{number} 番目のコミット: ID「{id}」が重複しています。"
+
+msgid "Operation {number} (merge): `{current}` has no commits since it branched off `{other}`, so it cannot be merged."
+msgstr "{number} 番目のマージ: 「{current}」は「{other}」から分かれた後にコミットが無いため、マージできません。"
+
+msgid "Operation {number} (merge): branch `{other}` cannot be merged into itself."
+msgstr "{number} 番目のマージ: ブランチ「{other}」を自分自身にはマージできません。"
+
+msgid "Operation {number} (merge): branch `{other}` has no commits yet."
+msgstr "{number} 番目のマージ: ブランチ「{other}」にまだコミットがありません。"
+
+msgid "Operation {number} (merge): branch `{other}` has not been created yet."
+msgstr "{number} 番目のマージ: ブランチ「{other}」はまだ作られていません。"
+
+msgid "Operation {number} (merge): the ID `{id}` is already in use."
+msgstr "{number} 番目のマージ: ID「{id}」は既に使われています。"
+
+msgid "Operation {number} (merge): the current branch `{current}` has no commits yet."
+msgstr "{number} 番目のマージ: 今のブランチ「{current}」にまだコミットがありません。"
+
+msgid "Operation {number} (merge): the heads of `{current}` and `{other}` are the same commit."
+msgstr "{number} 番目のマージ: 「{current}」と「{other}」の先頭が同じコミットです。"
+
+msgid "Operation {}: {problem}"
+msgstr "{} 番目の操作: {problem}"
+
+msgid "Optional (opt)"
+msgstr "任意 (opt)"
+
+msgid "Other: {name}"
+msgstr "その他: {name}"
+
+msgid "Otherwise (else)"
+msgstr "それ以外 (else)"
+
+msgid "Overlapping parallel (par_over)"
+msgstr "重ねる並行 (par_over)"
+
+msgid "Parallel (par)"
+msgstr "並行 (par)"
+
+msgid "Parallelogram (reversed) [\\output\\]"
+msgstr "平行四辺形 (逆) [\\出力\\]"
+
+msgid "Parallelogram [/input/]"
+msgstr "平行四辺形 [/入力/]"
+
+msgid "Parent (u)"
+msgstr "親 (u)"
+
+msgid "Participant `{id}` is created twice with `create`."
+msgstr "参加者 `{id}` が二重に `create` されています。"
+
+msgid "Participant `{id}` is destroyed twice with `destroy`."
+msgstr "参加者 `{id}` が二重に `destroy` されています。"
+
+msgid "Participant `{id}` is not declared."
+msgstr "参加者 `{id}` が宣言されていません。"
+
+msgid "Participant `{}` has a config object (`@{{ … }}`), so it cannot have an alias (as)."
+msgstr "設定オブジェクト (`@{{ … }}`) を持つ参加者 `{}` には別名 (as) を付けられません。"
+
+msgid "Participant `{}` has a config object (`@{{ … }}`), so it must be a box (participant)."
+msgstr "設定オブジェクト (`@{{ … }}`) を持つ参加者 `{}` は箱 (participant) でなければなりません。"
+
+msgid "Participant `{}` is created with `create`, so it cannot be put in a box."
+msgstr "`create` で作られる参加者 `{}` は box に入れられません。"
+
+msgid "Participant `{}` is declared twice."
+msgstr "参加者 `{}` が二重に宣言されています。"
+
+msgid "Participant `{}` refers to a box that does not exist."
+msgstr "参加者 `{}` が存在しない box を指しています。"
+
+msgid "Participants in the same box must be next to each other."
+msgstr "同じ box の参加者は続けて並んでいなければなりません。"
+
+msgid "Periods before the first section are not drawn when there are sections. Name them as a section, or move the periods into a section below."
+msgstr "最初のセクションより前の期間は、セクションがあると描かれません。名前を付けてセクションにするか、期間を下のセクションへ移してください。"
+
+msgid "Point `{}` has a style `{}` that cannot be used (separate `radius: 10`, `color: #ff0000`, `stroke-color: #000` and `stroke-width: 2px` with commas)."
+msgstr "点 `{}` のスタイル `{}` は使えません (`radius: 10`、`color: #ff0000`、`stroke-color: #000`、`stroke-width: 2px` をカンマで区切って)。"
+
+msgid "Primary key (PK)"
+msgstr "主キー (PK)"
+
+msgid "Read by the structured editor, this diagram would become a different packet than Mermaid reads. Edit it as text."
+msgstr "この図は構造化エディターで読むと Mermaid と違うパケットになります。テキストのまま編集してください。"
+
+msgid "Read by the structured editor, this diagram would differ from what Mermaid reads (for example in the order of `text`). Edit it as text."
+msgstr "この図は構造化エディターで読むと Mermaid と違う図になります (`text` の順序など)。テキストのまま編集してください。"
+
+msgid "Read by the structured editor, this diagram would have different flows than Mermaid reads. Edit it as text."
+msgstr "この図は構造化エディターで読むと Mermaid と違う流れになります。テキストのまま編集してください。"
+
+msgid "Read model (rmo)"
+msgstr "読み取りモデル (rmo)"
+
+msgid "Realization (left is abstract)"
+msgstr "実現 (左が抽象)"
+
+msgid "Realization (right is abstract)"
+msgstr "実現 (右が抽象)"
+
+msgid "Rectangle [process]"
+msgstr "長方形 [処理]"
+
+msgid "Refines (refines)"
+msgstr "詳細化する (refines)"
+
+msgid "Rhombus {{condition}}"
+msgstr "ひし形 {{条件}}"
+
+msgid "Right to left (RL)"
+msgstr "右から左 (RL)"
+
+msgid "Risk: High"
+msgstr "リスク: 高"
+
+msgid "Risk: Low"
+msgstr "リスク: 低"
+
+msgid "Risk: Medium"
+msgstr "リスク: 中"
+
+msgid "Rounded ( )"
+msgstr "角丸 ( )"
+
+msgid "Rounded (process)"
+msgstr "角丸 (処理)"
+
+msgid "Satisfies (satisfies)"
+msgstr "満たす (satisfies)"
+
+msgid "Screen (ui)"
+msgstr "画面 (ui)"
+
+msgid "Series {number} has no values. Mermaid cannot draw a series without values."
+msgstr "系列 {number} に値が 1 つもありません。Mermaid は値の無い系列を描けません。"
+
+msgid "Series {number}: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value)."
+msgstr "系列 {number} の {} 番目の値が空です。途中の値は空にできません (末尾の空欄は値なしとして扱います)。"
+
+msgid "Server"
+msgstr "サーバー"
+
+msgid "Several statements separated by `;` are not supported by the structured editor ({trimmed}). Write one per line."
+msgstr "`;` で区切った複数の文は構造化編集に対応していません ({trimmed})。1 行に 1 つずつ書いてください。"
+
+msgid "Solid arrow (call)"
+msgstr "実線の矢印 (呼び出し)"
+
+msgid "Solid async"
+msgstr "実線の非同期"
+
+msgid "Solid bidirectional"
+msgstr "実線の両向き"
+
+msgid "Solid cross (failure)"
+msgstr "実線の×印 (失敗)"
+
+msgid "Solid line"
+msgstr "実線の線"
+
+msgid "Some names are read by Mermaid as the same node (for example after it removes HTML tags). Edit it as text."
+msgstr "Mermaid が同じノードとして読む名前があります (HTML タグの除去など)。テキストのまま編集してください。"
+
+msgid "Space"
+msgstr "空き"
+
+msgid "Square [ ]"
+msgstr "四角 [ ]"
+
+msgid "Stadium ([ ])"
+msgstr "競技場形 ([ ])"
+
+msgid "Stadium ([start])"
+msgstr "端が丸い ([開始])"
+
+msgid "Start a new line after `{{` ({statement}). Mermaid cannot read a member block written on one line either."
+msgstr "`{{` のあとは改行してください ({statement})。1 行で書いたメンバーブロックは Mermaid も読めません。"
+
+msgid "Start a new line after `{{` ({statement}). The structured editor does not support a composite state written on one line."
+msgstr "`{{` のあとは改行してください ({statement})。1 行で書いた複合状態は構造化編集に対応していません。"
+
+msgid "Start it with an ASCII letter or `_`, and use only ASCII letters, digits, `_` and `-` (it cannot end with `-`)."
+msgstr "半角英字か `_` で始め、半角英数字・`_`・`-` だけにしてください (末尾の `-` は不可)。"
+
+msgid "Statements written after `%%{{ … }}%%` on the same line are not supported by the structured editor ({}). Move the statement to the next line, then open it again."
+msgstr "`%%{{ … }}%%` の後ろに同じ行で書かれた文は構造化編集で扱えません ({})。文を次の行に移してからもう一度開いてください。"
+
+msgid "Stick figure (actor)"
+msgstr "人型 (actor)"
+
+msgid "Style class names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "`` ` `` で囲んだスタイルクラス名は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
+
+msgid "Subroutine [[ ]]"
+msgstr "二重枠 [[ ]]"
+
+msgid "Subroutine [[process]]"
+msgstr "サブルーチン [[処理]]"
+
+msgid "Task `{}` cannot list the people `{}` (names cannot contain `:`, `,`, `#`, `;` or line breaks, and cannot be empty)."
+msgstr "作業 `{}` の担当者 `{}` は書けません (名前に `:` `,` `#` `;` と改行は不可、空の名前も不可)。"
+
+msgid "Task `{}` has a score of {}. Use a score from 1 to 5."
+msgstr "作業 `{}` の満足度 {} は 1〜5 にしてください。"
+
+msgid "That operation no longer exists."
+msgstr "その操作はもうありません。"
+
+msgid "The ID `{id}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty; tag names such as `done` cannot be used either)."
+msgstr "ID `{id}` は使えません (`,` `#` `;` と改行は不可、空にもできません。`done` などのタグ名も使えません)。"
+
+msgid "The ID `{id}` cannot be used (letters, digits, `_` and `-`, starting and ending with a letter, digit or `_`. IDs that start with a capital L, R, T or B, IDs that start with `title`, and `group`, `service`, `junction`, `in`, `align`, `row`, `column`, `accTitle` and `accDescr` are not allowed)."
+msgstr "ID `{id}` は使えません (英数字と `_` `-`、先頭と末尾は英数字か `_`。大文字の L R T B で始まる ID、`title` で始まる ID、`group` `service` `junction` `in` `align` `row` `column` `accTitle` `accDescr` は不可)。"
+
+msgid "The ID `{id}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "ID「{id}」は使えません (`\"` `%%` と改行は不可)。"
+
+msgid "The ID `{id}` cannot be used (spaces and the symbols ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` are not allowed, nor are end / space / columns / class / classDef / style / block / root)."
+msgstr "ID `{id}` は使えません (空白と記号 ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` は不可。end / space / columns / class / classDef / style / block / root も不可)。"
+
+msgid "The ID `{id}` is not supported by the structured editor ({statement}). `,`, `#`, `;` and line breaks cannot be used, and tag names such as `done` cannot be IDs."
+msgstr "ID `{id}` は構造化編集に対応していません ({statement})。`,` `#` `;` と改行は使えず、`done` などのタグ名も ID にできません。"
+
+msgid "The ID `{id}` is used by two tasks. Mermaid uses only the later one as the target of `after`, so change one of the IDs."
+msgstr "ID `{id}` が 2 つのタスクに付いています。Mermaid は後に書いた方だけを `after` の行き先にするので、どちらかの ID を変えてください。"
+
+msgid "The ID `{id}` is used twice. Groups, services and junctions all need different IDs."
+msgstr "ID `{id}` が 2 回使われています。グループ・サービス・ジャンクションの ID はすべて別にしてください。"
+
+msgid "The ID `{id}` is used twice. Mermaid does not place the second one, so give it a different ID."
+msgstr "ID `{id}` が 2 つあります。Mermaid は 2 つ目を置かないので、別の ID にしてください。"
+
+msgid "The ID `{reference}` that task `{}` refers to does not exist."
+msgstr "タスク `{}` が参照している ID `{reference}` がありません。"
+
+msgid "The ID `{}` is used in two places. Columns and cards all need different IDs."
+msgstr "ID `{}` が 2 か所で使われています。列とカードの ID はすべて別にしてください。"
+
+msgid "The Markdown label in `{line}` is not closed (a ` is needed before the `\"`)."
+msgstr "`{line}` の Markdown のラベルが閉じていません (`\"` の前に ` が必要です)。"
+
+msgid "The `\"` of `{input}` is not closed."
+msgstr "`{input}` の `\"` が閉じていません。"
+
+msgid "The `\"` of the label in `{line}` is not closed."
+msgstr "`{line}` のラベルの `\"` が閉じていません。"
+
+msgid "The `)` of `{statement}` is missing."
+msgstr "`{statement}` の `)` がありません。"
+
+msgid "The `]` of `[\"display name\"]` is missing ({statement})."
+msgstr "`[\"表示名\"]` の `]` がありません ({statement})。"
+
+msgid "The `accTitle` after `title` is used as the diagram's title. Move `accTitle` before `title`, or edit it as text."
+msgstr "`title` の後の `accTitle` が図のタイトルになっています。`accTitle` を `title` より前へ移すか、テキストのまま編集してください。"
+
+msgid "The `after` of task `{}` has no target."
+msgstr "タスク `{}` の `after` に参照先がありません。"
+
+msgid "The `click` line is above task `{id}`. Mermaid does not add links to tasks written after `click`, so move task `{id}` above the `click` line."
+msgstr "`click` の行がタスク `{id}` より上にあります。Mermaid は `click` より後に書いたタスクにはリンクを付けないので、タスク `{id}` を `click` の行より上に移してください。"
+
+msgid "The `namespace`s are nested too deeply. Edit it as text."
+msgstr "`namespace` の入れ子が深すぎます。テキストのまま編集してください。"
+
+msgid "The `text` line is not under any set ({trimmed})."
+msgstr "`text` の行がどの集合の下にもありません ({trimmed})。"
+
+msgid "The `until` of task `{}` has no target."
+msgstr "タスク `{}` の `until` に参照先がありません。"
+
+msgid "The `x-axis` ticks are written after a series (bar / line). Mermaid places the values of the series written before them at 1, 2, 3…, so reordering them in the structured editor would change the chart. Move `x-axis` before the series, then open it again."
+msgstr "`x-axis` の目盛りが系列 (bar / line) より後に書かれています。Mermaid は先に書かれた系列の値を 1, 2, 3… の位置に並べるので、構造化編集で並べ替えると図が変わります。`x-axis` を系列より前に移してからもう一度開いてください。"
+
+msgid "The `{header}` line is not supported by the structured editor (leave only the heading, such as `C4Context`, on the line)."
+msgstr "`{header}` の行は構造化編集に対応していません (`C4Context` などの見出しだけの行にしてください)。"
+
+msgid "The `{id}` that `{line}` refers to is not placed before this line. Mermaid then does not place `{id}`, so write this after the line that places the block."
+msgstr "`{line}` が指す `{id}` は、この行より前に置かれていません。Mermaid はその場合 `{id}` を配置しないので、ブロックを置いた行より後に書いてください。"
+
+msgid "The `{keyword}` statement is not supported by the structured editor (line {}). Edit it as text."
+msgstr "`{keyword}` の文は構造化編集に対応していません ({} 行目)。テキストのまま編集してください。"
+
+msgid "The `{opening}` block is not closed with `}}`."
+msgstr "`{opening}` のブロックが `}}` で閉じられていません。"
+
+msgid "The `{separator}` in the description cannot be written as it is ({statement}). Write `:` as `#58;` and `;` as `#59;`, or edit it as text."
+msgstr "説明の `{separator}` はそのままでは書けません ({statement})。`:` は `#58;`、`;` は `#59;` と書くか、テキストのまま編集してください。"
+
+msgid "The `{{` of a `namespace` has no matching `}}`."
+msgstr "`namespace` の `{{` に対応する `}}` がありません。"
+
+msgid "The `{{` of the data is not closed ({line})."
+msgstr "データの `{{` が閉じていません ({line})。"
+
+msgid "The `{}` block is not closed with `end`."
+msgstr "`{}` ブロックが `end` で閉じられていません。"
+
+msgid "The alias `{alias}` cannot be used (spaces, `\"` `,` `(` `)` `{{` `}}` and names starting with `$` are not allowed)."
+msgstr "別名 `{alias}` は使えません (空白・`\"` `,` `(` `)` `{{` `}}` と、`$` で始まる名前は不可)。"
+
+msgid "The alias `{alias}` is declared twice. Use a different name."
+msgstr "別名 `{alias}` が 2 回宣言されています。別の名前にしてください。"
+
+msgid "The amount “{value}” of {source} → {target} cannot be used (only a number of 0 or more)."
+msgstr "{source} → {target} の量「{value}」は使えません (0 以上の数値だけ)。"
+
+msgid "The arrow direction `{word}` in `{line}` cannot be read (right / left / up / down / x / y)."
+msgstr "`{line}` の矢印の向き `{word}` は読めません (right / left / up / down / x / y)。"
+
+msgid "The arrow of frame `{}` points to itself."
+msgstr "フレーム「{}」の矢印が自分自身を指しています。"
+
+msgid "The attributes of entity `{}` need both a type and a name."
+msgstr "エンティティ `{}` の属性には型と名前の両方が必要です。"
+
+msgid "The axis ID `{}` cannot be used. {id_rule}"
+msgstr "軸の ID `{}` は使えません。{id_rule}"
+
+msgid "The block `{id}` is placed twice ({line}). Mermaid ignores the second one, so merge them into one, then open the editor again."
+msgstr "ブロック `{id}` が 2 回置かれています ({line})。Mermaid は 2 回目を無視するので、1 つにまとめてからもう一度開いてください。"
+
+msgid "The block right after `space` in `{line}` cannot have a width (Mermaid cannot read it)."
+msgstr "`{line}` の `space` の直後のブロックには幅を書けません (Mermaid が読めません)。"
+
+msgid "The boundary `{alias}` is empty. Mermaid cannot draw an empty boundary, so put at least one element in it or delete the boundary."
+msgstr "境界 `{alias}` の中が空です。Mermaid は空の境界を描けないので、要素を 1 つ以上入れるか、境界を削除してください。"
+
+msgid "The bracket of block `{id}` in `{line}` is not closed."
+msgstr "`{line}` のブロック `{id}` の括弧が閉じていません。"
+
+msgid "The branch name `{name}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "ブランチ名「{name}」は使えません (`\"` `%%` と改行は不可)。"
+
+msgid "The branch name is empty."
+msgstr "ブランチ名が空です。"
+
+msgid "The cause `{cause}` cannot be written ({rules})."
+msgstr "要因 `{cause}` は書けません ({rules})。"
+
+msgid "The cause `{}` is two or more levels deeper than its parent."
+msgstr "要因 `{}` が親より 2 段以上深くなっています。"
+
+msgid "The class `{classes}` of {what} `{}` cannot be written."
+msgstr "{what} `{}` のクラス `{classes}` は書けません。"
+
+msgid "The class `{class}` of the item `{}` cannot be used."
+msgstr "項目 `{}` のクラス `{class}` は使えません。"
+
+msgid "The class name `{class_name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
+msgstr "クラス名 `{class_name}` は使えません (半角英数字と `_` だけ、空にもできません)。"
+
+msgid "The class name `{}` cannot be used (only ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "クラス名 `{}` は使えません (英字か `_` で始まる英数字と `_` だけ)。"
+
+msgid "The classDef name `{name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
+msgstr "classDef の名前 `{name}` は使えません (半角英数字と `_` だけ、空にもできません)。"
+
+msgid "The classes `{classes}` of the node `{}` cannot be written (line breaks and `%%{{` are not allowed, and they cannot be empty)."
+msgstr "ノード `{}` のクラス `{classes}` は書けません (改行と `%%{{` は不可、空にもできません)。"
+
+msgid "The comment at the end of a statement ({comment}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "文の末尾のコメント ({comment}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
+
+msgid "The comment at the end of the `erDiagram` line ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "`erDiagram` の行の末尾のコメント ({statement}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
+
+msgid "The comment at the end of the line of {what} `{}` cannot be kept with the line written this way (use `\"` in the title in pairs)."
+msgstr "{what} `{}` の行末のコメントを、この書き方のあとには残せません (タイトルの `\"` の数を揃えてください)。"
+
+msgid "The comment at the end of the line that closes an attribute block ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "属性ブロックを閉じる行の末尾のコメント ({statement}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
+
+msgid "The comment line ({}) inside data `{name}` is lost in the structured editor. Move it outside the block, then open it again."
+msgstr "データ「{name}」の中のコメント行 ({}) は構造化編集で失われます。ブロックの外に移してから開いてください。"
+
+msgid "The concurrency separator `--` can be written only inside a composite state (`state X {{ … }}`)."
+msgstr "並行区切り `--` は複合状態 (`state X {{ … }}`) の中だけに書けます。"
+
+msgid "The config object (`@{{ … }}`) of participant `{id}` spans several lines, which is not supported by the structured editor. Edit it as text."
+msgstr "参加者 `{id}` の設定オブジェクト (`@{{ … }}`) が複数行にまたがっているため、構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "The config object of participant `{}` must be on one line and must not contain `}}`."
+msgstr "参加者 `{}` の設定オブジェクトは 1 行で、`}}` を含まない形でなければなりません。"
+
+msgid "The contents of data `{}` must start on the {{ line and end with a line that is only }} at the start of the line (it cannot be written on one line; no %%)."
+msgstr "データ「{}」の中身は {{ の行で始め、行頭の }} だけの行で終える必要があります (1 行では書けません。%% は不可)。"
+
+msgid "The coordinates of the point have no `]`."
+msgstr "点の座標の `]` がありません。"
+
+msgid "The curve ID `{}` cannot be used. {id_rule}"
+msgstr "系列の ID `{}` は使えません。{id_rule}"
+
+msgid "The data `{data}` of frame `{}` cannot be written (a single line enclosed in {{ }}; no %%)."
+msgstr "フレーム「{}」のデータ「{data}」は書けません ({{ }} で囲んだ 1 行。%% は不可)。"
+
+msgid "The data name `{name}` cannot be handled by the structured editor."
+msgstr "データ名「{name}」は構造化編集で扱えません。"
+
+msgid "The data name `{}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "データ名「{}」は使えません (半角英数字と `_`、先頭は英字か `_`)。"
+
+msgid "The data name `{}` is used more than once."
+msgstr "データ名「{}」が重複しています。"
+
+msgid "The data reference `[[{reference}]]` cannot be handled by the structured editor ({line})."
+msgstr "データの参照 `[[{reference}]]` は構造化編集で扱えません ({line})。"
+
+msgid "The diagram contains an unsupported attribute key `{key}`. Edit it as text."
+msgstr "未対応の属性キー `{key}` が含まれています。テキストのまま編集してください。"
+
+msgid "The diagram contains an unsupported cardinality."
+msgstr "未対応の多重度が含まれています。"
+
+msgid "The diagram contains an unsupported relationship type `{other}`."
+msgstr "未対応の関係の種類 `{other}` が含まれています。"
+
+msgid "The diagram contains an unsupported statement (type {other}). Edit it as text."
+msgstr "未対応の構文 (種別 {other}) が含まれています。テキストのまま編集してください。"
+
+msgid "The edge `{}` → `{}` stays inside one group, so it cannot use “Group Edge”."
+msgstr "辺 `{}` → `{}` は同じグループの中で閉じているので、「グループ端」にできません。"
+
+msgid "The edge end `{}` does not exist. Choose the ID of a service or junction."
+msgstr "辺の端 `{}` がありません。サービスかジャンクションの ID を選んでください。"
+
+msgid "The edge end `{}` is a group. Connect edges to services or junctions (to leave from the border of a group, use “Group Edge”)."
+msgstr "辺の端 `{}` はグループです。辺はサービスかジャンクションにつないでください (グループの枠から出すには「グループ端」)。"
+
+msgid "The edge label `{label}` cannot be written (`\"` and line breaks are not allowed)."
+msgstr "辺のラベル `{label}` は書けません (`\"` と改行は不可)。"
+
+msgid "The edge line `{}` cannot be written."
+msgstr "辺の線 `{}` は書けません。"
+
+msgid "The effect (the problem) is empty. Enter the effect before writing causes."
+msgstr "結果 (問題) が空です。要因を書くには、先に結果を入力してください。"
+
+msgid "The effect `{effect}` cannot be written ({rules})."
+msgstr "結果 `{effect}` は書けません ({rules})。"
+
+msgid "The end `{end}` of a relationship is a boundary. Relationships can only connect elements."
+msgstr "関係の端 `{end}` は境界です。関係は要素どうしにしか引けません。"
+
+msgid "The end `{text}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "タスク `{}` の終了 `{text}` は書けません (`,` `#` `;` と改行は不可、空にもできません)。"
+
+msgid "The end bit comes before the start bit ({statement})."
+msgstr "終了ビットが開始ビットより前です ({statement})。"
+
+msgid "The end cannot be `after` ({statement}). Mermaid reads it as a duration of 0."
+msgstr "終了には `after` を書けません ({statement})。Mermaid はこれを長さ 0 として読みます。"
+
+msgid "The end is before the start"
+msgstr "終了が開始より前です"
+
+msgid "The entity name cannot be empty."
+msgstr "エンティティ名を空にできません。"
+
+msgid "The event `{event}` of the period `{}` cannot be written (a space right after `:`, a `:` at the end, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "期間 `{}` の出来事 `{event}` は書けません (`:` のすぐ後に空白を続けることと末尾の `:`、`%%{{`、改行は不可、空にもできません)。"
+
+msgid "The field does not continue from the previous field ({statement}). Start it at bit {next_bit}."
+msgstr "項目が前の項目に続いていません ({statement})。{next_bit} ビット目から始めてください。"
+
+msgid "The first node of a mindmap must be the root."
+msgstr "マインドマップの最初のノードはルートでなければいけません。"
+
+msgid "The first task `{}` needs a start date (there is no previous task)."
+msgstr "最初のタスク `{}` には開始日が必要です (前のタスクがありません)。"
+
+msgid "The flows form a cycle ({}). A Sankey diagram cannot draw a cycle."
+msgstr "流れが循環しています ({})。サンキー図は循環を描けません。"
+
+msgid "The frame line has no {what} ({line}). Write it as `tf number type name`."
+msgstr "フレームの行に{what}がありません ({line})。`tf 番号 種類 名前` の形で書いてください。"
+
+msgid "The frame number `{name}` cannot be handled by the structured editor ({line})."
+msgstr "フレーム番号「{name}」は構造化編集で扱えません ({line})。"
+
+msgid "The frame number `{}` cannot be used (1 to 3 ASCII digits)."
+msgstr "フレーム番号「{}」は使えません (1〜3 桁の半角数字)。"
+
+msgid "The frame number `{}` is used more than once."
+msgstr "フレーム番号「{}」が重複しています。"
+
+msgid "The group in `{line}` cannot have an arrow shape."
+msgstr "`{line}` のグループに矢印の形は付けられません。"
+
+msgid "The icon `{icon}` of the node `{}` cannot be written (`)`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "ノード `{}` のアイコン `{icon}` は書けません (`)` `%%{{` と改行は不可、空にもできません)。"
+
+msgid "The icon `{icon}` of {what} `{}` cannot be written."
+msgstr "{what} `{}` のアイコン `{icon}` は書けません。"
+
+msgid "The icon `{rest}` is not supported by the structured editor."
+msgstr "アイコン `{rest}` は構造化編集に対応していません。"
+
+msgid "The icon of `{id}` cannot be written (a name uses only letters, digits, `_`, `-` and `:`; to show text, enclose it in quotes)."
+msgstr "`{id}` のアイコンは書けません (名前は英数字と `_` `-` `:` だけ。文字を出すなら引用符で囲みます)。"
+
+msgid "The item `{}` could not be read the same way Mermaid reads it. Edit it as text."
+msgstr "項目 `{}` を Mermaid と同じように読めませんでした。テキストのまま編集してください。"
+
+msgid "The item `{}` is two or more levels deeper than its parent."
+msgstr "項目 `{}` が親より 2 段以上深くなっています。"
+
+msgid "The item name `{}` cannot be written (line breaks, `%%{{`, `=\"` and `#…;` are not allowed, and it cannot contain both `\"` and `'`)."
+msgstr "項目名 `{}` は書けません (改行、`%%{{`、`=\"`、`#…;` は不可、`\"` と `'` を両方含むこともできません)。"
+
+msgid "The label `{label}` of arrow `{id}` cannot be written (`\"` and line breaks are not allowed)."
+msgstr "矢印 `{id}` のラベル `{label}` は書けません (`\"` と改行は不可)。"
+
+msgid "The label `{label}` of axis `{}` cannot be written. {label_rule}"
+msgstr "軸 `{}` のラベル `{label}` は書けません。{label_rule}"
+
+msgid "The label `{label}` of block `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
+msgstr "ブロック `{id}` のラベル `{label}` は書けません (`\"` と改行は不可、` で始めるなら ` で終える)。"
+
+msgid "The label `{label}` of curve `{}` cannot be written. {label_rule}"
+msgstr "系列 `{}` のラベル `{label}` は書けません。{label_rule}"
+
+msgid "The label `{label}` of group `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
+msgstr "グループ `{id}` のラベル `{label}` は書けません (`\"` と改行は不可、` で始めるなら ` で終える)。"
+
+msgid "The label `{label}` of quadrant {} cannot be written (no `\"` or line breaks, and no whitespace at either end)."
+msgstr "象限 {} のラベル `{label}` は書けません (`\"` と改行は不可、前後の空白も不可)。"
+
+msgid "The label `{title}` of the edge `{}` → `{}` cannot be written ({label_rule})."
+msgstr "辺 `{}` → `{}` のラベル `{title}` は書けません ({label_rule})。"
+
+msgid "The label `{}` cannot be written in the default shape (`(` `)` `[` `{{` `}}` and `%%` are not allowed, and it cannot have spaces at either end or start with `::icon(` or `:::`). Change the shape."
+msgstr "ラベル `{}` は標準の形では書けません (`(` `)` `[` `{{` `}}` と `%%` は使えず、前後の空白や `::icon(` `:::` で始めることもできません)。形を変えてください。"
+
+msgid "The label `{}` cannot be written in this shape (the closing bracket and `\"` cannot be used together)."
+msgstr "ラベル `{}` はこの形では書けません (閉じ記号と `\"` を一緒に使うことはできません)。"
+
+msgid "The label `{}` cannot contain `%%{{` (Mermaid cuts out everything up to `}}%%`)."
+msgstr "ラベル `{}` に `%%{{` は使えません (Mermaid が `}}%%` までを切り取ります)。"
+
+msgid "The label is not written as `[\"…\"]` ({line})."
+msgstr "ラベルが `[\"…\"]` の形で書かれていません ({line})。"
+
+msgid "The label of node `{node_part}` is not closed. Labels that span several lines are not supported by the structured editor. Edit it as text."
+msgstr "ノード `{node_part}` のラベルが閉じていません。複数行にわたるラベルは構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "The label of the node `{statement}` is not closed. The structured editor does not support a label that spans several lines. Edit it as text."
+msgstr "ノード `{statement}` のラベルが閉じていません。複数行にわたるラベルは構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "The label “{label}” of “{name}” cannot be used (`\"`, line breaks and spaces at either end are not allowed)."
+msgstr "「{name}」のラベル「{label}」は使えません (`\"`、改行、前後の空白は不可)。"
+
+msgid "The label “{}” cannot be used (`%%` and line breaks are not allowed)."
+msgstr "ラベル「{}」は使えません (`%%` と改行は不可)。"
+
+msgid "The lane `{namespace}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "レーン「{namespace}」は使えません (半角英数字と `_`、先頭は英字か `_`)。"
+
+msgid "The line with the end-of-line comment ({comment}) has two or more statements, or it could not be determined which item the comment belongs to. Put one statement on each line, or edit it as text."
+msgstr "行末のコメント ({comment}) の行に文が 2 つ以上あるか、どの項目のものか決められませんでした。文を 1 行ずつに分けるか、テキストのまま編集してください。"
+
+msgid "The member block of `class` has no matching `}}` ({statement})."
+msgstr "`class` のメンバーブロックに対応する `}}` がありません ({statement})。"
+
+msgid "The memberships of group `{}` form a loop. Remove one of them."
+msgstr "グループ `{}` の所属が輪になっています。どこかの所属を外してください。"
+
+msgid "The message `{message}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "メッセージ「{message}」は使えません (`\"` `%%` と改行は不可)。"
+
+msgid "The message after `create {created}` must be sent to `{created}`."
+msgstr "`create {created}` の次のメッセージは `{created}` 宛てでなければなりません。"
+
+msgid "The message after `destroy {destroyed}` must involve `{destroyed}`."
+msgstr "`destroy {destroyed}` の次のメッセージは `{destroyed}` が関わるものでなければなりません。"
+
+msgid "The metadata `{text}` is not supported by the structured editor (only `key: value`, with a single-line string as the value). Edit it as text."
+msgstr "メタデータ `{text}` は構造化編集に対応していません (`キー: 値` の形で、値は 1 行の文字列だけ)。テキストのまま編集してください。"
+
+msgid "The name `{name}` is used twice."
+msgstr "名前 `{name}` が二重に使われています。"
+
+msgid "The name `{}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`. It can be split with `.`, but without a lane a name cannot contain exactly one `.`)."
+msgstr "名前「{}」は使えません (半角英数字と `_`、先頭は英字か `_`。`.` で区切れるが、レーンが無いときに `.` 1 つだけの名前は不可)。"
+
+msgid "The name `{}` has a lane, so it cannot contain `.`."
+msgstr "レーンを付けた名前「{}」には `.` を使えません。"
+
+msgid "The name `{}` of series {number} cannot be written. {text_rule}"
+msgstr "系列 {number} の名前 `{}` は書けません。{text_rule}"
+
+msgid "The name is empty ({statement})."
+msgstr "名前が空です ({statement})。"
+
+msgid "The name of the node `{}` cannot be written (`\"` and `'` cannot both be used)."
+msgstr "ノード `{}` の名前は書けません (`\"` と `'` を両方使うことはできません)。"
+
+msgid "The name of the node `{}` cannot be written (when an HTML tag attribute is enclosed in `\"`, Mermaid rewrites it to `'` and the name is cut off)."
+msgstr "ノード `{}` の名前は書けません (HTML タグの属性を `\"` で囲むと、Mermaid が `'` に書き換えて名前が途中で切れます)。"
+
+msgid "The name of the node `{}` cannot contain `%%{{` (Mermaid cuts it out as a directive)."
+msgstr "ノード `{}` の名前に `%%{{` は使えません (Mermaid が指示子として切り取ります)。"
+
+msgid "The node `{name}` is nested too deeply (Mermaid allows up to {MAX_TREE_VIEW_DEPTH} levels)."
+msgstr "ノード `{name}` の階層が深すぎます (Mermaid は {MAX_TREE_VIEW_DEPTH} 段までです)。"
+
+msgid "The node `{}` is two or more levels deeper than its parent."
+msgstr "ノード `{}` が親より 2 段以上深くなっています。"
+
+msgid "The node name “{name}” cannot be used (it cannot be empty, have spaces at either end, or contain line breaks or `\"\"`)."
+msgstr "ノード名「{name}」は使えません (空、前後の空白、改行、`\"\"` は不可)。"
+
+msgid "The number of columns must be a whole number of 1 or more, or auto."
+msgstr "列数は 1 以上の整数か auto にしてください。"
+
+msgid "The number of columns of a group must be a whole number of 1 or more, or auto."
+msgstr "グループの列数は 1 以上の整数か auto にしてください。"
+
+msgid "The operations right after branch `{}` run on this branch. Delete them first, or move them to another branch."
+msgstr "ブランチ「{}」の直後の操作はこのブランチの上で行われています。先にそれらを削除するか、別のブランチへ移してください。"
+
+msgid "The order of the `create` statements does not match the order of the participants. Order the participants as they are created."
+msgstr "`create` の順番と参加者の並び順が食い違っています。`create` した順に並べてください。"
+
+msgid "The overlap “{name}” contains the same set twice."
+msgstr "重なり「{name}」に同じ集合が 2 回あります。"
+
+msgid "The overlap “{name}” is written before the set “{missing}”. Place an overlap after the sets it uses."
+msgstr "重なり「{name}」が集合「{missing}」より前に書かれています。重なりは使う集合の後に置いてください。"
+
+msgid "The overlap “{name}” is written twice."
+msgstr "重なり「{name}」が重複しています。"
+
+msgid "The participant id `{model_id}` contains characters Mermaid uses internally, so it is not supported by the structured editor. Edit it as text."
+msgstr "参加者の id `{model_id}` に Mermaid の内部文字が含まれているため、構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "The participant type `{other}` is not supported by the structured editor. Edit it as text."
+msgstr "参加者の種類 `{other}` は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "The period `{}` cannot be written (`:`, `#`, `%%{{` and line breaks are not allowed, and it cannot be empty or start with `title`, `section`, `accTitle`, `accDescr` or `%%`)."
+msgstr "期間 `{}` は書けません (`:` `#` `%%{{` と改行は不可、空にもできません。`title` `section` `accTitle` `accDescr` `%%` で始めることもできません)。"
+
+msgid "The point name `{}` cannot be written (no `\"` or line breaks; it cannot be empty or start or end with whitespace)."
+msgstr "点の名前 `{}` は書けません (`\"` と改行は不可、空と前後の空白も不可)。"
+
+msgid "The quote of `state \"description\"` is not closed ({statement})."
+msgstr "`state \"説明\"` の引用符が閉じていません ({statement})。"
+
+msgid "The quotes around the display name are not closed ({statement})."
+msgstr "表示名の引用符が閉じていません ({statement})。"
+
+msgid "The quotes around the multiplicity are not closed ({statement})."
+msgstr "多重度の引用符が閉じていません ({statement})。"
+
+msgid "The quotes around the note text are not closed ({statement})."
+msgstr "ノート本文の引用符が閉じていません ({statement})。"
+
+msgid "The quotes in `@{{{inner}}}` are not closed."
+msgstr "`@{{{inner}}}` の引用符が閉じていません。"
+
+msgid "The same item has two end-of-line comments ({comment}). Merge them into one, or edit it as text."
+msgstr "同じ項目に行末のコメントが 2 つあります ({comment})。1 つにまとめるか、テキストのまま編集してください。"
+
+msgid "The score `{score_text}` is not supported by the structured editor ({trimmed}). Use a whole number from 1 to 5, or edit it as text."
+msgstr "満足度 `{score_text}` は構造化編集に対応していません ({trimmed})。1〜5 の整数にするか、テキストのまま編集してください。"
+
+msgid "The section name `{name}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "セクション名 `{name}` は使えません (`:` `%%{{` と改行は不可、空にもできません)。"
+
+msgid "The section name `{name}` cannot be used (line breaks and `%%{{` are not allowed)."
+msgstr "セクション名 `{name}` は使えません (改行と `%%{{` は不可)。"
+
+msgid "The section name `{name}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty)."
+msgstr "セクション名 `{name}` は使えません (`:` `#` `;` と改行は不可、空にもできません)。"
+
+msgid "The section name `{name}` is used twice. Mermaid draws the periods of both in one section of that name, so rename one."
+msgstr "セクション名 `{name}` が 2 つあります。Mermaid は同じ名前のセクションにどちらの期間も描くので、名前を変えてください。"
+
+msgid "The series has no values ({statement})."
+msgstr "系列に値がありません ({statement})。"
+
+msgid "The series value `{value}` cannot be read as a number ({statement})."
+msgstr "系列の値 `{value}` は数値として読めません ({statement})。"
+
+msgid "The series values are not written as `[1, 2, 3]` ({statement})."
+msgstr "系列の値が `[1, 2, 3]` の形で書かれていません ({statement})。"
+
+msgid "The set ID “{id}” cannot be used (it cannot be empty, contain `\"` or line breaks, or have spaces at either end)."
+msgstr "集合の ID「{id}」は使えません (空、`\"`、改行、前後の空白は不可)。"
+
+msgid "The set “{id}” is written twice."
+msgstr "集合「{id}」が重複しています。"
+
+msgid "The set “{missing}” of the overlap “{name}” does not exist."
+msgstr "重なり「{name}」の集合「{missing}」がありません。"
+
+msgid "The shape of `{}` is changed inside an edge ({line}). Write the shape where the block is placed."
+msgstr "`{}` の形を辺の中で書き換えています ({line})。形はブロックを置いた場所で書いてください。"
+
+msgid "The side of an edge is one of L R T B ({statement})."
+msgstr "辺の向きは L R T B のどれかです ({statement})。"
+
+msgid "The size could not be read as a number ({statement})."
+msgstr "大きさを数値として読めませんでした ({statement})。"
+
+msgid "The size “{size}” of “{name}” cannot be used (only a number of 0 or more)."
+msgstr "「{name}」の大きさ「{size}」は使えません (0 以上の数値だけ)。"
+
+msgid "The source `{source}` of the arrow to frame `{}` is not in an earlier frame."
+msgstr "フレーム「{}」への矢印の元「{source}」が、それより前のフレームにありません。"
+
+msgid "The start `{date}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "タスク `{}` の開始 `{date}` は書けません (`,` `#` `;` と改行は不可、空にもできません)。"
+
+msgid "The start cannot be `until` ({statement})."
+msgstr "開始には `until` を書けません ({statement})。"
+
+msgid "The structured editor cannot handle `{header}` (write only `venn-beta` on its line, and the statements from the next line on)."
+msgstr "`{header}` は構造化エディターで扱えません (`venn-beta` だけを 1 行に書き、文は次の行から書いてください)。"
+
+msgid "The structured editor cannot handle a statement written after `%%{{ … }}%%` on the same line ({statement}). Move the statement to the next line, then open the editor again."
+msgstr "`%%{{ … }}%%` の後ろに同じ行で書かれた文は構造化編集で扱えません ({statement})。文を次の行に移してからもう一度開いてください。"
+
+msgid "The structured editor cannot handle the amount “{value}” ({}). Write a number of 0 or more."
+msgstr "量「{value}」は構造化エディターで扱えません ({})。0 以上の数値を書いてください。"
+
+msgid "The structured editor cannot keep the comment at the end of this line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "この行の末尾のコメントは構造化編集で保てません ({trimmed})。コメントを独立した行に移すか、テキストのまま編集してください。"
+
+msgid "The structured editor does not support `:::` without a class ({trimmed})."
+msgstr "クラスの無い `:::` は構造化編集に対応していません ({trimmed})。"
+
+msgid "The structured editor does not support `{id}` in `{line}`. {}"
+msgstr "`{line}` の `{id}` は構造化編集に対応していません。{}"
+
+msgid "The structured editor does not support `{line}` (it could not be read as a block)."
+msgstr "`{line}` は構造化編集に対応していません (ブロックとして読めませんでした)。"
+
+msgid "The structured editor does not support `{line}` (write it as `class ID1,ID2 className`)."
+msgstr "`{line}` は構造化編集に対応していません (`class ID1,ID2 クラス名` の形で書いてください)。"
+
+msgid "The structured editor does not support `{line}` (write it as `style ID style`)."
+msgstr "`{line}` は構造化編集に対応していません (`style ID スタイル` の形で書いてください)。"
+
+msgid "The structured editor does not support `{rest}` on the `pie` line. Edit it as text."
+msgstr "`pie` の行の `{rest}` は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "The structured editor does not support `{statement}` (only the form `classDef name style;`). Edit it as text."
+msgstr "`{statement}` は構造化編集に対応していません (`classDef 名前 スタイル;` の形だけ)。テキストのまま編集してください。"
+
+msgid "The structured editor does not support `{tail}` on the `mindmap` line. Write the nodes on the following lines."
+msgstr "`mindmap` の行の `{tail}` は構造化編集に対応していません。ノードは次の行に書いてください。"
+
+msgid "The structured editor does not support `{tail}` on the `timeline` line. Edit it as text."
+msgstr "`timeline` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "The structured editor does not support `{tail}` on the `{header}` line (Mermaid cannot draw this diagram)."
+msgstr "`{header}` の行の `{tail}` は構造化編集に対応していません (Mermaid はこの図を描けません)。"
+
+msgid "The structured editor does not support `{tail}` on the `{}` line. Write it on the next line."
+msgstr "`{}` の行の `{tail}` は構造化編集に対応していません。次の行に書いてください。"
+
+msgid "The structured editor does not support `{tail}` written right after `end`. Write it on the next line."
+msgstr "`end` の後ろに続けて書かれた `{tail}` は構造化編集に対応していません。次の行に書いてください。"
+
+msgid "The structured editor does not support `{trimmed}`. Put a space after `title`."
+msgstr "`{trimmed}` は構造化編集に対応していません。`title` のあとに空白を入れてください。"
+
+msgid "The structured editor does not support `{}` written right after `%%{{ … }}%%`. Write it on the next line."
+msgstr "`%%{{ … }}%%` の後ろに続けて書かれた `{}` は構造化編集に対応していません。次の行に書いてください。"
+
+msgid "The structured editor does not support `{}` written right after the group heading in `{line}`. Write it on the next line."
+msgstr "`{line}` のグループの見出しの後ろに続けて書かれた `{}` は構造化編集に対応していません。次の行に書いてください。"
+
+msgid "The structured editor does not support a `%%` comment in the middle of a line ({line}). Write the comment on a line of its own."
+msgstr "行の途中の `%%` コメントは構造化編集に対応していません ({line})。コメントは行を分けて書いてください。"
+
+msgid "The structured editor does not support a `%%{{ … }}%%` that spans several lines. Write it on one line at the top of the diagram."
+msgstr "複数行にわたる `%%{{ … }}%%` は構造化編集に対応していません。図の先頭に 1 行で書いてください。"
+
+msgid "The structured editor does not support a line that contains `%%{{`, because Mermaid cuts it out as a directive ({tail})."
+msgstr "`%%{{` を含む行は Mermaid が指示子として切り取るので、構造化編集に対応していません ({tail})。"
+
+msgid "The structured editor does not support the `{open}` shape of the node `{statement}` (Mermaid draws it in the default shape). Edit it as text."
+msgstr "ノード `{statement}` の `{open}` の形は構造化編集に対応していません (Mermaid は標準の形で描きます)。テキストのまま編集してください。"
+
+msgid "The structured editor does not support the class name in `{line}`."
+msgstr "`{line}` のクラス名は構造化編集に対応していません。"
+
+msgid "The structured editor does not support the icon `{trimmed}`."
+msgstr "アイコン `{trimmed}` は構造化編集に対応していません。"
+
+msgid "The structured editor does not support the value `{token}` of the item `{name}` (Mermaid skips everything from a `_` or a second `.` on)."
+msgstr "項目 `{name}` の値 `{token}` は構造化編集に対応していません (Mermaid は `_` や 2 つ目の `.` から先を読み飛ばします)。"
+
+msgid "The structured editor does not support this diagram. Edit it as text."
+msgstr "この図は構造化エディターに対応していません。テキストのまま編集してください。"
+
+msgid "The structured editor would lose the comment at the end of the `treeView-beta` line. Move the comment to a line of its own, or edit it as text."
+msgstr "`treeView-beta` の行末のコメントは構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
+
+msgid "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+msgstr "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
+
+msgid "The structured editor would write statements that follow each other on one line ({trimmed}) back twice. Put the statements on separate lines, or edit it as text."
+msgstr "1 行に続けて書かれた文 ({trimmed}) は構造化編集で二重に書き戻されます。文を別の行に分けるか、テキストのまま編集してください。"
+
+msgid "The style `{key}` cannot be used (use one of {})."
+msgstr "スタイル `{key}` は使えません ({} のどれか)。"
+
+msgid "The style `{style}` of the class `{name}` cannot be written (separate `name:value` pairs with `,`; `;` and `%%` are not allowed)."
+msgstr "クラス `{name}` のスタイル `{style}` は書けません (`名前:値` を `,` で区切る。`;` と `%%` は不可)。"
+
+msgid "The style of `{target}` cannot contain line breaks."
+msgstr "`{target}` のスタイルに改行は使えません。"
+
+msgid "The style of classDef `{name}` cannot contain line breaks."
+msgstr "classDef `{name}` のスタイルに改行は使えません。"
+
+msgid "The tag `{tag}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "タグ「{tag}」は使えません (`\"` `%%` と改行は不可)。"
+
+msgid "The task name `{}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot start with `%%`)."
+msgstr "タスク名 `{}` は使えません (`:` `%%{{` と改行は不可、`%%` で始めることもできません)。"
+
+msgid "The task name `{}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty. It also cannot start with `title `, `section `, `accTitle`, `accDescr` or `%%`)."
+msgstr "作業名 `{}` は使えません (`:` `#` `;` と改行は不可、空にもできません。`title ` `section ` `accTitle` `accDescr` `%%` で始めることもできません)。"
+
+msgid "The text is empty ({statement})."
+msgstr "文字が空です ({statement})。"
+
+msgid "The tick count (ticks) `{ticks}` is too large. Use {MAX_TICKS} or less."
+msgstr "目盛りの数 (ticks) `{ticks}` が多すぎます。{MAX_TICKS} 以下にしてください。"
+
+msgid "The title `{title}` cannot be used (line breaks and `%%` are not allowed, and it cannot be empty)."
+msgstr "タイトル `{title}` は書けません (改行と `%%` は不可、空にもできません)。"
+
+msgid "The title `{title}` cannot be written (line breaks and `%%` are not allowed, and it cannot be empty or have spaces at either end)."
+msgstr "タイトル `{title}` は書けません (改行と `%%` は使えず、空や前後の空白もできません)。"
+
+msgid "The title `{title}` cannot be written (line breaks, `%%`, `=\"` and `#…;` are not allowed)."
+msgstr "タイトル `{title}` は書けません (改行、`%%`、`=\"`、`#…;` は不可)。"
+
+msgid "The title `{title}` cannot be written (no `%%`, `;` or line breaks, and it cannot start or end with whitespace)."
+msgstr "タイトル `{title}` は書けません (`%%` と `;` と改行は不可、前後の空白だけにもできません)。"
+
+msgid "The title `{title}` cannot be written in a pie chart (`%%` is not allowed)."
+msgstr "タイトル `{title}` は円グラフに書けません (`%%` は使えません)。"
+
+msgid "The title `{title}` of {what} `{}` cannot be written (no line breaks, `%%{{`, `=\"` or `#…;`, and closing brackets cannot be used together with `\"`)."
+msgstr "{what} `{}` のタイトル `{title}` は書けません (改行、`%%{{`、`=\"`、`#…;` は不可、閉じ括弧と `\"` を一緒に使うこともできません)。"
+
+msgid "The title `{}` cannot be written. {text_rule}"
+msgstr "タイトル `{}` は書けません。{text_rule}"
+
+msgid "The title cannot be empty or contain line breaks or `%%` (and cannot start or end with whitespace)."
+msgstr "タイトルは空にできず、改行と `%%` は使えません (前後の空白も不可)。"
+
+msgid "The title cannot contain `%%` or line breaks (and cannot start or end with whitespace)."
+msgstr "タイトルに `%%` と改行は使えません (前後の空白だけにもできません)。"
+
+msgid "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+msgstr "タイトルに `%%` と改行は使えません (前後の空白も不可)。"
+
+msgid "The title cannot contain line breaks or `%%{{` (and cannot be empty)."
+msgstr "タイトルに改行と `%%{{` は使えません (空にもできません)。"
+
+msgid "The title cannot contain line breaks or `%%{{`, and it cannot be empty or have spaces at either end."
+msgstr "タイトルに改行と `%%{{` は使えません (前後の空白だけにもできません)。"
+
+msgid "The title cannot contain line breaks, `#` or `;` (and cannot start or end with whitespace)."
+msgstr "タイトルに改行と `#` `;` は使えません (前後の空白だけにもできません)。"
+
+msgid "The title could not be read the same way Mermaid reads it. Edit it as text."
+msgstr "タイトルを Mermaid と同じように読めませんでした。テキストのまま編集してください。"
+
+msgid "The title of `{id}` cannot be written ({label_rule})."
+msgstr "`{id}` のタイトルは書けません ({label_rule})。"
+
+msgid "The title of {what} `{}` is empty."
+msgstr "{what} `{}` のタイトルが空です。"
+
+msgid "The total number of bits ({total}) is too large. Mermaid can draw up to {MAX_PACKET_BITS} bits."
+msgstr "ビット数の合計 ({total}) が多すぎます。Mermaid が描けるのは {MAX_PACKET_BITS} ビットまでです。"
+
+msgid "The value `{value}` of curve `{}` cannot be written. {number_rule}"
+msgstr "系列 `{}` の値 `{value}` は書けません。{number_rule}"
+
+msgid "The value `{value}` of series {number} is not a number (for example 12, -3.5, .5)."
+msgstr "系列 {number} の値 `{value}` は数値ではありません (例: 12、-3.5、.5)。"
+
+msgid "The value `{value}` of style `{key}` cannot be used."
+msgstr "スタイル `{key}` の値 `{value}` は使えません。"
+
+msgid "The value `{value}` of the item `{}` cannot be read as a number (a number of 0 or more; `,` as a thousands separator and `.` as the decimal point are allowed)."
+msgstr "項目 `{}` の値 `{value}` は数値として読めません (0 以上の数。桁区切りの `,` と小数点の `.` は使えます)。"
+
+msgid "The value of `{keyword}` cannot contain line breaks."
+msgstr "`{keyword}` の値に改行は使えません。"
+
+msgid "The values of curve `{id}` are not written as `{{1, 2, 3}}` ({line})."
+msgstr "系列 `{id}` の値が `{{1, 2, 3}}` の形で書かれていません ({line})。"
+
+msgid "The width in `{line}` must be a whole number of 1 or more."
+msgstr "`{line}` の幅は 1 以上の整数にしてください。"
+
+msgid "The width of {what} must be 1 or more."
+msgstr "{what} の幅は 1 以上にしてください。"
+
+msgid "The x axis has an empty category ({statement})."
+msgstr "x 軸に空の項目があります ({statement})。"
+
+msgid "The x axis has no categories. Add a category, or set the x-axis “Scale” to “None (1, 2, 3…)”."
+msgstr "x 軸の項目が 1 つもありません。項目を追加するか、x 軸の目盛りを「なし」にしてください。"
+
+msgid "The x-axis category `{}` cannot be written. {text_rule}"
+msgstr "x 軸の項目 `{}` は書けません。{text_rule}"
+
+msgid "The x-axis name `{}` cannot be written. {text_rule}"
+msgstr "x 軸の名前 `{}` は書けません。{text_rule}"
+
+msgid "The y axis cannot have categories ({statement})."
+msgstr "y 軸に項目は書けません ({statement})。"
+
+msgid "The y-axis name `{}` cannot be written. {text_rule}"
+msgstr "y 軸の名前 `{}` は書けません。{text_rule}"
+
+msgid "The year {} cannot be written with 2 digits"
+msgstr "{} 年は 2 桁で書けません"
+
+msgid "The year {} cannot be written with 4 digits"
+msgstr "{} 年は 4 桁で書けません"
+
+msgid "The {axis} `{value}` of point `{}` cannot be used (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
+msgstr "点 `{}` の {axis} `{value}` は使えません (0 から 1 まで。`0`、`1`、`0.` で始まる小数だけ)。"
+
+msgid "The {name} label cannot be written (no `\"` or line breaks, and no whitespace at either end)."
+msgstr "{name}のラベルは書けません (`\"` と改行は不可、前後の空白も不可)。"
+
+msgid "The {what} ID `{}` cannot be used (no brackets, `\"`, `%%`, `@{{`, `#…;` or whitespace at either end)."
+msgstr "{what}の ID `{}` は使えません (括弧、`\"`、`%%`、`@{{`、`#…;` と前後の空白は不可)。"
+
+msgid "The {what} `{}` has a value for `{}` that cannot be written (no `}}`, `\"`, `%%`, `#…;`, line breaks or whitespace at either end)."
+msgstr "{what} `{}` の `{}` の値は書けません (`}}`、`\"`、`%%`、`#…;`、改行と前後の空白は不可)。"
+
+msgid "There are more `end`s than blocks."
+msgstr "`end` が対応するブロックより多くあります。"
+
+msgid "There are two `columns` at the same level. Mermaid uses only the last one, so merge them into one."
+msgstr "同じ階層に `columns` が 2 回あります。Mermaid は最後の 1 つだけを使うので、1 つにまとめてください。"
+
+msgid "There are two `title`s. Only the last one is used."
+msgstr "`title` が 2 つあります。後のものだけが使われます。"
+
+msgid "There are two arrows from `{source}` to `{}`."
+msgstr "「{source}」から「{}」への矢印が 2 本あります。"
+
+msgid "There are two roots (`{}`). A mindmap has only one root, and the other nodes are indented deeper than the root."
+msgstr "ルートが 2 つあります (`{}`)。マインドマップのルートは 1 つだけで、ほかのノードはルートより深く字下げします。"
+
+msgid "There are two roots (`{}`). A mindmap has only one root."
+msgstr "ルートが 2 つあります (`{}`)。マインドマップのルートは 1 つだけです。"
+
+msgid "There are unreadable characters after the `}}` of curve `{id}` ({line})."
+msgstr "系列 `{id}` の `}}` の後に読めない文字があります ({line})。"
+
+msgid "There is a `%%{{` in the middle of a statement ({line}). Mermaid cuts `%%{{ … }}%%` out and joins what is before and after it, so the structured editor cannot handle it."
+msgstr "文の途中に `%%{{` があります ({line})。Mermaid は `%%{{ … }}%%` を切り取って前後をつないで読むため、構造化編集では扱えません。"
+
+msgid "There is a `%%{{` that is never closed ({line}). Mermaid does not read anything after it, so the structured editor cannot handle it."
+msgstr "閉じていない `%%{{` があります ({line})。Mermaid はそこから後ろを読まないため、構造化編集では扱えません。"
+
+msgid "There is a `[` inside `[` ({statement})."
+msgstr "`[` の中に `[` があります ({statement})。"
+
+msgid "There is a `}}` without a matching `{{`."
+msgstr "対応する `{{` のない `}}` があります。"
+
+msgid "There is a `}}` without a matching boundary (line {}). Edit it as text."
+msgstr "対応する境界の無い `}}` があります ({} 行目)。テキストのまま編集してください。"
+
+msgid "There is a `}}` without a matching boundary."
+msgstr "対応する境界の無い `}}` があります。"
+
+msgid "There is a boundary that is not closed (`}}` is missing). Edit it as text."
+msgstr "閉じていない境界があります (`}}` がありません)。テキストのまま編集してください。"
+
+msgid "There is a boundary that is not closed."
+msgstr "閉じていない境界があります。"
+
+msgid "There is a node with an empty label ({trimmed})."
+msgstr "ラベルが空のノードがあります ({trimmed})。"
+
+msgid "There is a node with an empty label."
+msgstr "ラベルが空のノードがあります。"
+
+msgid "There is a requirement or element with an empty name."
+msgstr "名前が空の要求・要素があります。"
+
+msgid "There is a requirement or element without a name ({text})."
+msgstr "名前のない要求・要素があります ({text})。"
+
+msgid "There is a style assignment without a target."
+msgstr "対象のないスタイル指定があります。"
+
+msgid "There is an `end` without a matching `block`. Mermaid draws it as a block named `end`."
+msgstr "対応する `block` の無い `end` があります。Mermaid はこれを `end` という名前のブロックとして描きます。"
+
+msgid "There is an empty cause."
+msgstr "空の要因があります。"
+
+msgid "There is an empty event ({trimmed}). Delete it, or edit it as text."
+msgstr "空の出来事があります ({trimmed})。消すか、テキストのまま編集してください。"
+
+msgid "There is an extra `{}` after `\"{value}\"`."
+msgstr "`\"{value}\"` の後ろに余分な `{}` があります。"
+
+msgid "There is an item with an empty name."
+msgstr "名前が空の項目があります。"
+
+msgid "There is an overlap that contains no set."
+msgstr "集合を 1 つも含まない重なりがあります。"
+
+msgid "There is an unclosed \"` ({statement})."
+msgstr "閉じていない \"` があります ({statement})。"
+
+msgid "There is an unclosed \"` … `\"."
+msgstr "閉じていない \"` … `\" があります。"
+
+msgid "There is an unclosed `\"` ({statement})."
+msgstr "閉じていない `\"` があります ({statement})。"
+
+msgid "There is an unclosed `\"` ({text})."
+msgstr "閉じていない `\"` があります ({text})。"
+
+msgid "There is an unclosed `\"`."
+msgstr "閉じていない `\"` があります。"
+
+msgid "There is an unclosed label ({line})."
+msgstr "閉じていないラベルがあります ({line})。"
+
+msgid "There is no `:` after the label ({statement})."
+msgstr "ラベルのあとに `:` がありません ({statement})。"
+
+msgid "There is no `[` after the `:` of the point."
+msgstr "点の `:` の後に `[` がありません。"
+
+msgid "There is no `]]` closing `[[` ({line})."
+msgstr "`[[` を閉じる `]]` がありません ({line})。"
+
+msgid "There is no `]` after the label ({line})."
+msgstr "ラベルの後に `]` がありません ({line})。"
+
+msgid "There is no `end note` that matches the `note` ({statement})."
+msgstr "`note` に対応する `end note` がありません ({statement})。"
+
+msgid "There is no `{{` after `{statement}`."
+msgstr "`{statement}` の後に `{{` がありません。"
+
+msgid "There is no `}}` that matches a `{{`."
+msgstr "`{{` に対応する `}}` がありません。"
+
+msgid "There is no block `{end}` for the edge to connect (written only in an edge, Mermaid places a new block there)."
+msgstr "辺がつなぐ `{end}` というブロックがありません (辺だけで書くと、Mermaid はそこに新しいブロックを置きます)。"
+
+msgid "There is no block `{target}` to give the class `{class_name}` to."
+msgstr "class `{class_name}` を付ける `{target}` というブロックがありません。"
+
+msgid "There is no block `{target}` to give the style to."
+msgstr "style を付ける `{target}` というブロックがありません。"
+
+msgid "There is no block around `{}`."
+msgstr "`{}` を囲むブロックがありません。"
+
+msgid "There is no data name after `data`."
+msgstr "`data` のあとにデータ名がありません。"
+
+msgid "There is no element `{end}` for the end of a relationship."
+msgstr "関係の端 `{end}` という要素がありません。"
+
+msgid "There is no frame number after `->>` ({line})."
+msgstr "`->>` のあとにフレーム番号がありません ({line})。"
+
+msgid "There is no node before `:::` ({trimmed})."
+msgstr "`:::` の前にノードがありません ({trimmed})。"
+
+msgid "There is no node before `::icon(…)` ({trimmed})."
+msgstr "`::icon(…)` の前にノードがありません ({trimmed})。"
+
+msgid "There is no node before `@{{` ({rest}). Mermaid skips this line, so edit it as text."
+msgstr "`@{{` の前にノードがありません ({rest})。Mermaid はこの行を読み飛ばすので、テキストのまま編集してください。"
+
+msgid "There is no number after `-->` ({statement})."
+msgstr "`-->` の後に数値がありません ({statement})。"
+
+msgid "There is no period before the event `{trimmed}`."
+msgstr "出来事 `{trimmed}` の前に期間がありません。"
+
+msgid "There is no requirement or element named `{name}` for a relationship to point to."
+msgstr "関係が指す `{name}` という要求・要素がありません。"
+
+msgid "There is no requirement or element named `{name}` for a style assignment to point to."
+msgstr "スタイル指定が指す `{name}` という要求・要素がありません。"
+
+msgid "There is no start or end after `:` ({statement})."
+msgstr "`:` のあとに開始と終了がありません ({statement})。"
+
+msgid "There is no style class name after `:::` ({statement})."
+msgstr "`:::` のあとにスタイルクラス名がありません ({statement})。"
+
+msgid "There is no task name before `:` ({statement})."
+msgstr "`:` の前にタスク名がありません ({statement})。"
+
+msgid "Thick arrow"
+msgstr "太い矢印"
+
+msgid "This could not be read as a mindmap node ({statement}). Edit it as text."
+msgstr "マインドマップのノードとして読めませんでした ({statement})。テキストのまま編集してください。"
+
+msgid "This could not be read as a node of a tree view ({trimmed}). Enclose a name in \"…\" or '…', and write `title`, `accTitle` and `accDescr` before the first node."
+msgstr "ツリービューのノードとして読めませんでした ({trimmed})。名前は \"…\" か '…' で囲み、`title` `accTitle` `accDescr` は最初のノードより前に書きます。"
+
+msgid "This could not be read as a statement of a Venn diagram ({statement}). Edit it as text."
+msgstr "ベン図の文として読めませんでした ({statement})。テキストのまま編集してください。"
+
+msgid "This could not be read as a treemap item ({rest}). Write it as `\"name\"` or `\"name\": value`."
+msgstr "ツリーマップの項目として読めませんでした ({rest})。`\"名前\"` か `\"名前\": 値` の形で書いてください。"
+
+msgid "This could not be read as an event ({trimmed})."
+msgstr "出来事として読めませんでした ({trimmed})。"
+
+msgid "This date and time cannot be written in local time"
+msgstr "この日時は現地時刻で書けません"
+
+msgid "This diagram cannot be opened, because rewriting it would change its content (it depends on the order of the style assignments or the like). Edit it as text."
+msgstr "書き直すと図の内容が変わるため開けません (スタイル指定の順序などに依存しています)。テキストのまま編集してください。"
+
+msgid "This diagram is not a C4 diagram."
+msgstr "この図は C4 図ではありません。"
+
+msgid "This diagram is not a Gantt chart."
+msgstr "この図はガントチャートではありません。"
+
+msgid "This diagram is not a Git graph."
+msgstr "この図は Git グラフではありません。"
+
+msgid "This diagram is not a Sankey diagram."
+msgstr "この図はサンキー図ではありません。"
+
+msgid "This diagram is not a Venn diagram."
+msgstr "この図はベン図ではありません。"
+
+msgid "This diagram is not a block diagram."
+msgstr "この図はブロック図ではありません。"
+
+msgid "This diagram is not a class diagram."
+msgstr "この図はクラス図ではありません。"
+
+msgid "This diagram is not a kanban board."
+msgstr "この図はかんばんではありません。"
+
+msgid "This diagram is not a mindmap."
+msgstr "この図はマインドマップではありません。"
+
+msgid "This diagram is not a packet diagram."
+msgstr "この図はパケット図ではありません。"
+
+msgid "This diagram is not a pie chart."
+msgstr "この図は円グラフではありません。"
+
+msgid "This diagram is not a quadrant chart."
+msgstr "この図は 4 象限チャートではありません。"
+
+msgid "This diagram is not a radar chart."
+msgstr "この図はレーダーチャートではありません。"
+
+msgid "This diagram is not a requirement diagram."
+msgstr "この図は要求図ではありません。"
+
+msgid "This diagram is not a sequence diagram."
+msgstr "この図はシーケンス図ではありません。"
+
+msgid "This diagram is not a state diagram."
+msgstr "この図は状態遷移図ではありません。"
+
+msgid "This diagram is not a timeline."
+msgstr "この図はタイムラインではありません。"
+
+msgid "This diagram is not a tree view."
+msgstr "この図はツリービューではありません。"
+
+msgid "This diagram is not a treemap."
+msgstr "この図はツリーマップではありません。"
+
+msgid "This diagram is not a user journey."
+msgstr "この図はユーザージャーニーではありません。"
+
+msgid "This diagram is not an ER diagram."
+msgstr "この図は ER 図ではありません。"
+
+msgid "This diagram is not an Ishikawa diagram."
+msgstr "この図は特性要因図ではありません。"
+
+msgid "This diagram is not an XY chart."
+msgstr "この図は XY チャートではありません。"
+
+msgid "This diagram is not an architecture diagram."
+msgstr "この図はアーキテクチャ図ではありません。"
+
+msgid "This diagram is not an event modeling diagram."
+msgstr "この図はイベントモデリングではありません。"
+
+msgid "This diagram type is not supported by the structured editor (flowcharts only)."
+msgstr "この図種は構造化編集に対応していません (フローチャートのみ)。"
+
+msgid "This is not a Gantt chart"
+msgstr "ガントチャートではありません"
+
+msgid "This is not a Gantt chart (only diagrams that start with `gantt` can be edited in the structured editor)."
+msgstr "ガントチャートではありません (`gantt` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a Git graph (only diagrams that start with `gitGraph` can be edited in the structured editor)."
+msgstr "Git グラフではありません (`gitGraph` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a block diagram (only a diagram that starts with `block-beta` can be edited in the structured editor)."
+msgstr "ブロック図ではありません (`block-beta` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a class diagram (only diagrams that start with `classDiagram` can be edited in the structured editor)."
+msgstr "クラス図ではありません (`classDiagram` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a kanban board (only diagrams that start with `kanban` can be edited in the structured editor)."
+msgstr "かんばんではありません (`kanban` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a mindmap (only a diagram that starts with `mindmap` can be edited in the structured editor)."
+msgstr "マインドマップではありません (`mindmap` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a pie chart (only a diagram that starts with `pie` can be edited in the structured editor)."
+msgstr "円グラフではありません (`pie` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a quadrant chart (only diagrams that start with `quadrantChart` can be edited in the structured editor)."
+msgstr "4 象限チャートではありません (`quadrantChart` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a radar chart (only diagrams that start with `radar-beta` can be edited in the structured editor)."
+msgstr "レーダーチャートではありません (`radar-beta` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a requirement diagram (only diagrams that start with `requirementDiagram` can be edited in the structured editor)."
+msgstr "要求図ではありません (`requirementDiagram` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a state diagram (only a diagram that starts with `stateDiagram` can be edited in the structured editor)."
+msgstr "状態遷移図ではありません (`stateDiagram` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a timeline (only a diagram that starts with `timeline` can be edited in the structured editor)."
+msgstr "タイムラインではありません (`timeline` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a tree view (only a diagram that starts with `treeView-beta` can be edited in the structured editor)."
+msgstr "ツリービューではありません (`treeView-beta` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a treemap (only a diagram that starts with `treemap-beta` can be edited in the structured editor)."
+msgstr "ツリーマップではありません (`treemap-beta` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not a user journey (only diagrams that start with `journey` can be edited in the structured editor)."
+msgstr "ユーザージャーニーではありません (`journey` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not an Ishikawa diagram (only a diagram that starts with `ishikawa-beta` or `ishikawa` can be edited in the structured editor)."
+msgstr "特性要因図ではありません (`ishikawa-beta` か `ishikawa` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not an XY chart (only diagrams that start with `xychart-beta` can be edited in the structured editor)."
+msgstr "XY チャートではありません (`xychart-beta` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not an architecture diagram (only diagrams that start with `architecture-beta` can be edited in the structured editor)."
+msgstr "アーキテクチャ図ではありません (`architecture-beta` で始まる図だけを構造化編集できます)。"
+
+msgid "This is not an event modeling diagram (only diagrams that start with `eventmodeling` can be edited in the structured editor)."
+msgstr "イベントモデリングではありません (`eventmodeling` で始まる図だけを構造化編集できます)。"
+
+msgid "This line could not be read as a field of a packet diagram ({statement}). Write it as `0-15: \"label\"` or `+8: \"label\"`."
+msgstr "パケット図の行として読めませんでした ({statement})。`0-15: \"ラベル\"` か `+8: \"ラベル\"` の形で書いてください。"
+
+msgid "This line could not be read as a flow of a Sankey diagram ({}). Write it as `source,target,value`."
+msgstr "サンキー図の行として読めませんでした ({})。`流れ元,流れ先,量` の形で書いてください。"
+
+msgid "This line could not be read as a slice of a pie chart ({statement}). Write it as `\"label\" : value`."
+msgstr "円グラフの行として読めませんでした ({statement})。`\"ラベル\" : 数値` の形で書いてください。"
+
+msgid "Tick count (ticks)"
+msgstr "目盛りの数 (ticks)"
+
+msgid "To give task `{}` an ID, make its start a date or `after`."
+msgstr "タスク `{}` に ID を付けるには開始を日付か `after` にしてください。"
+
+msgid "Top to bottom (TB / TD)"
+msgstr "上から下 (TB / TD)"
+
+msgid "Top to bottom (TB)"
+msgstr "上から下 (TB)"
+
+msgid "Traces (traces)"
+msgstr "追跡する (traces)"
+
+msgid "Trapezoid (reversed) [\\manual input/]"
+msgstr "台形 (逆) [\\手入力/]"
+
+msgid "Trapezoid [/ \\]"
+msgstr "台形 [/ \\]"
+
+msgid "Trapezoid [/manual operation\\]"
+msgstr "台形 [/手操作\\]"
+
+msgid "Two axes have the ID `{}`. It is unclear which axis a value belongs to, so change one of the IDs."
+msgstr "軸の ID `{}` が 2 つあります。値をどちらの軸に付けるか決まらないので、ID を変えてください。"
+
+msgid "Two curves have the ID `{}`. Change one of the IDs."
+msgstr "系列の ID `{}` が 2 つあります。ID を変えてください。"
+
+msgid "Two-way arrow"
+msgstr "両向き矢印"
+
+msgid "Unique key (UK)"
+msgstr "一意キー (UK)"
+
+msgid "Use only letters, digits and `_` in the class name of point `{}`."
+msgstr "点 `{}` のクラス名は英数字と `_` だけにしてください。"
+
+msgid "Verification: Analysis"
+msgstr "検証: 分析"
+
+msgid "Verification: Demonstration"
+msgstr "検証: 実演"
+
+msgid "Verification: Inspection"
+msgstr "検証: 検査"
+
+msgid "Verification: Test"
+msgstr "検証: テスト"
+
+msgid "Verifies (verifies)"
+msgstr "検証する (verifies)"
+
+msgid "Very High"
+msgstr "最高"
+
+msgid "Very Low"
+msgstr "最低"
+
+msgid "When text shaped like `<tag …>` contains `=\"…\"`, Mermaid rewrites the `\"` to `'` before reading it, which changes the diagram. Change the `<` of the label or the `=` at its end."
+msgstr "`<タグ …>` の形の文字の中に `=\"…\"` があると、Mermaid が読む前に `\"` を `'` に書き換えて図が変わります。ラベルの `<` か、ラベル末尾の `=` を変えてください。"
+
+msgid "With the x-axis range `{min}` → `{max}`, Mermaid cannot place the values of series {number} and never finishes drawing. Move the ends of the range apart."
+msgstr "x 軸の範囲 `{min}` → `{max}` の幅では Mermaid が系列 {number} の値を並べられず、描画が終わりません。範囲の両端を離してください。"
+
+msgid "Without `dateFormat`, the end cannot be written as a date"
+msgstr "`dateFormat` が無いと終了を日付で書けません"
+
+msgid "Without categories or a range on the x axis, Mermaid builds the x axis from the number of values in the first series. With only one value in the first series, it cannot place the values of series {number} and never finishes drawing. Add values to the first series, or give the x axis categories or a range."
+msgstr "x 軸に項目も範囲も無いと、Mermaid は最初の系列の値の数で x 軸を作ります。最初の系列の値が 1 つだけでは系列 {number} の値を並べられず、描画が終わりません。最初の系列に値を足すか、x 軸に項目か範囲を指定してください。"
+
+msgid "Write `graticule` as `circle` or `polygon` ({line})."
+msgstr "`graticule` は `circle` か `polygon` で書いてください ({line})。"
+
+msgid "Write `showLegend` as `true` or `false` ({line})."
+msgstr "`showLegend` は `true` か `false` で書いてください ({line})。"
+
+msgid "Write a direction such as `(right)` for the arrow block in `{line}`."
+msgstr "`{line}` の矢印ブロックには `(right)` のように向きを書いてください。"
+
+msgid "Write a generic type as `{name}~T~` ({statement})."
+msgstr "総称型は `{name}~T~` の形で書いてください ({statement})。"
+
+msgid "Write a number of 0 or more like `12`, `0.5` or `.5` (no leading 0, trailing `.` or sign)."
+msgstr "0 以上の数を `12`・`0.5`・`.5` の形で書いてください (先頭の 0、末尾の `.`、符号は不可)。"
+
+msgid "Write at least one block to give the class `{class_name}` to."
+msgstr "class `{class_name}` を付けるブロックを 1 つ以上書いてください。"
+
+msgid "Write at least one direction for arrow `{}` (right / left / up / down / x / y)."
+msgstr "矢印 `{}` の向きを 1 つ以上書いてください (right / left / up / down / x / y)。"
+
+msgid "Write it as `[\"display name\"]` ({statement})."
+msgstr "`[\"表示名\"]` の形で書いてください ({statement})。"
+
+msgid "Write it as `namespace {name} {{` ({statement})."
+msgstr "`namespace {name} {{` の形で書いてください ({statement})。"
+
+msgid "Write it as `note \"text\"` ({statement})."
+msgstr "`note \"本文\"` の形で書いてください ({statement})。"
+
+msgid "Write it as `state \"description\" as ID` ({statement})."
+msgstr "`state \"説明\" as ID` の形で書いてください ({statement})。"
+
+msgid "Write one of TB / BT / LR / RL after `direction` ({statement})."
+msgstr "`direction` のあとには TB / BT / LR / RL のどれかを書いてください ({statement})。"
+
+msgid "Write the number of bits of “{}” as a whole number of 1 or more."
+msgstr "「{}」のビット数は 1 以上の整数で書いてください。"
+
+msgid "Write the order `{order}` as a whole number."
+msgstr "順序「{order}」は整数で書いてください。"
+
+msgid "Write the style `{style}` as `name: value`."
+msgstr "スタイル `{style}` は `名前: 値` の形にしてください。"
+
+msgid "Write the x-axis range `{min}` → `{max}` as numbers."
+msgstr "x 軸の範囲 `{min}` → `{max}` は数値で書いてください。"
+
+msgid "Write the y-axis range `{}` → `{}` as numbers (leave both empty to set it automatically)."
+msgstr "y 軸の範囲 `{}` → `{}` は数値で書いてください (自動にするなら両方を空に)。"
+
+msgid "Zero or more"
+msgstr "0 以上"
+
+msgid "Zero or one"
+msgstr "0 または 1"
+
+msgid "`\"` is required"
+msgstr "`\"` が必要です"
+
+msgid "`\"`, `%%` and line breaks are not allowed, and it cannot start or end with whitespace."
+msgstr "`\"` `%%` と改行は使えず、前後の空白も書けません。"
+
+msgid "`:::` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "ノード `{}` に `:::` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。"
+
+msgid "`:::` without a class is not supported by the structured editor ({rest})."
+msgstr "クラスの無い `:::` は構造化編集に対応していません ({rest})。"
+
+msgid "`::icon(` has no closing parenthesis ({rest}). Mermaid skips this line, so close it or edit it as text."
+msgstr "`::icon(` の閉じ括弧がありません ({rest})。Mermaid はこの行を読み飛ばすので、閉じるかテキストのまま編集してください。"
+
+msgid "`::icon(…)` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "ノード `{}` に `::icon(…)` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。"
+
+msgid "`<<annotation>>` is not closed ({statement})."
+msgstr "`<<注釈>>` が閉じていません ({statement})。"
+
+msgid "`@{{` is not closed with `}}`."
+msgstr "`@{{` が `}}` で閉じられていません。"
+
+msgid "`@{{{inner}}}` has an empty entry."
+msgstr "`@{{{inner}}}` に空の項目があります。"
+
+msgid "`UpdateElementStyle({alias}, …)` comes before the declaration of `{alias}`, so it has no effect. Move it after the declaration."
+msgstr "`UpdateElementStyle({alias}, …)` が `{alias}` の宣言より前にあるので効きません。宣言の後ろへ移してください。"
+
+msgid "`UpdateRelStyle({from}, {to}, …)` comes before the relationship, so it has no effect. Move it after the relationship."
+msgstr "`UpdateRelStyle({from}, {to}, …)` が関係より前にあるので効きません。関係の後ろへ移してください。"
+
+msgid "`X` (seconds) cannot express less than a second"
+msgstr "`X` (秒) では 1 秒未満を書けません"
+
+msgid "`[` is missing ({statement})."
+msgstr "`[` がありません ({statement})。"
+
+msgid "`axisFormat` is written twice. Merge them into one, then open it again."
+msgstr "`axisFormat` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`axis` has no axes ({line})."
+msgstr "`axis` に軸がありません ({line})。"
+
+msgid "`branch` cannot take `{other}:`"
+msgstr "`branch` に `{other}:` は書けません"
+
+msgid "`cherry-pick` cannot take `{other}:`"
+msgstr "`cherry-pick` に `{other}:` は書けません"
+
+msgid "`commit` cannot take `{other}:`"
+msgstr "`commit` に `{other}:` は書けません"
+
+msgid "`curve` has no curves ({line})."
+msgstr "`curve` に系列がありません ({line})。"
+
+msgid "`dateFormat` is written twice. Merge them into one, then open it again."
+msgstr "`dateFormat` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`destroy {id}` is written twice, which is not supported by the structured editor. Edit it as text."
+msgstr "`destroy {id}` が 2 回書かれているため、構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "`direction {rest}` cannot be read (write one of TB / BT / LR / RL)."
+msgstr "`direction {rest}` は読めません (TB / BT / LR / RL のどれかを書いてください)。"
+
+msgid "`direction` cannot be written inside a `namespace` ({statement})."
+msgstr "`direction` は `namespace` の中には書けません ({statement})。"
+
+msgid "`direction` is written twice in the same place. Merge them into one, then open the editor again."
+msgstr "`direction` が同じ場所に 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`direction` is written twice. Merge them into one, then open it again ({statement})."
+msgstr "`direction` が 2 回書かれています。1 つにまとめてからもう一度開いてください ({statement})。"
+
+msgid "`direction` is written twice. Merge them into one, then open it again."
+msgstr "`direction` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`displayMode` cannot be written in the body ({statement}). In Mermaid, set it with `displayMode: compact` in the front matter or with `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%`. Edit it as text."
+msgstr "`displayMode` は本文には書けません ({statement})。Mermaid ではフロントマターの `displayMode: compact` か `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%` で指定します。テキストのまま編集してください。"
+
+msgid "`global` is the name of the whole diagram, so it cannot be used as the alias of a boundary."
+msgstr "`global` は図全体を表す名前なので、境界の別名には使えません。"
+
+msgid "`id:` is missing"
+msgstr "`id:` がありません"
+
+msgid "`merge` cannot take `{other}:`"
+msgstr "`merge` に `{other}:` は書けません"
+
+msgid "`note` must be followed by `left of` or `right of` ({statement})."
+msgstr "`note` のあとは `left of` か `right of` です ({statement})。"
+
+msgid "`quadrant-{}` is written twice. Merge them into one, then open it again."
+msgstr "`quadrant-{}` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`title` is written twice. Merge them into one, then open it again."
+msgstr "`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`title` is written twice. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "`title` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。"
+
+msgid "`title` is written twice. Only the last one is used, so merge them into one, then open it again."
+msgstr "`title` が 2 回書かれています。後のものだけが使われるので、1 つにまとめてからもう一度開いてください。"
+
+msgid "`x-axis` has neither a name nor ticks ({statement})."
+msgstr "`x-axis` に名前も目盛りもありません ({statement})。"
+
+msgid "`x-axis` is written twice. Merge them into one, then open it again."
+msgstr "`x-axis` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`y-axis` has neither a name nor a range ({statement})."
+msgstr "`y-axis` に名前も範囲もありません ({statement})。"
+
+msgid "`y-axis` is written twice. Merge them into one, then open it again."
+msgstr "`y-axis` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`{annotation}` cannot be used as an annotation ({statement})."
+msgstr "`{annotation}` は注釈に使えません ({statement})。"
+
+msgid "`{class}` cannot be used as a class name ({statement})."
+msgstr "`{class}` はクラス名に使えません ({statement})。"
+
+msgid "`{class}` cannot be used as a class name."
+msgstr "`{class}` はクラス名として使えません。"
+
+msgid "`{comment}` cannot be written as an end-of-line comment."
+msgstr "`{comment}` は行末のコメントとして書けません。"
+
+msgid "`{format}` cannot be used for `{name}` (`#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "`{name}` の `{format}` は書けません (`#` `;` と改行は不可、空にもできません)。"
+
+msgid "`{generic}` cannot be used as a generic type ({statement})."
+msgstr "`{generic}` は総称型に使えません ({statement})。"
+
+msgid "`{header}` cannot be read as the heading of a Sankey diagram (write only `sankey-beta` on its line)."
+msgstr "`{header}` はサンキー図の見出しとして読めません (`sankey-beta` だけを 1 行に書きます)。"
+
+msgid "`{header}` cannot be read as the heading of a packet diagram (write only `packet-beta` on its line)."
+msgstr "`{header}` はパケット図の見出しとして読めません (`packet-beta` だけを 1 行に書きます)。"
+
+msgid "`{id}` appears before its `create`. Put the `create` first."
+msgstr "`{id}` は `create` より前に登場しています。`create` を先に置いてください。"
+
+msgid "`{id}` cannot be placed inside itself."
+msgstr "`{id}` を自分自身の中には置けません。"
+
+msgid "`{id}` cannot be used as a state ID ({statement})."
+msgstr "`{id}` は状態 ID に使えません ({statement})。"
+
+msgid "`{id}` cannot be used as a state ID ({statement}). Mermaid cannot read an ID that contains spaces, `:`, `;` or `-`."
+msgstr "`{id}` は状態 ID に使えません ({statement})。空白・`:`・`;`・`-` を含む ID は Mermaid が読めません。"
+
+msgid "`{id}` in `click` is the name a task without an ID gets automatically. It points to a different task when tasks are added, deleted or moved, so give that task an ID and change `click` to use it."
+msgstr "`click` の `{id}` は ID の無いタスクに自動で付く名前です。タスクを追加・削除・移動すると別のタスクを指すので、そのタスクに ID を付けて `click` をその ID に書き換えてください。"
+
+msgid "`{id}` is not activated, so it cannot be deactivated."
+msgstr "`{id}` は活性化していないので終了できません。"
+
+msgid "`{input}` is not enclosed in `\"`."
+msgstr "`{input}` は `\"` で囲まれていません。"
+
+msgid "`{keyword}` cannot be used in event modeling (line {}; the official Mermaid does not accept it). Remove the line, or edit it as text."
+msgstr "`{keyword}` はイベントモデリングでは使えません ({} 行目。公式の Mermaid が受け付けません)。行を消すか、テキストのまま編集してください。"
+
+msgid "`{keyword}` cannot be written inside a `namespace` ({statement})."
+msgstr "`{keyword}` は `namespace` の中には書けません ({statement})。"
+
+msgid "`{keyword}` is written twice. Merge them into one, then open it again."
+msgstr "`{keyword}` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
+
+msgid "`{keyword}` statements are not supported by the structured editor ({trimmed}). Edit it as text."
+msgstr "`{keyword}` の文は構造化エディターに対応していません ({trimmed})。テキストのまま編集してください。"
+
+msgid "`{key}:` is written twice"
+msgstr "`{key}:` が 2 回書かれています"
+
+msgid "`{key}:` on the element `{target}` is lost in the structured editor ({statement}). Edit it as text."
+msgstr "要素 `{target}` の `{key}:` は構造化編集で失われます ({statement})。テキストのまま編集してください。"
+
+msgid "`{key}` of `{opening}` is written twice. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{opening}` の `{key}` が 2 回書かれています。Mermaid は後の方だけを使うため、1 つにまとめてからもう一度開いてください。"
+
+msgid "`{label}` cannot be used as a task name ({statement}). `:` and words that start a statement, such as `title` and `section`, are not allowed."
+msgstr "`{label}` はタスク名に使えません ({statement})。`:` と、`title` や `section` などの文の先頭語は使えません。"
+
+msgid "`{line}` cannot be read as a number of columns (a whole number of 1 or more, or auto)."
+msgstr "`{line}` は列数として読めません (1 以上の整数か auto)。"
+
+msgid "`{name}` cannot be used as a `:::` style class name ({statement})."
+msgstr "`{name}` は `:::` のスタイルクラス名に使えません ({statement})。"
+
+msgid "`{name}` cannot be used as a `namespace` name ({statement})."
+msgstr "`{name}` は `namespace` の名前に使えません ({statement})。"
+
+msgid "`{name}` cannot be used as a class name ({statement})."
+msgstr "`{name}` はクラス名に使えません ({statement})。"
+
+msgid "`{name}` is defined twice. Mermaid ignores the second one, so merge them into one, then open it again."
+msgstr "`{name}` が二重に定義されています。Mermaid は 2 つ目を無視するため、1 つにまとめてからもう一度開いてください。"
+
+msgid "`{name}` is not a C4 diagram macro. Edit it as text."
+msgstr "`{name}` は C4 図のマクロではありません。テキストのまま編集してください。"
+
+msgid "`{name}` is written twice ({line}). Merge them into one, then open it again."
+msgstr "`{name}` が 2 回書かれています ({line})。1 つにまとめてからもう一度開いてください。"
+
+msgid "`{other}` is not a Git graph statement"
+msgstr "`{other}` は Git グラフの文ではありません"
+
+msgid "`{parent}`, which `{id}` belongs to, is not a group (it does not exist, or it is a service or a junction)."
+msgstr "`{id}` の所属先 `{parent}` はグループではありません (無いか、サービスかジャンクションです)。"
+
+msgid "`{remainder}` after the value cannot be written in a pie chart ({statement}). Edit it as text."
+msgstr "数値のあとの `{remainder}` は円グラフに書けません ({statement})。テキストのまま編集してください。"
+
+msgid "`{rest}` follows `{CLASS_KEYWORD}` on the same line. Move it to the next line, then open it again."
+msgstr "`{CLASS_KEYWORD}` の行に `{rest}` が続いています。次の行に分けてからもう一度開いてください。"
+
+msgid "`{rest}` follows on the `{}` line. Move it to the next line, then open the editor again."
+msgstr "`{}` の行に `{rest}` が続いています。次の行に分けてからもう一度開いてください。"
+
+msgid "`{segment}` has no name."
+msgstr "`{segment}` に名前がありません。"
+
+msgid "`{segment}` is not in the form `$name=\"value\"`."
+msgstr "`{segment}` は `$名前=\"値\"` の形になっていません。"
+
+msgid "`{statement}` after `%%{{…}}%%` is not supported by the structured editor. Put the directive and the statement on separate lines, then open it again."
+msgstr "`%%{{…}}%%` の後ろの `{statement}` は構造化編集に対応していません。指示子と文を別の行に分けてからもう一度開いてください。"
+
+msgid "`{statement}` cannot be read as an edge (write it as `a:R -- L:b`)."
+msgstr "`{statement}` は辺として読めません (`a:R -- L:b` の形で書きます)。"
+
+msgid "`{statement}` cannot be used in a C4 diagram (line {}; Mermaid does not accept it). Delete the line, or edit it as text."
+msgstr "`{statement}` は C4 図では使えません ({} 行目。Mermaid が受け付けません)。行を消すか、テキストのまま編集してください。"
+
+msgid "`{statement}` is read as a `direction` statement, so it is not supported by the structured editor. Edit it as text."
+msgstr "`{statement}` は `direction` の文として読まれるため、構造化編集できません。テキストのまま編集してください。"
+
+msgid "`{statement}` needs both an alias and a label. Edit it as text."
+msgstr "`{statement}` には別名とラベルの 2 つが必要です。テキストのまま編集してください。"
+
+msgid "`{statement}` points to `{target}`, which is not defined yet at that point. Mermaid ignores it, so reordering in the structured editor would change the diagram. Move it after the definition, or edit it as text."
+msgstr "`{statement}` は、その時点で定義されていない `{target}` を指しています。Mermaid はこの指定を無視するため、構造化編集で並べ替えると図が変わります。定義の後ろに移すか、テキストのまま編集してください。"
+
+msgid "`{statement}`, written after the directive `%%{{…}}%%` on the same line, is not supported by the structured editor. Mermaid removes the directive and reads this statement. Break the line after the directive, then open it again."
+msgstr "指示子 `%%{{…}}%%` の後ろに同じ行で書かれた `{statement}` は構造化編集に対応していません。Mermaid は指示子を取り除いてこの文を読みます。指示子の後ろで改行してからもう一度開いてください。"
+
+msgid "`{tail}` following the `architecture-beta` line is not supported by the structured editor. Move it to a line of its own, or edit it as text."
+msgstr "`architecture-beta` の行に続く `{tail}` は構造化編集に対応していません。行を分けるか、テキストのまま編集してください。"
+
+msgid "`{tail}` on the `gantt` line is not supported by the structured editor. Move it to the next line, or edit it as text."
+msgstr "`gantt` の行の `{tail}` は構造化編集に対応していません。次の行に移すか、テキストのまま編集してください。"
+
+msgid "`{tail}` on the `gitGraph` line is not supported by the structured editor (the direction is one of LR / TB / BT). Edit it as text."
+msgstr "`gitGraph` の行の `{tail}` は構造化編集に対応していません (向きは LR / TB / BT のどれかです)。テキストのまま編集してください。"
+
+msgid "`{tail}` on the `journey` line is not supported by the structured editor. Edit it as text."
+msgstr "`journey` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "`{tail}` on the `kanban` line is not supported by the structured editor. Write columns on the next line."
+msgstr "`kanban` の行の `{tail}` は構造化編集に対応していません。列は次の行に書いてください。"
+
+msgid "`{tail}` on the `quadrantChart` line is not supported by the structured editor. Edit it as text."
+msgstr "`quadrantChart` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "`{tail}` on the `radar-beta` line is not supported by the structured editor. Edit it as text."
+msgstr "`radar-beta` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "`{tail}` on the `{}` line is not supported by the structured editor. Edit it as text."
+msgstr "`{}` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。"
+
+msgid "`{text}` cannot be used (`\"` and line breaks are not allowed)."
+msgstr "`{text}` は書けません (`\"` と改行は使えません)。"
+
+msgid "`{text}` cannot be written back"
+msgstr "`{text}` は書き戻せません"
+
+msgid "`{token}` cannot hold the milliseconds exactly"
+msgstr "`{token}` ではミリ秒を書き切れません"
+
+msgid "`{trimmed}` cannot be read as a point (`name: [x, y]`) or as any other statement. Edit it as text."
+msgstr "`{trimmed}` は点 (`名前: [x, y]`) としても他の文としても読めません。テキストのまま編集してください。"
+
+msgid "`{trimmed}` cannot be read as a point."
+msgstr "`{trimmed}` は点として読めません。"
+
+msgid "`{trimmed}` cannot be read as a task (`name: score: people`) or as any other statement. Edit it as text."
+msgstr "`{trimmed}` は作業 (`名前: 満足度: 担当者`) としても他の文としても読めません。テキストのまま編集してください。"
+
+msgid "`{trimmed}` is not supported by the structured editor (line {}). Edit it as text."
+msgstr "`{trimmed}` は構造化編集に対応していません ({} 行目)。テキストのまま編集してください。"
+
+msgid "`{trimmed}` is not supported by the structured editor ({reason}). Edit it as text."
+msgstr "`{trimmed}` は構造化編集に対応していません ({reason})。テキストのまま編集してください。"
+
+msgid "`{trimmed}` is not supported by the structured editor. Close a multi-line `@{{` with a line that is only `}}`."
+msgstr "`{trimmed}` は構造化編集に対応していません。複数行の `@{{` は `}}` だけの行で閉じてください。"
+
+msgid "`{value}` cannot be read as a value of a pie chart ({statement}). Write a number of 0 or more."
+msgstr "`{value}` は円グラフの値として読めません ({statement})。0 以上の数値を書いてください。"
+
+msgid "`{word}` cannot be used as an attribute type or name."
+msgstr "`{word}` は属性の型や名前として使えません。"
+
+msgid "`{}` after the branch name is ignored"
+msgstr "ブランチ名の後の `{}` は無視されます"
+
+msgid "`{}` after the quoted message is ignored"
+msgstr "引用符のメッセージの後の `{}` は無視されます"
+
+msgid "`{}` cannot be used as a class name ({statement}). Spaces, symbols and Mermaid's reserved words are not allowed."
+msgstr "`{}` はクラス名に使えません ({statement})。空白・記号・Mermaid の予約語は使えません。"
+
+msgid "`{}` cannot be used as a participant id."
+msgstr "`{}` は参加者の id として使えません。"
+
+msgid "`{}` cannot be used inside `{}`."
+msgstr "`{}` は `{}` の中では使えません。"
+
+msgid "`{}` cannot be used on the right side of a relationship."
+msgstr "`{}` は関係の右側では使えません。"
+
+msgid "`{}` cannot come after a participant created with `create`."
+msgstr "`create` で作られる参加者より後ろに `{}` を並べることはできません。"
+
+msgid "`{}` does not have enough arguments."
+msgstr "`{}` の引数が足りません。"
+
+msgid "`{}` follows `}}` on the same line ({trimmed}). Leave `}}` alone on its line, then open it again."
+msgstr "`}}` の行に `{}` が続いています ({trimmed})。`}}` だけの行にしてからもう一度開いてください。"
+
+msgid "`{}` has `:::` twice. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{}` に `:::` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。"
+
+msgid "`{}` has no alias."
+msgstr "`{}` に別名がありません。"
+
+msgid "`{}` has two icons. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{}` にアイコンが 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。"
+
+msgid "`{}` is indented less than the first column. Indent columns as deep as the first column, and cards deeper than that."
+msgstr "`{}` が最初の列より浅く字下げされています。列は最初の列と同じ深さ、カードはそれより深く字下げしてください。"
+
+msgid "`{}` is not activated, so it cannot be deactivated."
+msgstr "`{}` は活性化していないので終了できません。"
+
+msgid "accTitle / accDescr on a line with `;` is not supported by the structured editor ({trimmed}). Write one per line."
+msgstr "`;` のある行の accTitle / accDescr は構造化編集に対応していません ({trimmed})。1 行に 1 つずつ書いてください。"
+
+msgid "accTitle / accDescr with an unclosed `\"` or `[` is not supported by the structured editor ({trimmed}). Mermaid reads the lines after it as part of the description."
+msgstr "閉じていない `\"` や `[` のある accTitle / accDescr は構造化編集に対応していません ({trimmed})。Mermaid は後ろの行まで説明として読みます。"
+
+msgid "arrow `{}`"
+msgstr "矢印 `{}`"
+
+msgid "block `{}`"
+msgstr "ブロック `{}`"
+
+msgid "cannot read `{}`"
+msgstr "`{}` を読めません"
+
+msgid "group `{id}`"
+msgstr "グループ `{id}`"
+
+msgid "line breaks and `%%{{` are not allowed, and it cannot start with `%%` or have spaces at either end"
+msgstr "改行と `%%{{` は使えず、`%%` で始めることや前後の空白もできません"
+
+msgid "no `%%` or line breaks, no whitespace at either end, and no `\\` before a quote or at the end"
+msgstr "`%%` と改行は不可、前後の空白も不可、`\\` を引用符の前や末尾に置くことも不可"
+
+msgid "section `{name}`"
+msgstr "セクション `{name}`"
+
+msgid "task `{}`"
+msgstr "タスク `{}`"
+
+msgid "the branch name `{name}` cannot be written back"
+msgstr "ブランチ名 `{name}` は書き戻せません"
+
+msgid "the branch name is missing"
+msgstr "ブランチ名がありません"
+
+msgid "the first section"
+msgstr "先頭のセクション"
+
+msgid "the order `{value}` is not a whole number"
+msgstr "順序 `{value}` は整数ではありません"
+
+msgid "the quotes are not closed"
+msgstr "引用符が閉じていません"
+
+msgid "the space"
+msgstr "空き"
+
+msgid "the type `{value}` is not one of NORMAL / REVERSE / HIGHLIGHT"
+msgstr "種類 `{value}` は NORMAL / REVERSE / HIGHLIGHT のどれでもありません"
+
+msgid "there is no `:` after `{key}`"
+msgstr "`{key}` の後に `:` がありません"
+
+msgid "{error} Edit it as text."
+msgstr "{error} テキストのまま編集してください。"
+
+msgid "{name}: `{value}` cannot be written. {number_rule}"
+msgstr "{name} の `{value}` は書けません。{number_rule}"
+
+msgid "{problem} Edit it as text."
+msgstr "{problem}テキストのまま編集してください。"
+
+msgid "“{name}” cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
+msgstr "「{name}」は名前に使えません (記号 \" - < > {{ }} : , # % ; と前後の空白、単語 direction は不可)。"
+
+msgid "“{value}” cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
+msgstr "`{owner}` の「{value}」は書けません (改行や前後の空白、`%%{{`、`\"` で始まる値、`\"` と `#` / `%%` の混在は不可)。"
+
+msgctxt "C4 element"
+msgid "Bidirectional"
+msgstr "双方向"
+
+msgctxt "C4 element"
+msgid "Boundary"
+msgstr "境界"
+
+msgctxt "C4 element"
+msgid "Component"
+msgstr "コンポーネント"
+
+msgctxt "C4 element"
+msgid "Component (DB)"
+msgstr "コンポーネント (DB)"
+
+msgctxt "C4 element"
+msgid "Component (queue)"
+msgstr "コンポーネント (キュー)"
+
+msgctxt "C4 element"
+msgid "Container"
+msgstr "コンテナー"
+
+msgctxt "C4 element"
+msgid "Container (DB)"
+msgstr "コンテナー (DB)"
+
+msgctxt "C4 element"
+msgid "Container (queue)"
+msgstr "コンテナー (キュー)"
+
+msgctxt "C4 element"
+msgid "Container boundary"
+msgstr "コンテナーの境界"
+
+msgctxt "C4 element"
+msgid "Deployment node"
+msgstr "配置ノード"
+
+msgctxt "C4 element"
+msgid "Deployment node (left-aligned)"
+msgstr "配置ノード (左寄せ)"
+
+msgctxt "C4 element"
+msgid "Deployment node (right-aligned)"
+msgstr "配置ノード (右寄せ)"
+
+msgctxt "C4 element"
+msgid "Downward"
+msgstr "下向き"
+
+msgctxt "C4 element"
+msgid "Enterprise boundary"
+msgstr "企業の境界"
+
+msgctxt "C4 element"
+msgid "External component"
+msgstr "外部コンポーネント"
+
+msgctxt "C4 element"
+msgid "External component (DB)"
+msgstr "外部コンポーネント (DB)"
+
+msgctxt "C4 element"
+msgid "External component (queue)"
+msgstr "外部コンポーネント (キュー)"
+
+msgctxt "C4 element"
+msgid "External container"
+msgstr "外部コンテナー"
+
+msgctxt "C4 element"
+msgid "External container (DB)"
+msgstr "外部コンテナー (DB)"
+
+msgctxt "C4 element"
+msgid "External container (queue)"
+msgstr "外部コンテナー (キュー)"
+
+msgctxt "C4 element"
+msgid "External person"
+msgstr "外部の人"
+
+msgctxt "C4 element"
+msgid "External system"
+msgstr "外部システム"
+
+msgctxt "C4 element"
+msgid "External system (DB)"
+msgstr "外部システム (DB)"
+
+msgctxt "C4 element"
+msgid "External system (queue)"
+msgstr "外部システム (キュー)"
+
+msgctxt "C4 element"
+msgid "Leftward"
+msgstr "左向き"
+
+msgctxt "C4 element"
+msgid "Person"
+msgstr "人"
+
+msgctxt "C4 element"
+msgid "Relationship"
+msgstr "関係"
+
+msgctxt "C4 element"
+msgid "Reverse"
+msgstr "逆向き"
+
+msgctxt "C4 element"
+msgid "Rightward"
+msgstr "右向き"
+
+msgctxt "C4 element"
+msgid "System"
+msgstr "システム"
+
+msgctxt "C4 element"
+msgid "System (DB)"
+msgstr "システム (DB)"
+
+msgctxt "C4 element"
+msgid "System (queue)"
+msgstr "システム (キュー)"
+
+msgctxt "C4 element"
+msgid "System boundary"
+msgstr "システムの境界"
+
+msgctxt "C4 element"
+msgid "Upward"
+msgstr "上向き"
+
+msgctxt "Gantt task tag"
+msgid "Critical"
+msgstr "重要"
+
+msgctxt "Gantt task tag"
+msgid "Done"
+msgstr "完了"
+
+msgctxt "Gantt task tag"
+msgid "In progress"
+msgstr "進行中"
+
+msgctxt "Gantt task tag"
+msgid "Milestone"
+msgstr "マイルストーン"
+
+msgctxt "Gantt task tag"
+msgid "Vertical line"
+msgstr "縦線"
+
+msgctxt "Mermaid diagram kind"
+msgid "Architecture Diagram"
+msgstr "アーキテクチャ図"
+
+msgctxt "Mermaid diagram kind"
+msgid "Block Diagram"
+msgstr "ブロック図"
+
+msgctxt "Mermaid diagram kind"
+msgid "C4 Diagram"
+msgstr "C4 図"
+
+msgctxt "Mermaid diagram kind"
+msgid "Class Diagram"
+msgstr "クラス図"
+
+msgctxt "Mermaid diagram kind"
+msgid "ER Diagram"
+msgstr "ER 図"
+
+msgctxt "Mermaid diagram kind"
+msgid "Event Modeling"
+msgstr "イベントモデリング"
+
+msgctxt "Mermaid diagram kind"
+msgid "Flowchart"
+msgstr "フローチャート"
+
+msgctxt "Mermaid diagram kind"
+msgid "Gantt Chart"
+msgstr "ガントチャート"
+
+msgctxt "Mermaid diagram kind"
+msgid "Git Graph"
+msgstr "Git グラフ"
+
+msgctxt "Mermaid diagram kind"
+msgid "Ishikawa Diagram"
+msgstr "特性要因図"
+
+msgctxt "Mermaid diagram kind"
+msgid "Kanban"
+msgstr "かんばん"
+
+msgctxt "Mermaid diagram kind"
+msgid "Mindmap"
+msgstr "マインドマップ"
+
+msgctxt "Mermaid diagram kind"
+msgid "Packet Diagram"
+msgstr "パケット図"
+
+msgctxt "Mermaid diagram kind"
+msgid "Pie Chart"
+msgstr "円グラフ"
+
+msgctxt "Mermaid diagram kind"
+msgid "Quadrant Chart"
+msgstr "4 象限チャート"
+
+msgctxt "Mermaid diagram kind"
+msgid "Radar Chart"
+msgstr "レーダーチャート"
+
+msgctxt "Mermaid diagram kind"
+msgid "Requirement Diagram"
+msgstr "要求図"
+
+msgctxt "Mermaid diagram kind"
+msgid "Sankey Diagram"
+msgstr "サンキー図"
+
+msgctxt "Mermaid diagram kind"
+msgid "Sequence Diagram"
+msgstr "シーケンス図"
+
+msgctxt "Mermaid diagram kind"
+msgid "State Diagram"
+msgstr "状態遷移図"
+
+msgctxt "Mermaid diagram kind"
+msgid "Timeline"
+msgstr "タイムライン"
+
+msgctxt "Mermaid diagram kind"
+msgid "Tree View"
+msgstr "ツリービュー"
+
+msgctxt "Mermaid diagram kind"
+msgid "Treemap"
+msgstr "ツリーマップ"
+
+msgctxt "Mermaid diagram kind"
+msgid "User Journey"
+msgstr "ユーザージャーニー"
+
+msgctxt "Mermaid diagram kind"
+msgid "Venn Diagram"
+msgstr "ベン図"
+
+msgctxt "Mermaid diagram kind"
+msgid "XY Chart (Bar/Line)"
+msgstr "XY チャート (棒・折れ線)"
+
+msgctxt "architecture node"
+msgid "Junction"
+msgstr "ジャンクション"
+
+msgctxt "architecture node"
+msgid "Service"
+msgstr "サービス"
+
+msgctxt "architecture side"
+msgid "Bottom"
+msgstr "下"
+
+msgctxt "architecture side"
+msgid "Left"
+msgstr "左"
+
+msgctxt "architecture side"
+msgid "Right"
+msgstr "右"
+
+msgctxt "architecture side"
+msgid "Top"
+msgstr "上"
+
+msgctxt "event modeling frame field"
+msgid "name"
+msgstr "名前"
+
+msgctxt "event modeling frame field"
+msgid "number"
+msgstr "番号"
+
+msgctxt "event modeling frame field"
+msgid "type"
+msgstr "種類"
+
+msgctxt "gitGraph commit type"
+msgid "Highlight"
+msgstr "強調"
+
+msgctxt "gitGraph commit type"
+msgid "Normal"
+msgstr "通常"
+
+msgctxt "gitGraph commit type"
+msgid "Reverse"
+msgstr "取り消し"
+
+msgctxt "gitGraph operation"
+msgid "Branch"
+msgstr "ブランチ作成"
+
+msgctxt "gitGraph operation"
+msgid "Checkout"
+msgstr "チェックアウト"
+
+msgctxt "gitGraph operation"
+msgid "Cherry-pick"
+msgstr "チェリーピック"
+
+msgctxt "gitGraph operation"
+msgid "Commit"
+msgstr "コミット"
+
+msgctxt "gitGraph operation"
+msgid "Merge"
+msgstr "マージ"
+
+msgctxt "gitGraph operation list separator"
+msgid ", "
+msgstr "・"
+
+msgctxt "kanban node"
+msgid "card"
+msgstr "カード"
+
+msgctxt "kanban node"
+msgid "column"
+msgstr "列"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "mindmap shape"
+msgid "Default"
+msgstr "標準"
+
+msgctxt "note placement"
+msgid "Left"
+msgstr "左"
+
+msgctxt "note placement"
+msgid "Right"
+msgstr "右"
+
+msgctxt "quadrant axis"
+msgid "x axis"
+msgstr "横軸"
+
+msgctxt "quadrant axis"
+msgid "y axis"
+msgstr "縦軸"
+
+msgctxt "radar graticule"
+msgid "Circle"
+msgstr "円 (circle)"
+
+msgctxt "radar graticule"
+msgid "Polygon"
+msgstr "多角形 (polygon)"
+
+msgctxt "requirement type"
+msgid "Design constraint"
+msgstr "設計制約"
+
+msgctxt "requirement type"
+msgid "Functional requirement"
+msgstr "機能要求"
+
+msgctxt "requirement type"
+msgid "Interface requirement"
+msgstr "インターフェース要求"
+
+msgctxt "requirement type"
+msgid "Performance requirement"
+msgstr "性能要求"
+
+msgctxt "requirement type"
+msgid "Physical requirement"
+msgstr "物理要求"
+
+msgctxt "requirement type"
+msgid "Requirement"
+msgstr "要求"
+
+msgctxt "sequence note placement"
+msgid "Left of"
+msgstr "左側"
+
+msgctxt "sequence note placement"
+msgid "Over"
+msgstr "重ねる"
+
+msgctxt "sequence note placement"
+msgid "Right of"
+msgstr "右側"
+
+msgctxt "xychart orientation"
+msgid "Horizontal"
+msgstr "横 (horizontal)"
+
+msgctxt "xychart orientation"
+msgid "Vertical"
+msgstr "縦 (vertical)"
+
+msgctxt "xychart series"
+msgid "Bar"
+msgstr "棒"
+
+msgctxt "xychart series"
+msgid "Line"
+msgstr "折れ線"

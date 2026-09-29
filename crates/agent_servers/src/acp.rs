@@ -43,10 +43,9 @@ use util::process::Child;
 use util::rel_path::RelPath;
 
 use anyhow::{Context as _, Result};
-use gpui::{
-    App, AppContext as _, AsyncApp, Entity, FutureExt as _, SharedString, Subscription, Task,
-    WeakEntity,
-};
+#[cfg(target_os = "windows")]
+use gpui::FutureExt as _;
+use gpui::{App, AppContext as _, AsyncApp, Entity, SharedString, Subscription, Task, WeakEntity};
 
 use acp_thread::{AcpThread, AuthRequired, LoadError, TerminalProviderEvent};
 use terminal::TerminalBuilder;
@@ -979,9 +978,8 @@ impl AcpConnection {
                             // built from the enum instead of interpolating
                             // that English text into a Japanese sentence.
                             log::warn!("acp: WSL sandbox unavailable: {error}");
-                            sandbox_unavailable(format!(
-                                "このプロジェクトのフォルダーを WSL のサンドボックスから\
-                                 見せられません: {}",
+                            sandbox_unavailable(i18n::t!(
+                                "This project's folders can't be shown to the WSL sandbox: {}",
                                 wsl_worktree_roots_reason_ja(&error)
                             ))
                         },
@@ -1957,15 +1955,21 @@ fn agent_commands_os(
     }
 }
 
-const REMOTE_WITHOUT_SANDBOX_REASON: &str = "このリモートホストでは、エージェントをサンドボックスで\
-     起動できません (Linux 以外のホストか、サンドボックスのヘルパーを置けないホストです)。";
-const OLD_REMOTE_SERVER_REASON: &str = "接続先の Zed のサーバーが古いため、エージェントを\
-     サンドボックスで起動できません。接続し直してサーバーを更新してください。";
+const REMOTE_WITHOUT_SANDBOX_REASON: &str = i18n::msg!(
+    "Agents can't be started in a sandbox on this remote host (it isn't a Linux host, or the \
+     sandbox helper can't be put on it)."
+);
+const OLD_REMOTE_SERVER_REASON: &str = i18n::msg!(
+    "The Zed server on the remote host is too old to start agents in a sandbox. Reconnect to \
+     update the server."
+);
 /// ADR-F49 第 2b 段: a Windows start that did not come out of `get_command`
 /// as a Linux command for a WSL distro. Never silently a start on the host:
 /// the agent would then run with the user's own rights (ADR-F49 decision 19).
-const WSL_WITHOUT_RUNTIME_REASON: &str = "この起動方法では WSL のサンドボックスを使えません \
-     (Windows ではエージェントを WSL の中の Linux 版で動かします)。";
+const WSL_WITHOUT_RUNTIME_REASON: &str = i18n::msg!(
+    "This way of starting the agent can't use the WSL sandbox (on Windows, agents run as their \
+     Linux versions inside WSL)."
+);
 
 /// Where the agent starts. A start the sandbox cannot take is refused with
 /// the reason (ADR-F49 decision 19): the user may then start it outside the
@@ -1996,7 +2000,7 @@ fn choose_agent_launch(
                 distro: runtime.distro.clone(),
             }),
             _ => Err(LoadError::SandboxUnavailable(
-                WSL_WITHOUT_RUNTIME_REASON.into(),
+                i18n::tr(WSL_WITHOUT_RUNTIME_REASON).into(),
             )),
         };
     }
@@ -2005,7 +2009,7 @@ fn choose_agent_launch(
     }
     let Some(remote_binary) = remote_helper_binary else {
         return Err(LoadError::SandboxUnavailable(
-            REMOTE_WITHOUT_SANDBOX_REASON.into(),
+            i18n::tr(REMOTE_WITHOUT_SANDBOX_REASON).into(),
         ));
     };
     match sandbox.map(|sandbox| &sandbox.state) {
@@ -2014,7 +2018,7 @@ fn choose_agent_launch(
             Err(LoadError::SandboxUnavailable(reason.clone().into()))
         }
         Some(AgentSandboxState::Unresolved { .. }) | None => Err(LoadError::SandboxUnavailable(
-            OLD_REMOTE_SERVER_REASON.into(),
+            i18n::tr(OLD_REMOTE_SERVER_REASON).into(),
         )),
     }
 }
@@ -2187,7 +2191,7 @@ impl acp_thread::SandboxProcessSource for SandboxProcessAccess {
                     futures::select_biased! {
                         processes = listing.fuse() => processes,
                         _ = timeout.fuse() => Err(anyhow!(
-                            "WSL がエージェントのサンドボックスの中で動いているものを答えませんでした"
+                            "WSL did not say what runs in the agent's sandbox"
                         )),
                     }
                 })
@@ -2345,6 +2349,7 @@ enum AgentSandboxRoute {
     /// helper's proxy runs inside the distro, where the live policy object
     /// cannot follow, so every sandbox built for this connection — the agent's
     /// and each sign-in's — has to be handed the same entries.
+    #[cfg(target_os = "windows")]
     Wsl {
         policy: sandbox::SandboxPolicy,
         distro: Option<String>,
@@ -2423,7 +2428,7 @@ fn sandbox_unavailable(reason: impl Into<SharedString>) -> anyhow::Error {
 /// about a failure is English diagnostic text. It is never folded into the
 /// Japanese sentence above it (ADR-F07): the sentence the user reads stays
 /// whole, and what follows is plainly marked as a diagnostic.
-const SANDBOX_DIAGNOSTIC_LABEL: &str = "技術的な詳細";
+const SANDBOX_DIAGNOSTIC_LABEL: &str = i18n::msg!("Technical details");
 
 /// ADR-F07 / ADR-F49 決定 38: turns a failure on the way into an agent's
 /// sandbox into the card's Japanese text (`conversation_view.rs`'s
@@ -2436,12 +2441,12 @@ fn sandbox_setup_failed(headline: &str, error: &anyhow::Error) -> anyhow::Error 
     log::warn!("acp: {headline}: {error:#}");
     let (reason, diagnostic) = sandbox_reason_ja(error);
     let mut message = match reason {
-        Some(reason) => format!("{headline}: {reason}"),
-        None => format!("{headline}。"),
+        Some(reason) => i18n::t!("{headline}: {reason}"),
+        None => i18n::t!("{headline}."),
     };
     if let Some(diagnostic) = diagnostic {
         message.push('\n');
-        message.push_str(SANDBOX_DIAGNOSTIC_LABEL);
+        message.push_str(i18n::tr(SANDBOX_DIAGNOSTIC_LABEL));
         message.push_str(": ");
         message.push_str(&diagnostic);
     }
@@ -2478,10 +2483,10 @@ fn sandbox_reason_ja(error: &anyhow::Error) -> (Option<String>, Option<String>) 
 fn sandbox_error_message_ja(error: &sandbox::SandboxError) -> String {
     let (reason, diagnostic) = sandbox_error_reason_ja(error);
     let mut message =
-        reason.unwrap_or_else(|| "サンドボックスを作成できませんでした。".to_string());
+        reason.unwrap_or_else(|| i18n::t!("Couldn't create the sandbox.").to_string());
     if let Some(diagnostic) = diagnostic {
         message.push('\n');
-        message.push_str(SANDBOX_DIAGNOSTIC_LABEL);
+        message.push_str(i18n::tr(SANDBOX_DIAGNOSTIC_LABEL));
         message.push_str(": ");
         message.push_str(&diagnostic);
     }
@@ -2494,36 +2499,45 @@ fn sandbox_error_reason_ja(error: &sandbox::SandboxError) -> (Option<String>, Op
     let whole = |sentence: &str| (Some(sentence.to_string()), None);
     match error {
         sandbox::SandboxError::UnsupportedPlatform => {
-            whole("この OS 向けのサンドボックスの実装がありません。")
+            whole(i18n::t!("There's no sandbox implementation for this OS."))
         }
         // Worded once, next to the other sandbox failures the agent panel
         // shows (`acp_thread::LinuxWslSandboxError`).
         sandbox::SandboxError::BwrapNotFound
         | sandbox::SandboxError::BwrapSetuidRejected
         | sandbox::SandboxError::SandboxProbeFailed => (
-            Some(acp_thread::LinuxWslSandboxError::from(error.clone()).user_facing_message()),
+            Some(acp_thread::LinuxWslSandboxError::from(error.clone()).display_message()),
             None,
         ),
-        // Already the Japanese explanation of what to fix.
-        sandbox::SandboxError::WslUnavailable(message) => (Some(message.clone()), None),
+        // Already the explanation of what to fix, in the UI language.
+        sandbox::SandboxError::WslUnavailable(message) => {
+            (Some(message.display().to_string()), None)
+        }
         sandbox::SandboxError::BridgeExecutableUnavailable(detail) => (
             Some(
-                "サンドボックスのブリッジ実行ファイルを見つけられませんでした。\
-                 Zed のインストールが壊れている可能性があります。"
-                    .to_string(),
+                i18n::t!(
+                    "The sandbox's bridge executable wasn't found. Zed's installation may be \
+                     damaged."
+                )
+                .to_string(),
             ),
             Some(detail.clone()),
         ),
         sandbox::SandboxError::UnsupportedPolicy(detail) => (
-            Some("この環境では、要求されたサンドボックスの構成を適用できません。".to_string()),
+            Some(
+                i18n::t!(
+                    "The requested sandbox configuration can't be applied in this environment."
+                )
+                .to_string(),
+            ),
             Some(detail.clone()),
         ),
         sandbox::SandboxError::InvalidRequest(detail) => (
-            Some("サンドボックスへの要求の内容が不正です。".to_string()),
+            Some(i18n::t!("The request to the sandbox is invalid.").to_string()),
             Some(detail.clone()),
         ),
         sandbox::SandboxError::Io(detail) => (
-            Some("サンドボックスの準備中に入出力エラーが発生しました。".to_string()),
+            Some(i18n::t!("An I/O error occurred while preparing the sandbox.").to_string()),
             Some(detail.clone()),
         ),
         sandbox::SandboxError::Other(detail) => (None, Some(detail.clone())),
@@ -2538,30 +2552,30 @@ fn sandbox_error_reason_ja(error: &sandbox::SandboxError) -> (Option<String>, Op
 fn wsl_worktree_roots_reason_ja(error: &WslWorktreeRootsError) -> String {
     match error {
         WslWorktreeRootsError::InvalidDistroName(name) => {
-            format!("`{name}` は WSL ディストリビューション名として使えません。")
+            i18n::t!("`{name}` can't be used as a WSL distribution name.")
         }
         WslWorktreeRootsError::NotAWindowsPath(path) => {
-            format!("{} は Windows の絶対パスではありません。", path.display())
+            i18n::t!("{} isn't an absolute Windows path.", path.display())
         }
-        WslWorktreeRootsError::DriveSeenThroughWsl(path) => format!(
-            "{} は WSL 経由で見えている Windows のドライブです。ドライブ文字で開いてください。",
+        WslWorktreeRootsError::DriveSeenThroughWsl(path) => i18n::t!(
+            "{} is a Windows drive seen through WSL. Open it by its drive letter.",
             path.display()
         ),
-        WslWorktreeRootsError::NetworkShare(path) => format!(
-            "{} はネットワーク共有上にあり、WSL のサンドボックスからは届きません。",
+        WslWorktreeRootsError::NetworkShare(path) => i18n::t!(
+            "{} is on a network share, which the WSL sandbox can't reach.",
             path.display()
         ),
-        WslWorktreeRootsError::MultipleDistros { first, second } => format!(
-            "プロジェクトのフォルダーが 2 つの WSL ディストリビューション (`{first}`、`{second}`) に\
-             またがっており、サンドボックスは 1 つのディストリビューションでしか動きません。"
+        WslWorktreeRootsError::MultipleDistros { first, second } => i18n::t!(
+            "The project's folders span two WSL distributions (`{first}`, `{second}`), and the \
+             sandbox runs in only one."
         ),
-        WslWorktreeRootsError::DistroMismatch { project, sandbox } => format!(
-            "プロジェクトは WSL ディストリビューション `{project}` にありますが、\
-             サンドボックスは `{sandbox}` で動いています。"
+        WslWorktreeRootsError::DistroMismatch { project, sandbox } => i18n::t!(
+            "The project is in the WSL distribution `{project}`, but the sandbox runs in \
+             `{sandbox}`."
         ),
-        WslWorktreeRootsError::DefaultDistroUnknown { project } => format!(
-            "プロジェクトは WSL ディストリビューション `{project}` にありますが、\
-             サンドボックスが動く既定のディストリビューションの名前が分かりません。"
+        WslWorktreeRootsError::DefaultDistroUnknown { project } => i18n::t!(
+            "The project is in the WSL distribution `{project}`, but the name of the default \
+             distribution the sandbox runs in isn't known."
         ),
     }
 }
@@ -2698,8 +2712,8 @@ fn local_agent_sandbox_policy(
     for path in write_scope {
         writable_paths.push(
             sandbox::HostFilesystemLocation::capture(path).with_context(|| {
-                format!(
-                    "書込を許可するフォルダー `{}` を確認できませんでした",
+                i18n::t!(
+                    "Couldn't check the folder `{}` that writing is allowed in",
                     path.display()
                 )
             })?,
@@ -2715,8 +2729,8 @@ fn local_agent_sandbox_policy(
     for path in readable_paths {
         readable.push(
             sandbox::HostFilesystemLocation::capture(path).with_context(|| {
-                format!(
-                    "エージェントのインストール先 `{}` を確認できませんでした",
+                i18n::t!(
+                    "Couldn't check the agent's install folder `{}`",
                     path.display()
                 )
             })?,
@@ -2794,12 +2808,15 @@ async fn local_sandboxed_agent_command(
         })
         .await
         .map_err(|error| {
-            sandbox_setup_failed("エージェントの設定フォルダーを用意できませんでした", &error)
+            sandbox_setup_failed(
+                i18n::t!("Couldn't prepare the agent's configuration folder"),
+                &error,
+            )
         })?;
     let AgentSandboxState::Resolved { config_dir, hosts } = placed.state.clone() else {
-        return Err(sandbox_unavailable(
-            "エージェントの設定フォルダーを用意できませんでした。",
-        ));
+        return Err(sandbox_unavailable(i18n::t!(
+            "Couldn't prepare the agent's configuration folder."
+        )));
     };
     ensure_hosts_allowed(&hosts, cx)?;
 
@@ -2808,7 +2825,10 @@ async fn local_sandboxed_agent_command(
     let policy =
         local_agent_sandbox_policy(&write_scope, &git_dirs, &placed.readable_paths, &hosts)
             .map_err(|error| {
-                sandbox_setup_failed("サンドボックスの構成を組み立てられませんでした", &error)
+                sandbox_setup_failed(
+                    i18n::t!("Couldn't put the sandbox configuration together"),
+                    &error,
+                )
             })?;
     let upstream_proxy = cx.update(|cx| crate::upstream_proxy_env(cx));
     let env = sandboxed_agent_environment(placed.env, upstream_proxy);
@@ -2824,7 +2844,7 @@ async fn local_sandboxed_agent_command(
             async move {
                 // Whether Bubblewrap is there and works: a brief probe.
                 sandbox::Sandbox::can_create(&policy).map_err(|error| {
-                    acp_thread::LinuxWslSandboxError::from(error).user_facing_message()
+                    acp_thread::LinuxWslSandboxError::from(error).display_message()
                 })?;
                 let mut sandbox = sandbox::Sandbox::new(policy)
                     .map_err(|error| sandbox_error_message_ja(&error))?;
@@ -2863,6 +2883,7 @@ async fn local_sandboxed_agent_command(
 /// given up on. The same figure the sandboxed Claude Code CLI waits, and for
 /// the same reason: a cold distro has to boot, and the helper may have to be
 /// installed into it first.
+#[cfg(target_os = "windows")]
 const WSL_WRAP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
 
 /// ADR-F49 第 2b 段: what an agent in a WSL distro's sandbox is started with,
@@ -2951,9 +2972,9 @@ async fn wsl_sandboxed_agent_command(
     let sandbox_command = command
         .sandbox
         .as_ref()
-        .ok_or_else(|| sandbox_unavailable(WSL_WITHOUT_RUNTIME_REASON))?;
+        .ok_or_else(|| sandbox_unavailable(i18n::tr(WSL_WITHOUT_RUNTIME_REASON)))?;
     let AgentSandboxState::Unresolved { profile } = &sandbox_command.state else {
-        return Err(sandbox_unavailable(WSL_WITHOUT_RUNTIME_REASON));
+        return Err(sandbox_unavailable(i18n::tr(WSL_WITHOUT_RUNTIME_REASON)));
     };
     let profile = profile.clone();
     let (fs, key_roots, worktree_roots, git_dirs) = project.read_with(cx, |project, cx| {
@@ -2965,9 +2986,9 @@ async fn wsl_sandboxed_agent_command(
         )
     });
     if key_roots.is_empty() {
-        return Err(sandbox_unavailable(
-            "フォルダーを開いていないプロジェクトでは、エージェントをサンドボックスで起動できません。",
-        ));
+        return Err(sandbox_unavailable(i18n::t!(
+            "Agents can't be started in a sandbox in a project that has no folder open."
+        )));
     }
     // ADR-F49 decision 15: the same key as the sandboxed Claude Code CLI, so
     // that the two share a sign-in on this machine.
@@ -2992,7 +3013,10 @@ async fn wsl_sandboxed_agent_command(
         .await
         .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
         .map_err(|error| {
-            sandbox_setup_failed("エージェントの設定フォルダーを用意できませんでした", &error)
+            sandbox_setup_failed(
+                i18n::t!("Couldn't prepare the agent's configuration folder"),
+                &error,
+            )
         })?;
     let distro_name = sandbox::registered_wsl_distro_name(distro.as_deref());
     let WslAgentPlan {
@@ -3015,7 +3039,10 @@ async fn wsl_sandboxed_agent_command(
         &hosts,
     )
     .map_err(|error| {
-        sandbox_setup_failed("サンドボックスの構成を組み立てられませんでした", &error)
+        sandbox_setup_failed(
+            i18n::t!("Couldn't put the sandbox configuration together"),
+            &error,
+        )
     })?;
 
     let editor_allowlist = cx.update(|cx| editor_allowlist_entries(cx));
@@ -3058,7 +3085,7 @@ async fn wsl_sandboxed_agent_command(
         .await
         .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
         .map_err(|error| {
-            sandbox_setup_failed("エージェントをサンドボックスで起動できませんでした", &error)
+            sandbox_setup_failed(i18n::t!("Couldn't start the agent in the sandbox"), &error)
         })?;
     let RestrictedIdeChannel {
         link: ide_link,
@@ -3153,7 +3180,9 @@ async fn start_restricted_ide_channel(
                 link: None,
                 unavailable: Some(
                     reason
-                        .unwrap_or_else(|| "理由は Zed のログに記録しました。".to_string())
+                        .unwrap_or_else(|| {
+                            i18n::t!("The reason was written to Zed's log.").to_string()
+                        })
                         .into(),
                 ),
             }
@@ -3286,13 +3315,14 @@ async fn wsl_sandboxed_agent_command(
     _paths: Option<&Arc<AcpPathTranslator>>,
     _cx: &mut AsyncApp,
 ) -> Result<WslAgentLaunch> {
-    Err(sandbox_unavailable(WSL_WITHOUT_RUNTIME_REASON))
+    Err(sandbox_unavailable(i18n::tr(WSL_WITHOUT_RUNTIME_REASON)))
 }
 
+#[cfg(target_os = "windows")]
 fn wsl_timed_out() -> String {
-    format!(
-        "WSL が {} 秒以内に応答しませんでした。しばらく待ってから再試行し、改善しない場合は \
-         `wsl --shutdown` で WSL を再起動してください。",
+    i18n::t!(
+        "WSL didn't respond within {} seconds. Wait a moment and try again, and if that doesn't \
+         help, restart WSL with `wsl --shutdown`.",
         WSL_WRAP_TIMEOUT.as_secs()
     )
 }
@@ -3324,15 +3354,6 @@ fn prepare_wsl_sandbox(
     // ADR-F49 第 2b 段: the command was resolved inside the distro, so its
     // environment is already Linux's and goes through as it is.
     sandbox.set_wsl_linux_environment();
-}
-
-#[cfg(not(target_os = "windows"))]
-fn prepare_wsl_sandbox(
-    _sandbox: &mut sandbox::Sandbox,
-    _editor_allowlist: Option<Vec<String>>,
-    _interactive: bool,
-    _session_id: Option<String>,
-) {
 }
 
 /// How an agent is started by a remote host's sandbox helper.
@@ -3476,9 +3497,9 @@ fn remote_sandboxed_agent_command(
     let sandbox_command = command
         .sandbox
         .as_ref()
-        .ok_or_else(|| sandbox_unavailable(OLD_REMOTE_SERVER_REASON))?;
+        .ok_or_else(|| sandbox_unavailable(i18n::tr(OLD_REMOTE_SERVER_REASON)))?;
     let AgentSandboxState::Resolved { hosts, .. } = &sandbox_command.state else {
-        return Err(sandbox_unavailable(OLD_REMOTE_SERVER_REASON));
+        return Err(sandbox_unavailable(i18n::tr(OLD_REMOTE_SERVER_REASON)));
     };
     ensure_hosts_allowed(hosts, cx)?;
     let (worktree_roots, git_dirs, network, network_ceiling, remote_client) =
@@ -3585,7 +3606,10 @@ async fn wrap_login_in_sandbox(
                 })
                 .await
                 .map_err(|error| {
-                    sandbox_setup_failed("サインインをサンドボックスで起動できませんでした", &error)
+                    sandbox_setup_failed(
+                        i18n::t!("Couldn't start the sign-in in the sandbox"),
+                        &error,
+                    )
                 })?;
             login_sandboxes
                 .borrow_mut()
@@ -3599,6 +3623,7 @@ async fn wrap_login_in_sandbox(
         // the same policy, the same configuration folder, the same hosts — on
         // a terminal of its own, so the code the agent prints can be pasted
         // into it. `NO_BROWSER` is already in the agent's environment.
+        #[cfg(target_os = "windows")]
         AgentSandboxRoute::Wsl {
             policy,
             distro: _,
@@ -3623,7 +3648,10 @@ async fn wrap_login_in_sandbox(
                 .await
                 .map_err(|_| sandbox_unavailable(wsl_timed_out()))?
                 .map_err(|error| {
-                    sandbox_setup_failed("サインインをサンドボックスで起動できませんでした", &error)
+                    sandbox_setup_failed(
+                        i18n::t!("Couldn't start the sign-in in the sandbox"),
+                        &error,
+                    )
                 })?;
             login_sandboxes
                 .borrow_mut()
@@ -4044,6 +4072,7 @@ impl AgentConnection for AcpConnection {
             .sandbox_session
             .as_ref()
             .and_then(|session| match &session.route {
+                #[cfg(target_os = "windows")]
                 AgentSandboxRoute::Wsl { distro, .. } => distro.clone(),
                 AgentSandboxRoute::Local { .. } | AgentSandboxRoute::Remote { .. } => None,
             });
@@ -4945,6 +4974,9 @@ mod tests {
     /// log-only) `Display` embedded in one.
     #[test]
     fn wsl_worktree_roots_reasons_are_worded_in_japanese() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
         let invalid_distro = WslWorktreeRootsError::InvalidDistroName("a/b".to_string());
         assert_eq!(
             wsl_worktree_roots_reason_ja(&invalid_distro),
@@ -5029,16 +5061,19 @@ mod tests {
     /// in English goes on its own, labelled line.
     #[test]
     fn sandbox_failures_are_worded_in_japanese() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
         let cases = [
             (sandbox::SandboxError::UnsupportedPlatform, None),
             (sandbox::SandboxError::BwrapNotFound, None),
             (sandbox::SandboxError::BwrapSetuidRejected, None),
             (sandbox::SandboxError::SandboxProbeFailed, None),
             (
-                sandbox::SandboxError::WslUnavailable(
+                sandbox::SandboxError::WslUnavailable(i18n::Bilingual::new(|| {
                     "WSL でサンドボックスを作成できませんでした: 既定のディストリビューションがありません。"
-                        .to_string(),
-                ),
+                        .to_string()
+                })),
                 None,
             ),
             (
@@ -5090,7 +5125,7 @@ mod tests {
             match diagnostic {
                 Some(expected) => assert_eq!(
                     detail,
-                    Some(format!("{SANDBOX_DIAGNOSTIC_LABEL}: {expected}").as_str()),
+                    Some(format!("{}: {expected}", i18n::tr(SANDBOX_DIAGNOSTIC_LABEL)).as_str()),
                 ),
                 None => assert_eq!(detail, None, "{message:?}"),
             }
@@ -5103,16 +5138,18 @@ mod tests {
     #[test]
     fn a_failure_that_words_itself_is_the_sentence() {
         let error = anyhow!("書込を許可するフォルダーを確認できませんでした。");
-        let message =
-            sandbox_setup_failed("サンドボックスの構成を組み立てられませんでした", &error)
-                .downcast::<LoadError>()
-                .expect("the card's error");
+        let message = sandbox_setup_failed(
+            i18n::t!("Couldn't put the sandbox configuration together"),
+            &error,
+        )
+        .downcast::<LoadError>()
+        .expect("the card's error");
         let LoadError::SandboxUnavailable(message) = message else {
             panic!("expected a sandbox card");
         };
         assert_eq!(
             message.as_ref(),
-            "サンドボックスの構成を組み立てられませんでした: 書込を許可するフォルダーを確認できませんでした。"
+            "Couldn't put the sandbox configuration together: 書込を許可するフォルダーを確認できませんでした。"
         );
     }
 
@@ -8299,7 +8336,7 @@ mod tests {
         let (tool_call_id, details) = waiting_confirmation(&thread, cx);
         assert_eq!(
             details.outside_sandbox_reason.as_deref(),
-            Some("設定でサンドボックスが無効になっています")
+            Some("The sandbox is turned off in the settings")
         );
         assert!(!details.allow_fs_write_all);
         answer_confirmation(
@@ -8369,11 +8406,11 @@ mod tests {
             tool_call.to_markdown(cx)
         });
         assert!(
-            card.contains("表示が長いため一部を省略しています"),
+            card.contains("Parts of this are left out because it is long"),
             "{card}"
         );
-        assert!(card.contains("… (残り 36 件)"), "{card}");
-        assert!(card.contains("バイト省略)"), "{card}");
+        assert!(card.contains("… (36 more)"), "{card}");
+        assert!(card.contains("bytes left out)"), "{card}");
         assert!(card.len() < 40 * 1024, "the card is {} bytes", card.len());
 
         answer_confirmation(
@@ -8533,7 +8570,9 @@ mod tests {
         connection: Rc<AcpConnection>,
         agent: ConnectionTo<Client>,
         new_sessions: Arc<Mutex<Vec<acp::NewSessionRequest>>>,
+        #[cfg(target_os = "windows")]
         prompts: Arc<Mutex<Vec<acp::PromptRequest>>>,
+        #[cfg(target_os = "windows")]
         session_lists: Arc<Mutex<Vec<acp::ListSessionsRequest>>>,
         _agent_io: Task<()>,
     }
@@ -8672,12 +8711,15 @@ mod tests {
             connection: Rc::new(connection),
             agent,
             new_sessions,
+            #[cfg(target_os = "windows")]
             prompts,
+            #[cfg(target_os = "windows")]
             session_lists,
             _agent_io: agent_io,
         }
     }
 
+    #[cfg(target_os = "windows")]
     fn wsl_translator(root: &str) -> Arc<AcpPathTranslator> {
         Arc::new(
             AcpPathTranslator::for_wsl(vec![PathBuf::from(root)], Some("Ubuntu"))
@@ -10782,15 +10824,17 @@ enum AgentTerminalLaunch {
 
 /// ADR-F49 decision 5 (8c): why a command of an agent started outside its
 /// sandbox on this Windows machine runs here, after the user allows it.
-const AGENT_ON_THIS_WINDOWS_HOST_REASON: &str = "エージェントをサンドボックスの外 (この PC) で\
-     起動しているため、コマンドもこの PC で実行します (WSL のサンドボックスでは Windows の\
-     コマンドが動かないため)";
+const AGENT_ON_THIS_WINDOWS_HOST_REASON: &str = i18n::msg!(
+    "The agent was started outside the sandbox (on this PC), so its commands run on this PC too \
+     (Windows commands don't run in the WSL sandbox)"
+);
 /// ADR-F49 decision 5 (8c): why a command of an agent in a WSL sandbox still
 /// runs in WSL, with nothing held back but the protected paths, when the
 /// sandbox is turned off in the settings.
-const AGENT_IN_WSL_UNSANDBOXED_REASON: &str = "設定でサンドボックスが無効になっています。\
-     エージェントは WSL の中で動いているため、コマンドも同じ WSL の中で書き込みと通信の制限を\
-     外して実行します";
+const AGENT_IN_WSL_UNSANDBOXED_REASON: &str = i18n::msg!(
+    "The sandbox is turned off in the settings. The agent runs inside WSL, so its commands run \
+     in the same WSL, without the write and network restrictions"
+);
 
 fn agent_terminal_launch(
     project: &Project,
@@ -10800,7 +10844,7 @@ fn agent_terminal_launch(
     let standing = &AgentSettings::get_global(cx).sandbox_permissions;
     if commands_os == AgentCommandsOs::WindowsHost {
         return AgentTerminalLaunch::Confirm {
-            outside_sandbox_reason: AGENT_ON_THIS_WINDOWS_HOST_REASON.to_string(),
+            outside_sandbox_reason: i18n::tr(AGENT_ON_THIS_WINDOWS_HOST_REASON).to_string(),
             writes_anywhere: false,
             sandbox_wrap: None,
         };
@@ -10828,7 +10872,7 @@ fn agent_terminal_launch(
         // sandbox" is the helper with its limits taken off: what it still
         // keeps back are the protected paths and the IDE-wide allowlist.
         return AgentTerminalLaunch::Confirm {
-            outside_sandbox_reason: AGENT_IN_WSL_UNSANDBOXED_REASON.to_string(),
+            outside_sandbox_reason: i18n::tr(AGENT_IN_WSL_UNSANDBOXED_REASON).to_string(),
             writes_anywhere: true,
             sandbox_wrap: Some(acp_thread::SandboxWrap {
                 allow_fs_write: true,
@@ -10839,8 +10883,10 @@ fn agent_terminal_launch(
     }
     if standing.allow_fs_write_all {
         AgentTerminalLaunch::Confirm {
-            outside_sandbox_reason: "設定でファイルシステムへの書き込みがすべて許可されています"
-                .to_string(),
+            outside_sandbox_reason: i18n::t!(
+                "The settings allow writing anywhere in the file system"
+            )
+            .to_string(),
             writes_anywhere: true,
             sandbox_wrap: Some(sandbox_wrap),
         }
@@ -10957,8 +11003,10 @@ const CARD_FIELD_LIMIT: usize = 4 * 1024;
 const CARD_ENTRY_LIMIT: usize = 64;
 const CARD_BODY_LIMIT: usize = 32 * 1024;
 
-const CARD_SHORTENED_NOTICE: &str =
-    "表示が長いため一部を省略しています。許可すると、省略した部分も含めてそのまま実行されます。";
+const CARD_SHORTENED_NOTICE: &str = i18n::msg!(
+    "Parts of this are left out because it is long. If you allow it, it runs in full, including \
+     the parts left out."
+);
 
 /// The card's one-line title: the command as the agent gave it, with anything
 /// that would not show up as itself written out.
@@ -10984,20 +11032,23 @@ fn agent_command_card_body(request: &acp::CreateTerminalRequest) -> String {
         budget: CARD_BODY_LIMIT,
         shortened: false,
     };
-    let mut sections = vec![("コマンド", card.field(shown_text(&request.command)))];
+    let mut sections = vec![(
+        i18n::t!("Command"),
+        card.field(shown_text(&request.command)),
+    )];
     if !request.args.is_empty() {
         sections.push((
-            "引数 (1 行に 1 つ)",
+            i18n::t!("Arguments (one per line)"),
             card.entries(request.args.iter().map(String::as_str).map(shown_text)),
         ));
     }
     let working_directory = match &request.cwd {
         Some(cwd) => card.field(shown_text(&cwd.to_string_lossy())),
-        None => "(指定なし)".to_string(),
+        None => i18n::t!("(not given)").to_string(),
     };
-    sections.push(("作業ディレクトリ", working_directory));
+    sections.push((i18n::t!("Working Directory"), working_directory));
     let environment = if request.env.is_empty() {
-        "(なし)".to_string()
+        i18n::t!("(none)").to_string()
     } else {
         card.entries(
             request
@@ -11006,7 +11057,10 @@ fn agent_command_card_body(request: &acp::CreateTerminalRequest) -> String {
                 .map(|variable| shown_text(&format!("{}={}", variable.name, variable.value))),
         )
     };
-    sections.push(("エージェントが設定する環境変数", environment));
+    sections.push((
+        i18n::t!("Environment Variables the Agent Sets"),
+        environment,
+    ));
 
     let body = sections
         .into_iter()
@@ -11022,7 +11076,7 @@ fn agent_command_card_body(request: &acp::CreateTerminalRequest) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     if card.shortened {
-        format!("{CARD_SHORTENED_NOTICE}\n\n{body}")
+        format!("{}\n\n{body}", i18n::tr(CARD_SHORTENED_NOTICE))
     } else {
         body
     }
@@ -11057,7 +11111,7 @@ impl CardText {
         let remaining = total.saturating_sub(lines.len());
         if remaining > 0 {
             self.shortened = true;
-            lines.push(format!("… (残り {remaining} 件)"));
+            lines.push(i18n::t!("… ({remaining} more)"));
         }
         lines.join("\n")
     }
@@ -11082,7 +11136,14 @@ fn shortened(text: String, limit: usize) -> (String, bool) {
         kept = text.get(..marker_start).unwrap_or_default();
     }
     let omitted = text.len() - kept.len();
-    (format!("{kept}… ({omitted} バイト省略)"), true)
+    (
+        i18n::tn!(
+            omitted,
+            "{kept}… ({count} byte left out)",
+            "{kept}… ({count} bytes left out)"
+        ),
+        true,
+    )
 }
 
 /// `text` with every character that would not show up as itself written out,

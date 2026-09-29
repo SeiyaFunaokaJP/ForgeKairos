@@ -91,7 +91,7 @@ impl Render for AgentModelSelector {
         let model_name = model
             .as_ref()
             .map(|model| model.model.name().0)
-            .unwrap_or_else(|| SharedString::from("モデルを選択"));
+            .unwrap_or_else(|| SharedString::from(i18n::t!("Select a Model")));
 
         let provider_icon = model.as_ref().map(|model| model.provider.icon());
         let color = if self.menu_handle.is_deployed() {

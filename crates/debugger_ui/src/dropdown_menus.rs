@@ -23,15 +23,13 @@ impl SessionListEntry {
         let mut label = String::new();
         for ancestor in &self.ancestors {
             label.push_str(&ancestor.update(cx, |ancestor, cx| {
-                ancestor.label(cx).unwrap_or("(子)".into())
+                ancestor.label(cx).unwrap_or(i18n::t!("(child)").into())
             }));
             label.push_str(" » ");
         }
-        label.push_str(
-            &self
-                .leaf
-                .update(cx, |leaf, cx| leaf.label(cx).unwrap_or("(子)".into())),
-        );
+        label.push_str(&self.leaf.update(cx, |leaf, cx| {
+            leaf.label(cx).unwrap_or(i18n::t!("(child)").into())
+        }));
         let label = truncate_and_trailoff(&label, MAX_LABEL_CHARS);
 
         let is_terminated = self
@@ -118,10 +116,12 @@ impl DebugPanel {
         let weak = cx.weak_entity();
         let trigger_label = if let Some(active_session) = active_session.clone() {
             active_session.update(cx, |active_session, cx| {
-                active_session.label(cx).unwrap_or("(子)".into())
+                active_session
+                    .label(cx)
+                    .unwrap_or(i18n::t!("(child)").into())
             })
         } else {
-            SharedString::new_static("不明なセッション")
+            SharedString::new_static(i18n::t!("Unknown Session"))
         };
         let running_state = running_state.read(cx);
 
@@ -212,7 +212,7 @@ impl DebugPanel {
         )
         .attach(Anchor::BottomLeft)
         .handle(self.session_picker_menu_handle.clone())
-        .trigger_tooltip(Tooltip::text("デバッグセッションを選択"));
+        .trigger_tooltip(Tooltip::text(i18n::t!("Select a Debug Session")));
 
         Some(menu)
     }

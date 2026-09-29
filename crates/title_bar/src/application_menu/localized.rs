@@ -1,4 +1,4 @@
-use gpui::Context;
+use gpui::{Context, OwnedMenu, OwnedMenuItem};
 use ui::PopoverMenuHandle;
 
 use super::{ApplicationMenu, MenuEntry};
@@ -16,18 +16,54 @@ impl ApplicationMenu {
             return;
         }
         self.menus_i18n_generation = generation;
-        for entry in &self.entries {
-            entry.handle.hide(cx);
+        self.reload_menus_if_replaced(cx);
+    }
+
+    /// Zed rebuilds the menus from settings other than `disable_ai` (the fork's
+    /// `agent.enabled` hides the Agent Panel item), so compare the menus themselves
+    /// rather than the settings that feed them.
+    ///
+    /// Zed replaces the menus from its own observer of the settings, which may run
+    /// after this view's observer; comparing on the next effect sees its menus.
+    pub(super) fn reload_menus_after_settings_change(&mut self, cx: &mut Context<Self>) {
+        self.reload_menus_if_replaced(cx);
+        let application_menu = cx.weak_entity();
+        cx.defer(move |cx| {
+            // The title bar may be gone by the time this runs; nothing to refresh then.
+            application_menu
+                .update(cx, |application_menu, cx| {
+                    if application_menu.reload_menus_if_replaced(cx) {
+                        cx.notify();
+                    }
+                })
+                .ok();
+        });
+    }
+
+    fn reload_menus_if_replaced(&mut self, cx: &mut Context<Self>) -> bool {
+        let menus = cx.get_menus().unwrap_or_default();
+        if self.entries.len() == menus.len()
+            && self
+                .entries
+                .iter()
+                .zip(&menus)
+                .all(|(entry, menu)| same_menu(&entry.menu, menu))
+        {
+            return false;
         }
-        self.entries = cx
-            .get_menus()
-            .unwrap_or_default()
+        for entry in &self.entries {
+            if entry.handle.is_deployed() {
+                entry.handle.hide(cx);
+            }
+        }
+        self.entries = menus
             .into_iter()
             .map(|menu| MenuEntry {
                 menu,
                 handle: PopoverMenuHandle::default(),
             })
             .collect();
+        true
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -36,6 +72,70 @@ impl ApplicationMenu {
             .iter()
             .map(|entry| entry.menu.name.clone())
             .collect()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn menu_item_names(&self, menu_name: &str) -> Option<Vec<String>> {
+        let entry = self
+            .entries
+            .iter()
+            .find(|entry| entry.menu.name == menu_name)?;
+        Some(
+            entry
+                .menu
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    OwnedMenuItem::Action { name, .. } => Some(name.clone()),
+                    _ => None,
+                })
+                .collect(),
+        )
+    }
+}
+
+fn same_menu(shown: &OwnedMenu, current: &OwnedMenu) -> bool {
+    shown.name == current.name
+        && shown.disabled == current.disabled
+        && shown.items.len() == current.items.len()
+        && shown
+            .items
+            .iter()
+            .zip(&current.items)
+            .all(|(shown, current)| same_menu_item(shown, current))
+}
+
+fn same_menu_item(shown: &OwnedMenuItem, current: &OwnedMenuItem) -> bool {
+    match (shown, current) {
+        (OwnedMenuItem::Separator, OwnedMenuItem::Separator) => true,
+        (OwnedMenuItem::Submenu(shown), OwnedMenuItem::Submenu(current)) => {
+            same_menu(shown, current)
+        }
+        (OwnedMenuItem::SystemMenu(shown), OwnedMenuItem::SystemMenu(current)) => {
+            shown.name == current.name
+        }
+        (
+            OwnedMenuItem::Action {
+                name: shown_name,
+                action: shown_action,
+                checked: shown_checked,
+                disabled: shown_disabled,
+                ..
+            },
+            OwnedMenuItem::Action {
+                name: current_name,
+                action: current_action,
+                checked: current_checked,
+                disabled: current_disabled,
+                ..
+            },
+        ) => {
+            shown_name == current_name
+                && shown_checked == current_checked
+                && shown_disabled == current_disabled
+                && shown_action.partial_eq(current_action.as_ref())
+        }
+        _ => false,
     }
 }
 
@@ -55,6 +155,17 @@ impl crate::TitleBar {
             .as_ref()
             .map(|menu| menu.read(cx).menu_names())
     }
+
+    /// The action items of one menu on the Windows and Linux menu bar.
+    pub fn application_menu_item_names(
+        &self,
+        menu_name: &str,
+        cx: &gpui::App,
+    ) -> Option<Vec<String>> {
+        self.application_menu
+            .as_ref()
+            .and_then(|menu| menu.read(cx).menu_item_names(menu_name))
+    }
 }
 
 #[cfg(test)]
@@ -62,7 +173,7 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     use super::super::OpenApplicationMenu;
     use super::*;
-    use gpui::{Menu, MenuItem, TestAppContext, VisualTestContext};
+    use gpui::{Menu, MenuItem, TestAppContext, UpdateGlobal as _, VisualTestContext};
     use i18n::test_support::LocaleOverride;
     gpui::actions!(application_menu_test, [NoOp]);
 
@@ -126,6 +237,46 @@ mod tests {
                 );
                 menu.pending_menu_open = None;
             });
+        }
+    }
+
+    fn item_names(menu: &gpui::Entity<ApplicationMenu>, cx: &mut VisualTestContext) -> Vec<String> {
+        menu.read_with(cx, |menu, _| menu.menu_item_names("View"))
+            .expect("the View menu is on the bar")
+    }
+
+    /// Zed rebuilds the menus from settings it reads itself (the fork's
+    /// `agent.enabled`), from an observer that may run after the menu bar's.
+    #[gpui::test]
+    fn menu_bar_follows_menus_replaced_after_a_settings_change(cx: &mut TestAppContext) {
+        init(cx);
+        let view_menu = |items: &[&'static str]| {
+            Menu::new("View").items(items.iter().map(|item| MenuItem::action(*item, NoOp)))
+        };
+        cx.update(|cx| cx.set_menus([view_menu(&["Agent Panel", "Diagnostics"])]));
+        let (menu, cx) = cx.add_window_view(|window, cx| ApplicationMenu::new(window, cx));
+        let with_agent_panel = std::rc::Rc::new(std::cell::Cell::new(true));
+        let _replaces_menus = cx.update(|_, cx| {
+            let with_agent_panel = with_agent_panel.clone();
+            cx.observe_global::<settings::SettingsStore>(move |cx| {
+                let items: &[&'static str] = if with_agent_panel.get() {
+                    &["Agent Panel", "Diagnostics"]
+                } else {
+                    &["Diagnostics"]
+                };
+                cx.set_menus([view_menu(items)]);
+            })
+        });
+        assert_eq!(item_names(&menu, cx), ["Agent Panel", "Diagnostics"]);
+
+        for (agent_panel, expected) in [
+            (false, &["Diagnostics"][..]),
+            (true, &["Agent Panel", "Diagnostics"][..]),
+        ] {
+            with_agent_panel.set(agent_panel);
+            cx.update(|_, cx| settings::SettingsStore::update_global(cx, |_, _| {}));
+            cx.run_until_parked();
+            assert_eq!(item_names(&menu, cx), expected);
         }
     }
 

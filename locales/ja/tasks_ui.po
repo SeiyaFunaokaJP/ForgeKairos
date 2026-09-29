@@ -1,0 +1,36 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Delete from Recent Tasks"
+msgstr "最近のタスクから削除します"
+
+msgid "Find a task, or run a command"
+msgstr "タスクを検索、またはコマンドを実行"
+
+msgid "Find a task, or run a command in the central pane"
+msgstr "タスクを検索、または中央ペインでコマンドを実行"
+
+msgid "Rerun"
+msgstr "再実行"
+
+msgid "Rerun Last Task"
+msgstr "直前のタスクを再実行"
+
+msgid "Rerun Without History"
+msgstr "履歴に残さず再実行"
+
+msgid "Spawn"
+msgstr "実行"
+
+msgid "Spawn Oneshot"
+msgstr "ワンショット実行"
+
+msgid "Spawn Oneshot Without History"
+msgstr "履歴に残さずワンショット実行"
+
+msgid "Spawn Without History"
+msgstr "履歴に残さず実行"

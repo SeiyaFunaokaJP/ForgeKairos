@@ -134,7 +134,12 @@ impl GoToLine {
         });
         let line_editor_change = cx.subscribe_in(&line_editor, window, Self::on_line_editor_event);
 
-        let current_text = format!("現在の行: {} / {} (列 {})", line, last_line + 1, column);
+        let current_text = i18n::t!(
+            "Current Line: {} of {} (column {})",
+            line,
+            last_line + 1,
+            column
+        );
 
         Self {
             line_editor,
@@ -309,13 +314,13 @@ impl Render for GoToLine {
             } else {
                 self.current_line.saturating_sub(offset.unsigned_abs())
             };
-            format!("{target_line} 行目へ移動 (現在位置から {offset:+})").into()
+            i18n::t!("Go to line {target_line} ({offset:+} from current)").into()
         } else {
             match self.line_and_char_from_query(cx) {
                 Some((line, Some(character))) => {
-                    format!("{line} 行 {character} 文字目へ移動").into()
+                    i18n::t!("Go to line {line}, character {character}").into()
                 }
-                Some((line, None)) => format!("{line} 行目へ移動").into(),
+                Some((line, None)) => i18n::t!("Go to line {line}").into(),
                 None => self.current_text.clone(),
             }
         };
@@ -358,6 +363,38 @@ mod tests {
     use std::{num::NonZeroU32, sync::Arc, time::Duration};
     use util::{path, rel_path::rel_path};
     use workspace::{AppState, MultiWorkspace, Workspace};
+
+    #[test]
+    fn test_selection_stats_text_matches_upstream_english() {
+        let text_for = |lines, characters, selections, is_short_format| {
+            let mut text = String::new();
+            cursor_position::write_selection_stats(
+                &mut text,
+                SelectionStats {
+                    lines,
+                    characters,
+                    selections,
+                },
+                is_short_format,
+            );
+            text
+        };
+
+        assert_eq!(
+            text_for(3, 10, 2, false),
+            " (2 selections, 3 lines, 10 characters)"
+        );
+        assert_eq!(text_for(3, 10, 2, true), " (2 s, 3 l, 10 c)");
+        assert_eq!(text_for(1, 1, 1, false), " (1 character)");
+        assert_eq!(text_for(1, 1, 1, true), " (1 c)");
+        assert_eq!(text_for(1, 0, 1, false), "");
+
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(text_for(3, 10, 2, false), " (2 選択範囲, 3 行, 10 文字)");
+        assert_eq!(text_for(3, 10, 2, true), " (2 選択, 3 行, 10 字)");
+    }
 
     #[gpui::test]
     async fn test_go_to_line_view_row_highlights(cx: &mut TestAppContext) {

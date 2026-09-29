@@ -148,7 +148,7 @@ pub(super) fn problem(document: &EventModelingDocument) -> Option<SharedString> 
     // `eventmodeling` on its own draws an empty picture, which a diagram
     // picked from the kind menu and confirmed at once should not leave behind.
     if document.frames.is_empty() {
-        return Some("フレームを 1 つ以上追加してください。".into());
+        return Some(i18n::t!("Add at least one frame.").into());
     }
     None
 }
@@ -180,7 +180,11 @@ fn next_frame_name(taken: &[&str]) -> String {
 }
 
 fn frame_kind_label(reset: bool) -> &'static str {
-    if reset { "リセット" } else { "時間" }
+    if reset {
+        i18n::tc!("event modeling frame", "Reset")
+    } else {
+        i18n::tc!("event modeling frame", "Time")
+    }
 }
 
 /// Where an arrow is kept: the frame it points into, and its place among that
@@ -388,8 +392,10 @@ impl MermaidEditor {
                     .map(|frame| frame.name.clone())
             });
         let Some(source) = source else {
-            self.message =
-                Some("矢印を足せる組がありません。先にフレームを追加してください。".into());
+            self.message = Some(
+                i18n::t!("There is no pair of frames to add an arrow between. Add a frame first.")
+                    .into(),
+            );
             cx.notify();
             return;
         };
@@ -582,11 +588,11 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_2()
-            .child(section_title("フレーム (上から時間順)"))
+            .child(section_title(i18n::t!("Frames (in time order from the top)")))
             .child(
-                Label::new(
-                    "番号・区切り・種類・レーン (省略可)・名前。2 行目は { } で囲んだデータ",
-                )
+                Label::new(i18n::t!(
+                    "Number, separator, type, lane (optional), name. The second line is data in {{ }}."
+                ))
                 .size(LabelSize::XSmall)
                 .color(Color::Muted),
             );
@@ -643,7 +649,7 @@ impl MermaidEditor {
                     index,
                     index == 0,
                     index >= last,
-                    "削除 (このフレームから出る矢印も消えます)",
+                    i18n::t!("Delete (arrows from this frame are deleted too)"),
                     cx.listener(move |this, _, _window, cx| {
                         this.move_event_modeling_frame(index, false, cx)
                     }),
@@ -659,7 +665,7 @@ impl MermaidEditor {
                 .gap_1()
                 .pl_4()
                 .child(
-                    Label::new("データ")
+                    Label::new(i18n::t!("Data"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -692,7 +698,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-em-add-frame",
-                "フレームを追加",
+                i18n::t!("Add Frame"),
                 cx.listener(|this, _, window, cx| this.add_event_modeling_frame(window, cx)),
             ))
             .into_any_element()
@@ -708,8 +714,14 @@ impl MermaidEditor {
         let this = cx.entity().downgrade();
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
             for (choice, description) in [
-                (false, "時間 (tf): 前のフレームから矢印が続く"),
-                (true, "リセット (rf): 矢印を受けず流れを区切る"),
+                (
+                    false,
+                    i18n::t!("Time (tf): an arrow continues from the previous frame"),
+                ),
+                (
+                    true,
+                    i18n::t!("Reset (rf): takes no arrow and starts a new flow"),
+                ),
             ] {
                 let this = this.clone();
                 menu = menu.toggleable_entry(
@@ -786,15 +798,15 @@ impl MermaidEditor {
                     .iter()
                     .find(|(choice, _)| choice == key)
                     .map_or(key, |(_, shown)| shown.as_str());
-                format!("参照: {shown}")
+                i18n::t!("Reference: {shown}")
             }
-            None => "参照なし".to_string(),
+            None => i18n::t!("No Reference").to_string(),
         };
         let this = cx.entity().downgrade();
         let selected = current.map(str::to_string);
         let choices = choices.to_vec();
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
-            let entries = std::iter::once((None, "参照なし".to_string())).chain(
+            let entries = std::iter::once((None, i18n::t!("No Reference").to_string())).chain(
                 choices
                     .iter()
                     .map(|(key, shown)| (Some(key.clone()), shown.clone())),
@@ -836,11 +848,11 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_1()
-            .child(section_title("矢印"))
+            .child(section_title(i18n::t!("Arrows")))
             .child(
-            Label::new(
-                "矢印の無い時間フレームには、直前の別レーンのフレームから自動で矢印が引かれます",
-            )
+            Label::new(i18n::t!(
+                "A time frame with no arrow gets one automatically from the closest earlier frame in another lane"
+            ))
             .size(LabelSize::XSmall)
             .color(Color::Muted),
         );
@@ -873,7 +885,7 @@ impl MermaidEditor {
                             )
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::XSmall)
-                            .tooltip(Tooltip::text("削除"))
+                            .tooltip(Tooltip::text(i18n::t!("Delete")))
                             .on_click(cx.listener(
                                 move |this, _, _window, cx| {
                                     this.remove_event_modeling_relation(at, cx)
@@ -887,7 +899,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-em-add-relation",
-                "矢印を追加",
+                i18n::t!("Add Arrow"),
                 cx.listener(|this, _, _window, cx| this.add_event_modeling_relation(cx)),
             ))
             .into_any_element()
@@ -966,7 +978,7 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_1()
-            .child(section_title("データ (フレームから参照)"));
+            .child(section_title(i18n::t!("Data (referenced from frames)")));
         for index in 0..form.data_blocks.len() {
             let (Some(row), Some(block)) = (
                 form.data_blocks.get(index),
@@ -989,9 +1001,10 @@ impl MermaidEditor {
                     .flex_1()
                     .min_w_0()
                     .child(
-                        Label::new(format!(
-                            "{} 行のデータ (複数行はテキストで編集)",
-                            block.value.lines().count()
+                        Label::new(i18n::tn!(
+                            block.value.lines().count(),
+                            "{count} line of data (edit multiple lines as text)",
+                            "{count} lines of data (edit multiple lines as text)"
                         ))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
@@ -1012,7 +1025,7 @@ impl MermaidEditor {
                         index,
                         index == 0,
                         index >= last,
-                        "削除 (このデータへの参照も外れます)",
+                        i18n::t!("Delete (references to this data are removed too)"),
                         cx.listener(move |this, _, _window, cx| {
                             this.move_event_modeling_data(index, false, cx)
                         }),
@@ -1028,7 +1041,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-em-add-data",
-                "データを追加",
+                i18n::t!("Add Data"),
                 cx.listener(|this, _, window, cx| this.add_event_modeling_data(window, cx)),
             ))
             .into_any_element()

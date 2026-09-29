@@ -57,8 +57,11 @@ use util::{
 
 mod jp_wire_revision;
 #[cfg(any(test, feature = "test-support"))]
+pub use jp_wire_revision::DisplayLanguageForTests;
+#[cfg(any(test, feature = "test-support"))]
 pub use jp_wire_revision::WireRevisionAnswerForTests;
 pub use jp_wire_revision::WireRevisionMismatch;
+pub use jp_wire_revision::{DISPLAY_LANGUAGE_ENV_VAR, DisplayLanguageHandler};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RemoteOs {
@@ -627,7 +630,7 @@ impl RemoteClient {
                 // opening the project behind it can take seconds on a large
                 // worktree, so the status keeps moving rather than leaving
                 // "プロキシを起動しています" as the last thing the user saw.
-                delegate.set_status(Some("リモートサーバーを初期化しています"), cx);
+                delegate.set_status(Some(i18n::t!("Initializing remote server")), cx);
                 let multiplex_task = Self::monitor(this.downgrade(), io_task, cx);
                 if let Err(error) = client.ping(HEARTBEAT_TIMEOUT).await {
                     log::error!("failed to establish connection: {}", error);
@@ -638,11 +641,12 @@ impl RemoteClient {
                     proxy_started.elapsed()
                 );
                 // zed-jp-enhance: before anything of this fork's is sent.
-                if let Err(error) = jp_wire_revision::confirm(&client).await {
+                let display_language = jp_wire_revision::display_language(cx);
+                if let Err(error) = jp_wire_revision::confirm(&client, display_language).await {
                     log::error!("failed to establish connection: {error:#}");
                     return Err(error);
                 }
-                delegate.set_status(Some("ワークスペースを開いています"), cx);
+                delegate.set_status(Some(i18n::t!("Opening workspace")), cx);
 
                 let heartbeat_task = Self::heartbeat(this.downgrade(), connection_activity_rx, cx);
 
@@ -893,7 +897,10 @@ impl RemoteClient {
             // back from a client it has not checked, but not waited on before
             // it (see `jp_wire_revision::confirm`). Both are polled together:
             // an answer nobody takes holds up every message behind it.
-            let wire_revision = jp_wire_revision::confirm(&client);
+            // The language shown now, which may have changed since the
+            // connection before; the server takes it up from here on.
+            let wire_revision =
+                jp_wire_revision::confirm(&client, jp_wire_revision::display_language(cx));
             let (resynced, wire_revision) =
                 futures::join!(client.resync(HEARTBEAT_TIMEOUT), wire_revision);
             if let Err(error) = resynced {
@@ -1493,7 +1500,10 @@ impl ConnectionPool {
                 if let Some(task) = task.upgrade() {
                     log::debug!("Connecting task is still alive");
                     cx.spawn(async move |cx| {
-                        delegate.set_status(Some("進行中の接続を待っています"), cx)
+                        delegate.set_status(
+                            Some(i18n::t!("Waiting for existing connection attempt")),
+                            cx,
+                        )
                     })
                     .detach();
                     return task;

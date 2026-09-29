@@ -139,8 +139,8 @@ impl TreemapDocument {
         if let Some(title) = &self.title
             && !is_valid_treemap_title(title)
         {
-            return Some(format!(
-                "タイトル `{title}` は書けません (改行、`%%`、`=\"`、`#…;` は不可)。"
+            return Some(i18n::t!(
+                "The title `{title}` cannot be written (line breaks, `%%`, `=\"` and `#…;` are not allowed)."
             ));
         }
         let mut previous_depth: Option<usize> = None;
@@ -150,8 +150,8 @@ impl TreemapDocument {
             }
             let deepest = previous_depth.map_or(0, |depth| depth + 1);
             if entry.depth > deepest {
-                return Some(format!(
-                    "項目 `{}` が親より 2 段以上深くなっています。",
+                return Some(i18n::t!(
+                    "The item `{}` is two or more levels deeper than its parent.",
                     entry.item.name
                 ));
             }
@@ -161,8 +161,8 @@ impl TreemapDocument {
                     .get(index + 1)
                     .is_some_and(|next| next.depth > entry.depth)
             {
-                return Some(format!(
-                    "値のある項目 `{}` の下に項目は置けません。中に項目を入れるときは値を空にしてください。",
+                return Some(i18n::t!(
+                    "Items cannot be placed under the item `{}`, which has a value. To put items inside it, leave its value empty.",
                     entry.item.name
                 ));
             }
@@ -170,15 +170,16 @@ impl TreemapDocument {
         }
         for class_def in &self.class_defs {
             if !is_valid_treemap_class_name(&class_def.name) {
-                return Some(format!(
-                    "クラス名 `{}` は使えません (英字か `_` で始まる英数字と `_` だけ)。",
+                return Some(i18n::t!(
+                    "The class name `{}` cannot be used (only ASCII letters, digits and `_`, starting with a letter or `_`).",
                     class_def.name
                 ));
             }
             if !is_valid_treemap_style(&class_def.style) {
-                return Some(format!(
-                    "クラス `{}` のスタイル `{}` は書けません (`名前:値` を `,` で区切る。`;` と `%%` は不可)。",
-                    class_def.name, class_def.style
+                return Some(i18n::t!(
+                    "The style `{style}` of the class `{name}` cannot be written (separate `name:value` pairs with `,`; `;` and `%%` are not allowed).",
+                    name = class_def.name,
+                    style = class_def.style
                 ));
             }
         }
@@ -263,12 +264,14 @@ fn scan_treemap(source: &str) -> Result<TreemapDocument> {
         .iter()
         .find_map(|header| keyword_tail(header_line, header).map(|tail| (*header, tail)))
     else {
-        bail!("ツリーマップではありません (`treemap-beta` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a treemap (only a diagram that starts with `treemap-beta` can be edited in the structured editor)."
+        ));
     };
     if !tail.is_empty() {
-        bail!(
-            "`{header}` の行の `{tail}` は構造化編集に対応していません (Mermaid はこの図を描けません)。"
-        );
+        bail!(i18n::t!(
+            "The structured editor does not support `{tail}` on the `{header}` line (Mermaid cannot draw this diagram)."
+        ));
     }
 
     let mut title: Option<String> = None;
@@ -294,18 +297,19 @@ fn scan_treemap(source: &str) -> Result<TreemapDocument> {
             }
             let text = join_lines(lines.get(start..index).unwrap_or_default());
             if let Some(statement) = statement_after_directive(&text) {
-                bail!(
-                    "`%%{{…}}%%` の後ろの `{statement}` は構造化編集に対応していません。指示子と文を別の行に分けてからもう一度開いてください。"
-                );
+                bail!(i18n::t!(
+                    "`{statement}` after `%%{{…}}%%` is not supported by the structured editor. Put the directive and the statement on separate lines, then open it again."
+                ));
             }
             preserved_lines.push(PreservedLine { position, text });
             continue;
         }
         let statement = strip_inline_comment(line);
         if statement.trim_end().len() != line.trim_end().len() {
-            bail!(
-                "文の末尾のコメントは構造化編集で失われます ({trimmed})。コメントを独立した行に移すか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text.",
+                statement = trimmed
+            ));
         }
         if trimmed.starts_with("accTitle") || trimmed.starts_with("accDescr") {
             preserved_lines.push(PreservedLine {
@@ -316,14 +320,14 @@ fn scan_treemap(source: &str) -> Result<TreemapDocument> {
         }
         if trimmed.starts_with("title") {
             let Some(text) = keyword_tail(trimmed, "title") else {
-                bail!(
-                    "`{trimmed}` は構造化編集に対応していません。`title` のあとに空白を入れてください。"
-                );
+                bail!(i18n::t!(
+                    "The structured editor does not support `{trimmed}`. Put a space after `title`."
+                ));
             };
             if title.is_some() {
-                bail!(
-                    "`title` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。"
-                );
+                bail!(i18n::t!(
+                    "`title` is written twice. Mermaid uses only the later one, so merge them into one, then open the editor again."
+                ));
             }
             title = (!text.is_empty()).then(|| text.to_string());
             continue;
@@ -370,9 +374,9 @@ fn scan_treemap(source: &str) -> Result<TreemapDocument> {
 
 fn read_class_def(statement: &str) -> Result<TreemapClassDef> {
     let unsupported = || {
-        anyhow!(
-            "`{statement}` は構造化編集に対応していません (`classDef 名前 スタイル;` の形だけ)。テキストのまま編集してください。"
-        )
+        anyhow!(i18n::t!(
+            "The structured editor does not support `{statement}` (only the form `classDef name style;`). Edit it as text."
+        ))
     };
     let rest = keyword_tail(statement, "classDef").ok_or_else(unsupported)?;
     let name_length = class_name_length(rest);
@@ -385,9 +389,9 @@ fn read_class_def(statement: &str) -> Result<TreemapClassDef> {
     let (style, terminated) = match after.split_once(';') {
         Some((style, dropped)) => {
             if !dropped.trim().is_empty() {
-                bail!(
-                    "`{statement}` の `;` のあとは Mermaid が読み飛ばします。消すかテキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "Mermaid skips what follows the `;` in `{statement}`. Delete it or edit it as text."
+                ));
             }
             (style.trim(), true)
         }
@@ -404,9 +408,9 @@ fn read_class_def(statement: &str) -> Result<TreemapClassDef> {
 /// `parse_item_row` does.
 fn read_item(rest: &str) -> Result<TreemapItem> {
     let unreadable = || {
-        anyhow!(
-            "ツリーマップの項目として読めませんでした ({rest})。`\"名前\"` か `\"名前\": 値` の形で書いてください。"
-        )
+        anyhow!(i18n::t!(
+            "This could not be read as a treemap item ({rest}). Write it as `\"name\"` or `\"name\": value`."
+        ))
     };
     let quote = rest
         .chars()
@@ -433,9 +437,9 @@ fn read_item(rest: &str) -> Result<TreemapItem> {
             return Err(unreadable());
         }
         if !is_valid_treemap_value(token) {
-            bail!(
-                "項目 `{name}` の値 `{token}` は構造化編集に対応していません (Mermaid は `_` や 2 つ目の `.` から先を読み飛ばします)。"
-            );
+            bail!(i18n::t!(
+                "The structured editor does not support the value `{token}` of the item `{name}` (Mermaid skips everything from a `_` or a second `.` on)."
+            ));
         }
         value = Some(token.to_string());
         after = number.get(length..).unwrap_or_default().trim_start();
@@ -545,13 +549,13 @@ pub fn treemap_number(token: &str) -> Option<Value> {
 fn check_against_merman(source: &str, document: &TreemapDocument) -> Result<()> {
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| {
-            anyhow!(
-                "Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "Mermaid could not parse this diagram ({error}). Edit it as text."
+            ))
         })?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
     let RenderSemanticModel::Treemap(model) = parsed.into_parts().1 else {
-        bail!("この図はツリーマップではありません。");
+        bail!(i18n::t!("This diagram is not a treemap."));
     };
 
     let drawn_title = model
@@ -565,7 +569,9 @@ fn check_against_merman(source: &str, document: &TreemapDocument) -> Result<()> 
         _ => false,
     };
     if !title_matches {
-        bail!("タイトルを Mermaid と同じように読めませんでした。テキストのまま編集してください。");
+        bail!(i18n::t!(
+            "The title could not be read the same way Mermaid reads it. Edit it as text."
+        ));
     }
 
     // The tree in the order it is written, walked with a stack of its own so
@@ -591,11 +597,11 @@ fn check_against_merman(source: &str, document: &TreemapDocument) -> Result<()> 
     }
 
     if drawn.len() != document.entries.len() {
-        bail!(
-            "Mermaid はこのツリーマップを {} 個の項目として読みましたが、構造化エディターは {} 個と読みました。テキストのまま編集してください。",
+        bail!(i18n::t!(
+            "Mermaid read this treemap as {} items, but the structured editor read {}. Edit it as text.",
             drawn.len(),
             document.entries.len()
-        );
+        ));
     }
     for ((depth, node), entry) in drawn.iter().zip(&document.entries) {
         let item = &entry.item;
@@ -605,10 +611,10 @@ fn check_against_merman(source: &str, document: &TreemapDocument) -> Result<()> 
             && node.value == item.value.as_deref().and_then(treemap_number)
             && node.class_selector == item.class;
         if !matches {
-            bail!(
-                "項目 `{}` を Mermaid と同じように読めませんでした。テキストのまま編集してください。",
+            bail!(i18n::t!(
+                "The item `{}` could not be read the same way Mermaid reads it. Edit it as text.",
                 item.name
-            );
+            ));
         }
     }
     Ok(())
@@ -744,27 +750,27 @@ pub fn is_valid_treemap_style(style: &str) -> bool {
 /// The first thing wrong with one item, in Japanese.
 pub fn treemap_item_problem(item: &TreemapItem) -> Option<String> {
     if item.name.trim().is_empty() {
-        return Some("名前が空の項目があります。".to_string());
+        return Some(i18n::t!("There is an item with an empty name.").to_string());
     }
     if !is_valid_treemap_name(item) {
-        return Some(format!(
-            "項目名 `{}` は書けません (改行、`%%{{`、`=\"`、`#…;` は不可、`\"` と `'` を両方含むこともできません)。",
+        return Some(i18n::t!(
+            "The item name `{}` cannot be written (line breaks, `%%{{`, `=\"` and `#…;` are not allowed, and it cannot contain both `\"` and `'`).",
             item.name
         ));
     }
     if let Some(value) = &item.value
         && !is_valid_treemap_value(value)
     {
-        return Some(format!(
-            "項目 `{}` の値 `{value}` は数値として読めません (0 以上の数。桁区切りの `,` と小数点の `.` は使えます)。",
+        return Some(i18n::t!(
+            "The value `{value}` of the item `{}` cannot be read as a number (a number of 0 or more; `,` as a thousands separator and `.` as the decimal point are allowed).",
             item.name
         ));
     }
     if let Some(class) = &item.class
         && !is_valid_treemap_class_name(class)
     {
-        return Some(format!(
-            "項目 `{}` のクラス `{class}` は使えません。",
+        return Some(i18n::t!(
+            "The class `{class}` of the item `{}` cannot be used.",
             item.name
         ));
     }
@@ -909,24 +915,39 @@ mod tests {
     #[test]
     fn what_mermaid_would_drop_or_misread_is_refused() {
         for (source, reason) in [
-            ("treemap-beta utilities\n\"A\": 1", "の行の"),
-            ("treemap-beta\n\"A\": 1 %% メモ", "末尾のコメント"),
+            (
+                "treemap-beta utilities\n\"A\": 1",
+                "on the `treemap-beta` line",
+            ),
+            ("treemap-beta\n\"A\": 1 %% メモ", "comment at the end"),
             ("treemap-beta\n\"A\": 1_000", "`1_000`"),
             ("treemap-beta\n\"A\": 1.2.3", "`1.2.3`"),
-            ("treemap-beta\ntitle A\ntitle B\n\"A\": 1", "2 回"),
-            ("treemap-beta\ntitleA\n\"A\": 1", "空白"),
+            ("treemap-beta\ntitle A\ntitle B\n\"A\": 1", "written twice"),
+            (
+                "treemap-beta\ntitleA\n\"A\": 1",
+                "Put a space after `title`",
+            ),
             (
                 "treemap-beta\nclassDef a fill:red; x\n\"A\": 1",
-                "`;` のあと",
+                "follows the `;`",
             ),
             ("treemap-beta\nclassDef 日本 fill:red\n\"A\": 1", "classDef"),
-            ("treemap-beta\nA: 1", "項目として読めません"),
-            ("treemap-beta\n\"A\": 1 2", "項目として読めません"),
-            ("treemap-beta\n\"A\":::a-b", "項目として読めません"),
-            ("treemap-beta\n\"A\": x", "項目として読めません"),
+            ("treemap-beta\nA: 1", "could not be read as a treemap item"),
+            (
+                "treemap-beta\n\"A\": 1 2",
+                "could not be read as a treemap item",
+            ),
+            (
+                "treemap-beta\n\"A\":::a-b",
+                "could not be read as a treemap item",
+            ),
+            (
+                "treemap-beta\n\"A\": x",
+                "could not be read as a treemap item",
+            ),
             (
                 "treemap-beta\nclassDef c color\n\"A\": 1",
-                "Mermaid の構文として読めませんでした",
+                "Mermaid could not parse",
             ),
         ] {
             let message = refusal(source);
@@ -946,7 +967,7 @@ mod tests {
                         entry.item.value = Some("1_000".to_string());
                     }
                 },
-                "`1_000` は数値として読めません",
+                "The value `1_000`",
             ),
             (
                 |document| {
@@ -954,7 +975,7 @@ mod tests {
                         entry.item.name = "\"と'".to_string();
                     }
                 },
-                "両方含む",
+                "contain both",
             ),
             (
                 |document| {
@@ -962,14 +983,14 @@ mod tests {
                         entry.item.name = " ".to_string();
                     }
                 },
-                "名前が空",
+                "empty name",
             ),
             (
                 |document| {
                     // 実装 goes under 設計, which has a value.
                     outline_indent(&mut document.entries, 2);
                 },
-                "値のある項目 `設計` の下",
+                "under the item `設計`, which has a value",
             ),
             (
                 |document| {
@@ -977,11 +998,11 @@ mod tests {
                         entry.item.class = Some("a-b".to_string());
                     }
                 },
-                "クラス `a-b`",
+                "class `a-b`",
             ),
             (
                 |document| document.title = Some("a %% b".to_string()),
-                "タイトル",
+                "title",
             ),
             (
                 |document| {
@@ -991,7 +1012,7 @@ mod tests {
                         terminated: false,
                     })
                 },
-                "スタイル `color`",
+                "style `color`",
             ),
         ];
         for (edit, reason) in cases {
@@ -1064,7 +1085,10 @@ mod tests {
         let message = refusal(
             "treemap-beta\n\"A\"\n    %%{init: {}}%% classDef c fill:red\n    \"b\": 1:::c",
         );
-        assert!(message.contains("指示子と文を別の行"), "{message}");
+        assert!(
+            message.contains("Put the directive and the statement on separate lines"),
+            "{message}"
+        );
         let source = "treemap-beta\n    %%{init: {}}%%\n    \"A\"\n        \"b\": 1";
         assert_eq!(assert_stable(source), source);
     }
@@ -1084,7 +1108,7 @@ mod tests {
             assert!(
                 document
                     .structure_error()
-                    .is_some_and(|error| error.contains("項目名")),
+                    .is_some_and(|error| error.contains("item name")),
                 "{name:?}"
             );
         }

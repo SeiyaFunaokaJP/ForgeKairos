@@ -5,6 +5,396 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid " (Outside Sandbox)"
+msgstr " (サンドボックスの外)"
+
+msgid "\"{title}\" is required."
+msgstr "「{title}」は必須です。"
+
+msgid "\"{title}\" must be a number."
+msgstr "「{title}」には数値を入力してください。"
+
+msgid "\"{title}\" must be an integer."
+msgstr "「{title}」には整数を入力してください。"
+
+msgid "(Current Plan)"
+msgstr "(現在のプラン)"
+
+msgid "(added)"
+msgstr "(登録済み)"
+
+msgid "(not added)"
+msgstr "(未登録)"
+
+msgid "/tmp (isolated)"
+msgstr "/tmp (分離)"
+
+msgid "1 Queued Message"
+msgstr "待機中のメッセージ 1 件"
+
+msgid "1 Skill Loaded with a Long Description"
+msgstr "説明が長いスキルを 1 件読み込みました"
+
+msgid "1 global rule"
+msgstr "グローバルルール 1 件"
+
+msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
+msgstr "ワイルドカードを含むホスト ({pattern}) は、同意からは許可リストに追加できません。"
+
+msgid "ACP Registry"
+msgstr "ACP レジストリ"
+
+msgid "AI Judge (Auto-Run If Safe)"
+msgstr "AI が判定 (安全なら自動実行)"
+
+msgid "AI Judge On"
+msgstr "AI が判定 中"
+
+msgid "AI judge: canceled — {}"
+msgstr "AI 判定: 中止 — {}"
+
+msgid "AI judge: not applicable — {}"
+msgstr "AI 判定: 対象外 — {}"
+
+msgid "AI judge: safe (auto-run) — {}"
+msgstr "AI 判定: 安全 (自動実行) — {}"
+
+msgid "AI judge: safe (auto-run, earlier verdict reused) — {}"
+msgstr "AI 判定: 安全 (自動実行、前回の判定を再利用) — {}"
+
+msgid "AI judge: unsafe — {}"
+msgstr "AI 判定: 危険 — {}"
+
+msgid "AI judging…"
+msgstr "AI が判定中…"
+
+msgid "API Error"
+msgstr "API エラー"
+
+msgid "API key is set (settings.json)"
+msgstr "API キーは設定済みです (settings.json)"
+
+msgid "AVX2 could not be confirmed on the WSL CPU, so the Linux build of Claude Code (x64) cannot run."
+msgstr "WSL の CPU で AVX2 を確認できないため、Linux 版 Claude Code (x64) は動作しません。"
+
+msgid "AVX2 could not be confirmed on the remote host's CPU, so the Linux build of Claude Code (x64) cannot run."
+msgstr "接続先のホストの CPU で AVX2 を確認できないため、Linux 版 Claude Code (x64) は動作しません。"
+
+msgid "About {tokens} tokens"
+msgstr "概算 {tokens} トークン"
+
+msgid "Accept Generation"
+msgstr "生成を採用"
+
+msgid "Accept Transform"
+msgstr "変換を採用"
+
+msgid "Actions"
+msgstr "アクション"
+
+msgid "Add Context"
+msgstr "コンテキストを追加"
+
+msgid "Add More Agents"
+msgstr "エージェントを追加"
+
+msgid "Add New Profile"
+msgstr "新しいプロファイルを追加"
+
+msgid "Add Server…"
+msgstr "サーバーを追加…"
+
+msgid "Add a prompt…"
+msgstr "プロンプトを追加…"
+
+msgid "Add to Allowlist and Check"
+msgstr "許可リストに追加して確認"
+
+msgid "Add to Allowlist and Continue"
+msgstr "許可リストに追加して続行"
+
+msgid "Add to Allowlist and Install"
+msgstr "許可リストに追加してインストール"
+
+msgid "Add to Allowlist and Start"
+msgstr "許可リストに追加して起動"
+
+msgid "Add to Allowlist and Update"
+msgstr "許可リストに追加して更新"
+
+msgid "Agent"
+msgstr "エージェント"
+
+msgid "Agent Changes Rejected"
+msgstr "エージェントの変更を拒否しました"
+
+msgid "Agent Diff"
+msgstr "エージェント差分"
+
+msgid "Agent Panel"
+msgstr "エージェントパネル"
+
+msgid "Agent Profiles"
+msgstr "エージェントプロファイル"
+
+msgid "Agent Update Available"
+msgstr "エージェントの更新があります"
+
+msgid "Agent stopped due to an error"
+msgstr "エラーによりエージェントが停止しました"
+
+msgid "Agents"
+msgstr "エージェント"
+
+msgid "Agree and Install"
+msgstr "了承してインストール"
+
+msgid "Agree and Update"
+msgstr "了承して更新"
+
+msgid "All"
+msgstr "すべて"
+
+msgid "All Done"
+msgstr "すべて完了"
+
+msgid "All Options"
+msgstr "すべてのオプション"
+
+msgid "All domains (unrestricted)"
+msgstr "すべてのドメイン (制限なし)"
+
+msgid "All paths except protected Git metadata"
+msgstr "保護された Git メタデータを除くすべてのパス"
+
+msgid "All tools are disabled because this project isn't trusted"
+msgstr "このプロジェクトは未信頼のため、ツールをすべて無効にしています"
+
+msgid "Allow"
+msgstr "許可"
+
+msgid "Allowed for this thread:"
+msgstr "このスレッドでの許可:"
+
+msgid "Already rated this completion"
+msgstr "この生成結果は評価済みです"
+
+msgid "Also possible by placing your cursor inside the terminal and using regular terminal bindings."
+msgstr "ターミナル内にカーソルを置いて通常のターミナルのキーバインドを使うこともできます。"
+
+msgid "Always for selected commands"
+msgstr "選択したコマンドで常に許可"
+
+msgid "An Error Happened"
+msgstr "エラーが発生しました"
+
+msgid "Anthropic will retain inference logs."
+msgstr "Anthropic が推論ログを保持します。"
+
+msgid "Apply"
+msgstr "適用"
+
+msgid "Archive Thread"
+msgstr "スレッドをアーカイブ"
+
+msgid "Associate the \"{}\" thread with..."
+msgstr "スレッド \"{}\" の関連付け先を選択..."
+
+msgid "Attachments {tokens}"
+msgstr "添付 {tokens}"
+
+msgid "Authenticate"
+msgstr "認証"
+
+msgid "Authenticate to connect this server"
+msgstr "このサーバーに接続するには認証が必要です"
+
+msgid "Authenticate to {}"
+msgstr "{} の認証"
+
+msgid "Authenticating to {}…"
+msgstr "{} を認証中…"
+
+msgid "Authenticating…"
+msgstr "認証しています…"
+
+msgid "Authentication Failed"
+msgstr "認証に失敗しました"
+
+msgid "Authentication Required"
+msgstr "認証が必要です"
+
+msgid "Auto (Outline If Large)"
+msgstr "自動 (大きければアウトライン)"
+
+msgid "Auto-Approve (In Sandbox)"
+msgstr "全自動 (サンドボックス内)"
+
+msgid "Auto-Approve On"
+msgstr "全自動 中"
+
+msgid "Awaiting Confirmation"
+msgstr "確認待ち"
+
+msgid "Awaiting Confirmation ({pending_count})"
+msgstr "確認待ち ({pending_count})"
+
+msgid "Bad Result"
+msgstr "悪い結果"
+
+msgid "Branch Diff"
+msgstr "ブランチ差分"
+
+msgid "Can write anywhere except the protected paths, which is nearly the same as running outside the sandbox"
+msgstr "保護されたパス以外のどこにでも書き込めるため、サンドボックスの外で実行するのとほぼ同じです"
+
+msgid "Can't Start in the Sandbox"
+msgstr "サンドボックスで起動できません"
+
+msgid "Can't Start {} in the Sandbox"
+msgstr "{} をサンドボックスで起動できません"
+
+msgid "Can't rate, still generating..."
+msgstr "生成中のため評価できません..."
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cancel Restore"
+msgstr "復元をキャンセル"
+
+msgid "Cancel Without Adding"
+msgstr "追加せず中止"
+
+msgid "Canceled"
+msgstr "キャンセル済み"
+
+msgid "Canceled because the Claude Code download server did not respond for 60 seconds."
+msgstr "Claude Code の配布元から 60 秒間応答がないため中止しました。"
+
+msgid "Canceled because the Claude Code download server tried to redirect to another location."
+msgstr "Claude Code の配布元が別の場所へ転送しようとしたため中止しました。"
+
+msgid "Canceled because {url} is larger than expected."
+msgstr "{url} が想定より大きいため中止しました。"
+
+msgid "Canceled checking for Claude Code updates."
+msgstr "Claude Code の更新の確認を中止しました。"
+
+msgid "Canceled downloading the Linux build of Claude Code."
+msgstr "Linux 版 Claude Code の取得を中止しました。"
+
+msgid "Cannot switch to the form because the JSON could not be read: {error}"
+msgstr "JSON を読み取れないため、フォームに切り替えられません: {error}"
+
+msgid "Change"
+msgstr "変更"
+
+msgid "Change Mode"
+msgstr "モードを変更"
+
+msgid "Change Model"
+msgstr "モデルを変更"
+
+msgid "Change Profile"
+msgstr "プロファイルを変更"
+
+msgid "Change Thinking Effort"
+msgstr "思考の深さを変更"
+
+msgid "Change Tool Permissions"
+msgstr "ツールの権限を変更"
+
+msgid "Changes will be discarded"
+msgstr "変更は破棄されます"
+
+msgid "Changes won't be discarded"
+msgstr "変更は破棄されません"
+
+msgid "Chat about anything with no tools."
+msgstr "ツールを使わずに何でも対話します。"
+
+msgid "Chat about your codebase."
+msgstr "コードベースについて対話します。"
+
+msgid "Check for Claude Code Updates"
+msgstr "Claude Code の更新を確認します"
+
+msgid "Check the server docs for required arguments and environment variables."
+msgstr "必要な引数と環境変数についてはサーバーのドキュメントを確認してください。"
+
+msgid "Checking the Claude Code already placed…"
+msgstr "配置済みの Claude Code を確認しています…"
+
+msgid "Choose a different model or configure other providers to get started"
+msgstr "別のモデルを選ぶか、他のプロバイダーを設定して開始してください"
+
+msgid "Choose from Local Folders"
+msgstr "ローカルフォルダーから選択"
+
+msgid "Choose one of the following authentication options:"
+msgstr "次の認証方法から 1 つを選択してください:"
+
+msgid "Claude Code (Sandbox)"
+msgstr "Claude Code (サンドボックス)"
+
+msgid "Claude Code (sandbox) is still starting for this project. Try again once it has started."
+msgstr "このプロジェクトの Claude Code (サンドボックス) を起動しています。起動が終わってからもう一度お試しください。"
+
+msgid "Claude Code (sandbox) needs hosts added to the allowlist to connect"
+msgstr "Claude Code (サンドボックス) の通信に許可リストへの追加が必要です"
+
+msgid "Claude Code changed while it was being sent to the remote host. Please try again."
+msgstr "接続先へ送るあいだに Claude Code が変わりました。もう一度お試しください。"
+
+msgid "Claude Code for the sandbox is only available on Windows (WSL)."
+msgstr "サンドボックス用の Claude Code は Windows (WSL) でのみ使えます。"
+
+msgid "Claude Code will start, but the IDE integration (diff tabs and diagnostics) is not available: "
+msgstr "Claude Code は起動しますが、IDE 連携 (差分タブ・診断) は使えません: "
+
+msgid "Clear All"
+msgstr "すべてクリア"
+
+msgid "Clear Plan"
+msgstr "計画をクリア"
+
+msgid "Clear Search"
+msgstr "検索をクリア"
+
+msgid "Click to Collapse"
+msgstr "クリックすると折りたたみます"
+
+msgid "Click to Preview"
+msgstr "クリックするとプレビューします"
+
+msgid "Click to copy rating ID"
+msgstr "クリックして評価 ID をコピー"
+
+msgid "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
+msgstr "クリックするとこのエージェントのスレッドを開きます。ここからは更新せず、実行中のセッションも止めません。新しく接続したスレッドは最新版で起動し、実行中のスレッドには更新バナーが出ます。"
+
+msgid "Clipboard does not contain text"
+msgstr "クリップボードにテキストが含まれていません。"
+
+msgid "Close Assistant"
+msgstr "アシスタントを閉じる"
+
+msgid "Close Search"
+msgstr "検索を閉じる"
+
+msgid "Close Tab"
+msgstr "タブを閉じる"
+
+msgid "Close Thread History"
+msgstr "スレッド履歴を閉じる"
+
+msgid "Codex on Windows"
+msgstr "Windows での Codex"
+
+msgid "Commands"
+msgstr "コマンド"
+
 msgid "Compacting Context…"
 msgstr "コンテキストを圧縮中…"
 
@@ -14,38 +404,2065 @@ msgstr "圧縮をキャンセルしました"
 msgid "Compaction Failed"
 msgstr "圧縮に失敗しました"
 
+msgid "Completed"
+msgstr "完了"
+
+msgid "Completed Plan"
+msgstr "完了した計画"
+
+msgid "Configure"
+msgstr "設定"
+
+msgid "Configure Built-in Tools"
+msgstr "組み込みツールを設定"
+
+msgid "Configure Default Model"
+msgstr "既定のモデルを設定"
+
+msgid "Configure MCP Server"
+msgstr "MCP サーバーを設定"
+
+msgid "Configure MCP Tools"
+msgstr "MCP ツールを設定"
+
+msgid "Configure Provider"
+msgstr "プロバイダーを設定"
+
+msgid "Configure Server"
+msgstr "サーバーを設定"
+
+msgid "Configure Windows-drive warning"
+msgstr "Windows ドライブの警告を設定"
+
+msgid "Configure a provider to get started"
+msgstr "プロバイダーを設定して開始してください"
+
+msgid "Configure unicode confusables warning"
+msgstr "紛らわしい Unicode の警告を設定"
+
+msgid "Configure {}"
+msgstr "{} を設定"
+
+msgid "Confirm Actions"
+msgstr "確認する"
+
+msgid "Connecting Server…"
+msgstr "サーバーに接続しています…"
+
+msgid "Connection Interrupted"
+msgstr "接続が中断されました"
+
+msgid "Context"
+msgstr "コンテキスト"
+
 msgid "Context Compacted"
 msgstr "コンテキストを圧縮しました"
 
 msgid "Context Compaction"
 msgstr "コンテキストの圧縮"
 
+msgid "Context Too Large"
+msgstr "コンテキストが大きすぎます"
+
+msgid "Continue Iterating"
+msgstr "作業を続ける"
+
 msgid "Copy"
 msgstr "コピー"
+
+msgid "Copy Code"
+msgstr "コードをコピー"
+
+msgid "Copy Command"
+msgstr "コマンドをコピー"
+
+msgid "Copy Error Message"
+msgstr "エラーメッセージをコピー"
+
+msgid "Copy Link"
+msgstr "リンクをコピー"
+
+msgid "Copy This Agent Response"
+msgstr "このエージェントの応答をコピー"
 
 msgid "Copy as Markdown"
 msgstr "Markdown としてコピー"
 
+msgid "Cost"
+msgstr "コスト"
+
+msgid "Cost Multiplier: {}"
+msgstr "コスト倍率: {}"
+
+msgid "Cost per Million Tokens: {}"
+msgstr "100 万トークンあたりのコスト: {}"
+
+msgid "Cost: {}"
+msgstr "コスト: {}"
+
+msgid "Could not authenticate with {provider}."
+msgstr "{provider} で認証できませんでした。"
+
+msgid "Could not check the Claude Code already placed in WSL."
+msgstr "WSL に配置済みの Claude Code を確認できませんでした。"
+
+msgid "Could not check the Claude Code already placed on the remote host."
+msgstr "接続先のホストに配置済みの Claude Code を確認できませんでした。"
+
+msgid "Could not check the folder `{path}` that writes are allowed to"
+msgstr "書込を許可するフォルダー `{path}` を確認できませんでした"
+
+msgid "Could not create the Claude Code settings folder on the remote host."
+msgstr "接続先に Claude Code の設定フォルダーを作成できませんでした。"
+
+msgid "Could not create the download folder."
+msgstr "ダウンロード先のフォルダーを作成できませんでした。"
+
+msgid "Could not determine the WSL architecture (exit code {code}): {stderr}"
+msgstr "WSL のアーキテクチャを調べられませんでした (終了コード {code}): {stderr}"
+
+msgid "Could not determine the WSL architecture."
+msgstr "WSL のアーキテクチャを調べられませんでした。"
+
+msgid "Could not determine the home directory on the remote host (internal error)."
+msgstr "接続先のホームディレクトリが分かりませんでした (内部エラー)。"
+
+msgid "Could not determine the home directory on the remote host."
+msgstr "接続先のホストのホームディレクトリを調べられませんでした。"
+
+msgid "Could not determine the remote host's architecture."
+msgstr "接続先のホストのアーキテクチャを調べられませんでした。"
+
+msgid "Could not extract the downloaded Claude Code."
+msgstr "ダウンロードした Claude Code を展開できませんでした。"
+
+msgid "Could not fetch {url} (HTTP {status})."
+msgstr "{url} を取得できませんでした (HTTP {status})。"
+
+msgid "Could not fetch {url}."
+msgstr "{url} を取得できませんでした。"
+
+msgid "Could not find a repository to review."
+msgstr "レビューするリポジトリが見つかりません。"
+
+msgid "Could not find workspace to import from."
+msgstr "インポート元のワークスペースが見つかりませんでした。"
+
+msgid "Could not pass the connection details to the IDE integration relay"
+msgstr "IDE 連携の中継に接続情報を渡せませんでした"
+
+msgid "Could not place Claude Code in WSL."
+msgstr "Claude Code を WSL に配置できませんでした。"
+
+msgid "Could not place Claude Code on the remote host."
+msgstr "Claude Code を接続先のホストに配置できませんでした。"
+
+msgid "Could not read the release information."
+msgstr "リリース情報を読み取れませんでした。"
+
+msgid "Could not read the {channel} version number ({text})."
+msgstr "{channel}の版番号 ({text}) を読み取れませんでした。"
+
+msgid "Could not run a command on the remote host."
+msgstr "接続先のホストでコマンドを実行できませんでした。"
+
+msgid "Could not run the command in the terminal: {error}"
+msgstr "ターミナルでコマンドを実行できませんでした: {error}"
+
+msgid "Could not save the downloaded Claude Code. Check the free space on the disk."
+msgstr "ダウンロードした Claude Code を保存できませんでした。ディスクの空き容量を確認してください。"
+
+msgid "Could not start Claude Code (sandbox): "
+msgstr "Claude Code (サンドボックス) を起動できませんでした: "
+
+msgid "Could not start WSL. Check that WSL is installed."
+msgstr "WSL を起動できませんでした。WSL がインストールされているか確認してください。"
+
+msgid "Could not start the IDE integration relay on the remote host"
+msgstr "IDE 連携の中継を接続先で起動できませんでした"
+
+msgid "Could not verify the signature of the Claude Code release information. Canceled because it may have been tampered with."
+msgstr "Claude Code のリリース情報の署名を検証できませんでした。改ざんされている可能性があるため中止しました。"
+
+msgid "Couldn't create a sandbox"
+msgstr "サンドボックスを作成できませんでした"
+
+msgid "Couldn't remove the API key: {error}"
+msgstr "API キーを削除できませんでした: {error}"
+
+msgid "Couldn't save the API key: {error}"
+msgstr "API キーを保存できませんでした: {error}"
+
+msgid "Credentials Missing"
+msgstr "資格情報がありません"
+
+msgid "Current Thread"
+msgstr "現在のスレッド"
+
+msgid "Current version: v{from}"
+msgstr "現在の版: v{from}"
+
+msgid "Current:"
+msgstr "現在:"
+
+msgid "Currently using {}, which does not report a valid --version"
+msgstr "現在 {} を使用していますが、有効な --version を返しません"
+
+msgid "Currently using {}, which is only version {} (need at least {minimum_version})"
+msgstr "現在 {} を使用していますが、バージョンが {} です ({minimum_version} 以上が必要です)"
+
+msgid "Custom Profiles"
+msgstr "カスタムプロファイル"
+
+msgid "Customize"
+msgstr "カスタマイズ"
+
+msgid "Cut"
+msgstr "切り取り"
+
+msgid "Cycle Favorite Models"
+msgstr "お気に入りモデルを順に切り替え"
+
+msgid "Cycle Thinking Effort"
+msgstr "思考の深さを順に切り替え"
+
+msgid "Cycle Through Modes"
+msgstr "モードを順に切り替え"
+
+msgid "Cycle Through Profiles"
+msgstr "プロファイルを順に切り替え"
+
+msgid "Decline"
+msgstr "拒否"
+
+msgid "Declined"
+msgstr "拒否済み"
+
+msgid "Defined in your settings:"
+msgstr "設定での定義:"
+
+msgid "Delete Profile"
+msgstr "プロファイルを削除"
+
+msgid "Delete Thread"
+msgstr "スレッドを削除"
+
+msgid "Deny"
+msgstr "拒否"
+
+msgid "Destination"
+msgstr "接続先"
+
+msgid "Diagnostics"
+msgstr "診断"
+
+msgid "Did not find any workspaces to import from."
+msgstr "インポート元のワークスペースが 1 つも見つかりませんでした。"
+
+msgid "Disable Fast Mode"
+msgstr "ファストモードを無効化"
+
+msgid "Disable Full Screen"
+msgstr "全画面表示を解除"
+
+msgid "Disable Thinking Mode"
+msgstr "思考モードを無効にします"
+
+msgid "Disabled in Restricted Mode"
+msgstr "制限モードでは無効"
+
+msgid "Discard Interrupted Edit"
+msgstr "中断された編集を破棄"
+
+msgid "Dismiss"
+msgstr "閉じる"
+
+msgid "Dismiss Warning"
+msgstr "警告を閉じる"
+
+msgid "Don't show this warning again"
+msgstr "この警告を今後表示しない"
+
+msgid "Download the Linux build of Claude Code v{version}"
+msgstr "Linux 版 Claude Code v{version} を取得します"
+
+msgid "Downloading Claude Code requires adding hosts to the allowlist"
+msgstr "Claude Code の取得に許可リストへの追加が必要です"
+
+msgid "Downloading Claude Code… ({received} / {total} MB)"
+msgstr "Claude Code をダウンロードしています… ({received} / {total} MB)"
+
+msgid "Downloads the Claude Code that runs in the remote host's sandbox from Anthropic's download server on this PC, and sends it to the remote host after checking its signature and hash."
+msgstr "接続先のサンドボックスで実行する Claude Code を、この PC で Anthropic の配布元から取得し、署名とハッシュを確認してから接続先へ送ります。"
+
+msgid "Downloads the Claude Code that runs in the sandbox (WSL) from Anthropic's download server, and places it in WSL after checking its signature and hash."
+msgstr "サンドボックス (WSL) で実行する Claude Code を Anthropic の配布元から取得し、署名とハッシュを確認してから WSL に配置します。"
+
+msgid "Edit"
+msgstr "編集"
+
+msgid "Edit Queued Message"
+msgstr "キュー内のメッセージを編集"
+
+msgid "Edit Thread Title"
+msgstr "スレッドタイトルを編集"
+
+msgid "Edit in Form"
+msgstr "フォームで編集"
+
+msgid "Edit in JSON"
+msgstr "JSON で編集"
+
+msgid "Edit message － @ to include context"
+msgstr "メッセージを編集 － @ でコンテキストを追加"
+
+msgid "Editing previous messages is not available for {} yet."
+msgstr "{} では過去のメッセージの編集にまだ対応していません。"
+
+msgid "Editing will restart the thread from this point."
+msgstr "編集するとこの時点からスレッドをやり直します。"
+
+msgid "Editing {count} file…"
+msgid_plural "Editing {count} files…"
+msgstr[0] "{count} 件のファイルを編集中…"
+
+msgid "Edits"
+msgstr "編集"
+
+msgid "Enable Fast Mode"
+msgstr "ファストモードを有効化"
+
+msgid "Enable Full Screen"
+msgstr "全画面表示"
+
+msgid "Enable Now"
+msgstr "今すぐ有効化"
+
+msgid "Enable Thinking Mode"
+msgstr "思考モードを有効にします"
+
+msgid "Enable and Don't Show Again"
+msgstr "有効化して今後表示しない"
+
 msgid "Ensure skill descriptions are at most {MAX_SKILL_DESCRIPTION_LEN} characters; longer ones may consume more model-context tokens."
 msgstr "スキルの説明は {MAX_SKILL_DESCRIPTION_LEN} 文字以内にしてください。長すぎるとモデルのコンテキストトークンを多く消費する場合があります。"
+
+msgid "Enter client secret (leave empty for public clients)"
+msgstr "クライアントシークレットを入力 (パブリッククライアントの場合は空欄)"
+
+msgid "Enter your OAuth client secret, or leave empty for public clients"
+msgstr "OAuth クライアントシークレットを入力してください。パブリッククライアントの場合は空欄のままにします"
+
+msgid "Error Loading {}"
+msgstr "{} の読み込みエラー"
+
+msgid "Estimated tokens for the attachments (at 4 bytes per token)."
+msgstr "添付の概算トークン数です (4 バイトを 1 トークンとして概算)。"
+
+msgid "Everything below this line was sent as output from this subagent to the main agent."
+msgstr "この線より下の内容は、このサブエージェントからメインエージェントへの出力として送信されました。"
+
+msgid "Execute Generated Command"
+msgstr "生成されたコマンドを実行"
+
+msgid "Exited with code {code}"
+msgstr "終了コード {code} で終了しました"
+
+msgid "Expand Message Editor"
+msgstr "メッセージエディターを拡大"
+
+msgid "Expected exactly one context server configuration"
+msgstr "コンテキストサーバーの設定は 1 つだけ指定してください。"
+
+msgid "Expected exactly one key-value pair"
+msgstr "キーと値のペアを 1 つだけ指定してください。"
+
+msgid "Expected object"
+msgstr "JSON オブジェクトを指定してください。"
+
+msgid "External Agents"
+msgstr "外部エージェント"
+
+msgid "External agents are not yet supported in shared projects."
+msgstr "共有プロジェクトでは外部エージェントはまだサポートされていません。"
+
+msgid "Extracting and checking the hash…"
+msgstr "展開してハッシュを確認しています…"
 
 msgid "Failed to Install"
 msgstr "インストールに失敗しました"
 
+msgid "Failed to Install {}"
+msgstr "{} のインストールに失敗しました"
+
 msgid "Failed to Launch"
 msgstr "起動に失敗しました"
+
+msgid "Failed to add the hosts to the allowlist: {error}"
+msgstr "許可リストへの追加に失敗しました: {error}"
+
+msgid "Failed to authenticate with {} provider"
+msgstr "プロバイダー {} の認証に失敗しました"
+
+msgid "Failed to decode clipboard content (expected base64)"
+msgstr "クリップボードの内容をデコードできませんでした (base64 が必要です)。"
+
+msgid "Failed to fetch sessions: {error}"
+msgstr "セッションの取得に失敗しました: {error}"
+
+msgid "Failed to list sessions."
+msgstr "セッションの一覧取得に失敗しました。"
+
+msgid "Failed to load the agent registry. Please check your connection and try again."
+msgstr "エージェントレジストリの読み込みに失敗しました。接続を確認して再試行してください。"
+
+msgid "Failed to parse thread data from clipboard"
+msgstr "クリップボードのスレッドデータを解析できませんでした。"
+
+msgid "Favorite"
+msgstr "お気に入りに追加"
+
+msgid "Favorite Model"
+msgstr "お気に入りに追加"
+
+msgid "Favorites"
+msgstr "お気に入り"
+
+msgid "Fetching Agent Threads…"
+msgstr "エージェントのスレッドを取得しています…"
+
+msgid "Fetching Sessions…"
+msgstr "セッションを取得しています…"
+
+msgid "Files & Directories"
+msgstr "ファイルとディレクトリ"
+
+msgid "Finished running tools"
+msgstr "ツールの実行が完了しました"
+
+msgid "Follow the {}"
+msgstr "{} に追従"
+
+msgid "Follow {}"
+msgstr "{} に追従"
+
+msgid "For agents distributed via npx, npm picks the version at launch, so the installed version cannot be determined. Whether an update is available is not shown here."
+msgstr "npx で配布されるエージェントは起動時に npm が版を決めるため、インストール済みの版を特定できません。更新の有無はここには表示しません。"
+
+msgid "For best performance, run Codex in Windows Subsystem for Linux (WSL2)"
+msgstr "最良の性能を得るには、Codex を Windows Subsystem for Linux (WSL2) で実行してください"
+
+msgid "Fork Profile"
+msgstr "このプロファイルを基に作成"
+
+msgid "Fork {base_profile}"
+msgstr "{base_profile} を基に作成"
+
+msgid "Free Usage Exceeded"
+msgstr "無料利用の上限を超えました"
+
+msgid "Generate"
+msgstr "生成"
+
+msgid "Generating Changes…"
+msgstr "変更を生成しています…"
+
+msgid "Get help to write anything."
+msgstr "何でも書く手助けをします。"
+
+msgid "Go Back"
+msgstr "戻る"
+
+msgid "Go to File"
+msgstr "ファイルへ移動"
+
+msgid "Good Result"
+msgstr "良い結果"
+
+msgid "Helpful Response"
+msgstr "役に立つ応答"
+
+msgid "Hide Thread History in Panel"
+msgstr "パネル内のスレッド履歴を非表示"
+
+msgid "Hosts Need to Be Added to the Allowlist"
+msgstr "許可リストへの追加が必要です"
+
+msgid "Hosts that need to be allowed:"
+msgstr "許可が必要なホスト:"
+
+msgid "Hosts that need to be allowed: {hosts} ({status})"
+msgstr "許可が必要なホスト: {hosts} ({status})"
+
+msgid "I understand and wish to proceed"
+msgstr "内容を理解した上で続行します"
+
+msgid "IDE Tools"
+msgstr "IDE ツール"
+
+msgid "Image"
+msgstr "画像"
+
+msgid "Import External Agent Threads"
+msgstr "外部エージェントのスレッドをインポート"
+
+msgid "Import Threads"
+msgstr "スレッドをインポート"
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client. Choose which agents to include, and their threads will appear in your thread history."
+msgstr "Zed で開始したものでも他のクライアントで開始したものでも、Claude Agent や Codex などのエージェントからスレッドをインポートします。含めるエージェントを選択すると、そのスレッドがスレッド履歴に表示されます。"
+
+msgid "Imported {count} thread from other channels."
+msgid_plural "Imported {count} threads from other channels."
+msgstr[0] "他のチャンネルからスレッドを {count} 件インポートしました。"
+
+msgid "Imported {count} thread."
+msgid_plural "Imported {count} threads."
+msgstr[0] "スレッドを {count} 件インポートしました。"
+
+msgid "Importing threads from this agent is not possible as it doesn't support ACP's session/list capability."
+msgstr "このエージェントは ACP の session/list 機能に対応していないため、スレッドをインポートできません。"
+
+msgid "In Queue"
+msgstr "キュー内"
+
+msgid "In both Auto-Approve and AI Judge, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files still apply. Terminal commands run inside the sandbox, and file operations outside the project and network additions are confirmed in every mode. Terminal commands that run outside the sandbox are also confirmed every time. Which tools are available is chosen by the profile, not the mode. With AI Judge, what is being judged (commands and paths) is sent to the provider of the judging model, so a local model is recommended."
+msgstr "「全自動」でも「AI が判定」でも、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認は残ります。ターミナルのコマンドはサンドボックスの中で実行され、プロジェクトの外へのファイル操作とネットワークの追加は、どのモードでも確認します。サンドボックスの外で実行されるターミナルコマンドも毎回確認します。使えるツールの種類はモードではなくプロファイルで選びます。「AI が判定」の判定内容 (コマンドやパス) は判定に使うモデルの提供元に送られるので、ローカルのモデルをお勧めします。"
+
+msgid "In the sandbox, Claude Code connects only to the following Anthropic hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
+msgstr "サンドボックスの Claude Code は Anthropic の次のホストにだけ接続します。これらのホストは IDE 全体の許可リストに追加し、内蔵エージェントのコマンドにも適用されます。\n許可が必要なホスト: {hosts}"
+
+msgid "In the sandbox, {agent} connects only to the following hosts. They are added to the IDE-wide allowlist and also apply to the built-in agent's commands.\nHosts that need to be allowed: {hosts}"
+msgstr "サンドボックスの {agent} は次のホストにだけ接続します。これらのホストは IDE 全体の許可リストに追加し、内蔵エージェントのコマンドにも適用されます。\n許可が必要なホスト: {hosts}"
+
+msgid "In the sandbox, {} connects to hosts that aren't in the IDE-wide allowlist: {}"
+msgstr "サンドボックスの {} は次のホストに接続しますが、IDE 全体の許可リストにありません: {}"
+
+msgid "Includes the active file, which is attached automatically."
+msgstr "自動で添付するアクティブなファイルを含みます。"
+
+msgid "Inline assistant error: {}"
+msgstr "インラインアシスタントのエラー: {}"
+
+msgid "Input Requested by {}"
+msgstr "{} からの入力要求"
+
+msgid "Input:"
+msgstr "入力:"
+
+msgid "Install"
+msgstr "インストール"
+
+msgid "Install New Servers…"
+msgstr "新しいサーバーをインストール…"
+
+msgid "Installed"
+msgstr "インストール済み"
+
+msgid "Interrupt Generation"
+msgstr "生成を中断"
+
+msgid "Interrupt Transform"
+msgstr "変換を中断"
+
+msgid "Interrupt the agent at its next step to send this message. When off, queued messages wait for the agent to finish."
+msgstr "エージェントを次のステップで中断してこのメッセージを送信します。オフの場合、キュー内のメッセージはエージェントの完了を待ちます。"
 
 msgid "Interrupted Edit"
 msgstr "中断された編集"
 
+msgid "Invalid IDE session identifier (internal error): {session_id}"
+msgstr "IDE セッションの識別子が不正です (内部エラー): {session_id}"
+
+msgid "Invalid host for Claude Code to connect to (internal error): {error}"
+msgstr "Claude Code の接続先が不正です (内部エラー): {error}"
+
+msgid "Invalid project identifier (internal error): {project_key}"
+msgstr "プロジェクトの識別子が不正です (内部エラー): {project_key}"
+
+msgid "It currently only operates by default on \"{}\"."
+msgstr "現時点では既定で「{}」に対してのみ動作します。"
+
+msgid "Keep"
+msgstr "採用"
+
+msgid "Keep All"
+msgstr "すべて採用"
+
+msgid "Latest"
+msgstr "最新"
+
+msgid "Launch Claude Code"
+msgstr "Claude Code を起動"
+
+msgid "Launch Claude Code Outside the Sandbox…"
+msgstr "Claude Code をサンドボックスの外で起動…"
+
+msgid "Launches the official Claude Code CLI in a tab of this panel. You sign in on the CLI's screen."
+msgstr "公式の Claude Code CLI をこのパネルのタブで起動します。ログインは CLI の画面で行います。"
+
+msgid "Learn More"
+msgstr "詳細"
+
+msgid "Link only"
+msgstr "リンクのみ"
+
+msgid "Loading Added Context…"
+msgstr "追加されたコンテキストを読み込み中…"
+
+msgid "Loading or resuming sessions is not supported by this agent."
+msgstr "このエージェントはセッションの読み込みや再開をサポートしていません。"
+
+msgid "Loading registry..."
+msgstr "レジストリを読み込んでいます..."
+
+msgid "Loading…"
+msgstr "読み込み中…"
+
+msgid "Log In with Claude Code (Subscription)"
+msgstr "Claude Code でログイン (サブスクリプション)"
+
+msgid "Log Out"
+msgstr "ログアウト"
+
+msgid "MCP Server Commands"
+msgstr "MCP サーバーのコマンド"
+
+msgid "MCP Servers"
+msgstr "MCP サーバー"
+
+msgid "Make Subagent Full Screen"
+msgstr "サブエージェントを全画面表示"
+
+msgid "Message the {}, @ to include context, / for commands"
+msgstr "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド"
+
+msgid "Minimize Message Editor"
+msgstr "メッセージエディターを最小化"
+
+msgid "Minimize Subagent"
+msgstr "サブエージェントを最小化"
+
+msgid "Missing registry entry."
+msgstr "レジストリの項目が見つかりません。"
+
+msgid "Model {} was not found"
+msgstr "モデル {} が見つかりません"
+
+msgid "Move Back to Panel"
+msgstr "パネルに戻す"
+
+msgid "Negative Feedback"
+msgstr "低評価のフィードバック"
+
+msgid "Network Access"
+msgstr "ネットワークアクセス"
+
+msgid "Network access"
+msgstr "ネットワークアクセス"
+
+msgid "New Agent Thread"
+msgstr "新しいエージェントスレッド"
+
+msgid "New Profile"
+msgstr "新しいプロファイル"
+
+msgid "New Thread"
+msgstr "新しいスレッド"
+
+msgid "New Thread with {agent}"
+msgstr "{agent} で新しいスレッド"
+
+msgid "New Thread…"
+msgstr "新規スレッド…"
+
+msgid "New Version Available"
+msgstr "新しいバージョンがあります"
+
+msgid "New message"
+msgstr "新しいメッセージ"
+
+msgid "New {} Thread"
+msgstr "{} の新規スレッド"
+
+msgid "Next Alternative"
+msgstr "次の候補"
+
+msgid "Next Hunk"
+msgstr "次の変更箇所"
+
+msgid "Next Match"
+msgstr "次の一致"
+
+msgid "Next in Queue"
+msgstr "キューの先頭"
+
+msgid "No Model Selected"
+msgstr "モデルが選択されていません"
+
+msgid "No active native thread to copy"
+msgstr "コピーできるネイティブスレッドがありません。"
+
+msgid "No agents available."
+msgstr "利用できるエージェントはありません。"
+
+msgid "No agents match your search."
+msgstr "検索条件に一致するエージェントはありません。"
+
+msgid "No changes to review"
+msgstr "レビューする変更はありません"
+
+msgid "No clipboard content available"
+msgstr "クリップボードに内容がありません。"
+
+msgid "No configured model"
+msgstr "モデルが設定されていません"
+
+msgid "No credentials are configured for {provider}."
+msgstr "{provider} の資格情報が設定されていません。"
+
+msgid "No external agents available."
+msgstr "利用できる外部エージェントはありません。"
+
+msgid "No installed agents match your search."
+msgstr "検索条件に一致するインストール済みのエージェントはありません。"
+
+msgid "No installed agents."
+msgstr "インストール済みのエージェントはありません。"
+
+msgid "No matches"
+msgstr "一致なし"
+
+msgid "No model is configured for summarizing thread titles."
+msgstr "スレッドタイトルの要約に使用するモデルが設定されていません。"
+
+msgid "No model selected"
+msgstr "モデルが選択されていません"
+
+msgid "No new threads found to import."
+msgstr "インポートできる新しいスレッドはありませんでした。"
+
+msgid "No output available"
+msgstr "設定を取得できませんでした。"
+
+msgid "No profiles match your search."
+msgstr "検索条件に一致するプロファイルはありません。"
+
+msgid "No profiles."
+msgstr "プロファイルはありません。"
+
+msgid "No recent projects found"
+msgstr "最近のプロジェクトが見つかりません"
+
+msgid "No threads"
+msgstr "スレッドなし"
+
+msgid "No threads found to import."
+msgstr "インポートできるスレッドはありませんでした。"
+
+msgid "No threads match your search."
+msgstr "検索に一致するスレッドがありません。"
+
+msgid "No threads yet."
+msgstr "まだスレッドはありません。"
+
+msgid "No uninstalled agents match your search."
+msgstr "検索条件に一致する未インストールのエージェントはありません。"
+
+msgid "No uninstalled agents."
+msgstr "未インストールのエージェントはありません。"
+
+msgid "None"
+msgstr "なし"
+
+msgid "Not Helpful Response"
+msgstr "役に立たない応答"
+
+msgid "Not Installed"
+msgstr "未インストール"
+
+msgid "Not supported on this platform"
+msgstr "このプラットフォームには対応していません"
+
+msgid "Note: {} cannot be offered with Zero Data Retention."
+msgstr "注意: {} はゼロデータ保持では提供できません。"
+
+msgid "Older"
+msgstr "それ以前"
+
+msgid "On 2026-06-15, Anthropic announced that use with a subscription (such as Claude Pro or Max) continues as before. You can turn it off in settings."
+msgstr "サブスクリプション (Claude Pro / Max など) での利用は、Anthropic が 2026-06-15 に「これまでどおり」と告知しています。設定で無効にできます。"
+
+msgid "Only a link is sent, and the agent reads the contents with its tools (no estimate)"
+msgstr "リンクだけを送り、中身はエージェントがツールで読みます (見積もりなし)"
+
+msgid "Only reads and edits files. Does not run commands."
+msgstr "ファイルの読み取りと編集だけを行います。コマンドは実行しません。"
+
+msgid "Only this time"
+msgstr "今回のみ"
+
+msgid "Open"
+msgstr "開く"
+
+msgid "Open Again"
+msgstr "もう一度開く"
+
+msgid "Open Docs"
+msgstr "ドキュメントを開く"
+
+msgid "Open File"
+msgstr "ファイルを開く"
+
+msgid "Open Global Rules"
+msgstr "グローバルルールを開く"
+
+msgid "Open Project Rules"
+msgstr "プロジェクトルールを開く"
+
+msgid "Open Repository"
+msgstr "リポジトリを開く"
+
+msgid "Open Skill"
+msgstr "スキルを開く"
+
+msgid "Open Tabs"
+msgstr "開いているタブ"
+
+msgid "Open Thread List"
+msgstr "スレッドの一覧を開く"
+
+msgid "Open Thread as Markdown"
+msgstr "スレッドを Markdown で開く"
+
+msgid "Open Thread in Right Split"
+msgstr "スレッドを右に分割して開く"
+
+msgid "Open Thread in Tab"
+msgstr "スレッドをタブで開く"
+
+msgid "Open Trust Settings"
+msgstr "信頼の設定を開く"
+
+msgid "Open a project to load a thread"
+msgstr "スレッドを読み込むにはプロジェクトを開いてください。"
+
+msgid "Open in Right Split"
+msgstr "右に分割して開く"
+
+msgid "Open in Tab"
+msgstr "タブで開く"
+
+msgid "Open in WSL"
+msgstr "WSL で開く"
+
+msgid "Open the settings to configure providers"
+msgstr "設定を開いてプロバイダーを設定してください"
+
+msgid "Open the settings to configure the selected provider"
+msgstr "設定を開いて選択中のプロバイダーを設定してください"
+
+msgid "Or type @ to include context"
+msgstr "@ を入力してコンテキストを追加することもできます"
+
+msgid "Output Limit Reached"
+msgstr "出力の上限に達しました"
+
+msgid "Output exceeded terminal max lines and was truncated, the model received the first {}."
+msgstr "出力がターミナルの最大行数を超えたため切り詰められました。モデルには先頭の {} が渡されています。"
+
+msgid "Output is {} long, and to avoid unexpected token usage, only {} was sent back to the agent."
+msgstr "出力は {} あり、予期しないトークン消費を避けるため、エージェントには {} だけを返しました。"
+
+msgid "Output was truncated"
+msgstr "出力は切り詰められました"
+
+msgid "Output:"
+msgstr "出力:"
+
+msgid "Package downloads by npm and the agent's network traffic after installation go through the child-process proxy and are subject to the allowlist. However, the extra hosts that a package's install scripts need cannot be listed in advance, and they are blocked and fail if they are not on the allowlist. Prefer Binary agents when possible."
+msgstr "npm によるパッケージの取得と、インストール後の実行時通信は子プロセスプロキシ経由で許可リストの対象になります。ただし、パッケージのインストールスクリプトが追加で必要とするホストは事前に列挙できず、許可リストに無いと遮断されて失敗します。可能であれば Binary 型のエージェントを優先してください。"
+
+msgid "Past Week"
+msgstr "先週"
+
+msgid "Paste"
+msgstr "貼り付け"
+
+msgid "Paste as Plain Text"
+msgstr "プレーンテキストとして貼り付け"
+
+msgid "Permission Denied"
+msgstr "権限がありません"
+
+msgid "Places it in WSL after checking its signature and hash."
+msgstr "署名とハッシュを確認してから WSL に配置します。"
+
+msgid "Placing in WSL…"
+msgstr "WSL に配置しています…"
+
+msgid "Placing on the remote host…"
+msgstr "接続先のホストに配置しています…"
+
+msgid "Plan"
+msgstr "計画"
+
+msgid "Positive Feedback"
+msgstr "高評価のフィードバック"
+
+msgid "Preparing Claude Code (sandbox)…"
+msgstr "Claude Code (サンドボックス) を準備しています…"
+
+msgid "Preparing the sandbox and IDE integration…"
+msgstr "サンドボックスと IDE 連携を準備しています…"
+
+msgid "Previous Alternative"
+msgstr "前の候補"
+
+msgid "Previous Hunk"
+msgstr "前の変更箇所"
+
+msgid "Previous Match"
+msgstr "前の一致"
+
+msgid "Profile name"
+msgstr "プロファイル名"
+
+msgid "Profiles"
+msgstr "プロファイル"
+
+msgid "Provider Unavailable"
+msgstr "プロバイダーを利用できません"
+
+msgid "Provider {} was not found"
+msgstr "プロバイダー {} が見つかりません"
+
+msgid "Queue and Send"
+msgstr "キューに追加して送信"
+
+msgid "Ran without sandbox"
+msgstr "サンドボックスなしで実行されました"
+
+msgid "Rate Limit Reached"
+msgstr "レート制限に達しました"
+
+msgid "Rate this response as helpful. Sends the current conversation to the Zed team."
+msgstr "この応答を「役に立った」と評価します。現在の会話を Zed チームに送信します。"
+
+msgid "Rate this response as not helpful. Sends the current conversation to the Zed team."
+msgstr "この応答を「役に立たなかった」と評価します。現在の会話を Zed チームに送信します。"
+
+msgid "Rating the thread sends all of your current conversation to the Zed team."
+msgstr "スレッドを評価すると、現在の会話全体が Zed チームに送信されます。"
+
+msgid "Raw Input:"
+msgstr "生の入力:"
+
+msgid "Reading and writing files and running commands are unavailable until you trust the folder."
+msgstr "ファイルの読み書きやコマンド実行は、フォルダーを信頼するまで使えません。"
+
+msgid "Reads the {channel} version number from Anthropic's download server."
+msgstr "{channel}の版番号を Anthropic の配布元から読み取ります。"
+
+msgid "Reason"
+msgstr "理由"
+
+msgid "Reauthenticate"
+msgstr "再認証"
+
+msgid "Recent Projects"
+msgstr "最近のプロジェクト"
+
+msgid "Recommended"
+msgstr "推奨"
+
+msgid "Reconnect"
+msgstr "再接続"
+
+msgid "Reconnect Now"
+msgstr "今すぐ再接続"
+
+msgid "Regenerate Thread Title"
+msgstr "スレッドタイトルを再生成"
+
+msgid "Reject"
+msgstr "拒否"
+
+msgid "Reject All"
+msgstr "すべて拒否"
+
+msgid "Remove"
+msgstr "削除"
+
+msgid "Remove Key"
+msgstr "キーを削除"
+
+msgid "Remove Message from Queue"
+msgstr "メッセージをキューから削除"
+
+msgid "Removes this variable from env in settings.json"
+msgstr "settings.json の env からこの変数を外します"
+
 msgid "Request Failed"
 msgstr "リクエストに失敗しました"
+
+msgid "Request Refused"
+msgstr "リクエストが拒否されました"
+
+msgid "Required"
+msgstr "必須"
+
+msgid "Restart Generation"
+msgstr "生成を再実行"
+
+msgid "Restart Outside the Sandbox…"
+msgstr "サンドボックスの外で起動し直す…"
+
+msgid "Restart Transform"
+msgstr "変換を再実行"
+
+msgid "Restore Checkpoint"
+msgstr "チェックポイントを復元"
+
+msgid "Restores all files in the project to the content they had at this point in the conversation."
+msgstr "プロジェクト内のすべてのファイルを、会話のこの時点の内容に復元します。"
+
+msgid "Restricted Mode"
+msgstr "制限モード"
+
+msgid "Resume Outside the Sandbox…"
+msgstr "サンドボックスの外で再開…"
+
+msgid "Resumed Session"
+msgstr "セッションを再開しました"
+
+msgid "Retry"
+msgstr "再試行"
+
+msgid "Retry Generation"
+msgstr "生成を再試行"
+
+msgid "Retrying with {fallback_model}"
+msgstr "{fallback_model} で再試行しています"
+
+msgid "Retrying. Next attempt in 1 second (Attempt {} of {})."
+msgstr "再試行します。次の試行まで 1 秒 ({} 回目 / 全 {} 回)。"
+
+msgid "Retrying. Next attempt in 1 second."
+msgstr "再試行します。次の試行まで 1 秒。"
+
+msgid "Retrying. Next attempt in {next_attempt_in_secs} seconds (Attempt {} of {})."
+msgstr "再試行します。次の試行まで {next_attempt_in_secs} 秒 ({} 回目 / 全 {} 回)。"
+
+msgid "Retrying. Next attempt in {next_attempt_in_secs} seconds."
+msgstr "再試行します。次の試行まで {next_attempt_in_secs} 秒。"
+
+msgid "Review"
+msgstr "レビュー"
+
+msgid "Review All Files"
+msgstr "すべてのファイルをレビュー"
+
+msgid "Review Before Sending"
+msgstr "送信前に確認してください"
+
+msgid "Review Changes"
+msgstr "変更をレビュー"
+
+msgid "Review: {}"
+msgstr "レビュー: {}"
+
+msgid "Right-click to switch between full text and summary"
+msgstr "右クリックで全文 / 要約を切り替え"
+
+msgid "Rules"
+msgstr "ルール"
+
+msgid "Rules have been migrated to Skills."
+msgstr "ルールはスキルに移行されました。"
+
+msgid "Rules-to-skills migration rerun. Please double-check AGENTS.md and Skills for missing or duplicated prompts."
+msgstr "ルールからスキルへの移行を再実行しました。AGENTS.md とスキルにプロンプトの欠落や重複がないか確認してください。"
+
+msgid "Run Command"
+msgstr "実行するコマンド"
+
+msgid "Runs `{program}` on the remote host with that host user's permissions (outside the sandbox)."
+msgstr "接続先のホストの `{program}` を、そのホストのユーザーの権限で (サンドボックスの外で) 実行します。"
+
+msgid "Runs outside the sandbox (with Zed's own permissions)"
+msgstr "サンドボックスの外 (Zed 本体の権限) で実行されます"
+
+msgid "Sandbox"
+msgstr "サンドボックス"
+
+msgid "Sandboxes with write access to a location on a Windows drive may not provide full filesystem isolation."
+msgstr "Windows ドライブ上の場所への書き込みを許可したサンドボックスでは、ファイルシステムの分離が完全でない場合があります。"
+
+msgid "Sandboxing"
+msgstr "サンドボックス"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Saving…"
+msgstr "保存中…"
+
+msgid "Scroll"
+msgstr "スクロール"
+
+msgid "Scroll to Bottom"
+msgstr "末尾へスクロール"
+
+msgid "Scroll to Subagent"
+msgstr "サブエージェントへスクロール"
+
+msgid "Scroll to Top"
+msgstr "先頭へスクロール"
+
+msgid "Scroll to User Message"
+msgstr "ユーザーメッセージへスクロール"
+
+msgid "Search MCP tools…"
+msgstr "MCP ツールを検索…"
+
+msgid "Search agents..."
+msgstr "エージェントを検索..."
+
+msgid "Search all threads…"
+msgstr "すべてのスレッドを検索…"
+
+msgid "Search built-in tools…"
+msgstr "組み込みツールを検索…"
+
+msgid "Search profiles…"
+msgstr "プロファイルを検索…"
+
+msgid "Search this thread…"
+msgstr "このスレッドを検索…"
+
+msgid "Search threads…"
+msgstr "スレッドを検索…"
+
+msgid "Select"
+msgstr "選択"
+
+msgid "Select Effort"
+msgstr "強度を選択"
+
+msgid "Select Images"
+msgstr "画像を選択"
+
+msgid "Select Model"
+msgstr "モデルを選択"
+
+msgid "Select Options…"
+msgstr "オプションを選択…"
+
+msgid "Select a Model"
+msgstr "モデルを選択"
+
+msgid "Select a model from the model picker below to get started."
+msgstr "下のモデルピッカーからモデルを選択して開始してください。"
+
+msgid "Select a model…"
+msgstr "モデルを選択…"
+
+msgid "Select an option…"
+msgstr "オプションを選択…"
+
+msgid "Selected Agent"
+msgstr "選択中のエージェント"
+
+msgid "Selection"
+msgstr "選択範囲"
+
+msgid "Send Immediately"
+msgstr "すぐに送信"
+
+msgid "Send Message"
+msgstr "メッセージを送信"
+
+msgid "Send Now"
+msgstr "今すぐ送信"
+
+msgid "Send as Summary"
+msgstr "要約で送る"
+
+msgid "Send in Full"
+msgstr "全文で送る"
+
+msgid "Sends it to the remote host after checking its signature and hash."
+msgstr "署名とハッシュを確認してから接続先へ送ります。"
+
+msgid "Sent as an outline (or just a reference) because it is large"
+msgstr "大きいのでアウトライン (または参照だけ) で送ります"
+
+msgid "Server exited with status {status}"
+msgstr "サーバーがステータス {status} で終了しました"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Show"
+msgstr "表示"
+
+msgid "Show All Threads"
+msgstr "すべてのスレッドを表示"
+
+msgid "Show Only Archived Threads"
+msgstr "アーカイブ済みのスレッドのみ表示"
+
+msgid "Show Thread History in Panel"
+msgstr "パネル内のスレッド履歴を表示"
+
+msgid "Skill Failed to Load"
+msgstr "スキルの読み込みに失敗しました"
+
+msgid "Skill Omitted from Model Catalog"
+msgstr "スキルはモデルのカタログから除外されました"
+
+msgid "Skills"
+msgstr "スキル"
+
+msgid "Some tools are disabled because this project isn't trusted"
+msgstr "このプロジェクトは未信頼のため、一部のツールを無効にしています"
+
+msgid "Some tools are disabled. Click to review trust settings."
+msgstr "一部のツールが無効になっています。クリックして信頼の設定を確認してください。"
+
+msgid "Spawning Agent…"
+msgstr "エージェントを起動中…"
+
+msgid "Split Right"
+msgstr "右に分割"
+
+msgid "Start (This Thread Only)"
+msgstr "起動 (このスレッドのみ)"
+
+msgid "Start (This Time Only)"
+msgstr "起動 (今回のみ)"
+
+msgid "Start Claude Code outside the sandbox?"
+msgstr "Claude Code をサンドボックスの外で起動しますか？"
+
+msgid "Start New Agent Thread"
+msgstr "エージェントの新規スレッドを開始"
+
+msgid "Start New Thread"
+msgstr "新しいスレッドを開始"
+
+msgid "Start Outside the Sandbox (This Thread Only)"
+msgstr "サンドボックスの外で起動 (このスレッドのみ)"
+
+msgid "Start Outside the Sandbox…"
+msgstr "サンドボックスの外で起動…"
+
+msgid "Start `{program}` outside the sandbox?"
+msgstr "`{program}` をサンドボックスの外で起動しますか？"
+
+msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
+msgstr "サンドボックスの外で起動すると、このエージェントは Zed 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前にスレッドごとに確認します。"
+
+msgid "Steer"
+msgstr "割り込み"
+
+msgid "Stop Following the {}"
+msgstr "{} の追従を停止"
+
+msgid "Stop Following {}"
+msgstr "{} の追従を停止"
+
+msgid "Stop Generation"
+msgstr "生成を停止"
+
+msgid "Stop Subagent"
+msgstr "サブエージェントを停止"
+
+msgid "Stop This Command"
+msgstr "このコマンドを停止"
+
+msgid "Subagent"
+msgstr "サブエージェント"
+
+msgid "Subagent Canceled"
+msgstr "サブエージェント (キャンセル済み)"
+
+msgid "Subagent Cancelled"
+msgstr "サブエージェントはキャンセルされました"
+
+msgid "Subagent Failed"
+msgstr "サブエージェントが失敗しました"
+
+msgid "Subagent Output"
+msgstr "サブエージェントの出力"
+
+msgid "Subagents Awaiting Permission:"
+msgstr "権限を待機中のサブエージェント:"
+
+msgid "Submit"
+msgstr "送信"
+
+msgid "Submitted"
+msgstr "送信済み"
+
+msgid "Subscription or API key: you sign in on Claude Code's own screen, and Zed never handles the credentials. The subscription can be turned off in Settings."
+msgstr "サブスクリプションまたは API キー: サインインは Claude Code 自身の画面で行われ、Zed は認証情報を扱いません。設定でサブスクリプションを無効にできます。"
+
+msgid "Subscription sign-in is turned off by `allow_subscription_sign_in` in settings. You can still use an API key."
+msgstr "サブスクリプションでのサインインは、設定の `allow_subscription_sign_in` で無効にしています。API キーでの利用はこのまま使えます。"
+
+msgid "Subscription sign-in is turned off in this agent's settings (`allow_subscription_sign_in`)."
+msgstr "サブスクリプションでのサインインは、このエージェントの設定 (`allow_subscription_sign_in`) で無効にされています。"
+
+msgid "Switch to {}"
+msgstr "{} に切り替え"
+
+msgid "Symbols"
+msgstr "シンボル"
+
+msgid "Tab"
+msgstr "タブ"
+
+msgid "Tab Bar"
+msgstr "タブバー"
+
+msgid "Target"
+msgstr "解決先"
+
+msgid "Terminal"
+msgstr "ターミナル"
+
+msgid "Terminal inline assistant error: {}"
+msgstr "ターミナルインラインアシスタントのエラー: {}"
+
+msgid "Thanks for your feedback!"
+msgstr "フィードバックをありがとうございます。"
+
+msgid "The Claude Code sent to the remote host could not be found. Please try again."
+msgstr "接続先へ送った Claude Code が見つかりません。もう一度お試しください。"
+
+msgid "The JSON is hidden because the saved settings contain values that look like secrets."
+msgstr "保存済みの設定に秘密情報らしい値が含まれるため、JSON を隠しています。"
+
+msgid "The Zed server on the remote host is not ready yet (internal error)."
+msgstr "接続先のホストの Zed サーバーがまだ用意されていません (内部エラー)。"
+
+msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
+msgstr "接続先のホストの Zed サーバーがまだ用意されていません。接続が終わるまで待ってからもう一度お試しください。"
+
+msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
+msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"
+
+msgid "The agent was stopped because it wasn't in use. Sending a message reconnects it"
+msgstr "使われていないのでエージェントを止めています。送信すると再接続します"
+
+msgid "The agent's network access needs hosts added to the allowlist"
+msgstr "エージェントの通信に許可リストへの追加が必要です"
+
+msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
+msgstr "{provider} の API への接続が中断されました。Zed が自動的に再試行します。問題が続く場合は、ネットワーク接続を確認してください。"
+
+msgid "The extension's settings must be a JSON object ({{ … }})."
+msgstr "拡張機能の設定は JSON オブジェクト ({{ … }}) にしてください。"
+
+msgid "The file name for {platform} in the release information ({file_name}) is not the expected one."
+msgstr "リリース情報の {platform} のファイル名 ({file_name}) が想定と違います。"
+
+msgid "The hash of the downloaded Claude Code does not match the release information. Canceled because it may have been tampered with."
+msgstr "ダウンロードした Claude Code のハッシュがリリース情報と一致しません。改ざんされている可能性があるため中止しました。"
+
+msgid "The hosts were added to the allowlist, but the change has not taken effect yet. Wait a moment and try again."
+msgstr "許可リストには追加しましたが、まだ反映されていません。しばらく待ってからもう一度お試しください。"
+
+msgid "The key is saved in plain text in settings.json under `agent_servers` → `{}` → `env` → `{variable}`."
+msgstr "キーは settings.json の `agent_servers` → `{}` → `env` → `{variable}` に平文で保存されます。"
+
+msgid "The location of the Claude Code used in the sandbox is not an absolute path (internal error): {claude_path}"
+msgstr "サンドボックスで使う Claude Code の場所が絶対パスではありません (内部エラー): {claude_path}"
+
+msgid "The message is over its size limit, so {count} large attachment is reduced to an outline or a reference."
+msgid_plural "The message is over its size limit, so {count} large attachments are reduced to outlines or references."
+msgstr[0] "1 メッセージの上限を超えるため、大きい添付 {count} 件をアウトラインや参照に減らして送ります。"
+
+msgid "The model"
+msgstr "モデル"
+
+msgid "The model stopped because it reached its maximum output length. You can ask it to continue where it left off."
+msgstr "モデルは最大出力長に達したため停止しました。続きから再開するよう指示できます。"
+
+msgid "The project is not connected to the remote host."
+msgstr "プロジェクトは接続先のホストに繋がっていません。"
+
+msgid "The relay cannot be started because the project folder ({root}) contains the IDE integration's rendezvous location."
+msgstr "プロジェクトのフォルダー ({root}) が IDE 連携の待ち合わせ場所を含んでいるため、中継を起動できません。"
+
+msgid "The release information has no file for {platform}."
+msgstr "リリース情報に {platform} 向けのファイルがありません。"
+
+msgid "The remote Linux host uses musl, so the Linux build of Claude Code (the glibc build) cannot run."
+msgstr "接続先の Linux は musl のため、Linux 版 Claude Code (glibc 版) は動作しません。"
+
+msgid "The remote host did not respond within {seconds} seconds ({step}). Check the state of the remote host and try again."
+msgstr "接続先の応答が {seconds} 秒以内に返りませんでした ({step})。接続先の状態を確かめてから、もう一度お試しください。"
+
+msgid "The remote host does not have enough free space ({required} MB needed, {available} MB free). Free up space on the remote host and try again."
+msgstr "接続先のホストの空き容量が足りません (必要 {required} MB、空き {available} MB)。接続先の空き容量を増やしてから、もう一度お試しください。"
+
+msgid "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
+msgstr "接続先のホストに `sha256sum` がないため、Claude Code が置き換えられていないことを確認できません。接続先に coreutils をインストールしてから再試行してください。"
+
+msgid "The sandboxed Claude Code is not available because no folder is open."
+msgstr "フォルダーを開いていないため、サンドボックスの Claude Code は使えません。"
+
+msgid "The sandboxed Claude Code is not available because the remote host is not running Linux."
+msgstr "接続先が Linux ではないため、サンドボックスの Claude Code は使えません。"
+
+msgid "The sandboxed Claude Code is not available in a project that is being edited collaboratively."
+msgstr "共同編集中のプロジェクトでは、サンドボックスの Claude Code は使えません。"
+
+msgid "The sandboxed Claude Code is not available yet for this type of connection."
+msgstr "この接続方法では、サンドボックスの Claude Code はまだ使えません。"
+
+msgid "The sandboxed Claude Code is not available yet on this OS."
+msgstr "この OS では、サンドボックスの Claude Code はまだ使えません。"
+
+msgid "The session's terminal was closed right after it opened."
+msgstr "セッションのターミナルが開いた直後に閉じられました。"
+
+msgid "The sign-in is shared with your usual Claude Code (`~/.claude`)."
+msgstr "ログインは普段の Claude Code と共有します (`~/.claude`)。"
+
+msgid "The size of the downloaded Claude Code does not match the release information. Canceled."
+msgstr "ダウンロードした Claude Code の大きさがリリース情報と一致しません。中止しました。"
+
+msgid "The terminal panel is not available."
+msgstr "ターミナルパネルが利用できません。"
+
+msgid "The thread cannot be moved back because the agent panel was not found."
+msgstr "エージェントパネルが見つからないので、スレッドを戻せません。"
+
+msgid "The version in the release information ({manifest_version}) does not match the requested version ({version}). Canceled."
+msgstr "リリース情報の版 ({manifest_version}) が要求した版 ({version}) と一致しません。中止しました。"
+
+msgid "The {channel} version v{offered} is older than the installed v{installed}, so it will not be updated."
+msgstr "{channel}の v{offered} はインストール済みの v{installed} より古いため、更新しません。"
+
+msgid "There is no Linux build of Claude Code for the WSL architecture \"{machine}\" (only x86_64 and aarch64 are supported)."
+msgstr "WSL のアーキテクチャ「{machine}」向けの Linux 版 Claude Code はありません (対応しているのは x86_64 と aarch64 です)。"
+
+msgid "There is no Linux build of Claude Code for the remote host's architecture \"{machine}\" (only x86_64 and aarch64 are supported)."
+msgstr "接続先のホストのアーキテクチャ「{machine}」向けの Linux 版 Claude Code はありません (対応しているのは x86_64 と aarch64 です)。"
+
+msgid "There is no folder to run Claude Code in."
+msgstr "Claude Code を実行するフォルダーがありません。"
+
+msgid "Thinking"
+msgstr "思考中"
+
+msgid "Thinking Effort"
+msgstr "思考の深さ"
+
+msgid "Thinking: Off"
+msgstr "思考: オフ"
+
+msgid "Thinking: On"
+msgstr "思考: オン"
+
+msgid "Thinking: {level}"
+msgstr "思考: {level}"
+
+msgid "This JSON contains values that the form cannot show. Keep editing it as JSON."
+msgstr "この JSON にはフォームで表せない値が含まれています。JSON で編集を続けてください。"
+
+msgid "This WSL distribution uses musl, so the Linux build of Claude Code (the glibc build) cannot run."
+msgstr "この WSL ディストリビューションは musl のため、Linux 版 Claude Code (glibc 版) は動作しません。"
+
+msgid "This Week"
+msgstr "今週"
+
+msgid "This Window"
+msgstr "このウィンドウ"
+
+msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
+msgstr "このエージェントは Zed の IDE ツールを使えます: ハイライト・注釈・ツアー・ホバー・定義・参照・シンボル検索"
+
+msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
+msgstr "このエージェントは過去のメッセージの表示に対応していません。ただし、セッションは前回の続きから再開されます。"
+
+msgid "This agent doesn't currently support multi-root workspaces"
+msgstr "このエージェントは現在マルチルートワークスペースに対応していません"
+
+msgid "This agent doesn't offer a subscription sign-in. To use it with a subscription, launch the official Claude Code and log in there."
+msgstr "このエージェントはサブスクリプションでのサインインを出していません。サブスクリプションで使うには、公式の Claude Code を起動してその画面でログインしてください。"
+
+msgid "This agent is installed via npx (npm)"
+msgstr "このエージェントは npx (npm) 経由でインストールされます"
+
+msgid "This applies to this start only. To always start outside the sandbox, switch it on the AI page in Settings."
+msgstr "今回の起動だけです。常に外で起動するには、設定の「AI」ページで切り替えます。"
+
+msgid "This applies to this thread only (you will not be asked again; you can revoke the consent on the AI page in Settings). To always start outside the sandbox, switch it on the AI page in Settings."
+msgstr "このスレッドだけです (次からは確認しません。同意は設定の「AI」ページで取り消せます)。常に外で起動するには、設定の「AI」ページで切り替えます。"
+
+msgid "This command can write to a file on a Windows drive"
+msgstr "このコマンドは Windows ドライブ上のファイルに書き込めます"
+
+msgid "This command ran without a sandbox, allowed by an earlier version when the sandbox could not be created. Commands now always run inside the sandbox."
+msgstr "以前のバージョンで、サンドボックスを作れなかったときに許可されて実行されたコマンドです。現在は常にサンドボックスの中で実行します。"
+
+msgid "This command was allowed to run without a sandbox by an earlier version when the sandbox could not be created. Commands now always run inside the sandbox."
+msgstr "以前のバージョンで、サンドボックスを作れなかったときに許可されて実行されたコマンドです。現在は常にサンドボックスの中で実行します。"
+
+msgid "This conversation is too long for the model's context window. Start a new thread or remove some attached files to continue."
+msgstr "この会話はモデルのコンテキストウィンドウに対して長すぎます。続けるには、新しいスレッドを開始するか添付ファイルをいくつか削除してください。"
+
+msgid "This extension has no settings to configure."
+msgstr "この拡張機能には設定する項目がありません。"
+
+msgid "This extension's settings cannot be shown as a form, so they are edited as JSON."
+msgstr "この拡張機能の設定はフォームで表せないため、JSON で編集します。"
+
+msgid "This internationalized address displays as {decoded_host}. Verify it carefully."
+msgstr "この国際化アドレスは {decoded_host} と表示されます。よく確認してください。"
+
+msgid "This model does not support tools."
+msgstr "このモデルはツールに対応していません。"
+
+msgid "This model doesn't support thinking mode"
+msgstr "このモデルは思考モードに対応していません"
+
+msgid "This model only supports turning thinking on or off (effort levels aren't supported)"
+msgstr "このモデルは思考のオン/オフのみ対応しています (レベル指定は非対応)"
+
+msgid "This prompt was pre-filled by an external link. Read it carefully before you submit it to the model."
+msgstr "このプロンプトは外部リンクによってあらかじめ入力されました。モデルに送信する前によく確認してください。"
+
+msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
+msgstr "このサーバーはプロジェクトの設定ファイル (.zed/settings.json) で定義されています。ここで保存するとユーザー設定に書き込まれますが、プロジェクトの定義が優先されるため反映されません。設定ウィンドウの「MCP サーバー」ページから、定義しているファイルを編集してください。"
+
+msgid "This server is waiting for approval. Review it on the MCP Servers page of the Settings window."
+msgstr "このサーバーは承認待ちです。設定ウィンドウの「MCP サーバー」ページで確認してください。"
+
+msgid "This starts a new session (it does not continue this conversation)."
+msgstr "新しいセッションになります (この会話の続きにはなりません)。"
+
+msgid "This thread is a conversation with an agent that was started outside the sandbox. The conversation is kept in a settings folder outside the sandbox, so it can't be read from inside the sandbox. To continue, resume it outside the sandbox (you'll be asked before it starts)."
+msgstr "このスレッドはサンドボックスの外で起動したエージェントの会話です。会話はサンドボックスの外の設定フォルダーにあるため、サンドボックスの中からは読み込めません。続けるにはサンドボックスの外で再開します (起動の前に確認します)。"
+
+msgid "This thread was started inside the sandbox, so it was resumed inside the sandbox"
+msgstr "このスレッドはサンドボックスの中で始めたため、中で再開しました"
+
+msgid "This thread's agent doesn't have the IDE diagnostics tool"
+msgstr "このスレッドのエージェントには IDE の診断ツールが渡っていません"
+
+msgid "This thread's agent is running outside the sandbox"
+msgstr "このスレッドのエージェントはサンドボックスの外で実行中です"
+
+msgid "Thread Started Outside the Sandbox"
+msgstr "サンドボックスの外で起動したスレッドです"
+
+msgid "Thread copied to clipboard (base64 encoded)"
+msgstr "スレッドをクリップボードにコピーしました (base64 エンコード)。"
+
+msgid "Thread loaded from clipboard"
+msgstr "クリップボードからスレッドを読み込みました。"
+
+msgid "Thread reached the token limit"
+msgstr "スレッドがトークン上限に達しました"
+
+msgid "Thread reaching the token limit soon"
+msgstr "スレッドがまもなくトークン上限に達します"
+
+msgid "Threads"
+msgstr "スレッド"
+
+msgid "Title generation failed. Click to retry."
+msgstr "タイトルの生成に失敗しました。クリックすると再試行します。"
+
+msgid "To continue, run /compact or start a new thread and @-mention this one"
+msgstr "続けるには /compact を実行するか、新しいスレッドを開始してこのスレッドを @ メンションしてください"
+
+msgid "To use an API key (billed per use), enter it below and save it."
+msgstr "API キー (従量課金) で使う場合は、下の欄に入力して保存してください。"
+
+msgid "Today"
+msgstr "今日"
+
+msgid "Toggle Agent Menu"
+msgstr "エージェントメニューの表示切り替え"
+
+msgid "Toggle Thread History in Panel"
+msgstr "パネル内のスレッド履歴の切り替え"
+
+msgid "Toggle Threads Sidebar"
+msgstr "スレッドサイドバーの切り替え"
+
+msgid "Tool Permissions"
+msgstr "ツールの権限"
+
+msgid "Tools Unsupported"
+msgstr "ツール非対応"
+
+msgid "Track the agent's location as it reads and edits files."
+msgstr "エージェントがファイルを読み書きする位置を追跡します。"
+
+msgid "Transform"
+msgstr "変換"
+
+msgid "Try Again"
+msgstr "もう一度試す"
 
 msgid "Try to restart the agent"
 msgstr "エージェントの再起動を試みます"
 
+msgid "Type anything to edit"
+msgstr "何か入力すると編集できます"
+
+msgid "Type to Send"
+msgstr "入力すると送信できます"
+
+msgid "Unavailable"
+msgstr "利用不可"
+
+msgid "Unavailable Editing"
+msgstr "編集は利用できません"
+
+msgid "Undo"
+msgstr "元に戻す"
+
+msgid "Unexpected shape of the IDE rendezvous path (internal error): {rendezvous}"
+msgstr "IDE の待ち合わせパスの形が想定と違います (内部エラー): {rendezvous}"
+
+msgid "Unexpected shape of the remote home directory (internal error): {home}"
+msgstr "接続先のホームディレクトリの形が想定と違います (内部エラー): {home}"
+
+msgid "Unfavorite"
+msgstr "お気に入りから削除"
+
+msgid "Unfavorite Model"
+msgstr "お気に入りから削除"
+
+msgid "Unknown"
+msgstr "不明"
+
+msgid "Update Claude Code to v{to}"
+msgstr "Claude Code を v{to} に更新します"
+
+msgid "Update available"
+msgstr "更新あり"
+
+msgid "Update available: v{installed} → v{latest}"
+msgstr "更新あり: v{installed} → v{latest}"
+
+msgid "Update available: v{latest}"
+msgstr "更新あり: v{latest}"
+
+msgid "Update to v{}"
+msgstr "v{} に更新"
+
+msgid "Upgrade"
+msgstr "アップグレード"
+
+msgid "Upgrade to Zed Pro"
+msgstr "Zed Pro にアップグレード"
+
+msgid "Upgrade {}"
+msgstr "{} をアップグレード"
+
+msgid "Upgrade {} to work with Zed"
+msgstr "Zed で使うには {} をアップグレードしてください"
+
+msgid "Verifying the signature of the Claude Code release information…"
+msgstr "Claude Code のリリース情報の署名を確認しています…"
+
+msgid "View"
+msgstr "表示"
+
 msgid "View Agent License or Terms of Service"
 msgstr "エージェントのライセンスまたは利用規約を開く"
 
+msgid "View Raw Input"
+msgstr "生の入力を表示"
+
+msgid "View Sandboxing Docs"
+msgstr "サンドボックスのドキュメントを表示"
+
+msgid "View docs"
+msgstr "ドキュメントを表示"
+
+msgid "Visit Agent Repository"
+msgstr "エージェントのリポジトリを開く"
+
+msgid "Visit Agent Website"
+msgstr "エージェントの Web サイトを開く"
+
+msgid "WSL did not respond within {seconds} seconds. Wait a moment and try again; if that does not help, restart WSL with `wsl --shutdown`."
+msgstr "WSL が {seconds} 秒以内に応答しませんでした。しばらく待ってから再試行し、改善しない場合は `wsl --shutdown` で WSL を再起動してください。"
+
+msgid "Wait until file edits are complete."
+msgstr "ファイルの編集が完了するまでお待ちください。"
+
+msgid "Waiting for completion"
+msgstr "完了待ち"
+
+msgid "Waiting for input"
+msgstr "入力を待っています"
+
+msgid "Waiting for the allowlist change to take effect…"
+msgstr "許可リストへの反映を待っています…"
+
+msgid "Waiting for tool confirmation"
+msgstr "ツールの確認を待っています"
+
+msgid "We appreciate your feedback and will use it to improve in the future."
+msgstr "フィードバックをありがとうございます。今後の改善に役立てます。"
+
+msgid "What went wrong? Share your feedback so we can improve."
+msgstr "どこが問題でしたか? 改善のためフィードバックをお寄せください。"
+
+msgid "When an API key is set, Claude Code uses it instead. To use your subscription, remove the key."
+msgstr "API キーが設定されているときは、Claude Code はそちらを優先します。サブスクリプションで使うにはキーを削除してください。"
+
+msgid "Write Access"
+msgstr "書き込みアクセス"
+
+msgid "Write Path"
+msgstr "書き込みパス"
+
+msgid "Writes and network access are not restricted (Zed's controls do not apply on the remote host)."
+msgstr "書き込みと通信の制限はありません (接続先では Zed の統制が効きません)。"
+
+msgid "Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings.\nThe sign-in is shared with your usual Claude Code."
+msgstr "書き込みの制限がなくなり、通信の制限はプロキシを読むものにだけ効きます。\nログインは普段の Claude Code と共有します。"
+
+msgid "Writes are no longer restricted. Network restrictions only apply to programs that read the proxy settings (they are not enforced)."
+msgstr "書き込みの制限がなくなります。通信の制限はプロキシの設定を読むプログラムにだけ効きます (強制ではありません)。"
+
+msgid "Yesterday"
+msgstr "昨日"
+
+msgid "You already rated this result"
+msgstr "この結果は評価済みです"
+
+msgid "You can discard this interrupted partial edit and restore the original file content."
+msgstr "中断された部分的な編集を破棄して、元のファイル内容に戻せます。"
+
+msgid "You have sandboxing disabled in settings."
+msgstr "設定でサンドボックスが無効になっています。"
+
+msgid "You may need to reconfigure authentication for this provider"
+msgstr "このプロバイダーの認証を再設定する必要があるかもしれません"
+
 msgid "You reached your free usage limit. Upgrade to Zed Pro for more prompts."
 msgstr "無料利用の上限に達しました。より多くのプロンプトを使うには Zed Pro にアップグレードしてください。"
+
+msgid "You've been automatically reset to the Free plan."
+msgstr "自動的に Free プランに戻りました。"
+
+msgid "Your Zed Pro Trial has expired"
+msgstr "Zed Pro トライアルの期限が切れました"
+
+msgid "Your usual settings and sign-in are used as they are."
+msgstr "設定とログインは普段のものをそのまま使います。"
+
+msgid "a URI"
+msgstr "URI"
+
+msgid "a date"
+msgstr "日付"
+
+msgid "a date and time"
+msgstr "日時"
+
+msgid "added"
+msgstr "登録済み"
+
+msgid "an email address"
+msgstr "メールアドレス"
+
+msgid "any host"
+msgstr "すべてのホスト"
+
+msgid "checking the Claude Code on the remote host"
+msgstr "接続先にある Claude Code の確認"
+
+msgid "checking the remote environment"
+msgstr "接続先の環境の確認"
+
+msgid "current directory"
+msgstr "現在のディレクトリ"
+
+msgid "in the future"
+msgstr "未来"
+
+msgid "not added"
+msgstr "未登録"
+
+msgid "one folder"
+msgstr "1 つのフォルダー"
+
+msgid "preparing the destination folder"
+msgstr "送信先フォルダーの準備"
+
+msgid "running a command on the remote host"
+msgstr "接続先でのコマンドの実行"
+
+msgid "unrestricted except Git metadata"
+msgstr "Git メタデータを除き制限なし"
+
+msgid "verifying the uploaded Claude Code"
+msgstr "送った Claude Code の検証"
+
+msgid "{action}… ({agent_panel_keybinding} ― ↓↑ for history — @ to include context)"
+msgstr "{action}… ({agent_panel_keybinding} ― ↓↑ で履歴 — @ でコンテキストを追加)"
+
+msgid "{count} IDE integration relays are already running, so no more can be started. Close the agent threads and terminals you are not using and try again."
+msgstr "IDE 連携の中継がすでに {count} 本動いているため、これ以上は起動できません。使っていないエージェントのスレッドやターミナルを閉じてからやり直してください。"
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "エラー {count} 件"
+
+msgid "{count} host"
+msgid_plural "{count} hosts"
+msgstr[0] "{count} ホスト"
+
+msgid "{count} path"
+msgid_plural "{count} paths"
+msgstr[0] "{count} パス"
+
+msgid "{count} project rule"
+msgid_plural "{count} project rules"
+msgstr[0] "プロジェクトルール {count} 件"
+
+msgid "{count} thread"
+msgid_plural "{count} threads"
+msgstr[0] "スレッド {count} 件"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "警告 {count} 件"
+
+msgid "{days} days ago"
+msgstr "{days} 日前"
+
+msgid "{detail} Click to learn more about sandboxing."
+msgstr "{detail} クリックするとサンドボックスの詳細を確認できます。"
+
+msgid "{errors} & {warnings}"
+msgstr "{errors}、{warnings}"
+
+msgid "{host} (added)"
+msgstr "{host} (登録済み)"
+
+msgid "{host} (not added)"
+msgstr "{host} (未登録)"
+
+msgid "{hours} hours ago"
+msgstr "{hours} 時間前"
+
+msgid "{keybinding} to chat"
+msgstr "{keybinding} でチャット"
+
+msgid "{minutes} minutes ago"
+msgstr "{minutes} 分前"
+
+msgid "{notice}. Starts `{program}` on this PC in the project folder."
+msgstr "{notice}。この PC の `{program}` をプロジェクトのフォルダーで起動します。"
+
+msgid "{profile_name} — Configure Built-in Tools"
+msgstr "{profile_name} — 組み込みツールを設定"
+
+msgid "{profile_name} — Configure Default Model"
+msgstr "{profile_name} — 既定のモデルを設定"
+
+msgid "{profile_name} — Configure MCP Tools"
+msgstr "{profile_name} — MCP ツールを設定"
+
+msgid "{provider} rejected the request due to insufficient permissions."
+msgstr "{provider} は権限が不足しているためリクエストを拒否しました。"
+
+msgid "{provider}'s API returned an unexpected error. If the problem persists, try switching models or restarting Zed."
+msgstr "{provider} の API が予期しないエラーを返しました。問題が続く場合は、モデルを切り替えるか Zed を再起動してみてください。"
+
+msgid "{provider}'s rate limit was reached. Zed will retry automatically. You can also wait a moment and try again."
+msgstr "{provider} のレート制限に達しました。Zed が自動的に再試行します。しばらく待ってからやり直すこともできます。"
+
+msgid "{provider}'s servers are temporarily unavailable. Zed will retry automatically. If the problem persists, check the provider's status page."
+msgstr "{provider} のサーバーが一時的に利用できません。Zed が自動的に再試行します。問題が続く場合は、プロバイダーのステータスページを確認してください。"
+
+msgid "{seconds} seconds ago"
+msgstr "{seconds} 秒前"
+
+msgid "{title} does not match the requested constraints"
+msgstr "{title} が要求された制約に一致しません。"
+
+msgid "{title} does not match the requested pattern"
+msgstr "{title} が要求されたパターンに一致しません。"
+
+msgid "{title} has a validation pattern that is too complex"
+msgstr "{title} の検証パターンが複雑すぎます。"
+
+msgid "{title} has an invalid validation format"
+msgstr "{title} の検証形式が不正です。"
+
+msgid "{title} has an invalid validation pattern"
+msgstr "{title} の検証パターンが不正です。"
+
+msgid "{title} is too long"
+msgstr "{title} が長すぎます。"
+
+msgid "{title} is too long to validate safely"
+msgstr "{title} が長すぎるため安全に検証できません。"
+
+msgid "{title} is too short"
+msgstr "{title} が短すぎます。"
+
+msgid "{title} must be a finite number"
+msgstr "{title} は有限の数値である必要があります。"
+
+msgid "{title} must be a number"
+msgstr "{title} は数値である必要があります。"
+
+msgid "{title} must be an integer"
+msgstr "{title} は整数である必要があります。"
+
+msgid "{title} must be at least {minimum}"
+msgstr "{title} は {minimum} 以上である必要があります。"
+
+msgid "{title} must be at most {maximum}"
+msgstr "{title} は {maximum} 以下である必要があります。"
+
+msgid "{title} must be one of the provided options"
+msgstr "{title} は選択肢のいずれかである必要があります。"
+
+msgid "{title} must be {format}"
+msgstr "{title} は{format}である必要があります。"
+
+msgid "{warning_count} Skills Loaded with Long Descriptions"
+msgstr "説明が長いスキルを {warning_count} 件読み込みました"
+
+msgid "{} Exited"
+msgstr "{} が終了しました"
+
+msgid "{} Needs Hosts Added to the Allowlist"
+msgstr "{} の通信に許可リストへの追加が必要です"
+
+msgid "{} Queued Messages"
+msgstr "待機中のメッセージ {} 件"
+
+msgid "{} Tasks"
+msgstr "{} 件のタスク"
+
+msgid "{} configured successfully."
+msgstr "{} を設定しました。"
+
+msgid "{} has too many selections"
+msgstr "{} の選択数が多すぎます。"
+
+msgid "{} is required"
+msgstr "{} は必須です。"
+
+msgid "{} left"
+msgstr "残り {} 件"
+
+msgid "{} needs more selections"
+msgstr "{} の選択数が不足しています。"
+
+msgid "{} refused to respond to this prompt. This can happen when a model believes the prompt violates its content policy or safety guidelines, so rephrasing it can sometimes address the issue."
+msgstr "{} はこのプロンプトへの応答を拒否しました。モデルがプロンプトをコンテンツポリシーや安全ガイドラインに反すると判断した場合に起こることがあります。表現を変えると解消する場合があります。"
+
+msgid "{} refused to respond to this request"
+msgstr "{} がこのリクエストへの応答を拒否しました"
+
+msgid "{} tokens"
+msgstr "{} トークン"
+
+msgid "— {count} file changed"
+msgid_plural "— {count} files changed"
+msgstr[0] "— {count} 件のファイルを変更"
+
+msgid "— {count} step"
+msgid_plural "— {count} steps"
+msgstr[0] "— {count} ステップ"
+
+msgid "“{value}” contains potentially surprising Unicode characters"
+msgstr "「{value}」に予期しない Unicode 文字が含まれています"
+
+msgctxt "Claude Code release channel"
+msgid "latest"
+msgstr "最新版"
+
+msgctxt "Claude Code release channel"
+msgid "stable"
+msgstr "安定版"
+
+msgctxt "PanelTabBar"
+msgid "Always"
+msgstr "常に表示"
+
+msgctxt "PanelTabBar"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "PanelTabBar"
+msgid "Never"
+msgstr "表示しない"
+
+msgctxt "api key"
+msgid "Cancel"
+msgstr "取り消し"
+
+msgctxt "attachment mode"
+msgid "Full"
+msgstr "全文"
+
+msgctxt "attachment mode"
+msgid "Summary"
+msgstr "要約"
+
+msgctxt "changed files"
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count} 件のファイル"
+
+msgctxt "chrono date format"
+msgid "%b %-d, %Y"
+msgstr "%Y年%-m月%-d日"
+
+msgctxt "data retention"
+msgid "Accept"
+msgstr "同意する"
+
+msgctxt "elicitation status"
+msgid "Waiting for input"
+msgstr "入力待ち"
+
+msgctxt "extension setting"
+msgid "(Not Set)"
+msgstr "(未設定)"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "mention type"
+msgid "Fetch"
+msgstr "URL を取得"
+
+msgctxt "model list section"
+msgid "Favorite"
+msgstr "お気に入り"
+
+msgctxt "permission pattern menu"
+msgid "Always for `{}` commands"
+msgstr "`{}` コマンドで常に許可"
+
+msgctxt "sandbox path"
+msgid "Source"
+msgstr "要求元"
+
+msgctxt "subagent title"
+msgid "Subagent Failed"
+msgstr "サブエージェント (失敗)"

@@ -62,7 +62,7 @@ pub fn init(cx: &mut App) {
 
                     cx.prompt(
                         PromptLevel::Info,
-                        "クリップボードにコピーしました",
+                        i18n::t!("Copied into clipboard"),
                         Some(&specs),
                         &["OK"],
                     )
@@ -75,7 +75,7 @@ pub fn init(cx: &mut App) {
                 cx.write_to_clipboard(ClipboardItem::new_string(clipboard_text.clone()));
                 drop(window.prompt(
                     PromptLevel::Info,
-                    "クリップボードにコピーしました",
+                    i18n::t!("Copied into clipboard"),
                     Some(&clipboard_text),
                     &["OK"],
                     cx,
@@ -134,11 +134,11 @@ fn format_installed_extensions_for_clipboard(cx: &mut App) -> String {
     lines.sort();
 
     if lines.is_empty() {
-        return "インストール済みの拡張機能はありません。".to_string();
+        return i18n::t!("No extensions installed.").to_string();
     }
 
-    format!(
-        "インストール済みの拡張機能 ({} 件):\n{}",
+    i18n::t!(
+        "Installed extensions ({}):\n{}",
         lines.len(),
         lines.join("\n")
     )

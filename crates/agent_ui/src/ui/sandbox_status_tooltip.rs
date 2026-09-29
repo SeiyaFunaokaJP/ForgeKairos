@@ -160,7 +160,7 @@ impl RenderOnce for SandboxStatusTooltip {
         let content = match self {
             SandboxStatusTooltip::DisabledInSettings => v_flex()
                 .child(
-                    Label::new("設定でサンドボックスが無効になっています。")
+                    Label::new(i18n::t!("You have sandboxing disabled in settings."))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -180,7 +180,7 @@ impl RenderOnce for SandboxStatusTooltip {
         v_flex()
             .w(rems_from_px(280_f32))
             .gap_1()
-            .child(Label::new("サンドボックス"))
+            .child(Label::new(i18n::t!("Sandboxing")))
             .child(content)
     }
 }

@@ -1,9 +1,9 @@
 use crate::db::DbPermissionJudgement;
 use crate::tool_permissions::{
-    PERMISSION_JUDGE_ERROR_REASON, PERMISSION_JUDGE_NO_MODEL_REASON,
-    PERMISSION_JUDGE_SYSTEM_PROMPT, PERMISSION_JUDGE_TIMEOUT, PERMISSION_JUDGE_TIMEOUT_REASON,
-    PermissionJudgeCacheKey, PermissionJudgeContext, PermissionJudgeVerdict, ThreadPermissionJudge,
-    build_permission_judge_prompt, parse_permission_judge_response,
+    PERMISSION_JUDGE_ERROR_REASON, PERMISSION_JUDGE_NO_MODEL_REASON, PERMISSION_JUDGE_TIMEOUT,
+    PERMISSION_JUDGE_TIMEOUT_REASON, PermissionJudgeCacheKey, PermissionJudgeContext,
+    PermissionJudgeVerdict, ThreadPermissionJudge, build_permission_judge_prompt,
+    parse_permission_judge_response, permission_judge_system_prompt,
 };
 use crate::{
     AnnotateCodeTool, ClearAnnotationsTool, CodeTourTool, HighlightCodeTool, HoverTool,
@@ -964,33 +964,35 @@ pub enum ToolPermissionScope {
     SensitiveSettings,
 }
 
-/// Japanese display name for a built-in Agent tool's internal name, used in the
-/// "always allow/deny for <tool>" permission-scope dropdown. Only the tools that
-/// commonly reach this dropdown (write/execute/network tools) are mapped; any
-/// other tool name (including MCP tool names, which are defined by external
-/// servers and can't be mapped statically) falls back to the internal name with
-/// underscores replaced by spaces.
+/// The display name of a built-in Agent tool's internal name, used in the
+/// "always allow/deny for <tool>" permission-scope dropdown: the internal name
+/// with underscores replaced by spaces, translated for the tools that commonly
+/// reach this dropdown (write/execute/network tools). Any other tool name
+/// (including MCP tool names, which are defined by external servers and can't
+/// be mapped statically) is left as it is.
 fn localized_tool_name_for_permission(tool_name: &str) -> String {
-    let localized = if tool_name == TerminalTool::NAME || tool_name == SandboxedTerminalTool::NAME {
-        "ターミナル"
+    let localized = if tool_name == TerminalTool::NAME {
+        i18n::tc!("tool name", "terminal")
+    } else if tool_name == SandboxedTerminalTool::NAME {
+        i18n::tc!("tool name", "sandboxed terminal")
     } else if tool_name == CopyPathTool::NAME {
-        "コピー"
+        i18n::tc!("tool name", "copy path")
     } else if tool_name == MovePathTool::NAME {
-        "移動"
+        i18n::tc!("tool name", "move path")
     } else if tool_name == EditFileTool::NAME {
-        "ファイル編集"
+        i18n::tc!("tool name", "edit file")
     } else if tool_name == WriteFileTool::NAME {
-        "ファイル書き込み"
+        i18n::tc!("tool name", "write file")
     } else if tool_name == DeletePathTool::NAME {
-        "削除"
+        i18n::tc!("tool name", "delete path")
     } else if tool_name == CreateDirectoryTool::NAME {
-        "ディレクトリ作成"
+        i18n::tc!("tool name", "create directory")
     } else if tool_name == FetchTool::NAME {
-        "URL の取得"
+        i18n::tc!("tool name", "fetch")
     } else if tool_name == ApplyCodeActionTool::NAME {
-        "コードアクションの適用"
+        i18n::tc!("tool name", "apply code action")
     } else if tool_name == RenameTool::NAME {
-        "シンボルの名前変更"
+        i18n::tc!("tool name", "rename symbol")
     } else {
         return tool_name.replace('_', " ");
     };
@@ -1071,12 +1073,12 @@ impl ToolPermissionContext {
             return acp_thread::PermissionOptions::Flat(vec![
                 acp::PermissionOption::new(
                     acp::PermissionOptionId::new("allow"),
-                    "許可",
+                    i18n::t!("Allow"),
                     acp::PermissionOptionKind::AllowOnce,
                 ),
                 acp::PermissionOption::new(
                     acp::PermissionOptionId::new("deny"),
-                    "拒否",
+                    i18n::t!("Deny"),
                     acp::PermissionOptionKind::RejectOnce,
                 ),
             ]);
@@ -1094,12 +1096,12 @@ impl ToolPermissionContext {
             return acp_thread::PermissionOptions::Flat(vec![
                 acp::PermissionOption::new(
                     acp::PermissionOptionId::new("allow"),
-                    "許可",
+                    i18n::t!("Allow"),
                     acp::PermissionOptionKind::AllowOnce,
                 ),
                 acp::PermissionOption::new(
                     acp::PermissionOptionId::new("deny"),
-                    "拒否",
+                    i18n::t!("Deny"),
                     acp::PermissionOptionKind::RejectOnce,
                 ),
             ]);
@@ -1123,12 +1125,18 @@ impl ToolPermissionContext {
                     choices.push(acp_thread::PermissionOptionChoice {
                         allow: acp::PermissionOption::new(
                             acp::PermissionOptionId::new(format!("always_allow:{}", tool_name)),
-                            format!("{}は常に", localized_tool_name_for_permission(tool_name)),
+                            i18n::t!(
+                                "Always for {}",
+                                localized_tool_name_for_permission(tool_name)
+                            ),
                             acp::PermissionOptionKind::AllowAlways,
                         ),
                         deny: acp::PermissionOption::new(
                             acp::PermissionOptionId::new(format!("always_deny:{}", tool_name)),
-                            format!("{}は常に", localized_tool_name_for_permission(tool_name)),
+                            i18n::t!(
+                                "Always for {}",
+                                localized_tool_name_for_permission(tool_name)
+                            ),
                             acp::PermissionOptionKind::RejectAlways,
                         ),
                         sub_patterns: vec![],
@@ -1136,12 +1144,12 @@ impl ToolPermissionContext {
                     choices.push(acp_thread::PermissionOptionChoice {
                         allow: acp::PermissionOption::new(
                             acp::PermissionOptionId::new("allow"),
-                            "今回のみ",
+                            i18n::t!("Only this time"),
                             acp::PermissionOptionKind::AllowOnce,
                         ),
                         deny: acp::PermissionOption::new(
                             acp::PermissionOptionId::new("deny"),
-                            "今回のみ",
+                            i18n::t!("Only this time"),
                             acp::PermissionOptionKind::RejectOnce,
                         ),
                         sub_patterns: vec![],
@@ -1222,7 +1230,10 @@ impl ToolPermissionContext {
 
         if shell_supports_always_allow {
             push_choice(
-                format!("{}は常に", localized_tool_name_for_permission(tool_name)),
+                i18n::t!(
+                    "Always for {}",
+                    localized_tool_name_for_permission(tool_name)
+                ),
                 format!("always_allow:{}", tool_name),
                 format!("always_deny:{}", tool_name),
                 acp::PermissionOptionKind::AllowAlways,
@@ -1232,9 +1243,9 @@ impl ToolPermissionContext {
 
             if let (Some(pattern), Some(display)) = (pattern, pattern_display) {
                 let button_text = if tool_name == TerminalTool::NAME {
-                    format!("`{}` コマンドは常に", display)
+                    i18n::t!("Always for `{}` commands", display)
                 } else {
-                    format!("`{}` は常に", display)
+                    i18n::t!("Always for `{}`", display)
                 };
                 push_choice(
                     button_text,
@@ -1248,7 +1259,7 @@ impl ToolPermissionContext {
         }
 
         push_choice(
-            "今回のみ".to_string(),
+            i18n::t!("Only this time").to_string(),
             "allow".to_string(),
             "deny".to_string(),
             acp::PermissionOptionKind::AllowOnce,
@@ -5793,9 +5804,9 @@ pub(crate) enum SandboxRetryDecision {
 /// advance.
 pub fn sandbox_retry_permission_options(retries: usize) -> acp_thread::PermissionOptions {
     let retry_label = if retries == 0 {
-        "再試行".to_string()
+        i18n::t!("Retry").to_string()
     } else {
-        format!("再試行 ({} 回目)", retries + 1)
+        i18n::t!("Retry (attempt {})", retries + 1)
     };
     acp_thread::PermissionOptions::Flat(vec![
         // Retry isn't an allow/deny choice and the UI dispatches on its id.
@@ -5808,7 +5819,7 @@ pub fn sandbox_retry_permission_options(retries: usize) -> acp_thread::Permissio
         ),
         acp::PermissionOption::new(
             acp::PermissionOptionId::new(acp_thread::SandboxPermission::Deny.as_id()),
-            "キャンセル",
+            i18n::t!("Cancel"),
             acp::PermissionOptionKind::RejectOnce,
         ),
     ])
@@ -5900,7 +5911,7 @@ impl Drop for PermissionJudgeInProgress<'_> {
         if self.armed {
             self.recorder.record(
                 acp_thread::PermissionJudgeState::Superseded,
-                acp_thread::PERMISSION_JUDGE_CANCELED_REASON.to_string(),
+                i18n::tr(acp_thread::PERMISSION_JUDGE_CANCELED_REASON).to_string(),
                 false,
             );
         }
@@ -6153,7 +6164,7 @@ impl ToolCallEventStream {
         let judge_context = judge_input
             .filter(|input| tool_input_says_something(input))
             .map(|input| PermissionJudgeContext::new(tool_id.clone(), vec![input.to_string()]));
-        let always_label = format!("MCP ツール {display_name} は常に");
+        let always_label = i18n::t!("Always for {display_name} MCP tool");
         let options = acp_thread::PermissionOptions::Dropdown(vec![
             acp_thread::PermissionOptionChoice {
                 allow: acp::PermissionOption::new(
@@ -6171,12 +6182,12 @@ impl ToolCallEventStream {
             acp_thread::PermissionOptionChoice {
                 allow: acp::PermissionOption::new(
                     acp::PermissionOptionId::new("allow"),
-                    "今回のみ",
+                    i18n::t!("Only this time"),
                     acp::PermissionOptionKind::AllowOnce,
                 ),
                 deny: acp::PermissionOption::new(
                     acp::PermissionOptionId::new("deny"),
-                    "今回のみ",
+                    i18n::t!("Only this time"),
                     acp::PermissionOptionKind::RejectOnce,
                 ),
                 sub_patterns: vec![],
@@ -6294,7 +6305,7 @@ impl ToolCallEventStream {
         // The card is the only place the user learns why a mode that approves
         // everything is asking, so the reason is part of the title rather than
         // left to the path for them to work out.
-        self.authorize_with_note(title, "プロジェクトの外", context, cx)
+        self.authorize_with_note(title, i18n::t!("outside the project"), context, cx)
     }
 
     /// Like [`Self::authorize_outside_project`], but with the card's own
@@ -6491,14 +6502,14 @@ impl ToolCallEventStream {
             unsandboxed_command_permission_options()
         } else {
             let allow_thread_label = if self.is_subagent(cx) {
-                "許可 (このサブエージェント)"
+                i18n::t!("Allow for this subagent")
             } else {
-                "許可 (このスレッド)"
+                i18n::t!("Allow for this thread")
             };
             acp_thread::PermissionOptions::Flat(vec![
                 acp::PermissionOption::new(
                     acp::PermissionOptionId::new(acp_thread::SandboxPermission::AllowOnce.as_id()),
-                    "許可 (今回のみ)",
+                    i18n::t!("Allow once"),
                     acp::PermissionOptionKind::AllowOnce,
                 ),
                 acp::PermissionOption::new(
@@ -6512,12 +6523,12 @@ impl ToolCallEventStream {
                     acp::PermissionOptionId::new(
                         acp_thread::SandboxPermission::AllowAlways.as_id(),
                     ),
-                    "常に許可",
+                    i18n::t!("Allow always"),
                     acp::PermissionOptionKind::AllowAlways,
                 ),
                 acp::PermissionOption::new(
                     acp::PermissionOptionId::new(acp_thread::SandboxPermission::Deny.as_id()),
-                    "拒否",
+                    i18n::t!("Deny"),
                     acp::PermissionOptionKind::RejectOnce,
                 ),
             ])
@@ -6641,12 +6652,12 @@ impl ToolCallEventStream {
         let options = acp_thread::PermissionOptions::Flat(vec![
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new(acp_thread::SandboxPermission::AllowOnce.as_id()),
-                "続行",
+                i18n::t!("Continue"),
                 acp::PermissionOptionKind::AllowOnce,
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new(acp_thread::SandboxPermission::Deny.as_id()),
-                "中止",
+                i18n::t!("Abort"),
                 acp::PermissionOptionKind::RejectOnce,
             ),
         ]);
@@ -7061,7 +7072,7 @@ impl ToolCallEventStream {
         let Some(mut judge_context) = judge_context else {
             recorder.record(
                 acp_thread::PermissionJudgeState::Unsafe,
-                acp_thread::PERMISSION_JUDGE_NO_ARGUMENTS_REASON.to_string(),
+                i18n::tr(acp_thread::PERMISSION_JUDGE_NO_ARGUMENTS_REASON).to_string(),
                 false,
             );
             return None;
@@ -7131,15 +7142,15 @@ impl ToolCallEventStream {
                     };
                     match decision {
                         ToolPermissionDecision::Allow => {
-                            superseded("設定が変わったため判定を中止しました");
+                            superseded(i18n::t!("The review was stopped because the settings changed"));
                             return Some(Ok(()));
                         }
                         ToolPermissionDecision::Deny(reason) => {
-                            superseded("設定が変わったため判定を中止しました");
+                            superseded(i18n::t!("The review was stopped because the settings changed"));
                             return Some(Err(anyhow!(reason)));
                         }
                         ToolPermissionDecision::Confirm => {
-                            superseded("設定が変わったため判定を中止しました");
+                            superseded(i18n::t!("The review was stopped because the settings changed"));
                             return None;
                         }
                         ToolPermissionDecision::Judge => continue,
@@ -7188,7 +7199,7 @@ impl ToolCallEventStream {
                 judge_context.tool_name
             );
             return PermissionJudgeVerdict::Unsafe {
-                reason: PERMISSION_JUDGE_NO_MODEL_REASON.to_string(),
+                reason: i18n::tr(PERMISSION_JUDGE_NO_MODEL_REASON).to_string(),
             };
         };
         let model = configured_model.model;
@@ -7199,7 +7210,7 @@ impl ToolCallEventStream {
             messages: vec![
                 LanguageModelRequestMessage {
                     role: Role::System,
-                    content: vec![PERMISSION_JUDGE_SYSTEM_PROMPT.into()],
+                    content: vec![permission_judge_system_prompt().into()],
                     cache: false,
                     reasoning_details: None,
                 },
@@ -7228,12 +7239,12 @@ impl ToolCallEventStream {
                 Err(error) => {
                     log::warn!("permission judge request failed: {error:#}");
                     PermissionJudgeVerdict::Unsafe {
-                        reason: PERMISSION_JUDGE_ERROR_REASON.to_string(),
+                        reason: i18n::tr(PERMISSION_JUDGE_ERROR_REASON).to_string(),
                     }
                 }
             },
             _ = timeout => PermissionJudgeVerdict::Unsafe {
-                reason: PERMISSION_JUDGE_TIMEOUT_REASON.to_string(),
+                reason: i18n::tr(PERMISSION_JUDGE_TIMEOUT_REASON).to_string(),
             },
         };
 
@@ -9837,22 +9848,18 @@ mod tests {
         assert_eq!(
             options,
             vec![
-                (
-                    "allow",
-                    "許可 (今回のみ)",
-                    acp::PermissionOptionKind::AllowOnce
-                ),
+                ("allow", "Allow once", acp::PermissionOptionKind::AllowOnce),
                 (
                     "allow_thread",
-                    "許可 (このスレッド)",
+                    "Allow for this thread",
                     acp::PermissionOptionKind::AllowAlways,
                 ),
                 (
                     "allow_always",
-                    "常に許可",
+                    "Allow always",
                     acp::PermissionOptionKind::AllowAlways,
                 ),
-                ("deny", "拒否", acp::PermissionOptionKind::RejectOnce),
+                ("deny", "Deny", acp::PermissionOptionKind::RejectOnce),
             ]
         );
 
@@ -9927,8 +9934,8 @@ mod tests {
         assert_eq!(
             options,
             vec![
-                ("retry", "再試行", acp::PermissionOptionKind::RejectAlways),
-                ("deny", "キャンセル", acp::PermissionOptionKind::RejectOnce),
+                ("retry", "Retry", acp::PermissionOptionKind::RejectAlways),
+                ("deny", "Cancel", acp::PermissionOptionKind::RejectOnce),
             ]
         );
 
@@ -9959,9 +9966,9 @@ mod tests {
                 .name
         };
 
-        assert_eq!(retry_label(0), "再試行");
-        assert_eq!(retry_label(1), "再試行 (2 回目)");
-        assert_eq!(retry_label(2), "再試行 (3 回目)");
+        assert_eq!(retry_label(0), "Retry");
+        assert_eq!(retry_label(1), "Retry (attempt 2)");
+        assert_eq!(retry_label(2), "Retry (attempt 3)");
     }
 
     /// Cancelling records nothing for the thread: the next command gets the
@@ -10059,12 +10066,8 @@ mod tests {
         assert_eq!(
             options,
             vec![
-                (
-                    "allow",
-                    "許可 (今回のみ)",
-                    acp::PermissionOptionKind::AllowOnce
-                ),
-                ("deny", "拒否", acp::PermissionOptionKind::RejectOnce),
+                ("allow", "Allow once", acp::PermissionOptionKind::AllowOnce),
+                ("deny", "Deny", acp::PermissionOptionKind::RejectOnce),
             ]
         );
 

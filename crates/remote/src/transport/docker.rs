@@ -574,7 +574,7 @@ impl DockerExecConnection {
         delegate: &Arc<dyn RemoteClientDelegate>,
         cx: &mut AsyncApp,
     ) -> Result<()> {
-        delegate.set_status(Some("リモート開発サーバーを展開しています"), cx);
+        delegate.set_status(Some(i18n::t!("Extracting remote development server")), cx);
         let script = install_uploaded_binary_script(tmp_path, dst_path, self.path_style())?;
         let args = ShellKind::Posix.args_for_shell(false, script);
         self.run_docker_exec(
@@ -610,7 +610,7 @@ impl DockerExecConnection {
         let size = src_stat.len();
 
         let t0 = Instant::now();
-        delegate.set_status(Some("リモート開発サーバーを転送しています"), cx);
+        delegate.set_status(Some(i18n::t!("Uploading remote development server")), cx);
         log::info!(
             "uploading remote development server to {:?} ({}kb)",
             tmp_path_gz,
@@ -779,7 +779,7 @@ impl DockerExecConnection {
         }
 
         delegate.set_status(
-            Some("ホスト上でリモート開発サーバーをダウンロードしています"),
+            Some(i18n::t!("Downloading remote development server on host")),
             cx,
         );
 
@@ -874,7 +874,7 @@ impl RemoteConnection for DockerExecConnection {
             };
         }
 
-        delegate.set_status(Some("プロキシを起動しています"), cx);
+        delegate.set_status(Some(i18n::t!("Starting proxy")), cx);
 
         let Some(remote_binary_relpath) = self.remote_binary_relpath.clone() else {
             return Task::ready(Err(anyhow!("Remote binary path not set")));

@@ -36,7 +36,7 @@ pub(crate) fn search_symbols(
     cx: &mut App,
 ) -> Task<Result<Vec<SymbolHit>>> {
     let Some(query) = SymbolQuery::parse(query) else {
-        return Task::ready(Err(anyhow!("検索語を指定してください")));
+        return Task::ready(Err(anyhow!("Specify a search query")));
     };
     let limit = if options.limit == 0 {
         MAX_QUERY_RESULTS

@@ -20,6 +20,12 @@ import "buffer.proto";
 // cannot promise.
 message CheckWireRevision {
   uint32 revision = 1;
+  // The BCP 47 tag of the language the client shows its UI in ("en" when it
+  // shows English), so that the text the server writes for the client's
+  // screen is in that language. Sent again with every reconnect. Not part of
+  // the revision: a server without the field skips it and writes English,
+  // and a server that gets none (from a client without it) writes English.
+  optional string display_language = 2;
 }
 
 message CheckWireRevisionResponse {

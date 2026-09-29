@@ -1,0 +1,30 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Another connection took over this shell"
+msgstr "別の接続がこのシェルを引き継ぎました"
+
+msgid "Could not open standard input"
+msgstr "標準入力を開けませんでした"
+
+msgid "Could not run {program} on the remote. Check that it is installed."
+msgstr "リモートで {program} を実行できませんでした。インストールされているか確認してください。"
+
+msgid "No operation was specified"
+msgstr "操作が指定されていません"
+
+msgid "Older output was omitted"
+msgstr "古い出力は省略されました"
+
+msgid "The previous shell was no longer running. Starting a new shell"
+msgstr "以前のシェルは残っていませんでした。新しいシェルを起動します"
+
+msgid "The shell exited while disconnected (exit code {code})"
+msgstr "切断中にシェルが終了しました (終了コード {code})"
+
+msgid "{program} cannot be run on the remote."
+msgstr "リモートでは {program} を実行できません。"

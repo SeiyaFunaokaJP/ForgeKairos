@@ -99,7 +99,7 @@ pub fn install_ipykernel_and_assign(
             workspace.show_toast(
                 workspace::Toast::new(
                     notification_id.clone(),
-                    format!("{} に ipykernel をインストールしています...", env_name),
+                    i18n::t!("Installing ipykernel in {}...", env_name),
                 ),
                 cx,
             );
@@ -150,7 +150,7 @@ pub fn install_ipykernel_and_assign(
                             workspace.show_toast(
                                 workspace::Toast::new(
                                     notification_id.clone(),
-                                    format!("{} に ipykernel をインストールしました", env_name),
+                                    i18n::t!("ipykernel installed in {}", env_name),
                                 )
                                 .autohide(),
                                 cx,
@@ -183,9 +183,10 @@ pub fn install_ipykernel_and_assign(
                             workspace.show_toast(
                                 workspace::Toast::new(
                                     notification_id.clone(),
-                                    format!(
-                                        "{} への ipykernel のインストールに失敗しました: {}",
-                                        env_name, error
+                                    i18n::t!(
+                                        "Failed to install ipykernel in {}: {}",
+                                        env_name,
+                                        error
                                     ),
                                 ),
                                 cx,

@@ -3700,7 +3700,7 @@ impl GitStore {
             .map(|option| {
                 proto::push::PushOptions::try_from(option)
                     .ok()
-                    .with_context(|| format!("プッシュの指定 {option} を解釈できません。"))
+                    .with_context(|| i18n::t!("Cannot interpret the push option {option}."))
             })
             .transpose()?;
         let options = push_options_from_proto(
@@ -3999,7 +3999,8 @@ impl GitStore {
                     cx,
                 )
             })
-            .await??;
+            .await?
+            .map_err(tag_committed_without_signature)?;
         Ok(proto::Ack {})
     }
 
@@ -6355,9 +6356,9 @@ pub struct ChangesLeftInStash;
 
 impl std::fmt::Display for ChangesLeftInStash {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(
-            "変更の一部を元に戻せなかったため、stash に退避しました (stash@{0})。Git パネルの stash から戻してください。",
-        )
+        formatter.write_str(&i18n::t!(
+            "Some changes could not be put back, so they were kept in the stash (stash@{{0}}). Restore them from the stash in the Git panel."
+        ))
     }
 }
 
@@ -6366,11 +6367,41 @@ impl std::error::Error for ChangesLeftInStash {}
 /// A remote Zed from before `ls-files` was allowed refuses the check every history rewrite makes
 /// for ignored files, which leaves the rewrite unusable against it; said in words the user can
 /// act on, still refusing.
+/// The `RpcError` tag that says a remote commit was made unsigned for
+/// [`git::repository::CommittedWithoutSignature`], so the client need not recognize the sentence,
+/// which the remote server writes in its own language.
+const COMMITTED_WITHOUT_SIGNATURE_TAG: &str = "committed_without_signature";
+
+fn tag_committed_without_signature(error: anyhow::Error) -> anyhow::Error {
+    use rpc::ErrorCodeExt as _;
+    if error
+        .downcast_ref::<git::repository::CommittedWithoutSignature>()
+        .is_some()
+    {
+        rpc::ErrorCode::Internal
+            .message(format!("{error:#}"))
+            .with_tag(COMMITTED_WITHOUT_SIGNATURE_TAG, "1")
+            .anyhow()
+    } else {
+        error
+    }
+}
+
+/// A remote server from before [`COMMITTED_WITHOUT_SIGNATURE_TAG`] sends only the sentence, which
+/// [`git::repository::is_committed_without_signature`] still recognizes.
+fn untag_committed_without_signature(error: anyhow::Error) -> anyhow::Error {
+    if rpc::ErrorExt::error_tag(&error, COMMITTED_WITHOUT_SIGNATURE_TAG).is_some() {
+        git::repository::CommittedWithoutSignature.into()
+    } else {
+        error
+    }
+}
+
 fn explain_old_server_refusing_ls_files(error: anyhow::Error) -> anyhow::Error {
     if git::repository::is_unknown_git_subcommand_refusal(&format!("{error:#}"), "ls-files") {
-        anyhow!(
-            "接続先の Zed のサーバーが古いため、この書き換えは使えません。接続先の Zed を更新してください。"
-        )
+        anyhow!(i18n::t!(
+            "The Zed server on the remote host is too old for this rewrite. Update Zed on the remote host."
+        ))
     } else {
         error
     }
@@ -8940,7 +8971,8 @@ impl Repository {
                                 }),
                                 askpass_id,
                             })
-                            .await?;
+                            .await
+                            .map_err(untag_committed_without_signature)?;
 
                         Ok(())
                     }
@@ -10353,8 +10385,10 @@ impl Repository {
             .await?;
             anyhow::ensure!(
                 output.succeeded(),
-                "タグ一覧を取得できませんでした: {}",
-                output.failure_message()
+                i18n::t!(
+                    "Could not get the list of tags: {error}",
+                    error = output.failure_message()
+                )
             );
             // Tens of thousands of tags take long enough to parse to stall a frame.
             Ok(cx
@@ -10405,9 +10439,9 @@ impl Repository {
                 return Ok(None);
             }
             let described = output.stdout.trim();
-            TagDistance::parse(described)
-                .map(Some)
-                .with_context(|| format!("git describe の出力を解釈できませんでした: {described}"))
+            TagDistance::parse(described).map(Some).with_context(|| {
+                i18n::t!("Could not interpret the output of git describe: {described}")
+            })
         })
     }
 
@@ -10560,8 +10594,10 @@ impl Repository {
                 .await?;
                 anyhow::ensure!(
                     head.succeeded(),
-                    "HEAD を解決できませんでした: {}",
-                    head.failure_message()
+                    i18n::t!(
+                        "Could not resolve HEAD: {error}",
+                        error = head.failure_message()
+                    )
                 );
                 if head.stdout.trim() == sha {
                     // `--only` with no pathspec keeps whatever is staged out of the amended
@@ -10730,7 +10766,9 @@ impl Repository {
                     .await?;
                     anyhow::ensure!(
                         dirty.succeeded(),
-                        "未コミットの変更があります。MR ブランチを作る前に、コミットかスタッシュしてください。"
+                        i18n::t!(
+                            "There are uncommitted changes. Commit or stash them before creating the MR branch."
+                        )
                     );
                     anyhow::ensure!(
                         Self::verify_ref_in_job(
@@ -10740,19 +10778,25 @@ impl Repository {
                         )
                         .await?
                         .is_none(),
-                        "前回の一時ブランチ「{}」が残っています。中身を確認して削除してからやり直してください。",
-                        build.scratch_branch
+                        i18n::t!(
+                            "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again.",
+                            scratch_branch = build.scratch_branch
+                        )
                     );
                     let base_sha =
                         Self::verify_ref_in_job(&repo, id, &format!("{}^{{commit}}", build.base))
                             .await?
-                            .with_context(|| format!("基点「{}」が見つかりません。", build.base))?;
+                            .with_context(|| {
+                                i18n::t!("The base \"{base}\" was not found.", base = build.base)
+                            })?;
                     // Recreating the base itself would move it onto the merge request's commit.
                     anyhow::ensure!(
                         build.merge_request_branch != build.base
                             && build.base != format!("refs/heads/{}", build.merge_request_branch),
-                        "基点のブランチ「{}」を MR ブランチにはできません。別の名前にしてください。",
-                        build.merge_request_branch
+                        i18n::t!(
+                            "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name.",
+                            merge_request_branch = build.merge_request_branch
+                        )
                     );
                     let previous_sha = Self::merge_request_previous_sha_in_job(
                         &repo,
@@ -10788,7 +10832,7 @@ impl Repository {
                     let mut picks = picks.into_iter();
                     let (Some(create_scratch), Some(cherry_pick)) = (picks.next(), picks.next())
                     else {
-                        anyhow::bail!("MR ブランチを組み立てるコマンドを用意できませんでした。");
+                        anyhow::bail!(i18n::t!("Could not prepare the commands that build the MR branch."));
                     };
                     anyhow::Ok((base_sha, previous_sha, create_scratch, cherry_pick, finish))
                 }
@@ -10846,7 +10890,7 @@ impl Repository {
                     )
                     .await;
                     if let Err(error) = aborted {
-                        log::warn!("止まった cherry-pick を片付けられませんでした: {error:#}");
+                        log::warn!("could not clean up the stopped cherry-pick: {error:#}");
                     }
                     let left_on_scratch_branch = !Self::leave_merge_request_scratch_in_job(
                         &repo,
@@ -10896,8 +10940,10 @@ impl Repository {
                 .await?;
                 anyhow::ensure!(
                     unstaged.succeeded(),
-                    "一時ブランチ「{}」にステージしていない変更があります。ステージするか取り消してから、もう一度お試しください。",
-                    continuation.scratch_branch
+                    i18n::t!(
+                        "The scratch branch \"{scratch_branch}\" has unstaged changes. Stage or discard them, then try again.",
+                        scratch_branch = continuation.scratch_branch
+                    )
                 );
                 let off_base = Self::run_step_in_job(
                     &repo,
@@ -10911,8 +10957,10 @@ impl Repository {
                 .await?;
                 anyhow::ensure!(
                     off_base.succeeded() && off_base.stdout.trim().is_empty(),
-                    "一時ブランチ「{}」が基点から始まっていないため、MR ブランチに反映できません。",
-                    continuation.scratch_branch
+                    i18n::t!(
+                        "The scratch branch \"{scratch_branch}\" does not start at the base, so it cannot go into the MR branch.",
+                        scratch_branch = continuation.scratch_branch
+                    )
                 );
                 let previous_sha = Self::merge_request_previous_sha_in_job(
                     &repo,
@@ -10996,8 +11044,10 @@ impl Repository {
         .await?;
         if unchanged.succeeded() {
             return refuse(
-                "箱のコミットの変更はすべて基点に入っています。MR にする差分がありません。"
-                    .to_string(),
+                i18n::t!(
+                    "The base already has every change of the commits in the MR box. There is no difference to make an MR of."
+                )
+                .to_string(),
             )
             .await;
         }
@@ -11010,7 +11060,7 @@ impl Repository {
         let merge_request_sha = Self::verify_ref_in_job(repo, id, "HEAD")
             .await?
             .with_context(|| {
-                format!("作った MR ブランチ「{merge_request_branch}」を確認できませんでした。")
+                i18n::t!("Could not check the created MR branch \"{merge_request_branch}\".")
             })?;
         let returned = Self::run_steps_in_job(repo, id, return_to_origin).await?;
         Ok(MergeRequestBuildOutcome::Created {
@@ -11030,14 +11080,14 @@ impl Repository {
         let steps = match git::repository::rewrite_cleanup_commands(origin_branch, scratch_branch) {
             Ok(steps) => steps,
             Err(error) => {
-                log::warn!("一時ブランチから戻れませんでした: {error:#}");
+                log::warn!("could not go back from the scratch branch: {error:#}");
                 return false;
             }
         };
         match Self::run_steps_in_job(repo, id, steps).await {
             Ok(output) => output.succeeded(),
             Err(error) => {
-                log::warn!("一時ブランチから戻れませんでした: {error:#}");
+                log::warn!("could not go back from the scratch branch: {error:#}");
                 false
             }
         }
@@ -11082,17 +11132,21 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             head.succeeded(),
-            "現在のブランチを確認できませんでした: {}",
-            head.failure_message()
+            i18n::t!(
+                "Could not check the current branch: {error}",
+                error = head.failure_message()
+            )
         );
         let current = head.stdout.trim();
         anyhow::ensure!(
             current != "HEAD",
-            "detached HEAD では MR ブランチを作れません。先にブランチに切り替えてください。"
+            i18n::t!("Cannot create an MR branch on a detached HEAD. Switch to a branch first.")
         );
         anyhow::ensure!(
             current == branch,
-            "チェックアウトしているブランチが「{current}」に変わっています (想定は「{branch}」)。もう一度お試しください。"
+            i18n::t!(
+                "The checked-out branch has changed to \"{current}\" (expected \"{branch}\"). Try again."
+            )
         );
         Ok(())
     }
@@ -11108,15 +11162,17 @@ impl Repository {
                 Self::verify_ref_in_job(repo, id, kind.in_progress_ref())
                     .await?
                     .is_none(),
-                "{}が途中で止まっています。先に Git パネルのバナーで続行するか中止してください。",
-                kind.label()
+                i18n::t!(
+                    "The {kind} stopped partway. Continue or abort it in the Git panel's banner first.",
+                    kind = kind.label()
+                )
             );
         }
         anyhow::ensure!(
             Self::verify_ref_in_job(repo, id, "MERGE_HEAD")
                 .await?
                 .is_none(),
-            "マージが途中で止まっています。先にマージを完了するか中止してください。"
+            i18n::t!("A merge stopped partway. Finish or abort the merge first.")
         );
         let unmerged = Self::run_step_in_job(
             repo,
@@ -11130,7 +11186,7 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             unmerged.succeeded() && unmerged.stdout.trim().is_empty(),
-            "コンフリクトが解決されていないファイルがあります。先に解決してください。"
+            i18n::t!("Some files have unresolved conflicts. Resolve them first.")
         );
         Ok(())
     }
@@ -11155,7 +11211,7 @@ impl Repository {
                 .map(|response| response.branch.map(SharedString::from)),
         };
         default_branch
-            .context("デフォルトブランチを調べられませんでした")
+            .context(i18n::t!("Could not look up the default branch"))
             .log_err()
             .flatten()
     }
@@ -11179,7 +11235,9 @@ impl Repository {
                 .await?;
         anyhow::ensure!(
             previous_sha.is_none() || recreate,
-            "ブランチ「{merge_request_branch}」は既にあります。作り直すには「既存の {merge_request_branch} を作り直す」にチェックを入れてください。"
+            i18n::t!(
+                "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch}\"."
+            )
         );
         Ok(previous_sha)
     }
@@ -11212,14 +11270,14 @@ impl Repository {
             move |repo, _cx| async move {
                 // A detached HEAD has no branch for the final `rebase --onto` to move, and the
                 // scratch branch would take HEAD's place with nothing to give it back.
-                let branch = branch_name.context(
-                    "detached HEAD では並べ替えられません。先にブランチに切り替えてください。",
-                )?;
+                let branch = branch_name.context(i18n::t!(
+                    "A detached HEAD cannot be reordered. Switch to a branch first."
+                ))?;
                 let base = Self::parent_of_in_job(&repo, id, &oldest_sha)
                     .await?
-                    .context(
-                        "最初のコミットを含む範囲は並べ替えられません。1 つ後のコミットから選び直してください。",
-                    )?;
+                    .context(i18n::t!(
+                        "A range with the first commit cannot be reordered. Choose again from the commit after it."
+                    ))?;
                 Self::ensure_commit_is_in_head_in_job(&repo, id, &newest_sha).await?;
                 if oldest_sha != newest_sha {
                     Self::ensure_commit_is_in_head_in_job(&repo, id, &oldest_sha).await?;
@@ -11242,8 +11300,10 @@ impl Repository {
                 .await?;
                 anyhow::ensure!(
                     range.succeeded(),
-                    "書き換える範囲のコミットを取得できませんでした: {}",
-                    range.failure_message()
+                    i18n::t!(
+                        "Could not get the commits in the range to rewrite: {error}",
+                        error = range.failure_message()
+                    )
                 );
                 let range_shas: HashSet<&str> = range
                     .stdout
@@ -11253,23 +11313,29 @@ impl Repository {
                     .collect();
                 anyhow::ensure!(
                     range_shas.contains(oldest_sha.as_str()),
-                    "選んだ範囲の最も古いコミットが、最も新しいコミットの履歴にありません。範囲を選び直してください。"
+                    i18n::t!(
+                        "The oldest commit of the chosen range is not in the history of the newest one. Choose the range again."
+                    )
                 );
                 let listed_shas: HashSet<&str> = expected_shas.iter().map(String::as_str).collect();
                 anyhow::ensure!(
                     listed_shas.len() == expected_shas.len() && listed_shas == range_shas,
-                    "一覧に表示したコミットと、実際の範囲 (git の履歴) が一致しません。範囲の途中でコミットが増えたか減った可能性があります。グラフを更新してから選び直してください。"
+                    i18n::t!(
+                        "The listed commits do not match the actual range (the git history). Commits may have been added to or removed from the range. Refresh the graph and choose again."
+                    )
                 );
                 let mut applied: HashSet<&str> = HashSet::default();
                 for sha in groups.iter().flat_map(|group| &group.shas) {
                     let short = sha.get(..7).unwrap_or(sha);
                     anyhow::ensure!(
                         listed_shas.contains(sha.as_str()),
-                        "書き換える範囲に無いコミット {short} が含まれています。範囲を選び直してください。"
+                        i18n::t!(
+                            "Commit {short} is not in the range to rewrite. Choose the range again."
+                        )
                     );
                     anyhow::ensure!(
                         applied.insert(sha.as_str()),
-                        "コミット {short} が 2 回含まれています。一覧を確認してください。"
+                        i18n::t!("Commit {short} is included twice. Check the list.")
                     );
                 }
                 // The closing `rebase --onto` replays every commit after the range, and a plain
@@ -11288,12 +11354,16 @@ impl Repository {
                 .await?;
                 anyhow::ensure!(
                     merges_after.succeeded(),
-                    "書き換える範囲より後のコミットを調べられませんでした: {}",
-                    merges_after.failure_message()
+                    i18n::t!(
+                        "Could not examine the commits after the range to rewrite: {error}",
+                        error = merges_after.failure_message()
+                    )
                 );
                 anyhow::ensure!(
                     merges_after.stdout.trim().is_empty(),
-                    "選んだ範囲より新しいコミットの中にマージコミットがあるため、書き換えられません (書き換えるとそのマージが崩れます)。マージより新しいコミットだけを選び直してください。"
+                    i18n::t!(
+                        "A merge commit is among the commits newer than the chosen range, so it cannot be rewritten (rewriting would break that merge). Choose only commits newer than the merge."
+                    )
                 );
 
                 let leftover = Self::run_step_in_job(
@@ -11309,7 +11379,9 @@ impl Repository {
                 .await?;
                 anyhow::ensure!(
                     !leftover.succeeded(),
-                    "前回の書き換えの一時ブランチ「{scratch_branch}」が残っています。中身を確認して削除してからやり直してください。"
+                    i18n::t!(
+                        "The scratch branch \"{scratch_branch}\" of the previous rewrite is still there. Check its contents and delete it, then try again."
+                    )
                 );
                 Self::ensure_no_ignored_file_is_overwritten_in_job(
                     &repo,
@@ -11328,7 +11400,7 @@ impl Repository {
                 .into_iter();
                 let create_scratch = commands
                     .next()
-                    .context("書き換えるコマンドを組み立てられませんでした。")?;
+                    .context(i18n::t!("Could not build the commands for the rewrite."))?;
                 let stash_before = Self::stash_top_in_job(&repo, id).await?;
                 let created = Self::run_step_in_job(&repo, id, create_scratch.args).await?;
                 if !created.succeeded() {
@@ -11352,7 +11424,7 @@ impl Repository {
                             // undone on purpose.
                             Ok(_) => break,
                             Err(error) => {
-                                log::warn!("書き換えの後始末を実行できませんでした: {error:#}");
+                                log::warn!("could not clean up after the rewrite: {error:#}");
                                 break;
                             }
                         }
@@ -11431,9 +11503,9 @@ impl Repository {
             "drop_commit",
             Some(format!("git rebase --onto {sha}^").into()),
             move |repo, _cx| async move {
-                let parent = Self::parent_of_in_job(&repo, id, &sha).await?.context(
-                    "最初のコミットは捨てられません。リポジトリの最初のコミットには親がありません。",
-                )?;
+                let parent = Self::parent_of_in_job(&repo, id, &sha).await?.context(i18n::t!(
+                    "The first commit cannot be dropped. The repository's first commit has no parent."
+                ))?;
                 Self::ensure_commit_is_in_head_in_job(&repo, id, &sha).await?;
                 Self::ensure_range_is_linear_in_job(&repo, id, format!("{sha}..HEAD")).await?;
                 Self::ensure_no_ignored_file_is_overwritten_in_job(
@@ -11481,8 +11553,10 @@ impl Repository {
             .await?;
             anyhow::ensure!(
                 subject.succeeded(),
-                "コミットの件名を読めませんでした: {}",
-                subject.failure_message()
+                i18n::t!(
+                    "Could not read the commit subject: {error}",
+                    error = subject.failure_message()
+                )
             );
             let pushed_probe =
                 Self::run_step_in_job(&repo, id, git::repository::pushed_probe_args(&target.sha))
@@ -11500,7 +11574,7 @@ impl Repository {
             let branch = branch.stdout.trim().to_string();
             anyhow::ensure!(
                 branch.starts_with("refs/heads/"),
-                "detached HEAD では使えません。先にブランチに切り替えてください。"
+                i18n::t!("Not available on a detached HEAD. Switch to a branch first.")
             );
             Ok(git::repository::FixupTarget {
                 sha: target.sha,
@@ -11552,11 +11626,11 @@ impl Repository {
                         match Self::run_step_in_job(&repo, id, unstage).await {
                             Ok(output) if output.succeeded() => {}
                             Ok(output) => log::warn!(
-                                "fixup のために追加したファイルをステージから戻せませんでした: {}",
+                                "could not unstage the files added for the fixup: {}",
                                 output.failure_message()
                             ),
                             Err(error) => log::warn!(
-                                "fixup のために追加したファイルをステージから戻せませんでした: {error:#}"
+                                "could not unstage the files added for the fixup: {error:#}"
                             ),
                         }
                     }
@@ -11567,8 +11641,7 @@ impl Repository {
                     });
                 }
                 let fixup_commit = Self::resolve_head_in_job(&repo, id).await?;
-                let uncommitted_after_commit =
-                    Self::uncommitted_changes_in_job(&repo, id).await?;
+                let uncommitted_after_commit = Self::uncommitted_changes_in_job(&repo, id).await?;
                 let stash_before = Self::stash_top_in_job(&repo, id).await?;
 
                 let rebase_failure = match Self::run_step_in_job(
@@ -11614,11 +11687,11 @@ impl Repository {
                         {
                             Ok(output) if output.succeeded() => rolled_back = true,
                             Ok(output) => log::warn!(
-                                "fixup! コミットを取り消せませんでした: {}",
+                                "could not undo the fixup! commit: {}",
                                 output.failure_message()
                             ),
                             Err(error) => {
-                                log::warn!("fixup! コミットを取り消せませんでした: {error:#}")
+                                log::warn!("could not undo the fixup! commit: {error:#}")
                             }
                         }
                     }
@@ -11643,8 +11716,10 @@ impl Repository {
                 .await?;
                 anyhow::ensure!(
                     subjects_after.succeeded(),
-                    "書き換えた範囲を調べられませんでした: {}",
-                    subjects_after.failure_message()
+                    i18n::t!(
+                        "Could not examine the rewritten range: {error}",
+                        error = subjects_after.failure_message()
+                    )
                 );
                 if git::repository::fixup_left_unfolded(&subjects_after.stdout) {
                     return Ok(FixupOutcome::LeftUnfolded {
@@ -11735,7 +11810,7 @@ impl Repository {
         let new_sha = output.stdout.trim().to_string();
         anyhow::ensure!(
             !new_sha.is_empty(),
-            "git commit-tree が新しいコミットを返しませんでした。"
+            i18n::t!("git commit-tree did not return a new commit.")
         );
         Ok(Ok(new_sha))
     }
@@ -11764,8 +11839,10 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             output.succeeded(),
-            "元のコミットの作者を取得できませんでした: {}",
-            output.failure_message()
+            i18n::t!(
+                "Could not get the author of the original commit: {error}",
+                error = output.failure_message()
+            )
         );
         let mut fields = output.stdout.trim_end_matches(['\r', '\n']).split('\0');
         let name = fields.next().unwrap_or_default();
@@ -11773,7 +11850,9 @@ impl Repository {
         let date = fields.next().unwrap_or_default();
         anyhow::ensure!(
             !name.is_empty() && !email.is_empty() && !date.is_empty(),
-            "元のコミットの作者を取得できませんでした: git log の出力を解釈できません。"
+            i18n::t!(
+                "Could not get the author of the original commit: cannot interpret the output of git log."
+            )
         );
         Ok(HashMap::from_iter([
             ("GIT_AUTHOR_NAME".to_string(), name.to_string()),
@@ -11822,12 +11901,16 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             output.succeeded(),
-            "コミットが現在のブランチ上にあるか調べられませんでした: {}",
-            output.failure_message()
+            i18n::t!(
+                "Could not check whether the commit is on the current branch: {error}",
+                error = output.failure_message()
+            )
         );
         anyhow::ensure!(
             output.stdout.trim().is_empty(),
-            "現在のブランチの履歴に無いコミットは書き換えられません。そのコミットを含むブランチに切り替えてからやり直してください。"
+            i18n::t!(
+                "A commit that is not in the history of the current branch cannot be rewritten. Switch to a branch that has it, then try again."
+            )
         );
         Ok(())
     }
@@ -11847,12 +11930,16 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             output.succeeded(),
-            "書き換える範囲を調べられませんでした: {}",
-            output.failure_message()
+            i18n::t!(
+                "Could not examine the range to rewrite: {error}",
+                error = output.failure_message()
+            )
         );
         anyhow::ensure!(
             output.stdout.trim().is_empty(),
-            "マージコミットを含む範囲は書き換えられません。マージを含まない範囲を選び直してください。"
+            i18n::t!(
+                "A range with a merge commit cannot be rewritten. Choose a range without merges."
+            )
         );
         Ok(())
     }
@@ -11868,7 +11955,7 @@ impl Repository {
         // is refused rather than handed to git.
         anyhow::ensure!(
             sha.len() >= 4 && sha.chars().all(|character| character.is_ascii_hexdigit()),
-            "コミットの SHA として読めません: {sha}"
+            i18n::t!("Cannot read this as a commit SHA: {sha}")
         );
         let resolved = Self::run_step_in_job(
             repo,
@@ -11881,7 +11968,10 @@ impl Repository {
             ],
         )
         .await?;
-        anyhow::ensure!(resolved.succeeded(), "コミット {sha} が見つかりません。");
+        anyhow::ensure!(
+            resolved.succeeded(),
+            i18n::t!("Commit {sha} was not found.")
+        );
         let sha = resolved.stdout.trim().to_string();
         let head = Self::resolve_head_in_job(repo, id).await?;
 
@@ -11899,8 +11989,10 @@ impl Repository {
             .await?;
             anyhow::ensure!(
                 !stopped.succeeded(),
-                "{}が途中で止まっています。Git パネルで続行か中止をしてからやり直してください。",
-                kind.label()
+                i18n::t!(
+                    "The {kind} stopped partway. Continue or abort it in the Git panel, then try again.",
+                    kind = kind.label()
+                )
             );
         }
         // `commit` would conclude the merge instead of making a `fixup!` commit.
@@ -11917,7 +12009,7 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             !merging.succeeded(),
-            "マージの途中です。マージを終えるか中止してからやり直してください。"
+            i18n::t!("A merge is in progress. Finish or abort the merge, then try again.")
         );
         let unmerged = Self::run_step_in_job(
             repo,
@@ -11931,13 +12023,13 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             unmerged.stdout.trim().is_empty(),
-            "コンフリクトしているファイルがあります。解決してからやり直してください。"
+            i18n::t!("Some files have conflicts. Resolve them, then try again.")
         );
         // Also what a rebase stopped without a conflict looks like on a git too old for
         // `REBASE_HEAD`.
         anyhow::ensure!(
             !Self::head_is_detached_in_job(repo, id).await?,
-            "detached HEAD では使えません。先にブランチに切り替えてください。"
+            i18n::t!("Not available on a detached HEAD. Switch to a branch first.")
         );
 
         Self::ensure_commit_is_in_head_in_job(repo, id, &sha).await?;
@@ -11959,17 +12051,19 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             subjects.succeeded(),
-            "書き換える範囲を調べられませんでした: {}",
-            subjects.failure_message()
+            i18n::t!(
+                "Could not examine the range to rewrite: {error}",
+                error = subjects.failure_message()
+            )
         );
         if let Some(subject) = subjects
             .stdout
             .lines()
             .find(|subject| git::repository::is_autosquash_subject(subject))
         {
-            anyhow::bail!(
-                "書き換える範囲に「{subject}」があります。fixup! / squash! のコミットはこの操作で一緒に畳まれてしまうため、先に片付けてからやり直してください。"
-            );
+            anyhow::bail!(i18n::t!(
+                "The range to rewrite has \"{subject}\". This operation would fold fixup! / squash! commits in along with it, so deal with them first, then try again."
+            ));
         }
 
         Ok(FixupRange {
@@ -11998,16 +12092,19 @@ impl Repository {
                 .await?;
         anyhow::ensure!(
             output.succeeded(),
-            "入れる変更を調べられませんでした: {}",
-            output.failure_message()
+            i18n::t!(
+                "Could not examine the changes to fold in: {error}",
+                error = output.failure_message()
+            )
         );
         anyhow::ensure!(
             !output.stdout.trim().is_empty(),
             match changes {
-                FixupChanges::Staged => "ステージ済みの変更がありません。",
-                FixupChanges::AllTracked =>
-                    "コミットに入れる変更がありません (未追跡のファイルはステージしない限り入りません)。",
-                FixupChanges::Paths(_) => "選んだファイルには変更がありません。",
+                FixupChanges::Staged => i18n::t!("There are no staged changes."),
+                FixupChanges::AllTracked => i18n::t!(
+                    "There are no changes to put in the commit (untracked files go in only once staged)."
+                ),
+                FixupChanges::Paths(_) => i18n::t!("The chosen files have no changes."),
             }
         );
         Ok(())
@@ -12034,12 +12131,14 @@ impl Repository {
             Self::run_step_in_job(repo, id, vec!["diff".into(), "--name-only".into()]).await?;
         anyhow::ensure!(
             staged.succeeded() && unstaged.succeeded(),
-            "作業ツリーの状態を調べられませんでした: {}",
-            if staged.succeeded() {
-                unstaged.failure_message()
-            } else {
-                staged.failure_message()
-            }
+            i18n::t!(
+                "Could not examine the state of the working tree: {error}",
+                error = if staged.succeeded() {
+                    unstaged.failure_message()
+                } else {
+                    staged.failure_message()
+                }
+            )
         );
         Ok((staged.stdout, unstaged.stdout))
     }
@@ -12058,8 +12157,10 @@ impl Repository {
         .await?;
         anyhow::ensure!(
             head.succeeded(),
-            "HEAD を解決できませんでした: {}",
-            head.failure_message()
+            i18n::t!(
+                "Could not resolve HEAD: {error}",
+                error = head.failure_message()
+            )
         );
         Ok(head.stdout.trim().to_string())
     }
@@ -12137,8 +12238,10 @@ impl Repository {
             let output = Self::run_step_in_job(repo, id, args).await?;
             anyhow::ensure!(
                 output.succeeded(),
-                "書き換えで変わるファイルを調べられませんでした: {}",
-                output.failure_message()
+                i18n::t!(
+                    "Could not examine the files the rewrite changes: {error}",
+                    error = output.failure_message()
+                )
             );
             touched.extend(
                 git::repository::parse_nul_separated_paths(&output.stdout).map(str::to_string),
@@ -12153,8 +12256,10 @@ impl Repository {
                 .map_err(explain_old_server_refusing_ls_files)?;
             anyhow::ensure!(
                 output.succeeded(),
-                "無視されているローカルのファイルを調べられませんでした: {}",
-                output.failure_message()
+                i18n::t!(
+                    "Could not examine the ignored local files: {error}",
+                    error = output.failure_message()
+                )
             );
             ignored.extend(
                 git::repository::parse_nul_separated_paths(&output.stdout).map(str::to_string),
@@ -13739,7 +13844,11 @@ fn log_source_from_proto(log_source: proto::GitLogSource) -> Result<LogSource> {
 /// `SearchCommits` up to here.
 const SEARCH_COMMITS_FILTERS_VERSION: u32 = 1;
 
-const OLD_SERVER_COMMIT_SEARCH_MESSAGE: &str = "接続先の Zed のサーバーが古いため、この条件では検索できません。接続先の Zed を更新してください。";
+fn old_server_commit_search_message() -> &'static str {
+    i18n::t!(
+        "The Zed server on the remote host is too old to search with these conditions. Update Zed on the remote host."
+    )
+}
 
 fn search_commit_args_to_proto(
     project_id: u64,
@@ -13792,7 +13901,7 @@ fn search_commit_args_from_proto(request: &proto::SearchCommits) -> Result<Searc
             Some(proto::SearchCommitsMerges::SearchCommitsIncludeMerges) => MergeFilter::Include,
             Some(proto::SearchCommitsMerges::SearchCommitsExcludeMerges) => MergeFilter::Exclude,
             Some(proto::SearchCommitsMerges::SearchCommitsOnlyMerges) => MergeFilter::Only,
-            None => bail!("マージの指定 ({merges}) を読めません。"),
+            None => bail!(i18n::t!("Cannot read the merge filter ({merges}).")),
         },
     };
     let commits = request
@@ -13856,7 +13965,7 @@ async fn forward_remote_commit_search(
                 response
                     .filters_version
                     .is_some_and(|version| version >= SEARCH_COMMITS_FILTERS_VERSION),
-                OLD_SERVER_COMMIT_SEARCH_MESSAGE
+                old_server_commit_search_message()
             );
             filters_checked = true;
         }
@@ -13867,7 +13976,7 @@ async fn forward_remote_commit_search(
             }
         }
     }
-    anyhow::ensure!(filters_checked, OLD_SERVER_COMMIT_SEARCH_MESSAGE);
+    anyhow::ensure!(filters_checked, old_server_commit_search_message());
     Ok(RemoteCommitSearchEnd::ServerFinished)
 }
 
@@ -14282,7 +14391,7 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .starts_with("接続先の Zed のサーバーが古いため"),
+                .starts_with("The Zed server on the remote host is too old"),
         );
         assert!(found.is_empty());
         let (result, _) = forward(Vec::new(), true).await;
@@ -15098,7 +15207,7 @@ mod tests {
             .unwrap()
             .expect_err("a merge after the range must stop the rewrite");
         assert!(
-            error.to_string().contains("マージコミット"),
+            error.to_string().contains("merge commit"),
             "unexpected error: {error:#}"
         );
         assert_eq!(
@@ -15218,7 +15327,7 @@ mod tests {
                 third.clone(),
                 vec![group(&third), group(&first)],
                 vec![first.clone(), third.clone()],
-                "一致しません",
+                "do not match",
             ),
             // The list showed a commit the range does not have.
             (
@@ -15226,28 +15335,28 @@ mod tests {
                 second.clone(),
                 vec![group(&second), group(&first)],
                 vec![first.clone(), second.clone(), elsewhere.clone()],
-                "一致しません",
+                "do not match",
             ),
             (
                 first.clone(),
                 second.clone(),
                 vec![group(&second), group(&elsewhere), group(&first)],
                 vec![first.clone(), second.clone()],
-                "範囲に無いコミット",
+                "is not in the range to rewrite",
             ),
             (
                 first.clone(),
                 second.clone(),
                 vec![group(&second), group(&first), group(&second)],
                 vec![first.clone(), second.clone()],
-                "2 回",
+                "included twice",
             ),
             (
                 elsewhere.clone(),
                 second.clone(),
                 vec![group(&second), group(&elsewhere)],
                 vec![elsewhere.clone(), second.clone()],
-                "現在のブランチの履歴に無い",
+                "not in the history of the current branch",
             ),
         ];
         for (oldest, newest, groups, expected_shas, reason) in refusals {
@@ -15400,6 +15509,48 @@ mod tests {
         );
     }
 
+    /// An unsigned commit on a remote server is recognized by its tag, whatever language the
+    /// server wrote the sentence in, and by the sentence from a server without the tag.
+    #[test]
+    fn test_committed_without_signature_survives_the_remote_trip() {
+        use rpc::{ErrorCodeExt as _, ErrorExt as _};
+        let relay = |error: anyhow::Error| {
+            let mut sent = tag_committed_without_signature(error).to_proto();
+            sent.message = "署名なし (a remote server in some other language)".to_string();
+            untag_committed_without_signature(rpc::RpcError::from_proto(&sent, "Commit"))
+        };
+
+        let received = relay(anyhow::Error::new(
+            git::repository::CommittedWithoutSignature,
+        ));
+        assert!(
+            received
+                .downcast_ref::<git::repository::CommittedWithoutSignature>()
+                .is_some(),
+            "{received:#}"
+        );
+        assert!(git::repository::is_committed_without_signature(&received));
+
+        let other = relay(anyhow!("the commit failed"));
+        assert!(!git::repository::is_committed_without_signature(&other));
+
+        for sentence in [
+            "The gpg settings of the untrusted repository are not used. Committed without a signature.",
+            "未信頼のリポジトリの gpg 設定は使いません。署名せずにコミットしました。",
+        ] {
+            let from_older_server = untag_committed_without_signature(rpc::RpcError::from_proto(
+                &rpc::ErrorCode::Internal
+                    .message(sentence.to_string())
+                    .to_proto(),
+                "Commit",
+            ));
+            assert!(
+                git::repository::is_committed_without_signature(&from_older_server),
+                "{sentence}"
+            );
+        }
+    }
+
     /// An older remote server refusing `ls-files` by name is told apart from any other failure,
     /// and still refuses the rewrite.
     #[test]
@@ -15408,7 +15559,7 @@ mod tests {
             explain_old_server_refusing_ls_files(anyhow!("unsupported git command: ls-files"));
         assert_eq!(
             refused.to_string(),
-            "接続先の Zed のサーバーが古いため、この書き換えは使えません。接続先の Zed を更新してください。"
+            "The Zed server on the remote host is too old for this rewrite. Update Zed on the remote host."
         );
         for other in [
             "unsupported git command argument: --others",
@@ -15502,7 +15653,7 @@ mod tests {
         let assert_refused = |operation: &str, error: anyhow::Error| {
             let message = format!("{error:#}");
             assert!(
-                message.contains("無視されているローカルのファイル .env が"),
+                message.contains("ignored local files .env would"),
                 "{operation}: unexpected error: {message}"
             );
             assert_untouched(operation);
@@ -15599,7 +15750,7 @@ mod tests {
             panic!("a box holding B must be refused, got {outcome:?}");
         };
         assert!(
-            reason.contains("無視されているローカルのファイル .env が"),
+            reason.contains("ignored local files .env would"),
             "{reason}"
         );
         assert_untouched("build_merge_request_branch");
@@ -16543,7 +16694,7 @@ mod tests {
         )
         .await;
         assert!(
-            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("既にあります")),
+            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("already exists")),
             "{outcome:?}"
         );
         assert_eq!(
@@ -16591,7 +16742,7 @@ mod tests {
         )
         .await;
         assert!(
-            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("未コミットの変更")),
+            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("uncommitted changes")),
             "{outcome:?}"
         );
         installed_git_output(&directory, &["checkout", "--", "a.txt"]);
@@ -16760,7 +16911,7 @@ mod tests {
         )
         .await;
         assert!(
-            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("基点")),
+            matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("The base branch")),
             "{outcome:?}"
         );
         assert_eq!(
@@ -16789,7 +16940,7 @@ mod tests {
             )
             .await;
             assert!(
-                matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("デフォルトブランチ")),
+                matches!(&outcome, MergeRequestBuildOutcome::Refused { left_on_scratch_branch: false, reason } if reason.contains("default branch")),
                 "{outcome:?}"
             );
         }

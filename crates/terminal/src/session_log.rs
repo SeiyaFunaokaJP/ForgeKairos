@@ -81,7 +81,7 @@ impl Default for SessionLogOptions {
 
 /// What [`SessionLogTap::resume`] writes in place of the output it dropped, so
 /// a gap in the log is visible rather than mysterious (ADR-F29).
-pub const PAUSED_MARKER: &str = "[パスワード入力を省略]";
+pub const PAUSED_MARKER: &str = i18n::msg!("[password input omitted]");
 
 /// Handle installed into the PTY reader. Cloning is cheap; every clone shares
 /// the same sink, so the terminal can start and stop logging long after the PTY
@@ -128,7 +128,8 @@ impl SessionLogTap {
     /// leading break closes the prompt line the pause interrupted.
     pub(crate) fn resume(&self) {
         self.paused.store(false, Ordering::Relaxed);
-        self.record(format!("\r\n{PAUSED_MARKER}\r\n").as_bytes());
+        let marker = i18n::tr(PAUSED_MARKER);
+        self.record(format!("\r\n{marker}\r\n").as_bytes());
     }
 
     pub(crate) fn install(&self, sender: async_channel::Sender<Vec<u8>>) {

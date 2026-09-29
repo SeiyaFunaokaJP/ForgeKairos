@@ -112,26 +112,29 @@ impl QuadrantDocument {
     }
 
     /// Why the document cannot be written back as a diagram Mermaid accepts, in
-    /// Japanese, or `None` when it can.
+    /// the display language, or `None` when it can.
     pub fn structure_error(&self) -> Option<String> {
         if let Some(text) = self.texts().find(|text| has_rewritten_html_attribute(text)) {
-            return Some(format!(
-                "`{text}` の HTML の属性は `'` で囲んでください (`\"` は Mermaid が `'` に書き換えるので、区切りの読み方が変わります)。"
+            return Some(i18n::t!(
+                "Enclose the HTML attributes in `{text}` in `'` (Mermaid rewrites `\"` to `'`, which changes where the values are separated)."
             ));
         }
         if let Some(title) = &self.title
             && !is_valid_quadrant_title(title)
         {
-            return Some(format!(
-                "タイトル `{title}` は書けません (`%%` と `;` と改行は不可、前後の空白だけにもできません)。"
+            return Some(i18n::t!(
+                "The title `{title}` cannot be written (no `%%`, `;` or line breaks, and it cannot start or end with whitespace)."
             ));
         }
-        for (name, axis) in [("横軸", &self.x_axis), ("縦軸", &self.y_axis)] {
+        for (name, axis) in [
+            (i18n::tc!("quadrant axis", "x axis"), &self.x_axis),
+            (i18n::tc!("quadrant axis", "y axis"), &self.y_axis),
+        ] {
             if let Some(axis) = axis
                 && !is_valid_quadrant_axis(axis)
             {
-                return Some(format!(
-                    "{name}のラベルは書けません (`\"` と改行は不可、前後の空白も不可)。"
+                return Some(i18n::t!(
+                    "The {name} label cannot be written (no `\"` or line breaks, and no whitespace at either end)."
                 ));
             }
         }
@@ -139,8 +142,8 @@ impl QuadrantDocument {
             if let Some(label) = label
                 && !is_valid_quadrant_label(label)
             {
-                return Some(format!(
-                    "象限 {} のラベル `{label}` は書けません (`\"` と改行は不可、前後の空白も不可)。",
+                return Some(i18n::t!(
+                    "The label `{label}` of quadrant {} cannot be written (no `\"` or line breaks, and no whitespace at either end).",
                     index + 1
                 ));
             }
@@ -152,28 +155,29 @@ impl QuadrantDocument {
                     .as_deref()
                     .is_some_and(|class| !is_valid_quadrant_class(class))
                 {
-                    return Some(format!(
-                        "点 `{}` のクラス名は英数字と `_` だけにしてください。",
+                    return Some(i18n::t!(
+                        "Use only letters, digits and `_` in the class name of point `{}`.",
                         point.name
                     ));
                 }
-                return Some(format!(
-                    "点の名前 `{}` は書けません (`\"` と改行は不可、空と前後の空白も不可)。",
+                return Some(i18n::t!(
+                    "The point name `{}` cannot be written (no `\"` or line breaks; it cannot be empty or start or end with whitespace).",
                     point.name
                 ));
             }
             for (axis, value) in [("x", &point.x), ("y", &point.y)] {
                 if !is_valid_quadrant_coordinate(value) {
-                    return Some(format!(
-                        "点 `{}` の {axis} `{value}` は使えません (0 から 1 まで。`0`、`1`、`0.` で始まる小数だけ)。",
+                    return Some(i18n::t!(
+                        "The {axis} `{value}` of point `{}` cannot be used (0 to 1: only `0`, `1`, or a decimal that starts with `0.`).",
                         point.name
                     ));
                 }
             }
             if !is_valid_quadrant_styles(&point.styles) {
-                return Some(format!(
-                    "点 `{}` のスタイル `{}` は使えません (`radius: 10`、`color: #ff0000`、`stroke-color: #000`、`stroke-width: 2px` をカンマで区切って)。",
-                    point.name, point.styles
+                return Some(i18n::t!(
+                    "Point `{}` has a style `{}` that cannot be used (separate `radius: 10`, `color: #ff0000`, `stroke-color: #000` and `stroke-width: 2px` with commas).",
+                    point.name,
+                    point.styles
                 ));
             }
         }
@@ -196,11 +200,13 @@ pub fn parse_quadrant(source: &str) -> Result<QuadrantDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::QuadrantChart(_)) {
-            bail!("この図は 4 象限チャートではありません。");
+            bail!(i18n::t!("This diagram is not a quadrant chart."));
         }
     }
 
@@ -219,14 +225,14 @@ fn scan_quadrant(source: &str) -> Result<QuadrantDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = keyword_tail(header, HEADER) else {
-        bail!(
-            "4 象限チャートではありません (`quadrantChart` で始まる図だけを構造化編集できます)。"
-        );
+        bail!(i18n::t!(
+            "This is not a quadrant chart (only diagrams that start with `quadrantChart` can be edited in the structured editor)."
+        ));
     };
     if !tail.is_empty() {
-        bail!(
-            "`quadrantChart` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "`{tail}` on the `quadrantChart` line is not supported by the structured editor. Edit it as text."
+        ));
     }
 
     let mut index = header_index + 1;
@@ -250,9 +256,9 @@ fn scan_quadrant(source: &str) -> Result<QuadrantDocument> {
             }
             let text = join_lines(lines.get(start..index).unwrap_or_default());
             if let Some(rest) = text_after_directive(&text) {
-                bail!(
-                    "指示子 `%%{{…}}%%` の後ろの `{rest}` は Mermaid が文として読みますが、構造化編集ではコメントと一緒に動いてしまいます。指示子を独立した行にしてください。"
-                );
+                bail!(i18n::t!(
+                    "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a statement, but the structured editor would move it along with the comments. Put the directive on a line of its own."
+                ));
             }
             document
                 .preserved_lines
@@ -276,9 +282,9 @@ fn scan_quadrant(source: &str) -> Result<QuadrantDocument> {
                     // line as the description, even when the opening line
                     // closes the block itself.
                     if statement.contains('}') {
-                        bail!(
-                            "1 行で閉じた `accDescr {{ … }}` は、Mermaid が次の `}}` の行までを説明として読みます ({trimmed})。複数行に分けるか、テキストのまま編集してください。"
-                        );
+                        bail!(i18n::t!(
+                            "For an `accDescr {{ … }}` closed on one line, Mermaid reads up to the next `}}` line as the description ({trimmed}). Split it over several lines, or edit it as text."
+                        ));
                     }
                     while lines.get(index).is_some_and(|line| !line.contains('}')) {
                         index += 1;
@@ -294,9 +300,9 @@ fn scan_quadrant(source: &str) -> Result<QuadrantDocument> {
                 // Mermaid keeps the last one, so a second statement would make
                 // writing the chart back drop a line the user can see.
                 if seen_title {
-                    bail!(
-                        "`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`title` is written twice. Merge them into one, then open it again."
+                    ));
                 }
                 seen_title = true;
                 if !value.is_empty() {
@@ -316,10 +322,10 @@ fn scan_quadrant(source: &str) -> Result<QuadrantDocument> {
                     continue;
                 };
                 if slot.is_some() {
-                    bail!(
-                        "`quadrant-{}` が 2 回書かれています。1 つにまとめてからもう一度開いてください。",
+                    bail!(i18n::t!(
+                        "`quadrant-{}` is written twice. Merge them into one, then open it again.",
                         quadrant + 1
-                    );
+                    ));
                 }
                 let label =
                     parse_text_value(rest).map_err(|reason| anyhow!("{reason} ({trimmed})"))?;
@@ -329,14 +335,14 @@ fn scan_quadrant(source: &str) -> Result<QuadrantDocument> {
             Statement::Point => {
                 let point = parse_point(statement)
                     .map_err(|reason| anyhow!("{reason} ({trimmed})"))?
-                    .ok_or_else(|| anyhow!("`{trimmed}` は点として読めません。"))?;
+                    .ok_or_else(|| anyhow!(i18n::t!("`{trimmed}` cannot be read as a point.")))?;
                 document.points.push(point);
                 position = PreservedPosition::Bottom;
             }
             Statement::Unknown => {
-                bail!(
-                    "`{trimmed}` は点 (`名前: [x, y]`) としても他の文としても読めません。テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "`{trimmed}` cannot be read as a point (`name: [x, y]`) or as any other statement. Edit it as text."
+                ));
             }
         }
     }
@@ -370,7 +376,9 @@ fn set_axis(
     trimmed: &str,
 ) -> Result<()> {
     if slot.is_some() {
-        bail!("`{keyword}` が 2 回書かれています。1 つにまとめてからもう一度開いてください。");
+        bail!(i18n::t!(
+            "`{keyword}` is written twice. Merge them into one, then open it again."
+        ));
     }
     *slot = Some(parse_axis(rest).map_err(|reason| anyhow!("{reason} ({trimmed})"))?);
     Ok(())
@@ -390,16 +398,16 @@ fn read_line<'a>(line: &'a str, trimmed: &str) -> Result<Option<&'a str>> {
         .filter(|statement| !statement.is_empty())
         .collect::<Vec<_>>();
     if comment && !statements.is_empty() {
-        bail!(
-            "行の途中の `%%` から先は Mermaid が読み飛ばします ({trimmed})。コメントを別の行に移すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid skips everything after a `%%` in the middle of a line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+        ));
     }
     match statements.as_slice() {
         [] => Ok(None),
         [statement] => Ok(Some(statement)),
-        _ => bail!(
-            "`;` で区切った複数の文は構造化編集に対応していません ({trimmed})。1 行に 1 つずつ書いてください。"
-        ),
+        _ => bail!(i18n::t!(
+            "Several statements separated by `;` are not supported by the structured editor ({trimmed}). Write one per line."
+        )),
     }
 }
 
@@ -536,14 +544,14 @@ fn parse_text_value(raw: &str) -> Result<String, String> {
             .strip_prefix("\"`")
             .and_then(|inner| inner.strip_suffix("`\""))
             .map(str::to_string)
-            .ok_or_else(|| "閉じていない \"` … `\" があります。".to_string());
+            .ok_or_else(|| i18n::t!("There is an unclosed \"` … `\".").to_string());
     }
     if text.starts_with('"') {
         return text
             .strip_prefix('"')
             .and_then(|inner| inner.strip_suffix('"'))
             .map(str::to_string)
-            .ok_or_else(|| "閉じていない `\"` があります。".to_string());
+            .ok_or_else(|| i18n::t!("There is an unclosed `\"`.").to_string());
     }
     Ok(text.to_string())
 }
@@ -584,7 +592,7 @@ fn parse_axis(rest: &str) -> Result<QuadrantAxis, String> {
             // follows `-->`, so an empty `""` there is not the same as nothing.
             if high.is_empty() && !high_raw.is_empty() {
                 return Err(
-                    "`-->` の後の空の `\"\"` は構造化編集に対応していません。消すか、テキストのまま編集してください。"
+                    i18n::t!("An empty `\"\"` after `-->` is not supported by the structured editor. Remove it, or edit it as text.")
                         .to_string(),
                 );
             }
@@ -648,22 +656,22 @@ fn parse_point(statement: &str) -> Result<Option<QuadrantPoint>, String> {
     let name = parse_text_value(label)?;
 
     let Some(inside) = tail.trim_start().strip_prefix('[') else {
-        return Err("点の `:` の後に `[` がありません。".to_string());
+        return Err(i18n::t!("There is no `[` after the `:` of the point.").to_string());
     };
     let Some((coordinates, after)) = inside.split_once(']') else {
-        return Err("点の座標の `]` がありません。".to_string());
+        return Err(i18n::t!("The coordinates of the point have no `]`.").to_string());
     };
     let coordinates = coordinates.split(',').map(str::trim).collect::<Vec<_>>();
     let [x, y] = coordinates.as_slice() else {
-        return Err(
-            "点の座標は `[x, y]` の 2 つにしてください (3 つ目以降は Mermaid が読み飛ばします)。"
-                .to_string(),
-        );
+        return Err(i18n::t!(
+            "Give the point two coordinates, `[x, y]` (Mermaid skips any from the third on)."
+        )
+        .to_string());
     };
     for value in [x, y] {
         if !is_valid_quadrant_coordinate(value) {
-            return Err(format!(
-                "座標 `{value}` は Mermaid が読めません (0 から 1 まで。`0`、`1`、`0.` で始まる小数だけ)。"
+            return Err(i18n::t!(
+                "Mermaid cannot read the coordinate `{value}` (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
             ));
         }
     }
@@ -687,9 +695,7 @@ fn normalize_styles(text: &str) -> Result<String, String> {
         .filter(|style| !style.is_empty())
     {
         let Some((key, value)) = style.split_once(':') else {
-            return Err(format!(
-                "スタイル `{style}` は `名前: 値` の形にしてください。"
-            ));
+            return Err(i18n::t!("Write the style `{style}` as `name: value`."));
         };
         let (key, value) = (key.trim(), value.trim());
         let is_valid = match key {
@@ -699,14 +705,16 @@ fn normalize_styles(text: &str) -> Result<String, String> {
                 !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit())
             }),
             _ => {
-                return Err(format!(
-                    "スタイル `{key}` は使えません ({} のどれか)。",
-                    STYLE_KEYS.join("、")
+                return Err(i18n::t!(
+                    "The style `{key}` cannot be used (use one of {}).",
+                    STYLE_KEYS.join(i18n::tc!("list separator", ", "))
                 ));
             }
         };
         if !is_valid || value.contains(['\n', '\r', ';', '"']) {
-            return Err(format!("スタイル `{key}` の値 `{value}` は使えません。"));
+            return Err(i18n::t!(
+                "The value `{value}` of style `{key}` cannot be used."
+            ));
         }
         styles.push(format!("{key}: {value}"));
     }
@@ -1236,26 +1244,32 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
         for (source, expected) in [
-            ("quadrantChart\n    title a\n    title b", "2 回"),
-            ("quadrantChart\n    x-axis a\n    x-axis b --> c", "2 回"),
-            ("quadrantChart\n    quadrant-1 a\n    quadrant-1 b", "2 回"),
+            ("quadrantChart\n    title a\n    title b", "written twice"),
+            (
+                "quadrantChart\n    x-axis a\n    x-axis b --> c",
+                "written twice",
+            ),
+            (
+                "quadrantChart\n    quadrant-1 a\n    quadrant-1 b",
+                "written twice",
+            ),
             ("quadrantChart\n    A: [0.1, 0.2] %% メモ", "`%%`"),
             ("quadrantChart\n    A: [0.1, 0.2]; B: [0.3, 0.4]", "`;`"),
-            ("quadrantChart\n    A: [0.1, 0.2, 0.3]", "2 つ"),
+            ("quadrantChart\n    A: [0.1, 0.2, 0.3]", "two coordinates"),
             ("quadrantChart\n    A: [1.0, 0.2]", "`1.0`"),
             ("quadrantChart\n    A: [0.1, .2]", "`.2`"),
             ("quadrantChart\n    A: [0.1, 0.2] size: 3", "`size`"),
             ("quadrantChart\n    A: [0.1, 0.2] color: red", "`red`"),
-            ("quadrantChart\n    x-axis a --> \"\"", "空の"),
-            ("quadrantChart\n    accDescr { 1 行 }", "1 行で閉じた"),
-            ("quadrantChart\n    点だけ", "読めません"),
+            ("quadrantChart\n    x-axis a --> \"\"", "An empty"),
+            ("quadrantChart\n    accDescr { 1 行 }", "closed on one line"),
+            ("quadrantChart\n    点だけ", "cannot be read as a point"),
             (
                 "quadrantChart\n    title 甲\n    %%{init: {}}%% title 乙",
-                "指示子",
+                "after the directive",
             ),
             (
                 "quadrantChart LR\n    A: [0.1, 0.2]",
-                "`quadrantChart` の行",
+                "on the `quadrantChart` line",
             ),
         ] {
             let error = parse_quadrant(source)
@@ -1354,31 +1368,31 @@ mod tests {
     fn structure_errors_catch_what_the_form_can_type() {
         let document = parse(TEMPLATE);
         let edits: [(&str, fn(&mut QuadrantDocument)); 6] = [
-            ("タイトル", |document| {
+            ("The title", |document| {
                 document.title = Some("a %% b".to_string())
             }),
-            ("横軸", |document| {
+            ("x axis", |document| {
                 document.x_axis = Some(QuadrantAxis {
                     low: "a\"b".to_string(),
                     high: Some("\"".to_string()),
                 })
             }),
-            ("クラス名", |document| {
+            ("class name", |document| {
                 if let Some(point) = document.points.get_mut(0) {
                     point.class = Some("a-b".to_string());
                 }
             }),
-            ("点の名前", |document| {
+            ("point name", |document| {
                 if let Some(point) = document.points.get_mut(0) {
                     point.name = " a".to_string();
                 }
             }),
-            ("の x", |document| {
+            ("The x `", |document| {
                 if let Some(point) = document.points.get_mut(0) {
                     point.x = "1.5".to_string();
                 }
             }),
-            ("スタイル", |document| {
+            ("style", |document| {
                 if let Some(point) = document.points.get_mut(0) {
                     point.styles = "radius: big".to_string();
                 }
@@ -1515,5 +1529,16 @@ mod tests {
             eprintln!("  {reason}");
         }
         assert!(opened > 0);
+    }
+
+    #[test]
+    fn an_unknown_style_lists_the_styles_that_can_be_used() {
+        assert_eq!(
+            normalize_styles("radius: 10, width: 3"),
+            Err(
+                "The style `width` cannot be used (use one of radius, color, stroke-color, stroke-width)."
+                    .to_string()
+            )
+        );
     }
 }

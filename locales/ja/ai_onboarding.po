@@ -5,11 +5,50 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "$10 of tokens in Zed agent"
+msgstr "Zed エージェントで使えるトークン $10 分"
+
 msgid "$5 of GPT Luna"
 msgstr "GPT Luna の利用 $5 分"
 
+msgid "$5 of tokens in Zed agent"
+msgstr "Zed エージェントで使えるトークン $5 分"
+
+msgid "(Current Plan)"
+msgstr "(現在のプラン)"
+
 msgid "14 days from trial start, no credit card required"
 msgstr "トライアル開始から 14 日間、クレジットカード不要"
+
+msgid "2,000 accepted edit predictions"
+msgstr "採用された編集予測 2,000 件"
+
+msgid "API Keys"
+msgstr "API キー"
+
+msgid "Add your own keys to use AI without signing in."
+msgstr "サインインせずに AI を使うには、ご自身のキーを追加してください。"
+
+msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
+msgstr "GitHub Copilot は設定済みのため、そのまま使い続けることもできます。"
+
+msgid "Alternatively, you can use GitHub Copilot as your edit prediction provider."
+msgstr "編集予測のプロバイダーとして GitHub Copilot を使うこともできます。"
+
+msgid "Configure Copilot"
+msgstr "Copilot を設定"
+
+msgid "Configure Providers"
+msgstr "プロバイダーを設定"
+
+msgid "Dismiss"
+msgstr "閉じる"
+
+msgid "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
+msgstr "GitHub Copilot も編集予測のプロバイダーとして使えますが、外部の AI サービスです。「AI」ページの「プロバイダーの設定」で編集予測を有効にし、学習リスクの警告を確認してください。"
+
+msgid "Here's what you get:"
+msgstr "利用できる内容は次のとおりです。"
 
 msgid "Included for 14 days from when your trial started:"
 msgstr "トライアル開始から 14 日間、次の内容を利用できます。"
@@ -17,11 +56,75 @@ msgstr "トライアル開始から 14 日間、次の内容を利用できま�
 msgid "No credit card required"
 msgstr "クレジットカード不要"
 
+msgid "Open AI Settings"
+msgstr "AI の設定を開く"
+
+msgid "Open Configure Providers"
+msgstr "「プロバイダーの設定」を開く"
+
+msgid "Optional credit packs for additional usage"
+msgstr "追加利用向けのオプションのクレジットパック"
+
 msgid "Sign In to Try GPT Luna"
 msgstr "サインインして GPT Luna を試す"
 
 msgid "Sign in to try GPT Luna. Your 14 days begin when you start the trial."
 msgstr "サインインすると GPT Luna をお試しいただけます。14 日間の期間はトライアルを開始した時点から始まります。"
 
+msgid "Start Free Trial"
+msgstr "無料トライアルを開始"
+
+msgid "Start now using API keys from your environment for the following providers:"
+msgstr "次のプロバイダーについては、環境の API キーですぐに利用を開始できます:"
+
+msgid "To prevent abuse of our service, GitHub accounts created fewer than 30 days ago are not eligible for the Pro trial. You can request an exception by reaching out to billing-support@zed.dev"
+msgstr "サービスの不正利用を防ぐため、作成から 30 日未満の GitHub アカウントは Pro トライアルの対象外です。例外の適用を希望する場合は billing-support@zed.dev までご連絡ください。"
+
+msgid "To use it, review the warning under AI → LLM Providers in Settings and check the box to enable it. If you use it for work, be sure to check your organization's policy first."
+msgstr "利用するには、設定の「AI」→「LLM プロバイダー」で警告を確認し、有効化のチェックを入れてください。業務で利用する場合は、所属組織のポリシーを必ず確認してください。"
+
+msgid "Tokens in the Zed agent"
+msgstr "Zed エージェントで使えるトークン"
+
 msgid "Unlimited edit predictions"
 msgstr "無制限の編集予測"
+
+msgid "Unlimited prompts with your AI API keys"
+msgstr "自分の AI API キーによる無制限のプロンプト"
+
+msgid "Unlimited use of external agents"
+msgstr "外部エージェントの無制限利用"
+
+msgid "Usage-based billing"
+msgstr "従量課金"
+
+msgid "Usage-based billing beyond $5"
+msgstr "$5 を超える分は従量課金"
+
+msgid "Use Copilot"
+msgstr "Copilot を使用"
+
+msgid "Welcome to Zed AI"
+msgstr "Zed AI へようこそ"
+
+msgid "Welcome to Zed Business"
+msgstr "Zed Business へようこそ"
+
+msgid "Welcome to Zed Pro"
+msgstr "Zed Pro へようこそ"
+
+msgid "Welcome to Zed Student"
+msgstr "Zed Student へようこそ"
+
+msgid "Welcome to Zed VIP"
+msgstr "Zed VIP へようこそ"
+
+msgid "Welcome to the Zed Pro Trial"
+msgstr "Zed Pro トライアルへようこそ"
+
+msgid "Zed AI is an external AI service. When it is enabled, the code, file contents, and conversations you enter are sent to Zed's servers and, depending on the provider's policies, may be stored and used to train models."
+msgstr "Zed AI は外部の AI サービスです。有効にすると、入力したコード・ファイルの内容・会話が Zed のサーバーへ送信され、事業者の方針によっては保存され、モデルの学習に利用される可能性があります。"
+
+msgctxt "plan"
+msgid "Get Started"
+msgstr "利用を開始"

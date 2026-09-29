@@ -2488,15 +2488,15 @@ mod fixup_tests {
 
         assert_refused(
             fixup(&repository, &first, FixupChanges::Staged, cx).await,
-            "ステージ済みの変更がありません",
+            "There are no staged changes",
         );
         assert_refused(
             fixup(&repository, &first, FixupChanges::AllTracked, cx).await,
-            "コミットに入れる変更がありません",
+            "There are no changes to put in the commit",
         );
         assert_refused(
             fixup(&repository, "--all", FixupChanges::AllTracked, cx).await,
-            "SHA として読めません",
+            "Cannot read this as a commit SHA",
         );
         assert_eq!(git(&work_dir, &["rev-parse", "HEAD"]), head);
     }
@@ -2516,7 +2516,7 @@ mod fixup_tests {
 
         assert_refused(
             fixup(&repository, &elsewhere, FixupChanges::Staged, cx).await,
-            "現在のブランチの履歴に無い",
+            "not in the history of the current branch",
         );
         assert_nothing_written(&work_dir, &head);
     }
@@ -2538,7 +2538,7 @@ mod fixup_tests {
 
         assert_refused(
             fixup(&repository, &first, FixupChanges::Staged, cx).await,
-            "マージコミット",
+            "merge commit",
         );
         assert_nothing_written(&work_dir, &head);
     }
@@ -2586,7 +2586,7 @@ mod fixup_tests {
 
         assert_refused(
             fixup(&repository, &first, FixupChanges::AllTracked, cx).await,
-            "途中で止まっています",
+            "stopped partway",
         );
         assert_eq!(git(&work_dir, &["rev-parse", "HEAD"]), head);
         git(&work_dir, &["rev-parse", "--verify", "CHERRY_PICK_HEAD"]);

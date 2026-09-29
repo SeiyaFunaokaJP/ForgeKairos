@@ -77,10 +77,20 @@ const TEMPLATE_FENCE: &str = indoc! {r#"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let venn = parse_venn(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_venn(&venn), template);
+    };
+    check(editor::actions::MermaidDiagramKind::Venn.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::Venn.template();
-    let venn = parse_venn(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_venn(&venn), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -176,7 +186,7 @@ async fn what_mermaid_cannot_draw_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("2 つ以上")),
+            .is_some_and(|message| message.contains("at least two sets")),
         "an overlap of one set should be refused, got {message:?}"
     );
 
@@ -190,7 +200,7 @@ async fn what_mermaid_cannot_draw_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("重複")),
+            .is_some_and(|message| message.contains("is written twice")),
         "two sets with one id should be refused, got {message:?}"
     );
     assert_eq!(

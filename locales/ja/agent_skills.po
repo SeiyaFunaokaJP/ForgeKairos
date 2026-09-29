@@ -5,5 +5,41 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Failed to read SKILL.md metadata: {}"
+msgstr "SKILL.md のメタデータの読み込みに失敗しました: {}"
+
+msgid "Failed to read file: {}"
+msgstr "ファイルの読み込みに失敗しました: {}"
+
+msgid "Invalid YAML frontmatter"
+msgstr "YAML フロントマターが不正です。"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md のサイズが上限の {}KB を超えています。"
+
+msgid "SKILL.md missing closing frontmatter delimiter (---)"
+msgstr "SKILL.md にフロントマターの終端記号 (---) がありません。"
+
+msgid "SKILL.md must start with YAML frontmatter (---)"
+msgstr "SKILL.md は YAML フロントマター (---) で始まる必要があります。"
+
+msgid "Skill description cannot be empty"
+msgstr "スキルの説明を入力してください。"
+
 msgid "Skill description is {actual_len} characters, exceeding the {max_len}-character limit. The skill was loaded, but long descriptions may consume more model-context tokens."
 msgstr "スキルの説明が {actual_len} 文字あり、上限の {max_len} 文字を超えています。読み込みは行われましたが、説明が長いとモデルのコンテキストトークンを多く消費する場合があります。"
+
+msgid "Skill description must be at most 1024 characters"
+msgstr "スキルの説明は 1024 文字以内で入力してください。"
+
+msgid "Skill name cannot be empty"
+msgstr "スキル名を入力してください。"
+
+msgid "Skill name must be at most 64 characters"
+msgstr "スキル名は 64 文字以内で入力してください。"
+
+msgid "Skill name must contain only lowercase letters, numbers, and hyphens"
+msgstr "スキル名には小文字の英字・数字・ハイフンのみ使用できます。"
+
+msgid "Skill name must not start or end with a hyphen"
+msgstr "スキル名の先頭と末尾にハイフンは使用できません。"

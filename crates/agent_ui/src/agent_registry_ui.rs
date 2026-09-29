@@ -155,9 +155,9 @@ pub(crate) fn registry_install_requirement(
 pub(crate) fn add_consented_hosts(hosts: Vec<String>, cx: &App) -> Task<anyhow::Result<()>> {
     if let Some(pattern) = hosts.iter().find(|host| host.contains('*')) {
         let pattern = pattern.clone();
-        return Task::ready(Err(anyhow::anyhow!(
-            "ワイルドカードを含むホスト ({pattern}) は、同意からは許可リストに追加できません。"
-        )));
+        return Task::ready(Err(anyhow::anyhow!(i18n::t!(
+            "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
+        ))));
     }
     let fs = <dyn Fs>::global(cx);
     let path = paths::network_allowlist_file().clone();
@@ -171,11 +171,14 @@ pub(crate) fn add_consented_hosts(hosts: Vec<String>, cx: &App) -> Task<anyhow::
 /// wrote before it gives up on it.
 pub(crate) const ALLOWLIST_PICKUP_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub(crate) const ALLOWLIST_NOT_APPLIED: &str = "許可リストには追加しましたが、まだ反映されていません。しばらく待ってからもう一度お試しください。";
+pub(crate) const ALLOWLIST_NOT_APPLIED: &str = i18n::msg!(
+    "The hosts were added to the allowlist, but the change has not taken effect yet. Wait a moment and try again."
+);
 
 /// Shown while the consent's hosts are on their way from the file into the
 /// running policy.
-pub(crate) const ALLOWLIST_PICKUP_PENDING: &str = "許可リストへの反映を待っています…";
+pub(crate) const ALLOWLIST_PICKUP_PENDING: &str =
+    i18n::msg!("Waiting for the allowlist change to take effect…");
 
 /// Why a consent could not be carried through. The two are worth telling
 /// apart: nothing was added in the first case, and everything was added in
@@ -193,7 +196,7 @@ impl ConsentFailure {
     pub(crate) fn message(&self) -> SharedString {
         match self {
             Self::Write(error) => allowlist_write_error(error),
-            Self::NotPickedUp => ALLOWLIST_NOT_APPLIED.into(),
+            Self::NotPickedUp => i18n::tr(ALLOWLIST_NOT_APPLIED).into(),
         }
     }
 }
@@ -249,16 +252,16 @@ pub(crate) async fn await_allowlist_pickup(
         futures::select_biased! {
             change = changes.next() => {
                 if change.is_none() {
-                    anyhow::bail!(ALLOWLIST_NOT_APPLIED);
+                    anyhow::bail!(i18n::tr(ALLOWLIST_NOT_APPLIED));
                 }
             }
-            _ = timeout => anyhow::bail!(ALLOWLIST_NOT_APPLIED),
+            _ = timeout => anyhow::bail!(i18n::tr(ALLOWLIST_NOT_APPLIED)),
         }
     }
 }
 
 pub(crate) fn allowlist_write_error(error: &anyhow::Error) -> SharedString {
-    format!("許可リストへの追加に失敗しました: {error:#}").into()
+    i18n::t!("Failed to add the hosts to the allowlist: {error:#}").into()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -286,11 +289,11 @@ impl RegistryInstallStatus {
 /// is authenticated, so the one entry that has something to say says it
 /// next to it.
 fn fork_agent_note(agent_id: &str) -> Option<&'static str> {
-    (agent_id == agent_servers::CLAUDE_AGENT_ID).then_some(
-        "サブスクリプションまたは API キー: サインインは Claude Code 自身の\
-         画面で行われ、Zed は認証情報を扱いません。設定でサブスクリプションを\
-         無効にできます。",
-    )
+    (agent_id == agent_servers::CLAUDE_AGENT_ID).then(|| {
+        i18n::t!(
+            "Subscription or API key: you sign in on Claude Code's own screen, and Zed never handles the credentials. The subscription can be turned off in Settings."
+        )
+    })
 }
 
 /// What the registry page can say about updating an installed agent (F2-5
@@ -347,9 +350,9 @@ fn update_status(
 
 fn update_badge_label(installed: Option<&SharedString>, latest: &SharedString) -> String {
     match installed {
-        Some(installed) => format!("更新あり: v{installed} → v{latest}"),
-        None if latest.is_empty() => "更新あり".to_string(),
-        None => format!("更新あり: v{latest}"),
+        Some(installed) => i18n::t!("Update available: v{installed} → v{latest}"),
+        None if latest.is_empty() => i18n::t!("Update available").to_string(),
+        None => i18n::t!("Update available: v{latest}"),
     }
 }
 
@@ -377,11 +380,9 @@ fn update_available_badge(
                 .size(LabelSize::Small)
                 .color(Color::Accent),
         )
-        .tooltip(Tooltip::text(
-            "クリックするとこのエージェントのスレッドを開きます。ここからは更新せず、\
-             実行中のセッションも止めません。新しく接続したスレッドは最新版で起動し、\
-             実行中のスレッドには更新バナーが出ます。",
-        ))
+        .tooltip(Tooltip::text(i18n::t!(
+            "Click to open a thread with this agent. Nothing is updated from here, and running sessions are not stopped. Newly connected threads start the latest version, and running threads show an update banner."
+        )))
         .on_click(move |_, window, cx| {
             window.dispatch_action(
                 Box::new(zed_actions::agent::SelectAgent {
@@ -437,10 +438,10 @@ impl InstallConsentAction {
     /// actually write `network_allowlist.json`.
     fn confirm_label(self, nothing_to_add: bool) -> &'static str {
         match (self, nothing_to_add) {
-            (Self::Install, false) => "許可リストに追加してインストール",
-            (Self::Install, true) => "了承してインストール",
-            (Self::Update, false) => "許可リストに追加して更新",
-            (Self::Update, true) => "了承して更新",
+            (Self::Install, false) => i18n::t!("Add to Allowlist and Install"),
+            (Self::Install, true) => i18n::t!("Agree and Install"),
+            (Self::Update, false) => i18n::t!("Add to Allowlist and Update"),
+            (Self::Update, true) => i18n::t!("Agree and Update"),
         }
     }
 }
@@ -493,7 +494,7 @@ impl RenderOnce for InstallConsentBanner {
             .iter()
             .map(SharedString::to_string)
             .collect::<Vec<_>>()
-            .join("、");
+            .join(i18n::tc!("list separator", ", "));
         let confirm_label = self.action.confirm_label(self.is_npx && all_allowed);
         let id = self.id;
         let waiting = self.waiting;
@@ -509,13 +510,13 @@ impl RenderOnce for InstallConsentBanner {
                         this.child(
                             v_flex()
                                 .gap_0p5()
-                                .child(Label::new(
-                                    "このエージェントは npx (npm) 経由でインストールされます",
-                                ))
+                                .child(Label::new(i18n::t!(
+                                    "This agent is installed via npx (npm)"
+                                )))
                                 .child(
-                                    Label::new(
-                                        "npm によるパッケージの取得と、インストール後の実行時通信は子プロセスプロキシ経由で許可リストの対象になります。ただし、パッケージのインストールスクリプトが追加で必要とするホストは事前に列挙できず、許可リストに無いと遮断されて失敗します。可能であれば Binary 型のエージェントを優先してください。",
-                                    )
+                                    Label::new(i18n::t!(
+                                        "Package downloads by npm and the agent's network traffic after installation go through the child-process proxy and are subject to the allowlist. However, the extra hosts that a package's install scripts need cannot be listed in advance, and they are blocked and fail if they are not on the allowlist. Prefer Binary agents when possible."
+                                    ))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                                 ),
@@ -527,13 +528,17 @@ impl RenderOnce for InstallConsentBanner {
                                 .flex_wrap()
                                 .gap_1p5()
                                 .child(
-                                    Label::new("許可が必要なホスト:")
+                                    Label::new(i18n::t!("Hosts that need to be allowed:"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
                                 .child(Label::new(hosts_label).size(LabelSize::Small).buffer_font(cx))
                                 .child(
-                                    Label::new(if all_allowed { "(登録済み)" } else { "(未登録)" })
+                                    Label::new(if all_allowed {
+                                        i18n::t!("(added)")
+                                    } else {
+                                        i18n::t!("(not added)")
+                                    })
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 ),
@@ -553,7 +558,7 @@ impl RenderOnce for InstallConsentBanner {
                                         .with_rotate_animation(2),
                                 )
                                 .child(
-                                    Label::new(ALLOWLIST_PICKUP_PENDING)
+                                    Label::new(i18n::tr(ALLOWLIST_PICKUP_PENDING))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 ),
@@ -575,7 +580,7 @@ impl RenderOnce for InstallConsentBanner {
                             .child(
                                 Button::new(
                                     SharedString::from(format!("install-consent-cancel-{id}")),
-                                    "追加せず中止",
+                                    i18n::t!("Cancel Without Adding"),
                                 )
                                 .style(ButtonStyle::Outlined)
                                 .label_size(LabelSize::Small)
@@ -658,7 +663,7 @@ impl AgentRegistryPage {
             let registry_store = AgentRegistryStore::global(cx);
             let query_editor = cx.new(|cx| {
                 let mut input = Editor::single_line(window, cx);
-                input.set_placeholder_text("エージェントを検索...", window, cx);
+                input.set_placeholder_text(i18n::t!("Search agents..."), window, cx);
                 input
             });
             cx.subscribe(&query_editor, Self::on_query_change).detach();
@@ -933,30 +938,32 @@ impl AgentRegistryPage {
         let fetch_error = registry_store.fetch_error();
 
         let message = if is_fetching {
-            "レジストリを読み込んでいます..."
+            i18n::t!("Loading registry...")
         } else if fetch_error.is_some() {
-            "エージェントレジストリの読み込みに失敗しました。接続を確認して再試行してください。"
+            i18n::t!(
+                "Failed to load the agent registry. Please check your connection and try again."
+            )
         } else {
             match self.filter {
                 RegistryFilter::All => {
                     if has_search {
-                        "検索条件に一致するエージェントはありません。"
+                        i18n::t!("No agents match your search.")
                     } else {
-                        "利用できるエージェントはありません。"
+                        i18n::t!("No agents available.")
                     }
                 }
                 RegistryFilter::Installed => {
                     if has_search {
-                        "検索条件に一致するインストール済みのエージェントはありません。"
+                        i18n::t!("No installed agents match your search.")
                     } else {
-                        "インストール済みのエージェントはありません。"
+                        i18n::t!("No installed agents.")
                     }
                 }
                 RegistryFilter::NotInstalled => {
                     if has_search {
-                        "検索条件に一致する未インストールのエージェントはありません。"
+                        i18n::t!("No uninstalled agents match your search.")
                     } else {
-                        "未インストールのエージェントはありません。"
+                        i18n::t!("No uninstalled agents.")
                     }
                 }
             }
@@ -992,7 +999,7 @@ impl AgentRegistryPage {
             .when_some(fetch_error, |this, _| {
                 let registry_store = self.registry_store.clone();
                 this.child(
-                    Button::new("retry-agent-registry", "再試行")
+                    Button::new("retry-agent-registry", i18n::t!("Retry"))
                         .style(ButtonStyle::Outlined)
                         .size(ButtonSize::Compact)
                         .on_click(move |_, _, cx| {
@@ -1023,7 +1030,7 @@ impl AgentRegistryPage {
 
     fn render_missing_agent(&self) -> AgentRegistryCard {
         AgentRegistryCard::new().child(
-            Label::new("レジストリの項目が見つかりません。")
+            Label::new(i18n::t!("Missing registry entry."))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         )
@@ -1065,7 +1072,7 @@ impl AgentRegistryPage {
             .icon_size(IconSize::Small)
             .tooltip(move |_, cx| {
                 Tooltip::with_meta(
-                    "エージェントのリポジトリを開く",
+                    i18n::t!("Visit Agent Repository"),
                     None,
                     repository_for_tooltip.clone(),
                     cx,
@@ -1085,7 +1092,7 @@ impl AgentRegistryPage {
             )
             .icon_size(IconSize::Small)
             .tooltip(move |_, cx| {
-                Tooltip::with_meta("エージェントの Web サイトを開く", None, website.clone(), cx)
+                Tooltip::with_meta(i18n::t!("Visit Agent Website"), None, website.clone(), cx)
             })
             .on_click(move |_, _, cx| {
                 cx.open_url(&website_for_click);
@@ -1130,11 +1137,9 @@ impl AgentRegistryPage {
                                             .color(Color::Muted),
                                     )
                                     .when(update_status == UpdateStatus::UnknownForNpx, |this| {
-                                        this.tooltip(Tooltip::text(
-                                            "npx で配布されるエージェントは起動時に npm が版を\
-                                             決めるため、インストール済みの版を特定できません。\
-                                             更新の有無はここには表示しません。",
-                                        ))
+                                        this.tooltip(Tooltip::text(i18n::t!(
+                                            "For agents distributed via npx, npm picks the version at launch, so the installed version cannot be determined. Whether an update is available is not shown here."
+                                        )))
                                     }),
                             )
                             .map(|this| match &update_status {
@@ -1149,7 +1154,7 @@ impl AgentRegistryPage {
                             })
                             .when(!supports_current_platform, |this| {
                                 this.child(
-                                    Label::new("このプラットフォームには対応していません")
+                                    Label::new(i18n::t!("Not supported on this platform"))
                                         .size(LabelSize::Small)
                                         .color(Color::Warning),
                                 )
@@ -1324,7 +1329,7 @@ impl AgentRegistryPage {
         let button_id = SharedString::from(format!("install-agent-{}", agent.id()));
 
         if !supports_current_platform {
-            return Button::new(button_id, "利用不可")
+            return Button::new(button_id, i18n::t!("Unavailable"))
                 .style(ButtonStyle::OutlinedGhost)
                 .disabled(true);
         }
@@ -1332,7 +1337,7 @@ impl AgentRegistryPage {
         match install_status {
             RegistryInstallStatus::NotInstalled => {
                 let agent_id = agent.id().to_string();
-                Button::new(button_id, "インストール")
+                Button::new(button_id, i18n::t!("Install"))
                     .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                     .start_icon(
                         Icon::new(IconName::Download)
@@ -1350,7 +1355,7 @@ impl AgentRegistryPage {
             RegistryInstallStatus::InstalledRegistry => {
                 let fs = <dyn Fs>::global(cx);
                 let agent_id = agent.id().to_string();
-                Button::new(button_id, "削除")
+                Button::new(button_id, i18n::t!("Remove"))
                     .style(ButtonStyle::OutlinedGhost)
                     .on_click(move |_, _, cx| {
                         let agent_id = agent_id.clone();
@@ -1369,7 +1374,7 @@ impl AgentRegistryPage {
                         });
                     })
             }
-            RegistryInstallStatus::InstalledCustom => Button::new(button_id, "インストール済み")
+            RegistryInstallStatus::InstalledCustom => Button::new(button_id, i18n::t!("Installed"))
                 .style(ButtonStyle::OutlinedGhost)
                 .disabled(true),
         }
@@ -1392,9 +1397,11 @@ impl Render for AgentRegistryPage {
                             .w_full()
                             .gap_1p5()
                             .justify_between()
-                            .child(Headline::new("ACP レジストリ").size(HeadlineSize::Large))
                             .child(
-                                Button::new("learn-more", "詳細")
+                                Headline::new(i18n::t!("ACP Registry")).size(HeadlineSize::Large),
+                            )
+                            .child(
+                                Button::new("learn-more", i18n::t!("Learn More"))
                                     .style(ButtonStyle::Outlined)
                                     .size(ButtonSize::Medium)
                                     .end_icon(
@@ -1419,7 +1426,7 @@ impl Render for AgentRegistryPage {
                                         "registry-filter-buttons",
                                         [
                                             ToggleButtonSimple::new(
-                                                "すべて",
+                                                i18n::t!("All"),
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = RegistryFilter::All;
                                                     this.filter_registry_agents(cx);
@@ -1427,7 +1434,7 @@ impl Render for AgentRegistryPage {
                                                 }),
                                             ),
                                             ToggleButtonSimple::new(
-                                                "インストール済み",
+                                                i18n::t!("Installed"),
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = RegistryFilter::Installed;
                                                     this.filter_registry_agents(cx);
@@ -1435,7 +1442,7 @@ impl Render for AgentRegistryPage {
                                                 }),
                                             ),
                                             ToggleButtonSimple::new(
-                                                "未インストール",
+                                                i18n::t!("Not Installed"),
                                                 cx.listener(|this, _event, _, cx| {
                                                     this.filter = RegistryFilter::NotInstalled;
                                                     this.filter_registry_agents(cx);
@@ -1503,7 +1510,7 @@ impl Item for AgentRegistryPage {
     }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "ACP レジストリ".into()
+        i18n::t!("ACP Registry").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -1643,19 +1650,19 @@ mod tests {
     fn consent_confirm_labels_differ_only_in_the_verb() {
         assert_eq!(
             InstallConsentAction::Install.confirm_label(false),
-            "許可リストに追加してインストール"
+            "Add to Allowlist and Install"
         );
         assert_eq!(
             InstallConsentAction::Install.confirm_label(true),
-            "了承してインストール"
+            "Agree and Install"
         );
         assert_eq!(
             InstallConsentAction::Update.confirm_label(false),
-            "許可リストに追加して更新"
+            "Add to Allowlist and Update"
         );
         assert_eq!(
             InstallConsentAction::Update.confirm_label(true),
-            "了承して更新"
+            "Agree and Update"
         );
     }
 
@@ -1676,7 +1683,7 @@ mod tests {
         );
         assert_eq!(
             update_badge_label(Some(&SharedString::from("1.2.3")), &latest),
-            "更新あり: v1.2.3 → v1.3.0"
+            "Update available: v1.2.3 → v1.3.0"
         );
 
         assert_eq!(
@@ -1743,7 +1750,10 @@ mod tests {
                 latest: reported.clone(),
             }
         );
-        assert_eq!(update_badge_label(None, &reported), "更新あり: v1.4.0");
+        assert_eq!(
+            update_badge_label(None, &reported),
+            "Update available: v1.4.0"
+        );
         assert_eq!(
             update_status(false, &latest, &cached(&["1.2.3"]), Some(&reported)),
             UpdateStatus::Available {

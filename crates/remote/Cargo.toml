@@ -33,6 +33,7 @@ hex.workspace = true
 # ADR-F27: this crate carries both ends of the HTTP relay, so it needs the
 # `HttpClient` trait and the relay types the remote host's client is built on.
 http_client.workspace = true
+i18n.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 paths.workspace = true

@@ -716,29 +716,32 @@ impl VariableList {
             cx.update(|window, cx| {
                 let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
                     menu.when_some(entry.as_variable(), |menu, _| {
-                        menu.action("名前をコピー", CopyVariableName.boxed_clone())
-                            .action("値をコピー", CopyVariableValue.boxed_clone())
+                        menu.action(i18n::t!("Copy Name"), CopyVariableName.boxed_clone())
+                            .action(i18n::t!("Copy Value"), CopyVariableValue.boxed_clone())
                             .when(supports_set_variable, |menu| {
-                                menu.action("値を編集", EditVariable.boxed_clone())
+                                menu.action(i18n::t!("Edit Value"), EditVariable.boxed_clone())
                             })
                             .when(supports_go_to_memory, |menu| {
-                                menu.action("メモリへ移動", GoToMemory.boxed_clone())
+                                menu.action(i18n::t!("Go To Memory"), GoToMemory.boxed_clone())
                             })
-                            .action("変数をウォッチ", AddWatch.boxed_clone())
+                            .action(i18n::t!("Watch Variable"), AddWatch.boxed_clone())
                             .when_some(can_toggle_data_breakpoint, |mut menu, data_info| {
                                 menu = menu.separator();
                                 if let Some(access_types) = data_info.access_types {
                                     for access in access_types {
                                         menu = menu.action(
-                                            format!(
-                                                "データブレークポイント ({}) を切り替え",
+                                            i18n::t!(
+                                                "Toggle {} Data Breakpoint",
                                                 match access {
                                                     dap::DataBreakpointAccessType::Read =>
-                                                        "読み取り",
+                                                        i18n::tc!("data breakpoint access", "Read"),
                                                     dap::DataBreakpointAccessType::Write =>
-                                                        "書き込み",
+                                                        i18n::tc!("data breakpoint access", "Write"),
                                                     dap::DataBreakpointAccessType::ReadWrite =>
-                                                        "読み書き",
+                                                        i18n::tc!(
+                                                            "data breakpoint access",
+                                                            "Read/Write"
+                                                        ),
                                                 }
                                             ),
                                             crate::ToggleDataBreakpoint {
@@ -751,7 +754,7 @@ impl VariableList {
                                     menu
                                 } else {
                                     menu.action(
-                                        "データブレークポイントを切り替え",
+                                        i18n::t!("Toggle Data Breakpoint"),
                                         crate::ToggleDataBreakpoint { access_type: None }
                                             .boxed_clone(),
                                     )
@@ -759,12 +762,12 @@ impl VariableList {
                             })
                     })
                     .when(entry.as_watcher().is_some(), |menu| {
-                        menu.action("名前をコピー", CopyVariableName.boxed_clone())
-                            .action("値をコピー", CopyVariableValue.boxed_clone())
+                        menu.action(i18n::t!("Copy Name"), CopyVariableName.boxed_clone())
+                            .action(i18n::t!("Copy Value"), CopyVariableValue.boxed_clone())
                             .when(supports_set_variable, |menu| {
-                                menu.action("値を編集", EditVariable.boxed_clone())
+                                menu.action(i18n::t!("Edit Value"), EditVariable.boxed_clone())
                             })
-                            .action("ウォッチを削除", RemoveWatch.boxed_clone())
+                            .action(i18n::t!("Remove Watch"), RemoveWatch.boxed_clone())
                     })
                     .context(focus_handle.clone())
                 });
@@ -1374,7 +1377,12 @@ impl VariableList {
                         }
                     })
                     .tooltip(move |_window, cx| {
-                        Tooltip::for_action_in("ウォッチを削除", &RemoveWatch, &focus_handle, cx)
+                        Tooltip::for_action_in(
+                            i18n::t!("Remove Watch"),
+                            &RemoveWatch,
+                            &focus_handle,
+                            cx,
+                        )
                     })
                     .icon_size(ui::IconSize::Indicator),
                 ),

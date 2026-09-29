@@ -31,7 +31,7 @@ use super::{
 
 /// The texts new rows are added with, so that they are visible in the drawing
 /// before anything has been typed into them.
-const NEW_ITEM_NAME: &str = "新しい項目";
+const NEW_ITEM_NAME: &str = i18n::msg!("New item");
 const NEW_ITEM_VALUE: &str = "10";
 const NEW_CLASS_NAME: &str = "class";
 const NEW_CLASS_STYLE: &str = "fill:#f96";
@@ -273,7 +273,7 @@ impl MermaidEditor {
     fn new_treemap_entry() -> TreemapEntry {
         TreemapEntry {
             depth: 0,
-            item: TreemapItem::leaf(NEW_ITEM_NAME, NEW_ITEM_VALUE),
+            item: TreemapItem::leaf(i18n::tr(NEW_ITEM_NAME), NEW_ITEM_VALUE),
         }
     }
 
@@ -512,7 +512,7 @@ impl MermaidEditor {
         let title = h_flex()
             .w_full()
             .gap_2()
-            .child(section_title("タイトル"))
+            .child(section_title(i18n::t!("Title")))
             .child(
                 field_frame(
                     &form.title,
@@ -528,9 +528,9 @@ impl MermaidEditor {
         let mut items = v_flex()
             .w_full()
             .gap_2()
-            .child(section_title(
-                "項目 (右にずれているほど深い階層。値のある項目が末端の箱、値のない項目がそれを囲む区分)",
-            ));
+            .child(section_title(i18n::t!(
+                "Items (indented rows are nested deeper; an item with a value is a box at the end of the tree, an item without a value is a section around them)"
+            )));
         for index in 0..form.rows.len() {
             let (Some(row), Some(entry)) = (form.rows.get(index), current.entries.get(index))
             else {
@@ -548,14 +548,14 @@ impl MermaidEditor {
         }
         items = items.child(add_button(
             "mermaid-treemap-add-item",
-            "項目を追加",
+            i18n::t!("Add Item"),
             cx.listener(|this, _, window, cx| this.add_treemap_item(window, cx)),
         ));
 
         let mut classes = v_flex()
             .w_full()
             .gap_2()
-            .child(section_title("クラス (classDef)"));
+            .child(section_title(i18n::t!("Classes (classDef)")));
         for index in 0..form.class_defs.len() {
             let (Some(row), Some(class_def)) =
                 (form.class_defs.get(index), current.class_defs.get(index))
@@ -606,7 +606,7 @@ impl MermaidEditor {
         }
         classes = classes.child(add_button(
             "mermaid-treemap-add-class",
-            "クラスを追加",
+            i18n::t!("Add Class"),
             cx.listener(|this, _, window, cx| this.add_treemap_class_def(window, cx)),
         ));
 
@@ -651,7 +651,7 @@ impl MermaidEditor {
                 button(
                     "outdent",
                     IconName::ArrowLeft,
-                    "一段浅く (親の次へ)",
+                    i18n::t!("Outdent (Move After the Parent)"),
                     depth == 0,
                 )
                 .on_click(
@@ -662,7 +662,7 @@ impl MermaidEditor {
                 button(
                     "indent",
                     IconName::ArrowRight,
-                    "一段深く (上の値のない項目の中へ)",
+                    i18n::t!("Indent (Move into the Item Above That Has No Value)"),
                     !can_indent,
                 )
                 .on_click(
@@ -670,12 +670,20 @@ impl MermaidEditor {
                 ),
             )
             .child(
-                button("up", IconName::ArrowUp, "上へ移動", !can_move_up).on_click(cx.listener(
-                    move |this, _, _window, cx| this.move_treemap_item(index, false, cx),
-                )),
+                button("up", IconName::ArrowUp, i18n::t!("Move Up"), !can_move_up).on_click(
+                    cx.listener(move |this, _, _window, cx| {
+                        this.move_treemap_item(index, false, cx)
+                    }),
+                ),
             )
             .child(
-                button("down", IconName::ArrowDown, "下へ移動", !can_move_down).on_click(
+                button(
+                    "down",
+                    IconName::ArrowDown,
+                    i18n::t!("Move Down"),
+                    !can_move_down,
+                )
+                .on_click(
                     cx.listener(move |this, _, _window, cx| {
                         this.move_treemap_item(index, true, cx)
                     }),
@@ -685,7 +693,7 @@ impl MermaidEditor {
                 button(
                     "add-child",
                     IconName::ArrowDownRight,
-                    "中に項目を追加 (値のない項目だけ)",
+                    i18n::t!("Add Item Inside (Only Items Without a Value)"),
                     is_leaf,
                 )
                 .on_click(
@@ -698,7 +706,7 @@ impl MermaidEditor {
                 button(
                     "add-sibling",
                     IconName::Plus,
-                    "下に同じ階層の項目を追加",
+                    i18n::t!("Add Item Below at the Same Level"),
                     false,
                 )
                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -709,7 +717,7 @@ impl MermaidEditor {
                 button(
                     "remove",
                     IconName::Trash,
-                    "この項目と中の項目をすべて削除",
+                    i18n::t!("Delete This Item and All Items Inside It"),
                     false,
                 )
                 .on_click(
@@ -774,16 +782,17 @@ impl MermaidEditor {
         {
             choices.push(current.clone());
         }
-        let label = SharedString::from(
-            current
-                .clone()
-                .map_or_else(|| "クラスなし".to_string(), |class| format!(":::{class}")),
-        );
+        let label = SharedString::from(current.clone().map_or_else(
+            || i18n::t!("No Class").to_string(),
+            |class| format!(":::{class}"),
+        ));
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
             let options = std::iter::once(None).chain(choices.iter().cloned().map(Some));
             for class in options {
                 let this = this.clone();
-                let label = class.clone().unwrap_or_else(|| "なし".to_string());
+                let label = class
+                    .clone()
+                    .unwrap_or_else(|| i18n::t!("None").to_string());
                 let checked = class == current;
                 menu = menu.toggleable_entry(
                     label,

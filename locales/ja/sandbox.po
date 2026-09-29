@@ -1,0 +1,535 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A zip archive cannot be extracted in the WSL sandbox (the distro has no `unzip`). Specify a Linux archive in a format such as tar.gz."
+msgstr "zip 形式の配布物は WSL のサンドボックスでは展開できません (ディストリビューションに `unzip` がないため)。tar.gz などの形式の Linux 向け配布物を指定してください。"
+
+msgid "Could not check the agent executable"
+msgstr "エージェントの実行ファイルを確認できませんでした"
+
+msgid "Could not check the agent executable in {distro} ({error})."
+msgstr "{distro}でエージェントの実行ファイルを確認できませんでした ({error})。"
+
+msgid "Could not check the agent executable in {distro}."
+msgstr "{distro}でエージェントの実行ファイルを確認できませんでした。"
+
+msgid "Could not check the agent executable in {distro}{details}. Run `wsl --update` and try again."
+msgstr "{distro}でエージェントの実行ファイルを確認できませんでした{details}。`wsl --update` を実行してから再試行してください。"
+
+msgid "Could not check the agent runtime in {distro} ({error})."
+msgstr "{distro}でエージェントの実行環境を確認できませんでした ({error})。"
+
+msgid "Could not check the agent runtime in {distro}{details}."
+msgstr "{distro}でエージェントの実行環境を確認できませんでした{details}。"
+
+msgid "Could not check the always-protected path `{path}` ({error}). Commands never run without that protection, so stopping."
+msgstr "常に保護するパス `{path}` を確認できませんでした ({error})。保護できないままコマンドを実行しないため、中止します。"
+
+msgid "Could not check the npm package"
+msgstr "npm パッケージを確認できませんでした"
+
+msgid "Could not check the npm package executable"
+msgstr "npm パッケージの実行ファイルを確認できませんでした"
+
+msgid "Could not check the npm package executable in {distro}."
+msgstr "{distro}で npm パッケージの実行ファイルを確認できませんでした。"
+
+msgid "Could not check the path shown read-only `{path}` ({error}). Nothing unchecked is shown, so stopping."
+msgstr "読み取り専用で見せるパス `{path}` を確認できませんでした ({error})。確認できないものは見せないため、中止します。"
+
+msgid "Could not check the sandbox helper in {distro} ({error})."
+msgstr "{distro}でサンドボックス用ヘルパーの状態を確認できませんでした ({error})。"
+
+msgid "Could not check the sandbox helper in {distro}{details}. Run `wsl --update` and try again."
+msgstr "{distro}でサンドボックス用ヘルパーの状態を確認できませんでした{details}。`wsl --update` を実行してから再試行してください。"
+
+msgid "Could not copy the {file} to {distro} ({error})."
+msgstr "{file}を{distro}にコピーできませんでした ({error})。"
+
+msgid "Could not copy the {file} to {distro}{details}. Check the free space in WSL and that the home directory is writable."
+msgstr "{file}を{distro}にコピーできませんでした{details}。WSL 内の空き容量と、ホームディレクトリへの書き込み権限を確認してください。"
+
+msgid "Could not create the IDE integration lock file (check the owner and permissions of ~/.zed-jp-enhance-claude {home}, and that it is not a symbolic link)."
+msgstr "IDE 連携のロックファイルを作成できませんでした ({home} ~/.zed-jp-enhance-claude の所有者と権限、シンボリックリンクになっていないかを確認してください)。"
+
+msgid "Could not create the IDE integration's rendezvous socket (check the owner and permissions of ~/.cache/zed-jp-enhance/ide {home})."
+msgstr "IDE 連携の受け渡し用のソケットを作成できませんでした ({home} ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+
+msgid "Could not create the agent settings folder"
+msgstr "エージェントの設定フォルダーを作成できませんでした"
+
+msgid "Could not create the agent settings folder in {distro}."
+msgstr "{distro}でエージェントの設定フォルダーを作成できませんでした。"
+
+msgid "Could not create the npm working folder"
+msgstr "npm の作業フォルダーを作成できませんでした"
+
+msgid "Could not create the npm working folder in {distro}."
+msgstr "{distro}で npm の作業フォルダーを作成できませんでした。"
+
+msgid "Could not create the sandbox in WSL"
+msgstr "WSL でサンドボックスを作成できませんでした"
+
+msgid "Could not extract the agent runtime"
+msgstr "エージェントの実行環境を展開できませんでした"
+
+msgid "Could not find Zed's data folder in {distro}{details}."
+msgstr "{distro}で Zed のデータフォルダーを確認できませんでした{details}。"
+
+msgid "Could not find the architecture of {distro}{details}."
+msgstr "{distro}のアーキテクチャを確認できませんでした{details}。"
+
+msgid "Could not find the home directory of {distro}{details}."
+msgstr "{distro}のホームディレクトリを確認できませんでした{details}。"
+
+msgid "Could not finish {description} in {distro}{details}"
+msgstr "{distro}で{description}を実行できませんでした{details}"
+
+msgid "Could not handle the processes in the sandbox in {distro}:{detail}"
+msgstr "{distro}がサンドボックス内のプロセスを扱えませんでした:{detail}"
+
+msgid "Could not install the agent runtime"
+msgstr "エージェントの実行環境を配置できませんでした"
+
+msgid "Could not install the npm package"
+msgstr "npm パッケージを配置できませんでした"
+
+msgid "Could not pass the connection details to the IDE integration relay"
+msgstr "IDE 連携の中継に接続情報を渡せませんでした"
+
+msgid "Could not pass the connection details to the IDE integration relay."
+msgstr "IDE 連携の中継に接続情報を渡せませんでした。"
+
+msgid "Could not pass the path of the {description} to the sandbox: {path}"
+msgstr "{description}のパスをサンドボックスへ渡せませんでした: {path}"
+
+msgid "Could not read inside the writable path `{path}` ({error}). The paths to protect cannot be separated out, so stopping."
+msgstr "書込を許可したパス `{path}` の中を読めませんでした ({error})。保護すべきパスを切り分けられないため、中止します。"
+
+msgid "Could not read the bundled sandbox helper `{path}` ({error}). Reinstall Zed."
+msgstr "同梱のサンドボックス用ヘルパー `{path}` を読み取れませんでした ({error})。Zed を再インストールしてください。"
+
+msgid "Could not read the {file} `{path}` ({error}). {fix}"
+msgstr "{file} `{path}` を読み取れませんでした ({error})。{fix}"
+
+msgid "Could not resolve the paths in {distro} ({error})."
+msgstr "{distro}でパスを解決できませんでした ({error})。"
+
+msgid "Could not resolve the paths in {distro}{details}. Run `wsl --update` and try again."
+msgstr "{distro}でパスを解決できませんでした{details}。`wsl --update` を実行してから再試行してください。"
+
+msgid "Could not resolve the writable path `{path}` on Windows."
+msgstr "書込を許可するパス `{path}` を Windows 側で解決できませんでした。"
+
+msgid "Could not resolve the writable path `{path}`.{details}"
+msgstr "書込を許可するパス `{path}` を解決できませんでした。{details}"
+
+msgid "Could not run `npm install {package_spec}` in the sandbox{details}"
+msgstr "サンドボックスの中で `npm install {package_spec}` を実行できませんでした{details}"
+
+msgid "Could not run the sandbox helper in {distro}{details} ({error}). Update WSL with `wsl --update` and try again."
+msgstr "{distro}でサンドボックス用のヘルパーを実行できませんでした{details} ({error})。`wsl --update` で WSL を更新してから再試行してください。"
+
+msgid "Could not start WSL for {description} ({error}). Run `wsl --update` or restart Windows, then try again."
+msgstr "{description}のために WSL を起動できませんでした ({error})。`wsl --update` を実行するか、Windows を再起動してから再試行してください。"
+
+msgid "Could not start the IDE integration relay (unknown reason: {other})."
+msgstr "IDE 連携の中継を起動できませんでした (不明な理由: {other})。"
+
+msgid "Could not start the IDE integration relay (wsl.exe)"
+msgstr "IDE 連携の中継 (wsl.exe) を起動できませんでした"
+
+msgid "Download it again."
+msgstr "取得し直してください。"
+
+msgid "Download the agent again."
+msgstr "エージェントを取得し直してください。"
+
+msgid "No WSL distro is registered. Add one with `wsl --install -d Ubuntu` or similar (any distro works, but it must run on WSL 2)."
+msgstr "WSL のディストリビューションが登録されていません。`wsl --install -d Ubuntu` などでディストリビューションを追加してください (種類は問いません。WSL 2 で動いている必要があります)。"
+
+msgid "No default WSL distro is set. List the distros with `wsl --list --verbose` and make a WSL 2 distro the default with `wsl --set-default <name>`."
+msgstr "既定の WSL ディストリビューションが設定されていません。`wsl --list --verbose` で一覧を確認し、`wsl --set-default <名前>` で WSL 2 のディストリビューションを既定にしてください。"
+
+msgid "Reinstall Zed."
+msgstr "Zed を再インストールしてください。"
+
+msgid "Set the environment variable `ZED_WSL_SANDBOX_HELPER` to an absolute path inside WSL (UTF-8)."
+msgstr "環境変数 `ZED_WSL_SANDBOX_HELPER` には WSL 内の絶対パス (UTF-8) を指定してください。"
+
+msgid "The IDE integration relay could not be started because the home directory {home} could not be determined."
+msgstr "{home}ホームディレクトリを特定できないため、IDE 連携の中継を起動できませんでした。"
+
+msgid "The IDE integration relay could not set up its signal handling."
+msgstr "IDE 連携の中継のシグナル処理を設定できませんでした。"
+
+msgid "The IDE integration relay exited before it was ready."
+msgstr "IDE 連携の中継が準備を終える前に終了しました。"
+
+msgid "The IDE integration relay for this configuration is already running"
+msgstr "この構成の IDE 連携の中継はすでに実行中です"
+
+msgid "The IDE integration relay was not ready within {seconds} seconds."
+msgstr "IDE 連携の中継が {seconds} 秒以内に準備を終えませんでした。"
+
+msgid "The IDE integration relay was started with invalid arguments (internal error)."
+msgstr "IDE 連携の中継の起動引数が不正です (内部エラー)。"
+
+msgid "The IDE lock file is larger than {limit} bytes (internal error)"
+msgstr "IDE のロックファイルの中身が {limit} バイトを超えています (内部エラー)"
+
+msgid "The IDE port inside the sandbox is 0 (internal error)"
+msgstr "サンドボックス内の IDE のポートが 0 です (内部エラー)"
+
+msgid "The WSL distro `{name}` is not registered. Check its name with `wsl --list --verbose`."
+msgstr "WSL ディストリビューション `{name}` が登録されていません。`wsl --list --verbose` で名前を確認してください。"
+
+msgid "The WSL distro `{name}` runs on WSL 1, but the sandbox needs WSL 2. Convert it with `wsl --set-version {name} 2`, or make a WSL 2 distro the default with `wsl --set-default <name>`."
+msgstr "WSL ディストリビューション `{name}` は WSL 1 で動いています。サンドボックスには WSL 2 が必要です。`wsl --set-version {name} 2` で WSL 2 に変換するか、WSL 2 のディストリビューションを`wsl --set-default <名前>` で既定にしてください。"
+
+msgid "The WSL sandbox helper returned a canonical path that is not UTF-8 (internal error)"
+msgstr "WSL のサンドボックスヘルパーが UTF-8 でない正規化パスを返しました (内部エラー)"
+
+msgid "The agent executable was installed in {distro}, but it could not be verified. Try again."
+msgstr "エージェントの実行ファイルを{distro}に配置しましたが、確認できませんでした。もう一度実行してください。"
+
+msgid "The agent folder name is not a single name (internal error): {folder_name}"
+msgstr "エージェントのフォルダー名が単一の名前ではありません (内部エラー): {folder_name}"
+
+msgid "The agent runtime was extracted in {distro}, but it could not be verified. Try again."
+msgstr "エージェントの実行環境を{distro}に展開しましたが、確認できませんでした。もう一度実行してください。"
+
+msgid "The agent runtime was installed in {distro}, but it could not be verified. Try again."
+msgstr "エージェントの実行環境を{distro}に配置しましたが、確認できませんでした。もう一度実行してください。"
+
+msgid "The bundled sandbox helper `{path}` is damaged ({error}). Reinstall Zed."
+msgstr "同梱のサンドボックス用ヘルパー `{path}` が壊れています ({error})。Zed を再インストールしてください。"
+
+msgid "The home directory could not be determined, so the paths shown read-only cannot be checked. Stopping without building the sandbox."
+msgstr "ホームディレクトリを特定できないため、読み取り専用で見せるパスを確認できません。サンドボックスを構築せずに中止します。"
+
+msgid "The home directory could not be determined, so the paths that are always protected (credentials, shell startup files, settings folders) cannot be settled. Stopping without building the sandbox."
+msgstr "ホームディレクトリを特定できないため、常に保護するパス (認証情報・シェル初期化ファイル・設定ディレクトリ) を確定できません。サンドボックスを構築せずに中止します。"
+
+msgid "The home directory could not be determined, so the paths that must not be read (credentials, agent settings) cannot be settled. Stopping without building the sandbox."
+msgstr "ホームディレクトリを特定できないため、読み取りを禁止するパス (認証情報・エージェント設定) を確定できません。サンドボックスを構築せずに中止します。"
+
+msgid "The npm package was installed in {distro}, but it could not be verified. Try again."
+msgstr "npm パッケージを{distro}に配置しましたが、確認できませんでした。もう一度実行してください。"
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only because it overlaps `{entry}`, which must not be read."
+msgstr "読み取り専用で見せるパス `{path}` (実際の場所 `{canonical}`) は、読み取りを禁止している `{entry}` と重なるため見せられません。"
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only. Only the agent installations (`external_agents`) and Node.js (`node`) inside Zed's data folder (`{data_directory}`) can be shown (credentials and Zed's database, settings and logs are never shown)."
+msgstr "読み取り専用で見せるパス `{path}` (実際の場所 `{canonical}`) は見せられません。見せられるのは Zed のデータフォルダー (`{data_directory}`) の中のエージェントのインストール先 (`external_agents`) と Node.js (`node`) だけです (認証情報や Zed のデータベース・設定・ログは見せません)。"
+
+msgid "The path is in the WSL distro `{requested}`, but this session runs in `{session}`."
+msgstr "WSL ディストリビューション `{requested}` にありますが、このセッションは `{session}` で動いています。"
+
+msgid "The path shown read-only `{path}` was replaced after it was checked and now points somewhere else (`{canonical}`). Stopping for safety."
+msgstr "読み取り専用で見せるパス `{path}` は、確認のあとで別の場所 (`{canonical}`) を指すように置き換えられています。安全のため中止します。"
+
+msgid "The project identifier is invalid (internal error): {project_key}"
+msgstr "プロジェクトの識別子が不正です (内部エラー): {project_key}"
+
+msgid "The readable path was not resolved (internal error)"
+msgstr "読み取りを許可するパスの解決結果が見つかりません (内部エラー)"
+
+msgid "The readable path was passed on unresolved (internal error)"
+msgstr "読み取りを許可するパスが解決できないまま渡されました (内部エラー)"
+
+msgid "The sandbox cannot be created because the kernel of {distro} does not support Landlock. Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again."
+msgstr "{distro}のカーネルが Landlock に対応していないため、サンドボックスを作れません。`wsl --update` で WSL を更新し、`wsl --shutdown` で WSL を再起動してから再試行してください。"
+
+msgid "The sandbox cannot be created because {distro} cannot create user namespaces ({reason}). Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again (WSL 2 is required)."
+msgstr "{distro}でユーザー名前空間を作成できないため、サンドボックスを作れません ({reason})。`wsl --update` で WSL を更新し、`wsl --shutdown` で WSL を再起動してから再試行してください (WSL 2 が必要です)。"
+
+msgid "The sandbox helper was installed in {distro}, but it could not be verified. Try again."
+msgstr "サンドボックス用のヘルパーを{distro}に配置しましたが、確認できませんでした。もう一度実行してください。"
+
+msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build-dev.ps1` puts them in `target\\debug` (searched: {searched})."
+msgstr "サンドボックス用のヘルパー (`{server_name}` と `{slirp_name}`) が Zed のインストール先に見つかりません。Zed を再インストールしてください。開発ビルドでは `script/build-dev.ps1` が `target\\debug` に用意します (探した場所: {searched})。"
+
+msgid "The terminal's working folder was not resolved (internal error)"
+msgstr "ターミナルの作業フォルダーの解決結果が見つかりません (内部エラー)"
+
+msgid "The terminal's working folder was passed on unresolved (internal error)"
+msgstr "ターミナルの作業フォルダーが解決できないまま渡されました (内部エラー)"
+
+msgid "The writable path `{writable}` overlaps the always-protected path `{protected}` (writing to credentials, shell startup files and settings folders cannot be allowed)."
+msgstr "書込を許可したパス `{writable}` は常に保護するパス `{protected}` と重なります (認証情報・シェル初期化ファイル・設定ディレクトリへの書込は許可できません)。"
+
+msgid "The writable path was not resolved (internal error)"
+msgstr "書込を許可するパスの解決結果が見つかりません (内部エラー)"
+
+msgid "The writable path was passed on unresolved (internal error)"
+msgstr "書込を許可するパスが解決できないまま渡されました (内部エラー)"
+
+msgid "The {description} contains a component that cannot be used (internal error): {segment} in {relative}"
+msgstr "{description}に使えない要素が含まれています (内部エラー): {relative} の {segment}"
+
+msgid "The {description} is not a relative path (internal error): {path}"
+msgstr "{description}が相対パスではありません (内部エラー): {path}"
+
+msgid "The {description} is not a relative path below the data directory (internal error): {relative}"
+msgstr "{description}がデータディレクトリ配下の相対パスではありません (内部エラー): {relative}"
+
+msgid "The {description} is not an absolute Linux path (internal error): {path}"
+msgstr "{description}が Linux の絶対パスではありません (内部エラー): {path}"
+
+msgid "The {description} points outside the package (internal error): {path}"
+msgstr "{description}がパッケージの外を指しています (内部エラー): {path}"
+
+msgid "The {description} points to nothing (internal error): {path}"
+msgstr "{description}が何も指していません (内部エラー): {path}"
+
+msgid "The {file} `{name}` copied to {distro} does not match the original ({sent} bytes sent, {received} bytes received). Try again. If that does not help, check the free space in WSL."
+msgstr "{distro}にコピーした{file} `{name}` が元のファイルと一致しませんでした (送信 {sent} バイト、受信 {received} バイト)。もう一度実行してください。改善しない場合は WSL 内の空き容量を確認してください。"
+
+msgid "The {file} `{path}` is damaged ({error}). {fix}"
+msgstr "{file} `{path}` が壊れています ({error})。{fix}"
+
+msgid "WSL is not installed. On Windows, agent commands run in a sandbox inside WSL 2. Open PowerShell as an administrator, run `wsl --install`, and restart the computer."
+msgstr "WSL がインストールされていません。Windows ではエージェントのコマンドを WSL 2 の中のサンドボックスで実行します。管理者として PowerShell を開いて `wsl --install` を実行し、PC を再起動してください。"
+
+msgid "Writing to `{path}` cannot be allowed"
+msgstr "`{path}` への書き込みは許可できません"
+
+msgid "Writing to `{path}` cannot be allowed: it is a whole WSL distro, not a folder inside one."
+msgstr "`{path}` への書き込みは許可できません: WSL ディストリビューション全体であり、その中のフォルダーではありません。"
+
+msgid "Writing to `{path}` cannot be allowed: it resolves to `{resolved}`, which is not a path on a Windows drive."
+msgstr "`{path}` への書き込みは許可できません: 解決先が `{resolved}` であり、Windows のドライブ上のパスではありません。"
+
+msgid "Writing to `{path}` cannot be allowed: only a path on a Windows drive (`C:\\...`), an absolute WSL path (`/...`), or a folder inside a WSL distro (`\\\\wsl.localhost\\<distro>\\...`) can be given."
+msgstr "`{path}` への書き込みは許可できません: 指定できるのは Windows のドライブのパス (`C:\\...`)、WSL の絶対パス (`/...`)、WSL ディストリビューションの中のフォルダー (`\\\\wsl.localhost\\<distro>\\...`) だけです。"
+
+msgid "`sha256sum` is missing in {distro}, so it cannot be verified that the agent executable has not been replaced. Install coreutils and try again."
+msgstr "{distro}に `sha256sum` がないため、エージェントの実行ファイルが置き換えられていないことを確認できません。coreutils をインストールしてから再試行してください。"
+
+msgid "`sha256sum` is missing in {distro}, so it cannot be verified that the sandbox helper has not been replaced. Install coreutils and try again."
+msgstr "{distro}に `sha256sum` がないため、サンドボックス用のヘルパーが置き換えられていないことを確認できません。coreutils をインストールしてから再試行してください。"
+
+msgid "ended by a signal"
+msgstr "シグナルで終了"
+
+msgid "exit code {code}"
+msgstr "終了コード {code}"
+
+msgid "the WSL distro `{distro}`"
+msgstr "WSL ディストリビューション `{distro}`"
+
+msgid "the default WSL distro"
+msgstr "既定の WSL ディストリビューション"
+
+msgid "{count} IDE integration relays are already running, so no more can be started. Close the agent threads and terminals you are not using and try again."
+msgstr "IDE 連携の中継がすでに {count} 本動いているため、これ以上は起動できません。使っていないエージェントのスレッドやターミナルを閉じてからやり直してください。"
+
+msgid "{exit_status}, error output: {stderr}"
+msgstr "{exit_status}、エラー出力: {stderr}"
+
+msgid "{exit_status}, npm output: {tail}"
+msgstr "{exit_status}、npm の出力: {tail}"
+
+msgid "{what} in {distro}{reason}{details}."
+msgstr "{distro}で{what}{reason}{details}。"
+
+msgctxt "ide bridge host"
+msgid "in WSL"
+msgstr "WSL の"
+
+msgctxt "ide bridge host"
+msgid "on the remote host"
+msgstr "接続先の"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "wsl sandbox file"
+msgid "agent executable"
+msgstr "エージェントの実行ファイル"
+
+msgctxt "wsl sandbox file"
+msgid "agent runtime archive"
+msgstr "エージェントの実行環境のアーカイブ"
+
+msgctxt "wsl sandbox file"
+msgid "bundled sandbox helper"
+msgstr "同梱のサンドボックス用ヘルパー"
+
+msgctxt "wsl sandbox file"
+msgid "downloaded agent runtime archive"
+msgstr "取得したエージェントの実行環境のアーカイブ"
+
+msgctxt "wsl sandbox file"
+msgid "sandbox helper"
+msgstr "サンドボックス用のヘルパー"
+
+msgctxt "wsl sandbox path"
+msgid "IDE bridge's own folder"
+msgstr "IDE ブリッジの占有フォルダー"
+
+msgctxt "wsl sandbox path"
+msgid "IDE lock file"
+msgstr "IDE のロックファイル"
+
+msgctxt "wsl sandbox path"
+msgid "IDE rendezvous socket"
+msgstr "IDE の待ち合わせソケット"
+
+msgctxt "wsl sandbox path"
+msgid "Node.js installation folder"
+msgstr "Node.js のインストール先"
+
+msgctxt "wsl sandbox path"
+msgid "agent folder name"
+msgstr "エージェントのフォルダー名"
+
+msgctxt "wsl sandbox path"
+msgid "entry in the agent folder"
+msgstr "エージェントのフォルダー内の項目"
+
+msgctxt "wsl sandbox path"
+msgid "npm package destination"
+msgstr "npm パッケージの配置先"
+
+msgctxt "wsl sandbox path"
+msgid "npm package executable"
+msgstr "npm パッケージの実行ファイル"
+
+msgctxt "wsl sandbox path"
+msgid "npm package installation folder"
+msgstr "npm パッケージのインストール先"
+
+msgctxt "wsl sandbox path"
+msgid "npm package name"
+msgstr "npm パッケージ名"
+
+msgctxt "wsl sandbox path"
+msgid "npm working folder"
+msgstr "npm の作業フォルダー"
+
+msgctxt "wsl sandbox path"
+msgid "runtime destination"
+msgstr "ランタイムの配置先"
+
+msgctxt "wsl sandbox path"
+msgid "runtime executable"
+msgstr "ランタイムの実行ファイル"
+
+msgctxt "wsl sandbox path"
+msgid "runtime folder"
+msgstr "ランタイムのフォルダー"
+
+msgctxt "wsl sandbox step"
+msgid "checking Zed's data folder"
+msgstr "Zed のデータフォルダーの確認"
+
+msgctxt "wsl sandbox step"
+msgid "checking the WSL architecture"
+msgstr "WSL のアーキテクチャの確認"
+
+msgctxt "wsl sandbox step"
+msgid "checking the agent executable"
+msgstr "エージェントの実行ファイルの確認"
+
+msgctxt "wsl sandbox step"
+msgid "checking the agent runtime"
+msgstr "エージェントの実行環境の確認"
+
+msgctxt "wsl sandbox step"
+msgid "checking the home directory"
+msgstr "ホームディレクトリの確認"
+
+msgctxt "wsl sandbox step"
+msgid "checking the npm package"
+msgstr "npm パッケージの確認"
+
+msgctxt "wsl sandbox step"
+msgid "checking the npm package executable"
+msgstr "npm パッケージの実行ファイルの確認"
+
+msgctxt "wsl sandbox step"
+msgid "checking the sandbox helper"
+msgstr "サンドボックス用ヘルパーの確認"
+
+msgctxt "wsl sandbox step"
+msgid "cleaning up after the IDE integration"
+msgstr "IDE 連携の後始末"
+
+msgctxt "wsl sandbox step"
+msgid "copying the agent executable"
+msgstr "エージェントの実行ファイルのコピー"
+
+msgctxt "wsl sandbox step"
+msgid "copying the agent runtime"
+msgstr "エージェントの実行環境のコピー"
+
+msgctxt "wsl sandbox step"
+msgid "copying the sandbox helper"
+msgstr "サンドボックス用ヘルパーのコピー"
+
+msgctxt "wsl sandbox step"
+msgid "creating the agent settings folder"
+msgstr "エージェントの設定フォルダーの作成"
+
+msgctxt "wsl sandbox step"
+msgid "creating the npm working folder"
+msgstr "npm の作業フォルダーの作成"
+
+msgctxt "wsl sandbox step"
+msgid "extracting the agent runtime"
+msgstr "エージェントの実行環境の展開"
+
+msgctxt "wsl sandbox step"
+msgid "installing the agent executable"
+msgstr "エージェントの実行ファイルの配置"
+
+msgctxt "wsl sandbox step"
+msgid "installing the agent runtime"
+msgstr "エージェントの実行環境の配置"
+
+msgctxt "wsl sandbox step"
+msgid "installing the npm package"
+msgstr "npm パッケージの配置"
+
+msgctxt "wsl sandbox step"
+msgid "installing the sandbox helper"
+msgstr "サンドボックス用ヘルパーの配置"
+
+msgctxt "wsl sandbox step"
+msgid "listing the processes in the sandbox"
+msgstr "サンドボックス内のプロセスの確認"
+
+msgctxt "wsl sandbox step"
+msgid "removing a partly copied file"
+msgstr "コピー途中のファイルの削除"
+
+msgctxt "wsl sandbox step"
+msgid "removing the npm working folder"
+msgstr "npm の作業フォルダーの削除"
+
+msgctxt "wsl sandbox step"
+msgid "resolving paths"
+msgstr "パスの解決"
+
+msgctxt "wsl sandbox step"
+msgid "resolving the writable path"
+msgstr "書込許可の解決"
+
+msgctxt "wsl sandbox step"
+msgid "running npm install in the sandbox"
+msgstr "サンドボックスの中での npm install"
+
+msgctxt "wsl sandbox step"
+msgid "stopping the processes in the sandbox"
+msgstr "サンドボックス内のプロセスの停止"
+
+msgctxt "wsl sandbox step"
+msgid "testing the sandbox helper"
+msgstr "サンドボックス用ヘルパーの動作確認"

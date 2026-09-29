@@ -90,7 +90,7 @@ pub(crate) fn filter_search_results_input(
             .border_r_1()
             .border_color(cx.theme().colors().border)
             .bg(cx.theme().colors().text_accent.opacity(0.05))
-            .child(Label::new("結果内を検索").color(Color::Muted)),
+            .child(Label::new(i18n::t!("Find in Results")).color(Color::Muted)),
     )
 }
 

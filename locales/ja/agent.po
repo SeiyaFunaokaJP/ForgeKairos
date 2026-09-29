@@ -1,0 +1,398 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " (case-sensitive)"
+msgstr " (大文字と小文字を区別)"
+
+msgid "Abort"
+msgstr "中止"
+
+msgid "Allow"
+msgstr "許可"
+
+msgid "Allow always"
+msgstr "常に許可"
+
+msgid "Allow for this subagent"
+msgstr "許可 (このサブエージェント)"
+
+msgid "Allow for this thread"
+msgstr "許可 (このスレッド)"
+
+msgid "Allow once"
+msgstr "許可 (今回のみ)"
+
+msgid "Always for `{}`"
+msgstr "`{}` は常に"
+
+msgid "Always for `{}` commands"
+msgstr "`{}` コマンドは常に"
+
+msgid "Always for {display_name} MCP tool"
+msgstr "MCP ツール {display_name} は常に"
+
+msgid "Always for {}"
+msgstr "{}は常に"
+
+msgid "Annotate code"
+msgstr "コードに注釈"
+
+msgid "Annotate code ({count} note)"
+msgid_plural "Annotate code ({count} notes)"
+msgstr[0] "コードに注釈 ({count} 件)"
+
+msgid "Answered: {selected}"
+msgstr "回答: {selected}"
+
+msgid "Apply code action"
+msgstr "コードアクションを適用"
+
+msgid "Apply code action #{}"
+msgstr "コードアクション #{} を適用"
+
+msgid "Apply code action: {title}"
+msgstr "コードアクションを適用: {title}"
+
+msgid "Asking a question"
+msgstr "ユーザーに質問"
+
+msgid "Asking you, because no model is set for the review"
+msgstr "判定に使うモデルが未設定のため確認します"
+
+msgid "Asking you, because the review couldn't decide"
+msgstr "判定できなかったので確認します"
+
+msgid "Asking you, because the review didn't finish in time"
+msgstr "判定が時間内に終わらなかったので確認します"
+
+msgid "Asking you, because the review's answer couldn't be read"
+msgstr "判定の答えを読み取れなかったので確認します"
+
+msgid "Build a repository map"
+msgstr "リポジトリマップを作成"
+
+msgid "Build a repository map of {path}"
+msgstr "{path} のリポジトリマップを作成"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Check diagnostics for {}"
+msgstr "{} の診断を確認"
+
+msgid "Check project diagnostics"
+msgstr "プロジェクトの診断を確認"
+
+msgid "Check the changes (git diff)"
+msgstr "変更 (git diff) を確認"
+
+msgid "Check the changes (git diff) in {path}"
+msgstr "{path} の変更 (git diff) を確認"
+
+msgid "Choose an option"
+msgstr "選択肢から選ぶ"
+
+msgid "Clear the editor annotations"
+msgstr "エディターの注釈を消去"
+
+msgid "Code tour"
+msgstr "コードツアー"
+
+msgid "Code tour “{title}” ({count} step)"
+msgid_plural "Code tour “{title}” ({count} steps)"
+msgstr[0] "コードツアー「{title}」({count} ステップ)"
+
+msgid "Continue"
+msgstr "続行"
+
+msgid "Copy path"
+msgstr "パスをコピー"
+
+msgid "Copy {src} to {dest}"
+msgstr "{src} を {dest} にコピー"
+
+msgid "Create directory"
+msgstr "ディレクトリを作成"
+
+msgid "Create directory {}"
+msgstr "ディレクトリ {} を作成"
+
+msgid "Create thread"
+msgstr "スレッドを作成"
+
+msgid "Create thread: {}"
+msgstr "スレッドを作成: {}"
+
+msgid "Delete path"
+msgstr "パスを削除"
+
+msgid "Delete {}"
+msgstr "{} を削除"
+
+msgid "Delete “`{}`”"
+msgstr "“`{}`” を削除"
+
+msgid "Deny"
+msgstr "拒否"
+
+msgid "Edit {}"
+msgstr "{} を編集"
+
+msgid "Editing file"
+msgstr "ファイルを編集"
+
+msgid "Failed to read file: {}"
+msgstr "ファイルの読み込みに失敗しました: {}"
+
+msgid "Failed to scan project skills: {}"
+msgstr "プロジェクトのスキルのスキャンに失敗しました: {}"
+
+msgid "Fetch URL"
+msgstr "URL を取得"
+
+msgid "Fetch {}"
+msgstr "{} を取得"
+
+msgid "Find paths"
+msgstr "パスを検索"
+
+msgid "Find paths matching “`{}`”"
+msgstr "“`{}`” に一致するパスを検索"
+
+msgid "Find references"
+msgstr "参照を検索"
+
+msgid "Find references to `{symbol_name}`"
+msgstr "`{symbol_name}` の参照を検索"
+
+msgid "Get code actions"
+msgstr "コードアクションを取得"
+
+msgid "Get code actions for `{symbol_name}`"
+msgstr "`{symbol_name}` のコードアクションを取得"
+
+msgid "Get hover information"
+msgstr "ホバー情報を取得"
+
+msgid "Get page {page} of search results for regex {regex_str}{case_info}"
+msgstr "正規表現 {regex_str}{case_info} の検索結果 {page} ページ目を取得"
+
+msgid "Go to definition"
+msgstr "定義へ移動"
+
+msgid "Go to definition of `{symbol_name}`"
+msgstr "`{symbol_name}` の定義へ移動"
+
+msgid "Highlight code"
+msgstr "コードをハイライト"
+
+msgid "Highlight code ({count} place)"
+msgid_plural "Highlight code ({count} places)"
+msgstr[0] "コードをハイライト ({count} 件)"
+
+msgid "Hover information for line {1} of {0}"
+msgstr "{0} の {1} 行目のホバー情報"
+
+msgid "Hover information for {}"
+msgstr "{} のホバー情報"
+
+msgid "List agents and models"
+msgstr "エージェントとモデルの一覧を取得"
+
+msgid "List directory"
+msgstr "ディレクトリを一覧表示"
+
+msgid "List the {path} directory's contents"
+msgstr "{path} ディレクトリの内容を一覧表示"
+
+msgid "Move path"
+msgstr "パスを移動"
+
+msgid "Move {src} to {dest}"
+msgstr "{src} を {dest} に移動"
+
+msgid "No matches"
+msgstr "一致なし"
+
+msgid "Only this time"
+msgstr "今回のみ"
+
+msgid "Or type your own answer"
+msgstr "または回答を入力"
+
+msgid "Read file"
+msgstr "ファイルを読み込み"
+
+msgid "Read file `{path}`"
+msgstr "ファイル `{path}` を読み込み"
+
+msgid "Read file `{path}` (from line {})"
+msgstr "ファイル `{path}` を読み込み ({} 行目以降)"
+
+msgid "Read file `{path}` (lines {}-{})"
+msgstr "ファイル `{path}` を読み込み ({}-{} 行)"
+
+msgid "Recommended"
+msgstr "推奨"
+
+msgid "Rename `{symbol_name}` to `{new_name}`"
+msgstr "`{symbol_name}` の名前を `{new_name}` に変更"
+
+msgid "Rename symbol"
+msgstr "シンボルの名前変更"
+
+msgid "Rename {src} to {filename}"
+msgstr "{src} の名前を {filename} に変更"
+
+msgid "Retry"
+msgstr "再試行"
+
+msgid "Retry (attempt {})"
+msgstr "再試行 ({} 回目)"
+
+msgid "Reviewed as safe"
+msgstr "安全と判定しました"
+
+msgid "Run MCP tool `{}`"
+msgstr "MCP ツール `{}` を実行"
+
+msgid "Run MCP tool `{}` {}"
+msgstr "MCP ツール `{}` を実行: {}"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md のサイズが上限の {}KB を超えています。"
+
+msgid "Search files for regex {regex_str}{case_info}"
+msgstr "正規表現 {regex_str}{case_info} でファイルを検索"
+
+msgid "Search symbols"
+msgstr "シンボルを検索"
+
+msgid "Search symbols: {}"
+msgstr "シンボルを検索: {}"
+
+msgid "Search the web for {}"
+msgstr "Web で {} を検索"
+
+msgid "Search with regex"
+msgstr "正規表現で検索"
+
+msgid "Searched the web: {count} result"
+msgid_plural "Searched the web: {count} results"
+msgstr[0] "Web を検索しました: {count} 件"
+
+msgid "Searching the Web"
+msgstr "Web を検索"
+
+msgid "Skill"
+msgstr "スキル"
+
+msgid "Spawning agent"
+msgstr "エージェントを起動"
+
+msgid "Terminal command"
+msgstr "ターミナルコマンド"
+
+msgid "The review was stopped because the settings changed"
+msgstr "設定が変わったため判定を中止しました"
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "設定でファイルシステムへの書き込みがすべて許可されています"
+
+msgid "Web Search Failed"
+msgstr "Web 検索に失敗しました"
+
+msgid "Writing file"
+msgstr "ファイルを書き込み"
+
+msgid "Your answer"
+msgstr "回答"
+
+msgid "`{}` Skill"
+msgstr "`{}` スキル"
+
+msgid "`{}` points outside the project (symlink to `{}`)"
+msgstr "`{}` はプロジェクトの外を指しています (シンボリックリンク → `{}`)"
+
+msgid "outside the project"
+msgstr "プロジェクトの外"
+
+msgid "which worktree is ambiguous: approving copies it to {destination}"
+msgstr "どのワークツリーか曖昧: 承認すると {destination} にコピーされます"
+
+msgid "which worktree is ambiguous: approving moves it to {destination}"
+msgstr "どのワークツリーか曖昧: 承認すると {destination} に移動されます"
+
+msgid "which worktree is ambiguous: approving writes it to {destination}"
+msgstr "どのワークツリーか曖昧: 承認すると {destination} に書かれます"
+
+msgid "{count} match"
+msgid_plural "{count} matches"
+msgstr[0] "{count} 件一致"
+
+msgid "{title} (agent skills)"
+msgstr "{title} (エージェントのスキル)"
+
+msgid "{title} (local settings)"
+msgstr "{title} (プロジェクトの設定)"
+
+msgid "{title} (no language server)"
+msgstr "{title} (言語サーバーなし)"
+
+msgid "{title} (settings)"
+msgstr "{title} (設定)"
+
+msgid "{} (symlinks outside project)"
+msgstr "{} (プロジェクト外へのシンボリックリンク)"
+
+msgctxt "list conjunction"
+msgid " and "
+msgstr "、"
+
+msgctxt "tool name"
+msgid "apply code action"
+msgstr "コードアクションの適用"
+
+msgctxt "tool name"
+msgid "copy path"
+msgstr "コピー"
+
+msgctxt "tool name"
+msgid "create directory"
+msgstr "ディレクトリ作成"
+
+msgctxt "tool name"
+msgid "delete path"
+msgstr "削除"
+
+msgctxt "tool name"
+msgid "edit file"
+msgstr "ファイル編集"
+
+msgctxt "tool name"
+msgid "fetch"
+msgstr "URL の取得"
+
+msgctxt "tool name"
+msgid "move path"
+msgstr "移動"
+
+msgctxt "tool name"
+msgid "rename symbol"
+msgstr "シンボルの名前変更"
+
+msgctxt "tool name"
+msgid "sandboxed terminal"
+msgstr "ターミナル"
+
+msgctxt "tool name"
+msgid "terminal"
+msgstr "ターミナル"
+
+msgctxt "tool name"
+msgid "write file"
+msgstr "ファイル書き込み"

@@ -26,6 +26,22 @@ pub struct DiagnosticIndicator {
     diagnostic_summary_update: Task<()>,
 }
 
+pub(crate) fn diagnostics_summary_label(error_count: usize, warning_count: usize) -> String {
+    match (error_count, warning_count) {
+        (0, 0) => i18n::t!("Project diagnostics: no problems").to_string(),
+        (errors, warnings) => {
+            let mut parts = Vec::new();
+            if errors > 0 {
+                parts.push(i18n::tn!(errors, "{count} error", "{count} errors"));
+            }
+            if warnings > 0 {
+                parts.push(i18n::tn!(warnings, "{count} warning", "{count} warnings"));
+            }
+            i18n::t!("Project diagnostics: {}", parts.join(", "))
+        }
+    }
+}
+
 impl Render for DiagnosticIndicator {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let indicator = h_flex().gap_2().min_w_0().overflow_x_hidden();
@@ -67,9 +83,9 @@ impl Render for DiagnosticIndicator {
                 .map_or(diagnostic.message.as_str(), |(first, _)| first);
             let diagnostics_already_active = self.any_active_diagnostics(cx);
             let tooltip = if !diagnostics_already_active {
-                "診断を展開"
+                i18n::t!("Expand Diagnostics")
             } else {
-                "次の問題へ"
+                i18n::t!("Next Diagnostic")
             };
             Some(
                 Button::new("diagnostic_message", SharedString::new(message))
@@ -91,19 +107,8 @@ impl Render for DiagnosticIndicator {
             None
         };
 
-        let diagnostics_label = match (self.summary.error_count, self.summary.warning_count) {
-            (0, 0) => "プロジェクトの診断: 問題なし".to_string(),
-            (errors, warnings) => {
-                let mut parts = Vec::new();
-                if errors > 0 {
-                    parts.push(format!("エラー {errors} 件"));
-                }
-                if warnings > 0 {
-                    parts.push(format!("警告 {warnings} 件"));
-                }
-                format!("プロジェクトの診断: {}", parts.join(", "))
-            }
-        };
+        let diagnostics_label =
+            diagnostics_summary_label(self.summary.error_count, self.summary.warning_count);
 
         indicator
             .child(
@@ -112,7 +117,7 @@ impl Render for DiagnosticIndicator {
                     .tab_index(0isize)
                     .aria_label(diagnostics_label)
                     .tooltip(move |_window, cx| {
-                        Tooltip::for_action("プロジェクトの診断", &Deploy, cx)
+                        Tooltip::for_action(i18n::t!("Project Diagnostics"), &Deploy, cx)
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
                         if let Some(workspace) = this.workspace.upgrade() {

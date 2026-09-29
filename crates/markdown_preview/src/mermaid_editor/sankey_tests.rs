@@ -85,10 +85,20 @@ const TEMPLATE_FENCE: &str = indoc! {"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let sankey = parse_sankey(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_sankey(&sankey), template);
+    };
+    check(editor::actions::MermaidDiagramKind::Sankey.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::Sankey.template();
-    let sankey = parse_sankey(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_sankey(&sankey), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -201,7 +211,7 @@ async fn what_mermaid_cannot_draw_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("循環")),
+            .is_some_and(|message| message.contains("form a cycle")),
         "a flow from Factory to itself should be refused, got {message:?}"
     );
     assert_eq!(
@@ -238,7 +248,7 @@ async fn what_mermaid_cannot_draw_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("流れを 1 つ以上")),
+            .is_some_and(|message| message.contains("Add at least one flow")),
         "an empty diagram should be refused, got {message:?}"
     );
     assert_eq!(

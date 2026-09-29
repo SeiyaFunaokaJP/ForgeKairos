@@ -31,8 +31,11 @@ use super::{
 
 /// What new rows and columns are filled with, so that they show in the
 /// drawing before anything has been typed into them.
-const NEW_CATEGORY: &str = "項目";
 const NEW_VALUE: &str = "0";
+
+fn new_category(number: usize) -> String {
+    i18n::t!("Category {number}")
+}
 
 /// What the x axis is divided into, which decides whether the table's rows
 /// carry a category.
@@ -48,9 +51,9 @@ impl XMode {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Categories => "項目",
-            Self::Range => "数値の範囲",
-            Self::None => "なし (1, 2, 3…)",
+            Self::Categories => i18n::t!("Categories"),
+            Self::Range => i18n::t!("Numeric Range"),
+            Self::None => i18n::t!("None (1, 2, 3…)"),
         }
     }
 }
@@ -268,7 +271,7 @@ pub(super) fn render_choice_menu<T: Clone + PartialEq + 'static>(
 }
 
 fn orientation_label(orientation: Option<XyOrientation>) -> &'static str {
-    orientation.map_or("指定なし (縦)", XyOrientation::label)
+    orientation.map_or(i18n::t!("Not Set (Vertical)"), XyOrientation::label)
 }
 
 impl MermaidEditor {
@@ -408,7 +411,7 @@ impl MermaidEditor {
         let mut first_row = Vec::new();
         if mode == XMode::Categories {
             for index in 0..row_count.max(1) {
-                names.push(self.new_field(&format!("{NEW_CATEGORY}{}", index + 1), window, cx));
+                names.push(self.new_field(&new_category(index + 1), window, cx));
             }
             if row_count == 0 {
                 for _ in 0..series_count {
@@ -576,8 +579,8 @@ impl MermaidEditor {
         let category_count = form.category_count();
         let claims_extra_row = with_category && category_count < form.rows.len();
         let series_count = form.series.len();
-        let name = with_category
-            .then(|| self.new_field(&format!("{NEW_CATEGORY}{}", category_count + 1), window, cx));
+        let name =
+            with_category.then(|| self.new_field(&new_category(category_count + 1), window, cx));
         let mut cells = Vec::new();
         if !claims_extra_row {
             for _ in 0..series_count {
@@ -644,7 +647,7 @@ impl MermaidEditor {
             h_flex()
                 .w_full()
                 .gap_2()
-                .child(section_title("タイトル"))
+                .child(section_title(i18n::t!("Title")))
                 .child(
                     field_frame(
                         &form.title,
@@ -679,7 +682,7 @@ impl MermaidEditor {
         let mut x_row = h_flex()
             .w_full()
             .gap_1()
-            .child(section_title("x 軸"))
+            .child(section_title(i18n::t!("X Axis")))
             .child(
                 field_frame(
                     &form.x_title,
@@ -690,7 +693,7 @@ impl MermaidEditor {
                 )
                 .child(form.x_title.clone()),
             )
-            .child(section_title("目盛り"))
+            .child(section_title(i18n::t!("Scale")))
             .child(render_choice_menu(
                 "mermaid-xy-x-mode".into(),
                 form.x_mode.label().into(),
@@ -726,7 +729,7 @@ impl MermaidEditor {
         let y_row = h_flex()
             .w_full()
             .gap_1()
-            .child(section_title("y 軸"))
+            .child(section_title(i18n::t!("Y Axis")))
             .child(
                 field_frame(
                     &form.y_title,
@@ -737,7 +740,7 @@ impl MermaidEditor {
                 )
                 .child(form.y_title.clone()),
             )
-            .child(section_title("範囲"))
+            .child(section_title(i18n::t!("Range")))
             .child(
                 field_frame(&form.y_min, NUMBER_FIELD_WIDTH, y_min_valid, window, cx)
                     .child(form.y_min.clone()),
@@ -748,7 +751,7 @@ impl MermaidEditor {
                     .child(form.y_max.clone()),
             )
             .child(
-                Label::new("(空なら自動)")
+                Label::new(i18n::t!("(automatic when empty)"))
                     .size(LabelSize::XSmall)
                     .color(Color::Muted),
             );
@@ -756,7 +759,9 @@ impl MermaidEditor {
         v_flex()
             .w_full()
             .gap_1()
-            .child(section_title("軸 (名前は空なら書きません)"))
+            .child(section_title(i18n::t!(
+                "Axes (an empty name is not written)"
+            )))
             .child(x_row)
             .child(y_row)
             .into_any_element()
@@ -769,10 +774,9 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut list = v_flex()
-            .w_full()
-            .gap_1()
-            .child(section_title("系列 (描く順。名前は図には出ません)"));
+        let mut list = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Series (in drawing order; names do not appear in the diagram)"
+        )));
         let count = form.series.len();
         for (column, series) in form.series.iter().enumerate() {
             let name_valid = current
@@ -829,14 +833,14 @@ impl MermaidEditor {
                 .gap_1()
                 .child(add_button(
                     "mermaid-xy-add-bar",
-                    "棒を追加",
+                    i18n::t!("Add Bar"),
                     cx.listener(|this, _, window, cx| {
                         this.add_xychart_series(XySeriesKind::Bar, window, cx)
                     }),
                 ))
                 .child(add_button(
                     "mermaid-xy-add-line",
-                    "折れ線を追加",
+                    i18n::t!("Add Line"),
                     cx.listener(|this, _, window, cx| {
                         this.add_xychart_series(XySeriesKind::Line, window, cx)
                     }),
@@ -863,11 +867,20 @@ impl MermaidEditor {
         let mut header = h_flex()
             .gap_1()
             .child(div().w(LABEL_FIELD_WIDTH).flex_none().child(section_title(
-                if with_categories { "項目" } else { "番号" },
+                if with_categories {
+                    i18n::t!("Category")
+                } else {
+                    i18n::t!("Number")
+                },
             )));
         for (column, series) in form.series.iter().enumerate() {
             header = header.child(div().w(NUMBER_FIELD_WIDTH).flex_none().child(section_title(
-                format!("{}{}", series.kind.label(), column + 1),
+                i18n::tc!(
+                    "xychart series heading",
+                    "{kind} {number}",
+                    kind = series.kind.label(),
+                    number = column + 1
+                ),
             )));
         }
 
@@ -890,7 +903,7 @@ impl MermaidEditor {
                     .flex_none()
                     .child(
                         Label::new(if with_categories {
-                            "(項目なし・描かれません)".to_string()
+                            i18n::t!("(no category; not drawn)").to_string()
                         } else {
                             format!("{}", index + 1)
                         })
@@ -925,7 +938,9 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_1()
-            .child(section_title("値 (行を消すと全系列のその値も消えます)"))
+            .child(section_title(i18n::t!(
+                "Values (deleting a row also deletes its value in every series)"
+            )))
             .child(
                 div()
                     .id("mermaid-xy-table")
@@ -935,9 +950,9 @@ impl MermaidEditor {
             );
         if with_categories && category_count < form.rows.len() {
             section = section.child(
-                Label::new(
-                    "項目の数より多い値は描かれません。項目を追加するとその値に名前が付きます。",
-                )
+                Label::new(i18n::t!(
+                    "Values beyond the number of categories are not drawn. Adding a category gives those values a name."
+                ))
                 .size(LabelSize::XSmall)
                 .color(Color::Muted),
             );
@@ -946,9 +961,9 @@ impl MermaidEditor {
             .child(add_button(
                 "mermaid-xy-add-row",
                 if with_categories {
-                    "項目を追加"
+                    i18n::t!("Add Category")
                 } else {
-                    "行を追加"
+                    i18n::t!("Add Row")
                 },
                 cx.listener(|this, _, window, cx| this.add_xychart_row(window, cx)),
             ))
@@ -976,7 +991,7 @@ impl MermaidEditor {
             .collect();
         h_flex()
             .gap_2()
-            .child(section_title("向き"))
+            .child(section_title(i18n::t!("Orientation")))
             .child(render_choice_menu(
                 "mermaid-xy-orientation".into(),
                 orientation_label(current).into(),

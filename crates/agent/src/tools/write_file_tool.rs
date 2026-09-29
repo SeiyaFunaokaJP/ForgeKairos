@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use ui::SharedString;
 
-const DEFAULT_UI_TEXT: &str = "ファイルを書き込み";
+const DEFAULT_UI_TEXT: &str = i18n::msg!("Writing file");
 
 /// This is a tool for creating a new file or overwriting an existing file with completely new contents.
 ///
@@ -219,15 +219,16 @@ impl AgentTool for WriteFileTool {
         cx: &mut App,
     ) -> SharedString {
         match input {
-            Ok(input) => {
-                self.session_context
-                    .initial_title_from_path(&input.path, DEFAULT_UI_TEXT, cx)
-            }
+            Ok(input) => self.session_context.initial_title_from_path(
+                &input.path,
+                i18n::tr(DEFAULT_UI_TEXT),
+                cx,
+            ),
             Err(raw_input) => initial_title_from_partial_path::<WriteFileToolPartialInput>(
                 &self.session_context,
                 raw_input,
                 |partial| partial.path.clone(),
-                DEFAULT_UI_TEXT,
+                i18n::tr(DEFAULT_UI_TEXT),
                 cx,
             ),
         }
@@ -370,7 +371,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("エージェントのスキル"),
+            title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(

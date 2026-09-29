@@ -33,14 +33,16 @@ pub(crate) fn loose_refs_banner_text(loose_refs: Option<LooseRefCount>) -> Optio
         return None;
     }
     let count = format_count(loose_refs.count);
-    let count = if loose_refs.complete {
-        format!("{count} 個")
+    // Past the threshold the count is always plural.
+    Some(if loose_refs.complete {
+        i18n::t!(
+            "{count} branches and tags are stored as separate files. Packing them makes Git faster."
+        )
     } else {
-        format!("{count} 個以上")
-    };
-    Some(format!(
-        "ブランチ・タグがファイルのまま {count}あります。まとめると Git が速くなります。"
-    ))
+        i18n::t!(
+            "{count} or more branches and tags are stored as separate files. Packing them makes Git faster."
+        )
+    })
 }
 
 fn format_count(count: usize) -> String {
@@ -56,19 +58,18 @@ fn format_count(count: usize) -> String {
 }
 
 fn pack_refs_success_message(elapsed: Duration) -> String {
-    format!(
-        "ブランチ・タグをまとめました ({:.1} 秒)",
-        elapsed.as_secs_f64()
-    )
+    let seconds = format!("{:.1}", elapsed.as_secs_f64());
+    i18n::t!("Packed the branches and tags ({seconds} s)")
 }
 
 /// Why packing failed, in words: an SSH host from before `pack-refs` joined its list of allowed
 /// git commands refuses it outright.
 fn pack_refs_failure_message(reason: &str) -> String {
     if git::repository::is_unknown_git_subcommand_refusal(reason, "pack-refs") {
-        "接続先の Zed のサーバーが古いため、ブランチ・タグをまとめられません。".to_string()
+        i18n::t!("The Zed server on the remote host is too old to pack branches and tags.")
+            .to_string()
     } else {
-        format!("ブランチ・タグをまとめられませんでした\n{reason}")
+        i18n::t!("Could not pack the branches and tags\n{reason}")
     }
 }
 
@@ -159,29 +160,44 @@ pub(crate) fn set_pack_refs_stage(
 
 pub(crate) fn pack_refs_button_label(stage: Option<PackRefsStage>) -> &'static str {
     match stage {
-        Some(PackRefsStage::Packing) => "まとめています…",
-        Some(PackRefsStage::Confirming) | None => "まとめる",
+        Some(PackRefsStage::Packing) => i18n::t!("Packing…"),
+        Some(PackRefsStage::Confirming) | None => i18n::tc!("pack refs", "Pack"),
     }
 }
 
 fn pack_refs_confirmation_message(loose_refs: Option<LooseRefCount>) -> String {
-    let count = match loose_refs {
+    match loose_refs {
         Some(LooseRefCount {
             count,
             complete: true,
-        }) => format!(" {} 個の", format_count(count)),
+        }) => i18n::tn!(
+            count,
+            "Packs the {formatted} ref (branch or tag) stored as a separate file into one file.",
+            "Packs the {formatted} refs (branches and tags) stored as separate files into one file.",
+            formatted = format_count(count)
+        ),
         Some(LooseRefCount {
             count,
             complete: false,
-        }) => format!(" {} 個以上の", format_count(count)),
+        }) => {
+            let count = format_count(count);
+            i18n::t!(
+                "Packs the {count} or more refs (branches and tags) stored as separate files into one file."
+            )
+        }
         // `git::PackRefs` from the palette, on a host too old to count them.
-        None => String::new(),
-    };
-    format!("ファイルのまま散らばった{count} ref (ブランチ・タグ) を 1 つにまとめます。")
+        None => {
+            i18n::t!("Packs the refs (branches and tags) stored as separate files into one file.")
+                .to_string()
+        }
+    }
 }
 
-const PACK_REFS_CONFIRMATION_DETAIL: &str =
-    "数万個あると 1 分ほどかかり、その間ほかの Git 操作は待たされます。データは変わりません。";
+fn pack_refs_confirmation_detail() -> &'static str {
+    i18n::t!(
+        "With tens of thousands of them this takes about a minute, and other Git operations wait meanwhile. No data changes."
+    )
+}
 
 /// Asks before packing: it does not change any ref, but it holds up every other git operation of
 /// the repository for as long as it runs, which is about a minute for tens of thousands of refs.
@@ -203,8 +219,8 @@ pub(crate) fn confirm_and_pack_refs(
     let answer = window.prompt(
         PromptLevel::Info,
         &message,
-        Some(PACK_REFS_CONFIRMATION_DETAIL),
-        &["まとめる", "キャンセル"],
+        Some(pack_refs_confirmation_detail()),
+        &[i18n::tc!("pack refs", "Pack"), i18n::t!("Cancel")],
         cx,
     );
     cx.spawn(async move |cx| {
@@ -283,7 +299,7 @@ pub(crate) fn register(workspace: &mut Workspace) {
     workspace.register_action(|workspace, _: &git::PackRefs, window, cx| {
         let Some(repository) = workspace.project().read(cx).active_repository(cx) else {
             let toast = StatusToast::new(
-                "アクティブなリポジトリがありません。",
+                i18n::t!("There is no active repository."),
                 cx,
                 |this, _cx| {
                     this.icon(
@@ -450,14 +466,14 @@ impl PickerDelegate for GraphTagPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "タグを検索… (新しい順)".into()
+        i18n::t!("Search tags… (newest first)").into()
     }
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
         Some(match &self.tags {
-            None => "タグを読み込み中…".into(),
-            Some(tags) if tags.is_empty() => "タグがありません".into(),
-            Some(_) => "一致するタグがありません".into(),
+            None => i18n::t!("Loading tags…").into(),
+            Some(tags) if tags.is_empty() => i18n::t!("No tags").into(),
+            Some(_) => i18n::t!("No matching tags").into(),
         })
     }
 
@@ -625,7 +641,7 @@ mod tests {
             }))
             .as_deref(),
             Some(
-                "ブランチ・タグがファイルのまま 1,000 個あります。まとめると Git が速くなります。"
+                "1,000 branches and tags are stored as separate files. Packing them makes Git faster."
             )
         );
         assert_eq!(
@@ -635,7 +651,7 @@ mod tests {
             }))
             .as_deref(),
             Some(
-                "ブランチ・タグがファイルのまま 10,000 個以上あります。まとめると Git が速くなります。"
+                "10,000 or more branches and tags are stored as separate files. Packing them makes Git faster."
             )
         );
     }
@@ -653,11 +669,11 @@ mod tests {
     fn test_pack_refs_failure_message() {
         assert_eq!(
             pack_refs_failure_message("unsupported git command: pack-refs"),
-            "接続先の Zed のサーバーが古いため、ブランチ・タグをまとめられません。"
+            "The Zed server on the remote host is too old to pack branches and tags."
         );
         assert_eq!(
             pack_refs_failure_message("fatal: Unable to create '.git/packed-refs.lock'"),
-            "ブランチ・タグをまとめられませんでした\nfatal: Unable to create '.git/packed-refs.lock'"
+            "Could not pack the branches and tags\nfatal: Unable to create '.git/packed-refs.lock'"
         );
     }
 
@@ -668,18 +684,18 @@ mod tests {
                 count: 52_001,
                 complete: true,
             })),
-            "ファイルのまま散らばった 52,001 個の ref (ブランチ・タグ) を 1 つにまとめます。"
+            "Packs the 52,001 refs (branches and tags) stored as separate files into one file."
         );
         assert_eq!(
             pack_refs_confirmation_message(Some(LooseRefCount {
                 count: 10_000,
                 complete: false,
             })),
-            "ファイルのまま散らばった 10,000 個以上の ref (ブランチ・タグ) を 1 つにまとめます。"
+            "Packs the 10,000 or more refs (branches and tags) stored as separate files into one file."
         );
         assert_eq!(
             pack_refs_confirmation_message(None),
-            "ファイルのまま散らばった ref (ブランチ・タグ) を 1 つにまとめます。"
+            "Packs the refs (branches and tags) stored as separate files into one file."
         );
     }
 
@@ -713,14 +729,14 @@ mod tests {
 
     #[test]
     fn test_pack_refs_button_label() {
-        assert_eq!(pack_refs_button_label(None), "まとめる");
+        assert_eq!(pack_refs_button_label(None), "Pack");
         assert_eq!(
             pack_refs_button_label(Some(PackRefsStage::Confirming)),
-            "まとめる"
+            "Pack"
         );
         assert_eq!(
             pack_refs_button_label(Some(PackRefsStage::Packing)),
-            "まとめています…"
+            "Packing…"
         );
     }
 
@@ -728,7 +744,7 @@ mod tests {
     fn test_pack_refs_success_message() {
         assert_eq!(
             pack_refs_success_message(Duration::from_millis(1_340)),
-            "ブランチ・タグをまとめました (1.3 秒)"
+            "Packed the branches and tags (1.3 s)"
         );
     }
 

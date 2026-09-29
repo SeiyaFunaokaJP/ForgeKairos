@@ -53,7 +53,7 @@ impl AgentTool for FindReferencesTool {
         if let Ok(input) = input {
             find_references_title(&input.symbol.symbol_name).into()
         } else {
-            "参照を検索".into()
+            i18n::t!("Find references").into()
         }
     }
 
@@ -88,7 +88,7 @@ impl AgentTool for FindReferencesTool {
                         &find_references_title(&input.symbol.symbol_name),
                     );
                     return Ok(no_language_server_message(
-                        "参照の検索",
+                        "find references",
                         &input.symbol.file_path,
                     ));
                 }
@@ -117,5 +117,5 @@ impl AgentTool for FindReferencesTool {
 }
 
 fn find_references_title(symbol_name: &str) -> String {
-    format!("`{symbol_name}` の参照を検索")
+    i18n::t!("Find references to `{symbol_name}`")
 }

@@ -87,8 +87,8 @@ enum RatePredictionView {
 impl RatePredictionView {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::SuggestedEdits => "提案された編集",
-            Self::RawInput => "記録されたイベントと入力",
+            Self::SuggestedEdits => i18n::t!("Suggested Edits"),
+            Self::RawInput => i18n::t!("Recorded Events & Input"),
         }
     }
 }
@@ -797,7 +797,7 @@ impl RatePredictionsModal {
                     editor.set_show_wrap_guides(false, cx);
                     editor.set_show_indent_guides(false, cx);
                     editor.set_show_edit_predictions(Some(false), window, cx);
-                    editor.set_placeholder_text("フィードバックを入力…", window, cx);
+                    editor.set_placeholder_text(i18n::t!("Add your feedback…"), window, cx);
                     editor.set_completion_provider(Some(Rc::new(FeedbackCompletionProvider)));
                     if focus {
                         cx.focus_self(window);
@@ -880,7 +880,9 @@ impl RatePredictionsModal {
                                 .px_2()
                                 .border_b_1()
                                 .border_color(border_color)
-                                .child(Label::new("予測されたパッチ").size(LabelSize::Small)),
+                                .child(
+                                    Label::new(i18n::t!("Predicted Patch")).size(LabelSize::Small),
+                                ),
                         )
                         .child(
                             div()
@@ -906,7 +908,9 @@ impl RatePredictionsModal {
                                 .gap_2()
                                 .border_b_1()
                                 .border_color(border_color)
-                                .child(Label::new("期待されるパッチ").size(LabelSize::Small)),
+                                .child(
+                                    Label::new(i18n::t!("Expected Patch")).size(LabelSize::Small),
+                                ),
                         )
                         .child(
                             div()
@@ -996,7 +1000,7 @@ impl RatePredictionsModal {
                             .into_any_element()
                         } else {
                             div()
-                                .child("アクティブな補完はありません".to_string())
+                                .child(i18n::t!("No active completion").to_string())
                                 .into_any_element()
                         }),
                 )
@@ -1090,7 +1094,7 @@ impl RatePredictionsModal {
                             .child(
                                 DropdownMenu::new(
                                         "failure-mode-dropdown",
-                                        "問題",
+                                        i18n::t!("Issue"),
                                         failure_mode_menu,
                                     )
                                     .handle(self.failure_mode_menu_handle.clone())
@@ -1107,9 +1111,9 @@ impl RatePredictionsModal {
                                     )
                                     .child(
                                         div().flex_wrap().child(
-                                            Label::new(concat!(
-                                                "この補完が良い/悪い理由を説明してください。",
-                                                "否定的な場合は、代わりに期待していた内容を記述してください。"
+                                            Label::new(i18n::t!(
+                                                "Explain why this completion is good or bad. \
+                                                 If it's negative, describe what you expected instead."
                                             ))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
@@ -1144,7 +1148,7 @@ impl RatePredictionsModal {
                                             .size(IconSize::Small)
                                             .color(Color::Success),
                                     )
-                                    .child(Label::new("評価済みの補完です。").color(Color::Muted)),
+                                    .child(Label::new(i18n::t!("Rated completion.")).color(Color::Muted)),
                             )
                         } else if active_prediction.prediction.edits.is_empty() {
                             Some(
@@ -1154,7 +1158,7 @@ impl RatePredictionsModal {
                                             .size(IconSize::Small)
                                             .color(Color::Warning),
                                     )
-                                    .child(Label::new("編集は生成されませんでした。").color(Color::Muted)),
+                                    .child(Label::new(i18n::t!("No edits produced.")).color(Color::Muted)),
                             )
                         } else {
                             Some(label_container)
@@ -1163,12 +1167,12 @@ impl RatePredictionsModal {
                             h_flex()
                                 .gap_1()
                                 .child(
-                                    Button::new("bad", "不適切な予測")
+                                    Button::new("bad", i18n::t!("Bad Prediction"))
                                         .start_icon(Icon::new(IconName::ThumbsDown).size(IconSize::Small))
                                         .disabled(rated || feedback_empty)
                                         .when(feedback_empty, |this| {
                                             this.tooltip(Tooltip::text(
-                                                "報告する前に、何が問題かを説明してください",
+                                                i18n::t!("Explain what's bad about it before reporting it"),
                                             ))
                                         })
                                         .key_binding(KeyBinding::for_action_in(
@@ -1187,7 +1191,7 @@ impl RatePredictionsModal {
                                         })),
                                 )
                                 .child(
-                                    Button::new("good", "良好な予測")
+                                    Button::new("good", i18n::t!("Good Prediction"))
                                         .start_icon(Icon::new(IconName::ThumbsUp).size(IconSize::Small))
                                         .disabled(rated)
                                         .key_binding(KeyBinding::for_action_in(
@@ -1225,11 +1229,19 @@ impl RatePredictionsModal {
 
                 let (icon_name, icon_color, tooltip_text) =
                     match (rated, completion.edits.is_empty()) {
-                        (true, _) => (IconName::Check, Color::Success, "評価済みの予測"),
+                        (true, _) => (
+                            IconName::Check,
+                            Color::Success,
+                            i18n::t!("Rated Prediction"),
+                        ),
                         (false, true) => {
-                            (IconName::File, Color::Muted, "編集は生成されませんでした")
+                            (IconName::File, Color::Muted, i18n::t!("No Edits Produced"))
                         }
-                        (false, false) => (IconName::FileDiff, Color::Accent, "編集あり"),
+                        (false, false) => (
+                            IconName::FileDiff,
+                            Color::Accent,
+                            i18n::t!("Edits Available"),
+                        ),
                     };
                 let (trigger_icon, trigger_tooltip) = match completion.trigger {
                     PredictEditsRequestTrigger::Testing => (IconName::Debug, "Testing"),
@@ -1304,8 +1316,8 @@ impl RatePredictionsModal {
                                 ),
                             ),
                     )
-                    .tooltip(Tooltip::text(format!(
-                        "{tooltip_text} • トリガー: {trigger_tooltip}"
+                    .tooltip(Tooltip::text(i18n::t!(
+                        "{tooltip_text} • Trigger: {trigger_tooltip}"
                     )))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.select_completion(Some(completion.clone()), true, window, cx);
@@ -1358,7 +1370,7 @@ impl Render for RatePredictionsModal {
                             .border_color(border_color)
                             .child(Icon::new(icons.base).size(IconSize::Small))
                             .child(
-                                Label::new("新しい順")
+                                Label::new(i18n::t!("From most recent to oldest"))
                                     .color(Color::Muted)
                                     .size(LabelSize::Small),
                             )
@@ -1375,10 +1387,10 @@ impl Render for RatePredictionsModal {
                                         div()
                                             .p_2()
                                             .child(
-                                                Label::new(concat!(
-                                                    "補完はまだありません。",
-                                                    "エディターで生成して、",
-                                                    "必ず評価してください。"
+                                                Label::new(i18n::t!(
+                                                    "No completions yet. \
+                                                     Use the editor to generate some, \
+                                                     and make sure to rate them!"
                                                 ))
                                                 .color(Color::Muted),
                                             )

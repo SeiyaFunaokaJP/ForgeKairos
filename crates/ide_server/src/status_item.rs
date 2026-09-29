@@ -47,11 +47,13 @@ pub(crate) fn register_workspace_actions(workspace: &mut Workspace) {
                 Some(path) => cx.reveal_path(&path),
                 None if server.is_some_and(|server| server.read(cx).port().is_some()) => notify(
                     workspace,
-                    "リモートのワークスペースではロックファイルを書きません。\
-                     CLI からは「MCP 設定をコピー」で貼れる HTTP のエンドポイントを使ってください",
+                    i18n::t!(
+                        "Remote workspaces get no lock file. From a CLI, use the HTTP endpoint \
+                         that \"Copy MCP Configuration\" gives you"
+                    ),
                     cx,
                 ),
-                None => notify(workspace, "IDE サーバーは動いていません", cx),
+                None => notify(workspace, i18n::t!("The IDE server isn't running"), cx),
             }
         })
         .register_action(|workspace, _: &SendSelectionToClaudeCode, _window, cx| {
@@ -62,7 +64,7 @@ pub(crate) fn register_workspace_actions(workspace: &mut Workspace) {
 fn copy_mcp_configuration(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
     let endpoint = server_for(&cx.entity(), cx).and_then(|server| server.read(cx).mcp_endpoint());
     let Some(endpoint) = endpoint else {
-        notify(workspace, "IDE サーバーは動いていません", cx);
+        notify(workspace, i18n::t!("The IDE server isn't running"), cx);
         return;
     };
     match endpoint.to_configuration_json() {
@@ -70,14 +72,16 @@ fn copy_mcp_configuration(workspace: &mut Workspace, cx: &mut Context<Workspace>
             cx.write_to_clipboard(ClipboardItem::new_string(json));
             notify(
                 workspace,
-                "MCP 設定をコピーしました。認証トークンは Zed を起動するたびに変わるので、\
-                 貼り付け先も毎回貼り直してください",
+                i18n::t!(
+                    "Copied the MCP configuration. The auth token changes every time Zed \
+                     starts, so paste it again each time"
+                ),
                 cx,
             );
         }
         Err(error) => notify(
             workspace,
-            format!("MCP 設定を作れませんでした: {error:#}"),
+            i18n::t!("Couldn't create the MCP configuration: {error:#}"),
             cx,
         ),
     }
@@ -85,21 +89,21 @@ fn copy_mcp_configuration(workspace: &mut Workspace, cx: &mut Context<Workspace>
 
 fn send_selection_to_claude_code(workspace: &mut Workspace, cx: &mut Context<Workspace>) {
     let Some(server) = server_for(&cx.entity(), cx) else {
-        notify(workspace, "IDE サーバーは動いていません", cx);
+        notify(workspace, i18n::t!("The IDE server isn't running"), cx);
         return;
     };
     let editor = workspace
         .active_item(cx)
         .and_then(|item| item.act_as::<Editor>(cx));
     let Some(editor) = editor else {
-        notify(workspace, "送る対象のエディターがありません", cx);
+        notify(workspace, i18n::t!("There's no editor to send"), cx);
         return;
     };
     // 選択が無ければ `at_mention_range` はカーソル行を開始 = 終了として返す。
     let Some((file_path, start_line, end_line)) = tools::at_mention_range(&editor, cx) else {
         notify(
             workspace,
-            "保存されていないバッファーは Claude Code に送れません",
+            i18n::t!("Unsaved buffers can't be sent to Claude Code"),
             cx,
         );
         return;
@@ -114,12 +118,12 @@ fn send_selection_to_claude_code(workspace: &mut Workspace, cx: &mut Context<Wor
         });
     }
     if !sent {
-        notify(workspace, "Claude Code が接続していません", cx);
+        notify(workspace, i18n::t!("Claude Code isn't connected"), cx);
     }
 }
 
 /// 設定の「AI」ページの同じ項目と揃えた文言。
-const SHARE_ACTIVE_FILE_LABEL: &str = "開いているファイルを Claude Code に伝える";
+const SHARE_ACTIVE_FILE_LABEL: &str = "Share Active File with Claude Code";
 
 fn set_share_active_file(fs: Arc<dyn fs::Fs>, share_active_file: bool, cx: &App) {
     update_settings_file(fs, cx, move |settings, _| {
@@ -134,7 +138,7 @@ fn set_share_active_file(fs: Arc<dyn fs::Fs>, share_active_file: bool, cx: &App)
 /// 読んだ値を持ち回ると、設定の AI ページで切り替えたあとに押しても何も変わらないことがある。
 fn share_active_file_entry(menu: ContextMenu, fs: Arc<dyn fs::Fs>, cx: &App) -> ContextMenu {
     menu.toggleable_entry(
-        SHARE_ACTIVE_FILE_LABEL,
+        i18n::tr_ctx(i18n::context::SETTINGS, SHARE_ACTIVE_FILE_LABEL),
         IdeServerSettings::get_global(cx).share_active_file,
         IconPosition::Start,
         None,
@@ -222,9 +226,11 @@ impl IdeServerStatusItem {
 /// ADR-F56: エージェントに渡している IDE ツールの一覧 (ツールチップ・メニューに出す)。
 pub(crate) fn assist_tools_summary(cx: &App) -> &'static str {
     if IdeServerSettings::get_global(cx).assist_tools {
-        "IDE ツール: ハイライト・注釈・ツアー・定義・参照・シンボル検索"
+        i18n::t!(
+            "IDE tools: highlights, annotations, tours, definitions, references, symbol search"
+        )
     } else {
-        "IDE ツール: 無効 (設定の「AI」で切り替え)"
+        i18n::t!("IDE tools: off (turn them on in the \"AI\" settings)")
     }
 }
 
@@ -247,14 +253,14 @@ impl Render for IdeServerStatusItem {
         let connection_count = self.connection_count(cx);
         let trigger = match shown {
             Shown::SandboxConnection => {
-                let tooltip: SharedString = format!(
-                    "サンドボックスの中の Claude Code がこのプロジェクトに接続しています \
-                     (接続 {connection_count})。クリックで操作メニューを開きます\n{assist_summary}"
+                let tooltip: SharedString = i18n::t!(
+                    "Claude Code in the sandbox is connected to this project \
+                     (connections: {connection_count}). Click to open the menu\n{assist_summary}"
                 )
                 .into();
                 Button::new(
                     "ide-server-status-trigger",
-                    "Claude Code (サンドボックス): 接続中",
+                    i18n::t!("Claude Code (Sandbox): Connected"),
                 )
                 .label_size(LabelSize::Small)
                 .tab_index(0isize)
@@ -270,24 +276,24 @@ impl Render for IdeServerStatusItem {
                 let (port, connected_clients, has_lock_file) = self.host_server_state(cx);
                 let label: SharedString = match port {
                     Some(port) if connected_clients > 0 => {
-                        format!("IDE サーバー: {port} (接続中 {connected_clients})").into()
+                        i18n::t!("IDE Server: {port} ({connected_clients} connected)").into()
                     }
-                    Some(port) => format!("IDE サーバー: {port}").into(),
-                    None => "IDE サーバー: 起動中…".into(),
+                    Some(port) => i18n::t!("IDE Server: {port}").into(),
+                    None => i18n::t!("IDE Server: Starting…").into(),
                 };
                 let tooltip: SharedString = match port {
-                    Some(port) if !has_lock_file => format!(
-                        "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。リモートのワークスペース\
-                         なので、CLI が自動で見つけるためのロックファイルは書いていません \
-                         (「MCP 設定をコピー」で貼れば繋がります)\n{assist_summary}"
+                    Some(port) if !has_lock_file => i18n::t!(
+                        "Listening on 127.0.0.1:{port} (connections: {connection_count}). This is \
+                         a remote workspace, so there is no lock file for CLIs to find it by \
+                         (paste what \"Copy MCP Configuration\" gives you to connect)\n{assist_summary}"
                     )
                     .into(),
-                    Some(port) => format!(
-                        "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。\
-                         クリックで操作メニューを開きます\n{assist_summary}"
+                    Some(port) => i18n::t!(
+                        "Listening on 127.0.0.1:{port} (connections: {connection_count}). \
+                         Click to open the menu\n{assist_summary}"
                     )
                     .into(),
-                    None => "待ち受けポートの確保を待っています".into(),
+                    None => i18n::t!("Waiting for a port to listen on").into(),
                 };
                 Button::new("ide-server-status-trigger", label)
                     .label_size(LabelSize::Small)
@@ -335,8 +341,8 @@ impl IdeServerStatusItem {
         shown: Shown,
         cx: &App,
     ) -> impl Fn(&mut Window, &mut App) -> Option<Entity<ContextMenu>> + use<> {
-        let header: SharedString = format!(
-            "{} (接続 {})",
+        let header: SharedString = i18n::t!(
+            "{} (connections: {})",
             assist_tools_summary(cx),
             self.connection_count(cx)
         )
@@ -351,15 +357,18 @@ impl IdeServerStatusItem {
                 let menu = menu.header(header);
                 let menu = match shown {
                     Shown::HostServer => menu
-                        .action("無効にする", Box::new(ToggleIdeServer))
+                        .action(
+                            i18n::tc!("ide server", "Disable"),
+                            Box::new(ToggleIdeServer),
+                        )
                         .action_disabled_when(
                             !is_running,
-                            "MCP 設定をコピー",
+                            i18n::t!("Copy MCP Configuration"),
                             Box::new(CopyMcpConfiguration),
                         )
                         .action_disabled_when(
                             !is_running || !has_lock_file,
-                            "ロックファイルの場所を開く",
+                            i18n::t!("Reveal Lock File"),
                             Box::new(RevealLockFile),
                         )
                         .separator(),

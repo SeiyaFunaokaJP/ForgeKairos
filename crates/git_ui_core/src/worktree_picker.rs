@@ -352,9 +352,7 @@ const WORKTREE_REMOVE_FORCE_DELETE_PROMPTS: &[WorktreeRemoveForceDeletePrompt] =
     }];
 
 fn dirty_worktree_force_delete_prompt(display_name: &str) -> String {
-    format!(
-        "ワークツリー \"{display_name}\" に変更されたファイルまたは未追跡のファイルがあります。強制的に削除しますか?"
-    )
+    i18n::t!("Worktree \"{display_name}\" contains modified or untracked files. Force delete it?")
 }
 
 fn force_delete_prompt_for_worktree_remove_error(
@@ -405,7 +403,7 @@ impl Render for DeleteWorktreeTooltip {
 
         if force_delete {
             Tooltip::for_action_in(
-                "ワークツリーを強制削除",
+                i18n::t!("Force Delete Worktree"),
                 &ForceDeleteWorktree,
                 &self.focus_handle,
                 cx,
@@ -413,9 +411,12 @@ impl Render for DeleteWorktreeTooltip {
             .into_any_element()
         } else {
             Tooltip::with_meta_in(
-                "ワークツリーを削除",
+                i18n::t!("Delete Worktree"),
                 Some(&DeleteWorktree),
-                i18n::t!("Hold {} to force delete", ui::alt_key_name!()),
+                i18n::t!(
+                    "Hold {} to force delete",
+                    ui::utils::capitalize(ui::alt_key_name!())
+                ),
                 &self.focus_handle,
                 cx,
             )
@@ -455,9 +456,9 @@ impl WorktreePickerDelegate {
     fn creation_blocked_reason(&self, cx: &App) -> Option<SharedString> {
         let project = self.project.read(cx);
         if project.is_via_collab() {
-            Some("共同編集中のプロジェクトではワークツリーを作成できません。".into())
+            Some(i18n::t!("Worktree creation is not supported in collaborative projects").into())
         } else if project.repositories(cx).is_empty() {
-            Some("プロジェクトに Git リポジトリが必要です。".into())
+            Some(i18n::t!("Requires a Git repository in the project").into())
         } else {
             None
         }
@@ -568,7 +569,7 @@ impl WorktreePickerDelegate {
                                 PromptLevel::Warning,
                                 &prompt_message,
                                 None,
-                                &["強制削除", "キャンセル"],
+                                &[i18n::t!("Force Delete"), i18n::t!("Cancel")],
                                 cx,
                             )
                         })?;
@@ -764,7 +765,7 @@ impl PickerDelegate for WorktreePickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "ワークツリーを選択、または入力して作成…".into()
+        i18n::t!("Select or type to create a worktree…").into()
     }
 
     fn editor_position(&self) -> PickerEditorPosition {
@@ -810,11 +811,11 @@ impl PickerDelegate for WorktreePickerDelegate {
         });
         let create_named_disabled_reason: Option<String> = if self.has_multiple_repositories {
             Some(
-                "複数のリポジトリを含むプロジェクトでは名前付きワークツリーを作成できません。"
+                i18n::t!("Cannot create a named worktree in a project with multiple repositories")
                     .into(),
             )
         } else if has_named_worktree {
-            Some("この名前のワークツリーはすでに存在します。".into())
+            Some(i18n::t!("A worktree with this name already exists").into())
         } else {
             None
         };
@@ -843,7 +844,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                 matches.push(WorktreeEntry::Separator);
 
                 if open_here.len() > 1 {
-                    matches.push(WorktreeEntry::SectionHeader("このウィンドウ".into()));
+                    matches.push(WorktreeEntry::SectionHeader(i18n::t!("This Window").into()));
                     for worktree in open_here {
                         matches.push(WorktreeEntry::Worktree {
                             worktree,
@@ -1094,7 +1095,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                     self.current_branch_name.as_deref(),
                 );
 
-                let label = format!("{branch_label} を基に新規ワークツリーを作成");
+                let label = i18n::t!("Create new worktree based on {branch_label}");
 
                 let item = create_new_list_item(
                     SharedString::new_static("create-from-current"),
@@ -1111,7 +1112,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                         self.has_multiple_repositories,
                         self.current_branch_name.as_deref(),
                     );
-                let label = format!("{branch_label} を基に新規ワークツリーを作成");
+                let label = i18n::t!("Create new worktree based on {branch_label}");
 
                 let item = create_new_list_item(
                     SharedString::new_static("create-from-main"),
@@ -1230,7 +1231,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                                             .with_rotate_animation(2),
                                     )
                                     .child(
-                                        Label::new("削除中…")
+                                        Label::new(i18n::t!("Deleting…"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     ),
@@ -1240,7 +1241,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             let open_in_new_window_button =
                                 IconButton::new(("open-new-window", ix), IconName::ArrowUpRight)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("新しいウィンドウで開く"))
+                                    .tooltip(Tooltip::text(i18n::t!("Open in New Window")))
                                     .on_click(cx.listener(move |picker, _, window, cx| {
                                         let Some(entry) = picker.delegate.matches.get(ix) else {
                                             return;
@@ -1308,9 +1309,9 @@ impl PickerDelegate for WorktreePickerDelegate {
                                                 IconName::Close,
                                             )
                                             .icon_size(IconSize::Small)
-                                            .tooltip(Tooltip::text(
-                                                "ワークツリーをウィンドウから削除",
-                                            ))
+                                            .tooltip(Tooltip::text(i18n::t!(
+                                                "Remove Worktree from Window"
+                                            )))
                                             .on_click(
                                                 cx.listener(move |picker, _, window, cx| {
                                                     picker.delegate.remove_worktree_from_window(
@@ -1342,7 +1343,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .clone()
                             .unwrap_or_else(|| "HEAD".to_string())
                     });
-                let label = format!("{branch_label} を基に \"{name}\" を作成");
+                let label = i18n::t!("Create \"{name}\" based on {branch_label}");
                 let element_id = match from_branch {
                     Some(branch) => format!("create-named-from-{}", branch.display_name()),
                     None => "create-named-from-current".to_string(),
@@ -1376,7 +1377,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                 .icon_size(IconSize::Small)
                 .tooltip(move |_window, cx| {
                     Tooltip::for_action_in(
-                        "ワークツリーのセットアップを自動化",
+                        i18n::t!("Automate Worktree Setup"),
                         &OpenWorktreeSetupTasks,
                         &focus_handle,
                         cx,
@@ -1429,7 +1430,7 @@ impl PickerDelegate for WorktreePickerDelegate {
             .border_t_1()
             .border_color(cx.theme().colors().border_variant)
             .child(
-                Button::new("configure-worktree-tasks", "セットアップを自動化")
+                Button::new("configure-worktree-tasks", i18n::t!("Automate Setup"))
                     .key_binding(
                         KeyBinding::for_action_in(&OpenWorktreeSetupTasks, &focus_handle, cx)
                             .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -1443,7 +1444,7 @@ impl PickerDelegate for WorktreePickerDelegate {
             Some(
                 footer
                     .child(
-                        Button::new("create-worktree", "作成")
+                        Button::new("create-worktree", i18n::t!("Create"))
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -1462,7 +1463,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .gap_0p5()
                             .when(is_deleting, |this| {
                                 this.child(
-                                    Button::new("delete-worktree", "削除中…")
+                                    Button::new("delete-worktree", i18n::t!("Deleting…"))
                                         .loading(true)
                                         .disabled(true),
                                 )
@@ -1470,7 +1471,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .when(!is_deleting && can_delete, |this| {
                                 let focus_handle = focus_handle.clone();
                                 this.child(
-                                    Button::new("delete-worktree", "削除")
+                                    Button::new("delete-worktree", i18n::t!("Delete"))
                                         .key_binding(
                                             KeyBinding::for_action_in(
                                                 &DeleteWorktree,
@@ -1487,26 +1488,31 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .when(!is_deleting && !is_current, |this| {
                                 let focus_handle = focus_handle.clone();
                                 this.child(
-                                    Button::new("open-in-new-window", "新しいウィンドウで開く")
-                                        .key_binding(
-                                            KeyBinding::for_action_in(
-                                                &menu::SecondaryConfirm,
-                                                &focus_handle,
-                                                cx,
-                                            )
-                                            .map(|kb| kb.size(rems_from_px(12_f32))),
+                                    Button::new(
+                                        "open-in-new-window",
+                                        i18n::t!("Open in New Window"),
+                                    )
+                                    .key_binding(
+                                        KeyBinding::for_action_in(
+                                            &menu::SecondaryConfirm,
+                                            &focus_handle,
+                                            cx,
                                         )
-                                        .on_click(|_, window, cx| {
+                                        .map(|kb| kb.size(rems_from_px(12_f32))),
+                                    )
+                                    .on_click(
+                                        |_, window, cx| {
                                             window.dispatch_action(
                                                 menu::SecondaryConfirm.boxed_clone(),
                                                 cx,
                                             )
-                                        }),
+                                        },
+                                    ),
                                 )
                             })
                             .when(!is_deleting, |this| {
                                 this.child(
-                                    Button::new("open-worktree", "開く")
+                                    Button::new("open-worktree", i18n::t!("Open"))
                                         .key_binding(
                                             KeyBinding::for_action_in(
                                                 &menu::Confirm,
@@ -1595,7 +1601,7 @@ pub async fn open_remote_worktree(
             window,
             cx,
         )
-        .prompt_err("接続できませんでした", window, cx, |_, _, _| None)
+        .prompt_err(i18n::t!("Failed to connect"), window, cx, |_, _, _| None)
     })?;
 
     let session = connect_task.await;
@@ -1980,7 +1986,7 @@ mod tests {
             "pending delete state should clear while waiting for force-delete confirmation"
         );
 
-        cx.simulate_prompt_answer("強制削除");
+        cx.simulate_prompt_answer("Force Delete");
         cx.run_until_parked();
 
         assert!(!cx.has_pending_prompt());
@@ -2024,7 +2030,7 @@ mod tests {
         assert!(cx.has_pending_prompt());
         assert!(deleting_worktree_paths(&worktree_picker, &mut cx).is_empty());
 
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
 
         assert!(!cx.has_pending_prompt());
@@ -2172,7 +2178,7 @@ mod tests {
                 let header_index = matches
                     .iter()
                     .position(|entry| {
-                        matches!(entry, WorktreeEntry::SectionHeader(label) if label.as_ref() == "このウィンドウ")
+                        matches!(entry, WorktreeEntry::SectionHeader(label) if label.as_ref() == "This Window")
                     })
                     .expect("section header should be present when multiple worktrees are open");
 

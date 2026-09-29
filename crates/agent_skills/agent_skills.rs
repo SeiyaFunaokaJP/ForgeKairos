@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result};
-use const_format::{concatcp, formatcp};
+use const_format::concatcp;
 use fs::Fs;
 use futures::StreamExt;
 use gpui::{App, Global, SharedString};
@@ -291,10 +291,10 @@ pub fn parse_skill_frontmatter(
 /// validating the metadata fields.
 pub fn extract_skill_frontmatter(content: &str) -> Result<(SkillMetadata, &str)> {
     if content.len() > MAX_SKILL_FILE_SIZE {
-        anyhow::bail!(
-            "SKILL.md のサイズが上限の {}KB を超えています。",
+        anyhow::bail!(i18n::t!(
+            "SKILL.md file exceeds maximum size of {}KB",
             MAX_SKILL_FILE_SIZE / 1024
-        );
+        ));
     }
 
     extract_frontmatter(content)
@@ -326,7 +326,7 @@ fn validate_description_for_loading(
     description: &str,
 ) -> Result<Vec<SkillLoadWarning>, &'static str> {
     if description.trim().is_empty() {
-        return Err("スキルの説明を入力してください。");
+        return Err(i18n::t!("Skill description cannot be empty"));
     }
 
     let mut warnings = Vec::new();
@@ -345,7 +345,7 @@ fn extract_frontmatter(content: &str) -> Result<(SkillMetadata, &str)> {
     let content = content.trim_start();
 
     if !content.starts_with("---") {
-        anyhow::bail!("SKILL.md は YAML フロントマター (---) で始まる必要があります。");
+        anyhow::bail!(i18n::t!("SKILL.md must start with YAML frontmatter (---)"));
     }
 
     // Find every candidate closing `---` line: a line consisting EXACTLY of
@@ -387,7 +387,9 @@ fn extract_frontmatter(content: &str) -> Result<(SkillMetadata, &str)> {
     }
 
     if candidates.is_empty() {
-        anyhow::bail!("SKILL.md にフロントマターの終端記号 (---) がありません。");
+        anyhow::bail!(i18n::t!(
+            "SKILL.md missing closing frontmatter delimiter (---)"
+        ));
     }
 
     // Try each candidate in order: slice content up through the candidate's
@@ -410,7 +412,7 @@ fn extract_frontmatter(content: &str) -> Result<(SkillMetadata, &str)> {
 
     Err(last_error
         .unwrap_or_else(|| anyhow::anyhow!("could not parse YAML frontmatter"))
-        .context("YAML フロントマターが不正です。"))
+        .context(i18n::t!("Invalid YAML frontmatter")))
 }
 
 /// Maximum length for a valid skill name. Mirrors the upper bound enforced
@@ -498,27 +500,32 @@ pub fn slugify_skill_name(input: &str) -> Option<String> {
 ///   validator keeps hand-written `SKILL.md` files consistent with
 ///   slugifier output
 ///
-/// Error messages are returned as `&'static str` (interpolated at
-/// compile time via `formatcp!`) so that UI surfaces can store them in
+/// Error messages are returned as `&'static str` so that UI surfaces can
+/// store them in
 /// `Option<&'static str>` fields without allocating, and loader callers
 /// can convert them to `anyhow::Error` via `anyhow::Error::msg`.
 pub fn validate_name(name: &str) -> Result<(), &'static str> {
     if name.is_empty() {
-        return Err("スキル名を入力してください。");
+        return Err(i18n::t!("Skill name cannot be empty"));
     }
     if name.len() > MAX_SKILL_NAME_LEN {
-        return Err(formatcp!(
-            "スキル名は {MAX_SKILL_NAME_LEN} 文字以内で入力してください。"
-        ));
+        // The message has to stay `&'static str`, so it spells out the limit
+        // instead of formatting it in; `test_parse_name_too_long` and
+        // `test_parse_skill_file_content_rejects_description_too_long` keep them in step.
+        return Err(i18n::tr(i18n::msg!(
+            "Skill name must be at most 64 characters"
+        )));
     }
     if name.starts_with('-') || name.ends_with('-') {
-        return Err("スキル名の先頭と末尾にハイフンは使用できません。");
+        return Err(i18n::t!("Skill name must not start or end with a hyphen"));
     }
     if !name
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
     {
-        return Err("スキル名には小文字の英字・数字・ハイフンのみ使用できます。");
+        return Err(i18n::t!(
+            "Skill name must contain only lowercase letters, numbers, and hyphens"
+        ));
     }
     Ok(())
 }
@@ -527,12 +534,12 @@ pub fn validate_name(name: &str) -> Result<(), &'static str> {
 /// create-skill UI and imported/shared skill parsing.
 pub fn validate_description(description: &str) -> Result<(), &'static str> {
     if description.trim().is_empty() {
-        return Err("スキルの説明を入力してください。");
+        return Err(i18n::t!("Skill description cannot be empty"));
     }
     if description.chars().count() > MAX_SKILL_DESCRIPTION_LEN {
-        return Err(formatcp!(
-            "スキルの説明は {MAX_SKILL_DESCRIPTION_LEN} 文字以内で入力してください。"
-        ));
+        return Err(i18n::tr(i18n::msg!(
+            "Skill description must be at most 1024 characters"
+        )));
     }
     Ok(())
 }
@@ -634,15 +641,15 @@ pub async fn load_skill_frontmatter(
         .await
         .map_err(|e| SkillLoadError {
             path: skill_file_path.clone(),
-            message: format!("SKILL.md のメタデータの読み込みに失敗しました: {}", e),
+            message: i18n::t!("Failed to read SKILL.md metadata: {}", e),
         })?;
     if let Some(metadata) = metadata
         && metadata.len > MAX_SKILL_FILE_SIZE as u64
     {
         return Err(SkillLoadError {
             path: skill_file_path.clone(),
-            message: format!(
-                "SKILL.md のサイズが上限の {}KB を超えています。",
+            message: i18n::t!(
+                "SKILL.md file exceeds maximum size of {}KB",
                 MAX_SKILL_FILE_SIZE / 1024
             ),
         });
@@ -653,7 +660,7 @@ pub async fn load_skill_frontmatter(
         .await
         .map_err(|e| SkillLoadError {
             path: skill_file_path.clone(),
-            message: format!("ファイルの読み込みに失敗しました: {}", e),
+            message: i18n::t!("Failed to read file: {}", e),
         })?;
 
     parse_skill_frontmatter(&skill_file_path, &content, source).map_err(|e| SkillLoadError {
@@ -672,7 +679,7 @@ pub async fn read_skill_body(
 ) -> Result<String, SkillLoadError> {
     let content = fs.load(skill_file_path).await.map_err(|e| SkillLoadError {
         path: skill_file_path.to_path_buf(),
-        message: format!("ファイルの読み込みに失敗しました: {}", e),
+        message: format!("Failed to read file: {}", e),
     })?;
 
     read_skill_body_from_content(skill_file_path, &content)
@@ -689,6 +696,24 @@ pub fn read_skill_body_from_content(
         })?;
 
     Ok(body.trim().to_string())
+}
+
+/// [`read_skill_body_from_content`], with the refusal worded both for the model,
+/// which the skill tool tells it to, and for the user, who a slash command shows
+/// it to: format the error inside `i18n::in_english` for the model.
+pub fn read_skill_body_from_content_for_either_reader(
+    skill_file_path: &Path,
+    content: &str,
+) -> Result<String> {
+    read_skill_body_from_content(skill_file_path, content).map_err(|_| {
+        anyhow::Error::new(i18n::Bilingual::new(|| match read_skill_body_from_content(
+            skill_file_path,
+            content,
+        ) {
+            Ok(_) => String::new(),
+            Err(error) => error.to_string(),
+        }))
+    })
 }
 
 /// Content of the built-in `create-skill` SKILL.md, embedded at compile time.
@@ -983,7 +1008,7 @@ Help.
             result
                 .unwrap_err()
                 .to_string()
-                .contains("YAML フロントマター")
+                .contains("must start with YAML frontmatter")
         );
     }
 
@@ -1005,7 +1030,7 @@ description: Test
             result
                 .unwrap_err()
                 .to_string()
-                .contains("終端記号 (---) がありません")
+                .contains("missing closing frontmatter delimiter")
         );
     }
 
@@ -1027,7 +1052,7 @@ description: Test
         let err = result.unwrap_err();
         let err_chain = format!("{:?}", err);
         assert!(
-            !err_chain.contains("終端記号 (---) がありません"),
+            !err_chain.contains("missing closing frontmatter delimiter"),
             "Error should NOT be the missing-closer error since the closer is present: {}",
             err_chain
         );
@@ -1035,7 +1060,7 @@ description: Test
             err_chain.contains("missing field")
                 || err_chain.contains("name")
                 || err_chain.contains("description")
-                || err_chain.contains("フロントマターが不正です"),
+                || err_chain.contains("Invalid YAML"),
             "Error should mention missing name/description field or invalid YAML: {}",
             err_chain
         );
@@ -1061,7 +1086,7 @@ Content here.
         assert!(
             err_chain.contains("missing field")
                 || err_chain.contains("name")
-                || err_chain.contains("フロントマターが不正です"),
+                || err_chain.contains("Invalid YAML"),
             "Error should mention missing name field or invalid YAML: {}",
             err_chain
         );
@@ -1087,7 +1112,7 @@ Content here.
         assert!(
             err_chain.contains("missing field")
                 || err_chain.contains("description")
-                || err_chain.contains("フロントマターが不正です"),
+                || err_chain.contains("Invalid YAML"),
             "Error should mention missing description field or invalid YAML: {}",
             err_chain
         );
@@ -1112,7 +1137,7 @@ Content.
             SkillSource::Global,
         );
         assert!(result.is_err());
-        let expected = format!("{MAX_SKILL_NAME_LEN} 文字以内");
+        let expected = format!("at most {MAX_SKILL_NAME_LEN} characters");
         assert!(result.unwrap_err().to_string().contains(&expected));
     }
 
@@ -1136,7 +1161,7 @@ Content.
             result
                 .unwrap_err()
                 .to_string()
-                .contains("小文字の英字・数字・ハイフン")
+                .contains("lowercase letters, numbers, and hyphens")
         );
     }
 
@@ -1440,7 +1465,7 @@ Content.
 
         let result = parse_skill_file_content(&content);
         assert!(result.is_err());
-        let expected = format!("{MAX_SKILL_DESCRIPTION_LEN} 文字以内");
+        let expected = format!("at most {MAX_SKILL_DESCRIPTION_LEN} characters");
         assert!(result.unwrap_err().to_string().contains(&expected));
     }
 
@@ -1460,12 +1485,7 @@ Content.
             SkillSource::Global,
         );
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("説明を入力してください")
-        );
+        assert!(result.unwrap_err().to_string().contains("cannot be empty"));
     }
 
     #[test]
@@ -1486,7 +1506,7 @@ description: Test skill
             SkillSource::Global,
         );
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("サイズが上限"));
+        assert!(result.unwrap_err().to_string().contains("exceeds maximum"));
     }
 
     #[test]
@@ -1568,7 +1588,7 @@ description: A skill with no body content
             result
                 .unwrap_err()
                 .to_string()
-                .contains("終端記号 (---) がありません")
+                .contains("missing closing frontmatter delimiter")
         );
     }
 
@@ -1606,7 +1626,7 @@ description: A skill with no body content
             result
                 .unwrap_err()
                 .to_string()
-                .contains("終端記号 (---) がありません")
+                .contains("missing closing frontmatter delimiter")
         );
     }
 
@@ -1930,7 +1950,7 @@ description: A skill with no body content
         assert_eq!(results.len(), 1);
         let err = results[0].as_ref().expect_err("Oversized file must error");
         assert!(
-            err.message.contains("サイズが上限"),
+            err.message.contains("exceeds maximum size"),
             "unexpected error message: {}",
             err.message
         );

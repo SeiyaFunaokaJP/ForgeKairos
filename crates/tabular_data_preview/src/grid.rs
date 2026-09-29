@@ -146,7 +146,8 @@ pub(crate) struct GridSelectionRange {
 
 /// What the grid says when an operation only makes sense on one block, which is
 /// the wording Excel refuses the same operations with.
-pub(crate) const MULTI_RANGE_REFUSAL: &str = "複数の選択範囲に対してはこの操作を実行できません。";
+pub(crate) const MULTI_RANGE_REFUSAL: &str =
+    i18n::msg!("This operation can't be performed on multiple selections.");
 
 /// The rectangle of cells covered by the selection, in grid coordinates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -784,7 +785,7 @@ impl TabularDataPreviewPane {
         if !self.has_multiple_selection_ranges() {
             return false;
         }
-        self.set_status_message(MULTI_RANGE_REFUSAL, cx);
+        self.set_status_message(i18n::tr(MULTI_RANGE_REFUSAL), cx);
         true
     }
 
@@ -860,8 +861,8 @@ impl TabularDataPreviewPane {
         }
         let limit = grouped_digits(MAX_GRID_OPERATION_CELLS);
         self.set_status_message(
-            format!(
-                "選択範囲が大きすぎます (最大 {limit} セル)。テキストを横に開いて編集してください"
+            i18n::t!(
+                "The selection is too large (up to {limit} cells). Open the text beside the grid to edit it"
             ),
             cx,
         );

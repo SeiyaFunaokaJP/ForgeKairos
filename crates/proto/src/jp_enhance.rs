@@ -124,8 +124,9 @@ mod tests {
     fn wire_revision_check_round_trips_as_a_request() {
         let request = CheckWireRevision {
             revision: JP_ENHANCE_WIRE_REVISION,
+            display_language: Some("pt-BR".to_string()),
         };
-        let envelope = request.into_envelope(3, None, None);
+        let envelope = request.clone().into_envelope(3, None, None);
         assert_eq!(CheckWireRevision::from_envelope(envelope), Some(request));
         let response = CheckWireRevisionResponse {
             revision: JP_ENHANCE_WIRE_REVISION,

@@ -596,9 +596,9 @@ fn render_debugger_tab_bar(
                         let focus_handle = focus_handle.clone();
                         move |_window, cx| {
                             let zoomed_text = if zoomed {
-                                "ズーム解除"
+                                i18n::tc!("debugger pane zoom", "Minimize")
                             } else {
-                                "ズーム"
+                                i18n::tc!("debugger pane zoom", "Expand")
                             };
                             Tooltip::for_action_in(
                                 zoomed_text,
@@ -1347,7 +1347,7 @@ impl RunningState {
             .clone()
             .filter(|title| !title.is_empty())
             .or_else(|| command.clone())
-            .unwrap_or_else(|| "デバッグターミナル".to_string());
+            .unwrap_or_else(|| i18n::t!("Debug terminal").to_string());
         let kind = task::SpawnInTerminal {
             id: task::TaskId("debug".to_string()),
             full_label: title.clone(),

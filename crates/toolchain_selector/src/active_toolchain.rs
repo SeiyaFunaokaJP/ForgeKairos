@@ -248,9 +248,7 @@ impl Render for ActiveToolchain {
                         });
                     }
                 }))
-                // `term` は言語定義 (`ToolchainMetadata::term`) 由来の英語の名詞なので訳さず、
-                // 日本語の語順に合わせて後置する。
-                .tooltip(Tooltip::text(format!("{} を選択", self.term))),
+                .tooltip(Tooltip::text(i18n::t!("Select {}", self.term))),
         )
     }
 }

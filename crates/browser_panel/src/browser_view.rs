@@ -46,7 +46,7 @@ const BOOKMARKS_PANE_WIDTH: f32 = 244.;
 const MAX_TAB_TITLE_CHARS: usize = 40;
 
 /// URL もタイトルも無いときのタブ名。
-pub(crate) const UNTITLED_TAB_LABEL: &str = "ブラウザー";
+pub(crate) const UNTITLED_TAB_LABEL: &str = i18n::msg!("Browser");
 
 enum SurfaceState {
     /// WebView2 の生成をまだ始めていない。
@@ -176,7 +176,7 @@ impl BrowserView {
     ) -> Self {
         let address_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("URL または検索語を入力", window, cx);
+            editor.set_placeholder_text(i18n::t!("Enter a URL or search terms"), window, cx);
             editor
         });
 
@@ -486,7 +486,7 @@ impl BrowserView {
             WebViewEvent::LoadFinished { succeeded } => {
                 self.loading = false;
                 self.status_message =
-                    (!succeeded).then(|| SharedString::from("ページを読み込めませんでした。"));
+                    (!succeeded).then(|| SharedString::from(i18n::t!("Couldn't load the page.")));
             }
             WebViewEvent::FocusReturned => {
                 self.page_has_focus = false;
@@ -643,7 +643,7 @@ impl BrowserView {
     fn set_as_home_page(&mut self, _: &SetAsHomePage, _: &mut Window, cx: &mut Context<Self>) {
         let url = self.current_url.trim().to_string();
         if url.is_empty() {
-            self.set_status_message("先にページを開いてください。", cx);
+            self.set_status_message(i18n::t!("Open a page first."), cx);
             return;
         }
         settings::update_settings_file(self.fs.clone(), cx, {
@@ -652,7 +652,7 @@ impl BrowserView {
                 settings.browser.get_or_insert_default().home_url = Some(url);
             }
         });
-        self.set_status_message(format!("起動時に開くページを {url} にしました。"), cx);
+        self.set_status_message(i18n::t!("Set the startup page to {url}."), cx);
     }
 
     /// ホストに「新しいタブでこの URL を開いてほしい」と伝える。
@@ -685,9 +685,8 @@ impl BrowserView {
         edit: impl FnOnce(&mut BookmarksFile) -> bool,
     ) {
         if !self.bookmarks.read(cx).is_loaded() {
-            self.status_message = Some(
-                "ブックマークを読み込んでいます。少し待ってからもう一度お試しください。".into(),
-            );
+            self.status_message =
+                Some(i18n::t!("Bookmarks are still loading. Try again in a moment.").into());
             cx.notify();
             return;
         }
@@ -707,7 +706,7 @@ impl BrowserView {
             if let Err(error) = write.await {
                 log::error!("failed to write browser_bookmarks.json: {error:#}");
                 this.update(cx, |this, cx| {
-                    this.status_message = Some("ブックマークを保存できませんでした。".into());
+                    this.status_message = Some(i18n::t!("Couldn't save the bookmarks.").into());
                     cx.notify();
                 })
                 .ok();
@@ -748,7 +747,7 @@ impl BrowserView {
     ) {
         let name_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("名前", window, cx);
+            editor.set_placeholder_text(i18n::tc!("browser bookmark", "Name"), window, cx);
             editor.set_text(name, window, cx);
             editor
         });
@@ -788,9 +787,9 @@ impl BrowserView {
 
         if name.is_empty() || (!is_folder && url.is_empty()) {
             self.status_message = Some(if name.is_empty() {
-                "名前を入力してください。".into()
+                i18n::t!("Enter a name.").into()
             } else {
-                "URL を入力してください。".into()
+                i18n::t!("Enter a URL.").into()
             });
             self.bookmark_form = Some(form);
             cx.notify();
@@ -896,7 +895,12 @@ impl BrowserView {
                     .tooltip({
                         let focus_handle = focus_handle.clone();
                         move |_, cx| {
-                            Tooltip::for_action_in("戻る", &NavigateBack, &focus_handle, cx)
+                            Tooltip::for_action_in(
+                                i18n::t!("Back"),
+                                &NavigateBack,
+                                &focus_handle,
+                                cx,
+                            )
                         }
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -910,7 +914,12 @@ impl BrowserView {
                     .tooltip({
                         let focus_handle = focus_handle.clone();
                         move |_, cx| {
-                            Tooltip::for_action_in("進む", &NavigateForward, &focus_handle, cx)
+                            Tooltip::for_action_in(
+                                i18n::t!("Forward"),
+                                &NavigateForward,
+                                &focus_handle,
+                                cx,
+                            )
                         }
                     })
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -923,7 +932,7 @@ impl BrowserView {
                     .tooltip({
                         let focus_handle = focus_handle.clone();
                         move |_, cx| {
-                            Tooltip::for_action_in("再読み込み", &Reload, &focus_handle, cx)
+                            Tooltip::for_action_in(i18n::t!("Reload"), &Reload, &focus_handle, cx)
                         }
                     })
                     .on_click(cx.listener(|this, _, window, cx| this.reload(&Reload, window, cx))),
@@ -940,7 +949,7 @@ impl BrowserView {
                         let focus_handle = focus_handle.clone();
                         move |_, cx| {
                             Tooltip::for_action_in(
-                                "このページをブックマークに追加",
+                                i18n::t!("Bookmark This Page"),
                                 &AddBookmark,
                                 &focus_handle,
                                 cx,
@@ -958,7 +967,7 @@ impl BrowserView {
                         let focus_handle = focus_handle.clone();
                         move |_, cx| {
                             Tooltip::for_action_in(
-                                "このページを起動時に開く",
+                                i18n::t!("Open This Page at Startup"),
                                 &SetAsHomePage,
                                 &focus_handle,
                                 cx,
@@ -977,7 +986,7 @@ impl BrowserView {
                         let focus_handle = focus_handle.clone();
                         move |_, cx| {
                             Tooltip::for_action_in(
-                                "ブックマーク",
+                                i18n::t!("Bookmarks"),
                                 &ToggleBookmarks,
                                 &focus_handle,
                                 cx,
@@ -997,7 +1006,7 @@ impl BrowserView {
                         .icon_size(IconSize::Small)
                         .tooltip(move |_, cx| {
                             Tooltip::for_action_in(
-                                "エディター領域へ移す",
+                                i18n::t!("Move to Editor Area"),
                                 &OpenInCenter,
                                 &focus_handle,
                                 cx,
@@ -1015,7 +1024,7 @@ impl BrowserView {
                     .icon_size(IconSize::Small)
                     .tooltip(move |_, cx| {
                         Tooltip::for_action_in(
-                            "外部ブラウザーで開く",
+                            i18n::t!("Open in External Browser"),
                             &OpenInExternalBrowser,
                             &focus_handle,
                             cx,
@@ -1091,7 +1100,7 @@ impl BrowserView {
                                         .size(IconSize::XSmall)
                                         .color(Color::Muted),
                                 )
-                                .tooltip(Tooltip::text("フォルダーの中身を開く"))
+                                .tooltip(Tooltip::text(i18n::t!("Show Folder Contents")))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.bookmarks_pane_open = true;
                                     this.set_folder_expanded(&[index], true, cx);
@@ -1240,7 +1249,7 @@ impl BrowserView {
                     .border_b_1()
                     .border_color(cx.theme().colors().border)
                     .child(
-                        Label::new("ブックマーク")
+                        Label::new(i18n::t!("Bookmarks"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -1248,7 +1257,7 @@ impl BrowserView {
                     .child(
                         IconButton::new("browser-bookmark-add-folder", IconName::FolderAdd)
                             .icon_size(IconSize::XSmall)
-                            .tooltip(Tooltip::text("フォルダーを追加"))
+                            .tooltip(Tooltip::text(i18n::t!("Add Folder")))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.open_bookmark_form(
                                     None,
@@ -1264,7 +1273,7 @@ impl BrowserView {
                     .child(
                         IconButton::new("browser-bookmark-close-pane", IconName::Close)
                             .icon_size(IconSize::XSmall)
-                            .tooltip(Tooltip::text("ブックマークを閉じる"))
+                            .tooltip(Tooltip::text(i18n::t!("Close Bookmarks")))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.toggle_bookmarks(&ToggleBookmarks, window, cx)
                             })),
@@ -1284,9 +1293,9 @@ impl BrowserView {
                         this.child(
                             div().p_2().child(
                                 Label::new(if loaded {
-                                    "ブックマークはまだありません。ツールバーの星ボタンで今のページを追加できます。"
+                                    i18n::t!("No bookmarks yet. Use the star button in the toolbar to add the current page.")
                                 } else {
-                                    "読み込み中…"
+                                    i18n::t!("Loading…")
                                 })
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
@@ -1319,28 +1328,34 @@ impl BrowserView {
                 .bg(cx.theme().status().error_background)
                 .child(
                     Label::new(if row.is_folder {
-                        "フォルダーごと削除しますか?"
+                        i18n::t!("Delete the folder and everything in it?")
                     } else {
-                        "削除しますか?"
+                        i18n::t!("Delete?")
                     })
                     .size(LabelSize::Small),
                 )
                 .child(div().flex_1())
                 .child(
-                    Button::new(("browser-bookmark-confirm-delete", index), "削除")
-                        .label_size(LabelSize::Small)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            let path = path.clone();
-                            this.update_bookmarks(cx, move |file| file.remove(&path).is_some());
-                        })),
+                    Button::new(
+                        ("browser-bookmark-confirm-delete", index),
+                        i18n::t!("Delete"),
+                    )
+                    .label_size(LabelSize::Small)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        let path = path.clone();
+                        this.update_bookmarks(cx, move |file| file.remove(&path).is_some());
+                    })),
                 )
                 .child(
-                    Button::new(("browser-bookmark-cancel-delete", index), "取消")
-                        .label_size(LabelSize::Small)
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.pending_delete = None;
-                            cx.notify();
-                        })),
+                    Button::new(
+                        ("browser-bookmark-cancel-delete", index),
+                        i18n::tc!("browser bookmark", "Cancel"),
+                    )
+                    .label_size(LabelSize::Small)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.pending_delete = None;
+                        cx.notify();
+                    })),
                 )
                 .into_any_element();
         }
@@ -1402,7 +1417,7 @@ impl BrowserView {
             .child(
                 IconButton::new(("browser-bookmark-edit", index), IconName::Pencil)
                     .icon_size(IconSize::XSmall)
-                    .tooltip(Tooltip::text("編集"))
+                    .tooltip(Tooltip::text(i18n::t!("Edit")))
                     .on_click({
                         let path = row.path.clone();
                         cx.listener(move |this, _, window, cx| {
@@ -1414,7 +1429,7 @@ impl BrowserView {
                 IconButton::new(("browser-bookmark-up", index), IconName::ArrowUp)
                     .icon_size(IconSize::XSmall)
                     .disabled(row.index == 0)
-                    .tooltip(Tooltip::text("上へ"))
+                    .tooltip(Tooltip::text(i18n::tc!("browser bookmark", "Move Up")))
                     .on_click({
                         let path = row.path.clone();
                         cx.listener(move |this, _, _, cx| {
@@ -1429,7 +1444,7 @@ impl BrowserView {
                 IconButton::new(("browser-bookmark-down", index), IconName::ArrowDown)
                     .icon_size(IconSize::XSmall)
                     .disabled(row.index + 1 >= row.sibling_count)
-                    .tooltip(Tooltip::text("下へ"))
+                    .tooltip(Tooltip::text(i18n::tc!("browser bookmark", "Move Down")))
                     .on_click({
                         let path = row.path.clone();
                         cx.listener(move |this, _, _, cx| {
@@ -1443,7 +1458,7 @@ impl BrowserView {
             .child(
                 IconButton::new(("browser-bookmark-delete", index), IconName::Trash)
                     .icon_size(IconSize::XSmall)
-                    .tooltip(Tooltip::text("削除"))
+                    .tooltip(Tooltip::text(i18n::t!("Delete")))
                     .on_click({
                         let path = row.path.clone();
                         cx.listener(move |this, _, _, cx| {
@@ -1463,10 +1478,10 @@ impl BrowserView {
     ) -> Option<AnyElement> {
         let form = self.bookmark_form.as_ref()?;
         let title = match (&form.editing, form.is_folder) {
-            (Some(_), true) => "フォルダーを編集",
-            (Some(_), false) => "ブックマークを編集",
-            (None, true) => "フォルダーを追加",
-            (None, false) => "ブックマークを追加",
+            (Some(_), true) => i18n::t!("Edit Folder"),
+            (Some(_), false) => i18n::t!("Edit Bookmark"),
+            (None, true) => i18n::t!("Add Folder"),
+            (None, false) => i18n::t!("Add Bookmark"),
         };
         let name_focused = form.name.focus_handle(cx).contains_focused(window, cx);
         let url_focused = form.url.focus_handle(cx).contains_focused(window, cx);
@@ -1478,7 +1493,7 @@ impl BrowserView {
 
         // フォルダーの移動先はドロップダウンにできない (ページに隠れる) ので、
         // ラジオボタンのように押せる平らな一覧にする。
-        let mut folder_buttons = vec![("最上位".to_string(), 0usize, Vec::new())];
+        let mut folder_buttons = vec![(i18n::t!("Top Level").to_string(), 0usize, Vec::new())];
         folder_buttons.extend(
             file.folders()
                 .into_iter()
@@ -1499,7 +1514,7 @@ impl BrowserView {
                     this.child(field(&form.url, url_focused))
                 })
                 .child(
-                    Label::new("場所")
+                    Label::new(i18n::tc!("browser bookmark", "Location"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -1539,7 +1554,7 @@ impl BrowserView {
                         .w_full()
                         .gap_1()
                         .child(
-                            Button::new("browser-bookmark-save", "保存")
+                            Button::new("browser-bookmark-save", i18n::t!("Save"))
                                 .label_size(LabelSize::Small)
                                 .full_width()
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -1547,14 +1562,19 @@ impl BrowserView {
                                 })),
                         )
                         .child(
-                            Button::new("browser-bookmark-cancel", "取消")
-                                .label_size(LabelSize::Small)
-                                .full_width()
-                                .on_click(cx.listener(|this, _, window, cx| {
+                            Button::new(
+                                "browser-bookmark-cancel",
+                                i18n::tc!("browser bookmark", "Cancel"),
+                            )
+                            .label_size(LabelSize::Small)
+                            .full_width()
+                            .on_click(cx.listener(
+                                |this, _, window, cx| {
                                     this.bookmark_form = None;
                                     window.focus(&this.focus_handle, cx);
                                     cx.notify();
-                                })),
+                                },
+                            )),
                         ),
                 )
                 .into_any_element(),
@@ -1599,7 +1619,7 @@ impl BrowserView {
                             .p_4()
                             .when(matches!(self.surface, SurfaceState::Starting), |this| {
                                 this.child(
-                                    Label::new("内蔵ブラウザーを起動しています…")
+                                    Label::new(i18n::t!("Starting the built-in browser…"))
                                         .color(Color::Muted),
                                 )
                             }),
@@ -1673,16 +1693,18 @@ impl BrowserView {
             .child(Label::new(message).color(Color::Muted))
             .when(offer_runtime_download, |this| {
                 this.child(
-                    Button::new("browser-install-runtime", "ダウンロードページを開く")
+                    Button::new("browser-install-runtime", i18n::t!("Open Download Page"))
                         .on_click(|_, _, cx| cx.open_url(WEBVIEW2_DOWNLOAD_URL)),
                 )
             })
             .child(
-                Button::new("browser-open-external", "外部ブラウザーで開く").on_click(cx.listener(
-                    |this, _, window, cx| {
-                        this.open_in_external_browser(&OpenInExternalBrowser, window, cx)
-                    },
-                )),
+                Button::new(
+                    "browser-open-external",
+                    i18n::t!("Open in External Browser"),
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.open_in_external_browser(&OpenInExternalBrowser, window, cx)
+                })),
             )
             .into_any_element()
     }
@@ -1702,7 +1724,7 @@ impl Render for BrowserView {
         // ここには出さない (行そのものは状態表示のために残す)。
         let status = match (&self.status_message, self.loading) {
             (Some(message), _) => message.clone(),
-            (None, true) => "読み込み中…".into(),
+            (None, true) => i18n::t!("Loading…").into(),
             (None, false) => SharedString::default(),
         };
         let bookmarks_pane_open = self.bookmarks_pane_open;
@@ -1779,14 +1801,14 @@ impl Focusable for BrowserView {
 /// ブックマークのツールチップ。「Ctrl+クリックで新しいタブ」は見た目からは
 /// 分からないので、URL と一緒に添える。
 fn bookmark_tooltip(url: &str) -> SharedString {
-    format!("{url} — Ctrl+クリック / 中クリックで新しいタブ").into()
+    i18n::t!("{url} — Ctrl-click or middle-click to open in a new tab").into()
 }
 
 /// タブに出す名前。ページタイトルが無ければ URL、それも無ければ既定名。
 /// 長いページタイトルはタブを押し広げるので、ここで切り詰める。
 pub(crate) fn tab_label(page_title: &str, url: &str) -> SharedString {
     let source = match (page_title.trim(), url.trim()) {
-        ("", "") => return UNTITLED_TAB_LABEL.into(),
+        ("", "") => return i18n::tr(UNTITLED_TAB_LABEL).into(),
         ("", url) => url,
         (title, _) => title,
     };
@@ -1922,9 +1944,10 @@ fn host_is_composited(_: isize) -> bool {
 
 fn runtime_missing_message() -> SharedString {
     if cfg!(windows) {
-        "WebView2 ランタイムが見つかりません。Microsoft Edge WebView2 ランタイムをインストールしてください。".into()
+        i18n::t!("The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime.")
+            .into()
     } else {
-        "このプラットフォームでは内蔵ブラウザーは未対応です。".into()
+        i18n::t!("The built-in browser isn't supported on this platform.").into()
     }
 }
 
@@ -1956,8 +1979,8 @@ mod tests {
             tab_label("  ", "https://zed.dev/"),
             SharedString::from("https://zed.dev/")
         );
-        assert_eq!(tab_label("", ""), UNTITLED_TAB_LABEL);
-        assert_eq!(tab_label("   ", "  "), UNTITLED_TAB_LABEL);
+        assert_eq!(tab_label("", ""), "Browser");
+        assert_eq!(tab_label("   ", "  "), "Browser");
     }
 
     #[test]

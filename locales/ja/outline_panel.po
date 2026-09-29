@@ -1,0 +1,57 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Clear Filter"
+msgstr "フィルターを消去"
+
+msgid "Copy Path"
+msgstr "パスをコピー"
+
+msgid "Copy Relative Path"
+msgstr "相対パスをコピー"
+
+msgid "Fold Directory"
+msgstr "フォルダーを折りたたむ"
+
+msgid "Lines {}- {}"
+msgstr "{} 〜 {} 行"
+
+msgid "No matches for query"
+msgstr "一致する項目はありません"
+
+msgid "No outlines available"
+msgstr "アウトラインはありません"
+
+msgid "Open in Terminal"
+msgstr "ターミナルで開く"
+
+msgid "Outline Panel"
+msgstr "アウトラインパネル"
+
+msgid "Pin Active Outline"
+msgstr "現在のアウトラインを固定"
+
+msgid "Search buffer symbols…"
+msgstr "バッファー内のシンボルを検索…"
+
+msgid "Searching:"
+msgstr "検索中:"
+
+msgid "Toggle Panel With"
+msgstr "パネルの表示切り替え"
+
+msgid "Unfold Directory"
+msgstr "フォルダーの折りたたみを解除"
+
+msgid "Unknown buffer"
+msgstr "不明なバッファー"
+
+msgid "Unpin Outline"
+msgstr "アウトラインの固定を解除"
+
+msgid "Untitled"
+msgstr "無題"

@@ -702,9 +702,9 @@ impl AgentTool for RepoMapTool {
         match input.ok().and_then(|input| input.path) {
             Some(path) => {
                 let path = MarkdownInlineCode(&path);
-                format!("{path} のリポジトリマップを作成").into()
+                i18n::t!("Build a repository map of {path}").into()
             }
-            None => "リポジトリマップを作成".into(),
+            None => i18n::t!("Build a repository map").into(),
         }
     }
 

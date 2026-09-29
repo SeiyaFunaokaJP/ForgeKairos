@@ -24,7 +24,7 @@
 //!   task right above it, moves with it, and falls back onto whatever came
 //!   before it when that element is deleted. Everything else that is not a
 //!   task, a section, a title or a date format makes [`parse_gantt`] fail with
-//!   a reason in Japanese rather than being dropped.
+//!   a reason rather than being dropped.
 //!
 //! The one place where the fence is read differently from the rest of Mermaid
 //! is the task line: its fields are told apart by *counting* them, not by what
@@ -84,11 +84,11 @@ impl GanttTag {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Done => "完了",
-            Self::Active => "進行中",
-            Self::Crit => "重要",
-            Self::Milestone => "マイルストーン",
-            Self::Vert => "縦線",
+            Self::Done => i18n::tc!("Gantt task tag", "Done"),
+            Self::Active => i18n::tc!("Gantt task tag", "In progress"),
+            Self::Crit => i18n::tc!("Gantt task tag", "Critical"),
+            Self::Milestone => i18n::tc!("Gantt task tag", "Milestone"),
+            Self::Vert => i18n::tc!("Gantt task tag", "Vertical line"),
         }
     }
 
@@ -245,7 +245,7 @@ impl GanttDocument {
         edited.follow_removed_references(
             self,
             &[position],
-            &format!("タスク `{}`", removed.label),
+            &i18n::t!("task `{}`", removed.label),
         )?;
         *self = edited;
         Ok(Some(removed))
@@ -271,8 +271,8 @@ impl GanttDocument {
         }
         edited.keep_lines_at_end_of(section, lines);
         let what = match &removed.name {
-            Some(name) => format!("セクション `{name}`"),
-            None => "先頭のセクション".to_string(),
+            Some(name) => i18n::t!("section `{name}`"),
+            None => i18n::t!("the first section").to_string(),
         };
         edited.follow_removed_references(self, &positions, &what)?;
         *self = edited;
@@ -374,12 +374,14 @@ impl GanttDocument {
         }
 
         let times = gantt_dates::task_times(&emit_gantt(before)).map_err(|error| {
-            anyhow!(
-                "{what} を参照しているタスクの日付を計算できないため、削除できません。今の内容では図を描けません ({error})。先に赤枠の欄を直してください。"
-            )
+            anyhow!(i18n::t!(
+                "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated. The diagram cannot be drawn with its current content ({error}). Fix the fields outlined in red first."
+            ))
         })?;
         if times.len() != before_tasks.len() {
-            bail!("{what} を参照しているタスクの日付を計算できないため、削除できません。");
+            bail!(i18n::t!(
+                "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated."
+            ));
         }
         let kept = (0..before_tasks.len())
             .filter(|position| !removed.contains(position))
@@ -433,8 +435,8 @@ impl GanttDocument {
                         match gantt_dates::start_text(date_format, start) {
                             Ok(text) => task.start = GanttStart::Date(text),
                             Err(error) => {
-                                unwritable = Some(format!(
-                                    "{what} を削除すると、タスク `{}` の開始を日付で書く必要があり、それができないため削除できません ({error})。",
+                                unwritable = Some(i18n::t!(
+                                    "Cannot delete {what}: the start of task `{}` would have to be written as a date, which is not possible ({error}).",
                                     task.label
                                 ));
                                 break;
@@ -468,8 +470,8 @@ impl GanttDocument {
                         match gantt_dates::end_text(date_format, inclusive, end, start) {
                             Ok(text) => task.end = GanttEnd::Fixed(text),
                             Err(error) => {
-                                unwritable = Some(format!(
-                                    "{what} を削除すると、タスク `{}` の終了を日付で書く必要があり、それができないため削除できません ({error})。",
+                                unwritable = Some(i18n::t!(
+                                    "Cannot delete {what}: the end of task `{}` would have to be written as a date, which is not possible ({error}).",
                                     task.label
                                 ));
                                 break;
@@ -503,11 +505,16 @@ impl GanttDocument {
                     *self = candidate;
                     return Ok(());
                 };
-                let field = if pin.is_start { "開始" } else { "終了" };
-                failure = Some(format!(
-                    "{what} を削除すると、それを参照しているタスク `{}` の{field}が変わってしまうため、削除できません。先に `{}` の `after` / `until` を日付に書き換えてください。",
-                    pin.label, pin.label
-                ));
+                let task = &pin.label;
+                failure = Some(if pin.is_start {
+                    i18n::t!(
+                        "Cannot delete {what}: the start of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+                    )
+                } else {
+                    i18n::t!(
+                        "Cannot delete {what}: the end of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+                    )
+                });
             }
             if !used_relative {
                 break;
@@ -515,7 +522,7 @@ impl GanttDocument {
         }
         Err(anyhow!(
             "{}",
-            failure.unwrap_or_else(|| format!("{what} を削除できません。"))
+            failure.unwrap_or_else(|| i18n::t!("Cannot delete {what}."))
         ))
     }
 
@@ -617,13 +624,15 @@ impl GanttDocument {
         items
     }
 
-    /// Why the chart cannot be written back as a diagram Mermaid accepts, in
-    /// Japanese, or `None` when it can.
+    /// Why the chart cannot be written back as a diagram Mermaid accepts, or
+    /// `None` when it can.
     pub fn structure_error(&self) -> Option<String> {
         if let Some(title) = &self.title
             && !is_valid_gantt_title(title)
         {
-            return Some("タイトルに改行と `%%{` は使えません (空にもできません)。".to_string());
+            return Some(i18n::t!(
+                "The title cannot contain line breaks or `%%{{` (and cannot be empty)."
+            ));
         }
         for (format, name) in [
             (&self.date_format, "dateFormat"),
@@ -632,8 +641,8 @@ impl GanttDocument {
             if let Some(format) = format
                 && !is_valid_gantt_format(format)
             {
-                return Some(format!(
-                    "`{name}` の `{format}` は書けません (`#` `;` と改行は不可、空にもできません)。"
+                return Some(i18n::t!(
+                    "`{format}` cannot be used for `{name}` (`#`, `;` and line breaks are not allowed, and it cannot be empty)."
                 ));
             }
         }
@@ -641,13 +650,13 @@ impl GanttDocument {
         for (index, section) in self.sections.iter().enumerate() {
             match &section.name {
                 Some(name) if !is_valid_gantt_section_name(name) => {
-                    return Some(format!(
-                        "セクション名 `{name}` は使えません (改行と `%%{{` は不可)。"
+                    return Some(i18n::t!(
+                        "The section name `{name}` cannot be used (line breaks and `%%{{` are not allowed)."
                     ));
                 }
                 None if index > 0 => {
                     return Some(
-                        "2 つ目以降のセクションには名前が必要です (名前が無いと 1 つ上のセクションと 1 つになります)。"
+                        i18n::t!("Every section after the first needs a name (without one, it merges with the section above).")
                             .to_string(),
                     );
                 }
@@ -665,54 +674,51 @@ impl GanttDocument {
                 .get(..position)
                 .is_some_and(|earlier| earlier.contains(id))
             {
-                return Some(format!(
-                    "ID `{id}` が 2 つのタスクに付いています。Mermaid は後に書いた方だけを `after` の行き先にするので、どちらかの ID を変えてください。"
+                return Some(i18n::t!(
+                    "The ID `{id}` is used by two tasks. Mermaid uses only the later one as the target of `after`, so change one of the IDs."
                 ));
             }
         }
 
         for (index, task) in self.tasks().enumerate() {
             if !is_valid_gantt_label(&task.label) {
-                return Some(format!(
-                    "タスク名 `{}` は使えません (`:` `%%{{` と改行は不可、`%%` で始めることもできません)。",
+                return Some(i18n::t!(
+                    "The task name `{}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot start with `%%`).",
                     task.label
                 ));
             }
             if let Some(id) = &task.id {
                 if !is_valid_gantt_task_id(id) {
-                    return Some(format!(
-                        "ID `{id}` は使えません (`,` `#` `;` と改行は不可、空にもできません。`done` などのタグ名も使えません)。"
+                    return Some(i18n::t!(
+                        "The ID `{id}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty; tag names such as `done` cannot be used either)."
                     ));
                 }
                 if task.start == GanttStart::Implicit {
-                    return Some(format!(
-                        "タスク `{}` に ID を付けるには開始を日付か `after` にしてください。",
+                    return Some(i18n::t!(
+                        "To give task `{}` an ID, make its start a date or `after`.",
                         task.label
                     ));
                 }
             }
             if index == 0 && task.start == GanttStart::Implicit {
-                return Some(format!(
-                    "最初のタスク `{}` には開始日が必要です (前のタスクがありません)。",
+                return Some(i18n::t!(
+                    "The first task `{}` needs a start date (there is no previous task).",
                     task.label
                 ));
             }
             match &task.start {
                 GanttStart::Date(date) if date.is_empty() => {
-                    return Some(format!(
-                        "タスク `{}` の開始日を入力してください。",
-                        task.label
-                    ));
+                    return Some(i18n::t!("Enter the start date of task `{}`.", task.label));
                 }
                 GanttStart::Date(date) if !is_valid_gantt_date(date) => {
-                    return Some(format!(
-                        "タスク `{}` の開始 `{date}` は書けません (`,` `#` `;` と改行は不可、空にもできません)。",
+                    return Some(i18n::t!(
+                        "The start `{date}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty).",
                         task.label
                     ));
                 }
                 GanttStart::After(references) if references.is_empty() => {
-                    return Some(format!(
-                        "タスク `{}` の `after` に参照先がありません。",
+                    return Some(i18n::t!(
+                        "The `after` of task `{}` has no target.",
                         task.label
                     ));
                 }
@@ -720,20 +726,20 @@ impl GanttDocument {
             }
             match &task.end {
                 GanttEnd::Fixed(text) if text.is_empty() => {
-                    return Some(format!(
-                        "タスク `{}` の終了 (日付か `5d` のような長さ) を入力してください。",
+                    return Some(i18n::t!(
+                        "Enter the end of task `{}` (a date or a duration such as `5d`).",
                         task.label
                     ));
                 }
                 GanttEnd::Fixed(text) if !is_valid_gantt_date(text) => {
-                    return Some(format!(
-                        "タスク `{}` の終了 `{text}` は書けません (`,` `#` `;` と改行は不可、空にもできません)。",
+                    return Some(i18n::t!(
+                        "The end `{text}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty).",
                         task.label
                     ));
                 }
                 GanttEnd::Until(references) if references.is_empty() => {
-                    return Some(format!(
-                        "タスク `{}` の `until` に参照先がありません。",
+                    return Some(i18n::t!(
+                        "The `until` of task `{}` has no target.",
                         task.label
                     ));
                 }
@@ -745,14 +751,14 @@ impl GanttDocument {
                 // stops there, so the ones that are pointed at are narrower
                 // than the ones that are merely written.
                 if !is_valid_gantt_id(reference) {
-                    return Some(format!(
-                        "`after` / `until` で参照する ID は英数字・`_`・`-` だけです (タスク `{}` の `{reference}`)。",
+                    return Some(i18n::t!(
+                        "IDs referred to by `after` / `until` can only contain ASCII letters, digits, `_` and `-` (`{reference}` in task `{}`).",
                         task.label
                     ));
                 }
                 if !ids.contains(&reference) {
-                    return Some(format!(
-                        "タスク `{}` が参照している ID `{reference}` がありません。",
+                    return Some(i18n::t!(
+                        "The ID `{reference}` that task `{}` refers to does not exist.",
                         task.label
                     ));
                 }
@@ -774,13 +780,13 @@ impl GanttDocument {
                         // moving any task without an id would hand the link
                         // to a different task without a word.
                         if !ids.contains(&id) && is_automatic_task_id(id) {
-                            return Some(format!(
-                                "`click` の `{id}` は ID の無いタスクに自動で付く名前です。タスクを追加・削除・移動すると別のタスクを指すので、そのタスクに ID を付けて `click` をその ID に書き換えてください。"
+                            return Some(i18n::t!(
+                                "`{id}` in `click` is the name a task without an ID gets automatically. It points to a different task when tasks are added, deleted or moved, so give that task an ID and change `click` to use it."
                             ));
                         }
                         if ids.contains(&id) && !defined.contains(&id) {
-                            return Some(format!(
-                                "`click` の行がタスク `{id}` より上にあります。Mermaid は `click` より後に書いたタスクにはリンクを付けないので、タスク `{id}` を `click` の行より上に移してください。"
+                            return Some(i18n::t!(
+                                "The `click` line is above task `{id}`. Mermaid does not add links to tasks written after `click`, so move task `{id}` above the `click` line."
                             ));
                         }
                     }
@@ -811,11 +817,13 @@ pub fn parse_gantt(source: &str) -> Result<GanttDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Gantt(_)) {
-            bail!("この図はガントチャートではありません。");
+            bail!(i18n::t!("This diagram is not a Gantt chart."));
         }
     }
 
@@ -836,12 +844,14 @@ fn scan_gantt(source: &str) -> Result<GanttDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = keyword_tail(header, "gantt") else {
-        bail!("ガントチャートではありません (`gantt` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a Gantt chart (only diagrams that start with `gantt` can be edited in the structured editor)."
+        ));
     };
     if !tail.is_empty() {
-        bail!(
-            "`gantt` の行の `{tail}` は構造化編集に対応していません。次の行に移すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "`{tail}` on the `gantt` line is not supported by the structured editor. Move it to the next line, or edit it as text."
+        ));
     }
 
     let mut index = header_index + 1;
@@ -887,46 +897,46 @@ fn scan_gantt(source: &str) -> Result<GanttDocument> {
                 // empty one, which clears the title — would make writing the
                 // chart back drop a line the user can see.
                 if document.title.is_some() {
-                    bail!(
-                        "`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`title` is written twice. Merge them into one, then open it again."
+                    ));
                 }
                 document.title = set_header_value(value, "title")?;
             }
             Statement::DateFormat(value) => {
                 let value = value.trim();
                 if document.date_format.is_some() {
-                    bail!(
-                        "`dateFormat` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`dateFormat` is written twice. Merge them into one, then open it again."
+                    ));
                 }
                 if value.contains(['#', ';']) {
-                    bail!(
-                        "`dateFormat` の `{value}` は `#` か `;` から先が読み飛ばされます。テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "Mermaid ignores everything from `#` or `;` onward in the `dateFormat` value `{value}`. Edit it as text."
+                    ));
                 }
                 document.date_format = set_header_value(value, "dateFormat")?;
             }
             Statement::AxisFormat(value) => {
                 let value = value.trim();
                 if document.axis_format.is_some() {
-                    bail!(
-                        "`axisFormat` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`axisFormat` is written twice. Merge them into one, then open it again."
+                    ));
                 }
                 if value.contains(['#', ';']) {
-                    bail!(
-                        "`axisFormat` の `{value}` は `#` か `;` から先が読み飛ばされます。テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "Mermaid ignores everything from `#` or `;` onward in the `axisFormat` value `{value}`. Edit it as text."
+                    ));
                 }
                 document.axis_format = set_header_value(value, "axisFormat")?;
             }
             Statement::Section(name) => {
                 let name = name.trim();
                 if !is_valid_gantt_section_name(name) {
-                    bail!(
-                        "名前の無い `section` は構造化編集に対応していません ({statement})。名前を付けるか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "A `section` without a name is not supported by the structured editor ({statement}). Give it a name, or edit it as text."
+                    ));
                 }
                 document.sections.push(GanttSection {
                     name: Some(name.to_string()),
@@ -935,9 +945,9 @@ fn scan_gantt(source: &str) -> Result<GanttDocument> {
                 });
             }
             Statement::DisplayMode => {
-                bail!(
-                    "`displayMode` は本文には書けません ({statement})。Mermaid ではフロントマターの `displayMode: compact` か `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%` で指定します。テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "`displayMode` cannot be written in the body ({statement}). In Mermaid, set it with `displayMode: compact` in the front matter or with `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%`. Edit it as text."
+                ));
             }
             Statement::Task => {
                 let task = parse_task(statement)?;
@@ -972,7 +982,9 @@ fn set_header_value(value: &str, keyword: &str) -> Result<Option<String>> {
         return Ok(None);
     }
     if value.contains(['\n', '\r']) {
-        bail!("`{keyword}` の値に改行は使えません。");
+        bail!(i18n::t!(
+            "The value of `{keyword}` cannot contain line breaks."
+        ));
     }
     Ok(Some(value.to_string()))
 }
@@ -1098,27 +1110,29 @@ fn starts_with_gantt_keyword(line: &str, keyword: &str) -> bool {
 
 fn parse_task(statement: &str) -> Result<GanttTask> {
     let Some(colon) = statement.find(':') else {
-        bail!(
-            "ガントの行として読めませんでした ({statement})。`タスク名 :開始, 終了` の形で書いてください。"
-        );
+        bail!(i18n::t!(
+            "Could not read this as a Gantt chart line ({statement}). Write it as `task name :start, end`."
+        ));
     };
     let label = statement.get(..colon).unwrap_or_default().trim();
     let data = statement.get(colon + 1..).unwrap_or_default();
     if label.is_empty() {
-        bail!("`:` の前にタスク名がありません ({statement})。");
+        bail!(i18n::t!("There is no task name before `:` ({statement})."));
     }
     if data.trim().is_empty() {
-        bail!("`:` のあとに開始と終了がありません ({statement})。");
+        bail!(i18n::t!(
+            "There is no start or end after `:` ({statement})."
+        ));
     }
     if data.contains(['#', ';']) {
-        bail!(
-            "タスクの指定は `#` と `;` から先が読み飛ばされます ({statement})。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid ignores everything from `#` or `;` onward in the fields of a task ({statement}). Edit it as text."
+        ));
     }
     if !is_valid_gantt_label(label) {
-        bail!(
-            "`{label}` はタスク名に使えません ({statement})。`:` と、`title` や `section` などの文の先頭語は使えません。"
-        );
+        bail!(i18n::t!(
+            "`{label}` cannot be used as a task name ({statement}). `:` and words that start a statement, such as `title` and `section`, are not allowed."
+        ));
     }
 
     let mut fields = data.split(',').map(str::trim).collect::<Vec<_>>();
@@ -1136,10 +1150,10 @@ fn parse_task(statement: &str) -> Result<GanttTask> {
         [end] => (None, None, *end),
         [start, end] => (None, Some(*start), *end),
         [id, start, end] => (Some(*id), Some(*start), *end),
-        _ => bail!(
-            "タスクの指定 `{}` を読めませんでした ({statement})。`タグ, ID, 開始, 終了` のうち、タグを除いて 1〜3 個にしてください。",
+        _ => bail!(i18n::t!(
+            "Could not read the task fields `{}` ({statement}). Of `tags, ID, start, end`, write 1 to 3 fields, not counting the tags.",
             data.trim()
-        ),
+        )),
     };
 
     let id = match id {
@@ -1149,9 +1163,9 @@ fn parse_task(statement: &str) -> Result<GanttTask> {
             // decided by [`GanttDocument::structure_error`] from the references
             // that are actually there.
             if !is_valid_gantt_task_id(id) {
-                bail!(
-                    "ID `{id}` は構造化編集に対応していません ({statement})。`,` `#` `;` と改行は使えず、`done` などのタグ名も ID にできません。"
-                );
+                bail!(i18n::t!(
+                    "The ID `{id}` is not supported by the structured editor ({statement}). `,`, `#`, `;` and line breaks cannot be used, and tag names such as `done` cannot be IDs."
+                ));
             }
             Some(id.to_string())
         }
@@ -1163,10 +1177,10 @@ fn parse_task(statement: &str) -> Result<GanttTask> {
             Some(ids) => GanttStart::After(ids?),
             None => {
                 if relative_reference(text, "until").is_some() {
-                    bail!("開始には `until` を書けません ({statement})。");
+                    bail!(i18n::t!("The start cannot be `until` ({statement})."));
                 }
                 if !is_valid_gantt_date(text) {
-                    bail!("開始 `{text}` を読めませんでした ({statement})。");
+                    bail!(i18n::t!("Could not read the start `{text}` ({statement})."));
                 }
                 GanttStart::Date(text.to_string())
             }
@@ -1177,12 +1191,12 @@ fn parse_task(statement: &str) -> Result<GanttTask> {
         Some(ids) => GanttEnd::Until(ids?),
         None => {
             if relative_reference(end, "after").is_some() {
-                bail!(
-                    "終了には `after` を書けません ({statement})。Mermaid はこれを長さ 0 として読みます。"
-                );
+                bail!(i18n::t!(
+                    "The end cannot be `after` ({statement}). Mermaid reads it as a duration of 0."
+                ));
             }
             if !is_valid_gantt_date(end) {
-                bail!("終了 `{end}` を読めませんでした ({statement})。");
+                bail!(i18n::t!("Could not read the end `{end}` ({statement})."));
             }
             GanttEnd::Fixed(end.to_string())
         }
@@ -1216,10 +1230,10 @@ fn relative_reference(text: &str, keyword: &str) -> Option<Result<Vec<String>>> 
         .map(str::to_string)
         .collect::<Vec<_>>();
     if ids.is_empty() || ids.iter().any(|id| !is_valid_gantt_id(id)) {
-        return Some(Err(anyhow!(
-            "`{keyword}` の参照先 `{}` を読めませんでした。半角英数字と `_` `-` の ID を空白で区切って書いてください。",
+        return Some(Err(anyhow!(i18n::t!(
+            "Could not read the targets `{}` of `{keyword}`. Write IDs made of ASCII letters, digits, `_` and `-`, separated by spaces.",
             rest.trim()
-        )));
+        ))));
     }
     Some(Ok(ids))
 }
@@ -1758,9 +1772,9 @@ mod tests {
             // Mermaid with a task it cannot place.
             (
                 "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 7d, extra",
-                "1〜3",
+                "1 to 3",
             ),
-            ("gantt\n    dateFormat YYYY-MM-DD\n    A :done", "1〜3"),
+            ("gantt\n    dateFormat YYYY-MM-DD\n    A :done", "1 to 3"),
             // The rest of the statement after a `#` or a `;` is thrown away.
             (
                 "gantt\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 7d#メモ",
@@ -1795,30 +1809,36 @@ mod tests {
             // allowed, because Mermaid never reads it.
             (
                 "gantt\n    dateFormat YYYY-MM-DD\n    A :タスク, 2026-01-01, 7d\n    B :b, after タスク, 3d",
-                "英数字",
+                "letters, digits",
             ),
             // The first task has nothing to follow.
-            ("gantt\n    dateFormat YYYY-MM-DD\n    A :7d", "最初"),
+            (
+                "gantt\n    dateFormat YYYY-MM-DD\n    A :7d",
+                "The first task",
+            ),
             // A line that is neither a statement nor a task.
-            ("gantt\n    dateFormat YYYY-MM-DD\n    なにか", "読めません"),
+            (
+                "gantt\n    dateFormat YYYY-MM-DD\n    なにか",
+                "Could not read",
+            ),
             // Mermaid keeps the last of two header statements, so writing the
             // chart back would drop the line the user can still see.
             (
                 "gantt\n    title 図\n    title 案\n    A :a, 2026-01-01, 7d",
-                "`title` が 2 回",
+                "`title` is written twice",
             ),
             (
                 "gantt\n    title 図\n    title \n    A :a, 2026-01-01, 7d",
-                "`title` が 2 回",
+                "`title` is written twice",
             ),
             (
                 "gantt\n    dateFormat YYYY-MM-DD\n    dateFormat YYYY/MM/DD\n    A :a, 2026-01-01, 7d",
-                "`dateFormat` が 2 回",
+                "`dateFormat` is written twice",
             ),
             // Something written after the diagram keyword.
             (
                 "gantt title 図\n    dateFormat YYYY-MM-DD\n    A :a, 2026-01-01, 7d",
-                "`gantt` の行",
+                "on the `gantt` line",
             ),
         ] {
             let error = parse_gantt(source)
@@ -1829,11 +1849,20 @@ mod tests {
                 message.contains(expected),
                 "the reason for `{source}` should mention {expected}: {message}"
             );
-            assert!(
-                message.chars().any(|character| character > '\u{7f}'),
-                "the message should be Japanese for `{source}`: {message}"
+            assert_ne!(
+                japanese_reason(source).as_deref(),
+                Some(message.as_str()),
+                "the message should be the editor's own sentence for `{source}`"
             );
         }
+    }
+
+    /// The reason `source` is refused, read with the Japanese catalog. A
+    /// sentence the editor wrote goes through the catalog and so changes with
+    /// the language, while an error `merman` raised would come back unchanged.
+    fn japanese_reason(source: &str) -> Option<String> {
+        let _japanese = crate::mermaid_model::japanese_for_this_thread();
+        parse_gantt(source).err().map(|error| error.to_string())
     }
 
     /// The drawing with `merman`'s own id blanked out, so that two renderings
@@ -1910,11 +1939,10 @@ mod tests {
             let error = parse_gantt(source)
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
-            assert!(
-                format!("{error}")
-                    .chars()
-                    .any(|character| character > '\u{7f}'),
-                "the reason for `{source}` should be Japanese: {error}"
+            assert_ne!(
+                japanese_reason(source),
+                Some(error.to_string()),
+                "the reason for `{source}` should be the editor's own sentence"
             );
         }
     }
@@ -1998,7 +2026,7 @@ mod tests {
         let error = document
             .structure_error()
             .expect("a Japanese id may not be pointed at");
-        assert!(error.contains("英数字"), "{error}");
+        assert!(error.contains("letters, digits"), "{error}");
 
         // A field separator, a statement cut and a tag word stay refused.
         for id in ["", "a,b", "a#b", "a;b", " a ", "done", "milestone"] {
@@ -2195,10 +2223,7 @@ mod tests {
             .unwrap_or_else(|| panic!("`{source}` should be refused"));
         let message = format!("{error}");
         assert!(message.contains("`a`"), "{message}");
-        assert!(
-            message.chars().any(|character| character > '\u{7f}'),
-            "{message}"
-        );
+        assert!(message.contains("is used by two tasks"), "{message}");
 
         // The same document reached from the form — a rename that lands on an
         // id another task already carries — is stopped before it is written.
@@ -2299,7 +2324,7 @@ mod tests {
         let error = document
             .structure_error()
             .expect("a nameless second section");
-        assert!(error.contains("2 つ目"), "{error}");
+        assert!(error.contains("Every section after the first"), "{error}");
         document.sections.pop();
 
         // An id needs a start of its own, because Mermaid counts the fields.

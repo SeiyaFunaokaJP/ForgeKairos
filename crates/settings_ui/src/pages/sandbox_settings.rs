@@ -10,15 +10,21 @@ use util::ResultExt as _;
 use crate::SettingsWindow;
 use crate::components::{SettingsInputField, SettingsSectionHeader};
 
-const DOMAINS_DESCRIPTION: &str = "各項目は完全一致のドメイン (github.com)、または先頭の *. によるサブドメインのワイルドカード (*.npmjs.org) です。IP アドレスとローカルドメインは指定できません。ここでの許可が効くのは IDE 全体のネットワーク許可リストの範囲内だけで、そちらに無いホストは、ここに登録しても接続できません。";
+const DOMAINS_DESCRIPTION: &str = i18n::msg!(
+    "Each entry is an exact domain (github.com) or a leading-*. subdomain wildcard (*.npmjs.org). IP addresses and local domains are not allowed. An entry here only takes effect within the editor-wide network allowlist: a host that is not on that list stays unreachable even if you add it here."
+);
 
 /// The "allow every domain" switch lifts the *sandbox's* own host list, not the
 /// editor-wide egress allowlist that list sits inside — see ADR-F17. Saying so
 /// here keeps the switch from reading as an escape hatch from that allowlist,
 /// which is exactly what it is not.
-const ALLOW_ALL_HOSTS_DESCRIPTION: &str = "サンドボックス内のコマンドが、確認なしで任意のドメインへネットワーク接続できるようにします。外すのはサンドボックス側の制限だけなので、実際に接続できるのは IDE 全体のネットワーク許可リストの範囲内です (ローカルホストは常に接続できます)。";
+const ALLOW_ALL_HOSTS_DESCRIPTION: &str = i18n::msg!(
+    "Let sandboxed commands reach any domain over the network without prompting. This only lifts the sandbox's own restriction, so commands can still reach only the hosts within the editor-wide network allowlist (localhost is always reachable)."
+);
 
-const WRITE_PATHS_DESCRIPTION: &str = "各項目は絶対パスで指定します。保護された Git のメタデータを除き、その配下すべてに書き込みアクセスを許可します。";
+const WRITE_PATHS_DESCRIPTION: &str = i18n::msg!(
+    "Each entry must be an absolute path and grants write access to the whole subtree, except protected Git metadata."
+);
 
 pub(crate) fn render_sandbox_settings_page(
     settings_window: &SettingsWindow,
@@ -67,9 +73,9 @@ pub(crate) fn render_sandbox_settings_page(
         .child(
             SwitchField::new(
                 "sandbox-enabled",
-                Some("サンドボックスを有効にする"),
+                Some(i18n::t!("Enable Sandbox")),
                 Some(
-                    "エージェントが実行するターミナルコマンドを OS レベルのサンドボックスで包みます。無効の間は、コマンドが Zed 本体の権限で実行されるため自動承認が効かず、コマンドごとに確認します。外部エージェント本体と Claude Code の起動には影響しません (それぞれの設定は「AI」ページにあります)。"
+                    i18n::t!("Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page).")
                         .into(),
                 ),
                 sandbox_enabled,
@@ -82,9 +88,9 @@ pub(crate) fn render_sandbox_settings_page(
         .child(
             SwitchField::new(
                 "pause-worktree-code-after-agent-writes",
-                Some("エージェントが書き込んだフォルダーのコードを再開まで止める"),
+                Some(i18n::t!("Pause Folder Code After Agent Writes Until Resumed")),
                 Some(
-                    "エージェントがファイルを書き込んだプロジェクトのフォルダーでは、[再開] を押すまで、言語サーバーとフォーマッターがそのフォルダーのコード (プロジェクトの prettier・ESLint の設定、ビルドスクリプトなど) を実行しません。この設定はユーザー設定にだけ保存され、プロジェクトの設定では変えられません。"
+                    i18n::t!("In a project folder where the agent has written files, language servers and formatters do not run that folder's code (the project's Prettier and ESLint configuration, build scripts, and so on) until you press Resume. This setting is saved only in your user settings and cannot be changed by project settings.")
                         .into(),
                 ),
                 project::worktree_code_execution::pause_after_agent_writes_enabled(cx),
@@ -100,11 +106,11 @@ pub(crate) fn render_sandbox_settings_page(
         .child({
             let docs_url =
                 client::zed_urls::sandboxing_docs(Some("persistent-sandbox-permissions"), cx);
-            let tooltip = format!("{docs_url} を開きます");
+            let tooltip = i18n::t!("Opens {docs_url}");
             // Wrap in a row so the button shrinks to its content width instead
             // of stretching across the settings page.
             h_flex().child(
-                Button::new("sandbox-docs-link", "サンドボックスについて詳しく見る")
+                Button::new("sandbox-docs-link", i18n::t!("Learn more about sandboxing"))
                     .label_size(LabelSize::Small)
                     .color(Color::Muted)
                     .end_icon(
@@ -123,7 +129,7 @@ pub(crate) fn render_sandbox_settings_page(
                     .severity(Severity::Warning)
                     .child(Label::new(error).size(LabelSize::Small))
                     .action_slot(
-                        Button::new("dismiss-sandbox-host-error", "閉じる")
+                        Button::new("dismiss-sandbox-host-error", i18n::t!("Dismiss"))
                             .style(ButtonStyle::Tinted(ui::TintColor::Warning))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.sandbox_host_validation_error = None;
@@ -135,12 +141,12 @@ pub(crate) fn render_sandbox_settings_page(
         .child(
             v_flex()
                 .gap_4()
-                .child(SettingsSectionHeader::new("ネットワーク").no_padding(true))
+                .child(SettingsSectionHeader::new(i18n::t!("Network")).no_padding(true))
                 .child(
                     SwitchField::new(
                         "sandbox-allow-all-hosts",
-                        Some("すべてのドメインを許可"),
-                        Some(ALLOW_ALL_HOSTS_DESCRIPTION.into()),
+                        Some(i18n::t!("Allow All Domains")),
+                        Some(i18n::tr(ALLOW_ALL_HOSTS_DESCRIPTION).into()),
                         permissions.allow_all_hosts,
                         move |state, _window, cx| {
                             set_allow_all_hosts(*state == ToggleState::Selected, cx);
@@ -149,8 +155,8 @@ pub(crate) fn render_sandbox_settings_page(
                     .tab_index(0),
                 )
                 .child(render_list_section(
-                    "許可するドメイン",
-                    DOMAINS_DESCRIPTION,
+                    i18n::t!("Allowed Domains"),
+                    i18n::tr(DOMAINS_DESCRIPTION),
                     host_rows,
                     add_host_input,
                     empty_border,
@@ -161,13 +167,13 @@ pub(crate) fn render_sandbox_settings_page(
         .child(
             v_flex()
                 .gap_4()
-                .child(SettingsSectionHeader::new("ファイルシステム").no_padding(true))
+                .child(SettingsSectionHeader::new(i18n::t!("File System")).no_padding(true))
                 .child(
                     SwitchField::new(
                         "sandbox-allow-fs-write-all",
-                        Some("ファイルシステムへの書き込みをすべて許可"),
+                        Some(i18n::t!("Allow All File System Writes")),
                         Some(
-                            "サンドボックス内のコマンドが、保護されたパス (Git のメタデータなど) を除きどこにでも書き込めるようにします。サンドボックスの外で実行するのとほぼ同じになるため、有効の間は自動承認が効かず、コマンドごとに確認します。"
+                            i18n::t!("Let sandboxed commands write anywhere except protected paths (such as Git metadata). This is almost the same as running outside the sandbox, so while it is on, auto-approval does not apply and each command asks for confirmation.")
                                 .into(),
                         ),
                         permissions.allow_fs_write_all,
@@ -178,8 +184,8 @@ pub(crate) fn render_sandbox_settings_page(
                     .tab_index(0),
                 )
                 .child(render_list_section(
-                    "書き込みを許可するパス",
-                    WRITE_PATHS_DESCRIPTION,
+                    i18n::t!("Writable Paths"),
+                    i18n::tr(WRITE_PATHS_DESCRIPTION),
                     path_rows,
                     add_path_input,
                     empty_border,
@@ -189,13 +195,13 @@ pub(crate) fn render_sandbox_settings_page(
         .child(
             v_flex()
                 .gap_4()
-                .child(SettingsSectionHeader::new("権限昇格の確認").no_padding(true))
+                .child(SettingsSectionHeader::new(i18n::t!("Escalation Prompts")).no_padding(true))
                 .child(
                     SwitchField::new(
                         "sandbox-warn-confusable-unicode",
-                        Some("紛らわしい Unicode 文字を警告"),
+                        Some(i18n::t!("Warn About Confusable Unicode")),
                         Some(
-                            "許可を求めるダイアログで、紛らわしい Unicode 文字 (キリル文字の `а` のように見た目がよく似た同形異字など) を含むドメインや書き込みパスが要求されたときに警告します"
+                            i18n::t!("Warn when an approval prompt requests a domain or write path that contains potentially confusable Unicode characters, such as homoglyphs (i.e. two symbols that look similar, such as a Cyrillic `а`)")
                                 .into(),
                         ),
                         permissions.warn_confusable_unicode,
@@ -208,9 +214,9 @@ pub(crate) fn render_sandbox_settings_page(
                 .child(
                     SwitchField::new(
                         "sandbox-warn-ntfs-grants",
-                        Some("Windows ドライブへの許可を警告"),
+                        Some(i18n::t!("Warn About Windows-Drive Grants")),
                         Some(
-                            "Windows のみ: サンドボックスの許可対象が Windows ドライブ上のファイル (WSL 内から DrvFs 経由でアクセスされるもの) のときに警告します。この場合の許可は変換されたパスを通じて適用されるため、Linux ディストリビューション自身のファイルシステム上のファイルに比べてサンドボックスの保証が弱くなります。"
+                            i18n::t!("Windows only: warn when a sandbox grant targets a file on a Windows drive (accessed inside WSL via DrvFs). Such grants are enforced through a translated path and their sandbox-integrity guarantees are weaker than files on the Linux distro's own filesystem.")
                                 .into(),
                         ),
                         permissions.warn_ntfs_grants,
@@ -265,7 +271,7 @@ fn render_empty_state(border_color: gpui::Hsla) -> AnyElement {
         .border_dashed()
         .border_color(border_color)
         .child(
-            Label::new("設定されていません")
+            Label::new(i18n::t!("Nothing configured"))
                 .size(LabelSize::Small)
                 .color(Color::Disabled),
         )
@@ -286,7 +292,7 @@ fn render_host_row(index: usize, host: String, cx: &mut Context<SettingsWindow>)
             IconButton::new(format!("sandbox-host-delete-{}", index), IconName::Trash)
                 .icon_size(IconSize::Small)
                 .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("ドメインを削除"))
+                .tooltip(Tooltip::text(i18n::t!("Remove Domain")))
                 .on_click(cx.listener(move |_, _, _, cx| {
                     remove_network_host(host_for_delete.clone(), cx);
                 })),
@@ -322,7 +328,7 @@ fn render_add_host_input(cx: &mut Context<SettingsWindow>) -> AnyElement {
     let settings_window = cx.entity().downgrade();
 
     SettingsInputField::new("sandbox-host-new")
-        .with_placeholder("ドメインを追加 (例: github.com、*.npmjs.org)…")
+        .with_placeholder(i18n::t!("Add domain (e.g. github.com or *.npmjs.org)…"))
         .tab_index(0)
         .with_buffer_font()
         .display_clear_button()
@@ -369,7 +375,7 @@ fn render_path_row(index: usize, path: PathBuf, cx: &mut Context<SettingsWindow>
             IconButton::new(format!("sandbox-path-delete-{}", index), IconName::Trash)
                 .icon_size(IconSize::Small)
                 .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("パスを削除"))
+                .tooltip(Tooltip::text(i18n::t!("Remove Path")))
                 .on_click(cx.listener(move |_, _, _, cx| {
                     remove_write_path(path_for_delete.clone(), cx);
                 })),
@@ -396,7 +402,7 @@ fn render_add_path_input(cx: &mut Context<SettingsWindow>) -> AnyElement {
     let settings_window = cx.entity().downgrade();
 
     SettingsInputField::new("sandbox-path-new")
-        .with_placeholder("絶対パスを追加 (例: /path/to/directory)…")
+        .with_placeholder(i18n::t!("Add an absolute path (e.g. /path/to/directory)…"))
         .tab_index(0)
         .with_buffer_font()
         .display_clear_button()
@@ -454,16 +460,18 @@ fn canonicalize_host(host: &str) -> Result<String, String> {
     HostPattern::parse(host)
         .map(|pattern| pattern.to_string())
         .map_err(|error| match error {
-            HostPatternError::Empty => "ドメインを入力してください。".to_string(),
-            HostPatternError::IpLiteral(_) => {
-                "IP アドレスとローカルドメインは指定できません。github.com のようなドメインを入力してください。"
+            HostPatternError::Empty => i18n::t!("Domain cannot be empty.").to_string(),
+            HostPatternError::IpLiteral(_) => i18n::t!(
+                "IP addresses and local domains aren't allowed; enter a domain like github.com."
+            )
+            .to_string(),
+            HostPatternError::InvalidWildcard(_) => {
+                i18n::t!("Wildcards are only allowed as a leading label, e.g. *.github.com.")
                     .to_string()
             }
-            HostPatternError::InvalidWildcard(_) => {
-                "ワイルドカードは先頭のラベルにのみ指定できます (例: *.github.com)。".to_string()
-            }
             HostPatternError::Invalid { .. } => {
-                "有効なドメインではありません。github.com や *.npmjs.org のような形式で指定してください。".to_string()
+                i18n::t!("Not a valid domain. Use a domain like github.com or *.npmjs.org.")
+                    .to_string()
             }
         })
 }

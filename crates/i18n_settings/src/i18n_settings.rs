@@ -105,9 +105,21 @@ pub fn init_early() {
 }
 
 fn init_early_with(settings_file: &Path, user_locales_directory: Option<&Path>) {
+    gpui::PromptLevel::set_title_provider(prompt_title);
     let language = read_ui_language(settings_file);
     let problems = apply(&language, user_locales_directory);
     *EARLY_RESULT.lock() = Some(EarlyResult { language, problems });
+}
+
+fn prompt_title(level: gpui::PromptLevel) -> SharedString {
+    match level {
+        gpui::PromptLevel::Info => tc!("dialog title", "Info").into(),
+        gpui::PromptLevel::Warning => tc!("dialog title", "Warning").into(),
+        // Critical also asks before destructive actions (replacing a file, discarding
+        // changes), so translations may word it as a warning rather than an error;
+        // the dialog's icon still sets it apart.
+        gpui::PromptLevel::Critical => tc!("dialog title", "Critical").into(),
+    }
 }
 
 /// Reads only `ui_language` from a settings file. A missing or broken file, or a
@@ -149,6 +161,7 @@ pub fn init_for_tests(user_locales_directory: Option<PathBuf>, cx: &mut App) {
 }
 
 fn init_with(user_locales_directory: Option<PathBuf>, cx: &mut App) {
+    gpui::PromptLevel::set_title_provider(prompt_title);
     let (applied, problems) = match EARLY_RESULT.lock().take() {
         Some(early) => (early.language, early.problems),
         None => {
@@ -330,6 +343,27 @@ mod tests {
     // hold this lock; their installs are kept to their own thread by
     // `ThreadLocalInstalls`.
     static SERIAL: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn native_dialog_titles_follow_the_ui_language() {
+        gpui::PromptLevel::set_title_provider(prompt_title);
+        let titles = || {
+            [
+                gpui::PromptLevel::Info,
+                gpui::PromptLevel::Warning,
+                gpui::PromptLevel::Critical,
+            ]
+            .map(gpui::PromptLevel::title)
+        };
+        {
+            let _locale = i18n::test_support::LocaleOverride::new(None);
+            assert_eq!(titles(), ["Info", "Warning", "Critical"]);
+        }
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(titles(), ["情報", "警告", "警告"]);
+    }
 
     fn write(path: &Path, text: &str) {
         if let Some(parent) = path.parent() {

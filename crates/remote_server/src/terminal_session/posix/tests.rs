@@ -3,7 +3,7 @@
 //! <arguments>` through [`subprocess_entry`].
 
 use super::*;
-use crate::terminal_session::TRUNCATED_REPLAY_NOTICE;
+use crate::terminal_session::truncated_replay_notice;
 use std::cell::RefCell;
 use std::process::{Child, ChildStdin, Stdio};
 use std::sync::{Arc, Mutex};
@@ -330,7 +330,7 @@ fn output_made_while_detached_is_replayed() {
     assert!(replay.is_empty(), "a new shell has nothing to replay");
     let output = first.wait_for("first");
     assert!(
-        contains(&output, RESUMED_WITHOUT_SHELL_NOTICE.as_bytes()),
+        contains(&output, resumed_without_shell_notice().as_bytes()),
         "a resumed tab is told that its shell was not there"
     );
     first.hang_up();
@@ -351,7 +351,7 @@ fn output_made_while_detached_is_replayed() {
     let later_at = find(&replay, b"during-detach").expect("during-detach");
     assert!(first_at < later_at);
     assert!(
-        !contains(&second.output(), RESUMED_WITHOUT_SHELL_NOTICE.as_bytes()),
+        !contains(&second.output(), resumed_without_shell_notice().as_bytes()),
         "the shell was still there"
     );
 
@@ -380,7 +380,7 @@ fn the_exit_code_is_passed_on() {
         assert_eq!(attach.exit_code(), expected, "{script}");
         let output = attach.output();
         assert!(
-            !contains(&output, "切断中".as_bytes()),
+            !contains(&output, b"while disconnected"),
             "the shell ended while attached"
         );
     }
@@ -404,7 +404,7 @@ fn a_shell_that_ended_while_detached_is_reported_once() {
     assert!(contains(&replay, b"started"));
     assert_eq!(
         live,
-        "\r\n[切断中にシェルが終了しました (終了コード 3)]\r\n".as_bytes()
+        "\r\n[The shell exited while disconnected (exit code 3)]\r\n".as_bytes()
     );
     wait_until("the holder is gone", || !sessions.socket("ended").exists());
 
@@ -416,7 +416,7 @@ fn a_shell_that_ended_while_detached_is_reported_once() {
     assert_eq!(third.exit_code(), 0);
     let (replay, live) = third.replay_and_live();
     assert!(replay.is_empty());
-    assert!(live.starts_with(RESUMED_WITHOUT_SHELL_NOTICE.as_bytes()));
+    assert!(live.starts_with(resumed_without_shell_notice().as_bytes()));
     assert!(contains(&live, b"fresh"));
 }
 
@@ -488,7 +488,7 @@ fn a_new_attach_takes_over() {
     first.wait_for("ready");
     let mut second = sessions.attach("shared", &[], &program);
     assert_eq!(first.exit_code(), 253);
-    assert!(first.output().ends_with(TAKEN_OVER_NOTICE.as_bytes()));
+    assert!(first.output().ends_with(taken_over_notice().as_bytes()));
     let (replay, _) = second.replay_and_live();
     assert!(contains(&replay, b"ready"));
     second.send("ping\n");
@@ -542,16 +542,127 @@ fn a_truncated_replay_says_so() {
     let second = sessions.attach("long", &[], &["/bin/false"]);
     let (replay, _) = second.replay_and_live();
     assert!(
-        replay.starts_with(TRUNCATED_REPLAY_NOTICE.as_bytes()),
+        replay.starts_with(truncated_replay_notice().as_bytes()),
         "{replay:?}"
     );
-    let rest = &replay[TRUNCATED_REPLAY_NOTICE.len()..];
+    let rest = &replay[truncated_replay_notice().len()..];
     // 44 bytes keep the end of `line-4` and the five lines after it.
     assert!(
         rest.starts_with(b"line-5\r\n"),
         "starts at a whole line: {rest:?}"
     );
     assert!(rest.ends_with(b"line-9\r\n"));
+}
+
+/// The client names its display language in the attach's environment; the
+/// holder keeps the one of the attach that started it, and the shell does
+/// not see it.
+#[test]
+fn the_notices_are_in_the_clients_language() {
+    let sessions = TestSessions::new();
+    sessions.ids.borrow_mut().push("localized".to_string());
+    let mut first = Attach::new(sessions.spawn_with_env(
+        &[
+            "attach",
+            "--id",
+            "localized",
+            "--nonce",
+            NONCE,
+            "--resume",
+            "--replay-bytes",
+            "44",
+            "--detached-timeout-secs",
+            "60",
+            "--",
+            "/bin/sh",
+            "-c",
+            "echo \"locale=[${ZED_UI_LOCALE-unset}] kept=[${ZED_TEST_KEPT-unset}]\"; \
+             for i in 1 2 3 4 5 6 7 8 9; do echo line-$i; done; exec sleep 1000",
+        ],
+        &[
+            (remote::DISPLAY_LANGUAGE_ENV_VAR, "ja"),
+            ("ZED_TEST_KEPT", "a=b c"),
+        ],
+    ));
+    let output = first.wait_for("line-9");
+    assert!(
+        contains(
+            &output,
+            "[以前のシェルは残っていませんでした。新しいシェルを起動します]".as_bytes()
+        ),
+        "{:?}",
+        String::from_utf8_lossy(&output)
+    );
+    assert!(
+        contains(&output, b"locale=[unset] kept=[a=b c]"),
+        "the shell gets everything else of the environment: {:?}",
+        String::from_utf8_lossy(&output)
+    );
+    first.close_stdin();
+
+    // An attach from a client in English, to the holder started in Japanese.
+    let second = sessions.attach("localized", &[], &["/bin/false"]);
+    let (replay, _) = second.replay_and_live();
+    assert!(
+        replay.starts_with("\x1b[0m[… 古い出力は省略されました …]\r\n".as_bytes()),
+        "{:?}",
+        String::from_utf8_lossy(&replay)
+    );
+    drop(second);
+
+    let mut third = Attach::new(sessions.spawn_with_env(
+        &[
+            "attach",
+            "--id",
+            "localized",
+            "--nonce",
+            NONCE,
+            "--detached-timeout-secs",
+            "60",
+            "--",
+            "/bin/false",
+        ],
+        &[(remote::DISPLAY_LANGUAGE_ENV_VAR, "ja")],
+    ));
+    third.replay_and_live();
+    let mut fourth = sessions.attach("localized", &[], &["/bin/false"]);
+    assert_eq!(third.exit_code(), 253);
+    assert!(
+        third
+            .output()
+            .ends_with("\r\n[別の接続がこのシェルを引き継ぎました]\r\n".as_bytes()),
+        "the attach speaks its own client's language"
+    );
+    assert_eq!(sessions.kill("localized"), 0);
+    assert_eq!(fourth.exit_code(), EXIT_FAILURE);
+}
+
+/// `execv` handed the shell the holder's environment as it was; `execve`
+/// has to do the same, byte for byte and in order, but for the one variable.
+#[test]
+fn the_shell_gets_the_holders_environment_but_the_display_language() {
+    let variables = [
+        ("PATH", b"/usr/bin:/bin".as_slice()),
+        (remote::DISPLAY_LANGUAGE_ENV_VAR, b"ja"),
+        ("ZED_UI_LOCALE_OTHER", b"kept"),
+        ("NOT_UTF8", b"\xff\xfe=x"),
+        ("EMPTY", b""),
+    ]
+    .map(|(name, value)| (OsString::from(name), OsString::from_vec(value.to_vec())));
+    let environment = shell_environment(variables).expect("no variable has NUL");
+    let environment: Vec<&[u8]> = environment
+        .iter()
+        .map(|variable| variable.as_bytes())
+        .collect();
+    assert_eq!(
+        environment,
+        [
+            b"PATH=/usr/bin:/bin".as_slice(),
+            b"ZED_UI_LOCALE_OTHER=kept",
+            b"NOT_UTF8=\xff\xfe=x",
+            b"EMPTY=",
+        ]
+    );
 }
 
 #[test]
@@ -686,11 +797,11 @@ fn an_attach_that_takes_nothing_is_let_go_and_the_shell_goes_on() {
     let second = sessions.attach("stalled", &["--resume"], &["/bin/false"]);
     let output = second.wait_for("after-the-flood");
     assert!(
-        contains(&output, TRUNCATED_REPLAY_NOTICE.as_bytes()),
+        contains(&output, truncated_replay_notice().as_bytes()),
         "the shell went on printing more than the replay keeps"
     );
     assert!(
-        !contains(&output, RESUMED_WITHOUT_SHELL_NOTICE.as_bytes()),
+        !contains(&output, resumed_without_shell_notice().as_bytes()),
         "the shell was kept"
     );
 }

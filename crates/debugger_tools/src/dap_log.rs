@@ -529,13 +529,13 @@ impl Render for DapLogToolbarItemView {
                             sub_item.adapter_name,
                             sub_item.session_label,
                             match sub_item.selected_entry {
-                                View::AdapterLogs => ADAPTER_LOGS,
-                                View::RpcMessages => RPC_MESSAGES,
-                                View::InitializationSequence => INITIALIZATION_SEQUENCE,
+                                View::AdapterLogs => i18n::tr(ADAPTER_LOGS),
+                                View::RpcMessages => i18n::tr(RPC_MESSAGES),
+                                View::InitializationSequence => i18n::tr(INITIALIZATION_SEQUENCE),
                             }
                         ))
                     })
-                    .unwrap_or_else(|| "アダプターが選択されていません".into()),
+                    .unwrap_or_else(|| i18n::t!("No adapter selected").into()),
             ))
             .menu(move |window, cx| {
                 let log_view = log_view.clone();
@@ -563,7 +563,7 @@ impl Render for DapLogToolbarItemView {
                                     div()
                                         .w_full()
                                         .pl_4()
-                                        .child(Label::new(ADAPTER_LOGS))
+                                        .child(Label::new(i18n::tr(ADAPTER_LOGS)))
                                         .into_any_element()
                                 },
                                 window.handler_for(&log_view, {
@@ -585,7 +585,7 @@ impl Render for DapLogToolbarItemView {
                                     div()
                                         .w_full()
                                         .pl_4()
-                                        .child(Label::new(RPC_MESSAGES))
+                                        .child(Label::new(i18n::tr(RPC_MESSAGES)))
                                         .into_any_element()
                                 },
                                 window.handler_for(&log_view, {
@@ -604,7 +604,7 @@ impl Render for DapLogToolbarItemView {
                                     div()
                                         .w_full()
                                         .pl_4()
-                                        .child(Label::new(INITIALIZATION_SEQUENCE))
+                                        .child(Label::new(i18n::tr(INITIALIZATION_SEQUENCE)))
                                         .into_any_element()
                                 },
                                 window.handler_for(&log_view, {
@@ -633,8 +633,8 @@ impl Render for DapLogToolbarItemView {
             .child(
                 div()
                     .child(
-                        Button::new("clear_log_button", "消去").on_click(cx.listener(
-                            |this, _, window, cx| {
+                        Button::new("clear_log_button", i18n::tc!("dap log", "Clear")).on_click(
+                            cx.listener(|this, _, window, cx| {
                                 if let Some(log_view) = this.log_view.as_ref() {
                                     log_view.update(cx, |log_view, cx| {
                                         log_view.editor.update(cx, |editor, cx| {
@@ -644,8 +644,8 @@ impl Render for DapLogToolbarItemView {
                                         });
                                     })
                                 }
-                            },
-                        )),
+                            }),
+                        ),
                     )
                     .ml_2(),
             )
@@ -936,9 +936,9 @@ struct DapMenuItem {
     selected_entry: View,
 }
 
-const ADAPTER_LOGS: &str = "アダプターログ";
-const RPC_MESSAGES: &str = "RPC メッセージ";
-const INITIALIZATION_SEQUENCE: &str = "初期化シーケンス";
+const ADAPTER_LOGS: &str = i18n::msg!("Adapter Logs");
+const RPC_MESSAGES: &str = i18n::msg!("RPC Messages");
+const INITIALIZATION_SEQUENCE: &str = i18n::msg!("Initialization Sequence");
 
 impl Render for DapLogView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1007,7 +1007,7 @@ impl Item for DapLogView {
     }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "DAP ログ".into()
+        i18n::t!("DAP Logs").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {

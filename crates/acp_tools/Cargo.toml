@@ -22,6 +22,7 @@ agent_servers.workspace = true
 agent_ui.workspace = true
 collections.workspace = true
 gpui.workspace = true
+i18n.workspace = true
 language.workspace= true
 markdown.workspace = true
 project.workspace = true

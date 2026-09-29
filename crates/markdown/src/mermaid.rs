@@ -662,7 +662,7 @@ pub(crate) fn render_mermaid_diagram(
                 let rasterized_scale = cached.map_or(1.0, |cached| cached.rasterized_scale);
                 let image_element =
                     img(ImageSource::Render(render_image.clone())).with_fallback(|| {
-                        Label::new("Mermaid 図を読み込めませんでした。").into_any_element()
+                        Label::new(i18n::t!("Failed to Load Mermaid Diagram")).into_any_element()
                     });
                 let scroll_handle = markdown.update(cx, |markdown, _| {
                     markdown.mermaid_scroll_handle(source_offset)
@@ -718,7 +718,7 @@ pub(crate) fn render_mermaid_diagram(
             container
                 .child(
                     div().w_full().pb_1().child(
-                        Label::new(format!("Mermaid 図を描画できませんでした: {error}"))
+                        Label::new(i18n::t!("Failed to render the Mermaid diagram: {error}"))
                             .size(LabelSize::XSmall)
                             .color(Color::Error),
                     ),
@@ -745,7 +745,7 @@ pub(crate) fn render_mermaid_diagram(
                 let fallback_element =
                     img(ImageSource::Render(fallback.clone())).with_fallback(|| {
                         div()
-                            .child(Label::new("Mermaid 図を読み込めませんでした。"))
+                            .child(Label::new(i18n::t!("Failed to load mermaid diagram")))
                             .into_any_element()
                     });
                 let scroll_handle = markdown.update(cx, |markdown, _| {
@@ -807,7 +807,7 @@ pub(crate) fn render_mermaid_diagram(
                     .child(render_mermaid_code_view(&parsed.contents.contents))
                     .child(
                         div().absolute().top_1().right_2().child(
-                            Label::new("レンダリング中...")
+                            Label::new(i18n::t!("Rendering..."))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Muted)
                                 .with_animation(
@@ -916,7 +916,7 @@ fn render_mermaid_tab_header(
         .gap_0p5()
         .mb_2p5()
         .child(
-            Button::new(preview_id, "プレビュー")
+            Button::new(preview_id, i18n::t!("Preview"))
                 .label_size(LabelSize::Small)
                 .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                 .toggle_state(!showing_code)
@@ -930,7 +930,7 @@ fn render_mermaid_tab_header(
                 }),
         )
         .child(
-            Button::new(code_id, "コード")
+            Button::new(code_id, i18n::t!("Code"))
                 .label_size(LabelSize::Small)
                 .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                 .toggle_state(showing_code)
@@ -995,7 +995,7 @@ fn render_mermaid_edit_button(
     .icon_size(IconSize::Small)
     .icon_color(Color::Muted)
     .visible_on_hover("code_block")
-    .tooltip(Tooltip::text("Mermaid 図を編集"))
+    .tooltip(Tooltip::text(i18n::t!("Edit Mermaid Diagram")))
     .on_click(move |_event, window, cx| {
         on_edit(content_range.clone(), window, cx);
     })
@@ -1015,7 +1015,7 @@ fn render_mermaid_zoom_indicator(
     h_flex()
         .gap_0p5()
         .child(
-            Label::new(format!("ズーム {percentage}%"))
+            Label::new(i18n::t!("Zoom {percentage}%"))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         )
@@ -1026,7 +1026,7 @@ fn render_mermaid_zoom_indicator(
             )
             .icon_size(IconSize::Small)
             .icon_color(Color::Muted)
-            .tooltip(Tooltip::text("ズームをリセット"))
+            .tooltip(Tooltip::text(i18n::t!("Reset Zoom")))
             .on_click(move |_event, window, cx| {
                 let zoom_changed = markdown.update(cx, |markdown, cx| {
                     let current_zoom = markdown.mermaid_zoom_level(source_offset);
@@ -1383,7 +1383,7 @@ fn render_mermaid_image(
         .size_full()
         .when(hovered.is_some(), |this| {
             this.cursor_pointer()
-                .tooltip(Tooltip::text("ダブルクリックで文字を編集"))
+                .tooltip(Tooltip::text(i18n::t!("Double-click to edit the text")))
         })
         .child(
             canvas(
@@ -1883,7 +1883,7 @@ mod tests {
         }
 
         /// What the field opens on when the token could not be found at all.
-        const NOT_LOCATED: &str = "\u{3053}\u{306e}\u{30e9}\u{30d9}\u{30eb}\u{306f}\u{30bd}\u{30fc}\u{30b9}\u{306e}\u{4f4d}\u{7f6e}\u{3092}\u{7279}\u{5b9a}\u{3067}\u{304d}\u{307e}\u{305b}\u{3093}\u{3067}\u{3057}\u{305f}\u{3002}";
+        const NOT_LOCATED: &str = "The source location of this label could not be found.";
         type Recorded = (Option<std::ops::Range<usize>>, String, String, &'static str);
 
         ensure_theme_initialized(cx);
@@ -2067,7 +2067,7 @@ mod tests {
                 None,
                 String::new(),
                 "\u{5171}\u{6709}".to_string(),
-                "\u{3053}\u{306e}\u{7dda}\u{306e}\u{30e9}\u{30d9}\u{30eb}\u{306f}\u{8907}\u{6570}\u{306e}\u{3064}\u{306a}\u{304c}\u{308a}\u{3067}\u{5171}\u{6709}\u{3055}\u{308c}\u{3066}\u{3044}\u{308b}\u{305f}\u{3081}\u{3001}\u{3053}\u{3053}\u{3067}\u{306f}\u{7de8}\u{96c6}\u{3067}\u{304d}\u{307e}\u{305b}\u{3093}\u{3002}"
+                "This line's label is shared by several links, so it cannot be edited here."
             )]
         );
 

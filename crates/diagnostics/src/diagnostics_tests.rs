@@ -2500,3 +2500,89 @@ fn random_lsp_diagnostic(
         ..Default::default()
     }
 }
+
+#[test]
+fn test_empty_buffer_label_puts_the_file_name_where_the_translation_does() {
+    use crate::buffer_diagnostics::split_around_file;
+
+    let english = "No problems in {file}";
+    // Upstream renders the label before the file name button.
+    assert_eq!(split_around_file(english, english), ("No problems in", ""));
+    assert_eq!(
+        split_around_file("{file} に問題はありません", english),
+        ("", "に問題はありません")
+    );
+    assert_eq!(
+        split_around_file("Dans {file} rien", english),
+        ("Dans", "rien")
+    );
+    assert_eq!(split_around_file("{file}", english), ("", ""));
+
+    for broken in [
+        "問題はありません",
+        "{file} と {file}",
+        "",
+        "{File} に問題はありません",
+    ] {
+        assert_eq!(
+            split_around_file(broken, english),
+            ("No problems in", ""),
+            "{broken:?} must fall back to English"
+        );
+    }
+    assert_eq!(
+        split_around_file("no placeholder", "no placeholder"),
+        ("no placeholder", "")
+    );
+
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
+    for (english, before_file, after_file) in [
+        ("No problems in {file}", "", "に問題はありません"),
+        ("No errors in {file}", "", "にエラーはありません"),
+    ] {
+        assert_eq!(
+            split_around_file(i18n::tr(english), english),
+            (before_file, after_file)
+        );
+    }
+}
+
+#[test]
+fn test_diagnostics_summary_label_matches_upstream_english() {
+    use crate::items::diagnostics_summary_label;
+
+    assert_eq!(
+        diagnostics_summary_label(0, 0),
+        "Project diagnostics: no problems"
+    );
+    assert_eq!(
+        diagnostics_summary_label(1, 0),
+        "Project diagnostics: 1 error"
+    );
+    assert_eq!(
+        diagnostics_summary_label(2, 0),
+        "Project diagnostics: 2 errors"
+    );
+    assert_eq!(
+        diagnostics_summary_label(0, 1),
+        "Project diagnostics: 1 warning"
+    );
+    assert_eq!(
+        diagnostics_summary_label(1, 3),
+        "Project diagnostics: 1 error, 3 warnings"
+    );
+
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
+    assert_eq!(
+        diagnostics_summary_label(0, 0),
+        "プロジェクトの診断: 問題なし"
+    );
+    assert_eq!(
+        diagnostics_summary_label(1, 3),
+        "プロジェクトの診断: エラー 1 件, 警告 3 件"
+    );
+}

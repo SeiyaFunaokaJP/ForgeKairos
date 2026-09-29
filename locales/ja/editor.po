@@ -5,29 +5,203 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-msgid "A language server"
-msgstr "言語サーバー"
+msgid "2 years, 11 months ago"
+msgstr "2 年 11 か月前"
+
+msgid "Accept"
+msgstr "採用"
+
+msgid "Add Bookmark"
+msgstr "ブックマークを追加"
+
+msgid "Add Review (drag to select multiple lines)"
+msgstr "レビューを追加 (ドラッグで複数行を選択)"
+
+msgid "Add a review comment..."
+msgstr "レビューコメントを追加..."
+
+msgid "Add comment"
+msgstr "コメントを追加"
+
+msgid "Add to Agent Thread"
+msgstr "エージェントスレッドに追加"
+
+msgid "Ask Copilot About Selection"
+msgstr "選択テキストを Copilot に聞く"
+
+msgid "Assign Keybinding"
+msgstr "キーバインドを割り当て"
 
 msgid "Bookmarks"
 msgstr "ブックマーク"
 
+msgid "C4Context\n    %% Person is a user, System your system, System_Ext an external one and Rel a relationship\n    title Order System Overview\n    Person(customer, \"Customer\", \"Orders products\")\n    System(shop, \"Order System\", \"Accepts orders\")\n    System_Ext(mail, \"Mail Delivery\", \"Sends notifications\")\n    Rel(customer, shop, \"Places orders\")\n    Rel(shop, mail, \"Requests notifications\")"
+msgstr "C4Context\n    %% Person は利用者、System は自システム、System_Ext は外部、Rel は関係\n    title 受注システムの全体像\n    Person(customer, \"顧客\", \"商品を注文する\")\n    System(shop, \"受注システム\", \"注文を受け付ける\")\n    System_Ext(mail, \"メール配信\", \"通知を送る\")\n    Rel(customer, shop, \"注文する\")\n    Rel(shop, mail, \"通知を依頼する\")"
+
+msgid "Can't change this because the selection covers only part of a link or image syntax (such as [text](URL)). Select the whole link, or only its text."
+msgstr "選択範囲がリンクや画像の書き方 ([文字](URL) など) の一部だけにかかっているため、変更できません。リンク全体か、リンクの文字だけを選んでください。"
+
+msgid "Can't change this because the selection crosses an existing HTML tag (such as a text color or a marker)."
+msgstr "選択範囲が既存の HTML タグ (文字色・マーカーなど) をまたいでいるため、変更できません。"
+
+msgid "Can't change this because wrapping an HTML block in a tag from its start would turn it into a paragraph. Select only the text inside the element."
+msgstr "HTML ブロックの先頭からタグで包むと HTML ブロックが段落に変わってしまうため、変更できません。要素の中の文字だけを選んでください。"
+
 msgid "Cancel"
 msgstr "キャンセル"
+
+msgid "Class"
+msgstr "クラス"
+
+msgid "Clear Run Status"
+msgstr "実行結果の表示を消去"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Close Git Blame"
+msgstr "Git の注釈 (blame) を閉じる"
+
+msgid "Color"
+msgstr "色"
+
+msgid "Condition when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "ブレークポイントで停止する条件。{{}} 内の式は評価されて埋め込まれます。"
+
+msgid "Confirm"
+msgstr "確定"
+
+msgid "Conflict with Accept Keybinding"
+msgstr "採用のキーバインドが競合しています"
+
+msgid "Constant"
+msgstr "定数"
+
+msgid "Constructor"
+msgstr "コンストラクター"
+
+msgid "Copy"
+msgstr "コピー"
 
 msgid "Copy Diagnostic"
 msgstr "診断をコピー"
 
+msgid "Copy Path"
+msgstr "パスをコピー"
+
 msgid "Copy Permalink to Line"
 msgstr "この行への永続リンクをコピー"
+
+msgid "Copy Relative Path"
+msgstr "相対パスをコピー"
+
+msgid "Copy and Trim"
+msgstr "余白を削ってコピー"
+
+msgid "Cut"
+msgstr "切り取り"
+
+msgid "Declarations"
+msgstr "宣言"
+
+msgid "Definitions"
+msgstr "定義"
+
+msgid "Disable"
+msgstr "無効にする"
+
+msgid "Edit Bookmark"
+msgstr "ブックマークを編集"
+
+msgid "Edit Condition Breakpoint"
+msgstr "条件付きブレークポイントを編集"
+
+msgid "Edit Hit Condition Breakpoint"
+msgstr "ヒットカウントブレークポイントを編集"
+
+msgid "Edit Log Breakpoint"
+msgstr "ログポイントを編集"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "Mermaid 図を編集…"
+
+msgid "Edit Table…"
+msgstr "表を編集…"
+
+msgid "Enable"
+msgstr "有効にする"
+
+msgid "Enter bookmark label (Optional)"
+msgstr "ブックマークのラベルを入力 (省略可)"
+
+msgid "Enum"
+msgstr "列挙型"
+
+msgid "Enum Member"
+msgstr "列挙型のメンバー"
+
+msgid "Evaluate Selection"
+msgstr "選択範囲を評価"
+
+msgid "Event"
+msgstr "イベント"
+
+msgid "Expand Excerpt"
+msgstr "抜粋を展開"
+
+msgid "Export to PDF"
+msgstr "PDF に書き出す"
 
 msgid "Failed to copy permalink to line: {err}"
 msgstr "この行への永続リンクをコピーできませんでした: {err}"
 
+msgid "Failed to create buffer"
+msgstr "バッファーを作成できませんでした"
+
 msgid "Failed to open permalink to line: {err}"
 msgstr "この行への永続リンクを開けませんでした: {err}"
 
+msgid "Field"
+msgstr "フィールド"
+
+msgid "File"
+msgstr "ファイル"
+
 msgid "Find All References"
 msgstr "すべての参照を検索"
+
+msgid "Fold All Headings"
+msgstr "見出しをすべて畳む"
+
+msgid "Fold Excerpt"
+msgstr "抜粋を折りたたむ"
+
+msgid "Folder"
+msgstr "フォルダー"
+
+msgid "Format Buffer"
+msgstr "バッファーをフォーマット"
+
+msgid "Format Selections"
+msgstr "選択範囲をフォーマット"
+
+msgid "Formatting can't be applied across table cells."
+msgstr "表のセルをまたぐ範囲には書式を付けられません。"
+
+msgid "Formatting can't be applied inside a link's URL or an image's syntax."
+msgstr "リンクの URL や画像の書き方の中には書式を付けられません。"
+
+msgid "Formatting can't be applied inside an HTML tag or comment."
+msgstr "HTML のタグやコメントの中には書式を付けられません。"
+
+msgid "Formatting can't be changed inside code."
+msgstr "コードの中は書式を変更できません。"
+
+msgid "Formatting did not complete within {} seconds."
+msgstr "フォーマットが {} 秒以内に完了しませんでした。"
+
+msgid "Function"
+msgstr "関数"
 
 msgid "Go to Declaration"
 msgstr "宣言へ移動"
@@ -41,11 +215,179 @@ msgstr "実装へ移動"
 msgid "Go to Type Definition"
 msgstr "型定義へ移動"
 
+msgid "Hold"
+msgstr "長押し"
+
+msgid "How many breakpoint hits to ignore"
+msgstr "無視するヒット回数"
+
+msgid "Implementations"
+msgstr "実装"
+
+msgid "Indent"
+msgstr "インデント"
+
+msgid "Insert Collapsible Section (details)"
+msgstr "折り畳み (details) を挿入"
+
+msgid "Insert Mermaid Diagram"
+msgstr "Mermaid 図を挿入"
+
+msgid "Interface"
+msgstr "インターフェース"
+
+msgid "Jump"
+msgstr "移動"
+
+msgid "Jump to Edit"
+msgstr "編集箇所へ移動"
+
+msgid "Jump to {file_name}"
+msgstr "{file_name} へ移動"
+
+msgid "Keyword"
+msgstr "キーワード"
+
+msgid "Line {start_line}"
+msgstr "{start_line} 行目"
+
+msgid "Lines {start_line}-{end_line}"
+msgstr "{start_line}-{end_line} 行目"
+
+msgid "Message to log when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "ブレークポイント到達時に出力するメッセージ。{{}} 内の式は評価されて埋め込まれます。"
+
+msgid "Method"
+msgstr "メソッド"
+
+msgid "Module"
+msgstr "モジュール"
+
+msgid "Next Hunk"
+msgstr "次の変更箇所"
+
+msgid "Next Signature"
+msgstr "次のシグネチャ"
+
+msgid "No executable code is associated with this line."
+msgstr "この行に実行可能なコードがありません。"
+
+msgid "No paragraph has a text size set."
+msgstr "文字サイズの指定された段落がありません。"
+
+msgid "No part of the selection has a marker."
+msgstr "選択範囲にマーカーの付いた部分がありません。"
+
+msgid "No part of the selection has a text color."
+msgstr "選択範囲に文字色の付いた部分がありません。"
+
 msgid "Open"
 msgstr "開く"
 
-msgid "Open a link from a language server?"
-msgstr "言語サーバーからのリンクを開きますか?"
+msgid "Open File"
+msgstr "ファイルを開く"
+
+msgid "Open Git Blame"
+msgstr "Git の注釈 (blame) を開く"
+
+msgid "Open Markdown Preview"
+msgstr "Markdown プレビューを開く"
+
+msgid "Open Markdown Preview to the Side"
+msgstr "Markdown プレビューを横に開く"
+
+msgid "Open SVG Preview to the Side"
+msgstr "SVG プレビューを横に開く"
+
+msgid "Open in Terminal"
+msgstr "ターミナルで開く"
+
+msgid "Operator"
+msgstr "演算子"
+
+msgid "Outdent"
+msgstr "インデント解除"
+
+msgid "Part of the selection couldn't be formatted: {}"
+msgstr "選択範囲の一部には書式を付けられませんでした: {}"
+
+msgid "Paste"
+msgstr "貼り付け"
+
+msgid "Preview"
+msgstr "プレビュー"
+
+msgid "Previous Hunk"
+msgstr "前の変更箇所"
+
+msgid "Previous Signature"
+msgstr "前のシグネチャ"
+
+msgid "Property"
+msgstr "プロパティ"
+
+msgid "Reference"
+msgstr "参照"
+
+msgid "References"
+msgstr "参照"
+
+msgid "References to {target}"
+msgstr "{target} の参照"
+
+msgid "Remove Bookmark"
+msgstr "ブックマークを削除"
+
+msgid "Rename Symbol"
+msgstr "シンボルの名前変更"
+
+msgid "Restore"
+msgstr "元に戻す"
+
+msgid "Restore Hunk"
+msgstr "変更箇所を元に戻す"
+
+msgid "Reveal In Project Panel"
+msgstr "プロジェクトパネルで表示"
+
+msgid "Right-Click to Copy Path"
+msgstr "右クリックでパスをコピー"
+
+msgid "Right-click for more options"
+msgstr "右クリックでその他の操作"
+
+msgid "Run to Cursor"
+msgstr "カーソル位置まで実行"
+
+msgid "Scroll"
+msgstr "スクロール"
+
+msgid "Search Selection on the Web"
+msgstr "選択テキストを Web で検索"
+
+msgid "See Docs"
+msgstr "ドキュメントを見る"
+
+msgid "Selections for '{title}'"
+msgstr "'{title}' の選択範囲"
+
+msgid "Send Selection to Claude Code"
+msgstr "選択範囲を Claude Code に送る"
+
+msgid "Set Breakpoint"
+msgstr "ブレークポイントを設定"
+
+msgid "Set Condition Breakpoint"
+msgstr "条件付きブレークポイントを設定"
+
+msgid "Set Hit Condition Breakpoint"
+msgstr "ヒットカウントブレークポイントを設定"
+
+msgid "Set Log Breakpoint"
+msgstr "ログポイントを設定"
+
+msgid "Show Code Actions"
+msgstr "コードアクションを表示"
 
 msgid "Show Incoming Calls"
 msgstr "呼び出し元を表示"
@@ -53,11 +395,74 @@ msgstr "呼び出し元を表示"
 msgid "Show Outgoing Calls"
 msgstr "呼び出し先を表示"
 
+msgid "Show Symbol Outline"
+msgstr "シンボルのアウトラインを表示"
+
+msgid "Snippet"
+msgstr "スニペット"
+
+msgid "Split"
+msgstr "左右分割"
+
+msgid "Split when wider than {} columns"
+msgstr "{} 桁より広いときに左右分割"
+
 msgid "Stage"
 msgstr "ステージ"
 
 msgid "Stage Hunk"
 msgstr "変更箇所をステージ"
+
+msgid "Struct"
+msgstr "構造体"
+
+msgid "Text"
+msgstr "テキスト"
+
+msgid "Text size can only be set on paragraphs (not on headings, code blocks, tables, or HTML blocks)."
+msgstr "文字サイズは段落にだけ付けられます (見出し・コードブロック・表・HTML ブロックは対象外です)。"
+
+msgid "The diagram text changed while it was being edited. Open it again."
+msgstr "図のテキストが編集中に変更されました。もう一度開き直してください。"
+
+msgid "The remote instance of Zed does not support this yet. It must be upgraded to {}"
+msgstr "リモートの Zed はまだこの機能に対応していません。{} へアップグレードしてください。"
+
+msgid "There is no text to format."
+msgstr "書式を付ける文字がありません。"
+
+msgid "This buffer is read-only, so the diagram can't be written back."
+msgstr "このバッファーは読み取り専用のため、図を書き戻せません。"
+
+msgid "Toggle Code Actions"
+msgstr "コードアクションの表示切り替え"
+
+msgid "Type Parameter"
+msgstr "型パラメーター"
+
+msgid "Types"
+msgstr "型"
+
+msgid "Unfold All Headings"
+msgstr "見出しをすべて展開"
+
+msgid "Unfold Excerpt"
+msgstr "抜粋を展開"
+
+msgid "Unified"
+msgstr "インライン表示"
+
+msgid "Unit"
+msgstr "単位"
+
+msgid "Unknown"
+msgstr "不明"
+
+msgid "Unset Breakpoint"
+msgstr "ブレークポイントを解除"
+
+msgid "Unset breakpoint"
+msgstr "ブレークポイントを解除"
 
 msgid "Unstage"
 msgstr "アンステージ"
@@ -65,5 +470,275 @@ msgstr "アンステージ"
 msgid "Unstage Hunk"
 msgstr "変更箇所をアンステージ"
 
-msgid "{server} asks to open this address in your browser:\n\n{url}"
-msgstr "{server} が、このアドレスをブラウザーで開くよう求めています:\n\n{url}"
+msgid "Value"
+msgstr "値"
+
+msgid "Variable"
+msgstr "変数"
+
+msgid "View File History"
+msgstr "ファイルの履歴を表示"
+
+msgid "Your keymap currently overrides the default accept keybinding. To continue, assign one keybinding for the `editor::AcceptEditPrediction` action."
+msgstr "現在のキーマップが既定の採用キーバインドを上書きしています。続けるには `editor::AcceptEditPrediction` アクションにキーバインドを 1 つ割り当ててください。"
+
+msgid "architecture-beta\n    %% group is a grouping and service a component. :L :R :T :B choose the side a line connects to\n    group app(cloud)[App]\n    service web(server)[Web Server] in app\n    service db(database)[Database] in app\n    service disk(disk)[Storage] in app\n    web:R -- L:db\n    web:B -- T:disk"
+msgstr "architecture-beta\n    %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める\n    group app(cloud)[\"アプリ\"]\n    service web(server)[\"Web サーバー\"] in app\n    service db(database)[\"データベース\"] in app\n    service disk(disk)[\"ストレージ\"] in app\n    web:R -- L:db\n    web:B -- T:disk"
+
+msgid "block-beta\n    %% columns sets the number of columns, space is an empty cell and --> an arrow\n    columns 3\n    input[\"Input\"] process[\"Process\"] output[\"Output\"]\n    space log[\"Log\"] space\n    input --> process\n    process --> output\n    process --> log"
+msgstr "block-beta\n    %% columns で列の数を決め、space は空きマス、--> で矢印\n    columns 3\n    input[\"入力\"] process[\"処理\"] output[\"出力\"]\n    space log[\"記録\"] space\n    input --> process\n    process --> output\n    process --> log"
+
+msgid "classDiagram\n    %% <|-- is inheritance, *-- composition and o-- aggregation\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+msgstr "classDiagram\n    %% <|-- は継承、*-- は合成、o-- は集約\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+
+msgid "click to change min width"
+msgstr "クリックで最小幅を変更"
+
+msgid "debug: {}"
+msgstr "デバッグ: {}"
+
+msgid "erDiagram\n    %% ||--o{{ is one-to-many and }}o--o{{ many-to-many\n    CUSTOMER ||--o{{ ORDER : \"places\"\n    ORDER ||--|{{ ORDER_ITEM : \"contains\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+msgstr "erDiagram\n    %% ||--o{{ は 1 対多、}}o--o{{ は多対多\n    CUSTOMER ||--o{{ ORDER : \"発注する\"\n    ORDER ||--|{{ ORDER_ITEM : \"含む\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+
+msgid "eventmodeling\n    %% tf number type name. ui is a screen, cmd a command, evt an event and rmo a read model. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+msgstr "eventmodeling\n    %% tf 番号 種類 名前。ui は画面、cmd は操作、evt は出来事、rmo は読み取りモデル。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+
+msgid "flowchart TD\n    %% [] is a step and {{}} a decision. |label| annotates a branch\n    start[Start] --> condition{{Condition}}\n    condition -->|Yes| work[Process]\n    condition -->|No| finish[End]\n    work --> finish"
+msgstr "flowchart TD\n    %% [] は処理、{{}} は分岐。|ラベル| で分岐に注釈を付ける\n    start[開始] --> condition{{条件}}\n    condition -->|はい| work[処理]\n    condition -->|いいえ| finish[終了]\n    work --> finish"
+
+msgid "gantt\n    title Development Schedule\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section Design\n    Requirements :done, req, 2026-01-06, 5d\n    Basic design :active, design, after req, 7d\n    section Implementation\n    Implementation :impl, after design, 10d"
+msgstr "gantt\n    title 開発スケジュール\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section 設計\n    要件定義 :done, req, 2026-01-06, 5d\n    基本設計 :active, design, after req, 7d\n    section 実装\n    実装 :impl, after design, 10d"
+
+msgid "gitGraph\n    commit id: \"Initial commit\"\n    branch feature\n    checkout feature\n    commit id: \"Add a feature\"\n    checkout main\n    merge feature"
+msgstr "gitGraph\n    commit id: \"初期化\"\n    branch feature\n    checkout feature\n    commit id: \"機能を追加\"\n    checkout main\n    merge feature"
+
+msgid "ishikawa-beta\n    %% The first line is the effect and indented lines its causes\n    Too many defects\n        People\n            Little experience\n        Method\n            Outdated procedures\n        Material\n            Inconsistent suppliers"
+msgstr "ishikawa-beta\n    %% 最初の行が結果、字下げした行が要因\n    不良品が多い\n        人\n            経験が浅い\n        方法\n            手順書が古い\n        材料\n            仕入れ先のばらつき"
+
+msgid "journey\n    %% Task : Satisfaction (1 to 5) : People involved\n    title Path to Purchase\n    section Find\n      Search for a product: 4: Customer\n      Compare: 3: Customer\n    section Buy\n      Add to cart: 5: Customer\n      Pay: 2: Customer, Store"
+msgstr "journey\n    %% 作業 : 満足度 (1〜5) : 関わる人\n    title 購入までの流れ\n    section 探す\n      商品を検索する: 4: 利用者\n      比較する: 3: 利用者\n    section 買う\n      カートに入れる: 5: 利用者\n      支払う: 2: 利用者, 店舗"
+
+msgid "kanban\n    %% Less indented lines are columns and more indented lines cards\n    todo[To Do]\n        spec[Write the spec]\n        screen[Build the screen]\n    doing[In Progress]\n        api[Build the API]\n    done[Done]\n        setup[Set up the environment]"
+msgstr "kanban\n    %% 字下げの浅い行が列、深い行がカード\n    todo[未着手]\n        spec[仕様を書く]\n        screen[画面を作る]\n    doing[作業中]\n        api[API を作る]\n    done[完了]\n        setup[環境を整える]"
+
+msgid "mindmap\n  root((Central Topic))\n    Category A\n      Item 1\n      Item 2\n    Category B\n      Item 3"
+msgstr "mindmap\n  root((中心テーマ))\n    分類A\n      項目1\n      項目2\n    分類B\n      項目3"
+
+msgid "packet-beta\n    %% start bit-end bit: \"Field name\"\n    title UDP Header\n    0-15: \"Source Port\"\n    16-31: \"Destination Port\"\n    32-47: \"Length\"\n    48-63: \"Checksum\"\n    64-95: \"Data (variable length)\""
+msgstr "packet-beta\n    %% 開始ビット-終了ビット: \"項目名\"\n    title UDP ヘッダー\n    0-15: \"送信元ポート\"\n    16-31: \"宛先ポート\"\n    32-47: \"長さ\"\n    48-63: \"チェックサム\"\n    64-95: \"データ (可変長)\""
+
+msgid "pie title Breakdown\n    \"Design\" : 30\n    \"Implementation\" : 50\n    \"Testing\" : 20"
+msgstr "pie title 内訳\n    \"設計\" : 30\n    \"実装\" : 50\n    \"テスト\" : 20"
+
+msgid "quadrantChart\n    %% A point is Name: [x, y], both from 0 to 1\n    title Initiative Priorities\n    x-axis Low Effort --> High Effort\n    y-axis Low Impact --> High Impact\n    quadrant-1 Plan and Do\n    quadrant-2 Do Now\n    quadrant-3 Do Later\n    quadrant-4 Reconsider\n    Initiative A: [0.3, 0.8]\n    Initiative B: [0.7, 0.6]\n    Initiative C: [0.2, 0.3]"
+msgstr "quadrantChart\n    %% 点は 名前: [横, 縦] で、どちらも 0〜1\n    title 施策の優先度\n    x-axis 労力が小さい --> 労力が大きい\n    y-axis 効果が小さい --> 効果が大きい\n    quadrant-1 計画して進める\n    quadrant-2 すぐやる\n    quadrant-3 後回し\n    quadrant-4 見直す\n    施策A: [0.3, 0.8]\n    施策B: [0.7, 0.6]\n    施策C: [0.2, 0.3]"
+
+msgid "radar-beta\n    %% axis defines the axes and curve a series. List the values in the order of the axes\n    title Skill Comparison\n    axis design[\"Design\"], build[\"Implementation\"], test[\"Testing\"], ops[\"Operations\"]\n    curve a[\"Person A\"]{{4, 3, 5, 2}}\n    curve b[\"Person B\"]{{2, 5, 3, 4}}\n    max 5"
+msgstr "radar-beta\n    %% axis で軸、curve で系列。値は軸の順に並べる\n    title スキルの比較\n    axis design[\"設計\"], build[\"実装\"], test[\"テスト\"], ops[\"運用\"]\n    curve a[\"Aさん\"]{{4, 3, 5, 2}}\n    curve b[\"Bさん\"]{{2, 5, 3, 4}}\n    max 5"
+
+msgid "requirementDiagram\n    %% requirement declares a requirement; element declares what satisfies it. Connect them with - satisfies ->\n    requirement login {{\n        id: 1\n        text: \"Users can log in\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"Screen\"\n    }}\n    login_page - satisfies -> login"
+msgstr "requirementDiagram\n    %% requirement は要求、element は満たす側。- satisfies -> で結ぶ\n    requirement login {{\n        id: 1\n        text: \"ログインできること\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"画面\"\n    }}\n    login_page - satisfies -> login"
+
+msgid "sankey-beta\n    %% Each line is source,target,amount. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10"
+msgstr "sankey-beta\n    %% 1 行が 流れ元,流れ先,量。名前は半角英数字で書く (Mermaid は日本語の名前を読めない)\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10"
+
+msgid "sequenceDiagram\n    %% ->> is a call and -->> a reply\n    participant User as User\n    participant App as App\n    User->>App: Request\n    App-->>User: Response\n    Note over App: Note"
+msgstr "sequenceDiagram\n    %% ->> は呼び出し、-->> は応答\n    participant User as 利用者\n    participant App as アプリ\n    User->>App: 要求\n    App-->>User: 応答\n    Note over App: 補足"
+
+msgid "stateDiagram-v2\n    %% [*] is the start and the end. The text after : on an arrow is the event name\n    [*] --> Idle\n    Idle --> Running: Start\n    Running --> Idle: Finish\n    Running --> [*]: Abort"
+msgstr "stateDiagram-v2\n    %% [*] は開始と終了。矢印のあとの : がイベント名\n    [*] --> Idle\n    Idle --> Running: 開始\n    Running --> Idle: 完了\n    Running --> [*]: 中止"
+
+msgid "the latest version"
+msgstr "最新バージョン"
+
+msgid "timeline\n    title History\n    2024 : Planning\n    2025 : Development : Release\n    2026 : Operation"
+msgstr "timeline\n    title 沿革\n    2024 : 企画\n    2025 : 開発 : 公開\n    2026 : 運用"
+
+msgid "treeView-beta\n    %% Indentation shows the hierarchy\n    \"Project\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+msgstr "treeView-beta\n    %% 字下げで階層を表す\n    \"プロジェクト\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+
+msgid "treemap-beta\n    %% Indentation nests items. Give each leaf a value after :\n    \"Development\"\n        \"Design\": 30\n        \"Implementation\": 50\n    \"Operations\"\n        \"Maintenance\": 15\n        \"Monitoring\": 5"
+msgstr "treemap-beta\n    %% 字下げで入れ子。末端の項目に : で値を付ける\n    \"開発費\"\n        \"設計\": 30\n        \"実装\": 50\n    \"運用費\"\n        \"保守\": 15\n        \"監視\": 5"
+
+msgid "venn-beta\n    %% set defines a set and union names an overlap\n    title Overlapping Responsibilities\n    set Front[\"Frontend\"]\n    set Back[\"Backend\"]\n    union Front,Back[\"API\"]"
+msgstr "venn-beta\n    %% set で集合、union で重なりに名前を付ける\n    title 担当の重なり\n    set Front[\"フロントエンド\"]\n    set Back[\"バックエンド\"]\n    union Front,Back[\"API\"]"
+
+msgid "xychart-beta\n    %% bar draws bars and line a line. Give as many values as the x-axis has items\n    title \"Monthly Sales\"\n    x-axis [\"Jan\", \"Feb\", \"Mar\", \"Apr\"]\n    y-axis \"Sales (USD thousands)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+msgstr "xychart-beta\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title \"月別の売上\"\n    x-axis [\"1月\", \"2月\", \"3月\", \"4月\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+
+msgid "{alt_as_text}-click to disable\nright-click for more options"
+msgstr "{alt_as_text}+クリックで無効化\n右クリックでその他の操作"
+
+msgid "{count} Comment"
+msgid_plural "{count} Comments"
+msgstr[0] "コメント {count} 件"
+
+msgid "{tab_kind} for {target}"
+msgstr "{target} の{tab_kind}"
+
+msgid "{} to toggle all"
+msgstr "{} ですべて切り替え"
+
+msgctxt "markdown color"
+msgid "Blue"
+msgstr "青"
+
+msgctxt "markdown color"
+msgid "Gray"
+msgstr "灰"
+
+msgctxt "markdown color"
+msgid "Green"
+msgstr "緑"
+
+msgctxt "markdown color"
+msgid "Orange"
+msgstr "橙"
+
+msgctxt "markdown color"
+msgid "Pink"
+msgstr "桃"
+
+msgctxt "markdown color"
+msgid "Purple"
+msgstr "紫"
+
+msgctxt "markdown color"
+msgid "Red"
+msgstr "赤"
+
+msgctxt "markdown color"
+msgid "Yellow"
+msgstr "黄"
+
+msgctxt "markdown text size"
+msgid "Extra Large"
+msgstr "特大"
+
+msgctxt "markdown text size"
+msgid "Large"
+msgstr "大"
+
+msgctxt "markdown text size"
+msgid "Small"
+msgstr "小"
+
+msgctxt "mermaid diagram"
+msgid "Architecture Diagram"
+msgstr "アーキテクチャ図"
+
+msgctxt "mermaid diagram"
+msgid "Block Diagram"
+msgstr "ブロック図"
+
+msgctxt "mermaid diagram"
+msgid "C4 Diagram"
+msgstr "C4 図"
+
+msgctxt "mermaid diagram"
+msgid "Class Diagram"
+msgstr "クラス図"
+
+msgctxt "mermaid diagram"
+msgid "ER Diagram"
+msgstr "ER 図"
+
+msgctxt "mermaid diagram"
+msgid "Event Modeling"
+msgstr "イベントモデリング"
+
+msgctxt "mermaid diagram"
+msgid "Flowchart"
+msgstr "フローチャート"
+
+msgctxt "mermaid diagram"
+msgid "Gantt Chart"
+msgstr "ガントチャート"
+
+msgctxt "mermaid diagram"
+msgid "Git Graph"
+msgstr "Git グラフ"
+
+msgctxt "mermaid diagram"
+msgid "Ishikawa Diagram"
+msgstr "特性要因図"
+
+msgctxt "mermaid diagram"
+msgid "Kanban"
+msgstr "かんばん"
+
+msgctxt "mermaid diagram"
+msgid "Mindmap"
+msgstr "マインドマップ"
+
+msgctxt "mermaid diagram"
+msgid "Packet Diagram"
+msgstr "パケット図"
+
+msgctxt "mermaid diagram"
+msgid "Pie Chart"
+msgstr "円グラフ"
+
+msgctxt "mermaid diagram"
+msgid "Quadrant Chart"
+msgstr "4 象限チャート"
+
+msgctxt "mermaid diagram"
+msgid "Radar Chart"
+msgstr "レーダーチャート"
+
+msgctxt "mermaid diagram"
+msgid "Requirement Diagram"
+msgstr "要求図"
+
+msgctxt "mermaid diagram"
+msgid "Sankey Diagram"
+msgstr "サンキー図"
+
+msgctxt "mermaid diagram"
+msgid "Sequence Diagram"
+msgstr "シーケンス図"
+
+msgctxt "mermaid diagram"
+msgid "State Diagram"
+msgstr "状態遷移図"
+
+msgctxt "mermaid diagram"
+msgid "Timeline"
+msgstr "タイムライン"
+
+msgctxt "mermaid diagram"
+msgid "Tree View"
+msgstr "ツリービュー"
+
+msgctxt "mermaid diagram"
+msgid "Treemap"
+msgstr "ツリーマップ"
+
+msgctxt "mermaid diagram"
+msgid "User Journey"
+msgstr "ユーザージャーニー"
+
+msgctxt "mermaid diagram"
+msgid "Venn Diagram"
+msgstr "ベン図"
+
+msgctxt "mermaid diagram"
+msgid "XY Chart (Bar/Line)"
+msgstr "XY チャート (棒・折れ線)"
+
+msgctxt "table alignment"
+msgid "Center"
+msgstr "中央"
+
+msgctxt "table alignment"
+msgid "Default"
+msgstr "既定"
+
+msgctxt "table alignment"
+msgid "Left"
+msgstr "左"
+
+msgctxt "table alignment"
+msgid "Right"
+msgstr "右"

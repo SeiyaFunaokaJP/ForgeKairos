@@ -5,23 +5,175 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Also search files ignored by configuration"
+msgstr "設定で無視されたファイルも検索する"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Close Search Bar"
+msgstr "検索バーを閉じる"
+
+msgid "Collapse All Files"
+msgstr "すべてのファイルを折りたたむ"
+
+msgid "Collapse All Search Results"
+msgstr "検索結果をすべて折りたたむ"
+
+msgid "Don't Save"
+msgstr "保存しない"
+
+msgid "Down"
+msgstr "下"
+
+msgid "Exclude: e.g. vendor/*, *.lock"
+msgstr "除外する: 例 vendor/*, *.lock"
+
+msgid "Expand All Files"
+msgstr "すべてのファイルを展開"
+
+msgid "Expand All Search Results"
+msgstr "検索結果をすべて展開"
+
+msgid "Find and replace"
+msgstr "検索と置換"
+
+msgid "Find in Results"
+msgstr "結果内を検索"
+
+msgid "Fold"
+msgstr "折りたたむ"
+
 msgid "Hit enter to search. For more options:"
 msgstr "Enter キーで検索します。その他のオプション:"
+
+msgid "Include/exclude specific paths"
+msgstr "特定のパスを含める/除外する"
+
+msgid "Include: e.g. src/**/*.rs"
+msgstr "含める: 例 src/**/*.rs"
+
+msgid "Left"
+msgstr "左"
 
 msgid "Loading project…"
 msgstr "プロジェクトを読み込み中…"
 
+msgid "Match Case Sensitivity"
+msgstr "大文字と小文字を区別"
+
+msgid "Match Whole Words"
+msgstr "単語単位で検索"
+
+msgid "Match case"
+msgstr "大文字と小文字を区別"
+
+msgid "Match whole words"
+msgstr "単語単位で検索"
+
+msgid "Match with regex"
+msgstr "正規表現で検索"
+
 msgid "No Results"
 msgstr "該当なし"
+
+msgid "No more matches"
+msgstr "これ以上一致はありません"
 
 msgid "No results found in this project for the provided query"
 msgstr "このプロジェクトで一致する結果は見つかりませんでした"
 
+msgid "One Match Per Line"
+msgstr "1 行につき 1 件のみ一致"
+
+msgid "Only Search Open Files"
+msgstr "開いているファイルのみ検索"
+
+msgid "Open File"
+msgstr "ファイルを開く"
+
+msgid "Open Multiple"
+msgstr "複数開く"
+
+msgid "Open as Tab"
+msgstr "タブで開く"
+
+msgid "Project Search"
+msgstr "プロジェクト内検索"
+
+msgid "Project search buffer contains unsaved edits. Do you want to save it?"
+msgstr "検索結果バッファーに保存されていない変更があります。保存しますか?"
+
+msgid "Replace All Matches"
+msgstr "すべて置換"
+
+msgid "Replace Next Match"
+msgstr "次を置換"
+
+msgid "Replace in project…"
+msgstr "プロジェクト内を置換…"
+
+msgid "Replace with…"
+msgstr "置換後の文字列…"
+
+msgid "Right"
+msgstr "右"
+
+msgid "Save"
+msgstr "保存"
+
 msgid "Search All Files"
 msgstr "すべてのファイルを検索"
+
+msgid "Search Backwards"
+msgstr "後方へ検索"
+
+msgid "Search Limits Reached\nTry narrowing your search"
+msgstr "検索件数の上限に達しました\n検索条件を絞り込んでください"
+
+msgid "Search all files…"
+msgstr "すべてのファイルを検索…"
 
 msgid "Searching…"
 msgstr "検索中…"
 
+msgid "Search…"
+msgstr "検索…"
+
+msgid "Select All Matches"
+msgstr "すべての一致を選択"
+
+msgid "Split…"
+msgstr "分割…"
+
 msgid "Start typing to search. For more options:"
 msgstr "入力すると検索します。その他のオプション:"
+
+msgid "Toggle Filters"
+msgstr "フィルターの表示切り替え"
+
+msgid "Toggle Replace"
+msgstr "置換の表示切り替え"
+
+msgid "Toggle Search Selection"
+msgstr "選択範囲内を検索"
+
+msgid "Unfold"
+msgstr "展開"
+
+msgid "Up"
+msgstr "上"
+
+msgid "Use Regular Expressions"
+msgstr "正規表現を使用"
+
+msgid "{} to toggle all"
+msgstr "{} ですべて切り替え"
+
+msgctxt "search bar"
+msgid "Select Next Match"
+msgstr "次の一致へ"
+
+msgctxt "search bar"
+msgid "Select Previous Match"
+msgstr "前の一致へ"

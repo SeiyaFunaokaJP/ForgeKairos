@@ -66,10 +66,10 @@ impl ErDirection {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::TopToBottom => "上から下 (TB)",
-            Self::BottomToTop => "下から上 (BT)",
-            Self::LeftToRight => "左から右 (LR)",
-            Self::RightToLeft => "右から左 (RL)",
+            Self::TopToBottom => i18n::t!("Top to bottom (TB)"),
+            Self::BottomToTop => i18n::t!("Bottom to top (BT)"),
+            Self::LeftToRight => i18n::t!("Left to right (LR)"),
+            Self::RightToLeft => i18n::t!("Right to left (RL)"),
         }
     }
 
@@ -134,11 +134,11 @@ impl ErCardinality {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::ZeroOrOne => "0 または 1",
-            Self::ExactlyOne => "ちょうど 1",
-            Self::ZeroOrMore => "0 以上",
-            Self::OneOrMore => "1 以上",
-            Self::MarkdownParent => "親 (u)",
+            Self::ZeroOrOne => i18n::t!("Zero or one"),
+            Self::ExactlyOne => i18n::t!("Exactly one"),
+            Self::ZeroOrMore => i18n::t!("Zero or more"),
+            Self::OneOrMore => i18n::t!("One or more"),
+            Self::MarkdownParent => i18n::t!("Parent (u)"),
         }
     }
 
@@ -179,9 +179,9 @@ impl ErAttributeKey {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Primary => "主キー (PK)",
-            Self::Foreign => "外部キー (FK)",
-            Self::Unique => "一意キー (UK)",
+            Self::Primary => i18n::t!("Primary key (PK)"),
+            Self::Foreign => i18n::t!("Foreign key (FK)"),
+            Self::Unique => i18n::t!("Unique key (UK)"),
         }
     }
 
@@ -278,33 +278,32 @@ impl ErDocument {
     pub fn structure_error(&self) -> Option<String> {
         for (index, entity) in self.entities.iter().enumerate() {
             if !is_valid_entity_name(&entity.name) {
-                return Some("エンティティ名を空にできません。".to_string());
+                return Some(i18n::t!("The entity name cannot be empty.").to_string());
             }
             if self.entities[..index]
                 .iter()
                 .any(|earlier| earlier.name == entity.name)
             {
-                return Some(format!(
-                    "エンティティ `{}` が二重に定義されています。",
-                    entity.name
-                ));
+                return Some(i18n::t!("Entity `{}` is defined twice.", entity.name));
             }
             for attribute in &entity.attributes {
                 if attribute.type_name.is_empty() || attribute.name.is_empty() {
-                    return Some(format!(
-                        "エンティティ `{}` の属性には型と名前の両方が必要です。",
+                    return Some(i18n::t!(
+                        "The attributes of entity `{}` need both a type and a name.",
                         entity.name
                     ));
                 }
                 for word in [&attribute.type_name, &attribute.name] {
                     if !is_writable_attribute_word(word) {
-                        return Some(format!("`{word}` は属性の型や名前として使えません。"));
+                        return Some(i18n::t!(
+                            "`{word}` cannot be used as an attribute type or name."
+                        ));
                     }
                 }
             }
             for class in &entity.classes {
                 if !is_valid_class_name(class) {
-                    return Some(format!("`{class}` はクラス名として使えません。"));
+                    return Some(i18n::t!("`{class}` cannot be used as a class name."));
                 }
             }
             let comments = std::iter::once(&entity.trailing_comment).chain(
@@ -315,7 +314,9 @@ impl ErDocument {
             );
             for comment in comments.flatten() {
                 if !is_valid_trailing_comment(comment) {
-                    return Some(format!("`{comment}` は行末のコメントとして書けません。"));
+                    return Some(i18n::t!(
+                        "`{comment}` cannot be written as an end-of-line comment."
+                    ));
                 }
             }
         }
@@ -323,22 +324,24 @@ impl ErDocument {
         for relationship in &self.relationships {
             for name in [&relationship.left, &relationship.right] {
                 if self.entity_index(name).is_none() {
-                    return Some(format!("エンティティ `{name}` が定義されていません。"));
+                    return Some(i18n::t!("Entity `{name}` is not defined."));
                 }
             }
             if !is_valid_cardinality_pair(
                 relationship.left_cardinality,
                 relationship.right_cardinality,
             ) {
-                return Some(format!(
-                    "`{}` は関係の右側では使えません。",
+                return Some(i18n::t!(
+                    "`{}` cannot be used on the right side of a relationship.",
                     relationship.right_cardinality.label()
                 ));
             }
             if let Some(comment) = &relationship.trailing_comment
                 && !is_valid_trailing_comment(comment)
             {
-                return Some(format!("`{comment}` は行末のコメントとして書けません。"));
+                return Some(i18n::t!(
+                    "`{comment}` cannot be written as an end-of-line comment."
+                ));
             }
         }
         None
@@ -372,9 +375,9 @@ pub fn parse_er(source: &str) -> Result<ErDocument> {
 
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| anyhow!("{error}"))?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
     let RenderSemanticModel::Er(model) = parsed.into_parts().1 else {
-        bail!("この図は ER 図ではありません。");
+        bail!(i18n::t!("This diagram is not an ER diagram."));
     };
 
     let mut document = document_from_model(&model, scan.has_direction, scan.preserved)?;
@@ -382,7 +385,7 @@ pub fn parse_er(source: &str) -> Result<ErDocument> {
     // Keeps [`ErDocument::structure_error`]'s promise: a document the editor
     // cannot write back never reaches it in the first place.
     if let Some(problem) = document.structure_error() {
-        bail!("{problem}テキストのまま編集してください。");
+        bail!(i18n::t!("{problem} Edit it as text."));
     }
     Ok(document)
 }
@@ -420,7 +423,7 @@ fn document_from_model(
             let mut keys = Vec::with_capacity(attribute.keys.len());
             for key in &attribute.keys {
                 keys.push(ErAttributeKey::from_model(key).ok_or_else(|| {
-                    anyhow!("未対応の属性キー `{key}` が含まれています。テキストのまま編集してください。")
+                    anyhow!(i18n::t!("The diagram contains an unsupported attribute key `{key}`. Edit it as text."))
                 })?);
             }
             attributes.push(ErAttribute {
@@ -445,21 +448,31 @@ fn document_from_model(
         let left = name_of_id
             .get(relationship.entity_a.as_str())
             .copied()
-            .ok_or_else(|| anyhow!("関係の左側のエンティティが見つかりませんでした。"))?;
+            .ok_or_else(|| {
+                anyhow!(i18n::t!(
+                    "Could not find the entity on the left side of a relationship."
+                ))
+            })?;
         let right = name_of_id
             .get(relationship.entity_b.as_str())
             .copied()
-            .ok_or_else(|| anyhow!("関係の右側のエンティティが見つかりませんでした。"))?;
+            .ok_or_else(|| {
+                anyhow!(i18n::t!(
+                    "Could not find the entity on the right side of a relationship."
+                ))
+            })?;
         // Mermaid stores the cardinality of the end it is drawn at, which is
         // the opposite of the end it is written at.
         let left_cardinality = ErCardinality::from_model(&relationship.rel_spec.card_b)
-            .ok_or_else(|| anyhow!("未対応の多重度が含まれています。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("The diagram contains an unsupported cardinality.")))?;
         let right_cardinality = ErCardinality::from_model(&relationship.rel_spec.card_a)
-            .ok_or_else(|| anyhow!("未対応の多重度が含まれています。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("The diagram contains an unsupported cardinality.")))?;
         let identifying = match relationship.rel_spec.rel_type.as_str() {
             "IDENTIFYING" => true,
             "NON_IDENTIFYING" => false,
-            other => bail!("未対応の関係の種類 `{other}` が含まれています。"),
+            other => bail!(i18n::t!(
+                "The diagram contains an unsupported relationship type `{other}`."
+            )),
         };
         relationships.push(ErRelationship {
             left: decode_text(left),
@@ -969,7 +982,7 @@ fn scan_source(source: &str) -> Result<SourceScan> {
             continue;
         }
         if !is_header(trimmed) {
-            bail!("この図は ER 図ではありません。");
+            bail!(i18n::t!("This diagram is not an ER diagram."));
         }
         found_header = true;
         let rest = trimmed
@@ -1175,25 +1188,25 @@ fn trailing_comments(statements: &[String]) -> Result<TrailingComments> {
             if body.starts_with('}') {
                 depth -= 1;
                 if comment.is_some() {
-                    bail!(
-                        "属性ブロックを閉じる行の末尾のコメント ({statement}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "The comment at the end of the line that closes an attribute block ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+                    ));
                 }
                 continue;
             }
             if body.is_empty() {
-                bail!(
-                    "属性ブロックの中のコメントは構造化編集で失われます ({statement})。コメントをブロックの外に移すか、テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "Comments inside an attribute block would be lost in the structured editor ({statement}). Move the comment out of the block, or edit it as text."
+                ));
             }
             // `int id }` closes the block after its attribute, and the lines
             // below it are statements again.
             if contains_outside_quotes(body, '}') {
                 depth -= 1;
                 if comment.is_some() {
-                    bail!(
-                        "属性ブロックを閉じる行の末尾のコメント ({statement}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "The comment at the end of the line that closes an attribute block ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+                    ));
                 }
             }
             let index = match found
@@ -1226,9 +1239,9 @@ fn trailing_comments(statements: &[String]) -> Result<TrailingComments> {
         if body.is_empty() {
             // Only the rest of the `erDiagram` line gets here, since a comment
             // on a line of its own is kept verbatim by the scanner.
-            bail!(
-                "`erDiagram` の行の末尾のコメント ({statement}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The comment at the end of the `erDiagram` line ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+            ));
         }
         let site = match classify_statement(body) {
             TopLevelStatement::BlockHead(name) => {
@@ -1243,9 +1256,9 @@ fn trailing_comments(statements: &[String]) -> Result<TrailingComments> {
             }
             TopLevelStatement::Other => {
                 if comment.is_some() {
-                    bail!(
-                        "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+                    ));
                 }
                 continue;
             }
@@ -1361,9 +1374,9 @@ fn attach_trailing_comments(document: &mut ErDocument, found: TrailingComments) 
     } in found.comments
     {
         if !statement_holds_only(&statement, &site, document) {
-            bail!(
-                "行末のコメント ({comment}) の行に文が 2 つ以上あるか、どの項目のものか決められませんでした。文を 1 行ずつに分けるか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The line with the end-of-line comment ({comment}) has two or more statements, or it could not be determined which item the comment belongs to. Put one statement on each line, or edit it as text."
+            ));
         }
         let slot = match site {
             CommentSite::Entity(name) => document
@@ -1392,14 +1405,14 @@ fn attach_trailing_comments(document: &mut ErDocument, found: TrailingComments) 
                 .map(|relationship| &mut relationship.trailing_comment),
         };
         let Some(slot) = slot else {
-            bail!(
-                "行末のコメント ({comment}) がどの項目のものか決められませんでした。コメントを独立した行に移すか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Could not determine which item the end-of-line comment ({comment}) belongs to. Move the comment to its own line, or edit it as text."
+            ));
         };
         if slot.is_some() {
-            bail!(
-                "同じ項目に行末のコメントが 2 つあります ({comment})。1 つにまとめるか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The same item has two end-of-line comments ({comment}). Merge them into one, or edit it as text."
+            ));
         }
         *slot = Some(comment);
     }
@@ -2085,7 +2098,9 @@ mod tests {
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             assert!(
-                format!("{error}").contains("テキストのまま編集してください"),
+                format!("{error}")
+                    .to_lowercase()
+                    .contains("edit it as text"),
                 "{source}: {error}"
             );
         }
@@ -2110,7 +2125,9 @@ mod tests {
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             assert!(
-                format!("{error}").contains("テキストのまま編集してください"),
+                format!("{error}")
+                    .to_lowercase()
+                    .contains("edit it as text"),
                 "{source}: {error}"
             );
         }

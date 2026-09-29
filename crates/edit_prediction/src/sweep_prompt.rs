@@ -60,6 +60,9 @@ pub fn request_prediction(
             "Unsupported edit prediction provider for Sweep prompt mode"
         )));
     };
+    if let Err(error) = crate::ensure_self_hosted_consent(provider, &custom_settings, cx) {
+        return Task::ready(Err(error));
+    }
 
     let api_key = load_open_ai_compatible_api_key_if_needed(provider, cx);
     let http_client = cx.http_client();

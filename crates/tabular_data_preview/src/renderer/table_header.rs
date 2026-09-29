@@ -43,7 +43,7 @@ actions!(
 );
 
 /// Stands in for a cell with no value at all in the filter list.
-const NULL_VALUE_LABEL: &str = "(空白)";
+const NULL_VALUE_LABEL: &str = i18n::msg!("(Blank)");
 
 /// Marks a heading's filter button, which - unlike the sort button beside it -
 /// has to be drawn whether or not the pointer is over the column. Only the first
@@ -202,7 +202,7 @@ impl ColumnFilterDelegate {
     fn display_text(entry: &FilterEntry) -> String {
         match &entry.content {
             Some(s) => s.as_ref().to_owned(),
-            None => NULL_VALUE_LABEL.to_owned(),
+            None => i18n::tr(NULL_VALUE_LABEL).to_owned(),
         }
     }
 
@@ -218,7 +218,9 @@ impl ColumnFilterDelegate {
         let mut header_inserted = false;
         for (row_index, positions) in matches {
             if rows[row_index].hidden_by.is_some() && !header_inserted {
-                entries.push(ColumnFilterListEntry::Header("他の絞り込みで非表示".into()));
+                entries.push(ColumnFilterListEntry::Header(
+                    i18n::t!("Hidden by other filters").into(),
+                ));
                 header_inserted = true;
             }
             entries.push(ColumnFilterListEntry::Row {
@@ -454,25 +456,27 @@ impl ColumnFilterDelegate {
         let needs_query = op.needs_needle() && self.query.is_empty();
         let is_active = active == Some(op);
         let tooltip: SharedString = if needs_query {
-            format!("検索欄に文字を入れてから「{}」を押します", op.label()).into()
+            i18n::t!("Type in the search box, then press \"{}\"", op.label()).into()
         } else if is_active && armed_join.is_some() {
-            "2 つ目の条件に使用中。クリックで解除".into()
+            i18n::t!("Used as the second condition. Click to clear").into()
         } else if is_active {
-            "この条件で絞り込み中。クリックで解除".into()
+            i18n::t!("Filtering by this condition. Click to clear").into()
         } else {
             let kept = if op.needs_needle() {
-                format!("{}行", op.describe(&self.query))
+                i18n::t!("rows where the cell {}", op.describe(&self.query))
+            } else if op == TextFilterOp::Blank {
+                i18n::t!("rows with blank cells").to_owned()
             } else {
-                format!("{}のセルの行", op.label())
+                i18n::t!("rows with non-blank cells").to_owned()
             };
             match armed_join {
-                Some(join) => format!(
-                    "1 つ目の条件と「{}」でつないで、{}を表示します",
+                Some(join) => i18n::t!(
+                    "Joins the first condition with \"{}\" to show {}",
                     join.label(),
                     kept
                 )
                 .into(),
-                None => format!("{kept}だけを表示します").into(),
+                None => i18n::t!("Shows only {kept}").into(),
             }
         };
 
@@ -501,16 +505,16 @@ impl ColumnFilterDelegate {
     ) -> Button {
         let is_active = armed_join == Some(join);
         let tooltip: SharedString = if has_second {
-            format!("2 つの条件を「{}」でつなぎます", join.label()).into()
+            i18n::t!("Joins the two conditions with \"{}\"", join.label()).into()
         } else if is_active {
-            format!(
-                "次に押す条件が「{}」でつないだ 2 つ目になります。もう一度押すと取り消します",
+            i18n::t!(
+                "The next condition you press becomes the second, joined with \"{}\". Press again to cancel",
                 join.label()
             )
             .into()
         } else {
-            format!(
-                "次に押す条件を「{}」でつないだ 2 つ目にします",
+            i18n::t!(
+                "Makes the next condition you press the second, joined with \"{}\"",
                 join.label()
             )
             .into()
@@ -601,13 +605,17 @@ impl PickerDelegate for ColumnFilterDelegate {
     /// Names what the box does for both of its jobs: it narrows the value list,
     /// and it is the text the conditions in the footer are applied to.
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        format!("{} 件の値を検索 / 条件の文字", self.available_count).into()
+        i18n::t!(
+            "Search {} values, or type text for a condition",
+            self.available_count
+        )
+        .into()
     }
 
     /// Text nothing in the column matches is still worth having typed, since the
     /// footer's conditions are applied to it.
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
-        Some("一致する値はありません。下の条件では使えます".into())
+        Some(i18n::t!("No matching values. The conditions below can still use this text").into())
     }
 
     fn update_matches(
@@ -714,7 +722,7 @@ impl PickerDelegate for ColumnFilterDelegate {
                 let row = &self.rows[*row_index];
                 let value_text: SharedString = match &row.entry.content {
                     Some(s) => s.clone(),
-                    None => NULL_VALUE_LABEL.into(),
+                    None => i18n::tr(NULL_VALUE_LABEL).into(),
                 };
                 let count_text = SharedString::from(row.entry.occurred_times().to_string());
                 let label = HighlightedLabel::new(value_text.clone(), positions.clone())
@@ -782,7 +790,7 @@ impl PickerDelegate for ColumnFilterDelegate {
             .unwrap_or((false, None));
 
         let status: SharedString = match &active_text {
-            Some(filter) => format!("条件: {}", filter.description()).into(),
+            Some(filter) => i18n::t!("Condition: {}", filter.description()).into(),
             None if has_active_filters => {
                 let selected_rows: usize = self
                     .available_rows()
@@ -793,9 +801,14 @@ impl PickerDelegate for ColumnFilterDelegate {
                     .available_rows()
                     .map(|row| row.entry.occurred_times())
                     .sum();
-                format!("{total_rows} 行中 {selected_rows} 行を選択中").into()
+                i18n::tn!(
+                    total_rows,
+                    "{selected_rows} of {count} row selected",
+                    "{selected_rows} of {count} rows selected"
+                )
+                .into()
             }
-            None => "値を選ぶか、下の条件で絞り込みます".into(),
+            None => i18n::t!("Pick values, or filter with the conditions below").into(),
         };
         // A join can only be armed while there is a first condition to hang the
         // second one off.
@@ -822,7 +835,7 @@ impl PickerDelegate for ColumnFilterDelegate {
                 .gap_1()
                 .items_center()
                 .child(
-                    Label::new("2 つ目の条件")
+                    Label::new(i18n::t!("Second Condition"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -832,14 +845,14 @@ impl PickerDelegate for ColumnFilterDelegate {
                     this.child(
                         Button::new(
                             ElementId::Name("table-filter-clear-second".into()),
-                            "2 つ目を解除",
+                            i18n::t!("Clear Second"),
                         )
                         .size(ButtonSize::Compact)
                         .label_size(LabelSize::Small)
                         .style(ButtonStyle::Subtle)
-                        .tooltip(Tooltip::text(
-                            "2 つ目の条件を外して、1 つ目だけで絞り込みます",
-                        ))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Removes the second condition and filters by the first one only"
+                        )))
                         .on_click(cx.listener(
                             move |picker, _, _window, cx| {
                                 picker.delegate.clear_second_condition(cx);
@@ -872,12 +885,12 @@ impl PickerDelegate for ColumnFilterDelegate {
                                 .truncate(),
                         )
                         .child(
-                            Button::new(ElementId::Name("table-filter-clear".into()), "すべて解除")
+                            Button::new(ElementId::Name("table-filter-clear".into()), i18n::tc!("table filter", "Clear All"))
                                 .size(ButtonSize::Compact)
                                 .label_size(LabelSize::Small)
                                 .style(ButtonStyle::Subtle)
                                 .disabled(!has_active_filters)
-                                .tooltip(Tooltip::text("この列の絞り込みを解除します"))
+                                .tooltip(Tooltip::text(i18n::t!("Clears this column's filters")))
                                 .on_click(cx.listener(move |picker, _, _window, cx| {
                                     picker
                                         .delegate
@@ -897,13 +910,13 @@ impl PickerDelegate for ColumnFilterDelegate {
                         .child(
                             Button::new(
                                 ElementId::Name("table-filter-select-listed".into()),
-                                "すべて選択",
+                                i18n::t!("Select All"),
                             )
                             .size(ButtonSize::Compact)
                             .label_size(LabelSize::Small)
                             .style(ButtonStyle::Subtle)
                             .tooltip(Tooltip::text(
-                                "いま一覧に出ている値だけに絞り込みます (検索と組み合わせて使います)",
+                                i18n::t!("Filters to only the values listed now (use it together with the search)"),
                             ))
                             .on_click(cx.listener(move |picker, _, _window, cx| {
                                 picker.delegate.select_listed_values(cx);
@@ -1143,10 +1156,10 @@ impl TabularDataPreviewPane {
         )
         .tooltip(Tooltip::text(match self.engine.applied_sorting {
             Some(ordering) if ordering.col_idx == col_idx => match ordering.direction {
-                SortDirection::Asc => "昇順で並べ替え中。クリックで降順",
-                SortDirection::Desc => "降順で並べ替え中。クリックで解除",
+                SortDirection::Asc => i18n::t!("Sorted ascending. Click to sort descending"),
+                SortDirection::Desc => i18n::t!("Sorted descending. Click to clear"),
             },
-            _ => "並べ替えなし。クリックで昇順",
+            _ => i18n::t!("Not sorted. Click to sort ascending"),
         }))
         .on_click(cx.listener(move |this, _event, _window, cx| {
             let new_sorting = match this.engine.applied_sorting {
@@ -1179,9 +1192,11 @@ impl TabularDataPreviewPane {
         // shortcut always deploys the menu of the column the user is standing in.
         let is_caret_column = self.grid.cursor.col == col;
         let tooltip: SharedString = match self.engine.text_filter(col) {
-            Some(filter) => format!("絞り込み中: {}。クリックで変更", filter.description()).into(),
-            None if has_active_filters => "選んだ値で絞り込み中。クリックで変更".into(),
-            None => "絞り込み・並べ替えのメニュー (Alt+↓)".into(),
+            Some(filter) => i18n::t!("Filtering: {}. Click to change", filter.description()).into(),
+            None if has_active_filters => {
+                i18n::t!("Filtered by the chosen values. Click to change").into()
+            }
+            None => i18n::t!("Filter and sort menu (Alt+↓)").into(),
         };
 
         PopoverMenu::new(ElementId::NamedInteger(
@@ -1909,7 +1924,7 @@ mod tests {
         reopened.read_with(&cx, |pane, _| {
             assert_eq!(
                 pane.grid.status_message.as_deref(),
-                Some("前回の絞り込みを復元しました (1 行を非表示)")
+                Some("Restored the previous filters (1 row hidden)")
             );
         });
     }

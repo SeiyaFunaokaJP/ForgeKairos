@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Basedpyright is now the only default language server for Python"
+msgstr "Basedpyright が Python の唯一の既定の言語サーバーになりました"
+
+msgid "Learn More"
+msgstr "詳細"
+
+msgid "We have disabled PyRight and pylsp by default. They can be re-enabled in your settings."
+msgstr "PyRight と pylsp は既定で無効になりました。設定で再度有効にできます。"

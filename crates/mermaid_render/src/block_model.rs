@@ -169,20 +169,21 @@ impl BlockShape {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Square => "四角 [ ]",
-            Self::Round => "角丸 ( )",
-            Self::Stadium => "競技場形 ([ ])",
-            Self::Subroutine => "二重枠 [[ ]]",
-            Self::Cylinder => "円柱 [( )]",
-            Self::Circle => "円 (( ))",
-            Self::DoubleCircle => "二重円 ((( )))",
-            Self::Asymmetric => "旗形 > ]",
-            Self::Diamond => "ひし形 { }",
-            Self::Hexagon => "六角形 {{ }}",
-            Self::LeanRight => "右傾き [/ /]",
-            Self::LeanLeft => "左傾き [\\ \\]",
-            Self::Trapezoid => "台形 [/ \\]",
-            Self::InvertedTrapezoid => "逆台形 [\\ /]",
+            // `tr` rather than `t!`: the brackets would be read as placeholders.
+            Self::Square => i18n::tr(i18n::msg!("Square [ ]")),
+            Self::Round => i18n::tr(i18n::msg!("Rounded ( )")),
+            Self::Stadium => i18n::tr(i18n::msg!("Stadium ([ ])")),
+            Self::Subroutine => i18n::tr(i18n::msg!("Subroutine [[ ]]")),
+            Self::Cylinder => i18n::tr(i18n::msg!("Cylinder [( )]")),
+            Self::Circle => i18n::tr(i18n::msg!("Circle (( ))")),
+            Self::DoubleCircle => i18n::tr(i18n::msg!("Double Circle ((( )))")),
+            Self::Asymmetric => i18n::tr(i18n::msg!("Flag > ]")),
+            Self::Diamond => i18n::tr(i18n::msg!("Diamond { }")),
+            Self::Hexagon => i18n::tr(i18n::msg!("Hexagon {{ }}")),
+            Self::LeanRight => i18n::tr(i18n::msg!("Lean Right [/ /]")),
+            Self::LeanLeft => i18n::tr(i18n::msg!("Lean Left [\\ \\]")),
+            Self::Trapezoid => i18n::tr(i18n::msg!("Trapezoid [/ \\]")),
+            Self::InvertedTrapezoid => i18n::tr(i18n::msg!("Inverted Trapezoid [\\ /]")),
         }
     }
 
@@ -361,12 +362,13 @@ pub struct BlockEdge {
     pub link: String,
 }
 
-/// The links the form offers, with what they draw.
+/// The links the form offers, with what they draw. The names are English
+/// msgids: translate them with `i18n::tr` where they are shown.
 pub const BLOCK_LINKS: [(&str, &str); 4] = [
-    ("-->", "矢印"),
-    ("---", "線だけ"),
-    ("--x", "× 印"),
-    ("--o", "○ 印"),
+    ("-->", i18n::msg!("Arrow")),
+    ("---", i18n::msg!("Line Only")),
+    ("--x", i18n::msg!("Cross")),
+    ("--o", i18n::msg!("Circle")),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -560,14 +562,17 @@ impl BlockDocument {
             return Some(error);
         }
         if html_attributes_rewritten(&emit_block(self)) {
-            return Some(HTML_ATTRIBUTES_REWRITTEN.to_string());
+            return Some(html_attributes_rewritten_message().to_string());
         }
         None
     }
 
     fn item_and_statement_error(&self) -> Option<String> {
         if self.columns.is_some_and(|columns| !columns.is_valid()) {
-            return Some("列数は 1 以上の整数か auto にしてください。".to_string());
+            return Some(
+                i18n::t!("The number of columns must be a whole number of 1 or more, or auto.")
+                    .to_string(),
+            );
         }
 
         let mut ids: Vec<&str> = Vec::new();
@@ -575,8 +580,10 @@ impl BlockDocument {
         for entry in &self.entries {
             if entry.depth > allowed_depth(previous) {
                 return Some(
-                    "グループの外の項目が字下げされています。グループの中へは「グループへ入れる」で移してください。"
-                        .to_string(),
+                    i18n::t!(
+                        "An item outside any group is indented. Use “Move into the Group Above” to put it into a group."
+                    )
+                    .to_string(),
                 );
             }
             previous = Some((entry.depth, matches!(entry.item, BlockItem::Group(_))));
@@ -586,8 +593,8 @@ impl BlockDocument {
             }
             if let Some(id) = entry.item.id() {
                 if ids.contains(&id) {
-                    return Some(format!(
-                        "ID `{id}` が 2 つあります。Mermaid は 2 つ目を置かないので、別の ID にしてください。"
+                    return Some(i18n::t!(
+                        "The ID `{id}` is used twice. Mermaid does not place the second one, so give it a different ID."
                     ));
                 }
                 ids.push(id);
@@ -600,30 +607,32 @@ impl BlockDocument {
                 BlockStatement::Edge(edge) => {
                     for end in [&edge.from, &edge.to] {
                         if !declared(end) {
-                            return Some(format!(
-                                "辺がつなぐ `{end}` というブロックがありません (辺だけで書くと、Mermaid はそこに新しいブロックを置きます)。"
+                            return Some(i18n::t!(
+                                "There is no block `{end}` for the edge to connect (written only in an edge, Mermaid places a new block there)."
                             ));
                         }
                     }
                     if !is_valid_block_link(&edge.link) {
-                        return Some(format!("辺の線 `{}` は書けません。", edge.link));
+                        return Some(i18n::t!("The edge line `{}` cannot be written.", edge.link));
                     }
                     if let Some(label) = &edge.label
                         && !is_valid_edge_label(label)
                     {
-                        return Some(format!(
-                            "辺のラベル `{label}` は書けません (`\"` と改行は不可)。"
+                        return Some(i18n::t!(
+                            "The edge label `{label}` cannot be written (`\"` and line breaks are not allowed)."
                         ));
                     }
                 }
                 BlockStatement::ClassDef { name, css } => {
                     if !is_valid_block_class_name(name) {
-                        return Some(format!(
-                            "classDef の名前 `{name}` は使えません (半角英数字と `_` だけ、空にもできません)。"
+                        return Some(i18n::t!(
+                            "The classDef name `{name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
                         ));
                     }
                     if !is_valid_block_css(css) {
-                        return Some(format!("classDef `{name}` のスタイルに改行は使えません。"));
+                        return Some(i18n::t!(
+                            "The style of classDef `{name}` cannot contain line breaks."
+                        ));
                     }
                 }
                 BlockStatement::Class {
@@ -631,36 +640,41 @@ impl BlockDocument {
                     class_name,
                 } => {
                     if targets.is_empty() {
-                        return Some(format!(
-                            "class `{class_name}` を付けるブロックを 1 つ以上書いてください。"
+                        return Some(i18n::t!(
+                            "Write at least one block to give the class `{class_name}` to."
                         ));
                     }
                     for target in targets {
                         if !declared(target) {
-                            return Some(format!(
-                                "class `{class_name}` を付ける `{target}` というブロックがありません。"
+                            return Some(i18n::t!(
+                                "There is no block `{target}` to give the class `{class_name}` to."
                             ));
                         }
                     }
                     if !is_valid_block_class_name(class_name) {
-                        return Some(format!(
-                            "クラス名 `{class_name}` は使えません (半角英数字と `_` だけ、空にもできません)。"
+                        return Some(i18n::t!(
+                            "The class name `{class_name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
                         ));
                     }
                 }
                 BlockStatement::Style { target, css } => {
                     if !declared(target) {
-                        return Some(format!(
-                            "style を付ける `{target}` というブロックがありません。"
+                        return Some(i18n::t!(
+                            "There is no block `{target}` to give the style to."
                         ));
                     }
                     if !is_valid_block_css(css) {
-                        return Some(format!("`{target}` のスタイルに改行は使えません。"));
+                        return Some(i18n::t!(
+                            "The style of `{target}` cannot contain line breaks."
+                        ));
                     }
                 }
                 BlockStatement::Comment(text) => {
                     if !is_valid_block_comment(text) {
-                        return Some("コメントは `%%` で始まる 1 行にしてください。".to_string());
+                        return Some(
+                            i18n::t!("A comment must be a single line that starts with `%%`.")
+                                .to_string(),
+                        );
                     }
                 }
             }
@@ -698,10 +712,10 @@ impl BlockItemKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Node => "ブロック",
-            Self::Arrow => "矢印",
-            Self::Space => "空き",
-            Self::Group => "グループ",
+            Self::Node => i18n::t!("Block"),
+            Self::Arrow => i18n::t!("Arrow"),
+            Self::Space => i18n::t!("Space"),
+            Self::Group => i18n::t!("Group"),
         }
     }
 
@@ -841,7 +855,7 @@ fn allowed_depth(previous: Option<(usize, bool)>) -> usize {
 /// What is wrong with one item on its own, or `None`.
 fn item_error(item: &BlockItem) -> Option<String> {
     let width_error = |width: Option<u32>, what: &str| {
-        (width == Some(0)).then(|| format!("{what} の幅は 1 以上にしてください。"))
+        (width == Some(0)).then(|| i18n::t!("The width of {what} must be 1 or more."))
     };
     match item {
         BlockItem::Node(node) => {
@@ -849,39 +863,46 @@ fn item_error(item: &BlockItem) -> Option<String> {
                 return Some(invalid_id_message(&node.id));
             }
             if node.shape.is_some() && !is_valid_block_label(&node.label) {
-                return Some(format!(
-                    "ブロック `{}` のラベル `{}` は書けません (`\"` と改行は不可、` で始めるなら ` で終える)。",
-                    node.id, node.label
+                return Some(i18n::t!(
+                    "The label `{label}` of block `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `).",
+                    id = node.id,
+                    label = node.label
                 ));
             }
-            width_error(node.width, &format!("ブロック `{}`", node.id))
+            width_error(node.width, &i18n::t!("block `{}`", node.id))
         }
         BlockItem::Arrow(arrow) => {
             if !is_valid_block_id(&arrow.id) {
                 return Some(invalid_id_message(&arrow.id));
             }
             if !is_valid_arrow_label(&arrow.label) {
-                return Some(format!(
-                    "矢印 `{}` のラベル `{}` は書けません (`\"` と改行は不可)。",
-                    arrow.id, arrow.label
+                return Some(i18n::t!(
+                    "The label `{label}` of arrow `{id}` cannot be written (`\"` and line breaks are not allowed).",
+                    id = arrow.id,
+                    label = arrow.label
                 ));
             }
             if arrow.directions.is_empty() {
-                return Some(format!(
-                    "矢印 `{}` の向きを 1 つ以上書いてください (right / left / up / down / x / y)。",
+                return Some(i18n::t!(
+                    "Write at least one direction for arrow `{}` (right / left / up / down / x / y).",
                     arrow.id
                 ));
             }
-            width_error(arrow.width, &format!("矢印 `{}`", arrow.id))
+            width_error(arrow.width, &i18n::t!("arrow `{}`", arrow.id))
         }
-        BlockItem::Space { width } => width_error(*width, "空き"),
+        BlockItem::Space { width } => width_error(*width, i18n::t!("the space")),
         BlockItem::Group(group) => {
             if group.columns.is_some_and(|columns| !columns.is_valid()) {
-                return Some("グループの列数は 1 以上の整数か auto にしてください。".to_string());
+                return Some(
+                    i18n::t!(
+                        "The number of columns of a group must be a whole number of 1 or more, or auto."
+                    )
+                    .to_string(),
+                );
             }
             let Some(id) = &group.id else {
                 return (group.label.is_some() || group.width.is_some()).then(|| {
-                    "ID の無いグループにはラベルも幅も付けられません。ID を付けてください。"
+                    i18n::t!("A group without an ID cannot have a label or a width. Give it an ID.")
                         .to_string()
                 });
             };
@@ -891,20 +912,21 @@ fn item_error(item: &BlockItem) -> Option<String> {
             if let Some(label) = &group.label
                 && !is_valid_block_label(label)
             {
-                return Some(format!(
-                    "グループ `{id}` のラベル `{label}` は書けません (`\"` と改行は不可、` で始めるなら ` で終える)。"
+                return Some(i18n::t!(
+                    "The label `{label}` of group `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
                 ));
             }
-            width_error(group.width, &format!("グループ `{id}`"))
+            width_error(group.width, &i18n::t!("group `{id}`"))
         }
-        BlockItem::Comment(text) => (!is_valid_block_comment(text))
-            .then(|| "コメントは `%%` で始まる 1 行にしてください。".to_string()),
+        BlockItem::Comment(text) => (!is_valid_block_comment(text)).then(|| {
+            i18n::t!("A comment must be a single line that starts with `%%`.").to_string()
+        }),
     }
 }
 
 fn invalid_id_message(id: &str) -> String {
-    format!(
-        "ID `{id}` は使えません (空白と記号 ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` は不可。end / space / columns / class / classDef / style / block / root も不可)。"
+    i18n::t!(
+        "The ID `{id}` cannot be used (spaces and the symbols ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` are not allowed, nor are end / space / columns / class / classDef / style / block / root)."
     )
 }
 
@@ -1047,7 +1069,11 @@ fn html_attributes_rewritten(text: &str) -> bool {
     false
 }
 
-const HTML_ATTRIBUTES_REWRITTEN: &str = "`<タグ …>` の形の文字の中に `=\"…\"` があると、Mermaid が読む前に `\"` を `'` に書き換えて図が変わります。ラベルの `<` か、ラベル末尾の `=` を変えてください。";
+fn html_attributes_rewritten_message() -> &'static str {
+    i18n::t!(
+        "When text shaped like `<tag …>` contains `=\"…\"`, Mermaid rewrites the `\"` to `'` before reading it, which changes the diagram. Change the `<` of the label or the `=` at its end."
+    )
+}
 
 /// Reads a width field: empty for one column, or a positive integer. `None`
 /// when the text is neither.
@@ -1117,7 +1143,7 @@ pub fn is_block_source(source: &str) -> bool {
 pub fn parse_block(source: &str) -> Result<BlockDocument> {
     let document = scan_block(source)?;
     if html_attributes_rewritten(source) {
-        bail!("{HTML_ATTRIBUTES_REWRITTEN}");
+        bail!(html_attributes_rewritten_message());
     }
 
     // `merman` is asked last, so that a construct this module knows about is
@@ -1125,11 +1151,13 @@ pub fn parse_block(source: &str) -> Result<BlockDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Block(_)) {
-            bail!("この図はブロック図ではありません。");
+            bail!(i18n::t!("This diagram is not a block diagram."));
         }
     }
 
@@ -1216,9 +1244,9 @@ impl Scanner {
     fn push_entry(&mut self, joined: bool, item: BlockItem, line: &str) -> Result<()> {
         if let Some(id) = item.id() {
             if self.declared.contains_key(id) {
-                bail!(
-                    "ブロック `{id}` が 2 回置かれています ({line})。Mermaid は 2 回目を無視するので、1 つにまとめてからもう一度開いてください。"
-                );
+                bail!(i18n::t!(
+                    "The block `{id}` is placed twice ({line}). Mermaid ignores the second one, so merge them into one, then open the editor again."
+                ));
             }
             self.declared
                 .insert(id.to_string(), self.document.entries.len());
@@ -1324,10 +1352,10 @@ impl Scanner {
                 BlockItem::Arrow(arrow),
             ) if label == arrow.label && directions == arrow.directions => {}
             (block, _) => {
-                bail!(
-                    "`{}` の形を辺の中で書き換えています ({line})。形はブロックを置いた場所で書いてください。",
+                bail!(i18n::t!(
+                    "The shape of `{}` is changed inside an edge ({line}). Write the shape where the block is placed.",
                     block.id()
-                );
+                ));
             }
         }
         Ok(false)
@@ -1335,9 +1363,9 @@ impl Scanner {
 
     fn require_declared(&self, id: &str, line: &str) -> Result<()> {
         if !self.declared.contains_key(id) {
-            bail!(
-                "`{line}` が指す `{id}` は、この行より前に置かれていません。Mermaid はその場合 `{id}` を配置しないので、ブロックを置いた行より後に書いてください。"
-            );
+            bail!(i18n::t!(
+                "The `{id}` that `{line}` refers to is not placed before this line. Mermaid then does not place `{id}`, so write this after the line that places the block."
+            ));
         }
         Ok(())
     }
@@ -1363,13 +1391,15 @@ fn scan_block(source: &str) -> Result<BlockDocument> {
     } else if let Some(tail) = keyword_tail(header, "block") {
         (BlockKeyword::Block, tail)
     } else {
-        bail!("ブロック図ではありません (`block-beta` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a block diagram (only a diagram that starts with `block-beta` can be edited in the structured editor)."
+        ));
     };
     if !tail.is_empty() {
-        bail!(
-            "`{}` の行の `{tail}` は構造化編集に対応していません。次の行に書いてください。",
+        bail!(i18n::t!(
+            "The structured editor does not support `{tail}` on the `{}` line. Write it on the next line.",
             keyword.keyword()
-        );
+        ));
     }
     scanner.document.keyword = keyword;
 
@@ -1380,19 +1410,19 @@ fn scan_block(source: &str) -> Result<BlockDocument> {
         }
         if trimmed.starts_with("%%") {
             if trimmed.starts_with("%%{") && !trimmed.contains("}%%") {
-                bail!(
-                    "複数行にわたる `%%{{ … }}%%` は構造化編集に対応していません。図の先頭に 1 行で書いてください。"
-                );
+                bail!(i18n::t!(
+                    "The structured editor does not support a `%%{{ … }}%%` that spans several lines. Write it on one line at the top of the diagram."
+                ));
             }
             // Mermaid cuts a directive out of the line and reads what follows
             // it as statements, which a comment row would move and hide.
             if let Some(rest) = text_after_directive(trimmed)
                 && !rest.trim().is_empty()
             {
-                bail!(
-                    "`%%{{ … }}%%` の後ろに続けて書かれた `{}` は構造化編集に対応していません。次の行に書いてください。",
+                bail!(i18n::t!(
+                    "The structured editor does not support `{}` written right after `%%{{ … }}%%`. Write it on the next line.",
                     rest.trim()
-                );
+                ));
             }
             let comment = trimmed.to_string();
             if scanner.depth() == 0 && !scanner.document.statements.is_empty() {
@@ -1410,7 +1440,9 @@ fn scan_block(source: &str) -> Result<BlockDocument> {
     // `merman` 0.7 closed a group left open at the end of the fence; 0.8
     // refuses it.
     if !scanner.open_groups.is_empty() {
-        bail!("`block` のグループが `end` で閉じられていません。テキストのまま編集してください。");
+        bail!(i18n::t!(
+            "A `block` group is not closed with `end`. Edit it as text."
+        ));
     }
 
     Ok(scanner.document)
@@ -1424,21 +1456,21 @@ fn scan_statement(scanner: &mut Scanner, line: &str) -> Result<()> {
     // `x`) continues the statement above instead.
     if std::mem::take(&mut scanner.link_may_follow) && parse_link(&mut Cursor::new(line)).is_some()
     {
-        bail!(
-            "`{line}` は、Mermaid が前の行のブロックから続く辺として読みます。辺は両端のブロックと同じ行に書いてください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid reads `{line}` as an edge that continues from the block on the previous line. Write an edge on the same line as the blocks at both of its ends."
+        ));
     }
 
     if let Some(tail) = word_tail(line, "end") {
         if scanner.depth() == 0 {
-            bail!(
-                "対応する `block` の無い `end` があります。Mermaid はこれを `end` という名前のブロックとして描きます。"
-            );
+            bail!(i18n::t!(
+                "There is an `end` without a matching `block`. Mermaid draws it as a block named `end`."
+            ));
         }
         if !tail.is_empty() {
-            bail!(
-                "`end` の後ろに続けて書かれた `{tail}` は構造化編集に対応していません。次の行に書いてください。"
-            );
+            bail!(i18n::t!(
+                "The structured editor does not support `{tail}` written right after `end`. Write it on the next line."
+            ));
         }
         scanner.open_groups.pop();
         return Ok(());
@@ -1478,13 +1510,15 @@ fn scan_statement(scanner: &mut Scanner, line: &str) -> Result<()> {
 
     if let Some(tail) = word_tail(line, "columns") {
         let Some(columns) = BlockColumns::from_text(tail) else {
-            bail!("`{line}` は列数として読めません (1 以上の整数か auto)。");
+            bail!(i18n::t!(
+                "`{line}` cannot be read as a number of columns (a whole number of 1 or more, or auto)."
+            ));
         };
         let slot = scanner.columns_mut();
         if slot.is_some() {
-            bail!(
-                "同じ階層に `columns` が 2 回あります。Mermaid は最後の 1 つだけを使うので、1 つにまとめてください。"
-            );
+            bail!(i18n::t!(
+                "There are two `columns` at the same level. Mermaid uses only the last one, so merge them into one."
+            ));
         }
         *slot = Some(columns);
         return Ok(());
@@ -1493,7 +1527,9 @@ fn scan_statement(scanner: &mut Scanner, line: &str) -> Result<()> {
     if let Some(tail) = word_tail(line, "classDef") {
         let (name, css) = split_first_word(tail);
         if !is_valid_block_class_name(name) {
-            bail!("`{line}` のクラス名は構造化編集に対応していません。");
+            bail!(i18n::t!(
+                "The structured editor does not support the class name in `{line}`."
+            ));
         }
         scanner.document.statements.push(BlockStatement::ClassDef {
             name: name.to_string(),
@@ -1511,9 +1547,9 @@ fn scan_statement(scanner: &mut Scanner, line: &str) -> Result<()> {
             .map(str::to_string)
             .collect::<Vec<_>>();
         if targets.is_empty() || !is_valid_block_class_name(class_name) {
-            bail!(
-                "`{line}` は構造化編集に対応していません (`class ID1,ID2 クラス名` の形で書いてください)。"
-            );
+            bail!(i18n::t!(
+                "The structured editor does not support `{line}` (write it as `class ID1,ID2 className`)."
+            ));
         }
         for target in &targets {
             scanner.require_declared(target, line)?;
@@ -1528,9 +1564,9 @@ fn scan_statement(scanner: &mut Scanner, line: &str) -> Result<()> {
     if let Some(tail) = word_tail(line, "style") {
         let (target, css) = split_first_word(tail);
         if target.is_empty() || target.contains(',') {
-            bail!(
-                "`{line}` は構造化編集に対応していません (`style ID スタイル` の形で書いてください)。"
-            );
+            bail!(i18n::t!(
+                "The structured editor does not support `{line}` (write it as `style ID style`)."
+            ));
         }
         scanner.require_declared(target, line)?;
         scanner.document.statements.push(BlockStatement::Style {
@@ -1574,7 +1610,9 @@ fn parse_group_header(header: &str, line: &str) -> Result<BlockGroup> {
     let (id, label) = match parse_block_reference(&mut cursor, line)? {
         ParsedBlock::Node { id, shape } => (id, shape.map(|(_, label)| label)),
         ParsedBlock::Arrow { .. } => {
-            bail!("`{line}` のグループに矢印の形は付けられません。");
+            bail!(i18n::t!(
+                "The group in `{line}` cannot have an arrow shape."
+            ));
         }
     };
     cursor.skip_blanks();
@@ -1585,10 +1623,10 @@ fn parse_group_header(header: &str, line: &str) -> Result<BlockGroup> {
     };
     cursor.skip_blanks();
     if !cursor.is_done() {
-        bail!(
-            "`{line}` のグループの見出しの後ろに続けて書かれた `{}` は構造化編集に対応していません。次の行に書いてください。",
+        bail!(i18n::t!(
+            "The structured editor does not support `{}` written right after the group heading in `{line}`. Write it on the next line.",
             cursor.rest()
-        );
+        ));
     }
     Ok(BlockGroup {
         id: Some(id),
@@ -1675,9 +1713,9 @@ fn parse_line_tokens(text: &str, line: &str) -> Result<(Vec<LineToken>, bool)> {
         }
         link_may_follow = false;
         if cursor.starts_with("%%") {
-            bail!(
-                "行の途中の `%%` コメントは構造化編集に対応していません ({line})。コメントは行を分けて書いてください。"
-            );
+            bail!(i18n::t!(
+                "The structured editor does not support a `%%` comment in the middle of a line ({line}). Write the comment on a line of its own."
+            ));
         }
         if cursor.at_keyword("space") {
             cursor.eat("space");
@@ -1702,17 +1740,17 @@ fn parse_line_tokens(text: &str, line: &str) -> Result<(Vec<LineToken>, bool)> {
                 continue;
             }
             if cursor.at_keyword("space") {
-                bail!(
-                    "`{line}` の 2 つ目の `space` は、Mermaid が `space` という名前のブロックとして読みます。構造化編集に対応していません。"
-                );
+                bail!(i18n::t!(
+                    "Mermaid reads the second `space` in `{line}` as a block named `space`. The structured editor does not support it."
+                ));
             }
             let right = parse_block_reference(&mut cursor, line)?;
             tokens.push(LineToken::Block(right, None));
             cursor.skip_blanks();
             if cursor.starts_with(":") {
-                bail!(
-                    "`{line}` の `space` の直後のブロックには幅を書けません (Mermaid が読めません)。"
-                );
+                bail!(i18n::t!(
+                    "The block right after `space` in `{line}` cannot have a width (Mermaid cannot read it)."
+                ));
             }
             continue;
         }
@@ -1728,7 +1766,9 @@ fn parse_line_tokens(text: &str, line: &str) -> Result<(Vec<LineToken>, bool)> {
             });
             cursor.skip_blanks();
             if cursor.starts_with(":") {
-                bail!("`{line}` の辺の後ろの `:` は Mermaid が読めません。");
+                bail!(i18n::t!(
+                    "Mermaid cannot read the `:` after the edge in `{line}`."
+                ));
             }
             continue;
         }
@@ -1768,7 +1808,9 @@ fn parse_width(cursor: &mut Cursor, line: &str) -> Result<u32> {
         cursor.bump();
     }
     let Some(width) = parse_positive(cursor.since(start)) else {
-        bail!("`{line}` の幅は 1 以上の整数にしてください。");
+        bail!(i18n::t!(
+            "The width in `{line}` must be a whole number of 1 or more."
+        ));
     };
     Ok(width)
 }
@@ -1806,13 +1848,15 @@ fn parse_block_reference(cursor: &mut Cursor, line: &str) -> Result<ParsedBlock>
     }
     let id = cursor.since(start).to_string();
     if id.is_empty() {
-        bail!("`{line}` は構造化編集に対応していません (ブロックとして読めませんでした)。");
+        bail!(i18n::t!(
+            "The structured editor does not support `{line}` (it could not be read as a block)."
+        ));
     }
     if !is_valid_block_id(&id) {
-        bail!(
-            "`{line}` の `{id}` は構造化編集に対応していません。{}",
+        bail!(i18n::t!(
+            "The structured editor does not support `{id}` in `{line}`. {}",
             invalid_id_message(&id)
-        );
+        ));
     }
     cursor.skip_blanks();
 
@@ -1821,11 +1865,13 @@ fn parse_block_reference(cursor: &mut Cursor, line: &str) -> Result<ParsedBlock>
         let label = parse_plain_string(cursor, line)?;
         cursor.skip_blanks();
         if !cursor.eat("]>") {
-            bail!("`{line}` の矢印ブロックは `]>` で閉じてください。");
+            bail!(i18n::t!("Close the arrow block in `{line}` with `]>`."));
         }
         cursor.skip_blanks();
         if !cursor.eat("(") {
-            bail!("`{line}` の矢印ブロックには `(right)` のように向きを書いてください。");
+            bail!(i18n::t!(
+                "Write a direction such as `(right)` for the arrow block in `{line}`."
+            ));
         }
         let mut directions = Vec::new();
         loop {
@@ -1838,9 +1884,9 @@ fn parse_block_reference(cursor: &mut Cursor, line: &str) -> Result<ParsedBlock>
             }
             let word = cursor.since(start);
             let Some(direction) = BlockArrowDirection::from_keyword(word) else {
-                bail!(
-                    "`{line}` の矢印の向き `{word}` は読めません (right / left / up / down / x / y)。"
-                );
+                bail!(i18n::t!(
+                    "The arrow direction `{word}` in `{line}` cannot be read (right / left / up / down / x / y)."
+                ));
             };
             directions.push(direction);
             cursor.skip_blanks();
@@ -1850,7 +1896,7 @@ fn parse_block_reference(cursor: &mut Cursor, line: &str) -> Result<ParsedBlock>
         }
         cursor.skip_blanks();
         if !cursor.eat(")") {
-            bail!("`{line}` の矢印の向きは `)` で閉じてください。");
+            bail!(i18n::t!("Close the arrow direction in `{line}` with `)`."));
         }
         return Ok(ParsedBlock::Arrow {
             id,
@@ -1870,12 +1916,14 @@ fn parse_block_reference(cursor: &mut Cursor, line: &str) -> Result<ParsedBlock>
     let label = parse_label_string(cursor, line)?;
     cursor.skip_blanks();
     let Some(end_delimiter) = ends.iter().find(|end| cursor.eat(end)) else {
-        bail!("`{line}` のブロック `{id}` の括弧が閉じていません。");
+        bail!(i18n::t!(
+            "The bracket of block `{id}` in `{line}` is not closed."
+        ));
     };
     let Some(shape) = BlockShape::from_delimiters(start_delimiter, end_delimiter) else {
-        bail!(
-            "`{line}` の `{start_delimiter}…{end_delimiter}` は Mermaid が形として読まない組み合わせです (普通の四角で描かれます)。`[ ]` などに直してからもう一度開いてください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid does not read the pair `{start_delimiter}…{end_delimiter}` in `{line}` as a shape (it is drawn as a plain box). Change it to `[ ]` or another shape, then open the editor again."
+        ));
     };
     Ok(ParsedBlock::Node {
         id,
@@ -1889,7 +1937,9 @@ fn parse_label_string(cursor: &mut Cursor, line: &str) -> Result<String> {
     if cursor.starts_with("\"`") {
         let inner = cursor.rest().get(2..).unwrap_or_default();
         let Some(end) = inner.find("`\"") else {
-            bail!("`{line}` の Markdown のラベルが閉じていません (`\"` の前に ` が必要です)。");
+            bail!(i18n::t!(
+                "The Markdown label in `{line}` is not closed (a ` is needed before the `\"`)."
+            ));
         };
         let label = format!("`{}`", inner.get(..end).unwrap_or_default());
         cursor.position += 2 + end + 2;
@@ -1900,13 +1950,13 @@ fn parse_label_string(cursor: &mut Cursor, line: &str) -> Result<String> {
 
 fn parse_plain_string(cursor: &mut Cursor, line: &str) -> Result<String> {
     if !cursor.eat("\"") {
-        bail!(
-            "`{line}` のラベルは `\"` で囲んでください (ブロック図のラベルには引用符が必要です)。"
-        );
+        bail!(i18n::t!(
+            "Enclose the label in `{line}` in `\"` (labels in a block diagram need quotes)."
+        ));
     }
     let rest = cursor.rest();
     let Some(end) = rest.find('"') else {
-        bail!("`{line}` のラベルの `\"` が閉じていません。");
+        bail!(i18n::t!("The `\"` of the label in `{line}` is not closed."));
     };
     let label = rest.get(..end).unwrap_or_default().to_string();
     cursor.position += end + 1;

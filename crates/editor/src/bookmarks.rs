@@ -245,7 +245,7 @@ impl Editor {
             self.add_edit_block(
                 target.anchor,
                 "",
-                "ブックマークのラベルを入力 (省略可)",
+                i18n::t!("Enter bookmark label (Optional)"),
                 Some(Box::new(move |label: String, _, cx| {
                     bookmark_store.update(cx, |store, cx| {
                         store.toggle_bookmark(target.buffer, target.buffer_anchor, label, cx);

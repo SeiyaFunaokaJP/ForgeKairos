@@ -1,0 +1,132 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "An Error Happened"
+msgstr "エラーが発生しました"
+
+msgid "Authenticate To Use"
+msgstr "認証が必要"
+
+msgid "Authorized"
+msgstr "認証済み"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Connect to GitHub"
+msgstr "GitHub に接続"
+
+msgid "Copied!"
+msgstr "コピーしました"
+
+msgid "Copilot Chat Enabled!"
+msgstr "Copilot Chat が有効になりました"
+
+msgid "Copilot Chat had an issue signing in. Please try again."
+msgstr "Copilot Chat のサインインで問題が発生しました。もう一度お試しください。"
+
+msgid "Copilot Chat requires an active GitHub Copilot subscription. Please ensure Copilot Chat is configured and try again, or use a different LLM provider."
+msgstr "Copilot Chat には有効な GitHub Copilot のサブスクリプションが必要です。Copilot Chat が設定済みであることを確認してもう一度お試しいただくか、別の LLM プロバイダーを使用してください。"
+
+msgid "Copilot Edit Predictions Enabled!"
+msgstr "Copilot Edit Predictions が有効になりました"
+
+msgid "Copilot Edit Predictions had issues starting. You can try reinstalling it and signing in again."
+msgstr "Copilot Edit Predictions の起動に問題が発生しました。再インストールして、もう一度サインインしてみてください。"
+
+msgid "Copilot Edit Predictions has started."
+msgstr "Copilot Edit Predictions が起動しました。"
+
+msgid "Copilot Edit Predictions is reinstalling…"
+msgstr "Copilot Edit Predictions を再インストールしています…"
+
+msgid "Copilot Edit Predictions is starting…"
+msgstr "Copilot Edit Predictions を起動しています…"
+
+msgid "Copilot Edit Predictions requires an active GitHub Copilot subscription. Please ensure Copilot Edit Predictions is configured and try again, or use a different edit predictions provider."
+msgstr "Copilot Edit Predictions には有効な GitHub Copilot のサブスクリプションが必要です。Copilot Edit Predictions が設定済みであることを確認してもう一度お試しいただくか、別の編集予測プロバイダーを使用してください。"
+
+msgid "Copy"
+msgstr "コピー"
+
+msgid "Done"
+msgstr "完了"
+
+msgid "Enable Copilot edit predictions by connecting your existing license once you have subscribed or renewed your subscription."
+msgstr "サブスクリプションの購入または更新後、既存のライセンスを接続して Copilot の編集予測を有効にしてください。"
+
+msgid "Error: {err}"
+msgstr "エラー: {err}"
+
+msgid "Paste this code into GitHub after clicking the button below."
+msgstr "下のボタンをクリックした後、このコードを GitHub に貼り付けてください。"
+
+msgid "Reinstall Copilot Edit Predictions and Sign In"
+msgstr "Copilot Edit Predictions を再インストールしてサインイン"
+
+msgid "Reinstall Copilot and Sign in"
+msgstr "Copilot を再インストールしてサインイン"
+
+msgid "Reinstall and Sign in"
+msgstr "再インストールしてサインイン"
+
+msgid "Sign In"
+msgstr "サインイン"
+
+msgid "Sign Out"
+msgstr "サインアウト"
+
+msgid "Sign in to GitHub"
+msgstr "GitHub にサインイン"
+
+msgid "Signed out of Copilot Edit Predictions"
+msgstr "Copilot Edit Predictions からサインアウトしました"
+
+msgid "Signing into {product}…"
+msgstr "{product} にサインインしています…"
+
+msgid "Signing out of Copilot Edit Predictions…"
+msgstr "Copilot Edit Predictions からサインアウトしています…"
+
+msgid "Starting {product}…"
+msgstr "{product} を起動しています…"
+
+msgid "Subscribe on GitHub"
+msgstr "GitHub でサブスクリプションを購入"
+
+msgid "To use Copilot for edit predictions, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot subscription."
+msgstr "編集予測に Copilot を使用するには、GitHub にログインしている必要があります。GitHub アカウントに有効な Copilot のサブスクリプションが必要な点にご注意ください。"
+
+msgid "To use Zed's agent with GitHub Copilot Chat, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot Chat subscription."
+msgstr "Zed のエージェントで GitHub Copilot Chat を使用するには、GitHub にログインしている必要があります。GitHub アカウントに有効な Copilot Chat のサブスクリプションが必要な点にご注意ください。"
+
+msgid "Use GitHub Copilot Chat in Zed"
+msgstr "Zed で GitHub Copilot Chat を使用"
+
+msgid "Use GitHub Copilot Edit Predictions in Zed"
+msgstr "Zed で GitHub Copilot Edit Predictions を使用"
+
+msgid "Use GitHub Copilot in Zed"
+msgstr "Zed で GitHub Copilot を使用"
+
+msgid "Using Copilot Chat requires an active subscription on GitHub."
+msgstr "Copilot Chat を使用するには、GitHub の有効なサブスクリプションが必要です。"
+
+msgid "Using Copilot edit predictions requires an active subscription on GitHub."
+msgstr "Copilot の編集予測を使用するには、GitHub の有効なサブスクリプションが必要です。"
+
+msgid "Waiting for connection…"
+msgstr "接続を待機しています…"
+
+msgid "You must have an active GitHub Copilot subscription."
+msgstr "有効な GitHub Copilot のサブスクリプションが必要です"
+
+msgid "You're all set to use Copilot Chat."
+msgstr "Copilot Chat を使用する準備が整いました。"
+
+msgid "You're all set to use Copilot edit predictions."
+msgstr "Copilot の編集予測を使用する準備が整いました。"

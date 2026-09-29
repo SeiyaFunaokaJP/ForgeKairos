@@ -543,14 +543,14 @@ impl MessageEditor {
                 let has_selection = editor.has_non_empty_selection(&editor.display_snapshot(cx));
 
                 Some(ContextMenu::build(window, cx, |menu, _, _| {
-                    menu.action("切り取り", Box::new(editor::actions::Cut))
+                    menu.action(i18n::t!("Cut"), Box::new(editor::actions::Cut))
                         .action_disabled_when(
                             !has_selection,
-                            "コピー",
+                            i18n::t!("Copy"),
                             Box::new(editor::actions::Copy),
                         )
-                        .action("貼り付け", Box::new(editor::actions::Paste))
-                        .action("プレーンテキストとして貼り付け", Box::new(PasteRaw))
+                        .action(i18n::t!("Paste"), Box::new(editor::actions::Paste))
+                        .action(i18n::t!("Paste as Plain Text"), Box::new(PasteRaw))
                 }))
             });
 
@@ -1859,7 +1859,7 @@ impl MessageEditor {
                 files: true,
                 directories: false,
                 multiple: true,
-                prompt: Some("画像を選択".into()),
+                prompt: Some(i18n::t!("Select Images").into()),
                 starting_directory: None,
             },
             cx,
@@ -3818,8 +3818,8 @@ mod tests {
                     format!("seven.txt b{slash}"),
                     format!("six.txt b{slash}"),
                     format!("five.txt b{slash}"),
-                    "ファイルとディレクトリ".into(),
-                    "シンボル".into()
+                    "Files & Directories".into(),
+                    "Symbols".into()
                 ]
             );
             editor.set_text("", window, cx);
@@ -3853,10 +3853,10 @@ mod tests {
                     format!("seven.txt b{slash}"),
                     format!("six.txt b{slash}"),
                     format!("five.txt b{slash}"),
-                    "ファイルとディレクトリ".into(),
-                    "シンボル".into(),
-                    "スレッド".into(),
-                    "URL を取得".into()
+                    "Files & Directories".into(),
+                    "Symbols".into(),
+                    "Threads".into(),
+                    "Fetch".into()
                 ]
             );
         });

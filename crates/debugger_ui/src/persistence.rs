@@ -57,38 +57,44 @@ impl DebuggerPaneItem {
 
     pub(crate) fn to_shared_string(self) -> SharedString {
         match self {
-            DebuggerPaneItem::Console => SharedString::new_static("コンソール"),
-            DebuggerPaneItem::Variables => SharedString::new_static("変数"),
-            DebuggerPaneItem::BreakpointList => SharedString::new_static("ブレークポイント"),
-            DebuggerPaneItem::Frames => SharedString::new_static("フレーム"),
-            DebuggerPaneItem::Modules => SharedString::new_static("モジュール"),
-            DebuggerPaneItem::LoadedSources => SharedString::new_static("ソース"),
-            DebuggerPaneItem::Terminal => SharedString::new_static("ターミナル"),
-            DebuggerPaneItem::MemoryView => SharedString::new_static("メモリビュー"),
+            DebuggerPaneItem::Console => SharedString::new_static(i18n::t!("Console")),
+            DebuggerPaneItem::Variables => SharedString::new_static(i18n::t!("Variables")),
+            DebuggerPaneItem::BreakpointList => SharedString::new_static(i18n::t!("Breakpoints")),
+            DebuggerPaneItem::Frames => SharedString::new_static(i18n::t!("Frames")),
+            DebuggerPaneItem::Modules => SharedString::new_static(i18n::t!("Modules")),
+            DebuggerPaneItem::LoadedSources => SharedString::new_static(i18n::t!("Sources")),
+            DebuggerPaneItem::Terminal => SharedString::new_static(i18n::t!("Terminal")),
+            DebuggerPaneItem::MemoryView => SharedString::new_static(i18n::t!("Memory View")),
         }
     }
     pub(crate) fn tab_tooltip(self) -> SharedString {
         let tooltip = match self {
             DebuggerPaneItem::Console => {
-                "プログラムの出力を表示し、デバッガーコマンドを手動で入力できます"
+                i18n::t!("Displays program output and allows manual input of debugger commands")
             }
             DebuggerPaneItem::Variables => {
-                "現在のスタックフレームにおけるローカル変数とグローバル変数の値を表示します"
+                i18n::t!(
+                    "Shows current values of local and global variables in the current stack frame"
+                )
             }
             DebuggerPaneItem::BreakpointList => {
-                "コードに設定された有効なブレークポイントをすべて一覧表示します"
+                i18n::t!("Lists all active breakpoints set in the code")
             }
-            DebuggerPaneItem::Frames => "コールスタックを表示し、関数呼び出し間を移動できます",
+            DebuggerPaneItem::Frames => {
+                i18n::t!("Displays the call stack, letting you navigate between function calls")
+            }
             DebuggerPaneItem::Modules => {
-                "プログラムが読み込んだモジュールやライブラリをすべて表示します"
+                i18n::t!("Shows all modules or libraries loaded by the program")
             }
             DebuggerPaneItem::LoadedSources => {
-                "デバッガーが現在読み込んで使用しているソースファイルをすべて一覧表示します"
+                i18n::t!("Lists all source files currently loaded and used by the debugger")
             }
             DebuggerPaneItem::Terminal => {
-                "デバッグ環境内で対話的なターミナルセッションを提供します"
+                i18n::t!(
+                    "Provides an interactive terminal session within the debugging environment"
+                )
             }
-            DebuggerPaneItem::MemoryView => "メモリの内容を調べられます",
+            DebuggerPaneItem::MemoryView => i18n::t!("Allows inspection of memory contents"),
         };
         SharedString::new_static(tooltip)
     }

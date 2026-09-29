@@ -2588,9 +2588,12 @@
   //
   // If you don't want any of these extensions, add this field to your settings
   // and change the value to `false`.
-  "auto_install_extensions": {
-    "html": true,
-  },
+  //
+  // Empty in this fork: nothing is downloaded at startup unless the user asked
+  // for it (upstream ships `{ "html": true }`). Listing an extension here in
+  // your own settings is that request, and it is installed on the next start.
+  // Opening an `.html` file still offers the `html` extension.
+  "auto_install_extensions": {},
   // The capabilities granted to extensions.
   //
   // This list can be customized to restrict what extensions are able to do.

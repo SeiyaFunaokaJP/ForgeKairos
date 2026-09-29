@@ -5,8 +5,352 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "(low precedence)"
+msgstr "(優先度低)"
+
+msgid "(match)"
+msgstr "(一致)"
+
+msgid "(no match)"
+msgstr "(不一致)"
+
+msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
+msgstr "* サーバー: {NAME} (ID {ID})\n\n* バージョン: {VERSION}\n\n* バイナリ: {BINARY}\n\n* 登録済みのワークスペースフォルダー:\n{WORKSPACE_FOLDERS}\n\n* 機能: {CAPABILITIES}\n\n* 設定: {CONFIGURATION}"
+
+msgid "All Servers Operational"
+msgstr "すべてのサーバーは正常です"
+
+msgid "All highlights are filtered out"
+msgstr "すべてのハイライトが絞り込みで除外されています"
+
+msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
+msgstr "開いたあとにエージェントがさらに書き込みました。変更を確認してから、もう一度 [再開] を押してください。"
+
+msgid "An agent wrote to {name}"
+msgstr "エージェントが「{name}」に書き込みました"
+
+msgid "Clear"
+msgstr "クリア"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Current Context Stack"
+msgstr "現在のコンテキストスタック"
+
+msgid "Current editor has no associated language"
+msgstr "現在のエディターには言語が関連付けられていません。"
+
+msgid "Download Denied"
+msgstr "ダウンロード拒否"
+
+msgid "Edit Keymap File"
+msgstr "キーマップファイルを編集"
+
+msgid "Enable text, syntax, or semantic highlights in the toolbar"
+msgstr "ツールバーでテキスト・構文・セマンティックのハイライトを有効にしてください。"
+
+msgid "Error"
+msgstr "エラー"
+
+msgid "Failed to revoke approval: {error}"
+msgstr "承認を取り消せませんでした: {error}"
+
+msgid "Failed to serialize capabilities: {e}"
+msgstr "機能のシリアライズに失敗しました: {e}"
+
+msgid "Failed to serialize configuration: {e}"
+msgstr "設定のシリアライズに失敗しました: {e}"
+
+msgid "Focus an editor to show a new tree view"
+msgstr "新しいツリービューを表示するには、エディターにフォーカスしてください。"
+
+msgid "Focus an editor to show highlights"
+msgstr "ハイライトを表示するには、エディターにフォーカスしてください。"
+
+msgid "Folder Code Paused"
+msgstr "フォルダーのコードを止めています"
+
+msgid "Folder code is paused after an agent write"
+msgstr "エージェントの書き込み後のため、フォルダーのコードを止めています"
+
+msgid "Highlights"
+msgstr "ハイライト"
+
+msgid "Highlights Settings"
+msgstr "ハイライトの設定"
+
+msgid "Info"
+msgstr "情報"
+
+msgid "Key Equivalents"
+msgstr "代替キー"
+
+msgid "Keyboard Context"
+msgstr "キーボードコンテキスト"
+
+msgid "LSP Logs"
+msgstr "LSP ログ"
+
+msgid "Language Servers"
+msgstr "言語サーバー"
+
+msgid "Language Servers can't run until you trust this project."
+msgstr "このプロジェクトを信頼するまで、言語サーバーは実行できません。"
+
+msgid "Language server {server_name}:\n\n{message}"
+msgstr "言語サーバー {server_name}:\n\n{message}"
+
+msgid "Language servers and formatters on the remote host are paused the same way."
+msgstr "接続先の言語サーバーとフォーマッターも同じように止めています。"
+
+msgid "Language servers running in Restricted Mode: {restricted}"
+msgstr "制限モードで動いている言語サーバー: {restricted}"
+
+msgid "Language servers stay in Restricted Mode or stopped until you review and resume."
+msgstr "確認して再開するまで、言語サーバーは制限モードか停止のままです。"
+
+msgid "Last Keystroke"
+msgstr "直前のキーストローク"
+
+msgid "Log"
+msgstr "ログ"
+
+msgid "Log level"
+msgstr "ログレベル"
+
+msgid "Messages"
+msgstr "メッセージ"
+
+msgid "No folders are paused."
+msgstr "止めているフォルダーはありません。"
+
+msgid "No highlights found"
+msgstr "ハイライトが見つかりません"
+
+msgid "No language servers"
+msgstr "言語サーバーはありません"
+
+msgid "No language servers or formatters have been held back yet. They follow this state when they start or run."
+msgstr "まだ止めた言語サーバー・フォーマッターはありません。起動や実行のときにこの状態に従います。"
+
+msgid "No server selected"
+msgstr "サーバーが選択されていません"
+
+msgid "Not attached to an editor"
+msgstr "エディターにアタッチされていません。"
+
+msgid "Not stopped yet. Either the host isn't responding or the processes are ignoring the request to exit. They stay in the list if they're still running at the next check."
+msgstr "まだ止まっていません。ホストが応答していないか、プロセスが終了を無視しています。次の確認でまだ動いていれば一覧に残ります。"
+
+msgid "Off"
+msgstr "オフ"
+
+msgid "Open Documentation"
+msgstr "ドキュメントを開く"
+
+msgid "Open Git Panel"
+msgstr "Git パネルを開く"
+
+msgid "Processes left behind by an agent response are running in the sandbox. You can't resume until they end."
+msgstr "エージェントの応答が残したプロセスがサンドボックスの中で動いています。終わるまで再開できません。"
+
+msgid "Project is in Restricted Mode"
+msgstr "プロジェクトは制限モードです"
+
+msgid "RPC Messages"
+msgstr "RPC メッセージ"
+
+msgid "Restart All Servers"
+msgstr "すべてのサーバーを再起動"
+
+msgid "Restart Server"
+msgstr "サーバーを再起動"
+
+msgid "Restricted Mode"
+msgstr "制限モード"
+
+msgid "Resume"
+msgstr "再開"
+
+msgid "Revoke Launch Approval"
+msgstr "起動の承認を取り消す"
+
+msgid "Running"
+msgstr "実行中"
+
+msgid "Semantic Tokens"
+msgstr "セマンティックトークン"
+
+msgid "Server Info"
+msgstr "サーバー情報"
+
+msgid "Server Logs"
+msgstr "サーバーログ"
+
+msgid "Server Trace"
+msgstr "サーバートレース"
+
+msgid "Server with errors"
+msgstr "エラーのあるサーバーがあります"
+
+msgid "Server with notifications"
+msgstr "通知のあるサーバーがあります"
+
+msgid "Server with warnings"
+msgstr "警告のあるサーバーがあります"
+
+msgid "Shortcuts defined using some characters have been remapped so that shortcuts can be typed without holding option."
+msgstr "一部の文字で定義されたショートカットは、option キーを押さなくても入力できるよう置き換えられています。"
+
+msgid "Since an agent wrote to the following folders, the language servers and formatters that run each folder's code are paused. Review the agent's changes before you resume."
+msgstr "エージェントが書き込んだあと、次のフォルダーでは、そのフォルダーのコードを実行する言語サーバーとフォーマッターを止めています。エージェントの変更を確認してから再開してください。"
+
+msgid "Skipped formatters: {formatters}"
+msgstr "実行しなかったフォーマッター: {formatters}"
+
+msgid "Starting…"
+msgstr "起動中…"
+
+msgid "Stop All Servers"
+msgstr "すべてのサーバーを停止"
+
+msgid "Stop Leftover Processes"
+msgstr "残ったプロセスを止める"
+
+msgid "Stop Server"
+msgstr "サーバーを停止"
+
+msgid "Stopped"
+msgstr "停止済み"
+
+msgid "Stopped language servers: {stopped}"
+msgstr "止めている言語サーバー: {stopped}"
+
+msgid "Syntax Tokens"
+msgstr "構文トークン"
+
+msgid "Syntax Tree"
+msgstr "構文ツリー"
+
+msgid "Text Highlights"
+msgstr "テキストハイライト"
+
+msgid "The editor has no text, syntax, or semantic token highlights"
+msgstr "このエディターにはテキスト・構文・セマンティックトークンのハイライトがありません。"
+
+msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
+msgstr "接続先のサーバーが古いため、接続先の言語サーバーとフォーマッターは止められていません"
+
+msgid "This folder's code (language servers and formatters) won't run until you review and resume."
+msgstr "確認して再開するまで、このフォルダーのコード (言語サーバー・フォーマッター) を実行しません"
+
+msgid "This view lets you determine the current context stack for creating custom key bindings in Zed. When a keyboard shortcut is triggered, it also shows all the possible contexts it could have triggered in, and which one matched."
+msgstr "このビューでは、Zed でキーバインドを自作するときに使う、現在のコンテキストスタックを確認できます。キーボードショートカットが実行されると、そのショートカットが実行され得たすべてのコンテキストと、実際にどれが一致したかも表示します。"
+
+msgid "Trace level"
+msgstr "トレースレベル"
+
+msgid "Try assigning a language or switching to a different buffer"
+msgstr "言語を割り当てるか、別のバッファーに切り替えてください。"
+
+msgid "Typed: {}"
+msgstr "入力: {}"
+
+msgid "Unknown"
+msgstr "不明"
+
+msgid "Unknown worktree"
+msgstr "不明なワークツリー"
+
+msgid "Update view to '{active_tab_name}'"
+msgstr "'{active_tab_name}' の表示に更新します"
+
+msgid "Verbose"
+msgstr "詳細"
+
+msgid "View Agent Changes"
+msgstr "エージェントの変更を見る"
+
+msgid "View Default Keymap"
+msgstr "既定のキーマップを表示"
+
+msgid "View Logs"
+msgstr "ログを表示"
+
+msgid "View Message"
+msgstr "メッセージを表示"
+
+msgid "Waiting for more input: {}"
+msgstr "続きの入力を待っています: {}"
+
+msgid "Waiting for the remote server to respond."
+msgstr "接続先のサーバーの応答を待っています。"
+
+msgid "Warning"
+msgstr "警告"
+
+msgid "You can't resume until the agent's response ends. If it doesn't end, stop the agent."
+msgstr "エージェントの応答が終わるまで再開できません。終わらないときは、エージェントを止めてください。"
+
+msgid "You can't resume until the running sessions and commands end."
+msgstr "実行中のセッション・コマンドが終わるまで再開できません。"
+
+msgid "process with an unreadable command name"
+msgstr "コマンド名が読めないプロセス"
+
+msgid "running for under a second"
+msgstr "1 秒未満前から"
+
+msgid "running for {count} minute"
+msgid_plural "running for {count} minutes"
+msgstr[0] "{count} 分前から"
+
+msgid "running for {count} second"
+msgid_plural "running for {count} seconds"
+msgstr[0] "{count} 秒前から"
+
+msgid "running for {} h {} min"
+msgstr "{} 時間 {} 分前から"
+
+msgid "started at an unknown time"
+msgstr "起動時間不明"
+
 msgid "supplementary"
 msgstr "補助"
 
 msgid "unknown server"
 msgstr "不明なサーバー"
+
+msgid "{command} ({}, PID {}, {})"
+msgstr "{command} ({}、PID {}、{})"
+
+msgid "{} / {} highlights"
+msgstr "{} / {} 件のハイライト"
+
+msgid "{} highlights"
+msgstr "{} 件のハイライト"
+
+msgctxt "highlight style"
+msgid "bold"
+msgstr "太字"
+
+msgctxt "highlight style"
+msgid "italic"
+msgstr "斜体"
+
+msgctxt "highlight style"
+msgid "none"
+msgstr "なし"
+
+msgctxt "highlight style"
+msgid "strike"
+msgstr "取消線"
+
+msgctxt "highlight style"
+msgid "underline"
+msgstr "下線"
+
+msgctxt "paused folder code"
+msgid "Review"
+msgstr "確認する"

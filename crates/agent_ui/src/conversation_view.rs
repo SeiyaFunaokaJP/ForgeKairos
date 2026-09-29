@@ -116,24 +116,27 @@ const TOKEN_THRESHOLD: u64 = 250;
 
 pub(crate) const DRAFT_PROMPT_PERSIST_DEBOUNCE: Duration = Duration::from_millis(250);
 
-const START_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの外で起動 (このスレッドのみ)";
+const START_OUTSIDE_SANDBOX_LABEL: &str =
+    i18n::msg!("Start Outside the Sandbox (This Thread Only)");
 /// ADR-F49 決定 19 (8c): a start in the sandbox that failed for a reason of
 /// its own (the agent exited, something else went wrong) may still be one
 /// the user wants outside it. The start is confirmed like any other.
-const START_OUTSIDE_SANDBOX_AFTER_FAILURE_LABEL: &str = "サンドボックスの外で起動…";
+const START_OUTSIDE_SANDBOX_AFTER_FAILURE_LABEL: &str = i18n::msg!("Start Outside the Sandbox…");
 /// ADR-F49 決定 19 (8c): a thread read back from the history whose session
 /// the sandbox cannot reach.
-const RESUME_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの外で再開…";
-const SESSION_STARTED_OUTSIDE_SANDBOX_EXPLANATION: &str = "このスレッドはサンドボックスの外で\
-     起動したエージェントの会話です。会話はサンドボックスの外の設定フォルダーにあるため、\
-     サンドボックスの中からは読み込めません。続けるにはサンドボックスの外で再開します \
-     (起動の前に確認します)。";
+const RESUME_OUTSIDE_SANDBOX_LABEL: &str = i18n::msg!("Resume Outside the Sandbox…");
+const SESSION_STARTED_OUTSIDE_SANDBOX_EXPLANATION: &str = i18n::msg!(
+    "This thread is a conversation with an agent that was started outside the sandbox. \
+     The conversation is kept in a settings folder outside the sandbox, so it can't be read \
+     from inside the sandbox. To continue, resume it outside the sandbox (you'll be asked \
+     before it starts)."
+);
 /// ADR-F49 決定 19 (8c): the thread's `⋯` menu entry that starts a connected
 /// thread's agent again outside its sandbox.
-pub(crate) const RESTART_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの外で起動し直す…";
+pub(crate) const RESTART_OUTSIDE_SANDBOX_LABEL: &str = i18n::msg!("Restart Outside the Sandbox…");
 /// ADR-F49 決定 19 (8c): what a tab of a thread outside its sandbox says after
 /// the thread's name.
-const OUTSIDE_SANDBOX_TAB_SUFFIX: &str = " (サンドボックスの外)";
+const OUTSIDE_SANDBOX_TAB_SUFFIX: &str = i18n::msg!(" (Outside Sandbox)");
 
 /// ADR-F49 決定 19 (8c): the consent is the thread's, not one connection's:
 /// the idle disconnect or an update that takes the connection away does not
@@ -152,23 +155,26 @@ fn consent_to_outside_sandbox(thread_id: ThreadId, agent_id: AgentId, cx: &mut A
 /// ADR-F49 決定 19 (8c): said on a thread read back in its sandbox although
 /// the user's settings start the agent outside every time.
 const RESUMED_IN_SANDBOX_LABEL: &str =
-    "このスレッドはサンドボックスの中で始めたため、中で再開しました";
+    i18n::msg!("This thread was started inside the sandbox, so it was resumed inside the sandbox");
 const OUTSIDE_SANDBOX_RUNNING_LABEL: &str =
-    "このスレッドのエージェントはサンドボックスの外で実行中です";
-const OUTSIDE_SANDBOX_EXPLANATION: &str = "サンドボックスの外で起動すると、このエージェントは \
-     Zed 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前にスレッドごとに確認します。";
-const AGENT_HOSTS_MESSAGE: &str = "エージェントの通信に許可リストへの追加が必要です";
-const ADD_AGENT_HOSTS_LABEL: &str = "許可リストに追加して起動";
+    i18n::msg!("This thread's agent is running outside the sandbox");
+const OUTSIDE_SANDBOX_EXPLANATION: &str = i18n::msg!(
+    "Started outside the sandbox, this agent runs with Zed's own permissions and can also \
+     run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
+);
+const AGENT_HOSTS_MESSAGE: &str =
+    i18n::msg!("The agent's network access needs hosts added to the allowlist");
+const ADD_AGENT_HOSTS_LABEL: &str = i18n::msg!("Add to Allowlist and Start");
 /// The same button after a consent that did not carry through: by then the
 /// hosts are usually already in `network_allowlist.json` and only the running
 /// policy is behind, so "追加して" would send the user looking for a problem
 /// that is not there.
-const RETRY_AGENT_HOSTS_LABEL: &str = "もう一度試す";
-const DECLINE_AGENT_HOSTS_LABEL: &str = "追加せず中止";
+const RETRY_AGENT_HOSTS_LABEL: &str = i18n::msg!("Try Again");
+const DECLINE_AGENT_HOSTS_LABEL: &str = i18n::msg!("Cancel Without Adding");
 /// ADR-F49 (new decision): the way back on a card that otherwise offers none
 /// — see [`ConversationView::render_load_error`]. Worded as the allowlist
 /// card's second attempt is: both mean "start it again as it stands".
-const RETRY_AGENT_START_LABEL: &str = "もう一度試す";
+const RETRY_AGENT_START_LABEL: &str = i18n::msg!("Try Again");
 /// How a test finds that button in the frame the view just drew.
 const RETRY_AGENT_START_SELECTOR: &str = "RETRY-AGENT-START";
 /// How a test finds the start outside the sandbox on a plain failure's card.
@@ -176,13 +182,14 @@ const START_OUTSIDE_SANDBOX_SELECTOR: &str = "START-AGENT-OUTSIDE-SANDBOX";
 
 /// ADR-F55: サブスクリプションでのサインインを設定で切っているエージェントで、
 /// それでも要求が届いたときに断る文言。
-const SUBSCRIPTION_SIGN_IN_REFUSED: &str = "サブスクリプションでのサインインは、\
-     このエージェントの設定 (`allow_subscription_sign_in`) で無効にされています。";
+const SUBSCRIPTION_SIGN_IN_REFUSED: &str = i18n::msg!(
+    "Subscription sign-in is turned off in this agent's settings (`allow_subscription_sign_in`)."
+);
 
 /// ADR-F55: 「Claude Code でログイン (サブスクリプション)」。エージェントが
 /// 出す英語のラベルの代わりにこちらを出す (未改変の CLI 自身が Anthropic の
 /// 画面でサインインする、という導線であることを日本語で言い切るため)。
-const SUBSCRIPTION_SIGN_IN_LABEL: &str = "Claude Code でログイン (サブスクリプション)";
+const SUBSCRIPTION_SIGN_IN_LABEL: &str = i18n::msg!("Log In with Claude Code (Subscription)");
 
 /// How a test finds the fork's own part of an agent's authentication card —
 /// the note about a subscription and the API key field — in the frame the
@@ -239,21 +246,18 @@ impl SubscriptionSignIn {
     /// なら公式の CLI でログインする。
     fn notice(self) -> &'static str {
         match self {
-            Self::Offered => {
-                "サブスクリプション (Claude Pro / Max など) での利用は、\
-                 Anthropic が 2026-06-15 に「これまでどおり」と告知しています。\
-                 設定で無効にできます。"
-            }
-            Self::TurnedOff => {
-                "サブスクリプションでのサインインは、設定の\
-                 `allow_subscription_sign_in` で無効にしています。\
-                 API キーでの利用はこのまま使えます。"
-            }
-            Self::NotAdvertised => {
-                "このエージェントはサブスクリプションでのサインインを\
-                 出していません。サブスクリプションで使うには、公式の\
-                 Claude Code を起動してその画面でログインしてください。"
-            }
+            Self::Offered => i18n::t!(
+                "On 2026-06-15, Anthropic announced that use with a subscription \
+                 (such as Claude Pro or Max) continues as before. You can turn it off in settings."
+            ),
+            Self::TurnedOff => i18n::t!(
+                "Subscription sign-in is turned off by `allow_subscription_sign_in` \
+                 in settings. You can still use an API key."
+            ),
+            Self::NotAdvertised => i18n::t!(
+                "This agent doesn't offer a subscription sign-in. To use it with a \
+                 subscription, launch the official Claude Code and log in there."
+            ),
         }
     }
 }
@@ -290,18 +294,18 @@ fn agent_hosts_detail(agent: &AgentId, hosts: &[SharedString], missing: &[Shared
     let hosts = hosts
         .iter()
         .map(|host| {
-            let state = if missing.contains(host) {
-                "未登録"
+            if missing.contains(host) {
+                i18n::t!("{host} (not added)")
             } else {
-                "登録済み"
-            };
-            format!("{host} ({state})")
+                i18n::t!("{host} (added)")
+            }
         })
         .collect::<Vec<_>>()
-        .join("、");
-    format!(
-        "サンドボックスの {agent} は次のホストにだけ接続します。これらのホストは IDE 全体の\
-         許可リストに追加し、内蔵エージェントのコマンドにも適用されます。\n許可が必要なホスト: {hosts}"
+        .join(i18n::tc!("list separator", ", "));
+    i18n::t!(
+        "In the sandbox, {agent} connects only to the following hosts. They are added to the \
+         IDE-wide allowlist and also apply to the built-in agent's commands.\n\
+         Hosts that need to be allowed: {hosts}"
     )
 }
 
@@ -1501,7 +1505,7 @@ impl ConversationView {
         {
             return ServerState::LoadError {
                 error: LoadError::Other(
-                    "共有プロジェクトでは外部エージェントはまだサポートされていません。".into(),
+                    i18n::t!("External agents are not yet supported in shared projects.").into(),
                 ),
                 work_dirs,
             };
@@ -1628,8 +1632,10 @@ impl ConversationView {
                         )
                     } else {
                         Task::ready(Err(anyhow!(LoadError::Other(
-                            "このエージェントはセッションの読み込みや再開をサポートしていません。"
-                                .into()
+                            i18n::t!(
+                                "Loading or resuming sessions is not supported by this agent."
+                            )
+                            .into()
                         ))))
                     }
                 })
@@ -2392,11 +2398,11 @@ impl ConversationView {
             ServerState::Connected(view) => view
                 .active_view()
                 .and_then(|v| v.read(cx).thread.read(cx).title())
-                .unwrap_or_else(|| DEFAULT_THREAD_TITLE.into()),
+                .unwrap_or_else(|| i18n::tr(DEFAULT_THREAD_TITLE).into()),
             ServerState::Loading { .. } => self
                 .loading_status
                 .clone()
-                .unwrap_or_else(|| "読み込み中…".into()),
+                .unwrap_or_else(|| i18n::t!("Loading…").into()),
             // A parked draft keeps the name its row carries, so its tab does
             // not rename itself when its agent is let go of.
             ServerState::Parked(_) => ThreadMetadataStore::try_global(cx)
@@ -2406,23 +2412,21 @@ impl ConversationView {
                         .entry(self.thread_id)
                         .and_then(|entry| entry.title())
                 })
-                .unwrap_or_else(|| DEFAULT_THREAD_TITLE.into()),
+                .unwrap_or_else(|| i18n::tr(DEFAULT_THREAD_TITLE).into()),
             ServerState::LoadError { error, .. } => match error {
                 LoadError::Unsupported { .. } => {
-                    format!("{} をアップグレード", self.agent.agent_id()).into()
+                    i18n::t!("Upgrade {}", self.agent.agent_id()).into()
                 }
                 LoadError::FailedToInstall(_) => {
-                    format!("{} のインストールに失敗しました", self.agent.agent_id()).into()
+                    i18n::t!("Failed to Install {}", self.agent.agent_id()).into()
                 }
-                LoadError::Exited { .. } => {
-                    format!("{} が終了しました", self.agent.agent_id()).into()
-                }
-                LoadError::Other(_) => format!("{} の読み込みエラー", self.agent.agent_id()).into(),
+                LoadError::Exited { .. } => i18n::t!("{} Exited", self.agent.agent_id()).into(),
+                LoadError::Other(_) => i18n::t!("Error Loading {}", self.agent.agent_id()).into(),
                 LoadError::SandboxUnavailable(_) => {
-                    format!("{} をサンドボックスで起動できません", self.agent.agent_id()).into()
+                    i18n::t!("Can't Start {} in the Sandbox", self.agent.agent_id()).into()
                 }
-                LoadError::SandboxHostsNotAllowed(_) => format!(
-                    "{} の通信に許可リストへの追加が必要です",
+                LoadError::SandboxHostsNotAllowed(_) => i18n::t!(
+                    "{} Needs Hosts Added to the Allowlist",
                     self.agent.agent_id()
                 )
                 .into(),
@@ -2435,7 +2439,7 @@ impl ConversationView {
                             .entry(self.thread_id)
                             .and_then(|entry| entry.title())
                     })
-                    .unwrap_or_else(|| DEFAULT_THREAD_TITLE.into()),
+                    .unwrap_or_else(|| i18n::tr(DEFAULT_THREAD_TITLE).into()),
             },
         }
     }
@@ -2445,7 +2449,7 @@ impl ConversationView {
     pub fn tab_title(&self, cx: &App) -> SharedString {
         let title = self.title(cx);
         if self.is_outside_sandbox_thread(cx) {
-            format!("{title}{OUTSIDE_SANDBOX_TAB_SUFFIX}").into()
+            format!("{title}{}", i18n::tr(OUTSIDE_SANDBOX_TAB_SUFFIX)).into()
         } else {
             title
         }
@@ -2545,11 +2549,16 @@ impl ConversationView {
                 self.load_subagent_session(subagent_session_id.clone(), session_id, window, cx)
             }
             AcpThreadEvent::ToolAuthorizationRequested(_) => {
-                self.notify_with_sound("ツールの確認を待っています", IconName::Info, window, cx);
+                self.notify_with_sound(
+                    i18n::t!("Waiting for tool confirmation"),
+                    IconName::Info,
+                    window,
+                    cx,
+                );
             }
             AcpThreadEvent::ToolAuthorizationReceived(_) => {}
             AcpThreadEvent::ElicitationRequested(_) => {
-                self.notify_with_sound("入力を待っています", IconName::Info, window, cx);
+                self.notify_with_sound(i18n::t!("Waiting for input"), IconName::Info, window, cx);
             }
             AcpThreadEvent::ElicitationResponded(_) => {}
             AcpThreadEvent::Retry(retry) => {
@@ -2611,9 +2620,9 @@ impl ConversationView {
                     let used_tools = thread.read(cx).used_tools_since_last_user_message();
                     self.notify_with_sound(
                         if used_tools {
-                            "ツールの実行が完了しました"
+                            i18n::t!("Finished running tools")
                         } else {
-                            "新しいメッセージ"
+                            i18n::t!("New message")
                         },
                         IconName::ZedAssistant,
                         window,
@@ -2631,10 +2640,8 @@ impl ConversationView {
                 }
                 if !is_subagent {
                     let model_or_agent_name = self.current_model_name(cx);
-                    let notification_message = format!(
-                        "{} がこのリクエストへの応答を拒否しました",
-                        model_or_agent_name
-                    );
+                    let notification_message =
+                        i18n::t!("{} refused to respond to this request", model_or_agent_name);
                     self.notify_with_sound(&notification_message, IconName::Warning, window, cx);
                 }
             }
@@ -2654,7 +2661,7 @@ impl ConversationView {
                 }
                 if !is_subagent {
                     self.notify_with_sound(
-                        "エラーによりエージェントが停止しました",
+                        i18n::t!("Agent stopped due to an error"),
                         IconName::Warning,
                         window,
                         cx,
@@ -2832,7 +2839,7 @@ impl ConversationView {
             method.0.as_ref(),
             cx,
         ) {
-            let refusal = anyhow!(SUBSCRIPTION_SIGN_IN_REFUSED);
+            let refusal = anyhow!(i18n::tr(SUBSCRIPTION_SIGN_IN_REFUSED));
             match self.root_thread_view() {
                 Some(view) => view.update(cx, |view, cx| view.handle_thread_error(refusal, cx)),
                 None => log::warn!("{refusal}"),
@@ -3067,7 +3074,7 @@ impl ConversationView {
             method.0.as_ref(),
             cx,
         ) {
-            return Task::ready(Err(anyhow!(SUBSCRIPTION_SIGN_IN_REFUSED)));
+            return Task::ready(Err(anyhow!(i18n::tr(SUBSCRIPTION_SIGN_IN_REFUSED))));
         }
         let Some(terminal_panel) = workspace.read(cx).panel::<TerminalPanel>(cx) else {
             return Task::ready(Err(anyhow!("Terminal panel is unavailable")));
@@ -3284,7 +3291,7 @@ impl ConversationView {
                         let name = if agent_id.0.as_ref() == agent_servers::CLAUDE_AGENT_ID
                             && agent_servers::looks_like_subscription_sign_in(&method_id)
                         {
-                            SUBSCRIPTION_SIGN_IN_LABEL.to_string()
+                            i18n::tr(SUBSCRIPTION_SIGN_IN_LABEL).to_string()
                         } else {
                             method.name().to_string()
                         };
@@ -3327,7 +3334,7 @@ impl ConversationView {
         if pending_auth_method.is_some() {
             return Callout::new()
                 .icon(IconName::Info)
-                .title(format!("{} を認証中…", agent_display_name))
+                .title(i18n::t!("Authenticating to {}…", agent_display_name))
                 .actions_slot(
                     Icon::new(IconName::ArrowCircle)
                         .size(IconSize::Small)
@@ -3340,7 +3347,7 @@ impl ConversationView {
 
         Callout::new()
             .icon(IconName::Info)
-            .title(format!("{} の認証", agent_display_name))
+            .title(i18n::t!("Authenticate to {}", agent_display_name))
             .when(auth_methods.len() == 1, |this| {
                 this.actions_slot(auth_buttons())
             })
@@ -3350,9 +3357,11 @@ impl ConversationView {
                     .map(|this| {
                         if show_fallback_description {
                             this.child(
-                                Label::new("次の認証方法から 1 つを選択してください:")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
+                                Label::new(i18n::t!(
+                                    "Choose one of the following authentication options:"
+                                ))
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
                             )
                         } else if show_fork_auth_notice {
                             // The agent's own description is the vendor's
@@ -3419,11 +3428,10 @@ impl ConversationView {
                         div()
                             .debug_selector(|| API_KEY_WINS_SELECTOR.to_string())
                             .child(
-                                Label::new(
-                                    "API キーが設定されているときは、Claude Code は\
-                                     そちらを優先します。サブスクリプションで使うには\
-                                     キーを削除してください。",
-                                )
+                                Label::new(i18n::t!(
+                                    "When an API key is set, Claude Code uses it instead. \
+                                     To use your subscription, remove the key."
+                                ))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                             ),
@@ -3437,7 +3445,7 @@ impl ConversationView {
                         .justify_end()
                         .debug_selector(|| LAUNCH_CLAUDE_CODE_SELECTOR.to_string())
                         .child(
-                            Button::new("launch-claude-code", "Claude Code を起動")
+                            Button::new("launch-claude-code", i18n::t!("Launch Claude Code"))
                                 .label_size(LabelSize::Small)
                                 .style(ButtonStyle::Outlined)
                                 .on_click(|_, window, cx| {
@@ -3474,17 +3482,16 @@ impl ConversationView {
                 .map(|this| {
                     if show_editor {
                         this.child(
-                            Label::new(
-                                "API キー (従量課金) で使う場合は、下の欄に入力して保存\
-                                 してください。",
-                            )
+                            Label::new(i18n::t!(
+                                "To use an API key (billed per use), enter it below and save it."
+                            ))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                         )
                         .child(
-                            Label::new(format!(
-                                "キーは settings.json の `agent_servers` → `{}` → `env` \
-                                 → `{variable}` に平文で保存されます。",
+                            Label::new(i18n::t!(
+                                "The key is saved in plain text in settings.json under \
+                                 `agent_servers` → `{}` → `env` → `{variable}`.",
                                 self.agent.agent_id().0
                             ))
                             .size(LabelSize::Small)
@@ -3522,10 +3529,13 @@ impl ConversationView {
                                                     API_KEY_SAVING_SELECTOR.to_string()
                                                 })
                                                 .child(
-                                                    Button::new("save-agent-api-key", "保存中…")
-                                                        .label_size(LabelSize::Small)
-                                                        .style(ButtonStyle::Outlined)
-                                                        .disabled(true),
+                                                    Button::new(
+                                                        "save-agent-api-key",
+                                                        i18n::t!("Saving…"),
+                                                    )
+                                                    .label_size(LabelSize::Small)
+                                                    .style(ButtonStyle::Outlined)
+                                                    .disabled(true),
                                                 ),
                                         )
                                     } else {
@@ -3535,14 +3545,15 @@ impl ConversationView {
                                                     API_KEY_SAVE_SELECTOR.to_string()
                                                 })
                                                 .child(
-                                                    Button::new("save-agent-api-key", "保存")
-                                                        .label_size(LabelSize::Small)
-                                                        .style(ButtonStyle::Outlined)
-                                                        .on_click(cx.listener(
-                                                            |this, _, window, cx| {
-                                                                this.submit_api_key(window, cx);
-                                                            },
-                                                        )),
+                                                    Button::new(
+                                                        "save-agent-api-key",
+                                                        i18n::t!("Save"),
+                                                    )
+                                                    .label_size(LabelSize::Small)
+                                                    .style(ButtonStyle::Outlined)
+                                                    .on_click(cx.listener(|this, _, window, cx| {
+                                                        this.submit_api_key(window, cx);
+                                                    })),
                                                 ),
                                         )
                                     }
@@ -3555,14 +3566,15 @@ impl ConversationView {
                                         div()
                                             .debug_selector(|| API_KEY_CANCEL_SELECTOR.to_string())
                                             .child(
-                                                Button::new("cancel-agent-api-key", "取り消し")
-                                                    .label_size(LabelSize::Small)
-                                                    .style(ButtonStyle::Subtle)
-                                                    .on_click(cx.listener(
-                                                        |this, _, window, cx| {
-                                                            this.cancel_api_key_edit(window, cx);
-                                                        },
-                                                    )),
+                                                Button::new(
+                                                    "cancel-agent-api-key",
+                                                    i18n::tc!("api key", "Cancel"),
+                                                )
+                                                .label_size(LabelSize::Small)
+                                                .style(ButtonStyle::Subtle)
+                                                .on_click(cx.listener(|this, _, window, cx| {
+                                                    this.cancel_api_key_edit(window, cx);
+                                                })),
                                             ),
                                     )
                                 }),
@@ -3580,9 +3592,9 @@ impl ConversationView {
                                         .child(
                                             ConfiguredApiCard::new(
                                                 "agent-api-key-configured",
-                                                "API キーは設定済みです (settings.json)",
+                                                i18n::t!("API key is set (settings.json)"),
                                             )
-                                            .button_label("変更")
+                                            .button_label(i18n::t!("Change"))
                                             .on_click(
                                                 cx.listener(|this, _, window, cx| {
                                                     this.api_key_editing = true;
@@ -3610,16 +3622,21 @@ impl ConversationView {
                                     div()
                                         .debug_selector(|| API_KEY_REMOVE_SELECTOR.to_string())
                                         .child(
-                                            Button::new("remove-agent-api-key", "キーを削除")
-                                                .label_size(LabelSize::Small)
-                                                .style(ButtonStyle::Outlined)
-                                                .disabled(saving)
-                                                .tooltip(Tooltip::text(
-                                                    "settings.json の env からこの変数を外します",
-                                                ))
-                                                .on_click(cx.listener(|this, _, window, cx| {
+                                            Button::new(
+                                                "remove-agent-api-key",
+                                                i18n::t!("Remove Key"),
+                                            )
+                                            .label_size(LabelSize::Small)
+                                            .style(ButtonStyle::Outlined)
+                                            .disabled(saving)
+                                            .tooltip(Tooltip::text(i18n::t!(
+                                                "Removes this variable from env in settings.json"
+                                            )))
+                                            .on_click(
+                                                cx.listener(|this, _, window, cx| {
                                                     this.remove_api_key(window, cx);
-                                                })),
+                                                }),
+                                            ),
                                         ),
                                 ),
                         )
@@ -3687,7 +3704,7 @@ impl ConversationView {
                     }
                     Err(error) => {
                         this.api_key_error =
-                            Some(format!("API キーを削除できませんでした: {error}").into());
+                            Some(i18n::t!("Couldn't remove the API key: {error}").into());
                     }
                 }
                 cx.notify();
@@ -3750,7 +3767,7 @@ impl ConversationView {
                         }
                     }
                     Err(error) => {
-                        let mut reason = format!("API キーを保存できませんでした: {error}");
+                        let mut reason = i18n::t!("Couldn't save the API key: {error}");
                         if !saved.is_empty() {
                             reason = reason.replace(&saved, "***");
                         }
@@ -4146,7 +4163,7 @@ impl ConversationView {
                 Some(self.create_copy_button(msg.to_string()).into_any_element()),
             ),
             LoadError::Exited { status, stderr } => {
-                let mut message = format!("サーバーがステータス {status} で終了しました");
+                let mut message = i18n::t!("Server exited with status {status}");
                 if let Some(stderr) = stderr {
                     message.push_str("\n");
                     message.push_str(stderr);
@@ -4160,33 +4177,39 @@ impl ConversationView {
                 Some(self.create_copy_button(msg.to_string()).into_any_element()),
             ),
             LoadError::SandboxUnavailable(reason) => (
-                "サンドボックスで起動できません",
-                format!("{reason}\n{OUTSIDE_SANDBOX_EXPLANATION}").into(),
+                i18n::t!("Can't Start in the Sandbox"),
+                format!("{reason}\n{}", i18n::tr(OUTSIDE_SANDBOX_EXPLANATION)).into(),
                 Some(
-                    Button::new("start-agent-outside-sandbox", START_OUTSIDE_SANDBOX_LABEL)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.start_agent_outside_sandbox_once(window, cx)
-                        }))
-                        .into_any_element(),
+                    Button::new(
+                        "start-agent-outside-sandbox",
+                        i18n::tr(START_OUTSIDE_SANDBOX_LABEL),
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.start_agent_outside_sandbox_once(window, cx)
+                    }))
+                    .into_any_element(),
                 ),
             ),
             LoadError::SessionStartedOutsideSandbox => (
-                "サンドボックスの外で起動したスレッドです",
-                SESSION_STARTED_OUTSIDE_SANDBOX_EXPLANATION.into(),
+                i18n::t!("Thread Started Outside the Sandbox"),
+                i18n::tr(SESSION_STARTED_OUTSIDE_SANDBOX_EXPLANATION).into(),
                 Some(
-                    Button::new("resume-agent-outside-sandbox", RESUME_OUTSIDE_SANDBOX_LABEL)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.start_agent_outside_sandbox_once(window, cx)
-                        }))
-                        .into_any_element(),
+                    Button::new(
+                        "resume-agent-outside-sandbox",
+                        i18n::tr(RESUME_OUTSIDE_SANDBOX_LABEL),
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.start_agent_outside_sandbox_once(window, cx)
+                    }))
+                    .into_any_element(),
                 ),
             ),
             LoadError::SandboxHostsNotAllowed(hosts) => {
-                let mut message = format!(
-                    "サンドボックスの {} は次のホストに接続しますが、IDE 全体の許可リストに\
-                     ありません: {}",
+                let mut message = i18n::t!(
+                    "In the sandbox, {} connects to hosts that aren't in the IDE-wide \
+                     allowlist: {}",
                     self.agent.agent_id(),
-                    hosts.join("、")
+                    hosts.join(i18n::tc!("list separator", ", "))
                 );
                 // The last attempt's reason belongs on this card, not on one
                 // of its own: the allowlist still refuses these hosts, so the
@@ -4197,17 +4220,17 @@ impl ConversationView {
                     message.push_str(error);
                 } else if self.agent_hosts_consent_pending {
                     message.push('\n');
-                    message.push_str(crate::agent_registry_ui::ALLOWLIST_PICKUP_PENDING);
+                    message.push_str(i18n::tr(crate::agent_registry_ui::ALLOWLIST_PICKUP_PENDING));
                 }
                 (
-                    "許可リストへの追加が必要です",
+                    i18n::t!("Hosts Need to Be Added to the Allowlist"),
                     message.into(),
                     Some(
                         Button::new(
                             "allow-agent-sandbox-hosts",
                             match self.agent_hosts_consent_error {
-                                Some(_) => RETRY_AGENT_HOSTS_LABEL,
-                                None => ADD_AGENT_HOSTS_LABEL,
+                                Some(_) => i18n::tr(RETRY_AGENT_HOSTS_LABEL),
+                                None => i18n::tr(ADD_AGENT_HOSTS_LABEL),
                             },
                         )
                         // A confirm already in flight owns this consent
@@ -4261,7 +4284,7 @@ impl ConversationView {
                                 .child(
                                     Button::new(
                                         "start-agent-outside-sandbox-after-failure",
-                                        START_OUTSIDE_SANDBOX_AFTER_FAILURE_LABEL,
+                                        i18n::tr(START_OUTSIDE_SANDBOX_AFTER_FAILURE_LABEL),
                                     )
                                     .on_click(cx.listener(
                                         |this, _, window, cx| {
@@ -4278,13 +4301,14 @@ impl ConversationView {
                             div()
                                 .debug_selector(|| RETRY_AGENT_START_SELECTOR.to_string())
                                 .child(
-                                    Button::new("retry-agent-start", RETRY_AGENT_START_LABEL)
-                                        .tooltip(Tooltip::text(i18n::t!(
-                                            "Try to restart the agent"
-                                        )))
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.reset(window, cx)
-                                        })),
+                                    Button::new(
+                                        "retry-agent-start",
+                                        i18n::tr(RETRY_AGENT_START_LABEL),
+                                    )
+                                    .tooltip(Tooltip::text(i18n::t!("Try to restart the agent")))
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| this.reset(window, cx)),
+                                    ),
                                 ),
                         )
                     }),
@@ -4301,19 +4325,17 @@ impl ConversationView {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let (heading_label, description_label) = (
-            format!(
-                "Zed で使うには {} をアップグレードしてください",
-                self.agent.agent_id()
-            ),
+            i18n::t!("Upgrade {} to work with Zed", self.agent.agent_id()),
             if version.is_empty() {
-                format!(
-                    "現在 {} を使用していますが、有効な --version を返しません",
+                i18n::t!(
+                    "Currently using {}, which does not report a valid --version",
                     path
                 )
             } else {
-                format!(
-                    "現在 {} を使用していますが、バージョンが {} です ({minimum_version} 以上が必要です)",
-                    path, version
+                i18n::t!(
+                    "Currently using {}, which is only version {} (need at least {minimum_version})",
+                    path,
+                    version
                 )
             },
         );
@@ -4815,7 +4837,7 @@ impl ConversationView {
                 .and_then(|active| active.read(cx).model_selector.clone())
                 .and_then(|selector| selector.read(cx).active_model(cx))
                 .map(|model| model.name.clone())
-                .unwrap_or_else(|| SharedString::from("モデル"))
+                .unwrap_or_else(|| SharedString::from(i18n::t!("The model")))
         } else {
             // ACP agent - use the agent name (e.g., "Claude Agent", "Gemini CLI")
             self.agent.agent_id().0
@@ -4980,7 +5002,7 @@ impl ConversationView {
                         .color(Color::Warning),
                 )
                 .child(
-                    Label::new(OUTSIDE_SANDBOX_RUNNING_LABEL)
+                    Label::new(i18n::tr(OUTSIDE_SANDBOX_RUNNING_LABEL))
                         .size(LabelSize::Small)
                         .color(Color::Warning),
                 ),
@@ -5011,7 +5033,7 @@ impl ConversationView {
                         .color(Color::Muted),
                 )
                 .child(
-                    Label::new(RESUMED_IN_SANDBOX_LABEL)
+                    Label::new(i18n::tr(RESUMED_IN_SANDBOX_LABEL))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 ),
@@ -5129,11 +5151,11 @@ impl ConversationView {
         let detail = agent_hosts_detail(&self.agent.agent_id(), &hosts, &missing);
         let answer = window.prompt(
             PromptLevel::Warning,
-            AGENT_HOSTS_MESSAGE,
+            i18n::tr(AGENT_HOSTS_MESSAGE),
             Some(&detail),
             &[
-                PromptButton::ok(ADD_AGENT_HOSTS_LABEL),
-                PromptButton::cancel(DECLINE_AGENT_HOSTS_LABEL),
+                PromptButton::ok(i18n::tr(ADD_AGENT_HOSTS_LABEL)),
+                PromptButton::cancel(i18n::tr(DECLINE_AGENT_HOSTS_LABEL)),
             ],
             cx,
         );
@@ -5193,10 +5215,12 @@ impl ConversationView {
         Callout::new()
             .severity(Severity::Info)
             .icon(IconName::Info)
-            .title("使われていないのでエージェントを止めています。送信すると再接続します")
+            .title(i18n::t!(
+                "The agent was stopped because it wasn't in use. Sending a message reconnects it"
+            ))
             .border_position(ui::CalloutBorderPosition::Top)
             .actions_slot(
-                Button::new("reconnect-parked-agent", "今すぐ再接続")
+                Button::new("reconnect-parked-agent", i18n::t!("Reconnect Now"))
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.unpark(Unpark::Only, window, cx);
@@ -5207,7 +5231,7 @@ impl ConversationView {
     fn create_copy_button(&self, message: impl Into<String>) -> impl IntoElement {
         let message = message.into();
 
-        CopyButton::new("copy-error-message", message).tooltip_label("エラーメッセージをコピー")
+        CopyButton::new("copy-error-message", message).tooltip_label(i18n::t!("Copy Error Message"))
     }
 
     pub(crate) fn reauthenticate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -5304,17 +5328,17 @@ fn native_available_skills(
 
 fn placeholder_text(agent_name: &str, has_commands: bool) -> String {
     if agent_name == agent::ZED_AGENT_ID.as_ref() {
-        format!(
-            "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド",
+        i18n::t!(
+            "Message the {}, @ to include context, / for commands",
             agent_name
         )
     } else if has_commands {
         format!(
-            "{} にメッセージを送信 — @ でコンテキストを追加、/ でコマンド",
+            "Message {} — @ to include context, / for commands",
             agent_name
         )
     } else {
-        format!("{} にメッセージを送信 — @ でコンテキストを追加", agent_name)
+        format!("Message {} — @ to include context", agent_name)
     }
 }
 
@@ -5465,7 +5489,7 @@ impl Render for ConversationView {
                 let label_text = self
                     .loading_status
                     .clone()
-                    .unwrap_or_else(|| "読み込み中…".into());
+                    .unwrap_or_else(|| "Loading…".into());
                 v_flex()
                     .flex_1()
                     .size_full()
@@ -6708,7 +6732,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             placeholder,
-            Some("Test にメッセージを送信 — @ でコンテキストを追加、/ でコマンド".to_string())
+            Some("Message Test — @ to include context, / for commands".to_string())
         );
 
         message_editor.update_in(cx, |editor, window, cx| {
@@ -6815,7 +6839,7 @@ pub(crate) mod tests {
             let title = view.title(cx);
             assert_eq!(
                 title.as_ref(),
-                "Codex CLI の読み込みエラー",
+                "Error Loading Codex CLI",
                 "Tab title should show the agent name with an error prefix"
             );
             match &view.server_state {
@@ -8227,7 +8251,7 @@ pub(crate) mod tests {
             view.start_agent_outside_sandbox_once(window, cx)
         });
         cx.run_until_parked();
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         assert_eq!(
             outside_starts.load(std::sync::atomic::Ordering::SeqCst),
@@ -8609,9 +8633,12 @@ pub(crate) mod tests {
             cx.simulate_click(button.center(), gpui::Modifiers::default());
             cx.run_until_parked();
             let (_message, detail) = cx.pending_prompt().expect("the start is confirmed first");
-            assert!(detail.contains("このスレッドだけです"), "{detail}");
             assert!(
-                detail.contains("同意は設定の「AI」ページで取り消せます"),
+                detail.contains("This applies to this thread only"),
+                "{detail}"
+            );
+            assert!(
+                detail.contains("you can revoke the consent on the AI page in Settings"),
                 "{detail}"
             );
             assert_eq!(server.starts(), (1, 0), "nothing started before the answer");
@@ -8652,7 +8679,7 @@ pub(crate) mod tests {
         cx.simulate_click(button.center(), gpui::Modifiers::default());
         cx.run_until_parked();
         let (_message, detail) = cx.pending_prompt().expect("asked first");
-        assert!(detail.contains("新しいセッションになります"), "{detail}");
+        assert!(detail.contains("This starts a new session"), "{detail}");
         cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
         cx.run_until_parked();
         assert_eq!(server.starts(), (1, 1));
@@ -8723,8 +8750,8 @@ pub(crate) mod tests {
         });
         cx.run_until_parked();
         let (_message, detail) = cx.pending_prompt().expect("asked first");
-        assert!(detail.contains("新しいセッションになります"), "{detail}");
-        cx.simulate_prompt_answer("キャンセル");
+        assert!(detail.contains("This starts a new session"), "{detail}");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         assert_eq!(server.starts(), (1, 0), "declining changes nothing");
         assert!(!shows_outside_sandbox_banner(&view, cx));
@@ -9092,9 +9119,9 @@ pub(crate) mod tests {
             &["api.openai.com".into(), "chatgpt.com".into()],
             &["chatgpt.com".into()],
         );
-        assert!(detail.contains("IDE 全体の許可リスト"), "{detail}");
-        assert!(detail.contains("api.openai.com (登録済み)"), "{detail}");
-        assert!(detail.contains("chatgpt.com (未登録)"), "{detail}");
+        assert!(detail.contains("IDE-wide allowlist"), "{detail}");
+        assert!(detail.contains("api.openai.com (added)"), "{detail}");
+        assert!(detail.contains("chatgpt.com (not added)"), "{detail}");
     }
 
     /// Agent server whose `connect()` is refused with `SandboxHostsNotAllowed`
@@ -9968,7 +9995,7 @@ pub(crate) mod tests {
                 cx,
             )
         });
-        written.await.expect("設定を書ける");
+        written.await.expect("the settings can be written");
         cx.run_until_parked();
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
@@ -10003,9 +10030,13 @@ pub(crate) mod tests {
         .await;
         add_to_workspace(conversation_view.clone(), cx);
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
         // A frame that reuses a cached pane records no `debug_selector`.
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
@@ -10118,30 +10149,37 @@ pub(crate) mod tests {
         .await;
         add_to_workspace(conversation_view.clone(), cx);
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
 
         const RENAMED_SELECTOR: &str = "AUTH-METHOD-Login";
         assert_eq!(auth_method_selector(RENAMED), RENAMED_SELECTOR);
-        assert!(cx.debug_bounds(RENAMED_SELECTOR).is_some(), "既定では出る");
+        assert!(
+            cx.debug_bounds(RENAMED_SELECTOR).is_some(),
+            "shown by default"
+        );
         assert!(
             cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
                 .is_some(),
-            "改名されていてもサインインとして数える"
+            "counted as a sign-in even when renamed"
         );
 
         set_subscription_sign_in(&conversation_view, false, cx).await;
         assert!(
             cx.debug_bounds(RENAMED_SELECTOR).is_none(),
-            "改名されたサインインもカードから消える"
+            "a renamed sign-in also leaves the card"
         );
         assert!(
             cx.debug_bounds(CLAUDE_ACP_API_KEY_METHOD_SELECTOR)
                 .is_some(),
-            "鍵のメソッドは残る"
+            "the key method stays"
         );
 
         conversation_view.update_in(cx, |view, window, cx| {
@@ -10150,7 +10188,7 @@ pub(crate) mod tests {
         cx.run_until_parked();
         assert!(
             !connection.is_authenticated(),
-            "カードを飛ばして要求しても断る"
+            "refused even when requested without the card"
         );
     }
 
@@ -10170,32 +10208,36 @@ pub(crate) mod tests {
             setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
         add_to_workspace(conversation_view.clone(), cx);
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
 
         assert!(
             cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
                 .is_some(),
-            "サインインは出ている"
+            "the sign-in is offered"
         );
         assert!(
             cx.debug_bounds(API_KEY_WINS_SELECTOR).is_none(),
-            "キーが無いうちは優先順位の話をしない"
+            "no word on precedence while there is no key"
         );
 
         save_api_key(&conversation_view, KEY, cx).await;
         assert_eq!(saved_api_key(cx).as_deref(), Some(KEY));
         assert!(
             cx.debug_bounds(API_KEY_WINS_SELECTOR).is_some(),
-            "両方そろったらどちらが使われるかを言う"
+            "with both, says which one is used"
         );
 
         let remove = cx
             .debug_bounds(API_KEY_REMOVE_SELECTOR)
-            .expect("設定済みのカードに「キーを削除」がある");
+            .expect("a configured card has 'Remove Key'");
         cx.simulate_click(remove.center(), gpui::Modifiers::default());
         cx.run_until_parked();
         cx.update(|window, _cx| window.refresh());
@@ -10204,12 +10246,12 @@ pub(crate) mod tests {
         assert_eq!(saved_api_key(cx), None);
         assert!(
             cx.debug_bounds(API_KEY_WINS_SELECTOR).is_none(),
-            "キーを消せばその行も消える"
+            "removing the key removes that line too"
         );
         assert!(
             cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
                 .is_some(),
-            "サインインの注記は残る"
+            "the sign-in notice stays"
         );
     }
 
@@ -10229,9 +10271,13 @@ pub(crate) mod tests {
             setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
         add_to_workspace(conversation_view.clone(), cx);
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
         cx.run_until_parked();
 
         fn start_login(
@@ -10241,7 +10287,7 @@ pub(crate) mod tests {
         ) -> Task<anyhow::Result<()>> {
             let (workspace, project) = conversation_view.read_with(cx, |view, _cx| {
                 (
-                    view.workspace.upgrade().expect("ワークスペース"),
+                    view.workspace.upgrade().expect("workspace"),
                     view.project.clone(),
                 )
             });
@@ -10277,11 +10323,11 @@ pub(crate) mod tests {
             cx,
         )
         .await
-        .expect_err("このテスト環境には端末パネルが無い");
+        .expect_err("this test environment has no terminal panel");
         assert_ne!(
             format!("{allowed}"),
             SUBSCRIPTION_SIGN_IN_REFUSED,
-            "既定では関門で止めない"
+            "not stopped at the gate by default"
         );
 
         set_subscription_sign_in(&conversation_view, false, cx).await;
@@ -10291,20 +10337,20 @@ pub(crate) mod tests {
             cx,
         )
         .await
-        .expect_err("切ってあれば断る");
+        .expect_err("refused when turned off");
         assert_eq!(
             format!("{refused}"),
             SUBSCRIPTION_SIGN_IN_REFUSED,
-            "端末を開く前に断る"
+            "refused before a terminal is opened"
         );
 
         let key_method = start_login(&conversation_view, CLAUDE_ACP_API_KEY_METHOD, cx)
             .await
-            .expect_err("このテスト環境には端末パネルが無い");
+            .expect_err("this test environment has no terminal panel");
         assert_ne!(
             format!("{key_method}"),
             SUBSCRIPTION_SIGN_IN_REFUSED,
-            "鍵のメソッドはこの設定に関係なく通る"
+            "the key method passes regardless of this setting"
         );
     }
 
@@ -10324,11 +10370,11 @@ pub(crate) mod tests {
         assert!(
             cx.debug_bounds(SubscriptionSignIn::NotAdvertised.notice_selector())
                 .is_some(),
-            "出ていないことを言う"
+            "says it is not offered"
         );
         assert!(
             cx.debug_bounds(LAUNCH_CLAUDE_CODE_SELECTOR).is_some(),
-            "公式の CLI を起動する導線がある"
+            "offers a way to launch the official CLI"
         );
         assert!(
             cx.debug_bounds(SubscriptionSignIn::Offered.notice_selector())
@@ -10393,34 +10439,42 @@ pub(crate) mod tests {
         cx.run_until_parked();
 
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
 
         assert!(
             cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_some(),
-            "キーを入れる欄がカードにある"
+            "the card has a field for the key"
         );
         assert!(
             cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_none(),
-            "まだ何も設定されていない"
+            "nothing is configured yet"
         );
 
         let save = cx
             .debug_bounds(API_KEY_SAVE_SELECTOR)
-            .expect("保存ボタンがカードにある");
+            .expect("the card has a save button");
         cx.simulate_click(save.center(), gpui::Modifiers::default());
         cx.run_until_parked();
-        assert_eq!(saved_api_key(cx), None, "空欄では何も書かない");
+        assert_eq!(
+            saved_api_key(cx),
+            None,
+            "nothing is written for an empty field"
+        );
         conversation_view.read_with(cx, |view, _cx| {
             assert!(
                 view.api_key_error.is_some(),
-                "空欄を断った理由がカードに出る"
+                "the card says why the empty field was refused"
             );
         });
 
         let editor = conversation_view.read_with(cx, |view, _cx| {
-            view.api_key_editor.clone().expect("入力欄を持っている")
+            view.api_key_editor.clone().expect("has an input field")
         });
         editor.update_in(cx, |editor, window, cx| {
             editor.set_text(FIRST_KEY, window, cx);
@@ -10430,33 +10484,33 @@ pub(crate) mod tests {
 
         let save = cx
             .debug_bounds(API_KEY_SAVE_SELECTOR)
-            .expect("保存ボタンがカードにある");
+            .expect("the card has a save button");
         cx.simulate_click(save.center(), gpui::Modifiers::default());
         cx.run_until_parked();
 
         assert_eq!(
             saved_api_key(cx).as_deref(),
             Some(FIRST_KEY),
-            "settings.json の agent_servers.claude-acp.env に入る"
+            "goes into agent_servers.claude-acp.env in settings.json"
         );
         let shown = api_key_card_text(&conversation_view, cx);
         assert!(
             !shown.contains(FIRST_KEY),
-            "保存したキーは画面に残さない: {shown:?}"
+            "a saved key is not left on screen: {shown:?}"
         );
         conversation_view.read_with(cx, |view, _cx| {
-            assert_eq!(view.api_key_error, None, "保存できたので理由は消える");
+            assert_eq!(view.api_key_error, None, "saved, so the reason goes away");
         });
 
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
         assert!(
             cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_some(),
-            "設定済みの表示に変わる"
+            "switches to the configured display"
         );
         assert!(
             cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_none(),
-            "設定済みのあいだは入力欄を出さない"
+            "no input field while configured"
         );
 
         // 「変更」で入力欄が戻り、Enter でも同じ経路で保存できる。
@@ -10468,7 +10522,7 @@ pub(crate) mod tests {
         cx.run_until_parked();
         assert!(
             cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_some(),
-            "「変更」で入力欄が戻る"
+            "'Change' brings the input field back"
         );
 
         editor.update_in(cx, |editor, window, cx| {
@@ -10483,12 +10537,12 @@ pub(crate) mod tests {
         assert_eq!(
             saved_api_key(cx).as_deref(),
             Some(SECOND_KEY),
-            "Enter でも確定する"
+            "Enter also confirms"
         );
         let shown = api_key_card_text(&conversation_view, cx);
         assert!(
             !shown.contains(SECOND_KEY),
-            "入れ替えたキーも画面に残さない: {shown:?}"
+            "a replaced key is not left on screen either: {shown:?}"
         );
     }
 
@@ -10508,11 +10562,15 @@ pub(crate) mod tests {
         cx.run_until_parked();
 
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
         let editor = conversation_view.read_with(cx, |view, _cx| {
-            view.api_key_editor.clone().expect("入力欄を持っている")
+            view.api_key_editor.clone().expect("has an input field")
         });
 
         editor.update_in(cx, |editor, window, cx| {
@@ -10521,17 +10579,21 @@ pub(crate) mod tests {
         conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
         cx.run_until_parked();
 
-        assert_eq!(saved_api_key(cx), None, "改行を含む値は書かない");
+        assert_eq!(
+            saved_api_key(cx),
+            None,
+            "a value with a newline is not written"
+        );
         conversation_view.read_with(cx, |view, _cx| {
             let error = view
                 .api_key_error
                 .clone()
-                .expect("断った理由がカードに出る");
+                .expect("the card says why it was refused");
             // 断られた値は直せるよう入力欄に残す。載ってはいけないのは、
             // 入力欄と違ってマスクされない理由の文字列のほう。
             assert!(
                 !error.contains("sk-ant-api03-pasted"),
-                "断り書きにキーを載せない: {error}"
+                "the refusal does not contain the key: {error}"
             );
         });
 
@@ -10544,12 +10606,12 @@ pub(crate) mod tests {
         assert_eq!(
             saved_api_key(cx).as_deref(),
             Some(PADDED_KEY),
-            "前後の空白は落として書く"
+            "written with surrounding whitespace trimmed"
         );
         assert_eq!(
             editor.read_with(cx, |editor, cx| editor.text(cx)),
             "",
-            "保存できたキーは入力欄にも残さない"
+            "a saved key is not left in the input field either"
         );
     }
 
@@ -10582,18 +10644,22 @@ pub(crate) mod tests {
         cx.run_until_parked();
 
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
         fs.atomic_write(
             ::paths::settings_file().to_path_buf(),
             EXISTING_SETTINGS.to_string(),
         )
         .await
-        .expect("設定ファイルを置ける");
+        .expect("the settings file can be written");
 
         let editor = conversation_view.read_with(cx, |view, _cx| {
-            view.api_key_editor.clone().expect("入力欄を持っている")
+            view.api_key_editor.clone().expect("has an input field")
         });
         editor.update_in(cx, |editor, window, cx| {
             editor.set_text(KEY, window, cx);
@@ -10604,11 +10670,11 @@ pub(crate) mod tests {
         let written = fs
             .load(::paths::settings_file())
             .await
-            .expect("設定ファイルを読める");
+            .expect("the settings file can be read");
         conversation_view.read_with(cx, |view, _cx| {
             assert_eq!(
                 view.api_key_error, None,
-                "書けたので理由は出ない: {written}"
+                "written, so no reason is shown: {written}"
             );
         });
         for kept in [
@@ -10617,16 +10683,16 @@ pub(crate) mod tests {
             "keep-me-too",
             "/usr/bin/claude-code-acp",
         ] {
-            assert!(written.contains(kept), "{kept} が消えた:\n{written}");
+            assert!(written.contains(kept), "{kept} was lost:\n{written}");
         }
-        assert!(written.contains(KEY), "キーが入っていない:\n{written}");
+        assert!(written.contains(KEY), "the key is missing:\n{written}");
         assert!(
             cx.update(|_window, cx| agent_servers::has_env_var(
                 agent_servers::CLAUDE_AGENT_ID,
                 agent_servers::CLAUDE_API_KEY_VARIABLE,
                 cx
             )),
-            "custom 変種でも設定済みとして読める:\n{written}"
+            "read as configured for the custom variant too:\n{written}"
         );
     }
 
@@ -10645,18 +10711,22 @@ pub(crate) mod tests {
         cx.run_until_parked();
 
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
         fs.atomic_write(
             ::paths::settings_file().to_path_buf(),
             BROKEN_SETTINGS.to_string(),
         )
         .await
-        .expect("設定ファイルを置ける");
+        .expect("the settings file can be written");
 
         let editor = conversation_view.read_with(cx, |view, _cx| {
-            view.api_key_editor.clone().expect("入力欄を持っている")
+            view.api_key_editor.clone().expect("has an input field")
         });
         editor.update_in(cx, |editor, window, cx| {
             editor.set_text(KEY, window, cx);
@@ -10667,23 +10737,26 @@ pub(crate) mod tests {
         assert_eq!(
             fs.load(::paths::settings_file())
                 .await
-                .expect("設定ファイルを読める"),
+                .expect("the settings file can be read"),
             BROKEN_SETTINGS,
-            "壊れたファイルを書き換えない"
+            "a broken file is not rewritten"
         );
         conversation_view.read_with(cx, |view, _cx| {
             let error = view
                 .api_key_error
                 .clone()
-                .expect("書けなかった理由がカードに出る");
+                .expect("the card says why it could not be written");
             assert!(
-                error.starts_with("API キーを保存できませんでした"),
-                "理由が日本語で始まる: {error}"
+                error.starts_with("Couldn't save the API key"),
+                "the reason starts with the card's own wording: {error}"
             );
-            assert!(!error.contains(KEY), "理由にキーを載せない: {error}");
+            assert!(
+                !error.contains(KEY),
+                "the reason does not contain the key: {error}"
+            );
             assert!(
                 view.api_key_save_task.is_none(),
-                "失敗しても次の保存を受け付ける"
+                "the next save is accepted after a failure"
             );
         });
     }
@@ -10704,7 +10777,7 @@ pub(crate) mod tests {
         conversation_view.read_with(cx, |view, _cx| {
             assert!(
                 view.api_key_editor.is_none(),
-                "キーを読まないエージェントに入力欄は要らない"
+                "an agent that doesn't read a key needs no input field"
             );
         });
         // ADR-F55 で目印が増えた分もここに並べる: カードのどの部品も、キーを
@@ -10722,7 +10795,7 @@ pub(crate) mod tests {
         ] {
             assert!(
                 cx.debug_bounds(selector).is_none(),
-                "{selector} は ACP Claude のカードだけのもの"
+                "{selector} belongs only to the ACP Claude card"
             );
         }
     }
@@ -10757,7 +10830,7 @@ pub(crate) mod tests {
         cx: &mut VisualTestContext,
     ) {
         let editor = conversation_view.read_with(cx, |view, _cx| {
-            view.api_key_editor.clone().expect("入力欄を持っている")
+            view.api_key_editor.clone().expect("has an input field")
         });
         editor.update_in(cx, |editor, window, cx| {
             editor.set_text(key, window, cx);
@@ -10784,18 +10857,22 @@ pub(crate) mod tests {
         cx.run_until_parked();
 
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
 
         save_api_key(&conversation_view, KEY, cx).await;
         assert!(
             cx.debug_bounds(API_KEY_WINS_SELECTOR).is_none(),
-            "サインインが出ていないカードで「キーを削除すればサブスクで使える」とは言わない"
+            "a card without a sign-in doesn't say 'remove the key to use the subscription'"
         );
         assert!(
             cx.debug_bounds(API_KEY_CANCEL_SELECTOR).is_none(),
-            "設定済みの表示中は取り消すものが無い"
+            "nothing to cancel while the configured display is shown"
         );
 
         conversation_view.update(cx, |view, cx| {
@@ -10803,7 +10880,7 @@ pub(crate) mod tests {
             cx.notify();
         });
         let editor = conversation_view.read_with(cx, |view, _cx| {
-            view.api_key_editor.clone().expect("入力欄を持っている")
+            view.api_key_editor.clone().expect("has an input field")
         });
         editor.update_in(cx, |editor, window, cx| {
             editor.set_text(TYPED, window, cx);
@@ -10813,36 +10890,36 @@ pub(crate) mod tests {
 
         let cancel = cx
             .debug_bounds(API_KEY_CANCEL_SELECTOR)
-            .expect("変更中は「取り消し」が出る");
+            .expect("'Cancel' is shown while changing");
         cx.simulate_click(cancel.center(), gpui::Modifiers::default());
         cx.run_until_parked();
 
         conversation_view.read_with(cx, |view, cx| {
-            assert!(!view.api_key_editing, "設定済みの表示へ戻る");
+            assert!(!view.api_key_editing, "back to the configured display");
             assert_eq!(
                 view.api_key_editor
                     .as_ref()
                     .map(|editor| editor.read(cx).text(cx))
                     .unwrap_or_default(),
                 "",
-                "書きかけのキーは残さない"
+                "a half-written key is not kept"
             );
         });
         assert_eq!(
             saved_api_key(cx).as_deref(),
             Some(KEY),
-            "取り消しても保存済みのキーはそのまま"
+            "canceling leaves the saved key as it is"
         );
 
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
         assert!(
             cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_some(),
-            "「設定済み」の表示に戻る"
+            "back to the 'configured' display"
         );
         assert!(
             cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_none(),
-            "入力欄は消える"
+            "the input field goes away"
         );
     }
 
@@ -10861,7 +10938,7 @@ pub(crate) mod tests {
 
         assert!(
             cx.debug_bounds(API_KEY_SAVE_SELECTOR).is_some(),
-            "何も走っていなければ「保存」"
+            "'Save' when nothing is running"
         );
         assert!(cx.debug_bounds(API_KEY_SAVING_SELECTOR).is_none());
 
@@ -10877,23 +10954,23 @@ pub(crate) mod tests {
 
         assert!(
             cx.debug_bounds(API_KEY_SAVING_SELECTOR).is_some(),
-            "保存中はそう言う"
+            "says so while saving"
         );
         assert!(
             cx.debug_bounds(API_KEY_SAVE_SELECTOR).is_none(),
-            "押せる「保存」は出さない"
+            "no clickable 'Save'"
         );
 
         // その間にもう一度送っても、前の書き込みを踏みつぶさない。
         let editor = conversation_view.read_with(cx, |view, _cx| {
-            view.api_key_editor.clone().expect("入力欄を持っている")
+            view.api_key_editor.clone().expect("has an input field")
         });
         editor.update_in(cx, |editor, window, cx| {
             editor.set_text("sk-ant-api03-second-press", window, cx);
         });
         conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
         cx.run_until_parked();
-        assert_eq!(saved_api_key(cx), None, "2 度目は何も書かない");
+        assert_eq!(saved_api_key(cx), None, "the second one writes nothing");
 
         conversation_view.update(cx, |view, cx| {
             view.api_key_save_task = None;
@@ -10903,7 +10980,7 @@ pub(crate) mod tests {
         cx.run_until_parked();
         assert!(
             cx.debug_bounds(API_KEY_SAVE_SELECTOR).is_some(),
-            "終われば押せる「保存」に戻る"
+            "back to a clickable 'Save' when done"
         );
     }
 
@@ -10922,9 +10999,13 @@ pub(crate) mod tests {
         cx.run_until_parked();
 
         let fs = conversation_view.read_with(cx, |view, cx| view.project.read(cx).fs().clone());
-        fs.create_dir(::paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            ::paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
 
         // 同じ `env` に別の変数を先に置いておき、削除がそれを巻き込まない
         // ことを確かめる。
@@ -10936,13 +11017,13 @@ pub(crate) mod tests {
                 fs.clone(),
                 cx,
             )
-            .expect("値が空ではない")
+            .expect("the value is not empty")
         });
-        other.await.expect("書ける");
+        other.await.expect("can be written");
         cx.run_until_parked();
 
         let editor = conversation_view.read_with(cx, |view, _cx| {
-            view.api_key_editor.clone().expect("入力欄を持っている")
+            view.api_key_editor.clone().expect("has an input field")
         });
         editor.update_in(cx, |editor, window, cx| {
             editor.set_text(KEY, window, cx);
@@ -10955,29 +11036,29 @@ pub(crate) mod tests {
         cx.run_until_parked();
         let remove = cx
             .debug_bounds(API_KEY_REMOVE_SELECTOR)
-            .expect("設定済みのカードに「キーを削除」がある");
+            .expect("a configured card has 'Remove Key'");
         cx.simulate_click(remove.center(), gpui::Modifiers::default());
         cx.run_until_parked();
 
-        assert_eq!(saved_api_key(cx), None, "env から外れる");
+        assert_eq!(saved_api_key(cx), None, "removed from env");
         assert_eq!(
             saved_env_var(cx, "KEEP_ME").as_deref(),
             Some("1"),
-            "ほかの env は残る"
+            "the other env entries stay"
         );
         conversation_view.read_with(cx, |view, _cx| {
-            assert_eq!(view.api_key_error, None, "削除できたので理由は出ない");
+            assert_eq!(view.api_key_error, None, "removed, so no reason is shown");
         });
 
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
         assert!(
             cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_none(),
-            "「設定済み」の表示は消える"
+            "the 'configured' display goes away"
         );
         assert!(
             cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_some(),
-            "認証待ち (入力欄) に戻る"
+            "back to waiting for authentication (the input field)"
         );
     }
 
@@ -13751,14 +13832,17 @@ pub(crate) mod tests {
                     .map(|choice| choice.allow.name.as_ref())
                     .collect();
                 assert!(
-                    labels.contains(&"ターミナルは常に"),
-                    "Missing 'ターミナルは常に' option"
+                    labels.contains(&"Always for terminal"),
+                    "Missing 'Always for terminal' option"
                 );
                 assert!(
-                    labels.contains(&"`cargo build` コマンドは常に"),
+                    labels.contains(&"Always for `cargo build` commands"),
                     "Missing pattern option"
                 );
-                assert!(labels.contains(&"今回のみ"), "Missing '今回のみ' option");
+                assert!(
+                    labels.contains(&"Only this time"),
+                    "Missing 'Only this time' option"
+                );
             }
         });
     }
@@ -13840,11 +13924,11 @@ pub(crate) mod tests {
                     .map(|choice| choice.allow.name.as_ref())
                     .collect();
                 assert!(
-                    labels.contains(&"ファイル編集は常に"),
-                    "Missing 'ファイル編集は常に' option"
+                    labels.contains(&"Always for edit file"),
+                    "Missing 'Always for edit file' option"
                 );
                 assert!(
-                    labels.contains(&"`src/` は常に"),
+                    labels.contains(&"Always for `src/`"),
                     "Missing path pattern option"
                 );
             } else {
@@ -13930,11 +14014,11 @@ pub(crate) mod tests {
                     .map(|choice| choice.allow.name.as_ref())
                     .collect();
                 assert!(
-                    labels.contains(&"URL の取得は常に"),
-                    "Missing 'URL の取得は常に' option"
+                    labels.contains(&"Always for fetch"),
+                    "Missing 'Always for fetch' option"
                 );
                 assert!(
-                    labels.contains(&"`docs.rs` は常に"),
+                    labels.contains(&"Always for `docs.rs`"),
                     "Missing domain pattern option"
                 );
             } else {
@@ -14029,10 +14113,13 @@ pub(crate) mod tests {
                     .map(|choice| choice.allow.name.as_ref())
                     .collect();
                 assert!(
-                    labels.contains(&"ターミナルは常に"),
-                    "Missing 'ターミナルは常に' option"
+                    labels.contains(&"Always for terminal"),
+                    "Missing 'Always for terminal' option"
                 );
-                assert!(labels.contains(&"今回のみ"), "Missing '今回のみ' option");
+                assert!(
+                    labels.contains(&"Only this time"),
+                    "Missing 'Only this time' option"
+                );
                 // Should NOT contain a pattern option
                 assert!(
                     !labels.iter().any(|l| l.contains("commands")),
@@ -14513,22 +14600,22 @@ pub(crate) mod tests {
         PermissionOptions::Flat(vec![
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new("allow"),
-                "許可 (今回のみ)",
+                "Allow once",
                 acp::PermissionOptionKind::AllowOnce,
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new("allow_thread"),
-                "許可 (このスレッド)",
+                "Allow for this thread",
                 acp::PermissionOptionKind::AllowAlways,
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new("allow_always"),
-                "常に許可",
+                "Allow always",
                 acp::PermissionOptionKind::AllowAlways,
             ),
             acp::PermissionOption::new(
                 acp::PermissionOptionId::new("deny"),
-                "拒否",
+                "Deny",
                 acp::PermissionOptionKind::RejectOnce,
             ),
         ])

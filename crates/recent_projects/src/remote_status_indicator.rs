@@ -50,23 +50,23 @@ impl Render for RemoteStatusIndicator {
                 let host = options.display_name();
                 let (icon_color, meta) = match project.remote_connection_state(cx) {
                     Some(remote::ConnectionState::Connecting) => {
-                        (Color::Info, format!("{host} に接続しています"))
+                        (Color::Info, i18n::t!("Connecting to: {host}"))
                     }
                     Some(remote::ConnectionState::Connected) => {
-                        (Color::Success, format!("{host} に接続済み"))
+                        (Color::Success, i18n::t!("Connected to: {host}"))
                     }
                     Some(remote::ConnectionState::HeartbeatMissed) => (
                         Color::Warning,
-                        format!("{host} への応答がありません。再試行しています..."),
+                        i18n::t!("Connection attempt to {host} missed. Retrying..."),
                     ),
                     Some(remote::ConnectionState::Reconnecting) => (
                         Color::Warning,
-                        format!("{host} との接続が切れました。再接続しています..."),
+                        i18n::t!("Lost connection to {host}. Reconnecting..."),
                     ),
                     Some(remote::ConnectionState::Disconnected) => {
-                        (Color::Error, format!("{host} から切断されました"))
+                        (Color::Error, i18n::t!("Disconnected from {host}"))
                     }
-                    None => (Color::Muted, format!("{host} に接続しています")),
+                    None => (Color::Muted, i18n::t!("Connecting to: {host}")),
                 };
                 (
                     icon_for_remote_connection(Some(options)),
@@ -79,13 +79,15 @@ impl Render for RemoteStatusIndicator {
                 IconName::Server,
                 Color::Muted,
                 None,
-                SharedString::from("SSH・WSL・開発コンテナーのプロジェクトを開きます。"),
+                SharedString::from(i18n::t!(
+                    "Open projects over SSH, in WSL, or in Dev Containers."
+                )),
             ),
         };
 
         let aria_label = match &label {
-            Some(host) => format!("リモート: {host}"),
-            None => "リモートに接続".to_string(),
+            Some(host) => i18n::t!("Remote: {host}"),
+            None => i18n::t!("Connect to Remote").to_string(),
         };
 
         ButtonLike::new("remote-status-indicator")
@@ -93,7 +95,7 @@ impl Render for RemoteStatusIndicator {
             .aria_label(aria_label)
             .tooltip(move |_window, cx| {
                 Tooltip::with_meta(
-                    "リモートに接続します",
+                    i18n::t!("Connect to a remote host"),
                     Some(&OpenRemote::default()),
                     meta.clone(),
                     cx,

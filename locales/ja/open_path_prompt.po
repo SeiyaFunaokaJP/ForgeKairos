@@ -1,0 +1,60 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "同じ名前のファイルまたはフォルダーがすでに存在します。置き換えると現在の内容が上書きされます。"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cannot open {dir}: {error}"
+msgstr "{dir} を開けません: {error}"
+
+msgid "Enter: Go into Folder"
+msgstr "Enter: フォルダーの中へ"
+
+msgid "Enter: Open"
+msgstr "Enter: 開く"
+
+msgid "No such file or directory"
+msgstr "該当するファイルまたはディレクトリはありません。"
+
+msgid "Open This Folder"
+msgstr "このフォルダーを開く"
+
+msgid "Open {listed_directory} itself"
+msgstr "{listed_directory} をこのまま開きます"
+
+msgid "Replace"
+msgstr "置き換える"
+
+msgid "Type a path…"
+msgstr "パスを入力してください…"
+
+msgid "[directory{}]filename.ext"
+msgstr "[ディレクトリ{}]ファイル名.拡張子"
+
+msgid "go to parent directory"
+msgstr "上の階層へ移動"
+
+msgid "go to parent directory ({parent})"
+msgstr "上の階層へ移動 ({parent})"
+
+msgid "open this directory"
+msgstr "このフォルダーを開く"
+
+msgid "{confirm_hint} / Ctrl+Enter: Choose Selected Folder"
+msgstr "{confirm_hint} / Ctrl+Enter: 選択中のフォルダーに決定"
+
+msgid "{label} (create)"
+msgstr "{label} (作成)"
+
+msgid "{label} (replace)"
+msgstr "{label} (置換)"
+
+msgid "{prompted_path} already exists. Do you want to replace it?"
+msgstr "{prompted_path} はすでに存在します。置き換えますか?"

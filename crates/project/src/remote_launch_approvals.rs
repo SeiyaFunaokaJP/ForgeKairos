@@ -92,8 +92,9 @@ const ROOM_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 const MAX_REMEMBERED_LAUNCHES: usize = 256;
 
 const REVOCATION_WAITS_NOTIFICATION: &str = "remote-launch-approval-revocation";
-const REVOCATION_WAITS_MESSAGE: &str =
-    "接続先と切断されているため、承認の取り消しは再接続したときに接続先へ伝わります";
+fn revocation_waits_message() -> &'static str {
+    i18n::t!("The remote host is disconnected, so the revocation reaches it when it reconnects")
+}
 
 /// Where in the project a launch belongs, which the remote server tells the
 /// IDE along with the details.
@@ -185,7 +186,7 @@ fn parse_remote_key(key: &str) -> Result<LaunchApprovalKey> {
             && key
                 .bytes()
                 .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
-        "接続先から届いた起動の承認キーの形式が正しくありません"
+        i18n::t!("The launch approval key from the remote host is malformed")
     );
     Ok(LaunchApprovalKey(key.to_string().into()))
 }
@@ -229,8 +230,10 @@ fn request_strings(request: &proto::RequestProjectLaunchApproval) -> impl Iterat
 pub(crate) fn check_request_limits(request: &proto::RequestProjectLaunchApproval) -> Result<()> {
     anyhow::ensure!(
         request.arguments.len() <= MAX_ARGUMENTS,
-        "起動の定義の引数が多すぎます ({} 個、上限 {MAX_ARGUMENTS} 個)",
-        request.arguments.len()
+        i18n::t!(
+            "The launch definition has too many arguments ({count}, at most {MAX_ARGUMENTS})",
+            count = request.arguments.len()
+        )
     );
     let list_lengths = [
         request.environment_variable_names.len(),
@@ -242,19 +245,21 @@ pub(crate) fn check_request_limits(request: &proto::RequestProjectLaunchApproval
         list_lengths
             .iter()
             .all(|length| *length <= MAX_LIST_ENTRIES),
-        "起動の定義の項目が多すぎます (上限 {MAX_LIST_ENTRIES} 個)"
+        i18n::t!("The launch definition has too many entries (at most {MAX_LIST_ENTRIES})")
     );
     let mut total_bytes = 0usize;
     for text in request_strings(request) {
         anyhow::ensure!(
             text.len() <= MAX_STRING_BYTES,
-            "起動の定義に {MAX_STRING_BYTES} バイトを超える文字列があります"
+            i18n::t!("The launch definition has a string longer than {MAX_STRING_BYTES} bytes")
         );
         total_bytes = total_bytes.saturating_add(text.len());
     }
     anyhow::ensure!(
         total_bytes <= MAX_TOTAL_BYTES,
-        "起動の定義が大きすぎます ({total_bytes} バイト、上限 {MAX_TOTAL_BYTES} バイト)"
+        i18n::t!(
+            "The launch definition is too large ({total_bytes} bytes, at most {MAX_TOTAL_BYTES} bytes)"
+        )
     );
     Ok(())
 }
@@ -273,11 +278,15 @@ pub(crate) fn request_to_proto(
         }
         LaunchKind::ExternalFormatter => proto::ProjectLaunchKind::LaunchKindExternalFormatter,
         LaunchKind::ContextServer => {
-            anyhow::bail!("MCP サーバーの起動は接続先から問い合わせません")
+            anyhow::bail!(i18n::t!(
+                "The remote host does not ask about launching MCP servers"
+            ))
         }
     };
     let LaunchTarget::Command { program, arguments } = &details.target else {
-        anyhow::bail!("URL への接続は接続先から問い合わせません");
+        anyhow::bail!(i18n::t!(
+            "The remote host does not ask about connecting to URLs"
+        ));
     };
     let definition_file = match &details.definition_file {
         LaunchDefinitionFile::Worktree(path) => {
@@ -377,7 +386,7 @@ fn unbound_from_proto(
     use proto::ProjectLaunchUnboundKind as Kind;
     let path = SharedString::from(content.path);
     let program = content.program.map(SharedString::from);
-    let missing_program = "接続先から届いた警告にプログラム名がありません";
+    let missing_program = i18n::t!("A warning from the remote host has no program name");
     Ok(match Kind::try_from(content.kind).ok() {
         Some(Kind::UnboundWorkingDirectory) => UnboundWorktreeContent::WorkingDirectory {
             program: program.context(missing_program)?,
@@ -392,7 +401,9 @@ fn unbound_from_proto(
         Some(Kind::UnboundRemoteFile) => UnboundWorktreeContent::RemoteFile(path),
         Some(Kind::UnboundUnreadable) => UnboundWorktreeContent::Unreadable(path),
         Some(Kind::UnboundUnknown) | None => {
-            anyhow::bail!("接続先から、この IDE が表示できない種類の警告が届きました")
+            anyhow::bail!(i18n::t!(
+                "The remote host sent a kind of warning this IDE cannot show"
+            ))
         }
     })
 }
@@ -415,17 +426,18 @@ pub(crate) fn details_from_proto(
             LaunchKind::ExternalFormatter
         }
         Some(proto::ProjectLaunchKind::LaunchKindUnknown) | None => {
-            anyhow::bail!("接続先から、この IDE が知らない種類の起動の問い合わせが届きました")
+            anyhow::bail!(i18n::t!(
+                "The remote host asked about a kind of launch this IDE does not know"
+            ))
         }
     };
     anyhow::ensure!(
         !request.name.is_empty() && !request.program.is_empty(),
-        "接続先からの起動の問い合わせに名前かプログラムがありません"
+        i18n::t!("A launch request from the remote host has no name or program")
     );
-    let definition_file = match request
-        .definition_file
-        .context("接続先からの起動の問い合わせに定義元がありません")?
-    {
+    let definition_file = match request.definition_file.context(i18n::t!(
+        "A launch request from the remote host does not say where it is defined"
+    ))? {
         DefinitionFile::WorktreeSettingsFile(path) => LaunchDefinitionFile::Worktree(path.into()),
         DefinitionFile::ServerSettings(_) => LaunchDefinitionFile::RemoteServerSettings,
         DefinitionFile::ResolvedProgram(_) => LaunchDefinitionFile::ResolvedOnRemoteHost,
@@ -492,8 +504,10 @@ pub(crate) fn check_launch_place(
     let known = worktree_abs_path.to_string_lossy();
     anyhow::ensure!(
         request.worktree_abs_path == known,
-        "接続先が問い合わせたワークツリー ({}) は、この IDE が同じ ID で開いているワークツリー ({known}) と一致しません",
-        request.worktree_abs_path
+        i18n::t!(
+            "The worktree the remote host asked about ({requested}) does not match the worktree this IDE has open under the same ID ({known})",
+            requested = request.worktree_abs_path
+        )
     );
     let Some(working_directory) = request.working_directory.as_deref() else {
         return Ok(());
@@ -513,7 +527,9 @@ pub(crate) fn check_launch_place(
         });
     anyhow::ensure!(
         starts_in_place,
-        "接続先が問い合わせた起動の作業ディレクトリ ({working_directory}) がワークツリー ({known}) の場所と一致しません"
+        i18n::t!(
+            "The working directory of the launch the remote host asked about ({working_directory}) is not where the worktree ({known}) is"
+        )
     );
     Ok(())
 }
@@ -559,13 +575,15 @@ fn answer_from_response(response: proto::RequestProjectLaunchApprovalResponse) -
         Some(State::LaunchApprovalDeferred) => RemoteAnswer::Deferred(
             response
                 .reason
-                .unwrap_or_else(|| "IDE で承認待ちの起動が多すぎます".to_string())
+                .unwrap_or_else(|| {
+                    i18n::t!("Too many launches are waiting for approval in the IDE").to_string()
+                })
                 .into(),
         ),
         Some(State::LaunchApprovalUnavailable) | None => RemoteAnswer::Unavailable(
             response
                 .reason
-                .unwrap_or_else(|| "IDE で起動を承認できません".to_string())
+                .unwrap_or_else(|| i18n::t!("The IDE cannot approve launches").to_string())
                 .into(),
         ),
     }
@@ -698,8 +716,10 @@ impl RemoteLaunchApprovals {
             || (self.ide_does_not_answer && details.kind == LaunchKind::ExternalFormatter)
         {
             return Task::ready(RemoteAnswer::Unanswered {
-                reason: "IDE が起動の問い合わせに応答していません (IDE が応答するか再接続すると、もう一度問い合わせます)"
-                    .into(),
+                reason: i18n::t!(
+                    "The IDE is not answering launch requests (asked again once the IDE answers or reconnects)"
+                )
+                .into(),
                 answers_seen: self.answers_seen,
             });
         }
@@ -734,9 +754,9 @@ impl RemoteLaunchApprovals {
                             break;
                         };
                         return RemoteAnswer::Unanswered {
-                            reason: format!(
-                                "IDE が {} 秒以内に応答しませんでした",
-                                timeout.as_secs()
+                            reason: i18n::t!(
+                                "The IDE did not answer within {seconds} seconds",
+                                seconds = timeout.as_secs()
                             )
                             .into(),
                             answers_seen,
@@ -758,7 +778,9 @@ impl RemoteLaunchApprovals {
                     Err(_) => break,
                 }
             }
-            RemoteAnswer::Unavailable("IDE から起動の承認を確かめられませんでした".into())
+            RemoteAnswer::Unavailable(
+                i18n::t!("Could not confirm the launch approval with the IDE").into(),
+            )
         })
     }
 
@@ -1113,14 +1135,14 @@ impl RemoteLaunchRequests {
         let worktree_store = self
             .worktree_store
             .upgrade()
-            .context("プロジェクトは閉じられています")?;
+            .context(i18n::t!("The project is closed"))?;
         let worktree = worktree_store
             .read(cx)
             .worktree_for_id(WorktreeId::from_proto(request.worktree_id), cx)
             .with_context(|| {
-                format!(
-                    "接続先が問い合わせたワークツリー (ID {}) はこのプロジェクトにありません",
-                    request.worktree_id
+                i18n::t!(
+                    "The worktree the remote host asked about (ID {id}) is not in this project",
+                    id = request.worktree_id
                 )
             })?;
         let (worktree_abs_path, worktree_is_a_file) = {
@@ -1134,7 +1156,7 @@ impl RemoteLaunchRequests {
         let remote_client = self
             .remote_client
             .upgrade()
-            .context("接続先との接続は閉じられています")?;
+            .context(i18n::t!("The connection to the remote host is closed"))?;
         let host = LaunchHost::from_remote_connection(&remote_client.read(cx).connection_options());
         let details = details_from_proto(request, host, worktree_abs_path)?;
 
@@ -1199,9 +1221,9 @@ impl RemoteLaunchRequests {
             {
                 return Some((
                     State::LaunchApprovalUnavailable,
-                    format!(
-                        "この IDE が知らない言語サーバー「{}」の起動は承認できません",
-                        escape_for_display(&details.name)
+                    i18n::t!(
+                        "A launch of language server \"{name}\", which this IDE does not know, cannot be approved",
+                        name = escape_for_display(&details.name)
                     ),
                 ));
             }
@@ -1232,8 +1254,8 @@ impl RemoteLaunchRequests {
             {
                 return Some((
                     State::LaunchApprovalDeferred,
-                    format!(
-                        "接続先から承認待ちの起動が多すぎます (上限 {MAX_PENDING_LAUNCHES} 件)"
+                    i18n::t!(
+                        "Too many launches from the remote host are waiting for approval (at most {MAX_PENDING_LAUNCHES})"
                     ),
                 ));
             }
@@ -1246,8 +1268,8 @@ impl RemoteLaunchRequests {
         nothing_to_forget.then(|| {
             (
                 State::LaunchApprovalUnavailable,
-                format!(
-                    "接続先から問い合わせのあった承認済みの起動が多すぎます (上限 {MAX_REMEMBERED_LAUNCHES} 件)"
+                i18n::t!(
+                    "Too many approved launches were asked about by the remote host (at most {MAX_REMEMBERED_LAUNCHES})"
                 ),
             )
         })
@@ -1506,7 +1528,7 @@ impl RemoteLaunchRequests {
             .update(cx, |_, cx| {
                 cx.emit(Event::Toast {
                     notification_id: REVOCATION_WAITS_NOTIFICATION.into(),
-                    message: REVOCATION_WAITS_MESSAGE.to_string(),
+                    message: revocation_waits_message().to_string(),
                     link: None,
                 })
             })

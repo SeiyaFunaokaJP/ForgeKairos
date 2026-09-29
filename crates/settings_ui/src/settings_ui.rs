@@ -536,12 +536,12 @@ fn init_renderers(cx: &mut App) {
                     settings_window,
                     item,
                     settings_file,
-                    Button::new("open-in-settings-file", "settings.json で編集")
+                    Button::new("open-in-settings-file", i18n::t!("Edit in settings.json"))
                         .style(ButtonStyle::Outlined)
                         .size(ButtonSize::Medium)
                         .tab_index(0_isize)
                         .tooltip(Tooltip::for_action_title_in(
-                            "settings.json で編集",
+                            i18n::t!("Edit in settings.json"),
                             &OpenCurrentFile,
                             &settings_window.focus_handle,
                         ))
@@ -904,7 +904,7 @@ fn open_settings_editor_with(
         cx.open_window(
             WindowOptions {
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Zed — Settings".into()),
+                    title: Some(i18n::t!("Zed — Settings").into()),
                     appears_transparent: true,
                     traffic_light_position: Some(point(px(12.0), px(12.0))),
                 }),
@@ -1270,49 +1270,46 @@ impl SettingsPageItem {
                                 ),
                         )
                         .child(
-                            Button::new(("sub-page".into(), sub_page_link.title.clone()), "設定")
-                                .aria_label(format!("{} を設定", shown_link_title(sub_page_link)))
-                                .tab_index(0_isize)
-                                .end_icon(
-                                    Icon::new(IconName::ChevronRight)
-                                        .size(IconSize::Small)
-                                        .color(Color::Muted),
-                                )
-                                .style(ButtonStyle::OutlinedGhost)
-                                .size(ButtonSize::Medium)
-                                .on_click({
-                                    let sub_page_link = sub_page_link.clone();
-                                    cx.listener(move |this, _, window, cx| {
-                                        let header_text = this
-                                            .sub_page_stack
-                                            .last()
-                                            .map(|sub_page| sub_page.link.title.clone())
-                                            .or_else(|| {
-                                                this.current_page()
-                                                    .items
-                                                    .iter()
-                                                    .take(item_index)
-                                                    .rev()
-                                                    .find_map(|item| {
-                                                        item.header_text()
-                                                            .map(SharedString::new_static)
-                                                    })
-                                            });
+                            Button::new(
+                                ("sub-page".into(), sub_page_link.title.clone()),
+                                i18n::t!("Configure"),
+                            )
+                            .aria_label(i18n::t!("Configure {}", shown_link_title(sub_page_link)))
+                            .tab_index(0_isize)
+                            .end_icon(
+                                Icon::new(IconName::ChevronRight)
+                                    .size(IconSize::Small)
+                                    .color(Color::Muted),
+                            )
+                            .style(ButtonStyle::OutlinedGhost)
+                            .size(ButtonSize::Medium)
+                            .on_click({
+                                let sub_page_link = sub_page_link.clone();
+                                cx.listener(move |this, _, window, cx| {
+                                    let header_text = this
+                                        .sub_page_stack
+                                        .last()
+                                        .map(|sub_page| sub_page.link.title.clone())
+                                        .or_else(|| {
+                                            this.current_page()
+                                                .items
+                                                .iter()
+                                                .take(item_index)
+                                                .rev()
+                                                .find_map(|item| {
+                                                    item.header_text().map(SharedString::new_static)
+                                                })
+                                        });
 
-                                        let Some(header) = header_text else {
-                                            unreachable!(
-                                                "All items always have a section header above them"
-                                            )
-                                        };
-
-                                        this.push_sub_page(
-                                            sub_page_link.clone(),
-                                            header,
-                                            window,
-                                            cx,
+                                    let Some(header) = header_text else {
+                                        unreachable!(
+                                            "All items always have a section header above them"
                                         )
-                                    })
-                                }),
+                                    };
+
+                                    this.push_sub_page(sub_page_link.clone(), header, window, cx)
+                                })
+                            }),
                         )
                         .child(render_settings_item_link(
                             sub_page_link.title.clone(),
@@ -1474,8 +1471,8 @@ fn render_settings_item_layout(
                                 IconButton::new("reset-to-default-btn", IconName::Undo)
                                     .icon_color(Color::Muted)
                                     .icon_size(IconSize::Small)
-                                    .aria_label("既定値に戻す")
-                                    .tooltip(Tooltip::text("既定値に戻す"))
+                                    .aria_label(i18n::t!("Reset to Default"))
+                                    .tooltip(Tooltip::text(i18n::t!("Reset to Default")))
                                     .on_click(move |_, window, cx| {
                                         reset_to_default(window, cx);
                                     }),
@@ -1547,9 +1544,9 @@ fn render_settings_item(
                     )
                     .tooltip(|_, cx| {
                         Tooltip::with_meta(
-                            "組織の設定で上書きされています",
+                            i18n::t!("Overridden by Organization"),
                             None,
-                            "この設定を変更するには組織の管理者に連絡してください。",
+                            i18n::t!("Contact your organization admins to adjust this setting."),
                             cx,
                         )
                     }),
@@ -1606,8 +1603,8 @@ fn render_settings_item_link(
                 .icon_color(link_icon_color)
                 .icon_size(IconSize::Small)
                 .shape(IconButtonShape::Square)
-                .aria_label("リンクをコピー")
-                .tooltip(Tooltip::text("リンクをコピー"))
+                .aria_label(i18n::t!("Copy Link"))
+                .tooltip(Tooltip::text(i18n::t!("Copy Link")))
                 .when_some(json_path, |this, path| {
                     this.on_click(cx.listener(move |this, _, _, cx| {
                         let link = format!("zed://settings/{}", path);
@@ -1877,7 +1874,7 @@ impl SettingsWindow {
         let current_file = SettingsUiFile::User;
         let search_bar = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("設定を検索…", window, cx);
+            editor.set_placeholder_text(i18n::t!("Search settings…"), window, cx);
             editor
         });
         cx.subscribe(&search_bar, |this, _, event: &EditorEvent, cx| {
@@ -2671,6 +2668,12 @@ impl SettingsWindow {
             self.rebuild_pages(window, cx);
             // `build_ui` searched with the index it replaced.
             self.update_matches(cx);
+            // The search bar outlives the pages and keeps the placeholder it was
+            // created with.
+            self.search_bar.update(cx, |editor, cx| {
+                editor.set_placeholder_text(i18n::t!("Search settings…"), window, cx);
+            });
+            window.set_window_title(i18n::t!("Zed — Settings"));
         }
     }
 
@@ -2995,7 +2998,7 @@ impl SettingsWindow {
         h_flex()
             .id("settings-ui-files-header")
             .role(Role::Group)
-            .aria_label("設定ファイル")
+            .aria_label(i18n::t!("Settings File"))
             .w_full()
             .gap_1()
             .justify_between()
@@ -3060,7 +3063,7 @@ impl SettingsWindow {
                                         }),
                                     )
                                     .style(DropdownStyle::Subtle)
-                                    .trigger_tooltip(Tooltip::text("他のプロジェクトを表示"))
+                                    .trigger_tooltip(Tooltip::text(i18n::t!("View Other Projects")))
                                     .trigger_icon(IconName::ChevronDown)
                                     .attach(gpui::Anchor::BottomLeft)
                                     .offset(gpui::Point {
@@ -3073,11 +3076,11 @@ impl SettingsWindow {
                     }),
             )
             .child(
-                Button::new(edit_in_json_id, "settings.json で編集")
+                Button::new(edit_in_json_id, i18n::t!("Edit in settings.json"))
                     .tab_index(0_isize)
                     .style(ButtonStyle::OutlinedGhost)
                     .tooltip(Tooltip::for_action_title_in(
-                        "settings.json で編集",
+                        i18n::t!("Edit in settings.json"),
                         &OpenCurrentFile,
                         &self.focus_handle,
                     ))
@@ -3089,7 +3092,7 @@ impl SettingsWindow {
 
     pub(crate) fn display_name(&self, file: &SettingsUiFile) -> Option<String> {
         match file {
-            SettingsUiFile::User => Some("ユーザー".to_string()),
+            SettingsUiFile::User => Some(i18n::t!("User").to_string()),
             SettingsUiFile::Project((worktree_id, path)) => self
                 .worktree_root_dirs
                 .get(&worktree_id)
@@ -3145,7 +3148,7 @@ impl SettingsWindow {
         h_flex()
             .id("settings-ui-search")
             .role(Role::SearchInput)
-            .aria_label("設定を検索")
+            .aria_label(i18n::t!("Search Settings"))
             .aria_value(a11y_value)
             .track_focus(&self.search_bar.focus_handle(cx))
             .a11y_synthetic_children(a11y_text_runs)
@@ -3190,9 +3193,9 @@ impl SettingsWindow {
                 .visible_navbar_entries()
                 .any(|(_, entry)| entry.focus_handle.is_focused(window))
         {
-            "本文にフォーカス"
+            i18n::t!("Focus Content")
         } else {
-            "ナビゲーションバーにフォーカス"
+            i18n::t!("Focus Navbar")
         };
 
         let mut key_context = KeyContext::new_with_defaults();
@@ -3333,7 +3336,7 @@ impl SettingsWindow {
                 v_flex()
                     .id("settings-ui-nav")
                     .role(Role::Tree)
-                    .aria_label("設定のナビゲーション")
+                    .aria_label(i18n::t!("Settings Navigation"))
                     .flex_1()
                     .overflow_hidden()
                     .track_focus(&self.navbar_focus_handle.focus_handle(cx))
@@ -3616,7 +3619,7 @@ impl SettingsWindow {
                 "sub-page-scope-picker",
                 scope_name,
                 ContextMenu::build(window, cx, move |mut menu, _, _| {
-                    menu = menu.header("適用範囲");
+                    menu = menu.header(i18n::t!("Scope"));
 
                     for ix in allowed_file_indices {
                         let (file, focus_handle) = &self.files[ix];
@@ -3646,7 +3649,7 @@ impl SettingsWindow {
                 }),
             )
             .style(DropdownStyle::Subtle)
-            .trigger_tooltip(Tooltip::text("適用範囲を変更"))
+            .trigger_tooltip(Tooltip::text(i18n::t!("Change Scope")))
             .attach(gpui::Anchor::BottomLeft)
             .offset(gpui::Point {
                 x: px(0.0),
@@ -3693,9 +3696,9 @@ impl SettingsWindow {
             .items_center()
             .justify_center()
             .gap_1()
-            .child(Label::new("結果がありません"))
+            .child(Label::new(i18n::t!("No Results")))
             .child(
-                Label::new(format!("「{}」に一致する設定はありません", search_query))
+                Label::new(i18n::t!("No settings match \"{}\"", search_query))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -3710,7 +3713,7 @@ impl SettingsWindow {
         let mut page_content = v_flex()
             .id("settings-ui-page")
             .role(Role::Group)
-            .aria_label("設定の内容")
+            .aria_label(i18n::t!("Settings Content"))
             .size_full();
 
         let has_active_search = !self.search_bar.read(cx).is_empty(cx);
@@ -3929,17 +3932,22 @@ impl SettingsWindow {
                         .flex_shrink_0()
                         .when(current_sub_page.link.in_json, |this| {
                             this.child(
-                                Button::new("open-in-settings-file", "settings.json で編集")
-                                    .tab_index(0_isize)
-                                    .style(ButtonStyle::OutlinedGhost)
-                                    .tooltip(Tooltip::for_action_title_in(
-                                        "settings.json で編集",
-                                        &OpenCurrentFile,
-                                        &self.focus_handle,
-                                    ))
-                                    .on_click(cx.listener(|this, _, window, cx| {
+                                Button::new(
+                                    "open-in-settings-file",
+                                    i18n::t!("Edit in settings.json"),
+                                )
+                                .tab_index(0_isize)
+                                .style(ButtonStyle::OutlinedGhost)
+                                .tooltip(Tooltip::for_action_title_in(
+                                    i18n::t!("Edit in settings.json"),
+                                    &OpenCurrentFile,
+                                    &self.focus_handle,
+                                ))
+                                .on_click(cx.listener(
+                                    |this, _, window, cx| {
                                         this.open_current_settings_file(window, cx);
-                                    })),
+                                    },
+                                )),
                             )
                         })
                         .when(is_llm_providers_page, |this| {
@@ -3947,7 +3955,7 @@ impl SettingsWindow {
                         })
                         .when(is_skills_page, |this| {
                             this.child(
-                                Button::new("open-skill-creator", "スキルを作成")
+                                Button::new("open-skill-creator", i18n::t!("Create Skill"))
                                     .tab_index(0_isize)
                                     .style(ButtonStyle::OutlinedGhost)
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -4000,12 +4008,12 @@ impl SettingsWindow {
                         v_flex()
                             .my_0p5()
                             .gap_0p5()
-                            .child(Label::new(label))
+                            .child(Label::new(i18n::tr(label)))
                             .child(Label::new(error).size(LabelSize::Small).color(Color::Muted)),
                     )
                     .action_slot(
                         div().pr_1().pb_1().child(
-                            Button::new("fix-in-json", "settings.json で修正")
+                            Button::new("fix-in-json", i18n::t!("Fix in settings.json"))
                                 .tab_index(0_isize)
                                 .style(ButtonStyle::Tinted(ui::TintColor::Warning))
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -4022,7 +4030,7 @@ impl SettingsWindow {
                 .gap_2()
                 .when_some(parse_error, |this, err| {
                     this.child(banner(
-                        "設定を読み込めませんでした。一部の値が正しくない可能性があり、変更が失われることがあります。",
+                        i18n::msg!("Failed to load your settings. Some values may be incorrect and changes may be lost."),
                         err,
                         &mut self.shown_errors,
                         cx,
@@ -4030,17 +4038,17 @@ impl SettingsWindow {
                 })
                 .map(|this| match &error.migration_status {
                     settings::MigrationStatus::Succeeded => this.child(banner(
-                        "設定が古い形式のため、更新が必要です。",
+                        i18n::msg!("Your settings are out of date, and need to be updated."),
                         match &self.current_file {
-                            SettingsUiFile::User => "最新の形式へ自動的に移行できます。",
-                            SettingsUiFile::Server(_) | SettingsUiFile::Project(_)  => "最新の形式へ手動で移行する必要があります。"
+                            SettingsUiFile::User => i18n::t!("They can be automatically migrated to the latest version."),
+                            SettingsUiFile::Server(_) | SettingsUiFile::Project(_)  => i18n::t!("They must be manually migrated to the latest version.")
                         }.to_string(),
                         &mut self.shown_errors,
                         cx,
                     )),
                     settings::MigrationStatus::Failed { error: err } if !parse_failed => this
                         .child(banner(
-                            "設定ファイルが古い形式で、自動移行に失敗しました",
+                            i18n::msg!("Your settings file is out of date, automatic migration failed"),
                             err.clone(),
                             &mut self.shown_errors,
                             cx,
@@ -4072,10 +4080,10 @@ impl SettingsWindow {
                         v_flex()
                             .my_0p5()
                             .gap_0p5()
-                            .child(Label::new("制限モード"))
+                            .child(Label::new(i18n::t!("Restricted Mode")))
                             .child(
                                 Label::new(
-                                    "このプロジェクトは制限モードで開いています。一部のプロジェクト設定は適用されません。",
+                                    i18n::t!("This project is in restricted mode. Some project settings may not apply."),
                                 )
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
@@ -4083,7 +4091,7 @@ impl SettingsWindow {
                     )
                     .action_slot(
                         div().pr_2().pb_1().child(
-                            Button::new("manage-trust", "信頼設定を管理")
+                            Button::new("manage-trust", i18n::t!("Manage Trust"))
                                 .style(ButtonStyle::Tinted(ui::TintColor::Warning))
                                 .on_click(cx.listener(move |_this, _, window, cx| {
                                     if let Some(original_window) = original_window {
@@ -4228,7 +4236,7 @@ impl SettingsWindow {
     /// which is the only scope the allowlist has.
     pub(crate) fn open_network_allowlist_file(
         &mut self,
-        template: &'static str,
+        template: String,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -4891,7 +4899,7 @@ pub(crate) fn all_projects(
 /// the file often does not exist yet, and an empty buffer would be a poor
 /// starting point for hand-editing it.
 fn open_network_allowlist_in_workspace(
-    template: &'static str,
+    template: String,
     workspace: &mut Workspace,
     window: &mut Window,
     cx: &mut Context<Workspace>,
@@ -4918,7 +4926,7 @@ fn open_network_allowlist_in_workspace(
                     paths::network_allowlist_file().as_path(),
                     window,
                     cx,
-                    move || template.into(),
+                    move || template.as_str().into(),
                 )
             })?
             .await?;
@@ -5178,7 +5186,7 @@ pub(crate) fn update_project_setting_file_with_completion(
     let worktree = project
         .read(cx)
         .worktree_for_id(worktree_id, cx)
-        .context("このプロジェクトのフォルダーはもう開かれていません。")?;
+        .context(i18n::t!("This project's folder is no longer open."))?;
     let (completion, done) = oneshot::channel();
     let entry = ProjectSettingsUpdateEntry {
         worktree_id,
@@ -6164,10 +6172,26 @@ pub mod test {
     fn egress_and_ai_page_is_dissolved_into_ai_and_network(cx: &mut gpui::TestAppContext) {
         let pages = real_settings_pages(cx);
 
-        assert!(
-            !pages.iter().any(|page| page.title == "外部通信と AI"),
-            "the egress-and-AI page must not be registered any more"
-        );
+        // The removed page only ever had a Japanese title, so look for it in the
+        // Japanese catalog.
+        {
+            let _locale = i18n::test_support::LocaleOverride::new(Some(
+                i18n_catalog::test_support::bundled_catalog("ja"),
+            ));
+            assert!(
+                !pages
+                    .iter()
+                    .any(|page| tr_table(page.title) == "外部通信と AI"),
+                "the egress-and-AI page must not be registered any more"
+            );
+            assert!(
+                !pages.iter().any(|page| sub_page_titles(page)
+                    .into_iter()
+                    .any(|title| tr_table(title) == "プロバイダーの選択")),
+                "the separate edit prediction enablement sub-page is gone; the AI page's \
+                 \"Configure Providers\" now shows the dropdown in every state"
+            );
+        }
 
         let ai_page = pages
             .iter()
@@ -6207,7 +6231,7 @@ pub mod test {
         );
 
         assert!(
-            sub_page_titles(ai_page).contains(&"Acknowledged External AI Providers"),
+            sub_page_titles(ai_page).contains(&"External AI Providers You Consented To"),
             "the consent list moved onto the AI page"
         );
 
@@ -6225,14 +6249,6 @@ pub mod test {
             })
             .expect("the allowlist moved back onto the network page");
         assert_eq!(section_of(network_page, allowlist_index), "Egress Control");
-
-        assert!(
-            !pages
-                .iter()
-                .any(|page| sub_page_titles(page).contains(&"プロバイダーの選択")),
-            "the separate edit prediction enablement sub-page is gone; the AI page's \
-             \"Configure Providers\" now shows the dropdown in every state"
-        );
     }
 
     /// The status bar (`edit_prediction_ui`) and the onboarding upsell

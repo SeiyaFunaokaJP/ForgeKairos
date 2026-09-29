@@ -103,7 +103,7 @@ pub(super) fn problem(document: &SankeyDocument) -> Option<SharedString> {
     document
         .flows
         .is_empty()
-        .then(|| "流れを 1 つ以上追加してください。".into())
+        .then(|| i18n::t!("Add at least one flow.").into())
 }
 
 impl MermaidEditor {
@@ -397,18 +397,20 @@ impl MermaidEditor {
             .iter()
             .map(|row| row.field.read(cx).text(cx).trim().to_string())
             .collect::<Vec<_>>();
-        let mut section = v_flex().w_full().gap_1().child(section_title(
-            "ノード (名前を変えると、そのノードの流れがすべて追随します)",
-        ));
+        let mut section = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Nodes (renaming a node updates all of its flows)"
+        )));
         for (index, row) in form.nodes.iter().enumerate() {
             let Some(name) = typed.get(index) else {
                 continue;
             };
             let duplicate = typed.iter().take(index).any(|earlier| earlier == name);
             let note = if duplicate {
-                Some("同じ名前のノードは反映時に 1 つにまとまります")
+                Some(i18n::t!(
+                    "Nodes with the same name are merged into one when applied"
+                ))
             } else if !used.contains(&name.as_str()) {
-                Some("未使用 (流れで使うまで書き出されません)")
+                Some(i18n::t!("Unused (not written until a flow uses it)"))
             } else {
                 None
             };
@@ -434,7 +436,9 @@ impl MermaidEditor {
                         IconButton::new(("mermaid-sankey-node-remove", index), IconName::Trash)
                             .shape(IconButtonShape::Square)
                             .icon_size(IconSize::XSmall)
-                            .tooltip(Tooltip::text("削除 (このノードの流れも削除)"))
+                            .tooltip(Tooltip::text(i18n::t!(
+                                "Delete (also deletes this node's flows)"
+                            )))
                             .on_click(cx.listener(move |this, _, _window, cx| {
                                 this.remove_sankey_node(index, cx)
                             })),
@@ -444,7 +448,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-sankey-add-node",
-                "ノードを追加",
+                i18n::t!("Add Node"),
                 cx.listener(|this, _, window, cx| {
                     this.add_sankey_node(window, cx);
                 }),
@@ -464,7 +468,7 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_1()
-            .child(section_title("流れ (流れ元 → 流れ先、量)"));
+            .child(section_title(i18n::t!("Flows (source → target, amount)")));
         for index in 0..form.flows.len() {
             let (Some(row), Some(flow)) = (form.flows.get(index), current.flows.get(index)) else {
                 continue;
@@ -519,7 +523,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-sankey-add-flow",
-                "流れを追加",
+                i18n::t!("Add Flow"),
                 cx.listener(|this, _, window, cx| this.add_sankey_flow(window, cx)),
             ))
             .into_any_element()

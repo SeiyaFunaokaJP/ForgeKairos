@@ -71,6 +71,25 @@ pub(crate) fn request_prediction_with_zeta(
         }
         _ => None,
     };
+    let consent = match (&custom_server_settings, provider) {
+        (Some(custom_server_settings), _) => {
+            crate::ensure_self_hosted_consent(provider, custom_server_settings, cx)
+        }
+        // Without its settings a self-hosted provider would fall through to Zed Cloud, which the
+        // user did not choose.
+        (
+            None,
+            settings::EditPredictionProvider::Ollama
+            | settings::EditPredictionProvider::OpenAiCompatibleApi,
+        ) => Err(anyhow::anyhow!(
+            "{provider:?} edit predictions have no server configured"
+        )),
+        (None, _) => crate::ensure_zed_cloud_consent(cx),
+    };
+    if let Err(error) = consent {
+        return Task::ready(Err(error));
+    }
+    let made_by_zed_cloud = custom_server_settings.is_none();
 
     let http_client = cx.http_client();
     let request_start = cx.background_executor().now();
@@ -536,21 +555,25 @@ pub(crate) fn request_prediction_with_zeta(
                                     request_duration,
                                     cx,
                                 )
-                                .await,
+                                .await
+                                .with_made_by_zed_cloud(made_by_zed_cloud),
                             ));
                         }
                         Err(error) => {
                             log::error!("failed to apply edit prediction patch: {error:?}");
-                            return Ok(Some(EditPredictionResult::new_rejected(
-                                id,
-                                &fallback_buffer,
-                                &fallback_snapshot,
-                                inputs,
-                                model_version,
-                                trigger,
-                                request_duration,
-                                EditPredictionRejectReason::PatchApplyFailed,
-                            )));
+                            return Ok(Some(
+                                EditPredictionResult::new_rejected(
+                                    id,
+                                    &fallback_buffer,
+                                    &fallback_snapshot,
+                                    inputs,
+                                    model_version,
+                                    trigger,
+                                    request_duration,
+                                    EditPredictionRejectReason::PatchApplyFailed,
+                                )
+                                .with_made_by_zed_cloud(made_by_zed_cloud),
+                            ));
                         }
                     };
                 let editable_range_in_buffer =
@@ -593,9 +616,13 @@ pub(crate) fn request_prediction_with_zeta(
             request_duration,
             cx,
         )
-        .await;
+        .await
+        .with_made_by_zed_cloud(made_by_zed_cloud);
 
-        if let Some(editable_range_in_buffer) = editable_range_in_buffer.clone() {
+        // Settled reports go to Zed Cloud, so a self-hosted server's predictions are not queued.
+        if made_by_zed_cloud
+            && let Some(editable_range_in_buffer) = editable_range_in_buffer.clone()
+        {
             let prediction = &result.prediction;
             let weak_this = this.clone();
             let request_id = prediction.id.clone();
@@ -843,7 +870,11 @@ pub(crate) fn edit_prediction_accepted(
     current_prediction: CurrentEditPrediction,
     cx: &App,
 ) {
-    if store.zeta2_raw_config().is_some() {
+    if store.zeta2_raw_config().is_some() || !current_prediction.prediction.made_by_zed_cloud {
+        return;
+    }
+    if let Err(error) = crate::ensure_zed_cloud_consent(cx) {
+        log::debug!("not reporting the accepted edit prediction: {error}");
         return;
     }
 

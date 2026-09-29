@@ -1,0 +1,99 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A Gantt chart title cannot be empty."
+msgstr "ガントチャートのタイトルは空にできません。"
+
+msgid "A class diagram relationship label cannot contain %%. Use a different symbol instead."
+msgstr "クラス図の関係ラベルには %% を書けません。別の記号に置き換えてください。"
+
+msgid "A pie chart item name cannot be empty or contain `%%`."
+msgstr "円グラフの項目名は空にできず、`%%` も書けません。"
+
+msgid "A pie chart title cannot contain `%%`."
+msgstr "円グラフのタイトルには `%%` を書けません。"
+
+msgid "A section name cannot be empty."
+msgstr "セクション名は空にできません。"
+
+msgid "A section with the same name already exists. Sections with the same name are drawn as one, so use a different name."
+msgstr "同じ名前のセクションがすでにあります。同じ名前のセクションは 1 つにまとめて描かれるため、別の名前にしてください。"
+
+msgid "A task name cannot be empty, contain `:`, or start with a keyword such as `title` or `section`."
+msgstr "タスク名は空にできず、`:` を含めたり `title` や `section` などのキーワードで始めたりできません。"
+
+msgid "An empty label cannot be edited here. Add text to it in \"Edit Mermaid Diagram\"."
+msgstr "空のラベルはここでは編集できません。「Mermaid 図を編集」から文字を書き加えてください。"
+
+msgid "An item with the same name already exists. A pie chart does not draw a second item with the same name, so use a different name."
+msgstr "同じ名前の項目がすでにあります。円グラフは同じ名前の 2 つ目を描かないため、別の名前にしてください。"
+
+msgid "Code"
+msgstr "コード"
+
+msgid "Details"
+msgstr "詳細"
+
+msgid "Double-click to edit the text"
+msgstr "ダブルクリックで文字を編集"
+
+msgid "Edit Mermaid Diagram"
+msgstr "Mermaid 図を編集"
+
+msgid "Failed to Load Mermaid Diagram"
+msgstr "Mermaid 図を読み込めませんでした。"
+
+msgid "Failed to Load: {link_label}"
+msgstr "読み込みに失敗しました: {link_label}"
+
+msgid "Failed to load mermaid diagram"
+msgstr "Mermaid 図を読み込めませんでした。"
+
+msgid "Failed to render the Mermaid diagram: {error}"
+msgstr "Mermaid 図を描画できませんでした: {error}"
+
+msgid "Image failed to load. Open `zed: log` for more details."
+msgstr "画像を読み込めませんでした。詳細はコマンドパレットの「ログを開く」で確認してください。"
+
+msgid "In a sequence diagram, a leading wrap: or nowrap: is read as a wrapping directive, so the text cannot start with it."
+msgstr "シーケンス図では先頭の wrap: / nowrap: が折り返しの指定として読まれるため、この文字では始められません。"
+
+msgid "Preview"
+msgstr "プレビュー"
+
+msgid "Rendering..."
+msgstr "レンダリング中..."
+
+msgid "Reset Zoom"
+msgstr "ズームをリセット"
+
+msgid "Sequence diagram text cannot be empty. Edit it in \"Edit Mermaid Diagram\"."
+msgstr "シーケンス図の文字は空にできません。「Mermaid 図を編集」から編集してください。"
+
+msgid "Several elements share this name or ID, so it cannot be edited here. Fix it in \"Edit Mermaid Diagram\"."
+msgstr "同じ名前や ID の要素が複数あるため、ここでは編集できません。「Mermaid 図を編集」から直してください。"
+
+msgid "The attribute name contains characters that cannot be used. Whitespace, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` and key names such as `PK` are not allowed."
+msgstr "属性名に使えない文字が含まれています。空白・`,`・`\"`・`{{`・`}}`・`#`・`%`・`;` と、`PK` などのキー名は使えません。"
+
+msgid "The source location of this label could not be found."
+msgstr "このラベルはソースの位置を特定できませんでした。"
+
+msgid "This element shows its ID as is. To change what is shown, give it a description or an alias in \"Edit Mermaid Diagram\"."
+msgstr "この要素は ID がそのまま図に出ています。表示名を変えるには「Mermaid 図を編集」から説明や別名を付けてください。"
+
+msgid "This line's label is shared by several links, so it cannot be edited here."
+msgstr "この線のラベルは複数のつながりで共有されているため、ここでは編集できません。"
+
+msgid "Unwrap Content"
+msgstr "折り返しを解除"
+
+msgid "Wrap Content"
+msgstr "内容を折り返す"
+
+msgid "Zoom {percentage}%"
+msgstr "ズーム {percentage}%"

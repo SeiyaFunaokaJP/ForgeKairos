@@ -219,9 +219,12 @@ impl MultiDiffView {
     }
 
     fn title(&self) -> SharedString {
-        // 日本語には複数形がないので、原文の "1 file" / "{} files" の
-        // 出し分けはやめて件数をそのまま埋め込む。
-        format!("差分 ({} ファイル)", self.file_count).into()
+        i18n::tn!(
+            self.file_count,
+            "Diff ({count} file)",
+            "Diff ({count} files)"
+        )
+        .into()
     }
 }
 

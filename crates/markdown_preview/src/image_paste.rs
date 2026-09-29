@@ -130,14 +130,14 @@ fn markdown_document(editor: &Editor, cx: &App) -> DocumentState {
         return DocumentState::NotMarkdown;
     }
     let Some(project) = editor.project().cloned() else {
-        return DocumentState::Unavailable(
-            "プロジェクトに属さないバッファーのため、画像を保存する場所がありません。",
-        );
+        return DocumentState::Unavailable(i18n::t!(
+            "This buffer does not belong to a project, so there is nowhere to save the image."
+        ));
     };
     let Some(file) = buffer.file() else {
-        return DocumentState::Unavailable(
-            "画像はドキュメントの隣の images フォルダーに保存します。先にファイルを保存してください。",
-        );
+        return DocumentState::Unavailable(i18n::t!(
+            "Images are saved in the images folder next to the document. Save the file first."
+        ));
     };
     DocumentState::Saved {
         project,
@@ -217,7 +217,7 @@ fn paste_image(
     let (project, document) = match document {
         DocumentState::NotMarkdown => return false,
         DocumentState::Unavailable(reason) => {
-            show_notice(editor, format!("画像を貼り付けられません: {reason}"), cx);
+            show_notice(editor, i18n::t!("Cannot paste the image: {reason}"), cx);
             return true;
         }
         DocumentState::Saved { project, path } => (project, path),
@@ -280,7 +280,7 @@ fn drop_images(
         DocumentState::Unavailable(reason) => {
             show_notice(
                 editor,
-                format!("画像のリンクを挿入できません: {reason}"),
+                i18n::t!("Cannot insert the image link: {reason}"),
                 cx,
             );
             return true;
@@ -486,7 +486,8 @@ fn insert_image_links(
     {
         show_notice(
             editor,
-            "前の画像を保存しています。終わってからもう一度お試しください。".to_string(),
+            i18n::t!("The previous image is still being saved. Try again when it finishes.")
+                .to_string(),
             cx,
         );
         return;
@@ -548,8 +549,8 @@ fn insert_image_links(
                             }
                         }
                         None => {
-                            failures.push(format!(
-                                "{}: ドキュメントからの相対パスを作れません",
+                            failures.push(i18n::t!(
+                                "{}: cannot make a path relative to the document",
                                 image_path.path.as_unix_str()
                             ));
                             if is_stored {
@@ -566,7 +567,7 @@ fn insert_image_links(
                 if !failures.is_empty() {
                     show_notice(
                         editor,
-                        format!("画像を保存できませんでした: {}", failures.join(" / ")),
+                        i18n::t!("Failed to save the image: {}", failures.join(" / ")),
                         cx,
                     );
                 }
@@ -576,8 +577,10 @@ fn insert_image_links(
                 if editor.read_only(cx) {
                     show_notice(
                         editor,
-                        "バッファーが読み取り専用になったため、画像のリンクを挿入できませんでした。"
-                            .to_string(),
+                        i18n::t!(
+                            "The buffer became read-only, so the image link could not be inserted."
+                        )
+                        .to_string(),
                         cx,
                     );
                     return false;

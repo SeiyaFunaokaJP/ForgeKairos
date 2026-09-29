@@ -63,6 +63,7 @@ futures.workspace = true
 # enforces with the same matching `egress_policy` uses (ADR-F17 / ADR-F46).
 http_client.workspace = true
 http_proxy.workspace = true
+i18n.workspace = true
 log.workspace = true
 # Picks the port a sandbox's IDE channel is offered on inside its own network
 # namespace (ADR-F49 `new_inner_ide_port`); the client that picks it may be any
@@ -87,6 +88,9 @@ seccompiler.workspace = true
 # Checks the `slirp4netns` beside the WSL helper against the digest the Windows
 # side shipped before running it (ADR-F46).
 sha2.workspace = true
+
+[dev-dependencies]
+i18n_catalog = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 tempfile.workspace = true

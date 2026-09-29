@@ -46,13 +46,42 @@ msgstr ""
   [gettext manual](https://www.gnu.org/software/gettext/manual/html_node/Plural-forms.html)
   or from another project's PO files for the same language.
 - Files are UTF-8 with LF line endings.
-- Keep entries sorted by msgctxt, then msgid, and leave out `#:` location comments, so
-  that merges stay small. Escape `\`, `"`, newlines (`\n`) and tabs (`\t`).
+- Keep entries sorted by msgctxt (entries without one first), then msgid, byte by byte,
+  and leave out `#:` location comments, so that merges stay small. Write every string on
+  one line and escape `\`, `"`, newlines (`\n`) and tabs (`\t`). `po-format` (below)
+  does all of this.
 
-There is no template (`.pot`) yet. Until a tool generates one, the complete list of
-messages is the union of the existing language's files, and the code (`t!(...)` and
-friends, the menu table in `crates/zed/src/zed/app_menus.rs`, the settings table in
-`crates/settings_ui/src/page_data.rs`).
+## Templates and tools
+
+`tooling/i18n` is a command-line tool for these files. Run it from the repository root:
+
+```sh
+cargo run -p i18n_tool -- <command> ...
+```
+
+- `extract --out <dir>` writes one template per crate, `<dir>/<crate>.pot`, with the
+  messages of its `t!`, `tn!`, `tc!`, `tcn!` and `msg!` calls (`--crate <name>` to limit
+  it, `--include-tests` to add messages only tests use). Messages under the contexts
+  `action`, `menu` and `settings` are left out, and so are the menu table in
+  `crates/zed/src/zed/app_menus.rs`, the settings table in
+  `crates/settings_ui/src/page_data.rs` and the action names: they have no template yet,
+  and the existing language's `_` files are their list.
+- `check` compares the code with `locales/<tag>/*.po` (`--lang <tag>`, `--crate <name>`)
+  and lists messages a crate's file lacks, entries its code no longer uses, placeholder
+  and plural mistakes, messages two files translate differently, entries out of order and
+  CR line endings. The last four make it exit with 1; with `--strict`, missing and unused
+  entries do too. The `_` files are only checked for mistakes, not for missing entries.
+- `po-format <files or directories>` rewrites files in the layout above; `--check` only
+  reports files that would change.
+- `po-union <a.po> <b.po> ... --out <file>` merges files, for instance both sides of a
+  merge conflict (`git show :2:<path>` and `git show :3:<path>`). An entry that is empty on
+  one side takes the other side's translation; two different translations are listed and
+  nothing is written.
+- `scan` counts string literals that contain Japanese in `crates/`, split into test and
+  other code (`--list` to see them, `--fail-on-prod` to fail when any is outside tests).
+  Test code is an item under a `cfg` that holds only in tests (`test`, `all(test, …)`,
+  `feature = "test-support"`; not `any(test, unix)`), a `#[test]`-like function, a file
+  such an item declares, and files under `tests/` or named `tests.rs` / `*_tests.rs`.
 
 ## Writing translations
 
@@ -99,6 +128,49 @@ msgstr "選択範囲"
 
 A dropdown label without such an entry stays English.
 
+To see the contexts in use, list them from the existing language, with how often each
+occurs:
+
+```sh
+grep -h '^msgctxt' locales/ja/*.po | sort | uniq -c
+```
+
+A context says where the text appears (`search bar`, `keybinding`) or what it is
+(`list separator`, `Mermaid diagram kind`). The same English under two contexts is two
+entries, and each needs its translation. `list separator` is the `", "` placed between
+items of a list; translate it with your language's separator.
+
+### Text that is not translated
+
+Text Zed sends to a language model (tool descriptions, system prompts, and the results
+and errors of tools) is English in the source and is not in the catalog, so the display
+language does not change what a model is told. Log messages are not translated either.
+
+## Built-in snippets
+
+The snippets that ship with Zed, such as the Mermaid diagrams offered in Markdown, are
+not in the PO files: their bodies are inserted into the user's document, so each language
+has its own copy of the whole file.
+
+```
+assets/snippets/
+  <language>.json        the English original, such as markdown.json
+  <tag>/<language>.json  its translation, such as ja/markdown.json
+```
+
+A translation is a snippet file in the same format as the English one. Keep its prefixes
+(the tests fail if a translation offers a different set) and its tab stops (`${1:…}`),
+and translate the names, descriptions and the text in the bodies. A Mermaid body must
+stay valid Mermaid (check it with `tooling/mermaid-conformance`) and insert the same
+diagram as the editor's Insert Mermaid Diagram menu for that language.
+
+Zed offers the file of the display language, falling back per file the same way as the
+catalogs: `pt-BR/`, then `pt/`, then the English file. A new display language takes
+effect from the next completion. These files are built into Zed; the config directory
+has no counterpart for them. The user's own snippets in `<config dir>/snippets/` are a
+separate mechanism and do not depend on the display language; a user snippet with the
+same prefix as a built-in one replaces it.
+
 ## Trying a translation without rebuilding
 
 Put the PO files in `<config dir>/locales/<tag>/`, where the config directory is
@@ -115,6 +187,13 @@ add a language Zed does not ship. Zed reads the files when it switches to the la
 and keeps them for the rest of the session: restart Zed after editing them. Menus,
 settings and the command palette switch at once; other text switches after a restart.
 
+On a remote host (SSH, WSL, Docker), the text the remote server writes, such as some git
+errors and terminal notices, is translated there with the catalogs built into the
+server, in the language Zed sends when it connects. The files in your config directory
+do not reach the server, and a language the server does not ship stays English there.
+The server takes a new language when Zed reconnects, and it uses one language for all
+the clients connected to it: the one that connected last.
+
 Problems in the files (syntax errors, a broken `Plural-Forms`, a file that is not UTF-8)
 are shown in a notification and written to the log; the readable entries are still
 used. Files larger than 16 MiB, and files beyond the first 256 of a directory, are
@@ -130,6 +209,5 @@ skipped.
   languages.
 - To find untranslated messages while using Zed, run a debug build with
   `ZED_LOG=i18n=debug`: each message looked up without a translation is logged once.
-- `i18n_catalog::lint` compares a translation with a template (placeholders, format
-  specs, plural forms, duplicates, obsolete and untranslated entries). It has no
-  command yet, since there is no template to compare with.
+- `cargo run -p i18n_tool -- check` compares the files with the code (see
+  [Templates and tools](#templates-and-tools)).

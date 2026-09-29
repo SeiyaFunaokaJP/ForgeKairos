@@ -517,7 +517,7 @@ impl ThreadMetadata {
 
     pub fn display_title(&self) -> SharedString {
         self.title()
-            .unwrap_or_else(|| crate::DEFAULT_THREAD_TITLE.into())
+            .unwrap_or_else(|| i18n::tr(crate::DEFAULT_THREAD_TITLE).into())
     }
 
     pub fn title(&self) -> Option<SharedString> {
@@ -2159,24 +2159,46 @@ mod tests {
         assert_eq!(rows[0].title().as_deref(), Some("User Title"));
     }
 
-    /// F1-4: `DEFAULT_THREAD_TITLE` を日本語化したので、日本語化前に
-    /// 英語の既定タイトルのまま永続化されたスレッドも「タイトル無し」として
-    /// 読み戻せなければならない (`is_default_thread_title` の互換分岐)。
+    struct DefaultTitleCatalog;
+
+    impl i18n::Catalog for DefaultTitleCatalog {
+        fn locale(&self) -> &str {
+            "fr"
+        }
+
+        fn lookup(&self, context: Option<&str>, msgid: &str) -> Option<&'static str> {
+            (context.is_none() && msgid == crate::DEFAULT_THREAD_TITLE)
+                .then_some("Nouveau fil d'agent")
+        }
+
+        fn lookup_plural(
+            &self,
+            _context: Option<&str>,
+            _msgid: &str,
+            _msgid_plural: &str,
+            _count: u64,
+        ) -> Option<&'static str> {
+            None
+        }
+    }
+
+    /// F1-4: a thread persisted with the default title — in English, in the
+    /// Japanese that earlier versions of this fork stored, or in the language
+    /// shown when the user saved it from the title editor — reads back as
+    /// untitled, so it gets a generated title and shows the current language's
+    /// placeholder.
     #[gpui::test]
-    async fn test_database_treats_legacy_english_default_title_as_unset(_cx: &mut TestAppContext) {
+    async fn test_database_treats_every_default_title_as_unset(_cx: &mut TestAppContext) {
+        static CATALOG: DefaultTitleCatalog = DefaultTitleCatalog;
+        let _locale = i18n::test_support::LocaleOverride::new(Some(&CATALOG));
+
         let now = Utc::now();
-        let legacy = make_metadata(
-            "session-legacy",
-            crate::LEGACY_DEFAULT_THREAD_TITLE,
-            now,
-            PathList::new(&[Path::new("/project-a")]),
-        );
-        let current = make_metadata(
-            "session-current",
-            crate::DEFAULT_THREAD_TITLE,
-            now,
-            PathList::new(&[Path::new("/project-a")]),
-        );
+        let project = PathList::new(&[Path::new("/project-a")]);
+        let default_titles = [
+            ("session-english", crate::DEFAULT_THREAD_TITLE),
+            ("session-legacy", crate::LEGACY_DEFAULT_THREAD_TITLE),
+            ("session-shown", "Nouveau fil d'agent"),
+        ];
 
         let thread = std::thread::current();
         let test_name = thread.name().unwrap_or("unknown_test");
@@ -2185,17 +2207,30 @@ mod tests {
             &db_name,
         )));
 
-        db.save(legacy).await.unwrap();
-        db.save(current).await.unwrap();
+        for (session_id, title) in default_titles {
+            db.save(make_metadata(session_id, title, now, project.clone()))
+                .await
+                .unwrap();
+        }
+        db.save(make_metadata(
+            "session-named",
+            "Nouveau fil",
+            now,
+            project.clone(),
+        ))
+        .await
+        .unwrap();
 
         let rows = db.list().unwrap();
-        assert_eq!(rows.len(), 2);
+        assert_eq!(rows.len(), default_titles.len() + 1);
         for row in &rows {
-            assert_eq!(
-                row.title, None,
-                "既定タイトルは新旧どちらの値でも未設定として読み戻す"
-            );
-            assert_eq!(row.display_title().as_ref(), crate::DEFAULT_THREAD_TITLE);
+            let session_id = row.session_id.as_ref().map(|id| id.0.to_string());
+            if session_id.as_deref() == Some("session-named") {
+                assert_eq!(row.title.as_deref(), Some("Nouveau fil"));
+                continue;
+            }
+            assert_eq!(row.title, None, "{session_id:?} should read back untitled");
+            assert_eq!(row.display_title().as_ref(), "Nouveau fil d'agent");
         }
     }
 

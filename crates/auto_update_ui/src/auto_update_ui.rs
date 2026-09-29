@@ -101,22 +101,24 @@ fn announcement_for_version(version: &Version, cx: &App) -> Option<AnnouncementC
             rules_to_skills_migration::migration_result().is_some_and(|result| !result.is_empty());
 
         let mut bullet_items: Vec<SharedString> = Vec::with_capacity(3);
-        bullet_items.push(
-            format!("スキルは {GLOBAL_SKILLS_DIR_DISPLAY}/<name>/SKILL.md に置かれます").into(),
-        );
-        bullet_items.push("/ を入力するとスキルを手動で呼び出せます".into());
+        bullet_items
+            .push(i18n::t!("Skills live in {GLOBAL_SKILLS_DIR_DISPLAY}/<name>/SKILL.md").into());
+        bullet_items.push(i18n::t!("Type / to manually invoke a skill").into());
         if migrated_anything {
             bullet_items.push(
-                "ルールライブラリはスキルに置き換わります。既定のルールはグローバルな AGENTS.md に移動し、そのほかのルールはスキルに変換されました".into(),
+                i18n::t!("The Rules Library is making way for skills: your default rules are now in a global AGENTS.md, and your other rules have been converted to skills").into(),
             );
         }
 
         Some(AnnouncementContent {
-            heading: "スキル機能のご紹介".into(),
-            description: "焦点を絞った指示とドメイン知識でエージェントを拡張できます。".into(),
+            heading: i18n::t!("Introducing Skills Support").into(),
+            description: i18n::t!(
+                "Extend the agent with focused instructions and domain knowledge."
+            )
+            .into(),
             bullet_items,
-            primary_action_label: "今すぐ試す".into(),
-            secondary_action_label: "ドキュメントを読む".into(),
+            primary_action_label: i18n::t!("Try Now").into(),
+            secondary_action_label: i18n::t!("Read Documentation").into(),
             primary_action_url: None,
             primary_action_callback: Some(Arc::new(move |window, cx| {
                 window.dispatch_action(Box::new(zed_actions::assistant::FocusAgent), cx);
@@ -229,8 +231,8 @@ fn show_update_notification(cx: &mut App) {
             move |cx| {
                 let workspace_handle = cx.entity().downgrade();
                 cx.new(|cx| {
-                    MessageNotification::new(format!("{app_name} {} に更新しました", version), cx)
-                        .primary_message("リリースノートを表示")
+                    MessageNotification::new(i18n::t!("Updated to {app_name} {}", version), cx)
+                        .primary_message(i18n::t!("View Release Notes"))
                         .primary_on_click(move |window, cx| {
                             if let Some(workspace) = workspace_handle.upgrade() {
                                 workspace.update(cx, |workspace, cx| {

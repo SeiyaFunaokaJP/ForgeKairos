@@ -33,7 +33,7 @@ impl RenderOnce for EndTrialUpsell {
             )
             .child(PlanDefinitions.pro_plan())
             .child(
-                Button::new("cta-button", "Zed Pro にアップグレード")
+                Button::new("cta-button", i18n::t!("Upgrade to Zed Pro"))
                     .full_width()
                     .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                     .on_click(move |_, _window, cx| {
@@ -55,7 +55,7 @@ impl RenderOnce for EndTrialUpsell {
                             .buffer_font(cx),
                     )
                     .child(
-                        Label::new("(現在のプラン)")
+                        Label::new(i18n::t!("(Current Plan)"))
                             .size(LabelSize::Small)
                             .color(Color::Custom(cx.theme().colors().text_muted.opacity(0.6)))
                             .buffer_font(cx),
@@ -65,11 +65,13 @@ impl RenderOnce for EndTrialUpsell {
             .child(PlanDefinitions.free_plan());
 
         AgentPanelOnboardingCard::new()
-            .child(Headline::new("Zed Pro トライアルの期限が切れました"))
+            .child(Headline::new(i18n::t!("Your Zed Pro Trial has expired")))
             .child(
-                Label::new("自動的に Free プランに戻りました。")
-                    .color(Color::Muted)
-                    .mb_2(),
+                Label::new(i18n::t!(
+                    "You've been automatically reset to the Free plan."
+                ))
+                .color(Color::Muted)
+                .mb_2(),
             )
             .child(pro_section)
             .child(free_section)
@@ -77,7 +79,7 @@ impl RenderOnce for EndTrialUpsell {
                 h_flex().absolute().top_4().right_4().child(
                     IconButton::new("dismiss_onboarding", IconName::Close)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("閉じる"))
+                        .tooltip(Tooltip::text(i18n::t!("Dismiss")))
                         .on_click({
                             let callback = self.dismiss_upsell.clone();
                             move |_, window, cx| {

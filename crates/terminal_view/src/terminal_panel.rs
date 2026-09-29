@@ -123,7 +123,9 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-const LAUNCH_CLAUDE_CODE_LABEL: &str = "Claude Code を起動";
+fn launch_claude_code_label() -> &'static str {
+    i18n::t!("Launch Claude Code")
+}
 
 /// Starts the official `claude` CLI in a new terminal tab (ADR-F20).
 ///
@@ -136,7 +138,7 @@ fn launch_claude_code_button() -> FoldableTabBarButton {
         .icon_size(IconSize::Small)
         // 置き場はエージェントパネルのタブにもなるので、どこに開くかは言わない
         // (ADR-F53)。
-        .tooltip(Tooltip::text(LAUNCH_CLAUDE_CODE_LABEL))
+        .tooltip(Tooltip::text(launch_claude_code_label()))
         .on_click(|_, window, cx| {
             window.dispatch_action(
                 Box::new(zed_actions::terminal::LaunchClaudeCode { effort: None }),
@@ -145,7 +147,7 @@ fn launch_claude_code_button() -> FoldableTabBarButton {
         });
     FoldableTabBarButton {
         button: button.into_any_element(),
-        menu_label: LAUNCH_CLAUDE_CODE_LABEL.into(),
+        menu_label: launch_claude_code_label().into(),
         menu_action: Box::new(zed_actions::terminal::LaunchClaudeCode { effort: None }),
         fold_rank: FOLD_RANK_LAUNCH_CLAUDE_CODE,
     }
@@ -172,7 +174,7 @@ fn session_log_toggle_button(pane: &Pane, cx: &App) -> Option<FoldableTabBarButt
     let (terminal_view, log_path) = session_log_toggle_target(pane, cx)?;
     let recording = log_path.is_some();
     let (label, detail) = match log_path {
-        Some(path) => (crate::STOP_SESSION_LOG_LABEL, path.display().to_string()),
+        Some(path) => (crate::stop_session_log_label(), path.display().to_string()),
         None => {
             let directory = terminal::session_log::resolve_log_directory(
                 TerminalSettings::get_global(cx)
@@ -181,8 +183,8 @@ fn session_log_toggle_button(pane: &Pane, cx: &App) -> Option<FoldableTabBarButt
                     .as_deref(),
             );
             (
-                crate::START_SESSION_LOG_LABEL,
-                format!("保存先: {}", directory.display()),
+                crate::start_session_log_label(),
+                i18n::t!("Location: {}", directory.display()),
             )
         }
     };
@@ -342,7 +344,7 @@ fn folded_buttons_menu(
         .trigger_with_tooltip(
             IconButton::new("terminal-tab-bar-overflow-trigger", IconName::Ellipsis)
                 .icon_size(IconSize::Small),
-            Tooltip::text("その他のボタン"),
+            Tooltip::text(i18n::t!("More Buttons")),
         )
         .anchor(Anchor::TopRight)
         .menu(move |window, cx| {
@@ -485,7 +487,7 @@ impl TerminalPanel {
                 let new_item_menu = PopoverMenu::new("terminal-tab-bar-popover-menu")
                     .trigger_with_tooltip(
                         IconButton::new("plus", IconName::Plus).icon_size(IconSize::Small),
-                        Tooltip::text("新規…"),
+                        Tooltip::text(i18n::t!("New…")),
                     )
                     .anchor(Anchor::TopRight)
                     .with_handle(pane.new_item_context_menu_handle.clone())
@@ -496,23 +498,23 @@ impl TerminalPanel {
                             let menu = ContextMenu::build(window, cx, |menu, _, _| {
                                 menu.context(focus_handle.clone())
                                     .action(
-                                        "新規ターミナル",
+                                        i18n::t!("New Terminal"),
                                         workspace::NewTerminal::default().boxed_clone(),
                                     )
                                     // We want the focus to go back to terminal panel once task modal is dismissed,
                                     // hence we focus that first. Otherwise, we'd end up without a focused element, as
                                     // context menu will be gone the moment we spawn the modal.
                                     .action(
-                                        "タスクを実行",
+                                        i18n::t!("Spawn Task"),
                                         zed_actions::Spawn::modal().boxed_clone(),
                                     )
                                     .action(
-                                        LAUNCH_CLAUDE_CODE_LABEL,
+                                        launch_claude_code_label(),
                                         zed_actions::terminal::LaunchClaudeCode { effort: None }
                                             .boxed_clone(),
                                     )
                                     .action(
-                                        "Claude Code をサンドボックスの外で起動",
+                                        i18n::t!("Launch Claude Code Outside the Sandbox"),
                                         zed_actions::terminal::LaunchClaudeCodeOutsideSandbox {
                                             effort: None,
                                         }
@@ -520,15 +522,15 @@ impl TerminalPanel {
                                     )
                                     .separator()
                                     .action(
-                                        "クイック接続…",
+                                        i18n::t!("Quick Connect…"),
                                         crate::session_tools::QuickConnect.boxed_clone(),
                                     )
                                     .action(
-                                        "マクロを実行…",
+                                        i18n::t!("Run Macro…"),
                                         crate::session_tools::RunMacro.boxed_clone(),
                                     )
                                     .action(
-                                        "マクロの編集…",
+                                        i18n::t!("Edit Macros…"),
                                         crate::session_tools::EditMacros.boxed_clone(),
                                     )
                             });
@@ -541,7 +543,7 @@ impl TerminalPanel {
                     .trigger_with_tooltip(
                         IconButton::new("terminal-pane-split", IconName::Split)
                             .icon_size(IconSize::Small),
-                        Tooltip::text("ペインを分割"),
+                        Tooltip::text(i18n::t!("Split Pane")),
                     )
                     .anchor(Anchor::TopRight)
                     .with_handle(pane.split_item_context_menu_handle.clone())
@@ -552,13 +554,16 @@ impl TerminalPanel {
                                 menu.when_some(split_context.clone(), |menu, split_context| {
                                     menu.context(split_context)
                                 })
-                                .action("右に分割", SplitRight::default().boxed_clone())
-                                .action("左に分割", SplitLeft::default().boxed_clone())
-                                .action("上に分割", SplitUp::default().boxed_clone())
-                                .action("下に分割", SplitDown::default().boxed_clone())
+                                .action(
+                                    i18n::t!("Split Right"),
+                                    SplitRight::default().boxed_clone(),
+                                )
+                                .action(i18n::t!("Split Left"), SplitLeft::default().boxed_clone())
+                                .action(i18n::t!("Split Up"), SplitUp::default().boxed_clone())
+                                .action(i18n::t!("Split Down"), SplitDown::default().boxed_clone())
                                 .separator()
                                 .action(
-                                    "2×2 に分割",
+                                    i18n::t!("Split into 2×2"),
                                     SplitGrid {
                                         columns: 2,
                                         rows: 2,
@@ -566,7 +571,7 @@ impl TerminalPanel {
                                     .boxed_clone(),
                                 )
                                 .action(
-                                    "横 3 分割",
+                                    i18n::t!("Split into 3 Columns"),
                                     SplitGrid {
                                         columns: 3,
                                         rows: 1,
@@ -580,9 +585,9 @@ impl TerminalPanel {
                     .into_any_element();
                 let zoomed = pane.is_zoomed();
                 let zoom_label = if zoomed {
-                    "ズーム解除"
+                    i18n::tc!("terminal", "Zoom Out")
                 } else {
-                    "ズーム"
+                    i18n::tc!("terminal", "Zoom In")
                 };
                 let zoom_button = FoldableTabBarButton {
                     button: IconButton::new("toggle_zoom", IconName::Maximize)
@@ -606,14 +611,14 @@ impl TerminalPanel {
                     TabBarItem::Foldable(action_tab_bar_button(
                         "terminal-quick-connect",
                         IconName::Server,
-                        "クイック接続…",
+                        i18n::t!("Quick Connect…"),
                         Box::new(crate::session_tools::QuickConnect),
                         FOLD_RANK_QUICK_CONNECT,
                     )),
                     TabBarItem::Foldable(action_tab_bar_button(
                         "terminal-run-macro",
                         IconName::PlayOutlined,
-                        "マクロを実行…",
+                        i18n::t!("Run Macro…"),
                         Box::new(crate::session_tools::RunMacro),
                         FOLD_RANK_RUN_MACRO,
                     )),
@@ -621,7 +626,7 @@ impl TerminalPanel {
                 items.push(TabBarItem::Foldable(action_tab_bar_button(
                     "terminal-file-transfer",
                     IconName::ArrowRightLeft,
-                    "ファイル転送…",
+                    i18n::t!("File Transfer…"),
                     Box::new(zed_actions::terminal::OpenFileTransfer::default()),
                     FOLD_RANK_FILE_TRANSFER,
                 )));
@@ -630,16 +635,16 @@ impl TerminalPanel {
                 if assistant_enabled && let Some(focus_handle) = split_context.clone() {
                     items.push(TabBarItem::Foldable(FoldableTabBarButton {
                         button: InlineAssistTabBarButton { focus_handle }.into_any_element(),
-                        menu_label: "インラインアシスト".into(),
+                        menu_label: i18n::t!("Inline Assist").into(),
                         menu_action: Box::new(InlineAssist::default()),
                         fold_rank: FOLD_RANK_INLINE_ASSIST,
                     }));
                 }
                 if can_broadcast_input || broadcast_input {
                     let broadcast_label = if broadcast_input {
-                        "全ペインへの同時入力をやめる"
+                        i18n::t!("Stop Broadcasting Input to All Panes")
                     } else {
-                        "全ペインに同時入力"
+                        i18n::t!("Broadcast Input to All Panes")
                     };
                     items.push(TabBarItem::Foldable(FoldableTabBarButton {
                         button: IconButton::new("terminal-broadcast-input", IconName::Keyboard)
@@ -2021,9 +2026,12 @@ impl Render for FailedToSpawnTerminal {
             .menu(move |window, cx| {
                 Some(ContextMenu::build(window, cx, |context_menu, _, _| {
                     context_menu
-                        .action("設定を開く", zed_actions::OpenSettings.boxed_clone())
                         .action(
-                            "settings.json を編集",
+                            i18n::t!("Open Settings"),
+                            zed_actions::OpenSettings.boxed_clone(),
+                        )
+                        .action(
+                            i18n::t!("Edit settings.json"),
                             zed_actions::OpenSettingsFile.boxed_clone(),
                         )
                 }))
@@ -2047,7 +2055,7 @@ impl Render for FailedToSpawnTerminal {
                     .items_center()
                     .justify_center()
                     .text_center()
-                    .child(Label::new("ターミナルを起動できませんでした"))
+                    .child(Label::new(i18n::t!("Failed to spawn terminal")))
                     .child(
                         Label::new(self.error.to_string())
                             .size(LabelSize::Small)
@@ -2056,7 +2064,7 @@ impl Render for FailedToSpawnTerminal {
                     )
                     .child(SplitButton::new(
                         ButtonLike::new("open-settings-ui")
-                            .child(Label::new("設定を編集").size(LabelSize::Small))
+                            .child(Label::new(i18n::t!("Edit Settings")).size(LabelSize::Small))
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(zed_actions::OpenSettings.boxed_clone(), cx);
                             }),
@@ -2072,7 +2080,7 @@ impl workspace::Item for FailedToSpawnTerminal {
     type Event = ();
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        SharedString::new_static("ターミナルの起動失敗")
+        SharedString::new_static(i18n::tc!("terminal tab title", "Failed to spawn terminal"))
     }
 }
 
@@ -2417,7 +2425,7 @@ impl Panel for TerminalPanel {
     }
 
     fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("ターミナルパネル")
+        Some(i18n::t!("Terminal Panel"))
     }
 
     fn toggle_action(&self) -> Box<dyn gpui::Action> {
@@ -2492,7 +2500,7 @@ impl RenderOnce for InlineAssistTabBarButton {
             })
             .tooltip(move |_window, cx| {
                 Tooltip::for_action_in(
-                    "インラインアシスト",
+                    i18n::t!("Inline Assist"),
                     &InlineAssist::default(),
                     &focus_handle,
                     cx,
@@ -2549,18 +2557,18 @@ mod tests {
     /// assistant off: six foldable buttons around the 新規 and 分割 popovers.
     fn tab_bar_row() -> Vec<TabBarItem> {
         vec![
-            foldable_test_button(FOLD_RANK_LAUNCH_CLAUDE_CODE, "Claude Code を起動"),
-            foldable_test_button(FOLD_RANK_QUICK_CONNECT, "クイック接続…"),
-            foldable_test_button(FOLD_RANK_RUN_MACRO, "マクロを実行…"),
-            foldable_test_button(FOLD_RANK_SESSION_LOG, "記録"),
+            foldable_test_button(FOLD_RANK_LAUNCH_CLAUDE_CODE, "Launch Claude Code"),
+            foldable_test_button(FOLD_RANK_QUICK_CONNECT, "Quick Connect…"),
+            foldable_test_button(FOLD_RANK_RUN_MACRO, "Run Macro…"),
+            foldable_test_button(FOLD_RANK_SESSION_LOG, "Recording"),
             TabBarItem::Fixed(gpui::Empty.into_any_element()),
-            foldable_test_button(FOLD_RANK_BROADCAST_INPUT, "全ペインに同時入力"),
+            foldable_test_button(FOLD_RANK_BROADCAST_INPUT, "Broadcast Input to All Panes"),
             TabBarItem::Fixed(gpui::Empty.into_any_element()),
-            foldable_test_button(FOLD_RANK_ZOOM, "ズーム"),
+            foldable_test_button(FOLD_RANK_ZOOM, "Zoom In"),
         ]
     }
 
-    const FIXED_BUTTON: &str = "（固定）";
+    const FIXED_BUTTON: &str = "(fixed)";
 
     fn drawn_labels(drawn: &[TabBarItem]) -> Vec<String> {
         drawn
@@ -2608,17 +2616,21 @@ mod tests {
         assert_eq!(
             drawn_labels(&drawn),
             vec![
-                "Claude Code を起動",
-                "記録",
+                "Launch Claude Code",
+                "Recording",
                 FIXED_BUTTON,
                 FIXED_BUTTON,
-                "ズーム",
+                "Zoom In",
             ],
             "the buttons a narrow split still needs at a glance should survive"
         );
         assert_eq!(
             folded_labels(&folded),
-            vec!["クイック接続…", "マクロを実行…", "全ペインに同時入力"],
+            vec![
+                "Quick Connect…",
+                "Run Macro…",
+                "Broadcast Input to All Panes"
+            ],
             "the folded buttons should keep the order they are drawn in"
         );
     }
@@ -2630,7 +2642,7 @@ mod tests {
         assert_eq!(
             drawn_labels(&drawn),
             vec![FIXED_BUTTON, FIXED_BUTTON],
-            "the 新規 and 分割 popovers cannot nest inside the 「…」 menu, so they stay"
+            "the New and Split popovers cannot nest inside the … menu, so they stay"
         );
         assert_eq!(folded.len(), 6);
     }

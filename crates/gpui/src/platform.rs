@@ -2431,6 +2431,30 @@ pub enum PromptLevel {
     Critical,
 }
 
+static PROMPT_TITLE_PROVIDER: parking_lot::RwLock<Option<fn(PromptLevel) -> SharedString>> =
+    parking_lot::RwLock::new(None);
+
+impl PromptLevel {
+    /// Sets the title that native dialogs with a title bar show for each level. GPUI
+    /// does not know the application's UI language, so the application supplies it.
+    pub fn set_title_provider(provider: fn(PromptLevel) -> SharedString) {
+        *PROMPT_TITLE_PROVIDER.write() = Some(provider);
+    }
+
+    /// The title bar text of a native dialog at this level: the provider's, or else
+    /// the level's English name.
+    pub fn title(self) -> SharedString {
+        if let Some(provider) = *PROMPT_TITLE_PROVIDER.read() {
+            return provider(self);
+        }
+        match self {
+            PromptLevel::Info => "Info".into(),
+            PromptLevel::Warning => "Warning".into(),
+            PromptLevel::Critical => "Critical".into(),
+        }
+    }
+}
+
 /// Prompt Button
 #[derive(Clone, Debug, PartialEq)]
 pub enum PromptButton {

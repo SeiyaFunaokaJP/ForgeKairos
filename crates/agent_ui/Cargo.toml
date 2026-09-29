@@ -143,6 +143,7 @@ editor = { workspace = true, features = ["test-support"] }
 eval_utils.workspace = true
 gpui = { workspace = true, "features" = ["test-support"] }
 http_client = { workspace = true, features = ["test-support"] }
+i18n_catalog = { workspace = true, features = ["test-support"] }
 indoc.workspace = true
 language = { workspace = true, "features" = ["test-support"] }
 languages = { workspace = true, features = ["test-support"] }

@@ -1,0 +1,93 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Agent"
+msgstr "エージェント"
+
+msgid "Claude Code (Sandbox): Connected"
+msgstr "Claude Code (サンドボックス): 接続中"
+
+msgid "Claude Code in the sandbox is connected to this project (connections: {connection_count}). Click to open the menu\n{assist_summary}"
+msgstr "サンドボックスの中の Claude Code がこのプロジェクトに接続しています (接続 {connection_count})。クリックで操作メニューを開きます\n{assist_summary}"
+
+msgid "Claude Code isn't connected"
+msgstr "Claude Code が接続していません"
+
+msgid "Copied the MCP configuration. The auth token changes every time Zed starts, so paste it again each time"
+msgstr "MCP 設定をコピーしました。認証トークンは Zed を起動するたびに変わるので、貼り付け先も毎回貼り直してください"
+
+msgid "Copy MCP Configuration"
+msgstr "MCP 設定をコピー"
+
+msgid "Couldn't create the MCP configuration: {error}"
+msgstr "MCP 設定を作れませんでした: {error}"
+
+msgid "External Agent"
+msgstr "外部エージェント"
+
+msgid "IDE Server: Starting…"
+msgstr "IDE サーバー: 起動中…"
+
+msgid "IDE Server: {port}"
+msgstr "IDE サーバー: {port}"
+
+msgid "IDE Server: {port} ({connected_clients} connected)"
+msgstr "IDE サーバー: {port} (接続中 {connected_clients})"
+
+msgid "IDE tools: highlights, annotations, tours, definitions, references, symbol search"
+msgstr "IDE ツール: ハイライト・注釈・ツアー・定義・参照・シンボル検索"
+
+msgid "IDE tools: off (turn them on in the \"AI\" settings)"
+msgstr "IDE ツール: 無効 (設定の「AI」で切り替え)"
+
+msgid "Listening on 127.0.0.1:{port} (connections: {connection_count}). Click to open the menu\n{assist_summary}"
+msgstr "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。クリックで操作メニューを開きます\n{assist_summary}"
+
+msgid "Listening on 127.0.0.1:{port} (connections: {connection_count}). This is a remote workspace, so there is no lock file for CLIs to find it by (paste what \"Copy MCP Configuration\" gives you to connect)\n{assist_summary}"
+msgstr "127.0.0.1:{port} で待ち受け中 (接続 {connection_count})。リモートのワークスペースなので、CLI が自動で見つけるためのロックファイルは書いていません (「MCP 設定をコピー」で貼れば繋がります)\n{assist_summary}"
+
+msgid "Proposed by the agent: {}"
+msgstr "エージェントの提案: {}"
+
+msgid "Reason for rejecting (optional, sent to the agent)"
+msgstr "拒否の理由 (任意。エージェントに伝えます)"
+
+msgid "Remote workspaces get no lock file. From a CLI, use the HTTP endpoint that \"Copy MCP Configuration\" gives you"
+msgstr "リモートのワークスペースではロックファイルを書きません。CLI からは「MCP 設定をコピー」で貼れる HTTP のエンドポイントを使ってください"
+
+msgid "Reveal Lock File"
+msgstr "ロックファイルの場所を開く"
+
+msgid "The IDE server isn't running"
+msgstr "IDE サーバーは動いていません"
+
+msgid "There's no editor to send"
+msgstr "送る対象のエディターがありません"
+
+msgid "This diff has been handled"
+msgstr "この差分は処理済みです"
+
+msgid "Unsaved buffers can't be sent to Claude Code"
+msgstr "保存されていないバッファーは Claude Code に送れません"
+
+msgid "Waiting for a port to listen on"
+msgstr "待ち受けポートの確保を待っています"
+
+msgid "{} (connections: {})"
+msgstr "{} (接続 {})"
+
+msgctxt "ide server"
+msgid "Disable"
+msgstr "無効にする"
+
+msgctxt "proposed diff"
+msgid "Accept"
+msgstr "採用"
+
+msgctxt "proposed diff"
+msgid "Reject"
+msgstr "拒否"

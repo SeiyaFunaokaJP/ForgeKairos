@@ -73,7 +73,6 @@ msgctxt "PanelTabBar"
 msgid "Never"
 msgstr "表示しない"
 
-
 msgctxt "ShowWhitespaceSetting"
 msgid "Selection"
 msgstr "選択範囲"
@@ -123,10 +122,6 @@ msgid "Accessible Mode"
 msgstr "アクセシビリティモード"
 
 msgctxt "settings"
-msgid "Acknowledged External AI Providers"
-msgstr "承諾済みの外部 AI プロバイダー"
-
-msgctxt "settings"
 msgid "Activate On Close"
 msgstr "閉じた後にアクティブにするタブ"
 
@@ -161,6 +156,10 @@ msgstr "詳細設定"
 msgctxt "settings"
 msgid "Agent Configuration"
 msgstr "エージェントの設定"
+
+msgctxt "settings"
+msgid "Agent Name"
+msgstr "エージェント名"
 
 msgctxt "settings"
 msgid "Agent Panel"
@@ -527,6 +526,10 @@ msgid "Colorize Brackets"
 msgstr "括弧の色分け"
 
 msgctxt "settings"
+msgid "Command"
+msgstr "コマンド"
+
+msgctxt "settings"
 msgid "Command Palette"
 msgstr "コマンドパレット"
 
@@ -833,6 +836,10 @@ msgstr "エージェントパネルを下にドッキングしたときの既定
 msgctxt "settings"
 msgid "Default height when the terminal is docked to the bottom (in pixels)."
 msgstr "ターミナルを下にドッキングしたときの既定の高さ (ピクセル) です。"
+
+msgctxt "settings"
+msgid "Default timeout in seconds for MCP server tool calls."
+msgstr "MCP サーバーのツール呼び出しの既定のタイムアウト (秒) です。"
 
 msgctxt "settings"
 msgid "Default width of the Git panel in pixels."
@@ -1155,6 +1162,10 @@ msgid "Environment Variables"
 msgstr "環境変数"
 
 msgctxt "settings"
+msgid "Environment variables provided to the agent process."
+msgstr "エージェントのプロセスに渡す環境変数です。"
+
+msgctxt "settings"
 msgid "Excerpt Context Lines"
 msgstr "抜粋の前後の行数"
 
@@ -1181,6 +1192,10 @@ msgstr "Zed 自身を 127.0.0.1 の IDE サーバーとして公開し、統合�
 msgctxt "settings"
 msgid "Extend Comment On Newline"
 msgstr "改行時にコメントを継続"
+
+msgctxt "settings"
+msgid "External AI Providers You Consented To"
+msgstr "承諾済みの外部 AI プロバイダー"
 
 msgctxt "settings"
 msgid "External Agents"
@@ -1947,6 +1962,10 @@ msgid "Log Directory"
 msgstr "保存先フォルダー"
 
 msgctxt "settings"
+msgid "MCP Server Timeout"
+msgstr "MCP サーバーのタイムアウト"
+
+msgctxt "settings"
 msgid "MCP Servers"
 msgstr "MCP サーバー"
 
@@ -1963,12 +1982,20 @@ msgid "Max Content Width"
 msgstr "内容の最大幅"
 
 msgctxt "settings"
+msgid "Max Output Tokens"
+msgstr "最大出力トークン数"
+
+msgctxt "settings"
 msgid "Max Scroll History Lines"
 msgstr "スクロール履歴の最大行数"
 
 msgctxt "settings"
 msgid "Max Severity"
 msgstr "最大の重大度"
+
+msgctxt "settings"
+msgid "Max Tokens"
+msgstr "最大トークン数"
 
 msgctxt "settings"
 msgid "Max Width"
@@ -2069,6 +2096,10 @@ msgstr "モーダル編集"
 msgctxt "settings"
 msgid "Mode"
 msgstr "モード"
+
+msgctxt "settings"
+msgid "Model"
+msgstr "モデル"
 
 msgctxt "settings"
 msgid "Modifier key for adding multiple cursors."
@@ -2323,6 +2354,10 @@ msgid "Project Search Button"
 msgstr "プロジェクト内検索のボタン"
 
 msgctxt "settings"
+msgid "Prompt Format"
+msgstr "プロンプト形式"
+
+msgctxt "settings"
 msgid "Proxy"
 msgstr "プロキシ"
 
@@ -2381,6 +2416,14 @@ msgstr "保存時に行末の空白を削除"
 msgctxt "settings"
 msgid "Repository Map Size in System Prompt (Bytes)"
 msgstr "システムプロンプトに含めるリポジトリマップのバイト数"
+
+msgctxt "settings"
+msgid "Required. A unique name used to identify this agent."
+msgstr "必須。このエージェントを識別する一意の名前です。"
+
+msgctxt "settings"
+msgid "Required. Path to the executable that launches the agent."
+msgstr "必須。エージェントを起動する実行ファイルのパスです。"
 
 msgctxt "settings"
 msgid "Restore File State"
@@ -3135,6 +3178,10 @@ msgid "Space Whitespace Indicator"
 msgstr "スペースの表示文字"
 
 msgctxt "settings"
+msgid "Space-separated arguments passed to the command."
+msgstr "コマンドに渡す引数です。半角スペースで区切ります。"
+
+msgctxt "settings"
 msgid "Spacing between worktree entries in the project panel."
 msgstr "プロジェクトパネルのワークツリー項目の間隔です。"
 
@@ -3255,6 +3302,18 @@ msgid "Text Rendering Mode"
 msgstr "テキストの描画モード"
 
 msgctxt "settings"
+msgid "The API URL to use for Codestral."
+msgstr "Codestral で使用する API の URL です。"
+
+msgctxt "settings"
+msgid "The Codestral model id to use."
+msgstr "使用する Codestral のモデル ID です。"
+
+msgctxt "settings"
+msgid "The Ollama model to use for edit predictions."
+msgstr "編集予測に使用する Ollama のモデルです。"
+
+msgctxt "settings"
 msgid "The OpenType features to enable for rendering in UI elements."
 msgstr "UI 要素の描画で有効にする OpenType 機能です。"
 
@@ -3265,6 +3324,10 @@ msgstr "テキストバッファーの描画で有効にする OpenType 機能�
 msgctxt "settings"
 msgid "The URL of the Zed server to connect to."
 msgstr "接続先の Zed サーバーの URL です。"
+
+msgctxt "settings"
+msgid "The URL of your OpenAI-compatible server's completions API."
+msgstr "OpenAI 互換サーバーの補完 API の URL です。"
 
 msgctxt "settings"
 msgid "The URL opened by \"Ask Copilot\". {query} is replaced with the question; without the placeholder, the selected text is copied to the clipboard instead."
@@ -3281,6 +3344,10 @@ msgstr "ソース行の末尾からインライン診断の開始位置までの
 msgctxt "settings"
 msgid "The arguments to pass to the shell program."
 msgstr "シェルのプログラムに渡す引数です。"
+
+msgctxt "settings"
+msgid "The base URL of your Ollama server."
+msgstr "Ollama サーバーのベース URL です。"
 
 msgctxt "settings"
 msgid "The column at which to soft-wrap lines, for buffers where soft-wrap is enabled."
@@ -3319,7 +3386,7 @@ msgid "The dock that holds two panels (stacked vertically in the left and right 
 msgstr "プロジェクトを初めて開いたときに、パネルを 2 枚 (左右のドックは縦、下ドックは横) 並べておくドックです。ドック自体は開きません (起動時に開くかどうかは各パネルの「起動時に開く」で設定します)。以降はプロジェクトごとに保存されたレイアウトが優先されます。"
 
 msgctxt "settings"
-msgid "The external AI providers you enabled after accepting the training risk warning. Revoking an acknowledgement shows the warning again the next time that provider is used."
+msgid "The external AI providers you enabled after accepting the training risk warning. Revoking consent shows the warning again the next time that provider is used."
 msgstr "学習リスクの警告に同意して有効化した外部 AI プロバイダーの一覧です。承諾を取り消すと、次にそのプロバイダーを使うときに再び警告が表示されます。"
 
 msgctxt "settings"
@@ -3359,6 +3426,10 @@ msgid "The list of language servers to use (or disable) for this language."
 msgstr "この言語で使用する (または無効にする) 言語サーバーの一覧です。"
 
 msgctxt "settings"
+msgid "The maximum number of tokens to generate."
+msgstr "生成するトークン数の上限です。"
+
+msgctxt "settings"
 msgid "The minimum APCA perceptual contrast between foreground and background colors (0-106)."
 msgstr "前景色と背景色の間で保つ APCA 知覚コントラストの最小値です (0〜106)。"
 
@@ -3377,6 +3448,10 @@ msgstr "インライン blame の情報を表示する最小の列位置です�
 msgctxt "settings"
 msgid "The minimum width (in columns) at which the split diff view is used. When the editor is narrower, the diff view automatically switches to unified mode. Set to 0 to disable."
 msgstr "左右分割の差分表示を使う最小の幅 (列数) です。エディターがこれより狭い場合は自動的にインライン表示に切り替わります。0 で無効になります。"
+
+msgctxt "settings"
+msgid "The model string to pass to the OpenAI-compatible server."
+msgstr "OpenAI 互換サーバーに渡すモデル名です。"
 
 msgctxt "settings"
 msgid "The multiplier for scrolling in the terminal with the mouse wheel"
@@ -3413,6 +3488,10 @@ msgstr "1 枚目の隣に並べて表示するパネルです。「並べない�
 msgctxt "settings"
 msgid "The panel that fills that dock. Choose \"Don't Stack\" to skip building the initial layout."
 msgstr "そのドックを埋めるパネルです。「並べない」にすると、初回のレイアウトを組みません。"
+
+msgctxt "settings"
+msgid "The prompt format to use when requesting predictions. Set to Infer to have the format inferred based on the model name."
+msgstr "予測を要求するときに使うプロンプトの形式です。Infer にするとモデル名から形式を推定します。"
 
 msgctxt "settings"
 msgid "The proxy to use for network requests."

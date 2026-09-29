@@ -7,6 +7,8 @@ pub mod remote_identity;
 mod transport;
 
 pub use proxy_http::ProxyHttpRelay;
+#[cfg(any(test, feature = "test-support"))]
+pub use remote_client::DisplayLanguageForTests;
 #[cfg(target_os = "windows")]
 pub use remote_client::OpenWslPath;
 pub use remote_client::{
@@ -14,6 +16,7 @@ pub use remote_client::{
     RemoteClientDelegate, RemoteClientEvent, RemoteConnection, RemoteConnectionOptions, RemoteOs,
     RemotePlatform, connect, has_active_connection, set_client_instance_id,
 };
+pub use remote_client::{DISPLAY_LANGUAGE_ENV_VAR, DisplayLanguageHandler};
 pub use remote_identity::{
     RemoteConnectionIdentity, remote_connection_identity, same_remote_connection_identity,
 };

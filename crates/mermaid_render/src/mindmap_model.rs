@@ -67,13 +67,14 @@ impl MindmapShape {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Default => "標準",
-            Self::Square => "四角 [ ]",
-            Self::Rounded => "角丸 ( )",
-            Self::Circle => "円 (( ))",
-            Self::Bang => "爆発 )) ((",
-            Self::Cloud => "雲 ) (",
-            Self::Hexagon => "六角形 {{ }}",
+            // `tr` rather than `t!`: the brackets would be read as placeholders.
+            Self::Default => i18n::tc!("mindmap shape", "Default"),
+            Self::Square => i18n::tr(i18n::msg!("Square [ ]")),
+            Self::Rounded => i18n::tr(i18n::msg!("Rounded ( )")),
+            Self::Circle => i18n::tr(i18n::msg!("Circle (( ))")),
+            Self::Bang => i18n::tr(i18n::msg!("Bang )) ((")),
+            Self::Cloud => i18n::tr(i18n::msg!("Cloud ) (")),
+            Self::Hexagon => i18n::tr(i18n::msg!("Hexagon {{ }}")),
         }
     }
 
@@ -226,19 +227,19 @@ impl MindmapDocument {
         let mut open: Vec<MindmapNode> = Vec::new();
         for entry in entries {
             if open.is_empty() && entry.depth != 0 {
-                bail!("マインドマップの最初のノードはルートでなければいけません。");
+                bail!(i18n::t!("The first node of a mindmap must be the root."));
             }
             if !open.is_empty() && entry.depth == 0 {
-                bail!(
-                    "ルートが 2 つあります (`{}`)。マインドマップのルートは 1 つだけです。",
+                bail!(i18n::t!(
+                    "There are two roots (`{}`). A mindmap has only one root.",
                     entry.node.label
-                );
+                ));
             }
             if entry.depth > open.len() {
-                bail!(
-                    "ノード `{}` が親より 2 段以上深くなっています。",
+                bail!(i18n::t!(
+                    "The node `{}` is two or more levels deeper than its parent.",
                     entry.node.label
-                );
+                ));
             }
             close_to(&mut open, entry.depth);
             let mut node = entry.node;
@@ -452,11 +453,13 @@ pub fn parse_mindmap(source: &str) -> Result<MindmapDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Mindmap(_)) {
-            bail!("この図はマインドマップではありません。");
+            bail!(i18n::t!("This diagram is not a mindmap."));
         }
     }
 
@@ -477,12 +480,14 @@ fn scan_mindmap(source: &str) -> Result<MindmapDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = keyword_tail(header, "mindmap") else {
-        bail!("マインドマップではありません (`mindmap` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a mindmap (only a diagram that starts with `mindmap` can be edited in the structured editor)."
+        ));
     };
     if !tail.is_empty() {
-        bail!(
-            "`mindmap` の行の `{tail}` は構造化編集に対応していません。ノードは次の行に書いてください。"
-        );
+        bail!(i18n::t!(
+            "The structured editor does not support `{tail}` on the `mindmap` line. Write the nodes on the following lines."
+        ));
     }
 
     // Each node with the indentation it was written at, which only says
@@ -517,31 +522,35 @@ fn scan_mindmap(source: &str) -> Result<MindmapDocument> {
             BodyLine::Blank => {}
             BodyLine::Icon(icon) => {
                 let Some((_, node)) = written.last_mut() else {
-                    bail!("`::icon(…)` の前にノードがありません ({trimmed})。");
+                    bail!(i18n::t!("There is no node before `::icon(…)` ({trimmed})."));
                 };
                 if node.icon.is_some() {
-                    bail!(
-                        "ノード `{}` に `::icon(…)` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。",
+                    bail!(i18n::t!(
+                        "`::icon(…)` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again.",
                         node.label
-                    );
+                    ));
                 }
                 if !is_valid_mindmap_icon(&icon) {
-                    bail!("アイコン `{trimmed}` は構造化編集に対応していません。");
+                    bail!(i18n::t!(
+                        "The structured editor does not support the icon `{trimmed}`."
+                    ));
                 }
                 node.icon = Some(icon);
             }
             BodyLine::Classes(classes) => {
                 let Some((_, node)) = written.last_mut() else {
-                    bail!("`:::` の前にノードがありません ({trimmed})。");
+                    bail!(i18n::t!("There is no node before `:::` ({trimmed})."));
                 };
                 if node.classes.is_some() {
-                    bail!(
-                        "ノード `{}` に `:::` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。",
+                    bail!(i18n::t!(
+                        "`:::` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again.",
                         node.label
-                    );
+                    ));
                 }
                 if !is_valid_mindmap_classes(&classes) {
-                    bail!("クラスの無い `:::` は構造化編集に対応していません ({trimmed})。");
+                    bail!(i18n::t!(
+                        "The structured editor does not support `:::` without a class ({trimmed})."
+                    ));
                 }
                 node.classes = Some(classes);
             }
@@ -550,10 +559,10 @@ fn scan_mindmap(source: &str) -> Result<MindmapDocument> {
                 if let Some((root_indent, _)) = written.first()
                     && indent <= *root_indent
                 {
-                    bail!(
-                        "ルートが 2 つあります (`{}`)。マインドマップのルートは 1 つだけで、ほかのノードはルートより深く字下げします。",
+                    bail!(i18n::t!(
+                        "There are two roots (`{}`). A mindmap has only one root, and the other nodes are indented deeper than the root.",
                         node.label
-                    );
+                    ));
                 }
                 written.push((indent, node));
                 position = PreservedPosition::Bottom;
@@ -640,15 +649,15 @@ fn classify_line(line: &str) -> Result<BodyLine> {
     {
         let after = rest.get(ICON_PREFIX.len()..).unwrap_or_default();
         let Some(end) = after.find(')') else {
-            bail!(
-                "`::icon(` の閉じ括弧がありません ({rest})。Mermaid はこの行を読み飛ばすので、閉じるかテキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "`::icon(` has no closing parenthesis ({rest}). Mermaid skips this line, so close it or edit it as text."
+            ));
         };
         let tail = after.get(end + 1..).unwrap_or_default().trim();
         if !tail.is_empty() {
-            bail!(
-                "`::icon(…)` のあとの `{tail}` は Mermaid が読み飛ばします ({rest})。消すかテキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Mermaid skips `{tail}` after `::icon(…)` ({rest}). Delete it or edit it as text."
+            ));
         }
         return Ok(BodyLine::Icon(
             after.get(..end).unwrap_or_default().to_string(),
@@ -661,20 +670,21 @@ fn classify_line(line: &str) -> Result<BodyLine> {
 
     let statement = strip_inline_comment(rest).trim_end();
     if statement.len() != rest.len() {
-        bail!(
-            "文の末尾のコメントは構造化編集で失われます ({rest})。コメントを独立した行に移すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text.",
+            statement = rest
+        ));
     }
     let spec = parse_node_spec(statement).map_err(|error| match error {
-        SpecError::Unterminated => anyhow!(
-            "ノード `{statement}` のラベルが閉じていません。複数行にわたるラベルは構造化編集に対応していません。テキストのまま編集してください。"
-        ),
-        SpecError::UnsupportedShape(open) => anyhow!(
-            "ノード `{statement}` の `{open}` の形は構造化編集に対応していません (Mermaid は標準の形で描きます)。テキストのまま編集してください。"
-        ),
-        SpecError::Malformed => anyhow!(
-            "マインドマップのノードとして読めませんでした ({statement})。テキストのまま編集してください。"
-        ),
+        SpecError::Unterminated => anyhow!(i18n::t!(
+            "The label of the node `{statement}` is not closed. The structured editor does not support a label that spans several lines. Edit it as text."
+        )),
+        SpecError::UnsupportedShape(open) => anyhow!(i18n::t!(
+            "The structured editor does not support the `{open}` shape of the node `{statement}` (Mermaid draws it in the default shape). Edit it as text."
+        )),
+        SpecError::Malformed => anyhow!(i18n::t!(
+            "This could not be read as a mindmap node ({statement}). Edit it as text."
+        )),
     })?;
     Ok(BodyLine::Node { indent, spec })
 }
@@ -998,26 +1008,26 @@ pub fn is_valid_mindmap_classes(classes: &str) -> bool {
 /// The first thing wrong with one node, in Japanese.
 pub fn mindmap_node_problem(node: &MindmapNode) -> Option<String> {
     if node.label.trim().is_empty() {
-        return Some("ラベルが空のノードがあります。".to_string());
+        return Some(i18n::t!("There is a node with an empty label.").to_string());
     }
     if node.label.contains(['\n', '\r']) {
-        return Some("ノードのラベルに改行は使えません。".to_string());
+        return Some(i18n::t!("A node label cannot contain line breaks.").to_string());
     }
     if crate::mermaid_model::opens_directive(&node.label) {
-        return Some(format!(
-            "ラベル `{}` に `%%{{` は使えません (Mermaid が `}}%%` までを切り取ります)。",
+        return Some(i18n::t!(
+            "The label `{}` cannot contain `%%{{` (Mermaid cuts out everything up to `}}%%`).",
             node.label
         ));
     }
     if !is_valid_mindmap_label(node) {
         return Some(if node.shape == MindmapShape::Default {
-            format!(
-                "ラベル `{}` は標準の形では書けません (`(` `)` `[` `{{` `}}` と `%%` は使えず、前後の空白や `::icon(` `:::` で始めることもできません)。形を変えてください。",
+            i18n::t!(
+                "The label `{}` cannot be written in the default shape (`(` `)` `[` `{{` `}}` and `%%` are not allowed, and it cannot have spaces at either end or start with `::icon(` or `:::`). Change the shape.",
                 node.label
             )
         } else {
-            format!(
-                "ラベル `{}` はこの形では書けません (閉じ記号と `\"` を一緒に使うことはできません)。",
+            i18n::t!(
+                "The label `{}` cannot be written in this shape (the closing bracket and `\"` cannot be used together).",
                 node.label
             )
         });
@@ -1025,16 +1035,16 @@ pub fn mindmap_node_problem(node: &MindmapNode) -> Option<String> {
     if let Some(icon) = &node.icon
         && !is_valid_mindmap_icon(icon)
     {
-        return Some(format!(
-            "ノード `{}` のアイコン `{icon}` は書けません (`)` `%%{{` と改行は不可、空にもできません)。",
+        return Some(i18n::t!(
+            "The icon `{icon}` of the node `{}` cannot be written (`)`, `%%{{` and line breaks are not allowed, and it cannot be empty).",
             node.label
         ));
     }
     if let Some(classes) = &node.classes
         && !is_valid_mindmap_classes(classes)
     {
-        return Some(format!(
-            "ノード `{}` のクラス `{classes}` は書けません (改行と `%%{{` は不可、空にもできません)。",
+        return Some(i18n::t!(
+            "The classes `{classes}` of the node `{}` cannot be written (line breaks and `%%{{` are not allowed, and they cannot be empty).",
             node.label
         ));
     }
@@ -1202,19 +1212,22 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
         for (source, expected) in [
-            ("mindmap\n  a\n  b", "ルートが 2 つ"),
-            ("mindmap root\n  child", "`mindmap` の行"),
-            ("mindmap\n  root[複数行の\n  ラベル]", "複数行"),
-            ("mindmap\n  root\n    a(-変な形-)", "形"),
-            ("mindmap\n  root\n    a[x] %% メモ", "コメント"),
-            ("mindmap\n  ::icon(fa fa-book)\n  root", "前にノード"),
-            ("mindmap\n  :::c\n  root", "前にノード"),
-            ("mindmap\n  root\n  ::icon(a)\n  ::icon(b)", "2 回"),
-            ("mindmap\n  root\n  :::a\n  :::b", "2 回"),
-            ("mindmap\n  root\n  ::icon(fa fa-book", "閉じ括弧"),
-            ("mindmap\n  root\n  ::icon(fa) 余分", "読み飛ばし"),
-            ("mindmap\n  root\n  :::", "クラス"),
-            ("mindmap\n  root\n  ::icon()", "アイコン"),
+            ("mindmap\n  a\n  b", "two roots"),
+            ("mindmap root\n  child", "on the `mindmap` line"),
+            ("mindmap\n  root[複数行の\n  ラベル]", "spans several lines"),
+            ("mindmap\n  root\n    a(-変な形-)", "shape"),
+            ("mindmap\n  root\n    a[x] %% メモ", "comment"),
+            ("mindmap\n  ::icon(fa fa-book)\n  root", "no node before"),
+            ("mindmap\n  :::c\n  root", "no node before"),
+            ("mindmap\n  root\n  ::icon(a)\n  ::icon(b)", "written twice"),
+            ("mindmap\n  root\n  :::a\n  :::b", "written twice"),
+            (
+                "mindmap\n  root\n  ::icon(fa fa-book",
+                "closing parenthesis",
+            ),
+            ("mindmap\n  root\n  ::icon(fa) 余分", "Mermaid skips"),
+            ("mindmap\n  root\n  :::", "without a class"),
+            ("mindmap\n  root\n  ::icon()", "the icon"),
         ] {
             let error = parse_mindmap(source)
                 .err()

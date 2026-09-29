@@ -21044,7 +21044,7 @@ async fn test_missing_external_formatter_is_reported(cx: &mut TestAppContext) {
     });
     assert_eq!(
         last_failure.as_deref(),
-        Some(format!("フォーマッタ `{MISSING_FORMATTER_COMMAND}` が見つかりません").as_str()),
+        Some(format!("Formatter `{MISSING_FORMATTER_COMMAND}` was not found").as_str()),
         "a formatter that is not installed has to say so, not fail silently"
     );
 }
@@ -47857,10 +47857,10 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
     cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
     cx.assert_editor_state(indoc! {r#"
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```"#});
 
     // Mid-line the fence is pushed onto a line of its own, with a blank line
@@ -47871,10 +47871,10 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
         text
 
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```
 
          tail"#});
@@ -47884,10 +47884,10 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
     cx.update_editor(|e, window, cx| e.insert_mermaid_diagram(&insert_pie, window, cx));
     cx.assert_editor_state(indoc! {r#"
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```"#});
 
     // On the blank line under a heading the blank line survives, and the text
@@ -47901,10 +47901,10 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
         ## 表
 
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```
 
         あと"#});
@@ -47921,10 +47921,10 @@ async fn test_insert_mermaid_diagram(cx: &mut TestAppContext) {
         ## 表
 
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```
 
         あと"#});
@@ -47959,10 +47959,10 @@ async fn test_insert_mermaid_diagram_inside_a_code_block(cx: &mut TestAppContext
         ```
 
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```
 
         後"#});
@@ -47981,10 +47981,10 @@ async fn test_insert_mermaid_diagram_inside_a_code_block(cx: &mut TestAppContext
         ```
 
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```"#});
 
     // A `~~~` block and a block holding a shorter fence are stepped over
@@ -48006,10 +48006,10 @@ async fn test_insert_mermaid_diagram_inside_a_code_block(cx: &mut TestAppContext
         ~~~
 
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```
 
         ````markdown
@@ -48019,10 +48019,10 @@ async fn test_insert_mermaid_diagram_inside_a_code_block(cx: &mut TestAppContext
         ````
 
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```
 
         後"#});
@@ -48040,10 +48040,10 @@ async fn test_insert_mermaid_diagram_inside_a_code_block(cx: &mut TestAppContext
         前
 
         ```mermaid
-        ˇpie title 内訳
-            "設計" : 30
-            "実装" : 50
-            "テスト" : 20
+        ˇpie title Breakdown
+            "Design" : 30
+            "Implementation" : 50
+            "Testing" : 20
         ```
 
         ```rust
@@ -48070,7 +48070,7 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
     cx.set_state("ˇ");
     cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
     cx.assert_editor_state(indoc! {"
-        <details><summary>«開くˇ»</summary>
+        <details><summary>«Openˇ»</summary>
 
         ```
 
@@ -48081,7 +48081,7 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
     cx.set_state("«codeˇ»");
     cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
     cx.assert_editor_state(indoc! {"
-        <details><summary>«開くˇ»</summary>
+        <details><summary>«Openˇ»</summary>
 
         ```
         code
@@ -48096,12 +48096,29 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
     cx.set_state("«日本語ˇ»");
     cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
     cx.assert_editor_state(indoc! {"
-        <details><summary>«開くˇ»</summary>
+        <details><summary>«Openˇ»</summary>
 
         ```
         日本語
         ```
         </details>"});
+
+    // The summary is translated, and the selection spans all of a summary whose
+    // characters take several bytes each
+    {
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        cx.set_state("ˇ");
+        cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
+        cx.assert_editor_state(indoc! {"
+            <details><summary>«開くˇ»</summary>
+
+            ```
+
+            ```
+            </details>"});
+    }
 
     // The fence outruns the longest run of backticks in the body, and is spelled
     // with backticks so that a tilde fence inside cannot close it either. Blank
@@ -48118,7 +48135,7 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
     cx.assert_editor_state(indoc! {"
         before
 
-        <details><summary>«開くˇ»</summary>
+        <details><summary>«Openˇ»</summary>
 
         ````
         ```
@@ -48139,7 +48156,7 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
     cx.assert_editor_state(indoc! {"
         abc
 
-        <details><summary>«開くˇ»</summary>
+        <details><summary>«Openˇ»</summary>
 
         ```
 
@@ -48155,7 +48172,7 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
         deˇ»f"});
     cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
     cx.assert_editor_state(indoc! {"
-        <details><summary>«開くˇ»</summary>
+        <details><summary>«Openˇ»</summary>
 
         ```
         abc
@@ -48169,7 +48186,7 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
         ˇb"});
     cx.update_editor(|e, window, cx| e.insert_markdown_details(&InsertDetails, window, cx));
     cx.assert_editor_state(indoc! {"
-        <details><summary>«開くˇ»</summary>
+        <details><summary>«Openˇ»</summary>
 
         ```
 
@@ -48178,7 +48195,7 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
 
         a
 
-        <details><summary>«開くˇ»</summary>
+        <details><summary>«Openˇ»</summary>
 
         ```
 
@@ -48198,7 +48215,7 @@ async fn test_insert_markdown_details(cx: &mut TestAppContext) {
     });
     assert_eq!(
         cx.buffer_text(),
-        "<details><summary>開く</summary>\n\n```\n一\n二\n```\n</details>"
+        "<details><summary>Open</summary>\n\n```\n一\n二\n```\n</details>"
     );
 }
 
@@ -48779,7 +48796,7 @@ async fn test_write_mermaid_fence_refuses_a_fence_that_changed(cx: &mut TestAppC
         .expect_err("the fence no longer holds what the target was resolved against");
     assert_eq!(
         format!("{error}"),
-        "図のテキストが編集中に変更されました。もう一度開き直してください。"
+        "The diagram text changed while it was being edited. Open it again."
     );
     cx.assert_editor_state(changed);
 }
@@ -48819,19 +48836,51 @@ fn test_mermaid_diagram_templates_declare_a_renderable_type(_cx: &mut TestAppCon
     ];
     assert_eq!(expected_first_tokens.len(), MermaidDiagramKind::ALL.len());
 
-    for (kind, first_token) in expected_first_tokens {
-        let template = kind.template();
-        assert_eq!(
-            template.split_whitespace().next(),
-            Some(first_token),
-            "unexpected first token in the {} template",
-            kind.label()
+    // The templates are translated, so the translations are held to the same
+    // rules as the English ones.
+    for catalog in [
+        None,
+        Some(i18n_catalog::test_support::bundled_catalog("ja")),
+    ] {
+        let _locale = i18n::test_support::LocaleOverride::new(
+            catalog.map(|catalog| catalog as &'static dyn i18n::Catalog),
         );
-        assert!(
-            !template.ends_with('\n'),
-            "the {} template must not end with a newline, the fence adds one",
-            kind.label()
-        );
+        for (kind, first_token) in expected_first_tokens {
+            let template = kind.template();
+            assert_eq!(
+                template.split_whitespace().next(),
+                Some(first_token),
+                "unexpected first token in the {} template ({})",
+                kind.label(),
+                i18n::current_locale()
+            );
+            assert!(
+                !template.ends_with('\n'),
+                "the {} template must not end with a newline, the fence adds one ({})",
+                kind.label(),
+                i18n::current_locale()
+            );
+        }
+    }
+
+    // `template` keeps the texts it formats, and must still hand out the one for
+    // the language shown when the language changes back and forth.
+    let templates_in = |catalog: Option<&'static dyn i18n::Catalog>| {
+        let _locale = i18n::test_support::LocaleOverride::new(catalog);
+        MermaidDiagramKind::ALL.map(|kind| kind.template())
+    };
+    let japanese =
+        Some(i18n_catalog::test_support::bundled_catalog("ja") as &'static dyn i18n::Catalog);
+    let english_first = templates_in(None);
+    let japanese_first = templates_in(japanese);
+    assert_eq!(templates_in(None), english_first);
+    assert_eq!(templates_in(japanese), japanese_first);
+    for ((kind, english), japanese) in MermaidDiagramKind::ALL
+        .iter()
+        .zip(english_first)
+        .zip(japanese_first)
+    {
+        assert_ne!(english, japanese, "the {kind:?} template is not translated");
     }
 }
 
@@ -48874,44 +48923,55 @@ fn expand_snippet_placeholders(body: &str) -> String {
 fn test_mermaid_snippets_insert_the_same_text_as_the_menu(_cx: &mut TestAppContext) {
     // The structured editors are tested against the menu templates byte for
     // byte, so a snippet that drifts from its template inserts a diagram they
-    // were never checked against.
-    let snippets: serde_json::Map<String, serde_json::Value> =
-        serde_json::from_str(include_str!("../../../assets/snippets/markdown.json"))
-            .expect("markdown snippets should parse");
-    let expanded_bodies = snippets
-        .values()
-        .filter(|snippet| {
-            snippet["prefix"]
-                .as_str()
-                .is_some_and(|prefix| prefix.starts_with("mermaid-"))
-        })
-        .map(|snippet| {
-            let lines = snippet["body"]
-                .as_array()
-                .expect("snippet body should be a list of lines")
-                .iter()
-                .map(|line| line.as_str().expect("snippet line should be a string"))
-                .collect::<Vec<_>>();
-            assert_eq!(lines.first(), Some(&"```mermaid"));
-            assert_eq!(lines.last(), Some(&"$0"));
-            expand_snippet_placeholders(&lines[1..lines.len() - 2].join("\n"))
-        })
-        .collect::<Vec<_>>();
-    // The first ten kinds keep their older, shorter snippet bodies.
-    let kinds_with_matching_snippets = MermaidDiagramKind::ALL
-        .iter()
-        .skip_while(|kind| **kind != MermaidDiagramKind::Journey)
-        .collect::<Vec<_>>();
-    assert_eq!(kinds_with_matching_snippets.len(), 16);
-    for kind in kinds_with_matching_snippets {
-        assert!(
-            expanded_bodies
-                .iter()
-                .any(|body| body.as_str() == kind.template()),
-            "no snippet inserts the {} template as it is",
-            kind.label()
-        );
+    // were never checked against. Each language's snippet file is compared with
+    // the menu of that language.
+    fn expanded_mermaid_snippet_bodies(file: &str) -> Vec<String> {
+        let snippets: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(file).expect("markdown snippets should parse");
+        snippets
+            .values()
+            .filter(|snippet| {
+                snippet["prefix"]
+                    .as_str()
+                    .is_some_and(|prefix| prefix.starts_with("mermaid-"))
+            })
+            .map(|snippet| {
+                let lines = snippet["body"]
+                    .as_array()
+                    .expect("snippet body should be a list of lines")
+                    .iter()
+                    .map(|line| line.as_str().expect("snippet line should be a string"))
+                    .collect::<Vec<_>>();
+                assert_eq!(lines.first(), Some(&"```mermaid"));
+                assert_eq!(lines.last(), Some(&"$0"));
+                expand_snippet_placeholders(&lines[1..lines.len() - 2].join("\n"))
+            })
+            .collect()
     }
+
+    fn assert_every_template_has_a_snippet(bodies: &[String], language: &str) {
+        assert_eq!(bodies.len(), MermaidDiagramKind::ALL.len());
+        for kind in MermaidDiagramKind::ALL {
+            assert!(
+                bodies.iter().any(|body| body.as_str() == kind.template()),
+                "no {language} snippet inserts the {} template as it is",
+                kind.label()
+            );
+        }
+    }
+
+    assert_every_template_has_a_snippet(
+        &expanded_mermaid_snippet_bodies(include_str!("../../../assets/snippets/markdown.json")),
+        "English",
+    );
+
+    let _locale = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
+    assert_every_template_has_a_snippet(
+        &expanded_mermaid_snippet_bodies(include_str!("../../../assets/snippets/ja/markdown.json")),
+        "Japanese",
+    );
 }
 
 #[track_caller]

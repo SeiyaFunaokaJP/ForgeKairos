@@ -463,7 +463,7 @@ impl RenderOnce for DiffStyleControls {
                 IconButton::new("diff-style-unified", IconName::DiffUnified)
                     .icon_size(IconSize::Small)
                     .toggle_state(diff_view_style == DiffViewStyle::Unified)
-                    .tooltip(Tooltip::text("インライン表示"))
+                    .tooltip(Tooltip::text(i18n::t!("Unified")))
                     .on_click({
                         let splittable_editor = self.splittable_editor.clone();
                         move |_, window, cx| {
@@ -482,9 +482,9 @@ impl RenderOnce for DiffStyleControls {
                     .toggle_state(is_split_set)
                     .tooltip(Tooltip::element(move |_, cx| {
                         let message = if is_split_pending {
-                            format!("{} 桁より広いときに左右分割", min_columns).into()
+                            i18n::t!("Split when wider than {} columns", min_columns).into()
                         } else {
-                            SharedString::from("左右分割")
+                            SharedString::from(i18n::t!("Split"))
                         };
 
                         v_flex()
@@ -501,7 +501,7 @@ impl RenderOnce for DiffStyleControls {
                                         Some(TextSize::Small.rems(cx).into()),
                                         false,
                                     ))
-                                    .child("クリックで最小幅を変更"),
+                                    .child(i18n::t!("click to change min width")),
                             )
                             .into_any_element()
                     }))

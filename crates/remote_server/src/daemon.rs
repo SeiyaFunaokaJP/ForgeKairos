@@ -1234,7 +1234,11 @@ mod tests {
     ) -> Option<u32> {
         let answer = request(
             stream,
-            proto::CheckWireRevision { revision }.into_envelope(WIRE_REVISION_CHECK_ID, None, None),
+            proto::CheckWireRevision {
+                revision,
+                display_language: None,
+            }
+            .into_envelope(WIRE_REVISION_CHECK_ID, None, None),
         )
         .await;
         proto::CheckWireRevisionResponse::from_envelope(answer).map(|answer| answer.revision)

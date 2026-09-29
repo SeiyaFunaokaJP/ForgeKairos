@@ -2123,7 +2123,10 @@ async fn test_project_context_server_waits_for_approval(cx: &mut TestAppContext)
         .update(|cx| wait_for_context_server(&store, server_id.clone(), cx))
         .await;
     let error = outcome.expect_err("waiting on a server that needs approval fails at once");
-    assert!(error.contains("承認待ち"), "unexpected message: {error}");
+    assert!(
+        error.contains("is waiting for approval"),
+        "unexpected message: {error}"
+    );
     assert!(created_servers.borrow().is_empty());
 
     approve_shown(&store, &server_id, cx).await;
@@ -2422,7 +2425,7 @@ async fn test_remote_command_must_match_what_this_machine_resolved(
             .borrow()
             .iter()
             .any(|(server_id, message)| server_id == &overridden_id
-                && message.contains("一致しません")),
+                && message.contains("does not match the approved definition")),
         "unexpected errors: {:?}",
         errors.borrow()
     );

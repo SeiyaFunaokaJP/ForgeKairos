@@ -44,22 +44,26 @@ const ANTHROPIC_PROVIDER_ID: &str = "anthropic";
 /// command and then start `claude` in the integrated terminal instead of a
 /// separate command prompt. Nothing about the CLI is bundled, wrapped or
 /// re-authenticated here.
-const CLAUDE_SUBSCRIPTION_NAME: &str = "Claude (サブスクリプション)";
+const CLAUDE_SUBSCRIPTION_NAME: &str = i18n::msg!("Claude Subscription");
 
 /// ADR-F53: the route is the official CLI running itself, so the card says
 /// where it opens and that the sign-in happens on the CLI's own screen —
 /// nothing here relays a subscription's credentials.
-const CLAUDE_SUBSCRIPTION_DESCRIPTION: &str = "エージェントパネルのタブで公式の Claude Code が開きます。ログインは Claude Code の画面で行います。CLI は同梱しておらず、公式のインストールコマンドで導入します。API キーの従量課金は上の Anthropic をご利用ください。";
+const CLAUDE_SUBSCRIPTION_DESCRIPTION: &str = i18n::msg!(
+    "Opens the official Claude Code in a tab of the agent panel. You sign in on Claude Code's own screen. The CLI is not bundled; it is installed with the official install command. For pay-as-you-go billing with an API key, use Anthropic above."
+);
 
 /// The one line left on the Anthropic card: the same question is asked from
 /// there, but the answer now has a card of its own right below it.
-const CLAUDE_SUBSCRIPTION_NOTE: &str = "Claude Pro / Max のサブスクリプションはここでは使えません (API キーの従量課金のみ)。下の「Claude (サブスクリプション)」をご覧ください。";
+const CLAUDE_SUBSCRIPTION_NOTE: &str = i18n::msg!(
+    "Claude Pro / Max subscriptions can't be used here (pay-as-you-go with an API key only). See \"Claude Subscription\" below."
+);
 
-const INSTALL_CLAUDE_CODE_LABEL: &str = "Claude Code をインストール (公式コマンド)";
+const INSTALL_CLAUDE_CODE_LABEL: &str = i18n::msg!("Install Claude Code (Official Command)");
 
-const LAUNCH_CLAUDE_CODE_LABEL: &str = "ターミナルで Claude Code を起動";
+const LAUNCH_CLAUDE_CODE_LABEL: &str = i18n::msg!("Launch Claude Code in Terminal");
 
-const LAUNCH_CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの外で起動";
+const LAUNCH_CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL: &str = i18n::msg!("Launch Outside the Sandbox");
 
 /// Levels accepted by the official CLI's `--effort` flag, verified locally with
 /// `claude --help` ("Effort level for the current session (low, medium, high,
@@ -67,7 +71,7 @@ const LAUNCH_CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL: &str = "サンドボックスの
 /// translated; only the "leave the flag off" entry gets a Japanese name.
 const CLAUDE_CODE_EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
-const CLAUDE_CODE_DEFAULT_EFFORT_LABEL: &str = "既定";
+const CLAUDE_CODE_DEFAULT_EFFORT_LABEL: &str = i18n::msg!("Default");
 
 /// Name of the official CLI, looked up on `PATH` (GLOSSARY §1: not translated).
 const CLAUDE_CODE_PROGRAM: &str = "claude";
@@ -160,7 +164,7 @@ fn render_claude_subscription_card(
         .map(|this| if is_first { this.pt_4() } else { this.pt_8() })
         .gap_1p5()
         .child(render_provider_header(
-            CLAUDE_SUBSCRIPTION_NAME.into(),
+            i18n::tr(CLAUDE_SUBSCRIPTION_NAME).into(),
             IconOrSvg::Icon(IconName::AiClaude),
             cx,
         ))
@@ -171,7 +175,7 @@ fn render_claude_subscription_card(
                 .min_w_0()
                 .gap_1p5()
                 .child(
-                    Label::new(CLAUDE_SUBSCRIPTION_DESCRIPTION)
+                    Label::new(i18n::tr(CLAUDE_SUBSCRIPTION_DESCRIPTION))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -182,19 +186,18 @@ fn render_claude_subscription_card(
         .into_any_element()
 }
 
-const CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL: &str = "常にサンドボックスの外で起動";
-const CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION: &str = "「Claude Code を起動」を、確認なしで毎回\
-     サンドボックスの外で起動します。書き込みの制限がなくなり、通信の制限はプロキシの設定を読む\
-     ものにだけ効きます (SSH の接続先では統制が効きません)。ログインは普段の Claude Code と\
-     共有します。ユーザー設定にだけ保存されます。";
+const CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL: &str = i18n::msg!("Always Launch Outside the Sandbox");
+const CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
+    "Makes \"Launch Claude Code\" start outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Sign-in is shared with your regular Claude Code. Saved only in your user settings."
+);
 
 /// ADR-F49 決定 19 (8c): `agent.claude_code_run_outside_sandbox`. The switch
 /// shows what the launch acts on: the user's own settings file only.
 fn render_claude_code_outside_sandbox(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
     SwitchField::new(
         "claude-code-run-outside-sandbox",
-        Some(CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL),
-        Some(CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION.into()),
+        Some(i18n::tr(CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL)),
+        Some(i18n::tr(CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION).into()),
         project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx),
         |state, _window, cx| {
             set_claude_code_run_outside_sandbox(*state == ToggleState::Selected, cx);
@@ -314,19 +317,19 @@ fn render_claude_cli_status(state: &ClaudeCliState) -> impl IntoElement {
         None | Some(ClaudeCliOutcome::Checking) => (
             IconName::ArrowCircle,
             Color::Muted,
-            "この PC の PATH を確認しています…".into(),
+            i18n::t!("Checking PATH on this PC…").into(),
         ),
         Some(ClaudeCliOutcome::Missing) => (
             IconName::Info,
             Color::Muted,
-            "この PC には導入されていません (PATH に claude がありません)。".into(),
+            i18n::t!("Not installed on this PC (claude is not on PATH).").into(),
         ),
         Some(ClaudeCliOutcome::Installed { version }) => (
             IconName::Check,
             Color::Success,
             match version {
-                Some(version) => format!("この PC に導入済みです ({version})").into(),
-                None => "この PC に導入済みです。".into(),
+                Some(version) => i18n::t!("Installed on this PC ({version})").into(),
+                None => i18n::t!("Installed on this PC.").into(),
             },
         ),
     };
@@ -353,7 +356,7 @@ fn render_claude_code_buttons(
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
     let has_workspace = settings_window.original_window.is_some();
-    let no_workspace_tooltip = "ターミナルで実行するにはプロジェクトのウィンドウが必要です";
+    let no_workspace_tooltip = i18n::t!("A project window is needed to run this in the terminal");
 
     h_flex()
         .w_full()
@@ -361,7 +364,7 @@ fn render_claude_code_buttons(
         .gap_2()
         .flex_wrap()
         .child(
-            Button::new("claude-code-install", INSTALL_CLAUDE_CODE_LABEL)
+            Button::new("claude-code-install", i18n::tr(INSTALL_CLAUDE_CODE_LABEL))
                 .label_size(LabelSize::Small)
                 .style(ButtonStyle::Outlined)
                 .disabled(!has_workspace)
@@ -371,9 +374,9 @@ fn render_claude_code_buttons(
                         .color(Color::Muted),
                 )
                 .tooltip(Tooltip::text(if has_workspace {
-                    "設定ウィンドウを閉じ、統合ターミナルで公式のインストールコマンド \
-                     `npm install -g @anthropic-ai/claude-code` を実行します。\
-                     Node.js (npm) が必要です"
+                    i18n::t!(
+                        "Closes the settings window and runs the official install command `npm install -g @anthropic-ai/claude-code` in the integrated terminal. Requires Node.js (npm)."
+                    )
                 } else {
                     no_workspace_tooltip
                 }))
@@ -382,7 +385,7 @@ fn render_claude_code_buttons(
                 })),
         )
         .child(
-            Button::new("claude-code-launch", LAUNCH_CLAUDE_CODE_LABEL)
+            Button::new("claude-code-launch", i18n::tr(LAUNCH_CLAUDE_CODE_LABEL))
                 .label_size(LabelSize::Small)
                 .style(ButtonStyle::Outlined)
                 .disabled(!has_workspace)
@@ -392,9 +395,9 @@ fn render_claude_code_buttons(
                         .color(Color::Muted),
                 )
                 .tooltip(Tooltip::text(if has_workspace {
-                    "設定ウィンドウを閉じ、Claude Code をエージェントパネルのタブで起動します。\
-                     Windows のローカルのプロジェクトではサンドボックス (WSL) の中で、\
-                     SSH で繋いだ Linux では接続先のサンドボックスの中で起動します"
+                    i18n::t!(
+                        "Closes the settings window and launches Claude Code in a tab of the agent panel. For a local project on Windows it runs inside the sandbox (WSL); on a Linux host connected over SSH it runs inside that host's sandbox."
+                    )
                 } else {
                     no_workspace_tooltip
                 }))
@@ -405,15 +408,15 @@ fn render_claude_code_buttons(
         .child(
             Button::new(
                 "claude-code-launch-outside-sandbox",
-                LAUNCH_CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL,
+                i18n::tr(LAUNCH_CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL),
             )
             .label_size(LabelSize::Small)
             .style(ButtonStyle::Outlined)
             .disabled(!has_workspace)
             .tooltip(Tooltip::text(if has_workspace {
-                "設定ウィンドウを閉じ、この PC (SSH では接続先) の `claude` をサンドボックスの外で\
-                 起動します。起動のたびに確認します (下の「常にサンドボックスの外で起動」が\
-                 オンなら確認しません)"
+                i18n::t!(
+                    "Closes the settings window and launches `claude` on this PC (on the SSH host, when connected over SSH) outside the sandbox. Asks for confirmation every time (unless \"Always Launch Outside the Sandbox\" below is on)."
+                )
             } else {
                 no_workspace_tooltip
             }))
@@ -437,14 +440,15 @@ fn render_claude_code_effort_selector(
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
     let selected = settings_window.claude_code_effort.clone();
-    let label: SharedString = match &selected {
-        Some(effort) => format!("思考の深さ: {effort}").into(),
-        None => format!("思考の深さ: {CLAUDE_CODE_DEFAULT_EFFORT_LABEL}").into(),
+    let effort: &str = match &selected {
+        Some(effort) => effort.as_ref(),
+        None => i18n::tr(CLAUDE_CODE_DEFAULT_EFFORT_LABEL),
     };
+    let label: SharedString = i18n::t!("Thinking Effort: {effort}").into();
 
     let settings_window = cx.weak_entity();
     let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
-        let entries = std::iter::once((CLAUDE_CODE_DEFAULT_EFFORT_LABEL, None)).chain(
+        let entries = std::iter::once((i18n::tr(CLAUDE_CODE_DEFAULT_EFFORT_LABEL), None)).chain(
             CLAUDE_CODE_EFFORT_LEVELS
                 .into_iter()
                 .map(|level| (level, Some(SharedString::new_static(level)))),
@@ -473,7 +477,7 @@ fn render_claude_code_effort_selector(
     DropdownMenu::new("claude-code-effort", label, menu)
         .style(DropdownStyle::Outlined)
         .trigger_size(ButtonSize::Compact)
-        .aria_label("Claude Code の思考の深さ (--effort)")
+        .aria_label(i18n::t!("Claude Code Thinking Effort (--effort)"))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -513,7 +517,7 @@ pub(crate) fn render_add_llm_provider_popover(
 
     PopoverMenu::new("add-llm-provider-popover")
         .trigger(
-            Button::new("add-llm-provider", "プロバイダーを追加")
+            Button::new("add-llm-provider", i18n::t!("Add Provider"))
                 .style(ButtonStyle::Outlined)
                 .track_focus(&focus_handle)
                 .label_size(LabelSize::Small)
@@ -531,7 +535,7 @@ pub(crate) fn render_add_llm_provider_popover(
         .menu(move |window, cx| {
             let settings_window = settings_window.clone();
             Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
-                menu.header("互換 API")
+                menu.header(i18n::t!("Compatible APIs"))
                     .entry("OpenAI", None, {
                         let settings_window = settings_window.clone();
                         move |window, cx| {
@@ -636,7 +640,7 @@ fn render_provider_section(
         .when(provider_id.0.as_ref() == ANTHROPIC_PROVIDER_ID, |this| {
             this.child(
                 div().pt_2p5().child(
-                    Label::new(CLAUDE_SUBSCRIPTION_NOTE)
+                    Label::new(i18n::tr(CLAUDE_SUBSCRIPTION_NOTE))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 ),
@@ -686,19 +690,19 @@ fn render_api_key_providers_item(
 
     if has_key {
         let configured_label = if is_from_env_var {
-            "API キーは環境変数で設定されています"
+            i18n::t!("API Key Set in Environment Variable")
         } else {
-            "API キーは設定済み"
+            i18n::t!("API Key Configured")
         };
         let button_id = format!("reset-api-key-{}", provider_id.0);
 
         let card = ConfiguredApiCard::new(button_id, configured_label)
-            .button_label("キーをリセット")
+            .button_label(i18n::t!("Reset Key"))
             .button_tab_index(0)
             .disabled(is_from_env_var)
             .when(is_from_env_var, |this| {
-                this.tooltip_label(format!(
-                    "API キーをリセットするには、環境変数 {env_var_name} を解除してください。"
+                this.tooltip_label(i18n::t!(
+                    "To reset your API key, unset the {env_var_name} environment variable."
                 ))
             })
             .on_click({
@@ -713,7 +717,11 @@ fn render_api_key_providers_item(
     }
 
     let input_id = format!("{}-api-key-input", provider_id.0);
-    let aria_label = format!("{provider_name} の API キー");
+    let aria_label = i18n::t!("{provider_name} API Key");
+    let (before_link, after_link) = split_around_link(&i18n::t!(
+        "Visit the {link} to generate an API key.",
+        link = LINK_SLOT
+    ));
 
     v_flex()
         .gap_2()
@@ -730,31 +738,40 @@ fn render_api_key_providers_item(
                         .min_w_0()
                         .max_w_1_2()
                         .gap_0p5()
-                        .child(Label::new("API キー"))
+                        .child(Label::new(i18n::t!("API Key")))
                         .child(
                             h_flex()
                                 .w_full()
                                 .min_w_0()
                                 .flex_wrap()
                                 .gap_0p5()
+                                .when(!before_link.is_empty(), |this| {
+                                    this.child(
+                                        Label::new(before_link)
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted),
+                                    )
+                                })
                                 .child(
                                     ButtonLink::new(
-                                        format!("{provider_name} のダッシュボード"),
+                                        i18n::t!("{provider_name} dashboard"),
                                         api_key_url,
                                     )
                                     .no_icon(true)
                                     .label_size(LabelSize::Small)
                                     .label_color(Color::Muted),
                                 )
-                                .child(
-                                    Label::new("で API キーを生成してください。")
-                                        .size(LabelSize::Small)
-                                        .color(Color::Muted),
-                                ),
+                                .when(!after_link.is_empty(), |this| {
+                                    this.child(
+                                        Label::new(after_link)
+                                            .size(LabelSize::Small)
+                                            .color(Color::Muted),
+                                    )
+                                }),
                         )
                         .child(
-                            Label::new(format!(
-                                "または環境変数 {env_var_name} を設定し、Zed を再起動すると反映されます。"
+                            Label::new(i18n::t!(
+                                "Or set the {env_var_name} env var and restart Zed for it to take effect."
                             ))
                             .size(LabelSize::XSmall)
                             .color(Color::Muted),
@@ -776,6 +793,20 @@ fn render_api_key_providers_item(
                 ),
         )
         .into_any_element()
+}
+
+/// Stands in for a link inside a translated sentence, so that each language can
+/// put the link where its word order needs it.
+pub(super) const LINK_SLOT: &str = "\u{1}";
+
+pub(super) fn split_around_link(sentence: &str) -> (SharedString, SharedString) {
+    match sentence.split_once(LINK_SLOT) {
+        Some((before, after)) => (
+            before.trim().to_string().into(),
+            after.trim().to_string().into(),
+        ),
+        None => (sentence.trim().to_string().into(), SharedString::default()),
+    }
 }
 
 fn render_inline_body(
@@ -843,24 +874,27 @@ fn render_subpage_item(
                 .min_w_0()
                 .max_w_1_2()
                 .gap_0p5()
-                .child(Label::new("プロバイダーの設定"))
+                .child(Label::new(i18n::t!("Configure Provider")))
                 .when_some(description, |this, description| {
                     this.child(render_inline_description(provider_name, description))
                 }),
         )
         .child(
-            Button::new(format!("configure-{}", provider_id.0), "設定")
-                .style(ButtonStyle::OutlinedGhost)
-                .size(ButtonSize::Medium)
-                .end_icon(
-                    Icon::new(IconName::ChevronRight)
-                        .size(IconSize::Small)
-                        .color(Color::Muted),
-                )
-                .tab_index(0isize)
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    open_provider_configuration(this, provider_id.clone(), window, cx);
-                })),
+            Button::new(
+                format!("configure-{}", provider_id.0),
+                i18n::t!("Configure"),
+            )
+            .style(ButtonStyle::OutlinedGhost)
+            .size(ButtonSize::Medium)
+            .end_icon(
+                Icon::new(IconName::ChevronRight)
+                    .size(IconSize::Small)
+                    .color(Color::Muted),
+            )
+            .tab_index(0isize)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                open_provider_configuration(this, provider_id.clone(), window, cx);
+            })),
         )
         .into_any_element()
 }
@@ -870,18 +904,33 @@ fn render_inline_description(
     description: InlineDescription,
 ) -> AnyElement {
     match description {
-        InlineDescription::ApiKeyUrl(url) => h_flex()
-            .gap_0p5()
-            .child(
-                ButtonLink::new(format!("{provider_name} のダッシュボード"), url)
-                    .label_size(LabelSize::Small),
-            )
-            .child(
-                Label::new("で API キーを取得できます。")
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
-            )
-            .into_any_element(),
+        InlineDescription::ApiKeyUrl(url) => {
+            let (before_link, after_link) = split_around_link(&i18n::t!(
+                "To find an API key, visit the {link}",
+                link = LINK_SLOT
+            ));
+            h_flex()
+                .gap_0p5()
+                .when(!before_link.is_empty(), |this| {
+                    this.child(
+                        Label::new(before_link)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                })
+                .child(
+                    ButtonLink::new(i18n::t!("{provider_name} dashboard."), url)
+                        .label_size(LabelSize::Small),
+                )
+                .when(!after_link.is_empty(), |this| {
+                    this.child(
+                        Label::new(after_link)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                })
+                .into_any_element()
+        }
         InlineDescription::Text(text) => Label::new(text)
             .size(LabelSize::Small)
             .color(Color::Muted)
@@ -904,7 +953,7 @@ fn open_provider_configuration(
 
     settings_window.push_dynamic_sub_page(
         title,
-        "エージェントの設定",
+        "Agent Configuration",
         Some("llm_providers"),
         true,
         render_provider_config_sub_page,
@@ -1072,15 +1121,21 @@ impl ModelInput {
 
         Self {
             name: new_input(
-                "例: gpt-5, claude-opus-4, gemini-2.5-pro",
+                i18n::t!("e.g. gpt-5, claude-opus-4, gemini-2.5-pro"),
                 None,
                 false,
                 window,
                 cx,
             ),
             max_completion_tokens: new_input("200000", Some("200000"), false, window, cx),
-            max_output_tokens: new_input("最大出力トークン数", Some("32000"), false, window, cx),
-            max_tokens: new_input("最大トークン数", Some("200000"), false, window, cx),
+            max_output_tokens: new_input(
+                i18n::t!("Max Output Tokens"),
+                Some("32000"),
+                false,
+                window,
+                cx,
+            ),
+            max_tokens: new_input(i18n::t!("Max Tokens"), Some("200000"), false, window, cx),
             reasoning_effort: OpenAiReasoningEffort::Medium,
             supports_tools: tools.into(),
             supports_images: images.into(),
@@ -1122,8 +1177,8 @@ fn open_llm_provider_form(
 ) {
     settings_window.llm_provider_form = Some(LlmProviderForm::new(kind, window, cx));
     settings_window.push_dynamic_sub_page(
-        format!("{} 互換プロバイダーの追加", kind.label()),
-        "エージェントの設定",
+        i18n::t!("Add {}-Compatible Provider", kind.label()),
+        "Agent Configuration",
         Some("llm_providers"),
         true,
         render_llm_provider_form_page,
@@ -1164,10 +1219,10 @@ fn render_llm_provider_form_page(
                 .overflow_y_scroll()
                 .child(Label::new(match form.kind {
                     CompatibleProviderKind::OpenAi => {
-                        "このプロバイダーは OpenAI 互換の API を使用します。"
+                        i18n::t!("This provider will use an OpenAI-compatible API.")
                     }
                     CompatibleProviderKind::Anthropic => {
-                        "このプロバイダーは Anthropic Messages 互換の API を使用します。"
+                        i18n::t!("This provider will use an Anthropic Messages-compatible API.")
                     }
                 }))
                 .when_some(consent.as_ref(), |this, target| {
@@ -1180,14 +1235,14 @@ fn render_llm_provider_form_page(
                 })
                 .child(Divider::horizontal().flex_shrink_0())
                 .child(render_form_field(
-                    "プロバイダー名",
-                    "このプロバイダーを識別する一意の名前です。",
+                    i18n::t!("Provider Name"),
+                    i18n::t!("A unique name used to identify this provider."),
                     &form.provider_name,
                     cx,
                 ))
                 .child(render_form_field(
-                    "API URL",
-                    "互換 API のベース URL です。",
+                    i18n::t!("API URL"),
+                    i18n::t!("The base URL for the compatible API."),
                     &form.api_url,
                     cx,
                 ))
@@ -1231,7 +1286,9 @@ fn render_form_consent(
             .child(Divider::horizontal())
             .child(
                 Checkbox::new("llm-provider-form-consent", acknowledged.into())
-                    .label("上記のリスクを理解したうえで、このプロバイダーを追加します")
+                    .label(i18n::t!(
+                        "I understand the risks above and want to add this provider"
+                    ))
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, checked: &ToggleState, _, cx| {
                         if let Some(form) = this.llm_provider_form.as_mut() {
@@ -1296,18 +1353,18 @@ fn render_api_key_field(
         .map(|this| {
             if no_api_key {
                 this.child(
-                    v_flex().gap_0p5().child(Label::new("API キー")).child(
-                        Label::new(
-                            "認証が不要なサーバーに接続するため、API キーは送信されません。",
-                        )
+                    v_flex().gap_0p5().child(Label::new(i18n::t!("API Key"))).child(
+                        Label::new(i18n::t!(
+                            "No API key is sent, because this connects to a server that needs no authentication."
+                        ))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                     ),
                 )
             } else {
                 this.child(render_form_field(
-                    "API キー",
-                    "settings.json ではなく、システムのキーチェーンに保存されます。",
+                    i18n::t!("API Key"),
+                    i18n::t!("Stored in the system keychain, not in settings.json."),
                     &form.api_key,
                     cx,
                 ))
@@ -1315,7 +1372,7 @@ fn render_api_key_field(
         })
         .child(
             Checkbox::new("llm-provider-form-no-api-key", no_api_key.into())
-                .label("API キーなしで接続する (認証不要のサーバー)")
+                .label(i18n::t!("Connect without an API key (server needs no authentication)"))
                 .label_size(LabelSize::Small)
                 .on_click(cx.listener(|this, checked: &ToggleState, _, cx| {
                     if let Some(form) = this.llm_provider_form.as_mut() {
@@ -1339,7 +1396,7 @@ fn render_models_section(
         .child(
             h_flex()
                 .justify_between()
-                .child(Label::new("モデル"))
+                .child(Label::new(i18n::t!("Models")))
                 .child(
                     h_flex()
                         .gap_1()
@@ -1347,9 +1404,9 @@ fn render_models_section(
                             Button::new(
                                 "fetch-models",
                                 if is_fetching {
-                                    "取得中…"
+                                    i18n::t!("Fetching…")
                                 } else {
-                                    "モデル一覧を取得"
+                                    i18n::t!("Fetch Models")
                                 },
                             )
                             .start_icon(
@@ -1366,7 +1423,7 @@ fn render_models_section(
                             )),
                         )
                         .child(
-                            Button::new("add-model", "モデルを追加")
+                            Button::new("add-model", i18n::t!("Add Model"))
                                 .start_icon(
                                     Icon::new(IconName::Plus)
                                         .size(IconSize::XSmall)
@@ -1403,12 +1460,16 @@ fn render_models_fetch_outcome(outcome: &ModelsFetchOutcome) -> AnyElement {
                     .color(Color::Success),
             )
             .child(
-                Label::new(format!("{count} 件のモデルを追加しました"))
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
+                Label::new(i18n::tn!(
+                    *count,
+                    "Added {count} model",
+                    "Added {count} models"
+                ))
+                .size(LabelSize::Small)
+                .color(Color::Muted),
             )
             .into_any_element(),
-        ModelsFetchOutcome::NoneNew => Label::new("追加できる新しいモデルはありませんでした")
+        ModelsFetchOutcome::NoneNew => Label::new(i18n::t!("No new models were found to add"))
             .size(LabelSize::Small)
             .color(Color::Muted)
             .into_any_element(),
@@ -1432,35 +1493,35 @@ fn render_model(
         .border_color(cx.theme().colors().border.opacity(0.6))
         .bg(cx.theme().colors().element_active.opacity(0.15))
         .child(render_form_field(
-            "モデル名",
-            "プロバイダーの API におけるモデルの名前です。",
+            i18n::t!("Model Name"),
+            i18n::t!("The model's name in the provider's API."),
             &model.name,
             cx,
         ))
         .when(matches!(kind, CompatibleProviderKind::OpenAi), |this| {
             this.child(render_form_field(
-                "最大コンプリーショントークン数",
-                "OpenAI 互換リクエストのコンプリーショントークン数の上限です。",
+                i18n::t!("Max Completion Tokens"),
+                i18n::t!("Maximum completion tokens for OpenAI-compatible requests."),
                 &model.max_completion_tokens,
                 cx,
             ))
         })
         .child(render_form_field(
-            "最大出力トークン数",
-            "モデルが出力できるトークン数の上限です。",
+            i18n::t!("Max Output Tokens"),
+            i18n::t!("The maximum number of tokens the model can output."),
             &model.max_output_tokens,
             cx,
         ))
         .child(render_form_field(
-            "最大トークン数",
-            "モデルのコンテキストウィンドウのサイズです。",
+            i18n::t!("Max Tokens"),
+            i18n::t!("The model context window size."),
             &model.max_tokens,
             cx,
         ))
         .child(render_model_capabilities(kind, model, index, window, cx))
         .when(model_count > 1, |this| {
             this.child(
-                Button::new(("remove-model", index), "モデルを削除")
+                Button::new(("remove-model", index), i18n::t!("Remove Model"))
                     .start_icon(
                         Icon::new(IconName::Trash)
                             .size(IconSize::XSmall)
@@ -1494,7 +1555,7 @@ fn render_model_capabilities(
         .child(render_capability_checkbox(
             "supports-tools",
             index,
-            "ツールに対応",
+            i18n::t!("Supports tools"),
             model.supports_tools,
             |model, state| model.supports_tools = state,
             cx,
@@ -1502,7 +1563,7 @@ fn render_model_capabilities(
         .child(render_capability_checkbox(
             "supports-images",
             index,
-            "画像に対応",
+            i18n::t!("Supports images"),
             model.supports_images,
             |model, state| model.supports_images = state,
             cx,
@@ -1511,7 +1572,7 @@ fn render_model_capabilities(
             this.child(render_capability_checkbox(
                 "supports-parallel-tool-calls",
                 index,
-                "parallel_tool_calls に対応",
+                i18n::t!("Supports parallel_tool_calls"),
                 model.supports_parallel_tool_calls,
                 |model, state| model.supports_parallel_tool_calls = state,
                 cx,
@@ -1519,7 +1580,7 @@ fn render_model_capabilities(
             .child(render_capability_checkbox(
                 "supports-prompt-cache-key",
                 index,
-                "prompt_cache_key に対応",
+                i18n::t!("Supports prompt_cache_key"),
                 model.supports_prompt_cache_key,
                 |model, state| model.supports_prompt_cache_key = state,
                 cx,
@@ -1527,7 +1588,7 @@ fn render_model_capabilities(
             .child(render_capability_checkbox(
                 "supports-chat-completions",
                 index,
-                "/chat/completions に対応",
+                i18n::t!("Supports /chat/completions"),
                 model.supports_chat_completions,
                 |model, state| model.supports_chat_completions = state,
                 cx,
@@ -1536,7 +1597,7 @@ fn render_model_capabilities(
                 this.child(render_capability_checkbox(
                     "max-tokens-parameter",
                     index,
-                    "出力の上限に max_tokens を使用",
+                    i18n::t!("Uses max_tokens for output limit"),
                     model.max_tokens_parameter,
                     |model, state| model.max_tokens_parameter = state,
                     cx,
@@ -1545,7 +1606,7 @@ fn render_model_capabilities(
             .child(render_capability_checkbox(
                 "supports-thinking",
                 index,
-                "思考に対応",
+                i18n::t!("Supports thinking"),
                 model.supports_thinking,
                 |model, state| model.supports_thinking = state,
                 cx,
@@ -1561,7 +1622,7 @@ fn render_model_capabilities(
                     this.child(render_capability_checkbox(
                         "interleaved-reasoning",
                         index,
-                        "チャット履歴に思考を保持",
+                        i18n::t!("Preserves thinking in chat history"),
                         model.interleaved_reasoning,
                         |model, state| model.interleaved_reasoning = state,
                         cx,
@@ -1624,7 +1685,7 @@ fn render_reasoning_effort_selector(
 
     v_flex()
         .gap_1()
-        .child(Label::new("既定の思考の深さ").size(LabelSize::Small))
+        .child(Label::new(i18n::t!("Default reasoning effort")).size(LabelSize::Small))
         .child(
             DropdownMenu::new(
                 ElementId::Name(format!("reasoning-effort-selector-{index}").into()),
@@ -1634,7 +1695,7 @@ fn render_reasoning_effort_selector(
             .style(DropdownStyle::Outlined)
             .trigger_size(ButtonSize::Compact)
             .full_width(true)
-            .aria_label("既定の思考の深さ"),
+            .aria_label(i18n::t!("Default reasoning effort")),
         )
 }
 
@@ -1673,29 +1734,29 @@ impl ModelsFetchError {
     fn message(&self) -> SharedString {
         match self {
             Self::BuildRequest(error) => {
-                format!("リクエストを作成できませんでした: {error}").into()
+                i18n::t!("Couldn't create the request: {error}").into()
             }
-            Self::EgressDenied(host) => format!(
-                "{host} への接続がネットワーク許可リストで拒否されました。\
-                 「ネットワーク」ページの「ネットワーク許可リスト」でこのホストを追加してください。"
+            Self::EgressDenied(host) => i18n::t!(
+                "The network allowlist blocked the connection to {host}. Add this host under \"Network Allowlist\" on the \"Network\" page."
             )
             .into(),
-            Self::Connection(error) => format!("サーバーに接続できませんでした: {error}").into(),
-            Self::Unauthorized(status) => format!(
-                "認証エラー ({status}) です。API キーを確認してください。\
-                 認証が不要なサーバーの場合は「API キーなしで接続する」を確認してください。"
+            Self::Connection(error) => i18n::t!("Couldn't connect to the server: {error}").into(),
+            Self::Unauthorized(status) => i18n::t!(
+                "Authentication failed ({status}). Check the API key. If the server needs no authentication, check \"Connect without an API key\"."
             )
             .into(),
             Self::Http(status, body) if body.is_empty() => {
-                format!("サーバーが HTTP {status} を返しました。").into()
+                i18n::t!("The server returned HTTP {status}.").into()
             }
             Self::Http(status, body) => {
-                format!("サーバーが HTTP {status} を返しました: {body}").into()
+                i18n::t!("The server returned HTTP {status}: {body}").into()
             }
             Self::ReadBody(error) => {
-                format!("レスポンス本文の読み込みに失敗しました: {error}").into()
+                i18n::t!("Failed to read the response body: {error}").into()
             }
-            Self::Parse(error) => format!("モデル一覧の応答を解釈できませんでした: {error}").into(),
+            Self::Parse(error) => {
+                i18n::t!("Couldn't parse the model list response: {error}").into()
+            }
         }
     }
 }
@@ -1805,7 +1866,7 @@ fn fetch_llm_provider_models(
     if api_url.is_empty() {
         if let Some(form) = settings_window.llm_provider_form.as_mut() {
             form.models_fetch = Some(ModelsFetchOutcome::Error(
-                "API URL を入力してください".into(),
+                i18n::t!("API URL cannot be empty").into(),
             ));
         }
         cx.notify();
@@ -1903,7 +1964,7 @@ fn render_form_actions(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
         .gap_1()
         .justify_end()
         .child(
-            Button::new("llm-provider-form-cancel", "キャンセル").on_click(cx.listener(
+            Button::new("llm-provider-form-cancel", i18n::t!("Cancel")).on_click(cx.listener(
                 |this, _, window, cx| {
                     this.llm_provider_form = None;
                     this.pop_sub_page(window, cx);
@@ -1911,7 +1972,7 @@ fn render_form_actions(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
             )),
         )
         .child(
-            Button::new("llm-provider-form-save", "プロバイダーを保存")
+            Button::new("llm-provider-form-save", i18n::t!("Save Provider"))
                 .style(ButtonStyle::Filled)
                 .on_click(cx.listener(|this, _, window, cx| {
                     save_llm_provider_form(this, window, cx);
@@ -2112,7 +2173,7 @@ fn validate_llm_provider_form(
 ) -> Result<ValidatedLlmProviderForm, SharedString> {
     let provider_name = values.provider_name.clone();
     if provider_name.is_empty() {
-        return Err("プロバイダー名を入力してください".into());
+        return Err(i18n::t!("Provider Name cannot be empty").into());
     }
 
     if LanguageModelRegistry::read_global(cx)
@@ -2123,20 +2184,22 @@ fn validate_llm_provider_form(
                 || provider.name().0.as_ref() == provider_name.as_str()
         })
     {
-        return Err("そのプロバイダー名は既に使われています".into());
+        return Err(i18n::t!("Provider Name is already taken by another provider").into());
     }
 
     let api_url = values.api_url.clone();
     if api_url.is_empty() {
-        return Err("API URL を入力してください".into());
+        return Err(i18n::t!("API URL cannot be empty").into());
     }
 
     let needs_consent =
         external_ai_consent::form_target(&provider_name, &api_url, values.kind.label()).is_some();
     if needs_consent && !values.consent_acknowledged {
         return Err(
-            "外部のサービスに接続する設定です。学習リスクの警告を確認し、チェックを入れてください"
-                .into(),
+            i18n::t!(
+                "This provider connects to an external service. Review the warning about training risks and check the box"
+            )
+            .into(),
         );
     }
 
@@ -2169,7 +2232,7 @@ fn validate_llm_provider_form(
             .all(|model| model_names.insert(model.name.clone())),
     };
     if !model_names_are_unique {
-        return Err("モデル名は重複できません".into());
+        return Err(i18n::t!("Model Names must be unique").into());
     }
 
     Ok(ValidatedLlmProviderForm {
@@ -2189,14 +2252,14 @@ fn validate_api_key(api_key: &str, no_api_key: bool) -> Result<Option<String>, S
         return Ok(None);
     }
     if api_key.is_empty() {
-        return Err("API キーを入力してください".into());
+        return Err(i18n::t!("API Key cannot be empty").into());
     }
     Ok(Some(api_key.to_string()))
 }
 
 fn parse_model_name(model: &ModelValues) -> Result<String, SharedString> {
     if model.name.is_empty() {
-        return Err("モデル名を入力してください".into());
+        return Err(i18n::t!("Model Name cannot be empty").into());
     }
     Ok(model.name.clone())
 }
@@ -2209,13 +2272,13 @@ fn parse_open_ai_model(
         display_name: None,
         max_completion_tokens: Some(parse_u64_field(
             &model.max_completion_tokens,
-            "最大コンプリーショントークン数",
+            i18n::t!("Max Completion Tokens"),
         )?),
         max_output_tokens: Some(parse_u64_field(
             &model.max_output_tokens,
-            "最大出力トークン数",
+            i18n::t!("Max Output Tokens"),
         )?),
-        max_tokens: parse_u64_field(&model.max_tokens, "最大トークン数")?,
+        max_tokens: parse_u64_field(&model.max_tokens, i18n::t!("Max Tokens"))?,
         reasoning_effort: model.supports_thinking.then_some(model.reasoning_effort),
         capabilities: OpenAiCompatibleModelCapabilities {
             tools: model.supports_tools,
@@ -2237,11 +2300,11 @@ fn parse_anthropic_model(
     Ok(AnthropicCompatibleAvailableModel {
         name: parse_model_name(model)?,
         display_name: None,
-        max_tokens: parse_u64_field(&model.max_tokens, "最大トークン数")?,
+        max_tokens: parse_u64_field(&model.max_tokens, i18n::t!("Max Tokens"))?,
         tool_override: None,
         max_output_tokens: Some(parse_u64_field(
             &model.max_output_tokens,
-            "最大出力トークン数",
+            i18n::t!("Max Output Tokens"),
         )?),
         default_temperature: None,
         extra_beta_headers: Vec::new(),
@@ -2257,7 +2320,7 @@ fn parse_anthropic_model(
 fn parse_u64_field(value: &str, name: &str) -> Result<u64, SharedString> {
     value
         .parse::<u64>()
-        .map_err(|_| format!("{name}には数値を指定してください").into())
+        .map_err(|_| i18n::t!("{name} must be a number").into())
 }
 
 #[cfg(test)]
@@ -2278,16 +2341,20 @@ mod jp_enhance_tests {
             cx.set_global(store);
             <dyn fs::Fs>::set_global(fs.clone(), cx);
         });
-        fs.create_dir(paths::settings_file().parent().expect("設定ファイルの親"))
-            .await
-            .expect("設定ファイルの置き場を作れる");
+        fs.create_dir(
+            paths::settings_file()
+                .parent()
+                .expect("settings file has a parent directory"),
+        )
+        .await
+        .expect("settings directory can be created");
         fs.save(
             paths::settings_file(),
             &"{}".into(),
             language::LineEnding::Unix,
         )
         .await
-        .expect("設定ファイルを置ける");
+        .expect("settings file can be written");
 
         for enabled in [true, false] {
             cx.update(|cx| set_claude_code_run_outside_sandbox(enabled, cx));
@@ -2295,9 +2362,9 @@ mod jp_enhance_tests {
             let text = fs
                 .load(paths::settings_file())
                 .await
-                .expect("設定ファイルを読める");
+                .expect("settings file can be read");
             let content: serde_json::Value =
-                serde_json::from_str(&text).expect("設定ファイルは JSON");
+                serde_json::from_str(&text).expect("settings file is JSON");
             assert_eq!(
                 content
                     .get("agent")

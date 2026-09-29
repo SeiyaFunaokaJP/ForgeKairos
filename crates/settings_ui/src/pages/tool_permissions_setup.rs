@@ -15,88 +15,105 @@ use util::shell::ShellKind;
 use crate::{SettingsWindow, components::SettingsInputField};
 
 const HARDCODED_RULES_DESCRIPTION: &str =
-    "`rm -rf` は `$HOME`、`~`、`.`、`..`、`/` に対して実行される場合、常にブロックされます";
-const SETTINGS_DISCLAIMER: &str = "注意: ツールの権限設定が適用されるのは Zed 標準のエージェントだけで、Agent Client Protocol (ACP) で接続した外部エージェントには適用されません。";
+    i18n::msg!("`rm -rf` commands are always blocked when run on `$HOME`, `~`, `.`, `..`, or `/`");
+const SETTINGS_DISCLAIMER: &str = i18n::msg!(
+    "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
+);
 
 /// Tools that support permission rules
 const TOOLS: &[ToolInfo] = &[
     ToolInfo {
         id: "terminal",
-        name: "ターミナル",
-        description: "ターミナルで実行されるコマンド",
-        regex_explanation: "パターンは入力に含まれる各コマンドと照合されます。&&、||、;、パイプでつながれたコマンドは分割され、個別に判定されます。",
+        name: || i18n::tc!("agent tool", "Terminal"),
+        description: i18n::msg!("Commands executed in the terminal"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against each command in the input. Commands chained with &&, ||, ;, or pipes are split and checked individually."
+        ),
     },
     ToolInfo {
         id: "edit_file",
-        name: "ファイルを編集",
-        description: "ファイルの編集操作",
-        regex_explanation: "パターンは編集対象のファイルパスと照合されます。",
+        name: || i18n::tc!("agent tool", "Edit File"),
+        description: i18n::msg!("File editing operations"),
+        regex_explanation: i18n::msg!("Patterns are matched against the file path being edited."),
     },
     ToolInfo {
         id: "write_file",
-        name: "ファイルを書き込み",
-        description: "ファイルの作成・上書き操作",
-        regex_explanation: "パターンは書き込み対象のファイルパスと照合されます。",
+        name: || i18n::tc!("agent tool", "Write File"),
+        description: i18n::msg!("File creation and overwrite operations"),
+        regex_explanation: i18n::msg!("Patterns are matched against the file path being written."),
     },
     ToolInfo {
         id: "delete_path",
-        name: "パスを削除",
-        description: "ファイルとディレクトリの削除",
-        regex_explanation: "パターンは削除対象のパスと照合されます。",
+        name: || i18n::tc!("agent tool", "Delete Path"),
+        description: i18n::msg!("File and directory deletion"),
+        regex_explanation: i18n::msg!("Patterns are matched against the path being deleted."),
     },
     ToolInfo {
         id: "copy_path",
-        name: "パスをコピー",
-        description: "ファイルとディレクトリのコピー",
-        regex_explanation: "パターンはコピー元のパスとコピー先のパスに対して個別に照合されます。下の入力欄でどちらのパスでも試せます。",
+        name: || i18n::tc!("agent tool", "Copy Path"),
+        description: i18n::msg!("File and directory copying"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
+        ),
     },
     ToolInfo {
         id: "move_path",
-        name: "パスを移動",
-        description: "ファイルとディレクトリの移動・名前の変更",
-        regex_explanation: "パターンは移動元のパスと移動先のパスに対して個別に照合されます。下の入力欄でどちらのパスでも試せます。",
+        name: || i18n::tc!("agent tool", "Move Path"),
+        description: i18n::msg!("File and directory moves/renames"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
+        ),
     },
     ToolInfo {
         id: "create_directory",
-        name: "ディレクトリを作成",
-        description: "ディレクトリの作成",
-        regex_explanation: "パターンは作成対象のディレクトリのパスと照合されます。",
+        name: || i18n::tc!("agent tool", "Create Directory"),
+        description: i18n::msg!("Directory creation"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the directory path being created."
+        ),
     },
     ToolInfo {
         id: "apply_code_action",
-        name: "コードアクションを適用",
-        description: "言語サーバーのコードアクションの適用",
-        regex_explanation: "パターンはコードアクションの名前と照合されます。編集内容は差分レビューを通らず直接バッファーに書き込まれます。",
+        name: || i18n::tc!("agent tool", "Apply Code Action"),
+        description: i18n::msg!("Applying language server code actions"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the name of the code action. Its edits are written straight into the buffer without going through diff review."
+        ),
     },
     ToolInfo {
         id: "rename_symbol",
-        name: "シンボルの名前を変更",
-        description: "言語サーバーによるプロジェクト全体のシンボル名変更",
-        regex_explanation: "パターンは変更前のシンボル名と照合されます。変更は差分レビューを通らず、参照するすべてのファイルが保存されます。",
+        name: || i18n::tc!("agent tool", "Rename Symbol"),
+        description: i18n::msg!("Project-wide symbol renames by the language server"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the symbol's name before the rename. The rename skips diff review, and every file that references the symbol is saved."
+        ),
     },
     ToolInfo {
         id: "fetch",
-        name: "取得",
-        description: "URL への HTTP リクエスト",
-        regex_explanation: "パターンは取得対象の URL と照合されます。",
+        name: || i18n::tc!("agent tool", "Fetch"),
+        description: i18n::msg!("HTTP requests to URLs"),
+        regex_explanation: i18n::msg!("Patterns are matched against the URL being fetched."),
     },
     ToolInfo {
         id: "search_web",
-        name: "Web 検索",
-        description: "Web 検索のクエリ",
-        regex_explanation: "パターンは検索クエリと照合されます。",
+        name: || i18n::tc!("agent tool", "Web Search"),
+        description: i18n::msg!("Web search queries"),
+        regex_explanation: i18n::msg!("Patterns are matched against the search query."),
     },
     ToolInfo {
         id: "skill",
-        name: "スキル",
-        description: "エージェントのスキル指示の読み込み",
-        regex_explanation: "パターンはスキルの SKILL.md ファイルの絶対パスと照合されます。",
+        name: || i18n::tc!("agent tool", "Skill"),
+        description: i18n::msg!("Loading agent skill instructions"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the absolute path to the skill's SKILL.md file."
+        ),
     },
 ];
 
 pub(crate) struct ToolInfo {
     id: &'static str,
-    name: &'static str,
+    /// The tool's display name, translated when called.
+    name: fn() -> &'static str,
     description: &'static str,
     regex_explanation: &'static str,
 }
@@ -215,7 +232,7 @@ pub(crate) fn render_tool_permissions_setup_page(
         .track_scroll(scroll_handle)
         .child(
             Banner::new().child(
-                Label::new(SETTINGS_DISCLAIMER)
+                Label::new(i18n::tr(SETTINGS_DISCLAIMER))
                     .size(LabelSize::Small)
                     .color(Color::Muted)
                     .mt_0p5(),
@@ -252,10 +269,10 @@ fn render_tool_list_item(
     let rule_summary = if rule_count > 0 || invalid_count > 0 {
         let mut parts = Vec::new();
         if rule_count > 0 {
-            parts.push(format!("ルール {} 件", rule_count));
+            parts.push(i18n::tn!(rule_count, "{count} rule", "{count} rules"));
         }
         if invalid_count > 0 {
-            parts.push(format!("無効 {} 件", invalid_count));
+            parts.push(i18n::t!("{} invalid", invalid_count));
         }
         Some(parts.join(", "))
     } else {
@@ -273,7 +290,7 @@ fn render_tool_list_item(
             v_flex()
                 .w_full()
                 .min_w_0()
-                .child(h_flex().gap_1().child(Label::new(tool.name)).when_some(
+                .child(h_flex().gap_1().child(Label::new((tool.name)())).when_some(
                     rule_summary,
                     |this, summary| {
                         this.child(
@@ -284,14 +301,14 @@ fn render_tool_list_item(
                     },
                 ))
                 .child(
-                    Label::new(tool.description)
+                    Label::new(i18n::tr(tool.description))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 ),
         )
         .child({
             let tool_name = tool.name;
-            Button::new(format!("configure-{}", tool.id), "設定")
+            Button::new(format!("configure-{}", tool.id), i18n::t!("Configure"))
                 .tab_index(tool_index as isize)
                 .style(ButtonStyle::OutlinedGhost)
                 .size(ButtonSize::Medium)
@@ -302,8 +319,8 @@ fn render_tool_list_item(
                 )
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.push_dynamic_sub_page(
-                        tool_name,
-                        "ツールの権限",
+                        tool_name(),
+                        "Tool Permissions",
                         None,
                         true,
                         render_fn,
@@ -344,7 +361,7 @@ pub(crate) fn render_tool_config_page(
     cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
     let rules = get_tool_rules(tool.id, cx);
-    let page_title = format!("{} ツール", tool.name);
+    let page_title = i18n::t!("{} Tool", (tool.name)());
     let scroll_step = px(80.);
 
     v_flex()
@@ -377,7 +394,7 @@ pub(crate) fn render_tool_config_page(
                 .min_w_0()
                 .child(Label::new(page_title).size(LabelSize::Large))
                 .child(
-                    Label::new(tool.regex_explanation)
+                    Label::new(i18n::tr(tool.regex_explanation))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 ),
@@ -394,7 +411,7 @@ pub(crate) fn render_tool_config_page(
                         .severity(Severity::Warning)
                         .child(Label::new(error).size(LabelSize::Small))
                         .action_slot(
-                            Button::new("dismiss-regex-error", "閉じる")
+                            Button::new("dismiss-regex-error", i18n::t!("Dismiss"))
                                 .style(ButtonStyle::Tinted(ui::TintColor::Warning))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.regex_validation_error = None;
@@ -414,8 +431,8 @@ pub(crate) fn render_tool_config_page(
                 .child(Divider::horizontal().color(ui::DividerColor::BorderFaded))
                 .child(render_rule_section(
                     tool.id,
-                    "常に拒否",
-                    "いずれかの正規表現に一致した場合、そのツールの操作を拒否します。",
+                    i18n::t!("Always Deny"),
+                    i18n::t!("If any of these regexes match, the tool action will be denied."),
                     ToolPermissionMode::Deny,
                     &rules.always_deny,
                     cx,
@@ -423,8 +440,10 @@ pub(crate) fn render_tool_config_page(
                 .child(Divider::horizontal().color(ui::DividerColor::BorderFaded))
                 .child(render_rule_section(
                     tool.id,
-                    "常に許可",
-                    "いずれかの正規表現に一致した場合、その操作を許可します。ただし「常に確認」または「常に拒否」に一致した場合を除きます。",
+                    i18n::t!("Always Allow"),
+                    i18n::t!(
+                        "If any of these regexes match, the action will be approved—unless an Always Confirm or Always Deny matches."
+                    ),
                     ToolPermissionMode::Allow,
                     &rules.always_allow,
                     cx,
@@ -432,8 +451,10 @@ pub(crate) fn render_tool_config_page(
                 .child(Divider::horizontal().color(ui::DividerColor::BorderFaded))
                 .child(render_rule_section(
                     tool.id,
-                    "常に確認",
-                    "いずれかの正規表現に一致した場合、確認を表示します。ただし「常に拒否」の正規表現に一致した場合を除きます。",
+                    i18n::t!("Always Confirm"),
+                    i18n::t!(
+                        "If any of these regexes match, a confirmation will be shown unless an Always Deny regex matches."
+                    ),
                     ToolPermissionMode::Confirm,
                     &rules.always_confirm,
                     cx,
@@ -460,7 +481,10 @@ fn render_hardcoded_rules(smaller_font_size: bool, cx: &App) -> AnyElement {
             }
         })
         .text_color(cx.theme().colors().text_muted)
-        .child(render_inline_code_markdown(HARDCODED_RULES_DESCRIPTION, cx))
+        .child(render_inline_code_markdown(
+            i18n::tr(HARDCODED_RULES_DESCRIPTION),
+            cx,
+        ))
         .into_any_element()
 }
 
@@ -480,7 +504,11 @@ fn render_verification_section(
 
     let editor = window.use_keyed_state(input_id, cx, |window, cx| {
         let mut editor = editor::Editor::single_line(window, cx);
-        editor.set_placeholder_text("ルールを試すツール入力を入力してください…", window, cx);
+        editor.set_placeholder_text(
+            i18n::t!("Enter a tool input to test your rules…"),
+            window,
+            cx,
+        );
 
         let global_settings = ThemeSettings::get_global(cx);
         editor.set_text_style_refinement(TextStyleRefinement {
@@ -512,11 +540,7 @@ fn render_verification_section(
     };
 
     let default_mode = get_tool_rules(tool_id, cx).default;
-    let is_hardcoded_denial = matches!(
-        &decision,
-        Some(ToolPermissionDecision::Deny(reason))
-            if reason.contains("組み込みのセキュリティルール")
-    );
+    let is_hardcoded_denial = decision.as_ref().is_some_and(is_hardcoded_denial);
     let denial_reason = match &decision {
         Some(ToolPermissionDecision::Deny(reason))
             if !reason.is_empty() && !is_hardcoded_denial =>
@@ -570,7 +594,7 @@ fn render_verification_section(
                 .border_color(color.border_variant)
                 .rounded_sm()
                 .child(
-                    Label::new("ルールを試す")
+                    Label::new(i18n::t!("Test Your Rules"))
                         .color(Color::Muted)
                         .size(LabelSize::Small),
                 )
@@ -587,7 +611,7 @@ fn render_verification_section(
                     this.when(patterns_agree, |this| {
                         if matched_patterns.is_empty() {
                             this.child(
-                                Label::new("一致する正規表現がないため、既定の動作を使用します。")
+                                Label::new(i18n::t!("No regex matches, using the default action."))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
@@ -600,14 +624,16 @@ fn render_verification_section(
                             this.child(render_hardcoded_rules(true, cx))
                         } else if let Some(reason) = &denial_reason {
                             this.child(
-                                Label::new(format!("拒否: {}", reason))
+                                Label::new(i18n::t!("Denied: {}", reason))
                                     .size(LabelSize::XSmall)
                                     .color(Color::Warning),
                             )
                         } else {
                             this.child(
                                 Label::new(
-                                    "パターンのプレビューが判定エンジンと異なります。実際の判定結果を表示しています。",
+                                    i18n::t!(
+                                        "Pattern preview differs from engine — showing authoritative result."
+                                    ),
                                 )
                                 .size(LabelSize::XSmall)
                                 .color(Color::Warning),
@@ -621,7 +647,9 @@ fn render_verification_section(
                     .when(outside_sandbox, |this| {
                         this.child(
                             Label::new(
-                                "サンドボックスが無効なため、ターミナルのコマンドは「許可」でも毎回確認します。",
+                                i18n::t!(
+                                    "The sandbox is disabled, so terminal commands are confirmed every time, even with \"Allow\"."
+                                ),
                             )
                             .size(LabelSize::XSmall)
                             .color(Color::Muted),
@@ -631,7 +659,7 @@ fn render_verification_section(
                         denial_reason.filter(|_| patterns_agree && !is_hardcoded_denial),
                         |this, reason| {
                             this.child(
-                                Label::new(format!("理由: {}", reason))
+                                Label::new(i18n::t!("Reason: {}", reason))
                                     .size(LabelSize::XSmall)
                                     .color(Color::Error),
                             )
@@ -725,12 +753,14 @@ fn render_matched_patterns(patterns: &[MatchedPattern], cx: &App) -> AnyElement 
         .gap_1()
         .children(patterns.iter().map(|pattern| {
             let (type_label, color) = match pattern.rule_type {
-                ToolPermissionMode::Deny => ("常に拒否", Color::Error),
-                ToolPermissionMode::Confirm => ("常に確認", Color::Warning),
-                ToolPermissionMode::Allow => ("常に許可", Color::Success),
+                ToolPermissionMode::Deny => (i18n::t!("Always Deny"), Color::Error),
+                ToolPermissionMode::Confirm => (i18n::t!("Always Confirm"), Color::Warning),
+                ToolPermissionMode::Allow => (i18n::t!("Always Allow"), Color::Success),
                 // Only the three pattern lists produce matches; "AI が判定" is a
                 // default, never a pattern.
-                ToolPermissionMode::Auto => ("AI が判定", Color::Info),
+                ToolPermissionMode::Auto => {
+                    (mode_display_label(ToolPermissionMode::Auto), Color::Info)
+                }
             };
 
             let type_color = if pattern.is_overridden {
@@ -800,6 +830,16 @@ fn evaluate_test_input(
     )
 }
 
+/// The built-in rules deny with one fixed message; any other denial comes from
+/// the user's own patterns and shows its reason.
+fn is_hardcoded_denial(decision: &ToolPermissionDecision) -> bool {
+    matches!(
+        decision,
+        ToolPermissionDecision::Deny(reason)
+            if reason.contains("built-in security rule")
+    )
+}
+
 fn decision_to_mode(decision: &ToolPermissionDecision) -> ToolPermissionMode {
     match decision {
         ToolPermissionDecision::Allow => ToolPermissionMode::Allow,
@@ -836,10 +876,10 @@ fn implied_mode_from_patterns(
 
 fn mode_display_label(mode: ToolPermissionMode) -> &'static str {
     match mode {
-        ToolPermissionMode::Allow => "許可",
-        ToolPermissionMode::Deny => "拒否",
-        ToolPermissionMode::Confirm => "確認",
-        ToolPermissionMode::Auto => "AI が判定",
+        ToolPermissionMode::Allow => i18n::tc!("tool permission mode", "Allow"),
+        ToolPermissionMode::Deny => i18n::tc!("tool permission mode", "Deny"),
+        ToolPermissionMode::Confirm => i18n::tc!("tool permission mode", "Confirm"),
+        ToolPermissionMode::Auto => i18n::tc!("tool permission mode", "AI Judge"),
     }
 }
 
@@ -858,7 +898,7 @@ fn render_verdict_label(mode: ToolPermissionMode) -> AnyElement {
     h_flex()
         .gap_1()
         .child(
-            Label::new("結果:")
+            Label::new(i18n::t!("Result:"))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         )
@@ -888,13 +928,13 @@ fn render_invalid_patterns_section(
                         .size(IconSize::Small)
                         .color(Color::Error),
                 )
-                .child(Label::new("無効なパターン").color(Color::Error)),
+                .child(Label::new(i18n::t!("Invalid Patterns")).color(Color::Error)),
         )
         .child(
-            Label::new(
+            Label::new(i18n::t!(
                 "These patterns failed to compile as regular expressions. \
-                 The tool will be blocked until they are fixed or removed.",
-            )
+                 The tool will be blocked until they are fixed or removed."
+            ))
             .size(LabelSize::Small)
             .color(Color::Muted),
         )
@@ -905,9 +945,9 @@ fn render_invalid_patterns_section(
                 .gap_1p5()
                 .children(invalid_patterns.iter().map(|invalid| {
                     let rule_type_label = match invalid.rule_type.as_str() {
-                        "always_allow" => "常に許可",
-                        "always_deny" => "常に拒否",
-                        "always_confirm" => "常に確認",
+                        "always_allow" => i18n::t!("Always Allow"),
+                        "always_deny" => i18n::t!("Always Deny"),
+                        "always_confirm" => i18n::t!("Always Confirm"),
                         other => other,
                     };
 
@@ -951,7 +991,7 @@ fn render_invalid_patterns_section(
                                     IconButton::new(delete_id, IconName::Trash)
                                         .icon_size(IconSize::Small)
                                         .icon_color(Color::Muted)
-                                        .tooltip(Tooltip::text("無効なパターンを削除"))
+                                        .tooltip(Tooltip::text(i18n::t!("Delete Invalid Pattern")))
                                         .on_click(cx.listener(move |_, _, _, cx| {
                                             delete_pattern(
                                                 &tool_id_for_delete,
@@ -963,7 +1003,7 @@ fn render_invalid_patterns_section(
                                 ),
                         )
                         .child(
-                            Label::new(format!("エラー: {}", invalid.error))
+                            Label::new(i18n::t!("Error: {}", invalid.error))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Muted),
                         )
@@ -1026,7 +1066,7 @@ fn render_pattern_empty_state(cx: &mut Context<SettingsWindow>) -> AnyElement {
         .border_dashed()
         .border_color(cx.theme().colors().border_variant)
         .child(
-            Label::new("パターンが設定されていません")
+            Label::new(i18n::t!("No patterns configured"))
                 .size(LabelSize::Small)
                 .color(Color::Disabled),
         )
@@ -1057,7 +1097,7 @@ fn render_user_pattern_row(
             IconButton::new(delete_id, IconName::Trash)
                 .icon_size(IconSize::Small)
                 .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("パターンを削除"))
+                .tooltip(Tooltip::text(i18n::t!("Delete Pattern")))
                 .on_click(cx.listener(move |_, _, _, cx| {
                     delete_pattern(&tool_id_for_delete, rule_type, &pattern_for_delete, cx);
                 })),
@@ -1076,13 +1116,13 @@ fn render_user_pattern_row(
 
                     let validation_error = if !updated {
                         Some(
-                            "同じパターンがこのルール一覧に既に存在します。"
+                            i18n::t!("A pattern with that name already exists in this rule list.")
                                 .to_string(),
                         )
                     } else {
                         match regex::Regex::new(&new_pattern) {
-                            Err(err) => Some(format!(
-                                "正規表現が正しくありません: {err}。パターンは保存されましたが、修正または削除するまでこのツールはブロックされます。"
+                            Err(err) => Some(i18n::t!(
+                                "Invalid regex: {err}. Pattern saved but will block this tool until fixed or removed."
                             )),
                             Ok(_) => None,
                         }
@@ -1109,7 +1149,7 @@ fn render_add_pattern_input(
     let settings_window = cx.entity().downgrade();
 
     SettingsInputField::new(input_id)
-        .with_placeholder("正規表現のパターンを追加…")
+        .with_placeholder(i18n::t!("Add regex pattern…"))
         .tab_index(0)
         .with_buffer_font()
         .display_clear_button()
@@ -1122,8 +1162,8 @@ fn render_add_pattern_input(
                     save_pattern(&tool_id_owned, rule_type, trimmed.clone(), cx);
 
                     let validation_error = match regex::Regex::new(&trimmed) {
-                        Err(err) => Some(format!(
-                            "正規表現が正しくありません: {err}。パターンは保存されましたが、修正または削除するまでこのツールはブロックされます。"
+                        Err(err) => Some(i18n::t!(
+                            "Invalid regex: {err}. Pattern saved but will block this tool until fixed or removed."
                         )),
                         Ok(_) => None,
                     };
@@ -1147,7 +1187,7 @@ fn render_permission_judge_model_section(cx: &mut Context<SettingsWindow>) -> An
     let configured = AgentSettings::get_global(cx).permission_judge_model.clone();
     let model_label: SharedString = match &configured {
         Some(selection) => format!("{} / {}", selection.provider.0, selection.model).into(),
-        None => "既定 (速いモデル)".into(),
+        None => i18n::t!("Default (Fast Model)").into(),
     };
     let available_models = language_model::LanguageModelRegistry::read_global(cx)
         .available_models(cx)
@@ -1168,11 +1208,11 @@ fn render_permission_judge_model_section(cx: &mut Context<SettingsWindow>) -> An
             v_flex()
                 .w_full()
                 .min_w_0()
-                .child(Label::new("判定に使うモデル"))
+                .child(Label::new(i18n::t!("Judge Model")))
                 .child(
-                    Label::new(
-                        "小さく速いモデルで足ります (例: Ollama の 8B 級)。未設定のときは、速いモデル、次に既定のモデルが使われます。判定のためにツール名・コマンド・パスがそのモデルの提供元へ送られるので、ローカルのモデルをお勧めします。10 秒以内に答えが返らない、モデルが無い、答えを読み取れない場合は確認を表示します。",
-                    )
+                    Label::new(i18n::t!(
+                        "A small, fast model is enough (for example, an 8B-class model on Ollama). When none is set, the fast model is used, then the default model. To judge an action, the tool name, command, and paths are sent to that model's provider, so a local model is recommended. If no answer comes back within 10 seconds, no model is available, or the answer can't be read, a confirmation is shown."
+                    ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
                 ),
@@ -1189,11 +1229,11 @@ fn render_permission_judge_model_section(cx: &mut Context<SettingsWindow>) -> An
                 .menu(move |window, cx| {
                     let available_models = available_models.clone();
                     Some(ContextMenu::build(window, cx, move |mut menu, _, _| {
-                        menu = menu.entry("既定 (速いモデル)", None, move |_, cx| {
+                        menu = menu.entry(i18n::t!("Default (Fast Model)"), None, move |_, cx| {
                             set_permission_judge_model(None, cx);
                         });
                         if available_models.is_empty() {
-                            menu = menu.label("認証済みのモデルがありません");
+                            menu = menu.label(i18n::t!("No authenticated models"));
                         }
                         for (provider, model, label) in available_models {
                             menu = menu.entry(label, None, move |_, cx| {
@@ -1234,11 +1274,11 @@ fn render_global_default_mode_section(current_mode: ToolPermissionMode) -> AnyEl
             v_flex()
                 .w_full()
                 .min_w_0()
-                .child(Label::new("既定の権限"))
+                .child(Label::new(i18n::t!("Default Permission")))
                 .child(
-                    Label::new(
-                        "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「全自動 (サンドボックス内)」と同じ設定です。「AI が判定」は、危険でないと別のモデルが判定した操作だけを自動で実行し、それ以外は確認します。どちらの場合も、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。プロジェクト (ワークツリー) の外へのファイル操作は、どの設定でも確認します (そのパスを指す「常に許可」パターンを自分で書いた場合を除く)。サンドボックスの外で実行されるターミナルコマンド (サンドボックスを無効にしているとき、またはサンドボックスの無いプロジェクト) は、「許可」「AI が判定」「常に許可」に関係なく毎回確認します。使えるツールの種類は、この設定ではなくプロファイルで選びます。",
-                    )
+                    Label::new(i18n::t!(
+                        "Controls the default behavior for all tool actions. Per-tool rules and patterns can override this. \"Allow\" is the same setting as \"Auto-Approve (In Sandbox)\" in the agent panel. \"AI Judge\" runs automatically only the actions that a separate model judges not dangerous, and asks for confirmation for everything else. In either case, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files all still apply. File operations outside the project (worktree) are always confirmed, whatever this is set to, unless you wrote an \"Always Allow\" pattern for that path yourself. Terminal commands that run outside the sandbox (when the sandbox is disabled, or in a project without one) are confirmed every time, regardless of \"Allow\", \"AI Judge\", or \"Always Allow\". Which tools are available is chosen by the profile, not by this setting."
+                    ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
                 ),
@@ -1254,16 +1294,16 @@ fn render_global_default_mode_section(current_mode: ToolPermissionMode) -> AnyEl
                 )
                 .menu(move |window, cx| {
                     Some(ContextMenu::build(window, cx, move |menu, _, _| {
-                        menu.entry("確認", None, move |_, cx| {
+                        menu.entry(mode_display_label(ToolPermissionMode::Confirm), None, move |_, cx| {
                             set_global_default_permission(ToolPermissionMode::Confirm, cx);
                         })
-                        .entry("AI が判定", None, move |_, cx| {
+                        .entry(mode_display_label(ToolPermissionMode::Auto), None, move |_, cx| {
                             set_global_default_permission(ToolPermissionMode::Auto, cx);
                         })
-                        .entry("許可", None, move |_, cx| {
+                        .entry(mode_display_label(ToolPermissionMode::Allow), None, move |_, cx| {
                             set_global_default_permission(ToolPermissionMode::Allow, cx);
                         })
-                        .entry("拒否", None, move |_, cx| {
+                        .entry(mode_display_label(ToolPermissionMode::Deny), None, move |_, cx| {
                             set_global_default_permission(ToolPermissionMode::Deny, cx);
                         })
                     }))
@@ -1289,9 +1329,9 @@ fn render_default_mode_section(
             v_flex()
                 .w_full()
                 .min_w_0()
-                .child(Label::new("既定の動作"))
+                .child(Label::new(i18n::t!("Default Action")))
                 .child(
-                    Label::new("どのパターンにも一致しなかったときの動作です。")
+                    Label::new(i18n::t!("Action to take when no patterns match."))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 ),
@@ -1313,18 +1353,34 @@ fn render_default_mode_section(
                         let tool_id_allow = tool_id.clone();
                         let tool_id_deny = tool_id;
 
-                        menu.entry("確認", None, move |_, cx| {
-                            set_default_mode(&tool_id_confirm, ToolPermissionMode::Confirm, cx);
-                        })
-                        .entry("AI が判定", None, move |_, cx| {
-                            set_default_mode(&tool_id_auto, ToolPermissionMode::Auto, cx);
-                        })
-                        .entry("許可", None, move |_, cx| {
-                            set_default_mode(&tool_id_allow, ToolPermissionMode::Allow, cx);
-                        })
-                        .entry("拒否", None, move |_, cx| {
-                            set_default_mode(&tool_id_deny, ToolPermissionMode::Deny, cx);
-                        })
+                        menu.entry(
+                            mode_display_label(ToolPermissionMode::Confirm),
+                            None,
+                            move |_, cx| {
+                                set_default_mode(&tool_id_confirm, ToolPermissionMode::Confirm, cx);
+                            },
+                        )
+                        .entry(
+                            mode_display_label(ToolPermissionMode::Auto),
+                            None,
+                            move |_, cx| {
+                                set_default_mode(&tool_id_auto, ToolPermissionMode::Auto, cx);
+                            },
+                        )
+                        .entry(
+                            mode_display_label(ToolPermissionMode::Allow),
+                            None,
+                            move |_, cx| {
+                                set_default_mode(&tool_id_allow, ToolPermissionMode::Allow, cx);
+                            },
+                        )
+                        .entry(
+                            mode_display_label(ToolPermissionMode::Deny),
+                            None,
+                            move |_, cx| {
+                                set_default_mode(&tool_id_deny, ToolPermissionMode::Deny, cx);
+                            },
+                        )
                     }))
                 })
                 .anchor(gpui::Anchor::TopRight),
@@ -1559,6 +1615,26 @@ tool_config_page_fn!(render_rename_symbol_tool_config, "rename_symbol");
 mod tests {
     use super::*;
 
+    /// The preview swaps the reason for the list of built-in rules only when the
+    /// agent's own engine denied the input with them.
+    #[test]
+    fn test_hardcoded_denial_is_recognized_from_the_engine() {
+        let decision = agent::decide_terminal_permission(
+            &["rm -rf /".to_string()],
+            &agent_settings::ToolPermissions::default(),
+            ShellKind::Posix,
+            agent::TerminalExecution::Sandboxed,
+        );
+        assert!(
+            is_hardcoded_denial(&decision),
+            "`rm -rf /` should be denied by the built-in rules: {decision:?}"
+        );
+        assert!(!is_hardcoded_denial(&ToolPermissionDecision::Deny(
+            "matched an always_deny pattern".to_string()
+        )));
+        assert!(!is_hardcoded_denial(&ToolPermissionDecision::Allow));
+    }
+
     /// ADR-F52: the preview on this page reports the judged default as its own
     /// verdict rather than pretending the action is allowed or refused.
     #[test]
@@ -1567,7 +1643,7 @@ mod tests {
             decision_to_mode(&ToolPermissionDecision::Judge),
             ToolPermissionMode::Auto
         );
-        assert_eq!(mode_display_label(ToolPermissionMode::Auto), "AI が判定");
+        assert_eq!(mode_display_label(ToolPermissionMode::Auto), "AI Judge");
         // Neither a success nor an error colour: the judge still reviews it.
         assert_eq!(verdict_color(ToolPermissionMode::Auto), Color::Info);
     }

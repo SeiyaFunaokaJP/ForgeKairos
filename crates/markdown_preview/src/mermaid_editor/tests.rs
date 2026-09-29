@@ -79,7 +79,7 @@ async fn a_duplicate_id_is_refused_and_the_fence_is_left_alone(cx: &mut TestAppC
     let message = cx.update(|_window, cx| modal.read(cx).message.clone());
     assert_eq!(
         message.as_deref(),
-        Some("ID「A」が重複しています。"),
+        Some("The ID \"A\" is used more than once."),
         "the modal should say why it refused"
     );
 }
@@ -109,7 +109,7 @@ async fn an_empty_id_is_refused(cx: &mut TestAppContext) {
     });
 
     let message = cx.update(|_window, cx| modal.read(cx).message.clone());
-    assert_eq!(message.as_deref(), Some("ID が空の要素があります。"));
+    assert_eq!(message.as_deref(), Some("An element has an empty ID."));
 }
 
 #[gpui::test]
@@ -728,8 +728,9 @@ async fn a_pie_value_that_is_not_a_number_is_refused(cx: &mut TestAppContext) {
         "a chart with a value that is not a number must not be written back"
     );
     let message = cx.update(|_window, cx| modal.read(cx).message.clone());
-    assert!(
-        message.is_some_and(|message| message.contains("使えません")),
+    assert_eq!(
+        message.as_deref(),
+        Some("The value \"あ\" of \"設計\" is not valid (only decimal numbers of 0 or more)."),
         "the modal should say why it refused"
     );
 }
@@ -1090,7 +1091,7 @@ async fn a_sequence_message_is_added_and_the_block_rules_are_enforced(cx: &mut T
     let message = cx.update(|_window, cx| modal.read(cx).message.clone());
     assert_eq!(
         message.as_deref(),
-        Some("`end` が対応するブロックより多くあります。"),
+        Some("There are more `end`s than blocks."),
         "the modal should refuse a diagram that cannot be written back"
     );
 
@@ -1433,7 +1434,7 @@ async fn an_empty_fence_asks_which_kind_to_start(cx: &mut TestAppContext) {
     });
     cx.assert_editor_state(before);
     let message = cx.update(|_window, cx| modal.read(cx).message.clone());
-    assert_eq!(message.as_deref(), Some("図の種類を選んでください。"));
+    assert_eq!(message.as_deref(), Some("Choose a diagram type."));
 
     cx.update(|window, cx| {
         modal.update(cx, |modal, cx| {
@@ -1474,12 +1475,9 @@ async fn an_empty_sequence_or_er_is_not_written_back(cx: &mut TestAppContext) {
     for (kind, expected) in [
         (
             MermaidDiagramKind::Sequence,
-            "参加者を 1 つ以上追加してください。",
+            "Add at least one participant.",
         ),
-        (
-            MermaidDiagramKind::Er,
-            "エンティティを 1 つ以上追加してください。",
-        ),
+        (MermaidDiagramKind::Er, "Add at least one entity."),
     ] {
         let _state = init_test(cx);
         let mut cx = EditorTestContext::new(cx).await;
@@ -1561,7 +1559,7 @@ async fn a_fence_that_changed_while_the_editor_was_open_is_not_overwritten(
     let message = cx.update(|_window, cx| modal.read(cx).message.clone());
     assert_eq!(
         message.as_deref(),
-        Some("図のテキストが編集中に変更されました。もう一度開き直してください。")
+        Some("The diagram text changed while it was being edited. Open it again.")
     );
 }
 
@@ -1586,7 +1584,7 @@ async fn a_diagram_without_a_model_does_not_open(cx: &mut TestAppContext) {
         .err()
         .expect("a ZenUML diagram has no editing model");
     assert!(
-        format!("{error}").contains("構造化エディター"),
+        format!("{error}").contains("structured editor"),
         "unexpected message: {error}"
     );
 }
@@ -2574,7 +2572,7 @@ mod sequence_7a {
                         participant App
                         participant Log
                     end
-                    box グループ
+                    box Group
                         participant Db
                     end
                     App->>Db: 問い合わせ
@@ -2754,7 +2752,7 @@ mod sequence_7a {
         let message = cx.update(|_window, cx| modal.read(cx).message.clone());
         assert_eq!(
             message.as_deref(),
-            Some("`create 参加者` の次のメッセージは `参加者` 宛てでなければなりません。"),
+            Some("The message after `create NewParticipant` must be sent to `NewParticipant`."),
         );
     }
 
@@ -2780,7 +2778,7 @@ mod sequence_7a {
         cx.update(|window, cx| {
             modal.update(cx, |modal, cx| {
                 modal.add_participant(window, cx);
-                let index = column(modal, "参加者");
+                let index = column(modal, "NewParticipant");
                 let id = form(modal)
                     .participants
                     .get(index)
@@ -3325,12 +3323,12 @@ mod flowchart_flow2 {
         for (id, expected) in [
             (
                 "B",
-                "つながりの ID「B」がノードまたはグループの ID と同じです。",
+                "The link ID \"B\" is the same as the ID of a node or group.",
             ),
-            ("e1", "つながりの ID「e1」が重複しています。"),
+            ("e1", "The link ID \"e1\" is used more than once."),
             (
                 "e-2",
-                "2 番目のつながりの ID「e-2」は使えません (半角英数字と _ のみ、Mermaid の予約語は不可)。",
+                "The ID \"e-2\" of link 2 is not valid (ASCII letters, digits and _ only; no Mermaid keywords).",
             ),
         ] {
             let (mut cx, modal, _app_state) = open_on(source, cx).await;
@@ -3488,7 +3486,7 @@ mod flowchart_flow2 {
         assert_eq!(
             message(&mut cx, &modal).as_deref(),
             Some(
-                "1 番目のつながりの線のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {、先頭のカンマ)。"
+                "The line style of link 1 has characters that cannot be used (; or %%, an unclosed quote, a trailing {, or a leading comma)."
             )
         );
     }
@@ -3604,11 +3602,14 @@ mod flowchart_flow2 {
             ```
         "};
         for (name, expected) in [
-            ("warn", "クラス定義「warn」が重複しています。"),
-            ("", "名前が空のクラス定義があります。"),
+            (
+                "warn",
+                "The class definition \"warn\" is defined more than once.",
+            ),
+            ("", "A class definition has an empty name."),
             (
                 "a,b",
-                "クラス定義の名前「a,b」は使えません (空白や , ; : # % などの記号は不可)。",
+                "The class definition name \"a,b\" is not valid (no whitespace or symbols such as , ; : # %).",
             ),
         ] {
             let (mut cx, modal, _app_state) = open_on(source, cx).await;
@@ -3904,5 +3905,134 @@ mod flowchart_flow2 {
                     linkStyle 2 stroke:#0f0
                   linkStyle 0,1 stroke:#f00"},
         );
+    }
+}
+
+/// The names a new row is given come from the catalog, so with the Japanese
+/// catalog the editor inserts the same Japanese it did before the English
+/// source text, and the fence it writes still reads as Mermaid.
+mod japanese_defaults {
+    use super::*;
+
+    fn japanese() -> i18n::test_support::LocaleOverride {
+        i18n::test_support::LocaleOverride::new(Some(i18n_catalog::test_support::bundled_catalog(
+            "ja",
+        )))
+    }
+
+    fn assert_opens(body: &str) {
+        if let Err(error) = parse_document(body) {
+            panic!("the written fence should open again: {error}\n{body}");
+        }
+    }
+
+    #[gpui::test]
+    async fn a_new_state_is_named_in_japanese(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                stateDiagram-v2ˇ
+                    [*] --> 待機
+                ```
+            "},
+            cx,
+        )
+        .await;
+        let _japanese = japanese();
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.add_state(Vec::new(), window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+        let body = fence_body(&mut cx);
+        assert_eq!(body, "stateDiagram-v2\n    [*] --> 待機\n    状態");
+        assert_opens(&body);
+    }
+
+    #[gpui::test]
+    async fn a_new_participant_is_named_in_japanese(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    participant アリス
+                    アリス->>アリス: 準備
+                ```
+            "},
+            cx,
+        )
+        .await;
+        let _japanese = japanese();
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.add_participant(window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+        let body = fence_body(&mut cx);
+        assert_eq!(
+            body,
+            "sequenceDiagram\n    participant アリス\n    participant 参加者\n    アリス->>アリス: 準備"
+        );
+        assert_opens(&body);
+    }
+
+    #[gpui::test]
+    async fn a_new_requirement_and_element_are_named_in_japanese(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                requirementDiagramˇ
+                    requirement login {
+                    }
+                ```
+            "},
+            cx,
+        )
+        .await;
+        let _japanese = japanese();
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.add_requirement(window, cx);
+                modal.add_requirement_element(window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+        let body = fence_body(&mut cx);
+        assert_eq!(
+            body,
+            "requirementDiagram\n    requirement login {\n    }\n    requirement \"要求\" {\n    }\n    element \"要素\" {\n    }"
+        );
+        assert_opens(&body);
+    }
+
+    #[gpui::test]
+    async fn a_new_entity_is_named_in_japanese(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                erDiagramˇ
+                    顧客 {
+                        string 名前
+                    }
+                ```
+            "},
+            cx,
+        )
+        .await;
+        let _japanese = japanese();
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.add_entity(window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+        let body = fence_body(&mut cx);
+        assert!(
+            body.lines().any(|line| line.trim() == "エンティティ"),
+            "the new entity should be named エンティティ:\n{body}"
+        );
+        assert_opens(&body);
     }
 }

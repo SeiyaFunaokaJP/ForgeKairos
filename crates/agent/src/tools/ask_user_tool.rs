@@ -85,7 +85,7 @@ impl AgentTool for AskUserTool {
     ) -> SharedString {
         match input {
             Ok(input) if !input.question.is_empty() => SharedString::from(input.question),
-            _ => "ユーザーに質問".into(),
+            _ => i18n::t!("Asking a question").into(),
         }
     }
 
@@ -148,8 +148,9 @@ impl AgentTool for AskUserTool {
                 }
             };
 
-            event_stream
-                .update_fields(acp::ToolCallUpdateFields::new().title(format!("回答: {selected}")));
+            event_stream.update_fields(
+                acp::ToolCallUpdateFields::new().title(i18n::t!("Answered: {selected}")),
+            );
 
             Ok(AskUserToolOutput::Answered { selected })
         })
@@ -173,7 +174,7 @@ fn build_schema(options: &[String], allow_free_text: bool) -> acp::ElicitationSc
         schema = schema.property(
             CHOICE_FIELD,
             acp::StringPropertySchema::new()
-                .title("選択肢から選ぶ")
+                .title(i18n::t!("Choose an option"))
                 .one_of(enum_options),
             !allow_free_text,
         );
@@ -181,9 +182,9 @@ fn build_schema(options: &[String], allow_free_text: bool) -> acp::ElicitationSc
 
     if allow_free_text {
         let title = if options.is_empty() {
-            "回答"
+            i18n::t!("Your answer")
         } else {
-            "または回答を入力"
+            i18n::t!("Or type your own answer")
         };
         schema = schema.property(
             OTHER_FIELD,

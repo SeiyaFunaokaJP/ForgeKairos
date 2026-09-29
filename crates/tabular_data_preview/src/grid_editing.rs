@@ -133,60 +133,72 @@ pub(crate) fn grid_context_menu_entries(target: GridMenuTarget) -> Vec<GridMenuE
     };
     let rows = || {
         vec![
-            action("上に行を挿入", Box::new(InsertRowAbove)),
-            action("下に行を挿入", Box::new(InsertRowBelow)),
-            action("行を削除", Box::new(DeleteRows)),
+            action(
+                i18n::tc!("table grid", "Insert Row Above"),
+                Box::new(InsertRowAbove),
+            ),
+            action(
+                i18n::tc!("table grid", "Insert Row Below"),
+                Box::new(InsertRowBelow),
+            ),
+            action(i18n::t!("Delete Rows"), Box::new(DeleteRows)),
         ]
     };
     let columns = || {
         vec![
-            action("左に列を挿入", Box::new(InsertColumnLeft)),
-            action("右に列を挿入", Box::new(InsertColumnRight)),
-            action("列を削除", Box::new(DeleteColumns)),
+            action(
+                i18n::tc!("table grid", "Insert Column Left"),
+                Box::new(InsertColumnLeft),
+            ),
+            action(
+                i18n::tc!("table grid", "Insert Column Right"),
+                Box::new(InsertColumnRight),
+            ),
+            action(i18n::t!("Delete Columns"), Box::new(DeleteColumns)),
         ]
     };
     // A selected row or column is a perfectly good range to copy or clear, so
     // the clipboard is offered on every target rather than only on a cell.
     let clipboard = || {
         vec![
-            action("切り取り", Box::new(CutCells)),
-            action("コピー", Box::new(CopyCells)),
-            action("貼り付け", Box::new(PasteCells)),
-            action("内容を消去", Box::new(ClearCells)),
+            action(i18n::t!("Cut"), Box::new(CutCells)),
+            action(i18n::t!("Copy"), Box::new(CopyCells)),
+            action(i18n::t!("Paste"), Box::new(PasteCells)),
+            action(i18n::t!("Clear Contents"), Box::new(ClearCells)),
         ]
     };
     let colors = || {
         vec![
             GridMenuEntry::Colors {
-                label: "塗りつぶしの色",
+                label: i18n::t!("Fill Color"),
                 field: StyleField::Fill,
             },
             GridMenuEntry::Colors {
-                label: "文字の色",
+                label: i18n::tc!("cell color", "Text Color"),
                 field: StyleField::Text,
             },
-            action("色をクリア", Box::new(ClearCellColors)),
+            action(i18n::t!("Clear Colors"), Box::new(ClearCellColors)),
         ]
     };
     let sorting = |col: AnyColumn| {
         vec![
             GridMenuEntry::Sort {
-                label: "昇順で並べ替え",
+                label: i18n::t!("Sort Ascending"),
                 col,
                 direction: Some(SortDirection::Asc),
             },
             GridMenuEntry::Sort {
-                label: "降順で並べ替え",
+                label: i18n::t!("Sort Descending"),
                 col,
                 direction: Some(SortDirection::Desc),
             },
             GridMenuEntry::Sort {
-                label: "並べ替えを解除",
+                label: i18n::t!("Clear Sort"),
                 col,
                 direction: None,
             },
             GridMenuEntry::Filter {
-                label: "絞り込み…",
+                label: i18n::t!("Filter…"),
                 col,
             },
         ]
@@ -197,15 +209,18 @@ pub(crate) fn grid_context_menu_entries(target: GridMenuTarget) -> Vec<GridMenuE
         // keyboard opens as well, where nothing was clicked.
         GridMenuTarget::Cell => vec![
             vec![
-                action("切り取り", Box::new(CutCells)),
-                action("コピー", Box::new(CopyCells)),
-                action("貼り付け", Box::new(PasteCells)),
+                action(i18n::t!("Cut"), Box::new(CutCells)),
+                action(i18n::t!("Copy"), Box::new(CopyCells)),
+                action(i18n::t!("Paste"), Box::new(PasteCells)),
             ],
             rows(),
             columns(),
             colors(),
-            vec![action("内容を消去", Box::new(ClearCells))],
-            vec![action("選択したセルを比較", Box::new(DiffSelectedCells))],
+            vec![action(i18n::t!("Clear Contents"), Box::new(ClearCells))],
+            vec![action(
+                i18n::t!("Compare Selected Cells"),
+                Box::new(DiffSelectedCells),
+            )],
         ],
         GridMenuTarget::RowHeader => vec![rows(), clipboard(), colors()],
         GridMenuTarget::ColumnHeader(col) => {
@@ -636,7 +651,7 @@ impl TabularDataPreviewPane {
         let count = rect.last_row - rect.first_row + 1;
         let anchor_row = GridRow::from_index(if above { rect.first_row } else { rect.last_row });
         if above && anchor_row == GridRow::Header {
-            self.set_status_message("見出し行の上には行を挿入できません", cx);
+            self.set_status_message(i18n::t!("Rows can't be inserted above the header row"), cx);
             return;
         }
         let position = match self.row_ref(anchor_row) {
@@ -2128,7 +2143,7 @@ c,d"
         pane.read_with(&cx, |pane, _| {
             assert_eq!(
                 pane.grid.status_message.as_deref(),
-                Some("見出し行の上には行を挿入できません")
+                Some("Rows can't be inserted above the header row")
             );
         });
 
@@ -2967,11 +2982,11 @@ c"
         let columns = labels(GridMenuTarget::ColumnHeader(AnyColumn(1)));
         let sorting = columns
             .iter()
-            .position(|label| *label == "並べ替えを解除")
+            .position(|label| *label == "Clear Sort")
             .expect("the column menu should offer sorting");
         let filtering = columns
             .iter()
-            .position(|label| *label == "絞り込み…")
+            .position(|label| *label == "Filter…")
             .expect("the column menu should offer filtering");
         assert_eq!(
             filtering,
@@ -2979,14 +2994,14 @@ c"
             "filtering belongs with sorting, after it: {columns:?}"
         );
         assert!(
-            !labels(GridMenuTarget::RowHeader).contains(&"絞り込み…"),
+            !labels(GridMenuTarget::RowHeader).contains(&"Filter…"),
             "a row heading has no column to filter"
         );
 
         let cell = labels(GridMenuTarget::Cell);
         assert_eq!(
             cell.last(),
-            Some(&"選択したセルを比較"),
+            Some(&"Compare Selected Cells"),
             "comparing is the cell menu's last entry: {cell:?}"
         );
     }

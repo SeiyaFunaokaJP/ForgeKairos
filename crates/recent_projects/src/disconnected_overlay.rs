@@ -133,7 +133,7 @@ impl DisconnectedOverlay {
             .await?;
             Ok(())
         })
-        .detach_and_prompt_err("再接続できませんでした", window, cx, |_, _, _| None);
+        .detach_and_prompt_err(i18n::t!("Failed to reconnect"), window, cx, |_, _, _| None);
     }
 
     fn cancel(&mut self, _: &menu::Cancel, _: &mut Window, cx: &mut Context<Self>) {
@@ -148,24 +148,24 @@ impl Render for DisconnectedOverlay {
 
         let message = match &self.host {
             Host::CollabGuestProject => {
-                "リモートプロジェクトへの接続が切断されました。".to_string()
+                i18n::t!("Your connection to the remote project has been lost.").to_string()
             }
             Host::RemoteServerProject(options, server_not_running) => {
                 let autosave = if ProjectSettings::get_global(cx)
                     .session
                     .restore_unsaved_buffers
                 {
-                    "\n未保存の変更はローカルに保存されています。"
+                    i18n::t!("\nUnsaved changes are stored locally.")
                 } else {
                     ""
                 };
                 let reason = if *server_not_running {
-                    "サーバーのプロセスが予期せず終了したため"
+                    i18n::tc!("disconnect reason", "process exiting unexpectedly")
                 } else {
-                    "サーバーが応答しないため"
+                    i18n::tc!("disconnect reason", "not responding")
                 };
-                format!(
-                    "{reason}、{} への接続が切断されました。{autosave}",
+                i18n::t!(
+                    "Your connection to {} has been lost due to the server {reason}.{autosave}",
                     options.display_name(),
                 )
             }
@@ -181,9 +181,9 @@ impl Render for DisconnectedOverlay {
             .child(
                 Modal::new("disconnected", None)
                     .header(
-                        ModalHeader::new()
-                            .show_dismiss_button(true)
-                            .child(Headline::new("切断されました").size(HeadlineSize::Small)),
+                        ModalHeader::new().show_dismiss_button(true).child(
+                            Headline::new(i18n::t!("Disconnected")).size(HeadlineSize::Small),
+                        ),
                     )
                     .section(Section::new().child(Label::new(message)))
                     .footer(
@@ -191,7 +191,7 @@ impl Render for DisconnectedOverlay {
                             h_flex()
                                 .gap_2()
                                 .child(
-                                    Button::new("close-window", "ウィンドウを閉じる")
+                                    Button::new("close-window", i18n::t!("Close Window"))
                                         .style(ButtonStyle::Filled)
                                         .layer(ElevationIndex::ModalSurface)
                                         .on_click(cx.listener(move |_, _, window, _| {
@@ -200,7 +200,7 @@ impl Render for DisconnectedOverlay {
                                 )
                                 .when(can_reconnect, |el| {
                                     el.child(
-                                        Button::new("reconnect", "再接続")
+                                        Button::new("reconnect", i18n::t!("Reconnect"))
                                             .style(ButtonStyle::Filled)
                                             .layer(ElevationIndex::ModalSurface)
                                             .start_icon(Icon::new(IconName::ArrowCircle))

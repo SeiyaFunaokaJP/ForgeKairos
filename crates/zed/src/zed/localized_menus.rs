@@ -226,13 +226,14 @@ mod tests {
         })
     }
 
-    /// `app_menus` reads `DisableAiSettings` (upstream since v1.20), so the menus
-    /// can only be built once the settings are registered.
+    /// `app_menus` reads `DisableAiSettings` (upstream since v1.20) and
+    /// `AgentSettings`, so the menus can only be built once the settings are registered.
     fn init_menu_settings(cx: &mut App) {
         if !cx.has_global::<settings::SettingsStore>() {
             let store = settings::SettingsStore::test(cx);
             cx.set_global(store);
             <project::DisableAiSettings as settings::Settings>::register(cx);
+            <agent_settings::AgentSettings as settings::Settings>::register(cx);
         }
     }
 

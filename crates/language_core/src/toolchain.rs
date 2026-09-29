@@ -68,17 +68,23 @@ pub enum ToolchainScope {
 impl ToolchainScope {
     pub fn label(&self) -> &'static str {
         match self {
-            ToolchainScope::Subproject(_, _) => "サブプロジェクト",
-            ToolchainScope::Project => "プロジェクト",
-            ToolchainScope::Global => "グローバル",
+            ToolchainScope::Subproject(_, _) => i18n::t!("Subproject"),
+            ToolchainScope::Project => i18n::t!("Project"),
+            ToolchainScope::Global => i18n::t!("Global"),
         }
     }
 
     pub fn description(&self) -> &'static str {
         match self {
-            ToolchainScope::Subproject(_, _) => "現在のサブプロジェクト内でのみ使用できます。",
-            ToolchainScope::Project => "現在のプロジェクト全体で使用できます。",
-            ToolchainScope::Global => "このマシン上のすべてのプロジェクトで使用できます。",
+            ToolchainScope::Subproject(_, _) => {
+                i18n::t!("Available only in the subproject you're currently in.")
+            }
+            ToolchainScope::Project => {
+                i18n::t!("Available in all locations in your current project.")
+            }
+            ToolchainScope::Global => {
+                i18n::t!("Available in all of your projects on this machine.")
+            }
         }
     }
 }

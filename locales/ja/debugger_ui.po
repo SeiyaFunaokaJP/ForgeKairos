@@ -5,5 +5,376 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "(child)"
+msgstr "(子)"
+
+msgid "1 byte"
+msgstr "1 バイト"
+
+msgid "16 bytes"
+msgstr "16 バイト"
+
+msgid "2 bytes"
+msgstr "2 バイト"
+
+msgid "32 bytes"
+msgstr "32 バイト"
+
+msgid "4 bytes"
+msgstr "4 バイト"
+
+msgid "64 bytes"
+msgstr "64 バイト"
+
+msgid "8 bytes"
+msgstr "8 バイト"
+
+msgid "Allows inspection of memory contents"
+msgstr "メモリの内容を調べられます"
+
+msgid "Attach"
+msgstr "アタッチ"
+
+msgid "Attach the debugger to a running process"
+msgstr "実行中のプロセスにデバッガーをアタッチ"
+
+msgid "Breakpoints"
+msgstr "ブレークポイント"
+
+msgid "Change Address of Currently Viewed Memory"
+msgstr "表示中のメモリのアドレスを変更"
+
+msgid "Close Panel"
+msgstr "パネルを閉じる"
+
+msgid "Console"
+msgstr "コンソール"
+
 msgid "Continue Program"
 msgstr "プログラムを続行"
+
+msgid "Copy Name"
+msgstr "名前をコピー"
+
+msgid "Copy Value"
+msgstr "値をコピー"
+
+msgid "Current State"
+msgstr "現在の状態"
+
+msgid "Debug"
+msgstr "デバッグ"
+
+msgid "Debug Adapter `{adapter_name}` does not support writing to memory"
+msgstr "デバッグアダプター `{adapter_name}` はメモリへの書き込みをサポートしていません"
+
+msgid "Debug Panel"
+msgstr "デバッグパネル"
+
+msgid "Debug terminal"
+msgstr "デバッグターミナル"
+
+msgid "Debugger"
+msgstr "デバッガー"
+
+msgid "Debugger Docs"
+msgstr "デバッガーのドキュメント"
+
+msgid "Debugger Extensions"
+msgstr "デバッガー拡張機能"
+
+msgid "Debugger:"
+msgstr "デバッガー:"
+
+msgid "Detach"
+msgstr "デタッチ"
+
+msgid "Disable Breakpoint"
+msgstr "ブレークポイントを無効化"
+
+msgid "Disable Data Breakpoint"
+msgstr "データブレークポイントを無効化"
+
+msgid "Disable Exception Breakpoint"
+msgstr "例外ブレークポイントを無効化"
+
+msgid "Disable a breakpoint without removing it from the list"
+msgstr "一覧から削除せずにブレークポイントを無効にします"
+
+msgid "Displays program output and allows manual input of debugger commands"
+msgstr "プログラムの出力を表示し、デバッガーコマンドを手動で入力できます"
+
+msgid "Displays the call stack, letting you navigate between function calls"
+msgstr "コールスタックを表示し、関数呼び出し間を移動できます"
+
+msgid "Edit Memory at a Selected Address"
+msgstr "選択したアドレスのメモリを編集"
+
+msgid "Edit Value"
+msgstr "値を編集"
+
+msgid "Edit debug.json"
+msgstr "debug.json を編集"
+
+msgid "Edit in debug.json"
+msgstr "debug.json で編集"
+
+msgid "Enable Breakpoint"
+msgstr "ブレークポイントを有効化"
+
+msgid "Enable Data Breakpoint"
+msgstr "データブレークポイントを有効化"
+
+msgid "Enable Exception Breakpoint"
+msgstr "例外ブレークポイントを有効化"
+
+msgid "Evaluate"
+msgstr "評価"
+
+msgid "Evaluate an expression"
+msgstr "式を評価"
+
+msgid "Exception Breakpoints cannot be removed from the breakpoint list"
+msgstr "例外ブレークポイントは一覧から削除できません"
+
+msgid "Failed to edit debug.json"
+msgstr "debug.json の編集に失敗しました"
+
+msgid "Find a debug task, or debug a command"
+msgstr "デバッグタスクを検索、またはコマンドをデバッグ"
+
+msgid "Frames"
+msgstr "フレーム"
+
+msgid "Go To Memory"
+msgstr "メモリへ移動"
+
+msgid "Go To Selected Address"
+msgstr "選択したアドレスへ移動"
+
+msgid "Go to Memory Address / Expression"
+msgstr "メモリアドレス / 式へ移動"
+
+msgid "Language: {name}"
+msgstr "言語: {name}"
+
+msgid "Launch"
+msgstr "起動"
+
+msgid "Launch Custom"
+msgstr "カスタム起動"
+
+msgid "Launch a new process with a debugger"
+msgstr "デバッガーで新しいプロセスを起動"
+
+msgid "Lists all active breakpoints set in the code"
+msgstr "コードに設定された有効なブレークポイントをすべて一覧表示します"
+
+msgid "Lists all source files currently loaded and used by the debugger"
+msgstr "デバッガーが現在読み込んで使用しているソースファイルをすべて一覧表示します"
+
+msgid "Memory View"
+msgstr "メモリビュー"
+
+msgid "Modules"
+msgstr "モジュール"
+
+msgid "New Session"
+msgstr "新規セッション"
+
+msgid "No"
+msgstr "いいえ"
+
+msgid "No Breakpoints Set"
+msgstr "ブレークポイントが設定されていません"
+
+msgid "Open Debug Adapter Logs"
+msgstr "デバッグアダプターのログを開く"
+
+msgid "Open Documentation"
+msgstr "ドキュメントを開く"
+
+msgid "Pause Program"
+msgstr "プログラムを一時停止"
+
+msgid "Program"
+msgstr "プログラム"
+
+msgid "Provides an interactive terminal session within the debugging environment"
+msgstr "デバッグ環境内で対話的なターミナルセッションを提供します"
+
+msgid "Re-enable a breakpoint"
+msgstr "ブレークポイントを再度有効にします"
+
+msgid "Remove Breakpoint"
+msgstr "ブレークポイントを削除"
+
+msgid "Remove Watch"
+msgstr "ウォッチを削除"
+
+msgid "Remove breakpoint from a breakpoint list"
+msgstr "ブレークポイントを一覧から削除します"
+
+msgid "Remove data breakpoint from a breakpoint list"
+msgstr "データブレークポイントを一覧から削除します"
+
+msgid "Rerun"
+msgstr "再実行"
+
+msgid "Rerun Session"
+msgstr "セッションを再実行"
+
+msgid "Restart Stack Frame"
+msgstr "スタックフレームを再起動"
+
+msgid "Run"
+msgstr "実行"
+
+msgid "Run predefined task"
+msgstr "定義済みのタスクを実行"
+
+msgid "Select Debugger"
+msgstr "デバッガーを選択"
+
+msgid "Select a Debug Session"
+msgstr "デバッグセッションを選択"
+
+msgid "Select the process you want to attach the debugger to"
+msgstr "デバッガーをアタッチするプロセスを選択してください"
+
+msgid "Set Condition"
+msgstr "条件を設定"
+
+msgid "Set Data Breakpoint"
+msgstr "データブレークポイントを設定"
+
+msgid "Set Hit Condition"
+msgstr "ヒット条件を設定"
+
+msgid "Set Log Message"
+msgstr "ログメッセージを設定"
+
+msgid "Set condition to evaluate when a breakpoint is hit. Program execution will stop only when the condition is met."
+msgstr "ブレークポイントに到達したときに評価する条件を設定します。条件を満たしたときだけプログラムの実行が停止します。"
+
+msgid "Set expression that controls how many hits of the breakpoint are ignored."
+msgstr "ブレークポイントのヒットを何回無視するかを制御する式を設定します。"
+
+msgid "Set log message to display (instead of stopping) when a breakpoint is hit."
+msgstr "ブレークポイントに到達したときに、停止する代わりに表示するログメッセージを設定します。"
+
+msgid "Show all stack frames"
+msgstr "すべてのスタックフレームを表示"
+
+msgid "Show stack frames from your project"
+msgstr "プロジェクトのスタックフレームを表示"
+
+msgid "Show {} more{}"
+msgstr "さらに {} 件を表示{}"
+
+msgid "Shows all modules or libraries loaded by the program"
+msgstr "プログラムが読み込んだモジュールやライブラリをすべて表示します"
+
+msgid "Shows current values of local and global variables in the current stack frame"
+msgstr "現在のスタックフレームにおけるローカル変数とグローバル変数の値を表示します"
+
+msgid "Sources"
+msgstr "ソース"
+
+msgid "Spawn"
+msgstr "実行"
+
+msgid "Start"
+msgstr "開始"
+
+msgid "Start Debug Session"
+msgstr "デバッグセッションを開始"
+
+msgid "Start a predefined debug scenario"
+msgstr "定義済みのデバッグシナリオを開始"
+
+msgid "Step Back in Session History"
+msgstr "セッション履歴を 1 つ戻る"
+
+msgid "Step In"
+msgstr "ステップイン"
+
+msgid "Step Out"
+msgstr "ステップアウト"
+
+msgid "Step Over"
+msgstr "ステップオーバー"
+
+msgid "Stop on Entry"
+msgstr "エントリで停止"
+
+msgid "Terminal"
+msgstr "ターミナル"
+
+msgid "Terminate All Threads"
+msgstr "すべてのスレッドを終了"
+
+msgid "Terminate Thread"
+msgstr "スレッドを終了"
+
+msgid "This Debug Session is still running. Are you sure you want to terminate it?"
+msgstr "このデバッグセッションはまだ実行中です。終了してもよろしいですか?"
+
+msgid "Toggle Data Breakpoint"
+msgstr "データブレークポイントを切り替え"
+
+msgid "Toggle {} Data Breakpoint"
+msgstr "データブレークポイント ({}) を切り替え"
+
+msgid "Unknown Session"
+msgstr "不明なセッション"
+
+msgid "Variables"
+msgstr "変数"
+
+msgid "Watch Expression"
+msgstr "式をウォッチ"
+
+msgid "Watch Variable"
+msgstr "変数をウォッチ"
+
+msgid "Working Directory"
+msgstr "作業ディレクトリ"
+
+msgid "Worktree parent path: {parent_dir}"
+msgstr "ワークツリーの親パス: {parent_dir}"
+
+msgid "Write to Selected Memory Range"
+msgstr "選択したメモリ範囲に書き込み"
+
+msgid "Yes"
+msgstr "はい"
+
+msgid "history-{}"
+msgstr "履歴 {}"
+
+msgid "in {d}/"
+msgstr "{d}/ 内"
+
+msgid "in {f}"
+msgstr "{f} 内"
+
+msgctxt "data breakpoint access"
+msgid "Read"
+msgstr "読み取り"
+
+msgctxt "data breakpoint access"
+msgid "Read/Write"
+msgstr "読み書き"
+
+msgctxt "data breakpoint access"
+msgid "Write"
+msgstr "書き込み"
+
+msgctxt "debugger pane zoom"
+msgid "Expand"
+msgstr "ズーム"
+
+msgctxt "debugger pane zoom"
+msgid "Minimize"
+msgstr "ズーム解除"

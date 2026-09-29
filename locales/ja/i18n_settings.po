@@ -22,3 +22,15 @@ msgstr "「{}」の翻訳はありません。英語で表示します。"
 
 msgid "…and {} more (see the log)."
 msgstr "…ほか {} 件 (ログを参照してください)。"
+
+msgctxt "dialog title"
+msgid "Critical"
+msgstr "警告"
+
+msgctxt "dialog title"
+msgid "Info"
+msgstr "情報"
+
+msgctxt "dialog title"
+msgid "Warning"
+msgstr "警告"

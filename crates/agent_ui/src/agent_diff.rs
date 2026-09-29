@@ -550,10 +550,12 @@ impl Item for AgentDiffPane {
             move |_, _| {
                 v_flex()
                     .child(Label::new(
-                        title.clone().unwrap_or_else(|| "レビュー".to_string()),
+                        title
+                            .clone()
+                            .unwrap_or_else(|| i18n::t!("Review").to_string()),
                     ))
                     .child(
-                        Label::new("エージェント差分")
+                        Label::new(i18n::t!("Agent Diff"))
                             .color(Color::Muted)
                             .size(LabelSize::Small),
                     )
@@ -683,8 +685,8 @@ impl Item for AgentDiffPane {
 
     fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
         match self.thread.read(cx).title() {
-            Some(title) => format!("レビュー: {}", truncate_and_trailoff(&title, 20)).into(),
-            None => "レビュー".into(),
+            Some(title) => i18n::t!("Review: {}", truncate_and_trailoff(&title, 20)).into(),
+            None => i18n::t!("Review").into(),
         }
     }
 }
@@ -714,9 +716,9 @@ impl Render for AgentDiffPane {
                     v_flex()
                         .items_center()
                         .gap_2()
-                        .child("レビューする変更はありません")
+                        .child(i18n::t!("No changes to review"))
                         .child(
-                            Button::new("continue-iterating", "作業を続ける")
+                            Button::new("continue-iterating", i18n::t!("Continue Iterating"))
                                 .style(ButtonStyle::Filled)
                                 .start_icon(
                                     Icon::new(IconName::ForwardArrow)
@@ -815,7 +817,7 @@ fn render_diff_hunk_controls(
         .block_mouse_except_scroll()
         .when(opaque_window, |this| this.shadow_md())
         .children(vec![
-            Button::new(("reject", row as u64), "拒否")
+            Button::new(("reject", row as u64), i18n::t!("Reject"))
                 .disabled(is_created_file)
                 .key_binding(
                     KeyBinding::for_action_in(&Reject, &editor.read(cx).focus_handle(cx), cx)
@@ -839,7 +841,7 @@ fn render_diff_hunk_controls(
                         })
                     }
                 }),
-            Button::new(("keep", row as u64), "採用")
+            Button::new(("keep", row as u64), i18n::t!("Keep"))
                 .key_binding(
                     KeyBinding::for_action_in(&Keep, &editor.read(cx).focus_handle(cx), cx)
                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -873,7 +875,12 @@ fn render_diff_hunk_controls(
                         .tooltip({
                             let focus_handle = editor.focus_handle(cx);
                             move |_window, cx| {
-                                Tooltip::for_action_in("次の変更箇所", &GoToHunk, &focus_handle, cx)
+                                Tooltip::for_action_in(
+                                    i18n::t!("Next Hunk"),
+                                    &GoToHunk,
+                                    &focus_handle,
+                                    cx,
+                                )
                             }
                         })
                         .on_click({
@@ -905,7 +912,7 @@ fn render_diff_hunk_controls(
                             let focus_handle = editor.focus_handle(cx);
                             move |_window, cx| {
                                 Tooltip::for_action_in(
-                                    "前の変更箇所",
+                                    i18n::t!("Previous Hunk"),
                                     &GoToPreviousHunk,
                                     &focus_handle,
                                     cx,
@@ -1075,7 +1082,7 @@ impl Render for AgentDiffToolbar {
         let spinner_icon = div()
             .px_0p5()
             .id("generating")
-            .tooltip(Tooltip::text("変更を生成しています…"))
+            .tooltip(Tooltip::text(i18n::t!("Generating Changes…")))
             .child(
                 Icon::new(IconName::LoadCircle)
                     .size(IconSize::Small)
@@ -1104,7 +1111,7 @@ impl Render for AgentDiffToolbar {
                                 IconButton::new("hunk-up", IconName::ArrowUp)
                                     .icon_size(IconSize::Small)
                                     .tooltip(Tooltip::for_action_title_in(
-                                        "前の変更箇所",
+                                        i18n::t!("Previous Hunk"),
                                         &GoToPreviousHunk,
                                         &editor_focus_handle,
                                     ))
@@ -1123,7 +1130,7 @@ impl Render for AgentDiffToolbar {
                                 IconButton::new("hunk-down", IconName::ArrowDown)
                                     .icon_size(IconSize::Small)
                                     .tooltip(Tooltip::for_action_title_in(
-                                        "次の変更箇所",
+                                        i18n::t!("Next Hunk"),
                                         &GoToHunk,
                                         &editor_focus_handle,
                                     ))
@@ -1140,7 +1147,7 @@ impl Render for AgentDiffToolbar {
                         h_flex()
                             .gap_0p5()
                             .child(
-                                Button::new("reject-all", "すべて拒否")
+                                Button::new("reject-all", i18n::t!("Reject All"))
                                     .key_binding({
                                         KeyBinding::for_action_in(
                                             &RejectAll,
@@ -1154,7 +1161,7 @@ impl Render for AgentDiffToolbar {
                                     })),
                             )
                             .child(
-                                Button::new("keep-all", "すべて採用")
+                                Button::new("keep-all", i18n::t!("Keep All"))
                                     .key_binding({
                                         KeyBinding::for_action_in(
                                             &KeepAll,
@@ -1184,7 +1191,7 @@ impl Render for AgentDiffToolbar {
                             IconButton::new("review", IconName::ListTodo)
                                 .icon_size(IconSize::Small)
                                 .tooltip(Tooltip::for_action_title_in(
-                                    "すべてのファイルをレビュー",
+                                    i18n::t!("Review All Files"),
                                     &OpenAgentDiff,
                                     &editor_focus_handle,
                                 ))
@@ -1236,7 +1243,7 @@ impl Render for AgentDiffToolbar {
                     .child(
                         h_group_sm()
                             .child(
-                                Button::new("reject-all", "すべて拒否")
+                                Button::new("reject-all", i18n::t!("Reject All"))
                                     .key_binding({
                                         KeyBinding::for_action_in(&RejectAll, &focus_handle, cx)
                                             .map(|kb| kb.size(rems_from_px(12_f32)))
@@ -1246,7 +1253,7 @@ impl Render for AgentDiffToolbar {
                                     })),
                             )
                             .child(
-                                Button::new("keep-all", "すべて採用")
+                                Button::new("keep-all", i18n::t!("Keep All"))
                                     .key_binding({
                                         KeyBinding::for_action_in(&KeepAll, &focus_handle, cx)
                                             .map(|kb| kb.size(rems_from_px(12_f32)))

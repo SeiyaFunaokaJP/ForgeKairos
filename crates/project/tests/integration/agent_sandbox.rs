@@ -446,7 +446,7 @@ mod creation {
         let error = ensure_agent_config_dir(home.path(), KEY, &SandboxedAgentProfile::Gemini)
             .expect_err("a linked level is refused");
         assert!(
-            format!("{error:#}").contains("リンクではなく実体のフォルダー"),
+            format!("{error:#}").contains("it has to be a real folder, not a link"),
             "{error:#}"
         );
         assert!(
@@ -494,7 +494,7 @@ mod creation {
         let error = ensure_agent_config_dir(home.path(), KEY, &SandboxedAgentProfile::Claude)
             .expect_err("a group-writable level is refused");
         assert!(
-            format!("{error:#}").contains("他のアカウントから書き換えられる"),
+            format!("{error:#}").contains("can be modified by other accounts"),
             "{error:#}"
         );
 
@@ -522,7 +522,7 @@ mod creation {
         let error = ensure_agent_config_dir(home.path(), KEY, &SandboxedAgentProfile::Claude)
             .expect_err("a link is refused");
         assert!(
-            format!("{error:#}").contains("通常のファイルではありません"),
+            format!("{error:#}").contains("is not a regular file"),
             "{error:#}"
         );
         assert!(

@@ -26,3 +26,8 @@ zed_credentials_provider.workspace = true
 zeta_prompt.workspace = true
 
 [dev-dependencies]
+credentials_provider.workspace = true
+gpui = { workspace = true, features = ["test-support"] }
+http_client = { workspace = true, features = ["test-support"] }
+language = { workspace = true, features = ["test-support"] }
+settings = { workspace = true, features = ["test-support"] }

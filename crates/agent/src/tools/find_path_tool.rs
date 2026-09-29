@@ -114,9 +114,9 @@ impl AgentTool for FindPathTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("“`{}`” に一致するパスを検索", input.glob).into()
+            i18n::t!("Find paths matching “`{}`”", input.glob).into()
         } else {
-            "パスを検索".into()
+            i18n::t!("Find paths").into()
         }
     }
 
@@ -146,9 +146,13 @@ impl AgentTool for FindPathTool {
             event_stream.update_fields(
                 acp::ToolCallUpdateFields::new()
                     .title(if paginated_matches.is_empty() {
-                        "一致なし".into()
+                        i18n::t!("No matches").into()
                     } else {
-                        format!("{} 件一致", paginated_matches.len())
+                        i18n::tn!(
+                            paginated_matches.len(),
+                            "{count} match",
+                            "{count} matches"
+                        )
                     })
                     .content(
                         paginated_matches

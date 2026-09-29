@@ -51,9 +51,9 @@ impl Render for ToolbarControls {
         let is_agent_enabled = AgentSettings::get_global(cx).enabled(cx);
 
         let (warning_tooltip, warning_color) = if include_warnings {
-            ("警告を除外", Color::Warning)
+            (i18n::t!("Exclude Warnings"), Color::Warning)
         } else {
-            ("警告を含める", Color::Disabled)
+            (i18n::t!("Include Warnings"), Color::Disabled)
         };
 
         h_flex()
@@ -62,7 +62,7 @@ impl Render for ToolbarControls {
                 IconButton::new("toggle_search", IconName::MagnifyingGlass)
                     .icon_size(IconSize::Small)
                     .tooltip(Tooltip::for_action_title(
-                        "ファイル内を検索",
+                        i18n::t!("Buffer Search"),
                         &buffer_search::Deploy::find(),
                     ))
                     .on_click(|_, window, cx| {
@@ -74,7 +74,7 @@ impl Render for ToolbarControls {
                     IconButton::new("inline_assist", IconName::ZedAssistant)
                         .icon_size(IconSize::Small)
                         .tooltip(Tooltip::for_action_title(
-                            "インラインアシスト",
+                            i18n::t!("Inline Assist"),
                             &InlineAssist::default(),
                         ))
                         .on_click(|_, window, cx| {
@@ -89,7 +89,7 @@ impl Render for ToolbarControls {
                             .icon_color(Color::Error)
                             .icon_size(IconSize::Small)
                             .tooltip(Tooltip::for_action_title(
-                                "診断の更新を停止",
+                                i18n::t!("Stop Diagnostics Update"),
                                 &ToggleDiagnosticsRefresh,
                             ))
                             .on_click(cx.listener(move |toolbar_controls, _, _, cx| {
@@ -104,7 +104,7 @@ impl Render for ToolbarControls {
                         IconButton::new("refresh-diagnostics", IconName::ArrowCircle)
                             .icon_size(IconSize::Small)
                             .tooltip(Tooltip::for_action_title(
-                                "診断を更新",
+                                i18n::t!("Refresh Diagnostics"),
                                 &ToggleDiagnosticsRefresh,
                             ))
                             .on_click(cx.listener({

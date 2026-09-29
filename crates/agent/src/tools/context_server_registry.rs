@@ -575,13 +575,9 @@ impl AnyAgentTool for ContextServerTool {
 fn format_mcp_initial_title(tool_name: &str, input: &serde_json::Value) -> String {
     if let Some(value) = single_string_arg(input) {
         let preview = truncate_chars(value, MAX_INLINE_ARG_LEN);
-        format!(
-            "MCP ツール `{}` を実行: {}",
-            tool_name,
-            MarkdownEscaped(&preview)
-        )
+        i18n::t!("Run MCP tool `{}` {}", tool_name, MarkdownEscaped(&preview))
     } else {
-        format!("MCP ツール `{}` を実行", tool_name)
+        i18n::t!("Run MCP tool `{}`", tool_name)
     }
 }
 
@@ -716,7 +712,7 @@ mod tests {
         let input = serde_json::json!({ "url": "https://example.com/page" });
         assert_eq!(
             format_mcp_initial_title("open_url_in_browser", &input),
-            "MCP ツール `open_url_in_browser` を実行: https://example.com/page"
+            "Run MCP tool `open_url_in_browser` https://example.com/page"
         );
     }
 
@@ -725,7 +721,7 @@ mod tests {
         let input = serde_json::json!({});
         assert_eq!(
             format_mcp_initial_title("cleanup", &input),
-            "MCP ツール `cleanup` を実行"
+            "Run MCP tool `cleanup`"
         );
     }
 
@@ -733,7 +729,7 @@ mod tests {
     fn test_format_mcp_initial_title_null_input() {
         assert_eq!(
             format_mcp_initial_title("cleanup", &serde_json::Value::Null),
-            "MCP ツール `cleanup` を実行"
+            "Run MCP tool `cleanup`"
         );
     }
 
@@ -742,7 +738,7 @@ mod tests {
         let input = serde_json::json!({ "x": "a", "y": "b" });
         assert_eq!(
             format_mcp_initial_title("do_thing", &input),
-            "MCP ツール `do_thing` を実行"
+            "Run MCP tool `do_thing`"
         );
     }
 
@@ -751,7 +747,7 @@ mod tests {
         let input = serde_json::json!({ "count": 42 });
         assert_eq!(
             format_mcp_initial_title("tick", &input),
-            "MCP ツール `tick` を実行"
+            "Run MCP tool `tick`"
         );
     }
 

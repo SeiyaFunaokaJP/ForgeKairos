@@ -148,7 +148,7 @@ impl ZedAiOnboarding {
                 .child(
                     IconButton::new("dismiss_onboarding", IconName::Close)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("閉じる"))
+                        .tooltip(Tooltip::text(i18n::t!("Dismiss")))
                         .on_click(move |_, window, cx| {
                             telemetry::event!("Banner Dismissed", source = "AI Onboarding",);
                             callback(window, cx)
@@ -168,22 +168,26 @@ impl ZedAiOnboarding {
             .w_full()
             .relative()
             .gap_1()
-            .child(Headline::new("Zed AI へようこそ"))
+            .child(Headline::new(i18n::t!("Welcome to Zed AI")))
             .child(
                 Label::new(
-                    "Zed AI は外部の AI サービスです。有効にすると、入力したコード・ファイルの内容・会話が Zed のサーバーへ送信され、事業者の方針によっては保存され、モデルの学習に利用される可能性があります。",
+                    i18n::t!(
+                        "Zed AI is an external AI service. When it is enabled, the code, file contents, and conversations you enter are sent to Zed's servers and, depending on the provider's policies, may be stored and used to train models."
+                    ),
                 )
                 .color(Color::Muted),
             )
             .child(
                 Label::new(
-                    "利用するには、設定の「AI」→「LLM プロバイダー」で警告を確認し、有効化のチェックを入れてください。業務で利用する場合は、所属組織のポリシーを必ず確認してください。",
+                    i18n::t!(
+                        "To use it, review the warning under AI → LLM Providers in Settings and check the box to enable it. If you use it for work, be sure to check your organization's policy first."
+                    ),
                 )
                 .color(Color::Muted)
                 .mb_2(),
             )
             .child(
-                Button::new("open_ai_settings", "AI の設定を開く")
+                Button::new("open_ai_settings", i18n::t!("Open AI Settings"))
                     .full_width()
                     .style(ButtonStyle::Outlined)
                     .on_click(move |_, window, cx| {
@@ -201,7 +205,7 @@ impl ZedAiOnboarding {
             .w_full()
             .relative()
             .gap_1()
-            .child(Headline::new("Zed AI へようこそ"))
+            .child(Headline::new(i18n::t!("Welcome to Zed AI")))
             .child(
                 Label::new(i18n::t!(
                     "Sign in to try GPT Luna. Your 14 days begin when you start the trial."
@@ -233,7 +237,7 @@ impl ZedAiOnboarding {
                 .relative()
                 .min_w_0()
                 .gap_1()
-                .child(Headline::new("Zed AI へようこそ"))
+                .child(Headline::new(i18n::t!("Welcome to Zed AI")))
                 .child(YoungAccountBanner)
                 .child(
                     v_flex()
@@ -252,7 +256,7 @@ impl ZedAiOnboarding {
                         )
                         .child(PlanDefinitions.pro_plan())
                         .child(
-                            Button::new("pro", "利用を開始")
+                            Button::new("pro", i18n::tc!("plan", "Get Started"))
                                 .full_width()
                                 .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                                 .on_click(move |_, _window, cx| {
@@ -270,7 +274,7 @@ impl ZedAiOnboarding {
                 .w_full()
                 .relative()
                 .gap_1()
-                .child(Headline::new("Zed AI へようこそ"))
+                .child(Headline::new(i18n::t!("Welcome to Zed AI")))
                 .child(
                     v_flex()
                         .mt_2()
@@ -285,7 +289,7 @@ impl ZedAiOnboarding {
                                         .buffer_font(cx),
                                 )
                                 .child(
-                                    Label::new("(現在のプラン)")
+                                    Label::new(i18n::t!("(Current Plan)"))
                                         .size(LabelSize::Small)
                                         .color(Color::Custom(
                                             cx.theme().colors().text_muted.opacity(0.6),
@@ -314,7 +318,7 @@ impl ZedAiOnboarding {
                         )
                         .child(PlanDefinitions.pro_trial(true))
                         .child(
-                            Button::new("pro", "無料トライアルを開始")
+                            Button::new("pro", i18n::t!("Start Free Trial"))
                                 .full_width()
                                 .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                                 .on_click(move |_, _window, cx| {
@@ -336,7 +340,7 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::pro_trial_stamp(cx))
-            .child(Headline::new("Zed Pro トライアルへようこそ"))
+            .child(Headline::new(i18n::t!("Welcome to the Zed Pro Trial")))
             .child(
                 Label::new(i18n::t!(
                     "Included for 14 days from when your trial started:"
@@ -355,9 +359,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::certified_user_stamp(cx))
-            .child(Headline::new("Zed Pro へようこそ"))
+            .child(Headline::new(i18n::t!("Welcome to Zed Pro")))
             .child(
-                Label::new("利用できる内容は次のとおりです。")
+                Label::new(i18n::t!("Here's what you get:"))
                     .color(Color::Muted)
                     .mb_2(),
             )
@@ -372,9 +376,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::business_stamp(cx))
-            .child(Headline::new("Zed Business へようこそ"))
+            .child(Headline::new(i18n::t!("Welcome to Zed Business")))
             .child(
-                Label::new("利用できる内容は次のとおりです。")
+                Label::new(i18n::t!("Here's what you get:"))
                     .color(Color::Muted)
                     .mb_2(),
             )
@@ -389,9 +393,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::vip_stamp(cx))
-            .child(Headline::new("Zed VIP へようこそ"))
+            .child(Headline::new(i18n::t!("Welcome to Zed VIP")))
             .child(
-                Label::new("利用できる内容は次のとおりです。")
+                Label::new(i18n::t!("Here's what you get:"))
                     .color(Color::Muted)
                     .mb_2(),
             )
@@ -406,9 +410,9 @@ impl ZedAiOnboarding {
             .relative()
             .gap_1()
             .child(Self::student_stamp(cx))
-            .child(Headline::new("Zed Student へようこそ"))
+            .child(Headline::new(i18n::t!("Welcome to Zed Student")))
             .child(
-                Label::new("利用できる内容は次のとおりです。")
+                Label::new(i18n::t!("Here's what you get:"))
                     .color(Color::Muted)
                     .mb_2(),
             )

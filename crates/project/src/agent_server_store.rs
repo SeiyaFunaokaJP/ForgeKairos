@@ -809,8 +809,9 @@ impl AgentServerStore {
                         log::warn!("could not place an agent's sandbox on this host: {error:#}");
                         (
                             None,
-                            Some(format!(
-                                "接続先でエージェントの設定フォルダーを用意できませんでした: {error:#}"
+                            Some(i18n::t!(
+                                "Could not prepare the agent's settings folder on the remote host: {error}",
+                                error = format!("{error:#}")
                             )),
                         )
                     }
@@ -1160,9 +1161,9 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
                     Err(error) => {
                         log::warn!("the host's agent sandbox was refused: {error:#}");
                         sandbox_error.get_or_insert_with(|| {
-                            format!(
-                                "接続先が用意したエージェントのサンドボックスは、このエディターの方針と\
-                                 合いません: {error:#}"
+                            i18n::t!(
+                                "The agent sandbox the remote host prepared does not fit this editor's policy: {error}",
+                                error = format!("{error:#}")
                             )
                         });
                         None
@@ -2068,11 +2069,10 @@ impl ExternalAgentServer for LocalCustomAgent {
                     command.env = None;
                 } else {
                     sandbox.state = AgentSandboxState::Unavailable {
-                        reason: format!(
-                            "Windows のプログラム `{path}` は WSL のサンドボックスの中では\
-                             実行できません。エージェントの設定で Linux のプログラムの絶対パス \
-                             (`/usr/local/bin/...` など) を指定するか、サンドボックスの外で\
-                             起動してください。"
+                        reason: i18n::t!(
+                            "The Windows program `{path}` cannot run inside the WSL sandbox. Set \
+                             the absolute path of a Linux program (such as `/usr/local/bin/...`) \
+                             in the agent's settings, or start it outside the sandbox."
                         ),
                     };
                     command.env = Some(env);
@@ -2824,7 +2824,7 @@ mod tests {
         let error = wsl_runtime::bounded(
             &cx.executor(),
             wsl_runtime::STEP_TIMEOUT,
-            "WSL の Node.js の確認",
+            "Checking Node.js in WSL",
             wedged,
         )
         .await
@@ -2832,7 +2832,7 @@ mod tests {
 
         let message = format!("{error:#}");
         assert!(
-            message.contains("WSL の Node.js の確認")
+            message.contains("Checking Node.js in WSL did not finish")
                 && message.contains(&wsl_runtime::STEP_TIMEOUT.as_secs().to_string())
                 && message.contains("wsl --shutdown"),
             "{message}"
@@ -3662,21 +3662,21 @@ async fn registry_archive_command_in_wsl(
     let architecture = match machine.as_str() {
         "x86_64" | "amd64" => "x86_64",
         "aarch64" | "arm64" => "aarch64",
-        other => bail!(
-            "WSL のアーキテクチャ `{other}` 向けの配布物は扱えないため、\
-             サンドボックスの中でエージェントを起動できません。"
-        ),
+        other => bail!(i18n::t!(
+            "Distributions for the WSL architecture `{other}` are not supported, so the agent \
+             cannot start inside the sandbox."
+        )),
     };
     let platform_key = format!("linux-{architecture}");
     let target_config = targets.get(&platform_key).with_context(|| {
-        format!(
-            "このエージェントには {platform_key} 向けの配布物がないため、WSL のサンドボックスの\
-             中では起動できません (用意されているのは {})。",
-            targets
+        i18n::t!(
+            "This agent has no distribution for {platform_key}, so it cannot start inside the \
+             WSL sandbox (available: {available}).",
+            available = targets
                 .keys()
                 .map(String::as_str)
                 .collect::<Vec<_>>()
-                .join("、")
+                .join(i18n::tc!("list separator", ", "))
         )
     })?;
 
@@ -3715,16 +3715,15 @@ async fn registry_archive_command_in_wsl(
             .strip_prefix("./")
             .or_else(|| target_config.cmd.strip_prefix(".\\"))
             .with_context(|| {
-                format!(
-                    "エージェントの実行ファイルの指定 `{}` は `./` で始まる相対パスである必要が\
-                     あります。",
-                    target_config.cmd
+                i18n::t!(
+                    "The agent's executable `{command}` has to be a relative path starting with `./`.",
+                    command = target_config.cmd
                 )
             })?;
         wsl_runtime::bounded(
             &executor,
             wsl_runtime::STEP_TIMEOUT,
-            "エージェントの実行ファイルの確認",
+            i18n::tc!("wsl step", "Checking the agent's executable"),
             sandbox::wsl_runtime_executable(distro, &runtime_directory, relative),
         )
         .await?
@@ -3853,11 +3852,11 @@ mod wsl_runtime {
         work: impl Future<Output = Result<T>>,
     ) -> Result<T> {
         work.with_timeout(timeout, executor).await.map_err(|_| {
-            anyhow!(
-                "{what}が {} 秒以内に終わりませんでした。しばらく待ってから再試行し、\
-                 改善しない場合は `wsl --shutdown` で WSL を再起動してください。",
-                timeout.as_secs()
-            )
+            anyhow!(i18n::t!(
+                "{what} did not finish within {seconds} seconds. Wait a while and try again, and \
+                 if that does not help, restart WSL with `wsl --shutdown`.",
+                seconds = timeout.as_secs()
+            ))
         })?
     }
 
@@ -3875,24 +3874,24 @@ mod wsl_runtime {
         let architecture = match machine.as_str() {
             "x86_64" | "amd64" => "x64",
             "aarch64" | "arm64" => "arm64",
-            other => bail!(
-                "WSL のアーキテクチャ `{other}` 向けの Node.js は配布されていないため、\
-                 サンドボックスの中でエージェントを起動できません。"
-            ),
+            other => bail!(i18n::t!(
+                "Node.js is not distributed for the WSL architecture `{other}`, so the agent \
+                 cannot start inside the sandbox."
+            )),
         };
         let archive =
             node_runtime::pinned_node_archive("linux", architecture).with_context(|| {
-                format!("Linux ({architecture}) 向けの Node.js の取得情報がありません。")
+                i18n::t!("There is no download information for Node.js for Linux ({architecture}).")
             })?;
         anyhow::ensure!(
             !archive.is_zip,
-            "Linux 向けの Node.js が zip 形式です (想定外)。"
+            i18n::t!("Node.js for Linux is a zip archive (unexpected).")
         );
         let relative = format!("{NODE_RELATIVE}/{}", archive.directory_name());
         if let Some(staged) = bounded(
             executor,
             STEP_TIMEOUT,
-            "WSL の Node.js の確認",
+            i18n::tc!("wsl step", "Checking Node.js in WSL"),
             sandbox::staged_wsl_runtime(distro, &relative, Some(archive.sha256)),
         )
         .await?
@@ -3900,7 +3899,7 @@ mod wsl_runtime {
             return Ok(staged);
         }
 
-        report(status, "Linux 版 Node.js を取得しています…");
+        report(status, i18n::t!("Downloading Node.js for Linux…"));
         let downloads = downloads_directory();
         fs.create_dir(&downloads)
             .await
@@ -3914,18 +3913,18 @@ mod wsl_runtime {
         )
         .await
         .with_context(|| {
-            format!(
-                "Linux 版 Node.js ({}) を取得できませんでした。エディターの接続許可リストに \
-                 `nodejs.org` が含まれているか確認してください。",
-                archive.url
+            i18n::t!(
+                "Could not download Node.js for Linux ({url}). Check that the editor's allowlist \
+                 of connections includes `nodejs.org`.",
+                url = archive.url
             )
         })?;
 
-        report(status, "Linux 版 Node.js を WSL に配置しています…");
+        report(status, i18n::t!("Placing Node.js for Linux in WSL…"));
         let staged = bounded(
             executor,
             WORK_TIMEOUT,
-            "Linux 版 Node.js の WSL への配置",
+            i18n::tc!("wsl step", "Placing Node.js for Linux in WSL"),
             sandbox::stage_wsl_runtime_archive(
                 distro,
                 &relative,
@@ -3964,7 +3963,7 @@ mod wsl_runtime {
         let data_directory = bounded(
             executor,
             STEP_TIMEOUT,
-            "WSL のデータフォルダーの確認",
+            i18n::tc!("wsl step", "Checking the data folder in WSL"),
             sandbox::wsl_agent_runtime_data_directory(distro),
         )
         .await?;
@@ -3983,11 +3982,11 @@ mod wsl_runtime {
             (Some(installed), Some(wanted)) => installed < wanted,
         };
         if install {
-            report(status, "サンドボックスの中で npm install を実行しています…");
+            report(status, i18n::t!("Running npm install inside the sandbox…"));
             bounded(
                 executor,
                 WORK_TIMEOUT,
-                "サンドボックスの中での npm install",
+                i18n::tc!("wsl step", "npm install inside the sandbox"),
                 sandbox::install_npm_package_in_wsl(
                     distro,
                     node_directory,
@@ -3999,10 +3998,9 @@ mod wsl_runtime {
             )
             .await
             .with_context(|| {
-                format!(
-                    "`{package_spec}` を WSL のサンドボックスの中でインストールできませんでした。\
-                     エディターの接続許可リストに `{NPM_REGISTRY_HOST}` が含まれているか\
-                     確認してください。"
+                i18n::t!(
+                    "Could not install `{package_spec}` inside the WSL sandbox. Check that the \
+                     editor's allowlist of connections includes `{NPM_REGISTRY_HOST}`."
                 )
             })?;
         }
@@ -4010,17 +4008,17 @@ mod wsl_runtime {
         let package_json = bounded(
             executor,
             STEP_TIMEOUT,
-            "npm パッケージの確認",
+            i18n::tc!("wsl step", "Checking the npm package"),
             sandbox::read_wsl_npm_package_json(distro, &install_directory, package_name),
         )
         .await?
-        .with_context(|| format!("WSL に `{package_name}` がインストールされていません。"))?;
+        .with_context(|| i18n::t!("`{package_name}` is not installed in WSL."))?;
         let executable_relative =
             node_runtime::package_json_executable(&package_json, package_name)?;
         let executable = bounded(
             executor,
             STEP_TIMEOUT,
-            "npm パッケージの実行ファイルの確認",
+            i18n::tc!("wsl step", "Checking the npm package's executable"),
             sandbox::wsl_npm_package_executable(
                 distro,
                 &install_directory,
@@ -4044,7 +4042,7 @@ mod wsl_runtime {
         bounded(
             executor,
             STEP_TIMEOUT,
-            "インストール済みの npm パッケージの確認",
+            i18n::tc!("wsl step", "Checking the installed npm package"),
             sandbox::read_wsl_npm_package_json(distro, install_directory, package_name),
         )
         .await
@@ -4061,7 +4059,7 @@ mod wsl_runtime {
         bounded(
             executor,
             STEP_TIMEOUT,
-            "WSL のアーキテクチャの確認",
+            i18n::tc!("wsl step", "Checking the WSL architecture"),
             sandbox::wsl_machine_architecture(distro),
         )
         .await
@@ -4104,16 +4102,15 @@ mod wsl_runtime {
             RegistryArchiveKind::Archive(AssetKind::TarBz2) => {
                 (sandbox::WslArchiveKind::TarBz2, None)
             }
-            RegistryArchiveKind::Archive(AssetKind::Gz) => bail!(
-                "この配布物の形式は WSL のサンドボックスでは展開できません。\
-                 tar.gz 形式の Linux 向け配布物を持つエージェントを選ぶか、\
-                 サンドボックスの外で起動してください。"
-            ),
-            RegistryArchiveKind::Archive(AssetKind::Zip) => bail!(
-                "この配布物は zip 形式のため、WSL のサンドボックスでは展開できません \
-                 (ディストリビューションに `unzip` がありません)。tar.gz 形式の Linux 向け\
-                 配布物を持つエージェントを選ぶか、サンドボックスの外で起動してください。"
-            ),
+            RegistryArchiveKind::Archive(AssetKind::Gz) => bail!(i18n::t!(
+                "This distribution's format cannot be unpacked in the WSL sandbox. Choose an \
+                 agent with a tar.gz distribution for Linux, or start it outside the sandbox."
+            )),
+            RegistryArchiveKind::Archive(AssetKind::Zip) => bail!(i18n::t!(
+                "This distribution is a zip archive, so it cannot be unpacked in the WSL sandbox \
+                 (the WSL distribution has no `unzip`). Choose an agent with a tar.gz distribution \
+                 for Linux, or start it outside the sandbox."
+            )),
             RegistryArchiveKind::RawBinary { file_name } => {
                 (sandbox::WslArchiveKind::TarGz, Some(file_name.clone()))
             }
@@ -4131,7 +4128,7 @@ mod wsl_runtime {
         if let Some(directory) = bounded(
             executor,
             STEP_TIMEOUT,
-            "WSL のエージェントの実行環境の確認",
+            i18n::tc!("wsl step", "Checking the agent's runtime in WSL"),
             sandbox::staged_wsl_runtime(distro, &relative, sha256.as_deref()),
         )
         .await?
@@ -4139,7 +4136,7 @@ mod wsl_runtime {
             return Ok(directory);
         }
 
-        report(status, "Linux 版のエージェントを取得しています…");
+        report(status, i18n::t!("Downloading the agent for Linux…"));
         let downloads = downloads_directory();
         fs.create_dir(&downloads)
             .await
@@ -4156,9 +4153,9 @@ mod wsl_runtime {
             &local,
         )
         .await
-        .with_context(|| format!("{archive_url} を取得できませんでした。"))?;
+        .with_context(|| i18n::t!("Could not download {archive_url}."))?;
 
-        report(status, "Linux 版のエージェントを WSL に配置しています…");
+        report(status, i18n::t!("Placing the agent for Linux in WSL…"));
         let staged = match &file_name {
             // ADR-F49 決定 25: published as a plain executable rather than an
             // archive. Nothing vouches for it beyond HTTPS when the registry
@@ -4167,7 +4164,7 @@ mod wsl_runtime {
             Some(name) => bounded(
                 executor,
                 WORK_TIMEOUT,
-                "Linux 版のエージェントの WSL への配置",
+                i18n::tc!("wsl step", "Placing the agent for Linux in WSL"),
                 sandbox::stage_wsl_runtime_file(distro, &relative, name, &local, &digest, true),
             )
             .await
@@ -4181,7 +4178,7 @@ mod wsl_runtime {
                 bounded(
                     executor,
                     WORK_TIMEOUT,
-                    "Linux 版のエージェントの WSL への配置",
+                    i18n::tc!("wsl step", "Placing the agent for Linux in WSL"),
                     sandbox::stage_wsl_runtime_archive(
                         distro,
                         &relative,

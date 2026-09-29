@@ -28,7 +28,8 @@ use workspace::{
 use crate::SettingsWindow;
 
 /// Shown instead of letting a decision be made that could not be stored.
-pub(super) const DECISION_BLOCKED_HINT: &str = "承認の記録を読み込めないため、決定できません。";
+pub(super) const DECISION_BLOCKED_HINT: &str =
+    i18n::msg!("The approval records can't be read, so no decision can be made.");
 
 /// Marks the notifications shown here, one per pending launch.
 struct PendingLaunchNotification;
@@ -158,7 +159,7 @@ fn pending_launch_notification(
             .children(lines.iter().map(|line| Label::new(line.clone())))
             .into_any_element()
     })
-    .primary_message("確認する")
+    .primary_message(i18n::tc!("launch approval", "Review"))
     .primary_on_click(move |window, cx| match details.kind {
         LaunchKind::ContextServer => {
             show_context_server_in_settings(
@@ -209,11 +210,11 @@ fn show_context_server_in_settings(
 /// of its own, so that a long name never leaves a lone character dangling.
 fn pending_launch_lines(kind: LaunchKind, name: &str, changed: bool) -> Vec<String> {
     let mut lines = vec![
-        "このプロジェクトの設定が起動を求めています".to_string(),
+        i18n::t!("This project's settings want to start a program").to_string(),
         launch_title(kind, name),
     ];
     if changed {
-        lines.push(CHANGED_SINCE_SHOWN_MESSAGE.to_string());
+        lines.push(i18n::tr(CHANGED_SINCE_SHOWN_MESSAGE).to_string());
     }
     lines
 }
@@ -223,9 +224,9 @@ fn pending_launch_lines(kind: LaunchKind, name: &str, changed: bool) -> Vec<Stri
 fn launch_title(kind: LaunchKind, name: &str) -> String {
     let name = escape_for_display(name);
     match kind {
-        LaunchKind::ContextServer => format!("MCP サーバー「{name}」"),
-        LaunchKind::LanguageServerBinary => format!("言語サーバー「{name}」の実行ファイル"),
-        LaunchKind::ExternalFormatter => format!("外部フォーマッター「{name}」"),
+        LaunchKind::ContextServer => i18n::t!("MCP server \"{name}\""),
+        LaunchKind::LanguageServerBinary => i18n::t!("Binary for language server \"{name}\""),
+        LaunchKind::ExternalFormatter => i18n::t!("External formatter \"{name}\""),
     }
 }
 
@@ -236,24 +237,25 @@ pub(super) fn definition_file_label(file: &LaunchDefinitionFile, host: &LaunchHo
             format!("{path} ({display_name})")
         }
         (LaunchDefinitionFile::RemoteServerSettings, LaunchHost::Remote { display_name, .. }) => {
-            format!("{display_name} のサーバー設定")
+            i18n::t!("Server settings on {display_name}")
         }
         (LaunchDefinitionFile::RemoteServerSettings, LaunchHost::ThisMachine) => {
-            "接続先のサーバー設定".to_string()
+            i18n::t!("Server settings on the remote host").to_string()
         }
         (LaunchDefinitionFile::ResolvedOnRemoteHost, LaunchHost::Remote { display_name, .. }) => {
-            format!("{display_name} で拡張機能が決めたコマンド (設定ファイルはありません)")
+            i18n::t!("Command chosen by an extension on {display_name} (no settings file)")
         }
         (LaunchDefinitionFile::ResolvedOnRemoteHost, LaunchHost::ThisMachine) => {
-            "接続先で拡張機能が決めたコマンド (設定ファイルはありません)".to_string()
+            i18n::t!("Command chosen by an extension on the remote host (no settings file)")
+                .to_string()
         }
     }
 }
 
 fn execution_host_label(host: &ExecutionHost) -> String {
     match host {
-        ExecutionHost::ThisMachine => "この PC".to_string(),
-        ExecutionHost::Remote { display_name } => format!("接続先 ({display_name})"),
+        ExecutionHost::ThisMachine => i18n::t!("This computer").to_string(),
+        ExecutionHost::Remote { display_name } => i18n::t!("Remote host ({display_name})"),
     }
 }
 
@@ -263,13 +265,18 @@ fn execution_host_label(host: &ExecutionHost) -> String {
 pub(super) fn render_target_rows(target: &LaunchTarget, cx: &App) -> AnyElement {
     match target {
         LaunchTarget::Url(url) => {
-            render_detail_row("URL", url.to_string(), true, cx).into_any_element()
+            render_detail_row(i18n::t!("URL"), url.to_string(), true, cx).into_any_element()
         }
         LaunchTarget::Command { program, arguments } => v_flex()
             .w_full()
             .min_w_0()
             .gap_0p5()
-            .child(render_detail_row("コマンド", program.to_string(), true, cx))
+            .child(render_detail_row(
+                i18n::t!("Command"),
+                program.to_string(),
+                true,
+                cx,
+            ))
             .when(!arguments.is_empty(), |this| {
                 this.child(render_argument_row(arguments, cx))
             })
@@ -286,7 +293,7 @@ fn render_argument_row(arguments: &[SharedString], cx: &App) -> impl IntoElement
         .items_start()
         .child(
             div().w(rems(5.5)).flex_none().child(
-                Label::new("引数")
+                Label::new(i18n::t!("Arguments"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             ),
@@ -323,14 +330,12 @@ fn render_argument_row(arguments: &[SharedString], cx: &App) -> impl IntoElement
 /// the names are ever put on screen.
 fn names_without_values(names: &[SharedString]) -> Option<String> {
     (!names.is_empty()).then(|| {
-        format!(
-            "{} (値は表示しません)",
-            names
-                .iter()
-                .map(|name| name.as_ref())
-                .collect::<Vec<&str>>()
-                .join(", ")
-        )
+        let names = names
+            .iter()
+            .map(|name| name.as_ref())
+            .collect::<Vec<&str>>()
+            .join(", ");
+        i18n::t!("{names} (values not shown)")
     })
 }
 
@@ -362,18 +367,16 @@ fn environment_lines(
 /// has to be read by the user.
 fn bound_files_notice(files: &[SharedString]) -> Option<String> {
     (!files.is_empty()).then(|| {
-        format!(
-            "中身を承認に含めるファイル: {}。中身が変わるともう一度確認を求めますが、コマンドラインからは何をするかわからないため、中身も確認してから許可してください。",
-            files
-                .iter()
-                .map(|file| file.as_ref())
-                .collect::<Vec<&str>>()
-                .join(", ")
+        let files = files
+            .iter()
+            .map(|file| file.as_ref())
+            .collect::<Vec<&str>>()
+            .join(", ");
+        i18n::t!(
+            "Files whose contents are part of this approval: {files}. A change to their contents asks for confirmation again, but the command line alone doesn't show what they do, so review their contents too before allowing."
         )
     })
 }
-
-const NOT_RECHECKED: &str = "後から中身が変わっても再確認されません。";
 
 /// Unlike a bound file, this content is not part of what gets approved.
 fn unbound_content_warning(content: &UnboundWorktreeContent) -> String {
@@ -381,41 +384,56 @@ fn unbound_content_warning(content: &UnboundWorktreeContent) -> String {
         UnboundWorktreeContent::WorkingDirectory {
             program,
             working_directory,
-        } => format!(
-            "{program} はプロジェクトのフォルダー {working_directory} で起動し、そこにあるコードを読み込む可能性があります。{NOT_RECHECKED}"
+        } => i18n::t!(
+            "{program} starts in the project folder {working_directory} and may load code from it. You won't be asked again if the contents change later."
         ),
-        UnboundWorktreeContent::File(path) => format!(
-            "{path} はプロジェクト内のファイルですが、中身は承認に含まれません。{NOT_RECHECKED}"
+        UnboundWorktreeContent::File(path) => i18n::t!(
+            "{path} is a file in the project, but its contents are not part of the approval. You won't be asked again if the contents change later."
         ),
-        UnboundWorktreeContent::Directory(path) => {
-            format!("フォルダー {path} の中身は承認に含まれません。{NOT_RECHECKED}")
-        }
-        UnboundWorktreeContent::ArgumentFile(path) => {
-            format!("引数ファイル {path} の中身は承認に含まれません。{NOT_RECHECKED}")
-        }
+        UnboundWorktreeContent::Directory(path) => i18n::t!(
+            "The contents of the folder {path} are not part of the approval. You won't be asked again if the contents change later."
+        ),
+        UnboundWorktreeContent::ArgumentFile(path) => i18n::t!(
+            "The contents of the argument file {path} are not part of the approval. You won't be asked again if the contents change later."
+        ),
         UnboundWorktreeContent::Wrapper(program) => {
-            format!("{program} は別のプログラムを起動します。中身は承認に含まれません。")
+            i18n::t!("{program} starts another program. Its contents are not part of the approval.")
         }
-        UnboundWorktreeContent::RemoteFile(path) => format!(
-            "接続先のファイル {path} の中身はここから確かめられないため、承認に含まれません。{NOT_RECHECKED}"
+        UnboundWorktreeContent::RemoteFile(path) => i18n::t!(
+            "The contents of the remote file {path} can't be checked from here, so they are not part of the approval. You won't be asked again if the contents change later."
         ),
         // Always comes with a session-only approval, which the details
         // already say on a line of their own.
         UnboundWorktreeContent::Unreadable(path) => {
-            format!("{path} を読めないため、中身を確かめられません。")
+            i18n::t!("{path} can't be read, so its contents can't be checked.")
         }
     }
 }
 
-const SESSION_ONLY_NOTICE: &str = "この承認は Zed を終了するまで有効です。";
+const SESSION_ONLY_NOTICE: &str = i18n::msg!("This approval lasts until Zed quits.");
+
+/// The approvals service refuses with [`CHANGED_SINCE_SHOWN_MESSAGE`], an
+/// English msgid it compares against; any other error is shown as it is.
+fn store_error_text(error: &anyhow::Error) -> String {
+    let error = error.to_string();
+    if error == CHANGED_SINCE_SHOWN_MESSAGE {
+        i18n::tr(CHANGED_SINCE_SHOWN_MESSAGE).to_string()
+    } else {
+        error
+    }
+}
 
 fn replaced_user_entry_warning(kind: LaunchKind) -> &'static str {
     match kind {
-        LaunchKind::ContextServer => "ユーザー設定の同名サーバーを置き換えています",
-        LaunchKind::LanguageServerBinary => {
-            "ユーザー設定の同じ言語サーバーの実行ファイル指定を置き換えています"
+        LaunchKind::ContextServer => {
+            i18n::t!("Replaces the server of the same name in your user settings")
         }
-        LaunchKind::ExternalFormatter => "ユーザー設定のフォーマッター指定を置き換えています",
+        LaunchKind::LanguageServerBinary => {
+            i18n::t!("Replaces the binary your user settings specify for the same language server")
+        }
+        LaunchKind::ExternalFormatter => {
+            i18n::t!("Replaces the formatter your user settings specify")
+        }
     }
 }
 
@@ -434,11 +452,22 @@ pub(super) fn render_launch_details(details: &LaunchApprovalDetails, cx: &App) -
         .chain(hidden_environment.map(|names| (names, false)))
         .enumerate()
         .map(|(index, (line, monospace))| {
-            (if index == 0 { "環境変数" } else { "" }, line, monospace)
+            (
+                if index == 0 {
+                    i18n::t!("Environment")
+                } else {
+                    ""
+                },
+                line,
+                monospace,
+            )
         })
-        .chain(names_without_values(&details.header_names).map(|names| ("ヘッダー", names, false)))
+        .chain(
+            names_without_values(&details.header_names)
+                .map(|names| (i18n::t!("Headers"), names, false)),
+        )
         .chain(std::iter::once((
-            "実行ホスト",
+            i18n::t!("Runs on"),
             execution_host_label(&details.execution_host),
             false,
         )))
@@ -449,7 +478,7 @@ pub(super) fn render_launch_details(details: &LaunchApprovalDetails, cx: &App) -
         .min_w_0()
         .gap_0p5()
         .child(render_detail_row(
-            "定義元",
+            i18n::t!("Defined in"),
             definition_file_label(&details.definition_file, &details.host),
             true,
             cx,
@@ -474,7 +503,7 @@ pub(super) fn render_launch_details(details: &LaunchApprovalDetails, cx: &App) -
             this.child(render_notice(
                 IconName::Info,
                 Color::Muted,
-                SESSION_ONLY_NOTICE.to_string(),
+                i18n::tr(SESSION_ONLY_NOTICE).to_string(),
             ))
         })
         .when(details.replaces_user_entry, |this| {
@@ -488,7 +517,7 @@ pub(super) fn render_launch_details(details: &LaunchApprovalDetails, cx: &App) -
             this.child(render_notice(
                 IconName::XCircle,
                 Color::Error,
-                format!("承認の記録を読み込めないため、起動しません: {error}"),
+                i18n::t!("The approval records can't be read, so it won't be started: {error}"),
             ))
         })
         .into_any_element()
@@ -608,12 +637,15 @@ impl LaunchApprovalDialog {
             return;
         }
         if shown != self.details.key {
-            self.error = Some(CHANGED_SINCE_SHOWN_MESSAGE.into());
+            self.error = Some(i18n::tr(CHANGED_SINCE_SHOWN_MESSAGE).to_string().into());
             cx.notify();
             return;
         }
         let Some(approvals) = ProjectLaunchApprovals::try_global(cx) else {
-            self.error = Some("承認の記録を扱えないため、決定を保存できません。".into());
+            self.error = Some(
+                i18n::t!("The approval records are unavailable, so the decision can't be saved.")
+                    .into(),
+            );
             cx.notify();
             return;
         };
@@ -639,8 +671,9 @@ impl LaunchApprovalDialog {
                     match result {
                         Ok(()) => cx.emit(DismissEvent),
                         Err(error) => {
+                            let error = store_error_text(&error);
                             this.error =
-                                Some(format!("決定を保存できませんでした: {error}").into());
+                                Some(i18n::t!("Couldn't save the decision: {error}").into());
                             cx.notify();
                         }
                     }
@@ -686,9 +719,9 @@ impl Render for LaunchApprovalDialog {
                     .size(HeadlineSize::Small),
             )
             .child(
-                Label::new(
-                    "このプロジェクトの設定が、次の内容でプログラムを起動しようとしています。内容を確認してから選んでください。",
-                )
+                Label::new(i18n::t!(
+                    "This project's settings are trying to start a program as shown below. Review it before choosing."
+                ))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
             )
@@ -696,7 +729,7 @@ impl Render for LaunchApprovalDialog {
                 this.child(render_notice(
                     IconName::Warning,
                     Color::Warning,
-                    CHANGED_SINCE_SHOWN_MESSAGE.to_string(),
+                    i18n::tr(CHANGED_SINCE_SHOWN_MESSAGE).to_string(),
                 ))
             })
             // However long the command line, the buttons stay on screen.
@@ -720,7 +753,7 @@ impl Render for LaunchApprovalDialog {
                     .gap_2()
                     .justify_end()
                     .child(
-                        Button::new("launch-approval-deny", "許可しない")
+                        Button::new("launch-approval-deny", i18n::t!("Don't Allow"))
                             .style(ButtonStyle::Subtle)
                             .disabled(self.deciding || blocked)
                             .on_click(cx.listener(move |this, _, _window, cx| {
@@ -728,11 +761,11 @@ impl Render for LaunchApprovalDialog {
                             })),
                     )
                     .child(
-                        Button::new("launch-approval-allow", "許可して起動")
+                        Button::new("launch-approval-allow", i18n::t!("Allow and Start"))
                             .style(ButtonStyle::Filled)
                             .disabled(self.deciding || blocked)
                             .when(blocked, |button| {
-                                button.tooltip(Tooltip::text(DECISION_BLOCKED_HINT))
+                                button.tooltip(Tooltip::text(i18n::tr(DECISION_BLOCKED_HINT)))
                             })
                             .on_click(cx.listener(move |this, _, _window, cx| {
                                 this.decide(allow_key.clone(), LaunchDecision::Approved, cx);
@@ -793,9 +826,9 @@ pub(crate) fn render_launch_approvals_page(
             )
         }
         None => (
-            Err(SharedString::from(
-                "承認の記録を扱えないため、一覧を表示できません。",
-            )),
+            Err(SharedString::from(i18n::t!(
+                "The approval records are unavailable, so the list can't be shown."
+            ))),
             false,
         ),
     };
@@ -820,9 +853,9 @@ pub(crate) fn render_launch_approvals_page(
         .track_scroll(scroll_handle)
         .child(
             div().px_8().pb_2().child(
-                Label::new(
-                    "プロジェクトの設定が起動しようとしたプログラムについて、許可・不許可の記録です。取り消すと、動いているプログラムは止まり、次に起動が必要になったときにあらためて確認します。",
-                )
+                Label::new(i18n::t!(
+                    "Whether each program that a project's settings tried to start was allowed or denied. Revoking a decision stops the program if it is running, and you'll be asked again the next time it needs to start."
+                ))
                 .size(LabelSize::Small)
                 .color(Color::Muted),
             ),
@@ -836,7 +869,10 @@ pub(crate) fn render_launch_approvals_page(
             Ok(records) if records.is_empty() => this.child(
                 div()
                     .px_8()
-                    .child(Label::new("許可・不許可の記録はまだありません。").color(Color::Muted)),
+                    .child(
+                        Label::new(i18n::t!("No decisions have been recorded yet."))
+                            .color(Color::Muted),
+                    ),
             ),
             Ok(records) => {
                 let records = sorted_for_review(records);
@@ -902,7 +938,12 @@ fn render_launch_approval_row(
                 .min_w_0()
                 .flex_1()
                 .child(Label::new(launch_title(record.kind, &record.name)))
-                .child(render_detail_row("内容", record.summary.clone(), true, cx))
+                .child(render_detail_row(
+                    i18n::tc!("launch approval", "Details"),
+                    record.summary.clone(),
+                    true,
+                    cx,
+                ))
                 .child(
                     div()
                         .id(SharedString::from(format!(
@@ -912,7 +953,7 @@ fn render_launch_approval_row(
                         .w_full()
                         .min_w_0()
                         .child(render_detail_row(
-                            "ホスト",
+                            i18n::t!("Host"),
                             record_host_label(record.host.as_deref()),
                             false,
                             cx,
@@ -929,13 +970,13 @@ fn render_launch_approval_row(
                         ),
                 )
                 .child(render_detail_row(
-                    "フォルダー",
+                    i18n::t!("Folder"),
                     record.worktree.clone(),
                     true,
                     cx,
                 ))
                 .child(render_detail_row(
-                    "決定",
+                    i18n::t!("Decision"),
                     decision_label(record.decision, record.timestamp, now, timezone),
                     false,
                     cx,
@@ -944,7 +985,7 @@ fn render_launch_approval_row(
                     this.child(render_notice(
                         IconName::Info,
                         Color::Muted,
-                        SESSION_ONLY_NOTICE.to_string(),
+                        i18n::tr(SESSION_ONLY_NOTICE).to_string(),
                     ))
                 })
                 .when_some(error, |this, error| {
@@ -972,8 +1013,13 @@ fn render_launch_approval_row(
 /// identity a hover away.
 fn record_host_label(identity: Option<&str>) -> String {
     match identity {
-        None => "この PC".to_string(),
-        Some(identity) => format!("接続先 ({})", readable_host(identity)),
+        None => i18n::t!("This computer").to_string(),
+        Some(identity) => {
+            i18n::t!(
+                "Remote host ({display_name})",
+                display_name = readable_host(identity)
+            )
+        }
     }
 }
 
@@ -1009,8 +1055,8 @@ fn decision_label(
     timezone: UtcOffset,
 ) -> String {
     let decision = match decision {
-        LaunchDecision::Approved => "許可",
-        LaunchDecision::Denied => "許可しない",
+        LaunchDecision::Approved => i18n::t!("Allowed"),
+        LaunchDecision::Denied => i18n::t!("Not allowed"),
     };
     match decided_at(timestamp, now, timezone) {
         Some(decided_at) => format!("{decision} ({decided_at})"),
@@ -1036,12 +1082,16 @@ fn render_record_revoke_button(
 ) -> AnyElement {
     let (label, tooltip) = match record.decision {
         LaunchDecision::Approved => (
-            "承認を取り消す",
-            "承認を取り消して、動いているプログラムを止めます。もう一度起動するには、あらためて許可が必要です。",
+            i18n::t!("Revoke Approval"),
+            i18n::t!(
+                "Revokes the approval and stops the program if it is running. Starting it again will need your approval again."
+            ),
         ),
         LaunchDecision::Denied => (
-            "「許可しない」を取り消す",
-            "「許可しない」の記録を消します。次に同じ内容の起動を求められたら、あらためて確認します。",
+            i18n::t!("Revoke Denial"),
+            i18n::t!(
+                "Removes the record of the denial. The next time the same launch is requested, you'll be asked again."
+            ),
         ),
     };
     let key = record.approval_key();
@@ -1072,7 +1122,8 @@ fn revoke_decision(
     let Some(approvals) = ProjectLaunchApprovals::try_global(cx) else {
         settings_window.launch_approvals.errors.insert(
             stored_key,
-            "承認の記録を扱えないため、取り消せません。".into(),
+            i18n::t!("The approval records are unavailable, so the decision can't be revoked.")
+                .into(),
         );
         cx.notify();
         return;
@@ -1083,10 +1134,11 @@ fn revoke_decision(
         let Err(error) = task.await else {
             return;
         };
+        let error = store_error_text(&error);
         this.update(cx, |this, cx| {
             this.launch_approvals
                 .errors
-                .insert(stored_key, format!("取り消せませんでした: {error}").into());
+                .insert(stored_key, i18n::t!("Couldn't revoke: {error}").into());
             cx.notify();
         })
         .log_err();
@@ -1108,21 +1160,21 @@ mod tests {
         assert_eq!(
             pending_launch_lines(LaunchKind::ContextServer, "github", false),
             vec![
-                "このプロジェクトの設定が起動を求めています".to_string(),
-                "MCP サーバー「github」".to_string(),
+                "This project's settings want to start a program".to_string(),
+                "MCP server \"github\"".to_string(),
             ]
         );
         assert_eq!(
             pending_launch_lines(LaunchKind::ExternalFormatter, "prettier", true),
             vec![
-                "このプロジェクトの設定が起動を求めています".to_string(),
-                "外部フォーマッター「prettier」".to_string(),
+                "This project's settings want to start a program".to_string(),
+                "External formatter \"prettier\"".to_string(),
                 CHANGED_SINCE_SHOWN_MESSAGE.to_string(),
             ]
         );
         assert_eq!(
             launch_title(LaunchKind::LanguageServerBinary, "rust-analyzer"),
-            "言語サーバー「rust-analyzer」の実行ファイル"
+            "Binary for language server \"rust-analyzer\""
         );
     }
 
@@ -1143,18 +1195,21 @@ mod tests {
         );
         assert_eq!(
             definition_file_label(&LaunchDefinitionFile::RemoteServerSettings, &remote),
-            "me@build のサーバー設定"
+            "Server settings on me@build"
         );
         assert_eq!(
             definition_file_label(&LaunchDefinitionFile::ResolvedOnRemoteHost, &remote),
-            "me@build で拡張機能が決めたコマンド (設定ファイルはありません)"
+            "Command chosen by an extension on me@build (no settings file)"
         );
-        assert_eq!(execution_host_label(&ExecutionHost::ThisMachine), "この PC");
+        assert_eq!(
+            execution_host_label(&ExecutionHost::ThisMachine),
+            "This computer"
+        );
         assert_eq!(
             execution_host_label(&ExecutionHost::Remote {
                 display_name: "me@build".into()
             }),
-            "接続先 (me@build)"
+            "Remote host (me@build)"
         );
     }
 
@@ -1174,7 +1229,7 @@ mod tests {
                     "PATH=/opt/tools/bin".to_string(),
                     "NODE_OPTIONS=--require ./hook.js".to_string(),
                 ],
-                Some("GITHUB_TOKEN (値は表示しません)".to_string()),
+                Some("GITHUB_TOKEN (values not shown)".to_string()),
             )
         );
     }
@@ -1187,31 +1242,31 @@ mod tests {
                     program: "node".into(),
                     working_directory: "/work/app".into(),
                 },
-                "node はプロジェクトのフォルダー /work/app で起動し、そこにあるコードを読み込む可能性があります。後から中身が変わっても再確認されません。",
+                "node starts in the project folder /work/app and may load code from it. You won't be asked again if the contents change later.",
             ),
             (
                 UnboundWorktreeContent::File("/work/app/config.toml".into()),
-                "/work/app/config.toml はプロジェクト内のファイルですが、中身は承認に含まれません。後から中身が変わっても再確認されません。",
+                "/work/app/config.toml is a file in the project, but its contents are not part of the approval. You won't be asked again if the contents change later.",
             ),
             (
                 UnboundWorktreeContent::Directory("/work/app/scripts".into()),
-                "フォルダー /work/app/scripts の中身は承認に含まれません。後から中身が変わっても再確認されません。",
+                "The contents of the folder /work/app/scripts are not part of the approval. You won't be asked again if the contents change later.",
             ),
             (
                 UnboundWorktreeContent::ArgumentFile("/work/app/args.txt".into()),
-                "引数ファイル /work/app/args.txt の中身は承認に含まれません。後から中身が変わっても再確認されません。",
+                "The contents of the argument file /work/app/args.txt are not part of the approval. You won't be asked again if the contents change later.",
             ),
             (
                 UnboundWorktreeContent::Wrapper("direnv".into()),
-                "direnv は別のプログラムを起動します。中身は承認に含まれません。",
+                "direnv starts another program. Its contents are not part of the approval.",
             ),
             (
                 UnboundWorktreeContent::RemoteFile("/srv/app/server.py".into()),
-                "接続先のファイル /srv/app/server.py の中身はここから確かめられないため、承認に含まれません。後から中身が変わっても再確認されません。",
+                "The contents of the remote file /srv/app/server.py can't be checked from here, so they are not part of the approval. You won't be asked again if the contents change later.",
             ),
             (
                 UnboundWorktreeContent::Unreadable("/work/app/tool".into()),
-                "/work/app/tool を読めないため、中身を確かめられません。",
+                "/work/app/tool can't be read, so its contents can't be checked.",
             ),
         ] {
             assert_eq!(unbound_content_warning(&content), expected);
@@ -1220,12 +1275,13 @@ mod tests {
         let notice = bound_files_notice(&["scripts/server.py".into()])
             .expect("a bound file should be listed");
         assert!(
-            notice.starts_with("中身を承認に含めるファイル: scripts/server.py。"),
+            notice
+                .starts_with("Files whose contents are part of this approval: scripts/server.py. "),
             "{notice}"
         );
         assert_eq!(
             replaced_user_entry_warning(LaunchKind::ContextServer),
-            "ユーザー設定の同名サーバーを置き換えています"
+            "Replaces the server of the same name in your user settings"
         );
     }
 
@@ -1245,7 +1301,7 @@ mod tests {
         assert_eq!(names_without_values(&[]), None);
         assert_eq!(
             names_without_values(&["GITHUB_TOKEN".into(), "DEBUG".into()]).as_deref(),
-            Some("GITHUB_TOKEN, DEBUG (値は表示しません)")
+            Some("GITHUB_TOKEN, DEBUG (values not shown)")
         );
     }
 
@@ -1621,7 +1677,7 @@ mod tests {
 
     #[test]
     fn names_the_host_and_when_the_decision_was_made() {
-        assert_eq!(record_host_label(None), "この PC");
+        assert_eq!(record_host_label(None), "This computer");
         assert_eq!(record_host_tooltip(None), None);
         // The scheme repeats the row, and the digest of the connection's own
         // arguments is not something the user can act on, so the row shows
@@ -1641,7 +1697,7 @@ mod tests {
         ] {
             assert_eq!(
                 record_host_label(Some(identity)),
-                format!("接続先 ({shown})"),
+                format!("Remote host ({shown})"),
                 "identity: {identity}"
             );
             assert_eq!(
@@ -1652,15 +1708,32 @@ mod tests {
         }
 
         let now = OffsetDateTime::from_unix_timestamp(1_760_000_000).expect("a valid instant");
-        let today = decision_label(LaunchDecision::Approved, 1_760_000_000, now, UtcOffset::UTC);
-        assert!(today.starts_with("許可 (今日 "), "{today}");
-        let older = decision_label(LaunchDecision::Denied, 1_600_000_000, now, UtcOffset::UTC);
-        assert!(older.starts_with("許可しない (2020年"), "{older}");
+        let today_at =
+            decided_at(1_760_000_000, now, UtcOffset::UTC).expect("a representable date");
+        let older_at =
+            decided_at(1_600_000_000, now, UtcOffset::UTC).expect("a representable date");
+        assert_eq!(
+            decision_label(LaunchDecision::Approved, 1_760_000_000, now, UtcOffset::UTC),
+            format!("Allowed ({today_at})")
+        );
+        assert_eq!(
+            decision_label(LaunchDecision::Denied, 1_600_000_000, now, UtcOffset::UTC),
+            format!("Not allowed ({older_at})")
+        );
+        // A decision made today is named by the day alone, an older one by its
+        // date, whatever words the time format uses for either.
+        assert!(!today_at.contains("2025"), "{today_at}");
+        assert!(older_at.contains("2020"), "{older_at}");
+        assert_ne!(
+            today_at.replace(char::is_numeric, ""),
+            older_at.replace(char::is_numeric, ""),
+            "today's and an older decision's are written in different shapes"
+        );
         // A clock far enough ahead writes a timestamp no date can hold; the
         // decision itself is still worth showing.
         assert_eq!(
             decision_label(LaunchDecision::Approved, u64::MAX, now, UtcOffset::UTC),
-            "許可"
+            "Allowed"
         );
     }
 

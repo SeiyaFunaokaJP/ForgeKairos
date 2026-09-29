@@ -5,5 +5,101 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "A worktree with this name already exists"
+msgstr "この名前のワークツリーはすでに存在します。"
+
+msgid "Automate Setup"
+msgstr "セットアップを自動化"
+
+msgid "Automate Worktree Setup"
+msgstr "ワークツリーのセットアップを自動化"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cannot create a named worktree in a project with multiple repositories"
+msgstr "複数のリポジトリを含むプロジェクトでは名前付きワークツリーを作成できません。"
+
+msgid "Create"
+msgstr "作成"
+
+msgid "Create \"{name}\" based on {branch_label}"
+msgstr "{branch_label} を基に \"{name}\" を作成"
+
+msgid "Create new worktree based on {branch_label}"
+msgstr "{branch_label} を基に新規ワークツリーを作成"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete Worktree"
+msgstr "ワークツリーを削除"
+
+msgid "Deleting…"
+msgstr "削除中…"
+
+msgid "Failed to connect"
+msgstr "接続できませんでした"
+
+msgid "Force Delete"
+msgstr "強制削除"
+
+msgid "Force Delete Worktree"
+msgstr "ワークツリーを強制削除"
+
 msgid "Hold {} to force delete"
 msgstr "{} キーを押しながらクリックすると強制削除します"
+
+msgid "Learn more"
+msgstr "詳細"
+
+msgid "Open"
+msgstr "開く"
+
+msgid "Open in New Window"
+msgstr "新しいウィンドウで開く"
+
+msgid "Output from git {operation}"
+msgstr "git {operation} の出力"
+
+msgid "Remove Worktree from Window"
+msgstr "ワークツリーをウィンドウから削除"
+
+msgid "Requires a Git repository in the project"
+msgstr "プロジェクトに Git リポジトリが必要です。"
+
+msgid "Select or type to create a worktree…"
+msgstr "ワークツリーを選択、または入力して作成…"
+
+msgid "Show Error Logs"
+msgstr "エラーログを表示"
+
+msgid "Some project folders are not git repositories. They were included as-is without creating a worktree."
+msgstr "Git リポジトリではないプロジェクトフォルダーがあります。ワークツリーを作成せずそのまま追加しました。"
+
+msgid "This Window"
+msgstr "このウィンドウ"
+
+msgid "Use local {}"
+msgstr "ローカルの {} を使用"
+
+msgid "View Log"
+msgstr "ログを表示"
+
+msgid "Worktree \"{display_name}\" contains modified or untracked files. Force delete it?"
+msgstr "ワークツリー \"{display_name}\" に変更されたファイルまたは未追跡のファイルがあります。強制的に削除しますか?"
+
+msgid "Worktree creation is not supported in collaborative projects"
+msgstr "共同編集中のプロジェクトではワークツリーを作成できません。"
+
+msgid "You may need to configure git for Github."
+msgstr "GitHub 向けに git の設定が必要な場合があります。"
+
+msgid "current branches"
+msgstr "現在の各ブランチ"
+
+msgid "git fetch failed for {}"
+msgstr "{} の git fetch が失敗しました"
+
+msgid "git {} failed"
+msgstr "git {} が失敗しました"

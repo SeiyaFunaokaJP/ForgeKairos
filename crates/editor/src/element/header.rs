@@ -755,13 +755,13 @@ pub(crate) fn render_buffer_header(
                                         move |_window, cx| {
                                             Tooltip::with_meta_in(
                                                 if is_folded_for_tooltip {
-                                                    "抜粋を展開"
+                                                    i18n::t!("Unfold Excerpt")
                                                 } else {
-                                                    "抜粋を折りたたむ"
+                                                    i18n::t!("Fold Excerpt")
                                                 },
                                                 Some(&ToggleFold),
-                                                format!(
-                                                    "{} ですべて切り替え",
+                                                i18n::t!(
+                                                    "{} to toggle all",
                                                     text_for_keystroke(
                                                         &Modifiers::alt(),
                                                         "click",
@@ -857,7 +857,7 @@ pub(crate) fn render_buffer_header(
                                             )
                                             .tooltip(move |_, cx| {
                                                 Tooltip::with_meta(
-                                                    "ファイルを開く",
+                                                    i18n::t!("Open File"),
                                                     None,
                                                     full_path.clone(),
                                                     cx,
@@ -925,7 +925,7 @@ pub(crate) fn render_buffer_header(
                                 })
                                 .when(show_open_file_button, |this| {
                                     this.child(
-                                        Button::new("open-file-button", "ファイルを開く")
+                                        Button::new("open-file-button", i18n::t!("Open File"))
                                             .style(ButtonStyle::OutlinedCustom(
                                                 cx.theme().colors().border.opacity(0.6),
                                             ))
@@ -1017,7 +1017,7 @@ pub(crate) fn render_buffer_header(
                     menu = menu
                         .when_some(abs_path, |menu, abs_path| {
                             menu.entry(
-                                "パスをコピー",
+                                i18n::t!("Copy Path"),
                                 Some(Box::new(zed_actions::workspace::CopyPath)),
                                 window.handler_for(&editor, move |_, _, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(
@@ -1028,7 +1028,7 @@ pub(crate) fn render_buffer_header(
                         })
                         .when_some(relative_path, |menu, relative_path| {
                             menu.entry(
-                                "相対パスをコピー",
+                                i18n::t!("Copy Relative Path"),
                                 Some(Box::new(zed_actions::workspace::CopyRelativePath)),
                                 window.handler_for(&editor, move |_, _, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(
@@ -1043,7 +1043,7 @@ pub(crate) fn render_buffer_header(
                         )
                         .when_some(reveal_in_project_panel, |menu, entry_id| {
                             menu.entry(
-                                "プロジェクトパネルで表示",
+                                i18n::t!("Reveal In Project Panel"),
                                 Some(Box::new(RevealInProjectPanel::default())),
                                 window.handler_for(&editor, move |editor, _, cx| {
                                     if let Some(project) = &mut editor.project {
@@ -1056,7 +1056,7 @@ pub(crate) fn render_buffer_header(
                         })
                         .when_some(parent_abs_path, |menu, parent_abs_path| {
                             menu.entry(
-                                "ターミナルで開く",
+                                i18n::t!("Open in Terminal"),
                                 Some(Box::new(OpenInTerminal)),
                                 window.handler_for(&editor, move |_, window, cx| {
                                     window.dispatch_action(

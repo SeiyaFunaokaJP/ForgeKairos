@@ -205,7 +205,12 @@ impl MermaidEditor {
         RequirementRow {
             name: self.new_field(&requirement.name, window, cx),
             id: self.new_placeholder_field(&requirement.id.value, "ID", window, cx),
-            text: self.new_placeholder_field(&requirement.text.value, "本文 (text)", window, cx),
+            text: self.new_placeholder_field(
+                &requirement.text.value,
+                i18n::t!("Requirement text (text)"),
+                window,
+                cx,
+            ),
         }
     }
 
@@ -219,13 +224,13 @@ impl MermaidEditor {
             name: self.new_field(&element.name, window, cx),
             element_type: self.new_placeholder_field(
                 &element.element_type.value,
-                "種類 (type)",
+                i18n::t!("Element type (type)"),
                 window,
                 cx,
             ),
             doc_ref: self.new_placeholder_field(
                 &element.doc_ref.value,
-                "文書の参照 (docref)",
+                i18n::t!("Document reference (docref)"),
                 window,
                 cx,
             ),
@@ -310,7 +315,7 @@ impl MermaidEditor {
         };
         let requirement = Requirement {
             kind: RequirementKind::Requirement,
-            name: form.document.unused_name("要求"),
+            name: form.document.unused_name(i18n::t!("Requirement")),
             id: RequirementValue::new("", false),
             text: RequirementValue::new("", true),
             risk: None,
@@ -332,7 +337,7 @@ impl MermaidEditor {
             return;
         };
         let element = RequirementElement {
-            name: form.document.unused_name("要素"),
+            name: form.document.unused_name(i18n::t!("Element")),
             element_type: RequirementValue::new("", true),
             doc_ref: RequirementValue::new("", false),
             classes: Vec::new(),
@@ -485,7 +490,7 @@ impl MermaidEditor {
             .map(|requirement| requirement.name.clone())
             .or_else(|| document.names().into_iter().last());
         let (Some(source), Some(target)) = (source, target) else {
-            self.message = Some("先に要求か要素を追加してください。".into());
+            self.message = Some(i18n::t!("Add a requirement or an element first.").into());
             cx.notify();
             return;
         };
@@ -583,7 +588,10 @@ impl MermaidEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let last = form.requirements.len().saturating_sub(1);
-        let mut section = v_flex().w_full().gap_2().child(section_title("要求"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_2()
+            .child(section_title(i18n::t!("Requirements")));
         for index in 0..form.requirements.len() {
             let (Some(row), Some(requirement)) = (
                 form.requirements.get(index),
@@ -703,7 +711,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-requirement-add",
-                "要求を追加",
+                i18n::t!("Add Requirement"),
                 cx.listener(|this, _, window, cx| this.add_requirement(window, cx)),
             ))
             .into_any_element()
@@ -718,10 +726,9 @@ impl MermaidEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let last = form.elements.len().saturating_sub(1);
-        let mut section = v_flex()
-            .w_full()
-            .gap_2()
-            .child(section_title("要素 (要求を満たす・検証するもの)"));
+        let mut section = v_flex().w_full().gap_2().child(section_title(i18n::t!(
+            "Elements (what satisfies or verifies a requirement)"
+        )));
         for index in 0..form.elements.len() {
             let (Some(row), Some(element)) =
                 (form.elements.get(index), document.elements.get(index))
@@ -783,7 +790,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-requirement-add-element",
-                "要素を追加",
+                i18n::t!("Add Element"),
                 cx.listener(|this, _, window, cx| this.add_requirement_element(window, cx)),
             ))
             .child(render_class_input(
@@ -820,7 +827,7 @@ impl MermaidEditor {
                 index,
                 index == 0,
                 index >= last,
-                "削除 (この名前を使う関係とスタイル指定も消えます)",
+                i18n::t!("Delete (also removes the relationships and styles that use this name)"),
                 move_up,
                 move_down,
                 remove,
@@ -912,7 +919,10 @@ impl MermaidEditor {
     ) -> AnyElement {
         let names = document.names();
         let last = document.relationships.len().saturating_sub(1);
-        let mut section = v_flex().w_full().gap_1().child(section_title("関係"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Relationships")));
         for (index, relationship) in document.relationships.iter().enumerate() {
             section = section.child(
                 h_flex()
@@ -957,7 +967,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-requirement-add-relationship",
-                "関係を追加",
+                i18n::t!("Add Relationship"),
                 cx.listener(|this, _, _window, cx| this.add_requirement_relationship(cx)),
             ))
             .into_any_element()
@@ -1085,7 +1095,7 @@ impl MermaidEditor {
         h_flex()
             .gap_2()
             .child(
-                Label::new("方向")
+                Label::new(i18n::t!("Direction"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -1103,17 +1113,17 @@ impl MermaidEditor {
 }
 
 fn risk_label(risk: Option<RequirementRisk>) -> &'static str {
-    risk.map_or("リスク: 未指定", RequirementRisk::label)
+    risk.map_or(i18n::t!("Risk: Not Set"), RequirementRisk::label)
 }
 
 fn verify_method_label(method: Option<VerifyMethod>) -> &'static str {
-    method.map_or("検証: 未指定", VerifyMethod::label)
+    method.map_or(i18n::t!("Verification: Not Set"), VerifyMethod::label)
 }
 
 fn direction_label(direction: Option<RequirementDirection>) -> &'static str {
     match direction {
         Some(direction) => direction.label(),
-        None => "指定なし",
+        None => i18n::t!("Not Set"),
     }
 }
 

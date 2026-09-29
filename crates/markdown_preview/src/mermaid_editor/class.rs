@@ -377,7 +377,7 @@ pub(super) fn problem(document: &ClassDocument) -> Option<SharedString> {
     // diagram chosen from the kind picker and confirmed straight away would
     // leave a fence the preview can only report an error about.
     if document.items.is_empty() && document.direction.is_none() {
-        return Some("クラスを 1 つ以上追加してください。".into());
+        return Some(i18n::t!("Add at least one class.").into());
     }
     items_problem(&document.items)
 }
@@ -407,12 +407,12 @@ fn items_problem(items: &[ClassItem]) -> Option<SharedString> {
     for item in items {
         for name in named_classes(item) {
             if name.is_empty() {
-                return Some("名前が空のクラスがあります。".into());
+                return Some(i18n::t!("A class has an empty name.").into());
             }
             if !is_valid_class_name(name) {
                 return Some(
-                    format!(
-                        "クラス名「{name}」は使えません (空白・記号と Mermaid の予約語は不可)。"
+                    i18n::t!(
+                        "The class name \"{name}\" is not valid (no whitespace, symbols or Mermaid keywords)."
                     )
                     .into(),
                 );
@@ -421,27 +421,31 @@ fn items_problem(items: &[ClassItem]) -> Option<SharedString> {
         let problem = match item {
             ClassItem::Class(declaration) => class_problem(declaration),
             ClassItem::Member { text, .. } => (!is_valid_member_text(text)).then(|| {
-                SharedString::from(format!(
-                    "メンバー「{text}」は使えません (前後の空白、`%%{{` と `}}` だけの行は不可)。"
+                SharedString::from(i18n::t!(
+                    "The member \"{text}\" is not valid (no leading or trailing whitespace, no `%%{{`, and not a line of only `}}`)."
                 ))
             }),
             ClassItem::Annotation { annotation, .. } => {
                 (!is_valid_annotation(annotation)).then(|| {
-                    SharedString::from(format!(
-                        "注釈「{annotation}」は使えません (`<`・`>`・`\"`・`%%` と前後の空白は不可)。"
+                    SharedString::from(i18n::t!(
+                        "The annotation \"{annotation}\" is not valid (no `<`, `>`, `\"`, `%%`, or leading or trailing whitespace)."
                     ))
                 })
             }
             ClassItem::Relation(relation) => relation_problem(relation),
             ClassItem::Note(note) => (!is_valid_quoted_text(&note.text)).then(|| {
-                SharedString::from("ノートの本文に `\"`・`%%{` と改行は使えません。".to_string())
+                SharedString::from(i18n::t!(
+                    "The note text cannot contain `\"`, `%%{{` or line breaks."
+                ))
             }),
             ClassItem::Namespace(namespace) => match is_valid_class_name(&namespace.name) {
                 false => Some(match namespace.name.is_empty() {
-                    true => SharedString::from("名前が空の `namespace` があります。"),
-                    false => {
-                        format!("`namespace` の名前「{}」は使えません。", namespace.name).into()
-                    }
+                    true => SharedString::from(i18n::t!("A `namespace` has an empty name.")),
+                    false => i18n::t!(
+                        "The `namespace` name \"{name}\" is not valid.",
+                        name = namespace.name
+                    )
+                    .into(),
                 }),
                 // `merman` 0.8 reads a namespace with nothing but comments in
                 // it and then fails to draw the diagram.
@@ -451,9 +455,9 @@ fn items_problem(items: &[ClassItem]) -> Option<SharedString> {
                     .all(|item| matches!(item, ClassItem::Preserved(_))) =>
                 {
                     Some(
-                        format!(
-                            "`namespace` の「{}」の中が空です。クラスを入れるか、`namespace` を削除してください (Mermaid は空の `namespace` を描けません)。",
-                            namespace.name
+                        i18n::t!(
+                            "The `namespace` \"{name}\" is empty. Put a class in it or delete the `namespace` (Mermaid cannot draw an empty `namespace`).",
+                            name = namespace.name
                         )
                         .into(),
                     )
@@ -462,7 +466,11 @@ fn items_problem(items: &[ClassItem]) -> Option<SharedString> {
                     .label
                     .as_ref()
                     .filter(|label| !is_valid_quoted_text(label))
-                    .map(|_| SharedString::from("`namespace` の表示名に `\"` と `%%{` は使えません。"))
+                    .map(|_| {
+                        SharedString::from(i18n::t!(
+                            "The display name of a `namespace` cannot contain `\"` or `%%{{`."
+                        ))
+                    })
                     .or_else(|| items_problem(&namespace.items)),
             },
             ClassItem::Preserved(_) => None,
@@ -478,12 +486,15 @@ fn class_problem(declaration: &ClassDecl) -> Option<SharedString> {
     if let Some(generic) = &declaration.reference.generic
         && !is_valid_generic(generic)
     {
-        return Some(format!("総称型「{generic}」は使えません。").into());
+        return Some(i18n::t!("The generic type \"{generic}\" is not valid.").into());
     }
     if let Some(label) = &declaration.label
         && !is_valid_quoted_text(label)
     {
-        return Some("クラスの表示名に `\"`・`%%{` と改行は使えません。".into());
+        return Some(
+            i18n::t!("The display name of a class cannot contain `\"`, `%%{{` or line breaks.")
+                .into(),
+        );
     }
     declaration
         .members
@@ -491,22 +502,28 @@ fn class_problem(declaration: &ClassDecl) -> Option<SharedString> {
         .flatten()
         .find(|member| !is_valid_block_member_text(member))
         .map(|member| {
-            SharedString::from(format!(
-                "メンバー「{member}」は使えません (`}}` で始まる行、`%%{{` と前後の空白は不可)。"
+            SharedString::from(i18n::t!(
+                "The member \"{member}\" is not valid (no line starting with `}}`, no `%%{{`, and no leading or trailing whitespace)."
             ))
         })
 }
 
 fn relation_problem(relation: &ClassRelation) -> Option<SharedString> {
     if !is_valid_relation_arrow(&relation.arrow) {
-        return Some(format!("関係の記号「{}」は使えません。", relation.arrow).into());
+        return Some(
+            i18n::t!(
+                "The relationship symbol \"{arrow}\" is not valid.",
+                arrow = relation.arrow
+            )
+            .into(),
+        );
     }
     for generic in [&relation.left.generic, &relation.right.generic]
         .into_iter()
         .flatten()
     {
         if !is_valid_generic(generic) {
-            return Some(format!("総称型「{generic}」は使えません。").into());
+            return Some(i18n::t!("The generic type \"{generic}\" is not valid.").into());
         }
     }
     for cardinality in [&relation.left_cardinality, &relation.right_cardinality]
@@ -514,14 +531,20 @@ fn relation_problem(relation: &ClassRelation) -> Option<SharedString> {
         .flatten()
     {
         if !is_valid_quoted_text(cardinality) {
-            return Some("多重度に `\"`・`%%{` と改行は使えません。".into());
+            return Some(
+                i18n::t!("A multiplicity cannot contain `\"`, `%%{{` or line breaks.").into(),
+            );
         }
     }
     relation
         .label
         .as_ref()
         .filter(|label| !is_valid_relation_label(label))
-        .map(|_| SharedString::from("関係のラベルに改行・`%%{` と前後の空白は使えません。"))
+        .map(|_| {
+            SharedString::from(i18n::t!(
+                "A relationship label cannot contain line breaks, `%%{{`, or leading or trailing whitespace."
+            ))
+        })
 }
 
 /// The items a path addresses: each element steps into the namespace at that
@@ -643,17 +666,17 @@ fn namespace_names(items: &[ClassItem], names: &mut Vec<String>) {
 fn unused_namespace_name(items: &[ClassItem]) -> String {
     let mut taken = Vec::new();
     namespace_names(items, &mut taken);
-    const PREFIX: &str = "名前空間";
-    if !taken.iter().any(|name| name == PREFIX) {
-        return PREFIX.to_string();
+    let prefix = i18n::t!("Namespace");
+    if !taken.iter().any(|name| name == prefix) {
+        return prefix.to_string();
     }
     for suffix in 1..usize::MAX {
-        let candidate = format!("{PREFIX}{suffix}");
+        let candidate = format!("{prefix}{suffix}");
         if !taken.contains(&candidate) {
             return candidate;
         }
     }
-    PREFIX.to_string()
+    prefix.to_string()
 }
 
 impl MermaidEditor {
@@ -863,7 +886,7 @@ impl MermaidEditor {
             .class()
             .and_then(|form| form.settled_class_names(cx).first().cloned());
         if name.is_none() {
-            self.message = Some("先にクラスを追加してください。".into());
+            self.message = Some(i18n::t!("Add a class first.").into());
             cx.notify();
         }
         name
@@ -878,7 +901,7 @@ impl MermaidEditor {
         let Some(form) = self.class() else {
             return;
         };
-        let name = form.current_document(cx).unused_name("クラス");
+        let name = form.current_document(cx).unused_name(i18n::t!("Class"));
         let row = ItemRow::Class {
             generic: self.new_field("", window, cx),
             label: self.new_field("", window, cx),
@@ -908,14 +931,15 @@ impl MermaidEditor {
         let Some(name) = self.first_class_name(cx) else {
             return;
         };
+        let text = i18n::t!("+method()");
         let row = ItemRow::Member {
-            text: self.new_field("+メソッド()", window, cx),
+            text: self.new_field(text, window, cx),
         };
         self.push_class_item(
             &path,
             ClassItem::Member {
                 reference: ClassRef::new(name),
-                text: "+メソッド()".to_string(),
+                text: text.to_string(),
             },
             row,
             window,
@@ -949,7 +973,7 @@ impl MermaidEditor {
         };
         let names = form.settled_class_names(cx);
         let Some(left) = names.first().cloned() else {
-            self.message = Some("先にクラスを追加してください。".into());
+            self.message = Some(i18n::t!("Add a class first.").into());
             cx.notify();
             return;
         };
@@ -985,14 +1009,15 @@ impl MermaidEditor {
         // A note with no class is a diagram Mermaid draws, so an empty diagram
         // is no reason to refuse one.
         let target = form.settled_class_names(cx).first().cloned();
+        let text = i18n::t!("Memo");
         let row = ItemRow::Note {
-            text: self.new_field("メモ", window, cx),
+            text: self.new_field(text, window, cx),
         };
         self.push_class_item(
             &path,
             ClassItem::Note(ClassNote {
                 target,
-                text: "メモ".to_string(),
+                text: text.to_string(),
                 comment: None,
             }),
             row,
@@ -1003,7 +1028,7 @@ impl MermaidEditor {
 
     fn add_namespace(&mut self, path: Vec<usize>, window: &mut Window, cx: &mut Context<Self>) {
         if path.len() + 1 >= MAX_DEPTH {
-            self.message = Some("`namespace` の入れ子が深すぎます。".into());
+            self.message = Some(i18n::t!("`namespace` blocks are nested too deeply.").into());
             cx.notify();
             return;
         }
@@ -1136,7 +1161,8 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let field = self.new_field("+メソッド()", window, cx);
+        let text = i18n::t!("+method()");
+        let field = self.new_field(text, window, cx);
         {
             let Some(form) = self.class_mut() else {
                 return;
@@ -1155,7 +1181,7 @@ impl MermaidEditor {
             declaration
                 .members
                 .get_or_insert_with(Vec::new)
-                .push("+メソッド()".to_string());
+                .push(text.to_string());
             members.push(field);
         }
         self.settle_class(window, cx);
@@ -1277,7 +1303,7 @@ impl MermaidEditor {
         h_flex()
             .gap_2()
             .child(
-                Label::new("方向")
+                Label::new(i18n::t!("Direction"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -1303,10 +1329,9 @@ impl MermaidEditor {
             .map(|row| row.field.read(cx).text(cx).trim().to_string())
             .collect::<Vec<_>>();
 
-        let mut name_list = v_flex()
-            .w_full()
-            .gap_1()
-            .child(section_title("クラス名 (変えると参照も追随します)"));
+        let mut name_list = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Class Names (renaming updates the references too)"
+        )));
         for row in &form.names {
             let valid = is_valid_class_name(row.field.read(cx).text(cx).trim());
             name_list = name_list.child(
@@ -1319,7 +1344,7 @@ impl MermaidEditor {
             v_flex()
                 .w_full()
                 .gap_1()
-                .child(section_title("図の中身"))
+                .child(section_title(i18n::t!("Diagram Content")))
                 .child(self.render_class_scope(
                     &[],
                     &form.document.items,
@@ -1353,9 +1378,13 @@ impl MermaidEditor {
             let controls = {
                 let (up, down, remove) = (path.to_vec(), path.to_vec(), path.to_vec());
                 let remove_tooltip = match item {
-                    ClassItem::Class(_) => "削除 (このクラスを指す文も削除されます)",
-                    ClassItem::Namespace(_) => "削除 (中のクラスも削除されます)",
-                    _ => "削除",
+                    ClassItem::Class(_) => {
+                        i18n::t!("Delete (statements that refer to this class are deleted too)")
+                    }
+                    ClassItem::Namespace(_) => {
+                        i18n::t!("Delete (the classes inside are deleted too)")
+                    }
+                    _ => i18n::t!("Delete"),
                 };
                 row_controls_labelled(
                     &row_prefix,
@@ -1446,7 +1475,7 @@ impl MermaidEditor {
                     let add_path = path.to_vec();
                     block = block.child(add_button(
                         SharedString::from(format!("{row_prefix}-add-member-{index}")),
-                        SharedString::from("メンバーを追加"),
+                        SharedString::from(i18n::t!("Add Member")),
                         cx.listener(move |this, _, window, cx| {
                             this.add_class_member(add_path.clone(), index, window, cx)
                         }),
@@ -1461,7 +1490,7 @@ impl MermaidEditor {
                                     .w_full()
                                     .gap_1()
                                     .child(
-                                        Label::new("クラス")
+                                        Label::new(i18n::t!("Class"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     )
@@ -1505,7 +1534,7 @@ impl MermaidEditor {
                             .w_full()
                             .gap_1()
                             .child(
-                                Label::new("メンバー")
+                                Label::new(i18n::t!("Member"))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
@@ -1545,7 +1574,7 @@ impl MermaidEditor {
                         .w_full()
                         .gap_1()
                         .child(
-                            Label::new("注釈")
+                            Label::new(i18n::t!("Annotation"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -1651,7 +1680,7 @@ impl MermaidEditor {
                         .w_full()
                         .gap_1()
                         .child(
-                            Label::new("ノート")
+                            Label::new(i18n::t!("Note"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -1747,12 +1776,16 @@ impl MermaidEditor {
         let in_namespace = !path.is_empty();
         let mut buttons = h_flex().w_full().flex_wrap().gap_1();
         for (id, label, kind) in [
-            ("class", "クラス", AddKind::Class),
-            ("member", "メンバー行", AddKind::Member),
-            ("annotation", "注釈", AddKind::Annotation),
-            ("relation", "関係", AddKind::Relation),
-            ("note", "ノート", AddKind::Note),
-            ("namespace", "namespace", AddKind::Namespace),
+            ("class", i18n::t!("Add Class"), AddKind::Class),
+            ("member", i18n::t!("Add Member Line"), AddKind::Member),
+            (
+                "annotation",
+                i18n::t!("Add Annotation"),
+                AddKind::Annotation,
+            ),
+            ("relation", i18n::t!("Add Relationship"), AddKind::Relation),
+            ("note", i18n::t!("Add Note"), AddKind::Note),
+            ("namespace", i18n::t!("Add namespace"), AddKind::Namespace),
         ] {
             // Mermaid only takes class declarations, notes and further
             // namespaces inside a namespace.
@@ -1763,7 +1796,7 @@ impl MermaidEditor {
             let path = path.to_vec();
             buttons = buttons.child(add_button(
                 SharedString::from(format!("mermaid-class-add-{id}-{key}")),
-                SharedString::from(format!("{label}を追加")),
+                SharedString::from(label),
                 cx.listener(move |this, _, window, cx| {
                     let path = path.clone();
                     match kind {
@@ -1943,7 +1976,7 @@ impl MermaidEditor {
                 let this = this.clone();
                 let path = owned_path.clone();
                 menu = menu.toggleable_entry(
-                    format!("{arrow}  {label}"),
+                    format!("{arrow}  {}", i18n::tr(label)),
                     arrow == selected,
                     IconPosition::Start,
                     None,
@@ -2001,7 +2034,7 @@ fn name_label(name: &str) -> Label {
 
 fn target_label(name: &str) -> SharedString {
     match name.is_empty() {
-        true => "クラスなし".into(),
+        true => i18n::t!("No Class").into(),
         false => SharedString::from(name.to_string()),
     }
 }
@@ -2012,14 +2045,14 @@ fn arrow_label(arrow: &str) -> SharedString {
     RELATION_PRESETS
         .iter()
         .find(|(preset, _)| *preset == arrow)
-        .map(|(preset, label)| SharedString::from(format!("{preset}  {label}")))
+        .map(|(preset, label)| SharedString::from(format!("{preset}  {}", i18n::tr(label))))
         .unwrap_or_else(|| SharedString::from(arrow.to_string()))
 }
 
 fn direction_label(direction: Option<FlowDirection>) -> &'static str {
     match direction {
         Some(direction) => direction.label(),
-        None => "指定なし",
+        None => i18n::t!("Not Set"),
     }
 }
 
@@ -2100,8 +2133,9 @@ mod tests {
     /// asks for something to draw before it writes either.
     #[test]
     fn what_merman_cannot_draw_is_asked_for_before_writing() {
-        assert!(
-            problem(&ClassDocument::empty()).is_some_and(|problem| problem.contains("1 つ以上"))
+        assert_eq!(
+            problem(&ClassDocument::empty()).as_deref(),
+            Some("Add at least one class.")
         );
         for source in [
             "classDiagram\n  namespace N {\n  }",
@@ -2112,7 +2146,7 @@ mod tests {
             assert!(
                 found
                     .as_ref()
-                    .is_some_and(|problem| problem.contains("「N」の中が空")),
+                    .is_some_and(|problem| problem.contains("The `namespace` \"N\" is empty.")),
                 "{source}: {found:?}"
             );
         }
@@ -2128,11 +2162,11 @@ mod tests {
     #[test]
     fn a_namespace_gets_a_name_of_its_own() {
         let items = document(
-            "classDiagram\n  namespace 名前空間 {\n    namespace 名前空間1 {\n      class A\n    }\n  }",
+            "classDiagram\n  namespace Namespace {\n    namespace Namespace1 {\n      class A\n    }\n  }",
         )
         .items;
-        assert_eq!(unused_namespace_name(&items), "名前空間2");
-        assert_eq!(unused_namespace_name(&[]), "名前空間");
+        assert_eq!(unused_namespace_name(&items), "Namespace2");
+        assert_eq!(unused_namespace_name(&[]), "Namespace");
     }
 
     #[test]
@@ -2145,7 +2179,7 @@ mod tests {
                         declaration.reference.name = "駄目 な".to_string();
                     }
                 },
-                "クラス名",
+                "class name",
             ),
             (
                 "classDiagram\n  class A {\n    +x()\n  }",
@@ -2159,7 +2193,7 @@ mod tests {
                         *member = "}".to_string();
                     }
                 },
-                "メンバー",
+                "member",
             ),
             (
                 "classDiagram\n  class A",
@@ -2168,7 +2202,7 @@ mod tests {
                         declaration.label = Some("引用 \" つき".to_string());
                     }
                 },
-                "表示名",
+                "display name",
             ),
             (
                 "classDiagram\n  A --> B",
@@ -2177,7 +2211,7 @@ mod tests {
                         relation.arrow = "=>".to_string();
                     }
                 },
-                "関係の記号",
+                "relationship symbol",
             ),
             (
                 "classDiagram\n  A --> B",
@@ -2186,7 +2220,7 @@ mod tests {
                         relation.left_cardinality = Some("引用 \" つき".to_string());
                     }
                 },
-                "多重度",
+                "multiplicity",
             ),
             (
                 "classDiagram\n  class A\n  note for A \"メモ\"",
@@ -2195,7 +2229,7 @@ mod tests {
                         note.text = "引用 \" つき".to_string();
                     }
                 },
-                "ノート",
+                "note text",
             ),
             (
                 "classDiagram\n  namespace N {\n    class A\n  }",
@@ -2397,7 +2431,7 @@ mod tests {
         let message = cx.update(|_window, cx| modal.read(cx).message.clone());
         assert_eq!(
             message.as_deref(),
-            Some("ノートの本文に `\"`・`%%{` と改行は使えません。")
+            Some("The note text cannot contain `\"`, `%%{` or line breaks.")
         );
     }
 
@@ -2436,7 +2470,7 @@ mod tests {
                     %% 上のメモ
                     class A {
                         +x()
-                        +メソッド()
+                        +method()
                     }
                     %% 下のメモ
                     classDef warn fill:#f96
@@ -2475,7 +2509,7 @@ mod tests {
             *member = "} 後".to_string();
         }
         assert!(
-            problem(&emptied).is_some_and(|message| message.contains("メンバー")),
+            problem(&emptied).is_some_and(|message| message.contains("member")),
             "a line that starts with `}}` would close the block"
         );
     }
@@ -2516,7 +2550,7 @@ mod tests {
         assert_eq!(
             cx.update(|_window, cx| modal.read(cx).message.clone())
                 .as_deref(),
-            Some("名前が空のクラスがあります。")
+            Some("A class has an empty name.")
         );
     }
 
@@ -2766,7 +2800,7 @@ mod tests {
         assert!(cleared.class_names().iter().all(|name| !name.is_empty()));
         assert_eq!(
             problem(&cleared).as_deref(),
-            Some("名前が空のクラスがあります。")
+            Some("A class has an empty name.")
         );
 
         let mut generic = document("classDiagram\n  動物 <|-- 犬");
@@ -2776,7 +2810,7 @@ mod tests {
         }
         assert_eq!(
             problem(&generic).as_deref(),
-            Some("総称型「T U」は使えません。")
+            Some("The generic type \"T U\" is not valid.")
         );
     }
 

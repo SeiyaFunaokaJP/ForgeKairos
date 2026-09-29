@@ -7,11 +7,15 @@ pub struct PlanDefinitions;
 impl PlanDefinitions {
     pub fn free_plan(&self) -> impl IntoElement {
         List::new()
-            .child(ListBulletItem::new("採用された編集予測 2,000 件"))
-            .child(ListBulletItem::new(
-                "自分の AI API キーによる無制限のプロンプト",
-            ))
-            .child(ListBulletItem::new("外部エージェントの無制限利用"))
+            .child(ListBulletItem::new(i18n::t!(
+                "2,000 accepted edit predictions"
+            )))
+            .child(ListBulletItem::new(i18n::t!(
+                "Unlimited prompts with your AI API keys"
+            )))
+            .child(ListBulletItem::new(i18n::t!(
+                "Unlimited use of external agents"
+            )))
     }
 
     pub fn sign_in_upsell(&self) -> impl IntoElement {
@@ -34,33 +38,31 @@ impl PlanDefinitions {
 
     pub fn pro_plan(&self) -> impl IntoElement {
         List::new()
-            .child(ListBulletItem::new(
-                "Zed エージェントで使えるトークン $5 分",
-            ))
-            .child(ListBulletItem::new("$5 を超える分は従量課金"))
-            .child(ListBulletItem::new("無制限の編集予測"))
+            .child(ListBulletItem::new(i18n::t!("$5 of tokens in Zed agent")))
+            .child(ListBulletItem::new(i18n::t!(
+                "Usage-based billing beyond $5"
+            )))
+            .child(ListBulletItem::new(i18n::t!("Unlimited edit predictions")))
     }
 
     pub fn business_plan(&self) -> impl IntoElement {
         List::new()
-            .child(ListBulletItem::new("無制限の編集予測"))
-            .child(ListBulletItem::new("従量課金"))
+            .child(ListBulletItem::new(i18n::t!("Unlimited edit predictions")))
+            .child(ListBulletItem::new(i18n::t!("Usage-based billing")))
     }
 
     pub fn vip_plan(&self) -> impl IntoElement {
         List::new()
-            .child(ListBulletItem::new("無制限の編集予測"))
-            .child(ListBulletItem::new("Zed エージェントで使えるトークン"))
+            .child(ListBulletItem::new(i18n::t!("Unlimited edit predictions")))
+            .child(ListBulletItem::new(i18n::t!("Tokens in the Zed agent")))
     }
 
     pub fn student_plan(&self) -> impl IntoElement {
         List::new()
-            .child(ListBulletItem::new("無制限の編集予測"))
-            .child(ListBulletItem::new(
-                "Zed エージェントで使えるトークン $10 分",
-            ))
-            .child(ListBulletItem::new(
-                "追加利用向けのオプションのクレジットパック",
-            ))
+            .child(ListBulletItem::new(i18n::t!("Unlimited edit predictions")))
+            .child(ListBulletItem::new(i18n::t!("$10 of tokens in Zed agent")))
+            .child(ListBulletItem::new(i18n::t!(
+                "Optional credit packs for additional usage"
+            )))
     }
 }

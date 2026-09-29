@@ -86,10 +86,10 @@ impl StateKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Normal => "通常の状態",
-            Self::Choice => "分岐 <<choice>>",
-            Self::Fork => "分流 <<fork>>",
-            Self::Join => "合流 <<join>>",
+            Self::Normal => i18n::t!("Normal State"),
+            Self::Choice => i18n::t!("Choice <<choice>>"),
+            Self::Fork => i18n::t!("Fork <<fork>>"),
+            Self::Join => i18n::t!("Join <<join>>"),
         }
     }
 
@@ -115,8 +115,8 @@ impl NotePlacement {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::LeftOf => "左",
-            Self::RightOf => "右",
+            Self::LeftOf => i18n::tc!("note placement", "Left"),
+            Self::RightOf => i18n::tc!("note placement", "Right"),
         }
     }
 
@@ -289,11 +289,13 @@ pub fn parse_state(source: &str) -> Result<StateDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::State(_)) {
-            bail!("この図は状態遷移図ではありません。");
+            bail!(i18n::t!("This diagram is not a state diagram."));
         }
     }
 
@@ -312,17 +314,19 @@ pub fn parse_state(source: &str) -> Result<StateDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(keyword) = header_keyword(header) else {
-        bail!("状態遷移図ではありません (`stateDiagram` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a state diagram (only a diagram that starts with `stateDiagram` can be edited in the structured editor)."
+        ));
     };
     let rest = header
         .get(keyword.as_str().len()..)
         .unwrap_or_default()
         .trim();
     if !rest.is_empty() {
-        bail!(
-            "`{}` の行に `{rest}` が続いています。次の行に分けてからもう一度開いてください。",
+        bail!(i18n::t!(
+            "`{rest}` follows on the `{}` line. Move it to the next line, then open the editor again.",
             keyword.as_str()
-        );
+        ));
     }
 
     let mut parser = StateParser {
@@ -393,7 +397,9 @@ struct StateParser {
 impl StateParser {
     fn parse_scope(&mut self, depth: usize) -> Result<StateScope> {
         if depth > MAX_NESTING_DEPTH {
-            bail!("複合状態の入れ子が深すぎます。テキストのまま編集してください。");
+            bail!(i18n::t!(
+                "Composite states are nested too deeply. Edit it as text."
+            ));
         }
         let mut scope = StateScope::default();
 
@@ -407,7 +413,7 @@ impl StateParser {
             }
             if trimmed == "}" {
                 if depth == 0 {
-                    bail!("対応する `{{` のない `}}` があります。");
+                    bail!(i18n::t!("There is a `}}` without a matching `{{`."));
                 }
                 return Ok(scope);
             }
@@ -431,21 +437,23 @@ impl StateParser {
             }
             if trimmed == "--" {
                 if depth == 0 {
-                    bail!("並行区切り `--` は複合状態 (`state X {{ … }}`) の中だけに書けます。");
+                    bail!(i18n::t!(
+                        "The concurrency separator `--` can be written only inside a composite state (`state X {{ … }}`)."
+                    ));
                 }
                 scope.items.push(StateItem::Divider);
                 continue;
             }
             if let Some(rest) = statement_keyword(trimmed, "direction") {
                 let Some(direction) = direction_from_keyword(rest) else {
-                    bail!(
-                        "`direction {rest}` は読めません (TB / BT / LR / RL のどれかを書いてください)。"
-                    );
+                    bail!(i18n::t!(
+                        "`direction {rest}` cannot be read (write one of TB / BT / LR / RL)."
+                    ));
                 };
                 if scope.direction.is_some() {
-                    bail!(
-                        "`direction` が同じ場所に 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`direction` is written twice in the same place. Merge them into one, then open the editor again."
+                    ));
                 }
                 scope.direction = Some(direction);
                 continue;
@@ -488,7 +496,7 @@ impl StateParser {
         }
 
         if depth > 0 {
-            bail!("`{{` に対応する `}}` がありません。");
+            bail!(i18n::t!("There is no `}}` that matches a `{{`."));
         }
         Ok(scope)
     }
@@ -543,7 +551,9 @@ impl StateParser {
         } else if let Some(after) = strip_prefix_ignoring_case(rest, "right of") {
             (NotePlacement::RightOf, after)
         } else {
-            bail!("`note` のあとは `left of` か `right of` です ({statement})。");
+            bail!(i18n::t!(
+                "`note` must be followed by `left of` or `right of` ({statement})."
+            ));
         };
 
         let after = after.trim_start();
@@ -556,7 +566,10 @@ impl StateParser {
             .unwrap_or(after.len());
         let target = after.get(..target_end).unwrap_or_default();
         if !is_valid_state_id(target) {
-            bail!("`{target}` は状態 ID に使えません ({statement})。");
+            bail!(i18n::t!(
+                "`{id}` cannot be used as a state ID ({statement}).",
+                id = target
+            ));
         }
         let tail = after.get(target_end..).unwrap_or_default().trim_start();
 
@@ -574,7 +587,9 @@ impl StateParser {
         }
         loop {
             let Some(line) = self.lines.get(self.index).cloned() else {
-                bail!("`note` に対応する `end note` がありません ({statement})。");
+                bail!(i18n::t!(
+                    "There is no `end note` that matches the `note` ({statement})."
+                ));
             };
             self.index += 1;
             let trimmed = line.trim();
@@ -585,9 +600,9 @@ impl StateParser {
             // including in the middle of a line, and reads the rest of that line
             // as statements.
             if trimmed.to_ascii_lowercase().contains("end note") {
-                bail!(
-                    "`end note` を含む行はノートの本文に書けません ({trimmed})。テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "A line that contains `end note` cannot be written in the text of a note ({trimmed}). Edit it as text."
+                ));
             }
             text_lines.push(trimmed.to_string());
         }
@@ -614,14 +629,20 @@ impl StateParser {
     ) -> Result<StateItem> {
         if let Some(quoted) = rest.strip_prefix('"') {
             let Some((description, after)) = quoted.split_once('"') else {
-                bail!("`state \"説明\"` の引用符が閉じていません ({statement})。");
+                bail!(i18n::t!(
+                    "The quote of `state \"description\"` is not closed ({statement})."
+                ));
             };
             let Some(after_as) = strip_prefix_ignoring_case(after.trim_start(), "as") else {
-                bail!("`state \"説明\" as ID` の形で書いてください ({statement})。");
+                bail!(i18n::t!(
+                    "Write it as `state \"description\" as ID` ({statement})."
+                ));
             };
             let (id, opens_block) = split_block_open(after_as, statement)?;
             if !is_valid_state_id(&id) {
-                bail!("`{id}` は状態 ID に使えません ({statement})。");
+                bail!(i18n::t!(
+                    "`{id}` cannot be used as a state ID ({statement})."
+                ));
             }
             let description = Some(decode_entities(description.trim()));
             if opens_block || self.take_block_open() {
@@ -641,7 +662,9 @@ impl StateParser {
 
         if let Some((id, kind)) = split_kind_marker(rest) {
             if !is_valid_state_id(&id) {
-                bail!("`{id}` は状態 ID に使えません ({statement})。");
+                bail!(i18n::t!(
+                    "`{id}` cannot be used as a state ID ({statement})."
+                ));
             }
             return Ok(StateItem::State(StateEntry {
                 id,
@@ -653,7 +676,9 @@ impl StateParser {
 
         let (id, opens_block) = split_block_open(rest, statement)?;
         if !is_valid_state_id(&id) {
-            bail!("`{id}` は状態 ID に使えません ({statement})。");
+            bail!(i18n::t!(
+                "`{id}` cannot be used as a state ID ({statement})."
+            ));
         }
         if opens_block || self.take_block_open() {
             return Ok(StateItem::Composite(CompositeState {
@@ -691,9 +716,9 @@ fn parse_plain_statement(statement: &str, line: &str) -> Result<StateItem> {
     let (head, description) = split_description(statement)?;
     let head = head.trim();
     if head.contains("%%") {
-        bail!(
-            "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+        ));
     }
 
     if let Some((left, right)) = head.split_once("-->") {
@@ -750,9 +775,9 @@ fn split_description(statement: &str) -> Result<(&str, Option<String>)> {
         let head = statement.get(..offset).unwrap_or_default();
         let text = statement.get(offset + 1..).unwrap_or_default().trim();
         if let Some(separator) = bare_separator(text) {
-            bail!(
-                "説明の `{separator}` はそのままでは書けません ({statement})。`:` は `#58;`、`;` は `#59;` と書くか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The `{separator}` in the description cannot be written as it is ({statement}). Write `:` as `#58;` and `;` as `#59;`, or edit it as text."
+            ));
         }
         return Ok((head, Some(decode_entities(text))));
     }
@@ -807,15 +832,17 @@ fn parse_endpoint(text: &str, statement: &str) -> Result<(String, Option<String>
     if let Some(class) = &style_class
         && !is_valid_style_class(class)
     {
-        bail!("`{class}` はクラス名に使えません ({statement})。");
+        bail!(i18n::t!(
+            "`{class}` cannot be used as a class name ({statement})."
+        ));
     }
     if id == TERMINAL_STATE {
         return Ok((TERMINAL_STATE.to_string(), style_class));
     }
     if !is_valid_state_id(id) {
-        bail!(
-            "`{id}` は状態 ID に使えません ({statement})。空白・`:`・`;`・`-` を含む ID は Mermaid が読めません。"
-        );
+        bail!(i18n::t!(
+            "`{id}` cannot be used as a state ID ({statement}). Mermaid cannot read an ID that contains spaces, `:`, `;` or `-`."
+        ));
     }
     Ok((id.to_string(), style_class))
 }
@@ -827,9 +854,9 @@ fn split_block_open(text: &str, statement: &str) -> Result<(String, bool)> {
         Some(position) => {
             let after = text.get(position + 1..).unwrap_or_default().trim();
             if !after.is_empty() {
-                bail!(
-                    "`{{` のあとは改行してください ({statement})。1 行で書いた複合状態は構造化編集に対応していません。"
-                );
+                bail!(i18n::t!(
+                    "Start a new line after `{{` ({statement}). The structured editor does not support a composite state written on one line."
+                ));
             }
             Ok((
                 text.get(..position).unwrap_or_default().trim().to_string(),
@@ -1653,6 +1680,7 @@ mod tests {
 
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
+        let _japanese = crate::mermaid_model::japanese_for_this_thread();
         for source in [
             "stateDiagram-v2\n  A --> B %% 行末のメモ",
             "stateDiagram-v2\n  direction TB\n  direction LR\n  A --> B",
@@ -1853,7 +1881,7 @@ mod tests {
         let error = parse_state(&nested(MAX_NESTING_DEPTH + 1))
             .err()
             .expect("one level past the limit should be refused");
-        assert!(format!("{error}").contains("入れ子"), "{error}");
+        assert!(format!("{error}").contains("nested too deeply"), "{error}");
         // Deep enough to overflow the stack if the limit did not hold.
         assert!(parse_state(&nested(400)).is_err());
     }

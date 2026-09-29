@@ -86,8 +86,8 @@ fn outside_commit_args(shas: &[Oid]) -> Vec<String> {
 
 /// What the box says when the development range is longer than it reads.
 fn range_too_wide_message() -> String {
-    format!(
-        "開発ブランチの範囲が広すぎます ({MAX_RANGE_COMMITS} 件を超えています)。基点が正しいか確かめてください。"
+    i18n::t!(
+        "The development branch's range is too wide (more than {MAX_RANGE_COMMITS} commits). Check that the base is right."
     )
 }
 
@@ -153,20 +153,27 @@ struct AddOutcome {
 
 impl AddOutcome {
     fn notice(self) -> Option<SharedString> {
-        let mut parts = Vec::new();
-        if self.merges > 0 {
-            parts.push(format!(
-                "マージコミットは箱に入れられません ({} 件を除きました)。",
-                self.merges
-            ));
+        let merges = (self.merges > 0).then(|| {
+            i18n::tn!(
+                self.merges,
+                "Merge commits cannot go into the box ({count} was left out).",
+                "Merge commits cannot go into the box ({count} were left out)."
+            )
+        });
+        let already_placed = (self.already_placed > 0).then(|| {
+            i18n::tn!(
+                self.already_placed,
+                "{count} commit is already in the box.",
+                "{count} commits are already in the box."
+            )
+        });
+        match (merges, already_placed) {
+            (Some(merges), Some(already_placed)) => {
+                Some(i18n::tc!("two sentences", "{0} {1}", merges, already_placed).into())
+            }
+            (Some(sentence), None) | (None, Some(sentence)) => Some(sentence.into()),
+            (None, None) => None,
         }
-        if self.already_placed > 0 {
-            parts.push(format!(
-                "{} 件は既に箱に入っています。",
-                self.already_placed
-            ));
-        }
-        (!parts.is_empty()).then(|| parts.join("").into())
     }
 }
 
@@ -689,9 +696,10 @@ fn stale_base_warning(base: &str, branches: &[Branch]) -> Option<String> {
         return None;
     }
     let remote = upstream.stripped_ref_name()?;
-    Some(format!(
-        "ローカルの {base} はリモート ({remote}) より {} コミット古いです。基点を {remote} にするか、先にプルしてください。",
-        status.behind
+    Some(i18n::tn!(
+        status.behind,
+        "The local {base} is {count} commit behind the remote ({remote}). Use {remote} as the base, or pull first.",
+        "The local {base} is {count} commits behind the remote ({remote}). Use {remote} as the base, or pull first."
     ))
 }
 
@@ -804,12 +812,12 @@ impl MergeRequestBox {
     ) -> Self {
         let message_editor = cx.new(|cx| {
             let mut editor = Editor::auto_height(3, 12, window, cx);
-            editor.set_placeholder_text("MR のコミットメッセージ", window, cx);
+            editor.set_placeholder_text(i18n::t!("Commit message for the MR"), window, cx);
             editor
         });
         let branch_name_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("例: mr/新しい機能", window, cx);
+            editor.set_placeholder_text(i18n::t!("e.g. mr/new-feature"), window, cx);
             editor
         });
         let subscriptions = vec![
@@ -999,9 +1007,9 @@ impl MergeRequestBox {
             self.loading_saved = false;
             if !self.queued_candidates.is_empty() {
                 self.queued_candidates.clear();
-                self.box_notice = Some(Notice::warning(
-                    "開発ブランチが決まっていないため、箱に入れられませんでした。先に開発ブランチを選んでください。",
-                ));
+                self.box_notice = Some(Notice::warning(i18n::t!(
+                    "The commits were not put in the box because no development branch is chosen. Choose a development branch first."
+                )));
             }
             cx.notify();
             return;
@@ -1025,7 +1033,7 @@ impl MergeRequestBox {
                 |result: Result<anyhow::Result<Option<SharedString>>, Canceled>| match result {
                     Ok(Ok(branch)) => branch,
                     Ok(Err(error)) => {
-                        log::warn!("既定のブランチを調べられませんでした: {error:#}");
+                        log::warn!("could not look up the default branch: {error:#}");
                         None
                     }
                     Err(_) => None,
@@ -1148,8 +1156,10 @@ impl MergeRequestBox {
                             (base.to_string(), development_branch.to_string()),
                         );
                         if pruned > 0 {
-                            this.box_notice = Some(Notice::warning(format!(
-                                "開発ブランチが書き換えられたため (または基点に取り込まれたため)、{pruned} 件を箱から外しました。"
+                            this.box_notice = Some(Notice::warning(i18n::tn!(
+                                pruned,
+                                "The development branch was rewritten (or merged into the base), so {count} commit was taken out of the box.",
+                                "The development branch was rewritten (or merged into the base), so {count} commits were taken out of the box."
                             )));
                         }
                         this.after_state_change(window, cx);
@@ -1157,14 +1167,18 @@ impl MergeRequestBox {
                         RangeStatus::Loaded
                     }
                     Ok(Ok(output)) => RangeStatus::Failed(
-                        format!(
-                            "開発ブランチの範囲を読めませんでした: {}",
+                        i18n::t!(
+                            "Could not read the development branch's range: {}",
                             output.failure_message()
                         )
                         .into(),
                     ),
                     Ok(Err(error)) => RangeStatus::Failed(
-                        format!("開発ブランチの範囲を読めませんでした: {error:#}").into(),
+                        i18n::t!(
+                            "Could not read the development branch's range: {}",
+                            format!("{error:#}")
+                        )
+                        .into(),
                     ),
                     Err(_) => return,
                 };
@@ -1289,9 +1303,9 @@ impl MergeRequestBox {
             return;
         }
         if self.development_branch.is_none() {
-            self.box_notice = Some(Notice::warning(
-                "開発ブランチが決まっていません。先に開発ブランチを選んでください。",
-            ));
+            self.box_notice = Some(Notice::warning(i18n::t!(
+                "No development branch is chosen. Choose a development branch first."
+            )));
             cx.notify();
             return;
         }
@@ -1388,7 +1402,7 @@ impl MergeRequestBox {
         options.sort();
         options.dedup();
         let prompt = picker_prompt::prompt(
-            "開発ブランチ (コミットの出どころ) を選択",
+            i18n::t!("Choose the Development Branch (Where the Commits Come From)"),
             options.clone(),
             self.workspace.clone(),
             window,
@@ -1421,7 +1435,7 @@ impl MergeRequestBox {
             let tags = match tags.await {
                 Ok(Ok(tags)) => tags,
                 Ok(Err(error)) => {
-                    log::warn!("タグ一覧を取得できませんでした: {error:#}");
+                    log::warn!("could not list the tags: {error:#}");
                     Vec::new()
                 }
                 Err(_) => return,
@@ -1446,7 +1460,7 @@ impl MergeRequestBox {
             options.extend(tags.into_iter().map(|tag| SharedString::from(tag.name)));
             let Ok(prompt) = cx.update(|window, cx| {
                 picker_prompt::prompt(
-                    "基点 (MR の向け先) のブランチ / タグを選択",
+                    i18n::t!("Choose the Base Branch or Tag (Where the MR Goes)"),
                     options.clone(),
                     workspace,
                     window,
@@ -1495,18 +1509,18 @@ impl MergeRequestBox {
         let development_branch = self
             .development_branch
             .as_ref()
-            .ok_or("開発ブランチを選んでください。")?
+            .ok_or(i18n::t!("Choose a development branch."))?
             .to_string();
         let base = self
             .base
             .as_ref()
-            .ok_or("基点を選んでください。")?
+            .ok_or(i18n::t!("Choose a base."))?
             .to_string();
         let newest = self
             .state
             .placed
             .last()
-            .ok_or("箱が空です。コミットをドラッグして入れてください。")?
+            .ok_or(i18n::t!("The box is empty. Drag commits into it."))?
             .sha;
         let merge_request_branch = self.branch_name(cx);
         validate_merge_request_branch_name(&merge_request_branch)
@@ -1520,33 +1534,33 @@ impl MergeRequestBox {
         .map_err(|error| SharedString::from(error.to_string()))?;
         let message = self.state.message.clone();
         if message.trim().is_empty() {
-            return Err("コミットメッセージを入力してください。".into());
+            return Err(i18n::t!("Enter a commit message.").into());
         }
         let exists = self.branch_exists(&merge_request_branch, cx);
         if exists && !self.recreate {
-            return Err(format!(
-                "ブランチ「{merge_request_branch}」は既にあります。作り直すにはチェックを入れてください。"
+            return Err(i18n::t!(
+                "Branch \"{merge_request_branch}\" already exists. Check the recreate option to rebuild it."
             )
             .into());
         }
-        let origin_branch = self.current_branch(cx).ok_or(
-            "detached HEAD では MR ブランチを作れません。先にブランチに切り替えてください。",
-        )?;
+        let origin_branch = self.current_branch(cx).ok_or(i18n::t!(
+            "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+        ))?;
         if is_rewrite_scratch_branch(&origin_branch) {
-            return Err(format!(
-                "一時ブランチ「{origin_branch}」の上では作れません。先に元のブランチに戻ってください。"
+            return Err(i18n::t!(
+                "Cannot create it on the scratch branch \"{origin_branch}\". Go back to the original branch first."
             )
             .into());
         }
         if merge_request_branch == origin_branch || merge_request_branch == development_branch {
-            return Err(format!(
-                "「{merge_request_branch}」は開発中のブランチです。MR ブランチには別の名前を付けてください。"
+            return Err(i18n::t!(
+                "\"{merge_request_branch}\" is a branch under development. Give the MR branch another name."
             )
             .into());
         }
         if merge_request_branch == base {
-            return Err(format!(
-                "基点のブランチ「{merge_request_branch}」を MR ブランチにはできません。別の名前にしてください。"
+            return Err(i18n::t!(
+                "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
             )
             .into());
         }
@@ -1561,27 +1575,27 @@ impl MergeRequestBox {
                 .any(|worktree| worktree.ref_name.as_deref() == Some(ref_name.as_str()))
         });
         if exists && checked_out_elsewhere {
-            return Err(format!(
-                "「{merge_request_branch}」は別の worktree でチェックアウトされているため作り直せません。別の名前にしてください。"
+            return Err(i18n::t!(
+                "\"{merge_request_branch}\" is checked out in another worktree, so it cannot be recreated. Use another name."
             )
             .into());
         }
         if self.worktree_is_dirty(cx) {
-            return Err(
-                "未コミットの変更があります。MR ブランチを作る前に、コミットかスタッシュしてください (箱の中身はそのままです)。"
-                    .into(),
-            );
+            return Err(i18n::t!(
+                "There are uncommitted changes. Commit or stash them before creating the MR branch (the box stays as it is)."
+            )
+            .into());
         }
         let scratch_branch = merge_request_scratch_branch_name(&newest.to_string());
         if self.branch_exists(&scratch_branch, cx) {
-            return Err(format!(
-                "前回の一時ブランチ「{scratch_branch}」が残っています。中身を確認して削除してからやり直してください。"
+            return Err(i18n::t!(
+                "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
             )
             .into());
         }
         let work_directory_abs_path = self
             .work_directory_abs_path(cx)
-            .ok_or("リポジトリが見つかりません。")?;
+            .ok_or(i18n::t!("Repository not found."))?;
         let previous_sha = exists
             .then(|| {
                 self.branches(cx)
@@ -1616,10 +1630,13 @@ impl MergeRequestBox {
     fn unverified_range(&self) -> Option<String> {
         match (&self.state.range, &self.range_status) {
             (None, _) | (_, RangeStatus::Failed(_)) => Some(
-                "開発ブランチの範囲を読めていないため、入れ忘れは確かめていません。".to_string(),
+                i18n::t!(
+                    "The development branch's range could not be read, so left-out commits were not checked."
+                )
+                .to_string(),
             ),
-            (Some(range), _) if range.truncated => Some(format!(
-                "開発ブランチの範囲が {MAX_RANGE_COMMITS} 件を超えているため、それより古いコミットの入れ忘れは確かめていません。"
+            (Some(range), _) if range.truncated => Some(i18n::t!(
+                "The development branch's range has more than {MAX_RANGE_COMMITS} commits, so older commits were not checked for being left out."
             )),
             _ => None,
         }
@@ -1642,23 +1659,29 @@ impl MergeRequestBox {
         };
         let build = &plan.build;
         let title = if plan.unplaced > 0 {
-            format!(
-                "未配置のコミットが {} 件あります。このまま作成しますか?",
-                plan.unplaced
+            i18n::tn!(
+                plan.unplaced,
+                "{count} commit is not placed. Create the MR branch anyway?",
+                "{count} commits are not placed. Create the MR branch anyway?"
             )
         } else if plan.unverified_range.is_some() {
-            "入れ忘れを確かめきれていません。このまま作成しますか?".to_string()
+            i18n::t!(
+                "Not every commit could be checked for being left out. Create the MR branch anyway?"
+            )
+            .to_string()
         } else {
-            "MR ブランチを作成しますか?".to_string()
+            i18n::t!("Create the MR branch?").to_string()
         };
-        let mut detail = format!(
-            "基点「{}」の上に、箱の {} 件を 1 つのコミットにまとめた「{}」を作ります。\n\
-             作業は一時ブランチ「{}」の上で行い、終わったら「{}」に戻ります。",
-            build.base,
+        let mut detail = i18n::tn!(
             build.shas_oldest_first.len(),
-            build.merge_request_branch,
-            build.scratch_branch,
-            build.origin_branch,
+            "Creates \"{branch}\" on top of the base \"{base}\" from the box's {count} commit.\n\
+             The work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\".",
+            "Creates \"{branch}\" on top of the base \"{base}\" by squashing the box's {count} commits into one.\n\
+             The work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\".",
+            base = build.base,
+            branch = build.merge_request_branch,
+            scratch = build.scratch_branch,
+            origin = build.origin_branch,
         );
         if build.recreate {
             let previous = plan
@@ -1666,8 +1689,9 @@ impl MergeRequestBox {
                 .as_deref()
                 .map(short_sha)
                 .unwrap_or_default();
-            detail.push_str(&format!(
-                "\n既存の「{}」({previous}) は新しいコミットを指すように作り直します。プッシュ済みなら強制プッシュが必要です。",
+            detail.push('\n');
+            detail.push_str(&i18n::t!(
+                "The existing \"{}\" ({previous}) is recreated to point at the new commit. If it was pushed, it needs a force push.",
                 build.merge_request_branch
             ));
         }
@@ -1679,7 +1703,7 @@ impl MergeRequestBox {
             PromptLevel::Info,
             &title,
             Some(&detail),
-            &["作成する", "キャンセル"],
+            &[i18n::tc!("merge request box", "Create"), i18n::t!("Cancel")],
             cx,
         );
         self.building = true;
@@ -1759,8 +1783,8 @@ impl MergeRequestBox {
                 );
                 if let Some(failure) = return_failure {
                     self.report_error(
-                        format!(
-                            "MR ブランチ {} は作りましたが、{} に戻れませんでした。一時ブランチ「{}」の上にいます (MR の箱の「戻る」で戻れます)。\n{failure}",
+                        i18n::t!(
+                            "Created the MR branch {}, but could not go back to {}. You are on the scratch branch \"{}\" (\"Go Back\" in the MR box returns you).\n{failure}",
                             build.merge_request_branch, build.origin_branch, build.scratch_branch
                         ),
                         cx,
@@ -1801,9 +1825,9 @@ impl MergeRequestBox {
                 );
                 self.pending = Some(pending);
                 self.report_error(
-                    format!(
-                        "箱のコミットを当てている途中でコンフリクトが起きました。一時ブランチ「{}」の上で止まっています。\n\
-                         解決して Git パネルのバナーで「続行」した後、MR の箱の「続きの手順」で仕上げます。やめるならバナーの「中止」で「{}」に戻ります。\n{reason}",
+                    i18n::t!(
+                        "A conflict happened while applying the box's commits. Stopped on the scratch branch \"{}\".\n\
+                         Resolve it and press \"Continue\" in the Git panel's banner, then finish with \"Next Steps\" in the MR box. To give up, \"Abort\" in the banner returns to \"{}\".\n{reason}",
                         build.scratch_branch, build.origin_branch
                     ),
                     cx,
@@ -1813,10 +1837,11 @@ impl MergeRequestBox {
                 reason,
                 left_on_scratch_branch,
             })) => {
-                let mut message = format!("MR ブランチを作れませんでした\n{reason}");
+                let mut message = i18n::t!("Could not create the MR branch\n{reason}");
                 if left_on_scratch_branch {
-                    message.push_str(&format!(
-                        "\n一時ブランチ「{}」の上に残っています。",
+                    message.push('\n');
+                    message.push_str(&i18n::t!(
+                        "Still on the scratch branch \"{}\".",
                         build.scratch_branch
                     ));
                 } else {
@@ -1825,7 +1850,13 @@ impl MergeRequestBox {
                 self.report_error(message, cx);
             }
             Ok(Err(error)) => {
-                self.report_error(format!("MR ブランチを作れませんでした\n{error:#}"), cx);
+                self.report_error(
+                    i18n::t!(
+                        "Could not create the MR branch\n{reason}",
+                        reason = format!("{error:#}")
+                    ),
+                    cx,
+                );
             }
             Err(_) => {}
         }
@@ -1893,8 +1924,8 @@ impl MergeRequestBox {
                         );
                         if let Some(failure) = return_failure {
                             this.report_error(
-                                format!(
-                                    "MR ブランチ {} は作りましたが、{} に戻れませんでした (MR の箱の「戻る」で戻れます)。\n{failure}",
+                                i18n::t!(
+                                    "Created the MR branch {}, but could not go back to {} (\"Go Back\" in the MR box returns you).\n{failure}",
                                     pending.merge_request_branch, pending.origin_branch
                                 ),
                                 cx,
@@ -1913,8 +1944,8 @@ impl MergeRequestBox {
                     }
                     Ok(Ok(MergeRequestBuildOutcome::Refused { reason, .. })) => {
                         this.report_error(
-                            format!(
-                                "MR ブランチに反映できませんでした。一時ブランチ「{}」の上に残っています。\n{reason}",
+                            i18n::t!(
+                                "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}",
                                 pending.scratch_branch
                             ),
                             cx,
@@ -1925,7 +1956,10 @@ impl MergeRequestBox {
                     }
                     Ok(Err(error)) => {
                         this.report_error(
-                            format!("MR ブランチに反映できませんでした\n{error:#}"),
+                            i18n::t!(
+                                "Could not update the MR branch\n{reason}",
+                                reason = format!("{error:#}")
+                            ),
                             cx,
                         );
                     }
@@ -1948,16 +1982,17 @@ impl MergeRequestBox {
         ) else {
             return;
         };
-        let detail = format!(
-            "一時ブランチ「{}」を削除して「{}」に戻ります。一時ブランチの上のコミット (コンフリクトの解決も含む) は捨てます (reflog には残ります)。\n\
-             cherry-pick が止まったままなら、先に Git パネルのバナーで「中止」してください。",
-            pending.scratch_branch, pending.origin_branch
+        let detail = i18n::t!(
+            "Deletes the scratch branch \"{}\" and returns to \"{}\". The commits on the scratch branch (conflict resolutions included) are thrown away (they stay in the reflog).\n\
+             If a cherry-pick is still stopped, press \"Abort\" in the Git panel's banner first.",
+            pending.scratch_branch,
+            pending.origin_branch
         );
         let confirmation = window.prompt(
             PromptLevel::Warning,
-            "MR ブランチの作成をやめますか?",
+            i18n::t!("Stop creating the MR branch?"),
             Some(&detail),
-            &["やめて戻る", "キャンセル"],
+            &[i18n::t!("Stop and Go Back"), i18n::t!("Cancel")],
             cx,
         );
         cx.spawn_in(window, async move |this, cx| {
@@ -1987,16 +2022,17 @@ impl MergeRequestBox {
                         );
                         this.pending = None;
                         this.report_info(
-                            format!(
-                                "{} に戻り、一時ブランチ「{}」を削除しました。",
-                                pending.origin_branch, pending.scratch_branch
+                            i18n::t!(
+                                "Went back to {} and deleted the scratch branch \"{}\".",
+                                pending.origin_branch,
+                                pending.scratch_branch
                             ),
                             cx,
                         );
                     }
                     Ok(Ok(output)) => this.report_error(
-                        format!(
-                            "{} に戻れませんでした。一時ブランチ「{}」の上に残っています。\n{}",
+                        i18n::t!(
+                            "Could not go back to {}. Still on the scratch branch \"{}\".\n{}",
                             pending.origin_branch,
                             pending.scratch_branch,
                             output.failure_message()
@@ -2032,8 +2068,8 @@ impl MergeRequestBox {
         // it.
         if !can_leave_stranded(&stranded, head_sha.as_deref()) {
             self.report_error(
-                format!(
-                    "一時ブランチ「{}」が MR ブランチ「{}」のコミットから動いているため、削除しません。中身を確かめてから、自分で「{}」に切り替えてください。",
+                i18n::t!(
+                    "The scratch branch \"{}\" has moved away from the commit of the MR branch \"{}\", so it is not deleted. Check its contents, then switch to \"{}\" yourself.",
                     stranded.scratch_branch, stranded.merge_request_branch, stranded.origin_branch
                 ),
                 cx,
@@ -2055,16 +2091,17 @@ impl MergeRequestBox {
                         forget_origin(&work_directory_abs_path, &stranded.scratch_branch, cx);
                         this.stranded = None;
                         this.report_info(
-                            format!(
-                                "{} に戻り、一時ブランチ「{}」を削除しました。",
-                                stranded.origin_branch, stranded.scratch_branch
+                            i18n::t!(
+                                "Went back to {} and deleted the scratch branch \"{}\".",
+                                stranded.origin_branch,
+                                stranded.scratch_branch
                             ),
                             cx,
                         );
                     }
                     Ok(Ok(output)) => this.report_error(
-                        format!(
-                            "{} に戻れませんでした。一時ブランチ「{}」の上に残っています。\n{}",
+                        i18n::t!(
+                            "Could not go back to {}. Still on the scratch branch \"{}\".\n{}",
                             stranded.origin_branch,
                             stranded.scratch_branch,
                             output.failure_message()
@@ -2096,16 +2133,20 @@ impl MergeRequestBox {
                 .border_color(cx.theme().status().warning_border)
                 .bg(cx.theme().status().warning_background)
                 .child(
-                    Label::new(format!(
-                        "MR ブランチ「{}」は作りましたが、一時ブランチ「{}」の上に残っています。",
-                        stranded.merge_request_branch, stranded.scratch_branch
+                    Label::new(i18n::t!(
+                        "Created the MR branch \"{}\", but still on the scratch branch \"{}\".",
+                        stranded.merge_request_branch,
+                        stranded.scratch_branch
                     ))
                     .size(LabelSize::Small),
                 )
                 .child(
                     Button::new(
                         "merge-request-box-leave-stranded",
-                        format!("「{}」に戻る (一時ブランチを削除)", stranded.origin_branch),
+                        i18n::t!(
+                            "Go Back to \"{}\" (Delete the Scratch Branch)",
+                            stranded.origin_branch
+                        ),
                     )
                     .style(ButtonStyle::Filled)
                     .label_size(LabelSize::Small)
@@ -2155,17 +2196,17 @@ impl MergeRequestBox {
             return;
         };
         let message = match &previous_sha {
-            Some(previous_sha) => format!(
-                "MR ブランチ {merge_request_branch} を作り直しました\n元の MR ブランチ: {} (reflog から戻せます)",
+            Some(previous_sha) => i18n::t!(
+                "Recreated the MR branch {merge_request_branch}\nPrevious MR branch: {} (recoverable from the reflog)",
                 short_sha(previous_sha)
             ),
-            None => format!("MR ブランチ {merge_request_branch} を作りました"),
+            None => i18n::t!("Created the MR branch {merge_request_branch}"),
         };
         let force_with_lease = previous_sha.is_some();
         let push_label = if force_with_lease {
-            "強制プッシュ (lease 付き)"
+            i18n::t!("Force Push (with lease)")
         } else {
-            "プッシュ"
+            i18n::t!("Push")
         };
         let branch_name = SharedString::from(merge_request_branch.to_string());
         let workspace_handle = workspace.downgrade();
@@ -2250,15 +2291,18 @@ impl MergeRequestBox {
                     .child(Label::new(label).size(LabelSize::Small).color(Color::Muted)),
             )
             .child(
-                Button::new(id, value.unwrap_or_else(|| "(未選択)".into()))
-                    .label_size(LabelSize::Small)
-                    .end_icon(
-                        Icon::new(IconName::ChevronDown)
-                            .size(IconSize::XSmall)
-                            .color(Color::Muted),
-                    )
-                    .tooltip(Tooltip::text(tooltip))
-                    .on_click(cx.listener(move |this, _, window, cx| on_click(this, window, cx))),
+                Button::new(
+                    id,
+                    value.unwrap_or_else(|| i18n::t!("(not selected)").into()),
+                )
+                .label_size(LabelSize::Small)
+                .end_icon(
+                    Icon::new(IconName::ChevronDown)
+                        .size(IconSize::XSmall)
+                        .color(Color::Muted),
+                )
+                .tooltip(Tooltip::text(tooltip))
+                .on_click(cx.listener(move |this, _, window, cx| on_click(this, window, cx))),
             )
     }
 
@@ -2286,9 +2330,11 @@ impl MergeRequestBox {
             }))
             .when(is_empty, |this| {
                 this.justify_center().items_center().child(
-                    Label::new("ここにコミットをドラッグ (複数選択もまとめて)")
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
+                    Label::new(i18n::t!(
+                        "Drag commits here (a multiple selection moves together)"
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
                 )
             })
             .children(self.state.placed.iter().map(|placed| {
@@ -2320,7 +2366,7 @@ impl MergeRequestBox {
                     )
                     .when(outside, |this| {
                         this.child(
-                            Label::new("開発ブランチ外")
+                            Label::new(i18n::t!("Outside the development branch"))
                                 .size(LabelSize::XSmall)
                                 .color(Color::Warning),
                         )
@@ -2331,7 +2377,7 @@ impl MergeRequestBox {
                             IconName::Close,
                         )
                         .icon_size(IconSize::XSmall)
-                        .tooltip(Tooltip::text("箱から出す"))
+                        .tooltip(Tooltip::text(i18n::t!("Take Out of the Box")))
                         .on_click(cx.listener(
                             move |this, _, window, cx| {
                                 this.remove(sha, window, cx);
@@ -2350,15 +2396,17 @@ impl MergeRequestBox {
                     .into_any_element();
             }
             RangeStatus::Idle if self.state.range.is_none() => {
-                return Label::new("開発ブランチと基点を選ぶと、入れ忘れを確かめられます。")
-                    .size(LabelSize::Small)
-                    .color(Color::Muted)
-                    .into_any_element();
+                return Label::new(i18n::t!(
+                    "Choose a development branch and a base to check for left-out commits."
+                ))
+                .size(LabelSize::Small)
+                .color(Color::Muted)
+                .into_any_element();
             }
             _ => {}
         }
         let Some(range) = &self.state.range else {
-            return Label::new("開発ブランチのコミットを読み込み中…")
+            return Label::new(i18n::t!("Loading the development branch's commits…"))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element();
@@ -2374,8 +2422,8 @@ impl MergeRequestBox {
             .gap_1()
             .when(range.truncated, |this| {
                 this.child(
-                    Label::new(format!(
-                        "開発ブランチの範囲が {MAX_RANGE_COMMITS} 件を超えています。基点が正しいか確かめてください (古いコミットは表示していません)。"
+                    Label::new(i18n::t!(
+                        "The development branch's range has more than {MAX_RANGE_COMMITS} commits. Check that the base is right (older commits are not shown)."
                     ))
                     .size(LabelSize::Small)
                     .color(Color::Warning),
@@ -2384,22 +2432,22 @@ impl MergeRequestBox {
             .map(|this| {
                 if !has_commits {
                     this.child(
-                        Label::new("開発ブランチに基点より新しいコミットがありません。")
+                        Label::new(i18n::t!("The development branch has no commits newer than the base."))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
                 } else if unplaced.is_empty() && !self.state.everything_checked() {
                     this.child(
-                        Label::new(format!(
-                            "新しい {MAX_RANGE_COMMITS} 件はすべて配置か除外をしましたが、それより古いコミットは確かめていません。"
+                        Label::new(i18n::t!(
+                            "The newest {MAX_RANGE_COMMITS} commits are all placed or excluded, but older commits were not checked."
                         ))
                         .size(LabelSize::Small)
                         .color(Color::Warning),
                     )
                 } else if unplaced.is_empty() {
                     this.child(
-                        Label::new(format!(
-                            "開発ブランチのコミットはすべて確認済みです (配置 {} / 除外 {})",
+                        Label::new(i18n::t!(
+                            "Every commit of the development branch is checked ({} placed / {} excluded)",
                             self.state.placed_in_range_count(),
                             excluded.len()
                         ))
@@ -2415,7 +2463,7 @@ impl MergeRequestBox {
                             .gap_1()
                             .child(
                                 div().flex_1().min_w_0().child(
-                                    Label::new(format!("未配置 {} 件", unplaced.len()))
+                                    Label::new(i18n::tn!(unplaced.len(), "{count} unplaced commit", "{count} unplaced commits"))
                                         .size(LabelSize::Small)
                                         .color(Color::Warning),
                                 ),
@@ -2427,12 +2475,12 @@ impl MergeRequestBox {
                                     .child(
                                         Button::new(
                                             "merge-request-box-first-unplaced",
-                                            "最初の未配置へ",
+                                            i18n::t!("Go to First Unplaced"),
                                         )
                                         .label_size(LabelSize::XSmall)
-                                        .tooltip(Tooltip::text(
-                                            "グラフでいちばん古い未配置のコミットを選びます",
-                                        ))
+                                        .tooltip(Tooltip::text(i18n::t!(
+                                            "Selects the oldest unplaced commit in the graph"
+                                        )))
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             this.select_first_unplaced(cx);
                                         })),
@@ -2440,9 +2488,9 @@ impl MergeRequestBox {
                             ),
                     )
                     .child(
-                        Label::new(
-                            "グラフで小さな ● が付いた行です。箱へドラッグするか、右クリックの「MR から除外する」で脇に置いてください。",
-                        )
+                        Label::new(i18n::t!(
+                            "They are the rows with a small ● in the graph. Drag them into the box, or set them aside with \"Exclude from MR\" in the right-click menu."
+                        ))
                         .size(LabelSize::XSmall)
                         .color(Color::Muted),
                     )
@@ -2450,7 +2498,7 @@ impl MergeRequestBox {
             })
             .when(merge_count > 0, |this| {
                 this.child(
-                    Label::new(format!("マージコミット (対象外) {merge_count} 件"))
+                    Label::new(i18n::tn!(merge_count, "{count} merge commit (not included)", "{count} merge commits (not included)"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -2460,7 +2508,7 @@ impl MergeRequestBox {
                 this.child(
                     Button::new(
                         "merge-request-box-excluded-toggle",
-                        format!("除外 {} 件", excluded.len()),
+                        i18n::t!("{} Excluded", excluded.len()),
                     )
                     .label_size(LabelSize::Small)
                     .start_icon(
@@ -2483,10 +2531,10 @@ impl MergeRequestBox {
                         self.render_commit_row(commit, cx).child(
                             Button::new(
                                 SharedString::from(format!("merge-request-box-restore-{sha}")),
-                                "戻す",
+                                i18n::t!("Put Back"),
                             )
                             .label_size(LabelSize::XSmall)
-                            .tooltip(Tooltip::text("除外をやめて未配置に戻す"))
+                            .tooltip(Tooltip::text(i18n::t!("Stop Excluding and Mark as Unplaced")))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.restore_commits(&[sha], window, cx);
                             })),
@@ -2568,15 +2616,15 @@ impl MergeRequestBox {
                 .border_color(cx.theme().status().warning_border)
                 .bg(cx.theme().status().warning_background)
                 .child(
-                    Label::new(format!(
-                        "MR ブランチ「{}」の作成が途中です (一時ブランチ「{}」の上)。",
+                    Label::new(i18n::t!(
+                        "The MR branch \"{}\" is half created (on the scratch branch \"{}\").",
                         pending.merge_request_branch, pending.scratch_branch
                     ))
                     .size(LabelSize::Small),
                 )
                 .child(
-                    Label::new(format!(
-                        "コンフリクトを解決して Git パネルのバナーで「続行」した後、「続きの手順」で MR ブランチに反映して「{}」に戻ります。",
+                    Label::new(i18n::t!(
+                        "After resolving the conflict and pressing \"Continue\" in the Git panel's banner, \"Next Steps\" updates the MR branch and goes back to \"{}\".",
                         pending.origin_branch
                     ))
                     .size(LabelSize::XSmall)
@@ -2588,7 +2636,7 @@ impl MergeRequestBox {
                         .child(
                             Button::new(
                                 "merge-request-box-finish",
-                                "続きの手順 (MR ブランチに反映して元に戻る)",
+                                i18n::t!("Next Steps (Update the MR Branch and Go Back)"),
                             )
                             .style(ButtonStyle::Filled)
                             .label_size(LabelSize::Small)
@@ -2598,7 +2646,7 @@ impl MergeRequestBox {
                             })),
                         )
                         .child(
-                            Button::new("merge-request-box-abandon", "やめて元に戻る…")
+                            Button::new("merge-request-box-abandon", i18n::t!("Stop and Go Back…"))
                                 .label_size(LabelSize::Small)
                                 .disabled(self.building)
                                 .on_click(cx.listener(|this, _, window, cx| {
@@ -2638,17 +2686,19 @@ impl Render for MergeRequestBox {
             .children(self.render_pending(cx))
             .child(self.render_ref_picker(
                 "merge-request-box-development-branch",
-                "開発ブランチ",
+                i18n::t!("Development Branch"),
                 self.development_branch.clone(),
-                "コミットの出どころ。入れ忘れの確認と最後の比較に使います",
+                i18n::t!(
+                    "Where the commits come from. Used to check for left-out commits and for the final comparison"
+                ),
                 |this, window, cx| this.pick_development_branch(window, cx),
                 cx,
             ))
             .child(self.render_ref_picker(
                 "merge-request-box-base",
-                "基点",
+                i18n::tc!("merge request box", "Base"),
                 self.base.clone(),
-                "MR の向け先。MR ブランチはここから作ります",
+                i18n::t!("Where the MR goes. The MR branch is created from here"),
                 |this, window, cx| this.pick_base(window, cx),
                 cx,
             ))
@@ -2662,13 +2712,13 @@ impl Render for MergeRequestBox {
             .child(self.render_range(cx))
             .child(self.render_labelled_editor(
                 "merge-request-box-message",
-                "メッセージ",
+                i18n::tc!("merge request box", "Message"),
                 self.message_editor.clone(),
                 cx,
             ))
             .child(self.render_labelled_editor(
                 "merge-request-box-branch-name",
-                "MR ブランチ名",
+                i18n::t!("MR Branch Name"),
                 self.branch_name_editor.clone(),
                 cx,
             ))
@@ -2682,8 +2732,8 @@ impl Render for MergeRequestBox {
                             ToggleState::Unselected
                         },
                     )
-                    .label(format!(
-                        "既存の {branch_name} を作り直す (強制プッシュが必要になります)"
+                    .label(i18n::t!(
+                        "Recreate the existing {branch_name} (needs a force push)"
                     ))
                     .label_size(LabelSize::Small)
                     .on_click(move |state, _, cx| {
@@ -2701,12 +2751,12 @@ impl Render for MergeRequestBox {
             .children(Self::render_notice(&self.create_notice))
             .child(
                 h_flex().w_full().justify_end().child(
-                    Button::new("merge-request-box-create", "作成して比較")
+                    Button::new("merge-request-box-create", i18n::t!("Create and Compare"))
                         .style(ButtonStyle::Filled)
                         .disabled(!can_create)
-                        .tooltip(Tooltip::text(
-                            "箱のコミットを基点の上で 1 つにまとめた MR ブランチを作り、開発ブランチと比べます",
-                        ))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Creates an MR branch that squashes the box's commits into one on top of the base, and compares it with the development branch"
+                        )))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.create(window, cx);
                         })),
@@ -2732,7 +2782,7 @@ impl Render for MergeRequestBox {
                             .size(IconSize::Small)
                             .color(Color::Muted),
                     )
-                    .child(Label::new("MR の箱"))
+                    .child(Label::new(i18n::t!("MR Box")))
                     .child(div().flex_1())
                     .child(crate::git_guide::guide_button(
                         "merge-request-box-guide",
@@ -2741,7 +2791,9 @@ impl Render for MergeRequestBox {
                     .child(
                         IconButton::new("merge-request-box-close", IconName::Close)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("箱を閉じる (中身はそのまま残ります)"))
+                            .tooltip(Tooltip::text(i18n::t!(
+                                "Close the Box (Its Contents Are Kept)"
+                            )))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.graph
                                     .update(cx, |graph, cx| graph.close_merge_request_box(cx))
@@ -3066,7 +3118,7 @@ mod tests {
         assert!(
             outcome
                 .notice()
-                .is_some_and(|notice| notice.contains("マージコミット")),
+                .is_some_and(|notice| notice.contains("Merge commits")),
             "a refused merge is said out loud"
         );
     }
@@ -3389,7 +3441,7 @@ mod tests {
         assert_eq!(preferred_base(None, &branches), None);
 
         let warning = stale_base_warning("main", &branches).unwrap();
-        assert!(warning.contains("3 コミット古い"), "{warning}");
+        assert!(warning.contains("3 commits behind"), "{warning}");
         assert!(warning.contains("origin/main"), "{warning}");
         assert_eq!(stale_base_warning("origin/main", &branches), None);
         assert_eq!(stale_base_warning("develop", &branches), None);
@@ -3916,7 +3968,7 @@ mod tests {
                 .as_ref()
                 .expect("taking commits out of the box is said out loud");
             assert!(
-                notice.text.contains("1 件を箱から外しました"),
+                notice.text.contains("1 commit was taken out of the box"),
                 "{}",
                 notice.text
             );
@@ -4040,7 +4092,11 @@ mod tests {
         );
         merge_request_box.read_with(&cx, |merge_request_box, _| {
             let notice = merge_request_box.create_notice.as_ref().unwrap();
-            assert!(notice.text.contains("未コミットの変更"), "{}", notice.text);
+            assert!(
+                notice.text.contains("uncommitted changes"),
+                "{}",
+                notice.text
+            );
             assert_eq!(placed(&merge_request_box.state), vec![oid(2), oid(1)]);
         });
 
@@ -4058,7 +4114,7 @@ mod tests {
                 .prepare_build(cx)
                 .err()
                 .expect("the base may not be the merge-request branch");
-            assert!(refusal.contains("基点"), "{refusal}");
+            assert!(refusal.contains("The base branch"), "{refusal}");
 
             // Nor the default branch, "作り直す" ticked or not.
             assert_eq!(
@@ -4076,7 +4132,7 @@ mod tests {
                     .prepare_build(cx)
                     .err()
                     .expect("the default branch may not be the merge-request branch");
-                assert!(refusal.contains("デフォルトブランチ"), "{refusal}");
+                assert!(refusal.contains("default branch"), "{refusal}");
             }
             merge_request_box.recreate = false;
             merge_request_box
@@ -4160,7 +4216,7 @@ mod tests {
         });
         cx.run_until_parked();
         assert!(cx.has_pending_prompt(), "a build is confirmed first");
-        cx.simulate_prompt_answer("作成する");
+        cx.simulate_prompt_answer("Create");
         cx.run_until_parked();
 
         let log = fs

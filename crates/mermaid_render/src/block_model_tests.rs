@@ -710,37 +710,43 @@ fn a_shape_given_in_a_later_edge_is_folded_into_the_block() {
 #[test]
 fn constructs_that_would_be_changed_are_refused() {
     for (source, expected) in [
-        ("block-beta\n  a\n  a", "2 回"),
-        ("block-beta\n  a b a", "2 回"),
+        ("block-beta\n  a\n  a", "placed twice"),
+        ("block-beta\n  a b a", "placed twice"),
         (
             "block-beta\n  style a fill:#f00\n  a",
-            "前に置かれていません",
+            "is not placed before this line",
         ),
-        ("block-beta\n  class a hot\n  a", "前に置かれていません"),
+        (
+            "block-beta\n  class a hot\n  a",
+            "is not placed before this line",
+        ),
         ("block-beta\n  a %% メモ", "`%%`"),
         ("block-beta\n  end", "`end`"),
-        ("block-beta\n  block\n    a\n  end b", "`end` の後ろ"),
-        ("block-beta\n  columns 2\n  columns 3", "2 回"),
-        ("block-beta\n  a[/\"x\"]", "形として読まない"),
-        ("block-beta\n  a space space b", "2 つ目の `space`"),
-        ("block-beta\n  a space b:2", "幅を書けません"),
+        ("block-beta\n  block\n    a\n  end b", "right after `end`"),
+        ("block-beta\n  columns 2\n  columns 3", "two `columns`"),
+        ("block-beta\n  a[/\"x\"]", "as a shape"),
+        ("block-beta\n  a space space b", "second `space`"),
+        ("block-beta\n  a space b:2", "cannot have a width"),
         (
             "block-beta\n  a[\"x\"]\n  a --> b\n  arrow<[\"x\"]>(right)\n  arrow[\"y\"] --> a",
-            "形を辺の中で",
+            "changed inside an edge",
         ),
         (
             "block-beta\n  a\n  a[\"x\"] --> b\n  block:g\n  end\n  g[\"G\"] --> a",
-            "形を辺の中で",
+            "changed inside an edge",
         ),
-        ("block-beta columns 3", "`block-beta` の行"),
-        ("block-beta\n  block:g a\n  end", "見出しの後ろ"),
-        ("block-beta\n  a-b", "構造化編集に対応していません"),
+        ("block-beta columns 3", "on the `block-beta` line"),
+        ("block-beta\n  block:g a\n  end", "after the group heading"),
+        ("block-beta\n  a-b", "structured editor does not support"),
         ("block-beta\n  a=b", "ID `a=b`"),
         ("block-beta\n  root", "ID `root`"),
-        ("block-beta\n  a[x]", "`\"` で囲んで"),
-        ("block-beta\n  a:0", "1 以上"),
-        ("block-beta\n  %%{init: {\n  }}%%\n  a", "複数行"),
-        ("block-beta\n  arrow<[\"x\"]>(sideways)", "向き"),
+        ("block-beta\n  a[x]", "Enclose the label"),
+        ("block-beta\n  a:0", "1 or more"),
+        (
+            "block-beta\n  %%{init: {\n  }}%%\n  a",
+            "spans several lines",
+        ),
+        ("block-beta\n  arrow<[\"x\"]>(sideways)", "direction"),
     ] {
         let error = error_of(source);
         assert!(
@@ -761,7 +767,7 @@ fn a_group_left_open_is_refused_and_a_block_line_with_blocks_is_split() {
     assert!(render_to_svg(open, &MermaidTheme::default()).is_err());
     let error = parse_block(open).expect_err("a group left open");
     assert!(
-        error.to_string().contains("`end` で閉じられていません"),
+        error.to_string().contains("is not closed with `end`"),
         "{error}"
     );
 
@@ -894,13 +900,13 @@ fn structure_errors_are_reported() {
     let cases: Vec<(Box<dyn Fn(&mut BlockDocument)>, &str)> = vec![
         (
             Box::new(|document| document.rename_ids(&[("b".to_string(), "a".to_string())])),
-            "2 つ",
+            "used twice",
         ),
         (
             Box::new(|document| {
                 document.entries.remove(1);
             }),
-            "`b` というブロックがありません",
+            "no block `b`",
         ),
         (
             Box::new(|document| {
@@ -916,7 +922,7 @@ fn structure_errors_are_reported() {
                     entry.item = node("a", Some(BlockShape::Square), "\"引用\"", None);
                 }
             }),
-            "ラベル",
+            "label",
         ),
         (
             Box::new(|document| {
@@ -924,7 +930,7 @@ fn structure_errors_are_reported() {
                     entry.item = node("a", Some(BlockShape::Square), "`始まりだけ", None);
                 }
             }),
-            "ラベル",
+            "label",
         ),
         (
             Box::new(|document| {
@@ -932,11 +938,11 @@ fn structure_errors_are_reported() {
                     entry.depth = 1;
                 }
             }),
-            "字下げ",
+            "indented",
         ),
         (
             Box::new(|document| document.columns = Some(BlockColumns::Count(0))),
-            "列数",
+            "number of columns",
         ),
         (
             Box::new(|document| {
@@ -951,7 +957,7 @@ fn structure_errors_are_reported() {
                     }),
                 ))
             }),
-            "向き",
+            "direction",
         ),
         (
             Box::new(|document| {
@@ -966,7 +972,7 @@ fn structure_errors_are_reported() {
                     }),
                 ))
             }),
-            "ID の無いグループ",
+            "group without an ID",
         ),
         (
             Box::new(|document| {
@@ -975,13 +981,13 @@ fn structure_errors_are_reported() {
                     css: "fill:#f00\nstroke:#000".to_string(),
                 })
             }),
-            "改行",
+            "line breaks",
         ),
         (
             Box::new(|document| {
                 document.statements.push(edge("a", "b", None, "->"));
             }),
-            "辺の線",
+            "edge line",
         ),
         (
             Box::new(|document| {
@@ -990,7 +996,7 @@ fn structure_errors_are_reported() {
                     class_name: "二 語".to_string(),
                 })
             }),
-            "クラス名",
+            "class name",
         ),
         (
             Box::new(|document| {
@@ -999,7 +1005,7 @@ fn structure_errors_are_reported() {
                     class_name: "hot".to_string(),
                 })
             }),
-            "`無い` というブロックがありません",
+            "no block `無い`",
         ),
         (
             Box::new(|document| {
@@ -1008,7 +1014,7 @@ fn structure_errors_are_reported() {
                     css: "fill:#f00".to_string(),
                 })
             }),
-            "`無い` というブロックがありません",
+            "no block `無い`",
         ),
         (
             Box::new(|document| {
@@ -1016,7 +1022,7 @@ fn structure_errors_are_reported() {
                     .entries
                     .push(entry(0, false, BlockItem::Space { width: Some(0) }))
             }),
-            "幅",
+            "width",
         ),
     ];
     for (change, expected) in cases {
@@ -1228,7 +1234,7 @@ fn a_line_merman_reads_as_the_rest_of_an_edge_is_refused() {
     ] {
         let error = error_of(source);
         assert!(
-            error.contains("前の行のブロックから続く辺"),
+            error.contains("continues from the block on the previous line"),
             "the reason for `{source}` should say the line continues an edge: {error}"
         );
     }
@@ -1317,4 +1323,13 @@ fn labels_mermaid_would_rewrite_as_html_attributes_are_refused() {
         assert_eq!(document.structure_error(), None, "{source}");
         assert_same_layout(source, &document);
     }
+}
+
+#[test]
+fn the_id_rules_show_single_braces_in_japanese() {
+    let _japanese = crate::mermaid_model::japanese_for_this_thread();
+    assert_eq!(
+        error_of("block-beta\n  a=b"),
+        "`a=b` の `a=b` は構造化編集に対応していません。ID `a=b` は使えません (空白と記号 ( ) [ ] { } < > : - \" ' , % = ~ ; # & | \\ / ` は不可。end / space / columns / class / classDef / style / block / root も不可)。"
+    );
 }

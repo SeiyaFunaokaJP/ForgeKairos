@@ -433,8 +433,8 @@ impl UndoMessage {
             UndoMessage::Changed(_) => {
                 "this is a bug in the manage_undo_and_redo task please report"
             }
-            UndoMessage::Undo => "元に戻せませんでした",
-            UndoMessage::Redo => "やり直せませんでした",
+            UndoMessage::Undo => i18n::t!("Undo Failed"),
+            UndoMessage::Redo => i18n::t!("Redo Failed"),
         }
     }
 }
@@ -649,9 +649,9 @@ impl Inner {
         // share the parent folder, then it was a simple rename, otherwise it
         // was a move.
         let operation = if from.path.parent() == to.path.parent() {
-            "名前変更"
+            i18n::tc!("file operation", "rename")
         } else {
-            "移動"
+            i18n::tc!("file operation", "move")
         };
 
         let res: Result<Task<Result<CreatedEntry>>> = workspace.update(cx, |workspace, cx| {
@@ -660,7 +660,7 @@ impl Inner {
                     .entry_for_path(from, cx)
                     .map(|entry| entry.id)
                     .with_context(|| {
-                        format!("`{from_name}` を{operation}できませんでした。すでに存在しません。")
+                        i18n::t!("Failed to {operation} `{from_name}`. It no longer exists.")
                     })?;
 
                 Ok(project.rename_entry(entry_id, to.clone(), cx))
@@ -678,9 +678,9 @@ impl Inner {
             }) || format!("{err:#}").contains("already exists");
 
             if already_exists {
-                anyhow!(
-                    "`{from_name}` を `{to_name}` へ{operation}できませんでした。同名のファイルまたはフォルダーが既に存在します。"
-                )
+                anyhow!(i18n::t!(
+                    "Failed to {operation} `{from_name}` to `{to_name}`. A file or folder already exists there."
+                ))
             } else {
                 err
             }
@@ -796,19 +796,17 @@ impl Inner {
                 let entry_id = project
                     .entry_for_path(project_path, cx)
                     .map(|entry| entry.id)
-                    .with_context(|| {
-                        format!("`{name}` をゴミ箱へ移動できませんでした。すでに存在しません。")
-                    })?;
+                    .with_context(|| i18n::t!("Failed to trash `{name}`. It no longer exists."))?;
 
                 project
                     .trash_entry(entry_id, cx)
-                    .with_context(|| format!("`{name}` をゴミ箱へ移動できませんでした。"))
+                    .with_context(|| i18n::t!("Failed to trash `{name}`."))
             })
         })?;
 
         match task.await {
             Ok(trash_id) => Ok(trash_id),
-            Err(err) => Err(err).context(format!("`{name}` をゴミ箱へ移動できませんでした。")),
+            Err(err) => Err(err).context(i18n::t!("Failed to trash `{name}`.")),
         }
     }
 
@@ -849,7 +847,7 @@ impl Inner {
                     project_path_display(project, &project_path, path_style, cx)
                 }))
             })
-            .unwrap_or_else(|| "項目".to_string());
+            .unwrap_or_else(|| i18n::t!("item").to_string());
 
         workspace
             .update(cx, |workspace, cx| {
@@ -859,10 +857,12 @@ impl Inner {
             })
             .await
             .map_err(|err| match err.downcast_ref::<TrashRestoreError>() {
-                Some(TrashRestoreError::Collision { .. }) => {
-                    anyhow!("`{name}` を復元できませんでした。元の場所に別のファイルが存在します。")
-                }
-                _ => anyhow!("`{name}` を復元できませんでした。完全に削除された可能性があります。"),
+                Some(TrashRestoreError::Collision { .. }) => anyhow!(i18n::t!(
+                    "Failed to restore `{name}`. Something already exists at its original location."
+                )),
+                _ => anyhow!(i18n::t!(
+                    "Failed to restore `{name}`. It may have been permanently deleted."
+                )),
             })
     }
 
@@ -994,7 +994,7 @@ impl Inner {
                     PromptLevel::Info,
                     &prompt.message,
                     prompt.detail,
-                    &[prompt.confirmation_label, "キャンセル"],
+                    &[prompt.confirmation_label, i18n::t!("Cancel")],
                     cx,
                 )
             })?

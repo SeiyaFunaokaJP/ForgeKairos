@@ -928,12 +928,12 @@ impl Render for DiffMultibuffer {
                             None => el.child(
                                 h_flex()
                                     .justify_around()
-                                    .child(Label::new("リモートは最新です")),
+                                    .child(Label::new(i18n::t!("Remote up to date"))),
                             ),
                         })
                         .child(
                             h_flex().justify_around().mt_1().child(
-                                Button::new("project-diff-close-button", "閉じる")
+                                Button::new("project-diff-close-button", i18n::t!("Close"))
                                     .key_binding(KeyBinding::for_action_in(
                                         &CloseActiveItem::default(),
                                         &keybinding_focus_handle,

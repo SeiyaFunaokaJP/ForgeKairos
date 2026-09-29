@@ -628,7 +628,7 @@ impl AutoUpdater {
                 .context("auto-update not initialized")
         })?;
 
-        set_status("リモート開発サーバーのリリース情報を取得しています", cx);
+        set_status(i18n::t!("Fetching remote server release"), cx);
         let release = Self::get_release_asset(
             &this,
             release_channel,
@@ -653,7 +653,7 @@ impl AutoUpdater {
                 "downloading zed-remote-server {os} {arch} version {}",
                 release.version
             );
-            set_status("リモート開発サーバーをダウンロードしています", cx);
+            set_status(i18n::t!("Downloading remote server"), cx);
             download_remote_server_binary(&version_path, release, client).await?;
         }
 
@@ -759,9 +759,9 @@ impl AutoUpdater {
                 // cause chain, so the reason is folded into the message.
                 this.update(cx, |this, cx| {
                     this.status = AutoUpdateStatus::Errored {
-                        error: Arc::new(anyhow::anyhow!(
-                            "許可リストへの追加に失敗しました: {error:#}"
-                        )),
+                        error: Arc::new(anyhow::anyhow!(i18n::t!(
+                            "Couldn't add the hosts to the allowlist: {error:#}"
+                        ))),
                     };
                     cx.notify();
                 })

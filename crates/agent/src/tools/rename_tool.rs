@@ -58,7 +58,7 @@ impl AgentTool for RenameTool {
         if let Ok(input) = input {
             rename_title(&input.symbol.symbol_name, &input.new_name).into()
         } else {
-            "シンボルの名前変更".into()
+            i18n::t!("Rename symbol").into()
         }
     }
 
@@ -93,9 +93,8 @@ impl AgentTool for RenameTool {
             .await
             .map_err(|error| {
                 format!(
-                    "名前の変更は実行されませんでした ({error})。\
-                     ユーザーが許可しなかったので、同じ変更を `edit_file` などで\
-                     代わりに適用しないでください。"
+                    "The rename was not run ({error}). The user did not allow it, so don't \
+                     make the same change another way, such as with `edit_file`."
                 )
             })?;
 
@@ -128,7 +127,7 @@ impl AgentTool for RenameTool {
                     &rename_title(&input.symbol.symbol_name, &input.new_name),
                 );
                 return Ok(no_language_server_message(
-                    "名前の変更",
+                    "rename the symbol",
                     &input.symbol.file_path,
                 ));
             }
@@ -171,5 +170,5 @@ impl AgentTool for RenameTool {
 }
 
 fn rename_title(symbol_name: &str, new_name: &str) -> String {
-    format!("`{symbol_name}` の名前を `{new_name}` に変更")
+    i18n::t!("Rename `{symbol_name}` to `{new_name}`")
 }

@@ -180,7 +180,7 @@ pub fn empty_draft_placeholder_label(
             .unwrap_or_else(|| SharedString::from(agent_id.to_string()))
     };
 
-    format!("{} の新規スレッド", agent_name).into()
+    i18n::t!("New {} Thread", agent_name).into()
 }
 
 #[cfg(test)]

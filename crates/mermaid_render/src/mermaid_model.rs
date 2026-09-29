@@ -134,32 +134,32 @@ impl MermaidDiagramKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Flowchart => "フローチャート",
-            Self::Pie => "円グラフ",
-            Self::State => "状態遷移図",
-            Self::Sequence => "シーケンス図",
-            Self::Er => "ER 図",
-            Self::Class => "クラス図",
-            Self::Gantt => "ガントチャート",
-            Self::Mindmap => "マインドマップ",
-            Self::Timeline => "タイムライン",
-            Self::GitGraph => "Git グラフ",
-            Self::Journey => "ユーザージャーニー",
-            Self::QuadrantChart => "4 象限チャート",
-            Self::XyChart => "XY チャート (棒・折れ線)",
-            Self::Radar => "レーダーチャート",
-            Self::Requirement => "要求図",
-            Self::C4 => "C4 図",
-            Self::Block => "ブロック図",
-            Self::Sankey => "サンキー図",
-            Self::Packet => "パケット図",
-            Self::Venn => "ベン図",
-            Self::Kanban => "かんばん",
-            Self::Treemap => "ツリーマップ",
-            Self::Architecture => "アーキテクチャ図",
-            Self::TreeView => "ツリービュー",
-            Self::Ishikawa => "特性要因図",
-            Self::EventModeling => "イベントモデリング",
+            Self::Flowchart => i18n::tc!("Mermaid diagram kind", "Flowchart"),
+            Self::Pie => i18n::tc!("Mermaid diagram kind", "Pie Chart"),
+            Self::State => i18n::tc!("Mermaid diagram kind", "State Diagram"),
+            Self::Sequence => i18n::tc!("Mermaid diagram kind", "Sequence Diagram"),
+            Self::Er => i18n::tc!("Mermaid diagram kind", "ER Diagram"),
+            Self::Class => i18n::tc!("Mermaid diagram kind", "Class Diagram"),
+            Self::Gantt => i18n::tc!("Mermaid diagram kind", "Gantt Chart"),
+            Self::Mindmap => i18n::tc!("Mermaid diagram kind", "Mindmap"),
+            Self::Timeline => i18n::tc!("Mermaid diagram kind", "Timeline"),
+            Self::GitGraph => i18n::tc!("Mermaid diagram kind", "Git Graph"),
+            Self::Journey => i18n::tc!("Mermaid diagram kind", "User Journey"),
+            Self::QuadrantChart => i18n::tc!("Mermaid diagram kind", "Quadrant Chart"),
+            Self::XyChart => i18n::tc!("Mermaid diagram kind", "XY Chart (Bar/Line)"),
+            Self::Radar => i18n::tc!("Mermaid diagram kind", "Radar Chart"),
+            Self::Requirement => i18n::tc!("Mermaid diagram kind", "Requirement Diagram"),
+            Self::C4 => i18n::tc!("Mermaid diagram kind", "C4 Diagram"),
+            Self::Block => i18n::tc!("Mermaid diagram kind", "Block Diagram"),
+            Self::Sankey => i18n::tc!("Mermaid diagram kind", "Sankey Diagram"),
+            Self::Packet => i18n::tc!("Mermaid diagram kind", "Packet Diagram"),
+            Self::Venn => i18n::tc!("Mermaid diagram kind", "Venn Diagram"),
+            Self::Kanban => i18n::tc!("Mermaid diagram kind", "Kanban"),
+            Self::Treemap => i18n::tc!("Mermaid diagram kind", "Treemap"),
+            Self::Architecture => i18n::tc!("Mermaid diagram kind", "Architecture Diagram"),
+            Self::TreeView => i18n::tc!("Mermaid diagram kind", "Tree View"),
+            Self::Ishikawa => i18n::tc!("Mermaid diagram kind", "Ishikawa Diagram"),
+            Self::EventModeling => i18n::tc!("Mermaid diagram kind", "Event Modeling"),
         }
     }
 }
@@ -496,7 +496,9 @@ fn parse_document_of_its_kind(source: &str) -> Result<MermaidDocument> {
             parse_event_modeling(source).map(MermaidDocument::EventModeling)
         }
         None => {
-            bail!("この図は構造化エディターに対応していません。テキストのまま編集してください。")
+            bail!(i18n::t!(
+                "The structured editor does not support this diagram. Edit it as text."
+            ))
         }
     }
 }
@@ -727,8 +729,8 @@ fn directive_problem(source: &str) -> Option<String> {
             .unwrap_or_default();
         let in_comment = before.trim_start().starts_with("%%");
         if !before.trim().is_empty() && !in_comment {
-            return Some(format!(
-                "文の途中に `%%{{` があります ({line})。Mermaid は `%%{{ … }}%%` を切り取って前後をつないで読むため、構造化編集では扱えません。"
+            return Some(i18n::t!(
+                "There is a `%%{{` in the middle of a statement ({line}). Mermaid cuts `%%{{ … }}%%` out and joins what is before and after it, so the structured editor cannot handle it."
             ));
         }
 
@@ -745,8 +747,8 @@ fn directive_problem(source: &str) -> Option<String> {
                 .map(str::trim)
                 .any(|line| !line.is_empty() && !line.starts_with("%%"));
             return drops_a_statement.then(|| {
-                format!(
-                    "閉じていない `%%{{` があります ({line})。Mermaid はそこから後ろを読まないため、構造化編集では扱えません。"
+                i18n::t!(
+                    "There is a `%%{{` that is never closed ({line}). Mermaid does not read anything after it, so the structured editor cannot handle it."
                 )
             });
         };
@@ -756,8 +758,8 @@ fn directive_problem(source: &str) -> Option<String> {
                 .get(start..end)
                 .is_some_and(|directive| directive.contains('\n'))
             {
-                return Some(format!(
-                    "コメントの中の `%%{{` が次の行まで続いています ({line})。Mermaid はその間の行を読まないため、構造化編集では扱えません。"
+                return Some(i18n::t!(
+                    "A `%%{{` inside a comment runs on to the next line ({line}). Mermaid does not read the lines in between, so the structured editor cannot handle it."
                 ));
             }
             position = end;
@@ -774,8 +776,8 @@ fn directive_problem(source: &str) -> Option<String> {
             .unwrap_or_default()
             .trim();
         if !statement.is_empty() && !statement.starts_with("%%") {
-            return Some(format!(
-                "`%%{{ … }}%%` の後ろに同じ行で書かれた文は構造化編集で扱えません ({statement})。文を次の行に移してからもう一度開いてください。"
+            return Some(i18n::t!(
+                "The structured editor cannot handle a statement written after `%%{{ … }}%%` on the same line ({statement}). Move the statement to the next line, then open the editor again."
             ));
         }
         position = end;
@@ -877,8 +879,8 @@ fn html_attribute_problem(source: &str, only_across_lines: bool) -> Option<Strin
                     .and_then(|rest| rest.lines().next())
                     .unwrap_or_default()
                     .trim();
-                return Some(format!(
-                    "`<タグ 属性=\"…\">` の `\"` を Mermaid は `'` に書き換えて読むため、引用符の対応が変わります ({line})。属性を `'` で囲んでください。"
+                return Some(i18n::t!(
+                    "Mermaid reads the `\"` of `<tag attribute=\"…\">` as `'`, which changes which quotes pair up ({line}). Enclose the attribute in `'`."
                 ));
             }
             cursor = closing + 1;
@@ -888,19 +890,128 @@ fn html_attribute_problem(source: &str, only_across_lines: bool) -> Option<Strin
     None
 }
 
+/// Shows the bundled Japanese translations on the current thread until the
+/// guard is dropped, for the tests that check a reason reaches the user
+/// translated rather than as `merman`'s own English.
+#[cfg(test)]
+pub(crate) fn japanese_for_this_thread() -> i18n::test_support::LocaleOverride {
+    i18n::test_support::LocaleOverride::new(Some(i18n_catalog::test_support::bundled_catalog("ja")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn every_kind_has_a_japanese_label() {
-        for kind in MermaidDiagramKind::ALL {
+    fn every_kind_has_an_english_and_a_japanese_label() {
+        let english = MermaidDiagramKind::ALL.map(MermaidDiagramKind::label);
+        for (kind, label) in MermaidDiagramKind::ALL.into_iter().zip(english) {
+            assert!(
+                !label.is_empty() && label.is_ascii(),
+                "{kind:?} should have an English label, got {label}"
+            );
+        }
+
+        let _japanese = japanese_for_this_thread();
+        for (kind, english_label) in MermaidDiagramKind::ALL.into_iter().zip(english) {
             let label = kind.label();
             assert!(
                 label.chars().any(|character| character > '\u{7f}'),
                 "{kind:?} should have a Japanese label, got {label}"
             );
+            assert_ne!(label, english_label, "{kind:?}");
         }
+    }
+
+    // The shape labels carry Mermaid's own brackets (`{ }`, `{{ }}`), which
+    // `tr` must show exactly as written rather than read as placeholders.
+    #[test]
+    fn labels_in_japanese_read_as_they_did_before_the_catalog() {
+        use crate::block_model::{BLOCK_LINKS, BlockItemKind, BlockShape};
+        use crate::mindmap_model::MindmapShape;
+        use crate::state_model::{NotePlacement, StateKind};
+
+        let _japanese = japanese_for_this_thread();
+        assert_eq!(
+            MermaidDiagramKind::ALL.map(MermaidDiagramKind::label),
+            [
+                "フローチャート",
+                "円グラフ",
+                "状態遷移図",
+                "シーケンス図",
+                "ER 図",
+                "クラス図",
+                "ガントチャート",
+                "マインドマップ",
+                "タイムライン",
+                "Git グラフ",
+                "ユーザージャーニー",
+                "4 象限チャート",
+                "XY チャート (棒・折れ線)",
+                "レーダーチャート",
+                "要求図",
+                "C4 図",
+                "ブロック図",
+                "サンキー図",
+                "パケット図",
+                "ベン図",
+                "かんばん",
+                "ツリーマップ",
+                "アーキテクチャ図",
+                "ツリービュー",
+                "特性要因図",
+                "イベントモデリング",
+            ]
+        );
+        assert_eq!(
+            BlockShape::ALL.map(BlockShape::label),
+            [
+                "四角 [ ]",
+                "角丸 ( )",
+                "競技場形 ([ ])",
+                "二重枠 [[ ]]",
+                "円柱 [( )]",
+                "円 (( ))",
+                "二重円 ((( )))",
+                "旗形 > ]",
+                "ひし形 { }",
+                "六角形 {{ }}",
+                "右傾き [/ /]",
+                "左傾き [\\ \\]",
+                "台形 [/ \\]",
+                "逆台形 [\\ /]",
+            ]
+        );
+        assert_eq!(
+            MindmapShape::ALL.map(MindmapShape::label),
+            [
+                "標準",
+                "四角 [ ]",
+                "角丸 ( )",
+                "円 (( ))",
+                "爆発 )) ((",
+                "雲 ) (",
+                "六角形 {{ }}",
+            ]
+        );
+        assert_eq!(
+            BlockItemKind::ALL.map(BlockItemKind::label),
+            ["ブロック", "矢印", "空き", "グループ"]
+        );
+        assert_eq!(
+            BLOCK_LINKS.map(|(_, name)| i18n::tr(name)),
+            ["矢印", "線だけ", "× 印", "○ 印"]
+        );
+        assert_eq!(
+            StateKind::ALL.map(StateKind::label),
+            [
+                "通常の状態",
+                "分岐 <<choice>>",
+                "分流 <<fork>>",
+                "合流 <<join>>"
+            ]
+        );
+        assert_eq!(NotePlacement::ALL.map(NotePlacement::label), ["左", "右"]);
     }
 
     #[test]
@@ -1013,7 +1124,7 @@ mod tests {
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             let message = format!("{error}");
-            assert!(message.contains("構造化エディター"), "got: {message}");
+            assert!(message.contains("structured editor"), "got: {message}");
         }
     }
 

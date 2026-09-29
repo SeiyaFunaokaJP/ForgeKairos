@@ -151,9 +151,9 @@ impl AgentTool for DiagnosticsTool {
             Some(path) if !path.is_empty() => Some(path),
             _ => None,
         }) {
-            format!("{} の診断を確認", MarkdownInlineCode(&path)).into()
+            i18n::t!("Check diagnostics for {}", MarkdownInlineCode(&path)).into()
         } else {
-            "プロジェクトの診断を確認".into()
+            i18n::t!("Check project diagnostics").into()
         }
     }
 

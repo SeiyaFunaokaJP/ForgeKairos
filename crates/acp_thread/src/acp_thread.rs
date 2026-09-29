@@ -183,12 +183,12 @@ pub fn unsandboxed_command_permission_options() -> PermissionOptions {
     PermissionOptions::Flat(vec![
         acp::PermissionOption::new(
             acp::PermissionOptionId::new(UNSANDBOXED_COMMAND_ALLOW_OPTION_ID),
-            "許可 (今回のみ)",
+            i18n::t!("Allow once"),
             acp::PermissionOptionKind::AllowOnce,
         ),
         acp::PermissionOption::new(
             acp::PermissionOptionId::new("deny"),
-            "拒否",
+            i18n::t!("Deny"),
             acp::PermissionOptionKind::RejectOnce,
         ),
     ])
@@ -341,14 +341,15 @@ pub struct PermissionJudgeDetails {
 /// The reason left on a tool call whose judgement never finished because the
 /// turn was cancelled (ADR-F52). Shared with the agent crate so the card and
 /// the thread's own record say the same thing.
-pub const PERMISSION_JUDGE_CANCELED_REASON: &str = "実行が中止されました";
+pub const PERMISSION_JUDGE_CANCELED_REASON: &str = i18n::msg!("The run was canceled");
 
 /// The reason left on a third-party tool call that carries no arguments
 /// (ADR-F52). With nothing but the tool's own name to go on, the judge would be
 /// approving a name — which is how an MCP server got past this gate once
 /// before — so it is not asked at all and the user decides. Shared with the
 /// agent crate so the card and the thread's own record say the same thing.
-pub const PERMISSION_JUDGE_NO_ARGUMENTS_REASON: &str = "引数が無いため確認します";
+pub const PERMISSION_JUDGE_NO_ARGUMENTS_REASON: &str =
+    i18n::msg!("Asking you, because the call has no arguments");
 
 pub fn meta_with_permission_judge(details: PermissionJudgeDetails) -> acp::Meta {
     acp::Meta::from_iter([(
@@ -2699,12 +2700,18 @@ impl Display for LoadError {
             LoadError::SandboxUnavailable(reason) => write!(f, "{reason}"),
             LoadError::SandboxHostsNotAllowed(hosts) => write!(
                 f,
-                "IDE 全体の許可リストに次のホストがありません: {}",
-                hosts.join("、")
+                "{}",
+                i18n::t!(
+                    "These hosts aren't in the editor-wide allowlist: {}",
+                    hosts.join(i18n::tc!("list separator", ", "))
+                )
             ),
             LoadError::SessionStartedOutsideSandbox => write!(
                 f,
-                "このスレッドはサンドボックスの外で起動したエージェントの会話です"
+                "{}",
+                i18n::t!(
+                    "This thread is a conversation with an agent that was started outside the sandbox"
+                )
             ),
         }
     }
@@ -4699,7 +4706,7 @@ impl AcpThread {
                     if judging {
                         call.permission_judge = Some(PermissionJudgeDetails {
                             state: PermissionJudgeState::Superseded,
-                            reason: PERMISSION_JUDGE_CANCELED_REASON.to_string(),
+                            reason: i18n::tr(PERMISSION_JUDGE_CANCELED_REASON).to_string(),
                             reused: false,
                         });
                     }
@@ -5393,11 +5400,7 @@ impl AcpThread {
                                 break result?;
                             }
                             if attempt >= WSL_SANDBOX_WRAP_ATTEMPTS {
-                                return Err(anyhow::Error::new(
-                                    sandbox::SandboxError::WslUnavailable(
-                                        wsl_sandbox_timeout_message(),
-                                    ),
-                                ));
+                                return Err(anyhow::Error::new(wsl_sandbox_timed_out()));
                             }
                             log::warn!(
                                 "WSL did not respond within {} seconds while preparing a \
@@ -8310,7 +8313,7 @@ mod tests {
         });
         cx.run_until_parked();
         let (tool_call_id, title) = waiting_zed_confirmation(&thread, cx);
-        assert!(title.contains("プロジェクトの設定"), "{title}");
+        assert!(title.contains("local settings"), "{title}");
         thread.update(cx, |thread, cx| {
             thread.authorize_tool_call(
                 tool_call_id,

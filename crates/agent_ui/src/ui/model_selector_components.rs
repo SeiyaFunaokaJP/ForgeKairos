@@ -243,14 +243,16 @@ impl RenderOnce for ModelSelectorListItem {
                             .when(is_disabled, |this| this.color(Color::Disabled))
                             .truncate(),
                     )
-                    .when(self.is_latest, |parent| parent.child(Chip::new("最新")))
+                    .when(self.is_latest, |parent| {
+                        parent.child(Chip::new(i18n::t!("Latest")))
+                    })
                     .when_some(self.cost_info, |this, cost_info| {
                         let tooltip_text = if cost_info.ends_with('×') {
-                            format!("コスト倍率: {}", cost_info)
+                            i18n::t!("Cost Multiplier: {}", cost_info)
                         } else if cost_info.contains('$') {
-                            format!("100 万トークンあたりのコスト: {}", cost_info)
+                            i18n::t!("Cost per Million Tokens: {}", cost_info)
                         } else {
-                            format!("コスト: {}", cost_info)
+                            i18n::t!("Cost: {}", cost_info)
                         };
 
                         this.child(Chip::new(cost_info).tooltip(Tooltip::text(tooltip_text)))
@@ -271,9 +273,13 @@ impl RenderOnce for ModelSelectorListItem {
                 this.end_slot_on_hover(div().pr_1p5().when_some(self.on_toggle_favorite, {
                     |this, handle_click| {
                         let (icon, color, tooltip) = if is_favorite {
-                            (IconName::StarFilled, Color::Accent, "お気に入りから削除")
+                            (
+                                IconName::StarFilled,
+                                Color::Accent,
+                                i18n::t!("Unfavorite Model"),
+                            )
                         } else {
-                            (IconName::Star, Color::Default, "お気に入りに追加")
+                            (IconName::Star, Color::Default, i18n::t!("Favorite Model"))
                         };
                         this.child(
                             IconButton::new(("toggle-favorite", self.index), icon)
@@ -317,7 +323,7 @@ impl RenderOnce for ModelSelectorFooter {
             .border_t_1()
             .border_color(cx.theme().colors().border_variant)
             .child(
-                Button::new("configure", "構成")
+                Button::new("configure", i18n::t!("Configure"))
                     .full_width()
                     .style(ButtonStyle::Outlined)
                     .key_binding(
@@ -357,7 +363,7 @@ impl RenderOnce for ModelSelectorTooltip {
                 h_flex()
                     .gap_2()
                     .justify_between()
-                    .child(Label::new("モデルを変更"))
+                    .child(Label::new(i18n::t!("Change Model")))
                     .child(KeyBinding::for_action(&ToggleModelSelector, cx)),
             )
             .when(self.show_cycle_row, |this| {
@@ -368,7 +374,7 @@ impl RenderOnce for ModelSelectorTooltip {
                         .border_t_1()
                         .border_color(cx.theme().colors().border_variant)
                         .justify_between()
-                        .child(Label::new("お気に入りモデルを順に切り替え"))
+                        .child(Label::new(i18n::t!("Cycle Favorite Models")))
                         .child(KeyBinding::for_action(&CycleFavoriteModels, cx)),
                 )
             })

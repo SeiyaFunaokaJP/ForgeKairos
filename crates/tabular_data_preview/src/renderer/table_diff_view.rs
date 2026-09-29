@@ -341,7 +341,7 @@ impl TableDiffView {
             let Some(committed) = committed else {
                 grid.update(cx, |grid, cx| {
                     grid.set_status_message(
-                        "git の管理下にないか、まだ一度もコミットされていないファイルです",
+                        i18n::t!("This file isn't tracked by git or has never been committed"),
                         cx,
                     );
                 });
@@ -354,7 +354,7 @@ impl TableDiffView {
                         Self::from_files(
                             format!("{name} ↔ HEAD").into(),
                             "HEAD".into(),
-                            "現在".into(),
+                            i18n::tc!("table diff", "Current").into(),
                             LeftSource::Head(committed),
                             buffer,
                             delimiter,
@@ -391,7 +391,7 @@ impl TableDiffView {
                 files: true,
                 directories: false,
                 multiple: false,
-                prompt: Some("比較する".into()),
+                prompt: Some(i18n::t!("Compare").into()),
                 starting_directory: None,
             },
             DirectoryLister::Project(project.clone()),
@@ -454,7 +454,7 @@ impl TableDiffView {
                 Err(error) => {
                     log::error!("failed to read {path:?} for a table comparison: {error}");
                     grid.update(cx, |grid, cx| {
-                        grid.set_status_message("選んだファイルを読み込めませんでした", cx);
+                        grid.set_status_message(i18n::t!("Couldn't read the chosen file"), cx);
                     });
                 }
             }
@@ -991,11 +991,15 @@ impl TableDiffView {
         let colors = cx.theme().colors();
         let changes = self.diff.change_count();
         let counts = if changes == 0 {
-            "差分なし".to_owned()
+            i18n::t!("No differences").to_owned()
         } else {
-            format!(
-                "{changes} 件の差分 (追加 {} / 削除 {} / 変更 {})",
-                self.diff.added_rows, self.diff.removed_rows, self.diff.modified_rows
+            i18n::tn!(
+                changes,
+                "{count} difference ({} added / {} removed / {} changed)",
+                "{count} differences ({} added / {} removed / {} changed)",
+                self.diff.added_rows,
+                self.diff.removed_rows,
+                self.diff.modified_rows
             )
         };
 
@@ -1017,7 +1021,7 @@ impl TableDiffView {
                             IconName::ArrowUp,
                         )
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("前の差分"))
+                        .tooltip(Tooltip::text(i18n::t!("Previous Difference")))
                         .on_click(cx.listener(
                             |this, _event, _window, cx| {
                                 this.go_to_change(false, cx);
@@ -1030,7 +1034,7 @@ impl TableDiffView {
                             IconName::ArrowDown,
                         )
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("次の差分"))
+                        .tooltip(Tooltip::text(i18n::t!("Next Difference")))
                         .on_click(cx.listener(
                             |this, _event, _window, cx| {
                                 this.go_to_change(true, cx);
@@ -1047,7 +1051,7 @@ impl TableDiffView {
                         ToggleState::Unselected
                     },
                 )
-                .label("差分のある行だけ表示")
+                .label(i18n::t!("Show Only Rows with Differences"))
                 .on_click(cx.listener(|this, _state, _window, cx| {
                     this.toggle_only_differences(cx);
                 })),
@@ -1061,7 +1065,7 @@ impl TableDiffView {
                         ToggleState::Unselected
                     },
                 )
-                .label("先頭行を見出し")
+                .label(i18n::t!("First Row Is Header"))
                 .on_click(cx.listener(|this, _state, _window, cx| {
                     this.toggle_first_row_is_header(cx);
                 })),
@@ -1070,7 +1074,7 @@ impl TableDiffView {
             .child(div().flex_1())
             .when_some(self.change_position(), |this, (current, total)| {
                 this.child(
-                    Label::new(format!("{current} / {total} 箇所目"))
+                    Label::new(i18n::tc!("table diff", "{current} of {total}"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -1089,15 +1093,17 @@ impl TableDiffView {
             })
             .when(!self.can_recompare(), |this| {
                 this.child(
-                    Label::new("元の表のタブが閉じているため、この比較は取り直せません")
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
+                    Label::new(i18n::t!(
+                        "The original table's tab is closed, so this comparison can't be redone"
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
                 )
             })
             .when(self.diff.truncated, |this| {
                 this.child(
-                    Label::new(format!(
-                        "先頭 {} 行だけを比較しました",
+                    Label::new(i18n::t!(
+                        "Only the first {} rows were compared",
                         crate::grid::grouped_digits(crate::table_diff::MAX_DIFF_ROWS)
                     ))
                     .size(LabelSize::Small)
@@ -1106,7 +1112,7 @@ impl TableDiffView {
             })
             .when(self.is_computing, |this| {
                 this.child(
-                    Label::new("比較中…")
+                    Label::new(i18n::t!("Comparing…"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -1116,20 +1122,23 @@ impl TableDiffView {
 
     fn render_recompare_button(&self, cx: &mut Context<Self>) -> AnyElement {
         let can_recompare = self.can_recompare();
-        Button::new(ElementId::Name("tabular-diff-recompare".into()), "再比較")
-            .style(ButtonStyle::Subtle)
-            .size(ButtonSize::Compact)
-            .start_icon(Icon::new(IconName::RotateCcw).size(IconSize::Small))
-            .disabled(!can_recompare)
-            .tooltip(Tooltip::text(if can_recompare {
-                "両側をもう一度読み直して比べます"
-            } else {
-                "元の表のタブが閉じているため取り直せません"
-            }))
-            .on_click(cx.listener(|this, _event, _window, cx| {
-                this.recompare(cx);
-            }))
-            .into_any_element()
+        Button::new(
+            ElementId::Name("tabular-diff-recompare".into()),
+            i18n::t!("Compare Again"),
+        )
+        .style(ButtonStyle::Subtle)
+        .size(ButtonSize::Compact)
+        .start_icon(Icon::new(IconName::RotateCcw).size(IconSize::Small))
+        .disabled(!can_recompare)
+        .tooltip(Tooltip::text(if can_recompare {
+            i18n::t!("Reads both sides again and compares them")
+        } else {
+            i18n::t!("The original table's tab is closed, so this can't be redone")
+        }))
+        .on_click(cx.listener(|this, _event, _window, cx| {
+            this.recompare(cx);
+        }))
+        .into_any_element()
     }
 
     /// What went missing under the left pane, when it is showing the last
@@ -1145,15 +1154,15 @@ impl TableDiffView {
             DiffSource::Files {
                 left: LeftSource::Head(_),
                 ..
-            } => format!(
-                "{} にこのファイルがなくなりました (最後に読めた内容を表示しています)",
+            } => i18n::t!(
+                "This file no longer exists in {} (showing the last contents that could be read)",
                 self.left_title
             ),
             DiffSource::Files {
                 left: LeftSource::File(_),
                 ..
-            } => format!(
-                "{} が見つかりません (最後に読めた内容を表示しています)",
+            } => i18n::t!(
+                "{} wasn't found (showing the last contents that could be read)",
                 self.left_title
             ),
             DiffSource::Cells { .. } => return None,
@@ -1166,7 +1175,7 @@ impl TableDiffView {
     fn left_pane_title(&self) -> SharedString {
         match self.left_taken_at {
             Some(taken_at) => {
-                format!("{} ({} 取得)", self.left_title, taken_at.format("%H:%M")).into()
+                i18n::t!("{} (read at {})", self.left_title, taken_at.format("%H:%M")).into()
             }
             None => self.left_title.clone(),
         }
@@ -1233,7 +1242,7 @@ impl TableDiffView {
                             .color(Color::Muted)
                             .truncate(true)
                             .end_icon(Icon::new(IconName::ChevronDown).size(IconSize::XSmall)),
-                        Tooltip::text("この側で比べるものを選びます"),
+                        Tooltip::text(i18n::t!("Choose what to compare on this side")),
                     )
                     .menu(move |window, cx| {
                         let names = names.clone();
@@ -1352,9 +1361,9 @@ impl TableDiffView {
                 .justify_center()
                 .text_color(cx.theme().colors().text_muted)
                 .child(if self.is_computing {
-                    "比較中…"
+                    i18n::t!("Comparing…")
                 } else {
-                    "比べるものがありません"
+                    i18n::t!("Nothing to compare")
                 })
                 .into_any_element();
         }
@@ -1786,7 +1795,7 @@ fn file_name(buffer: &Entity<Buffer>, cx: &App) -> String {
         // `File::file_name` rather than the path's last part: a file opened on its own is
         // a worktree whose root is the file, and its path within that worktree is empty.
         .map(|file| file.file_name(cx).to_owned())
-        .unwrap_or_else(|| "無題".to_owned())
+        .unwrap_or_else(|| i18n::t!("Untitled").to_owned())
 }
 
 /// The diff holding the committed version, or `None` when there is no committed
@@ -1877,8 +1886,8 @@ impl CellComparison {
                 .map(|candidate| candidate.tab_title.clone())
                 .unwrap_or_default()
         };
-        format!(
-            "セルの比較 ({} ↔ {})",
+        i18n::t!(
+            "Cell Comparison ({} ↔ {})",
             tab_title(PaneSide::Left),
             tab_title(PaneSide::Right)
         )
@@ -1926,20 +1935,22 @@ enum CellComparisonRefusal {
 impl CellComparisonRefusal {
     fn message(&self) -> SharedString {
         match self {
-            CellComparisonRefusal::EmptyClipboard => {
-                "1 つのセルはクリップボードと比べますが、クリップボードが空です \
-                 (Ctrl で複数の範囲を選ぶか、2 列以上か 2 行以上を選ぶと、その中で比べます)"
-                    .into()
-            }
-            CellComparisonRefusal::TooManyCandidates(count) => format!(
-                "比べる候補が {count} 個になります。{MAX_CELL_CANDIDATES} 個までになるように\
-                 選び直してください (Ctrl で選んだ範囲、行番号で選んだ行、2 列以上なら列、\
-                 1 列ならセルが候補です)"
+            CellComparisonRefusal::EmptyClipboard => i18n::t!(
+                "A single cell is compared against the clipboard, but the clipboard is empty \
+                 (select several ranges with Ctrl, or two or more columns or rows, to compare \
+                 within them)"
             )
             .into(),
-            CellComparisonRefusal::TooManyCells(count) => format!(
-                "比べる候補のセルが合わせて {} 個になります。3 つ以上を比べるときは {} セルまでです \
-                 (範囲を小さくするか、比べる 2 列、2 行、2 つの範囲のどれかだけを選んでください)",
+            CellComparisonRefusal::TooManyCandidates(count) => i18n::t!(
+                "That makes {count} things to compare. Select again so that there are at most \
+                 {MAX_CELL_CANDIDATES} (the candidates are the ranges selected with Ctrl, the rows \
+                 selected by their numbers, the columns when two or more are selected, or the \
+                 cells of a single column)"
+            )
+            .into(),
+            CellComparisonRefusal::TooManyCells(count) => i18n::t!(
+                "The candidates add up to {} cells. Comparing three or more is limited to {} cells \
+                 (select a smaller range, or only two columns, two rows or two ranges to compare)",
                 crate::grid::grouped_digits(*count),
                 crate::grid::grouped_digits(MAX_CELL_CANDIDATE_CELLS)
             )
@@ -2035,7 +2046,7 @@ fn cell_comparison(
     } else if whole_rows {
         rect.rows()
             .map(|row| {
-                let name = SharedString::from(format!("行 {}", row + row_offset));
+                let name = SharedString::from(i18n::t!("Row {}", row + row_offset));
                 let row_across = GridRect {
                     first_row: row,
                     last_row: row,
@@ -2060,7 +2071,7 @@ fn cell_comparison(
                 };
                 candidate(
                     CellBlock::Rect(column_down),
-                    format!("列 {label}").into(),
+                    i18n::t!("Column {label}").into(),
                     label.into(),
                 )
             })
@@ -2078,7 +2089,7 @@ fn cell_comparison(
                 };
                 candidate(
                     CellBlock::Rect(cell),
-                    format!("行 {number}").into(),
+                    i18n::t!("Row {number}").into(),
                     format!("{}{number}", column_label(column)).into(),
                 )
             })
@@ -2091,8 +2102,8 @@ fn cell_comparison(
         vec![
             candidate(
                 CellBlock::Clipboard,
-                "クリップボード".into(),
-                "クリップボード".into(),
+                i18n::t!("Clipboard").into(),
+                i18n::t!("Clipboard").into(),
             ),
             candidate(CellBlock::Rect(rect), address.clone(), address),
         ]
@@ -2136,7 +2147,7 @@ impl Item for TableDiffView {
     }
 
     fn tab_tooltip_text(&self, _cx: &App) -> Option<SharedString> {
-        Some(format!("{} と {} の差分", self.left_title, self.right_title).into())
+        Some(i18n::t!("Diff of {} and {}", self.left_title, self.right_title).into())
     }
 }
 
@@ -2152,15 +2163,24 @@ impl TabularDataPreviewPane {
         let dispatch_context = self.grid.cell_editor.focus_handle(cx);
         let menu = ContextMenu::build(window, cx, move |menu, _window, _cx| {
             menu.context(dispatch_context)
-                .action("HEAD と比較", DiffWithHead.boxed_clone())
-                .action("ファイルと比較…", DiffWithFile.boxed_clone())
-                .action("選択したセルを比較", DiffSelectedCells.boxed_clone())
+                .action(i18n::t!("Compare with HEAD"), DiffWithHead.boxed_clone())
+                .action(i18n::t!("Compare with File…"), DiffWithFile.boxed_clone())
+                .action(
+                    i18n::t!("Compare Selected Cells"),
+                    DiffSelectedCells.boxed_clone(),
+                )
         });
 
-        DropdownMenu::new(ElementId::Name("tabular-diff-menu".into()), "差分", menu)
-            .trigger_size(ButtonSize::Compact)
-            .trigger_tooltip(Tooltip::text("この表を別の版や別のファイルと見比べます"))
-            .into_any_element()
+        DropdownMenu::new(
+            ElementId::Name("tabular-diff-menu".into()),
+            i18n::t!("Diff"),
+            menu,
+        )
+        .trigger_size(ButtonSize::Compact)
+        .trigger_tooltip(Tooltip::text(i18n::t!(
+            "Compare this table with another version or another file"
+        )))
+        .into_any_element()
     }
 
     /// Registers the three comparison actions on the workspace.
@@ -3317,9 +3337,9 @@ mod tests {
 
         assert_eq!(first_address, "A2");
         assert_eq!(last_address, "A3");
-        assert_eq!(comparison.pane_title(PaneSide::Left), "行 2");
-        assert_eq!(comparison.pane_title(PaneSide::Right), "行 3");
-        assert_eq!(comparison.title(), "セルの比較 (A2 ↔ A3)");
+        assert_eq!(comparison.pane_title(PaneSide::Left), "Row 2");
+        assert_eq!(comparison.pane_title(PaneSide::Right), "Row 3");
+        assert_eq!(comparison.title(), "Cell Comparison (A2 ↔ A3)");
     }
 
     /// The comparison holds both whole tables and the buffer of the file it
@@ -3353,7 +3373,7 @@ mod tests {
         let comparison = pane
             .read_with(&cx, |pane, _| cell_comparison(pane, "alpaca"))
             .expect("a single cell should be comparable against the clipboard");
-        assert_eq!(comparison.pane_title(PaneSide::Left), "クリップボード");
+        assert_eq!(comparison.pane_title(PaneSide::Left), "Clipboard");
         let diff = cell_diff(&comparison);
         assert_eq!(diff.modified_rows, 1);
 
@@ -3530,7 +3550,7 @@ mod tests {
         assert_eq!(pane_titles(&comparison), ["A2:A4", "B2:B4", "C2:C4"]);
         assert_eq!(comparison.pane_title(PaneSide::Left), "A2:A4");
         assert_eq!(comparison.pane_title(PaneSide::Right), "B2:B4");
-        assert_eq!(comparison.title(), "セルの比較 (A2:A4 ↔ B2:B4)");
+        assert_eq!(comparison.title(), "Cell Comparison (A2:A4 ↔ B2:B4)");
         assert_eq!(
             cell_diff(&comparison).change_count(),
             1,
@@ -3552,14 +3572,14 @@ mod tests {
             .read_with(&cx, |pane, _| cell_comparison(pane, ""))
             .expect("three cells of one column should be comparable");
 
-        assert_eq!(pane_titles(&comparison), ["行 2", "行 3", "行 4"]);
+        assert_eq!(pane_titles(&comparison), ["Row 2", "Row 3", "Row 4"]);
         let values: Vec<Vec<Vec<&str>>> = comparison
             .candidates
             .iter()
             .map(|candidate| candidate.rows.iter().map(|row| cells(row)).collect())
             .collect();
         assert_eq!(values, [[["alpha"]], [["beta"]], [["gamma"]]]);
-        assert_eq!(comparison.title(), "セルの比較 (A2 ↔ A3)");
+        assert_eq!(comparison.title(), "Cell Comparison (A2 ↔ A3)");
     }
 
     /// A block three columns wide is three columns to compare, where it used to
@@ -3583,14 +3603,17 @@ mod tests {
             .read_with(&cx, |pane, _| cell_comparison(pane, ""))
             .expect("three columns should be comparable");
 
-        assert_eq!(pane_titles(&comparison), ["列 A", "列 B", "列 C"]);
+        assert_eq!(
+            pane_titles(&comparison),
+            ["Column A", "Column B", "Column C"]
+        );
         let columns: Vec<Vec<Vec<&str>>> = comparison
             .candidates
             .iter()
             .map(|candidate| candidate.rows.iter().map(|row| cells(row)).collect())
             .collect();
         assert_eq!(columns, [[["1"], ["3"]], [["1"], ["4"]], [["2"], ["3"]]]);
-        assert_eq!(comparison.title(), "セルの比較 (A ↔ B)");
+        assert_eq!(comparison.title(), "Cell Comparison (A ↔ B)");
     }
 
     /// Picking the third block on the right compares it instead, and the tab
@@ -3609,7 +3632,10 @@ mod tests {
             })
         });
         view.read_with(&cx, |view, cx| {
-            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (A2:A4 ↔ B2:B4)");
+            assert_eq!(
+                view.tab_content_text(0, cx),
+                "Cell Comparison (A2:A4 ↔ B2:B4)"
+            );
             assert_eq!(cells(view.right.row(0)), ["a"]);
         });
 
@@ -3619,10 +3645,13 @@ mod tests {
         cx.run_until_parked();
 
         view.read_with(&cx, |view, cx| {
-            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (A2:A4 ↔ C2:C4)");
+            assert_eq!(
+                view.tab_content_text(0, cx),
+                "Cell Comparison (A2:A4 ↔ C2:C4)"
+            );
             assert_eq!(
                 view.tab_tooltip_text(cx).as_deref(),
-                Some("A2:A4 と C2:C4 の差分")
+                Some("Diff of A2:A4 and C2:C4")
             );
             assert_eq!(cells(view.left.row(0)), ["a"]);
             assert_eq!(cells(view.right.row(0)), ["x"]);
@@ -3641,7 +3670,10 @@ mod tests {
         cx.run_until_parked();
 
         view.read_with(&cx, |view, cx| {
-            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (C2:C4 ↔ A2:A4)");
+            assert_eq!(
+                view.tab_content_text(0, cx),
+                "Cell Comparison (C2:C4 ↔ A2:A4)"
+            );
             let left_title = view.left_pane_title();
             assert!(left_title.starts_with("C2:C4 ("), "{left_title}");
             assert_eq!(cells(view.left.row(0)), ["x"]);
@@ -3721,7 +3753,7 @@ mod tests {
         view.read_with(&cx, |view, cx| {
             assert!(!view.can_recompare());
             assert_eq!(cells(view.right.row(0)), ["c"]);
-            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (a ↔ c)");
+            assert_eq!(view.tab_content_text(0, cx), "Cell Comparison (a ↔ c)");
         });
     }
 
@@ -3836,7 +3868,7 @@ mod tests {
         select_down_to(0, &mut cx);
         assert_eq!(open_comparisons(&mut cx), 0);
         let message = status(&mut cx);
-        assert!(message.contains("クリップボードが空"), "{message}");
+        assert!(message.contains("the clipboard is empty"), "{message}");
     }
 
     #[test]
@@ -3934,7 +3966,7 @@ mod tests {
                     pane.selection_rect().rows(),
                 )
             });
-            assert_eq!(pane_titles(&comparison), ["行 1", "行 2", "行 3"]);
+            assert_eq!(pane_titles(&comparison), ["Row 1", "Row 2", "Row 3"]);
             let values: Vec<Vec<Vec<&str>>> = comparison
                 .candidates
                 .iter()
@@ -4040,7 +4072,7 @@ mod tests {
             .expect("four ranges should be comparable");
 
         assert_eq!(pane_titles(&comparison), ["B2", "B3", "B4", "C2:C4"]);
-        assert_eq!(comparison.title(), "セルの比較 (B2 ↔ B3)");
+        assert_eq!(comparison.title(), "Cell Comparison (B2 ↔ B3)");
     }
 
     /// Selects every row from `first` to `last` by the row numbers.
@@ -4084,12 +4116,12 @@ mod tests {
         let comparison = pane
             .read_with(&cx, |pane, _| cell_comparison(pane, ""))
             .expect("two whole rows should be comparable");
-        assert_eq!(pane_titles(&comparison), ["行 2", "行 3"]);
+        assert_eq!(pane_titles(&comparison), ["Row 2", "Row 3"]);
         assert_eq!(
             candidate_rows(&comparison),
             [["a", "b", "x"], ["a", "B", "x"]]
         );
-        assert_eq!(comparison.title(), "セルの比較 (行 2 ↔ 行 3)");
+        assert_eq!(comparison.title(), "Cell Comparison (Row 2 ↔ Row 3)");
         let diff = cell_diff(&comparison);
         assert_eq!(diff.modified_rows, 1);
         assert_eq!(
@@ -4116,8 +4148,11 @@ mod tests {
             let DiffSource::Cells { comparison, .. } = &view.source else {
                 panic!("a comparison of rows is a comparison of cells");
             };
-            assert_eq!(pane_titles(comparison), ["行 2", "行 3", "行 4"]);
-            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (行 2 ↔ 行 3)");
+            assert_eq!(pane_titles(comparison), ["Row 2", "Row 3", "Row 4"]);
+            assert_eq!(
+                view.tab_content_text(0, cx),
+                "Cell Comparison (Row 2 ↔ Row 3)"
+            );
             assert_eq!(cells(view.left.row(0)), ["a", "b", "x"]);
             assert_eq!(cells(view.right.row(0)), ["a", "B", "x"]);
         });
@@ -4153,7 +4188,7 @@ mod tests {
                             pane.cursor_address()
                         });
                         format!(
-                            "行 {}",
+                            "Row {}",
                             address.trim_start_matches(
                                 |character: char| character.is_ascii_alphabetic()
                             )
@@ -4173,7 +4208,7 @@ mod tests {
 
         let (names, toolbar_names, values) =
             names_and_toolbar_names(GridRow::Header, GridRow::Body(DisplayRow(0)), &mut cx);
-        assert_eq!(names, ["行 1", "行 2"]);
+        assert_eq!(names, ["Row 1", "Row 2"]);
         assert_eq!(names, toolbar_names);
         assert_eq!(values, [["l", "m", "r"], ["a", "a", "x"]]);
 
@@ -4188,7 +4223,7 @@ mod tests {
             GridRow::Body(DisplayRow(1)),
             &mut cx,
         );
-        assert_eq!(names, ["行 1", "行 2"]);
+        assert_eq!(names, ["Row 1", "Row 2"]);
         assert_eq!(names, toolbar_names);
         assert_eq!(values, [["l", "m", "r"], ["a", "a", "x"]]);
     }
@@ -4208,7 +4243,10 @@ mod tests {
         let comparison = pane
             .read_with(&cx, |pane, _| cell_comparison(pane, ""))
             .expect("a whole row of three cells should be comparable");
-        assert_eq!(pane_titles(&comparison), ["列 A", "列 B", "列 C"]);
+        assert_eq!(
+            pane_titles(&comparison),
+            ["Column A", "Column B", "Column C"]
+        );
         assert_eq!(candidate_rows(&comparison), [["b"], ["B"], ["y"]]);
     }
 
@@ -4282,7 +4320,10 @@ mod tests {
         cx.run_until_parked();
 
         view.read_with(&cx, |view, cx| {
-            assert_eq!(view.tab_content_text(0, cx), "セルの比較 (A2:A4 ↔ C2:C4)");
+            assert_eq!(
+                view.tab_content_text(0, cx),
+                "Cell Comparison (A2:A4 ↔ C2:C4)"
+            );
             assert_eq!(cells(view.right.row(0)), ["x"]);
         });
     }
@@ -4600,7 +4641,8 @@ mod tests {
             .split_once(" (")
             .unwrap_or_else(|| panic!("the left title should say when it was read ({title})"));
         let time = taken
-            .strip_suffix(" 取得)")
+            .strip_prefix("read at ")
+            .and_then(|taken| taken.strip_suffix(')'))
             .unwrap_or_else(|| panic!("the left title should say when it was read ({title})"));
         let (hour, minute) = time
             .split_once(':')

@@ -33,7 +33,6 @@ use futures::{
     select_biased,
 };
 use git::repository::FileHistoryChangedFileSets;
-use gpui::BackgroundExecutor;
 use gpui::TaskExt;
 use gpui::http_client::Url;
 use gpui::{
@@ -401,7 +400,12 @@ impl ProjectState {
             drop(pending_prediction.task);
         } else {
             cx.spawn(async move |this, cx| {
-                let Some((prediction_id, model_version)) = pending_prediction.task.await else {
+                let Some(CompletedPredictionRequest {
+                    prediction_id,
+                    model_version,
+                    made_by_zed_cloud,
+                }) = pending_prediction.task.await
+                else {
                     return;
                 };
 
@@ -412,6 +416,7 @@ impl ProjectState {
                         false,
                         model_version,
                         None,
+                        made_by_zed_cloud,
                         cx,
                     );
                 })
@@ -549,10 +554,19 @@ impl CurrentEditPrediction {
 
 const DIAGNOSTIC_LINES_RANGE: u32 = 20;
 
+/// What a finished prediction request leaves behind for reporting its rejection if the request
+/// turns out to have been cancelled.
+#[derive(Debug)]
+struct CompletedPredictionRequest {
+    prediction_id: EditPredictionId,
+    model_version: Option<String>,
+    made_by_zed_cloud: bool,
+}
+
 #[derive(Debug)]
 struct PendingPrediction {
     id: usize,
-    task: Task<Option<(EditPredictionId, Option<String>)>>,
+    task: Task<Option<CompletedPredictionRequest>>,
     /// If true, the task is dropped immediately on cancel (cancelling the HTTP request).
     /// If false, the task is awaited to completion so rejection can be reported.
     drop_on_cancel: bool,
@@ -979,20 +993,13 @@ impl EditPredictionStore {
         let legacy_data_collection_enabled = Self::load_legacy_data_collection_enabled(cx);
 
         let (reject_tx, reject_rx) = mpsc::unbounded();
-        cx.background_spawn({
+        cx.spawn({
             let client = client.clone();
             let llm_token = llm_token.clone();
             let app_version = AppVersion::global(cx);
-            let background_executor = cx.background_executor().clone();
-            async move {
-                Self::handle_rejected_predictions(
-                    reject_rx,
-                    client,
-                    llm_token,
-                    app_version,
-                    background_executor,
-                )
-                .await
+            async move |_, cx| {
+                Self::handle_rejected_predictions(reject_rx, client, llm_token, app_version, cx)
+                    .await
             }
         })
         .detach();
@@ -1127,6 +1134,10 @@ impl EditPredictionStore {
     }
 
     pub fn refresh_available_experiments(&mut self, cx: &mut Context<Self>) {
+        if let Err(error) = ensure_zed_cloud_consent(cx) {
+            log::debug!("not fetching edit prediction experiments: {error}");
+            return;
+        }
         let client = self.client.clone();
         let llm_token = self.llm_token.clone();
         let app_version = AppVersion::global(cx);
@@ -1871,13 +1882,7 @@ impl EditPredictionStore {
                 );
             }
             EditPredictionModel::Zeta => {
-                let is_cloud = !matches!(
-                    all_language_settings(None, cx).edit_predictions.provider,
-                    EditPredictionProvider::Ollama | EditPredictionProvider::OpenAiCompatibleApi
-                );
-                if is_cloud {
-                    zeta::edit_prediction_accepted(self, current_prediction, cx)
-                }
+                zeta::edit_prediction_accepted(self, current_prediction, cx)
             }
             EditPredictionModel::Fim { .. } | EditPredictionModel::SweepPrompt => {}
         }
@@ -1888,8 +1893,9 @@ impl EditPredictionStore {
         client: Arc<Client>,
         llm_token: LlmApiToken,
         app_version: Version,
-        background_executor: BackgroundExecutor,
+        cx: &mut AsyncApp,
     ) {
+        let background_executor = cx.background_executor().clone();
         let mut rx = std::pin::pin!(rx.peekable());
         let mut batched = Vec::new();
 
@@ -1909,6 +1915,17 @@ impl EditPredictionStore {
                     }
                     () = background_executor.timer(REJECT_REQUEST_DEBOUNCE).fuse() => {},
                 }
+            }
+
+            // Rejections queued while the consent was given are dropped, not kept for a later
+            // consent, once it has been withdrawn before they are sent.
+            if !cx.update(|cx| zed_cloud_is_acknowledged(cx)) {
+                log::debug!(
+                    "not reporting {} rejected edit predictions: the external AI warning for Zed                      is not accepted",
+                    batched.len()
+                );
+                batched.clear();
+                continue;
             }
 
             let url = client
@@ -2067,6 +2084,13 @@ impl EditPredictionStore {
                     .push((pending_capture, settled_editable_region));
             }
 
+            // Only Zed Cloud's predictions are queued here; the consent is the one in force now, not
+            // when the prediction was made.
+            if !this.read_with(cx, |_, cx| zed_cloud_is_acknowledged(cx)) {
+                next_wake_time =
+                    oldest_edited_at.map(|time| time + EDIT_PREDICTION_SETTLED_QUIESCENCE);
+                continue;
+            }
             cx.background_spawn({
                 let client = client.clone();
                 let llm_token = llm_token.clone();
@@ -2201,6 +2225,7 @@ impl EditPredictionStore {
                     prediction.was_shown,
                     model_version,
                     Some(prediction.e2e_latency),
+                    prediction.prediction.made_by_zed_cloud,
                     cx,
                 );
             }
@@ -2251,16 +2276,14 @@ impl EditPredictionStore {
         was_shown: bool,
         model_version: Option<String>,
         e2e_latency: Option<std::time::Duration>,
+        made_by_zed_cloud: bool,
         cx: &App,
     ) {
         match self.edit_prediction_model {
             EditPredictionModel::Zeta => {
-                let is_cloud = !matches!(
-                    all_language_settings(None, cx).edit_predictions.provider,
-                    EditPredictionProvider::Ollama | EditPredictionProvider::OpenAiCompatibleApi
-                );
-
-                if is_cloud {
+                // The consent is checked again right before the batch is sent, since it can be
+                // withdrawn while the rejection waits in the queue.
+                if made_by_zed_cloud && zed_cloud_is_acknowledged(cx) {
                     let organization_id = self
                         .user_store
                         .read(cx)
@@ -2499,6 +2522,127 @@ fn currently_following(project: &Entity<Project>, cx: &App) -> bool {
         })
 }
 
+/// The key under which the user accepts the external AI warning for an edit prediction provider
+/// (zed-jp-enhance: `docs/jp-enhance/DESIGN.md` ADR-F10). Edit predictions are namespaced apart
+/// from the agent's providers so that accepting the warning for chat does not open predictions.
+/// `settings_ui` builds and reads its keys through this function and
+/// [`external_ai_consent_provider_id`], so the prefix is written only here.
+pub fn external_ai_consent_key(provider_id: &str) -> String {
+    format!("{EXTERNAL_AI_CONSENT_KEY_PREFIX}{provider_id}")
+}
+
+/// The edit prediction provider an `acknowledged_external_ai_providers` key belongs to, or `None`
+/// for a key of the agent's providers.
+pub fn external_ai_consent_provider_id(key: &str) -> Option<&str> {
+    key.strip_prefix(EXTERNAL_AI_CONSENT_KEY_PREFIX)
+}
+
+const EXTERNAL_AI_CONSENT_KEY_PREFIX: &str = "edit_prediction:";
+
+/// Whether the edit prediction provider `provider_id` may be sent requests at `api_url`: always
+/// while the endpoint is on this machine, and otherwise only once the user has accepted the
+/// provider's external AI warning (ADR-F10). The settings UI, the status bar and every request
+/// path share this one check so that they cannot disagree about a provider.
+pub fn endpoint_is_local_or_acknowledged(provider_id: &str, api_url: &str, cx: &App) -> bool {
+    http_client::endpoint_is_loopback(api_url)
+        || settings::external_ai_provider_is_acknowledged(&external_ai_consent_key(provider_id), cx)
+}
+
+/// The consent id of a provider whose endpoint is the `api_url` in the edit prediction settings.
+fn self_hosted_consent_id(provider: EditPredictionProvider) -> Option<&'static str> {
+    match provider {
+        EditPredictionProvider::Ollama => Some("ollama"),
+        EditPredictionProvider::OpenAiCompatibleApi => Some("open_ai_compatible_api"),
+        _ => None,
+    }
+}
+
+const MERCURY_CONSENT_ID: &str = "mercury";
+
+/// The consent id `codestral` checks its requests against.
+pub const CODESTRAL_CONSENT_ID: &str = "codestral";
+
+/// Zed Cloud is external wherever `server_url` points, and its consent is shared with the agent's
+/// Zed provider, so it has no endpoint exemption and no `edit_prediction:` key.
+fn zed_cloud_is_acknowledged(cx: &App) -> bool {
+    settings::external_ai_provider_is_acknowledged(settings::ZED_CLOUD_AI_CONSENT_KEY, cx)
+}
+
+/// Whether requests to the configured edit prediction provider are held back until the user
+/// accepts its external AI warning.
+pub fn provider_awaits_external_ai_consent(provider: EditPredictionProvider, cx: &App) -> bool {
+    match provider {
+        EditPredictionProvider::Zed => !zed_cloud_is_acknowledged(cx),
+        EditPredictionProvider::Mercury => {
+            !endpoint_is_local_or_acknowledged(MERCURY_CONSENT_ID, mercury::MERCURY_API_URL, cx)
+        }
+        EditPredictionProvider::Ollama => all_language_settings(None, cx)
+            .edit_predictions
+            .ollama
+            .as_ref()
+            .is_some_and(|settings| ensure_self_hosted_consent(provider, settings, cx).is_err()),
+        EditPredictionProvider::OpenAiCompatibleApi => all_language_settings(None, cx)
+            .edit_predictions
+            .open_ai_compatible_api
+            .as_ref()
+            .is_some_and(|settings| ensure_self_hosted_consent(provider, settings, cx).is_err()),
+        EditPredictionProvider::Copilot => copilot::edit_prediction_awaits_external_ai_consent(cx),
+        EditPredictionProvider::Codestral => {
+            // Unset, the endpoint is Mistral's own host, which is as remote as an empty URL.
+            let api_url = all_language_settings(None, cx)
+                .edit_predictions
+                .codestral
+                .api_url
+                .clone()
+                .unwrap_or_default();
+            !endpoint_is_local_or_acknowledged(CODESTRAL_CONSENT_ID, &api_url, cx)
+        }
+        EditPredictionProvider::None => false,
+    }
+}
+
+/// The gate a request to a self-hosted provider passes through, checked against the very settings
+/// the request is built from.
+pub(crate) fn ensure_self_hosted_consent(
+    provider: EditPredictionProvider,
+    settings: &language::language_settings::OpenAiCompatibleEditPredictionSettings,
+    cx: &App,
+) -> Result<()> {
+    let consent_id = self_hosted_consent_id(provider)
+        .with_context(|| format!("{provider:?} is not a self-hosted edit prediction provider"))?;
+    if endpoint_is_local_or_acknowledged(consent_id, &settings.api_url, cx) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "not sending the edit prediction request to {}: it is not on this machine and the \
+             external AI warning for {provider:?} edit predictions has not been accepted",
+            settings.api_url
+        ))
+    }
+}
+
+pub(crate) fn ensure_mercury_consent(cx: &App) -> Result<()> {
+    if endpoint_is_local_or_acknowledged(MERCURY_CONSENT_ID, mercury::MERCURY_API_URL, cx) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "not sending the edit prediction request to Mercury: the external AI warning for \
+             Mercury edit predictions has not been accepted"
+        ))
+    }
+}
+
+pub(crate) fn ensure_zed_cloud_consent(cx: &App) -> Result<()> {
+    if zed_cloud_is_acknowledged(cx) {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "not sending the edit prediction request to Zed Cloud: the external AI warning for \
+             Zed has not been accepted"
+        ))
+    }
+}
+
 fn is_ep_store_provider(provider: EditPredictionProvider) -> bool {
     match provider {
         EditPredictionProvider::Zed
@@ -2597,12 +2741,14 @@ impl EditPredictionStore {
             }
 
             let new_prediction_result = do_refresh(this.clone(), cx).await.log_err().flatten();
-            let new_prediction_metadata = new_prediction_result.as_ref().map(|(result, _)| {
-                (
-                    result.prediction.id.clone(),
-                    result.prediction.model_version.clone(),
-                )
-            });
+            let new_prediction_metadata =
+                new_prediction_result
+                    .as_ref()
+                    .map(|(result, _)| CompletedPredictionRequest {
+                        prediction_id: result.prediction.id.clone(),
+                        model_version: result.prediction.model_version.clone(),
+                        made_by_zed_cloud: result.prediction.made_by_zed_cloud,
+                    });
 
             // When a prediction completes, remove it from the pending list, and cancel
             // any pending predictions that were enqueued before it.
@@ -2637,6 +2783,7 @@ impl EditPredictionStore {
                             false,
                             model_version,
                             Some(e2e_latency),
+                            prediction.made_by_zed_cloud,
                             cx,
                         );
 
@@ -2676,6 +2823,7 @@ impl EditPredictionStore {
                                     false,
                                     new_prediction.prediction.model_version,
                                     Some(new_prediction.e2e_latency),
+                                    new_prediction.prediction.made_by_zed_cloud,
                                     cx,
                                 );
                                 None
@@ -3307,6 +3455,14 @@ impl EditPredictionStore {
         expected_output: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        if !prediction.made_by_zed_cloud {
+            log::info!("not sending the rating of an edit prediction Zed Cloud did not make");
+            return;
+        }
+        if let Err(error) = ensure_zed_cloud_consent(cx) {
+            log::info!("not sending the edit prediction rating: {error}");
+            return;
+        }
         let organization = self.user_store.read(cx).current_organization();
 
         self.rated_predictions.insert(prediction.id.clone());

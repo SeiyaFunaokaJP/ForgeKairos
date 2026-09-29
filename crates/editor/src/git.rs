@@ -626,7 +626,7 @@ impl Editor {
         // Create the prompt editor for the review input
         let prompt_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("レビューコメントを追加...", window, cx);
+            editor.set_placeholder_text(i18n::t!("Add a review comment..."), window, cx);
             editor
         });
 
@@ -1046,7 +1046,9 @@ impl Editor {
                     .border_color(icon_color.opacity(0.5))
             })
             .child(Icon::new(IconName::Plus).size(IconSize::Small))
-            .tooltip(Tooltip::text("レビューを追加 (ドラッグで複数行を選択)"))
+            .tooltip(Tooltip::text(i18n::t!(
+                "Add Review (drag to select multiple lines)"
+            )))
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |editor, _event: &gpui::MouseDownEvent, window, cx| {
@@ -2512,9 +2514,9 @@ impl Editor {
                     let start_line = start + 1;
                     let end_line = end + 1;
                     if start_line == end_line {
-                        format!("{start_line} 行目")
+                        i18n::t!("Line {start_line}")
                     } else {
-                        format!("{start_line}-{end_line} 行目")
+                        i18n::t!("Lines {start_line}-{end_line}")
                     }
                 })
                 .collect();
@@ -2643,7 +2645,7 @@ impl Editor {
                                 IconButton::new("diff-review-close", IconName::Close)
                                     .icon_color(ui::Color::Muted)
                                     .icon_size(action_icon_size)
-                                    .tooltip(Tooltip::text("閉じる"))
+                                    .tooltip(Tooltip::text(i18n::t!("Close")))
                                     .on_click(|_, window, cx| {
                                         window
                                             .dispatch_action(Box::new(crate::actions::Cancel), cx);
@@ -2653,7 +2655,7 @@ impl Editor {
                                 IconButton::new("diff-review-add", IconName::Return)
                                     .icon_color(ui::Color::Muted)
                                     .icon_size(action_icon_size)
-                                    .tooltip(Tooltip::text("コメントを追加"))
+                                    .tooltip(Tooltip::text(i18n::t!("Add comment")))
                                     .on_click(|_, window, cx| {
                                         window.dispatch_action(
                                             Box::new(crate::actions::SubmitDiffReviewComment),
@@ -2720,9 +2722,13 @@ impl Editor {
                         .color(ui::Color::Muted),
                     )
                     .child(
-                        Label::new(format!("コメント {comment_count} 件"))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
+                        Label::new(i18n::tn!(
+                            comment_count,
+                            "{count} Comment",
+                            "{count} Comments"
+                        ))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
                     ),
             )
             // Comments list (when expanded)
@@ -2809,7 +2815,7 @@ impl Editor {
                         )
                         .icon_color(ui::Color::Muted)
                         .icon_size(action_icon_size)
-                        .tooltip(Tooltip::text("キャンセル"))
+                        .tooltip(Tooltip::text(i18n::t!("Cancel")))
                         .on_click(move |_, window, cx| {
                             window.dispatch_action(
                                 Box::new(crate::actions::CancelEditReviewComment {
@@ -2826,7 +2832,7 @@ impl Editor {
                         )
                         .icon_color(ui::Color::Muted)
                         .icon_size(action_icon_size)
-                        .tooltip(Tooltip::text("確定"))
+                        .tooltip(Tooltip::text(i18n::t!("Confirm")))
                         .on_click(move |_, window, cx| {
                             window.dispatch_action(
                                 Box::new(crate::actions::ConfirmEditReviewComment {
@@ -3130,12 +3136,12 @@ pub fn render_diff_hunk_controls(
         )
         .when(show_stage_restore && supports_restore, |el| {
             el.child(
-                Button::new(("restore", row as u64), "元に戻す")
+                Button::new(("restore", row as u64), i18n::t!("Restore"))
                     .tooltip({
                         let focus_handle = editor.focus_handle(cx);
                         move |_window, cx| {
                             Tooltip::for_action_in(
-                                "変更箇所を元に戻す",
+                                i18n::t!("Restore Hunk"),
                                 &::git::Restore,
                                 &focus_handle,
                                 cx,
@@ -3166,7 +3172,12 @@ pub fn render_diff_hunk_controls(
                         .tooltip({
                             let focus_handle = editor.focus_handle(cx);
                             move |_window, cx| {
-                                Tooltip::for_action_in("次の変更箇所", &GoToHunk, &focus_handle, cx)
+                                Tooltip::for_action_in(
+                                    i18n::t!("Next Hunk"),
+                                    &GoToHunk,
+                                    &focus_handle,
+                                    cx,
+                                )
                             }
                         })
                         .on_click({
@@ -3198,7 +3209,7 @@ pub fn render_diff_hunk_controls(
                             let focus_handle = editor.focus_handle(cx);
                             move |_window, cx| {
                                 Tooltip::for_action_in(
-                                    "前の変更箇所",
+                                    i18n::t!("Previous Hunk"),
                                     &GoToPreviousHunk,
                                     &focus_handle,
                                     cx,

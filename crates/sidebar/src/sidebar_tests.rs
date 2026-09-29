@@ -2225,7 +2225,7 @@ async fn test_closing_last_agent_panel_terminal_restores_empty_header(cx: &mut T
     // placeholder row, so the header reports having threads.
     assert_eq!(
         visible_entries_as_strings(&sidebar, cx),
-        vec!["v [my-project]", "  Zed Agent の新規スレッド"]
+        vec!["v [my-project]", "  New Zed Agent Thread"]
     );
     assert_project_header_has_threads(&sidebar, "my-project", true, cx);
 
@@ -6455,7 +6455,7 @@ async fn test_cmd_n_shows_new_thread_entry(cx: &mut TestAppContext) {
     // placeholder row above the real thread.
     assert_eq!(
         visible_entries_as_strings(&sidebar, cx),
-        vec!["v [my-project]", "  stub の新規スレッド", "  Hello *"],
+        vec!["v [my-project]", "  New stub Thread", "  Hello *"],
         "After Cmd-N the sidebar should show a placeholder row for the active empty draft"
     );
 
@@ -6581,7 +6581,7 @@ async fn test_cmd_n_shows_new_thread_entry_in_absorbed_worktree(cx: &mut TestApp
         vec![
             //
             "v [project]",
-            "  stub の新規スレッド {wt-feature-a}",
+            "  New stub Thread {wt-feature-a}",
             "  Hello {wt-feature-a} *",
         ],
         "After Cmd-N the sidebar should show a placeholder row for the active empty draft"

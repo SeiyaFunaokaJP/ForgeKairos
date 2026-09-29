@@ -62,11 +62,11 @@ const ICON_KEY: &str = "icon";
 /// The priorities `merman` draws with a colour of their own, with the name the
 /// form shows. It compares them exactly, so `high` is drawn like no priority.
 pub const KANBAN_PRIORITIES: [(&str, &str); 5] = [
-    ("Very High", "最高"),
-    ("High", "高"),
-    ("Medium", "中"),
-    ("Low", "低"),
-    ("Very Low", "最低"),
+    ("Very High", i18n::msg!("Very High")),
+    ("High", i18n::msg!("High")),
+    ("Medium", i18n::msg!("Medium")),
+    ("Low", i18n::msg!("Low")),
+    ("Very Low", i18n::msg!("Very Low")),
 ];
 
 /// The brackets `merman` recognizes, in the order it tries them. A kanban board
@@ -250,14 +250,16 @@ impl KanbanDocument {
     }
 
     /// Why the document cannot be written back as a diagram Mermaid accepts, in
-    /// Japanese, or `None` when it can.
+    /// the display language, or `None` when it can.
     pub fn structure_error(&self) -> Option<String> {
         for column in &self.columns {
-            if let Some(problem) = kanban_node_problem(&column.node, "列") {
+            if let Some(problem) =
+                kanban_node_problem(&column.node, i18n::tc!("kanban node", "column"))
+            {
                 return Some(problem);
             }
             for card in &column.cards {
-                if let Some(problem) = kanban_node_problem(card, "カード") {
+                if let Some(problem) = kanban_node_problem(card, i18n::tc!("kanban node", "card")) {
                     return Some(problem);
                 }
             }
@@ -267,8 +269,8 @@ impl KanbanDocument {
         let mut seen: Vec<&str> = Vec::new();
         for node in self.nodes() {
             if seen.contains(&node.id.as_str()) {
-                return Some(format!(
-                    "ID `{}` が 2 か所で使われています。列とカードの ID はすべて別にしてください。",
+                return Some(i18n::t!(
+                    "The ID `{}` is used in two places. Columns and cards all need different IDs.",
                     node.id
                 ));
             }
@@ -308,12 +310,14 @@ fn scan_kanban(source: &str) -> Result<KanbanDocument> {
     };
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = keyword_tail(header, HEADER) else {
-        bail!("かんばんではありません (`kanban` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a kanban board (only diagrams that start with `kanban` can be edited in the structured editor)."
+        ));
     };
     if !tail.is_empty() {
-        bail!(
-            "`kanban` の行の `{tail}` は構造化編集に対応していません。列は次の行に書いてください。"
-        );
+        bail!(i18n::t!(
+            "`{tail}` on the `kanban` line is not supported by the structured editor. Write columns on the next line."
+        ));
     }
 
     let mut written: Vec<(usize, KanbanNode)> = Vec::new();
@@ -337,9 +341,9 @@ fn scan_kanban(source: &str) -> Result<KanbanDocument> {
             }
             let text = join_lines(lines.get(start..index).unwrap_or_default());
             if let Some(statement) = statement_after_directive(&text) {
-                bail!(
-                    "`%%{{…}}%%` の後ろの `{statement}` は構造化編集に対応していません。指示子と文を別の行に分けてからもう一度開いてください。"
-                );
+                bail!(i18n::t!(
+                    "`{statement}` after `%%{{…}}%%` is not supported by the structured editor. Put the directive and the statement on separate lines, then open it again."
+                ));
             }
             preserved_lines.push(PreservedLine { position, text });
             continue;
@@ -352,9 +356,9 @@ fn scan_kanban(source: &str) -> Result<KanbanDocument> {
             .trim_end()
             .to_string();
         let comment_unsupported = || {
-            anyhow!(
-                "この行の末尾のコメントは構造化編集で保てません ({trimmed})。コメントを独立した行に移すか、テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "The structured editor cannot keep the comment at the end of this line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+            ))
         };
         // `merman` counts whitespace characters, so a tab or a full-width
         // space is one level of indentation like a space is.
@@ -372,25 +376,25 @@ fn scan_kanban(source: &str) -> Result<KanbanDocument> {
             }
             Statement::Icon(icon) => {
                 let Some((_, node)) = written.last_mut() else {
-                    bail!("`::icon(…)` の前にノードがありません ({trimmed})。");
+                    bail!(i18n::t!("There is no node before `::icon(…)` ({trimmed})."));
                 };
                 if node.icon.is_some() || node.metadata_entry(ICON_KEY).is_some() {
-                    bail!(
-                        "`{}` にアイコンが 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。",
+                    bail!(i18n::t!(
+                        "`{}` has two icons. Mermaid uses only the last one, so merge them into one, then open it again.",
                         node.id
-                    );
+                    ));
                 }
                 node.icon = Some(icon);
             }
             Statement::Classes(classes) => {
                 let Some((_, node)) = written.last_mut() else {
-                    bail!("`:::` の前にノードがありません ({trimmed})。");
+                    bail!(i18n::t!("There is no node before `:::` ({trimmed})."));
                 };
                 if node.classes.is_some() {
-                    bail!(
-                        "`{}` に `:::` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。",
+                    bail!(i18n::t!(
+                        "`{}` has `:::` twice. Mermaid uses only the last one, so merge them into one, then open it again.",
                         node.id
-                    );
+                    ));
                 }
                 node.classes = Some(classes);
             }
@@ -411,7 +415,7 @@ fn scan_kanban(source: &str) -> Result<KanbanDocument> {
                     node.comment = Some(comment);
                 }
                 if node.title().is_empty() {
-                    bail!("ラベルが空のノードがあります ({trimmed})。");
+                    bail!(i18n::t!("There is a node with an empty label ({trimmed})."));
                 }
                 written.push((indent, node));
                 position = PreservedPosition::Bottom;
@@ -423,10 +427,10 @@ fn scan_kanban(source: &str) -> Result<KanbanDocument> {
     let column_indent = written.first().map(|(indent, _)| *indent).unwrap_or(0);
     for (indent, node) in written {
         if indent < column_indent {
-            bail!(
-                "`{}` が最初の列より浅く字下げされています。列は最初の列と同じ深さ、カードはそれより深く字下げしてください。",
+            bail!(i18n::t!(
+                "`{}` is indented less than the first column. Indent columns as deep as the first column, and cards deeper than that.",
                 node.id
-            );
+            ));
         }
         if indent == column_indent {
             columns.push(KanbanColumn {
@@ -484,13 +488,13 @@ pub(crate) fn mermaid_rewrites(text: &str) -> bool {
 fn check_against_merman(source: &str, document: &KanbanDocument) -> Result<()> {
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| {
-            anyhow!(
-                "Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "Mermaid could not parse this diagram ({error}). Edit it as text."
+            ))
         })?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
     let RenderSemanticModel::Kanban(model) = parsed.into_parts().1 else {
-        bail!("この図はかんばんではありません。");
+        bail!(i18n::t!("This diagram is not a kanban board."));
     };
 
     // `merman` lists under each column every card filed under its id, so two
@@ -539,18 +543,18 @@ fn check_against_merman(source: &str, document: &KanbanDocument) -> Result<()> {
         .collect::<Vec<_>>();
 
     if drawn.len() != expected.len() {
-        bail!(
-            "Mermaid はこのかんばんを {} 個のノードとして読みましたが、構造化エディターは {} 個と読みました。テキストのまま編集してください。",
+        bail!(i18n::t!(
+            "Mermaid read this kanban board as {} nodes, but the structured editor read {}. Edit it as text.",
             drawn.len(),
             expected.len()
-        );
+        ));
     }
     for (drawn, expected) in drawn.iter().zip(&expected) {
         if !drawn.matches(expected) {
-            bail!(
-                "`{}` を Mermaid と同じように読めませんでした。テキストのまま編集してください。",
+            bail!(i18n::t!(
+                "Could not read `{}` the way Mermaid does. Edit it as text.",
                 expected.id
-            );
+            ));
         }
     }
     Ok(())
@@ -634,26 +638,30 @@ fn classify_statement(rest: &str) -> Result<Statement<'_>> {
     {
         let after = rest.get(DECORATION_ICON_PREFIX.len()..).unwrap_or_default();
         let Some(end) = after.find(')') else {
-            bail!(
-                "`::icon(` の閉じ括弧がありません ({rest})。Mermaid はこの行を読み飛ばすので、閉じるかテキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "`::icon(` has no closing parenthesis ({rest}). Mermaid skips this line, so close it or edit it as text."
+            ));
         };
         let tail = after.get(end + 1..).unwrap_or_default().trim();
         if !tail.is_empty() {
-            bail!(
-                "`::icon(…)` のあとの `{tail}` は Mermaid が読み飛ばします ({rest})。消すかテキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Mermaid skips `{tail}` after `::icon(…)` ({rest}). Delete it or edit it as text."
+            ));
         }
         let icon = after.get(..end).unwrap_or_default().to_string();
         if !is_valid_kanban_icon(&icon) {
-            bail!("アイコン `{rest}` は構造化編集に対応していません。");
+            bail!(i18n::t!(
+                "The icon `{rest}` is not supported by the structured editor."
+            ));
         }
         return Ok(Statement::Icon(icon));
     }
     if let Some(after) = rest.strip_prefix(":::") {
         let classes = after.trim().to_string();
         if !is_valid_kanban_classes(&classes) {
-            bail!("クラスの無い `:::` は構造化編集に対応していません ({rest})。");
+            bail!(i18n::t!(
+                "`:::` without a class is not supported by the structured editor ({rest})."
+            ));
         }
         return Ok(Statement::Classes(classes));
     }
@@ -666,17 +674,17 @@ fn classify_statement(rest: &str) -> Result<Statement<'_>> {
         None => (rest, None),
     };
     if node_part.trim().is_empty() {
-        bail!(
-            "`@{{` の前にノードがありません ({rest})。Mermaid はこの行を読み飛ばすので、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "There is no node before `@{{` ({rest}). Mermaid skips this line, so edit it as text."
+        ));
     }
     let spec = parse_node_spec(node_part).map_err(|error| match error {
-        SpecError::Unterminated => anyhow!(
-            "ノード `{node_part}` のラベルが閉じていません。複数行にわたるラベルは構造化編集に対応していません。テキストのまま編集してください。"
-        ),
-        SpecError::Malformed => anyhow!(
-            "かんばんのノードとして読めませんでした ({node_part})。テキストのまま編集してください。"
-        ),
+        SpecError::Unterminated => anyhow!(i18n::t!(
+            "The label of node `{node_part}` is not closed. Labels that span several lines are not supported by the structured editor. Edit it as text."
+        )),
+        SpecError::Malformed => anyhow!(i18n::t!(
+            "Could not read this as a kanban node ({node_part}). Edit it as text."
+        )),
     })?;
     Ok(Statement::Node {
         spec,
@@ -694,9 +702,9 @@ fn read_metadata(
     if let Some(end) = find_closing_brace(opening) {
         let tail = opening.get(end + 1..).unwrap_or_default().trim();
         if !tail.is_empty() {
-            bail!(
-                "`@{{ … }}` のあとの `{tail}` は Mermaid が読み飛ばします。消すかテキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Mermaid skips `{tail}` after `@{{ … }}`. Remove it or edit it as text."
+            ));
         }
         let inner = opening.get(..end).unwrap_or_default();
         let mut entries = Vec::new();
@@ -706,7 +714,7 @@ fn read_metadata(
         for part in split_flow_entries(inner)? {
             let part = part.trim();
             if part.is_empty() {
-                bail!("`@{{{inner}}}` に空の項目があります。");
+                bail!(i18n::t!("`@{{{inner}}}` has an empty entry."));
             }
             entries.push(read_metadata_entry(part, true)?);
         }
@@ -714,14 +722,14 @@ fn read_metadata(
     }
 
     if !opening.trim().is_empty() {
-        bail!(
-            "複数行の `@{{` は、1 行目を `@{{` で終えて次の行から `キー: 値` を書く形だけに対応しています。"
-        );
+        bail!(i18n::t!(
+            "A multi-line `@{{` is supported only when its first line ends with `@{{` and the lines after it are written as `key: value`."
+        ));
     }
     let mut entries = Vec::new();
     loop {
         let Some(line) = lines.get(*index).copied() else {
-            bail!("`@{{` が `}}` で閉じられていません。");
+            bail!(i18n::t!("`@{{` is not closed with `}}`."));
         };
         *index += 1;
         let trimmed = line.trim();
@@ -732,9 +740,9 @@ fn read_metadata(
             continue;
         }
         if trimmed.contains('}') {
-            bail!(
-                "`{trimmed}` は構造化編集に対応していません。複数行の `@{{` は `}}` だけの行で閉じてください。"
-            );
+            bail!(i18n::t!(
+                "`{trimmed}` is not supported by the structured editor. Close a multi-line `@{{` with a line that is only `}}`."
+            ));
         }
         entries.push(read_metadata_entry(trimmed, false)?);
     }
@@ -742,9 +750,9 @@ fn read_metadata(
 
 fn read_metadata_entry(text: &str, flow: bool) -> Result<KanbanMetadataEntry> {
     let unsupported = || {
-        anyhow!(
-            "メタデータ `{text}` は構造化編集に対応していません (`キー: 値` の形で、値は 1 行の文字列だけ)。テキストのまま編集してください。"
-        )
+        anyhow!(i18n::t!(
+            "The metadata `{text}` is not supported by the structured editor (only `key: value`, with a single-line string as the value). Edit it as text."
+        ))
     };
     let (key, value) = text.split_once(':').ok_or_else(unsupported)?;
     let key = key.trim_end();
@@ -790,7 +798,7 @@ fn split_flow_entries(inner: &str) -> Result<Vec<&str>> {
         }
     }
     if quote.is_some() {
-        bail!("`@{{{inner}}}` の引用符が閉じていません。");
+        bail!(i18n::t!("The quotes in `@{{{inner}}}` are not closed."));
     }
     parts.push(inner.get(start..).unwrap_or_default());
     Ok(parts)
@@ -1287,51 +1295,52 @@ pub fn is_valid_kanban_classes(classes: &str) -> bool {
 /// node, 列 or カード.
 pub fn kanban_node_problem(node: &KanbanNode, what: &str) -> Option<String> {
     if node.id.is_empty() {
-        return Some(format!("ID が空の{what}があります。"));
+        return Some(i18n::t!("A {what} has an empty ID."));
     }
     if !is_valid_kanban_id(&node.id) {
-        return Some(format!(
-            "{what}の ID `{}` は使えません (括弧、`\"`、`%%`、`@{{`、`#…;` と前後の空白は不可)。",
+        return Some(i18n::t!(
+            "The {what} ID `{}` cannot be used (no brackets, `\"`, `%%`, `@{{`, `#…;` or whitespace at either end).",
             node.id
         ));
     }
     let title = node.title();
     if title.trim().is_empty() {
-        return Some(format!("{what} `{}` のタイトルが空です。", node.id));
+        return Some(i18n::t!("The title of {what} `{}` is empty.", node.id));
     }
     if !is_valid_kanban_title(node) {
-        return Some(format!(
-            "{what} `{}` のタイトル `{title}` は書けません (改行、`%%{{`、`=\"`、`#…;` は不可、閉じ括弧と `\"` を一緒に使うこともできません)。",
+        return Some(i18n::t!(
+            "The title `{title}` of {what} `{}` cannot be written (no line breaks, `%%{{`, `=\"` or `#…;`, and closing brackets cannot be used together with `\"`).",
             node.id
         ));
     }
     for entry in &node.metadata {
         if !is_writable_metadata_entry(entry, node.metadata_multiline) {
-            return Some(format!(
-                "{what} `{}` の `{}` の値は書けません (`}}`、`\"`、`%%`、`#…;`、改行と前後の空白は不可)。",
-                node.id, entry.key
+            return Some(i18n::t!(
+                "The {what} `{}` has a value for `{}` that cannot be written (no `}}`, `\"`, `%%`, `#…;`, line breaks or whitespace at either end).",
+                node.id,
+                entry.key
             ));
         }
     }
     if !comment_reads_back(node) {
-        return Some(format!(
-            "{what} `{}` の行末のコメントを、この書き方のあとには残せません (タイトルの `\"` の数を揃えてください)。",
+        return Some(i18n::t!(
+            "The comment at the end of the line of {what} `{}` cannot be kept with the line written this way (use `\"` in the title in pairs).",
             node.id
         ));
     }
     if let Some(icon) = &node.icon
         && !is_valid_kanban_icon(icon)
     {
-        return Some(format!(
-            "{what} `{}` のアイコン `{icon}` は書けません。",
+        return Some(i18n::t!(
+            "The icon `{icon}` of {what} `{}` cannot be written.",
             node.id
         ));
     }
     if let Some(classes) = &node.classes
         && !is_valid_kanban_classes(classes)
     {
-        return Some(format!(
-            "{what} `{}` のクラス `{classes}` は書けません。",
+        return Some(i18n::t!(
+            "The class `{classes}` of {what} `{}` cannot be written.",
             node.id
         ));
     }
@@ -1633,41 +1642,47 @@ mod tests {
     #[test]
     fn what_mermaid_would_drop_or_misread_is_refused() {
         for (source, reason) in [
-            ("kanban root\n    a", "`kanban` の行"),
-            ("kanban\n    a\n  b", "最初の列より浅く"),
+            ("kanban root\n    a", "on the `kanban` line"),
+            ("kanban\n    a\n  b", "indented less than the first column"),
             (
                 "kanban\n    a\n        b\n        :::hot %% メモ",
-                "末尾のコメント",
+                "comment at the end of this line",
             ),
             (
                 "kanban\n    a\n        b@{ %% メモ\n          icon: star\n        }",
-                "末尾のコメント",
+                "comment at the end of this line",
             ),
-            ("kanban\n    a\n        b@{ ticket: 1 } x", "読み飛ばします"),
-            ("kanban\n    a\n    @{ ticket: 1 }", "`@{` の前にノード"),
+            ("kanban\n    a\n        b@{ ticket: 1 } x", "Mermaid skips"),
+            ("kanban\n    a\n    @{ ticket: 1 }", "no node before `@{`"),
             (
                 "kanban\n    a\n        b@{ tags: [x, y] }",
-                "構造化編集に対応していません",
+                "not supported by the structured editor",
             ),
             (
                 "kanban\n    a\n        b@{ label: \"line1\n      line2\" }",
-                "1 行目",
+                "first line",
             ),
             (
                 "kanban\n    a\n        b@{\n          icon: star\n",
-                "閉じられていません",
+                "is not closed with",
             ),
-            ("kanban\n    a\n        ::icon(bomb", "閉じ括弧"),
-            ("kanban\n    ::icon(bomb)\n    a", "前にノード"),
-            ("kanban\n    a\n    ::icon(x)\n    ::icon(y)", "2 回"),
-            ("kanban\n    a@{ icon: x }\n    ::icon(y)", "2 回"),
-            ("kanban\n    a\n        b[unclosed", "閉じていません"),
-            ("kanban\n    a\n        b[x]y", "読めませんでした"),
-            ("kanban\n    a\n        b[]", "ラベルが空"),
+            ("kanban\n    a\n        ::icon(bomb", "closing parenthesis"),
+            ("kanban\n    ::icon(bomb)\n    a", "no node before"),
+            (
+                "kanban\n    a\n    ::icon(x)\n    ::icon(y)",
+                "Mermaid uses only the last one",
+            ),
+            (
+                "kanban\n    a@{ icon: x }\n    ::icon(y)",
+                "Mermaid uses only the last one",
+            ),
+            ("kanban\n    a\n        b[unclosed", "is not closed"),
+            ("kanban\n    a\n        b[x]y", "Could not read"),
+            ("kanban\n    a\n        b[]", "empty label"),
             // YAML reads `1.50` as the number 1.5, which is what is drawn.
             (
                 "kanban\n    a\n        b@{ ticket: 1.50 }",
-                "Mermaid と同じように読めませんでした",
+                "the way Mermaid does",
             ),
         ] {
             let message = refusal(source);
@@ -1686,7 +1701,7 @@ mod tests {
         assert!(
             document
                 .structure_error()
-                .is_some_and(|error| error.contains("`todo` が 2 か所")),
+                .is_some_and(|error| error.contains("`todo` is used in two places")),
         );
 
         for (edit, reason) in [
@@ -1694,12 +1709,15 @@ mod tests {
                 (|node: &mut KanbanNode| node.id = "a[b".to_string()) as fn(&mut KanbanNode),
                 "ID `a[b`",
             ),
-            (|node| node.id = String::new(), "ID が空"),
-            (|node| node.set_title(" "), "タイトルが空"),
-            (|node| node.set_title("a ] \" b"), "書けません"),
+            (|node| node.id = String::new(), "empty ID"),
+            (
+                |node| node.set_title(" "),
+                "The title of card `spec` is empty",
+            ),
+            (|node| node.set_title("a ] \" b"), "cannot be written"),
             (
                 |node| node.set_metadata_value(ASSIGNED_KEY, Some("a}b")),
-                "`assigned` の値",
+                "value for `assigned`",
             ),
         ] {
             let mut document = parse(TEMPLATE);
@@ -1734,7 +1752,7 @@ mod tests {
         ] {
             let message = refusal(source);
             assert!(
-                message.contains("指示子と文を別の行"),
+                message.contains("directive and the statement on separate lines"),
                 "{source:?}: {message}"
             );
         }
@@ -1770,12 +1788,12 @@ mod tests {
         // Mermaid does not look.
         let mut node = KanbanNode::new("a", "b");
         node.comment = Some("%% メモ".to_string());
-        assert_eq!(kanban_node_problem(&node, "カード"), None);
+        assert_eq!(kanban_node_problem(&node, "card"), None);
         node.set_metadata_value(TICKET_KEY, Some("MC-1"));
         node.metadata_multiline = true;
         assert!(
-            kanban_node_problem(&node, "カード")
-                .is_some_and(|error| error.contains("行末のコメント"))
+            kanban_node_problem(&node, "card")
+                .is_some_and(|error| error.contains("comment at the end of the line"))
         );
     }
 
@@ -1787,17 +1805,14 @@ mod tests {
         assert!(
             document
                 .structure_error()
-                .is_some_and(|error| error.contains("`todo` が 2 か所"))
+                .is_some_and(|error| error.contains("`todo` is used in two places"))
         );
         assert_eq!(emit_kanban(&document), source);
 
         let message = refusal(
             "kanban\n    todo[Todo]\n        a[x]\n    todo[Again]\n        b[y]@{ ticket: 1.50 }",
         );
-        assert!(
-            message.contains("Mermaid と同じように読めませんでした"),
-            "{message}"
-        );
+        assert!(message.contains("the way Mermaid does"), "{message}");
     }
 
     #[test]
@@ -1815,7 +1830,7 @@ mod tests {
             assert!(
                 document
                     .structure_error()
-                    .is_some_and(|error| error.contains("のタイトル")),
+                    .is_some_and(|error| error.contains("The title")),
                 "{title:?} should be refused, wrote:\n{}",
                 emit_kanban(&document)
             );

@@ -89,10 +89,20 @@ const TEMPLATE_FENCE: &str = indoc! {"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let document = parse_requirement(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_requirement(&document), template);
+    };
+    check(editor::actions::MermaidDiagramKind::Requirement.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::Requirement.template();
-    let document = parse_requirement(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_requirement(&document), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -148,7 +158,7 @@ async fn fields_menus_and_renames_are_written_back(cx: &mut TestAppContext) {
             modal.add_requirement_relationship(cx);
             modal.update_requirement_relationship(1, cx, |relationship| {
                 relationship.kind = RelationshipKind::Verifies;
-                relationship.target = "要求".to_string();
+                relationship.target = "Requirement".to_string();
             });
             modal.set_requirement_direction(Some(RequirementDirection::LeftToRight), cx);
             modal.confirm(&menu::SecondaryConfirm, window, cx);
@@ -167,14 +177,14 @@ async fn fields_menus_and_renames_are_written_back(cx: &mut TestAppContext) {
                     text: \"#1 ログインできること\"
                     risk: medium
                 }
-                requirement \"要求\" {
+                requirement \"Requirement\" {
                 }
                 element \"ログイン画面\" {
                     type: \"画面\"
                     docref: docs/login.md
                 }
                 \"ログイン画面\" - satisfies -> \"ログイン\"
-                \"ログイン画面\" - verifies -> \"要求\"
+                \"ログイン画面\" - verifies -> \"Requirement\"
             ```
         "},
     );
@@ -255,7 +265,7 @@ async fn names_mermaid_could_not_read_back_are_refused(cx: &mut TestAppContext) 
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("二重")),
+            .is_some_and(|message| message.contains("is used twice")),
         "the modal should say the name is taken twice, got {message:?}"
     );
 }

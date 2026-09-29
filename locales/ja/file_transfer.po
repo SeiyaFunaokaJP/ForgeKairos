@@ -1,0 +1,298 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Accepts this key and continues connecting (the key is recorded in known_hosts)"
+msgstr "この鍵を受け入れて接続を続けます (known_hosts に記録されます)"
+
+msgid "Authentication was canceled."
+msgstr "認証がキャンセルされました。"
+
+msgid "Brings the items selected on the remote side to the local side"
+msgstr "リモートで選んだ項目をローカルへ取り込みます"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Canceled."
+msgstr "キャンセルされました。"
+
+msgid "Clear Finished"
+msgstr "終わった行を消す"
+
+msgid "Connect"
+msgstr "接続"
+
+msgid "Connect first."
+msgstr "先に接続してください。"
+
+msgid "Connected to {target}."
+msgstr "{target} に接続しました。"
+
+msgid "Connecting to {target}…"
+msgstr "{target} に接続しています…"
+
+msgid "Connection name"
+msgstr "接続名"
+
+msgid "Connections"
+msgstr "接続先"
+
+msgid "Could not list the remote folder."
+msgstr "リモートの一覧を取得できませんでした。"
+
+msgid "Could not open standard input"
+msgstr "標準入力を開けませんでした"
+
+msgid "Could not open the folder: {error}"
+msgstr "フォルダーを開けませんでした: {error}"
+
+msgid "Could not pass on the input: {error}"
+msgstr "入力を渡せませんでした: {error}"
+
+msgid "Could not run {program}."
+msgstr "{program} を実行できませんでした。"
+
+msgid "Could not save the connection: {error}"
+msgstr "接続先を保存できませんでした: {error}"
+
+msgid "Could not save the order: {error}"
+msgstr "並び順を保存できませんでした: {error}"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete \"{names}\" ({side})?"
+msgstr "{side}の「{names}」を削除しますか?"
+
+msgid "Disconnect"
+msgstr "切断"
+
+msgid "Disconnected."
+msgstr "切断しました。"
+
+msgid "Done"
+msgstr "完了"
+
+msgid "Download"
+msgstr "ダウンロード"
+
+msgid "Enter a host name or an IP address."
+msgstr "ホスト名または IP アドレスを入力してください。"
+
+msgid "Enter a name."
+msgstr "名前を入力してください。"
+
+msgid "Enter the remote path."
+msgstr "リモートのパスを入力してください。"
+
+msgid "Failed"
+msgstr "失敗"
+
+msgid "File Transfer"
+msgstr "ファイル転送"
+
+msgid "Folder (e.g. Offices/Head Office)"
+msgstr "フォルダー (例: 拠点/本社)"
+
+msgid "Go to Parent Folder"
+msgstr "上のフォルダーへ"
+
+msgid "Host name / IP address"
+msgstr "ホスト名 / IP アドレス"
+
+msgid "Loading…"
+msgstr "読み込み中…"
+
+msgid "Local"
+msgstr "ローカル"
+
+msgid "Local side"
+msgstr "ローカル側"
+
+msgid "More than {limit} files would be transferred. Transfer them in smaller batches."
+msgstr "転送するファイルが {limit} 件を超えました。フォルダーを分けて転送してください。"
+
+msgid "More than {limit} items would be deleted. Delete them in smaller batches."
+msgstr "削除の対象が {limit} 件を超えました。フォルダーを分けて削除してください。"
+
+msgid "Moves down one place within the same folder"
+msgstr "同じフォルダーの中で 1 つ下へ移動します"
+
+msgid "Moves up one place within the same folder"
+msgstr "同じフォルダーの中で 1 つ上へ移動します"
+
+msgid "Name of the new folder ({side})"
+msgstr "{side}に作成するフォルダー名"
+
+msgid "New name for \"{name}\""
+msgstr "「{name}」の新しい名前"
+
+msgid "No"
+msgstr "いいえ"
+
+msgid "No items"
+msgstr "項目がありません"
+
+msgid "No saved connections yet."
+msgstr "保存された接続先はまだありません。"
+
+msgid "Opens the list of saved connections and Remote SSH hosts"
+msgstr "保存済みの接続先とリモート SSH の一覧を開きます"
+
+msgid "Password (optional)"
+msgstr "パスワード (省略可)"
+
+msgid "Port"
+msgstr "ポート"
+
+msgid "Progress"
+msgstr "進行状況"
+
+msgid "Queued"
+msgstr "待機中"
+
+msgid "Reconnect"
+msgstr "再接続"
+
+msgid "Remember password"
+msgstr "パスワードを記憶する"
+
+msgid "Remote"
+msgstr "リモート"
+
+msgid "Remote SSH"
+msgstr "リモート SSH"
+
+msgid "Removed the saved password."
+msgstr "保存されたパスワードを消しました。"
+
+msgid "Removes the saved password of this connection"
+msgstr "この接続先の保存済みパスワードを消します"
+
+msgid "Rename one item at a time."
+msgstr "名前の変更は 1 件ずつ行ってください。"
+
+msgid "Running"
+msgstr "実行中"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save this connection"
+msgstr "この接続先を保存"
+
+msgid "Saved"
+msgstr "保存済み"
+
+msgid "Saved the connection \"{name}\"."
+msgstr "接続先「{name}」を保存しました。"
+
+msgid "Select the item to rename."
+msgstr "名前を変更する項目を選んでください。"
+
+msgid "Select the items to delete."
+msgstr "削除する項目を選んでください。"
+
+msgid "Select the items to download on the remote side."
+msgstr "ダウンロードする項目をリモート側で選んでください。"
+
+msgid "Select the items to upload on the local side."
+msgstr "アップロードする項目をローカル側で選んでください。"
+
+msgid "Sends the items selected on the local side to the remote"
+msgstr "ローカルで選んだ項目をリモートへ送ります"
+
+msgid "Stopped because the connection was closed."
+msgstr "切断されたため中止しました。"
+
+msgid "Stops connecting"
+msgstr "接続を中止します"
+
+msgid "Target: {side}"
+msgstr "操作対象: {side}"
+
+msgid "That name cannot be used."
+msgstr "その名前は使用できません。"
+
+msgid "The command failed (it printed no details)."
+msgstr "コマンドが失敗しました (詳細な出力はありません)。"
+
+msgid "The command failed:\n{detail}"
+msgstr "コマンドが失敗しました:\n{detail}"
+
+msgid "The connection timed out."
+msgstr "接続がタイムアウトしました。"
+
+msgid "The host name contains characters that cannot be used."
+msgstr "ホスト名に使用できない文字が含まれています。"
+
+msgid "The list of saved connections has not loaded yet."
+msgstr "接続先の一覧をまだ読み込めていません。"
+
+msgid "The name contains characters that cannot be used."
+msgstr "名前に使用できない文字が含まれています。"
+
+msgid "The operation failed:\n{error}"
+msgstr "操作に失敗しました:\n{error}"
+
+msgid "The password is stored in the operating system's credential manager and shared with Quick Connect"
+msgstr "パスワードは OS の資格情報マネージャーに保存され、クイック接続と共有されます"
+
+msgid "The password you entered was rejected. Enter it again."
+msgstr "入力したパスワードが拒否されました。入力し直してください。"
+
+msgid "The port number is invalid."
+msgstr "ポート番号が不正です。"
+
+msgid "The remote path contains characters that cannot be used."
+msgstr "リモートのパスに使用できない文字が含まれています。"
+
+msgid "The remote path must start with /."
+msgstr "リモートのパスは / から始めてください。"
+
+msgid "The saved password was rejected. Enter it again."
+msgstr "保存されたパスワードが拒否されました。入力し直してください。"
+
+msgid "The user name contains characters that cannot be used."
+msgstr "ユーザー名に使用できない文字が含まれています。"
+
+msgid "This Computer"
+msgstr "この PC"
+
+msgid "This Remote ({display_name})"
+msgstr "このリモート ({display_name})"
+
+msgid "This host's key has not been seen before. Continue connecting?"
+msgstr "このホストの鍵は初めてです。接続を続けますか?"
+
+msgid "Upload"
+msgstr "アップロード"
+
+msgid "User name"
+msgstr "ユーザー名"
+
+msgid "Writes to the list shared with Quick Connect"
+msgstr "クイック接続と共通の一覧に書き込みます"
+
+msgid "Yes"
+msgstr "はい"
+
+msgctxt "file transfer"
+msgid "New Folder"
+msgstr "フォルダー作成"
+
+msgctxt "file transfer"
+msgid "Refresh"
+msgstr "更新"
+
+msgctxt "file transfer"
+msgid "Rename"
+msgstr "名前変更"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

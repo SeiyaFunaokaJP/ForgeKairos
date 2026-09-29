@@ -48,7 +48,7 @@ actions!(
 );
 
 /// What the menu says when this editor has no language server to show.
-const NO_LANGUAGE_SERVERS: &str = "言語サーバーはありません";
+const NO_LANGUAGE_SERVERS: &str = i18n::msg!("No language servers");
 
 pub struct LspButton {
     server_state: Entity<LanguageServerState>,
@@ -236,7 +236,7 @@ impl LanguageServerState {
         let menu = self.fill_menu_items(menu, cx);
         if menu.is_empty() {
             // Otherwise the shared list falls back to its English placeholder.
-            return menu.label(NO_LANGUAGE_SERVERS);
+            return menu.label(i18n::tr(NO_LANGUAGE_SERVERS));
         }
         menu
     }
@@ -271,14 +271,14 @@ impl LanguageServerState {
                                         .size(IconSize::XSmall),
                                 )
                                 .child(
-                                    Label::new("プロジェクトは制限モードです")
+                                    Label::new(i18n::t!("Project is in Restricted Mode"))
                                         .size(LabelSize::Small),
                                 ),
                         )
                         .child(
-                            Label::new(
-                                "このプロジェクトを信頼するまで、言語サーバーは実行できません。",
-                            )
+                            Label::new(i18n::t!(
+                                "Language Servers can't run until you trust this project."
+                            ))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                         )
@@ -315,14 +315,14 @@ impl LanguageServerState {
                                 )
                                 .child(
                                     Label::new(
-                                        "エージェントの書き込み後のため、フォルダーのコードを止めています",
+                                        i18n::t!("Folder code is paused after an agent write"),
                                     )
                                     .size(LabelSize::Small),
                                 ),
                         )
                         .child(
                             Label::new(
-                                "確認して再開するまで、言語サーバーは制限モードか停止のままです。",
+                                i18n::t!("Language servers stay in Restricted Mode or stopped until you review and resume."),
                             )
                             .size(LabelSize::Small)
                             .color(Color::Muted),
@@ -373,9 +373,9 @@ impl LanguageServerState {
         for item in &self.items {
             if let LspMenuItem::ToggleServersButton { restart } = item {
                 let label = if *restart {
-                    "すべてのサーバーを再起動"
+                    i18n::t!("Restart All Servers")
                 } else {
-                    "すべてのサーバーを停止"
+                    i18n::t!("Stop All Servers")
                 };
 
                 let restart = *restart;
@@ -435,23 +435,25 @@ impl LanguageServerState {
                     BinaryStatus::None => None,
                     BinaryStatus::CheckingForUpdate
                     | BinaryStatus::Downloading
-                    | BinaryStatus::Starting => Some((Color::Modified, "起動中…")),
+                    | BinaryStatus::Starting => Some((Color::Modified, i18n::t!("Starting…"))),
                     BinaryStatus::Stopping | BinaryStatus::Stopped => {
-                        Some((Color::Disabled, "停止済み"))
+                        Some((Color::Disabled, i18n::t!("Stopped")))
                     }
-                    BinaryStatus::Failed { .. } => Some((Color::Error, "エラー")),
+                    BinaryStatus::Failed { .. } => Some((Color::Error, i18n::t!("Error"))),
                     // ADR-F22: distinct from a plain failure because the fix is
                     // a consent, not a bug report.
-                    BinaryStatus::EgressDenied { .. } => Some((Color::Error, "ダウンロード拒否")),
+                    BinaryStatus::EgressDenied { .. } => {
+                        Some((Color::Error, i18n::t!("Download Denied")))
+                    }
                 })
                 .or_else(|| {
                     Some(match server_info.health? {
-                        ServerHealth::Ok => (Color::Success, "実行中"),
-                        ServerHealth::Warning => (Color::Warning, "警告"),
-                        ServerHealth::Error => (Color::Error, "エラー"),
+                        ServerHealth::Ok => (Color::Success, i18n::t!("Running")),
+                        ServerHealth::Warning => (Color::Warning, i18n::t!("Warning")),
+                        ServerHealth::Error => (Color::Error, i18n::t!("Error")),
                     })
                 })
-                .unwrap_or((Color::Success, "実行中"));
+                .unwrap_or((Color::Success, i18n::t!("Running")));
 
             let message = server_info
                 .message
@@ -497,7 +499,7 @@ impl LanguageServerState {
                             let message_for_handler = message.clone();
                             let server_name_for_message = submenu_server_name.clone();
                             submenu = submenu.entry(
-                                "メッセージを表示",
+                                i18n::t!("View Message"),
                                 None,
                                 move |window, cx| {
                                     let Some(create_buffer) = workspace_for_message
@@ -521,8 +523,8 @@ impl LanguageServerState {
                                             buffer.edit(
                                                 [(
                                                     0..0,
-                                                    format!(
-                                                        "言語サーバー {server_name}:\n\n{message}"
+                                                    i18n::t!(
+                                                        "Language server {server_name}:\n\n{message}"
                                                     ),
                                                 )],
                                                 None,
@@ -561,7 +563,7 @@ impl LanguageServerState {
                             let lsp_logs_for_debug = lsp_logs.clone();
                             let workspace_for_debug = workspace.clone();
                             let server_selector_for_debug = server_selector.clone();
-                            submenu = submenu.entry("ログを表示", None, move |window, cx| {
+                            submenu = submenu.entry(i18n::t!("View Logs"), None, move |window, cx| {
                                 lsp_log_view::open(
                                     &lsp_logs_for_debug,
                                     workspace_for_debug.clone(),
@@ -577,7 +579,7 @@ impl LanguageServerState {
                         let lsp_store_for_restart = lsp_store.clone();
                         let server_name_for_restart = submenu_server_name.clone();
                         submenu =
-                            submenu.entry("サーバーを再起動", None, move |_window, cx| {
+                            submenu.entry(i18n::t!("Restart Server"), None, move |_window, cx| {
                                 let Some(workspace) = workspace_for_restart.upgrade() else {
                                     return;
                                 };
@@ -675,7 +677,7 @@ impl LanguageServerState {
                             let server_selector_for_stop = server_selector.clone();
 
                             submenu =
-                                submenu.entry("サーバーを停止", None, move |_window, cx| {
+                                submenu.entry(i18n::t!("Stop Server"), None, move |_window, cx| {
                                     lsp_store_for_stop
                                         .update(cx, |lsp_store, cx| {
                                             lsp_store
@@ -695,7 +697,7 @@ impl LanguageServerState {
                         if let Some(approval_to_revoke) = approval_to_revoke.clone() {
                             let workspace_for_revoke = workspace.clone();
                             submenu = submenu.entry(
-                                "起動の承認を取り消す",
+                                i18n::t!("Revoke Launch Approval"),
                                 None,
                                 move |_window, cx| {
                                     revoke_language_server_approval(
@@ -1534,24 +1536,27 @@ impl Render for LspButton {
         }
 
         let (indicator, description) = if is_restricted {
-            (Some(Indicator::dot().color(Color::Warning)), "制限モード")
+            (
+                Some(Indicator::dot().color(Color::Warning)),
+                i18n::t!("Restricted Mode"),
+            )
         } else if has_errors {
             (
                 Some(Indicator::dot().color(Color::Error)),
-                "エラーのあるサーバーがあります",
+                i18n::t!("Server with errors"),
             )
         } else if has_warnings {
             (
                 Some(Indicator::dot().color(Color::Warning)),
-                "警告のあるサーバーがあります",
+                i18n::t!("Server with warnings"),
             )
         } else if has_other_notifications {
             (
                 Some(Indicator::dot().color(Color::Modified)),
-                "通知のあるサーバーがあります",
+                i18n::t!("Server with notifications"),
             )
         } else {
-            (None, "すべてのサーバーは正常です")
+            (None, i18n::t!("All Servers Operational"))
         };
 
         let lsp_button = cx.weak_entity();
@@ -1581,11 +1586,16 @@ impl Render for LspButton {
                         .when_some(indicator, IconButton::indicator)
                         .icon_size(IconSize::Small)
                         .tab_index(0isize)
-                        .aria_label("言語サーバー")
+                        .aria_label(i18n::t!("Language Servers"))
                         .when(is_restricted, |s| s.icon_color(Color::Warning))
                         .indicator_border_color(Some(cx.theme().colors().status_bar_background)),
                     move |_window, cx| {
-                        Tooltip::with_meta("言語サーバー", Some(&ToggleMenu), description, cx)
+                        Tooltip::with_meta(
+                            i18n::t!("Language Servers"),
+                            Some(&ToggleMenu),
+                            description,
+                            cx,
+                        )
                     },
                 ),
         )
@@ -1721,7 +1731,7 @@ fn revoke_language_server_approval(
         };
         workspace
             .update(cx, |workspace, cx| {
-                workspace.show_error(format!("承認を取り消せませんでした: {error:#}"), cx);
+                workspace.show_error(i18n::t!("Failed to revoke approval: {error:#}"), cx);
             })
             .log_err();
     })

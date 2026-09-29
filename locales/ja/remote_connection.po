@@ -1,0 +1,27 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Caps lock is on."
+msgstr "Caps Lock がオンです。"
+
+msgid "Connecting"
+msgstr "接続しています"
+
+msgid "Downloading remote server binary (version: {}, os: {}, arch: {})"
+msgstr "リモート開発サーバーのバイナリをダウンロードできませんでした (バージョン: {}、{} {})"
+
+msgid "Toggle to Mask Password"
+msgstr "パスワードを隠す"
+
+msgid "Toggle to Unmask Password"
+msgstr "パスワードを表示"
+
+msgid "unknown"
+msgstr "不明"

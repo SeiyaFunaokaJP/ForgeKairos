@@ -1,0 +1,81 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Buffer Diagnostics"
+msgstr "バッファーの診断"
+
+msgid "Buffer Diagnostics - {}"
+msgstr "バッファーの診断 - {}"
+
+msgid "Buffer Search"
+msgstr "ファイル内を検索"
+
+msgid "Copy Diagnostic"
+msgstr "診断をコピー"
+
+msgid "Diagnostics"
+msgstr "診断"
+
+msgid "Exclude Warnings"
+msgstr "警告を除外"
+
+msgid "Expand Diagnostics"
+msgstr "診断を展開"
+
+msgid "Include Warnings"
+msgstr "警告を含める"
+
+msgid "Inline Assist"
+msgstr "インラインアシスト"
+
+msgid "Next Diagnostic"
+msgstr "次の問題へ"
+
+msgid "No errors in workspace"
+msgstr "ワークスペースにエラーはありません"
+
+msgid "No errors in {file}"
+msgstr "{file} にエラーはありません"
+
+msgid "No problems"
+msgstr "問題はありません"
+
+msgid "No problems in workspace"
+msgstr "ワークスペースに問題はありません"
+
+msgid "No problems in {file}"
+msgstr "{file} に問題はありません"
+
+msgid "Open File"
+msgstr "ファイルを開く"
+
+msgid "Project Diagnostics"
+msgstr "プロジェクトの診断"
+
+msgid "Project diagnostics: no problems"
+msgstr "プロジェクトの診断: 問題なし"
+
+msgid "Project diagnostics: {}"
+msgstr "プロジェクトの診断: {}"
+
+msgid "Refresh Diagnostics"
+msgstr "診断を更新"
+
+msgid "Show {count} warning"
+msgid_plural "Show {count} warnings"
+msgstr[0] "警告 {count} 件を表示"
+
+msgid "Stop Diagnostics Update"
+msgstr "診断の更新を停止"
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "エラー {count} 件"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "警告 {count} 件"

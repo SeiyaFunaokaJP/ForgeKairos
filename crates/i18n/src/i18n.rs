@@ -59,7 +59,10 @@ extern crate self as i18n;
 
 use parking_lot::RwLock;
 use std::cell::Cell;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::task::{Context, Poll};
 
 pub use i18n_macros::{msg, t, tc, tcn, tn};
 
@@ -105,9 +108,15 @@ thread_local! {
     // Installs made while they were thread-local; added to the process-wide
     // generation and never reset, so this thread's generation only grows.
     static THREAD_GENERATION: Cell<u64> = const { Cell::new(0) };
+    // Set by `in_english`. Kept apart from `THREAD_OVERRIDE` so that `Bilingual`
+    // can step out of it to the language the user reads.
+    static FORCED_ENGLISH: Cell<bool> = const { Cell::new(false) };
 }
 
 fn current_catalog() -> Option<&'static dyn Catalog> {
+    if FORCED_ENGLISH.with(Cell::get) {
+        return None;
+    }
     match THREAD_OVERRIDE.with(Cell::get) {
         Some(overridden) => overridden,
         None => *CURRENT_CATALOG.read(),
@@ -195,6 +204,115 @@ pub fn tr_plural<'a>(
     lookup_plural_in_current(context, singular, plural, count)
         .unwrap_or_else(|| __private::english_plural(singular, plural, count))
 }
+
+/// Restores `FORCED_ENGLISH` when dropped, also when the closure panics.
+struct ForcedEnglish {
+    previous: bool,
+}
+
+impl ForcedEnglish {
+    fn set(forced: bool) -> Self {
+        Self {
+            previous: FORCED_ENGLISH.with(|cell| cell.replace(forced)),
+        }
+    }
+}
+
+impl Drop for ForcedEnglish {
+    fn drop(&mut self) {
+        FORCED_ENGLISH.with(|cell| cell.set(self.previous));
+    }
+}
+
+/// Runs `build` with every lookup on this thread returning the English source text,
+/// for text a model reads: the display language must not change what it is told.
+///
+/// Only what `build` does before it returns is in English. A future it returns is
+/// polled later, outside, and work it hands to another thread is not covered; use
+/// [`in_english_while_polling`] for a future.
+pub fn in_english<R>(build: impl FnOnce() -> R) -> R {
+    let _forced = ForcedEnglish::set(true);
+    build()
+}
+
+/// Polls `future` with every lookup on the polling thread returning English, as
+/// [`in_english`] does for a closure.
+///
+/// English is switched on only for the duration of each poll of `future`, so other
+/// tasks that run on the same thread between its polls keep the display language.
+/// Work the future hands to another thread or task is not covered.
+pub fn in_english_while_polling<F: Future>(future: F) -> InEnglish<F> {
+    InEnglish {
+        future: Box::pin(future),
+    }
+}
+
+/// The future returned by [`in_english_while_polling`].
+#[must_use = "futures do nothing unless polled"]
+pub struct InEnglish<F> {
+    future: Pin<Box<F>>,
+}
+
+impl<F: Future> Future for InEnglish<F> {
+    type Output = F::Output;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<F::Output> {
+        let _forced = ForcedEnglish::set(true);
+        self.future.as_mut().poll(cx)
+    }
+}
+
+/// A message built once in English and once in the display language, for text
+/// that is both shown to the user and told to a model, where it is built before
+/// anyone knows which of them will read it.
+///
+/// Its `Display` is the English text inside [`in_english`] and the display
+/// language elsewhere, so formatting an error that carries it follows the reader.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Bilingual {
+    english: String,
+    display: String,
+}
+
+impl Bilingual {
+    /// Calls `build` twice, so it must not have side effects. The display text is
+    /// built in the language the user reads also inside [`in_english`], because the
+    /// user may be shown it later.
+    pub fn new(build: impl Fn() -> String) -> Self {
+        let english = in_english(&build);
+        let display = {
+            let _outside_english = ForcedEnglish::set(false);
+            build()
+        };
+        Self { english, display }
+    }
+
+    pub fn english(&self) -> &str {
+        &self.english
+    }
+
+    pub fn display(&self) -> &str {
+        &self.display
+    }
+
+    /// The text for whoever reads it now: English inside [`in_english`], and the
+    /// display language elsewhere.
+    pub fn current(&self) -> &str {
+        if FORCED_ENGLISH.with(Cell::get) {
+            &self.english
+        } else {
+            &self.display
+        }
+    }
+}
+
+impl std::fmt::Display for Bilingual {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.current())
+    }
+}
+
+impl std::error::Error for Bilingual {}
 
 pub mod test_support {
     use super::{Catalog, INSTALLS_ARE_THREAD_LOCAL, THREAD_OVERRIDE};

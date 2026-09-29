@@ -41,7 +41,8 @@ const MAX_SEARCH_MATCHES: usize = 100_000;
 /// into one cell is not a query anybody meant to type.
 const MAX_QUERY_SUGGESTION_CHARS: usize = 128;
 
-const TOO_MANY_MATCHES_MESSAGE: &str = "一致が多すぎるため先頭 100,000 件だけ対象です";
+const TOO_MANY_MATCHES_MESSAGE: &str =
+    i18n::msg!("Too many matches; only the first 100,000 are included");
 
 /// One hit: a byte range inside the value of one cell.
 ///
@@ -359,7 +360,11 @@ impl TabularDataPreviewPane {
         }
         if stale > 0 {
             self.set_status_message(
-                format!("{stale} 件は内容が変わっていたため置換しませんでした"),
+                i18n::tn!(
+                    stale,
+                    "{count} cell wasn't replaced because its content had changed",
+                    "{count} cells weren't replaced because their content had changed"
+                ),
                 cx,
             );
         } else {
@@ -607,7 +612,7 @@ impl SearchableItem for TabularDataPreviewPane {
                 if truncated != this.grid.search.truncated {
                     this.grid.search.truncated = truncated;
                     if truncated {
-                        this.set_sticky_status_message(TOO_MANY_MATCHES_MESSAGE, cx);
+                        this.set_sticky_status_message(i18n::tr(TOO_MANY_MATCHES_MESSAGE), cx);
                     } else {
                         this.clear_status_message();
                         cx.notify();
@@ -1220,7 +1225,7 @@ mod tests {
         pane.read_with(&cx, |pane, _| {
             assert_eq!(
                 pane.grid.status_message.as_deref(),
-                Some("1 件は内容が変わっていたため置換しませんでした")
+                Some("1 cell wasn't replaced because its content had changed")
             );
         });
     }

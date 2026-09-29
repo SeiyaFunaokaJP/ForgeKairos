@@ -88,8 +88,8 @@ impl fmt::Display for LanguageServerNotRunning {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "言語サーバーが起動していません: `{}` に対応する言語サーバーが動いていません \
-             (未インストール、起動中、または起動の承認待ちです)",
+            "Language server not running: no language server is running for `{}` \
+             (it is not installed, is still starting, or is waiting for approval to start)",
             self.path
         )
     }
@@ -256,12 +256,14 @@ async fn open_target(
         )
     });
     if let Some(reason) = withheld {
-        return Err(anyhow!("`{display_path}` は {reason} ため扱えません"));
+        return Err(anyhow!(
+            "`{display_path}` can't be used because it {reason}"
+        ));
     }
     let buffer = project
         .update(cx, |project, cx| project.open_buffer(path.clone(), cx))
         .await
-        .map_err(|error| anyhow!("`{display_path}` を開けませんでした: {error:#}"))?;
+        .map_err(|error| anyhow!("Couldn't open `{display_path}`: {error:#}"))?;
     Ok(QueryTarget {
         buffer,
         display_path,
@@ -297,7 +299,7 @@ async fn with_timeout<T>(request: impl Future<Output = T>, cx: &AsyncApp) -> Res
     match future::select(pin!(request), pin!(timer)).await {
         Either::Left((value, _)) => Ok(value),
         Either::Right(_) => Err(anyhow!(
-            "言語サーバーが {} 秒以内に応答しませんでした",
+            "The language server didn't respond within {} seconds",
             LANGUAGE_SERVER_TIMEOUT.as_secs()
         )),
     }
@@ -340,12 +342,12 @@ fn withheld_reason(project: &Project, path: &ProjectPath, cx: &App) -> Option<&'
         || global_settings.is_path_private(&path.path)
         || worktree_settings.is_path_private(&path.path)
     {
-        return Some("`private_files` に該当する");
+        return Some("matches `private_files`");
     }
     if global_settings.is_path_excluded(&path.path)
         || worktree_settings.is_path_excluded(&path.path)
     {
-        return Some("`file_scan_exclusions` に該当する");
+        return Some("matches `file_scan_exclusions`");
     }
     None
 }
@@ -357,13 +359,13 @@ fn resolve_position(
 ) -> Result<Point> {
     let line = position.line;
     if line == 0 {
-        return Err(anyhow!("行番号は 1 から数えます (0 が指定されました)"));
+        return Err(anyhow!("Line numbers start at 1 (got 0)"));
     }
     let row = line - 1;
     let max_row = snapshot.max_point().row;
     if row > max_row {
         return Err(anyhow!(
-            "`{display_path}` に {line} 行目はありません (全 {} 行)",
+            "`{display_path}` has no line {line} (it has {} lines)",
             max_row + 1
         ));
     }
@@ -373,13 +375,13 @@ fn resolve_position(
 
     let byte_column = if let Some(column) = position.column {
         if column == 0 {
-            return Err(anyhow!("列番号は 1 から数えます (0 が指定されました)"));
+            return Err(anyhow!("Column numbers start at 1 (got 0)"));
         }
         let character_count = line_text.chars().count();
         let character_index = (column - 1) as usize;
         if character_index > character_count {
             return Err(anyhow!(
-                "`{display_path}` の {line} 行目は {character_count} 文字なので、{column} 列目はありません"
+                "Line {line} of `{display_path}` has {character_count} characters, so it has no column {column}"
             ));
         }
         line_text
@@ -394,7 +396,7 @@ fn resolve_position(
     {
         line_text.find(symbol).ok_or_else(|| {
             anyhow!(
-                "`{display_path}` の {line} 行目に `{symbol}` が見つかりません (行の内容: `{}`)",
+                "`{symbol}` not found on line {line} of `{display_path}` (line text: `{}`)",
                 truncate_chars(line_text.trim(), MAX_SIGNATURE_CHARS)
             )
         })?
@@ -827,16 +829,16 @@ mod tests {
         let path = project_path(&project, "src/lib.rs", cx);
 
         for (position, expected) in [
-            (position(0, None, None), "行番号は 1 から"),
-            (position(99, None, None), "99 行目はありません (全 5 行)"),
+            (position(0, None, None), "Line numbers start at 1"),
+            (position(99, None, None), "has no line 99 (it has 5 lines)"),
             (
                 position(3, Some("存在しない"), None),
-                "`存在しない` が見つかりません",
+                "`存在しない` not found on line 3",
             ),
-            (position(3, None, Some(0)), "列番号は 1 から"),
+            (position(3, None, Some(0)), "Column numbers start at 1"),
             (
                 position(3, None, Some(21)),
-                "19 文字なので、21 列目はありません",
+                "has 19 characters, so it has no column 21",
             ),
         ] {
             let error = cx
@@ -887,7 +889,7 @@ mod tests {
                 Some(&expected),
                 "{error}"
             );
-            assert!(error.to_string().contains("言語サーバーが起動していません"));
+            assert!(error.to_string().contains("Language server not running"));
         }
     }
 
@@ -947,7 +949,10 @@ mod tests {
             .now_or_never()
             .expect("the query gives up once the timeout passes")
             .expect_err("the server never answers");
-        assert!(error.to_string().contains("応答しませんでした"), "{error}");
+        assert!(
+            error.to_string().contains("didn't respond within"),
+            "{error}"
+        );
     }
 
     #[gpui::test]
@@ -1393,7 +1398,10 @@ mod tests {
         let error = search(&project, " :: ", 0, None, cx)
             .await
             .expect_err("nothing to search for");
-        assert!(error.to_string().contains("検索語"), "{error}");
+        assert!(
+            error.to_string().contains("Specify a search query"),
+            "{error}"
+        );
     }
 
     #[gpui::test]

@@ -522,8 +522,8 @@ pub fn authorize_symlink_access(
     event_stream: &ToolCallEventStream,
     cx: &mut App,
 ) -> Task<Result<()>> {
-    let title = format!(
-        "`{}` はプロジェクトの外を指しています (シンボリックリンク → `{}`)",
+    let title = i18n::t!(
+        "`{}` points outside the project (symlink to `{}`)",
         display_path,
         canonical_target.display(),
     );
@@ -545,17 +545,17 @@ pub fn authorize_with_sensitive_settings(
 ) -> Task<Result<()>> {
     match kind {
         Some(SensitiveSettingsKind::Local) => event_stream.authorize_always_prompt(
-            format!("{title} (プロジェクトの設定)"),
+            i18n::t!("{title} (local settings)"),
             context.for_sensitive_settings(),
             cx,
         ),
         Some(SensitiveSettingsKind::Global) => event_stream.authorize_always_prompt(
-            format!("{title} (設定)"),
+            i18n::t!("{title} (settings)"),
             context.for_sensitive_settings(),
             cx,
         ),
         Some(SensitiveSettingsKind::AgentSkills) => event_stream.authorize_always_prompt(
-            format!("{title} (エージェントのスキル)"),
+            i18n::t!("{title} (agent skills)"),
             context.for_agent_skills(),
             cx,
         ),
@@ -585,8 +585,8 @@ pub fn authorize_symlink_escapes(
         .iter()
         .map(|(path, target)| format!("`{}` → `{}`", path, target.display()))
         .collect::<Vec<_>>()
-        .join("、");
-    let title = format!("{} (プロジェクト外へのシンボリックリンク)", targets);
+        .join(i18n::tc!("list conjunction", " and "));
+    let title = i18n::t!("{} (symlinks outside project)", targets);
 
     let context = ToolPermissionContext::symlink_target(
         tool_name,
@@ -768,12 +768,26 @@ pub(crate) fn resolve_one_new_path_in_the_project(
 /// visible worktree could hold it: the tools all silently take the first, so
 /// the card says which one that is rather than leaving the user to guess
 /// (決定 1).
-pub(crate) fn ambiguous_worktree_note(destination: &str, outcome: &str) -> String {
-    format!(
-        "どのワークツリーか曖昧: 承認すると {} に{}",
-        util::markdown::MarkdownInlineCode(destination),
-        outcome
-    )
+pub(crate) fn ambiguous_worktree_note(destination: &str, write: AmbiguousWrite) -> String {
+    let destination = util::markdown::MarkdownInlineCode(destination);
+    match write {
+        AmbiguousWrite::Copy => {
+            i18n::t!("which worktree is ambiguous: approving copies it to {destination}")
+        }
+        AmbiguousWrite::Move => {
+            i18n::t!("which worktree is ambiguous: approving moves it to {destination}")
+        }
+        AmbiguousWrite::Write => {
+            i18n::t!("which worktree is ambiguous: approving writes it to {destination}")
+        }
+    }
+}
+
+/// What a tool does at the destination named in [`ambiguous_worktree_note`].
+pub(crate) enum AmbiguousWrite {
+    Copy,
+    Move,
+    Write,
 }
 
 /// Checks authorization for file edits, handling symlink escapes and
@@ -806,7 +820,7 @@ pub fn authorize_file_edit(
     }
 
     let path_owned = path.to_path_buf();
-    let title = format!("{} を編集", util::markdown::MarkdownInlineCode(&path_str));
+    let title = i18n::t!("Edit {}", util::markdown::MarkdownInlineCode(&path_str));
     let tool_name = tool_name.to_string();
     let thread = thread.clone();
     let event_stream = event_stream.clone();
@@ -919,7 +933,7 @@ pub fn authorize_file_edit(
                     )
                     .for_sensitive_settings();
                     event_stream.authorize_always_prompt(
-                        format!("{title} (プロジェクトの設定)"),
+                        i18n::t!("{title} (local settings)"),
                         context,
                         cx,
                     )
@@ -933,7 +947,11 @@ pub fn authorize_file_edit(
                         vec![path_owned.to_string_lossy().to_string()],
                     )
                     .for_sensitive_settings();
-                    event_stream.authorize_always_prompt(format!("{title} (設定)"), context, cx)
+                    event_stream.authorize_always_prompt(
+                        i18n::t!("{title} (settings)"),
+                        context,
+                        cx,
+                    )
                 });
                 return authorize.await;
             }
@@ -945,7 +963,7 @@ pub fn authorize_file_edit(
                     )
                     .for_agent_skills();
                     event_stream.authorize_always_prompt(
-                        format!("{title} (エージェントのスキル)"),
+                        i18n::t!("{title} (agent skills)"),
                         context,
                         cx,
                     )
@@ -968,7 +986,7 @@ pub fn authorize_file_edit(
                         project.short_full_path_for_project_path(&placement.project_path, cx)
                     })
                 })
-                .map(|destination| ambiguous_worktree_note(&destination, "書かれます"));
+                .map(|destination| ambiguous_worktree_note(&destination, AmbiguousWrite::Write));
             let authorize = cx.update(|cx| {
                 let context = ToolPermissionContext::new(
                     &tool_name,

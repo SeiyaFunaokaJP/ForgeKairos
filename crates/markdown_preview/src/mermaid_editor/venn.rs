@@ -241,7 +241,7 @@ impl MermaidEditor {
             })
             .unwrap_or_default();
         if sets.len() < 2 {
-            self.message = Some("先に集合を 2 つ以上追加してください。".into());
+            self.message = Some(i18n::t!("Add at least two sets first.").into());
             cx.notify();
             return;
         }
@@ -328,7 +328,7 @@ impl MermaidEditor {
             }
         };
         if refused {
-            self.message = Some("重なりには集合が 2 つ以上必要です。".into());
+            self.message = Some(i18n::t!("An overlap needs at least two sets.").into());
             cx.notify();
             return;
         }
@@ -348,7 +348,7 @@ impl MermaidEditor {
         let header = h_flex()
             .w_full()
             .gap_2()
-            .child(section_title("タイトル"))
+            .child(section_title(i18n::t!("Title")))
             .child(
                 field_frame(
                     &form.title,
@@ -379,8 +379,10 @@ impl MermaidEditor {
                 .sum::<usize>();
         if kept > 0 {
             elements.push(
-                Label::new(format!(
-                    "text・style の文 {kept} 件はそのまま残し、集合の改名と削除に追随させます。"
+                Label::new(i18n::tn!(
+                    kept,
+                    "{count} text or style statement is kept as is and follows sets that are renamed or deleted.",
+                    "{count} text and style statements are kept as is and follow sets that are renamed or deleted."
                 ))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
@@ -404,9 +406,9 @@ impl MermaidEditor {
             .map(str::to_string)
             .collect::<Vec<_>>();
         let mut section = v_flex().w_full().gap_1().child(section_title(if sets {
-            "集合 (ID・ラベル・大きさ)"
+            i18n::t!("Sets (ID, label, size)")
         } else {
-            "重なり (集合・ラベル・大きさ)"
+            i18n::t!("Overlaps (sets, label, size)")
         }));
         for index in 0..form.areas.len() {
             let (Some(row), Some(area)) = (form.areas.get(index), current.areas.get(index)) else {
@@ -432,9 +434,11 @@ impl MermaidEditor {
                     .child(self.render_venn_member_menu(index, &area.sets, &set_ids, window, cx)),
             };
             let removes = if sets {
-                "削除 (この集合を含む重なり・text・style も削除)"
+                i18n::t!(
+                    "Delete (also deletes the overlaps, text and style statements that include this set)"
+                )
             } else {
-                "削除"
+                i18n::t!("Delete")
             };
             line = line
                 .child(
@@ -464,9 +468,13 @@ impl MermaidEditor {
                 )
                 .when(!area.notes.is_empty(), |this| {
                     this.child(
-                        Label::new(format!("text {} 件", area.notes.len()))
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
+                        Label::new(i18n::tn!(
+                            area.notes.len(),
+                            "{count} text statement",
+                            "{count} text statements"
+                        ))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
                     )
                 })
                 .child(row_controls_labelled(
@@ -488,14 +496,14 @@ impl MermaidEditor {
         let add = if sets {
             add_button(
                 "mermaid-venn-add-set",
-                "集合を追加",
+                i18n::t!("Add Set"),
                 cx.listener(|this, _, window, cx| this.add_venn_set(window, cx)),
             )
             .into_any_element()
         } else {
             add_button(
                 "mermaid-venn-add-union",
-                "重なりを追加",
+                i18n::t!("Add Overlap"),
                 cx.listener(|this, _, window, cx| this.add_venn_union(window, cx)),
             )
             .into_any_element()

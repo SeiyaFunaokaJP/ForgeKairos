@@ -195,11 +195,14 @@ pub(super) fn problem(_document: &GitGraphDocument) -> Option<SharedString> {
 }
 
 fn commit_type_label(commit_type: Option<GitCommitType>) -> &'static str {
-    commit_type.map_or("種類: 既定", GitCommitType::label)
+    commit_type.map_or(i18n::t!("Type: Default"), GitCommitType::label)
 }
 
 fn direction_label(direction: Option<GitGraphDirection>) -> &'static str {
-    direction.map_or("既定 (左から右)", GitGraphDirection::label)
+    direction.map_or(
+        i18n::t!("Default (Left to Right)"),
+        GitGraphDirection::label,
+    )
 }
 
 /// A preserved line as its row shows it: the first line, cut short.
@@ -496,7 +499,7 @@ impl MermaidEditor {
             .collect();
         h_flex()
             .gap_2()
-            .child(section_title("向き"))
+            .child(section_title(i18n::t!("Orientation")))
             .child(self.render_gitgraph_menu(
                 "mermaid-git-direction".into(),
                 direction_label(current).into(),
@@ -524,21 +527,22 @@ impl MermaidEditor {
         let header = h_flex()
             .w_full()
             .gap_2()
-            .child(section_title(format!(
-                "主ブランチ: {}",
-                current.main_branch
+            .child(section_title(i18n::t!(
+                "Main Branch: {branch}",
+                branch = current.main_branch
             )))
             .child(
-                Label::new("(名前は設定の mainBranchName をテキストで変更)")
-                    .size(LabelSize::XSmall)
-                    .color(Color::Muted),
+                Label::new(i18n::t!(
+                    "(to rename it, change mainBranchName in the configuration as text)"
+                ))
+                .size(LabelSize::XSmall)
+                .color(Color::Muted),
             )
             .into_any_element();
 
-        let mut list = v_flex()
-            .w_full()
-            .gap_1()
-            .child(section_title("操作 (上から順に実行)"));
+        let mut list = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Operations (run from top to bottom)"
+        )));
         let last = form.rows.len().saturating_sub(1);
         for index in 0..form.rows.len() {
             let (Some(row), Some(item)) = (form.rows.get(index), current.items.get(index)) else {
@@ -579,7 +583,7 @@ impl MermaidEditor {
         for kind in GitGraphItemKind::ALL {
             buttons = buttons.child(add_button(
                 SharedString::from(format!("mermaid-git-add-{kind:?}")),
-                format!("{}を追加", kind.label()),
+                i18n::t!("Add {label}", label = kind.label()),
                 cx.listener(move |this, _, window, cx| this.add_gitgraph_item(kind, window, cx)),
             ));
         }
@@ -595,7 +599,7 @@ impl MermaidEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let Some(current) = item.kind() else {
-            return Label::new("メモ")
+            return Label::new(i18n::t!("Memo"))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element();
@@ -642,7 +646,7 @@ impl MermaidEditor {
             }
             (GitGraphItem::Merge(merge), GitItemRow::Merge { id, tag }) => {
                 let mut body = vec![
-                    section_title("取り込む").into_any_element(),
+                    section_title(i18n::t!("Merge In")).into_any_element(),
                     self.render_gitgraph_branch_menu(index, &merge.branch, &branches, window, cx),
                 ];
                 body.extend(self.render_gitgraph_id_and_tag(
@@ -673,7 +677,7 @@ impl MermaidEditor {
                     )
                     .child(name.clone())
                     .into_any_element(),
-                    section_title("順序").into_any_element(),
+                    section_title(i18n::t!("Order")).into_any_element(),
                     field_frame(
                         order,
                         NUMBER_FIELD_WIDTH,
@@ -700,19 +704,19 @@ impl MermaidEditor {
                     .iter()
                     .map(|id| (SharedString::from(id.to_string()), id.to_string()))
                     .collect();
-                let parents = std::iter::once((SharedString::from("(指定なし)"), None))
+                let parents = std::iter::once((SharedString::from(i18n::t!("(Not Set)")), None))
                     .chain(
                         ids.iter()
                             .map(|id| (SharedString::from(id.to_string()), Some(id.to_string()))),
                     )
                     .collect();
                 let pick_label = if pick.id.is_empty() {
-                    "(選択)".to_string()
+                    i18n::t!("(Select)").to_string()
                 } else {
                     pick.id.clone()
                 };
                 vec![
-                    section_title("コミット").into_any_element(),
+                    section_title(i18n::t!("Commit")).into_any_element(),
                     self.render_gitgraph_menu(
                         SharedString::from(format!("mermaid-git-pick-{index}")),
                         pick_label.into(),
@@ -722,12 +726,12 @@ impl MermaidEditor {
                         window,
                         cx,
                     ),
-                    section_title("親").into_any_element(),
+                    section_title(i18n::t!("Parent")).into_any_element(),
                     self.render_gitgraph_menu(
                         SharedString::from(format!("mermaid-git-parent-{index}")),
                         pick.parent
                             .clone()
-                            .unwrap_or_else(|| "(指定なし)".to_string())
+                            .unwrap_or_else(|| i18n::t!("(Not Set)").to_string())
                             .into(),
                         parents,
                         pick.parent.clone(),
@@ -768,7 +772,7 @@ impl MermaidEditor {
             field_frame(id_field, ID_FIELD_WIDTH, id_is_valid, window, cx)
                 .child(id_field.clone())
                 .into_any_element(),
-            section_title("タグ").into_any_element(),
+            section_title(i18n::t!("Tag")).into_any_element(),
         ];
         body.push(match tag_field {
             Some(field) => field_frame(

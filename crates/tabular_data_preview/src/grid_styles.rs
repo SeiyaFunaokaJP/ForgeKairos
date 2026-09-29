@@ -115,14 +115,14 @@ impl CellColor {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            CellColor::Yellow => "黄",
-            CellColor::Green => "緑",
-            CellColor::Blue => "青",
-            CellColor::Orange => "橙",
-            CellColor::Red => "赤",
-            CellColor::Purple => "紫",
-            CellColor::Gray => "灰",
-            CellColor::None => "なし",
+            CellColor::Yellow => i18n::tc!("cell color", "Yellow"),
+            CellColor::Green => i18n::tc!("cell color", "Green"),
+            CellColor::Blue => i18n::tc!("cell color", "Blue"),
+            CellColor::Orange => i18n::tc!("cell color", "Orange"),
+            CellColor::Red => i18n::tc!("cell color", "Red"),
+            CellColor::Purple => i18n::tc!("cell color", "Purple"),
+            CellColor::Gray => i18n::tc!("cell color", "Gray"),
+            CellColor::None => i18n::tc!("cell color", "None"),
         }
     }
 
@@ -1134,7 +1134,7 @@ impl TabularDataPreviewPane {
             model.take_not_stored_warning()
         });
         if warn {
-            self.set_status_message("このファイルの色は保存されません", cx);
+            self.set_status_message(i18n::t!("Colors aren't saved for this file"), cx);
         } else {
             self.clear_status_message();
         }
@@ -1163,7 +1163,7 @@ impl TabularDataPreviewPane {
         }
         let limit = grouped_digits(MAX_GRID_OPERATION_CELLS);
         self.set_status_message(
-            format!("選択範囲が大きすぎます (最大 {limit} セル)。色は設定できません"),
+            i18n::t!("The selection is too large (up to {limit} cells) to set colors"),
             cx,
         );
         false
@@ -1216,18 +1216,22 @@ impl TabularDataPreviewPane {
         h_flex()
             .gap_1()
             .items_center()
-            .child(Label::new("色").size(LabelSize::Small).color(Color::Muted))
+            .child(
+                Label::new(i18n::t!("Color"))
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
             .child(self.render_color_menu(
                 "tabular-fill-color",
                 IconName::SquareDot,
-                "塗りつぶしの色",
+                i18n::t!("Fill Color"),
                 StyleField::Fill,
                 cx,
             ))
             .child(self.render_color_menu(
                 "tabular-text-color",
                 IconName::Font,
-                "文字の色",
+                i18n::tc!("cell color", "Text Color"),
                 StyleField::Text,
                 cx,
             ))
@@ -2379,7 +2383,7 @@ d,e,f",
             );
             assert_eq!(
                 pane.grid.status_message.as_deref(),
-                Some("このファイルの色は保存されません")
+                Some("Colors aren't saved for this file")
             );
         });
 

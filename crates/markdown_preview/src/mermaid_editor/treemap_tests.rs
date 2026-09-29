@@ -90,10 +90,20 @@ const TEMPLATE_FENCE: &str = indoc! {"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let treemap = parse_treemap(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_treemap(&treemap), template);
+    };
+    check(editor::actions::MermaidDiagramKind::Treemap.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::Treemap.template();
-    let treemap = parse_treemap(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_treemap(&treemap), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -200,7 +210,7 @@ async fn a_value_over_a_section_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("値のある項目 `開発費` の下")),
+            .is_some_and(|message| message.contains("under the item `開発費`, which has a value")),
         "the modal should say why it refused, got {message:?}"
     );
 

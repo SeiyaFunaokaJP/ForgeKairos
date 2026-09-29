@@ -154,7 +154,7 @@ impl PickerDelegate for CommitTagPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "タグをコピー".into()
+        i18n::t!("Copy Tag").into()
     }
 
     fn match_count(&self) -> usize {
@@ -311,7 +311,7 @@ impl ChangedFileEntry {
                 } else {
                     format!("{}/{}", dir_path, file_name).into()
                 };
-                move |_, cx| Tooltip::with_meta("変更を表示", None, meta.clone(), cx)
+                move |_, cx| Tooltip::with_meta(i18n::t!("View Changes"), None, meta.clone(), cx)
             })
             .on_click({
                 let entry = self.clone();
@@ -392,7 +392,7 @@ impl ChangedFileDirectoryEntry {
             )
             .tooltip({
                 let name = self.name.clone();
-                move |_, cx| Tooltip::with_meta("フォルダーの開閉", None, name.clone(), cx)
+                move |_, cx| Tooltip::with_meta(i18n::t!("Toggle Folder"), None, name.clone(), cx)
             })
             .on_click(move |_, _, cx| {
                 git_graph
@@ -648,10 +648,12 @@ impl RefKind {
 
     fn description(self) -> &'static str {
         match self {
-            RefKind::Head => "現在のブランチ (今チェックアウトしているブランチ)",
-            RefKind::LocalBranch => "ローカルブランチ (この PC にあるブランチ)",
-            RefKind::RemoteBranch => "リモートブランチ (サーバー側のブランチの写し)",
-            RefKind::Tag => "タグ (特定のコミットに付けた目印)",
+            RefKind::Head => i18n::t!("Current branch (the branch checked out now)"),
+            RefKind::LocalBranch => i18n::t!("Local branch (a branch on this computer)"),
+            RefKind::RemoteBranch => {
+                i18n::t!("Remote branch (a copy of a branch on the server)")
+            }
+            RefKind::Tag => i18n::t!("Tag (a marker given to a particular commit)"),
         }
     }
 
@@ -778,7 +780,7 @@ fn hidden_ref_chips_tooltip(hidden: &[RefChip]) -> String {
     if let Some(more) = hidden.len().checked_sub(HIDDEN_REF_TOOLTIP_LIMIT)
         && more > 0
     {
-        lines.push(format!("ほか {more} 個"));
+        lines.push(i18n::t!("and {more} more"));
     }
     lines.join("\n")
 }
@@ -887,8 +889,10 @@ fn undo_rewrite(
     if head.as_deref() != Some(new_head.as_str()) {
         report_to_workspace(
             &workspace,
-            "書き換えの後に HEAD が動いているため、ここからは戻せません。git reflog から手で戻してください。"
-                .to_string(),
+            i18n::t!(
+                "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
+            )
+            .to_string(),
             IconName::Warning,
             Color::Warning,
             cx,
@@ -898,8 +902,10 @@ fn undo_rewrite(
     if dirty {
         report_to_workspace(
             &workspace,
-            "未コミットの変更があるため戻せません。コミットかスタッシュしてからやり直してください。"
-                .to_string(),
+            i18n::t!(
+                "There are uncommitted changes, so it cannot be undone. Commit or stash them, then try again."
+            )
+            .to_string(),
             IconName::Warning,
             Color::Warning,
             cx,
@@ -910,12 +916,11 @@ fn undo_rewrite(
     let short_new: String = new_head.chars().take(git::SHORT_SHA_LENGTH).collect();
     let confirmation = window.prompt(
         gpui::PromptLevel::Warning,
-        "並べ替える前の状態に戻しますか?",
-        Some(&format!(
-            "現在の先頭 {short_new} を捨てて {short_old} に戻します (git reset --hard)。\n\
-             並べ替えでできたコミットは reflog からしか辿れなくなります。"
+        i18n::t!("Go back to the state before the reorder?"),
+        Some(&i18n::t!(
+            "This throws away the current tip {short_new} and goes back to {short_old} (git reset --hard).\nThe commits the reorder made can then only be found through the reflog."
         )),
-        &["戻す", "キャンセル"],
+        &[i18n::tc!("git prompt", "Go Back"), i18n::t!("Cancel")],
         cx,
     );
     cx.spawn(async move |cx| {
@@ -926,12 +931,15 @@ fn undo_rewrite(
             repository.reset_to(old_head, ResetMode::Hard, cx)
         });
         let (message, failed) = match receiver.await {
-            Ok(Ok(output)) if output.succeeded() => (format!("{short_old} に戻しました。"), false),
-            Ok(Ok(output)) => (
-                format!("元に戻せませんでした\n{}", output.failure_message()),
-                true,
-            ),
-            Ok(Err(error)) => (format!("元に戻せませんでした\n{error:#}"), true),
+            Ok(Ok(output)) if output.succeeded() => (i18n::t!("Went back to {short_old}."), false),
+            Ok(Ok(output)) => {
+                let failure = output.failure_message();
+                (i18n::t!("Could not undo\n{failure}"), true)
+            }
+            Ok(Err(error)) => {
+                let failure = format!("{error:#}");
+                (i18n::t!("Could not undo\n{failure}"), true)
+            }
             Err(_) => return,
         };
         cx.update(|cx| {
@@ -1162,9 +1170,11 @@ fn graph_drop_action(dragged: &GraphDragEnd, target: &GraphDragEnd) -> Option<Gr
         }
         // Let go over the selection itself, a drag that went nowhere is not worth a refusal.
         (GraphDragEnd::Commits(shas), GraphDragEnd::Commit(target)) => (!shas.contains(target))
-            .then_some(GraphDropAction::Refused(
-                "並べ替えは 1 件ずつです。1 件だけをドラッグしてください。",
-            )),
+            .then(|| {
+                GraphDropAction::Refused(i18n::t!(
+                    "Commits are reordered one at a time. Drag a single commit."
+                ))
+            }),
         (GraphDragEnd::Files(repo_paths), GraphDragEnd::Commit(sha)) => (!repo_paths.is_empty())
             .then(|| GraphDropAction::Fixup {
                 sha: *sha,
@@ -1184,10 +1194,12 @@ fn dropped_files_refusal<Id: PartialEq>(
 ) -> Option<&'static str> {
     match (dragged_repository, graph_repository) {
         (Some(dragged), Some(graph)) if dragged == graph => None,
-        (Some(_), Some(_)) => {
-            Some("別のリポジトリのファイルは、このグラフのコミットには入れられません。")
-        }
-        _ => Some("リポジトリが見つからないため、ファイルをコミットに入れられません。"),
+        (Some(_), Some(_)) => Some(i18n::t!(
+            "Files from another repository cannot go into this graph's commits."
+        )),
+        _ => Some(i18n::t!(
+            "The repository could not be found, so the files cannot go into the commit."
+        )),
     }
 }
 
@@ -1272,18 +1284,24 @@ fn plan_commit_move(
             target
         };
         return Err(if on_current_branch(outside) {
-            "マージコミットと、それより前のコミットは並べ替えられません (書き換えるとマージが崩れます)。".into()
+            i18n::t!(
+                "A merge commit and the commits before it cannot be reordered (rewriting them would break the merge)."
+            )
+            .into()
         } else {
-            "現在のブランチの履歴に無いコミットは並べ替えられません。そのブランチに切り替えてからやり直してください。".into()
+            i18n::t!(
+                "Commits that are not in the current branch's history cannot be reordered. Switch to that branch, then try again."
+            )
+            .into()
         });
     };
     let (newest, oldest) = (from.min(to), from.max(to));
     let Some(range) = history.get(newest..=oldest) else {
-        return Err("並べ替える範囲を読み取れませんでした。".into());
+        return Err(i18n::t!("Could not read the range to reorder.").into());
     };
     let mut reordered = range.to_vec();
     if !rewrite_range_modal::move_list_item(&mut reordered, from - newest, to - newest) {
-        return Err("同じコミットの上に落としたので、並びは変わりません。".into());
+        return Err(i18n::t!("Dropped on the same commit, so the order does not change.").into());
     }
     let commits_oldest_first: Vec<Oid> = range.iter().rev().copied().collect();
     let index_of: HashMap<Oid, usize> = commits_oldest_first
@@ -1297,7 +1315,7 @@ fn plan_commit_move(
         .filter_map(|sha| index_of.get(sha).copied())
         .collect::<Vec<_>>();
     if initial_order.len() != commits_oldest_first.len() {
-        return Err("並べ替える範囲を読み取れませんでした。".into());
+        return Err(i18n::t!("Could not read the range to reorder.").into());
     }
     Ok(CommitMove {
         commits_oldest_first,
@@ -1364,20 +1382,18 @@ impl RowDropContext {
         match self {
             RowDropContext::Nothing => None,
             RowDropContext::Ref { name, kind } => match kind {
-                RefKind::Head => {
-                    Some(format!("ここに落とすと: {name} をここまで戻す (reset)").into())
-                }
-                RefKind::LocalBranch => Some(format!("ここに落とすと: {name} をここへ移動").into()),
+                RefKind::Head => Some(i18n::t!("Drop here: reset {name} to here (reset)").into()),
+                RefKind::LocalBranch => Some(i18n::t!("Drop here: move {name} here").into()),
                 RefKind::RemoteBranch | RefKind::Tag => None,
             },
             RowDropContext::MoveCommit { dragged, history } => history
                 .rows
                 .get(&row)
                 .is_some_and(|sha| sha != dragged)
-                .then(|| "ここに落とすと: この位置へ移動 (並べ替え)".into()),
+                .then(|| i18n::t!("Drop here: move to this position (reorder)").into()),
             RowDropContext::Files { history } => (history.rows.contains_key(&row)
                 || history.root_row == Some(row))
-            .then(|| "ここに落とすと: このコミットに入れる (fixup)".into()),
+            .then(|| i18n::t!("Drop here: add to this commit (fixup)").into()),
         }
     }
 
@@ -1429,15 +1445,25 @@ struct CachedRewritableHistory {
 /// What letting `count` dragged commits go over a branch chip does.
 fn chip_drop_hint(count: usize, branch: &str, kind: RefKind) -> Option<SharedString> {
     match kind {
-        RefKind::Head if count > 1 => {
-            Some(format!("ここに落とすと: {count} 件を取り込む (cherry-pick)").into())
-        }
-        RefKind::Head => Some("ここに落とすと: 取り込む (cherry-pick)".into()),
-        RefKind::LocalBranch if count > 1 => {
-            Some(format!("ここに落とすと: {branch} に切り替えて {count} 件を取り込む").into())
-        }
+        RefKind::Head if count > 1 => Some(
+            i18n::tn!(
+                count,
+                "Drop here: cherry-pick {count} commit",
+                "Drop here: cherry-pick {count} commits"
+            )
+            .into(),
+        ),
+        RefKind::Head => Some(i18n::t!("Drop here: cherry-pick").into()),
+        RefKind::LocalBranch if count > 1 => Some(
+            i18n::tn!(
+                count,
+                "Drop here: switch to {branch} and cherry-pick {count} commit",
+                "Drop here: switch to {branch} and cherry-pick {count} commits"
+            )
+            .into(),
+        ),
         RefKind::LocalBranch => {
-            Some(format!("ここに落とすと: {branch} に切り替えて取り込む").into())
+            Some(i18n::t!("Drop here: switch to {branch} and cherry-pick").into())
         }
         RefKind::RemoteBranch | RefKind::Tag => None,
     }
@@ -1446,38 +1472,46 @@ fn chip_drop_hint(count: usize, branch: &str, kind: RefKind) -> Option<SharedStr
 /// The title and detail of the confirmation for commits dropped on a branch chip.
 fn cherry_pick_drop_prompt(shas: &[Oid], branch: &str, after_switch: bool) -> (String, String) {
     match (shas, after_switch) {
-        ([sha], false) => (
-            "このコミットを現在のブランチに取り込みますか?".to_string(),
-            format!(
-                "{} の変更を、現在のブランチ {branch} の先頭に新しいコミットとして積みます (cherry-pick)。",
-                sha.display_short()
-            ),
-        ),
-        ([sha], true) => (
-            format!("{branch} に切り替えてから取り込みますか?"),
-            format!(
-                "{branch} に切り替えてから、{} の変更を新しいコミットとして積みます (checkout + cherry-pick)。",
-                sha.display_short()
-            ),
-        ),
+        ([sha], false) => {
+            let sha = sha.display_short();
+            (
+                i18n::t!("Cherry-pick this commit onto the current branch?").to_string(),
+                i18n::t!(
+                    "Adds the changes of {sha} to the tip of the current branch {branch} as a new commit (cherry-pick)."
+                ),
+            )
+        }
+        ([sha], true) => {
+            let sha = sha.display_short();
+            (
+                i18n::t!("Switch to {branch} and then cherry-pick?"),
+                i18n::t!(
+                    "Switches to {branch}, then adds the changes of {sha} as a new commit (checkout + cherry-pick)."
+                ),
+            )
+        }
         (shas, false) => (
-            format!(
-                "{} 件のコミットを現在のブランチに取り込みますか?",
-                shas.len()
+            i18n::tn!(
+                shas.len(),
+                "Cherry-pick {count} commit onto the current branch?",
+                "Cherry-pick {count} commits onto the current branch?"
             ),
-            format!(
-                "{} 件を取り込みます: 古い順に、現在のブランチ {branch} の先頭へ新しいコミットとして積みます (cherry-pick)。",
-                shas.len()
+            i18n::tn!(
+                shas.len(),
+                "Cherry-picks {count} commit: adds it, oldest first, to the tip of the current branch {branch} as a new commit (cherry-pick).",
+                "Cherry-picks {count} commits: adds them, oldest first, to the tip of the current branch {branch} as new commits (cherry-pick)."
             ),
         ),
         (shas, true) => (
-            format!(
-                "{branch} に切り替えてから {} 件を取り込みますか?",
-                shas.len()
+            i18n::tn!(
+                shas.len(),
+                "Switch to {branch} and then cherry-pick {count} commit?",
+                "Switch to {branch} and then cherry-pick {count} commits?"
             ),
-            format!(
-                "{branch} に切り替えてから、{} 件を取り込みます: 古い順に新しいコミットとして積みます (checkout + cherry-pick)。",
-                shas.len()
+            i18n::tn!(
+                shas.len(),
+                "Switches to {branch}, then cherry-picks {count} commit: adds it, oldest first, as a new commit (checkout + cherry-pick).",
+                "Switches to {branch}, then cherry-picks {count} commits: adds them, oldest first, as new commits (checkout + cherry-pick)."
             ),
         ),
     }
@@ -1552,7 +1586,7 @@ fn timestamp_format() -> &'static [BorrowedFormatItem<'static>] {
 
 pub(crate) fn format_timestamp(timestamp: i64) -> String {
     let Ok(datetime) = OffsetDateTime::from_unix_timestamp(timestamp) else {
-        return "不明".to_string();
+        return i18n::t!("Unknown").to_string();
     };
 
     let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
@@ -2481,7 +2515,7 @@ impl GitGraph {
 
         let search_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text(graph_search::SEARCH_PLACEHOLDER, window, cx);
+            editor.set_placeholder_text(i18n::tr(graph_search::SEARCH_PLACEHOLDER), window, cx);
             editor
         });
 
@@ -2975,23 +3009,18 @@ impl GitGraph {
                     div()
                         .debug_selector(|| "git-graph-show-all-ref-chips".into())
                         .child(
-                            Button::new(
-                                "show-all-ref-chips",
-                                format!("ほか {hidden_count} 個をすべて表示"),
-                            )
-                            .label_size(LabelSize::Small)
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
+                            Button::new("show-all-ref-chips", i18n::t!("Show {hidden_count} More"))
+                                .label_size(LabelSize::Small)
+                                .on_click(cx.listener(move |this, _, _, cx| {
                                     this.detail_ref_chips_expanded_for = Some(sha);
                                     cx.notify();
-                                },
-                            )),
+                                })),
                         ),
                 )
             })
             .when(expanded && chips.len() > DETAIL_REF_CHIP_LIMIT, |this| {
                 this.child(
-                    Button::new("collapse-ref-chips", "折りたたむ")
+                    Button::new("collapse-ref-chips", i18n::t!("Collapse"))
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.detail_ref_chips_expanded_for = None;
@@ -3064,7 +3093,7 @@ impl GitGraph {
                     author_name = data.author_name.clone();
                     formatted_time = format_timestamp(data.commit_timestamp);
                 } else {
-                    subject = "読み込み中…".into();
+                    subject = i18n::t!("Loading…").into();
                     author_name = "".into();
                 }
 
@@ -3733,9 +3762,20 @@ impl GitGraph {
     ) {
         let is_path_history = matches!(self.log_source, LogSource::Path(_));
         let columns: &[&str] = if is_path_history {
-            &["説明", "日付", "作成者", "コミット"]
+            &[
+                i18n::t!("Description"),
+                i18n::t!("Date"),
+                i18n::t!("Author"),
+                i18n::t!("Commit"),
+            ]
         } else {
-            &["グラフ", "説明", "日付", "作成者", "コミット"]
+            &[
+                i18n::t!("Graph"),
+                i18n::t!("Description"),
+                i18n::t!("Date"),
+                i18n::t!("Author"),
+                i18n::t!("Commit"),
+            ]
         };
 
         let filter = self.column_visibility.clone();
@@ -3748,7 +3788,9 @@ impl GitGraph {
         let focus_handle = self.focus_handle.clone();
         let git_graph = cx.entity();
         let context_menu = ContextMenu::build(window, cx, |mut context_menu, _window, _cx| {
-            context_menu = context_menu.context(focus_handle).header("列");
+            context_menu = context_menu
+                .context(focus_handle)
+                .header(i18n::t!("Columns"));
             for (col_idx, label) in columns.iter().enumerate() {
                 let is_visible = !filter.get(col_idx).copied().unwrap_or(false);
                 // Disable hiding the last remaining visible column.
@@ -3824,7 +3866,7 @@ impl GitGraph {
                             })
                             .tooltip(move |_window, cx| {
                                 Tooltip::for_action_in(
-                                    "大文字と小文字を区別",
+                                    i18n::t!("Match Case Sensitivity"),
                                     &ToggleCaseSensitive,
                                     &focus_handle,
                                     cx,
@@ -3843,7 +3885,7 @@ impl GitGraph {
                             .icon_size(IconSize::Small)
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
-                                    "前の一致を選択",
+                                    i18n::t!("Select Previous Match"),
                                     &SelectPreviousMatch,
                                     &focus_handle,
                                     cx,
@@ -3866,7 +3908,7 @@ impl GitGraph {
                             .icon_size(IconSize::Small)
                             .tooltip(move |_, cx| {
                                 Tooltip::for_action_in(
-                                    "次の一致を選択",
+                                    i18n::t!("Select Next Match"),
                                     &SelectNextMatch,
                                     &focus_handle,
                                     cx,
@@ -3970,7 +4012,7 @@ impl GitGraph {
                 data.author_email.clone(),
                 Some(data.commit_timestamp),
             ),
-            CommitDataState::Loading(_) => ("読み込み中…".into(), "".into(), None),
+            CommitDataState::Loading(_) => (i18n::t!("Loading…").into(), "".into(), None),
         };
 
         let date_string = commit_timestamp.map(format_timestamp).unwrap_or_default();
@@ -4038,9 +4080,9 @@ impl GitGraph {
             .toggle_state(self.changed_files_view_mode.is_tree())
             .tooltip({
                 let tooltip = if is_tree_view {
-                    "フラット表示に切り替え"
+                    i18n::t!("Show Flat View")
                 } else {
-                    "ツリー表示に切り替え"
+                    i18n::t!("Show Tree View")
                 };
                 move |_, cx| Tooltip::for_action(tooltip, &ToggleChangedFilesView, cx)
             })
@@ -4116,13 +4158,9 @@ impl GitGraph {
                                 let is_copied = copied_state.read(cx).is_copied();
 
                                 let (icon, icon_color, tooltip_label) = if is_copied {
-                                    (
-                                        IconName::Check,
-                                        Color::Success,
-                                        "メールアドレスをコピーしました",
-                                    )
+                                    (IconName::Check, Color::Success, i18n::t!("Email Copied!"))
                                 } else {
-                                    (IconName::Envelope, Color::Muted, "メールアドレスをコピー")
+                                    (IconName::Envelope, Color::Muted, i18n::t!("Copy Email"))
                                 };
 
                                 let copy_email = author_email.clone();
@@ -4174,10 +4212,10 @@ impl GitGraph {
                                     (
                                         IconName::Check,
                                         Color::Success,
-                                        "コミット SHA をコピーしました",
+                                        i18n::t!("Commit SHA Copied!"),
                                     )
                                 } else {
-                                    (IconName::Hash, Color::Muted, "コミット SHA をコピー")
+                                    (IconName::Hash, Color::Muted, i18n::t!("Copy Commit SHA"))
                                 };
 
                                 Button::new("sha-button", &full_sha)
@@ -4235,7 +4273,7 @@ impl GitGraph {
                                 this.child(
                                     Button::new(
                                         "view-on-provider",
-                                        format!("{} で表示", provider_name),
+                                        i18n::t!("View on {}", provider_name),
                                     )
                                     .start_icon(
                                         Icon::new(icon).size(IconSize::Small).color(Color::Muted),
@@ -4272,11 +4310,10 @@ impl GitGraph {
                                 h_flex()
                                     .gap_1()
                                     .child(
-                                        // 日本語には複数形がないため、原文の
-                                        // "File"/"Files" の出し分けは不要。
-                                        Label::new(format!(
-                                            "変更されたファイル {} 件",
-                                            changed_files_count
+                                        Label::new(i18n::tn!(
+                                            changed_files_count,
+                                            "{count} Changed File",
+                                            "{count} Changed Files"
                                         ))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
@@ -4387,7 +4424,7 @@ impl GitGraph {
             .child(Divider::horizontal())
             .child(
                 h_flex().p_1p5().w_full().child(
-                    Button::new("view-commit", "コミットを表示")
+                    Button::new("view-commit", i18n::t!("View Commit"))
                         .full_width()
                         .start_icon(
                             Icon::new(IconName::GitCommit)
@@ -4977,16 +5014,21 @@ impl GitGraph {
         let text: SharedString = match &self.selected_commit_tag_distance {
             Some((loaded_sha, described)) if *loaded_sha == sha => match described {
                 Some(distance) if distance.commits_since == 0 => {
-                    format!("直近のタグ: {} (このコミット自身)", distance.tag).into()
+                    let tag = &distance.tag;
+                    i18n::t!("Latest tag: {tag} (this commit itself)").into()
                 }
-                Some(distance) => format!(
-                    "直近のタグ: {} ({} コミット前)",
-                    distance.tag, distance.commits_since
-                )
-                .into(),
-                None => "直近のタグ: タグなし".into(),
+                Some(distance) => {
+                    let tag = &distance.tag;
+                    i18n::tn!(
+                        distance.commits_since,
+                        "Latest tag: {tag} ({count} commit before this one)",
+                        "Latest tag: {tag} ({count} commits before this one)"
+                    )
+                    .into()
+                }
+                None => i18n::t!("Latest tag: none").into(),
             },
-            _ => "直近のタグ: 確認中…".into(),
+            _ => i18n::t!("Latest tag: checking…").into(),
         };
         h_flex().w_full().justify_center().child(
             Label::new(text)
@@ -5138,10 +5180,9 @@ impl GitGraph {
                         )
                         .label_size(LabelSize::Small)
                         .disabled(stage.is_some())
-                        .tooltip(Tooltip::text(
-                            "git pack-refs --all を実行します。ブランチ・タグの中身は変わりません。\
-                             数万個あると 1 分ほどかかり、その間ほかの Git の操作は待たされます。",
-                        ))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Runs git pack-refs --all. The branches and tags themselves do not change. With tens of thousands of them it takes about a minute, and other Git operations wait meanwhile."
+                        )))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.pack_refs(window, cx);
                         })),
@@ -5247,12 +5288,15 @@ impl GitGraph {
             return;
         };
         let (message, failed) = match result {
-            Ok(Ok(output)) if output.succeeded() => (format!("{headline}: 完了しました"), false),
-            Ok(Ok(output)) => (
-                format!("{headline}に失敗しました\n{}", output.failure_message()),
-                true,
-            ),
-            Ok(Err(error)) => (format!("{headline}を実行できませんでした\n{error:#}"), true),
+            Ok(Ok(output)) if output.succeeded() => (i18n::t!("{headline}: done"), false),
+            Ok(Ok(output)) => {
+                let failure = output.failure_message();
+                (i18n::t!("{headline}: failed\n{failure}"), true)
+            }
+            Ok(Err(error)) => {
+                let error = format!("{error:#}");
+                (i18n::t!("{headline}: could not run\n{error}"), true)
+            }
             Err(_) => return,
         };
         workspace.update(cx, |workspace, cx| {
@@ -5369,15 +5413,16 @@ impl GitGraph {
         let Some(repository) = self.get_repository(cx) else {
             return;
         };
-        let detail = format!(
-            "選んだ {} 件のコミットの変更を、現在のブランチの先頭に新しいコミットとして積みます (cherry-pick)。",
-            shas.len()
+        let detail = i18n::tn!(
+            shas.len(),
+            "Adds the changes of the {count} picked commit to the tip of the current branch as a new commit (cherry-pick).",
+            "Adds the changes of the {count} picked commits to the tip of the current branch as new commits (cherry-pick)."
         );
         let confirmation = window.prompt(
             gpui::PromptLevel::Info,
-            "選択したコミットを現在のブランチに取り込みますか?",
+            i18n::t!("Cherry-pick the selected commits onto the current branch?"),
             Some(&detail),
-            &["取り込む", "キャンセル"],
+            &[i18n::tc!("git prompt", "Cherry-Pick"), i18n::t!("Cancel")],
             cx,
         );
         cx.spawn(async move |this, cx| {
@@ -5388,7 +5433,7 @@ impl GitGraph {
                 repository.update(cx, |repository, cx| repository.cherry_pick(shas, false, cx));
             let result = receiver.await;
             this.update(cx, |this, cx| {
-                this.report_git_result("コミットの取り込み (cherry-pick)", result, cx);
+                this.report_git_result(i18n::tc!("git result", "Cherry-pick"), result, cx);
                 this.invalidate_state(cx);
                 this.fetch_initial_graph_data(cx);
             })
@@ -5417,30 +5462,35 @@ impl GitGraph {
         let newest_sha = newest.data.sha.to_string();
         let oldest_sha = oldest.data.sha.to_string();
         if self.worktree_is_dirty(cx) {
-            self.report_dirty_worktree("まとめる (squash)", cx);
+            self.report_dirty_worktree(i18n::tc!("git result", "Squash"), cx);
             return;
         }
         // The squashed commit keeps what the picked commits said, so that the
         // messages are not thrown away without the user ever seeing them.
         let subjects = self.selected_subjects_oldest_first(cx);
         let message = if subjects.is_empty() {
-            format!("{} 件のコミットをまとめました", rows.len())
+            i18n::tn!(
+                rows.len(),
+                "Squash {count} commit",
+                "Squash {count} commits"
+            )
         } else {
             subjects.join("\n")
         };
         let Some(repository) = self.get_repository(cx) else {
             return;
         };
-        let detail = format!(
-            "{} 件のコミットが 1 つになり、それぞれの SHA は変わります (squash)。\nまとめた後のメッセージ: {}",
+        let first_line = message.lines().next().unwrap_or_default();
+        let detail = i18n::tn!(
             rows.len(),
-            message.lines().next().unwrap_or_default()
+            "The {count} commit becomes one, and its SHA changes (squash).\nMessage after squashing: {first_line}",
+            "The {count} commits become one, and each SHA changes (squash).\nMessage after squashing: {first_line}"
         );
         let confirmation = window.prompt(
             gpui::PromptLevel::Warning,
-            "選択したコミットを 1 つにまとめますか?",
+            i18n::t!("Squash the selected commits into one?"),
             Some(&detail),
-            &["まとめる", "キャンセル"],
+            &[i18n::tc!("git prompt", "Squash"), i18n::t!("Cancel")],
             cx,
         );
         cx.spawn(async move |this, cx| {
@@ -5464,7 +5514,7 @@ impl GitGraph {
                     Some(workspace) if left_in_stash => {
                         crate::commit_context_menu::show_rewrite_left_changes_in_stash(
                             &workspace,
-                            "コミットをまとめました (squash)。",
+                            i18n::t!("Squashed the commits (squash)."),
                             None,
                             needs_force_push,
                             cx,
@@ -5473,13 +5523,20 @@ impl GitGraph {
                     Some(workspace) if needs_force_push => {
                         crate::commit_context_menu::show_rewrite_succeeded(
                             &workspace,
-                            "コミットをまとめる (squash): 完了しました",
+                            {
+                                let headline = i18n::tc!("git result", "Squash commits");
+                                i18n::t!("{headline}: done")
+                            },
                             None,
                             true,
                             cx,
                         )
                     }
-                    _ => this.report_git_result("コミットをまとめる (squash)", result, cx),
+                    _ => this.report_git_result(
+                        i18n::tc!("git result", "Squash commits"),
+                        result,
+                        cx,
+                    ),
                 }
                 this.invalidate_state(cx);
                 this.fetch_initial_graph_data(cx);
@@ -5532,28 +5589,30 @@ impl GitGraph {
         let rows: BTreeSet<usize> = self.selected_rows().into_iter().collect();
         if rows.len() < 2 {
             self.report_refused(
-                "並べ替えるコミットを 2 件以上選んでください。".to_string(),
+                i18n::t!("Pick at least two commits to reorder.").to_string(),
                 cx,
             );
             return;
         }
         if !is_contiguous_commit_range(&self.graph_data.commits, &rows) {
             self.report_refused(
-                "連続した範囲を選んでください。マージコミットを含む範囲は書き換えられません。"
-                    .to_string(),
+                i18n::t!(
+                    "Pick an unbroken range. A range that contains a merge commit cannot be rewritten."
+                )
+                .to_string(),
                 cx,
             );
             return;
         }
         if !self.selection_is_on_current_branch(cx) {
             self.report_refused(
-                "現在のブランチ上のコミットを選んでください。".to_string(),
+                i18n::t!("Pick commits on the current branch.").to_string(),
                 cx,
             );
             return;
         }
         if self.worktree_is_dirty(cx) {
-            self.report_dirty_worktree("コミットの編集", cx);
+            self.report_dirty_worktree(i18n::tc!("git result", "Edit commits"), cx);
             return;
         }
         let (Some(newest), Some(oldest)) = (rows.iter().next(), rows.iter().next_back()) else {
@@ -5572,7 +5631,7 @@ impl GitGraph {
         // git is told to leave out of the rewritten history, without the user having said so.
         if commits.len() != rows.len() {
             self.report_refused(
-                "選択したコミットを読み込めませんでした。少し待ってからもう一度お試しください。"
+                i18n::t!("Could not load the selected commits. Wait a moment and try again.")
                     .to_string(),
                 cx,
             );
@@ -5637,24 +5696,22 @@ impl GitGraph {
         };
         let Some(branch) = branch else {
             self.report_refused(
-                "detached HEAD では並べ替えられません。先にブランチに切り替えてください。"
+                i18n::t!("A detached HEAD cannot be reordered. Switch to a branch first.")
                     .to_string(),
                 cx,
             );
             return;
         };
-        let kept = groups.len();
-        let detail = format!(
-            "書き換えた後は {kept} 件のコミットになり、それぞれの SHA が変わります。\n\
-             書き換えるのは現在のブランチ「{branch}」です。\
-             作業は一時ブランチ「{scratch_branch}」の上で行い、「{branch}」は最後にそこへ付け替えます (成功したら一時ブランチは削除します)。\n\
-             プッシュ済みのブランチなら、この後に強制プッシュが必要です。"
+        let detail = i18n::tn!(
+            groups.len(),
+            "After the rewrite there will be {count} commit, with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards.",
+            "After the rewrite there will be {count} commits, each with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
         );
         let confirmation = window.prompt(
             gpui::PromptLevel::Warning,
-            "選択したコミットをこの内容で書き換えますか?",
+            i18n::t!("Rewrite the selected commits like this?"),
             Some(&detail),
-            &["書き換える", "キャンセル"],
+            &[i18n::tc!("git prompt", "Rewrite"), i18n::t!("Cancel")],
             cx,
         );
         cx.spawn(async move |this, cx| {
@@ -5719,7 +5776,7 @@ impl GitGraph {
                         if let Some(workspace) = this.workspace.upgrade() {
                             crate::commit_context_menu::show_rewrite_left_changes_in_stash(
                                 &workspace,
-                                "コミットの並べ替え: 完了しました。",
+                                i18n::t!("Reorder commits: done."),
                                 old_head.as_deref(),
                                 needs_force_push,
                                 cx,
@@ -5733,7 +5790,11 @@ impl GitGraph {
                         needs_force_push,
                         cx,
                     ),
-                    _ => this.report_git_result("コミットの並べ替え", result, cx),
+                    _ => this.report_git_result(
+                        i18n::tc!("git result", "Reorder commits"),
+                        result,
+                        cx,
+                    ),
                 }
                 this.invalidate_state(cx);
                 this.fetch_initial_graph_data(cx);
@@ -5762,8 +5823,8 @@ impl GitGraph {
             return;
         };
         let short_old: String = old_head.chars().take(git::SHORT_SHA_LENGTH).collect();
-        let message = format!(
-            "コミットの並べ替え: 完了しました\n元の先頭: {short_old} (reflog から戻せます)"
+        let message = i18n::t!(
+            "Reorder commits: done\nPrevious tip: {short_old} (can be restored from the reflog)"
         );
         let host = self.workspace.clone();
         let undo = new_head.map(|new_head| -> crate::commit_context_menu::FollowUp {
@@ -5789,7 +5850,7 @@ impl GitGraph {
 
     fn report_dirty_worktree(&self, operation: &str, cx: &mut App) {
         self.report_refused(
-            format!("{operation}の前に、未コミットの変更をコミットかスタッシュしてください。"),
+            i18n::t!("Commit or stash the uncommitted changes first ({operation})."),
             cx,
         );
     }
@@ -5837,7 +5898,7 @@ impl GitGraph {
         let workspace = self.workspace.clone();
         let repository = repository.downgrade();
         let base_prompt = crate::picker_prompt::prompt(
-            "比べる基準 (移植元) のブランチ / タグ",
+            i18n::t!("Branch / tag to compare from (the source)"),
             options.clone(),
             workspace.clone(),
             window,
@@ -5859,7 +5920,7 @@ impl GitGraph {
                 .collect::<Vec<_>>();
             let Ok(head_prompt) = cx.update(|window, cx| {
                 crate::picker_prompt::prompt(
-                    "比べる相手 (移植先) のブランチ / タグ",
+                    i18n::t!("Branch / tag to compare with (the target)"),
                     head_options.clone(),
                     workspace.clone(),
                     window,
@@ -5906,7 +5967,7 @@ impl GitGraph {
                     gpui::PromptLevel::Info,
                     &title,
                     Some(&detail),
-                    &["取り込む", "キャンセル"],
+                    &[i18n::tc!("git prompt", "Cherry-Pick"), i18n::t!("Cancel")],
                     cx,
                 );
                 let shas = shas.iter().map(|sha| sha.to_string()).collect::<Vec<_>>();
@@ -5918,7 +5979,7 @@ impl GitGraph {
                         .update(cx, |repository, cx| repository.cherry_pick(shas, false, cx));
                     let result = receiver.await;
                     this.update(cx, |this, cx| {
-                        this.report_git_result("コミットの取り込み (cherry-pick)", result, cx);
+                        this.report_git_result(i18n::tc!("git result", "Cherry-pick"), result, cx);
                         this.invalidate_state(cx);
                         this.fetch_initial_graph_data(cx);
                     })
@@ -5932,7 +5993,10 @@ impl GitGraph {
                     gpui::PromptLevel::Warning,
                     &title,
                     Some(&detail),
-                    &["切り替えて取り込む", "キャンセル"],
+                    &[
+                        i18n::tc!("git prompt", "Switch and Cherry-Pick"),
+                        i18n::t!("Cancel"),
+                    ],
                     cx,
                 );
                 let shas = shas.iter().map(|sha| sha.to_string()).collect::<Vec<_>>();
@@ -5947,7 +6011,11 @@ impl GitGraph {
                         Ok(Ok(())) => {}
                         Ok(Err(error)) => {
                             this.update(cx, |this, cx| {
-                                this.report_git_result("ブランチの切り替え", Ok(Err(error)), cx);
+                                this.report_git_result(
+                                    i18n::tc!("git result", "Switch branch"),
+                                    Ok(Err(error)),
+                                    cx,
+                                );
                             })
                             .ok();
                             return;
@@ -5958,7 +6026,7 @@ impl GitGraph {
                         .update(cx, |repository, cx| repository.cherry_pick(shas, false, cx));
                     let result = receiver.await;
                     this.update(cx, |this, cx| {
-                        this.report_git_result("コミットの取り込み (cherry-pick)", result, cx);
+                        this.report_git_result(i18n::tc!("git result", "Cherry-pick"), result, cx);
                         this.invalidate_state(cx);
                         this.fetch_initial_graph_data(cx);
                     })
@@ -5967,22 +6035,19 @@ impl GitGraph {
                 .detach();
             }
             GraphDropAction::ResetHeadBranch { branch, sha } => {
-                let detail = format!(
-                    "現在のブランチ {branch} を {} まで戻します。\n\
-                     ・コミットだけ取り消す (--soft): 変更はステージに残ります\n\
-                     ・ステージも戻す (--mixed): 変更は作業ツリーに残ります\n\
-                     ・すべて破棄 (--hard): 未コミットの変更も消えます",
-                    sha.display_short()
+                let short_sha = sha.display_short();
+                let detail = i18n::t!(
+                    "Resets the current branch {branch} to {short_sha}.\n- Undo Commits Only (--soft): the changes stay staged\n- Unstage Too (--mixed): the changes stay in the working tree\n- Discard Everything (--hard): uncommitted changes are lost too"
                 );
                 let choice = window.prompt(
                     gpui::PromptLevel::Warning,
-                    &format!("{branch} をこのコミットまで戻しますか?"),
+                    &i18n::t!("Reset {branch} to this commit?"),
                     Some(&detail),
                     &[
-                        "コミットだけ取り消す (--soft)",
-                        "ステージも戻す (--mixed)",
-                        "すべて破棄 (--hard)",
-                        "キャンセル",
+                        i18n::t!("Undo Commits Only (--soft)"),
+                        i18n::t!("Unstage Too (--mixed)"),
+                        i18n::t!("Discard Everything (--hard)"),
+                        i18n::t!("Cancel"),
                     ],
                     cx,
                 );
@@ -5998,7 +6063,7 @@ impl GitGraph {
                     });
                     let result = receiver.await;
                     this.update(cx, |this, cx| {
-                        this.report_git_result("ブランチを戻す (reset)", result, cx);
+                        this.report_git_result(i18n::tc!("git result", "Reset branch"), result, cx);
                         this.invalidate_state(cx);
                         this.fetch_initial_graph_data(cx);
                     })
@@ -6014,22 +6079,22 @@ impl GitGraph {
                 .map(|worktree| worktree.path.display().to_string());
                 if let Some(path) = holder {
                     self.report_refused(
-                        format!(
-                            "{branch} は別のワークツリー ({path}) でチェックアウト中なので動かせません。"
+                        i18n::t!(
+                            "{branch} is checked out in another worktree ({path}), so it cannot be moved."
                         ),
                         cx,
                     );
                     return;
                 }
-                let detail = format!(
-                    "チェックアウトしていない {branch} が {} を指すようになります。作業ツリーは変わりません。",
-                    sha.display_short()
+                let short_sha = sha.display_short();
+                let detail = i18n::t!(
+                    "{branch}, which is not checked out, will point to {short_sha}. The working tree does not change."
                 );
                 let confirmation = window.prompt(
                     gpui::PromptLevel::Warning,
-                    &format!("{branch} をこのコミットに移動しますか?"),
+                    &i18n::t!("Move {branch} to this commit?"),
                     Some(&detail),
-                    &["移動する", "キャンセル"],
+                    &[i18n::tc!("git prompt", "Move"), i18n::t!("Cancel")],
                     cx,
                 );
                 cx.spawn(async move |this, cx| {
@@ -6046,7 +6111,7 @@ impl GitGraph {
                         })
                     });
                     this.update(cx, |this, cx| {
-                        this.report_git_result("ブランチの移動", result, cx);
+                        this.report_git_result(i18n::tc!("git result", "Move branch"), result, cx);
                         this.invalidate_state(cx);
                         this.fetch_initial_graph_data(cx);
                     })
@@ -6260,7 +6325,7 @@ impl GitGraph {
         };
         if repository.read(cx).branch.is_none() {
             self.report_refused(
-                "detached HEAD では並べ替えられません。先にブランチに切り替えてください。"
+                i18n::t!("A detached HEAD cannot be reordered. Switch to a branch first.")
                     .to_string(),
                 cx,
             );
@@ -6268,7 +6333,10 @@ impl GitGraph {
         }
         let Some(head) = self.head_commit_sha(cx) else {
             self.report_refused(
-                "現在のブランチの先頭のコミットが分からないため、並べ替えられません。".to_string(),
+                i18n::t!(
+                    "The tip commit of the current branch is not known, so nothing can be reordered."
+                )
+                .to_string(),
                 cx,
             );
             return;
@@ -6290,7 +6358,7 @@ impl GitGraph {
             }
         };
         if self.worktree_is_dirty(cx) {
-            self.report_dirty_worktree("コミットの並べ替え", cx);
+            self.report_dirty_worktree(i18n::tc!("git result", "Reorder commits"), cx);
             return;
         }
         let (Some(oldest), Some(newest)) = (
@@ -6304,7 +6372,7 @@ impl GitGraph {
         let commits = self.commit_rows_for(&plan.commits_oldest_first, cx);
         if commits.len() != plan.commits_oldest_first.len() {
             self.report_refused(
-                "並べ替えるコミットを読み込めませんでした。少し待ってからもう一度お試しください。"
+                i18n::t!("Could not load the commits to reorder. Wait a moment and try again.")
                     .to_string(),
                 cx,
             );
@@ -6368,12 +6436,16 @@ impl GitGraph {
         let focus_handle = self.focus_handle.clone();
         let graph = cx.entity();
         let context_menu = ContextMenu::build(window, cx, move |menu, _window, _cx| {
-            let mut menu = menu
-                .context(focus_handle)
-                .header(format!("{count} 件を選択中"));
+            let mut menu = menu.context(focus_handle).header(i18n::tn!(
+                count,
+                "{count} Commit Selected",
+                "{count} Commits Selected"
+            ));
             menu = menu.item(
-                ContextMenuEntry::new(format!(
-                    "選択した {count} 件を現在のブランチに取り込む (cherry-pick)"
+                ContextMenuEntry::new(i18n::tn!(
+                    count,
+                    "Cherry-Pick the {count} Selected Commit onto the Current Branch",
+                    "Cherry-Pick the {count} Selected Commits onto the Current Branch"
                 ))
                 .handler({
                     let graph = graph.clone();
@@ -6383,7 +6455,7 @@ impl GitGraph {
                 })
                 .documentation_aside(
                     DocumentationSide::Right,
-                    help_aside(git_terms::CHERRY_PICK_SELECTION_HELP, None),
+                    help_aside(git_terms::cherry_pick_selection_help(), None),
                 ),
             );
             // Squashing rewrites the checked-out branch in place, so it is only
@@ -6391,22 +6463,26 @@ impl GitGraph {
             // disabled entry says which of the two is missing.
             let range_refusal = action_bar::range_rewrite_refusal(rewrite_facts);
             let squash_aside = help_aside(
-                git_terms::SQUASH_SELECTION_HELP,
+                git_terms::squash_selection_help(),
                 range_refusal.map(SharedString::from),
             );
             menu = match range_refusal {
                 None => menu.item(
-                    ContextMenuEntry::new(format!("選択した {count} 件を 1 つにまとめる (squash)"))
-                        .handler({
-                            let graph = graph.clone();
-                            move |window, cx| {
-                                graph.update(cx, |graph, cx| graph.squash_rows(window, cx));
-                            }
-                        })
-                        .documentation_aside(DocumentationSide::Right, squash_aside),
+                    ContextMenuEntry::new(i18n::tn!(
+                        count,
+                        "Squash the {count} Selected Commit into One",
+                        "Squash the {count} Selected Commits into One"
+                    ))
+                    .handler({
+                        let graph = graph.clone();
+                        move |window, cx| {
+                            graph.update(cx, |graph, cx| graph.squash_rows(window, cx));
+                        }
+                    })
+                    .documentation_aside(DocumentationSide::Right, squash_aside),
                 ),
                 Some(reason) => menu.item(
-                    ContextMenuEntry::new(format!("1 つにまとめる (squash) — {reason}"))
+                    ContextMenuEntry::new(i18n::t!("Squash into One — {reason}"))
                         .disabled(true)
                         .documentation_aside(DocumentationSide::Right, squash_aside),
                 ),
@@ -6414,13 +6490,15 @@ impl GitGraph {
             // The todo editor rewrites the same range squashing does, so it is offered under the
             // same two conditions.
             let rewrite_aside = help_aside(
-                git_terms::REWRITE_SELECTION_HELP,
+                git_terms::rewrite_selection_help(),
                 range_refusal.map(SharedString::from),
             );
             menu = match range_refusal {
                 None => menu.item(
-                    ContextMenuEntry::new(format!(
-                        "選択した {count} 件を並べ替え / まとめる / 捨てる…"
+                    ContextMenuEntry::new(i18n::tn!(
+                        count,
+                        "Reorder / Squash / Drop the {count} Selected Commit…",
+                        "Reorder / Squash / Drop the {count} Selected Commits…"
                     ))
                     .action(EditSelectedCommits.boxed_clone())
                     .handler({
@@ -6433,7 +6511,7 @@ impl GitGraph {
                     .documentation_aside(DocumentationSide::Right, rewrite_aside),
                 ),
                 Some(reason) => menu.item(
-                    ContextMenuEntry::new(format!("並べ替え / まとめる / 捨てる — {reason}"))
+                    ContextMenuEntry::new(i18n::t!("Reorder / Squash / Drop — {reason}"))
                         .disabled(true)
                         .documentation_aside(DocumentationSide::Right, rewrite_aside),
                 ),
@@ -6441,8 +6519,16 @@ impl GitGraph {
             // Both open the merge-request box with the picked commits in it; the first keeps the
             // wording people know the feature by.
             for label in [
-                format!("選択した {count} 件を MR 用の新しいブランチに 1 コミットとしてまとめる…"),
-                format!("選択した {count} 件を MR の箱に入れる"),
+                i18n::tn!(
+                    count,
+                    "Squash the {count} Selected Commit into One Commit on a New MR Branch…",
+                    "Squash the {count} Selected Commits into One Commit on a New MR Branch…"
+                ),
+                i18n::tn!(
+                    count,
+                    "Add the {count} Selected Commit to the MR Box",
+                    "Add the {count} Selected Commits to the MR Box"
+                ),
             ] {
                 menu = menu.item(
                     ContextMenuEntry::new(label)
@@ -6456,12 +6542,16 @@ impl GitGraph {
                         })
                         .documentation_aside(
                             DocumentationSide::Right,
-                            help_aside(git_terms::MERGE_REQUEST_BOX_HELP, None),
+                            help_aside(git_terms::merge_request_box_help(), None),
                         ),
                 );
             }
             menu.map(merge_request_entries).separator().entry(
-                format!("SHA をコピー ({count} 件)"),
+                i18n::tn!(
+                    count,
+                    "Copy SHA ({count} Commit)",
+                    "Copy SHAs ({count} Commits)"
+                ),
                 None,
                 move |_window, cx| {
                     graph.update(cx, |graph, cx| graph.copy_selected_shas(cx));
@@ -6487,10 +6577,10 @@ impl GitGraph {
         let color = cx.theme().colors();
         let head_branch_name = self.head_branch_name(cx);
         let source_label: SharedString = match &self.log_source {
-            LogSource::All => "すべてのブランチ".into(),
+            LogSource::All => i18n::tc!("log source", "All Branches").into(),
             LogSource::Branch(branch) => branch.clone(),
             LogSource::Sha(sha) => SharedString::from(sha.display_short()),
-            LogSource::Path(_) => "ファイル履歴".into(),
+            LogSource::Path(_) => i18n::tc!("log source", "File History").into(),
         };
         let graph = cx.entity();
         let selected_count = self.selected_rows().len();
@@ -6503,7 +6593,7 @@ impl GitGraph {
             .border_b_1()
             .border_color(color.border_variant)
             .child(
-                Label::new("表示:")
+                Label::new(i18n::t!("Show:"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -6520,17 +6610,21 @@ impl GitGraph {
                                 let graph = graph.clone();
                                 let head_branch_name = head_branch_name.clone();
                                 Some(ContextMenu::build(window, cx, move |menu, _window, _cx| {
-                                    let mut menu = menu.entry("すべてのブランチ", None, {
-                                        let graph = graph.clone();
-                                        move |_window, cx| {
-                                            graph.update(cx, |graph, cx| {
-                                                graph.set_log_source(LogSource::All, cx);
-                                            });
-                                        }
-                                    });
+                                    let mut menu = menu.entry(
+                                        i18n::tc!("log source", "All Branches"),
+                                        None,
+                                        {
+                                            let graph = graph.clone();
+                                            move |_window, cx| {
+                                                graph.update(cx, |graph, cx| {
+                                                    graph.set_log_source(LogSource::All, cx);
+                                                });
+                                            }
+                                        },
+                                    );
                                     if let Some(branch) = head_branch_name.clone() {
                                         menu = menu.entry(
-                                            format!("現在のブランチ ({branch})"),
+                                            i18n::t!("Current Branch ({branch})"),
                                             None,
                                             {
                                                 let graph = graph.clone();
@@ -6547,7 +6641,7 @@ impl GitGraph {
                                         );
                                     }
                                     menu.separator().entry(
-                                        "ブランチを選ぶ…",
+                                        i18n::t!("Choose a Branch…"),
                                         None,
                                         move |window, cx| {
                                             graph.update(cx, |graph, cx| {
@@ -6578,24 +6672,27 @@ impl GitGraph {
                     cx,
                 )
                 .child(
-                    Button::new("git-graph-tags-trigger", "タグ一覧")
-                        .label_size(LabelSize::Small)
-                        .start_icon(
-                            Icon::new(IconName::Bookmark)
-                                .size(IconSize::XSmall)
-                                .color(Color::Muted),
-                        )
-                        .end_icon(
-                            Icon::new(IconName::ChevronDown)
-                                .size(IconSize::XSmall)
-                                .color(Color::Muted),
-                        )
-                        .tooltip(Tooltip::text(
-                            action_bar::ToolbarHelp::TagList.help().sentence(),
-                        ))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_tag_picker(window, cx);
-                        })),
+                    Button::new(
+                        "git-graph-tags-trigger",
+                        i18n::tc!("git graph toolbar", "Tags"),
+                    )
+                    .label_size(LabelSize::Small)
+                    .start_icon(
+                        Icon::new(IconName::Bookmark)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .end_icon(
+                        Icon::new(IconName::ChevronDown)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .tooltip(Tooltip::text(
+                        action_bar::ToolbarHelp::TagList.help().sentence(),
+                    ))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_tag_picker(window, cx);
+                    })),
                 ),
             )
             .child(Divider::vertical())
@@ -6606,35 +6703,42 @@ impl GitGraph {
                     cx,
                 )
                 .child(
-                    Button::new("git-graph-compare-refs", "比較…")
-                        .label_size(LabelSize::Small)
-                        .start_icon(
-                            Icon::new(IconName::Diff)
-                                .size(IconSize::XSmall)
-                                .color(Color::Muted),
-                        )
-                        .tooltip(Tooltip::text(
-                            action_bar::ToolbarHelp::CompareRefs.help().sentence(),
-                        ))
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.open_ref_comparison(window, cx);
-                        })),
+                    Button::new(
+                        "git-graph-compare-refs",
+                        i18n::tc!("git graph toolbar", "Compare…"),
+                    )
+                    .label_size(LabelSize::Small)
+                    .start_icon(
+                        Icon::new(IconName::Diff)
+                            .size(IconSize::XSmall)
+                            .color(Color::Muted),
+                    )
+                    .tooltip(Tooltip::text(
+                        action_bar::ToolbarHelp::CompareRefs.help().sentence(),
+                    ))
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_ref_comparison(window, cx);
+                    })),
                 ),
             )
             .child(self.render_merge_request_box_button(cx))
             .child(div().flex_1())
             .when(selected_count > 1, |this| {
                 this.child(
-                    Label::new(format!("{selected_count} 件選択中"))
-                        .size(LabelSize::Small)
-                        .color(Color::Accent),
+                    Label::new(i18n::tn!(
+                        selected_count,
+                        "{count} selected",
+                        "{count} selected"
+                    ))
+                    .size(LabelSize::Small)
+                    .color(Color::Accent),
                 )
                 .child(
-                    Button::new("git-graph-selection-menu", "選択した行の操作…")
+                    Button::new("git-graph-selection-menu", i18n::t!("Selection Actions…"))
                         .label_size(LabelSize::Small)
-                        .tooltip(Tooltip::text(
-                            "cherry-pick / squash / MR 用ブランチ作成 (行を右クリックしても出ます)",
-                        ))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "cherry-pick / squash / create an MR branch (also on right-click)"
+                        )))
                         .on_click(cx.listener(|this, event: &ClickEvent, window, cx| {
                             this.deploy_multi_selection_menu(event.position(), window, cx);
                         })),
@@ -6717,11 +6821,7 @@ impl GitGraph {
         cx: &mut Context<Self>,
     ) -> Option<Entity<MergeRequestBox>> {
         if !self.can_hold_merge_request_box() {
-            self.report_refused(
-                "ファイル履歴のタブでは MR の箱を使えません。コミットグラフのタブで開いてください。"
-                    .to_string(),
-                cx,
-            );
+            self.report_refused(action_bar::merge_request_box_refusal().to_string(), cx);
             return None;
         }
         let merge_request_box = match &self.merge_request_box {
@@ -6810,9 +6910,13 @@ impl GitGraph {
             menu = menu.separator();
             if !choices.addable.is_empty() {
                 let label = if several {
-                    format!("{} 件を MR の箱に入れる", choices.addable.len())
+                    i18n::tn!(
+                        choices.addable.len(),
+                        "Add {count} Commit to MR Box",
+                        "Add {count} Commits to MR Box"
+                    )
                 } else {
-                    "MR の箱に入れる".to_string()
+                    i18n::tc!("commit action", "Add to MR Box").to_string()
                 };
                 let addable = choices.addable;
                 menu = menu.item(
@@ -6826,15 +6930,19 @@ impl GitGraph {
                         })
                         .documentation_aside(
                             DocumentationSide::Right,
-                            help_aside(git_terms::MERGE_REQUEST_BOX_HELP, None),
+                            help_aside(git_terms::merge_request_box_help(), None),
                         ),
                 );
             }
             if !choices.excludable.is_empty() {
                 let label = if several {
-                    format!("{} 件を MR から除外する", choices.excludable.len())
+                    i18n::tn!(
+                        choices.excludable.len(),
+                        "Exclude {count} Commit from MR",
+                        "Exclude {count} Commits from MR"
+                    )
                 } else {
-                    "MR から除外する".to_string()
+                    i18n::tc!("commit action", "Exclude from MR").to_string()
                 };
                 let merge_request_box = merge_request_box.clone();
                 let excludable = choices.excludable;
@@ -6847,15 +6955,19 @@ impl GitGraph {
                         })
                         .documentation_aside(
                             DocumentationSide::Right,
-                            help_aside(git_terms::MERGE_REQUEST_EXCLUDE_HELP, None),
+                            help_aside(git_terms::merge_request_exclude_help(), None),
                         ),
                 );
             }
             if !choices.restorable.is_empty() {
                 let label = if several {
-                    format!("{} 件の MR の除外をやめる", choices.restorable.len())
+                    i18n::tn!(
+                        choices.restorable.len(),
+                        "Stop Excluding {count} Commit from MR",
+                        "Stop Excluding {count} Commits from MR"
+                    )
                 } else {
-                    "MR の除外をやめる".to_string()
+                    i18n::tc!("commit action", "Stop Excluding from MR").to_string()
                 };
                 let restorable = choices.restorable;
                 menu = menu.item(
@@ -6867,7 +6979,7 @@ impl GitGraph {
                         })
                         .documentation_aside(
                             DocumentationSide::Right,
-                            help_aside(git_terms::MERGE_REQUEST_RESTORE_HELP, None),
+                            help_aside(git_terms::merge_request_restore_help(), None),
                         ),
                 );
             }
@@ -6933,24 +7045,27 @@ impl GitGraph {
             cx,
         )
         .child(
-            Button::new("git-graph-merge-request-box", "MR を作る")
-                .label_size(LabelSize::Small)
-                .start_icon(
-                    Icon::new(IconName::GitBranch)
-                        .size(IconSize::XSmall)
-                        .color(Color::Muted),
+            Button::new(
+                "git-graph-merge-request-box",
+                i18n::tc!("git graph toolbar", "Create MR"),
+            )
+            .label_size(LabelSize::Small)
+            .start_icon(
+                Icon::new(IconName::GitBranch)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted),
+            )
+            .toggle_state(self.merge_request_box_open)
+            .tooltip(|_window, cx| {
+                Tooltip::for_action(
+                    action_bar::ToolbarHelp::MergeRequest.help().sentence(),
+                    &git::ToggleMergeRequestBox,
+                    cx,
                 )
-                .toggle_state(self.merge_request_box_open)
-                .tooltip(|_window, cx| {
-                    Tooltip::for_action(
-                        action_bar::ToolbarHelp::MergeRequest.help().sentence(),
-                        &git::ToggleMergeRequestBox,
-                        cx,
-                    )
-                })
-                .on_click(cx.listener(|this, _, window, cx| {
-                    this.toggle_merge_request_box(window, cx);
-                })),
+            })
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.toggle_merge_request_box(window, cx);
+            })),
         )
     }
 
@@ -7021,18 +7136,20 @@ impl Render for GitGraph {
 
         let content = if commit_count == 0 {
             let message = if let Some(error) = &error {
-                format!("読み込みエラー: {}", error)
+                i18n::t!("Error loading: {}", error)
             } else if is_loading {
-                "読み込み中".to_string()
+                i18n::t!("Loading").to_string()
             } else {
-                "コミットが見つかりません".to_string()
+                i18n::t!("No commits found").to_string()
             };
             // The empty graph is where a beginner most needs to know what this
             // tab is for, so the hint names the two things that are actually
             // missing: commits, or a wider 表示 range.
-            let hint = (!is_loading && error.is_none()).then_some(
-                "まだコミットが無いか、選んだ表示範囲に入るコミットがありません。上の「表示」で範囲を広げてみてください。",
-            );
+            let hint = (!is_loading && error.is_none()).then(|| {
+                i18n::t!(
+                    "There are no commits yet, or none in the chosen range. Try widening the range with \"Show\" above."
+                )
+            });
 
             v_flex()
                 .size_full()
@@ -7115,20 +7232,20 @@ impl Render for GitGraph {
                                     if !is_path_history {
                                         TableRow::from_vec(
                                             vec![
-                                                Label::new("グラフ")
+                                                Label::new(i18n::t!("Graph"))
                                                     .color(Color::Muted)
                                                     .truncate()
                                                     .into_any_element(),
-                                                Label::new("説明")
+                                                Label::new(i18n::t!("Description"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("日付")
+                                                Label::new(i18n::t!("Date"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("作成者")
+                                                Label::new(i18n::t!("Author"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("コミット")
+                                                Label::new(i18n::t!("Commit"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],
@@ -7137,16 +7254,16 @@ impl Render for GitGraph {
                                     } else {
                                         TableRow::from_vec(
                                             vec![
-                                                Label::new("説明")
+                                                Label::new(i18n::t!("Description"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("日付")
+                                                Label::new(i18n::t!("Date"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("作成者")
+                                                Label::new(i18n::t!("Author"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
-                                                Label::new("コミット")
+                                                Label::new(i18n::t!("Commit"))
                                                     .color(Color::Muted)
                                                     .into_any_element(),
                                             ],
@@ -7529,9 +7646,9 @@ impl Item for GitGraph {
             move |_, _| {
                 v_flex()
                     .child(Label::new(if path_history_path.is_some() {
-                        "ファイルの履歴"
+                        i18n::t!("Path History")
                     } else {
-                        "コミットグラフ"
+                        i18n::t!("Git Graph")
                     }))
                     .when_some(path_history_path.clone(), |this, path| {
                         this.child(Label::new(path).color(Color::Muted).size(LabelSize::Small))
@@ -7560,7 +7677,10 @@ impl Item for GitGraph {
                     .file_name()
                     .map(|name| name.to_string_lossy().to_string())
             })
-            .map_or_else(|| "コミットグラフ".into(), |name| SharedString::from(name))
+            .map_or_else(
+                || i18n::t!("Git Graph").into(),
+                |name| SharedString::from(name),
+            )
     }
 
     fn show_toolbar(&self) -> bool {
@@ -9857,9 +9977,12 @@ mod tests {
         // A condition that cannot be read stops the search, rather than being dropped and letting
         // `Fix` alone find a commit.
         for (query, reason) in [
-            ("Fix 以降:きのう", "「以降:きのう」の日付を読めません。"),
-            ("Fix ブランチ:nope", "ブランチ「nope」はありません。"),
-            ("Fix マージ:たぶん", "「マージ:たぶん」は読めません。"),
+            (
+                "Fix 以降:きのう",
+                "Cannot read the date in \"since:きのう\".",
+            ),
+            ("Fix ブランチ:nope", "There is no branch \"nope\"."),
+            ("Fix マージ:たぶん", "Cannot read \"merge:たぶん\"."),
         ] {
             git_graph.update(cx, |graph, cx| graph.search_for_test(query.into(), cx));
             cx.run_until_parked();
@@ -9899,7 +10022,7 @@ mod tests {
         git_graph.read_with(&*cx, |graph, _| {
             assert_eq!(
                 graph_search::search_count_text(&graph.search_state.outcome, 1).as_deref(),
-                Some("1 件")
+                Some("1 commit")
             );
         });
         git_graph.update(cx, |graph, cx| graph.search_for_test("nothing".into(), cx));
@@ -9907,7 +10030,7 @@ mod tests {
         git_graph.read_with(&*cx, |graph, _| {
             assert_eq!(
                 graph_search::search_count_text(&graph.search_state.outcome, 0).as_deref(),
-                Some("該当するコミットはありません。条件を減らしてみてください。")
+                Some("No commits match. Try fewer conditions.")
             );
         });
 
@@ -9916,7 +10039,7 @@ mod tests {
             graph.search_for_test("Fix".into(), cx);
             assert_eq!(
                 graph_search::search_count_text(&graph.search_state.outcome, 0).as_deref(),
-                Some("検索中… 0 件")
+                Some("Searching… 0 commits")
             );
             graph.stop_search(cx);
         });
@@ -9925,7 +10048,7 @@ mod tests {
             assert!(graph.search_matches_for_test().is_empty());
             assert_eq!(
                 graph_search::search_count_text(&graph.search_state.outcome, 0).as_deref(),
-                Some("0 件で中止しました。")
+                Some("Stopped at 0 commits.")
             );
         });
 
@@ -10097,7 +10220,7 @@ mod tests {
             form.set_field_for_test(CommitSearchConditionKind::Author, "山田 太郎", window, cx)
         });
         cx.run_until_parked();
-        assert_eq!(search_text(cx), "直した tag:v1 著者:\"山田 太郎\"");
+        assert_eq!(search_text(cx), "直した tag:v1 author:\"山田 太郎\"");
 
         form.update_in(cx, |form, window, cx| {
             form.set_field_for_test(CommitSearchConditionKind::Tag, "v1.1", window, cx);
@@ -10111,7 +10234,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             search_text(cx),
-            "直した 著者:\"山田 太郎\" タグ:v1.1 ファイル:src/ 以降:2週間 マージ:だけ"
+            "直した author:\"山田 太郎\" tag:v1.1 file:src/ since:2週間 merge:only"
         );
 
         form.update_in(cx, |form, window, cx| {
@@ -10121,7 +10244,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             search_text(cx),
-            "直した タグ:v1.1 ファイル:src/ 以降:2週間",
+            "直した tag:v1.1 file:src/ since:2週間",
             "emptying a field takes its condition out"
         );
         // With two authors in the box the field can show only the first; opening the form must
@@ -10214,7 +10337,7 @@ mod tests {
             assert!(graph.search_matches_for_test().is_empty());
             assert_eq!(
                 graph.search_state.outcome.problems,
-                [SharedString::from("名前に「v9」を含むタグはありません。")]
+                [SharedString::from("No tag has \"v9\" in its name.")]
             );
         });
     }
@@ -11681,7 +11804,7 @@ mod tests {
         let outside = Oid::from_bytes(&[9; 20]).unwrap();
         assert!(matches!(
             graph_drop_action(&GraphDragEnd::Commits(picked.clone()), &GraphDragEnd::Commit(outside)),
-            Some(GraphDropAction::Refused(reason)) if reason.contains("1 件ずつ")
+            Some(GraphDropAction::Refused(reason)) if reason.contains("one at a time")
         ));
         // Let go over the selection itself, the drag simply went nowhere.
         assert_eq!(
@@ -11761,7 +11884,7 @@ mod tests {
         assert_eq!(dropped_files_refusal(Some(1), Some(1)), None);
         assert!(
             dropped_files_refusal(Some(1), Some(2))
-                .is_some_and(|reason| reason.contains("別のリポジトリ")),
+                .is_some_and(|reason| reason.contains("another repository")),
             "files of another repository must not go into this graph's commits"
         );
         assert!(dropped_files_refusal(None, Some(1)).is_some());
@@ -11859,11 +11982,11 @@ mod tests {
         // is on another branch or only below a merge.
         let elsewhere = plan_commit_move(&history, oid(2), oid(9), |_| false).unwrap_err();
         assert!(
-            elsewhere.contains("現在のブランチの履歴に無い"),
+            elsewhere.contains("not in the current branch's history"),
             "{elsewhere}"
         );
         let below_merge = plan_commit_move(&history, oid(9), oid(2), |_| true).unwrap_err();
-        assert!(below_merge.contains("マージコミット"), "{below_merge}");
+        assert!(below_merge.contains("merge commit"), "{below_merge}");
     }
 
     #[test]
@@ -11892,7 +12015,7 @@ mod tests {
         // Not its own row, not another branch's, not the root, and nothing
         // past the end of the list.
         assert_eq!(takes_commit, vec![0, 3]);
-        assert!(moving.hint(0).is_some_and(|hint| hint.contains("並べ替え")));
+        assert!(moving.hint(0).is_some_and(|hint| hint.contains("reorder")));
         assert!((0..6).all(|row| !moving.accepts_files(row)));
 
         let files = RowDropContext::Files { history };
@@ -11919,27 +12042,27 @@ mod tests {
 
         assert_eq!(
             chip_drop_hint(1, "main", RefKind::Head).as_deref(),
-            Some("ここに落とすと: 取り込む (cherry-pick)")
+            Some("Drop here: cherry-pick")
         );
         assert_eq!(
             chip_drop_hint(3, "main", RefKind::Head).as_deref(),
-            Some("ここに落とすと: 3 件を取り込む (cherry-pick)")
+            Some("Drop here: cherry-pick 3 commits")
         );
         assert_eq!(
             chip_drop_hint(2, "dev", RefKind::LocalBranch).as_deref(),
-            Some("ここに落とすと: dev に切り替えて 2 件を取り込む")
+            Some("Drop here: switch to dev and cherry-pick 2 commits")
         );
         assert_eq!(chip_drop_hint(1, "v1", RefKind::Tag), None);
 
         let (title, detail) = cherry_pick_drop_prompt(&[sha], "main", false);
-        assert_eq!(title, "このコミットを現在のブランチに取り込みますか?");
+        assert_eq!(title, "Cherry-pick this commit onto the current branch?");
         assert!(detail.contains(&sha.display_short()), "{detail}");
         let (title, detail) = cherry_pick_drop_prompt(&[other, sha], "main", false);
-        assert!(title.contains("2 件"), "{title}");
-        assert!(detail.contains("2 件を取り込みます"), "{detail}");
+        assert!(title.contains("2 commits"), "{title}");
+        assert!(detail.contains("Cherry-picks 2 commits"), "{detail}");
         let (title, detail) = cherry_pick_drop_prompt(&[other, sha], "dev", true);
-        assert!(title.contains("dev に切り替えて"), "{title}");
-        assert!(detail.contains("2 件を取り込みます"), "{detail}");
+        assert!(title.contains("Switch to dev"), "{title}");
+        assert!(detail.contains("cherry-picks 2 commits"), "{detail}");
     }
 
     #[gpui::test]
@@ -12639,7 +12762,7 @@ mod tests {
         let lines = tooltip.lines().collect::<Vec<_>>();
         assert_eq!(lines.len(), HIDDEN_REF_TOOLTIP_LIMIT + 1);
         assert_eq!(lines.first(), Some(&"fork/topic"));
-        assert_eq!(lines.last(), Some(&"ほか 2 個"));
+        assert_eq!(lines.last(), Some(&"and 2 more"));
         assert_eq!(
             hidden_ref_chips_tooltip(&chips[..2]),
             "HEAD -> main\norigin/main"
@@ -12979,7 +13102,7 @@ mod tests {
         assert!(cx.has_pending_prompt());
         assert_eq!(stage(cx), Some(crate::many_refs::PackRefsStage::Confirming));
         assert!(git_invocations(&fs, "pack-refs").is_empty());
-        cx.simulate_prompt_answer("キャンセル");
+        cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         assert!(!cx.has_pending_prompt());
         assert_eq!(stage(cx), None);
@@ -12991,7 +13114,7 @@ mod tests {
         click_pack(cx);
         cx.dispatch_action(git::PackRefs);
         cx.run_until_parked();
-        cx.simulate_prompt_answer("まとめる");
+        cx.simulate_prompt_answer("Pack");
         cx.run_until_parked();
         assert!(!cx.has_pending_prompt(), "only one question was asked");
         assert_eq!(
@@ -13022,7 +13145,7 @@ mod tests {
         cx.dispatch_action(git::PackRefs);
         cx.run_until_parked();
         assert!(cx.has_pending_prompt());
-        cx.simulate_prompt_answer("まとめる");
+        cx.simulate_prompt_answer("Pack");
         cx.run_until_parked();
         assert_eq!(git_invocations(&fs, "pack-refs").len(), 2);
     }

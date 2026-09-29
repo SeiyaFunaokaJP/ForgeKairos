@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Could not download {url} (HTTP {status})."
+msgstr "{url} を取得できませんでした (HTTP {status})。"
+
+msgid "The SHA-256 of the file downloaded from {url} does not match the expected one (expected {expected}, got {digest}). It may have been tampered with, so the downloaded file was deleted. Check the network path (proxies, corporate TLS interception) and try again."
+msgstr "{url} から取得したファイルの SHA-256 が想定と一致しません (想定 {expected}、実際 {digest})。改ざんされている可能性があるため、取得したファイルを削除しました。ネットワーク経路 (プロキシ・社内の TLS 傍受) を確認してから、もう一度お試しください。"

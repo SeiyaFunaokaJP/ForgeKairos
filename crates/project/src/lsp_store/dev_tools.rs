@@ -32,9 +32,9 @@ pub enum DevToolPurpose {
 impl DevToolPurpose {
     pub fn label(&self) -> &'static str {
         match self {
-            DevToolPurpose::Diagnostics => "エラーチェック",
-            DevToolPurpose::Formatting => "整形",
-            DevToolPurpose::TypeCheck => "型チェック",
+            DevToolPurpose::Diagnostics => i18n::tc!("dev tool purpose", "Diagnostics"),
+            DevToolPurpose::Formatting => i18n::tc!("dev tool purpose", "Formatting"),
+            DevToolPurpose::TypeCheck => i18n::tc!("dev tool purpose", "Type Checking"),
         }
     }
 }
@@ -132,13 +132,13 @@ static CATALOG: &[DevTool] = &[
     DevTool {
         id: "go",
         command: "go",
-        display_name: "Go ツールチェーン",
+        display_name: i18n::msg!("Go toolchain"),
         purpose: DevToolPurpose::Diagnostics,
         languages: &["Go"],
-        acquisition: DevToolAcquisition::Guidance(
-            "gopls (Go の言語サーバー) は Go ツールチェーンで組み立てられるため、先に go が要ります。\
-             管理者に依頼するか、公式配布物を展開して PATH に通してください。",
-        ),
+        acquisition: DevToolAcquisition::Guidance(i18n::msg!(
+            "gopls (the Go language server) is built with the Go toolchain, so go is needed first. \
+             Ask an administrator, or unpack the official distribution and put it on PATH."
+        )),
     },
 ];
 
@@ -277,26 +277,29 @@ fn language_server_is_downloaded(server_name: &str) -> bool {
 /// installed by letting Zed fetch it again, which the caller drives.
 pub async fn install_tool(tool: &DevTool, http_client: Arc<dyn HttpClient>) -> Result<PathBuf> {
     let DevToolAcquisition::PyPiWheel { project, version } = tool.acquisition else {
-        anyhow::bail!(
-            "{} はダウンロードして導入できるツールではありません",
-            tool.id
-        );
+        anyhow::bail!(i18n::t!(
+            "{tool} is not a tool that can be downloaded and installed",
+            tool = tool.id
+        ));
     };
 
     let files = fetch_pypi_release(&*http_client, project, version).await?;
     let wheel =
         select_wheel(&files, std::env::consts::OS, std::env::consts::ARCH).with_context(|| {
-            format!(
-                "{project} {version} には、この環境 ({} {}) 向けの配布物がありません",
-                std::env::consts::OS,
-                std::env::consts::ARCH
+            i18n::t!(
+                "{project} {version} has no distribution for this environment ({os} {arch})",
+                os = std::env::consts::OS,
+                arch = std::env::consts::ARCH
             )
         })?;
 
     let tools_dir = paths::managed_tools_dir();
-    smol::fs::create_dir_all(tools_dir)
-        .await
-        .with_context(|| format!("ツールの導入先を作成できませんでした: {tools_dir:?}"))?;
+    smol::fs::create_dir_all(tools_dir).await.with_context(|| {
+        i18n::t!(
+            "Could not create the directory to install tools in: {path}",
+            path = format!("{tools_dir:?}")
+        )
+    })?;
 
     // Unpacked beside the destination rather than in a system temporary
     // directory: the two have to be on the same filesystem for the final move,
@@ -323,13 +326,18 @@ async fn install_from_wheel(
         AssetKind::Zip,
     )
     .await
-    .with_context(|| format!("{} を取得できませんでした", tool.display_name))?;
+    .with_context(|| {
+        i18n::t!(
+            "Could not download {tool}",
+            tool = i18n::tr(tool.display_name)
+        )
+    })?;
 
     let file_name = executable_file_name(tool.command);
     let extracted = find_file_in_tree(unpack_dir, &file_name).with_context(|| {
-        format!(
-            "取得した配布物に {file_name} が入っていませんでした ({})",
-            wheel.filename
+        i18n::t!(
+            "The downloaded distribution did not contain {file_name} ({archive})",
+            archive = wheel.filename
         )
     })?;
 
@@ -339,10 +347,20 @@ async fn install_from_wheel(
     // than as a bare io error.
     smol::fs::rename(&extracted, &destination)
         .await
-        .with_context(|| format!("{} を {destination:?} へ移動できませんでした", file_name))?;
+        .with_context(|| {
+            i18n::t!(
+                "Could not move {file_name} to {destination}",
+                destination = format!("{destination:?}")
+            )
+        })?;
     util::fs::make_file_executable(&destination)
         .await
-        .with_context(|| format!("{destination:?} に実行権限を付けられませんでした"))?;
+        .with_context(|| {
+            i18n::t!(
+                "Could not make {destination} executable",
+                destination = format!("{destination:?}")
+            )
+        })?;
     Ok(destination)
 }
 
@@ -403,20 +421,27 @@ async fn fetch_pypi_release(
     let mut response = http_client
         .get(&url, Default::default(), true)
         .await
-        .with_context(|| format!("{project} {version} の配布情報を取得できませんでした"))?;
+        .with_context(|| {
+            i18n::t!("Could not fetch the release information of {project} {version}")
+        })?;
     anyhow::ensure!(
         response.status().is_success(),
-        "{project} {version} の配布情報を取得できませんでした (HTTP {})",
-        response.status()
+        i18n::t!(
+            "Could not fetch the release information of {project} {version} (HTTP {status})",
+            status = response.status()
+        )
     );
     let mut body = String::new();
     response
         .body_mut()
         .read_to_string(&mut body)
         .await
-        .with_context(|| format!("{project} {version} の配布情報を読めませんでした"))?;
-    let release: PyPiRelease = serde_json::from_str(&body)
-        .with_context(|| format!("{project} {version} の配布情報を解釈できませんでした"))?;
+        .with_context(|| {
+            i18n::t!("Could not read the release information of {project} {version}")
+        })?;
+    let release: PyPiRelease = serde_json::from_str(&body).with_context(|| {
+        i18n::t!("Could not parse the release information of {project} {version}")
+    })?;
     Ok(release.urls)
 }
 

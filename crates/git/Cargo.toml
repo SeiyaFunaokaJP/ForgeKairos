@@ -22,6 +22,7 @@ collections.workspace = true
 derive_more.workspace = true
 gpui.workspace = true
 http_client.workspace = true
+i18n.workspace = true
 itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
@@ -45,6 +46,7 @@ futures.workspace = true
 ztracing.workspace = true
 
 [dev-dependencies]
+i18n_catalog = { workspace = true, features = ["test-support"] }
 pretty_assertions.workspace = true
 serde_json.workspace = true
 text = { workspace = true, features = ["test-support"] }

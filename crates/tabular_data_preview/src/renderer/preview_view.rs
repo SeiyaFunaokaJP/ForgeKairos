@@ -33,6 +33,11 @@ impl Render for TabularDataPreviewPane {
             // item's prior size as a hint rather than dropping straight to a fresh guess.
             self.list_state.remeasure();
         }
+        let i18n_generation = i18n::generation();
+        if self.column_widths.append_column_i18n_generation != i18n_generation {
+            self.column_widths.append_column_i18n_generation = i18n_generation;
+            self.sync_column_widths(cx);
+        }
         self.grid.render_generation = self.grid.render_generation.wrapping_add(1);
         self.clamp_cursor();
         self.sync_cell_editor_style(cx);
@@ -154,7 +159,7 @@ impl TabularDataPreviewPane {
                     h_flex()
                         .gap_2()
                         .child(SpinnerLabel::new())
-                        .child("読み込み中…"),
+                        .child(i18n::t!("Loading…")),
                 )
                 .into_any_element()
         } else {
@@ -165,7 +170,9 @@ impl TabularDataPreviewPane {
                     v_flex()
                         .gap_1()
                         .items_center()
-                        .child("空のファイルです。セルに入力すると 1 行目が作られます")
+                        .child(i18n::t!(
+                            "This file is empty. Typing in a cell creates the first row"
+                        ))
                         .child(self.render_start_table_button(cx)),
                 )
                 .into_any_element()

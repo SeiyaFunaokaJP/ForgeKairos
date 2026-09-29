@@ -114,10 +114,11 @@ impl MigrationBanner {
             None => return,
         };
 
-        let migration_text = format!(
-            "{} ファイルに非推奨の設定が含まれています。自動で更新できます。\
-            バックアップは `{}` に保存されます。",
-            file_type, backup_file_name
+        let migration_text = i18n::t!(
+            "Your {} file uses deprecated settings which can be \
+            automatically updated. A backup will be saved to `{}`",
+            file_type,
+            backup_file_name
         );
 
         self.markdown = Some(cx.new(|cx| Markdown::new(migration_text.into(), None, None, cx)));
@@ -238,7 +239,7 @@ impl Render for MigrationBanner {
                     ),
             )
             .child(
-                Button::new("backup-and-migrate", "バックアップして更新").on_click({
+                Button::new("backup-and-migrate", i18n::t!("Backup and Update")).on_click({
                     let workspace = self.workspace.clone();
                     move |_, window, cx| {
                         let fs = <dyn Fs>::global(cx);

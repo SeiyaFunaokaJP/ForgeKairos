@@ -79,11 +79,21 @@ const TEMPLATE_FENCE: &str = indoc! {r#"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let document = parse_c4(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_c4(&document), template);
+        assert_eq!(document.structure_error(), None);
+    };
+    check(editor::actions::MermaidDiagramKind::C4.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::C4.template();
-    let document = parse_c4(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_c4(&document), template);
-    assert_eq!(document.structure_error(), None);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -142,8 +152,8 @@ async fn elements_boundaries_and_relationships_are_written_back(cx: &mut TestApp
                 Person(customer, "顧客", "商品を注文する")
                 System(store, "受注システム", "注文を受け付ける")
                 System_Ext(mail, "メール配信", "通知を送る")
-                Boundary(boundary1, "新しい境界") {
-                    Person_Ext(element1, "新しい要素", "外部の担当者")
+                Boundary(boundary1, "New boundary") {
+                    Person_Ext(element1, "New element", "外部の担当者")
                 }
                 Rel(customer, store, "注文する")
                 Rel(store, mail, "通知を依頼する")
@@ -204,7 +214,7 @@ async fn what_would_be_drawn_differently_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("2 回宣言")),
+            .is_some_and(|message| message.contains("is declared twice")),
         "the modal should name the repeated alias, got {message:?}"
     );
 
@@ -227,7 +237,7 @@ async fn what_would_be_drawn_differently_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("タイトル")),
+            .is_some_and(|message| message.contains("The title")),
         "the modal should point at the title, got {message:?}"
     );
 }
@@ -263,7 +273,7 @@ async fn a_passing_duplicate_alias_moves_no_relationship(cx: &mut TestAppContext
 #[test]
 fn a_diagram_with_nothing_to_draw_is_asked_for_an_element() {
     let blank = mermaid_render::c4_model::C4Document::empty();
-    assert!(problem(&blank).is_some_and(|problem| problem.contains("1 つ以上")));
+    assert!(problem(&blank).is_some_and(|problem| problem.contains("at least one")));
     let titled = parse_c4("C4Context\n    title 題").expect("a title is a statement");
     assert!(problem(&titled).is_some());
     let drawn = parse_c4("C4Context\n    Person(a, \"A\")").expect("an element");

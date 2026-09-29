@@ -22,6 +22,7 @@ use crate::{
     SettingField, SettingItem, SettingsFieldMetadata, SettingsPageItem, SettingsWindow, USER,
     components::{SettingsInputField, SettingsSectionHeader},
     pages::external_ai_consent::{self, ConsentTarget},
+    pages::llm_providers_page,
 };
 
 /// Endpoint the Copilot chat/completions API is reached at
@@ -34,8 +35,8 @@ const MERCURY_API_URL: &str = "https://api.inceptionlabs.ai/v1/edit/completions"
 
 /// How `EditPredictionProvider::None` is named in the dropdown trigger and in
 /// its menu entry, which spells out what picking it does.
-const NONE_LABEL: &str = "なし";
-const NONE_LABEL_WITH_HINT: &str = "なし (編集予測を無効にする)";
+const NONE_LABEL: &str = i18n::msg!("None");
+const NONE_LABEL_WITH_HINT: &str = i18n::msg!("None (disable edit predictions)");
 
 pub(crate) fn render_edit_prediction_setup_page(
     settings_window: &SettingsWindow,
@@ -53,7 +54,7 @@ pub(crate) fn render_edit_prediction_setup_page(
                 IconName::AiOpenAiCompat,
                 "OpenAI Compatible API",
                 ApiKeyDocs::Custom {
-                    message: "API キーは Authorization: Bearer {key} として送信されます。".into(),
+                    message: i18n::t!("The API key sent as Authorization: Bearer {{key}}.").into(),
                 },
                 open_ai_compatible_api_token(cx),
                 |cx| open_ai_compatible_api_url(cx),
@@ -177,6 +178,23 @@ fn copilot_edit_prediction_api_url(cx: &App) -> String {
         .unwrap_or_else(|| COPILOT_API_URL.to_string())
 }
 
+/// Copilot's consent target, which exists even for a loopback `enterprise_uri`:
+/// the language server reaches GitHub on its own, outside the egress allowlist,
+/// and `copilot` does not start it without this consent.
+fn copilot_consent_target(note: Option<&'static str>, cx: &App) -> Option<ConsentTarget> {
+    const HOSTS: &[&str] = &["github.com", "api.github.com"];
+    external_ai_consent::edit_prediction_target(
+        "copilot",
+        "GitHub Copilot",
+        Some(&copilot_edit_prediction_api_url(cx)),
+        HOSTS,
+        note,
+    )
+    .or_else(|| {
+        external_ai_consent::edit_prediction_target("copilot", "GitHub Copilot", None, HOSTS, note)
+    })
+}
+
 /// Every edit prediction provider's consent target, built exactly as the cards
 /// above build them.
 ///
@@ -203,13 +221,7 @@ pub(crate) fn edit_prediction_consent_targets(cx: &App) -> Vec<ConsentTarget> {
             &[],
             None,
         ),
-        external_ai_consent::edit_prediction_target(
-            "copilot",
-            "GitHub Copilot",
-            Some(&copilot_edit_prediction_api_url(cx)),
-            &["github.com", "api.github.com"],
-            None,
-        ),
+        copilot_consent_target(None, cx),
         external_ai_consent::edit_prediction_target(
             "codestral",
             "Codestral",
@@ -232,7 +244,9 @@ pub(crate) fn edit_prediction_consent_targets(cx: &App) -> Vec<ConsentTarget> {
 
 /// `Zed` is the one edit prediction provider whose consent key is shared with an
 /// agent (LLM) provider, so both surfaces have to say so.
-const ZED_CONSENT_SHARED_NOTE: &str = "この承諾は「AI」ページの LLM プロバイダー「Zed」と共通です。取り消すと編集予測とエージェントの両方に反映されます。";
+const ZED_CONSENT_SHARED_NOTE: &str = i18n::msg!(
+    "This consent is shared with the \"Zed\" LLM provider on the AI page. Withdrawing it applies to both edit predictions and the agent."
+);
 
 /// The `zed.dev` consent target: the same one the "LLM プロバイダー" sub-page
 /// builds, so the hosts and the key never drift between the two surfaces.
@@ -263,7 +277,10 @@ fn render_provider_dropdown_control(
         .provider;
     // `EditPredictionProvider::None` has no `display_name`; it is the "なし"
     // entry of this dropdown, so the trigger has to name it the same way.
-    let trigger_label: SharedString = current_provider.display_name().unwrap_or(NONE_LABEL).into();
+    let trigger_label: SharedString = current_provider
+        .display_name()
+        .unwrap_or_else(|| i18n::tr(NONE_LABEL))
+        .into();
 
     let menu = ContextMenu::build(window, cx, move |mut menu, _, cx| {
         let available_providers = get_available_providers(cx);
@@ -286,7 +303,7 @@ fn render_provider_dropdown_control(
         // `get_available_providers` only reports providers that can be turned
         // on, so turning edit prediction off has to be offered here.
         menu.separator().toggleable_entry(
-            NONE_LABEL_WITH_HINT,
+            i18n::tr(NONE_LABEL_WITH_HINT),
             current_provider == EditPredictionProvider::None,
             IconPosition::Start,
             None,
@@ -300,7 +317,7 @@ fn render_provider_dropdown_control(
         .id("provider-selector")
         .min_w_0()
         .gap_1p5()
-        .child(SettingsSectionHeader::new("使用中のプロバイダー").no_padding(true))
+        .child(SettingsSectionHeader::new(i18n::t!("Active Provider")).no_padding(true))
         .child(
             h_flex()
                 .pt_2p5()
@@ -312,9 +329,11 @@ fn render_provider_dropdown_control(
                         .w_full()
                         .min_w_0()
                         .max_w_1_2()
-                        .child(Label::new("プロバイダー"))
+                        .child(Label::new(i18n::t!("Provider")))
                         .child(
-                            Label::new("編集予測に使用するプロバイダーを選択します。")
+                            Label::new(i18n::t!(
+                                "Select which provider to use for edit predictions."
+                            ))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         ),
@@ -329,9 +348,9 @@ fn render_provider_dropdown_control(
             // `get_available_providers` only lists providers that are past
             // their own gate, so a provider that has not been set up is simply
             // absent from the dropdown; say where to set one up.
-            Label::new(
-                "OpenAI 互換 API・Ollama・GitHub Copilot・Codestral・Mercury は、下の各プロバイダーで認証情報や接続先 URL を設定すると選択できるようになります。Zed は下の「Zed」で承諾すると選択できるようになります。",
-            )
+            Label::new(i18n::t!(
+                "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below."
+            ))
             .size(LabelSize::Small)
             .color(Color::Muted),
         )
@@ -412,28 +431,46 @@ fn render_api_key_provider(
                 .size(LabelSize::Small)
                 .color(Color::Muted),
         ),
-        ApiKeyDocs::Link { dashboard_url } => h_flex()
-            .w_full()
-            .min_w_0()
-            .flex_wrap()
-            .gap_0p5()
-            .child(
-                ButtonLink::new(format!("{title} のダッシュボード"), dashboard_url)
+        ApiKeyDocs::Link { dashboard_url } => {
+            let (before_link, after_link) = llm_providers_page::split_around_link(&i18n::t!(
+                "Visit the {link} to generate an API key.",
+                link = llm_providers_page::LINK_SLOT
+            ));
+            h_flex()
+                .w_full()
+                .min_w_0()
+                .flex_wrap()
+                .gap_0p5()
+                .when(!before_link.is_empty(), |this| {
+                    this.child(
+                        Label::new(before_link)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                })
+                .child(
+                    ButtonLink::new(
+                        i18n::t!("{provider_name} dashboard", provider_name = title),
+                        dashboard_url,
+                    )
                     .no_icon(true)
                     .label_size(LabelSize::Small)
                     .label_color(Color::Muted),
-            )
-            .child(
-                Label::new("で API キーを生成してください。")
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
-            ),
+                )
+                .when(!after_link.is_empty(), |this| {
+                    this.child(
+                        Label::new(after_link)
+                            .size(LabelSize::Small)
+                            .color(Color::Muted),
+                    )
+                })
+        }
     };
 
     let configured_card_label = if is_from_env_var {
-        "API キーは環境変数で設定されています"
+        i18n::t!("API Key Set in Environment Variable")
     } else {
-        "API キーは設定済み"
+        i18n::t!("API Key Configured")
     };
 
     // While consent for an external endpoint is missing, the credential UI is
@@ -459,13 +496,13 @@ fn render_api_key_provider(
     } else if has_key {
         base_container.child(
             ConfiguredApiCard::new(format!("{title}-reset-key"), configured_card_label)
-                .button_label("キーをリセット")
+                .button_label(i18n::t!("Reset Key"))
                 .button_tab_index(0)
                 .disabled(is_from_env_var)
                 .when_some(env_var_name, |this, env_var_name| {
                     this.when(is_from_env_var, |this| {
-                        this.tooltip_label(format!(
-                            "API キーをリセットするには、環境変数 {} を解除してください。",
+                        this.tooltip_label(i18n::t!(
+                            "To reset your API key, unset the {} environment variable.",
                             env_var_name
                         ))
                     })
@@ -487,12 +524,12 @@ fn render_api_key_provider(
                         .min_w_0()
                         .max_w_1_2()
                         .gap_0p5()
-                        .child(Label::new("API キー"))
+                        .child(Label::new(i18n::t!("API Key")))
                         .child(description)
                         .when_some(env_var_name, |this, env_var_name| {
                             this.child({
-                                let label = format!(
-                                    "または環境変数 {} を設定して Zed を再起動してください。",
+                                let label = i18n::t!(
+                                    "Or set the {} env var and restart Zed.",
                                     env_var_name.as_ref()
                                 );
                                 Label::new(label).size(LabelSize::Small).color(Color::Muted)
@@ -503,7 +540,7 @@ fn render_api_key_provider(
                     SettingsInputField::new(format!("{}-api-key-input", title))
                         .tab_index(0)
                         .with_placeholder("xxxxxxxxxxxxxxxxxxxx")
-                        .aria_label(format!("{} の API キー", title))
+                        .aria_label(i18n::t!("{} API Key", title))
                         .on_confirm(move |api_key, _window, cx| {
                             write_key(api_key.filter(|key| !key.is_empty()), cx);
                         }),
@@ -581,7 +618,7 @@ fn ollama_settings() -> Box<[SettingsPageItem]> {
     Box::new([
         SettingsPageItem::SettingItem(SettingItem {
             title: "API URL",
-            description: "Ollama サーバーのベース URL です。",
+            description: "The base URL of your Ollama server.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -614,8 +651,8 @@ fn ollama_settings() -> Box<[SettingsPageItem]> {
             files: USER,
         }),
         SettingsPageItem::SettingItem(SettingItem {
-            title: "モデル",
-            description: "編集予測に使用する Ollama のモデルです。",
+            title: "Model",
+            description: "The Ollama model to use for edit predictions.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -648,8 +685,8 @@ fn ollama_settings() -> Box<[SettingsPageItem]> {
             files: USER,
         }),
         SettingsPageItem::SettingItem(SettingItem {
-            title: "プロンプト形式",
-            description: "予測を要求するときに使うプロンプトの形式です。Infer にするとモデル名から形式を推定します。",
+            title: "Prompt Format",
+            description: "The prompt format to use when requesting predictions. Set to Infer to have the format inferred based on the model name.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -679,8 +716,8 @@ fn ollama_settings() -> Box<[SettingsPageItem]> {
             metadata: None,
         }),
         SettingsPageItem::SettingItem(SettingItem {
-            title: "最大出力トークン数",
-            description: "生成するトークン数の上限です。",
+            title: "Max Output Tokens",
+            description: "The maximum number of tokens to generate.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -747,7 +784,7 @@ fn open_ai_compatible_settings() -> Box<[SettingsPageItem]> {
     Box::new([
         SettingsPageItem::SettingItem(SettingItem {
             title: "API URL",
-            description: "OpenAI 互換サーバーの補完 API の URL です。",
+            description: "The URL of your OpenAI-compatible server's completions API.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -780,8 +817,8 @@ fn open_ai_compatible_settings() -> Box<[SettingsPageItem]> {
             files: USER,
         }),
         SettingsPageItem::SettingItem(SettingItem {
-            title: "モデル",
-            description: "OpenAI 互換サーバーに渡すモデル名です。",
+            title: "Model",
+            description: "The model string to pass to the OpenAI-compatible server.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -814,8 +851,8 @@ fn open_ai_compatible_settings() -> Box<[SettingsPageItem]> {
             files: USER,
         }),
         SettingsPageItem::SettingItem(SettingItem {
-            title: "プロンプト形式",
-            description: "予測を要求するときに使うプロンプトの形式です。Infer にするとモデル名から形式を推定します。",
+            title: "Prompt Format",
+            description: "The prompt format to use when requesting predictions. Set to Infer to have the format inferred based on the model name.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -845,8 +882,8 @@ fn open_ai_compatible_settings() -> Box<[SettingsPageItem]> {
             metadata: None,
         }),
         SettingsPageItem::SettingItem(SettingItem {
-            title: "最大出力トークン数",
-            description: "生成するトークン数の上限です。",
+            title: "Max Output Tokens",
+            description: "The maximum number of tokens to generate.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -913,7 +950,7 @@ fn codestral_settings() -> Box<[SettingsPageItem]> {
     Box::new([
         SettingsPageItem::SettingItem(SettingItem {
             title: "API URL",
-            description: "Codestral で使用する API の URL です。",
+            description: "The API URL to use for Codestral.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -946,8 +983,8 @@ fn codestral_settings() -> Box<[SettingsPageItem]> {
             files: USER,
         }),
         SettingsPageItem::SettingItem(SettingItem {
-            title: "最大トークン数",
-            description: "生成するトークン数の上限です。",
+            title: "Max Tokens",
+            description: "The maximum number of tokens to generate.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -977,8 +1014,8 @@ fn codestral_settings() -> Box<[SettingsPageItem]> {
             files: USER,
         }),
         SettingsPageItem::SettingItem(SettingItem {
-            title: "モデル",
-            description: "使用する Codestral のモデル ID です。",
+            title: "Model",
+            description: "The Codestral model id to use.",
             field: Box::new(SettingField {
                 organization_override: None,
                 pick: |settings| {
@@ -1179,7 +1216,7 @@ fn render_zed_provider(
         )
         .child(
             Label::new(
-                "Zed のクラウド編集予測 (Zeta) です。編集中のコードとその周辺が cloud.zed.dev へ送信されます。",
+                i18n::t!("Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev."),
             )
             .size(LabelSize::Small)
             .color(Color::Muted),
@@ -1203,7 +1240,7 @@ fn render_zed_provider(
                     .child(external_ai_consent::render_acknowledged_row(target, cx))
                     .child(
                         Label::new(
-                            "承諾を取り消しても、選択中の Zed は止まりません (再び警告が表示され、上の「プロバイダー」の一覧から Zed が消えるだけです)。停止するには上の「プロバイダー」で「なし」を選んでください。",
+                            i18n::t!("Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above."),
                         )
                         .size(LabelSize::Small)
                         .color(Color::Muted),
@@ -1218,7 +1255,11 @@ fn render_zed_provider(
                         cx,
                     ))
                     .when_some(target.note, |this, note| {
-                        this.child(Label::new(note).size(LabelSize::Small).color(Color::Muted))
+                        this.child(
+                            Label::new(i18n::tr(note))
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        )
                     }),
             )
         })
@@ -1232,14 +1273,11 @@ fn render_github_copilot_provider(
     window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> Option<impl IntoElement> {
-    let consent = external_ai_consent::edit_prediction_target(
-        "copilot",
-        "GitHub Copilot",
-        Some(&copilot_edit_prediction_api_url(cx)),
-        &["github.com", "api.github.com"],
-        Some(
-            "編集予測の通信は Copilot の言語サーバー (別プロセス) が行うため、外部通信の許可リストの対象外です。ホストの登録は Zed 本体からのサインインにのみ効きます。",
-        ),
+    let consent = copilot_consent_target(
+        Some(i18n::msg!(
+            "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from Zed itself."
+        )),
+        cx,
     );
     let needs_consent = consent
         .as_ref()
@@ -1311,5 +1349,53 @@ mod tests {
             );
             assert!(target.hosts.contains(&SharedString::from("cloud.zed.dev")));
         });
+    }
+
+    /// `copilot` does not start its language server without this consent, whatever
+    /// `enterprise_uri` says, so the card has to ask for it even for a loopback one.
+    #[gpui::test]
+    fn the_copilot_card_asks_for_the_key_copilot_checks(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            let store = settings::SettingsStore::test(cx);
+            cx.set_global(store);
+        });
+        for enterprise_uri in [
+            None,
+            Some("http://127.0.0.1:8443"),
+            Some("https://ghe.corp.example"),
+        ] {
+            cx.update(|cx| {
+                cx.update_global::<settings::SettingsStore, _>(|store, cx| {
+                    store.update_user_settings(cx, |settings| {
+                        settings
+                            .project
+                            .all_languages
+                            .edit_predictions
+                            .get_or_insert_default()
+                            .copilot
+                            .get_or_insert_default()
+                            .enterprise_uri = enterprise_uri.map(str::to_string);
+                    });
+                });
+                let target = copilot_consent_target(None, cx)
+                    .unwrap_or_else(|| panic!("no consent asked for {enterprise_uri:?}"));
+                assert_eq!(
+                    target.key,
+                    SharedString::from(settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY),
+                    "{enterprise_uri:?}"
+                );
+                assert!(
+                    target.hosts.contains(&SharedString::from("github.com")),
+                    "{enterprise_uri:?}"
+                );
+                assert!(
+                    edit_prediction_consent_targets(cx)
+                        .iter()
+                        .any(|target| target.key.as_ref()
+                            == settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY),
+                    "{enterprise_uri:?}"
+                );
+            });
+        }
     }
 }

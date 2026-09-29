@@ -5,9 +5,12 @@
 use crate::commit_context_menu::CommitMenuOperation;
 use ui::prelude::*;
 
+/// An operation's words, already in the display language.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct OperationHelp {
-    /// The operation's short name, with the git term in brackets where there is one.
+    /// The operation's short name, with the git term in brackets where there is one. Titles are
+    /// translated under the msgctxt "git operation": a translation may add the git term to a
+    /// title ("Stage All") whose English is also a plain button label elsewhere.
     pub(crate) title: &'static str,
     pub(crate) explanation: &'static str,
     /// What the operation does that cannot be seen from the explanation and is easy to regret.
@@ -17,9 +20,10 @@ pub(crate) struct OperationHelp {
 impl OperationHelp {
     /// The explanation and the caution as one sentence, for a tooltip or a side note.
     pub(crate) fn sentence(&self) -> String {
+        let explanation = self.explanation;
         match self.caution {
-            Some(caution) => format!("{}。注意: {caution}", self.explanation),
-            None => format!("{}。", self.explanation),
+            Some(caution) => i18n::t!("{explanation}. Caution: {caution}."),
+            None => i18n::t!("{explanation}."),
         }
     }
 
@@ -30,150 +34,211 @@ impl OperationHelp {
 }
 
 /// What each reset leaves of the changes after the commit, short enough for a menu item's label.
-pub(crate) const RESET_SOFT_SUMMARY: &str = "変更をステージに残す";
-pub(crate) const RESET_MIXED_SUMMARY: &str = "ステージだけ解除、ファイルは残す";
-pub(crate) const RESET_HARD_SUMMARY: &str = "変更ごと捨てる";
+/// Translate them with `i18n::tr` where they are shown.
+pub(crate) const RESET_SOFT_SUMMARY: &str = i18n::msg!("keep the changes staged");
+pub(crate) const RESET_MIXED_SUMMARY: &str = i18n::msg!("unstage only, keep the files");
+pub(crate) const RESET_HARD_SUMMARY: &str = i18n::msg!("discard the changes too");
 
-const HISTORY_REWRITE_CAUTION: &str = "後のコミットの SHA が変わります";
+fn history_rewrite_caution() -> &'static str {
+    i18n::t!("The SHAs of the later commits change")
+}
 
-pub(crate) const AMEND_HELP: OperationHelp = OperationHelp {
-    title: "直前のコミットを修正 (amend)",
-    explanation: "今の変更とメッセージで直前のコミットを作り直します (Git パネルで)",
-    caution: Some("このコミットの SHA が変わります"),
-};
+pub(crate) fn amend_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Amend Last Commit"),
+        explanation: i18n::t!("Rebuilds the last commit from your changes and message (Git panel)"),
+        caution: Some(i18n::t!("This commit's SHA changes")),
+    }
+}
 
-pub(crate) const RESET_MENU_HELP: OperationHelp = OperationHelp {
-    title: "このコミットまで戻す (reset)",
-    explanation: "今のブランチの先頭をここまで戻します。後の変更の扱いを soft / mixed / hard から選びます",
-    caution: None,
-};
+pub(crate) fn reset_menu_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Reset to This Commit"),
+        explanation: i18n::t!(
+            "Moves the current branch back to here. Choose soft / mixed / hard for the later changes"
+        ),
+        caution: None,
+    }
+}
 
-pub(crate) const MERGE_REQUEST_BOX_HELP: OperationHelp = OperationHelp {
-    title: "MR の箱",
-    explanation: "コミットを MR の箱に集めます。箱の中身から、MR 用に 1 コミットにまとめたブランチを作れます",
-    caution: None,
-};
+pub(crate) fn merge_request_box_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "MR Box"),
+        explanation: i18n::t!(
+            "Collects commits in the MR box. From them you can create a branch squashed into one commit for the MR"
+        ),
+        caution: None,
+    }
+}
 
-pub(crate) const MERGE_REQUEST_EXCLUDE_HELP: OperationHelp = OperationHelp {
-    title: "MR から除外する",
-    explanation: "MR に入れないと決めたコミットとして印を付けます。入れ忘れの確認で「未配置」に数えなくなります。箱に入っていれば箱からも出します",
-    caution: None,
-};
+pub(crate) fn merge_request_exclude_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Exclude from MR"),
+        explanation: i18n::t!(
+            "Marks the commit as one you decided to keep out of the MR, so that the check for forgotten commits no longer counts it as \"unplaced\". If it is in the box, it is taken out too"
+        ),
+        caution: None,
+    }
+}
 
-pub(crate) const MERGE_REQUEST_RESTORE_HELP: OperationHelp = OperationHelp {
-    title: "MR の除外をやめる",
-    explanation: "除外の印を外して「未配置」に戻します",
-    caution: None,
-};
+pub(crate) fn merge_request_restore_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Stop Excluding from MR"),
+        explanation: i18n::t!("Removes the exclusion mark and makes the commit \"unplaced\" again"),
+        caution: None,
+    }
+}
 
-pub(crate) const CHERRY_PICK_SELECTION_HELP: OperationHelp = OperationHelp {
-    title: "まとめて取り込む (cherry-pick)",
-    explanation: "選んだコミットの変更を、古い順に今のブランチの上へコピーします。元のコミットは残ります",
-    caution: None,
-};
+pub(crate) fn cherry_pick_selection_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Cherry-Pick Selected"),
+        explanation: i18n::t!(
+            "Copies the picked commits' changes onto the current branch, oldest first. The originals stay"
+        ),
+        caution: None,
+    }
+}
 
-pub(crate) const REWRITE_SELECTION_HELP: OperationHelp = OperationHelp {
-    title: "並べ替え / まとめる / 捨てる",
-    explanation: "選んだ範囲を並べ替え・合体 (squash)・削除 (drop) します",
-    caution: Some(HISTORY_REWRITE_CAUTION),
-};
+pub(crate) fn rewrite_selection_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Reorder / Squash / Drop"),
+        explanation: i18n::t!("Reorders, squashes or drops the picked range"),
+        caution: Some(history_rewrite_caution()),
+    }
+}
 
-pub(crate) const SQUASH_SELECTION_HELP: OperationHelp = OperationHelp {
-    title: "1 つにまとめる (squash)",
-    explanation: "選んだ連続したコミットを 1 つのコミットに合体させます",
-    caution: Some(HISTORY_REWRITE_CAUTION),
-};
+pub(crate) fn squash_selection_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Squash into One"),
+        explanation: i18n::t!("Combines the picked consecutive commits into a single commit"),
+        caution: Some(history_rewrite_caution()),
+    }
+}
 
-pub(crate) const MORE_MENU_HELP: OperationHelp = OperationHelp {
-    title: "その他",
-    explanation: "幅が足りずに並ばなかった操作です。開くと各操作の説明が横に出ます",
-    caution: None,
-};
+pub(crate) fn more_menu_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "More"),
+        explanation: i18n::t!(
+            "Operations that did not fit in the row. Open it to see each one explained beside it"
+        ),
+        caution: None,
+    }
+}
 
-pub(crate) const LOG_SOURCE_HELP: OperationHelp = OperationHelp {
-    title: "表示",
-    explanation: "グラフに出すコミットを、すべてのブランチ / 今のブランチ / 選んだブランチから選びます",
-    caution: None,
-};
+pub(crate) fn log_source_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Show"),
+        explanation: i18n::t!(
+            "Chooses the commits the graph shows: all branches, the current branch or a chosen branch"
+        ),
+        caution: None,
+    }
+}
 
-pub(crate) const TAG_LIST_HELP: OperationHelp = OperationHelp {
-    title: "タグ一覧",
-    explanation: "タグ (コミットに付けた目印の名前) を検索し、選ぶとそのコミットまで移動します",
-    caution: None,
-};
+pub(crate) fn tag_list_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Tags"),
+        explanation: i18n::t!(
+            "Searches the tags (names given to commits) and jumps to the commit of the one you pick"
+        ),
+        caution: None,
+    }
+}
 
-pub(crate) const COMPARE_REFS_HELP: OperationHelp = OperationHelp {
-    title: "比較",
-    explanation: "2 つのブランチやタグの中身を比べます。移し忘れたコミットが無いかの確認に使えます",
-    caution: None,
-};
+pub(crate) fn compare_refs_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Compare"),
+        explanation: i18n::t!(
+            "Compares the contents of two branches or tags. Useful to check that no commit was left behind"
+        ),
+        caution: None,
+    }
+}
 
-pub(crate) const MERGE_REQUEST_TOOLBAR_HELP: OperationHelp = OperationHelp {
-    title: "MR を作る",
-    explanation: "コミットを箱に集めて、MR (マージリクエスト) 用に 1 コミットにまとめたブランチを作ります",
-    caution: None,
-};
+pub(crate) fn merge_request_toolbar_help() -> OperationHelp {
+    OperationHelp {
+        title: i18n::tc!("git operation", "Create MR"),
+        explanation: i18n::t!(
+            "Collects commits in a box and creates a branch with them squashed into one commit for an MR (merge request)"
+        ),
+        caution: None,
+    }
+}
 
 pub(crate) fn commit_operation_help(operation: CommitMenuOperation) -> OperationHelp {
     match operation {
         CommitMenuOperation::CreateBranch => OperationHelp {
-            title: "ここからブランチ",
-            explanation: "このコミットを出発点に、新しいブランチ (作業の枝) を作ります。今の作業はそのままです",
+            title: i18n::tc!("git operation", "Branch from Here"),
+            explanation: i18n::t!(
+                "Creates a new branch (a line of work) starting at this commit. Your current work stays as it is"
+            ),
             caution: None,
         },
         CommitMenuOperation::Checkout => OperationHelp {
-            title: "チェックアウト",
-            explanation: "この時点に切り替えます (detached HEAD: どのブランチにも乗らない状態)",
-            caution: Some("作業するなら先にブランチを作ります"),
+            title: i18n::tc!("git operation", "Check Out"),
+            explanation: i18n::t!("Switches to this commit (detached HEAD: not on any branch)"),
+            caution: Some(i18n::t!("To work here, create a branch first")),
         },
         CommitMenuOperation::CreateTag => OperationHelp {
-            title: "タグ (tag)",
-            explanation: "このコミットに目印の名前 (タグ) を付けます。リリースした版の記録などに使います",
+            title: i18n::tc!("git operation", "Tag"),
+            explanation: i18n::t!(
+                "Gives this commit a marker name (a tag), for example to record a released version"
+            ),
             caution: None,
         },
         CommitMenuOperation::CherryPick => OperationHelp {
-            title: "取り込む (cherry-pick)",
-            explanation: "このコミットの変更だけを、今のブランチに新しいコミットとしてコピーします。元は残ります",
+            title: i18n::tc!("git operation", "Cherry-Pick"),
+            explanation: i18n::t!(
+                "Copies only this commit's changes onto the current branch as a new commit. The original stays"
+            ),
             caution: None,
         },
         CommitMenuOperation::Revert => OperationHelp {
-            title: "打ち消す (revert)",
-            explanation: "このコミットの変更を逆向きに当てる新しいコミットを作ります。履歴を消さないので共有済みでも安全です",
+            title: i18n::tc!("git operation", "Revert"),
+            explanation: i18n::t!(
+                "Creates a new commit that applies this commit's changes in reverse. History is kept, so it is safe after sharing"
+            ),
             caution: None,
         },
         CommitMenuOperation::Reword => OperationHelp {
-            title: "メッセージの書き換え (reword)",
-            explanation: "このコミットの説明文だけを直します",
-            caution: Some(HISTORY_REWRITE_CAUTION),
+            title: i18n::tc!("git operation", "Reword Message"),
+            explanation: i18n::t!("Changes only this commit's message"),
+            caution: Some(history_rewrite_caution()),
         },
         CommitMenuOperation::Fixup => OperationHelp {
-            title: "今の変更を入れる (fixup)",
-            explanation: "未コミットの今の変更を、このコミットに後から足します",
-            caution: Some(HISTORY_REWRITE_CAUTION),
+            title: i18n::tc!("git operation", "Add Current Changes (fixup)"),
+            explanation: i18n::t!("Adds your uncommitted changes into this commit"),
+            caution: Some(history_rewrite_caution()),
         },
         CommitMenuOperation::Drop => OperationHelp {
-            title: "捨てる (drop)",
-            explanation: "このコミットとその変更を履歴から取り除きます",
-            caution: Some(HISTORY_REWRITE_CAUTION),
+            title: i18n::tc!("git operation", "Drop"),
+            explanation: i18n::t!("Removes this commit and its changes from history"),
+            caution: Some(history_rewrite_caution()),
         },
         CommitMenuOperation::ResetSoft => OperationHelp {
-            title: "戻す: soft",
-            explanation: "ブランチだけを戻します。後の変更はステージにも作業ツリーにもそのまま残ります",
+            title: i18n::tc!("git operation", "Reset: soft"),
+            explanation: i18n::t!(
+                "Moves only the branch back. The later changes stay staged and in the working tree"
+            ),
             caution: None,
         },
         CommitMenuOperation::ResetMixed => OperationHelp {
-            title: "戻す: mixed",
-            explanation: "ブランチを戻し、ステージだけ解除します。後の変更は作業ツリーのファイルに残ります",
+            title: i18n::tc!("git operation", "Reset: mixed"),
+            explanation: i18n::t!(
+                "Moves the branch back and unstages. The later changes stay in the working tree's files"
+            ),
             caution: None,
         },
         CommitMenuOperation::ResetHard => OperationHelp {
-            title: "戻す: hard",
-            explanation: "ブランチを戻し、後の変更も未コミットの変更もまとめて捨てます",
-            caution: Some("未コミットの変更は元に戻せません"),
+            title: i18n::tc!("git operation", "Reset: hard"),
+            explanation: i18n::t!("Resets the branch, discarding later and uncommitted changes"),
+            caution: Some(i18n::t!("Uncommitted changes cannot be recovered")),
         },
         CommitMenuOperation::CopyTagDistance => OperationHelp {
-            title: "タグからの距離",
-            explanation: "一番近いタグから何コミット先か (git describe の形) をコピーします",
+            title: i18n::tc!("git operation", "Distance from Tag"),
+            explanation: i18n::t!(
+                "Copies how many commits past the nearest tag this is (in git describe form)"
+            ),
             caution: None,
         },
     }
@@ -197,7 +262,7 @@ pub(crate) fn help_aside(
             )
             .when_some(help.caution, |this, caution| {
                 this.child(
-                    Label::new(format!("注意: {caution}"))
+                    Label::new(i18n::t!("Caution: {caution}"))
                         .size(LabelSize::Small)
                         .color(Color::Warning),
                 )
@@ -309,452 +374,636 @@ pub(crate) enum PanelOperation {
     UseBoth,
 }
 
-const UNDO_UNAVAILABLE_CAUTION: &str = "元に戻せません";
-const PUSHED_COMMIT_CAUTION: &str = "送信 (push) 済みのコミットなら、強制プッシュが必要になります";
-const CONFLICT_CAUTION: &str = "同じ箇所を変えているとコンフリクト (競合) になります";
-const STASH_POP_CAUTION: &str = "今の変更と同じファイルを変えていると、止まるかコンフリクト (競合) になります。コンフリクトしたときは棚にも残ります";
-const DISCARD_UNSTAGED_CAUTION: &str = "ステージしていない編集は消えます";
+fn undo_unavailable_caution() -> &'static str {
+    i18n::t!("This cannot be undone")
+}
+
+fn pushed_commit_caution() -> &'static str {
+    i18n::t!("If the commit was already pushed, you will need to force push")
+}
+
+fn conflict_caution() -> &'static str {
+    i18n::t!("Changes to the same lines on both sides cause a conflict")
+}
+
+fn stash_pop_caution() -> &'static str {
+    i18n::t!(
+        "If your current changes touch the same files, it stops or ends in a conflict. On a conflict, the changes also stay in the stash"
+    )
+}
+
+fn discard_unstaged_caution() -> &'static str {
+    i18n::t!("Unstaged edits are lost")
+}
 
 pub(crate) fn panel_operation_help(operation: PanelOperation) -> OperationHelp {
     match operation {
         PanelOperation::StageAll => OperationHelp {
-            title: "すべてステージ (stage)",
-            explanation: "変更したファイルを全部、次のコミットに入れる印 (ステージ) を付けます。ファイルの中身は変わりません",
+            title: i18n::tc!("git operation", "Stage All"),
+            explanation: i18n::t!(
+                "Marks every changed file to go into the next commit (stages it). The files' contents do not change"
+            ),
             caution: None,
         },
         PanelOperation::UnstageAll => OperationHelp {
-            title: "すべてアンステージ (unstage)",
-            explanation: "ステージの印を全部外します。変更はファイルに残り、次のコミットに入らなくなるだけです",
+            title: i18n::tc!("git operation", "Unstage All"),
+            explanation: i18n::t!(
+                "Removes every stage mark. The changes stay in the files and just no longer go into the next commit"
+            ),
             caution: None,
         },
         PanelOperation::DiscardTrackedChanges => OperationHelp {
-            title: "追跡中の変更を破棄 (restore)",
-            explanation: "ステージした変更がある追跡中のファイルを、ステージしていない変更ごと最後のコミットの内容に戻します。ステージしていない変更しか無いファイルと、新しく作ったファイル (未追跡) は残ります",
-            caution: Some(UNDO_UNAVAILABLE_CAUTION),
+            title: i18n::tc!("git operation", "Discard Tracked Changes (restore)"),
+            explanation: i18n::t!(
+                "Returns each tracked file that has staged changes to its content in the last commit, unstaged changes included. Files with only unstaged changes and newly created files (untracked) are kept"
+            ),
+            caution: Some(undo_unavailable_caution()),
         },
         PanelOperation::StashAll => OperationHelp {
-            title: "すべて退避 (stash)",
-            explanation: "未コミットの変更を新しく作ったファイル (未追跡) も含めて全部、一時的な棚 (stash) に退避して、ファイルを最後のコミットの状態にします。後で「スタッシュをポップ」で戻せます",
+            title: i18n::tc!("git operation", "Stash All"),
+            explanation: i18n::t!(
+                "Puts all uncommitted changes, newly created files (untracked) included, away on a temporary shelf (the stash) and returns the files to the last commit. \"Stash Pop\" brings them back later"
+            ),
             caution: None,
         },
         PanelOperation::StashTracked => OperationHelp {
-            title: "追跡中を退避 (stash)",
-            explanation: "Git が管理しているファイル (追跡中) の変更だけを棚 (stash) に退避します。新しく作ったファイルは残ります",
+            title: i18n::tc!("git operation", "Stash Tracked"),
+            explanation: i18n::t!(
+                "Puts only the changes to files Git manages (tracked) away on the shelf (the stash). Newly created files are kept"
+            ),
             caution: None,
         },
         PanelOperation::StashStaged => OperationHelp {
-            title: "ステージ済みを退避 (stash --staged)",
-            explanation: "ステージした変更だけを棚 (stash) に退避します。ステージしていない変更はファイルに残ります",
+            title: i18n::tc!("git operation", "Stash Staged (stash --staged)"),
+            explanation: i18n::t!(
+                "Puts only the staged changes away on the shelf (the stash). Unstaged changes stay in the files"
+            ),
             caution: None,
         },
         PanelOperation::StashPop => OperationHelp {
-            title: "スタッシュをポップ (stash pop)",
-            explanation: "棚 (stash) に最後に退避した変更をファイルに戻し、棚からは消します",
-            caution: Some(STASH_POP_CAUTION),
+            title: i18n::tc!("git operation", "Stash Pop"),
+            explanation: i18n::t!(
+                "Puts the changes last put on the shelf (the stash) back into the files and removes them from the shelf"
+            ),
+            caution: Some(stash_pop_caution()),
         },
         PanelOperation::ViewStash => OperationHelp {
-            title: "スタッシュを表示 (stash list)",
-            explanation: "棚 (stash) に退避した変更の一覧を開きます。中身を見る・取り出す・捨てるができます",
+            title: i18n::tc!("git operation", "View Stash List (stash list)"),
+            explanation: i18n::t!(
+                "Opens the list of changes put on the shelf (the stash), where you can look inside, pop or drop them"
+            ),
             caution: None,
         },
         PanelOperation::CopyPath => OperationHelp {
-            title: "パスをコピー",
-            explanation: "ファイルの場所をフルパス (絶対パス) でクリップボードにコピーします",
+            title: i18n::tc!("git operation", "Copy Path"),
+            explanation: i18n::t!(
+                "Copies the file's location as a full (absolute) path to the clipboard"
+            ),
             caution: None,
         },
         PanelOperation::CopyRelativePath => OperationHelp {
-            title: "相対パスをコピー",
-            explanation: "ファイルの場所をプロジェクトのフォルダーから見た相対パスでクリップボードにコピーします",
+            title: i18n::tc!("git operation", "Copy Relative Path"),
+            explanation: i18n::t!(
+                "Copies the file's location as a path relative to the project folder to the clipboard"
+            ),
             caution: None,
         },
         PanelOperation::TrashUntrackedFiles => OperationHelp {
-            title: "未追跡ファイルをゴミ箱へ",
-            explanation: "Git がまだ管理していない新しいファイル (未追跡) を、OS のゴミ箱へ移します。ゴミ箱からは戻せます",
-            caution: Some("Git の履歴には無いので、ゴミ箱を空にすると戻せません"),
+            title: i18n::tc!("git operation", "Move Untracked Files to Trash"),
+            explanation: i18n::t!(
+                "Moves new files Git does not manage yet (untracked) to the system trash. They can be restored from the trash"
+            ),
+            caution: Some(i18n::t!(
+                "Git's history has no copy of them, so once the trash is emptied they cannot be restored"
+            )),
         },
         PanelOperation::CreatePatch => OperationHelp {
-            title: "パッチファイルを作成 (diff)",
-            explanation: "変更点だけを書いたテキスト (パッチ) をファイルに書き出します。作業ツリー / ステージ済み / 直近のコミットから選べます。ファイル自体は変わりません",
+            title: i18n::tc!("git operation", "Create Patch File (diff)"),
+            explanation: i18n::t!(
+                "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
+            ),
             caution: None,
         },
         PanelOperation::ApplyPatch => OperationHelp {
-            title: "パッチファイルを適用 (apply)",
-            explanation: "パッチファイルに書かれた変更を今のファイルに当てます。コミットはされないので、確かめてからコミットします",
+            title: i18n::tc!("git operation", "Apply Patch File (apply)"),
+            explanation: i18n::t!(
+                "Applies the changes written in a patch file to your current files. Nothing is committed, so check the result before you commit"
+            ),
             caution: None,
         },
         PanelOperation::InitRepository => OperationHelp {
-            title: "リポジトリを初期化 (init)",
-            explanation: "このフォルダーで Git を使い始めます (.git フォルダーを作ります)。今あるファイルは変わりません",
+            title: i18n::tc!("git operation", "Initialize Repository (init)"),
+            explanation: i18n::t!(
+                "Starts using Git in this folder (creates a .git folder). The existing files do not change"
+            ),
             caution: None,
         },
         PanelOperation::ShowGuide => OperationHelp {
-            title: "Git の操作ガイド",
-            explanation: "Git の用語と、よく使う操作の手順を説明するガイドを開きます",
+            title: i18n::tc!("git operation", "Git Guide"),
+            explanation: i18n::t!(
+                "Opens a guide that explains Git's terms and the steps of common operations"
+            ),
             caution: None,
         },
         PanelOperation::ViewOptions => OperationHelp {
-            title: "表示オプション",
-            explanation: "変更の一覧の見せ方 (リスト / ツリー、並び順、グループ分け) を変えます。ファイルには何もしません",
+            title: i18n::tc!("git operation", "View Options"),
+            explanation: i18n::t!(
+                "Changes how the list of changes is shown (list or tree, sort order, grouping). Does nothing to the files"
+            ),
             caution: None,
         },
         PanelOperation::ListView => OperationHelp {
-            title: "リスト表示",
-            explanation: "変更したファイルをフォルダーに分けず 1 列に並べます",
+            title: i18n::tc!("git operation", "List View"),
+            explanation: i18n::t!(
+                "Shows the changed files in a single column, without splitting them by folder"
+            ),
             caution: None,
         },
         PanelOperation::TreeView => OperationHelp {
-            title: "ツリー表示",
-            explanation: "変更したファイルをフォルダーの階層ごとにまとめて、開いたり閉じたりできるように表示します",
+            title: i18n::tc!("git operation", "Tree View"),
+            explanation: i18n::t!(
+                "Groups the changed files by folder hierarchy, with folders you can expand and collapse"
+            ),
             caution: None,
         },
         PanelOperation::SortByPath => OperationHelp {
-            title: "パス順",
-            explanation: "フォルダーを含めた場所 (パス) の順に並べます。同じフォルダーのファイルが隣り合います",
+            title: i18n::tc!("git operation", "Sort by Path"),
+            explanation: i18n::t!(
+                "Sorts by location, folders included (the path). Files in the same folder end up next to each other"
+            ),
             caution: None,
         },
         PanelOperation::SortByName => OperationHelp {
-            title: "名前順",
-            explanation: "フォルダーは気にせず、ファイル名の順に並べます",
+            title: i18n::tc!("git operation", "Sort by Name"),
+            explanation: i18n::t!("Sorts by file name, regardless of the folder"),
             caution: None,
         },
         PanelOperation::GroupByNone => OperationHelp {
-            title: "グループなし",
-            explanation: "すべての変更を分けずに 1 つの一覧にまとめます",
+            title: i18n::tc!("git operation", "No Grouping"),
+            explanation: i18n::t!("Puts all changes together in one list, without splitting them"),
             caution: None,
         },
         PanelOperation::GroupByStatus => OperationHelp {
-            title: "追跡中と未追跡で分ける",
-            explanation: "Git が管理しているファイル (追跡中) と、まだ管理していない新しいファイル (未追跡) に分けて並べます",
+            title: i18n::tc!("git operation", "Group by Tracked and Untracked"),
+            explanation: i18n::t!(
+                "Separates the files Git manages (tracked) from the new files it does not manage yet (untracked)"
+            ),
             caution: None,
         },
         PanelOperation::GroupByStaging => OperationHelp {
-            title: "ステージ済みと未ステージで分ける",
-            explanation: "次のコミットに入れる印を付けた変更 (ステージ済み) と、まだ付けていない変更 (未ステージ) に分けて並べます",
+            title: i18n::tc!("git operation", "Group by Staged and Unstaged"),
+            explanation: i18n::t!(
+                "Separates the changes marked to go into the next commit (staged) from the changes not marked yet (unstaged)"
+            ),
             caution: None,
         },
         PanelOperation::Commit => OperationHelp {
-            title: "コミット (commit)",
-            explanation: "ステージした変更を、メッセージ付きの 1 つの記録 (コミット) として保存します。ステージが無いときは追跡中の変更を全部入れます",
+            title: i18n::tc!("git operation", "Commit"),
+            explanation: i18n::t!(
+                "Saves the staged changes as a single record with a message (a commit). With nothing staged, all tracked changes go in"
+            ),
             caution: None,
         },
         PanelOperation::Amend => OperationHelp {
-            title: "直前のコミットを修正 (amend)",
-            explanation: "次のコミットで新しいコミットを足す代わりに、直前のコミットを今の変更とメッセージで作り直します",
-            caution: Some(PUSHED_COMMIT_CAUTION),
+            title: i18n::tc!("git operation", "Amend Last Commit"),
+            explanation: i18n::t!(
+                "Instead of adding a new commit, the next commit rebuilds the last commit from the current changes and message"
+            ),
+            caution: Some(pushed_commit_caution()),
         },
         PanelOperation::Signoff => OperationHelp {
-            title: "サインオフ (signoff)",
-            explanation: "コミットメッセージの最後に「Signed-off-by: 名前 <メール>」の行を足します。プロジェクトの決まりで求められたときに使います",
+            title: i18n::tc!("git operation", "Signoff"),
+            explanation: i18n::t!(
+                "Adds a \"Signed-off-by: name <email>\" line at the end of the commit message. Use it when the project's rules ask for it"
+            ),
             caution: None,
         },
         PanelOperation::SkipHooks => OperationHelp {
-            title: "フックをスキップ (--no-verify)",
-            explanation: "コミットの前に自動で走るチェック (フック) を飛ばしてコミットします",
-            caution: Some("チェックで止まるはずの問題がそのまま入ることがあります"),
+            title: i18n::tc!("git operation", "Skip Hooks (--no-verify)"),
+            explanation: i18n::t!(
+                "Commits without the checks that run automatically before a commit (hooks)"
+            ),
+            caution: Some(i18n::t!(
+                "Problems the checks would have stopped can get into the commit"
+            )),
         },
         PanelOperation::Uncommit => OperationHelp {
-            title: "コミットを取り消す (reset --soft)",
-            explanation: "直前のコミットを取り消して、その変更をステージされた未コミットの状態に戻します。ファイルの中身は変わりません",
-            caution: Some(PUSHED_COMMIT_CAUTION),
+            title: i18n::tc!("git operation", "Uncommit (reset --soft)"),
+            explanation: i18n::t!(
+                "Undoes the last commit and returns its changes to the staged, uncommitted state. The files' contents do not change"
+            ),
+            caution: Some(pushed_commit_caution()),
         },
         PanelOperation::CoAuthors => OperationHelp {
-            title: "共同作成者 (Co-authored-by)",
-            explanation: "一緒に作業した人の名前を、コミットメッセージの「Co-authored-by」の行で残します",
+            title: i18n::tc!("git operation", "Co-Authors (Co-authored-by)"),
+            explanation: i18n::t!(
+                "Records the names of the people you worked with in \"Co-authored-by\" lines of the commit message"
+            ),
             caution: None,
         },
         PanelOperation::Fetch => OperationHelp {
-            title: "フェッチ (fetch)",
-            explanation: "リモート (共有先のサーバー) の最新を取ってくるだけです。自分のファイルやブランチは変わりません",
+            title: i18n::tc!("git operation", "Fetch"),
+            explanation: i18n::t!(
+                "Only downloads the latest from the remote (the shared server). Your files and branches do not change"
+            ),
             caution: None,
         },
         PanelOperation::FetchFrom => OperationHelp {
-            title: "取得元を指定してフェッチ (fetch)",
-            explanation: "登録しているリモートから 1 つを選んで、その最新を取ってくるだけです。ファイルは変わりません",
+            title: i18n::tc!("git operation", "Fetch From (fetch)"),
+            explanation: i18n::t!(
+                "Picks one of the registered remotes and only downloads its latest. The files do not change"
+            ),
             caution: None,
         },
         PanelOperation::Pull => OperationHelp {
-            title: "プル (pull)",
-            explanation: "リモートの最新を取ってきて、今のブランチに取り込みます (フェッチ + マージ。git の設定 pull.rebase があれば、それに従ってリベースします)",
-            caution: Some(CONFLICT_CAUTION),
+            title: i18n::tc!("git operation", "Pull"),
+            explanation: i18n::t!(
+                "Downloads the latest from the remote and brings it into the current branch (fetch + merge; when the git setting pull.rebase is set, it rebases as that says)"
+            ),
+            caution: Some(conflict_caution()),
         },
         PanelOperation::PullRebase => OperationHelp {
-            title: "リベースしてプル (pull --rebase)",
-            explanation: "リモートの最新を取り込み、まだ送っていない自分のコミットをその後ろに付け直します。履歴が一直線になります",
-            caution: Some("付け直した自分のコミットの SHA が変わります"),
+            title: i18n::tc!("git operation", "Pull with Rebase (pull --rebase)"),
+            explanation: i18n::t!(
+                "Brings in the latest from the remote and replays your commits that were not pushed yet on top of it. History stays in a straight line"
+            ),
+            caution: Some(i18n::t!("The replayed commits of yours get new SHAs")),
         },
         PanelOperation::Push => OperationHelp {
-            title: "プッシュ (push)",
-            explanation: "自分のコミットをリモートへ送ります。コミットしていない変更は送られません",
+            title: i18n::tc!("git operation", "Push"),
+            explanation: i18n::t!(
+                "Sends your commits to the remote. Changes you have not committed are not sent"
+            ),
             caution: None,
         },
         PanelOperation::PushTo => OperationHelp {
-            title: "プッシュ先を指定してプッシュ (push)",
-            explanation: "送り先のリモートを選んでから、自分のコミットを送ります",
+            title: i18n::tc!("git operation", "Push To (push)"),
+            explanation: i18n::t!("Chooses the remote to send to, then sends your commits"),
             caution: None,
         },
         PanelOperation::ForcePush => OperationHelp {
-            title: "強制プッシュ (push --force-with-lease)",
-            explanation: "リモートのブランチを自分の履歴で上書きします。最後にフェッチした後に他の人が送ったコミットがあれば止まります",
-            caution: Some("上書きされた側のコミットはリモートのブランチから消えます"),
+            title: i18n::tc!("git operation", "Force Push (push --force-with-lease)"),
+            explanation: i18n::t!(
+                "Overwrites the remote branch with your history. Stops if someone else pushed commits after your last fetch"
+            ),
+            caution: Some(i18n::t!(
+                "The overwritten commits disappear from the remote branch"
+            )),
         },
         PanelOperation::ForcePushWithoutLease => OperationHelp {
-            title: "強制プッシュ (lease なし, push --force)",
-            explanation: "確かめずに、リモートのブランチを自分の履歴で上書きします",
-            caution: Some(
-                "強制プッシュは相手の変更を消すことがあります。他の人が送ったコミットも黙って消えます",
+            title: i18n::tc!("git operation", "Force Push Without Lease (push --force)"),
+            explanation: i18n::t!(
+                "Overwrites the remote branch with your history, without checking"
             ),
+            caution: Some(i18n::t!(
+                "A force push can erase other people's changes. Commits others pushed disappear without a word"
+            )),
         },
         PanelOperation::Publish => OperationHelp {
-            title: "発行 (push --set-upstream)",
-            explanation: "このブランチをリモートに初めて送り、以後のプッシュ / プルの相手として結び付けます",
+            title: i18n::tc!("git operation", "Publish (push --set-upstream)"),
+            explanation: i18n::t!(
+                "Sends this branch to the remote for the first time and links it as the branch to push to and pull from from now on"
+            ),
             caution: None,
         },
         PanelOperation::Republish => OperationHelp {
-            title: "再発行 (push --set-upstream)",
-            explanation: "リモートで消えたブランチを、もう一度リモートに送って結び付け直します",
+            title: i18n::tc!("git operation", "Republish (push --set-upstream)"),
+            explanation: i18n::t!(
+                "Sends a branch that disappeared from the remote there again and links it again"
+            ),
             caution: None,
         },
         PanelOperation::Merge => OperationHelp {
-            title: "ブランチをマージ (merge)",
-            explanation: "選んだブランチの変更を今のブランチに取り込みます。両方の履歴が残ります。今のブランチにも新しいコミットがあれば、合流したコミット (マージコミット) ができます",
-            caution: Some(CONFLICT_CAUTION),
+            title: i18n::tc!("git operation", "Merge Branch"),
+            explanation: i18n::t!(
+                "Brings the chosen branch's changes into the current branch. Both histories are kept. If the current branch has new commits too, a commit that joins the two (a merge commit) is created"
+            ),
+            caution: Some(conflict_caution()),
         },
         PanelOperation::ResetToRemote => OperationHelp {
-            title: "リモートに強制的に合わせる (reset --hard)",
-            explanation: "リモートをフェッチしてから、今のブランチをリモートのブランチと同じ内容にします",
-            caution: Some(
-                "未コミットの変更と、リモートに無い自分のコミットは捨てられ、元に戻せません",
+            title: i18n::tc!("git operation", "Reset to Remote (reset --hard)"),
+            explanation: i18n::t!(
+                "Fetches the remote, then makes the current branch the same as the remote branch"
             ),
+            caution: Some(i18n::t!(
+                "Uncommitted changes and your commits that are not on the remote are thrown away and cannot be undone"
+            )),
         },
         PanelOperation::AddRemote => OperationHelp {
-            title: "リモートを追加 (remote add)",
-            explanation: "送り先 / 取得元のサーバー (リモート) を、名前と URL で登録します",
+            title: i18n::tc!("git operation", "Add Remote (remote add)"),
+            explanation: i18n::t!(
+                "Registers a server to push to and fetch from (a remote) by name and URL"
+            ),
             caution: None,
         },
         PanelOperation::RemoveRemote => OperationHelp {
-            title: "リモートを削除 (remote remove)",
-            explanation: "登録したリモートを外します。手元にある、そのリモートのブランチの記録も消えます。サーバー上のデータは消えません",
+            title: i18n::tc!("git operation", "Remove Remote (remote remove)"),
+            explanation: i18n::t!(
+                "Unregisters a remote. Your local record of that remote's branches goes too. The data on the server is not deleted"
+            ),
             caution: None,
         },
         PanelOperation::StageFile => OperationHelp {
-            title: "ファイルをステージ (stage)",
-            explanation: "このファイルの変更に、次のコミットに入れる印を付けます。ファイルの中身は変わりません",
+            title: i18n::tc!("git operation", "Stage File"),
+            explanation: i18n::t!(
+                "Marks this file's changes to go into the next commit. The file's contents do not change"
+            ),
             caution: None,
         },
         PanelOperation::UnstageFile => OperationHelp {
-            title: "ファイルをアンステージ (unstage)",
-            explanation: "このファイルのステージの印を外します。変更はファイルに残ります",
+            title: i18n::tc!("git operation", "Unstage File"),
+            explanation: i18n::t!("Removes this file's stage mark. The changes stay in the file"),
             caution: None,
         },
         PanelOperation::DiscardFileChanges => OperationHelp {
-            title: "変更を破棄 (restore)",
-            explanation: "このファイルの変更を破棄し、最後のコミットの内容に戻します",
-            caution: Some(UNDO_UNAVAILABLE_CAUTION),
+            title: i18n::tc!("git operation", "Discard Changes (restore)"),
+            explanation: i18n::t!(
+                "Discards this file's changes and returns it to its content in the last commit"
+            ),
+            caution: Some(undo_unavailable_caution()),
         },
         PanelOperation::TrashNewFile => OperationHelp {
-            title: "ファイルをゴミ箱へ",
-            explanation: "まだ一度もコミットしていない新しいファイルを、OS のゴミ箱へ移します。ゴミ箱からは戻せます",
-            caution: Some("Git の履歴には無いので、ゴミ箱を空にすると戻せません"),
+            title: i18n::tc!("git operation", "Move File to Trash"),
+            explanation: i18n::t!(
+                "Moves a new file that was never committed to the system trash. It can be restored from the trash"
+            ),
+            caution: Some(i18n::t!(
+                "Git's history has no copy of it, so once the trash is emptied it cannot be restored"
+            )),
         },
         PanelOperation::RestoreDeletedFile => OperationHelp {
-            title: "ファイルを元に戻す (restore)",
-            explanation: "削除したファイルを、最後のコミットの内容で復元します",
+            title: i18n::tc!("git operation", "Restore File (restore)"),
+            explanation: i18n::t!("Brings a deleted file back with its content in the last commit"),
             caution: None,
         },
         PanelOperation::ViewUnstagedChanges => OperationHelp {
-            title: "未ステージの変更",
-            explanation: "まだステージしていない (次のコミットに入らない) 変更だけを差分で表示します",
+            title: i18n::tc!("git operation", "Unstaged Changes"),
+            explanation: i18n::t!(
+                "Shows a diff of only the changes not staged yet (which do not go into the next commit)"
+            ),
             caution: None,
         },
         PanelOperation::ViewStagedChanges => OperationHelp {
-            title: "ステージ済みの変更",
-            explanation: "ステージした (次のコミットに入る) 変更だけを差分で表示します",
+            title: i18n::tc!("git operation", "Staged Changes"),
+            explanation: i18n::t!(
+                "Shows a diff of only the staged changes (which go into the next commit)"
+            ),
             caution: None,
         },
         PanelOperation::AddToGitignore => OperationHelp {
-            title: ".gitignore に追加",
-            explanation: "このファイルを、リポジトリの一番上にある無視リスト (.gitignore) に書き足し、変更の一覧に出ないようにします。.gitignore の変更もコミットすれば、他の人にも効きます",
+            title: i18n::tc!("git operation", "Add to .gitignore"),
+            explanation: i18n::t!(
+                "Adds this file to the ignore list at the top of the repository (.gitignore), so that it no longer shows among the changes. Once the .gitignore change is committed, it applies to others too"
+            ),
             caution: None,
         },
         PanelOperation::AddToGitInfoExclude => OperationHelp {
-            title: ".git/info/exclude に追加",
-            explanation: "このファイルを自分の手元だけの無視リスト (.git/info/exclude) に書き足します。コミットされず、他の人には効きません",
+            title: i18n::tc!("git operation", "Add to .git/info/exclude"),
+            explanation: i18n::t!(
+                "Adds this file to your own local ignore list (.git/info/exclude). It is not committed and does not apply to others"
+            ),
             caution: None,
         },
         PanelOperation::OpenDiff => OperationHelp {
-            title: "差分を開く",
-            explanation: "変更をまとめて見るタブで、このファイルの変更前と変更後の違い (差分) を開きます",
+            title: i18n::tc!("git operation", "Open Diff"),
+            explanation: i18n::t!(
+                "Opens the difference between this file before and after the change (the diff) in the tab that shows all changes together"
+            ),
             caution: None,
         },
         PanelOperation::OpenFileDiff => OperationHelp {
-            title: "ファイルの差分を開く",
-            explanation: "このファイルだけの差分 (変更前と変更後の違い) を別のタブで開きます",
+            title: i18n::tc!("git operation", "Open File Diff"),
+            explanation: i18n::t!(
+                "Opens a diff of just this file (before and after the change) in a tab of its own"
+            ),
             caution: None,
         },
         PanelOperation::ViewFile => OperationHelp {
-            title: "ファイルを表示",
-            explanation: "差分ではなく、今のファイルそのものをエディターで開きます",
+            title: i18n::tc!("git operation", "View File"),
+            explanation: i18n::t!(
+                "Opens the current file itself in the editor, rather than the diff"
+            ),
             caution: None,
         },
         PanelOperation::FileHistory => OperationHelp {
-            title: "ファイルの履歴 (log)",
-            explanation: "このファイルを変えたコミットの一覧を、新しい順に開きます",
+            title: i18n::tc!("git operation", "File History (log)"),
+            explanation: i18n::t!("Opens the list of commits that changed this file, newest first"),
             caution: None,
         },
         PanelOperation::StageFolder => OperationHelp {
-            title: "フォルダーをステージ (stage)",
-            explanation: "このフォルダーの中の変更を全部、次のコミットに入れる印を付けます",
+            title: i18n::tc!("git operation", "Stage Folder"),
+            explanation: i18n::t!("Marks every change in this folder to go into the next commit"),
             caution: None,
         },
         PanelOperation::UnstageFolder => OperationHelp {
-            title: "フォルダーをアンステージ (unstage)",
-            explanation: "このフォルダーの中のステージの印を全部外します。変更はファイルに残ります",
+            title: i18n::tc!("git operation", "Unstage Folder"),
+            explanation: i18n::t!(
+                "Removes every stage mark in this folder. The changes stay in the files"
+            ),
             caution: None,
         },
         PanelOperation::StageSection => OperationHelp {
-            title: "見出しの中をすべてステージ (stage)",
-            explanation: "この見出しの下にある変更を全部、次のコミットに入れる印を付けます",
+            title: i18n::tc!("git operation", "Stage All in Section"),
+            explanation: i18n::t!(
+                "Marks every change under this heading to go into the next commit"
+            ),
             caution: None,
         },
         PanelOperation::UnstageSection => OperationHelp {
-            title: "見出しの中をすべてアンステージ (unstage)",
-            explanation: "この見出しの下にある変更のステージの印を全部外します。変更はファイルに残ります",
+            title: i18n::tc!("git operation", "Unstage All in Section"),
+            explanation: i18n::t!(
+                "Removes the stage marks of every change under this heading. The changes stay in the files"
+            ),
             caution: None,
         },
         PanelOperation::ShowDiff => OperationHelp {
-            title: "差分を表示 (diff)",
-            explanation: "未コミットの変更の差分 (変更前と変更後の違い) を、1 つのタブにまとめて表示します",
+            title: i18n::tc!("git operation", "Show Diff"),
+            explanation: i18n::t!(
+                "Shows the diff (before and after) of the uncommitted changes together in one tab"
+            ),
             caution: None,
         },
         PanelOperation::TrustDirectory => OperationHelp {
-            title: "ディレクトリを信頼 (safe.directory)",
-            explanation: "持ち主が別のユーザーのフォルダーでも、Git で扱ってよい場所として登録します",
-            caution: Some("自分のユーザーの Git 設定全体 (--global) に書き込みます"),
+            title: i18n::tc!("git operation", "Trust Directory (safe.directory)"),
+            explanation: i18n::t!(
+                "Registers a folder owned by another user as a place Git may work in"
+            ),
+            caution: Some(i18n::t!(
+                "Writes to your user's Git settings as a whole (--global)"
+            )),
         },
         PanelOperation::SwitchBranch => OperationHelp {
-            title: "ブランチを切り替え (switch)",
-            explanation: "作業するブランチ (作業の枝) を選び替えます。ファイルがそのブランチの内容になります",
+            title: i18n::tc!("git operation", "Switch Branch"),
+            explanation: i18n::t!(
+                "Picks another branch (a line of work) to work on. The files change to that branch's content"
+            ),
             caution: None,
         },
         PanelOperation::SequencerContinue => OperationHelp {
-            title: "続行 (--continue)",
-            explanation: "コンフリクトを解決してステージした状態で、途中で止まった操作の残りを進めます",
+            title: i18n::tc!("git operation", "Continue (--continue)"),
+            explanation: i18n::t!(
+                "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
+            ),
             caution: None,
         },
         PanelOperation::SequencerSkip => OperationHelp {
-            title: "スキップ (--skip)",
-            explanation: "今止まっているコミットを飛ばして、次のコミットへ進みます",
-            caution: Some("飛ばしたコミットの変更は取り込まれません"),
+            title: i18n::tc!("git operation", "Skip (--skip)"),
+            explanation: i18n::t!("Skips the commit it stopped at and moves on to the next commit"),
+            caution: Some(i18n::t!("The skipped commit's changes are not brought in")),
         },
         PanelOperation::SequencerAbort => OperationHelp {
-            title: "中止 (--abort)",
-            explanation: "操作をやめて、始める前の状態に戻します",
-            caution: Some("途中で解決した内容は捨てられます"),
+            title: i18n::tc!("git operation", "Abort (--abort)"),
+            explanation: i18n::t!(
+                "Gives up the operation and returns to the state before it started"
+            ),
+            caution: Some(i18n::t!(
+                "Whatever you resolved along the way is thrown away"
+            )),
         },
         PanelOperation::ToggleHunkStaged => OperationHelp {
-            title: "ステージ状態を切り替え",
-            explanation: "選んだ変更箇所 (ハンク: ひとまとまりの変更) のステージの印を、付けたり外したりします",
+            title: i18n::tc!("git operation", "Toggle Staged"),
+            explanation: i18n::t!(
+                "Adds or removes the stage mark of the chosen change (hunk: one block of changes)"
+            ),
             caution: None,
         },
         PanelOperation::StageHunk => OperationHelp {
-            title: "変更箇所をステージ (stage)",
-            explanation: "この変更箇所 (ハンク: ひとまとまりの変更) だけに、次のコミットに入れる印を付けます。ファイルの中身は変わりません",
+            title: i18n::tc!("git operation", "Stage Hunk"),
+            explanation: i18n::t!(
+                "Marks only this change (hunk: one block of changes) to go into the next commit. The file's contents do not change"
+            ),
             caution: None,
         },
         PanelOperation::UnstageHunk => OperationHelp {
-            title: "変更箇所をアンステージ (unstage)",
-            explanation: "この変更箇所 (ハンク) のステージの印を外します。変更はファイルに残ります",
+            title: i18n::tc!("git operation", "Unstage Hunk"),
+            explanation: i18n::t!(
+                "Removes the stage mark of this change (hunk). The change stays in the file"
+            ),
             caution: None,
         },
         PanelOperation::RestoreHunk => OperationHelp {
-            title: "変更箇所を元に戻す (restore)",
-            explanation: "この変更箇所 (ハンク) の編集を取り消し、ファイルをステージ済みの内容に戻します",
-            caution: Some(DISCARD_UNSTAGED_CAUTION),
+            title: i18n::tc!("git operation", "Restore Hunk (restore)"),
+            explanation: i18n::t!(
+                "Undoes the edits in this change (hunk) and returns the file to its staged content"
+            ),
+            caution: Some(discard_unstaged_caution()),
         },
         PanelOperation::RestoreAllUnstaged => OperationHelp {
-            title: "すべて元に戻す (restore)",
-            explanation: "ステージしていない変更を全部取り消し、ファイルをステージ済みの内容に戻します。新しく作ったファイルは残ります",
-            caution: Some(DISCARD_UNSTAGED_CAUTION),
+            title: i18n::tc!("git operation", "Restore All (restore)"),
+            explanation: i18n::t!(
+                "Undoes every unstaged change and returns the files to their staged content. Newly created files are kept"
+            ),
+            caution: Some(discard_unstaged_caution()),
         },
         PanelOperation::ViewStashEntry => OperationHelp {
-            title: "スタッシュを表示",
-            explanation: "棚 (stash) に退避したこの変更の中身を、差分で表示します。取り出しはしません",
+            title: i18n::tc!("git operation", "View Stash"),
+            explanation: i18n::t!(
+                "Shows what these changes put on the shelf (the stash) contain, as a diff. Does not pop them"
+            ),
             caution: None,
         },
         PanelOperation::PopStashEntry => OperationHelp {
-            title: "スタッシュを取り出す (stash pop)",
-            explanation: "棚 (stash) に退避したこの変更をファイルに戻し、棚からは消します",
-            caution: Some(STASH_POP_CAUTION),
+            title: i18n::tc!("git operation", "Pop This Stash (stash pop)"),
+            explanation: i18n::t!(
+                "Puts these changes from the shelf (the stash) back into the files and removes them from the shelf"
+            ),
+            caution: Some(stash_pop_caution()),
         },
         PanelOperation::DropStashEntry => OperationHelp {
-            title: "スタッシュを破棄 (stash drop)",
-            explanation: "棚 (stash) に退避したこの変更を、ファイルに戻さずに捨てます",
-            caution: Some(UNDO_UNAVAILABLE_CAUTION),
+            title: i18n::tc!("git operation", "Drop Stash (stash drop)"),
+            explanation: i18n::t!(
+                "Throws away these changes on the shelf (the stash) without putting them back into the files"
+            ),
+            caution: Some(undo_unavailable_caution()),
         },
         PanelOperation::FilterBranches => OperationHelp {
-            title: "ブランチを絞り込み",
-            explanation: "一覧に出すブランチを、すべて / 手元 (ローカル) / サーバー側 (リモート) から選びます",
+            title: i18n::tc!("git operation", "Filter Branches"),
+            explanation: i18n::t!(
+                "Chooses the branches the list shows: all, yours (local) or the server's (remote)"
+            ),
             caution: None,
         },
         PanelOperation::ShowAllBranches => OperationHelp {
-            title: "すべてのブランチ",
-            explanation: "手元のブランチ (ローカル) と、サーバーにあるブランチの写し (リモート) を両方出します",
+            title: i18n::tc!("git operation", "All Branches"),
+            explanation: i18n::t!(
+                "Shows both your branches (local) and the copies of the server's branches (remote)"
+            ),
             caution: None,
         },
         PanelOperation::ShowLocalBranches => OperationHelp {
-            title: "ローカルブランチ",
-            explanation: "手元のリポジトリにあるブランチだけを出します。コミットできるのはこちらです",
+            title: i18n::tc!("git operation", "Local Branches"),
+            explanation: i18n::t!(
+                "Shows only the branches in your repository. These are the ones you can commit to"
+            ),
             caution: None,
         },
         PanelOperation::ShowRemoteBranches => OperationHelp {
-            title: "リモートブランチ",
-            explanation: "最後のフェッチで取ってきた、サーバー側のブランチの写し (origin/... など) だけを出します",
+            title: i18n::tc!("git operation", "Remote Branches"),
+            explanation: i18n::t!(
+                "Shows only the copies of the server's branches that the last fetch brought in (origin/… and so on)"
+            ),
             caution: None,
         },
         PanelOperation::DeleteBranch => OperationHelp {
-            title: "ブランチを削除 (branch -d)",
-            explanation: "手元のブランチを消します。今のブランチ (または追跡先) に取り込まれていないコミットがあると止まり、強制削除するかを尋ねます。リモートブランチなら手元の写しだけが消え、サーバーのブランチは残ります",
+            title: i18n::tc!("git operation", "Delete Branch (branch -d)"),
+            explanation: i18n::t!(
+                "Deletes a local branch. If it has commits that are not in the current branch (or its upstream), it stops and asks whether to force delete. For a remote branch only your local copy goes; the branch on the server stays"
+            ),
             caution: None,
         },
         PanelOperation::ForceDeleteBranch => OperationHelp {
-            title: "ブランチを強制削除 (branch -D)",
-            explanation: "取り込んでいないコミットがあっても、手元のブランチを消します",
-            caution: Some("そのブランチにしか無いコミットは見えなくなります"),
+            title: i18n::tc!("git operation", "Force Delete Branch (branch -D)"),
+            explanation: i18n::t!(
+                "Deletes a local branch even if it has commits that were not merged"
+            ),
+            caution: Some(i18n::t!(
+                "Commits that are only on that branch can no longer be seen"
+            )),
         },
         PanelOperation::CreateBranchFromDefault => OperationHelp {
-            title: "既定のブランチから新規作成",
-            explanation: "今のブランチではなく、既定のブランチ (main など) を出発点に新しいブランチを作ります",
+            title: i18n::tc!("git operation", "Create from Default Branch"),
+            explanation: i18n::t!(
+                "Creates a new branch starting from the default branch (main, for example) instead of the current branch"
+            ),
             caution: None,
         },
         PanelOperation::UseOurs => OperationHelp {
-            title: "上側を使用 (ours)",
-            explanation: "競合した箇所を、印の上側 (<<<<<<< の側、ours) の内容だけにします。下側の内容は捨てます。マージ中は今いるブランチ側、リベース中は付け直し先のブランチ側です",
+            title: i18n::tc!("git operation", "Use Ours"),
+            explanation: i18n::t!(
+                "Resolves the conflict with only the upper side (the <<<<<<< side, ours). The lower side is thrown away. During a merge that is the branch you are on; during a rebase, the branch being rebased onto"
+            ),
             caution: None,
         },
         PanelOperation::UseTheirs => OperationHelp {
-            title: "下側を使用 (theirs)",
-            explanation: "競合した箇所を、印の下側 (>>>>>>> の側、theirs) の内容だけにします。上側の内容は捨てます。マージ中は取り込もうとしている相手側、リベース中は付け直している自分のコミット側です",
+            title: i18n::tc!("git operation", "Use Theirs"),
+            explanation: i18n::t!(
+                "Resolves the conflict with only the lower side (the >>>>>>> side, theirs). The upper side is thrown away. During a merge that is the side being merged in; during a rebase, your commit being replayed"
+            ),
             caution: None,
         },
         PanelOperation::UseBoth => OperationHelp {
-            title: "両方を使用",
-            explanation: "競合した箇所に、上側 (ours) と下側 (theirs) の内容を両方、上下に並べて残します",
+            title: i18n::tc!("git operation", "Use Both"),
+            explanation: i18n::t!(
+                "Keeps both the upper side (ours) and the lower side (theirs) of the conflict, one above the other"
+            ),
             caution: None,
         },
     }
 }
 
-/// Why a greyed-out item of the Git panel's menus cannot be chosen.
-pub(crate) const NOTHING_TO_STAGE_REFUSAL: &str = "ステージする変更がありません";
-pub(crate) const NOTHING_TO_UNSTAGE_REFUSAL: &str = "ステージ済みの変更がありません";
-pub(crate) const NO_TRACKED_CHANGES_REFUSAL: &str = "追跡中のファイルに変更がありません";
+/// Why a greyed-out item of the Git panel's menus cannot be chosen. Translate them with
+/// `i18n::tr` where they are shown.
+pub(crate) const NOTHING_TO_STAGE_REFUSAL: &str = i18n::msg!("There are no changes to stage");
+pub(crate) const NOTHING_TO_UNSTAGE_REFUSAL: &str = i18n::msg!("There are no staged changes");
+pub(crate) const NO_TRACKED_CHANGES_REFUSAL: &str = i18n::msg!("No tracked file has changes");
 pub(crate) const NO_STAGED_TRACKED_CHANGES_REFUSAL: &str =
-    "ステージ済みの、追跡中のファイルの変更がありません";
-pub(crate) const NOTHING_TO_STASH_REFUSAL: &str = "退避する変更がありません";
-pub(crate) const NO_STASH_REFUSAL: &str = "棚 (stash) に退避した変更がありません";
-pub(crate) const NO_UNTRACKED_FILES_REFUSAL: &str = "未追跡のファイルがありません";
+    i18n::msg!("No tracked file has staged changes");
+pub(crate) const NOTHING_TO_STASH_REFUSAL: &str = i18n::msg!("There are no changes to stash");
+pub(crate) const NO_STASH_REFUSAL: &str =
+    i18n::msg!("Nothing has been put away on the shelf (the stash)");
+pub(crate) const NO_UNTRACKED_FILES_REFUSAL: &str = i18n::msg!("There are no untracked files");
 pub(crate) const ONLY_FOR_UNTRACKED_REFUSAL: &str =
-    "まだ Git が管理していない新しいファイル (未追跡) だけに使えます";
+    i18n::msg!("Only for new files Git does not manage yet (untracked)");
 
 /// The side of a Git panel menu that its side notes go on. The panel's menus open inside the
 /// panel, so a note on the side of the dock's window edge would run off the window. In the
@@ -821,12 +1070,39 @@ mod tests {
         let help = commit_operation_help(CommitMenuOperation::ResetHard);
         assert_eq!(
             help.sentence(),
+            "Resets the branch, discarding later and uncommitted changes. Caution: Uncommitted changes cannot be recovered."
+        );
+        assert!(help.line().starts_with("Reset: hard: "));
+        assert_eq!(
+            commit_operation_help(CommitMenuOperation::ResetSoft).sentence(),
+            "Moves only the branch back. The later changes stay staged and in the working tree."
+        );
+    }
+
+    /// The Japanese catalog puts the sentences together the way Japanese writes them: a full
+    /// stop of its own, and none after the caution.
+    #[test]
+    fn test_sentences_in_japanese() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let help = commit_operation_help(CommitMenuOperation::ResetHard);
+        assert_eq!(
+            help.sentence(),
             "ブランチを戻し、後の変更も未コミットの変更もまとめて捨てます。注意: 未コミットの変更は元に戻せません"
         );
-        assert!(help.line().starts_with("戻す: hard: "));
+        assert!(help.line().starts_with("戻す: hard: "), "{}", help.line());
         assert_eq!(
             commit_operation_help(CommitMenuOperation::ResetSoft).sentence(),
             "ブランチだけを戻します。後の変更はステージにも作業ツリーにもそのまま残ります。"
+        );
+        assert_eq!(
+            panel_operation_help(PanelOperation::Fetch).sentence_with_command("git fetch"),
+            "リモート (共有先のサーバー) の最新を取ってくるだけです。自分のファイルやブランチは変わりません。 (git fetch)"
+        );
+        assert_eq!(
+            panel_operation_help(PanelOperation::StageAll).title,
+            "すべてステージ (stage)"
         );
     }
 
@@ -835,26 +1111,18 @@ mod tests {
     #[test]
     fn test_each_operation_explains_itself() {
         let expectations = [
-            (
-                CommitMenuOperation::CreateBranch,
-                "ブランチ",
-                "新しいブランチ",
-            ),
-            (
-                CommitMenuOperation::Checkout,
-                "チェックアウト",
-                "detached HEAD",
-            ),
-            (CommitMenuOperation::CreateTag, "tag", "タグ"),
-            (CommitMenuOperation::CherryPick, "cherry-pick", "コピー"),
-            (CommitMenuOperation::Revert, "revert", "逆向き"),
-            (CommitMenuOperation::Reword, "reword", "説明文"),
-            (CommitMenuOperation::Fixup, "fixup", "未コミット"),
-            (CommitMenuOperation::Drop, "drop", "取り除き"),
-            (CommitMenuOperation::ResetSoft, "soft", "ブランチだけ"),
-            (CommitMenuOperation::ResetMixed, "mixed", "ステージだけ解除"),
-            (CommitMenuOperation::ResetHard, "hard", "捨て"),
-            (CommitMenuOperation::CopyTagDistance, "タグ", "git describe"),
+            (CommitMenuOperation::CreateBranch, "Branch", "new branch"),
+            (CommitMenuOperation::Checkout, "Check Out", "detached HEAD"),
+            (CommitMenuOperation::CreateTag, "Tag", "a tag"),
+            (CommitMenuOperation::CherryPick, "Cherry-Pick", "Copies"),
+            (CommitMenuOperation::Revert, "Revert", "in reverse"),
+            (CommitMenuOperation::Reword, "Reword", "message"),
+            (CommitMenuOperation::Fixup, "fixup", "uncommitted"),
+            (CommitMenuOperation::Drop, "Drop", "Removes this commit"),
+            (CommitMenuOperation::ResetSoft, "soft", "only the branch"),
+            (CommitMenuOperation::ResetMixed, "mixed", "unstages"),
+            (CommitMenuOperation::ResetHard, "hard", "discarding"),
+            (CommitMenuOperation::CopyTagDistance, "Tag", "git describe"),
         ];
         for (operation, in_title, in_explanation) in expectations {
             let help = commit_operation_help(operation);
@@ -873,158 +1141,194 @@ mod tests {
         use strum::IntoEnumIterator as _;
 
         let expectations = [
-            (PanelOperation::StageAll, "stage", "次のコミットに入れる印"),
-            (PanelOperation::UnstageAll, "unstage", "印を全部外"),
+            (
+                PanelOperation::StageAll,
+                "Stage",
+                "to go into the next commit",
+            ),
+            (PanelOperation::UnstageAll, "Unstage", "every stage mark"),
             (
                 PanelOperation::DiscardTrackedChanges,
-                "破棄",
-                "最後のコミットの内容",
+                "Discard",
+                "content in the last commit",
             ),
-            (PanelOperation::StashAll, "stash", "棚"),
-            (PanelOperation::StashTracked, "stash", "追跡中"),
+            (PanelOperation::StashAll, "Stash", "shelf"),
+            (PanelOperation::StashTracked, "Stash", "tracked"),
             (
                 PanelOperation::StashStaged,
                 "--staged",
-                "ステージした変更だけ",
+                "only the staged changes",
             ),
-            (PanelOperation::StashPop, "pop", "棚からは消"),
-            (PanelOperation::ViewStash, "stash list", "一覧"),
-            (PanelOperation::CopyPath, "パス", "フルパス"),
+            (
+                PanelOperation::StashPop,
+                "Pop",
+                "removes them from the shelf",
+            ),
+            (PanelOperation::ViewStash, "stash list", "list"),
+            (PanelOperation::CopyPath, "Path", "full (absolute) path"),
             (
                 PanelOperation::CopyRelativePath,
-                "相対パス",
-                "プロジェクトのフォルダー",
+                "Relative Path",
+                "project folder",
             ),
-            (PanelOperation::TrashUntrackedFiles, "ゴミ箱", "未追跡"),
-            (PanelOperation::CreatePatch, "パッチ", "書き出"),
-            (PanelOperation::ApplyPatch, "apply", "当て"),
-            (PanelOperation::InitRepository, "init", ".git フォルダー"),
-            (PanelOperation::ShowGuide, "ガイド", "用語"),
-            (PanelOperation::ViewOptions, "表示", "見せ方"),
-            (PanelOperation::ListView, "リスト", "1 列"),
-            (PanelOperation::TreeView, "ツリー", "階層"),
-            (PanelOperation::SortByPath, "パス", "場所 (パス) の順"),
-            (PanelOperation::SortByName, "名前", "ファイル名の順"),
-            (PanelOperation::GroupByNone, "なし", "1 つの一覧"),
+            (PanelOperation::TrashUntrackedFiles, "Trash", "untracked"),
+            (PanelOperation::CreatePatch, "Patch", "Writes"),
+            (PanelOperation::ApplyPatch, "apply", "Applies"),
+            (PanelOperation::InitRepository, "init", ".git folder"),
+            (PanelOperation::ShowGuide, "Guide", "terms"),
+            (PanelOperation::ViewOptions, "View", "how the list"),
+            (PanelOperation::ListView, "List", "single column"),
+            (PanelOperation::TreeView, "Tree", "hierarchy"),
+            (PanelOperation::SortByPath, "Path", "(the path)"),
+            (PanelOperation::SortByName, "Name", "file name"),
+            (PanelOperation::GroupByNone, "No Grouping", "one list"),
             (
                 PanelOperation::GroupByStatus,
-                "未追跡",
-                "まだ管理していない",
+                "Untracked",
+                "does not manage yet",
             ),
-            (
-                PanelOperation::GroupByStaging,
-                "未ステージ",
-                "印を付けた変更",
-            ),
-            (PanelOperation::Commit, "commit", "1 つの記録"),
-            (PanelOperation::Amend, "amend", "作り直し"),
-            (PanelOperation::Signoff, "signoff", "Signed-off-by"),
-            (PanelOperation::SkipHooks, "--no-verify", "フック"),
-            (PanelOperation::Uncommit, "取り消す", "未コミットの状態"),
+            (PanelOperation::GroupByStaging, "Unstaged", "changes marked"),
+            (PanelOperation::Commit, "Commit", "single record"),
+            (PanelOperation::Amend, "Amend", "rebuilds"),
+            (PanelOperation::Signoff, "Signoff", "Signed-off-by"),
+            (PanelOperation::SkipHooks, "--no-verify", "hooks"),
+            (PanelOperation::Uncommit, "Uncommit", "uncommitted state"),
             (
                 PanelOperation::CoAuthors,
                 "Co-authored-by",
-                "一緒に作業した人",
+                "people you worked with",
             ),
-            (PanelOperation::Fetch, "fetch", "取ってくるだけ"),
-            (PanelOperation::FetchFrom, "取得元", "1 つを選んで"),
-            (PanelOperation::Pull, "pull", "取り込み"),
-            (PanelOperation::PullRebase, "--rebase", "付け直し"),
-            (PanelOperation::Push, "push", "リモートへ送り"),
-            (PanelOperation::PushTo, "プッシュ先", "送り先"),
-            (PanelOperation::ForcePush, "--force-with-lease", "上書き"),
+            (PanelOperation::Fetch, "Fetch", "Only downloads"),
+            (PanelOperation::FetchFrom, "From", "Picks one"),
+            (PanelOperation::Pull, "Pull", "brings it into"),
+            (PanelOperation::PullRebase, "--rebase", "replays"),
+            (PanelOperation::Push, "Push", "Sends your commits"),
+            (PanelOperation::PushTo, "Push To", "remote to send to"),
+            (
+                PanelOperation::ForcePush,
+                "--force-with-lease",
+                "Overwrites",
+            ),
             (
                 PanelOperation::ForcePushWithoutLease,
                 "--force",
-                "確かめずに",
+                "without checking",
             ),
-            (PanelOperation::Publish, "--set-upstream", "初めて送り"),
-            (PanelOperation::Republish, "再発行", "消えたブランチ"),
-            (PanelOperation::Merge, "merge", "合流"),
-            (PanelOperation::ResetToRemote, "reset --hard", "同じ内容"),
+            (
+                PanelOperation::Publish,
+                "--set-upstream",
+                "for the first time",
+            ),
+            (PanelOperation::Republish, "Republish", "disappeared"),
+            (PanelOperation::Merge, "Merge", "joins"),
+            (PanelOperation::ResetToRemote, "reset --hard", "the same as"),
             (PanelOperation::AddRemote, "remote add", "URL"),
-            (PanelOperation::RemoveRemote, "remote remove", "外し"),
-            (PanelOperation::StageFile, "ステージ", "このファイル"),
-            (PanelOperation::UnstageFile, "アンステージ", "このファイル"),
+            (PanelOperation::RemoveRemote, "remote remove", "Unregisters"),
+            (PanelOperation::StageFile, "Stage", "this file"),
+            (PanelOperation::UnstageFile, "Unstage", "this file"),
             (
                 PanelOperation::DiscardFileChanges,
-                "破棄",
-                "このファイルの変更",
+                "Discard",
+                "this file's changes",
             ),
-            (PanelOperation::TrashNewFile, "ゴミ箱", "新しいファイル"),
+            (PanelOperation::TrashNewFile, "Trash", "new file"),
             (
                 PanelOperation::RestoreDeletedFile,
                 "restore",
-                "削除したファイル",
+                "deleted file",
             ),
             (
                 PanelOperation::ViewUnstagedChanges,
-                "未ステージ",
-                "次のコミットに入らない",
+                "Unstaged",
+                "do not go into the next commit",
             ),
             (
                 PanelOperation::ViewStagedChanges,
-                "ステージ済み",
-                "次のコミットに入る",
+                "Staged",
+                "go into the next commit",
             ),
             (
                 PanelOperation::AddToGitignore,
                 ".gitignore",
-                "他の人にも効き",
+                "applies to others too",
             ),
-            (PanelOperation::AddToGitInfoExclude, "exclude", "手元だけ"),
-            (PanelOperation::OpenDiff, "差分", "まとめて見るタブ"),
             (
-                PanelOperation::OpenFileDiff,
-                "ファイルの差分",
-                "このファイルだけ",
+                PanelOperation::AddToGitInfoExclude,
+                "exclude",
+                "your own local",
             ),
-            (PanelOperation::ViewFile, "ファイル", "ファイルそのもの"),
-            (PanelOperation::FileHistory, "log", "コミットの一覧"),
-            (PanelOperation::StageFolder, "フォルダー", "フォルダーの中"),
-            (PanelOperation::UnstageFolder, "フォルダー", "印を全部外"),
-            (PanelOperation::StageSection, "stage", "見出しの下"),
-            (PanelOperation::UnstageSection, "unstage", "見出しの下"),
-            (PanelOperation::ShowDiff, "diff", "1 つのタブ"),
-            (PanelOperation::TrustDirectory, "safe.directory", "持ち主"),
-            (PanelOperation::SwitchBranch, "switch", "作業の枝"),
+            (
+                PanelOperation::OpenDiff,
+                "Diff",
+                "shows all changes together",
+            ),
+            (PanelOperation::OpenFileDiff, "File Diff", "just this file"),
+            (PanelOperation::ViewFile, "File", "file itself"),
+            (PanelOperation::FileHistory, "log", "list of commits"),
+            (PanelOperation::StageFolder, "Folder", "in this folder"),
+            (PanelOperation::UnstageFolder, "Folder", "every stage mark"),
+            (PanelOperation::StageSection, "Stage", "under this heading"),
+            (
+                PanelOperation::UnstageSection,
+                "Unstage",
+                "under this heading",
+            ),
+            (PanelOperation::ShowDiff, "Diff", "in one tab"),
+            (PanelOperation::TrustDirectory, "safe.directory", "owned by"),
+            (PanelOperation::SwitchBranch, "Switch", "line of work"),
             (
                 PanelOperation::SequencerContinue,
                 "--continue",
-                "残りを進め",
+                "carries on with the rest",
             ),
-            (PanelOperation::SequencerSkip, "--skip", "飛ばし"),
-            (PanelOperation::SequencerAbort, "--abort", "始める前"),
+            (PanelOperation::SequencerSkip, "--skip", "Skips"),
+            (
+                PanelOperation::SequencerAbort,
+                "--abort",
+                "before it started",
+            ),
             (
                 PanelOperation::ToggleHunkStaged,
-                "切り替え",
-                "付けたり外したり",
+                "Toggle",
+                "Adds or removes",
             ),
-            (PanelOperation::StageHunk, "stage", "ハンク"),
-            (PanelOperation::UnstageHunk, "unstage", "ハンク"),
-            (PanelOperation::RestoreHunk, "元に戻す", "編集を取り消し"),
+            (PanelOperation::StageHunk, "Stage", "hunk"),
+            (PanelOperation::UnstageHunk, "Unstage", "hunk"),
+            (PanelOperation::RestoreHunk, "Restore", "Undoes the edits"),
             (
                 PanelOperation::RestoreAllUnstaged,
-                "すべて",
-                "ステージしていない変更を全部",
+                "All",
+                "every unstaged change",
             ),
-            (PanelOperation::ViewStashEntry, "表示", "取り出しはしません"),
-            (PanelOperation::PopStashEntry, "取り出す", "棚からは消"),
-            (PanelOperation::DropStashEntry, "drop", "捨て"),
-            (PanelOperation::FilterBranches, "絞り込み", "ローカル"),
-            (PanelOperation::ShowAllBranches, "すべて", "両方"),
-            (PanelOperation::ShowLocalBranches, "ローカル", "手元"),
-            (PanelOperation::ShowRemoteBranches, "リモート", "サーバー側"),
-            (PanelOperation::DeleteBranch, "branch -d", "止まり"),
-            (PanelOperation::ForceDeleteBranch, "branch -D", "あっても"),
-            (PanelOperation::CreateBranchFromDefault, "既定", "main"),
-            (PanelOperation::UseOurs, "ours", "リベース中は付け直し先"),
+            (PanelOperation::ViewStashEntry, "View", "Does not pop"),
+            (
+                PanelOperation::PopStashEntry,
+                "Pop",
+                "removes them from the shelf",
+            ),
+            (PanelOperation::DropStashEntry, "drop", "Throws away"),
+            (PanelOperation::FilterBranches, "Filter", "local"),
+            (PanelOperation::ShowAllBranches, "All", "both"),
+            (
+                PanelOperation::ShowLocalBranches,
+                "Local",
+                "your repository",
+            ),
+            (PanelOperation::ShowRemoteBranches, "Remote", "server's"),
+            (PanelOperation::DeleteBranch, "branch -d", "it stops"),
+            (PanelOperation::ForceDeleteBranch, "branch -D", "even if"),
+            (PanelOperation::CreateBranchFromDefault, "Default", "main"),
+            (
+                PanelOperation::UseOurs,
+                "Ours",
+                "during a rebase, the branch being rebased onto",
+            ),
             (
                 PanelOperation::UseTheirs,
-                "theirs",
-                "リベース中は付け直している自分",
+                "Theirs",
+                "during a rebase, your commit being replayed",
             ),
-            (PanelOperation::UseBoth, "両方", "両方、上下に"),
+            (PanelOperation::UseBoth, "Both", "one above the other"),
         ];
         for (operation, in_title, in_explanation) in expectations {
             let help = panel_operation_help(operation);
@@ -1048,21 +1352,24 @@ mod tests {
     #[test]
     fn test_panel_operations_that_lose_work_carry_a_caution() {
         let losing_work = [
-            (PanelOperation::DiscardTrackedChanges, "元に戻せません"),
-            (PanelOperation::DiscardFileChanges, "元に戻せません"),
-            (PanelOperation::DropStashEntry, "元に戻せません"),
-            (PanelOperation::ResetToRemote, "元に戻せません"),
-            (PanelOperation::ForcePushWithoutLease, "相手の変更を消す"),
-            (PanelOperation::ForcePush, "消えます"),
-            (PanelOperation::TrashUntrackedFiles, "ゴミ箱を空にすると"),
-            (PanelOperation::Amend, "強制プッシュ"),
-            (PanelOperation::Uncommit, "強制プッシュ"),
-            (PanelOperation::SequencerAbort, "捨てられ"),
-            (PanelOperation::SequencerSkip, "取り込まれません"),
-            (PanelOperation::ForceDeleteBranch, "見えなくなり"),
-            (PanelOperation::TrashNewFile, "ゴミ箱を空にすると"),
-            (PanelOperation::RestoreHunk, "編集は消え"),
-            (PanelOperation::RestoreAllUnstaged, "編集は消え"),
+            (PanelOperation::DiscardTrackedChanges, "cannot be undone"),
+            (PanelOperation::DiscardFileChanges, "cannot be undone"),
+            (PanelOperation::DropStashEntry, "cannot be undone"),
+            (PanelOperation::ResetToRemote, "cannot be undone"),
+            (
+                PanelOperation::ForcePushWithoutLease,
+                "erase other people's changes",
+            ),
+            (PanelOperation::ForcePush, "disappear"),
+            (PanelOperation::TrashUntrackedFiles, "trash is emptied"),
+            (PanelOperation::Amend, "force push"),
+            (PanelOperation::Uncommit, "force push"),
+            (PanelOperation::SequencerAbort, "thrown away"),
+            (PanelOperation::SequencerSkip, "not brought in"),
+            (PanelOperation::ForceDeleteBranch, "can no longer be seen"),
+            (PanelOperation::TrashNewFile, "trash is emptied"),
+            (PanelOperation::RestoreHunk, "edits are lost"),
+            (PanelOperation::RestoreAllUnstaged, "edits are lost"),
         ];
         for (operation, in_caution) in losing_work {
             let help = panel_operation_help(operation);
@@ -1082,7 +1389,7 @@ mod tests {
         }
         assert_eq!(
             panel_operation_help(PanelOperation::Fetch).sentence_with_command("git fetch"),
-            "リモート (共有先のサーバー) の最新を取ってくるだけです。自分のファイルやブランチは変わりません。 (git fetch)"
+            "Only downloads the latest from the remote (the shared server). Your files and branches do not change. (git fetch)"
         );
     }
 
@@ -1101,14 +1408,14 @@ mod tests {
         let cx = cx.add_empty_window();
         for (refusal, expected_runs, expected_focus) in [
             (None, 1, true),
-            (Some(SharedString::from("理由")), 1, false),
+            (Some(SharedString::from("Reason")), 1, false),
         ] {
             let target = cx.update(|_, cx| cx.focus_handle());
             let menu = cx.update(|window, cx| {
                 let target = target.clone();
                 ContextMenu::build(window, cx, move |menu, _, _| {
                     menu.item(help_action_entry(
-                        "フェッチ",
+                        "Fetch",
                         git::Fetch.boxed_clone(),
                         Some(target),
                         panel_operation_help(PanelOperation::Fetch),

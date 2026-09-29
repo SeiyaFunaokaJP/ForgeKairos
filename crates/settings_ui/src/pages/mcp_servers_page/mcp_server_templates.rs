@@ -67,9 +67,8 @@ pub(super) struct TemplateInput {
 }
 
 pub(super) fn parse_templates(text: &str) -> Result<Vec<McpServerTemplate>, SharedString> {
-    serde_json::from_str(text).map_err(|error| {
-        SharedString::from(format!("テンプレートの一覧を読み込めませんでした: {error}"))
-    })
+    serde_json::from_str(text)
+        .map_err(|error| SharedString::from(i18n::t!("Couldn't load the template list: {error}")))
 }
 
 impl McpServerTemplate {
@@ -162,8 +161,8 @@ pub(super) fn open_mcp_templates_page(
         templates: parse_templates(&settings::mcp_server_templates_content()),
     });
     settings_window.push_dynamic_sub_page(
-        "テンプレートから MCP サーバーを追加",
-        "エージェントの設定",
+        i18n::t!("Add MCP Server from Template"),
+        "Agent Configuration",
         Some("context_servers"),
         false,
         render_mcp_templates_page,
@@ -192,9 +191,9 @@ fn open_template_form(
     let form = McpServerForm::from_values(
         values,
         Some(
-            format!(
-                "テンプレート「{}」を読み込みました。「入力してください」の欄を埋めてから保存してください。",
-                template.title
+            i18n::t!(
+                "Loaded the template \"{title}\". Fill in the fields that ask for a value before saving.",
+                title = template.title
             )
             .into(),
         ),
@@ -240,9 +239,9 @@ fn render_mcp_templates_page(
                 .w_full()
                 .gap_4()
                 .child(
-                    Label::new(
-                        "よく使う MCP サーバーの設定をフォームに読み込みます。「保存」を押すまで設定には書き込まれません。",
-                    )
+                    Label::new(i18n::t!(
+                        "Loads the settings of a commonly used MCP server into the form. Nothing is written to your settings until you click Save."
+                    ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
                 )
@@ -263,8 +262,8 @@ fn render_template_card(
         .iter()
         .any(|id| id.0.as_ref() == template.name.as_str());
     let kind = match template.transport() {
-        McpTransport::Stdio => "ローカル (コマンド)",
-        McpTransport::Http => "リモート (HTTP)",
+        McpTransport::Stdio => i18n::t!("Local (command)"),
+        McpTransport::Http => i18n::t!("Remote (HTTP)"),
     };
     let inputs = template
         .inputs()
@@ -272,11 +271,11 @@ fn render_template_card(
         .map(|input| input.name.as_str())
         .collect::<Vec<_>>();
     let inputs_label = (!inputs.is_empty()).then(|| {
-        let what = match template.transport() {
-            McpTransport::Stdio => "環境変数",
-            McpTransport::Http => "ヘッダー",
-        };
-        format!("入力が必要な{what}: {}", inputs.join(", "))
+        let inputs = inputs.join(", ");
+        match template.transport() {
+            McpTransport::Stdio => i18n::t!("Environment variables to fill in: {inputs}"),
+            McpTransport::Http => i18n::t!("Headers to fill in: {inputs}"),
+        }
     });
 
     v_flex()
@@ -301,14 +300,14 @@ fn render_template_card(
                         .child(Label::new(kind).size(LabelSize::Small).color(Color::Muted))
                         .when(name_exists, |this| {
                             this.child(
-                                Label::new("同名のサーバーがあります")
+                                Label::new(i18n::t!("A server with this name already exists"))
                                     .size(LabelSize::Small)
                                     .color(Color::Warning),
                             )
                         }),
                 )
                 .child(
-                    Button::new(("mcp-template-use", index), "このテンプレートを使う")
+                    Button::new(("mcp-template-use", index), i18n::t!("Use This Template"))
                         .style(ButtonStyle::Outlined)
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -331,7 +330,7 @@ fn render_template_card(
         )
         .when_some(template.requires.clone(), |this, requires| {
             this.child(
-                Label::new(format!("必要なもの: {requires}"))
+                Label::new(i18n::t!("Requires: {requires}"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -376,11 +375,11 @@ fn render_template_hosts(
         .iter()
         .map(|host| {
             let state = if !is_loaded {
-                ""
+                String::new()
             } else if allowlist.allows(host) {
-                " (登録済み)"
+                format!(" {}", i18n::t!("(added)"))
             } else {
-                " (未登録)"
+                format!(" {}", i18n::t!("(not added)"))
             };
             h_flex()
                 .gap_0p5()
@@ -401,13 +400,16 @@ fn render_template_hosts(
                 .flex_wrap()
                 .gap_1p5()
                 .child(
-                    Label::new("許可が必要なホスト:")
+                    Label::new(i18n::t!("Hosts that need to be allowed:"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
                 .children(host_labels)
                 .child(
-                    Button::new(("mcp-template-allowlist", index), "許可リストに追加")
+                    Button::new(
+                        ("mcp-template-allowlist", index),
+                        i18n::t!("Add to Allowlist"),
+                    )
                         .label_size(LabelSize::Small)
                         .style(ButtonStyle::Outlined)
                         .disabled(!is_loaded || missing.is_empty())
@@ -416,9 +418,9 @@ fn render_template_hosts(
                                 .size(IconSize::XSmall)
                                 .color(Color::Muted),
                         )
-                        .tooltip(Tooltip::text(
-                            "network_allowlist.json に追加します。追加しない場合、このサーバーの取得や接続は拒否されたままになります",
-                        ))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Adds the hosts to network_allowlist.json. Unless they are added, downloading or connecting to this server stays refused"
+                        )))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             network_allowlist::add_allowed_hosts(this, &missing, cx);
                         })),
@@ -482,7 +484,7 @@ mod tests {
             if has_blanks {
                 let error = build_settings_from_values(&values)
                     .expect_err(&format!("{}: blanks must be filled", template.name));
-                assert!(error.contains("入力してください"), "{error}");
+                assert!(error.starts_with("Enter "), "{error}");
             }
 
             for (argument, prompt) in values.args.iter_mut().zip(&values.prompts.args) {
@@ -531,13 +533,13 @@ mod tests {
 
         assert_eq!(
             build_settings_from_values(&values).map(|_| ()),
-            Err(SharedString::from("「folder」を入力してください。"))
+            Err(SharedString::from("Enter \"folder\"."))
         );
         values.args[2] = "C:\\work".into();
         assert_eq!(
             build_settings_from_values(&values).map(|_| ()),
             Err(SharedString::from(
-                "環境変数「TOKEN」の値を入力してください。"
+                "Enter a value for the environment variable \"TOKEN\"."
             ))
         );
         values.env[0].1 = "secret".into();
@@ -580,7 +582,7 @@ mod tests {
         assert_eq!(
             build_settings_from_values(&values).map(|_| ()),
             Err(SharedString::from(
-                "ヘッダー「Authorization」の値を入力してください。"
+                "Enter a value for the header \"Authorization\"."
             ))
         );
         values.headers[0].1 = "Bearer x".into();

@@ -115,22 +115,22 @@ impl TreeViewDocument {
         if let Some(title) = &self.title
             && !is_valid_tree_view_title(title)
         {
-            return Some(format!(
-                "タイトル `{title}` は書けません (改行と `%%` は使えず、空や前後の空白もできません)。"
+            return Some(i18n::t!(
+                "The title `{title}` cannot be written (line breaks and `%%` are not allowed, and it cannot be empty or have spaces at either end)."
             ));
         }
         let mut previous_depth = 0;
         for entry in &self.entries {
             if entry.depth == 0 || entry.depth > previous_depth + 1 {
-                return Some(format!(
-                    "ノード `{}` が親より 2 段以上深くなっています。",
+                return Some(i18n::t!(
+                    "The node `{}` is two or more levels deeper than its parent.",
                     entry.name
                 ));
             }
             if entry.depth > MAX_TREE_VIEW_DEPTH {
-                return Some(format!(
-                    "ノード `{}` の階層が深すぎます (Mermaid は {MAX_TREE_VIEW_DEPTH} 段までです)。",
-                    entry.name
+                return Some(i18n::t!(
+                    "The node `{name}` is nested too deeply (Mermaid allows up to {MAX_TREE_VIEW_DEPTH} levels).",
+                    name = entry.name
                 ));
             }
             if let Some(problem) = tree_view_name_problem(entry) {
@@ -157,11 +157,13 @@ pub fn parse_tree_view(source: &str) -> Result<TreeViewDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::TreeView(_)) {
-            bail!("この図はツリービューではありません。");
+            bail!(i18n::t!("This diagram is not a tree view."));
         }
     }
 
@@ -183,17 +185,19 @@ fn scan_tree_view(source: &str) -> Result<TreeViewDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = keyword_tail(header, HEADER) else {
-        bail!("ツリービューではありません (`treeView-beta` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a tree view (only a diagram that starts with `treeView-beta` can be edited in the structured editor)."
+        ));
     };
     if tail.starts_with("%%") {
-        bail!(
-            "`treeView-beta` の行末のコメントは構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "The structured editor would lose the comment at the end of the `treeView-beta` line. Move the comment to a line of its own, or edit it as text."
+        ));
     }
     if !tail.is_empty() {
-        bail!(
-            "`treeView-beta` の行の `{tail}` は Mermaid が受け付けません。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid does not accept `{tail}` on the `treeView-beta` line. Edit it as text."
+        ));
     }
 
     let mut title: Option<String> = None;
@@ -221,9 +225,9 @@ fn scan_tree_view(source: &str) -> Result<TreeViewDocument> {
             }
             let text = join_lines(lines.get(start..index).unwrap_or_default());
             if let Some(rest) = text_after_directive(&text) {
-                bail!(
-                    "指示子 `%%{{…}}%%` の後ろの `{rest}` は Mermaid がノードとして読みますが、構造化編集ではコメントと一緒に動いてしまいます。指示子を独立した行にしてください。"
-                );
+                bail!(i18n::t!(
+                    "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a node, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+                ));
             }
             preserved_lines.push(PreservedLine { position, text });
             continue;
@@ -231,14 +235,16 @@ fn scan_tree_view(source: &str) -> Result<TreeViewDocument> {
 
         let statement = strip_inline_comment(line);
         if statement.trim_end() != line.trim_end() {
-            bail!(
-                "文の末尾のコメントは構造化編集で失われます ({trimmed})。コメントを独立した行に移すか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text.",
+                statement = trimmed
+            ));
         }
         if trimmed.contains("%%{") {
-            bail!(
-                "`%%{{` を含む行は Mermaid が指示子として切り取るので、構造化編集に対応していません ({trimmed})。"
-            );
+            bail!(i18n::t!(
+                "The structured editor does not support a line that contains `%%{{`, because Mermaid cuts it out as a directive ({tail}).",
+                tail = trimmed
+            ));
         }
 
         // `merman` reads these only before the first name; after it they are
@@ -246,9 +252,9 @@ fn scan_tree_view(source: &str) -> Result<TreeViewDocument> {
         if written.is_empty() {
             if let Some(value) = read_title(statement) {
                 if seen_title {
-                    bail!(
-                        "`title` が 2 回書かれています。Mermaid は後の方だけを使うので、1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`title` is written twice. Mermaid uses only the later one, so merge them into one, then open the editor again."
+                    ));
                 }
                 seen_title = true;
                 if value.is_empty() {
@@ -271,9 +277,9 @@ fn scan_tree_view(source: &str) -> Result<TreeViewDocument> {
         }
 
         let Some((indent, name, single_quoted)) = read_name_line(statement) else {
-            bail!(
-                "ツリービューのノードとして読めませんでした ({trimmed})。名前は \"…\" か '…' で囲み、`title` `accTitle` `accDescr` は最初のノードより前に書きます。"
-            );
+            bail!(i18n::t!(
+                "This could not be read as a node of a tree view ({trimmed}). Enclose a name in \"…\" or '…', and write `title`, `accTitle` and `accDescr` before the first node."
+            ));
         };
         written.push((indent, name, single_quoted));
         position = PreservedPosition::Bottom;
@@ -289,9 +295,9 @@ fn scan_tree_view(source: &str) -> Result<TreeViewDocument> {
         }
         let depth = open_indents.len() + 1;
         if depth > MAX_TREE_VIEW_DEPTH {
-            bail!(
-                "ノード `{name}` の階層が深すぎます (Mermaid は {MAX_TREE_VIEW_DEPTH} 段までです)。"
-            );
+            bail!(i18n::t!(
+                "The node `{name}` is nested too deeply (Mermaid allows up to {MAX_TREE_VIEW_DEPTH} levels)."
+            ));
         }
         entries.push(TreeViewEntry {
             depth,
@@ -470,23 +476,23 @@ pub(crate) fn text_after_directive(block: &str) -> Option<&str> {
 
 fn tree_view_name_problem(entry: &TreeViewEntry) -> Option<String> {
     if entry.name.contains(['\n', '\r']) {
-        return Some("ノードの名前に改行は使えません。".to_string());
+        return Some(i18n::t!("A node name cannot contain line breaks.").to_string());
     }
     if entry.name.contains("%%{") {
-        return Some(format!(
-            "ノード `{}` の名前に `%%{{` は使えません (Mermaid が指示子として切り取ります)。",
+        return Some(i18n::t!(
+            "The name of the node `{}` cannot contain `%%{{` (Mermaid cuts it out as a directive).",
             entry.name
         ));
     }
     if rewritten_as_html_attribute(entry) {
-        return Some(format!(
-            "ノード `{}` の名前は書けません (HTML タグの属性を `\"` で囲むと、Mermaid が `'` に書き換えて名前が途中で切れます)。",
+        return Some(i18n::t!(
+            "The name of the node `{}` cannot be written (when an HTML tag attribute is enclosed in `\"`, Mermaid rewrites it to `'` and the name is cut off).",
             entry.name
         ));
     }
     if !is_valid_tree_view_name(entry) {
-        return Some(format!(
-            "ノード `{}` の名前は書けません (`\"` と `'` を両方使うことはできません)。",
+        return Some(i18n::t!(
+            "The name of the node `{}` cannot be written (`\"` and `'` cannot both be used).",
             entry.name
         ));
     }
@@ -731,22 +737,25 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_or_misread_are_refused() {
         for (source, expected) in [
-            ("treeView-beta\n    \"a\" %% メモ", "コメント"),
-            ("treeView-beta %% メモ\n    \"a\"", "行末のコメント"),
-            ("treeView-beta\n    title x %% メモ\n    \"a\"", "コメント"),
-            ("treeView-beta\n    title a\n    title b", "2 回"),
+            ("treeView-beta\n    \"a\" %% メモ", "comment"),
+            (
+                "treeView-beta %% メモ\n    \"a\"",
+                "comment at the end of the `treeView-beta` line",
+            ),
+            ("treeView-beta\n    title x %% メモ\n    \"a\"", "comment"),
+            ("treeView-beta\n    title a\n    title b", "written twice"),
             (
                 "treeView-beta\n    \"a\"\n    title b",
-                "ノードとして読めません",
+                "could not be read as a node",
             ),
-            ("treeView-beta\n    a", "ノードとして読めません"),
-            ("treeView-beta\n    \"a\" b", "ノードとして読めません"),
-            ("treeView-beta\n    \"a", "ノードとして読めません"),
+            ("treeView-beta\n    a", "could not be read as a node"),
+            ("treeView-beta\n    \"a\" b", "could not be read as a node"),
+            ("treeView-beta\n    \"a", "could not be read as a node"),
             ("treeView-beta\n    \"a %%{ b\"", "%%{"),
-            ("treeView-beta LR\n    \"a\"", "受け付けません"),
+            ("treeView-beta LR\n    \"a\"", "does not accept"),
             (
                 "treeView-beta\n    accDescr {\n    説明\n    }",
-                "ノードとして読めません",
+                "could not be read as a node",
             ),
         ] {
             let error = parse_tree_view(source)
@@ -784,7 +793,7 @@ mod tests {
             "merman should refuse the chain too"
         );
         let message = format!("{}", parse_tree_view(&too_deep).err().expect("refused"));
-        assert!(message.contains("深すぎます"), "{message}");
+        assert!(message.contains("nested too deeply"), "{message}");
 
         let mut edited = document;
         edited.entries.push(TreeViewEntry {
@@ -794,7 +803,7 @@ mod tests {
         assert!(
             edited
                 .structure_error()
-                .is_some_and(|error| error.contains("深すぎます"))
+                .is_some_and(|error| error.contains("nested too deeply"))
         );
     }
 
@@ -847,7 +856,7 @@ mod tests {
         assert!(
             document
                 .structure_error()
-                .is_some_and(|error| error.contains("両方"))
+                .is_some_and(|error| error.contains("cannot both be used"))
         );
     }
 
@@ -995,7 +1004,7 @@ mod tests {
         let (_, edges) = merman_tree(source);
         assert!(edges.contains(&("a".to_string(), "b".to_string())));
         let message = format!("{}", parse_tree_view(source).err().expect("refused"));
-        assert!(message.contains("指示子"), "{message}");
+        assert!(message.contains("directive"), "{message}");
 
         let multi_line = "treeView-beta\n    \"a\"\n%%{init: {\n}}%% \"b\"";
         assert!(parse_tree_view(multi_line).is_err());

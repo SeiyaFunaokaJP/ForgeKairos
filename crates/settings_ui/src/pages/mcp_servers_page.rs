@@ -379,11 +379,15 @@ pub(crate) fn render_mcp_servers_page(
                 .px_8()
                 .gap_2()
                 .child(
-                    v_flex().child(Label::new("構成済みのサーバー")).child(
-                        Label::new("直接、または拡張機能を通じて接続されたサーバーを管理します。")
+                    v_flex()
+                        .child(Label::new(i18n::t!("Configured Servers")))
+                        .child(
+                            Label::new(i18n::t!(
+                                "Manage servers connected directly or via extensions."
+                            ))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
-                    ),
+                        ),
                 )
                 .child(server_list)
                 .child(Divider::horizontal()),
@@ -398,8 +402,8 @@ fn render_context_server_timeout(
     cx: &mut Context<SettingsWindow>,
 ) -> AnyElement {
     let item = SettingsPageItem::SettingItem(SettingItem {
-        title: "MCP サーバーのタイムアウト",
-        description: "MCP サーバーのツール呼び出しの既定のタイムアウト (秒) です。",
+        title: "MCP Server Timeout",
+        description: "Default timeout in seconds for MCP server tool calls.",
         field: Box::new(SettingField {
             organization_override: None,
             json_path: Some("context_server_timeout"),
@@ -470,9 +474,9 @@ fn render_empty_state(cx: &App) -> AnyElement {
         .border_color(cx.theme().colors().border.opacity(0.6))
         .rounded_sm()
         .child(
-            Label::new(
-                "MCP サーバーはまだ追加されていません。「サーバーを追加」から始めてください。",
-            )
+            Label::new(i18n::t!(
+                "No MCP servers added yet. Click \"Add Server\" to get started."
+            ))
             .color(Color::Muted)
             .size(LabelSize::Small),
         )
@@ -488,9 +492,11 @@ fn render_no_project_state(cx: &App) -> AnyElement {
         .border_color(cx.theme().colors().border.opacity(0.6))
         .rounded_sm()
         .child(
-            Label::new("アクティブなプロジェクトがありません。MCP サーバーを管理するにはワークスペースを開いてください。")
-                .color(Color::Muted)
-                .size(LabelSize::Small),
+            Label::new(i18n::t!(
+                "No active project found. Open a workspace to manage MCP servers."
+            ))
+            .color(Color::Muted)
+            .size(LabelSize::Small),
         )
         .into_any_element()
 }
@@ -725,7 +731,7 @@ fn render_context_server(
 
     AiSettingItem::new(item_id, display_name, status, source)
         .when(project_definition.is_some(), |this| {
-            this.badge("プロジェクト")
+            this.badge(i18n::t!("Project"))
         })
         .action(test_button)
         .when_some(edit_button, |this, button| this.action(button))
@@ -783,7 +789,7 @@ fn render_configure_button(
     )
     .icon_size(IconSize::Small)
     .tab_index(0isize)
-    .tooltip(Tooltip::text("MCP サーバーを設定"))
+    .tooltip(Tooltip::text(i18n::t!("Configure MCP Server")))
     .on_click(move |_event, window, cx| {
         let transport = match &server_settings {
             Some(ContextServerSettings::Http { .. }) => McpTransport::Http,
@@ -814,9 +820,9 @@ fn render_connection_test_button(
     Button::new(
         SharedString::from(format!("mcp-test-btn-{}", context_server_id.0)),
         if is_testing {
-            "テスト中…"
+            i18n::t!("Testing…")
         } else {
-            "接続テスト"
+            i18n::t!("Test Connection")
         },
     )
     .style(ButtonStyle::Outlined)
@@ -829,9 +835,9 @@ fn render_connection_test_button(
     .tab_index(0isize)
     .disabled(is_testing || waits_for_approval)
     .tooltip(Tooltip::text(if waits_for_approval {
-        "許可するまで接続テストはできません。"
+        i18n::t!("The connection can't be tested until the server is allowed to start.")
     } else {
-        "サーバーを再接続して、接続できるかどうかを確認します。"
+        i18n::t!("Reconnects the server to check whether it can be connected to.")
     }))
     .on_click(cx.listener(move |this, _event, _window, cx| {
         start_connection_test(this, context_server_id.clone(), cx);
@@ -864,9 +870,9 @@ fn render_open_definition_button(
     )
     .icon_size(IconSize::Small)
     .tab_index(0isize)
-    .tooltip(Tooltip::text(
-        "このサーバーを定義しているプロジェクトの設定ファイルを開く",
-    ))
+    .tooltip(Tooltip::text(i18n::t!(
+        "Open the project settings file that defines this server"
+    )))
     .on_click(cx.listener(move |this, _event, _window, cx| {
         open_project_definition(this, &settings_file, cx);
     }))
@@ -913,9 +919,9 @@ fn render_edit_project_server_button(
     )
     .icon_size(IconSize::Small)
     .tab_index(0isize)
-    .tooltip(Tooltip::text(
-        "フォームで編集 (このサーバーを定義しているプロジェクトの設定ファイルに保存します)",
-    ))
+    .tooltip(Tooltip::text(i18n::t!(
+        "Edit in Form (saves to the project settings file that defines this server)"
+    )))
     .on_click(cx.listener(move |this, _event, window, cx| {
         open_project_server_form(
             this,
@@ -942,10 +948,10 @@ fn open_project_server_form(
     match project_server_form(&context_server_id, worktree_id, file_label, window, cx) {
         Some(form) => push_mcp_server_form(settings_window, form, window, cx),
         None => {
-            settings_window
-                .mcp_page
-                .approval_errors
-                .insert(context_server_id, PROJECT_DEFINITION_CHANGED.into());
+            settings_window.mcp_page.approval_errors.insert(
+                context_server_id,
+                i18n::tr(PROJECT_DEFINITION_CHANGED).into(),
+            );
             cx.notify();
         }
     }
@@ -1053,14 +1059,14 @@ fn render_revoke_button(
     let context_server_id = context_server_id.clone();
     Button::new(
         SharedString::from(format!("mcp-revoke-{}", context_server_id.0)),
-        "承認を取り消す",
+        i18n::t!("Revoke Approval"),
     )
     .style(ButtonStyle::Outlined)
     .label_size(LabelSize::Small)
     .tab_index(0isize)
-    .tooltip(Tooltip::text(
-        "承認を取り消してサーバーを止めます。もう一度起動するには、あらためて許可が必要です。",
-    ))
+    .tooltip(Tooltip::text(i18n::t!(
+        "Revokes the approval and stops the server. Starting it again requires allowing it again."
+    )))
     .on_click(cx.listener(move |this, _event, _window, cx| {
         decide_project_server(
             this,
@@ -1091,14 +1097,14 @@ fn render_project_toggle(
     let hint = match approval {
         // Enabled, yet nothing to approve: the lookup failed, which is not
         // the same as the project turning the server off.
-        None if entry_enabled => APPROVAL_DETAILS_MISSING,
-        None => "プロジェクトの設定で無効になっています。",
-        Some(_) if decision_blocked => launch_approval_prompts::DECISION_BLOCKED_HINT,
-        Some(LaunchApprovalState::Approved) => {
-            "オフにすると、このプロジェクトの定義を「許可しない」にしてサーバーを止めます。"
-        }
+        None if entry_enabled => i18n::tr(APPROVAL_DETAILS_MISSING),
+        None => i18n::t!("Disabled in the project settings."),
+        Some(_) if decision_blocked => i18n::tr(launch_approval_prompts::DECISION_BLOCKED_HINT),
+        Some(LaunchApprovalState::Approved) => i18n::t!(
+            "Turning this off sets this project's definition to \"Don't Allow\" and stops the server."
+        ),
         Some(LaunchApprovalState::Pending | LaunchApprovalState::Denied) => {
-            "オンにすると、このプロジェクトの定義を許可してサーバーを起動します。"
+            i18n::t!("Turning this on allows this project's definition and starts the server.")
         }
     };
     let switch = Switch::new(
@@ -1170,14 +1176,18 @@ fn decide_project_server(
         // The row already shows the new definition; the message only has to
         // say why nothing happened.
         let message = if error == CHANGED_SINCE_SHOWN_MESSAGE {
-            error
+            i18n::tr(CHANGED_SINCE_SHOWN_MESSAGE).to_string()
         } else {
             match decision {
-                ProjectServerDecision::Approve => format!("許可を保存できませんでした: {error}"),
-                ProjectServerDecision::Deny => {
-                    format!("「許可しない」を保存できませんでした: {error}")
+                ProjectServerDecision::Approve => {
+                    i18n::t!("Couldn't save the permission: {error}")
                 }
-                ProjectServerDecision::Revoke => format!("承認を取り消せませんでした: {error}"),
+                ProjectServerDecision::Deny => {
+                    i18n::t!("Couldn't save \"Don't Allow\": {error}")
+                }
+                ProjectServerDecision::Revoke => {
+                    i18n::t!("Couldn't revoke the approval: {error}")
+                }
             }
         };
         this.update(cx, |this, cx| {
@@ -1192,7 +1202,8 @@ fn decide_project_server(
     cx.notify();
 }
 
-const APPROVAL_DETAILS_MISSING: &str = "このサーバーの承認の情報を取得できませんでした。";
+const APPROVAL_DETAILS_MISSING: &str =
+    i18n::msg!("Couldn't get the approval details for this server.");
 
 fn render_approval_block(
     settings_window: &SettingsWindow,
@@ -1217,9 +1228,13 @@ fn render_approval_block(
                     IconName::Warning,
                     Color::Warning,
                     if from_project {
-                        "承認待ち: このプロジェクトの設定がこのサーバーの起動を求めています。内容を確認してから許可してください。"
+                        i18n::t!(
+                            "Waiting for approval: this project's settings ask to start this server. Review the details before allowing it."
+                        )
                     } else {
-                        "承認待ち: 接続先で決まったこのコマンドを起動するには許可が必要です。内容を確認してから許可してください。"
+                        i18n::t!(
+                            "Waiting for approval: this command was resolved on the remote host and needs your permission to start. Review the details before allowing it."
+                        )
                     }
                     .to_string(),
                 )),
@@ -1227,9 +1242,9 @@ fn render_approval_block(
                     IconName::Info,
                     Color::Muted,
                     if from_project {
-                        "このプロジェクトの定義は起動を許可していません。"
+                        i18n::t!("This project's definition is not allowed to start.")
                     } else {
-                        "この内容での起動は許可していません。"
+                        i18n::t!("Starting with these details is not allowed.")
                     }
                     .to_string(),
                 )),
@@ -1276,14 +1291,14 @@ fn render_approval_block(
                     IconName::Info,
                     Color::Muted,
                     if enabled {
-                        APPROVAL_DETAILS_MISSING
+                        i18n::tr(APPROVAL_DETAILS_MISSING)
                     } else {
-                        "プロジェクトの設定で無効になっています。"
+                        i18n::t!("Disabled in the project settings.")
                     }
                     .to_string(),
                 ))
                 .child(launch_approval_prompts::render_detail_row(
-                    "定義元",
+                    i18n::t!("Defined in"),
                     launch_approval_prompts::definition_file_label(settings_file, host),
                     true,
                     cx,
@@ -1330,7 +1345,7 @@ fn render_approval_buttons(
             this.child(
                 Button::new(
                     SharedString::from(format!("mcp-deny-{}", deny_id.0)),
-                    "許可しない",
+                    i18n::t!("Don't Allow"),
                 )
                 .style(ButtonStyle::Subtle)
                 .label_size(LabelSize::Small)
@@ -1350,16 +1365,16 @@ fn render_approval_buttons(
         .child(
             Button::new(
                 SharedString::from(format!("mcp-approve-{}", approve_id.0)),
-                "許可して起動",
+                i18n::t!("Allow and Start"),
             )
             .style(ButtonStyle::Filled)
             .label_size(LabelSize::Small)
             .tab_index(0isize)
             .disabled(decision_blocked)
             .when(decision_blocked, |button| {
-                button.tooltip(Tooltip::text(
+                button.tooltip(Tooltip::text(i18n::tr(
                     launch_approval_prompts::DECISION_BLOCKED_HINT,
-                ))
+                )))
             })
             .on_click(cx.listener(move |this, _event, _window, cx| {
                 decide_project_server(
@@ -1475,22 +1490,22 @@ fn render_connection_test_feedback(outcome: &McpConnectionTestOutcome) -> AnyEle
         McpConnectionTestOutcome::Running => (
             IconName::RotateCw,
             Color::Muted,
-            "接続をテストしています…".into(),
+            i18n::t!("Testing the connection…").into(),
         ),
         McpConnectionTestOutcome::Succeeded => (
             IconName::Check,
             Color::Success,
-            "接続テスト: 接続できました。".into(),
+            i18n::t!("Connection test: connected.").into(),
         ),
         McpConnectionTestOutcome::NeedsAction(message) => (
             IconName::Info,
             Color::Warning,
-            format!("接続テスト: {message}").into(),
+            i18n::t!("Connection test: {message}").into(),
         ),
         McpConnectionTestOutcome::Failed(message) => (
             IconName::XCircle,
             Color::Error,
-            format!("接続テスト: {message}").into(),
+            i18n::t!("Connection test: {message}").into(),
         ),
     };
 
@@ -1515,7 +1530,7 @@ fn render_connection_test_feedback(outcome: &McpConnectionTestOutcome) -> AnyEle
 fn server_error_text(message: &str) -> String {
     message.replace(
         "Context server request timeout",
-        "MCP サーバーが応答しませんでした (タイムアウト)",
+        i18n::t!("MCP server did not respond (timed out)"),
     )
 }
 
@@ -1547,21 +1562,21 @@ fn render_tool_list(
             return Some(muted_line(
                 IconName::ToolHammer,
                 Color::Muted,
-                "ツール一覧を取得しています…".into(),
+                i18n::t!("Fetching the tool list…").into(),
             ));
         }
         McpToolListState::Failed(error) => {
             return Some(muted_line(
                 IconName::Warning,
                 Color::Warning,
-                format!("ツール一覧を取得できませんでした: {error}").into(),
+                i18n::t!("Couldn't fetch the tool list: {error}").into(),
             ));
         }
         McpToolListState::Loaded(tools) if tools.is_empty() => {
             return Some(muted_line(
                 IconName::ToolHammer,
                 Color::Muted,
-                "ツールはありません".into(),
+                i18n::t!("No tools").into(),
             ));
         }
         McpToolListState::Loaded(tools) => tools,
@@ -1571,7 +1586,7 @@ fn render_tool_list(
     let toggle_id = context_server_id.clone();
     let toggle = Button::new(
         SharedString::from(format!("mcp-tools-toggle-{}", context_server_id.0)),
-        format!("ツール {} 個", tools.len()),
+        i18n::tn!(tools.len(), "{count} tool", "{count} tools"),
     )
     .style(ButtonStyle::Subtle)
     .label_size(LabelSize::Small)
@@ -1649,7 +1664,8 @@ fn start_connection_test(
         settings_window.mcp_page.report(
             context_server_id,
             McpConnectionTestOutcome::Failed(
-                "このサーバーは無効です。有効にしてから接続をテストしてください。".into(),
+                i18n::t!("This server is disabled. Enable it before testing the connection.")
+                    .into(),
             ),
         );
         cx.notify();
@@ -1664,7 +1680,8 @@ fn start_connection_test(
         settings_window.mcp_page.report(
             context_server_id,
             McpConnectionTestOutcome::Failed(
-                "このサーバーはまだ作成されていません。設定と拡張機能を確認してください。".into(),
+                i18n::t!("This server hasn't been created yet. Check its settings and extension.")
+                    .into(),
             ),
         );
         cx.notify();
@@ -1683,16 +1700,16 @@ fn start_connection_test(
         async move |this, cx| {
             let outcome = match wait.await {
                 Ok(ContextServerStatus::Running) => McpConnectionTestOutcome::Succeeded,
-                Ok(ContextServerStatus::AuthRequired) => {
-                    McpConnectionTestOutcome::NeedsAction("接続するには認証が必要です。".into())
-                }
+                Ok(ContextServerStatus::AuthRequired) => McpConnectionTestOutcome::NeedsAction(
+                    i18n::t!("Authentication is required to connect.").into(),
+                ),
                 Ok(ContextServerStatus::ClientSecretRequired { .. }) => {
                     McpConnectionTestOutcome::NeedsAction(
-                        "接続するにはクライアントシークレットが必要です。".into(),
+                        i18n::t!("A client secret is required to connect.").into(),
                     )
                 }
                 Ok(_) => McpConnectionTestOutcome::Failed(
-                    "サーバーが接続できる状態になりませんでした。".into(),
+                    i18n::t!("The server didn't become ready for connections.").into(),
                 ),
                 Err(error) => McpConnectionTestOutcome::Failed(server_error_text(&error).into()),
             };
@@ -1732,7 +1749,7 @@ fn render_uninstall_button(
     )
     .icon_size(IconSize::Small)
     .tab_index(0isize)
-    .tooltip(Tooltip::text("MCP サーバーをアンインストール"))
+    .tooltip(Tooltip::text(i18n::t!("Uninstall MCP Server")))
     .on_click(move |_event, _window, cx| {
         uninstall_server(&context_server_id, provided_by_extension, cx);
     })
@@ -1838,7 +1855,7 @@ fn render_status_details(
                         this.child(
                             Button::new(
                                 SharedString::from(format!("error-logout-{}", context_server_id.0)),
-                                "ログアウト",
+                                i18n::t!("Log Out"),
                             )
                             .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
@@ -1872,7 +1889,7 @@ fn render_status_details(
                                     .color(Color::Muted),
                             )
                             .child(
-                                Label::new("このサーバーに接続するには認証してください")
+                                Label::new(i18n::t!("Authenticate to connect this server"))
                                     .color(Color::Muted)
                                     .size(LabelSize::Small),
                             ),
@@ -1883,7 +1900,7 @@ fn render_status_details(
                                 "authenticate-server-{}",
                                 context_server_id.0
                             )),
-                            "認証",
+                            i18n::t!("Authenticate"),
                         )
                         .style(ButtonStyle::Outlined)
                         .label_size(LabelSize::Small)
@@ -1912,7 +1929,7 @@ fn render_status_details(
                 .gap_2()
                 .child(div().size_3().flex_shrink_0())
                 .child(
-                    Label::new("認証中…")
+                    Label::new(i18n::t!("Authenticating…"))
                         .color(Color::Muted)
                         .size(LabelSize::Small),
                 )
@@ -1929,7 +1946,7 @@ fn render_status_details(
                     .child(
                         Button::new(
                             SharedString::from(format!("running-logout-{}", context_server_id.0)),
-                            "ログアウト",
+                            i18n::t!("Log Out"),
                         )
                         .style(ButtonStyle::Outlined)
                         .label_size(LabelSize::Small)
@@ -1984,9 +2001,9 @@ fn render_client_secret_details(
                         )
                         .child(
                             div().min_w_0().flex_1().child(
-                                Label::new(
-                                    "このサーバーに接続するにはクライアントシークレットが必要です",
-                                )
+                                Label::new(i18n::t!(
+                                    "A client secret is required to connect this server"
+                                ))
                                 .color(Color::Muted)
                                 .size(LabelSize::Small),
                             ),
@@ -2000,7 +2017,7 @@ fn render_client_secret_details(
                                 "client-secret-open-{}",
                                 context_server_id.0
                             )),
-                            "シークレットを入力",
+                            i18n::t!("Enter Secret"),
                         )
                         .style(ButtonStyle::Outlined)
                         .label_size(LabelSize::Small)
@@ -2031,9 +2048,11 @@ fn render_client_secret_details(
                     .gap_1()
                     .child(input_box(&editor, cx))
                     .child(
-                        Label::new("パブリッククライアントの場合は空欄のまま送信してください。")
-                            .color(Color::Muted)
-                            .size(LabelSize::Small),
+                        Label::new(i18n::t!(
+                            "For a public client, leave this empty and submit."
+                        ))
+                        .color(Color::Muted)
+                        .size(LabelSize::Small),
                     )
                     .child(
                         h_flex()
@@ -2046,7 +2065,7 @@ fn render_client_secret_details(
                                         "client-secret-cancel-{}",
                                         submit_id.0
                                     )),
-                                    "キャンセル",
+                                    i18n::t!("Cancel"),
                                 )
                                 .style(ButtonStyle::Subtle)
                                 .label_size(LabelSize::Small)
@@ -2063,7 +2082,7 @@ fn render_client_secret_details(
                                         "client-secret-submit-{}",
                                         submit_id.0
                                     )),
-                                    "送信",
+                                    i18n::t!("Submit"),
                                 )
                                 .style(ButtonStyle::Filled)
                                 .label_size(LabelSize::Small)
@@ -2083,7 +2102,7 @@ fn new_secret_input(window: &mut Window, cx: &mut Context<SettingsWindow>) -> En
     cx.new(|cx| {
         let mut editor = Editor::single_line(window, cx);
         editor.set_placeholder_text(
-            "クライアントシークレット (パブリッククライアントの場合は空欄)",
+            i18n::t!("Client secret (leave empty for a public client)"),
             window,
             cx,
         );
@@ -2122,7 +2141,7 @@ fn submit_client_secret(
         settings_window.mcp_page.report(
             context_server_id.clone(),
             McpConnectionTestOutcome::Failed(
-                format!("クライアントシークレットを送信できませんでした: {error}").into(),
+                i18n::t!("Couldn't submit the client secret: {error}").into(),
             ),
         );
     }
@@ -2153,7 +2172,7 @@ pub(crate) fn render_add_server_popover(
 
     let popover = PopoverMenu::new("add-mcp-server-popover")
         .trigger(
-            Button::new("add-mcp-server", "サーバーを追加")
+            Button::new("add-mcp-server", i18n::t!("Add Server"))
                 .style(ButtonStyle::Outlined)
                 .track_focus(&focus_handle)
                 .start_icon(
@@ -2179,15 +2198,19 @@ pub(crate) fn render_add_server_popover(
                         };
                     menu.custom_entry(
                         add_menu_entry(
-                            "テンプレートから追加",
-                            "ファイルシステム・GitHub など、よく使うサーバーの設定をフォームに読み込みます。",
+                            i18n::t!("Add from Template"),
+                            i18n::t!(
+                                "Loads the settings of a commonly used server, such as Filesystem or GitHub, into the form."
+                            ),
                         ),
                         open_in_settings_window(open_mcp_templates_page),
                     )
                     .custom_entry(
                         add_menu_entry(
-                            "ローカルサーバーを追加",
-                            "コマンド型: 実行ファイルを起動し、標準入出力でやり取りします。",
+                            i18n::t!("Add Local Server"),
+                            i18n::t!(
+                                "Command: starts an executable and talks to it over standard input and output."
+                            ),
                         ),
                         open_in_settings_window(|this, window, cx| {
                             open_mcp_server_form(this, McpTransport::Stdio, None, window, cx)
@@ -2195,8 +2218,8 @@ pub(crate) fn render_add_server_popover(
                     )
                     .custom_entry(
                         add_menu_entry(
-                            "リモートサーバーを追加",
-                            "HTTP 型: URL で公開されているサーバーに HTTP で接続します。",
+                            i18n::t!("Add Remote Server"),
+                            i18n::t!("HTTP: connects over HTTP to a server published at a URL."),
                         ),
                         open_in_settings_window(|this, window, cx| {
                             open_mcp_server_form(this, McpTransport::Http, None, window, cx)
@@ -2204,16 +2227,20 @@ pub(crate) fn render_add_server_popover(
                     )
                     .custom_entry(
                         add_menu_entry(
-                            "JSON から貼り付け",
-                            "README などに載っている mcpServers の JSON をフォームに読み込みます。",
+                            i18n::t!("Paste from JSON"),
+                            i18n::t!(
+                                "Loads mcpServers JSON, such as the one in a server's README, into the form."
+                            ),
                         ),
                         open_in_settings_window(open_mcp_paste_page),
                     )
                     .separator()
                     .custom_entry(
                         add_menu_entry(
-                            "拡張機能からインストール",
-                            "拡張機能由来: 拡張機能がコマンドを用意します。設定は拡張機能ごとのフォームで行います。",
+                            i18n::t!("Install from Extensions"),
+                            i18n::t!(
+                                "Extension: the extension provides the command. Its settings are made in the extension's own form."
+                            ),
                         ),
                         move |_window, cx| {
                             if let Some(original_window) = original_window.as_ref() {
@@ -2466,7 +2493,7 @@ impl McpServerForm {
             ),
             timeout: new_input("60", Some(values.timeout.as_str()), window, cx),
             oauth_client_id: new_input(
-                "OAuth クライアント ID (省略可)",
+                i18n::t!("Optional OAuth client ID"),
                 Some(values.oauth_client_id.as_str()),
                 window,
                 cx,
@@ -2651,16 +2678,16 @@ fn new_kv_row(
 ) -> KeyValueRow {
     let value_placeholder = prompt
         .as_deref()
-        .map_or_else(|| "値".to_string(), prompt_placeholder);
+        .map_or_else(|| i18n::t!("Value").to_string(), prompt_placeholder);
     KeyValueRow {
-        key: new_input("キー", key, window, cx),
+        key: new_input(i18n::t!("Key"), key, window, cx),
         value: new_input(&value_placeholder, value, window, cx),
         prompt,
     }
 }
 
 fn prompt_placeholder(prompt: &str) -> String {
-    format!("入力してください: {prompt}")
+    i18n::t!("Enter: {prompt}")
 }
 
 fn new_arg_input(
@@ -2668,7 +2695,7 @@ fn new_arg_input(
     window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) -> Entity<Editor> {
-    new_input("引数", value, window, cx)
+    new_input(i18n::t!("Argument"), value, window, cx)
 }
 
 /// Creates the form state and pushes the form sub-page onto the stack.
@@ -2695,17 +2722,17 @@ fn push_mcp_server_form(
     settings_window.mcp_server_form = Some(form);
 
     let title = if is_edit {
-        "MCP サーバーの設定"
+        i18n::tc!("page title", "Configure MCP Server")
     } else {
         match transport {
-            McpTransport::Stdio => "ローカル MCP サーバーの追加",
-            McpTransport::Http => "リモート MCP サーバーの追加",
+            McpTransport::Stdio => i18n::t!("Add Local MCP Server"),
+            McpTransport::Http => i18n::t!("Add Remote MCP Server"),
         }
     };
 
     settings_window.push_dynamic_sub_page(
         title,
-        "エージェントの設定",
+        "Agent Configuration",
         Some("context_servers"),
         false,
         render_mcp_server_form_page,
@@ -2740,17 +2767,21 @@ fn render_mcp_server_form_page(
     let show_execution_host = get_context_server_store(settings_window, cx)
         .is_some_and(|store| store.read(cx).is_remote_project());
     let kind_description = match transport {
-        McpTransport::Stdio => {
-            "コマンド型のサーバーです。Zed が実行ファイルを起動し、標準入出力でやり取りします。"
-        }
-        McpTransport::Http => {
-            "HTTP 型のサーバーです。Zed が URL に接続し、HTTP でやり取りします。接続先のホストはネットワーク許可リストの対象です。"
-        }
+        McpTransport::Stdio => i18n::t!(
+            "A command server: Zed starts the executable and talks to it over standard input and output."
+        ),
+        McpTransport::Http => i18n::t!(
+            "An HTTP server: Zed connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
+        ),
     };
     let working_folder_notice = if project_file.is_some() {
-        "プロジェクトの設定で定義したサーバーは、許可するとプロジェクトのフォルダーで起動します。"
+        i18n::t!(
+            "A server defined in the project settings starts in the project's folder once you allow it."
+        )
     } else {
-        "このサーバーは Zed 専用の空のフォルダーで起動します (プロジェクトのフォルダーではありません)。プロジェクトを対象にするときは、引数にフォルダーの絶対パスを指定してください。"
+        i18n::t!(
+            "This server starts in an empty folder of Zed's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
+        )
     };
 
     let fields = v_flex()
@@ -2765,8 +2796,8 @@ fn render_mcp_server_form_page(
             this.child(launch_approval_prompts::render_notice(
                 IconName::Info,
                 Color::Warning,
-                format!(
-                    "このサーバーはプロジェクトの設定ファイル {file_label} で定義されています。保存するとこのファイルを書き換えます (ユーザー設定には書きません)。内容が変わるため、起動するにはもう一度許可が必要です。"
+                i18n::t!(
+                    "This server is defined in the project settings file {file_label}. Saving rewrites this file (not your user settings). Because the definition changes, the server must be allowed again before it starts."
                 ),
             ))
         })
@@ -2775,8 +2806,8 @@ fn render_mcp_server_form_page(
         })
         .child(render_form_field(
             settings_window,
-            "サーバー名",
-            "必須。この MCP サーバーを識別する一意の名前です。",
+            i18n::t!("Server Name"),
+            i18n::t!("Required. A unique name used to identify this MCP server."),
             &form.name,
             cx,
         ))
@@ -2798,16 +2829,16 @@ fn render_mcp_server_form_page(
                 ))
                 .child(render_kv_section(
                     settings_window,
-                    "環境変数",
-                    "サーバーのプロセスに渡す環境変数です。API キーやトークンなど、サーバーの説明書が求める値をここに入力します。",
+                    i18n::t!("Environment Variables"),
+                    i18n::t!("Environment variables provided to the server process."),
                     &form.env,
                     McpKvKind::Env,
                     cx,
                 ))
                 .child(render_form_field(
                     settings_window,
-                    "タイムアウト (秒)",
-                    "サーバーの応答をタイムアウトまでどれだけ待つかを設定します。",
+                    i18n::t!("Timeout (seconds)"),
+                    i18n::t!("How long to wait for the server to respond before timing out."),
                     &form.timeout,
                     cx,
                 ))
@@ -2817,30 +2848,30 @@ fn render_mcp_server_form_page(
             McpTransport::Http => this
                 .child(render_form_field(
                     settings_window,
-                    "URL",
-                    "必須。リモート MCP サーバーのエンドポイントの URL です (例: https://example.com/mcp)。",
+                    i18n::t!("URL"),
+                    i18n::t!("Required. The base URL of the remote MCP server."),
                     &form.url,
                     cx,
                 ))
                 .child(render_kv_section(
                     settings_window,
-                    "ヘッダー",
-                    "サーバーへの各リクエストに付与する HTTP ヘッダーです。トークンで認証するサーバーでは Authorization に「Bearer <トークン>」を指定します。",
+                    i18n::t!("Headers"),
+                    i18n::t!("HTTP headers sent with each request to the server."),
                     &form.headers,
                     McpKvKind::Header,
                     cx,
                 ))
                 .child(render_form_field(
                     settings_window,
-                    "タイムアウト (秒)",
-                    "サーバーの応答をタイムアウトまでどれだけ待つかを設定します。",
+                    i18n::t!("Timeout (seconds)"),
+                    i18n::t!("How long to wait for the server to respond before timing out."),
                     &form.timeout,
                     cx,
                 ))
                 .child(render_form_field(
                     settings_window,
-                    "OAuth クライアント ID",
-                    "サーバーの認証に使う OAuth クライアント ID です (省略可)。サーバーが自動登録に対応していれば空欄のままで、接続時にブラウザーでの認証を求められます。",
+                    i18n::t!("OAuth Client ID"),
+                    i18n::t!("Optional OAuth client ID used to authenticate with the server."),
                     &form.oauth_client_id,
                     cx,
                 )),
@@ -2935,9 +2966,9 @@ fn render_execution_host_field(
         },
     )
     .label(if remote {
-        "SSH 接続先で実行"
+        i18n::t!("Run on the SSH Host")
     } else {
-        "この PC で実行"
+        i18n::t!("Run on This Computer")
     })
     .tab_index(0isize)
     .on_click(cx.listener(|this, state, _window, cx| {
@@ -2950,8 +2981,10 @@ fn render_execution_host_field(
 
     crate::render_settings_item_layout(
         settings_window,
-        "実行ホスト",
-        "SSH 接続先で実行する場合、コマンドは接続先で解決されます (拡張機能提供の場合は接続先にも同じ拡張機能が必要です)。この PC で実行する場合、サーバーが読み書きするファイルはこの PC のものになります。",
+        i18n::t!("Execution Host"),
+        i18n::t!(
+            "When it runs on the SSH host, the command is resolved there (a server provided by an extension needs the same extension installed there too). When it runs on this computer, the files the server reads and writes are the ones on this computer."
+        ),
         control,
         None,
         None,
@@ -2990,7 +3023,7 @@ fn render_kv_section(
                             IconButton::new((kind.remove_id(), ix), IconName::Close)
                                 .icon_size(IconSize::Small)
                                 .icon_color(Color::Muted)
-                                .tooltip(Tooltip::text("削除"))
+                                .tooltip(Tooltip::text(i18n::t!("Remove")))
                                 .on_click(cx.listener(move |this, _, _window, cx| {
                                     if let Some(form) = this.mcp_server_form.as_mut() {
                                         let rows = kind.rows_mut(form);
@@ -3005,7 +3038,7 @@ fn render_kv_section(
                 .child(row_input_box(&row.value, cx))
         }))
         .child(
-            Button::new(kind.add_id(), "追加")
+            Button::new(kind.add_id(), i18n::t!("Add"))
                 .style(ButtonStyle::Outlined)
                 .label_size(LabelSize::Small)
                 .start_icon(
@@ -3051,9 +3084,9 @@ fn render_command_field(
         .tab_index(0isize)
         .disabled(runs_on_ssh_host)
         .tooltip(Tooltip::text(if runs_on_ssh_host {
-            "SSH 接続先で実行する場合は、接続先のパスを直接入力してください。"
+            i18n::t!("When the server runs on the SSH host, type the path on the host directly.")
         } else {
-            "ファイルを選択"
+            i18n::t!("Choose File")
         }))
         .on_click(cx.listener(|this, _event, window, cx| {
             pick_command_file(this, window, cx);
@@ -3069,8 +3102,8 @@ fn render_command_field(
 
     crate::render_settings_item_layout(
         settings_window,
-        "コマンド",
-        "必須。サーバーを起動する実行ファイルのパス、または PATH にあるコマンドの名前 (npx・uvx など) です。保存するときに、見つかるかどうかだけを確かめます (実行はしません)。",
+        i18n::t!("Command"),
+        i18n::t!("Required. Path to the executable that launches the server."),
         control,
         None,
         None,
@@ -3118,7 +3151,7 @@ fn pick_command_file(
                         files: true,
                         directories: false,
                         multiple: false,
-                        prompt: Some("選択".into()),
+                        prompt: Some(i18n::t!("Select").into()),
                         starting_directory: Some(starting_directory),
                     },
                     cx,
@@ -3135,8 +3168,7 @@ fn pick_command_file(
             Ok(Err(error)) => {
                 this.update(cx, |this, cx| {
                     if let Some(form) = this.mcp_server_form.as_mut() {
-                        form.error =
-                            Some(format!("ファイルを選択できませんでした: {error}").into());
+                        form.error = Some(i18n::t!("Couldn't choose the file: {error}").into());
                     }
                     cx.notify();
                 })
@@ -3186,7 +3218,7 @@ fn render_args_section(
                         .icon_size(IconSize::Small)
                         .icon_color(Color::Muted)
                         .disabled(index == 0)
-                        .tooltip(Tooltip::text("上へ移動"))
+                        .tooltip(Tooltip::text(i18n::t!("Move Up")))
                         .on_click(cx.listener(move |this, _, _window, cx| {
                             if let Some(form) = this.mcp_server_form.as_mut()
                                 && index > 0
@@ -3202,7 +3234,7 @@ fn render_args_section(
                         .icon_size(IconSize::Small)
                         .icon_color(Color::Muted)
                         .disabled(index + 1 >= arg_count)
-                        .tooltip(Tooltip::text("下へ移動"))
+                        .tooltip(Tooltip::text(i18n::t!("Move Down")))
                         .on_click(cx.listener(move |this, _, _window, cx| {
                             if let Some(form) = this.mcp_server_form.as_mut()
                                 && index + 1 < form.args.len()
@@ -3216,7 +3248,7 @@ fn render_args_section(
                     IconButton::new(("mcp-arg-remove", index), IconName::Close)
                         .icon_size(IconSize::Small)
                         .icon_color(Color::Muted)
-                        .tooltip(Tooltip::text("削除"))
+                        .tooltip(Tooltip::text(i18n::t!("Remove")))
                         .on_click(cx.listener(move |this, _, _window, cx| {
                             if let Some(form) = this.mcp_server_form.as_mut()
                                 && index < form.args.len()
@@ -3228,7 +3260,7 @@ fn render_args_section(
                 )
         }))
         .child(
-            Button::new("mcp-arg-add", "追加")
+            Button::new("mcp-arg-add", i18n::t!("Add"))
                 .style(ButtonStyle::Outlined)
                 .label_size(LabelSize::Small)
                 .start_icon(
@@ -3253,8 +3285,10 @@ fn render_args_section(
 
     crate::render_settings_item_layout(
         settings_window,
-        "引数",
-        "コマンドに渡す引数です。1 行に 1 つずつ入力します (空白を含む引数もそのまま渡されます)。追加したまま空の行は無視されます。",
+        i18n::t!("Arguments"),
+        i18n::t!(
+            "Arguments passed to the command, one per row (an argument containing spaces is passed as it is). Rows added and left empty are ignored."
+        ),
         control,
         None,
         None,
@@ -3280,11 +3314,8 @@ fn render_import_note(note: SharedString) -> impl IntoElement {
 
 fn import_note(ignored_keys: &[String]) -> Option<SharedString> {
     (!ignored_keys.is_empty()).then(|| {
-        format!(
-            "次の項目は Zed では使わないため読み込みませんでした: {}",
-            ignored_keys.join(", ")
-        )
-        .into()
+        let keys = ignored_keys.join(", ");
+        i18n::t!("These fields weren't loaded because Zed doesn't use them: {keys}").into()
     })
 }
 
@@ -3327,7 +3358,9 @@ fn open_mcp_paste_page(
     let editor = cx.new(|cx| {
         let mut editor = Editor::auto_height(8, 24, window, cx);
         editor.set_placeholder_text(
-            r#"{ "mcpServers": { "サーバー名": { "command": "…", "args": ["…"] } } }"#,
+            &i18n::t!(
+                r#"{{ "mcpServers": {{ "server-name": {{ "command": "…", "args": ["…"] }} }} }}"#
+            ),
             window,
             cx,
         );
@@ -3338,8 +3371,8 @@ fn open_mcp_paste_page(
         outcome: None,
     });
     settings_window.push_dynamic_sub_page(
-        "JSON から MCP サーバーを追加",
-        "エージェントの設定",
+        i18n::t!("Add MCP Servers from JSON"),
+        "Agent Configuration",
         Some("context_servers"),
         false,
         render_mcp_paste_page,
@@ -3389,16 +3422,16 @@ fn render_mcp_paste_page(
                 .w_full()
                 .gap_4()
                 .child(
-                    Label::new(
-                        "MCP サーバーの README などに載っている設定の JSON を貼り付けて「読み込む」を押してください。Claude Desktop・Cursor の mcpServers、VS Code の servers、Zed の context_servers の形式に対応しています。読み込んだ内容はフォームに入り、「保存」を押すまで設定には書き込まれません。",
-                    )
+                    Label::new(i18n::t!(
+                        "Paste the configuration JSON from an MCP server's README or similar, then press \"Load\". The mcpServers format of Claude Desktop and Cursor, the servers format of VS Code and Zed's context_servers format are supported. What is loaded goes into the form and isn't written to your settings until you press \"Save\"."
+                    ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
                 )
                 .child(input)
                 .child(
                     h_flex().w_full().justify_end().child(
-                        Button::new("mcp-paste-load", "読み込む")
+                        Button::new("mcp-paste-load", i18n::t!("Load"))
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 load_pasted_json(this, window, cx);
@@ -3452,14 +3485,20 @@ fn render_imported_servers(
                 ImportedDefinition::Local {
                     command, args, env, ..
                 } => (
-                    "ローカル",
+                    i18n::t!("Local"),
                     display_command_line(command, args),
-                    (!env.is_empty()).then(|| format!("環境変数: {}", join_names(env))),
+                    (!env.is_empty()).then(|| {
+                        let names = join_names(env);
+                        i18n::t!("Environment variables: {names}")
+                    }),
                 ),
                 ImportedDefinition::Remote { url, headers, .. } => (
-                    "リモート",
+                    i18n::t!("Remote"),
                     url.clone(),
-                    (!headers.is_empty()).then(|| format!("ヘッダー: {}", join_names(headers))),
+                    (!headers.is_empty()).then(|| {
+                        let names = join_names(headers);
+                        i18n::t!("Headers: {names}")
+                    }),
                 ),
             };
 
@@ -3484,7 +3523,7 @@ fn render_imported_servers(
                                 .child(Label::new(server.display_name().to_string()))
                                 .when(!server.enabled, |this| {
                                     this.child(
-                                        Label::new("無効")
+                                        Label::new(i18n::t!("Disabled"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     )
@@ -3492,14 +3531,16 @@ fn render_imported_servers(
                                 .child(Label::new(kind).size(LabelSize::Small).color(Color::Muted))
                                 .when(name_exists, |this| {
                                     this.child(
-                                        Label::new("同名のサーバーがあります")
-                                            .size(LabelSize::Small)
-                                            .color(Color::Warning),
+                                        Label::new(i18n::t!(
+                                            "A server with this name already exists"
+                                        ))
+                                        .size(LabelSize::Small)
+                                        .color(Color::Warning),
                                     )
                                 }),
                         )
                         .child(
-                            Button::new(("mcp-paste-open", index), "フォームで開く")
+                            Button::new(("mcp-paste-open", index), i18n::t!("Open in Form"))
                                 .style(ButtonStyle::Outlined)
                                 .label_size(LabelSize::Small)
                                 .on_click(cx.listener(move |this, _, window, cx| {
@@ -3534,20 +3575,22 @@ fn render_imported_servers(
             .gap_2()
             .justify_end()
             .child(
-                Label::new(format!(
-                    "{count} 件のサーバーをすべてユーザー設定に追加します。よろしいですか?"
+                Label::new(i18n::tn!(
+                    count,
+                    "Add {count} server to your user settings?",
+                    "Add all {count} servers to your user settings?"
                 ))
                 .size(LabelSize::Small),
             )
             .child(
-                Button::new("mcp-paste-add-all-cancel", "キャンセル")
+                Button::new("mcp-paste-add-all-cancel", i18n::t!("Cancel"))
                     .style(ButtonStyle::Subtle)
                     .on_click(cx.listener(|this, _, _window, cx| {
                         set_confirming_add_all(this, false, cx);
                     })),
             )
             .child(
-                Button::new("mcp-paste-add-all-confirm", "追加する")
+                Button::new("mcp-paste-add-all-confirm", i18n::t!("Add All"))
                     .style(ButtonStyle::Filled)
                     .on_click(cx.listener(|this, _, window, cx| {
                         add_all_imported_servers(this, window, cx);
@@ -3555,15 +3598,18 @@ fn render_imported_servers(
             )
     } else {
         h_flex().w_full().justify_end().child(
-            Button::new("mcp-paste-add-all", format!("{count} 件すべてを追加"))
+            Button::new(
+                "mcp-paste-add-all",
+                i18n::tn!(count, "Add {count} Server", "Add All {count} Servers"),
+            )
                 .style(ButtonStyle::Outlined)
                 // Refusing only after the confirmation would waste the click:
                 // the cards already say which names are taken.
                 .disabled(any_name_taken)
                 .when(any_name_taken, |button| {
-                    button.tooltip(Tooltip::text(
-                        "同名のサーバーがあるため、まとめては追加できません。「同名のサーバーがあります」と出ているサーバーをフォームで開き、名前を変えてから追加してください。",
-                    ))
+                    button.tooltip(Tooltip::text(i18n::t!(
+                        "Servers can't be added all at once while one has a name that is already taken. Open each server marked \"A server with this name already exists\" in the form and rename it before adding it."
+                    )))
                 })
                 .on_click(cx.listener(|this, _, _window, cx| {
                     set_confirming_add_all(this, true, cx);
@@ -3575,8 +3621,10 @@ fn render_imported_servers(
         .w_full()
         .gap_2()
         .child(
-            Label::new(format!(
-                "{count} 件のサーバーが見つかりました。1 件ずつフォームで開いて確認するか、まとめて追加できます。"
+            Label::new(i18n::tn!(
+                count,
+                "Found {count} server. Open it in the form to review it, or add it right away.",
+                "Found {count} servers. Open each one in the form to review it, or add them all at once."
             ))
             .size(LabelSize::Small),
         )
@@ -3733,13 +3781,16 @@ fn settings_for_imported_servers(
         let (id, _, content) = build_settings_from_values(&McpServerFormValues::from_import(
             server,
         ))
-        .map_err(|error| SharedString::from(format!("「{}」: {error}", server.display_name())))?;
+        .map_err(|error| {
+            let name = server.display_name();
+            SharedString::from(i18n::t!("\"{name}\": {error}"))
+        })?;
         if name_collides_with_other_server(&id, None, existing_ids)
             || entries.iter().any(|(added, _)| added == &id)
         {
-            return Err(format!(
-                "「{}」という名前のサーバーは既に存在します。フォームで開いて名前を変えてから追加してください。",
-                id.0
+            let name = &id.0;
+            return Err(i18n::t!(
+                "A server named \"{name}\" already exists. Open it in the form and rename it before adding it."
             )
             .into());
         }
@@ -3768,7 +3819,7 @@ fn render_form_actions(saving: bool, cx: &mut Context<SettingsWindow>) -> impl I
         .justify_end()
         .pt_2()
         .child(
-            Button::new("mcp-form-cancel", "キャンセル")
+            Button::new("mcp-form-cancel", i18n::t!("Cancel"))
                 .style(ButtonStyle::Subtle)
                 .on_click(cx.listener(|this, _, window, cx| {
                     this.mcp_server_form = None;
@@ -3779,9 +3830,9 @@ fn render_form_actions(saving: bool, cx: &mut Context<SettingsWindow>) -> impl I
             Button::new(
                 "mcp-form-save",
                 if saving {
-                    "保存しています…"
+                    i18n::t!("Saving…")
                 } else {
-                    "保存"
+                    i18n::t!("Save")
                 },
             )
             .style(ButtonStyle::Filled)
@@ -3828,7 +3879,7 @@ fn save_mcp_server_form(
     );
     if collides_with_other_server {
         if let Some(form) = settings_window.mcp_server_form.as_mut() {
-            form.error = Some(format!("「{}」という名前のサーバーは既に存在します。", id.0).into());
+            form.error = Some(i18n::t!("A server named \"{}\" already exists.", id.0).into());
         }
         cx.notify();
         return;
@@ -3996,7 +4047,9 @@ fn is_showing_form(settings_window: &SettingsWindow, form_id: EntityId) -> bool 
         })
 }
 
-const PROJECT_DEFINITION_CHANGED: &str = "フォームを開いた後に、プロジェクトの設定ファイルでこのサーバーの定義が変わりました。フォームを開き直してください。";
+const PROJECT_DEFINITION_CHANGED: &str = i18n::msg!(
+    "This server's definition in the project settings file changed after the form was opened. Open the form again."
+);
 
 /// Writes an edit of a server a project defines back into the
 /// `.zed/settings.json` it came from, never into the user's settings. What
@@ -4010,13 +4063,14 @@ fn write_project_server(
     content: ContextServerSettingsContent,
     cx: &mut Context<SettingsWindow>,
 ) -> Result<Task<Result<(), SharedString>>, SharedString> {
-    let original_id = original_id.ok_or_else(|| SharedString::from(PROJECT_DEFINITION_CHANGED))?;
+    let original_id =
+        original_id.ok_or_else(|| SharedString::from(i18n::tr(PROJECT_DEFINITION_CHANGED)))?;
     let project = target_workspace(settings_window, cx)
         .map(|workspace| workspace.read(cx).project().clone())
         .ok_or_else(|| {
-            SharedString::from(
-                "プロジェクトが開かれていないため、プロジェクトの設定ファイルに保存できません。",
-            )
+            SharedString::from(i18n::t!(
+                "Can't save to the project settings file because no project is open."
+            ))
         })?;
 
     // Checked here as well as when the file is rewritten: what the file said a
@@ -4029,7 +4083,7 @@ fn write_project_server(
         )))
         .and_then(|file| file.project.context_servers.get(&original_id.0));
     if current != Some(&loaded) {
-        return Err(PROJECT_DEFINITION_CHANGED.into());
+        return Err(i18n::tr(PROJECT_DEFINITION_CHANGED).into());
     }
 
     // Stays `None` when the edit never ran: the queue leaves a file it cannot
@@ -4055,25 +4109,25 @@ fn write_project_server(
         cx,
     )
     .map_err(|error| {
-        SharedString::from(format!(
-            "プロジェクトの設定ファイルに保存できませんでした: {error}"
+        SharedString::from(i18n::t!(
+            "Couldn't save to the project settings file: {error}"
         ))
     })?;
 
     Ok(cx.spawn(async move |_, _| match done.await {
         Ok(Ok(())) => applied.take().unwrap_or_else(|| {
-            Err(
-                "プロジェクトの設定ファイルを読み取れないため、保存できませんでした。ファイルの JSON の誤りを直してから、もう一度保存してください。"
-                    .into(),
+            Err(i18n::t!(
+                "Couldn't save because the project settings file can't be read. Fix the JSON errors in the file, then save again."
             )
+            .into())
         }),
-        Ok(Err(error)) => Err(format!(
-            "プロジェクトの設定ファイルに保存できませんでした: {error}"
+        Ok(Err(error)) => {
+            Err(i18n::t!("Couldn't save to the project settings file: {error}").into())
+        }
+        Err(_) => Err(i18n::t!(
+            "Couldn't save to the project settings file: the save was cancelled."
         )
         .into()),
-        Err(_) => Err(
-            "プロジェクトの設定ファイルに保存できませんでした: 保存が取り消されました。".into(),
-        ),
     }))
 }
 
@@ -4090,11 +4144,11 @@ fn apply_project_server_edit(
     content: ContextServerSettingsContent,
 ) -> Result<(), SharedString> {
     if servers.get(&original_id.0) != Some(loaded) {
-        return Err(PROJECT_DEFINITION_CHANGED.into());
+        return Err(i18n::tr(PROJECT_DEFINITION_CHANGED).into());
     }
     if original_id.0 != id.0 {
         if servers.contains_key(&id.0) {
-            return Err(format!("「{}」という名前のサーバーは既に存在します。", id.0).into());
+            return Err(i18n::t!("A server named \"{}\" already exists.", id.0).into());
         }
         servers.remove(&original_id.0);
     }
@@ -4220,14 +4274,19 @@ fn missing_command_message(program: &str) -> SharedString {
         .map(|stem| stem.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default();
     let hint = match name.as_str() {
-        "npx" | "npm" | "node" => "Node.js をインストールすると使えるようになります。",
-        "uvx" | "uv" => "uv をインストールすると使えるようになります。",
-        "docker" => "Docker をインストールすると使えるようになります。",
-        _ => "",
+        "npx" | "npm" | "node" => Some(i18n::t!("Install Node.js to make it available.")),
+        "uvx" | "uv" => Some(i18n::t!("Install uv to make it available.")),
+        "docker" => Some(i18n::t!("Install Docker to make it available.")),
+        _ => None,
     };
-    format!(
-        "コマンド「{program}」が見つかりません (PATH にも、指定した場所にもありません。コマンドは実行していません)。{hint}このまま保存する場合は、もう一度「保存」を押してください。"
-    )
+    match hint {
+        Some(hint) => i18n::t!(
+            "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). {hint} To save anyway, press \"Save\" again."
+        ),
+        None => i18n::t!(
+            "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). To save anyway, press \"Save\" again."
+        ),
+    }
     .into()
 }
 
@@ -4321,7 +4380,10 @@ fn unfilled_template_input(values: &McpServerFormValues) -> Option<SharedString>
         rows.iter()
             .zip(prompts)
             .find(|((_, value), prompt)| prompt.is_some() && value.trim().is_empty())
-            .map(|((key, _), _)| format!("{label}「{}」の値を入力してください。", key.trim()))
+            .map(|((key, _), _)| {
+                let key = key.trim();
+                i18n::t!("Enter a value for the {label} \"{key}\".")
+            })
     };
     let message = match values.transport {
         McpTransport::Stdio => values
@@ -4332,10 +4394,18 @@ fn unfilled_template_input(values: &McpServerFormValues) -> Option<SharedString>
                 prompt
                     .as_ref()
                     .filter(|_| argument.trim().is_empty())
-                    .map(|prompt| format!("「{prompt}」を入力してください。"))
+                    .map(|prompt| i18n::t!("Enter \"{prompt}\"."))
             })
-            .or_else(|| unfilled_value(&values.env, &values.prompts.env, "環境変数")),
-        McpTransport::Http => unfilled_value(&values.headers, &values.prompts.headers, "ヘッダー"),
+            .or_else(|| {
+                unfilled_value(
+                    &values.env,
+                    &values.prompts.env,
+                    i18n::t!("environment variable"),
+                )
+            }),
+        McpTransport::Http => {
+            unfilled_value(&values.headers, &values.prompts.headers, i18n::t!("header"))
+        }
     };
     message.map(SharedString::from)
 }
@@ -4358,7 +4428,7 @@ fn build_settings_from_values(
 > {
     let name = values.name.trim().to_string();
     if name.is_empty() {
-        return Err("サーバー名を入力してください。".into());
+        return Err(i18n::t!("Server name is required.").into());
     }
     if let Some(error) = unfilled_template_input(values) {
         return Err(error);
@@ -4370,13 +4440,13 @@ fn build_settings_from_values(
         McpTransport::Stdio => {
             let command = values.command.trim().to_string();
             if command.is_empty() {
-                return Err("コマンドを入力してください。".into());
+                return Err(i18n::t!("Command is required.").into());
             }
             // Taken verbatim, surrounding spaces and empty arguments included,
             // so that editing a server writes back exactly what it was loaded
             // with.
             let args = values.args.clone();
-            let env = collect_kv(&values.env, "環境変数")?;
+            let env = collect_kv(&values.env, i18n::t!("environment variable"))?;
             ContextServerSettingsContent::Stdio {
                 enabled: values.enabled,
                 remote: values.remote,
@@ -4391,15 +4461,15 @@ fn build_settings_from_values(
         McpTransport::Http => {
             let url = values.url.trim().to_string();
             if url.is_empty() {
-                return Err("URL を入力してください。".into());
+                return Err(i18n::t!("URL is required.").into());
             }
             // Validate the URL on save (a deliberate action) rather than on every
             // render, so a clearly invalid URL is reported to the user instead of
             // being silently written and failing later when the server starts.
             if let Err(error) = url::Url::parse(&url) {
-                return Err(format!("URL が正しくありません: {error}").into());
+                return Err(i18n::t!("Invalid URL: {error}").into());
             }
-            let headers = collect_kv(&values.headers, "ヘッダー")?;
+            let headers = collect_kv(&values.headers, i18n::t!("header"))?;
             let oauth_client_id = values.oauth_client_id.trim().to_string();
             let oauth = (!oauth_client_id.is_empty()).then(|| OAuthClientSettings {
                 client_id: oauth_client_id,
@@ -4428,7 +4498,7 @@ fn build_settings_from_values(
 fn settings_validation_error(settings: Option<&ContextServerSettings>) -> Option<SharedString> {
     match settings? {
         ContextServerSettings::Http { url, .. } if url::Url::parse(url).is_err() => {
-            Some("設定内の URL が正しくありません。".into())
+            Some(i18n::t!("Invalid URL in settings.").into())
         }
         _ => None,
     }
@@ -4461,19 +4531,25 @@ impl McpProxyStatus {
     fn detail(self) -> Option<(SharedString, SharedString)> {
         match self {
             McpProxyStatus::Proxied => Some((
-                "プロキシ経由".into(),
-                "このサーバーの子プロセスはループバックのプロキシを経由するため、外部通信はネットワーク許可リストで統制されます。"
-                    .into(),
+                i18n::t!("Proxied").into(),
+                i18n::t!(
+                    "This server's child process goes through the loopback proxy, so its outbound traffic is controlled by the network allowlist."
+                )
+                .into(),
             )),
             McpProxyStatus::ProxyDisabled => Some((
-                "統制外".into(),
-                "子プロセスへのプロキシ適用が無効なため、このサーバーの外部通信はネットワーク許可リストの統制外です。"
-                    .into(),
+                i18n::t!("Not Controlled").into(),
+                i18n::t!(
+                    "Proxying for child processes is turned off, so this server's outbound traffic is not controlled by the network allowlist."
+                )
+                .into(),
             )),
             McpProxyStatus::EnvOverride => Some((
-                "統制外 (独自プロキシ)".into(),
-                "このサーバーの環境変数がプロキシを指定しているため、ループバックのプロキシは適用されません。外部通信はネットワーク許可リストの統制外です。"
-                    .into(),
+                i18n::t!("Not Controlled (Own Proxy)").into(),
+                i18n::t!(
+                    "This server's environment variables name a proxy, so the loopback proxy is not applied. Its outbound traffic is not controlled by the network allowlist."
+                )
+                .into(),
             )),
             McpProxyStatus::NotApplicable => None,
         }
@@ -4592,7 +4668,7 @@ fn parse_timeout(text: &str) -> Result<Option<u64>, SharedString> {
     }
     text.parse::<u64>()
         .map(Some)
-        .map_err(|_| "タイムアウトには正の整数の秒数を指定してください。".into())
+        .map_err(|_| i18n::t!("Timeout must be a positive whole number of seconds.").into())
 }
 
 fn collect_kv(
@@ -4608,13 +4684,13 @@ fn collect_kv(
             if value.is_empty() {
                 continue;
             }
-            return Err(format!(
-                "{label}の名前が空の行があります。名前を入力するか、その行を削除してください。"
+            return Err(i18n::t!(
+                "One of the {label} rows has no name. Enter a name or remove that row."
             )
             .into());
         }
         if map.contains_key(&key) {
-            return Err(format!("{label}「{key}」が重複しています。").into());
+            return Err(i18n::t!("Duplicate {label} \"{key}\".").into());
         }
         map.insert(key, value.clone());
     }
@@ -4779,7 +4855,7 @@ mod tests {
         values.command = "/bin/server".into();
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "サーバー名を入力してください。"
+            "Server name is required."
         );
     }
 
@@ -4788,7 +4864,7 @@ mod tests {
         let values = values(McpTransport::Stdio);
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "コマンドを入力してください。"
+            "Command is required."
         );
     }
 
@@ -4797,7 +4873,7 @@ mod tests {
         let values = values(McpTransport::Http);
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "URL を入力してください。"
+            "URL is required."
         );
     }
 
@@ -4807,7 +4883,7 @@ mod tests {
         values.url = "not a url".into();
         let error = build_settings_from_values(&values).unwrap_err();
         assert!(
-            error.starts_with("URL が正しくありません"),
+            error.starts_with("Invalid URL: "),
             "unexpected error: {error}"
         );
     }
@@ -4819,7 +4895,7 @@ mod tests {
         values.timeout = "soon".into();
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "タイムアウトには正の整数の秒数を指定してください。"
+            "Timeout must be a positive whole number of seconds."
         );
     }
 
@@ -4830,7 +4906,7 @@ mod tests {
         values.env = vec![("FOO".into(), "1".into()), ("FOO".into(), "2".into())];
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "環境変数「FOO」が重複しています。"
+            "Duplicate environment variable \"FOO\"."
         );
     }
 
@@ -4844,7 +4920,7 @@ mod tests {
         ];
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "ヘッダー「Authorization」が重複しています。"
+            "Duplicate header \"Authorization\"."
         );
     }
 
@@ -4981,7 +5057,7 @@ mod tests {
             settings_validation_error(Some(&http("not a url")))
                 .unwrap()
                 .as_ref(),
-            "設定内の URL が正しくありません。"
+            "Invalid URL in settings."
         );
         assert!(settings_validation_error(Some(&http("https://example.com/mcp"))).is_none());
         assert!(settings_validation_error(None).is_none());
@@ -5304,7 +5380,7 @@ mod tests {
         values.env = vec![("   ".into(), "secret".into())];
         assert_eq!(
             build_settings_from_values(&values).unwrap_err().as_ref(),
-            "環境変数の名前が空の行があります。名前を入力するか、その行を削除してください。"
+            "One of the environment variable rows has no name. Enter a name or remove that row."
         );
     }
 
@@ -5317,14 +5393,14 @@ mod tests {
     }
 
     #[test]
-    fn the_request_timeout_is_reported_in_japanese() {
+    fn the_request_timeout_is_reported_in_the_ui_language() {
         assert_eq!(
             server_error_text("Context server request timeout"),
-            "MCP サーバーが応答しませんでした (タイムアウト)"
+            "MCP server did not respond (timed out)"
         );
         assert_eq!(
             server_error_text("failed to start: Context server request timeout"),
-            "failed to start: MCP サーバーが応答しませんでした (タイムアウト)"
+            "failed to start: MCP server did not respond (timed out)"
         );
         assert_eq!(
             server_error_text("expected value at line 1 column 1"),
@@ -5414,7 +5490,7 @@ mod tests {
             settings_for_imported_servers(&servers, &[id("memory")])
                 .unwrap_err()
                 .as_ref(),
-            "「memory」という名前のサーバーは既に存在します。フォームで開いて名前を変えてから追加してください。"
+            "A server named \"memory\" already exists. Open it in the form and rename it before adding it."
         );
 
         let broken = vec![
@@ -5425,7 +5501,7 @@ mod tests {
             settings_for_imported_servers(&broken, &[])
                 .unwrap_err()
                 .as_ref(),
-            "「blank」: コマンドを入力してください。"
+            "\"blank\": Command is required."
         );
     }
 
@@ -5505,7 +5581,7 @@ mod tests {
         assert_eq!(import_note(&[]), None);
         assert_eq!(
             import_note(&["cwd".into(), "envFile".into()]).as_deref(),
-            Some("次の項目は Zed では使わないため読み込みませんでした: cwd, envFile")
+            Some("These fields weren't loaded because Zed doesn't use them: cwd, envFile")
         );
     }
 
@@ -5774,7 +5850,7 @@ mod tests {
                     .iter()
                     .map(|page| page.link.title.clone())
                     .collect::<Vec<_>>(),
-                vec![SharedString::from("テンプレートから MCP サーバーを追加")],
+                vec![SharedString::from("Add MCP Server from Template")],
                 "the page opened meanwhile stays open"
             );
         });
@@ -5881,7 +5957,7 @@ mod tests {
     #[test]
     fn a_missing_command_says_what_would_provide_it() {
         assert!(missing_command_message("npx").contains("Node.js"));
-        assert!(missing_command_message("uvx.exe").contains("uv をインストール"));
-        assert!(!missing_command_message("my-server").contains("インストール"));
+        assert!(missing_command_message("uvx.exe").contains("Install uv"));
+        assert!(!missing_command_message("my-server").contains("Install"));
     }
 }

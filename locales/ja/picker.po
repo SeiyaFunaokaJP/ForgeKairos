@@ -1,0 +1,33 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Actions…"
+msgstr "アクション…"
+
+msgid "No matches"
+msgstr "一致なし"
+
+msgid "Open"
+msgstr "開く"
+
+msgid "Preview"
+msgstr "プレビュー"
+
+msgid "Preview Below"
+msgstr "プレビューを下に表示"
+
+msgid "Preview to the Right"
+msgstr "プレビューを右に表示"
+
+msgid "Project Scan in Progress…"
+msgstr "プロジェクトをスキャンしています…"
+
+msgid "Select"
+msgstr "選択"
+
+msgid "Toggle Multi Select"
+msgstr "複数選択の切り替え"

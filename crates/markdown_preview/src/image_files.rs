@@ -101,7 +101,7 @@ pub(crate) fn store_image_next_to(
     cx.background_executor().spawn(async move {
         receiver
             .await
-            .map_err(|_| anyhow!("画像の保存が中断されました。"))?
+            .map_err(|_| anyhow!(i18n::t!("Saving the image was interrupted.")))?
     })
 }
 
@@ -219,12 +219,14 @@ impl Destination {
         let project = project.read(cx);
         let worktree = project
             .worktree_for_id(document.worktree_id, cx)
-            .context("Markdown のあるワークツリーが見つかりません。")?;
+            .context(i18n::t!(
+                "The worktree that contains the Markdown file could not be found."
+            ))?;
         let is_local = worktree.read(cx).is_local();
         if !is_local && project.remote_client().is_none() {
-            return Err(anyhow!(
-                "共同編集で参加しているプロジェクトには画像を保存できません。"
-            ));
+            return Err(anyhow!(i18n::t!(
+                "Images cannot be saved in a project you joined for collaboration."
+            )));
         }
         let images = RelPath::from_unix_str(IMAGES_FOLDER)?;
         let path_style = project.path_style(cx);
@@ -240,9 +242,9 @@ impl Destination {
                 let document_directory = lone_file
                     .then(|| Path::new(&root).parent())
                     .flatten()
-                    .context(
-                        "単独で開いた Markdown の隣には画像を保存できません。Markdown のあるフォルダーを開いてください。",
-                    )?;
+                    .context(i18n::t!(
+                        "Images cannot be saved next to a Markdown file opened on its own. Open the folder that contains the Markdown file."
+                    ))?;
                 (
                     images.into_arc(),
                     document_directory.to_string_lossy().into_owned(),
@@ -264,7 +266,7 @@ impl Destination {
     fn absolute(&self, path: &RelPath) -> Result<String> {
         self.path_style
             .join(&self.root, path.display(self.path_style).as_ref())
-            .with_context(|| format!("パスを組み立てられません: {}", path.as_unix_str()))
+            .with_context(|| i18n::t!("Cannot build the path: {}", path.as_unix_str()))
     }
 }
 
@@ -296,8 +298,8 @@ async fn store(
             let path = project
                 .read_with(cx, |project, cx| project.absolute_path(&source, cx))?
                 .with_context(|| {
-                    format!(
-                        "画像ファイルが見つかりません: {}",
+                    i18n::t!(
+                        "Image file not found: {}",
                         source.path.display(destination.path_style)
                     )
                 })?;
@@ -307,10 +309,9 @@ async fn store(
 
     if !destination.is_local {
         let path = find_remote_name(destination, project, &file_name, cx).await?;
-        let worktree = destination
-            .worktree
-            .upgrade()
-            .context("Markdown のあるワークツリーが閉じられました。")?;
+        let worktree = destination.worktree.upgrade().context(i18n::t!(
+            "The worktree that contains the Markdown file was closed."
+        ))?;
         // Nothing is taken away when this fails: the name was only seen to be
         // free a moment ago, and what is at it now may be something else's.
         let created = worktree
@@ -319,8 +320,8 @@ async fn store(
             })
             .await
             .with_context(|| {
-                format!(
-                    "画像を保存できませんでした: {}",
+                i18n::t!(
+                    "Failed to save the image: {}",
                     path.display(destination.path_style)
                 )
             })?;
@@ -351,8 +352,8 @@ async fn store(
         }),
         Err(error) => {
             remove_stored(destination, fs, reserved, cx).await.log_err();
-            Err(error.context(format!(
-                "画像を保存できませんでした: {}",
+            Err(error.context(i18n::t!(
+                "Failed to save the image: {}",
                 path.display(destination.path_style)
             )))
         }
@@ -377,17 +378,16 @@ async fn copy_on_host(
                 .map(|entry| (entry.id, entry.size))
         })?
         .with_context(|| {
-            format!(
-                "画像ファイルが見つかりません: {}",
+            i18n::t!(
+                "Image file not found: {}",
                 source.path.display(destination.path_style)
             )
         })?;
     check_size(size)?;
     let path = find_remote_name(destination, project, file_name, cx).await?;
-    let worktree = destination
-        .worktree
-        .upgrade()
-        .context("Markdown のあるワークツリーが閉じられました。")?;
+    let worktree = destination.worktree.upgrade().context(i18n::t!(
+        "The worktree that contains the Markdown file was closed."
+    ))?;
     // Unlike writing bytes, copying on the host does not create the folder.
     let has_folder = worktree.read_with(cx, |worktree, _| {
         worktree.entry_for_path(&destination.folder).is_some()
@@ -399,8 +399,8 @@ async fn copy_on_host(
             })
             .await
             .with_context(|| {
-                format!(
-                    "images フォルダーを作れません: {}",
+                i18n::t!(
+                    "Cannot create the images folder: {}",
                     destination.folder.display(destination.path_style)
                 )
             })?;
@@ -417,8 +417,8 @@ async fn copy_on_host(
         })?
         .await
         .with_context(|| {
-            format!(
-                "接続先で画像をコピーできませんでした: {}",
+            i18n::t!(
+                "Failed to copy the image on the remote: {}",
                 project_path.path.display(destination.path_style)
             )
         })?;
@@ -443,10 +443,9 @@ async fn write_local(
             .await?;
         return Ok(None);
     }
-    let worktree = destination
-        .worktree
-        .upgrade()
-        .context("Markdown のあるワークツリーが閉じられました。")?;
+    let worktree = destination.worktree.upgrade().context(i18n::t!(
+        "The worktree that contains the Markdown file was closed."
+    ))?;
     let created = worktree
         .update(cx, |worktree, cx| {
             worktree.create_entry(path.clone(), false, Some(bytes), cx)
@@ -457,11 +456,11 @@ async fn write_local(
 
 fn check_size(length: u64) -> Result<()> {
     if length > MAXIMUM_IMAGE_BYTES {
-        return Err(anyhow!(
-            "画像が大きすぎます ({:.1} MiB)。保存できるのは {} MiB までです。",
+        return Err(anyhow!(i18n::t!(
+            "The image is too large ({:.1} MiB). Images of up to {} MiB can be saved.",
             length as f64 / (1024.0 * 1024.0),
             MAXIMUM_IMAGE_BYTES / (1024 * 1024)
-        ));
+        )));
     }
     Ok(())
 }
@@ -470,12 +469,12 @@ async fn read_local_image(fs: &dyn Fs, path: &Path) -> Result<Vec<u8>> {
     let metadata = fs
         .metadata(path)
         .await?
-        .with_context(|| format!("画像ファイルが見つかりません: {}", path.display()))?;
+        .with_context(|| i18n::t!("Image file not found: {}", path.display()))?;
     if metadata.is_dir {
-        return Err(anyhow!(
-            "フォルダーは画像として保存できません: {}",
+        return Err(anyhow!(i18n::t!(
+            "A folder cannot be saved as an image: {}",
             path.display()
-        ));
+        )));
     }
     // Checked before reading, so a huge file is turned away without being
     // loaded into memory first.
@@ -483,7 +482,7 @@ async fn read_local_image(fs: &dyn Fs, path: &Path) -> Result<Vec<u8>> {
     let bytes = fs
         .load_bytes(path)
         .await
-        .with_context(|| format!("画像ファイルを読み込めません: {}", path.display()))?;
+        .with_context(|| i18n::t!("Cannot read the image file: {}", path.display()))?;
     check_size(bytes.len() as u64)?;
     Ok(bytes)
 }
@@ -497,13 +496,13 @@ fn stored_file_name(image: &ImageData, preferred_name: Option<String>) -> Result
         (None, ImageData::LocalFile(path)) => path
             .file_name()
             .and_then(|name| name.to_str())
-            .with_context(|| format!("ファイル名を読み取れません: {}", path.display()))?
+            .with_context(|| i18n::t!("Cannot read the file name: {}", path.display()))?
             .to_string(),
         (None, ImageData::Bytes { .. }) => "image".to_string(),
         (None, ImageData::ProjectFile(source)) => source
             .path
             .file_name()
-            .with_context(|| format!("ファイル名を読み取れません: {}", source.path.as_unix_str()))?
+            .with_context(|| i18n::t!("Cannot read the file name: {}", source.path.as_unix_str()))?
             .to_string(),
     };
     let mut name = sanitize_file_name(&name);
@@ -560,7 +559,9 @@ fn candidate_names(file_name: &str) -> impl Iterator<Item = String> + '_ {
 }
 
 fn no_free_name(file_name: &str) -> anyhow::Error {
-    anyhow!("images フォルダーに使える名前が見つかりません: {file_name}")
+    anyhow!(i18n::t!(
+        "No free name was found in the images folder: {file_name}"
+    ))
 }
 
 /// Whether anything is at `path` on this machine, a link that leads nowhere
@@ -580,7 +581,7 @@ async fn reserve_local_name(
     let folder = PathBuf::from(destination.absolute(&destination.folder)?);
     fs.create_dir(&folder)
         .await
-        .with_context(|| format!("images フォルダーを作れません: {}", folder.display()))?;
+        .with_context(|| i18n::t!("Cannot create the images folder: {}", folder.display()))?;
     for candidate in candidate_names(file_name) {
         let path = destination
             .folder
@@ -598,9 +599,10 @@ async fn reserve_local_name(
             Ok(()) => return Ok(path),
             Err(_) if local_path_is_taken(fs, &absolute).await? => continue,
             Err(error) => {
-                return Err(
-                    error.context(format!("画像ファイルを作れません: {}", absolute.display()))
-                );
+                return Err(error.context(i18n::t!(
+                    "Cannot create the image file: {}",
+                    absolute.display()
+                )));
             }
         }
     }
@@ -621,11 +623,10 @@ async fn find_remote_name(
                 .remote_client()
                 .map(|client| client.read(cx).proto_client())
         })?
-        .context("リモートの接続が見つかりません。")?;
-    let worktree = destination
-        .worktree
-        .upgrade()
-        .context("Markdown のあるワークツリーが閉じられました。")?;
+        .context(i18n::t!("The remote connection could not be found."))?;
+    let worktree = destination.worktree.upgrade().context(i18n::t!(
+        "The worktree that contains the Markdown file was closed."
+    ))?;
     for candidate in candidate_names(file_name) {
         let path = destination
             .folder
@@ -640,7 +641,7 @@ async fn find_remote_name(
                 path: destination.absolute(&path)?,
             })
             .await
-            .context("リモートのファイルを確認できませんでした。")?;
+            .context(i18n::t!("Failed to check the remote files."))?;
         if !response.exists {
             return Ok(path);
         }
@@ -666,13 +667,12 @@ async fn remove_stored(
             )
             .await;
     }
-    let worktree = destination
-        .worktree
-        .upgrade()
-        .context("Markdown のあるワークツリーが閉じられました。")?;
+    let worktree = destination.worktree.upgrade().context(i18n::t!(
+        "The worktree that contains the Markdown file was closed."
+    ))?;
     let entry_id = stored.entry_id.with_context(|| {
-        format!(
-            "リモートの画像を取り消せません: {}",
+        i18n::t!(
+            "Cannot remove the image saved on the remote: {}",
             stored.project_path.path.as_unix_str()
         )
     })?;

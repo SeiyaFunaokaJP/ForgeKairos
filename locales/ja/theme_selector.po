@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Install Icon Themes"
+msgstr "アイコンテーマをインストール"
+
+msgid "Install Themes"
+msgstr "テーマをインストール"
+
+msgid "Select Icon Theme..."
+msgstr "アイコンテーマを選択..."
+
+msgid "Select Theme..."
+msgstr "テーマを選択..."
+
+msgid "View Icon Theme Docs"
+msgstr "アイコンテーマのドキュメントを表示"
+
+msgid "View Theme Docs"
+msgstr "テーマのドキュメントを表示"

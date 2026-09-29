@@ -687,7 +687,7 @@ impl LanguageModelEffortLevel {
     /// プロバイダー独自のレベル名 (標準の値に対応しないもの) は原文のまま返す。
     pub fn display_name(&self) -> SharedString {
         match ReasoningEffort::from_str(&self.value) {
-            Ok(effort) => SharedString::new_static(effort.japanese_label()),
+            Ok(effort) => SharedString::new_static(effort.localized_label()),
             Err(_) => self.name.clone(),
         }
     }
@@ -844,17 +844,17 @@ impl ReasoningEffort {
         }
     }
 
-    /// 日本語 UI 用のラベル。`label()` は upstream 由来の英語表示名で、
-    /// プロバイダーが `LanguageModelEffortLevel::name` に詰める値として残してある。
-    pub fn japanese_label(self) -> &'static str {
+    /// The label shown in the UI, translated. `label()` stays the English name that
+    /// providers put in `LanguageModelEffortLevel::name`.
+    pub fn localized_label(self) -> &'static str {
         match self {
-            Self::None => "なし",
-            Self::Minimal => "最小",
-            Self::Low => "低",
-            Self::Medium => "中",
-            Self::High => "高",
-            Self::XHigh => "最高",
-            Self::Max => "最大",
+            Self::None => i18n::tc!("reasoning effort", "None"),
+            Self::Minimal => i18n::tc!("reasoning effort", "Minimal"),
+            Self::Low => i18n::tc!("reasoning effort", "Low"),
+            Self::Medium => i18n::tc!("reasoning effort", "Medium"),
+            Self::High => i18n::tc!("reasoning effort", "High"),
+            Self::XHigh => i18n::tc!("reasoning effort", "Extra High"),
+            Self::Max => i18n::tc!("reasoning effort", "Max"),
         }
     }
 }
@@ -866,11 +866,17 @@ mod tests {
     #[test]
     fn test_effort_level_display_name() {
         let standard = LanguageModelEffortLevel {
-            name: "Extra High".into(),
+            name: "XHigh".into(),
             value: "xhigh".into(),
             is_default: false,
         };
-        assert_eq!(standard.display_name(), "最高");
+        assert_eq!(standard.display_name(), "Extra High");
+        {
+            let _japanese = i18n::test_support::LocaleOverride::new(Some(
+                i18n_catalog::test_support::bundled_catalog("ja"),
+            ));
+            assert_eq!(standard.display_name(), "最高");
+        }
 
         let custom = LanguageModelEffortLevel {
             name: "Ultra".into(),

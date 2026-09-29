@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cannot change encoding during collaboration"
+msgstr "共同編集中はエンコーディングを変更できません。"
+
+msgid "Cannot change encoding of remote server file"
+msgstr "リモートサーバー上のファイルのエンコーディングは変更できません。"
+
+msgid "Reopen with Encoding"
+msgstr "エンコーディングを指定して再度開く"
+
+msgid "Reopen with encoding..."
+msgstr "エンコーディングを指定して再度開く..."
+
+msgid "Save file to change encoding"
+msgstr "エンコーディングを変更するにはファイルを保存してください。"
+
+msgid "{} (current)"
+msgstr "{} (現在)"

@@ -5,8 +5,261 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "\n\n1 of these has unsaved changes, which will be lost."
+msgstr "\n\nうち 1 件に保存されていない変更があります。変更は失われます。"
+
+msgid "\n\nIt has unsaved changes, which will be lost."
+msgstr "\n\n保存されていない変更があります。変更は失われます。"
+
+msgid "\n\n{dirty_buffers} of these have unsaved changes, which will be lost."
+msgstr "\n\nうち {dirty_buffers} 件に保存されていない変更があります。変更は失われます。"
+
+msgid ".. 1 file not shown"
+msgstr ".. 他 1 件は表示していません"
+
+msgid ".. {omitted_count} files not shown"
+msgstr ".. 他 {omitted_count} 件は表示していません"
+
+msgid "A file or folder with name {} already exists in the destination folder. Do you want to replace it?"
+msgstr "同名のファイルまたはフォルダー {} が移動先のフォルダーに既に存在します。置き換えますか?"
+
+msgid "Add Folders to Project…"
+msgstr "プロジェクトにフォルダーを追加…"
+
+msgid "Add to .git/info/exclude"
+msgstr ".git/info/exclude に追加"
+
+msgid "Add to .gitignore"
+msgstr ".gitignore に追加"
+
+msgid "Apply Patch File…"
+msgstr "パッチファイルを適用…"
+
+msgid "Are you sure you want to permanently delete the following {} files?\n{}"
+msgstr "次の {} 件のファイルを完全に削除しますか?\n{}"
+
+msgid "Are you sure you want to permanently delete {}?"
+msgstr "{} を完全に削除しますか?"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Change Folder…"
+msgstr "フォルダーを変更…"
+
+msgid "Collapse All"
+msgstr "すべて折りたたむ"
+
+msgid "Compare Marked Files"
+msgstr "マークしたファイルを比較"
+
+msgid "Copy"
+msgstr "コピー"
+
 msgid "Copy File Permalink"
 msgstr "ファイルの永続リンクをコピー"
 
+msgid "Copy Path"
+msgstr "パスをコピー"
+
+msgid "Copy Relative Path"
+msgstr "相対パスをコピー"
+
+msgid "Create Patch File…"
+msgstr "パッチファイルを作成…"
+
+msgid "Created an excluded directory at {}.\nAlter `file_scan_exclusions` in the settings to show it in the panel"
+msgstr "除外対象のフォルダーを {} に作成しました。\nパネルに表示するには設定の `file_scan_exclusions` を変更してください"
+
+msgid "Cut"
+msgstr "切り取り"
+
+msgid "Discard changes to {}?"
+msgstr "{} の変更を破棄しますか?"
+
+msgid "Disconnected from SSH host"
+msgstr "SSH ホストとの接続が切断されました"
+
+msgid "Disconnected from remote project"
+msgstr "リモートプロジェクトとの接続が切断されました"
+
+msgid "Do you want to trash the following {} files?\n{}"
+msgstr "次の {} 件のファイルをゴミ箱へ移動しますか?\n{}"
+
+msgid "Do you want to trash {}?"
+msgstr "{} をゴミ箱へ移動しますか?"
+
+msgid "Download"
+msgstr "ダウンロード"
+
+msgid "Download..."
+msgstr "ダウンロード..."
+
+msgid "Downloaded {} files"
+msgstr "{} 件のファイルをダウンロードしました"
+
+msgid "Downloading 0/{} files..."
+msgstr "0/{} 件のファイルをダウンロード中..."
+
+msgid "Downloading {}/{} files..."
+msgstr "{}/{} 件のファイルをダウンロード中..."
+
+msgid "Duplicate"
+msgstr "複製"
+
+msgid "Expand All"
+msgstr "すべて展開"
+
+msgid "Failed to add to .git/info/exclude: {}"
+msgstr ".git/info/exclude に追加できませんでした: {}"
+
+msgid "Failed to add to .gitignore: {}"
+msgstr ".gitignore に追加できませんでした: {}"
+
+msgid "Failed to delete {failed_count} of {total_count} file."
+msgstr "{total_count} 件中 {failed_count} 件を削除できませんでした。"
+
+msgid "Failed to delete {failed_count} of {total_count} files."
+msgstr "{total_count} 件中 {failed_count} 件を削除できませんでした。"
+
+msgid "Failed to open file"
+msgstr "ファイルを開けませんでした"
+
+msgid "Failed to refresh"
+msgstr "最新の情報に更新できませんでした"
+
+msgid "Failed to restore `{name}`. It may have been permanently deleted."
+msgstr "`{name}` を復元できませんでした。完全に削除された可能性があります。"
+
+msgid "Failed to restore `{name}`. Something already exists at its original location."
+msgstr "`{name}` を復元できませんでした。元の場所に別のファイルが存在します。"
+
+msgid "Failed to restore {}: {}"
+msgstr "{} を元に戻せませんでした: {}"
+
+msgid "Failed to trash `{name}`."
+msgstr "`{name}` をゴミ箱へ移動できませんでした。"
+
+msgid "Failed to trash `{name}`. It no longer exists."
+msgstr "`{name}` をゴミ箱へ移動できませんでした。すでに存在しません。"
+
+msgid "Failed to trash {failed_count} of {total_count} file."
+msgstr "{total_count} 件中 {failed_count} 件をゴミ箱へ移動できませんでした。"
+
+msgid "Failed to trash {failed_count} of {total_count} files."
+msgstr "{total_count} 件中 {failed_count} 件をゴミ箱へ移動できませんでした。"
+
+msgid "Failed to {operation} `{from_name}` to `{to_name}`. A file or folder already exists there."
+msgstr "`{from_name}` を `{to_name}` へ{operation}できませんでした。同名のファイルまたはフォルダーが既に存在します。"
+
+msgid "Failed to {operation} `{from_name}`. It no longer exists."
+msgstr "`{from_name}` を{operation}できませんでした。すでに存在しません。"
+
+msgid "File or directory '{}' already exists at location. Please choose a different name."
+msgstr "同じ場所にファイルまたはフォルダー '{}' が既に存在します。別の名前を指定してください。"
+
+msgid "File or directory name cannot be empty."
+msgstr "ファイル名またはフォルダー名を空にはできません。"
+
+msgid "File or directory name contains leading or trailing whitespace."
+msgstr "ファイル名またはフォルダー名の先頭または末尾に空白が含まれています。"
+
+msgid "Find in Folder…"
+msgstr "フォルダー内を検索…"
+
+msgid "Fold Directory"
+msgstr "フォルダーを折りたたむ"
+
+msgid "New File"
+msgstr "新規ファイル"
+
+msgid "New Folder"
+msgstr "新規フォルダー"
+
 msgid "Open File Permalink"
 msgstr "ファイルの永続リンクを開く"
+
+msgid "Open Markdown Preview"
+msgstr "Markdown プレビューを開く"
+
+msgid "Open in Default App"
+msgstr "既定のアプリで開く"
+
+msgid "Open in Terminal"
+msgstr "ターミナルで開く"
+
+msgid "Paste"
+msgstr "貼り付け"
+
+msgid "Project Panel"
+msgstr "プロジェクトパネル"
+
+msgid "Redo"
+msgstr "やり直し"
+
+msgid "Redo Failed"
+msgstr "やり直せませんでした"
+
+msgid "Refresh"
+msgstr "最新の情報に更新"
+
+msgid "Remove from Project"
+msgstr "プロジェクトから削除"
+
+msgid "Rename"
+msgstr "名前の変更"
+
+msgid "Replace"
+msgstr "置き換える"
+
+msgid "Restore"
+msgstr "元に戻す"
+
+msgid "Search Inside"
+msgstr "このフォルダー内を検索"
+
+msgid "Symbolic Link"
+msgstr "シンボリックリンク"
+
+msgid "This cannot be undone."
+msgstr "この操作は元に戻せません。"
+
+msgid "Trash"
+msgstr "ゴミ箱へ移動"
+
+msgid "Undo"
+msgstr "元に戻す"
+
+msgid "Undo Failed"
+msgstr "元に戻せませんでした"
+
+msgid "Unfold Directory"
+msgstr "フォルダーの折りたたみを解除"
+
+msgid "View History"
+msgstr "履歴を表示"
+
+msgid "item"
+msgstr "項目"
+
+msgid "{} entries"
+msgstr "{} 件"
+
+msgid "{} is not shared by the host. This could be because it has been marked as `private`"
+msgstr "{} はホストによって共有されていません。`private` に設定されている可能性があります"
+
+msgctxt "delete permanently"
+msgid "Delete"
+msgstr "完全に削除"
+
+msgctxt "discard file changes"
+msgid "Restore File"
+msgstr "ファイルの変更を元に戻す"
+
+msgctxt "file operation"
+msgid "move"
+msgstr "移動"
+
+msgctxt "file operation"
+msgid "rename"
+msgstr "名前変更"

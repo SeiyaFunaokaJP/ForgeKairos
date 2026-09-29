@@ -79,9 +79,9 @@ impl TimelineDocument {
         if let Some(title) = &self.title
             && !is_valid_timeline_title(title)
         {
-            return Some(
-                "タイトルに改行と `%%{` は使えません (前後の空白だけにもできません)。".to_string(),
-            );
+            return Some(i18n::t!(
+                "The title cannot contain line breaks or `%%{{`, and it cannot be empty or have spaces at either end."
+            ));
         }
 
         let has_named_section = self.sections.iter().any(|section| section.name.is_some());
@@ -89,8 +89,8 @@ impl TimelineDocument {
         for (index, section) in self.sections.iter().enumerate() {
             match &section.name {
                 Some(name) if !is_valid_timeline_section_name(name) => {
-                    return Some(format!(
-                        "セクション名 `{name}` は使えません (`:` `%%{{` と改行は不可、空にもできません)。"
+                    return Some(i18n::t!(
+                        "The section name `{name}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
                     ));
                 }
                 Some(name) => {
@@ -98,22 +98,26 @@ impl TimelineDocument {
                     // name, so two sections with one name both get every period
                     // of either.
                     if names.contains(&name.as_str()) {
-                        return Some(format!(
-                            "セクション名 `{name}` が 2 つあります。Mermaid は同じ名前のセクションにどちらの期間も描くので、名前を変えてください。"
+                        return Some(i18n::t!(
+                            "The section name `{name}` is used twice. Mermaid draws the periods of both in one section of that name, so rename one."
                         ));
                     }
                     names.push(name);
                 }
                 None if index > 0 => {
                     return Some(
-                        "2 つ目以降のセクションには名前が必要です (名前が無いと 1 つ上のセクションと 1 つになります)。"
-                            .to_string(),
+                        i18n::t!(
+                            "Every section after the first needs a name (without one, it merges with the section above)."
+                        )
+                        .to_string(),
                     );
                 }
                 None if has_named_section && !section.periods.is_empty() => {
                     return Some(
-                        "最初のセクションより前の期間は、セクションがあると描かれません。名前を付けてセクションにするか、期間を下のセクションへ移してください。"
-                            .to_string(),
+                        i18n::t!(
+                            "Periods before the first section are not drawn when there are sections. Name them as a section, or move the periods into a section below."
+                        )
+                        .to_string(),
                     );
                 }
                 None => {}
@@ -122,15 +126,15 @@ impl TimelineDocument {
 
         for period in self.periods() {
             if !is_valid_timeline_period(&period.label) {
-                return Some(format!(
-                    "期間 `{}` は書けません (`:` `#` `%%{{` と改行は不可、空にもできません。`title` `section` `accTitle` `accDescr` `%%` で始めることもできません)。",
+                return Some(i18n::t!(
+                    "The period `{}` cannot be written (`:`, `#`, `%%{{` and line breaks are not allowed, and it cannot be empty or start with `title`, `section`, `accTitle`, `accDescr` or `%%`).",
                     period.label
                 ));
             }
             for event in &period.events {
                 if !is_valid_timeline_event(event) {
-                    return Some(format!(
-                        "期間 `{}` の出来事 `{event}` は書けません (`:` のすぐ後に空白を続けることと末尾の `:`、`%%{{`、改行は不可、空にもできません)。",
+                    return Some(i18n::t!(
+                        "The event `{event}` of the period `{}` cannot be written (a space right after `:`, a `:` at the end, `%%{{` and line breaks are not allowed, and it cannot be empty).",
                         period.label
                     ));
                 }
@@ -158,11 +162,13 @@ pub fn parse_timeline(source: &str) -> Result<TimelineDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Timeline(_)) {
-            bail!("この図はタイムラインではありません。");
+            bail!(i18n::t!("This diagram is not a timeline."));
         }
     }
 
@@ -181,12 +187,14 @@ fn scan_timeline(source: &str) -> Result<TimelineDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = keyword_tail(header, "timeline") else {
-        bail!("タイムラインではありません (`timeline` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a timeline (only a diagram that starts with `timeline` can be edited in the structured editor)."
+        ));
     };
     if !tail.is_empty() {
-        bail!(
-            "`timeline` の行の `{tail}` は構造化編集に対応していません。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "The structured editor does not support `{tail}` on the `timeline` line. Edit it as text."
+        ));
     }
 
     let mut index = header_index + 1;
@@ -201,9 +209,9 @@ fn scan_timeline(source: &str) -> Result<TimelineDocument> {
         // Mermaid's comment pass only removes a `%%` with something after
         // it, so a bare one reaches the timeline parser as a period.
         if line.trim_start() == "%%" {
-            bail!(
-                "中身の無い `%%` の行は Mermaid が期間として描くので、構造化編集に対応していません。消すかテキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Mermaid draws a line of only `%%` as a period, so the structured editor does not support it. Delete it or edit it as text."
+            ));
         }
         if trimmed.starts_with("%%") {
             if trimmed.starts_with("%%{") && !trimmed.contains("}%%") {
@@ -229,9 +237,9 @@ fn scan_timeline(source: &str) -> Result<TimelineDocument> {
                 // Mermaid turns `#name;` into an entity before it reads the
                 // line, so such a line is not the comment it looks like.
                 if starts_with_entity(statement) {
-                    bail!(
-                        "`{trimmed}` は Mermaid が文字参照として読むので、コメントとして残せません。テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "Mermaid reads `{trimmed}` as a character reference, so it cannot be kept as a comment. Edit it as text."
+                    ));
                 }
                 document.preserved_lines.push(PreservedLine {
                     position,
@@ -258,9 +266,9 @@ fn scan_timeline(source: &str) -> Result<TimelineDocument> {
                 // empty one, which clears the title — would make writing the
                 // timeline back drop a line the user can see.
                 if document.title.is_some() {
-                    bail!(
-                        "`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`title` is written twice. Merge them into one, then open it again."
+                    ));
                 }
                 if !value.is_empty() {
                     document.title = Some(value.to_string());
@@ -268,15 +276,15 @@ fn scan_timeline(source: &str) -> Result<TimelineDocument> {
             }
             Statement::Section(value) => {
                 if value.contains(':') {
-                    bail!(
-                        "セクション名の `:` から先は Mermaid が読み飛ばします ({trimmed})。`:` を消すか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "Mermaid skips everything in a section name from `:` on ({trimmed}). Delete the `:`, or edit it as text."
+                    ));
                 }
                 let name = value.trim();
                 if name.is_empty() {
-                    bail!(
-                        "名前の無い `section` は構造化編集に対応していません ({trimmed})。名前を付けるか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "A `section` without a name is not supported by the structured editor ({trimmed}). Give it a name, or edit it as text."
+                    ));
                 }
                 document.sections.push(TimelineSection {
                     name: Some(name.to_string()),
@@ -292,7 +300,7 @@ fn scan_timeline(source: &str) -> Result<TimelineDocument> {
                     .rev()
                     .find_map(|section| section.periods.last_mut())
                 else {
-                    bail!("出来事 `{trimmed}` の前に期間がありません。");
+                    bail!(i18n::t!("There is no period before the event `{trimmed}`."));
                 };
                 period.events.extend(events);
             }
@@ -407,9 +415,9 @@ fn parse_period(statement: &str, trimmed: &str) -> Result<TimelinePeriod> {
     let label = statement.get(..end).unwrap_or_default().trim();
     let rest = statement.get(end..).unwrap_or_default();
     if rest.starts_with('#') {
-        bail!(
-            "期間の `#` から先は Mermaid がコメントとして読み飛ばします ({trimmed})。`#` を消すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid skips a period from its `#` on as a comment ({trimmed}). Delete the `#`, or edit it as text."
+        ));
     }
     let events = if rest.is_empty() {
         Vec::new()
@@ -430,14 +438,14 @@ fn split_events(input: &str, trimmed: &str) -> Result<Vec<String>> {
     let mut events = Vec::new();
     while !rest.is_empty() {
         let Some(after_colon) = rest.strip_prefix(':') else {
-            bail!("出来事として読めませんでした ({trimmed})。");
+            bail!(i18n::t!("This could not be read as an event ({trimmed})."));
         };
         let Some(space) = after_colon
             .chars()
             .next()
             .filter(|character| character.is_whitespace())
         else {
-            bail!("`:` のあとに空白が必要です ({trimmed})。");
+            bail!(i18n::t!("A space is needed after `:` ({trimmed})."));
         };
         let body = after_colon.get(space.len_utf8()..).unwrap_or_default();
         let boundary = body.char_indices().find_map(|(offset, character)| {
@@ -457,7 +465,9 @@ fn split_events(input: &str, trimmed: &str) -> Result<Vec<String>> {
         };
         let event = event.trim();
         if event.is_empty() {
-            bail!("空の出来事があります ({trimmed})。消すか、テキストのまま編集してください。");
+            bail!(i18n::t!(
+                "There is an empty event ({trimmed}). Delete it, or edit it as text."
+            ));
         }
         events.push(event.to_string());
         rest = next;
@@ -721,18 +731,18 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
         for (source, expected) in [
-            ("timeline\n    title a\n    title b", "2 回"),
-            ("timeline\n    title a\n    title ", "2 回"),
+            ("timeline\n    title a\n    title b", "written twice"),
+            ("timeline\n    title a\n    title ", "written twice"),
             (
                 "timeline\n    section 前半: 補足\n    2024 : a",
-                "`:` から先",
+                "in a section name from `:` on",
             ),
-            ("timeline\n    section \n    2024 : a", "名前の無い"),
-            ("timeline\n    2024 # メモ : a", "`#` から先"),
-            ("timeline\n    2024 : a : \n", "空の出来事"),
-            ("timeline\n    : a", "前に期間"),
-            ("timeline\n    #x; 何か", "文字参照"),
-            ("timeline LR\n    2024 : a", "`timeline` の行"),
+            ("timeline\n    section \n    2024 : a", "without a name"),
+            ("timeline\n    2024 # メモ : a", "from its `#` on"),
+            ("timeline\n    2024 : a : \n", "empty event"),
+            ("timeline\n    : a", "no period before"),
+            ("timeline\n    #x; 何か", "character reference"),
+            ("timeline LR\n    2024 : a", "on the `timeline` line"),
         ] {
             let error = parse_timeline(source)
                 .err()
@@ -751,11 +761,11 @@ mod tests {
     fn periods_the_drawing_would_leave_out_are_reported() {
         let document = parse("timeline\n    2023 : 前\n    section A\n    2024 : a");
         let error = document.structure_error().expect("the first band is lost");
-        assert!(error.contains("描かれません"), "{error}");
+        assert!(error.contains("are not drawn"), "{error}");
 
         let document = parse("timeline\n    section A\n    2024 : a\n    section A\n    2025 : b");
         let error = document.structure_error().expect("the name is repeated");
-        assert!(error.contains("2 つ"), "{error}");
+        assert!(error.contains("used twice"), "{error}");
 
         let mut document = parse(TEMPLATE);
         if let Some(section) = document.sections.get_mut(0) {

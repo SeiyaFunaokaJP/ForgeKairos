@@ -3000,13 +3000,13 @@ impl Editor {
         cx: &mut Context<Workspace>,
     ) {
         Self::new_in_workspace(workspace, window, cx).detach_and_prompt_err(
-            "バッファーを作成できませんでした",
+            i18n::t!("Failed to create buffer"),
             window,
             cx,
             |e, _, _| match e.error_code() {
-                ErrorCode::RemoteUpgradeRequired => Some(format!(
-                    "リモートの Zed はまだこの機能に対応していません。{} へアップグレードしてください。",
-                    e.error_tag("required").unwrap_or("最新バージョン")
+                ErrorCode::RemoteUpgradeRequired => Some(i18n::t!(
+                    "The remote instance of Zed does not support this yet. It must be upgraded to {}",
+                    e.error_tag("required").unwrap_or(i18n::t!("the latest version"))
                 )),
                 _ => None,
             },
@@ -3088,11 +3088,11 @@ impl Editor {
             })?;
             anyhow::Ok(())
         })
-        .detach_and_prompt_err("バッファーを作成できませんでした", window, cx, |e, _, _| {
+        .detach_and_prompt_err(i18n::t!("Failed to create buffer"), window, cx, |e, _, _| {
             match e.error_code() {
-                ErrorCode::RemoteUpgradeRequired => Some(format!(
-                    "リモートの Zed はまだこの機能に対応していません。{} へアップグレードしてください。",
-                    e.error_tag("required").unwrap_or("最新バージョン")
+                ErrorCode::RemoteUpgradeRequired => Some(i18n::t!(
+                    "The remote instance of Zed does not support this yet. It must be upgraded to {}",
+                    e.error_tag("required").unwrap_or(i18n::t!("the latest version"))
                 )),
                 _ => None,
             }
@@ -4388,9 +4388,9 @@ impl Editor {
             }))
             .tooltip(move |_window, cx| {
                 Tooltip::with_meta_in(
-                    "ブックマークを削除",
+                    i18n::t!("Remove Bookmark"),
                     Some(&ToggleBookmark),
-                    SharedString::from("右クリックでその他の操作"),
+                    SharedString::from(i18n::t!("Right-click for more options")),
                     &focus_handle,
                     cx,
                 )
@@ -4478,47 +4478,47 @@ impl Editor {
             .map(|(anchor, bp)| (anchor, Arc::from(bp)));
 
         let log_breakpoint_msg = if breakpoint.as_ref().is_some_and(|bp| bp.1.message.is_some()) {
-            "ログポイントを編集"
+            i18n::t!("Edit Log Breakpoint")
         } else {
-            "ログポイントを設定"
+            i18n::t!("Set Log Breakpoint")
         };
 
         let condition_breakpoint_msg = if breakpoint
             .as_ref()
             .is_some_and(|bp| bp.1.condition.is_some())
         {
-            "条件付きブレークポイントを編集"
+            i18n::t!("Edit Condition Breakpoint")
         } else {
-            "条件付きブレークポイントを設定"
+            i18n::t!("Set Condition Breakpoint")
         };
 
         let hit_condition_breakpoint_msg = if breakpoint
             .as_ref()
             .is_some_and(|bp| bp.1.hit_condition.is_some())
         {
-            "ヒットカウントブレークポイントを編集"
+            i18n::t!("Edit Hit Condition Breakpoint")
         } else {
-            "ヒットカウントブレークポイントを設定"
+            i18n::t!("Set Hit Condition Breakpoint")
         };
 
         let set_breakpoint_msg = if breakpoint.as_ref().is_some() {
-            "ブレークポイントを解除"
+            i18n::t!("Unset Breakpoint")
         } else {
-            "ブレークポイントを設定"
+            i18n::t!("Set Breakpoint")
         };
 
         let git_blame_msg = if self.show_git_blame_gutter {
-            "Git の注釈 (blame) を閉じる"
+            i18n::t!("Close Git Blame")
         } else {
-            "Git の注釈 (blame) を開く"
+            i18n::t!("Open Git Blame")
         };
 
         let bookmark = self.bookmark_at_row(row, window, cx);
 
         let set_bookmark_msg = if bookmark.as_ref().is_some() {
-            "ブックマークを削除"
+            i18n::t!("Remove Bookmark")
         } else {
-            "ブックマークを追加"
+            i18n::t!("Add Bookmark")
         };
         let has_bookmark = bookmark.as_ref().is_some();
 
@@ -4536,12 +4536,13 @@ impl Editor {
         let toggle_state_entry: Option<(&str, Box<dyn Action>)> =
             breakpoint.as_ref().map(|bp| match bp.1.state {
                 BreakpointState::Enabled => (
-                    "無効にする",
+                    i18n::t!("Disable"),
                     crate::actions::DisableBreakpoint.boxed_clone(),
                 ),
-                BreakpointState::Disabled => {
-                    ("有効にする", crate::actions::EnableBreakpoint.boxed_clone())
-                }
+                BreakpointState::Disabled => (
+                    i18n::t!("Enable"),
+                    crate::actions::EnableBreakpoint.boxed_clone(),
+                ),
             });
 
         let (anchor, breakpoint) =
@@ -4553,7 +4554,7 @@ impl Editor {
                 .when_some(
                     clear_runnable_task_status,
                     |this, (buffer_id, buffer_row)| {
-                        this.entry("実行結果の表示を消去", None, {
+                        this.entry(i18n::t!("Clear Run Status"), None, {
                             let weak_editor = weak_editor.clone();
                             move |_window, cx| {
                                 weak_editor
@@ -4569,7 +4570,7 @@ impl Editor {
                 .when(run_to_cursor, |this| {
                     let weak_editor = weak_editor.clone();
                     this.entry(
-                        "カーソル位置まで実行",
+                        i18n::t!("Run to Cursor"),
                         Some(RunToCursor.boxed_clone()),
                         move |window, cx| {
                             weak_editor
@@ -4709,7 +4710,7 @@ impl Editor {
                 })
                 .when(has_bookmark, |this| {
                     this.entry(
-                        "ブックマークを編集",
+                        i18n::t!("Edit Bookmark"),
                         Some(EditBookmark.boxed_clone()),
                         move |window, cx| {
                             weak_editor
@@ -4756,18 +4757,18 @@ impl Editor {
             modifiers: Modifiers::secondary_key(),
             ..Default::default()
         };
-        let primary_action_text = "ブレークポイントを解除";
+        let primary_action_text = i18n::t!("Unset breakpoint");
         let focus_handle = self.focus_handle.clone();
         let has_context_menu = self.has_mouse_context_menu();
 
         let meta = if is_rejected {
-            SharedString::from("この行に実行可能なコードがありません。")
+            SharedString::from(i18n::t!("No executable code is associated with this line."))
         } else if !breakpoint.is_disabled() {
-            SharedString::from(format!(
-                "{alt_as_text}+クリックで無効化\n右クリックでその他の操作"
+            SharedString::from(i18n::t!(
+                "{alt_as_text}-click to disable\nright-click for more options"
             ))
         } else {
-            SharedString::from("右クリックでその他の操作")
+            SharedString::from(i18n::t!("Right-click for more options"))
         };
         IconButton::new(("breakpoint_indicator", row.0 as usize), icon)
             .icon_size(IconSize::XSmall)
@@ -6283,19 +6284,25 @@ impl Editor {
 
         let placeholder_text = match edit_action {
             BreakpointPromptEditAction::Log => {
-                "ブレークポイント到達時に出力するメッセージ。{} 内の式は評価されて埋め込まれます。"
+                i18n::t!(
+                    "Message to log when a breakpoint is hit. Expressions within {{}} are interpolated."
+                )
             }
             BreakpointPromptEditAction::Condition => {
-                "ブレークポイントで停止する条件。{} 内の式は評価されて埋め込まれます。"
+                i18n::t!(
+                    "Condition when a breakpoint is hit. Expressions within {{}} are interpolated."
+                )
             }
-            BreakpointPromptEditAction::HitCondition => "無視するヒット回数",
+            BreakpointPromptEditAction::HitCondition => {
+                i18n::t!("How many breakpoint hits to ignore").to_string()
+            }
         };
 
         let breakpoint = breakpoint.clone();
         self.add_edit_block(
             anchor,
             base_text,
-            placeholder_text,
+            &placeholder_text,
             Some(Box::new(move |message: String, editor: &mut Self, cx| {
                 editor.edit_breakpoint_at_anchor(
                     anchor,
@@ -8587,8 +8594,8 @@ impl Editor {
                     if report_failure {
                         Self::show_format_failure(
                             &workspace,
-                            format!(
-                                "フォーマットが {} 秒以内に完了しませんでした。",
+                            i18n::t!(
+                                "Formatting did not complete within {} seconds.",
                                 FORMAT_TIMEOUT.as_secs()
                             ),
                             cx,
@@ -9270,7 +9277,7 @@ impl Editor {
                 Self::open_locations_in_multibuffer(
                     workspace,
                     locations,
-                    format!("'{title}' の選択範囲"),
+                    i18n::t!("Selections for '{title}'"),
                     false,
                     false,
                     MultibufferSelectionMode::All,
@@ -12308,11 +12315,11 @@ impl EditorSnapshot {
                         let renderer = cx.global::<GlobalBlameRenderer>().0.clone();
                         // 幅の見積もりはバイト長 × ch_advance。UTF-8 の CJK は 3 バイト/表示 2 列
                         // なのでバイト長 >= 表示列数となり、日本語でも幅不足にはならない。
-                        const MAX_RELATIVE_TIMESTAMP: &str = "2 年 11 か月前";
+                        let max_relative_timestamp = i18n::t!("2 years, 11 months ago");
 
                         let max_char_count = max_author_length.min(renderer.max_author_length())
                             + ::git::SHORT_SHA_LENGTH
-                            + MAX_RELATIVE_TIMESTAMP.len();
+                            + max_relative_timestamp.len();
 
                         ch_advance * max_char_count
                             + renderer.blame_entry_non_text_width(window, cx)
@@ -13120,7 +13127,7 @@ impl PromptEditor {
             .icon_color(Color::Muted)
             .shape(IconButtonShape::Square)
             .tooltip(move |_window, cx| {
-                Tooltip::for_action_in("キャンセル", &menu::Cancel, &focus_handle, cx)
+                Tooltip::for_action_in(i18n::t!("Cancel"), &menu::Cancel, &focus_handle, cx)
             })
             .on_click(cx.listener(|this, _, window, cx| {
                 this.cancel(&menu::Cancel, window, cx);
@@ -13133,7 +13140,7 @@ impl PromptEditor {
             .icon_color(Color::Muted)
             .shape(IconButtonShape::Square)
             .tooltip(move |_window, cx| {
-                Tooltip::for_action_in("確定", &menu::Confirm, &focus_handle, cx)
+                Tooltip::for_action_in(i18n::t!("Confirm"), &menu::Confirm, &focus_handle, cx)
             })
             .on_click(cx.listener(|this, _, window, cx| {
                 this.confirm(&menu::Confirm, window, cx);

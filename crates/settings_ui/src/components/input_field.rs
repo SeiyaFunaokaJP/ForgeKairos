@@ -182,6 +182,23 @@ impl RenderOnce for SettingsInputField {
             }
         });
 
+        // The editor keeps the placeholder it was created with, while the settings
+        // window switches the UI language in place.
+        let placeholder_generation = window.use_keyed_state(
+            (self.id.clone(), "placeholder-i18n-generation"),
+            cx,
+            |_, _| i18n::generation(),
+        );
+        let generation = i18n::generation();
+        if *placeholder_generation.read(cx) != generation {
+            *placeholder_generation.as_mut(cx) = generation;
+            if let Some(placeholder) = self.placeholder {
+                editor.update(cx, |editor, cx| {
+                    editor.set_placeholder_text(placeholder, window, cx);
+                });
+            }
+        }
+
         let is_editor_focused = editor.read(cx).is_focused(window);
         let editor_text = editor.read(cx).text(cx);
 
@@ -295,8 +312,8 @@ impl RenderOnce for SettingsInputField {
                                 IconButton::new("clear-button", IconName::Close)
                                     .icon_size(IconSize::Small)
                                     .icon_color(Color::Muted)
-                                    .aria_label("クリア")
-                                    .tooltip(Tooltip::text("クリア"))
+                                    .aria_label(i18n::t!("Clear"))
+                                    .tooltip(Tooltip::text(i18n::t!("Clear")))
                                     .on_click(move |_, window, cx| {
                                         let Some(editor) = weak_editor_for_clear.upgrade() else {
                                             return;
@@ -315,8 +332,8 @@ impl RenderOnce for SettingsInputField {
                                 IconButton::new("confirm-button", IconName::Check)
                                     .icon_size(IconSize::Small)
                                     .icon_color(Color::Success)
-                                    .aria_label("確定")
-                                    .tooltip(Tooltip::text("Enter で確定"))
+                                    .aria_label(i18n::t!("Confirm"))
+                                    .tooltip(Tooltip::text(i18n::t!("Enter to Confirm")))
                                     .on_click(move |_, window, cx| {
                                         let Some(confirm) = confirm_for_button.as_ref() else {
                                             return;

@@ -785,6 +785,7 @@ impl PlatformWindow for WindowsWindow {
         let msg = msg.to_string();
         let detail_string = detail.map(|detail| detail.to_string());
         let answers = answers.to_vec();
+        let title = level.title();
         let dialog = crate::dialog::show_dialog(
             Some(self.0.dialog_owner.clone()),
             &self.0.executor,
@@ -794,28 +795,13 @@ impl PlatformWindow for WindowsWindow {
                     config.cbSize = std::mem::size_of::<TASKDIALOGCONFIG>() as _;
                     config.hwndParent = handle;
                     config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION;
-                    let title;
-                    let main_icon;
-                    // Callers word the message and the buttons, but the title
-                    // bar is this code's alone, so it speaks the UI's language.
-                    match level {
-                        PromptLevel::Info => {
-                            title = windows::core::w!("情報");
-                            main_icon = TD_INFORMATION_ICON;
-                        }
-                        PromptLevel::Warning => {
-                            title = windows::core::w!("警告");
-                            main_icon = TD_WARNING_ICON;
-                        }
-                        // Critical also asks before destructive actions (replacing a
-                        // file, discarding changes), where "error" would read wrong;
-                        // the icon still sets it apart from a plain warning.
-                        PromptLevel::Critical => {
-                            title = windows::core::w!("警告");
-                            main_icon = TD_ERROR_ICON;
-                        }
+                    let main_icon = match level {
+                        PromptLevel::Info => TD_INFORMATION_ICON,
+                        PromptLevel::Warning => TD_WARNING_ICON,
+                        PromptLevel::Critical => TD_ERROR_ICON,
                     };
-                    config.pszWindowTitle = title;
+                    let title = HSTRING::from(title.as_ref());
+                    config.pszWindowTitle = PCWSTR::from_raw(title.as_ptr());
                     config.Anonymous1.pszMainIcon = main_icon;
                     let instruction = HSTRING::from(msg);
                     config.pszMainInstruction = PCWSTR::from_raw(instruction.as_ptr());

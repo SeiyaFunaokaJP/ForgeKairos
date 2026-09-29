@@ -294,12 +294,12 @@ impl Render for SvgPreviewView {
                             .p_4()
                             .gap_2()
                             .child(Icon::new(IconName::Warning))
-                            .child("SVG 画像を読み込めませんでした。")
+                            .child(i18n::t!("Failed to load SVG image"))
                             .into_any_element()
                     }))
                 }
                 Some(Err(e)) => this.child(div().p_4().child(e).into_any_element()),
-                None => this.child(div().p_4().child("SVG ファイルが選択されていません。")),
+                None => this.child(div().p_4().child(i18n::t!("No SVG file selected"))),
             })
     }
 }
@@ -328,8 +328,8 @@ impl Item for SvgPreviewView {
         self.buffer
             .as_ref()
             .and_then(|svg_path| svg_path.read(cx).file())
-            .map(|name| format!("{} のプレビュー", name.file_name(cx)).into())
-            .unwrap_or_else(|| "SVG プレビュー".into())
+            .map(|name| i18n::t!("Preview {}", name.file_name(cx)).into())
+            .unwrap_or_else(|| i18n::t!("SVG Preview").into())
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {

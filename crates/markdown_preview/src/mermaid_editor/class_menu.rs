@@ -79,7 +79,9 @@ pub(super) fn render_class_menu(
     let candidates = candidates.to_vec();
     let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
         if candidates.is_empty() {
-            return menu.label("classDef を書くか、「クラス名」に入力してください。");
+            return menu.label(i18n::t!(
+                "Write a classDef, or type a name in \"Class Name\"."
+            ));
         }
         for name in candidates.clone() {
             let on_toggle = on_toggle.clone();
@@ -115,11 +117,11 @@ pub(super) fn render_class_input(
     h_flex()
         .w_full()
         .gap_1()
-        .child(section_title("クラス名"))
+        .child(section_title(i18n::t!("Class Name")))
         .child(field_frame(field, ID_FIELD_WIDTH, typed_is_valid, window, cx).child(field.clone()))
-        .child(section_title(
-            "classDef の名前と、ここに入力した名前が「クラス」の候補になります。",
-        ))
+        .child(section_title(i18n::t!(
+            "The classDef names and the name typed here are offered under \"Class\"."
+        )))
         .into_any_element()
 }
 

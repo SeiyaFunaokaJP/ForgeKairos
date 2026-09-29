@@ -24,8 +24,8 @@ use super::{
 
 /// The texts new rows are added with, so that they are visible in the drawing
 /// before anything has been typed into them.
-const NEW_COLUMN_TITLE: &str = "新しい列";
-const NEW_CARD_TITLE: &str = "新しいカード";
+const NEW_COLUMN_TITLE: &str = i18n::msg!("New column");
+const NEW_CARD_TITLE: &str = i18n::msg!("New card");
 
 pub(super) struct KanbanForm {
     pub(super) document: KanbanDocument,
@@ -105,12 +105,14 @@ fn field_text(field: &Entity<Editor>, cx: &App) -> String {
 /// colour for is shown as it is written, so that it is not mistaken for none.
 fn priority_label(priority: Option<&str>) -> SharedString {
     match priority {
-        None => "優先度なし".into(),
-        Some(priority) => KANBAN_PRIORITIES
-            .iter()
-            .find(|(value, _)| *value == priority)
-            .map(|(_, label)| SharedString::from(format!("優先度: {label}")))
-            .unwrap_or_else(|| format!("優先度: {priority}").into()),
+        None => i18n::t!("No Priority").into(),
+        Some(priority) => {
+            let label = KANBAN_PRIORITIES
+                .iter()
+                .find(|(value, _)| *value == priority)
+                .map_or(priority, |(_, label)| i18n::tr(label));
+            i18n::t!("Priority: {label}").into()
+        }
     }
 }
 
@@ -202,7 +204,10 @@ impl MermaidEditor {
             return;
         };
         let column = KanbanColumn {
-            node: KanbanNode::new(form.document.unused_id("column"), NEW_COLUMN_TITLE),
+            node: KanbanNode::new(
+                form.document.unused_id("column"),
+                i18n::tr(NEW_COLUMN_TITLE),
+            ),
             cards: Vec::new(),
         };
         let row = self.new_kanban_column_row(&column, window, cx);
@@ -264,7 +269,7 @@ impl MermaidEditor {
         if column >= form.columns.len() || column >= form.document.columns.len() {
             return;
         }
-        let card = KanbanNode::new(form.document.unused_id("card"), NEW_CARD_TITLE);
+        let card = KanbanNode::new(form.document.unused_id("card"), i18n::tr(NEW_CARD_TITLE));
         let row = self.new_kanban_card_row(&card, window, cx);
         let title = row.title.clone();
         let Some(form) = self.kanban_mut() else {
@@ -420,10 +425,9 @@ impl MermaidEditor {
             .collect::<Vec<_>>();
         let is_unique = |id: &str| ids.iter().filter(|other| other.as_str() == id).count() <= 1;
 
-        let mut list = v_flex()
-            .w_full()
-            .gap_2()
-            .child(section_title("列とカード (上にある列ほど左に描かれます)"));
+        let mut list = v_flex().w_full().gap_2().child(section_title(i18n::t!(
+            "Columns and Cards (columns higher up are drawn further left)"
+        )));
         let column_count = form.columns.len();
         for index in 0..column_count {
             let (Some(row), Some(column)) = (form.columns.get(index), current.columns.get(index))
@@ -451,7 +455,7 @@ impl MermaidEditor {
             }
             cards = cards.child(add_button(
                 SharedString::from(format!("mermaid-kanban-add-card-{index}")),
-                "カードを追加",
+                i18n::t!("Add Card"),
                 cx.listener(move |this, _, window, cx| this.add_kanban_card(index, window, cx)),
             ));
 
@@ -465,33 +469,43 @@ impl MermaidEditor {
                 .disabled(disabled)
                 .tooltip(Tooltip::text(tooltip))
             };
-            let controls = h_flex()
-                .flex_none()
-                .gap_px()
-                .child(
-                    column_button("left", IconName::ArrowLeft, "左へ移動", index == 0).on_click(
-                        cx.listener(move |this, _, _window, cx| {
-                            this.move_kanban_column(index, false, cx)
-                        }),
-                    ),
-                )
-                .child(
-                    column_button(
-                        "right",
-                        IconName::ArrowRight,
-                        "右へ移動",
-                        index + 1 >= column_count,
+            let controls =
+                h_flex()
+                    .flex_none()
+                    .gap_px()
+                    .child(
+                        column_button(
+                            "left",
+                            IconName::ArrowLeft,
+                            i18n::t!("Move Left"),
+                            index == 0,
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, _window, cx| this.move_kanban_column(index, false, cx),
+                        )),
                     )
-                    .on_click(cx.listener(move |this, _, _window, cx| {
-                        this.move_kanban_column(index, true, cx)
-                    })),
-                )
-                .child(
-                    column_button("remove", IconName::Trash, "列とその中のカードを削除", false)
-                        .on_click(cx.listener(move |this, _, _window, cx| {
-                            this.remove_kanban_column(index, cx)
-                        })),
-                );
+                    .child(
+                        column_button(
+                            "right",
+                            IconName::ArrowRight,
+                            i18n::t!("Move Right"),
+                            index + 1 >= column_count,
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, _window, cx| this.move_kanban_column(index, true, cx),
+                        )),
+                    )
+                    .child(
+                        column_button(
+                            "remove",
+                            IconName::Trash,
+                            i18n::t!("Delete Column and Its Cards"),
+                            false,
+                        )
+                        .on_click(cx.listener(
+                            move |this, _, _window, cx| this.remove_kanban_column(index, cx),
+                        )),
+                    );
             list = list.child(
                 v_flex()
                     .w_full()
@@ -504,7 +518,7 @@ impl MermaidEditor {
                         h_flex()
                             .w_full()
                             .gap_1()
-                            .child(section_title("列"))
+                            .child(section_title(i18n::t!("Column")))
                             .child(
                                 field_frame(
                                     &row.id,
@@ -535,7 +549,7 @@ impl MermaidEditor {
 
         list = list.child(add_button(
             "mermaid-kanban-add-column",
-            "列を追加",
+            i18n::t!("Add Column"),
             cx.listener(|this, _, window, cx| this.add_kanban_column(window, cx)),
         ));
         vec![list.into_any_element()]
@@ -568,17 +582,21 @@ impl MermaidEditor {
             .flex_none()
             .gap_px()
             .child(
-                button("left", IconName::ArrowLeft, "左の列へ移動", column == 0).on_click(
-                    cx.listener(move |this, _, _window, cx| {
-                        this.move_kanban_card_across(column, index, false, cx)
-                    }),
-                ),
+                button(
+                    "left",
+                    IconName::ArrowLeft,
+                    i18n::t!("Move to Left Column"),
+                    column == 0,
+                )
+                .on_click(cx.listener(move |this, _, _window, cx| {
+                    this.move_kanban_card_across(column, index, false, cx)
+                })),
             )
             .child(
                 button(
                     "right",
                     IconName::ArrowRight,
-                    "右の列へ移動",
+                    i18n::t!("Move to Right Column"),
                     column + 1 >= column_count,
                 )
                 .on_click(cx.listener(move |this, _, _window, cx| {
@@ -586,21 +604,29 @@ impl MermaidEditor {
                 })),
             )
             .child(
-                button("up", IconName::ArrowUp, "上へ移動", index == 0).on_click(cx.listener(
-                    move |this, _, _window, cx| this.move_kanban_card(column, index, false, cx),
-                )),
-            )
-            .child(
-                button("down", IconName::ArrowDown, "下へ移動", index + 1 >= length).on_click(
+                button("up", IconName::ArrowUp, i18n::t!("Move Up"), index == 0).on_click(
                     cx.listener(move |this, _, _window, cx| {
-                        this.move_kanban_card(column, index, true, cx)
+                        this.move_kanban_card(column, index, false, cx)
                     }),
                 ),
             )
             .child(
-                button("remove", IconName::Trash, "カードを削除", false).on_click(cx.listener(
-                    move |this, _, _window, cx| this.remove_kanban_card(column, index, cx),
-                )),
+                button(
+                    "down",
+                    IconName::ArrowDown,
+                    i18n::t!("Move Down"),
+                    index + 1 >= length,
+                )
+                .on_click(cx.listener(move |this, _, _window, cx| {
+                    this.move_kanban_card(column, index, true, cx)
+                })),
+            )
+            .child(
+                button("remove", IconName::Trash, i18n::t!("Delete Card"), false).on_click(
+                    cx.listener(move |this, _, _window, cx| {
+                        this.remove_kanban_card(column, index, cx)
+                    }),
+                ),
             );
 
         let assigned = card.metadata_value(ASSIGNED_KEY).unwrap_or_default();
@@ -640,7 +666,7 @@ impl MermaidEditor {
                     .w_full()
                     .gap_1()
                     .pl_4()
-                    .child(section_title("担当"))
+                    .child(section_title(i18n::t!("Assignee")))
                     .child(
                         field_frame(
                             &row.assigned,
@@ -651,7 +677,7 @@ impl MermaidEditor {
                         )
                         .child(row.assigned.clone()),
                     )
-                    .child(section_title("チケット"))
+                    .child(section_title(i18n::t!("Ticket")))
                     .child(
                         field_frame(
                             &row.ticket,
@@ -684,10 +710,10 @@ impl MermaidEditor {
         let this = cx.entity().downgrade();
         let label = priority_label(current.as_deref());
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
-            let choices = std::iter::once((None, "なし")).chain(
+            let choices = std::iter::once((None, i18n::t!("None"))).chain(
                 KANBAN_PRIORITIES
                     .iter()
-                    .map(|(value, label)| (Some(*value), *label)),
+                    .map(|(value, label)| (Some(*value), i18n::tr(label))),
             );
             for (value, label) in choices {
                 let this = this.clone();

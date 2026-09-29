@@ -658,9 +658,7 @@ impl StackFrameList {
                                     }
                                 }))
                                 .tooltip(move |window, cx| {
-                                    Tooltip::text("スタックフレームを再起動")(
-                                        window, cx,
-                                    )
+                                    Tooltip::text(i18n::t!("Restart Stack Frame"))(window, cx)
                                 }),
                             ),
                     )
@@ -724,8 +722,8 @@ impl StackFrameList {
                     .text_ui_sm(cx)
                     .truncate()
                     .text_color(cx.theme().colors().text_muted)
-                    .child(format!(
-                        "さらに {} 件を表示{}",
+                    .child(i18n::t!(
+                        "Show {} more{}",
                         stack_frames.len(),
                         first_stack_frame
                             .source
@@ -908,8 +906,8 @@ impl StackFrameList {
 
     pub(crate) fn render_control_strip(&self) -> AnyElement {
         let tooltip_title = match self.list_filter {
-            StackFrameFilter::All => "プロジェクトのスタックフレームを表示",
-            StackFrameFilter::OnlyUserFrames => "すべてのスタックフレームを表示",
+            StackFrameFilter::All => i18n::t!("Show stack frames from your project"),
+            StackFrameFilter::OnlyUserFrames => i18n::t!("Show all stack frames"),
         };
 
         h_flex()

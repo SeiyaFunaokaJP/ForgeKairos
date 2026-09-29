@@ -148,7 +148,7 @@ async fn a_deletion_that_would_move_a_task_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("削除できません") && message.contains("`C`")),
+            .is_some_and(|message| message.contains("Cannot delete") && message.contains("`C`")),
         "the reason should name the task that would move: {message:?}"
     );
     assert_eq!(rows, vec![3], "no row may go when the model refused");
@@ -262,9 +262,13 @@ async fn renaming_an_id_follows_into_click(cx: &mut TestAppContext) {
 
 #[test]
 fn the_tag_menu_names_the_tags_a_task_carries() {
-    assert_eq!(tag_menu_label(&[]), SharedString::from("タグ"));
+    assert_eq!(tag_menu_label(&[]), SharedString::from("Tags"));
     assert_eq!(
         tag_menu_label(&[GanttTag::Done, GanttTag::Crit]),
-        SharedString::from("完了・重要")
+        SharedString::from(format!(
+            "{}, {}",
+            GanttTag::Done.label(),
+            GanttTag::Crit.label()
+        ))
     );
 }

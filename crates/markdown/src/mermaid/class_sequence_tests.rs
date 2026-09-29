@@ -168,8 +168,8 @@ impl<'a> Harness<'a> {
     }
 }
 
-const NO_LABEL_TOKEN: &str = "この要素は ID がそのまま図に出ています。表示名を変えるには「Mermaid 図を編集」から説明や別名を付けてください。";
-const NOT_LOCATED: &str = "このラベルはソースの位置を特定できませんでした。";
+const NO_LABEL_TOKEN: &str = "This element shows its ID as is. To change what is shown, give it a description or an alias in \"Edit Mermaid Diagram\".";
+const NOT_LOCATED: &str = "The source location of this label could not be found.";
 
 fn located(source: &str, token: &str) -> Recorded {
     let start = source.find(token).expect("the token is in the source");

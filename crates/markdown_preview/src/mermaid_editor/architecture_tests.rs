@@ -89,10 +89,20 @@ const TEMPLATE_FENCE: &str = indoc! {"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let document = parse_architecture(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_architecture(&document), template);
+    };
+    check(editor::actions::MermaidDiagramKind::Architecture.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::Architecture.template();
-    let document = parse_architecture(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_architecture(&document), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -229,7 +239,7 @@ async fn what_merman_would_refuse_is_not_written(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("2 回")),
+            .is_some_and(|message| message.contains("twice")),
         "a duplicate id should be refused, got {message:?}"
     );
     assert_eq!(
@@ -243,9 +253,9 @@ async fn what_merman_would_refuse_is_not_written(cx: &mut TestAppContext) {
         modal.update_architecture_edge(0, cx, |edge| edge.to.group_boundary = true);
     });
     assert!(
-        message
-            .as_deref()
-            .is_some_and(|message| message.contains("グループ端")),
+        message.as_deref().is_some_and(
+            |message| message.contains("stays inside one group, so it cannot use “Group Edge”")
+        ),
         "a group end inside one group should be refused, got {message:?}"
     );
     assert_eq!(
@@ -260,7 +270,7 @@ async fn what_merman_would_refuse_is_not_written(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("自分自身")),
+            .is_some_and(|message| message.contains("inside itself")),
         "a group inside itself should be refused, got {message:?}"
     );
     assert_eq!(
@@ -277,7 +287,7 @@ async fn what_merman_would_refuse_is_not_written(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("1 つ以上")),
+            .is_some_and(|message| message.contains("at least one")),
         "an empty diagram should be refused, got {message:?}"
     );
     assert_eq!(
@@ -304,7 +314,7 @@ async fn an_edge_is_never_written_to_a_group(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("グループです")),
+            .is_some_and(|message| message.contains("is a group")),
         "an edge to a group should be refused, got {message:?}"
     );
     assert_eq!(

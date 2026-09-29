@@ -101,16 +101,16 @@ impl UpdateVersion {
         window: &mut Window,
         cx: &mut App,
     ) {
-        let detail = format!(
-            "バージョン {version} をダウンロードするには、次のホストをネットワーク許可リストに追加する必要があります。\n\n{}\n\n\
-             追加すると、これらのホストへの通信は以後常に許可されます。設定の「ネットワーク」ページでいつでも取り消せます。",
-            hosts.join("\n"),
+        let hosts = hosts.join("\n");
+        let detail = i18n::t!(
+            "To download version {version}, these hosts must be added to the network allowlist:\n\n{hosts}\n\n\
+             Once added, connections to them are always allowed. You can remove them at any time on the Network page of the settings."
         );
         let answer = window.prompt(
             gpui::PromptLevel::Warning,
-            "更新のダウンロードにはネットワークの許可が必要です",
+            i18n::t!("Downloading the update needs network access"),
             Some(&detail),
-            &["許可リストに追加して更新", "キャンセル"],
+            &[i18n::t!("Add to Allowlist and Update"), i18n::t!("Cancel")],
             cx,
         );
         cx.spawn(async move |cx| {
@@ -202,7 +202,7 @@ mod tests {
     fn test_version_tooltip_message() {
         let message = UpdateVersion::version_tooltip_message(&Version::new(1, 0, 0));
 
-        assert_eq!(message, "バージョン 1.0.0 に更新");
+        assert_eq!(message, "Update to Version: 1.0.0");
 
         let message = UpdateVersion::version_tooltip_message(
             &"1.0.0+nightly.14d9a4189f058d8736339b06ff2340101eaea5af"
@@ -212,7 +212,7 @@ mod tests {
 
         assert_eq!(
             message,
-            "バージョン 1.0.0+nightly.14d9a4189f058d8736339b06ff2340101eaea5af に更新"
+            "Update to Version: 1.0.0+nightly.14d9a4189f058d8736339b06ff2340101eaea5af"
         );
     }
 
@@ -228,7 +228,7 @@ mod tests {
 
         assert_eq!(
             message,
-            "バージョン 1.0.0 をダウンロードするには github.com、objects.githubusercontent.com への通信の許可が必要です"
+            "Downloading version 1.0.0 needs network access to github.com, objects.githubusercontent.com"
         );
     }
 
@@ -237,12 +237,35 @@ mod tests {
         let version = Version::new(1, 0, 0);
 
         let message = UpdateButton::downloading_tooltip_message(&version, None);
-        assert_eq!(message, "バージョン 1.0.0 に更新");
+        assert_eq!(message, "Update to Version: 1.0.0");
 
         let message = UpdateButton::downloading_tooltip_message(&version, Some(0.454));
-        assert_eq!(message, "バージョン 1.0.0 に更新 (ダウンロード済み 45%)");
+        assert_eq!(message, "Update to Version: 1.0.0 (45% downloaded)");
 
         let message = UpdateButton::downloading_tooltip_message(&version, Some(1.5));
-        assert_eq!(message, "バージョン 1.0.0 に更新 (ダウンロード済み 100%)");
+        assert_eq!(message, "Update to Version: 1.0.0 (100% downloaded)");
+    }
+
+    #[test]
+    fn test_tooltip_messages_in_japanese() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let version = Version::new(1, 0, 0);
+
+        assert_eq!(
+            UpdateButton::downloading_tooltip_message(&version, Some(0.454)),
+            "バージョン 1.0.0 に更新 (ダウンロード済み 45%)"
+        );
+        assert_eq!(
+            UpdateButton::egress_consent_tooltip_message(
+                &version,
+                &[
+                    "github.com".to_string(),
+                    "objects.githubusercontent.com".to_string(),
+                ],
+            ),
+            "バージョン 1.0.0 をダウンロードするには github.com、objects.githubusercontent.com への通信の許可が必要です"
+        );
     }
 }

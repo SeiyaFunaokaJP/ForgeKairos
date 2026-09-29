@@ -106,7 +106,7 @@ impl IdeServerDiff {
                 let reason_editor = cx.new(|cx| {
                     let mut editor = Editor::single_line(window, cx);
                     editor.set_placeholder_text(
-                        "拒否の理由 (任意。エージェントに伝えます)",
+                        i18n::t!("Reason for rejecting (optional, sent to the agent)"),
                         window,
                         cx,
                     );
@@ -251,9 +251,9 @@ impl Render for IdeServerDiff {
                     .bg(cx.theme().colors().editor_background)
                     .child(
                         Label::new(if decided {
-                            "この差分は処理済みです".to_string()
+                            i18n::t!("This diff has been handled").to_string()
                         } else {
-                            format!("エージェントの提案: {}", self.tab_name)
+                            i18n::t!("Proposed by the agent: {}", self.tab_name)
                         })
                         .color(Color::Muted),
                     )
@@ -272,19 +272,29 @@ impl Render for IdeServerDiff {
                                 )
                             })
                             .child(
-                                Button::new("ide-server-diff-reject", "拒否")
-                                    .disabled(decided)
-                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                Button::new(
+                                    "ide-server-diff-reject",
+                                    i18n::tc!("proposed diff", "Reject"),
+                                )
+                                .disabled(decided)
+                                .on_click(cx.listener(
+                                    |this, _, _window, cx| {
                                         this.reject(cx);
-                                    })),
+                                    },
+                                )),
                             )
                             .child(
-                                Button::new("ide-server-diff-accept", "採用")
-                                    .style(ButtonStyle::Tinted(ui::TintColor::Accent))
-                                    .disabled(decided)
-                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                Button::new(
+                                    "ide-server-diff-accept",
+                                    i18n::tc!("proposed diff", "Accept"),
+                                )
+                                .style(ButtonStyle::Tinted(ui::TintColor::Accent))
+                                .disabled(decided)
+                                .on_click(cx.listener(
+                                    |this, _, _window, cx| {
                                         this.accept(cx);
-                                    })),
+                                    },
+                                )),
                             ),
                     ),
             )

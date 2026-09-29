@@ -43,8 +43,9 @@ actions!(
 struct PausedWorktreeCodeNotification;
 
 /// A remote server from before ADR-F50 keeps running the folder's code.
-const REMOTE_SERVER_DOES_NOT_FOLLOW: &str =
-    "接続先のサーバーが古いため、接続先の言語サーバーとフォーマッターは止められていません";
+const REMOTE_SERVER_DOES_NOT_FOLLOW: &str = i18n::msg!(
+    "The remote server is too old, so language servers and formatters on the remote host are not paused"
+);
 
 fn remote_server_does_not_follow(details: Option<&PausedWorktreeDetails>) -> bool {
     details.and_then(|details| details.remote_host) == Some(RemoteHostPause::NotFollowing)
@@ -126,12 +127,12 @@ fn show_notification(
                     remote_server_does_not_follow(execution.read(cx).details(worktree_id).as_ref());
                 v_flex()
                     .gap_0p5()
-                    .child(Label::new(format!("エージェントが「{name}」に書き込みました")))
+                    .child(Label::new(i18n::t!("An agent wrote to {name}")))
                     .child(
                         Label::new(if does_not_follow {
-                            REMOTE_SERVER_DOES_NOT_FOLLOW
+                            i18n::tr(REMOTE_SERVER_DOES_NOT_FOLLOW)
                         } else {
-                            "確認して再開するまで、このフォルダーのコード (言語サーバー・フォーマッター) を実行しません"
+                            i18n::t!("This folder's code (language servers and formatters) won't run until you review and resume.")
                         })
                         .size(LabelSize::Small)
                         .color(if does_not_follow {
@@ -142,7 +143,7 @@ fn show_notification(
                     )
                     .into_any_element()
             })
-            .primary_message("確認する")
+            .primary_message(i18n::tc!("paused folder code", "Review"))
             .primary_on_click(move |window, cx| {
                 weak_workspace
                     .update(cx, |workspace, cx| open_dialog(workspace, window, cx))
@@ -189,7 +190,9 @@ const STOP_CHECK_INTERVAL: Duration = Duration::from_millis(500);
 /// period, which the next look reports). Giving up on the wait is not giving
 /// up on the stop — the monitor keeps looking, and the list is what says
 /// whether it worked.
-const STOP_DID_NOT_LAND: &str = "まだ止まっていません。ホストが応答していないか、プロセスが終了を無視しています。次の確認でまだ動いていれば一覧に残ります。";
+const STOP_DID_NOT_LAND: &str = i18n::msg!(
+    "Not stopped yet. Either the host isn't responding or the processes are ignoring the request to exit. They stay in the list if they're still running at the next check."
+);
 
 struct PausedWorktreeCodeDialog {
     project: Entity<Project>,
@@ -393,20 +396,28 @@ fn language_server_names(details: &PausedWorktreeDetails, how: PausedLanguageSer
 /// is what an answer's own leftover looks like the moment it is first listed.
 fn running_for(duration: Option<Duration>) -> String {
     let Some(duration) = duration else {
-        return "起動時間不明".to_string();
+        return i18n::t!("started at an unknown time").to_string();
     };
     let seconds = duration.as_secs();
     if seconds == 0 {
-        return "1 秒未満前から".to_string();
+        return i18n::t!("running for under a second").to_string();
     }
     if seconds < 60 {
-        return format!("{seconds} 秒前から");
+        return i18n::tn!(
+            seconds,
+            "running for {count} second",
+            "running for {count} seconds"
+        );
     }
     let minutes = seconds / 60;
     if minutes < 60 {
-        return format!("{minutes} 分前から");
+        return i18n::tn!(
+            minutes,
+            "running for {count} minute",
+            "running for {count} minutes"
+        );
     }
-    format!("{} 時間 {} 分前から", minutes / 60, minutes % 60)
+    i18n::t!("running for {} h {} min", minutes / 60, minutes % 60)
 }
 
 fn render_leftover_processes(
@@ -424,12 +435,12 @@ fn render_leftover_processes(
                 // host could not read it, is named by what is left: its pid.
                 let command = escape_for_display(process.command.as_ref()).into_owned();
                 let command = if command.is_empty() {
-                    "コマンド名が読めないプロセス".to_string()
+                    i18n::t!("process with an unreadable command name").to_string()
                 } else {
                     command
                 };
-                detail_line(format!(
-                    "{command} ({}、PID {}、{})",
+                detail_line(i18n::t!(
+                    "{command} ({}, PID {}, {})",
                     agent,
                     process.pid,
                     running_for(process.running_for),
@@ -444,12 +455,12 @@ fn render_leftover_processes(
         .child(render_notice(
             IconName::Warning,
             Color::Warning,
-            "エージェントの応答が残したプロセスがサンドボックスの中で動いています。終わるまで再開できません。",
+            i18n::t!("Processes left behind by an agent response are running in the sandbox. You can't resume until they end."),
         ))
         .children(lines)
         .child(
             h_flex().child(
-                Button::new("paused-worktree-code-stop-processes", "残ったプロセスを止める")
+                Button::new("paused-worktree-code-stop-processes", i18n::t!("Stop Leftover Processes"))
                     .style(ButtonStyle::Subtle)
                     .disabled(stopping)
                     .on_click(move |_, window, cx| stop(window, cx)),
@@ -459,7 +470,7 @@ fn render_leftover_processes(
             this.child(render_notice(
                 IconName::Warning,
                 Color::Warning,
-                STOP_DID_NOT_LAND,
+                i18n::tr(STOP_DID_NOT_LAND),
             ))
         })
 }
@@ -490,41 +501,41 @@ fn render_folder(
         .gap_0p5()
         .child(Label::new(name))
         .when(!restricted.is_empty(), |this| {
-            this.child(detail_line(format!(
-                "制限モードで動いている言語サーバー: {restricted}"
+            this.child(detail_line(i18n::t!(
+                "Language servers running in Restricted Mode: {restricted}"
             )))
         })
         .when(!stopped.is_empty(), |this| {
-            this.child(detail_line(format!("止めている言語サーバー: {stopped}")))
+            this.child(detail_line(i18n::t!("Stopped language servers: {stopped}")))
         })
         .when(!formatters.is_empty(), |this| {
-            this.child(detail_line(format!(
-                "実行しなかったフォーマッター: {formatters}"
+            this.child(detail_line(i18n::t!(
+                "Skipped formatters: {formatters}"
             )))
         })
         .when(
             details.remote_host == Some(RemoteHostPause::Following),
             |this| {
                 this.child(detail_line(
-                    "接続先の言語サーバーとフォーマッターも同じように止めています。".to_string(),
+                    i18n::t!("Language servers and formatters on the remote host are paused the same way.").to_string(),
                 ))
             },
         )
         .when(details.remote_host == Some(RemoteHostPause::Unknown), |this| {
             this.child(detail_line(
-                "接続先のサーバーの応答を待っています。".to_string(),
+                i18n::t!("Waiting for the remote server to respond.").to_string(),
             ))
         })
         .when(remote_server_does_not_follow(Some(&details)), |this| {
             this.child(render_notice(
                 IconName::Warning,
                 Color::Warning,
-                REMOTE_SERVER_DOES_NOT_FOLLOW,
+                i18n::tr(REMOTE_SERVER_DOES_NOT_FOLLOW),
             ))
         })
         .when(nothing_held_back, |this| {
             this.child(detail_line(
-                "まだ止めた言語サーバー・フォーマッターはありません。起動や実行のときにこの状態に従います。"
+                i18n::t!("No language servers or formatters have been held back yet. They follow this state when they start or run.")
                     .to_string(),
             ))
         })
@@ -540,7 +551,7 @@ fn render_folder(
             this.child(render_notice(
                 IconName::Warning,
                 Color::Warning,
-                "エージェントの応答が終わるまで再開できません。終わらないときは、エージェントを止めてください。",
+                i18n::t!("You can't resume until the agent's response ends. If it doesn't end, stop the agent."),
             ))
         })
         .when(
@@ -549,7 +560,7 @@ fn render_folder(
                 this.child(render_notice(
                     IconName::Warning,
                     Color::Warning,
-                    "実行中のセッション・コマンドが終わるまで再開できません。",
+                    i18n::t!("You can't resume until the running sessions and commands end."),
                 ))
             },
         )
@@ -597,12 +608,12 @@ impl Render for PausedWorktreeCodeDialog {
             .w(rems(34.))
             .p_4()
             .gap_3()
-            .child(Headline::new("フォルダーのコードを止めています").size(HeadlineSize::Small))
+            .child(Headline::new(i18n::t!("Folder Code Paused")).size(HeadlineSize::Small))
             .child(
                 Label::new(if anything_paused {
-                    "エージェントが書き込んだあと、次のフォルダーでは、そのフォルダーのコードを実行する言語サーバーとフォーマッターを止めています。エージェントの変更を確認してから再開してください。"
+                    i18n::t!("Since an agent wrote to the following folders, the language servers and formatters that run each folder's code are paused. Review the agent's changes before you resume.")
                 } else {
-                    "止めているフォルダーはありません。"
+                    i18n::t!("No folders are paused.")
                 })
                 .size(LabelSize::Small)
                 .color(Color::Muted),
@@ -618,7 +629,7 @@ impl Render for PausedWorktreeCodeDialog {
                 this.child(render_notice(
                     IconName::Warning,
                     Color::Warning,
-                    "開いたあとにエージェントがさらに書き込みました。変更を確認してから、もう一度 [再開] を押してください。",
+                    i18n::t!("An agent wrote again after this dialog opened. Review the changes, then press Resume again."),
                 ))
             })
             .when(anything_paused, |this| {
@@ -626,7 +637,7 @@ impl Render for PausedWorktreeCodeDialog {
                     h_flex()
                         .gap_2()
                         .child(
-                            Button::new("paused-worktree-code-agent-diff", "エージェントの変更を見る")
+                            Button::new("paused-worktree-code-agent-diff", i18n::t!("View Agent Changes"))
                                 .style(ButtonStyle::Subtle)
                                 .on_click(cx.listener(|_, _, window, cx| {
                                     if let Some(action) =
@@ -637,7 +648,7 @@ impl Render for PausedWorktreeCodeDialog {
                                 })),
                         )
                         .child(
-                            Button::new("paused-worktree-code-git-panel", "Git パネルを開く")
+                            Button::new("paused-worktree-code-git-panel", i18n::t!("Open Git Panel"))
                                 .style(ButtonStyle::Subtle)
                                 .on_click(cx.listener(|_, _, window, cx| {
                                     window.dispatch_action(
@@ -654,13 +665,13 @@ impl Render for PausedWorktreeCodeDialog {
                     .gap_2()
                     .justify_end()
                     .child(
-                        Button::new("paused-worktree-code-close", "閉じる")
+                        Button::new("paused-worktree-code-close", i18n::t!("Close"))
                             .style(ButtonStyle::Subtle)
                             .on_click(cx.listener(|_, _, _window, cx| cx.emit(DismissEvent))),
                     )
                     .when(anything_paused, |this| {
                         this.child(
-                            Button::new("paused-worktree-code-resume", "再開")
+                            Button::new("paused-worktree-code-resume", i18n::t!("Resume"))
                                 .style(ButtonStyle::Filled)
                                 .disabled(!resumable)
                                 .on_click(cx.listener(|this, _, _window, cx| this.resume(cx))),
@@ -695,19 +706,34 @@ mod tests {
     /// answer started in the second before it ended.
     #[test]
     fn an_unknown_age_is_not_a_process_that_just_started() {
-        assert_eq!(running_for(None), "起動時間不明");
-        assert_eq!(running_for(Some(Duration::ZERO)), "1 秒未満前から");
+        assert_eq!(running_for(None), "started at an unknown time");
+        assert_eq!(
+            running_for(Some(Duration::ZERO)),
+            "running for under a second"
+        );
         assert_eq!(
             running_for(Some(Duration::from_millis(999))),
-            "1 秒未満前から"
+            "running for under a second"
         );
-        assert_eq!(running_for(Some(Duration::from_secs(1))), "1 秒前から");
-        assert_eq!(running_for(Some(Duration::from_secs(59))), "59 秒前から");
-        assert_eq!(running_for(Some(Duration::from_secs(60))), "1 分前から");
-        assert_eq!(running_for(Some(Duration::from_secs(3599))), "59 分前から");
+        assert_eq!(
+            running_for(Some(Duration::from_secs(1))),
+            "running for 1 second"
+        );
+        assert_eq!(
+            running_for(Some(Duration::from_secs(59))),
+            "running for 59 seconds"
+        );
+        assert_eq!(
+            running_for(Some(Duration::from_secs(60))),
+            "running for 1 minute"
+        );
+        assert_eq!(
+            running_for(Some(Duration::from_secs(3599))),
+            "running for 59 minutes"
+        );
         assert_eq!(
             running_for(Some(Duration::from_secs(3600 * 2 + 60 * 3))),
-            "2 時間 3 分前から"
+            "running for 2 h 3 min"
         );
     }
 

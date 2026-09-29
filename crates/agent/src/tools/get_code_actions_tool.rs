@@ -60,7 +60,7 @@ impl AgentTool for GetCodeActionsTool {
         if let Ok(input) = input {
             get_code_actions_title(&input.symbol.symbol_name).into()
         } else {
-            "コードアクションを取得".into()
+            i18n::t!("Get code actions").into()
         }
     }
 
@@ -98,7 +98,7 @@ impl AgentTool for GetCodeActionsTool {
                         &get_code_actions_title(&input.symbol.symbol_name),
                     );
                     return Ok(no_language_server_message(
-                        "コードアクションの取得",
+                        "get code actions",
                         &input.symbol.file_path,
                     ));
                 }
@@ -131,5 +131,5 @@ impl AgentTool for GetCodeActionsTool {
 }
 
 fn get_code_actions_title(symbol_name: &str) -> String {
-    format!("`{symbol_name}` のコードアクションを取得")
+    i18n::t!("Get code actions for `{symbol_name}`")
 }

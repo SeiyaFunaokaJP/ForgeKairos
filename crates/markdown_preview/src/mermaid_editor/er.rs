@@ -246,18 +246,18 @@ pub(super) fn problem(document: &ErDocument) -> Option<SharedString> {
     // from the kind picker and confirmed straight away would leave a fence the
     // preview can only report an error about.
     if document.entities.is_empty() {
-        return Some("エンティティを 1 つ以上追加してください。".into());
+        return Some(i18n::t!("Add at least one entity.").into());
     }
     for entity in &document.entities {
         if !is_valid_entity_name(&entity.name) {
-            return Some("名前が空のエンティティがあります。".into());
+            return Some(i18n::t!("An entity has an empty name.").into());
         }
         for attribute in &entity.attributes {
             for word in [&attribute.type_name, &attribute.name] {
                 if !is_valid_attribute_word(word) {
                     return Some(
-                        format!(
-                            "「{word}」は属性の型や名前として使えません (空白・記号と PK / FK / UK は不可)。"
+                        i18n::t!(
+                            "\"{word}\" cannot be used as an attribute type or name (no whitespace, symbols, or PK / FK / UK)."
                         )
                         .into(),
                     );
@@ -333,7 +333,9 @@ impl MermaidEditor {
         let Some(form) = self.er() else {
             return;
         };
-        let name = form.current_document(cx).unused_entity_name("エンティティ");
+        let name = form
+            .current_document(cx)
+            .unused_entity_name(i18n::t!("Entity"));
         let row = EntityRow {
             name: self.new_field(&name, window, cx),
             alias: self.new_field("", window, cx),
@@ -527,7 +529,7 @@ impl MermaidEditor {
         };
         let document = form.current_document(cx);
         let Some(left) = document.entities.first().map(|entity| entity.name.clone()) else {
-            self.message = Some("先にエンティティを追加してください。".into());
+            self.message = Some(i18n::t!("Add an entity first.").into());
             cx.notify();
             return;
         };
@@ -676,7 +678,7 @@ impl MermaidEditor {
         h_flex()
             .gap_2()
             .child(
-                Label::new("方向")
+                Label::new(i18n::t!("Direction"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -715,7 +717,7 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_2()
-            .child(section_title("エンティティ"));
+            .child(section_title(i18n::t!("Entities")));
         for index in 0..form.entities.len() {
             let (Some(row), Some(entity)) =
                 (form.entities.get(index), form.document.entities.get(index))
@@ -868,7 +870,7 @@ impl MermaidEditor {
                     .child(attributes)
                     .child(div().pl_4().child(add_button(
                         SharedString::from(format!("mermaid-er-add-attribute-{index}")),
-                        "属性を追加",
+                        i18n::t!("Add Attribute"),
                         cx.listener(move |this, _, window, cx| {
                             this.add_attribute(index, window, cx)
                         }),
@@ -878,7 +880,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-er-add-entity",
-                "エンティティを追加",
+                i18n::t!("Add Entity"),
                 cx.listener(|this, _, window, cx| this.add_entity(window, cx)),
             ))
             .child(render_class_input(
@@ -898,7 +900,10 @@ impl MermaidEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let last = form.relationships.len().saturating_sub(1);
-        let mut section = v_flex().w_full().gap_1().child(section_title("関係"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Relationships")));
         for index in 0..form.relationships.len() {
             let (Some(row), Some(relationship)) = (
                 form.relationships.get(index),
@@ -966,7 +971,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-er-add-relationship",
-                "関係を追加",
+                i18n::t!("Add Relationship"),
                 cx.listener(|this, _, window, cx| this.add_relationship(window, cx)),
             ))
             .into_any_element()
@@ -1092,9 +1097,9 @@ impl MermaidEditor {
         .shape(IconButtonShape::Square)
         .icon_size(IconSize::XSmall)
         .tooltip(Tooltip::text(if identifying {
-            "実線 (強い関係)。押すと破線"
+            i18n::t!("Solid line (identifying relationship). Click for a dashed line.")
         } else {
-            "破線 (弱い関係)。押すと実線"
+            i18n::t!("Dashed line (non-identifying relationship). Click for a solid line.")
         }))
         .on_click(cx.listener(move |this, _, _window, cx| {
             this.update_relationship(index, cx, |relationship| {
@@ -1108,6 +1113,6 @@ impl MermaidEditor {
 pub(super) fn direction_label(direction: Option<ErDirection>) -> &'static str {
     match direction {
         Some(direction) => direction.label(),
-        None => "指定なし",
+        None => i18n::t!("Not Set"),
     }
 }

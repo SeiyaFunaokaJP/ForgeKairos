@@ -1021,10 +1021,10 @@ async fn switching_the_ui_language_rebuilds_the_settings_window(cx: &mut TestApp
     let (settings_window, cx) = open_settings_window(cx, Box::new(zed_actions::OpenSettings)).await;
     cx.update(|_, cx| i18n_settings::init_for_tests(None, cx));
 
-    for (language, general_page, japanese_finds) in [
-        ("ja", "全般", true),
-        ("en", "General", false),
-        ("ja", "全般", true),
+    for (language, general_page, japanese_finds, search_placeholder, window_title) in [
+        ("ja", "全般", true, "設定を検索…", "Zed — 設定"),
+        ("en", "General", false, "Search settings…", "Zed — Settings"),
+        ("ja", "全般", true, "設定を検索…", "Zed — 設定"),
     ] {
         set_ui_language(language, cx);
         assert_eq!(i18n::current_locale(), language);
@@ -1046,6 +1046,25 @@ async fn switching_the_ui_language_rebuilds_the_settings_window(cx: &mut TestApp
                 assert_eq!(crate::tr_table(first_page.title), general_page);
             })
             .expect("the settings window should be open");
+        let placeholder = settings_window
+            .update(cx, |settings_window, _, cx| {
+                settings_window
+                    .search_bar
+                    .update(cx, |editor, cx| editor.placeholder_text(cx))
+            })
+            .expect("the settings window should be open");
+        assert_eq!(
+            placeholder.as_deref(),
+            Some(search_placeholder),
+            "{language}: the search bar's placeholder"
+        );
+        assert_eq!(
+            gpui::VisualTestContext::from_window(settings_window.into(), cx)
+                .window_title()
+                .as_deref(),
+            Some(window_title),
+            "{language}: the window title"
+        );
         let found = search(settings_window, "アクセシビリティ", cx);
         assert_eq!(
             found["accessible_mode"], japanese_finds,

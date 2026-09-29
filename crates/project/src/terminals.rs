@@ -1139,6 +1139,12 @@ fn spawn_remote_command(
                     session,
                 } => {
                     remote_session = Some(session);
+                    // For the notices the attach and its holder write into
+                    // the terminal; the holder keeps it from its shell.
+                    env.insert(
+                        remote::DISPLAY_LANGUAGE_ENV_VAR.to_string(),
+                        i18n::current_locale().to_string(),
+                    );
                     (Some(program), args)
                 }
                 PersistentShellCommand::Plain { program, args } => (program, args),

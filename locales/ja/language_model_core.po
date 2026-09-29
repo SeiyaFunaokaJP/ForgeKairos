@@ -1,0 +1,34 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "reasoning effort"
+msgid "Extra High"
+msgstr "最高"
+
+msgctxt "reasoning effort"
+msgid "High"
+msgstr "高"
+
+msgctxt "reasoning effort"
+msgid "Low"
+msgstr "低"
+
+msgctxt "reasoning effort"
+msgid "Max"
+msgstr "最大"
+
+msgctxt "reasoning effort"
+msgid "Medium"
+msgstr "中"
+
+msgctxt "reasoning effort"
+msgid "Minimal"
+msgstr "最小"
+
+msgctxt "reasoning effort"
+msgid "None"
+msgstr "なし"

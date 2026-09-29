@@ -156,32 +156,42 @@ impl MermaidLabelEditRequest {
         use crate::mermaid_source::MermaidLabelRefusal;
         match self.refusal {
             Some(MermaidLabelRefusal::SharedByGroup) => {
-                "この線のラベルは複数のつながりで共有されているため、ここでは編集できません。"
+                i18n::t!(
+                    "This line's label is shared by several links, so it cannot be edited here."
+                )
             }
             Some(MermaidLabelRefusal::NoLabelToken) => {
-                "この要素は ID がそのまま図に出ています。表示名を変えるには「Mermaid 図を編集」から説明や別名を付けてください。"
+                i18n::t!(
+                    "This element shows its ID as is. To change what is shown, give it a description or an alias in \"Edit Mermaid Diagram\"."
+                )
             }
             Some(MermaidLabelRefusal::EmptyLabel) => {
-                "空のラベルはここでは編集できません。「Mermaid 図を編集」から文字を書き加えてください。"
+                i18n::t!(
+                    "An empty label cannot be edited here. Add text to it in \"Edit Mermaid Diagram\"."
+                )
             }
             Some(MermaidLabelRefusal::Duplicated) => {
-                "同じ名前や ID の要素が複数あるため、ここでは編集できません。「Mermaid 図を編集」から直してください。"
+                i18n::t!(
+                    "Several elements share this name or ID, so it cannot be edited here. Fix it in \"Edit Mermaid Diagram\"."
+                )
             }
             Some(MermaidLabelRefusal::NotLocated) | None => {
-                "このラベルはソースの位置を特定できませんでした。"
+                i18n::t!("The source location of this label could not be found.")
             }
         }
     }
 
     /// Why `new_label` cannot be written into the token this request replaces,
     /// for the consumer to show instead of applying the edit.
-    pub fn write_refusal_message(&self, new_label: &str) -> Option<&'static str> {
+    pub fn write_refusal_message(&self, new_label: &str) -> Option<Cow<'static, str>> {
         crate::mermaid_source::chart_label_write_refusal(
             self.quoting,
             new_label,
             &self.reserved_labels,
         )
-        .or_else(|| crate::mermaid_source::write_refusal(self.quoting, new_label))
+        .or_else(|| {
+            crate::mermaid_source::write_refusal(self.quoting, new_label).map(Cow::Borrowed)
+        })
     }
 
     /// The same request for an ER relationship's label, whose token is
@@ -3878,17 +3888,15 @@ fn image_fallback_element(
         .filter(|alt| !alt.is_empty())
         .unwrap_or_else(|| dest_url.clone());
 
-    let label = format!("読み込みに失敗しました: {link_label}");
+    let label = i18n::t!("Failed to Load: {link_label}");
 
     div()
         .id("image-fallback")
         .min_w_0()
         .child(Label::new(label).color(Color::Warning).underline())
-        .tooltip(Tooltip::text(
-            // 元の "Open `zed: log`" はパレットのコマンド名を指していたが、
-            // パレットが日本語化されたので日本語ラベル (locales/ja/_actions.po の "zed::OpenLog") を案内する
-            "画像を読み込めませんでした。詳細はコマンドパレットの「ログを開く」で確認してください。",
-        ))
+        .tooltip(Tooltip::text(i18n::t!(
+            "Image failed to load. Open `zed: log` for more details."
+        )))
         .when(open_image_url_on_click, |this| {
             this.cursor_pointer()
                 .on_click(move |_, _, cx| cx.open_url(&dest_url))
@@ -3956,9 +3964,9 @@ fn render_wrap_code_block_button(
     markdown: Entity<Markdown>,
 ) -> impl IntoElement {
     let (icon, tooltip) = if is_wrapped {
-        (IconName::TextUnwrap, "折り返しを解除")
+        (IconName::TextUnwrap, i18n::t!("Unwrap Content"))
     } else {
-        (IconName::TextWrap, "内容を折り返す")
+        (IconName::TextWrap, i18n::t!("Wrap Content"))
     };
     let button_id = ElementId::NamedChild(
         Arc::new(ElementId::from(("wrap-code-block", markdown.entity_id()))),

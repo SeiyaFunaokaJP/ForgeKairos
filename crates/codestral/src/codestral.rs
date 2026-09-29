@@ -257,6 +257,19 @@ impl EditPredictionDelegate for CodestralEditPredictionDelegate {
             .unwrap_or_else(|| "codestral-latest".to_string());
         let max_tokens = settings.edit_predictions.codestral.max_tokens;
         let api_url = codestral_api_url(cx).to_string();
+        // zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): an API key alone, even one only in
+        // the environment, is not consent to send code off this machine.
+        if !edit_prediction::endpoint_is_local_or_acknowledged(
+            edit_prediction::CODESTRAL_CONSENT_ID,
+            &api_url,
+            cx,
+        ) {
+            log::debug!(
+                "Codestral: not requesting a completion from {api_url}: the external AI warning \
+                 for Codestral edit predictions has not been accepted"
+            );
+            return;
+        }
 
         self.pending_request = Some(cx.spawn(async move |this, cx| {
             if !debounce_duration.is_zero() {
@@ -426,4 +439,140 @@ pub struct Choice {
 pub struct Message {
     pub content: String,
     pub role: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{AsyncApp, TestAppContext, UpdateGlobal as _};
+    use http_client::FakeHttpClient;
+    use settings::SettingsStore;
+    use std::{future::Future, pin::Pin, sync::Mutex};
+
+    struct FakeCodestralCredentials;
+
+    impl credentials_provider::CredentialsProvider for FakeCodestralCredentials {
+        fn read_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<(String, Vec<u8>)>>> + 'a>> {
+            Box::pin(async { Ok(Some(("Bearer".to_string(), b"test-key".to_vec()))) })
+        }
+
+        fn write_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _username: &'a str,
+            _password: &'a [u8],
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+            Box::pin(async { Ok(()) })
+        }
+
+        fn delete_credentials<'a>(
+            &'a self,
+            _url: &'a str,
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    fn set_codestral_settings(api_url: Option<&str>, acknowledged: &[&str], cx: &mut App) {
+        let api_url = api_url.map(str::to_string);
+        let acknowledged = acknowledged
+            .iter()
+            .map(|key| key.to_string())
+            .collect::<Vec<_>>();
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                let edit_predictions = settings
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .get_or_insert_default();
+                edit_predictions.provider = Some(settings::EditPredictionProvider::Codestral);
+                edit_predictions.codestral.get_or_insert_default().api_url = api_url;
+                settings.acknowledged_external_ai_providers = Some(acknowledged);
+            });
+        });
+    }
+
+    async fn requested_hosts_after_refresh(
+        api_url: Option<&str>,
+        acknowledged: &[&str],
+        cx: &mut TestAppContext,
+    ) -> Vec<String> {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            cx.set_global(zed_credentials_provider::ZedCredentialsProvider(Arc::new(
+                FakeCodestralCredentials,
+            )));
+            set_codestral_settings(api_url, acknowledged, cx);
+        });
+        cx.update(load_codestral_api_key)
+            .await
+            .expect("the fake credentials provider has a key");
+
+        let requested_hosts = Arc::new(Mutex::new(Vec::new()));
+        let http_client = FakeHttpClient::create({
+            let requested_hosts = requested_hosts.clone();
+            move |request| {
+                requested_hosts
+                    .lock()
+                    .expect("request log")
+                    .push(request.uri().host().unwrap_or_default().to_string());
+                async move {
+                    Ok(http_client::Response::builder()
+                        .status(404)
+                        .body("Not Found".into())?)
+                }
+            }
+        });
+        let buffer = cx.new(|cx| Buffer::local("fn main() {\n    \n}\n", cx));
+        let cursor = buffer.read_with(cx, |buffer, _| buffer.anchor_before(16));
+        let delegate = cx.new(|_| CodestralEditPredictionDelegate::new(http_client));
+        delegate.update(cx, |delegate, cx| {
+            delegate.refresh(
+                buffer,
+                cursor,
+                Duration::ZERO,
+                EditPredictionRequestTrigger::Explicit,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        requested_hosts.lock().expect("request log").clone()
+    }
+
+    /// An API key, which the environment alone can supply, is not consent to send code to
+    /// Codestral (zed-jp-enhance ADR-F10).
+    #[gpui::test]
+    async fn test_codestral_waits_for_consent(cx: &mut TestAppContext) {
+        assert_eq!(
+            requested_hosts_after_refresh(None, &[], cx).await,
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            requested_hosts_after_refresh(
+                Some("https://codestral.corp.example"),
+                &["codestral", "mistral", "edit_prediction:ollama"],
+                cx
+            )
+            .await,
+            Vec::<String>::new(),
+            "only the edit prediction consent for Codestral opens it"
+        );
+        assert_eq!(
+            requested_hosts_after_refresh(None, &["edit_prediction:codestral"], cx).await,
+            vec!["codestral.mistral.ai".to_string()]
+        );
+        assert_eq!(
+            requested_hosts_after_refresh(Some("http://127.0.0.1:8080"), &[], cx).await,
+            vec!["127.0.0.1".to_string()],
+            "a server on this machine needs no consent"
+        );
+    }
 }

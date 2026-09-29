@@ -1,5 +1,4 @@
 use gpui::{Action, Entity, OwnedMenu, OwnedMenuItem, Subscription, actions};
-use project::DisableAiSettings;
 use settings::{Settings, SettingsStore};
 use workspace::AccessibleMode;
 
@@ -58,20 +57,9 @@ impl ApplicationMenu {
         let menus = cx.get_menus().unwrap_or_default();
 
         let entries = Self::build_entries(menus);
-        let mut disable_ai = DisableAiSettings::get_global(cx).disable_ai;
         let settings_subscription =
             cx.observe_global::<SettingsStore>(move |application_menu, cx| {
-                let new_disable_ai = DisableAiSettings::get_global(cx).disable_ai;
-                if new_disable_ai != disable_ai {
-                    disable_ai = new_disable_ai;
-                    for entry in &application_menu.entries {
-                        if entry.handle.is_deployed() {
-                            entry.handle.hide(cx);
-                        }
-                    }
-                    let menus = cx.get_menus().unwrap_or_default();
-                    application_menu.entries = Self::build_entries(menus);
-                }
+                application_menu.reload_menus_after_settings_change(cx);
                 cx.notify();
             });
 
@@ -200,8 +188,8 @@ impl ApplicationMenu {
                         .style(ButtonStyle::Subtle)
                         .icon_size(IconSize::Small)
                         .tab_index(0isize)
-                        .aria_label("アプリケーションメニュー"),
-                        Tooltip::text("アプリケーションメニューを開く"),
+                        .aria_label(i18n::t!("Application menu")),
+                        Tooltip::text(i18n::t!("Open Application Menu")),
                     )
                     .with_handle(handle),
             )

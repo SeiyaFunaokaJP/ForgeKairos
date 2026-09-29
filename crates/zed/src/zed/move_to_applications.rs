@@ -73,16 +73,16 @@ impl MoveToApplicationsRequest {
         let response = cx
             .prompt(
                 PromptLevel::Info,
-                "Zed を Applications に移動しますか?",
+                i18n::t!("Move Zed to Applications?"),
                 Some(
-                    "Zed は一時的な場所から実行されています。インストールを完了するには Applications に移動してください。",
+                    i18n::t!("Zed is running from a temporary location. Move it to Applications to finish installing it."),
                 ),
                 &[
                     // GLOSSARY.md §1: PromptButton::ok / cancel は文字列ではなく
                     // 呼び出し側で分類が決まるので、日本語ラベルでも Esc 判定は壊れない
-                    PromptButton::ok("移動"),
-                    PromptButton::cancel("移動しない"),
-                    PromptButton::new("今後は確認しない"),
+                    PromptButton::ok(i18n::tc!("move to applications", "Yes")),
+                    PromptButton::cancel(i18n::tc!("move to applications", "No")),
+                    PromptButton::new(i18n::t!("Don't ask me again")),
                 ],
             )
             .await?;
@@ -105,7 +105,7 @@ impl MoveToApplicationsRequest {
                         .ok();
                     cx.prompt(
                         PromptLevel::Critical,
-                        "Zed を Applications に移動できませんでした",
+                        i18n::t!("Failed to move Zed to Applications"),
                         Some(&error.to_string()),
                         &["OK"],
                     )
@@ -180,7 +180,7 @@ impl Render for InstallingZedModal {
                     .py_3()
                     .border_b_1()
                     .border_color(theme.colors().border_variant)
-                    .child(Label::new("Zed をインストール中…")),
+                    .child(Label::new(i18n::t!("Installing Zed…"))),
             )
             .child(
                 h_flex()
@@ -198,11 +198,13 @@ impl Render for InstallingZedModal {
                     .child(
                         v_flex()
                             .gap_1()
-                            .child(Label::new("Zed を Applications に移動しています"))
+                            .child(Label::new(i18n::t!("Moving Zed to Applications")))
                             .child(
-                                Label::new("インストールが完了すると Zed が再度開きます。")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Muted),
+                                Label::new(i18n::t!(
+                                    "Zed will reopen when installation is complete."
+                                ))
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
                             ),
                     ),
             )

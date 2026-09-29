@@ -9174,11 +9174,11 @@ fn ai_page(cx: &App) -> SettingsPage {
             // only shows what has already been acknowledged there and lets it be
             // withdrawn (ADR-F10, `docs/jp-enhance/DESIGN.md` §4.10).
             SettingsPageItem::SubPageLink(SubPageLink {
-                title: "Acknowledged External AI Providers".into(),
+                title: "External AI Providers You Consented To".into(),
                 r#type: Default::default(),
                 json_path: Some("acknowledged_external_ai_providers"),
                 description: Some(
-                    "The external AI providers you enabled after accepting the training risk warning. Revoking an acknowledgement shows the warning again the next time that provider is used."
+                    "The external AI providers you enabled after accepting the training risk warning. Revoking consent shows the warning again the next time that provider is used."
                         .into(),
                 ),
                 search_aliases: &[

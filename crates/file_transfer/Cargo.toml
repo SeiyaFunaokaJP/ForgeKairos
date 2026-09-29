@@ -20,6 +20,7 @@ editor.workspace = true
 fs.workspace = true
 futures.workspace = true
 gpui.workspace = true
+i18n.workspace = true
 log.workspace = true
 menu.workspace = true
 project.workspace = true

@@ -1434,11 +1434,11 @@ impl KeybindSource {
     /// `keymap_editor` のフィルター項目のラベルと対になっているので、片方だけ変えないこと
     pub fn display_name(&self) -> &'static str {
         match self {
-            KeybindSource::User => "ユーザー",
-            KeybindSource::Default => "既定",
-            KeybindSource::Base => "ベース",
+            KeybindSource::User => i18n::t!("User"),
+            KeybindSource::Default => i18n::tc!("keybinding source", "Default"),
+            KeybindSource::Base => i18n::tc!("keybinding source", "Base"),
             KeybindSource::Vim => "Vim",
-            KeybindSource::Unknown => "不明",
+            KeybindSource::Unknown => i18n::t!("Unknown"),
         }
     }
 

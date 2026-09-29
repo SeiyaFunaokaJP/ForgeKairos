@@ -232,13 +232,13 @@ fn manual_install_hint(server_name: &LanguageServerName) -> String {
         _ => None,
     };
     match command {
-        Some(command) => format!(
-            "{server_name} をこのマシン (リモート接続中はリモートホスト) にインストールして \
-             PATH に通しても解決します (例: {command})。"
+        Some(command) => i18n::t!(
+            "Installing {server_name} on this machine (on the remote host while connected \
+             remotely) and adding it to PATH also fixes this (e.g. {command})."
         ),
-        None => format!(
-            "{server_name} をこのマシン (リモート接続中はリモートホスト) にインストールして \
-             PATH に通しても解決します。"
+        None => i18n::t!(
+            "Installing {server_name} on this machine (on the remote host while connected \
+             remotely) and adding it to PATH also fixes this."
         ),
     }
 }
@@ -427,7 +427,7 @@ impl ActivityIndicator {
                     let buffer = create_buffer.await?;
                     buffer.update(cx, |buffer, cx| {
                         buffer.edit(
-                            [(0..0, format!("言語サーバー {server_name}:\n\n{status}"))],
+                            [(0..0, i18n::t!("Language server {server_name}:\n\n{status}"))],
                             None,
                             cx,
                         );
@@ -531,15 +531,18 @@ impl ActivityIndicator {
         };
         let indicator = cx.entity().downgrade();
         let display_name = server_name.0.clone();
-        let headline = SharedString::from(format!(
-            "{display_name} のダウンロードには次のホストへの通信が必要ですが、\
-             ネットワーク許可リストで拒否されました。"
+        let headline = SharedString::from(i18n::t!(
+            "Downloading {display_name} needs the following hosts, but the network \
+             allowlist denied them."
         ));
         let host_labels = hosts
             .iter()
             .map(|host| SharedString::from(host.clone()))
             .collect::<Vec<_>>();
-        let manual_hint = format!("許可しない場合は、{}", manual_install_hint(&server_name));
+        let manual_hint = i18n::t!(
+            "If you'd rather not allow them: {}",
+            manual_install_hint(&server_name)
+        );
         let hosts_for_click = hosts.clone();
 
         workspace.update(cx, |workspace, cx| {
@@ -558,18 +561,18 @@ impl ActivityIndicator {
                                 .gap_1()
                                 .child(Label::new(headline.clone()))
                                 .children(host_labels.iter().map(|host| {
-                                    Label::new(format!("・{host}"))
+                                    Label::new(i18n::t!("• {host}"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted)
                                 }))
                                 .into_any_element()
                         })
-                        .with_title(format!(
-                            "言語サーバー {display_name} を取得できませんでした"
+                        .with_title(i18n::t!(
+                            "Couldn't download the {display_name} language server"
                         ))
                         .content_icon(IconName::Warning, Color::Warning)
                         .secondary_content(manual_hint)
-                        .primary_message("許可リストに追加して再試行")
+                        .primary_message(i18n::t!("Add to Allowlist and Retry"))
                         .primary_icon(IconName::Check)
                         .primary_on_click(move |_, cx| {
                             indicator
@@ -582,7 +585,7 @@ impl ActivityIndicator {
                                 })
                                 .log_err();
                         })
-                        .secondary_message("今回は許可しない")
+                        .secondary_message(i18n::t!("Don't Allow This Time"))
                         .secondary_on_click(|_, _| {})
                     })
                 },
@@ -624,7 +627,9 @@ impl ActivityIndicator {
                             |cx| {
                                 cx.new(|cx| {
                                     MessageNotification::new(
-                                        format!("許可リストへの追加に失敗しました: {error:#}"),
+                                        i18n::t!(
+                                            "Couldn't add the hosts to the allowlist: {error:#}"
+                                        ),
                                         cx,
                                     )
                                     .content_icon(IconName::Warning, Color::Error)
@@ -783,38 +788,42 @@ impl ActivityIndicator {
             .filter(|tool| tool.can_install())
             .collect::<Vec<_>>();
         let title = match &remote_host {
-            Some(host) => format!("{language} のツールが接続先 ({host}) にありません"),
-            None => format!("{language} のツールが見つかりません"),
+            Some(host) => i18n::t!("{language} tools are missing on the remote host ({host})"),
+            None => i18n::t!("{language} tools are missing"),
         };
         let tool_labels = missing
             .iter()
-            .map(|tool| format!("{} ({})", tool.display_name, tool.purpose.label()))
+            .map(|tool| format!("{} ({})", i18n::tr(tool.display_name), tool.purpose.label()))
             .collect::<Vec<_>>();
         let guidance = missing
             .iter()
             .filter_map(|tool| match tool.acquisition {
-                dev_tools::DevToolAcquisition::Guidance(guidance) => {
-                    Some(format!("{}: {guidance}", tool.display_name))
-                }
+                dev_tools::DevToolAcquisition::Guidance(guidance) => Some(format!(
+                    "{}: {}",
+                    i18n::tr(tool.display_name),
+                    i18n::tr(guidance)
+                )),
                 _ => None,
             })
             .collect::<Vec<_>>()
             .join("\n");
         let install_label = if remote_host.is_some() {
-            "リモートにインストール"
+            i18n::t!("Install on Remote")
         } else {
-            "インストール"
+            i18n::t!("Install")
         };
         // Where the bytes come from is the part that is not obvious, and it is
         // the reassuring part on a host with no route to the internet. Left out
         // when there is nothing to install, so it cannot read as an offer.
         let install_hint = match (&remote_host, installable.is_empty()) {
             (_, true) => String::new(),
-            (Some(host), false) => format!(
-                "取得はこの PC のネットワークで行い、{host} のホームディレクトリ内にだけ置きます \
-                 (管理者権限は不要、他のユーザーには影響しません)。"
+            (Some(host), false) => i18n::t!(
+                "They're downloaded over this computer's network and placed only in {host}'s \
+                 home directory (no administrator rights needed; other users aren't affected)."
             ),
-            (None, false) => "このユーザーのデータディレクトリ内にだけ置きます。".to_string(),
+            (None, false) => {
+                i18n::t!("They're placed only in this user's data directory.").to_string()
+            }
         };
         let secondary_content = match (install_hint.is_empty(), guidance.is_empty()) {
             (false, false) => format!("{install_hint}\n{guidance}"),
@@ -850,7 +859,7 @@ impl ActivityIndicator {
                                 v_flex()
                                     .gap_1()
                                     .children(tool_labels.iter().map(|label| {
-                                        Label::new(format!("・{label}"))
+                                        Label::new(i18n::t!("• {label}"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted)
                                     }))
@@ -863,7 +872,7 @@ impl ActivityIndicator {
                                 notification.secondary_content(secondary_content.clone());
                         }
                         let notification = notification
-                            .secondary_message("今後表示しない")
+                            .secondary_message(i18n::t!("Don't Show This Again"))
                             .secondary_on_click({
                                 let indicator = indicator.clone();
                                 let ignore_ids = ignore_ids.clone();
@@ -910,7 +919,7 @@ impl ActivityIndicator {
         let downloads = tools
             .iter()
             .filter(|tool| tool.language_server_name().is_none())
-            .map(|tool| (tool.id, tool.display_name))
+            .map(|tool| (tool.id, i18n::tr(tool.display_name)))
             .collect::<Vec<_>>();
         let servers = tools
             .iter()
@@ -918,8 +927,8 @@ impl ActivityIndicator {
             .map(LanguageServerName::new_static)
             .collect::<Vec<_>>();
         let message = match downloads.first() {
-            Some((_, display_name)) => format!("{display_name} を導入しています"),
-            None => format!("{language} の言語サーバーを取得しています"),
+            Some((_, display_name)) => i18n::t!("Installing {display_name}"),
+            None => i18n::t!("Downloading the {language} language server"),
         };
 
         let project = self.project.clone();
@@ -977,7 +986,7 @@ impl ActivityIndicator {
                             |cx| {
                                 cx.new(|cx| {
                                     MessageNotification::new(
-                                        format!("{} を導入しました", installed.join(" / ")),
+                                        i18n::t!("Installed {}", installed.join(" / ")),
                                         cx,
                                     )
                                     .content_icon(IconName::Check, Color::Success)
@@ -1022,25 +1031,25 @@ impl ActivityIndicator {
                     cx.new(move |cx| {
                         let notification = match &hosts {
                             Some(hosts) => MessageNotification::new(
-                                format!(
-                                    "{display_name} の取得に必要な次のホストが、ネットワーク許可リストで拒否されました:\n{}",
+                                i18n::t!(
+                                    "The following hosts needed to download {display_name} were denied by the network allowlist:\n{}",
                                     hosts
                                         .iter()
-                                        .map(|host| format!("・{host}"))
+                                        .map(|host| i18n::t!("• {host}"))
                                         .collect::<Vec<_>>()
                                         .join("\n")
                                 ),
                                 cx,
                             ),
                             None => MessageNotification::new(
-                                format!("{display_name} を導入できませんでした: {error:#}"),
+                                i18n::t!("Couldn't install {display_name}: {error:#}"),
                                 cx,
                             ),
                         }
                         .content_icon(IconName::Warning, Color::Warning);
                         match hosts {
                             Some(hosts) => notification
-                                .primary_message("許可リストに追加して再試行")
+                                .primary_message(i18n::t!("Add to Allowlist and Retry"))
                                 .primary_icon(IconName::Check)
                                 .primary_on_click(move |_, cx| {
                                     indicator
@@ -1110,7 +1119,7 @@ impl ActivityIndicator {
             }
         });
         self.dev_tools_install = Some(DevToolInstall {
-            message: format!("{display_name} を導入しています").into(),
+            message: i18n::t!("Installing {display_name}").into(),
             _task: task,
         });
         cx.notify();
@@ -1160,11 +1169,11 @@ impl ActivityIndicator {
                 // Japanese preamble naming the hosts (ADR-F22).
                 cx.emit(Event::ShowStatus {
                     server_name: status.name.clone(),
-                    status: SharedString::from(format!(
-                        "ダウンロードに必要な次のホストが、ネットワーク許可リストで拒否されました:\n{}\n\n{}\n\n{error}",
+                    status: SharedString::from(i18n::t!(
+                        "The following hosts needed for the download were denied by the network allowlist:\n{}\n\n{}\n\n{error}",
                         hosts
                             .iter()
-                            .map(|host| format!("・{host}"))
+                            .map(|host| i18n::t!("• {host}"))
                             .collect::<Vec<_>>()
                             .join("\n"),
                         manual_install_hint(&status.name),
@@ -1304,7 +1313,7 @@ impl ActivityIndicator {
 
                 let additional_work_count = pending_work.count();
                 if additional_work_count > 0 {
-                    write!(&mut message, " + 他 {} 件", additional_work_count).unwrap();
+                    message.push_str(&i18n::t!(" + {} more", additional_work_count));
                 }
 
                 return Some(Content {
@@ -1337,7 +1346,7 @@ impl ActivityIndicator {
         {
             return Some(Content {
                 icon: ActivityIcon::LoadingSpinner,
-                message: format!("デバッグ: {}", session.read(cx).adapter()),
+                message: i18n::t!("Debug: {}", session.read(cx).adapter()),
                 tooltip_message: session.read(cx).label().map(|label| label.to_string()),
                 on_click: None,
             });
@@ -1428,8 +1437,8 @@ impl ActivityIndicator {
         if !downloading.is_empty() {
             return Some(Content {
                 icon: ActivityIcon::Icon(IconName::Download),
-                message: format!(
-                    "{} をダウンロード中...",
+                message: i18n::t!(
+                    "Downloading {}...",
                     downloading.iter().map(|name| name.as_ref()).fold(
                         String::new(),
                         |mut acc, s| {
@@ -1453,8 +1462,8 @@ impl ActivityIndicator {
         if !checking_for_update.is_empty() {
             return Some(Content {
                 icon: ActivityIcon::Icon(IconName::Download),
-                message: format!(
-                    "{} の更新を確認中...",
+                message: i18n::t!(
+                    "Checking for updates to {}...",
                     checking_for_update.iter().map(|name| name.as_ref()).fold(
                         String::new(),
                         |mut acc, s| {
@@ -1481,8 +1490,8 @@ impl ActivityIndicator {
         if !egress_denied.is_empty() {
             return Some(Content {
                 icon: ActivityIcon::Icon(IconName::Warning),
-                message: format!(
-                    "{} のダウンロードが外部通信の統制で拒否されました。クリックすると必要なホストを表示します。",
+                message: i18n::t!(
+                    "Downloading {} was blocked by the egress control. Click to show the hosts it needs.",
                     egress_denied.iter().map(|name| name.as_ref()).fold(
                         String::new(),
                         |mut acc, s| {
@@ -1507,8 +1516,8 @@ impl ActivityIndicator {
         if !failed_to_fetch.is_empty() {
             return Some(Content {
                 icon: ActivityIcon::Icon(IconName::Warning),
-                message: format!(
-                    "{} を取得できませんでした。クリックするとエラーを表示します。",
+                message: i18n::t!(
+                    "Couldn't download {}. Click to show error.",
                     failed_to_fetch.iter().map(|name| name.as_ref()).fold(
                         String::new(),
                         |mut acc, s| {
@@ -1530,8 +1539,8 @@ impl ActivityIndicator {
         if !failed.is_empty() {
             return Some(Content {
                 icon: ActivityIcon::Icon(IconName::Warning),
-                message: format!(
-                    "{} の実行に失敗しました。クリックするとエラーを表示します。",
+                message: i18n::t!(
+                    "Failed to run {}. Click to show error.",
                     failed
                         .iter()
                         .map(|name| name.as_ref())
@@ -1554,9 +1563,7 @@ impl ActivityIndicator {
         if let Some(failure) = self.project.read(cx).last_formatting_failure(cx) {
             return Some(Content {
                 icon: ActivityIcon::Icon(IconName::Warning),
-                message: format!(
-                    "フォーマットに失敗しました: {failure}。クリックするとログを表示します。"
-                ),
+                message: i18n::t!("Formatting failed: {failure}. Click to see logs."),
                 on_click: Some(Arc::new(|indicator, window, cx| {
                     indicator.project.update(cx, |project, cx| {
                         project.reset_last_formatting_failure(cx);
@@ -1571,8 +1578,8 @@ impl ActivityIndicator {
         if let Some((server_name, health, message)) = health_messages.pop() {
             let health_str = match health {
                 ServerHealth::Ok => format!("({server_name}) "),
-                ServerHealth::Warning => format!("({server_name}) 警告: "),
-                ServerHealth::Error => format!("({server_name}) エラー: "),
+                ServerHealth::Warning => i18n::t!("({server_name}) Warning: "),
+                ServerHealth::Error => i18n::t!("({server_name}) Error: "),
             };
             let single_line_message = message
                 .lines()
@@ -1621,15 +1628,15 @@ impl ActivityIndicator {
         {
             let (message, icon) = match operation {
                 ExtensionOperation::Install => (
-                    format!("{extension_id} 拡張機能をインストール中…"),
+                    i18n::t!("Installing {extension_id} extension…"),
                     ActivityIcon::LoadingSpinner,
                 ),
                 ExtensionOperation::Upgrade => (
-                    format!("{extension_id} 拡張機能を更新中…"),
+                    i18n::t!("Updating {extension_id} extension…"),
                     ActivityIcon::Icon(IconName::Download),
                 ),
                 ExtensionOperation::Remove => (
-                    format!("{extension_id} 拡張機能を削除中…"),
+                    i18n::t!("Removing {extension_id} extension…"),
                     ActivityIcon::LoadingSpinner,
                 ),
             };
@@ -1672,8 +1679,8 @@ impl ActivityIndicator {
             icon: ActivityIcon::Icon(IconName::Info),
             // `crates/zed` のテスト (`test_partial_file_index_status_bar_message`) が
             // `message_to_render()` の戻り値と完全一致で照合している。片方だけ変えると落ちる
-            message: "部分的なファイルインデックス".to_string(),
-            tooltip_message: Some("git リポジトリの外にあり、`file_scan_depth` 設定より深い階層のディレクトリは、必要になった時点でインデックスされます。".to_string()),
+            message: i18n::t!("Partial file index").to_string(),
+            tooltip_message: Some(i18n::t!("Directories outside of git repositories and deeper than the `file_scan_depth` setting will be indexed on demand.").to_string()),
             on_click: Some(Arc::new(|this, _, cx| {
                 this.deferred_scan_message = DeferredScanMessage::Dismissed;
                 cx.notify();
@@ -1754,7 +1761,7 @@ impl Render for ActivityIndicator {
                                     has_cancellable_work = true;
                                     let language_server_id = work.language_server_id;
                                     let token = work.progress_token.clone();
-                                    let title = SharedString::from(format!("{title} をキャンセル"));
+                                    let title = SharedString::from(i18n::t!("Cancel {title}"));
                                     menu = menu.custom_entry(
                                         move |_, _| {
                                             h_flex()
@@ -1894,6 +1901,6 @@ mod tests {
         assert!(clangd.contains("sudo apt install clangd"), "{clangd}");
         let unknown = manual_install_hint(&server("some-unknown-ls"));
         assert!(unknown.contains("some-unknown-ls"), "{unknown}");
-        assert!(!unknown.contains("例:"), "{unknown}");
+        assert!(!unknown.contains("e.g."), "{unknown}");
     }
 }

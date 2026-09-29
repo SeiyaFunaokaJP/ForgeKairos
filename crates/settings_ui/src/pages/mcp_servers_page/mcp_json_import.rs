@@ -43,7 +43,7 @@ impl ImportedServer {
 
 fn display_name(name: &str) -> &str {
     if name.trim().is_empty() {
-        "(名前なし)"
+        i18n::t!("(unnamed)")
     } else {
         name
     }
@@ -65,21 +65,18 @@ enum Dialect {
 pub(super) fn parse_mcp_json_snippet(text: &str) -> Result<Vec<ImportedServer>, SharedString> {
     let text = strip_code_fence(text.trim());
     if text.is_empty() {
-        return Err("JSON を貼り付けてください。".into());
+        return Err(i18n::t!("Paste some JSON.").into());
     }
     let Value::Object(object) = parse_lenient(text)? else {
-        return Err("JSON オブジェクト ({ … }) を貼り付けてください。".into());
+        return Err(i18n::t!("Paste a JSON object ({{ … }}).").into());
     };
     let (entries, dialect) = locate_servers(object)?;
     entries
         .into_iter()
         .map(|(name, value)| {
             let Value::Object(server) = value else {
-                return Err(format!(
-                    "「{}」の値がオブジェクト ({{ … }}) ではありません。",
-                    display_name(&name)
-                )
-                .into());
+                let name = display_name(&name);
+                return Err(i18n::t!("\"{name}\": the value is not an object ({{ … }}).").into());
             };
             parse_server(name, server, dialect)
         })
@@ -87,7 +84,10 @@ pub(super) fn parse_mcp_json_snippet(text: &str) -> Result<Vec<ImportedServer>, 
 }
 
 fn not_found() -> SharedString {
-    "MCP サーバーの設定が見つかりませんでした。`command` (ローカル) か `url` (リモート) を含む JSON を貼り付けてください。".into()
+    i18n::t!(
+        "No MCP server settings were found. Paste JSON that contains `command` (local) or `url` (remote)."
+    )
+    .into()
 }
 
 /// README snippets are often copied together with the Markdown fence around them.
@@ -115,7 +115,7 @@ fn parse_lenient(text: &str) -> Result<Value, SharedString> {
     {
         return Ok(value);
     }
-    Err(format!("JSON として読み取れませんでした: {error}").into())
+    Err(i18n::t!("Couldn't read this as JSON: {error}").into())
 }
 
 fn looks_like_server(object: &Map<String, Value>) -> bool {
@@ -159,7 +159,7 @@ fn server_entries(
     dialect: Dialect,
 ) -> Result<(Vec<(String, Value)>, Dialect), SharedString> {
     let Value::Object(servers) = container else {
-        return Err(format!("`{key}` の値がオブジェクト ({{ … }}) ではありません。").into());
+        return Err(i18n::t!("The value of `{key}` is not an object ({{ … }}).").into());
     };
     if servers.is_empty() {
         return Err(not_found());
@@ -187,13 +187,13 @@ fn parse_server(
             "stdio" => false,
             "http" | "sse" | "streamable-http" | "streamable_http" | "streamableHttp" => true,
             _ => {
-                return Err(format!(
-                    "「{label}」の `type`「{kind}」には対応していません。`stdio`・`http`・`sse` のいずれかにしてください。"
+                return Err(i18n::t!(
+                    "\"{label}\": `type` \"{kind}\" is not supported. Use `stdio`, `http`, or `sse`."
                 )
                 .into());
             }
         },
-        Some(_) => return Err(format!("「{label}」の `type` は文字列にしてください。").into()),
+        Some(_) => return Err(i18n::t!("\"{label}\": `type` must be a string.").into()),
     };
 
     let definition = if is_remote {
@@ -210,10 +210,7 @@ fn parse_server(
                 None | Some(Value::Null) => true,
                 Some(Value::Bool(enabled)) => enabled,
                 Some(_) => {
-                    return Err(format!(
-                        "「{label}」の `enabled` は true か false にしてください。"
-                    )
-                    .into());
+                    return Err(i18n::t!("\"{label}\": `enabled` must be true or false.").into());
                 }
             }
         }
@@ -238,19 +235,19 @@ fn parse_local(
         // Zed's earlier format nested the whole launch under `command`.
         Some(Value::Object(mut nested)) if nested.contains_key("path") => {
             let Some(Value::String(path)) = nested.shift_remove("path") else {
-                return Err(
-                    format!("「{label}」の `command.path` は文字列にしてください。").into(),
-                );
+                return Err(i18n::t!("\"{label}\": `command.path` must be a string.").into());
             };
             let args = take_args(&mut nested, label)?;
             let env = take_string_map(&mut nested, "env", label)?;
             (path, args, env)
         }
-        Some(_) => return Err(format!("「{label}」の `command` は文字列にしてください。").into()),
-        None => return Err(format!("「{label}」には `command` も `url` もありません。").into()),
+        Some(_) => return Err(i18n::t!("\"{label}\": `command` must be a string.").into()),
+        None => {
+            return Err(i18n::t!("\"{label}\": neither `command` nor `url` is set.").into());
+        }
     };
     if command.trim().is_empty() {
-        return Err(format!("「{label}」の `command` が空です。").into());
+        return Err(i18n::t!("\"{label}\": `command` is empty.").into());
     }
     if server.contains_key("args") {
         args = take_args(server, label)?;
@@ -277,12 +274,12 @@ fn parse_remote(
     dialect: Dialect,
 ) -> Result<ImportedDefinition, SharedString> {
     let Some(key) = URL_KEYS.into_iter().find(|key| server.contains_key(*key)) else {
-        return Err(format!("「{label}」には `url` がありません。").into());
+        return Err(i18n::t!("\"{label}\": `url` is not set.").into());
     };
     let url = match server.shift_remove(key) {
         Some(Value::String(url)) if !url.trim().is_empty() => url,
         _ => {
-            return Err(format!("「{label}」の `{key}` は URL の文字列にしてください。").into());
+            return Err(i18n::t!("\"{label}\": `{key}` must be a URL string.").into());
         }
     };
     let headers = take_string_map(server, "headers", label)?;
@@ -315,11 +312,8 @@ fn scalar_text(value: Value) -> Option<String> {
 }
 
 fn take_args(server: &mut Map<String, Value>, label: &str) -> Result<Vec<String>, SharedString> {
-    let invalid = || {
-        SharedString::from(format!(
-            "「{label}」の `args` は文字列の配列にしてください。"
-        ))
-    };
+    let invalid =
+        || SharedString::from(i18n::t!("\"{label}\": `args` must be an array of strings."));
     match server.shift_remove("args") {
         None | Some(Value::Null) => Ok(Vec::new()),
         Some(Value::Array(items)) => items
@@ -341,14 +335,12 @@ fn take_string_map(
             .into_iter()
             .map(|(name, value)| match scalar_text(value) {
                 Some(text) => Ok((name, text)),
-                None => Err(
-                    format!("「{label}」の `{key}` の「{name}」は文字列にしてください。").into(),
-                ),
+                None => {
+                    Err(i18n::t!("\"{label}\": \"{name}\" in `{key}` must be a string.").into())
+                }
             })
             .collect(),
-        Some(_) => {
-            Err(format!("「{label}」の `{key}` はオブジェクト ({{ … }}) にしてください。").into())
-        }
+        Some(_) => Err(i18n::t!("\"{label}\": `{key}` must be an object ({{ … }}).").into()),
     }
 }
 
@@ -356,9 +348,10 @@ fn take_timeout(server: &mut Map<String, Value>, label: &str) -> Result<Option<u
     match server.shift_remove("timeout") {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Number(number)) if number.as_u64().is_some() => Ok(number.as_u64()),
-        Some(_) => {
-            Err(format!("「{label}」の `timeout` には正の整数の秒数を指定してください。").into())
-        }
+        Some(_) => Err(i18n::t!(
+            "\"{label}\": `timeout` must be a positive whole number of seconds."
+        )
+        .into()),
     }
 }
 
@@ -366,7 +359,7 @@ fn take_remote(server: &mut Map<String, Value>, label: &str) -> Result<bool, Sha
     match server.shift_remove("remote") {
         None | Some(Value::Null) => Ok(false),
         Some(Value::Bool(remote)) => Ok(remote),
-        Some(_) => Err(format!("「{label}」の `remote` は true か false にしてください。").into()),
+        Some(_) => Err(i18n::t!("\"{label}\": `remote` must be true or false.").into()),
     }
 }
 
@@ -375,8 +368,8 @@ fn take_oauth(
     label: &str,
 ) -> Result<(Option<String>, Option<String>), SharedString> {
     let invalid = || {
-        SharedString::from(format!(
-            "「{label}」の `oauth` は {{ \"client_id\": \"…\" }} の形にしてください。"
+        SharedString::from(i18n::t!(
+            "\"{label}\": `oauth` must look like {{ \"client_id\": \"…\" }}."
         ))
     };
     match server.shift_remove("oauth") {
@@ -755,16 +748,13 @@ mod tests {
     }
 
     #[test]
-    fn reports_invalid_input_in_japanese() {
-        assert_eq!(parse_error("   "), "JSON を貼り付けてください。");
+    fn reports_invalid_input() {
+        assert_eq!(parse_error("   "), "Paste some JSON.");
         assert!(
-            parse_error(r#"{ "mcpServers": "#).starts_with("JSON として読み取れませんでした: "),
+            parse_error(r#"{ "mcpServers": "#).starts_with("Couldn't read this as JSON: "),
             "an unfinished object should be reported as unreadable"
         );
-        assert_eq!(
-            parse_error(r#"["npx"]"#),
-            "JSON オブジェクト ({ … }) を貼り付けてください。"
-        );
+        assert_eq!(parse_error(r#"["npx"]"#), "Paste a JSON object ({ … }).");
         assert_eq!(
             parse_error(r#"{ "theme": "One Dark" }"#),
             not_found().to_string()
@@ -775,27 +765,27 @@ mod tests {
         );
         assert_eq!(
             parse_error(r#"{ "mcpServers": { "broken": { "args": ["x"] } } }"#),
-            "「broken」には `command` も `url` もありません。"
+            "\"broken\": neither `command` nor `url` is set."
         );
         assert_eq!(
             parse_error(r#"{ "mcpServers": { "x": { "command": "node", "args": "a b" } } }"#),
-            "「x」の `args` は文字列の配列にしてください。"
+            "\"x\": `args` must be an array of strings."
         );
         assert_eq!(
             parse_error(r#"{ "mcpServers": { "x": { "command": "node", "env": ["A=1"] } } }"#),
-            "「x」の `env` はオブジェクト ({ … }) にしてください。"
+            "\"x\": `env` must be an object ({ … })."
         );
         assert_eq!(
             parse_error(r#"{ "servers": { "x": { "type": "websocket", "url": "ws://x" } } }"#),
-            "「x」の `type`「websocket」には対応していません。`stdio`・`http`・`sse` のいずれかにしてください。"
+            "\"x\": `type` \"websocket\" is not supported. Use `stdio`, `http`, or `sse`."
         );
         assert_eq!(
             parse_error(r#"{ "mcpServers": { "x": { "command": "  " } } }"#),
-            "「x」の `command` が空です。"
+            "\"x\": `command` is empty."
         );
         assert_eq!(
             parse_error(r#"{ "command": 42 }"#),
-            "「(名前なし)」の `command` は文字列にしてください。"
+            "\"(unnamed)\": `command` must be a string."
         );
     }
 }

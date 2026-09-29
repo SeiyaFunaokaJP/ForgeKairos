@@ -88,7 +88,7 @@ impl WorktreeCreateTarget {
             WorktreeCreateTarget::DefaultBranch(default_branch) => default_branch.display_name(),
             WorktreeCreateTarget::CurrentBranch => {
                 if has_multiple_repositories {
-                    "現在の各ブランチ".to_string()
+                    i18n::t!("current branches").to_string()
                 } else {
                     current_branch_name.unwrap_or("HEAD").to_string()
                 }
@@ -252,14 +252,14 @@ impl Render for WorktreeFetchFailedToast {
                     .size(IconSize::Small)
                     .color(Color::Error),
             )
-            .child(Label::new(format!(
-                "{} の git fetch が失敗しました",
+            .child(Label::new(i18n::t!(
+                "git fetch failed for {}",
                 self.remote_branch_name
             )))
             .child(
                 Button::new(
                     "use-local-worktree-base",
-                    format!("ローカルの {} を使用", self.remote_branch_name),
+                    i18n::t!("Use local {}", self.remote_branch_name),
                 )
                 .color(Color::Muted)
                 .on_click(cx.listener(move |_, _event, window, cx| {
@@ -285,7 +285,7 @@ impl Render for WorktreeFetchFailedToast {
                 })),
             )
             .child(
-                Button::new("view-worktree-fetch-log", "エラーログを表示")
+                Button::new("view-worktree-fetch-log", i18n::t!("Show Error Logs"))
                     .color(Color::Muted)
                     .on_click(cx.listener(move |_, _event, window, cx| {
                         cx.emit(DismissEvent);
@@ -1270,8 +1270,10 @@ async fn open_worktree_workspace(
                     workspace.show_toast(
                         workspace::Toast::new(
                             toast_id,
-                            "Git リポジトリではないプロジェクトフォルダーがあります。\
-                             ワークツリーを作成せずそのまま追加しました。",
+                            i18n::t!(
+                                "Some project folders are not git repositories. \
+                             They were included as-is without creating a worktree."
+                            ),
                         ),
                         cx,
                     );
@@ -1786,7 +1788,7 @@ mod tests {
         // Multiple repositories pluralize the current branch.
         assert_eq!(
             WorktreeCreateTarget::CurrentBranch.branch_label(true, Some("feature")),
-            "現在の各ブランチ"
+            "current branches"
         );
     }
 }

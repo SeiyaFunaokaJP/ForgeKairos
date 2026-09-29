@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Available in all locations in your current project."
+msgstr "現在のプロジェクト全体で使用できます。"
+
+msgid "Available in all of your projects on this machine."
+msgstr "このマシン上のすべてのプロジェクトで使用できます。"
+
+msgid "Available only in the subproject you're currently in."
+msgstr "現在のサブプロジェクト内でのみ使用できます。"
+
+msgid "Global"
+msgstr "グローバル"
+
+msgid "Project"
+msgstr "プロジェクト"
+
+msgid "Subproject"
+msgstr "サブプロジェクト"

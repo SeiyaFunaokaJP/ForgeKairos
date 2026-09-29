@@ -196,17 +196,17 @@ pub(super) fn problem(document: &SequenceDocument) -> Option<SharedString> {
     // sequence chosen from the kind picker and confirmed straight away would
     // leave a fence the preview can only report an error about.
     if document.participants.is_empty() {
-        return Some("参加者を 1 つ以上追加してください。".into());
+        return Some(i18n::t!("Add at least one participant.").into());
     }
     for participant in &document.participants {
         if participant.id.is_empty() {
-            return Some("ID が空の参加者があります。".into());
+            return Some(i18n::t!("A participant has an empty ID.").into());
         }
         if !is_valid_participant_id(&participant.id) {
             return Some(
-                format!(
-                    "ID「{}」は使えません (記号と先頭の数字は不可)。",
-                    participant.id
+                i18n::t!(
+                    "The ID \"{id}\" is not valid (no symbols, and it cannot start with a digit).",
+                    id = participant.id
                 )
                 .into(),
             );
@@ -449,7 +449,7 @@ impl MermaidEditor {
             return;
         };
         let document = form.current_document(cx);
-        let id = document.unused_participant_id("参加者");
+        let id = document.unused_participant_id(i18n::t!("NewParticipant"));
         // Nothing may be declared at the top of the diagram after a `create`d
         // column, so a new row goes in front of the first of those.
         let at = document
@@ -623,7 +623,7 @@ impl MermaidEditor {
     }
 
     pub(super) fn add_sequence_box(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let name = "グループ".to_string();
+        let name = i18n::t!("Group").to_string();
         let row = BoxRow {
             name: self.new_field(&name, window, cx),
         };
@@ -764,7 +764,7 @@ impl MermaidEditor {
             | AddKind::Deactivate
             | AddKind::Destroy => {
                 let Some(first) = first else {
-                    self.message = Some("先に参加者を追加してください。".into());
+                    self.message = Some(i18n::t!("Add a participant first.").into());
                     cx.notify();
                     return;
                 };
@@ -787,7 +787,7 @@ impl MermaidEditor {
                         placement: SequenceNotePlacement::RightOf,
                         from: first.clone(),
                         to: first,
-                        text: "メモ".to_string(),
+                        text: i18n::t!("Memo").to_string(),
                         wrap: false,
                     }),
                     AddKind::Activate => SequenceItem::Activate(first),
@@ -834,7 +834,9 @@ impl MermaidEditor {
         let Some(form) = self.sequence() else {
             return;
         };
-        let id = form.current_document(cx).unused_participant_id("参加者");
+        let id = form
+            .current_document(cx)
+            .unused_participant_id(i18n::t!("NewParticipant"));
         let row = ParticipantRow {
             id: self.new_field(&id, window, cx),
             alias: self.new_field("", window, cx),
@@ -927,7 +929,7 @@ impl MermaidEditor {
         let title = h_flex()
             .w_full()
             .gap_2()
-            .child(section_title("タイトル"))
+            .child(section_title(i18n::t!("Title")))
             .child(
                 field_frame(&form.title, LABEL_FIELD_WIDTH, true, window, cx)
                     .flex_1()
@@ -952,7 +954,7 @@ impl MermaidEditor {
         let mut section = v_flex()
             .w_full()
             .gap_1()
-            .child(section_title("box (参加者のまとまり)"));
+            .child(section_title(i18n::t!("box (Group of Participants)")));
         for index in 0..form.boxes.len() {
             let (Some(row), Some(group)) = (form.boxes.get(index), form.document.boxes.get(index))
             else {
@@ -975,7 +977,7 @@ impl MermaidEditor {
                     .child(self.render_box_fill(index, group.fill.as_deref(), window, cx))
                     .child(
                         Checkbox::new(("mermaid-sequence-box-wrap", index), group.wrap.into())
-                            .label("折り返し")
+                            .label(i18n::t!("Wrap"))
                             .label_size(LabelSize::Small)
                             .on_click(cx.listener(
                                 move |this, state: &ToggleState, _window, cx| {
@@ -989,7 +991,7 @@ impl MermaidEditor {
                         index,
                         form.document.box_move_order(index, false).is_none(),
                         form.document.box_move_order(index, true).is_none(),
-                        "削除 (中の参加者は残ります)",
+                        i18n::t!("Delete (the participants inside are kept)"),
                         cx.listener(move |this, _, _window, cx| {
                             this.move_sequence_box(index, false, cx)
                         }),
@@ -1005,7 +1007,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-sequence-add-box",
-                "box を追加",
+                i18n::t!("Add box"),
                 cx.listener(|this, _, window, cx| this.add_sequence_box(window, cx)),
             ))
             .into_any_element()
@@ -1031,9 +1033,9 @@ impl MermaidEditor {
             .collect::<Vec<_>>();
         let label = current
             .and_then(|box_index| names.get(box_index).cloned())
-            .unwrap_or_else(|| "所属なし".to_string());
+            .unwrap_or_else(|| i18n::t!("No Box").to_string());
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
-            let mut choices = vec![(None, "所属なし".to_string())];
+            let mut choices = vec![(None, i18n::t!("No Box").to_string())];
             choices.extend(
                 names
                     .iter()
@@ -1054,7 +1056,7 @@ impl MermaidEditor {
                 );
             }
             menu.separator()
-                .entry("新しい box…", None, move |window, cx| {
+                .entry(i18n::t!("New box…"), None, move |window, cx| {
                     this.update(cx, |this, cx| {
                         this.add_sequence_box(window, cx);
                         let Some(form) = this.sequence() else {
@@ -1098,32 +1100,31 @@ impl MermaidEditor {
         });
         let label = box_fill_label(current.as_deref());
         let selected = current;
-        let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
-            let mut choices: Vec<(Option<String>, String)> = Vec::new();
-            if let Some(fill) = &custom {
-                choices.push((Some(fill.clone()), fill.clone()));
-            }
-            choices.extend(
-                BOX_FILL_PRESETS
-                    .iter()
-                    .map(|(preset, label)| (preset.map(str::to_string), (*label).to_string())),
-            );
-            for (fill, label) in choices {
-                let this = this.clone();
-                menu = menu.toggleable_entry(
-                    label,
-                    fill == selected,
-                    IconPosition::Start,
-                    None,
-                    move |_window, cx| {
-                        let fill = fill.clone();
-                        this.update(cx, |this, cx| this.set_sequence_box_fill(index, fill, cx))
-                            .log_err();
-                    },
-                );
-            }
-            menu
-        });
+        let menu =
+            ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
+                let mut choices: Vec<(Option<String>, String)> = Vec::new();
+                if let Some(fill) = &custom {
+                    choices.push((Some(fill.clone()), fill.clone()));
+                }
+                choices.extend(BOX_FILL_PRESETS.iter().map(|(preset, label)| {
+                    (preset.map(str::to_string), i18n::tr(label).to_string())
+                }));
+                for (fill, label) in choices {
+                    let this = this.clone();
+                    menu = menu.toggleable_entry(
+                        label,
+                        fill == selected,
+                        IconPosition::Start,
+                        None,
+                        move |_window, cx| {
+                            let fill = fill.clone();
+                            this.update(cx, |this, cx| this.set_sequence_box_fill(index, fill, cx))
+                                .log_err();
+                        },
+                    );
+                }
+                menu
+            });
 
         DropdownMenu::new(
             ("mermaid-sequence-box-fill", index),
@@ -1144,10 +1145,9 @@ impl MermaidEditor {
         // The moves are worked out on what the rows say now, which is what
         // `move_participant` looks at too.
         let current = form.current_document(cx);
-        let mut section = v_flex()
-            .w_full()
-            .gap_1()
-            .child(section_title("参加者 (上から順に左の列)"));
+        let mut section = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Participants (listed top to bottom, drawn left to right)"
+        )));
         for index in 0..form.participants.len() {
             let (Some(row), Some(participant)) = (
                 form.participants.get(index),
@@ -1189,7 +1189,7 @@ impl MermaidEditor {
                     .when_some(settings, |this, settings| {
                         this.child(
                             div().flex_1().min_w_0().child(
-                                Label::new(format!("設定 @{{{settings}}}"))
+                                Label::new(i18n::t!("Settings @{{{settings}}}"))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted)
                                     .truncate(),
@@ -1207,7 +1207,7 @@ impl MermaidEditor {
                     })
                     .when(created, |this| {
                         this.child(
-                            Label::new("create で作成")
+                            Label::new(i18n::t!("Created by create"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -1239,7 +1239,7 @@ impl MermaidEditor {
         section
             .child(add_button(
                 "mermaid-sequence-add-participant",
-                "参加者を追加",
+                i18n::t!("Add Participant"),
                 cx.listener(|this, _, window, cx| this.add_participant(window, cx)),
             ))
             .into_any_element()
@@ -1254,7 +1254,10 @@ impl MermaidEditor {
     ) -> AnyElement {
         let depths = item_depths(&form.document.items);
         let last = form.document.items.len().saturating_sub(1);
-        let mut section = v_flex().w_full().gap_1().child(section_title("やりとり"));
+        let mut section = v_flex()
+            .w_full()
+            .gap_1()
+            .child(section_title(i18n::t!("Interactions")));
 
         for index in 0..form.document.items.len() {
             let Some(item) = form.document.items.get(index) else {
@@ -1294,7 +1297,7 @@ impl MermaidEditor {
                             ("mermaid-sequence-activate", index),
                             message.activate.into(),
                         )
-                        .label("開始")
+                        .label(i18n::t!("Start"))
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(
                             move |this, state: &ToggleState, _window, cx| {
@@ -1312,7 +1315,7 @@ impl MermaidEditor {
                             ("mermaid-sequence-deactivate", index),
                             message.deactivate.into(),
                         )
-                        .label("終了")
+                        .label(i18n::t!("End"))
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(
                             move |this, state: &ToggleState, _window, cx| {
@@ -1331,7 +1334,7 @@ impl MermaidEditor {
                         .w_full()
                         .gap_1()
                         .child(
-                            Label::new("ノート")
+                            Label::new(i18n::t!("Note"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -1369,7 +1372,7 @@ impl MermaidEditor {
                             .child(field.clone()),
                     ),
                 (SequenceItem::BlockEnd, _) => h_flex().w_full().gap_1().child(
-                    Label::new("end (ブロックの終わり)")
+                    Label::new(i18n::t!("end (End of Block)"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 ),
@@ -1377,7 +1380,7 @@ impl MermaidEditor {
                     .w_full()
                     .gap_1()
                     .child(
-                        Label::new("活性化")
+                        Label::new(i18n::t!("Activation"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -1386,7 +1389,7 @@ impl MermaidEditor {
                     .w_full()
                     .gap_1()
                     .child(
-                        Label::new("活性化の終了")
+                        Label::new(i18n::t!("Deactivation"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -1408,14 +1411,14 @@ impl MermaidEditor {
                         .w_full()
                         .gap_1()
                         .child(
-                            Label::new("参加者の作成")
+                            Label::new(i18n::t!("Participant Creation"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
                         .child(self.render_create_target(index, id, window, cx))
                         .when_some(alias, |this, alias| {
                             this.child(
-                                Label::new("表示名 (as)")
+                                Label::new(i18n::t!("Display Name (as)"))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
@@ -1430,7 +1433,7 @@ impl MermaidEditor {
                     .w_full()
                     .gap_1()
                     .child(
-                        Label::new("参加者の破棄")
+                        Label::new(i18n::t!("Participant Destruction"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -1442,7 +1445,7 @@ impl MermaidEditor {
                     .w_full()
                     .gap_1()
                     .child(
-                        Label::new("自動番号 開始")
+                        Label::new(i18n::t!("Autonumber Start"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -1451,7 +1454,7 @@ impl MermaidEditor {
                             .child(start.clone()),
                     )
                     .child(
-                        Label::new("刻み")
+                        Label::new(i18n::t!("Step"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -1463,7 +1466,7 @@ impl MermaidEditor {
                             ("mermaid-sequence-autonumber", index),
                             autonumber.visible.into(),
                         )
-                        .label("番号を表示")
+                        .label(i18n::t!("Show Numbers"))
                         .label_size(LabelSize::Small)
                         .on_click(cx.listener(
                             move |this, state: &ToggleState, _window, cx| {
@@ -1491,20 +1494,36 @@ impl MermaidEditor {
 
         let mut buttons = h_flex().w_full().flex_wrap().gap_1();
         for (id, label, kind) in [
-            ("message", "メッセージ", AddKind::Message),
-            ("note", "ノート", AddKind::Note),
-            ("block", "ブロック開始", AddKind::BlockStart),
-            ("branch", "分岐", AddKind::BlockBranch),
-            ("end", "ブロック終了", AddKind::BlockEnd),
-            ("activate", "活性化", AddKind::Activate),
-            ("deactivate", "活性化の終了", AddKind::Deactivate),
-            ("create", "参加者の作成", AddKind::Create),
-            ("destroy", "参加者の破棄", AddKind::Destroy),
-            ("autonumber", "自動番号", AddKind::Autonumber),
+            ("message", i18n::t!("Add Message"), AddKind::Message),
+            ("note", i18n::t!("Add Note"), AddKind::Note),
+            ("block", i18n::t!("Add Block Start"), AddKind::BlockStart),
+            ("branch", i18n::t!("Add Block Branch"), AddKind::BlockBranch),
+            ("end", i18n::t!("Add Block End"), AddKind::BlockEnd),
+            ("activate", i18n::t!("Add Activation"), AddKind::Activate),
+            (
+                "deactivate",
+                i18n::t!("Add Deactivation"),
+                AddKind::Deactivate,
+            ),
+            (
+                "create",
+                i18n::t!("Add Participant Creation"),
+                AddKind::Create,
+            ),
+            (
+                "destroy",
+                i18n::t!("Add Participant Destruction"),
+                AddKind::Destroy,
+            ),
+            (
+                "autonumber",
+                i18n::t!("Add Autonumber"),
+                AddKind::Autonumber,
+            ),
         ] {
             buttons = buttons.child(add_button(
                 SharedString::from(format!("mermaid-sequence-add-{id}")),
-                SharedString::from(format!("{label}を追加")),
+                label,
                 cx.listener(move |this, _, window, cx| this.add_sequence_item(kind, window, cx)),
             ));
         }
@@ -1927,7 +1946,7 @@ pub(super) fn box_number_label(index: usize) -> String {
 pub(super) fn box_menu_label(index: usize, name: Option<&str>) -> String {
     match name.map(str::trim).filter(|name| !name.is_empty()) {
         Some(name) => name.to_string(),
-        None => format!("{} (名前なし)", box_number_label(index)),
+        None => i18n::t!("{label} (Unnamed)", label = box_number_label(index)),
     }
 }
 

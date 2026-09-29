@@ -979,7 +979,7 @@ async fn reports_the_size_of_the_picked_image(cx: &mut TestAppContext) {
     let warnings = cx.update(|_window, cx| dialog.read(cx).warnings(cx));
     assert_eq!(
         warnings,
-        vec![SharedString::from("このパスにファイルが見つかりません。")]
+        vec![SharedString::from("No file was found at this path.")]
     );
 
     // An SVG's size is read from its `<svg>` tag.
@@ -1235,7 +1235,7 @@ async fn a_selection_stays_when_its_aligned_image_goes_after_the_paragraph(
     assert_eq!(
         dialog.read_with(cx, |dialog, _| dialog.placement_note()),
         Some(
-            "配置を指定した画像は、カーソルのある段落の後ろに入ります。選択した文字列はそのまま残ります。"
+            "An aligned image goes after the paragraph the cursor is in. The selected text stays as it is."
         )
     );
     cx.dispatch_action(menu::Confirm);
@@ -1280,9 +1280,8 @@ fn tells_html_blocks_from_html_in_paragraphs() {
 async fn an_alignment_is_refused_inside_html(cx: &mut TestAppContext) {
     let (opened, cx) = open_markdown("ˇ\n", cx).await;
     let center = Some(ImageAlignment::Center);
-    let refusal = SharedString::from(
-        "HTML の中の画像には配置を指定できません。配置を「指定なし」にしてください。",
-    );
+    let refusal =
+        SharedString::from("An image inside HTML cannot be aligned. Set Alignment to \"Not Set\".");
 
     for marked in [
         "<a href=\"https://example.com\"><img src=\"images/phˇoto.png\" alt=\"a\"></a>\n",
@@ -1412,7 +1411,7 @@ async fn an_alignment_is_refused_where_a_block_would_break_the_line(cx: &mut Tes
         dialog
             .read_with(cx, |dialog, _| dialog.message.clone())
             .as_deref(),
-        Some("表の中の画像には配置を指定できません。配置を「指定なし」にしてください。")
+        Some("An image inside a table cannot be aligned. Set Alignment to \"Not Set\".")
     );
 
     // Without the alignment the image fits in the cell.
@@ -1441,7 +1440,7 @@ async fn an_alignment_is_refused_for_a_linked_image(cx: &mut TestAppContext) {
         dialog
             .read_with(cx, |dialog, _| dialog.message.clone())
             .as_deref(),
-        Some("リンクの中の画像には配置を指定できません。配置を「指定なし」にしてください。")
+        Some("An image inside a link cannot be aligned. Set Alignment to \"Not Set\".")
     );
 
     // A size alone is written in place, inside the link.
@@ -1715,7 +1714,7 @@ async fn an_invalid_width_is_refused_with_the_reason(cx: &mut TestAppContext) {
     let message = dialog.read_with(cx, |dialog, _| dialog.message.clone());
     assert_eq!(
         message.as_deref(),
-        Some("幅は 300 や 50% のように、数値か % 付きの数値で入力してください。")
+        Some("Enter the width as a number or a number with %, such as 300 or 50%.")
     );
 
     // An empty path is refused the same way.
@@ -1725,7 +1724,7 @@ async fn an_invalid_width_is_refused_with_the_reason(cx: &mut TestAppContext) {
     cx.run_until_parked();
     assert_eq!(buffer_text(&opened, cx), "\n");
     let message = dialog.read_with(cx, |dialog, _| dialog.message.clone());
-    assert_eq!(message.as_deref(), Some("画像ファイルを指定してください。"));
+    assert_eq!(message.as_deref(), Some("Specify an image file."));
 }
 
 #[gpui::test]
@@ -2367,7 +2366,7 @@ async fn stores_a_picture_next_to_the_document_without_overwriting(cx: &mut Test
     )
     .await;
     let error = too_large.expect_err("a picture over the limit is refused");
-    assert!(error.to_string().contains("大きすぎます"), "{error:#}");
+    assert!(error.to_string().contains("too large"), "{error:#}");
     assert!(
         !opened
             .fs
@@ -2404,7 +2403,7 @@ async fn stores_a_picture_next_to_the_document_without_overwriting(cx: &mut Test
     let error = alone
         .await
         .expect_err("a file opened on its own has no folder to store into");
-    assert!(error.to_string().contains("単独で開いた"), "{error:#}");
+    assert!(error.to_string().contains("opened on its own"), "{error:#}");
 }
 
 #[gpui::test]

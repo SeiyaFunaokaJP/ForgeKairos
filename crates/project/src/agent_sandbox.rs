@@ -527,22 +527,28 @@ pub fn ensure_agent_config_dir(
 ) -> Result<PathBuf> {
     ensure!(
         is_project_key(project_key),
-        "プロジェクトの識別子 {project_key:?} が不正です。"
+        i18n::t!(
+            "The project identifier {project_key} is invalid.",
+            project_key = format!("{project_key:?}")
+        )
     );
     #[cfg(unix)]
     {
         let config_dir = agent_config_dir(home, project_key, profile);
         let relative = config_dir.strip_prefix(home).map_err(|_| {
-            anyhow::anyhow!(
-                "{} は {} の下にありません。",
-                config_dir.display(),
-                home.display()
-            )
+            anyhow::anyhow!(i18n::t!(
+                "{path} is not below {base}.",
+                path = config_dir.display(),
+                base = home.display()
+            ))
         })?;
         let folder = no_follow::open_directory_below(home, relative)?;
         for directory in profile.directories_below(&config_dir) {
             let below = directory.strip_prefix(&config_dir).map_err(|_| {
-                anyhow::anyhow!("{} は設定フォルダーの下にありません。", directory.display())
+                anyhow::anyhow!(i18n::t!(
+                    "{path} is not below the settings folder.",
+                    path = directory.display()
+                ))
             })?;
             no_follow::open_directory_below_fd(&folder, &config_dir, below)?;
         }
@@ -557,9 +563,9 @@ pub fn ensure_agent_config_dir(
     }
     #[cfg(not(unix))]
     {
-        anyhow::bail!(
-            "この OS では、エージェントの設定フォルダーをサンドボックス用に作成できません。"
-        );
+        anyhow::bail!(i18n::t!(
+            "On this OS, the agent's settings folder cannot be created for the sandbox."
+        ));
     }
 }
 
@@ -577,7 +583,7 @@ mod no_follow {
     /// home), one component at a time; see [`open_directory_below_fd`].
     pub(super) fn open_directory_below(base: &Path, relative: &Path) -> Result<OwnedFd> {
         let base_path = CString::new(base.as_os_str().as_bytes())
-            .with_context(|| format!("{} に NUL バイトが含まれています。", base.display()))?;
+            .with_context(|| i18n::t!("{path} contains a NUL byte.", path = base.display()))?;
         // The base is where the walk starts from and is trusted, so it is
         // opened following links: a home reached through one is still the
         // account's home.
@@ -591,7 +597,7 @@ mod no_follow {
         };
         if raw < 0 {
             return Err(io::Error::last_os_error())
-                .with_context(|| format!("{} を開けませんでした。", base.display()));
+                .with_context(|| i18n::t!("Could not open {path}.", path = base.display()));
         }
         // SAFETY: freshly opened by us and owned by nothing else.
         let base_directory = unsafe { OwnedFd::from_raw_fd(raw) };
@@ -611,15 +617,19 @@ mod no_follow {
         let mut directory: Option<OwnedFd> = None;
         for component in relative.components() {
             let Component::Normal(name) = component else {
-                bail!("{} に想定外のパス成分があります。", relative.display());
+                bail!(i18n::t!(
+                    "{path} has an unexpected path component.",
+                    path = relative.display()
+                ));
             };
             walked.push(name);
-            let name = CString::new(name.as_bytes())
-                .with_context(|| format!("{} に NUL バイトが含まれています。", walked.display()))?;
+            let name = CString::new(name.as_bytes()).with_context(|| {
+                i18n::t!("{path} contains a NUL byte.", path = walked.display())
+            })?;
             let current = directory.as_ref().unwrap_or(parent);
             directory = Some(open_or_create_subdirectory(current, &name, &walked)?);
         }
-        directory.context("開くフォルダーがありません。")
+        directory.context(i18n::t!("There is no folder to open."))
     }
 
     fn open_or_create_subdirectory(
@@ -649,7 +659,7 @@ mod no_follow {
                     let create_error = io::Error::last_os_error();
                     if create_error.kind() != io::ErrorKind::AlreadyExists {
                         return Err(create_error).with_context(|| {
-                            format!("{} を作成できませんでした。", display.display())
+                            i18n::t!("Could not create {path}.", path = display.display())
                         });
                     }
                 }
@@ -657,9 +667,9 @@ mod no_follow {
                 continue;
             }
             return Err(error).with_context(|| {
-                format!(
-                    "{} を開けませんでした (リンクではなく実体のフォルダーである必要があります)。",
-                    display.display()
+                i18n::t!(
+                    "Could not open {path} (it has to be a real folder, not a link).",
+                    path = display.display()
                 )
             });
         };
@@ -679,7 +689,7 @@ mod no_follow {
         display: &Path,
     ) -> Result<()> {
         let name = CString::new(name)
-            .with_context(|| format!("{} に NUL バイトが含まれています。", display.display()))?;
+            .with_context(|| i18n::t!("{path} contains a NUL byte.", path = display.display()))?;
         // SAFETY: `parent` is open, `name` is NUL-terminated, and a creating
         // open is given its mode.
         let raw = unsafe {
@@ -700,7 +710,7 @@ mod no_follow {
         if error.kind() == io::ErrorKind::AlreadyExists {
             return ensure_owned_file(parent, &name, display);
         }
-        Err(error).with_context(|| format!("{} を作成できませんでした。", display.display()))
+        Err(error).with_context(|| i18n::t!("Could not create {path}.", path = display.display()))
     }
 
     /// The entry `name` already in `parent`, examined without following it:
@@ -722,12 +732,14 @@ mod no_follow {
         } != 0
         {
             return Err(io::Error::last_os_error())
-                .with_context(|| format!("{} を確認できませんでした。", display.display()));
+                .with_context(|| i18n::t!("Could not check {path}.", path = display.display()));
         }
         ensure!(
             status.st_mode & libc::S_IFMT == libc::S_IFREG,
-            "{} は通常のファイルではありません (リンクであってはいけません)。",
-            display.display()
+            i18n::t!(
+                "{path} is not a regular file (it must not be a link).",
+                path = display.display()
+            )
         );
         ensure_owned_by_this_account(&status, display)
     }
@@ -738,12 +750,11 @@ mod no_follow {
         // SAFETY: `directory` is open and `status` is writable.
         if unsafe { libc::fstat(directory.as_raw_fd(), &mut status) } != 0 {
             return Err(io::Error::last_os_error())
-                .with_context(|| format!("{} を確認できませんでした。", display.display()));
+                .with_context(|| i18n::t!("Could not check {path}.", path = display.display()));
         }
         ensure!(
             status.st_mode & libc::S_IFMT == libc::S_IFDIR,
-            "{} はフォルダーではありません。",
-            display.display()
+            i18n::t!("{path} is not a folder.", path = display.display())
         );
         ensure_owned_by_this_account(&status, display)
     }
@@ -757,13 +768,17 @@ mod no_follow {
         let own_uid = unsafe { libc::geteuid() };
         ensure!(
             status.st_uid == own_uid,
-            "{} は他のアカウントのものです。",
-            display.display()
+            i18n::t!(
+                "{path} belongs to another account.",
+                path = display.display()
+            )
         );
         ensure!(
             status.st_mode & 0o022 == 0,
-            "{} は他のアカウントから書き換えられる状態です。",
-            display.display()
+            i18n::t!(
+                "{path} can be modified by other accounts.",
+                path = display.display()
+            )
         );
         Ok(())
     }
@@ -832,9 +847,11 @@ pub fn wsl_distro_for_roots(roots: &[PathBuf]) -> Result<Option<String>> {
                 continue;
             };
             match &distro {
-                Some(existing) if !existing.eq_ignore_ascii_case(&root_distro) => anyhow::bail!(
-                    "複数の WSL ディストリビューション ({existing}、{root_distro}) にまたがるフォルダーでは起動できません。"
-                ),
+                Some(existing) if !existing.eq_ignore_ascii_case(&root_distro) => {
+                    anyhow::bail!(i18n::t!(
+                        "Cannot start in folders that span several WSL distributions ({existing}, {root_distro})."
+                    ))
+                }
                 _ => distro = Some(root_distro),
             }
         }
@@ -924,7 +941,7 @@ impl AgentSandboxCommand {
         };
         ensure!(
             !canonical_roots.is_empty(),
-            "フォルダーを開いていないプロジェクトでは、エージェントをサンドボックスで起動できません。"
+            i18n::t!("The agent cannot start in a sandbox in a project that has no folder open.")
         );
         let key = project_key(canonical_roots);
         let config_dir = ensure_agent_config_dir(home, &key, profile)?;

@@ -407,25 +407,25 @@ impl PaneLeaderDecorator for PaneRenderContext<'_> {
                     } => {
                         if Some(leader_project_id) == self.project.read(cx).remote_id() {
                             is_in_unshared_view.then(|| {
-                                Label::new(format!(
-                                    "{} は共有されていないペインを表示しています",
+                                Label::new(i18n::t!(
+                                    "{} is in an unshared pane",
                                     leader.user.username
                                 ))
                             })
                         } else {
                             leader_join_data = Some((leader_project_id, leader.user.legacy_id));
-                            Some(Label::new(format!(
-                                "{} をフォローしてアクティブなプロジェクトを表示",
+                            Some(Label::new(i18n::t!(
+                                "Follow {} to their active project",
                                 leader.user.username,
                             )))
                         }
                     }
-                    ParticipantLocation::UnsharedProject => Some(Label::new(format!(
-                        "{} は共有されていない Zed プロジェクトを表示しています",
+                    ParticipantLocation::UnsharedProject => Some(Label::new(i18n::t!(
+                        "{} is viewing an unshared Zed project",
                         leader.user.username
                     ))),
-                    ParticipantLocation::External => Some(Label::new(format!(
-                        "{} は Zed 以外のウィンドウを表示しています",
+                    ParticipantLocation::External => Some(Label::new(i18n::t!(
+                        "{} is viewing a window outside of Zed",
                         leader.user.username
                     ))),
                 };
@@ -452,7 +452,7 @@ impl PaneLeaderDecorator for PaneRenderContext<'_> {
                                             cx,
                                         )
                                         .detach_and_prompt_err(
-                                            "プロジェクトに参加できませんでした",
+                                            i18n::t!("Failed to join project"),
                                             window,
                                             cx,
                                             |error, _, _| Some(format!("{error:#}")),

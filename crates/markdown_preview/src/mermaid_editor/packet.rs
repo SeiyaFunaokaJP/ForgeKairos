@@ -20,7 +20,7 @@ use super::{
 };
 
 const NEW_FIELD_BITS: u64 = 8;
-const NEW_FIELD_LABEL: &str = "新しい項目";
+const NEW_FIELD_LABEL: &str = i18n::msg!("New item");
 
 pub(super) struct PacketForm {
     pub(super) document: PacketDocument,
@@ -133,14 +133,14 @@ impl MermaidEditor {
                 PacketNotation::Range | PacketNotation::Single => PacketNotation::Range,
             });
         let bits = self.new_field(&NEW_FIELD_BITS.to_string(), window, cx);
-        let label = self.new_field(NEW_FIELD_LABEL, window, cx);
+        let label = self.new_field(i18n::tr(NEW_FIELD_LABEL), window, cx);
         let Some(form) = self.packet_mut() else {
             return;
         };
         form.document.fields.push(PacketField {
             bits: NEW_FIELD_BITS,
             notation,
-            label: NEW_FIELD_LABEL.to_string(),
+            label: i18n::tr(NEW_FIELD_LABEL).to_string(),
         });
         form.fields.push(FieldRow { bits, label });
         self.packet_changed(cx);
@@ -193,7 +193,7 @@ impl MermaidEditor {
         let header = h_flex()
             .w_full()
             .gap_2()
-            .child(section_title("タイトル"))
+            .child(section_title(i18n::t!("Title")))
             .child(
                 field_frame(
                     &form.title,
@@ -210,9 +210,9 @@ impl MermaidEditor {
             )
             .into_any_element();
 
-        let mut section = v_flex().w_full().gap_1().child(section_title(
-            "項目 (ビット数とラベル。範囲は上から自動で決まります)",
-        ));
+        let mut section = v_flex().w_full().gap_1().child(section_title(i18n::t!(
+            "Items (length in bits and label; the ranges are worked out from the top)"
+        )));
         for index in 0..form.fields.len() {
             let (Some(row), Some(field), Some((start, end))) = (
                 form.fields.get(index),
@@ -248,7 +248,7 @@ impl MermaidEditor {
                         .child(row.bits.clone()),
                     )
                     .child(
-                        Label::new("ビット")
+                        Label::new(i18n::t!("bits"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -283,7 +283,7 @@ impl MermaidEditor {
         let section = section
             .child(add_button(
                 "mermaid-packet-add-field",
-                "項目を追加",
+                i18n::t!("Add Item"),
                 cx.listener(|this, _, window, cx| this.add_packet_field(window, cx)),
             ))
             .into_any_element();

@@ -111,8 +111,9 @@ pub type TransferAskPass =
 /// (which may legitimately run for minutes) are left unbounded.
 const CAPABILITY_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 
-const UNSUPPORTED_MESSAGE: &str = "接続中のリモートホストはファイル転送に対応していません。\
-                                   zed-remote-server を更新してください。";
+fn unsupported_message() -> &'static str {
+    i18n::t!("The connected remote host does not support file transfer. Update zed-remote-server.")
+}
 
 #[derive(Clone, Default)]
 pub(crate) struct RemoteExec {
@@ -145,7 +146,7 @@ impl RemoteExec {
     fn unsupported_error(&self) -> Option<anyhow::Error> {
         self.unsupported
             .load(Ordering::SeqCst)
-            .then(|| anyhow!(UNSUPPORTED_MESSAGE))
+            .then(|| anyhow!(unsupported_message()))
     }
 }
 
@@ -168,7 +169,7 @@ impl Project {
         let remote = self
             .remote_client
             .as_ref()
-            .context("このプロジェクトはリモートホストに接続していません。")?;
+            .context(i18n::t!("This project is not connected to a remote host."))?;
         Ok(remote.read(cx).proto_client())
     }
 
@@ -270,9 +271,9 @@ impl Project {
                     // immediately instead of hanging too.
                     if !state.answered.load(Ordering::SeqCst) {
                         state.unsupported.store(true, Ordering::SeqCst);
-                        return Err(anyhow!(UNSUPPORTED_MESSAGE));
+                        return Err(anyhow!(unsupported_message()));
                     }
-                    return Err(anyhow!("リモートホストが応答しません。"));
+                    return Err(anyhow!(i18n::t!("The remote host is not responding.")));
                 }
             }?;
             state.answered.store(true, Ordering::SeqCst);

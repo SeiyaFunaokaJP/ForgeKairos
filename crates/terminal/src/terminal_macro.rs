@@ -144,9 +144,9 @@ impl MatchScope {
 
     pub fn label(&self) -> &'static str {
         match self {
-            MatchScope::SinceLastSend => "直前の出力",
-            MatchScope::Screen => "画面全体",
-            MatchScope::Variable(_) => "変数",
+            MatchScope::SinceLastSend => i18n::t!("Output since last send"),
+            MatchScope::Screen => i18n::t!("Whole screen"),
+            MatchScope::Variable(_) => i18n::tc!("terminal macro", "Variable"),
         }
     }
 }
@@ -163,9 +163,9 @@ pub enum MacroBranch {
 impl MacroBranch {
     pub fn label(&self) -> &'static str {
         match self {
-            MacroBranch::Then => "一致 → そのとき",
-            MacroBranch::Else => "不一致 → それ以外",
-            MacroBranch::Timeout => "タイムアウト → 続行",
+            MacroBranch::Then => i18n::t!("Match → Then"),
+            MacroBranch::Else => i18n::t!("No match → Else"),
+            MacroBranch::Timeout => i18n::t!("Timeout → Continue"),
         }
     }
 
@@ -212,17 +212,17 @@ impl MacroStepList {
 }
 
 impl MacroStep {
-    /// Japanese label for the step kind, used by the editor's type dropdown.
+    /// Label for the step kind, used by the editor's type dropdown.
     pub fn kind_label(&self) -> &'static str {
         match self {
-            MacroStep::Send { .. } => "送信",
-            MacroStep::WaitFor { .. } => "期待文字を待つ",
-            MacroStep::Sleep { .. } => "秒待ち",
-            MacroStep::Clear {} => "画面を消去",
-            MacroStep::Repeat { .. } => "繰り返し",
-            MacroStep::If { .. } => "分岐",
-            MacroStep::SetVariable { .. } => "変数に設定",
-            MacroStep::Unknown(_) => "不明なステップ",
+            MacroStep::Send { .. } => i18n::tc!("terminal macro step", "Send"),
+            MacroStep::WaitFor { .. } => i18n::tc!("terminal macro step", "Wait for Text"),
+            MacroStep::Sleep { .. } => i18n::tc!("terminal macro step", "Sleep"),
+            MacroStep::Clear {} => i18n::tc!("terminal macro step", "Clear Screen"),
+            MacroStep::Repeat { .. } => i18n::tc!("terminal macro step", "Repeat"),
+            MacroStep::If { .. } => i18n::tc!("terminal macro step", "Branch"),
+            MacroStep::SetVariable { .. } => i18n::tc!("terminal macro step", "Set Variable"),
+            MacroStep::Unknown(_) => i18n::tc!("terminal macro step", "Unknown Step"),
         }
     }
 
@@ -236,7 +236,7 @@ impl MacroStep {
 
     pub fn summary(&self) -> String {
         match self {
-            MacroStep::Send { text, .. } => format!("送信: {text}"),
+            MacroStep::Send { text, .. } => i18n::t!("Send: {text}"),
             MacroStep::WaitFor {
                 pattern,
                 timeout_ms,
@@ -244,23 +244,35 @@ impl MacroStep {
                 on_timeout,
                 ..
             } => {
-                let mut summary = format!(
-                    "待機: 『{pattern}』 ({} 秒以内)",
+                let mut summary = i18n::t!(
+                    "Wait for “{pattern}” (up to {} s)",
                     *timeout_ms as f64 / 1000.0
                 );
                 if let Some(capture) = capture {
-                    summary.push_str(&format!("、${{{capture}}} に取り込む"));
+                    summary.push_str(&i18n::t!(", capture into ${{{capture}}}"));
                 }
                 if let Some(on_timeout) = on_timeout {
-                    summary.push_str(&format!("、タイムアウト時 {} ステップ", on_timeout.len()));
+                    summary.push_str(&i18n::tn!(
+                        on_timeout.len(),
+                        ", {count} step on timeout",
+                        ", {count} steps on timeout"
+                    ));
                 }
                 summary
             }
-            MacroStep::Sleep { ms } => format!("待機: {} 秒", *ms as f64 / 1000.0),
-            MacroStep::Clear {} => "画面を消去".to_string(),
+            MacroStep::Sleep { ms } => i18n::t!("Sleep: {} s", *ms as f64 / 1000.0),
+            MacroStep::Clear {} => i18n::t!("Clear screen").to_string(),
             MacroStep::Repeat { count, steps } => match count {
-                0 => format!("繰り返し: 中止まで ({} ステップ)", steps.len()),
-                count => format!("繰り返し: {count} 回 ({} ステップ)", steps.len()),
+                0 => i18n::tn!(
+                    steps.len(),
+                    "Repeat: until stopped ({count} step)",
+                    "Repeat: until stopped ({count} steps)"
+                ),
+                times => i18n::tn!(
+                    steps.len(),
+                    "Repeat: ×{times} ({count} step)",
+                    "Repeat: ×{times} ({count} steps)"
+                ),
             },
             MacroStep::If {
                 pattern,
@@ -272,22 +284,27 @@ impl MacroStep {
             } => {
                 let target = match scope {
                     MatchScope::Variable(name) => format!("${{{name}}}"),
-                    scope => scope.label().to_string(),
+                    MatchScope::SinceLastSend => {
+                        i18n::t!("the output since the last send").to_string()
+                    }
+                    MatchScope::Screen => i18n::t!("the whole screen").to_string(),
                 };
-                let mut summary = format!(
-                    "分岐: 『{pattern}』が{target}にあれば {} ステップ、なければ {} ステップ",
+                let mut summary = i18n::t!(
+                    "Branch: if “{pattern}” is in {target}, run {} step(s), otherwise {} step(s)",
                     then_steps.len(),
                     else_steps.len(),
                 );
                 if let Some(capture) = capture {
-                    summary.push_str(&format!("、一致時は ${{{capture}}} に取り込む"));
+                    summary.push_str(&i18n::t!(", on a match capture into ${{{capture}}}"));
                 }
                 summary
             }
-            MacroStep::SetVariable { name, value } => format!("変数: ${{{name}}} に『{value}』"),
+            MacroStep::SetVariable { name, value } => {
+                i18n::t!("Variable: ${{{name}}} = “{value}”")
+            }
             MacroStep::Unknown(_) => match self.unknown_kind() {
-                Some(kind) => format!("不明なステップ「{kind}」(この版では扱えません)"),
-                None => "不明なステップ (この版では扱えません)".to_string(),
+                Some(kind) => i18n::t!("Unknown step “{kind}” (this version can't run it)"),
+                None => i18n::t!("Unknown step (this version can't run it)").to_string(),
             },
         }
     }
@@ -818,7 +835,7 @@ impl TerminalSessionStore {
                 .unwrap_or_else(|_| path.clone());
             fs.atomic_write(target, text)
                 .await
-                .context("terminal_sessions.json を書き込めませんでした")
+                .context(i18n::t!("Couldn't write terminal_sessions.json"))
         })
     }
 }
@@ -866,13 +883,15 @@ pub fn run_macro(
 ) -> Task<Result<()>> {
     if let Some((label, step)) = first_unknown_step(&terminal_macro.steps, MacroStepList::Main, "")
     {
-        let kind = step
-            .unknown_kind()
-            .map(|kind| format!("「{kind}」"))
-            .unwrap_or_default();
-        return Task::ready(Err(anyhow!(
-            "ステップ {label} はこの版では扱えない種類のステップ{kind}です。マクロは実行していません。"
-        )));
+        let message = match step.unknown_kind() {
+            Some(kind) => i18n::t!(
+                "Step {label} is of a kind this version can't run (“{kind}”). The macro was not run."
+            ),
+            None => {
+                i18n::t!("Step {label} is of a kind this version can't run. The macro was not run.")
+            }
+        };
+        return Task::ready(Err(anyhow!(message)));
     }
     let step_count = terminal_macro.steps.len();
     let iteration_count = terminal_macro.iteration_count();
@@ -1208,16 +1227,16 @@ impl MacroRunner {
                         // 送信: a later wait keeps measuring from there rather
                         // than from the output the timeout gave up on.
                         Some(steps) => self.run_branch(MacroBranch::Timeout, steps).await?,
-                        None => bail!(
-                            "ステップ {}: 『{display_pattern}』が {} 秒以内に現れませんでした",
+                        None => bail!(i18n::t!(
+                            "Step {}: “{display_pattern}” did not appear within {} s",
                             self.step_label(),
                             *timeout_ms as f64 / 1000.0
-                        ),
+                        )),
                     },
-                    Err(WaitFailure::TerminalGone) => bail!(
-                        "ステップ {}: 『{display_pattern}』を待っている間にターミナルが終了しました",
+                    Err(WaitFailure::TerminalGone) => bail!(i18n::t!(
+                        "Step {}: the terminal exited while waiting for “{display_pattern}”",
                         self.step_label()
-                    ),
+                    )),
                 }
             }
             MacroStep::If {
@@ -1243,10 +1262,10 @@ impl MacroRunner {
                 self.variables.insert(name.clone(), value);
             }
             // `run_macro` refuses a macro holding one before anything runs.
-            MacroStep::Unknown(_) => bail!(
-                "ステップ {}: この版では扱えない種類のステップです",
+            MacroStep::Unknown(_) => bail!(i18n::t!(
+                "Step {}: this version can't run this kind of step",
                 self.step_label()
-            ),
+            )),
         }
         Ok(())
     }
@@ -1276,7 +1295,9 @@ fn compile_step_pattern(
     // captured `10.0.0.1` shows up as `10\.0\.0\.1`), so the pattern the
     // user wrote has to be named alongside it.
     let matcher = PatternMatcher::new(&compiled_pattern, regex).map_err(|error| {
-        anyhow!("ステップ {step_label}: 『{display_pattern}』の正規表現が不正です ({error})")
+        anyhow!(i18n::t!(
+            "Step {step_label}: the regular expression “{display_pattern}” is invalid ({error})"
+        ))
     })?;
     Ok((matcher, display_pattern))
 }
@@ -2223,7 +2244,7 @@ mod tests {
         assert_eq!(
             on_timeout.as_deref(),
             Some(&[][..]),
-            "an empty list still means 「中断せず次へ」, so it has to survive a save"
+            "an empty list still means carry on to the next step, so it has to survive a save"
         );
         assert_eq!(
             parse_sessions_file(&serialize_sessions_file(&file).expect("serializes")),
@@ -2354,11 +2375,11 @@ mod tests {
         );
         assert_eq!(
             file.macros[0].steps[1].summary(),
-            "分岐: 『^15\\.』が${ver}にあれば 1 ステップ、なければ 0 ステップ"
+            "Branch: if “^15\\.” is in ${ver}, run 1 step(s), otherwise 0 step(s)"
         );
         assert_eq!(
             file.macros[0].steps[0].summary(),
-            "変数: ${host} に『rt01』"
+            "Variable: ${host} = “rt01”"
         );
 
         let text = serialize_sessions_file(&file).expect("serializes");
@@ -2410,7 +2431,7 @@ mod tests {
     fn a_file_from_before_the_branch_capture_is_rewritten_without_one() {
         let file = parse_sessions_file(LEGACY_SESSIONS_FILE);
         let MacroStep::If { capture, .. } = &file.macros[0].steps[5] else {
-            panic!("the sixth step of the fixture is the 分岐");
+            panic!("the sixth step of the fixture is the branch");
         };
         assert_eq!(
             capture, &None,
@@ -2440,7 +2461,7 @@ mod tests {
                 else_steps: Vec::new(),
             }
             .summary(),
-            "分岐: 『Invalid』が画面全体にあれば 1 ステップ、なければ 0 ステップ"
+            "Branch: if “Invalid” is in the whole screen, run 1 step(s), otherwise 0 step(s)"
         );
         assert_eq!(
             MacroStep::If {
@@ -2452,7 +2473,7 @@ mod tests {
                 else_steps: Vec::new(),
             }
             .summary(),
-            "分岐: 『Invalid』が画面全体にあれば 1 ステップ、なければ 0 ステップ、一致時は ${banner} に取り込む"
+            "Branch: if “Invalid” is in the whole screen, run 1 step(s), otherwise 0 step(s), on a match capture into ${banner}"
         );
     }
 
@@ -2467,7 +2488,7 @@ mod tests {
                 on_timeout: Some(vec![MacroStep::Clear {}]),
             }
             .summary(),
-            "待機: 『router#』 (5 秒以内)、${prompt} に取り込む、タイムアウト時 1 ステップ"
+            "Wait for “router#” (up to 5 s), capture into ${prompt}, 1 step on timeout"
         );
     }
 
@@ -2527,7 +2548,7 @@ mod tests {
             "a field this build does not know may change what the step does, so the step is not run without it"
         );
         let MacroStep::Repeat { count, steps: body } = &steps[3] else {
-            panic!("the 繰り返し itself is readable: {:?}", steps[3]);
+            panic!("the repeat itself is readable: {:?}", steps[3]);
         };
         assert_eq!(*count, 2);
         assert_eq!(body[0], MacroStep::Sleep { ms: 100 });
@@ -2538,10 +2559,10 @@ mod tests {
             Some("clear"),
             "a field added to a kind without fields must not be dropped either"
         );
-        assert_eq!(steps[1].kind_label(), "不明なステップ");
+        assert_eq!(steps[1].kind_label(), "Unknown Step");
         assert_eq!(
             steps[1].summary(),
-            "不明なステップ「http_request」(この版では扱えません)"
+            "Unknown step “http_request” (this version can't run it)"
         );
 
         let written = serialize_sessions_file(&file).expect("serializes");
@@ -2639,7 +2660,7 @@ mod tests {
         assert_eq!(
             expand_variables(r"^From ${host}:", &variables),
             "^From 10.0.0.1:",
-            "a 送信 still gets the value as the user would type it"
+            "a send still gets the value as the user would type it"
         );
         assert_eq!(
             expand_variables_into_regex("${missing}", &variables),
@@ -2660,7 +2681,7 @@ mod tests {
         assert!(matcher.find(&lines(&["ping 10.0.0.1"])).is_some());
         assert!(
             matcher.find(&lines(&["ping 10a0b0c1"])).is_none(),
-            "an unescaped value would have matched this too, because . is 任意の 1 文字"
+            "an unescaped value would have matched this too, because . is any character"
         );
 
         assert!(
@@ -2712,7 +2733,7 @@ mod tests {
                 steps: vec![MacroStep::Clear {}],
             }
             .summary(),
-            "繰り返し: 3 回 (1 ステップ)"
+            "Repeat: ×3 (1 step)"
         );
         assert_eq!(
             MacroStep::Repeat {
@@ -2720,8 +2741,69 @@ mod tests {
                 steps: Vec::new(),
             }
             .summary(),
-            "繰り返し: 中止まで (0 ステップ)"
+            "Repeat: until stopped (0 steps)"
         );
+    }
+
+    /// The Japanese summaries read the way they did before the catalog, which
+    /// is where the `${…}` escapes and the single plural form can go wrong.
+    #[test]
+    fn summaries_under_japanese_read_as_before_the_catalog() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(
+            MacroStep::WaitFor {
+                pattern: "router#".to_string(),
+                regex: false,
+                timeout_ms: 5_000,
+                capture: Some("prompt".to_string()),
+                on_timeout: Some(vec![MacroStep::Clear {}, MacroStep::Clear {}]),
+            }
+            .summary(),
+            "待機: 『router#』 (5 秒以内)、${prompt} に取り込む、タイムアウト時 2 ステップ"
+        );
+        assert_eq!(
+            MacroStep::If {
+                pattern: "^15\\.".to_string(),
+                regex: true,
+                scope: MatchScope::Variable("ver".to_string()),
+                capture: Some("banner".to_string()),
+                then_steps: vec![MacroStep::Clear {}],
+                else_steps: Vec::new(),
+            }
+            .summary(),
+            "分岐: 『^15\\.』が${ver}にあれば 1 ステップ、なければ 0 ステップ、一致時は ${banner} に取り込む"
+        );
+        assert_eq!(
+            MacroStep::If {
+                pattern: "Invalid".to_string(),
+                regex: false,
+                scope: MatchScope::SinceLastSend,
+                capture: None,
+                then_steps: Vec::new(),
+                else_steps: Vec::new(),
+            }
+            .summary(),
+            "分岐: 『Invalid』が直前の出力にあれば 0 ステップ、なければ 0 ステップ"
+        );
+        assert_eq!(
+            MacroStep::Repeat {
+                count: 3,
+                steps: vec![MacroStep::Clear {}],
+            }
+            .summary(),
+            "繰り返し: 3 回 (1 ステップ)"
+        );
+        assert_eq!(
+            MacroStep::SetVariable {
+                name: "host".to_string(),
+                value: "rt01".to_string(),
+            }
+            .summary(),
+            "変数: ${host} に『rt01』"
+        );
+        assert_eq!(MacroStep::Clear {}.kind_label(), "画面を消去");
     }
 
     #[test]
@@ -3083,10 +3165,10 @@ mod tests {
                 vec![
                     (0, 2, None),
                     (1, 2, None),
-                    (1, 2, Some((1, 0, "送信"))),
-                    (1, 2, Some((1, 1, "画面を消去"))),
-                    (1, 2, Some((2, 0, "送信"))),
-                    (1, 2, Some((2, 1, "画面を消去"))),
+                    (1, 2, Some((1, 0, "Send"))),
+                    (1, 2, Some((1, 1, "Clear Screen"))),
+                    (1, 2, Some((2, 0, "Send"))),
+                    (1, 2, Some((2, 1, "Clear Screen"))),
                 ]
             );
         }
@@ -3132,7 +3214,7 @@ mod tests {
             let error = run.await.expect_err("the nested wait should time out");
             assert_eq!(
                 error.to_string(),
-                "ステップ 2-1: 『Password:』が 5 秒以内に現れませんでした"
+                "Step 2-1: “Password:” did not appear within 5 s"
             );
         }
 
@@ -3211,7 +3293,7 @@ mod tests {
             let error = run.await.expect_err("the macro should time out");
             assert_eq!(
                 error.to_string(),
-                "ステップ 1: 『Password:』が 5 秒以内に現れませんでした"
+                "Step 1: “Password:” did not appear within 5 s"
             );
         }
 
@@ -3256,7 +3338,7 @@ mod tests {
 
             let error = run.await.expect_err("the stale prompt must not match");
             assert!(
-                error.to_string().starts_with("ステップ 2: 『router#』"),
+                error.to_string().starts_with("Step 2: “router#”"),
                 "unexpected error: {error}"
             );
         }
@@ -3454,7 +3536,7 @@ mod tests {
                 .expect_err("`(+)` does not compile, and the run must say so");
             assert_eq!(
                 error.to_string().lines().next(),
-                Some("ステップ 3: 『(+)』の正規表現が不正です (regex parse error:")
+                Some("Step 3: the regular expression “(+)” is invalid (regex parse error:")
             );
             assert_eq!(
                 sent_commands(&terminal, cx),
@@ -3497,7 +3579,7 @@ mod tests {
             let error = run.await.expect_err("the macro must be refused");
             assert_eq!(
                 error.to_string(),
-                "ステップ 2-e2 はこの版では扱えない種類のステップ「beep」です。マクロは実行していません。"
+                "Step 2-e2 is of a kind this version can't run (“beep”). The macro was not run."
             );
             assert!(
                 sent_commands(&terminal, cx).is_empty(),
@@ -3917,7 +3999,7 @@ mod tests {
             // 「そのとき」 step that happens to sit at the same position.
             assert_eq!(
                 error.to_string(),
-                "ステップ 2-e2: 『Password:』が 1 秒以内に現れませんでした"
+                "Step 2-e2: “Password:” did not appear within 1 s"
             );
         }
 
@@ -4079,7 +4161,7 @@ mod tests {
                 .expect_err("the then branch's wait should time out");
             assert_eq!(
                 error.to_string(),
-                "ステップ 1-1: 『現れない』が 1 秒以内に現れませんでした"
+                "Step 1-1: “現れない” did not appear within 1 s"
             );
         }
 
@@ -4130,7 +4212,7 @@ mod tests {
             // not say which side of the 分岐 it happened on.
             assert_eq!(
                 error.to_string(),
-                "ステップ 1-e1: 『現れない』が 1 秒以内に現れませんでした"
+                "Step 1-e1: “現れない” did not appear within 1 s"
             );
         }
 
@@ -4171,10 +4253,10 @@ mod tests {
 
             let error = run
                 .await
-                .expect_err("the wait inside タイムアウト時 should also time out");
+                .expect_err("the wait inside the timeout steps should also time out");
             assert_eq!(
                 error.to_string(),
-                "ステップ 1-t1: 『現れない』が 1 秒以内に現れませんでした"
+                "Step 1-t1: “現れない” did not appear within 1 s"
             );
         }
 
@@ -4318,7 +4400,7 @@ mod tests {
             // the escaped form (`10\.0\.0\.1`) the regex was compiled with.
             assert_eq!(
                 error.to_string(),
-                "ステップ 3: 『10.0.0.1』が 1 秒以内に現れませんでした"
+                "Step 3: “10.0.0.1” did not appear within 1 s"
             );
         }
 
@@ -4555,7 +4637,7 @@ mod tests {
             // address is escaped, so the message has to lead with the pattern
             // as the user wrote it or there is nothing in it they recognise.
             assert!(
-                message.starts_with("ステップ 3: 『10.0.0.1(』の正規表現が不正です ("),
+                message.starts_with("Step 3: the regular expression “10.0.0.1(” is invalid ("),
                 "{message}"
             );
         }
@@ -4618,7 +4700,7 @@ mod tests {
             // still unambiguous.
             assert_eq!(
                 error.to_string(),
-                "ステップ 1-e1-e1-t1: 『これも来ない』が 1 秒以内に現れませんでした"
+                "Step 1-e1-e1-t1: “これも来ない” did not appear within 1 s"
             );
         }
 
@@ -4687,7 +4769,7 @@ mod tests {
             assert_eq!(
                 sent_commands(&terminal, cx),
                 vec!["echo rt01#".to_string()],
-                "an empty 固定文字列 sits in every line, so the first one is what \
+                "an empty plain-text pattern sits in every line, so the first one is what \
                  gets filed"
             );
         }

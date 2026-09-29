@@ -157,7 +157,7 @@ impl Render for QuickActionBar {
                 !self.buffer_search_bar.read(cx).is_dismissed(),
                 Box::new(buffer_search::Deploy::find()),
                 focus_handle.clone(),
-                "ファイル内を検索",
+                i18n::t!("Buffer Search"),
                 {
                     let buffer_search_bar = self.buffer_search_bar.clone();
                     move |_, window, cx| {
@@ -175,7 +175,7 @@ impl Render for QuickActionBar {
             false,
             Box::new(InlineAssist::default()),
             focus_handle,
-            "インラインアシスト",
+            i18n::t!("Inline Assist"),
             move |_, window, cx| {
                 window.dispatch_action(Box::new(InlineAssist::default()), cx);
             },
@@ -208,7 +208,7 @@ impl Render for QuickActionBar {
                         .when(!is_deployed, |this| {
                             this.when(has_available_code_actions, |this| {
                                 this.tooltip(Tooltip::for_action_title(
-                                    "コードアクション",
+                                    i18n::t!("Code Actions"),
                                     &ToggleCodeActions::default(),
                                 ))
                             })
@@ -216,7 +216,7 @@ impl Render for QuickActionBar {
                                 !has_available_code_actions,
                                 |this| {
                                     this.tooltip(Tooltip::for_action_title(
-                                        "利用できるコードアクションはありません",
+                                        i18n::t!("No Code Actions Available"),
                                         &ToggleCodeActions::default(),
                                     ))
                                 },
@@ -270,7 +270,7 @@ impl Render for QuickActionBar {
                         .icon_size(IconSize::Small)
                         .style(ButtonStyle::Subtle)
                         .toggle_state(self.toggle_selections_handle.is_deployed()),
-                    Tooltip::text("選択範囲の操作"),
+                    Tooltip::text(i18n::t!("Selection Controls")),
                 )
                 .with_handle(self.toggle_selections_handle.clone())
                 .anchor(Anchor::TopRight)
@@ -278,23 +278,29 @@ impl Render for QuickActionBar {
                     let focus = focus.clone();
                     let menu = ContextMenu::build(window, cx, move |menu, _, _| {
                         menu.context(focus.clone())
-                            .action("すべて選択", Box::new(SelectAll))
+                            .action(i18n::t!("Select All"), Box::new(SelectAll))
                             .action(
-                                "次の一致を選択に追加",
+                                i18n::t!("Select Next Occurrence"),
                                 Box::new(SelectNext {
                                     replace_newest: false,
                                 }),
                             )
-                            .action("選択範囲を拡張", Box::new(SelectLargerSyntaxNode))
-                            .action("選択範囲を縮小", Box::new(SelectSmallerSyntaxNode))
                             .action(
-                                "上にカーソルを追加",
+                                i18n::t!("Expand Selection"),
+                                Box::new(SelectLargerSyntaxNode),
+                            )
+                            .action(
+                                i18n::t!("Shrink Selection"),
+                                Box::new(SelectSmallerSyntaxNode),
+                            )
+                            .action(
+                                i18n::t!("Add Cursor Above"),
                                 Box::new(AddSelectionAbove {
                                     skip_soft_wrap: true,
                                 }),
                             )
                             .action(
-                                "下にカーソルを追加",
+                                i18n::t!("Add Cursor Below"),
                                 Box::new(AddSelectionBelow {
                                     skip_soft_wrap: true,
                                 }),
@@ -302,31 +308,37 @@ impl Render for QuickActionBar {
                             .when(!disable_ai, |this| {
                                 this.separator().action_disabled_when(
                                     !has_selection,
-                                    "選択範囲をスレッドに追加",
+                                    i18n::tc!("quick action bar", "Add to Agent Thread"),
                                     Box::new(AddSelectionToThread),
                                 )
                             })
                             .separator()
-                            .action("シンボルへ移動", Box::new(ToggleOutline))
-                            .action("行/列へ移動", Box::new(ToggleGoToLine))
+                            .action(i18n::t!("Go to Symbol"), Box::new(ToggleOutline))
+                            .action(i18n::t!("Go to Line/Column"), Box::new(ToggleGoToLine))
                             .separator()
-                            .action("次の問題へ", Box::new(GoToDiagnostic::default()))
-                            .action("前の問題へ", Box::new(GoToPreviousDiagnostic::default()))
+                            .action(
+                                i18n::t!("Next Problem"),
+                                Box::new(GoToDiagnostic::default()),
+                            )
+                            .action(
+                                i18n::t!("Previous Problem"),
+                                Box::new(GoToPreviousDiagnostic::default()),
+                            )
                             .separator()
                             .action_disabled_when(
                                 !has_diff_hunks,
-                                "次の変更箇所へ",
+                                i18n::tc!("quick action bar", "Next Hunk"),
                                 Box::new(GoToHunk),
                             )
                             .action_disabled_when(
                                 !has_diff_hunks,
-                                "前の変更箇所へ",
+                                i18n::tc!("quick action bar", "Previous Hunk"),
                                 Box::new(GoToPreviousHunk),
                             )
                             .separator()
-                            .action("行を上へ移動", Box::new(MoveLineUp))
-                            .action("行を下へ移動", Box::new(MoveLineDown))
-                            .action("選択範囲を複製", Box::new(DuplicateLineDown))
+                            .action(i18n::t!("Move Line Up"), Box::new(MoveLineUp))
+                            .action(i18n::t!("Move Line Down"), Box::new(MoveLineDown))
+                            .action(i18n::t!("Duplicate Selection"), Box::new(DuplicateLineDown))
                     });
                     Some(menu)
                 })
@@ -349,7 +361,7 @@ impl Render for QuickActionBar {
                     IconButton::new("toggle_editor_settings_icon", IconName::Filter)
                         .icon_size(IconSize::Small)
                         .toggle_state(self.toggle_settings_handle.is_deployed()),
-                    Tooltip::text("エディターの表示設定"),
+                    Tooltip::text(i18n::t!("Editor Controls")),
                 )
                 .anchor(Anchor::TopRight)
                 .with_handle(self.toggle_settings_handle.clone())
@@ -361,7 +373,7 @@ impl Render for QuickActionBar {
 
                             if supports_inlay_hints {
                                 menu = menu.toggleable_entry(
-                                    "インレイヒント",
+                                    i18n::t!("Inlay Hints"),
                                     inlay_hints_enabled,
                                     IconPosition::Start,
                                     Some(editor::actions::ToggleInlayHints.boxed_clone()),
@@ -382,7 +394,7 @@ impl Render for QuickActionBar {
                                 );
 
                                 menu = menu.toggleable_entry(
-                                    "インライン値",
+                                    i18n::t!("Inline Values"),
                                     inline_values_enabled,
                                     IconPosition::Start,
                                     Some(editor::actions::ToggleInlineValues.boxed_clone()),
@@ -405,7 +417,7 @@ impl Render for QuickActionBar {
 
                             if supports_semantic_tokens {
                                 menu = menu.toggleable_entry(
-                                    "セマンティックハイライト",
+                                    i18n::t!("Semantic Highlights"),
                                     semantic_highlights_enabled,
                                     IconPosition::Start,
                                     Some(editor::actions::ToggleSemanticHighlights.boxed_clone()),
@@ -428,7 +440,7 @@ impl Render for QuickActionBar {
 
                             if supports_code_lens {
                                 menu = menu.toggleable_entry(
-                                    "コードレンズ",
+                                    i18n::t!("Code Lens"),
                                     code_lens_enabled,
                                     IconPosition::Start,
                                     Some(editor::actions::ToggleCodeLens.boxed_clone()),
@@ -450,7 +462,7 @@ impl Render for QuickActionBar {
                             }
 
                             if supports_minimap {
-                                menu = menu.toggleable_entry("ミニマップ", minimap_enabled, IconPosition::Start, Some(editor::actions::ToggleMinimap.boxed_clone()), {
+                                menu = menu.toggleable_entry(i18n::t!("Minimap"), minimap_enabled, IconPosition::Start, Some(editor::actions::ToggleMinimap.boxed_clone()), {
                                     let editor = editor.clone();
                                     move |window, cx| {
                                         editor
@@ -467,7 +479,7 @@ impl Render for QuickActionBar {
                             }
 
                             if has_edit_prediction_provider {
-                                let mut edit_prediction_entry = ContextMenuEntry::new("編集予測")
+                                let mut edit_prediction_entry = ContextMenuEntry::new(i18n::t!("Edit Predictions"))
                                     .toggleable(IconPosition::Start, edit_predictions_enabled_at_cursor && show_edit_predictions)
                                     .disabled(!edit_predictions_enabled_at_cursor)
                                     .action(
@@ -488,7 +500,7 @@ impl Render for QuickActionBar {
                                     });
                                 if !edit_predictions_enabled_at_cursor {
                                     edit_prediction_entry = edit_prediction_entry.documentation_aside(DocumentationSide::Left, |_| {
-                                        Label::new("このファイルは除外ファイルの一覧に含まれているため、編集予測を切り替えられません。").into_any_element()
+                                        Label::new(i18n::t!("You can't toggle edit predictions for this file as it is within the excluded files list.")).into_any_element()
                                     });
                                 }
 
@@ -499,7 +511,7 @@ impl Render for QuickActionBar {
 
                             if is_full {
                                 menu = menu.toggleable_entry(
-                                    "診断",
+                                    i18n::t!("Diagnostics"),
                                     diagnostics_enabled,
                                     IconPosition::Start,
                                     Some(ToggleDiagnostics.boxed_clone()),
@@ -520,7 +532,7 @@ impl Render for QuickActionBar {
                                 );
 
                                 if supports_inline_diagnostics {
-                                    let mut inline_diagnostics_item = ContextMenuEntry::new("インライン診断")
+                                    let mut inline_diagnostics_item = ContextMenuEntry::new(i18n::t!("Inline Diagnostics"))
                                         .toggleable(IconPosition::Start, diagnostics_enabled && inline_diagnostics_enabled)
                                         .action(ToggleInlineDiagnostics.boxed_clone())
                                         .handler({
@@ -538,7 +550,7 @@ impl Render for QuickActionBar {
                                             }
                                         });
                                     if !diagnostics_enabled {
-                                        inline_diagnostics_item = inline_diagnostics_item.disabled(true).documentation_aside(DocumentationSide::Left, |_|  Label::new("通常の診断を有効にするまで、インライン診断は利用できません。").into_any_element());
+                                        inline_diagnostics_item = inline_diagnostics_item.disabled(true).documentation_aside(DocumentationSide::Left, |_|  Label::new(i18n::t!("Inline diagnostics are not available until regular diagnostics are enabled.")).into_any_element());
                                     }
                                     menu = menu.item(inline_diagnostics_item)
                                 }
@@ -547,7 +559,7 @@ impl Render for QuickActionBar {
                             }
 
                             menu = menu.toggleable_entry(
-                                "行番号",
+                                i18n::t!("Line Numbers"),
                                 show_line_numbers,
                                 IconPosition::Start,
                                 Some(editor::actions::ToggleLineNumbers.boxed_clone()),
@@ -568,7 +580,7 @@ impl Render for QuickActionBar {
                             );
 
                             menu = menu.toggleable_entry(
-                                "選択メニュー",
+                                i18n::t!("Selection Menu"),
                                 selection_menu_enabled,
                                 IconPosition::Start,
                                 Some(editor::actions::ToggleSelectionMenu.boxed_clone()),
@@ -589,7 +601,7 @@ impl Render for QuickActionBar {
                             );
 
                             menu = menu.toggleable_entry(
-                                "シグネチャヘルプの自動表示",
+                                i18n::t!("Auto Signature Help"),
                                 auto_signature_help_enabled,
                                 IconPosition::Start,
                                 Some(editor::actions::ToggleAutoSignatureHelp.boxed_clone()),
@@ -612,7 +624,7 @@ impl Render for QuickActionBar {
                             menu = menu.separator();
 
                             menu = menu.toggleable_entry(
-                                "Git blame (インライン)",
+                                i18n::t!("Inline Git Blame"),
                                 git_blame_inline_enabled,
                                 IconPosition::Start,
                                 Some(editor::actions::ToggleGitBlameInline.boxed_clone()),
@@ -633,7 +645,7 @@ impl Render for QuickActionBar {
                             );
 
                             menu = menu.toggleable_entry(
-                                "Git blame (列)",
+                                i18n::t!("Column Git Blame"),
                                 show_git_blame_gutter,
                                 IconPosition::Start,
                                 Some(git::Blame.boxed_clone()),
@@ -655,7 +667,7 @@ impl Render for QuickActionBar {
 
                             if let Some(fs) = fs.clone() {
                                 menu = menu.toggleable_entry(
-                                    "既定のブランチと比較",
+                                    i18n::t!("Diff Against Default Branch"),
                                     diff_against_default_branch,
                                     IconPosition::Start,
                                     None,
@@ -678,7 +690,7 @@ impl Render for QuickActionBar {
                             menu = menu.separator();
 
                             menu = menu.toggleable_entry(
-                                "Vim モード",
+                                i18n::t!("Vim Mode"),
                                 vim_mode_enabled,
                                 IconPosition::Start,
                                 None,
@@ -692,7 +704,7 @@ impl Render for QuickActionBar {
                                 },
                             );
                             menu = menu.toggleable_entry(
-                                "Helix モード",
+                                i18n::t!("Helix Mode"),
                                 helix_mode_enabled,
                                 IconPosition::Start,
                                 None,
@@ -707,23 +719,23 @@ impl Render for QuickActionBar {
                             );
 
                             menu = menu.separator();
-                            menu = menu.submenu("折り畳み", move |menu, _window, _cx| {
+                            menu = menu.submenu(i18n::t!("Folding"), move |menu, _window, _cx| {
                                 // A submenu is built with no action context of its
                                 // own, so without this the entries would dispatch
                                 // from the toolbar, where nothing handles an
                                 // `editor::` action.
                                 menu.context(focus_handle.clone())
                                     .action(
-                                        "カーソル位置の折り畳みを切り替え",
+                                        i18n::t!("Toggle Fold at Cursor"),
                                         Box::new(ToggleFold),
                                     )
                                     .separator()
-                                    .action("レベル 1 で畳む", Box::new(FoldAtLevel(1)))
-                                    .action("レベル 2 で畳む", Box::new(FoldAtLevel(2)))
-                                    .action("レベル 3 で畳む", Box::new(FoldAtLevel(3)))
+                                    .action(i18n::t!("Fold at Level 1"), Box::new(FoldAtLevel(1)))
+                                    .action(i18n::t!("Fold at Level 2"), Box::new(FoldAtLevel(2)))
+                                    .action(i18n::t!("Fold at Level 3"), Box::new(FoldAtLevel(3)))
                                     .separator()
-                                    .action("すべて畳む", Box::new(FoldAll))
-                                    .action("すべて展開", Box::new(UnfoldAll))
+                                    .action(i18n::t!("Fold All"), Box::new(FoldAll))
+                                    .action(i18n::t!("Unfold All"), Box::new(UnfoldAll))
                             });
 
                             menu

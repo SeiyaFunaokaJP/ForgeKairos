@@ -5,5 +5,32 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Add"
+msgstr "追加"
+
+msgid "Add Toolchain"
+msgstr "Toolchain を追加"
+
+msgid "Add {}"
+msgstr "{} を追加"
+
+msgid "Scope"
+msgstr "適用範囲"
+
+msgid "Select"
+msgstr "選択"
+
+msgid "Select Toolchain Path"
+msgstr "ツールチェーンのパスを選択"
+
 msgid "Select a toolchain…"
 msgstr "ツールチェーンを選択…"
+
+msgid "Select a {} for {pretty_path}…"
+msgstr "{pretty_path} の {} を選択…"
+
+msgid "Select {}"
+msgstr "{} を選択"
+
+msgid "worktree root"
+msgstr "ワークツリーのルート"

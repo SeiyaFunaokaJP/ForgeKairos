@@ -46,11 +46,10 @@ use crate::remote_launch_approvals::{
 
 const DB_NAMESPACE: &str = "project_launch_approvals";
 
-const DEFAULT_LANGUAGE_SERVER_PROGRAM: &str = "(言語サーバーの既定の実行ファイル)";
-
 /// The error for a decision about a definition that has changed since it was
 /// shown, so that only what the user saw gets decided.
-pub const CHANGED_SINCE_SHOWN_MESSAGE: &str = "内容が変わりました。もう一度確認してください";
+/// English, so that it can be compared wherever it arrives; shown through `i18n::tr`.
+pub const CHANGED_SINCE_SHOWN_MESSAGE: &str = i18n::msg!("The content has changed. Check it again");
 
 /// Programs that find code in their working directory on their own — module
 /// and package lookup, `./node_modules/.bin`, scripts named without their
@@ -442,8 +441,11 @@ impl LaunchHost {
             RemoteConnectionOptions::Docker(docker) => {
                 format!("docker://{}", docker.container_id)
             }
-            #[cfg(feature = "test-support")]
-            RemoteConnectionOptions::Mock(mock) => format!("mock://{}", mock.id),
+            // The test transport. Its variant exists whenever `remote/test-support`
+            // is on, which another crate can turn on without this crate's
+            // `test-support`, so it cannot be named here.
+            #[allow(unreachable_patterns)]
+            _ => options.machine_key(),
         };
         Self::Remote {
             identity: identity.into(),
@@ -730,9 +732,9 @@ impl LaunchApprovalDetails {
     fn summary(&self) -> String {
         let mut summary = self.target.display().to_string();
         if !self.environment_variable_names.is_empty() {
-            summary.push_str(&format!(
-                " (環境変数: {})",
-                self.environment_variable_names.iter().join(", ")
+            summary.push_str(&i18n::t!(
+                " (environment variables: {names})",
+                names = self.environment_variable_names.iter().join(", ")
             ));
         }
         if !self.code_loading_environment.is_empty() {
@@ -745,9 +747,9 @@ impl LaunchApprovalDetails {
             ));
         }
         if !self.header_names.is_empty() {
-            summary.push_str(&format!(
-                " (ヘッダー: {})",
-                self.header_names.iter().join(", ")
+            summary.push_str(&i18n::t!(
+                " (headers: {names})",
+                names = self.header_names.iter().join(", ")
             ));
         }
         summary
@@ -865,7 +867,9 @@ impl LaunchRequest {
                 program: binary
                     .path
                     .clone()
-                    .unwrap_or_else(|| DEFAULT_LANGUAGE_SERVER_PROGRAM.to_string())
+                    .unwrap_or_else(|| {
+                        i18n::t!("(the language server's default executable)").to_string()
+                    })
                     .into(),
                 arguments: arguments.into_iter().map(SharedString::from).collect(),
             },
@@ -2822,7 +2826,7 @@ impl ProjectLaunchApprovals {
                 .scoped(DB_NAMESPACE)
                 .delete(key.as_str().to_string())
                 .await
-                .context("起動の承認を取り消せませんでした")?;
+                .context(i18n::t!("Could not revoke the launch approval"))?;
             this.update(cx, |this, cx| this.forget_decision(&key, cx))
         })
     }
@@ -2837,7 +2841,7 @@ impl ProjectLaunchApprovals {
     /// the user review them.
     pub fn decision_records(&self) -> Result<Vec<LaunchDecisionRecord>> {
         match &self.stored_decisions {
-            StoredDecisions::Loading => Err(anyhow!("起動の承認を読み込んでいます")),
+            StoredDecisions::Loading => Err(anyhow!(i18n::t!("Loading the launch approvals"))),
             StoredDecisions::Unavailable(error) => Err(anyhow!("{error}")),
             StoredDecisions::Loaded => Ok(self
                 .decisions
@@ -2987,7 +2991,7 @@ impl ProjectLaunchApprovals {
                 .scoped(DB_NAMESPACE)
                 .write(key.as_str().to_string(), value)
                 .await
-                .context("起動の承認を保存できませんでした")?;
+                .context(i18n::t!("Could not save the launch approval"))?;
             this.update(cx, |this, cx| {
                 this.decisions.insert(key.clone(), record);
                 this.settle(&key, decision, cx);
@@ -3066,7 +3070,9 @@ impl ProjectLaunchApprovals {
 fn key_value_store(cx: &App) -> Result<KeyValueStore> {
     cx.try_global::<db::AppDatabase>()
         .map(KeyValueStore::from_app_db)
-        .context("起動の承認を記録するデータベースが開かれていません")
+        .context(i18n::t!(
+            "The database that records launch approvals is not open"
+        ))
 }
 
 #[cfg(test)]
@@ -3177,13 +3183,17 @@ mod tests {
             .join("project")
             .join("scripts")
             .join("serve.js");
-        let mut spellings = vec![detour.to_string_lossy().into_owned()];
+        #[cfg(not(windows))]
+        let spellings = vec![detour.to_string_lossy().into_owned()];
         #[cfg(windows)]
-        {
+        let spellings = {
             let absolute = root.join("scripts").join("serve.js");
-            spellings.push(absolute.to_string_lossy().to_uppercase());
-            spellings.push(format!(r"\\?\{}", absolute.to_string_lossy()));
-        }
+            vec![
+                detour.to_string_lossy().into_owned(),
+                absolute.to_string_lossy().to_uppercase(),
+                format!(r"\\?\{}", absolute.to_string_lossy()),
+            ]
+        };
         for spelling in spellings {
             let content = scan_of("node", &[spelling.as_str()], &[], &root)
                 .run(Some(&fs))
@@ -3566,9 +3576,10 @@ mod tests {
         let root = temporary_directory.path().join("project");
         std::fs::create_dir_all(&root).unwrap();
         let fifo = root.join("server.js");
-        let status = std::process::Command::new("mkfifo")
+        let status = util::command::new_command("mkfifo")
             .arg(&fifo)
             .status()
+            .await
             .unwrap();
         assert!(status.success());
         let fs = real_fs(cx);

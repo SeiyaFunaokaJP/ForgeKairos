@@ -92,11 +92,13 @@ pub fn parse_pie(source: &str) -> Result<PieDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Pie(_)) {
-            bail!("この図は円グラフではありません。");
+            bail!(i18n::t!("This diagram is not a pie chart."));
         }
     }
 
@@ -117,7 +119,9 @@ pub fn parse_pie(source: &str) -> Result<PieDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = keyword_tail(header, "pie") else {
-        bail!("円グラフではありません (`pie` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a pie chart (only a diagram that starts with `pie` can be edited in the structured editor)."
+        ));
     };
     reject_trailing_comment(header)?;
     parse_header_tail(tail, &mut document)?;
@@ -167,7 +171,9 @@ pub fn parse_pie(source: &str) -> Result<PieDocument> {
         reject_trailing_comment(trimmed)?;
         if let Some(rest) = keyword_tail(trimmed, "title") {
             if document.title.is_some() {
-                bail!("`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。");
+                bail!(i18n::t!(
+                    "`title` is written twice. Merge them into one, then open it again."
+                ));
             }
             set_title(&mut document, rest)?;
             continue;
@@ -198,16 +204,18 @@ fn parse_header_tail(tail: &str, document: &mut PieDocument) -> Result<()> {
             set_title(document, after)?;
             return Ok(());
         }
-        bail!(
-            "`pie` の行の `{rest}` は構造化編集に対応していません。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "The structured editor does not support `{rest}` on the `pie` line. Edit it as text."
+        ));
     }
 }
 
 fn set_title(document: &mut PieDocument, text: &str) -> Result<()> {
     let title = text.trim();
     if !is_valid_pie_title(title) {
-        bail!("タイトル `{title}` は円グラフに書けません (`%%` は使えません)。");
+        bail!(i18n::t!(
+            "The title `{title}` cannot be written in a pie chart (`%%` is not allowed)."
+        ));
     }
     document.title = Some(title.to_string());
     Ok(())
@@ -224,21 +232,21 @@ fn is_accessibility_statement(statement: &str) -> bool {
 /// `%%`, so a trailing comment would disappear on the next emit.
 fn reject_trailing_comment(statement: &str) -> Result<()> {
     if statement.contains("%%") {
-        bail!(
-            "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+        ));
     }
     Ok(())
 }
 
 fn parse_slice(statement: &str) -> Result<PieSlice> {
     let Some((label, after_label)) = read_quoted(statement) else {
-        bail!(
-            "円グラフの行として読めませんでした ({statement})。`\"ラベル\" : 数値` の形で書いてください。"
-        );
+        bail!(i18n::t!(
+            "This line could not be read as a slice of a pie chart ({statement}). Write it as `\"label\" : value`."
+        ));
     };
     let Some(after_colon) = after_label.trim_start().strip_prefix(':') else {
-        bail!("ラベルのあとに `:` がありません ({statement})。");
+        bail!(i18n::t!("There is no `:` after the label ({statement})."));
     };
     let rest = after_colon.trim_start();
     let value = rest
@@ -249,14 +257,14 @@ fn parse_slice(statement: &str) -> Result<PieSlice> {
         .collect::<String>();
     let remainder = rest.get(value.len()..).unwrap_or_default().trim();
     if !remainder.is_empty() {
-        bail!(
-            "数値のあとの `{remainder}` は円グラフに書けません ({statement})。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "`{remainder}` after the value cannot be written in a pie chart ({statement}). Edit it as text."
+        ));
     }
     if !is_valid_pie_value(&value) {
-        bail!(
-            "`{value}` は円グラフの値として読めません ({statement})。0 以上の数値を書いてください。"
-        );
+        bail!(i18n::t!(
+            "`{value}` cannot be read as a value of a pie chart ({statement}). Write a number of 0 or more."
+        ));
     }
     Ok(PieSlice { label, value })
 }
@@ -560,6 +568,7 @@ mod tests {
 
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
+        let japanese = crate::mermaid_model::japanese_for_this_thread();
         for source in [
             "pie title 図\n  \"a\" : 1e3",
             "pie title 図\n  \"a\" : 1 個",
@@ -576,6 +585,7 @@ mod tests {
                 "the message should be Japanese for `{source}`: {message}"
             );
         }
+        drop(japanese);
 
         // A comment is what the user has to move, so the reason has to say so
         // rather than complain about whatever the comment made unreadable.
@@ -589,7 +599,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             let message = format!("{error}");
             assert!(
-                message.contains("コメント") || message.contains("`%%`"),
+                message.contains("comment") || message.contains("`%%`"),
                 "the reason for `{source}` should name the comment: {message}"
             );
         }
@@ -620,7 +630,10 @@ mod tests {
             let error = parse_pie(source)
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
-            assert!(format!("{error}").contains("Mermaid の構文"), "{error}");
+            assert!(
+                format!("{error}").contains("Mermaid could not parse"),
+                "{error}"
+            );
         }
         for value in ["0", "7", "35.0", "0.5", "00.5"] {
             assert!(is_valid_pie_value(value), "{value}");

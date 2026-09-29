@@ -181,11 +181,13 @@ impl Render for ProfileSelector {
         }
 
         if !self.provider.profiles_supported(cx) {
-            return Button::new("tools-not-supported-button", "ツール非対応")
+            return Button::new("tools-not-supported-button", i18n::t!("Tools Unsupported"))
                 .disabled(true)
                 .label_size(LabelSize::Small)
                 .color(Color::Muted)
-                .tooltip(Tooltip::text("このモデルはツールに対応していません。"))
+                .tooltip(Tooltip::text(i18n::t!(
+                    "This model does not support tools."
+                )))
                 .into_any_element();
         }
 
@@ -197,7 +199,7 @@ impl Render for ProfileSelector {
 
         let selected_profile = profile
             .map(|profile| profile.name.clone())
-            .unwrap_or_else(|| "不明".into());
+            .unwrap_or_else(|| i18n::t!("Unknown").into());
 
         let icon = if self.picker_handle.is_deployed() {
             IconName::ChevronUp
@@ -231,7 +233,7 @@ impl Render for ProfileSelector {
                     .gap_1()
                     .child(
                         container()
-                            .child(Label::new("プロファイルを変更"))
+                            .child(Label::new(i18n::t!("Change Profile")))
                             .child(KeyBinding::for_action(&ToggleProfileSelector, cx)),
                     )
                     .child(
@@ -239,7 +241,7 @@ impl Render for ProfileSelector {
                             .pt_1()
                             .border_t_1()
                             .border_color(cx.theme().colors().border_variant)
-                            .child(Label::new("プロファイルを順に切り替え"))
+                            .child(Label::new(i18n::t!("Cycle Through Profiles")))
                             .child(KeyBinding::for_action(&CycleModeSelector, cx)),
                     )
                     .into_any()
@@ -388,12 +390,12 @@ impl ProfilePickerDelegate {
 
     fn documentation(candidate: &ProfileCandidate) -> Option<&'static str> {
         match candidate.id.as_str() {
-            builtin_profiles::WRITE => Some("何でも書く手助けをします。"),
-            builtin_profiles::EDIT => {
-                Some("ファイルの読み取りと編集だけを行います。コマンドは実行しません。")
-            }
-            builtin_profiles::ASK => Some("コードベースについて対話します。"),
-            builtin_profiles::MINIMAL => Some("ツールを使わずに何でも対話します。"),
+            builtin_profiles::WRITE => Some(i18n::t!("Get help to write anything.")),
+            builtin_profiles::EDIT => Some(i18n::t!(
+                "Only reads and edits files. Does not run commands."
+            )),
+            builtin_profiles::ASK => Some(i18n::t!("Chat about your codebase.")),
+            builtin_profiles::MINIMAL => Some(i18n::t!("Chat about anything with no tools.")),
             _ => None,
         }
     }
@@ -405,7 +407,9 @@ impl ProfilePickerDelegate {
         for (idx, candidate) in candidates.iter().enumerate() {
             if !candidate.is_builtin && !inserted_custom_header {
                 if !entries.is_empty() {
-                    entries.push(ProfilePickerEntry::Header("カスタムプロファイル".into()));
+                    entries.push(ProfilePickerEntry::Header(
+                        i18n::t!("Custom Profiles").into(),
+                    ));
                 }
                 inserted_custom_header = true;
             }
@@ -484,14 +488,14 @@ impl PickerDelegate for ProfilePickerDelegate {
     }
 
     fn placeholder_text(&self, _: &mut Window, _: &mut App) -> Arc<str> {
-        "プロファイルを検索…".into()
+        i18n::t!("Search profiles…").into()
     }
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
         let text = if self.candidates.is_empty() {
-            "プロファイルはありません。".into()
+            i18n::t!("No profiles.").into()
         } else {
-            "検索条件に一致するプロファイルはありません。".into()
+            i18n::t!("No profiles match your search.").into()
         };
         Some(text)
     }
@@ -755,7 +759,8 @@ impl PickerDelegate for ProfilePickerDelegate {
                                                 .color(Color::Warning),
                                         )
                                         .child(
-                                            Label::new("制限モードでは無効").size(LabelSize::Small),
+                                            Label::new(i18n::t!("Disabled in Restricted Mode"))
+                                                .size(LabelSize::Small),
                                         ),
                                 )
                                 .children(forbidden_tools.iter().map(|tool| {
@@ -792,7 +797,7 @@ impl PickerDelegate for ProfilePickerDelegate {
                         .border_color(cx.theme().colors().border_variant)
                         .p_1p5()
                         .child(
-                            Button::new("configure", "構成")
+                            Button::new("configure", i18n::t!("Configure"))
                                 .full_width()
                                 .style(ButtonStyle::Outlined)
                                 .key_binding(
@@ -819,7 +824,7 @@ impl PickerDelegate for ProfilePickerDelegate {
                             .border_color(cx.theme().colors().border_variant)
                             .p_1p5()
                             .child(
-                                Button::new("restricted-mode", "制限モード")
+                                Button::new("restricted-mode", i18n::t!("Restricted Mode"))
                                     .full_width()
                                     .style(ButtonStyle::Tinted(TintColor::Warning))
                                     .color(Color::Warning)
@@ -828,9 +833,9 @@ impl PickerDelegate for ProfilePickerDelegate {
                                             .size(IconSize::Small)
                                             .color(Color::Warning),
                                     )
-                                    .tooltip(Tooltip::text(
-                                        "一部のツールが無効になっています。クリックして信頼の設定を確認してください。",
-                                    ))
+                                    .tooltip(Tooltip::text(i18n::t!(
+                                        "Some tools are disabled. Click to review trust settings."
+                                    )))
                                     .on_click(|_, window, cx| {
                                         window.dispatch_action(
                                             ToggleWorktreeSecurity.boxed_clone(),
@@ -875,7 +880,7 @@ mod tests {
         )));
         assert!(entries.iter().any(|entry| matches!(
             entry,
-            ProfilePickerEntry::Header(label) if label.as_ref() == "カスタムプロファイル"
+            ProfilePickerEntry::Header(label) if label.as_ref() == "Custom Profiles"
         )));
     }
 

@@ -207,7 +207,7 @@ impl Item for ReplSessionsPage {
     type Event = ItemEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "REPL セッション".into()
+        i18n::t!("REPL Sessions").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -242,9 +242,11 @@ impl Render for ReplSessionsPage {
         // install kernels. It can be assumed they don't have a running kernel if we have no
         // specifications.
         if kernel_specifications.is_empty() {
-            let instructions = "エディターでコードを対話的に実行するには、Jupyter カーネルをインストールして設定する必要があります。";
+            let instructions = i18n::t!(
+                "To start interactively running code in your editor, you need to install and configure Jupyter kernels."
+            );
 
-            return ReplSessionsContainer::new("利用可能な Jupyter カーネルがありません")
+            return ReplSessionsContainer::new(i18n::t!("No Jupyter Kernels Available"))
                 .child(Label::new(instructions))
                 .child(
                     h_flex().w_full().p_4().justify_center().gap_2().child(
@@ -252,7 +254,7 @@ impl Render for ReplSessionsPage {
                             .style(ButtonStyle::Filled)
                             .size(ButtonSize::Large)
                             .layer(ElevationIndex::ModalSurface)
-                            .child(Label::new("カーネルをインストール"))
+                            .child(Label::new(i18n::t!("Install Kernels")))
                             .on_click(move |_, _, cx| {
                                 cx.open_url(
                                     "https://zed.dev/docs/repl#language-specific-instructions",
@@ -264,16 +266,18 @@ impl Render for ReplSessionsPage {
 
         // When there are no sessions, show the command to run code in an editor
         if sessions.is_empty() {
-            let instructions = "Jupyter カーネルでコードを実行するには、コードを選択して 'repl::Run' コマンドを使用します。";
+            let instructions = i18n::t!(
+                "To run code in a Jupyter kernel, select some code and use the 'repl::Run' command."
+            );
 
-            return ReplSessionsContainer::new("Jupyter カーネルセッションがありません").child(
+            return ReplSessionsContainer::new(i18n::t!("No Jupyter Kernel Sessions")).child(
                 v_flex()
                     .child(Label::new(instructions))
                     .child(KeyBinding::for_action(&Run, cx)),
             );
         }
 
-        ReplSessionsContainer::new("Jupyter カーネルセッション").children(sessions)
+        ReplSessionsContainer::new(i18n::t!("Jupyter Kernel Sessions")).children(sessions)
     }
 }
 

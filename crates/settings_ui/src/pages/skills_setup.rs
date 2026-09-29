@@ -58,9 +58,9 @@ pub(crate) fn render_skills_setup_page(
         .map(|this| {
             if skills.is_empty() {
                 let message = match &settings_window.current_file {
-                    SettingsUiFile::User => "グローバルなスキルはインストールされていません。",
-                    SettingsUiFile::Project(_) => "プロジェクトのスキルは見つかりませんでした。",
-                    _ => "この文脈で利用できるスキルはありません。",
+                    SettingsUiFile::User => i18n::t!("No global skills installed."),
+                    SettingsUiFile::Project(_) => i18n::t!("No project skills found."),
+                    _ => i18n::t!("No skills available for this context."),
                 };
 
                 this.px_8().items_center().justify_center().child(
@@ -69,7 +69,7 @@ pub(crate) fn render_skills_setup_page(
                         .gap_2()
                         .child(Label::new(message).color(Color::Muted))
                         .child(
-                            Button::new("open-skill-creator-empty", "スキルを作成")
+                            Button::new("open-skill-creator-empty", i18n::t!("Create a Skill"))
                                 .tab_index(0_isize)
                                 .style(ButtonStyle::Outlined)
                                 .start_icon(
@@ -119,8 +119,14 @@ fn render_skill_row(
     let skill_name = skill.name.clone();
 
     let (skill_scope, shared_scope) = match &skill.source {
-        SkillSource::ProjectLocal { .. } => ("プロジェクトの", "このプロジェクト内で"),
-        _ => ("グローバルな", "このマシン上で"),
+        SkillSource::ProjectLocal { .. } => (
+            i18n::tc!("skill scope", "project"),
+            i18n::tc!("skill scope", "used in this project"),
+        ),
+        _ => (
+            i18n::tc!("skill scope", "global"),
+            i18n::tc!("skill scope", "on this machine"),
+        ),
     };
 
     let share_copied = settings_window.last_copied_skill_directory_path.as_deref()
@@ -149,7 +155,7 @@ fn render_skill_row(
             .shape(ui::IconButtonShape::Square)
             .icon_size(IconSize::Small)
             .icon_color(share_icon_color)
-            .tooltip(Tooltip::text("共有リンクをコピー"))
+            .tooltip(Tooltip::text(i18n::t!("Copy Share Link")))
             .visible_on_hover(&group)
             .on_click(cx.listener(move |_settings_window, _event, _window, cx| {
                 let skill_file_path = share_skill_file_path.clone();
@@ -219,7 +225,7 @@ fn render_skill_row(
                     )
                     .tab_index(0_isize)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("スキルを削除"))
+                    .tooltip(Tooltip::text(i18n::t!("Delete Skill")))
                     .on_click(cx.listener(
                         move |settings_window, _event, window, cx| {
                             let directory_path = directory_path.clone();
@@ -231,17 +237,18 @@ fn render_skill_row(
                             }
 
                             let prompt_message =
-                                format!("{skill_scope}スキル「{skill_name}」を削除しますか?");
-                            let prompt_detail = format!(
-                                "{} をゴミ箱へ移動します。このスキルは{shared_scope}他のエージェントツールとも\
-                                 共有されているため、それらからも利用できなくなります。",
+                                i18n::t!("Delete the {skill_scope} skill \"{skill_name}\"?");
+                            let prompt_detail = i18n::t!(
+                                "This will move {} to the trash. This skill is shared with other \
+                                 agent tools {shared_scope}, so it will no longer be available to \
+                                 them either.",
                                 directory_path.compact().display(),
                             );
                             let answer = window.prompt(
                                 PromptLevel::Info,
                                 &prompt_message,
                                 Some(&prompt_detail),
-                                &["削除", "キャンセル"],
+                                &[i18n::t!("Delete"), i18n::t!("Cancel")],
                                 cx,
                             );
 
@@ -296,16 +303,20 @@ fn render_skill_row(
                     )),
                 )
                 .child(
-                    Button::new(SharedString::from(format!("open-{}", skill.name)), "開く")
-                        .tab_index(0_isize)
-                        .style(ButtonStyle::OutlinedGhost)
-                        .size(ButtonSize::Medium)
-                        .end_icon(
-                            Icon::new(IconName::ArrowUpRight)
-                                .size(IconSize::Small)
-                                .color(Color::Muted),
-                        )
-                        .on_click(cx.listener(move |settings_window, _event, window, cx| {
+                    Button::new(
+                        SharedString::from(format!("open-{}", skill.name)),
+                        i18n::t!("Open"),
+                    )
+                    .tab_index(0_isize)
+                    .style(ButtonStyle::OutlinedGhost)
+                    .size(ButtonSize::Medium)
+                    .end_icon(
+                        Icon::new(IconName::ArrowUpRight)
+                            .size(IconSize::Small)
+                            .color(Color::Muted),
+                    )
+                    .on_click(cx.listener(
+                        move |settings_window, _event, window, cx| {
                             let skill_file_path = skill_file_path.clone();
                             let Some(original_window) = settings_window.original_window else {
                                 return;
@@ -326,7 +337,8 @@ fn render_skill_row(
                                 })
                                 .log_err();
                             window.remove_window();
-                        })),
+                        },
+                    )),
                 ),
         )
         .into_any_element()

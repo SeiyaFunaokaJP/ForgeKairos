@@ -292,14 +292,16 @@ pub fn sort_entries(entries: &mut [DirectoryEntry]) {
 /// name is also pasted into `user@host` and into a URL.
 pub fn validate_host(host: &str) -> Result<(), &'static str> {
     if host.trim().is_empty() {
-        return Err("ホスト名または IP アドレスを入力してください。");
+        return Err(i18n::t!("Enter a host name or an IP address."));
     }
     if host.chars().all(|character| {
         character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_' | ':' | '[' | ']')
     }) {
         Ok(())
     } else {
-        Err("ホスト名に使用できない文字が含まれています。")
+        Err(i18n::t!(
+            "The host name contains characters that cannot be used."
+        ))
     }
 }
 
@@ -309,7 +311,9 @@ pub fn validate_user(user: &str) -> Result<(), &'static str> {
     }) {
         Ok(())
     } else {
-        Err("ユーザー名に使用できない文字が含まれています。")
+        Err(i18n::t!(
+            "The user name contains characters that cannot be used."
+        ))
     }
 }
 
@@ -318,16 +322,18 @@ pub fn validate_user(user: &str) -> Result<(), &'static str> {
 /// or inside an FTP protocol command, and no remote file system needs them.
 pub fn validate_remote_path(path: &str) -> Result<(), &'static str> {
     if path.is_empty() {
-        return Err("リモートのパスを入力してください。");
+        return Err(i18n::t!("Enter the remote path."));
     }
     if !path.starts_with('/') {
-        return Err("リモートのパスは / から始めてください。");
+        return Err(i18n::t!("The remote path must start with /."));
     }
     if path
         .chars()
         .any(|character| matches!(character, '"' | '\\') || character.is_control())
     {
-        return Err("リモートのパスに使用できない文字が含まれています。");
+        return Err(i18n::t!(
+            "The remote path contains characters that cannot be used."
+        ));
     }
     Ok(())
 }
@@ -335,10 +341,10 @@ pub fn validate_remote_path(path: &str) -> Result<(), &'static str> {
 /// A single path component typed by the user (new folder, rename target).
 pub fn validate_entry_name(name: &str) -> Result<(), &'static str> {
     if name.trim().is_empty() {
-        return Err("名前を入力してください。");
+        return Err(i18n::t!("Enter a name."));
     }
     if name == "." || name == ".." {
-        return Err("その名前は使用できません。");
+        return Err(i18n::t!("That name cannot be used."));
     }
     if name.chars().any(|character| {
         matches!(
@@ -346,7 +352,9 @@ pub fn validate_entry_name(name: &str) -> Result<(), &'static str> {
             '/' | '\\' | '"' | ':' | '*' | '?' | '<' | '>' | '|'
         ) || character.is_control()
     }) {
-        return Err("名前に使用できない文字が含まれています。");
+        return Err(i18n::t!(
+            "The name contains characters that cannot be used."
+        ));
     }
     Ok(())
 }
@@ -830,7 +838,7 @@ impl IdeExecHost {
 
 impl ExecHost for IdeExecHost {
     fn label(&self) -> SharedString {
-        "この PC".into()
+        i18n::t!("This Computer").into()
     }
 
     fn is_remote(&self) -> bool {
@@ -921,7 +929,7 @@ impl RemoteExecHost {
     ) -> Self {
         Self {
             project,
-            label: format!("このリモート ({display_name})").into(),
+            label: i18n::t!("This Remote ({display_name})").into(),
             root,
             askpass,
         }
@@ -1009,7 +1017,7 @@ impl ExecHost for RemoteExecHost {
                 })?
                 .await?;
             if output.cancelled {
-                bail!("キャンセルされました。");
+                bail!(i18n::t!("Canceled."));
             }
             if !output.succeeded() {
                 bail!(command_failure_message(&output.stderr, &output.stdout));
@@ -1103,9 +1111,12 @@ async fn run_on_this_machine(
 
     let mut child = process
         .spawn()
-        .with_context(|| format!("{} を実行できませんでした。", command.program.name()))?;
+        .with_context(|| i18n::t!("Could not run {program}.", program = command.program.name()))?;
     if let Some(stdin) = command.stdin {
-        let mut handle = child.stdin.take().context("標準入力を開けませんでした")?;
+        let mut handle = child
+            .stdin
+            .take()
+            .context(i18n::t!("Could not open standard input"))?;
         handle.write_all(stdin.as_bytes()).await?;
         handle.flush().await?;
         drop(handle);
@@ -1118,8 +1129,8 @@ async fn run_on_this_machine(
         Some(session) => select_biased! {
             result = session.run(None).fuse() => {
                 match result {
-                    AskPassResult::CancelledByUser => bail!("認証がキャンセルされました。"),
-                    AskPassResult::Timedout => bail!("接続がタイムアウトしました。"),
+                    AskPassResult::CancelledByUser => bail!(i18n::t!("Authentication was canceled.")),
+                    AskPassResult::Timedout => bail!(i18n::t!("The connection timed out.")),
                 }
             }
             output = child.output().fuse() => output?,
@@ -1272,10 +1283,11 @@ impl TransferBackend {
             }
             for entry in self.list(&current, cx).await? {
                 if victims.len() >= MAX_WALKED_ENTRIES {
-                    bail!(
-                        "削除の対象が {MAX_WALKED_ENTRIES} 件を超えました。\
-                         フォルダーを分けて削除してください。"
-                    );
+                    bail!(i18n::t!(
+                        "More than {limit} items would be deleted. \
+                         Delete them in smaller batches.",
+                        limit = MAX_WALKED_ENTRIES
+                    ));
                 }
                 victims.push((remote_join(&current, &entry.name), entry.kind));
             }
@@ -1446,10 +1458,11 @@ impl TransferBackend {
         {
             walked += 1;
             if walked > MAX_WALKED_ENTRIES {
-                bail!(
-                    "転送するファイルが {MAX_WALKED_ENTRIES} 件を超えました。\
-                     フォルダーを分けて転送してください。"
-                );
+                bail!(i18n::t!(
+                    "More than {limit} files would be transferred. \
+                     Transfer them in smaller batches.",
+                    limit = MAX_WALKED_ENTRIES
+                ));
             }
             let local = self.host.join(&local_parent, &name);
             let remote = remote_join(&remote_parent_directory, &name);
@@ -1512,10 +1525,11 @@ impl TransferBackend {
         {
             walked += 1;
             if walked > MAX_WALKED_ENTRIES {
-                bail!(
-                    "転送するファイルが {MAX_WALKED_ENTRIES} 件を超えました。\
-                     フォルダーを分けて転送してください。"
-                );
+                bail!(i18n::t!(
+                    "More than {limit} files would be transferred. \
+                     Transfer them in smaller batches.",
+                    limit = MAX_WALKED_ENTRIES
+                ));
             }
             let remote = remote_join(&remote_parent_directory, &name);
             let local = self.host.join(&local_parent, &name);
@@ -1663,9 +1677,9 @@ fn command_failure_message(stderr: &str, stdout: &str) -> String {
         stderr.trim()
     };
     if detail.is_empty() {
-        "コマンドが失敗しました (詳細な出力はありません)。".to_string()
+        i18n::t!("The command failed (it printed no details).").to_string()
     } else {
-        format!("コマンドが失敗しました:\n{detail}")
+        i18n::t!("The command failed:\n{detail}")
     }
 }
 

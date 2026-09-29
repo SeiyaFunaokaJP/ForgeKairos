@@ -77,11 +77,21 @@ const TEMPLATE_FENCE: &str = indoc! {r#"
 /// turning every inserted graph into a rewrite on its first confirm.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let graph = parse_gitgraph(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_gitgraph(&graph), template);
+        assert_eq!(graph.structure_error(), None);
+    };
+    check(editor::actions::MermaidDiagramKind::GitGraph.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::GitGraph.template();
-    let graph = parse_gitgraph(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_gitgraph(&graph), template);
-    assert_eq!(graph.structure_error(), None);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -192,7 +202,7 @@ async fn a_branch_still_in_use_is_not_removed(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("参照されています")),
+            .is_some_and(|message| message.contains("is referenced by")),
         "the refusal should be explained, got {message:?}"
     );
     assert_eq!(rows, 6);
@@ -234,7 +244,7 @@ async fn an_operation_mermaid_rejects_is_not_written(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("3 番目のマージ")),
+            .is_some_and(|message| message.contains("Operation 3 (merge)")),
         "the merge onto its own branch should be refused, got {message:?}"
     );
     assert!(

@@ -94,10 +94,7 @@ fn the_menu_offers_declared_assigned_and_typed_names_once() {
 #[test]
 fn an_unsupported_kind_lists_the_kinds_that_open() {
     let message = unsupported_kind_message();
-    assert!(
-        message.contains("テキストのまま編集してください"),
-        "{message}"
-    );
+    assert!(message.contains("Edit it as text."), "{message}");
     for kind in mermaid_render::mermaid_model::MermaidDiagramKind::ALL {
         assert!(message.contains(kind.label()), "{message}");
     }

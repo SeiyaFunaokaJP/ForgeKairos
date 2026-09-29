@@ -347,7 +347,7 @@ fn render_conflict_buttons(
         .gap_1()
         .bg(cx.theme().colors().editor_background)
         .child(
-            Button::new("head", format!("{} を使用", conflict.ours_branch_name))
+            Button::new("head", i18n::t!("Use {}", conflict.ours_branch_name))
                 .label_size(LabelSize::Small)
                 .tooltip({
                     let help = panel_operation_help(PanelOperation::UseOurs);
@@ -370,7 +370,7 @@ fn render_conflict_buttons(
                 }),
         )
         .child(
-            Button::new("origin", format!("{} を使用", conflict.theirs_branch_name))
+            Button::new("origin", i18n::t!("Use {}", conflict.theirs_branch_name))
                 .label_size(LabelSize::Small)
                 .tooltip({
                     let help = panel_operation_help(PanelOperation::UseTheirs);
@@ -393,7 +393,7 @@ fn render_conflict_buttons(
                 }),
         )
         .child(
-            Button::new("both", "両方を使用")
+            Button::new("both", i18n::t!("Use Both"))
                 .label_size(LabelSize::Small)
                 .tooltip({
                     let help = panel_operation_help(PanelOperation::UseBoth);
@@ -418,7 +418,7 @@ fn render_conflict_buttons(
         )
         .when(is_ai_enabled, |this| {
             this.child(Divider::vertical()).child(
-                Button::new("resolve-with-agent", "エージェントで解決")
+                Button::new("resolve-with-agent", i18n::t!("Resolve with Agent"))
                     .label_size(LabelSize::Small)
                     .start_icon(
                         Icon::new(IconName::ZedAssistant)
@@ -639,12 +639,17 @@ impl Render for MergeConflictIndicator {
 
         let file_count = self.conflicted_paths.len();
 
-        // 日本語には複数形がないので、原文の単数/複数の出し分けはやめている。
-        let message: SharedString = "マージコンフリクトをエージェントで解決".into();
+        let message: SharedString = i18n::tn!(
+            file_count,
+            "Resolve Merge Conflict with Agent",
+            "Resolve Merge Conflicts with Agent"
+        )
+        .into();
 
-        let tooltip_label: SharedString = format!(
-            "コードベース全体で {} 件のコンフリクトが見つかりました",
-            file_count
+        let tooltip_label: SharedString = i18n::tn!(
+            file_count,
+            "Found {count} conflict across the codebase",
+            "Found {count} conflicts across the codebase"
         )
         .into();
 
@@ -674,7 +679,7 @@ impl Render for MergeConflictIndicator {
                         Tooltip::with_meta(
                             tooltip_label.clone(),
                             None,
-                            "クリックするとエージェントで解決します",
+                            i18n::t!("Click to Resolve with Agent"),
                             cx,
                         )
                     })

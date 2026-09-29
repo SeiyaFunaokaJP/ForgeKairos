@@ -497,9 +497,9 @@ impl AgentTool for GitDiffTool {
         match input.ok().and_then(|input| input.path) {
             Some(path) => {
                 let path = MarkdownInlineCode(&path);
-                format!("{path} の変更 (git diff) を確認").into()
+                i18n::t!("Check the changes (git diff) in {path}").into()
             }
-            None => "変更 (git diff) を確認".into(),
+            None => i18n::t!("Check the changes (git diff)").into(),
         }
     }
 

@@ -1,0 +1,33 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Extend the agent with focused instructions and domain knowledge."
+msgstr "焦点を絞った指示とドメイン知識でエージェントを拡張できます。"
+
+msgid "Introducing Skills Support"
+msgstr "スキル機能のご紹介"
+
+msgid "Read Documentation"
+msgstr "ドキュメントを読む"
+
+msgid "Skills live in {GLOBAL_SKILLS_DIR_DISPLAY}/<name>/SKILL.md"
+msgstr "スキルは {GLOBAL_SKILLS_DIR_DISPLAY}/<name>/SKILL.md に置かれます"
+
+msgid "The Rules Library is making way for skills: your default rules are now in a global AGENTS.md, and your other rules have been converted to skills"
+msgstr "ルールライブラリはスキルに置き換わります。既定のルールはグローバルな AGENTS.md に移動し、そのほかのルールはスキルに変換されました"
+
+msgid "Try Now"
+msgstr "今すぐ試す"
+
+msgid "Type / to manually invoke a skill"
+msgstr "/ を入力するとスキルを手動で呼び出せます"
+
+msgid "Updated to {app_name} {}"
+msgstr "{app_name} {} に更新しました"
+
+msgid "View Release Notes"
+msgstr "リリースノートを表示"

@@ -69,12 +69,12 @@ impl RequirementKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Requirement => "要求",
-            Self::Functional => "機能要求",
-            Self::Interface => "インターフェース要求",
-            Self::Performance => "性能要求",
-            Self::Physical => "物理要求",
-            Self::DesignConstraint => "設計制約",
+            Self::Requirement => i18n::tc!("requirement type", "Requirement"),
+            Self::Functional => i18n::tc!("requirement type", "Functional requirement"),
+            Self::Interface => i18n::tc!("requirement type", "Interface requirement"),
+            Self::Performance => i18n::tc!("requirement type", "Performance requirement"),
+            Self::Physical => i18n::tc!("requirement type", "Physical requirement"),
+            Self::DesignConstraint => i18n::tc!("requirement type", "Design constraint"),
         }
     }
 
@@ -109,9 +109,9 @@ impl RequirementRisk {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Low => "リスク: 低",
-            Self::Medium => "リスク: 中",
-            Self::High => "リスク: 高",
+            Self::Low => i18n::t!("Risk: Low"),
+            Self::Medium => i18n::t!("Risk: Medium"),
+            Self::High => i18n::t!("Risk: High"),
         }
     }
 
@@ -149,10 +149,10 @@ impl VerifyMethod {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Analysis => "検証: 分析",
-            Self::Inspection => "検証: 検査",
-            Self::Test => "検証: テスト",
-            Self::Demonstration => "検証: 実演",
+            Self::Analysis => i18n::t!("Verification: Analysis"),
+            Self::Inspection => i18n::t!("Verification: Inspection"),
+            Self::Test => i18n::t!("Verification: Test"),
+            Self::Demonstration => i18n::t!("Verification: Demonstration"),
         }
     }
 
@@ -199,13 +199,13 @@ impl RelationshipKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Contains => "含む (contains)",
-            Self::Copies => "複製する (copies)",
-            Self::Derives => "派生する (derives)",
-            Self::Satisfies => "満たす (satisfies)",
-            Self::Verifies => "検証する (verifies)",
-            Self::Refines => "詳細化する (refines)",
-            Self::Traces => "追跡する (traces)",
+            Self::Contains => i18n::t!("Contains (contains)"),
+            Self::Copies => i18n::t!("Copies (copies)"),
+            Self::Derives => i18n::t!("Derives (derives)"),
+            Self::Satisfies => i18n::t!("Satisfies (satisfies)"),
+            Self::Verifies => i18n::t!("Verifies (verifies)"),
+            Self::Refines => i18n::t!("Refines (refines)"),
+            Self::Traces => i18n::t!("Traces (traces)"),
         }
     }
 
@@ -244,10 +244,10 @@ impl RequirementDirection {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::TopToBottom => "上から下 (TB)",
-            Self::BottomToTop => "下から上 (BT)",
-            Self::LeftToRight => "左から右 (LR)",
-            Self::RightToLeft => "右から左 (RL)",
+            Self::TopToBottom => i18n::t!("Top to bottom (TB)"),
+            Self::BottomToTop => i18n::t!("Bottom to top (BT)"),
+            Self::LeftToRight => i18n::t!("Left to right (LR)"),
+            Self::RightToLeft => i18n::t!("Right to left (RL)"),
         }
     }
 
@@ -460,8 +460,8 @@ impl RequirementDocument {
             });
     }
 
-    /// Why the document cannot be written back as a diagram Mermaid accepts, in
-    /// Japanese, or `None` when it can. [`parse_requirement`] never produces a
+    /// Why the document cannot be written back as a diagram Mermaid accepts, or
+    /// `None` when it can. [`parse_requirement`] never produces a
     /// document that fails it.
     pub fn structure_error(&self) -> Option<String> {
         let mut seen: Vec<&str> = Vec::new();
@@ -479,12 +479,12 @@ impl RequirementDocument {
                 return Some(invalid_name_message(name));
             }
             if seen.contains(&name) {
-                return Some(format!("名前 `{name}` が二重に使われています。"));
+                return Some(i18n::t!("The name `{name}` is used twice."));
             }
             seen.push(name);
             for class in classes {
                 if !is_valid_requirement_class_name(class) {
-                    return Some(format!("`{class}` はクラス名として使えません。"));
+                    return Some(i18n::t!("`{class}` cannot be used as a class name."));
                 }
             }
         }
@@ -507,8 +507,8 @@ impl RequirementDocument {
         for relationship in &self.relationships {
             for name in [&relationship.source, &relationship.target] {
                 if !seen.contains(&name.as_str()) {
-                    return Some(format!(
-                        "関係が指す `{name}` という要求・要素がありません。"
+                    return Some(i18n::t!(
+                        "There is no requirement or element named `{name}` for a relationship to point to."
                     ));
                 }
             }
@@ -519,12 +519,12 @@ impl RequirementDocument {
             | RequirementStyleStatement::Style { targets, .. } = statement
                 && targets.is_empty()
             {
-                return Some("対象のないスタイル指定があります。".to_string());
+                return Some(i18n::t!("There is a style assignment without a target.").to_string());
             }
             for name in statement.targets() {
                 if !seen.contains(&name.as_str()) {
-                    return Some(format!(
-                        "スタイル指定が指す `{name}` という要求・要素がありません。"
+                    return Some(i18n::t!(
+                        "There is no requirement or element named `{name}` for a style assignment to point to."
                     ));
                 }
             }
@@ -536,17 +536,17 @@ impl RequirementDocument {
 /// Why `name` cannot name a box, in the words the form shows.
 pub fn invalid_name_message(name: &str) -> String {
     if name.is_empty() {
-        return "名前が空の要求・要素があります。".to_string();
+        return i18n::t!("There is a requirement or element with an empty name.").to_string();
     }
-    format!(
-        "「{name}」は名前に使えません (記号 \" - < > {{ }} : , # % ; と前後の空白、単語 direction は不可)。"
+    i18n::t!(
+        "“{name}” cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
     )
 }
 
 /// Why `value` cannot be a field of the box named `owner`.
 pub fn invalid_value_message(owner: &str, value: &str) -> String {
-    format!(
-        "`{owner}` の「{value}」は書けません (改行や前後の空白、`%%{{`、`\"` で始まる値、`\"` と `#` / `%%` の混在は不可)。"
+    i18n::t!(
+        "“{value}” cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
     )
 }
 
@@ -628,7 +628,9 @@ pub fn parse_requirement(source: &str) -> Result<RequirementDocument> {
         .trim()
         .eq_ignore_ascii_case(HEADER)
     {
-        bail!("要求図ではありません (`requirementDiagram` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a requirement diagram (only diagrams that start with `requirementDiagram` can be edited in the structured editor)."
+        ));
     }
     let original = merman_model(source)?;
     reject_trailing_comment(header)?;
@@ -697,14 +699,14 @@ pub fn parse_requirement(source: &str) -> Result<RequirementDocument> {
                 _ => None,
             };
             let Some(direction) = direction else {
-                bail!(
-                    "`{statement}` は `direction` の文として読まれるため、構造化編集できません。テキストのまま編集してください。"
-                );
+                bail!(i18n::t!(
+                    "`{statement}` is read as a `direction` statement, so it is not supported by the structured editor. Edit it as text."
+                ));
             };
             if document.direction.is_some() {
-                bail!(
-                    "`direction` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                );
+                bail!(i18n::t!(
+                    "`direction` is written twice. Merge them into one, then open it again."
+                ));
             }
             document.direction = Some(direction);
             continue;
@@ -714,9 +716,9 @@ pub fn parse_requirement(source: &str) -> Result<RequirementDocument> {
             let (name, classes) = read_name_and_classes(rest)?;
             let body = read_block(&lines, &mut index, statement)?;
             if document.has_name(&name) {
-                bail!(
-                    "`{name}` が二重に定義されています。Mermaid は 2 つ目を無視するため、1 つにまとめてからもう一度開いてください。"
-                );
+                bail!(i18n::t!(
+                    "`{name}` is defined twice. Mermaid ignores the second one, so merge them into one, then open it again."
+                ));
             }
             match RequirementKind::from_keyword(keyword) {
                 Some(kind) => document
@@ -732,9 +734,9 @@ pub fn parse_requirement(source: &str) -> Result<RequirementDocument> {
         if let Some(style_statement) = read_style_statement(statement)? {
             for target in style_statement.targets() {
                 if !document.has_name(target) {
-                    bail!(
-                        "`{statement}` は、その時点で定義されていない `{target}` を指しています。Mermaid はこの指定を無視するため、構造化編集で並べ替えると図が変わります。定義の後ろに移すか、テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "`{statement}` points to `{target}`, which is not defined yet at that point. Mermaid ignores it, so reordering in the structured editor would change the diagram. Move it after the definition, or edit it as text."
+                    ));
                 }
             }
             document.style_statements.push(style_statement);
@@ -746,11 +748,13 @@ pub fn parse_requirement(source: &str) -> Result<RequirementDocument> {
             continue;
         }
 
-        bail!("`{statement}` は要求図の文として読めません。テキストのまま編集してください。");
+        bail!(i18n::t!(
+            "Could not read `{statement}` as a requirement diagram statement. Edit it as text."
+        ));
     }
 
     if let Some(problem) = document.structure_error() {
-        bail!("{problem}テキストのまま編集してください。");
+        bail!(i18n::t!("{problem} Edit it as text."));
     }
 
     // The scan above follows `merman`'s parser; this is what proves it did,
@@ -758,9 +762,9 @@ pub fn parse_requirement(source: &str) -> Result<RequirementDocument> {
     // Mermaid draws.
     let rewritten = merman_model(&emit_requirement(&document))?;
     if !same_drawing(&original, &rewritten)? {
-        bail!(
-            "書き直すと図の内容が変わるため開けません (スタイル指定の順序などに依存しています)。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "This diagram cannot be opened, because rewriting it would change its content (it depends on the order of the style assignments or the like). Edit it as text."
+        ));
     }
     Ok(document)
 }
@@ -768,13 +772,13 @@ pub fn parse_requirement(source: &str) -> Result<RequirementDocument> {
 fn merman_model(source: &str) -> Result<RequirementDiagramRenderModel> {
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| {
-            anyhow!(
-                "Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "Mermaid could not parse this diagram ({error}). Edit it as text."
+            ))
         })?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
     let RenderSemanticModel::Requirement(model) = parsed.into_parts().1 else {
-        bail!("この図は要求図ではありません。");
+        bail!(i18n::t!("This diagram is not a requirement diagram."));
     };
     Ok(model)
 }
@@ -825,10 +829,10 @@ fn strip_inline_comment(line: &str) -> String {
 /// could not write it back.
 fn reject_trailing_comment(line: &str) -> Result<()> {
     if strip_inline_comment(line).trim() != line.trim() {
-        bail!(
-            "文の末尾のコメント (`#` または `%%` 以降) は構造化編集で失われます ({})。コメントを独立した行に移すか、`#` を含む値は `\"` で囲んでください。",
+        bail!(i18n::t!(
+            "Comments at the end of a statement (from `#` or `%%` onward) would be lost in the structured editor ({}). Move the comment to its own line, or enclose values that contain `#` in `\"`.",
             line.trim()
-        );
+        ));
     }
     Ok(())
 }
@@ -847,10 +851,10 @@ fn reject_statement_after_directive(text: &str) -> Result<()> {
         rest = inner.get(end + 3..).unwrap_or_default().trim_start();
     }
     if rest.len() != text.len() && !strip_inline_comment(rest).trim().is_empty() {
-        bail!(
-            "`%%{{ … }}%%` の後ろに同じ行で書かれた文は構造化編集で扱えません ({})。文を次の行に移してからもう一度開いてください。",
+        bail!(i18n::t!(
+            "Statements written after `%%{{ … }}%%` on the same line are not supported by the structured editor ({}). Move the statement to the next line, then open it again.",
             text.trim()
-        );
+        ));
     }
     Ok(())
 }
@@ -913,7 +917,9 @@ fn read_name_and_classes(text: &str) -> Result<(String, Vec<String>)> {
     };
     let name = read_name(name_text)?;
     if name.is_empty() {
-        bail!("名前のない要求・要素があります ({text})。");
+        bail!(i18n::t!(
+            "There is a requirement or element without a name ({text})."
+        ));
     }
     Ok((name, classes))
 }
@@ -924,13 +930,13 @@ fn read_name(text: &str) -> Result<String> {
     let text = text.trim();
     if text.starts_with('"') {
         let Some((name, rest)) = read_quoted(text) else {
-            bail!("閉じていない `\"` があります ({text})。");
+            bail!(i18n::t!("There is an unclosed `\"` ({text})."));
         };
         if !rest.trim().is_empty() {
-            bail!(
-                "`\"{name}\"` の後ろの `{}` は Mermaid が無視するため、構造化編集できません。",
+            bail!(i18n::t!(
+                "Mermaid ignores `{}` after `\"{name}\"`, so it is not supported by the structured editor.",
                 rest.trim()
-            );
+            ));
         }
         return Ok(name);
     }
@@ -951,7 +957,8 @@ fn read_id_list(text: &str) -> Result<Vec<String>> {
     let mut rest = text.trim_start();
     while !rest.is_empty() {
         let (item, after) = if rest.starts_with('"') {
-            read_quoted(rest).ok_or_else(|| anyhow!("閉じていない `\"` があります ({text})。"))?
+            read_quoted(rest)
+                .ok_or_else(|| anyhow!(i18n::t!("There is an unclosed `\"` ({text}).")))?
         } else {
             let end = rest.find(',').unwrap_or(rest.len());
             (
@@ -999,30 +1006,32 @@ fn read_block(lines: &[&str], index: &mut usize, opening: &str) -> Result<BlockB
             return Ok(body);
         }
         let Some((key, value)) = statement.split_once(':') else {
-            bail!("`{statement}` はブロックの項目として読めません (`{opening}`)。");
+            bail!(i18n::t!(
+                "Could not read `{statement}` as an item of a block (`{opening}`)."
+            ));
         };
         let key = key.trim().to_ascii_lowercase();
         if body.fields.iter().any(|(known, _)| *known == key) {
-            bail!(
-                "`{opening}` の `{key}` が 2 回書かれています。Mermaid は後の方だけを使うため、1 つにまとめてからもう一度開いてください。"
-            );
+            bail!(i18n::t!(
+                "`{key}` of `{opening}` is written twice. Mermaid uses only the last one, so merge them into one, then open it again."
+            ));
         }
         body.fields.push((key, read_value(value)?));
     }
-    bail!("`{opening}` のブロックが `}}` で閉じられていません。")
+    bail!(i18n::t!("The `{opening}` block is not closed with `}}`."))
 }
 
 fn read_value(text: &str) -> Result<RequirementValue> {
     let text = text.trim();
     if text.starts_with('"') {
         let Some((value, rest)) = read_quoted(text) else {
-            bail!("閉じていない `\"` があります ({text})。");
+            bail!(i18n::t!("There is an unclosed `\"` ({text})."));
         };
         if !rest.trim().is_empty() {
-            bail!(
-                "`\"{value}\"` の後ろに余分な `{}` があります。",
+            bail!(i18n::t!(
+                "There is an extra `{}` after `\"{value}\"`.",
                 rest.trim()
-            );
+            ));
         }
         return Ok(RequirementValue::new(value.trim(), true));
     }
@@ -1050,16 +1059,21 @@ fn requirement_from_block(
             "id" => requirement.id = value,
             "text" => requirement.text = value,
             "risk" => {
-                let risk = RequirementRisk::from_keyword(&value.value)
-                    .ok_or_else(|| anyhow!("`{}` はリスクとして読めません。", value.value))?;
+                let risk = RequirementRisk::from_keyword(&value.value).ok_or_else(|| {
+                    anyhow!(i18n::t!("Could not read `{}` as a risk.", value.value))
+                })?;
                 requirement.risk = Some(risk);
             }
             "verifymethod" => {
-                let method = VerifyMethod::from_keyword(&value.value)
-                    .ok_or_else(|| anyhow!("`{}` は検証方法として読めません。", value.value))?;
+                let method = VerifyMethod::from_keyword(&value.value).ok_or_else(|| {
+                    anyhow!(i18n::t!(
+                        "Could not read `{}` as a verification method.",
+                        value.value
+                    ))
+                })?;
                 requirement.verify_method = Some(method);
             }
-            other => bail!("`{other}` は要求の項目として読めません。"),
+            other => bail!(i18n::t!("Could not read `{other}` as a requirement field.")),
         }
     }
     Ok(requirement)
@@ -1081,7 +1095,7 @@ fn element_from_block(
         match key.as_str() {
             "type" => element.element_type = value,
             "docref" => element.doc_ref = value,
-            other => bail!("`{other}` は要素の項目として読めません。"),
+            other => bail!(i18n::t!("Could not read `{other}` as an element field.")),
         }
     }
     Ok(element)
@@ -1096,7 +1110,9 @@ fn read_style_statement(statement: &str) -> Result<Option<RequirementStyleStatem
         let target = read_name(statement.get(..offset).unwrap_or_default())?;
         let classes = statement.get(offset + 3..).unwrap_or_default().trim();
         if target.is_empty() || classes.is_empty() {
-            bail!("`{statement}` はクラスの指定として読めません。");
+            bail!(i18n::t!(
+                "Could not read `{statement}` as a class assignment."
+            ));
         }
         return Ok(Some(RequirementStyleStatement::Shorthand {
             target,
@@ -1133,13 +1149,16 @@ fn read_target_list(text: &str) -> Result<(Vec<String>, &str)> {
     let mut rest = text.trim_start();
     while !rest.is_empty() {
         let (target, after) = if rest.starts_with('"') {
-            read_quoted(rest).ok_or_else(|| anyhow!("閉じていない `\"` があります ({text})。"))?
+            read_quoted(rest)
+                .ok_or_else(|| anyhow!(i18n::t!("There is an unclosed `\"` ({text}).")))?
         } else {
             let end = rest
                 .find(|character: char| character == ',' || character.is_whitespace())
                 .unwrap_or(rest.len());
             if end == 0 {
-                bail!("スタイル指定の対象が読めません ({text})。");
+                bail!(i18n::t!(
+                    "Could not read the target of the style assignment ({text})."
+                ));
             }
             (
                 rest.get(..end).unwrap_or_default().to_string(),
@@ -1155,7 +1174,9 @@ fn read_target_list(text: &str) -> Result<(Vec<String>, &str)> {
     }
     let rest = rest.trim();
     if targets.is_empty() || rest.is_empty() {
-        bail!("スタイル指定として読めません ({text})。");
+        bail!(i18n::t!(
+            "Could not read this as a style assignment ({text})."
+        ));
     }
     Ok((targets, rest))
 }
@@ -1167,14 +1188,14 @@ fn read_relationship(statement: &str) -> Result<Option<RequirementRelationship>>
         let left = statement.get(..offset).unwrap_or_default();
         let rest = statement.get(offset + 2..).unwrap_or_default();
         let Some((kind, right)) = rest.split_once('-') else {
-            bail!("`{statement}` は関係として読めません。");
+            bail!(i18n::t!("Could not read `{statement}` as a relationship."));
         };
         (right, kind, left)
     } else if let Some(offset) = statement.find("->") {
         let left = statement.get(..offset).unwrap_or_default();
         let right = statement.get(offset + 2..).unwrap_or_default();
         let Some((source, kind)) = left.split_once('-') else {
-            bail!("`{statement}` は関係として読めません。");
+            bail!(i18n::t!("Could not read `{statement}` as a relationship."));
         };
         (source, kind, right)
     } else {
@@ -1283,6 +1304,38 @@ fn preserved_at(
         .map(|line| line.text.clone())
 }
 
+/// The words Mermaid's requirement diagram lexer turns into keywords, in lower
+/// case.
+const REQUIREMENT_DIAGRAM_WORDS: &[&str] = &[
+    "requirement",
+    "functionalrequirement",
+    "interfacerequirement",
+    "performancerequirement",
+    "physicalrequirement",
+    "designconstraint",
+    "element",
+    "id",
+    "text",
+    "risk",
+    "verifymethod",
+    "type",
+    "docref",
+    "low",
+    "medium",
+    "high",
+    "analysis",
+    "demonstration",
+    "inspection",
+    "test",
+    "contains",
+    "copies",
+    "derives",
+    "satisfies",
+    "verifies",
+    "refines",
+    "traces",
+];
+
 fn block_opening_line(keyword: &str, name: &str, classes: &[String]) -> String {
     let mut text = format!("{INDENT}{keyword} {}", name_token(name));
     if !classes.is_empty() {
@@ -1317,7 +1370,9 @@ fn value_token(value: &RequirementValue) -> String {
 /// — Mermaid's lexer refuses a bare Japanese name, and `style` and `class`
 /// lists end a bare name at a space — or when it starts like `style` or
 /// `class`, which would turn a relationship written from it into a styling
-/// statement.
+/// statement. A bare name that is one of the diagram's words, such as
+/// `Requirement` or `Test`, is quoted too: Mermaid's lexer ignores case and
+/// reads the word as the keyword, so the line would not parse there.
 fn name_token(name: &str) -> String {
     let lowered = name.to_ascii_lowercase();
     if !name
@@ -1325,6 +1380,7 @@ fn name_token(name: &str) -> String {
         .all(|character| character.is_ascii_alphanumeric() || character == '_')
         || lowered.starts_with("style")
         || lowered.starts_with("class")
+        || REQUIREMENT_DIAGRAM_WORDS.contains(&lowered.as_str())
     {
         format!("\"{name}\"")
     } else {
@@ -1600,69 +1656,87 @@ mod tests {
         );
     }
 
+    /// The editor names a new box after its kind, so in English it is called
+    /// `Requirement` or `Element` — words Mermaid's lexer reads as keywords
+    /// whatever their case. A name that only starts with one stays bare.
+    #[test]
+    fn a_name_spelling_a_keyword_is_quoted() {
+        let emitted = assert_stable(
+            "requirementDiagram\n    requirement Requirement {\n    }\n    element Element {\n    }\n    element Test {\n    }\n    element login_page {\n    }\n    Element - satisfies -> Requirement\n    login_page - verifies -> Requirement",
+        );
+        assert_eq!(
+            emitted,
+            "requirementDiagram\n    requirement \"Requirement\" {\n    }\n    element \"Element\" {\n    }\n    element \"Test\" {\n    }\n    element login_page {\n    }\n    \"Element\" - satisfies -> \"Requirement\"\n    login_page - verifies -> \"Requirement\""
+        );
+        assert_renders(&emitted);
+        assert_eq!(name_token("Requirements"), "Requirements");
+        assert_eq!(name_token("Requirement1"), "Requirement1");
+        assert_eq!(name_token("element_a"), "element_a");
+    }
+
     #[test]
     fn what_would_be_drawn_differently_is_refused() {
         // A trailing comment is gone from merman's model, and `#` starts one
         // even inside a value unless the value is quoted.
         assert_refused(
             "requirementDiagram\n    requirement a {\n        text: issue #12\n    }",
-            "コメント",
+            "comment",
         );
         assert_refused(
             "requirementDiagram\n    requirement a { %% メモ\n    }",
-            "コメント",
+            "comment",
         );
         assert_refused(
             "requirementDiagram %% メモ\n    element a {\n    }",
-            "コメント",
+            "comment",
         );
         // Mermaid keeps the first of two blocks with one name and the last of
         // two keys in a block; the form could show neither choice.
         assert_refused(
             "requirementDiagram\n    requirement a {\n    }\n    requirement a {\n        id: 2\n    }",
-            "二重",
+            "defined twice",
         );
         assert_refused(
             "requirementDiagram\n    requirement a {\n    }\n    element a {\n    }",
-            "二重",
+            "defined twice",
         );
         assert_refused(
             "requirementDiagram\n    requirement a {\n        id: 1\n        id: 2\n    }",
-            "2 回",
+            "written twice",
         );
         assert_refused(
             "requirementDiagram\n    direction LR\n    direction TB\n    element a {\n    }",
-            "2 回",
+            "written twice",
         );
         // Styled before the box exists: Mermaid ignores it, the emitter would
         // move it after the box.
         assert_refused(
             "requirementDiagram\n    style a fill:#f96\n    element a {\n    }",
-            "定義されていない",
+            "not defined yet",
         );
         // Mermaid cannot draw a relationship to nothing.
         assert_refused(
             "requirementDiagram\n    element a {\n    }\n    a - satisfies -> b",
-            "ありません",
+            "There is no",
         );
         // A dash in a name cannot be written into a relationship.
         assert_refused(
             "requirementDiagram\n    element a-b {\n    }",
-            "名前に使えません",
+            "cannot be used as a name",
         );
         // `merman` 0.7 dropped the word after a quoted name, which the model
         // refused for what it would have lost; 0.8 refuses the line itself, as
         // Mermaid does.
         assert_refused(
             "requirementDiagram\n    element \"a\" b {\n    }",
-            "Mermaid の構文",
+            "Mermaid could not parse",
         );
         // Two classes applied at a block's definition, defined in the other
         // order before it: moving the block ahead of both changes which style
         // wins.
         assert_refused(
             "requirementDiagram\n    classDef c2 fill:#00f\n    classDef c1 fill:#f00\n    element a:::c1,c2 {\n    }",
-            "変わる",
+            "would change its content",
         );
         for source in [
             "flowchart TD\n    A --> B",
@@ -1870,7 +1944,7 @@ mod tests {
 
     /// Every requirement diagram in `merman`'s own fixtures either opens — and
     /// then survives a round trip that `merman` reads back identically and
-    /// draws — or is refused with a reason in Japanese.
+    /// draws — or is refused with a reason of its own.
     #[test]
     fn merman_fixtures_round_trip_or_are_refused_with_a_reason() {
         let Some(directory) = crate::merman_fixture_directory("requirement") else {
@@ -1907,9 +1981,19 @@ mod tests {
                 }
                 Err(error) => {
                     let message = format!("{error}");
-                    assert!(
-                        message.chars().any(|character| character > '\u{7f}'),
-                        "the reason for {} should be Japanese: {message}",
+                    let japanese = {
+                        let _japanese = crate::mermaid_model::japanese_for_this_thread();
+                        parse_requirement(&source)
+                            .err()
+                            .map(|error| error.to_string())
+                    };
+                    // A sentence the editor wrote goes through the catalog and
+                    // so changes with the language; `merman`'s own error would
+                    // come back unchanged.
+                    assert_ne!(
+                        japanese.as_deref(),
+                        Some(message.as_str()),
+                        "the reason for {} should be the editor's own sentence",
                         path.display()
                     );
                     refused.push(format!(

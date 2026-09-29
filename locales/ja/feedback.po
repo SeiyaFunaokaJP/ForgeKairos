@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Copied into clipboard"
+msgstr "クリップボードにコピーしました"
+
+msgid "Installed extensions ({}):\n{}"
+msgstr "インストール済みの拡張機能 ({} 件):\n{}"
+
+msgid "No extensions installed."
+msgstr "インストール済みの拡張機能はありません。"

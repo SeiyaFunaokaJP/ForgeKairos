@@ -101,28 +101,37 @@ impl IshikawaDocument {
         match &self.effect {
             None if !self.causes.is_empty() => {
                 return Some(
-                    "結果 (問題) が空です。要因を書くには、先に結果を入力してください。"
-                        .to_string(),
+                    i18n::t!(
+                        "The effect (the problem) is empty. Enter the effect before writing causes."
+                    )
+                    .to_string(),
                 );
             }
             Some(effect) if !is_valid_ishikawa_text(effect) => {
-                return Some(format!("結果 `{effect}` は書けません ({TEXT_RULES})。"));
+                return Some(i18n::t!(
+                    "The effect `{effect}` cannot be written ({rules}).",
+                    rules = text_rules()
+                ));
             }
             _ => {}
         }
         let mut previous_depth = 0;
         for cause in &self.causes {
             if cause.depth == 0 || cause.depth > previous_depth + 1 {
-                return Some(format!(
-                    "要因 `{}` が親より 2 段以上深くなっています。",
+                return Some(i18n::t!(
+                    "The cause `{}` is two or more levels deeper than its parent.",
                     cause.text
                 ));
             }
             if !is_valid_ishikawa_text(&cause.text) {
                 return Some(if cause.text.trim().is_empty() {
-                    "空の要因があります。".to_string()
+                    i18n::t!("There is an empty cause.").to_string()
                 } else {
-                    format!("要因 `{}` は書けません ({TEXT_RULES})。", cause.text)
+                    i18n::t!(
+                        "The cause `{cause}` cannot be written ({rules}).",
+                        cause = cause.text,
+                        rules = text_rules()
+                    )
                 });
             }
             previous_depth = cause.depth;
@@ -131,7 +140,11 @@ impl IshikawaDocument {
     }
 }
 
-const TEXT_RULES: &str = "改行と `%%{` は使えず、`%%` で始めることや前後の空白もできません";
+fn text_rules() -> String {
+    i18n::t!(
+        "line breaks and `%%{{` are not allowed, and it cannot start with `%%` or have spaces at either end"
+    )
+}
 
 /// Whether `source` is an Ishikawa diagram: its first statement is `ishikawa-beta` or `ishikawa`.
 ///
@@ -154,11 +167,13 @@ pub fn parse_ishikawa(source: &str) -> Result<IshikawaDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Ishikawa(_)) {
-            bail!("この図は特性要因図ではありません。");
+            bail!(i18n::t!("This diagram is not an Ishikawa diagram."));
         }
     }
 
@@ -182,19 +197,19 @@ fn scan_ishikawa(source: &str) -> Result<IshikawaDocument> {
         let tail = keyword_tail_ignoring_case(header, candidate)?;
         Some((header.get(..candidate.len())?, tail.trim_end()))
     }) else {
-        bail!(
-            "特性要因図ではありません (`ishikawa-beta` か `ishikawa` で始まる図だけを構造化編集できます)。"
-        );
+        bail!(i18n::t!(
+            "This is not an Ishikawa diagram (only a diagram that starts with `ishikawa-beta` or `ishikawa` can be edited in the structured editor)."
+        ));
     };
     if tail.starts_with("%%") {
-        bail!(
-            "`{keyword}` の行の `{tail}` は Mermaid が結果の文字として読みますが、書き戻すとコメントになります。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Mermaid reads `{tail}` on the `{keyword}` line as the text of the effect, but written back it would become a comment. Edit it as text."
+        ));
     }
     if tail.contains("%%{") {
-        bail!(
-            "`%%{{` を含む行は Mermaid が指示子として切り取るので、構造化編集に対応していません ({tail})。"
-        );
+        bail!(i18n::t!(
+            "The structured editor does not support a line that contains `%%{{`, because Mermaid cuts it out as a directive ({tail})."
+        ));
     }
     let mut effect = (!tail.is_empty()).then(|| tail.to_string());
 
@@ -225,17 +240,18 @@ fn scan_ishikawa(source: &str) -> Result<IshikawaDocument> {
             }
             let text = join_lines(lines.get(start..index).unwrap_or_default());
             if let Some(rest) = text_after_directive(&text) {
-                bail!(
-                    "指示子 `%%{{…}}%%` の後ろの `{rest}` は Mermaid が要因として読みますが、構造化編集ではコメントと一緒に動いてしまいます。指示子を独立した行にしてください。"
-                );
+                bail!(i18n::t!(
+                    "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a cause, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+                ));
             }
             preserved_lines.push(PreservedLine { position, text });
             continue;
         }
         if trimmed.contains("%%{") {
-            bail!(
-                "`%%{{` を含む行は Mermaid が指示子として切り取るので、構造化編集に対応していません ({trimmed})。"
-            );
+            bail!(i18n::t!(
+                "The structured editor does not support a line that contains `%%{{`, because Mermaid cuts it out as a directive ({tail}).",
+                tail = trimmed
+            ));
         }
 
         // `merman` counts only spaces and tabs as indentation, one column
@@ -581,7 +597,7 @@ mod tests {
     #[test]
     fn constructs_that_would_change_meaning_are_refused() {
         for (source, expected) in [
-            ("ishikawa-beta %% メモ\n    a", "コメント"),
+            ("ishikawa-beta %% メモ\n    a", "comment"),
             ("ishikawa-beta\n    結果\n        a %%{ b", "%%{"),
             ("ishikawa-beta 結果 %%{ x", "%%{"),
         ] {
@@ -640,7 +656,7 @@ mod tests {
         assert!(
             headless
                 .structure_error()
-                .is_some_and(|error| error.contains("結果"))
+                .is_some_and(|error| error.contains("effect"))
         );
         let empty_cause = IshikawaDocument {
             effect: Some("結果".to_string()),
@@ -650,7 +666,7 @@ mod tests {
         assert!(
             empty_cause
                 .structure_error()
-                .is_some_and(|error| error.contains("空の要因"))
+                .is_some_and(|error| error.contains("empty cause"))
         );
         let bad_effect = IshikawaDocument {
             effect: Some("%% 結果".to_string()),
@@ -739,6 +755,6 @@ mod tests {
         let (_, edges) = merman_fish(source);
         assert!(edges.contains(&("a".to_string(), "b".to_string())));
         let message = format!("{}", parse_ishikawa(source).err().expect("refused"));
-        assert!(message.contains("指示子"), "{message}");
+        assert!(message.contains("directive"), "{message}");
     }
 }

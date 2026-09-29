@@ -183,7 +183,7 @@ impl SkillCreatorPage {
 
         let name_editor = cx.new(|cx| {
             InputField::new(window, cx, "my-new-skill")
-                .label("名前")
+                .label(i18n::t!("Name"))
                 .tab_index(NAME_FIELD_TAB_INDEX)
                 .tab_stop(true)
         });
@@ -191,10 +191,14 @@ impl SkillCreatorPage {
         window.focus(&name_editor.focus_handle(cx), cx);
 
         let description_editor = cx.new(|cx| {
-            InputField::new(window, cx, "例: このテンプレートに従って PR の説明を書く。")
-                .label("説明")
-                .tab_index(DESCRIPTION_FIELD_TAB_INDEX)
-                .tab_stop(true)
+            InputField::new(
+                window,
+                cx,
+                i18n::t!("e.g., Fill the PR description following this template."),
+            )
+            .label(i18n::t!("Description"))
+            .tab_index(DESCRIPTION_FIELD_TAB_INDEX)
+            .tab_stop(true)
         });
 
         let body_editor = cx.new(|cx| {
@@ -204,7 +208,7 @@ impl SkillCreatorPage {
                 buffer
             });
             let mut editor = Editor::for_buffer(buffer, None, window, cx);
-            editor.set_placeholder_text("スキルの内容を入力…", window, cx);
+            editor.set_placeholder_text(i18n::t!("Add skill content…"), window, cx);
             editor.set_soft_wrap_mode(SoftWrap::EditorWidth, cx);
             editor.set_show_gutter(false, cx);
             editor.set_show_wrap_guides(false, cx);
@@ -408,7 +412,7 @@ impl SkillCreatorPage {
     fn recompute_body_error(&mut self, cx: &App) {
         let body = self.current_body(cx);
         self.body_error = if body.trim().is_empty() {
-            Some("本文を入力してください。")
+            Some(i18n::t!("Body is required."))
         } else {
             None
         };
@@ -453,8 +457,8 @@ impl SkillCreatorPage {
         match parse_imported_skill(&content, "") {
             Ok(imported) => self.apply_imported_skill(imported, window, cx),
             Err(err) => {
-                self.save_error = Some(SharedString::from(format!(
-                    "共有されたスキルを読み取れませんでした: {err}"
+                self.save_error = Some(SharedString::from(i18n::t!(
+                    "Couldn't read shared skill: {err}"
                 )));
                 cx.notify();
             }
@@ -699,20 +703,20 @@ impl SkillCreatorPage {
             .child(
                 h_flex()
                     .gap_1()
-                    .child(Label::new("URL からインポート"))
-                    .child(Label::new("(省略可)").color(Color::Muted)),
+                    .child(Label::new(i18n::t!("Import from URL")))
+                    .child(Label::new(i18n::t!("(optional)")).color(Color::Muted)),
             )
             .child(self.url_editor.clone())
             .child(match &self.url_import_status {
-                UrlImportStatus::Idle => Label::new(
-                    "GitHub の .md ファイルの URL を貼り付けると、内容を取得してフォームに入力します。\
-                     非公開のファイルの場合、GITHUB_TOKEN が設定されていればそれを使って再試行します。",
-                )
+                UrlImportStatus::Idle => Label::new(i18n::t!(
+                    "Paste a GitHub .md URL to fetch it and fill out the form. \
+                     For private files, Zed retries using GITHUB_TOKEN, if set."
+                ))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element(),
                 UrlImportStatus::Fetching => {
-                    LoadingLabel::new("取得して解析しています…").into_any_element()
+                    LoadingLabel::new(i18n::t!("Fetching and parsing…")).into_any_element()
                 }
                 UrlImportStatus::Error(error) => h_flex()
                     .gap_1()
@@ -739,7 +743,7 @@ impl SkillCreatorPage {
             .child(
                 v_flex()
                     .gap_2()
-                    .child(Label::new("フロントマター"))
+                    .child(Label::new(i18n::t!("Front-matter")))
                     .child(self.name_editor.clone())
                     .child(self.description_editor.clone()),
             )
@@ -750,7 +754,7 @@ impl SkillCreatorPage {
                     .flex_grow_1()
                     .flex_shrink_0()
                     .gap_2()
-                    .child(Label::new("スキルの内容"))
+                    .child(Label::new(i18n::t!("Skill Content")))
                     .child(self.render_body_field(window, cx))
                     .when_some(self.body_error, |this, error| {
                         this.child(Label::new(error).size(LabelSize::Small).color(Color::Error))
@@ -763,10 +767,12 @@ impl SkillCreatorPage {
 
         SwitchField::new(
             "disable-model-invocation",
-            Some("モデルからの呼び出しを無効にする"),
+            Some(i18n::t!("Disable model invocation")),
             Some(
-                "このスキルをモデルのカタログから隠します。スラッシュコマンドからは引き続き呼び出せます。"
-                    .into(),
+                i18n::t!(
+                    "Hide this skill from the model's catalog. It can still be invoked via slash command."
+                )
+                .into(),
             ),
             toggle_state,
             cx.listener(|this, _state: &ToggleState, _window, cx| {
@@ -832,9 +838,9 @@ impl SkillCreatorPage {
     fn render_footer(&self, _window: &Window, cx: &mut Context<Self>) -> impl IntoElement {
         let saving = self.saving;
         let main_action = if saving {
-            "保存中…"
+            i18n::t!("Saving…")
         } else {
-            "スキルを保存"
+            i18n::t!("Save Skill")
         };
 
         v_flex()
@@ -986,14 +992,14 @@ async fn fetch_imported_skill_from_url_with_github_token(
     }
 
     if body.len() > MAX_SKILL_FILE_SIZE {
-        anyhow::bail!(
-            "SKILL.md のサイズが上限の {}KB を超えています。",
+        anyhow::bail!(i18n::t!(
+            "SKILL.md file exceeds maximum size of {}KB",
             MAX_SKILL_FILE_SIZE / 1024
-        );
+        ));
     }
 
     let content =
-        String::from_utf8(body).context("GitHub からの応答が有効な UTF-8 ではありません。")?;
+        String::from_utf8(body).context(i18n::t!("GitHub response was not valid UTF-8"))?;
     parse_imported_skill(&content, raw_url.as_str())
 }
 
@@ -1023,14 +1029,14 @@ async fn fetch_skill_url(
     let mut response = http_client
         .send(request)
         .await
-        .with_context(|| format!("{raw_url} の取得に失敗しました。"))?;
+        .with_context(|| i18n::t!("failed to fetch {raw_url}"))?;
 
     let status = response.status();
     if github_token.is_some() && status.is_redirection() {
-        anyhow::bail!(
-            "GitHub から予期しないリダイレクト ({}) が返されました (認証済みリクエスト: {raw_url})。",
+        anyhow::bail!(i18n::t!(
+            "GitHub returned an unexpected redirect ({}) for the authenticated request to {raw_url}",
             status.as_u16()
-        );
+        ));
     }
     let mut body = Vec::new();
     response
@@ -1038,18 +1044,20 @@ async fn fetch_skill_url(
         .take(MAX_SKILL_FILE_SIZE as u64 + 1)
         .read_to_end(&mut body)
         .await
-        .context("レスポンス本文の読み込みに失敗しました。")?;
+        .context(i18n::t!("failed to read response body"))?;
 
     Ok((status, body))
 }
 
 fn github_fetch_error(status: StatusCode, body: &[u8]) -> anyhow::Error {
     let mut message = if status == StatusCode::NOT_FOUND {
-        "GitHub がスキルの取得時に 404 を返しました。この URL にリポジトリが存在しないか、非公開になっている可能性があります。"
-            .to_string()
+        i18n::t!(
+            "GitHub returned 404 while fetching the skill; no repository exists at this URL, or it is private"
+        )
+        .to_string()
     } else {
-        format!(
-            "GitHub がスキルの取得時に {} を返しました。",
+        i18n::t!(
+            "GitHub returned {} while fetching the skill",
             status.as_u16()
         )
     };
@@ -1068,17 +1076,17 @@ pub(crate) fn is_supported_skill_url(input: &str) -> bool {
 }
 
 fn github_raw_url(input: &str) -> Result<String> {
-    let url = Url::parse(input.trim()).context("有効な GitHub の URL を入力してください。")?;
+    let url = Url::parse(input.trim()).context(i18n::t!("Enter a valid GitHub URL"))?;
     if url.scheme() != "https" {
-        anyhow::bail!("GitHub のスキル URL は https:// を使用してください。");
+        anyhow::bail!(i18n::t!("GitHub skill URLs must use https://"));
     }
 
     let host = url
         .host_str()
-        .ok_or_else(|| anyhow!("有効な GitHub の URL を入力してください。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Enter a valid GitHub URL")))?;
     let path_segments = url
         .path_segments()
-        .ok_or_else(|| anyhow!("有効な GitHub の URL を入力してください。"))?
+        .ok_or_else(|| anyhow!(i18n::t!("Enter a valid GitHub URL")))?
         .collect::<Vec<_>>();
 
     match host {
@@ -1087,17 +1095,21 @@ fn github_raw_url(input: &str) -> Result<String> {
             ensure_markdown_path(&path_segments)?;
             Ok(url.into())
         }
-        _ => anyhow::bail!("GitHub の .md ファイルの URL を貼り付けてください。"),
+        _ => anyhow::bail!(i18n::t!("Paste a GitHub .md URL")),
     }
 }
 
 fn github_blob_raw_url(path_segments: &[&str]) -> Result<String> {
     let [owner, repo, kind, reference, file_path @ ..] = path_segments else {
-        anyhow::bail!(".md ファイルを指す GitHub の blob URL を貼り付けてください。");
+        anyhow::bail!(i18n::t!(
+            "Paste a GitHub blob URL that points to a .md file"
+        ));
     };
 
     if *kind != "blob" {
-        anyhow::bail!(".md ファイルを指す GitHub の blob URL を貼り付けてください。");
+        anyhow::bail!(i18n::t!(
+            "Paste a GitHub blob URL that points to a .md file"
+        ));
     }
 
     ensure_markdown_path(file_path)?;
@@ -1109,11 +1121,11 @@ fn github_blob_raw_url(path_segments: &[&str]) -> Result<String> {
 
 fn ensure_markdown_path(path_segments: &[&str]) -> Result<()> {
     let Some(file_name) = path_segments.last() else {
-        anyhow::bail!("GitHub の .md ファイルの URL を貼り付けてください。");
+        anyhow::bail!(i18n::t!("Paste a GitHub .md URL"));
     };
 
     if !file_name.to_ascii_lowercase().ends_with(".md") {
-        anyhow::bail!(".md ファイルを指す GitHub の URL を貼り付けてください。");
+        anyhow::bail!(i18n::t!("Paste a GitHub URL that points to a .md file"));
     }
 
     Ok(())
@@ -1200,10 +1212,10 @@ async fn write_skill_to_disk(
     let skill_dir = skills_dir.join(name);
     match fs.metadata(&skill_dir).await {
         Ok(Some(metadata)) if metadata.is_dir => {
-            anyhow::bail!(
-                "「{name}」という名前のスキルは {} に既に存在します。別の名前を指定してください。",
+            anyhow::bail!(i18n::t!(
+                "A skill named \"{name}\" already exists at {}. Pick a different name.",
                 skill_dir.display()
-            );
+            ));
         }
         Ok(Some(_)) => {
             // Something exists at this path, but it isn't a directory — e.g.
@@ -1211,31 +1223,32 @@ async fn write_skill_to_disk(
             // this branch we'd fall through to `create_dir`, which on the
             // real fs returns a generic "File exists" IO error that gives
             // the user no idea what's wrong or how to recover.
-            anyhow::bail!(
-                "スキルのディレクトリではないファイルが {} に既に存在します。\
-                 削除するか、別のスキル名を指定してください。",
+            anyhow::bail!(i18n::t!(
+                "A file (not a skill directory) already exists at {}. \
+                 Delete it or pick a different skill name.",
                 skill_dir.display()
-            );
+            ));
         }
         Ok(None) => {}
         Err(err) => {
-            return Err(err)
-                .with_context(|| format!("{} の存在確認に失敗しました。", skill_dir.display()));
+            return Err(err).with_context(|| {
+                i18n::t!(
+                    "failed to check whether {} already exists",
+                    skill_dir.display()
+                )
+            });
         }
     }
 
     let content = format_skill_file(name, description, body, disable_model_invocation)?;
 
-    fs.create_dir(&skill_dir).await.with_context(|| {
-        format!(
-            "スキルのディレクトリ {} の作成に失敗しました。",
-            skill_dir.display()
-        )
-    })?;
+    fs.create_dir(&skill_dir)
+        .await
+        .with_context(|| i18n::t!("failed to create skill directory {}", skill_dir.display()))?;
     let skill_file_path = skill_dir.join(SKILL_FILE_NAME);
     fs.write(&skill_file_path, content.as_bytes())
         .await
-        .with_context(|| format!("{} の書き込みに失敗しました。", skill_file_path.display()))?;
+        .with_context(|| i18n::t!("failed to write {}", skill_file_path.display()))?;
 
     Ok(skill_file_path)
 }
@@ -1252,7 +1265,7 @@ fn format_skill_file(
         disable_model_invocation,
     };
     let frontmatter = serde_yaml_ng::to_string(&metadata)
-        .context("スキルのフロントマターの YAML への変換に失敗しました。")?;
+        .context(i18n::t!("failed to serialize skill frontmatter as YAML"))?;
 
     let mut content = String::with_capacity(frontmatter.len() + body.len() + 16);
     content.push_str("---\n");
@@ -1530,7 +1543,7 @@ mod tests {
         let message = error.to_string();
 
         assert!(
-            message.contains("小文字の英字・数字・ハイフン"),
+            message.contains("Skill name must contain only lowercase letters"),
             "error should come from shared skill metadata validation, got: {message}"
         );
     }
@@ -1595,7 +1608,7 @@ mod tests {
         let message = error.to_string();
 
         assert!(
-            message.contains("予期しないリダイレクト (302)"),
+            message.contains("unexpected redirect (302)"),
             "error should report the redirect, got: {message}"
         );
     }
@@ -1616,7 +1629,7 @@ mod tests {
         let message = error.to_string();
 
         assert!(
-            message.contains("リポジトリが存在しないか、非公開になっている可能性があります"),
+            message.contains("no repository exists at this URL, or it is private"),
             "404 error should mention private repositories, got: {message}"
         );
         assert_eq!(client.authorization_headers(), vec![None]);
@@ -1641,11 +1654,11 @@ mod tests {
         let message = error.to_string();
 
         assert!(
-            message.contains("サイズが上限"),
+            message.contains("exceeds maximum size"),
             "error should report the skill size limit, got: {message}"
         );
         assert!(
-            !message.contains("レスポンス本文の読み込みに失敗しました"),
+            !message.contains("failed to read response body"),
             "reader should not be polled past the limit, got: {message}"
         );
     }
@@ -1666,7 +1679,7 @@ mod tests {
         .expect_err("non-success responses should be rejected");
         let message = error.to_string();
 
-        assert!(message.contains("GitHub がスキルの取得時に 500 を返しました"));
+        assert!(message.contains("GitHub returned 500"));
         assert!(
             message.ends_with('…'),
             "error body should be visibly truncated, got: {message}"
@@ -1725,7 +1738,7 @@ mod tests {
         .await
         .expect_err("writing over an existing skill must fail");
         assert!(
-            err.to_string().contains("既に存在します"),
+            err.to_string().contains("already exists"),
             "error message should mention the conflict, got: {err}"
         );
     }
@@ -1756,7 +1769,7 @@ mod tests {
         .expect_err("writing where a file already lives must fail");
         let message = err.to_string();
         assert!(
-            message.contains("スキルのディレクトリではない"),
+            message.contains("not a skill directory"),
             "error should explain the conflict is a non-directory, got: {message}"
         );
         // Path separator differs between platforms

@@ -86,10 +86,10 @@ impl FlowDirection {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::TopToBottom => "上から下 (TB / TD)",
-            Self::BottomToTop => "下から上 (BT)",
-            Self::LeftToRight => "左から右 (LR)",
-            Self::RightToLeft => "右から左 (RL)",
+            Self::TopToBottom => i18n::t!("Top to bottom (TB / TD)"),
+            Self::BottomToTop => i18n::t!("Bottom to top (BT)"),
+            Self::LeftToRight => i18n::t!("Left to right (LR)"),
+            Self::RightToLeft => i18n::t!("Right to left (RL)"),
         }
     }
 
@@ -147,22 +147,22 @@ impl NodeShape {
 
     pub fn label(&self) -> String {
         match self {
-            Self::Rectangle => "長方形 [処理]".into(),
-            Self::Rounded => "角丸 (処理)".into(),
-            Self::Stadium => "端が丸い ([開始])".into(),
-            Self::Subroutine => "サブルーチン [[処理]]".into(),
-            Self::Cylinder => "データベース [(保存)]".into(),
-            Self::Circle => "円 ((点))".into(),
-            Self::DoubleCircle => "二重丸 (((終端)))".into(),
-            Self::Ellipse => "楕円 (-楕円-)".into(),
-            Self::Asymmetric => "旗 >注記]".into(),
-            Self::Rhombus => "ひし形 {条件}".into(),
-            Self::Hexagon => "六角形 {{準備}}".into(),
-            Self::ParallelogramRight => "平行四辺形 [/入力/]".into(),
-            Self::ParallelogramLeft => "平行四辺形 (逆) [\\出力\\]".into(),
-            Self::TrapezoidUp => "台形 [/手操作\\]".into(),
-            Self::TrapezoidDown => "台形 (逆) [\\手入力/]".into(),
-            Self::Named(name) => format!("その他: {name}"),
+            Self::Rectangle => i18n::t!("Rectangle [process]").into(),
+            Self::Rounded => i18n::t!("Rounded (process)").into(),
+            Self::Stadium => i18n::t!("Stadium ([start])").into(),
+            Self::Subroutine => i18n::t!("Subroutine [[process]]").into(),
+            Self::Cylinder => i18n::t!("Database [(store)]").into(),
+            Self::Circle => i18n::t!("Circle ((point))").into(),
+            Self::DoubleCircle => i18n::t!("Double circle (((end)))").into(),
+            Self::Ellipse => i18n::t!("Ellipse (-ellipse-)").into(),
+            Self::Asymmetric => i18n::t!("Flag >note]").into(),
+            Self::Rhombus => i18n::t!("Rhombus {{condition}}"),
+            Self::Hexagon => i18n::t!("Hexagon {{{{prepare}}}}"),
+            Self::ParallelogramRight => i18n::t!("Parallelogram [/input/]").into(),
+            Self::ParallelogramLeft => i18n::t!("Parallelogram (reversed) [\\output\\]").into(),
+            Self::TrapezoidUp => i18n::t!("Trapezoid [/manual operation\\]").into(),
+            Self::TrapezoidDown => i18n::t!("Trapezoid (reversed) [\\manual input/]").into(),
+            Self::Named(name) => i18n::t!("Other: {name}"),
         }
     }
 
@@ -286,49 +286,49 @@ pub struct EdgeStylePreset {
 pub const EDGE_STYLE_PRESETS: [EdgeStylePreset; 8] = [
     EdgeStylePreset {
         operator: "-->",
-        label: "矢印",
+        label: i18n::msg!("Arrow"),
         arrow: ArrowKind::Arrow,
         stroke: StrokeKind::Normal,
     },
     EdgeStylePreset {
         operator: "---",
-        label: "線のみ",
+        label: i18n::msg!("Line only"),
         arrow: ArrowKind::None,
         stroke: StrokeKind::Normal,
     },
     EdgeStylePreset {
         operator: "-.->",
-        label: "点線の矢印",
+        label: i18n::msg!("Dotted arrow"),
         arrow: ArrowKind::Arrow,
         stroke: StrokeKind::Dotted,
     },
     EdgeStylePreset {
         operator: "==>",
-        label: "太い矢印",
+        label: i18n::msg!("Thick arrow"),
         arrow: ArrowKind::Arrow,
         stroke: StrokeKind::Thick,
     },
     EdgeStylePreset {
         operator: "<-->",
-        label: "両向き矢印",
+        label: i18n::msg!("Two-way arrow"),
         arrow: ArrowKind::DoubleArrow,
         stroke: StrokeKind::Normal,
     },
     EdgeStylePreset {
         operator: "--x",
-        label: "×印",
+        label: i18n::msg!("Cross end"),
         arrow: ArrowKind::Cross,
         stroke: StrokeKind::Normal,
     },
     EdgeStylePreset {
         operator: "--o",
-        label: "○印",
+        label: i18n::msg!("Circle end"),
         arrow: ArrowKind::Circle,
         stroke: StrokeKind::Normal,
     },
     EdgeStylePreset {
         operator: "~~~",
-        label: "非表示 (位置合わせ)",
+        label: i18n::msg!("Invisible (for alignment)"),
         arrow: ArrowKind::None,
         stroke: StrokeKind::Invisible,
     },
@@ -489,10 +489,12 @@ pub fn parse_flowchart(source: &str) -> Result<FlowchartDocument> {
     } else {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| anyhow!("{error}"))?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         match parsed.into_parts().1 {
             RenderSemanticModel::Flowchart(model) => Some(model),
-            _ => bail!("この図種は構造化編集に対応していません (フローチャートのみ)。"),
+            _ => bail!(i18n::t!(
+                "This diagram type is not supported by the structured editor (flowcharts only)."
+            )),
         }
     };
 
@@ -1430,7 +1432,9 @@ fn scan_source(source: &str) -> Result<SourceScan> {
             continue;
         }
         let Some(found) = header_keyword(trimmed) else {
-            bail!("この図種は構造化編集に対応していません (フローチャートのみ)。");
+            bail!(i18n::t!(
+                "This diagram type is not supported by the structured editor (flowcharts only)."
+            ));
         };
         keyword = Some(found);
         index += 1;
@@ -1547,8 +1551,8 @@ fn unsupported_construct(
     let mut seen: Vec<&str> = Vec::new();
     for id in edge_ids {
         if seen.contains(&id.as_str()) {
-            return Some(format!(
-                "エッジ ID「{id}」が重複している図は構造化編集に対応していません。テキストのまま編集してください。"
+            return Some(i18n::t!(
+                "Diagrams with a duplicate edge ID `{id}` are not supported by the structured editor. Edit it as text."
             ));
         }
         seen.push(id);
@@ -1557,8 +1561,8 @@ fn unsupported_construct(
     for statement in statements {
         let outside = outside_labels(statement);
         if outside.contains("%%") {
-            return Some(format!(
-                "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
+            return Some(i18n::t!(
+                "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
             ));
         }
         // Classes are carried per node and per subgraph; Mermaid also lets a
@@ -1570,8 +1574,8 @@ fn unsupported_construct(
                 .split(',')
                 .find(|target| edge_ids.iter().any(|id| id == target.trim()))
         {
-            return Some(format!(
-                "エッジ ({edge}) にクラスを付けた図は構造化編集に対応していません。テキストのまま編集してください。"
+            return Some(i18n::t!(
+                "Diagrams with a class on an edge ({edge}) are not supported by the structured editor. Edit it as text."
             ));
         }
         for (at, _) in outside.match_indices('@') {
@@ -1609,8 +1613,8 @@ fn unsupported_construct(
                     .map(str::trim)
                     .find(|key| !key.is_empty() && !matches!(*key, "shape" | "label"))
                 {
-                    return Some(format!(
-                        "要素 `{target}` の `{key}:` は構造化編集で失われます ({statement})。テキストのまま編集してください。"
+                    return Some(i18n::t!(
+                        "`{key}:` on the element `{target}` is lost in the structured editor ({statement}). Edit it as text."
                     ));
                 }
                 continue;
@@ -1619,8 +1623,8 @@ fn unsupported_construct(
             if !after.trim_start().starts_with('{') && edge_ids.iter().any(|id| id == target) {
                 continue;
             }
-            return Some(format!(
-                "エッジ ID (`{target}@`) を使った図は構造化編集に対応していません ({statement})。テキストのまま編集してください。"
+            return Some(i18n::t!(
+                "Diagrams that use edge IDs (`{target}@`) are not supported by the structured editor ({statement}). Edit it as text."
             ));
         }
     }
@@ -1680,8 +1684,8 @@ fn shared_edge_id(document: &FlowchartDocument) -> Option<String> {
         (document.node_index(id).is_some() || document.subgraphs.iter().any(|group| group.id == id))
             .then_some(id)
     })?;
-    Some(format!(
-        "エッジ ID「{id}」がノードまたはグループの ID と同じ図は構造化編集に対応していません。テキストのまま編集してください。"
+    Some(i18n::t!(
+        "Diagrams where the edge ID `{id}` is the same as a node or group ID are not supported by the structured editor. Edit it as text."
     ))
 }
 
@@ -1712,8 +1716,8 @@ fn preserved_line_with_a_statement(preserved: &[PreservedLine]) -> Option<String
                 !segment.is_empty() && !preserved_keyword(segment)
             });
         if chained_statement {
-            return Some(format!(
-                "1 行に続けて書かれた文 ({trimmed}) は構造化編集で二重に書き戻されます。文を別の行に分けるか、テキストのまま編集してください。"
+            return Some(i18n::t!(
+                "The structured editor would write statements that follow each other on one line ({trimmed}) back twice. Put the statements on separate lines, or edit it as text."
             ));
         }
     }
@@ -2384,7 +2388,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             let message = format!("{error}");
             assert!(
-                message.contains("テキストのまま編集してください"),
+                message.contains("it as text"),
                 "unexpected message for `{source}`: {message}"
             );
         }
@@ -3117,7 +3121,7 @@ mod tests {
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             assert!(
-                format!("{error}").contains("テキストのまま編集してください"),
+                format!("{error}").contains("it as text"),
                 "unexpected message for `{source}`: {error}"
             );
         }
@@ -3130,7 +3134,7 @@ mod tests {
         let error = parse_flowchart("flowchart TD\n  A --> B\n  style A fill:#f00; A --> C")
             .err()
             .expect("the chained edge would be written twice");
-        assert!(format!("{error}").contains("テキストのまま編集してください"));
+        assert!(format!("{error}").contains("it as text"));
 
         for source in [
             "flowchart TD\n  A --> B\n  B --> C\n  linkStyle 0 stroke:#f00; linkStyle 1 stroke:#00f",

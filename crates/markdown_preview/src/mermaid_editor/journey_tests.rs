@@ -80,10 +80,20 @@ const TEMPLATE_FENCE: &str = indoc! {"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let journey = parse_journey(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_journey(&journey), template);
+    };
+    check(editor::actions::MermaidDiagramKind::Journey.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::Journey.template();
-    let journey = parse_journey(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_journey(&journey), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -164,8 +174,8 @@ async fn tasks_scores_people_and_renames_are_written_back(cx: &mut TestAppContex
                   比較する: 3: 顧客, 家族
                   カートに入れる: 5: 顧客
                   支払う: 2: 顧客, 店舗
-                section 新しいセクション
-                  新しい作業: 3
+                section New section
+                  New task: 3
             ```
         "},
     );
@@ -214,7 +224,7 @@ async fn what_would_be_drawn_differently_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("担当者")),
+            .is_some_and(|message| message.contains("cannot list the people")),
         "the modal should say the people cannot be written, got {message:?}"
     );
 }

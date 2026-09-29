@@ -1333,11 +1333,11 @@ impl FileFinderDelegate {
                 } => (
                     channel_name.to_string(),
                     string_match.positions.clone(),
-                    "チャンネルノート".to_string(),
+                    i18n::t!("Channel Notes").to_string(),
                     vec![],
                 ),
                 Match::CreateNew(project_path) => (
-                    format!("ファイルを作成: {}", project_path.path.display(path_style)),
+                    i18n::t!("Create File: {}", project_path.path.display(path_style)),
                     vec![],
                     String::from(""),
                     vec![],
@@ -1788,7 +1788,7 @@ impl PickerDelegate for FileFinderDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "プロジェクト内のファイルを検索...".into()
+        i18n::t!("Search project files...").into()
     }
 
     fn searchbar_trailer(
@@ -1801,9 +1801,9 @@ impl PickerDelegate for FileFinderDelegate {
         // Clicking includes ignored files unless they're already included, in
         // which case it excludes them again (see `handle_toggle_ignored`).
         let tooltip_label = if including_ignored {
-            "無視ファイルを除外"
+            i18n::t!("Exclude Ignored Files")
         } else {
-            "無視ファイルを含める"
+            i18n::t!("Include Ignored Files")
         };
 
         let filter_button = IconButton::new("filter-ignored", IconName::FileIgnored)
@@ -2061,7 +2061,7 @@ impl PickerDelegate for FileFinderDelegate {
                     ..Default::default()
                 };
                 let mut message = picker::HighlightedTextBuilder::default();
-                message.push_plain("ファイルを作成 ");
+                message.push_plain(i18n::t!("Create file "));
                 message.push_styled(project_path.path.display(path_style), path_highlight);
                 message.push_plain("?");
                 Some(picker::PreviewUpdate::message(message.build()))
@@ -2099,16 +2099,25 @@ impl PickerDelegate for FileFinderDelegate {
         _cx: &mut Context<Picker<Self>>,
     ) -> Vec<picker::PickerAction> {
         let open_label: SharedString = if self.selected_matches.len() > 1 {
-            "複数開く".into()
+            i18n::t!("Open multiple").into()
         } else {
-            "ファイルを開く".into()
+            i18n::t!("Open File").into()
         };
         vec![
-            picker::PickerAction::header("分割…"),
-            picker::PickerAction::button("左", pane::SplitLeft::default().boxed_clone()),
-            picker::PickerAction::button("右", pane::SplitRight::default().boxed_clone()),
-            picker::PickerAction::button("上", pane::SplitUp::default().boxed_clone()),
-            picker::PickerAction::button("下", pane::SplitDown::default().boxed_clone()),
+            picker::PickerAction::header(i18n::t!("Split…")),
+            picker::PickerAction::button(
+                i18n::t!("Left"),
+                pane::SplitLeft::default().boxed_clone(),
+            ),
+            picker::PickerAction::button(
+                i18n::t!("Right"),
+                pane::SplitRight::default().boxed_clone(),
+            ),
+            picker::PickerAction::button(i18n::t!("Up"), pane::SplitUp::default().boxed_clone()),
+            picker::PickerAction::button(
+                i18n::t!("Down"),
+                pane::SplitDown::default().boxed_clone(),
+            ),
             picker::PickerAction::separator(),
             picker::PickerAction::button(open_label, menu::Confirm.boxed_clone()),
         ]

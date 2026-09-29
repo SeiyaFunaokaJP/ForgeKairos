@@ -45,7 +45,7 @@ pub(crate) const APPEND_ROWS: usize = 1;
 
 /// The words beside the "+" of the trailing column's heading, which pair it
 /// with the "行を追加" of the trailing row.
-const APPEND_COLUMN_LABEL: &str = "列を追加";
+const APPEND_COLUMN_LABEL: &str = i18n::msg!("Add Column");
 
 /// The glyph of the "+" column's heading, the space after it and the size of
 /// the label. [`append_column_width`] works the column's width out from these,
@@ -69,7 +69,7 @@ pub(crate) fn append_column_width(cx: &App) -> AbsoluteLength {
     let label_size = APPEND_COLUMN_LABEL_SIZE.rems(cx);
     // A whole em for every character, which is as wide as a CJK glyph gets in
     // the fonts the label is drawn in.
-    let label_width = label_size * APPEND_COLUMN_LABEL.chars().count() as f32;
+    let label_width = label_size * i18n::tr(APPEND_COLUMN_LABEL).chars().count() as f32;
     // Layout snaps each of these lengths to whole device pixels on its own and
     // rounds the label's measured width up, so at a fractional scale factor the
     // heading can come out a few device pixels short of the sum. A label of
@@ -357,9 +357,9 @@ impl TabularDataPreviewPane {
                             )
                     })
                     .when(index == ROW_IDENTIFIER_COLUMNS, |this| {
-                        this.child("行を追加")
+                        this.child(i18n::t!("Add Row"))
                     })
-                    .tooltip(Tooltip::text("末尾に 1 行追加"))
+                    .tooltip(Tooltip::text(i18n::t!("Add a row at the end")))
                     .on_click(cx.listener(|this, _event, window, cx| {
                         this.append_row(window, cx);
                     }))
@@ -391,9 +391,9 @@ impl TabularDataPreviewPane {
                     .text_size(APPEND_COLUMN_LABEL_SIZE.rems(cx))
                     .text_color(colors.text_muted)
                     .debug_selector(|| APPEND_COLUMN_LABEL_DEBUG_SELECTOR.to_owned())
-                    .child(APPEND_COLUMN_LABEL),
+                    .child(i18n::tr(APPEND_COLUMN_LABEL)),
             )
-            .tooltip(Tooltip::text("末尾に 1 列追加"))
+            .tooltip(Tooltip::text(i18n::t!("Add a column at the end")))
             .on_click(cx.listener(|this, _event, window, cx| {
                 this.append_column(window, cx);
             }))
@@ -444,7 +444,7 @@ impl TabularDataPreviewPane {
                     .size(IconSize::Indicator)
                     .color(Color::Accent),
             )
-            .tooltip(Tooltip::text("ここに 1 行挿入"))
+            .tooltip(Tooltip::text(i18n::t!("Insert a row here")))
             // On the press rather than on the click, and stopping there: the
             // handle lies over the heading, which selects its row on a press,
             // and a "+" that selected the row as well as inserting above it
@@ -492,7 +492,7 @@ impl TabularDataPreviewPane {
                     .size(IconSize::Indicator)
                     .color(Color::Accent),
             )
-            .tooltip(Tooltip::text("ここに 1 列挿入"))
+            .tooltip(Tooltip::text(i18n::t!("Insert a column here")))
             // As for the row handle: the column heading selects its column on a
             // press, and the handle lies over the heading's own text.
             .on_mouse_down(
@@ -511,12 +511,12 @@ impl TabularDataPreviewPane {
     pub(crate) fn render_start_table_button(&self, cx: &Context<Self>) -> AnyElement {
         Button::new(
             ElementId::Name("tabular-grid-start-table".into()),
-            "行を追加",
+            i18n::t!("Add Row"),
         )
         .style(ButtonStyle::Subtle)
         .size(ButtonSize::Compact)
         .start_icon(Icon::new(IconName::Plus).size(IconSize::Small))
-        .tooltip(Tooltip::text("1 行目を作ります"))
+        .tooltip(Tooltip::text(i18n::t!("Creates the first row")))
         .on_click(cx.listener(|this, _event, window, cx| {
             this.append_row(window, cx);
         }))
@@ -605,7 +605,7 @@ impl TabularDataPreviewPane {
         // A blank line above the header row would become the file's first line
         // and therefore the new header, demoting the real one to a data row.
         if row_ref == RowRef::Header {
-            self.set_status_message("見出し行の上には行を挿入できません", cx);
+            self.set_status_message(i18n::t!("Rows can't be inserted above the header row"), cx);
             return;
         }
         let position = RowInsertPosition::Before(row_ref);
@@ -691,7 +691,7 @@ impl TabularDataPreviewPane {
                 self.select_cell(GridCell::new(row, AnyColumn(0)), false, cx);
                 self.scroll_cursor_into_view(window, cx);
             }
-            None => self.set_status_message("追加した行は絞り込みで表示されていません", cx),
+            None => self.set_status_message(i18n::t!("The added row is hidden by the filters"), cx),
         }
     }
 
@@ -761,23 +761,23 @@ mod tests {
     #[test]
     fn test_the_context_menu_is_about_what_was_clicked() {
         let cell = menu_labels(GridMenuTarget::Cell);
-        assert!(cell.contains(&"上に行を挿入"), "{cell:?}");
-        assert!(cell.contains(&"左に列を挿入"), "{cell:?}");
+        assert!(cell.contains(&"Insert Row Above"), "{cell:?}");
+        assert!(cell.contains(&"Insert Column Left"), "{cell:?}");
 
         let rows = menu_labels(GridMenuTarget::RowHeader);
-        assert_eq!(rows.first(), Some(&"上に行を挿入"), "{rows:?}");
-        assert!(rows.contains(&"行を削除"), "{rows:?}");
+        assert_eq!(rows.first(), Some(&"Insert Row Above"), "{rows:?}");
+        assert!(rows.contains(&"Delete Rows"), "{rows:?}");
         assert!(
-            !rows.iter().any(|label| label.contains('列')),
+            !rows.iter().any(|label| label.contains("Column")),
             "a row heading's menu should not offer column operations: {rows:?}"
         );
 
         let columns = menu_labels(GridMenuTarget::ColumnHeader(AnyColumn(0)));
-        assert_eq!(columns.first(), Some(&"左に列を挿入"), "{columns:?}");
-        assert!(columns.contains(&"列を削除"), "{columns:?}");
-        assert!(columns.contains(&"昇順で並べ替え"), "{columns:?}");
+        assert_eq!(columns.first(), Some(&"Insert Column Left"), "{columns:?}");
+        assert!(columns.contains(&"Delete Columns"), "{columns:?}");
+        assert!(columns.contains(&"Sort Ascending"), "{columns:?}");
         assert!(
-            !columns.iter().any(|label| label.contains('行')),
+            !columns.iter().any(|label| label.contains("Row")),
             "a column heading's menu should not offer row operations: {columns:?}"
         );
 
@@ -788,9 +788,9 @@ mod tests {
             (GridMenuTarget::RowHeader, &rows),
             (GridMenuTarget::ColumnHeader(AnyColumn(0)), &columns),
         ] {
-            assert!(labels.contains(&"コピー"), "{target:?}: {labels:?}");
-            assert!(labels.contains(&"内容を消去"), "{target:?}: {labels:?}");
-            assert!(labels.contains(&"塗りつぶしの色"), "{target:?}: {labels:?}");
+            assert!(labels.contains(&"Copy"), "{target:?}: {labels:?}");
+            assert!(labels.contains(&"Clear Contents"), "{target:?}: {labels:?}");
+            assert!(labels.contains(&"Fill Color"), "{target:?}: {labels:?}");
         }
     }
 
@@ -987,6 +987,25 @@ mod tests {
         assert_the_plus_column_label_fits(&mut cx);
     }
 
+    /// The label changes length with the UI language, which switches while the
+    /// file stays open: the column has to be worked out again for the new label.
+    #[gpui::test]
+    async fn test_the_plus_column_follows_the_ui_language(cx: &mut TestAppContext) {
+        let _installs = i18n::test_support::ThreadLocalInstalls::new();
+        i18n::install(Some(i18n_catalog::test_support::bundled_catalog("ja")));
+        let (_pane, _editor, mut cx) = open_grid("a,b
+c,d", cx).await;
+        cx.run_until_parked();
+        assert_eq!(i18n::tr(APPEND_COLUMN_LABEL), "列を追加");
+        assert_the_plus_column_label_fits(&mut cx);
+
+        i18n::install(None);
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        assert_eq!(i18n::tr(APPEND_COLUMN_LABEL), "Add Column");
+        assert_the_plus_column_label_fits(&mut cx);
+    }
+
     fn assert_the_plus_column_label_fits(cx: &mut VisualTestContext) {
         let heading = cx
             .debug_bounds(APPEND_COLUMN_DEBUG_SELECTOR)
@@ -998,10 +1017,17 @@ mod tests {
             let font_size = APPEND_COLUMN_LABEL_SIZE
                 .rems(cx)
                 .to_pixels(window.rem_size());
-            let run = window.text_style().to_run(APPEND_COLUMN_LABEL.len());
+            let run = window
+                .text_style()
+                .to_run(i18n::tr(APPEND_COLUMN_LABEL).len());
             let text_width = window
                 .text_system()
-                .shape_line(APPEND_COLUMN_LABEL.into(), font_size, &[run], None)
+                .shape_line(
+                    i18n::tr(APPEND_COLUMN_LABEL).into(),
+                    font_size,
+                    &[run],
+                    None,
+                )
                 .width;
             (font_size, text_width)
         });
@@ -1034,7 +1060,7 @@ mod tests {
         // not have. The heading centers its contents, which puts as much room
         // before the "+" as there is after the label.
         let room_for_label = label.size.width + (heading.right() - label.right()) * 2.;
-        let characters = APPEND_COLUMN_LABEL.chars().count() as f32;
+        let characters = i18n::tr(APPEND_COLUMN_LABEL).chars().count() as f32;
         let room_needed = font_size * (characters + 0.5);
         // Within a pixel, which is as far as snapping to the test window's own
         // device pixels moves the edges this is measured between.

@@ -37,6 +37,7 @@ struct OllamaModelPickerDelegate {
     selected_index: usize,
     on_model_changed: Arc<dyn Fn(SharedString, &mut Window, &mut App) + 'static>,
     loading: bool,
+    awaiting_consent: bool,
     _fetch_models_task: Option<Task<()>>,
 }
 
@@ -53,7 +54,12 @@ impl OllamaModelPickerDelegate {
         }
         let filtered_models = matches_for_query(&models, "");
 
-        let loading = !api_url.is_empty();
+        // zed-jp-enhance: opening the picker is not consent to contact a server
+        // off this machine. This picker only edits the edit prediction settings,
+        // so it asks for the consent their requests are checked against (ADR-F10).
+        let awaiting_consent = !api_url.is_empty()
+            && !edit_prediction::endpoint_is_local_or_acknowledged("ollama", &api_url, cx);
+        let loading = !api_url.is_empty() && !awaiting_consent;
         let fetch_models_task = loading.then(|| {
             let http_client = cx.http_client();
             cx.spawn(async move |this, cx| {
@@ -97,6 +103,7 @@ impl OllamaModelPickerDelegate {
             selected_index: 0,
             on_model_changed: Arc::new(on_model_changed),
             loading,
+            awaiting_consent,
             _fetch_models_task: fetch_models_task,
         }
     }
@@ -128,11 +135,13 @@ impl PickerDelegate for OllamaModelPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "モデルを検索…".into()
+        i18n::t!("Search models…").into()
     }
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
-        Some(if self.loading {
+        Some(if self.awaiting_consent {
+            i18n::t!("Accept the external AI warning to list models from this server.").into()
+        } else if self.loading {
             "Loading models…".into()
         } else {
             "No models found. Check your Ollama server URL.".into()
@@ -227,7 +236,7 @@ pub fn render_ollama_model_picker(
         .unwrap_or_else(|| DEFAULT_OLLAMA_API_URL.into());
 
     let trigger_value: SharedString = if current_value.is_empty() {
-        "モデルを選択…".into()
+        i18n::t!("Select a model…").into()
     } else {
         current_value.clone()
     };
@@ -281,4 +290,87 @@ pub fn render_ollama_model_picker(
         })
         .with_handle(ui::PopoverMenuHandle::default())
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    fn open_picker_recording_requests(
+        api_url: &str,
+        acknowledged: &[&str],
+        cx: &mut TestAppContext,
+    ) -> Arc<std::sync::Mutex<Vec<String>>> {
+        let requested_urls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+            let acknowledged = acknowledged
+                .iter()
+                .map(|key| key.to_string())
+                .collect::<Vec<_>>();
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.acknowledged_external_ai_providers = Some(acknowledged);
+                });
+            });
+            cx.set_http_client(http_client::FakeHttpClient::create({
+                let requested_urls = requested_urls.clone();
+                move |request| {
+                    requested_urls
+                        .lock()
+                        .expect("request log")
+                        .push(request.uri().to_string());
+                    async move {
+                        Ok(http_client::Response::builder()
+                            .status(404)
+                            .body(http_client::AsyncBody::default())?)
+                    }
+                }
+            }));
+        });
+        let api_url = SharedString::from(api_url.to_string());
+        cx.add_window(|window, cx| {
+            let delegate = OllamaModelPickerDelegate::new("".into(), api_url, |_, _, _| {}, cx);
+            Picker::uniform_list(delegate, window, cx)
+        });
+        cx.run_until_parked();
+        requested_urls
+    }
+
+    #[gpui::test]
+    fn remote_server_is_not_asked_before_consent(cx: &mut TestAppContext) {
+        let requested_urls =
+            open_picker_recording_requests("http://ollama.example.com:11434", &["ollama"], cx);
+        assert_eq!(
+            *requested_urls.lock().expect("request log"),
+            Vec::<String>::new(),
+            "the chat provider's consent is not the edit prediction consent"
+        );
+    }
+
+    #[gpui::test]
+    fn remote_server_is_asked_after_consent(cx: &mut TestAppContext) {
+        let requested_urls = open_picker_recording_requests(
+            "http://ollama.example.com:11434",
+            &[&edit_prediction::external_ai_consent_key("ollama")],
+            cx,
+        );
+        assert_eq!(
+            *requested_urls.lock().expect("request log"),
+            vec!["http://ollama.example.com:11434/api/tags".to_string()]
+        );
+    }
+
+    #[gpui::test]
+    fn local_server_is_asked_without_consent(cx: &mut TestAppContext) {
+        let requested_urls = open_picker_recording_requests(DEFAULT_OLLAMA_API_URL, &[], cx);
+        assert_eq!(
+            *requested_urls.lock().expect("request log"),
+            vec!["http://localhost:11434/api/tags".to_string()]
+        );
+    }
 }

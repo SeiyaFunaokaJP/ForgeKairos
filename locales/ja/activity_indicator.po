@@ -1,0 +1,126 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " + {} more"
+msgstr " + 他 {} 件"
+
+msgid "({server_name}) Error: "
+msgstr "({server_name}) エラー: "
+
+msgid "({server_name}) Warning: "
+msgstr "({server_name}) 警告: "
+
+msgid "Add to Allowlist and Retry"
+msgstr "許可リストに追加して再試行"
+
+msgid "Cancel {title}"
+msgstr "{title} をキャンセル"
+
+msgid "Checking for updates to {}..."
+msgstr "{} の更新を確認中..."
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "許可リストへの追加に失敗しました: {error}"
+
+msgid "Couldn't download the {display_name} language server"
+msgstr "言語サーバー {display_name} を取得できませんでした"
+
+msgid "Couldn't download {}. Click to show error."
+msgstr "{} を取得できませんでした。クリックするとエラーを表示します。"
+
+msgid "Couldn't install {display_name}: {error}"
+msgstr "{display_name} を導入できませんでした: {error}"
+
+msgid "Debug: {}"
+msgstr "デバッグ: {}"
+
+msgid "Directories outside of git repositories and deeper than the `file_scan_depth` setting will be indexed on demand."
+msgstr "git リポジトリの外にあり、`file_scan_depth` 設定より深い階層のディレクトリは、必要になった時点でインデックスされます。"
+
+msgid "Don't Allow This Time"
+msgstr "今回は許可しない"
+
+msgid "Don't Show This Again"
+msgstr "今後表示しない"
+
+msgid "Downloading the {language} language server"
+msgstr "{language} の言語サーバーを取得しています"
+
+msgid "Downloading {display_name} needs the following hosts, but the network allowlist denied them."
+msgstr "{display_name} のダウンロードには次のホストへの通信が必要ですが、ネットワーク許可リストで拒否されました。"
+
+msgid "Downloading {} was blocked by the egress control. Click to show the hosts it needs."
+msgstr "{} のダウンロードが外部通信の統制で拒否されました。クリックすると必要なホストを表示します。"
+
+msgid "Downloading {}..."
+msgstr "{} をダウンロード中..."
+
+msgid "Failed to run {}. Click to show error."
+msgstr "{} の実行に失敗しました。クリックするとエラーを表示します。"
+
+msgid "Formatting failed: {failure}. Click to see logs."
+msgstr "フォーマットに失敗しました: {failure}。クリックするとログを表示します。"
+
+msgid "If you'd rather not allow them: {}"
+msgstr "許可しない場合は、{}"
+
+msgid "Install"
+msgstr "インストール"
+
+msgid "Install on Remote"
+msgstr "リモートにインストール"
+
+msgid "Installed {}"
+msgstr "{} を導入しました"
+
+msgid "Installing {display_name}"
+msgstr "{display_name} を導入しています"
+
+msgid "Installing {extension_id} extension…"
+msgstr "{extension_id} 拡張機能をインストール中…"
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this (e.g. {command})."
+msgstr "{server_name} をこのマシン (リモート接続中はリモートホスト) にインストールして PATH に通しても解決します (例: {command})。"
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this."
+msgstr "{server_name} をこのマシン (リモート接続中はリモートホスト) にインストールして PATH に通しても解決します。"
+
+msgid "Language server {server_name}:\n\n{status}"
+msgstr "言語サーバー {server_name}:\n\n{status}"
+
+msgid "Partial file index"
+msgstr "部分的なファイルインデックス"
+
+msgid "Removing {extension_id} extension…"
+msgstr "{extension_id} 拡張機能を削除中…"
+
+msgid "The following hosts needed for the download were denied by the network allowlist:\n{}\n\n{}\n\n{error}"
+msgstr "ダウンロードに必要な次のホストが、ネットワーク許可リストで拒否されました:\n{}\n\n{}\n\n{error}"
+
+msgid "The following hosts needed to download {display_name} were denied by the network allowlist:\n{}"
+msgstr "{display_name} の取得に必要な次のホストが、ネットワーク許可リストで拒否されました:\n{}"
+
+msgid "They're downloaded over this computer's network and placed only in {host}'s home directory (no administrator rights needed; other users aren't affected)."
+msgstr "取得はこの PC のネットワークで行い、{host} のホームディレクトリ内にだけ置きます (管理者権限は不要、他のユーザーには影響しません)。"
+
+msgid "They're placed only in this user's data directory."
+msgstr "このユーザーのデータディレクトリ内にだけ置きます。"
+
+msgid "Updating {extension_id} extension…"
+msgstr "{extension_id} 拡張機能を更新中…"
+
+msgid "{language} tools are missing"
+msgstr "{language} のツールが見つかりません"
+
+msgid "{language} tools are missing on the remote host ({host})"
+msgstr "{language} のツールが接続先 ({host}) にありません"
+
+msgid "• {host}"
+msgstr "・{host}"
+
+msgid "• {label}"
+msgstr "・{label}"

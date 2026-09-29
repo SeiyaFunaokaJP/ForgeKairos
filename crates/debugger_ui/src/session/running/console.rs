@@ -103,7 +103,7 @@ impl Console {
         let this = cx.weak_entity();
         let query_bar = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("式を評価", window, cx);
+            editor.set_placeholder_text(i18n::t!("Evaluate an expression"), window, cx);
             editor.set_use_autoclose(false);
             editor.set_show_gutter(false, cx);
             editor.set_show_wrap_guides(false, cx);
@@ -374,7 +374,7 @@ impl Console {
                                 .when_some(keybinding_target.clone(), |el, keybinding_target| {
                                     el.context(keybinding_target)
                                 })
-                                .action("式をウォッチ", WatchExpression.boxed_clone())
+                                .action(i18n::t!("Watch Expression"), WatchExpression.boxed_clone())
                         }))
                     })
                 },
@@ -487,13 +487,13 @@ impl Render for Console {
                             })
                             .layer(ui::ElevationIndex::ModalSurface)
                             .size(ui::ButtonSize::Compact)
-                            .child(Label::new("評価"))
+                            .child(Label::new(i18n::t!("Evaluate")))
                             .tooltip({
                                 let query_focus_handle = query_focus_handle.clone();
 
                                 move |_window, cx| {
                                     Tooltip::for_action_in(
-                                        "評価",
+                                        i18n::t!("Evaluate"),
                                         &Confirm,
                                         &query_focus_handle,
                                         cx,

@@ -11213,6 +11213,188 @@ async fn test_dynamic_range_formatting_registrations_honor_document_selectors(
     );
 }
 
+/// A selection that no server can format is not the same failure as a file
+/// nothing can format: the message has to say the whole file still works.
+#[gpui::test]
+async fn test_manual_range_format_reports_whole_buffer_only_server(cx: &mut gpui::TestAppContext) {
+    init_test(cx);
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project.all_languages.defaults.formatter = Some(FormatterList::Single(
+                    Formatter::LanguageServer(settings::LanguageServerFormatterSpecifier::Current),
+                ));
+            });
+        });
+    });
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/dir"), json!({ "a.rs": "let  value = 1;" }))
+        .await;
+
+    let project = Project::test(fs, [path!("/dir").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_language_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            capabilities: lsp::ServerCapabilities {
+                document_formatting_provider: Some(lsp::OneOf::Left(true)),
+                ..lsp::ServerCapabilities::default()
+            },
+            ..FakeLspAdapter::default()
+        },
+    );
+
+    let (buffer, _handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/a.rs"), cx)
+        })
+        .await
+        .unwrap();
+    let fake_server = fake_language_servers.next().await.unwrap();
+    cx.executor().run_until_parked();
+
+    let format_request_count = Arc::new(atomic::AtomicUsize::new(0));
+    let _format_requests = fake_server.set_request_handler::<lsp::request::Formatting, _, _>({
+        let format_request_count = format_request_count.clone();
+        move |_, _| {
+            format_request_count.fetch_add(1, atomic::Ordering::SeqCst);
+            async move { Ok(None) }
+        }
+    });
+    let (buffer_id, range) = buffer.read_with(cx, |buffer, _| {
+        (
+            buffer.remote_id(),
+            buffer.anchor_before(0)..buffer.anchor_after(buffer.len()),
+        )
+    });
+
+    let ranges = std::collections::BTreeMap::from_iter([(buffer_id, vec![range])]);
+    let error = project
+        .update(cx, |project, cx| {
+            project.format(
+                HashSet::from_iter([buffer.clone()]),
+                project::lsp_store::LspFormatTarget::Ranges(ranges),
+                false,
+                project::lsp_store::FormatTrigger::Manual,
+                cx,
+            )
+        })
+        .await
+        .expect_err("no running server can format a selection");
+    assert_eq!(
+        project::lsp_store::format_failure::FormatFailure::from_error(&error),
+        Some(
+            project::lsp_store::format_failure::FormatFailure::NoFormattingLanguageServer {
+                requested: None,
+                only_whole_buffer_formatting: true,
+            }
+        ),
+        "unexpected formatting error: {error:#}"
+    );
+    assert_eq!(format_request_count.load(atomic::Ordering::SeqCst), 0);
+
+    project
+        .update(cx, |project, cx| {
+            project.format(
+                HashSet::from_iter([buffer.clone()]),
+                project::lsp_store::LspFormatTarget::Buffers,
+                false,
+                project::lsp_store::FormatTrigger::Manual,
+                cx,
+            )
+        })
+        .await
+        .expect("the whole file is what the message says can be formatted");
+    assert_eq!(format_request_count.load(atomic::Ordering::SeqCst), 1);
+}
+
+/// The server that can format the whole file does not have to be the first one
+/// running for the buffer.
+#[gpui::test]
+async fn test_manual_range_format_finds_whole_buffer_server_behind_another(
+    cx: &mut gpui::TestAppContext,
+) {
+    init_test(cx);
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project.all_languages.defaults.formatter = Some(FormatterList::Single(
+                    Formatter::LanguageServer(settings::LanguageServerFormatterSpecifier::Current),
+                ));
+            });
+        });
+    });
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/dir"), json!({ "a.rs": "let  value = 1;" }))
+        .await;
+
+    let project = Project::test(fs, [path!("/dir").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_idle_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "the-server-that-cannot-format",
+            capabilities: lsp::ServerCapabilities::default(),
+            ..FakeLspAdapter::default()
+        },
+    );
+    let mut fake_whole_file_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "the-server-that-formats-whole-files",
+            capabilities: lsp::ServerCapabilities {
+                document_formatting_provider: Some(lsp::OneOf::Left(true)),
+                ..lsp::ServerCapabilities::default()
+            },
+            ..FakeLspAdapter::default()
+        },
+    );
+
+    let (buffer, _handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/a.rs"), cx)
+        })
+        .await
+        .unwrap();
+    let _fake_idle_server = fake_idle_servers.next().await.unwrap();
+    let _fake_whole_file_server = fake_whole_file_servers.next().await.unwrap();
+    cx.executor().run_until_parked();
+
+    let (buffer_id, range) = buffer.read_with(cx, |buffer, _| {
+        (
+            buffer.remote_id(),
+            buffer.anchor_before(0)..buffer.anchor_after(buffer.len()),
+        )
+    });
+    let ranges = std::collections::BTreeMap::from_iter([(buffer_id, vec![range])]);
+    let error = project
+        .update(cx, |project, cx| {
+            project.format(
+                HashSet::from_iter([buffer.clone()]),
+                project::lsp_store::LspFormatTarget::Ranges(ranges),
+                false,
+                project::lsp_store::FormatTrigger::Manual,
+                cx,
+            )
+        })
+        .await
+        .expect_err("no running server can format a selection");
+    assert_eq!(
+        project::lsp_store::format_failure::FormatFailure::from_error(&error),
+        Some(
+            project::lsp_store::format_failure::FormatFailure::NoFormattingLanguageServer {
+                requested: None,
+                only_whole_buffer_formatting: true,
+            }
+        ),
+        "unexpected formatting error: {error:#}"
+    );
+}
+
 #[gpui::test]
 async fn test_dynamic_on_type_formatting_registration_routes_matching_trigger(
     cx: &mut gpui::TestAppContext,
@@ -21423,7 +21605,8 @@ fn assert_no_formatting_language_server(error: &anyhow::Error) {
         project::lsp_store::format_failure::FormatFailure::from_error(error),
         Some(
             project::lsp_store::format_failure::FormatFailure::NoFormattingLanguageServer {
-                requested: None
+                requested: None,
+                only_whole_buffer_formatting: false,
             }
         ),
         "unexpected formatting error: {error:#}"

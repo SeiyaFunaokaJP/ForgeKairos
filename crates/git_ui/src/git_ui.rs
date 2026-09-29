@@ -587,11 +587,11 @@ impl RenameBranchModal {
             {
                 Ok(Ok(_)) => Ok(()),
                 Ok(Err(error)) => Err(error),
-                Err(_) => Err(anyhow!("操作はキャンセルされました。")),
+                Err(_) => Err(anyhow!(i18n::t!("Operation was canceled"))),
             }
         })
         .detach_and_prompt_err(
-            "ブランチ名を変更できませんでした",
+            i18n::t!("Failed to rename branch"),
             window,
             cx,
             |_, _, _| None,
@@ -625,7 +625,7 @@ impl Render for RenameBranchModal {
                     .gap_1p5()
                     .child(Icon::new(IconName::GitBranch).size(IconSize::XSmall))
                     .child(
-                        Headline::new(format!("ブランチ名を変更 ({})", self.current_branch))
+                        Headline::new(i18n::t!("Rename Branch ({})", self.current_branch))
                             .size(HeadlineSize::XSmall),
                     ),
             )
@@ -693,7 +693,7 @@ impl RefPickerModal {
     ) -> Self {
         let editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("git ref を入力...", window, cx);
+            editor.set_placeholder_text(i18n::t!("Enter git ref..."), window, cx);
             editor
         });
 
@@ -795,7 +795,7 @@ impl RefPickerModal {
                     }
                     Ok(Err(_)) | Err(_) => {
                         workspace.update(cx, |workspace, cx| {
-                            let error = anyhow::anyhow!("コミットの表示に失敗しました。");
+                            let error = anyhow::anyhow!(i18n::t!("View commit failed"));
                             Self::show_git_error_toast(&git_ref_string, error, workspace, cx);
                         });
                     }
@@ -878,7 +878,7 @@ impl Render for RefPickerModal {
                     .w_full()
                     .gap_1p5()
                     .child(Icon::new(IconName::Hash).size(IconSize::XSmall))
-                    .child(Headline::new("コミットを表示").size(HeadlineSize::XSmall)),
+                    .child(Headline::new(i18n::t!("View Commit")).size(HeadlineSize::XSmall)),
             )
             .child(div().px_3().w_full().child(self.editor.clone()))
             .when_some(commit_preview, |el, preview| {
@@ -979,7 +979,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "フェッチ",
+            i18n::t!("Fetch"),
             0,
             0,
             Some(IconName::ArrowCircle),
@@ -991,7 +991,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "リモートから更新をフェッチします",
+                    i18n::t!("Fetch updates from remote"),
                     PanelOperation::Fetch,
                     &git::Fetch,
                     "git fetch",
@@ -1011,7 +1011,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "プッシュ",
+            i18n::t!("Push"),
             ahead as usize,
             0,
             None,
@@ -1023,7 +1023,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "コミット済みの変更をリモートにプッシュします",
+                    i18n::t!("Push committed changes to remote"),
                     PanelOperation::Push,
                     &git::Push,
                     "git push",
@@ -1044,7 +1044,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "プル",
+            i18n::t!("Pull"),
             ahead as usize,
             behind as usize,
             None,
@@ -1056,7 +1056,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "プル",
+                    i18n::t!("Pull"),
                     PanelOperation::Pull,
                     &git::Pull,
                     "git pull",
@@ -1075,7 +1075,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "発行",
+            i18n::t!("Publish"),
             0,
             0,
             Some(IconName::ExpandUp),
@@ -1087,7 +1087,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "ブランチをリモートに発行します",
+                    i18n::t!("Publish branch to remote"),
                     PanelOperation::Publish,
                     &git::Push,
                     "git push --set-upstream",
@@ -1106,7 +1106,7 @@ mod remote_button {
     ) -> SplitButton {
         split_button(
             id,
-            "再発行",
+            i18n::t!("Republish"),
             0,
             0,
             Some(IconName::ExpandUp),
@@ -1118,7 +1118,7 @@ mod remote_button {
             },
             move |_window, cx| {
                 git_action_tooltip(
-                    "ブランチをリモートに再発行します",
+                    i18n::t!("Re-publish branch to remote"),
                     PanelOperation::Republish,
                     &git::Push,
                     "git push --set-upstream",
@@ -1131,9 +1131,9 @@ mod remote_button {
 
     fn in_progress_tooltip(operation: RemoteOperationKind) -> &'static str {
         match operation {
-            RemoteOperationKind::Fetch => "フェッチ中…",
-            RemoteOperationKind::Pull => "プル中…",
-            RemoteOperationKind::Push => "プッシュ中…",
+            RemoteOperationKind::Fetch => i18n::t!("Fetch in Progress…"),
+            RemoteOperationKind::Pull => i18n::t!("Pull in Progress…"),
+            RemoteOperationKind::Push => i18n::t!("Push in Progress…"),
         }
     }
 
@@ -1204,65 +1204,77 @@ mod remote_button {
     pub(super) fn remote_menu_items() -> Vec<Option<(&'static str, PanelOperation, Box<dyn Action>)>>
     {
         vec![
-            Some(("フェッチ", PanelOperation::Fetch, git::Fetch.boxed_clone())),
             Some((
-                "取得元を指定してフェッチ",
+                i18n::t!("Fetch"),
+                PanelOperation::Fetch,
+                git::Fetch.boxed_clone(),
+            )),
+            Some((
+                i18n::t!("Fetch From"),
                 PanelOperation::FetchFrom,
                 git::FetchFrom.boxed_clone(),
             )),
-            Some(("プル", PanelOperation::Pull, git::Pull.boxed_clone())),
             Some((
-                "リベースしてプル",
+                i18n::t!("Pull"),
+                PanelOperation::Pull,
+                git::Pull.boxed_clone(),
+            )),
+            Some((
+                i18n::t!("Pull (Rebase)"),
                 PanelOperation::PullRebase,
                 git::PullRebase.boxed_clone(),
             )),
             None,
-            Some(("プッシュ", PanelOperation::Push, git::Push.boxed_clone())),
             Some((
-                "プッシュ先を指定してプッシュ",
+                i18n::t!("Push"),
+                PanelOperation::Push,
+                git::Push.boxed_clone(),
+            )),
+            Some((
+                i18n::t!("Push To"),
                 PanelOperation::PushTo,
                 git::PushTo.boxed_clone(),
             )),
             Some((
-                "強制プッシュ",
+                i18n::t!("Force Push"),
                 PanelOperation::ForcePush,
                 git::ForcePush.boxed_clone(),
             )),
             Some((
-                "強制プッシュ (lease なし)…",
+                i18n::t!("Force Push Without Lease…"),
                 PanelOperation::ForcePushWithoutLease,
                 git::ForcePushWithoutLease.boxed_clone(),
             )),
             None,
             Some((
-                "ブランチをマージ…",
+                i18n::t!("Merge Branch…"),
                 PanelOperation::Merge,
                 git::Merge.boxed_clone(),
             )),
             Some((
-                "リモートの状態に強制的に合わせる…",
+                i18n::t!("Reset to Remote…"),
                 PanelOperation::ResetToRemote,
                 git::ResetToRemote.boxed_clone(),
             )),
             None,
             Some((
-                "リモートを追加…",
+                i18n::t!("Add Remote…"),
                 PanelOperation::AddRemote,
                 zed_actions::git::CreateRemote.boxed_clone(),
             )),
             Some((
-                "リモートを削除…",
+                i18n::t!("Remove Remote…"),
                 PanelOperation::RemoveRemote,
                 git::RemoveRemote.boxed_clone(),
             )),
             None,
             Some((
-                "パッチファイルを作成…",
+                i18n::t!("Create Patch File…"),
                 PanelOperation::CreatePatch,
                 git::CreatePatch.boxed_clone(),
             )),
             Some((
-                "パッチファイルを適用…",
+                i18n::t!("Apply Patch File…"),
                 PanelOperation::ApplyPatch,
                 git::ApplyPatch.boxed_clone(),
             )),
@@ -1470,7 +1482,7 @@ impl GitCloneModal {
     pub fn show(panel: Entity<GitPanel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let repo_input = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("リポジトリの URL を入力…", window, cx);
+            editor.set_placeholder_text(i18n::t!("Enter repository URL…"), window, cx);
             editor
         });
         let focus_handle = repo_input.focus_handle(cx);
@@ -1514,12 +1526,12 @@ impl Render for GitCloneModal {
                     .rounded_b_sm()
                     .bg(cx.theme().colors().editor_background)
                     .child(
-                        Label::new("GitHub などからリポジトリをクローンします。")
+                        Label::new(i18n::t!("Clone a repository from GitHub or other sources."))
                             .color(Color::Muted)
                             .size(LabelSize::Small),
                     )
                     .child(
-                        Button::new("learn-more", "詳細")
+                        Button::new("learn-more", i18n::t!("Learn More"))
                             .label_size(LabelSize::Small)
                             .end_icon(Icon::new(IconName::ArrowUpRight).size(IconSize::XSmall))
                             .on_click(|_, _, cx| {
@@ -1555,7 +1567,7 @@ impl AddRemoteModal {
     fn new(panel: Entity<GitPanel>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let name_input = cx.new(|cx| {
             let input = ui_input::InputField::new(window, cx, "origin")
-                .label("リモート名")
+                .label(i18n::t!("Remote Name"))
                 .tab_stop(true)
                 .tab_index(0);
             // `origin` is the name git itself uses for a first remote, so
@@ -1596,7 +1608,7 @@ impl Render for AddRemoteModal {
             .child(self.name_input.clone())
             .child(self.url_input.clone())
             .child(
-                Label::new("git remote add を実行します。")
+                Label::new(i18n::t!("Runs git remote add."))
                     .color(Color::Muted)
                     .size(LabelSize::Small),
             )
@@ -1730,55 +1742,70 @@ mod remote_menu_tests {
     #[test]
     fn test_remote_menu_explains_every_item() {
         let expected: [(&str, &dyn Action, &str, Option<&str>); 14] = [
-            ("フェッチ", &git::Fetch, "取ってくるだけ", None),
+            ("Fetch", &git::Fetch, "Only downloads", None),
             (
-                "取得元を指定してフェッチ",
+                "Fetch From",
                 &git::FetchFrom,
-                "1 つを選んで",
+                "Picks one of the registered remotes",
                 None,
             ),
             (
-                "プル",
+                "Pull",
                 &git::Pull,
-                "今のブランチに取り込み",
-                Some("コンフリクト"),
+                "brings it into the current branch",
+                Some("conflict"),
             ),
             (
-                "リベースしてプル",
+                "Pull (Rebase)",
                 &git::PullRebase,
-                "付け直し",
+                "replays your commits",
                 Some("SHA"),
             ),
-            ("プッシュ", &git::Push, "リモートへ送り", None),
-            ("プッシュ先を指定してプッシュ", &git::PushTo, "送り先", None),
-            ("強制プッシュ", &git::ForcePush, "上書き", Some("消えます")),
+            ("Push", &git::Push, "Sends your commits to the remote", None),
+            ("Push To", &git::PushTo, "remote to send to", None),
             (
-                "強制プッシュ (lease なし)…",
+                "Force Push",
+                &git::ForcePush,
+                "Overwrites the remote branch",
+                Some("disappear"),
+            ),
+            (
+                "Force Push Without Lease…",
                 &git::ForcePushWithoutLease,
-                "確かめずに",
-                Some("相手の変更を消す"),
+                "without checking",
+                Some("erase other people's changes"),
             ),
             (
-                "ブランチをマージ…",
+                "Merge Branch…",
                 &git::Merge,
-                "合流",
-                Some("コンフリクト"),
+                "joins the two",
+                Some("conflict"),
             ),
             (
-                "リモートの状態に強制的に合わせる…",
+                "Reset to Remote…",
                 &git::ResetToRemote,
-                "同じ内容",
-                Some("元に戻せません"),
+                "the same as the remote branch",
+                Some("cannot be undone"),
             ),
+            ("Add Remote…", &zed_actions::git::CreateRemote, "URL", None),
             (
-                "リモートを追加…",
-                &zed_actions::git::CreateRemote,
-                "URL",
+                "Remove Remote…",
+                &git::RemoveRemote,
+                "Unregisters a remote",
                 None,
             ),
-            ("リモートを削除…", &git::RemoveRemote, "外し", None),
-            ("パッチファイルを作成…", &git::CreatePatch, "書き出", None),
-            ("パッチファイルを適用…", &git::ApplyPatch, "当て", None),
+            (
+                "Create Patch File…",
+                &git::CreatePatch,
+                "Writes a text file",
+                None,
+            ),
+            (
+                "Apply Patch File…",
+                &git::ApplyPatch,
+                "Applies the changes",
+                None,
+            ),
         ];
         let separator_positions = super::remote_button::remote_menu_items()
             .iter()

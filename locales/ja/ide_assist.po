@@ -1,0 +1,76 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(image)"
+msgstr "(画像)"
+
+msgid "(image: {alt})"
+msgstr "(画像: {alt})"
+
+msgid "Annotation from {label}"
+msgstr "{label} の注釈"
+
+msgid "Can't open this step ({reason})"
+msgstr "このステップは開けません ({reason})"
+
+msgid "Couldn't open the file ({error})"
+msgstr "ファイルを開けませんでした ({error})"
+
+msgid "End Tour"
+msgstr "ツアーを終了"
+
+msgid "File not found"
+msgstr "ファイルが見つかりません"
+
+msgid "Folders can't be shown"
+msgstr "フォルダーは表示できません"
+
+msgid "Invalid line range (lines {}-{})"
+msgstr "行の範囲が正しくありません ({}-{} 行目)"
+
+msgid "Line {start_line} is past the end of the file ({line_count} lines)"
+msgstr "{start_line} 行目はファイルの外です (このファイルは {line_count} 行)"
+
+msgid "Line {}"
+msgstr "{} 行目"
+
+msgid "Lines {}-{}"
+msgstr "{}-{} 行目"
+
+msgid "Next Step"
+msgstr "次のステップ"
+
+msgid "Next ›"
+msgstr "次へ ›"
+
+msgid "Not a regular file"
+msgstr "通常のファイルではありません"
+
+msgid "Previous Step"
+msgstr "前のステップ"
+
+msgid "The file is too large (over 4 MiB)"
+msgstr "ファイルが大きすぎます (4 MiB 超)"
+
+msgid "Too long, cut to {max_chars} characters"
+msgstr "長すぎるため {max_chars} 文字で切り詰めました"
+
+msgid "Tour from {}: {}"
+msgstr "{} のツアー: {}"
+
+msgid "Tour from {}: {} (click to go to the current step)"
+msgstr "{} のツアー: {} (クリックで現在のステップへ)"
+
+msgid "Tour {}/{}"
+msgstr "ツアー {}/{}"
+
+msgid "‹ Previous"
+msgstr "‹ 前へ"
+
+msgctxt "tour"
+msgid "End"
+msgstr "終了"

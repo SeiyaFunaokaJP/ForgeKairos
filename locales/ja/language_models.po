@@ -1,0 +1,39 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "API key configured for {}"
+msgstr "{} の API キーは設定済み"
+
+msgid "API key set in {env_var_name} environment variable"
+msgstr "API キーは環境変数 {env_var_name} で設定されています"
+
+msgid "Connect without an API key (the server needs no authentication)"
+msgstr "API キーなしで接続する (認証不要のサーバー)"
+
+msgid "Connecting to {} without an API key (the server needs no authentication)"
+msgstr "{} には API キーなしで接続します (認証不要のサーバー)"
+
+msgid "Loading credentials…"
+msgstr "認証情報を読み込んでいます…"
+
+msgid "Remove Provider"
+msgstr "プロバイダーを削除"
+
+msgid "Reset API Key"
+msgstr "キーをリセット"
+
+msgid "This can't be changed while an API key is set in the {env_var_name} environment variable."
+msgstr "環境変数 {env_var_name} で API キーが設定されているため変更できません。"
+
+msgid "To reset your API key, unset the {env_var_name} environment variable."
+msgstr "API キーをリセットするには、環境変数 {env_var_name} を解除してください。"
+
+msgid "To use Zed's agent with an {provider_name}-compatible provider, you need to add an API key."
+msgstr "{provider_name} 互換のプロバイダーをエージェントで使うには、API キーが必要です。"
+
+msgid "You can also set the {env_var_name} environment variable and restart Zed."
+msgstr "または環境変数 {env_var_name} を設定し、Zed を再起動すると反映されます。"

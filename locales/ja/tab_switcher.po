@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "No tabs"
+msgstr "タブがありません"
+
+msgid "Search all tabs…"
+msgstr "すべてのタブを検索…"

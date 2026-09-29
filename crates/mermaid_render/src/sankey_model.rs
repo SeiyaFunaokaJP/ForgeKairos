@@ -85,21 +85,23 @@ impl SankeyDocument {
         for flow in &self.flows {
             for name in [&flow.source, &flow.target] {
                 if !is_valid_sankey_node(name) {
-                    return Some(format!(
-                        "ノード名「{name}」は使えません (空、前後の空白、改行、`\"\"` は不可)。"
+                    return Some(i18n::t!(
+                        "The node name “{name}” cannot be used (it cannot be empty, have spaces at either end, or contain line breaks or `\"\"`)."
                     ));
                 }
             }
             if !is_valid_sankey_value(&flow.value) {
-                return Some(format!(
-                    "{} → {} の量「{}」は使えません (0 以上の数値だけ)。",
-                    flow.source, flow.target, flow.value
+                return Some(i18n::t!(
+                    "The amount “{value}” of {source} → {target} cannot be used (only a number of 0 or more).",
+                    value = flow.value,
+                    source = flow.source,
+                    target = flow.target
                 ));
             }
         }
         if let Some(cycle) = self.cycle() {
-            return Some(format!(
-                "流れが循環しています ({})。サンキー図は循環を描けません。",
+            return Some(i18n::t!(
+                "The flows form a cycle ({}). A Sankey diagram cannot draw a cycle.",
                 cycle.join(" → ")
             ));
         }
@@ -204,9 +206,9 @@ pub fn parse_sankey(source: &str) -> Result<SankeyDocument> {
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     document.keyword = match HEADERS.iter().find(|keyword| **keyword == header) {
         Some(keyword) => keyword,
-        None => bail!(
-            "`{header}` はサンキー図の見出しとして読めません (`sankey-beta` だけを 1 行に書きます)。"
-        ),
+        None => bail!(i18n::t!(
+            "`{header}` cannot be read as the heading of a Sankey diagram (write only `sankey-beta` on its line)."
+        )),
     };
 
     let mut index = header_index + 1;
@@ -245,20 +247,20 @@ pub fn parse_sankey(source: &str) -> Result<SankeyDocument> {
         // `merman` sanitizes a name before it looks the node up, so two names
         // the form tells apart can be one node in the drawing.
         if original.0 != document.node_names().len() {
-            bail!(
-                "Mermaid が同じノードとして読む名前があります (HTML タグの除去など)。テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Some names are read by Mermaid as the same node (for example after it removes HTML tags). Edit it as text."
+            ));
         }
         let emitted = emit_sankey(&document);
         let written = merman_flows(&emitted).map_err(|error| {
-            anyhow!(
-                "書き戻した図を Mermaid が読めませんでした ({error})。テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "Mermaid could not read the diagram written back ({error}). Edit it as text."
+            ))
         })?;
         if original != written {
-            bail!(
-                "この図は構造化エディターで読むと Mermaid と違う流れになります。テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Read by the structured editor, this diagram would have different flows than Mermaid reads. Edit it as text."
+            ));
         }
     }
     if let Some(error) = document.structure_error() {
@@ -275,13 +277,13 @@ type MermanFlows = (usize, Vec<(usize, usize, Option<f64>)>);
 fn merman_flows(source: &str) -> Result<MermanFlows> {
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| {
-            anyhow!(
-                "Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "Mermaid could not parse this diagram ({error}). Edit it as text."
+            ))
         })?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
     let RenderSemanticModel::Sankey(model) = parsed.into_parts().1 else {
-        bail!("この図はサンキー図ではありません。");
+        bail!(i18n::t!("This diagram is not a Sankey diagram."));
     };
     let node_index = |id: &str| {
         model
@@ -312,10 +314,10 @@ fn merman_flows(source: &str) -> Result<MermanFlows> {
 fn parse_record(line: &str) -> Result<SankeyFlow> {
     let line = line.trim_end();
     let refuse = || {
-        anyhow!(
-            "サンキー図の行として読めませんでした ({})。`流れ元,流れ先,量` の形で書いてください。",
+        anyhow!(i18n::t!(
+            "This line could not be read as a flow of a Sankey diagram ({}). Write it as `source,target,value`.",
             line.trim()
-        )
+        ))
     };
     let (source, rest) = read_field(line).ok_or_else(refuse)?;
     let rest = rest.strip_prefix(',').ok_or_else(refuse)?;
@@ -323,17 +325,17 @@ fn parse_record(line: &str) -> Result<SankeyFlow> {
     let rest = rest.strip_prefix(',').ok_or_else(refuse)?;
     let (value, rest) = read_field(rest).ok_or_else(refuse)?;
     if !rest.is_empty() {
-        bail!(
-            "サンキー図の行に 4 つ目の欄があります ({})。`流れ元,流れ先,量` の 3 つだけを書いてください。",
+        bail!(i18n::t!(
+            "A line of the Sankey diagram has a fourth column ({}). Write only the three columns `source,target,value`.",
             line.trim()
-        );
+        ));
     }
     let value = value.trim().to_string();
     if !is_valid_sankey_value(&value) {
-        bail!(
-            "量「{value}」は構造化エディターで扱えません ({})。0 以上の数値を書いてください。",
+        bail!(i18n::t!(
+            "The structured editor cannot handle the amount “{value}” ({}). Write a number of 0 or more.",
             line.trim()
-        );
+        ));
     }
     Ok(SankeyFlow {
         source: normalize_name(&source),
@@ -378,10 +380,10 @@ pub(crate) fn refuse_statement_after_directive(text: &str) -> Result<()> {
         .get(end + "}%%".len()..)
         .is_some_and(|tail| !tail.trim().is_empty())
     {
-        bail!(
-            "`%%{{…}}%%` の後ろに同じ行で文が続いています ({})。指示子と文を別の行に分けてから開いてください。",
+        bail!(i18n::t!(
+            "A statement follows `%%{{…}}%%` on the same line ({}). Put the directive and the statement on separate lines, then open the editor.",
             text.trim()
-        );
+        ));
     }
     Ok(())
 }
@@ -711,6 +713,7 @@ mod tests {
 
     #[test]
     fn what_cannot_be_held_is_refused_with_a_japanese_reason() {
+        let _japanese = crate::mermaid_model::japanese_for_this_thread();
         for source in [
             "sankey-beta\n    A,B",
             "sankey-beta\n    A,B,1,2",
@@ -743,7 +746,7 @@ mod tests {
         let error = parse_sankey(source)
             .err()
             .expect("merged names should be refused");
-        assert!(format!("{error}").contains("同じノード"), "{error}");
+        assert!(format!("{error}").contains("as the same node"), "{error}");
 
         // The form can type the same names, and the confirm button's last
         // check reads the written source with this same function.
@@ -783,7 +786,7 @@ mod tests {
         ];
         for refusal in refusals {
             let error = refusal.expect("the hidden statement should be refused");
-            assert!(format!("{error}").contains("指示子"), "{error}");
+            assert!(format!("{error}").contains("directive"), "{error}");
         }
 
         let document = parse_sankey("sankey-beta\n%%{init: {}}%%\n    A,B,1")

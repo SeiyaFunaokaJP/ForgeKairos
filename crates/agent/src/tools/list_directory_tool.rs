@@ -195,9 +195,9 @@ impl AgentTool for ListDirectoryTool {
     ) -> SharedString {
         if let Ok(input) = input {
             let path = MarkdownInlineCode(&input.path);
-            format!("{path} ディレクトリの内容を一覧表示").into()
+            i18n::t!("List the {path} directory's contents").into()
         } else {
-            "ディレクトリを一覧表示".into()
+            i18n::t!("List directory").into()
         }
     }
 
@@ -914,7 +914,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています"),
+            title.contains("points outside the project"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 

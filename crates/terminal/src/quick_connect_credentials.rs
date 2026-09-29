@@ -190,7 +190,7 @@ impl QuickConnectCredentials {
         self.provider
             .write_credentials(&url, credential_username(user), password.as_bytes(), cx)
             .await
-            .with_context(|| format!("パスワードを保存できませんでした ({url})"))
+            .with_context(|| i18n::t!("Couldn't save the password ({url})"))
     }
 
     /// Removes the stored password. A target that has none is not an error, so
@@ -219,14 +219,14 @@ impl QuickConnectCredentials {
             .provider
             .read_credentials(&url, cx)
             .await
-            .with_context(|| format!("パスワードを読み出せませんでした ({url})"))?;
+            .with_context(|| i18n::t!("Couldn't read the password ({url})"))?;
         if stored.is_none() {
             return Ok(());
         }
         self.provider
             .delete_credentials(&url, cx)
             .await
-            .with_context(|| format!("パスワードを削除できませんでした ({url})"))
+            .with_context(|| i18n::t!("Couldn't delete the password ({url})"))
     }
 }
 
@@ -266,7 +266,7 @@ async fn read_raw(
     let (stored_user, password) = provider
         .read_credentials(url, cx)
         .await
-        .with_context(|| format!("パスワードを読み出せませんでした ({url})"))
+        .with_context(|| i18n::t!("Couldn't read the password ({url})"))
         .log_err()??;
     (stored_user == credential_username(user)).then_some(password)
 }
@@ -328,15 +328,15 @@ impl AskPassOutcome {
     /// would otherwise raise an alarm about a connection that succeeded.
     pub fn message(&self) -> Option<&'static str> {
         match self {
-            AskPassOutcome::Rejected => Some(
-                "保存されたパスワードが拒否されました。クイック接続でパスワードを入力し直してください。",
-            ),
+            AskPassOutcome::Rejected => Some(i18n::t!(
+                "The saved password was rejected. Enter the password again in Quick Connect."
+            )),
             // Refusing this one aborts the connection: OpenSSH reads the empty
             // answer as "no" and gives up on the unknown host key.
-            AskPassOutcome::Unanswerable(AskPassPrompt::HostKey) => Some(
-                "初回接続のホスト鍵の確認は、保存されたパスワードでは応答できません。\
-                 「パスワードを記憶する」を外して一度接続し、ホスト鍵を確認してください。",
-            ),
+            AskPassOutcome::Unanswerable(AskPassPrompt::HostKey) => Some(i18n::t!(
+                "A saved password can't answer the host key confirmation of a first connection. \
+                 Connect once with “Remember password” turned off and confirm the host key."
+            )),
             AskPassOutcome::Answered | AskPassOutcome::Unanswerable(_) => None,
         }
     }
@@ -406,7 +406,7 @@ pub async fn stored_password_proxy(
         let outcome = policy.decide(&prompt);
         // The prompt itself is not logged: OpenSSH puts the account and host in
         // it, and there is no reason to spread that around.
-        log::debug!("クイック接続の askpass: {outcome:?}");
+        log::debug!("quick connect askpass: {outcome:?}");
         // The receiver is gone once the terminal is closed; the proxy still has
         // to answer, it just has nobody left to tell.
         report.unbounded_send(outcome).ok();
@@ -467,7 +467,7 @@ pub fn answer_telnet_login(
     let terminal = terminal.downgrade();
     cx.spawn(async move |cx| {
         if let Err(error) = watch_telnet_login(terminal, user, password, cx).await {
-            log::warn!("telnet の自動ログインを中止しました: {error:#}");
+            log::warn!("stopped the telnet auto-login: {error:#}");
         }
     })
 }
@@ -478,7 +478,7 @@ async fn watch_telnet_login(
     password: EncryptedPassword,
     cx: &mut AsyncApp,
 ) -> Result<()> {
-    let entity = terminal.upgrade().context("ターミナルがありません")?;
+    let entity = terminal.upgrade().context("the terminal is gone")?;
     let (wake_tx, wake_rx) = async_channel::unbounded::<()>();
     // Registered before the first look at the grid, so a prompt printed while
     // we scan still wakes us.
@@ -520,10 +520,10 @@ async fn watch_telnet_login(
 
         if let Some(line) = last_line.as_deref().map(str::trim_end) {
             if PASSWORD_PROMPT.is_match(line) {
-                let password = password.take().context("パスワードは送信済みです")?;
+                let password = password.take().context("the password was already sent")?;
                 let mut secret = password
                     .decrypt(IKnowWhatIAmDoingAndIHaveReadTheDocs)
-                    .context("保存されたパスワードを復号できませんでした")?;
+                    .context("couldn't decrypt the saved password")?;
                 // The log taps the PTY's read side, so it is the device's echo —
                 // not the write — that would leak the password (ADR-F29).
                 entity.update(cx, |terminal, _| {

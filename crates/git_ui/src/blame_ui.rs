@@ -166,7 +166,10 @@ impl BlameRenderer for GitBlameRenderer {
     ) -> Option<AnyElement> {
         let relative_timestamp = blame_entry_relative_timestamp(&blame_entry);
         let short_commit_id = blame_entry.sha.display_short();
-        let author_name = blame_entry.author.as_deref().unwrap_or("<名前なし>");
+        let author_name = blame_entry
+            .author
+            .as_deref()
+            .unwrap_or(i18n::t!("<no name>"));
         let name = util::truncate_and_trailoff(author_name, GIT_BLAME_MAX_AUTHOR_CHARS_DISPLAYED);
         let is_highlighted = editor
             .read(cx)
@@ -320,7 +323,7 @@ impl BlameRenderer for GitBlameRenderer {
         let author: SharedString = blame
             .author
             .clone()
-            .unwrap_or("<名前なし>".to_string())
+            .unwrap_or(i18n::t!("<no name>").to_string())
             .into();
         let author_email = blame.author_mail.as_deref().unwrap_or_default();
         let author_email_for_avatar = blame.author_mail.as_ref().map(|email| {
@@ -371,7 +374,7 @@ impl BlameRenderer for GitBlameRenderer {
                     .scroll_handle(scroll_handle.clone())
                     .into_any()
             })
-            .unwrap_or("<コミットメッセージなし>".into_any());
+            .unwrap_or(i18n::t!("<no commit message>").into_any());
 
         let pull_request = details
             .as_ref()
@@ -502,7 +505,7 @@ impl BlameRenderer for GitBlameRenderer {
                                             .child(Divider::vertical())
                                             .child(
                                                 CopyButton::new("copy-blame-sha", sha.to_string())
-                                                    .tooltip_label("SHA をコピー"),
+                                                    .tooltip_label(i18n::t!("Copy SHA")),
                                             ),
                                     ),
                             ),
@@ -564,7 +567,7 @@ fn deploy_blame_entry_context_menu(
         let blame_previous_revision = blame_entry.previous_revision_target();
         let has_blame_targets = blame_revision.is_some() || blame_previous_revision.is_some();
         menu.on_blur_subscription(Subscription::new(|| {}))
-            .entry("コミット SHA をコピー", None, move |_, cx| {
+            .entry(i18n::t!("Copy Commit SHA"), None, move |_, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(sha.clone()));
             })
             .when_some(
@@ -579,26 +582,22 @@ fn deploy_blame_entry_context_menu(
             .when_some(blame_revision, |this, (revision, path)| {
                 let repository = repository.clone();
                 let workspace = workspace.clone();
-                this.entry(
-                    "このリビジョンの注釈 (blame)",
-                    None,
-                    move |window, cx| {
-                        open_buffer_blame_at_revision(
-                            repository.clone(),
-                            workspace.clone(),
-                            path.clone(),
-                            revision,
-                            window,
-                            cx,
-                        );
-                    },
-                )
+                this.entry(i18n::t!("Blame Revision"), None, move |window, cx| {
+                    open_buffer_blame_at_revision(
+                        repository.clone(),
+                        workspace.clone(),
+                        path.clone(),
+                        revision,
+                        window,
+                        cx,
+                    );
+                })
             })
             .when_some(blame_previous_revision, |this, (revision, path)| {
                 let repository = repository.clone();
                 let workspace = workspace.clone();
                 this.entry(
-                    "前のリビジョンの注釈 (blame)",
+                    i18n::t!("Blame Previous Revision"),
                     None,
                     move |window, cx| {
                         open_buffer_blame_at_revision(
@@ -779,6 +778,6 @@ fn blame_entry_relative_timestamp(blame_entry: &BlameEntry) -> String {
                 time_format::TimestampFormat::Relative,
             )
         }
-        Err(_) => "日付の解析エラー".to_string(),
+        Err(_) => i18n::t!("Error parsing date").to_string(),
     }
 }

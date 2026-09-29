@@ -6101,6 +6101,193 @@ async fn test_log_store_keys_remote_events_by_primary_kind_on_supplementary_id_c
     });
 }
 
+/// What the remote host refuses a transfer program with, as the client got it.
+async fn refused_transfer(project: &Entity<Project>, cx: &mut TestAppContext) -> String {
+    let client = project.read_with(cx, |project, cx| {
+        project
+            .remote_client()
+            .expect("a remote project")
+            .read(cx)
+            .proto_client()
+    });
+    let error = client
+        .request(proto::RunTransferCommand {
+            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+            command_id: 1,
+            program: "rm".to_string(),
+            ..Default::default()
+        })
+        .await
+        .expect_err("rm is not a transfer program");
+    format!("{error:#}")
+}
+
+async fn refused_file_operation(project: &Entity<Project>, cx: &mut TestAppContext) -> String {
+    let client = project.read_with(cx, |project, cx| {
+        project
+            .remote_client()
+            .expect("a remote project")
+            .read(cx)
+            .proto_client()
+    });
+    let error = client
+        .request(proto::TransferFileOperation {
+            project_id: proto::REMOTE_SERVER_PROJECT_ID,
+            operation: None,
+        })
+        .await
+        .expect_err("there is no operation");
+    format!("{error:#}")
+}
+
+fn reconnect(project: &Entity<Project>, cx: &mut TestAppContext) {
+    let remote_client = project
+        .read_with(cx, |project, _| project.remote_client())
+        .expect("a remote project");
+    remote_client
+        .update(cx, |remote_client, cx| {
+            remote_client.simulate_disconnect(cx)
+        })
+        .detach();
+    cx.run_until_parked();
+    assert!(
+        remote_client.read_with(cx, |remote_client, _| remote_client.connection_state())
+            == ConnectionState::Connected,
+        "the IDE reconnected"
+    );
+}
+
+// ADR-F64: the remote host writes what it sends for the client's screen in
+// the language the client names with the wire revision check. Client and
+// host share this thread, whose catalog only the host's handler installs.
+#[gpui::test]
+async fn test_the_remote_host_writes_in_the_clients_display_language(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let _installs = i18n::test_support::ThreadLocalInstalls::new();
+    server_cx.update(crate::display_language::init);
+    cx.update(|cx| cx.set_global(remote::DisplayLanguageForTests(Some("ja".to_string()))));
+    assert_eq!(i18n::current_locale(), "en");
+
+    let (_fs, project, headless) =
+        remote_project_with_language_server(json!({ "path": "project-lsp-binary" }), cx, server_cx)
+            .await;
+    assert_eq!(i18n::current_locale(), "ja");
+    assert_eq!(
+        refused_transfer(&project, cx).await,
+        "RPC request RunTransferCommand failed: リモートでは rm を実行できません。"
+    );
+    assert_eq!(
+        refused_file_operation(&project, cx).await,
+        "RPC request TransferFileOperation failed: 操作が指定されていません"
+    );
+
+    // A language server the IDE did not allow: the reason is made on the
+    // remote host and shown by the client.
+    let reported = Rc::new(RefCell::new(Vec::new()));
+    let lsp_store = project.read_with(cx, |project, _| project.lsp_store());
+    let _subscription = cx.update(|cx| {
+        let reported = reported.clone();
+        cx.subscribe(&lsp_store, move |_, event, _| {
+            if let LspStoreEvent::LanguageServerUpdate {
+                message:
+                    proto::update_language_server::Variant::StatusUpdate(proto::StatusUpdate {
+                        message: Some(message),
+                        ..
+                    }),
+                ..
+            } = event
+            {
+                reported.borrow_mut().push(message.clone());
+            }
+        })
+    });
+    let _fake_servers =
+        register_fake_server_on_host(&host_languages(&headless, server_cx), PROJECT_SERVER);
+    let (_buffer, _handle) =
+        open_with_language_servers(&project, path!("/code/project1"), cx).await;
+    let pending = pending_launches(cx);
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    cx.update(ProjectLaunchApprovals::global)
+        .update(cx, |approvals, cx| {
+            approvals.deny_pending(&pending[0].key, cx)
+        })
+        .await
+        .expect("the denial is stored");
+    cx.run_until_parked();
+    assert!(
+        reported.borrow().iter().any(|message| message
+            == "プロジェクトの設定にある言語サーバー「project_lsp」の実行ファイルは許可されていないため、起動しません"),
+        "{:?}",
+        reported.borrow()
+    );
+
+    // The user switched to English, which the host hears of on reconnecting.
+    cx.update(|cx| cx.set_global(remote::DisplayLanguageForTests(Some("en".to_string()))));
+    reconnect(&project, cx);
+    assert_eq!(i18n::current_locale(), "en");
+    assert_eq!(
+        refused_transfer(&project, cx).await,
+        "RPC request RunTransferCommand failed: rm cannot be run on the remote."
+    );
+
+    cx.update(|cx| cx.set_global(remote::DisplayLanguageForTests(Some("ja".to_string()))));
+    reconnect(&project, cx);
+    assert_eq!(
+        refused_transfer(&project, cx).await,
+        "RPC request RunTransferCommand failed: リモートでは rm を実行できません。"
+    );
+}
+
+// A client from before the display language sends none, and gets English
+// even from a host that last wrote Japanese for another client.
+#[gpui::test]
+async fn test_a_client_without_a_display_language_gets_english(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let _installs = i18n::test_support::ThreadLocalInstalls::new();
+    server_cx.update(crate::display_language::init);
+    crate::display_language::install(Some("ja"));
+    cx.update(|cx| cx.set_global(remote::DisplayLanguageForTests(None)));
+
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(path!("/code"), json!({ "project1": {} }))
+        .await;
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    assert_eq!(i18n::current_locale(), "en");
+    assert_eq!(
+        refused_transfer(&project, cx).await,
+        "RPC request RunTransferCommand failed: rm cannot be run on the remote."
+    );
+    assert_eq!(
+        refused_file_operation(&project, cx).await,
+        "RPC request TransferFileOperation failed: No operation was specified"
+    );
+}
+
+// A host without the handler (a server that predates it) ignores the
+// language and stays in English.
+#[gpui::test]
+async fn test_a_host_without_the_handler_ignores_the_display_language(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let _installs = i18n::test_support::ThreadLocalInstalls::new();
+    cx.update(|cx| cx.set_global(remote::DisplayLanguageForTests(Some("ja".to_string()))));
+
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(path!("/code"), json!({ "project1": {} }))
+        .await;
+    let (project, _headless) = init_test(&fs, cx, server_cx).await;
+    assert_eq!(i18n::current_locale(), "en");
+    assert_eq!(
+        refused_transfer(&project, cx).await,
+        "RPC request RunTransferCommand failed: rm cannot be run on the remote."
+    );
+}
+
 pub async fn init_test(
     server_fs: &Arc<FakeFs>,
     cx: &mut TestAppContext,
@@ -6606,7 +6793,10 @@ async fn test_a_denied_remote_language_server_stays_stopped(
     assert!(!runs_language_server(&headless, PROJECT_SERVER, server_cx));
     let failure = last_failure(&mut binary_statuses, PROJECT_SERVER)
         .expect("the remote host reports why the server did not start");
-    assert!(failure.contains("許可されていない"), "{failure}");
+    assert!(
+        failure.contains("is not allowed, so it is not started"),
+        "{failure}"
+    );
 }
 
 // The remote host binds the script a binary runs by its contents, so a
@@ -6844,7 +7034,10 @@ async fn test_an_ide_without_launch_approvals_gets_nothing_started(
     assert!(fake_servers.try_recv().is_err());
     let failure = last_failure(&mut binary_statuses, PROJECT_SERVER)
         .expect("the remote host reports why the server did not start");
-    assert!(failure.contains("起動の承認を確認できない"), "{failure}");
+    assert!(
+        failure.contains("The launch approval cannot be checked"),
+        "{failure}"
+    );
 
     let format = session.request(format_request(buffer_id)).await;
     assert!(
@@ -6916,7 +7109,7 @@ async fn test_an_ide_that_does_not_answer_gets_nothing_formatted(
         notifications
             .borrow()
             .iter()
-            .any(|message| message.contains("実行しませんでした")),
+            .any(|message| message.contains("was not run")),
         "the user hears why: {:?}",
         notifications.borrow()
     );
@@ -7277,7 +7470,7 @@ async fn test_revoking_while_disconnected_says_when_it_takes_effect(
         toasts
             .borrow()
             .iter()
-            .any(|message| message.contains("再接続したときに接続先へ伝わります")),
+            .any(|message| message.contains("the revocation reaches it when it reconnects")),
         "{:?}",
         toasts.borrow()
     );
@@ -7382,7 +7575,7 @@ async fn test_a_remote_server_cannot_flood_the_ide_with_questions(
             && answer
                 .reason
                 .as_deref()
-                .is_some_and(|reason| reason.contains("多すぎます"))
+                .is_some_and(|reason| reason.contains("Too many"))
     };
 
     for index in 0..32 {
@@ -7413,7 +7606,7 @@ async fn test_a_remote_server_cannot_flood_the_ide_with_questions(
         answer
             .reason
             .as_deref()
-            .is_some_and(|reason| reason.contains("知らない言語サーバー")),
+            .is_some_and(|reason| reason.contains("which this IDE does not know")),
         "{answer:?}"
     );
 
@@ -7499,7 +7692,7 @@ async fn test_approved_launches_are_never_forgotten(
         answer
             .reason
             .as_deref()
-            .is_some_and(|reason| reason.contains("承認済みの起動が多すぎます")),
+            .is_some_and(|reason| reason.contains("Too many approved launches")),
         "{answer:?}"
     );
     let answer = ask_the_ide(&session, formatter_question(worktree_id, 0), cx).await;
@@ -7584,7 +7777,10 @@ async fn test_a_stalled_ide_holds_language_servers_until_it_answers(
     cx.run_until_parked();
     let failure =
         last_failure(&mut binary_statuses, PROJECT_SERVER).expect("the server says why it waits");
-    assert!(failure.contains("IDE が応答すると起動します"), "{failure}");
+    assert!(
+        failure.contains("It starts once the IDE responds"),
+        "{failure}"
+    );
     assert!(fake_servers.try_recv().is_err());
 
     end_stall.send(()).unwrap();
@@ -7724,7 +7920,7 @@ async fn test_a_language_server_waits_for_room_at_the_ide(
     let failure =
         last_failure(&mut binary_statuses, PROJECT_SERVER).expect("the server says why it waits");
     assert!(
-        failure.contains("承認待ちが減ると問い合わせます"),
+        failure.contains("It is asked for once fewer are waiting"),
         "{failure}"
     );
     assert_eq!(pending_launches(cx).len(), 32);

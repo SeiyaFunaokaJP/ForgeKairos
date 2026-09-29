@@ -53,9 +53,9 @@ impl GitGraphDirection {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::LeftToRight => "左から右 (LR)",
-            Self::TopToBottom => "上から下 (TB)",
-            Self::BottomToTop => "下から上 (BT)",
+            Self::LeftToRight => i18n::t!("Left to right (LR)"),
+            Self::TopToBottom => i18n::t!("Top to bottom (TB)"),
+            Self::BottomToTop => i18n::t!("Bottom to top (BT)"),
         }
     }
 
@@ -91,9 +91,9 @@ impl GitCommitType {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Normal => "通常",
-            Self::Reverse => "取り消し",
-            Self::Highlight => "強調",
+            Self::Normal => i18n::tc!("gitGraph commit type", "Normal"),
+            Self::Reverse => i18n::tc!("gitGraph commit type", "Reverse"),
+            Self::Highlight => i18n::tc!("gitGraph commit type", "Highlight"),
         }
     }
 
@@ -189,11 +189,11 @@ impl GitGraphItemKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Commit => "コミット",
-            Self::Branch => "ブランチ作成",
-            Self::Checkout => "チェックアウト",
-            Self::Merge => "マージ",
-            Self::CherryPick => "チェリーピック",
+            Self::Commit => i18n::tc!("gitGraph operation", "Commit"),
+            Self::Branch => i18n::tc!("gitGraph operation", "Branch"),
+            Self::Checkout => i18n::tc!("gitGraph operation", "Checkout"),
+            Self::Merge => i18n::tc!("gitGraph operation", "Merge"),
+            Self::CherryPick => i18n::tc!("gitGraph operation", "Cherry-pick"),
         }
     }
 }
@@ -362,10 +362,12 @@ impl GitGraphDocument {
                 .map(|(position, _)| (position + 1).to_string())
                 .collect::<Vec<_>>();
             if !references.is_empty() {
-                return Some(format!(
-                    "ブランチ「{}」は {} 番目の操作から参照されています。先にそれらを削除するか、別のブランチに向けてください。",
-                    branch.name,
-                    references.join("・")
+                let name = &branch.name;
+                let list = references.join(i18n::tc!("gitGraph operation list separator", ", "));
+                return Some(i18n::tn!(
+                    references.len(),
+                    "Branch `{name}` is referenced by operation {list}. Delete it first, or point it at another branch.",
+                    "Branch `{name}` is referenced by operations {list}. Delete them first, or point them at another branch."
                 ));
             }
             let runs_on_it = self
@@ -384,8 +386,8 @@ impl GitGraphDocument {
                     )
                 });
             if runs_on_it {
-                return Some(format!(
-                    "ブランチ「{}」の直後の操作はこのブランチの上で行われています。先にそれらを削除するか、別のブランチへ移してください。",
+                return Some(i18n::t!(
+                    "The operations right after branch `{}` run on this branch. Delete them first, or move them to another branch.",
                     branch.name
                 ));
             }
@@ -408,16 +410,18 @@ impl GitGraphDocument {
         if pickers.is_empty() {
             return None;
         }
-        Some(format!(
-            "コミット「{id}」は {} 番目のチェリーピックから参照されています。先にそちらを削除してください。",
-            pickers.join("・")
+        let list = pickers.join(i18n::tc!("gitGraph operation list separator", ", "));
+        Some(i18n::tn!(
+            pickers.len(),
+            "Commit `{id}` is referenced by the cherry-pick at operation {list}. Delete it first.",
+            "Commit `{id}` is referenced by the cherry-picks at operations {list}. Delete them first."
         ))
     }
 
     /// Takes the statement at `index` out, or says why it cannot be.
     pub fn remove_item(&mut self, index: usize) -> Result<GitGraphItem, String> {
         if index >= self.items.len() {
-            return Err("その操作はもうありません。".to_string());
+            return Err(i18n::t!("That operation no longer exists.").to_string());
         }
         if let Some(blocker) = self.removal_blocker(index) {
             return Err(blocker);
@@ -429,7 +433,7 @@ impl GitGraphDocument {
     /// two kinds share, or says why the statement it replaces cannot go.
     pub fn change_kind(&mut self, index: usize, kind: GitGraphItemKind) -> Result<(), String> {
         let Some(item) = self.items.get(index) else {
-            return Err("その操作はもうありません。".to_string());
+            return Err(i18n::t!("That operation no longer exists.").to_string());
         };
         if item.kind() == Some(kind) {
             return Ok(());
@@ -559,7 +563,7 @@ impl GitGraphDocument {
     }
 
     /// Why the document cannot be written back as a git graph Mermaid draws, in
-    /// Japanese, or `None` when it can.
+    /// the display language, or `None` when it can.
     ///
     /// The spelling of every value is checked first. The rest replays the
     /// statements the way Mermaid's git graph database does and reports the
@@ -570,7 +574,7 @@ impl GitGraphDocument {
     pub fn structure_error(&self) -> Option<String> {
         for (index, item) in self.items.iter().enumerate() {
             if let Some(problem) = item_spelling_problem(item) {
-                return Some(format!("{} 番目の操作: {problem}", index + 1));
+                return Some(i18n::t!("Operation {}: {problem}", index + 1));
             }
         }
         replay(self).err()
@@ -581,12 +585,12 @@ fn item_spelling_problem(item: &GitGraphItem) -> Option<String> {
     let check_id = |id: &Option<String>| {
         id.as_ref()
             .filter(|id| !is_valid_gitgraph_text(id) || id.is_empty())
-            .map(|id| format!("ID「{id}」は使えません (`\"` `%%` と改行は不可)。"))
+            .map(|id| i18n::t!("The ID `{id}` cannot be used (no `\"`, `%%` or line breaks)."))
     };
     let check_tags = |tags: &[String]| {
         tags.iter()
             .find(|tag| !is_valid_gitgraph_text(tag))
-            .map(|tag| format!("タグ「{tag}」は使えません (`\"` `%%` と改行は不可)。"))
+            .map(|tag| i18n::t!("The tag `{tag}` cannot be used (no `\"`, `%%` or line breaks)."))
     };
     match item {
         GitGraphItem::Commit(commit) => check_id(&commit.id)
@@ -597,7 +601,9 @@ fn item_spelling_problem(item: &GitGraphItem) -> Option<String> {
                     .as_ref()
                     .filter(|message| !is_valid_gitgraph_text(message))
                     .map(|message| {
-                        format!("メッセージ「{message}」は使えません (`\"` `%%` と改行は不可)。")
+                        i18n::t!(
+                            "The message `{message}` cannot be used (no `\"`, `%%` or line breaks)."
+                        )
                     })
             }),
         GitGraphItem::Branch(branch) => {
@@ -608,7 +614,7 @@ fn item_spelling_problem(item: &GitGraphItem) -> Option<String> {
                 .order
                 .as_ref()
                 .filter(|order| !is_valid_gitgraph_order(order))
-                .map(|order| format!("順序「{order}」は整数で書いてください。"))
+                .map(|order| i18n::t!("Write the order `{order}` as a whole number."))
         }
         GitGraphItem::Checkout(checkout) => (!is_valid_gitgraph_branch_name(&checkout.branch))
             .then(|| branch_name_problem(&checkout.branch)),
@@ -620,7 +626,7 @@ fn item_spelling_problem(item: &GitGraphItem) -> Option<String> {
         }
         GitGraphItem::CherryPick(pick) => {
             if pick.id.is_empty() {
-                return Some("チェリーピックするコミットを選んでください。".to_string());
+                return Some(i18n::t!("Choose the commit to cherry-pick.").to_string());
             }
             check_id(&Some(pick.id.clone()))
                 .or_else(|| check_id(&pick.parent))
@@ -632,9 +638,9 @@ fn item_spelling_problem(item: &GitGraphItem) -> Option<String> {
 
 fn branch_name_problem(name: &str) -> String {
     if name.is_empty() {
-        "ブランチ名が空です。".to_string()
+        i18n::t!("The branch name is empty.").to_string()
     } else {
-        format!("ブランチ名「{name}」は使えません (`\"` `%%` と改行は不可)。")
+        i18n::t!("The branch name `{name}` cannot be used (no `\"`, `%%` or line breaks).")
     }
 }
 
@@ -685,8 +691,8 @@ fn replay(document: &GitGraphDocument) -> Result<(), String> {
                     Some(id) => {
                         let key = CommitKey::Named(id.clone());
                         if commits.contains_key(&key) {
-                            return Err(format!(
-                                "{number} 番目のコミット: ID「{id}」が重複しています。"
+                            return Err(i18n::t!(
+                                "Operation {number} (commit): the ID `{id}` is used more than once."
                             ));
                         }
                         key
@@ -706,8 +712,8 @@ fn replay(document: &GitGraphDocument) -> Result<(), String> {
             }
             GitGraphItem::Branch(branch) => {
                 if head_of(&heads, &branch.name).is_some() {
-                    return Err(format!(
-                        "{number} 番目のブランチ作成: ブランチ「{}」は既にあります (切り替えるだけならチェックアウトを使ってください)。",
+                    return Err(i18n::t!(
+                        "Operation {number} (branch): branch `{}` already exists (to switch to it, use a checkout).",
                         branch.name
                     ));
                 }
@@ -716,8 +722,8 @@ fn replay(document: &GitGraphDocument) -> Result<(), String> {
             }
             GitGraphItem::Checkout(checkout) => {
                 let Some(branch_head) = head_of(&heads, &checkout.branch) else {
-                    return Err(format!(
-                        "{number} 番目のチェックアウト: ブランチ「{}」はまだ作られていません (先にブランチ作成が必要です)。",
+                    return Err(i18n::t!(
+                        "Operation {number} (checkout): branch `{}` has not been created yet (create it with a branch operation first).",
                         checkout.branch
                     ));
                 };
@@ -727,44 +733,44 @@ fn replay(document: &GitGraphDocument) -> Result<(), String> {
             GitGraphItem::Merge(merge) => {
                 let other = &merge.branch;
                 if *other == current {
-                    return Err(format!(
-                        "{number} 番目のマージ: ブランチ「{other}」を自分自身にはマージできません。"
+                    return Err(i18n::t!(
+                        "Operation {number} (merge): branch `{other}` cannot be merged into itself."
                     ));
                 }
                 let Some(current_head) = head_of(&heads, &current).cloned().flatten() else {
-                    return Err(format!(
-                        "{number} 番目のマージ: 今のブランチ「{current}」にまだコミットがありません。"
+                    return Err(i18n::t!(
+                        "Operation {number} (merge): the current branch `{current}` has no commits yet."
                     ));
                 };
                 let Some(other_head) = head_of(&heads, other) else {
-                    return Err(format!(
-                        "{number} 番目のマージ: ブランチ「{other}」はまだ作られていません。"
+                    return Err(i18n::t!(
+                        "Operation {number} (merge): branch `{other}` has not been created yet."
                     ));
                 };
                 let Some(other_head) = other_head.clone() else {
-                    return Err(format!(
-                        "{number} 番目のマージ: ブランチ「{other}」にまだコミットがありません。"
+                    return Err(i18n::t!(
+                        "Operation {number} (merge): branch `{other}` has no commits yet."
                     ));
                 };
                 if commits
                     .get(&current_head)
                     .is_some_and(|commit| commit.branch == *other)
                 {
-                    return Err(format!(
-                        "{number} 番目のマージ: 「{current}」は「{other}」から分かれた後にコミットが無いため、マージできません。"
+                    return Err(i18n::t!(
+                        "Operation {number} (merge): `{current}` has no commits since it branched off `{other}`, so it cannot be merged."
                     ));
                 }
                 if current_head == other_head {
-                    return Err(format!(
-                        "{number} 番目のマージ: 「{current}」と「{other}」の先頭が同じコミットです。"
+                    return Err(i18n::t!(
+                        "Operation {number} (merge): the heads of `{current}` and `{other}` are the same commit."
                     ));
                 }
                 let key = match &merge.id {
                     Some(id) => {
                         let key = CommitKey::Named(id.clone());
                         if commits.contains_key(&key) {
-                            return Err(format!(
-                                "{number} 番目のマージ: ID「{id}」は既に使われています。"
+                            return Err(i18n::t!(
+                                "Operation {number} (merge): the ID `{id}` is already in use."
                             ));
                         }
                         key
@@ -784,34 +790,34 @@ fn replay(document: &GitGraphDocument) -> Result<(), String> {
             }
             GitGraphItem::CherryPick(pick) => {
                 let Some(source) = commits.get(&CommitKey::Named(pick.id.clone())) else {
-                    return Err(format!(
-                        "{number} 番目のチェリーピック: コミット「{}」はこれより前にありません。",
+                    return Err(i18n::t!(
+                        "Operation {number} (cherry-pick): commit `{}` does not come before it.",
                         pick.id
                     ));
                 };
                 if let Some(parent) = &pick.parent
                     && !source.parents.contains(&CommitKey::Named(parent.clone()))
                 {
-                    return Err(format!(
-                        "{number} 番目のチェリーピック: 「{parent}」は「{}」の直接の親ではありません。",
+                    return Err(i18n::t!(
+                        "Operation {number} (cherry-pick): `{parent}` is not a direct parent of `{}`.",
                         pick.id
                     ));
                 }
                 if source.is_merge && pick.parent.is_none() {
-                    return Err(format!(
-                        "{number} 番目のチェリーピック: 「{}」はマージコミットなので、親を指定してください。",
+                    return Err(i18n::t!(
+                        "Operation {number} (cherry-pick): `{}` is a merge commit, so specify its parent.",
                         pick.id
                     ));
                 }
                 if source.branch == current {
-                    return Err(format!(
-                        "{number} 番目のチェリーピック: 「{}」は既に今のブランチ「{current}」の上にあります。",
+                    return Err(i18n::t!(
+                        "Operation {number} (cherry-pick): `{}` is already on the current branch `{current}`.",
                         pick.id
                     ));
                 }
                 if head_of(&heads, &current).cloned().flatten().is_none() {
-                    return Err(format!(
-                        "{number} 番目のチェリーピック: 今のブランチ「{current}」にまだコミットがありません。"
+                    return Err(i18n::t!(
+                        "Operation {number} (cherry-pick): the current branch `{current}` has no commits yet."
                     ));
                 }
                 let source_key = CommitKey::Named(pick.id.clone());
@@ -858,11 +864,13 @@ pub fn parse_gitgraph(source: &str) -> Result<GitGraphDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::GitGraph(_)) {
-            bail!("この図は Git グラフではありません。");
+            bail!(i18n::t!("This diagram is not a Git graph."));
         }
         // The main branch is named by the configuration, which can come from
         // the frontmatter, an init directive or both; `merman` has already
@@ -895,7 +903,9 @@ pub fn parse_gitgraph(source: &str) -> Result<GitGraphDocument> {
     };
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(tail) = header_tail(header) else {
-        bail!("Git グラフではありません (`gitGraph` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a Git graph (only diagrams that start with `gitGraph` can be edited in the structured editor)."
+        ));
     };
     parse_header(tail, &mut document)?;
 
@@ -960,7 +970,9 @@ pub fn parse_gitgraph(source: &str) -> Result<GitGraphDocument> {
             continue;
         }
         let item = parse_statement(trimmed).map_err(|reason| {
-            anyhow!("`{trimmed}` は構造化編集に対応していません ({reason})。テキストのまま編集してください。")
+            anyhow!(i18n::t!(
+                "`{trimmed}` is not supported by the structured editor ({reason}). Edit it as text."
+            ))
         })?;
         document.items.push(item);
     }
@@ -984,9 +996,9 @@ fn parse_header(tail: &str, document: &mut GitGraphDocument) -> Result<()> {
             document.direction = Some(direction);
             Ok(())
         }
-        None => bail!(
-            "`gitGraph` の行の `{tail}` は構造化編集に対応していません (向きは LR / TB / BT のどれかです)。テキストのまま編集してください。"
-        ),
+        None => bail!(i18n::t!(
+            "`{tail}` on the `gitGraph` line is not supported by the structured editor (the direction is one of LR / TB / BT). Edit it as text."
+        )),
     }
 }
 
@@ -1053,7 +1065,7 @@ impl<'a> Cursor<'a> {
     fn quoted(&mut self) -> Result<String, String> {
         self.skip_whitespace();
         if self.peek() != Some('"') {
-            return Err("`\"` が必要です".to_string());
+            return Err(i18n::t!("`\"` is required").to_string());
         }
         self.advance();
         let start = self.position;
@@ -1061,7 +1073,7 @@ impl<'a> Cursor<'a> {
             self.advance();
         }
         if self.peek() != Some('"') {
-            return Err("引用符が閉じていません".to_string());
+            return Err(i18n::t!("the quotes are not closed").to_string());
         }
         let text = self.input.get(start..self.position).unwrap_or_default();
         self.advance();
@@ -1081,7 +1093,7 @@ impl<'a> Cursor<'a> {
             self.advance();
         }
         if self.position == start {
-            return Err("ブランチ名がありません".to_string());
+            return Err(i18n::t!("the branch name is missing").to_string());
         }
         Ok(self
             .input
@@ -1097,11 +1109,11 @@ impl<'a> Cursor<'a> {
         let mut pairs = Vec::new();
         while !self.is_done() {
             let Some(key) = self.word() else {
-                return Err(format!("`{}` を読めません", self.rest()));
+                return Err(i18n::t!("cannot read `{}`", self.rest()));
             };
             self.skip_whitespace();
             if self.peek() != Some(':') {
-                return Err(format!("`{key}` の後に `:` がありません"));
+                return Err(i18n::t!("there is no `:` after `{key}`"));
             }
             self.advance();
             self.skip_whitespace();
@@ -1130,11 +1142,11 @@ fn parse_statement(statement: &str) -> Result<GitGraphItem, String> {
                     "order" => {
                         let value = value.trim().to_string();
                         if !is_valid_gitgraph_order(&value) {
-                            return Err(format!("順序 `{value}` は整数ではありません"));
+                            return Err(i18n::t!("the order `{value}` is not a whole number"));
                         }
                         set_once(&mut order, value, key)?;
                     }
-                    other => return Err(format!("`branch` に `{other}:` は書けません")),
+                    other => return Err(i18n::t!("`branch` cannot take `{other}:`")),
                 }
             }
             Ok(GitGraphItem::Branch(GitBranch { name, order }))
@@ -1143,8 +1155,8 @@ fn parse_statement(statement: &str) -> Result<GitGraphItem, String> {
             let branch = cursor.name()?;
             check_branch_name(&branch)?;
             if !cursor.is_done() {
-                return Err(format!(
-                    "ブランチ名の後の `{}` は無視されます",
+                return Err(i18n::t!(
+                    "`{}` after the branch name is ignored",
                     cursor.rest()
                 ));
             }
@@ -1175,7 +1187,7 @@ fn parse_statement(statement: &str) -> Result<GitGraphItem, String> {
                         merge.tags.push(value);
                     }
                     "type" => set_once(&mut merge.commit_type, commit_type(&value)?, key)?,
-                    other => return Err(format!("`merge` に `{other}:` は書けません")),
+                    other => return Err(i18n::t!("`merge` cannot take `{other}:`")),
                 }
             }
             Ok(GitGraphItem::Merge(merge))
@@ -1197,16 +1209,16 @@ fn parse_statement(statement: &str) -> Result<GitGraphItem, String> {
                         }
                     }
                     "tag" => pick.tags.push(value),
-                    other => return Err(format!("`cherry-pick` に `{other}:` は書けません")),
+                    other => return Err(i18n::t!("`cherry-pick` cannot take `{other}:`")),
                 }
             }
             pick.id = id.unwrap_or_default();
             if pick.id.is_empty() {
-                return Err("`id:` がありません".to_string());
+                return Err(i18n::t!("`id:` is missing").to_string());
             }
             Ok(GitGraphItem::CherryPick(pick))
         }
-        other => Err(format!("`{other}` は Git グラフの文ではありません")),
+        other => Err(i18n::t!("`{other}` is not a Git graph statement")),
     }
 }
 
@@ -1217,8 +1229,8 @@ fn parse_commit(cursor: &mut Cursor) -> Result<GitCommit, String> {
         let message = cursor.quoted()?;
         check_text(&message)?;
         if !cursor.is_done() {
-            return Err(format!(
-                "引用符のメッセージの後の `{}` は無視されます",
+            return Err(i18n::t!(
+                "`{}` after the quoted message is ignored",
                 cursor.rest()
             ));
         }
@@ -1242,7 +1254,7 @@ fn parse_commit(cursor: &mut Cursor) -> Result<GitCommit, String> {
                 commit.tags.push(value);
             }
             "type" => set_once(&mut commit.commit_type, commit_type(&value)?, key)?,
-            other => return Err(format!("`commit` に `{other}:` は書けません")),
+            other => return Err(i18n::t!("`commit` cannot take `{other}:`")),
         }
     }
     Ok(commit)
@@ -1252,23 +1264,22 @@ fn parse_commit(cursor: &mut Cursor) -> Result<GitCommit, String> {
 /// on the way back.
 fn set_once<T>(slot: &mut Option<T>, value: T, key: &str) -> Result<(), String> {
     if slot.is_some() {
-        return Err(format!("`{key}:` が 2 回書かれています"));
+        return Err(i18n::t!("`{key}:` is written twice"));
     }
     *slot = Some(value);
     Ok(())
 }
 
 fn commit_type(value: &str) -> Result<GitCommitType, String> {
-    GitCommitType::from_keyword(value).ok_or_else(|| {
-        format!("種類 `{value}` は NORMAL / REVERSE / HIGHLIGHT のどれでもありません")
-    })
+    GitCommitType::from_keyword(value)
+        .ok_or_else(|| i18n::t!("the type `{value}` is not one of NORMAL / REVERSE / HIGHLIGHT"))
 }
 
 fn check_text(text: &str) -> Result<(), String> {
     if is_valid_gitgraph_text(text) {
         Ok(())
     } else {
-        Err(format!("`{text}` は書き戻せません"))
+        Err(i18n::t!("`{text}` cannot be written back"))
     }
 }
 
@@ -1276,7 +1287,7 @@ fn check_branch_name(name: &str) -> Result<(), String> {
     if is_valid_gitgraph_branch_name(name) {
         Ok(())
     } else {
-        Err(format!("ブランチ名 `{name}` は書き戻せません"))
+        Err(i18n::t!("the branch name `{name}` cannot be written back"))
     }
 }
 
@@ -1562,8 +1573,8 @@ mod tests {
     #[test]
     fn a_line_the_model_would_shorten_is_refused() {
         for (source, fragment) in [
-            ("gitGraph\n  commit \"m\" id: \"x\"", "無視"),
-            ("gitGraph\n  commit id: \"a\" id: \"b\"", "2 回"),
+            ("gitGraph\n  commit \"m\" id: \"x\"", "is ignored"),
+            ("gitGraph\n  commit id: \"a\" id: \"b\"", "written twice"),
         ] {
             let message = refusal(source);
             assert!(message.contains(fragment), "{source}: {message}");
@@ -1594,7 +1605,10 @@ mod tests {
             "gitGraph RL:\n  commit",
         ] {
             let message = refusal(source);
-            assert!(message.contains("Mermaid の構文"), "{source}: {message}");
+            assert!(
+                message.contains("Mermaid could not parse"),
+                "{source}: {message}"
+            );
         }
     }
 
@@ -1649,20 +1663,23 @@ mod tests {
     #[test]
     fn the_structure_checks_agree_with_merman() {
         let cases: Vec<(Vec<GitGraphItem>, Option<&str>)> = vec![
-            (vec![checkout("dev")], Some("まだ作られていません")),
-            (vec![commit(None), branch("main")], Some("既にあります")),
+            (vec![checkout("dev")], Some("has not been created yet")),
+            (vec![commit(None), branch("main")], Some("already exists")),
             (
                 vec![commit(None), branch("b"), merge("b")],
-                Some("自分自身"),
+                Some("into itself"),
             ),
             (
                 vec![branch("b"), commit(None), checkout("main"), merge("b")],
-                Some("まだコミットがありません"),
+                Some("has no commits yet"),
             ),
-            (vec![commit(None), merge("b")], Some("まだ作られていません")),
+            (
+                vec![commit(None), merge("b")],
+                Some("has not been created yet"),
+            ),
             (
                 vec![commit(None), branch("b"), checkout("main"), merge("b")],
-                Some("先頭が同じ"),
+                Some("are the same commit"),
             ),
             (
                 vec![
@@ -1673,16 +1690,19 @@ mod tests {
                     checkout("b"),
                     merge("main"),
                 ],
-                Some("分かれた後"),
+                Some("since it branched off"),
             ),
-            (vec![commit(Some("a")), commit(Some("a"))], Some("重複")),
+            (
+                vec![commit(Some("a")), commit(Some("a"))],
+                Some("used more than once"),
+            ),
             (
                 vec![commit(Some("a")), pick("x", None)],
-                Some("これより前にありません"),
+                Some("does not come before it"),
             ),
             (
                 vec![commit(Some("a")), pick("a", None)],
-                Some("既に今のブランチ"),
+                Some("is already on the current branch"),
             ),
             (
                 vec![
@@ -1692,7 +1712,7 @@ mod tests {
                     checkout("main"),
                     pick("c", Some("zzz")),
                 ],
-                Some("直接の親ではありません"),
+                Some("is not a direct parent"),
             ),
             (
                 vec![
@@ -1706,7 +1726,7 @@ mod tests {
                     commit(None),
                     pick("M", None),
                 ],
-                Some("これより前にありません"),
+                Some("does not come before it"),
             ),
             (
                 vec![
@@ -1739,7 +1759,7 @@ mod tests {
                     assert!(error.contains(fragment), "{source}: {error}");
                     // Mermaid's warning about a repeated id is the one rule
                     // stricter here than in `merman`.
-                    if fragment != "重複" {
+                    if fragment != "used more than once" {
                         assert!(
                             parse_gitgraph(&source).is_err(),
                             "merman should refuse this as well:\n{source}"
@@ -1764,7 +1784,7 @@ mod tests {
             pick.parent = None;
         }
         let error = document.structure_error().unwrap_or_default();
-        assert!(error.contains("親を指定"), "{error}");
+        assert!(error.contains("specify its parent"), "{error}");
     }
 
     #[test]
@@ -1777,7 +1797,7 @@ mod tests {
             document
                 .structure_error()
                 .unwrap_or_default()
-                .contains("1 番目")
+                .contains("Operation 1:")
         );
 
         let mut document = parse(TEMPLATE);
@@ -1788,7 +1808,7 @@ mod tests {
             document
                 .structure_error()
                 .unwrap_or_default()
-                .contains("整数")
+                .contains("whole number")
         );
     }
 
@@ -1875,7 +1895,7 @@ mod tests {
         let mut document = parse(TEMPLATE);
         let before = emit_gitgraph(&document);
         let error = document.remove_item(1).err().unwrap_or_default();
-        assert!(error.contains("3・6 番目"), "{error}");
+        assert!(error.contains("operations 3, 6."), "{error}");
         assert_eq!(
             emit_gitgraph(&document),
             before,
@@ -1886,19 +1906,19 @@ mod tests {
             .change_kind(1, GitGraphItemKind::Commit)
             .err()
             .unwrap_or_default();
-        assert!(error.contains("参照されています"), "{error}");
+        assert!(error.contains("is referenced by"), "{error}");
         assert_eq!(emit_gitgraph(&document), before);
 
         let mut document =
             parse("gitGraph\n    commit\n    branch dev\n    commit\n    checkout main");
         let error = document.remove_item(1).err().unwrap_or_default();
-        assert!(error.contains("直後の操作"), "{error}");
+        assert!(error.contains("operations right after"), "{error}");
 
         let mut document = parse(
             "gitGraph\n    commit id: \"A\"\n    branch dev\n    commit id: \"B\"\n    checkout main\n    cherry-pick id: \"B\"",
         );
         let error = document.remove_item(2).err().unwrap_or_default();
-        assert!(error.contains("チェリーピック"), "{error}");
+        assert!(error.contains("cherry-pick"), "{error}");
         assert!(document.change_kind(2, GitGraphItemKind::Merge).is_ok());
         assert_eq!(
             document.items.get(2).and_then(GitGraphItem::commit_id),
@@ -2014,7 +2034,10 @@ mod tests {
         let source =
             "gitGraph\n    commit\n    %%{init: {'theme': 'dark'\n    branch dev\n    commit";
         let error = refusal(source);
-        assert!(error.contains("閉じていない `%%{`"), "{error}");
+        assert!(
+            error.contains("There is a `%%{` that is never closed"),
+            "{error}"
+        );
 
         let closed = "gitGraph\n    commit\n    %%{init: {'theme':\n    'dark'}}%%\n    commit";
         let document = parse(closed);
@@ -2060,7 +2083,10 @@ mod tests {
             }
             let document = document_of(items);
             let ours = document.structure_error();
-            if ours.as_deref().is_some_and(|error| error.contains("重複")) {
+            if ours
+                .as_deref()
+                .is_some_and(|error| error.contains("used more than once"))
+            {
                 continue;
             }
             let source = emit_gitgraph(&document);

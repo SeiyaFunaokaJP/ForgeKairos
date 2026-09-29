@@ -514,6 +514,11 @@ impl ExtensionStore {
             let reload_tx = this.reload_tx.clone();
             let installed_dir = this.installed_dir.clone();
             async move {
+                // Watching a path that doesn't exist yet only polls for its creation every few
+                // seconds, and what that poll reports (the directory itself) names no extension,
+                // so installs and removals until then would go unnoticed. The index rebuild
+                // creates this directory too, but it can run after the watch starts.
+                fs.create_dir(&installed_dir).await.log_err();
                 let (mut paths, _) = fs.watch(&installed_dir, FS_WATCH_LATENCY).await;
                 while let Some(events) = paths.next().await {
                     for event in events {
@@ -676,6 +681,11 @@ impl ExtensionStore {
             .map(|(id, _)| id.as_ref())
             .collect::<Vec<_>>()
             .join(",");
+        // With nothing installed there is nothing to update, and asking anyway
+        // would be a request at every startup that the user never caused.
+        if extension_ids.is_empty() {
+            return Task::ready(Ok(Vec::new()));
+        }
         let task = self.fetch_extensions_from_api(
             "/extensions/updates",
             &[
@@ -725,9 +735,22 @@ impl ExtensionStore {
             return;
         }
 
-        let extension_settings = ExtensionSettings::get_global(cx);
+        let extensions_to_install = self.extensions_to_auto_install(cx);
 
-        let extensions_to_install = extension_settings
+        cx.spawn(async move |this, cx| {
+            for extension_id in extensions_to_install {
+                this.update(cx, |this, cx| {
+                    this.install_latest_extension(extension_id.clone(), cx);
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
+    fn extensions_to_auto_install(&self, cx: &App) -> Vec<Arc<str>> {
+        let extension_settings = ExtensionSettings::get_global(cx);
+        extension_settings
             .auto_install_extensions
             .keys()
             .filter(|extension_id| extension_settings.should_auto_install(extension_id))
@@ -739,17 +762,7 @@ impl ExtensionStore {
                 !is_already_installed && !SUPPRESSED_EXTENSIONS.contains(extension_id.as_ref())
             })
             .cloned()
-            .collect::<Vec<_>>();
-
-        cx.spawn(async move |this, cx| {
-            for extension_id in extensions_to_install {
-                this.update(cx, |this, cx| {
-                    this.install_latest_extension(extension_id.clone(), cx);
-                })
-                .ok();
-            }
-        })
-        .detach();
+            .collect()
     }
 
     pub fn check_for_updates(&mut self, cx: &mut Context<Self>) {
@@ -950,28 +963,36 @@ impl ExtensionStore {
     }
 
     pub fn install_latest_extension(&mut self, extension_id: Arc<str>, cx: &mut Context<Self>) {
+        self.try_install_latest_extension(extension_id, cx)
+            .detach_and_log_err(cx);
+    }
+
+    /// Like [`Self::install_latest_extension`], but hands the outcome back so
+    /// that a caller acting on a user's click can show why it failed.
+    pub fn try_install_latest_extension(
+        &mut self,
+        extension_id: Arc<str>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<()>> {
         log::info!("installing extension {extension_id} latest version");
 
         let schema_versions = schema_version_range();
         let wasm_api_versions = wasm_api_version_range(ReleaseChannel::global(cx));
 
-        let Some(url) = self
-            .http_client
-            .build_zed_api_url(
-                &format!("/extensions/{extension_id}/download"),
-                &[
-                    ("min_schema_version", &schema_versions.start().to_string()),
-                    ("max_schema_version", &schema_versions.end().to_string()),
-                    (
-                        "min_wasm_api_version",
-                        &wasm_api_versions.start().to_string(),
-                    ),
-                    ("max_wasm_api_version", &wasm_api_versions.end().to_string()),
-                ],
-            )
-            .log_err()
-        else {
-            return;
+        let url = match self.http_client.build_zed_api_url(
+            &format!("/extensions/{extension_id}/download"),
+            &[
+                ("min_schema_version", &schema_versions.start().to_string()),
+                ("max_schema_version", &schema_versions.end().to_string()),
+                (
+                    "min_wasm_api_version",
+                    &wasm_api_versions.start().to_string(),
+                ),
+                ("max_wasm_api_version", &wasm_api_versions.end().to_string()),
+            ],
+        ) {
+            Ok(url) => url,
+            Err(error) => return Task::ready(Err(error)),
         };
 
         self.install_or_upgrade_extension_at_endpoint(
@@ -980,7 +1001,6 @@ impl ExtensionStore {
             ExtensionOperation::Install,
             cx,
         )
-        .detach_and_log_err(cx);
     }
 
     pub fn upgrade_extension(

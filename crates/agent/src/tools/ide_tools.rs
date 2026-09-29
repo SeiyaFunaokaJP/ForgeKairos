@@ -29,7 +29,7 @@ const DEFAULT_SYMBOL_SEARCH_LIMIT: usize = 30;
 /// A hover can carry a whole documentation page; the model rarely needs more than its start.
 const MAX_HOVER_OUTPUT_CHARS: usize = 8_000;
 const MAX_TITLE_CHARS: usize = 200;
-const DISPLAY_UNAVAILABLE: &str = "この環境ではエディターにコードを表示できません";
+const DISPLAY_UNAVAILABLE: &str = "Code can't be shown in the editor in this environment";
 
 /// Shows what the language server knows about a symbol: its type, signature and documentation.
 ///
@@ -74,7 +74,7 @@ impl AgentTool for HoverTool {
     ) -> SharedString {
         match input {
             Ok(input) => hover_title(&input).into(),
-            Err(_) => "ホバー情報を取得".into(),
+            Err(_) => i18n::t!("Get hover information").into(),
         }
     }
 
@@ -93,7 +93,7 @@ impl AgentTool for HoverTool {
             let path = resolve_shown_paths(&project, [input.path.as_str()], cx)
                 .await?
                 .pop()
-                .ok_or_else(|| format!("`{}` を解決できませんでした", input.path))?;
+                .ok_or_else(|| format!("Couldn't resolve `{}`", input.path))?;
             let position = LinePosition {
                 line: input.line,
                 symbol: input.symbol.clone(),
@@ -115,7 +115,10 @@ impl AgentTool for HoverTool {
                 )),
                 Err(error) if error.downcast_ref::<LanguageServerNotRunning>().is_some() => {
                     mark_card_missing_language_server(&event_stream, &hover_title(&input));
-                    Ok(no_language_server_message("ホバー情報の取得", &input.path))
+                    Ok(no_language_server_message(
+                        "get hover information",
+                        &input.path,
+                    ))
                 }
                 Err(error) => Err(error.to_string()),
             }
@@ -125,9 +128,9 @@ impl AgentTool for HoverTool {
 
 fn hover_title(input: &HoverToolInput) -> String {
     match &input.symbol {
-        Some(symbol) => format!("{} のホバー情報", MarkdownInlineCode(symbol)),
-        None => format!(
-            "{} の {} 行目のホバー情報",
+        Some(symbol) => i18n::t!("Hover information for {}", MarkdownInlineCode(symbol)),
+        None => i18n::t!(
+            "Hover information for line {1} of {0}",
             MarkdownInlineCode(&input.path),
             input.line
         ),
@@ -184,8 +187,8 @@ impl AgentTool for SearchSymbolsTool {
         _cx: &mut App,
     ) -> SharedString {
         match input {
-            Ok(input) => format!("シンボルを検索: {}", MarkdownInlineCode(&input.query)).into(),
-            Err(_) => "シンボルを検索".into(),
+            Ok(input) => i18n::t!("Search symbols: {}", MarkdownInlineCode(&input.query)).into(),
+            Err(_) => i18n::t!("Search symbols").into(),
         }
     }
 
@@ -314,8 +317,13 @@ impl AgentTool for HighlightCodeTool {
         _cx: &mut App,
     ) -> SharedString {
         match input {
-            Ok(input) => format!("コードをハイライト ({} 件)", input.highlights.len()).into(),
-            Err(_) => "コードをハイライト".into(),
+            Ok(input) => i18n::tn!(
+                input.highlights.len(),
+                "Highlight code ({count} place)",
+                "Highlight code ({count} places)"
+            )
+            .into(),
+            Err(_) => i18n::t!("Highlight code").into(),
         }
     }
 
@@ -425,8 +433,13 @@ impl AgentTool for AnnotateCodeTool {
         _cx: &mut App,
     ) -> SharedString {
         match input {
-            Ok(input) => format!("コードに注釈 ({} 件)", input.annotations.len()).into(),
-            Err(_) => "コードに注釈".into(),
+            Ok(input) => i18n::tn!(
+                input.annotations.len(),
+                "Annotate code ({count} note)",
+                "Annotate code ({count} notes)"
+            )
+            .into(),
+            Err(_) => i18n::t!("Annotate code").into(),
         }
     }
 
@@ -538,13 +551,16 @@ impl AgentTool for CodeTourTool {
         _cx: &mut App,
     ) -> SharedString {
         match input {
-            Ok(input) => format!(
-                "コードツアー「{}」({} ステップ)",
-                truncate_chars(&input.title, 60),
-                input.steps.len()
-            )
-            .into(),
-            Err(_) => "コードツアー".into(),
+            Ok(input) => {
+                let title = truncate_chars(&input.title, 60);
+                i18n::tn!(
+                    input.steps.len(),
+                    "Code tour “{title}” ({count} step)",
+                    "Code tour “{title}” ({count} steps)"
+                )
+                .into()
+            }
+            Err(_) => i18n::t!("Code tour").into(),
         }
     }
 
@@ -633,7 +649,7 @@ impl AgentTool for ClearAnnotationsTool {
         _input: Result<Self::Input, serde_json::Value>,
         _cx: &mut App,
     ) -> SharedString {
-        "エディターの注釈を消去".into()
+        i18n::t!("Clear the editor annotations").into()
     }
 
     fn run(
@@ -663,22 +679,22 @@ fn require_code_display(cx: &mut AsyncApp) -> Result<Arc<dyn CodeDisplay>, Strin
 
 fn check_count(field: &str, count: usize, max: usize) -> Result<(), String> {
     if count == 0 {
-        return Err(format!("{field} が空です。1 件以上指定してください"));
+        return Err(format!("{field} is empty. Give at least one"));
     }
     if count > max {
-        return Err(format!("{field} が多すぎます ({count} 件、上限 {max} 件)"));
+        return Err(format!("Too many {field} ({count}, at most {max})"));
     }
     Ok(())
 }
 
 fn line_range(start_line: u32, end_line: Option<u32>, label: &str) -> Result<LineRange, String> {
     if start_line == 0 {
-        return Err(format!("{label}: 行番号は 1 から数えます"));
+        return Err(format!("{label}: line numbers start at 1"));
     }
     let end_line = end_line.unwrap_or(start_line);
     if end_line < start_line {
         return Err(format!(
-            "{label}: end_line ({end_line}) が start_line ({start_line}) より前です"
+            "{label}: end_line ({end_line}) is before start_line ({start_line})"
         ));
     }
     Ok(LineRange {
@@ -689,12 +705,12 @@ fn line_range(start_line: u32, end_line: Option<u32>, label: &str) -> Result<Lin
 
 fn check_text(text: &str, field: &str, label: &str, required: bool) -> Result<(), String> {
     if required && text.trim().is_empty() {
-        return Err(format!("{label}: {field} が空です"));
+        return Err(format!("{label}: {field} is empty"));
     }
     let count = text.chars().count();
     if count > MAX_DISPLAY_MARKDOWN_CHARS {
         return Err(format!(
-            "{label}: {field} が長すぎます ({count} 文字、上限 {MAX_DISPLAY_MARKDOWN_CHARS} 文字)"
+            "{label}: {field} is too long ({count} characters, at most {MAX_DISPLAY_MARKDOWN_CHARS})"
         ));
     }
     Ok(())
@@ -702,12 +718,12 @@ fn check_text(text: &str, field: &str, label: &str, required: bool) -> Result<()
 
 fn check_title(title: &str, label: &str) -> Result<(), String> {
     if title.trim().is_empty() {
-        return Err(format!("{label} が空です"));
+        return Err(format!("{label} is empty"));
     }
     let count = title.chars().count();
     if count > MAX_TITLE_CHARS {
         return Err(format!(
-            "{label} が長すぎます ({count} 文字、上限 {MAX_TITLE_CHARS} 文字)"
+            "{label} is too long ({count} characters, at most {MAX_TITLE_CHARS})"
         ));
     }
     Ok(())
@@ -741,12 +757,12 @@ fn resolve_shown_path(
         Ok(ResolvedProjectPath::Safe(project_path)) => project_path,
         Ok(ResolvedProjectPath::SymlinkEscape { .. }) => {
             return Err(format!(
-                "`{path}` はプロジェクトの外を指すリンクを通るため表示できません"
+                "`{path}` can't be shown, because it goes through a link that leads out of the project"
             ));
         }
         Err(_) => {
             return Err(format!(
-                "`{path}` はプロジェクト内のパスではありません (先頭はプロジェクトのルートフォルダー名にしてください)"
+                "`{path}` isn't a path in the project (start it with the name of a project root folder)"
             ));
         }
     };
@@ -754,13 +770,11 @@ fn resolve_shown_path(
         .worktree_for_id(project_path.worktree_id, cx)
         .is_some_and(|worktree| worktree.read(cx).is_visible());
     if !in_visible_worktree {
-        return Err(format!("`{path}` はプロジェクト内のパスではありません"));
+        return Err(format!("`{path}` isn't a path in the project"));
     }
     let entry = project.entry_for_path(&project_path, cx);
     if entry.is_some_and(|entry| entry.is_dir()) {
-        return Err(format!(
-            "`{path}` はフォルダーです。ファイルを指定してください"
-        ));
+        return Err(format!("`{path}` is a folder. Give a file"));
     }
     let global_settings = WorktreeSettings::get_global(cx);
     let worktree_settings = WorktreeSettings::get(Some((&project_path).into()), cx);
@@ -768,7 +782,7 @@ fn resolve_shown_path(
         || worktree_settings.is_path_excluded(&project_path.path)
     {
         return Err(format!(
-            "`{path}` は `file_scan_exclusions` に該当するため扱えません"
+            "`{path}` can't be used, because it matches `file_scan_exclusions`"
         ));
     }
     if entry.is_some_and(|entry| entry.is_private)
@@ -776,7 +790,7 @@ fn resolve_shown_path(
         || worktree_settings.is_path_private(&project_path.path)
     {
         return Err(format!(
-            "`{path}` は `private_files` に該当するため扱えません"
+            "`{path}` can't be used, because it matches `private_files`"
         ));
     }
     Ok(project_path)
@@ -1165,39 +1179,39 @@ mod tests {
         let cases = [
             (
                 vec![highlight(path!("/outside/other.rs"), 1, None)],
-                "プロジェクト内のパスではありません",
+                "isn't a path in the project",
             ),
             (
                 vec![highlight("root/../outside/other.rs", 1, None)],
-                "プロジェクト内のパスではありません",
+                "isn't a path in the project",
             ),
             (
                 vec![highlight("root/link/other.rs", 1, None)],
-                "プロジェクトの外を指すリンクを通る",
+                "goes through a link that leads out of the project",
             ),
             (vec![highlight("root/.env", 1, None)], "`private_files`"),
-            (vec![highlight("root/src", 1, None)], "フォルダーです"),
+            (vec![highlight("root/src", 1, None)], "is a folder"),
             (
                 vec![highlight("root/src/main.rs", 0, None)],
-                "行番号は 1 から",
+                "line numbers start at 1",
             ),
             (
                 vec![highlight("root/src/main.rs", 3, Some(2))],
-                "end_line (2) が start_line (3) より前です",
+                "end_line (2) is before start_line (3)",
             ),
-            (Vec::new(), "highlights が空です"),
+            (Vec::new(), "highlights is empty"),
             (
                 (0..=MAX_HIGHLIGHTS)
                     .map(|_| highlight("root/src/main.rs", 1, None))
                     .collect(),
-                "highlights が多すぎます (51 件、上限 50 件)",
+                "Too many highlights (51, at most 50)",
             ),
             (
                 vec![HighlightInput {
                     note: Some("あ".repeat(MAX_DISPLAY_MARKDOWN_CHARS + 1)),
                     ..highlight("root/src/main.rs", 1, None)
                 }],
-                "note が長すぎます (4001 文字",
+                "note is too long (4001 characters",
             ),
         ];
         for (highlights, expected) in cases {
@@ -1227,7 +1241,7 @@ mod tests {
         )
         .await
         .expect_err("an empty annotation is refused");
-        assert!(error.contains("markdown が空です"), "{error}");
+        assert!(error.contains("markdown is empty"), "{error}");
 
         let error = run_tool(
             CodeTourTool::new(project.clone(), source()),
@@ -1247,7 +1261,7 @@ mod tests {
         )
         .await
         .expect_err("too many steps are refused");
-        assert!(error.contains("steps が多すぎます"), "{error}");
+        assert!(error.contains("Too many steps"), "{error}");
 
         assert!(
             display.calls.lock().is_empty(),
@@ -1360,15 +1374,12 @@ mod tests {
             })
             .await
             .expect("the missing server is explained, not failed");
-        assert!(
-            output.contains("言語サーバーが起動していません"),
-            "{output}"
-        );
+        assert!(output.contains("no language server is running"), "{output}");
         let title = receiver.expect_update_fields().await.title;
         assert!(
             title
                 .as_deref()
-                .is_some_and(|title| title.contains("言語サーバーなし")),
+                .is_some_and(|title| title.contains("(no language server)")),
             "{title:?}"
         );
 

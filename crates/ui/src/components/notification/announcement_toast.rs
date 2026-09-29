@@ -25,7 +25,7 @@ impl AnnouncementToast {
             bullet_items: SmallVec::new(),
             primary_action_label: "Try Now".into(),
             primary_on_click: Box::new(|_, _, _| {}),
-            secondary_action_label: "詳細".into(),
+            secondary_action_label: i18n::t!("Learn More").into(),
             secondary_on_click: Box::new(|_, _, _| {}),
             dismiss_on_click: Box::new(|_, _, _| {}),
         }

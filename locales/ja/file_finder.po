@@ -1,0 +1,45 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Channel Notes"
+msgstr "チャンネルノート"
+
+msgid "Create File: {}"
+msgstr "ファイルを作成: {}"
+
+msgid "Create file "
+msgstr "ファイルを作成 "
+
+msgid "Down"
+msgstr "下"
+
+msgid "Exclude Ignored Files"
+msgstr "無視ファイルを除外"
+
+msgid "Include Ignored Files"
+msgstr "無視ファイルを含める"
+
+msgid "Left"
+msgstr "左"
+
+msgid "Open File"
+msgstr "ファイルを開く"
+
+msgid "Open multiple"
+msgstr "複数開く"
+
+msgid "Right"
+msgstr "右"
+
+msgid "Search project files..."
+msgstr "プロジェクト内のファイルを検索..."
+
+msgid "Split…"
+msgstr "分割…"
+
+msgid "Up"
+msgstr "上"

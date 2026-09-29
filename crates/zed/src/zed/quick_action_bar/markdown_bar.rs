@@ -109,7 +109,7 @@ impl MarkdownFormatBar {
             .hard_break_on_newline;
 
         let toggle = Switch::new("markdown-hard-break-switch", enabled.into())
-            .label("Enter改行")
+            .label(i18n::t!("Hard Break"))
             .label_position(SwitchLabelPosition::Start)
             .on_click(move |state, _window, cx| {
                 let enabled = state.selected();
@@ -133,13 +133,15 @@ impl MarkdownFormatBar {
                     let focus_handle = focus_handle.clone();
                     move |_window, cx| {
                         Tooltip::with_meta_in(
-                            "Enter で行末スペース補完",
+                            i18n::t!("Hard Break on Enter"),
                             Some(&editor_actions::NewlineInvertHardBreak),
-                            "Enter で改行するときに、行末へ半角スペース 2 つ (hard break) を\
-                             補うので、改行が保存後もそのまま残ります。\
-                             このキーでは 1 回だけ反対の動きをします。\
-                             プレビューは既定で改行をそのまま改行として表示するので、\
-                             これは他のツールでも改行にしたいときに使います。",
+                            i18n::t!(
+                                "Enter adds two trailing spaces (a hard break) to the line it ends, \
+                                 so the line break survives saving. \
+                                 This key does the opposite once. \
+                                 The preview already shows line breaks as they are typed, \
+                                 so this is for line breaks that other tools should keep too."
+                            ),
                             &focus_handle,
                             cx,
                         )
@@ -215,8 +217,8 @@ fn icon_format_button(
 /// Opens the preview as a tab of the editor's own pane; Ctrl-click (Cmd on
 /// macOS) opens it beside the source instead.
 fn preview_button(focus_handle: &FocusHandle, cx: &App) -> ButtonLike {
-    let to_the_side_meta = format!(
-        "{} で横に開く",
+    let to_the_side_meta = i18n::t!(
+        "{} to open in a split",
         text_for_keystroke(&Modifiers::secondary_key(), "click", cx)
     );
     ButtonLike::new("markdown-preview")
@@ -230,7 +232,7 @@ fn preview_button(focus_handle: &FocusHandle, cx: &App) -> ButtonLike {
             let focus_handle = focus_handle.clone();
             move |_window, cx| {
                 Tooltip::with_meta_in(
-                    "プレビューを開く",
+                    i18n::t!("Open Preview"),
                     Some(&markdown_preview::OpenPreview),
                     to_the_side_meta.clone(),
                     &focus_handle,
@@ -366,28 +368,28 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
             Label::new("B")
                 .size(LabelSize::Small)
                 .weight(FontWeight::BOLD),
-            "太字",
+            i18n::t!("Bold"),
             editor_actions::ToggleBold.boxed_clone(),
             &focus_handle,
         ))
         .child(text_format_button(
             "markdown-italic",
             Label::new("I").size(LabelSize::Small).italic(),
-            "斜体",
+            i18n::t!("Italic"),
             editor_actions::ToggleItalic.boxed_clone(),
             &focus_handle,
         ))
         .child(text_format_button(
             "markdown-strikethrough",
             Label::new("S").size(LabelSize::Small).strikethrough(),
-            "取り消し線",
+            i18n::t!("Strikethrough"),
             editor_actions::ToggleStrikethrough.boxed_clone(),
             &focus_handle,
         ))
         .child(icon_format_button(
             "markdown-inline-code",
             IconName::Code,
-            "インラインコード",
+            i18n::t!("Inline Code"),
             editor_actions::ToggleInlineCode.boxed_clone(),
             &focus_handle,
         ));
@@ -400,7 +402,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                 .child(menu_format_button(
                     "markdown-text-color",
                     IconName::Font,
-                    "文字色",
+                    i18n::t!("Text Color"),
                     &focus_handle,
                     {
                         let focus_handle = focus_handle.clone();
@@ -414,8 +416,10 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                                     &focus_handle,
                                 );
                             }
-                            menu.separator()
-                                .action("色を外す", editor_actions::RemoveTextColor.boxed_clone())
+                            menu.separator().action(
+                                i18n::t!("Remove Color"),
+                                editor_actions::RemoveTextColor.boxed_clone(),
+                            )
                         }
                     },
                 )),
@@ -426,7 +430,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                 .child(menu_format_button(
                     "markdown-marker",
                     IconName::Pencil,
-                    "マーカー",
+                    i18n::t!("Marker"),
                     &focus_handle,
                     {
                         let focus_handle = focus_handle.clone();
@@ -441,7 +445,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                                 );
                             }
                             menu.separator().action(
-                                "マーカーを外す",
+                                i18n::t!("Remove Marker"),
                                 editor_actions::RemoveMarker.boxed_clone(),
                             )
                         }
@@ -454,7 +458,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                 .child(menu_format_button(
                     "markdown-text-size",
                     IconName::FontSize,
-                    "段落の文字サイズ",
+                    i18n::t!("Paragraph Text Size"),
                     &focus_handle,
                     |mut menu| {
                         for size in MarkdownTextSize::ALL {
@@ -463,8 +467,10 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                                 Box::new(editor_actions::SetTextSize { size }),
                             );
                         }
-                        menu.separator()
-                            .action("標準に戻す", editor_actions::ResetTextSize.boxed_clone())
+                        menu.separator().action(
+                            i18n::t!("Reset to Default"),
+                            editor_actions::ResetTextSize.boxed_clone(),
+                        )
                     },
                 )),
         );
@@ -474,21 +480,21 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
         .child(text_format_button(
             "markdown-heading-1",
             Label::new("H1").size(LabelSize::Small),
-            "見出し 1",
+            i18n::t!("Heading 1"),
             editor_actions::ToggleHeading1.boxed_clone(),
             &focus_handle,
         ))
         .child(text_format_button(
             "markdown-heading-2",
             Label::new("H2").size(LabelSize::Small),
-            "見出し 2",
+            i18n::t!("Heading 2"),
             editor_actions::ToggleHeading2.boxed_clone(),
             &focus_handle,
         ))
         .child(text_format_button(
             "markdown-heading-3",
             Label::new("H3").size(LabelSize::Small),
-            "見出し 3",
+            i18n::t!("Heading 3"),
             editor_actions::ToggleHeading3.boxed_clone(),
             &focus_handle,
         ));
@@ -498,28 +504,28 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
         .child(icon_format_button(
             "markdown-bullet-list",
             IconName::ListTree,
-            "箇条書きリスト",
+            i18n::t!("Bullet List"),
             editor_actions::ToggleBulletList.boxed_clone(),
             &focus_handle,
         ))
         .child(text_format_button(
             "markdown-numbered-list",
             Label::new("1.").size(LabelSize::Small),
-            "番号付きリスト",
+            i18n::t!("Numbered List"),
             editor_actions::ToggleNumberedList.boxed_clone(),
             &focus_handle,
         ))
         .child(icon_format_button(
             "markdown-task-list",
             IconName::ListTodo,
-            "タスクリスト",
+            i18n::t!("Task List"),
             editor_actions::ToggleTaskList.boxed_clone(),
             &focus_handle,
         ))
         .child(icon_format_button(
             "markdown-block-quote",
             IconName::Quote,
-            "引用",
+            i18n::t!("Block Quote"),
             editor_actions::ToggleBlockQuote.boxed_clone(),
             &focus_handle,
         ));
@@ -529,7 +535,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
         .child(icon_format_button(
             "markdown-link",
             IconName::Link,
-            "リンク",
+            i18n::t!("Link"),
             editor_actions::InsertLink.boxed_clone(),
             &focus_handle,
         ))
@@ -542,7 +548,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                 .child(icon_format_button(
                     "markdown-image",
                     IconName::Image,
-                    "画像を挿入",
+                    i18n::t!("Insert Image"),
                     markdown_preview::InsertImage.boxed_clone(),
                     &focus_handle,
                 )),
@@ -550,21 +556,21 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
         .child(icon_format_button(
             "markdown-horizontal-rule",
             IconName::Dash,
-            "水平線",
+            i18n::t!("Horizontal Rule"),
             editor_actions::InsertHorizontalRule.boxed_clone(),
             &focus_handle,
         ))
         .child(icon_format_button(
             "markdown-code-block",
             IconName::TextSnippet,
-            "コードブロック",
+            i18n::t!("Code Block"),
             editor_actions::WrapInCodeBlock.boxed_clone(),
             &focus_handle,
         ))
         .child(icon_format_button(
             "markdown-table",
             IconName::Table,
-            "表を編集",
+            i18n::t!("Edit Table"),
             markdown_preview::EditTable.boxed_clone(),
             &focus_handle,
         ));
@@ -574,7 +580,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
         .child(menu_format_button(
             "markdown-mermaid",
             IconName::GitBranch,
-            "Mermaid 図を挿入",
+            i18n::t!("Insert Mermaid Diagram"),
             &focus_handle,
             |mut menu| {
                 for (index, diagram) in MermaidDiagramKind::ALL.into_iter().enumerate() {
@@ -587,7 +593,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
                     );
                 }
                 menu.separator().action(
-                    "Mermaid 図を編集…",
+                    i18n::t!("Edit Mermaid Diagram…"),
                     markdown_preview::EditMermaid.boxed_clone(),
                 )
             },
@@ -603,7 +609,7 @@ fn format_button_groups(focus_handle: &FocusHandle, cx: &App) -> Vec<Div> {
         .child(icon_format_button(
             "markdown-details",
             IconName::FoldVertical,
-            "折り畳み (details) を挿入",
+            i18n::t!("Insert Details Block"),
             editor_actions::InsertDetails.boxed_clone(),
             &focus_handle,
         ));

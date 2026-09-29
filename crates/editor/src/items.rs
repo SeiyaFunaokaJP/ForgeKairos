@@ -1288,22 +1288,22 @@ impl Item for Editor {
         // with Ctrl-click, since a menu entry has no modifier to tell them apart.
         if is_markdown {
             actions.push((
-                "Markdown プレビューを開く".into(),
+                i18n::t!("Open Markdown Preview").into(),
                 Box::new(OpenMarkdownPreview) as Box<dyn gpui::Action>,
             ));
             actions.push((
-                "Markdown プレビューを横に開く".into(),
+                i18n::t!("Open Markdown Preview to the Side").into(),
                 Box::new(OpenMarkdownPreviewToTheSide) as Box<dyn gpui::Action>,
             ));
             actions.push((
-                "PDF に書き出す".into(),
+                i18n::t!("Export to PDF").into(),
                 Box::new(ExportMarkdownToPdf) as Box<dyn gpui::Action>,
             ));
         }
 
         if is_svg {
             actions.push((
-                "SVG プレビューを横に開く".into(),
+                i18n::t!("Open SVG Preview to the Side").into(),
                 Box::new(OpenSvgPreviewToTheSide) as Box<dyn gpui::Action>,
             ));
         }
@@ -2644,56 +2644,21 @@ fn is_network_path(path: &Path) -> bool {
     path.starts_with("\\\\") || path.starts_with("//")
 }
 
-/// zed-jp-enhance: a language server (or the remote host relaying one) asks
-/// Zed to hand an address to the operating system. Only web addresses are
-/// passed on, and only once the user has seen the whole address and which
-/// server asked: other schemes launch whatever handler the OS has registered
-/// for them, and the browser itself is outside the egress allowlist.
+/// zed-jp-enhance: the checks and the confirmation live in `workspace` so that
+/// Copilot, which runs its own language server, applies the same ones.
 fn show_external_document(
     request: LanguageServerShowDocumentRequest,
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) -> Task<()> {
-    if !matches!(request.uri.scheme(), "http" | "https") {
-        log::warn!(
-            "not opening {} for language server {}: only http and https addresses are opened",
-            request.uri.as_str(),
-            request.lsp_name
-        );
-        request.respond(false);
-        return Task::ready(());
-    }
-    // A second prompt in the window would replace the one the user may be
-    // answering (such as "save changes?"), cancelling it without their input.
-    if window.has_active_prompt() {
-        log::warn!(
-            "not opening {} for language server {}: another prompt is open",
-            request.uri.as_str(),
-            request.lsp_name
-        );
-        request.respond(false);
-        return Task::ready(());
-    }
-    let url = request.uri.as_str().to_string();
-    let server = if request.lsp_name.is_empty() {
-        i18n::t!("A language server").to_string()
-    } else {
-        request.lsp_name.clone()
-    };
-    let detail = i18n::t!("{server} asks to open this address in your browser:\n\n{url}");
-    let answer = window.prompt(
-        gpui::PromptLevel::Warning,
-        i18n::t!("Open a link from a language server?"),
-        Some(&detail),
-        &[i18n::t!("Open"), i18n::t!("Cancel")],
+    let opened = workspace::server_links::confirm_and_open_server_link(
+        &request.lsp_name,
+        request.uri.as_str(),
+        window,
         cx,
     );
-    cx.spawn(async move |_, cx| {
-        let open = answer.await.ok() == Some(0);
-        if open {
-            cx.update(|cx| cx.open_url(&url));
-        }
-        request.respond(open);
+    cx.spawn(async move |_, _| {
+        request.respond(opened.await);
     })
 }
 

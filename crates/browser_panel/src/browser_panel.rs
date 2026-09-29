@@ -1042,7 +1042,9 @@ impl BrowserPanel {
                 if let Some(view) = panel.active_view(cx) {
                     view.update(cx, |view, cx| {
                         view.set_status_message(
-                            "選択テキストをクリップボードにコピーしました。貼り付けて質問してください。",
+                            i18n::t!(
+                                "Copied the selection to the clipboard. Paste it to ask your question."
+                            ),
                             cx,
                         );
                     });
@@ -1135,7 +1137,7 @@ fn new_browser_pane(
                                 .icon_size(IconSize::Small)
                                 .tooltip(move |_, cx| {
                                     Tooltip::for_action_in(
-                                        "新しいタブ",
+                                        i18n::t!("New Tab"),
                                         &NewPanelTab,
                                         &focus_handle,
                                         cx,
@@ -1160,7 +1162,7 @@ fn new_browser_pane(
                                 .icon_size(IconSize::Small)
                                 .tooltip(move |_, cx| {
                                     Tooltip::for_action_in(
-                                        "右に分割",
+                                        i18n::t!("Split Right"),
                                         &SplitPanelRight,
                                         &split_focus_handle,
                                         cx,
@@ -1294,7 +1296,7 @@ impl Panel for BrowserPanel {
     }
 
     fn icon_tooltip(&self, _: &Window, _: &App) -> Option<&'static str> {
-        Some("ブラウザーパネル")
+        Some(i18n::t!("Browser Panel"))
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {

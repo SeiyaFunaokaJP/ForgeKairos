@@ -59,9 +59,10 @@ fn is_thought_level_option(option: &acp::SessionConfigOption) -> bool {
         .any(|needle| id.contains(needle))
 }
 
-/// 思考の深さオプションの日本語表示名。`ReasoningEffort::japanese_label()` に
-/// 集約された 1 箇所を経由するので、ネイティブのプロバイダーと必ず同じ語になる。
-/// 標準の値に対応しない独自レベルはエージェントの原文をそのまま出す。
+/// The display name of a thinking-effort value. It goes through the one place
+/// that names the standard levels (`LanguageModelEffortLevel::display_name`), so
+/// it always reads the same as for the native providers; a level of the agent's
+/// own keeps the agent's name.
 fn thought_level_value_name(value_id: &acp::SessionConfigValueId, name: &str) -> String {
     language_model::LanguageModelEffortLevel {
         name: SharedString::from(name.to_string()),
@@ -72,11 +73,12 @@ fn thought_level_value_name(value_id: &acp::SessionConfigValueId, name: &str) ->
     .to_string()
 }
 
-/// オプション自体の表示名。既知の種別だけ日本語にし、それ以外はエージェントの
-/// 原文を出す (エージェント固有のオプション名を勝手に訳すと必ずズレるため)。
+/// The option's own name. Only the known kind is translated; any other keeps the
+/// agent's wording, since translating an agent's own option names would drift
+/// from what they mean.
 fn config_option_display_name(option: &acp::SessionConfigOption) -> SharedString {
     if is_thought_level_option(option) {
-        return "思考の深さ".into();
+        return i18n::t!("Thinking Effort").into();
     }
     option.name.clone().into()
 }
@@ -512,13 +514,13 @@ impl ConfigOptionSelector {
 
     fn current_value_name(&self) -> String {
         let Some(option) = self.current_option() else {
-            return "不明".to_string();
+            return i18n::t!("Unknown").to_string();
         };
 
         match &option.kind {
             acp::SessionConfigKind::Select(select) => {
                 let Some(name) = find_option_name(&select.options, &select.current_value) else {
-                    return "不明".to_string();
+                    return i18n::t!("Unknown").to_string();
                 };
                 if is_thought_level_option(&option) {
                     thought_level_value_name(&select.current_value, &name)
@@ -526,7 +528,7 @@ impl ConfigOptionSelector {
                     name
                 }
             }
-            _ => "不明".to_string(),
+            _ => i18n::t!("Unknown").to_string(),
         }
     }
 
@@ -543,7 +545,7 @@ impl ConfigOptionSelector {
 
     fn render_trigger_button(&self, _window: &mut Window, _cx: &mut Context<Self>) -> Button {
         let Some(option) = self.current_option() else {
-            return Button::new("config-option-trigger", "不明")
+            return Button::new("config-option-trigger", i18n::t!("Unknown"))
                 .label_size(LabelSize::Small)
                 .color(Color::Muted)
                 .disabled(true);
@@ -570,7 +572,7 @@ impl ConfigOptionSelector {
         // 値だけだと何のコントロールか分からないので、思考の深さのときは
         // ネイティブの思考コントロール (`thread_view.rs`) と同じ「思考: 高」の形にする。
         if is_thought_level_option(&option) {
-            display_name = format!("思考: {display_name}");
+            display_name = i18n::t!("Thinking: {level}", level = display_name);
         }
 
         Button::new(
@@ -635,33 +637,33 @@ impl Render for ConfigOptionSelector {
                             acp::SessionConfigOptionCategory::Mode => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "モードを変更",
+                                        i18n::t!("Change Mode"),
                                         KeyBinding::for_action(&ToggleProfileSelector, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "モードを順に切り替え",
+                                        i18n::t!("Cycle Through Modes"),
                                         KeyBinding::for_action(&CycleModeSelector, cx),
                                     ));
                             }
                             acp::SessionConfigOptionCategory::Model => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "モデルを変更",
+                                        i18n::t!("Change Model"),
                                         KeyBinding::for_action(&ToggleModelSelector, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "お気に入りモデルを順に切り替え",
+                                        i18n::t!("Cycle Favorite Models"),
                                         KeyBinding::for_action(&CycleFavoriteModels, cx),
                                     ));
                             }
                             acp::SessionConfigOptionCategory::ThoughtLevel => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "思考の深さを変更",
+                                        i18n::t!("Change Thinking Effort"),
                                         KeyBinding::for_action(&ToggleThinkingEffortMenu, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "思考の深さを順に切り替え",
+                                        i18n::t!("Cycle Thinking Effort"),
                                         KeyBinding::for_action(&CycleThinkingEffort, cx),
                                     ));
                             }
@@ -943,7 +945,7 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "オプションを選択…".into()
+        i18n::t!("Select an option…").into()
     }
 
     fn update_matches(
@@ -1095,9 +1097,9 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
                                 }))
                                 .end_slot_on_hover(div().pr_1p5().child({
                                     let (icon, color, tooltip) = if is_favorite {
-                                        (IconName::StarFilled, Color::Accent, "お気に入りから削除")
+                                        (IconName::StarFilled, Color::Accent, i18n::t!("Unfavorite"))
                                     } else {
-                                        (IconName::Star, Color::Default, "お気に入りに追加")
+                                        (IconName::Star, Color::Default, i18n::t!("Favorite"))
                                     };
 
                                     let config_id = self.config_id.clone();
@@ -1252,7 +1254,7 @@ fn options_to_picker_entries(
         current_value,
         agents,
         collapse,
-        "すべてのオプション",
+        i18n::t!("All Options"),
     )
 }
 
@@ -1547,7 +1549,7 @@ mod tests {
         let config_id = option.id.clone();
 
         assert!(is_thought_level_option(&option));
-        assert_eq!(config_option_display_name(&option), "思考の深さ");
+        assert_eq!(config_option_display_name(&option), "Thinking Effort");
 
         let config_options: Rc<dyn AgentSessionConfigOptions> =
             Rc::new(TestSessionConfigOptions::new(vec![option]));
@@ -1557,6 +1559,15 @@ mod tests {
             .collect::<Vec<_>>();
 
         // 標準の値は日本語、エージェント独自の値は原文のまま。
+        assert_eq!(names, vec!["Low", "Medium", "High", "Turbo"]);
+
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let names = extract_options(&config_options, &config_id)
+            .into_iter()
+            .map(|option| option.name)
+            .collect::<Vec<_>>();
         assert_eq!(names, vec!["低", "中", "高", "Turbo"]);
     }
 
@@ -1708,7 +1719,7 @@ mod tests {
         let picker = option_picker(&view, "model", cx);
         assert_eq!(
             picker_labels(&picker, cx),
-            vec!["# お気に入り", "sonnet", "▶ Anthropic (2)", "▶ OpenAI (2)"]
+            vec!["# Favorites", "sonnet", "▶ Anthropic (2)", "▶ OpenAI (2)"]
         );
         let dismissed = Rc::new(Cell::new(false));
         cx.update({
@@ -1725,7 +1736,7 @@ mod tests {
         });
         cx.run_until_parked();
         let unfolded = vec![
-            "# お気に入り",
+            "# Favorites",
             "sonnet",
             "▶ Anthropic (2)",
             "▼ OpenAI (2)",
@@ -1768,15 +1779,7 @@ mod tests {
                 Vec::new(),
                 &GroupCollapseState::default(),
             )),
-            vec![
-                "# お気に入り",
-                "m0",
-                "# すべてのオプション",
-                "m0",
-                "m1",
-                "m2",
-                "m3"
-            ]
+            vec!["# Favorites", "m0", "# All Options", "m0", "m1", "m2", "m3"]
         );
 
         let long = (0..12)
@@ -1790,7 +1793,7 @@ mod tests {
                 Vec::new(),
                 &GroupCollapseState::default(),
             )),
-            vec!["# お気に入り", "m0", "▶ すべてのオプション (12)"]
+            vec!["# Favorites", "m0", "▶ All Options (12)"]
         );
     }
 
@@ -1887,7 +1890,7 @@ mod tests {
         cx.update(|_, cx| cx.update_global::<SettingsStore, _>(|_, _| {}));
         cx.run_until_parked();
         let starred = vec![
-            "# お気に入り",
+            "# Favorites",
             "opus",
             "▼ Anthropic (2)",
             "sonnet",
@@ -1913,7 +1916,7 @@ mod tests {
         assert_eq!(
             picker_labels(&rebuilt, cx),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "opus",
                 "▶ Anthropic (2)",
                 "▼ OpenAI (2)",
@@ -1992,7 +1995,7 @@ mod tests {
         let mode = option_picker(&view, "mode", cx);
         assert_eq!(
             picker_labels(&model, cx),
-            vec!["default", "opus", "haiku", "▶ エージェント (3)"]
+            vec!["default", "opus", "haiku", "▶ Agents (3)"]
         );
         assert_eq!(
             picker_labels(&mode, cx),
@@ -2019,7 +2022,7 @@ mod tests {
         );
         assert_eq!(
             picker_labels(&model, cx),
-            vec!["▼ エージェント (1)", "@ Codex で新しいスレッド"]
+            vec!["▼ Agents (1)", "@ New Thread with Codex"]
         );
 
         let dismissed = Rc::new(Cell::new(false));

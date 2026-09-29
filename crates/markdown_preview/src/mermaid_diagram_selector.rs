@@ -99,7 +99,7 @@ impl PickerDelegate for MermaidDiagramSelectorDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "挿入する Mermaid 図の種類を選択…".into()
+        i18n::t!("Select a Mermaid diagram type to insert…").into()
     }
 
     fn match_count(&self) -> usize {
@@ -208,17 +208,32 @@ mod tests {
             ("XYCHART-BETA", MermaidDiagramKind::XyChart),
             ("quadrant", MermaidDiagramKind::QuadrantChart),
             ("journey", MermaidDiagramKind::Journey),
-            ("ジャーニー", MermaidDiagramKind::Journey),
-            ("象限", MermaidDiagramKind::QuadrantChart),
+            ("user journey", MermaidDiagramKind::Journey),
+            ("quadrant chart", MermaidDiagramKind::QuadrantChart),
             ("gantt", MermaidDiagramKind::Gantt),
             ("c4", MermaidDiagramKind::C4),
             ("sankey", MermaidDiagramKind::Sankey),
-            ("特性要因", MermaidDiagramKind::Ishikawa),
+            ("ishikawa", MermaidDiagramKind::Ishikawa),
             ("eventmodeling", MermaidDiagramKind::EventModeling),
         ] {
             let found = matching_diagrams(query);
             assert!(found.contains(&expected), "`{query}` found {found:?}");
         }
         assert_eq!(matching_diagrams("").len(), MermaidDiagramKind::ALL.len());
+
+        // The labels are searched in the display language, and the keywords in any.
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        for (query, expected) in [
+            ("ジャーニー", MermaidDiagramKind::Journey),
+            ("象限", MermaidDiagramKind::QuadrantChart),
+            ("特性要因", MermaidDiagramKind::Ishikawa),
+            ("journey", MermaidDiagramKind::Journey),
+            ("xychart", MermaidDiagramKind::XyChart),
+        ] {
+            let found = matching_diagrams(query);
+            assert!(found.contains(&expected), "`{query}` found {found:?}");
+        }
     }
 }

@@ -255,7 +255,7 @@ impl ConfigurationSource {
                     _ => {
                         let text = editor
                             .as_ref()
-                            .context("設定を取得できませんでした。")?
+                            .context(i18n::t!("No output available"))?
                             .read(cx)
                             .text(cx);
                         serde_json_lenient::from_str::<serde_json::Value>(&text)?
@@ -420,7 +420,9 @@ fn parse_http_input(
     }
     let value: HashMap<String, Temp> = serde_json_lenient::from_str(text)?;
     if value.len() != 1 {
-        anyhow::bail!("コンテキストサーバーの設定は 1 つだけ指定してください。");
+        anyhow::bail!(i18n::t!(
+            "Expected exactly one context server configuration"
+        ));
     }
 
     let (key, value) = value.into_iter().next().unwrap();
@@ -642,7 +644,7 @@ impl ConfigureContextServerModal {
                     secret_editor: cx.new(|cx| {
                         let mut editor = Editor::single_line(window, cx);
                         editor.set_placeholder_text(
-                            "クライアントシークレットを入力 (パブリッククライアントの場合は空欄)",
+                            i18n::t!("Enter client secret (leave empty for public clients)"),
                             window,
                             cx,
                         );
@@ -686,7 +688,7 @@ impl ConfigureContextServerModal {
             self.original_server_id.as_ref(),
             cx,
         ) {
-            self.set_error(DEFINED_BY_PROJECT_MESSAGE, cx);
+            self.set_error(i18n::tr(DEFINED_BY_PROJECT_MESSAGE), cx);
             return;
         }
 
@@ -804,17 +806,17 @@ impl ConfigureContextServerModal {
                             *editing_json = false;
                             Ok(())
                         }
-                        None => Err(
-                            "この JSON にはフォームで表せない値が含まれています。JSON で編集を続けてください。"
-                                .to_string(),
-                        ),
+                        None => Err(i18n::t!(
+                            "This JSON contains values that the form cannot show. Keep editing it as JSON."
+                        )
+                        .to_string()),
                     }
                 }
-                Ok(_) => {
-                    Err("拡張機能の設定は JSON オブジェクト ({ … }) にしてください。".to_string())
-                }
-                Err(error) => Err(format!(
-                    "JSON を読み取れないため、フォームに切り替えられません: {error}"
+                Ok(_) => Err(i18n::t!(
+                    "The extension's settings must be a JSON object ({{ … }})."
+                )),
+                Err(error) => Err(i18n::t!(
+                    "Cannot switch to the form because the JSON could not be read: {error}"
                 )),
             }
         } else {
@@ -911,7 +913,9 @@ impl ConfigureContextServerModal {
                     ContextServerStatus::ApprovalRequired => {
                         this._auth_subscription = None;
                         this.set_error(
-                            "このサーバーは承認待ちです。設定ウィンドウの「MCP サーバー」ページで確認してください。",
+                            i18n::t!(
+                                "This server is waiting for approval. Review it on the MCP Servers page of the Settings window."
+                            ),
                             cx,
                         );
                     }
@@ -930,7 +934,7 @@ impl ConfigureContextServerModal {
             .update(cx, {
                 |workspace, cx| {
                     let status_toast = StatusToast::new(
-                        format!("{} を構成しました。", id.0),
+                        i18n::t!("{} configured successfully.", id.0),
                         cx,
                         |this, _cx| {
                             this.icon(
@@ -938,7 +942,7 @@ impl ConfigureContextServerModal {
                                     .size(IconSize::Small)
                                     .color(Color::Muted),
                             )
-                            .action("閉じる", |_, _| {})
+                            .action(i18n::t!("Dismiss"), |_, _| {})
                         },
                     );
 
@@ -965,23 +969,25 @@ fn defined_by_project(
     })
 }
 
-const DEFINED_BY_PROJECT_MESSAGE: &str = "このサーバーはプロジェクトの設定ファイル (.zed/settings.json) で定義されています。ここで保存するとユーザー設定に書き込まれますが、プロジェクトの定義が優先されるため反映されません。設定ウィンドウの「MCP サーバー」ページから、定義しているファイルを編集してください。";
+const DEFINED_BY_PROJECT_MESSAGE: &str = i18n::msg!(
+    "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
+);
 
 fn parse_input(text: &str) -> Result<(ContextServerId, ContextServerCommand)> {
     let value: serde_json::Value = serde_json_lenient::from_str(text)?;
-    let object = value
-        .as_object()
-        .context("JSON オブジェクトを指定してください。")?;
+    let object = value.as_object().context(i18n::t!("Expected object"))?;
     anyhow::ensure!(
         object.len() == 1,
-        "キーと値のペアを 1 つだけ指定してください。"
+        i18n::t!("Expected exactly one key-value pair")
     );
     let (context_server_name, value) = object.into_iter().next().unwrap();
     let command: ContextServerCommand = serde_json::from_value(value.clone())?;
     Ok((ContextServerId(context_server_name.clone().into()), command))
 }
 
-const UNSET_CHOICE_LABEL: &str = "(未設定)";
+fn unset_choice_label() -> &'static str {
+    i18n::tc!("extension setting", "(Not Set)")
+}
 
 /// An extension's settings shown as a form built from its settings schema.
 struct ExtensionSettingsForm {
@@ -1384,7 +1390,7 @@ fn settings_from_form(
             SchemaFieldValue::Choice(choice) => choice.is_none(),
         };
         if require && field.required && blank {
-            return Err(format!("「{}」は必須です。", field.title));
+            return Err(i18n::t!("\"{title}\" is required.", title = field.title));
         }
         if current == initial {
             continue;
@@ -1426,7 +1432,7 @@ fn parse_number(text: &str, title: &str) -> Result<Option<Value>, String> {
         .ok()
         .and_then(serde_json::Number::from_f64)
         .map(|number| Some(Value::Number(number)))
-        .ok_or_else(|| format!("「{title}」には数値を入力してください。"))
+        .ok_or_else(|| i18n::t!("\"{title}\" must be a number."))
 }
 
 fn parse_integer(text: &str, title: &str) -> Result<Option<Value>, String> {
@@ -1436,7 +1442,7 @@ fn parse_integer(text: &str, title: &str) -> Result<Option<Value>, String> {
     }
     text.parse::<i64>()
         .map(|integer| Some(Value::from(integer)))
-        .map_err(|_| format!("「{title}」には整数を入力してください。"))
+        .map_err(|_| i18n::t!("\"{title}\" must be an integer."))
 }
 
 impl ModalView for ConfigureContextServerModal {}
@@ -1466,15 +1472,15 @@ impl EventEmitter<DismissEvent> for ConfigureContextServerModal {}
 impl ConfigureContextServerModal {
     fn render_modal_header(&self) -> ModalHeader {
         let text: SharedString = match &self.source {
-            ConfigurationSource::Existing { .. } => "MCP サーバーを構成".into(),
-            ConfigurationSource::Extension { id, .. } => format!("{} を構成", id.0).into(),
+            ConfigurationSource::Existing { .. } => i18n::t!("Configure MCP Server").into(),
+            ConfigurationSource::Extension { id, .. } => i18n::t!("Configure {}", id.0).into(),
         };
         ModalHeader::new().headline(text)
     }
 
     fn render_modal_description(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         const MODAL_DESCRIPTION: &str =
-            "必要な引数と環境変数についてはサーバーのドキュメントを確認してください。";
+            i18n::msg!("Check the server docs for required arguments and environment variables.");
 
         if let ConfigurationSource::Extension {
             installation_instructions: Some(installation_instructions),
@@ -1490,7 +1496,7 @@ impl ConfigureContextServerModal {
                 ))
                 .into_any_element()
         } else {
-            Label::new(MODAL_DESCRIPTION)
+            Label::new(i18n::tr(MODAL_DESCRIPTION))
                 .color(Color::Muted)
                 .into_any_element()
         }
@@ -1530,9 +1536,9 @@ impl ConfigureContextServerModal {
                         Button::new(
                             "toggle-json-editing",
                             if editing_json {
-                                "フォームで編集"
+                                i18n::t!("Edit in Form")
                             } else {
-                                "JSON で編集"
+                                i18n::t!("Edit in JSON")
                             },
                         )
                         .style(ButtonStyle::Subtle)
@@ -1545,7 +1551,9 @@ impl ConfigureContextServerModal {
                     ),
                 ),
                 None => this.child(
-                    Label::new("この拡張機能の設定はフォームで表せないため、JSON で編集します。")
+                    Label::new(i18n::t!(
+                        "This extension's settings cannot be shown as a form, so they are edited as JSON."
+                    ))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 ),
@@ -1560,7 +1568,7 @@ impl ConfigureContextServerModal {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         if form.fields.is_empty() {
-            return Label::new("この拡張機能には設定する項目がありません。")
+            return Label::new(i18n::t!("This extension has no settings to configure."))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element();
@@ -1626,7 +1634,7 @@ impl ConfigureContextServerModal {
                             .child(Label::new(field.title.clone()).size(LabelSize::Small))
                             .when(field.required, |this| {
                                 this.child(
-                                    Label::new("必須")
+                                    Label::new(i18n::t!("Required"))
                                         .size(LabelSize::XSmall)
                                         .color(Color::Muted),
                                 )
@@ -1662,12 +1670,12 @@ impl ConfigureContextServerModal {
     ) -> AnyElement {
         let label = selected
             .clone()
-            .unwrap_or_else(|| UNSET_CHOICE_LABEL.to_string());
+            .unwrap_or_else(|| unset_choice_label().to_string());
         let menu = ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
             if !required {
                 let modal = modal.clone();
                 menu = menu.toggleable_entry(
-                    UNSET_CHOICE_LABEL,
+                    unset_choice_label(),
                     selected.is_none(),
                     IconPosition::Start,
                     None,
@@ -1718,12 +1726,14 @@ impl ConfigureContextServerModal {
             // on screen, so Escape and Ctrl+Enter still reach it.
             .track_focus(&editor.focus_handle(cx))
             .child(
-                Label::new("保存済みの設定に秘密情報らしい値が含まれるため、JSON を隠しています。")
+                Label::new(i18n::t!(
+                    "The JSON is hidden because the saved settings contain values that look like secrets."
+                ))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
             .child(
-                Button::new("reveal-extension-settings", "表示")
+                Button::new("reveal-extension-settings", i18n::t!("Show"))
                     .style(ButtonStyle::Outlined)
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, _event, window, cx| {
@@ -1777,7 +1787,7 @@ impl ConfigureContextServerModal {
                 } = &self.source
                 {
                     Some(
-                        Button::new("open-repository", "リポジトリを開く")
+                        Button::new("open-repository", i18n::t!("Open Repository"))
                             .end_icon(
                                 Icon::new(IconName::ArrowUpRight)
                                     .size(IconSize::Small)
@@ -1787,7 +1797,7 @@ impl ConfigureContextServerModal {
                                 let repository_url = repository_url.clone();
                                 move |_window, cx| {
                                     Tooltip::with_meta(
-                                        "リポジトリを開く",
+                                        i18n::t!("Open Repository"),
                                         None,
                                         repository_url.clone(),
                                         cx,
@@ -1810,9 +1820,9 @@ impl ConfigureContextServerModal {
                         Button::new(
                             "cancel",
                             if self.source.has_configuration_options() {
-                                "キャンセル"
+                                i18n::t!("Cancel")
                             } else {
-                                "閉じる"
+                                i18n::t!("Dismiss")
                             },
                         )
                         .key_binding(
@@ -1824,7 +1834,7 @@ impl ConfigureContextServerModal {
                         ),
                     )
                     .children(self.source.has_configuration_options().then(|| {
-                        Button::new("configure-server", "サーバーを構成")
+                        Button::new("configure-server", i18n::t!("Configure Server"))
                             .disabled(is_busy)
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
@@ -1867,13 +1877,13 @@ impl ConfigureContextServerModal {
                             .color(Color::Muted),
                     )
                     .child(
-                        Label::new("このサーバーに接続するには認証が必要です")
+                        Label::new(i18n::t!("Authenticate to connect this server"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),
             )
             .child(
-                Button::new("authenticate-server", "認証")
+                Button::new("authenticate-server", i18n::t!("Authenticate"))
                     .style(ButtonStyle::Outlined)
                     .label_size(LabelSize::Small)
                     .on_click({
@@ -1917,9 +1927,9 @@ impl ConfigureContextServerModal {
                             .color(Color::Muted),
                     )
                     .child(
-                        Label::new(
-                            "OAuth クライアントシークレットを入力してください。パブリッククライアントの場合は空欄のままにします",
-                        )
+                        Label::new(i18n::t!(
+                            "Enter your OAuth client secret, or leave empty for public clients"
+                        ))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                     ),
@@ -1945,7 +1955,7 @@ impl ConfigureContextServerModal {
                         },
                     )))
                     .child(
-                        Button::new("submit-client-secret", "送信")
+                        Button::new("submit-client-secret", i18n::t!("Submit"))
                             .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
                             .on_click({
@@ -1973,13 +1983,13 @@ impl ConfigureContextServerModal {
                             .with_rotate_animation(3),
                     )
                     .child(
-                        Label::new("認証しています…")
+                        Label::new(i18n::t!("Authenticating…"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     ),
             )
             .child(
-                Button::new("cancel-authentication", "キャンセル")
+                Button::new("cancel-authentication", i18n::t!("Cancel"))
                     .style(ButtonStyle::Outlined)
                     .label_size(LabelSize::Small)
                     .on_click({
@@ -2044,7 +2054,7 @@ impl Render for ConfigureContextServerModal {
                                         .child(match &self.state {
                                             State::Idle => div(),
                                             State::Waiting => {
-                                                self.render_loading("サーバーに接続しています…")
+                                                self.render_loading(i18n::t!("Connecting Server…"))
                                             }
                                             State::AuthRequired { server_id } => {
                                                 self.render_auth_required(&server_id.clone(), cx)
@@ -2496,7 +2506,7 @@ mod tests {
         );
         assert_eq!(
             settings_from_form(&fields, &initial, &missing, &base, true),
-            Err("「database_url」は必須です。".to_string())
+            Err("\"database_url\" is required.".to_string())
         );
         // Switching to the JSON editor does not insist on required fields.
         assert!(settings_from_form(&fields, &initial, &missing, &base, false).is_ok());
@@ -2510,7 +2520,7 @@ mod tests {
         );
         assert_eq!(
             settings_from_form(&fields, &initial, &not_an_integer, &base, true),
-            Err("「Port」には整数を入力してください。".to_string())
+            Err("\"Port\" must be an integer.".to_string())
         );
 
         let mut not_a_number = initial.clone();
@@ -2522,7 +2532,7 @@ mod tests {
         );
         assert_eq!(
             settings_from_form(&fields, &initial, &not_a_number, &base, true),
-            Err("「ratio」には数値を入力してください。".to_string())
+            Err("\"ratio\" must be a number.".to_string())
         );
     }
 

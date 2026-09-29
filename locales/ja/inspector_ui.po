@@ -5,6 +5,60 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Bounds: ⌜{} - {}⌟"
+msgstr "範囲: ⌜{} - {}⌟"
+
+msgid "Click to open by running Zed CLI"
+msgstr "クリックすると Zed CLI 経由で開きます"
+
+msgid "Content size: {}"
+msgstr "コンテンツサイズ: {}"
+
+msgid "Disambiguates elements from the same source location"
+msgstr "同じソース位置の要素を区別します"
+
+msgid "Element ID"
+msgstr "要素 ID"
+
+msgid "Failed to convert style to JSON: {err}"
+msgstr "スタイルの JSON への変換に失敗しました: {err}"
+
+msgid "Failed to create buffers for style editing: {err}"
+msgstr "スタイル編集用のバッファーの作成に失敗しました: {err}"
+
+msgid "GPUI Inspector"
+msgstr "GPUI インスペクター"
+
+msgid "GlobalElementId of the nearest ancestor with an ID"
+msgstr "ID を持つ最も近い祖先要素の GlobalElementId"
+
+msgid "Instance {}"
+msgstr "インスタンス {}"
+
+msgid "JSON Style"
+msgstr "JSON スタイル"
+
+msgid "Layout"
+msgstr "レイアウト"
+
+msgid "Loading..."
+msgstr "読み込み中…"
+
+msgid "Reset style"
+msgstr "スタイルをリセットします"
+
+msgid "Rust Style"
+msgstr "Rust スタイル"
+
+msgid "Size of the element's children"
+msgstr "子要素のサイズです"
+
+msgid "Size: {}"
+msgstr "サイズ: {}"
+
+msgid "Start inspector pick mode"
+msgstr "インスペクターのピックモードを開始します"
+
 msgid "dev::ToggleInspector is only available in debug builds"
 msgstr "dev::ToggleInspector はデバッグビルドでのみ使用できます。"
 

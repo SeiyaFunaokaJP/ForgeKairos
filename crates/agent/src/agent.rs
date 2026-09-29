@@ -38,7 +38,7 @@ use agent_skills::{
     AGENTS_DIR_NAME, MAX_SKILL_DESCRIPTIONS_SIZE, MAX_SKILL_FILE_SIZE, ProjectSkillGroup,
     SKILL_FILE_NAME, Skill, SkillIndex, SkillLoadError, SkillLoadWarning, SkillScopeId,
     SkillSource, SkillSummary, builtin_skills, global_skills_dir, load_skills_from_directory,
-    parse_skill_frontmatter, project_skills_relative_path, read_skill_body_from_content,
+    parse_skill_frontmatter, project_skills_relative_path,
 };
 use anyhow::{Context as _, Result, anyhow};
 use chrono::{DateTime, Utc};
@@ -296,7 +296,10 @@ impl LanguageModels {
             }
         }
         if !recommended.is_empty() {
-            language_model_list.insert(acp_thread::AgentModelGroupName("推奨".into()), recommended);
+            language_model_list.insert(
+                acp_thread::AgentModelGroupName(i18n::t!("Recommended").into()),
+                recommended,
+            );
         }
 
         let mut models = HashMap::default();
@@ -1156,10 +1159,7 @@ impl NativeAgent {
                     if let Err(error) = expand_project_skills_directories(&worktree, cx).await {
                         project_skills_results.push(vec![Err(SkillLoadError {
                             path: PathBuf::from(project_skills_relative_path()),
-                            message: format!(
-                                "プロジェクトのスキルのスキャンに失敗しました: {}",
-                                error
-                            ),
+                            message: i18n::t!("Failed to scan project skills: {}", error),
                         })]);
                         continue;
                     }
@@ -1177,8 +1177,8 @@ impl NativeAgent {
                         if skill_file.size > MAX_SKILL_FILE_SIZE as u64 {
                             worktree_results.push(Err(SkillLoadError {
                                 path: skill_file.display_path.clone(),
-                                message: format!(
-                                    "SKILL.md のサイズが上限の {}KB を超えています。",
+                                message: i18n::t!(
+                                    "SKILL.md file exceeds maximum size of {}KB",
                                     MAX_SKILL_FILE_SIZE / 1024
                                 ),
                             }));
@@ -1198,7 +1198,7 @@ impl NativeAgent {
                             Err(error) => {
                                 worktree_results.push(Err(SkillLoadError {
                                     path: skill_file.display_path.clone(),
-                                    message: format!("ファイルの読み込みに失敗しました: {}", error),
+                                    message: i18n::t!("Failed to read file: {}", error),
                                 }));
                                 continue;
                             }
@@ -3761,15 +3761,26 @@ pub fn skill_body_resolver_for_project(
                 let content =
                     cx.update(|cx| buffer.read(cx).as_text_snapshot().as_rope().to_string());
 
-                read_skill_body_from_content(&skill.skill_file_path, &content).map_err(Into::into)
+                agent_skills::read_skill_body_from_content_for_either_reader(
+                    &skill.skill_file_path,
+                    &content,
+                )
             })
         }
         SkillSource::BuiltIn | SkillSource::Global => {
             let fs = fs.clone();
             cx.background_spawn(async move {
-                agent_skills::read_skill_body(fs.as_ref(), &skill.skill_file_path)
-                    .await
-                    .map_err(Into::into)
+                let content =
+                    fs.load(&skill.skill_file_path)
+                        .await
+                        .map_err(|error| SkillLoadError {
+                            path: skill.skill_file_path.clone(),
+                            message: format!("Failed to read file: {}", error),
+                        })?;
+                agent_skills::read_skill_body_from_content_for_either_reader(
+                    &skill.skill_file_path,
+                    &content,
+                )
             })
         }
     }
@@ -6259,7 +6270,7 @@ mod internal_tests {
                     .skill_loading_issues
                     .iter()
                     .any(|issue| issue.kind == SkillLoadingIssueKind::LoadFailed
-                        && issue.message.to_string().contains("サイズが上限")),
+                        && issue.message.to_string().contains("maximum size")),
                 "expected a size-limit error, got {:?}",
                 state.skill_loading_issues
             );

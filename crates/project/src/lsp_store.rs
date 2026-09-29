@@ -570,7 +570,9 @@ impl LocalLspStore {
                         // caught here.
                         anyhow::ensure!(
                             launch_approver.still_approved(&approved, cx),
-                            "言語サーバー「{server_name}」の実行ファイルの承認は取り消されたため、起動しません"
+                            i18n::t!(
+                                "The approval of the executable of language server \"{server_name}\" was revoked, so it is not started"
+                            )
                         );
                         let local_lsp_store = lsp_store
                             .as_local_mut()
@@ -881,9 +883,9 @@ impl LocalLspStore {
         ) {
             LaunchGate::Ask(launch_approver) => launch_approver,
             LaunchGate::Unavailable => {
-                return Some(Task::ready(Err(anyhow!(
-                    "起動の承認を確認できないため、プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは起動しません"
-                ))));
+                return Some(Task::ready(Err(anyhow!(i18n::t!(
+                    "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started"
+                )))));
             }
         };
         let place = LaunchPlace {
@@ -926,9 +928,9 @@ impl LocalLspStore {
                     })
                     .unwrap_or(false);
                 if !still_starting {
-                    anyhow::bail!(
-                        "言語サーバー「{server_name}」の起動は取りやめられたため、実行ファイルの承認を待ちません"
-                    );
+                    anyhow::bail!(i18n::t!(
+                        "Starting language server \"{server_name}\" was called off, so the approval of its executable is not awaited"
+                    ));
                 }
                 let answer = launch_approver
                     .ask(details, &place, requester, &mut pending_guard, cx)
@@ -957,9 +959,9 @@ impl LocalLspStore {
                     }
                     LaunchAnswer::Denied => break,
                     LaunchAnswer::Unavailable(reason) => {
-                        anyhow::bail!(
-                            "起動の承認を確認できないため、プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは起動しません ({reason})"
-                        );
+                        anyhow::bail!(i18n::t!(
+                            "The launch approval cannot be checked, so the executable of language server \"{server_name}\" from the project settings is not started ({reason})"
+                        ));
                     }
                     // Shown as failed while it waits, the server starts as
                     // soon as the IDE answers, with no restart.
@@ -968,8 +970,8 @@ impl LocalLspStore {
                             requester,
                             adapter_name.clone(),
                             BinaryStatus::Failed {
-                                error: format!(
-                                    "IDE が応答しないため、言語サーバー「{server_name}」の実行ファイルの承認を確認できません。IDE が応答すると起動します ({reason})"
+                                error: i18n::t!(
+                                    "The IDE is not responding, so the approval of the executable of language server \"{server_name}\" cannot be checked. It starts once the IDE responds ({reason})"
                                 ),
                             },
                         );
@@ -980,8 +982,8 @@ impl LocalLspStore {
                             requester,
                             adapter_name.clone(),
                             BinaryStatus::Failed {
-                                error: format!(
-                                    "IDE で承認待ちの起動が多すぎるため、言語サーバー「{server_name}」の実行ファイルの承認をまだ問い合わせられません。承認待ちが減ると問い合わせます ({reason})"
+                                error: i18n::t!(
+                                    "Too many launches are waiting for approval in the IDE, so the approval of the executable of language server \"{server_name}\" cannot be asked for yet. It is asked for once fewer are waiting ({reason})"
                                 ),
                             },
                         );
@@ -989,9 +991,9 @@ impl LocalLspStore {
                     }
                 }
             }
-            Err(anyhow!(
-                "プロジェクトの設定にある言語サーバー「{server_name}」の実行ファイルは許可されていないため、起動しません"
-            ))
+            Err(anyhow!(i18n::t!(
+                "The executable of language server \"{server_name}\" from the project settings is not allowed, so it is not started"
+            )))
         }))
     }
 
@@ -1478,13 +1480,13 @@ impl LocalLspStore {
                                 }
                             })
                             .detach();
-                            anyhow::bail!(
-                                "言語サーバー {} のダウンロードが {} 秒以内に完了しませんでした。\
-                                 ダウンロードは継続しているので、しばらく待ってから言語サーバーを\
-                                 再起動してください。",
-                                adapter.name,
-                                FIRST_DOWNLOAD_TIMEOUT.as_secs(),
-                            );
+                            anyhow::bail!(i18n::t!(
+                                "The download of language server {name} did not finish within \
+                                 {seconds} seconds. The download continues, so wait a while and \
+                                 then restart the language server.",
+                                name = adapter.name,
+                                seconds = FIRST_DOWNLOAD_TIMEOUT.as_secs(),
+                            ));
                         },
                         downloaded_binary = downloader => downloaded_binary?,
                     }
@@ -2726,6 +2728,9 @@ impl LocalLspStore {
                     return Ok(());
                 };
 
+                // Only read when no server was picked, so that a selection no
+                // server can format is not reported as a file nothing can format.
+                let mut only_whole_buffer_formatting = false;
                 let adapter_and_server = match specifier {
                     settings::LanguageServerFormatterSpecifier::Specific { name } => {
                         adapters_and_servers
@@ -2762,6 +2767,15 @@ impl LocalLspStore {
                                             )
                                         })
                                     } else {
+                                        only_whole_buffer_formatting =
+                                            adapters_and_servers.iter().any(|(adapter, server)| {
+                                                buffer_supports_lsp_formatting(
+                                                    local,
+                                                    buffer_snapshot,
+                                                    adapter,
+                                                    server,
+                                                )
+                                            });
                                         None
                                     }
                                 } else {
@@ -2802,6 +2816,7 @@ impl LocalLspStore {
                                 }
                                 settings::LanguageServerFormatterSpecifier::Current => None,
                             },
+                            only_whole_buffer_formatting,
                         }
                         .into_error());
                     }
@@ -3493,9 +3508,9 @@ impl LocalLspStore {
                 return;
             }
             lsp_store.reported_external_formatter_fallback = true;
-            cx.emit(LspStoreEvent::Notification(format!(
-                "フォーマッタ `{missing_command}` が見つからないため、\
-                 言語サーバー ({server_name}) でフォーマットしました。"
+            cx.emit(LspStoreEvent::Notification(i18n::t!(
+                "Formatter `{missing_command}` was not found, so the language server \
+                 ({server_name}) formatted the file."
             )));
         })
     }
@@ -3760,10 +3775,10 @@ impl LocalLspStore {
             Err(reason) => {
                 // ADR-F42 #5: the save goes through, and the user hears why
                 // the formatter did not run.
-                let message = format!(
-                    "IDE で起動の承認を確認できないため、外部フォーマッター「{}」を実行しませんでした ({})",
-                    escape_for_display(command),
-                    escape_for_display(&reason)
+                let message = i18n::t!(
+                    "The IDE cannot check the launch approval, so the external formatter \"{command}\" was not run ({reason})",
+                    command = escape_for_display(command),
+                    reason = escape_for_display(&reason)
                 );
                 lsp_store
                     .update(cx, |_, cx| cx.emit(LspStoreEvent::Notification(message)))
@@ -6260,15 +6275,15 @@ impl LspStore {
         }
 
         let Some(tool) = dev_tools::tool_by_id(&tool_id) else {
-            return Task::ready(Err(anyhow!(
-                "{tool_id} は導入できるツールの一覧にありません"
-            )));
+            return Task::ready(Err(anyhow!(i18n::t!(
+                "{tool_id} is not in the list of tools that can be installed"
+            ))));
         };
         let Some(local) = self.as_local() else {
-            return Task::ready(Err(anyhow!(
-                "{} を導入できるのは、ファイルを持っているマシンだけです",
-                tool.display_name
-            )));
+            return Task::ready(Err(anyhow!(i18n::t!(
+                "{tool} can only be installed by the machine that has the files",
+                tool = i18n::tr(tool.display_name)
+            ))));
         };
         let http_client = local.http_client.clone();
         cx.background_spawn(async move { dev_tools::install_tool(tool, http_client).await })
@@ -18588,7 +18603,7 @@ impl LspAdapterDelegate for LocalLspAdapterDelegate {
         let dir = self
             .language_registry
             .language_server_download_dir(name)
-            .context("言語サーバーの保存先が設定されていません")?;
+            .context(i18n::t!("No download location is set for language servers"))?;
 
         if !dir.exists() {
             // Swallowing this used to turn a full disk (or a read-only home)
@@ -18973,11 +18988,11 @@ fn expand_external_formatter_arguments(
 /// causes that produce it — a full disk and a directory the user cannot write —
 /// need different actions and nothing else in the failure distinguishes them.
 fn download_dir_creation_error(dir: &Path, error: &std::io::Error) -> anyhow::Error {
-    anyhow!(
-        "言語サーバーの保存先を作成できませんでした \
-         (ディスクの空き容量または権限を確認してください): {}: {error}",
-        dir.display()
-    )
+    anyhow!(i18n::t!(
+        "Could not create the download location for language servers \
+         (check the free disk space and permissions): {path}: {error}",
+        path = dir.display()
+    ))
 }
 
 #[cfg(test)]
@@ -18989,18 +19004,18 @@ mod tests {
     /// as "no language server download dir defined", which named the one thing
     /// that was not wrong.
     #[test]
-    fn a_download_directory_that_cannot_be_created_says_why_in_japanese() {
+    fn a_download_directory_that_cannot_be_created_says_why() {
         let error = download_dir_creation_error(
             Path::new("/home/ubuntu/.local/share/zed/languages/clangd"),
             &std::io::Error::new(std::io::ErrorKind::StorageFull, "No space left on device"),
         );
         let message = format!("{error:#}");
         assert!(
-            message.contains("言語サーバーの保存先を作成できませんでした"),
+            message.contains("Could not create the download location for language servers"),
             "{message}"
         );
         assert!(
-            message.contains("ディスクの空き容量または権限"),
+            message.contains("check the free disk space and permissions"),
             "{message}"
         );
         assert!(message.contains("languages/clangd"), "{message}");

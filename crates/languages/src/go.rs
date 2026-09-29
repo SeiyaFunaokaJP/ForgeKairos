@@ -75,8 +75,9 @@ impl LspInstaller for GoLspAdapter {
     ) -> Result<Option<String>> {
         static DID_SHOW_NOTIFICATION: AtomicBool = AtomicBool::new(false);
 
-        const NOTIFICATION_MESSAGE: &str =
-            "`go` が見つからないため、Go 言語サーバー `gopls` をインストールできませんでした。";
+        const NOTIFICATION_MESSAGE: &str = i18n::msg!(
+            "Could not install the Go language server `gopls`, because `go` was not found."
+        );
 
         if delegate.which("go".as_ref()).await.is_none() {
             if DID_SHOW_NOTIFICATION
@@ -84,7 +85,7 @@ impl LspInstaller for GoLspAdapter {
                 .is_ok()
             {
                 cx.update(|cx| {
-                    delegate.show_notification(NOTIFICATION_MESSAGE, cx);
+                    delegate.show_notification(i18n::tr(NOTIFICATION_MESSAGE), cx);
                 });
             }
             anyhow::bail!(

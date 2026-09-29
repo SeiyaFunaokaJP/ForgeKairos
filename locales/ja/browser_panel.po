@@ -1,0 +1,146 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add Bookmark"
+msgstr "ブックマークを追加"
+
+msgid "Add Folder"
+msgstr "フォルダーを追加"
+
+msgid "Back"
+msgstr "戻る"
+
+msgid "Bookmark This Page"
+msgstr "このページをブックマークに追加"
+
+msgid "Bookmarks"
+msgstr "ブックマーク"
+
+msgid "Bookmarks are still loading. Try again in a moment."
+msgstr "ブックマークを読み込んでいます。少し待ってからもう一度お試しください。"
+
+msgid "Browser"
+msgstr "ブラウザー"
+
+msgid "Browser Panel"
+msgstr "ブラウザーパネル"
+
+msgid "Close Bookmarks"
+msgstr "ブックマークを閉じる"
+
+msgid "Copied the selection to the clipboard. Paste it to ask your question."
+msgstr "選択テキストをクリップボードにコピーしました。貼り付けて質問してください。"
+
+msgid "Couldn't load the page."
+msgstr "ページを読み込めませんでした。"
+
+msgid "Couldn't save the bookmarks."
+msgstr "ブックマークを保存できませんでした。"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete the folder and everything in it?"
+msgstr "フォルダーごと削除しますか?"
+
+msgid "Delete?"
+msgstr "削除しますか?"
+
+msgid "Edit"
+msgstr "編集"
+
+msgid "Edit Bookmark"
+msgstr "ブックマークを編集"
+
+msgid "Edit Folder"
+msgstr "フォルダーを編集"
+
+msgid "Enter a URL or search terms"
+msgstr "URL または検索語を入力"
+
+msgid "Enter a URL."
+msgstr "URL を入力してください。"
+
+msgid "Enter a name."
+msgstr "名前を入力してください。"
+
+msgid "Forward"
+msgstr "進む"
+
+msgid "Loading…"
+msgstr "読み込み中…"
+
+msgid "Move to Editor Area"
+msgstr "エディター領域へ移す"
+
+msgid "New Tab"
+msgstr "新しいタブ"
+
+msgid "No bookmarks yet. Use the star button in the toolbar to add the current page."
+msgstr "ブックマークはまだありません。ツールバーの星ボタンで今のページを追加できます。"
+
+msgid "Open Download Page"
+msgstr "ダウンロードページを開く"
+
+msgid "Open This Page at Startup"
+msgstr "このページを起動時に開く"
+
+msgid "Open a page first."
+msgstr "先にページを開いてください。"
+
+msgid "Open in External Browser"
+msgstr "外部ブラウザーで開く"
+
+msgid "Reload"
+msgstr "再読み込み"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Set the startup page to {url}."
+msgstr "起動時に開くページを {url} にしました。"
+
+msgid "Show Folder Contents"
+msgstr "フォルダーの中身を開く"
+
+msgid "Split Right"
+msgstr "右に分割"
+
+msgid "Starting the built-in browser…"
+msgstr "内蔵ブラウザーを起動しています…"
+
+msgid "The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime."
+msgstr "WebView2 ランタイムが見つかりません。Microsoft Edge WebView2 ランタイムをインストールしてください。"
+
+msgid "The built-in browser isn't supported on this platform."
+msgstr "このプラットフォームでは内蔵ブラウザーは未対応です。"
+
+msgid "Top Level"
+msgstr "最上位"
+
+msgid "{url} — Ctrl-click or middle-click to open in a new tab"
+msgstr "{url} — Ctrl+クリック / 中クリックで新しいタブ"
+
+msgctxt "browser bookmark"
+msgid "Cancel"
+msgstr "取消"
+
+msgctxt "browser bookmark"
+msgid "Location"
+msgstr "場所"
+
+msgctxt "browser bookmark"
+msgid "Move Down"
+msgstr "下へ"
+
+msgctxt "browser bookmark"
+msgid "Move Up"
+msgstr "上へ"
+
+msgctxt "browser bookmark"
+msgid "Name"
+msgstr "名前"

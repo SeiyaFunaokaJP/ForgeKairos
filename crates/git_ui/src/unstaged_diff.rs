@@ -70,10 +70,10 @@ impl DiffHunkRenderer for UnstagedDiffHunkRenderer {
             .block_mouse_except_scroll()
             .shadow_md()
             .child(
-                Button::new(("stage", row as u64), "ステージ")
+                Button::new(("stage", row as u64), i18n::t!("Stage"))
                     .alpha(if status.is_pending() { 0.66 } else { 1.0 })
                     .tooltip(help_tooltip(
-                        "変更箇所をステージ",
+                        i18n::t!("Stage Hunk"),
                         panel_operation_help(PanelOperation::StageHunk).sentence(),
                         None,
                         None,
@@ -93,9 +93,9 @@ impl DiffHunkRenderer for UnstagedDiffHunkRenderer {
                     }),
             )
             .child(
-                Button::new(("restore", row as u64), "元に戻す")
+                Button::new(("restore", row as u64), i18n::t!("Restore"))
                     .tooltip(help_tooltip(
-                        "変更箇所を元に戻す",
+                        i18n::t!("Restore Hunk"),
                         panel_operation_help(PanelOperation::RestoreHunk).sentence(),
                         None,
                         None,
@@ -220,7 +220,7 @@ impl UnstagedDiff {
             DiffMultibuffer::new(
                 branch_diff,
                 Capability::ReadWrite,
-                "未ステージの変更はありません",
+                i18n::t!("No unstaged changes"),
                 move |editor, cx| {
                     editor.set_diff_hunk_renderer(Some(Arc::new(UnstagedDiffHunkRenderer)), cx);
                     editor.rhs_editor().update(cx, |rhs_editor, _cx| {
@@ -358,11 +358,11 @@ impl Item for UnstagedDiff {
     }
 
     fn tab_tooltip_text(&self, _: &App) -> Option<SharedString> {
-        Some("未ステージの変更".into())
+        Some(i18n::t!("Unstaged Changes").into())
     }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "未ステージの変更".into()
+        i18n::t!("Unstaged Changes").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -698,7 +698,7 @@ impl Render for UnstagedDiffToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "前の変更箇所へ移動",
+                                i18n::t!("Go to Previous Hunk"),
                                 &GoToPreviousHunk,
                                 &focus_handle,
                             ))
@@ -711,7 +711,7 @@ impl Render for UnstagedDiffToolbar {
                             .icon_size(IconSize::Small)
                             .disabled(!button_states.prev_next)
                             .tooltip(Tooltip::for_action_title_in(
-                                "次の変更箇所へ移動",
+                                i18n::t!("Go to Next Hunk"),
                                 &GoToHunk,
                                 &focus_handle,
                             ))
@@ -725,10 +725,10 @@ impl Render for UnstagedDiffToolbar {
                 h_group_sm()
                     .when(button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "ステージ")
+                            Button::new("stage", i18n::t!("Stage"))
                                 .disabled(!button_states.stage)
                                 .tooltip(help_tooltip(
-                                    "選択した変更箇所をステージ",
+                                    i18n::t!("Stage Selected Hunks"),
                                     panel_operation_help(PanelOperation::StageHunk).sentence(),
                                     None,
                                     None,
@@ -740,10 +740,10 @@ impl Render for UnstagedDiffToolbar {
                     })
                     .when(!button_states.selection, |this| {
                         this.child(
-                            Button::new("stage", "ステージ")
+                            Button::new("stage", i18n::t!("Stage"))
                                 .disabled(!button_states.stage)
                                 .tooltip(help_tooltip(
-                                    "ステージして次の変更箇所へ移動",
+                                    i18n::t!("Stage and Go to Next Hunk"),
                                     panel_operation_help(PanelOperation::StageHunk).sentence(),
                                     Some(Box::new(StageAndNext)),
                                     Some(focus_handle.clone()),
@@ -754,10 +754,10 @@ impl Render for UnstagedDiffToolbar {
                         )
                     })
                     .child(
-                        Button::new("restore", "元に戻す")
+                        Button::new("restore", i18n::t!("Restore"))
                             .disabled(!button_states.restore)
                             .tooltip(help_tooltip(
-                                "選択した変更箇所を元に戻す",
+                                i18n::t!("Restore Selected Hunks"),
                                 panel_operation_help(PanelOperation::RestoreHunk).sentence(),
                                 None,
                                 None,
@@ -769,11 +769,11 @@ impl Render for UnstagedDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("stage-all", "すべてステージ")
+                Button::new("stage-all", i18n::t!("Stage All"))
                     .width(rems_from_px(152_f32))
                     .disabled(!button_states.stage_all)
                     .tooltip(help_tooltip(
-                        "すべての変更をステージ",
+                        i18n::t!("Stage All Changes"),
                         panel_operation_help(PanelOperation::StageAll).sentence(),
                         Some(Box::new(StageAll)),
                         Some(focus_handle.clone()),
@@ -782,11 +782,11 @@ impl Render for UnstagedDiffToolbar {
             )
             .child(Divider::vertical())
             .child(
-                Button::new("restore-all", "すべて元に戻す")
+                Button::new("restore-all", i18n::t!("Restore All"))
                     .width(rems_from_px(152_f32))
                     .disabled(!button_states.restore_all)
                     .tooltip(help_tooltip(
-                        "すべての変更を元に戻す",
+                        i18n::t!("Restore All Changes"),
                         panel_operation_help(PanelOperation::RestoreAllUnstaged).sentence(),
                         None,
                         None,

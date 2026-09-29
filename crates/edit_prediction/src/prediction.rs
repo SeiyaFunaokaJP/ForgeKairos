@@ -99,10 +99,16 @@ impl EditPredictionResult {
                 buffer: edited_buffer.clone(),
                 model_version,
                 trigger,
+                made_by_zed_cloud: false,
             },
             reject_reason,
             e2e_latency,
         }
+    }
+
+    pub(crate) fn with_made_by_zed_cloud(mut self, made_by_zed_cloud: bool) -> Self {
+        self.prediction.made_by_zed_cloud = made_by_zed_cloud;
+        self
     }
 
     pub fn new_rejected(
@@ -127,6 +133,7 @@ impl EditPredictionResult {
                 buffer: edited_buffer.clone(),
                 model_version,
                 trigger,
+                made_by_zed_cloud: false,
             },
             reject_reason: Some(reject_reason),
             e2e_latency,
@@ -146,6 +153,10 @@ pub struct EditPrediction {
     pub buffer: Entity<Buffer>,
     pub model_version: Option<String>,
     pub trigger: PredictEditsRequestTrigger,
+    /// Whether Zed Cloud made this prediction. Only those predictions are reported back to Zed
+    /// Cloud (accepted, rejected, settled, rated): a user who chose a self-hosted server chose
+    /// not to send Zed anything, whatever consent they have given Zed (zed-jp-enhance ADR-F10).
+    pub made_by_zed_cloud: bool,
 }
 
 impl EditPrediction {
@@ -200,6 +211,7 @@ mod tests {
             edit_preview,
             model_version: None,
             trigger: PredictEditsRequestTrigger::Other,
+            made_by_zed_cloud: false,
             inputs: EditPredictionInputs::V2(Zeta2PromptInput {
                 events: vec![],
                 related_files: Some(vec![]),

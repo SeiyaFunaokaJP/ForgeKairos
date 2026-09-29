@@ -69,13 +69,13 @@ impl TextFilterOp {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            TextFilterOp::Contains => "含む",
-            TextFilterOp::NotContains => "含まない",
-            TextFilterOp::Equals => "等しい",
-            TextFilterOp::StartsWith => "前方一致",
-            TextFilterOp::EndsWith => "後方一致",
-            TextFilterOp::Blank => "空白",
-            TextFilterOp::NotBlank => "空白以外",
+            TextFilterOp::Contains => i18n::t!("Contains"),
+            TextFilterOp::NotContains => i18n::t!("Does Not Contain"),
+            TextFilterOp::Equals => i18n::t!("Equals"),
+            TextFilterOp::StartsWith => i18n::t!("Begins With"),
+            TextFilterOp::EndsWith => i18n::t!("Ends With"),
+            TextFilterOp::Blank => i18n::t!("Blank"),
+            TextFilterOp::NotBlank => i18n::t!("Not Blank"),
         }
     }
 
@@ -88,13 +88,13 @@ impl TextFilterOp {
     /// operator rather than as "label + needle" because the particle differs.
     pub(crate) fn describe(self, needle: &str) -> String {
         match self {
-            TextFilterOp::Contains => format!("「{needle}」を含む"),
-            TextFilterOp::NotContains => format!("「{needle}」を含まない"),
-            TextFilterOp::Equals => format!("「{needle}」と等しい"),
-            TextFilterOp::StartsWith => format!("「{needle}」で始まる"),
-            TextFilterOp::EndsWith => format!("「{needle}」で終わる"),
-            TextFilterOp::Blank => "空白".to_owned(),
-            TextFilterOp::NotBlank => "空白以外".to_owned(),
+            TextFilterOp::Contains => i18n::t!("contains \"{needle}\""),
+            TextFilterOp::NotContains => i18n::t!("does not contain \"{needle}\""),
+            TextFilterOp::Equals => i18n::t!("equals \"{needle}\""),
+            TextFilterOp::StartsWith => i18n::t!("begins with \"{needle}\""),
+            TextFilterOp::EndsWith => i18n::t!("ends with \"{needle}\""),
+            TextFilterOp::Blank => i18n::t!("is blank").to_owned(),
+            TextFilterOp::NotBlank => i18n::t!("is not blank").to_owned(),
         }
     }
 }
@@ -156,8 +156,8 @@ pub(crate) enum FilterJoin {
 impl FilterJoin {
     pub(crate) fn label(self) -> &'static str {
         match self {
-            FilterJoin::And => "かつ",
-            FilterJoin::Or => "または",
+            FilterJoin::And => i18n::tc!("table filter", "And"),
+            FilterJoin::Or => i18n::tc!("table filter", "Or"),
         }
     }
 }
@@ -215,12 +215,22 @@ impl TextCondition {
     pub(crate) fn description(&self) -> String {
         match &self.rest {
             None => self.first.description(),
-            Some((join, second)) => format!(
-                "{} {} {}",
-                self.first.description(),
-                join.label(),
-                second.description()
-            ),
+            Some((FilterJoin::And, second)) => {
+                i18n::tc!(
+                    "table filter",
+                    "{} and {}",
+                    self.first.description(),
+                    second.description()
+                )
+            }
+            Some((FilterJoin::Or, second)) => {
+                i18n::tc!(
+                    "table filter",
+                    "{} or {}",
+                    self.first.description(),
+                    second.description()
+                )
+            }
         }
     }
 }
@@ -1097,7 +1107,7 @@ mod tests {
     #[test]
     fn the_description_reads_both_conditions() {
         let mut condition = TextCondition::new(TextFilterOp::Contains, "りんご".into());
-        assert_eq!(condition.description(), "「りんご」を含む");
+        assert_eq!(condition.description(), "contains \"りんご\"");
 
         condition.rest = Some((
             FilterJoin::Or,
@@ -1105,8 +1115,27 @@ mod tests {
         ));
         assert_eq!(
             condition.description(),
-            "「りんご」を含む または 「汁」で終わる"
+            "contains \"りんご\" or ends with \"汁\""
         );
+    }
+
+    #[test]
+    fn the_description_reads_the_same_in_japanese() {
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let mut condition = TextCondition::new(TextFilterOp::Contains, "x".into());
+        condition.rest = Some((
+            FilterJoin::Or,
+            TextFilter::new(TextFilterOp::NotBlank, "".into()),
+        ));
+        assert_eq!(condition.description(), "「x」を含む または 空白以外");
+
+        condition.rest = Some((
+            FilterJoin::And,
+            TextFilter::new(TextFilterOp::EndsWith, "汁".into()),
+        ));
+        assert_eq!(condition.description(), "「x」を含む かつ 「汁」で終わる");
     }
 
     ///// Columns moving under the filters /////

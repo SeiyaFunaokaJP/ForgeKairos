@@ -93,8 +93,47 @@ pub enum LinuxWslSandboxError {
     /// `bwrap` is present but couldn't set up the sandbox (typically because
     /// unprivileged user namespaces are disabled).
     SandboxProbeFailed,
+    /// WSL didn't respond to any attempt at preparing the sandbox (see
+    /// [`WslSandboxTimedOut`]).
+    WslTimedOut { seconds: u64, attempts: usize },
+    /// The WSL environment is unusable (`sandbox::SandboxError::WslUnavailable`):
+    /// what to fix, in English for the agent and in the UI language for the card.
+    WslUnavailable { english: String, display: String },
     /// Any other failure, with a human-readable description.
     Other(String),
+}
+
+/// Every attempt at preparing a WSL-sandboxed command ran out of time. Its own
+/// error type rather than a sentence inside `sandbox::SandboxError::WslUnavailable`,
+/// so that the agent is told in English while the agent panel shows it in the
+/// UI language ([`LinuxWslSandboxError::WslTimedOut`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WslSandboxTimedOut {
+    pub seconds: u64,
+    pub attempts: usize,
+}
+
+impl std::fmt::Display for WslSandboxTimedOut {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "Could not create the sandbox in WSL: WSL didn't respond within {} seconds ({} \
+             attempts). WSL may be slow to start. Wait a moment and try again, and if that \
+             doesn't help, restart WSL with `wsl --shutdown`.",
+            self.seconds, self.attempts
+        )
+    }
+}
+
+impl std::error::Error for WslSandboxTimedOut {}
+
+impl From<WslSandboxTimedOut> for LinuxWslSandboxError {
+    fn from(timed_out: WslSandboxTimedOut) -> Self {
+        Self::WslTimedOut {
+            seconds: timed_out.seconds,
+            attempts: timed_out.attempts,
+        }
+    }
 }
 
 impl From<sandbox::SandboxError> for LinuxWslSandboxError {
@@ -103,6 +142,10 @@ impl From<sandbox::SandboxError> for LinuxWslSandboxError {
             sandbox::SandboxError::BwrapNotFound => Self::BwrapNotFound,
             sandbox::SandboxError::BwrapSetuidRejected => Self::SetuidRejected,
             sandbox::SandboxError::SandboxProbeFailed => Self::SandboxProbeFailed,
+            sandbox::SandboxError::WslUnavailable(message) => Self::WslUnavailable {
+                english: message.english().to_string(),
+                display: message.display().to_string(),
+            },
             error => Self::Other(error.to_string()),
         }
     }
@@ -114,21 +157,59 @@ impl LinuxWslSandboxError {
     pub fn user_facing_message(&self) -> String {
         match self {
             LinuxWslSandboxError::BwrapNotFound => {
-                "PATH 上に使える `bwrap` が見つかりません。エージェントのコマンドをサンドボックスで\
-                 実行するには Bubblewrap をインストールしてください。"
+                "No usable `bwrap` binary was found on your PATH. Install Bubblewrap to let \
+                 the agent sandbox terminal commands."
                     .to_string()
             }
             LinuxWslSandboxError::SetuidRejected => {
-                "見つかった `bwrap` は setuid-root のため、Zed は実行しません。setuid ではない \
-                 Bubblewrap をインストールしてください。"
+                "The only `bwrap` available is setuid-root, which Zed refuses to run. Install \
+                 a non-setuid Bubblewrap to let the agent sandbox terminal commands."
                     .to_string()
             }
             LinuxWslSandboxError::SandboxProbeFailed => {
-                "`bwrap` はありますが、サンドボックスを作成できませんでした。このシステムでは\
-                 非特権のユーザー名前空間が無効になっている可能性があります (Ubuntu 23.10 以降は \
-                 AppArmor のプロファイルが必要です)。"
+                "`bwrap` is installed but couldn't create a sandbox, likely because \
+                 unprivileged user namespaces are disabled on this system."
                     .to_string()
             }
+            LinuxWslSandboxError::WslTimedOut { seconds, attempts } => WslSandboxTimedOut {
+                seconds: *seconds,
+                attempts: *attempts,
+            }
+            .to_string(),
+            LinuxWslSandboxError::WslUnavailable { english, .. } => english.clone(),
+            LinuxWslSandboxError::Other(message) => message.clone(),
+        }
+    }
+
+    /// [`Self::user_facing_message`] in the UI language, for the agent panel.
+    /// `user_facing_message` stays English because the agent is told it too,
+    /// and the UI language must not change what the model reads. The probe
+    /// failure also names the AppArmor profile Ubuntu needs, which only the
+    /// user can install.
+    pub fn display_message(&self) -> String {
+        match self {
+            LinuxWslSandboxError::BwrapNotFound => i18n::t!(
+                "No usable `bwrap` binary was found on your PATH. Install Bubblewrap to let \
+                 the agent sandbox terminal commands."
+            )
+            .to_string(),
+            LinuxWslSandboxError::SetuidRejected => i18n::t!(
+                "The only `bwrap` available is setuid-root, which Zed refuses to run. Install \
+                 a non-setuid Bubblewrap to let the agent sandbox terminal commands."
+            )
+            .to_string(),
+            LinuxWslSandboxError::SandboxProbeFailed => i18n::t!(
+                "`bwrap` is installed but couldn't create a sandbox, likely because \
+                 unprivileged user namespaces are disabled on this system (Ubuntu 23.10 and \
+                 later need an AppArmor profile for Bubblewrap)."
+            )
+            .to_string(),
+            LinuxWslSandboxError::WslTimedOut { seconds, attempts } => i18n::t!(
+                "Could not create the sandbox in WSL: WSL didn't respond within {seconds} seconds \
+                 ({attempts} attempts). WSL may be slow to start. Wait a moment and try again, \
+                 and if that doesn't help, restart WSL with `wsl --shutdown`."
+            ),
+            LinuxWslSandboxError::WslUnavailable { display, .. } => display.clone(),
             LinuxWslSandboxError::Other(message) => message.clone(),
         }
     }
@@ -146,8 +227,10 @@ impl LinuxWslSandboxError {
             // A failed probe on Linux is almost always disabled unprivileged
             // user namespaces, which the Ubuntu-specific section covers.
             LinuxWslSandboxError::SandboxProbeFailed => "installing-bubblewrap-ubuntu",
-            // Catch-all. On Windows this is what WSL environment failures arrive
-            // as, and the requirements section says how to fix each of them.
+            LinuxWslSandboxError::WslTimedOut { .. }
+            | LinuxWslSandboxError::WslUnavailable { .. } => "windows-requirements",
+            // Catch-all. On Windows the requirements section says how to fix
+            // each of the WSL failures.
             LinuxWslSandboxError::Other(_) => {
                 if cfg!(target_os = "windows") {
                     "windows-requirements"
@@ -357,16 +440,13 @@ pub(crate) const WSL_SANDBOX_WRAP_TIMEOUT: std::time::Duration = std::time::Dura
 #[cfg(target_os = "windows")]
 pub(crate) const WSL_SANDBOX_WRAP_ATTEMPTS: usize = 2;
 
-/// The environment-unavailable reason reported once every attempt timed out.
+/// The error reported once every attempt timed out.
 #[cfg(target_os = "windows")]
-pub(crate) fn wsl_sandbox_timeout_message() -> String {
-    format!(
-        "WSL でサンドボックスを作成できませんでした: WSL が {} 秒以内に応答しませんでした \
-         ({} 回試行)。WSL の起動に時間がかかっている可能性があります。しばらく待ってから再試行し、\
-         改善しない場合は `wsl --shutdown` で WSL を再起動してください。",
-        WSL_SANDBOX_WRAP_TIMEOUT.as_secs(),
-        WSL_SANDBOX_WRAP_ATTEMPTS
-    )
+pub(crate) fn wsl_sandbox_timed_out() -> WslSandboxTimedOut {
+    WslSandboxTimedOut {
+        seconds: WSL_SANDBOX_WRAP_TIMEOUT.as_secs(),
+        attempts: WSL_SANDBOX_WRAP_ATTEMPTS,
+    }
 }
 
 /// Wrap `(program, args)` for sandboxed execution, returning the wrapped
@@ -546,8 +626,8 @@ pub(crate) fn terminal_spawn_route(
         Some(_) if remote_helper_available => Ok(TerminalSpawnRoute::RemoteHelper),
         Some(wrap) if wrap.is_local => Ok(TerminalSpawnRoute::LocalSandbox),
         Some(_) => Err(anyhow::anyhow!(
-            "リモートのサンドボックスを使えなくなったため、エージェントのコマンドを実行しませんでした \
-             (接続が切り替わった可能性があります)。再接続してから再試行してください。"
+            "The agent's command wasn't run because the remote sandbox is no longer available \
+             (the connection may have changed). Reconnect and try again."
         )),
     }
 }
@@ -694,7 +774,9 @@ const MAX_LEADING_SANDBOX_WARNINGS: usize = 4;
 const READ_HIDING_UNAVAILABLE_WARNING: &str = "read-hiding-unavailable";
 
 /// What Zed adds right after that warning, for the user.
-const READ_HIDING_UNAVAILABLE_NOTE: &str = "このホストでは、サンドボックス内のコマンドから認証情報 (`~/.ssh` など) の読み取りを防げません (ユーザー名前空間内の mount が拒否されました)。書き込みの保護とネットワークの隔離は有効です。";
+const READ_HIDING_UNAVAILABLE_NOTE: &str = "On this host, commands in the sandbox can read \
+     credentials (such as `~/.ssh`), because mounts inside a user namespace were refused. Write \
+     protection and network isolation are still in effect.";
 
 /// ADR-F49 decision 11: the warning for the same host when Landlock hid the
 /// credential stores instead of the refused mounts. The protection is in
@@ -702,7 +784,11 @@ const READ_HIDING_UNAVAILABLE_NOTE: &str = "このホストでは、サンドボ
 const READ_HIDING_BY_LANDLOCK_WARNING: &str = "read-hiding-by-landlock";
 
 /// What Zed adds right after that warning, for the user.
-const READ_HIDING_BY_LANDLOCK_NOTE: &str = "このホストではユーザー名前空間内の mount が拒否されるため、認証情報 (`~/.ssh` など) の読み取りは Landlock で拒否しています (保護は有効です)。代償として、サンドボックス内のコマンドはホームディレクトリ・`~/.config`・`/` などの一覧 (`ls ~`) が拒否され、コマンドの開始後に作られたそれらの直下の項目は読めません。";
+const READ_HIDING_BY_LANDLOCK_NOTE: &str = "This host refuses mounts inside a user namespace, so \
+     Landlock denies reading credentials (such as `~/.ssh`) instead; the protection is in \
+     effect. As a result, commands in the sandbox can't list the home directory, `~/.config`, `/` \
+     and the like (`ls ~`), and can't read entries created directly under them after the command \
+     started.";
 
 /// The helper's read-hiding warnings and the note Zed puts after each.
 const READ_HIDING_WARNINGS: [(&str, &str); 2] = [
@@ -716,24 +802,42 @@ const READ_HIDING_WARNINGS: [(&str, &str); 2] = [
     ),
 ];
 
-/// Shared Japanese lead-in for every remote sandbox-creation failure
-/// (GLOSSARY §5).
+/// Shared lead-in for every remote sandbox-creation failure (GLOSSARY §5).
 const REMOTE_SANDBOX_FAILURE_PREFIX: &str =
-    "リモートホストでサンドボックスを作成できませんでした: ";
+    i18n::msg!("Couldn't create the sandbox on the remote host: ");
 
-const WSL_SANDBOX_FAILURE_PREFIX: &str = "WSL でサンドボックスを作成できませんでした: ";
+const WSL_SANDBOX_FAILURE_PREFIX: &str = i18n::msg!("Could not create the sandbox in WSL: ");
 
 /// One-line, user-facing hint appended when a remote sandbox-creation failure is
 /// surfaced: what the host needs for the sandbox helper (ADR-F18). There is no
 /// way to run the command outside the sandbox instead (ADR-F46). The name is
 /// kept because `terminal_tool` recognizes an already-annotated output by it.
-pub const REMOTE_SANDBOX_UNSANDBOX_HINT: &str = "リモートホストには、ユーザー名前空間 \
-     (`unshare -Un true` が成功すること)、Landlock (カーネル 5.13 以上) またはユーザー名前空間内の \
-     mount、`~/.zed_server/slirp4netns` (接続時に自動で配置されます) が必要です。";
+pub const REMOTE_SANDBOX_UNSANDBOX_HINT: &str = "The remote host needs user namespaces (`unshare -Un true` has to succeed), Landlock \
+     (kernel 5.13 or later) or mounts inside a user namespace, and \
+     `~/.zed_server/slirp4netns` (put there automatically when connecting).";
 
 /// Appended to a WSL failure that updating WSL's kernel fixes.
-const WSL_SANDBOX_UPDATE_HINT: &str = "`wsl --update` で WSL を更新し、`wsl --shutdown` で\
-     再起動してから再試行してください。";
+const WSL_SANDBOX_UPDATE_HINT: &str =
+    i18n::msg!("Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again.");
+
+/// Who reads a sandbox failure message. The agent reads the terminal output and
+/// the tool errors, which stay English whatever the UI language, so that the
+/// UI language does not change what the model reads; the user reads the
+/// launcher's error in the UI language.
+#[derive(Clone, Copy)]
+enum Reader {
+    Agent,
+    User,
+}
+
+impl Reader {
+    fn text(self, message: &'static str) -> &'static str {
+        match self {
+            Reader::Agent => message,
+            Reader::User => i18n::tr(message),
+        }
+    }
+}
 
 /// Where a fail-closed helper ran, which decides how its failure is worded.
 #[derive(Clone, Copy)]
@@ -750,11 +854,11 @@ impl SandboxHost {
         }
     }
 
-    fn prefix(self) -> &'static str {
-        match self {
+    fn prefix(self, reader: Reader) -> &'static str {
+        reader.text(match self {
             SandboxHost::Remote => REMOTE_SANDBOX_FAILURE_PREFIX,
             SandboxHost::Wsl => WSL_SANDBOX_FAILURE_PREFIX,
-        }
+        })
     }
 
     /// The line added after the reason, if any.
@@ -778,8 +882,9 @@ impl SandboxHost {
 
 /// ADR-F18: recognize the fail-closed signature the remote sandbox helper emits
 /// — exit code 126 *and* a `zed-remote-sandbox: <code>: <detail>` marker line at
-/// the start of stderr — and return the user-facing Japanese explanation for
-/// `<code>` (GLOSSARY §5).
+/// the start of stderr — and return the explanation for `<code>` (GLOSSARY §5),
+/// in English: the agent reads it. [`remote_sandbox_setup_failure_display_message`]
+/// is the same in the UI language.
 ///
 /// Returns `None` for anything else, so an ordinary non-zero command exit is
 /// never mistaken for a sandbox-creation failure: **both** the exact exit code
@@ -796,7 +901,28 @@ pub fn remote_sandbox_setup_failure_message(
         return None;
     }
     let code = sandbox_failure_code(output, SandboxHost::Remote)?;
-    Some(sandbox_failure_message_for_code(SandboxHost::Remote, code))
+    Some(sandbox_failure_message_for_code(
+        SandboxHost::Remote,
+        code,
+        Reader::Agent,
+    ))
+}
+
+/// [`remote_sandbox_setup_failure_message`] in the UI language, for a launcher
+/// that shows the failure to the user.
+pub fn remote_sandbox_setup_failure_display_message(
+    exit_code: Option<u32>,
+    output: &str,
+) -> Option<String> {
+    if exit_code != Some(REMOTE_SANDBOX_SETUP_FAILED_EXIT_CODE) {
+        return None;
+    }
+    let code = sandbox_failure_code(output, SandboxHost::Remote)?;
+    Some(sandbox_failure_message_for_code(
+        SandboxHost::Remote,
+        code,
+        Reader::User,
+    ))
 }
 
 /// ADR-F49: the same detection for the Windows backend's helper inside WSL, for
@@ -808,9 +934,9 @@ pub fn wsl_sandbox_setup_failure_message(exit_code: Option<u32>, output: &str) -
         return None;
     }
     let code = sandbox_failure_code(output, SandboxHost::Wsl)?;
-    let reason = sandbox_failure_message_for_code(SandboxHost::Wsl, code);
+    let reason = sandbox_failure_message_for_code(SandboxHost::Wsl, code, Reader::User);
     Some(match SandboxHost::Wsl.hint(code) {
-        Some(hint) => format!("{reason}\n{hint}"),
+        Some(hint) => format!("{reason}\n{}", Reader::User.text(hint)),
         None => reason,
     })
 }
@@ -840,7 +966,7 @@ pub fn annotate_sandbox_setup_failure(output: String, exit_code: Option<u32>) ->
     else {
         return output;
     };
-    let reason = sandbox_failure_message_for_code(host, code);
+    let reason = sandbox_failure_message_for_code(host, code, Reader::Agent);
     if output.contains(&reason) {
         return output;
     }
@@ -955,110 +1081,135 @@ fn sandbox_failure_code(output: &str, host: SandboxHost) -> Option<&str> {
     Some(code)
 }
 
-/// Map a helper failure `<code>` to its user-facing Japanese message (GLOSSARY
-/// §5), prefixed with `host`'s "could not create the sandbox" lead-in. An
-/// unrecognized code falls back to naming the raw code (`不明な理由 (<code>)`) so
-/// a future helper addition still surfaces something actionable rather than
-/// nothing.
-fn sandbox_failure_message_for_code(host: SandboxHost, code: &str) -> String {
+/// Map a helper failure `<code>` to its user-facing message (GLOSSARY §5),
+/// prefixed with `host`'s "could not create the sandbox" lead-in. An
+/// unrecognized code falls back to naming the raw code (`Unknown reason
+/// (<code>)`) so a future helper addition still surfaces something actionable
+/// rather than nothing.
+fn sandbox_failure_message_for_code(host: SandboxHost, code: &str, reader: Reader) -> String {
     let reason = match (host, code) {
-        (SandboxHost::Remote, "slirp-missing") => {
-            "サンドボックス用ヘルパー (slirp4netns) がリモートの `~/.zed_server/` にないため、通信を隔離できません。接続し直すと配置し直します。"
+        (SandboxHost::Remote, "slirp-missing") => i18n::msg!(
+            "The sandbox helper (slirp4netns) is missing from `~/.zed_server/` on the remote \
+             host, so network access can't be isolated. Reconnecting puts it back."
+        ),
+        (SandboxHost::Wsl, "slirp-missing") => i18n::msg!(
+            "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't \
+             be isolated. Restarting Zed puts it back."
+        ),
+        (SandboxHost::Remote, "userns-failed") => i18n::msg!(
+            "User namespaces can't be created (they may be disabled). In a dev container \
+             (Docker), the default seccomp profile refuses `unshare`, so add \
+             `--cap-add SYS_ADMIN` (or `--security-opt seccomp=unconfined`) to `runArgs`, and \
+             `--device /dev/net/tun` for commands that use the network."
+        ),
+        (SandboxHost::Wsl, "userns-failed") => {
+            i18n::msg!("User namespaces can't be created in WSL.")
         }
-        (SandboxHost::Wsl, "slirp-missing") => {
-            "WSL 内のサンドボックス用ヘルパー (slirp4netns) が見つからないため、通信を隔離できません。\
-             Zed を再起動すると配置し直します。"
-        }
-        (SandboxHost::Remote, "userns-failed") => {
-            "ユーザー名前空間を作成できません (無効化されている可能性があります)。開発コンテナー \
-             (Docker) では既定の seccomp プロファイルが `unshare` を拒否するため、`runArgs` に \
-             `--cap-add SYS_ADMIN` (または `--security-opt seccomp=unconfined`) を、ネットワークを\
-             使うコマンドのために `--device /dev/net/tun` も追加してください。"
-        }
-        (SandboxHost::Wsl, "userns-failed") => "WSL でユーザー名前空間を作成できません。",
         (SandboxHost::Remote, "no-fs-backend") => {
-            "ファイル隔離の方式 (Landlock / mount) がどちらも使えません。"
+            i18n::msg!("Neither file isolation method (Landlock or mounts) is available.")
         }
-        (SandboxHost::Wsl, "no-fs-backend") => "WSL のカーネルが Landlock に対応していません。",
-        (_, "landlock-failed" | "mount-failed") => "ファイル書込制限を適用できませんでした。",
-        (_, "protected-pin-failed") => {
-            "保護対象のパス (`.git` / `~/.ssh` / `~/.bashrc` などの認証情報・シェル初期化ファイル) を\
-             確認できませんでした (権限などを確認してください)。"
+        (SandboxHost::Wsl, "no-fs-backend") => i18n::msg!("WSL's kernel doesn't support Landlock."),
+        (_, "landlock-failed" | "mount-failed") => {
+            i18n::msg!("The file write restrictions couldn't be applied.")
         }
-        (SandboxHost::Remote, "home-unknown") => {
-            "リモートのホームディレクトリを特定できませんでした \
-             (常に保護するパスを確定できないため実行しません)。"
-        }
-        (SandboxHost::Wsl, "home-unknown") => {
-            "WSL のホームディレクトリを特定できませんでした \
-             (常に保護するパスを確定できないため実行しません)。"
-        }
-        (_, "writable-redirected") => {
-            "書込を許可したパスが、承認後に別の場所 (シンボリックリンクなど) を指すように\
-             置き換えられています。安全のため実行しませんでした。"
-        }
+        (_, "protected-pin-failed") => i18n::msg!(
+            "The protected paths (credentials and shell startup files such as `.git`, \
+             `~/.ssh` and `~/.bashrc`) couldn't be checked (check their permissions)."
+        ),
+        (SandboxHost::Remote, "home-unknown") => i18n::msg!(
+            "The remote home directory couldn't be determined (the command isn't run, because \
+             the paths that are always protected can't be settled)."
+        ),
+        (SandboxHost::Wsl, "home-unknown") => i18n::msg!(
+            "The WSL home directory couldn't be determined (the command isn't run, because the \
+             paths that are always protected can't be settled)."
+        ),
+        (_, "writable-redirected") => i18n::msg!(
+            "A path allowed for writing was replaced after the approval so that it points \
+             somewhere else (through a symbolic link, for example). The command wasn't run, to be \
+             safe."
+        ),
         (_, "proxy-failed" | "slirp-failed" | "relay-failed") => {
-            "ネットワーク統制を確立できませんでした。"
+            i18n::msg!("Network control couldn't be set up.")
         }
-        (_, "seccomp-failed") => "システムコール制限を適用できませんでした。",
-        (_, "caps-failed") => "コマンドの権限 (capability) を外せませんでした。",
-        (_, "helper-mismatch") => {
-            "サンドボックス用のヘルパー (または slirp4netns) が、この Zed に同梱のものと一致しません \
-             (置き換えられたか壊れています)。安全のため実行しませんでした。Zed を再起動すると配置し直します。"
-        }
-        (SandboxHost::Remote, "subreaper-failed") => {
-            "リモートのカーネルが子プロセスの回収 (PR_SET_CHILD_SUBREAPER) を拒否したため、\
-             コマンドの終了後に残るプロセスを片付けられません。安全のため実行しませんでした。"
-        }
-        (SandboxHost::Wsl, "subreaper-failed") => {
-            "WSL のカーネルが子プロセスの回収 (PR_SET_CHILD_SUBREAPER) を拒否したため、\
-             コマンドの終了後に残るプロセスを片付けられません。安全のため実行しませんでした。"
-        }
-        (_, "signals-failed") => {
-            "サンドボックス用ヘルパーのシグナル処理を設定できませんでした。安全のため実行しませんでした。"
-        }
-        (_, "ide-forward-invalid") => {
-            "IDE 連携の受け渡し用フォルダー (またはソケット) が安全な状態ではありません \
-             (権限が 0700 でない・所有者が違う・保護対象の外にある) ため、実行しませんでした。\
-             Zed を再起動してから再試行してください。"
-        }
-        (SandboxHost::Remote, "pidns-failed") => {
-            "リモートのカーネルが PID 名前空間の作成を拒否したため、コマンドの終了後に残るプロセスを\
-             確実に止められません。安全のため実行しませんでした (`user.max_pid_namespaces=0` の設定や、\
-             コンテナーの seccomp プロファイルが原因のことがあります)。"
-        }
-        (SandboxHost::Wsl, "pidns-failed") => {
-            "WSL のカーネルが PID 名前空間の作成を拒否したため、コマンドの終了後に残るプロセスを\
-             確実に止められません。安全のため実行しませんでした (`user.max_pid_namespaces=0` の設定が\
-             原因のことがあります)。"
-        }
-        (_, "uidmap-failed") => {
-            "ユーザー名前空間にユーザー ID の対応付け (uid_map / gid_map) を設定できませんでした。"
-        }
-        (_, "windows-home-root") => {
-            "書込を許可したフォルダーが Windows のユーザーフォルダーそのものか、それを含んでいるため、\
-             サンドボックスでは使えません (その中の認証情報を読めないようにしているため)。\
-             プロジェクトはその下のフォルダーで開いてください。"
-        }
-        (_, "readable-refused") => {
-            "エージェントの実行に必要なものとして読み取り専用で見せるよう求められたパスが、Zed のデータフォルダーの\
-             中のエージェントのインストール先 (`external_agents`) と Node.js (`node`) のどちらでもない \
-             (または認証情報と重なる) ため、実行しませんでした。"
-        }
+        (_, "seccomp-failed") => i18n::msg!("The system call restrictions couldn't be applied."),
+        (_, "caps-failed") => i18n::msg!("The command's capabilities couldn't be dropped."),
+        (_, "helper-mismatch") => i18n::msg!(
+            "The sandbox helper (or slirp4netns) doesn't match the one bundled with this Zed (it \
+             was replaced or is damaged). The command wasn't run, to be safe. Restarting Zed puts \
+             it back."
+        ),
+        (SandboxHost::Remote, "subreaper-failed") => i18n::msg!(
+            "The remote kernel refused to let the helper reap child processes \
+             (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be \
+             cleaned up. The command wasn't run, to be safe."
+        ),
+        (SandboxHost::Wsl, "subreaper-failed") => i18n::msg!(
+            "WSL's kernel refused to let the helper reap child processes \
+             (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be \
+             cleaned up. The command wasn't run, to be safe."
+        ),
+        (_, "signals-failed") => i18n::msg!(
+            "The sandbox helper's signal handling couldn't be set up. The command wasn't run, to \
+             be safe."
+        ),
+        (_, "ide-forward-invalid") => i18n::msg!(
+            "The folder (or socket) that carries the IDE integration isn't in a safe state (its \
+             permissions aren't 0700, it has another owner, or it lies outside the protected \
+             paths), so the command wasn't run. Restart Zed and try again."
+        ),
+        (SandboxHost::Remote, "pidns-failed") => i18n::msg!(
+            "The remote kernel refused to create a PID namespace, so processes left behind when \
+             the command ends can't be reliably stopped. The command wasn't run, to be safe (a \
+             `user.max_pid_namespaces=0` setting or a container's seccomp profile can cause this)."
+        ),
+        (SandboxHost::Wsl, "pidns-failed") => i18n::msg!(
+            "WSL's kernel refused to create a PID namespace, so processes left behind when the \
+             command ends can't be reliably stopped. The command wasn't run, to be safe (a \
+             `user.max_pid_namespaces=0` setting can cause this)."
+        ),
+        (_, "uidmap-failed") => i18n::msg!(
+            "The user ID mapping (uid_map / gid_map) couldn't be set up in the user namespace."
+        ),
+        (_, "windows-home-root") => i18n::msg!(
+            "A folder allowed for writing is your Windows user folder itself or contains it, which \
+             the sandbox can't use (it keeps the credentials inside it from being read). Open the \
+             project from a folder below it."
+        ),
+        (_, "readable-refused") => i18n::msg!(
+            "A path the agent asked to see read-only, as something it needs to run, is neither \
+             the agent's install folder (`external_agents`) nor Node.js (`node`) in Zed's data \
+             folder (or it overlaps credentials), so the command wasn't run."
+        ),
         (
             _,
             "pipe-failed" | "fork-failed" | "wait-failed" | "handshake-failed" | "mkdtemp-failed",
         ) => {
-            return format!(
-                "{}サンドボックスの準備中に内部エラーが発生しました ({code})。",
-                host.prefix()
-            );
+            let reason = match reader {
+                Reader::Agent => {
+                    format!("An internal error occurred while preparing the sandbox ({code}).")
+                }
+                Reader::User => {
+                    i18n::t!("An internal error occurred while preparing the sandbox ({code}).")
+                }
+            };
+            return format!("{}{reason}", host.prefix(reader));
         }
-        (_, "exec-failed" | "chdir-failed") => "サンドボックス内でコマンドを起動できませんでした。",
-        (_, "bad-args") => "サンドボックスの起動引数が不正です (内部エラー)。",
-        (_, other) => return format!("{}不明な理由 ({other})", host.prefix()),
+        (_, "exec-failed" | "chdir-failed") => {
+            i18n::msg!("The command couldn't be started inside the sandbox.")
+        }
+        (_, "bad-args") => {
+            i18n::msg!("The sandbox's launch arguments are invalid (internal error).")
+        }
+        (_, other) => {
+            let reason = match reader {
+                Reader::Agent => format!("Unknown reason ({other})"),
+                Reader::User => i18n::t!("Unknown reason ({other})"),
+            };
+            return format!("{}{reason}", host.prefix(reader));
+        }
     };
-    format!("{}{reason}", host.prefix())
+    format!("{}{}", host.prefix(reader), reader.text(reason))
 }
 
 /// ADR-F17: the editor-wide network allowlist that a sandbox helper's proxy
@@ -1177,18 +1328,26 @@ pub(crate) async fn prepare_sandbox_wrap(
         return Ok((program, args, env, None));
     };
 
-    let mut sandbox = sandbox_for_wrap(
-        &sandbox_wrap,
-        #[cfg(target_os = "windows")]
-        &ceiling,
-    )?;
+    // Why the command could not be sandboxed is the agent's to read: the
+    // terminal it asked for, native or over ACP, fails with it. A WSL
+    // environment failure also carries the UI language for the retry card
+    // (`sandbox::SandboxError::WslUnavailable`).
+    let mut sandbox = i18n::in_english(|| {
+        sandbox_for_wrap(
+            &sandbox_wrap,
+            #[cfg(target_os = "windows")]
+            &ceiling,
+        )
+    })?;
     let command = sandbox::CommandAndArgs {
         program,
         args,
         env: env.into_iter().collect::<StdHashMap<_, _>>(),
         cwd,
     };
-    let wrapped = sandbox.wrap(&command).await.map_err(anyhow::Error::new)?;
+    let wrapped = i18n::in_english_while_polling(sandbox.wrap(&command))
+        .await
+        .map_err(anyhow::Error::new)?;
     Ok((
         wrapped.program,
         wrapped.args,
@@ -1535,26 +1694,28 @@ pub fn sandboxing_available_for_project(project: &Project, cx: &App) -> bool {
 /// on the approval card that every such command gets (ADR-F46).
 pub fn unsandboxed_execution_reason(project: &Project, cx: &App) -> String {
     if sandboxing_available_for_project(project, cx) {
-        return "設定でサンドボックスが無効になっています".to_string();
+        return i18n::t!("The sandbox is turned off in the settings").to_string();
     }
     let project_kind = if project.is_via_collab() {
-        "共同編集"
+        i18n::t!("Collaboration")
     } else if let Some(remote_client) = project.remote_client() {
         let remote_client = remote_client.read(cx);
         match remote_client.connection_type() {
-            "wsl" => "WSL リモート",
+            "wsl" => i18n::t!("WSL remote"),
             "docker" => "Docker",
             "podman" => "Podman",
-            "ssh" if remote_client.remote_platform().os.as_str() != "linux" => "SSH (Linux 以外)",
+            "ssh" if remote_client.remote_platform().os.as_str() != "linux" => {
+                i18n::t!("SSH (not Linux)")
+            }
             "ssh" => "SSH",
-            _ => "リモート",
+            _ => i18n::t!("Remote"),
         }
     } else if !cx.has_flag::<SandboxingFeatureFlag>() {
-        "サンドボックス機能が無効"
+        i18n::t!("sandboxing is turned off")
     } else {
-        "この OS には未対応"
+        i18n::t!("not supported on this OS")
     };
-    format!("このプロジェクトではサンドボックスを使えません ({project_kind})")
+    i18n::t!("This project can't use the sandbox ({project_kind})")
 }
 
 // Disable pagers so agent/terminal commands don't hang behind interactive UIs
@@ -1616,7 +1777,7 @@ mod remote_sandbox_failure_tests {
                 "message for {code} must carry the shared prefix: {message}"
             );
             assert!(
-                !message.contains("不明な理由"),
+                !message.contains("Unknown reason"),
                 "known code {code} must not fall back to the unknown branch: {message}"
             );
         }
@@ -1651,8 +1812,9 @@ mod remote_sandbox_failure_tests {
         assert_eq!(
             remote_sandbox_setup_failure_message(Some(126), "zed-remote-sandbox: slirp-missing: x"),
             Some(
-                "リモートホストでサンドボックスを作成できませんでした: \
-                 サンドボックス用ヘルパー (slirp4netns) がリモートの `~/.zed_server/` にないため、通信を隔離できません。接続し直すと配置し直します。"
+                "Couldn't create the sandbox on the remote host: \
+                 The sandbox helper (slirp4netns) is missing from `~/.zed_server/` on the remote \
+                 host, so network access can't be isolated. Reconnecting puts it back."
                     .to_string()
             )
         );
@@ -1676,9 +1838,9 @@ mod remote_sandbox_failure_tests {
                 "zed-remote-sandbox: protected-pin-failed: /home/u/p/.git: Permission denied (os error 13)"
             ),
             Some(
-                "リモートホストでサンドボックスを作成できませんでした: \
-                 保護対象のパス (`.git` / `~/.ssh` / `~/.bashrc` などの認証情報・シェル初期化ファイル) を\
-                 確認できませんでした (権限などを確認してください)。"
+                "Couldn't create the sandbox on the remote host: \
+                 The protected paths (credentials and shell startup files such as `.git`, \
+                 `~/.ssh` and `~/.bashrc`) couldn't be checked (check their permissions)."
                     .to_string()
             )
         );
@@ -1690,9 +1852,9 @@ mod remote_sandbox_failure_tests {
                 "zed-remote-sandbox: home-unknown: neither $HOME nor the passwd database …"
             ),
             Some(
-                "リモートホストでサンドボックスを作成できませんでした: \
-                 リモートのホームディレクトリを特定できませんでした \
-                 (常に保護するパスを確定できないため実行しません)。"
+                "Couldn't create the sandbox on the remote host: \
+                 The remote home directory couldn't be determined (the command isn't run, \
+                 because the paths that are always protected can't be settled)."
                     .to_string()
             )
         );
@@ -1707,7 +1869,7 @@ mod remote_sandbox_failure_tests {
                 "zed-remote-sandbox: brand-new-code: detail",
             ),
             Some(
-                "リモートホストでサンドボックスを作成できませんでした: 不明な理由 (brand-new-code)"
+                "Couldn't create the sandbox on the remote host: Unknown reason (brand-new-code)"
                     .to_string()
             )
         );
@@ -1782,8 +1944,9 @@ mod remote_sandbox_failure_tests {
         assert_eq!(
             lines.next(),
             Some(
-                "リモートホストでサンドボックスを作成できませんでした: \
-                 サンドボックス用ヘルパー (slirp4netns) がリモートの `~/.zed_server/` にないため、通信を隔離できません。接続し直すと配置し直します。"
+                "Couldn't create the sandbox on the remote host: \
+                 The sandbox helper (slirp4netns) is missing from `~/.zed_server/` on the remote \
+                 host, so network access can't be isolated. Reconnecting puts it back."
             )
         );
         assert_eq!(lines.next(), Some(REMOTE_SANDBOX_UNSANDBOX_HINT));
@@ -1827,7 +1990,7 @@ mod remote_sandbox_failure_tests {
                 reason.starts_with(WSL_SANDBOX_FAILURE_PREFIX),
                 "{code}: {reason}"
             );
-            assert!(!reason.contains("不明な理由"), "{code}: {reason}");
+            assert!(!reason.contains("Unknown reason"), "{code}: {reason}");
             assert!(
                 !annotated.contains(REMOTE_SANDBOX_UNSANDBOX_HINT),
                 "{code} must not get the SSH-host hint"
@@ -1890,7 +2053,7 @@ mod remote_sandbox_failure_tests {
                     &format!("zed-remote-sandbox: {code}: x")
                 ),
                 Some(format!(
-                    "{REMOTE_SANDBOX_FAILURE_PREFIX}サンドボックスの準備中に内部エラーが発生しました ({code})。"
+                    "{REMOTE_SANDBOX_FAILURE_PREFIX}An internal error occurred while preparing the sandbox ({code})."
                 ))
             );
         }
@@ -1900,7 +2063,7 @@ mod remote_sandbox_failure_tests {
         );
         assert!(
             unknown.contains(&format!(
-                "{WSL_SANDBOX_FAILURE_PREFIX}不明な理由 (brand-new-code)"
+                "{WSL_SANDBOX_FAILURE_PREFIX}Unknown reason (brand-new-code)"
             )),
             "{unknown}"
         );
@@ -1937,7 +2100,7 @@ mod remote_sandbox_failure_tests {
         let output = format!("{READ_HIDING_WARNING}\nzed-remote-sandbox: seccomp-failed: x\n");
         let reason = remote_sandbox_setup_failure_message(Some(126), &output)
             .expect("the marker after the warning should be recognized");
-        assert!(reason.contains("システムコール制限"), "{reason}");
+        assert!(reason.contains("system call restrictions"), "{reason}");
 
         let annotated = annotate_sandbox_setup_failure(output, Some(126));
         assert_eq!(
@@ -2048,7 +2211,7 @@ mod remote_sandbox_failure_tests {
             format!("{WARNING}\nzed-remote-sandbox: seccomp-failed: x\n"),
             Some(126),
         );
-        assert!(failed.contains("システムコール制限"), "{failed}");
+        assert!(failed.contains("system call restrictions"), "{failed}");
     }
 }
 

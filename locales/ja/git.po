@@ -1,0 +1,330 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"{name}\" cannot be used as a branch name."
+msgstr "「{name}」はブランチ名に使えません。"
+
+msgid "\"{name}\" is the repository's default branch, so it cannot be the MR branch. Choose another name."
+msgstr "「{name}」はリポジトリのデフォルトブランチのため、MR ブランチにはできません。別の名前にしてください。"
+
+msgid "\"{prefix}:\" can only be used while the graph shows all branches."
+msgstr "「{prefix}:」はすべてのブランチを表示しているグラフでだけ使えます。"
+
+msgid "\"{prefix}:\" cannot be used in a file's history."
+msgstr "ファイルの履歴では「{prefix}:」は使えません。"
+
+msgid "\"{prefix}:{value}\" names the whole repository, so it does not narrow the search. Write the name of a file or folder."
+msgstr "「{prefix}:{value}」はリポジトリ全体を指すため、絞り込みになりません。ファイルかフォルダーの名前を書いてください。"
+
+msgid "\"{scratch_branch}\" is not a scratch branch, so it cannot be deleted."
+msgstr "一時ブランチではないブランチ「{scratch_branch}」は削除できません。"
+
+msgid "\"{scratch_branch}\" is not a scratch branch, so the MR branch cannot be built on it."
+msgstr "一時ブランチではないブランチ「{scratch_branch}」の上では MR ブランチを組み立てられません。"
+
+msgid "\"{what}\" needs git {minimum} or later (this git is {version})."
+msgstr "{what}には git {minimum} 以上が必要です (いまの git は {version})。"
+
+msgid "A branch name cannot contain \"..\", \"@{{\" or \"//\"."
+msgstr "ブランチ名に「..」「@{{」「//」は使えません。"
+
+msgid "A branch name cannot contain spaces."
+msgstr "空白を含むブランチ名は使えません。"
+
+msgid "A branch name cannot contain ~ ^ : ? * [ \\."
+msgstr "ブランチ名に ~ ^ : ? * [ \\ は使えません。"
+
+msgid "A branch name cannot have a part that starts with \".\" or ends with \".lock\"."
+msgstr "「.」で始まる部分や「.lock」で終わる部分を含むブランチ名は使えません。"
+
+msgid "A branch name cannot start or end with \"/\", or end with \".\"."
+msgstr "ブランチ名の先頭と末尾に「/」、末尾に「.」は使えません。"
+
+msgid "A branch name cannot start with \"-\"."
+msgstr "「-」で始まるブランチ名は使えません。"
+
+msgid "A branch name cannot start with \"refs/\"."
+msgstr "「refs/」で始まるブランチ名は使えません。"
+
+msgid "A rebase may have stopped partway (git before {major}.{minor} cannot tell for sure)"
+msgstr "リベースが途中で止まっている可能性があります (git {major}.{minor} より前ではこれ以上判別できません)"
+
+msgid "A row has no commits."
+msgstr "コミットを 1 件も含まない行があります。"
+
+msgid "Branch \"{branch}\" cannot be used in a search."
+msgstr "ブランチ「{branch}」は検索に使えません。"
+
+msgid "Cannot read \"sha:{value}\". Write 4 to 40 hexadecimal digits."
+msgstr "「sha:{value}」は読めません。4〜40 桁の 16 進数を書いてください。"
+
+msgid "Cannot read \"{prefix}:{value}\". Write one of yes, no or only."
+msgstr "「{prefix}:{value}」は読めません。はい・いいえ・だけ (yes・no・only) のどれかを書いてください。"
+
+msgid "Cannot read the date in \"{prefix}:{value}\". Write it like 2026-09-01, \"2026-09-01 12:00\", or 3d, 2w, 1m, 1y."
+msgstr "「{prefix}:{value}」の日付を読めません。2026-09-01、\"2026-09-01 12:00\"、3日・2週間・1か月・1年 (3d・2w・1m・1y) のように書いてください。"
+
+msgid "Could not determine the base commit."
+msgstr "基点のコミットを特定できませんでした。"
+
+msgid "Could not determine the commits in the MR box."
+msgstr "箱のコミットを特定できませんでした。"
+
+msgid "Could not determine the range to rewrite."
+msgstr "書き換える範囲を特定できませんでした。"
+
+msgid "Could not search the commits: {error}"
+msgstr "コミットを検索できませんでした: {error}"
+
+msgid "Enter a commit message."
+msgstr "コミットメッセージを入力してください。"
+
+msgid "Enter an MR branch name."
+msgstr "MR ブランチ名を入力してください。"
+
+msgid "Names starting with \"{prefix}\" are kept for scratch branches."
+msgstr "「{prefix}」で始まる名前は一時ブランチ用のため使えません。"
+
+msgid "No tag has \"{value}\" in its name."
+msgstr "名前に「{value}」を含むタグはありません。"
+
+msgid "Only one \"{prefix}:\" condition can be given."
+msgstr "「{prefix}:」は 1 つだけ指定できます。"
+
+msgid "Squashed commits need a message."
+msgstr "まとめたコミットにはメッセージが必要です。"
+
+msgid "Stopped because the ignored local files {names} and {count} more would be overwritten and lost during the rewrite. Move them somewhere else and try again."
+msgstr "無視されているローカルのファイル {names} ほか {count} 個が、書き換えの途中で上書きされて失われるため中止しました。別の場所に退避してからやり直してください。"
+
+msgid "Stopped because the ignored local files {names} would be overwritten and lost during the rewrite. Move them somewhere else and try again."
+msgstr "無視されているローカルのファイル {names} が、書き換えの途中で上書きされて失われるため中止しました。別の場所に退避してからやり直してください。"
+
+msgid "The \"{prefix}:\" conditions contradict each other."
+msgstr "「{prefix}:」の指定が食い違っています。"
+
+msgid "The MR box has no commits."
+msgstr "箱にコミットがありません。"
+
+msgid "The author filter is empty."
+msgstr "著者の指定が空です。"
+
+msgid "The branch to go back to is unknown, so there is no way back from the scratch branch."
+msgstr "戻り先のブランチが分からないため、一時ブランチから戻れません。"
+
+msgid "The changed-text filter is empty."
+msgstr "変更内容の指定が空です。"
+
+msgid "The commit to fold the changes into is unknown."
+msgstr "変更を入れる先のコミットが分かりません。"
+
+msgid "The default branch was not found, so \"{prefix}:\" cannot narrow the search."
+msgstr "デフォルトブランチが見つからないため、「{prefix}:」では絞り込めません。"
+
+msgid "The file filter \"{path}\" names the whole repository, so it does not narrow the search."
+msgstr "ファイルの指定「{path}」はリポジトリ全体を指すため、絞り込みになりません。"
+
+msgid "The gpg settings of the untrusted repository are not used. Committed without a signature."
+msgstr "未信頼のリポジトリの gpg 設定は使いません。署名せずにコミットしました。"
+
+msgid "The name of branch \"{branch}\" cannot be used in a search."
+msgstr "ブランチ「{branch}」の名前は検索に使えません。"
+
+msgid "The original branch \"{origin_branch}\" cannot be the MR branch. Choose another name."
+msgstr "元のブランチ「{origin_branch}」を MR ブランチにはできません。別の名前にしてください。"
+
+msgid "The period is reversed (\"{since_word}\" is later than \"{until_word}\")."
+msgstr "期間の指定が逆です (「{since_word}」が「{until_word}」より後になっています)。"
+
+msgid "The sha filter \"{sha_prefix}\" is not hexadecimal."
+msgstr "sha の指定「{sha_prefix}」は 16 進数ではありません。"
+
+msgid "There are no files to fold in."
+msgstr "入れるファイルがありません。"
+
+msgid "There is no branch \"{branch}\"."
+msgstr "ブランチ「{branch}」はありません。"
+
+msgid "This git ({version}) does not support rebase --autostash, so commit or stash the changes in the working tree first (git {minimum} or later is needed)."
+msgstr "この git ({version}) は rebase --autostash に対応していないため、作業ツリーの変更をコミットかスタッシュしてから実行してください (git {minimum} 以上が必要です)。"
+
+msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot stop the repository's settings from running programs, so \"{operation}\" cannot run. Trust the project to run it."
+msgstr "このプロジェクトは信頼されていないため、古い git ({minimum} 未満。いまの git は {version}) ではリポジトリの設定からプログラムが実行されるのを止められず、{operation}を実行できません。プロジェクトを信頼すると実行できます。"
+
+msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot turn off hooks, so \"{operation}\" cannot run. Trust the project to run it."
+msgstr "このプロジェクトは信頼されていないため、古い git ({minimum} 未満。いまの git は {version}) ではフックを止められず、{operation}を実行できません。プロジェクトを信頼すると実行できます。"
+
+msgid "git exited with status {code}."
+msgstr "git がステータス {code} で終了しました。"
+
+msgid "git terminated abnormally."
+msgstr "git が異常終了しました。"
+
+msgid "git that connects to a remote was not run because the uploadpack / receivepack settings of the untrusted repository can start programs"
+msgstr "未信頼のリポジトリの uploadpack / receivepack 設定はプログラムを起動しうるため、リモートに接続する git を実行しませんでした"
+
+msgid "git was not run because the filters of the untrusted repository could not be turned off"
+msgstr "未信頼のリポジトリの filter を無効化できなかったため、git を実行しませんでした"
+
+msgid "unknown version"
+msgstr "版不明"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "著者"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "ブランチ"
+
+msgctxt "commit search"
+msgid "Change"
+msgstr "変更"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "ファイル"
+
+msgctxt "commit search"
+msgid "Merge"
+msgstr "マージ"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "以降"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "タグ"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "以前"
+
+msgctxt "commit search"
+msgid "no"
+msgstr "いいえ"
+
+msgctxt "commit search"
+msgid "only"
+msgstr "だけ"
+
+msgctxt "commit search"
+msgid "yes"
+msgstr "はい"
+
+msgctxt "git result"
+msgid "Checkout"
+msgstr "チェックアウト"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "コミットの取り込み (cherry-pick)"
+
+msgctxt "git result"
+msgid "Commit"
+msgstr "コミット"
+
+msgctxt "git result"
+msgid "Create branch"
+msgstr "ブランチの作成"
+
+msgctxt "git result"
+msgid "Create worktree"
+msgstr "ワークツリーの作成"
+
+msgctxt "git result"
+msgid "Fetch"
+msgstr "フェッチ"
+
+msgctxt "git result"
+msgid "Filter by file"
+msgstr "ファイルでの絞り込み"
+
+msgctxt "git result"
+msgid "Force push (--force-with-lease)"
+msgstr "強制プッシュ (--force-with-lease)"
+
+msgctxt "git result"
+msgid "Merge"
+msgstr "マージ"
+
+msgctxt "git result"
+msgid "Move worktree"
+msgstr "ワークツリーの移動"
+
+msgctxt "git result"
+msgid "Pull"
+msgstr "プル"
+
+msgctxt "git result"
+msgid "Push"
+msgstr "プッシュ"
+
+msgctxt "git result"
+msgid "Rebase"
+msgstr "リベース"
+
+msgctxt "git result"
+msgid "Remove worktree"
+msgstr "ワークツリーの削除"
+
+msgctxt "git result"
+msgid "Repair worktree"
+msgstr "ワークツリーの修復"
+
+msgctxt "git result"
+msgid "Restore checkpoint"
+msgstr "チェックポイントの復元"
+
+msgctxt "git result"
+msgid "Restore files"
+msgstr "ファイルの復元"
+
+msgctxt "git result"
+msgid "Revert"
+msgstr "コミットの打ち消し (revert)"
+
+msgctxt "git result"
+msgid "Search by changed text"
+msgstr "変更内容での検索"
+
+msgctxt "git result"
+msgid "Skip this commit"
+msgstr "このコミットのスキップ"
+
+msgctxt "git result"
+msgid "Stash including untracked files"
+msgstr "追跡されていないファイルを含むスタッシュ"
+
+msgctxt "git result"
+msgid "Stash staged changes"
+msgstr "ステージ済みの変更のスタッシュ"
+
+msgctxt "git result"
+msgid "Stash that leaves newly staged files"
+msgstr "新しくステージしたファイルを残したままのスタッシュ"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "ブランチの切り替え"
+
+msgctxt "git sequencer"
+msgid "cherry-pick"
+msgstr "コミットの取り込み (cherry-pick)"
+
+msgctxt "git sequencer"
+msgid "rebase"
+msgstr "リベース (rebase)"
+
+msgctxt "git sequencer"
+msgid "revert"
+msgstr "コミットの打ち消し (revert)"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

@@ -1,0 +1,1892 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"Sandbox\" on the \"AI\" page is a separate setting that isolates the commands agents run (restricting which domains they can reach and where they can write). However, domains allowed there take effect only within this list. Think of the sandbox as narrowing this scope further rather than widening what is allowed."
+msgstr "「AI」ページの「サンドボックス」は、エージェントが実行するコマンドの隔離 (アクセスできるドメインと書き込み先の制限) を扱う別の設定です。ただし、そちらで許可したドメインが効くのはこのリストの範囲内だけです。サンドボックス側は許可を広げるのではなく、この範囲をさらに狭めるものと考えてください。"
+
+msgid "\"{label}\": \"{name}\" in `{key}` must be a string."
+msgstr "「{label}」の `{key}` の「{name}」は文字列にしてください。"
+
+msgid "\"{label}\": `args` must be an array of strings."
+msgstr "「{label}」の `args` は文字列の配列にしてください。"
+
+msgid "\"{label}\": `command.path` must be a string."
+msgstr "「{label}」の `command.path` は文字列にしてください。"
+
+msgid "\"{label}\": `command` is empty."
+msgstr "「{label}」の `command` が空です。"
+
+msgid "\"{label}\": `command` must be a string."
+msgstr "「{label}」の `command` は文字列にしてください。"
+
+msgid "\"{label}\": `enabled` must be true or false."
+msgstr "「{label}」の `enabled` は true か false にしてください。"
+
+msgid "\"{label}\": `oauth` must look like {{ \"client_id\": \"…\" }}."
+msgstr "「{label}」の `oauth` は {{ \"client_id\": \"…\" }} の形にしてください。"
+
+msgid "\"{label}\": `remote` must be true or false."
+msgstr "「{label}」の `remote` は true か false にしてください。"
+
+msgid "\"{label}\": `timeout` must be a positive whole number of seconds."
+msgstr "「{label}」の `timeout` には正の整数の秒数を指定してください。"
+
+msgid "\"{label}\": `type` \"{kind}\" is not supported. Use `stdio`, `http`, or `sse`."
+msgstr "「{label}」の `type`「{kind}」には対応していません。`stdio`・`http`・`sse` のいずれかにしてください。"
+
+msgid "\"{label}\": `type` must be a string."
+msgstr "「{label}」の `type` は文字列にしてください。"
+
+msgid "\"{label}\": `url` is not set."
+msgstr "「{label}」には `url` がありません。"
+
+msgid "\"{label}\": `{key}` must be a URL string."
+msgstr "「{label}」の `{key}` は URL の文字列にしてください。"
+
+msgid "\"{label}\": `{key}` must be an object ({{ … }})."
+msgstr "「{label}」の `{key}` はオブジェクト ({{ … }}) にしてください。"
+
+msgid "\"{label}\": neither `command` nor `url` is set."
+msgstr "「{label}」には `command` も `url` もありません。"
+
+msgid "\"{name}\": the value is not an object ({{ … }})."
+msgstr "「{name}」の値がオブジェクト ({{ … }}) ではありません。"
+
+msgid "\"{name}\": {error}"
+msgstr "「{name}」: {error}"
+
+msgid "(added)"
+msgstr "(登録済み)"
+
+msgid "(loading the allowlist)"
+msgstr "(許可リストを読み込み中です)"
+
+msgid "(not added)"
+msgstr "(未登録)"
+
+msgid "(optional)"
+msgstr "(省略可)"
+
+msgid "(unnamed)"
+msgstr "(名前なし)"
+
+msgid "// zed-jp-enhance egress allowlist (docs/jp-enhance/DESIGN.md §4)\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// zed-jp-enhance 外部通信の許可リスト (docs/jp-enhance/DESIGN.md §4)\n//\n// AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・\n// 外部エージェントのプロセス) は、ここに書いたホストだけが許可されます。\n// 言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。\n// 127.0.0.1 / ::1 / localhost は書かなくても常に許可されます。\n// // コメントと末尾のカンマを書けます。変更は保存した時点で反映されます。\n"
+
+msgid "127.0.0.1 / ::1 / localhost are always allowed without being registered, so local LLM servers (such as Ollama) work even with an empty allowlist. A small number of hosts, such as the external agent (ACP) registry, are allowed by built-in rules. Every redirect target is checked the same way, one hop at a time."
+msgstr "127.0.0.1 / ::1 / localhost は登録しなくても常に許可されるため、ローカルの LLM サーバー (Ollama など) は許可リストが空のままでも利用できます。外部エージェント (ACP) のレジストリなど、ごく一部のホストは組み込みで許可済みです。リダイレクト先も 1 ホップごとに同じ判定を受けます。"
+
+msgid "A client secret is required to connect this server"
+msgstr "このサーバーに接続するにはクライアントシークレットが必要です"
+
+msgid "A client secret is required to connect."
+msgstr "接続するにはクライアントシークレットが必要です。"
+
+msgid "A command server: Zed starts the executable and talks to it over standard input and output."
+msgstr "コマンド型のサーバーです。Zed が実行ファイルを起動し、標準入出力でやり取りします。"
+
+msgid "A file (not a skill directory) already exists at {}. Delete it or pick a different skill name."
+msgstr "スキルのディレクトリではないファイルが {} に既に存在します。削除するか、別のスキル名を指定してください。"
+
+msgid "A pattern with that name already exists in this rule list."
+msgstr "同じパターンがこのルール一覧に既に存在します。"
+
+msgid "A project window is needed to run this in the terminal"
+msgstr "ターミナルで実行するにはプロジェクトのウィンドウが必要です"
+
+msgid "A server defined in the project settings starts in the project's folder once you allow it."
+msgstr "プロジェクトの設定で定義したサーバーは、許可するとプロジェクトのフォルダーで起動します。"
+
+msgid "A server named \"{name}\" already exists. Open it in the form and rename it before adding it."
+msgstr "「{name}」という名前のサーバーは既に存在します。フォームで開いて名前を変えてから追加してください。"
+
+msgid "A server named \"{}\" already exists."
+msgstr "「{}」という名前のサーバーは既に存在します。"
+
+msgid "A server with this name already exists"
+msgstr "同名のサーバーがあります"
+
+msgid "A skill named \"{name}\" already exists at {}. Pick a different name."
+msgstr "「{name}」という名前のスキルは {} に既に存在します。別の名前を指定してください。"
+
+msgid "A small, fast model is enough (for example, an 8B-class model on Ollama). When none is set, the fast model is used, then the default model. To judge an action, the tool name, command, and paths are sent to that model's provider, so a local model is recommended. If no answer comes back within 10 seconds, no model is available, or the answer can't be read, a confirmation is shown."
+msgstr "小さく速いモデルで足ります (例: Ollama の 8B 級)。未設定のときは、速いモデル、次に既定のモデルが使われます。判定のためにツール名・コマンド・パスがそのモデルの提供元へ送られるので、ローカルのモデルをお勧めします。10 秒以内に答えが返らない、モデルが無い、答えを読み取れない場合は確認を表示します。"
+
+msgid "A unique name used to identify this provider."
+msgstr "このプロバイダーを識別する一意の名前です。"
+
+msgid "A wildcard is allowed only as a leading `*.` (for example, *.corp.example)."
+msgstr "ワイルドカードは先頭の `*.` にのみ指定できます (例: *.corp.example)。"
+
+msgid "ACP Docs"
+msgstr "ACP のドキュメント"
+
+msgid "API Key"
+msgstr "API キー"
+
+msgid "API Key Configured"
+msgstr "API キーは設定済み"
+
+msgid "API Key Set in Environment Variable"
+msgstr "API キーは環境変数で設定されています"
+
+msgid "API Key cannot be empty"
+msgstr "API キーを入力してください"
+
+msgid "API URL"
+msgstr "API URL"
+
+msgid "API URL cannot be empty"
+msgstr "API URL を入力してください"
+
+msgid "Accept the external AI warning to list models from this server."
+msgstr "このサーバーのモデルの一覧を取得するには、外部 AI の警告を承諾してください。"
+
+msgid "Action to take when no patterns match."
+msgstr "どのパターンにも一致しなかったときの動作です。"
+
+msgid "Active Provider"
+msgstr "使用中のプロバイダー"
+
+msgid "Add"
+msgstr "追加"
+
+msgid "Add Agent"
+msgstr "エージェントを追加"
+
+msgid "Add All"
+msgstr "追加する"
+
+msgid "Add Custom Agent"
+msgstr "カスタムエージェントを追加"
+
+msgid "Add Local MCP Server"
+msgstr "ローカル MCP サーバーの追加"
+
+msgid "Add Local Server"
+msgstr "ローカルサーバーを追加"
+
+msgid "Add MCP Server from Template"
+msgstr "テンプレートから MCP サーバーを追加"
+
+msgid "Add MCP Servers from JSON"
+msgstr "JSON から MCP サーバーを追加"
+
+msgid "Add Model"
+msgstr "モデルを追加"
+
+msgid "Add Provider"
+msgstr "プロバイダーを追加"
+
+msgid "Add Remote MCP Server"
+msgstr "リモート MCP サーバーの追加"
+
+msgid "Add Remote Server"
+msgstr "リモートサーバーを追加"
+
+msgid "Add Server"
+msgstr "サーバーを追加"
+
+msgid "Add a host (for example, api.anthropic.com, *.corp.example)…"
+msgstr "ホストを追加 (例: api.anthropic.com、*.corp.example)…"
+
+msgid "Add an absolute path (e.g. /path/to/directory)…"
+msgstr "絶対パスを追加 (例: /path/to/directory)…"
+
+msgid "Add domain (e.g. github.com or *.npmjs.org)…"
+msgstr "ドメインを追加 (例: github.com、*.npmjs.org)…"
+
+msgid "Add from Template"
+msgstr "テンプレートから追加"
+
+msgid "Add regex pattern…"
+msgstr "正規表現のパターンを追加…"
+
+msgid "Add skill content…"
+msgstr "スキルの内容を入力…"
+
+msgid "Add to Allowlist"
+msgstr "許可リストに追加"
+
+msgid "Add {count} Server"
+msgid_plural "Add All {count} Servers"
+msgstr[0] "{count} 件すべてを追加"
+
+msgid "Add {count} server to your user settings?"
+msgid_plural "Add all {count} servers to your user settings?"
+msgstr[0] "{count} 件のサーバーをすべてユーザー設定に追加します。よろしいですか?"
+
+msgid "Add {}-Compatible Provider"
+msgstr "{} 互換プロバイダーの追加"
+
+msgid "Added {count} model"
+msgid_plural "Added {count} models"
+msgstr[0] "{count} 件のモデルを追加しました"
+
+msgid "Adds the hosts to network_allowlist.json. Unless they are added, downloading or connecting to this server stays refused"
+msgstr "network_allowlist.json に追加します。追加しない場合、このサーバーの取得や接続は拒否されたままになります"
+
+msgid "Adds them to network_allowlist.json. If you don't add them, traffic to this provider stays denied"
+msgstr "network_allowlist.json に追加します。追加しない場合、このプロバイダーへの通信は拒否されたままになります"
+
+msgid "Agent name is required."
+msgstr "エージェント名を入力してください。"
+
+msgid "Agents connected through the Agent Client Protocol."
+msgstr "Agent Client Protocol で接続されたエージェントです。"
+
+msgid "Allow All Domains"
+msgstr "すべてのドメインを許可"
+
+msgid "Allow All File System Writes"
+msgstr "ファイルシステムへの書き込みをすべて許可"
+
+msgid "Allow and Start"
+msgstr "許可して起動"
+
+msgid "Allowed"
+msgstr "許可"
+
+msgid "Allowed Domains"
+msgstr "許可するドメイン"
+
+msgid "Allowed Hosts"
+msgstr "許可するホスト"
+
+msgid "Allowed host"
+msgstr "許可するホスト"
+
+msgid "Always Allow"
+msgstr "常に許可"
+
+msgid "Always Confirm"
+msgstr "常に確認"
+
+msgid "Always Deny"
+msgstr "常に拒否"
+
+msgid "Always Launch Outside the Sandbox"
+msgstr "常にサンドボックスの外で起動"
+
+msgid "An HTTP server: Zed connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
+msgstr "HTTP 型のサーバーです。Zed が URL に接続し、HTTP でやり取りします。接続先のホストはネットワーク許可リストの対象です。"
+
+msgid "An agent named \"{}\" already exists."
+msgstr "「{}」という名前のエージェントは既に存在します。"
+
+msgid "Apply the Proxy to AI Agent Child Processes"
+msgstr "AI エージェントの子プロセスにプロキシを適用"
+
+msgid "Applying language server code actions"
+msgstr "言語サーバーのコードアクションの適用"
+
+msgid "Argument"
+msgstr "引数"
+
+msgid "Arguments"
+msgstr "引数"
+
+msgid "Arguments passed to the command, one per row (an argument containing spaces is passed as it is). Rows added and left empty are ignored."
+msgstr "コマンドに渡す引数です。1 行に 1 つずつ入力します (空白を含む引数もそのまま渡されます)。追加したまま空の行は無視されます。"
+
+msgid "Audio Test"
+msgstr "音声のテスト"
+
+msgid "Authenticate"
+msgstr "認証"
+
+msgid "Authenticate to connect this server"
+msgstr "このサーバーに接続するには認証が必要です"
+
+msgid "Authenticating…"
+msgstr "認証しています…"
+
+msgid "Authentication failed ({status}). Check the API key. If the server needs no authentication, check \"Connect without an API key\"."
+msgstr "認証エラー ({status}) です。API キーを確認してください。認証が不要なサーバーの場合は「API キーなしで接続する」を確認してください。"
+
+msgid "Authentication is required to connect."
+msgstr "接続するには認証が必要です。"
+
+msgid "Binary for language server \"{name}\""
+msgstr "言語サーバー「{name}」の実行ファイル"
+
+msgid "Body is required."
+msgstr "本文を入力してください。"
+
+msgid "Can't save to the project settings file because no project is open."
+msgstr "プロジェクトが開かれていないため、プロジェクトの設定ファイルに保存できません。"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cannot add {host}: {reason}"
+msgstr "{host} を追加できません: {reason}"
+
+msgid "Change Scope"
+msgstr "適用範囲を変更"
+
+msgid "Changes take effect from the next child process that starts (no restart needed). Processes that ignore proxy settings cannot be controlled even when this is enabled. Child processes unrelated to AI, such as npm used by language servers or extensions, are not covered even when this is enabled."
+msgstr "変更は次に起動する子プロセスから反映されます (再起動は不要)。プロキシ設定を無視するプロセスは有効にしても統制できません。言語サーバーや拡張機能が使う npm など、AI と無関係な子プロセスは有効にしても対象外です。"
+
+msgid "Checking PATH on this PC…"
+msgstr "この PC の PATH を確認しています…"
+
+msgid "Choose File"
+msgstr "ファイルを選択"
+
+msgid "Claude Code Thinking Effort (--effort)"
+msgstr "Claude Code の思考の深さ (--effort)"
+
+msgid "Claude Pro / Max subscriptions can't be used here (pay-as-you-go with an API key only). See \"Claude Subscription\" below."
+msgstr "Claude Pro / Max のサブスクリプションはここでは使えません (API キーの従量課金のみ)。下の「Claude (サブスクリプション)」をご覧ください。"
+
+msgid "Claude Subscription"
+msgstr "Claude (サブスクリプション)"
+
+msgid "Clear"
+msgstr "クリア"
+
+msgid "Client secret (leave empty for a public client)"
+msgstr "クライアントシークレット (パブリッククライアントの場合は空欄)"
+
+msgid "Closes the settings window and launches Claude Code in a tab of the agent panel. For a local project on Windows it runs inside the sandbox (WSL); on a Linux host connected over SSH it runs inside that host's sandbox."
+msgstr "設定ウィンドウを閉じ、Claude Code をエージェントパネルのタブで起動します。Windows のローカルのプロジェクトではサンドボックス (WSL) の中で、SSH で繋いだ Linux では接続先のサンドボックスの中で起動します"
+
+msgid "Closes the settings window and launches `claude` on this PC (on the SSH host, when connected over SSH) outside the sandbox. Asks for confirmation every time (unless \"Always Launch Outside the Sandbox\" below is on)."
+msgstr "設定ウィンドウを閉じ、この PC (SSH では接続先) の `claude` をサンドボックスの外で起動します。起動のたびに確認します (下の「常にサンドボックスの外で起動」がオンなら確認しません)"
+
+msgid "Closes the settings window and opens the file in the editor. Creates the file if it does not exist"
+msgstr "設定ウィンドウを閉じ、ファイルをエディターで開きます。ファイルが無い場合は作成します"
+
+msgid "Closes the settings window and runs the official install command `npm install -g @anthropic-ai/claude-code` in the integrated terminal. Requires Node.js (npm)."
+msgstr "設定ウィンドウを閉じ、統合ターミナルで公式のインストールコマンド `npm install -g @anthropic-ai/claude-code` を実行します。Node.js (npm) が必要です"
+
+msgid "Command"
+msgstr "コマンド"
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). To save anyway, press \"Save\" again."
+msgstr "コマンド「{program}」が見つかりません (PATH にも、指定した場所にもありません。コマンドは実行していません)。このまま保存する場合は、もう一度「保存」を押してください。"
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). {hint} To save anyway, press \"Save\" again."
+msgstr "コマンド「{program}」が見つかりません (PATH にも、指定した場所にもありません。コマンドは実行していません)。{hint}このまま保存する場合は、もう一度「保存」を押してください。"
+
+msgid "Command chosen by an extension on the remote host (no settings file)"
+msgstr "接続先で拡張機能が決めたコマンド (設定ファイルはありません)"
+
+msgid "Command chosen by an extension on {display_name} (no settings file)"
+msgstr "{display_name} で拡張機能が決めたコマンド (設定ファイルはありません)"
+
+msgid "Command is required."
+msgstr "コマンドを入力してください。"
+
+msgid "Command: starts an executable and talks to it over standard input and output."
+msgstr "コマンド型: 実行ファイルを起動し、標準入出力でやり取りします。"
+
+msgid "Commands executed in the terminal"
+msgstr "ターミナルで実行されるコマンド"
+
+msgid "Compatible APIs"
+msgstr "互換 API"
+
+msgid "Configure"
+msgstr "設定"
+
+msgid "Configure Agent"
+msgstr "エージェントを設定"
+
+msgid "Configure External Agent"
+msgstr "外部エージェントの設定"
+
+msgid "Configure MCP Server"
+msgstr "MCP サーバーを設定"
+
+msgid "Configure Provider"
+msgstr "プロバイダーを設定"
+
+msgid "Configure {}"
+msgstr "{} を設定"
+
+msgid "Configured Servers"
+msgstr "構成済みのサーバー"
+
+msgid "Confirm"
+msgstr "確定"
+
+msgid "Connect without an API key (server needs no authentication)"
+msgstr "API キーなしで接続する (認証不要のサーバー)"
+
+msgid "Connection test: connected."
+msgstr "接続テスト: 接続できました。"
+
+msgid "Connection test: {message}"
+msgstr "接続テスト: {message}"
+
+msgid "Contact your organization admins to adjust this setting."
+msgstr "この設定を変更するには組織の管理者に連絡してください。"
+
+msgid "Controls only outbound traffic that AI initiates. All such traffic is denied by default, and only the hosts registered here are allowed."
+msgstr "AI が起点になる外部通信だけを統制します。対象の通信は既定ですべて拒否され、ここに登録したホストだけが許可されます。"
+
+msgid "Controls the default behavior for all tool actions. Per-tool rules and patterns can override this. \"Allow\" is the same setting as \"Auto-Approve (In Sandbox)\" in the agent panel. \"AI Judge\" runs automatically only the actions that a separate model judges not dangerous, and asks for confirmation for everything else. In either case, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files all still apply. File operations outside the project (worktree) are always confirmed, whatever this is set to, unless you wrote an \"Always Allow\" pattern for that path yourself. Terminal commands that run outside the sandbox (when the sandbox is disabled, or in a project without one) are confirmed every time, regardless of \"Allow\", \"AI Judge\", or \"Always Allow\". Which tools are available is chosen by the profile, not by this setting."
+msgstr "すべてのツール操作の既定の動作を設定します。ツールごとのルールやパターンで上書きできます。「許可」はエージェントパネルの「全自動 (サンドボックス内)」と同じ設定です。「AI が判定」は、危険でないと別のモデルが判定した操作だけを自動で実行し、それ以外は確認します。どちらの場合も、組み込みのセキュリティルール・設定した拒否/確認パターン・サンドボックス・設定ファイルへの書き込み確認はそのまま残ります。プロジェクト (ワークツリー) の外へのファイル操作は、どの設定でも確認します (そのパスを指す「常に許可」パターンを自分で書いた場合を除く)。サンドボックスの外で実行されるターミナルコマンド (サンドボックスを無効にしているとき、またはサンドボックスの無いプロジェクト) は、「許可」「AI が判定」「常に許可」に関係なく毎回確認します。使えるツールの種類は、この設定ではなくプロファイルで選びます。"
+
+msgid "Copy Link"
+msgstr "リンクをコピー"
+
+msgid "Copy Share Link"
+msgstr "共有リンクをコピー"
+
+msgid "Could not determine the range to rewrite"
+msgstr "書き換える範囲を特定できませんでした"
+
+msgid "Couldn't choose the file: {error}"
+msgstr "ファイルを選択できませんでした: {error}"
+
+msgid "Couldn't connect to the server: {error}"
+msgstr "サーバーに接続できませんでした: {error}"
+
+msgid "Couldn't create the request: {error}"
+msgstr "リクエストを作成できませんでした: {error}"
+
+msgid "Couldn't fetch the tool list: {error}"
+msgstr "ツール一覧を取得できませんでした: {error}"
+
+msgid "Couldn't get the approval details for this server."
+msgstr "このサーバーの承認の情報を取得できませんでした。"
+
+msgid "Couldn't load the template list: {error}"
+msgstr "テンプレートの一覧を読み込めませんでした: {error}"
+
+msgid "Couldn't parse the model list response: {error}"
+msgstr "モデル一覧の応答を解釈できませんでした: {error}"
+
+msgid "Couldn't read shared skill: {err}"
+msgstr "共有されたスキルを読み取れませんでした: {err}"
+
+msgid "Couldn't read this as JSON: {error}"
+msgstr "JSON として読み取れませんでした: {error}"
+
+msgid "Couldn't revoke the approval: {error}"
+msgstr "承認を取り消せませんでした: {error}"
+
+msgid "Couldn't revoke: {error}"
+msgstr "取り消せませんでした: {error}"
+
+msgid "Couldn't save \"Don't Allow\": {error}"
+msgstr "「許可しない」を保存できませんでした: {error}"
+
+msgid "Couldn't save because the project settings file can't be read. Fix the JSON errors in the file, then save again."
+msgstr "プロジェクトの設定ファイルを読み取れないため、保存できませんでした。ファイルの JSON の誤りを直してから、もう一度保存してください。"
+
+msgid "Couldn't save the decision: {error}"
+msgstr "決定を保存できませんでした: {error}"
+
+msgid "Couldn't save the permission: {error}"
+msgstr "許可を保存できませんでした: {error}"
+
+msgid "Couldn't save to the project settings file: the save was cancelled."
+msgstr "プロジェクトの設定ファイルに保存できませんでした: 保存が取り消されました。"
+
+msgid "Couldn't save to the project settings file: {error}"
+msgstr "プロジェクトの設定ファイルに保存できませんでした: {error}"
+
+msgid "Couldn't submit the client secret: {error}"
+msgstr "クライアントシークレットを送信できませんでした: {error}"
+
+msgid "Create Skill"
+msgstr "スキルを作成"
+
+msgid "Create a Skill"
+msgstr "スキルを作成"
+
+msgid "Decision"
+msgstr "決定"
+
+msgid "Decrement"
+msgstr "減らす"
+
+msgid "Default"
+msgstr "既定"
+
+msgid "Default (Fast Model)"
+msgstr "既定 (速いモデル)"
+
+msgid "Default Action"
+msgstr "既定の動作"
+
+msgid "Default Permission"
+msgstr "既定の権限"
+
+msgid "Default reasoning effort"
+msgstr "既定の思考の深さ"
+
+msgid "Defined in"
+msgstr "定義元"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete Invalid Pattern"
+msgstr "無効なパターンを削除"
+
+msgid "Delete Pattern"
+msgstr "パターンを削除"
+
+msgid "Delete Skill"
+msgstr "スキルを削除"
+
+msgid "Delete the {skill_scope} skill \"{skill_name}\"?"
+msgstr "{skill_scope}スキル「{skill_name}」を削除しますか?"
+
+msgid "Denied: {}"
+msgstr "拒否: {}"
+
+msgid "Description"
+msgstr "説明"
+
+msgid "Directory creation"
+msgstr "ディレクトリの作成"
+
+msgid "Disable model invocation"
+msgstr "モデルからの呼び出しを無効にする"
+
+msgid "Disabled"
+msgstr "無効"
+
+msgid "Disabled in the project settings."
+msgstr "プロジェクトの設定で無効になっています。"
+
+msgid "Dismiss"
+msgstr "閉じる"
+
+msgid "Domain cannot be empty."
+msgstr "ドメインを入力してください。"
+
+msgid "Don't Allow"
+msgstr "許可しない"
+
+msgid "Duplicate {label} \"{key}\"."
+msgstr "{label}「{key}」が重複しています。"
+
+msgid "Each entry is an exact domain (github.com) or a leading-*. subdomain wildcard (*.npmjs.org). IP addresses and local domains are not allowed. An entry here only takes effect within the editor-wide network allowlist: a host that is not on that list stays unreachable even if you add it here."
+msgstr "各項目は完全一致のドメイン (github.com)、または先頭の *. によるサブドメインのワイルドカード (*.npmjs.org) です。IP アドレスとローカルドメインは指定できません。ここでの許可が効くのは IDE 全体のネットワーク許可リストの範囲内だけで、そちらに無いホストは、ここに登録しても接続できません。"
+
+msgid "Each entry is an exact host name (api.anthropic.com), a subdomain wildcard with a leading *. (*.corp.example, which does not match the parent domain itself), or an IP address (10.0.0.5 / [fd00::1]). Entries are case-insensitive and take no port."
+msgstr "各項目は完全一致のホスト名 (api.anthropic.com)、先頭の *. によるサブドメインのワイルドカード (*.corp.example。親ドメイン自身にはマッチしません)、または IP アドレス (10.0.0.5 / [fd00::1]) です。大文字と小文字は区別せず、ポートは指定しません。"
+
+msgid "Each entry must be an absolute path and grants write access to the whole subtree, except protected Git metadata."
+msgstr "各項目は絶対パスで指定します。保護された Git のメタデータを除き、その配下すべてに書き込みアクセスを許可します。"
+
+msgid "Edit in Form (saves to the project settings file that defines this server)"
+msgstr "フォームで編集 (このサーバーを定義しているプロジェクトの設定ファイルに保存します)"
+
+msgid "Edit in settings.json"
+msgstr "settings.json で編集"
+
+msgid "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from Zed itself."
+msgstr "編集予測の通信は Copilot の言語サーバー (別プロセス) が行うため、外部通信の許可リストの対象外です。ホストの登録は Zed 本体からのサインインにのみ効きます。"
+
+msgid "Enable Sandbox"
+msgstr "サンドボックスを有効にする"
+
+msgid "Enter \"{prompt}\"."
+msgstr "「{prompt}」を入力してください。"
+
+msgid "Enter Secret"
+msgstr "シークレットを入力"
+
+msgid "Enter a host."
+msgstr "ホストを入力してください。"
+
+msgid "Enter a tool input to test your rules…"
+msgstr "ルールを試すツール入力を入力してください…"
+
+msgid "Enter a valid GitHub URL"
+msgstr "有効な GitHub の URL を入力してください。"
+
+msgid "Enter a value for the {label} \"{key}\"."
+msgstr "{label}「{key}」の値を入力してください。"
+
+msgid "Enter to Confirm"
+msgstr "Enter で確定"
+
+msgid "Enter: {prompt}"
+msgstr "入力してください: {prompt}"
+
+msgid "Environment"
+msgstr "環境変数"
+
+msgid "Environment Variables"
+msgstr "環境変数"
+
+msgid "Environment variables provided to the server process."
+msgstr "サーバーのプロセスに渡す環境変数です。API キーやトークンなど、サーバーの説明書が求める値をここに入力します。"
+
+msgid "Environment variables to fill in: {inputs}"
+msgstr "入力が必要な環境変数: {inputs}"
+
+msgid "Environment variables: {names}"
+msgstr "環境変数: {names}"
+
+msgid "Error: {}"
+msgstr "エラー: {}"
+
+msgid "Escalation Prompts"
+msgstr "権限昇格の確認"
+
+msgid "Execution Host"
+msgstr "実行ホスト"
+
+msgid "Extension: the extension provides the command. Its settings are made in the extension's own form."
+msgstr "拡張機能由来: 拡張機能がコマンドを用意します。設定は拡張機能ごとのフォームで行います。"
+
+msgid "External Agents"
+msgstr "外部エージェント"
+
+msgid "External formatter \"{name}\""
+msgstr "外部フォーマッター「{name}」"
+
+msgid "Failed to load your settings. Some values may be incorrect and changes may be lost."
+msgstr "設定を読み込めませんでした。一部の値が正しくない可能性があり、変更が失われることがあります。"
+
+msgid "Failed to parse network_allowlist.json"
+msgstr "network_allowlist.json を解析できませんでした"
+
+msgid "Failed to parse network_allowlist.json: {error}"
+msgstr "network_allowlist.json を解析できませんでした: {error}"
+
+msgid "Failed to read network_allowlist.json"
+msgstr "network_allowlist.json を読み込めませんでした"
+
+msgid "Failed to read network_allowlist.json: {error}"
+msgstr "network_allowlist.json を読み込めませんでした: {error}"
+
+msgid "Failed to read the response body: {error}"
+msgstr "レスポンス本文の読み込みに失敗しました: {error}"
+
+msgid "Failed to save the allowlist: {write_error}"
+msgstr "許可リストを保存できませんでした: {write_error}"
+
+msgid "Failed to save the child process proxy setting: {write_error}"
+msgstr "子プロセスのプロキシ設定を保存できませんでした: {write_error}"
+
+msgid "Failed to write network_allowlist.json"
+msgstr "network_allowlist.json に書き込めませんでした"
+
+msgid "Fetch Models"
+msgstr "モデル一覧を取得"
+
+msgid "Fetching and parsing…"
+msgstr "取得して解析しています…"
+
+msgid "Fetching the tool list…"
+msgstr "ツール一覧を取得しています…"
+
+msgid "Fetching…"
+msgstr "取得中…"
+
+msgid "File System"
+msgstr "ファイルシステム"
+
+msgid "File and directory copying"
+msgstr "ファイルとディレクトリのコピー"
+
+msgid "File and directory deletion"
+msgstr "ファイルとディレクトリの削除"
+
+msgid "File and directory moves/renames"
+msgstr "ファイルとディレクトリの移動・名前の変更"
+
+msgid "File creation and overwrite operations"
+msgstr "ファイルの作成・上書き操作"
+
+msgid "File editing operations"
+msgstr "ファイルの編集操作"
+
+msgid "Files whose contents are part of this approval: {files}. A change to their contents asks for confirmation again, but the command line alone doesn't show what they do, so review their contents too before allowing."
+msgstr "中身を承認に含めるファイル: {files}。中身が変わるともう一度確認を求めますが、コマンドラインからは何をするかわからないため、中身も確認してから許可してください。"
+
+msgid "Fix in settings.json"
+msgstr "settings.json で修正"
+
+msgid "Focus Content"
+msgstr "本文にフォーカス"
+
+msgid "Focus Navbar"
+msgstr "ナビゲーションバーにフォーカス"
+
+msgid "Folder"
+msgstr "フォルダー"
+
+msgid "For a public client, leave this empty and submit."
+msgstr "パブリッククライアントの場合は空欄のまま送信してください。"
+
+msgid "Found {count} server. Open it in the form to review it, or add it right away."
+msgid_plural "Found {count} servers. Open each one in the form to review it, or add them all at once."
+msgstr[0] "{count} 件のサーバーが見つかりました。1 件ずつフォームで開いて確認するか、まとめて追加できます。"
+
+msgid "Front-matter"
+msgstr "フロントマター"
+
+msgid "GitHub response was not valid UTF-8"
+msgstr "GitHub からの応答が有効な UTF-8 ではありません。"
+
+msgid "GitHub returned 404 while fetching the skill; no repository exists at this URL, or it is private"
+msgstr "GitHub がスキルの取得時に 404 を返しました。この URL にリポジトリが存在しないか、非公開になっている可能性があります。"
+
+msgid "GitHub returned an unexpected redirect ({}) for the authenticated request to {raw_url}"
+msgstr "GitHub から予期しないリダイレクト ({}) が返されました (認証済みリクエスト: {raw_url})。"
+
+msgid "GitHub returned {} while fetching the skill"
+msgstr "GitHub がスキルの取得時に {} を返しました。"
+
+msgid "GitHub skill URLs must use https://"
+msgstr "GitHub のスキル URL は https:// を使用してください。"
+
+msgid "HTTP headers sent with each request to the server."
+msgstr "サーバーへの各リクエストに付与する HTTP ヘッダーです。トークンで認証するサーバーでは Authorization に「Bearer <トークン>」を指定します。"
+
+msgid "HTTP requests to URLs"
+msgstr "URL への HTTP リクエスト"
+
+msgid "HTTP: connects over HTTP to a server published at a URL."
+msgstr "HTTP 型: URL で公開されているサーバーに HTTP で接続します。"
+
+msgid "Headers"
+msgstr "ヘッダー"
+
+msgid "Headers to fill in: {inputs}"
+msgstr "入力が必要なヘッダー: {inputs}"
+
+msgid "Headers: {names}"
+msgstr "ヘッダー: {names}"
+
+msgid "Hide this skill from the model's catalog. It can still be invoked via slash command."
+msgstr "このスキルをモデルのカタログから隠します。スラッシュコマンドからは引き続き呼び出せます。"
+
+msgid "Host"
+msgstr "ホスト"
+
+msgid "Hosts that need to be allowed:"
+msgstr "許可が必要なホスト:"
+
+msgid "How long to wait for the server to respond before timing out."
+msgstr "サーバーの応答をタイムアウトまでどれだけ待つかを設定します。"
+
+msgid "I understand the risks above and want to add this provider"
+msgstr "上記のリスクを理解したうえで、このプロバイダーを追加します"
+
+msgid "I understand the risks above and want to enable {name}"
+msgstr "上記のリスクを理解したうえで、{name} を有効にします"
+
+msgid "IP addresses and local domains aren't allowed; enter a domain like github.com."
+msgstr "IP アドレスとローカルドメインは指定できません。github.com のようなドメインを入力してください。"
+
+msgid "If any of these regexes match, a confirmation will be shown unless an Always Deny regex matches."
+msgstr "いずれかの正規表現に一致した場合、確認を表示します。ただし「常に拒否」の正規表現に一致した場合を除きます。"
+
+msgid "If any of these regexes match, the action will be approved—unless an Always Confirm or Always Deny matches."
+msgstr "いずれかの正規表現に一致した場合、その操作を許可します。ただし「常に確認」または「常に拒否」に一致した場合を除きます。"
+
+msgid "If any of these regexes match, the tool action will be denied."
+msgstr "いずれかの正規表現に一致した場合、そのツールの操作を拒否します。"
+
+msgid "Import from URL"
+msgstr "URL からインポート"
+
+msgid "In a project folder where the agent has written files, language servers and formatters do not run that folder's code (the project's Prettier and ESLint configuration, build scripts, and so on) until you press Resume. This setting is saved only in your user settings and cannot be changed by project settings."
+msgstr "エージェントがファイルを書き込んだプロジェクトのフォルダーでは、[再開] を押すまで、言語サーバーとフォーマッターがそのフォルダーのコード (プロジェクトの prettier・ESLint の設定、ビルドスクリプトなど) を実行しません。この設定はユーザー設定にだけ保存され、プロジェクトの設定では変えられません。"
+
+msgid "Increment"
+msgstr "増やす"
+
+msgid "Input Device"
+msgstr "入力デバイス"
+
+msgid "Install Claude Code (Official Command)"
+msgstr "Claude Code をインストール (公式コマンド)"
+
+msgid "Install Docker to make it available."
+msgstr "Docker をインストールすると使えるようになります。"
+
+msgid "Install Node.js to make it available."
+msgstr "Node.js をインストールすると使えるようになります。"
+
+msgid "Install from Extensions"
+msgstr "拡張機能からインストール"
+
+msgid "Install from Registry"
+msgstr "レジストリからインストール"
+
+msgid "Install uv to make it available."
+msgstr "uv をインストールすると使えるようになります。"
+
+msgid "Installed on this PC ({version})"
+msgstr "この PC に導入済みです ({version})"
+
+msgid "Installed on this PC."
+msgstr "この PC に導入済みです。"
+
+msgid "Invalid Patterns"
+msgstr "無効なパターン"
+
+msgid "Invalid URL in settings."
+msgstr "設定内の URL が正しくありません。"
+
+msgid "Invalid URL: {error}"
+msgstr "URL が正しくありません: {error}"
+
+msgid "Invalid regex: {err}. Pattern saved but will block this tool until fixed or removed."
+msgstr "正規表現が正しくありません: {err}。パターンは保存されましたが、修正または削除するまでこのツールはブロックされます。"
+
+msgid "Judge Model"
+msgstr "判定に使うモデル"
+
+msgid "Kept these hosts because another provider you consented to uses them: {hosts}"
+msgstr "他の承諾済みプロバイダーが使用しているため、次のホストは残しました: {hosts}"
+
+msgid "Key"
+msgstr "キー"
+
+msgid "Launch Claude Code in Terminal"
+msgstr "ターミナルで Claude Code を起動"
+
+msgid "Launch Outside the Sandbox"
+msgstr "サンドボックスの外で起動"
+
+msgid "Launches this agent outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Saved only in your user settings."
+msgstr "確認なしで、このエージェントを毎回サンドボックスの外で起動します。書き込みの制限がなくなり、通信の制限はプロキシの設定を読むものにだけ効きます (SSH の接続先では統制が効きません)。ユーザー設定にだけ保存されます。"
+
+msgid "Learn More"
+msgstr "詳細"
+
+msgid "Learn more about sandboxing"
+msgstr "サンドボックスについて詳しく見る"
+
+msgid "Let sandboxed commands reach any domain over the network without prompting. This only lifts the sandbox's own restriction, so commands can still reach only the hosts within the editor-wide network allowlist (localhost is always reachable)."
+msgstr "サンドボックス内のコマンドが、確認なしで任意のドメインへネットワーク接続できるようにします。外すのはサンドボックス側の制限だけなので、実際に接続できるのは IDE 全体のネットワーク許可リストの範囲内です (ローカルホストは常に接続できます)。"
+
+msgid "Let sandboxed commands write anywhere except protected paths (such as Git metadata). This is almost the same as running outside the sandbox, so while it is on, auto-approval does not apply and each command asks for confirmation."
+msgstr "サンドボックス内のコマンドが、保護されたパス (Git のメタデータなど) を除きどこにでも書き込めるようにします。サンドボックスの外で実行するのとほぼ同じになるため、有効の間は自動承認が効かず、コマンドごとに確認します。"
+
+msgid "Load"
+msgstr "読み込む"
+
+msgid "Loaded the template \"{title}\". Fill in the fields that ask for a value before saving."
+msgstr "テンプレート「{title}」を読み込みました。「入力してください」の欄を埋めてから保存してください。"
+
+msgid "Loading agent skill instructions"
+msgstr "エージェントのスキル指示の読み込み"
+
+msgid "Loading…"
+msgstr "読み込み中…"
+
+msgid "Loads mcpServers JSON, such as the one in a server's README, into the form."
+msgstr "README などに載っている mcpServers の JSON をフォームに読み込みます。"
+
+msgid "Loads the settings of a commonly used MCP server into the form. Nothing is written to your settings until you click Save."
+msgstr "よく使う MCP サーバーの設定をフォームに読み込みます。「保存」を押すまで設定には書き込まれません。"
+
+msgid "Loads the settings of a commonly used server, such as Filesystem or GitHub, into the form."
+msgstr "ファイルシステム・GitHub など、よく使うサーバーの設定をフォームに読み込みます。"
+
+msgid "Local"
+msgstr "ローカル"
+
+msgid "Local (command)"
+msgstr "ローカル (コマンド)"
+
+msgid "Log Out"
+msgstr "ログアウト"
+
+msgid "MCP server \"{name}\""
+msgstr "MCP サーバー「{name}」"
+
+msgid "MCP server did not respond (timed out)"
+msgstr "MCP サーバーが応答しませんでした (タイムアウト)"
+
+msgid "Makes \"Launch Claude Code\" start outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Sign-in is shared with your regular Claude Code. Saved only in your user settings."
+msgstr "「Claude Code を起動」を、確認なしで毎回サンドボックスの外で起動します。書き込みの制限がなくなり、通信の制限はプロキシの設定を読むものにだけ効きます (SSH の接続先では統制が効きません)。ログインは普段の Claude Code と共有します。ユーザー設定にだけ保存されます。"
+
+msgid "Manage Trust"
+msgstr "信頼設定を管理"
+
+msgid "Manage servers connected directly or via extensions."
+msgstr "直接、または拡張機能を通じて接続されたサーバーを管理します。"
+
+msgid "Max Completion Tokens"
+msgstr "最大コンプリーショントークン数"
+
+msgid "Max Output Tokens"
+msgstr "最大出力トークン数"
+
+msgid "Max Tokens"
+msgstr "最大トークン数"
+
+msgid "Maximum completion tokens for OpenAI-compatible requests."
+msgstr "OpenAI 互換リクエストのコンプリーショントークン数の上限です。"
+
+msgid "Model Name"
+msgstr "モデル名"
+
+msgid "Model Name cannot be empty"
+msgstr "モデル名を入力してください"
+
+msgid "Model Names must be unique"
+msgstr "モデル名は重複できません"
+
+msgid "Models"
+msgstr "モデル"
+
+msgid "Move Down"
+msgstr "下へ移動"
+
+msgid "Move Up"
+msgstr "上へ移動"
+
+msgid "Name"
+msgstr "名前"
+
+msgid "Network"
+msgstr "ネットワーク"
+
+msgid "No API key is sent, because this connects to a server that needs no authentication."
+msgstr "認証が不要なサーバーに接続するため、API キーは送信されません。"
+
+msgid "No MCP server settings were found. Paste JSON that contains `command` (local) or `url` (remote)."
+msgstr "MCP サーバーの設定が見つかりませんでした。`command` (ローカル) か `url` (リモート) を含む JSON を貼り付けてください。"
+
+msgid "No MCP servers added yet. Click \"Add Server\" to get started."
+msgstr "MCP サーバーはまだ追加されていません。「サーバーを追加」から始めてください。"
+
+msgid "No Results"
+msgstr "該当なし"
+
+msgid "No active project found. Open a workspace to manage MCP servers."
+msgstr "アクティブなプロジェクトがありません。MCP サーバーを管理するにはワークスペースを開いてください。"
+
+msgid "No active project found. Open a workspace to manage external agents."
+msgstr "アクティブなプロジェクトがありません。外部エージェントを管理するにはワークスペースを開いてください。"
+
+msgid "No authenticated models"
+msgstr "認証済みのモデルがありません"
+
+msgid "No decisions have been recorded yet."
+msgstr "許可・不許可の記録はまだありません。"
+
+msgid "No external agents added yet. Click \"Add Agent\" to get started."
+msgstr "外部エージェントはまだ追加されていません。「エージェントを追加」から始めてください。"
+
+msgid "No global skills installed."
+msgstr "グローバルなスキルはインストールされていません。"
+
+msgid "No hosts configured (everything except loopback is denied)"
+msgstr "設定されていません (ループバック以外はすべて拒否されます)"
+
+msgid "No new models were found to add"
+msgstr "追加できる新しいモデルはありませんでした"
+
+msgid "No patterns configured"
+msgstr "パターンが設定されていません"
+
+msgid "No project skills found."
+msgstr "プロジェクトのスキルは見つかりませんでした。"
+
+msgid "No regex matches, using the default action."
+msgstr "一致する正規表現がないため、既定の動作を使用します。"
+
+msgid "No settings match \"{}\""
+msgstr "「{}」に一致する設定はありません"
+
+msgid "No skills available for this context."
+msgstr "この文脈で利用できるスキルはありません。"
+
+msgid "No tools"
+msgstr "ツールはありません"
+
+msgid "None"
+msgstr "なし"
+
+msgid "None (disable edit predictions)"
+msgstr "なし (編集予測を無効にする)"
+
+msgid "Not Controlled"
+msgstr "統制外"
+
+msgid "Not Controlled (Own Proxy)"
+msgstr "統制外 (独自プロキシ)"
+
+msgid "Not a valid domain. Use a domain like github.com or *.npmjs.org."
+msgstr "有効なドメインではありません。github.com や *.npmjs.org のような形式で指定してください。"
+
+msgid "Not a valid host name or IP address. Examples: api.anthropic.com, *.corp.example, 10.0.0.5"
+msgstr "有効なホスト名または IP アドレスではありません。例: api.anthropic.com、*.corp.example、10.0.0.5"
+
+msgid "Not allowed"
+msgstr "許可しない"
+
+msgid "Not installed on this PC (claude is not on PATH)."
+msgstr "この PC には導入されていません (PATH に claude がありません)。"
+
+msgid "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
+msgstr "注意: ツールの権限設定が適用されるのは Zed 標準のエージェントだけで、Agent Client Protocol (ACP) で接続した外部エージェントには適用されません。"
+
+msgid "Nothing configured"
+msgstr "設定されていません"
+
+msgid "OAuth Client ID"
+msgstr "OAuth クライアント ID"
+
+msgid "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
+msgstr "サブスクリプション (Claude Pro / Max など) での利用は、Anthropic が 2026-06-15 に「これまでどおり」と告知しています。ログインは Claude Code 自身の画面で行われ、Zed は認証情報を見も保存も中継もしません。ここを切るとログインのボタンが認証カードから消えます (API キーでの利用はそのまま使えます)。"
+
+msgid "One of the {label} rows has no name. Enter a name or remove that row."
+msgstr "{label}の名前が空の行があります。名前を入力するか、その行を削除してください。"
+
+msgid "Open"
+msgstr "開く"
+
+msgid "Open in Form"
+msgstr "フォームで開く"
+
+msgid "Open network_allowlist.json in Editor"
+msgstr "network_allowlist.json をエディターで開く"
+
+msgid "Open the project settings file that defines this server"
+msgstr "このサーバーを定義しているプロジェクトの設定ファイルを開く"
+
+msgid "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below."
+msgstr "OpenAI 互換 API・Ollama・GitHub Copilot・Codestral・Mercury は、下の各プロバイダーで認証情報や接続先 URL を設定すると選択できるようになります。Zed は下の「Zed」で承諾すると選択できるようになります。"
+
+msgid "Opens the official Claude Code in a tab of the agent panel. You sign in on Claude Code's own screen. The CLI is not bundled; it is installed with the official install command. For pay-as-you-go billing with an API key, use Anthropic above."
+msgstr "エージェントパネルのタブで公式の Claude Code が開きます。ログインは Claude Code の画面で行います。CLI は同梱しておらず、公式のインストールコマンドで導入します。API キーの従量課金は上の Anthropic をご利用ください。"
+
+msgid "Opens {docs_url}"
+msgstr "{docs_url} を開きます"
+
+msgid "Optional OAuth client ID"
+msgstr "OAuth クライアント ID (省略可)"
+
+msgid "Optional OAuth client ID used to authenticate with the server."
+msgstr "サーバーの認証に使う OAuth クライアント ID です (省略可)。サーバーが自動登録に対応していれば空欄のままで、接続時にブラウザーでの認証を求められます。"
+
+msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
+msgstr "または環境変数 {env_var_name} を設定し、Zed を再起動すると反映されます。"
+
+msgid "Or set the {} env var and restart Zed."
+msgstr "または環境変数 {} を設定して Zed を再起動してください。"
+
+msgid "Outbound Traffic from Child Processes"
+msgstr "子プロセスの外部通信"
+
+msgid "Output Device"
+msgstr "出力デバイス"
+
+msgid "Overridden by Organization"
+msgstr "組織の設定で上書きされています"
+
+msgid "Paste a GitHub .md URL"
+msgstr "GitHub の .md ファイルの URL を貼り付けてください。"
+
+msgid "Paste a GitHub .md URL to fetch it and fill out the form. For private files, Zed retries using GITHUB_TOKEN, if set."
+msgstr "GitHub の .md ファイルの URL を貼り付けると、内容を取得してフォームに入力します。非公開のファイルの場合、GITHUB_TOKEN が設定されていればそれを使って再試行します。"
+
+msgid "Paste a GitHub URL that points to a .md file"
+msgstr ".md ファイルを指す GitHub の URL を貼り付けてください。"
+
+msgid "Paste a GitHub blob URL that points to a .md file"
+msgstr ".md ファイルを指す GitHub の blob URL を貼り付けてください。"
+
+msgid "Paste a JSON object ({{ … }})."
+msgstr "JSON オブジェクト ({{ … }}) を貼り付けてください。"
+
+msgid "Paste from JSON"
+msgstr "JSON から貼り付け"
+
+msgid "Paste some JSON."
+msgstr "JSON を貼り付けてください。"
+
+msgid "Paste the configuration JSON from an MCP server's README or similar, then press \"Load\". The mcpServers format of Claude Desktop and Cursor, the servers format of VS Code and Zed's context_servers format are supported. What is loaded goes into the form and isn't written to your settings until you press \"Save\"."
+msgstr "MCP サーバーの README などに載っている設定の JSON を貼り付けて「読み込む」を押してください。Claude Desktop・Cursor の mcpServers、VS Code の servers、Zed の context_servers の形式に対応しています。読み込んだ内容はフォームに入り、「保存」を押すまで設定には書き込まれません。"
+
+msgid "Pattern preview differs from engine — showing authoritative result."
+msgstr "パターンのプレビューが判定エンジンと異なります。実際の判定結果を表示しています。"
+
+msgid "Patterns are matched against each command in the input. Commands chained with &&, ||, ;, or pipes are split and checked individually."
+msgstr "パターンは入力に含まれる各コマンドと照合されます。&&、||、;、パイプでつながれたコマンドは分割され、個別に判定されます。"
+
+msgid "Patterns are matched against the URL being fetched."
+msgstr "パターンは取得対象の URL と照合されます。"
+
+msgid "Patterns are matched against the absolute path to the skill's SKILL.md file."
+msgstr "パターンはスキルの SKILL.md ファイルの絶対パスと照合されます。"
+
+msgid "Patterns are matched against the directory path being created."
+msgstr "パターンは作成対象のディレクトリのパスと照合されます。"
+
+msgid "Patterns are matched against the file path being edited."
+msgstr "パターンは編集対象のファイルパスと照合されます。"
+
+msgid "Patterns are matched against the file path being written."
+msgstr "パターンは書き込み対象のファイルパスと照合されます。"
+
+msgid "Patterns are matched against the name of the code action. Its edits are written straight into the buffer without going through diff review."
+msgstr "パターンはコードアクションの名前と照合されます。編集内容は差分レビューを通らず直接バッファーに書き込まれます。"
+
+msgid "Patterns are matched against the path being deleted."
+msgstr "パターンは削除対象のパスと照合されます。"
+
+msgid "Patterns are matched against the search query."
+msgstr "パターンは検索クエリと照合されます。"
+
+msgid "Patterns are matched against the symbol's name before the rename. The rename skips diff review, and every file that references the symbol is saved."
+msgstr "パターンは変更前のシンボル名と照合されます。変更は差分レビューを通らず、参照するすべてのファイルが保存されます。"
+
+msgid "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
+msgstr "パターンは元のパスと行き先のパスに対して個別に照合されます。下の入力欄でどちらのパスでも試せます。"
+
+msgid "Pause Folder Code After Agent Writes Until Resumed"
+msgstr "エージェントが書き込んだフォルダーのコードを再開まで止める"
+
+msgid "Preserves thinking in chat history"
+msgstr "チャット履歴に思考を保持"
+
+msgid "Project"
+msgstr "プロジェクト"
+
+msgid "Project-wide symbol renames by the language server"
+msgstr "言語サーバーによるプロジェクト全体のシンボル名変更"
+
+msgid "Provider"
+msgstr "プロバイダー"
+
+msgid "Provider Name"
+msgstr "プロバイダー名"
+
+msgid "Provider Name cannot be empty"
+msgstr "プロバイダー名を入力してください"
+
+msgid "Provider Name is already taken by another provider"
+msgstr "そのプロバイダー名は既に使われています"
+
+msgid "Proxied"
+msgstr "プロキシ経由"
+
+msgid "Proxying for child processes is turned off, so this server's outbound traffic is not controlled by the network allowlist."
+msgstr "子プロセスへのプロキシ適用が無効なため、このサーバーの外部通信はネットワーク許可リストの統制外です。"
+
+msgid "Read the file again"
+msgstr "ファイルを読み直します"
+
+msgid "Reason: {}"
+msgstr "理由: {}"
+
+msgid "Reconnects the server to check whether it can be connected to."
+msgstr "サーバーを再接続して、接続できるかどうかを確認します。"
+
+msgid "Registered in the allowlist: {hosts}"
+msgstr "許可リストに登録済み: {hosts}"
+
+msgid "Reload"
+msgstr "再読み込み"
+
+msgid "Remote"
+msgstr "リモート"
+
+msgid "Remote (HTTP)"
+msgstr "リモート (HTTP)"
+
+msgid "Remote host ({display_name})"
+msgstr "接続先 ({display_name})"
+
+msgid "Remove"
+msgstr "削除"
+
+msgid "Remove Allowed Hosts"
+msgstr "許可ホストを削除"
+
+msgid "Remove Custom Agent"
+msgstr "カスタムエージェントを削除"
+
+msgid "Remove Domain"
+msgstr "ドメインを削除"
+
+msgid "Remove Host"
+msgstr "ホストを削除"
+
+msgid "Remove Model"
+msgstr "モデルを削除"
+
+msgid "Remove Path"
+msgstr "パスを削除"
+
+msgid "Remove Registry Agent"
+msgstr "レジストリのエージェントを削除"
+
+msgid "Removed from the allowlist: {removed}"
+msgstr "許可リストから削除しました: {removed}"
+
+msgid "Removed from the allowlist: {removed}. {kept}"
+msgstr "許可リストから削除しました: {removed}。{kept}"
+
+msgid "Removes the record of the denial. The next time the same launch is requested, you'll be asked again."
+msgstr "「許可しない」の記録を消します。次に同じ内容の起動を求められたら、あらためて確認します。"
+
+msgid "Removes this provider's hosts from network_allowlist.json. Hosts that another provider you consented to needs, and separately written entries such as wildcards, are kept"
+msgstr "このプロバイダーのホストを network_allowlist.json から削除します。他の承諾済みプロバイダーが必要とするホストと、ワイルドカードなど別に書かれた項目は残します"
+
+msgid "Replaces the binary your user settings specify for the same language server"
+msgstr "ユーザー設定の同じ言語サーバーの実行ファイル指定を置き換えています"
+
+msgid "Replaces the formatter your user settings specify"
+msgstr "ユーザー設定のフォーマッター指定を置き換えています"
+
+msgid "Replaces the server of the same name in your user settings"
+msgstr "ユーザー設定の同名サーバーを置き換えています"
+
+msgid "Required. A unique name used to identify this MCP server."
+msgstr "必須。この MCP サーバーを識別する一意の名前です。"
+
+msgid "Required. Path to the executable that launches the server."
+msgstr "必須。サーバーを起動する実行ファイルのパス、または PATH にあるコマンドの名前 (npx・uvx など) です。保存するときに、見つかるかどうかだけを確かめます (実行はしません)。"
+
+msgid "Required. The base URL of the remote MCP server."
+msgstr "必須。リモート MCP サーバーのエンドポイントの URL です (例: https://example.com/mcp)。"
+
+msgid "Requires: {requires}"
+msgstr "必要なもの: {requires}"
+
+msgid "Reset"
+msgstr "リセット"
+
+msgid "Reset Key"
+msgstr "キーをリセット"
+
+msgid "Reset to Default"
+msgstr "既定値に戻す"
+
+msgid "Restricted Mode"
+msgstr "制限モード"
+
+msgid "Result:"
+msgstr "結果:"
+
+msgid "Revoke Approval"
+msgstr "承認を取り消す"
+
+msgid "Revoke Consent"
+msgstr "承諾を取り消す"
+
+msgid "Revoke Denial"
+msgstr "「許可しない」を取り消す"
+
+msgid "Revokes the approval and stops the program if it is running. Starting it again will need your approval again."
+msgstr "承認を取り消して、動いているプログラムを止めます。もう一度起動するには、あらためて許可が必要です。"
+
+msgid "Revokes the approval and stops the server. Starting it again requires allowing it again."
+msgstr "承認を取り消してサーバーを止めます。もう一度起動するには、あらためて許可が必要です。"
+
+msgid "Revoking consent shows the warning again, and the provider can no longer be configured. Also removes the hosts registered in the allowlist for this provider"
+msgstr "承諾を取り消すと、再び警告が表示され設定できなくなります。このプロバイダーのために許可リストへ登録したホストも削除します"
+
+msgid "Run on This Computer"
+msgstr "この PC で実行"
+
+msgid "Run on the SSH Host"
+msgstr "SSH 接続先で実行"
+
+msgid "Runs on"
+msgstr "実行ホスト"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md のサイズが上限の {}KB を超えています。"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save Provider"
+msgstr "プロバイダーを保存"
+
+msgid "Save Skill"
+msgstr "スキルを保存"
+
+msgid "Saving…"
+msgstr "保存中…"
+
+msgid "Scope"
+msgstr "適用範囲"
+
+msgid "Search Settings"
+msgstr "設定を検索"
+
+msgid "Search fonts…"
+msgstr "フォントを検索…"
+
+msgid "Search icon themes…"
+msgstr "アイコンテーマを検索…"
+
+msgid "Search models…"
+msgstr "モデルを検索…"
+
+msgid "Search settings…"
+msgstr "設定を検索…"
+
+msgid "Search theme…"
+msgstr "テーマを検索…"
+
+msgid "Select"
+msgstr "選択"
+
+msgid "Select a model…"
+msgstr "モデルを選択…"
+
+msgid "Select which provider to use for edit predictions."
+msgstr "編集予測に使用するプロバイダーを選択します。"
+
+msgid "Server Name"
+msgstr "サーバー名"
+
+msgid "Server name is required."
+msgstr "サーバー名を入力してください。"
+
+msgid "Server settings on the remote host"
+msgstr "接続先のサーバー設定"
+
+msgid "Server settings on {display_name}"
+msgstr "{display_name} のサーバー設定"
+
+msgid "Servers can't be added all at once while one has a name that is already taken. Open each server marked \"A server with this name already exists\" in the form and rename it before adding it."
+msgstr "同名のサーバーがあるため、まとめては追加できません。「同名のサーバーがあります」と出ているサーバーをフォームで開き、名前を変えてから追加してください。"
+
+msgid "Settings Content"
+msgstr "設定の内容"
+
+msgid "Settings File"
+msgstr "設定ファイル"
+
+msgid "Settings Navigation"
+msgstr "設定のナビゲーション"
+
+msgid "Skill Content"
+msgstr "スキルの内容"
+
+msgid "Start Testing"
+msgstr "テストを開始"
+
+msgid "Starting with these details is not allowed."
+msgstr "この内容での起動は許可していません。"
+
+msgid "Stop Testing"
+msgstr "テストを停止"
+
+msgid "Stored in the system keychain, not in settings.json."
+msgstr "settings.json ではなく、システムのキーチェーンに保存されます。"
+
+msgid "Submit"
+msgstr "送信"
+
+msgid "Supports /chat/completions"
+msgstr "/chat/completions に対応"
+
+msgid "Supports images"
+msgstr "画像に対応"
+
+msgid "Supports parallel_tool_calls"
+msgstr "parallel_tool_calls に対応"
+
+msgid "Supports prompt_cache_key"
+msgstr "prompt_cache_key に対応"
+
+msgid "Supports thinking"
+msgstr "思考に対応"
+
+msgid "Supports tools"
+msgstr "ツールに対応"
+
+msgid "System Default"
+msgstr "システム既定"
+
+msgid "Test Connection"
+msgstr "接続テスト"
+
+msgid "Test Your Rules"
+msgstr "ルールを試す"
+
+msgid "Testing the connection…"
+msgstr "接続をテストしています…"
+
+msgid "Testing…"
+msgstr "テスト中…"
+
+msgid "The API key sent as Authorization: Bearer {{key}}."
+msgstr "API キーは Authorization: Bearer {{key}} として送信されます。"
+
+msgid "The approval records are unavailable, so the decision can't be revoked."
+msgstr "承認の記録を扱えないため、取り消せません。"
+
+msgid "The approval records are unavailable, so the decision can't be saved."
+msgstr "承認の記録を扱えないため、決定を保存できません。"
+
+msgid "The approval records are unavailable, so the list can't be shown."
+msgstr "承認の記録を扱えないため、一覧を表示できません。"
+
+msgid "The approval records can't be read, so it won't be started: {error}"
+msgstr "承認の記録を読み込めないため、起動しません: {error}"
+
+msgid "The approval records can't be read, so no decision can be made."
+msgstr "承認の記録を読み込めないため、決定できません。"
+
+msgid "The base URL for the compatible API."
+msgstr "互換 API のベース URL です。"
+
+msgid "The connection can't be tested until the server is allowed to start."
+msgstr "許可するまで接続テストはできません。"
+
+msgid "The contents of the argument file {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "引数ファイル {path} の中身は承認に含まれません。後から中身が変わっても再確認されません。"
+
+msgid "The contents of the folder {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "フォルダー {path} の中身は承認に含まれません。後から中身が変わっても再確認されません。"
+
+msgid "The contents of the remote file {path} can't be checked from here, so they are not part of the approval. You won't be asked again if the contents change later."
+msgstr "接続先のファイル {path} の中身はここから確かめられないため、承認に含まれません。後から中身が変わっても再確認されません。"
+
+msgid "The endpoint depends on the AWS region (for example, bedrock-runtime.us-east-1.amazonaws.com). Register the host for the region you actually use in the allowlist."
+msgstr "接続先は AWS のリージョンによって変わります (例: bedrock-runtime.us-east-1.amazonaws.com)。実際に使用するリージョンのホストを許可リストに登録してください。"
+
+msgid "The maximum number of tokens the model can output."
+msgstr "モデルが出力できるトークン数の上限です。"
+
+msgid "The model context window size."
+msgstr "モデルのコンテキストウィンドウのサイズです。"
+
+msgid "The model's name in the provider's API."
+msgstr "プロバイダーの API におけるモデルの名前です。"
+
+msgid "The network allowlist blocked the connection to {host}. Add this host under \"Network Allowlist\" on the \"Network\" page."
+msgstr "{host} への接続がネットワーク許可リストで拒否されました。「ネットワーク」ページの「ネットワーク許可リスト」でこのホストを追加してください。"
+
+msgid "The sandbox is disabled, so terminal commands are confirmed every time, even with \"Allow\"."
+msgstr "サンドボックスが無効なため、ターミナルのコマンドは「許可」でも毎回確認します。"
+
+msgid "The server didn't become ready for connections."
+msgstr "サーバーが接続できる状態になりませんでした。"
+
+msgid "The server returned HTTP {status}."
+msgstr "サーバーが HTTP {status} を返しました。"
+
+msgid "The server returned HTTP {status}: {body}"
+msgstr "サーバーが HTTP {status} を返しました: {body}"
+
+msgid "The value of `{key}` is not an object ({{ … }})."
+msgstr "`{key}` の値がオブジェクト ({{ … }}) ではありません。"
+
+msgid "These fields weren't loaded because Zed doesn't use them: {keys}"
+msgstr "次の項目は Zed では使わないため読み込みませんでした: {keys}"
+
+msgid "These patterns failed to compile as regular expressions. The tool will be blocked until they are fixed or removed."
+msgstr "これらのパターンは正規表現としてコンパイルできませんでした。修正または削除するまで、このツールはブロックされます。"
+
+msgid "They can be automatically migrated to the latest version."
+msgstr "最新の形式へ自動的に移行できます。"
+
+msgid "They must be manually migrated to the latest version."
+msgstr "最新の形式へ手動で移行する必要があります。"
+
+msgid "Thinking Effort: {effort}"
+msgstr "思考の深さ: {effort}"
+
+msgid "This approval lasts until Zed quits."
+msgstr "この承認は Zed を終了するまで有効です。"
+
+msgid "This computer"
+msgstr "この PC"
+
+msgid "This consent is shared with the \"Zed\" LLM provider on the AI page. Withdrawing it applies to both edit predictions and the agent."
+msgstr "この承諾は「AI」ページの LLM プロバイダー「Zed」と共通です。取り消すと編集予測とエージェントの両方に反映されます。"
+
+msgid "This covers outbound traffic from AI providers (LLMs), agent tools (fetch / web search), MCP servers, external agent (ACP) processes, and commands that agents run in the sandbox. Traffic from the IDE's own tooling, such as language servers, formatters, debug adapters, extensions, app updates, remote development servers, Git, and the browser panel, is not covered and is not restricted."
+msgstr "対象は、AI プロバイダー (LLM)・エージェントのツール (fetch / ウェブ検索)・MCP サーバー・外部エージェント (ACP) のプロセス・エージェントがサンドボックスで実行するコマンドの外部通信です。言語サーバー・フォーマッタ・デバッグアダプター・拡張機能・本体の更新・リモート開発サーバー・Git・ブラウザーパネルなど、IDE 自身の道具立ての通信は対象外で、制限しません。"
+
+msgid "This entry is ignored because its format is invalid."
+msgstr "形式が正しくないため、この項目は無視されます。"
+
+msgid "This project is in restricted mode. Some project settings may not apply."
+msgstr "このプロジェクトは制限モードで開いています。一部のプロジェクト設定は適用されません。"
+
+msgid "This project's definition is not allowed to start."
+msgstr "このプロジェクトの定義は起動を許可していません。"
+
+msgid "This project's folder is no longer open."
+msgstr "このプロジェクトのフォルダーはもう開かれていません。"
+
+msgid "This project's settings are trying to start a program as shown below. Review it before choosing."
+msgstr "このプロジェクトの設定が、次の内容でプログラムを起動しようとしています。内容を確認してから選んでください。"
+
+msgid "This project's settings want to start a program"
+msgstr "このプロジェクトの設定が起動を求めています"
+
+msgid "This provider connects to an external service. Review the warning about training risks and check the box"
+msgstr "外部のサービスに接続する設定です。学習リスクの警告を確認し、チェックを入れてください"
+
+msgid "This provider will use an Anthropic Messages-compatible API."
+msgstr "このプロバイダーは Anthropic Messages 互換の API を使用します。"
+
+msgid "This provider will use an OpenAI-compatible API."
+msgstr "このプロバイダーは OpenAI 互換の API を使用します。"
+
+msgid "This provider's endpoint cannot be determined from settings. Verify where your data will be sent before enabling it."
+msgstr "このプロバイダーの接続先は設定から特定できません。送信先を確認したうえで有効にしてください。"
+
+msgid "This server hasn't been created yet. Check its settings and extension."
+msgstr "このサーバーはまだ作成されていません。設定と拡張機能を確認してください。"
+
+msgid "This server is defined in the project settings file {file_label}. Saving rewrites this file (not your user settings). Because the definition changes, the server must be allowed again before it starts."
+msgstr "このサーバーはプロジェクトの設定ファイル {file_label} で定義されています。保存するとこのファイルを書き換えます (ユーザー設定には書きません)。内容が変わるため、起動するにはもう一度許可が必要です。"
+
+msgid "This server is disabled. Enable it before testing the connection."
+msgstr "このサーバーは無効です。有効にしてから接続をテストしてください。"
+
+msgid "This server starts in an empty folder of Zed's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
+msgstr "このサーバーは Zed 専用の空のフォルダーで起動します (プロジェクトのフォルダーではありません)。プロジェクトを対象にするときは、引数にフォルダーの絶対パスを指定してください。"
+
+msgid "This server's child process goes through the loopback proxy, so its outbound traffic is controlled by the network allowlist."
+msgstr "このサーバーの子プロセスはループバックのプロキシを経由するため、外部通信はネットワーク許可リストで統制されます。"
+
+msgid "This server's definition in the project settings file changed after the form was opened. Open the form again."
+msgstr "フォームを開いた後に、プロジェクトの設定ファイルでこのサーバーの定義が変わりました。フォームを開き直してください。"
+
+msgid "This server's environment variables name a proxy, so the loopback proxy is not applied. Its outbound traffic is not controlled by the network allowlist."
+msgstr "このサーバーの環境変数がプロキシを指定しているため、ループバックのプロキシは適用されません。外部通信はネットワーク許可リストの統制外です。"
+
+msgid "This will move {} to the trash. This skill is shared with other agent tools {shared_scope}, so it will no longer be available to them either."
+msgstr "{} をゴミ箱へ移動します。このスキルは{shared_scope}他のエージェントツールとも共有されているため、それらからも利用できなくなります。"
+
+msgid "Timeout (seconds)"
+msgstr "タイムアウト (秒)"
+
+msgid "Timeout must be a positive whole number of seconds."
+msgstr "タイムアウトには正の整数の秒数を指定してください。"
+
+msgid "To find an API key, visit the {link}"
+msgstr "{link}で API キーを取得できます。"
+
+msgid "To reset your API key, unset the {env_var_name} environment variable."
+msgstr "API キーをリセットするには、環境変数 {env_var_name} を解除してください。"
+
+msgid "To reset your API key, unset the {} environment variable."
+msgstr "API キーをリセットするには、環境変数 {} を解除してください。"
+
+msgid "Turning this off sets this project's definition to \"Don't Allow\" and stops the server."
+msgstr "オフにすると、このプロジェクトの定義を「許可しない」にしてサーバーを止めます。"
+
+msgid "Turning this on allows this project's definition and starts the server."
+msgstr "オンにすると、このプロジェクトの定義を許可してサーバーを起動します。"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "URL is required."
+msgstr "URL を入力してください。"
+
+msgid "Uninstall MCP Server"
+msgstr "MCP サーバーをアンインストール"
+
+msgid "Use Subscription Sign-In for Claude (ACP)"
+msgstr "Claude (ACP) でサブスクリプションのログインを使う"
+
+msgid "Use This Template"
+msgstr "このテンプレートを使う"
+
+msgid "User"
+msgstr "ユーザー"
+
+msgid "Uses max_tokens for output limit"
+msgstr "出力の上限に max_tokens を使用"
+
+msgid "Value"
+msgstr "値"
+
+msgid "View Other Projects"
+msgstr "他のプロジェクトを表示"
+
+msgid "Visit the {link} to generate an API key."
+msgstr "{link}で API キーを生成してください。"
+
+msgid "Waiting for approval: this command was resolved on the remote host and needs your permission to start. Review the details before allowing it."
+msgstr "承認待ち: 接続先で決まったこのコマンドを起動するには許可が必要です。内容を確認してから許可してください。"
+
+msgid "Waiting for approval: this project's settings ask to start this server. Review the details before allowing it."
+msgstr "承認待ち: このプロジェクトの設定がこのサーバーの起動を求めています。内容を確認してから許可してください。"
+
+msgid "Warn About Confusable Unicode"
+msgstr "紛らわしい Unicode 文字を警告"
+
+msgid "Warn About Windows-Drive Grants"
+msgstr "Windows ドライブへの許可を警告"
+
+msgid "Warn when an approval prompt requests a domain or write path that contains potentially confusable Unicode characters, such as homoglyphs (i.e. two symbols that look similar, such as a Cyrillic `а`)"
+msgstr "許可を求めるダイアログで、紛らわしい Unicode 文字 (キリル文字の `а` のように見た目がよく似た同形異字など) を含むドメインや書き込みパスが要求されたときに警告します"
+
+msgid "Web search queries"
+msgstr "Web 検索のクエリ"
+
+msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
+msgstr "有効にすると、ACP エージェント・MCP サーバー・AI エージェントのインストールに使う npm の各子プロセスに、ループバックのプロキシを渡してその外部通信も上の許可リストで判定します。既定は有効です。無効にすると、これらの子プロセスの外部通信は許可リストの統制外になります (IDE 本体からの AI 通信は統制されたままです)。"
+
+msgid "When enabled, the code you enter and the content of your conversations are sent to {name}'s servers. Depending on the provider's policies, they may be stored and used to train models. If you use this for work, be sure to check your organization's policies."
+msgstr "有効にすると、入力したコードや会話の内容が {name} のサーバーへ送信されます。事業者の方針によっては保存され、モデルの学習に利用される可能性があります。業務で利用する場合は、所属組織のポリシーを必ず確認してください。"
+
+msgid "When it runs on the SSH host, the command is resolved there (a server provided by an extension needs the same extension installed there too). When it runs on this computer, the files the server reads and writes are the ones on this computer."
+msgstr "SSH 接続先で実行する場合、コマンドは接続先で解決されます (拡張機能提供の場合は接続先にも同じ拡張機能が必要です)。この PC で実行する場合、サーバーが読み書きするファイルはこの PC のものになります。"
+
+msgid "When the server runs on the SSH host, type the path on the host directly."
+msgstr "SSH 接続先で実行する場合は、接続先のパスを直接入力してください。"
+
+msgid "Whether each program that a project's settings tried to start was allowed or denied. Revoking a decision stops the program if it is running, and you'll be asked again the next time it needs to start."
+msgstr "プロジェクトの設定が起動しようとしたプログラムについて、許可・不許可の記録です。取り消すと、動いているプログラムは止まり、次に起動が必要になったときにあらためて確認します。"
+
+msgid "While the file cannot be parsed, the allowlist is treated as empty (only loopback is allowed). Fix the file directly. Editing from this page is disabled."
+msgstr "解析できない間は許可リストが空 (ループバックのみ許可) として扱われます。ファイルを直接修正してください。この画面からの編集は無効です。"
+
+msgid "Wildcards are only allowed as a leading label, e.g. *.github.com."
+msgstr "ワイルドカードは先頭のラベルにのみ指定できます (例: *.github.com)。"
+
+msgid "Windows only: warn when a sandbox grant targets a file on a Windows drive (accessed inside WSL via DrvFs). Such grants are enforced through a translated path and their sandbox-integrity guarantees are weaker than files on the Linux distro's own filesystem."
+msgstr "Windows のみ: サンドボックスの許可対象が Windows ドライブ上のファイル (WSL 内から DrvFs 経由でアクセスされるもの) のときに警告します。この場合の許可は変換されたパスを通じて適用されるため、Linux ディストリビューション自身のファイルシステム上のファイルに比べてサンドボックスの保証が弱くなります。"
+
+msgid "Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above."
+msgstr "承諾を取り消しても、選択中の Zed は止まりません (再び警告が表示され、上の「プロバイダー」の一覧から Zed が消えるだけです)。停止するには上の「プロバイダー」で「なし」を選んでください。"
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
+msgstr "エージェントが実行するターミナルコマンドを OS レベルのサンドボックスで包みます。無効の間は、コマンドが Zed 本体の権限で実行されるため自動承認が効かず、コマンドごとに確認します。外部エージェント本体と Claude Code の起動には影響しません (それぞれの設定は「AI」ページにあります)。"
+
+msgid "Writable Paths"
+msgstr "書き込みを許可するパス"
+
+msgid "You have consented to using this as an external AI service."
+msgstr "外部の AI サービスとして利用することを承諾済みです。"
+
+msgid "You have not consented to any providers."
+msgstr "承諾済みのプロバイダーはありません。"
+
+msgid "You have not given consent, but the hosts above are still in the allowlist."
+msgstr "承諾していませんが、上のホストは許可リストに登録されたままです。"
+
+msgid "Your settings are out of date, and need to be updated."
+msgstr "設定が古い形式のため、更新が必要です。"
+
+msgid "Your settings file is out of date, automatic migration failed"
+msgstr "設定ファイルが古い形式で、自動移行に失敗しました"
+
+msgid "Zed — Settings"
+msgstr "Zed — 設定"
+
+msgid "Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev."
+msgstr "Zed のクラウド編集予測 (Zeta) です。編集中のコードとその周辺が cloud.zed.dev へ送信されます。"
+
+msgid "`*.` cannot be used with an IP address."
+msgstr "`*.` は IP アドレスには指定できません。"
+
+msgid "`rm -rf` commands are always blocked when run on `$HOME`, `~`, `.`, `..`, or `/`"
+msgstr "`rm -rf` は `$HOME`、`~`、`.`、`..`、`/` に対して実行される場合、常にブロックされます"
+
+msgid "e.g. gpt-5, claude-opus-4, gemini-2.5-pro"
+msgstr "例: gpt-5, claude-opus-4, gemini-2.5-pro"
+
+msgid "e.g., Fill the PR description following this template."
+msgstr "例: このテンプレートに従って PR の説明を書く。"
+
+msgid "enabled for all"
+msgstr "全ユーザーで有効"
+
+msgid "environment variable"
+msgstr "環境変数"
+
+msgid "failed to check whether {} already exists"
+msgstr "{} の存在確認に失敗しました。"
+
+msgid "failed to create skill directory {}"
+msgstr "スキルのディレクトリ {} の作成に失敗しました。"
+
+msgid "failed to fetch {raw_url}"
+msgstr "{raw_url} の取得に失敗しました。"
+
+msgid "failed to read response body"
+msgstr "レスポンス本文の読み込みに失敗しました。"
+
+msgid "failed to serialize skill frontmatter as YAML"
+msgstr "スキルのフロントマターの YAML への変換に失敗しました。"
+
+msgid "failed to write {}"
+msgstr "{} の書き込みに失敗しました。"
+
+msgid "header"
+msgstr "ヘッダー"
+
+msgid "network_allowlist.json does not exist yet. The allowlist is treated as empty (only loopback is allowed). The file is created when you add a host."
+msgstr "network_allowlist.json はまだありません。許可リストは空 (ループバックのみ許可) として扱われます。ホストを追加すると作成されます。"
+
+msgid "{count} entry registered"
+msgid_plural "{count} entries registered"
+msgstr[0] "登録済み: {count} 件"
+
+msgid "{count} rule"
+msgid_plural "{count} rules"
+msgstr[0] "ルール {count} 件"
+
+msgid "{count} tool"
+msgid_plural "{count} tools"
+msgstr[0] "ツール {count} 個"
+
+msgid "{host} is already in the allowlist."
+msgstr "{host} はすでに許可リストにあります。"
+
+msgid "{names} (values not shown)"
+msgstr "{names} (値は表示しません)"
+
+msgid "{name} (Edit Prediction)"
+msgstr "{name} (編集予測)"
+
+msgid "{name} is an external AI service"
+msgstr "{name} は外部の AI サービスです"
+
+msgid "{name} must be a number"
+msgstr "{name}には数値を指定してください"
+
+msgid "{path} can't be read, so its contents can't be checked."
+msgstr "{path} を読めないため、中身を確かめられません。"
+
+msgid "{path} is a file in the project, but its contents are not part of the approval. You won't be asked again if the contents change later."
+msgstr "{path} はプロジェクト内のファイルですが、中身は承認に含まれません。後から中身が変わっても再確認されません。"
+
+msgid "{program} starts another program. Its contents are not part of the approval."
+msgstr "{program} は別のプログラムを起動します。中身は承認に含まれません。"
+
+msgid "{program} starts in the project folder {working_directory} and may load code from it. You won't be asked again if the contents change later."
+msgstr "{program} はプロジェクトのフォルダー {working_directory} で起動し、そこにあるコードを読み込む可能性があります。後から中身が変わっても再確認されません。"
+
+msgid "{provider_name} API Key"
+msgstr "{provider_name} の API キー"
+
+msgid "{provider_name} dashboard"
+msgstr "{provider_name} のダッシュボード"
+
+msgid "{provider_name} dashboard."
+msgstr "{provider_name} のダッシュボード"
+
+msgid "{{ \"mcpServers\": {{ \"server-name\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+msgstr "{{ \"mcpServers\": {{ \"サーバー名\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+
+msgid "{} API Key"
+msgstr "{} の API キー"
+
+msgid "{} Tool"
+msgstr "{} ツール"
+
+msgid "{} invalid"
+msgstr "無効 {} 件"
+
+msgctxt "agent tool"
+msgid "Apply Code Action"
+msgstr "コードアクションを適用"
+
+msgctxt "agent tool"
+msgid "Copy Path"
+msgstr "パスをコピー"
+
+msgctxt "agent tool"
+msgid "Create Directory"
+msgstr "ディレクトリを作成"
+
+msgctxt "agent tool"
+msgid "Delete Path"
+msgstr "パスを削除"
+
+msgctxt "agent tool"
+msgid "Edit File"
+msgstr "ファイルを編集"
+
+msgctxt "agent tool"
+msgid "Fetch"
+msgstr "取得"
+
+msgctxt "agent tool"
+msgid "Move Path"
+msgstr "パスを移動"
+
+msgctxt "agent tool"
+msgid "Rename Symbol"
+msgstr "シンボルの名前を変更"
+
+msgctxt "agent tool"
+msgid "Skill"
+msgstr "スキル"
+
+msgctxt "agent tool"
+msgid "Terminal"
+msgstr "ターミナル"
+
+msgctxt "agent tool"
+msgid "Web Search"
+msgstr "Web 検索"
+
+msgctxt "agent tool"
+msgid "Write File"
+msgstr "ファイルを書き込み"
+
+msgctxt "launch approval"
+msgid "Details"
+msgstr "内容"
+
+msgctxt "launch approval"
+msgid "Review"
+msgstr "確認する"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "page title"
+msgid "Add Custom Agent"
+msgstr "カスタムエージェントの追加"
+
+msgctxt "page title"
+msgid "Configure MCP Server"
+msgstr "MCP サーバーの設定"
+
+msgctxt "skill scope"
+msgid "global"
+msgstr "グローバルな"
+
+msgctxt "skill scope"
+msgid "on this machine"
+msgstr "このマシン上で"
+
+msgctxt "skill scope"
+msgid "project"
+msgstr "プロジェクトの"
+
+msgctxt "skill scope"
+msgid "used in this project"
+msgstr "このプロジェクト内で"
+
+msgctxt "tool permission mode"
+msgid "AI Judge"
+msgstr "AI が判定"
+
+msgctxt "tool permission mode"
+msgid "Allow"
+msgstr "許可"
+
+msgctxt "tool permission mode"
+msgid "Confirm"
+msgstr "確認"
+
+msgctxt "tool permission mode"
+msgid "Deny"
+msgstr "拒否"

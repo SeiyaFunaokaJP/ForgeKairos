@@ -75,20 +75,20 @@ const UNSUPPORTED_STATEMENT_KEYWORDS: [&str; 1] = ["href"];
 /// them. An operator the list does not hold still survives, because
 /// [`ClassRelation::arrow`] keeps whatever the fence spelled.
 pub const RELATION_PRESETS: [(&str, &str); 14] = [
-    ("<|--", "継承 (左が親)"),
-    ("--|>", "継承 (右が親)"),
-    ("*--", "合成 (左が全体)"),
-    ("--*", "合成 (右が全体)"),
-    ("o--", "集約 (左が全体)"),
-    ("--o", "集約 (右が全体)"),
-    ("-->", "関連 (右向き)"),
-    ("<--", "関連 (左向き)"),
-    ("--", "関連 (線のみ)"),
-    ("..>", "依存 (右向き)"),
-    ("<..", "依存 (左向き)"),
-    ("..|>", "実現 (右が抽象)"),
-    ("<|..", "実現 (左が抽象)"),
-    ("..", "破線 (線のみ)"),
+    ("<|--", i18n::msg!("Inheritance (left is parent)")),
+    ("--|>", i18n::msg!("Inheritance (right is parent)")),
+    ("*--", i18n::msg!("Composition (left is whole)")),
+    ("--*", i18n::msg!("Composition (right is whole)")),
+    ("o--", i18n::msg!("Aggregation (left is whole)")),
+    ("--o", i18n::msg!("Aggregation (right is whole)")),
+    ("-->", i18n::msg!("Association (pointing right)")),
+    ("<--", i18n::msg!("Association (pointing left)")),
+    ("--", i18n::msg!("Association (line only)")),
+    ("..>", i18n::msg!("Dependency (pointing right)")),
+    ("<..", i18n::msg!("Dependency (pointing left)")),
+    ("..|>", i18n::msg!("Realization (right is abstract)")),
+    ("<|..", i18n::msg!("Realization (left is abstract)")),
+    ("..", i18n::msg!("Dashed (line only)")),
 ];
 
 /// A class as a statement names it: its name, and the `~T~` some statements
@@ -326,11 +326,13 @@ pub fn parse_class(source: &str) -> Result<ClassDocument> {
     if has_body {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Class(_)) {
-            bail!("この図はクラス図ではありません。");
+            bail!(i18n::t!("This diagram is not a class diagram."));
         }
     }
 
@@ -346,12 +348,14 @@ pub fn parse_class(source: &str) -> Result<ClassDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     let Some(rest) = word_tail(header, CLASS_KEYWORD) else {
-        bail!("クラス図ではありません (`classDiagram` で始まる図だけを構造化編集できます)。");
+        bail!(i18n::t!(
+            "This is not a class diagram (only diagrams that start with `classDiagram` can be edited in the structured editor)."
+        ));
     };
     if !rest.is_empty() {
-        bail!(
-            "`{CLASS_KEYWORD}` の行に `{rest}` が続いています。次の行に分けてからもう一度開いてください。"
-        );
+        bail!(i18n::t!(
+            "`{rest}` follows `{CLASS_KEYWORD}` on the same line. Move it to the next line, then open it again."
+        ));
     }
 
     let mut parser = ClassParser {
@@ -387,7 +391,9 @@ impl ClassParser<'_> {
     /// of the fence at the top level.
     fn parse_scope(&mut self, depth: usize, in_namespace: bool) -> Result<Vec<ClassItem>> {
         if depth > MAX_NESTING_DEPTH {
-            bail!("`namespace` の入れ子が深すぎます。テキストのまま編集してください。");
+            bail!(i18n::t!(
+                "The `namespace`s are nested too deeply. Edit it as text."
+            ));
         }
         let mut items = Vec::new();
 
@@ -402,7 +408,7 @@ impl ClassParser<'_> {
             }
             if trimmed == "}" {
                 if !in_namespace {
-                    bail!("対応する `{{` のない `}}` があります。");
+                    bail!(i18n::t!("There is a `}}` without a matching `{{`."));
                 }
                 return Ok(items);
             }
@@ -441,9 +447,9 @@ impl ClassParser<'_> {
             }
             for keyword in UNSUPPORTED_STATEMENT_KEYWORDS {
                 if word_tail(trimmed, keyword).is_some() {
-                    bail!(
-                        "`{keyword}` の文は構造化エディターに対応していません ({trimmed})。テキストのまま編集してください。"
-                    );
+                    bail!(i18n::t!(
+                        "`{keyword}` statements are not supported by the structured editor ({trimmed}). Edit it as text."
+                    ));
                 }
             }
 
@@ -452,7 +458,7 @@ impl ClassParser<'_> {
         }
 
         if in_namespace {
-            bail!("`namespace` の `{{` に対応する `}}` がありません。");
+            bail!(i18n::t!("The `{{` of a `namespace` has no matching `}}`."));
         }
         Ok(items)
     }
@@ -483,9 +489,9 @@ impl ClassParser<'_> {
         }
 
         if in_namespace {
-            bail!(
-                "`namespace` の中に書けるのはクラス宣言・ノート・入れ子の `namespace` だけです ({line})。"
-            );
+            bail!(i18n::t!(
+                "Only class declarations, notes and nested `namespace`s can be written inside a `namespace` ({line})."
+            ));
         }
         let mut item = parse_plain_statement(statement)?;
         match &mut item {
@@ -517,9 +523,9 @@ impl ClassParser<'_> {
             // Mermaid's lexer swallows the word and the whitespace after it
             // before it looks for the direction, so what is left of the line is
             // read as if `direction` had never been there.
-            bail!(
-                "`direction` のあとには TB / BT / LR / RL のどれかを書いてください ({statement})。"
-            );
+            bail!(i18n::t!(
+                "Write one of TB / BT / LR / RL after `direction` ({statement})."
+            ));
         };
         let after = rest
             .get(direction.keyword().len()..)
@@ -527,18 +533,20 @@ impl ClassParser<'_> {
             .trim();
         if !after.is_empty() {
             // Mermaid reads the rest of the line and throws it away.
-            bail!(
-                "`direction {}` のあとの `{after}` は Mermaid が読み飛ばします ({statement})。消してからもう一度開いてください。",
+            bail!(i18n::t!(
+                "Mermaid skips `{after}` after `direction {}` ({statement}). Remove it, then open it again.",
                 direction.keyword()
-            );
+            ));
         }
         if in_namespace {
-            bail!("`direction` は `namespace` の中には書けません ({statement})。");
+            bail!(i18n::t!(
+                "`direction` cannot be written inside a `namespace` ({statement})."
+            ));
         }
         if self.direction.is_some() {
-            bail!(
-                "`direction` が 2 回書かれています。1 つにまとめてからもう一度開いてください ({statement})。"
-            );
+            bail!(i18n::t!(
+                "`direction` is written twice. Merge them into one, then open it again ({statement})."
+            ));
         }
         Ok(Some(direction))
     }
@@ -558,7 +566,9 @@ impl ClassParser<'_> {
             return Ok(None);
         };
         if in_namespace {
-            bail!("`{keyword}` は `namespace` の中には書けません ({statement})。");
+            bail!(i18n::t!(
+                "`{keyword}` cannot be written inside a `namespace` ({statement})."
+            ));
         }
         if keyword == "accDescr"
             && word_tail(statement, "accDescr").is_some_and(|rest| rest.starts_with('{'))
@@ -593,14 +603,16 @@ impl ClassParser<'_> {
             return Ok(None);
         };
         if in_namespace {
-            bail!("`{keyword}` は `namespace` の中には書けません ({statement})。");
+            bail!(i18n::t!(
+                "`{keyword}` cannot be written inside a `namespace` ({statement})."
+            ));
         }
         // A class the editor cannot find in the line is one it cannot carry a
         // rename into, and the statement would quietly stop applying to it.
         if statement_targets(statement).is_none() {
-            bail!(
-                "`{keyword}` の対象のクラス名が読めません ({statement})。`` ` `` で囲んだ名前は構造化エディターに対応していません。テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Could not read the class name `{keyword}` applies to ({statement}). Names enclosed in `` ` `` are not supported by the structured editor. Edit it as text."
+            ));
         }
         Ok(Some(ClassItem::Preserved(self.preserved(start))))
     }
@@ -614,12 +626,14 @@ impl ClassParser<'_> {
     ) -> Result<ClassItem> {
         let (name, rest) = take_name(rest, statement)?;
         if !is_valid_class_name(&name) {
-            bail!("`{name}` は `namespace` の名前に使えません ({statement})。");
+            bail!(i18n::t!(
+                "`{name}` cannot be used as a `namespace` name ({statement})."
+            ));
         }
         let (label, rest) = take_label(rest, statement)?;
         let rest = rest.trim();
         let Some(after_brace) = rest.strip_prefix('{') else {
-            bail!("`namespace {name} {{` の形で書いてください ({statement})。");
+            bail!(i18n::t!("Write it as `namespace {name} {{` ({statement})."));
         };
         let after_brace = after_brace.trim();
         let items = match after_brace.is_empty() {
@@ -644,15 +658,17 @@ impl ClassParser<'_> {
         let members = match rest.strip_prefix('{') {
             None => {
                 if !rest.is_empty() {
-                    bail!("`class` の文のあとの `{rest}` が読めません ({statement})。");
+                    bail!(i18n::t!(
+                        "Could not read `{rest}` after the `class` statement ({statement})."
+                    ));
                 }
                 None
             }
             Some(after_brace) => {
                 if !after_brace.trim().is_empty() {
-                    bail!(
-                        "`{{` のあとは改行してください ({statement})。1 行で書いたメンバーブロックは Mermaid も読めません。"
-                    );
+                    bail!(i18n::t!(
+                        "Start a new line after `{{` ({statement}). Mermaid cannot read a member block written on one line either."
+                    ));
                 }
                 Some(self.parse_members(statement)?)
             }
@@ -676,7 +692,9 @@ impl ClassParser<'_> {
         let mut members = Vec::new();
         loop {
             let Some(line) = self.lines.get(self.index).copied() else {
-                bail!("`class` のメンバーブロックに対応する `}}` がありません ({statement})。");
+                bail!(i18n::t!(
+                    "The member block of `class` has no matching `}}` ({statement})."
+                ));
             };
             self.index += 1;
             let trimmed = line.trim();
@@ -699,9 +717,9 @@ impl ClassParser<'_> {
 /// every rule it has for a namespace applies here too.
 fn parse_one_line_namespace(rest: &str, statement: &str, depth: usize) -> Result<Vec<ClassItem>> {
     let Some(inner) = rest.strip_suffix('}') else {
-        bail!(
-            "1 行で書いた `namespace` は同じ行の `}}` で閉じてください ({statement})。複数行に分けるか、テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Close a one-line `namespace` with `}}` on the same line ({statement}). Split it into several lines, or edit it as text."
+        ));
     };
     let inner = inner.trim();
     let lines = match inner.is_empty() {
@@ -717,7 +735,9 @@ fn parse_one_line_namespace(rest: &str, statement: &str, depth: usize) -> Result
     // A `class A {` in there would have opened a block that took the closing
     // brace as its own, and the scope would have failed for want of another.
     if parser.index != lines.len() {
-        bail!("1 行で書いた `namespace` が読めません ({statement})。");
+        bail!(i18n::t!(
+            "Could not read the one-line `namespace` ({statement})."
+        ));
     }
     Ok(items)
 }
@@ -766,18 +786,20 @@ fn split_trailing_comment(statement: &str) -> (&str, Option<String>) {
 fn parse_plain_statement(statement: &str) -> Result<ClassItem> {
     if let Some(rest) = statement.strip_prefix("<<") {
         let Some((annotation, after)) = rest.split_once(">>") else {
-            bail!("`<<注釈>>` が閉じていません ({statement})。");
+            bail!(i18n::t!("`<<annotation>>` is not closed ({statement})."));
         };
         let annotation = annotation.trim();
         if !is_valid_annotation(annotation) {
-            bail!("`{annotation}` は注釈に使えません ({statement})。");
+            bail!(i18n::t!(
+                "`{annotation}` cannot be used as an annotation ({statement})."
+            ));
         }
         let (reference, after) = take_reference(after.trim_start(), statement)?;
         if !after.trim().is_empty() {
-            bail!(
-                "`<<注釈>> クラス名` のあとの `{}` が読めません ({statement})。",
+            bail!(i18n::t!(
+                "Could not read `{}` after `<<annotation>> ClassName` ({statement}).",
                 after.trim()
-            );
+            ));
         }
         return Ok(ClassItem::Annotation {
             reference,
@@ -790,9 +812,9 @@ fn parse_plain_statement(statement: &str) -> Result<ClassItem> {
     let rest = rest.trim_start();
 
     if rest.starts_with(":::") {
-        bail!(
-            "`:::` でスタイルクラスを付けた図は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Diagrams that give classes style classes with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+        ));
     }
     // A name ends at `:`, so a statement whose next character is one adds a
     // member to the class rather than relating it to another.
@@ -805,20 +827,22 @@ fn parse_plain_statement(statement: &str) -> Result<ClassItem> {
 
     let (left_cardinality, rest) = take_cardinality(rest, statement)?;
     let Some((arrow, rest)) = split_arrow(rest.trim_start()) else {
-        bail!(
-            "`{statement}` が読めません。クラス図の文は `class A`・`A : メンバー`・`A --> B`・`<<注釈>> A`・`note for A \"…\"` のどれかです。"
-        );
+        bail!(i18n::t!(
+            "Could not read `{statement}`. A class diagram statement is one of `class A`, `A : member`, `A --> B`, `<<annotation>> A` and `note for A \"…\"`."
+        ));
     };
     let (right_cardinality, rest) = take_cardinality(rest.trim_start(), statement)?;
     let (right, rest) = take_reference(rest.trim_start(), statement)?;
     let rest = rest.trim();
     let label = match rest.strip_prefix(':') {
-        Some(_) if rest.starts_with(":::") => bail!(
-            "`:::` でスタイルクラスを付けた図は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
-        ),
+        Some(_) if rest.starts_with(":::") => bail!(i18n::t!(
+            "Diagrams that give classes style classes with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+        )),
         Some(label) => Some(label.trim().to_string()),
         None if rest.is_empty() => None,
-        None => bail!("関係の文のあとの `{rest}` が読めません ({statement})。"),
+        None => bail!(i18n::t!(
+            "Could not read `{rest}` after the relation ({statement})."
+        )),
     };
 
     Ok(ClassItem::Relation(ClassRelation {
@@ -837,7 +861,9 @@ fn parse_note(rest: &str, statement: &str) -> Result<ClassNote> {
         Some(after_for) => {
             let (name, rest) = take_name(after_for, statement)?;
             if !is_valid_class_name(&name) {
-                bail!("`{name}` はクラス名に使えません ({statement})。");
+                bail!(i18n::t!(
+                    "`{name}` cannot be used as a class name ({statement})."
+                ));
             }
             (Some(name), rest)
         }
@@ -845,16 +871,18 @@ fn parse_note(rest: &str, statement: &str) -> Result<ClassNote> {
     };
     let rest = rest.trim_start();
     let Some(quoted) = rest.strip_prefix('"') else {
-        bail!("`note \"本文\"` の形で書いてください ({statement})。");
+        bail!(i18n::t!("Write it as `note \"text\"` ({statement})."));
     };
     let Some((text, after)) = quoted.split_once('"') else {
-        bail!("ノート本文の引用符が閉じていません ({statement})。");
+        bail!(i18n::t!(
+            "The quotes around the note text are not closed ({statement})."
+        ));
     };
     if !after.trim().is_empty() {
-        bail!(
-            "ノートのあとの `{}` が読めません ({statement})。",
+        bail!(i18n::t!(
+            "Could not read `{}` after the note ({statement}).",
             after.trim()
-        );
+        ));
     }
     Ok(ClassNote {
         target,
@@ -908,13 +936,13 @@ fn name_length(text: &str) -> usize {
 fn take_name<'a>(text: &'a str, statement: &str) -> Result<(String, &'a str)> {
     let text = text.trim_start();
     if text.starts_with('`') {
-        bail!(
-            "`` ` `` で囲んだ名前は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+        ));
     }
     let length = name_length(text);
     let Some(name) = text.get(..length).filter(|name| !name.is_empty()) else {
-        bail!("クラス名が読めません ({statement})。");
+        bail!(i18n::t!("Could not read the class name ({statement})."));
     };
     Ok((name.to_string(), text.get(length..).unwrap_or_default()))
 }
@@ -929,10 +957,14 @@ fn take_reference<'a>(text: &'a str, statement: &str) -> Result<(ClassRef, &'a s
         },
         Some((name, tail)) => {
             let Some(generic) = tail.strip_suffix('~') else {
-                bail!("総称型は `{name}~T~` の形で書いてください ({statement})。");
+                bail!(i18n::t!(
+                    "Write a generic type as `{name}~T~` ({statement})."
+                ));
             };
             if !is_valid_generic(generic) {
-                bail!("`{generic}` は総称型に使えません ({statement})。");
+                bail!(i18n::t!(
+                    "`{generic}` cannot be used as a generic type ({statement})."
+                ));
             }
             ClassRef {
                 name: name.to_string(),
@@ -941,10 +973,10 @@ fn take_reference<'a>(text: &'a str, statement: &str) -> Result<(ClassRef, &'a s
         }
     };
     if !is_valid_class_name(&reference.name) {
-        bail!(
-            "`{}` はクラス名に使えません ({statement})。空白・記号・Mermaid の予約語は使えません。",
+        bail!(i18n::t!(
+            "`{}` cannot be used as a class name ({statement}). Spaces, symbols and Mermaid's reserved words are not allowed.",
             reference.name
-        );
+        ));
     }
     Ok((reference, rest))
 }
@@ -956,13 +988,17 @@ fn take_label<'a>(text: &'a str, statement: &str) -> Result<(Option<String>, &'a
         return Ok((None, text));
     };
     let Some(quoted) = after_bracket.trim_start().strip_prefix('"') else {
-        bail!("`[\"表示名\"]` の形で書いてください ({statement})。");
+        bail!(i18n::t!("Write it as `[\"display name\"]` ({statement})."));
     };
     let Some((label, after)) = quoted.split_once('"') else {
-        bail!("表示名の引用符が閉じていません ({statement})。");
+        bail!(i18n::t!(
+            "The quotes around the display name are not closed ({statement})."
+        ));
     };
     let Some(rest) = after.trim_start().strip_prefix(']') else {
-        bail!("`[\"表示名\"]` の `]` がありません ({statement})。");
+        bail!(i18n::t!(
+            "The `]` of `[\"display name\"]` is missing ({statement})."
+        ));
     };
     Ok((Some(label.to_string()), rest))
 }
@@ -978,16 +1014,20 @@ fn take_css_class<'a>(text: &'a str, statement: &str) -> Result<(Option<String>,
     };
     let after_marker = after_marker.trim_start();
     if after_marker.starts_with('`') {
-        bail!(
-            "`` ` `` で囲んだスタイルクラス名は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Style class names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+        ));
     }
     let length = name_length(after_marker);
     let Some(name) = after_marker.get(..length).filter(|name| !name.is_empty()) else {
-        bail!("`:::` のあとにスタイルクラス名がありません ({statement})。");
+        bail!(i18n::t!(
+            "There is no style class name after `:::` ({statement})."
+        ));
     };
     if !is_valid_css_class(name) {
-        bail!("`{name}` は `:::` のスタイルクラス名に使えません ({statement})。");
+        bail!(i18n::t!(
+            "`{name}` cannot be used as a `:::` style class name ({statement})."
+        ));
     }
     Ok((
         Some(name.to_string()),
@@ -1004,10 +1044,10 @@ fn refuse_trailing_brace(trimmed: &str) -> Result<()> {
     if let Some(rest) = trimmed.strip_prefix('}')
         && !rest.trim().is_empty()
     {
-        bail!(
-            "`}}` の行に `{}` が続いています ({trimmed})。`}}` だけの行にしてからもう一度開いてください。",
+        bail!(i18n::t!(
+            "`{}` follows `}}` on the same line ({trimmed}). Leave `}}` alone on its line, then open it again.",
             rest.trim()
-        );
+        ));
     }
     Ok(())
 }
@@ -1018,7 +1058,9 @@ fn take_cardinality<'a>(text: &'a str, statement: &str) -> Result<(Option<String
         return Ok((None, text));
     };
     let Some((cardinality, rest)) = quoted.split_once('"') else {
-        bail!("多重度の引用符が閉じていません ({statement})。");
+        bail!(i18n::t!(
+            "The quotes around the multiplicity are not closed ({statement})."
+        ));
     };
     // Mermaid trims the text and drops it when nothing is left, so an empty
     // pair of quotes is the same fence as no quotes at all.
@@ -1765,7 +1807,7 @@ mod tests {
         let error = parse_class(&nested(MAX_NESTING_DEPTH + 1))
             .err()
             .expect("one level past the limit should be refused");
-        assert!(format!("{error}").contains("入れ子"), "{error}");
+        assert!(format!("{error}").contains("nested too deeply"), "{error}");
         // Deep enough to overflow the stack if the limit did not hold.
         assert!(parse_class(&nested(400)).is_err());
     }
@@ -1953,11 +1995,20 @@ mod tests {
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             let message = format!("{error}");
-            assert!(
-                message.chars().any(|character| character > '\u{7f}'),
-                "the message should be Japanese for `{source}`: {message}"
+            assert_ne!(
+                japanese_reason(source).as_deref(),
+                Some(message.as_str()),
+                "the message should be the editor's own sentence for `{source}`"
             );
         }
+    }
+
+    /// The reason `source` is refused, read with the Japanese catalog. A
+    /// sentence the editor wrote goes through the catalog and so changes with
+    /// the language, while an error `merman` raised would come back unchanged.
+    fn japanese_reason(source: &str) -> Option<String> {
+        let _japanese = crate::mermaid_model::japanese_for_this_thread();
+        parse_class(source).err().map(|error| error.to_string())
     }
 
     /// `class A:::warn` names a style class rather than a class of the diagram,
@@ -2031,7 +2082,7 @@ mod tests {
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             assert!(
-                format!("{error}").contains("だけの行"),
+                format!("{error}").contains("alone on its line"),
                 "`{source}`: {error}"
             );
         }
@@ -2044,7 +2095,10 @@ mod tests {
         );
         let error = parse_class("classDiagram\n  class A {\n    +x()\n  }\u{3000}\n  class B")
             .expect_err("an ideographic space after the brace");
-        assert!(format!("{error}").contains("Mermaid の構文"), "{error}");
+        assert!(
+            format!("{error}").contains("Mermaid could not parse"),
+            "{error}"
+        );
     }
 
     /// A `%%` line inside a member block is part of the block, not a comment
@@ -2496,7 +2550,10 @@ mod tests {
         let error = parse_class(source)
             .err()
             .expect("a one line member block should be refused");
-        assert!(format!("{error}").contains("Mermaid の構文"), "{error}");
+        assert!(
+            format!("{error}").contains("Mermaid could not parse"),
+            "{error}"
+        );
     }
 
     /// The statements that address a class by name are kept verbatim, and the

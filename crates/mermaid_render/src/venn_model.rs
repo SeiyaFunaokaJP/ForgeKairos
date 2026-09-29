@@ -170,15 +170,20 @@ impl VennDocument {
         if let Some(title) = &self.title
             && !is_valid_venn_title(title)
         {
-            return Some("タイトルに `%%` と改行は使えません (前後の空白も不可)。".to_string());
+            return Some(
+                i18n::t!(
+                    "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+                )
+                .to_string(),
+            );
         }
         let mut declared: Vec<&str> = Vec::new();
         let mut unions: Vec<Vec<&str>> = Vec::new();
         for area in &self.areas {
             for id in &area.sets {
                 if !is_valid_venn_id(id) {
-                    return Some(format!(
-                        "集合の ID「{id}」は使えません (空、`\"`、改行、前後の空白は不可)。"
+                    return Some(i18n::t!(
+                        "The set ID “{id}” cannot be used (it cannot be empty, contain `\"` or line breaks, or have spaces at either end)."
                     ));
                 }
             }
@@ -186,22 +191,24 @@ impl VennDocument {
             if let Some(label) = &area.label
                 && !is_valid_venn_label(label)
             {
-                return Some(format!(
-                    "「{name}」のラベル「{label}」は使えません (`\"`、改行、前後の空白は不可)。"
+                return Some(i18n::t!(
+                    "The label “{label}” of “{name}” cannot be used (`\"`, line breaks and spaces at either end are not allowed)."
                 ));
             }
             if let Some(size) = &area.size
                 && !is_valid_venn_size(size)
             {
-                return Some(format!(
-                    "「{name}」の大きさ「{size}」は使えません (0 以上の数値だけ)。"
+                return Some(i18n::t!(
+                    "The size “{size}” of “{name}” cannot be used (only a number of 0 or more)."
                 ));
             }
             match area.sets.as_slice() {
-                [] => return Some("集合を 1 つも含まない重なりがあります。".to_string()),
+                [] => {
+                    return Some(i18n::t!("There is an overlap that contains no set.").to_string());
+                }
                 [id] => {
                     if declared.contains(&id.as_str()) {
-                        return Some(format!("集合「{id}」が重複しています。"));
+                        return Some(i18n::t!("The set “{id}” is written twice."));
                     }
                     declared.push(id);
                 }
@@ -209,22 +216,24 @@ impl VennDocument {
                     let mut sorted = members.iter().map(String::as_str).collect::<Vec<_>>();
                     sorted.sort_unstable();
                     if sorted.windows(2).any(|pair| pair.first() == pair.get(1)) {
-                        return Some(format!("重なり「{name}」に同じ集合が 2 回あります。"));
+                        return Some(i18n::t!(
+                            "The overlap “{name}” contains the same set twice."
+                        ));
                     }
                     if let Some(missing) = members
                         .iter()
                         .find(|member| !declared.contains(&member.as_str()))
                     {
                         return Some(if self.set_ids().contains(&missing.as_str()) {
-                            format!(
-                                "重なり「{name}」が集合「{missing}」より前に書かれています。重なりは使う集合の後に置いてください。"
+                            i18n::t!(
+                                "The overlap “{name}” is written before the set “{missing}”. Place an overlap after the sets it uses."
                             )
                         } else {
-                            format!("重なり「{name}」の集合「{missing}」がありません。")
+                            i18n::t!("The set “{missing}” of the overlap “{name}” does not exist.")
                         });
                     }
                     if unions.contains(&sorted) {
-                        return Some(format!("重なり「{name}」が重複しています。"));
+                        return Some(i18n::t!("The overlap “{name}” is written twice."));
                     }
                     unions.push(sorted);
                 }
@@ -260,9 +269,9 @@ pub fn parse_venn(source: &str) -> Result<VennDocument> {
     let header = lines.get(header_index).copied().unwrap_or_default().trim();
     reject_trailing_comment(header)?;
     if header != HEADER {
-        bail!(
-            "`{header}` は構造化エディターで扱えません (`venn-beta` だけを 1 行に書き、文は次の行から書いてください)。"
-        );
+        bail!(i18n::t!(
+            "The structured editor cannot handle `{header}` (write only `venn-beta` on its line, and the statements from the next line on)."
+        ));
     }
 
     let mut index = header_index + 1;
@@ -299,7 +308,9 @@ pub fn parse_venn(source: &str) -> Result<VennDocument> {
             && let Some(rest) = keyword_tail_ignoring_case(trimmed, "text")
         {
             let Some(area) = document.areas.last_mut() else {
-                bail!("`text` の行がどの集合の下にもありません ({trimmed})。");
+                bail!(i18n::t!(
+                    "The `text` line is not under any set ({trimmed})."
+                ));
             };
             area.notes.push(rest.trim().to_string());
             continue;
@@ -310,7 +321,9 @@ pub fn parse_venn(source: &str) -> Result<VennDocument> {
 
         if let Some(rest) = keyword_ignoring_case(trimmed, "title") {
             if document.title.is_some() {
-                bail!("`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。");
+                bail!(i18n::t!(
+                    "`title` is written twice. Merge them into one, then open it again."
+                ));
             }
             document.title = Some(rest.trim().to_string());
         } else if let Some(rest) = keyword_ignoring_case(trimmed, "set") {
@@ -337,33 +350,35 @@ pub fn parse_venn(source: &str) -> Result<VennDocument> {
     }
     let emitted = emit_venn(&document);
     let written = merman_venn(&emitted).map_err(|error| {
-        anyhow!(
-            "書き戻した図を Mermaid が読めませんでした ({error})。テキストのまま編集してください。"
-        )
+        anyhow!(i18n::t!(
+            "Mermaid could not read the diagram written back ({error}). Edit it as text."
+        ))
     })?;
     if original != written {
-        bail!(
-            "この図は構造化エディターで読むと Mermaid と違う図になります (`text` の順序など)。テキストのまま編集してください。"
-        );
+        bail!(i18n::t!(
+            "Read by the structured editor, this diagram would differ from what Mermaid reads (for example in the order of `text`). Edit it as text."
+        ));
     }
     Ok(document)
 }
 
 fn unreadable(statement: &str) -> anyhow::Error {
-    anyhow!("ベン図の文として読めませんでした ({statement})。テキストのまま編集してください。")
+    anyhow!(i18n::t!(
+        "This could not be read as a statement of a Venn diagram ({statement}). Edit it as text."
+    ))
 }
 
 /// What `merman` reads from `source`.
 fn merman_venn(source: &str) -> Result<merman::diagrams::venn::VennDiagramRenderModel> {
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| {
-            anyhow!(
-                "Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。"
-            )
+            anyhow!(i18n::t!(
+                "Mermaid could not parse this diagram ({error}). Edit it as text."
+            ))
         })?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
     let RenderSemanticModel::Venn(model) = parsed.into_parts().1 else {
-        bail!("この図はベン図ではありません。");
+        bail!(i18n::t!("This diagram is not a Venn diagram."));
     };
     Ok(model)
 }
@@ -392,9 +407,9 @@ fn reject_trailing_comment(statement: &str) -> Result<()> {
     for character in statement.chars() {
         let percent = character == '%' && !in_quote && depth == 0;
         if percent && previous_percent {
-            bail!(
-                "文の末尾のコメントは構造化編集で失われます ({statement})。コメントを独立した行に移すか、テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+            ));
         }
         previous_percent = percent;
         match character {
@@ -472,8 +487,11 @@ fn read_area(sets: Vec<String>, text: &str, statement: &str) -> Result<VennArea>
     }
     let mut size = None;
     if let Some(after_colon) = rest.strip_prefix(':') {
-        let (token, after) = read_number(skip_blanks(after_colon))
-            .ok_or_else(|| anyhow!("大きさを数値として読めませんでした ({statement})。"))?;
+        let (token, after) = read_number(skip_blanks(after_colon)).ok_or_else(|| {
+            anyhow!(i18n::t!(
+                "The size could not be read as a number ({statement})."
+            ))
+        })?;
         size = Some(token.to_string());
         rest = after;
     }
@@ -806,19 +824,19 @@ mod tests {
         let mut document = parse_venn(TEMPLATE).expect("the template should parse");
         document.areas.swap(0, 2);
         let error = document.structure_error().expect("the union comes first");
-        assert!(error.contains("より前"), "{error}");
+        assert!(error.contains("is written before"), "{error}");
         // The reason still holds: `merman` refuses a union of undeclared sets.
         assert!(merman_venn(&emit_venn(&document)).is_err());
 
         for (source_areas, expected) in [
-            (vec![vec!["A"], vec!["A"]], "重複"),
-            (vec![vec!["A"], vec!["A", "Z"]], "ありません"),
-            (vec![vec!["A"], vec!["A", "A"]], "2 回"),
+            (vec![vec!["A"], vec!["A"]], "written twice"),
+            (vec![vec!["A"], vec!["A", "Z"]], "does not exist"),
+            (vec![vec!["A"], vec!["A", "A"]], "same set twice"),
             (
                 vec![vec!["A"], vec!["B"], vec!["A", "B"], vec!["B", "A"]],
-                "重複",
+                "written twice",
             ),
-            (vec![vec!["A B "]], "使えません"),
+            (vec![vec!["A B "]], "cannot be used"),
         ] {
             let mut document = VennDocument::empty();
             document.areas = source_areas
@@ -870,6 +888,7 @@ mod tests {
 
     #[test]
     fn what_cannot_be_held_is_refused_with_a_japanese_reason() {
+        let _japanese = crate::mermaid_model::japanese_for_this_thread();
         for source in [
             "venn-beta\n    set A %% メモ",
             "venn-beta\n    title 一\n    title 二",

@@ -146,16 +146,16 @@ impl SequenceArrow {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Solid => "実線の矢印 (呼び出し)",
-            Self::Dotted => "点線の矢印 (応答)",
-            Self::SolidOpen => "実線の線",
-            Self::DottedOpen => "点線の線",
-            Self::SolidCross => "実線の×印 (失敗)",
-            Self::DottedCross => "点線の×印",
-            Self::SolidPoint => "実線の非同期",
-            Self::DottedPoint => "点線の非同期",
-            Self::BidirectionalSolid => "実線の両向き",
-            Self::BidirectionalDotted => "点線の両向き",
+            Self::Solid => i18n::t!("Solid arrow (call)"),
+            Self::Dotted => i18n::t!("Dotted arrow (reply)"),
+            Self::SolidOpen => i18n::t!("Solid line"),
+            Self::DottedOpen => i18n::t!("Dotted line"),
+            Self::SolidCross => i18n::t!("Solid cross (failure)"),
+            Self::DottedCross => i18n::t!("Dotted cross"),
+            Self::SolidPoint => i18n::t!("Solid async"),
+            Self::DottedPoint => i18n::t!("Dotted async"),
+            Self::BidirectionalSolid => i18n::t!("Solid bidirectional"),
+            Self::BidirectionalDotted => i18n::t!("Dotted bidirectional"),
         }
     }
 
@@ -199,8 +199,8 @@ impl SequenceParticipantKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Participant => "箱 (participant)",
-            Self::Actor => "人型 (actor)",
+            Self::Participant => i18n::t!("Box (participant)"),
+            Self::Actor => i18n::t!("Stick figure (actor)"),
         }
     }
 }
@@ -242,13 +242,13 @@ pub struct SequenceGroupBox {
 /// happens to start with a color word still round-trips through the
 /// `transparent` [`box_header`] writes in front of it.
 pub const BOX_FILL_PRESETS: [(Option<&str>, &str); 7] = [
-    (None, "なし (透明)"),
-    (Some("lightblue"), "薄い青"),
-    (Some("lightgreen"), "薄い緑"),
-    (Some("lightyellow"), "薄い黄"),
-    (Some("lightpink"), "薄い桃"),
-    (Some("lavender"), "藤色"),
-    (Some("gainsboro"), "薄い灰"),
+    (None, i18n::msg!("None (transparent)")),
+    (Some("lightblue"), i18n::msg!("Light blue")),
+    (Some("lightgreen"), i18n::msg!("Light green")),
+    (Some("lightyellow"), i18n::msg!("Light yellow")),
+    (Some("lightpink"), i18n::msg!("Light pink")),
+    (Some("lavender"), i18n::msg!("Lavender")),
+    (Some("gainsboro"), i18n::msg!("Light gray")),
 ];
 
 /// What the fill menu shows for `fill`, which is the preset's label for a
@@ -257,7 +257,7 @@ pub fn box_fill_label(fill: Option<&str>) -> String {
     BOX_FILL_PRESETS
         .iter()
         .find(|(value, _)| *value == fill)
-        .map(|(_, label)| (*label).to_string())
+        .map(|(_, label)| i18n::tr(label).to_string())
         .unwrap_or_else(|| fill.unwrap_or_default().to_string())
 }
 
@@ -277,9 +277,9 @@ impl SequenceNotePlacement {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::LeftOf => "左側",
-            Self::RightOf => "右側",
-            Self::Over => "重ねる",
+            Self::LeftOf => i18n::tc!("sequence note placement", "Left of"),
+            Self::RightOf => i18n::tc!("sequence note placement", "Right of"),
+            Self::Over => i18n::tc!("sequence note placement", "Over"),
         }
     }
 
@@ -341,14 +341,14 @@ impl SequenceBlockKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Loop => "繰り返し (loop)",
-            Self::Alt => "分岐 (alt)",
-            Self::Opt => "任意 (opt)",
-            Self::Par => "並行 (par)",
-            Self::ParOver => "重ねる並行 (par_over)",
+            Self::Loop => i18n::t!("Loop (loop)"),
+            Self::Alt => i18n::t!("Alternative (alt)"),
+            Self::Opt => i18n::t!("Optional (opt)"),
+            Self::Par => i18n::t!("Parallel (par)"),
+            Self::ParOver => i18n::t!("Overlapping parallel (par_over)"),
             Self::Critical => "critical",
-            Self::Break => "中断 (break)",
-            Self::Rect => "背景 (rect)",
+            Self::Break => i18n::t!("Break (break)"),
+            Self::Rect => i18n::t!("Background (rect)"),
         }
     }
 
@@ -412,9 +412,9 @@ impl SequenceBranchKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Else => "それ以外 (else)",
-            Self::And => "同時に (and)",
-            Self::Option => "選択肢 (option)",
+            Self::Else => i18n::t!("Otherwise (else)"),
+            Self::And => i18n::t!("At the same time (and)"),
+            Self::Option => i18n::t!("Choice (option)"),
         }
     }
 
@@ -566,7 +566,9 @@ impl SequenceDocument {
         let created = self.created_ids();
         for (index, id) in created.iter().enumerate() {
             if created.get(..index).unwrap_or_default().contains(id) {
-                return Some(format!("参加者 `{id}` が二重に `create` されています。"));
+                return Some(i18n::t!(
+                    "Participant `{id}` is created twice with `create`."
+                ));
             }
         }
         // `merman` keeps one position per destroyed column, so the second
@@ -575,7 +577,9 @@ impl SequenceDocument {
         for item in &self.items {
             if let SequenceItem::Destroy(id) = item {
                 if destroyed.contains(&id.as_str()) {
-                    return Some(format!("参加者 `{id}` が二重に `destroy` されています。"));
+                    return Some(i18n::t!(
+                        "Participant `{id}` is destroyed twice with `destroy`."
+                    ));
                 }
                 destroyed.push(id.as_str());
             }
@@ -583,8 +587,8 @@ impl SequenceDocument {
 
         for (index, participant) in self.participants.iter().enumerate() {
             if !is_writable_participant_id(&participant.id) {
-                return Some(format!(
-                    "`{}` は参加者の id として使えません。",
+                return Some(i18n::t!(
+                    "`{}` cannot be used as a participant id.",
                     participant.id
                 ));
             }
@@ -595,27 +599,27 @@ impl SequenceDocument {
                 .iter()
                 .any(|earlier| earlier.id == participant.id)
             {
-                return Some(format!(
-                    "参加者 `{}` が二重に宣言されています。",
+                return Some(i18n::t!(
+                    "Participant `{}` is declared twice.",
                     participant.id
                 ));
             }
             if let Some(settings) = &participant.preserved_settings {
                 if settings.contains(['}', '\n', '\r']) {
-                    return Some(format!(
-                        "参加者 `{}` の設定オブジェクトは 1 行で、`}}` を含まない形でなければなりません。",
+                    return Some(i18n::t!(
+                        "The config object of participant `{}` must be on one line and must not contain `}}`.",
                         participant.id
                     ));
                 }
                 if participant.kind != SequenceParticipantKind::Participant {
-                    return Some(format!(
-                        "設定オブジェクト (`@{{ … }}`) を持つ参加者 `{}` は箱 (participant) でなければなりません。",
+                    return Some(i18n::t!(
+                        "Participant `{}` has a config object (`@{{ … }}`), so it must be a box (participant).",
                         participant.id
                     ));
                 }
                 if participant.alias.is_some() {
-                    return Some(format!(
-                        "設定オブジェクト (`@{{ … }}`) を持つ参加者 `{}` には別名 (as) を付けられません。",
+                    return Some(i18n::t!(
+                        "Participant `{}` has a config object (`@{{ … }}`), so it cannot have an alias (as).",
                         participant.id
                     ));
                 }
@@ -629,14 +633,14 @@ impl SequenceDocument {
             if created.contains(&participant.id.as_str()) {
                 seen_created = true;
                 if participant.box_index.is_some() {
-                    return Some(format!(
-                        "`create` で作られる参加者 `{}` は box に入れられません。",
+                    return Some(i18n::t!(
+                        "Participant `{}` is created with `create`, so it cannot be put in a box.",
                         participant.id
                     ));
                 }
             } else if seen_created {
-                return Some(format!(
-                    "`create` で作られる参加者より後ろに `{}` を並べることはできません。",
+                return Some(i18n::t!(
+                    "`{}` cannot come after a participant created with `create`.",
                     participant.id
                 ));
             }
@@ -649,7 +653,7 @@ impl SequenceDocument {
             .collect::<Vec<_>>();
         if declared_created != created {
             return Some(
-                "`create` の順番と参加者の並び順が食い違っています。`create` した順に並べてください。"
+                i18n::t!("The order of the `create` statements does not match the order of the participants. Order the participants as they are created.")
                     .to_string(),
             );
         }
@@ -668,7 +672,8 @@ impl SequenceDocument {
             if let Some(box_index) = participant.box_index {
                 if closed_boxes.contains(&box_index) {
                     return Some(
-                        "同じ box の参加者は続けて並んでいなければなりません。".to_string(),
+                        i18n::t!("Participants in the same box must be next to each other.")
+                            .to_string(),
                     );
                 }
             }
@@ -690,20 +695,20 @@ impl SequenceDocument {
                 SequenceItem::Message(message) => {
                     if let Some(created) = last_created.take() {
                         if message.to != created {
-                            return Some(format!(
-                                "`create {created}` の次のメッセージは `{created}` 宛てでなければなりません。"
+                            return Some(i18n::t!(
+                                "The message after `create {created}` must be sent to `{created}`."
                             ));
                         }
                     } else if let Some(destroyed) = last_destroyed.take() {
                         if message.from != destroyed && message.to != destroyed {
-                            return Some(format!(
-                                "`destroy {destroyed}` の次のメッセージは `{destroyed}` が関わるものでなければなりません。"
+                            return Some(i18n::t!(
+                                "The message after `destroy {destroyed}` must involve `{destroyed}`."
                             ));
                         }
                     }
                     for id in [&message.from, &message.to] {
                         if self.participant_index(id).is_none() {
-                            return Some(format!("参加者 `{id}` が宣言されていません。"));
+                            return Some(i18n::t!("Participant `{id}` is not declared."));
                         }
                         used.push(id.as_str());
                     }
@@ -713,8 +718,8 @@ impl SequenceDocument {
                     if message.deactivate {
                         let count = activations.entry(message.from.as_str()).or_default();
                         if *count < 1 {
-                            return Some(format!(
-                                "`{}` は活性化していないので終了できません。",
+                            return Some(i18n::t!(
+                                "`{}` is not activated, so it cannot be deactivated.",
                                 message.from
                             ));
                         }
@@ -724,18 +729,18 @@ impl SequenceDocument {
                 SequenceItem::Note(note) => {
                     for id in [&note.from, &note.to] {
                         if self.participant_index(id).is_none() {
-                            return Some(format!("参加者 `{id}` が宣言されていません。"));
+                            return Some(i18n::t!("Participant `{id}` is not declared."));
                         }
                         used.push(id.as_str());
                     }
                 }
                 SequenceItem::Create(id) => {
                     if self.participant_index(id).is_none() {
-                        return Some(format!("参加者 `{id}` が宣言されていません。"));
+                        return Some(i18n::t!("Participant `{id}` is not declared."));
                     }
                     if used.contains(&id.as_str()) {
-                        return Some(format!(
-                            "`{id}` は `create` より前に登場しています。`create` を先に置いてください。"
+                        return Some(i18n::t!(
+                            "`{id}` appears before its `create`. Put the `create` first."
                         ));
                     }
                     used.push(id.as_str());
@@ -743,40 +748,42 @@ impl SequenceDocument {
                 }
                 SequenceItem::Destroy(id) => {
                     if self.participant_index(id).is_none() {
-                        return Some(format!("参加者 `{id}` が宣言されていません。"));
+                        return Some(i18n::t!("Participant `{id}` is not declared."));
                     }
                     used.push(id.as_str());
                     last_destroyed = Some(id.as_str());
                 }
                 SequenceItem::Activate(id) => {
                     if self.participant_index(id).is_none() {
-                        return Some(format!("参加者 `{id}` が宣言されていません。"));
+                        return Some(i18n::t!("Participant `{id}` is not declared."));
                     }
                     used.push(id.as_str());
                     *activations.entry(id.as_str()).or_default() += 1;
                 }
                 SequenceItem::Deactivate(id) => {
                     if self.participant_index(id).is_none() {
-                        return Some(format!("参加者 `{id}` が宣言されていません。"));
+                        return Some(i18n::t!("Participant `{id}` is not declared."));
                     }
                     used.push(id.as_str());
                     let count = activations.entry(id.as_str()).or_default();
                     if *count < 1 {
-                        return Some(format!("`{id}` は活性化していないので終了できません。"));
+                        return Some(i18n::t!(
+                            "`{id}` is not activated, so it cannot be deactivated."
+                        ));
                     }
                     *count -= 1;
                 }
                 SequenceItem::BlockStart(block) => blocks.push(block.kind),
                 SequenceItem::BlockBranch(branch) => {
                     let Some(kind) = blocks.last().copied() else {
-                        return Some(format!(
-                            "`{}` を囲むブロックがありません。",
+                        return Some(i18n::t!(
+                            "There is no block around `{}`.",
                             branch.kind.keyword()
                         ));
                     };
                     if kind.branch() != Some(branch.kind) {
-                        return Some(format!(
-                            "`{}` は `{}` の中では使えません。",
+                        return Some(i18n::t!(
+                            "`{}` cannot be used inside `{}`.",
                             branch.kind.keyword(),
                             kind.keyword()
                         ));
@@ -784,7 +791,7 @@ impl SequenceDocument {
                 }
                 SequenceItem::BlockEnd => {
                     if blocks.pop().is_none() {
-                        return Some("`end` が対応するブロックより多くあります。".to_string());
+                        return Some(i18n::t!("There are more `end`s than blocks.").to_string());
                     }
                 }
                 SequenceItem::Autonumber(_) => {}
@@ -792,16 +799,16 @@ impl SequenceDocument {
         }
 
         if let Some(kind) = blocks.last() {
-            return Some(format!(
-                "`{}` ブロックが `end` で閉じられていません。",
+            return Some(i18n::t!(
+                "The `{}` block is not closed with `end`.",
                 kind.keyword()
             ));
         }
         for participant in &self.participants {
             if let Some(box_index) = participant.box_index {
                 if self.boxes.get(box_index).is_none() {
-                    return Some(format!(
-                        "参加者 `{}` が存在しない box を指しています。",
+                    return Some(i18n::t!(
+                        "Participant `{}` refers to a box that does not exist.",
                         participant.id
                     ));
                 }
@@ -1054,16 +1061,16 @@ pub fn parse_sequence(source: &str) -> Result<SequenceDocument> {
 
     let parsed = crate::parse_for_render_model(source)
         .map_err(|error| anyhow!("{error}"))?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
     let RenderSemanticModel::Sequence(model) = parsed.into_parts().1 else {
-        bail!("この図はシーケンス図ではありません。");
+        bail!(i18n::t!("This diagram is not a sequence diagram."));
     };
 
     let document = document_from_model(model, scan.preserved, &settings)?;
     // Keeps [`SequenceDocument::structure_error`]'s promise: a document the
     // editor cannot write back never reaches it in the first place.
     if let Some(problem) = document.structure_error() {
-        bail!("{problem}テキストのまま編集してください。");
+        bail!(i18n::t!("{problem} Edit it as text."));
     }
     Ok(document)
 }
@@ -1082,18 +1089,19 @@ fn document_from_model(
 
     let mut participants = Vec::with_capacity(model.actor_order.len());
     for model_id in &model.actor_order {
-        let actor = model
-            .actors
-            .get(model_id)
-            .ok_or_else(|| anyhow!("参加者 `{model_id}` の情報が見つかりませんでした。"))?;
+        let actor = model.actors.get(model_id).ok_or_else(|| {
+            anyhow!(i18n::t!(
+                "Could not find the details of participant `{model_id}`."
+            ))
+        })?;
         let id = source_id(model_id);
         // `merman`'s placeholder characters can also be typed as themselves,
         // and those would come back as a `#…;` shorthand that is not in the
         // source. Only an id the shorthand spells exactly is kept.
         if encode_entity_shorthands(&id) != *model_id {
-            bail!(
-                "参加者の id `{model_id}` に Mermaid の内部文字が含まれているため、構造化編集に対応していません。テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The participant id `{model_id}` contains characters Mermaid uses internally, so it is not supported by the structured editor. Edit it as text."
+            ));
         }
         let preserved_settings = settings.get(&id).cloned().flatten();
         // The config object's `type` is what `merman` reports as the kind,
@@ -1102,9 +1110,9 @@ fn document_from_model(
         let kind = match (actor.actor_type.as_str(), &preserved_settings) {
             (_, Some(_)) | ("participant", None) => SequenceParticipantKind::Participant,
             ("actor", None) => SequenceParticipantKind::Actor,
-            (other, None) => bail!(
-                "参加者の種類 `{other}` は構造化編集に対応していません。テキストのまま編集してください。"
-            ),
+            (other, None) => bail!(i18n::t!(
+                "The participant type `{other}` is not supported by the structured editor. Edit it as text."
+            )),
         };
         let description = decode_text(&actor.description);
         participants.push(SequenceParticipant {
@@ -1188,9 +1196,9 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
         push_lifecycle(&mut items, &lifecycle, &mut cursor, index);
         index += 1;
         if message.central_connection != 0 {
-            bail!(
-                "`()` を使った中央接続は構造化編集に対応していません。テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "Central connections written with `()` are not supported by the structured editor. Edit it as text."
+            ));
         }
 
         let message_type = message.message_type;
@@ -1198,11 +1206,11 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
             let from = message
                 .from
                 .clone()
-                .ok_or_else(|| anyhow!("送信元のない矢印が含まれています。"))?;
+                .ok_or_else(|| anyhow!(i18n::t!("An arrow has no sender.")))?;
             let to = message
                 .to
                 .clone()
-                .ok_or_else(|| anyhow!("宛先のない矢印が含まれています。"))?;
+                .ok_or_else(|| anyhow!(i18n::t!("An arrow has no receiver.")))?;
 
             // `A ->>+ B` and `A ->>- B` each add a second model entry for the
             // activation they imply. Folding it back into the arrow is what
@@ -1270,11 +1278,11 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
                 let placement = message
                     .placement
                     .and_then(SequenceNotePlacement::from_model)
-                    .ok_or_else(|| anyhow!("Note の位置を解釈できませんでした。"))?;
+                    .ok_or_else(|| anyhow!(i18n::t!("Could not read the position of a Note.")))?;
                 let from = message
                     .from
                     .clone()
-                    .ok_or_else(|| anyhow!("対象のない Note が含まれています。"))?;
+                    .ok_or_else(|| anyhow!(i18n::t!("A Note has no target.")))?;
                 let to = message.to.clone().unwrap_or_else(|| from.clone());
                 items.push(SequenceItem::Note(SequenceNote {
                     placement,
@@ -1288,14 +1296,14 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
                 let id = message
                     .from
                     .clone()
-                    .ok_or_else(|| anyhow!("対象のない activate が含まれています。"))?;
+                    .ok_or_else(|| anyhow!(i18n::t!("An activate has no target.")))?;
                 items.push(SequenceItem::Activate(source_id(&id)));
             }
             LINETYPE_ACTIVE_END => {
                 let id = message
                     .from
                     .clone()
-                    .ok_or_else(|| anyhow!("対象のない deactivate が含まれています。"))?;
+                    .ok_or_else(|| anyhow!(i18n::t!("A deactivate has no target.")))?;
                 items.push(SequenceItem::Deactivate(source_id(&id)));
             }
             LINETYPE_AUTONUMBER => {
@@ -1313,9 +1321,9 @@ fn items_from_model(model: &SequenceDiagramRenderModel) -> Result<Vec<SequenceIt
                 };
                 items.push(SequenceItem::Autonumber(autonumber));
             }
-            other => bail!(
-                "未対応の構文 (種別 {other}) が含まれています。テキストのまま編集してください。"
-            ),
+            other => bail!(i18n::t!(
+                "The diagram contains an unsupported statement (type {other}). Edit it as text."
+            )),
         }
     }
     push_lifecycle(&mut items, &lifecycle, &mut cursor, messages.len());
@@ -2068,7 +2076,7 @@ fn scan_source(source: &str) -> Result<SourceScan> {
             continue;
         }
         let Some(rest) = header_rest(trimmed) else {
-            bail!("この図はシーケンス図ではありません。");
+            bail!(i18n::t!("This diagram is not a sequence diagram."));
         };
         header = Some(());
         let rest = rest.trim_start_matches(';').trim();
@@ -2171,8 +2179,8 @@ fn unsupported_construct(statements: &[String]) -> Option<String> {
             continue;
         };
         if destroyed.contains(&id) {
-            return Some(format!(
-                "`destroy {id}` が 2 回書かれているため、構造化編集に対応していません。テキストのまま編集してください。"
+            return Some(i18n::t!(
+                "`destroy {id}` is written twice, which is not supported by the structured editor. Edit it as text."
             ));
         }
         destroyed.push(id);
@@ -2187,15 +2195,16 @@ fn unsupported_construct(statements: &[String]) -> Option<String> {
         > 1
     {
         return Some(
-            "`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。".to_string(),
+            i18n::t!("`title` is written twice. Merge them into one, then open it again.")
+                .to_string(),
         );
     }
 
     for statement in statements {
         if let Some(offset) = comment_start(statement) {
             let comment = statement.get(offset..).unwrap_or_default();
-            return Some(format!(
-                "文の末尾のコメント ({comment}) は構造化編集で失われます。コメントを独立した行に移すか、テキストのまま編集してください。"
+            return Some(i18n::t!(
+                "The comment at the end of a statement ({comment}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
             ));
         }
     }
@@ -2281,9 +2290,9 @@ fn declared_settings(statements: &[String]) -> Result<HashMap<String, Option<Str
         let id = declaration.get(..config_start).unwrap_or_default();
         let body = declaration.get(config_start + 2..).unwrap_or_default();
         let Some(body_end) = body.find('}') else {
-            bail!(
-                "参加者 `{id}` の設定オブジェクト (`@{{ … }}`) が複数行にまたがっているため、構造化編集に対応していません。テキストのまま編集してください。"
-            );
+            bail!(i18n::t!(
+                "The config object (`@{{ … }}`) of participant `{id}` spans several lines, which is not supported by the structured editor. Edit it as text."
+            ));
         };
         settings.insert(
             id.to_string(),
@@ -2978,7 +2987,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
             let message = format!("{error}");
             assert!(
-                message.contains("テキストのまま編集してください"),
+                message.to_lowercase().contains("edit it as text"),
                 "unexpected message for `{source}`: {message}"
             );
         }
@@ -3258,7 +3267,9 @@ mod tests {
             .err()
             .unwrap_or_else(|| panic!("`{source}` should be refused"));
         assert!(
-            format!("{error}").contains("テキストのまま編集してください"),
+            format!("{error}")
+                .to_lowercase()
+                .contains("edit it as text"),
             "{error}"
         );
 
@@ -3621,7 +3632,7 @@ mod tests {
         for (items, expected) in [
             (
                 vec![SequenceItem::Create("C".into()), message("A", "A", "別件")],
-                "`create C` の次のメッセージは `C` 宛てでなければなりません。",
+                "The message after `create C` must be sent to `C`.",
             ),
             (
                 vec![
@@ -3630,14 +3641,14 @@ mod tests {
                     SequenceItem::Destroy("C".into()),
                     message("A", "A", "別件"),
                 ],
-                "`destroy C` の次のメッセージは `C` が関わるものでなければなりません。",
+                "The message after `destroy C` must involve `C`.",
             ),
             (
                 vec![
                     message("A", "C", "先に登場"),
                     SequenceItem::Create("C".into()),
                 ],
-                "`C` は `create` より前に登場しています。`create` を先に置いてください。",
+                "`C` appears before its `create`. Put the `create` first.",
             ),
             (
                 vec![
@@ -3645,11 +3656,11 @@ mod tests {
                     message("A", "C", "作成"),
                     SequenceItem::Create("C".into()),
                 ],
-                "参加者 `C` が二重に `create` されています。",
+                "Participant `C` is created twice with `create`.",
             ),
             (
                 vec![SequenceItem::Destroy("X".into())],
-                "参加者 `X` が宣言されていません。",
+                "Participant `X` is not declared.",
             ),
         ] {
             assert_eq!(
@@ -3667,7 +3678,7 @@ mod tests {
         ]);
         assert_eq!(
             document.structure_error().as_deref(),
-            Some("`create` で作られる参加者より後ろに `C` を並べることはできません。")
+            Some("`C` cannot come after a participant created with `create`.")
         );
 
         let mut document = base(vec![
@@ -3684,7 +3695,7 @@ mod tests {
         }
         assert_eq!(
             document.structure_error().as_deref(),
-            Some("`create` で作られる参加者 `C` は box に入れられません。")
+            Some("Participant `C` is created with `create`, so it cannot be put in a box.")
         );
     }
 
@@ -3713,7 +3724,7 @@ mod tests {
         assert_eq!(
             document.structure_error().as_deref(),
             Some(
-                "`create` の順番と参加者の並び順が食い違っています。`create` した順に並べてください。"
+                "The order of the `create` statements does not match the order of the participants. Order the participants as they are created."
             )
         );
     }
@@ -3937,7 +3948,7 @@ mod tests {
         )
         .err()
         .expect("a second destroy should be refused");
-        assert!(format!("{error}").contains("2 回"), "{error}");
+        assert!(format!("{error}").contains("written twice"), "{error}");
     }
 
     /// Mermaid has no spelling for an object together with `actor` or `as`, and
@@ -3950,7 +3961,7 @@ mod tests {
         .err()
         .expect("a config object over several lines should be refused");
         assert!(
-            format!("{error}").contains("複数行"),
+            format!("{error}").contains("spans several lines"),
             "unexpected message: {error}"
         );
 
@@ -3972,7 +3983,9 @@ mod tests {
         }
         assert_eq!(
             document.structure_error().as_deref(),
-            Some("設定オブジェクト (`@{ … }`) を持つ参加者 `A` には別名 (as) を付けられません。")
+            Some(
+                "Participant `A` has a config object (`@{ … }`), so it cannot have an alias (as)."
+            )
         );
 
         let mut document = base.clone();
@@ -4144,7 +4157,7 @@ mod tests {
         };
         assert_eq!(
             document.structure_error().as_deref(),
-            Some("参加者 `B` が二重に `destroy` されています。")
+            Some("Participant `B` is destroyed twice with `destroy`.")
         );
     }
 
@@ -4411,7 +4424,10 @@ mod tests {
                 .err()
                 .map(|error| error.to_string())
                 .unwrap_or_default();
-            assert!(error.contains("`title` が 2 回"), "{source}: {error:?}");
+            assert!(
+                error.contains("`title` is written twice"),
+                "{source}: {error:?}"
+            );
         }
         for source in [
             "sequenceDiagram

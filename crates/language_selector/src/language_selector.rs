@@ -164,7 +164,7 @@ impl LanguageSelectorDelegate {
         if let Some(buffer_language) = buffer_language
             .filter(|buffer_language| buffer_language.name().as_ref() == mat.string.as_str())
         {
-            label.push_str(" (現在)");
+            label.push_str(i18n::t!(" (current)"));
             let icon = need_icon
                 .then(|| self.language_icon(&buffer_language.config().matcher, cx))
                 .flatten();
@@ -202,7 +202,7 @@ impl PickerDelegate for LanguageSelectorDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "言語を選択…".into()
+        i18n::t!("Select a language…").into()
     }
 
     fn match_count(&self) -> usize {

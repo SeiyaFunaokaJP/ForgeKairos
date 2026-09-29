@@ -531,16 +531,16 @@ impl Render for SyntaxTreeView {
                         .max_w_3_5()
                         .map(|this| {
                             if editor_state.is_some_and(|state| !state.has_language()) {
-                                this.child(Label::new("現在のエディターには言語が関連付けられていません。"))
+                                this.child(Label::new(i18n::t!("Current editor has no associated language")))
                                     .child(
-                                        Label::new(
-                                            "言語を割り当てるか、別のバッファーに切り替えてください。"
-                                        )
+                                        Label::new(i18n::t!(
+                                            "Try assigning a language or switching to a different buffer"
+                                        ))
                                         .size(LabelSize::Small),
                                     )
                             } else {
-                                this.child(Label::new("エディターにアタッチされていません。")).child(
-                                    Label::new("新しいツリービューを表示するには、エディターにフォーカスしてください。")
+                                this.child(Label::new(i18n::t!("Not attached to an editor"))).child(
+                                    Label::new(i18n::t!("Focus an editor to show a new tree view"))
                                         .size(LabelSize::Small),
                                 )
                             }
@@ -570,7 +570,7 @@ impl Item for SyntaxTreeView {
     fn to_item_events(_: &Self::Event, _: &mut dyn FnMut(workspace::item::ItemEvent)) {}
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "構文ツリー".into()
+        i18n::t!("Syntax Tree").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -695,7 +695,7 @@ impl SyntaxTreeToolbarItemView {
                                 editor.tab_content_text(Default::default(), cx)
                             });
 
-                            Tooltip::text(format!("'{active_tab_name}' の表示に更新します"))
+                            Tooltip::text(i18n::t!("Update view to '{active_tab_name}'"))
                         })
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.update_active_editor(&Default::default(), window, cx);

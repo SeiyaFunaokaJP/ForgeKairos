@@ -27,7 +27,7 @@ use super::{Form, LABEL_FIELD_WIDTH, MermaidEditor, add_button, field_frame, sec
 
 /// The name a node is added with, so that a new row is visible in the drawing
 /// before anything has been typed into it.
-const NEW_NAME: &str = "新しいノード";
+const NEW_NAME: &str = i18n::msg!("New node");
 
 /// How far each level of the tree pushes its rows to the right.
 pub(super) const DEPTH_INDENT_REMS: f32 = 1.;
@@ -158,28 +158,28 @@ pub(super) fn outline_row_controls<Row: OutlineItem>(
         .child(button(
             "outdent",
             IconName::ArrowLeft,
-            "一段浅く (親の次へ)",
+            i18n::t!("Outdent (Move After the Parent)"),
             depth < 2,
             OutlineEdit::Outdent,
         ))
         .child(button(
             "indent",
             IconName::ArrowRight,
-            "一段深く (上の兄弟の子へ)",
+            i18n::t!("Indent (Make Child of the Sibling Above)"),
             !has_previous_sibling,
             OutlineEdit::Indent,
         ))
         .child(button(
             "up",
             IconName::ArrowUp,
-            "上へ移動",
+            i18n::t!("Move Up"),
             !has_previous_sibling,
             OutlineEdit::MoveUp,
         ))
         .child(button(
             "down",
             IconName::ArrowDown,
-            "下へ移動",
+            i18n::t!("Move Down"),
             !has_next_sibling,
             OutlineEdit::MoveDown,
         ))
@@ -193,14 +193,14 @@ pub(super) fn outline_row_controls<Row: OutlineItem>(
         .child(button(
             "add-sibling",
             IconName::Plus,
-            "下に同じ段を追加",
+            i18n::t!("Add Row Below at the Same Level"),
             false,
             OutlineEdit::AddSibling,
         ))
         .child(button(
             "remove",
             IconName::Trash,
-            "この行とその下の行をすべて削除",
+            i18n::t!("Delete This Row and All Rows Under It"),
             false,
             OutlineEdit::Remove,
         ))
@@ -288,7 +288,7 @@ impl MermaidEditor {
         if self.tree_view().is_none() {
             return;
         }
-        let row = self.new_tree_view_row(TreeViewEntry::new(NEW_NAME), window, cx);
+        let row = self.new_tree_view_row(TreeViewEntry::new(i18n::tr(NEW_NAME)), window, cx);
         let focus = row.name.focus_handle(cx);
         if let Some(form) = self.tree_view_mut() {
             form.rows.push(row);
@@ -309,7 +309,7 @@ impl MermaidEditor {
         }
         let new_row = edit
             .adds_a_row()
-            .then(|| self.new_tree_view_row(TreeViewEntry::new(NEW_NAME), window, cx));
+            .then(|| self.new_tree_view_row(TreeViewEntry::new(i18n::tr(NEW_NAME)), window, cx));
         let Some(form) = self.tree_view_mut() else {
             return;
         };
@@ -335,7 +335,7 @@ impl MermaidEditor {
         let title_row = h_flex()
             .w_full()
             .gap_2()
-            .child(section_title("タイトル"))
+            .child(section_title(i18n::t!("Title")))
             .child(
                 field_frame(
                     &form.title,
@@ -348,17 +348,16 @@ impl MermaidEditor {
                 .child(form.title.clone()),
             );
 
-        let mut list = v_flex()
-            .w_full()
-            .gap_2()
-            .child(section_title("ノード (右にずれているほど深い階層)"));
+        let mut list = v_flex().w_full().gap_2().child(section_title(i18n::t!(
+            "Nodes (indented rows are nested deeper)"
+        )));
         for (index, row) in form.rows.iter().enumerate() {
             let entry = row.current_entry(cx);
             let controls = outline_row_controls(
                 "mermaid-tree-view",
                 &form.rows,
                 index,
-                "子を追加",
+                i18n::t!("Add Child"),
                 cx.listener(move |this, edit: &OutlineEdit, window, cx| {
                     this.edit_tree_view(index, *edit, window, cx)
                 }),
@@ -386,7 +385,7 @@ impl MermaidEditor {
         }
         list = list.child(add_button(
             "mermaid-tree-view-add-top-level",
-            "最上位にノードを追加",
+            i18n::t!("Add Top-Level Node"),
             cx.listener(|this, _, window, cx| this.add_tree_view_top_level(window, cx)),
         ));
 

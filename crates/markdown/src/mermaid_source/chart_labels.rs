@@ -9,6 +9,7 @@
 //! that count uncertain is a refusal: rewriting another element's label would
 //! be worse than not rewriting at all.
 
+use std::borrow::Cow;
 use std::ops::Range;
 
 use mermaid_render::LabelItem;
@@ -115,7 +116,7 @@ pub(crate) fn write_refusal(
     quoting: MermaidLabelQuoting,
     new_label: &str,
     reserved: &[String],
-) -> Option<&'static str> {
+) -> Option<Cow<'static, str>> {
     let flattened: String = new_label
         .chars()
         .map(|character| {
@@ -130,29 +131,39 @@ pub(crate) fn write_refusal(
     match quoting {
         MermaidLabelQuoting::PieLabel => {
             if !is_valid_pie_label(label) {
-                return Some("円グラフの項目名は空にできず、`%%` も書けません。");
+                return Some(i18n::t!(
+                    "A pie chart item name cannot be empty or contain `%%`."
+                ).into());
             }
             reserved.iter().any(|taken| taken == label).then_some(
-                "同じ名前の項目がすでにあります。円グラフは同じ名前の 2 つ目を描かないため、別の名前にしてください。",
+                i18n::t!(
+                    "An item with the same name already exists. A pie chart does not draw a second item with the same name, so use a different name."
+                ).into(),
             )
         }
         MermaidLabelQuoting::PieTitle => (!is_valid_pie_title(label))
-            .then_some("円グラフのタイトルには `%%` を書けません。"),
+            .then_some(i18n::t!("A pie chart title cannot contain `%%`.").into()),
         MermaidLabelQuoting::GanttTask => (!is_valid_gantt_label(label)).then_some(
-            "タスク名は空にできず、`:` を含めたり `title` や `section` などのキーワードで始めたりできません。",
+            i18n::t!(
+                "A task name cannot be empty, contain `:`, or start with a keyword such as `title` or `section`."
+            ).into(),
         ),
         MermaidLabelQuoting::GanttSection => {
             if !is_valid_gantt_section_name(label) {
-                return Some("セクション名は空にできません。");
+                return Some(i18n::t!("A section name cannot be empty.").into());
             }
             reserved.iter().any(|taken| taken == label).then_some(
-                "同じ名前のセクションがすでにあります。同じ名前のセクションは 1 つにまとめて描かれるため、別の名前にしてください。",
+                i18n::t!(
+                    "A section with the same name already exists. Sections with the same name are drawn as one, so use a different name."
+                ).into(),
             )
         }
         MermaidLabelQuoting::GanttTitle => (!is_valid_gantt_title(label))
-            .then_some("ガントチャートのタイトルは空にできません。"),
+            .then_some(i18n::t!("A Gantt chart title cannot be empty.").into()),
         MermaidLabelQuoting::ErAttributeName => (!is_valid_attribute_word(label)).then_some(
-            "属性名に使えない文字が含まれています。空白・`,`・`\"`・`{`・`}`・`#`・`%`・`;` と、`PK` などのキー名は使えません。",
+            i18n::t!(
+                "The attribute name contains characters that cannot be used. Whitespace, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` and key names such as `PK` are not allowed."
+            ).into(),
         ),
         _ => None,
     }

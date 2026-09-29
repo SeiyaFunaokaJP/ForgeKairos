@@ -167,7 +167,7 @@ impl Workspace {
                             _ = workspace.update(cx, |w, cx| {
                                 let id = NotificationId::unique::<ResolvedTask>();
                                 w.show_toast(
-                                    Toast::new(id, format!("タスクを起動できませんでした: {e}")),
+                                    Toast::new(id, i18n::t!("Task spawn failed: {e}")),
                                     cx,
                                 );
                             });

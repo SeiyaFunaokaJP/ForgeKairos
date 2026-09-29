@@ -1,0 +1,27 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Edit Zoom"
+msgstr "ズーム率を編集"
+
+msgid "Fit to View"
+msgstr "ビューに合わせる"
+
+msgid "Right-click to reset to 100%."
+msgstr "右クリックで 100% に戻します。"
+
+msgid "Unknown"
+msgstr "不明"
+
+msgid "Zoom In"
+msgstr "拡大"
+
+msgid "Zoom Out"
+msgstr "縮小"
+
+msgid "{} channels, {} bits per pixel"
+msgstr "{} チャンネル、{} ビット/ピクセル"

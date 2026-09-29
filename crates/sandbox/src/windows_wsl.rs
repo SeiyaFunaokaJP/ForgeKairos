@@ -211,38 +211,44 @@ fi
 "#;
 
 /// Marks a failure of the Windows WSL sandboxing *environment* (see the module
-/// docs). The message is the Japanese explanation shown to the user, telling
-/// them what to fix. Returned as the root of the `anyhow::Error` so callers
+/// docs). The message is the explanation of what to fix, built both for the
+/// user, who is shown it, and in English for the agent, which is told it. Returned as the root of the `anyhow::Error` so callers
 /// classify it by type ([`anyhow::Error::downcast_ref`]) instead of by matching
 /// message text. Per-request failures (a missing writable path, paths mixing
 /// distros) are ordinary `anyhow` errors *without* this type.
 #[derive(Debug, Clone)]
-pub struct WslSandboxUnavailable(String);
+pub struct WslSandboxUnavailable(i18n::Bilingual);
 
 impl WslSandboxUnavailable {
     /// Build an environment-unavailable error from a user-facing reason
     /// (without the [`WSL_SANDBOX_UNAVAILABLE_PREFIX`], which `Display` adds).
-    pub fn new(message: impl Into<String>) -> Self {
-        Self(message.into())
+    /// `message` is called once per language, so it must only build the text.
+    pub fn new<S: Into<String>>(message: impl Fn() -> S) -> Self {
+        Self(i18n::Bilingual::new(|| message().into()))
     }
 
     /// The reason, without the leading [`WSL_SANDBOX_UNAVAILABLE_PREFIX`].
     #[cfg(test)]
-    pub fn message(&self) -> &str {
+    pub fn message(&self) -> &i18n::Bilingual {
         &self.0
     }
 }
 
 impl std::fmt::Display for WslSandboxUnavailable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{WSL_SANDBOX_UNAVAILABLE_PREFIX}: {}", self.0)
+        write!(
+            f,
+            "{}: {}",
+            i18n::tr(WSL_SANDBOX_UNAVAILABLE_PREFIX),
+            self.0
+        )
     }
 }
 
 impl std::error::Error for WslSandboxUnavailable {}
 
 /// Shorthand for an [`anyhow::Error`] wrapping a [`WslSandboxUnavailable`].
-fn unavailable(message: impl Into<String>) -> anyhow::Error {
+fn unavailable<S: Into<String>>(message: impl Fn() -> S) -> anyhow::Error {
     anyhow::Error::new(WslSandboxUnavailable::new(message))
 }
 
@@ -337,8 +343,10 @@ fn grant_distro(requested: Option<&str>, session: &WslSessionDistro) -> Result<O
         (Some(requested), Some(session)) => {
             ensure!(
                 requested.eq_ignore_ascii_case(session),
-                "WSL ディストリビューション `{requested}` にありますが、このセッションは \
-                 `{session}` で動いています。"
+                i18n::t!(
+                    "The path is in the WSL distro `{requested}`, but this session runs in \
+                     `{session}`."
+                )
             );
             Ok(Some(requested.to_string()))
         }
@@ -524,36 +532,43 @@ fn registration_message(registration: &DistroRegistration) -> Option<String> {
     match registration {
         DistroRegistration::Usable => None,
         DistroRegistration::NotInstalled => Some(
-            "WSL がインストールされていません。Windows ではエージェントのコマンドを WSL 2 の中の\
-             サンドボックスで実行します。管理者として PowerShell を開いて `wsl --install` を実行し、\
-             PC を再起動してください。"
-                .to_string(),
+            i18n::t!(
+                "WSL is not installed. On Windows, agent commands run in a sandbox inside WSL 2. \
+                 Open PowerShell as an administrator, run `wsl --install`, and restart the computer."
+            )
+            .to_string(),
         ),
         DistroRegistration::NoDistro => Some(
-            "WSL のディストリビューションが登録されていません。`wsl --install -d Ubuntu` などで\
-             ディストリビューションを追加してください (種類は問いません。WSL 2 で動いている必要があります)。"
-                .to_string(),
+            i18n::t!(
+                "No WSL distro is registered. Add one with `wsl --install -d Ubuntu` or similar \
+                 (any distro works, but it must run on WSL 2)."
+            )
+            .to_string(),
         ),
         DistroRegistration::NoDefault => Some(
-            "既定の WSL ディストリビューションが設定されていません。`wsl --list --verbose` で一覧を\
-             確認し、`wsl --set-default <名前>` で WSL 2 のディストリビューションを既定にしてください。"
-                .to_string(),
+            i18n::t!(
+                "No default WSL distro is set. List the distros with `wsl --list --verbose` and make \
+                 a WSL 2 distro the default with `wsl --set-default <name>`."
+            )
+            .to_string(),
         ),
-        DistroRegistration::Missing(name) => Some(format!(
-            "WSL ディストリビューション `{name}` が登録されていません。`wsl --list --verbose` で\
-             名前を確認してください。"
+        DistroRegistration::Missing(name) => Some(i18n::t!(
+            "The WSL distro `{name}` is not registered. Check its name with `wsl --list --verbose`."
         )),
-        DistroRegistration::Wsl1(name) => Some(format!(
-            "WSL ディストリビューション `{name}` は WSL 1 で動いています。サンドボックスには WSL 2 が\
-             必要です。`wsl --set-version {name} 2` で WSL 2 に変換するか、WSL 2 のディストリビューションを\
-             `wsl --set-default <名前>` で既定にしてください。"
+        DistroRegistration::Wsl1(name) => Some(i18n::t!(
+            "The WSL distro `{name}` runs on WSL 1, but the sandbox needs WSL 2. Convert it with \
+             `wsl --set-version {name} 2`, or make a WSL 2 distro the default with \
+             `wsl --set-default <name>`."
         )),
     }
 }
 
 fn ensure_distro_registered(distro: Option<&str>) -> Result<()> {
-    match registration_message(&read_distro_registration(distro)) {
-        Some(problem) => Err(unavailable(problem)),
+    let registration = read_distro_registration(distro);
+    match registration_message(&registration) {
+        Some(_) => Err(unavailable(|| {
+            registration_message(&registration).unwrap_or_default()
+        })),
         None => Ok(()),
     }
 }
@@ -602,9 +617,9 @@ pub async fn resolve_canonical_for_grant(
     // authoritative about junctions and symlinks (see the doc comment above).
     if parse_native_drive_path(&path_string).is_ok() {
         let canonical = smol::fs::canonicalize(&requested).await.with_context(|| {
-            format!(
-                "書込を許可するパス `{}` を Windows 側で解決できませんでした。",
-                requested.display()
+            i18n::t!(
+                "Could not resolve the writable path `{path}` on Windows.",
+                path = requested.display()
             )
         })?;
         // `canonicalize` yields a `\\?\` verbatim path; store the plain native
@@ -614,10 +629,12 @@ pub async fn resolve_canonical_for_grant(
         let canonical = strip_windows_verbatim_prefix(canonical);
         ensure!(
             parse_native_drive_path(&canonical.to_string_lossy()).is_ok(),
-            "`{}` への書き込みは許可できません: 解決先が `{}` であり、Windows の\
-             ドライブ上のパスではありません。",
-            requested.display(),
-            canonical.display()
+            i18n::t!(
+                "Writing to `{path}` cannot be allowed: it resolves to `{resolved}`, \
+                 which is not a path on a Windows drive.",
+                path = requested.display(),
+                resolved = canonical.display()
+            )
         );
         return Ok(ResolvedGrant {
             canonical,
@@ -629,12 +646,12 @@ pub async fn resolve_canonical_for_grant(
     // only WSL can canonicalize: a Linux-absolute path in the distro the command
     // runs in, or a `\\wsl.localhost\<distro>\…` share naming one distro.
     let wsl_path = parse_distro_native_path(&path_string).map_err(|_| {
-        anyhow::anyhow!(
-            "`{}` への書き込みは許可できません: 指定できるのは Windows のドライブのパス \
-             (`C:\\...`)、WSL の絶対パス (`/...`)、WSL ディストリビューションの中の\
-             フォルダー (`\\\\wsl.localhost\\<distro>\\...`) だけです。",
-            requested.display()
-        )
+        anyhow::anyhow!(i18n::t!(
+            "Writing to `{path}` cannot be allowed: only a path on a Windows drive (`C:\\...`), \
+             an absolute WSL path (`/...`), or a folder inside a WSL distro \
+             (`\\\\wsl.localhost\\<distro>\\...`) can be given.",
+            path = requested.display()
+        ))
     })?;
     // A share with nothing under it, or a bare `/`, is the distribution's whole
     // root, which is never the folder the user was shown. A bare one is refused
@@ -644,20 +661,25 @@ pub async fn resolve_canonical_for_grant(
     // approved and then never usable.
     ensure!(
         wsl_path.path != "/",
-        "`{}` への書き込みは許可できません: WSL ディストリビューション全体であり、\
-         その中のフォルダーではありません。",
-        requested.display()
+        i18n::t!(
+            "Writing to `{path}` cannot be allowed: it is a whole WSL distro, not a folder inside one.",
+            path = requested.display()
+        )
     );
-    let distro = grant_distro(wsl_path.distro.as_deref(), &session)
-        .with_context(|| format!("`{}` への書き込みは許可できません", requested.display()))?;
+    let distro = grant_distro(wsl_path.distro.as_deref(), &session).with_context(|| {
+        i18n::t!(
+            "Writing to `{path}` cannot be allowed",
+            path = requested.display()
+        )
+    })?;
     let mapping = PathMapping::Wsl(wsl_path);
 
     ensure_distro_registered(distro.as_deref())?;
     let wsl_exe = wsl_exe_path();
     if !wsl_exe.is_file() {
-        return Err(unavailable(
-            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default(),
-        ));
+        return Err(unavailable(|| {
+            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default()
+        }));
     }
 
     let translated = resolve_paths(
@@ -668,22 +690,32 @@ pub async fn resolve_canonical_for_grant(
     .await?
     .into_iter()
     .next()
-    .context("書込を許可するパスの解決結果が見つかりません (内部エラー)")?
-    .context("書込を許可するパスが解決できないまま渡されました (内部エラー)")?;
+    .context(i18n::t!(
+        "The writable path was not resolved (internal error)"
+    ))?
+    .context(i18n::t!(
+        "The writable path was passed on unresolved (internal error)"
+    ))?;
     let helper = ensure_sandbox_helper(&wsl_exe, distro.as_deref()).await?;
     let mut args = helper_invocation(&helper);
     args.extend([crate::WSL_SANDBOX_RESOLVE_FLAG.to_string(), translated]);
-    let output = run_wsl_command(&wsl_exe, distro.as_deref(), &args, "書込許可の解決").await?;
+    let output = run_wsl_command(
+        &wsl_exe,
+        distro.as_deref(),
+        &args,
+        i18n::tc!("wsl sandbox step", "resolving the writable path"),
+    )
+    .await?;
     if !output.status.success() {
-        return Err(anyhow::anyhow!(
-            "書込を許可するパス `{}` を解決できませんでした。{}",
-            requested.display(),
-            command_failure_details(output.status.code(), &output.stderr)
-        ));
+        return Err(anyhow::anyhow!(i18n::t!(
+            "Could not resolve the writable path `{path}`.{details}",
+            path = requested.display(),
+            details = command_failure_details(output.status.code(), &output.stderr)
+        )));
     }
-    let stdout = String::from_utf8(output.stdout).context(
-        "WSL のサンドボックスヘルパーが UTF-8 でない正規化パスを返しました (内部エラー)",
-    )?;
+    let stdout = String::from_utf8(output.stdout).context(i18n::t!(
+        "The WSL sandbox helper returned a canonical path that is not UTF-8 (internal error)"
+    ))?;
     parse_canonical_grant_output(&stdout, distro.as_deref())
 }
 
@@ -754,9 +786,12 @@ pub async fn wrap_invocation<S: BuildHasher>(
     if let Some(forward) = permissions.ide_forward.as_ref() {
         ensure!(
             forward.inner_port != 0,
-            "サンドボックス内の IDE のポートが 0 です (内部エラー)"
+            i18n::t!("The IDE port inside the sandbox is 0 (internal error)")
         );
-        ensure_linux_absolute_path(&forward.rendezvous_path, "IDE の待ち合わせソケット")?;
+        ensure_linux_absolute_path(
+            &forward.rendezvous_path,
+            i18n::tc!("wsl sandbox path", "IDE rendezvous socket"),
+        )?;
     }
 
     // Mapping failures are bad requests (a path that doesn't exist or has a
@@ -821,9 +856,9 @@ pub async fn wrap_invocation<S: BuildHasher>(
     ensure_distro_registered(distro.as_deref())?;
     let wsl_exe = wsl_exe_path();
     if !wsl_exe.is_file() {
-        return Err(unavailable(
-            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default(),
-        ));
+        return Err(unavailable(|| {
+            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default()
+        }));
     }
     let helper = ensure_sandbox_helper(&wsl_exe, distro.as_deref()).await?;
 
@@ -1036,8 +1071,12 @@ fn split_resolved_paths(
         Some(
             resolved
                 .next()
-                .context("ターミナルの作業フォルダーの解決結果が見つかりません (内部エラー)")?
-                .context("ターミナルの作業フォルダーが解決できないまま渡されました (内部エラー)")?,
+                .context(i18n::t!(
+                    "The terminal's working folder was not resolved (internal error)"
+                ))?
+                .context(i18n::t!(
+                    "The terminal's working folder was passed on unresolved (internal error)"
+                ))?,
         )
     } else {
         None
@@ -1048,8 +1087,12 @@ fn split_resolved_paths(
         writable_paths.push(
             resolved
                 .next()
-                .context("書込を許可するパスの解決結果が見つかりません (内部エラー)")?
-                .context("書込を許可するパスが解決できないまま渡されました (内部エラー)")?,
+                .context(i18n::t!(
+                    "The writable path was not resolved (internal error)"
+                ))?
+                .context(i18n::t!(
+                    "The writable path was passed on unresolved (internal error)"
+                ))?,
         );
     }
 
@@ -1058,8 +1101,12 @@ fn split_resolved_paths(
         readable_paths.push(
             resolved
                 .next()
-                .context("読み取りを許可するパスの解決結果が見つかりません (内部エラー)")?
-                .context("読み取りを許可するパスが解決できないまま渡されました (内部エラー)")?,
+                .context(i18n::t!(
+                    "The readable path was not resolved (internal error)"
+                ))?
+                .context(i18n::t!(
+                    "The readable path was passed on unresolved (internal error)"
+                ))?,
         );
     }
 
@@ -1189,8 +1236,10 @@ async fn ensure_sandbox_helper(wsl_exe: &Path, distro: Option<&str>) -> Result<I
             }
         }
     };
-    if let Some(problem) = probe_problem(&probe, distro) {
-        return Err(unavailable(problem));
+    if probe_problem(&probe, distro).is_some() {
+        return Err(unavailable(|| {
+            probe_problem(&probe, distro).unwrap_or_default()
+        }));
     }
 
     cache
@@ -1206,9 +1255,11 @@ fn helper_override() -> Result<Option<String>> {
     };
     match helper.into_string() {
         Ok(helper) if helper.starts_with('/') => Ok(Some(helper)),
-        _ => Err(unavailable(
-            "環境変数 `ZED_WSL_SANDBOX_HELPER` には WSL 内の絶対パス (UTF-8) を指定してください。",
-        )),
+        _ => Err(unavailable(|| {
+            i18n::t!(
+                "Set the environment variable `ZED_WSL_SANDBOX_HELPER` to an absolute path inside WSL (UTF-8)."
+            )
+        })),
     }
 }
 
@@ -1301,13 +1352,15 @@ fn locate_helper_artifacts() -> Result<HelperArtifacts> {
                 .iter()
                 .map(|directory| format!("`{}`", directory.display()))
                 .collect::<Vec<_>>()
-                .join("、");
-            Err(unavailable(format!(
-                "サンドボックス用のヘルパー (`{}` と `{slirp_name}`) が Zed のインストール先に\
-                 見つかりません。Zed を再インストールしてください。開発ビルドでは \
-                 `script/build-dev.ps1` が `target\\debug` に用意します (探した場所: {searched})。",
-                server_names[0]
-            )))
+                .join(i18n::tc!("list separator", ", "));
+            Err(unavailable(|| {
+                i18n::t!(
+                    "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed \
+                 is installed. Reinstall Zed. In a development build, `script/build-dev.ps1` puts them \
+                 in `target\\debug` (searched: {searched}).",
+                    server_name = server_names[0]
+                )
+            }))
         }
     }
 }
@@ -1329,36 +1382,38 @@ impl StagedKind {
     /// The copy inside the distro, as the messages name it.
     fn noun(self) -> &'static str {
         match self {
-            Self::SandboxHelper => "サンドボックス用のヘルパー",
-            Self::AgentBinary => "エージェントの実行ファイル",
-            Self::RuntimeArchive => "エージェントの実行環境のアーカイブ",
+            Self::SandboxHelper => i18n::tc!("wsl sandbox file", "sandbox helper"),
+            Self::AgentBinary => i18n::tc!("wsl sandbox file", "agent executable"),
+            Self::RuntimeArchive => i18n::tc!("wsl sandbox file", "agent runtime archive"),
         }
     }
 
     /// The step of copying it, as the messages name it.
     fn copy_step(self) -> &'static str {
         match self {
-            Self::SandboxHelper => "サンドボックス用ヘルパーのコピー",
-            Self::AgentBinary => "エージェントの実行ファイルのコピー",
-            Self::RuntimeArchive => "エージェントの実行環境のコピー",
+            Self::SandboxHelper => i18n::tc!("wsl sandbox step", "copying the sandbox helper"),
+            Self::AgentBinary => i18n::tc!("wsl sandbox step", "copying the agent executable"),
+            Self::RuntimeArchive => i18n::tc!("wsl sandbox step", "copying the agent runtime"),
         }
     }
 
     /// The source file on the Windows side, as the messages name it.
     fn source_noun(self) -> &'static str {
         match self {
-            Self::SandboxHelper => "同梱のサンドボックス用ヘルパー",
-            Self::AgentBinary => "エージェントの実行ファイル",
-            Self::RuntimeArchive => "取得したエージェントの実行環境のアーカイブ",
+            Self::SandboxHelper => i18n::tc!("wsl sandbox file", "bundled sandbox helper"),
+            Self::AgentBinary => i18n::tc!("wsl sandbox file", "agent executable"),
+            Self::RuntimeArchive => {
+                i18n::tc!("wsl sandbox file", "downloaded agent runtime archive")
+            }
         }
     }
 
     /// What fixes a source file that cannot be read.
     fn source_fix(self) -> &'static str {
         match self {
-            Self::SandboxHelper => "Zed を再インストールしてください。",
-            Self::AgentBinary => "エージェントを取得し直してください。",
-            Self::RuntimeArchive => "取得し直してください。",
+            Self::SandboxHelper => i18n::t!("Reinstall Zed."),
+            Self::AgentBinary => i18n::t!("Download the agent again."),
+            Self::RuntimeArchive => i18n::t!("Download it again."),
         }
     }
 }
@@ -1372,12 +1427,14 @@ async fn file_sha256(path: &Path, kind: StagedKind) -> Result<String> {
     let cache = CACHE.get_or_init(Default::default);
 
     let unreadable = |error: std::io::Error| {
-        unavailable(format!(
-            "{} `{}` を読み取れませんでした ({error})。{}",
-            kind.source_noun(),
-            path.display(),
-            kind.source_fix()
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not read the {file} `{path}` ({error}). {fix}",
+                file = kind.source_noun(),
+                path = path.display(),
+                fix = kind.source_fix()
+            )
+        })
     };
     let metadata = smol::fs::metadata(path).await.map_err(unreadable)?;
     let key = (path.to_path_buf(), metadata.len(), metadata.modified().ok());
@@ -1427,11 +1484,12 @@ async fn installed_content_sha256(path: &Path, gzip: bool, file_digest: &str) ->
     }
 
     let file = smol::fs::File::open(path).await.map_err(|error| {
-        unavailable(format!(
-            "同梱のサンドボックス用ヘルパー `{}` を読み取れませんでした ({error})。\
-             Zed を再インストールしてください。",
-            path.display()
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not read the bundled sandbox helper `{path}` ({error}). Reinstall Zed.",
+                path = path.display()
+            )
+        })
     })?;
     let mut decoder = Box::pin(async_compression::futures::bufread::GzipDecoder::new(
         futures::io::BufReader::new(file),
@@ -1440,11 +1498,12 @@ async fn installed_content_sha256(path: &Path, gzip: bool, file_digest: &str) ->
     let mut buffer = vec![0; COPY_BUFFER_SIZE];
     loop {
         let read = decoder.read(&mut buffer).await.map_err(|error| {
-            unavailable(format!(
-                "同梱のサンドボックス用ヘルパー `{}` が壊れています ({error})。\
-                 Zed を再インストールしてください。",
-                path.display()
-            ))
+            unavailable(|| {
+                i18n::t!(
+                    "The bundled sandbox helper `{path}` is damaged ({error}). Reinstall Zed.",
+                    path = path.display()
+                )
+            })
         })?;
         if read == 0 {
             break;
@@ -1502,19 +1561,23 @@ async fn install_if_needed(
     match check_helper(wsl_exe, distro, key, digests).await? {
         HelperCheck::Ready(helper) => Ok((helper, true)),
         HelperCheck::Unverifiable => Err(unverifiable_helper(distro)),
-        HelperCheck::Missing => Err(unavailable(format!(
-            "サンドボックス用のヘルパーを{}に配置しましたが、確認できませんでした。もう一度実行してください。",
-            wsl_distro_label(distro)
-        ))),
+        HelperCheck::Missing => Err(unavailable(|| {
+            i18n::t!(
+                "The sandbox helper was installed in {distro}, but it could not be verified. Try again.",
+                distro = wsl_distro_label(distro)
+            )
+        })),
     }
 }
 
 fn unverifiable_helper(distro: Option<&str>) -> anyhow::Error {
-    unavailable(format!(
-        "{}に `sha256sum` がないため、サンドボックス用のヘルパーが置き換えられていないことを\
-         確認できません。coreutils をインストールしてから再試行してください。",
-        wsl_distro_label(distro)
-    ))
+    unavailable(|| {
+        i18n::t!(
+            "`sha256sum` is missing in {distro}, so it cannot be verified that the sandbox helper \
+         has not been replaced. Install coreutils and try again.",
+            distro = wsl_distro_label(distro)
+        )
+    })
 }
 
 async fn check_helper(
@@ -1537,22 +1600,26 @@ async fn check_helper(
             digests.server.as_str(),
             digests.slirp.as_str(),
         ],
-        "サンドボックス用ヘルパーの確認",
+        i18n::tc!("wsl sandbox step", "checking the sandbox helper"),
     )
     .await?;
     if !output.status.success() {
-        return Err(unavailable(format!(
-            "{}でサンドボックス用ヘルパーの状態を確認できませんでした{}。\
-             `wsl --update` を実行してから再試行してください。",
-            wsl_distro_label(distro),
-            command_failure_details(output.status.code(), &output.stderr)
-        )));
+        return Err(unavailable(|| {
+            i18n::t!(
+                "Could not check the sandbox helper in {distro}{details}. \
+             Run `wsl --update` and try again.",
+                distro = wsl_distro_label(distro),
+                details = command_failure_details(output.status.code(), &output.stderr)
+            )
+        }));
     }
     parse_check_output(&String::from_utf8_lossy(&output.stdout)).map_err(|error| {
-        unavailable(format!(
-            "{}でサンドボックス用ヘルパーの状態を確認できませんでした ({error:#})。",
-            wsl_distro_label(distro)
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not check the sandbox helper in {distro} ({error:#}).",
+                distro = wsl_distro_label(distro)
+            )
+        })
     })
 }
 
@@ -1662,7 +1729,13 @@ async fn install_helper(
             file.size.to_string(),
         ]);
     }
-    let output = run_wsl_command(wsl_exe, distro, &args, "サンドボックス用ヘルパーの配置").await?;
+    let output = run_wsl_command(
+        wsl_exe,
+        distro,
+        &args,
+        i18n::tc!("wsl sandbox step", "installing the sandbox helper"),
+    )
+    .await?;
     if !output.status.success() {
         discard_staged_files(
             wsl_exe,
@@ -1730,11 +1803,13 @@ async fn stage_file(
     } else {
         match (&sent, &report) {
             (Err(_), _) => None,
-            (Ok(_), Err(error)) => Some(unavailable(format!(
-                "{}を{}にコピーできませんでした ({error:#})。",
-                kind.noun(),
-                wsl_distro_label(distro)
-            ))),
+            (Ok(_), Err(error)) => Some(unavailable(|| {
+                i18n::t!(
+                    "Could not copy the {file} to {distro} ({error:#}).",
+                    file = kind.noun(),
+                    distro = wsl_distro_label(distro)
+                )
+            })),
             (Ok(sent), Ok(report)) => {
                 let intact = report.size == sent.size
                     && report
@@ -1742,14 +1817,14 @@ async fn stage_file(
                         .as_deref()
                         .is_none_or(|received| received == sent.sha256);
                 (!intact).then(|| {
-                    unavailable(format!(
-                        "{}にコピーした{} `{name}` が元のファイルと一致しませんでした \
-                         (送信 {} バイト、受信 {} バイト)。もう一度実行してください。改善しない場合は \
-                         WSL 内の空き容量を確認してください。",
-                        wsl_distro_label(distro),
-                        kind.noun(),
-                        sent.size,
-                        report.size
+                    unavailable(|| i18n::t!(
+                        "The {file} `{name}` copied to {distro} does not match the original \
+                         ({sent} bytes sent, {received} bytes received). Try again. If that does not \
+                         help, check the free space in WSL.",
+                        distro = wsl_distro_label(distro),
+                        file = kind.noun(),
+                        sent = sent.size,
+                        received = report.size
                     ))
                 })
             }
@@ -1786,12 +1861,14 @@ async fn send_file(
     kind: StagedKind,
 ) -> Result<SentFile> {
     let file = smol::fs::File::open(source).await.map_err(|error| {
-        unavailable(format!(
-            "{} `{}` を読み取れませんでした ({error})。{}",
-            kind.source_noun(),
-            source.display(),
-            kind.source_fix()
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not read the {file} `{path}` ({error}). {fix}",
+                file = kind.source_noun(),
+                path = source.display(),
+                fix = kind.source_fix()
+            )
+        })
     })?;
     let reader = futures::io::BufReader::new(file);
     if gzip {
@@ -1815,12 +1892,14 @@ async fn pump(
         // A read error here is the artifact itself (a truncated download, a
         // gzip checksum mismatch), so it names the file and the fix.
         let read = reader.read(&mut buffer).await.map_err(|error| {
-            unavailable(format!(
-                "{} `{}` が壊れています ({error})。{}",
-                kind.source_noun(),
-                source.display(),
-                kind.source_fix()
-            ))
+            unavailable(|| {
+                i18n::t!(
+                    "The {file} `{path}` is damaged ({error}). {fix}",
+                    file = kind.source_noun(),
+                    path = source.display(),
+                    fix = kind.source_fix()
+                )
+            })
         })?;
         if read == 0 {
             break;
@@ -1878,13 +1957,15 @@ fn copy_failure(
     output: &std::process::Output,
     kind: StagedKind,
 ) -> anyhow::Error {
-    unavailable(format!(
-        "{}を{}にコピーできませんでした{}。WSL 内の空き容量と、\
-         ホームディレクトリへの書き込み権限を確認してください。",
-        kind.noun(),
-        wsl_distro_label(distro),
-        command_failure_details(output.status.code(), &output.stderr)
-    ))
+    unavailable(|| {
+        i18n::t!(
+            "Could not copy the {file} to {distro}{details}. Check the free space in WSL and \
+         that the home directory is writable.",
+            file = kind.noun(),
+            distro = wsl_distro_label(distro),
+            details = command_failure_details(output.status.code(), &output.stderr)
+        )
+    })
 }
 
 // ===========================================================================
@@ -1903,9 +1984,9 @@ fn installed_wsl_exe() -> Result<PathBuf> {
     if wsl_exe.is_file() {
         Ok(wsl_exe)
     } else {
-        Err(unavailable(
-            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default(),
-        ))
+        Err(unavailable(|| {
+            registration_message(&DistroRegistration::NotInstalled).unwrap_or_default()
+        }))
     }
 }
 
@@ -1913,7 +1994,7 @@ fn installed_wsl_exe() -> Result<PathBuf> {
 fn ensure_linux_absolute_path(path: &str, description: &str) -> Result<()> {
     ensure!(
         path.starts_with('/') && !path.contains('\0'),
-        "{description}が Linux の絶対パスではありません (内部エラー): {path:?}"
+        i18n::t!("The {description} is not an absolute Linux path (internal error): {path:?}")
     );
     Ok(())
 }
@@ -2035,7 +2116,7 @@ pub async fn stage_agent_binary(
             staged.path.as_str(),
             staged.name.as_str(),
         ],
-        "エージェントの実行ファイルの配置",
+        i18n::tc!("wsl sandbox step", "installing the agent executable"),
     )
     .await?;
     if !output.status.success() {
@@ -2045,10 +2126,12 @@ pub async fn stage_agent_binary(
     match check_agent_binary(&wsl_exe, distro, name, &digest).await? {
         HelperCheck::Ready(path) => Ok(path),
         HelperCheck::Unverifiable => Err(unverifiable_agent_binary(distro)),
-        HelperCheck::Missing => Err(unavailable(format!(
-            "エージェントの実行ファイルを{}に配置しましたが、確認できませんでした。もう一度実行してください。",
-            wsl_distro_label(distro)
-        ))),
+        HelperCheck::Missing => Err(unavailable(|| {
+            i18n::t!(
+                "The agent executable was installed in {distro}, but it could not be verified. Try again.",
+                distro = wsl_distro_label(distro)
+            )
+        })),
     }
 }
 
@@ -2090,35 +2173,41 @@ async fn check_agent_binary(
             digest,
             name,
         ],
-        "エージェントの実行ファイルの確認",
+        i18n::tc!("wsl sandbox step", "checking the agent executable"),
     )
     .await?;
     if !output.status.success() {
-        return Err(unavailable(format!(
-            "{}でエージェントの実行ファイルを確認できませんでした{}。\
-             `wsl --update` を実行してから再試行してください。",
-            wsl_distro_label(distro),
-            command_failure_details(output.status.code(), &output.stderr)
-        )));
+        return Err(unavailable(|| {
+            i18n::t!(
+                "Could not check the agent executable in {distro}{details}. \
+             Run `wsl --update` and try again.",
+                distro = wsl_distro_label(distro),
+                details = command_failure_details(output.status.code(), &output.stderr)
+            )
+        }));
     }
     parse_check_result(
         &String::from_utf8_lossy(&output.stdout),
         AGENT_RESULT_PREFIX,
     )
     .map_err(|error| {
-        unavailable(format!(
-            "{}でエージェントの実行ファイルを確認できませんでした ({error:#})。",
-            wsl_distro_label(distro)
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not check the agent executable in {distro} ({error:#}).",
+                distro = wsl_distro_label(distro)
+            )
+        })
     })
 }
 
 fn unverifiable_agent_binary(distro: Option<&str>) -> anyhow::Error {
-    unavailable(format!(
-        "{}に `sha256sum` がないため、エージェントの実行ファイルが置き換えられていないことを\
-         確認できません。coreutils をインストールしてから再試行してください。",
-        wsl_distro_label(distro)
-    ))
+    unavailable(|| {
+        i18n::t!(
+            "`sha256sum` is missing in {distro}, so it cannot be verified that the agent executable \
+         has not been replaced. Install coreutils and try again.",
+            distro = wsl_distro_label(distro)
+        )
+    })
 }
 
 /// A bad request unless `name` is a plain file name: letters, digits, `.`,
@@ -2232,7 +2321,7 @@ pub async fn sweep_ide_rendezvous(distro: Option<&str>, prefix: &str) -> Result<
         &wsl_exe,
         distro,
         sweep_rendezvous_arguments(&root, prefix),
-        "IDE 連携の後始末",
+        i18n::tc!("wsl sandbox step", "cleaning up after the IDE integration"),
     )
     .await?;
     ensure!(
@@ -2305,7 +2394,7 @@ async fn query_distro_home(wsl_exe: &Path, distro: Option<&str>) -> Result<Strin
         wsl_exe,
         distro,
         ["--exec", "sh", "-c", HOME_SCRIPT],
-        "ホームディレクトリの確認",
+        i18n::tc!("wsl sandbox step", "checking the home directory"),
     )
     .await?;
     String::from_utf8_lossy(&output.stdout)
@@ -2315,11 +2404,13 @@ async fn query_distro_home(wsl_exe: &Path, distro: Option<&str>) -> Result<Strin
         .map(|home| home.trim_end_matches('/').to_string())
         .filter(|home| home.starts_with('/'))
         .ok_or_else(|| {
-            unavailable(format!(
-                "{}のホームディレクトリを確認できませんでした{}。",
-                wsl_distro_label(distro),
-                command_failure_details(output.status.code(), &output.stderr)
-            ))
+            unavailable(|| {
+                i18n::t!(
+                    "Could not find the home directory of {distro}{details}.",
+                    distro = wsl_distro_label(distro),
+                    details = command_failure_details(output.status.code(), &output.stderr)
+                )
+            })
         })
 }
 
@@ -2362,17 +2453,28 @@ pub async fn ide_bridge_invocation(
     lock: Option<(&str, &[u8])>,
     exclusive_directory: Option<&str>,
 ) -> Result<(PathBuf, Vec<String>, Vec<u8>)> {
-    ensure_linux_absolute_path(rendezvous_path, "IDE の待ち合わせソケット")?;
+    ensure_linux_absolute_path(
+        rendezvous_path,
+        i18n::tc!("wsl sandbox path", "IDE rendezvous socket"),
+    )?;
     if let Some((lock_file_path, lock_content)) = lock {
-        ensure_linux_absolute_path(lock_file_path, "IDE のロックファイル")?;
+        ensure_linux_absolute_path(
+            lock_file_path,
+            i18n::tc!("wsl sandbox path", "IDE lock file"),
+        )?;
         ensure!(
             lock_content.len() <= crate::MAX_IDE_LOCK_CONTENT,
-            "IDE のロックファイルの中身が {} バイトを超えています (内部エラー)",
-            crate::MAX_IDE_LOCK_CONTENT
+            i18n::t!(
+                "The IDE lock file is larger than {limit} bytes (internal error)",
+                limit = crate::MAX_IDE_LOCK_CONTENT
+            )
         );
     }
     if let Some(directory) = exclusive_directory {
-        ensure_linux_absolute_path(directory, "IDE ブリッジの占有フォルダー")?;
+        ensure_linux_absolute_path(
+            directory,
+            i18n::tc!("wsl sandbox path", "IDE bridge's own folder"),
+        )?;
     }
     ensure_distro_registered(distro)?;
     let wsl_exe = installed_wsl_exe()?;
@@ -2456,7 +2558,8 @@ pub async fn start_ide_bridge(
     use crate::ide_bridge::{BridgeHost, wait_for_ide_bridge_ready};
     use smol::process::windows::CommandExt as _;
 
-    const PREAMBLE_FAILED: &str = "IDE 連携の中継に接続情報を渡せませんでした";
+    const PREAMBLE_FAILED: &str =
+        i18n::msg!("Could not pass the connection details to the IDE integration relay");
 
     // ADR-F49 (new decision): taken before the process is started, and given
     // back by every path out of here that does not return the bridge.
@@ -2465,11 +2568,11 @@ pub async fn start_ide_bridge(
             "refusing an IDE bridge: {} are already running",
             crate::MAX_IDE_BRIDGES
         );
-        bail!(
-            "IDE 連携の中継がすでに {} 本動いているため、これ以上は起動できません。\
-             使っていないエージェントのスレッドやターミナルを閉じてからやり直してください。",
-            crate::MAX_IDE_BRIDGES
-        );
+        bail!(i18n::t!(
+            "{count} IDE integration relays are already running, so no more can be started. \
+             Close the agent threads and terminals you are not using and try again.",
+            count = crate::MAX_IDE_BRIDGES
+        ));
     };
 
     let mut command = Command::new(program);
@@ -2484,16 +2587,19 @@ pub async fn start_ide_bridge(
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .creation_flags(CREATE_NO_WINDOW);
-    let mut child = command
-        .spawn()
-        .context("IDE 連携の中継 (wsl.exe) を起動できませんでした")?;
+    let mut child = command.spawn().context(i18n::t!(
+        "Could not start the IDE integration relay (wsl.exe)"
+    ))?;
     let (Some(mut stdin), Some(stdout), Some(stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())
     else {
         bail!("bug: the IDE bridge's standard I/O is not piped");
     };
-    stdin.write_all(preamble).await.context(PREAMBLE_FAILED)?;
-    stdin.flush().await.context(PREAMBLE_FAILED)?;
+    stdin
+        .write_all(preamble)
+        .await
+        .context(i18n::tr(PREAMBLE_FAILED))?;
+    stdin.flush().await.context(i18n::tr(PREAMBLE_FAILED))?;
 
     let log = wait_for_ide_bridge_ready(stderr, BridgeHost::WslDistro, ready_timeout).await?;
     Ok(IdeBridge {
@@ -2530,15 +2636,22 @@ async fn probe_helper(
 ) -> Result<HelperProbe> {
     let mut args = helper_invocation(helper);
     args.push(crate::WSL_SANDBOX_PROBE_FLAG.to_string());
-    let output =
-        run_wsl_command(wsl_exe, distro, &args, "サンドボックス用ヘルパーの動作確認").await?;
+    let output = run_wsl_command(
+        wsl_exe,
+        distro,
+        &args,
+        i18n::tc!("wsl sandbox step", "testing the sandbox helper"),
+    )
+    .await?;
     parse_helper_probe(&String::from_utf8_lossy(&output.stdout)).map_err(|error| {
-        unavailable(format!(
-            "{}でサンドボックス用のヘルパーを実行できませんでした{} ({error:#})。\
-             `wsl --update` で WSL を更新してから再試行してください。",
-            wsl_distro_label(distro),
-            command_failure_details(output.status.code(), &output.stderr)
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not run the sandbox helper in {distro}{details} ({error:#}). \
+             Update WSL with `wsl --update` and try again.",
+                distro = wsl_distro_label(distro),
+                details = command_failure_details(output.status.code(), &output.stderr)
+            )
+        })
     })
 }
 
@@ -2573,18 +2686,18 @@ fn parse_helper_probe(stdout: &str) -> Result<HelperProbe> {
 
 fn probe_problem(probe: &HelperProbe, distro: Option<&str>) -> Option<String> {
     if let Err(reason) = &probe.namespaces {
-        return Some(format!(
-            "{}でユーザー名前空間を作成できないため、サンドボックスを作れません ({reason})。\
-             `wsl --update` で WSL を更新し、`wsl --shutdown` で WSL を再起動してから再試行してください \
-             (WSL 2 が必要です)。",
-            wsl_distro_label(distro)
+        return Some(i18n::t!(
+            "The sandbox cannot be created because {distro} cannot create user namespaces ({reason}). \
+             Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again \
+             (WSL 2 is required).",
+            distro = wsl_distro_label(distro)
         ));
     }
     if probe.landlock_abi < 1 {
-        return Some(format!(
-            "{}のカーネルが Landlock に対応していないため、サンドボックスを作れません。\
-             `wsl --update` で WSL を更新し、`wsl --shutdown` で WSL を再起動してから再試行してください。",
-            wsl_distro_label(distro)
+        return Some(i18n::t!(
+            "The sandbox cannot be created because the kernel of {distro} does not support Landlock. \
+             Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again.",
+            distro = wsl_distro_label(distro)
         ));
     }
     None
@@ -2717,21 +2830,31 @@ async fn resolve_uncached_paths(
     args.extend(path_resolution_args(
         mappings.iter().map(|mapping| &mapping.0),
     ));
-    let output = run_wsl_command(wsl_exe, distro, &args, "パスの解決").await?;
+    let output = run_wsl_command(
+        wsl_exe,
+        distro,
+        &args,
+        i18n::tc!("wsl sandbox step", "resolving paths"),
+    )
+    .await?;
     if !output.status.success() {
-        return Err(unavailable(format!(
-            "{}でパスを解決できませんでした{}。`wsl --update` を実行してから再試行してください。",
-            wsl_distro_label(distro),
-            command_failure_details(output.status.code(), &output.stderr)
-        )));
+        return Err(unavailable(|| {
+            i18n::t!(
+                "Could not resolve the paths in {distro}{details}. Run `wsl --update` and try again.",
+                distro = wsl_distro_label(distro),
+                details = command_failure_details(output.status.code(), &output.stderr)
+            )
+        }));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let resolved = parse_path_resolution_output(&stdout, mappings.len()).map_err(|error| {
-        unavailable(format!(
-            "{}でパスを解決できませんでした ({error:#})。",
-            wsl_distro_label(distro)
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not resolve the paths in {distro} ({error:#}).",
+                distro = wsl_distro_label(distro)
+            )
+        })
     })?;
 
     mappings
@@ -2872,23 +2995,25 @@ async fn run_wsl_command(
 }
 
 fn wsl_start_failure(description: &str, error: &std::io::Error) -> anyhow::Error {
-    unavailable(format!(
-        "{description}のために WSL を起動できませんでした ({error})。`wsl --update` を実行するか、\
-         Windows を再起動してから再試行してください。"
-    ))
+    unavailable(|| {
+        i18n::t!(
+            "Could not start WSL for {description} ({error}). Run `wsl --update` or restart Windows, \
+         then try again."
+        )
+    })
 }
 
 fn command_failure_details(exit_code: Option<i32>, stderr: &[u8]) -> String {
     let stderr = decode_wsl_text(stderr);
     let stderr = stderr.trim();
     let exit_status = match exit_code {
-        Some(code) => format!("終了コード {code}"),
-        None => "シグナルで終了".to_string(),
+        Some(code) => i18n::t!("exit code {code}"),
+        None => i18n::t!("ended by a signal").to_string(),
     };
     if stderr.is_empty() {
         format!(" ({exit_status})")
     } else {
-        format!(" ({exit_status}、エラー出力: {stderr})")
+        format!(" ({})", i18n::t!("{exit_status}, error output: {stderr}"))
     }
 }
 
@@ -2920,8 +3045,8 @@ fn decode_wsl_text(bytes: &[u8]) -> String {
 
 fn wsl_distro_label(distro: Option<&str>) -> String {
     match distro {
-        Some(distro) => format!("WSL ディストリビューション `{distro}`"),
-        None => "既定の WSL ディストリビューション".to_string(),
+        Some(distro) => i18n::t!("the WSL distro `{distro}`"),
+        None => i18n::t!("the default WSL distro").to_string(),
     }
 }
 
@@ -3396,7 +3521,13 @@ impl<'a> WslRuntime<'a> {
         if args.len() == 4 {
             return;
         }
-        match self.run(&args, "コピー途中のファイルの削除").await {
+        match self
+            .run(
+                &args,
+                i18n::tc!("wsl sandbox step", "removing a partly copied file"),
+            )
+            .await
+        {
             Ok(output) if output.status.success() => {}
             Ok(output) => log::warn!(
                 "could not remove a partial WSL sandbox helper copy{}",
@@ -3634,7 +3765,9 @@ fn unique_suffix() -> String {
 fn ensure_safe_relative_path(relative: &str, description: &str) -> Result<()> {
     ensure!(
         !relative.is_empty() && relative.len() <= 200 && !relative.starts_with('/'),
-        "{description}がデータディレクトリ配下の相対パスではありません (内部エラー): {relative:?}"
+        i18n::t!(
+            "The {description} is not a relative path below the data directory (internal error): {relative:?}"
+        )
     );
     for segment in relative.split('/') {
         ensure!(
@@ -3644,7 +3777,9 @@ fn ensure_safe_relative_path(relative: &str, description: &str) -> Result<()> {
                 && segment
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')),
-            "{description}に使えない要素が含まれています (内部エラー): {relative:?} の {segment:?}"
+            i18n::t!(
+                "The {description} contains a component that cannot be used (internal error): {segment:?} in {relative:?}"
+            )
         );
     }
     Ok(())
@@ -3657,7 +3792,7 @@ fn ensure_safe_relative_path(relative: &str, description: &str) -> Result<()> {
 fn linux_path_segments(path: &str, description: &str) -> Result<Vec<String>> {
     ensure!(
         !path.is_empty() && !path.starts_with('/') && !path.contains('\0'),
-        "{description}が相対パスではありません (内部エラー): {path:?}"
+        i18n::t!("The {description} is not a relative path (internal error): {path:?}")
     );
     let mut segments = Vec::new();
     for segment in path.split('/') {
@@ -3666,13 +3801,13 @@ fn linux_path_segments(path: &str, description: &str) -> Result<Vec<String>> {
         }
         ensure!(
             segment != "..",
-            "{description}がパッケージの外を指しています (内部エラー): {path:?}"
+            i18n::t!("The {description} points outside the package (internal error): {path:?}")
         );
         segments.push(segment.to_string());
     }
     ensure!(
         !segments.is_empty(),
-        "{description}が何も指していません (内部エラー): {path:?}"
+        i18n::t!("The {description} points to nothing (internal error): {path:?}")
     );
     Ok(segments)
 }
@@ -3792,7 +3927,7 @@ async fn runtime_data_directory(invoker: &dyn WslInvoker, distro: Option<&str>) 
                 LINUX_DEFAULT_DATA_HOME_RELATIVE,
                 LINUX_APP_DIRECTORY_NAME,
             ],
-            "Zed のデータフォルダーの確認",
+            i18n::tc!("wsl sandbox step", "checking Zed's data folder"),
         )
         .await?;
     let directory = parse_prefixed_line(
@@ -3802,11 +3937,13 @@ async fn runtime_data_directory(invoker: &dyn WslInvoker, distro: Option<&str>) 
     .map(|directory| directory.trim_end_matches('/').to_string())
     .filter(|directory| directory.starts_with('/'))
     .ok_or_else(|| {
-        unavailable(format!(
-            "{}で Zed のデータフォルダーを確認できませんでした{}。",
-            runtime.label(),
-            command_failure_details(output.status.code(), &output.stderr)
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not find Zed's data folder in {distro}{details}.",
+                distro = runtime.label(),
+                details = command_failure_details(output.status.code(), &output.stderr)
+            )
+        })
     })?;
     runtime.memo().remember_data_directory(distro, &directory);
     Ok(directory)
@@ -3828,7 +3965,7 @@ async fn machine_architecture(invoker: &dyn WslInvoker, distro: Option<&str>) ->
     let output = runtime
         .run(
             ["--exec", "sh", "-c", ARCHITECTURE_SCRIPT],
-            "WSL のアーキテクチャの確認",
+            i18n::tc!("wsl sandbox step", "checking the WSL architecture"),
         )
         .await?;
     let architecture = parse_prefixed_line(
@@ -3843,11 +3980,13 @@ async fn machine_architecture(invoker: &dyn WslInvoker, distro: Option<&str>) ->
                 .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
     })
     .ok_or_else(|| {
-        unavailable(format!(
-            "{}のアーキテクチャを確認できませんでした{}。",
-            runtime.label(),
-            command_failure_details(output.status.code(), &output.stderr)
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not find the architecture of {distro}{details}.",
+                distro = runtime.label(),
+                details = command_failure_details(output.status.code(), &output.stderr)
+            )
+        })
     })?;
     runtime.memo().remember_architecture(distro, &architecture);
     Ok(architecture)
@@ -3906,14 +4045,16 @@ async fn stage_runtime_archive(
     kind: WslArchiveKind,
     strip_top_level_directory: bool,
 ) -> Result<String> {
-    ensure_safe_relative_path(destination_relative_to_data_dir, "ランタイムの配置先")?;
+    ensure_safe_relative_path(
+        destination_relative_to_data_dir,
+        i18n::tc!("wsl sandbox path", "runtime destination"),
+    )?;
     let digest = normalized_sha256(expected_sha256)?;
     let Some(mode) = kind.script_mode() else {
-        bail!(
-            "zip 形式の配布物は WSL のサンドボックスでは展開できません \
-             (ディストリビューションに `unzip` がないため)。tar.gz などの形式の \
-             Linux 向け配布物を指定してください。"
-        );
+        bail!(i18n::t!(
+            "A zip archive cannot be extracted in the WSL sandbox (the distro has no `unzip`). \
+             Specify a Linux archive in a format such as tar.gz."
+        ));
     };
     let runtime = WslRuntime::open(invoker, distro)?;
     let data_directory = runtime_data_directory(invoker, distro).await?;
@@ -3972,7 +4113,7 @@ async fn stage_runtime_archive(
                 if strip_top_level_directory { "1" } else { "0" },
                 suffix.as_str(),
             ],
-            "エージェントの実行環境の展開",
+            i18n::tc!("wsl sandbox step", "extracting the agent runtime"),
         )
         .await?;
     if !output.status.success() {
@@ -3981,17 +4122,18 @@ async fn stage_runtime_archive(
             distro,
             &output,
             ARCHIVE_RESULT_PREFIX,
-            "エージェントの実行環境を展開できませんでした",
+            i18n::t!("Could not extract the agent runtime"),
         ));
     }
 
     match check_wsl_runtime(&runtime, &destination, Some(&digest)).await? {
         HelperCheck::Ready(path) => Ok(path),
-        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(format!(
-            "エージェントの実行環境を{}に展開しましたが、確認できませんでした。\
-             もう一度実行してください。",
-            runtime.label()
-        ))),
+        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(|| {
+            i18n::t!(
+                "The agent runtime was extracted in {distro}, but it could not be verified. Try again.",
+                distro = runtime.label()
+            )
+        })),
     }
 }
 
@@ -4016,25 +4158,29 @@ async fn check_wsl_runtime(
                 marker.unwrap_or_default(),
                 if marker.is_some() { "exact" } else { "any" },
             ],
-            "エージェントの実行環境の確認",
+            i18n::tc!("wsl sandbox step", "checking the agent runtime"),
         )
         .await?;
     if !output.status.success() {
-        return Err(unavailable(format!(
-            "{}でエージェントの実行環境を確認できませんでした{}。",
-            runtime.label(),
-            command_failure_details(output.status.code(), &output.stderr)
-        )));
+        return Err(unavailable(|| {
+            i18n::t!(
+                "Could not check the agent runtime in {distro}{details}.",
+                distro = runtime.label(),
+                details = command_failure_details(output.status.code(), &output.stderr)
+            )
+        }));
     }
     parse_check_result(
         &String::from_utf8_lossy(&output.stdout),
         ARCHIVE_RESULT_PREFIX,
     )
     .map_err(|error| {
-        unavailable(format!(
-            "{}でエージェントの実行環境を確認できませんでした ({error:#})。",
-            runtime.label()
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not check the agent runtime in {distro} ({error:#}).",
+                distro = runtime.label()
+            )
+        })
     })
 }
 
@@ -4050,11 +4196,13 @@ fn runtime_script_failure(
         .and_then(|line| line.strip_prefix("error "))
         .map(|reason| format!(" ({reason})"))
         .unwrap_or_default();
-    unavailable(format!(
-        "{}で{what}{reason}{}。",
-        wsl_distro_label(distro),
-        command_failure_details(output.status.code(), &output.stderr)
-    ))
+    unavailable(|| {
+        i18n::t!(
+            "{what} in {distro}{reason}{details}.",
+            distro = wsl_distro_label(distro),
+            details = command_failure_details(output.status.code(), &output.stderr)
+        )
+    })
 }
 
 /// ADR-F49 決定 22: makes the directory an npm install is put together in —
@@ -4237,9 +4385,15 @@ async fn install_npm_package(
     allowed_hosts: Vec<String>,
     editor_network_allowlist: Option<Vec<String>>,
 ) -> Result<String> {
-    ensure_linux_absolute_path(node_directory, "Node.js のインストール先")?;
+    ensure_linux_absolute_path(
+        node_directory,
+        i18n::tc!("wsl sandbox path", "Node.js installation folder"),
+    )?;
     ensure_npm_package_spec(package_spec)?;
-    ensure_safe_relative_path(install_relative_to_data_dir, "npm パッケージの配置先")?;
+    ensure_safe_relative_path(
+        install_relative_to_data_dir,
+        i18n::tc!("wsl sandbox path", "npm package destination"),
+    )?;
     let runtime = WslRuntime::open(invoker, distro)?;
     let data_directory = runtime_data_directory(invoker, distro).await?;
     let destination = format!("{data_directory}/{install_relative_to_data_dir}");
@@ -4280,7 +4434,7 @@ async fn install_npm_package(
                 suffix.as_str(),
                 package_spec,
             ],
-            "npm パッケージの配置",
+            i18n::tc!("wsl sandbox step", "installing the npm package"),
         )
         .await?;
     if !output.status.success() {
@@ -4289,16 +4443,18 @@ async fn install_npm_package(
             distro,
             &output,
             NPM_RESULT_PREFIX,
-            "npm パッケージを配置できませんでした",
+            i18n::t!("Could not install the npm package"),
         ));
     }
 
     match check_wsl_runtime(&runtime, &destination, Some(package_spec)).await? {
         HelperCheck::Ready(path) => Ok(path),
-        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(format!(
-            "npm パッケージを{}に配置しましたが、確認できませんでした。もう一度実行してください。",
-            runtime.label()
-        ))),
+        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(|| {
+            i18n::t!(
+                "The npm package was installed in {distro}, but it could not be verified. Try again.",
+                distro = runtime.label()
+            )
+        })),
     }
 }
 
@@ -4314,7 +4470,7 @@ async fn create_npm_staging_directory(runtime: &WslRuntime<'_>, suffix: &str) ->
                 WSL_STAGING_HOME_RELATIVE,
                 suffix,
             ],
-            "npm の作業フォルダーの作成",
+            i18n::tc!("wsl sandbox step", "creating the npm working folder"),
         )
         .await?;
     if !output.status.success() {
@@ -4322,7 +4478,7 @@ async fn create_npm_staging_directory(runtime: &WslRuntime<'_>, suffix: &str) ->
             runtime.distro,
             &output,
             NPM_RESULT_PREFIX,
-            "npm の作業フォルダーを作成できませんでした",
+            i18n::t!("Could not create the npm working folder"),
         ));
     }
     let staging = parse_prefixed_line(&String::from_utf8_lossy(&output.stdout), NPM_RESULT_PREFIX)
@@ -4330,10 +4486,12 @@ async fn create_npm_staging_directory(runtime: &WslRuntime<'_>, suffix: &str) ->
         .map(str::to_string)
         .filter(|path| path.starts_with('/'))
         .ok_or_else(|| {
-            unavailable(format!(
-                "{}で npm の作業フォルダーを作成できませんでした。",
-                runtime.label()
-            ))
+            unavailable(|| {
+                i18n::t!(
+                    "Could not create the npm working folder in {distro}.",
+                    distro = runtime.label()
+                )
+            })
         })?;
     Ok(staging)
 }
@@ -4349,11 +4507,14 @@ async fn run_sandboxed_npm_install(
 ) -> Result<()> {
     let mut sandbox = crate::Sandbox::new(crate::SandboxPolicy {
         fs: crate::SandboxFsPolicy::Restricted {
-            writable_paths: vec![capture_wsl_location(staging, "npm の作業フォルダー")?],
+            writable_paths: vec![capture_wsl_location(
+                staging,
+                i18n::tc!("wsl sandbox path", "npm working folder"),
+            )?],
             protected_paths: Vec::new(),
             readable_paths: vec![capture_wsl_location(
                 node_directory,
-                "Node.js のインストール先",
+                i18n::tc!("wsl sandbox path", "Node.js installation folder"),
             )?],
         },
         network: crate::SandboxNetPolicy::Restricted {
@@ -4411,16 +4572,20 @@ async fn run_sandboxed_npm_install(
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .creation_flags(CREATE_NO_WINDOW);
-        child
-            .output()
-            .await
-            .map_err(|error| wsl_start_failure("サンドボックスの中での npm install", &error))?
+        child.output().await.map_err(|error| {
+            wsl_start_failure(
+                i18n::tc!("wsl sandbox step", "running npm install in the sandbox"),
+                &error,
+            )
+        })?
     };
     drop(sandbox);
     ensure!(
         output.status.success(),
-        "サンドボックスの中で `npm install {package_spec}` を実行できませんでした{}",
-        npm_failure_details(&output)
+        i18n::t!(
+            "Could not run `npm install {package_spec}` in the sandbox{details}",
+            details = npm_failure_details(&output)
+        )
     );
     Ok(())
 }
@@ -4434,8 +4599,8 @@ fn npm_failure_details(output: &std::process::Output) -> String {
     }
     let detail = detail.trim();
     let exit_status = match output.status.code() {
-        Some(code) => format!("終了コード {code}"),
-        None => "シグナルで終了".to_string(),
+        Some(code) => i18n::t!("exit code {code}"),
+        None => i18n::t!("ended by a signal").to_string(),
     };
     if detail.is_empty() {
         return format!(" ({exit_status})");
@@ -4446,7 +4611,7 @@ fn npm_failure_details(output: &std::process::Output) -> String {
     } else {
         detail.to_string()
     };
-    format!(" ({exit_status}、npm の出力: {tail})")
+    format!(" ({})", i18n::t!("{exit_status}, npm output: {tail}"))
 }
 
 /// A write grant or a read grant on a path inside the distro, for a command
@@ -4454,8 +4619,9 @@ fn npm_failure_details(output: &std::process::Output) -> String {
 /// and checked inside WSL when the command is wrapped.
 fn capture_wsl_location(path: &str, description: &str) -> Result<crate::HostFilesystemLocation> {
     ensure_linux_absolute_path(path, description)?;
-    crate::HostFilesystemLocation::capture(Path::new(path))
-        .with_context(|| format!("{description}のパスをサンドボックスへ渡せませんでした: {path:?}"))
+    crate::HostFilesystemLocation::capture(Path::new(path)).with_context(|| {
+        i18n::t!("Could not pass the path of the {description} to the sandbox: {path:?}")
+    })
 }
 
 /// Best effort: a leftover staging directory is also removed by the next
@@ -4467,7 +4633,7 @@ async fn remove_wsl_directory(runtime: &WslRuntime<'_>, directory: &str) {
     match runtime
         .run(
             ["--exec", "rm", "-rf", "--", directory],
-            "npm の作業フォルダーの削除",
+            i18n::tc!("wsl sandbox step", "removing the npm working folder"),
         )
         .await
     {
@@ -4504,7 +4670,10 @@ async fn read_npm_package_json(
     install_directory: &str,
     package_name: &str,
 ) -> Result<Option<String>> {
-    ensure_linux_absolute_path(install_directory, "npm パッケージのインストール先")?;
+    ensure_linux_absolute_path(
+        install_directory,
+        i18n::tc!("wsl sandbox path", "npm package installation folder"),
+    )?;
     ensure_npm_package_name(package_name)?;
     let runtime = WslRuntime::open(invoker, distro)?;
 
@@ -4517,15 +4686,23 @@ async fn read_npm_package_json(
         install_directory.to_string(),
         "node_modules".to_string(),
     ];
-    args.extend(linux_path_segments(package_name, "npm パッケージ名")?);
+    args.extend(linux_path_segments(
+        package_name,
+        i18n::tc!("wsl sandbox path", "npm package name"),
+    )?);
     args.push("package.json".to_string());
-    let output = runtime.run(&args, "npm パッケージの確認").await?;
+    let output = runtime
+        .run(
+            &args,
+            i18n::tc!("wsl sandbox step", "checking the npm package"),
+        )
+        .await?;
     if !output.status.success() {
         return Err(runtime_script_failure(
             distro,
             &output,
             NPM_RESULT_PREFIX,
-            "npm パッケージを確認できませんでした",
+            i18n::t!("Could not check the npm package"),
         ));
     }
     ensure!(
@@ -4579,7 +4756,10 @@ async fn npm_package_executable(
     package_name: &str,
     executable_relative: &str,
 ) -> Result<String> {
-    ensure_linux_absolute_path(install_directory, "npm パッケージのインストール先")?;
+    ensure_linux_absolute_path(
+        install_directory,
+        i18n::tc!("wsl sandbox path", "npm package installation folder"),
+    )?;
     ensure_npm_package_name(package_name)?;
     let runtime = WslRuntime::open(invoker, distro)?;
 
@@ -4592,20 +4772,26 @@ async fn npm_package_executable(
         install_directory.to_string(),
         "node_modules".to_string(),
     ];
-    args.extend(linux_path_segments(package_name, "npm パッケージ名")?);
+    args.extend(linux_path_segments(
+        package_name,
+        i18n::tc!("wsl sandbox path", "npm package name"),
+    )?);
     args.extend(linux_path_segments(
         executable_relative,
-        "npm パッケージの実行ファイル",
+        i18n::tc!("wsl sandbox path", "npm package executable"),
     )?);
     let output = runtime
-        .run(&args, "npm パッケージの実行ファイルの確認")
+        .run(
+            &args,
+            i18n::tc!("wsl sandbox step", "checking the npm package executable"),
+        )
         .await?;
     if !output.status.success() {
         return Err(runtime_script_failure(
             distro,
             &output,
             NPM_RESULT_PREFIX,
-            "npm パッケージの実行ファイルを確認できませんでした",
+            i18n::t!("Could not check the npm package executable"),
         ));
     }
     parse_prefixed_line(&String::from_utf8_lossy(&output.stdout), NPM_RESULT_PREFIX)
@@ -4613,10 +4799,12 @@ async fn npm_package_executable(
         .map(str::to_string)
         .filter(|path| path.starts_with('/'))
         .ok_or_else(|| {
-            unavailable(format!(
-                "{}で npm パッケージの実行ファイルを確認できませんでした。",
-                runtime.label()
-            ))
+            unavailable(|| {
+                i18n::t!(
+                    "Could not check the npm package executable in {distro}.",
+                    distro = runtime.label()
+                )
+            })
         })
 }
 
@@ -4725,15 +4913,21 @@ pub async fn ensure_wsl_agent_config_dir(
             && project_key
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
-        "プロジェクトの識別子が不正です (内部エラー): {project_key:?}"
+        i18n::t!("The project identifier is invalid (internal error): {project_key:?}")
     );
-    ensure_safe_relative_path(folder_name, "エージェントのフォルダー名")?;
+    ensure_safe_relative_path(
+        folder_name,
+        i18n::tc!("wsl sandbox path", "agent folder name"),
+    )?;
     ensure!(
         !folder_name.contains('/'),
-        "エージェントのフォルダー名が単一の名前ではありません (内部エラー): {folder_name:?}"
+        i18n::t!("The agent folder name is not a single name (internal error): {folder_name:?}")
     );
     for directory in directories_below {
-        ensure_safe_relative_path(directory, "エージェントのフォルダー内の項目")?;
+        ensure_safe_relative_path(
+            directory,
+            i18n::tc!("wsl sandbox path", "entry in the agent folder"),
+        )?;
     }
     ensure_distro_registered(distro)?;
     let wsl_exe = installed_wsl_exe()?;
@@ -4764,7 +4958,7 @@ pub async fn ensure_wsl_agent_config_dir(
         &wsl_exe,
         distro,
         &args,
-        "エージェントの設定フォルダーの作成",
+        i18n::tc!("wsl sandbox step", "creating the agent settings folder"),
     )
     .await?;
     if !output.status.success() {
@@ -4772,7 +4966,7 @@ pub async fn ensure_wsl_agent_config_dir(
             distro,
             &output,
             CONFIG_RESULT_PREFIX,
-            "エージェントの設定フォルダーを作成できませんでした",
+            i18n::t!("Could not create the agent settings folder"),
         ));
     }
     parse_prefixed_line(
@@ -4783,10 +4977,12 @@ pub async fn ensure_wsl_agent_config_dir(
     .map(str::to_string)
     .filter(|path| path.starts_with('/'))
     .ok_or_else(|| {
-        unavailable(format!(
-            "{}でエージェントの設定フォルダーを作成できませんでした。",
-            wsl_distro_label(distro)
-        ))
+        unavailable(|| {
+            i18n::t!(
+                "Could not create the agent settings folder in {distro}.",
+                distro = wsl_distro_label(distro)
+            )
+        })
     })
 }
 
@@ -4871,7 +5067,10 @@ async fn staged_runtime(
     destination_relative_to_data_dir: &str,
     marker: Option<&str>,
 ) -> Result<Option<String>> {
-    ensure_safe_relative_path(destination_relative_to_data_dir, "ランタイムの配置先")?;
+    ensure_safe_relative_path(
+        destination_relative_to_data_dir,
+        i18n::tc!("wsl sandbox path", "runtime destination"),
+    )?;
     let runtime = WslRuntime::open(invoker, distro)?;
     let data_directory = runtime_data_directory(invoker, distro).await?;
     let destination = format!("{data_directory}/{destination_relative_to_data_dir}");
@@ -4920,7 +5119,10 @@ async fn stage_runtime_file(
     expected_sha256: &str,
     executable: bool,
 ) -> Result<String> {
-    ensure_safe_relative_path(destination_relative_to_data_dir, "ランタイムの配置先")?;
+    ensure_safe_relative_path(
+        destination_relative_to_data_dir,
+        i18n::tc!("wsl sandbox path", "runtime destination"),
+    )?;
     ensure_agent_binary_name(file_name)?;
     let digest = normalized_sha256(expected_sha256)?;
     let runtime = WslRuntime::open(invoker, distro)?;
@@ -4976,7 +5178,7 @@ async fn stage_runtime_file(
                 if executable { "1" } else { "0" },
                 suffix.as_str(),
             ],
-            "エージェントの実行環境の配置",
+            i18n::tc!("wsl sandbox step", "installing the agent runtime"),
         )
         .await?;
     if !output.status.success() {
@@ -4985,17 +5187,18 @@ async fn stage_runtime_file(
             distro,
             &output,
             ARCHIVE_RESULT_PREFIX,
-            "エージェントの実行環境を配置できませんでした",
+            i18n::t!("Could not install the agent runtime"),
         ));
     }
 
     match check_wsl_runtime(&runtime, &destination, Some(&digest)).await? {
         HelperCheck::Ready(path) => Ok(format!("{path}/{file_name}")),
-        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(format!(
-            "エージェントの実行環境を{}に配置しましたが、確認できませんでした。\
-             もう一度実行してください。",
-            runtime.label()
-        ))),
+        HelperCheck::Missing | HelperCheck::Unverifiable => Err(unavailable(|| {
+            i18n::t!(
+                "The agent runtime was installed in {distro}, but it could not be verified. Try again.",
+                distro = runtime.label()
+            )
+        })),
     }
 }
 
@@ -5017,7 +5220,10 @@ async fn runtime_executable(
     runtime_directory: &str,
     relative: &str,
 ) -> Result<String> {
-    ensure_linux_absolute_path(runtime_directory, "ランタイムのフォルダー")?;
+    ensure_linux_absolute_path(
+        runtime_directory,
+        i18n::tc!("wsl sandbox path", "runtime folder"),
+    )?;
     let runtime = WslRuntime::open(invoker, distro)?;
     let mut args = vec![
         "--exec".to_string(),
@@ -5027,16 +5233,22 @@ async fn runtime_executable(
         "zed-wsl-runtime-executable".to_string(),
         runtime_directory.to_string(),
     ];
-    args.extend(linux_path_segments(relative, "ランタイムの実行ファイル")?);
+    args.extend(linux_path_segments(
+        relative,
+        i18n::tc!("wsl sandbox path", "runtime executable"),
+    )?);
     let output = runtime
-        .run(&args, "エージェントの実行ファイルの確認")
+        .run(
+            &args,
+            i18n::tc!("wsl sandbox step", "checking the agent executable"),
+        )
         .await?;
     if !output.status.success() {
         return Err(runtime_script_failure(
             distro,
             &output,
             NPM_RESULT_PREFIX,
-            "エージェントの実行ファイルを確認できませんでした",
+            i18n::t!("Could not check the agent executable"),
         ));
     }
     parse_prefixed_line(&String::from_utf8_lossy(&output.stdout), NPM_RESULT_PREFIX)
@@ -5044,10 +5256,12 @@ async fn runtime_executable(
         .map(str::to_string)
         .filter(|path| path.starts_with('/'))
         .ok_or_else(|| {
-            unavailable(format!(
-                "{}でエージェントの実行ファイルを確認できませんでした。",
-                runtime.label()
-            ))
+            unavailable(|| {
+                i18n::t!(
+                    "Could not check the agent executable in {distro}.",
+                    distro = runtime.label()
+                )
+            })
         })
 }
 
@@ -5078,7 +5292,7 @@ pub async fn list_wsl_sandbox_processes(
         crate::SANDBOX_PROCESSES_FLAG,
         session_id,
         Vec::new(),
-        "サンドボックス内のプロセスの確認",
+        i18n::tc!("wsl sandbox step", "listing the processes in the sandbox"),
     )
     .await?;
     crate::decode_sandbox_processes(&output)
@@ -5099,7 +5313,7 @@ pub async fn stop_wsl_sandbox_processes(
         crate::SANDBOX_KILL_FLAG,
         session_id,
         processes.iter().map(|process| process.encode()).collect(),
-        "サンドボックス内のプロセスの停止",
+        i18n::tc!("wsl sandbox step", "stopping the processes in the sandbox"),
     )
     .await?;
     output
@@ -5134,16 +5348,18 @@ async fn run_sandbox_session_subcommand(
         .lines()
         .find_map(|line| line.strip_prefix(crate::SANDBOX_PROCESSES_FAILURE_MARKER))
     {
-        bail!(
-            "{}がサンドボックス内のプロセスを扱えませんでした:{detail}",
-            wsl_distro_label(distro)
-        );
+        bail!(i18n::t!(
+            "Could not handle the processes in the sandbox in {distro}:{detail}",
+            distro = wsl_distro_label(distro)
+        ));
     }
     ensure!(
         output.status.success(),
-        "{}で{description}を実行できませんでした{}",
-        wsl_distro_label(distro),
-        command_failure_details(output.status.code(), &output.stderr)
+        i18n::t!(
+            "Could not finish {description} in {distro}{details}",
+            distro = wsl_distro_label(distro),
+            details = command_failure_details(output.status.code(), &output.stderr)
+        )
     );
     Ok((stdout, output.status))
 }
@@ -5714,7 +5930,7 @@ mod tests {
         let refused = grant_distro(Some("Debian"), &WslSessionDistro::named("Ubuntu"))
             .expect_err("a grant in another distribution than the session's");
         assert!(
-            format!("{refused:#}").contains("このセッションは `Ubuntu` で動いています"),
+            format!("{refused:#}").contains("this session runs in `Ubuntu`"),
             "{refused:#}"
         );
     }
@@ -5738,7 +5954,7 @@ mod tests {
                 panic!("{requested} names a whole distribution, not a folder in one");
             };
             assert!(
-                format!("{refused:#}").contains("WSL ディストリビューション全体"),
+                format!("{refused:#}").contains("a whole WSL distro"),
                 "{requested}: {refused:#}"
             );
         }
@@ -5838,7 +6054,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("読み取りを許可するパスが解決できないまま渡されました"),
+                .contains("The readable path was passed on unresolved"),
             "unexpected error: {error:#}"
         );
     }
@@ -5849,7 +6065,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("書込を許可するパスが解決できないまま渡されました"),
+                .contains("The writable path was passed on unresolved"),
             "unexpected error: {error:#}"
         );
     }
@@ -5923,12 +6139,49 @@ mod tests {
         // Environment failures are recognizable by type (so the agent doesn't
         // depend on message text) and still render with the shared prefix.
         let message = registration_message(&DistroRegistration::NotInstalled).unwrap();
-        let error = unavailable(message.clone());
+        let error = unavailable(|| message.clone());
         let typed = error
             .downcast_ref::<WslSandboxUnavailable>()
             .expect("environment failure should downcast to WslSandboxUnavailable");
-        assert_eq!(typed.message(), message);
+        assert_eq!(typed.message().display(), message);
         assert!(format!("{error:#}").starts_with(WSL_SANDBOX_UNAVAILABLE_PREFIX));
+    }
+
+    /// An environment failure is shown on the agent's retry card and told to the
+    /// agent. `acp_thread` prepares the sandbox in English, so the reason keeps
+    /// the UI language for the card even when it is built there.
+    #[test]
+    fn unavailable_errors_carry_english_for_the_agent_and_the_ui_language_for_the_user() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let error = i18n::in_english(|| {
+            crate::map_anyhow_error(unavailable(|| {
+                registration_message(&DistroRegistration::NotInstalled).unwrap_or_default()
+            }))
+        });
+        let crate::SandboxError::WslUnavailable(message) = &error else {
+            panic!("expected WslUnavailable, got {error:?}");
+        };
+        assert!(
+            message
+                .english()
+                .starts_with("Could not create the sandbox in WSL: WSL is not installed."),
+            "{}",
+            message.english()
+        );
+        assert!(message.english().is_ascii(), "{}", message.english());
+        assert_eq!(
+            message.display(),
+            format!(
+                "{}: {}",
+                i18n::tr(WSL_SANDBOX_UNAVAILABLE_PREFIX),
+                registration_message(&DistroRegistration::NotInstalled).unwrap_or_default()
+            )
+        );
+        assert!(!message.display().is_ascii(), "{}", message.display());
+        assert_eq!(error.to_string(), message.display());
+        assert_eq!(i18n::in_english(|| error.to_string()), message.english());
     }
 
     /// `map_path_to_wsl` maps Windows drives and nothing else. A path on the
@@ -7269,7 +7522,7 @@ zed-sweep-removed acp-2222
 
         let data = fake.only_call("zed-wsl-data");
         assert_eq!(data.distro.as_deref(), Some("Ubuntu"));
-        assert_eq!(data.description, "Zed のデータフォルダーの確認");
+        assert_eq!(data.description, "checking Zed's data folder");
         assert_eq!(data.argument(1), LINUX_DEFAULT_DATA_HOME_RELATIVE);
         assert_eq!(data.argument(2), LINUX_APP_DIRECTORY_NAME);
 
@@ -7417,7 +7670,7 @@ zed-sweep-removed acp-2222
         fake.has_data_directory()
             .has_no_runtime()
             .makes_npm_staging("/home/me/.local/share/zed-jp-enhance-staging/abc")
-            .npm_install_fails("サンドボックスの中で `npm install x` を実行できませんでした");
+            .npm_install_fails("Could not run `npm install x` in the sandbox");
 
         let error = smol::block_on(install_npm_package(
             &fake,
@@ -7430,7 +7683,7 @@ zed-sweep-removed acp-2222
         ))
         .expect_err("the failed install");
         assert!(
-            format!("{error:#}").contains("サンドボックスの中で `npm install x`"),
+            format!("{error:#}").contains("Could not run `npm install x` in the sandbox"),
             "the user is shown what npm failed with: {error:#}"
         );
         assert!(
@@ -7472,7 +7725,7 @@ zed-sweep-removed acp-2222
         .expect_err("the failed finalize");
         let message = format!("{error:#}");
         assert!(
-            message.contains("npm パッケージを配置できませんでした")
+            message.contains("Could not install the npm package")
                 && message.contains("(no-node-modules)")
                 && message.contains("Ubuntu"),
             "{message}"
@@ -7812,7 +8065,7 @@ zed-sweep-removed acp-2222
             .expect_err("a refused tree must be an error");
             let message = format!("{error:#}");
             assert!(
-                message.contains("エージェントの実行環境を展開できませんでした")
+                message.contains("Could not extract the agent runtime")
                     && message.contains(&format!("({reason})")),
                 "{message}"
             );
@@ -7958,6 +8211,79 @@ zed-sweep-removed acp-2222
         );
     }
 
+    /// These messages are put together from pieces (the distro, the file,
+    /// the step, the exit status), which have to read as one sentence in each
+    /// language.
+    #[test]
+    fn composed_unavailable_messages_read_as_sentences() {
+        use std::os::windows::process::ExitStatusExt as _;
+
+        let failed = |stdout: &str, stderr: &str| std::process::Output {
+            status: std::process::ExitStatus::from_raw(1),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+        };
+        let messages = || {
+            [
+                unverifiable_helper(Some("Ubuntu")).to_string(),
+                copy_failure(
+                    Some("Ubuntu"),
+                    &failed("", "disk full"),
+                    StagedKind::RuntimeArchive,
+                )
+                .to_string(),
+                runtime_script_failure(
+                    None,
+                    &failed("zed-wsl-npm: error no-node-modules\n", ""),
+                    NPM_RESULT_PREFIX,
+                    i18n::t!("Could not install the npm package"),
+                )
+                .to_string(),
+                wsl_start_failure(
+                    i18n::tc!("wsl sandbox step", "resolving paths"),
+                    &std::io::Error::other("boom"),
+                )
+                .to_string(),
+            ]
+        };
+
+        assert_eq!(
+            messages(),
+            [
+                "Could not create the sandbox in WSL: `sha256sum` is missing in the WSL distro \
+                 `Ubuntu`, so it cannot be verified that the sandbox helper has not been replaced. \
+                 Install coreutils and try again.",
+                "Could not create the sandbox in WSL: Could not copy the agent runtime archive to \
+                 the WSL distro `Ubuntu` (exit code 1, error output: disk full). Check the free \
+                 space in WSL and that the home directory is writable.",
+                "Could not create the sandbox in WSL: Could not install the npm package in the \
+                 default WSL distro (no-node-modules) (exit code 1).",
+                "Could not create the sandbox in WSL: Could not start WSL for resolving paths \
+                 (boom). Run `wsl --update` or restart Windows, then try again.",
+            ]
+        );
+
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(
+            messages(),
+            [
+                "WSL でサンドボックスを作成できませんでした: WSL ディストリビューション `Ubuntu`に \
+                 `sha256sum` がないため、サンドボックス用のヘルパーが置き換えられていないことを\
+                 確認できません。coreutils をインストールしてから再試行してください。",
+                "WSL でサンドボックスを作成できませんでした: エージェントの実行環境のアーカイブを\
+                 WSL ディストリビューション `Ubuntu`にコピーできませんでした (終了コード 1、\
+                 エラー出力: disk full)。WSL 内の空き容量と、ホームディレクトリへの書き込み権限を\
+                 確認してください。",
+                "WSL でサンドボックスを作成できませんでした: 既定の WSL ディストリビューションで\
+                 npm パッケージを配置できませんでした (no-node-modules) (終了コード 1)。",
+                "WSL でサンドボックスを作成できませんでした: パスの解決のために WSL を起動できません\
+                 でした (boom)。`wsl --update` を実行するか、Windows を再起動してから再試行してください。",
+            ]
+        );
+    }
+
     /// What a failed `npm install` printed reaches the user, with its exit
     /// code and only the tail of a long log.
     #[test]
@@ -7972,7 +8298,7 @@ zed-sweep-removed acp-2222
         let details = npm_failure_details(&failed("", "npm ERR! 404 Not Found"));
         assert_eq!(
             details,
-            " (終了コード 1、npm の出力: npm ERR! 404 Not Found)"
+            " (exit code 1, npm output: npm ERR! 404 Not Found)"
         );
 
         // Nothing on standard error falls back to what npm printed.

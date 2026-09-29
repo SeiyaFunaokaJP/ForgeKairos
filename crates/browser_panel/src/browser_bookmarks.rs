@@ -477,7 +477,7 @@ impl BookmarkStore {
                 .unwrap_or_else(|_| path.clone());
             fs.atomic_write(target, text)
                 .await
-                .context("browser_bookmarks.json を書き込めませんでした")
+                .context("couldn't write browser_bookmarks.json")
         })
     }
 }
@@ -569,7 +569,7 @@ mod tests {
     #[test]
     fn removing_a_folder_takes_its_contents() {
         let mut file = sample();
-        let removed = file.remove(&[1]).expect("フォルダーを取り除けること");
+        let removed = file.remove(&[1]).expect("the folder can be removed");
         assert_eq!(removed.children().len(), 2);
         assert_eq!(file.items.len(), 1);
         assert_eq!(file.remove(&[5]), None);
@@ -713,7 +713,7 @@ mod tests {
     #[test]
     fn the_file_round_trips_through_json() {
         let file = sample();
-        let text = serialize_bookmarks_file(&file).expect("シリアライズできること");
+        let text = serialize_bookmarks_file(&file).expect("the file serializes");
         assert_eq!(parse_bookmarks_file(&text), file);
         assert!(text.contains("\"type\": \"bookmark\""));
         assert!(text.contains("\"type\": \"folder\""));
@@ -746,7 +746,7 @@ mod tests {
         // 利用者が全部消した後のファイルは「既に存在する」ので触らない。
         assert!(!should_seed_default_bookmarks(r#"{ "items": [] }"#));
         assert!(!should_seed_default_bookmarks(
-            &serialize_bookmarks_file(&sample()).expect("シリアライズできること")
+            &serialize_bookmarks_file(&sample()).expect("the file serializes")
         ));
     }
 
@@ -765,7 +765,7 @@ mod tests {
             ]
         );
         // 書き出した既定をもう一度読んでも同じ木になること (フォルダー無しの平坦な木)。
-        let text = serialize_bookmarks_file(&file).expect("シリアライズできること");
+        let text = serialize_bookmarks_file(&file).expect("the file serializes");
         assert_eq!(parse_bookmarks_file(&text), file);
         assert!(file.folders().is_empty());
     }

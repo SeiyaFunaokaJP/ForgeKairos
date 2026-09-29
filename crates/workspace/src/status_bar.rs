@@ -127,7 +127,7 @@ impl Render for StatusBar {
             // steps through them, and arrow keys move between them once focus is
             // inside.
             .role(Role::Toolbar)
-            .aria_label("ステータスバー")
+            .aria_label(i18n::t!("Status bar"))
             .tab_group()
             .on_key_down(
                 cx.listener(|status_bar, event: &gpui::KeyDownEvent, window, cx| {
@@ -260,13 +260,17 @@ impl StatusBar {
                 )
                 .icon_size(IconSize::Small)
                 .tab_index(0isize)
-                .aria_label("スレッドサイドバーを開く")
+                .aria_label(i18n::t!("Open threads sidebar"))
                 .when(has_notifications, |this| {
                     this.indicator(Indicator::dot().color(Color::Accent))
                         .indicator_border_color(Some(indicator_border))
                 })
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action("スレッドサイドバーを開く", &ToggleWorkspaceSidebar, cx)
+                    Tooltip::for_action(
+                        i18n::t!("Open Threads Sidebar"),
+                        &ToggleWorkspaceSidebar,
+                        cx,
+                    )
                 })
                 .on_click(move |_, window, cx| {
                     if let Some(multi_workspace) = window.root::<MultiWorkspace>().flatten() {
@@ -315,7 +319,7 @@ fn render_hideable_item(
 /// Appends a "Hide Button" entry aligned with surrounding toggleable entries.
 pub fn add_hide_button_entry(menu: ContextMenu, hide: HideStatusItem) -> ContextMenu {
     menu.toggleable_entry(
-        "ボタンを非表示",
+        i18n::t!("Hide Button"),
         false,
         IconPosition::Start,
         None,

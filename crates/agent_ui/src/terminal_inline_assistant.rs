@@ -445,8 +445,7 @@ impl TerminalInlineAssist {
                                 && assist.prompt_editor.is_none()
                                 && let Some(workspace) = assist.workspace.upgrade()
                             {
-                                let error =
-                                    format!("ターミナルインラインアシスタントのエラー: {}", error);
+                                let error = i18n::t!("Terminal inline assistant error: {}", error);
                                 workspace.update(cx, |workspace, cx| {
                                     struct InlineAssistantError;
 

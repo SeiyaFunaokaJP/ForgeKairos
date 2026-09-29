@@ -15,7 +15,6 @@ use gpui::{
     Focusable, IntoElement, ParentElement, Render, Subscription, TaskExt, WeakEntity, actions, div,
     ease_in_out, pulsating_between,
 };
-use indoc::indoc;
 use language::{
     EditPredictionsMode, File, Language,
     language_settings::{
@@ -89,6 +88,10 @@ impl Render for EditPredictionButton {
                     return div().hidden();
                 };
                 let status = copilot.read(cx).status();
+                let copilot_awaits_consent = edit_prediction::provider_awaits_external_ai_consent(
+                    EditPredictionProvider::Copilot,
+                    cx,
+                );
 
                 let enabled = self.editor_enabled.unwrap_or(false);
 
@@ -117,13 +120,13 @@ impl Render for EditPredictionButton {
                                         workspace.show_toast(
                                             Toast::new(
                                                 NotificationId::unique::<CopilotErrorToast>(),
-                                                format!(
-                                                    "Copilot Edit Predictions を起動できません: {}",
+                                                i18n::t!(
+                                                    "Copilot Edit Predictions can't be started: {}",
                                                     e
                                                 ),
                                             )
                                             .on_click(
-                                                "Copilot Edit Predictions を再インストール",
+                                                i18n::t!("Reinstall Copilot Edit Predictions"),
                                                 move |window, cx| {
                                                     copilot_ui::reinstall_and_sign_in(
                                                         copilot.clone(),
@@ -183,13 +186,28 @@ impl Render for EditPredictionButton {
                         .trigger_with_tooltip(
                             IconButton::new("copilot-icon", icon)
                                 .tab_index(0isize)
-                                .aria_label("GitHub Copilot"),
-                            |_window, cx| {
-                                Tooltip::for_action(
-                                    "GitHub Copilot Edit Predictions",
-                                    &ToggleMenu,
-                                    cx,
-                                )
+                                .aria_label("GitHub Copilot")
+                                .when(copilot_awaits_consent, |this| {
+                                    this.indicator(Indicator::dot().color(Color::Error))
+                                        .indicator_border_color(Some(
+                                            cx.theme().colors().status_bar_background,
+                                        ))
+                                }),
+                            move |_window, cx| {
+                                if copilot_awaits_consent {
+                                    Tooltip::with_meta(
+                                        "GitHub Copilot Edit Predictions",
+                                        Some(&ToggleMenu),
+                                        i18n::t!("External AI warning not accepted"),
+                                        cx,
+                                    )
+                                } else {
+                                    Tooltip::for_action(
+                                        "GitHub Copilot Edit Predictions",
+                                        &ToggleMenu,
+                                        cx,
+                                    )
+                                }
                             },
                         )
                         .with_handle(self.popover_menu_handle.clone()),
@@ -198,15 +216,21 @@ impl Render for EditPredictionButton {
             EditPredictionProvider::Codestral => {
                 let enabled = self.editor_enabled.unwrap_or(true);
                 let has_api_key = codestral::codestral_api_key(cx).is_some();
+                let awaits_consent = edit_prediction::provider_awaits_external_ai_consent(
+                    EditPredictionProvider::Codestral,
+                    cx,
+                );
                 let this = cx.weak_entity();
                 let file = self.file.clone();
                 let language = self.language.clone();
                 let project = self.project.clone();
 
-                let tooltip_meta = if has_api_key {
-                    "Codestral を使用"
+                let tooltip_meta = if awaits_consent {
+                    i18n::t!("External AI warning not accepted")
+                } else if has_api_key {
+                    i18n::t!("Powered by Codestral")
                 } else {
-                    "Codestral の API キーがありません"
+                    i18n::t!("Missing API key for Codestral")
                 };
 
                 div().child(
@@ -236,21 +260,26 @@ impl Render for EditPredictionButton {
                             IconButton::new("codestral-icon", IconName::AiMistral)
                                 .shape(IconButtonShape::Square)
                                 .tab_index(0isize)
-                                .aria_label("編集予測")
-                                .when(!has_api_key, |this| {
+                                .aria_label(i18n::t!("Edit Prediction"))
+                                .when(!has_api_key || awaits_consent, |this| {
                                     this.indicator(Indicator::dot().color(Color::Error))
                                         .indicator_border_color(Some(
                                             cx.theme().colors().status_bar_background,
                                         ))
                                 })
-                                .when(has_api_key && !enabled, |this| {
+                                .when(has_api_key && !awaits_consent && !enabled, |this| {
                                     this.indicator(Indicator::dot().color(Color::Ignored))
                                         .indicator_border_color(Some(
                                             cx.theme().colors().status_bar_background,
                                         ))
                                 }),
                             move |_window, cx| {
-                                Tooltip::with_meta("編集予測", Some(&ToggleMenu), tooltip_meta, cx)
+                                Tooltip::with_meta(
+                                    i18n::t!("Edit Prediction"),
+                                    Some(&ToggleMenu),
+                                    tooltip_meta,
+                                    cx,
+                                )
                             },
                         )
                         .with_handle(self.popover_menu_handle.clone()),
@@ -258,6 +287,10 @@ impl Render for EditPredictionButton {
             }
             EditPredictionProvider::OpenAiCompatibleApi => {
                 let enabled = self.editor_enabled.unwrap_or(true);
+                let awaits_consent = edit_prediction::provider_awaits_external_ai_consent(
+                    EditPredictionProvider::OpenAiCompatibleApi,
+                    cx,
+                );
                 let this = cx.weak_entity();
 
                 div().child(
@@ -277,8 +310,22 @@ impl Render for EditPredictionButton {
                             IconButton::new("openai-compatible-api-icon", IconName::AiOpenAiCompat)
                                 .shape(IconButtonShape::Square)
                                 .tab_index(0isize)
-                                .aria_label("編集予測")
-                                .when(!enabled, |this| {
+                                .aria_label(i18n::t!("Edit Prediction"))
+                                .when(awaits_consent, |this| {
+                                    this.indicator(Indicator::dot().color(Color::Error))
+                                        .indicator_border_color(Some(
+                                            cx.theme().colors().status_bar_background,
+                                        ))
+                                        .tooltip(|_window, cx| {
+                                            Tooltip::with_meta(
+                                                i18n::t!("Edit Prediction"),
+                                                Some(&ToggleMenu),
+                                                i18n::t!("External AI warning not accepted"),
+                                                cx,
+                                            )
+                                        })
+                                })
+                                .when(!awaits_consent && !enabled, |this| {
                                     this.indicator(Indicator::dot().color(Color::Ignored))
                                         .indicator_border_color(Some(
                                             cx.theme().colors().status_bar_background,
@@ -290,6 +337,10 @@ impl Render for EditPredictionButton {
             }
             EditPredictionProvider::Ollama => {
                 let enabled = self.editor_enabled.unwrap_or(true);
+                let awaits_consent = edit_prediction::provider_awaits_external_ai_consent(
+                    EditPredictionProvider::Ollama,
+                    cx,
+                );
                 let this = cx.weak_entity();
 
                 div().child(
@@ -309,8 +360,14 @@ impl Render for EditPredictionButton {
                             IconButton::new("ollama-icon", IconName::AiOllama)
                                 .shape(IconButtonShape::Square)
                                 .tab_index(0isize)
-                                .aria_label("編集予測")
-                                .when(!enabled, |this| {
+                                .aria_label(i18n::t!("Edit Prediction"))
+                                .when(awaits_consent, |this| {
+                                    this.indicator(Indicator::dot().color(Color::Error))
+                                        .indicator_border_color(Some(
+                                            cx.theme().colors().status_bar_background,
+                                        ))
+                                })
+                                .when(!awaits_consent && !enabled, |this| {
                                     this.indicator(Indicator::dot().color(Color::Ignored))
                                         .indicator_border_color(Some(
                                             cx.theme().colors().status_bar_background,
@@ -319,17 +376,20 @@ impl Render for EditPredictionButton {
                             move |_window, cx| {
                                 let settings = all_language_settings(None, cx);
                                 let tooltip_meta = match settings.edit_predictions.ollama.as_ref() {
+                                    _ if awaits_consent => {
+                                        i18n::t!("External AI warning not accepted").to_string()
+                                    }
                                     Some(settings) if !settings.model.trim().is_empty() => {
-                                        format!("Ollama を使用 ({})", settings.model)
+                                        i18n::t!("Powered by Ollama ({})", settings.model)
                                     }
-                                    _ => {
-                                        "Ollama のモデルが未設定です。使用する前にモデルを設定してください。"
-                                            .to_string()
-                                    }
+                                    _ => i18n::t!(
+                                        "Ollama model not configured — configure a model before use"
+                                    )
+                                    .to_string(),
                                 };
 
                                 Tooltip::with_meta(
-                                    "編集予測",
+                                    i18n::t!("Edit Prediction"),
                                     Some(&ToggleMenu),
                                     tooltip_meta,
                                     cx,
@@ -370,35 +430,48 @@ impl Render for EditPredictionButton {
                         missing_token = edit_prediction::EditPredictionStore::try_global(cx)
                             .is_some_and(|ep_store| !ep_store.read(cx).has_mercury_api_token(cx));
                         tooltip_meta = if missing_token {
-                            "Mercury の API キーがありません"
+                            i18n::t!("Missing API key for Mercury")
                         } else if mercury_has_error {
-                            "Mercury の無料枠の上限に達しました"
+                            i18n::t!("Mercury free tier limit reached")
                         } else {
-                            "Mercury を使用"
+                            i18n::t!("Powered by Mercury")
                         };
                     }
                     _ => {
                         ep_icon = if enabled { icons.base } else { icons.disabled };
-                        tooltip_meta = "Zeta を使用"
+                        tooltip_meta = i18n::t!("Powered by Zeta")
                     }
+                };
+
+                let awaits_consent =
+                    edit_prediction::provider_awaits_external_ai_consent(provider, cx);
+                let tooltip_meta = if awaits_consent {
+                    i18n::t!("External AI warning not accepted")
+                } else {
+                    tooltip_meta
                 };
 
                 if edit_prediction::should_show_upsell_modal(cx) {
                     let tooltip_meta = if self.user_store.read(cx).current_user().is_some() {
-                        "プランを選択"
+                        i18n::t!("Choose a Plan")
                     } else {
-                        "プロバイダーを設定"
+                        i18n::t!("Configure a Provider")
                     };
 
                     return div().child(
                         IconButton::new("zed-predict-pending-button", ep_icon)
                             .shape(IconButtonShape::Square)
                             .tab_index(0isize)
-                            .aria_label("編集予測")
+                            .aria_label(i18n::t!("Edit Predictions"))
                             .indicator(Indicator::dot().color(Color::Muted))
                             .indicator_border_color(Some(cx.theme().colors().status_bar_background))
                             .tooltip(move |_window, cx| {
-                                Tooltip::with_meta("編集予測", None, tooltip_meta, cx)
+                                Tooltip::with_meta(
+                                    i18n::t!("Edit Predictions"),
+                                    None,
+                                    tooltip_meta,
+                                    cx,
+                                )
                             })
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 telemetry::event!(
@@ -431,7 +504,7 @@ impl Render for EditPredictionButton {
                         |ep_store| ep_store.read(cx).mercury_has_payment_required_error(),
                     );
 
-                let indicator_color = if missing_token || mercury_has_error {
+                let indicator_color = if missing_token || mercury_has_error || awaits_consent {
                     Some(Color::Error)
                 } else if enabled && (!show_editor_predictions || over_limit) {
                     Some(if over_limit {
@@ -446,12 +519,12 @@ impl Render for EditPredictionButton {
                 let zed_cloud_needs_sign_in =
                     matches!(provider, EditPredictionProvider::Zed) && user.is_none();
                 let provider_unavailable =
-                    missing_token || mercury_has_error || zed_cloud_needs_sign_in;
+                    missing_token || mercury_has_error || zed_cloud_needs_sign_in || awaits_consent;
 
                 let icon_button = IconButton::new("zed-predict-pending-button", ep_icon)
                     .shape(IconButtonShape::Square)
                     .tab_index(0isize)
-                    .aria_label("編集予測")
+                    .aria_label(i18n::t!("Edit Prediction"))
                     .when_some(indicator_color, |this, color| {
                         this.indicator(Indicator::dot().color(color))
                             .indicator_border_color(Some(cx.theme().colors().status_bar_background))
@@ -459,16 +532,21 @@ impl Render for EditPredictionButton {
                     .when(!self.popover_menu_handle.is_deployed(), |element| {
                         element.tooltip(move |_window, cx| {
                             let description = if !enabled {
-                                "このファイルでは無効"
+                                i18n::t!("Disabled For This File")
                             } else if zed_cloud_needs_sign_in {
-                                "サインインまたはプロバイダーを設定"
+                                i18n::t!("Sign In Or Configure a Provider")
                             } else if provider_unavailable || show_editor_predictions {
                                 tooltip_meta
                             } else {
-                                "使用するには有効化"
+                                i18n::t!("Enable to Use")
                             };
 
-                            Tooltip::with_meta("編集予測", Some(&ToggleMenu), description, cx)
+                            Tooltip::with_meta(
+                                i18n::t!("Edit Prediction"),
+                                Some(&ToggleMenu),
+                                description,
+                                cx,
+                            )
                         })
                     });
 
@@ -601,7 +679,7 @@ impl EditPredictionButton {
             .collect();
 
         if !providers.is_empty() {
-            menu = menu.separator().header("プロバイダー");
+            menu = menu.separator().header(i18n::t!("Providers"));
 
             for provider in providers {
                 let Some(name) = provider.display_name() else {
@@ -618,8 +696,10 @@ impl EditPredictionButton {
                         .disabled(is_disabled_zed_provider)
                         .when(is_disabled_zed_provider, |item| {
                             item.documentation_aside(DocumentationSide::Left, move |_cx| {
-                                Label::new("この組織では編集予測が無効になっています。")
-                                    .into_any_element()
+                                Label::new(i18n::t!(
+                                    "Edit predictions are disabled for this organization."
+                                ))
+                                .into_any_element()
                             })
                         })
                         .handler(move |_window, cx| {
@@ -634,7 +714,7 @@ impl EditPredictionButton {
 
     fn add_configure_providers_item(&self, menu: ContextMenu) -> ContextMenu {
         menu.separator().item(
-            ContextMenuEntry::new("プロバイダーを設定")
+            ContextMenuEntry::new(i18n::t!("Configure Providers"))
                 .icon(IconName::Settings)
                 .icon_position(IconPosition::Start)
                 .icon_color(Color::Muted)
@@ -665,7 +745,7 @@ impl EditPredictionButton {
         ContextMenu::build(window, cx, |menu, _, cx| {
             let menu = menu
                 .entry(
-                    "Copilot Edit Predictions にサインイン",
+                    i18n::t!("Sign In to Copilot Edit Predictions"),
                     None,
                     move |window, cx| {
                         telemetry::event!(
@@ -705,7 +785,7 @@ impl EditPredictionButton {
                         }
                     },
                 )
-                .entry("Copilot Edit Predictions を無効化", None, {
+                .entry(i18n::t!("Disable Copilot Edit Predictions"), None, {
                     let fs = fs.clone();
                     move |_window, cx| {
                         telemetry::event!(
@@ -733,7 +813,7 @@ impl EditPredictionButton {
         let fs = self.fs.clone();
         let line_height = window.line_height();
 
-        menu = menu.header("編集予測を表示する対象");
+        menu = menu.header(i18n::t!("Show Edit Predictions For"));
 
         let language_state = self.language.as_ref().map(|language| {
             (
@@ -743,7 +823,7 @@ impl EditPredictionButton {
         });
 
         if let Some(editor_focus_handle) = self.editor_focus_handle.clone() {
-            let entry = ContextMenuEntry::new("このバッファー")
+            let entry = ContextMenuEntry::new(i18n::t!("This Buffer"))
                 .toggleable(IconPosition::Start, self.editor_show_predictions)
                 .action(Box::new(editor::actions::ToggleEditPrediction))
                 .handler(move |window, cx| {
@@ -759,8 +839,8 @@ impl EditPredictionButton {
                     menu = menu.item(entry.disabled(true).documentation_aside(
                         DocumentationSide::Left,
                         move |_cx| {
-                            Label::new(format!(
-                                "{} では編集予測が無効になっています",
+                            Label::new(i18n::t!(
+                                "Edit predictions are disabled for {}",
                                 language.name()
                             ))
                             .into_any_element()
@@ -795,7 +875,7 @@ impl EditPredictionButton {
         let settings = AllLanguageSettings::get_global(cx);
 
         let globally_enabled = settings.show_edit_predictions(None, cx);
-        let entry = ContextMenuEntry::new("すべてのファイル")
+        let entry = ContextMenuEntry::new(i18n::t!("All Files"))
             .toggleable(IconPosition::Start, globally_enabled)
             .action(workspace::ToggleEditPrediction.boxed_clone())
             .handler(|window, cx| {
@@ -810,12 +890,12 @@ impl EditPredictionButton {
 
         menu = menu
                 .separator()
-                .header("表示モード")
+                .header(i18n::t!("Display Modes"))
                 .item(
                     ContextMenuEntry::new("Eager")
                         .toggleable(IconPosition::Start, eager_mode)
                         .documentation_aside(DocumentationSide::Left, move |_| {
-                            Label::new("言語サーバーの補完候補がないときに、予測をインラインで表示します。").into_any_element()
+                            Label::new(i18n::t!("Display predictions inline when there are no language server completions available.")).into_any_element()
                         })
                         .handler({
                             let fs = fs.clone();
@@ -835,7 +915,7 @@ impl EditPredictionButton {
                         .documentation_aside(DocumentationSide::Left, move |_| {
                             Label::new(i18n::t!(
                                 "Display predictions inline only when holding a modifier key ({} by default).",
-                                ui::alt_key_name!()
+                                ui::utils::capitalize(ui::alt_key_name!())
                             ))
                             .into_any_element()
                         })
@@ -852,7 +932,7 @@ impl EditPredictionButton {
                         }),
                 );
 
-        menu = menu.separator().header("プライバシー");
+        menu = menu.separator().header(i18n::t!("Privacy"));
 
         if matches!(provider, EditPredictionProvider::Zed) {
             if let Some(provider) = &self.edit_prediction_provider {
@@ -870,7 +950,7 @@ impl EditPredictionButton {
                     };
 
                     menu = menu.item(
-                        ContextMenuEntry::new("学習データの収集")
+                        ContextMenuEntry::new(i18n::t!("Training Data Collection"))
                             .toggleable(IconPosition::Start, data_collection.is_enabled())
                             .icon(icon_name)
                             .icon_color(icon_color)
@@ -878,25 +958,25 @@ impl EditPredictionButton {
                             .documentation_aside(DocumentationSide::Left, move |cx| {
                                 let (msg, label_color, icon_name, icon_color) = match (is_open_source, is_collecting) {
                                     (true, true) => (
-                                        "プロジェクトはオープンソースと判定され、データを共有しています。",
+                                        i18n::t!("Project identified as open source, and you're sharing data."),
                                         Color::Default,
                                         IconName::Check,
                                         Color::Success,
                                     ),
                                     (true, false) => (
-                                        "プロジェクトはオープンソースと判定されましたが、データは共有していません。",
+                                        i18n::t!("Project identified as open source, but you're not sharing data."),
                                         Color::Muted,
                                         IconName::Close,
                                         Color::Muted,
                                     ),
                                     (false, true) => (
-                                        "プロジェクトはオープンソースと判定されていません。データは収集されません。",
+                                        i18n::t!("Project not identified as open source. No data captured."),
                                         Color::Muted,
                                         IconName::Close,
                                         Color::Muted,
                                     ),
                                     (false, false) => (
-                                        "プロジェクトはオープンソースと判定されておらず、設定も無効です。",
+                                        i18n::t!("Project not identified as open source, and setting turned off."),
                                         Color::Muted,
                                         IconName::Close,
                                         Color::Muted,
@@ -905,11 +985,11 @@ impl EditPredictionButton {
                                 v_flex()
                                     .gap_2()
                                     .child(
-                                        Label::new(indoc!{
-                                            "オープンソースリポジトリのデータを共有して、オープンデータセットモデルの改善にご協力ください。\
-                                            この設定を有効にするには、リポジトリ内のライセンスファイルを Zed が検出できる必要があります。\
-                                            機微なデータやシークレットを含むファイルは既定で除外されます。"
-                                        })
+                                        Label::new(i18n::t!(
+                                            "Help us improve our open dataset model by sharing data from open source repositories. \
+                                            Zed must detect a license file in your repo for this setting to take effect. \
+                                            Files with sensitive data and secrets are excluded by default."
+                                        ))
                                     )
                                     .child(
                                         h_flex()
@@ -944,7 +1024,7 @@ impl EditPredictionButton {
 
                     if is_collecting && !is_open_source {
                         menu = menu.item(
-                            ContextMenuEntry::new("データは収集されません。")
+                            ContextMenuEntry::new(i18n::t!("No data captured."))
                                 .disabled(true)
                                 .icon(IconName::Close)
                                 .icon_color(Color::Error)
@@ -957,12 +1037,13 @@ impl EditPredictionButton {
 
         menu = menu
             .item(
-                ContextMenuEntry::new("除外ファイルを設定")
+                ContextMenuEntry::new(i18n::t!("Configure Excluded Files"))
                     .icon(IconName::Lock)
                     .icon_color(Color::Muted)
                     .documentation_aside(DocumentationSide::Left, |_| {
-                        Label::new(indoc! {"
-                        Zed が編集を予測しない機微なパスを追加するために、設定を開きます。"})
+                        Label::new(i18n::t!(
+                            "Open your settings to add sensitive paths for which Zed will never predict edits."
+                        ))
                         .into_any_element()
                     })
                     .handler(move |window, cx| {
@@ -981,7 +1062,7 @@ impl EditPredictionButton {
                     }),
             )
             .item(
-                ContextMenuEntry::new("ドキュメントを表示")
+                ContextMenuEntry::new(i18n::t!("View Docs"))
                     .icon(IconName::FileGeneric)
                     .icon_color(Color::Muted)
                     .handler(move |_, cx| {
@@ -999,7 +1080,7 @@ impl EditPredictionButton {
                     edit_prediction_types::EditPredictionIconSet::new(IconName::ZedPredict)
                 });
             menu = menu.item(
-                ContextMenuEntry::new("このファイルは除外されています。")
+                ContextMenuEntry::new(i18n::t!("This file is excluded."))
                     .disabled(true)
                     .icon(icons.disabled)
                     .icon_size(IconSize::Small),
@@ -1009,9 +1090,9 @@ impl EditPredictionButton {
         if let Some(editor_focus_handle) = self.editor_focus_handle.clone() {
             menu = menu
                 .separator()
-                .header("アクション")
+                .header(i18n::t!("Actions"))
                 .entry(
-                    "カーソル位置の編集を予測",
+                    i18n::t!("Predict Edit at Cursor"),
                     Some(Box::new(ShowEditPrediction)),
                     {
                         let editor_focus_handle = editor_focus_handle.clone();
@@ -1027,7 +1108,7 @@ impl EditPredictionButton {
                 .context(editor_focus_handle)
                 .when(
                     cx.has_flag::<PredictEditsRatePredictionsFeatureFlag>(),
-                    |this| this.action("予測を評価", RatePredictions.boxed_clone()),
+                    |this| this.action(i18n::t!("Rate Predictions"), RatePredictions.boxed_clone()),
                 );
         }
 
@@ -1063,7 +1144,7 @@ impl EditPredictionButton {
             let menu = menu
                 .separator()
                 .item(
-                    ContextMenuEntry::new("Copilot: 次の編集候補")
+                    ContextMenuEntry::new(i18n::t!("Copilot: Next Edit Suggestions"))
                         .toggleable(IconPosition::Start, next_edit_suggestions)
                         .handler({
                             let fs = self.fs.clone();
@@ -1084,10 +1165,10 @@ impl EditPredictionButton {
                 )
                 .separator()
                 .link(
-                    "Copilot の設定を開く",
+                    i18n::t!("Go to Copilot Settings"),
                     OpenBrowser { url: settings_url }.boxed_clone(),
                 )
-                .entry("サインアウト", None, |window, cx| {
+                .entry(i18n::t!("Sign Out"), None, |window, cx| {
                     if let Some(auth) = copilot::GlobalCopilotAuth::try_global(cx) {
                         copilot_ui::initiate_sign_out(auth.0.clone(), window, cx);
                     }
@@ -1129,16 +1210,16 @@ impl EditPredictionButton {
             if needs_sign_in {
                 menu = menu
                     .custom_row(move |_window, cx| {
-                        let description = indoc! {
-                            "オープンソース・オープンデータのモデル Zeta により、\
-                            キー入力のたびに採用される候補を無料で 2,000 件利用できます"
-                        };
+                        let description = i18n::t!(
+                            "You get 2,000 accepted suggestions at every keystroke for free, \
+                            powered by Zeta, our open-source, open-data model"
+                        );
 
                         v_flex()
                             .max_w_64()
                             .h(rems_from_px(148_f32))
                             .child(render_zeta_tab_animation(cx))
-                            .child(Label::new("編集予測"))
+                            .child(Label::new(i18n::t!("Edit Prediction")))
                             .child(
                                 Label::new(description)
                                     .color(Color::Muted)
@@ -1147,51 +1228,47 @@ impl EditPredictionButton {
                             .into_any_element()
                     })
                     .separator()
-                    .entry(
-                        "サインインして使い始める",
-                        None,
-                        |window, cx| {
-                            telemetry::event!(
-                                "Edit Prediction Menu Action",
-                                action = "sign_in",
-                                provider = "zed",
-                            );
-                            // zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): Zed
-                            // Cloud is an external AI service. Redirect to the
-                            // "AI" page's "プロバイダーの設定" sub-page instead
-                            // of signing in directly — the same destination the
-                            // Copilot entry above uses. Its "Zed" card holds the
-                            // consent block for the `zed.dev` key (shared with
-                            // the chat provider of the same id), which is what
-                            // makes `Zed` selectable at all.
+                    .entry(i18n::t!("Sign In & Start Using"), None, |window, cx| {
+                        telemetry::event!(
+                            "Edit Prediction Menu Action",
+                            action = "sign_in",
+                            provider = "zed",
+                        );
+                        // zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): Zed
+                        // Cloud is an external AI service. Redirect to the
+                        // "AI" page's "プロバイダーの設定" sub-page instead
+                        // of signing in directly — the same destination the
+                        // Copilot entry above uses. Its "Zed" card holds the
+                        // consent block for the `zed.dev` key (shared with
+                        // the chat provider of the same id), which is what
+                        // makes `Zed` selectable at all.
 
-                            if !settings::external_ai_provider_is_acknowledged(
-                                settings::ZED_CLOUD_AI_CONSENT_KEY,
+                        if !settings::external_ai_provider_is_acknowledged(
+                            settings::ZED_CLOUD_AI_CONSENT_KEY,
+                            cx,
+                        ) {
+                            window.dispatch_action(
+                                OpenSettingsAt {
+                                    path: "edit_predictions.providers".to_string(),
+                                    target: None,
+                                }
+                                .boxed_clone(),
                                 cx,
-                            ) {
-                                window.dispatch_action(
-                                    OpenSettingsAt {
-                                        path: "edit_predictions.providers".to_string(),
-                                        target: None,
-                                    }
-                                    .boxed_clone(),
-                                    cx,
-                                );
-                                return;
-                            }
-                            let client = Client::global(cx);
-                            window
-                                .spawn(cx, async move |cx| {
-                                    client
-                                        .sign_in_with_optional_connect(true, &cx)
-                                        .await
-                                        .log_err();
-                                })
-                                .detach();
-                        },
-                    )
+                            );
+                            return;
+                        }
+                        let client = Client::global(cx);
+                        window
+                            .spawn(cx, async move |cx| {
+                                client
+                                    .sign_in_with_optional_connect(true, &cx)
+                                    .await
+                                    .log_err();
+                            })
+                            .detach();
+                    })
                     .link_with_handler(
-                        "詳細情報",
+                        i18n::t!("Learn More"),
                         OpenBrowser {
                             url: zed_urls::edit_prediction_docs(cx).into(),
                         }
@@ -1214,11 +1291,14 @@ impl EditPredictionButton {
                 if mercury_payment_required {
                     menu = menu
                         .header("Mercury")
-                        .item(ContextMenuEntry::new("無料枠の上限に達しました").disabled(true))
                         .item(
-                            ContextMenuEntry::new(
-                                "サービスを継続して利用するには有料プランにアップグレードしてください",
-                            )
+                            ContextMenuEntry::new(i18n::t!("Free tier limit reached"))
+                                .disabled(true),
+                        )
+                        .item(
+                            ContextMenuEntry::new(i18n::t!(
+                                "Upgrade to a paid plan to continue using the service"
+                            ))
                             .disabled(true),
                         )
                         .separator();
@@ -1229,7 +1309,7 @@ impl EditPredictionButton {
                     .as_ref()
                     .and_then(|provider| provider.usage(cx))
                 {
-                    menu = menu.header("使用状況");
+                    menu = menu.header(i18n::t!("Usage"));
                     menu = menu
                         .custom_entry(
                             move |_window, cx| {
@@ -1264,7 +1344,7 @@ impl EditPredictionButton {
                         )
                         .when(usage.over_limit(), |menu| -> ContextMenu {
                             menu.entry(
-                                "上限を引き上げるにはサブスクリプションを購入",
+                                i18n::t!("Subscribe to increase your limit"),
                                 None,
                                 |_window, cx| {
                                     telemetry::event!(
@@ -1281,15 +1361,17 @@ impl EditPredictionButton {
                     menu = menu
                         .custom_entry(
                             |_window, _cx| {
-                                Label::new("GitHub アカウントの作成から 30 日が経過していません。")
-                                    .size(LabelSize::Small)
-                                    .color(Color::Warning)
-                                    .into_any_element()
+                                Label::new(i18n::t!(
+                                    "Your GitHub account is less than 30 days old."
+                                ))
+                                .size(LabelSize::Small)
+                                .color(Color::Warning)
+                                .into_any_element()
                             },
                             |_window, cx| cx.open_url(&zed_urls::account_url(cx)),
                         )
                         .entry(
-                            "Zed Pro にアップグレードするか、お問い合わせください。",
+                            i18n::t!("Upgrade to Zed Pro or contact us."),
                             None,
                             |_window, cx| {
                                 telemetry::event!(
@@ -1305,7 +1387,7 @@ impl EditPredictionButton {
                     menu = menu
                         .custom_entry(
                             |_window, _cx| {
-                                Label::new("未払いの請求書があります")
+                                Label::new(i18n::t!("You have an outstanding invoice"))
                                     .size(LabelSize::Small)
                                     .color(Color::Warning)
                                     .into_any_element()
@@ -1315,7 +1397,7 @@ impl EditPredictionButton {
                             },
                         )
                         .entry(
-                            "この機能を継続して利用するには、支払い状況を確認するか billing-support@zed.dev までご連絡ください。",
+                            i18n::t!("Check your payment status or contact us at billing-support@zed.dev to continue using this feature."),
                             None,
                             |_window, cx| {
                                 cx.open_url(&zed_urls::account_url(cx))
@@ -1545,17 +1627,31 @@ pub fn get_available_providers(cx: &mut App) -> Vec<EditPredictionProvider> {
     let app_state = workspace::AppState::global(cx);
     if copilot::GlobalCopilotAuth::try_get_or_init(app_state, cx)
         .is_some_and(|copilot| copilot.0.read(cx).is_authenticated())
+        && !edit_prediction::provider_awaits_external_ai_consent(
+            EditPredictionProvider::Copilot,
+            cx,
+        )
     {
         providers.push(EditPredictionProvider::Copilot);
     };
 
-    if codestral::codestral_api_key(cx).is_some() {
+    // An environment variable can supply the key without the consent the settings UI asks for.
+    if codestral::codestral_api_key(cx).is_some()
+        && !edit_prediction::provider_awaits_external_ai_consent(
+            EditPredictionProvider::Codestral,
+            cx,
+        )
+    {
         providers.push(EditPredictionProvider::Codestral);
     }
 
     if edit_prediction::mercury::mercury_api_token(cx)
         .read(cx)
         .has_key()
+        && !edit_prediction::provider_awaits_external_ai_consent(
+            EditPredictionProvider::Mercury,
+            cx,
+        )
     {
         providers.push(EditPredictionProvider::Mercury);
     }
@@ -1569,46 +1665,25 @@ pub fn get_available_providers(cx: &mut App) -> Vec<EditPredictionProvider> {
 
 /// The self-hosted providers, which have no credentials to gate them.
 fn self_hosted_providers(cx: &App) -> Vec<EditPredictionProvider> {
-    let mut providers = Vec::new();
-
-    if all_language_settings(None, cx)
-        .edit_predictions
-        .open_ai_compatible_api
-        .as_ref()
-        .is_some_and(|settings| {
-            endpoint_is_local_or_acknowledged("open_ai_compatible_api", &settings.api_url, cx)
-        })
-    {
-        providers.push(EditPredictionProvider::OpenAiCompatibleApi);
-    }
-
-    // The fork's default settings name an Ollama model, so these settings are always present;
-    // only the endpoint decides whether the provider has passed its gate.
-    if all_language_settings(None, cx)
-        .edit_predictions
-        .ollama
-        .as_ref()
-        .is_some_and(|settings| endpoint_is_local_or_acknowledged("ollama", &settings.api_url, cx))
-    {
-        providers.push(EditPredictionProvider::Ollama);
-    }
-
-    providers
-}
-
-/// A self-hosted provider needs no consent while its endpoint is on this machine; pointed anywhere
-/// else it needs the consent its card on the "プロバイダーの設定" sub-page asks for (ADR-F10),
-/// under the same key.
-fn endpoint_is_local_or_acknowledged(provider: &str, api_url: &str, cx: &App) -> bool {
-    let is_loopback = http_client::Url::parse(api_url.trim())
-        .ok()
-        .and_then(|url| url.host_str().and_then(http_client::RequestHost::parse))
-        .is_some_and(|host| host.is_loopback());
-    is_loopback
-        || settings::external_ai_provider_is_acknowledged(
-            &format!("edit_prediction:{provider}"),
-            cx,
-        )
+    let edit_predictions = &all_language_settings(None, cx).edit_predictions;
+    // The fork's default settings name an Ollama model, so its settings are always present; only
+    // the endpoint decides whether the provider has passed its gate.
+    [
+        (
+            EditPredictionProvider::OpenAiCompatibleApi,
+            edit_predictions.open_ai_compatible_api.is_some(),
+        ),
+        (
+            EditPredictionProvider::Ollama,
+            edit_predictions.ollama.is_some(),
+        ),
+    ]
+    .into_iter()
+    .filter(|(provider, configured)| {
+        *configured && !edit_prediction::provider_awaits_external_ai_consent(*provider, cx)
+    })
+    .map(|(provider, _)| provider)
+    .collect()
 }
 
 fn toggle_show_edit_predictions_for_language(

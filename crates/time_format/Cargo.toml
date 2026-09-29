@@ -13,4 +13,16 @@ path = "src/time_format.rs"
 doctest = false
 
 [dependencies]
+i18n.workspace = true
+sys-locale.workspace = true
 time.workspace = true
+
+[dev-dependencies]
+i18n_catalog = { workspace = true, features = ["test-support"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation.workspace = true
+core-foundation-sys.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows.workspace = true

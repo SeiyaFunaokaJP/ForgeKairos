@@ -1,0 +1,202 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Adding rustup target for cross-compilation"
+msgstr "クロスコンパイル用の rustup ターゲットを追加しています"
+
+msgid "Building remote binary from source for {platform_label} with Zig (development build)"
+msgstr "開発ビルドのため、リモート開発サーバー ({platform_label} 向け) を Zig でビルドしています"
+
+msgid "Building remote server binary from source for {platform_label} (development build)"
+msgstr "開発ビルドのため、リモート開発サーバー ({platform_label} 向け) をソースからビルドしています"
+
+msgid "Checking the remote environment"
+msgstr "リモート環境を確認しています"
+
+msgid "Compressing binary"
+msgstr "リモート開発サーバーを圧縮しています"
+
+msgid "Connecting"
+msgstr "接続しています"
+
+msgid "Connecting (reusing session)"
+msgstr "接続しています (既存の SSH セッションを再利用)"
+
+msgid "Could not build a PATH that includes the cmake directory"
+msgstr "cmake のディレクトリを含む PATH を組み立てられませんでした"
+
+msgid "Could not create a directory on the remote (check the free disk space and the permissions): {dir}"
+msgstr "リモートにディレクトリを作成できませんでした (ディスクの空き容量または権限を確認してください): {dir}"
+
+msgid "Could not delete the server file on the remote host ({status}): {error}"
+msgstr "接続先でサーバーのファイルを削除できませんでした ({status}): {error}"
+
+msgid "Could not install the remote sandbox helper (slirp4netns). Agent commands that use the network will not run, because no sandbox can be created for them. Check that the remote `~/.zed_server/` is writable (free space and permissions) and that the bundled slirp4netns is in the same folder as Zed, then reconnect: {error}"
+msgstr "リモートのサンドボックス用ヘルパー (slirp4netns) を配置できませんでした。ネットワークを使うエージェントのコマンドはサンドボックスを作れないため実行されません。リモートの `~/.zed_server/` に書き込めるか (空き容量・権限) と、Zed 本体と同じフォルダーに同梱の slirp4netns があるかを確認して再接続してください: {error}"
+
+msgid "Could not read the remote development server file: {src_path}"
+msgstr "リモート開発サーバーのファイルを読めませんでした: {src_path}"
+
+msgid "Could not start the command that deletes the server file"
+msgstr "サーバーのファイルを削除するコマンドを起動できませんでした"
+
+msgid "Detecting WSL environment"
+msgstr "WSL 環境を確認しています"
+
+msgid "Downloading remote development server on host"
+msgstr "ホスト上でリモート開発サーバーをダウンロードしています"
+
+msgid "Extracting remote development server"
+msgstr "リモート開発サーバーを展開しています"
+
+msgid "Extracting remote server"
+msgstr "リモートサーバーを展開しています"
+
+msgid "Failed to connect to host"
+msgstr "ホストに接続できませんでした"
+
+msgid "Failed to upload the directory to the remote ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+msgstr "リモートへのディレクトリ転送に失敗しました ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+
+msgid "Failed to upload the file to the remote ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+msgstr "リモートへのファイル転送に失敗しました ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+
+msgid "Initializing remote server"
+msgstr "リモートサーバーを初期化しています"
+
+msgid "Installing cargo-zigbuild for cross-compilation"
+msgstr "クロスコンパイル用の cargo-zigbuild を導入しています"
+
+msgid "Neither curl nor wget is available"
+msgstr "リモートホストに curl も wget もありません (リモート開発サーバーをダウンロードできません)"
+
+msgid "No remote server binary is available. Not on the remote at {remote_path} / bundled artifact `{artifact}` not found in {search_dirs} / build from source: {source_build_status}. The automatic build fails when cmake or zig is not on PATH. Building with script\\build-dev.ps1 prepares the bundled artifact."
+msgstr "リモートサーバーのバイナリが用意できませんでした。リモート側 {remote_path} に無し / 同梱アーティファクト `{artifact}` が {search_dirs} に無し / ソースからのビルド: {source_build_status}。cmake や zig が PATH に無いと自動ビルドが失敗します。script\\build-dev.ps1 でビルドすると同梱アーティファクトを用意できます。"
+
+msgid "On the remote host, delete the files in {folder} whose names start with zed-remote-server-, then reconnect."
+msgstr "接続先の {folder} から名前が zed-remote-server- で始まるファイルを削除してから、接続し直してください。"
+
+msgid "Opening workspace"
+msgstr "ワークスペースを開いています"
+
+msgid "Reinstalling the remote server because it does not match this Zed"
+msgstr "リモートサーバーがこの Zed と合わないため、入れ直しています"
+
+msgid "Remote binary path not set"
+msgstr "リモート開発サーバーのパスが未設定です (接続の初期化に失敗しています)"
+
+msgid "SSH connection canceled"
+msgstr "SSH 接続がキャンセルされました"
+
+msgid "Starting proxy"
+msgstr "プロキシを起動しています"
+
+msgid "Streaming remote server into WSL"
+msgstr "リモートサーバーを WSL へ転送しています"
+
+msgid "The connection to the remote server was lost while checking its protocol revision"
+msgstr "通信の版を問い合わせている間にリモートサーバーとの接続が切れました"
+
+msgid "The remote development server path has no file name: {src_path}"
+msgstr "リモート開発サーバーのパスにファイル名がありません: {src_path}"
+
+msgid "The remote does not have enough free disk space (about {required} MB needed, {free} MB free). Delete files you no longer need on the remote host, then reconnect."
+msgstr "リモートの空き容量が不足しています (必要 約 {required} MB、空き {free} MB)。リモートホストの不要なファイルを削除してから再接続してください。"
+
+msgid "The remote host did not finish deleting the server file within {seconds} seconds"
+msgstr "接続先がサーバーのファイルの削除に {seconds}秒以内に応えませんでした"
+
+msgid "The remote may be out of disk space (currently: {free_space})"
+msgstr "リモートの空き容量が不足している可能性があります (現在: {free_space})"
+
+msgid "The remote may be out of disk space (the free space could not be determined)"
+msgstr "リモートの空き容量が不足している可能性があります (空き容量は取得できませんでした)"
+
+msgid "The remote server does not match this Zed (it did not answer the protocol revision check; it may be a server from the official Zed or from an older version of this Zed)."
+msgstr "リモートサーバーがこの Zed と合っていません (通信の版の問い合わせに応答がありません。公式版の Zed のサーバーか、この Zed より古い版のサーバーが動いている可能性があります)。"
+
+msgid "The remote server does not match this Zed (protocol revision: {ours} in this Zed, {theirs} on the server)."
+msgstr "リモートサーバーがこの Zed と合っていません (通信の版: この Zed は {ours}、サーバーは {theirs})。"
+
+msgid "The server that this Zed installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update Zed."
+msgstr "この Zed が接続先に入れるサーバー自体が合っていない可能性があります。この PC の {folder} を削除してから接続し直すか、Zed を更新してください。"
+
+msgid "There is no bundled artifact (ADR-F15) and the download failed as well. Build with script\\build-dev.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
+msgstr "同梱アーティファクト (ADR-F15) も無く、ダウンロードにも失敗しました。script\\build-dev.ps1 でビルドして同梱アーティファクトを用意するか、この PC から配信元に接続できることを確認してください"
+
+msgid "Uploading remote development server"
+msgstr "リモート開発サーバーを転送しています"
+
+msgid "Uploading remote development server ({size})"
+msgstr "リモート開発サーバーを転送しています ({size})"
+
+msgid "Uploading remote server"
+msgstr "リモートサーバーを転送しています"
+
+msgid "Verifying remote development server"
+msgstr "リモート開発サーバーを照合しています"
+
+msgid "Waiting for existing connection attempt"
+msgstr "進行中の接続を待っています"
+
+msgid "cmake is not on PATH (it is needed to build remote_server). Add the CMake that comes with Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) to PATH, or build with script\\build-dev.ps1 to prepare the bundled artifact"
+msgstr "cmake が PATH にありません (remote_server のビルドに必要です)。Visual Studio 同梱の CMake (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) を PATH に追加するか、script\\build-dev.ps1 でビルドして同梱アーティファクトを用意してください"
+
+msgid "cmake is not on PATH (it is needed to build remote_server). Install cmake"
+msgstr "cmake が PATH にありません (remote_server のビルドに必要です)。cmake をインストールしてください"
+
+msgid "connecting to host timed out"
+msgstr "ホストへの接続がタイムアウトしました"
+
+msgid "downloading server binary locally"
+msgstr "リモートサーバーのバイナリをローカルにダウンロードできませんでした"
+
+msgid "extracting server binary"
+msgstr "リモートサーバーのバイナリを展開できませんでした"
+
+msgid "failed to connect: {}"
+msgstr "接続できませんでした: {}"
+
+msgid "failed to upload server binary"
+msgstr "リモート開発サーバーを転送できませんでした"
+
+msgid "nocompress (default)"
+msgstr "nocompress (既定)"
+
+msgid "not run (ZED_BUILD_REMOTE_SERVER={build_remote_server})"
+msgstr "実行せず (ZED_BUILD_REMOTE_SERVER={build_remote_server})"
+
+msgid "not searched, because the executable's location is unknown"
+msgstr "実行ファイルの場所を特定できなかったため未検索"
+
+msgid "this build cannot build the remote server from source"
+msgstr "このビルドにはソースビルド機能が含まれていません"
+
+msgid "uploading server binary"
+msgstr "リモートサーバーのバイナリをアップロードできませんでした"
+
+msgid "{again} The server still does not match after it was reinstalled. {steps_after_reinstall}"
+msgstr "{again}サーバーを入れ直しても合いませんでした。{steps_after_reinstall}"
+
+msgid "{available} free, {capacity} used"
+msgstr "空き {available}、使用率 {capacity}"
+
+msgid "{free_space} free"
+msgstr "空き {free_space}"
+
+msgid "{message}\nRemote servers of other release channels ({removed}) were removed automatically, but there is still not enough space."
+msgstr "{message}\n他チャンネルのリモートサーバー ({removed}) は自動削除しましたが、まだ足りません。"
+
+msgid "{mismatch} The server cannot be reinstalled automatically on this host. {steps}"
+msgstr "{mismatch}この接続先では自動で入れ直せません。{steps}"
+
+msgid "{mismatch} The server could not be reinstalled. {steps}"
+msgstr "{mismatch}サーバーを入れ直せませんでした。{steps}"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

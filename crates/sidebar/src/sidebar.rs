@@ -104,7 +104,7 @@ gpui::actions!(
     ]
 );
 
-const OUTSIDE_SANDBOX_BADGE_TOOLTIP: &str = "サンドボックスの外で実行中";
+const OUTSIDE_SANDBOX_BADGE_TOOLTIP: &str = i18n::msg!("Running outside the sandbox");
 /// How a test finds the mark on a thread started outside its sandbox.
 const OUTSIDE_SANDBOX_BADGE_SELECTOR: &str = "SIDEBAR-OUTSIDE-SANDBOX-BADGE";
 
@@ -856,7 +856,7 @@ impl Sidebar {
 
         let filter_editor = cx.new(|cx| {
             let mut editor = Editor::single_line(window, cx);
-            editor.set_placeholder_text("スレッドを検索…", window, cx);
+            editor.set_placeholder_text(i18n::t!("Search threads…"), window, cx);
             editor
         });
         let rename_editor = cx.new(|cx| Editor::single_line(window, cx));
@@ -2303,7 +2303,7 @@ impl Sidebar {
                         .size(IconSize::XSmall)
                         .color(Color::Muted),
                 )
-                .tooltip(Tooltip::text("リモートプロジェクト"))
+                .tooltip(Tooltip::text(i18n::t!("Remote Project")))
                 .into_any_element(),
         )
     }
@@ -2421,11 +2421,11 @@ impl Sidebar {
                             )
                         })
                         .when(waiting_thread_count > 0, |this| {
-                            let tooltip_text = if waiting_thread_count == 1 {
-                                "1 件のスレッドが確認待ちです".to_string()
-                            } else {
-                                format!("{waiting_thread_count} 件のスレッドが確認待ちです")
-                            };
+                            let tooltip_text = i18n::tn!(
+                                waiting_thread_count,
+                                "{count} thread is waiting for confirmation",
+                                "{count} threads are waiting for confirmation"
+                            );
                             this.child(
                                 div()
                                     .id(format!("{id_prefix}waiting-indicator-{ix}"))
@@ -2516,7 +2516,7 @@ impl Sidebar {
                             Color::Custom(cx.theme().colors().icon_placeholder.opacity(0.1)),
                         ))
                         .child(
-                            Label::new("スレッドがありません")
+                            Label::new(i18n::t!("No threads yet"))
                                 .size(LabelSize::Small)
                                 .color(Color::Placeholder),
                         ),
@@ -2563,7 +2563,7 @@ impl Sidebar {
             return button
                 .tooltip(move |_, cx| {
                     Tooltip::for_action_in(
-                        "エージェントの新規スレッドを開始",
+                        i18n::t!("Start New Agent Thread"),
                         &NewThread,
                         &focus_handle,
                         cx,
@@ -2595,7 +2595,7 @@ impl Sidebar {
         .with_handle(menu_handle)
         .trigger_with_tooltip(button, move |_, cx| {
             Tooltip::for_action_in(
-                "エージェントの新規スレッドを開始",
+                i18n::t!("Start New Agent Thread"),
                 &NewThread,
                 &focus_handle,
                 cx,
@@ -2630,7 +2630,7 @@ impl Sidebar {
                 window,
                 cx,
                 move |mut menu, _window, cx| {
-                    menu = menu.header("新規スレッドの作成先…");
+                    menu = menu.header(i18n::t!("New Thread In…"));
 
                     for (workspace, labels) in open_workspaces
                         .iter()
@@ -2695,7 +2695,7 @@ impl Sidebar {
                     });
 
                     if let Some(base_workspace) = base_workspace.filter(|_| !creation_blocked) {
-                        menu = menu.separator().submenu("新規ワークツリーを作成…", {
+                        menu = menu.separator().submenu(i18n::t!("Create New Worktree…"), {
                             let this = this.clone();
                             move |mut submenu, _window, submenu_cx| {
                                 let project = base_workspace.read(submenu_cx).project().clone();
@@ -2727,8 +2727,8 @@ impl Sidebar {
                                     current_branch.as_deref(),
                                 );
                                 for target in targets {
-                                    let label = format!(
-                                        "{} を基に作成",
+                                    let label = i18n::t!(
+                                        "Based on {}",
                                         target.branch_label(
                                             has_multiple_repositories,
                                             current_branch.as_deref(),
@@ -2921,7 +2921,7 @@ impl Sidebar {
 
                         let menu = menu.when(show_multi_project_entries, |this| {
                             this.entry(
-                                "プロジェクトを新しいウィンドウで開く",
+                                i18n::t!("Open Project in New Window"),
                                 Some(Box::new(workspace::MoveProjectToNewWindow)),
                                 {
                                     let project_group_key = project_group_key.clone();
@@ -2956,12 +2956,14 @@ impl Sidebar {
                                                 Some(TextSize::Default.rems(cx).into()),
                                                 false,
                                             ))
-                                            .child(Label::new("-クリック").color(Color::Muted));
+                                            .child(
+                                                Label::new(i18n::t!("-click")).color(Color::Muted),
+                                            );
 
                                         let label = if has_threads {
-                                            "最後のプロジェクトにフォーカス"
+                                            i18n::t!("Focus Last Project")
                                         } else {
-                                            "プロジェクトにフォーカス"
+                                            i18n::t!("Focus Project")
                                         };
 
                                         h_flex()
@@ -3007,7 +3009,7 @@ impl Sidebar {
                         let menu = if open_workspaces.is_empty() {
                             menu
                         } else {
-                            let mut menu = menu.separator().header("開いているワークツリー");
+                            let mut menu = menu.separator().header(i18n::t!("Open Worktrees"));
 
                             for (
                                 workspace_index,
@@ -3075,7 +3077,9 @@ impl Sidebar {
                                                     )
                                                     .icon_size(IconSize::Small)
                                                     .visible_on_hover(&row_group_name)
-                                                    .tooltip(Tooltip::text("ワークツリーを閉じる"))
+                                                    .tooltip(Tooltip::text(i18n::t!(
+                                                        "Close Worktree"
+                                                    )))
                                                     .on_click(move |_, window, cx| {
                                                         cx.stop_propagation();
                                                         window.prevent_default();
@@ -3132,7 +3136,7 @@ impl Sidebar {
 
                             this.separator()
                                 .item(
-                                    ContextMenuEntry::new("上へ移動")
+                                    ContextMenuEntry::new(i18n::t!("Move Up"))
                                         .action(Box::new(MoveProjectUp))
                                         .disabled(!can_move_up)
                                         .handler(move |_window, cx| {
@@ -3147,7 +3151,7 @@ impl Sidebar {
                                         }),
                                 )
                                 .item(
-                                    ContextMenuEntry::new("下へ移動")
+                                    ContextMenuEntry::new(i18n::t!("Move Down"))
                                         .action(Box::new(MoveProjectDown))
                                         .disabled(!can_move_down)
                                         .handler(move |_window, cx| {
@@ -3165,16 +3169,17 @@ impl Sidebar {
 
                         let project_group_key = project_group_key.clone();
                         let remove_multi_workspace = multi_workspace.clone();
-                        menu.separator().entry("削除", None, move |window, cx| {
-                            remove_multi_workspace
-                                .update(cx, |multi_workspace, cx| {
-                                    multi_workspace
-                                        .remove_project_group(&project_group_key, window, cx)
-                                        .detach_and_log_err(cx);
-                                })
-                                .ok();
-                            weak_menu.update(cx, |_, cx| cx.emit(DismissEvent)).ok();
-                        })
+                        menu.separator()
+                            .entry(i18n::t!("Remove"), None, move |window, cx| {
+                                remove_multi_workspace
+                                    .update(cx, |multi_workspace, cx| {
+                                        multi_workspace
+                                            .remove_project_group(&project_group_key, window, cx)
+                                            .detach_and_log_err(cx);
+                                    })
+                                    .ok();
+                                weak_menu.update(cx, |_, cx| cx.emit(DismissEvent)).ok();
+                            })
                     });
 
                 let this = this.clone();
@@ -3775,7 +3780,7 @@ impl Sidebar {
 
         let thread_title = title
             .map(|t| t.to_string())
-            .unwrap_or_else(|| DEFAULT_THREAD_TITLE.to_string());
+            .unwrap_or_else(|| i18n::tr(DEFAULT_THREAD_TITLE).to_string());
 
         let workspace = workspace.clone();
 
@@ -3819,7 +3824,7 @@ impl Sidebar {
     fn show_no_thread_summary_model_toast(workspace: Entity<Workspace>, cx: &mut App) {
         Self::show_thread_title_toast(
             workspace,
-            "スレッドタイトルの要約に使用するモデルが構成されていません。",
+            i18n::t!("No model is configured for summarizing thread titles."),
             cx,
         );
     }
@@ -3916,7 +3921,7 @@ impl Sidebar {
                         if let Some(workspace) = this.active_workspace(cx) {
                             Self::show_thread_title_toast(
                                 workspace,
-                                "スレッドタイトルの再生成に失敗しました。",
+                                i18n::t!("Failed to regenerate thread title."),
                                 cx,
                             );
                         }
@@ -4289,9 +4294,7 @@ impl Sidebar {
                                             Toast::new(
                                                 NotificationId::unique::<RestoreWorktreeErrorToast>(
                                                 ),
-                                                format!(
-                                                    "ワークツリーの復元に失敗しました: {error:#}"
-                                                ),
+                                                i18n::t!("Failed to restore worktree: {error:#}"),
                                             )
                                             .autohide(),
                                             cx,
@@ -6313,7 +6316,7 @@ impl Sidebar {
                                 .size(IconSize::XSmall)
                                 .color(Color::Warning),
                         )
-                        .tooltip(Tooltip::text(OUTSIDE_SANDBOX_BADGE_TOOLTIP)),
+                        .tooltip(Tooltip::text(i18n::tr(OUTSIDE_SANDBOX_BADGE_TOOLTIP))),
                 )
             })
             .when_some(icon_svg, |this, svg| {
@@ -6351,7 +6354,7 @@ impl Sidebar {
                         let focus_handle = focus_handle.clone();
                         move |_window, cx| {
                             Tooltip::for_action_in(
-                                "スレッドの名前変更",
+                                i18n::t!("Rename Thread"),
                                 &RenameSelectedThread,
                                 &focus_handle,
                                 cx,
@@ -6377,7 +6380,7 @@ impl Sidebar {
                             .icon_size(IconSize::Small)
                             .icon_color(Color::Error)
                             .style(ButtonStyle::Tinted(TintColor::Error))
-                            .tooltip(Tooltip::text("生成を停止"))
+                            .tooltip(Tooltip::text(i18n::t!("Stop Generation")))
                             .on_click(cx.listener(move |this, _, _window, cx| {
                                 this.stop_thread(&thread_id_for_actions, cx);
                             }))
@@ -6389,7 +6392,7 @@ impl Sidebar {
                         Some(DraftKind::WithContent) => Some(
                             IconButton::new("discard_thread", IconName::Close)
                                 .icon_size(IconSize::Small)
-                                .tooltip(Tooltip::text("下書きを破棄"))
+                                .tooltip(Tooltip::text(i18n::t!("Discard Draft")))
                                 .on_click({
                                     let thread_workspace = thread_workspace.clone();
                                     cx.listener(move |this, _, window, cx| {
@@ -6410,7 +6413,7 @@ impl Sidebar {
                                     let focus_handle = focus_handle.clone();
                                     move |_window, cx| {
                                         Tooltip::for_action_in(
-                                            "スレッドをアーカイブ",
+                                            i18n::t!("Archive Thread"),
                                             &ArchiveSelectedThread,
                                             &focus_handle,
                                             cx,
@@ -6497,7 +6500,7 @@ impl Sidebar {
                     let rename_title = rename_title.clone();
                     let folder_paths = folder_paths.clone();
                     ContextMenu::build(_window, cx, move |mut menu, _window, _cx| {
-                        menu = menu.entry("タイトルの名前変更", None, {
+                        menu = menu.entry(i18n::t!("Rename Title"), None, {
                             let sidebar = sidebar.clone();
                             let rename_title = rename_title.clone();
                             move |window, cx| {
@@ -6516,7 +6519,7 @@ impl Sidebar {
                         });
 
                         if is_zed_thread {
-                            menu = menu.entry("スレッドタイトルを再生成", None, {
+                            menu = menu.entry(i18n::t!("Regenerate Thread Title"), None, {
                                 let session_id = session_id.clone();
                                 let sidebar = sidebar.clone();
                                 let thread_workspace = thread_workspace.clone();
@@ -6538,7 +6541,7 @@ impl Sidebar {
                         }
 
                         if can_open_as_markdown {
-                            menu = menu.entry("スレッドを Markdown で開く", None, {
+                            menu = menu.entry(i18n::t!("Open Thread as Markdown"), None, {
                                 let session_id = session_id.clone();
                                 let markdown_title = markdown_title.clone();
                                 let thread_workspace = thread_workspace.clone();
@@ -6575,7 +6578,7 @@ impl Sidebar {
                             });
                         }
 
-                        menu.separator().entry("スレッドをアーカイブ", None, {
+                        menu.separator().entry(i18n::t!("Archive Thread"), None, {
                             let session_id = session_id.clone();
                             move |window, cx| {
                                 sidebar
@@ -6657,7 +6660,7 @@ impl Sidebar {
                             let focus_handle = focus_handle.clone();
                             move |_window, cx| {
                                 Tooltip::for_action_in(
-                                    "ターミナルを閉じる",
+                                    i18n::t!("Close Terminal"),
                                     &ArchiveSelectedThread,
                                     &focus_handle,
                                     cx,
@@ -6764,7 +6767,9 @@ impl Sidebar {
                 IconButton::new("open-project", IconName::FolderAdd)
                     .icon_size(IconSize::Small)
                     .selected_style(ButtonStyle::Tinted(TintColor::Accent)),
-                |_window, cx| Tooltip::for_action("プロジェクトを追加", &OpenRecent::default(), cx),
+                |_window, cx| {
+                    Tooltip::for_action(i18n::t!("Add Project"), &OpenRecent::default(), cx)
+                },
             )
             .offset(gpui::Point {
                 x: px(-2.0),
@@ -7316,9 +7321,9 @@ impl Sidebar {
     fn render_no_results(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let has_query = self.has_filter_query(cx);
         let message = if has_query {
-            "検索に一致するスレッドがありません。"
+            i18n::t!("No threads match your search.")
         } else {
-            "スレッドがありません"
+            i18n::t!("No threads yet")
         };
 
         v_flex()
@@ -7336,7 +7341,7 @@ impl Sidebar {
 
     fn render_empty_state(&self, cx: &mut Context<Self>) -> impl IntoElement {
         ProjectEmptyState::new(
-            "スレッドサイドバー",
+            i18n::t!("Threads Sidebar"),
             self.focus_handle(cx),
             KeyBinding::for_action(&workspace::Open::default(), cx),
         )
@@ -7421,7 +7426,7 @@ impl Sidebar {
                                 this.child(
                                     IconButton::new("clear_filter", IconName::Close)
                                         .icon_size(IconSize::Small)
-                                        .tooltip(Tooltip::text("検索をクリア"))
+                                        .tooltip(Tooltip::text(i18n::t!("Clear Search")))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.reset_filter_editor_text(window, cx);
                                             this.update_entries(cx);
@@ -7480,7 +7485,7 @@ impl Sidebar {
                                 h_flex()
                                     .gap_2()
                                     .justify_between()
-                                    .child(Label::new("サイドバーの表示切り替え"))
+                                    .child(Label::new(i18n::t!("Toggle Sidebar")))
                                     .child(KeyBinding::for_action(&ToggleWorkspaceSidebar, cx)),
                             )
                             .child(
@@ -7490,7 +7495,7 @@ impl Sidebar {
                                     .border_t_1()
                                     .border_color(cx.theme().colors().border_variant)
                                     .justify_between()
-                                    .child(Label::new("サイドバーにフォーカス"))
+                                    .child(Label::new(i18n::t!("Focus Sidebar")))
                                     .child(KeyBinding::for_action(&FocusWorkspaceSidebar, cx)),
                             )
                             .into_any_element()
@@ -7522,9 +7527,9 @@ impl Sidebar {
                     .toggle_state(is_archive)
                     .tooltip(move |_, cx| {
                         let label = if is_archive {
-                            "スレッド履歴を非表示"
+                            i18n::t!("Hide Thread History")
                         } else {
-                            "スレッド履歴を表示"
+                            i18n::t!("Show Thread History")
                         };
                         Tooltip::for_action(label, &ToggleThreadHistory, cx)
                     })
@@ -7616,12 +7621,14 @@ impl Sidebar {
         });
         render_import_onboarding_banner(
             "acp",
-            "外部エージェントのスレッドをお探しですか?",
-            "Zed で開始したものでも他のクライアントで開始したものでも、Claude Agent や Codex などのエージェントからスレッドをインポートします。",
+            i18n::t!("Looking for threads from external agents?"),
+            i18n::t!(
+                "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client."
+            ),
             if verbose_labels {
-                "外部エージェントのスレッドをインポート"
+                i18n::t!("Import Threads from External Agents")
             } else {
-                "スレッドをインポート"
+                i18n::t!("Import Threads")
             },
             |_, _window, cx| AcpThreadImportOnboarding::dismiss(cx),
             on_import,
@@ -7643,10 +7650,10 @@ impl Sidebar {
             .cross_channel_import_channels
             .iter()
             .map(SharedString::as_str)
-            .join(" と ");
+            .join(i18n::t!(" and "));
 
-        let description = format!(
-            "{} からスレッドをインポートすると、続きから再開できます。",
+        let description = i18n::t!(
+            "Import threads from {} to continue where you left off.",
             channel_names
         );
 
@@ -7668,12 +7675,12 @@ impl Sidebar {
         });
         render_import_onboarding_banner(
             "channel",
-            "他のチャンネルのスレッドが見つかりました",
+            i18n::t!("Threads found from other channels"),
             description,
             if verbose_labels {
-                "他のチャンネルのスレッドをインポート"
+                i18n::t!("Import Threads from Other Channels")
             } else {
-                "スレッドをインポート"
+                i18n::t!("Import Threads")
             },
             |_, _window, cx| CrossChannelImportOnboarding::dismiss(cx),
             on_import,
@@ -8102,7 +8109,7 @@ fn all_thread_infos_for_workspace(
             let icon_from_external_svg = thread_view_ref.agent_icon_from_external_svg.clone();
             let title = thread
                 .title()
-                .unwrap_or_else(|| DEFAULT_THREAD_TITLE.into());
+                .unwrap_or_else(|| i18n::tr(DEFAULT_THREAD_TITLE).into());
             let is_title_generating = thread_view_ref
                 .as_native_thread(cx)
                 .is_some_and(|native_thread| native_thread.read(cx).is_generating_title());

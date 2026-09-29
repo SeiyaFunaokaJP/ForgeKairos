@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Group heading for the hosts read out of `remote.ssh_connections`.
-pub const REMOTE_SSH_GROUP: &str = "リモート SSH";
+pub const REMOTE_SSH_GROUP: &str = i18n::msg!("Remote SSH");
 
 /// Where a preset came from, and therefore what may be done with it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -160,7 +160,7 @@ pub fn preset_groups(
         .collect::<Vec<_>>();
     if !remote_ssh.is_empty() {
         groups.push(PresetGroup {
-            label: Some(SharedString::from(REMOTE_SSH_GROUP)),
+            label: Some(SharedString::from(i18n::tr(REMOTE_SSH_GROUP))),
             presets: remote_ssh,
         });
     }

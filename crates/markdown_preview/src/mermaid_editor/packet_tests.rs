@@ -79,10 +79,20 @@ const TEMPLATE_FENCE: &str = indoc! {r#"
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let packet = parse_packet(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_packet(&packet), template);
+    };
+    check(editor::actions::MermaidDiagramKind::Packet.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::Packet.template();
-    let packet = parse_packet(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_packet(&packet), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -138,7 +148,7 @@ async fn the_ranges_follow_the_lengths(cx: &mut TestAppContext) {
                 8-23: "長さ"
                 24-55: "データ (可変長)"
                 56-71: "チェックサム"
-                72-79: "新しい項目"
+                72-79: "New item"
             ```
         "#},
     );
@@ -152,8 +162,8 @@ async fn what_mermaid_cannot_draw_is_refused(cx: &mut TestAppContext) {
     let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
 
     for (bits_text, label_text, expected) in [
-        ("0", "送信元ポート", "ビット数"),
-        ("1.5", "送信元ポート", "ビット数"),
+        ("0", "送信元ポート", "number of bits"),
+        ("1.5", "送信元ポート", "number of bits"),
         ("16", "50%% 完了", "50%% 完了"),
     ] {
         cx.update(|window, cx| {

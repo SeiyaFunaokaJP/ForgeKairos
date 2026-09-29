@@ -41,11 +41,11 @@ const HEADER: &str = "architecture-beta";
 /// The icons Mermaid draws without an icon pack, with the names the editor
 /// offers them under.
 pub const KNOWN_ICONS: [(&str, &str); 5] = [
-    ("cloud", "クラウド"),
-    ("database", "データベース"),
-    ("disk", "ディスク"),
-    ("internet", "インターネット"),
-    ("server", "サーバー"),
+    ("cloud", i18n::msg!("Cloud")),
+    ("database", i18n::msg!("Database")),
+    ("disk", i18n::msg!("Disk")),
+    ("internet", i18n::msg!("Internet")),
+    ("server", i18n::msg!("Server")),
 ];
 
 /// The side of a service, junction or group an edge is attached to.
@@ -76,10 +76,10 @@ impl ArchitectureSide {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Left => "左",
-            Self::Right => "右",
-            Self::Top => "上",
-            Self::Bottom => "下",
+            Self::Left => i18n::tc!("architecture side", "Left"),
+            Self::Right => i18n::tc!("architecture side", "Right"),
+            Self::Top => i18n::tc!("architecture side", "Top"),
+            Self::Bottom => i18n::tc!("architecture side", "Bottom"),
         }
     }
 
@@ -127,8 +127,8 @@ impl ArchitectureNodeKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Service => "サービス",
-            Self::Junction => "ジャンクション",
+            Self::Service => i18n::tc!("architecture node", "Service"),
+            Self::Junction => i18n::tc!("architecture node", "Junction"),
         }
     }
 }
@@ -314,7 +314,7 @@ impl ArchitectureDocument {
             && !is_valid_architecture_diagram_title(title)
         {
             return Some(
-                "タイトルは空にできず、改行と `%%` は使えません (前後の空白も不可)。".to_string(),
+                i18n::t!("The title cannot be empty or contain line breaks or `%%` (and cannot start or end with whitespace).").to_string(),
             );
         }
 
@@ -352,8 +352,8 @@ impl ArchitectureDocument {
                 }
                 ArchitectureNodeKind::Junction => {
                     if node.icon.is_some() || node.title.is_some() {
-                        return Some(format!(
-                            "ジャンクション `{}` にはアイコンもタイトルも付けられません。",
+                        return Some(i18n::t!(
+                            "Junction `{}` cannot have an icon or a title.",
                             node.id
                         ));
                     }
@@ -364,8 +364,8 @@ impl ArchitectureDocument {
         let mut seen: Vec<&str> = Vec::new();
         for id in self.ids() {
             if seen.contains(&id) {
-                return Some(format!(
-                    "ID `{id}` が 2 回使われています。グループ・サービス・ジャンクションの ID はすべて別にしてください。"
+                return Some(i18n::t!(
+                    "The ID `{id}` is used twice. Groups, services and junctions all need different IDs."
                 ));
             }
             seen.push(id);
@@ -386,11 +386,11 @@ impl ArchitectureDocument {
                 continue;
             };
             if parent == id {
-                return Some(format!("`{id}` を自分自身の中には置けません。"));
+                return Some(i18n::t!("`{id}` cannot be placed inside itself."));
             }
             if !is_group(parent) {
-                return Some(format!(
-                    "`{id}` の所属先 `{parent}` はグループではありません (無いか、サービスかジャンクションです)。"
+                return Some(i18n::t!(
+                    "`{parent}`, which `{id}` belongs to, is not a group (it does not exist, or it is a service or a junction)."
                 ));
             }
         }
@@ -399,8 +399,8 @@ impl ArchitectureDocument {
             let mut steps = 0;
             while let Some(parent) = current {
                 if parent == group.id || steps > self.groups.len() {
-                    return Some(format!(
-                        "グループ `{}` の所属が輪になっています。どこかの所属を外してください。",
+                    return Some(i18n::t!(
+                        "The memberships of group `{}` form a loop. Remove one of them.",
                         group.id
                     ));
                 }
@@ -416,16 +416,16 @@ impl ArchitectureDocument {
         for edge in &self.edges {
             for end in [&edge.from, &edge.to] {
                 if !seen.contains(&end.id.as_str()) {
-                    return Some(format!(
-                        "辺の端 `{}` がありません。サービスかジャンクションの ID を選んでください。",
+                    return Some(i18n::t!(
+                        "The edge end `{}` does not exist. Choose the ID of a service or junction.",
                         end.id
                     ));
                 }
                 // `merman` reads an edge that ends on a group but cannot lay it
                 // out, so the diagram would not draw at all.
                 if is_group(&end.id) {
-                    return Some(format!(
-                        "辺の端 `{}` はグループです。辺はサービスかジャンクションにつないでください (グループの枠から出すには「グループ端」)。",
+                    return Some(i18n::t!(
+                        "The edge end `{}` is a group. Connect edges to services or junctions (to leave from the border of a group, use “Group Edge”).",
                         end.id
                     ));
                 }
@@ -433,9 +433,11 @@ impl ArchitectureDocument {
             if let Some(title) = &edge.title
                 && !is_valid_architecture_label(title)
             {
-                return Some(format!(
-                    "辺 `{}` → `{}` のラベル `{title}` は書けません ({LABEL_RULE})。",
-                    edge.from.id, edge.to.id
+                return Some(i18n::t!(
+                    "The label `{title}` of the edge `{}` → `{}` cannot be written ({label_rule}).",
+                    edge.from.id,
+                    edge.to.id,
+                    label_rule = label_rule()
                 ));
             }
             if edge.from.group_boundary || edge.to.group_boundary {
@@ -451,9 +453,10 @@ impl ArchitectureDocument {
                     (parent_of(&edge.from.id), parent_of(&edge.to.id))
                     && from == to
                 {
-                    return Some(format!(
-                        "辺 `{}` → `{}` は同じグループの中で閉じているので、「グループ端」にできません。",
-                        edge.from.id, edge.to.id
+                    return Some(i18n::t!(
+                        "The edge `{}` → `{}` stays inside one group, so it cannot use “Group Edge”.",
+                        edge.from.id,
+                        edge.to.id
                     ));
                 }
             }
@@ -461,8 +464,8 @@ impl ArchitectureDocument {
 
         for (statement, comment) in self.commented_statements() {
             if !comment_survives(&statement, comment) {
-                return Some(format!(
-                    "`{statement}` の後ろのコメントが Mermaid に読まれなくなります。引用符 (`\"` `'`) を閉じるか、タグの属性 `=\"…\"` をやめてください。"
+                return Some(i18n::t!(
+                    "Mermaid would no longer read the comment after `{statement}` as a comment. Close the quotes (`\"` `'`), or stop using the tag attribute `=\"…\"`."
                 ));
             }
         }
@@ -487,22 +490,28 @@ impl ArchitectureDocument {
 }
 
 fn invalid_id_message(id: &str) -> String {
-    format!(
-        "ID `{id}` は使えません (英数字と `_` `-`、先頭と末尾は英数字か `_`。大文字の L R T B で始まる ID、`title` で始まる ID、`group` `service` `junction` `in` `align` `row` `column` `accTitle` `accDescr` は不可)。"
+    i18n::t!(
+        "The ID `{id}` cannot be used (letters, digits, `_` and `-`, starting and ending with a letter, digit or `_`. IDs that start with a capital L, R, T or B, IDs that start with `title`, and `group`, `service`, `junction`, `in`, `align`, `row`, `column`, `accTitle` and `accDescr` are not allowed)."
     )
 }
 
 fn invalid_icon_message(id: &str) -> String {
-    format!(
-        "`{id}` のアイコンは書けません (名前は英数字と `_` `-` `:` だけ。文字を出すなら引用符で囲みます)。"
+    i18n::t!(
+        "The icon of `{id}` cannot be written (a name uses only letters, digits, `_`, `-` and `:`; to show text, enclose it in quotes)."
     )
 }
 
-const LABEL_RULE: &str =
-    "`%%` と改行は不可、前後の空白も不可、`\\` を引用符の前や末尾に置くことも不可";
+fn label_rule() -> &'static str {
+    i18n::t!(
+        "no `%%` or line breaks, no whitespace at either end, and no `\\` before a quote or at the end"
+    )
+}
 
 fn invalid_label_message(id: &str) -> String {
-    format!("`{id}` のタイトルは書けません ({LABEL_RULE})。")
+    i18n::t!(
+        "The title of `{id}` cannot be written ({label_rule}).",
+        label_rule = label_rule()
+    )
 }
 
 /// Whether a statement followed by `comment` is still cut at the comment,
@@ -669,7 +678,7 @@ pub fn parse_architecture(source: &str) -> Result<ArchitectureDocument> {
     // `merman` itself lets a junction repeat an id or sit in a group that is
     // not there, which the form could not show.
     if let Some(error) = document.structure_error() {
-        bail!("{error} テキストのまま編集してください。");
+        bail!(i18n::t!("{error} Edit it as text."));
     }
 
     // `merman` is asked last, so that a construct this module knows about is
@@ -677,11 +686,13 @@ pub fn parse_architecture(source: &str) -> Result<ArchitectureDocument> {
     if !source.trim().is_empty() {
         let parsed = crate::parse_for_render_model(source)
             .map_err(|error| {
-                anyhow!("Mermaid の構文として読めませんでした ({error})。テキストのまま編集してください。")
+                anyhow!(i18n::t!(
+                    "Mermaid could not parse this diagram ({error}). Edit it as text."
+                ))
             })?
-            .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした。"))?;
+            .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram.")))?;
         if !matches!(parsed.model(), RenderSemanticModel::Architecture(_)) {
-            bail!("この図はアーキテクチャ図ではありません。");
+            bail!(i18n::t!("This diagram is not an architecture diagram."));
         }
     }
 
@@ -700,13 +711,13 @@ fn scan_architecture(source: &str) -> Result<ArchitectureDocument> {
 
     let header = lines.get(header_index).copied().unwrap_or_default();
     if header.contains(DIRECTIVE_START) {
-        bail!("{DIRECTIVE_NOT_ALONE}");
+        bail!(directive_not_alone());
     }
     let (header_statement, header_comment) = split_comment(header);
     let Some(tail) = keyword_tail(header_statement.trim(), HEADER) else {
-        bail!(
-            "アーキテクチャ図ではありません (`architecture-beta` で始まる図だけを構造化編集できます)。"
-        );
+        bail!(i18n::t!(
+            "This is not an architecture diagram (only diagrams that start with `architecture-beta` can be edited in the structured editor)."
+        ));
     };
     let mut scanner = Scanner {
         document,
@@ -719,9 +730,9 @@ fn scan_architecture(source: &str) -> Result<ArchitectureDocument> {
     if !tail.is_empty() {
         // `merman` reads what follows the keyword as the first statement.
         match classify(tail) {
-            Statement::Accessibility { .. } => bail!(
-                "`architecture-beta` の行に続く `{tail}` は構造化編集に対応していません。行を分けるか、テキストのまま編集してください。"
-            ),
+            Statement::Accessibility { .. } => bail!(i18n::t!(
+                "`{tail}` following the `architecture-beta` line is not supported by the structured editor. Move it to a line of its own, or edit it as text."
+            )),
             statement => scanner.read(statement, tail, None)?,
         }
     }
@@ -745,7 +756,7 @@ fn scan_architecture(source: &str) -> Result<ArchitectureDocument> {
             }
             let block = join_lines(lines.get(start..index).unwrap_or_default());
             if !is_comment_after_directives(&block, index >= lines.len()) {
-                bail!("{DIRECTIVE_NOT_ALONE}");
+                bail!(directive_not_alone());
             }
             scanner.preserve(block);
             continue;
@@ -754,7 +765,7 @@ fn scan_architecture(source: &str) -> Result<ArchitectureDocument> {
         // statement, quotes or not, so a statement holding one means
         // something other than what it says.
         if line.contains(DIRECTIVE_START) {
-            bail!("{DIRECTIVE_NOT_ALONE}");
+            bail!(directive_not_alone());
         }
 
         let (statement, comment) = split_comment(line);
@@ -806,9 +817,9 @@ impl Scanner {
                 // empty one, which clears the title — would make writing the
                 // diagram back drop a line the user can see.
                 if self.title_seen {
-                    bail!(
-                        "`title` が 2 回書かれています。1 つにまとめてからもう一度開いてください。"
-                    );
+                    bail!(i18n::t!(
+                        "`title` is written twice. Merge them into one, then open it again."
+                    ));
                 }
                 self.title_seen = true;
                 let value = value.trim();
@@ -896,7 +907,11 @@ fn keyword_rest<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
 
 const DIRECTIVE_START: &str = "%%{";
 const DIRECTIVE_END: &str = "}%%";
-const DIRECTIVE_NOT_ALONE: &str = "`%%{` の指示子が文やコメントと同じ行にあります (Mermaid は指示子だけを切り取って残りを文として読みます)。指示子を 1 行に単独で書くか、テキストのまま編集してください。";
+fn directive_not_alone() -> String {
+    i18n::t!(
+        "A `%%{{` directive is on the same line as a statement or a comment (Mermaid cuts out only the directive and reads the rest as a statement). Write the directive on a line of its own, or edit it as text."
+    )
+}
 
 /// Whether a body line (or a multi-line directive) that opens with `%%` is
 /// still nothing but comments once `merman` has cut the directives out of it.
@@ -1038,21 +1053,26 @@ fn take_parent(rest: &str, statement: &str) -> Result<Option<String>> {
     let (parent, rest) = match keyword_rest(rest, "in") {
         Some(after) => {
             let Some((parent, tail)) = take_id(after.trim_start()) else {
-                bail!("`in` の後ろのグループ ID が読めません ({statement})。");
+                bail!(i18n::t!(
+                    "Could not read the group ID after `in` ({statement})."
+                ));
             };
             (Some(parent.to_string()), tail)
         }
         None => (None, rest),
     };
     if !rest.trim().is_empty() {
-        bail!("`{statement}` の `{}` が読めません。", rest.trim());
+        bail!(i18n::t!(
+            "Could not read `{}` in `{statement}`.",
+            rest.trim()
+        ));
     }
     Ok(parent)
 }
 
 fn parse_group(rest: &str, statement: &str) -> Result<ArchitectureGroup> {
     let Some((id, mut rest)) = take_id(rest) else {
-        bail!("グループの ID が読めません ({statement})。");
+        bail!(i18n::t!("Could not read the group ID ({statement})."));
     };
     rest = rest.trim_start();
     let mut icon = None;
@@ -1076,7 +1096,14 @@ fn parse_group(rest: &str, statement: &str) -> Result<ArchitectureGroup> {
 
 fn parse_node(kind: ArchitectureNodeKind, rest: &str, statement: &str) -> Result<ArchitectureNode> {
     let Some((id, mut rest)) = take_id(rest) else {
-        bail!("{}の ID が読めません ({statement})。", kind.label());
+        bail!(match kind {
+            ArchitectureNodeKind::Service => {
+                i18n::t!("Could not read the ID of the service ({statement}).")
+            }
+            ArchitectureNodeKind::Junction => {
+                i18n::t!("Could not read the ID of the junction ({statement}).")
+            }
+        });
     };
     rest = rest.trim_start();
     let mut icon = None;
@@ -1112,7 +1139,9 @@ const GROUP_MODIFIER: &str = "{group}";
 /// An edge end's id and whether `{group}` follows it, and what is left.
 fn take_endpoint<'a>(input: &'a str, statement: &str) -> Result<(String, bool, &'a str)> {
     let Some((id, rest)) = take_id(input) else {
-        bail!("辺の端の ID が読めません ({statement})。");
+        bail!(i18n::t!(
+            "Could not read the ID of an edge end ({statement})."
+        ));
     };
     Ok(match rest.strip_prefix(GROUP_MODIFIER) {
         Some(rest) => (id.to_string(), true, rest),
@@ -1125,13 +1154,20 @@ fn take_side<'a>(input: &'a str, statement: &str) -> Result<(ArchitectureSide, &
         .chars()
         .next()
         .and_then(ArchitectureSide::from_letter)
-        .ok_or_else(|| anyhow!("辺の向きは L R T B のどれかです ({statement})。"))?;
+        .ok_or_else(|| {
+            anyhow!(i18n::t!(
+                "The side of an edge is one of L R T B ({statement})."
+            ))
+        })?;
     Ok((side, input.get(1..).unwrap_or_default()))
 }
 
 fn parse_edge(statement: &str) -> Result<ArchitectureEdge> {
-    let unreadable =
-        || anyhow!("`{statement}` は辺として読めません (`a:R -- L:b` の形で書きます)。");
+    let unreadable = || {
+        anyhow!(i18n::t!(
+            "`{statement}` cannot be read as an edge (write it as `a:R -- L:b`)."
+        ))
+    };
 
     let (from_id, from_group, rest) = take_endpoint(statement, statement)?;
     let rest = rest
@@ -1641,29 +1677,32 @@ mod tests {
     #[test]
     fn constructs_that_would_be_dropped_are_refused() {
         for (source, expected) in [
-            ("architecture-beta\n    title a\n    title b", "2 回"),
-            ("architecture-beta\n    title a\n    title", "2 回"),
-            ("architecture-beta accTitle: x", "行に続く"),
-            ("architecture-beta\n    service a\n    junction a", "2 回"),
+            ("architecture-beta\n    title a\n    title b", "twice"),
+            ("architecture-beta\n    title a\n    title", "twice"),
+            (
+                "architecture-beta accTitle: x",
+                "following the `architecture-beta` line",
+            ),
+            ("architecture-beta\n    service a\n    junction a", "twice"),
             (
                 "architecture-beta\n    junction j in nowhere",
-                "グループではありません",
+                "is not a group",
             ),
             (
                 "architecture-beta\n    service a\n    junction j in a",
-                "グループではありません",
+                "is not a group",
             ),
             ("architecture-beta\n    service accTitle", "accTitle"),
-            ("architecture-beta\n    service a(\"x\")", "アイコン"),
+            ("architecture-beta\n    service a(\"x\")", "icon"),
             (
                 "architecture-beta\n    service a\n    a:X -- L:a",
                 "L R T B",
             ),
             (
                 "architecture-beta\n    service a\n    a:R == L:a",
-                "辺として",
+                "as an edge",
             ),
-            ("architecture-beta\n    service a extra", "読めません"),
+            ("architecture-beta\n    service a extra", "Could not read"),
         ] {
             let error = parse_architecture(source)
                 .err()
@@ -1720,70 +1759,70 @@ mod tests {
         let cases: Vec<(Box<dyn Fn(&mut ArchitectureDocument)>, &str)> = vec![
             (
                 Box::new(|document| document.groups[0].parent = Some("h".into())),
-                "輪",
+                "loop",
             ),
             (
                 Box::new(|document| document.groups[0].parent = Some("g".into())),
-                "自分自身",
+                "inside itself",
             ),
             (
                 Box::new(|document| document.nodes[0].parent = Some("b".into())),
-                "グループではありません",
+                "is not a group",
             ),
             (
                 Box::new(|document| document.nodes[1].id = "g".into()),
-                "2 回",
+                "twice",
             ),
             (
                 Box::new(|document| document.nodes[1].id = "b-".into()),
-                "使えません",
+                "cannot be used",
             ),
             (
                 Box::new(|document| document.edges[0].to.id = "zzz".into()),
-                "ありません",
+                "does not exist",
             ),
             (
                 Box::new(|document| document.edges[0].title = Some("a%%b".into())),
-                "ラベル",
+                "The label",
             ),
             (
                 Box::new(|document| document.edges[0].from.group_boundary = true),
-                "グループ端",
+                "“Group Edge”",
             ),
             (
                 Box::new(|document| document.nodes[0].title = Some(" A".into())),
-                "タイトル",
+                "The title",
             ),
             (
                 Box::new(|document| {
                     document.nodes[0].icon = Some(ArchitectureIcon::Named("a)b".into()))
                 }),
-                "アイコン",
+                "icon",
             ),
             (
                 Box::new(|document| document.groups[0].icon = Some("x%%y".into())),
-                "アイコン",
+                "icon",
             ),
             (
                 Box::new(|document| document.title = Some("a %% b".into())),
-                "タイトル",
+                "The title",
             ),
             (
                 Box::new(|document| {
                     document.nodes[1].kind = ArchitectureNodeKind::Junction;
                     document.nodes[1].title = Some("J".into());
                 }),
-                "ジャンクション",
+                "Junction",
             ),
             (
                 Box::new(|document| document.nodes[0].id = "Backend".into()),
-                "使えません",
+                "cannot be used",
             ),
             (
                 Box::new(|document| {
                     document.groups[0].icon = Some("日本".into());
                 }),
-                "アイコン",
+                "icon",
             ),
         ];
         for (index, (edit, expected)) in cases.iter().enumerate() {
@@ -1855,17 +1894,17 @@ mod tests {
         let source = "architecture-beta\n    group g\n    service a\n    a:R -- L:g";
         assert!(render_to_svg(source, &MermaidTheme::default()).is_err());
         let error = parse_architecture(source).expect_err("an edge to a group should be refused");
-        assert!(format!("{error}").contains("グループです"), "{error}");
+        assert!(format!("{error}").contains("is a group"), "{error}");
 
         let mut document = ArchitectureDocument::empty();
         document.groups = vec![group("g", None), group("h", None)];
         document.nodes = vec![service("a", None, None, Some("g"))];
         document.edges = vec![edge("g", "h")];
         let error = document.structure_error().expect("a group-to-group edge");
-        assert!(error.contains("`g` はグループです"), "{error}");
+        assert!(error.contains("`g` is a group"), "{error}");
         document.edges = vec![edge("a", "h")];
         let error = document.structure_error().expect("a service-to-group edge");
-        assert!(error.contains("`h` はグループです"), "{error}");
+        assert!(error.contains("`h` is a group"), "{error}");
         assert!(render_to_svg(&emit_architecture(&document), &MermaidTheme::default()).is_err());
     }
 
@@ -1885,7 +1924,10 @@ mod tests {
             let error = parse_architecture(source)
                 .err()
                 .unwrap_or_else(|| panic!("`{source}` should be refused"));
-            assert!(format!("{error}").contains("指示子"), "{source}: {error}");
+            assert!(
+                format!("{error}").contains("directive"),
+                "{source}: {error}"
+            );
         }
         for source in [
             "architecture-beta\n    %%{init: {\"theme\": \"dark\"}}%%\n    service a",

@@ -33,9 +33,9 @@ use super::{
 
 /// The texts new rows are added with, so that they are visible in the drawing
 /// before anything has been typed into them.
-const NEW_ELEMENT_LABEL: &str = "新しい要素";
-const NEW_BOUNDARY_LABEL: &str = "新しい境界";
-const NEW_RELATION_LABEL: &str = "関係";
+const NEW_ELEMENT_LABEL: &str = i18n::msg!("New element");
+const NEW_BOUNDARY_LABEL: &str = i18n::msg!("New boundary");
+const NEW_RELATION_LABEL: &str = i18n::msg!("Relationship");
 const DEPTH_INDENT_REMS: f32 = 1.;
 
 pub(super) struct C4Form {
@@ -202,7 +202,7 @@ pub(super) fn problem(document: &C4Document) -> Option<SharedString> {
         .items
         .iter()
         .any(|item| matches!(item, C4Item::Element(_) | C4Item::BoundaryStart(_)));
-    (!has_declaration).then(|| "要素か境界を 1 つ以上追加してください。".into())
+    (!has_declaration).then(|| i18n::t!("Add at least one element or boundary.").into())
 }
 
 /// What the kind menu of an element, a boundary or a relationship says.
@@ -331,7 +331,7 @@ impl MermaidEditor {
         let statement = C4Statement::declaration(
             form.document.diagram_type.default_element_macro(),
             &alias,
-            NEW_ELEMENT_LABEL,
+            i18n::tr(NEW_ELEMENT_LABEL),
         );
         let at = form.document.insertion_point(parent);
         let row = self.new_c4_row(&statement, window, cx);
@@ -355,7 +355,7 @@ impl MermaidEditor {
         let statement = C4Statement::declaration(
             form.document.diagram_type.default_boundary_macro(),
             &alias,
-            NEW_BOUNDARY_LABEL,
+            i18n::tr(NEW_BOUNDARY_LABEL),
         );
         let at = form.document.insertion_point(None);
         let row = self.new_c4_row(&statement, window, cx);
@@ -378,12 +378,12 @@ impl MermaidEditor {
         };
         let aliases = form.document.element_aliases();
         let Some(from) = aliases.first().cloned() else {
-            self.message = Some("先に要素を追加してください。".into());
+            self.message = Some(i18n::t!("Add an element first.").into());
             cx.notify();
             return;
         };
         let to = aliases.get(1).cloned().unwrap_or_else(|| from.clone());
-        let statement = C4Statement::relation("Rel", &from, &to, NEW_RELATION_LABEL);
+        let statement = C4Statement::relation("Rel", &from, &to, i18n::tr(NEW_RELATION_LABEL));
         let row = self.new_c4_row(&statement, window, cx);
         let focus = row.label.clone();
         let Some(form) = self.c4_mut() else {
@@ -530,7 +530,7 @@ impl MermaidEditor {
         h_flex()
             .gap_2()
             .child(
-                Label::new("図の種類")
+                Label::new(i18n::t!("Diagram Type"))
                     .size(LabelSize::Small)
                     .color(Color::Muted),
             )
@@ -561,7 +561,7 @@ impl MermaidEditor {
             h_flex()
                 .w_full()
                 .gap_2()
-                .child(section_title("タイトル"))
+                .child(section_title(i18n::t!("Title")))
                 .child(
                     field_frame(&form.title, LABEL_FIELD_WIDTH, title_is_valid, window, cx)
                         .flex_1()
@@ -573,8 +573,10 @@ impl MermaidEditor {
         ];
         if styles > 0 {
             elements.push(
-                Label::new(format!(
-                    "スタイル指定 (UpdateElementStyle など) {styles} 行はそのまま残し、別名の変更に追随します。"
+                Label::new(i18n::tn!(
+                    styles,
+                    "{count} style statement (UpdateElementStyle and the like) is kept as is and follows alias changes.",
+                    "{count} style statements (UpdateElementStyle and the like) are kept as is and follow alias changes."
                 ))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
@@ -591,10 +593,9 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let mut list = v_flex()
-            .w_full()
-            .gap_2()
-            .child(section_title("要素と境界 (境界の中は字下げ)"));
+        let mut list = v_flex().w_full().gap_2().child(section_title(i18n::t!(
+            "Elements and Boundaries (indented inside a boundary)"
+        )));
         for (index, (item, row)) in current.items.iter().zip(&form.rows).enumerate() {
             let Some(row) = row else {
                 continue;
@@ -621,12 +622,12 @@ impl MermaidEditor {
                 .gap_2()
                 .child(add_button(
                     "mermaid-c4-add-element",
-                    "要素を追加",
+                    i18n::t!("Add Element"),
                     cx.listener(|this, _, window, cx| this.add_c4_element(None, window, cx)),
                 ))
                 .child(add_button(
                     "mermaid-c4-add-boundary",
-                    "境界を追加",
+                    i18n::t!("Add Boundary"),
                     cx.listener(|this, _, window, cx| this.add_c4_boundary(window, cx)),
                 )),
         )
@@ -648,7 +649,7 @@ impl MermaidEditor {
 
         let parent = current.parent(index);
         let mut parent_choices = vec![(
-            SharedString::from("最上位"),
+            SharedString::from(i18n::t!("Top Level")),
             parent.is_none(),
             Rc::new(
                 move |this: &mut MermaidEditor, _: &mut Window, cx: &mut Context<MermaidEditor>| {
@@ -673,7 +674,7 @@ impl MermaidEditor {
             .and_then(|start| current.items.get(start))
             .and_then(statement_of)
             .and_then(C4Statement::alias)
-            .unwrap_or("最上位")
+            .unwrap_or(i18n::t!("Top Level"))
             .to_string();
 
         v_flex()
@@ -689,7 +690,7 @@ impl MermaidEditor {
                     .child(self.render_c4_row_controls(
                         index,
                         current,
-                        "要素と、それを結ぶ関係を削除",
+                        i18n::t!("Delete the Element and Its Relationships"),
                         cx,
                     )),
             )
@@ -699,7 +700,7 @@ impl MermaidEditor {
                     .gap_1()
                     .pl_4()
                     .children(self.render_c4_labelled_field(
-                        "技術",
+                        i18n::t!("Technology"),
                         statement,
                         C4Field::Technology,
                         row,
@@ -707,7 +708,7 @@ impl MermaidEditor {
                         cx,
                     ))
                     .children(self.render_c4_labelled_field(
-                        "説明",
+                        i18n::t!("Description"),
                         statement,
                         C4Field::Description,
                         row,
@@ -715,7 +716,7 @@ impl MermaidEditor {
                         cx,
                     ))
                     .child(
-                        Label::new("所属")
+                        Label::new(i18n::tc!("mermaid c4 element", "Parent"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -768,7 +769,9 @@ impl MermaidEditor {
                         )
                         .shape(IconButtonShape::Square)
                         .icon_size(IconSize::XSmall)
-                        .tooltip(Tooltip::text("この境界の中に要素を追加"))
+                        .tooltip(Tooltip::text(i18n::t!(
+                            "Add an Element Inside This Boundary"
+                        )))
                         .on_click(cx.listener(
                             move |this, _, window, cx| this.add_c4_element(Some(index), window, cx),
                         )),
@@ -776,7 +779,7 @@ impl MermaidEditor {
                     .child(self.render_c4_row_controls(
                         index,
                         current,
-                        "境界を削除 (中の要素は残す)",
+                        i18n::t!("Delete the Boundary (the elements inside are kept)"),
                         cx,
                     )),
             )
@@ -784,8 +787,8 @@ impl MermaidEditor {
                 this.child(h_flex().w_full().gap_1().pl_4().children(
                     second_line.into_iter().flat_map(|field| {
                         let label = match field {
-                            C4Field::Type => "種類",
-                            _ => "説明",
+                            C4Field::Type => i18n::t!("Type"),
+                            _ => i18n::t!("Description"),
                         };
                         self.render_c4_labelled_field(label, statement, field, row, window, cx)
                     }),
@@ -802,7 +805,10 @@ impl MermaidEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let aliases = current.element_aliases();
-        let mut list = v_flex().w_full().gap_2().child(section_title("関係"));
+        let mut list = v_flex()
+            .w_full()
+            .gap_2()
+            .child(section_title(i18n::t!("Relationships")));
         for (index, (item, row)) in current.items.iter().zip(&form.rows).enumerate() {
             let (C4Item::Relation(statement), Some(row)) = (item, row) else {
                 continue;
@@ -837,7 +843,12 @@ impl MermaidEditor {
                                 window,
                                 cx,
                             ))
-                            .child(self.render_c4_row_controls(index, current, "関係を削除", cx)),
+                            .child(self.render_c4_row_controls(
+                                index,
+                                current,
+                                i18n::t!("Delete Relationship"),
+                                cx,
+                            )),
                     )
                     .child(
                         h_flex()
@@ -845,7 +856,7 @@ impl MermaidEditor {
                             .gap_1()
                             .pl_4()
                             .children(self.render_c4_labelled_field(
-                                "技術",
+                                i18n::t!("Technology"),
                                 statement,
                                 C4Field::Technology,
                                 row,
@@ -853,7 +864,7 @@ impl MermaidEditor {
                                 cx,
                             ))
                             .children(self.render_c4_labelled_field(
-                                "説明",
+                                i18n::t!("Description"),
                                 statement,
                                 C4Field::Description,
                                 row,
@@ -863,8 +874,8 @@ impl MermaidEditor {
                     )
                     .when(current.relation_is_replaced_later(index), |this| {
                         this.child(
-                            Label::new(format!(
-                                "後にある {from} → {to} の関係に上書きされます (種類と文字は後のものが描かれます)。"
+                            Label::new(i18n::t!(
+                                "A later {from} → {to} relationship overrides this one (the later one's kind and text are drawn)."
                             ))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
@@ -874,7 +885,7 @@ impl MermaidEditor {
         }
         list.child(add_button(
             "mermaid-c4-add-relation",
-            "関係を追加",
+            i18n::t!("Add Relationship"),
             cx.listener(|this, _, window, cx| this.add_c4_relation(window, cx)),
         ))
         .into_any_element()
@@ -915,7 +926,7 @@ impl MermaidEditor {
             C4FieldValue::Locked => div()
                 .when(grow, |this| this.flex_1())
                 .child(
-                    Label::new("($名前= で指定。そのまま残す)")
+                    Label::new(i18n::t!("(set by name with $name=; kept as is)"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )

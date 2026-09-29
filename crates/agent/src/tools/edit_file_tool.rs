@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use ui::SharedString;
 
-const DEFAULT_UI_TEXT: &str = "ファイルを編集";
+const DEFAULT_UI_TEXT: &str = i18n::msg!("Editing file");
 
 /// This is a tool for applying edits to an existing file.
 ///
@@ -241,15 +241,16 @@ impl AgentTool for EditFileTool {
         cx: &mut App,
     ) -> SharedString {
         match input {
-            Ok(input) => {
-                self.session_context
-                    .initial_title_from_path(&input.path, DEFAULT_UI_TEXT, cx)
-            }
+            Ok(input) => self.session_context.initial_title_from_path(
+                &input.path,
+                i18n::tr(DEFAULT_UI_TEXT),
+                cx,
+            ),
             Err(raw_input) => initial_title_from_partial_path::<EditFileToolPartialInput>(
                 &self.session_context,
                 raw_input,
                 |partial| partial.path.clone(),
-                DEFAULT_UI_TEXT,
+                i18n::tr(DEFAULT_UI_TEXT),
                 cx,
             ),
         }
@@ -655,7 +656,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("エージェントのスキル"),
+            title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
         );
         auth.response
@@ -1394,7 +1395,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`.zed/settings.json` を編集 (プロジェクトの設定)".into())
+            Some("Edit `.zed/settings.json` (local settings)".into())
         );
 
         // Test 2: Path outside project should require confirmation
@@ -1405,7 +1406,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`/etc/hosts` を編集 (プロジェクトの外)".into())
+            Some("Edit `/etc/hosts` (outside the project)".into())
         );
 
         // Test 3: Relative path without .zed should not require confirmation
@@ -1423,7 +1424,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`root/.zed/tasks.json` を編集 (プロジェクトの設定)".into())
+            Some("Edit `root/.zed/tasks.json` (local settings)".into())
         );
 
         // Test 5: When global default is allow, sensitive and outside-project
@@ -1441,7 +1442,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`.zed/settings.json` を編集 (プロジェクトの設定)".into())
+            Some("Edit `.zed/settings.json` (local settings)".into())
         );
 
         // 5.2: /etc/hosts is outside the project, and blanket approval covers
@@ -1452,7 +1453,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`/etc/hosts` を編集 (プロジェクトの外)".into())
+            Some("Edit `/etc/hosts` (outside the project)".into())
         );
 
         // 5.3: Normal in-project path with allow — no confirmation needed
@@ -1476,7 +1477,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`/etc/hosts` を編集 (プロジェクトの外)".into())
+            Some("Edit `/etc/hosts` (outside the project)".into())
         );
 
         // 5.5: .agents/skills is a sensitive path — still prompts. The
@@ -1494,7 +1495,7 @@ mod tests {
         let event = stream_rx.expect_authorization().await;
         assert_eq!(
             event.tool_call.fields.title,
-            Some("`root/.agents/skills/my-skill/SKILL.md` を編集 (エージェントのスキル)".into())
+            Some("Edit `root/.agents/skills/my-skill/SKILL.md` (agent skills)".into())
         );
         // Skills always prompt, so no "Always allow" option is offered.
         assert!(
@@ -1524,7 +1525,7 @@ mod tests {
                 .fields
                 .title
                 .as_deref()
-                .is_some_and(|title| title.ends_with("(エージェントのスキル)"))
+                .is_some_and(|title| title.ends_with("(agent skills)"))
         );
     }
 
@@ -1565,7 +1566,7 @@ mod tests {
                 .fields
                 .title
                 .as_deref()
-                .is_some_and(|title| title.ends_with("(エージェントのスキル)")),
+                .is_some_and(|title| title.ends_with("(agent skills)")),
             "`..` traversal into .agents/skills must still prompt: {:?}",
             event.tool_call.fields.title,
         );
@@ -1604,7 +1605,7 @@ mod tests {
                 .fields
                 .title
                 .as_deref()
-                .is_some_and(|title| title.ends_with("(プロジェクトの設定)")),
+                .is_some_and(|title| title.ends_with("(local settings)")),
             "`..` traversal into .zed must still prompt: {:?}",
             event.tool_call.fields.title,
         );
@@ -1647,7 +1648,7 @@ mod tests {
                 .fields
                 .title
                 .as_deref()
-                .is_some_and(|title| title.ends_with("(プロジェクトの設定)")),
+                .is_some_and(|title| title.ends_with("(local settings)")),
             "Intra-project symlink to .zed must still prompt: {:?}",
             event.tool_call.fields.title,
         );
@@ -1690,7 +1691,7 @@ mod tests {
                 .fields
                 .title
                 .as_deref()
-                .is_some_and(|title| title.ends_with("(エージェントのスキル)")),
+                .is_some_and(|title| title.ends_with("(agent skills)")),
             "Intra-project symlink to .agents/skills must still prompt: {:?}",
             event.tool_call.fields.title,
         );
@@ -1725,7 +1726,7 @@ mod tests {
                 .fields
                 .title
                 .as_deref()
-                .is_some_and(|title| title.contains("プロジェクトの外を指しています")),
+                .is_some_and(|title| title.contains("points outside the project")),
             "Expected symlink escape authorization for create under external symlink"
         );
 
@@ -1781,7 +1782,7 @@ mod tests {
         let auth = stream_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています"),
+            title.contains("points outside the project"),
             "title should mention symlink escape, got: {title}"
         );
     }
@@ -3170,7 +3171,7 @@ mod tests {
         let output = task.await.unwrap();
         let rendered = output.to_string();
         assert!(
-            rendered.contains("保存後の診断:"),
+            rendered.contains("Diagnostics after saving:"),
             "expected diagnostics in the tool output, got: {rendered}"
         );
         assert!(
@@ -3182,7 +3183,7 @@ mod tests {
             "expected the second diagnostic in the tool output, got: {rendered}"
         );
         assert!(
-            !rendered.contains("…ほか"),
+            !rendered.contains("…and"),
             "two diagnostics should not be truncated, got: {rendered}"
         );
     }
@@ -3220,7 +3221,7 @@ mod tests {
             "expected the report to stop at 20 diagnostics, got: {rendered}"
         );
         assert!(
-            rendered.contains("…ほか 3 件"),
+            rendered.contains("…and 3 more"),
             "expected an overflow marker for the remaining 3, got: {rendered}"
         );
     }

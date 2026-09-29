@@ -94,7 +94,7 @@ pub use windows_wsl::{
 
 #[cfg(target_os = "windows")]
 pub(crate) const WSL_SANDBOX_UNAVAILABLE_PREFIX: &str =
-    "WSL でサンドボックスを作成できませんでした";
+    i18n::msg!("Could not create the sandbox in WSL");
 
 /// A path *inside the sandbox* — i.e. where a host location is exposed in the
 /// sandboxed process's view of the filesystem (for example, a bind-mount
@@ -589,9 +589,12 @@ fn add_builtin_protected_paths(
 ) -> Result<ProtectedSetup, SandboxError> {
     let Some(home) = protected_paths::home_dir_from_environment() else {
         return Err(SandboxError::Other(
-            "ホームディレクトリを特定できないため、常に保護するパス (認証情報・シェル初期化\
-             ファイル・設定ディレクトリ) を確定できません。サンドボックスを構築せずに中止します。"
-                .to_string(),
+            i18n::t!(
+                "The home directory could not be determined, so the paths that are always protected \
+                 (credentials, shell startup files, settings folders) cannot be settled. \
+                 Stopping without building the sandbox."
+            )
+            .to_string(),
         ));
     };
     let worktree_roots: Vec<PathBuf> = writable_paths
@@ -637,9 +640,11 @@ fn check_readable_paths(readable_paths: &[HostFilesystemLocation]) -> Result<(),
     }
     let Some(home) = protected_paths::home_dir_from_environment() else {
         return Err(SandboxError::Other(
-            "ホームディレクトリを特定できないため、読み取り専用で見せるパスを確認できません。\
-             サンドボックスを構築せずに中止します。"
-                .to_string(),
+            i18n::t!(
+                "The home directory could not be determined, so the paths shown read-only cannot be \
+                 checked. Stopping without building the sandbox."
+            )
+            .to_string(),
         ));
     };
     let data_directory = protected_paths::agent_runtime_data_directory(&home);
@@ -666,35 +671,35 @@ fn check_readable_paths_for(
         let path = local_canonical_path(location);
         let refusal = match protected_paths::resolve_readable_path(path, data_directory, home) {
             Ok(canonical) if canonical == path => continue,
-            Ok(canonical) => format!(
-                "読み取り専用で見せるパス `{}` は、確認のあとで別の場所 (`{}`) を指すように\
-                 置き換えられています。安全のため中止します。",
-                location.untrusted_path_display(),
-                canonical.display()
+            Ok(canonical) => i18n::t!(
+                "The path shown read-only `{path}` was replaced after it was checked and now points \
+                 somewhere else (`{canonical}`). Stopping for safety.",
+                path = location.untrusted_path_display(),
+                canonical = canonical.display()
             ),
-            Err(ReadableRefusal::Unresolvable(error)) => format!(
-                "読み取り専用で見せるパス `{}` を確認できませんでした ({error})。\
-                 確認できないものは見せないため、中止します。",
-                location.untrusted_path_display()
+            Err(ReadableRefusal::Unresolvable(error)) => i18n::t!(
+                "Could not check the path shown read-only `{path}` ({error}). \
+                 Nothing unchecked is shown, so stopping.",
+                path = location.untrusted_path_display()
             ),
             Err(ReadableRefusal::OutsideAgentRuntime {
                 canonical,
                 data_directory,
-            }) => format!(
-                "読み取り専用で見せるパス `{}` (実際の場所 `{}`) は見せられません。見せられるのは \
-                 Zed のデータフォルダー (`{}`) の中のエージェントのインストール先 \
-                 (`external_agents`) と Node.js (`node`) だけです \
-                 (認証情報や Zed のデータベース・設定・ログは見せません)。",
-                location.untrusted_path_display(),
-                canonical.display(),
-                data_directory.display()
+            }) => i18n::t!(
+                "The path `{path}` (actually `{canonical}`) cannot be shown read-only. Only the agent \
+                 installations (`external_agents`) and Node.js (`node`) inside Zed's data folder \
+                 (`{data_directory}`) can be shown (credentials and Zed's database, settings and logs \
+                 are never shown).",
+                path = location.untrusted_path_display(),
+                canonical = canonical.display(),
+                data_directory = data_directory.display()
             ),
-            Err(ReadableRefusal::TouchesHiddenEntry { canonical, entry }) => format!(
-                "読み取り専用で見せるパス `{}` (実際の場所 `{}`) は、読み取りを禁止している `{}` と\
-                 重なるため見せられません。",
-                location.untrusted_path_display(),
-                canonical.display(),
-                entry.display()
+            Err(ReadableRefusal::TouchesHiddenEntry { canonical, entry }) => i18n::t!(
+                "The path `{path}` (actually `{canonical}`) cannot be shown read-only because it \
+                 overlaps `{entry}`, which must not be read.",
+                path = location.untrusted_path_display(),
+                canonical = canonical.display(),
+                entry = entry.display()
             ),
         };
         return Err(SandboxError::InvalidRequest(refusal));
@@ -741,9 +746,11 @@ fn local_read_hiding(
 ) -> Result<LocalReadHiding, SandboxError> {
     let Some(home) = protected_paths::home_dir_from_environment() else {
         return Err(SandboxError::Other(
-            "ホームディレクトリを特定できないため、読み取りを禁止するパス (認証情報・\
-             エージェント設定) を確定できません。サンドボックスを構築せずに中止します。"
-                .to_string(),
+            i18n::t!(
+                "The home directory could not be determined, so the paths that must not be read \
+                 (credentials, agent settings) cannot be settled. Stopping without building the sandbox."
+            )
+            .to_string(),
         ));
     };
     Ok(local_read_hiding_for_home(
@@ -880,10 +887,10 @@ fn carve_directory(
             return Ok(());
         }
         Err(error) => {
-            return Err(SandboxError::Io(format!(
-                "書込を許可したパス `{}` の中を読めませんでした ({error})。\
-                 保護すべきパスを切り分けられないため、中止します。",
-                directory.display()
+            return Err(SandboxError::Io(i18n::t!(
+                "Could not read inside the writable path `{path}` ({error}). \
+                 The paths to protect cannot be separated out, so stopping.",
+                path = directory.display()
             )));
         }
     };
@@ -961,20 +968,20 @@ fn merge_protected_paths(
             Ok(location) => location,
             Err(_) if missing => continue,
             Err(error) => {
-                return Err(SandboxError::Other(format!(
-                    "常に保護するパス `{}` を確認できませんでした ({error})。\
-                     保護できないままコマンドを実行しないため、中止します。",
-                    path.display()
+                return Err(SandboxError::Other(i18n::t!(
+                    "Could not check the always-protected path `{path}` ({error}). \
+                     Commands never run without that protection, so stopping.",
+                    path = path.display()
                 )));
             }
         };
         for writable_path in writable_paths {
             if writable_path_overlaps_protected_path(writable_path, &location) {
-                return Err(SandboxError::InvalidRequest(format!(
-                    "書込を許可したパス `{}` は常に保護するパス `{}` と重なります \
-                     (認証情報・シェル初期化ファイル・設定ディレクトリへの書込は許可できません)。",
-                    writable_path.untrusted_path_display(),
-                    location.untrusted_path_display()
+                return Err(SandboxError::InvalidRequest(i18n::t!(
+                    "The writable path `{writable}` overlaps the always-protected path `{protected}` \
+                     (writing to credentials, shell startup files and settings folders cannot be allowed).",
+                    writable = writable_path.untrusted_path_display(),
+                    protected = location.untrusted_path_display()
                 )));
             }
         }
@@ -1374,8 +1381,9 @@ pub enum SandboxError {
     SandboxProbeFailed,
     /// The sandbox bridge executable path could not be resolved.
     BridgeExecutableUnavailable(String),
-    /// Windows sandboxing through WSL is unavailable.
-    WslUnavailable(String),
+    /// Windows sandboxing through WSL is unavailable. The explanation of what to
+    /// fix, for the user and, in English, for the agent.
+    WslUnavailable(i18n::Bilingual),
     /// The requested sandbox policy is not supported on this platform.
     UnsupportedPolicy(String),
     /// The sandbox request is invalid (e.g. a malformed allowed-domain).
@@ -3541,7 +3549,7 @@ fn map_linux_status(status: linux_bubblewrap::LauncherStatus) -> SandboxError {
 fn map_anyhow_error(error: anyhow::Error) -> SandboxError {
     #[cfg(target_os = "windows")]
     if let Some(error) = error.downcast_ref::<windows_wsl::WslSandboxUnavailable>() {
-        return SandboxError::WslUnavailable(error.to_string());
+        return SandboxError::WslUnavailable(i18n::Bilingual::new(|| error.to_string()));
     }
 
     SandboxError::Other(format!("{error:#}"))
@@ -3721,7 +3729,7 @@ mod tests {
         for refused in [&database, &data, &home] {
             match check_readable_paths_for(&[capture(&node), capture(refused)], &data, &home) {
                 Err(SandboxError::InvalidRequest(message)) => {
-                    assert!(message.contains("読み取り専用で見せる"), "{message}")
+                    assert!(message.contains("shown read-only"), "{message}")
                 }
                 other => panic!("{} must be refused: {other:?}", refused.display()),
             }

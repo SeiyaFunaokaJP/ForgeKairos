@@ -416,7 +416,7 @@ impl HostAssistClient {
 /// 自身のトークンで繋いできたもの)。表示の枠の見出しは、クライアントの申告 (MCP の
 /// `clientInfo.name`・ツールの引数) からは決して取らない: 「Zed」などを名乗らせると、Zed 自身の
 /// 表示に見せかけられるため。
-const UNKNOWN_ASSIST_CLIENT_LABEL: &str = "外部エージェント";
+const UNKNOWN_ASSIST_CLIENT_LABEL: &str = i18n::msg!("External Agent");
 
 /// 口ごとの受け入れの判断 (ADR-F56)。要求の頭を読んだところで、トランスポートが
 /// バックグラウンドで使う。
@@ -666,7 +666,7 @@ impl IdeServer {
             },
             None => AssistSource {
                 id: format!("zed-ide-server-{}", self.project_id.as_u64()).into(),
-                label: UNKNOWN_ASSIST_CLIENT_LABEL.into(),
+                label: i18n::tr(UNKNOWN_ASSIST_CLIENT_LABEL).into(),
             },
         }
     }

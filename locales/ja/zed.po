@@ -1,0 +1,486 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add Cursor Above"
+msgstr "上にカーソルを追加"
+
+msgid "Add Cursor Below"
+msgstr "下にカーソルを追加"
+
+msgid "Are you sure you want to quit?"
+msgstr "終了してもよろしいですか?"
+
+msgid "Auto (Language Server)"
+msgstr "自動 (言語サーバー)"
+
+msgid "Auto (Prettier)"
+msgstr "自動 (Prettier)"
+
+msgid "Auto Signature Help"
+msgstr "シグネチャヘルプの自動表示"
+
+msgid "Auto-restarting {}"
+msgstr "{} を自動再起動中"
+
+msgid "Backup and Update"
+msgstr "バックアップして更新"
+
+msgid "Block Quote"
+msgstr "引用"
+
+msgid "Bold"
+msgstr "太字"
+
+msgid "Buffer Search"
+msgstr "ファイル内を検索"
+
+msgid "Bullet List"
+msgstr "箇条書きリスト"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Clear Events"
+msgstr "イベントを消去"
+
+msgid "Clear Outputs"
+msgstr "出力を消去"
+
+msgid "Code Actions"
+msgstr "コードアクション"
+
+msgid "Code Block"
+msgstr "コードブロック"
+
+msgid "Code Lens"
+msgstr "コードレンズ"
+
+msgid "Column Git Blame"
+msgstr "Git blame (列)"
+
+msgid "Commit"
+msgstr "コミット"
+
+msgid "Copy"
+msgstr "コピー"
+
+msgid "Could not start ReadDirectoryChangesW"
+msgstr "ReadDirectoryChangesW を開始できませんでした"
+
+msgid "Could not start inotify"
+msgstr "inotify を開始できませんでした"
+
+msgid "Diagnostics"
+msgstr "診断"
+
+msgid "Diff Against Default Branch"
+msgstr "既定のブランチと比較"
+
+msgid "Don't ask me again"
+msgstr "今後は確認しない"
+
+msgid "Duplicate Selection"
+msgstr "選択範囲を複製"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "Mermaid 図を編集…"
+
+msgid "Edit Predictions"
+msgstr "編集予測"
+
+msgid "Edit Table"
+msgstr "表を編集"
+
+msgid "Editor Controls"
+msgstr "エディターの表示設定"
+
+msgid "Enter adds two trailing spaces (a hard break) to the line it ends, so the line break survives saving. This key does the opposite once. The preview already shows line breaks as they are typed, so this is for line breaks that other tools should keep too."
+msgstr "Enter で改行するときに、行末へ半角スペース 2 つ (hard break) を補うので、改行が保存後もそのまま残ります。このキーでは 1 回だけ反対の動きをします。プレビューは既定で改行をそのまま改行として表示するので、これは他のツールでも改行にしたいときに使います。"
+
+msgid "Error registering zed:// scheme"
+msgstr "zed:// スキームの登録に失敗しました"
+
+msgid "Error with kernel {}: {}"
+msgstr "カーネル {} でエラーが発生しました: {}"
+
+msgid "Executable: {}"
+msgstr "実行ファイル: {}"
+
+msgid "Expand Selection"
+msgstr "選択範囲を拡張"
+
+msgid "Export to PDF"
+msgstr "PDF に書き出す"
+
+msgid "Failed to move Zed to Applications"
+msgstr "Zed を Applications に移動できませんでした"
+
+msgid "Failed to read telemetry log: {}"
+msgstr "テレメトリログの読み込みに失敗しました: {}"
+
+msgid "Filter events..."
+msgstr "イベントを絞り込み..."
+
+msgid "Fold All"
+msgstr "すべて畳む"
+
+msgid "Fold at Level 1"
+msgstr "レベル 1 で畳む"
+
+msgid "Fold at Level 2"
+msgstr "レベル 2 で畳む"
+
+msgid "Fold at Level 3"
+msgstr "レベル 3 で畳む"
+
+msgid "Folding"
+msgstr "折り畳み"
+
+msgid "Format Selection"
+msgstr "選択範囲をフォーマット"
+
+msgid "Format Whole File"
+msgstr "ファイル全体をフォーマット"
+
+msgid "Formats the selection with {formatter}."
+msgstr "選択範囲を {formatter} でフォーマットします。"
+
+msgid "Formats this file with {formatter}."
+msgstr "このファイルは {formatter} でフォーマットします。"
+
+msgid "Go to Line/Column"
+msgstr "行/列へ移動"
+
+msgid "Go to Symbol"
+msgstr "シンボルへ移動"
+
+msgid "Hard Break"
+msgstr "Enter改行"
+
+msgid "Hard Break on Enter"
+msgstr "Enter で行末スペース補完"
+
+msgid "Heading 1"
+msgstr "見出し 1"
+
+msgid "Heading 2"
+msgstr "見出し 2"
+
+msgid "Heading 3"
+msgstr "見出し 3"
+
+msgid "Helix Mode"
+msgstr "Helix モード"
+
+msgid "Horizontal Rule"
+msgstr "水平線"
+
+msgid "Inlay Hints"
+msgstr "インレイヒント"
+
+msgid "Inline Assist"
+msgstr "インラインアシスト"
+
+msgid "Inline Code"
+msgstr "インラインコード"
+
+msgid "Inline Diagnostics"
+msgstr "インライン診断"
+
+msgid "Inline Git Blame"
+msgstr "Git blame (インライン)"
+
+msgid "Inline Values"
+msgstr "インライン値"
+
+msgid "Inline diagnostics are not available until regular diagnostics are enabled."
+msgstr "通常の診断を有効にするまで、インライン診断は利用できません。"
+
+msgid "Insert Details Block"
+msgstr "折り畳み (details) を挿入"
+
+msgid "Insert Image"
+msgstr "画像を挿入"
+
+msgid "Insert Mermaid Diagram"
+msgstr "Mermaid 図を挿入"
+
+msgid "Installing Zed…"
+msgstr "Zed をインストール中…"
+
+msgid "Interrupt"
+msgstr "中断"
+
+msgid "Interrupt {} ({})"
+msgstr "{} ({}) を中断"
+
+msgid "Invalid URL: {}"
+msgstr "無効な URL: {}"
+
+msgid "Italic"
+msgstr "斜体"
+
+msgid "Language Server"
+msgstr "言語サーバー"
+
+msgid "Line Numbers"
+msgstr "行番号"
+
+msgid "Link"
+msgstr "リンク"
+
+msgid "Marker"
+msgstr "マーカー"
+
+msgid "Minimap"
+msgstr "ミニマップ"
+
+msgid "Move Line Down"
+msgstr "行を下へ移動"
+
+msgid "Move Line Up"
+msgstr "行を上へ移動"
+
+msgid "Move Zed to Applications?"
+msgstr "Zed を Applications に移動しますか?"
+
+msgid "Moving Zed to Applications"
+msgstr "Zed を Applications に移動しています"
+
+msgid "New Window"
+msgstr "新規ウィンドウ"
+
+msgid "Next Problem"
+msgstr "次の問題へ"
+
+msgid "No Code Actions Available"
+msgstr "利用できるコードアクションはありません"
+
+msgid "No events match the current filter"
+msgstr "現在のフィルターに一致するイベントはありません"
+
+msgid "No formatter is configured for this file."
+msgstr "このファイルにはフォーマッタが設定されていません。"
+
+msgid "No telemetry events recorded yet"
+msgstr "まだテレメトリイベントは記録されていません"
+
+msgid "Nothing is selected. Select the text to format."
+msgstr "選択範囲がありません。フォーマットする範囲を選択してください。"
+
+msgid "Nothing running"
+msgstr "実行中のカーネルはありません"
+
+msgid "Numbered List"
+msgstr "番号付きリスト"
+
+msgid "Open Preview"
+msgstr "プレビューを開く"
+
+msgid "Open Raw Log File"
+msgstr "生のログファイルを開く"
+
+msgid "Paragraph Text Size"
+msgstr "段落の文字サイズ"
+
+msgid "Paste a URL to open."
+msgstr "開きたい URL を貼り付けてください。"
+
+msgid "Preview Markdown"
+msgstr "Markdown プレビューを開く"
+
+msgid "Preview SVG"
+msgstr "SVG をプレビュー"
+
+msgid "Preview Tabular Data"
+msgstr "表を横に開く"
+
+msgid "Previous Problem"
+msgstr "前の問題へ"
+
+msgid "Quit"
+msgstr "終了"
+
+msgid "REPL Menu"
+msgstr "REPL メニュー"
+
+msgid "ReadDirectoryChangesW initialization failed: {}\n\nThis may occur on network filesystems and WSL paths. For troubleshooting see: https://zed.dev/docs/windows\n"
+msgstr "ReadDirectoryChangesW の初期化に失敗しました: {}\n\nネットワークファイルシステムや WSL のパスで発生することがあります。対処方法: https://zed.dev/docs/windows\n"
+
+msgid "Remove Color"
+msgstr "色を外す"
+
+msgid "Remove Marker"
+msgstr "マーカーを外す"
+
+msgid "Reset to Default"
+msgstr "既定値に戻す"
+
+msgid "Restart Kernel"
+msgstr "カーネルを再起動"
+
+msgid "Restarting {}"
+msgstr "{} を再起動中"
+
+msgid "Run Line"
+msgstr "行を実行"
+
+msgid "Run Selection"
+msgstr "選択範囲を実行"
+
+msgid "Run code on {} ({})"
+msgstr "{} ({}) でコードを実行"
+
+msgid "Select All"
+msgstr "すべて選択"
+
+msgid "Select Kernel"
+msgstr "カーネルを選択"
+
+msgid "Select Next Occurrence"
+msgstr "次の一致を選択に追加"
+
+msgid "Selection Controls"
+msgstr "選択範囲の操作"
+
+msgid "Selection Menu"
+msgstr "選択メニュー"
+
+msgid "Semantic Highlights"
+msgstr "セマンティックハイライト"
+
+msgid "Setup Zed REPL for {}"
+msgstr "{} 向けに Zed REPL を設定"
+
+msgid "Shrink Selection"
+msgstr "選択範囲を縮小"
+
+msgid "Shut Down Kernel"
+msgstr "カーネルを終了"
+
+msgid "Skip"
+msgstr "スキップ"
+
+msgid "Start REPL for {}"
+msgstr "{} の REPL を開始"
+
+msgid "Strikethrough"
+msgstr "取り消し線"
+
+msgid "Task List"
+msgstr "タスクリスト"
+
+msgid "Telemetry Log"
+msgstr "テレメトリログ"
+
+msgid "Text Color"
+msgstr "文字色"
+
+msgid "Toggle Fold at Cursor"
+msgstr "カーソル位置の折り畳みを切り替え"
+
+msgid "Troubleshoot and Quit"
+msgstr "対処方法を確認して終了"
+
+msgid "Unfold All"
+msgstr "すべて展開"
+
+msgid "Unsupported GPU"
+msgstr "サポートされていない GPU"
+
+msgid "Uses `{command}` on the remote host ({host})."
+msgstr "接続先 ({host}) の `{command}` を使用します。"
+
+msgid "Version"
+msgstr "バージョン"
+
+msgid "View Sessions"
+msgstr "セッション一覧"
+
+msgid "Vim Mode"
+msgstr "Vim モード"
+
+msgid "You can't toggle edit predictions for this file as it is within the excluded files list."
+msgstr "このファイルは除外ファイルの一覧に含まれているため、編集予測を切り替えられません。"
+
+msgid "Your {} file uses deprecated settings which can be automatically updated. A backup will be saved to `{}`"
+msgstr "{} ファイルに非推奨の設定が含まれています。自動で更新できます。バックアップは `{}` に保存されます。"
+
+msgid "Zed is running from a temporary location. Move it to Applications to finish installing it."
+msgstr "Zed は一時的な場所から実行されています。インストールを完了するには Applications に移動してください。"
+
+msgid "Zed uses {} for rendering and requires a compatible GPU.\n\nCurrently you are using a software emulated GPU ({}) which\nwill result in awful performance.\n\nFor troubleshooting see: {}\nSet ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.\n"
+msgstr "Zed は描画に {} を使用するため、対応した GPU が必要です。\n\n現在はソフトウェアエミュレーションの GPU ({}) を使用しており、\n動作が極端に遅くなります。\n\n対処方法: {}\n常に無視するには環境変数 ZED_ALLOW_EMULATED_GPU=1 を設定してください。\n"
+
+msgid "Zed will reopen when installation is complete."
+msgstr "インストールが完了すると Zed が再度開きます。"
+
+msgid "inotify_init returned {}\n\nThis may be due to system-wide limits on inotify instances. For troubleshooting see: https://zed.dev/docs/linux\n"
+msgstr "inotify_init が {} を返しました\n\nシステム全体の inotify インスタンス数の上限が原因の可能性があります。対処方法: https://zed.dev/docs/linux\n"
+
+msgid "kernel: {} ({})"
+msgstr "カーネル: {} ({})"
+
+msgid "signed in"
+msgstr "サインイン済み"
+
+msgid "zed:// links will now open in {}."
+msgstr "zed:// のリンクは今後 {} で開きます。"
+
+msgid "{command} was not found (put it on PATH or in bin\\)."
+msgstr "{command} が見つかりません (PATH または bin\\ に配置してください)。"
+
+msgid "{count} telemetry log entry failed to parse"
+msgid_plural "{count} telemetry log entries failed to parse"
+msgstr[0] "テレメトリログの {count} 件のエントリを解析できませんでした"
+
+msgid "{formatter} can't format just a selection. Add {{start_line}} / {{end_line}} to its arguments to allow it."
+msgstr "{formatter} は選択範囲だけのフォーマットに対応していません。引数に {{start_line}} / {{end_line}} を追加すると対応できます。"
+
+msgid "{formatter} can't format just a selection. Format the whole file instead."
+msgstr "{formatter} は選択範囲だけのフォーマットに対応していません。ファイル全体のフォーマットを使用してください。"
+
+msgid "{} is shutting down"
+msgstr "{} を終了中"
+
+msgid "{} is starting"
+msgstr "{} を起動中"
+
+msgid "{} state unknown"
+msgstr "{} の状態は不明です"
+
+msgid "{} state: {}"
+msgstr "{} の状態: {}"
+
+msgid "{} to open in a split"
+msgstr "{} で横に開く"
+
+msgid "{} to open in the same tab group"
+msgstr "{} で同じタブグループに開く"
+
+msgid "{} to switch this tab"
+msgstr "{} でこのタブを切り替える"
+
+msgctxt "move to applications"
+msgid "No"
+msgstr "移動しない"
+
+msgctxt "move to applications"
+msgid "Yes"
+msgstr "移動"
+
+msgctxt "quick action bar"
+msgid "Add to Agent Thread"
+msgstr "選択範囲をスレッドに追加"
+
+msgctxt "quick action bar"
+msgid "Next Hunk"
+msgstr "次の変更箇所へ"
+
+msgctxt "quick action bar"
+msgid "Previous Hunk"
+msgstr "前の変更箇所へ"

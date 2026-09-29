@@ -300,7 +300,7 @@ impl CommitModal {
                             })
                             .when(has_previous_commit, |this| {
                                 this.item(
-                                    ContextMenuEntry::new("直前のコミットを修正")
+                                    ContextMenuEntry::new(i18n::t!("Amend"))
                                         .toggleable(IconPosition::Start, amend_enabled)
                                         .action(Box::new(Amend))
                                         .handler({
@@ -317,7 +317,7 @@ impl CommitModal {
                                 )
                             })
                             .item(
-                                ContextMenuEntry::new("Signed-off-by を付ける")
+                                ContextMenuEntry::new(i18n::tc!("commit modal", "Signoff"))
                                     .toggleable(IconPosition::Start, signoff_enabled)
                                     .action(Box::new(Signoff))
                                     .handler({
@@ -332,7 +332,7 @@ impl CommitModal {
                                     .documentation_aside(side, aside(PanelOperation::Signoff)),
                             )
                             .item(
-                                ContextMenuEntry::new("フックをスキップ")
+                                ContextMenuEntry::new(i18n::t!("Skip Hooks"))
                                     .toggleable(IconPosition::Start, skip_hooks_enabled)
                                     .action(Box::new(SkipHooks))
                                     .handler(move |window, cx| {
@@ -386,7 +386,7 @@ impl CommitModal {
             .as_ref()
             .and_then(|repo| repo.read(cx).branch.as_ref())
             .map(|b| b.name().to_owned())
-            .unwrap_or_else(|| "<ブランチなし>".to_owned());
+            .unwrap_or_else(|| i18n::t!("<no branch>").to_owned());
 
         let branch_picker_button = Button::new("branch_picker_button", branch)
             .label_size(LabelSize::Small)
@@ -413,7 +413,7 @@ impl CommitModal {
             .trigger_with_tooltip(
                 branch_picker_button,
                 help_tooltip(
-                    "ブランチを切り替え",
+                    i18n::t!("Switch Branch"),
                     panel_operation_help(PanelOperation::SwitchBranch).sentence(),
                     Some(Box::new(zed_actions::git::Branch)),
                     None,
@@ -429,7 +429,7 @@ impl CommitModal {
 
         let close_kb_hint = ui::KeyBinding::for_action(&menu::Cancel, cx).map(|close_kb| {
             KeybindingHint::new(close_kb, cx.theme().colors().editor_background)
-                .suffix("キャンセル")
+                .suffix(i18n::t!("Cancel"))
         });
 
         h_flex()
@@ -697,8 +697,8 @@ impl Render for CommitModal {
                                         .color(Color::Warning),
                                 )
                                 .child(
-                                    Label::new(format!(
-                                        "コミットメッセージの件名が {max_title_length} 文字の上限を超えています。"
+                                    Label::new(i18n::t!(
+                                        "Commit message title exceeds {max_title_length}-character limit."
                                     ))
                                     .size(LabelSize::Small),
                                 ),

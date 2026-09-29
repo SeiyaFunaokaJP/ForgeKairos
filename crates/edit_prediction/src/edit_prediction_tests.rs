@@ -2206,6 +2206,7 @@ async fn test_rejections_flushing(cx: &mut TestAppContext) {
             false,
             None,
             None,
+            true,
             cx,
         );
         ep_store.reject_prediction(
@@ -2214,6 +2215,7 @@ async fn test_rejections_flushing(cx: &mut TestAppContext) {
             true,
             None,
             None,
+            true,
             cx,
         );
     });
@@ -2256,6 +2258,7 @@ async fn test_rejections_flushing(cx: &mut TestAppContext) {
                 false,
                 None,
                 None,
+                true,
                 cx,
             );
         }
@@ -2289,6 +2292,7 @@ async fn test_rejections_flushing(cx: &mut TestAppContext) {
             false,
             None,
             None,
+            true,
             cx,
         );
     });
@@ -2310,6 +2314,7 @@ async fn test_rejections_flushing(cx: &mut TestAppContext) {
             false,
             None,
             None,
+            true,
             cx,
         );
     });
@@ -2675,6 +2680,8 @@ struct RequestChannels {
     )>,
     reject: mpsc::UnboundedReceiver<(RejectEditPredictionsBody, oneshot::Sender<()>)>,
     settled: mpsc::UnboundedReceiver<SettledEditPrediction>,
+    accept: mpsc::UnboundedReceiver<()>,
+    experiments: mpsc::UnboundedReceiver<()>,
 }
 
 fn init_test_with_fake_client(
@@ -2710,6 +2717,8 @@ fn init_test_with_fake_client_and_legacy_data_collection(
         let (predict_v4_req_tx, predict_v4_req_rx) = mpsc::unbounded();
         let (reject_req_tx, reject_req_rx) = mpsc::unbounded();
         let (settled_req_tx, settled_req_rx) = mpsc::unbounded();
+        let (accept_req_tx, accept_req_rx) = mpsc::unbounded();
+        let (experiments_req_tx, experiments_req_rx) = mpsc::unbounded();
 
         let http_client = FakeHttpClient::create({
             move |req| {
@@ -2724,6 +2733,8 @@ fn init_test_with_fake_client_and_legacy_data_collection(
                 let predict_v4_req_tx = predict_v4_req_tx.clone();
                 let reject_req_tx = reject_req_tx.clone();
                 let settled_req_tx = settled_req_tx.clone();
+                let accept_req_tx = accept_req_tx.clone();
+                let experiments_req_tx = experiments_req_tx.clone();
                 async move {
                     let resp = match uri.as_str() {
                         "/client/llm_tokens" => serde_json::to_string(&json!({
@@ -2796,6 +2807,14 @@ fn init_test_with_fake_client_and_legacy_data_collection(
                             }
                             serde_json::to_string(&SubmitEditPredictionSettledResponse {}).unwrap()
                         }
+                        "/predict_edits/accept" => {
+                            accept_req_tx.unbounded_send(()).unwrap();
+                            serde_json::to_string(&()).unwrap()
+                        }
+                        "/edit_prediction_experiments" => {
+                            experiments_req_tx.unbounded_send(()).unwrap();
+                            serde_json::to_string(&Vec::<String>::new()).unwrap()
+                        }
                         _ => {
                             panic!("Unexpected path: {}", uri)
                         }
@@ -2822,6 +2841,8 @@ fn init_test_with_fake_client_and_legacy_data_collection(
                 predict_v4: predict_v4_req_rx,
                 reject: reject_req_rx,
                 settled: settled_req_rx,
+                accept: accept_req_rx,
+                experiments: experiments_req_rx,
             },
         )
     });
@@ -2897,6 +2918,7 @@ async fn test_edit_prediction_basic_interpolation(cx: &mut TestAppContext) {
         }),
         model_version: None,
         trigger: PredictEditsRequestTrigger::Other,
+        made_by_zed_cloud: false,
     };
 
     cx.update(|cx| {
@@ -3273,6 +3295,10 @@ fn use_upstream_edit_prediction_defaults(cx: &mut App) {
             edit_predictions.provider = Some(settings::EditPredictionProvider::Zed);
             edit_predictions.allow_data_collection =
                 Some(EditPredictionDataCollectionChoice::Default);
+            // Upstream has no external AI consent (ADR-F10), so its behavior is this fork's
+            // behavior once the user has accepted the warning for Zed.
+            content.acknowledged_external_ai_providers =
+                Some(vec![settings::ZED_CLOUD_AI_CONSENT_KEY.to_string()]);
         });
     });
 }
@@ -4715,6 +4741,1105 @@ async fn test_upsell_dismissed_via_dismissable_api(cx: &mut TestAppContext) {
     cx.update(|cx| assert!(!should_show_upsell_modal(cx)));
 
     kvp.delete_kvp(ZedPredictUpsell::KEY.into()).await.unwrap();
+}
+
+fn set_acknowledged_external_ai_providers(keys: &[&str], cx: &mut TestAppContext) {
+    let keys = keys.iter().map(|key| key.to_string()).collect::<Vec<_>>();
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |content| {
+                content.acknowledged_external_ai_providers = Some(keys);
+            });
+        });
+    });
+}
+
+fn expect_held_back(result: Result<Option<EditPredictionResult>>, reason: &str) -> anyhow::Error {
+    match result {
+        Ok(_) => panic!("{reason}"),
+        Err(error) => error,
+    }
+}
+
+#[test]
+fn test_external_ai_consent_key_matches_the_settings_ui() {
+    assert_eq!(
+        external_ai_consent_key("copilot"),
+        settings::EDIT_PREDICTION_COPILOT_CONSENT_KEY
+    );
+}
+
+/// The self-hosted request paths: each prompt format reaches the server through a different
+/// module (`fim`, `sweep_prompt`, `zeta`), and each has to hold the request back on its own.
+#[derive(Clone, Copy, Debug)]
+enum SelfHostedPath {
+    Fim,
+    Sweep,
+    Zeta,
+}
+
+impl SelfHostedPath {
+    const ALL: [SelfHostedPath; 3] = [
+        SelfHostedPath::Fim,
+        SelfHostedPath::Sweep,
+        SelfHostedPath::Zeta,
+    ];
+
+    fn provider(self) -> settings::EditPredictionProvider {
+        match self {
+            SelfHostedPath::Fim | SelfHostedPath::Zeta => settings::EditPredictionProvider::Ollama,
+            SelfHostedPath::Sweep => settings::EditPredictionProvider::OpenAiCompatibleApi,
+        }
+    }
+
+    fn consent_key(self) -> &'static str {
+        match self.provider() {
+            settings::EditPredictionProvider::Ollama => "edit_prediction:ollama",
+            _ => "edit_prediction:open_ai_compatible_api",
+        }
+    }
+
+    fn prompt_format(self) -> settings::EditPredictionPromptFormatContent {
+        match self {
+            SelfHostedPath::Fim => settings::EditPredictionPromptFormatContent::CodeLlama,
+            SelfHostedPath::Sweep => settings::EditPredictionPromptFormatContent::Sweep,
+            SelfHostedPath::Zeta => settings::EditPredictionPromptFormatContent::Zeta,
+        }
+    }
+
+    fn model(self) -> EditPredictionModel {
+        match self {
+            SelfHostedPath::Fim => EditPredictionModel::Fim {
+                format: EditPredictionPromptFormat::CodeLlama,
+            },
+            SelfHostedPath::Sweep => EditPredictionModel::SweepPrompt,
+            SelfHostedPath::Zeta => EditPredictionModel::Zeta,
+        }
+    }
+}
+
+struct SelfHostedTest {
+    project: Entity<Project>,
+    buffer: Entity<Buffer>,
+    ep_store: Entity<EditPredictionStore>,
+    requested_hosts: Arc<Mutex<Vec<String>>>,
+}
+
+impl SelfHostedTest {
+    async fn new(
+        path: SelfHostedPath,
+        host: &str,
+        egress_policy: Option<http_client::EgressPolicyHandle>,
+        cx: &mut TestAppContext,
+    ) -> Self {
+        init_test(cx);
+        set_acknowledged_external_ai_providers(&[], cx);
+        let api_url = format!("http://{host}:11434/v1/completions");
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |content| {
+                    let edit_predictions = content
+                        .project
+                        .all_languages
+                        .edit_predictions
+                        .get_or_insert_default();
+                    edit_predictions.provider = Some(path.provider());
+                    match path.provider() {
+                        settings::EditPredictionProvider::Ollama => {
+                            edit_predictions.ollama =
+                                Some(settings::OllamaEditPredictionSettingsContent {
+                                    model: Some(settings::OllamaModelName(
+                                        "test-model".to_string(),
+                                    )),
+                                    max_output_tokens: Some(64),
+                                    api_url: Some(api_url),
+                                    prompt_format: Some(path.prompt_format()),
+                                    prediction_debounce: None,
+                                })
+                        }
+                        _ => {
+                            edit_predictions.open_ai_compatible_api =
+                                Some(settings::CustomEditPredictionProviderSettingsContent {
+                                    api_url: Some(api_url),
+                                    model: Some("test-model".to_string()),
+                                    prompt_format: Some(path.prompt_format()),
+                                    max_output_tokens: Some(64),
+                                    prediction_debounce: None,
+                                })
+                        }
+                    }
+                });
+            });
+        });
+
+        let requested_hosts = Arc::new(Mutex::new(Vec::new()));
+        let fake_http_client = FakeHttpClient::create({
+            let requested_hosts = requested_hosts.clone();
+            move |request| {
+                requested_hosts
+                    .lock()
+                    .push(request.uri().host().unwrap_or_default().to_string());
+                async move {
+                    Ok(http_client::Response::builder()
+                        .status(404)
+                        .body("Not Found".into())?)
+                }
+            }
+        });
+        let http_client: Arc<dyn http_client::HttpClient> = match egress_policy {
+            Some(policy) => Arc::new(http_client::AllowlistedHttpClient::new(
+                fake_http_client.clone(),
+                policy,
+            )),
+            None => fake_http_client.clone(),
+        };
+        cx.update(|cx| cx.set_http_client(http_client));
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            "/project",
+            json!({
+                "main.rs": "line 0\nline 1\nline 2\n"
+            }),
+        )
+        .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        let buffer = project
+            .update(cx, |project, cx| {
+                let path = project
+                    .find_project_path(path!("/project/main.rs"), cx)
+                    .unwrap();
+                project.open_buffer(path, cx)
+            })
+            .await
+            .unwrap();
+
+        let client = cx.update(|cx| {
+            Client::new(
+                Arc::new(FakeSystemClock::new()),
+                fake_http_client.clone(),
+                cx,
+            )
+        });
+        cx.update(|cx| {
+            RefreshLlmTokenListener::register(client.clone(), project.read(cx).user_store(), cx);
+        });
+        let ep_store = cx.new(|cx| {
+            let mut ep_store = EditPredictionStore::new(client, project.read(cx).user_store(), cx);
+            ep_store.set_edit_prediction_model(path.model());
+            ep_store
+        });
+        ep_store.update(cx, |ep_store, cx| {
+            ep_store.register_buffer(&buffer, &project, cx)
+        });
+        cx.run_until_parked();
+        requested_hosts.lock().clear();
+
+        Self {
+            project,
+            buffer,
+            ep_store,
+            requested_hosts,
+        }
+    }
+
+    async fn request(&self, cx: &mut TestAppContext) -> Result<Option<EditPredictionResult>> {
+        let cursor = self
+            .buffer
+            .read_with(cx, |buffer, _| buffer.anchor_before(Point::new(1, 0)));
+        let task = self.ep_store.update(cx, |ep_store, cx| {
+            ep_store.request_prediction(
+                &self.project,
+                &self.buffer,
+                cursor,
+                PredictEditsRequestTrigger::Other,
+                cx,
+            )
+        });
+        let result = task.await;
+        cx.run_until_parked();
+        result
+    }
+
+    fn requested_hosts(&self) -> Vec<String> {
+        self.requested_hosts.lock().clone()
+    }
+}
+
+#[gpui::test]
+async fn test_remote_self_hosted_prediction_waits_for_consent(cx: &mut TestAppContext) {
+    for path in SelfHostedPath::ALL {
+        let test = SelfHostedTest::new(path, "llm.example.com", None, cx).await;
+
+        let error = expect_held_back(
+            test.request(cx).await,
+            "a remote endpoint must not be sent a request before consent",
+        );
+        assert!(
+            error.to_string().contains("external AI warning"),
+            "{path:?}: unexpected error: {error}"
+        );
+        assert_eq!(test.requested_hosts(), Vec::<String>::new(), "{path:?}");
+
+        set_acknowledged_external_ai_providers(&[path.consent_key()], cx);
+        test.request(cx).await.ok();
+        assert_eq!(
+            test.requested_hosts(),
+            vec!["llm.example.com".to_string()],
+            "{path:?}: after consent the request goes out"
+        );
+    }
+}
+
+#[gpui::test]
+async fn test_local_self_hosted_prediction_needs_no_consent(cx: &mut TestAppContext) {
+    for path in SelfHostedPath::ALL {
+        let test = SelfHostedTest::new(path, "127.0.0.1", None, cx).await;
+        test.request(cx).await.ok();
+        assert_eq!(
+            test.requested_hosts(),
+            vec!["127.0.0.1".to_string()],
+            "{path:?}"
+        );
+    }
+}
+
+/// Chat and edit predictions opt in separately (ADR-F10): accepting the warning for the agent's
+/// Ollama provider, or for another edit prediction provider, does not open this one.
+#[gpui::test]
+async fn test_other_consents_do_not_open_self_hosted_prediction(cx: &mut TestAppContext) {
+    for path in SelfHostedPath::ALL {
+        let test = SelfHostedTest::new(path, "llm.example.com", None, cx).await;
+        let other_edit_prediction_key = match path.provider() {
+            settings::EditPredictionProvider::Ollama => "edit_prediction:open_ai_compatible_api",
+            _ => "edit_prediction:ollama",
+        };
+        set_acknowledged_external_ai_providers(
+            &[
+                "ollama",
+                "openai",
+                other_edit_prediction_key,
+                settings::ZED_CLOUD_AI_CONSENT_KEY,
+            ],
+            cx,
+        );
+
+        expect_held_back(
+            test.request(cx).await,
+            "another provider's consent must not open this one",
+        );
+        assert_eq!(test.requested_hosts(), Vec::<String>::new(), "{path:?}");
+    }
+}
+
+/// Consent is a warning the user reads, not the network control: with it given but the host not
+/// in the allowlist, nothing reaches the server.
+#[gpui::test]
+async fn test_egress_allowlist_still_stops_self_hosted_prediction_after_consent(
+    cx: &mut TestAppContext,
+) {
+    for path in SelfHostedPath::ALL {
+        let empty_policy = http_client::EgressPolicyHandle::new(
+            http_client::EgressPolicy::from_host_strings(Vec::<String>::new()).0,
+        );
+        let test = SelfHostedTest::new(path, "llm.example.com", Some(empty_policy), cx).await;
+        set_acknowledged_external_ai_providers(&[path.consent_key()], cx);
+
+        let error = expect_held_back(
+            test.request(cx).await,
+            "the egress allowlist should refuse the host",
+        );
+        let error = format!("{error:?}");
+        assert!(
+            error.contains("`llm.example.com` is not on the network allowlist"),
+            "{path:?}: unexpected error: {error}"
+        );
+        assert_eq!(test.requested_hosts(), Vec::<String>::new(), "{path:?}");
+    }
+}
+
+#[gpui::test]
+async fn test_status_bar_reports_the_same_gate_as_the_requests(cx: &mut TestAppContext) {
+    let test = SelfHostedTest::new(SelfHostedPath::Fim, "llm.example.com", None, cx).await;
+    let awaits = |cx: &mut TestAppContext| {
+        cx.update(|cx| {
+            provider_awaits_external_ai_consent(settings::EditPredictionProvider::Ollama, cx)
+        })
+    };
+    assert!(awaits(cx));
+    expect_held_back(test.request(cx).await, "held back before consent");
+
+    set_acknowledged_external_ai_providers(&["edit_prediction:ollama"], cx);
+    assert!(!awaits(cx));
+    test.request(cx).await.ok();
+    assert_eq!(test.requested_hosts(), vec!["llm.example.com".to_string()]);
+
+    let remote_providers = [
+        settings::EditPredictionProvider::Zed,
+        settings::EditPredictionProvider::Mercury,
+        settings::EditPredictionProvider::Copilot,
+        settings::EditPredictionProvider::Codestral,
+    ];
+    set_acknowledged_external_ai_providers(&["copilot_chat", "mistral", "codestral"], cx);
+    for provider in remote_providers {
+        assert!(
+            cx.update(|cx| provider_awaits_external_ai_consent(provider, cx)),
+            "{provider:?}"
+        );
+    }
+    set_acknowledged_external_ai_providers(
+        &[
+            settings::ZED_CLOUD_AI_CONSENT_KEY,
+            "edit_prediction:mercury",
+            "edit_prediction:copilot",
+            "edit_prediction:codestral",
+        ],
+        cx,
+    );
+    for provider in remote_providers {
+        assert!(
+            !cx.update(|cx| provider_awaits_external_ai_consent(provider, cx)),
+            "{provider:?}"
+        );
+    }
+}
+
+async fn open_foo_md(
+    cx: &mut TestAppContext,
+) -> (Entity<Project>, Entity<Buffer>, language::Anchor) {
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        "/root",
+        json!({
+            "foo.md": "Hello!\nHow\nBye\n"
+        }),
+    )
+    .await;
+    let project = Project::test(fs, vec![path!("/root").as_ref()], cx).await;
+    let buffer = project
+        .update(cx, |project, cx| {
+            let path = project.find_project_path(path!("root/foo.md"), cx).unwrap();
+            project.open_buffer(path, cx)
+        })
+        .await
+        .unwrap();
+    let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(Point::new(1, 3)));
+    (project, buffer, position)
+}
+
+#[gpui::test]
+async fn test_zed_cloud_prediction_waits_for_consent(cx: &mut TestAppContext) {
+    let (ep_store, mut requests) = init_test_with_fake_client(cx);
+    set_acknowledged_external_ai_providers(&[], cx);
+    let (project, buffer, position) = open_foo_md(cx).await;
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.register_buffer(&buffer, &project, cx)
+    });
+    cx.run_until_parked();
+
+    let request = |cx: &mut TestAppContext| {
+        ep_store.update(cx, |ep_store, cx| {
+            ep_store.request_prediction(
+                &project,
+                &buffer,
+                position,
+                PredictEditsRequestTrigger::Other,
+                cx,
+            )
+        })
+    };
+    // A request that did go out would wait for the fake server's reply forever, so a held-back
+    // request is one that has already finished.
+    let request_now = |cx: &mut TestAppContext| {
+        let task = request(cx);
+        cx.run_until_parked();
+        task.now_or_never()
+            .expect("a held-back request finishes without waiting for the server")
+    };
+
+    let error = expect_held_back(
+        request_now(cx),
+        "Zed Cloud must not be sent a request before consent",
+    );
+    assert!(
+        error.to_string().contains("external AI warning"),
+        "unexpected error: {error}"
+    );
+    cx.run_until_parked();
+    assert_no_predict_request_ready(&mut requests.predict);
+    assert_no_predict_request_ready(&mut requests.predict_v4);
+
+    // The edit prediction key of another provider is not Zed's consent.
+    set_acknowledged_external_ai_providers(&["edit_prediction:zed", "edit_prediction:ollama"], cx);
+    expect_held_back(request_now(cx), "another key must not open Zed Cloud");
+    cx.run_until_parked();
+    assert_no_predict_request_ready(&mut requests.predict);
+
+    set_acknowledged_external_ai_providers(&[settings::ZED_CLOUD_AI_CONSENT_KEY], cx);
+    let prediction = request(cx);
+    let (request, respond_tx) = requests.predict.next().await.unwrap();
+    respond_tx
+        .send(model_response(&request, SIMPLE_DIFF))
+        .unwrap();
+    assert!(prediction.await.unwrap().is_some());
+}
+
+async fn predict_through_zed_cloud(
+    ep_store: &Entity<EditPredictionStore>,
+    requests: &mut RequestChannels,
+    project: &Entity<Project>,
+    buffer: &Entity<Buffer>,
+    position: language::Anchor,
+    cx: &mut TestAppContext,
+) {
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.refresh_prediction_from_buffer(
+            project.clone(),
+            buffer.clone(),
+            position,
+            Duration::ZERO,
+            EditPredictionRequestTrigger::Other,
+            cx,
+        );
+    });
+    let (request, respond_tx) = requests.predict.next().await.unwrap();
+    respond_tx
+        .send(model_response(&request, SIMPLE_DIFF))
+        .unwrap();
+    cx.run_until_parked();
+}
+
+fn report_on_prediction(
+    ep_store: &Entity<EditPredictionStore>,
+    project: &Entity<Project>,
+    rejected_id: &str,
+    cx: &mut TestAppContext,
+) {
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.accept_current_prediction(project, cx);
+        ep_store.reject_prediction(
+            EditPredictionId(rejected_id.to_string().into()),
+            EditPredictionRejectReason::Discarded,
+            true,
+            None,
+            None,
+            true,
+            cx,
+        );
+    });
+}
+
+async fn enqueue_settled(
+    ep_store: &Entity<EditPredictionStore>,
+    project: &Entity<Project>,
+    buffer: &Entity<Buffer>,
+    id: &str,
+    cx: &mut TestAppContext,
+) {
+    let snapshot = buffer.read_with(cx, |buffer, _| buffer.snapshot());
+    let empty_edits: Arc<[(Range<Anchor>, Arc<str>)]> = Vec::new().into();
+    let edit_preview = buffer
+        .read_with(cx, |buffer, cx| buffer.preview_edits(empty_edits, cx))
+        .await;
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.enqueue_settled_prediction(
+            EditPredictionId(id.to_string().into()),
+            project,
+            buffer,
+            &snapshot,
+            0..snapshot.len(),
+            &edit_preview,
+            None,
+            None,
+            None,
+            Duration::from_secs(0),
+            cx,
+        );
+    });
+}
+
+#[gpui::test]
+async fn test_zed_cloud_reports_wait_for_consent(cx: &mut TestAppContext) {
+    let (ep_store, mut requests) = init_test_with_fake_client(cx);
+    let (project, buffer, position) = open_foo_md(cx).await;
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.register_buffer(&buffer, &project, cx);
+    });
+
+    // A prediction made with consent, which is then withdrawn: neither its acceptance, nor a
+    // rejection, nor a settled report may go out.
+    predict_through_zed_cloud(&ep_store, &mut requests, &project, &buffer, position, cx).await;
+    set_acknowledged_external_ai_providers(&[], cx);
+    // The fake server has no route for ratings, so one that went out would fail the test.
+    ep_store.update(cx, |ep_store, cx| {
+        let prediction = ep_store
+            .projects
+            .get(&project.entity_id())
+            .and_then(|project_state| project_state.current_prediction.as_ref())
+            .map(|current| current.prediction.clone())
+            .expect("Zed Cloud made a prediction");
+        assert!(prediction.made_by_zed_cloud);
+        ep_store.rate_prediction(
+            &prediction,
+            EditPredictionRating::Positive,
+            String::new(),
+            None,
+            cx,
+        );
+    });
+    report_on_prediction(&ep_store, &project, "withdrawn", cx);
+    enqueue_settled(&ep_store, &project, &buffer, "withdrawn", cx).await;
+    cx.run_until_parked();
+    cx.executor().advance_clock(REJECT_REQUEST_DEBOUNCE);
+    cx.executor()
+        .advance_clock(EDIT_PREDICTION_SETTLED_QUIESCENCE * 2);
+    cx.run_until_parked();
+    assert!(requests.accept.next().now_or_never().flatten().is_none());
+    assert!(requests.reject.next().now_or_never().flatten().is_none());
+    assert!(requests.settled.next().now_or_never().flatten().is_none());
+
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.refresh_available_experiments(cx)
+    });
+    cx.run_until_parked();
+    assert!(
+        requests
+            .experiments
+            .next()
+            .now_or_never()
+            .flatten()
+            .is_none()
+    );
+
+    // The same reports with consent do go out, so the assertions above are not vacuous.
+    set_acknowledged_external_ai_providers(&[settings::ZED_CLOUD_AI_CONSENT_KEY], cx);
+    predict_through_zed_cloud(&ep_store, &mut requests, &project, &buffer, position, cx).await;
+    report_on_prediction(&ep_store, &project, "consented", cx);
+    enqueue_settled(&ep_store, &project, &buffer, "consented", cx).await;
+    cx.run_until_parked();
+    cx.executor().advance_clock(REJECT_REQUEST_DEBOUNCE);
+    cx.executor()
+        .advance_clock(EDIT_PREDICTION_SETTLED_QUIESCENCE * 2);
+    cx.run_until_parked();
+    assert!(requests.accept.next().now_or_never().flatten().is_some());
+    let (_reject, respond_tx) = requests.reject.next().await.unwrap();
+    respond_tx.send(()).unwrap();
+    assert!(requests.settled.next().now_or_never().flatten().is_some());
+
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.refresh_available_experiments(cx)
+    });
+    cx.run_until_parked();
+    assert!(
+        requests
+            .experiments
+            .next()
+            .now_or_never()
+            .flatten()
+            .is_some()
+    );
+}
+
+struct FakeMercuryCredentials;
+
+impl credentials_provider::CredentialsProvider for FakeMercuryCredentials {
+    fn read_credentials<'a>(
+        &'a self,
+        _url: &'a str,
+        _cx: &'a gpui::AsyncApp,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<Option<(String, Vec<u8>)>>> + 'a>> {
+        Box::pin(async { Ok(Some(("Bearer".to_string(), b"test-token".to_vec()))) })
+    }
+
+    fn write_credentials<'a>(
+        &'a self,
+        _url: &'a str,
+        _username: &'a str,
+        _password: &'a [u8],
+        _cx: &'a gpui::AsyncApp,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn delete_credentials<'a>(
+        &'a self,
+        _url: &'a str,
+        _cx: &'a gpui::AsyncApp,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<()>> + 'a>> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+#[gpui::test]
+async fn test_mercury_waits_for_consent(cx: &mut TestAppContext) {
+    init_test(cx);
+    set_acknowledged_external_ai_providers(&[], cx);
+    let requested_hosts = Arc::new(Mutex::new(Vec::<String>::new()));
+    let http_client = FakeHttpClient::create({
+        let requested_hosts = requested_hosts.clone();
+        move |request| {
+            requested_hosts
+                .lock()
+                .push(request.uri().host().unwrap_or_default().to_string());
+            async move {
+                Ok(http_client::Response::builder()
+                    .status(404)
+                    .body("Not Found".into())?)
+            }
+        }
+    });
+    cx.update(|cx| {
+        cx.set_http_client(http_client.clone());
+        // Never the system keychain in a test.
+        cx.set_global(zed_credentials_provider::ZedCredentialsProvider(Arc::new(
+            FakeMercuryCredentials,
+        )));
+    });
+    let (project, buffer, position) = open_foo_md(cx).await;
+    let client =
+        cx.update(|cx| Client::new(Arc::new(FakeSystemClock::new()), http_client.clone(), cx));
+    cx.update(|cx| {
+        RefreshLlmTokenListener::register(client.clone(), project.read(cx).user_store(), cx);
+    });
+    let ep_store = cx.new(|cx| {
+        let mut ep_store = EditPredictionStore::new(client, project.read(cx).user_store(), cx);
+        ep_store.set_edit_prediction_model(EditPredictionModel::Mercury);
+        ep_store
+    });
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.register_buffer(&buffer, &project, cx)
+    });
+    cx.run_until_parked();
+    requested_hosts.lock().clear();
+
+    let request = async |cx: &mut TestAppContext| {
+        let task = ep_store.update(cx, |ep_store, cx| {
+            ep_store.request_prediction(
+                &project,
+                &buffer,
+                position,
+                PredictEditsRequestTrigger::Other,
+                cx,
+            )
+        });
+        let result = task.await;
+        cx.run_until_parked();
+        result
+    };
+    let send_feedback = |cx: &mut TestAppContext| {
+        cx.update(|cx| {
+            mercury::edit_prediction_accepted(
+                EditPredictionId("feedback".into()),
+                http_client.clone(),
+                cx,
+            )
+        });
+        cx.run_until_parked();
+    };
+
+    let error = expect_held_back(
+        request(cx).await,
+        "Mercury must not be sent a request before consent",
+    );
+    assert!(
+        error.to_string().contains("external AI warning"),
+        "unexpected error: {error}"
+    );
+    send_feedback(cx);
+    assert_eq!(*requested_hosts.lock(), Vec::<String>::new());
+
+    set_acknowledged_external_ai_providers(&["edit_prediction:mercury"], cx);
+    // The first request after consent loads the token; the second one is sent with it.
+    request(cx).await.ok();
+    request(cx).await.ok();
+    send_feedback(cx);
+    let hosts = requested_hosts.lock().clone();
+    assert!(
+        hosts.contains(&"api.inceptionlabs.ai".to_string()),
+        "after consent the prediction goes out: {hosts:?}"
+    );
+    assert!(
+        hosts.contains(&"api-feedback.inceptionlabs.ai".to_string()),
+        "after consent the feedback goes out: {hosts:?}"
+    );
+}
+
+/// Every request the fake servers of [`SelfHostedZetaTest`] received, as `host path`.
+type RequestLog = Arc<Mutex<Vec<String>>>;
+
+/// A signed-in Zed user whose edit predictions come from a self-hosted Zeta server on this
+/// machine, and who has also accepted Zed's external AI warning: everything Zed Cloud would be
+/// sent is within reach, so only the prediction's own origin keeps it from being sent.
+struct SelfHostedZetaTest {
+    project: Entity<Project>,
+    buffer: Entity<Buffer>,
+    ep_store: Entity<EditPredictionStore>,
+    requests: RequestLog,
+    _server: FakeServer,
+}
+
+const SELF_HOSTED_ZETA_URL: &str = "http://127.0.0.1:8080/v1/completions";
+
+fn set_edit_prediction_provider(
+    provider: settings::EditPredictionProvider,
+    cx: &mut TestAppContext,
+) {
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |content| {
+                content
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .get_or_insert_default()
+                    .provider = Some(provider);
+            });
+        });
+    });
+}
+
+impl SelfHostedZetaTest {
+    async fn new(cx: &mut TestAppContext) -> Self {
+        init_test(cx);
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |content| {
+                    let edit_predictions = content
+                        .project
+                        .all_languages
+                        .edit_predictions
+                        .get_or_insert_default();
+                    edit_predictions.provider =
+                        Some(settings::EditPredictionProvider::OpenAiCompatibleApi);
+                    edit_predictions.open_ai_compatible_api =
+                        Some(settings::CustomEditPredictionProviderSettingsContent {
+                            api_url: Some(SELF_HOSTED_ZETA_URL.to_string()),
+                            model: Some("zeta".to_string()),
+                            prompt_format: Some(settings::EditPredictionPromptFormatContent::Zeta),
+                            max_output_tokens: Some(64),
+                            prediction_debounce: None,
+                        });
+                });
+            });
+        });
+        set_acknowledged_external_ai_providers(&[settings::ZED_CLOUD_AI_CONSENT_KEY], cx);
+
+        let requests = RequestLog::default();
+        let http_client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |request| {
+                let host = request.uri().host().unwrap_or_default().to_string();
+                let path = request.uri().path().to_string();
+                let request_id = {
+                    let mut requests = requests.lock();
+                    requests.push(format!("{host} {path}"));
+                    requests.len()
+                };
+                async move {
+                    let body = match path.as_str() {
+                        "/v1/completions" => serde_json::to_string(&RawCompletionResponse {
+                            id: format!("self-hosted-{request_id}"),
+                            object: "text_completion".to_string(),
+                            created: 0,
+                            model: "zeta".to_string(),
+                            choices: vec![RawCompletionChoice {
+                                text: "line 0\nline one\nline 2\n".to_string(),
+                                finish_reason: Some("stop".to_string()),
+                            }],
+                            usage: RawCompletionUsage {
+                                prompt_tokens: 0,
+                                completion_tokens: 0,
+                                total_tokens: 0,
+                            },
+                        })?,
+                        "/client/llm_tokens" => serde_json::to_string(&CreateLlmTokenResponse {
+                            token: LlmToken("the-llm-token".to_string()),
+                        })?,
+                        _ => "{}".to_string(),
+                    };
+                    Ok(http_client::Response::builder()
+                        .status(200)
+                        .body(body.into())?)
+                }
+            }
+        });
+        cx.update(|cx| cx.set_http_client(http_client.clone()));
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({ "main.rs": "line 0\nline 1\nline 2\n" }),
+        )
+        .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        let buffer = project
+            .update(cx, |project, cx| {
+                let path = project
+                    .find_project_path(path!("/project/main.rs"), cx)
+                    .unwrap();
+                project.open_buffer(path, cx)
+            })
+            .await
+            .unwrap();
+
+        let client =
+            cx.update(|cx| Client::new(Arc::new(FakeSystemClock::new()), http_client.clone(), cx));
+        cx.update(|cx| {
+            RefreshLlmTokenListener::register(client.clone(), project.read(cx).user_store(), cx);
+        });
+        let server = FakeServer::for_client(42, &client, cx).await;
+        let user_store = cx.update(|cx| project.read(cx).user_store());
+        set_test_organization(&user_store, cx);
+        let ep_store = cx.new(|cx| {
+            let mut ep_store = EditPredictionStore::new(client, project.read(cx).user_store(), cx);
+            ep_store.set_edit_prediction_model(EditPredictionModel::Zeta);
+            ep_store
+        });
+        ep_store.update(cx, |ep_store, cx| {
+            ep_store.register_buffer(&buffer, &project, cx)
+        });
+        cx.run_until_parked();
+        requests.lock().clear();
+
+        Self {
+            project,
+            buffer,
+            ep_store,
+            requests,
+            _server: server,
+        }
+    }
+
+    /// Makes the self-hosted server's prediction the current one and returns it.
+    async fn predict(&self, cx: &mut TestAppContext) -> EditPrediction {
+        let cursor = self
+            .buffer
+            .read_with(cx, |buffer, _| buffer.anchor_before(Point::new(1, 0)));
+        self.ep_store.update(cx, |ep_store, cx| {
+            ep_store.refresh_prediction_from_buffer(
+                self.project.clone(),
+                self.buffer.clone(),
+                cursor,
+                Duration::ZERO,
+                EditPredictionRequestTrigger::Other,
+                cx,
+            )
+        });
+        cx.executor()
+            .advance_clock(EditPredictionStore::THROTTLE_TIMEOUT);
+        cx.run_until_parked();
+        let prediction = self.ep_store.read_with(cx, |ep_store, _| {
+            ep_store
+                .projects
+                .get(&self.project.entity_id())
+                .and_then(|project_state| project_state.current_prediction.as_ref())
+                .map(|current| current.prediction.clone())
+        });
+        let prediction = prediction.expect("the self-hosted server made a prediction");
+        assert!(!prediction.made_by_zed_cloud);
+        prediction
+    }
+
+    fn requests_to_zed_cloud(&self) -> Vec<String> {
+        self.requests
+            .lock()
+            .iter()
+            .filter(|request| !request.starts_with("127.0.0.1 "))
+            .cloned()
+            .collect()
+    }
+}
+
+/// A user who chose a self-hosted server chose not to send Zed anything: accepting, rejecting,
+/// settling or rating its predictions sends Zed Cloud nothing, even with Zed's consent given and
+/// with Zed chosen as the provider by the time the report would be made.
+#[gpui::test]
+async fn test_self_hosted_predictions_report_nothing_to_zed_cloud(cx: &mut TestAppContext) {
+    let test = SelfHostedZetaTest::new(cx).await;
+
+    let rejected = test.predict(cx).await;
+    set_edit_prediction_provider(settings::EditPredictionProvider::Zed, cx);
+    test.ep_store.update(cx, |ep_store, cx| {
+        ep_store.reject_current_prediction(
+            EditPredictionRejectReason::Discarded,
+            &test.project,
+            cx,
+        );
+        ep_store.rate_prediction(
+            &rejected,
+            EditPredictionRating::Negative,
+            "feedback".to_string(),
+            None,
+            cx,
+        );
+    });
+
+    set_edit_prediction_provider(settings::EditPredictionProvider::OpenAiCompatibleApi, cx);
+    test.predict(cx).await;
+    set_edit_prediction_provider(settings::EditPredictionProvider::Zed, cx);
+    test.ep_store.update(cx, |ep_store, cx| {
+        ep_store.accept_current_prediction(&test.project, cx);
+    });
+
+    cx.executor().advance_clock(REJECT_REQUEST_DEBOUNCE);
+    cx.executor()
+        .advance_clock(EDIT_PREDICTION_SETTLED_QUIESCENCE * 2);
+    cx.run_until_parked();
+
+    let self_hosted_requests = test
+        .requests
+        .lock()
+        .iter()
+        .filter(|request| request.starts_with("127.0.0.1 "))
+        .count();
+    assert_eq!(self_hosted_requests, 2, "{:?}", test.requests.lock());
+    assert_eq!(test.requests_to_zed_cloud(), Vec::<String>::new());
+}
+
+/// A self-hosted provider left without a server does not fall back to Zed Cloud, even with Zed's
+/// consent given.
+#[gpui::test]
+async fn test_unconfigured_self_hosted_provider_does_not_fall_back_to_zed_cloud(
+    cx: &mut TestAppContext,
+) {
+    let (ep_store, mut requests) = init_test_with_fake_client(cx);
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |content| {
+                let edit_predictions = content
+                    .project
+                    .all_languages
+                    .edit_predictions
+                    .get_or_insert_default();
+                edit_predictions.provider =
+                    Some(settings::EditPredictionProvider::OpenAiCompatibleApi);
+                edit_predictions.open_ai_compatible_api =
+                    Some(settings::CustomEditPredictionProviderSettingsContent {
+                        api_url: Some(SELF_HOSTED_ZETA_URL.to_string()),
+                        model: Some(String::new()),
+                        prompt_format: Some(settings::EditPredictionPromptFormatContent::Zeta),
+                        max_output_tokens: Some(64),
+                        prediction_debounce: None,
+                    });
+            });
+        });
+    });
+    let (project, buffer, position) = open_foo_md(cx).await;
+    ep_store.update(cx, |ep_store, cx| {
+        ep_store.register_buffer(&buffer, &project, cx)
+    });
+    cx.run_until_parked();
+
+    let task = ep_store.update(cx, |ep_store, cx| {
+        ep_store.request_prediction(
+            &project,
+            &buffer,
+            position,
+            PredictEditsRequestTrigger::Other,
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    let result = task
+        .now_or_never()
+        .expect("a held-back request finishes without waiting for a server");
+    expect_held_back(result, "no server is configured");
+    assert_no_predict_request_ready(&mut requests.predict);
+    assert_no_predict_request_ready(&mut requests.predict_v4);
+}
+
+/// Rejections wait up to [`REJECT_REQUEST_DEBOUNCE`] to be batched; withdrawing the consent in
+/// that time drops them instead of sending them.
+#[gpui::test]
+async fn test_queued_rejections_are_dropped_when_consent_is_withdrawn(cx: &mut TestAppContext) {
+    let (ep_store, mut requests) = init_test_with_fake_client(cx);
+    let reject = |id: &str, cx: &mut TestAppContext| {
+        ep_store.update(cx, |ep_store, cx| {
+            ep_store.reject_prediction(
+                EditPredictionId(id.to_string().into()),
+                EditPredictionRejectReason::Discarded,
+                false,
+                None,
+                None,
+                true,
+                cx,
+            );
+        });
+    };
+
+    reject("queued-with-consent", cx);
+    cx.run_until_parked();
+    set_acknowledged_external_ai_providers(&[], cx);
+    cx.executor().advance_clock(REJECT_REQUEST_DEBOUNCE);
+    cx.run_until_parked();
+    assert!(requests.reject.next().now_or_never().flatten().is_none());
+
+    set_acknowledged_external_ai_providers(&[settings::ZED_CLOUD_AI_CONSENT_KEY], cx);
+    reject("after-consent", cx);
+    cx.executor().advance_clock(REJECT_REQUEST_DEBOUNCE);
+    cx.run_until_parked();
+    let (body, respond_tx) = requests.reject.next().await.unwrap();
+    respond_tx.send(()).unwrap();
+    let ids = body
+        .rejections
+        .iter()
+        .map(|rejection| rejection.request_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(ids, vec!["after-consent"]);
+}
+
+/// Consent and the endpoint are read from the user's settings only: a project's
+/// `.zed/settings.json`, which comes with someone else's code, can neither accept the warning nor
+/// move the endpoint.
+#[gpui::test]
+async fn test_project_settings_neither_consent_nor_move_the_endpoint(cx: &mut TestAppContext) {
+    let set_project_settings = |test: &SelfHostedTest, json: &str, cx: &mut TestAppContext| {
+        let worktree_id = test.project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the test project has a worktree")
+                .read(cx)
+                .id()
+        });
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_local_settings(
+                        worktree_id,
+                        settings::LocalSettingsPath::InWorktree(RelPath::empty().into()),
+                        settings::LocalSettingsKind::Settings,
+                        Some(json),
+                        cx,
+                    )
+                    .expect("valid project settings");
+            });
+        });
+    };
+
+    let test = SelfHostedTest::new(SelfHostedPath::Fim, "llm.example.com", None, cx).await;
+    set_project_settings(
+        &test,
+        r#"{
+            "acknowledged_external_ai_providers": ["edit_prediction:ollama", "zed.dev"],
+            "edit_predictions": { "ollama": { "api_url": "http://127.0.0.1:11434" } }
+        }"#,
+        cx,
+    );
+    expect_held_back(
+        test.request(cx).await,
+        "a project's settings must not accept the warning or make the endpoint local",
+    );
+    assert_eq!(test.requested_hosts(), Vec::<String>::new());
+
+    let test = SelfHostedTest::new(SelfHostedPath::Fim, "127.0.0.1", None, cx).await;
+    set_project_settings(
+        &test,
+        r#"{ "edit_predictions": { "ollama": { "api_url": "http://llm.evil.example:11434" } } }"#,
+        cx,
+    );
+    test.request(cx).await.ok();
+    assert_eq!(test.requested_hosts(), vec!["127.0.0.1".to_string()]);
 }
 
 #[ctor::ctor(unsafe)]

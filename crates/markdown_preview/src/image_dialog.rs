@@ -50,7 +50,7 @@ pub fn register(workspace: &mut Workspace) {
             // Reachable from the command palette with anything in front, where
             // returning in silence leaves the user guessing.
             workspace.show_error(
-                anyhow!("Markdown のエディターを選んでから実行してください。"),
+                anyhow!(i18n::t!("Select a Markdown editor, then run this again.")),
                 cx,
             );
             return;
@@ -59,7 +59,9 @@ pub fn register(workspace: &mut Workspace) {
         // buffer cannot take it; saying so now beats a form that goes nowhere.
         if editor.read(cx).read_only(cx) {
             workspace.show_error(
-                anyhow!("このバッファーは読み取り専用のため、画像を挿入できません。"),
+                anyhow!(i18n::t!(
+                    "This buffer is read-only, so an image cannot be inserted."
+                )),
                 cx,
             );
             return;
@@ -1880,23 +1882,25 @@ fn block_refusal(
     splits_the_line: bool,
 ) -> Option<&'static str> {
     const HTML_REFUSAL: &str =
-        "HTML の中の画像には配置を指定できません。配置を「指定なし」にしてください。";
+        i18n::msg!("An image inside HTML cannot be aligned. Set Alignment to \"Not Set\".");
     if inside_html {
-        return Some(HTML_REFUSAL);
+        return Some(i18n::tr(HTML_REFUSAL));
     }
     let (before, after) = text_around(snapshot, range);
     if splits_the_line {
         if inside_link {
-            return Some(
-                "リンクの中の画像には配置を指定できません。配置を「指定なし」にしてください。",
-            );
+            return Some(i18n::t!(
+                "An image inside a link cannot be aligned. Set Alignment to \"Not Set\"."
+            ));
         }
         if leaves_an_element_open(&before) {
-            return Some(HTML_REFUSAL);
+            return Some(i18n::tr(HTML_REFUSAL));
         }
     }
     if (before.contains('|') || after.contains('|')) && block.lines().any(is_table_delimiter_row) {
-        return Some("表の中の画像には配置を指定できません。配置を「指定なし」にしてください。");
+        return Some(i18n::t!(
+            "An image inside a table cannot be aligned. Set Alignment to \"Not Set\"."
+        ));
     }
     None
 }
@@ -2467,9 +2471,9 @@ fn intact_target_range(snapshot: &BufferSnapshot, target: &ImageTarget) -> Resul
     let range = target.range.start.to_offset(snapshot)..target.range.end.to_offset(snapshot);
     let current: String = snapshot.text_for_range(range.clone()).collect();
     if current != target.original_text {
-        return Err(anyhow!(
-            "ダイアログを開いた後に、書き込み先のテキストが変更されました。ダイアログを開き直してください。"
-        ));
+        return Err(anyhow!(i18n::t!(
+            "The text to write to changed after the dialog was opened. Open the dialog again."
+        )));
     }
     Ok(range)
 }
@@ -2481,7 +2485,7 @@ fn check_target(editor: &Editor, target: &ImageTarget, cx: &App) -> Result<()> {
         .buffer()
         .read(cx)
         .as_singleton()
-        .context("Markdown のバッファーが見つかりません。")?;
+        .context(i18n::t!("The Markdown buffer could not be found."))?;
     let snapshot = buffer.read(cx).snapshot();
     intact_target_range(&snapshot, target)?;
     if let Some(definition) = &target.definition {
@@ -2498,9 +2502,9 @@ fn intact_definition_range(
         definition.range.start.to_offset(snapshot)..definition.range.end.to_offset(snapshot);
     let current: String = snapshot.text_for_range(range.clone()).collect();
     if current != definition.original_text {
-        return Err(anyhow!(
-            "ダイアログを開いた後に、画像の参照定義が変更されました。ダイアログを開き直してください。"
-        ));
+        return Err(anyhow!(i18n::t!(
+            "The image's reference definition changed after the dialog was opened. Open the dialog again."
+        )));
     }
     Ok(range)
 }
@@ -2518,7 +2522,7 @@ fn write_image(
         .buffer()
         .read(cx)
         .as_singleton()
-        .context("Markdown のバッファーが見つかりません。")?;
+        .context(i18n::t!("The Markdown buffer could not be found."))?;
     let snapshot = buffer.read(cx).snapshot();
     let range = intact_target_range(&snapshot, target)?;
     let definition_edit = match (definition, &target.definition) {
@@ -2694,9 +2698,9 @@ impl ImageDialog {
 
         let mut subscriptions = Vec::new();
         let path_field = new_field(&path_text, "images/photo.png", window, cx);
-        let alt_field = new_field(&alt_text, "画像の説明", window, cx);
-        let width_field = new_field(&width_text, "例: 300 / 50%", window, cx);
-        let height_field = new_field(&height_text, "例: 200", window, cx);
+        let alt_field = new_field(&alt_text, i18n::t!("Image description"), window, cx);
+        let width_field = new_field(&width_text, i18n::t!("e.g. 300 / 50%"), window, cx);
+        let height_field = new_field(&height_text, i18n::t!("e.g. 200"), window, cx);
         subscriptions.push(cx.subscribe_in(
             &path_field,
             window,
@@ -2931,12 +2935,14 @@ impl ImageDialog {
     fn storing_refusal(&self, cx: &App) -> Option<String> {
         let Some(document) = &self.document else {
             return Some(
-                "Markdown が未保存のため、画像をコピーできません。先に保存してください。"
-                    .to_string(),
+                i18n::t!(
+                    "The Markdown file is not saved, so the image cannot be copied. Save it first."
+                )
+                .to_string(),
             );
         };
         let Some(project) = self.project.upgrade() else {
-            return Some("プロジェクトが閉じられました。".to_string());
+            return Some(i18n::t!("The project was closed.").to_string());
         };
         image_files::storing_refusal(&project, document, cx)
     }
@@ -3081,9 +3087,10 @@ impl ImageDialog {
             LengthInput::Empty => None,
             LengthInput::Valid(width) => Some(width),
             LengthInput::Invalid => {
-                return Err(
-                    "幅は 300 や 50% のように、数値か % 付きの数値で入力してください。".into(),
-                );
+                return Err(i18n::t!(
+                    "Enter the width as a number or a number with %, such as 300 or 50%."
+                )
+                .into());
             }
         };
         let height = self.height_field.read(cx).text(cx);
@@ -3091,9 +3098,10 @@ impl ImageDialog {
             LengthInput::Empty => None,
             LengthInput::Valid(height) => Some(height),
             LengthInput::Invalid => {
-                return Err(
-                    "高さは 200 や 50% のように、数値か % 付きの数値で入力してください。".into(),
-                );
+                return Err(i18n::t!(
+                    "Enter the height as a number or a number with %, such as 200 or 50%."
+                )
+                .into());
             }
         };
 
@@ -3109,7 +3117,7 @@ impl ImageDialog {
             let document = self
                 .document
                 .clone()
-                .ok_or_else(|| SharedString::from("Markdown が未保存です。"))?;
+                .ok_or_else(|| SharedString::from(i18n::t!("The Markdown file is not saved.")))?;
             copy = Some(CopyRequest {
                 source: source.clone(),
                 document,
@@ -3118,7 +3126,7 @@ impl ImageDialog {
             String::new()
         } else {
             match self.resolved(cx) {
-                ResolvedSource::Empty => return Err("画像ファイルを指定してください。".into()),
+                ResolvedSource::Empty => return Err(i18n::t!("Specify an image file.").into()),
                 ResolvedSource::Url(url) => url,
                 ResolvedSource::File(file) => {
                     if self.copy_offered(&file, cx)
@@ -3134,7 +3142,7 @@ impl ImageDialog {
                         String::new()
                     } else {
                         file.destination()
-                            .ok_or_else(|| SharedString::from("画像ファイルを指定してください。"))?
+                            .ok_or_else(|| SharedString::from(i18n::t!("Specify an image file.")))?
                     }
                 }
             }
@@ -3185,7 +3193,7 @@ impl ImageDialog {
     fn warnings(&self, cx: &App) -> Vec<SharedString> {
         let mut warnings = Vec::new();
         if matches!(self.details, SourceDetails::Missing) {
-            warnings.push("このパスにファイルが見つかりません。".into());
+            warnings.push(i18n::t!("No file was found at this path.").into());
         }
         if self.path_is_unchanged(cx) || self.picked_local(cx).is_some() {
             return warnings;
@@ -3199,17 +3207,23 @@ impl ImageDialog {
                 && !file.inside_root
                 && let Some(refusal) = self.storing_refusal(cx)
             {
-                warnings.push(format!("{refusal} 画像はコピーせずに参照します。").into());
+                warnings.push(
+                    i18n::t!("{refusal} The image is referenced without being copied.").into(),
+                );
             }
             if !copying && file.relative.is_none() {
                 warnings.push(
-                    "Markdown からの相対パスにできないため、絶対パスで書き込みます。他の環境では表示されません。"
-                        .into(),
+                    i18n::t!(
+                        "The path cannot be made relative to the Markdown file, so it is written as an absolute path. The image will not show on other machines."
+                    )
+                    .into(),
                 );
             } else if !copying && self.location.directory.is_none() {
                 warnings.push(
-                    "Markdown が未保存のため、パスは入力どおりに書き込みます。保存先によっては表示されません。"
-                        .into(),
+                    i18n::t!(
+                        "The Markdown file is not saved, so the path is written as entered. The image may not show, depending on where the file is saved."
+                    )
+                    .into(),
                 );
             }
         }
@@ -3296,7 +3310,7 @@ impl ImageDialog {
                 this.copying = false;
                 let stored = stored.and_then(|stored| {
                     let link = image_files::relative_link(&document, &stored)
-                        .context("コピーした画像へのパスを作れません。")?;
+                        .context(i18n::t!("Cannot build a path to the copied image."))?;
                     Ok((stored, link))
                 });
                 match stored {
@@ -3312,8 +3326,7 @@ impl ImageDialog {
                         }
                     }
                     Err(error) => {
-                        this.message =
-                            Some(format!("画像をコピーできませんでした: {error:#}").into());
+                        this.message = Some(i18n::t!("Failed to copy the image: {error:#}").into());
                         cx.notify();
                     }
                 }
@@ -3406,7 +3419,7 @@ impl ImageDialog {
                 files: true,
                 directories: false,
                 multiple: false,
-                prompt: Some("画像を選択".into()),
+                prompt: Some(i18n::t!("Select Image").into()),
                 starting_directory,
             },
             cx,
@@ -3416,9 +3429,8 @@ impl ImageDialog {
                 Ok(Ok(Some(paths))) => paths.into_iter().next(),
                 Ok(Err(error)) => {
                     this.update(cx, |this, cx| {
-                        this.message = Some(
-                            format!("ファイルを選ぶダイアログを開けませんでした: {error:#}").into(),
-                        );
+                        this.message =
+                            Some(i18n::t!("Failed to open the file dialog: {error:#}").into());
                         cx.notify();
                     })
                     .log_err();
@@ -3438,7 +3450,8 @@ impl ImageDialog {
 
     fn use_picked_file(&mut self, path: &Path, window: &mut Window, cx: &mut Context<Self>) {
         let Some(text) = path.to_str() else {
-            self.message = Some("パスに扱えない文字が含まれています。".into());
+            self.message =
+                Some(i18n::t!("The path contains characters that cannot be handled.").into());
             cx.notify();
             return;
         };
@@ -3446,8 +3459,8 @@ impl ImageDialog {
         // anything else is turned away here, with the reason.
         if !has_image_extension(text) {
             self.message = Some(
-                format!(
-                    "画像ファイルではありません: {}",
+                i18n::t!(
+                    "Not an image file: {}",
                     path.file_name()
                         .map_or_else(|| text.into(), |name| name.to_string_lossy())
                 )
@@ -3574,13 +3587,15 @@ impl ImageDialog {
                     .child(self.path_field.clone()),
             )
             .child(
-                Button::new("markdown-image-browse", "参照…")
+                Button::new("markdown-image-browse", i18n::t!("Browse…"))
                     .style(ButtonStyle::Outlined)
                     .size(ButtonSize::Medium)
                     .tooltip(Tooltip::text(if self.location.is_local {
-                        "OS のダイアログで画像ファイルを選びます。"
+                        i18n::t!("Choose an image file in the system dialog.")
                     } else {
-                        "このマシンの画像ファイルを OS のダイアログで選び、リモートの images/ にコピーします。"
+                        i18n::t!(
+                            "Choose an image file on this machine in the system dialog and copy it to images/ on the remote."
+                        )
                     }))
                     .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
                         this.browse(window, cx);
@@ -3600,13 +3615,13 @@ impl ImageDialog {
                 .into_any_element()
         };
         if !self.candidates_loaded {
-            return Some(note("プロジェクトの画像ファイルを探しています…"));
+            return Some(note(i18n::t!("Looking for image files in the project…")));
         }
         if self.candidates.is_empty() {
-            return Some(note("プロジェクトに画像ファイルがありません。"));
+            return Some(note(i18n::t!("The project has no image files.")));
         }
         if self.matches.is_empty() {
-            return Some(note("一致する画像ファイルがありません。"));
+            return Some(note(i18n::t!("No matching image files.")));
         }
 
         let colors = cx.theme().colors();
@@ -3662,20 +3677,20 @@ impl ImageDialog {
         let (preview, caption) = match &self.details {
             SourceDetails::None => {
                 let text = if matches!(self.resolved(cx), ResolvedSource::Url(_)) {
-                    "URL の画像はここでは表示しません。"
+                    i18n::t!("Images from a URL are not shown here.")
                 } else {
-                    "画像を選ぶとここに表示します。"
+                    i18n::t!("The selected image is shown here.")
                 };
                 (None, Some(text.to_string()))
             }
-            SourceDetails::Checking => (None, Some("確認しています…".to_string())),
+            SourceDetails::Checking => (None, Some(i18n::t!("Checking…").to_string())),
             SourceDetails::Missing => (None, None),
             SourceDetails::Found {
                 preview,
                 dimensions,
             } => (
                 preview.clone(),
-                dimensions.map(|(width, height)| format!("元のサイズ: {width} × {height}")),
+                dimensions.map(|(width, height)| i18n::t!("Original size: {width} × {height}")),
             ),
         };
         let thumbnail = preview.map(|preview| {
@@ -3691,7 +3706,7 @@ impl ImageDialog {
                 .size_full()
                 .object_fit(ObjectFit::Contain)
                 .with_fallback(|| {
-                    Label::new("画像を読み込めません")
+                    Label::new(i18n::t!("Cannot load the image"))
                         .size(LabelSize::Small)
                         .color(Color::Muted)
                         .into_any_element()
@@ -3746,18 +3761,29 @@ impl ImageDialog {
             return None;
         }
         Some(if self.target.original_text.is_empty() {
-            "配置を指定した画像は、カーソルのある段落の後ろに入ります。"
+            i18n::t!("An aligned image goes after the paragraph the cursor is in.")
         } else {
-            "配置を指定した画像は、カーソルのある段落の後ろに入ります。選択した文字列はそのまま残ります。"
+            i18n::t!(
+                "An aligned image goes after the paragraph the cursor is in. The selected text stays as it is."
+            )
         })
     }
 
     fn render_alignment(&self, cx: &mut Context<Self>) -> AnyElement {
         let choices: [(Option<ImageAlignment>, &'static str); 4] = [
-            (None, "指定なし"),
-            (Some(ImageAlignment::Left), "左"),
-            (Some(ImageAlignment::Center), "中央"),
-            (Some(ImageAlignment::Right), "右"),
+            (None, i18n::t!("Not Set")),
+            (
+                Some(ImageAlignment::Left),
+                i18n::tc!("image alignment", "Left"),
+            ),
+            (
+                Some(ImageAlignment::Center),
+                i18n::tc!("image alignment", "Center"),
+            ),
+            (
+                Some(ImageAlignment::Right),
+                i18n::tc!("image alignment", "Right"),
+            ),
         ];
         let selected_index = choices
             .iter()
@@ -3800,14 +3826,14 @@ impl ImageDialog {
             .child(
                 h_flex()
                     .gap_4()
-                    .child(field("幅", &self.width_field, cx))
-                    .child(field("高さ", &self.height_field, cx)),
+                    .child(field(i18n::t!("Width"), &self.width_field, cx))
+                    .child(field(i18n::t!("Height"), &self.height_field, cx)),
             )
             .child(
                 Label::new(if one_side {
-                    "片方だけを指定すると、縦横比は保たれます。"
+                    i18n::t!("When only one side is set, the aspect ratio is kept.")
                 } else {
-                    "数値 (px) か % 付きで入力します。空欄なら指定しません。"
+                    i18n::t!("Enter a number (px) or a number with %. Leave empty to not set it.")
                 })
                 .size(LabelSize::Small)
                 .color(Color::Muted),
@@ -3834,16 +3860,19 @@ impl ImageDialog {
             || !self.width_field.read(cx).text(cx).trim().is_empty()
             || !self.height_field.read(cx).text(cx).trim().is_empty();
         if layout_needs_html {
-            return Some(note(format!(
-                "サイズや配置は参照の形 ![…][…] では書けないため、この画像は HTML で書き込みます。参照定義 {head} はそのまま残ります。"
+            return Some(note(i18n::t!(
+                "Size and alignment cannot be written in the reference form ![…][…], so this image is written as HTML. The reference definition {head} stays as it is."
             )));
         }
         if self.path_is_unchanged(cx) {
             return None;
         }
         let Some(uses) = self.shared_definition_uses() else {
-            return stays_a_reference
-                .then(|| note(format!("参照定義 {head} のパスを書き換えます。")));
+            return stays_a_reference.then(|| {
+                note(i18n::t!(
+                    "Rewrites the path in the reference definition {head}."
+                ))
+            });
         };
         let others = uses - 1;
         Some(
@@ -3854,8 +3883,10 @@ impl ImageDialog {
                         "markdown-image-rewrite-definition",
                         self.rewrite_shared_definition.into(),
                     )
-                    .label(format!(
-                        "参照定義 {head} を書き換える (ほかの {others} か所も変わります)"
+                    .label(i18n::tn!(
+                        others,
+                        "Rewrite the reference definition {head} (this also changes {count} other place)",
+                        "Rewrite the reference definition {head} (this also changes {count} other places)"
                     ))
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, state: &ToggleState, _window, cx| {
@@ -3865,8 +3896,10 @@ impl ImageDialog {
                     })),
                 )
                 .when(!self.rewrite_shared_definition, |column| {
-                    column.child(note(format!(
-                        "参照定義 {head} はほかの {others} か所でも使われているため、この画像だけをインラインの形 ![…](…) で書き換えます。"
+                    column.child(note(i18n::tn!(
+                        others,
+                        "The reference definition {head} is also used in {count} other place, so only this image is rewritten in the inline form ![…](…).",
+                        "The reference definition {head} is also used in {count} other places, so only this image is rewritten in the inline form ![…](…)."
                     )))
                 })
                 .into_any_element(),
@@ -3876,9 +3909,9 @@ impl ImageDialog {
     fn render_copy_option(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if self.picked_local(cx).is_some() && !self.path_is_unchanged(cx) {
             return Some(
-                Label::new(
-                    "このマシンのファイルは、リモートの Markdown と同じフォルダーの images/ にコピーします。リモートからはこのマシンのファイルを参照できないためです。",
-                )
+                Label::new(i18n::t!(
+                    "A file on this machine is copied to images/ in the remote Markdown file's folder, because the remote cannot refer to files on this machine."
+                ))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element(),
@@ -3892,7 +3925,7 @@ impl ImageDialog {
         }
         Some(
             Checkbox::new("markdown-image-copy", self.copy_into_images.into())
-                .label("Markdown と同じフォルダーの images/ にコピーする")
+                .label(i18n::t!("Copy to images/ in the Markdown file's folder"))
                 .label_size(LabelSize::Small)
                 .on_click(cx.listener(|this, state: &ToggleState, _window, cx| {
                     this.copy_into_images = state.selected();
@@ -3904,9 +3937,9 @@ impl ImageDialog {
 
     fn render_footer(&self, problem: Option<SharedString>, cx: &mut Context<Self>) -> ModalFooter {
         let confirm_label = if self.is_editing() {
-            "更新"
+            i18n::t!("Update")
         } else {
-            "挿入"
+            i18n::t!("Insert")
         };
         let status = self
             .message
@@ -3915,7 +3948,7 @@ impl ImageDialog {
             .or_else(|| problem.clone().map(|problem| (problem, Color::Muted)))
             .or_else(|| {
                 self.copying
-                    .then(|| ("画像をコピーしています…".into(), Color::Muted))
+                    .then(|| (i18n::t!("Copying the image…").into(), Color::Muted))
             });
         ModalFooter::new()
             .start_slot::<AnyElement>(
@@ -3931,11 +3964,13 @@ impl ImageDialog {
             .end_slot::<AnyElement>(
                 h_flex()
                     .gap_1()
-                    .child(Button::new("markdown-image-cancel", "キャンセル").on_click(
-                        cx.listener(|this, _: &ClickEvent, window, cx| {
-                            this.cancel(&menu::Cancel, window, cx)
-                        }),
-                    ))
+                    .child(
+                        Button::new("markdown-image-cancel", i18n::t!("Cancel")).on_click(
+                            cx.listener(|this, _: &ClickEvent, window, cx| {
+                                this.cancel(&menu::Cancel, window, cx)
+                            }),
+                        ),
+                    )
                     .child(
                         Button::new("markdown-image-confirm", confirm_label)
                             .style(ButtonStyle::Filled)
@@ -4086,13 +4121,17 @@ impl Render for ImageDialog {
         let problem = self.validate(cx).err();
         let (headline, description) = if self.is_editing() {
             (
-                "画像を編集",
-                "カーソル位置の画像を読み込みました。変更して「更新」を押すと書き換えます。",
+                i18n::t!("Edit Image"),
+                i18n::t!(
+                    "The image at the cursor was loaded. Change it and click \"Update\" to rewrite it."
+                ),
             )
         } else {
             (
-                "画像を挿入",
-                "カーソル位置に画像を挿入します。配置やサイズを指定すると HTML で書き込みます。",
+                i18n::t!("Insert Image"),
+                i18n::t!(
+                    "Inserts an image at the cursor. Setting an alignment or a size writes it as HTML."
+                ),
             )
         };
         let path_row = self.render_path_row(window, cx);
@@ -4132,24 +4171,24 @@ impl Render for ImageDialog {
                                 .max_h(window.viewport_size().height * MAXIMUM_FORM_HEIGHT_FRACTION)
                                 .overflow_y_scroll()
                                 .gap_2()
-                                .child(section_label("画像ファイル"))
+                                .child(section_label(i18n::t!("Image File")))
                                 .child(path_row)
                                 .children(candidates)
                                 .children(copy_option)
                                 .children(reference_option)
                                 .child(details)
-                                .child(section_label("代替テキスト"))
+                                .child(section_label(i18n::t!("Alt Text")))
                                 .child(
                                     ui::input_frame(alt_focused, cx)
                                         .w_full()
                                         .child(self.alt_field.clone()),
                                 )
-                                .child(section_label("配置"))
+                                .child(section_label(i18n::t!("Alignment")))
                                 .child(alignment)
                                 .children(self.placement_note().map(|note| {
                                     Label::new(note).size(LabelSize::Small).color(Color::Muted)
                                 }))
-                                .child(section_label("サイズ"))
+                                .child(section_label(i18n::t!("Size")))
                                 .child(size),
                         ),
                     )

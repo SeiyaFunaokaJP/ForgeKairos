@@ -5,23 +5,3734 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "\nand {} more…"
+msgstr "\n他 {} 件…"
+
+msgid " (no branch)"
+msgstr " (ブランチなし)"
+
+msgid "\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch."
+msgstr "「中止」を押すと元のブランチ「{origin_branch}」に戻り、この一時ブランチは削除されます。"
+
+msgid "\"Continue\" carries on with the rest, and \"Abort\" goes back to where it started."
+msgstr "「続行」で残りを進めるか、「中止」で元の状態に戻します。"
+
+msgid "\"{label}\" is unavailable right now: {refusal}"
+msgstr "「{label}」は今は使えません: {refusal}"
+
+msgid "\"{merge_request_branch}\" is a branch under development. Give the MR branch another name."
+msgstr "「{merge_request_branch}」は開発中のブランチです。MR ブランチには別の名前を付けてください。"
+
+msgid "\"{merge_request_branch}\" is checked out in another worktree, so it cannot be recreated. Use another name."
+msgstr "「{merge_request_branch}」は別の worktree でチェックアウトされているため作り直せません。別の名前にしてください。"
+
+msgid "(binary file not shown)"
+msgstr "(バイナリファイルのため表示されません)"
+
+msgid "(not selected)"
+msgstr "(未選択)"
+
+msgid ". {count} changed file not from the development branch"
+msgid_plural ". {count} changed files not from the development branch"
+msgstr[0] "。開発ブランチに無い変更 {count} ファイル"
+
+msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to First Unplaced\" jumps there). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
+msgstr "1. 「開発ブランチ」(コミットの出どころ) と「基点」(MR の向け先) を選びます。2. コミットグラフの行を箱にドラッグするか、選んで「MR の箱に入れる」を押します。MR に入れないものは、行を右クリックして「MR から除外する」で脇に置きます。3. 箱の下の「未配置」が 0 件なら入れ忘れはありません (未配置の行はグラフに小さな ● が付き、「最初の未配置へ」で移動できます)。4. メッセージと MR ブランチ名を入れて「作成して比較」を押すと、基点の上で 1 コミットにまとめた MR ブランチを作り、開発ブランチと比べます。未コミットの変更があると作れないので、先にコミットかスタッシュしてください。"
+
+msgid "<no branch>"
+msgstr "<ブランチなし>"
+
+msgid "<no commit message>"
+msgstr "<コミットメッセージなし>"
+
+msgid "<no name>"
+msgstr "<名前なし>"
+
+msgid "A base change may be missing from the MR"
+msgstr "基点の変更が MR に入っていない可能性があります"
+
+msgid "A conflict happened while applying the box's commits. Stopped on the scratch branch \"{}\".\nResolve it and press \"Continue\" in the Git panel's banner, then finish with \"Next Steps\" in the MR box. To give up, \"Abort\" in the banner returns to \"{}\".\n{reason}"
+msgstr "箱のコミットを当てている途中でコンフリクトが起きました。一時ブランチ「{}」の上で止まっています。\n解決して Git パネルのバナーで「続行」した後、MR の箱の「続きの手順」で仕上げます。やめるならバナーの「中止」で「{}」に戻ります。\n{reason}"
+
+msgid "A detached HEAD cannot be reordered. Switch to a branch first."
+msgstr "detached HEAD では並べ替えられません。先にブランチに切り替えてください。"
+
+msgid "A detached HEAD cannot be rewritten. Switch to a branch first"
+msgstr "detached HEAD では書き換えられません。先にブランチに切り替えてください"
+
+msgid "A file an excluded commit touched (as intended)."
+msgstr "除外したコミットが触ったファイルです (意図どおり)。"
+
+msgid "A file history tab has no MR box. Open it in a Git Graph tab."
+msgstr "ファイル履歴のタブでは MR の箱を使えません。コミットグラフのタブで開いてください。"
+
+msgid "A force push can erase other people's changes. Commits others pushed disappear without a word"
+msgstr "強制プッシュは相手の変更を消すことがあります。他の人が送ったコミットも黙って消えます"
+
+msgid "A merge commit and the commits before it cannot be reordered (rewriting them would break the merge)."
+msgstr "マージコミットと、それより前のコミットは並べ替えられません (書き換えるとマージが崩れます)。"
+
+msgid "A merge commit cannot be cherry-picked."
+msgstr "マージコミットは取り込めません。"
+
+msgid "A merge commit cannot be reverted."
+msgstr "マージコミットは打ち消せません。"
+
+msgid "A name cannot start with -."
+msgstr "先頭に - は使えません。"
+
+msgid "A period (3d, 2w, 1m, 1y, a date, \"2026-09-01 12:00\")"
+msgstr "期間 (3日・2週間・1か月・1年、日付、\"2026-09-01 12:00\")"
+
+msgid "A renamed file is split into two rows, \"Deleted\" and \"Added\"."
+msgstr "名前を変えたファイルは「削除」と「追加」の 2 行に分かれます。"
+
+msgid "A renamed file is split into two rows: its old name and its new name."
+msgstr "名前を変えたファイルは、消した名前と付けた名前の 2 行に分かれます。"
+
+msgid "A value for \"{label}\" cannot contain both spaces and \"."
+msgstr "「{label}」には、空白と \" を一緒には書けません。"
+
+msgid "Abort the {}?"
+msgstr "{}を中止しますか?"
+
+msgid "Aborted the {}."
+msgstr "{}を中止しました。"
+
+msgid "Add Remote…"
+msgstr "リモートを追加…"
+
+msgid "Add a fix to an older commit (fixup)"
+msgstr "昔のコミットに修正を足したい (fixup)"
+
+msgid "Add co-authored-by"
+msgstr "Co-authored-by を追加"
+
+msgid "Add repo to project"
+msgstr "プロジェクトにリポジトリを追加"
+
+msgid "Add the {count} Selected Commit to the MR Box"
+msgid_plural "Add the {count} Selected Commits to the MR Box"
+msgstr[0] "選択した {count} 件を MR の箱に入れる"
+
+msgid "Add to .git/info/exclude"
+msgstr ".git/info/exclude に追加"
+
+msgid "Add to .gitignore"
+msgstr ".gitignore に追加"
+
+msgid "Add {count} Commit to MR Box"
+msgid_plural "Add {count} Commits to MR Box"
+msgstr[0] "{count} 件を MR の箱に入れる"
+
+msgid "Added or removed lines contain \"foo\" (slow)"
+msgstr "追加・削除した行に「foo」を含む (時間がかかります)"
+
+msgid "Added the remote {remote_name}."
+msgstr "リモート {remote_name} を追加しました。"
+
+msgid "Adds a \"Signed-off-by: name <email>\" line at the end of the commit message. Use it when the project's rules ask for it"
+msgstr "コミットメッセージの最後に「Signed-off-by: 名前 <メール>」の行を足します。プロジェクトの決まりで求められたときに使います"
+
+msgid "Adds or removes the stage mark of the chosen change (hunk: one block of changes)"
+msgstr "選んだ変更箇所 (ハンク: ひとまとまりの変更) のステージの印を、付けたり外したりします"
+
+msgid "Adds the changes of the {count} picked commit to the tip of the current branch as a new commit (cherry-pick)."
+msgid_plural "Adds the changes of the {count} picked commits to the tip of the current branch as new commits (cherry-pick)."
+msgstr[0] "選んだ {count} 件のコミットの変更を、現在のブランチの先頭に新しいコミットとして積みます (cherry-pick)。"
+
+msgid "Adds the changes of {sha} to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgstr "{sha} の変更を、現在のブランチ {branch} の先頭に新しいコミットとして積みます (cherry-pick)。"
+
+msgid "Adds this file to the ignore list at the top of the repository (.gitignore), so that it no longer shows among the changes. Once the .gitignore change is committed, it applies to others too"
+msgstr "このファイルを、リポジトリの一番上にある無視リスト (.gitignore) に書き足し、変更の一覧に出ないようにします。.gitignore の変更もコミットすれば、他の人にも効きます"
+
+msgid "Adds this file to your own local ignore list (.git/info/exclude). It is not committed and does not apply to others"
+msgstr "このファイルを自分の手元だけの無視リスト (.git/info/exclude) に書き足します。コミットされず、他の人には効きません"
+
+msgid "Adds your uncommitted changes into this commit"
+msgstr "未コミットの今の変更を、このコミットに後から足します"
+
+msgid "After resolving the conflict and pressing \"Continue\" in the Git panel's banner, \"Next Steps\" updates the MR branch and goes back to \"{}\"."
+msgstr "コンフリクトを解決して Git パネルのバナーで「続行」した後、「続きの手順」で MR ブランチに反映して「{}」に戻ります。"
+
+msgid "After rewriting pushed commits with amend, fixup, reordering and so on, push with \"Force Push (with lease)\". Because of the lease, commits someone else pushed first are not overwritten."
+msgstr "amend・fixup・並べ替えなどでプッシュ済みのコミットを書き換えたら、「強制プッシュ (lease 付き)」でプッシュします。lease 付きなので、他の人が先にプッシュしたコミットは上書きしません。"
+
+msgid "After the rewrite there will be {count} commit, with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgid_plural "After the rewrite there will be {count} commits, each with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgstr[0] "書き換えた後は {count} 件のコミットになり、それぞれの SHA が変わります。\n書き換えるのは現在のブランチ「{branch}」です。作業は一時ブランチ「{scratch_branch}」の上で行い、「{branch}」は最後にそこへ付け替えます (成功したら一時ブランチは削除します)。\nプッシュ済みのブランチなら、この後に強制プッシュが必要です。"
+
+msgid "All Branches"
+msgstr "すべてのブランチ"
+
+msgid "All changes ({count} tracked file)"
+msgid_plural "All changes ({count} tracked files)"
+msgstr[0] "すべての変更 (追跡中のファイル {count} 個)"
+
+msgid "All conflicts marked as resolved"
+msgstr "すべてのコンフリクトを解決済みにしました"
+
+msgid "All three move the current branch back to the chosen commit and undo the commits after it. soft keeps the undone commits' changes as staged changes and mixed as unstaged ones, so you can commit them again. hard throws away the undone commits' changes and the changes you have not committed yet as well (uncommitted changes cannot be recovered)."
+msgstr "どれも現在のブランチを選んだコミットまで戻し、それより後のコミットを取り消します。soft は取り消したコミットの変更をステージ済みに、mixed は未ステージの変更として残すので、コミットし直せます。hard は取り消したコミットの変更も、まだコミットしていない変更も捨てます (未コミットの変更は元に戻せません)。"
+
+msgid "Already pushed, so a force push (with lease) is needed afterwards"
+msgstr "プッシュ済みのため、この後に強制プッシュ (lease 付き) が必要です"
+
+msgid "Also changed on the base · changed by an excluded commit"
+msgstr "基点側でも変更あり・除外したコミットの変更"
+
+msgid "Also changed on the base: the diff includes the base's changes"
+msgstr "基点側でも変更あり: 差分に基点の変更が混ざります"
+
+msgid "Amend"
+msgstr "直前のコミットを修正"
+
+msgid "Amend Tracked"
+msgstr "追跡中を修正"
+
+msgid "Another remote operation is running. Push again once it has finished."
+msgstr "別のリモート操作を実行中です。終わってからもう一度プッシュしてください。"
+
+msgid "Applied the patch file with a 3-way merge and staged it."
+msgstr "パッチファイルを 3-way マージで適用し、ステージしました。"
+
+msgid "Applied the patch file."
+msgstr "パッチファイルを適用しました。"
+
+msgid "Applies the changes written in a patch file to your current files. Nothing is committed, so check the result before you commit"
+msgstr "パッチファイルに書かれた変更を今のファイルに当てます。コミットはされないので、確かめてからコミットします"
+
+msgid "Applies to: {}"
+msgstr "適用先: {}"
+
+msgid "Apply"
+msgstr "適用"
+
+msgid "Apply Patch File…"
+msgstr "パッチファイルを適用…"
+
+msgid "Apply stash@{{{}}}?"
+msgstr "stash@{{{}}} を適用しますか?"
+
+msgid "Apply the patch file {}?"
+msgstr "パッチファイル {} を適用しますか?"
+
+msgid "Are you sure you want to discard changes to {}?"
+msgstr "{} への変更を破棄しますか?"
+
+msgid "Are you sure you want to restore {}?"
+msgstr "{} を元に戻しますか?"
+
+msgid "Are you sure?"
+msgstr "本当によろしいですか?"
+
+msgid "Author"
+msgstr "作成者"
+
+msgid "Base commit: {}"
+msgstr "基点にするコミット: {}"
+
+msgid "Base: {base_ref}"
+msgstr "基準: {base_ref}"
+
+msgid "Based off the current branch"
+msgstr "現在のブランチを基に作成"
+
+msgid "Based off {url}"
+msgstr "{url} を基に作成"
+
+msgid "Based off {}"
+msgstr "{} を基に作成"
+
+msgid "Binary files cannot be shown side by side."
+msgstr "バイナリファイルは並べて表示できません。"
+
+msgid "Blame Previous Revision"
+msgstr "前のリビジョンの注釈 (blame)"
+
+msgid "Blame Revision"
+msgstr "このリビジョンの注釈 (blame)"
+
+msgid "Branch \"{branch_name}\" is not fully merged. Force delete it?"
+msgstr "ブランチ \"{branch_name}\" は完全にマージされていません。強制削除しますか?"
+
+msgid "Branch \"{branch_name}\" was not found."
+msgstr "ブランチ「{branch_name}」が見つかりません。"
+
+msgid "Branch \"{merge_request_branch}\" already exists. Check the recreate option to rebuild it."
+msgstr "ブランチ「{merge_request_branch}」は既にあります。作り直すにはチェックを入れてください。"
+
+msgid "Branch / tag to compare from (the source)"
+msgstr "比べる基準 (移植元) のブランチ / タグ"
+
+msgid "Branch / tag to compare with (the target)"
+msgstr "比べる相手 (移植先) のブランチ / タグ"
+
+msgid "Branched off at {}."
+msgstr "分かれた所: {}。"
+
+msgid "Branches"
+msgstr "ブランチ"
+
+msgid "Bring over a commit from another branch (cherry-pick)"
+msgstr "別のブランチのコミットを持ってきたい (cherry-pick)"
+
+msgid "Brings a deleted file back with its content in the last commit"
+msgstr "削除したファイルを、最後のコミットの内容で復元します"
+
+msgid "Brings in the latest from the remote and replays your commits that were not pushed yet on top of it. History stays in a straight line"
+msgstr "リモートの最新を取り込み、まだ送っていない自分のコミットをその後ろに付け直します。履歴が一直線になります"
+
+msgid "Brings the chosen branch's changes into the current branch. Both histories are kept. If the current branch has new commits too, a commit that joins the two (a merge commit) is created"
+msgstr "選んだブランチの変更を今のブランチに取り込みます。両方の履歴が残ります。今のブランチにも新しいコミットがあれば、合流したコミット (マージコミット) ができます"
+
+msgid "Buffer Search"
+msgstr "ファイル内を検索"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cancel Commit Message Generation"
+msgstr "コミットメッセージの生成をキャンセル"
+
+msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+msgstr "detached HEAD では MR ブランチを作れません。先にブランチに切り替えてください。"
+
+msgid "Cannot create it on the scratch branch \"{origin_branch}\". Go back to the original branch first."
+msgstr "一時ブランチ「{origin_branch}」の上では作れません。先に元のブランチに戻ってください。"
+
+msgid "Cannot fixup: {}"
+msgstr "fixup できません: {}"
+
+msgid "Cannot push from a collaborative project."
+msgstr "共同編集中のプロジェクトからはプッシュできません。"
+
+msgid "Caution: {caution}"
+msgstr "注意: {caution}"
+
+msgid "Changed by an excluded commit"
+msgstr "除外したコミットの変更"
+
+msgid "Changed on the development branch, but different on the MR branch. The commits below may be missing."
+msgstr "開発ブランチで変えたのに、MR ブランチでは中身が違います。下のコミットが入っていないかもしれません。"
+
+msgid "Changes"
+msgstr "変更"
+
+msgid "Changes how the list of changes is shown (list or tree, sort order, grouping). Does nothing to the files"
+msgstr "変更の一覧の見せ方 (リスト / ツリー、並び順、グループ分け) を変えます。ファイルには何もしません"
+
+msgid "Changes in the working tree (git diff)"
+msgstr "作業ツリーの変更 (git diff)"
+
+msgid "Changes only this commit's message"
+msgstr "このコミットの説明文だけを直します"
+
+msgid "Changes since {}"
+msgstr "{} 以降の変更"
+
+msgid "Changes to Fold In"
+msgstr "入れる変更"
+
+msgid "Changes to the same lines on both sides cause a conflict"
+msgstr "同じ箇所を変えているとコンフリクト (競合) になります"
+
+msgid "Check Out This Commit (detached)"
+msgstr "このコミットをチェックアウト (detached)"
+
+msgid "Checked out {} (detached HEAD)."
+msgstr "{} をチェックアウトしました (detached HEAD)。"
+
+msgid "Cherry-Pick This Commit onto the Current Branch"
+msgstr "このコミットを現在のブランチに取り込む (cherry-pick)"
+
+msgid "Cherry-Pick the {count} Selected Commit onto the Current Branch"
+msgid_plural "Cherry-Pick the {count} Selected Commits onto the Current Branch"
+msgstr[0] "選択した {count} 件を現在のブランチに取り込む (cherry-pick)"
+
+msgid "Cherry-pick the selected commits onto the current branch?"
+msgstr "選択したコミットを現在のブランチに取り込みますか?"
+
+msgid "Cherry-pick the {count} picked commit, reorder it or add it to the MR box. Hover over a button to learn more"
+msgid_plural "Cherry-pick the {count} picked commits together, reorder them or add them to the MR box. Hover over a button to learn more"
+msgstr[0] "選んだ {count} 件をまとめて取り込む・並べ替える・MR の箱に入れることができます。ボタンにマウスを乗せると説明が出ます"
+
+msgid "Cherry-pick this commit onto the current branch?"
+msgstr "このコミットを現在のブランチに取り込みますか?"
+
+msgid "Cherry-pick {count} commit onto the current branch?"
+msgid_plural "Cherry-pick {count} commits onto the current branch?"
+msgstr[0] "{count} 件のコミットを現在のブランチに取り込みますか?"
+
+msgid "Cherry-picked {}."
+msgstr "{} を取り込みました。"
+
+msgid "Cherry-picks {count} commit: adds it, oldest first, to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgid_plural "Cherry-picks {count} commits: adds them, oldest first, to the tip of the current branch {branch} as new commits (cherry-pick)."
+msgstr[0] "{count} 件を取り込みます: 古い順に、現在のブランチ {branch} の先頭へ新しいコミットとして積みます (cherry-pick)。"
+
+msgid "Choose What the Patch File Contains (Whole Repository: {})"
+msgstr "パッチファイルに含める内容を選択 (リポジトリ全体: {})"
+
+msgid "Choose a Branch…"
+msgstr "ブランチを選ぶ…"
+
+msgid "Choose a base."
+msgstr "基点を選んでください。"
+
+msgid "Choose a commit (right-click one in the history tab or the Git Graph)"
+msgstr "コミットを選んでください (履歴タブかコミットグラフで右クリック)"
+
+msgid "Choose a development branch and a base to check for left-out commits."
+msgstr "開発ブランチと基点を選ぶと、入れ忘れを確かめられます。"
+
+msgid "Choose a development branch."
+msgstr "開発ブランチを選んでください。"
+
+msgid "Choose a file from the list on the left to show the development branch (left) and the MR branch (right) side by side. Rows in the warning color show the base (left) and the MR branch (right)."
+msgstr "左の一覧から選ぶと、開発ブランチ (左) と MR ブランチ (右) の中身を並べて表示します。警告色の行は、基点 (左) と MR ブランチ (右) を並べます。"
+
+msgid "Choose the Base Branch or Tag (Where the MR Goes)"
+msgstr "基点 (MR の向け先) のブランチ / タグを選択"
+
+msgid "Choose the Development Branch (Where the Commits Come From)"
+msgstr "開発ブランチ (コミットの出どころ) を選択"
+
+msgid "Choose the MR's base (merge target) and reopen as a comparison that the base's own changes do not bury."
+msgstr "MR の基点 (マージ先) を選んで、基点側の変更に埋もれない比較で開き直します。"
+
+msgid "Choose two branches / tags to list the commits only one of them has and how their contents differ. Useful to check that nothing was left out when porting."
+msgstr "2 つのブランチ / タグを選ぶと、片方にしか無いコミットと中身の差を一覧にします。移植漏れの確認に使えます。"
+
+msgid "Chooses the branches the list shows: all, yours (local) or the server's (remote)"
+msgstr "一覧に出すブランチを、すべて / 手元 (ローカル) / サーバー側 (リモート) から選びます"
+
+msgid "Chooses the commits the graph shows: all branches, the current branch or a chosen branch"
+msgstr "グラフに出すコミットを、すべてのブランチ / 今のブランチ / 選んだブランチから選びます"
+
+msgid "Chooses the remote to send to, then sends your commits"
+msgstr "送り先のリモートを選んでから、自分のコミットを送ります"
+
+msgid "Click to Resolve with Agent"
+msgstr "クリックするとエージェントで解決します"
+
+msgid "Clipboard ↔ {selection_location_path}"
+msgstr "クリップボード ↔ {selection_location_path}"
+
+msgid "Clipboard ↔ {selection_location_title}"
+msgstr "クリップボード ↔ {selection_location_title}"
+
+msgid "Clone a repository from GitHub or other sources."
+msgstr "GitHub などからリポジトリをクローンします。"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Close (they show again next time)"
+msgstr "閉じる (次に開いたときはまた出ます)"
+
+msgid "Close the Box (Its Contents Are Kept)"
+msgstr "箱を閉じる (中身はそのまま残ります)"
+
+msgid "Collapse"
+msgstr "折りたたむ"
+
+msgid "Collapse Commit Editor"
+msgstr "コミットエディターを折りたたむ"
+
+msgid "Collect a development branch's commits in the \"MR box\" and they are squashed into one commit on a new branch for the MR. The original branch stays as it is."
+msgstr "開発ブランチのコミットを「MR の箱」に集めると、MR 用の新しいブランチに 1 コミットとしてまとめます。元のブランチはそのまま残ります。"
+
+msgid "Collects commits in a box and creates a branch with them squashed into one commit for an MR (merge request)"
+msgstr "コミットを箱に集めて、MR (マージリクエスト) 用に 1 コミットにまとめたブランチを作ります"
+
+msgid "Collects commits in the MR box. From them you can create a branch squashed into one commit for the MR"
+msgstr "コミットを MR の箱に集めます。箱の中身から、MR 用に 1 コミットにまとめたブランチを作れます"
+
+msgid "Columns"
+msgstr "列"
+
+msgid "Combines the picked consecutive commits into a single commit"
+msgstr "選んだ連続したコミットを 1 つのコミットに合体させます"
+
+msgid "Commit"
+msgstr "コミット"
+
+msgid "Commit SHA"
+msgstr "コミット SHA"
+
+msgid "Commit SHA Copied!"
+msgstr "コミット SHA をコピーしました"
+
+msgid "Commit Tracked"
+msgstr "追跡中をコミット"
+
+msgid "Commit in progress"
+msgstr "コミットを実行中"
+
+msgid "Commit message for the MR"
+msgstr "MR のコミットメッセージ"
+
+msgid "Commit message title exceeds {max_title_length}-character limit."
+msgstr "コミットメッセージの件名が {max_title_length} 文字の上限を超えています。"
+
+msgid "Commit or stash the uncommitted changes first"
+msgstr "未コミットの変更を先にコミットかスタッシュしてください"
+
+msgid "Commit or stash the uncommitted changes first ({operation})."
+msgstr "{operation}の前に、未コミットの変更をコミットかスタッシュしてください。"
+
+msgid "Commit {sha_short}"
+msgstr "コミット {sha_short}"
+
+msgid "Commits are reordered one at a time. Drag a single commit."
+msgstr "並べ替えは 1 件ずつです。1 件だけをドラッグしてください。"
+
+msgid "Commits on feature that the default branch does not have"
+msgstr "feature にあって、デフォルトブランチに無いコミット"
+
+msgid "Commits that are not in the current branch's history cannot be reordered. Switch to that branch, then try again."
+msgstr "現在のブランチの履歴に無いコミットは並べ替えられません。そのブランチに切り替えてからやり直してください。"
+
+msgid "Commits that are only on that branch can no longer be seen"
+msgstr "そのブランチにしか無いコミットは見えなくなります"
+
+msgid "Commits that changed that file or folder (* for patterns)"
+msgstr "そのファイル・フォルダーを変えたコミット (* でパターン)"
+
+msgid "Commits that tags with \"v1.2\" in their name point to"
+msgstr "名前に「v1.2」を含むタグが指すコミット"
+
+msgid "Commits whose SHA starts like this"
+msgstr "SHA がこう始まるコミット"
+
+msgid "Commits without the checks that run automatically before a commit (hooks)"
+msgstr "コミットの前に自動で走るチェック (フック) を飛ばしてコミットします"
+
+msgid "Compare two branches"
+msgstr "2 つのブランチを比べたい"
+
+msgid "Compares only the files {} changed after it branched off {merge_request_base} (the base)."
+msgstr "{merge_request_base} (基点) から分かれた後に {} で変わったファイルだけを比べます。"
+
+msgid "Compares the contents of two branches or tags themselves. If there are no differences, everything has been ported."
+msgstr "2 つのブランチ / タグの中身そのものを比べます。差分が無ければ、すべて移植できています。"
+
+msgid "Compares the contents of two branches or tags. Useful to check that no commit was left behind"
+msgstr "2 つのブランチやタグの中身を比べます。移し忘れたコミットが無いかの確認に使えます"
+
+msgid "Comparing needs at least two branches or tags."
+msgstr "比べるには、ブランチかタグが 2 つ以上必要です。"
+
+msgid "Comparison of {} (source) and {} (target)"
+msgstr "{} (移植元) と {} (移植先) の比較"
+
+msgid "Comparison of {} and {}"
+msgstr "{} と {} の比較"
+
+msgid "Configure Provider"
+msgstr "プロバイダーを設定"
+
+msgid "Configure an LLM provider to generate commit messages."
+msgstr "コミットメッセージを生成するには LLM プロバイダーを設定してください。"
+
+msgid "Confirm"
+msgstr "確定"
+
+msgid "Conflict marked as resolved"
+msgstr "コンフリクトを解決済みにしました"
+
+msgid "Conflicts"
+msgstr "コンフリクト"
+
+msgid "Conflicts marked as resolved"
+msgstr "コンフリクトを解決済みにしました"
+
+msgid "Contains Unpushed Changes — {}"
+msgstr "未プッシュの変更を含む — {}"
+
+msgid "Continued the {}."
+msgstr "{}を続行しました。"
+
+msgid "Copied {text}."
+msgstr "{text} をコピーしました。"
+
+msgid "Copies how many commits past the nearest tag this is (in git describe form)"
+msgstr "一番近いタグから何コミット先か (git describe の形) をコピーします"
+
+msgid "Copies only this commit's changes onto the current branch as a new commit. The original stays"
+msgstr "このコミットの変更だけを、今のブランチに新しいコミットとしてコピーします。元は残ります"
+
+msgid "Copies the file's location as a full (absolute) path to the clipboard"
+msgstr "ファイルの場所をフルパス (絶対パス) でクリップボードにコピーします"
+
+msgid "Copies the file's location as a path relative to the project folder to the clipboard"
+msgstr "ファイルの場所をプロジェクトのフォルダーから見た相対パスでクリップボードにコピーします"
+
+msgid "Copies the picked commits' changes onto the current branch, oldest first. The originals stay"
+msgstr "選んだコミットの変更を、古い順に今のブランチの上へコピーします。元のコミットは残ります"
+
+msgid "Copy Commit SHA"
+msgstr "コミット SHA をコピー"
+
+msgid "Copy Distance from Latest Tag"
+msgstr "直近のタグからの距離をコピー"
+
+msgid "Copy Email"
+msgstr "メールアドレスをコピー"
+
+msgid "Copy Path"
+msgstr "パスをコピー"
+
+msgid "Copy Ref Name"
+msgstr "ref 名をコピー"
+
+msgid "Copy Relative Path"
+msgstr "相対パスをコピー"
+
+msgid "Copy SHA"
+msgstr "SHA をコピー"
+
+msgid "Copy SHA ({count} Commit)"
+msgid_plural "Copy SHAs ({count} Commits)"
+msgstr[0] "SHA をコピー ({count} 件)"
+
+msgid "Copy Tag"
+msgstr "タグをコピー"
+
+msgid "Copy the Full Error"
+msgstr "エラーの全文をコピー"
+
+msgid "Could not commit (a hook, for example). The history is unchanged and the changes are still there."
+msgstr "コミットできませんでした (フックなど)。履歴は変わっておらず、変更も残っています。"
+
+msgid "Could not commit, but HEAD has moved. Check it with git reflog."
+msgstr "コミットできませんでした。ただし HEAD が動いています。git reflog で確かめてください。"
+
+msgid "Could not compare"
+msgstr "比較できませんでした"
+
+msgid "Could not compare the base and the MR branch"
+msgstr "基点と MR ブランチを比べられませんでした"
+
+msgid "Could not compare the development branch and the MR branch"
+msgstr "開発ブランチと MR ブランチを比べられませんでした"
+
+msgid "Could not compare the histories of the base and the MR branch: {}"
+msgstr "基点と MR ブランチの履歴を比べられませんでした: {}"
+
+msgid "Could not create the MR branch\n{reason}"
+msgstr "MR ブランチを作れませんでした\n{reason}"
+
+msgid "Could not fixup: {}"
+msgstr "fixup できませんでした: {}"
+
+msgid "Could not fold into {short} (the rebase could not start). The history is unchanged and the changes are left staged."
+msgstr "{short} に入れられませんでした (リベースを始められませんでした)。履歴は元のままで、変更はステージされた状態で残っています。"
+
+msgid "Could not fold into {short} (the rebase failed). The changes are left at the tip as the \"{fixup_subject}\" commit. Check the working tree with git status too."
+msgstr "{short} に入れられませんでした (リベースが失敗しました)。変更は「{fixup_subject}」コミットとして先頭に残っています。作業ツリーの状態も git status で確かめてください。"
+
+msgid "Could not get the file's contents."
+msgstr "ファイルの中身を取得できませんでした。"
+
+msgid "Could not go back to {}. Still on the scratch branch \"{}\".\n{}"
+msgstr "{} に戻れませんでした。一時ブランチ「{}」の上に残っています。\n{}"
+
+msgid "Could not load the commits to reorder. Wait a moment and try again."
+msgstr "並べ替えるコミットを読み込めませんでした。少し待ってからもう一度お試しください。"
+
+msgid "Could not load the selected commits. Wait a moment and try again."
+msgstr "選択したコミットを読み込めませんでした。少し待ってからもう一度お試しください。"
+
+msgid "Could not pack the branches and tags\n{reason}"
+msgstr "ブランチ・タグをまとめられませんでした\n{reason}"
+
+msgid "Could not read the Git status"
+msgstr "Git の状態を取得できませんでした"
+
+msgid "Could not read the changes on the base"
+msgstr "基点側の変更を読み込めませんでした"
+
+msgid "Could not read the common ancestor: {merge_base}"
+msgstr "共通の祖先を読み取れませんでした: {merge_base}"
+
+msgid "Could not read the current branch."
+msgstr "現在のブランチを取得できませんでした。"
+
+msgid "Could not read the development branch's changes"
+msgstr "開発ブランチの変更を読み込めませんでした"
+
+msgid "Could not read the development branch's history: {}"
+msgstr "開発ブランチの履歴を読み込めませんでした: {}"
+
+msgid "Could not read the development branch's range: {}"
+msgstr "開発ブランチの範囲を読めませんでした: {}"
+
+msgid "Could not read the excluded commits: {}"
+msgstr "除外したコミットを読み込めませんでした: {}"
+
+msgid "Could not read the patch file {}"
+msgstr "パッチファイル {} を読み込めませんでした"
+
+msgid "Could not read the range to reorder."
+msgstr "並べ替える範囲を読み取れませんでした。"
+
+msgid "Could not read {merge_request_base} and {source}: {}"
+msgstr "{merge_request_base} と {source} を読み込めませんでした: {}"
+
+msgid "Could not run the MR check"
+msgstr "MR チェックできませんでした"
+
+msgid "Could not save the patch file {}"
+msgstr "パッチファイル {} を保存できませんでした"
+
+msgid "Could not tell which commits touched it (it may have come in through a merge)."
+msgstr "触ったコミットを特定できませんでした (マージで入った変更かもしれません)。"
+
+msgid "Could not undo\n{failure}"
+msgstr "元に戻せませんでした\n{failure}"
+
+msgid "Could not update the MR branch\n{reason}"
+msgstr "MR ブランチに反映できませんでした\n{reason}"
+
+msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
+msgstr "MR ブランチに反映できませんでした。一時ブランチ「{}」の上に残っています。\n{reason}"
+
+msgid "Create"
+msgstr "作成"
+
+msgid "Create Branch Here…"
+msgstr "ここからブランチを作成…"
+
+msgid "Create Branch from {}"
+msgstr "{} からブランチを作成"
+
+msgid "Create Branch: \"{name}\"…"
+msgstr "ブランチを作成: \"{name}\"…"
+
+msgid "Create Merge Request"
+msgstr "マージリクエストを作成"
+
+msgid "Create New From: {default_branch}"
+msgstr "{default_branch} から新規作成"
+
+msgid "Create Only"
+msgstr "作成のみ"
+
+msgid "Create Patch File…"
+msgstr "パッチファイルを作成…"
+
+msgid "Create Pull Request"
+msgstr "プルリクエストを作成"
+
+msgid "Create Remote Repository"
+msgstr "リモートリポジトリを作成"
+
+msgid "Create Remote: \"{name}\""
+msgstr "リモートを作成: \"{name}\""
+
+msgid "Create Tag"
+msgstr "タグを付ける"
+
+msgid "Create Tag at {}"
+msgstr "{} にタグを付ける"
+
+msgid "Create and Compare"
+msgstr "作成して比較"
+
+msgid "Create and Switch"
+msgstr "作成して切り替える"
+
+msgid "Create branch \"{name}\"?"
+msgstr "ブランチ「{name}」を作成しますか?"
+
+msgid "Create or switch branches"
+msgstr "ブランチを作りたい・切り替えたい"
+
+msgid "Create the MR branch?"
+msgstr "MR ブランチを作成しますか?"
+
+msgid "Created branch \"{name}\" and switched to it."
+msgstr "ブランチ「{name}」を作成して切り替えました。"
+
+msgid "Created branch \"{name}\"."
+msgstr "ブランチ「{name}」を作成しました。"
+
+msgid "Created tag \"{name}\"."
+msgstr "タグ「{name}」を付けました。"
+
+msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
+msgstr "MR ブランチ「{}」は作りましたが、一時ブランチ「{}」の上に残っています。"
+
+msgid "Created the MR branch {merge_request_branch}"
+msgstr "MR ブランチ {merge_request_branch} を作りました"
+
+msgid "Created the MR branch {}, but could not go back to {} (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "MR ブランチ {} は作りましたが、{} に戻れませんでした (MR の箱の「戻る」で戻れます)。\n{failure}"
+
+msgid "Created the MR branch {}, but could not go back to {}. You are on the scratch branch \"{}\" (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "MR ブランチ {} は作りましたが、{} に戻れませんでした。一時ブランチ「{}」の上にいます (MR の箱の「戻る」で戻れます)。\n{failure}"
+
+msgid "Creates \"{branch}\" on top of the base \"{base}\" from the box's {count} commit.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgid_plural "Creates \"{branch}\" on top of the base \"{base}\" by squashing the box's {count} commits into one.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgstr[0] "基点「{base}」の上に、箱の {count} 件を 1 つのコミットにまとめた「{branch}」を作ります。\n作業は一時ブランチ「{scratch}」の上で行い、終わったら「{origin}」に戻ります。"
+
+msgid "Creates a new branch (a line of work) starting at this commit. Your current work stays as it is"
+msgstr "このコミットを出発点に、新しいブランチ (作業の枝) を作ります。今の作業はそのままです"
+
+msgid "Creates a new branch starting from the default branch (main, for example) instead of the current branch"
+msgstr "今のブランチではなく、既定のブランチ (main など) を出発点に新しいブランチを作ります"
+
+msgid "Creates a new commit that applies this commit's changes in reverse. History is kept, so it is safe after sharing"
+msgstr "このコミットの変更を逆向きに当てる新しいコミットを作ります。履歴を消さないので共有済みでも安全です"
+
+msgid "Creates an MR branch that squashes the box's commits into one on top of the base, and compares it with the development branch"
+msgstr "箱のコミットを基点の上で 1 つにまとめた MR ブランチを作り、開発ブランチと比べます"
+
+msgid "Create…"
+msgstr "作成…"
+
+msgid "Current Branch"
+msgstr "現在のブランチ"
+
+msgid "Current Branch ({branch})"
+msgstr "現在のブランチ ({branch})"
+
+msgid "Current branch (the branch checked out now)"
+msgstr "現在のブランチ (今チェックアウトしているブランチ)"
+
+msgid "Custom Commands"
+msgstr "カスタムコマンド"
+
+msgid "Cut off at {count} commit. Add conditions to narrow the search."
+msgid_plural "Cut off at {count} commits. Add conditions to narrow the search."
+msgstr[0] "{count} 件で打ち切りました。条件を足して絞り込んでください。"
+
+msgid "Date"
+msgstr "日付"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete Branch"
+msgstr "ブランチを削除"
+
+msgid "Deleted on both the development branch and the MR branch."
+msgstr "開発ブランチでも MR ブランチでも削除されています。"
+
+msgid "Deletes a local branch even if it has commits that were not merged"
+msgstr "取り込んでいないコミットがあっても、手元のブランチを消します"
+
+msgid "Deletes a local branch. If it has commits that are not in the current branch (or its upstream), it stops and asks whether to force delete. For a remote branch only your local copy goes; the branch on the server stays"
+msgstr "手元のブランチを消します。今のブランチ (または追跡先) に取り込まれていないコミットがあると止まり、強制削除するかを尋ねます。リモートブランチなら手元の写しだけが消え、サーバーのブランチは残ります"
+
+msgid "Deletes the scratch branch \"{}\" and returns to \"{}\". The commits on the scratch branch (conflict resolutions included) are thrown away (they stay in the reflog).\nIf a cherry-pick is still stopped, press \"Abort\" in the Git panel's banner first."
+msgstr "一時ブランチ「{}」を削除して「{}」に戻ります。一時ブランチの上のコミット (コンフリクトの解決も含む) は捨てます (reflog には残ります)。\ncherry-pick が止まったままなら、先に Git パネルのバナーで「中止」してください。"
+
+msgid "Description"
+msgstr "説明"
+
+msgid "Detected dubious ownership in repository at {}. This happens when the .git/ directory is not owned by the current user. If you want to learn more about safe directories, visit git's documentation."
+msgstr "{} のリポジトリで所有者が不審であることを検出しました。これは .git/ ディレクトリが現在のユーザーの所有でない場合に起こります。安全なディレクトリ (safe.directory) の詳細は Git のドキュメントを参照してください。"
+
+msgid "Development Branch"
+msgstr "開発ブランチ"
+
+msgid "Diff ({count} file)"
+msgid_plural "Diff ({count} files)"
+msgstr[0] "差分 ({count} ファイル)"
+
+msgid "Discard Changes"
+msgstr "変更を破棄"
+
 msgid "Discard Changes to {count} Files"
 msgstr "{count} 個のファイルの変更を破棄"
+
+msgid "Discard Everything (--hard)"
+msgstr "すべて破棄 (--hard)"
+
+msgid "Discard Tracked Changes"
+msgstr "追跡中の変更を破棄"
+
+msgid "Discard changes to these files?"
+msgstr "これらのファイルの変更を破棄しますか?"
+
+msgid "Discards this file's changes and returns it to its content in the last commit"
+msgstr "このファイルの変更を破棄し、最後のコミットの内容に戻します"
+
+msgid "Don't Show Again"
+msgstr "今後表示しない"
+
+msgid "Downloads the latest from the remote and brings it into the current branch (fetch + merge; when the git setting pull.rebase is set, it rebases as that says)"
+msgstr "リモートの最新を取ってきて、今のブランチに取り込みます (フェッチ + マージ。git の設定 pull.rebase があれば、それに従ってリベースします)"
+
+msgid "Drag a commit onto a branch to cherry-pick it, onto a row to reorder, or into the MR box"
+msgstr "コミットはドラッグでブランチに取り込み・並べ替え・MR の箱へ"
+
+msgid "Drag commits here (a multiple selection moves together)"
+msgstr "ここにコミットをドラッグ (複数選択もまとめて)"
+
+msgid "Drag: into Staged / onto a commit to fix it up"
+msgstr "ドラッグ: ステージ済みへ / コミットに落とすと fixup"
+
+msgid "Drag: onto a branch to cherry-pick / onto another row to reorder / into the MR box"
+msgstr "ドラッグ: ブランチに落とすと取り込み / 別の行に落とすと並べ替え / MR の箱へ"
+
+msgid "Drop"
+msgstr "破棄"
+
+msgid "Drop Commit"
+msgstr "捨てる"
+
+msgid "Drop Stash"
+msgstr "スタッシュを破棄"
+
+msgid "Drop This Commit…"
+msgstr "このコミットを捨てる…"
+
+msgid "Drop files from the Git panel onto a commit to add the fix to that commit (fixup)"
+msgstr "Git パネルのファイルをコミットに落とすと、そのコミットに修正を足せます (fixup)"
+
+msgid "Drop here to stage"
+msgstr "ここに落とすと: ステージ"
+
+msgid "Drop here to unstage"
+msgstr "ここに落とすと: ステージを取り消す"
+
+msgid "Drop here: add to this commit (fixup)"
+msgstr "ここに落とすと: このコミットに入れる (fixup)"
+
+msgid "Drop here: cherry-pick"
+msgstr "ここに落とすと: 取り込む (cherry-pick)"
+
+msgid "Drop here: cherry-pick {count} commit"
+msgid_plural "Drop here: cherry-pick {count} commits"
+msgstr[0] "ここに落とすと: {count} 件を取り込む (cherry-pick)"
+
+msgid "Drop here: move to this position (reorder)"
+msgstr "ここに落とすと: この位置へ移動 (並べ替え)"
+
+msgid "Drop here: move {name} here"
+msgstr "ここに落とすと: {name} をここへ移動"
+
+msgid "Drop here: reset {name} to here (reset)"
+msgstr "ここに落とすと: {name} をここまで戻す (reset)"
+
+msgid "Drop here: switch to {branch} and cherry-pick"
+msgstr "ここに落とすと: {branch} に切り替えて取り込む"
+
+msgid "Drop here: switch to {branch} and cherry-pick {count} commit"
+msgid_plural "Drop here: switch to {branch} and cherry-pick {count} commits"
+msgstr[0] "ここに落とすと: {branch} に切り替えて {count} 件を取り込む"
+
+msgid "Drop stash@{{{}}}?"
+msgstr "stash@{{{}}} を破棄しますか?"
+
+msgid "Drop {short} from the history?"
+msgstr "{short} を履歴から取り除きますか?"
+
+msgid "Dropped on the same commit, so the order does not change."
+msgstr "同じコミットの上に落としたので、並びは変わりません。"
+
+msgid "Dropped {} from the history."
+msgstr "{} を履歴から取り除きました。"
+
+msgid "Edit {count} Commit"
+msgid_plural "Edit {count} Commits"
+msgstr[0] "{count} 件のコミットを編集"
+
+msgid "Email Copied!"
+msgstr "メールアドレスをコピーしました"
+
+msgid "Enter a commit message."
+msgstr "コミットメッセージを入力してください。"
+
+msgid "Enter a name for this remote…"
+msgstr "このリモートの名前を入力…"
+
+msgid "Enter a name."
+msgstr "名前を入力してください。"
+
+msgid "Enter both a remote name and a URL."
+msgstr "リモート名と URL の両方を入力してください。"
+
+msgid "Enter commit message"
+msgstr "コミットメッセージを入力"
+
+msgid "Enter git ref..."
+msgstr "git ref を入力..."
+
+msgid "Enter repository URL…"
+msgstr "リポジトリの URL を入力…"
+
+msgid "Error loading: {}"
+msgstr "読み込みエラー: {}"
+
+msgid "Error parsing date"
+msgstr "日付を解析できませんでした"
+
+msgid "Every commit after {short} gets a new SHA."
+msgstr "{short} 以降のコミットの SHA が変わります。"
+
+msgid "Every commit of the development branch is checked ({} placed / {} excluded)"
+msgstr "開発ブランチのコミットはすべて確認済みです (配置 {} / 除外 {})"
+
+msgid "Every uncommitted change is lost."
+msgstr "コミットしていない変更はすべて失われます。"
+
+msgid "Exclude {count} Commit from MR"
+msgid_plural "Exclude {count} Commits from MR"
+msgstr[0] "{count} 件を MR から除外する"
+
+msgid "Expand Commit Description"
+msgstr "コミットの説明を展開"
+
+msgid "Expand Commit Editor"
+msgstr "コミットエディターを展開"
+
+msgid "Failed to apply stash"
+msgstr "スタッシュを適用できませんでした"
+
+msgid "Failed to change branch"
+msgstr "ブランチを切り替えられませんでした"
+
+msgid "Failed to create branch"
+msgstr "ブランチを作成できませんでした"
+
+msgid "Failed to create remote"
+msgstr "リモートを作成できませんでした"
+
+msgid "Failed to drop stash"
+msgstr "スタッシュを破棄できませんでした"
+
+msgid "Failed to generate commit message: {err}"
+msgstr "コミットメッセージを生成できませんでした: {err}"
+
+msgid "Failed to load commit history"
+msgstr "コミット履歴を読み込めませんでした"
+
+msgid "Failed to load commits"
+msgstr "コミットを読み込めませんでした"
+
+msgid "Failed to pop stash"
+msgstr "スタッシュを取り出せませんでした"
+
+msgid "Failed to rename branch"
+msgstr "ブランチ名を変更できませんでした"
+
+msgid "Failed to trash file"
+msgstr "ファイルをゴミ箱へ移動できませんでした"
+
+msgid "Failed to trash files"
+msgstr "ファイルをゴミ箱へ移動できませんでした"
+
+msgid "Failed to trash {failed_count} of {total_count} files: {first_error}"
+msgstr "{total_count} 件中 {failed_count} 件のファイルをゴミ箱へ移動できませんでした: {first_error}"
+
+msgid "Fast forwarded from {}"
+msgstr "{} から早送りしました"
+
+msgid "Fetch"
+msgstr "フェッチ"
+
+msgid "Fetch From"
+msgstr "取得元を指定してフェッチ"
+
+msgid "Fetch in Progress…"
+msgstr "フェッチ中…"
+
+msgid "Fetch updates from remote"
+msgstr "リモートから更新をフェッチします"
+
+msgid "Fetch: Already up to date"
+msgstr "フェッチ: すでに最新です"
+
+msgid "Fetches the remote, then makes the current branch the same as the remote branch"
+msgstr "リモートをフェッチしてから、今のブランチをリモートのブランチと同じ内容にします"
+
+msgid "Fetches {remote_name}, then runs git reset --hard {target_ref}.\nEvery uncommitted change and every commit the remote does not have is lost."
+msgstr "{remote_name} をフェッチしてから git reset --hard {target_ref} を実行します。\nコミットしていない変更と、リモートに無いコミットはすべて失われます。"
+
+msgid "Files from another repository cannot go into this graph's commits."
+msgstr "別のリポジトリのファイルは、このグラフのコミットには入れられません。"
+
+msgid "Filter Branches"
+msgstr "ブランチを絞り込み"
+
+msgid "Find a Git operation by what you want to do"
+msgstr "やりたいことから Git の操作を探せます"
+
+msgid "Find or add a tag (tag)"
+msgstr "タグを探したい・付けたい (tag)"
+
+msgid "Find past changes (search)"
+msgstr "過去の変更を探したい (検索)"
+
+msgid "Find what you want to do and press \"Try It\" to start that operation."
+msgstr "やりたいことを探して「やってみる」を押すと、その操作を始めます。"
+
+msgid "Fix a commit message (reword)"
+msgstr "コミットメッセージを直したい (reword)"
+
+msgid "Fix the last commit (amend)"
+msgstr "直前のコミットを直したい (amend)"
+
+msgid "Fold Commit Description"
+msgstr "コミットの説明を折りたたむ"
+
+msgid "Fold Current Changes into This Commit (fixup)…"
+msgstr "今の変更をこのコミットに入れる (fixup)…"
+
+msgid "Fold Current Changes into {short} (fixup)"
+msgstr "{short} に今の変更を入れる (fixup)"
+
+msgid "Fold into Commit"
+msgstr "コミットに入れる"
+
+msgid "Fold into Previous"
+msgstr "直前にまとめる"
+
+msgid "Folded the changes into {short}. However, {}\nPrevious tip: {} (recoverable from the reflog)"
+msgstr "{short} に変更を入れました。ただし、{}\n元の先頭: {} (reflog から戻せます)"
+
+msgid "Folded the changes into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "{short} に変更を入れました。元の先頭: {} (reflog から戻せます)"
+
+msgid "For when you notice something missing right after committing. Check \"Amend\" in the Git panel and the last commit's message comes back; committing then replaces the last commit."
+msgstr "コミットした直後に書き漏れや入れ忘れに気づいたとき。Git パネルの「直前のコミットを修正 (amend)」にチェックを入れると直前のメッセージが入り、コミットすると直前のコミットが置き換わります。"
+
+msgid "Force Delete"
+msgstr "強制削除"
+
+msgid "Force Delete Branch"
+msgstr "ブランチを強制削除"
+
+msgid "Force Push"
+msgstr "強制プッシュ"
+
+msgid "Force Push (Without Lease)"
+msgstr "強制プッシュ (lease なし)"
+
+msgid "Force Push (with lease)"
+msgstr "強制プッシュ (lease 付き)"
+
+msgid "Force Push Without Lease…"
+msgstr "強制プッシュ (lease なし)…"
+
+msgid "Force push (with lease)?"
+msgstr "強制プッシュ (lease 付き) しますか?"
+
+msgid "Force push without a lease?"
+msgstr "lease なしで強制プッシュしますか?"
+
+msgid "Found {count} conflict across the codebase"
+msgid_plural "Found {count} conflicts across the codebase"
+msgstr[0] "コードベース全体で {count} 件のコンフリクトが見つかりました"
+
+msgid "Generate Commit Message"
+msgstr "コミットメッセージを生成"
+
+msgid "Generating Commit…"
+msgstr "コミットを生成中…"
+
+msgid "Generating commit message..."
+msgstr "コミットメッセージを生成中..."
+
+msgid "Git Clone: {}"
+msgstr "Git クローン: {}"
+
+msgid "Git Graph"
+msgstr "コミットグラフ"
+
+msgid "Git Guide"
+msgstr "Git の操作ガイド"
+
+msgid "Git Guide (find an operation by what you want to do)"
+msgstr "Git の操作ガイド (やりたいことから操作を探せます)"
+
+msgid "Git Panel"
+msgstr "Git パネル"
+
+msgid "Git's history has no copy of it, so once the trash is emptied it cannot be restored"
+msgstr "Git の履歴には無いので、ゴミ箱を空にすると戻せません"
+
+msgid "Git's history has no copy of them, so once the trash is emptied they cannot be restored"
+msgstr "Git の履歴には無いので、ゴミ箱を空にすると戻せません"
+
+msgid "Gives this commit a marker name (a tag), for example to record a released version"
+msgstr "このコミットに目印の名前 (タグ) を付けます。リリースした版の記録などに使います"
+
+msgid "Gives up the operation and returns to the state before it started"
+msgstr "操作をやめて、始める前の状態に戻します"
+
+msgid "Go Back to \"{}\" (Delete the Scratch Branch)"
+msgstr "「{}」に戻る (一時ブランチを削除)"
+
+msgid "Go back to before the fixup?"
+msgstr "fixup する前の状態に戻しますか?"
+
+msgid "Go back to the state before the reorder?"
+msgstr "並べ替える前の状態に戻しますか?"
+
+msgid "Go to First Unplaced"
+msgstr "最初の未配置へ"
+
+msgid "Go to Next Hunk"
+msgstr "次の変更箇所へ移動"
+
+msgid "Go to Previous Hunk"
+msgstr "前の変更箇所へ移動"
+
+msgid "Graph"
+msgstr "グラフ"
+
+msgid "Group By"
+msgstr "グループ化"
+
+msgid "Groups the changed files by folder hierarchy, with folders you can expand and collapse"
+msgstr "変更したファイルをフォルダーの階層ごとにまとめて、開いたり閉じたりできるように表示します"
+
+msgid "HEAD has moved or another branch was checked out since the fixup, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "fixup の後に HEAD が動いたか別のブランチに切り替わっているため、ここからは戻せません。git reflog から手で戻してください。"
+
+msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "書き換えの後に HEAD が動いているため、ここからは戻せません。git reflog から手で戻してください。"
+
+msgid "History"
+msgstr "履歴"
+
+msgid "History (Graph)"
+msgstr "履歴 (グラフ)"
 
 msgid "Hold {} to force delete"
 msgstr "{} キーを押しながらクリックすると強制削除します"
 
+msgid "Hover over a button to see what it does here. The Git guide explains the terms too"
+msgstr "ボタンにマウスを乗せると、ここに説明が出ます。用語の意味は操作ガイドでも調べられます"
+
+msgid "How soft / mixed / hard differ in \"Reset to This Commit\""
+msgstr "「このコミットまで戻す」の soft / mixed / hard の違い"
+
+msgid "How to Write a Search"
+msgstr "検索欄の書き方"
+
+msgid "I changed commits I had already pushed"
+msgstr "プッシュ済みのコミットを直した"
+
+msgid "If the commit was already pushed, you will need to force push"
+msgstr "送信 (push) 済みのコミットなら、強制プッシュが必要になります"
+
+msgid "If your current changes touch the same files, it stops or ends in a conflict. On a conflict, the changes also stay in the stash"
+msgstr "今の変更と同じファイルを変えていると、止まるかコンフリクト (競合) になります。コンフリクトしたときは棚にも残ります"
+
+msgid "In the Git Graph, pick rows while holding Ctrl / Shift and press \"Reorder / Squash / Drop…\" above to edit the order, what to squash and the messages. You can also reorder a single commit by dragging it onto another row. Mind that the changes of dropped commits are lost (the SHAs of the commits from there on change)."
+msgstr "コミットグラフで Ctrl / Shift を押しながら行を選び、上の「並べ替え / まとめる / 捨てる…」を押すと、順番・まとめ方・メッセージを編集できます。1 件を別の行にドラッグしても並べ替えられます。捨てたコミットの変更は消えるので注意してください (以降のコミットの SHA が変わります)。"
+
+msgid "Initialize Repository"
+msgstr "リポジトリを初期化"
+
+msgid "Instead of adding a new commit, the next commit rebuilds the last commit from the current changes and message"
+msgstr "次のコミットで新しいコミットを足す代わりに、直前のコミットを今の変更とメッセージで作り直します"
+
+msgid "It was pushed, so it needs a force push (with lease) afterwards."
+msgstr "プッシュ済みなので、この後に強制プッシュ (lease 付き) が必要です。"
+
+msgid "It was pushed, so it needs a force push (with lease)."
+msgstr "プッシュ済みなので、強制プッシュ (lease 付き) が必要です。"
+
+msgid "Its remote-tracking branches are removed as well."
+msgstr "このリモートの追跡ブランチも削除されます。"
+
+msgid "Keeps both the upper side (ours) and the lower side (theirs) of the conflict, one above the other"
+msgstr "競合した箇所に、上側 (ours) と下側 (theirs) の内容を両方、上下に並べて残します"
+
+msgid "Latest tag: checking…"
+msgstr "直近のタグ: 確認中…"
+
+msgid "Latest tag: none"
+msgstr "直近のタグ: タグなし"
+
+msgid "Latest tag: {tag} (this commit itself)"
+msgstr "直近のタグ: {tag} (このコミット自身)"
+
+msgid "Latest tag: {tag} ({count} commit before this one)"
+msgid_plural "Latest tag: {tag} ({count} commits before this one)"
+msgstr[0] "直近のタグ: {tag} ({count} コミット前)"
+
+msgid "Learn More"
+msgstr "詳細"
+
+msgid "Leaves out merge commits (yes, no, only)"
+msgstr "マージコミットを除く (はい・いいえ・だけ)"
+
+msgid "Leaves the current tip {short_new} and goes back to {short_old} (git reset --soft).\nThe folded changes stay as staged changes."
+msgstr "現在の先頭 {short_new} を離れて {short_old} に戻します (git reset --soft)。\n入れた変更は、ステージされた変更として残ります。"
+
+msgid "Left: {} / Right: {}"
+msgstr "左: {} / 右: {}"
+
+msgid "List"
+msgstr "リスト"
+
+msgid "Loading"
+msgstr "読み込み中"
+
+msgid "Loading Commit History…"
+msgstr "コミット履歴を読み込み中…"
+
+msgid "Loading comparison…"
+msgstr "比較を読み込み中…"
+
+msgid "Loading tags…"
+msgstr "タグを読み込み中…"
+
+msgid "Loading the development branch's commits…"
+msgstr "開発ブランチのコミットを読み込み中…"
+
+msgid "Loading the tag list…"
+msgstr "タグの一覧を読み込んでいます…"
+
+msgid "Loading…"
+msgstr "読み込み中…"
+
+msgid "Local Branches"
+msgstr "ローカルブランチ"
+
+msgid "Local branch (a branch on this computer)"
+msgstr "ローカルブランチ (この PC にあるブランチ)"
+
+msgid "MR Box"
+msgstr "MR の箱"
+
+msgid "MR Branch Name"
+msgstr "MR ブランチ名"
+
+msgid "MR Check {} → {}"
+msgstr "{} → {} の MR チェック"
+
+msgid "MR Check: {} (development branch) → {} (MR branch)"
+msgstr "MR チェック: {} (開発ブランチ) → {} (MR ブランチ)"
+
+msgid "MR's Base (Merge Target) Branch"
+msgstr "MR の基点 (マージ先) のブランチ"
+
+msgid "Make one commit for an MR (MR box)"
+msgstr "MR 用に 1 コミットにしたい (MR の箱)"
+
+msgid "Marks every change in this folder to go into the next commit"
+msgstr "このフォルダーの中の変更を全部、次のコミットに入れる印を付けます"
+
+msgid "Marks every change under this heading to go into the next commit"
+msgstr "この見出しの下にある変更を全部、次のコミットに入れる印を付けます"
+
+msgid "Marks every changed file to go into the next commit (stages it). The files' contents do not change"
+msgstr "変更したファイルを全部、次のコミットに入れる印 (ステージ) を付けます。ファイルの中身は変わりません"
+
+msgid "Marks only this change (hunk: one block of changes) to go into the next commit. The file's contents do not change"
+msgstr "この変更箇所 (ハンク: ひとまとまりの変更) だけに、次のコミットに入れる印を付けます。ファイルの中身は変わりません"
+
+msgid "Marks the commit as one you decided to keep out of the MR, so that the check for forgotten commits no longer counts it as \"unplaced\". If it is in the box, it is taken out too"
+msgstr "MR に入れないと決めたコミットとして印を付けます。入れ忘れの確認で「未配置」に数えなくなります。箱に入っていれば箱からも出します"
+
+msgid "Marks this file's changes to go into the next commit. The file's contents do not change"
+msgstr "このファイルの変更に、次のコミットに入れる印を付けます。ファイルの中身は変わりません"
+
+msgid "Match Case Sensitivity"
+msgstr "大文字と小文字を区別"
+
+msgid "Matches"
+msgstr "一致"
+
+msgid "Merge Branch…"
+msgstr "ブランチをマージ…"
+
+msgid "Merge commits cannot go into the box ({count} was left out)."
+msgid_plural "Merge commits cannot go into the box ({count} were left out)."
+msgstr[0] "マージコミットは箱に入れられません ({count} 件を除きました)。"
+
+msgid "Merged from {}"
+msgstr "{} からマージしました"
+
+msgid "Merged {branch}."
+msgstr "{branch} をマージしました。"
+
+msgid "Merged {count} file change from {remote}"
+msgid_plural "Merged {count} file changes from {remote}"
+msgstr[0] "{remote} から {count} 件のファイル変更をマージしました"
+
+msgid "Message (leave empty for a lightweight tag)"
+msgstr "メッセージ (空なら軽量タグ)"
+
+msgid "Mismatches Only"
+msgstr "不一致だけ"
+
+msgid "Move {branch} to this commit?"
+msgstr "{branch} をこのコミットに移動しますか?"
+
+msgid "Moves a new file that was never committed to the system trash. It can be restored from the trash"
+msgstr "まだ一度もコミットしていない新しいファイルを、OS のゴミ箱へ移します。ゴミ箱からは戻せます"
+
+msgid "Moves new files Git does not manage yet (untracked) to the system trash. They can be restored from the trash"
+msgstr "Git がまだ管理していない新しいファイル (未追跡) を、OS のゴミ箱へ移します。ゴミ箱からは戻せます"
+
+msgid "Moves only the branch back. The later changes stay staged and in the working tree"
+msgstr "ブランチだけを戻します。後の変更はステージにも作業ツリーにもそのまま残ります"
+
+msgid "Moves the branch back and unstages. The later changes stay in the working tree's files"
+msgstr "ブランチを戻し、ステージだけ解除します。後の変更は作業ツリーのファイルに残ります"
+
+msgid "Moves the current branch back to here. Choose soft / mixed / hard for the later changes"
+msgstr "今のブランチの先頭をここまで戻します。後の変更の扱いを soft / mixed / hard から選びます"
+
+msgid "New branch name"
+msgstr "新しいブランチ名"
+
+msgid "New commit message"
+msgstr "新しいコミットメッセージ"
+
+msgid "Next Steps (Update the MR Branch and Go Back)"
+msgstr "続きの手順 (MR ブランチに反映して元に戻る)"
+
+msgid "No Changes to Commit"
+msgstr "コミットする変更がありません"
+
+msgid "No Git Repositories"
+msgstr "Git リポジトリがありません"
+
+msgid "No Git repository is open."
+msgstr "Git リポジトリが開かれていません。"
+
+msgid "No active branch"
+msgstr "アクティブなブランチがありません。"
+
+msgid "No active repository"
+msgstr "アクティブなリポジトリがありません。"
+
+msgid "No branch is checked out, so there is nothing to push."
+msgstr "ブランチがチェックアウトされていないため、プッシュできません。"
+
+msgid "No changes"
+msgstr "変更はありません"
+
+msgid "No changes to commit"
+msgstr "コミットする変更がありません"
+
+msgid "No commit message"
+msgstr "コミットメッセージがありません"
+
+msgid "No commits found"
+msgstr "コミットが見つかりません"
+
+msgid "No commits match. Try fewer conditions."
+msgstr "該当するコミットはありません。条件を減らしてみてください。"
+
+msgid "No commits yet"
+msgstr "まだコミットがありません"
+
+msgid "No development branch is chosen. Choose a development branch first."
+msgstr "開発ブランチが決まっていません。先に開発ブランチを選んでください。"
+
+msgid "No differences (everything has been ported)"
+msgstr "差分はありません (全部移植できています)"
+
+msgid "No files changed on the development branch."
+msgstr "開発ブランチで変わったファイルはありません。"
+
+msgid "No files mismatch. \"All\" also shows the matching files."
+msgstr "不一致のファイルはありません。「すべて」で一致したファイルも表示します。"
+
+msgid "No matching tags"
+msgstr "一致するタグがありません"
+
+msgid "No remote available to push to. Add a remote to be able to publish changes."
+msgstr "プッシュ先のリモートがありません。変更を発行するにはリモートを追加してください。"
+
+msgid "No remote configured for repository"
+msgstr "リポジトリにリモートが設定されていません。"
+
+msgid "No repository found"
+msgstr "リポジトリが見つかりません"
+
+msgid "No staged changes"
+msgstr "ステージ済みの変更はありません"
+
+msgid "No staged changes yet"
+msgstr "ステージ済みの変更はまだありません"
+
+msgid "No stashes found"
+msgstr "スタッシュが見つかりません"
+
+msgid "No tags"
+msgstr "タグがありません"
+
+msgid "No tracked file has changes"
+msgstr "追跡中のファイルに変更がありません"
+
+msgid "No tracked file has staged changes"
+msgstr "ステージ済みの、追跡中のファイルの変更がありません"
+
+msgid "No uncommitted changes"
+msgstr "未コミットの変更はありません"
+
+msgid "No unstaged changes"
+msgstr "未ステージの変更はありません"
+
+msgid "Not available on a detached HEAD. Switch to a branch first."
+msgstr "detached HEAD では使えません。先にブランチに切り替えてください。"
+
 msgid "Not available while several files are selected"
 msgstr "複数のファイルを選んでいるときは使えません"
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base (a change that came in while resolving a conflict, for example). The base is on the left, the MR branch on the right."
+msgstr "開発ブランチでは変えていないのに、MR ブランチでは基点と中身が違います (コンフリクトの解消などで入った変更)。左に基点、右に MR ブランチを並べます。"
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base. The MR branch was not created from the tip of its base, so it may only lack the base's newer changes (or the change came in while resolving a conflict). The base is on the left, the MR branch on the right."
+msgstr "開発ブランチでは変えていないのに、MR ブランチでは基点と中身が違います。MR ブランチが基点の最新から作られていないため、基点の新しい変更が MR ブランチに無いだけのことがあります (コンフリクトの解消で入った変更のこともあります)。左に基点、右に MR ブランチを並べます。"
+
+msgid "Not every commit could be checked for being left out. Create the MR branch anyway?"
+msgstr "入れ忘れを確かめきれていません。このまま作成しますか?"
+
+msgid "Not from the development branch"
+msgstr "開発ブランチに無い変更"
+
+msgid "Not from the development branch (came in while resolving conflicts, for example)"
+msgstr "開発ブランチに無い変更 (コンフリクトの解消などで入ったもの)"
+
+msgid "Not from the development branch (includes newer base changes the MR branch lacks)"
+msgstr "開発ブランチに無い変更 (基点の新しい変更が MR ブランチに無いものを含みます)"
+
+msgid "Nothing has been put away on the shelf (the stash)"
+msgstr "棚 (stash) に退避した変更がありません"
+
+msgid "Nothing has changed. Reorder the commits or choose an action."
+msgstr "変更がありません。並べ替えるか、操作を選んでください。"
+
+msgid "Nothing is missing"
+msgstr "入れ忘れはありません"
+
+msgid "Nothing is missing, but {count} file needs a look"
+msgid_plural "Nothing is missing, but {count} files need a look"
+msgstr[0] "入れ忘れはありませんが、確認が必要なファイルが {count} 件あります"
+
+msgid "Once you have a fix that belongs in a commit a few back, pick that commit in the Git Graph and press \"Add Current Changes (fixup)\". You can also drag files from the Git panel onto the commit's row."
+msgstr "数個前のコミットに入れるべき修正を用意したら、コミットグラフでそのコミットを選んで「今の変更を入れる (fixup)」を押します。Git パネルのファイルをコミットの行にドラッグしても入れられます。"
+
+msgid "Only downloads the latest from the remote (the shared server). Your files and branches do not change"
+msgstr "リモート (共有先のサーバー) の最新を取ってくるだけです。自分のファイルやブランチは変わりません"
+
+msgid "Only for new files Git does not manage yet (untracked)"
+msgstr "まだ Git が管理していない新しいファイル (未追跡) だけに使えます"
+
+msgid "Only the staged changes ({count} file)"
+msgid_plural "Only the staged changes ({count} files)"
+msgstr[0] "ステージ済みの変更だけ ({count} ファイル)"
+
+msgid "Open Commit Modal"
+msgstr "コミットモーダルを開く"
 
 msgid "Open Commit Permalink"
 msgstr "コミットの永続リンクを開く"
 
+msgid "Open Diff"
+msgstr "差分を開く"
+
+msgid "Open File Diff"
+msgstr "ファイルの差分を開く"
+
+msgid "Open File in Project"
+msgstr "プロジェクト内のファイルを開く"
+
+msgid "Open Git Graph"
+msgstr "コミットグラフを開く"
+
+msgid "Open a directory first"
+msgstr "先にディレクトリを開いてください。"
+
+msgid "Open repo in new project"
+msgstr "新しいプロジェクトでリポジトリを開く"
+
+msgid "Opens a diff of just this file (before and after the change) in a tab of its own"
+msgstr "このファイルだけの差分 (変更前と変更後の違い) を別のタブで開きます"
+
+msgid "Opens a guide that explains Git's terms and the steps of common operations"
+msgstr "Git の用語と、よく使う操作の手順を説明するガイドを開きます"
+
+msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
+msgstr "直前のコミットのメッセージを書き換える画面を開きます。昔のコミットは、コミットグラフで選んで「メッセージを書き換え」を押します (以降のコミットの SHA が変わります)。"
+
+msgid "Opens the current file itself in the editor, rather than the diff"
+msgstr "差分ではなく、今のファイルそのものをエディターで開きます"
+
+msgid "Opens the difference between this file before and after the change (the diff) in the tab that shows all changes together"
+msgstr "変更をまとめて見るタブで、このファイルの変更前と変更後の違い (差分) を開きます"
+
+msgid "Opens the list of changes put on the shelf (the stash), where you can look inside, pop or drop them"
+msgstr "棚 (stash) に退避した変更の一覧を開きます。中身を見る・取り出す・捨てるができます"
+
+msgid "Opens the list of commits that changed this file, newest first"
+msgstr "このファイルを変えたコミットの一覧を、新しい順に開きます"
+
+msgid "Operation was canceled"
+msgstr "操作はキャンセルされました。"
+
+msgid "Operations that did not fit in the row. Open it to see each one explained beside it"
+msgstr "幅が足りずに並ばなかった操作です。開くと各操作の説明が横に出ます"
+
+msgid "Optionally provide a stash message"
+msgstr "スタッシュのメッセージ (任意)"
+
+msgid "Other staged changes are not included (after the rewrite they are left unstaged)."
+msgstr "ほかのステージ済みの変更は入りません (書き換えた後はステージが外れた状態で残ります)。"
+
+msgid "Outside the development branch"
+msgstr "開発ブランチ外"
+
+msgid "Overwrites the remote branch with your history, without checking"
+msgstr "確かめずに、リモートのブランチを自分の履歴で上書きします"
+
+msgid "Overwrites the remote branch with your history. Stops if someone else pushed commits after your last fetch"
+msgstr "リモートのブランチを自分の履歴で上書きします。最後にフェッチした後に他の人が送ったコミットがあれば止まります"
+
+msgid "Packed the branches and tags ({seconds} s)"
+msgstr "ブランチ・タグをまとめました ({seconds} 秒)"
+
+msgid "Packing…"
+msgstr "まとめています…"
+
+msgid "Packs the refs (branches and tags) stored as separate files into one file."
+msgstr "ファイルのまま散らばった ref (ブランチ・タグ) を 1 つにまとめます。"
+
+msgid "Packs the {count} or more refs (branches and tags) stored as separate files into one file."
+msgstr "ファイルのまま散らばった {count} 個以上の ref (ブランチ・タグ) を 1 つにまとめます。"
+
+msgid "Packs the {formatted} ref (branch or tag) stored as a separate file into one file."
+msgid_plural "Packs the {formatted} refs (branches and tags) stored as separate files into one file."
+msgstr[0] "ファイルのまま散らばった {formatted} 個の ref (ブランチ・タグ) を 1 つにまとめます。"
+
+msgid "Part of a name or email address"
+msgstr "名前かメールアドレスの一部"
+
+msgid "Path History"
+msgstr "ファイルの履歴"
+
+msgid "Pick a commit and the buttons for it show above"
+msgstr "コミットを選ぶと上に操作ボタンが出ます"
+
+msgid "Pick a commit in the Git Graph and press \"Check Out\" to put the working tree in that commit's state (detached HEAD). Commits made from there belong to no branch, so to keep working, use \"Branch from Here\". To go back, switch to the original branch from the branch list."
+msgstr "コミットグラフでコミットを選んで「チェックアウト」を押すと、作業ツリーがそのコミットの状態になります (detached HEAD)。このままコミットするとどのブランチにも属さないので、続けて作業するなら「ここからブランチ」を使ってください。戻るときはブランチの一覧から元のブランチに切り替えます。"
+
+msgid "Pick a commit in the Git Graph, then press \"Revert\" to make a commit that undoes its changes, or \"Reset to This Commit ▾\" to move the branch back (hard throws the changes away). After a rewrite, \"Undo…\" on the notification or the reflog brings things back."
+msgstr "コミットグラフでコミットを選び、変更を打ち消すコミットを作るなら「打ち消す (revert)」、ブランチごと戻すなら「このコミットまで戻す ▾」(hard は変更を捨てます)。書き換えの後はトーストの「元に戻す」か reflog から戻せます。"
+
+msgid "Pick a commit to get its operations here (right-clicking offers the same)"
+msgstr "コミットを選ぶと、ここに操作ボタンが出ます (右クリックでも同じ操作ができます)"
+
+msgid "Pick an unbroken range"
+msgstr "連続した範囲を選んでください"
+
+msgid "Pick an unbroken range. A range that contains a merge commit cannot be rewritten."
+msgstr "連続した範囲を選んでください。マージコミットを含む範囲は書き換えられません。"
+
+msgid "Pick at least two commits to reorder."
+msgstr "並べ替えるコミットを 2 件以上選んでください。"
+
+msgid "Pick commits on the current branch"
+msgstr "現在のブランチ上のコミットを選んでください"
+
+msgid "Pick commits on the current branch."
+msgstr "現在のブランチ上のコミットを選んでください。"
+
+msgid "Pick the commit in the Git Graph and press \"Cherry-Pick\" to add its changes to the current branch as a new commit. With several picked through Ctrl / Shift, \"Cherry-Pick N Commits\" adds them oldest first. You can also drag a row onto a branch name. Changes to the same places can end in a conflict."
+msgstr "コミットグラフで持ってきたいコミットを選び「取り込む (cherry-pick)」を押すと、その変更を現在のブランチに新しいコミットとして積みます。Ctrl / Shift で複数選ぶと「N 件を取り込む」で古い順に積みます。行をブランチ名にドラッグしても取り込めます。同じ場所を変えているとコンフリクトになることがあります。"
+
+msgid "Pick the commit to add your current changes to, then press \"Add Current Changes (fixup)\" above."
+msgstr "今の変更を入れる先のコミットを選び、上の「今の変更を入れる (fixup)」を押してください。"
+
+msgid "Pick which remote to fetch"
+msgstr "フェッチするリモートを選択"
+
+msgid "Pick which remote to push to"
+msgstr "プッシュ先のリモートを選択"
+
+msgid "Pick which remote to remove"
+msgstr "削除するリモートを選択"
+
+msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
+msgstr "作業するブランチ (作業の枝) を選び替えます。ファイルがそのブランチの内容になります"
+
+msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
+msgstr "登録しているリモートから 1 つを選んで、その最新を取ってくるだけです。ファイルは変わりません"
+
+msgid "Pop"
+msgstr "取り出す"
+
+msgid "Pop Stash"
+msgstr "スタッシュを取り出す"
+
+msgid "Pop stash@{{{}}}?"
+msgstr "stash@{{{}}} を取り出しますか?"
+
+msgid "Possibly missing"
+msgstr "入れ忘れの疑い"
+
+msgid "Previous tip: {} (recoverable from the reflog)"
+msgstr "元の先頭: {} (reflog から戻せます)"
+
+msgid "Problems the checks would have stopped can get into the commit"
+msgstr "チェックで止まるはずの問題がそのまま入ることがあります"
+
+msgid "Publish"
+msgstr "発行"
+
+msgid "Publish branch to remote"
+msgstr "ブランチをリモートに発行します"
+
+msgid "Pull"
+msgstr "プル"
+
+msgid "Pull (Rebase)"
+msgstr "リベースしてプル"
+
+msgid "Pull in Progress…"
+msgstr "プル中…"
+
+msgid "Pull: Already up to date"
+msgstr "プル: すでに最新です"
+
+msgid "Push"
+msgstr "プッシュ"
+
+msgid "Push To"
+msgstr "プッシュ先を指定してプッシュ"
+
+msgid "Push committed changes to remote"
+msgstr "コミット済みの変更をリモートにプッシュします"
+
+msgid "Push in Progress…"
+msgstr "プッシュ中…"
+
+msgid "Push: Everything is up-to-date"
+msgstr "プッシュ: すべて最新です"
+
+msgid "Pushed {} to {}"
+msgstr "{} を {} にプッシュしました"
+
+msgid "Put Back"
+msgstr "戻す"
+
+msgid "Puts all changes together in one list, without splitting them"
+msgstr "すべての変更を分けずに 1 つの一覧にまとめます"
+
+msgid "Puts all uncommitted changes, newly created files (untracked) included, away on a temporary shelf (the stash) and returns the files to the last commit. \"Stash Pop\" brings them back later"
+msgstr "未コミットの変更を新しく作ったファイル (未追跡) も含めて全部、一時的な棚 (stash) に退避して、ファイルを最後のコミットの状態にします。後で「スタッシュをポップ」で戻せます"
+
+msgid "Puts only the changes to files Git manages (tracked) away on the shelf (the stash). Newly created files are kept"
+msgstr "Git が管理しているファイル (追跡中) の変更だけを棚 (stash) に退避します。新しく作ったファイルは残ります"
+
+msgid "Puts only the staged changes away on the shelf (the stash). Unstaged changes stay in the files"
+msgstr "ステージした変更だけを棚 (stash) に退避します。ステージしていない変更はファイルに残ります"
+
+msgid "Puts the changes last put on the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "棚 (stash) に最後に退避した変更をファイルに戻し、棚からは消します"
+
+msgid "Puts these changes from the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "棚 (stash) に退避したこの変更をファイルに戻し、棚からは消します"
+
+msgid "Re-publish branch to remote"
+msgstr "ブランチをリモートに再発行します"
+
+msgid "Rebuilds the last commit from your changes and message (Git panel)"
+msgstr "今の変更とメッセージで直前のコミットを作り直します (Git パネルで)"
+
+msgid "Received {count} file change from {remote}"
+msgid_plural "Received {count} file changes from {remote}"
+msgstr[0] "{remote} から {count} 件のファイル変更を取得しました"
+
+msgid "Records the names of the people you worked with in \"Co-authored-by\" lines of the commit message"
+msgstr "一緒に作業した人の名前を、コミットメッセージの「Co-authored-by」の行で残します"
+
+msgid "Recreate an MR branch"
+msgstr "MR ブランチを作り直したい"
+
+msgid "Recreate the existing {branch_name} (needs a force push)"
+msgstr "既存の {branch_name} を作り直す (強制プッシュが必要になります)"
+
+msgid "Recreated the MR branch {merge_request_branch}\nPrevious MR branch: {} (recoverable from the reflog)"
+msgstr "MR ブランチ {merge_request_branch} を作り直しました\n元の MR ブランチ: {} (reflog から戻せます)"
+
+msgid "Ref {ref_name}"
+msgstr "ref {ref_name}"
+
+msgid "Registers a folder owned by another user as a place Git may work in"
+msgstr "持ち主が別のユーザーのフォルダーでも、Git で扱ってよい場所として登録します"
+
+msgid "Registers a server to push to and fetch from (a remote) by name and URL"
+msgstr "送り先 / 取得元のサーバー (リモート) を、名前と URL で登録します"
+
+msgid "Remote Branches"
+msgstr "リモートブランチ"
+
+msgid "Remote Name"
+msgstr "リモート名"
+
+msgid "Remote branch (a copy of a branch on the server)"
+msgstr "リモートブランチ (サーバー側のブランチの写し)"
+
+msgid "Remote name can't be empty"
+msgstr "リモート名を空にはできません"
+
+msgid "Remote up to date"
+msgstr "リモートは最新です"
+
+msgid "Remove Remote…"
+msgstr "リモートを削除…"
+
+msgid "Remove co-authored-by"
+msgstr "Co-authored-by を削除"
+
+msgid "Remove the remote {remote_name}?"
+msgstr "リモート {remote_name} を削除しますか?"
+
+msgid "Remove this condition and search again"
+msgstr "この条件を外して検索し直します"
+
+msgid "Removed the remote {remote_name}."
+msgstr "リモート {remote_name} を削除しました。"
+
+msgid "Removes every stage mark in this folder. The changes stay in the files"
+msgstr "このフォルダーの中のステージの印を全部外します。変更はファイルに残ります"
+
+msgid "Removes every stage mark. The changes stay in the files and just no longer go into the next commit"
+msgstr "ステージの印を全部外します。変更はファイルに残り、次のコミットに入らなくなるだけです"
+
+msgid "Removes the exclusion mark and makes the commit \"unplaced\" again"
+msgstr "除外の印を外して「未配置」に戻します"
+
+msgid "Removes the stage mark of this change (hunk). The change stays in the file"
+msgstr "この変更箇所 (ハンク) のステージの印を外します。変更はファイルに残ります"
+
+msgid "Removes the stage marks of every change under this heading. The changes stay in the files"
+msgstr "この見出しの下にある変更のステージの印を全部外します。変更はファイルに残ります"
+
+msgid "Removes this commit and its changes from history"
+msgstr "このコミットとその変更を履歴から取り除きます"
+
+msgid "Removes this file's stage mark. The changes stay in the file"
+msgstr "このファイルのステージの印を外します。変更はファイルに残ります"
+
+msgid "Rename Branch ({})"
+msgstr "ブランチ名を変更 ({})"
+
+msgid "Reorder / Squash / Drop the {count} Selected Commit…"
+msgid_plural "Reorder / Squash / Drop the {count} Selected Commits…"
+msgstr[0] "選択した {count} 件を並べ替え / まとめる / 捨てる…"
+
+msgid "Reorder / Squash / Drop — {reason}"
+msgstr "並べ替え / まとめる / 捨てる — {reason}"
+
+msgid "Reorder commits: done\nPrevious tip: {short_old} (can be restored from the reflog)"
+msgstr "コミットの並べ替え: 完了しました\n元の先頭: {short_old} (reflog から戻せます)"
+
+msgid "Reorder commits: done."
+msgstr "コミットの並べ替え: 完了しました。"
+
+msgid "Reorders, squashes or drops the picked range"
+msgstr "選んだ範囲を並べ替え・合体 (squash)・削除 (drop) します"
+
+msgid "Repository not found."
+msgstr "リポジトリが見つかりません。"
+
+msgid "Republish"
+msgstr "再発行"
+
+msgid "Reset (Discard Changes)"
+msgstr "戻す (変更を捨てる)"
+
+msgid "Reset the local branch to the remote?"
+msgstr "ローカルをリモートの状態に合わせますか?"
+
+msgid "Reset the local branch to {target_ref}."
+msgstr "ローカルを {target_ref} の状態に合わせました。"
+
+msgid "Reset to Remote"
+msgstr "リモートに合わせる"
+
+msgid "Reset to Remote…"
+msgstr "リモートの状態に強制的に合わせる…"
+
+msgid "Reset to This Commit (hard: {summary})…"
+msgstr "このコミットまで戻す (hard: {summary})…"
+
+msgid "Reset to This Commit (mixed: {summary})"
+msgstr "このコミットまで戻す (mixed: {summary})"
+
+msgid "Reset to This Commit (soft: {summary})"
+msgstr "このコミットまで戻す (soft: {summary})"
+
+msgid "Reset to {short}?"
+msgstr "{short} まで戻しますか?"
+
+msgid "Reset to {} ({flag})."
+msgstr "{} まで戻しました ({flag})。"
+
+msgid "Reset {branch} to this commit?"
+msgstr "{branch} をこのコミットまで戻しますか?"
+
+msgid "Resets the branch, discarding later and uncommitted changes"
+msgstr "ブランチを戻し、後の変更も未コミットの変更もまとめて捨てます"
+
+msgid "Resets the current branch {branch} to {short_sha}.\n- Undo Commits Only (--soft): the changes stay staged\n- Unstage Too (--mixed): the changes stay in the working tree\n- Discard Everything (--hard): uncommitted changes are lost too"
+msgstr "現在のブランチ {branch} を {short_sha} まで戻します。\n・コミットだけ取り消す (--soft): 変更はステージに残ります\n・ステージも戻す (--mixed): 変更は作業ツリーに残ります\n・すべて破棄 (--hard): 未コミットの変更も消えます"
+
+msgid "Resolve Merge Conflict with Agent"
+msgid_plural "Resolve Merge Conflicts with Agent"
+msgstr[0] "マージコンフリクトをエージェントで解決"
+
+msgid "Resolve the conflicts, stage them, then press \"Continue\"."
+msgstr "コンフリクトを解決してステージしてから「続行」を押してください。"
+
+msgid "Resolve with Agent"
+msgstr "エージェントで解決"
+
+msgid "Resolves the conflict with only the lower side (the >>>>>>> side, theirs). The upper side is thrown away. During a merge that is the side being merged in; during a rebase, your commit being replayed"
+msgstr "競合した箇所を、印の下側 (>>>>>>> の側、theirs) の内容だけにします。上側の内容は捨てます。マージ中は取り込もうとしている相手側、リベース中は付け直している自分のコミット側です"
+
+msgid "Resolves the conflict with only the upper side (the <<<<<<< side, ours). The lower side is thrown away. During a merge that is the branch you are on; during a rebase, the branch being rebased onto"
+msgstr "競合した箇所を、印の上側 (<<<<<<< の側、ours) の内容だけにします。下側の内容は捨てます。マージ中は今いるブランチ側、リベース中は付け直し先のブランチ側です"
+
+msgid "Restore"
+msgstr "元に戻す"
+
+msgid "Restore All"
+msgstr "すべて元に戻す"
+
+msgid "Restore All Changes"
+msgstr "すべての変更を元に戻す"
+
+msgid "Restore File"
+msgstr "ファイルを元に戻す"
+
+msgid "Restore Hunk"
+msgstr "変更箇所を元に戻す"
+
+msgid "Restore Selected Hunks"
+msgstr "選択した変更箇所を元に戻す"
+
+msgid "Restore Tracked Files"
+msgstr "追跡中のファイルを元に戻す"
+
+msgid "Restore selected hunk"
+msgstr "選択した変更箇所を元に戻す"
+
+msgid "Returns each tracked file that has staged changes to its content in the last commit, unstaged changes included. Files with only unstaged changes and newly created files (untracked) are kept"
+msgstr "ステージした変更がある追跡中のファイルを、ステージしていない変更ごと最後のコミットの内容に戻します。ステージしていない変更しか無いファイルと、新しく作ったファイル (未追跡) は残ります"
+
+msgid "Revert This Commit"
+msgstr "このコミットを打ち消す (revert)"
+
+msgid "Reverted {}."
+msgstr "{} を打ち消しました。"
+
+msgid "Review Diff"
+msgstr "差分をレビュー"
+
+msgid "Reword Message…"
+msgstr "メッセージを書き換える…"
+
+msgid "Reword the Message of {}"
+msgstr "{} のメッセージを書き換える"
+
+msgid "Reworded the message of {}."
+msgstr "{} のメッセージを書き換えました。"
+
+msgid "Rewrite"
+msgstr "書き換える"
+
+msgid "Rewrite History…"
+msgstr "この内容で書き換える…"
+
+msgid "Rewrite the selected commits like this?"
+msgstr "選択したコミットをこの内容で書き換えますか?"
+
+msgid "Runs git pack-refs --all. The branches and tags themselves do not change. With tens of thousands of them it takes about a minute, and other Git operations wait meanwhile."
+msgstr "git pack-refs --all を実行します。ブランチ・タグの中身は変わりません。数万個あると 1 分ほどかかり、その間ほかの Git の操作は待たされます。"
+
+msgid "Runs git remote add."
+msgstr "git remote add を実行します。"
+
+msgid "Runs git reset {flag} {short}.\n{kept}"
+msgstr "git reset {flag} {short} を実行します。\n{kept}"
+
+msgid "Same contents as on the development branch."
+msgstr "開発ブランチと同じ中身です。"
+
+msgid "Saved the patch file: {destination}"
+msgstr "パッチファイルを保存しました: {destination}"
+
+msgid "Saves the staged changes as a single record with a message (a commit). With nothing staged, all tracked changes go in"
+msgstr "ステージした変更を、メッセージ付きの 1 つの記録 (コミット) として保存します。ステージが無いときは追跡中の変更を全部入れます"
+
+msgid "Search"
+msgstr "検索"
+
+msgid "Search by Conditions"
+msgstr "条件を選んで検索"
+
+msgid "Search by conditions such as the author, a tag or a period"
+msgstr "著者・タグ・期間などの条件を選んで検索します"
+
+msgid "Search commits… (e.g. author:alice file:src/ since:2w)"
+msgstr "コミットを検索… (例: 著者:山田 ファイル:src/ 以降:2週間)"
+
+msgid "Search for a tag in the Git Graph's \"Tags\" and pick it to jump to its commit. To add a tag, right-click the commit's row and choose \"Tag Here…\" (an empty message makes a lightweight tag)."
+msgstr "コミットグラフの「タグ一覧」でタグを検索して選ぶと、そのコミットまで移動します。タグを付けるときは、コミットの行を右クリックして「ここにタグを付ける…」を選びます (メッセージを空にすると軽量タグ)。"
+
+msgid "Search in the Git Graph's search box. Add author: tag: branch: file: since: until: change: merge: to narrow it down (for example author:alice file:src/main.rs since:2026-01-01)."
+msgstr "コミットグラフの検索欄で探します。著者: タグ: ブランチ: ファイル: 以降: 以前: 変更: マージ: を付けると絞り込めます (例: 著者:山田 ファイル:src/main.rs 以降:2026-01-01)。"
+
+msgid "Search tags… (newest first)"
+msgstr "タグを検索… (新しい順)"
+
+msgid "Searches the tags (names given to commits) and jumps to the commit of the one you pick"
+msgstr "タグ (コミットに付けた目印の名前) を検索し、選ぶとそのコミットまで移動します"
+
+msgid "Searching… {count} commit"
+msgid_plural "Searching… {count} commits"
+msgstr[0] "検索中… {count} 件"
+
+msgid "See Docs"
+msgstr "ドキュメントを見る"
+
+msgid "See an older commit as it was (checkout)"
+msgstr "昔のコミットの状態を見たい (チェックアウト)"
+
+msgid "Select Base Branch"
+msgstr "基準ブランチを選択"
+
+msgid "Select Next Match"
+msgstr "次の一致を選択"
+
+msgid "Select Previous Match"
+msgstr "前の一致を選択"
+
+msgid "Select a Patch File to Apply"
+msgstr "適用するパッチファイルを選択"
+
+msgid "Select a repository..."
+msgstr "リポジトリを選択..."
+
+msgid "Select a stash…"
+msgstr "スタッシュを選択…"
+
+msgid "Select as Repository Destination"
+msgstr "クローン先として選択"
+
+msgid "Selected Branch"
+msgstr "選択中のブランチ"
+
+msgid "Selection Actions…"
+msgstr "選択した行の操作…"
+
+msgid "Selects the oldest unplaced commit in the graph"
+msgstr "グラフでいちばん古い未配置のコミットを選びます"
+
+msgid "Send Review to Agent ({})"
+msgstr "レビューをエージェントへ送信 ({})"
+
+msgid "Send all review comments to the Agent panel"
+msgstr "すべてのレビューコメントをエージェントパネルへ送信します"
+
+msgid "Send this diff for your last agent to review."
+msgstr "この差分を直前のエージェントに送ってレビューしてもらいます。"
+
+msgid "Sends a branch that disappeared from the remote there again and links it again"
+msgstr "リモートで消えたブランチを、もう一度リモートに送って結び付け直します"
+
+msgid "Sends this branch to the remote for the first time and links it as the branch to push to and pull from from now on"
+msgstr "このブランチをリモートに初めて送り、以後のプッシュ / プルの相手として結び付けます"
+
+msgid "Sends your commits to the remote. Changes you have not committed are not sent"
+msgstr "自分のコミットをリモートへ送ります。コミットしていない変更は送られません"
+
+msgid "Separate conditions with spaces to find the commits that match all of them. Put a value that contains spaces in \"…\"."
+msgstr "空白で区切って並べると、すべてを満たすコミットを探します。空白を含む値は \"…\" で囲みます。author: tag: branch: file: since: until: change: merge: と英語でも書けます。"
+
+msgid "Separates the changes marked to go into the next commit (staged) from the changes not marked yet (unstaged)"
+msgstr "次のコミットに入れる印を付けた変更 (ステージ済み) と、まだ付けていない変更 (未ステージ) に分けて並べます"
+
+msgid "Separates the files Git manages (tracked) from the new files it does not manage yet (untracked)"
+msgstr "Git が管理しているファイル (追跡中) と、まだ管理していない新しいファイル (未追跡) に分けて並べます"
+
+msgid "Show Changes Only"
+msgstr "変更箇所のみ表示"
+
+msgid "Show Flat View"
+msgstr "フラット表示に切り替え"
+
+msgid "Show Full File"
+msgstr "ファイル全体を表示"
+
+msgid "Show Git Output"
+msgstr "git の出力を表示"
+
+msgid "Show Tree View"
+msgstr "ツリー表示に切り替え"
+
+msgid "Show in Git Graph"
+msgstr "コミットグラフで表示"
+
+msgid "Show {hidden_count} More"
+msgstr "ほか {hidden_count} 個をすべて表示"
+
+msgid "Show:"
+msgstr "表示:"
+
+msgid "Shows a diff of only the changes not staged yet (which do not go into the next commit)"
+msgstr "まだステージしていない (次のコミットに入らない) 変更だけを差分で表示します"
+
+msgid "Shows a diff of only the staged changes (which go into the next commit)"
+msgstr "ステージした (次のコミットに入る) 変更だけを差分で表示します"
+
+msgid "Shows both your branches (local) and the copies of the server's branches (remote)"
+msgstr "手元のブランチ (ローカル) と、サーバーにあるブランチの写し (リモート) を両方出します"
+
+msgid "Shows only the branches in your repository. These are the ones you can commit to"
+msgstr "手元のリポジトリにあるブランチだけを出します。コミットできるのはこちらです"
+
+msgid "Shows only the copies of the server's branches that the last fetch brought in (origin/… and so on)"
+msgstr "最後のフェッチで取ってきた、サーバー側のブランチの写し (origin/... など) だけを出します"
+
+msgid "Shows the changed files in a single column, without splitting them by folder"
+msgstr "変更したファイルをフォルダーに分けず 1 列に並べます"
+
+msgid "Shows the diff (before and after) of the uncommitted changes together in one tab"
+msgstr "未コミットの変更の差分 (変更前と変更後の違い) を、1 つのタブにまとめて表示します"
+
+msgid "Shows what these changes put on the shelf (the stash) contain, as a diff. Does not pop them"
+msgstr "棚 (stash) に退避したこの変更の中身を、差分で表示します。取り出しはしません"
+
+msgid "Signoff"
+msgstr "サインオフ"
+
+msgid "Skip Hooks"
+msgstr "フックをスキップ"
+
+msgid "Skipped a commit of the {}."
+msgstr "{}をスキップしました。"
+
+msgid "Skips the commit it stopped at and moves on to the next commit"
+msgstr "今止まっているコミットを飛ばして、次のコミットへ進みます"
+
+msgid "Some branches could not be loaded"
+msgstr "一部のブランチを読み込めませんでした"
+
+msgid "Some branches could not be loaded: {error}"
+msgstr "一部のブランチを読み込めませんでした: {error}"
+
+msgid "Some files have conflicts. Resolve them first."
+msgstr "コンフリクトしているファイルがあります。解決してから使えます。"
+
+msgid "Sort By"
+msgstr "並べ替え"
+
+msgid "Sorts by file name, regardless of the folder"
+msgstr "フォルダーは気にせず、ファイル名の順に並べます"
+
+msgid "Sorts by location, folders included (the path). Files in the same folder end up next to each other"
+msgstr "フォルダーを含めた場所 (パス) の順に並べます。同じフォルダーのファイルが隣り合います"
+
+msgid "Squash into One — {reason}"
+msgstr "1 つにまとめる (squash) — {reason}"
+
+msgid "Squash the selected commits into one?"
+msgstr "選択したコミットを 1 つにまとめますか?"
+
+msgid "Squash the {count} Selected Commit into One"
+msgid_plural "Squash the {count} Selected Commits into One"
+msgstr[0] "選択した {count} 件を 1 つにまとめる (squash)"
+
+msgid "Squash the {count} Selected Commit into One Commit on a New MR Branch…"
+msgid_plural "Squash the {count} Selected Commits into One Commit on a New MR Branch…"
+msgstr[0] "選択した {count} 件を MR 用の新しいブランチに 1 コミットとしてまとめる…"
+
+msgid "Squash {count} commit"
+msgid_plural "Squash {count} commits"
+msgstr[0] "{count} 件のコミットをまとめました"
+
+msgid "Squash, reorder or drop commits (squash / drop)"
+msgstr "コミットをまとめたい・並べ替えたい・捨てたい (squash / drop)"
+
+msgid "Squashed the commits (squash)."
+msgstr "コミットをまとめました (squash)。"
+
+msgid "Stage"
+msgstr "ステージ"
+
+msgid "Stage All"
+msgstr "すべてステージ"
+
+msgid "Stage All Changes"
+msgstr "すべての変更をステージ"
+
+msgid "Stage File"
+msgstr "ファイルをステージ"
+
+msgid "Stage Folder"
+msgstr "フォルダーをステージ"
+
+msgid "Stage Hunk"
+msgstr "変更箇所をステージ"
+
+msgid "Stage Selected Hunks"
+msgstr "選択した変更箇所をステージ"
+
+msgid "Stage and Go to Next Hunk"
+msgstr "ステージして次の変更箇所へ移動"
+
 msgid "Stage {count} Files"
 msgstr "{count} 個のファイルをステージ"
+
+msgid "Staged"
+msgstr "ステージ済み"
+
+msgid "Staged & Unstaged"
+msgstr "ステージ済みと未ステージ"
+
+msgid "Staged Changes"
+msgstr "ステージ済みの変更"
+
+msgid "Staged changes (git diff --cached)"
+msgstr "ステージ済みの変更 (git diff --cached)"
+
+msgid "Starts using Git in this folder (creates a .git folder). The existing files do not change"
+msgstr "このフォルダーで Git を使い始めます (.git フォルダーを作ります)。今あるファイルは変わりません"
+
+msgid "Stash All"
+msgstr "すべてスタッシュ"
+
+msgid "Stash Pop"
+msgstr "スタッシュをポップ"
+
+msgid "Stash Staged"
+msgstr "ステージ済みをスタッシュ"
+
+msgid "Stash Tracked"
+msgstr "追跡中をスタッシュ"
+
+msgid "Stashes"
+msgstr "スタッシュ"
+
+msgid "Still on the scratch branch \"{}\"."
+msgstr "一時ブランチ「{}」の上に残っています。"
+
+msgid "Stop Excluding and Mark as Unplaced"
+msgstr "除外をやめて未配置に戻す"
+
+msgid "Stop Excluding {count} Commit from MR"
+msgid_plural "Stop Excluding {count} Commits from MR"
+msgstr[0] "{count} 件の MR の除外をやめる"
+
+msgid "Stop and Go Back"
+msgstr "やめて戻る"
+
+msgid "Stop and Go Back…"
+msgstr "やめて元に戻る…"
+
+msgid "Stop creating the MR branch?"
+msgstr "MR ブランチの作成をやめますか?"
+
+msgid "Stopped at {count} commit."
+msgid_plural "Stopped at {count} commits."
+msgstr[0] "{count} 件で中止しました。"
+
+msgid "Stops the search. The commits found so far stay"
+msgstr "検索を止めます。ここまでに見つかったコミットは残ります"
+
+msgid "Successfully pulled from {}"
+msgstr "{} からプルしました"
+
+msgid "Successfully rebased from {}"
+msgstr "{} からリベースしました"
+
+msgid "Switch"
+msgstr "切り替え"
+
+msgid "Switch Active Repository"
+msgstr "アクティブなリポジトリを切り替え"
+
+msgid "Switch Branch"
+msgstr "ブランチを切り替え"
+
+msgid "Switch from the branch list. Type a name that is not in the list to create a new branch. To start from an older commit, pick that commit in the Git Graph and press \"Branch from Here\"."
+msgstr "ブランチの一覧から切り替えます。一覧に無い名前を入力すると新しいブランチを作れます。昔のコミットから作るときは、コミットグラフでそのコミットを選んで「ここからブランチ」を押します。"
+
+msgid "Switch or type to create a branch…"
+msgstr "ブランチを切り替え、または入力して作成…"
+
+msgid "Switch to {branch} and then cherry-pick {count} commit?"
+msgid_plural "Switch to {branch} and then cherry-pick {count} commits?"
+msgstr[0] "{branch} に切り替えてから {count} 件を取り込みますか?"
+
+msgid "Switch to {branch} and then cherry-pick?"
+msgstr "{branch} に切り替えてから取り込みますか?"
+
+msgid "Switches to this commit (detached HEAD: not on any branch)"
+msgstr "この時点に切り替えます (detached HEAD: どのブランチにも乗らない状態)"
+
+msgid "Switches to {branch}, then adds the changes of {sha} as a new commit (checkout + cherry-pick)."
+msgstr "{branch} に切り替えてから、{sha} の変更を新しいコミットとして積みます (checkout + cherry-pick)。"
+
+msgid "Switches to {branch}, then cherry-picks {count} commit: adds it, oldest first, as a new commit (checkout + cherry-pick)."
+msgid_plural "Switches to {branch}, then cherry-picks {count} commits: adds them, oldest first, as new commits (checkout + cherry-pick)."
+msgstr[0] "{branch} に切り替えてから、{count} 件を取り込みます: 古い順に新しいコミットとして積みます (checkout + cherry-pick)。"
+
+msgid "Synchronized with remotes"
+msgstr "リモートと同期しました"
+
+msgid "Synchronized with {}"
+msgstr "{} と同期しました"
+
+msgid "Tag (a marker given to a particular commit)"
+msgstr "タグ (特定のコミットに付けた目印)"
+
+msgid "Tag Here…"
+msgstr "ここにタグを付ける…"
+
+msgid "Tag name (e.g. v1.2.3)"
+msgstr "タグ名 (例: v1.2.3)"
+
+msgid "Take Out of the Box"
+msgstr "箱から出す"
+
+msgid "Text of added or removed lines (slow)"
+msgstr "追加・削除した行の文字 (時間がかかります)"
+
+msgid "The Git panel has another repository selected. Switch the Git panel to this repository, then amend."
+msgstr "Git パネルでは別のリポジトリが選ばれています。Git パネルでこのリポジトリに切り替えてから修正 (amend) してください。"
+
+msgid "The MR branch \"{}\" is half created (on the scratch branch \"{}\")."
+msgstr "MR ブランチ「{}」の作成が途中です (一時ブランチ「{}」の上)。"
+
+msgid "The MR branch matches the development branch, but the base changed this file too and differs from it. Merging the MR may undo the base's change. The base is on the left, the MR branch on the right."
+msgstr "MR ブランチは開発ブランチと同じ中身ですが、基点側もこのファイルを変えていて、基点とは中身が違います。MR をマージすると基点の変更を戻してしまうかもしれません。左に基点、右に MR ブランチを並べます。"
+
+msgid "The MR branch was not created from the tip of its base (the base is at least {MAX_COUNTED_BASE_COMMITS} commits ahead)"
+msgstr "MR ブランチは基点の最新から作られていません (基点が {MAX_COUNTED_BASE_COMMITS} コミット以上進んでいます)"
+
+msgid "The MR branch was not created from the tip of its base (the base is {count} commit ahead)"
+msgid_plural "The MR branch was not created from the tip of its base (the base is {count} commits ahead)"
+msgstr[0] "MR ブランチは基点の最新から作られていません (基点が {count} コミット進んでいます)"
+
+msgid "The MR has the same contents as the base (fine if the base already took the same change)"
+msgstr "MR は基点と同じ中身です (基点側で同じ変更を取り込み済みなら問題ありません)"
+
+msgid "The SHAs of the later commits change"
+msgstr "後のコミットの SHA が変わります"
+
+msgid "The Zed server on the remote host is too old for the MR check (it refuses git rev-parse). Update Zed on the remote host."
+msgstr "接続先の Zed のサーバーが古いため、MR チェックは使えません (git rev-parse を受け付けません)。接続先の Zed を更新してください。"
+
+msgid "The Zed server on the remote host is too old for this operation. Update the server."
+msgstr "接続先の Zed のサーバーが古いため、この操作は使えません。サーバーを更新してください。"
+
+msgid "The Zed server on the remote host is too old to pack branches and tags."
+msgstr "接続先の Zed のサーバーが古いため、ブランチ・タグをまとめられません。"
+
+msgid "The Zed server on the remote host is too old, so this ran as a force push with a lease. Reconnect to update the server."
+msgstr "接続先の Zed のサーバーが古いため、lease 付きの強制プッシュとして実行しました。接続し直してサーバーを更新してください。"
+
+msgid "The author's name or email address contains \"alice\""
+msgstr "著者の名前かメールアドレスに「山田」を含む"
+
+msgid "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
+msgstr "基点のブランチ「{merge_request_branch}」を MR ブランチにはできません。別の名前にしてください。"
+
+msgid "The box is empty. Drag commits into it."
+msgstr "箱が空です。コミットをドラッグして入れてください。"
+
+msgid "The changes of {short} are undone, and every commit after it gets a new SHA.\nIf the branch was pushed, it needs a force push afterwards."
+msgstr "{short} の変更が無かったことになり、その後のコミットの SHA はすべて変わります。\nプッシュ済みのブランチなら、この後に強制プッシュが必要です。"
+
+msgid "The changes stay in the working tree."
+msgstr "変更は作業ツリーに残ります。"
+
+msgid "The changes stay staged."
+msgstr "変更はステージに残ります。"
+
+msgid "The commits that touched it are not in the loaded history (the newest {MAX_MERGE_REQUEST_HISTORY_COMMITS} commits)."
+msgstr "触ったコミットは、読み込んだ履歴 (新しい方から {MAX_MERGE_REQUEST_HISTORY_COMMITS} 件) にありません。"
+
+msgid "The commits were not put in the box because no development branch is chosen. Choose a development branch first."
+msgstr "開発ブランチが決まっていないため、箱に入れられませんでした。先に開発ブランチを選んでください。"
+
+msgid "The conditions you enter are written into the search box."
+msgstr "入力した条件は検索欄に書き込まれます。"
+
+msgid "The development branch has no commits newer than the base."
+msgstr "開発ブランチに基点より新しいコミットがありません。"
+
+msgid "The development branch was rewritten (or merged into the base), so {count} commit was taken out of the box."
+msgid_plural "The development branch was rewritten (or merged into the base), so {count} commits were taken out of the box."
+msgstr[0] "開発ブランチが書き換えられたため (または基点に取り込まれたため)、{count} 件を箱から外しました。"
+
+msgid "The development branch's range could not be read, so left-out commits were not checked."
+msgstr "開発ブランチの範囲を読めていないため、入れ忘れは確かめていません。"
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits, so older commits were not checked for being left out."
+msgstr "開発ブランチの範囲が {MAX_RANGE_COMMITS} 件を超えているため、それより古いコミットの入れ忘れは確かめていません。"
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits. Check that the base is right (older commits are not shown)."
+msgstr "開発ブランチの範囲が {MAX_RANGE_COMMITS} 件を超えています。基点が正しいか確かめてください (古いコミットは表示していません)。"
+
+msgid "The development branch's range is too wide (more than {MAX_RANGE_COMMITS} commits). Check that the base is right."
+msgstr "開発ブランチの範囲が広すぎます ({MAX_RANGE_COMMITS} 件を超えています)。基点が正しいか確かめてください。"
+
+msgid "The dragged order could not be reproduced, so the list opened in the original order."
+msgstr "ドラッグした並びを再現できなかったため、元の並びで開いています。"
+
+msgid "The excluded commit {} was not found."
+msgstr "除外したコミット {} が見つかりませんでした。"
+
+msgid "The existing \"{}\" ({previous}) is recreated to point at the new commit. If it was pushed, it needs a force push."
+msgstr "既存の「{}」({previous}) は新しいコミットを指すように作り直します。プッシュ済みなら強制プッシュが必要です。"
+
+msgid "The folder of the patch file was removed from the project."
+msgstr "パッチファイルのあるフォルダーがプロジェクトから外されました。"
+
+msgid "The git command was interrupted."
+msgstr "git の実行が中断されました。"
+
+msgid "The latest commit (git format-patch -1 HEAD)"
+msgstr "直近のコミット (git format-patch -1 HEAD)"
+
+msgid "The list is in the order you dragged the commits into. Run it as it is or adjust it here."
+msgstr "ドラッグした結果の並びにしてあります。このまま実行するか、ここで直してください。"
+
+msgid "The local {base} is {count} commit behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgid_plural "The local {base} is {count} commits behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgstr[0] "ローカルの {base} はリモート ({remote}) より {count} コミット古いです。基点を {remote} にするか、先にプルしてください。"
+
+msgid "The merge ran into conflicts. Resolve them, then commit."
+msgstr "マージでコンフリクトが発生しました。競合を解決してからコミットしてください。"
+
+msgid "The message of {} is empty. Enter a message."
+msgstr "{} のメッセージが空です。入力してください。"
+
+msgid "The newest {MAX_RANGE_COMMITS} commits are all placed or excluded, but older commits were not checked."
+msgstr "新しい {MAX_RANGE_COMMITS} 件はすべて配置か除外をしましたが、それより古いコミットは確かめていません。"
+
+msgid "The oldest commit is at the top. Drag the rows or use ↑↓ to reorder them, choose to fold, reword or drop, then run the rewrite."
+msgstr "上が古いコミットです。行をドラッグするか ↑↓ で並べ替え、まとめる・メッセージの変更・捨てるを選んでから実行してください。"
+
+msgid "The original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "元のブランチが分からないため、「中止」を押しても元のブランチには戻りません。中止した後に自分で切り替えてください。"
+
+msgid "The overwritten commits disappear from the remote branch"
+msgstr "上書きされた側のコミットはリモートのブランチから消えます"
+
+msgid "The rebase finished, but the \"{fixup_subject}\" commit was not squashed into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "リベースは終わりましたが、「{fixup_subject}」コミットが {short} に畳まれずに残りました。元の先頭: {} (reflog から戻せます)"
+
+msgid "The rebase stopped while folding into {short} (a conflict, for example). Continue or abort it from the Git panel's banner. Even after aborting, the changes stay at the tip as the \"{fixup_subject}\" commit ({}). Skipping that commit takes the changes out of the history (recoverable from git reflog). Previous tip: {}"
+msgstr "{short} に入れる途中でリベースが止まりました (コンフリクトなど)。Git パネルのバナーから続行か中止をしてください。中止しても、変更は「{fixup_subject}」コミット ({}) として先頭に残ります。そのコミットでスキップすると変更は履歴から外れます (git reflog から戻せます)。元の先頭: {}"
+
+msgid "The replayed commits of yours get new SHAs"
+msgstr "付け直した自分のコミットの SHA が変わります"
+
+msgid "The repository could not be found, so the files cannot go into the commit."
+msgstr "リポジトリが見つからないため、ファイルをコミットに入れられません。"
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
+msgstr "前回の一時ブランチ「{scratch_branch}」が残っています。中身を確認して削除してからやり直してください。"
+
+msgid "The scratch branch \"{}\" has moved away from the commit of the MR branch \"{}\", so it is not deleted. Check its contents, then switch to \"{}\" yourself."
+msgstr "一時ブランチ「{}」が MR ブランチ「{}」のコミットから動いているため、削除しません。中身を確かめてから、自分で「{}」に切り替えてください。"
+
+msgid "The skipped commit's changes are not brought in"
+msgstr "飛ばしたコミットの変更は取り込まれません"
+
+msgid "The tip commit of the current branch is not known, so nothing can be reordered."
+msgstr "現在のブランチの先頭のコミットが分からないため、並べ替えられません。"
+
+msgid "The top commit cannot be folded into a previous one. Put the commit to fold into above it."
+msgstr "一番上のコミットは「直前にまとめる」にできません。まとめる先のコミットを上に置いてください。"
+
+msgid "The {count} chosen file (staged or not, as it is now)"
+msgid_plural "The {count} chosen files (staged or not, as they are now)"
+msgstr[0] "選んだ {count} 個のファイル (ステージの有無を問わず、そのままの内容で)"
+
+msgid "The {count} commit becomes one, and its SHA changes (squash).\nMessage after squashing: {first_line}"
+msgid_plural "The {count} commits become one, and each SHA changes (squash).\nMessage after squashing: {first_line}"
+msgstr[0] "{count} 件のコミットが 1 つになり、それぞれの SHA は変わります (squash)。\nまとめた後のメッセージ: {first_line}"
+
+msgid "There are no changes to put in the commit. Untracked files can be put in once they are staged."
+msgstr "コミットに入れる変更がありません。未追跡のファイルはステージすると入れられます。"
+
+msgid "There are no changes to stage"
+msgstr "ステージする変更がありません"
+
+msgid "There are no changes to stash"
+msgstr "退避する変更がありません"
+
+msgid "There are no commits yet, or none in the chosen range. Try widening the range with \"Show\" above."
+msgstr "まだコミットが無いか、選んだ表示範囲に入るコミットがありません。上の「表示」で範囲を広げてみてください。"
+
+msgid "There are no commits yet. You can only amend once there is a commit."
+msgstr "まだコミットがありません。修正 (amend) できるのはコミットがあるときだけです。"
+
+msgid "There are no files to fold in."
+msgstr "入れるファイルがありません。"
+
+msgid "There are no staged changes"
+msgstr "ステージ済みの変更がありません"
+
+msgid "There are no tags."
+msgstr "タグがありません。"
+
+msgid "There are no untracked files"
+msgstr "未追跡のファイルがありません"
+
+msgid "There are still conflicts. You must stage these before committing"
+msgstr "まだコンフリクトが残っています。コミットする前にステージしてください。"
+
+msgid "There are uncommitted changes, so it cannot be undone. Commit or stash them, then try again."
+msgstr "未コミットの変更があるため戻せません。コミットかスタッシュしてからやり直してください。"
+
+msgid "There are uncommitted changes. Commit or stash them before creating the MR branch (the box stays as it is)."
+msgstr "未コミットの変更があります。MR ブランチを作る前に、コミットかスタッシュしてください (箱の中身はそのままです)。"
+
+msgid "There is no active repository."
+msgstr "アクティブなリポジトリがありません。"
+
+msgid "There is no remote to remove."
+msgstr "削除できるリモートがありません。"
+
+msgid "There were no changes to put in a patch file."
+msgstr "パッチファイルにする変更がありませんでした。"
+
+msgid "They are the rows with a small ● in the graph. Drag them into the box, or set them aside with \"Exclude from MR\" in the right-click menu."
+msgstr "グラフで小さな ● が付いた行です。箱へドラッグするか、右クリックの「MR から除外する」で脇に置いてください。"
+
+msgid "This branch has no upstream, so whether it was pushed was not checked."
+msgstr "このブランチには追跡ブランチがないため、プッシュ済みかどうかは確かめていません。"
+
+msgid "This cannot be undone"
+msgstr "元に戻せません"
+
+msgid "This commit was already pushed to {}."
+msgstr "このコミットはすでに {} にプッシュされています。"
+
+msgid "This commit's SHA changes"
+msgstr "このコミットの SHA が変わります"
+
+msgid "This file changed on the base too, and an excluded commit touched it. The diff mixes both."
+msgstr "基点側でもこのファイルが変わり、除外したコミットも触っています。差分には両方が混ざります。"
+
+msgid "This file changed on the base too, so the diff includes the base's changes (usually fine)."
+msgstr "基点側でもこのファイルが変わったため、差分に基点の変更が混ざります (多くは問題ありません)。"
+
+msgid "This is the tip of the current branch. There is nothing to pick."
+msgstr "現在のブランチの先頭のコミットです。取り込むものがありません。"
+
+msgid "This throws away the current tip {short_new} and goes back to {short_old} (git reset --hard).\nThe commits the reorder made can then only be found through the reflog."
+msgstr "現在の先頭 {short_new} を捨てて {short_old} に戻します (git reset --hard)。\n並べ替えでできたコミットは reflog からしか辿れなくなります。"
+
+msgid "This will update your most recent commit."
+msgstr "直前のコミットを更新します。"
+
+msgid "Throws away these changes on the shelf (the stash) without putting them back into the files"
+msgstr "棚 (stash) に退避したこの変更を、ファイルに戻さずに捨てます"
+
+msgid "To create it under the same MR branch name, check \"Recreate the existing …\". An MR branch that was already pushed needs a force push (with lease) once recreated. The old MR branch can be restored from the reflog."
+msgstr "同じ MR ブランチ名で作るときは「既存の … を作り直す」にチェックを入れます。プッシュ済みの MR ブランチを作り直したら、強制プッシュ (lease 付き) が必要です。元の MR ブランチは reflog から戻せます。"
+
+msgid "To work here, create a branch first"
+msgstr "作業するなら先にブランチを作ります"
+
+msgid "Toggle Branch Picker"
+msgstr "ブランチピッカーを切り替え"
+
+msgid "Toggle Folder"
+msgstr "フォルダーの開閉"
+
+msgid "Toggle Staged"
+msgstr "ステージ状態を切り替え"
+
+msgid "Toggle Stash Picker"
+msgstr "スタッシュピッカーを切り替え"
+
+msgid "Toggle {} Tab"
+msgstr "{} タブに切り替え"
+
+msgid "Too large to show."
+msgstr "大きすぎるため表示できません。"
+
+msgid "Tracked"
+msgstr "追跡中"
+
+msgid "Tracked & Untracked"
+msgstr "追跡中と未追跡"
+
+msgid "Trash"
+msgstr "ゴミ箱へ移動"
+
+msgid "Trash File"
+msgstr "ファイルをゴミ箱へ移動"
+
+msgid "Trash Untracked Files"
+msgstr "未追跡ファイルをゴミ箱へ移動"
+
+msgid "Trash these files?"
+msgstr "これらのファイルをゴミ箱へ移動しますか?"
 
 msgid "Trash {count} Files"
 msgstr "{count} 個のファイルをゴミ箱へ移動"
 
+msgid "Trash {}?"
+msgstr "{} をゴミ箱へ移動しますか?"
+
+msgid "Tree"
+msgstr "ツリー"
+
+msgid "Trust Directory"
+msgstr "ディレクトリを信頼"
+
+msgid "Try It"
+msgstr "やってみる"
+
+msgid "Unable to construct pull request URL"
+msgstr "プルリクエストの URL を作成できませんでした。"
+
+msgid "Unable to initialize a git repository"
+msgstr "Git リポジトリを初期化できません"
+
+msgid "Uncommit"
+msgstr "コミットを取り消す"
+
+msgid "Uncommitted Changes"
+msgstr "未コミットの変更"
+
+msgid "Uncommitted changes and your commits that are not on the remote are thrown away and cannot be undone"
+msgstr "未コミットの変更と、リモートに無い自分のコミットは捨てられ、元に戻せません"
+
+msgid "Uncommitted changes cannot be recovered"
+msgstr "未コミットの変更は元に戻せません"
+
+msgid "Undo Commits Only (--soft)"
+msgstr "コミットだけ取り消す (--soft)"
+
+msgid "Undo a mistake (reset / revert / undo)"
+msgstr "間違えたので戻したい (reset / revert / 元に戻す)"
+
+msgid "Undoes every unstaged change and returns the files to their staged content. Newly created files are kept"
+msgstr "ステージしていない変更を全部取り消し、ファイルをステージ済みの内容に戻します。新しく作ったファイルは残ります"
+
+msgid "Undoes the edits in this change (hunk) and returns the file to its staged content"
+msgstr "この変更箇所 (ハンク) の編集を取り消し、ファイルをステージ済みの内容に戻します"
+
+msgid "Undoes the last commit and returns its changes to the staged, uncommitted state. The files' contents do not change"
+msgstr "直前のコミットを取り消して、その変更をステージされた未コミットの状態に戻します。ファイルの中身は変わりません"
+
+msgid "Undo…"
+msgstr "元に戻す…"
+
+msgid "Unknown"
+msgstr "不明"
+
+msgid "Unregisters a remote. Your local record of that remote's branches goes too. The data on the server is not deleted"
+msgstr "登録したリモートを外します。手元にある、そのリモートのブランチの記録も消えます。サーバー上のデータは消えません"
+
+msgid "Unresolved conflicts remain, but whether a rebase caused them could not be confirmed. Check which changes would be lost before pressing \"Abort\"."
+msgstr "未解決のコンフリクトが残っていますが、原因がリベースだとは確かめられません。「中止」は消える変更を確認してから実行してください。"
+
+msgid "Unstage"
+msgstr "アンステージ"
+
+msgid "Unstage All"
+msgstr "すべてアンステージ"
+
+msgid "Unstage All Changes"
+msgstr "すべての変更をアンステージ"
+
+msgid "Unstage File"
+msgstr "ファイルをアンステージ"
+
+msgid "Unstage Folder"
+msgstr "フォルダーをアンステージ"
+
+msgid "Unstage Hunk"
+msgstr "変更箇所をアンステージ"
+
+msgid "Unstage Selected Hunks"
+msgstr "選択した変更箇所をアンステージ"
+
+msgid "Unstage Too (--mixed)"
+msgstr "ステージも戻す (--mixed)"
+
+msgid "Unstage and Go to Next Hunk"
+msgstr "アンステージして次の変更箇所へ移動"
+
 msgid "Unstage {count} Files"
 msgstr "{count} 個のファイルをアンステージ"
+
+msgid "Unstaged"
+msgstr "未ステージ"
+
+msgid "Unstaged Changes"
+msgstr "未ステージの変更"
+
+msgid "Unstaged edits are lost"
+msgstr "ステージしていない編集は消えます"
+
+msgid "Unsupported remote URL: {}"
+msgstr "サポートされていないリモート URL です: {}"
+
+msgid "Untracked"
+msgstr "未追跡"
+
+msgid "Untracked files are not included unless they are staged."
+msgstr "未追跡のファイルは、ステージしない限り入りません。"
+
+msgid "Use Both"
+msgstr "両方を使用"
+
+msgid "Use {}"
+msgstr "{} を使用"
+
+msgid "Using the Git Graph"
+msgstr "コミットグラフの使い方"
+
+msgid "Using the MR box (add, exclude, create and compare)"
+msgstr "MR の箱の使い方 (入れる・除外・作成して比較)"
+
+msgid "View"
+msgstr "表示"
+
+msgid "View Branch Diff"
+msgstr "ブランチの差分を表示"
+
+msgid "View Changes"
+msgstr "変更を表示"
+
+msgid "View Commit"
+msgstr "コミットを表示"
+
+msgid "View Commit Diff"
+msgstr "コミットの差分を表示"
+
+msgid "View Diff"
+msgstr "差分を表示"
+
+msgid "View File"
+msgstr "ファイルを表示"
+
+msgid "View File History"
+msgstr "ファイルの履歴を表示"
+
+msgid "View Log"
+msgstr "ログを表示"
+
+msgid "View Merge Request"
+msgstr "マージリクエストを表示"
+
+msgid "View Options"
+msgstr "表示オプション"
+
+msgid "View Stash"
+msgstr "スタッシュを表示"
+
+msgid "View as MR Check…"
+msgstr "MR チェックとして見る…"
+
+msgid "View commit failed"
+msgstr "コミットの表示に失敗しました。"
+
+msgid "View on {}"
+msgstr "{} で表示"
+
+msgid "Went back to {short_old}."
+msgstr "{short_old} に戻しました。"
+
+msgid "Went back to {short_old}. The folded changes are staged."
+msgstr "{short_old} に戻しました。入れた変更はステージされています。"
+
+msgid "Went back to {} and deleted the scratch branch \"{}\"."
+msgstr "{} に戻り、一時ブランチ「{}」を削除しました。"
+
+msgid "Whatever you resolved along the way is thrown away"
+msgstr "途中で解決した内容は捨てられます"
+
+msgid "When on, the last message is filled in and committing replaces the last commit"
+msgstr "オンにすると直前のメッセージが入り、コミットで直前のコミットを置き換えます"
+
+msgid "Where the MR goes. The MR branch is created from here"
+msgstr "MR の向け先。MR ブランチはここから作ります"
+
+msgid "Where the commits come from. Used to check for left-out commits and for the final comparison"
+msgstr "コミットの出どころ。入れ忘れの確認と最後の比較に使います"
+
+msgid "Where would you like to initialize this git repository?"
+msgstr "この Git リポジトリをどこに初期化しますか?"
+
+msgid "With tens of thousands of them this takes about a minute, and other Git operations wait meanwhile. No data changes."
+msgstr "数万個あると 1 分ほどかかり、その間ほかの Git 操作は待たされます。データは変わりません。"
+
+msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
+msgstr "コンフリクトを解決してステージした状態で、途中で止まった操作の残りを進めます"
+
+msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
+msgstr "変更点だけを書いたテキスト (パッチ) をファイルに書き出します。作業ツリー / ステージ済み / 直近のコミットから選べます。ファイル自体は変わりません"
+
+msgid "Writes to your user's Git settings as a whole (--global)"
+msgstr "自分のユーザーの Git 設定全体 (--global) に書き込みます"
+
+msgid "You do not have write access to this project"
+msgstr "このプロジェクトへの書き込み権限がありません"
+
+msgid "You must resolve conflicts before committing"
+msgstr "コミットする前にコンフリクトを解決してください"
+
+msgid "and {left_out} more"
+msgstr "ほか {left_out} 個"
+
+msgid "and {more} more"
+msgstr "ほか {more} 個"
+
+msgid "author:alice"
+msgstr "著者:山田"
+
+msgid "branch:feature"
+msgstr "ブランチ:feature"
+
+msgid "change:foo"
+msgstr "変更:foo"
+
+msgid "cherry-pick / squash / create an MR branch (also on right-click)"
+msgstr "cherry-pick / squash / MR 用ブランチ作成 (行を右クリックしても出ます)"
+
+msgid "discard the changes too"
+msgstr "変更ごと捨てる"
+
+msgid "e.g. 2026-09-30"
+msgstr "例: 2026-09-30"
+
+msgid "e.g. 2w, 2026-09-01"
+msgstr "例: 2週間、2026-09-01"
+
+msgid "e.g. feature/login"
+msgstr "例: feature/login"
+
+msgid "e.g. mr/new-feature"
+msgstr "例: mr/新しい機能"
+
+msgid "e.g. src/ or *.rs"
+msgstr "例: src/ や *.rs"
+
+msgid "e.g. v1.2"
+msgstr "例: v1.2"
+
+msgid "file:src/"
+msgstr "ファイル:src/"
+
+msgid "git push --force overwrites {branch_name} on the remote.\nWithout a lease, commits others pushed since the last fetch are lost as well."
+msgstr "git push --force で {branch_name} をリモートに上書きします。\nlease を使わないため、前回のフェッチ以降に他の人がプッシュしたコミットも失われます。"
+
+msgid "git push --force-with-lease overwrites {branch_name} on the remote.\nIf others pushed commits since the last fetch, it stops without overwriting them."
+msgstr "git push --force-with-lease で {branch_name} をリモートに上書きします。\n前回のフェッチ以降に他の人がプッシュしたコミットがあれば、上書きせずに止まります。"
+
+msgid "keep the changes staged"
+msgstr "変更をステージに残す"
+
+msgid "merge:no"
+msgstr "マージ:いいえ"
+
+msgid "since:2w  until:2026-09-01"
+msgstr "以降:2週間  以前:2026-09-01"
+
+msgid "tag:v1.2"
+msgstr "タグ:v1.2"
+
+msgid "unstage only, keep the files"
+msgstr "ステージだけ解除、ファイルは残す"
+
+msgid "{branch} is checked out in another worktree ({path}), so it cannot be moved."
+msgstr "{branch} は別のワークツリー ({path}) でチェックアウト中なので動かせません。"
+
+msgid "{branch}, which is not checked out, will point to {short_sha}. The working tree does not change."
+msgstr "チェックアウトしていない {branch} が {short_sha} を指すようになります。作業ツリーは変わりません。"
+
+msgid "{count} Changed File"
+msgid_plural "{count} Changed Files"
+msgstr[0] "変更されたファイル {count} 件"
+
+msgid "{count} Commit Selected"
+msgid_plural "{count} Commits Selected"
+msgstr[0] "{count} 件を選択中"
+
+msgid "{count} base change possibly missing"
+msgid_plural "{count} base changes possibly missing"
+msgstr[0] "基点の変更が入っていない可能性 {count}"
+
+msgid "{count} branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "ブランチ・タグがファイルのまま {count} 個あります。まとめると Git が速くなります。"
+
+msgid "{count} commit"
+msgid_plural "{count} commits"
+msgstr[0] "{count} 件"
+
+msgid "{count} commit is already in the box."
+msgid_plural "{count} commits are already in the box."
+msgstr[0] "{count} 件は既に箱に入っています。"
+
+msgid "{count} commit is not placed. Create the MR branch anyway?"
+msgid_plural "{count} commits are not placed. Create the MR branch anyway?"
+msgstr[0] "未配置のコミットが {count} 件あります。このまま作成しますか?"
+
+msgid "{count} commit:"
+msgid_plural "{count} commits:"
+msgstr[0] "{count} 件:"
+
+msgid "{count} excluded commit."
+msgid_plural "{count} excluded commits."
+msgstr[0] "除外したコミット {count} 件。"
+
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count} ファイル"
+
+msgid "{count} file changed on the development branch: {matched} matching / {mismatched} not matching"
+msgid_plural "{count} files changed on the development branch: {matched} matching / {mismatched} not matching"
+msgstr[0] "開発ブランチの変更 {count} ファイル: 一致 {matched} / 不一致 {mismatched}"
+
+msgid "{count} file differs. Choose it from the list on the left to show the contents side by side."
+msgid_plural "{count} files differ. Choose one from the list on the left to show the contents side by side."
+msgstr[0] "{count} 個のファイルに差分があります。左の一覧から選ぶと中身を並べて表示します。"
+
+msgid "{count} file possibly missing"
+msgid_plural "{count} files possibly missing"
+msgstr[0] "入れ忘れの疑いが {count} ファイルあります"
+
+msgid "{count} merge commit (not included)"
+msgid_plural "{count} merge commits (not included)"
+msgstr[0] "マージコミット (対象外) {count} 件"
+
+msgid "{count} more commit"
+msgid_plural "{count} more commits"
+msgstr[0] "ほか {count} 件のコミット"
+
+msgid "{count} or more branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "ブランチ・タグがファイルのまま {count} 個以上あります。まとめると Git が速くなります。"
+
+msgid "{count} selected"
+msgid_plural "{count} selected"
+msgstr[0] "{count} 件選択中"
+
+msgid "{count} unplaced commit"
+msgid_plural "{count} unplaced commits"
+msgstr[0] "未配置 {count} 件"
+
+msgid "{explanation}."
+msgstr "{explanation}。"
+
+msgid "{explanation}. Caution: {caution}."
+msgstr "{explanation}。注意: {caution}"
+
+msgid "{headline}: could not run\n{error}"
+msgstr "{headline}を実行できませんでした\n{error}"
+
+msgid "{headline}: done"
+msgstr "{headline}: 完了しました"
+
+msgid "{headline}: failed\n{failure}"
+msgstr "{headline}に失敗しました\n{failure}"
+
+msgid "{hedge}Creating the MR branch stopped on the scratch branch \"{scratch_branch}\". {resolve}\n{abort}\nOnce \"Continue\" has applied the remaining commits, \"Next Steps\" in the Git Graph's \"MR Box\" updates the MR branch and goes back to the original branch."
+msgstr "{hedge}MR ブランチの作成が一時ブランチ「{scratch_branch}」の上で止まっています。{resolve}\n{abort}\n「続行」で残りのコミットを当て終えたら、コミットグラフの「MR の箱」の「続きの手順」で MR ブランチに反映して元のブランチに戻ります。"
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\n\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch (the partly rewritten commits stay only in git reflog).\nIf you carry on with \"Continue\", you have to move the original branch onto the result yourself (git rebase --onto)."
+msgstr "{hedge}コミットの書き換えが一時ブランチ「{scratch_branch}」の上で止まっています。{resolve}\n「中止」を押すと元のブランチ「{origin_branch}」に戻り、この一時ブランチは削除されます (途中まで書き換えたコミットは git reflog にだけ残ります)。\n「続行」で残りを進めた場合は、元のブランチへの付け替え (git rebase --onto) を自分で行う必要があります。"
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\nThe original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "{hedge}コミットの書き換えが一時ブランチ「{scratch_branch}」の上で止まっています。{resolve}\n元のブランチが分からないため、「中止」を押しても元のブランチには戻りません。中止した後に自分で切り替えてください。"
+
+msgid "{hidden} more (keep typing to narrow them down)"
+msgstr "ほか {hidden} 件 (続けて入力すると絞り込めます)"
+
+msgid "{merge_request_base} and {source} have no common ancestor (unrelated histories). The MR check cannot run."
+msgstr "{merge_request_base} と {source} には共通の祖先がありません (関係の無い履歴です)。MR チェックはできません。"
+
+msgid "{merge_request_base} and {source} have {} common ancestors (a criss-cross merge). The MR check cannot tell where to compare from, so it cannot run."
+msgstr "{merge_request_base} と {source} の共通の祖先が {} 個あります (交差したマージ)。どこから比べるか決められないため、MR チェックはできません。"
+
+msgid "{reason}."
+msgstr "{reason}。"
+
+msgid "{}\nHowever, {}"
+msgstr "{}\nただし、{}"
+
+msgid "{}\nRuns git {} --abort. If no rebase is running, git refuses; if one is, whatever was partly resolved is lost."
+msgstr "{}\ngit {} --abort を実行します。リベースが動いていなければ git が断り、動いていれば解決しかけた内容は失われます。"
+
+msgid "{} Excluded"
+msgstr "除外 {} 件"
+
+msgid "{} also changed on the base"
+msgstr "基点側でも変更 {}"
+
+msgid "{} and {} have the same contents."
+msgstr "{} と {} は同じ中身です。"
+
+msgid "{} excluded"
+msgstr "除外 {}"
+
+msgid "{} more omitted"
+msgstr "ほか {} 件は省略しました"
+
+msgid "{} of the excluded commits are not in the recent history of the development branch (at most {MAX_EXCLUDED_COMMIT_LOOKUPS} can be looked up at once)."
+msgstr "除外したコミットのうち {} 件が開発ブランチの最近の履歴にありません (一度に調べられるのは {MAX_EXCLUDED_COMMIT_LOOKUPS} 件までです)。"
+
+msgid "{} possibly missing"
+msgstr "入れ忘れの疑い {}"
+
+msgid "{} stopped partway"
+msgstr "{}が途中で止まっています"
+
+msgctxt "amend checkbox"
+msgid "Amend"
+msgstr "直前のコミットを修正 (amend)"
+
+msgctxt "commit action"
+msgid "Add Current Changes (fixup)"
+msgstr "今の変更を入れる (fixup)"
+
+msgctxt "commit action"
+msgid "Add to MR Box"
+msgstr "MR の箱に入れる"
+
+msgctxt "commit action"
+msgid "Add to MR Box ({count} Commit)"
+msgid_plural "Add to MR Box ({count} Commits)"
+msgstr[0] "MR の箱に入れる ({count} 件)"
+
+msgctxt "commit action"
+msgid "Amend Last Commit"
+msgstr "直前のコミットを修正 (amend)"
+
+msgctxt "commit action"
+msgid "Branch from Here"
+msgstr "ここからブランチ"
+
+msgctxt "commit action"
+msgid "Check Out"
+msgstr "チェックアウト"
+
+msgctxt "commit action"
+msgid "Cherry-Pick"
+msgstr "取り込む (cherry-pick)"
+
+msgctxt "commit action"
+msgid "Cherry-Pick {count} Commit"
+msgid_plural "Cherry-Pick {count} Commits"
+msgstr[0] "{count} 件を取り込む"
+
+msgctxt "commit action"
+msgid "Exclude from MR"
+msgstr "MR から除外する"
+
+msgctxt "commit action"
+msgid "More"
+msgstr "その他"
+
+msgctxt "commit action"
+msgid "Reorder / Squash / Drop…"
+msgstr "並べ替え / まとめる / 捨てる…"
+
+msgctxt "commit action"
+msgid "Reset to This Commit"
+msgstr "このコミットまで戻す"
+
+msgctxt "commit action"
+msgid "Revert"
+msgstr "打ち消す (revert)"
+
+msgctxt "commit action"
+msgid "Reword Message"
+msgstr "メッセージを書き換え"
+
+msgctxt "commit action"
+msgid "Stop Excluding from MR"
+msgstr "MR の除外をやめる"
+
+msgctxt "commit modal"
+msgid "Signoff"
+msgstr "Signed-off-by を付ける"
+
+msgctxt "commit search"
+msgid "Advanced"
+msgstr "詳細"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "著者"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "ブランチ"
+
+msgctxt "commit search"
+msgid "Changed Text"
+msgstr "変更内容"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "ファイル"
+
+msgctxt "commit search"
+msgid "Merges"
+msgstr "マージ"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "以降"
+
+msgctxt "commit search"
+msgid "Stop"
+msgstr "中止"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "タグ"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "以前"
+
+msgctxt "file status"
+msgid "Added"
+msgstr "追加"
+
+msgctxt "file status"
+msgid "Deleted"
+msgstr "削除"
+
+msgctxt "file status"
+msgid "Modified"
+msgstr "変更"
+
+msgctxt "git graph hints"
+msgid "Guide"
+msgstr "操作ガイド"
+
+msgctxt "git graph toolbar"
+msgid "Compare…"
+msgstr "比較…"
+
+msgctxt "git graph toolbar"
+msgid "Create MR"
+msgstr "MR を作る"
+
+msgctxt "git graph toolbar"
+msgid "Tags"
+msgstr "タグ一覧"
+
+msgctxt "git history"
+msgid "Drop"
+msgstr "取り除く"
+
+msgctxt "git history"
+msgid "Go Back"
+msgstr "戻す"
+
+msgctxt "git operation"
+msgid "Abort (--abort)"
+msgstr "中止 (--abort)"
+
+msgctxt "git operation"
+msgid "Add Current Changes (fixup)"
+msgstr "今の変更を入れる (fixup)"
+
+msgctxt "git operation"
+msgid "Add Remote (remote add)"
+msgstr "リモートを追加 (remote add)"
+
+msgctxt "git operation"
+msgid "Add to .git/info/exclude"
+msgstr ".git/info/exclude に追加"
+
+msgctxt "git operation"
+msgid "Add to .gitignore"
+msgstr ".gitignore に追加"
+
+msgctxt "git operation"
+msgid "All Branches"
+msgstr "すべてのブランチ"
+
+msgctxt "git operation"
+msgid "Amend Last Commit"
+msgstr "直前のコミットを修正 (amend)"
+
+msgctxt "git operation"
+msgid "Apply Patch File (apply)"
+msgstr "パッチファイルを適用 (apply)"
+
+msgctxt "git operation"
+msgid "Branch from Here"
+msgstr "ここからブランチ"
+
+msgctxt "git operation"
+msgid "Check Out"
+msgstr "チェックアウト"
+
+msgctxt "git operation"
+msgid "Cherry-Pick"
+msgstr "取り込む (cherry-pick)"
+
+msgctxt "git operation"
+msgid "Cherry-Pick Selected"
+msgstr "まとめて取り込む (cherry-pick)"
+
+msgctxt "git operation"
+msgid "Co-Authors (Co-authored-by)"
+msgstr "共同作成者 (Co-authored-by)"
+
+msgctxt "git operation"
+msgid "Commit"
+msgstr "コミット (commit)"
+
+msgctxt "git operation"
+msgid "Compare"
+msgstr "比較"
+
+msgctxt "git operation"
+msgid "Continue (--continue)"
+msgstr "続行 (--continue)"
+
+msgctxt "git operation"
+msgid "Copy Path"
+msgstr "パスをコピー"
+
+msgctxt "git operation"
+msgid "Copy Relative Path"
+msgstr "相対パスをコピー"
+
+msgctxt "git operation"
+msgid "Create MR"
+msgstr "MR を作る"
+
+msgctxt "git operation"
+msgid "Create Patch File (diff)"
+msgstr "パッチファイルを作成 (diff)"
+
+msgctxt "git operation"
+msgid "Create from Default Branch"
+msgstr "既定のブランチから新規作成"
+
+msgctxt "git operation"
+msgid "Delete Branch (branch -d)"
+msgstr "ブランチを削除 (branch -d)"
+
+msgctxt "git operation"
+msgid "Discard Changes (restore)"
+msgstr "変更を破棄 (restore)"
+
+msgctxt "git operation"
+msgid "Discard Tracked Changes (restore)"
+msgstr "追跡中の変更を破棄 (restore)"
+
+msgctxt "git operation"
+msgid "Distance from Tag"
+msgstr "タグからの距離"
+
+msgctxt "git operation"
+msgid "Drop"
+msgstr "捨てる (drop)"
+
+msgctxt "git operation"
+msgid "Drop Stash (stash drop)"
+msgstr "スタッシュを破棄 (stash drop)"
+
+msgctxt "git operation"
+msgid "Exclude from MR"
+msgstr "MR から除外する"
+
+msgctxt "git operation"
+msgid "Fetch"
+msgstr "フェッチ (fetch)"
+
+msgctxt "git operation"
+msgid "Fetch From (fetch)"
+msgstr "取得元を指定してフェッチ (fetch)"
+
+msgctxt "git operation"
+msgid "File History (log)"
+msgstr "ファイルの履歴 (log)"
+
+msgctxt "git operation"
+msgid "Filter Branches"
+msgstr "ブランチを絞り込み"
+
+msgctxt "git operation"
+msgid "Force Delete Branch (branch -D)"
+msgstr "ブランチを強制削除 (branch -D)"
+
+msgctxt "git operation"
+msgid "Force Push (push --force-with-lease)"
+msgstr "強制プッシュ (push --force-with-lease)"
+
+msgctxt "git operation"
+msgid "Force Push Without Lease (push --force)"
+msgstr "強制プッシュ (lease なし, push --force)"
+
+msgctxt "git operation"
+msgid "Git Guide"
+msgstr "Git の操作ガイド"
+
+msgctxt "git operation"
+msgid "Group by Staged and Unstaged"
+msgstr "ステージ済みと未ステージで分ける"
+
+msgctxt "git operation"
+msgid "Group by Tracked and Untracked"
+msgstr "追跡中と未追跡で分ける"
+
+msgctxt "git operation"
+msgid "Initialize Repository (init)"
+msgstr "リポジトリを初期化 (init)"
+
+msgctxt "git operation"
+msgid "List View"
+msgstr "リスト表示"
+
+msgctxt "git operation"
+msgid "Local Branches"
+msgstr "ローカルブランチ"
+
+msgctxt "git operation"
+msgid "MR Box"
+msgstr "MR の箱"
+
+msgctxt "git operation"
+msgid "Merge Branch"
+msgstr "ブランチをマージ (merge)"
+
+msgctxt "git operation"
+msgid "More"
+msgstr "その他"
+
+msgctxt "git operation"
+msgid "Move File to Trash"
+msgstr "ファイルをゴミ箱へ"
+
+msgctxt "git operation"
+msgid "Move Untracked Files to Trash"
+msgstr "未追跡ファイルをゴミ箱へ"
+
+msgctxt "git operation"
+msgid "No Grouping"
+msgstr "グループなし"
+
+msgctxt "git operation"
+msgid "Open Diff"
+msgstr "差分を開く"
+
+msgctxt "git operation"
+msgid "Open File Diff"
+msgstr "ファイルの差分を開く"
+
+msgctxt "git operation"
+msgid "Pop This Stash (stash pop)"
+msgstr "スタッシュを取り出す (stash pop)"
+
+msgctxt "git operation"
+msgid "Publish (push --set-upstream)"
+msgstr "発行 (push --set-upstream)"
+
+msgctxt "git operation"
+msgid "Pull"
+msgstr "プル (pull)"
+
+msgctxt "git operation"
+msgid "Pull with Rebase (pull --rebase)"
+msgstr "リベースしてプル (pull --rebase)"
+
+msgctxt "git operation"
+msgid "Push"
+msgstr "プッシュ (push)"
+
+msgctxt "git operation"
+msgid "Push To (push)"
+msgstr "プッシュ先を指定してプッシュ (push)"
+
+msgctxt "git operation"
+msgid "Remote Branches"
+msgstr "リモートブランチ"
+
+msgctxt "git operation"
+msgid "Remove Remote (remote remove)"
+msgstr "リモートを削除 (remote remove)"
+
+msgctxt "git operation"
+msgid "Reorder / Squash / Drop"
+msgstr "並べ替え / まとめる / 捨てる"
+
+msgctxt "git operation"
+msgid "Republish (push --set-upstream)"
+msgstr "再発行 (push --set-upstream)"
+
+msgctxt "git operation"
+msgid "Reset to Remote (reset --hard)"
+msgstr "リモートに強制的に合わせる (reset --hard)"
+
+msgctxt "git operation"
+msgid "Reset to This Commit"
+msgstr "このコミットまで戻す (reset)"
+
+msgctxt "git operation"
+msgid "Reset: hard"
+msgstr "戻す: hard"
+
+msgctxt "git operation"
+msgid "Reset: mixed"
+msgstr "戻す: mixed"
+
+msgctxt "git operation"
+msgid "Reset: soft"
+msgstr "戻す: soft"
+
+msgctxt "git operation"
+msgid "Restore All (restore)"
+msgstr "すべて元に戻す (restore)"
+
+msgctxt "git operation"
+msgid "Restore File (restore)"
+msgstr "ファイルを元に戻す (restore)"
+
+msgctxt "git operation"
+msgid "Restore Hunk (restore)"
+msgstr "変更箇所を元に戻す (restore)"
+
+msgctxt "git operation"
+msgid "Revert"
+msgstr "打ち消す (revert)"
+
+msgctxt "git operation"
+msgid "Reword Message"
+msgstr "メッセージの書き換え (reword)"
+
+msgctxt "git operation"
+msgid "Show"
+msgstr "表示"
+
+msgctxt "git operation"
+msgid "Show Diff"
+msgstr "差分を表示 (diff)"
+
+msgctxt "git operation"
+msgid "Signoff"
+msgstr "サインオフ (signoff)"
+
+msgctxt "git operation"
+msgid "Skip (--skip)"
+msgstr "スキップ (--skip)"
+
+msgctxt "git operation"
+msgid "Skip Hooks (--no-verify)"
+msgstr "フックをスキップ (--no-verify)"
+
+msgctxt "git operation"
+msgid "Sort by Name"
+msgstr "名前順"
+
+msgctxt "git operation"
+msgid "Sort by Path"
+msgstr "パス順"
+
+msgctxt "git operation"
+msgid "Squash into One"
+msgstr "1 つにまとめる (squash)"
+
+msgctxt "git operation"
+msgid "Stage All"
+msgstr "すべてステージ (stage)"
+
+msgctxt "git operation"
+msgid "Stage All in Section"
+msgstr "見出しの中をすべてステージ (stage)"
+
+msgctxt "git operation"
+msgid "Stage File"
+msgstr "ファイルをステージ (stage)"
+
+msgctxt "git operation"
+msgid "Stage Folder"
+msgstr "フォルダーをステージ (stage)"
+
+msgctxt "git operation"
+msgid "Stage Hunk"
+msgstr "変更箇所をステージ (stage)"
+
+msgctxt "git operation"
+msgid "Staged Changes"
+msgstr "ステージ済みの変更"
+
+msgctxt "git operation"
+msgid "Stash All"
+msgstr "すべて退避 (stash)"
+
+msgctxt "git operation"
+msgid "Stash Pop"
+msgstr "スタッシュをポップ (stash pop)"
+
+msgctxt "git operation"
+msgid "Stash Staged (stash --staged)"
+msgstr "ステージ済みを退避 (stash --staged)"
+
+msgctxt "git operation"
+msgid "Stash Tracked"
+msgstr "追跡中を退避 (stash)"
+
+msgctxt "git operation"
+msgid "Stop Excluding from MR"
+msgstr "MR の除外をやめる"
+
+msgctxt "git operation"
+msgid "Switch Branch"
+msgstr "ブランチを切り替え (switch)"
+
+msgctxt "git operation"
+msgid "Tag"
+msgstr "タグ (tag)"
+
+msgctxt "git operation"
+msgid "Tags"
+msgstr "タグ一覧"
+
+msgctxt "git operation"
+msgid "Toggle Staged"
+msgstr "ステージ状態を切り替え"
+
+msgctxt "git operation"
+msgid "Tree View"
+msgstr "ツリー表示"
+
+msgctxt "git operation"
+msgid "Trust Directory (safe.directory)"
+msgstr "ディレクトリを信頼 (safe.directory)"
+
+msgctxt "git operation"
+msgid "Uncommit (reset --soft)"
+msgstr "コミットを取り消す (reset --soft)"
+
+msgctxt "git operation"
+msgid "Unstage All"
+msgstr "すべてアンステージ (unstage)"
+
+msgctxt "git operation"
+msgid "Unstage All in Section"
+msgstr "見出しの中をすべてアンステージ (unstage)"
+
+msgctxt "git operation"
+msgid "Unstage File"
+msgstr "ファイルをアンステージ (unstage)"
+
+msgctxt "git operation"
+msgid "Unstage Folder"
+msgstr "フォルダーをアンステージ (unstage)"
+
+msgctxt "git operation"
+msgid "Unstage Hunk"
+msgstr "変更箇所をアンステージ (unstage)"
+
+msgctxt "git operation"
+msgid "Unstaged Changes"
+msgstr "未ステージの変更"
+
+msgctxt "git operation"
+msgid "Use Both"
+msgstr "両方を使用"
+
+msgctxt "git operation"
+msgid "Use Ours"
+msgstr "上側を使用 (ours)"
+
+msgctxt "git operation"
+msgid "Use Theirs"
+msgstr "下側を使用 (theirs)"
+
+msgctxt "git operation"
+msgid "View File"
+msgstr "ファイルを表示"
+
+msgctxt "git operation"
+msgid "View Options"
+msgstr "表示オプション"
+
+msgctxt "git operation"
+msgid "View Stash"
+msgstr "スタッシュを表示"
+
+msgctxt "git operation"
+msgid "View Stash List (stash list)"
+msgstr "スタッシュを表示 (stash list)"
+
+msgctxt "git panel view options"
+msgid "Name"
+msgstr "名前"
+
+msgctxt "git panel view options"
+msgid "None"
+msgstr "なし"
+
+msgctxt "git panel view options"
+msgid "Path"
+msgstr "パス"
+
+msgctxt "git panel view options"
+msgid "View"
+msgstr "表示"
+
+msgctxt "git prompt"
+msgid "Cherry-Pick"
+msgstr "取り込む"
+
+msgctxt "git prompt"
+msgid "Go Back"
+msgstr "戻す"
+
+msgctxt "git prompt"
+msgid "Move"
+msgstr "移動する"
+
+msgctxt "git prompt"
+msgid "Rewrite"
+msgstr "書き換える"
+
+msgctxt "git prompt"
+msgid "Squash"
+msgstr "まとめる"
+
+msgctxt "git prompt"
+msgid "Switch and Cherry-Pick"
+msgstr "切り替えて取り込む"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "コミットの取り込み (cherry-pick)"
+
+msgctxt "git result"
+msgid "Edit commits"
+msgstr "コミットの編集"
+
+msgctxt "git result"
+msgid "Move branch"
+msgstr "ブランチの移動"
+
+msgctxt "git result"
+msgid "Reorder commits"
+msgstr "コミットの並べ替え"
+
+msgctxt "git result"
+msgid "Reset branch"
+msgstr "ブランチを戻す (reset)"
+
+msgctxt "git result"
+msgid "Squash"
+msgstr "まとめる (squash)"
+
+msgctxt "git result"
+msgid "Squash commits"
+msgstr "コミットをまとめる (squash)"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "ブランチの切り替え"
+
+msgctxt "git rewrite"
+msgid "Keep"
+msgstr "そのまま"
+
+msgctxt "git rewrite"
+msgid "Move Down"
+msgstr "1 つ下へ"
+
+msgctxt "git rewrite"
+msgid "Move Up"
+msgstr "1 つ上へ"
+
+msgctxt "git rewrite"
+msgid "Reword"
+msgstr "メッセージを変更"
+
+msgctxt "git sequencer"
+msgid "Abort"
+msgstr "中止"
+
+msgctxt "git sequencer"
+msgid "Continue"
+msgstr "続行"
+
+msgctxt "git sequencer"
+msgid "Skip"
+msgstr "スキップ"
+
+msgctxt "git sequencer prompt"
+msgid "Abort"
+msgstr "中止する"
+
+msgctxt "git sequencer prompt"
+msgid "Cancel"
+msgstr "やめる"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "log source"
+msgid "All Branches"
+msgstr "すべてのブランチ"
+
+msgctxt "log source"
+msgid "File History"
+msgstr "ファイル履歴"
+
+msgctxt "merge commits"
+msgid "Exclude"
+msgstr "除く"
+
+msgctxt "merge commits"
+msgid "Include"
+msgstr "含む"
+
+msgctxt "merge commits"
+msgid "Only"
+msgstr "だけ"
+
+msgctxt "merge request box"
+msgid "Base"
+msgstr "基点"
+
+msgctxt "merge request box"
+msgid "Create"
+msgstr "作成する"
+
+msgctxt "merge request box"
+msgid "Message"
+msgstr "メッセージ"
+
+msgctxt "merge request check"
+msgid "All"
+msgstr "すべて"
+
+msgctxt "pack refs"
+msgid "Pack"
+msgstr "まとめる"
+
+msgctxt "remove remote"
+msgid "Remove"
+msgstr "削除"
+
+msgctxt "two sentences"
+msgid "{0} {1}"
+msgstr "{0}{1}"

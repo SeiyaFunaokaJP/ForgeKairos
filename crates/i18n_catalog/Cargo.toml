@@ -14,6 +14,9 @@ path = "src/i18n_catalog.rs"
 doctest = false
 
 [features]
+# Bundles the PO files into debug builds too, which otherwise read them from
+# the source tree: the remote server runs where there is none.
+debug-embed = ["rust-embed/debug-embed"]
 test-support = []
 
 [dependencies]

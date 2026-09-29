@@ -23,6 +23,7 @@ fs.workspace = true
 futures.workspace = true
 fuzzy.workspace = true
 gpui.workspace = true
+i18n.workspace = true
 language.workspace = true
 log.workspace = true
 markdown.workspace = true
@@ -51,6 +52,7 @@ editor = { workspace = true, features = ["test-support"] }
 extension.workspace = true
 gpui = { workspace = true, features = ["test-support"] }
 http_client.workspace = true
+i18n_catalog = { workspace = true, features = ["test-support"] }
 indoc.workspace = true
 language = { workspace = true, features = ["test-support"] }
 markdown = { workspace = true, features = ["test-support"] }

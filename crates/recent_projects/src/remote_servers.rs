@@ -223,7 +223,7 @@ impl PickerDelegate for DevContainerPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Dev Container の構成を選択".into()
+        i18n::t!("Select Dev Container Configuration").into()
     }
 
     fn update_matches(
@@ -327,7 +327,7 @@ impl PickerDelegate for DevContainerPickerDelegate {
                 .border_t_1()
                 .border_color(cx.theme().colors().border_variant)
                 .child(
-                    Button::new("run-action", "Dev Container を起動")
+                    Button::new("run-action", i18n::t!("Start Dev Container"))
                         .key_binding(
                             KeyBinding::for_action(&menu::Confirm, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -337,7 +337,7 @@ impl PickerDelegate for DevContainerPickerDelegate {
                         }),
                 )
                 .child(
-                    Button::new("run-action-secondary", "devcontainer.json を開く")
+                    Button::new("run-action-secondary", i18n::t!("Open devcontainer.json"))
                         .key_binding(
                             KeyBinding::for_action(&menu::SecondaryConfirm, cx)
                                 .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -363,7 +363,7 @@ impl EditNicknameState {
             .and_then(|state| state.nickname)
             .filter(|text| !text.is_empty());
         this.editor.update(cx, |this, cx| {
-            this.set_placeholder_text("このサーバーのニックネームを入力", window, cx);
+            this.set_placeholder_text(i18n::t!("Add a nickname for this server"), window, cx);
             if let Some(starting_text) = starting_text {
                 this.set_text(starting_text, window, cx);
             }
@@ -1106,11 +1106,11 @@ impl PickerDelegate for RemoteServerPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "リモートプロジェクトを検索…".into()
+        i18n::t!("Search remote projects…").into()
     }
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
-        Some("一致するリモートプロジェクトはありません。".into())
+        Some(i18n::t!("No matching remote projects.").into())
     }
 
     fn update_matches(
@@ -1275,25 +1275,31 @@ impl PickerDelegate for RemoteServerPickerDelegate {
                 server,
                 host_positions,
             } => self.render_server_header(*server, host_positions),
-            RemoteMatch::AddServer => {
-                Some(self.render_action_item(ix, IconName::Plus, "SSH サーバーに接続", selected))
-            }
-            RemoteMatch::AddDevContainer => {
-                Some(self.render_action_item(ix, IconName::Plus, "Dev Container に接続", selected))
-            }
+            RemoteMatch::AddServer => Some(self.render_action_item(
+                ix,
+                IconName::Plus,
+                i18n::t!("Connect SSH Server"),
+                selected,
+            )),
+            RemoteMatch::AddDevContainer => Some(self.render_action_item(
+                ix,
+                IconName::Plus,
+                i18n::t!("Connect Dev Container"),
+                selected,
+            )),
             RemoteMatch::AddWsl => Some(self.render_action_item(
                 ix,
                 IconName::Plus,
-                "WSL ディストリビューションを追加",
+                i18n::t!("Add WSL Distro"),
                 selected,
             )),
             RemoteMatch::OpenFolder { .. } => {
-                Some(self.render_action_item(ix, IconName::Plus, "フォルダーを開く", selected))
+                Some(self.render_action_item(ix, IconName::Plus, i18n::t!("Open Folder"), selected))
             }
             RemoteMatch::ViewServerOptions { .. } => Some(self.render_action_item(
                 ix,
                 IconName::Settings,
-                "サーバーオプションを表示",
+                i18n::t!("View Server Options"),
                 selected,
             )),
             RemoteMatch::Project {
@@ -1335,7 +1341,7 @@ impl PickerDelegate for RemoteServerPickerDelegate {
                                     .icon_size(IconSize::Small)
                                     .shape(IconButtonShape::Square)
                                     .size(ButtonSize::Large)
-                                    .tooltip(Tooltip::text("リモートプロジェクトを削除"))
+                                    .tooltip(Tooltip::text(i18n::t!("Delete Remote Project")))
                                     .on_click(cx.listener(move |_, _, _, cx| {
                                         let remote_project = remote_project.clone();
                                         remote_server_projects
@@ -1377,16 +1383,16 @@ impl PickerDelegate for RemoteServerPickerDelegate {
             h_flex()
                 .gap_1()
                 .child(
-                    Button::new("open_new_window", "新しいウィンドウ")
+                    Button::new("open_new_window", i18n::tc!("project picker", "New Window"))
                         .key_binding(KeyBinding::for_action(&menu::SecondaryConfirm, cx))
                         .on_click(|_, window, cx| {
                             window.dispatch_action(menu::SecondaryConfirm.boxed_clone(), cx)
                         }),
                 )
-                .child(confirm_button("開く".into()))
+                .child(confirm_button(i18n::t!("Open").into()))
                 .into_any_element()
         } else {
-            confirm_button("選択".into()).into_any_element()
+            confirm_button(i18n::t!("Select").into()).into_any_element()
         };
 
         Some(
@@ -1606,7 +1612,7 @@ impl RemoteServerProjects {
             Err(e) => {
                 self.mode = Mode::CreateRemoteServer(CreateRemoteServer {
                     address_editor: editor,
-                    address_error: Some(format!("解析できませんでした: {:?}", e).into()),
+                    address_error: Some(i18n::t!("could not parse: {:?}", e).into()),
                     ssh_prompt: None,
                     _creating: None,
                 });
@@ -1631,7 +1637,7 @@ impl RemoteServerProjects {
             window,
             cx,
         )
-        .prompt_err("接続できませんでした", window, cx, |_, _, _| None);
+        .prompt_err(i18n::t!("Failed to connect"), window, cx, |_, _, _| None);
 
         let address_editor = editor.clone();
         let creating = cx.spawn_in(window, async move |this, cx| {
@@ -1706,7 +1712,7 @@ impl RemoteServerProjects {
             window,
             cx,
         )
-        .prompt_err("接続できませんでした", window, cx, |_, _, _| None);
+        .prompt_err(i18n::t!("Failed to connect"), window, cx, |_, _, _| None);
 
         let wsl_picker = picker.clone();
         let creating = cx.spawn_in(window, async move |this, cx| {
@@ -1820,7 +1826,12 @@ impl RemoteServerProjects {
                     window,
                     cx,
                 )
-                .prompt_err("接続できませんでした", window, cx, |_, _, _| None);
+                .prompt_err(
+                    i18n::t!("Failed to connect"),
+                    window,
+                    cx,
+                    |_, _, _| None,
+                );
 
                 cx.spawn_in(window, async move |workspace, cx| {
                     let session = connect.await;
@@ -2055,9 +2066,9 @@ impl RemoteServerProjects {
                 let response = cx
                     .prompt(
                         gpui::PromptLevel::Critical,
-                        "接続できませんでした",
+                        i18n::t!("Failed to connect"),
                         Some(&format!("{error:#}")),
-                        &["再試行", "キャンセル"],
+                        &[i18n::t!("Retry"), i18n::t!("Cancel")],
                     )
                     .await;
                 if response != Ok(0) {
@@ -2297,9 +2308,9 @@ impl RemoteServerProjects {
                         let response = cx
                             .prompt(
                                 gpui::PromptLevel::Critical,
-                                "Dev Container を起動できませんでした。詳細はログを確認してください",
+                                i18n::t!("Failed to start Dev Container. See logs for details"),
                                 Some(&format!("{error}")),
-                                &["再試行", "キャンセル"],
+                                &[i18n::t!("Retry"), i18n::t!("Cancel")],
                             )
                             .await;
                         if response == Ok(0) {
@@ -2362,9 +2373,9 @@ impl RemoteServerProjects {
                 let response = cx
                     .prompt(
                         gpui::PromptLevel::Critical,
-                        "接続できませんでした",
+                        i18n::t!("Failed to connect"),
                         Some(&format!("{error:#}")),
-                        &["再試行", "キャンセル"],
+                        &[i18n::t!("Retry"), i18n::t!("Cancel")],
                     )
                     .await;
                 if response != Ok(0) {
@@ -2395,7 +2406,9 @@ impl RemoteServerProjects {
                                         .start_slot(
                                             Icon::new(IconName::XCircle).color(Color::Error),
                                         )
-                                        .child(Label::new("Dev Container の作成エラー:"))
+                                        .child(Label::new(i18n::t!(
+                                            "Error Creating Dev Container:"
+                                        )))
                                         .child(Label::new(message).buffer_font(cx)),
                                 ),
                             ),
@@ -2425,7 +2438,7 @@ impl RemoteServerProjects {
                                                 .color(Color::Muted)
                                                 .size(IconSize::Small),
                                         )
-                                        .child(Label::new("Zed のログを開く"))
+                                        .child(Label::new(i18n::t!("Open Zed Log")))
                                         .on_click(cx.listener(|_, _, window, cx| {
                                             window.dispatch_action(Box::new(OpenLog), cx);
                                             cx.emit(DismissEvent);
@@ -2456,7 +2469,7 @@ impl RemoteServerProjects {
                                                 .color(Color::Muted)
                                                 .size(IconSize::Small),
                                         )
-                                        .child(Label::new("終了"))
+                                        .child(Label::new(i18n::t!("Exit")))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.cancel(&menu::Cancel, window, cx);
                                             cx.notify();
@@ -2500,7 +2513,7 @@ impl RemoteServerProjects {
                                         h_flex()
                                             .opacity(0.6)
                                             .gap_1()
-                                            .child(Label::new("Dev Container を作成しています"))
+                                            .child(Label::new(i18n::t!("Creating Dev Container")))
                                             .child(LoadingLabel::new("")),
                                     ),
                             ),
@@ -2578,14 +2591,14 @@ impl RemoteServerProjects {
                                     .w_full()
                                     .gap_1()
                                     .child(
-                                        Label::new(
-                                            "このサーバーへ SSH 接続するコマンドを入力してください。",
-                                        )
+                                        Label::new(i18n::t!(
+                                            "Enter the command you use to SSH into this server."
+                                        ))
                                         .color(Color::Muted)
                                         .size(LabelSize::Small),
                                     )
                                     .child(
-                                        Button::new("learn-more", "詳細")
+                                        Button::new("learn-more", i18n::t!("Learn More"))
                                             .label_size(LabelSize::Small)
                                             .end_icon(
                                                 Icon::new(IconName::ArrowUpRight)
@@ -2710,7 +2723,7 @@ impl RemoteServerProjects {
                                         .start_slot(
                                             Icon::new(IconName::ArrowLeft).color(Color::Muted),
                                         )
-                                        .child(Label::new("戻る"))
+                                        .child(Label::new(i18n::t!("Go Back")))
                                         .on_click(cx.listener(|this, _, window, cx| {
                                             this.mode =
                                                 Mode::default_mode(&this.ssh_config_servers, cx);
@@ -2748,16 +2761,13 @@ impl RemoteServerProjects {
                 window: &mut Window,
                 cx: &mut App,
             ) {
-                let prompt_message = format!(
-                    "WSL ディストリビューション `{}` を削除しますか?",
-                    distro_name
-                );
+                let prompt_message = i18n::t!("Remove WSL distro `{}`?", distro_name);
 
                 let confirmation = window.prompt(
                     PromptLevel::Warning,
                     &prompt_message,
                     None,
-                    &["削除する", "削除しない"],
+                    &[i18n::t!("Yes, remove it"), i18n::t!("No, keep it")],
                     cx,
                 );
 
@@ -2790,7 +2800,7 @@ impl RemoteServerProjects {
                         .inset(true)
                         .spacing(ui::ListItemSpacing::Sparse)
                         .start_slot(Icon::new(IconName::Trash).color(Color::Error))
-                        .child(Label::new("ディストリビューションを削除").color(Color::Error))
+                        .child(Label::new(i18n::t!("Remove Distro")).color(Color::Error))
                         .on_click(cx.listener(move |_, _, window, cx| {
                             remove_wsl_distro(cx.entity(), index, distro_name.clone(), window, cx);
                         })),
@@ -2811,9 +2821,9 @@ impl RemoteServerProjects {
         v_flex()
             .child({
                 let label = if connection.nickname.is_some() {
-                    "ニックネームを編集"
+                    i18n::t!("Edit Nickname")
                 } else {
-                    "サーバーにニックネームを追加"
+                    i18n::t!("Add Nickname to Server")
                 };
                 div()
                     .id("ssh-options-add-nickname")
@@ -2847,8 +2857,8 @@ impl RemoteServerProjects {
                     workspace
                         .update(cx, |this, cx| {
                             struct SshServerAddressCopiedToClipboard;
-                            let notification = format!(
-                                "サーバーアドレス ({}) をクリップボードにコピーしました",
+                            let notification = i18n::t!(
+                                "Copied server address ({}) to clipboard",
                                 connection_string
                             );
 
@@ -2881,7 +2891,7 @@ impl RemoteServerProjects {
                             .inset(true)
                             .spacing(ui::ListItemSpacing::Sparse)
                             .start_slot(Icon::new(IconName::Copy).color(Color::Muted))
-                            .child(Label::new("サーバーアドレスをコピー"))
+                            .child(Label::new(i18n::t!("Copy Server Address")))
                             .end_slot(Label::new(connection_string.clone()).color(Color::Muted))
                             .show_end_slot_on_hover()
                             .on_click({
@@ -2900,14 +2910,13 @@ impl RemoteServerProjects {
                     window: &mut Window,
                     cx: &mut App,
                 ) {
-                    let prompt_message =
-                        format!("サーバー `{}` を削除しますか?", connection_string);
+                    let prompt_message = i18n::t!("Remove server `{}`?", connection_string);
 
                     let confirmation = window.prompt(
                         PromptLevel::Warning,
                         &prompt_message,
                         None,
-                        &["削除する", "削除しない"],
+                        &[i18n::t!("Yes, remove it"), i18n::t!("No, keep it")],
                         cx,
                     );
 
@@ -2946,7 +2955,7 @@ impl RemoteServerProjects {
                             .inset(true)
                             .spacing(ui::ListItemSpacing::Sparse)
                             .start_slot(Icon::new(IconName::Trash).color(Color::Error))
-                            .child(Label::new("サーバーを削除").color(Color::Error))
+                            .child(Label::new(i18n::t!("Remove Server")).color(Color::Error))
                             .on_click(cx.listener(move |_, _, window, cx| {
                                 remove_ssh_server(
                                     cx.entity(),

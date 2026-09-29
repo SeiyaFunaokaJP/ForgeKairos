@@ -721,7 +721,9 @@ impl ThreadItem {
                     workspace::Toast::new(
                         workspace::notifications::NotificationId::unique::<MissingAgentPanelToast>(
                         ),
-                        "エージェントパネルが見つからないので、スレッドを戻せません。",
+                        i18n::t!(
+                            "The thread cannot be moved back because the agent panel was not found."
+                        ),
                     )
                     .autohide(),
                     cx,
@@ -863,7 +865,7 @@ impl ThreadItem {
                     .icon_size(IconSize::Small)
                     .tooltip(move |_window, cx| {
                         Tooltip::for_action_in(
-                            "パネルに戻す",
+                            i18n::t!("Move Back to Panel"),
                             &MoveThreadToPanel,
                             &focus_handle,
                             cx,
@@ -1503,7 +1505,7 @@ mod tests {
             );
             assert!(
                 !item.handed_back,
-                "the thread was never handed back, so 「パネルに戻す」 must still work"
+                "the thread was never handed back, so \"Move Back to Panel\" must still work"
             );
             assert_eq!(
                 item.workspace.entity_id(),

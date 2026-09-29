@@ -81,10 +81,20 @@ fn fence_text(cx: &mut EditorTestContext) -> String {
 /// model emits turns this red.
 #[test]
 fn the_insert_template_is_the_source_the_model_writes_back() {
+    let check = |template: &str| {
+        let chart = parse_xychart(template)
+            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+        assert_eq!(emit_xychart(&chart), template);
+    };
+    check(editor::actions::MermaidDiagramKind::XyChart.template());
+
+    // The fences these tests open are the Japanese template, which is what a
+    // user with the Japanese catalog inserts.
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
     let template = editor::actions::MermaidDiagramKind::XyChart.template();
-    let chart = parse_xychart(template)
-        .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-    assert_eq!(emit_xychart(&chart), template);
+    check(template);
     assert!(
         TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
         "the fence these tests open should hold the insert template"
@@ -130,7 +140,7 @@ async fn categories_and_series_move_their_values_together(cx: &mut TestAppContex
 
     assert_eq!(
         fence_text(&mut cx),
-        "```mermaid\nxychart-beta horizontal\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title \"月別の売上\"\n    x-axis [\"一月\", \"3月\", \"4月\", \"項目5\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    line [30, 60, 80, 95]\n    bar [30, 60, 80, 90]\n    bar [0, 0, 0, 0]\n```\n"
+        "```mermaid\nxychart-beta horizontal\n    %% bar は棒、line は折れ線。値の数は x-axis の項目の数と揃える\n    title \"月別の売上\"\n    x-axis [\"一月\", \"3月\", \"4月\", \"Category 5\"]\n    y-axis \"売上 (万円)\" 0 --> 100\n    line [30, 60, 80, 95]\n    bar [30, 60, 80, 90]\n    bar [0, 0, 0, 0]\n```\n"
     );
 }
 
@@ -171,7 +181,7 @@ async fn what_mermaid_cannot_read_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("2 番目の値が空")),
+            .is_some_and(|message| message.contains("value 2 is empty")),
         "the modal should name the gap, got {message:?}"
     );
 
@@ -221,7 +231,7 @@ async fn a_new_category_names_the_first_value_past_the_categories(cx: &mut TestA
         fence_text(&mut cx),
         // The line's blank cells below its one value are values it does not
         // have, not gaps.
-        "```mermaid\nxychart\n    x-axis [a, b, \"項目3\"]\n    bar [1, 2, 3]\n    line [5]\n```\n"
+        "```mermaid\nxychart\n    x-axis [a, b, \"Category 3\"]\n    bar [1, 2, 3]\n    line [5]\n```\n"
     );
 }
 
@@ -249,7 +259,7 @@ async fn a_chart_mermaid_never_finishes_is_refused(cx: &mut TestAppContext) {
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("描画が終わりません")),
+            .is_some_and(|message| message.contains("never finishes drawing")),
         "the modal should say why, got {message:?}"
     );
 }

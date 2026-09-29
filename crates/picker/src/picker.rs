@@ -221,7 +221,7 @@ pub trait PickerDelegate: Sized + 'static {
     }
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str>;
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
-        Some("一致なし".into())
+        Some(i18n::t!("No matches").into())
     }
     fn update_matches(
         &mut self,
@@ -1401,14 +1401,14 @@ impl<D: PickerDelegate> Picker<D> {
                                     &focus_handle,
                                     cx,
                                 ))
-                                .child(Label::new("選択")),
+                                .child(Label::new(i18n::t!("Select"))),
                         )
                         .child(Divider::vertical())
                         .child(
                             h_flex()
                                 .gap_1()
                                 .child(KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx))
-                                .child(Label::new("開く")),
+                                .child(Label::new(i18n::t!("Open"))),
                         )
                         .into_any_element()
                 }))

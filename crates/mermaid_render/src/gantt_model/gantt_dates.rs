@@ -37,9 +37,9 @@ pub(super) fn task_times(source: &str) -> Result<Vec<TaskTime>> {
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .map_err(|error| anyhow!("{error}"))?
-        .ok_or_else(|| anyhow!("Mermaid の図として解釈できませんでした"))?;
+        .ok_or_else(|| anyhow!(i18n::t!("Mermaid could not read this as a diagram")))?;
     let RenderSemanticModel::Gantt(model) = parsed.into_parts().1 else {
-        bail!("ガントチャートではありません");
+        bail!(i18n::t!("This is not a Gantt chart"));
     };
     let mut tasks = model
         .tasks
@@ -103,7 +103,9 @@ pub(super) fn end_text(
         // `inclusiveEndDates` adds a day to an end that is read as a date.
         let shift = if inclusive { DAY } else { 0 };
         match date_format.map(str::trim).unwrap_or_default() {
-            "" => bail!("`dateFormat` が無いと終了を日付で書けません"),
+            "" => bail!(i18n::t!(
+                "Without `dateFormat`, the end cannot be written as a date"
+            )),
             "x" => Ok((moment - shift).to_string()),
             "X" => seconds_text(moment - shift),
             format => format_civil(local_civil(moment)? - shift, format),
@@ -114,14 +116,14 @@ pub(super) fn end_text(
 
 fn seconds_text(moment: i64) -> Result<String> {
     if moment % SECOND != 0 {
-        bail!("`X` (秒) では 1 秒未満を書けません");
+        bail!(i18n::t!("`X` (seconds) cannot express less than a second"));
     }
     Ok((moment / SECOND).to_string())
 }
 
 fn duration_text(length: i64) -> Result<String> {
     if length < 0 {
-        bail!("終了が開始より前です");
+        bail!(i18n::t!("The end is before the start"));
     }
     for (unit, size) in [("d", DAY), ("h", HOUR), ("m", MINUTE), ("s", SECOND)] {
         if length % size == 0 {
@@ -147,7 +149,9 @@ fn local_civil(moment: i64) -> Result<i64> {
         }
         guess += moment - read;
     }
-    bail!("この日時は現地時刻で書けません")
+    bail!(i18n::t!(
+        "This date and time cannot be written in local time"
+    ))
 }
 
 fn read_as_local(civil: i64) -> Result<i64> {
@@ -157,7 +161,7 @@ fn read_as_local(civil: i64) -> Result<i64> {
     task_times(&source)?
         .first()
         .map(|time| time.start)
-        .ok_or_else(|| anyhow!("日時を読み取れませんでした"))
+        .ok_or_else(|| anyhow!(i18n::t!("Could not read the date and time")))
 }
 
 /// The `dayjs` tokens, in the order `merman` tries them, so that a format is
@@ -220,14 +224,20 @@ impl Civil {
         Ok(match token {
             "YYYY" => {
                 if !(0..=9999).contains(&self.year) {
-                    bail!("{} 年は 4 桁で書けません", self.year);
+                    bail!(i18n::t!(
+                        "The year {} cannot be written with 4 digits",
+                        self.year
+                    ));
                 }
                 format!("{:04}", self.year)
             }
             // `merman` reads two digits up to 68 as 20xx and the rest as 19xx.
             "YY" => {
                 if !(1969..=2068).contains(&self.year) {
-                    bail!("{} 年は 2 桁で書けません", self.year);
+                    bail!(i18n::t!(
+                        "The year {} cannot be written with 2 digits",
+                        self.year
+                    ));
                 }
                 format!("{:02}", self.year % 100)
             }
@@ -244,8 +254,10 @@ impl Civil {
             "SSS" => format!("{:03}", self.millis),
             "SS" if self.millis % 10 == 0 => format!("{:02}", self.millis / 10),
             "S" if self.millis % 100 == 0 => (self.millis / 100).to_string(),
-            "SS" | "S" => bail!("`{token}` ではミリ秒を書き切れません"),
-            other => bail!("`dateFormat` の `{other}` には日付を書き込めません"),
+            "SS" | "S" => bail!(i18n::t!("`{token}` cannot hold the milliseconds exactly")),
+            other => bail!(i18n::t!(
+                "A date cannot be written into `{other}` of `dateFormat`"
+            )),
         })
     }
 }

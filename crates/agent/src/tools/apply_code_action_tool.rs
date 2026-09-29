@@ -65,12 +65,12 @@ impl AgentTool for ApplyCodeActionTool {
                     Some(pending.actions.get(index)?.lsp_action.title().to_string())
                 });
             if let Some(title) = title {
-                format!("コードアクションを適用: {title}").into()
+                i18n::t!("Apply code action: {title}").into()
             } else {
-                format!("コードアクション #{} を適用", input.index).into()
+                i18n::t!("Apply code action #{}", input.index).into()
             }
         } else {
-            "コードアクションを適用".into()
+            i18n::t!("Apply code action").into()
         }
     }
 
@@ -118,7 +118,7 @@ impl AgentTool for ApplyCodeActionTool {
             // here.
             cx.update(|cx| {
                 event_stream.authorize(
-                    format!("コードアクションを適用: {title}"),
+                    i18n::t!("Apply code action: {title}"),
                     crate::ToolPermissionContext::new(Self::NAME, vec![title.clone()]),
                     cx,
                 )
@@ -126,9 +126,9 @@ impl AgentTool for ApplyCodeActionTool {
             .await
             .map_err(|error| {
                 format!(
-                    "コードアクション '{title}' は適用されませんでした ({error})。\
-                     ユーザーが許可しなかったので、同じ変更を `edit_file` などで\
-                     代わりに適用しないでください。"
+                    "The code action '{title}' was not applied ({error}). The user did not \
+                     allow it, so don't make the same change another way, such as with \
+                     `edit_file`."
                 )
             })?;
 

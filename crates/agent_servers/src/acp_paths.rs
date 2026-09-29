@@ -631,10 +631,7 @@ impl AcpPathTranslator {
             .to_client(cwd)
             .map(PathBuf::from)
             .with_context(|| {
-                format!(
-                    "フォルダー {} をサンドボックスから見せられません",
-                    cwd.display()
-                )
+                i18n::t!("The folder {} can't be shown to the sandbox", cwd.display())
             })?;
         *additional_directories = additional_directories
             .iter()

@@ -100,32 +100,32 @@ impl UpdateButton {
     }
 
     pub fn checking() -> Self {
-        Self::new(IconName::LoadCircle, "Zed の更新を確認しています…")
+        Self::new(IconName::LoadCircle, i18n::t!("Checking for Zed Updates…"))
             .icon_animate(true)
             .disabled(true)
     }
 
     pub fn downloading(progress: Option<f32>) -> Self {
-        Self::new(IconName::Download, "Zed の更新をダウンロードしています…")
+        Self::new(IconName::Download, i18n::t!("Downloading Zed Update…"))
             .progress(progress)
             .disabled(true)
     }
 
     pub fn installing(version: impl Into<SharedString>) -> Self {
-        Self::new(IconName::LoadCircle, "Zed の更新をインストールしています…")
+        Self::new(IconName::LoadCircle, i18n::t!("Installing Zed Update…"))
             .icon_animate(true)
             .tooltip(version)
             .disabled(true)
     }
 
     pub fn updated(version: impl Into<SharedString>) -> Self {
-        Self::new(IconName::Download, "再起動して更新")
+        Self::new(IconName::Download, i18n::t!("Restart to Update"))
             .tooltip(version)
             .with_dismiss()
     }
 
     pub fn errored(error: impl Into<SharedString>) -> Self {
-        Self::new(IconName::Warning, "更新に失敗しました")
+        Self::new(IconName::Warning, i18n::t!("Failed to Update"))
             .icon_color(Color::Warning)
             .tooltip(error)
             .with_dismiss()
@@ -135,7 +135,7 @@ impl UpdateButton {
     /// the network allowlist does not permit (ADR-F16). Clicking it must ask
     /// before anything is added to the allowlist.
     pub fn needs_egress_consent(detail: impl Into<SharedString>) -> Self {
-        Self::new(IconName::Warning, "更新には許可が必要です")
+        Self::new(IconName::Warning, i18n::t!("Update Needs Permission"))
             .icon_color(Color::Warning)
             .tooltip(detail)
             .with_dismiss()
@@ -146,15 +146,13 @@ impl UpdateButton {
         version: impl std::fmt::Display,
         hosts: &[String],
     ) -> String {
-        format!(
-            "バージョン {version} をダウンロードするには {} への通信の許可が必要です",
-            hosts.join("、")
-        )
+        let hosts = hosts.join(i18n::tc!("list separator", ", "));
+        i18n::t!("Downloading version {version} needs network access to {hosts}")
     }
 
     // `crates/title_bar/src/update_version.rs` のテストが完全一致で照合している
     pub fn version_tooltip_message(version: impl std::fmt::Display) -> String {
-        format!("バージョン {version} に更新")
+        i18n::t!("Update to Version: {version}")
     }
 
     pub fn downloading_tooltip_message(
@@ -163,8 +161,8 @@ impl UpdateButton {
     ) -> String {
         let message = Self::version_tooltip_message(version);
         match progress {
-            Some(progress) => format!(
-                "{message} (ダウンロード済み {:.0}%)",
+            Some(progress) => i18n::t!(
+                "{message} ({:.0}% downloaded)",
                 progress.clamp(0.0, 1.0) * 100.0
             ),
             None => message,
@@ -232,7 +230,7 @@ impl RenderOnce for UpdateButton {
                         IconButton::new(dismiss_button_id, IconName::Close)
                             .icon_size(IconSize::Indicator)
                             .when_some(self.on_dismiss, |this, handler| this.on_click(handler))
-                            .tooltip(Tooltip::text("閉じる")),
+                            .tooltip(Tooltip::text(i18n::t!("Dismiss"))),
                     ),
                 )
             })
@@ -344,7 +342,7 @@ mod tests {
                         cx.new(|_| TestTooltip { rendered }).into()
                     }),
                 )
-                .child(UpdateButton::updated("バージョン 1.0.0 に更新"))
+                .child(UpdateButton::updated("Update to Version: 1.0.0"))
         }
     }
 

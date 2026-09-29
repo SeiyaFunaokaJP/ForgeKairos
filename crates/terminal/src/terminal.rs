@@ -2388,7 +2388,7 @@ impl Terminal {
     ) -> Result<()> {
         anyhow::ensure!(
             self.is_pty(),
-            "このターミナルは出力を記録できません (PTY がありません)"
+            i18n::t!("This terminal can't record its output (it has no PTY)")
         );
         self.session_log = None;
         let log = session_log::start(
@@ -3514,11 +3514,11 @@ impl Terminal {
         self.remote_connection_lost = true;
         // Only an attach that reached a holder knows of a shell that lives on;
         // one that never did may have failed to reach the host at all.
-        let notice = if self.remote_session_attached() {
+        let notice = i18n::tr(if self.remote_session_attached() {
             REMOTE_SESSION_DETACHED_NOTICE
         } else {
             REMOTE_CONNECTION_LOST_NOTICE
-        };
+        });
         // SAFETY: the child has exited, so the PTY reader produces no further
         // output that this write could interleave with, and the notice is
         // appended once because `remote_connection_lost` gates re-entry.
@@ -3659,12 +3659,13 @@ impl Terminal {
 /// Written into the grid of a remote terminal whose `ssh` process died with the
 /// connection, so the surviving tab explains why its shell stopped responding.
 pub const REMOTE_CONNECTION_LOST_NOTICE: &str =
-    "[リモート接続が切れました。再接続後に再起動します]";
+    i18n::msg!("[Remote connection lost. The shell will restart after reconnecting]");
 
 /// [`REMOTE_CONNECTION_LOST_NOTICE`] for a shell attached to a persistent
 /// session, which did not stop with the connection.
-pub const REMOTE_SESSION_DETACHED_NOTICE: &str =
-    "[リモート接続が切れました。シェルはリモートで動き続けています。再接続後に続きから表示します]";
+pub const REMOTE_SESSION_DETACHED_NOTICE: &str = i18n::msg!(
+    "[Remote connection lost. The shell keeps running on the remote host; its output will resume after reconnecting]"
+);
 
 const TASK_DELIMITER: &str = "⏵ ";
 fn task_summary(task: &TaskState, exit_status: Option<ExitStatus>) -> (bool, String, String) {

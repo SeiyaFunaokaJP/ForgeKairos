@@ -1,0 +1,939 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " Checks right away without waiting."
+msgstr "待たずにその場で調べます。"
+
+msgid " If it doesn't, runs the “On Timeout” steps and moves on."
+msgstr "出なければ「タイムアウト時」を実行して次へ進みます。"
+
+msgid " If it doesn't, stops the macro."
+msgstr "出なければマクロを中止します。"
+
+msgid " On a match, puts the line found into ${{{name}}}."
+msgstr "一致したときは見つかった行を ${{{name}}} に入れます。"
+
+msgid " On a match, puts the matched part into ${{{name}}}."
+msgstr "一致したときは見つかった部分を ${{{name}}} に入れます。"
+
+msgid " Puts the line found into ${{{name}}}."
+msgstr "見つかった行を ${{{name}}} に入れます。"
+
+msgid " Puts the matched part into ${{{name}}}."
+msgstr "見つかった部分を ${{{name}}} に入れます。"
+
+msgid "${{{name}}} (step {})"
+msgstr "${{{name}}} (ステップ {})"
+
+msgid "${{{name}}} gets its value only after this branch, so “Else” runs here."
+msgstr "${{{name}}} に値が入るのはこの分岐より後のため、ここでは「それ以外」を実行します。"
+
+msgid "(0 = repeat until stopped)"
+msgstr "(0 回は中止まで繰り返します)"
+
+msgid "(0 repeats until stopped)"
+msgstr "(0 は中止まで繰り返します)"
+
+msgid "(No folder)"
+msgstr "(フォルダーなし)"
+
+msgid "(None)"
+msgstr "(なし)"
+
+msgid "A folder with this name already exists."
+msgstr "同じ名前のフォルダーがあります。"
+
+msgid "A repetition right after ${{{name}}} applies only to the last character of its value, and when the value is empty it applies to the character before it or makes the regular expression invalid. To apply it to the whole value, wrap it as (?:${{{name}}})."
+msgstr "${{{name}}} の直後の繰り返し指定は値の最後の 1 文字にしか掛からず、値が空のときは前の文字に掛かるか、正規表現が不正になります。値全体に掛けるときは (?:${{{name}}}) と囲みます。"
+
+msgid "A step of a kind this version can't run"
+msgstr "この版では扱えない種類のステップです"
+
+msgid "A step of a kind this version can't run (“{kind}”)"
+msgstr "この版では扱えない種類のステップ「{kind}」です"
+
+msgid "A step of a kind this version can't run (“{kind}”). Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "この版では扱えない種類のステップ「{kind}」です。保存しても元の内容のまま残りますが、このステップを含むマクロは実行できません。"
+
+msgid "A step of a kind this version can't run. Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "この版では扱えない種類のステップです。保存しても元の内容のまま残りますが、このステップを含むマクロは実行できません。"
+
+msgid "Add Step"
+msgstr "ステップを追加"
+
+msgid "Add a step here"
+msgstr "ここにステップを追加します"
+
+msgid "Another connection took over this shell"
+msgstr "別の接続がこのシェルを引き継ぎました"
+
+msgid "Branch: runs the “Then” steps if the “Target” (output since last send / whole screen / variable) contains the “Text to match”, and the “Else” steps if not. It checks right away without waiting, so to check a response, put a “Wait for Text” step before it."
+msgstr "分岐: 「対象」(直前の出力 / 画面全体 / 変数) に「判定する文字列」があれば「そのとき」、なければ「それ以外」のステップを実行します。待たずにその場で調べるので、応答を待ってから調べるときは前に「期待文字を待つ」を置きます。"
+
+msgid "Branching on a value: set the branch's “Target” to “Variable” to check the value of that variable. A variable that has no value yet takes “Else”. Named groups of a regular expression can pull part of a value out into another variable."
+msgstr "値で分ける: 分岐の「対象」を「変数」にすると、その変数の値を調べます。まだ値が入っていない変数は「それ以外」になります。正規表現の名前付きグループを使うと、値の一部を別の変数に取り出せます。"
+
+msgid "Brings the shell back to this tab (the other connection is detached)"
+msgstr "このタブにシェルを取り戻します (もう一方の接続は切り離されます)"
+
+msgid "Broadcast Input to All Panes"
+msgstr "全ペインに同時入力"
+
+msgid "Broadcasting input"
+msgstr "同時入力中"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Cancel creating the folder"
+msgstr "フォルダーの作成をやめます"
+
+msgid "Cancel renaming"
+msgstr "名前の変更をやめます"
+
+msgid "Capture Into"
+msgstr "取り込む変数名"
+
+msgid "Chooses the steps to run by whether the output or a variable contains some text"
+msgstr "出力や変数に文字があるかどうかで、実行するステップを分けます"
+
+msgid "Claude Code (Outside the Sandbox)"
+msgstr "Claude Code (サンドボックスの外)"
+
+msgid "Clears the screen and the scrollback"
+msgstr "画面とスクロールバックを消します"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Close Help"
+msgstr "使い方を閉じる"
+
+msgid "Close Terminal Tab"
+msgstr "ターミナルタブを閉じる"
+
+msgid "Collapse All"
+msgstr "すべて折りたたむ"
+
+msgid "Connect"
+msgstr "接続"
+
+msgid "Connection name (for saving)"
+msgstr "接続名 (保存するとき)"
+
+msgid "Connects to network devices over SSH or Telnet."
+msgstr "SSH または Telnet でネットワーク機器に接続します。"
+
+msgid "Copy"
+msgstr "コピー"
+
+msgid "Couldn't choose a location: {error}"
+msgstr "保存先を選べませんでした: {error}"
+
+msgid "Couldn't connect: {error}"
+msgstr "接続できませんでした: {error}"
+
+msgid "Couldn't create the folder"
+msgstr "フォルダーを作成できませんでした"
+
+msgid "Couldn't delete"
+msgstr "削除できませんでした"
+
+msgid "Couldn't delete the folder"
+msgstr "フォルダーを削除できませんでした"
+
+msgid "Couldn't move the folder"
+msgstr "フォルダーを移動できませんでした"
+
+msgid "Couldn't open the log: {error}"
+msgstr "ログを開けませんでした: {error}"
+
+msgid "Couldn't reach the remote shell, so the terminal restarted with a new shell."
+msgstr "リモートのシェルに接続できなかったため、新しいシェルで起動し直しました。"
+
+msgid "Couldn't reach the remote shell, so the terminal restarted without surviving disconnects."
+msgstr "リモートのシェルに接続できなかったため、切断対策なしで起動し直しました。"
+
+msgid "Couldn't rename the folder"
+msgstr "フォルダー名を変更できませんでした"
+
+msgid "Couldn't restart the terminal: {error}"
+msgstr "ターミナルを再起動できませんでした: {error}"
+
+msgid "Couldn't resume logging: {error}"
+msgstr "ログを再開できませんでした: {error}"
+
+msgid "Couldn't run the command in the terminal: {error}"
+msgstr "ターミナルでコマンドを実行できませんでした: {error}"
+
+msgid "Couldn't save whether the folder is open"
+msgstr "フォルダーの開閉を保存できませんでした"
+
+msgid "Couldn't save: {error}"
+msgstr "保存できませんでした: {error}"
+
+msgid "Couldn't start logging: {error}"
+msgstr "ログを開始できませんでした: {error}"
+
+msgid "Create New"
+msgstr "新規作成"
+
+msgid "Create a folder with this name"
+msgstr "この名前でフォルダーを作ります"
+
+msgid "Creates a folder to group macros"
+msgstr "マクロをまとめるフォルダーを作ります"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete with Macros"
+msgstr "マクロごと削除"
+
+msgid "Delete “{name}”?"
+msgstr "『{name}』を削除しますか？"
+
+msgid "Deletes this connection (and its saved password)"
+msgstr "この接続先を削除します (保存済みパスワードも消えます)"
+
+msgid "Deletes this step"
+msgstr "このステップを削除します"
+
+msgid "Delete…"
+msgstr "削除…"
+
+msgid "Deleting the folder “{folder}”. What should happen to the macros in it?"
+msgstr "フォルダー『{folder}』を削除します。中のマクロをどうしますか？"
+
+msgid "Description (optional)"
+msgstr "説明 (省略可)"
+
+msgid "Discard and Switch"
+msgstr "破棄して切り替え"
+
+msgid "Drag onto a “+” along or at the end of a line to move the step"
+msgstr "ドラッグして、線の途中や末尾の「+」に落とすと移動します"
+
+msgid "Duplicate"
+msgstr "複製"
+
+msgid "Edit"
+msgstr "編集"
+
+msgid "Edit Macros"
+msgstr "マクロの編集"
+
+msgid "Edit Macros…"
+msgstr "マクロの編集…"
+
+msgid "Edit Settings"
+msgstr "設定を編集"
+
+msgid "Edit settings.json"
+msgstr "settings.json を編集"
+
+msgid "Edit “{name}”"
+msgstr "『{name}』を編集"
+
+msgid "Enter a folder name."
+msgstr "フォルダー名を入力してください。"
+
+msgid "Enter a host name or IP address."
+msgstr "ホスト名または IP アドレスを入力してください。"
+
+msgid "Enter a macro name."
+msgstr "マクロ名を入力してください。"
+
+msgid "Enter a variable name and a value. Wherever a later step says ${{name}}, it becomes the value."
+msgstr "変数名と値を入れると、後のステップで ${{変数名}} と書いたところがその値になります。"
+
+msgid "Enter the interval in seconds, 0 or more."
+msgstr "間隔は 0 以上の秒数で入力してください。"
+
+msgid "Enter the repeat count as a whole number, 0 or more."
+msgstr "繰り返し回数は 0 以上の整数で入力してください。"
+
+msgid "Enter the repeat interval in seconds, 0 or more."
+msgstr "繰り返しの間隔は 0 以上の秒数で入力してください。"
+
+msgid "Example: Send “show version” → Wait for Text “Version (?<ver>[0-9.]+)” (regular expression) → Branch (Target: variable ver, text to match “^15\\.”, regular expression) → Then: Send “…”"
+msgstr "例: 送信「show version」→ 期待文字を待つ「Version (?<ver>[0-9.]+)」(正規表現) → 分岐 (対象: 変数 ver、判定する文字列「^15\\.」、正規表現) → そのとき: 送信「…」"
+
+msgid "Expand All"
+msgstr "すべて展開"
+
+msgid "Expected text (${{variable}} allowed)"
+msgstr "期待文字 (${{変数}} が使えます)"
+
+msgid "Failed to spawn terminal"
+msgstr "ターミナルを起動できませんでした"
+
+msgid "File Transfer…"
+msgstr "ファイル転送…"
+
+msgid "Filter by folder, name, or tag"
+msgstr "フォルダー / 名前 / タグで絞り込み"
+
+msgid "Filter by folder, name, or tag…"
+msgstr "フォルダー / 名前 / タグで絞り込み…"
+
+msgid "Folder"
+msgstr "フォルダー"
+
+msgid "Folder (e.g. Sites/HQ; optional)"
+msgstr "フォルダー (例: 拠点/本社。省略可)"
+
+msgid "Folder name"
+msgstr "フォルダー名"
+
+msgid "Forgets the saved password of this connection"
+msgstr "この接続先の保存済みパスワードを消します"
+
+msgid "Hides the list of saved macros to widen the editor"
+msgstr "保存済みのマクロの一覧を隠して、編集欄を広げます"
+
+msgid "Host name / IP address"
+msgstr "ホスト名 / IP アドレス"
+
+msgid "How Branches and Variables Work"
+msgstr "分岐と変数の使い方"
+
+msgid "Inline Assist"
+msgstr "インラインアシスト"
+
+msgid "Install Claude Code"
+msgstr "Claude Code をインストール"
+
+msgid "Interval (seconds)"
+msgstr "間隔 (秒)"
+
+msgid "Invalid port number."
+msgstr "ポート番号が不正です。"
+
+msgid "Invalid regular expression: {error}"
+msgstr "正規表現が不正です: {error}"
+
+msgid "Keep Editing"
+msgstr "編集を続ける"
+
+msgid "Kind"
+msgstr "種類"
+
+msgid "Launch Claude Code"
+msgstr "Claude Code を起動"
+
+msgid "Launch Claude Code Outside the Sandbox"
+msgstr "Claude Code をサンドボックスの外で起動"
+
+msgid "Loading…"
+msgstr "読み込み中…"
+
+msgid "Location: {}"
+msgstr "保存先: {}"
+
+msgid "Logging to {file_name}"
+msgstr "記録中: {file_name}"
+
+msgid "Macro"
+msgstr "マクロ"
+
+msgid "Macro name"
+msgstr "マクロ名"
+
+msgid "Macro to Run After Connecting"
+msgstr "接続後に実行するマクロ"
+
+msgid "Macro “{name}” finished"
+msgstr "マクロ「{name}」が完了しました"
+
+msgid "Macro “{name}”: {error}"
+msgstr "マクロ「{name}」: {error}"
+
+msgid "More Buttons"
+msgstr "その他のボタン"
+
+msgid "Move Down"
+msgstr "下へ移動"
+
+msgid "Move Macros to Unfiled"
+msgstr "マクロを未分類へ移す"
+
+msgid "Move Up"
+msgstr "上へ移動"
+
+msgid "New Center Terminal"
+msgstr "中央ペインに新規ターミナル"
+
+msgid "New Folder…"
+msgstr "新しいフォルダー…"
+
+msgid "New Macro"
+msgstr "新規マクロ"
+
+msgid "New Macro in Folder"
+msgstr "新しいマクロ"
+
+msgid "New Terminal"
+msgstr "新規ターミナル"
+
+msgid "New…"
+msgstr "新規…"
+
+msgid "No macros match the filter"
+msgstr "絞り込みに一致するマクロがありません"
+
+msgid "No macros — add one here"
+msgstr "マクロがありません — ここに追加"
+
+msgid "No saved macros"
+msgstr "保存済みのマクロがありません"
+
+msgid "No step sets ${{{name}}}, so this branch always runs “Else”."
+msgstr "${{{name}}} に値を入れるステップがないため、この分岐は常に「それ以外」を実行します。"
+
+msgid "No step sets {nowhere}. When the macro runs, it stays as written."
+msgstr "{nowhere} に値を入れるステップがありません。実行時は書いたままの文字になります。"
+
+msgid "Open File Transfer"
+msgstr "ファイル転送を開く"
+
+msgid "Open Log File Location"
+msgstr "ログファイルの場所を開く"
+
+msgid "Open Log in Editor"
+msgstr "ログをエディターで開く"
+
+msgid "Open Settings"
+msgstr "設定を開く"
+
+msgid "Opens a new macro with the same contents"
+msgstr "同じ内容の新しいマクロとして開きます"
+
+msgid "Opens an empty macro on the right"
+msgstr "空のマクロを右側に開きます"
+
+msgid "Opens the menu for moving and folding"
+msgstr "移動や折りたたみのメニューを開きます"
+
+msgid "Optional"
+msgstr "省略可"
+
+msgid "Password (optional)"
+msgstr "パスワード (省略可)"
+
+msgid "Paste"
+msgstr "貼り付け"
+
+msgid "Paste Text"
+msgstr "テキストとして貼り付け"
+
+msgid "Port"
+msgstr "ポート"
+
+msgid "Prefixes each line of the log being recorded with the time. Takes effect from the next line."
+msgstr "記録中のログの行頭に時刻を付けます。次の行から反映されます。"
+
+msgid "Process ID (PID): {}"
+msgstr "プロセス ID (PID): {}"
+
+msgid "Quick Connect"
+msgstr "クイック接続"
+
+msgid "Quick Connect…"
+msgstr "クイック接続…"
+
+msgid "Reconnect"
+msgstr "再接続"
+
+msgid "Reconnects to the remote shell and resumes its output"
+msgstr "リモートのシェルにつなぎ直して、続きから表示します"
+
+msgid "Record a Log"
+msgstr "ログを記録する"
+
+msgid "Regular Expression"
+msgstr "正規表現"
+
+msgid "Remember password"
+msgstr "パスワードを記憶する"
+
+msgid "Remote connection lost"
+msgstr "リモート接続が切れました"
+
+msgid "Remote connection lost. The shell keeps running on the remote host; reconnect to resume its output"
+msgstr "リモート接続が切れました。シェルはリモートで動き続けています。再接続すると続きから表示します"
+
+msgid "Rename"
+msgstr "名前の変更"
+
+msgid "Rename Folder"
+msgstr "名前を変更"
+
+msgid "Rename to this name"
+msgstr "この名前に変更します"
+
+msgid "Renames the folder (the macros in it move along)"
+msgstr "フォルダー名を変更します (中のマクロをまとめて移動します)"
+
+msgid "Repeat Count"
+msgstr "繰り返し回数"
+
+msgid "Repeats the steps inside it the given number of times"
+msgstr "中のステップを指定した回数だけ繰り返します"
+
+msgid "Repeats until stopped"
+msgstr "中止まで繰り返します"
+
+msgid "Repeats {count} time"
+msgid_plural "Repeats {count} times"
+msgstr[0] "{count} 回繰り返します"
+
+msgid "Rerun task"
+msgstr "タスクを再実行"
+
+msgid "Restart"
+msgstr "再起動"
+
+msgid "Restarts the shell in the same working directory"
+msgstr "同じ作業ディレクトリでシェルを起動し直します"
+
+msgid "Run"
+msgstr "実行"
+
+msgid "Run Macro…"
+msgstr "マクロを実行…"
+
+msgid "Run Repeatedly"
+msgstr "回数を指定して実行"
+
+msgid "Run Repeatedly…"
+msgstr "回数を指定して実行…"
+
+msgid "Run the Next Step"
+msgstr "次のステップを実行する"
+
+msgid "Running macro “{name}” ({detail})"
+msgstr "マクロ「{name}」実行中 ({detail})"
+
+msgid "Runs the macro “{name}” repeatedly."
+msgstr "マクロ「{name}」を繰り返し実行します。"
+
+msgid "Runs this macro with a repeat count and interval you choose."
+msgstr "繰り返し回数と間隔を指定して、このマクロを実行します。"
+
+msgid "Runs “Then” if {target} contains {}, and “Else” if not."
+msgstr "{target}に{}が含まれていれば「そのとき」を、含まれていなければ「それ以外」を実行します。"
+
+msgid "Runs “Then” if {target} matches the regular expression {}, and “Else” if not."
+msgstr "{target}が正規表現{}に一致すれば「そのとき」を、一致しなければ「それ以外」を実行します。"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Saved"
+msgstr "保存済み"
+
+msgid "Saved Connections"
+msgstr "保存済みの接続先"
+
+msgid "Saved Macros ({listed} / {total})"
+msgstr "保存済みのマクロ ({listed} / {total} 件)"
+
+msgid "Saved Macros ({total})"
+msgstr "保存済みのマクロ ({total} 件)"
+
+msgid "Seconds"
+msgstr "秒数"
+
+msgid "Select All"
+msgstr "すべて選択"
+
+msgid "Send Enter at the End"
+msgstr "末尾で Enter を送る"
+
+msgid "Sends text to the terminal"
+msgstr "端末へ文字列を送ります"
+
+msgid "Sets ${{{name}}} to {}. Wherever a later step says ${{{name}}}, it becomes this value."
+msgstr "${{{name}}} に{}を入れます。後のステップで ${{{name}}} と書いたところがこの値になります。"
+
+msgid "Sets a variable. Wherever a later step says ${{name}}, it becomes the value"
+msgstr "変数に値を入れます。後のステップで ${{変数名}} と書いたところがその値になります"
+
+msgid "Setting variables: a “Set Variable” step, or the “Capture Into” field of “Wait for Text” and “Branch” (it gets the line found, or the matched part for a regular expression). A named group (?<name>…) of a regular expression puts the part it matched into the variable of that name."
+msgstr "変数に値を入れる: 「変数に設定」ステップ、または「期待文字を待つ」「分岐」の「取り込む変数名」(見つかった行、正規表現なら一致した部分が入ります)。正規表現の名前付きグループ (?<名前>…) は、一致した部分がその名前の変数に入ります。"
+
+msgid "Shows only the heading and summary of every step"
+msgstr "すべてのステップを見出しと要約だけにします"
+
+msgid "Shows the fields of every step"
+msgstr "すべてのステップの入力欄を表示します"
+
+msgid "Shows the list of saved macros"
+msgstr "保存済みのマクロの一覧を表示します"
+
+msgid "Spawn Task"
+msgstr "タスクを実行"
+
+msgid "Split Down"
+msgstr "下に分割"
+
+msgid "Split Left"
+msgstr "左に分割"
+
+msgid "Split Pane"
+msgstr "ペインを分割"
+
+msgid "Split Right"
+msgstr "右に分割"
+
+msgid "Split Up"
+msgstr "上に分割"
+
+msgid "Split into 2×2"
+msgstr "2×2 に分割"
+
+msgid "Split into 3 Columns"
+msgstr "横 3 分割"
+
+msgid "Start Logging (Choose Location)…"
+msgstr "ログの記録を開始 (保存先を選ぶ)…"
+
+msgid "Start Logging (Default Location)"
+msgstr "ログの記録を開始 (既定の保存先)"
+
+msgid "Step {label}: enter a variable name."
+msgstr "ステップ {label}: 変数名を入力してください。"
+
+msgid "Step {label}: enter the expected text."
+msgstr "ステップ {label}: 期待文字を入力してください。"
+
+msgid "Step {label}: enter the repeat count as a whole number, 0 or more."
+msgstr "ステップ {label}: 繰り返し回数は 0 以上の整数で入力してください。"
+
+msgid "Step {label}: enter the text to match."
+msgstr "ステップ {label}: 判定する文字列を入力してください。"
+
+msgid "Step {label}: enter the variable to check."
+msgstr "ステップ {label}: 調べる変数名を入力してください。"
+
+msgid "Step {label}: invalid number of seconds."
+msgstr "ステップ {label}: 秒数が不正です。"
+
+msgid "Step {label}: invalid regular expression."
+msgstr "ステップ {label}: 正規表現が不正です。"
+
+msgid "Step {label}: the variable name can't contain $, {{ or }}."
+msgstr "ステップ {label}: 変数名に $ {{ }} は使えません。"
+
+msgid "Step {label}: the variable to capture into can't contain $, {{ or }}."
+msgstr "ステップ {label}: 取り込む変数名に $ {{ }} は使えません。"
+
+msgid "Step {label}: the variable to check can't contain $, {{ or }}."
+msgstr "ステップ {label}: 調べる変数名に $ {{ }} は使えません。"
+
+msgid "Steps ({})"
+msgstr "ステップ ({} 個)"
+
+msgid "Steps to Repeat ({})"
+msgstr "繰り返す内容 ({})"
+
+msgid "Stop Broadcasting Input to All Panes"
+msgstr "全ペインへの同時入力をやめる"
+
+msgid "Stop Logging"
+msgstr "ログの記録を停止"
+
+msgid "Stop the Macro"
+msgstr "マクロを中止する"
+
+msgid "Stopped macro “{}”"
+msgstr "マクロ「{}」を中止しました"
+
+msgid "Tags (comma-separated, optional)"
+msgstr "タグ (カンマ区切り、省略可)"
+
+msgid "Terminal Panel"
+msgstr "ターミナルパネル"
+
+msgid "Text to match (${{variable}} allowed)"
+msgstr "判定する文字列 (${{変数}} が使えます)"
+
+msgid "Text to send (${{variable}} allowed)"
+msgstr "送信する文字列 (${{変数}} が使えます)"
+
+msgid "The host name contains characters that aren't allowed."
+msgstr "ホスト名に使用できない文字が含まれています。"
+
+msgid "The password is kept in the OS credential manager and is never written to terminal_sessions.json"
+msgstr "パスワードは OS の資格情報マネージャーに保存され、terminal_sessions.json には書き込まれません"
+
+msgid "The remote Zed server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
+msgstr "リモートの Zed サーバーが切断対策に対応していないため、通常のシェルで起動し直しました。"
+
+msgid "The repeat count is empty"
+msgstr "繰り返し回数が未入力です"
+
+msgid "The settings file hasn't finished loading. Wait a moment and try again."
+msgstr "設定ファイルの読み込みが終わっていません。少し待ってからもう一度お試しください。"
+
+msgid "The terminal panel is unavailable."
+msgstr "ターミナルパネルが利用できません。"
+
+msgid "The user name contains characters that aren't allowed."
+msgstr "ユーザー名に使用できない文字が含まれています。"
+
+msgid "There is no terminal to run the macro in. Open a terminal."
+msgstr "マクロを実行するターミナルがありません。ターミナルを開いてください。"
+
+msgid "This folder already has a macro with this name."
+msgstr "同じフォルダーに同名のマクロがあります。"
+
+msgid "Timeout (seconds)"
+msgstr "タイムアウト (秒)"
+
+msgid "Timestamps"
+msgstr "タイムスタンプ"
+
+msgid "Transfers files with this host over SFTP / FTP"
+msgstr "このホストと SFTP / FTP でファイルをやり取りします"
+
+msgid "Unfiled"
+msgstr "未分類"
+
+msgid "User name (SSH)"
+msgstr "ユーザー名 (SSH)"
+
+msgid "Using variables: write ${{name}} in the text to send, the expected text, the text to match, or the value to set, and it is replaced by the value when the macro runs. To send ${{ as text, write $${{."
+msgstr "変数を使う: 送信する文字列・期待文字・判定する文字列・入れる値に ${{名前}} と書くと、実行時にその値に置き換わります。${{ を文字として送るときは $${{ と書きます。"
+
+msgid "Value"
+msgstr "値"
+
+msgid "Value to set (${{variable}} allowed too)"
+msgstr "入れる値 (${{変数}} も使えます)"
+
+msgid "Variable name"
+msgstr "変数名"
+
+msgid "Variable to Check"
+msgstr "調べる変数名"
+
+msgid "Variables: none yet (create them with “Set Variable” or “Capture Into”)"
+msgstr "変数: まだありません (「変数に設定」か「取り込む変数名」で作れます)"
+
+msgid "Variables: {listed}"
+msgstr "変数: {listed}"
+
+msgid "Waits for the given number of seconds"
+msgstr "指定した秒数だけ待ちます"
+
+msgid "Waits until the given text appears in the output"
+msgstr "指定した文字が出力に出るまで待ちます"
+
+msgid "Waits up to {seconds} s for {} to appear in new output.{}"
+msgstr "{}が新しく出力されるまで、最大 {seconds} 秒待ちます。{}"
+
+msgid "Waits {seconds} s"
+msgstr "{seconds} 秒待ちます"
+
+msgid "Your changes haven't been saved. Discard them and open a new macro?"
+msgstr "編集中の内容は保存されていません。破棄して新規マクロを開きますか？"
+
+msgid "Your changes haven't been saved. Discard them and open “{}”?"
+msgstr "編集中の内容は保存されていません。破棄して『{}』を開きますか？"
+
+msgid "an empty string"
+msgstr "空の文字列"
+
+msgid "claude was not found on PATH. Run “terminal: install claude code” from the command palette first."
+msgstr "claude が PATH 上に見つかりません。先に「Claude Code をインストール (公式コマンド)」を実行してください。"
+
+msgid "claude was not found on the remote host. Install it by running this command in a terminal on the remote host:\ncurl -fsSL https://claude.ai/install.sh | bash\nIt is installed to `~/.local/bin/claude` and can be launched from then on."
+msgstr "接続先のホストに claude が見つかりません。接続先のターミナルで次のコマンドを実行してインストールしてください。\ncurl -fsSL https://claude.ai/install.sh | bash\nインストールすると `~/.local/bin/claude` に入り、この起動から使えるようになります。"
+
+msgid "no count"
+msgstr "回数が未入力"
+
+msgid "npm was not found on PATH. Installing Claude Code requires Node.js. Install Node.js from https://nodejs.org/ and try again."
+msgstr "npm が PATH 上に見つかりません。Claude Code のインストールには Node.js が必要です。https://nodejs.org/ から Node.js をインストールしてから、もう一度お試しください。"
+
+msgid "npm was not found on the remote host. Install Node.js in a terminal on the remote host and try again."
+msgstr "接続先のホストに npm が見つかりません。接続先のターミナルで Node.js をインストールしてから、もう一度お試しください。"
+
+msgid "repeat {}, step"
+msgstr "繰り返し {} 回目のステップ"
+
+msgid "repeat {}/{count}, step"
+msgstr "繰り返し {}/{count} のステップ"
+
+msgid "run {}, step {step}"
+msgstr "{} 回目、ステップ {step}"
+
+msgid "run {}/{count}, step {step}"
+msgstr "{}/{count} 回目、ステップ {step}"
+
+msgid "telnet was not found. Add “Telnet Client” from Windows “Optional features”, or run `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` in PowerShell as an administrator."
+msgstr "telnet が見つかりません。Windows の「オプション機能」から「Telnet クライアント」を追加するか、管理者権限の PowerShell で `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` を実行してください。"
+
+msgid "the expected text"
+msgstr "期待文字"
+
+msgid "the output after the last send"
+msgstr "直前の送信のあとの出力"
+
+msgid "the text to match"
+msgstr "判定する文字列"
+
+msgid "the value of ${{{name}}}"
+msgstr "変数 ${{{name}}} の値"
+
+msgid "the variable's value"
+msgstr "変数の値"
+
+msgid "the whole screen"
+msgstr "画面全体"
+
+msgid "until stopped"
+msgstr "中止まで"
+
+msgid "{base} (copy {suffix})"
+msgstr "{base} のコピー {suffix}"
+
+msgid "{base} (copy)"
+msgstr "{base} のコピー"
+
+msgid "{count} step"
+msgid_plural "{count} steps"
+msgstr[0] "{count} ステップ"
+
+msgid "{count} time"
+msgid_plural "{count} times"
+msgstr[0] "{count} 回"
+
+msgid "{detail} → {inner_iteration} {}/{} “{}”"
+msgstr "{detail} → {inner_iteration} {}/{}「{}」"
+
+msgid "{detail}, branch: {}"
+msgstr "{detail}、分岐: {}"
+
+msgid "{display_path}\nClick to open it in the editor and follow its end."
+msgstr "{display_path}\nクリックするとエディターで開き、末尾に追従します。"
+
+msgid "{heading}: {count} step (edit deeper nesting in the JSON file)"
+msgid_plural "{heading}: {count} steps (edit deeper nesting in the JSON file)"
+msgstr[0] "{heading}: {count} ステップ (これより深い入れ子は JSON で編集してください)"
+
+msgid "{later} gets its value only after this step. Here it stays as written."
+msgstr "{later} に値が入るのはこのステップより後です。ここでは書いたままの文字になります。"
+
+msgid "{program} was not found on PATH."
+msgstr "{program} が PATH 上に見つかりません。"
+
+msgid "{steps} / until stopped"
+msgstr "{steps} / 中止まで"
+
+msgid "{steps} / ×{times}"
+msgstr "{steps} / {times} 回"
+
+msgid "“{fallback}”"
+msgstr "「{fallback}」"
+
+msgid "“{text}”"
+msgstr "『{text}』"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "terminal"
+msgid "Add to Agent Thread"
+msgstr "エージェントのスレッドに追加"
+
+msgctxt "terminal"
+msgid "Clear"
+msgstr "画面を消去"
+
+msgctxt "terminal"
+msgid "Stop Logging"
+msgstr "記録を停止"
+
+msgctxt "terminal"
+msgid "Zoom In"
+msgstr "ズーム"
+
+msgctxt "terminal"
+msgid "Zoom Out"
+msgstr "ズーム解除"
+
+msgctxt "terminal macro"
+msgid "Cancel"
+msgstr "中止"
+
+msgctxt "terminal macro"
+msgid "Collapse"
+msgstr "折りたたむ"
+
+msgctxt "terminal macro"
+msgid "Else"
+msgstr "それ以外"
+
+msgctxt "terminal macro"
+msgid "Expand"
+msgstr "展開"
+
+msgctxt "terminal macro"
+msgid "New"
+msgstr "新規"
+
+msgctxt "terminal macro"
+msgid "On Timeout"
+msgstr "タイムアウト時"
+
+msgctxt "terminal macro"
+msgid "Target"
+msgstr "対象"
+
+msgctxt "terminal macro"
+msgid "Then"
+msgstr "そのとき"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "分岐"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "画面を消去"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "繰り返し"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "送信"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "変数に設定"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "秒待ち"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "不明なステップ"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "期待文字を待つ"
+
+msgctxt "terminal tab title"
+msgid "Failed to spawn terminal"
+msgstr "ターミナルの起動失敗"

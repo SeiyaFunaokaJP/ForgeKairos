@@ -9,9 +9,9 @@ use workspace::ItemHandle;
 
 use super::QuickActionBar;
 
-const FORMAT_DOCUMENT_LABEL: &str = "ファイル全体をフォーマット";
-const FORMAT_SELECTION_LABEL: &str = "選択範囲をフォーマット";
-const NO_FORMATTER_MESSAGE: &str = "このファイルにはフォーマッタが設定されていません。";
+const FORMAT_DOCUMENT_LABEL: &str = i18n::msg!("Format Whole File");
+const FORMAT_SELECTION_LABEL: &str = i18n::msg!("Format Selection");
+const NO_FORMATTER_MESSAGE: &str = i18n::msg!("No formatter is configured for this file.");
 
 impl QuickActionBar {
     /// The toolbar happens to repaint whenever the editor notifies, but the
@@ -67,8 +67,8 @@ impl QuickActionBar {
         let focus_handle = editor_ref.focus_handle(cx);
 
         let document_tooltip = match &formatter {
-            Some(formatter) => format!("このファイルは {formatter} でフォーマットします。"),
-            None => NO_FORMATTER_MESSAGE.to_string(),
+            Some(formatter) => i18n::t!("Formats this file with {formatter}."),
+            None => i18n::tr(NO_FORMATTER_MESSAGE).to_string(),
         };
         // Resolved lazily inside the tooltip closure: it hits the filesystem
         // (and walks PATH), while this render runs on every editor notify.
@@ -81,28 +81,28 @@ impl QuickActionBar {
             .remote_connection_options(cx)
             .map(|options| options.display_name());
         let selection_tooltip = match &formatter {
-            None => NO_FORMATTER_MESSAGE.to_string(),
+            None => i18n::tr(NO_FORMATTER_MESSAGE).to_string(),
             // Reported before the "no selection" case: this one holds for the
             // whole file, so it explains why the button never lights up.
             Some(formatter) if !supports_range_formatting => {
                 if external_formatter_missing_line_placeholders(
                     language_settings.formatter.as_ref(),
                 ) {
-                    format!(
-                        "{formatter} は選択範囲だけのフォーマットに対応していません。\
-                         引数に {{start_line}} / {{end_line}} を追加すると対応できます。"
+                    i18n::t!(
+                        "{formatter} can't format just a selection. \
+                         Add {{start_line}} / {{end_line}} to its arguments to allow it."
                     )
                 } else {
-                    format!(
-                        "{formatter} は選択範囲だけのフォーマットに対応していません。\
-                         ファイル全体のフォーマットを使用してください。"
+                    i18n::t!(
+                        "{formatter} can't format just a selection. \
+                         Format the whole file instead."
                     )
                 }
             }
             Some(_) if !has_selection => {
-                "選択範囲がありません。フォーマットする範囲を選択してください。".to_string()
+                i18n::t!("Nothing is selected. Select the text to format.").to_string()
             }
-            Some(formatter) => format!("選択範囲を {formatter} でフォーマットします。"),
+            Some(formatter) => i18n::t!("Formats the selection with {formatter}."),
         };
 
         let format_document = IconButton::new("format-document", IconName::FormatDocument)
@@ -118,7 +118,7 @@ impl QuickActionBar {
                         meta.push_str(&external_command_location(command, remote_host.as_deref()));
                     }
                     Tooltip::with_meta_in(
-                        FORMAT_DOCUMENT_LABEL,
+                        i18n::tr(FORMAT_DOCUMENT_LABEL),
                         Some(&Format),
                         meta,
                         &focus_handle,
@@ -142,7 +142,7 @@ impl QuickActionBar {
                 let focus_handle = focus_handle.clone();
                 move |_window, cx| {
                     Tooltip::with_meta_in(
-                        FORMAT_SELECTION_LABEL,
+                        i18n::tr(FORMAT_SELECTION_LABEL),
                         Some(&FormatSelections),
                         selection_tooltip.clone(),
                         &focus_handle,
@@ -174,13 +174,13 @@ fn formatter_display_name(formatters: &[Formatter], prettier_allowed: bool) -> O
             Formatter::None => None,
             // `Formatter::Auto` picks one of the two while formatting
             // (`LspStore::format_locally`), so name the one it would pick.
-            Formatter::Auto if prettier_allowed => Some("自動 (Prettier)".to_string()),
-            Formatter::Auto => Some("自動 (言語サーバー)".to_string()),
+            Formatter::Auto if prettier_allowed => Some(i18n::t!("Auto (Prettier)").to_string()),
+            Formatter::Auto => Some(i18n::t!("Auto (Language Server)").to_string()),
             Formatter::Prettier => Some("Prettier".to_string()),
             Formatter::External { command, .. } => Some(command.clone()),
             Formatter::CodeAction(name) => Some(name.clone()),
             Formatter::LanguageServer(LanguageServerFormatterSpecifier::Current) => {
-                Some("言語サーバー".to_string())
+                Some(i18n::t!("Language Server").to_string())
             }
             Formatter::LanguageServer(LanguageServerFormatterSpecifier::Specific { name }) => {
                 Some(name.clone())
@@ -211,14 +211,14 @@ fn external_formatter_command(formatters: &[Formatter]) -> Option<String> {
 /// command has to exist instead of pretending to have found it.
 fn external_command_location(command: &str, remote_host: Option<&str>) -> String {
     if let Some(host) = remote_host {
-        return format!("接続先 ({host}) の `{command}` を使用します。");
+        return i18n::t!("Uses `{command}` on the remote host ({host}).");
     }
     if let Some(path) = util::command::resolve_command_next_to_current_exe(command) {
-        return format!("実行ファイル: {}", path.display());
+        return i18n::t!("Executable: {}", path.display());
     }
     match which::which(command) {
-        Ok(path) => format!("実行ファイル: {}", path.display()),
-        Err(_) => format!("{command} が見つかりません (PATH または bin\\ に配置してください)。"),
+        Ok(path) => i18n::t!("Executable: {}", path.display()),
+        Err(_) => i18n::t!("{command} was not found (put it on PATH or in bin\\)."),
     }
 }
 
@@ -257,11 +257,11 @@ mod tests {
 
         assert_eq!(
             formatter_display_name(&[Formatter::Auto], true).as_deref(),
-            Some("自動 (Prettier)"),
+            Some("Auto (Prettier)"),
         );
         assert_eq!(
             formatter_display_name(&[Formatter::Auto], false).as_deref(),
-            Some("自動 (言語サーバー)"),
+            Some("Auto (Language Server)"),
         );
 
         assert_eq!(
@@ -289,7 +289,7 @@ mod tests {
                 false,
             )
             .as_deref(),
-            Some("言語サーバー → Prettier"),
+            Some("Language Server → Prettier"),
         );
     }
 
@@ -314,7 +314,7 @@ mod tests {
         let location = external_command_location("clang-format", Some("192.168.100.150"));
         assert_eq!(
             location,
-            "接続先 (192.168.100.150) の `clang-format` を使用します。"
+            "Uses `clang-format` on the remote host (192.168.100.150)."
         );
     }
 

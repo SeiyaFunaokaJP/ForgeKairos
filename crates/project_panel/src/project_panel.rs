@@ -1004,15 +1004,15 @@ impl ProjectPanel {
                                     true,
                                     window, cx,
                                 )
-                                .detach_and_prompt_err("ファイルを開けませんでした", window, cx, move |e, _, _| {
+                                .detach_and_prompt_err(i18n::t!("Failed to open file"), window, cx, move |e, _, _| {
                                     match e.error_code() {
                                         ErrorCode::Disconnected => if is_via_ssh {
-                                            Some("SSH ホストとの接続が切断されました".to_string())
+                                            Some(i18n::t!("Disconnected from SSH host").to_string())
                                         } else {
-                                            Some("リモートプロジェクトとの接続が切断されました".to_string())
+                                            Some(i18n::t!("Disconnected from remote project").to_string())
                                         },
-                                        ErrorCode::UnsharedItem => Some(format!(
-                                            "{} はホストによって共有されていません。`private` に設定されている可能性があります",
+                                        ErrorCode::UnsharedItem => Some(i18n::t!(
+                                            "{} is not shared by the host. This could be because it has been marked as `private`",
                                             file_path.display(path_style)
                                         )),
                                         // See note in worktree.rs where this error originates. Returning Some in this case prevents
@@ -1237,14 +1237,17 @@ impl ProjectPanel {
                 menu.context(self.focus_handle.clone()).map(|menu| {
                     if is_read_only {
                         menu.when(is_markdown, |menu| {
-                            menu.action("Markdown プレビューを開く", Box::new(OpenMarkdownPreview))
+                            menu.action(
+                                i18n::t!("Open Markdown Preview"),
+                                Box::new(OpenMarkdownPreview),
+                            )
                         })
                         .when(is_dir, |menu| {
-                            menu.action("このフォルダー内を検索", Box::new(NewSearchInDirectory))
+                            menu.action(i18n::t!("Search Inside"), Box::new(NewSearchInDirectory))
                         })
                     } else {
-                        menu.action("新規ファイル", Box::new(NewFile))
-                            .action("新規フォルダー", Box::new(NewDirectory))
+                        menu.action(i18n::t!("New File"), Box::new(NewFile))
+                            .action(i18n::t!("New Folder"), Box::new(NewDirectory))
                             .separator()
                             .when(is_local, |menu| {
                                 menu.action(
@@ -1253,75 +1256,94 @@ impl ProjectPanel {
                                 )
                             })
                             .when(is_local, |menu| {
-                                menu.action("既定のアプリで開く", Box::new(OpenWithSystem))
+                                menu.action(
+                                    i18n::t!("Open in Default App"),
+                                    Box::new(OpenWithSystem),
+                                )
                             })
-                            .action("ターミナルで開く", Box::new(OpenInTerminal))
+                            .action(i18n::t!("Open in Terminal"), Box::new(OpenInTerminal))
                             .when(is_markdown, |menu| {
                                 menu.action(
-                                    "Markdown プレビューを開く",
+                                    i18n::t!("Open Markdown Preview"),
                                     Box::new(OpenMarkdownPreview),
                                 )
                             })
                             .when(is_dir, |menu| {
-                                menu.separator()
-                                    .action("フォルダー内を検索…", Box::new(NewSearchInDirectory))
-                            })
-                            .when(is_unfoldable, |menu| {
-                                menu.action(
-                                    "フォルダーの折りたたみを解除",
-                                    Box::new(UnfoldDirectory),
+                                menu.separator().action(
+                                    i18n::t!("Find in Folder…"),
+                                    Box::new(NewSearchInDirectory),
                                 )
                             })
+                            .when(is_unfoldable, |menu| {
+                                menu.action(i18n::t!("Unfold Directory"), Box::new(UnfoldDirectory))
+                            })
                             .when(is_foldable, |menu| {
-                                menu.action("フォルダーを折りたたむ", Box::new(FoldDirectory))
+                                menu.action(i18n::t!("Fold Directory"), Box::new(FoldDirectory))
                             })
                             .when(should_show_compare, |menu| {
                                 menu.separator().action(
-                                    "マークしたファイルを比較",
+                                    i18n::t!("Compare Marked Files"),
                                     Box::new(CompareMarkedFiles),
                                 )
                             })
                             .separator()
-                            .action("切り取り", Box::new(Cut))
-                            .action("コピー", Box::new(Copy))
-                            .action("複製", Box::new(Duplicate))
+                            .action(i18n::t!("Cut"), Box::new(Cut))
+                            .action(i18n::t!("Copy"), Box::new(Copy))
+                            .action(i18n::t!("Duplicate"), Box::new(Duplicate))
                             .action_disabled_when(
                                 !has_pasteable_content,
-                                "貼り付け",
+                                i18n::t!("Paste"),
                                 Box::new(Paste),
                             )
                             .when(!is_collab, |menu| {
                                 let can_undo = self.undo_manager.can_undo();
                                 let can_redo = self.undo_manager.can_redo();
 
-                                menu.action_disabled_when(!can_undo, "元に戻す", Box::new(Undo))
-                                    .action_disabled_when(!can_redo, "やり直し", Box::new(Redo))
+                                menu.action_disabled_when(
+                                    !can_undo,
+                                    i18n::t!("Undo"),
+                                    Box::new(Undo),
+                                )
+                                .action_disabled_when(
+                                    !can_redo,
+                                    i18n::t!("Redo"),
+                                    Box::new(Redo),
+                                )
                             })
                             .when(is_remote, |menu| {
                                 menu.separator()
-                                    .action("ダウンロード...", Box::new(DownloadFromRemote))
+                                    .action(i18n::t!("Download..."), Box::new(DownloadFromRemote))
                             })
                             .separator()
-                            .action("パスをコピー", Box::new(zed_actions::workspace::CopyPath))
                             .action(
-                                "相対パスをコピー",
+                                i18n::t!("Copy Path"),
+                                Box::new(zed_actions::workspace::CopyPath),
+                            )
+                            .action(
+                                i18n::t!("Copy Relative Path"),
                                 Box::new(zed_actions::workspace::CopyRelativePath),
                             )
                             .when(has_git_repo, |menu| {
                                 menu.separator()
                                     .when(!is_dir && self.has_git_changes(entry_id), |menu| {
                                         menu.action(
-                                            "ファイルの変更を元に戻す",
+                                            i18n::tc!("discard file changes", "Restore File"),
                                             Box::new(git::RestoreFile { skip_prompt: false }),
                                         )
                                     })
-                                    .action(".gitignore に追加", Box::new(git::AddToGitignore))
                                     .action(
-                                        ".git/info/exclude に追加",
+                                        i18n::t!("Add to .gitignore"),
+                                        Box::new(git::AddToGitignore),
+                                    )
+                                    .action(
+                                        i18n::t!("Add to .git/info/exclude"),
                                         Box::new(git::AddToGitInfoExclude),
                                     )
                                     .when(has_history, |menu| {
-                                        menu.action("履歴を表示", Box::new(git::FileHistory))
+                                        menu.action(
+                                            i18n::t!("View History"),
+                                            Box::new(git::FileHistory),
+                                        )
                                     })
                                     .when(!is_dir, |menu| {
                                         menu.action(
@@ -1338,49 +1360,68 @@ impl ProjectPanel {
                             // Git group, even though the Git items above are not shown.
                             .when(!has_git_repo && can_apply_patch, |menu| menu.separator())
                             .when(can_create_patch, |menu| {
-                                menu.action("パッチファイルを作成…", Box::new(git::CreatePatch))
+                                menu.action(
+                                    i18n::t!("Create Patch File…"),
+                                    Box::new(git::CreatePatch),
+                                )
                             })
                             .when(can_apply_patch, |menu| {
-                                menu.action("パッチファイルを適用…", Box::new(git::ApplyPatch))
+                                menu.action(
+                                    i18n::t!("Apply Patch File…"),
+                                    Box::new(git::ApplyPatch),
+                                )
                             })
                             .when(!should_hide_rename, |menu| {
-                                menu.separator().action("名前の変更", Box::new(Rename))
+                                menu.separator()
+                                    .action(i18n::t!("Rename"), Box::new(Rename))
                             })
                             .when(!is_root && !is_collab, |menu| {
-                                menu.action("ゴミ箱へ移動", Box::new(Trash { skip_prompt: false }))
+                                menu.action(
+                                    i18n::t!("Trash"),
+                                    Box::new(Trash { skip_prompt: false }),
+                                )
                             })
                             .when(!is_root, |menu| {
-                                menu.action("完全に削除", Box::new(Delete { skip_prompt: false }))
+                                menu.action(
+                                    i18n::tc!("delete permanently", "Delete"),
+                                    Box::new(Delete { skip_prompt: false }),
+                                )
                             })
                             .when(!is_collab && is_root, |menu| {
                                 menu.separator()
                                     .action(
-                                        "プロジェクトにフォルダーを追加…",
+                                        i18n::t!("Add Folders to Project…"),
                                         Box::new(workspace::AddFolderToProject),
                                     )
                                     .action(
-                                        "フォルダーを変更…",
+                                        i18n::t!("Change Folder…"),
                                         Box::new(workspace::ChangeProjectFolder),
                                     )
-                                    .action("プロジェクトから削除", Box::new(RemoveFromProject))
+                                    .action(
+                                        i18n::t!("Remove from Project"),
+                                        Box::new(RemoveFromProject),
+                                    )
                             })
                             .when(is_dir && !is_root, |menu| {
                                 menu.separator()
-                                    .action("すべて展開", Box::new(ExpandSelectedEntryAndChildren))
                                     .action(
-                                        "すべて折りたたむ",
+                                        i18n::t!("Expand All"),
+                                        Box::new(ExpandSelectedEntryAndChildren),
+                                    )
+                                    .action(
+                                        i18n::t!("Collapse All"),
                                         Box::new(CollapseSelectedEntryAndChildren),
                                     )
                             })
                             .when(is_dir && is_root, |menu| {
                                 menu.separator()
-                                    .action("すべて展開", Box::new(ExpandAllEntries))
-                                    .action("すべて折りたたむ", Box::new(CollapseAllEntries))
+                                    .action(i18n::t!("Expand All"), Box::new(ExpandAllEntries))
+                                    .action(i18n::t!("Collapse All"), Box::new(CollapseAllEntries))
                             })
                             // Collab hosts don't forward rescan requests, so it would always fail.
                             .when(!is_collab, |menu| {
                                 menu.when(!is_dir, |menu| menu.separator())
-                                    .action("最新の情報に更新", Box::new(Refresh))
+                                    .action(i18n::t!("Refresh"), Box::new(Refresh))
                             })
                     }
                 })
@@ -1756,12 +1797,7 @@ impl ProjectPanel {
     fn refresh(&mut self, _: &Refresh, window: &mut Window, cx: &mut Context<Self>) {
         self.project
             .update(cx, |project, cx| project.rescan_worktrees(cx))
-            .detach_and_prompt_err(
-                "最新の情報に更新できませんでした",
-                window,
-                cx,
-                |_, _, _| None,
-            );
+            .detach_and_prompt_err(i18n::t!("Failed to refresh"), window, cx, |_, _, _| None);
     }
 
     fn expand_all_for_entry_and_refresh(
@@ -2116,7 +2152,7 @@ impl ProjectPanel {
         if !filename.is_empty() {
             if filename.is_empty() {
                 edit_state.validation_state = ValidationState::Error(
-                    "ファイル名またはフォルダー名を空にはできません。".to_string(),
+                    i18n::t!("File or directory name cannot be empty.").to_string(),
                 );
                 cx.notify();
                 return;
@@ -2125,7 +2161,7 @@ impl ProjectPanel {
             let trimmed_filename = filename.trim();
             if trimmed_filename != filename {
                 edit_state.validation_state = ValidationState::Warning(
-                    "ファイル名またはフォルダー名の先頭または末尾に空白が含まれています。"
+                    i18n::t!("File or directory name contains leading or trailing whitespace.")
                         .to_string(),
                 );
                 cx.notify();
@@ -2135,7 +2171,7 @@ impl ProjectPanel {
 
             let Ok(filename) = RelPath::from_unix_str(trimmed_filename) else {
                 edit_state.validation_state = ValidationState::Warning(
-                    "ファイル名またはフォルダー名の先頭または末尾に空白が含まれています。"
+                    i18n::t!("File or directory name contains leading or trailing whitespace.")
                         .to_string(),
                 );
                 cx.notify();
@@ -2171,8 +2207,8 @@ impl ProjectPanel {
                     }
                 };
                 if already_exists {
-                    edit_state.validation_state = ValidationState::Error(format!(
-                        "同じ場所にファイルまたはフォルダー '{}' が既に存在します。別の名前を指定してください。",
+                    edit_state.validation_state = ValidationState::Error(i18n::t!(
+                        "File or directory '{}' already exists at location. Please choose a different name.",
                         filename.as_unix_str()
                     ));
                     cx.notify();
@@ -2356,12 +2392,8 @@ impl ProjectPanel {
                                 project_panel.project.update(cx, |_, cx| {
                                     cx.emit(project::Event::Toast {
                                         notification_id: "excluded-directory".into(),
-                                        message: format!(
-                                            concat!(
-                                                "除外対象のフォルダーを {:?} に作成しました。\n",
-                                                "パネルに表示するには設定の `file_scan_exclusions` を",
-                                                "変更してください"
-                                            ),
+                                        message: i18n::t!(
+                                            "Created an excluded directory at {:?}.\nAlter `file_scan_exclusions` in the settings to show it in the panel",
                                             abs_path
                                         ),
                                         link: None,
@@ -2711,12 +2743,12 @@ impl ProjectPanel {
             let file_name = entry.path.file_name()?.to_string();
 
             let answer = if !action.skip_prompt {
-                let prompt = format!("{} の変更を破棄しますか?", MarkdownInlineCode(&file_name));
+                let prompt = i18n::t!("Discard changes to {}?", MarkdownInlineCode(&file_name));
                 Some(window.prompt(
                     PromptLevel::Info,
                     &prompt,
                     None,
-                    &["元に戻す", "キャンセル"],
+                    &[i18n::t!("Restore"), i18n::t!("Cancel")],
                     cx,
                 ))
             } else {
@@ -2739,7 +2771,7 @@ impl ProjectPanel {
                 if let Err(e) = task.await {
                     panel
                         .update(cx, |panel, cx| {
-                            let message = format!("{} を元に戻せませんでした: {}", file_name, e);
+                            let message = i18n::t!("Failed to restore {}: {}", file_name, e);
                             let toast = StatusToast::new(message, cx, |this, _| {
                                 this.icon(
                                     Icon::new(IconName::XCircle)
@@ -2811,7 +2843,7 @@ impl ProjectPanel {
                 if let Err(e) = receiver.await? {
                     if let Some(workspace) = workspace.upgrade() {
                         cx.update(|cx| {
-                            let message = format!(".gitignore に追加できませんでした: {}", e);
+                            let message = i18n::t!("Failed to add to .gitignore: {}", e);
                             let toast = StatusToast::new(message, cx, |this, _| {
                                 this.icon(Icon::new(IconName::XCircle).color(Color::Error))
                                     .dismiss_button(true)
@@ -2858,8 +2890,7 @@ impl ProjectPanel {
                 if let Err(e) = receiver.await? {
                     if let Some(workspace) = workspace.upgrade() {
                         cx.update(|cx| {
-                            let message =
-                                format!(".git/info/exclude に追加できませんでした: {}", e);
+                            let message = i18n::t!("Failed to add to .git/info/exclude: {}", e);
                             let toast = StatusToast::new(message, cx, |this, _| {
                                 this.icon(Icon::new(IconName::XCircle).color(Color::Error))
                                     .dismiss_button(true)
@@ -2892,17 +2923,24 @@ impl ProjectPanel {
     where
         S: AsRef<str>,
     {
-        let (message_action, confirmation_label, detail) = match kind {
-            RemovalKind::Trash => ("をゴミ箱へ移動しますか?", "ゴミ箱へ移動", None),
+        let (confirmation_label, detail) = match kind {
+            RemovalKind::Trash => (i18n::t!("Trash"), None),
             RemovalKind::Delete => (
-                "を完全に削除しますか?",
-                "完全に削除",
-                Some("この操作は元に戻せません。"),
+                i18n::tc!("delete permanently", "Delete"),
+                Some(i18n::t!("This cannot be undone.")),
             ),
         };
 
         let mut message = match names {
-            [name] => format!("{} {message_action}", MarkdownInlineCode(name.as_ref())),
+            [name] => {
+                let name = MarkdownInlineCode(name.as_ref());
+                match kind {
+                    RemovalKind::Trash => i18n::t!("Do you want to trash {}?", name),
+                    RemovalKind::Delete => {
+                        i18n::t!("Are you sure you want to permanently delete {}?", name)
+                    }
+                }
+            }
             _ => {
                 const CUTOFF_POINT: usize = 10;
                 let mut listed_names = names
@@ -2912,30 +2950,39 @@ impl ProjectPanel {
                     .collect::<Vec<_>>();
                 let omitted_count = names.len().saturating_sub(CUTOFF_POINT);
                 if omitted_count == 1 {
-                    listed_names.push(".. 他 1 件は表示していません".into());
+                    listed_names.push(i18n::t!(".. 1 file not shown").into());
                 } else if omitted_count > 1 {
-                    listed_names.push(format!(".. 他 {omitted_count} 件は表示していません"));
+                    listed_names.push(i18n::t!(".. {omitted_count} files not shown"));
                 }
 
-                format!(
-                    "次の {} 件のファイル{message_action}\n{}",
-                    names.len(),
-                    listed_names.join("\n")
-                )
+                let listed_names = listed_names.join("\n");
+                match kind {
+                    RemovalKind::Trash => i18n::t!(
+                        "Do you want to trash the following {} files?\n{}",
+                        names.len(),
+                        listed_names
+                    ),
+                    RemovalKind::Delete => i18n::t!(
+                        "Are you sure you want to permanently delete the following {} files?\n{}",
+                        names.len(),
+                        listed_names
+                    ),
+                }
             }
         };
         match dirty_buffers {
             0 => {}
             1 if names.len() == 1 => {
-                message.push_str("\n\n保存されていない変更があります。変更は失われます。");
+                message.push_str(i18n::t!("\n\nIt has unsaved changes, which will be lost."));
             }
             1 => {
-                message
-                    .push_str("\n\nうち 1 件に保存されていない変更があります。変更は失われます。");
+                message.push_str(i18n::t!(
+                    "\n\n1 of these has unsaved changes, which will be lost."
+                ));
             }
             dirty_buffers => {
-                message.push_str(&format!(
-                    "\n\nうち {dirty_buffers} 件に保存されていない変更があります。変更は失われます。"
+                message.push_str(&i18n::t!(
+                    "\n\n{dirty_buffers} of these have unsaved changes, which will be lost."
                 ));
             }
         }
@@ -3002,7 +3049,7 @@ impl ProjectPanel {
                     PromptLevel::Info,
                     &prompt.message,
                     prompt.detail,
-                    &[prompt.confirmation_label, "キャンセル"],
+                    &[prompt.confirmation_label, i18n::t!("Cancel")],
                     cx,
                 ))
             } else {
@@ -3088,10 +3135,10 @@ impl ProjectPanel {
         cx: &mut Context<Self>,
     ) {
         let message = match (trash, total_count) {
-            (true, _) => {
-                format!("{total_count} 件中 {failed_count} 件をゴミ箱へ移動できませんでした。")
-            }
-            (false, _) => format!("{total_count} 件中 {failed_count} 件を削除できませんでした。"),
+            (true, 1) => i18n::t!("Failed to trash {failed_count} of {total_count} file."),
+            (true, _) => i18n::t!("Failed to trash {failed_count} of {total_count} files."),
+            (false, 1) => i18n::t!("Failed to delete {failed_count} of {total_count} file."),
+            (false, _) => i18n::t!("Failed to delete {failed_count} of {total_count} files."),
         };
 
         let toast = StatusToast::new(message, cx, |this, _| {
@@ -3956,7 +4003,7 @@ impl ProjectPanel {
                 files: false,
                 directories: true,
                 multiple: false,
-                prompt: Some("ダウンロード".into()),
+                prompt: Some(i18n::t!("Download").into()),
                 starting_directory: None,
             },
             cx,
@@ -3974,7 +4021,7 @@ impl ProjectPanel {
                             workspace.show_toast(
                                 workspace::Toast::new(
                                     notification_id.clone(),
-                                    format!("0/{} 件のファイルをダウンロード中...", total_files),
+                                    i18n::t!("Downloading 0/{} files...", total_files),
                                 ),
                                 cx,
                             );
@@ -3990,8 +4037,8 @@ impl ProjectPanel {
                                 workspace.show_toast(
                                     workspace::Toast::new(
                                         notification_id.clone(),
-                                        format!(
-                                            "{}/{} 件のファイルをダウンロード中...",
+                                        i18n::t!(
+                                            "Downloading {}/{} files...",
                                             index + 1,
                                             total_files
                                         ),
@@ -4027,7 +4074,7 @@ impl ProjectPanel {
                             workspace.show_toast(
                                 workspace::Toast::new(
                                     notification_id.clone(),
-                                    format!("{} 件のファイルをダウンロードしました", total_files),
+                                    i18n::t!("Downloaded {} files", total_files),
                                 ),
                                 cx,
                             );
@@ -5075,12 +5122,8 @@ impl ProjectPanel {
         cx.spawn_in(window, async move |this, cx| {
             async move {
                 for (filename, original_path) in &paths_to_replace {
-                    let prompt_message = format!(
-                        concat!(
-                            "同名のファイルまたはフォルダー {} が",
-                            "移動先のフォルダーに既に存在します。",
-                            "置き換えますか?"
-                        ),
+                    let prompt_message = i18n::t!(
+                        "A file or folder with name {} already exists in the destination folder. Do you want to replace it?",
                         MarkdownInlineCode(filename)
                     );
                     let answer = cx
@@ -5089,7 +5132,7 @@ impl ProjectPanel {
                                 PromptLevel::Info,
                                 &prompt_message,
                                 None,
-                                &["置き換える", "キャンセル"],
+                                &[i18n::t!("Replace"), i18n::t!("Cancel")],
                                 cx,
                             )
                         })?
@@ -6608,7 +6651,7 @@ impl ProjectPanel {
                                         Tooltip::with_meta(
                                             path.to_string_lossy().into_owned(),
                                             None,
-                                            "シンボリックリンク",
+                                            i18n::t!("Symbolic Link"),
                                             cx,
                                         )
                                     })
@@ -8085,7 +8128,7 @@ impl Render for ProjectPanel {
                 .size_full()
                 .child(
                     ProjectEmptyState::new(
-                        "プロジェクトパネル",
+                        i18n::t!("Project Panel"),
                         focus_handle.clone(),
                         KeyBinding::for_action_in(&workspace::Open::default(), &focus_handle, cx),
                     )
@@ -8156,7 +8199,7 @@ impl Render for DraggedProjectEntryView {
                     .bg(cx.theme().colors().background)
                     .map(|this| {
                         if self.selections.len() > 1 && self.selections.contains(&self.selection) {
-                            this.child(Label::new(format!("{} 件", self.selections.len())))
+                            this.child(Label::new(i18n::t!("{} entries", self.selections.len())))
                         } else {
                             this.child(
                                 h_flex()
@@ -8212,7 +8255,7 @@ impl Panel for ProjectPanel {
     }
 
     fn icon_tooltip(&self, _window: &Window, _cx: &App) -> Option<&'static str> {
-        Some("プロジェクトパネル")
+        Some(i18n::t!("Project Panel"))
     }
 
     fn toggle_action(&self) -> Box<dyn Action> {

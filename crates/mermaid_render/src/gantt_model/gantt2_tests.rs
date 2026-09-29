@@ -326,7 +326,7 @@ fn a_deletion_that_would_move_a_task_is_refused() {
     let error = document
         .remove_section(1)
         .expect_err("`C` would have no date to start on");
-    assert!(format!("{error}").contains("セクション `後半`"), "{error}");
+    assert!(format!("{error}").contains("section `後半`"), "{error}");
     assert_eq!(emit_gantt(&document), sectioned);
 
     let mut document = parsed(source);
@@ -417,7 +417,7 @@ fn display_mode_is_kept_in_the_configuration() {
     }
     let error = parse_gantt("gantt\n    displayMode compact\n    A :a, 2026-01-05, 3d")
         .expect_err("displayMode is not a statement");
-    assert!(format!("{error}").contains("フロントマター"), "{error}");
+    assert!(format!("{error}").contains("front matter"), "{error}");
 }
 
 /// Every statement and tag a gantt chart can carry comes back byte for byte

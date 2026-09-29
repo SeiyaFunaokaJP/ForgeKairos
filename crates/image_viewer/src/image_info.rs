@@ -55,8 +55,8 @@ impl Render for ImageInfo {
         components.push(format_image_size(metadata.file_size, settings.unit));
 
         if let Some(colors) = metadata.colors {
-            components.push(format!(
-                "{} チャンネル、{} ビット/ピクセル",
+            components.push(i18n::t!(
+                "{} channels, {} bits per pixel",
                 colors.channels,
                 colors.bits_per_pixel()
             ));
@@ -73,7 +73,7 @@ impl Render for ImageInfo {
                 ImageFormat::Ico => "ICO",
                 ImageFormat::Avif => "Avif",
                 // 画像フォーマット名はデータなので未翻訳。不明な場合のみ日本語表示にする。
-                _ => "不明",
+                _ => i18n::t!("Unknown"),
             }
             .to_string(),
         );

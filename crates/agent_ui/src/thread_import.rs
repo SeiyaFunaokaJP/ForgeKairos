@@ -118,10 +118,10 @@ impl AgentImportStatus {
 
     fn tooltip_text(&self) -> Option<SharedString> {
         match self {
-            Self::Loading => Some("セッションを取得しています…".into()),
+            Self::Loading => Some(i18n::t!("Fetching Sessions…").into()),
             Self::Ready { .. } => None,
-            Self::Unsupported => Some("このエージェントは ACP の session/list 機能に対応していないため、スレッドをインポートできません。".into()),
-            Self::Error(error) => Some(format!("セッションの取得に失敗しました: {error}").into()),
+            Self::Unsupported => Some(i18n::t!("Importing threads from this agent is not possible as it doesn't support ACP's session/list capability.").into()),
+            Self::Error(error) => Some(i18n::t!("Failed to fetch sessions: {error}").into()),
         }
     }
 }
@@ -215,16 +215,14 @@ impl ThreadImportModal {
         }
 
         let Some(multi_workspace) = self.multi_workspace.upgrade() else {
-            self.mark_all_agents_failed("インポート元のワークスペースが見つかりませんでした。");
+            self.mark_all_agents_failed(i18n::t!("Could not find workspace to import from."));
             return;
         };
 
         let stores = resolve_agent_connection_stores(&multi_workspace, cx);
         if stores.is_empty() {
             log::error!("Did not find any workspaces to import from");
-            self.mark_all_agents_failed(
-                "インポート元のワークスペースが 1 つも見つかりませんでした。",
-            );
+            self.mark_all_agents_failed(i18n::t!("Did not find any workspaces to import from."));
             return;
         }
 
@@ -391,24 +389,20 @@ impl ThreadImportModal {
 
     fn show_imported_threads_toast(&self, imported_count: usize, cx: &mut App) {
         let status_toast = if imported_count == 0 {
-            StatusToast::new(
-                "インポートできるスレッドはありませんでした。",
-                cx,
-                |this, _cx| {
-                    this.icon(
-                        Icon::new(IconName::Info)
-                            .size(IconSize::Small)
-                            .color(Color::Muted),
-                    )
-                    .dismiss_button(true)
-                },
-            )
+            StatusToast::new(i18n::t!("No threads found to import."), cx, |this, _cx| {
+                this.icon(
+                    Icon::new(IconName::Info)
+                        .size(IconSize::Small)
+                        .color(Color::Muted),
+                )
+                .dismiss_button(true)
+            })
         } else {
-            let message = if imported_count == 1 {
-                "スレッドを 1 件インポートしました。".to_string()
-            } else {
-                format!("スレッドを {imported_count} 件インポートしました。")
-            };
+            let message = i18n::tn!(
+                imported_count,
+                "Imported {count} thread.",
+                "Imported {count} threads."
+            );
             StatusToast::new(message, cx, |this, _cx| {
                 this.icon(
                     Icon::new(IconName::Check)
@@ -507,9 +501,9 @@ impl Render for ThreadImportModal {
                             importable_count: count,
                         } => {
                             let label: SharedString = if count == 0 {
-                                "スレッドなし".into()
+                                i18n::t!("No threads").into()
                             } else {
-                                format!("スレッド {} 件", count).into()
+                                i18n::tn!(count, "{count} thread", "{count} threads").into()
                             };
                             this.child(Label::new(label).size(LabelSize::Small).color(Color::Muted))
                         }
@@ -576,11 +570,11 @@ impl Render for ThreadImportModal {
                 Modal::new("import-threads", None)
                     .header(
                         ModalHeader::new()
-                            .headline("外部エージェントのスレッドをインポート")
-                            .description(
-                                "Zed で開始したものでも他のクライアントで開始したものでも、Claude Agent や Codex などのエージェントからスレッドをインポートします。\
-                                含めるエージェントを選択すると、そのスレッドがスレッド履歴に表示されます。"
-                            )
+                            .headline(i18n::t!("Import External Agent Threads"))
+                            .description(i18n::t!(
+                                "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client. \
+                                Choose which agents to include, and their threads will appear in your thread history."
+                            ))
                             .show_dismiss_button(true),
 
                     )
@@ -594,7 +588,7 @@ impl Render for ThreadImportModal {
                                 .when(has_agents, |this| this.children(agent_rows))
                                 .when(!has_agents, |this| {
                                     this.child(
-                                        Label::new("利用できる外部エージェントはありません。")
+                                        Label::new(i18n::t!("No external agents available."))
                                             .color(Color::Muted)
                                             .size(LabelSize::Small),
                                     )
@@ -613,7 +607,7 @@ impl Render for ThreadImportModal {
                                                 .color(Color::Muted)
                                                 .with_rotate_animation(3),
                                         )
-                                        .child(Label::new("エージェントのスレッドを取得しています…")
+                                        .child(Label::new(i18n::t!("Fetching Agent Threads…"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted))
 
@@ -628,7 +622,7 @@ impl Render for ThreadImportModal {
                                 )
                             })
                             .end_slot(
-                                Button::new("import-threads", "スレッドをインポート")
+                                Button::new("import-threads", i18n::t!("Import Threads"))
                                     .loading(self.is_importing)
                                     .disabled(disabled_import_thread)
                                     .key_binding(
@@ -788,7 +782,7 @@ fn fetch_sessions_for_agent(
                     .errors
                     .first()
                     .cloned()
-                    .unwrap_or_else(|| "セッションの一覧取得に失敗しました。".into()),
+                    .unwrap_or_else(|| i18n::t!("Failed to list sessions.").into()),
             )
         } else if stats.unsupported_attempt_count > 0 {
             AgentImportStatus::Unsupported
@@ -977,7 +971,7 @@ fn show_cross_channel_import_toast(
 ) {
     let status_toast = if imported_count == 0 {
         StatusToast::new(
-            "インポートできる新しいスレッドはありませんでした。",
+            i18n::t!("No new threads found to import."),
             cx,
             |this, _cx| {
                 this.icon(Icon::new(IconName::Info).color(Color::Muted))
@@ -985,11 +979,11 @@ fn show_cross_channel_import_toast(
             },
         )
     } else {
-        let message = if imported_count == 1 {
-            "他のチャンネルからスレッドを 1 件インポートしました。".to_string()
-        } else {
-            format!("他のチャンネルからスレッドを {imported_count} 件インポートしました。")
-        };
+        let message = i18n::tn!(
+            imported_count,
+            "Imported {count} thread from other channels.",
+            "Imported {count} threads from other channels."
+        );
         StatusToast::new(message, cx, |this, _cx| {
             this.icon(Icon::new(IconName::Check).color(Color::Success))
                 .dismiss_button(true)

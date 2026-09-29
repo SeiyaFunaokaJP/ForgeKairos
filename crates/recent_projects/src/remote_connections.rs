@@ -314,10 +314,14 @@ pub async fn open_remote_project(
                         window.prompt(
                             PromptLevel::Critical,
                             match connection_options {
-                                RemoteConnectionOptions::Ssh(_) => "SSH で接続できませんでした",
-                                RemoteConnectionOptions::Wsl(_) => "WSL に接続できませんでした",
+                                RemoteConnectionOptions::Ssh(_) => {
+                                    i18n::t!("Failed to connect over SSH")
+                                }
+                                RemoteConnectionOptions::Wsl(_) => {
+                                    i18n::t!("Failed to connect to WSL")
+                                }
                                 RemoteConnectionOptions::Docker(_) => {
-                                    "Dev Container に接続できませんでした"
+                                    i18n::t!("Failed to connect to Dev Container")
                                 }
                                 // `Mock` grows in whenever `remote/test-support`
                                 // is enabled, which a dependent's dev-dependency
@@ -325,10 +329,10 @@ pub async fn open_remote_project(
                                 // — so a `#[cfg]`-gated arm for it leaves the
                                 // match non-exhaustive under `--all-targets`.
                                 #[allow(unreachable_patterns)]
-                                _ => "リモートホストに接続できませんでした",
+                                _ => i18n::t!("Failed to connect to the remote host"),
                             },
                             Some(&format!("{e:#}")),
-                            &["再試行", "キャンセル"],
+                            &[i18n::t!("Retry"), i18n::t!("Cancel")],
                             cx,
                         )
                     })?
@@ -378,10 +382,14 @@ pub async fn open_remote_project(
                         window.prompt(
                             PromptLevel::Critical,
                             match connection_options {
-                                RemoteConnectionOptions::Ssh(_) => "SSH で接続できませんでした",
-                                RemoteConnectionOptions::Wsl(_) => "WSL に接続できませんでした",
+                                RemoteConnectionOptions::Ssh(_) => {
+                                    i18n::t!("Failed to connect over SSH")
+                                }
+                                RemoteConnectionOptions::Wsl(_) => {
+                                    i18n::t!("Failed to connect to WSL")
+                                }
                                 RemoteConnectionOptions::Docker(_) => {
-                                    "Dev Container に接続できませんでした"
+                                    i18n::t!("Failed to connect to Dev Container")
                                 }
                                 // `Mock` grows in whenever `remote/test-support`
                                 // is enabled, which a dependent's dev-dependency
@@ -389,10 +397,10 @@ pub async fn open_remote_project(
                                 // — so a `#[cfg]`-gated arm for it leaves the
                                 // match non-exhaustive under `--all-targets`.
                                 #[allow(unreachable_patterns)]
-                                _ => "リモートホストに接続できませんでした",
+                                _ => i18n::t!("Failed to connect to the remote host"),
                             },
                             Some(&format!("{e:#}")),
-                            &["再試行", "キャンセル"],
+                            &[i18n::t!("Retry"), i18n::t!("Cancel")],
                             cx,
                         )
                     })?

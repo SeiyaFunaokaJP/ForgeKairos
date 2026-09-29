@@ -194,17 +194,21 @@ pub(crate) fn open_abs_path_at_point(
         .detach_and_log_err(cx);
 }
 
-pub const DEFAULT_THREAD_TITLE: &str = "新しいエージェントスレッド";
+/// The English msgid; translate it with `i18n::tr` where it is shown.
+pub const DEFAULT_THREAD_TITLE: &str = i18n::msg!("New Agent Thread");
 
-/// F1-4: `DEFAULT_THREAD_TITLE` を日本語化する前に永続化されたスレッドは、
-/// この英語のタイトルをそのままデータベースに持っている。既定タイトルかどうかの
-/// 判定 (= 表示上はタイトル無しとして扱う) は旧い値も受け付ける必要がある。
-pub const LEGACY_DEFAULT_THREAD_TITLE: &str = "New Agent Thread";
+/// F1-4: earlier versions of this fork persisted the default title in Japanese,
+/// so a thread saved then still carries this value in the database and has to
+/// read back as untitled.
+pub const LEGACY_DEFAULT_THREAD_TITLE: &str = "新しいエージェントスレッド";
 
-/// スレッドのタイトルが「まだ名前が付いていない」ことを表す既定値かどうか。
-/// 日本語化前に保存された英語の既定値も既定値として扱う。
+/// Whether `title` is the placeholder for a thread that has no name yet: the
+/// English value, the one persisted by earlier versions, or the one shown in
+/// the current language (which a user can save back from the title editor).
 pub fn is_default_thread_title(title: &str) -> bool {
-    title == DEFAULT_THREAD_TITLE || title == LEGACY_DEFAULT_THREAD_TITLE
+    title == DEFAULT_THREAD_TITLE
+        || title == LEGACY_DEFAULT_THREAD_TITLE
+        || title == i18n::tr(DEFAULT_THREAD_TITLE)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -777,7 +781,9 @@ fn rerun_rules_to_skills_migration(
             cx.update(|_window, cx| {
                 show_rules_to_skills_migration_toast(
                     &workspace,
-                    "ルールからスキルへの移行を再実行しました。AGENTS.md とスキルにプロンプトの欠落や重複がないか確認してください。",
+                    i18n::t!(
+                        "Rules-to-skills migration rerun. Please double-check AGENTS.md and Skills for missing or duplicated prompts."
+                    ),
                     cx,
                 );
             })?;

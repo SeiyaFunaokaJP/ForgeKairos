@@ -97,9 +97,9 @@ impl AgentTool for CreateDirectoryTool {
         _cx: &mut App,
     ) -> SharedString {
         if let Ok(input) = input {
-            format!("ディレクトリ {} を作成", MarkdownInlineCode(&input.path)).into()
+            i18n::t!("Create directory {}", MarkdownInlineCode(&input.path)).into()
         } else {
-            "ディレクトリを作成".into()
+            i18n::t!("Create directory").into()
         }
     }
 
@@ -192,7 +192,7 @@ impl AgentTool for CreateDirectoryTool {
                     ToolPermissionDecision::Confirm | ToolPermissionDecision::Judge => {
                         Some(cx.update(|cx| {
                             let title =
-                                format!("ディレクトリ {} を作成", MarkdownInlineCode(&input.path));
+                                i18n::t!("Create directory {}", MarkdownInlineCode(&input.path));
                             let context = crate::ToolPermissionContext::new(
                                 Self::NAME,
                                 vec![input.path.clone()],
@@ -573,7 +573,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("エージェントのスキル"),
+            title.contains("agent skills"),
             "Authorization title should mention agent skills, got: {title}",
         );
         assert!(
@@ -686,8 +686,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています")
-                || title.contains("シンボリックリンク"),
+            title.contains("points outside the project") || title.contains("symlink"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 
@@ -810,8 +809,7 @@ mod tests {
         let auth = event_rx.expect_authorization().await;
         let title = auth.tool_call.fields.title.as_deref().unwrap_or("");
         assert!(
-            title.contains("プロジェクトの外を指しています")
-                || title.contains("シンボリックリンク"),
+            title.contains("points outside the project") || title.contains("symlink"),
             "Authorization title should mention symlink escape, got: {title}",
         );
 

@@ -140,7 +140,7 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "プロジェクトを検索…".into()
+        i18n::t!("Search projects…").into()
     }
 
     fn match_count(&self) -> usize {
@@ -268,7 +268,7 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
                             .await
                     })
                     .detach_and_prompt_err(
-                        "プロジェクトを開けませんでした",
+                        i18n::t!("Failed to open project"),
                         window,
                         cx,
                         |_, _, _| None,
@@ -283,9 +283,9 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
 
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
         let text = if self.workspaces.is_empty() {
-            "最近開いたプロジェクトがここに表示されます"
+            i18n::t!("Recently opened projects will show up here")
         } else {
-            "一致なし"
+            i18n::t!("No matches")
         };
         Some(text.into())
     }
@@ -368,7 +368,7 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
                 )
                 .tooltip(move |_, cx| {
                     Tooltip::with_meta(
-                        "このウィンドウでプロジェクトを開く",
+                        i18n::t!("Open Project in This Window"),
                         None,
                         tooltip_path.clone(),
                         cx,
@@ -399,7 +399,7 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
                                 .w_full()
                                 .gap_1()
                                 .justify_between()
-                                .child(Label::new("ローカルフォルダーを開く"))
+                                .child(Label::new(i18n::t!("Open Local Folders")))
                                 .child(KeyBinding::for_action_in(&open_action, &focus_handle, cx)),
                         )
                         .on_click(cx.listener(move |_, _, window, cx| {
@@ -414,7 +414,7 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
                                 .w_full()
                                 .gap_1()
                                 .justify_between()
-                                .child(Label::new("リモートフォルダーを開く"))
+                                .child(Label::new(i18n::t!("Open Remote Folder")))
                                 .child(KeyBinding::for_action(
                                     &OpenRemote {
                                         from_existing_connection: false,

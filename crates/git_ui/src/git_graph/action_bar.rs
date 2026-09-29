@@ -7,10 +7,10 @@ use crate::commit_context_menu::{
     CommitFacts, CommitMenuOperation, commit_operation_refusal, run_commit_menu_operation,
 };
 use crate::git_terms::{
-    AMEND_HELP, CHERRY_PICK_SELECTION_HELP, COMPARE_REFS_HELP, LOG_SOURCE_HELP,
-    MERGE_REQUEST_BOX_HELP, MERGE_REQUEST_TOOLBAR_HELP, MORE_MENU_HELP, OperationHelp,
-    RESET_HARD_SUMMARY, RESET_MENU_HELP, RESET_MIXED_SUMMARY, RESET_SOFT_SUMMARY,
-    REWRITE_SELECTION_HELP, TAG_LIST_HELP, commit_operation_help, help_aside,
+    OperationHelp, RESET_HARD_SUMMARY, RESET_MIXED_SUMMARY, RESET_SOFT_SUMMARY, amend_help,
+    cherry_pick_selection_help, commit_operation_help, compare_refs_help, help_aside,
+    log_source_help, merge_request_box_help, merge_request_toolbar_help, more_menu_help,
+    reset_menu_help, rewrite_selection_help, tag_list_help,
 };
 use db::kvp::Dismissable;
 use gpui::{Stateful, canvas};
@@ -74,10 +74,10 @@ pub(super) enum ToolbarHelp {
 impl ToolbarHelp {
     pub(super) fn help(self) -> OperationHelp {
         match self {
-            Self::LogSource => LOG_SOURCE_HELP,
-            Self::TagList => TAG_LIST_HELP,
-            Self::CompareRefs => COMPARE_REFS_HELP,
-            Self::MergeRequest => MERGE_REQUEST_TOOLBAR_HELP,
+            Self::LogSource => log_source_help(),
+            Self::TagList => tag_list_help(),
+            Self::CompareRefs => compare_refs_help(),
+            Self::MergeRequest => merge_request_toolbar_help(),
         }
     }
 }
@@ -86,16 +86,17 @@ impl ToolbarHelp {
 pub(super) fn commit_bar_help(action: CommitBarAction) -> OperationHelp {
     match action {
         CommitBarAction::Menu(operation) => commit_operation_help(operation),
-        CommitBarAction::ResetMenu => RESET_MENU_HELP,
-        CommitBarAction::Amend => AMEND_HELP,
-        CommitBarAction::MergeRequestBox => MERGE_REQUEST_BOX_HELP,
-        CommitBarAction::CherryPickSelection => CHERRY_PICK_SELECTION_HELP,
-        CommitBarAction::RewriteSelection => REWRITE_SELECTION_HELP,
+        CommitBarAction::ResetMenu => reset_menu_help(),
+        CommitBarAction::Amend => amend_help(),
+        CommitBarAction::MergeRequestBox => merge_request_box_help(),
+        CommitBarAction::CherryPickSelection => cherry_pick_selection_help(),
+        CommitBarAction::RewriteSelection => rewrite_selection_help(),
     }
 }
 
-const SINGLE_SELECTION_DESCRIPTION: &str =
-    "ボタンにマウスを乗せると、ここに説明が出ます。用語の意味は操作ガイドでも調べられます";
+fn single_selection_description() -> &'static str {
+    i18n::t!("Hover over a button to see what it does here. The Git guide explains the terms too")
+}
 
 /// The line under the button row: what the hovered control does (or why it cannot be pressed),
 /// otherwise what the selection allows. With nothing picked the row itself already says what to
@@ -115,22 +116,25 @@ pub(super) fn action_description(
             if let Some(button) = buttons.iter().find(|button| button.action == *action) {
                 return match &button.refusal {
                     Some(refusal) => {
-                        format!("「{}」は今は使えません: {refusal}", button.label).into()
+                        let label = &button.label;
+                        i18n::t!("\"{label}\" is unavailable right now: {refusal}").into()
                     }
                     None => button.help.line().into(),
                 };
             }
         }
         Some(HoveredHelp::MoreMenu { rows: hovered_rows }) if hovered_rows.as_slice() == rows => {
-            return MORE_MENU_HELP.line().into();
+            return more_menu_help().line().into();
         }
         _ => {}
     }
     match selection {
         CommitBarSelection::Nothing => SharedString::default(),
-        CommitBarSelection::Single { .. } => SINGLE_SELECTION_DESCRIPTION.into(),
-        CommitBarSelection::Multiple { count, .. } => format!(
-            "選んだ {count} 件をまとめて取り込む・並べ替える・MR の箱に入れることができます。ボタンにマウスを乗せると説明が出ます"
+        CommitBarSelection::Single { .. } => single_selection_description().into(),
+        CommitBarSelection::Multiple { count, .. } => i18n::tn!(
+            count,
+            "Cherry-pick the {count} picked commit, reorder it or add it to the MR box. Hover over a button to learn more",
+            "Cherry-pick the {count} picked commits together, reorder them or add them to the MR box. Hover over a button to learn more"
         )
         .into(),
     }
@@ -192,20 +196,23 @@ pub(super) struct RangeRewriteFacts {
 /// both replay commits over the working tree.
 pub(super) fn range_rewrite_refusal(facts: RangeRewriteFacts) -> Option<&'static str> {
     if !facts.contiguous {
-        Some("連続した範囲を選んでください")
+        Some(i18n::t!("Pick an unbroken range"))
     } else if !facts.on_current_branch {
-        Some("現在のブランチ上のコミットを選んでください")
+        Some(i18n::t!("Pick commits on the current branch"))
     } else if !facts.head_is_branch {
-        Some("detached HEAD では書き換えられません。先にブランチに切り替えてください")
+        Some(i18n::t!(
+            "A detached HEAD cannot be rewritten. Switch to a branch first"
+        ))
     } else if facts.worktree_dirty {
-        Some("未コミットの変更を先にコミットかスタッシュしてください")
+        Some(i18n::t!("Commit or stash the uncommitted changes first"))
     } else {
         None
     }
 }
 
-const MERGE_REQUEST_BOX_REFUSAL: &str =
-    "ファイル履歴のタブでは MR の箱を使えません。コミットグラフのタブで開いてください。";
+pub(super) fn merge_request_box_refusal() -> &'static str {
+    i18n::t!("A file history tab has no MR box. Open it in a Git Graph tab.")
+}
 
 /// The buttons the row shows for `selection`, in order.
 pub(super) fn commit_bar_buttons(
@@ -219,7 +226,7 @@ pub(super) fn commit_bar_buttons(
         refusal,
     };
     let merge_request_box_refusal =
-        (!can_hold_merge_request_box).then_some(SharedString::from(MERGE_REQUEST_BOX_REFUSAL));
+        (!can_hold_merge_request_box).then(|| SharedString::from(merge_request_box_refusal()));
     match selection {
         CommitBarSelection::Nothing => Vec::new(),
         CommitBarSelection::Single { facts } => {
@@ -234,21 +241,43 @@ pub(super) fn commit_bar_buttons(
             if facts.is_head {
                 buttons.push(button(
                     CommitBarAction::Amend,
-                    "直前のコミットを修正 (amend)",
+                    i18n::tc!("commit action", "Amend Last Commit"),
                     None,
                 ));
             }
             buttons.extend([
-                menu(CommitMenuOperation::CreateBranch, "ここからブランチ"),
-                menu(CommitMenuOperation::Checkout, "チェックアウト"),
-                menu(CommitMenuOperation::CherryPick, "取り込む (cherry-pick)"),
-                menu(CommitMenuOperation::Revert, "打ち消す (revert)"),
-                menu(CommitMenuOperation::Reword, "メッセージを書き換え"),
-                menu(CommitMenuOperation::Fixup, "今の変更を入れる (fixup)"),
-                button(CommitBarAction::ResetMenu, "このコミットまで戻す", None),
+                menu(
+                    CommitMenuOperation::CreateBranch,
+                    i18n::tc!("commit action", "Branch from Here"),
+                ),
+                menu(
+                    CommitMenuOperation::Checkout,
+                    i18n::tc!("commit action", "Check Out"),
+                ),
+                menu(
+                    CommitMenuOperation::CherryPick,
+                    i18n::tc!("commit action", "Cherry-Pick"),
+                ),
+                menu(
+                    CommitMenuOperation::Revert,
+                    i18n::tc!("commit action", "Revert"),
+                ),
+                menu(
+                    CommitMenuOperation::Reword,
+                    i18n::tc!("commit action", "Reword Message"),
+                ),
+                menu(
+                    CommitMenuOperation::Fixup,
+                    i18n::tc!("commit action", "Add Current Changes (fixup)"),
+                ),
+                button(
+                    CommitBarAction::ResetMenu,
+                    i18n::tc!("commit action", "Reset to This Commit"),
+                    None,
+                ),
                 button(
                     CommitBarAction::MergeRequestBox,
-                    "MR の箱に入れる",
+                    i18n::tc!("commit action", "Add to MR Box"),
                     merge_request_box_refusal,
                 ),
             ]);
@@ -257,18 +286,28 @@ pub(super) fn commit_bar_buttons(
         CommitBarSelection::Multiple { count, rewrite } => vec![
             button(
                 CommitBarAction::CherryPickSelection,
-                &format!("{count} 件を取り込む"),
+                &i18n::tcn!(
+                    "commit action",
+                    count,
+                    "Cherry-Pick {count} Commit",
+                    "Cherry-Pick {count} Commits"
+                ),
                 None,
             ),
             button(
                 CommitBarAction::RewriteSelection,
-                "並べ替え / まとめる / 捨てる…",
+                i18n::tc!("commit action", "Reorder / Squash / Drop…"),
                 range_rewrite_refusal(*rewrite)
-                    .map(|reason| SharedString::from(format!("{reason}。"))),
+                    .map(|reason| SharedString::from(i18n::t!("{reason}."))),
             ),
             button(
                 CommitBarAction::MergeRequestBox,
-                &format!("MR の箱に入れる ({count} 件)"),
+                &i18n::tcn!(
+                    "commit action",
+                    count,
+                    "Add to MR Box ({count} Commit)",
+                    "Add to MR Box ({count} Commits)"
+                ),
                 merge_request_box_refusal,
             ),
         ],
@@ -286,7 +325,9 @@ pub(super) fn estimated_button_width(label: &str) -> Pixels {
 }
 
 const BAR_GAP: Pixels = px(4.0);
-const MORE_BUTTON_LABEL: &str = "その他";
+fn more_button_label() -> &'static str {
+    i18n::tc!("commit action", "More")
+}
 /// The chevron that follows "その他" and "このコミットまで戻す".
 const CHEVRON_WIDTH: Pixels = px(16.0);
 
@@ -315,7 +356,7 @@ pub(super) fn inline_button_count(
     if total <= available {
         return buttons.len();
     }
-    let more = estimated_button_width(MORE_BUTTON_LABEL) + CHEVRON_WIDTH + BAR_GAP;
+    let more = estimated_button_width(more_button_label()) + CHEVRON_WIDTH + BAR_GAP;
     let mut used = leading + more;
     let mut count = 0;
     for button in buttons {
@@ -450,8 +491,10 @@ impl GitGraph {
                     graph
                         .update(cx, |graph, cx| {
                             graph.report_refused(
-                                "Git パネルでは別のリポジトリが選ばれています。Git パネルでこのリポジトリに切り替えてから修正 (amend) してください。"
-                                    .to_string(),
+                                i18n::t!(
+                                    "The Git panel has another repository selected. Switch the Git panel to this repository, then amend."
+                                )
+                                .to_string(),
                                 cx,
                             )
                         })
@@ -493,14 +536,16 @@ impl GitGraph {
         let buttons = commit_bar_buttons(&selection, self.can_hold_merge_request_box());
         let sha = self.selected_single_sha();
         let leading_label: SharedString = match (&selection, sha) {
-            (CommitBarSelection::Nothing, _) => {
-                "コミットを選ぶと、ここに操作ボタンが出ます (右クリックでも同じ操作ができます)"
-                    .into()
-            }
+            (CommitBarSelection::Nothing, _) => i18n::t!(
+                "Pick a commit to get its operations here (right-clicking offers the same)"
+            )
+            .into(),
             (CommitBarSelection::Single { .. }, Some(sha)) => {
                 format!("{}:", sha.display_short()).into()
             }
-            (CommitBarSelection::Multiple { count, .. }, _) => format!("{count} 件:").into(),
+            (CommitBarSelection::Multiple { count, .. }, _) => {
+                i18n::tn!(count, "{count} commit:", "{count} commits:").into()
+            }
             (CommitBarSelection::Single { .. }, None) => SharedString::default(),
         };
         let leading_width = estimated_button_width(&leading_label);
@@ -685,14 +730,14 @@ impl GitGraph {
                         }))
                     })
                     .trigger_with_tooltip(
-                        Button::new("git-graph-action-more", MORE_BUTTON_LABEL)
+                        Button::new("git-graph-action-more", more_button_label())
                             .label_size(LabelSize::Small)
                             .end_icon(
                                 Icon::new(IconName::ChevronDown)
                                     .size(IconSize::XSmall)
                                     .color(Color::Muted),
                             ),
-                        Tooltip::text(MORE_MENU_HELP.sentence()),
+                        Tooltip::text(more_menu_help().sentence()),
                     ),
             )
             .into_any_element()
@@ -804,12 +849,19 @@ impl GitGraph {
                                 .size(IconSize::Small)
                                 .color(Color::Info),
                         )
-                        .child(Label::new("コミットグラフの使い方").size(LabelSize::Small))
+                        .child(
+                            Label::new(i18n::t!("Using the Git Graph")).size(LabelSize::Small),
+                        )
                         .child(div().flex_1())
                         .child(
-                            Button::new("git-graph-hints-guide", "操作ガイド")
-                                .label_size(LabelSize::Small)
-                                .tooltip(Tooltip::text("やりたいことから Git の操作を探せます"))
+                            Button::new(
+                                "git-graph-hints-guide",
+                                i18n::tc!("git graph hints", "Guide"),
+                            )
+                            .label_size(LabelSize::Small)
+                            .tooltip(Tooltip::text(i18n::t!(
+                                "Find a Git operation by what you want to do"
+                            )))
                                 .on_click(|_, window, cx| {
                                     window.dispatch_action(git::ShowGuide.boxed_clone(), cx)
                                 }),
@@ -818,7 +870,10 @@ impl GitGraph {
                             div()
                                 .debug_selector(|| "git-graph-hints-dismiss".into())
                                 .child(
-                                    Button::new("git-graph-hints-dismiss", "次回から表示しない")
+                                    Button::new(
+                                        "git-graph-hints-dismiss",
+                                        i18n::t!("Don't Show Again"),
+                                    )
                                         .label_size(LabelSize::Small)
                                         .on_click(cx.listener(|this, _, _, cx| {
                                             GitGraphHints::set_dismissed(true, cx);
@@ -830,20 +885,24 @@ impl GitGraph {
                         .child(
                             IconButton::new("git-graph-hints-close", IconName::Close)
                                 .icon_size(IconSize::Small)
-                                .tooltip(Tooltip::text("閉じる (次に開いたときはまた出ます)"))
+                                .tooltip(Tooltip::text(i18n::t!(
+                                    "Close (they show again next time)"
+                                )))
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.guide.hints_visible = false;
                                     cx.notify();
                                 })),
                         ),
                 )
-                .child(hint("コミットを選ぶと上に操作ボタンが出ます"))
-                .child(hint(
-                    "コミットはドラッグでブランチに取り込み・並べ替え・MR の箱へ",
-                ))
-                .child(hint(
-                    "Git パネルのファイルをコミットに落とすと、そのコミットに修正を足せます (fixup)",
-                ))
+                .child(hint(i18n::t!(
+                    "Pick a commit and the buttons for it show above"
+                )))
+                .child(hint(i18n::t!(
+                    "Drag a commit onto a branch to cherry-pick it, onto a row to reorder, or into the MR box"
+                )))
+                .child(hint(i18n::t!(
+                    "Drop files from the Git panel onto a commit to add the fix to that commit (fixup)"
+                )))
                 .into_any_element(),
         )
     }
@@ -852,7 +911,7 @@ impl GitGraph {
     pub(crate) fn start_ref_comparison(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.comparable_refs(cx).len() < 2 {
             self.report_refused(
-                "比べるには、ブランチかタグが 2 つ以上必要です。".to_string(),
+                i18n::t!("Comparing needs at least two branches or tags.").to_string(),
                 cx,
             );
             return;
@@ -872,15 +931,15 @@ fn reset_menu_entries(
     [
         (
             CommitMenuOperation::ResetSoft,
-            format!("soft: {RESET_SOFT_SUMMARY}"),
+            format!("soft: {}", i18n::tr(RESET_SOFT_SUMMARY)),
         ),
         (
             CommitMenuOperation::ResetMixed,
-            format!("mixed: {RESET_MIXED_SUMMARY}"),
+            format!("mixed: {}", i18n::tr(RESET_MIXED_SUMMARY)),
         ),
         (
             CommitMenuOperation::ResetHard,
-            format!("hard: {RESET_HARD_SUMMARY}…"),
+            format!("hard: {}…", i18n::tr(RESET_HARD_SUMMARY)),
         ),
     ]
     .into_iter()
@@ -978,14 +1037,14 @@ mod tests {
         assert_eq!(
             labels(&buttons),
             [
-                "ここからブランチ",
-                "チェックアウト",
-                "取り込む (cherry-pick)",
-                "打ち消す (revert)",
-                "メッセージを書き換え",
-                "今の変更を入れる (fixup)",
-                "このコミットまで戻す",
-                "MR の箱に入れる",
+                "Branch from Here",
+                "Check Out",
+                "Cherry-Pick",
+                "Revert",
+                "Reword Message",
+                "Add Current Changes (fixup)",
+                "Reset to This Commit",
+                "Add to MR Box",
             ]
         );
         assert!(buttons.iter().all(|button| button.refusal.is_none()));
@@ -1015,7 +1074,7 @@ mod tests {
         };
         let buttons = commit_bar_buttons(&single(head), true);
         assert_eq!(buttons[0].action, CommitBarAction::Amend);
-        assert_eq!(buttons[0].label.as_ref(), "直前のコミットを修正 (amend)");
+        assert_eq!(buttons[0].label.as_ref(), "Amend Last Commit");
         assert!(
             refusal(
                 &buttons,
@@ -1030,19 +1089,16 @@ mod tests {
             is_merge: Some(true),
             ..plain.clone()
         };
-        let buttons = commit_bar_buttons(&single(merge), true);
-        assert_eq!(
-            refusal(
-                &buttons,
-                CommitBarAction::Menu(CommitMenuOperation::CherryPick)
-            )
-            .as_deref(),
-            Some("マージコミットは取り込めません。")
-        );
-        assert_eq!(
-            refusal(&buttons, CommitBarAction::Menu(CommitMenuOperation::Revert)).as_deref(),
-            Some("マージコミットは打ち消せません。")
-        );
+        let buttons = commit_bar_buttons(&single(merge.clone()), true);
+        for operation in [CommitMenuOperation::CherryPick, CommitMenuOperation::Revert] {
+            let menu_refusal = commit_operation_refusal(operation, &merge);
+            assert!(menu_refusal.is_some(), "{operation:?}");
+            assert_eq!(
+                refusal(&buttons, CommitBarAction::Menu(operation)),
+                menu_refusal,
+                "the button says what the menu's item says"
+            );
+        }
         assert!(
             !buttons
                 .iter()
@@ -1051,13 +1107,13 @@ mod tests {
 
         // The fixup button says what the menu's fixup item says.
         let nothing_to_fold = CommitFacts {
-            fixup_refusal: Some("コミットに入れる変更がありません。".into()),
+            fixup_refusal: Some("There is nothing to put into the commit.".into()),
             ..plain
         };
         let buttons = commit_bar_buttons(&single(nothing_to_fold), true);
         assert_eq!(
             refusal(&buttons, CommitBarAction::Menu(CommitMenuOperation::Fixup)).as_deref(),
-            Some("コミットに入れる変更がありません。")
+            Some("There is nothing to put into the commit.")
         );
 
         // A file-history tab has no merge-request box.
@@ -1081,9 +1137,9 @@ mod tests {
         assert_eq!(
             labels(&buttons),
             [
-                "3 件を取り込む",
-                "並べ替え / まとめる / 捨てる…",
-                "MR の箱に入れる (3 件)",
+                "Cherry-Pick 3 Commits",
+                "Reorder / Squash / Drop…",
+                "Add to MR Box (3 Commits)",
             ]
         );
         assert!(buttons.iter().all(|button| button.refusal.is_none()));
@@ -1091,13 +1147,13 @@ mod tests {
         let buttons = commit_bar_buttons(&selection(false, true), true);
         assert_eq!(
             refusal(&buttons, CommitBarAction::RewriteSelection).as_deref(),
-            Some("連続した範囲を選んでください。")
+            Some("Pick an unbroken range.")
         );
         assert!(refusal(&buttons, CommitBarAction::CherryPickSelection).is_none());
         let buttons = commit_bar_buttons(&selection(true, false), true);
         assert_eq!(
             refusal(&buttons, CommitBarAction::RewriteSelection).as_deref(),
-            Some("現在のブランチ上のコミットを選んでください。")
+            Some("Pick commits on the current branch.")
         );
     }
 
@@ -1112,15 +1168,15 @@ mod tests {
         assert_eq!(range_rewrite_refusal(facts(true, true)), None);
         assert_eq!(
             range_rewrite_refusal(facts(false, true)),
-            Some("連続した範囲を選んでください")
+            Some("Pick an unbroken range")
         );
         assert_eq!(
             range_rewrite_refusal(facts(false, false)),
-            Some("連続した範囲を選んでください")
+            Some("Pick an unbroken range")
         );
         assert_eq!(
             range_rewrite_refusal(facts(true, false)),
-            Some("現在のブランチ上のコミットを選んでください")
+            Some("Pick commits on the current branch")
         );
         // What the rewrite would refuse only once asked is refused up front as well.
         assert_eq!(
@@ -1128,14 +1184,14 @@ mod tests {
                 head_is_branch: false,
                 ..facts(true, true)
             }),
-            Some("detached HEAD では書き換えられません。先にブランチに切り替えてください")
+            Some("A detached HEAD cannot be rewritten. Switch to a branch first")
         );
         assert_eq!(
             range_rewrite_refusal(RangeRewriteFacts {
                 worktree_dirty: true,
                 ..facts(true, true)
             }),
-            Some("未コミットの変更を先にコミットかスタッシュしてください")
+            Some("Commit or stash the uncommitted changes first")
         );
         assert_eq!(
             range_rewrite_refusal(RangeRewriteFacts {
@@ -1143,7 +1199,7 @@ mod tests {
                 worktree_dirty: true,
                 ..facts(false, true)
             }),
-            Some("連続した範囲を選んでください"),
+            Some("Pick an unbroken range"),
             "the selection itself is what to fix first"
         );
     }
@@ -1167,7 +1223,7 @@ mod tests {
 
         let narrow = inline_button_count(&buttons, leading, Some(px(500.)));
         assert!(0 < narrow && narrow < buttons.len(), "{narrow}");
-        // What stays inline, with "その他 ▾" after it, fits.
+        // What stays inline, with "More ▾" after it, fits.
         let used = buttons[..narrow]
             .iter()
             .map(|button| {
@@ -1180,7 +1236,7 @@ mod tests {
                     + BAR_GAP
             })
             .fold(
-                leading + estimated_button_width(MORE_BUTTON_LABEL) + CHEVRON_WIDTH + BAR_GAP,
+                leading + estimated_button_width(more_button_label()) + CHEVRON_WIDTH + BAR_GAP,
                 |sum, width| sum + width,
             );
         assert!(used <= px(500.));
@@ -1333,7 +1389,7 @@ mod tests {
             cx,
         );
         assert!(cx.has_pending_prompt());
-        cx.simulate_prompt_answer("取り込む");
+        cx.simulate_prompt_answer("Cherry-Pick");
         cx.run_until_parked();
         assert_eq!(
             git_invocations(&fs, "cherry-pick"),
@@ -1447,7 +1503,7 @@ mod tests {
                 .expect("the row is on screen");
             let button = cx
                 .debug_bounds("git-graph-action-branch")
-                .expect("ここからブランチ is on screen");
+                .expect("Branch from Here is on screen");
             assert!(
                 bar.top() <= button.top() && button.bottom() <= bar.bottom(),
                 "{button:?} is cut off by {bar:?}"
@@ -1579,15 +1635,15 @@ mod tests {
         // The row's own buttons carry the words of what they do, so that two of them trading
         // explanations is caught (the commit menu's operations are checked in `git_terms`).
         for (action, in_title, in_explanation) in [
-            (CommitBarAction::Amend, "amend", "直前のコミット"),
-            (CommitBarAction::ResetMenu, "reset", "soft / mixed / hard"),
-            (CommitBarAction::MergeRequestBox, "MR の箱", "MR 用"),
+            (CommitBarAction::Amend, "Amend", "last commit"),
+            (CommitBarAction::ResetMenu, "Reset", "soft / mixed / hard"),
+            (CommitBarAction::MergeRequestBox, "MR Box", "for the MR"),
             (
                 CommitBarAction::CherryPickSelection,
-                "cherry-pick",
-                "古い順",
+                "Cherry-Pick",
+                "oldest first",
             ),
-            (CommitBarAction::RewriteSelection, "並べ替え", "squash"),
+            (CommitBarAction::RewriteSelection, "Reorder", "squashes"),
         ] {
             let help = commit_bar_help(action);
             assert!(help.title.contains(in_title), "{action:?}: {help:?}");
@@ -1620,12 +1676,12 @@ mod tests {
                 ]
                 .map(ToolbarHelp::help),
             )
-            .chain([MORE_MENU_HELP, crate::git_terms::SQUASH_SELECTION_HELP])
+            .chain([more_menu_help(), crate::git_terms::squash_selection_help()])
             .collect::<Vec<_>>();
         for (index, help) in helps.iter().enumerate() {
             assert!(!help.title.is_empty() && !help.explanation.is_empty());
             assert!(
-                !help.explanation.ends_with('。'),
+                !help.explanation.ends_with('.'),
                 "the sentence adds the full stop: {help:?}"
             );
             assert!(
@@ -1641,7 +1697,7 @@ mod tests {
             );
         }
         for text in [
-            SINGLE_SELECTION_DESCRIPTION.to_string(),
+            single_selection_description().to_string(),
             action_description(
                 &selections[3],
                 &commit_bar_buttons(&selections[3], true),
@@ -1664,6 +1720,8 @@ mod tests {
             is_merge: Some(true),
             fixup_refusal: None,
         };
+        let revert_refusal = commit_operation_refusal(CommitMenuOperation::Revert, &facts)
+            .expect("a merge commit cannot be reverted");
         let selection = single(facts);
         let buttons = commit_bar_buttons(&selection, true);
         let describe = |hovered: Option<HoveredHelp>| {
@@ -1674,7 +1732,7 @@ mod tests {
             rows: vec![1],
         };
 
-        assert_eq!(describe(None), SINGLE_SELECTION_DESCRIPTION);
+        assert_eq!(describe(None), single_selection_description());
         assert_eq!(
             describe(Some(hovering(CommitBarAction::Menu(
                 CommitMenuOperation::Checkout
@@ -1685,7 +1743,7 @@ mod tests {
             describe(Some(hovering(CommitBarAction::Menu(
                 CommitMenuOperation::Revert
             )))),
-            "「打ち消す (revert)」は今は使えません: マージコミットは打ち消せません。",
+            format!("\"Revert\" is unavailable right now: {revert_refusal}"),
             "a greyed-out button says why"
         );
         assert_eq!(
@@ -1693,17 +1751,17 @@ mod tests {
                 action: CommitBarAction::Menu(CommitMenuOperation::Checkout),
                 rows: vec![2],
             })),
-            SINGLE_SELECTION_DESCRIPTION,
+            single_selection_description(),
             "a hover left over from another selection is not this selection's"
         );
         assert_eq!(
             describe(Some(hovering(CommitBarAction::CherryPickSelection))),
-            SINGLE_SELECTION_DESCRIPTION,
+            single_selection_description(),
             "a button this selection does not have explains nothing"
         );
         assert_eq!(
             describe(Some(HoveredHelp::Toolbar(ToolbarHelp::CompareRefs))),
-            COMPARE_REFS_HELP.line()
+            compare_refs_help().line()
         );
         assert_eq!(
             action_description(&CommitBarSelection::Nothing, &[], &[], None),
@@ -1730,7 +1788,7 @@ mod tests {
         assert_eq!(description(&graph, cx), "");
 
         select_rows(&graph, &[1], &multi_workspace, cx);
-        assert_eq!(description(&graph, cx), SINGLE_SELECTION_DESCRIPTION);
+        assert_eq!(description(&graph, cx), single_selection_description());
         let picked_bounds = cx
             .debug_bounds("git-graph-action-description")
             .expect("the line stays");
@@ -1767,7 +1825,7 @@ mod tests {
 
         cx.simulate_mouse_move(hovered_bounds.center(), None, Modifiers::none());
         draw_workspace(&multi_workspace, cx);
-        assert_eq!(description(&graph, cx), SINGLE_SELECTION_DESCRIPTION);
+        assert_eq!(description(&graph, cx), single_selection_description());
 
         // The toolbar's buttons explain themselves on the same line.
         let compare = cx
@@ -1775,7 +1833,7 @@ mod tests {
             .expect("the compare button is on screen");
         cx.simulate_mouse_move(compare.center(), None, Modifiers::none());
         draw_workspace(&multi_workspace, cx);
-        assert_eq!(description(&graph, cx), COMPARE_REFS_HELP.line());
+        assert_eq!(description(&graph, cx), compare_refs_help().line());
         assert_eq!(
             cx.debug_bounds("git-graph-action-description"),
             Some(picked_bounds)

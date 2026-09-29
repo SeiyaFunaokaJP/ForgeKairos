@@ -30,13 +30,21 @@ use super::{
 
 /// The label a task is added with, so that a new row is visible in the drawing
 /// before anything has been typed into it.
-const NEW_TASK_LABEL: &str = "新しいタスク";
-const NEW_SECTION_NAME: &str = "新しいセクション";
+const NEW_TASK_LABEL: &str = i18n::msg!("New task");
+const NEW_SECTION_NAME: &str = i18n::msg!("New section");
 
-const TASK_REMOVE_TOOLTIP: &str = "タスクを削除 (このタスクを after / until で参照しているタスクは、同じ日時の日付に置き換わります)";
-const TAG_TOOLTIP: &str = "タスクの描き方: 完了 = done / 進行中 = active / 重要 = crit / マイルストーン = milestone / 縦線 = vert";
-const START_TOOLTIP: &str = "開始の書き方: 日付 / after = 別のタスクが終わったら / 前のタスクに続く = 直前のタスクの終わりから";
-const END_TOOLTIP: &str = "終了の書き方: 日付か長さ (5d = 5 日、2h = 2 時間、1w = 1 週間) / until = 別のタスクが始まるまで";
+const TASK_REMOVE_TOOLTIP: &str = i18n::msg!(
+    "Delete Task (tasks that refer to this one with after / until get a date at the same point in time instead)"
+);
+const TAG_TOOLTIP: &str = i18n::msg!(
+    "How the task is drawn: Done = done / In progress = active / Critical = crit / Milestone = milestone / Vertical line = vert"
+);
+const START_TOOLTIP: &str = i18n::msg!(
+    "How the start is written: Date / after = when another task ends / Follows the Previous Task = from the end of the task just before it"
+);
+const END_TOOLTIP: &str = i18n::msg!(
+    "How the end is written: Date or Duration (5d = 5 days, 2h = 2 hours, 1w = 1 week) / until = until another task starts"
+);
 
 pub(super) struct GanttForm {
     pub(super) document: GanttDocument,
@@ -75,9 +83,9 @@ impl StartMode {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Date => "日付",
-            Self::After => "after (別のタスクの後)",
-            Self::Implicit => "前のタスクに続く",
+            Self::Date => i18n::t!("Date"),
+            Self::After => i18n::t!("after (After Another Task)"),
+            Self::Implicit => i18n::t!("Follows the Previous Task"),
         }
     }
 
@@ -102,8 +110,8 @@ impl EndMode {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Fixed => "日付か長さ",
-            Self::Until => "until (別のタスクの開始まで)",
+            Self::Fixed => i18n::t!("Date or Duration"),
+            Self::Until => i18n::t!("until (Until Another Task Starts)"),
         }
     }
 
@@ -206,12 +214,12 @@ fn field_value(field: &Entity<Editor>, cx: &App) -> Option<String> {
 /// it carries none.
 fn tag_menu_label(tags: &[GanttTag]) -> SharedString {
     if tags.is_empty() {
-        return "タグ".into();
+        return i18n::t!("Tags").into();
     }
     tags.iter()
         .map(|tag| tag.label())
         .collect::<Vec<_>>()
-        .join("・")
+        .join(i18n::tc!("mermaid gantt tag separator", ", "))
         .into()
 }
 
@@ -407,12 +415,12 @@ impl MermaidEditor {
         if self.gantt().is_none() {
             return;
         }
-        let name = self.new_field(NEW_SECTION_NAME, window, cx);
+        let name = self.new_field(i18n::tr(NEW_SECTION_NAME), window, cx);
         let Some(form) = self.gantt_mut() else {
             return;
         };
         form.document.sections.push(GanttSection {
-            name: Some(NEW_SECTION_NAME.to_string()),
+            name: Some(i18n::tr(NEW_SECTION_NAME).to_string()),
             tasks: Vec::new(),
             preserved_after: Vec::new(),
         });
@@ -510,7 +518,7 @@ impl MermaidEditor {
         };
 
         let band = needs_band.then(|| self.new_field("", window, cx));
-        let label = self.new_field(NEW_TASK_LABEL, window, cx);
+        let label = self.new_field(i18n::tr(NEW_TASK_LABEL), window, cx);
         let id = self.new_field("", window, cx);
         let start_field = self.new_field("", window, cx);
         let end = self.new_field(DEFAULT_TASK_LENGTH, window, cx);
@@ -536,7 +544,7 @@ impl MermaidEditor {
             return;
         };
         tasks.tasks.push(GanttTask {
-            label: NEW_TASK_LABEL.to_string(),
+            label: i18n::tr(NEW_TASK_LABEL).to_string(),
             tags: Vec::new(),
             id: None,
             start,
@@ -802,8 +810,16 @@ impl MermaidEditor {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let formats = [
-            ("日付書式", &form.date_format, &current.date_format),
-            ("軸の書式", &form.axis_format, &current.axis_format),
+            (
+                i18n::t!("Date Format"),
+                &form.date_format,
+                &current.date_format,
+            ),
+            (
+                i18n::t!("Axis Format"),
+                &form.axis_format,
+                &current.axis_format,
+            ),
         ];
         let mut row = h_flex().w_full().gap_2();
         for (label, field, value) in formats {
@@ -828,7 +844,7 @@ impl MermaidEditor {
                 h_flex()
                     .w_full()
                     .gap_2()
-                    .child(section_title("タイトル"))
+                    .child(section_title(i18n::t!("Title")))
                     .child(
                         field_frame(
                             &form.title,
@@ -859,7 +875,7 @@ impl MermaidEditor {
         let mut list = v_flex()
             .w_full()
             .gap_2()
-            .child(section_title("セクションとタスク"));
+            .child(section_title(i18n::t!("Sections and Tasks")));
 
         for index in 0..form.sections.len() {
             let (Some(row), Some(section)) =
@@ -894,7 +910,7 @@ impl MermaidEditor {
                         h_flex()
                             .w_full()
                             .gap_1()
-                            .child(section_title("セクション"))
+                            .child(section_title(i18n::t!("Section")))
                             .child(
                                 field_frame(
                                     &row.name,
@@ -915,7 +931,7 @@ impl MermaidEditor {
                                 index,
                                 !section_may_move(&current.sections, index, false),
                                 !section_may_move(&current.sections, index, true),
-                                "セクションとその中のタスクを削除",
+                                i18n::t!("Delete the Section and Its Tasks"),
                                 cx.listener(move |this, _, window, cx| {
                                     this.move_gantt_section(index, false, window, cx)
                                 }),
@@ -930,7 +946,7 @@ impl MermaidEditor {
                     .child(tasks)
                     .child(div().pl_4().child(add_button(
                         SharedString::from(format!("mermaid-gantt-add-task-{index}")),
-                        "タスクを追加",
+                        i18n::t!("Add Task"),
                         cx.listener(move |this, _, window, cx| {
                             this.add_gantt_task(index, window, cx)
                         }),
@@ -941,14 +957,14 @@ impl MermaidEditor {
         if form.sections.is_empty() {
             list = list.child(add_button(
                 "mermaid-gantt-add-first-task",
-                "タスクを追加",
+                i18n::t!("Add Task"),
                 cx.listener(|this, _, window, cx| this.add_gantt_task(0, window, cx)),
             ));
         }
 
         list.child(add_button(
             "mermaid-gantt-add-section",
-            "セクションを追加",
+            i18n::t!("Add Section"),
             cx.listener(|this, _, window, cx| this.add_gantt_section(window, cx)),
         ))
         .into_any_element()
@@ -1018,7 +1034,7 @@ impl MermaidEditor {
                         index,
                         index == 0 && section == 0,
                         index + 1 >= length && section + 1 >= self.gantt_section_count(),
-                        TASK_REMOVE_TOOLTIP,
+                        i18n::tr(TASK_REMOVE_TOOLTIP),
                         cx.listener(move |this, _, window, cx| {
                             this.move_gantt_task(section, index, false, window, cx)
                         }),
@@ -1034,10 +1050,10 @@ impl MermaidEditor {
                 h_flex()
                     .w_full()
                     .gap_1()
-                    .child(section_title("開始"))
+                    .child(section_title(i18n::t!("Start")))
                     .child(self.render_gantt_start_menu(section, index, task, window, cx))
                     .children(start_field)
-                    .child(section_title("終了"))
+                    .child(section_title(i18n::t!("End")))
                     .child(self.render_gantt_end_menu(section, index, task, window, cx))
                     .child(
                         field_frame(
@@ -1089,7 +1105,7 @@ impl MermaidEditor {
         )
         .style(DropdownStyle::Outlined)
         .trigger_size(ButtonSize::Compact)
-        .trigger_tooltip(Tooltip::text(TAG_TOOLTIP))
+        .trigger_tooltip(Tooltip::text(i18n::tr(TAG_TOOLTIP)))
         .into_any_element()
     }
 
@@ -1133,7 +1149,7 @@ impl MermaidEditor {
         )
         .style(DropdownStyle::Outlined)
         .trigger_size(ButtonSize::Compact)
-        .trigger_tooltip(Tooltip::text(START_TOOLTIP))
+        .trigger_tooltip(Tooltip::text(i18n::tr(START_TOOLTIP)))
         .into_any_element()
     }
 
@@ -1173,7 +1189,7 @@ impl MermaidEditor {
         )
         .style(DropdownStyle::Outlined)
         .trigger_size(ButtonSize::Compact)
-        .trigger_tooltip(Tooltip::text(END_TOOLTIP))
+        .trigger_tooltip(Tooltip::text(i18n::tr(END_TOOLTIP)))
         .into_any_element()
     }
 }
@@ -1351,10 +1367,20 @@ mod tests {
     /// inserted chart into a rewrite the first time it is confirmed.
     #[test]
     fn the_insert_template_is_the_source_the_model_writes_back() {
+        let check = |template: &str| {
+            let chart = parse_gantt(template)
+                .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
+            assert_eq!(emit_gantt(&chart), template);
+        };
+        check(editor::actions::MermaidDiagramKind::Gantt.template());
+
+        // The fences these tests open are the Japanese template, which is what a
+        // user with the Japanese catalog inserts.
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
         let template = editor::actions::MermaidDiagramKind::Gantt.template();
-        let chart = parse_gantt(template)
-            .unwrap_or_else(|error| panic!("the insert template should open: {error}"));
-        assert_eq!(emit_gantt(&chart), template);
+        check(template);
         assert!(
             TEMPLATE_FENCE.replace('\u{2c7}', "").contains(template),
             "the fence these tests open should hold the insert template"
@@ -1461,7 +1487,7 @@ mod tests {
         let message = cx.update(|_window, cx| modal.read(cx).message.clone());
         assert_eq!(
             message.as_deref(),
-            Some("タスク `新しいタスク` の開始日を入力してください。"),
+            Some("Enter the start date of task `New task`."),
             "a task with nowhere to start must not be written back"
         );
 
@@ -1544,7 +1570,7 @@ mod tests {
             "the reference should still follow the rename:\n{text}"
         );
         assert!(
-            text.contains("section 新しいセクション"),
+            text.contains("section New section"),
             "the new section should be written:\n{text}"
         );
     }

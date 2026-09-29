@@ -81,9 +81,9 @@ pub enum SearchOption {
     Backwards,
 }
 
-const REPLACE_PLACEHOLDER: &str = "プロジェクト内を置換…";
-const INCLUDE_PLACEHOLDER: &str = "含める: 例 src/**/*.rs";
-const EXCLUDE_PLACEHOLDER: &str = "除外する: 例 vendor/*, *.lock";
+const REPLACE_PLACEHOLDER: &str = i18n::msg!("Replace in project…");
+const INCLUDE_PLACEHOLDER: &str = i18n::msg!("Include: e.g. src/**/*.rs");
+const EXCLUDE_PLACEHOLDER: &str = i18n::msg!("Exclude: e.g. vendor/*, *.lock");
 
 pub enum SearchSource<'a, 'b> {
     Buffer,
@@ -97,12 +97,12 @@ impl SearchOption {
 
     pub fn label(&self) -> &'static str {
         match self {
-            SearchOption::WholeWord => "単語単位で検索",
-            SearchOption::CaseSensitive => "大文字と小文字を区別",
-            SearchOption::IncludeIgnored => "設定で無視されたファイルも検索する",
-            SearchOption::Regex => "正規表現を使用",
-            SearchOption::OneMatchPerLine => "1 行につき 1 件のみ一致",
-            SearchOption::Backwards => "後方へ検索",
+            SearchOption::WholeWord => i18n::t!("Match Whole Words"),
+            SearchOption::CaseSensitive => i18n::t!("Match Case Sensitivity"),
+            SearchOption::IncludeIgnored => i18n::t!("Also search files ignored by configuration"),
+            SearchOption::Regex => i18n::t!("Use Regular Expressions"),
+            SearchOption::OneMatchPerLine => i18n::t!("One Match Per Line"),
+            SearchOption::Backwards => i18n::t!("Search Backwards"),
         }
     }
 
@@ -233,7 +233,7 @@ pub(crate) fn show_no_more_matches(window: &mut Window, cx: &mut App) {
         };
         workspace.update(cx, |workspace, cx| {
             workspace.show_toast(
-                Toast::new(notification_id.clone(), "これ以上一致はありません").autohide(),
+                Toast::new(notification_id.clone(), i18n::t!("No more matches")).autohide(),
                 cx,
             );
         })

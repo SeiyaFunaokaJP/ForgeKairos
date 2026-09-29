@@ -114,20 +114,29 @@ const SUBPACKET_ISSUER_FINGERPRINT: u8 = 33;
 /// The fixed part of a version 4 signature's hash trailer (RFC 4880 §5.2.4).
 const SIGNATURE_TRAILER_PREFIX: [u8; 2] = [0x04, 0xff];
 
-const CANCEL_LABEL: &str = "追加せず中止";
-const DOWNLOAD_DECLINED: &str = "Linux 版 Claude Code の取得を中止しました。";
-const UPDATE_CHECK_DECLINED: &str = "Claude Code の更新の確認を中止しました。";
-const SIGNATURE_REFUSED: &str = "Claude Code のリリース情報の署名を検証できませんでした。改ざんされている可能性があるため中止しました。";
-const CHECKSUM_REFUSED: &str = "ダウンロードした Claude Code のハッシュがリリース情報と一致しません。改ざんされている可能性があるため中止しました。";
-const SIZE_REFUSED: &str =
-    "ダウンロードした Claude Code の大きさがリリース情報と一致しません。中止しました。";
-const STALLED: &str = "Claude Code の配布元から 60 秒間応答がないため中止しました。";
-const REDIRECT_REFUSED: &str = "Claude Code の配布元が別の場所へ転送しようとしたため中止しました。";
+const CANCEL_LABEL: &str = i18n::msg!("Cancel Without Adding");
+const DOWNLOAD_DECLINED: &str = i18n::msg!("Canceled downloading the Linux build of Claude Code.");
+const UPDATE_CHECK_DECLINED: &str = i18n::msg!("Canceled checking for Claude Code updates.");
+const SIGNATURE_REFUSED: &str = i18n::msg!(
+    "Could not verify the signature of the Claude Code release information. Canceled because it may have been tampered with."
+);
+const CHECKSUM_REFUSED: &str = i18n::msg!(
+    "The hash of the downloaded Claude Code does not match the release information. Canceled because it may have been tampered with."
+);
+const SIZE_REFUSED: &str = i18n::msg!(
+    "The size of the downloaded Claude Code does not match the release information. Canceled."
+);
+const STALLED: &str =
+    i18n::msg!("Canceled because the Claude Code download server did not respond for 60 seconds.");
+const REDIRECT_REFUSED: &str = i18n::msg!(
+    "Canceled because the Claude Code download server tried to redirect to another location."
+);
 const SAVE_FAILED: &str =
-    "ダウンロードした Claude Code を保存できませんでした。ディスクの空き容量を確認してください。";
-const EXTRACT_FAILED: &str = "ダウンロードした Claude Code を展開できませんでした。";
+    i18n::msg!("Could not save the downloaded Claude Code. Check the free space on the disk.");
+const EXTRACT_FAILED: &str = i18n::msg!("Could not extract the downloaded Claude Code.");
 #[cfg(not(target_os = "windows"))]
-const WINDOWS_ONLY: &str = "サンドボックス用の Claude Code は Windows (WSL) でのみ使えます。";
+const WINDOWS_ONLY: &str =
+    i18n::msg!("Claude Code for the sandbox is only available on Windows (WSL).");
 
 /// Which Linux the CLI is staged on: the WSL distro of this machine's sandbox,
 /// or the Linux host of an SSH-remote project (ADR-F49 第 3 段). Only the
@@ -140,78 +149,94 @@ enum AgentHostKind {
     RemoteHost,
 }
 
+// Each message is written out per host kind rather than built around a shared
+// subject, so that every language can word the whole sentence.
 impl AgentHostKind {
-    /// 文言の主語。
-    fn subject(self) -> &'static str {
-        match self {
-            Self::WslDistro => "WSL",
-            Self::RemoteHost => "接続先のホスト",
-        }
-    }
-
     fn unsupported_machine(self, machine: &str) -> String {
-        format!(
-            "{}のアーキテクチャ「{machine}」向けの Linux 版 Claude Code はありません \
-             (対応しているのは x86_64 と aarch64 です)。",
-            self.subject()
-        )
+        match self {
+            Self::WslDistro => i18n::t!(
+                "There is no Linux build of Claude Code for the WSL architecture \"{machine}\" (only x86_64 and aarch64 are supported)."
+            ),
+            Self::RemoteHost => i18n::t!(
+                "There is no Linux build of Claude Code for the remote host's architecture \"{machine}\" (only x86_64 and aarch64 are supported)."
+            ),
+        }
     }
 
     fn not_glibc(self) -> &'static str {
         match self {
-            Self::WslDistro => {
-                "この WSL ディストリビューションは musl のため、Linux 版 Claude Code \
-                 (glibc 版) は動作しません。"
-            }
-            Self::RemoteHost => {
-                "接続先の Linux は musl のため、Linux 版 Claude Code (glibc 版) は動作しません。"
-            }
+            Self::WslDistro => i18n::t!(
+                "This WSL distribution uses musl, so the Linux build of Claude Code (the glibc build) cannot run."
+            ),
+            Self::RemoteHost => i18n::t!(
+                "The remote Linux host uses musl, so the Linux build of Claude Code (the glibc build) cannot run."
+            ),
         }
     }
 
     fn no_avx2(self) -> String {
-        format!(
-            "{}の CPU で AVX2 を確認できないため、Linux 版 Claude Code (x64) は動作しません。",
-            self.subject()
-        )
+        match self {
+            Self::WslDistro => i18n::t!(
+                "AVX2 could not be confirmed on the WSL CPU, so the Linux build of Claude Code (x64) cannot run."
+            ),
+            Self::RemoteHost => i18n::t!(
+                "AVX2 could not be confirmed on the remote host's CPU, so the Linux build of Claude Code (x64) cannot run."
+            ),
+        }
+        .to_string()
     }
 
     fn probe_unreadable(self) -> String {
-        format!("{}のアーキテクチャを調べられませんでした。", self.subject())
+        match self {
+            Self::WslDistro => i18n::t!("Could not determine the WSL architecture."),
+            Self::RemoteHost => i18n::t!("Could not determine the remote host's architecture."),
+        }
+        .to_string()
     }
 
     fn staging_failed(self) -> String {
-        format!("Claude Code を{}に配置できませんでした。", self.subject())
+        match self {
+            Self::WslDistro => i18n::t!("Could not place Claude Code in WSL."),
+            Self::RemoteHost => i18n::t!("Could not place Claude Code on the remote host."),
+        }
+        .to_string()
     }
 
     fn staged_check_failed(self) -> String {
-        format!(
-            "{}に配置済みの Claude Code を確認できませんでした。",
-            self.subject()
-        )
+        match self {
+            Self::WslDistro => i18n::t!("Could not check the Claude Code already placed in WSL."),
+            Self::RemoteHost => {
+                i18n::t!("Could not check the Claude Code already placed on the remote host.")
+            }
+        }
+        .to_string()
     }
 
     fn staging_progress(self) -> String {
-        format!("{}に配置しています…", self.subject())
+        match self {
+            Self::WslDistro => i18n::t!("Placing in WSL…"),
+            Self::RemoteHost => i18n::t!("Placing on the remote host…"),
+        }
+        .to_string()
     }
 
     fn consent_detail(self) -> &'static str {
         match self {
-            Self::WslDistro => {
-                "サンドボックス (WSL) で実行する Claude Code を Anthropic の配布元から取得し、\
-                 署名とハッシュを確認してから WSL に配置します。"
-            }
-            Self::RemoteHost => {
-                "接続先のサンドボックスで実行する Claude Code を、この PC で Anthropic の\
-                 配布元から取得し、署名とハッシュを確認してから接続先へ送ります。"
-            }
+            Self::WslDistro => i18n::t!(
+                "Downloads the Claude Code that runs in the sandbox (WSL) from Anthropic's download server, and places it in WSL after checking its signature and hash."
+            ),
+            Self::RemoteHost => i18n::t!(
+                "Downloads the Claude Code that runs in the remote host's sandbox from Anthropic's download server on this PC, and sends it to the remote host after checking its signature and hash."
+            ),
         }
     }
 
     fn update_detail(self) -> &'static str {
         match self {
-            Self::WslDistro => "署名とハッシュを確認してから WSL に配置します。",
-            Self::RemoteHost => "署名とハッシュを確認してから接続先へ送ります。",
+            Self::WslDistro => i18n::t!("Places it in WSL after checking its signature and hash."),
+            Self::RemoteHost => {
+                i18n::t!("Sends it to the remote host after checking its signature and hash.")
+            }
         }
     }
 }
@@ -250,8 +275,8 @@ impl ClaudeReleaseChannel {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Stable => "安定版",
-            Self::Latest => "最新版",
+            Self::Stable => i18n::tc!("Claude Code release channel", "stable"),
+            Self::Latest => i18n::tc!("Claude Code release channel", "latest"),
         }
     }
 }
@@ -274,15 +299,17 @@ pub enum ManagedClaudeProgress {
 impl ManagedClaudeProgress {
     pub fn message(&self) -> SharedString {
         match self {
-            Self::CheckingStaged => "配置済みの Claude Code を確認しています…".into(),
-            Self::Verifying => "Claude Code のリリース情報の署名を確認しています…".into(),
-            Self::Downloading { received, total } => format!(
-                "Claude Code をダウンロードしています… ({} / {} MB)",
-                megabytes(*received),
-                megabytes(*total)
+            Self::CheckingStaged => i18n::t!("Checking the Claude Code already placed…").into(),
+            Self::Verifying => {
+                i18n::t!("Verifying the signature of the Claude Code release information…").into()
+            }
+            Self::Downloading { received, total } => i18n::t!(
+                "Downloading Claude Code… ({received} / {total} MB)",
+                received = megabytes(*received),
+                total = megabytes(*total)
             )
             .into(),
-            Self::Extracting => "展開してハッシュを確認しています…".into(),
+            Self::Extracting => i18n::t!("Extracting and checking the hash…").into(),
             Self::Staging { destination } => destination.clone(),
         }
     }
@@ -1103,28 +1130,30 @@ fn verified_manifest_entry(
     now: SystemTime,
 ) -> Result<ExpectedFile> {
     verify_signature(source, manifest, signature, now)
-        .map_err(|error| refuse(SIGNATURE_REFUSED, format!("{error:#}")))?;
-    let manifest: ReleaseManifest =
-        serde_json::from_slice(manifest).context("リリース情報を読み取れませんでした。")?;
+        .map_err(|error| refuse(i18n::tr(SIGNATURE_REFUSED), format!("{error:#}")))?;
+    let manifest: ReleaseManifest = serde_json::from_slice(manifest)
+        .context(i18n::t!("Could not read the release information."))?;
     if manifest.version != version.to_string() {
-        bail!(
-            "リリース情報の版 ({}) が要求した版 ({version}) と一致しません。中止しました。",
-            manifest.version
-        );
+        bail!(i18n::t!(
+            "The version in the release information ({manifest_version}) does not match the requested version ({version}). Canceled.",
+            manifest_version = manifest.version
+        ));
     }
     let entry = manifest.platforms.get(platform.key()).with_context(|| {
-        format!(
-            "リリース情報に {} 向けのファイルがありません。",
-            platform.key()
+        i18n::t!(
+            "The release information has no file for {platform}.",
+            platform = platform.key()
         )
     })?;
     ensure!(
         entry.binary == file_name,
-        "リリース情報の {} のファイル名 ({}) が想定と違います。",
-        platform.key(),
-        entry.binary
+        i18n::t!(
+            "The file name for {platform} in the release information ({file_name}) is not the expected one.",
+            platform = platform.key(),
+            file_name = entry.binary
+        )
     );
-    ExpectedFile::from_manifest(entry).context("リリース情報を読み取れませんでした。")
+    ExpectedFile::from_manifest(entry).context(i18n::t!("Could not read the release information."))
 }
 
 /// `future`, given up once `IDLE_TIMEOUT` passes without it finishing. Every
@@ -1140,7 +1169,7 @@ async fn within_idle_timeout<T>(
     futures::select_biased! {
         result = future => result,
         _ = timeout => Err(refuse(
-            STALLED,
+            i18n::tr(STALLED),
             format!("{url} sent nothing for {} seconds", IDLE_TIMEOUT.as_secs()),
         )),
     }
@@ -1157,7 +1186,7 @@ async fn get_release_file(
     let response = within_idle_timeout(executor, url, async {
         http.get(url, AsyncBody::default(), false)
             .await
-            .with_context(|| format!("{url} を取得できませんでした。"))
+            .with_context(|| i18n::t!("Could not fetch {url}."))
     })
     .await?;
     let status = response.status();
@@ -1168,13 +1197,13 @@ async fn get_release_file(
             .and_then(|value| value.to_str().ok())
             .unwrap_or_default();
         return Err(refuse(
-            REDIRECT_REFUSED,
+            i18n::tr(REDIRECT_REFUSED),
             format!("{url} redirected to {target:?}"),
         ));
     }
     ensure!(
         status.is_success(),
-        "{url} を取得できませんでした (HTTP {status})。"
+        i18n::t!("Could not fetch {url} (HTTP {status}).")
     );
     Ok(response)
 }
@@ -1194,12 +1223,12 @@ async fn fetch_small(
             .take(limit + 1)
             .read_to_end(&mut body)
             .await
-            .with_context(|| format!("{url} を取得できませんでした。"))
+            .with_context(|| i18n::t!("Could not fetch {url}."))
     })
     .await?;
     ensure!(
         body.len() as u64 <= limit,
-        "{url} が想定より大きいため中止しました。"
+        i18n::t!("Canceled because {url} is larger than expected.")
     );
     Ok(body)
 }
@@ -1263,7 +1292,7 @@ async fn fetch_release(
 fn check_file(description: &str, size: u64, hasher: Sha256, expected: &ExpectedFile) -> Result<()> {
     if size != expected.size {
         return Err(refuse(
-            SIZE_REFUSED,
+            i18n::tr(SIZE_REFUSED),
             format!(
                 "{description} is {size} bytes, its manifest lists {}",
                 expected.size
@@ -1273,7 +1302,7 @@ fn check_file(description: &str, size: u64, hasher: Sha256, expected: &ExpectedF
     let sha256 = format!("{:x}", hasher.finalize());
     if sha256 != expected.sha256 {
         return Err(refuse(
-            CHECKSUM_REFUSED,
+            i18n::tr(CHECKSUM_REFUSED),
             format!(
                 "{description} has SHA-256 {sha256}, its manifest lists {}",
                 expected.sha256
@@ -1291,7 +1320,10 @@ fn io_failure(
     path: &Path,
     error: impl fmt::Display,
 ) -> anyhow::Error {
-    refuse(reason, format!("{action} {}: {error}", path.display()))
+    refuse(
+        i18n::tr(reason),
+        format!("{action} {}: {error}", path.display()),
+    )
 }
 
 async fn download_verified(
@@ -1316,7 +1348,7 @@ async fn download_verified(
                 .body_mut()
                 .read(&mut buffer)
                 .await
-                .with_context(|| format!("{url} を取得できませんでした。"))
+                .with_context(|| i18n::t!("Could not fetch {url}."))
         })
         .await?;
         if read == 0 {
@@ -1324,14 +1356,14 @@ async fn download_verified(
         }
         let Some(chunk) = buffer.get(..read) else {
             return Err(refuse(
-                SAVE_FAILED,
+                i18n::tr(SAVE_FAILED),
                 format!("{url}: the response body overran its buffer"),
             ));
         };
         received += read as u64;
         if received > expected.size {
             return Err(refuse(
-                SIZE_REFUSED,
+                i18n::tr(SIZE_REFUSED),
                 format!(
                     "{url} is longer than the {} bytes its manifest lists",
                     expected.size
@@ -1380,7 +1412,7 @@ fn decompress_verified(
         }
         let Some(chunk) = buffer.get(..read) else {
             return Err(io_failure(
-                EXTRACT_FAILED,
+                i18n::tr(EXTRACT_FAILED),
                 "decompressing",
                 compressed,
                 "zstd overran its buffer",
@@ -1389,7 +1421,7 @@ fn decompress_verified(
         written += read as u64;
         if written > expected.size {
             return Err(refuse(
-                SIZE_REFUSED,
+                i18n::tr(SIZE_REFUSED),
                 format!(
                     "{} decompresses to more than the {} bytes its manifest lists",
                     compressed.display(),
@@ -1568,47 +1600,55 @@ fn consent_prompt(
     hosts: &[String],
     missing: &[String],
 ) -> ConsentPrompt {
-    let hosts_line = format!(
-        "許可が必要なホスト: {} ({})",
-        hosts.join("、"),
-        if missing.is_empty() {
-            "登録済み"
+    let hosts_line = i18n::t!(
+        "Hosts that need to be allowed: {hosts} ({status})",
+        hosts = hosts.join(i18n::tc!("list separator", ", ")),
+        status = if missing.is_empty() {
+            i18n::t!("added")
         } else {
-            "未登録"
+            i18n::t!("not added")
         }
     );
     let adds_hosts = !missing.is_empty();
     match request {
         ConsentRequest::Install { version } => ConsentPrompt {
-            message: format!("Linux 版 Claude Code v{version} を取得します"),
+            message: i18n::t!("Download the Linux build of Claude Code v{version}"),
             detail: format!("{}\n{hosts_line}", host.consent_detail()),
             confirm: if adds_hosts {
-                "許可リストに追加してインストール"
+                i18n::t!("Add to Allowlist and Install")
             } else {
-                "了承してインストール"
+                i18n::t!("Agree and Install")
             },
         },
         ConsentRequest::Update { from, to } => ConsentPrompt {
-            message: format!("Claude Code を v{to} に更新します"),
-            detail: format!("現在の版: v{from}\n{}\n{hosts_line}", host.update_detail()),
+            message: i18n::t!("Update Claude Code to v{to}"),
+            detail: format!(
+                "{}\n{}\n{hosts_line}",
+                i18n::t!("Current version: v{from}"),
+                host.update_detail()
+            ),
             confirm: if adds_hosts {
-                "許可リストに追加して更新"
+                i18n::t!("Add to Allowlist and Update")
             } else {
-                "了承して更新"
+                i18n::t!("Agree and Update")
             },
         },
         ConsentRequest::CheckForUpdate { channel } => ConsentPrompt {
-            message: "Claude Code の更新を確認します".to_string(),
+            message: i18n::t!("Check for Claude Code Updates").to_string(),
             detail: format!(
-                "{}の版番号を Anthropic の配布元から読み取ります。\n{hosts_line}",
-                channel.label()
+                "{}\n{hosts_line}",
+                i18n::t!(
+                    "Reads the {channel} version number from Anthropic's download server.",
+                    channel = channel.label()
+                )
             ),
-            confirm: "許可リストに追加して確認",
+            confirm: i18n::t!("Add to Allowlist and Check"),
         },
         ConsentRequest::AllowHosts => ConsentPrompt {
-            message: "Claude Code の取得に許可リストへの追加が必要です".to_string(),
+            message: i18n::t!("Downloading Claude Code requires adding hosts to the allowlist")
+                .to_string(),
             detail: hosts_line,
-            confirm: "許可リストに追加して続行",
+            confirm: i18n::t!("Add to Allowlist and Continue"),
         },
     }
 }
@@ -1673,10 +1713,11 @@ impl Installer {
         // its configuration and which only the probe can tell us.
         let home_on_host = match host_kind {
             AgentHostKind::WslDistro => None,
-            AgentHostKind::RemoteHost => Some(
-                remote_home_from_probe(&probe)
-                    .map_err(|error| refuse(REMOTE_HOME_UNREADABLE, format!("{error:#}")))?,
-            ),
+            AgentHostKind::RemoteHost => {
+                Some(remote_home_from_probe(&probe).map_err(|error| {
+                    refuse(i18n::tr(REMOTE_HOME_UNREADABLE), format!("{error:#}"))
+                })?)
+            }
         };
         let downloads_dir = self.storage_dir.join("downloads");
         self.executor
@@ -1698,10 +1739,10 @@ impl Installer {
             Goal::Update(channel) => {
                 let offered = self.read_release_pointer(channel, ui).await?;
                 if offered < installed {
-                    bail!(
-                        "{}の v{offered} はインストール済みの v{installed} より古いため、更新しません。",
-                        channel.label()
-                    );
+                    bail!(i18n::t!(
+                        "The {channel} version v{offered} is older than the installed v{installed}, so it will not be updated.",
+                        channel = channel.label()
+                    ));
                 }
                 offered
             }
@@ -1770,7 +1811,7 @@ impl Installer {
                     .tempdir_in(&downloads_dir)
             })
             .await
-            .context("ダウンロード先のフォルダーを作成できませんでした。")?;
+            .context(i18n::t!("Could not create the download folder."))?;
         let download_url = self.source.url(&format!(
             "{version}/{}/{COMPRESSED_BINARY_NAME}",
             platform.key()
@@ -1865,7 +1906,7 @@ impl Installer {
             .confirm(request, self.host.kind(), &hosts, &missing)
             .await?
         {
-            bail!(DOWNLOAD_DECLINED);
+            bail!(i18n::tr(DOWNLOAD_DECLINED));
         }
         if !missing.is_empty() {
             ui.add_allowed_hosts(missing).await?;
@@ -1890,7 +1931,7 @@ impl Installer {
                 .confirm(&request, self.host.kind(), &hosts, &missing)
                 .await?
             {
-                bail!(UPDATE_CHECK_DECLINED);
+                bail!(i18n::tr(UPDATE_CHECK_DECLINED));
             }
             ui.add_allowed_hosts(missing).await?;
         }
@@ -1907,9 +1948,9 @@ impl Installer {
             .await?;
         let text = std::str::from_utf8(&body).unwrap_or_default().trim();
         Version::parse(text).with_context(|| {
-            format!(
-                "{}の版番号 ({text:?}) を読み取れませんでした。",
-                channel.label()
+            i18n::t!(
+                "Could not read the {channel} version number ({text:?}).",
+                channel = channel.label()
             )
         })
     }
@@ -1947,7 +1988,7 @@ impl Installer {
                 )
                 .await?
             {
-                return Err(error.context(DOWNLOAD_DECLINED));
+                return Err(error.context(i18n::tr(DOWNLOAD_DECLINED)));
             }
             ui.add_allowed_hosts(missing).await?;
         }
@@ -2058,7 +2099,7 @@ impl InstallerUi for WindowUi {
             Some(&prompt.detail),
             &[
                 PromptButton::ok(prompt.confirm),
-                PromptButton::cancel(CANCEL_LABEL),
+                PromptButton::cancel(i18n::tr(CANCEL_LABEL)),
             ],
         );
         // A prompt that goes away with its window counts as declined.
@@ -2286,16 +2327,18 @@ fn ensure_remote_room(output: &str, needed: u64) -> Result<()> {
     let required = needed.saturating_add(REMOTE_STAGING_HEADROOM);
     ensure!(
         available >= required,
-        "接続先のホストの空き容量が足りません (必要 {} MB、空き {} MB)。\
-         接続先の空き容量を増やしてから、もう一度お試しください。",
-        megabytes(required),
-        megabytes(available)
+        i18n::t!(
+            "The remote host does not have enough free space ({required} MB needed, {available} MB free). Free up space on the remote host and try again.",
+            required = megabytes(required),
+            available = megabytes(available)
+        )
     );
     Ok(())
 }
 
-const REMOTE_SCRIPT_FAILED: &str = "接続先のホストでコマンドを実行できませんでした。";
-const REMOTE_HOME_UNREADABLE: &str = "接続先のホストのホームディレクトリを調べられませんでした。";
+const REMOTE_SCRIPT_FAILED: &str = i18n::msg!("Could not run a command on the remote host.");
+const REMOTE_HOME_UNREADABLE: &str =
+    i18n::msg!("Could not determine the home directory on the remote host.");
 
 /// 接続先との 1 往復を待つ時間 (ADR-F53)。WSL 側の `WSL_STEP_TIMEOUT` と同じ
 /// 考えで、繋がったまま黙り込んだ接続先にいつまでも張り付かないための上限。
@@ -2318,15 +2361,15 @@ fn remote_script_timeout(script: &'static str) -> Duration {
 /// (`sandboxed_claude_code` の設定フォルダー作成など) は一般的な言い方にする。
 fn remote_script_step(script: &'static str) -> &'static str {
     if script == REMOTE_PROBE_SCRIPT {
-        "接続先の環境の確認"
+        i18n::msg!("checking the remote environment")
     } else if script == REMOTE_STAGED_SCRIPT {
-        "接続先にある Claude Code の確認"
+        i18n::msg!("checking the Claude Code on the remote host")
     } else if script == REMOTE_PREPARE_SCRIPT {
-        "送信先フォルダーの準備"
+        i18n::msg!("preparing the destination folder")
     } else if script == REMOTE_FINALIZE_SCRIPT {
-        "送った Claude Code の検証"
+        i18n::msg!("verifying the uploaded Claude Code")
     } else {
-        "接続先でのコマンドの実行"
+        i18n::msg!("running a command on the remote host")
     }
 }
 
@@ -2342,10 +2385,12 @@ impl fmt::Display for RemoteScriptTimedOut {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "接続先の応答が {} 秒以内に返りませんでした ({})。接続先の状態を確かめてから、\
-             もう一度お試しください。",
-            self.timeout.as_secs(),
-            self.step
+            "{}",
+            i18n::t!(
+                "The remote host did not respond within {seconds} seconds ({step}). Check the state of the remote host and try again.",
+                seconds = self.timeout.as_secs(),
+                step = i18n::tr(self.step)
+            )
         )
     }
 }
@@ -2367,7 +2412,7 @@ fn remote_script_timed_out(script: &'static str) -> anyhow::Error {
 fn refuse_remote(headline: String, error: anyhow::Error) -> anyhow::Error {
     let headline = match error.downcast_ref::<RemoteScriptTimedOut>() {
         // 見出しは「…できませんでした。」で終わるので、続ける前に句点を外す。
-        Some(timed_out) => format!("{}: {timed_out}", headline.trim_end_matches('。')),
+        Some(timed_out) => format!("{}: {timed_out}", headline.trim_end_matches(['。', '.'])),
         None => headline,
     };
     refuse(headline, format!("{error:#}"))
@@ -2481,12 +2526,12 @@ pub(crate) fn run_remote_host_script(
             .with_timeout(remote_script_timeout(script), &executor)
             .await
             .map_err(|_| remote_script_timed_out(script))?
-            .context(REMOTE_SCRIPT_FAILED)?;
+            .context(i18n::tr(REMOTE_SCRIPT_FAILED))?;
         if !output.status.success() {
             // The headline is what the toast shows, as it is for the WSL probe;
             // what the host actually said is kept behind it for the log.
             return Err(refuse(
-                REMOTE_SCRIPT_FAILED,
+                i18n::tr(REMOTE_SCRIPT_FAILED),
                 format!(
                     "the host exited with {:?}: {}",
                     output.status.code(),
@@ -2499,7 +2544,7 @@ pub(crate) fn run_remote_host_script(
         // 気づけない。
         if let Err(error) = written {
             return Err(refuse(
-                REMOTE_SCRIPT_FAILED,
+                i18n::tr(REMOTE_SCRIPT_FAILED),
                 format!("the host's shell stopped reading the script: {error}"),
             ));
         }
@@ -2569,7 +2614,7 @@ impl RemoteAgentHost {
             RemoteStagingResult::Ready(path) => Ok(Some(path)),
             // A copy that does not match is not one to run; it is replaced.
             RemoteStagingResult::Missing | RemoteStagingResult::Mismatch => Ok(None),
-            RemoteStagingResult::Unverifiable => bail!(REMOTE_UNVERIFIABLE),
+            RemoteStagingResult::Unverifiable => bail!(i18n::tr(REMOTE_UNVERIFIABLE)),
         }
     }
 
@@ -2638,18 +2683,23 @@ impl RemoteAgentHost {
         match remote_staging_result(&output)? {
             RemoteStagingResult::Ready(path) => Ok(path),
             RemoteStagingResult::Missing => {
-                bail!("接続先へ送った Claude Code が見つかりません。もう一度お試しください。")
+                bail!(i18n::t!(
+                    "The Claude Code sent to the remote host could not be found. Please try again."
+                ))
             }
             RemoteStagingResult::Mismatch => {
-                bail!("接続先へ送るあいだに Claude Code が変わりました。もう一度お試しください。")
+                bail!(i18n::t!(
+                    "Claude Code changed while it was being sent to the remote host. Please try again."
+                ))
             }
-            RemoteStagingResult::Unverifiable => bail!(REMOTE_UNVERIFIABLE),
+            RemoteStagingResult::Unverifiable => bail!(i18n::tr(REMOTE_UNVERIFIABLE)),
         }
     }
 }
 
-const REMOTE_UNVERIFIABLE: &str = "接続先のホストに `sha256sum` がないため、Claude Code が置き換えられていないことを\
-     確認できません。接続先に coreutils をインストールしてから再試行してください。";
+const REMOTE_UNVERIFIABLE: &str = i18n::msg!(
+    "The remote host has no `sha256sum`, so it cannot be confirmed that Claude Code has not been replaced. Install coreutils on the remote host and try again."
+);
 
 impl AgentBinaryHost for RemoteAgentHost {
     fn kind(&self) -> AgentHostKind {
@@ -2747,16 +2797,15 @@ async fn wsl_probe(distro: Option<&str>) -> Result<String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    let output = command
-        .output()
-        .await
-        .context("WSL を起動できませんでした。WSL がインストールされているか確認してください。")?;
+    let output = command.output().await.context(i18n::t!(
+        "Could not start WSL. Check that WSL is installed."
+    ))?;
     if !output.status.success() {
-        bail!(
-            "WSL のアーキテクチャを調べられませんでした (終了コード {:?}): {}",
-            output.status.code(),
-            decode_wsl_output(&output.stderr).trim()
-        );
+        bail!(i18n::t!(
+            "Could not determine the WSL architecture (exit code {code:?}): {stderr}",
+            code = output.status.code(),
+            stderr = decode_wsl_output(&output.stderr).trim().to_string()
+        ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
@@ -2788,7 +2837,7 @@ fn decode_wsl_output(bytes: &[u8]) -> String {
 
 #[cfg(not(target_os = "windows"))]
 async fn wsl_probe(_distro: Option<&str>) -> Result<String> {
-    bail!(WINDOWS_ONLY)
+    bail!(i18n::tr(WINDOWS_ONLY))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2797,7 +2846,7 @@ async fn staged_agent_binary(
     _name: &str,
     _expected_sha256: &str,
 ) -> Result<Option<String>> {
-    bail!(WINDOWS_ONLY)
+    bail!(i18n::tr(WINDOWS_ONLY))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2807,7 +2856,7 @@ async fn stage_agent_binary(
     _source_windows_path: &Path,
     _expected_sha256: &str,
 ) -> Result<String> {
-    bail!(WINDOWS_ONLY)
+    bail!(i18n::tr(WINDOWS_ONLY))
 }
 
 #[cfg(test)]
@@ -3397,7 +3446,7 @@ mod tests {
             SystemTime::now(),
         )
         .expect_err("a manifest for another version is refused");
-        assert!(error.to_string().contains("一致しません"), "{error:#}");
+        assert!(error.to_string().contains("does not match"), "{error:#}");
     }
 
     #[test]
@@ -3709,7 +3758,7 @@ mod tests {
             SystemTime::now(),
         )
         .expect_err("claude.zst is not claude");
-        assert!(error.to_string().contains("ファイル名"), "{error:#}");
+        assert!(error.to_string().contains("file name"), "{error:#}");
     }
 
     #[test]
@@ -3863,7 +3912,9 @@ mod tests {
         let error =
             ensure_remote_room(&tight, 224 * 1024 * 1024).expect_err("256 MB is not enough");
         assert!(
-            error.to_string().contains("空き容量が足りません"),
+            error
+                .to_string()
+                .contains("does not have enough free space"),
             "{error}"
         );
         assert!(error.to_string().contains("256 MB"), "{error}");
@@ -4175,7 +4226,7 @@ mod tests {
         let error = host
             .ensure_room(&probe, 8 * 1024 * 1024 * 1024)
             .expect_err("8 GB is not");
-        assert!(error.to_string().contains("空き容量"), "{error}");
+        assert!(error.to_string().contains("free space"), "{error}");
         assert_eq!(operations.uploads(), 0);
     }
 
@@ -4295,8 +4346,11 @@ mod tests {
             .advance_clock(REMOTE_SCRIPT_TIMEOUT + Duration::from_secs(1));
         let error = probe.await.expect_err("応答が返らない");
         let message = error.to_string();
-        assert!(message.contains("60 秒"), "{message}");
-        assert!(message.contains("接続先の環境の確認"), "{message}");
+        assert!(message.contains("60 seconds"), "{message}");
+        assert!(
+            message.contains("checking the remote environment"),
+            "{message}"
+        );
     }
 
     /// 送った後の検証は 224 MB の `sha256sum` を含むので、他の 1 往復より長く待つ。
@@ -4320,8 +4374,11 @@ mod tests {
             .advance_clock(REMOTE_FINALIZE_TIMEOUT + Duration::from_secs(1));
         let error = stage.await.expect_err("応答が返らない");
         let message = error.to_string();
-        assert!(message.contains("180 秒"), "{message}");
-        assert!(message.contains("送った Claude Code の検証"), "{message}");
+        assert!(message.contains("180 seconds"), "{message}");
+        assert!(
+            message.contains("verifying the uploaded Claude Code"),
+            "{message}"
+        );
         assert_eq!(operations.uploads(), 1, "送ったあとで待っている");
     }
 
@@ -4355,18 +4412,15 @@ mod tests {
         let headline = error.to_string();
         let existing = AgentHostKind::RemoteHost.staged_check_failed();
         assert!(
-            headline.starts_with(existing.trim_end_matches('。')),
+            headline.starts_with(existing.trim_end_matches('.')),
             "既存の見出しは残す: {headline}"
         );
-        assert!(headline.contains("60 秒"), "{headline}");
+        assert!(headline.contains("60 seconds"), "{headline}");
         assert!(
-            headline.contains("接続先にある Claude Code の確認"),
+            headline.contains("checking the Claude Code on the remote host"),
             "{headline}"
         );
-        assert!(
-            !headline.contains("。:"),
-            "句点のあとに続けない: {headline}"
-        );
+        assert!(!headline.contains(".:"), "句点のあとに続けない: {headline}");
     }
 
     /// 期限切れ以外の失敗は見出しを変えない (上の試験が「常に添える」実装でも
@@ -4377,7 +4431,7 @@ mod tests {
         let plain = refuse_remote(headline.clone(), anyhow!("the host printed no result"));
         assert_eq!(plain.to_string(), headline, "理由は log にだけ");
         let timed_out = refuse_remote(headline, remote_script_timed_out(REMOTE_FINALIZE_SCRIPT));
-        assert!(timed_out.to_string().contains("180 秒"));
+        assert!(timed_out.to_string().contains("180 seconds"));
     }
 
     #[test]
@@ -4406,34 +4460,37 @@ mod tests {
             version: version("2.1.270"),
         };
         let prompt = consent_prompt(&install, wsl, &hosts, &hosts);
-        assert_eq!(prompt.message, "Linux 版 Claude Code v2.1.270 を取得します");
-        assert_eq!(prompt.confirm, "許可リストに追加してインストール");
+        assert_eq!(
+            prompt.message,
+            "Download the Linux build of Claude Code v2.1.270"
+        );
+        assert_eq!(prompt.confirm, "Add to Allowlist and Install");
         assert!(
             prompt
                 .detail
-                .ends_with("許可が必要なホスト: downloads.claude.ai (未登録)"),
+                .ends_with("Hosts that need to be allowed: downloads.claude.ai (not added)"),
             "{}",
             prompt.detail
         );
         let prompt = consent_prompt(&install, wsl, &hosts, &[]);
-        assert_eq!(prompt.confirm, "了承してインストール");
-        assert!(prompt.detail.ends_with("(登録済み)"), "{}", prompt.detail);
+        assert_eq!(prompt.confirm, "Agree and Install");
+        assert!(prompt.detail.ends_with("(added)"), "{}", prompt.detail);
 
         let update = ConsentRequest::Update {
             from: version("2.1.270"),
             to: version("2.1.280"),
         };
         let prompt = consent_prompt(&update, wsl, &hosts, &[]);
-        assert_eq!(prompt.message, "Claude Code を v2.1.280 に更新します");
+        assert_eq!(prompt.message, "Update Claude Code to v2.1.280");
         assert!(
-            prompt.detail.starts_with("現在の版: v2.1.270"),
+            prompt.detail.starts_with("Current version: v2.1.270"),
             "{}",
             prompt.detail
         );
-        assert_eq!(prompt.confirm, "了承して更新");
+        assert_eq!(prompt.confirm, "Agree and Update");
         assert_eq!(
             consent_prompt(&update, wsl, &hosts, &hosts).confirm,
-            "許可リストに追加して更新"
+            "Add to Allowlist and Update"
         );
     }
 
@@ -4966,7 +5023,7 @@ mod tests {
             .run(Goal::Update(ClaudeReleaseChannel::Stable), &mut ui)
             .await
             .expect_err("downgrade");
-        assert!(error.to_string().contains("より古い"), "{error:#}");
+        assert!(error.to_string().contains("is older than"), "{error:#}");
         assert!(ui.prompts.is_empty());
         assert_eq!(
             harness.server.requests()[before..],
@@ -4996,7 +5053,7 @@ mod tests {
             )
             .await
             .expect_err("replayed manifest");
-        assert!(error.to_string().contains("一致しません"), "{error:#}");
+        assert!(error.to_string().contains("does not match"), "{error:#}");
         assert!(
             !harness
                 .server

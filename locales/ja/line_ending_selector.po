@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Select Line Ending"
+msgstr "改行コードを選択"
+
+msgid "Select a line ending…"
+msgstr "改行コードを選択…"

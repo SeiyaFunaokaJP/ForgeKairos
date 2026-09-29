@@ -20,30 +20,45 @@ use workspace::item::ItemEvent;
 
 pub(super) const SEARCH_RESULT_LIMIT: usize = git::commit_search::COMMIT_SEARCH_RESULT_LIMIT;
 
+/// Translate it with `i18n::tr` where it is shown.
 pub(super) const SEARCH_PLACEHOLDER: &str =
-    "コミットを検索… (例: 著者:山田 ファイル:src/ 以降:2週間)";
+    i18n::msg!("Search commits… (e.g. author:alice file:src/ since:2w)");
 
+/// Examples of the search box's conditions and what they find, in English; the translations
+/// show the same conditions with their words in that language, which the box also reads.
 const SEARCH_SYNTAX_EXAMPLES: [(&str, &str); 8] = [
-    ("著者:山田", "著者の名前かメールアドレスに「山田」を含む"),
-    ("タグ:v1.2", "名前に「v1.2」を含むタグが指すコミット"),
     (
-        "ブランチ:feature",
-        "feature にあって、デフォルトブランチに無いコミット",
+        i18n::msg!("author:alice"),
+        i18n::msg!("The author's name or email address contains \"alice\""),
     ),
     (
-        "ファイル:src/",
-        "そのファイル・フォルダーを変えたコミット (* でパターン)",
+        i18n::msg!("tag:v1.2"),
+        i18n::msg!("Commits that tags with \"v1.2\" in their name point to"),
     ),
     (
-        "以降:2週間  以前:2026-09-01",
-        "期間 (3日・2週間・1か月・1年、日付、\"2026-09-01 12:00\")",
+        i18n::msg!("branch:feature"),
+        i18n::msg!("Commits on feature that the default branch does not have"),
     ),
     (
-        "変更:foo",
-        "追加・削除した行に「foo」を含む (時間がかかります)",
+        i18n::msg!("file:src/"),
+        i18n::msg!("Commits that changed that file or folder (* for patterns)"),
     ),
-    ("マージ:いいえ", "マージコミットを除く (はい・いいえ・だけ)"),
-    ("sha:1a2b3c", "SHA がこう始まるコミット"),
+    (
+        i18n::msg!("since:2w  until:2026-09-01"),
+        i18n::msg!("A period (3d, 2w, 1m, 1y, a date, \"2026-09-01 12:00\")"),
+    ),
+    (
+        i18n::msg!("change:foo"),
+        i18n::msg!("Added or removed lines contain \"foo\" (slow)"),
+    ),
+    (
+        i18n::msg!("merge:no"),
+        i18n::msg!("Leaves out merge commits (yes, no, only)"),
+    ),
+    (
+        "sha:1a2b3c",
+        i18n::msg!("Commits whose SHA starts like this"),
+    ),
 ];
 
 /// What the last search was, for the line under the search box: its conditions as chips, how far
@@ -84,15 +99,27 @@ pub(super) fn search_count_text(outcome: &SearchOutcome, match_count: usize) -> 
         return None;
     }
     Some(if !outcome.finished {
-        format!("検索中… {match_count} 件")
+        i18n::tn!(
+            match_count,
+            "Searching… {count} commit",
+            "Searching… {count} commits"
+        )
     } else if outcome.stopped {
-        format!("{match_count} 件で中止しました。")
+        i18n::tn!(
+            match_count,
+            "Stopped at {count} commit.",
+            "Stopped at {count} commits."
+        )
     } else if outcome.truncated {
-        format!("{match_count} 件で打ち切りました。条件を足して絞り込んでください。")
+        i18n::tn!(
+            match_count,
+            "Cut off at {count} commit. Add conditions to narrow the search.",
+            "Cut off at {count} commits. Add conditions to narrow the search."
+        )
     } else if match_count == 0 {
-        "該当するコミットはありません。条件を減らしてみてください。".to_string()
+        i18n::t!("No commits match. Try fewer conditions.").to_string()
     } else {
-        format!("{match_count} 件")
+        i18n::tn!(match_count, "{count} commit", "{count} commits")
     })
 }
 
@@ -391,9 +418,14 @@ impl GitGraph {
                     })
                     .anchor(gpui::Anchor::TopRight)
                     .trigger_with_tooltip(
-                        Button::new("git-graph-advanced-search-trigger", "詳細")
-                            .label_size(LabelSize::Small),
-                        Tooltip::text("著者・タグ・期間などの条件を選んで検索します"),
+                        Button::new(
+                            "git-graph-advanced-search-trigger",
+                            i18n::tc!("commit search", "Advanced"),
+                        )
+                        .label_size(LabelSize::Small),
+                        Tooltip::text(i18n::t!(
+                            "Search by conditions such as the author, a tag or a period"
+                        )),
                     ),
             )
             .child(
@@ -454,7 +486,9 @@ impl GitGraph {
                                             IconName::Close,
                                         )
                                         .icon_size(IconSize::XSmall)
-                                        .tooltip(Tooltip::text("この条件を外して検索し直します"))
+                                        .tooltip(Tooltip::text(i18n::t!(
+                                            "Remove this condition and search again"
+                                        )))
                                         .on_click(
                                             cx.listener(move |this, _, window, cx| {
                                                 this.remove_search_condition(index, window, cx);
@@ -474,19 +508,24 @@ impl GitGraph {
                         })
                         .when(!outcome.finished && outcome.problems.is_empty(), |this| {
                             this.child(
-                                Button::new("git-graph-search-stop", "中止")
-                                    .label_size(LabelSize::Small)
-                                    .tooltip(Tooltip::text(
-                                        "検索を止めます。ここまでに見つかったコミットは残ります",
-                                    ))
-                                    .on_click(cx.listener(|this, _, _window, cx| {
+                                Button::new(
+                                    "git-graph-search-stop",
+                                    i18n::tc!("commit search", "Stop"),
+                                )
+                                .label_size(LabelSize::Small)
+                                .tooltip(Tooltip::text(i18n::t!(
+                                    "Stops the search. The commits found so far stay"
+                                )))
+                                .on_click(cx.listener(
+                                    |this, _, _window, cx| {
                                         this.stop_search(cx);
-                                    })),
+                                    },
+                                )),
                             )
                         })
                         .when(outcome.waiting_for_tags, |this| {
                             this.child(
-                                Label::new("タグの一覧を読み込んでいます…")
+                                Label::new(i18n::t!("Loading the tag list…"))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
@@ -510,26 +549,29 @@ impl GitGraph {
 fn render_search_syntax_help(cx: &App) -> AnyElement {
     v_flex()
         .gap_1()
-        .child(Label::new("検索欄の書き方").size(LabelSize::Small))
+        .child(Label::new(i18n::t!("How to Write a Search")).size(LabelSize::Small))
         .children(SEARCH_SYNTAX_EXAMPLES.iter().map(|(example, meaning)| {
             h_flex()
                 .gap_2()
                 .child(
                     div()
                         .w(px(180.))
-                        .child(Label::new(*example).size(LabelSize::Small).buffer_font(cx)),
+                        .child(
+                            Label::new(i18n::tr(example))
+                                .size(LabelSize::Small)
+                                .buffer_font(cx),
+                        ),
                 )
                 .child(
-                    Label::new(*meaning)
+                    Label::new(i18n::tr(meaning))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
         }))
         .child(
-            Label::new(
-                "空白で区切って並べると、すべてを満たすコミットを探します。空白を含む値は \"…\" で囲みます。\
-                 author: tag: branch: file: since: until: change: merge: と英語でも書けます。",
-            )
+            Label::new(i18n::t!(
+                "Separate conditions with spaces to find the commits that match all of them. Put a value that contains spaces in \"…\"."
+            ))
             .size(LabelSize::Small)
             .color(Color::Muted),
         )
@@ -611,16 +653,40 @@ impl GraphSearchForm {
         let mut fields = Vec::new();
         let mut subscriptions = Vec::new();
         for (kind, label, placeholder) in [
-            (Kind::Author, "著者", "名前かメールアドレスの一部"),
-            (Kind::Tag, "タグ", "例: v1.2"),
-            (Kind::Branch, "ブランチ", "例: feature/login"),
-            (Kind::Path, "ファイル", "例: src/ や *.rs"),
-            (Kind::Since, "以降", "例: 2週間、2026-09-01"),
-            (Kind::Until, "以前", "例: 2026-09-30"),
+            (
+                Kind::Author,
+                i18n::tc!("commit search", "Author"),
+                i18n::t!("Part of a name or email address"),
+            ),
+            (
+                Kind::Tag,
+                i18n::tc!("commit search", "Tag"),
+                i18n::t!("e.g. v1.2"),
+            ),
+            (
+                Kind::Branch,
+                i18n::tc!("commit search", "Branch"),
+                i18n::t!("e.g. feature/login"),
+            ),
+            (
+                Kind::Path,
+                i18n::tc!("commit search", "File"),
+                i18n::t!("e.g. src/ or *.rs"),
+            ),
+            (
+                Kind::Since,
+                i18n::tc!("commit search", "Since"),
+                i18n::t!("e.g. 2w, 2026-09-01"),
+            ),
+            (
+                Kind::Until,
+                i18n::tc!("commit search", "Until"),
+                i18n::t!("e.g. 2026-09-30"),
+            ),
             (
                 Kind::Change,
-                "変更内容",
-                "追加・削除した行の文字 (時間がかかります)",
+                i18n::tc!("commit search", "Changed Text"),
+                i18n::t!("Text of added or removed lines (slow)"),
             ),
         ] {
             let initial_value = value_of(kind);
@@ -696,9 +762,9 @@ impl GraphSearchForm {
             })
             .unwrap_or(false);
         self.note = (!written).then(|| {
-            SharedString::from(format!(
-                "「{}」には、空白と \" を一緒には書けません。",
-                kind.label()
+            let label = kind.label();
+            SharedString::from(i18n::t!(
+                "A value for \"{label}\" cannot contain both spaces and \"."
             ))
         });
         cx.notify();
@@ -793,7 +859,7 @@ impl GraphSearchForm {
                 }))
                 .when(hidden > 0, |this| {
                     this.child(
-                        Label::new(format!("ほか {hidden} 件 (続けて入力すると絞り込めます)"))
+                        Label::new(i18n::t!("{hidden} more (keep typing to narrow them down)"))
                             .size(LabelSize::XSmall)
                             .color(Color::Muted),
                     )
@@ -892,15 +958,19 @@ impl Render for GraphSearchForm {
         let merge_buttons = [
             (
                 "git-graph-search-merges-include",
-                "含む",
+                i18n::tc!("merge commits", "Include"),
                 MergeFilter::Include,
             ),
             (
                 "git-graph-search-merges-exclude",
-                "除く",
+                i18n::tc!("merge commits", "Exclude"),
                 MergeFilter::Exclude,
             ),
-            ("git-graph-search-merges-only", "だけ", MergeFilter::Only),
+            (
+                "git-graph-search-merges-only",
+                i18n::tc!("merge commits", "Only"),
+                MergeFilter::Only,
+            ),
         ]
         .map(|(id, label, merges)| {
             Button::new(id, label)
@@ -926,21 +996,21 @@ impl Render for GraphSearchForm {
             .p_2()
             .gap_1()
             .elevation_2(cx)
-            .child(Label::new("条件を選んで検索").size(LabelSize::Small))
+            .child(Label::new(i18n::t!("Search by Conditions")).size(LabelSize::Small))
             .child(
-                Label::new("入力した条件は検索欄に書き込まれます。")
-                    .size(LabelSize::XSmall)
-                    .color(Color::Muted),
+                Label::new(i18n::t!(
+                    "The conditions you enter are written into the search box."
+                ))
+                .size(LabelSize::XSmall)
+                .color(Color::Muted),
             )
             .children(field_rows)
             .child(
                 h_flex()
                     .gap_1()
-                    .child(
-                        div()
-                            .w(px(72.))
-                            .child(Label::new("マージ").size(LabelSize::Small)),
-                    )
+                    .child(div().w(px(72.)).child(
+                        Label::new(i18n::tc!("commit search", "Merges")).size(LabelSize::Small),
+                    ))
                     .children(merge_buttons),
             )
             .when_some(self.note.clone(), |this, note| {
@@ -955,16 +1025,111 @@ impl Render for GraphSearchForm {
                     .justify_end()
                     .gap_1()
                     .child(
-                        Button::new("git-graph-search-form-close", "閉じる")
+                        Button::new("git-graph-search-form-close", i18n::t!("Close"))
                             .label_size(LabelSize::Small)
                             .on_click(cx.listener(|_, _, _window, cx| cx.emit(DismissEvent))),
                     )
                     .child(
-                        Button::new("git-graph-search-form-run", "検索")
+                        Button::new("git-graph-search-form-run", i18n::t!("Search"))
                             .label_size(LabelSize::Small)
                             .style(ButtonStyle::Filled)
                             .on_click(cx.listener(|this, _, _window, cx| this.run_search(cx))),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git::commit_search::{DateBound, parse_commit_search_date};
+
+    /// The examples the search box shows, as the box itself would read them.
+    fn shown_examples() -> Vec<(String, Vec<CommitSearchConditionKind>)> {
+        use CommitSearchConditionKind as Kind;
+        let expected_kinds = [
+            vec![Kind::Author],
+            vec![Kind::Tag],
+            vec![Kind::Branch],
+            vec![Kind::Path],
+            vec![Kind::Since, Kind::Until],
+            vec![Kind::Change],
+            vec![Kind::Merge],
+            vec![Kind::Sha],
+        ];
+        let placeholder = i18n::tr(SEARCH_PLACEHOLDER);
+        let placeholder_example = placeholder
+            .split_once('(')
+            .and_then(|(_, rest)| rest.rsplit_once(')'))
+            .and_then(|(inside, _)| inside.split_once(char::is_whitespace))
+            .map(|(_, conditions)| conditions.to_string())
+            .expect("the placeholder carries an example in brackets");
+        SEARCH_SYNTAX_EXAMPLES
+            .iter()
+            .map(|(example, _)| i18n::tr(example).to_string())
+            .zip(expected_kinds)
+            .chain([(
+                placeholder_example,
+                vec![Kind::Author, Kind::Path, Kind::Since],
+            )])
+            .collect()
+    }
+
+    fn assert_examples_parse() {
+        let now = OffsetDateTime::now_utc();
+        for (example, expected_kinds) in shown_examples() {
+            let parsed = parse_commit_search_query(&example);
+            assert_eq!(parsed.text, "", "{example:?} is all conditions");
+            assert_eq!(
+                parsed
+                    .conditions
+                    .iter()
+                    .map(|condition| condition.kind)
+                    .collect::<Vec<_>>(),
+                expected_kinds,
+                "{example:?}"
+            );
+            for condition in &parsed.conditions {
+                let value = condition.value.as_str();
+                let readable = match condition.kind {
+                    CommitSearchConditionKind::Since => {
+                        parse_commit_search_date(value, DateBound::Since, now).is_some()
+                    }
+                    CommitSearchConditionKind::Until => {
+                        parse_commit_search_date(value, DateBound::Until, now).is_some()
+                    }
+                    CommitSearchConditionKind::Merge => MergeFilter::parse(value).is_some(),
+                    CommitSearchConditionKind::Sha => {
+                        value.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    }
+                    _ => true,
+                };
+                assert!(readable, "{example:?}: {value:?} cannot be read");
+            }
+        }
+    }
+
+    /// The syntax the box shows is syntax the box reads: in English with the English keywords, and
+    /// in each translation with the keywords the translation shows.
+    #[test]
+    fn test_shown_search_examples_are_readable() {
+        assert_examples_parse();
+        assert!(
+            shown_examples()
+                .iter()
+                .any(|(example, _)| example.starts_with("author:")),
+            "the English examples use the English keywords"
+        );
+
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert!(
+            shown_examples()
+                .iter()
+                .any(|(example, _)| example.starts_with("著者:")),
+            "the Japanese examples use the Japanese keywords"
+        );
+        assert_examples_parse();
     }
 }

@@ -1653,9 +1653,9 @@ impl ContextServerStore {
                         .map(Arc::as_ref)
                         != Some(configuration.as_ref())
                 {
-                    anyhow::bail!(
-                        "MCP サーバー「{id}」はプロジェクトの設定で定義されていて、この内容はまだ承認されていません"
-                    );
+                    anyhow::bail!(i18n::t!(
+                        "MCP server \"{id}\" is defined in the project settings, and this definition has not been approved yet"
+                    ));
                 }
                 let remote_state = match &this.state {
                     ContextServerStoreState::Remote {
@@ -2864,7 +2864,7 @@ pub fn wait_for_context_server(
                 send_wait_outcome(&tx, Ok(status.clone()));
             }
             ContextServerStatus::Stopped => {
-                send_wait_outcome(&tx, Err("MCP サーバーが停止しました".into()));
+                send_wait_outcome(&tx, Err(i18n::t!("The MCP server stopped").into()));
             }
             ContextServerStatus::Error(error) => {
                 send_wait_outcome(&tx, Err(error.clone()));
@@ -2882,10 +2882,12 @@ pub fn wait_for_context_server(
         drop(subscription);
         match result {
             Either::Left((Ok(inner), _)) => inner,
-            Either::Left((Err(_), _)) => Err(Arc::from("MCP サーバーストアが破棄されました")),
-            Either::Right(_) => Err(Arc::from(format!(
-                "MCP サーバー `{}` の起動がタイムアウトしました。詳細は Zed のログを確認してください。",
-                context_server_id_for_timeout
+            Either::Left((Err(_), _)) => {
+                Err(Arc::from(i18n::t!("The MCP server store was dropped")))
+            }
+            Either::Right(_) => Err(Arc::from(i18n::t!(
+                "Starting MCP server `{id}` timed out. See the Zed log for details.",
+                id = context_server_id_for_timeout
             ))),
         }
     })
@@ -2904,15 +2906,18 @@ fn send_wait_outcome(
 }
 
 fn approval_required_message(id: &ContextServerId) -> Arc<str> {
-    format!(
-        "MCP サーバー「{id}」は承認待ちです。プロジェクトの設定で定義されたサーバーは、\
-         設定の「MCP サーバー」ページで起動する内容を確認して許可するまで起動しません。"
+    i18n::t!(
+        "MCP server \"{id}\" is waiting for approval. A server defined in the project settings \
+         does not start until what it runs is checked and allowed on the \"MCP Servers\" page of \
+         the settings."
     )
     .into()
 }
 
 fn no_project_launch_error(id: &ContextServerId) -> anyhow::Error {
-    anyhow!("MCP サーバー「{id}」には、承認の対象になるプロジェクトの定義がありません")
+    anyhow!(i18n::t!(
+        "MCP server \"{id}\" has no project definition that an approval could apply to"
+    ))
 }
 
 /// Only a definition in a file that a sandboxed command cannot write — the
@@ -2967,7 +2972,7 @@ struct LaunchNeedsApproval;
 
 impl std::fmt::Display for LaunchNeedsApproval {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("この MCP サーバーの起動には承認が必要です")
+        formatter.write_str(i18n::t!("Starting this MCP server needs approval"))
     }
 }
 
@@ -2993,7 +2998,9 @@ fn verify_remote_command(
         response.path == approved.path.to_string_lossy()
             && response.args == approved.args
             && environment_matches,
-        "接続先が返した MCP サーバーのコマンドが、承認した定義と一致しません"
+        i18n::t!(
+            "The MCP server command the remote host returned does not match the approved definition"
+        )
     );
     Ok(())
 }
@@ -3064,9 +3071,9 @@ async fn create_neutral_working_directory(
         }
     };
     created.with_context(|| {
-        format!(
-            "MCP サーバーの作業フォルダー {} を作れませんでした",
-            directory.display()
+        i18n::t!(
+            "Could not create the working directory {directory} of the MCP server",
+            directory = directory.display()
         )
     })
 }

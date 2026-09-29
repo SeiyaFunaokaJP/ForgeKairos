@@ -205,7 +205,7 @@ fn host_pattern_for_url(url: &str) -> Result<http_proxy::HostPattern> {
         http_proxy::HostPatternError::IpLiteral(_) => anyhow::anyhow!(
             "cannot fetch {host:?}: this host isn't allowed, and loopback and IP-literal \
              hosts can't be allowed at all. Network access is only granted to domain names, \
-             which the user can add in the 「サンドボックス」 settings under 「許可するドメイン」."
+             which the user can add under \"Allowed Domains\" in the \"Sandbox\" settings."
         ),
         error => anyhow::anyhow!("cannot authorize network access to {host:?}: {error}"),
     })
@@ -231,8 +231,8 @@ impl AgentTool for FetchTool {
         _cx: &mut App,
     ) -> SharedString {
         match input {
-            Ok(input) => format!("{} を取得", MarkdownEscaped(&input.url)).into(),
-            Err(_) => "URL を取得".into(),
+            Ok(input) => i18n::t!("Fetch {}", MarkdownEscaped(&input.url)).into(),
+            Err(_) => i18n::t!("Fetch URL").into(),
         }
     }
 
@@ -253,7 +253,7 @@ impl AgentTool for FetchTool {
                     crate::ToolPermissionContext::new(Self::NAME, vec![input.url.clone()]);
 
                 event_stream.authorize(
-                    format!("{} を取得", MarkdownInlineCode(&input.url)),
+                    i18n::t!("Fetch {}", MarkdownInlineCode(&input.url)),
                     context,
                     cx,
                 )

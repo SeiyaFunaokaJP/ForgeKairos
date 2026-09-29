@@ -385,7 +385,7 @@ impl Render for TitleBar {
                 )
                 .when(is_signing_in, |this| {
                     this.child(
-                        Label::new("サインインしています…")
+                        Label::new(i18n::t!("Signing in…"))
                             .size(LabelSize::Small)
                             .color(Color::Muted)
                             .with_animation(
@@ -607,12 +607,12 @@ impl TitleBar {
         let (nickname, tooltip_title, icon) = match options {
             RemoteConnectionOptions::Ssh(options) => (
                 options.nickname.map(|nick| nick.into()),
-                "リモートプロジェクト",
+                i18n::t!("Remote Project"),
                 IconName::Server,
             ),
-            RemoteConnectionOptions::Wsl(_) => (None, "リモートプロジェクト", IconName::Linux),
+            RemoteConnectionOptions::Wsl(_) => (None, i18n::t!("Remote Project"), IconName::Linux),
             RemoteConnectionOptions::Docker(_dev_container_connection) => {
-                (None, "開発コンテナー", IconName::Box)
+                (None, i18n::t!("Dev Container"), IconName::Box)
             }
             #[cfg(any(test, feature = "test-support"))]
             RemoteConnectionOptions::Mock(_) => (None, "Mock Remote Project", IconName::Server),
@@ -621,20 +621,20 @@ impl TitleBar {
         let nickname = nickname.unwrap_or_else(|| host.clone());
 
         let (indicator_color, meta) = match self.project.read(cx).remote_connection_state(cx)? {
-            remote::ConnectionState::Connecting => {
-                (Color::Info, format!("{host} に接続しています"))
+            remote::ConnectionState::Connecting => (Color::Info, i18n::t!("Connecting to: {host}")),
+            remote::ConnectionState::Connected => {
+                (Color::Success, i18n::t!("Connected to: {host}"))
             }
-            remote::ConnectionState::Connected => (Color::Success, format!("{host} に接続済み")),
             remote::ConnectionState::HeartbeatMissed => (
                 Color::Warning,
-                format!("{host} への応答がありません。再試行しています..."),
+                i18n::t!("Connection attempt to {host} missed. Retrying..."),
             ),
             remote::ConnectionState::Reconnecting => (
                 Color::Warning,
-                format!("{host} との接続が切れました。再接続しています..."),
+                i18n::t!("Lost connection to {host}. Reconnecting..."),
             ),
             remote::ConnectionState::Disconnected => {
-                (Color::Error, format!("{host} から切断されました"))
+                (Color::Error, i18n::t!("Disconnected from {host}"))
             }
         };
 
@@ -701,7 +701,7 @@ impl TitleBar {
             return None;
         }
 
-        let button = Button::new("restricted_mode_trigger", "制限モード")
+        let button = Button::new("restricted_mode_trigger", i18n::t!("Restricted Mode"))
             .style(ButtonStyle::Tinted(TintColor::Warning))
             .label_size(LabelSize::Small)
             .color(Color::Warning)
@@ -712,9 +712,9 @@ impl TitleBar {
             )
             .tooltip(|_, cx| {
                 Tooltip::with_meta(
-                    "制限モードで開いています",
+                    i18n::t!("You're in Restricted Mode"),
                     Some(&ToggleWorktreeSecurity),
-                    "このプロジェクトを信頼済みにしてすべての機能を有効にします",
+                    i18n::t!("Mark this project as trusted and unlock all features"),
                     cx,
                 )
             })
@@ -751,12 +751,12 @@ impl TitleBar {
             IconButton::new("toggle-agent-panel", IconName::ZedAssistant)
                 .icon_size(IconSize::Small)
                 .tab_index(0isize)
-                .aria_label("AI チャットを開閉")
+                .aria_label(i18n::t!("Toggle AI chat"))
                 .tooltip({
                     let focus_handle = focus_handle.clone();
                     move |_window, cx| {
                         Tooltip::for_action_in(
-                            "AI チャットを開閉",
+                            i18n::t!("Toggle AI chat"),
                             &zed_actions::assistant::ToggleFocus,
                             &focus_handle,
                             cx,
@@ -777,7 +777,7 @@ impl TitleBar {
 
         if self.project.read(cx).is_disconnected(cx) {
             return Some(
-                Button::new("disconnected", "切断されました")
+                Button::new("disconnected", i18n::t!("Disconnected"))
                     .disabled(true)
                     .color(Color::Disabled)
                     .label_size(LabelSize::Small)
@@ -799,12 +799,12 @@ impl TitleBar {
                 .label_size(LabelSize::Small)
                 .tab_index(0isize)
                 .tooltip(move |_, cx| {
-                    let tooltip_title = format!(
-                        "{} がこのプロジェクトを共有しています。",
+                    let tooltip_title = i18n::t!(
+                        "{} is sharing this project. Click to follow.",
                         host_user.username
                     );
 
-                    Tooltip::with_meta(tooltip_title, None, "クリックすると追従します", cx)
+                    Tooltip::with_meta(tooltip_title, None, i18n::t!("Click to Follow"), cx)
                 })
                 .on_click({
                     let host_peer_id = host.peer_id;
@@ -833,7 +833,7 @@ impl TitleBar {
         let display_name = if let Some(ref name) = name {
             util::truncate_and_trailoff(name, MAX_PROJECT_NAME_LENGTH)
         } else {
-            "最近のプロジェクトを開く".to_string()
+            i18n::t!("Open Recent Project").to_string()
         };
 
         let is_sidebar_open = self
@@ -895,7 +895,7 @@ impl TitleBar {
                     .when(!is_project_selected, |s| s.color(Color::Muted)),
                 move |_window, cx| {
                     Tooltip::for_action(
-                        "最近のプロジェクト",
+                        i18n::t!("Recent Projects"),
                         &zed_actions::OpenRecent::default(),
                         cx,
                     )
@@ -951,7 +951,7 @@ impl TitleBar {
                     .when(!is_project_selected, |s| s.color(Color::Muted)),
                 move |_window, cx| {
                     Tooltip::for_action(
-                        "最近のプロジェクト",
+                        i18n::t!("Recent Projects"),
                         &zed_actions::OpenRecent::default(),
                         cx,
                     )
@@ -1022,9 +1022,9 @@ impl TitleBar {
 
         let display_label: SharedString = if let Some(ref name) = creation_in_progress {
             if is_switch {
-                format!("{} を読み込んでいます…", name).into()
+                i18n::t!("Loading {}…", name).into()
             } else {
-                format!("{} を作成しています…", name).into()
+                i18n::t!("Creating {}…", name).into()
             }
         } else {
             worktree_label.clone()
@@ -1056,9 +1056,9 @@ impl TitleBar {
                         ),
                     move |_window, cx| {
                         Tooltip::with_meta(
-                            "ワークツリー",
+                            i18n::t!("Worktree"),
                             Some(&zed_actions::git::Worktree),
-                            format!("使用中: {}", worktree_label),
+                            i18n::t!("Currently In Use: {}", worktree_label),
                             cx,
                         )
                     },
@@ -1076,7 +1076,7 @@ impl TitleBar {
                 };
 
                 let trigger = if is_detached_head {
-                    Button::new("project_branch_trigger", "ブランチを作成")
+                    Button::new("project_branch_trigger", i18n::t!("Create Branch"))
                         .selected_style(ButtonStyle::Tinted(TintColor::Accent))
                         .label_size(LabelSize::Small)
                         .tab_index(0isize)
@@ -1111,10 +1111,10 @@ impl TitleBar {
                         let meta = if is_detached_head {
                             format!("Detached HEAD: {}", branch_tooltip_label)
                         } else {
-                            format!("チェックアウト中: {}", branch_tooltip_label)
+                            i18n::t!("Currently Checked Out: {}", branch_tooltip_label)
                         };
                         Tooltip::with_meta(
-                            "ブランチとスタッシュ",
+                            i18n::t!("Branch & Stash"),
                             Some(&zed_actions::git::Branch),
                             meta,
                             cx,
@@ -1161,20 +1161,24 @@ impl TitleBar {
                 div()
                     .id("disconnected")
                     .child(Icon::new(IconName::Disconnected).size(IconSize::Small))
-                    .tooltip(Tooltip::text("切断されました"))
+                    .tooltip(Tooltip::text(i18n::t!("Disconnected")))
                     .into_any_element(),
             ),
             client::Status::UpgradeRequired => {
                 let auto_updater = auto_update::AutoUpdater::get(cx);
                 let label = match auto_updater.map(|auto_update| auto_update.read(cx).status()) {
-                    Some(AutoUpdateStatus::Updated { .. }) => "Zed を再起動して更新を適用",
+                    Some(AutoUpdateStatus::Updated { .. }) => {
+                        i18n::t!("Please restart Zed to Collaborate")
+                    }
                     Some(AutoUpdateStatus::Installing { .. })
                     | Some(AutoUpdateStatus::Downloading { .. })
-                    | Some(AutoUpdateStatus::Checking) => "更新しています...",
-                    Some(AutoUpdateStatus::NeedsEgressConsent { .. }) => "更新には許可が必要です",
+                    | Some(AutoUpdateStatus::Checking) => i18n::t!("Updating..."),
+                    Some(AutoUpdateStatus::NeedsEgressConsent { .. }) => {
+                        i18n::t!("Update Needs Permission")
+                    }
                     Some(AutoUpdateStatus::Idle)
                     | Some(AutoUpdateStatus::Errored { .. })
-                    | None => "Zed を最新版に更新してください",
+                    | None => i18n::t!("Please update Zed to Collaborate"),
                 };
 
                 Some(
@@ -1199,7 +1203,7 @@ impl TitleBar {
     pub fn render_sign_in_button(&mut self, _: &mut Context<Self>) -> Button {
         let client = self.client.clone();
         let workspace = self.workspace.clone();
-        Button::new("sign_in", "サインイン")
+        Button::new("sign_in", i18n::t!("Sign In"))
             .label_size(LabelSize::Small)
             .tab_index(0isize)
             .on_click(move |_, window, cx| {
@@ -1260,7 +1264,7 @@ impl TitleBar {
             });
 
             ButtonLike::new("user-menu")
-                .aria_label("ユーザーメニュー")
+                .aria_label(i18n::t!("User menu"))
                 .tab_index(0isize)
                 .child(
                     h_flex()
@@ -1272,7 +1276,7 @@ impl TitleBar {
                 )
         } else {
             ButtonLike::new("user-menu")
-                .aria_label("ユーザーメニュー")
+                .aria_label(i18n::t!("User menu"))
                 .tab_index(0isize)
                 .child(Icon::new(IconName::ChevronDown).size(IconSize::Small))
         };
@@ -1318,7 +1322,10 @@ impl TitleBar {
                                     .w_full()
                                     .gap_1()
                                     .justify_between()
-                                    .child(Label::new("再起動して Zed を更新").color(Color::Accent))
+                                    .child(
+                                        Label::new(i18n::t!("Restart to update Zed"))
+                                            .color(Color::Accent),
+                                    )
                                     .child(
                                         Icon::new(IconName::Download)
                                             .size(IconSize::Small)
@@ -1386,23 +1393,29 @@ impl TitleBar {
 
                         this.separator()
                     })
-                    .action("設定", zed_actions::OpenSettings.boxed_clone())
-                    .action("キーマップ", Box::new(zed_actions::OpenKeymap))
                     .action(
-                        "テーマ…",
+                        i18n::t!("Settings"),
+                        zed_actions::OpenSettings.boxed_clone(),
+                    )
+                    .action(i18n::t!("Keymap"), Box::new(zed_actions::OpenKeymap))
+                    .action(
+                        i18n::t!("Themes…"),
                         zed_actions::theme_selector::Toggle::default().boxed_clone(),
                     )
                     .action(
-                        "アイコンテーマ…",
+                        i18n::t!("Icon Themes…"),
                         zed_actions::icon_theme_selector::Toggle::default().boxed_clone(),
                     )
-                    .action("拡張機能", zed_actions::Extensions::default().boxed_clone())
+                    .action(
+                        i18n::t!("Extensions"),
+                        zed_actions::Extensions::default().boxed_clone(),
+                    )
                     .when(ai_enabled, |menu| {
                         menu.separator().submenu(
-                            "パネルレイアウト",
+                            i18n::t!("Panel Layout"),
                             move |menu, _window, _cx| {
                                 menu.toggleable_entry(
-                                    "クラシック",
+                                    i18n::t!("Classic"),
                                     is_editor,
                                     IconPosition::Start,
                                     Some(UseClassicLayout.boxed_clone()),
@@ -1411,7 +1424,7 @@ impl TitleBar {
                                     },
                                 )
                                 .toggleable_entry(
-                                    "エージェント",
+                                    i18n::t!("Agentic"),
                                     is_agent,
                                     IconPosition::Start,
                                     Some(UseAgenticLayout.boxed_clone()),
@@ -1421,7 +1434,7 @@ impl TitleBar {
                                 )
                                 .when(is_custom, |menu| {
                                     menu.item(
-                                        ContextMenuEntry::new("カスタム")
+                                        ContextMenuEntry::new(i18n::t!("Custom"))
                                             .toggleable(IconPosition::Start, true)
                                             .disabled(true),
                                     )
@@ -1431,7 +1444,7 @@ impl TitleBar {
                     })
                     .when(is_signed_in, |this| {
                         this.separator()
-                            .action("サインアウト", client::SignOut.boxed_clone())
+                            .action(i18n::t!("Sign Out"), client::SignOut.boxed_clone())
                     })
                 })
                 .into()

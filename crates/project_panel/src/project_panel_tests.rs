@@ -12244,7 +12244,7 @@ fn submit_deletion(panel: &Entity<ProjectPanel>, cx: &mut VisualTestContext) {
         cx.has_pending_prompt(),
         "Should have a prompt after the deletion"
     );
-    cx.simulate_prompt_answer("完全に削除");
+    cx.simulate_prompt_answer("Delete");
     assert!(
         !cx.has_pending_prompt(),
         "Should have no prompts after prompt was replied to"
@@ -12386,7 +12386,10 @@ async fn test_delete_prompt_escapes_markdown_in_file_name(cx: &mut gpui::TestApp
         .pending_prompt()
         .expect("delete should show a confirmation prompt");
 
-    assert_eq!(message, "`__somefile__` を完全に削除しますか?");
+    assert_eq!(
+        message,
+        "Are you sure you want to permanently delete `__somefile__`?"
+    );
 }
 
 #[gpui::test]
@@ -12424,7 +12427,7 @@ async fn test_restore_file_prompt_escapes_markdown_in_file_name(cx: &mut gpui::T
         .pending_prompt()
         .expect("restore should show a confirmation prompt");
 
-    assert_eq!(message, "`__init__.py` の変更を破棄しますか?");
+    assert_eq!(message, "Discard changes to `__init__.py`?");
 }
 
 const PATCH_FILE_CONTENTS: &str = concat!(
@@ -12436,8 +12439,8 @@ const PATCH_FILE_CONTENTS: &str = concat!(
     "+modified\n",
 );
 
-const CREATE_PATCH_MENU_ITEM: &str = "MENU_ITEM-パッチファイルを作成…";
-const APPLY_PATCH_MENU_ITEM: &str = "MENU_ITEM-パッチファイルを適用…";
+const CREATE_PATCH_MENU_ITEM: &str = "MENU_ITEM-Create Patch File…";
+const APPLY_PATCH_MENU_ITEM: &str = "MENU_ITEM-Apply Patch File…";
 
 /// The patch actions end up in the Git panel, so these tests dock one; building
 /// it needs the language model registry on top of `init_test_with_git_ui`.
@@ -12508,7 +12511,7 @@ fn patch_items_in_context_menu(
     });
     cx.run_until_parked();
     assert!(
-        cx.debug_bounds("MENU_ITEM-パスをコピー").is_some(),
+        cx.debug_bounds("MENU_ITEM-Copy Path").is_some(),
         "the context menu for {path} should be on screen"
     );
     (
@@ -12905,15 +12908,15 @@ async fn test_apply_patch_from_context_menu_asks_and_runs_git_apply(cx: &mut gpu
     let (message, detail) = cx
         .pending_prompt()
         .expect("applying should ask for confirmation first");
-    assert_eq!(message, "パッチファイル `fix.patch` を適用しますか?");
+    assert_eq!(message, "Apply the patch file `fix.patch`?");
     assert_eq!(
         detail,
         format!(
-            "適用先: {}",
+            "Applies to: {}",
             MarkdownInlineCode(&Path::new(path!("/project")).to_string_lossy())
         )
     );
-    cx.simulate_prompt_answer("適用");
+    cx.simulate_prompt_answer("Apply");
     cx.run_until_parked();
 
     assert_eq!(
@@ -12938,7 +12941,7 @@ async fn test_apply_patch_from_project_panel_can_be_cancelled(cx: &mut gpui::Tes
     cx.run_until_parked();
 
     assert!(cx.has_pending_prompt());
-    cx.simulate_prompt_answer("キャンセル");
+    cx.simulate_prompt_answer("Cancel");
     cx.run_until_parked();
 
     assert_eq!(
@@ -13433,4 +13436,98 @@ fn entry_row_bounds(panel: &ProjectPanel, entry_id: ProjectEntryId) -> Bounds<Pi
         point(viewport.left(), row_top),
         size(viewport.size.width, row_height),
     )
+}
+
+#[test]
+fn test_removal_prompt_keeps_trash_and_permanent_delete_apart() {
+    let prompt_for = |kind, names: &[&str], dirty_buffers| {
+        let prompt = ProjectPanel::build_removal_prompt(kind, names, dirty_buffers);
+        (prompt.message, prompt.detail, prompt.confirmation_label)
+    };
+    let eleven_names = (0..11).map(|index| format!("f{index}")).collect::<Vec<_>>();
+    let eleven_names = eleven_names.iter().map(String::as_str).collect::<Vec<_>>();
+    let listed_ten = (0..10)
+        .map(|index| format!("`f{index}`"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert_eq!(
+        prompt_for(RemovalKind::Trash, &["a.txt"], 0),
+        ("Do you want to trash `a.txt`?".to_string(), None, "Trash")
+    );
+    assert_eq!(
+        prompt_for(RemovalKind::Delete, &["a.txt"], 1),
+        (
+            "Are you sure you want to permanently delete `a.txt`?\n\nIt has unsaved changes, which will be lost."
+                .to_string(),
+            Some("This cannot be undone."),
+            "Delete"
+        )
+    );
+    assert_eq!(
+        prompt_for(RemovalKind::Trash, &["a.txt", "dir"], 1),
+        (
+            "Do you want to trash the following 2 files?\n`a.txt`\n`dir`\n\n1 of these has unsaved changes, which will be lost."
+                .to_string(),
+            None,
+            "Trash"
+        )
+    );
+    assert_eq!(
+        prompt_for(RemovalKind::Delete, &eleven_names, 2),
+        (
+            format!(
+                "Are you sure you want to permanently delete the following 11 files?\n{listed_ten}\n.. 1 file not shown\n\n2 of these have unsaved changes, which will be lost."
+            ),
+            Some("This cannot be undone."),
+            "Delete"
+        )
+    );
+    let mut twelve_names = eleven_names.clone();
+    twelve_names.push("f11");
+    assert!(
+        prompt_for(RemovalKind::Trash, &twelve_names, 0)
+            .0
+            .ends_with(&format!("{listed_ten}\n.. 2 files not shown"))
+    );
+
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
+    assert_eq!(
+        prompt_for(RemovalKind::Trash, &["a.txt"], 0),
+        (
+            "`a.txt` をゴミ箱へ移動しますか?".to_string(),
+            None,
+            "ゴミ箱へ移動"
+        )
+    );
+    assert_eq!(
+        prompt_for(RemovalKind::Delete, &["a.txt"], 1),
+        (
+            "`a.txt` を完全に削除しますか?\n\n保存されていない変更があります。変更は失われます。"
+                .to_string(),
+            Some("この操作は元に戻せません。"),
+            "完全に削除"
+        )
+    );
+    assert_eq!(
+        prompt_for(RemovalKind::Trash, &["a.txt", "dir"], 1),
+        (
+            "次の 2 件のファイルをゴミ箱へ移動しますか?\n`a.txt`\n`dir`\n\nうち 1 件に保存されていない変更があります。変更は失われます。"
+                .to_string(),
+            None,
+            "ゴミ箱へ移動"
+        )
+    );
+    assert_eq!(
+        prompt_for(RemovalKind::Delete, &eleven_names, 2),
+        (
+            format!(
+                "次の 11 件のファイルを完全に削除しますか?\n{listed_ten}\n.. 他 1 件は表示していません\n\nうち 2 件に保存されていない変更があります。変更は失われます。"
+            ),
+            Some("この操作は元に戻せません。"),
+            "完全に削除"
+        )
+    );
 }

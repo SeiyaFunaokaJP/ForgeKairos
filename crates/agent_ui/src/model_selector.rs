@@ -43,8 +43,8 @@ pub fn acp_model_selector(
         .initial_width(rems(20.))
 }
 
-const FAVORITES_LABEL: &str = "お気に入り";
-const AGENTS_GROUP_NAME: &str = "エージェント";
+const FAVORITES_LABEL: &str = i18n::msg!("Favorites");
+const AGENTS_GROUP_NAME: &str = i18n::msg!("Agents");
 /// A list without a group name of its own (an ACP agent's ungrouped options, a
 /// flat model list) is only folded from this many entries on. Claude's ACP
 /// model list has a handful: folding it would cost a click without making the
@@ -224,7 +224,7 @@ pub(crate) fn build_picker_rows<T: PickerItem>(
 
     let mut rows = Vec::new();
     if has_favorites {
-        rows.push(PickerRow::Label(FAVORITES_LABEL.into()));
+        rows.push(PickerRow::Label(i18n::tr(FAVORITES_LABEL).into()));
         rows.extend(favorite_items.into_iter().map(|item| PickerRow::Item {
             item,
             is_favorite: true,
@@ -271,7 +271,7 @@ pub(crate) fn build_picker_rows<T: PickerItem>(
         let expanded = collapse.is_expanded(&PickerGroupKey::Agents, is_searching);
         rows.push(PickerRow::Group {
             key: PickerGroupKey::Agents,
-            name: AGENTS_GROUP_NAME.into(),
+            name: i18n::tr(AGENTS_GROUP_NAME).into(),
             count: agents.len(),
             expanded,
         });
@@ -324,7 +324,7 @@ pub(crate) enum RowAnchor<Id> {
 
 fn favorites_section_len<T>(rows: &[PickerRow<T>]) -> usize {
     match rows.first() {
-        Some(PickerRow::Label(label)) if label.as_ref() == FAVORITES_LABEL => {
+        Some(PickerRow::Label(label)) if label.as_ref() == i18n::tr(FAVORITES_LABEL) => {
             1 + rows
                 .iter()
                 .skip(1)
@@ -456,7 +456,7 @@ pub(crate) struct AgentLaunchEntry {
 
 impl AgentLaunchEntry {
     fn search_text(&self) -> String {
-        let label = grouped_search_text(Some(AGENTS_GROUP_NAME), &self.label);
+        let label = grouped_search_text(Some(i18n::tr(AGENTS_GROUP_NAME)), &self.label);
         match &self.action {
             AgentLaunchAction::NewThread(agent_id) => format!("{label} {}", agent_id.0),
             AgentLaunchAction::ClaudeCodeCli => label,
@@ -478,14 +478,14 @@ pub(crate) fn agent_launch_entries(
     let mut entries = Vec::new();
     if current_agent != &*agent::ZED_AGENT_ID {
         entries.push(AgentLaunchEntry {
-            label: "Zed Agent で新しいスレッド".into(),
+            label: i18n::t!("New Thread with {agent}", agent = "Zed Agent").into(),
             icon: AgentModelIcon::Named(IconName::ZedAgent),
             action: AgentLaunchAction::NewThread(agent::ZED_AGENT_ID.clone()),
         });
     }
     if supports_terminal {
         entries.push(AgentLaunchEntry {
-            label: "Claude Code を起動".into(),
+            label: i18n::t!("Launch Claude Code").into(),
             icon: AgentModelIcon::Named(IconName::Terminal),
             action: AgentLaunchAction::ClaudeCodeCli,
         });
@@ -495,7 +495,7 @@ pub(crate) fn agent_launch_entries(
             .into_iter()
             .filter(|agent| &agent.id != current_agent)
             .map(|agent| AgentLaunchEntry {
-                label: format!("{} で新しいスレッド", agent.display_name).into(),
+                label: i18n::t!("New Thread with {agent}", agent = agent.display_name).into(),
                 icon: agent
                     .icon_path
                     .map(AgentModelIcon::Path)
@@ -825,7 +825,7 @@ impl PickerDelegate for ModelPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "モデルを選択…".into()
+        i18n::t!("Select a model…").into()
     }
 
     fn update_matches(
@@ -1031,7 +1031,7 @@ fn info_list_to_picker_entries(
             })
             .collect(),
     };
-    build_picker_rows(groups, favorites, active, agents, collapse, "すべて")
+    build_picker_rows(groups, favorites, active, agents, collapse, i18n::t!("All"))
 }
 
 async fn fuzzy_search(
@@ -1394,7 +1394,7 @@ mod tests {
     #[gpui::test]
     async fn a_query_can_name_the_group(cx: &mut TestAppContext) {
         let models = create_model_list(vec![
-            ("推奨", vec!["claude-sonnet", "gpt-5"]),
+            ("Recommended", vec!["claude-sonnet", "gpt-5"]),
             ("OpenAI", vec!["gpt-5", "gpt-6"]),
             ("Ollama", vec!["qwen3", "llama3"]),
         ]);
@@ -1418,7 +1418,7 @@ mod tests {
 
         assert!(matches!(
             entries.first(),
-            Some(PickerRow::Label(s)) if s == "お気に入り"
+            Some(PickerRow::Label(s)) if s == "Favorites"
         ));
 
         let model_ids = get_entry_model_ids(&entries);
@@ -1486,7 +1486,7 @@ mod tests {
     #[gpui::test]
     fn test_favorites_are_not_duplicated_when_repeated_in_other_sections(_cx: &mut TestAppContext) {
         let models = create_model_list(vec![
-            ("推奨", vec!["zed/claude", "anthropic/claude"]),
+            ("Recommended", vec!["zed/claude", "anthropic/claude"]),
             ("Zed", vec!["zed/claude", "zed/gpt-5"]),
             ("Antropic", vec!["anthropic/claude"]),
             ("OpenAI", vec!["openai/gpt-5"]),
@@ -1504,9 +1504,9 @@ mod tests {
         assert_eq!(
             entry_labels(&entries),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "zed/claude",
-                "▶ 推奨 (2)",
+                "▶ Recommended (2)",
                 "▶ Zed (2)",
                 "▶ Antropic (1)",
                 "▶ OpenAI (1)",
@@ -1517,7 +1517,7 @@ mod tests {
     #[gpui::test]
     fn without_favorites_every_group_stays_open(_cx: &mut TestAppContext) {
         let models = create_model_list(vec![
-            ("推奨", vec!["zed/claude"]),
+            ("Recommended", vec!["zed/claude"]),
             ("OpenAI", vec!["openai/gpt-5", "openai/o3"]),
         ]);
 
@@ -1531,7 +1531,7 @@ mod tests {
         assert_eq!(
             entry_labels(&entries),
             vec![
-                "▼ 推奨 (1)",
+                "▼ Recommended (1)",
                 "zed/claude",
                 "▼ OpenAI (2)",
                 "openai/gpt-5",
@@ -1556,7 +1556,7 @@ mod tests {
         assert_eq!(
             entry_labels(&entries),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-sonnet",
                 "▼ Anthropic (1)",
                 "claude-sonnet",
@@ -1570,7 +1570,7 @@ mod tests {
     #[gpui::test]
     fn the_group_holding_the_model_in_use_opens(_cx: &mut TestAppContext) {
         let models = create_model_list(vec![
-            ("推奨", vec!["claude-sonnet", "gpt-5"]),
+            ("Recommended", vec!["claude-sonnet", "gpt-5"]),
             ("Anthropic", vec!["claude-sonnet", "claude-opus"]),
             ("OpenAI", vec!["gpt-5", "o3"]),
         ]);
@@ -1587,9 +1587,9 @@ mod tests {
         assert_eq!(
             entry_labels(&entries),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-sonnet",
-                "▶ 推奨 (2)",
+                "▶ Recommended (2)",
                 "▶ Anthropic (2)",
                 "▼ OpenAI (2)",
                 "gpt-5",
@@ -1607,9 +1607,9 @@ mod tests {
         assert_eq!(
             entry_labels(&entries),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-sonnet",
-                "▶ 推奨 (2)",
+                "▶ Recommended (2)",
                 "▶ Anthropic (2)",
                 "▶ OpenAI (2)",
             ]
@@ -1630,7 +1630,7 @@ mod tests {
         assert_eq!(
             entry_labels(&picker_entries(models.clone(), &favorites, None, &collapse)),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-sonnet",
                 "▶ Anthropic (1)",
                 "▼ OpenAI (1)",
@@ -1643,7 +1643,7 @@ mod tests {
         assert_eq!(
             entry_labels(&picker_entries(models.clone(), &favorites, None, &collapse)),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-sonnet",
                 "▼ Anthropic (1)",
                 "claude-sonnet",
@@ -1696,9 +1696,9 @@ mod tests {
         assert_eq!(
             entry_labels(&entries),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "zed/gemini",
-                "# すべて",
+                "# All",
                 "zed/claude",
                 "zed/gemini",
             ],
@@ -1727,7 +1727,7 @@ mod tests {
 
         assert_eq!(
             entry_labels(&entries),
-            vec!["# お気に入り", "model-0", "▶ すべて (10)"]
+            vec!["# Favorites", "model-0", "▶ All (10)"]
         );
     }
 
@@ -1838,7 +1838,7 @@ mod tests {
         assert_eq!(
             picker_labels(&picker, cx),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-sonnet",
                 "▶ Anthropic (2)",
                 "▶ OpenAI (2)"
@@ -1851,7 +1851,7 @@ mod tests {
             assert_eq!(
                 entry_labels(&picker.delegate.filtered_entries),
                 vec![
-                    "# お気に入り",
+                    "# Favorites",
                     "claude-sonnet",
                     "▶ Anthropic (2)",
                     "▼ OpenAI (2)",
@@ -1867,7 +1867,7 @@ mod tests {
             assert_eq!(
                 entry_labels(&picker.delegate.filtered_entries),
                 vec![
-                    "# お気に入り",
+                    "# Favorites",
                     "claude-sonnet",
                     "▶ Anthropic (2)",
                     "▼ OpenAI (2)",
@@ -1894,7 +1894,7 @@ mod tests {
         assert_eq!(
             picker_labels(&picker, cx),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-sonnet",
                 "▶ Anthropic (2)",
                 "▶ OpenAI (2)"
@@ -1923,9 +1923,9 @@ mod tests {
                 external_agents.clone()
             )),
             vec![
-                "Zed Agent で新しいスレッド",
-                "Claude Code を起動",
-                "Codex で新しいスレッド",
+                "New Thread with Zed Agent",
+                "Launch Claude Code",
+                "New Thread with Codex",
             ]
         );
         assert_eq!(
@@ -1934,7 +1934,7 @@ mod tests {
                 false,
                 external_agents
             )),
-            vec!["Claude Agent で新しいスレッド", "Codex で新しいスレッド"],
+            vec!["New Thread with Claude Agent", "New Thread with Codex"],
             "no Zed Agent row in a Zed Agent thread, and no CLI without a terminal"
         );
     }
@@ -2008,7 +2008,7 @@ mod tests {
 
         assert_eq!(
             picker_labels(&picker, cx),
-            vec!["auto", "manual", "▶ エージェント (3)"],
+            vec!["auto", "manual", "▶ Agents (3)"],
             "one folded heading below the models, without the agent already running"
         );
         picker.read_with(cx, |picker, _| {
@@ -2024,7 +2024,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             picker_labels(&picker, cx),
-            vec!["▼ エージェント (1)", "@ Codex で新しいスレッド"]
+            vec!["▼ Agents (1)", "@ New Thread with Codex"]
         );
         cx.update(|window, _| window.refresh());
         cx.run_until_parked();
@@ -2048,7 +2048,7 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(
             picker_labels(&picker, cx),
-            vec!["▼ エージェント (1)", "@ Claude Code を起動"]
+            vec!["▼ Agents (1)", "@ Launch Claude Code"]
         );
         picker.update_in(cx, |picker, window, cx| {
             picker.delegate.confirm(false, window, cx);
@@ -2136,7 +2136,7 @@ mod tests {
         assert_eq!(
             picker_labels(&picker, cx),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-opus",
                 "▼ Anthropic (2)",
                 "claude-sonnet",
@@ -2145,12 +2145,12 @@ mod tests {
                 "gpt-5",
                 "gpt-5-mini",
             ],
-            "the star shows up under お気に入り right away, and nothing folds"
+            "the star shows up under Favorites right away, and nothing folds"
         );
         picker.read_with(cx, |picker, _| {
             assert_eq!(
                 picker.delegate.selected_index, 4,
-                "the selection stays on the row it was on (not the new お気に入り copy) \
+                "the selection stays on the row it was on (not the new Favorites copy) \
                  although rows came in above it"
             );
         });
@@ -2160,7 +2160,7 @@ mod tests {
         assert_eq!(
             picker_labels(&picker, cx),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-opus",
                 "▶ Anthropic (2)",
                 "▼ OpenAI (2)",
@@ -2189,7 +2189,7 @@ mod tests {
         assert_eq!(
             picker_labels(&picker, cx),
             vec![
-                "# お気に入り",
+                "# Favorites",
                 "claude-opus",
                 "▶ Anthropic (2)",
                 "▼ OpenAI (2)",
@@ -2238,11 +2238,11 @@ mod tests {
         ));
         let (picker, cx) = open_picker(selector, Some(claude_acp_launchers()), cx);
         let browsing = vec![
-            "# お気に入り",
+            "# Favorites",
             "claude-sonnet",
             "▶ Anthropic (2)",
             "▶ OpenAI (2)",
-            "▶ エージェント (3)",
+            "▶ Agents (3)",
         ];
         assert_eq!(picker_labels(&picker, cx), browsing);
 
@@ -2262,38 +2262,38 @@ mod tests {
     ) {
         init_picker_test(cx);
         let selector = Rc::new(TestModelSelector::grouped(
-            vec![("推奨", vec!["claude-sonnet"]), ("OpenAI", vec!["gpt-5"])],
+            vec![
+                ("Recommended", vec!["claude-sonnet"]),
+                ("OpenAI", vec!["gpt-5"]),
+            ],
             vec![],
             "gpt-5",
         ));
         let (picker, cx) = open_picker(selector, Some(claude_acp_launchers()), cx);
 
         picker.update_in(cx, |picker, window, cx| {
-            picker.set_query("推奨", window, cx)
+            picker.set_query("Recommended", window, cx)
         });
         cx.run_until_parked();
         assert_eq!(
             picker_labels(&picker, cx),
-            vec!["▼ 推奨 (1)", "claude-sonnet"]
+            vec!["▼ Recommended (1)", "claude-sonnet"]
         );
 
         picker.update_in(cx, |picker, window, cx| {
-            picker.set_query("エージェント", window, cx)
+            picker.set_query("Agents", window, cx)
         });
         cx.run_until_parked();
         let mut labels = picker_labels(&picker, cx);
-        assert_eq!(
-            labels.first().map(String::as_str),
-            Some("▼ エージェント (3)")
-        );
+        assert_eq!(labels.first().map(String::as_str), Some("▼ Agents (3)"));
         labels.sort();
         assert_eq!(
             labels,
             vec![
-                "@ Claude Code を起動",
-                "@ Codex で新しいスレッド",
-                "@ Zed Agent で新しいスレッド",
-                "▼ エージェント (3)",
+                "@ Launch Claude Code",
+                "@ New Thread with Codex",
+                "@ New Thread with Zed Agent",
+                "▼ Agents (3)",
             ]
         );
     }

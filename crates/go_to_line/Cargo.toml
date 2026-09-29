@@ -15,6 +15,7 @@ doctest = false
 [dependencies]
 editor.workspace = true
 gpui.workspace = true
+i18n.workspace = true
 language.workspace = true
 menu.workspace = true
 multi_buffer.workspace = true
@@ -28,6 +29,7 @@ workspace.workspace = true
 [dev-dependencies]
 editor = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
+i18n_catalog = { workspace = true, features = ["test-support"] }
 indoc.workspace = true
 language = { workspace = true, features = ["test-support"] }
 menu.workspace = true

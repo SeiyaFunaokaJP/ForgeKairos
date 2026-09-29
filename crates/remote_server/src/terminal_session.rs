@@ -32,12 +32,23 @@ const EXIT_TAKEN_OVER: i32 = 253;
 const EXIT_DETACHED: i32 = 255;
 
 #[cfg(any(unix, test))]
-const RESUMED_WITHOUT_SHELL_NOTICE: &str =
-    "\x1b[0m\r\n[以前のシェルは残っていませんでした。新しいシェルを起動します]\r\n\x1b[0m";
+fn resumed_without_shell_notice() -> String {
+    format!(
+        "\x1b[0m\r\n[{}]\r\n\x1b[0m",
+        i18n::t!("The previous shell was no longer running. Starting a new shell")
+    )
+}
 #[cfg(any(unix, test))]
-const TAKEN_OVER_NOTICE: &str = "\r\n[別の接続がこのシェルを引き継ぎました]\r\n";
+fn taken_over_notice() -> String {
+    format!(
+        "\r\n[{}]\r\n",
+        i18n::t!("Another connection took over this shell")
+    )
+}
 #[cfg(any(unix, test))]
-const TRUNCATED_REPLAY_NOTICE: &str = "\x1b[0m[… 古い出力は省略されました …]\r\n";
+fn truncated_replay_notice() -> String {
+    format!("\x1b[0m[… {} …]\r\n", i18n::t!("Older output was omitted"))
+}
 /// What the holder tells the attach that is there when the session is ended
 /// on purpose (`terminal-session kill`, or a signal to the holder).
 #[cfg(any(unix, test))]
@@ -82,6 +93,9 @@ pub enum TerminalSessionCommand {
 
 /// Runs a `terminal-session` subcommand and returns the process exit code.
 pub fn run(command: TerminalSessionCommand) -> i32 {
+    // The notices these processes write into the terminal. A holder keeps
+    // the language of the attach that started it.
+    crate::display_language::install_from_environment();
     let (id, nonce) = match &command {
         TerminalSessionCommand::Attach { id, nonce, .. } => (id, Some(nonce)),
         TerminalSessionCommand::Kill { id } | TerminalSessionCommand::Holder { id, .. } => {
@@ -189,8 +203,11 @@ fn replay_end_marker(nonce: &str) -> Vec<u8> {
 #[cfg(any(unix, test))]
 fn shell_exited_while_detached_notice(status: wire::ShellStatus) -> String {
     format!(
-        "\r\n[切断中にシェルが終了しました (終了コード {})]\r\n",
-        status.displayed_code()
+        "\r\n[{}]\r\n",
+        i18n::t!(
+            "The shell exited while disconnected (exit code {code})",
+            code = status.displayed_code()
+        )
     )
 }
 
@@ -387,25 +404,26 @@ mod tests {
         );
         assert_eq!(
             shell_exited_while_detached_notice(ShellStatus::Exited(3)),
-            "\r\n[切断中にシェルが終了しました (終了コード 3)]\r\n"
+            "\r\n[The shell exited while disconnected (exit code 3)]\r\n"
         );
         assert_eq!(
             shell_exited_while_detached_notice(ShellStatus::Signaled(9)),
-            "\r\n[切断中にシェルが終了しました (終了コード 137)]\r\n"
+            "\r\n[The shell exited while disconnected (exit code 137)]\r\n"
         );
         assert_eq!(
-            TAKEN_OVER_NOTICE,
-            "\r\n[別の接続がこのシェルを引き継ぎました]\r\n"
+            taken_over_notice(),
+            "\r\n[Another connection took over this shell]\r\n"
         );
         assert_eq!(EXIT_TAKEN_OVER, 253);
         assert_eq!(EXIT_DETACHED, 255);
         assert!(
-            RESUMED_WITHOUT_SHELL_NOTICE
-                .contains("\r\n[以前のシェルは残っていませんでした。新しいシェルを起動します]\r\n")
+            resumed_without_shell_notice().contains(
+                "\r\n[The previous shell was no longer running. Starting a new shell]\r\n"
+            )
         );
-        assert!(RESUMED_WITHOUT_SHELL_NOTICE.starts_with("\x1b[0m"));
-        assert!(RESUMED_WITHOUT_SHELL_NOTICE.ends_with("\x1b[0m"));
-        assert!(TRUNCATED_REPLAY_NOTICE.starts_with("\x1b[0m[… 古い出力は省略されました …]\r\n"));
+        assert!(resumed_without_shell_notice().starts_with("\x1b[0m"));
+        assert!(resumed_without_shell_notice().ends_with("\x1b[0m"));
+        assert!(truncated_replay_notice().starts_with("\x1b[0m[… Older output was omitted …]\r\n"));
     }
 
     #[test]

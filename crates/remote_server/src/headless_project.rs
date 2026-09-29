@@ -1470,8 +1470,10 @@ impl HeadlessProject {
         let payload = envelope.payload;
         anyhow::ensure!(
             ALLOWED_TRANSFER_PROGRAMS.contains(&payload.program.as_str()),
-            "リモートでは {} を実行できません。",
-            payload.program
+            i18n::t!(
+                "{program} cannot be run on the remote.",
+                program = payload.program
+            )
         );
         let command_id = payload.command_id;
         let session = this.read_with(&cx, |this, _| this.session.clone());
@@ -1508,14 +1510,16 @@ impl HeadlessProject {
         };
 
         let mut child = command.spawn().with_context(|| {
-            format!(
-                "リモートで {} を実行できませんでした。\
-                 インストールされているか確認してください。",
-                payload.program
+            i18n::t!(
+                "Could not run {program} on the remote. Check that it is installed.",
+                program = payload.program
             )
         })?;
         if let Some(stdin) = payload.stdin {
-            let mut handle = child.stdin.take().context("標準入力を開けませんでした")?;
+            let mut handle = child
+                .stdin
+                .take()
+                .context(i18n::t!("Could not open standard input"))?;
             handle.write_all(stdin.as_bytes()).await?;
             handle.flush().await?;
             drop(handle);
@@ -1647,7 +1651,7 @@ impl HeadlessProject {
         let operation = envelope
             .payload
             .operation
-            .context("操作が指定されていません")?;
+            .context(i18n::t!("No operation was specified"))?;
         match operation {
             proto::transfer_file_operation::Operation::MakeDirectory(make_directory) => {
                 fs.create_dir(Path::new(&make_directory.path)).await?;

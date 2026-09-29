@@ -47,7 +47,7 @@ impl ProjectEmptyState {
 impl RenderOnce for ProjectEmptyState {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let id = format!("empty-state-{}", self.label);
-        let label = format!("{}を使うには、以下のいずれかを選択してください", self.label);
+        let label = i18n::t!("Choose one of the options below to use the {}", self.label);
 
         v_flex()
             .id(id)
@@ -68,7 +68,7 @@ impl RenderOnce for ProjectEmptyState {
                             .child(Label::new(label).size(LabelSize::Small).color(Color::Muted)),
                     )
                     .child(
-                        Button::new("open_project", "プロジェクトを開く")
+                        Button::new("open_project", i18n::t!("Open Project"))
                             .full_width()
                             .key_binding(self.open_project_key_binding)
                             .when_some(self.on_open_project, |button, handler| {
@@ -80,14 +80,14 @@ impl RenderOnce for ProjectEmptyState {
                             .gap_2()
                             .child(Divider::horizontal().color(DividerColor::Border))
                             .child(
-                                Label::new("または")
+                                Label::new(i18n::t!("or"))
                                     .size(LabelSize::XSmall)
                                     .color(Color::Muted),
                             )
                             .child(Divider::horizontal().color(DividerColor::Border)),
                     )
                     .child(
-                        Button::new("clone_repo", "リポジトリをクローン")
+                        Button::new("clone_repo", i18n::t!("Clone Repository"))
                             .full_width()
                             .when_some(self.on_clone_repo, |button, handler| {
                                 button.on_click(handler)

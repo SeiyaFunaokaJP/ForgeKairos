@@ -59,7 +59,7 @@ impl AgentTool for WebSearchTool {
         _input: Result<Self::Input, serde_json::Value>,
         _cx: &mut App,
     ) -> SharedString {
-        "Web を検索".into()
+        i18n::t!("Searching the Web").into()
     }
 
     /// We currently only support Zed Cloud as a provider.
@@ -85,7 +85,7 @@ impl AgentTool for WebSearchTool {
                 let context =
                     crate::ToolPermissionContext::new(Self::NAME, vec![input.query.clone()]);
                 event_stream.authorize(
-                    format!("Web で {} を検索", MarkdownInlineCode(&input.query)),
+                    i18n::t!("Search the web for {}", MarkdownInlineCode(&input.query)),
                     context,
                     cx,
                 )
@@ -109,7 +109,7 @@ impl AgentTool for WebSearchTool {
                         Ok(response) => response,
                         Err(err) => {
                             event_stream
-                                .update_fields(acp::ToolCallUpdateFields::new().title("Web 検索に失敗しました"));
+                                .update_fields(acp::ToolCallUpdateFields::new().title(i18n::t!("Web Search Failed")));
                             return Err(WebSearchToolOutput::Error { error: err.to_string() });
                         }
                     }
@@ -141,7 +141,11 @@ impl AgentTool for WebSearchTool {
 fn emit_update(response: &WebSearchResponse, event_stream: &ToolCallEventStream) {
     event_stream.update_fields(
         acp::ToolCallUpdateFields::new()
-            .title(format!("Web を検索しました: {} 件", response.results.len()))
+            .title(i18n::tn!(
+                response.results.len(),
+                "Searched the web: {count} result",
+                "Searched the web: {count} results"
+            ))
             .content(
                 response
                     .results

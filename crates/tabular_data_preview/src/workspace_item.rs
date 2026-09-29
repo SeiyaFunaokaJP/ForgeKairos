@@ -203,26 +203,27 @@ impl TabularDataPreviewPane {
         if !self.engine.take_restored_notice() {
             return;
         }
-        let mut what = Vec::new();
-        if self.engine.has_any_filters() {
-            what.push("絞り込み");
-        }
-        if self.engine.applied_sorting.is_some() {
-            what.push("並べ替え");
-        }
         // Everything the stored view named may have been on columns the file no
         // longer has, in which case nothing was restored after all.
-        if what.is_empty() {
-            return;
-        }
-
-        let mut message = format!("前回の{}を復元しました", what.join("と"));
+        let mut message = match (
+            self.engine.has_any_filters(),
+            self.engine.applied_sorting.is_some(),
+        ) {
+            (true, true) => i18n::t!("Restored the previous filters and sorting").to_owned(),
+            (true, false) => i18n::t!("Restored the previous filters").to_owned(),
+            (false, true) => i18n::t!("Restored the previous sorting").to_owned(),
+            (false, false) => return,
+        };
         // A table too big to count here says only that it was restored: the
         // number is worth a lot less than the frame it would cost.
         if let Some(hidden) = self.engine.hidden_row_count()
             && hidden > 0
         {
-            message.push_str(&format!(" ({hidden} 行を非表示)"));
+            message.push_str(&i18n::tn!(
+                hidden,
+                " ({count} row hidden)",
+                " ({count} rows hidden)"
+            ));
         }
         self.set_status_message(message, cx);
     }

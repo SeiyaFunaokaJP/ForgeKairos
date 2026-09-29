@@ -250,7 +250,8 @@ impl TableEditor {
             .and_then(|item| item.text())
             .and_then(|text| parse_clipboard_table(&text));
         let Some(values) = values else {
-            self.message = Some("クリップボードに表として読み取れる内容がありません。".into());
+            self.message =
+                Some(i18n::t!("The clipboard has nothing that can be read as a table.").into());
             cx.notify();
             return;
         };
@@ -527,20 +528,20 @@ impl TableEditor {
             .w_full()
             .gap_2()
             .child(
-                Button::new("markdown-table-paste-all", "表全体を貼り付け")
+                Button::new("markdown-table-paste-all", i18n::t!("Paste Whole Table"))
                     .style(ButtonStyle::Outlined)
                     .size(ButtonSize::Medium)
                     .start_icon(Icon::new(IconName::Table))
-                    .tooltip(Tooltip::text(
-                        "クリップボードの Excel / CSV の内容で表全体を置き換えます。",
-                    ))
+                    .tooltip(Tooltip::text(i18n::t!(
+                        "Replaces the whole table with the Excel / CSV contents of the clipboard."
+                    )))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.paste_whole_table(window, cx);
                     })),
             )
             .child(
                 Switch::new("markdown-table-has-header", self.has_header.into())
-                    .label("ヘッダー行")
+                    .label(i18n::t!("Header Row"))
                     // Without a position the label is built but never rendered.
                     .label_position(SwitchLabelPosition::Start)
                     .on_click(cx.listener(|this, state: &ToggleState, _window, cx| {
@@ -550,9 +551,11 @@ impl TableEditor {
             )
             .child(div().flex_1())
             .child(
-                Label::new("Tab / 矢印キーでセルを移動。Ctrl+Enter で書き出し")
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
+                Label::new(i18n::t!(
+                    "Tab / arrow keys move between cells. Ctrl+Enter writes the table."
+                ))
+                .size(LabelSize::Small)
+                .color(Color::Muted),
             )
             .into_any_element()
     }
@@ -583,7 +586,7 @@ impl TableEditor {
                                     "markdown-table-column-insert-left-{column}"
                                 )),
                                 IconName::ArrowLeft,
-                                "この列の左に列を挿入",
+                                i18n::t!("Insert Column to the Left"),
                                 false,
                                 cx.listener(move |this, _, window, cx| {
                                     let index = column_insertion_index(column, InsertSide::Before);
@@ -597,7 +600,7 @@ impl TableEditor {
                                 )
                                 .label_size(LabelSize::Small)
                                 .tooltip(Tooltip::text(
-                                    "列の配置 (クリックで 既定 → 左 → 中央 → 右)",
+                                    i18n::t!("Column alignment (click to cycle: default → left → center → right)"),
                                 ))
                                 .on_click(cx.listener(
                                     move |this, _, _window, cx| {
@@ -610,7 +613,7 @@ impl TableEditor {
                                     "markdown-table-column-insert-right-{column}"
                                 )),
                                 IconName::ArrowRight,
-                                "この列の右に列を挿入",
+                                i18n::t!("Insert Column to the Right"),
                                 false,
                                 cx.listener(move |this, _, window, cx| {
                                     let index = column_insertion_index(column, InsertSide::After);
@@ -633,7 +636,7 @@ impl TableEditor {
                                 .shape(IconButtonShape::Square)
                                 .icon_size(IconSize::XSmall)
                                 .disabled(column == 0)
-                                .tooltip(Tooltip::text("列を左へ移動"))
+                                .tooltip(Tooltip::text(i18n::t!("Move Column Left")))
                                 .on_click(cx.listener(
                                     move |this, _, _window, cx| {
                                         this.swap_columns(column, column.saturating_sub(1), cx);
@@ -650,7 +653,7 @@ impl TableEditor {
                                 .shape(IconButtonShape::Square)
                                 .icon_size(IconSize::XSmall)
                                 .disabled(column == last_column)
-                                .tooltip(Tooltip::text("列を右へ移動"))
+                                .tooltip(Tooltip::text(i18n::t!("Move Column Right")))
                                 .on_click(cx.listener(
                                     move |this, _, _window, cx| {
                                         this.swap_columns(column, column + 1, cx);
@@ -667,7 +670,7 @@ impl TableEditor {
                                 .shape(IconButtonShape::Square)
                                 .icon_size(IconSize::XSmall)
                                 .disabled(self.column_count() <= 1)
-                                .tooltip(Tooltip::text("列を削除"))
+                                .tooltip(Tooltip::text(i18n::t!("Delete Column")))
                                 .on_click(cx.listener(
                                     move |this, _, _window, cx| {
                                         this.remove_column(column, cx);
@@ -724,9 +727,9 @@ impl TableEditor {
                     SharedString::from(format!("markdown-table-row-insert-above-{row}")),
                     IconName::ArrowUp,
                     if insert_above.is_some() {
-                        "この行の上に行を挿入"
+                        i18n::t!("Insert Row Above")
                     } else {
-                        "ヘッダー行の上には行を挿入できません"
+                        i18n::t!("A row cannot be inserted above the header row")
                     },
                     insert_above.is_none(),
                     cx.listener(move |this, _, window, cx| {
@@ -738,7 +741,7 @@ impl TableEditor {
                 .child(insert_button(
                     SharedString::from(format!("markdown-table-row-insert-below-{row}")),
                     IconName::ArrowDown,
-                    "この行の下に行を挿入",
+                    i18n::t!("Insert Row Below"),
                     insert_below.is_none(),
                     cx.listener(move |this, _, window, cx| {
                         if let Some(index) = insert_below {
@@ -757,7 +760,7 @@ impl TableEditor {
                     .shape(IconButtonShape::Square)
                     .icon_size(IconSize::XSmall)
                     .disabled(row == 0)
-                    .tooltip(Tooltip::text("行を上へ移動"))
+                    .tooltip(Tooltip::text(i18n::t!("Move Row Up")))
                     .on_click(cx.listener(move |this, _, _window, cx| {
                         this.swap_rows(row, row.saturating_sub(1), cx);
                     })),
@@ -770,7 +773,7 @@ impl TableEditor {
                     .shape(IconButtonShape::Square)
                     .icon_size(IconSize::XSmall)
                     .disabled(row == last_row)
-                    .tooltip(Tooltip::text("行を下へ移動"))
+                    .tooltip(Tooltip::text(i18n::t!("Move Row Down")))
                     .on_click(cx.listener(move |this, _, _window, cx| {
                         this.swap_rows(row, row + 1, cx);
                     })),
@@ -783,7 +786,7 @@ impl TableEditor {
                     .shape(IconButtonShape::Square)
                     .icon_size(IconSize::XSmall)
                     .disabled(self.cells.len() <= 1)
-                    .tooltip(Tooltip::text("行を削除"))
+                    .tooltip(Tooltip::text(i18n::t!("Delete Row")))
                     .on_click(cx.listener(move |this, _, _window, cx| {
                         this.remove_row(row, cx);
                     })),
@@ -818,14 +821,14 @@ impl TableEditor {
 
     fn render_footer(&self, cx: &mut Context<Self>) -> ModalFooter {
         let confirm_label = if self.target.replaces_existing {
-            "更新"
+            i18n::t!("Update")
         } else {
-            "挿入"
+            i18n::t!("Insert")
         };
 
         ModalFooter::new()
             .start_slot::<Button>(
-                Button::new("markdown-table-add-row", "末尾に行を追加")
+                Button::new("markdown-table-add-row", i18n::t!("Add Row at End"))
                     .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
                     .on_click(cx.listener(|this, _, window, cx| this.add_row(window, cx))),
             )
@@ -833,15 +836,19 @@ impl TableEditor {
                 h_flex()
                     .gap_1()
                     .child(
-                        Button::new("markdown-table-add-column", "末尾に列を追加")
+                        Button::new("markdown-table-add-column", i18n::t!("Add Column at End"))
                             .start_icon(Icon::new(IconName::Plus).size(IconSize::XSmall))
                             .on_click(
                                 cx.listener(|this, _, window, cx| this.add_column(window, cx)),
                             ),
                     )
-                    .child(Button::new("markdown-table-cancel", "キャンセル").on_click(
-                        cx.listener(|this, _, window, cx| this.cancel(&menu::Cancel, window, cx)),
-                    ))
+                    .child(
+                        Button::new("markdown-table-cancel", i18n::t!("Cancel")).on_click(
+                            cx.listener(|this, _, window, cx| {
+                                this.cancel(&menu::Cancel, window, cx)
+                            }),
+                        ),
+                    )
                     .child(
                         Button::new("markdown-table-confirm", confirm_label)
                             .style(ButtonStyle::Filled)
@@ -1016,8 +1023,8 @@ impl Render for TableEditor {
             .capture_action(cx.listener(Self::paste))
             .child(
                 Modal::new("markdown-table-editor", None)
-                    .header(ModalHeader::new().headline("表を編集").description(
-                        "セルを直接編集できます。Excel やスプレッドシートの範囲をそのまま貼り付けると、表に展開します。",
+                    .header(ModalHeader::new().headline(i18n::t!("Edit Table")).description(
+                        i18n::t!("Edit the cells directly. Pasting a range from Excel or a spreadsheet spreads it across the table."),
                     ))
                     .section(
                         Section::new()
