@@ -5,7 +5,7 @@ use crate::{
         location_link_to_proto, location_links_from_lsp, location_links_from_proto,
         location_links_to_proto,
     },
-    lsp_store::{LanguageServerToQuery, LspStore},
+    lsp_store::{LanguageServerToQuery, LspStore, result_buffers::ResultBuffers},
     make_lsp_text_document_position, make_text_document_identifier,
 };
 use anyhow::{Context as _, Result};
@@ -736,18 +736,27 @@ impl LspCommand for GetLspRunnables {
         mut cx: AsyncApp,
     ) -> Result<LspRunnables> {
         let mut runnables = Vec::with_capacity(lsp_runnables.len());
+        let mut result_buffers = ResultBuffers::default();
 
         for runnable in lsp_runnables {
             let location = match runnable.location {
-                Some(location) => Some(
-                    location_link_from_lsp(location, &lsp_store, &buffer, server_id, &mut cx)
-                        .await?,
-                ),
+                Some(location) => {
+                    location_link_from_lsp(
+                        location,
+                        &lsp_store,
+                        &buffer,
+                        server_id,
+                        &mut result_buffers,
+                        &mut cx,
+                    )
+                    .await?
+                }
                 None => None,
             };
             let task_template = runnable_to_task_template(runnable.label, runnable.args);
             runnables.push((location, task_template));
         }
+        result_buffers.finish(self.display_name());
 
         Ok(LspRunnables { runnables })
     }

@@ -113,10 +113,9 @@ impl AgentTool for GoToDefinitionTool {
             }
 
             for link in &definitions {
-                let display = link
-                    .target
-                    .buffer
-                    .read_with(cx, |_, cx| LocationDisplay::from_location(&link.target, cx));
+                let display = link.target.buffer.read_with(cx, |_, cx| {
+                    LocationDisplay::from_location(&link.target, &project, cx)
+                });
                 write!(output, "\n## {display}\n").ok();
             }
 

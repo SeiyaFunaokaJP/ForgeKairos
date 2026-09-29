@@ -98,10 +98,17 @@ pub struct LocationDisplay {
     pub end_line: u32,
     pub snippet: String,
     pub truncated: bool,
+    /// Set when the file is one `read_file` refuses; `snippet` is then empty.
+    pub withheld: Option<&'static str>,
 }
 
 impl LocationDisplay {
-    pub fn from_location(location: &Location, cx: &App) -> Self {
+    pub fn from_location(location: &Location, project: &Entity<Project>, cx: &App) -> Self {
+        let withheld = ide_query::agent_withheld_reason_for_buffer(
+            project.read(cx),
+            location.buffer.read(cx),
+            cx,
+        );
         let snapshot = location.buffer.read(cx).snapshot();
         let range =
             location.range.start.to_point(&snapshot)..location.range.end.to_point(&snapshot);
@@ -115,7 +122,13 @@ impl LocationDisplay {
         let start_line = range.start.row + 1;
         let end_line = range.end.row + 1;
 
-        let line_len = snapshot.line_len(range.start.row);
+        // The language server picks the file, so the line is held back for
+        // the files the agent could not have read on its own.
+        let line_len = if withheld.is_some() {
+            0
+        } else {
+            snapshot.line_len(range.start.row)
+        };
         let truncated = line_len as usize > MAX_LINE_DISPLAY_LEN;
         let snippet: String = snapshot
             .text_for_range(Point::new(range.start.row, 0)..Point::new(range.start.row, line_len))
@@ -131,6 +144,7 @@ impl LocationDisplay {
             end_line,
             snippet,
             truncated,
+            withheld,
         }
     }
 }
@@ -146,6 +160,9 @@ impl fmt::Display for LocationDisplay {
                 "{}#L{}-{}{truncated_label}",
                 self.path, self.start_line, self.end_line
             )?;
+        }
+        if let Some(reason) = self.withheld {
+            return write!(f, "(source not shown: the file {reason})");
         }
         writeln!(f, "```")?;
         writeln!(f, "{}", self.snippet)?;
@@ -210,12 +227,26 @@ impl SymbolLocator {
             let Some(project_path) = project.find_project_path(file_path, cx) else {
                 return Err(format!("Could not find path '{file_path}' in project",));
             };
+            // Resolving reads the line, and both the result and the "symbol
+            // not found" error quote it.
+            if let Some(reason) = ide_query::agent_withheld_reason(project, &project_path, cx) {
+                return Err(format!("Cannot use '{file_path}' because it {reason}"));
+            }
             Ok(project.open_buffer(project_path, cx))
         })?;
 
         let buffer = open_buffer_task
             .await
             .map_err(|e| format!("Failed to open '{}': {e}", self.file_path))?;
+
+        // Directories that are ignored or behind a link are not scanned until
+        // something in them is opened, so only now is it known where the
+        // file really is.
+        if let Some(reason) = project.read_with(cx, |project, cx| {
+            ide_query::agent_withheld_reason_for_buffer(project, buffer.read(cx), cx)
+        }) {
+            return Err(format!("Cannot use '{file_path}' because it {reason}"));
+        }
 
         let (position, line_text, truncated) = buffer.read_with(cx, |buffer, _cx| {
             let snapshot = buffer.snapshot();
@@ -284,5 +315,333 @@ mod tests {
         let actual = find_in_char_iter(haystack.chars(), &needle);
         prop_assert_eq!(actual, expected);
         Ok::<_, TestCaseError>(())
+    }
+
+    use crate::tools::{
+        DiagnosticsTool, DiagnosticsToolInput, FindReferencesTool, FindReferencesToolInput,
+        GetCodeActionsTool, GetCodeActionsToolInput, GoToDefinitionTool, GoToDefinitionToolInput,
+        RenameTool, RenameToolInput,
+    };
+    use crate::{AgentTool as _, ToolInput};
+    use futures::StreamExt as _;
+    use gpui::{AppContext as _, TestAppContext, UpdateGlobal as _};
+    use language::{FakeLspAdapter, rust_lang};
+    use project::{FakeFs, lsp_store::OpenLspBufferHandle};
+    use serde_json::json;
+    use settings::{SettingsStore, SplicingVec};
+    use std::sync::Arc;
+    use util::path;
+
+    const VISIBLE: &str = "VISIBLE_MARK";
+    /// One mark per reason a file's contents stay away from the model. Each
+    /// appears only in the file it is named after, so finding one in a tool's
+    /// output means that file's text got through.
+    const WITHHELD: [&str; 4] = [
+        "PRIVATE_MARK",
+        "EXCLUDED_MARK",
+        "DEPENDENCY_MARK",
+        "LINKED_MARK",
+    ];
+
+    async fn project_with_withheld_files(cx: &mut TestAppContext) -> Entity<Project> {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.worktree.file_scan_exclusions =
+                        Some(SplicingVec::from(vec!["**/excluded".to_string()]));
+                    settings.project.worktree.private_files =
+                        Some(vec!["**/secret.rs".to_string()].into());
+                });
+            });
+        });
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/root"),
+            json!({
+                "src": {
+                    "lib.rs": "fn main() {\n    helper();\n}\n",
+                    "other.rs": "fn helper() {} // VISIBLE_MARK\n",
+                },
+                "secret.rs": "fn helper() {} // PRIVATE_MARK\n",
+                ".gitignore": "vendor\n",
+                "vendor": {},
+                "excluded": {"generated.rs": "fn helper() {} // EXCLUDED_MARK\n"},
+            }),
+        )
+        .await;
+        fs.insert_tree(
+            path!("/deps"),
+            json!({"dep.rs": "fn helper() {} // DEPENDENCY_MARK\n"}),
+        )
+        .await;
+        fs.insert_tree(
+            path!("/outside"),
+            json!({"linked.rs": "fn helper() {} // LINKED_MARK\n"}),
+        )
+        .await;
+        fs.insert_symlink(path!("/root/link"), path!("/outside").into())
+            .await;
+        fs.insert_symlink(path!("/root/vendor/keys"), path!("/outside").into())
+            .await;
+        let project = Project::test(fs, [path!("/root").as_ref()], cx).await;
+        project.read_with(cx, |project, _| project.languages().add(rust_lang()));
+        cx.executor().run_until_parked();
+        project
+    }
+
+    async fn start_language_server(
+        project: &Entity<Project>,
+        cx: &mut TestAppContext,
+    ) -> (lsp::FakeLanguageServer, OpenLspBufferHandle) {
+        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+        let mut fake_servers = language_registry.register_fake_lsp(
+            "Rust",
+            FakeLspAdapter {
+                capabilities: lsp::ServerCapabilities {
+                    definition_provider: Some(lsp::OneOf::Left(true)),
+                    references_provider: Some(lsp::OneOf::Left(true)),
+                    ..lsp::ServerCapabilities::default()
+                },
+                ..FakeLspAdapter::default()
+            },
+        );
+        let (_buffer, registration) = project
+            .update(cx, |project, cx| {
+                project.open_local_buffer_with_lsp(path!("/root/src/lib.rs"), cx)
+            })
+            .await
+            .expect("the file opens");
+        let server = fake_servers.next().await.expect("the server starts");
+        cx.executor().run_until_parked();
+        (server, registration)
+    }
+
+    fn every_location() -> Vec<lsp::Location> {
+        [
+            path!("/root/src/other.rs"),
+            path!("/root/secret.rs"),
+            path!("/root/excluded/generated.rs"),
+            path!("/deps/dep.rs"),
+            path!("/root/link/linked.rs"),
+        ]
+        .into_iter()
+        .map(|abs_path| {
+            lsp::Location::new(
+                lsp::Uri::from_file_path(abs_path).expect("an absolute path"),
+                lsp::Range::new(lsp::Position::new(0, 3), lsp::Position::new(0, 9)),
+            )
+        })
+        .collect()
+    }
+
+    fn locator(file_path: &str, symbol_name: &str) -> SymbolLocator {
+        SymbolLocator {
+            file_path: file_path.into(),
+            line: 1,
+            symbol_name: symbol_name.into(),
+        }
+    }
+
+    async fn resolve(
+        project: &Entity<Project>,
+        file_path: &str,
+        symbol_name: &str,
+        cx: &mut TestAppContext,
+    ) -> Result<ResolvedSymbol, String> {
+        let project = project.clone();
+        let locator = locator(file_path, symbol_name);
+        cx.spawn(|mut cx| async move { locator.resolve(&project, &mut cx).await })
+            .await
+    }
+
+    /// The language server decides where a definition or a reference is, so
+    /// it can point at any file it can read. The place is reported for every
+    /// answer; the source line only for files `read_file` would also hand out.
+    #[gpui::test]
+    async fn test_locations_the_language_server_returns_withhold_what_read_file_refuses(
+        cx: &mut TestAppContext,
+    ) {
+        let project = project_with_withheld_files(cx).await;
+        let (server, _registration) = start_language_server(&project, cx).await;
+        server.set_request_handler::<lsp::request::References, _, _>(|_, _| async move {
+            Ok(Some(every_location()))
+        });
+        server.set_request_handler::<lsp::request::GotoDefinition, _, _>(|_, _| async move {
+            Ok(Some(lsp::GotoDefinitionResponse::Array(every_location())))
+        });
+        let symbol = SymbolLocator {
+            file_path: "root/src/lib.rs".into(),
+            line: 2,
+            symbol_name: "helper".into(),
+        };
+
+        #[allow(clippy::arc_with_non_send_sync)]
+        let find_references = Arc::new(FindReferencesTool::new(project.clone()));
+        let (event_stream, _events) = ToolCallEventStream::test();
+        let references = cx
+            .update(|cx| {
+                find_references.run(
+                    ToolInput::resolved(FindReferencesToolInput {
+                        symbol: symbol.clone(),
+                    }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await
+            .expect("the references are found");
+
+        #[allow(clippy::arc_with_non_send_sync)]
+        let go_to_definition = Arc::new(GoToDefinitionTool::new(project.clone()));
+        let (event_stream, _events) = ToolCallEventStream::test();
+        let definitions = cx
+            .update(|cx| {
+                go_to_definition.run(
+                    ToolInput::resolved(GoToDefinitionToolInput { symbol }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await
+            .expect("the definitions are found");
+
+        for output in [&references, &definitions] {
+            assert!(
+                output.contains(VISIBLE),
+                "a file of the project keeps its snippet: {output}"
+            );
+            for file_name in [
+                "other.rs",
+                "secret.rs",
+                "generated.rs",
+                "dep.rs",
+                "linked.rs",
+            ] {
+                assert!(
+                    output.contains(file_name),
+                    "every place is reported, {file_name} is missing: {output}"
+                );
+            }
+            for mark in WITHHELD {
+                assert!(!output.contains(mark), "{mark} reached the model: {output}");
+            }
+        }
+    }
+
+    /// The model names the file to start from, so it can name one it may not
+    /// read. Resolving it would hand out the line: as the snippet of the
+    /// answer, or inside the "symbol not found on this line" error.
+    #[gpui::test]
+    async fn test_a_symbol_is_not_resolved_in_a_file_read_file_refuses(cx: &mut TestAppContext) {
+        let project = project_with_withheld_files(cx).await;
+
+        let resolved = resolve(&project, "root/src/other.rs", "helper", cx).await;
+        match resolved {
+            Ok(resolved) => assert!(resolved.line_text.contains(VISIBLE)),
+            Err(error) => panic!("a file of the project resolves: {error}"),
+        }
+        let error = resolve(&project, "root/src/other.rs", "absent", cx)
+            .await
+            .err()
+            .expect("the symbol is not on the line");
+        assert!(
+            error.contains(VISIBLE),
+            "a file of the project shows the line that was searched: {error}"
+        );
+
+        for (file_path, reason) in [
+            ("root/secret.rs", "`private_files`"),
+            ("root/excluded/generated.rs", "`file_scan_exclusions`"),
+            ("root/link/linked.rs", "lies outside the project"),
+            // The link sits in an ignored directory, which is not scanned, so
+            // nothing says where it leads until the file is opened.
+            ("root/vendor/keys/linked.rs", "lies outside the project"),
+        ] {
+            for symbol_name in ["helper", "absent"] {
+                let result = resolve(&project, file_path, symbol_name, cx).await;
+                let error = match result {
+                    Ok(resolved) => panic!(
+                        "{file_path} resolved `{symbol_name}` and returned its line: {}",
+                        resolved.line_text
+                    ),
+                    Err(error) => error,
+                };
+                assert!(error.contains(reason), "{file_path}: {error}");
+                for mark in WITHHELD {
+                    assert!(!error.contains(mark), "{mark} reached the model: {error}");
+                }
+            }
+        }
+
+        let secret = locator("root/secret.rs", "helper");
+        #[allow(clippy::arc_with_non_send_sync)]
+        let find_references = Arc::new(FindReferencesTool::new(project.clone()));
+        #[allow(clippy::arc_with_non_send_sync)]
+        let go_to_definition = Arc::new(GoToDefinitionTool::new(project.clone()));
+        #[allow(clippy::arc_with_non_send_sync)]
+        let get_code_actions = Arc::new(GetCodeActionsTool::new(project.clone(), cx.new(|_| None)));
+        #[allow(clippy::arc_with_non_send_sync)]
+        let rename = Arc::new(RenameTool::new(project.clone()));
+        #[allow(clippy::arc_with_non_send_sync)]
+        let diagnostics = Arc::new(DiagnosticsTool::new(project.clone()));
+        let results = [
+            cx.update(|cx| {
+                diagnostics.run(
+                    ToolInput::resolved(DiagnosticsToolInput {
+                        path: Some("root/secret.rs".into()),
+                    }),
+                    ToolCallEventStream::test().0,
+                    cx,
+                )
+            })
+            .await,
+            cx.update(|cx| {
+                find_references.run(
+                    ToolInput::resolved(FindReferencesToolInput {
+                        symbol: secret.clone(),
+                    }),
+                    ToolCallEventStream::test().0,
+                    cx,
+                )
+            })
+            .await,
+            cx.update(|cx| {
+                go_to_definition.run(
+                    ToolInput::resolved(GoToDefinitionToolInput {
+                        symbol: secret.clone(),
+                    }),
+                    ToolCallEventStream::test().0,
+                    cx,
+                )
+            })
+            .await,
+            cx.update(|cx| {
+                get_code_actions.run(
+                    ToolInput::resolved(GetCodeActionsToolInput {
+                        symbol: secret.clone(),
+                    }),
+                    ToolCallEventStream::test().0,
+                    cx,
+                )
+            })
+            .await,
+            cx.update(|cx| {
+                rename.run(
+                    ToolInput::resolved(RenameToolInput {
+                        symbol: secret,
+                        new_name: "renamed".into(),
+                    }),
+                    ToolCallEventStream::test().0,
+                    cx,
+                )
+            })
+            .await,
+        ];
+        for result in results {
+            let error = result.expect_err("a private file is refused before anything runs");
+            assert!(error.contains("`private_files`"), "{error}");
+        }
     }
 }

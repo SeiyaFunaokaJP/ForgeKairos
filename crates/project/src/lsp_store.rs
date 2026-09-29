@@ -23,6 +23,7 @@ mod inlay_hints;
 pub mod json_language_server_ext;
 pub mod log_store;
 pub mod lsp_ext_command;
+pub mod result_buffers;
 pub mod rust_analyzer_ext;
 mod semantic_tokens;
 pub mod vue_language_server_ext;

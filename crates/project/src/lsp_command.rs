@@ -6,7 +6,10 @@ use crate::{
     InlayHintLabel, InlayHintLabelPart, InlayHintLabelPartTooltip, InlayHintTooltip, Location,
     LocationLink, LspAction, LspPullDiagnostics, MarkupContent, PrepareRenameResponse, ProjectPath,
     ProjectTransaction, PulledDiagnostics, ResolveState,
-    lsp_store::{LanguageServerToQuery, LocalLspStore, LspDocumentLink, LspFoldingRange, LspStore},
+    lsp_store::{
+        LanguageServerToQuery, LocalLspStore, LspDocumentLink, LspFoldingRange, LspStore,
+        result_buffers::ResultBuffers,
+    },
 };
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
@@ -351,20 +354,22 @@ async fn call_hierarchy_item_from_lsp(
     item: lsp::CallHierarchyItem,
     server_id: LanguageServerId,
     lsp_store: &Entity<LspStore>,
+    result_buffers: &mut ResultBuffers,
     cx: &mut AsyncApp,
-) -> Result<CallHierarchyItem> {
-    let buffer = lsp_store
-        .update(cx, |lsp_store, cx| {
-            lsp_store.open_local_buffer_via_lsp(item.uri, server_id, cx)
-        })
-        .await?;
+) -> Result<Option<CallHierarchyItem>> {
+    let Some(buffer) = result_buffers
+        .open(item.uri, server_id, lsp_store, cx)
+        .await?
+    else {
+        return Ok(None);
+    };
     let (range, selection_range) = buffer.read_with(cx, |buffer, _| {
         (
             anchor_range_from_lsp(item.range, buffer),
             anchor_range_from_lsp(item.selection_range, buffer),
         )
     });
-    Ok(CallHierarchyItem {
+    Ok(Some(CallHierarchyItem {
         buffer,
         server_id,
         name: item.name,
@@ -373,7 +378,7 @@ async fn call_hierarchy_item_from_lsp(
         range,
         selection_range,
         data: item.data,
-    })
+    }))
 }
 
 fn anchor_range_from_lsp(range: lsp::Range, buffer: &Buffer) -> Range<Anchor> {
@@ -531,9 +536,20 @@ impl LspCommand for PrepareCallHierarchy {
         mut cx: AsyncApp,
     ) -> Result<Vec<CallHierarchyItem>> {
         let mut items = Vec::new();
+        let mut result_buffers = ResultBuffers::default();
         for item in message.unwrap_or_default() {
-            items.push(call_hierarchy_item_from_lsp(item, server_id, &lsp_store, &mut cx).await?);
+            items.extend(
+                call_hierarchy_item_from_lsp(
+                    item,
+                    server_id,
+                    &lsp_store,
+                    &mut result_buffers,
+                    &mut cx,
+                )
+                .await?,
+            );
         }
+        result_buffers.finish(self.display_name());
         Ok(items)
     }
 
@@ -703,9 +719,19 @@ impl LspCommand for GetIncomingCalls {
         mut cx: AsyncApp,
     ) -> Result<Vec<IncomingCall>> {
         let mut calls = Vec::new();
+        let mut result_buffers = ResultBuffers::default();
         for call in message.unwrap_or_default() {
-            let from =
-                call_hierarchy_item_from_lsp(call.from, server_id, &lsp_store, &mut cx).await?;
+            let Some(from) = call_hierarchy_item_from_lsp(
+                call.from,
+                server_id,
+                &lsp_store,
+                &mut result_buffers,
+                &mut cx,
+            )
+            .await?
+            else {
+                continue;
+            };
             let from_ranges = from.buffer.read_with(&cx, |buffer, _| {
                 call.from_ranges
                     .into_iter()
@@ -717,6 +743,7 @@ impl LspCommand for GetIncomingCalls {
             });
             calls.push(IncomingCall { from, from_ranges });
         }
+        result_buffers.finish(self.display_name());
         Ok(calls)
     }
 
@@ -845,8 +872,19 @@ impl LspCommand for GetOutgoingCalls {
         mut cx: AsyncApp,
     ) -> Result<Vec<OutgoingCall>> {
         let mut calls = Vec::new();
+        let mut result_buffers = ResultBuffers::default();
         for call in message.unwrap_or_default() {
-            let to = call_hierarchy_item_from_lsp(call.to, server_id, &lsp_store, &mut cx).await?;
+            let Some(to) = call_hierarchy_item_from_lsp(
+                call.to,
+                server_id,
+                &lsp_store,
+                &mut result_buffers,
+                &mut cx,
+            )
+            .await?
+            else {
+                continue;
+            };
             let from_ranges = buffer.read_with(&cx, |queried_buffer, _| {
                 call.from_ranges
                     .into_iter()
@@ -858,6 +896,7 @@ impl LspCommand for GetOutgoingCalls {
             });
             calls.push(OutgoingCall { to, from_ranges });
         }
+        result_buffers.finish(self.display_name());
         Ok(calls)
     }
 
@@ -1988,12 +2027,14 @@ pub async fn location_links_from_lsp(
 
     let (_, language_server) = language_server_for_buffer(&lsp_store, &buffer, server_id, &mut cx)?;
     let mut definitions = Vec::new();
+    let mut result_buffers = ResultBuffers::default();
     for (origin_range, target_uri, target_range) in unresolved_links {
-        let target_buffer_handle = lsp_store
-            .update(&mut cx, |this, cx| {
-                this.open_local_buffer_via_lsp(target_uri, language_server.server_id(), cx)
-            })
-            .await?;
+        let Some(target_buffer_handle) = result_buffers
+            .open(target_uri, language_server.server_id(), &lsp_store, &mut cx)
+            .await?
+        else {
+            continue;
+        };
 
         cx.update(|cx| {
             let origin_location = origin_range.map(|origin_range| {
@@ -2024,6 +2065,7 @@ pub async fn location_links_from_lsp(
             })
         });
     }
+    result_buffers.finish("Location links");
     Ok(definitions)
 }
 
@@ -2120,8 +2162,9 @@ pub async fn location_link_from_lsp(
     lsp_store: &Entity<LspStore>,
     buffer: &Entity<Buffer>,
     server_id: LanguageServerId,
+    result_buffers: &mut ResultBuffers,
     cx: &mut AsyncApp,
-) -> Result<LocationLink> {
+) -> Result<Option<LocationLink>> {
     let (_, language_server) = language_server_for_buffer(lsp_store, buffer, server_id, cx)?;
 
     let (origin_range, target_uri, target_range) = (
@@ -2130,13 +2173,14 @@ pub async fn location_link_from_lsp(
         link.target_selection_range,
     );
 
-    let target_buffer_handle = lsp_store
-        .update(cx, |lsp_store, cx| {
-            lsp_store.open_local_buffer_via_lsp(target_uri, language_server.server_id(), cx)
-        })
-        .await?;
+    let Some(target_buffer_handle) = result_buffers
+        .open(target_uri, language_server.server_id(), lsp_store, cx)
+        .await?
+    else {
+        return Ok(None);
+    };
 
-    Ok(cx.update(|cx| {
+    Ok(Some(cx.update(|cx| {
         let origin_location = origin_range.map(|origin_range| {
             let origin_buffer = buffer.read(cx);
             let origin_range = range_from_lsp(origin_range);
@@ -2163,7 +2207,7 @@ pub async fn location_link_from_lsp(
             origin: origin_location,
             target: target_location,
         }
-    }))
+    })))
 }
 
 pub fn location_links_to_proto(
@@ -2314,16 +2358,19 @@ impl LspCommand for GetReferences {
             language_server_for_buffer(&lsp_store, &buffer, server_id, &mut cx)?;
 
         if let Some(locations) = locations {
+            let mut result_buffers = ResultBuffers::default();
             for lsp_location in locations {
-                let target_buffer_handle = lsp_store
-                    .update(&mut cx, |lsp_store, cx| {
-                        lsp_store.open_local_buffer_via_lsp(
-                            lsp_location.uri,
-                            language_server.server_id(),
-                            cx,
-                        )
-                    })
-                    .await?;
+                let Some(target_buffer_handle) = result_buffers
+                    .open(
+                        lsp_location.uri,
+                        language_server.server_id(),
+                        &lsp_store,
+                        &mut cx,
+                    )
+                    .await?
+                else {
+                    continue;
+                };
 
                 target_buffer_handle
                     .clone()
@@ -2338,6 +2385,7 @@ impl LspCommand for GetReferences {
                         });
                     });
             }
+            result_buffers.finish(self.display_name());
         }
 
         Ok(references)

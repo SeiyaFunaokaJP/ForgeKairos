@@ -320,13 +320,21 @@ fn display_path(project: &Project, path: &ProjectPath, cx: &App) -> String {
 
 /// A file reached through a link that leaves its worktree lies outside the project as much as a
 /// dependency does (`read_file` refuses it for the same reason), even though its path is inside.
+/// What lies behind such a link is not scanned until something opens it, so the file itself
+/// may have no entry yet: the link above it is what says so.
 pub(crate) fn is_in_project(project: &Project, path: &ProjectPath, cx: &App) -> bool {
     project
         .worktree_for_id(path.worktree_id, cx)
         .is_some_and(|worktree| worktree.read(cx).is_visible())
-        && !project
-            .entry_for_path(path, cx)
-            .is_some_and(|entry| entry.is_external)
+        && !path.path.ancestors().any(|ancestor| {
+            let ancestor = ProjectPath {
+                worktree_id: path.worktree_id,
+                path: ancestor.into(),
+            };
+            project
+                .entry_for_path(&ancestor, cx)
+                .is_some_and(|entry| entry.is_external)
+        })
 }
 
 /// Why the contents of `path` must not reach an agent, if they must not. The settings are
@@ -350,6 +358,34 @@ fn withheld_reason(project: &Project, path: &ProjectPath, cx: &App) -> Option<&'
         return Some("matches `file_scan_exclusions`");
     }
     None
+}
+
+/// Why the contents of `path` must not reach an agent, if they must not: [`withheld_reason`]
+/// and [`is_in_project`] in one answer, for callers that report locations themselves. The
+/// reason reads after "it", as in "it matches `private_files`".
+pub fn agent_withheld_reason(
+    project: &Project,
+    path: &ProjectPath,
+    cx: &App,
+) -> Option<&'static str> {
+    if !is_in_project(project, path, cx) {
+        return Some("lies outside the project");
+    }
+    withheld_reason(project, path, cx)
+}
+
+/// [`agent_withheld_reason`] for an open buffer. A buffer without a file has no path to judge
+/// and nothing on disk behind it.
+pub fn agent_withheld_reason_for_buffer(
+    project: &Project,
+    buffer: &Buffer,
+    cx: &App,
+) -> Option<&'static str> {
+    let file = buffer.file()?;
+    if file.is_private() {
+        return Some("matches `private_files`");
+    }
+    agent_withheld_reason(project, &ProjectPath::from_file(file.as_ref(), cx), cx)
 }
 
 fn resolve_position(
@@ -1033,6 +1069,20 @@ mod tests {
         let project = Project::test(fs, [path!("/root").as_ref()], cx).await;
         project.read_with(cx, |project, _| project.languages().add(rust_lang()));
         cx.executor().run_until_parked();
+        // Nothing has opened the file yet, so only the link itself has an entry.
+        let linked = project_path(&project, "link/linked.rs", cx);
+        let inside = project_path(&project, "src/lib.rs", cx);
+        project.read_with(cx, |project, cx| {
+            assert!(project.entry_for_path(&linked, cx).is_none());
+            assert!(!is_in_project(project, &linked, cx));
+            assert_eq!(
+                agent_withheld_reason(project, &linked, cx),
+                Some("lies outside the project")
+            );
+            assert!(is_in_project(project, &inside, cx));
+            assert_eq!(agent_withheld_reason(project, &inside, cx), None);
+        });
+
         let (server, _registration) =
             start_language_server(&project, path!("/root/src/lib.rs"), cx).await;
         server.set_request_handler::<lsp::request::GotoDefinition, _, _>(|_, _| async move {

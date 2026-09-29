@@ -105,9 +105,9 @@ impl AgentTool for FindReferencesTool {
             );
 
             for location in &references {
-                let display = location
-                    .buffer
-                    .read_with(cx, |_, cx| LocationDisplay::from_location(location, cx));
+                let display = location.buffer.read_with(cx, |_, cx| {
+                    LocationDisplay::from_location(location, &project, cx)
+                });
                 write!(output, "\n## {display}\n").ok();
             }
 

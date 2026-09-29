@@ -101,6 +101,13 @@ async fn pull_diagnostics(
                 let Some(project_path) = project.find_project_path(path, cx) else {
                     return Err(format!("Could not find path {} in project", path.display()));
                 };
+                // A diagnostic's message quotes the source it is about.
+                if let Some(reason) = ide_query::agent_withheld_reason(project, &project_path, cx) {
+                    return Err(format!(
+                        "Cannot get diagnostics for {} because it {reason}",
+                        path.display()
+                    ));
+                }
                 Ok(project.open_buffer(project_path, cx))
             })?;
 
@@ -183,6 +190,13 @@ impl AgentTool for DiagnosticsTool {
                     let buffer = with_cancellation(open_buffer_task, &event_stream)
                         .await?
                         .map_err(|e| e.to_string())?;
+                    if let Some(reason) = project.read_with(cx, |project, cx| {
+                        ide_query::agent_withheld_reason_for_buffer(project, buffer.read(cx), cx)
+                    }) {
+                        return Err(format!(
+                            "Cannot get diagnostics for {path} because it {reason}"
+                        ));
+                    }
 
                     let mut output = String::new();
                     let snapshot = buffer.read_with(cx, |buffer, _cx| buffer.snapshot());
