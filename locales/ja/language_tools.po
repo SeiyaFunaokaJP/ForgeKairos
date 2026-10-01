@@ -113,11 +113,20 @@ msgstr "確認して再開するまで、言語サーバーは制限モードか
 msgid "Last Keystroke"
 msgstr "直前のキーストローク"
 
+msgid "Light mode saves the most memory by not indexing the whole project; references and renames then only cover the open files."
+msgstr "軽量モードにするとプロジェクト全体の索引を作らないため、メモリを最も節約できます。その代わり、参照の検索とリネームは開いているファイルの範囲になります。"
+
 msgid "Log"
 msgstr "ログ"
 
 msgid "Log level"
 msgstr "ログレベル"
+
+msgid "Memory {used}"
+msgstr "メモリ {used}"
+
+msgid "Memory {used} (background index {background_index}, open files {open_files})"
+msgstr "メモリ {used} (背景索引 {background_index}、開いているファイル {open_files})"
 
 msgid "Messages"
 msgstr "メッセージ"
@@ -151,6 +160,9 @@ msgstr "ドキュメントを開く"
 
 msgid "Open Git Panel"
 msgstr "Git パネルを開く"
+
+msgid "Open Project Settings"
+msgstr "プロジェクト設定を開く"
 
 msgid "Processes left behind by an agent response are running in the sandbox. You can't resume until they end."
 msgstr "エージェントの応答が残したプロセスがサンドボックスの中で動いています。終わるまで再開できません。"
@@ -227,6 +239,9 @@ msgstr "停止済み"
 msgid "Stopped language servers: {stopped}"
 msgstr "止めている言語サーバー: {stopped}"
 
+msgid "Switch to Light Mode"
+msgstr "軽量モードに切り替える"
+
 msgid "Syntax Tokens"
 msgstr "構文トークン"
 
@@ -244,6 +259,9 @@ msgstr "接続先のサーバーが古いため、接続先の言語サーバー
 
 msgid "This folder's code (language servers and formatters) won't run until you review and resume."
 msgstr "確認して再開するまで、このフォルダーのコード (言語サーバー・フォーマッター) を実行しません"
+
+msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
+msgstr "このプロジェクトの設定が clangd の完全モードを指定しているため、ユーザー設定では変えられません。軽量モードでメモリを節約するには、プロジェクトの設定の `clangd.index_mode` を変えてください。"
 
 msgid "This view lets you determine the current context stack for creating custom key bindings in Zed. When a keyboard shortcut is triggered, it also shows all the possible contexts it could have triggered in, and which one matched."
 msgstr "このビューでは、Zed でキーバインドを自作するときに使う、現在のコンテキストスタックを確認できます。キーボードショートカットが実行されると、そのショートカットが実行され得たすべてのコンテキストと、実際にどれが一致したかも表示します。"
@@ -295,6 +313,12 @@ msgstr "エージェントの応答が終わるまで再開できません。終
 
 msgid "You can't resume until the running sessions and commands end."
 msgstr "実行中のセッション・コマンドが終わるまで再開できません。"
+
+msgid "clangd is using {used} of memory, over its limit of {limit}. It was restarted less than 10 minutes ago, so it is left running."
+msgstr "clangd のメモリ使用量が {used} になり、上限の {limit} を超えています。前回の再起動から 10 分たっていないため、再起動せずにそのまま動かしています。"
+
+msgid "clangd was using {used} of memory, over its limit of {limit}, and was restarted."
+msgstr "clangd のメモリ使用量が {used} になり、上限の {limit} を超えたため再起動しました。"
 
 msgid "process with an unreadable command name"
 msgstr "コマンド名が読めないプロセス"

@@ -25,6 +25,7 @@ pub use localized_menus::*;
 
 use breadcrumbs::Breadcrumbs;
 use browser_panel::BrowserPanel;
+use call_graph_panel::CallGraphPanel;
 use client::zed_urls;
 use collections::VecDeque;
 use command_palette_hooks::CommandPaletteFilter;
@@ -902,6 +903,7 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
         let terminal_panel = TerminalPanel::load(workspace_handle.clone(), cx.clone());
         let git_panel = GitPanel::load(workspace_handle.clone(), cx.clone());
         let browser_panel = BrowserPanel::load(workspace_handle.clone(), cx.clone());
+        let call_graph_panel = CallGraphPanel::load(workspace_handle.clone(), cx.clone());
         let debug_panel = DebugPanel::load(workspace_handle.clone(), cx);
 
         async fn add_panel_when_ready(
@@ -925,6 +927,7 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
             add_panel_when_ready(terminal_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(git_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(browser_panel, workspace_handle.clone(), cx.clone()),
+            add_panel_when_ready(call_graph_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(debug_panel, workspace_handle.clone(), cx.clone()),
             initialize_agent_panel(workspace_handle.clone(), cx.clone()).map(|r| r.log_err()),
         );
@@ -6141,6 +6144,7 @@ mod tests {
                 "branches",
                 "browser_panel",
                 "buffer_search",
+                "call_graph_panel",
                 "call_hierarchy",
                 "channel_modal",
                 "cli",
@@ -6762,6 +6766,7 @@ mod tests {
             git_ui::init(cx);
             project_panel::init(cx);
             outline_panel::init(cx);
+            call_graph_panel::init(cx);
             terminal_view::init(cx);
             // ADR-F28: owns `terminal::OpenFileTransfer`, which `terminal_view`
             // only dispatches.

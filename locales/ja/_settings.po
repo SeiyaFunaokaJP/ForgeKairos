@@ -17,6 +17,26 @@ msgctxt "BaseKeymapContent"
 msgid "None"
 msgstr "なし"
 
+msgctxt "CallGraphSources"
+msgid "All"
+msgstr "すべて"
+
+msgctxt "CallGraphSources"
+msgid "Language Server"
+msgstr "言語サーバーのみ"
+
+msgctxt "CallGraphSources"
+msgid "Name Match"
+msgstr "名前一致のみ"
+
+msgctxt "ClangdIndexMode"
+msgid "Full"
+msgstr "完全"
+
+msgctxt "ClangdIndexMode"
+msgid "Light"
+msgstr "軽量"
+
 msgctxt "DefaultDockPanel"
 msgid "Agent Panel"
 msgstr "エージェントパネル"
@@ -88,6 +108,18 @@ msgstr "報告しない"
 msgctxt "StatusUntrackedFilesSetting"
 msgid "Folders Only"
 msgstr "通常"
+
+msgctxt "SymbolIndexEnabled"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "SymbolIndexEnabled"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "SymbolIndexEnabled"
+msgid "On"
+msgstr "オン"
 
 msgctxt "settings"
 msgid "(Linux only) choose how window control buttons are laid out in the titlebar."
@@ -220,6 +252,10 @@ msgstr "入れ子になった項目のインデント幅です。"
 msgctxt "settings"
 msgid "Amount of time to wait before changing focus."
 msgstr "フォーカスを移すまでの待ち時間です。"
+
+msgctxt "settings"
+msgid "An index of the project's C and C++ files by name. Without compilation information (no compile_commands.json is needed), it finds the definition to go to, the callers and callees of a function and what a type holds, by matching names, so a result can be another symbol of the same name; a language server's answers come first. Auto indexes a folder once it has C or C++ files, On always indexes it and Off never does. Default: Auto."
+msgstr "プロジェクトの C / C++ のファイルを名前で引く索引です。コンパイル情報が無くても (compile_commands.json は要りません)、定義への移動、関数の呼び出し元 / 呼び出し先、型の中身を、名前の一致で調べます。そのため、同じ名前の別のシンボルが結果に混ざることがあります。言語サーバーの答えがあれば、そちらが先です。自動 (Auto) は C / C++ のファイルがあるフォルダーで索引を作り、オン (On) は常に作り、オフ (Off) は作りません。既定は自動です。"
 
 msgctxt "settings"
 msgid "An optional string to override the title of the terminal tab."
@@ -420,6 +456,30 @@ msgstr "ボタンの配置"
 msgctxt "settings"
 msgid "CLI Default Open Behavior"
 msgstr "CLI の既定の開き方"
+
+msgctxt "settings"
+msgid "Call Graph Panel"
+msgstr "呼び出しグラフパネル"
+
+msgctxt "settings"
+msgid "Call Graph Panel Button"
+msgstr "呼び出しグラフパネルのボタン"
+
+msgctxt "settings"
+msgid "Call Graph Panel Default Width"
+msgstr "呼び出しグラフパネルの既定の幅"
+
+msgctxt "settings"
+msgid "Call Graph Panel Dock"
+msgstr "呼び出しグラフパネルのドック位置"
+
+msgctxt "settings"
+msgid "Call Graph Sources"
+msgstr "呼び出しグラフの情報源"
+
+msgctxt "settings"
+msgid "Callees left out of a function's callees, such as logging and assertion macros. A row at the end counts them and shows them on request."
+msgstr "関数の呼び出し先の一覧から外す呼び出し先 (ログやアサーションのマクロなど)。末尾の行に件数を出し、押すと表示します。"
 
 msgctxt "settings"
 msgid "Calls"
@@ -854,6 +914,10 @@ msgid "Default width of the browser panel in pixels when docked to the left or r
 msgstr "ブラウザーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。"
 
 msgctxt "settings"
+msgid "Default width of the call graph panel in pixels."
+msgstr "呼び出しグラフパネルの既定の幅 (ピクセル) です。"
+
+msgctxt "settings"
 msgid "Default width of the collaboration panel in pixels."
 msgstr "コラボレーションパネルの既定の幅 (ピクセル) です。"
 
@@ -1170,6 +1234,10 @@ msgid "Excerpt Context Lines"
 msgstr "抜粋の前後の行数"
 
 msgctxt "settings"
+msgid "Excluded Callees"
+msgstr "除外する呼び出し先"
+
+msgctxt "settings"
 msgid "Expand Edit Card"
 msgstr "編集カードを展開"
 
@@ -1288,6 +1356,10 @@ msgstr "フォーカス移動のデバウンス (ミリ秒)"
 msgctxt "settings"
 msgid "Folder Indicator"
 msgstr "フォルダーの表示"
+
+msgctxt "settings"
+msgid "Follow Cursor"
+msgstr "カーソルに追従"
 
 msgctxt "settings"
 msgid "Follow the System Language"
@@ -1634,6 +1706,14 @@ msgid "How line endings should be handled for new files and during format and sa
 msgstr "新規ファイル、およびフォーマットと保存の操作で、改行コードをどう扱うかを設定します。"
 
 msgctxt "settings"
+msgid "How long going to a definition waits for the language server before it also offers the index's name matches, in milliseconds, from 100 to 10000. Default: 1500."
+msgstr "定義への移動で、言語サーバーの答えをどれだけ待ってから、索引の名前一致も候補に出すか (ミリ秒、100〜10000)。既定は 1500 です。"
+
+msgctxt "settings"
+msgid "How many callers or callees of one function to list before a Show more row."
+msgstr "1 つの関数の呼び出し元 / 呼び出し先を、「さらに表示」の行の前にいくつまで並べるかです。"
+
+msgctxt "settings"
 msgid "How many characters has to be in the completions query to automatically show the words-based completions."
 msgstr "単語ベースの補完を自動的に表示するために必要な、補完クエリの文字数です。"
 
@@ -1650,12 +1730,20 @@ msgid "How many lines to expand the multibuffer excerpts by default."
 msgstr "マルチバッファーの抜粋を既定で何行分展開するかを設定します。"
 
 msgctxt "settings"
+msgid "How many threads clangd builds and indexes files with (`-j`). Fewer threads use less memory at once but index more slowly. 0 leaves clangd's own default. Ignored when `lsp.clangd.binary.arguments` already has `-j`. Changing it restarts clangd. This setting only takes effect in your user settings."
+msgstr "clangd がファイルの解析と索引作りに使うスレッド数 (`-j`)。少ないほど同時に使うメモリは減りますが、索引作りは遅くなります。0 のときは clangd の既定のままです。`lsp.clangd.binary.arguments` に `-j` があるときは無視されます。変更すると clangd を再起動します。この項目はユーザー設定でのみ有効です。"
+
+msgctxt "settings"
 msgid "How much `git status` reports about untracked files. All reports every file inside untracked folders, which makes the project panel's colors exact but is the slowest on huge repositories. Normal reports only the folders, and No leaves untracked files out entirely. Over remote SSH the same value is used on the server."
 msgstr "git status に追跡されていないファイルをどこまで報告させるかを設定します。All は追跡されていないフォルダーの中身も 1 件ずつ報告するため、プロジェクトパネルの色分けが正確になりますが、巨大なリポジトリでは最も重くなります。Normal はフォルダーだけ、No は追跡されていないファイルを一切扱いません。リモート SSH でも同じ値がサーバー側で使われます。"
 
 msgctxt "settings"
 msgid "How much of the body of a web page attached with @fetch is sent. Values below 1024 are treated as 1024."
 msgstr "@fetch で添付した Web ページの本文のうち、送る部分の上限です。1024 未満は 1024 として扱われます。"
+
+msgctxt "settings"
+msgid "How much of the project clangd, the C and C++ language server, indexes. Full indexes the whole project in the background, as clangd does by default. Light indexes only the open files and saves the most memory: references across the project and renames then only cover the files that are open, as do the call hierarchy and going to a definition in a file that is not open. Ignored when `lsp.clangd.binary.arguments` already has `--background-index`. Changing it restarts clangd."
+msgstr "C / C++ の言語サーバー clangd がプロジェクトのどこまでを索引にするか。完全 (Full) は clangd の既定どおり、プロジェクト全体を背景で索引にします。軽量 (Light) は開いているファイルだけを索引にし、メモリを最も節約できます。その代わり、プロジェクト全体の参照とリネームが、開いているファイルの範囲になります (呼び出し階層と、開いていないファイルにある定義への移動も同じです)。`lsp.clangd.binary.arguments` に `--background-index` があるときは無視されます。変更すると clangd を再起動します。"
 
 msgctxt "settings"
 msgid "How much to fade out unused code (0.0 - 0.9)."
@@ -1742,6 +1830,10 @@ msgid "Include Ignored"
 msgstr "無視されたファイルを含める"
 
 msgctxt "settings"
+msgid "Include Ignored Files"
+msgstr "無視されたファイルも索引に入れる"
+
+msgctxt "settings"
 msgid "Include Ignored in Search"
 msgstr "検索に無視されたファイルを含める"
 
@@ -1764,6 +1856,14 @@ msgstr "インデント幅"
 msgctxt "settings"
 msgid "Indentation"
 msgstr "インデント"
+
+msgctxt "settings"
+msgid "Index Mode"
+msgstr "索引のモード"
+
+msgctxt "settings"
+msgid "Indexing"
+msgstr "索引を作る"
 
 msgctxt "settings"
 msgid "Inlay Hints"
@@ -1864,6 +1964,10 @@ msgstr "LSP の結果の表示先"
 msgctxt "settings"
 msgid "Language Detection"
 msgstr "言語の自動検出"
+
+msgctxt "settings"
+msgid "Language Server Timeout (ms)"
+msgstr "言語サーバーを待つ時間 (ミリ秒)"
 
 msgctxt "settings"
 msgid "Language Servers"
@@ -1970,6 +2074,10 @@ msgid "MCP Servers"
 msgstr "MCP サーバー"
 
 msgctxt "settings"
+msgid "Make the function under the cursor the root whenever the cursor moves."
+msgstr "カーソルが動くたびに、カーソル位置の関数を起点にします。"
+
+msgctxt "settings"
 msgid "Markdown Format Bar"
 msgstr "Markdown 整形バー"
 
@@ -2006,8 +2114,16 @@ msgid "Max Width Columns"
 msgstr "最大幅 (列数)"
 
 msgctxt "settings"
+msgid "Maximum Listed Calls"
+msgstr "一覧する呼び出しの上限"
+
+msgctxt "settings"
 msgid "Maximum Tabs"
 msgstr "タブの最大数"
+
+msgctxt "settings"
+msgid "Maximum Workers"
+msgstr "最大ワーカー数"
 
 msgctxt "settings"
 msgid "Maximum content width in pixels. Content will be centered when the pane is wider than this value."
@@ -2036,6 +2152,10 @@ msgstr "スクロールバックの履歴に保持する最大の行数です (�
 msgctxt "settings"
 msgid "Maximum open tabs in a pane. Will not close an unsaved tab."
 msgstr "1 つのペインで開けるタブの最大数です。未保存のタブは閉じられません。"
+
+msgctxt "settings"
+msgid "Memory Limit (MB)"
+msgstr "メモリの上限 (MB)"
 
 msgctxt "settings"
 msgid "Menu Delay"
@@ -2424,6 +2544,10 @@ msgstr "必須。このエージェントを識別する一意の名前です。
 msgctxt "settings"
 msgid "Required. Path to the executable that launches the agent."
 msgstr "必須。エージェントを起動する実行ファイルのパスです。"
+
+msgctxt "settings"
+msgid "Restarts clangd when its memory, checked every 30 seconds, goes over this many megabytes. It is restarted at most once every 10 minutes; after that, only a notification appears. On a remote project, the memory is measured on the remote host. 0 never restarts. This setting only takes effect in your user settings."
+msgstr "clangd のメモリ使用量 (30 秒ごとに確認) がこのメガバイト数を超えたら、clangd を再起動します。再起動は 10 分に 1 回までで、それ以上は通知だけを出します。リモートのプロジェクトでは、接続先のホストで測ります。0 のときは再起動しません。この項目はユーザー設定でのみ有効です。"
 
 msgctxt "settings"
 msgid "Restore File State"
@@ -3014,6 +3138,10 @@ msgid "Show the browser panel button in the status bar."
 msgstr "ステータスバーにブラウザーパネルのボタンを表示します。"
 
 msgctxt "settings"
+msgid "Show the call graph panel button in the status bar."
+msgstr "ステータスバーに呼び出しグラフパネルのボタンを表示します。"
+
+msgctxt "settings"
 msgid "Show the collaboration panel button in the status bar."
 msgstr "ステータスバーにコラボレーションパネルのボタンを表示します。"
 
@@ -3220,6 +3348,10 @@ msgstr "制御シーケンスを除去する"
 msgctxt "settings"
 msgid "Suggest Missing Development Tools"
 msgstr "足りない開発ツールを知らせる"
+
+msgctxt "settings"
+msgid "Symbol Index"
+msgstr "シンボル索引"
 
 msgctxt "settings"
 msgid "Tab Bar"
@@ -3642,6 +3774,10 @@ msgid "Trust All Projects By Default"
 msgstr "すべてのプロジェクトを既定で信頼"
 
 msgctxt "settings"
+msgid "Type Contents on Hover"
+msgstr "ホバーで型の中身を表示"
+
+msgctxt "settings"
 msgid "UI Font"
 msgstr "UI のフォント"
 
@@ -3954,6 +4090,10 @@ msgid "When to show the scrollbar in the terminal."
 msgstr "ターミナルにスクロールバーを表示するタイミングです。"
 
 msgctxt "settings"
+msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."
+msgstr "呼び出しをどこから取得するか。正確な言語サーバー、C と C++ のファイルを名前で照合する索引、またはその両方です。"
+
+msgctxt "settings"
 msgid "Where to dock the Git panel."
 msgstr "Git パネルをドッキングする位置です。"
 
@@ -3964,6 +4104,10 @@ msgstr "エージェントパネルをドッキングする位置です。"
 msgctxt "settings"
 msgid "Where to dock the browser panel."
 msgstr "ブラウザーパネルをドッキングする位置です。"
+
+msgctxt "settings"
+msgid "Where to dock the call graph panel."
+msgstr "呼び出しグラフパネルをドッキングする位置です。"
 
 msgctxt "settings"
 msgid "Where to dock the collaboration panel."
@@ -4024,6 +4168,10 @@ msgstr "ノーマルモードで編集予測を表示するかどうかを設定
 msgctxt "settings"
 msgid "Whether git features show changes relative to HEAD (uncommitted changes) or to the default branch (all changes on the current branch)."
 msgstr "git の機能が HEAD との差分 (未コミットの変更) を示すか、既定のブランチとの差分 (現在のブランチのすべての変更) を示すかを設定します。"
+
+msgctxt "settings"
+msgid "Whether hovering a name in C and C++ also shows what its type holds (its members, enumerators or a macro's definition), found by name in the index. Default: on."
+msgstr "C / C++ で名前にホバーしたとき、その型の中身 (メンバー、列挙子、マクロの定義) も、索引から名前で探して表示するかどうか。既定はオンです。"
 
 msgctxt "settings"
 msgid "Whether indentation of pasted content should be adjusted based on the context."
@@ -4152,6 +4300,10 @@ msgstr "コード補完のメニューで、詳細テキストを左右どちら
 msgctxt "settings"
 msgid "Whether to allow horizontal scrolling in the project panel. When disabled, the view is always locked to the leftmost position and long file names are clipped."
 msgstr "プロジェクトパネルで水平スクロールを許可するかどうかを設定します。無効にすると表示は常に左端に固定され、長いファイル名は切り詰められます。"
+
+msgctxt "settings"
+msgid "Whether to also index the files that `.gitignore` excludes. Only the ignored files the project panel has loaded are indexed: an ignored folder is read when it is expanded. Default: off."
+msgstr "`.gitignore` で除外されたファイルも索引に入れるかどうか。入るのは、プロジェクトパネルが読み込んだ無視ファイルだけです (無視されたフォルダーは、展開したときに読み込まれます)。既定はオフです。"
 
 msgctxt "settings"
 msgid "Whether to always use cmd-enter (or ctrl-enter on Linux or Windows) to send messages."
@@ -4524,6 +4676,10 @@ msgstr "折り返し"
 msgctxt "settings"
 msgid "Zoomed Padding"
 msgstr "ズーム時の余白"
+
+msgctxt "settings"
+msgid "clangd"
+msgstr "clangd"
 
 msgctxt "settings"
 msgid "e.g. claude"

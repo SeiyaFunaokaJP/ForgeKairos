@@ -5,9 +5,13 @@ use std::sync::Arc;
 use agent_client_protocol::schema::v1 as acp;
 use gpui::{App, AsyncApp, Entity, SharedString, Task};
 use ide_query::{
-    AssistSource, CodeAnnotation, CodeDisplay, CodeHighlight, CodeTour, DisplayOutcome,
-    LanguageServerNotRunning, LinePosition, LineRange, MAX_ANNOTATIONS, MAX_DISPLAY_MARKDOWN_CHARS,
-    MAX_HIGHLIGHTS, MAX_QUERY_RESULTS, MAX_TOUR_STEPS, SymbolHit, SymbolSearchOptions, TourStep,
+    AssistSource, CallCandidates, CallDirection, CallExpansion, CallHierarchy, CallHierarchyAnswer,
+    CallHierarchyNotSupported, CallHierarchyOptions, CallHierarchyTarget, CallNode, CallResolution,
+    CallSource, CallWalkStop, CodeAnnotation, CodeDisplay, CodeHighlight, CodeTour, DisplayOutcome,
+    IndexBuilding, LanguageServerNotRunning, LinePosition, LineRange, MAX_ANNOTATIONS,
+    MAX_CALL_HIERARCHY_REQUESTS, MAX_DISPLAY_MARKDOWN_CHARS, MAX_HIGHLIGHTS, MAX_QUERY_RESULTS,
+    MAX_REMOTE_CALL_HIERARCHY_FILES, MAX_TOUR_STEPS, NameIndexUnavailable, SymbolHit,
+    SymbolSearchOptions, TourStep,
 };
 use project::{Project, ProjectPath, WorktreeSettings};
 use schemars::JsonSchema;
@@ -228,6 +232,581 @@ impl AgentTool for SearchSymbolsTool {
             });
             Ok(output)
         })
+    }
+}
+
+/// Shows which functions call a function (`incoming`) or which functions it calls (`outgoing`), as a tree.
+///
+/// Use it before `grep` whenever you need the callers or the callees of a function: it follows the real calls instead of every place the name occurs, and it can follow them up to 3 levels. It asks the language server; in C and C++ it also asks a name index, which answers even when no language server runs (its results are marked as name matches).
+///
+/// Point it at the function: the line where the function is declared or called, with the name as `symbol`. In C and C++ the name alone (`symbol` without `path` and `line`) works too.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CallHierarchyToolInput {
+    /// The path of the file, starting with a project root directory name (e.g. "my-app/src/main.c"). Omit it with `line` to look the function up by its name alone (C and C++ only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The 1-based line where the function's name appears: its declaration or a call to it. Give it with `path`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    /// The function's name. With `path` and `line`, its first occurrence on that line is used (omit it to use the line's first non-blank character). Without `line`, the function is looked up by this name (C and C++ only); if several functions have it, you get them listed to call again with one's `path` and `line`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<String>,
+    /// `incoming` lists the functions that call it; `outgoing` lists the functions it calls.
+    pub direction: CallHierarchyDirection,
+    /// How many levels to follow, from 1 to 3. Defaults to 1: only the direct callers or callees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u32>,
+    /// The most calls to list, over all levels. Defaults to 50; at most 100.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_results: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CallHierarchyDirection {
+    Incoming,
+    Outgoing,
+}
+
+impl From<CallHierarchyDirection> for CallDirection {
+    fn from(direction: CallHierarchyDirection) -> Self {
+        match direction {
+            CallHierarchyDirection::Incoming => CallDirection::Incoming,
+            CallHierarchyDirection::Outgoing => CallDirection::Outgoing,
+        }
+    }
+}
+
+/// A tree of 100 calls with their previews stays well under this; it bounds pathological
+/// names and paths.
+const MAX_CALL_HIERARCHY_OUTPUT_CHARS: usize = 16_000;
+/// Call lines listed per function before the rest are only counted.
+const MAX_LISTED_CALL_LINES: usize = 10;
+/// `ide_query` leaves the name empty for a function in a private or excluded file.
+const WITHHELD_CALL_NAME: &str = "(name withheld)";
+const NAME_MATCH_MARK: &str = "[name match]";
+const CANDIDATE_MARK: &str = "[candidate]";
+const MACRO_MARK: &str = "[macro]";
+
+pub struct CallHierarchyTool {
+    project: Entity<Project>,
+}
+
+impl CallHierarchyTool {
+    pub fn new(project: Entity<Project>) -> Self {
+        Self { project }
+    }
+}
+
+impl AgentTool for CallHierarchyTool {
+    type Input = CallHierarchyToolInput;
+    type Output = String;
+
+    const NAME: &'static str = "call_hierarchy";
+
+    fn kind() -> acp::ToolKind {
+        acp::ToolKind::Search
+    }
+
+    fn initial_title(
+        &self,
+        input: Result<Self::Input, serde_json::Value>,
+        _cx: &mut App,
+    ) -> SharedString {
+        match input {
+            Ok(input) => call_hierarchy_title(&input).into(),
+            Err(_) => i18n::t!("Call hierarchy").into(),
+        }
+    }
+
+    fn run(
+        self: Arc<Self>,
+        input: ToolInput<Self::Input>,
+        event_stream: ToolCallEventStream,
+        cx: &mut App,
+    ) -> Task<Result<String, String>> {
+        let project = self.project.clone();
+        cx.spawn(async move |cx| {
+            let input = input
+                .recv()
+                .await
+                .map_err(|error| format!("Failed to receive tool input: {error}"))?;
+            let symbol = input
+                .symbol
+                .as_deref()
+                .map(str::trim)
+                .filter(|symbol| !symbol.is_empty());
+            // Looking the name up instead would answer about a function the line may not hold.
+            if input.line.is_some() && input.path.is_none() {
+                return Err(
+                    "`line` needs `path`: give the file the line is in, or omit `line` to look the function up by its name as `symbol`."
+                        .to_string(),
+                );
+            }
+            let path = match &input.path {
+                Some(path) => Some(
+                    resolve_shown_paths(&project, [path.as_str()], cx)
+                        .await?
+                        .pop()
+                        .ok_or_else(|| format!("Couldn't resolve `{path}`"))?,
+                ),
+                None => None,
+            };
+            let target = match (path, input.line, symbol) {
+                (Some(path), Some(line), _) => CallHierarchyTarget::Position {
+                    path,
+                    position: LinePosition {
+                        line,
+                        symbol: input.symbol.clone(),
+                        column: None,
+                    },
+                },
+                (near, _, Some(symbol)) => CallHierarchyTarget::Name {
+                    name: symbol.to_string(),
+                    near,
+                },
+                _ => {
+                    return Err(
+                        "Give `path` and `line` (with the function's name as `symbol`), or the function's name alone as `symbol`."
+                            .to_string(),
+                    );
+                }
+            };
+            let by_name = matches!(target, CallHierarchyTarget::Name { .. });
+            let options = CallHierarchyOptions {
+                direction: input.direction.into(),
+                depth: input.depth.map_or(1, |depth| depth as usize),
+                max_results: input.max_results.map_or(0, |limit| limit.max(1) as usize),
+            };
+            let answer = cx
+                .update(|cx| ide_query::call_hierarchy(&project, target, options, cx))
+                .await;
+            match answer {
+                Ok(CallHierarchyAnswer::Found(hierarchy)) => {
+                    let locations = project.read_with(cx, |project, cx| {
+                        call_hierarchy_locations(project, [&hierarchy.root], cx)
+                    });
+                    event_stream
+                        .update_fields(acp::ToolCallUpdateFields::new().locations(locations));
+                    Ok(project.read_with(cx, |project, cx| {
+                        format_call_hierarchy(project, &hierarchy, cx)
+                    }))
+                }
+                Ok(CallHierarchyAnswer::Candidates(candidates)) => {
+                    let locations = project.read_with(cx, |project, cx| {
+                        call_hierarchy_locations(project, &candidates.candidates, cx)
+                    });
+                    event_stream
+                        .update_fields(acp::ToolCallUpdateFields::new().locations(locations));
+                    Ok(project.read_with(cx, |project, cx| {
+                        format_call_candidates(project, &candidates, cx)
+                    }))
+                }
+                Ok(CallHierarchyAnswer::NoFunction { index_building, .. }) => {
+                    let mut output = index_notes(index_building, false);
+                    if by_name {
+                        write!(
+                            output,
+                            "The name index has no function named `{}`. Check the spelling, or give the `path` and `line` where it is declared or called.",
+                            symbol.unwrap_or_default()
+                        )
+                        .ok();
+                    } else {
+                        write!(
+                            output,
+                            "There is no function at {} line {}{}. Give the line where the function is declared or called, and its name as `symbol`.",
+                            input.path.as_deref().unwrap_or_default(),
+                            input.line.unwrap_or_default(),
+                            symbol
+                                .map(|symbol| format!(" (looking for `{symbol}`)"))
+                                .unwrap_or_default()
+                        )
+                        .ok();
+                    }
+                    Ok(output)
+                }
+                Err(error) if error.downcast_ref::<NameIndexUnavailable>().is_some() => Ok(format!(
+                    "`{}` can't be looked up by name alone: this project has no name index (it covers C and C++ files when it is turned on). Give the `path` and `line` where the function is declared or called, with its name as `symbol`.",
+                    symbol.unwrap_or_default()
+                )),
+                Err(error) if error.downcast_ref::<LanguageServerNotRunning>().is_some() => {
+                    mark_card_missing_language_server(&event_stream, &call_hierarchy_title(&input));
+                    Ok(no_language_server_message(
+                        "get the call hierarchy",
+                        input.path.as_deref().unwrap_or_default(),
+                    ))
+                }
+                Err(error) if error.downcast_ref::<CallHierarchyNotSupported>().is_some() => {
+                    Ok(call_hierarchy_not_supported_message(&input))
+                }
+                Err(error) => Err(error.to_string()),
+            }
+        })
+    }
+}
+
+fn call_hierarchy_title(input: &CallHierarchyToolInput) -> String {
+    let subject = match (&input.symbol, &input.path, input.line) {
+        (Some(symbol), _, _) => MarkdownInlineCode(symbol).to_string(),
+        (None, Some(path), Some(line)) => {
+            i18n::t!("line {1} of {0}", MarkdownInlineCode(path), line)
+        }
+        _ => return i18n::t!("Call hierarchy").to_string(),
+    };
+    match input.direction {
+        CallHierarchyDirection::Incoming => i18n::t!("Callers of {}", subject),
+        CallHierarchyDirection::Outgoing => i18n::t!("Calls made by {}", subject),
+    }
+}
+
+/// Without this the model tends to answer from general knowledge; the next step it can take
+/// is a text search.
+fn call_hierarchy_not_supported_message(input: &CallHierarchyToolInput) -> String {
+    let name = input.symbol.as_deref().unwrap_or("the function");
+    format!(
+        "Couldn't get the call hierarchy: the language server running for `{}` doesn't support \
+         call hierarchy, so this project can't answer it. Changing settings won't fix this. \
+         Instead, to find the callers, use `grep` for `{name}(`; to find what it calls, read \
+         its body with `read_file`. Tell the user that these are text matches, not resolved calls.",
+        input.path.as_deref().unwrap_or_default()
+    )
+}
+
+fn call_hierarchy_locations<'a>(
+    project: &Project,
+    roots: impl IntoIterator<Item = &'a CallNode>,
+    cx: &App,
+) -> Vec<acp::ToolCallLocation> {
+    let mut locations = Vec::new();
+    let mut pending = roots.into_iter().collect::<Vec<_>>();
+    pending.reverse();
+    while let Some(node) = pending.pop() {
+        if node.in_project
+            && node.contents_allowed
+            && let Some(abs_path) = project.absolute_path(&node.path, cx)
+        {
+            locations.push(
+                acp::ToolCallLocation::new(abs_path)
+                    .line(Some(node.lines.start_line.saturating_sub(1))),
+            );
+        }
+        pending.extend(node.children.iter().rev());
+    }
+    locations
+}
+
+/// The notes that lead the output: how complete the name index is, and whether a language
+/// server answered at all.
+fn index_notes(index_building: Option<IndexBuilding>, without_language_server: bool) -> String {
+    let mut notes = String::new();
+    if let Some(building) = index_building {
+        writeln!(
+            notes,
+            "note: the name index is still being built ({}/{} files); results may be incomplete",
+            building.done, building.total
+        )
+        .ok();
+    }
+    if without_language_server {
+        notes.push_str("note: no language server; results come from the name index\n");
+    }
+    notes
+}
+
+fn source_mark(node: &CallNode) -> Option<&'static str> {
+    if node.resolution != CallResolution::Definition {
+        return None;
+    }
+    match node.source {
+        CallSource::LanguageServer => None,
+        CallSource::NameIndex => Some(NAME_MATCH_MARK),
+        CallSource::Candidate => Some(CANDIDATE_MARK),
+        CallSource::Macro => Some(MACRO_MARK),
+    }
+}
+
+/// What the marks that appear mean, a line or two; nothing when no mark appears.
+fn mark_legend<'a>(nodes: impl IntoIterator<Item = &'a CallNode>) -> String {
+    let mut marks = Vec::new();
+    let mut pending = nodes.into_iter().collect::<Vec<_>>();
+    while let Some(node) = pending.pop() {
+        if let Some(mark) = source_mark(node)
+            && !marks.contains(&mark)
+        {
+            marks.push(mark);
+        }
+        pending.extend(node.children.iter());
+    }
+    let mut legend = String::new();
+    let matched = [NAME_MATCH_MARK, MACRO_MARK]
+        .into_iter()
+        .filter(|mark| marks.contains(mark))
+        .map(|mark| format!("`{mark}`"))
+        .collect::<Vec<_>>();
+    if !matched.is_empty() {
+        writeln!(
+            legend,
+            "Lines marked {} were found by matching names, not resolved by a language server, so they can be another function of the same name; read the definition to confirm.",
+            matched.join(" or ")
+        )
+        .ok();
+    }
+    if marks.contains(&CANDIDATE_MARK) {
+        writeln!(
+            legend,
+            "Lines marked `{CANDIDATE_MARK}` are functions stored into the member that an indirect call goes through; any of them may be the one called."
+        )
+        .ok();
+    }
+    legend
+}
+
+/// The model-facing text: the calls of each level are grouped under their file, so a path is
+/// written once per group rather than once per call.
+fn format_call_hierarchy(project: &Project, hierarchy: &CallHierarchy, cx: &App) -> String {
+    let root = &hierarchy.root;
+    let incoming = hierarchy.direction == CallDirection::Incoming;
+    let mut output = index_notes(hierarchy.index_building, hierarchy.without_language_server);
+    write!(
+        output,
+        "{} {}{} ({}, {}:{}), {} level{} deep",
+        if incoming {
+            "Callers of"
+        } else {
+            "Calls made by"
+        },
+        if root.name.is_empty() {
+            WITHHELD_CALL_NAME.to_string()
+        } else {
+            format!("`{}`", root.name)
+        },
+        source_mark(root)
+            .map(|mark| format!(" {mark}"))
+            .unwrap_or_default(),
+        root.kind,
+        display_path(project, &root.path, root.in_project, cx),
+        root.lines.start_line,
+        hierarchy.depth,
+        if hierarchy.depth == 1 { "" } else { "s" },
+    )
+    .ok();
+    output.push_str(if incoming {
+        ". Each caller is listed under its file as `line name (kind)`; \"calls it on line N\" is where the call is in that file.\n"
+    } else {
+        ". Each callee is listed under its file as `line name (kind)`; \"called on line N\" is where the call is in the caller's file.\n"
+    });
+    output.push_str(&mark_legend([root]));
+    if !root.contents_allowed {
+        output.push_str(
+            "Its file is private, excluded or outside the project, so its calls were not followed.\n",
+        );
+        return output;
+    }
+    if root.children.is_empty() {
+        let sources = if !hierarchy.used_name_index {
+            "The language server"
+        } else if hierarchy.without_language_server {
+            "The name index"
+        } else {
+            "The language server and the name index"
+        };
+        writeln!(
+            output,
+            "{sources} found {}.",
+            if incoming {
+                "no callers"
+            } else {
+                "no calls in it"
+            }
+        )
+        .ok();
+    }
+
+    let mut lines = Vec::new();
+    push_call_lines(project, &root.children, 0, incoming, &mut lines, cx);
+    push_capped_lines(&mut output, lines);
+    if hierarchy.omitted > 0 {
+        writeln!(
+            output,
+            "{} more calls were not listed (the limit is {} calls; ask for fewer levels or a larger max_results).",
+            hierarchy.omitted, hierarchy.max_results
+        )
+        .ok();
+    }
+    if hierarchy.index_truncated {
+        output.push_str(
+            "The name index found more calls of a name than one answer carries, so some callers may be missing.\n",
+        );
+    }
+    if let Some(stop) = hierarchy.stopped {
+        let reason = match stop {
+            CallWalkStop::RequestLimit if hierarchy.used_name_index => format!(
+                "it reached the limit of {MAX_CALL_HIERARCHY_REQUESTS} requests to the language server and the name index"
+            ),
+            CallWalkStop::RequestLimit => format!(
+                "it reached the limit of {MAX_CALL_HIERARCHY_REQUESTS} language server requests"
+            ),
+            CallWalkStop::ResultLimit => {
+                format!("it reached the limit of {} calls", hierarchy.max_results)
+            }
+            CallWalkStop::TimeLimit => {
+                "the language server didn't answer in time (it may still be indexing)".to_string()
+            }
+            CallWalkStop::RemoteFileLimit => format!(
+                "the results reached {MAX_REMOTE_CALL_HIERARCHY_FILES} files on the remote host"
+            ),
+        };
+        writeln!(
+            output,
+            "Stopped early because {reason}; functions marked (not followed) were not expanded. Call again on one of them to go further."
+        )
+        .ok();
+    }
+    output
+}
+
+/// A name alone matched several functions: the model picks one and calls again with its place.
+fn format_call_candidates(project: &Project, candidates: &CallCandidates, cx: &App) -> String {
+    let mut output = index_notes(candidates.index_building, false);
+    // The one function of the name lies where its calls can't be followed (`ide_query` lists it
+    // instead of walking it); calling again with its place would only be refused.
+    if candidates.total == 1
+        && candidates
+            .candidates
+            .iter()
+            .all(|candidate| !candidate.contents_allowed)
+    {
+        writeln!(
+            output,
+            "The one function named `{}` is in a file that is private, excluded or outside the project, so its calls can't be followed.",
+            candidates.name
+        )
+        .ok();
+    } else {
+        writeln!(
+            output,
+            "{} functions are named `{}`; call again with the `path` and `line` of the one you mean. Each is listed under its file as `line name (kind)`.",
+            candidates.total, candidates.name
+        )
+        .ok();
+    }
+    output.push_str(&mark_legend(&candidates.candidates));
+    let mut lines = Vec::new();
+    push_call_lines(project, &candidates.candidates, 0, false, &mut lines, cx);
+    push_capped_lines(&mut output, lines);
+    let unlisted = candidates.total.saturating_sub(candidates.candidates.len());
+    if unlisted > 0 {
+        writeln!(output, "{unlisted} more are not listed.").ok();
+    }
+    output
+}
+
+fn push_capped_lines(output: &mut String, lines: Vec<String>) {
+    let mut unwritten = 0;
+    for line in lines {
+        if unwritten > 0 || output.len() + line.len() + 1 > MAX_CALL_HIERARCHY_OUTPUT_CHARS {
+            unwritten += 1;
+            continue;
+        }
+        output.push_str(&line);
+        output.push('\n');
+    }
+    if unwritten > 0 {
+        writeln!(
+            output,
+            "… {unwritten} more lines cut to keep the output under {MAX_CALL_HIERARCHY_OUTPUT_CHARS} characters."
+        )
+        .ok();
+    }
+}
+
+fn push_call_lines(
+    project: &Project,
+    nodes: &[CallNode],
+    level: usize,
+    incoming: bool,
+    lines: &mut Vec<String>,
+    cx: &App,
+) {
+    let indent = "    ".repeat(level);
+    let mut current_path = None;
+    for node in nodes {
+        if current_path != Some(&node.path) {
+            lines.push(format!(
+                "{indent}{}",
+                display_path(project, &node.path, node.in_project, cx)
+            ));
+            current_path = Some(&node.path);
+        }
+        let mut line = format!(
+            "{indent}  {} {} ({})",
+            node.lines.start_line,
+            if node.name.is_empty() {
+                WITHHELD_CALL_NAME
+            } else {
+                &node.name
+            },
+            node.kind
+        );
+        if !node.call_lines.is_empty() {
+            let listed = node
+                .call_lines
+                .iter()
+                .take(MAX_LISTED_CALL_LINES)
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let plural = if node.call_lines.len() == 1 { "" } else { "s" };
+            if incoming {
+                write!(line, " calls it on line{plural} {listed}").ok();
+            } else {
+                write!(line, " called on line{plural} {listed}").ok();
+            }
+            let rest = node.call_lines.len().saturating_sub(MAX_LISTED_CALL_LINES);
+            if rest > 0 {
+                write!(line, " and {rest} more").ok();
+            }
+        }
+        if !node.preview.is_empty() {
+            write!(line, ": {}", node.preview).ok();
+        }
+        if let Some(mark) = source_mark(node) {
+            write!(line, " {mark}").ok();
+        }
+        if let Some(count) = node.ambiguous {
+            write!(line, " (ambiguous: {count} definitions)").ok();
+        }
+        match &node.resolution {
+            CallResolution::Definition => {}
+            CallResolution::NoDefinition => line.push_str(" (no definition in project)"),
+            CallResolution::Indirect { member } if member.is_empty() => {
+                line.push_str(" (indirect via a member)")
+            }
+            CallResolution::Indirect { member } => {
+                write!(line, " (indirect via .{member})").ok();
+            }
+        }
+        if !node.contents_allowed {
+            line.push_str(" (private, excluded or outside the project)");
+        }
+        match node.expansion {
+            CallExpansion::Expanded if node.children.is_empty() => {
+                line.push_str(if incoming {
+                    " (no callers)"
+                } else {
+                    " (calls nothing)"
+                });
+            }
+            CallExpansion::Expanded | CallExpansion::DepthLimit => {}
+            CallExpansion::Recursive => line.push_str(" (recursive)"),
+            CallExpansion::Repeated => line.push_str(" (expanded above)"),
+            CallExpansion::Withheld | CallExpansion::Stopped => line.push_str(" (not followed)"),
+            CallExpansion::Failed => {
+                line.push_str(" (not followed: the language server failed to answer)")
+            }
+        }
+        lines.push(line);
+        push_call_lines(project, &node.children, level + 1, incoming, lines, cx);
     }
 }
 
@@ -732,7 +1311,7 @@ fn check_title(title: &str, label: &str) -> Result<(), String> {
 /// Resolves paths the model gave to files inside the project whose contents may be shown, with the
 /// same checks as `read_file`: inside a visible worktree, not through a link that leaves the
 /// project, and neither excluded from scanning nor private.
-async fn resolve_shown_paths<'a>(
+pub(super) async fn resolve_shown_paths<'a>(
     project: &Entity<Project>,
     paths: impl IntoIterator<Item = &'a str>,
     cx: &mut AsyncApp,
@@ -1012,6 +1591,7 @@ mod tests {
         let ide_tools = [
             HoverTool::NAME,
             SearchSymbolsTool::NAME,
+            CallHierarchyTool::NAME,
             HighlightCodeTool::NAME,
             AnnotateCodeTool::NAME,
             CodeTourTool::NAME,
@@ -1438,5 +2018,872 @@ mod tests {
         .await
         .expect("the search runs");
         assert_eq!(output, "No symbols match `nothing_like_this`.");
+    }
+
+    fn call_node(
+        name: &str,
+        path: &ProjectPath,
+        lines: (u32, u32),
+        call_lines: Vec<u32>,
+        preview: &str,
+        expansion: CallExpansion,
+        children: Vec<CallNode>,
+    ) -> CallNode {
+        CallNode {
+            name: name.to_string(),
+            kind: "function".to_string(),
+            path: path.clone(),
+            lines: LineRange {
+                start_line: lines.0,
+                end_line: lines.1,
+            },
+            call_lines,
+            in_project: true,
+            contents_allowed: true,
+            preview: preview.to_string(),
+            source: CallSource::LanguageServer,
+            ambiguous: None,
+            resolution: CallResolution::Definition,
+            expansion,
+            children,
+        }
+    }
+
+    /// The text the model reads: stable, grouped by file, with every way a call can stop
+    /// being followed spelled out.
+    #[gpui::test]
+    async fn test_call_hierarchy_output_shape(cx: &mut TestAppContext) {
+        init_test(cx);
+        let project = test_project(cx).await;
+        let main_rs = project_path(&project, "root/src/main.rs", cx);
+        let lib_rs = project_path(&project, "root/src/lib.rs", cx);
+        let env = project_path(&project, "root/.env", cx);
+        let hierarchy = CallHierarchy {
+            direction: CallDirection::Incoming,
+            depth: 2,
+            max_results: 50,
+            root: call_node(
+                "run",
+                &lib_rs,
+                (1, 1),
+                Vec::new(),
+                "pub fn run() {}",
+                CallExpansion::Expanded,
+                vec![
+                    CallNode {
+                        contents_allowed: false,
+                        ..call_node(
+                            "load",
+                            &env,
+                            (1, 1),
+                            vec![1],
+                            "",
+                            CallExpansion::Withheld,
+                            Vec::new(),
+                        )
+                    },
+                    call_node(
+                        "main",
+                        &main_rs,
+                        (1, 3),
+                        vec![2],
+                        "run();",
+                        CallExpansion::Expanded,
+                        vec![
+                            call_node(
+                                "main",
+                                &main_rs,
+                                (1, 3),
+                                vec![3],
+                                "main();",
+                                CallExpansion::Recursive,
+                                Vec::new(),
+                            ),
+                            CallNode {
+                                source: CallSource::NameIndex,
+                                ..call_node(
+                                    "start",
+                                    &lib_rs,
+                                    (5, 9),
+                                    (1..=12).collect(),
+                                    "run();",
+                                    CallExpansion::Stopped,
+                                    Vec::new(),
+                                )
+                            },
+                        ],
+                    ),
+                    call_node(
+                        "helper",
+                        &main_rs,
+                        (5, 6),
+                        vec![6],
+                        "run();",
+                        CallExpansion::Expanded,
+                        Vec::new(),
+                    ),
+                ],
+            ),
+            omitted: 3,
+            stopped: Some(CallWalkStop::RequestLimit),
+            used_name_index: false,
+            without_language_server: false,
+            index_truncated: false,
+            index_building: None,
+        };
+
+        let output = project.read_with(cx, |project, cx| {
+            format_call_hierarchy(project, &hierarchy, cx)
+        });
+        let path_style = project.read_with(cx, |project, cx| project.path_style(cx));
+        let shown = |path: &str| {
+            util::rel_path::rel_path(path)
+                .display(path_style)
+                .into_owned()
+        };
+        let expected = [
+            format!(
+                "Callers of `run` (function, {}:1), 2 levels deep. Each caller is listed under its file as `line name (kind)`; \"calls it on line N\" is where the call is in that file.",
+                shown("root/src/lib.rs")
+            ),
+            "Lines marked `[name match]` were found by matching names, not resolved by a language server, so they can be another function of the same name; read the definition to confirm.".to_string(),
+            shown("root/.env"),
+            "  1 load (function) calls it on line 1 (private, excluded or outside the project) (not followed)".to_string(),
+            shown("root/src/main.rs"),
+            "  1 main (function) calls it on line 2: run();".to_string(),
+            format!("    {}", shown("root/src/main.rs")),
+            "      1 main (function) calls it on line 3: main(); (recursive)".to_string(),
+            format!("    {}", shown("root/src/lib.rs")),
+            "      5 start (function) calls it on lines 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 and 2 more: run(); [name match] (not followed)".to_string(),
+            "  5 helper (function) calls it on line 6: run(); (no callers)".to_string(),
+            "3 more calls were not listed (the limit is 50 calls; ask for fewer levels or a larger max_results).".to_string(),
+            "Stopped early because it reached the limit of 60 language server requests; functions marked (not followed) were not expanded. Call again on one of them to go further.".to_string(),
+        ];
+        assert_eq!(output, expected.join("\n") + "\n");
+
+        let outgoing = CallHierarchy {
+            direction: CallDirection::Outgoing,
+            depth: 1,
+            omitted: 0,
+            stopped: None,
+            root: CallNode {
+                children: Vec::new(),
+                ..hierarchy.root.clone()
+            },
+            ..hierarchy
+        };
+        let output = project.read_with(cx, |project, cx| {
+            format_call_hierarchy(project, &outgoing, cx)
+        });
+        assert_eq!(
+            output,
+            format!(
+                "Calls made by `run` (function, {}:1), 1 level deep. Each callee is listed under its file as `line name (kind)`; \"called on line N\" is where the call is in the caller's file.\nThe language server found no calls in it.\n",
+                shown("root/src/lib.rs")
+            )
+        );
+    }
+
+    /// The whole text of a long tree stays under the cap, and says that it was cut.
+    #[gpui::test]
+    async fn test_call_hierarchy_output_is_capped(cx: &mut TestAppContext) {
+        init_test(cx);
+        let project = test_project(cx).await;
+        let main_rs = project_path(&project, "root/src/main.rs", cx);
+        let long_preview = "x".repeat(120);
+        let hierarchy = CallHierarchy {
+            direction: CallDirection::Incoming,
+            depth: 1,
+            max_results: 100,
+            root: call_node(
+                "run",
+                &main_rs,
+                (1, 1),
+                Vec::new(),
+                "",
+                CallExpansion::Expanded,
+                (0..400)
+                    .map(|index| {
+                        call_node(
+                            &format!("caller_{index}"),
+                            &main_rs,
+                            (index + 1, index + 1),
+                            vec![index + 1],
+                            &long_preview,
+                            CallExpansion::DepthLimit,
+                            Vec::new(),
+                        )
+                    })
+                    .collect(),
+            ),
+            omitted: 0,
+            stopped: None,
+            used_name_index: false,
+            without_language_server: false,
+            index_truncated: false,
+            index_building: None,
+        };
+        let output = project.read_with(cx, |project, cx| {
+            format_call_hierarchy(project, &hierarchy, cx)
+        });
+        assert!(
+            output.len() < MAX_CALL_HIERARCHY_OUTPUT_CHARS + 200,
+            "{}",
+            output.len()
+        );
+        assert!(
+            output.contains("more lines cut to keep the output under 16000 characters"),
+            "{output}"
+        );
+    }
+
+    fn lsp_function(name: &str, abs_path: &str, row: u32, end_row: u32) -> lsp::CallHierarchyItem {
+        lsp::CallHierarchyItem {
+            name: name.to_string(),
+            kind: lsp::SymbolKind::FUNCTION,
+            tags: None,
+            detail: None,
+            uri: lsp::Uri::from_file_path(abs_path).expect("an absolute path"),
+            range: lsp::Range::new(lsp::Position::new(row, 0), lsp::Position::new(end_row, 1)),
+            selection_range: lsp::Range::new(
+                lsp::Position::new(row, 0),
+                lsp::Position::new(row, 1),
+            ),
+            data: None,
+        }
+    }
+
+    async fn start_call_hierarchy_server(
+        project: &Entity<Project>,
+        supports_call_hierarchy: bool,
+        cx: &mut TestAppContext,
+    ) -> (
+        lsp::FakeLanguageServer,
+        project::lsp_store::OpenLspBufferHandle,
+    ) {
+        use futures::StreamExt as _;
+
+        let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+        language_registry.add(language::rust_lang());
+        let mut fake_servers = language_registry.register_fake_lsp(
+            "Rust",
+            language::FakeLspAdapter {
+                capabilities: lsp::ServerCapabilities {
+                    call_hierarchy_provider: supports_call_hierarchy
+                        .then_some(lsp::CallHierarchyServerCapability::Simple(true)),
+                    ..lsp::ServerCapabilities::default()
+                },
+                ..language::FakeLspAdapter::default()
+            },
+        );
+        let (_buffer, registration) = project
+            .update(cx, |project, cx| {
+                project.open_local_buffer_with_lsp(path!("/root/src/lib.rs"), cx)
+            })
+            .await
+            .expect("the file opens");
+        let server = fake_servers.next().await.expect("the server starts");
+        cx.executor().run_until_parked();
+        (server, registration)
+    }
+
+    fn call_hierarchy_input(direction: CallHierarchyDirection) -> CallHierarchyToolInput {
+        CallHierarchyToolInput {
+            path: Some("root/src/lib.rs".to_string()),
+            line: Some(1),
+            symbol: Some("run".to_string()),
+            direction,
+            depth: None,
+            max_results: None,
+        }
+    }
+
+    /// A private file the language server leads to is placed but neither named nor quoted, a
+    /// file behind a link out of the project is named but not quoted, and the card only links
+    /// to what may be shown.
+    #[gpui::test]
+    async fn test_call_hierarchy_tool_lists_the_callers(cx: &mut TestAppContext) {
+        init_test(cx);
+        let project = test_project(cx).await;
+        let (server, _registration) = start_call_hierarchy_server(&project, true, cx).await;
+        server.set_request_handler::<lsp::request::CallHierarchyPrepare, _, _>(|_, _| async {
+            Ok(Some(vec![lsp_function(
+                "run",
+                path!("/root/src/lib.rs"),
+                0,
+                0,
+            )]))
+        });
+        server.set_request_handler::<lsp::request::CallHierarchyIncomingCalls, _, _>(
+            |_, _| async {
+                Ok(Some(vec![
+                    lsp::CallHierarchyIncomingCall {
+                        from: lsp_function("main", path!("/root/src/main.rs"), 0, 2),
+                        from_ranges: vec![lsp::Range::new(
+                            lsp::Position::new(1, 4),
+                            lsp::Position::new(1, 7),
+                        )],
+                    },
+                    lsp::CallHierarchyIncomingCall {
+                        from: lsp_function("load_secret", path!("/root/.env"), 0, 0),
+                        from_ranges: vec![lsp::Range::new(
+                            lsp::Position::new(0, 0),
+                            lsp::Position::new(0, 6),
+                        )],
+                    },
+                    lsp::CallHierarchyIncomingCall {
+                        from: lsp_function("other", path!("/root/link/other.rs"), 0, 0),
+                        from_ranges: vec![lsp::Range::new(
+                            lsp::Position::new(0, 3),
+                            lsp::Position::new(0, 8),
+                        )],
+                    },
+                ]))
+            },
+        );
+
+        let tool = Arc::new(CallHierarchyTool::new(project.clone()));
+        let (event_stream, mut receiver) = ToolCallEventStream::test();
+        let output = cx
+            .update(|cx| {
+                tool.clone().run(
+                    ToolInput::resolved(call_hierarchy_input(CallHierarchyDirection::Incoming)),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await
+            .expect("the callers are listed");
+        let path_style = project.read_with(cx, |project, cx| project.path_style(cx));
+        let shown = |path: &str| {
+            util::rel_path::rel_path(path)
+                .display(path_style)
+                .into_owned()
+        };
+        assert!(
+            output.contains(&format!(
+                "{}\n  1 (name withheld) (function) calls it on line 1 (private, excluded or outside the project)\n",
+                shown("root/.env"),
+            )),
+            "{output}"
+        );
+        assert!(
+            output.contains(&format!(
+                "{}\n  1 main (function) calls it on line 2: run();\n",
+                shown("root/src/main.rs")
+            )),
+            "{output}"
+        );
+        assert!(
+            output.contains(
+                "  1 other (function) calls it on line 1 (private, excluded or outside the project)\n"
+            ),
+            "{output}"
+        );
+        assert!(!output.contains("SECRET"), "{output}");
+        assert!(!output.contains("load_secret"), "{output}");
+        assert!(!output.contains("fn other"), "{output}");
+
+        let locations = receiver
+            .expect_update_fields()
+            .await
+            .locations
+            .expect("the card links to the results");
+        let linked = locations
+            .iter()
+            .map(|location| (location.path.clone(), location.line))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            linked,
+            [
+                (PathBuf::from(path!("/root/src/lib.rs")), Some(0)),
+                (PathBuf::from(path!("/root/src/main.rs")), Some(0)),
+            ]
+        );
+
+        let title = cx.update(|cx| {
+            tool.initial_title(
+                Ok(call_hierarchy_input(CallHierarchyDirection::Outgoing)),
+                cx,
+            )
+        });
+        assert_eq!(title.as_ref(), "Calls made by `run`");
+    }
+
+    #[gpui::test]
+    async fn test_call_hierarchy_tool_gives_a_next_step_when_it_cannot_answer(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let project = test_project(cx).await;
+
+        let tool = Arc::new(CallHierarchyTool::new(project.clone()));
+        let (event_stream, mut receiver) = ToolCallEventStream::test();
+        let output = cx
+            .update(|cx| {
+                tool.run(
+                    ToolInput::resolved(call_hierarchy_input(CallHierarchyDirection::Incoming)),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await
+            .expect("the missing server is explained, not failed");
+        assert!(output.contains("no language server is running"), "{output}");
+        let title = receiver.expect_update_fields().await.title;
+        assert_eq!(
+            title.as_deref(),
+            Some("Callers of `run` (no language server)")
+        );
+
+        let project = test_project(cx).await;
+        let (_server, _registration) = start_call_hierarchy_server(&project, false, cx).await;
+        let output = run_tool(
+            CallHierarchyTool::new(project.clone()),
+            call_hierarchy_input(CallHierarchyDirection::Incoming),
+            cx,
+        )
+        .await
+        .expect("the unsupported request is explained, not failed");
+        assert!(
+            output.contains("doesn't support call hierarchy")
+                && output.contains("use `grep` for `run(`"),
+            "{output}"
+        );
+
+        let error = run_tool(
+            CallHierarchyTool::new(project.clone()),
+            CallHierarchyToolInput {
+                path: Some("root/.env".to_string()),
+                ..call_hierarchy_input(CallHierarchyDirection::Incoming)
+            },
+            cx,
+        )
+        .await
+        .expect_err("private files are refused");
+        assert!(error.contains("`private_files`"), "{error}");
+    }
+
+    /// The marks of what the name index found, what they mean, and the notes on the index, all
+    /// in the text the model reads.
+    #[gpui::test]
+    async fn test_call_hierarchy_output_marks_what_the_name_index_found(cx: &mut TestAppContext) {
+        init_test(cx);
+        let project = test_project(cx).await;
+        let main_rs = project_path(&project, "root/src/main.rs", cx);
+        let lib_rs = project_path(&project, "root/src/lib.rs", cx);
+        let hierarchy = CallHierarchy {
+            direction: CallDirection::Outgoing,
+            depth: 1,
+            max_results: 50,
+            root: CallNode {
+                source: CallSource::NameIndex,
+                ..call_node(
+                    "top",
+                    &main_rs,
+                    (8, 14),
+                    Vec::new(),
+                    "int top(void) {",
+                    CallExpansion::Expanded,
+                    vec![
+                        CallNode {
+                            kind: "macro".to_string(),
+                            source: CallSource::Macro,
+                            ..call_node(
+                                "LOG",
+                                &main_rs,
+                                (1, 1),
+                                vec![11],
+                                "#define LOG(text) log_line(text)",
+                                CallExpansion::DepthLimit,
+                                Vec::new(),
+                            )
+                        },
+                        CallNode {
+                            source: CallSource::NameIndex,
+                            ..call_node(
+                                "middle",
+                                &main_rs,
+                                (5, 7),
+                                vec![9],
+                                "int middle(void) {",
+                                CallExpansion::DepthLimit,
+                                Vec::new(),
+                            )
+                        },
+                        CallNode {
+                            kind: "member call".to_string(),
+                            source: CallSource::NameIndex,
+                            resolution: CallResolution::Indirect {
+                                member: "open".to_string(),
+                            },
+                            ..call_node(
+                                "open",
+                                &main_rs,
+                                (10, 10),
+                                vec![10],
+                                "ops->open(1);",
+                                CallExpansion::DepthLimit,
+                                vec![CallNode {
+                                    source: CallSource::Candidate,
+                                    ..call_node(
+                                        "real_open",
+                                        &lib_rs,
+                                        (4, 4),
+                                        Vec::new(),
+                                        ".open = real_open,",
+                                        CallExpansion::DepthLimit,
+                                        Vec::new(),
+                                    )
+                                }],
+                            )
+                        },
+                        CallNode {
+                            source: CallSource::NameIndex,
+                            resolution: CallResolution::NoDefinition,
+                            ..call_node(
+                                "printf",
+                                &main_rs,
+                                (12, 12),
+                                vec![12],
+                                "printf(\"done\");",
+                                CallExpansion::DepthLimit,
+                                Vec::new(),
+                            )
+                        },
+                        CallNode {
+                            source: CallSource::NameIndex,
+                            ambiguous: Some(2),
+                            ..call_node(
+                                "dup",
+                                &lib_rs,
+                                (7, 7),
+                                vec![13],
+                                "int dup(void) { return 1; }",
+                                CallExpansion::DepthLimit,
+                                Vec::new(),
+                            )
+                        },
+                    ],
+                )
+            },
+            omitted: 2,
+            stopped: Some(CallWalkStop::RequestLimit),
+            used_name_index: true,
+            without_language_server: true,
+            index_truncated: true,
+            index_building: Some(IndexBuilding {
+                done: 12_345,
+                total: 60_000,
+            }),
+        };
+
+        let output = project.read_with(cx, |project, cx| {
+            format_call_hierarchy(project, &hierarchy, cx)
+        });
+        let path_style = project.read_with(cx, |project, cx| project.path_style(cx));
+        let shown = |path: &str| {
+            util::rel_path::rel_path(path)
+                .display(path_style)
+                .into_owned()
+        };
+        let expected = [
+            "note: the name index is still being built (12345/60000 files); results may be incomplete".to_string(),
+            "note: no language server; results come from the name index".to_string(),
+            format!(
+                "Calls made by `top` [name match] (function, {}:8), 1 level deep. Each callee is listed under its file as `line name (kind)`; \"called on line N\" is where the call is in the caller's file.",
+                shown("root/src/main.rs")
+            ),
+            "Lines marked `[name match]` or `[macro]` were found by matching names, not resolved by a language server, so they can be another function of the same name; read the definition to confirm.".to_string(),
+            "Lines marked `[candidate]` are functions stored into the member that an indirect call goes through; any of them may be the one called.".to_string(),
+            shown("root/src/main.rs"),
+            "  1 LOG (macro) called on line 11: #define LOG(text) log_line(text) [macro]".to_string(),
+            "  5 middle (function) called on line 9: int middle(void) { [name match]".to_string(),
+            "  10 open (member call) called on line 10: ops->open(1); (indirect via .open)".to_string(),
+            format!("    {}", shown("root/src/lib.rs")),
+            "      4 real_open (function): .open = real_open, [candidate]".to_string(),
+            "  12 printf (function) called on line 12: printf(\"done\"); (no definition in project)".to_string(),
+            shown("root/src/lib.rs"),
+            "  7 dup (function) called on line 13: int dup(void) { return 1; } [name match] (ambiguous: 2 definitions)".to_string(),
+            "2 more calls were not listed (the limit is 50 calls; ask for fewer levels or a larger max_results).".to_string(),
+            "The name index found more calls of a name than one answer carries, so some callers may be missing.".to_string(),
+            "Stopped early because it reached the limit of 60 requests to the language server and the name index; functions marked (not followed) were not expanded. Call again on one of them to go further.".to_string(),
+        ];
+        assert_eq!(output, expected.join("\n") + "\n");
+
+        // Without a mark, no legend; with both sources and no calls, both are named.
+        let empty = CallHierarchy {
+            root: call_node(
+                "top",
+                &main_rs,
+                (8, 14),
+                Vec::new(),
+                "int top(void) {",
+                CallExpansion::Expanded,
+                Vec::new(),
+            ),
+            omitted: 0,
+            stopped: None,
+            without_language_server: false,
+            index_truncated: false,
+            index_building: None,
+            ..hierarchy
+        };
+        let output =
+            project.read_with(cx, |project, cx| format_call_hierarchy(project, &empty, cx));
+        assert_eq!(
+            output,
+            format!(
+                "Calls made by `top` (function, {}:8), 1 level deep. Each callee is listed under its file as `line name (kind)`; \"called on line N\" is where the call is in the caller's file.\nThe language server and the name index found no calls in it.\n",
+                shown("root/src/main.rs")
+            )
+        );
+    }
+
+    #[gpui::test]
+    async fn test_call_hierarchy_candidates_output(cx: &mut TestAppContext) {
+        init_test(cx);
+        let project = test_project(cx).await;
+        let lib_rs = project_path(&project, "root/src/lib.rs", cx);
+        let env = project_path(&project, "root/.env", cx);
+        let candidates = CallCandidates {
+            name: "dup".to_string(),
+            candidates: vec![
+                CallNode {
+                    source: CallSource::NameIndex,
+                    ..call_node(
+                        "dup",
+                        &lib_rs,
+                        (7, 7),
+                        Vec::new(),
+                        "int dup(void) { return 1; }",
+                        CallExpansion::DepthLimit,
+                        Vec::new(),
+                    )
+                },
+                CallNode {
+                    source: CallSource::NameIndex,
+                    contents_allowed: false,
+                    ..call_node(
+                        "",
+                        &env,
+                        (1, 1),
+                        Vec::new(),
+                        "",
+                        CallExpansion::DepthLimit,
+                        Vec::new(),
+                    )
+                },
+            ],
+            total: 3,
+            index_building: None,
+        };
+        let output = project.read_with(cx, |project, cx| {
+            format_call_candidates(project, &candidates, cx)
+        });
+        let path_style = project.read_with(cx, |project, cx| project.path_style(cx));
+        let shown = |path: &str| {
+            util::rel_path::rel_path(path)
+                .display(path_style)
+                .into_owned()
+        };
+        let expected = [
+            "3 functions are named `dup`; call again with the `path` and `line` of the one you mean. Each is listed under its file as `line name (kind)`.".to_string(),
+            "Lines marked `[name match]` were found by matching names, not resolved by a language server, so they can be another function of the same name; read the definition to confirm.".to_string(),
+            shown("root/src/lib.rs"),
+            "  7 dup (function): int dup(void) { return 1; } [name match]".to_string(),
+            shown("root/.env"),
+            "  1 (name withheld) (function) [name match] (private, excluded or outside the project)".to_string(),
+            "1 more are not listed.".to_string(),
+        ];
+        assert_eq!(output, expected.join("\n") + "\n");
+
+        // The only function of the name can't be followed: calling again with its place would
+        // only be refused, so the model is not asked to.
+        let only_withheld = CallCandidates {
+            name: "load".to_string(),
+            candidates: candidates.candidates[1..].to_vec(),
+            total: 1,
+            index_building: None,
+        };
+        let output = project.read_with(cx, |project, cx| {
+            format_call_candidates(project, &only_withheld, cx)
+        });
+        let expected = [
+            "The one function named `load` is in a file that is private, excluded or outside the project, so its calls can't be followed.".to_string(),
+            "Lines marked `[name match]` were found by matching names, not resolved by a language server, so they can be another function of the same name; read the definition to confirm.".to_string(),
+            shown("root/.env"),
+            "  1 (name withheld) (function) [name match] (private, excluded or outside the project)".to_string(),
+        ];
+        assert_eq!(output, expected.join("\n") + "\n");
+    }
+
+    /// A C function by its name alone, with no language server: the name index answers, and
+    /// the card links to what it found.
+    #[gpui::test]
+    async fn test_call_hierarchy_tool_answers_a_name_from_the_name_index(cx: &mut TestAppContext) {
+        const MAIN_C: &str =
+            "int middle(void) { return 0; }\nint top(void) {\n    return middle();\n}\n";
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/root"), json!({ "src": { "main.c": MAIN_C } }))
+            .await;
+        let project = Project::test(fs, [path!("/root").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+        let worktree_id = project_path(&project, "root/src/main.c", cx).worktree_id;
+        let index_directory = tempfile::tempdir().expect("a temporary directory");
+        let index = project::symbol_index_store::build_index_for_tests(
+            index_directory.path(),
+            &[("src/main.c", MAIN_C)],
+        )
+        .expect("building the index");
+        project.update(cx, |project, cx| {
+            project.symbol_index_store().update(cx, |store, cx| {
+                store.insert_index_for_tests(worktree_id, index, cx)
+            })
+        });
+        cx.executor().run_until_parked();
+
+        let input = CallHierarchyToolInput {
+            path: None,
+            line: None,
+            symbol: Some("middle".to_string()),
+            direction: CallHierarchyDirection::Incoming,
+            depth: None,
+            max_results: None,
+        };
+        let tool = Arc::new(CallHierarchyTool::new(project.clone()));
+        let (event_stream, mut receiver) = ToolCallEventStream::test();
+        let output = cx
+            .update(|cx| tool.run(ToolInput::resolved(input.clone()), event_stream, cx))
+            .await
+            .expect("the name index answers");
+        let path_style = project.read_with(cx, |project, cx| project.path_style(cx));
+        let shown = |path: &str| {
+            util::rel_path::rel_path(path)
+                .display(path_style)
+                .into_owned()
+        };
+        let expected = [
+            "note: no language server; results come from the name index".to_string(),
+            format!(
+                "Callers of `middle` [name match] (function, {}:1), 1 level deep. Each caller is listed under its file as `line name (kind)`; \"calls it on line N\" is where the call is in that file.",
+                shown("root/src/main.c")
+            ),
+            "Lines marked `[name match]` were found by matching names, not resolved by a language server, so they can be another function of the same name; read the definition to confirm.".to_string(),
+            shown("root/src/main.c"),
+            "  2 top (function) calls it on line 3: return middle(); [name match]".to_string(),
+        ];
+        assert_eq!(output, expected.join("\n") + "\n");
+        let locations = receiver
+            .expect_update_fields()
+            .await
+            .locations
+            .expect("the card links to the results");
+        assert_eq!(
+            locations
+                .iter()
+                .map(|location| (location.path.clone(), location.line))
+                .collect::<Vec<_>>(),
+            [
+                (PathBuf::from(path!("/root/src/main.c")), Some(0)),
+                (PathBuf::from(path!("/root/src/main.c")), Some(1)),
+            ]
+        );
+
+        let output = run_tool(
+            CallHierarchyTool::new(project.clone()),
+            CallHierarchyToolInput {
+                symbol: Some("missing".to_string()),
+                ..input.clone()
+            },
+            cx,
+        )
+        .await
+        .expect("an unknown name is explained");
+        assert!(
+            output.starts_with("The name index has no function named `missing`."),
+            "{output}"
+        );
+
+        let error = run_tool(
+            CallHierarchyTool::new(project.clone()),
+            CallHierarchyToolInput {
+                symbol: None,
+                ..input.clone()
+            },
+            cx,
+        )
+        .await
+        .expect_err("neither a place nor a name");
+        assert!(error.contains("Give `path` and `line`"), "{error}");
+
+        let error = run_tool(
+            CallHierarchyTool::new(project.clone()),
+            CallHierarchyToolInput {
+                line: Some(2),
+                ..input.clone()
+            },
+            cx,
+        )
+        .await
+        .expect_err("a line without its file is not ignored");
+        assert!(error.contains("`line` needs `path`"), "{error}");
+
+        let rust_project = test_project(cx).await;
+        let output = run_tool(
+            CallHierarchyTool::new(rust_project),
+            CallHierarchyToolInput {
+                symbol: Some("run".to_string()),
+                ..input
+            },
+            cx,
+        )
+        .await
+        .expect("a missing index is explained");
+        assert!(
+            output.contains("can't be looked up by name alone")
+                && output.contains("`path` and `line`"),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn test_call_hierarchy_input_schema() {
+        let schema = <CallHierarchyTool as AgentTool>::input_schema().to_value();
+        let schema_text = schema.to_string();
+        assert!(
+            schema_text.contains("\"incoming\"") && schema_text.contains("\"outgoing\""),
+            "{schema_text}"
+        );
+        let required = schema["required"]
+            .as_array()
+            .expect("the schema lists the required fields");
+        assert_eq!(required, &[json!("direction")]);
+
+        let input: CallHierarchyToolInput = serde_json::from_value(json!({
+            "path": "root/src/lib.rs",
+            "line": 1,
+            "direction": "outgoing",
+            "depth": 2,
+        }))
+        .expect("the input parses");
+        assert_eq!(input.direction, CallHierarchyDirection::Outgoing);
+        assert_eq!(input.depth, Some(2));
+        let input: CallHierarchyToolInput = serde_json::from_value(json!({
+            "symbol": "vfs_open",
+            "direction": "incoming",
+        }))
+        .expect("a name alone parses");
+        assert_eq!(input.path, None);
+        assert_eq!(input.line, None);
+        assert!(
+            serde_json::from_value::<CallHierarchyToolInput>(json!({
+                "path": "root/src/lib.rs",
+                "line": 1,
+                "direction": "sideways",
+            }))
+            .is_err()
+        );
     }
 }

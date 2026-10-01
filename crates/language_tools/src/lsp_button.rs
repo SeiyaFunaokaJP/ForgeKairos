@@ -20,7 +20,10 @@ use lsp::{LanguageServerId, LanguageServerName, LanguageServerSelector};
 use path::PathStyle;
 use project::{
     LspStore, LspStoreEvent, Worktree,
-    lsp_store::log_store::GlobalLogStore,
+    lsp_store::{
+        clangd_ext::CLANGD_SERVER_NAME, clangd_memory::ClangdMemoryReport,
+        log_store::GlobalLogStore,
+    },
     project_launch_approvals::{
         LaunchApprovalKey, LaunchDecision, LaunchDecisionRecord, LaunchHost, LaunchKind,
         ProjectLaunchApprovals,
@@ -36,6 +39,7 @@ use ui::{
 use util::{ResultExt, paths::PathExt, rel_path::RelPath};
 use workspace::{StatusItemView, ToggleWorktreeSecurity, Workspace};
 
+use crate::clangd_memory_notification::format_memory;
 use crate::lsp_log_view;
 use crate::paused_worktree_code::ReviewPausedWorktreeCode;
 
@@ -65,6 +69,8 @@ struct LanguageServerState {
     active_editor: Option<ActiveEditor>,
     language_servers: LanguageServers,
     process_memory_cache: Rc<RefCell<ProcessMemoryCache>>,
+    /// What clangd says of its memory, asked for each time the menu opens.
+    clangd_memory: Rc<RefCell<HashMap<LanguageServerId, ClangdMemoryReport>>>,
 }
 
 impl std::fmt::Debug for LanguageServerState {
@@ -368,6 +374,7 @@ impl LanguageServerState {
                 .unwrap_or_default();
 
         let process_memory_cache = self.process_memory_cache.clone();
+        let clangd_memory = self.clangd_memory.clone();
 
         let mut first_button_encountered = false;
         for item in &self.items {
@@ -490,6 +497,7 @@ impl LanguageServerState {
                     let approval_to_revoke = launch_approvals
                         .approved_launch_of(submenu_server_info.id, &submenu_server_name);
                     let process_memory_cache = process_memory_cache.clone();
+                    let clangd_memory = clangd_memory.clone();
 
                     move |menu, _window, _cx| {
                         let mut submenu = menu;
@@ -714,7 +722,13 @@ impl LanguageServerState {
                             let server_version = server_version.clone();
                             let server_message = server_message.clone();
                             let process_memory_cache = process_memory_cache.clone();
+                            let clangd_memory = clangd_memory.clone();
+                            let server_id = submenu_server_info.id;
                             move |_, cx| {
+                                let clangd_memory_label = clangd_memory
+                                    .borrow()
+                                    .get(&server_id)
+                                    .and_then(clangd_memory_label);
                                 let memory_usage = process_id.map(|pid| {
                                     process_memory_cache.borrow_mut().get_memory_usage(pid)
                                 });
@@ -781,6 +795,13 @@ impl LanguageServerState {
                                                 )
                                             }),
                                     )
+                                    .when_some(clangd_memory_label, |container, label| {
+                                        container.child(
+                                            Label::new(label)
+                                                .color(Color::Muted)
+                                                .size(LabelSize::Small),
+                                        )
+                                    })
                                     .when_some(server_message.clone(), |container, message| {
                                         container.child(
                                             Label::new(message)
@@ -802,6 +823,19 @@ impl LanguageServerState {
         }
         menu
     }
+}
+
+/// "Memory 1.2 GB (background index 800.0 MB, open files 300.0 MB)".
+fn clangd_memory_label(report: &ClangdMemoryReport) -> Option<String> {
+    let used = format_memory(report.used_bytes()?);
+    Some(match report.breakdown {
+        Some(breakdown) => i18n::t!(
+            "Memory {used} (background index {background_index}, open files {open_files})",
+            background_index = format_memory(breakdown.background_index_bytes),
+            open_files = format_memory(breakdown.open_files_bytes),
+        ),
+        None => i18n::t!("Memory {used}"),
+    })
 }
 
 fn tooltip_for_server_binary(
@@ -1033,6 +1067,7 @@ impl LspButton {
             active_editor: None,
             language_servers,
             process_memory_cache: Rc::new(RefCell::new(ProcessMemoryCache::new())),
+            clangd_memory: Rc::default(),
         });
 
         let mut lsp_button = Self {
@@ -1360,6 +1395,52 @@ impl LspButton {
         });
     }
 
+    /// Asks each clangd for its memory, for the menu that is opening. The
+    /// answer comes after the menu is drawn, so it is drawn again.
+    fn refresh_clangd_memory(&mut self, cx: &mut Context<Self>) {
+        let state = self.server_state.read(cx);
+        let reports = state.clangd_memory.clone();
+        let Some(lsp_store) = state.lsp_store.upgrade() else {
+            return;
+        };
+        let requests = lsp_store.update(cx, |lsp_store, cx| {
+            let clangd_servers = lsp_store
+                .language_server_statuses()
+                .filter(|(_, status)| status.name == CLANGD_SERVER_NAME)
+                .map(|(server_id, _)| server_id)
+                .collect::<Vec<_>>();
+            // A restarted clangd has a new id; the old one's report would never be dropped.
+            reports
+                .borrow_mut()
+                .retain(|server_id, _| clangd_servers.contains(server_id));
+            clangd_servers
+                .into_iter()
+                .map(|server_id| (server_id, lsp_store.clangd_memory_report(server_id, cx)))
+                .collect::<Vec<_>>()
+        });
+        if requests.is_empty() {
+            return;
+        }
+        cx.spawn(async move |lsp_button, cx| {
+            for (server_id, request) in requests {
+                match request.await {
+                    Ok(report) => {
+                        reports.borrow_mut().insert(server_id, report);
+                    }
+                    Err(error) => log::debug!("no memory report of clangd: {error:#}"),
+                }
+            }
+            lsp_button
+                .update(cx, |lsp_button, cx| {
+                    if let Some(menu) = &lsp_button.lsp_menu {
+                        menu.update(cx, |_, cx| cx.notify());
+                    }
+                })
+                .ok();
+        })
+        .detach();
+    }
+
     fn refresh_lsp_menu(
         &mut self,
         create_if_empty: bool,
@@ -1560,10 +1641,19 @@ impl Render for LspButton {
         };
 
         let lsp_button = cx.weak_entity();
+        let lsp_button_for_memory = lsp_button.clone();
 
         div().child(
             PopoverMenu::new("lsp-tool")
                 .on_open(Rc::new(move |_window, cx| {
+                    // The menu is also shown again from `refresh_lsp_menu`, while the button
+                    // is being updated: asking for the memory waits until that update is over.
+                    let lsp_button = lsp_button_for_memory.clone();
+                    cx.defer(move |cx| {
+                        lsp_button
+                            .update(cx, |lsp_button, cx| lsp_button.refresh_clangd_memory(cx))
+                            .ok();
+                    });
                     let copilot_enabled = all_language_settings(None, cx).edit_predictions.provider
                         == EditPredictionProvider::Copilot;
                     telemetry::event!(
@@ -2140,6 +2230,104 @@ mod tests {
         assert_eq!(
             tooltip_for_server_binary(&flagged_node_server, PathStyle::Unix),
             "/zed/languages/eslint/server.js (node)"
+        );
+    }
+
+    /// The menu is shown again when it is rebuilt (a server's settings changed, say) while it
+    /// is open, from inside an update of the button; opening it must not update the button
+    /// again there.
+    #[gpui::test]
+    async fn rebuilding_the_open_menu_does_not_update_the_button_twice(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+            editor::init(cx);
+        });
+        let fs = project::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({ "main.c": "" }))
+            .await;
+        let project = project::Project::test(fs, [Path::new(util::path!("/project"))], cx).await;
+        let (multi_workspace, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace =
+            multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+        let menu_handle = PopoverMenuHandle::default();
+        let lsp_button = workspace.update_in(cx, |workspace, window, cx| {
+            let lsp_button =
+                cx.new(|cx| LspButton::new(workspace, menu_handle.clone(), window, cx));
+            workspace.status_bar().update(cx, |status_bar, cx| {
+                status_bar.add_left_item(lsp_button.clone(), window, cx)
+            });
+            lsp_button
+        });
+        lsp_button.update_in(cx, |lsp_button, window, cx| {
+            lsp_button.server_state.update(cx, |state, _| {
+                state.language_servers.binary_statuses.insert(
+                    CLANGD_SERVER_NAME,
+                    LanguageServerBinaryStatus {
+                        status: BinaryStatus::Starting,
+                        message: None,
+                    },
+                );
+            });
+            lsp_button.refresh_lsp_menu(true, window, cx);
+        });
+        cx.executor().advance_clock(Duration::from_millis(100));
+        cx.run_until_parked();
+        assert!(
+            lsp_button.read_with(cx, |lsp_button, _| lsp_button.lsp_menu.is_some()),
+            "the menu is built"
+        );
+
+        cx.update(|window, cx| menu_handle.show(window, cx));
+        cx.update(|window, cx| {
+            window.simulate_next_frame(cx);
+            window.simulate_next_frame(cx);
+        });
+        cx.run_until_parked();
+        assert!(menu_handle.is_deployed(), "the menu is open");
+
+        lsp_button.update_in(cx, |lsp_button, window, cx| {
+            lsp_button.refresh_lsp_menu(false, window, cx)
+        });
+        cx.executor().advance_clock(Duration::from_millis(100));
+        cx.run_until_parked();
+        assert!(menu_handle.is_deployed(), "the rebuilt menu stays open");
+    }
+
+    /// A clangd restarted while the menu is open has a new id: the report of the old one is
+    /// dropped when the memory is asked for again.
+    #[gpui::test]
+    async fn the_memory_of_a_clangd_no_longer_running_is_dropped(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+            editor::init(cx);
+        });
+        let fs = project::FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), serde_json::json!({ "main.c": "" }))
+            .await;
+        let project = project::Project::test(fs, [Path::new(util::path!("/project"))], cx).await;
+        let (multi_workspace, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace =
+            multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+        let lsp_button = workspace.update_in(cx, |workspace, window, cx| {
+            cx.new(|cx| LspButton::new(workspace, PopoverMenuHandle::default(), window, cx))
+        });
+        let reports = lsp_button.read_with(cx, |lsp_button, cx| {
+            lsp_button.server_state.read(cx).clangd_memory.clone()
+        });
+        reports
+            .borrow_mut()
+            .insert(server_id(7), ClangdMemoryReport::default());
+        lsp_button.update(cx, |lsp_button, cx| lsp_button.refresh_clangd_memory(cx));
+        cx.run_until_parked();
+        assert!(
+            reports.borrow().is_empty(),
+            "no clangd runs with that id any more"
         );
     }
 }

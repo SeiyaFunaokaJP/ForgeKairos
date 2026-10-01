@@ -7,3 +7,6 @@ msgstr ""
 
 msgid "Search project symbols..."
 msgstr "プロジェクト内のシンボルを検索..."
+
+msgid "name match"
+msgstr "名前一致"

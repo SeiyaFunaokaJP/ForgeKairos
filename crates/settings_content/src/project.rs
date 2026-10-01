@@ -89,6 +89,66 @@ pub struct ProjectSettingsContent {
     /// 開いたファイルの言語に必要な開発ツール (言語サーバー・フォーマッタ) が
     /// 見つからないときの案内 (ADR-F39)。
     pub dev_tools: Option<DevToolsSettingsContent>,
+
+    /// How much memory clangd, the C and C++ language server, may use.
+    pub clangd: Option<ClangdSettingsContent>,
+
+    /// The name-based symbol index of C and C++ files (ADR-F68).
+    pub symbol_index: Option<SymbolIndexSettingsContent>,
+}
+
+/// clangd's memory use: its index mode, worker count and a limit at which it
+/// is restarted.
+#[with_fallible_options]
+#[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct ClangdSettingsContent {
+    /// Whether clangd indexes the whole project in the background. `light`
+    /// skips that index (`--background-index=false`), which saves the most
+    /// memory: references, call hierarchy and renames then only cover the
+    /// files that are open. Ignored when `lsp.clangd.binary.arguments`
+    /// already has `--background-index`.
+    ///
+    /// Default: full
+    pub index_mode: Option<ClangdIndexMode>,
+
+    /// How many threads clangd uses to build and index files (`-j`). Unset
+    /// leaves clangd's own default. Values over 256 are treated as 256.
+    /// Ignored when `lsp.clangd.binary.arguments` already has `-j`. Read from
+    /// the user's settings only, not from a project's `.zed/settings.json`.
+    ///
+    /// Default: null
+    pub max_workers: Option<u32>,
+
+    /// Restart clangd when its resident memory, measured every 30 seconds,
+    /// goes over this many megabytes. At most one restart every 10 minutes;
+    /// after that, a notification only. Unset never restarts. Read from the
+    /// user's settings only, not from a project's `.zed/settings.json`.
+    ///
+    /// Default: null
+    pub memory_limit_mb: Option<u64>,
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ClangdIndexMode {
+    /// Index the whole project in the background (clangd's default).
+    #[default]
+    Full,
+    /// Index only the open files.
+    Light,
 }
 
 /// ADR-F39: 足りない開発ツールの案内と導入。
@@ -108,11 +168,68 @@ pub struct DevToolsSettingsContent {
     pub ignored: Option<Vec<String>>,
 }
 
+/// ADR-F68: the name-based symbol index of C and C++ files, which answers
+/// project-wide symbol search, "go to definition" when the language server has
+/// no answer, and callers and callees, without compilation information.
+#[with_fallible_options]
+#[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct SymbolIndexSettingsContent {
+    /// When to index the worktree's C and C++ files.
+    ///
+    /// Default: auto
+    pub enabled: Option<SymbolIndexEnabled>,
+
+    /// Whether to index files that `.gitignore` excludes (only the ones the
+    /// project panel has loaded: ignored folders are read when expanded).
+    ///
+    /// Default: false
+    pub include_ignored: Option<bool>,
+
+    /// How long "go to definition" waits for the language server before it
+    /// also offers the index's name matches, in milliseconds, from 100 to
+    /// 10000.
+    ///
+    /// Default: 1500
+    pub language_server_timeout_ms: Option<u64>,
+
+    /// Whether hovering a name in C and C++ also shows what its type holds
+    /// (members, enumerators, a macro's definition), found by name in the
+    /// index.
+    ///
+    /// Default: true
+    pub hover_type_contents: Option<bool>,
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Default,
+    Debug,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SymbolIndexEnabled {
+    /// Index a worktree once it has C or C++ files.
+    #[default]
+    Auto,
+    /// Always index the worktree.
+    On,
+    /// Never index the worktree.
+    Off,
+}
+
 crate::fallible_options::flattened_deserialize!(ProjectSettingsContent {
     sections: { all_languages, worktree },
     options: {
         terminal, context_server_timeout, load_direnv, git_hosting_providers, disable_ai,
-        dev_tools,
+        dev_tools, clangd, symbol_index,
     },
     defaults: { lsp, dap, context_servers },
 });

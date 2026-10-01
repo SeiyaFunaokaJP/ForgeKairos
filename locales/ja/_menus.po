@@ -38,6 +38,10 @@ msgid "Browser Panel"
 msgstr "ブラウザーパネル"
 
 msgctxt "menu"
+msgid "Call Graph Panel"
+msgstr "呼び出しグラフパネル"
+
+msgctxt "menu"
 msgid "Change Folder…"
 msgstr "フォルダーを変更…"
 
@@ -428,6 +432,14 @@ msgstr "設定"
 msgctxt "menu"
 msgid "Show All"
 msgstr "すべて表示"
+
+msgctxt "menu"
+msgid "Show Callees in Call Graph"
+msgstr "呼び出しグラフで呼び出し先を表示"
+
+msgctxt "menu"
+msgid "Show Callers in Call Graph"
+msgstr "呼び出しグラフで呼び出し元を表示"
 
 msgctxt "menu"
 msgid "Show Incoming Calls"

@@ -160,21 +160,58 @@ mod tests {
             .unwrap()
         };
         let ide_tools = || -> Vec<SharedString> {
-            vec!["grep".into(), "search_symbols".into(), "code_tour".into()]
+            vec![
+                "grep".into(),
+                "search_symbols".into(),
+                "call_hierarchy".into(),
+                "code_tour".into(),
+            ]
         };
 
         let with_tools = render(ide_tools(), true);
         assert!(with_tools.contains("`search_symbols` is usually more direct than `grep`"));
+        assert!(with_tools.contains("use `call_hierarchy` before `grep`"));
+        assert!(with_tools.contains("answers from a name index when no language server runs"));
         assert!(with_tools.contains("You run inside the Zed editor the user is looking at"));
 
         let without_tools = render(vec!["grep".into()], true);
         assert!(!without_tools.contains("search_symbols"));
+        assert!(!without_tools.contains("call_hierarchy"));
         assert!(!without_tools.contains("code_tour"));
 
         let headless = render(ide_tools(), false);
         assert!(headless.contains("`search_symbols` is usually more direct than `grep`"));
         assert!(!headless.contains("You run inside the Zed editor the user is looking at"));
         assert!(!headless.contains("code_tour"));
+    }
+
+    #[test]
+    fn test_system_prompt_mentions_type_layout_only_when_available() {
+        let project = prompt_store::ProjectContext::default();
+        let render = |available_tools: Vec<SharedString>| {
+            SystemPromptTemplate {
+                project: &project,
+                available_tools,
+                model_name: None,
+                date: "2026-01-01".to_string(),
+                user_agents_md: None,
+                sandboxing: false,
+                is_linux: false,
+                is_windows: false,
+                restricted_workspace: false,
+                repo_map: None,
+                code_display: false,
+            }
+            .render(&Templates::new())
+            .expect("the template renders")
+        };
+
+        let with_tool = render(vec!["grep".into(), "type_layout".into()]);
+        assert!(
+            with_tool.contains("use `type_layout` before searching for and reading its header")
+        );
+        let without_tool = render(vec!["grep".into()]);
+        assert!(!without_tool.contains("type_layout"));
     }
 
     #[test]

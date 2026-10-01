@@ -890,6 +890,24 @@ actions!(
     [ShowIncomingCalls, ShowOutgoingCalls, ToggleDirection]
 );
 
+pub mod call_graph_panel {
+    use gpui::actions;
+
+    // Defined here rather than in `call_graph_panel` so that the editor's
+    // context menu can offer them without depending on the panel crate.
+    actions!(
+        call_graph_panel,
+        [
+            /// Opens the call graph panel with the callers of the function under the cursor.
+            ShowCallers,
+            /// Opens the call graph panel with the callees of the function under the cursor.
+            ShowCallees,
+            /// Toggles focus on the call graph panel.
+            ToggleFocus
+        ]
+    );
+}
+
 pub mod debug_panel {
     use gpui::actions;
     actions!(

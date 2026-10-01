@@ -1,3 +1,5 @@
+mod index_symbols;
+
 use editor::{Bias, Editor, SelectionEffects, scroll::Autoscroll, styled_runs_for_code_label};
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
@@ -47,6 +49,14 @@ pub struct ProjectSymbolsDelegate {
     external_match_candidates: Vec<StringMatchCandidate>,
     show_worktree_root_name: bool,
     matches: Vec<StringMatch>,
+    /// ADR-F68: what the symbol index found, shown after `matches`.
+    index_matches: Vec<project::symbol_index_store::IndexedSymbolMatch>,
+    index_found: Vec<project::symbol_index_store::IndexedSymbolMatch>,
+    index_search: Task<()>,
+    /// The buffer of the selected index match, once loaded, so that its preview can scroll to
+    /// the match.
+    index_preview_buffer: Option<(project::ProjectPath, Entity<language::Buffer>)>,
+    index_preview_load: Task<()>,
 }
 
 impl ProjectSymbolsDelegate {
@@ -60,7 +70,49 @@ impl ProjectSymbolsDelegate {
             external_match_candidates: Default::default(),
             matches: Default::default(),
             show_worktree_root_name: false,
+            index_matches: Vec::new(),
+            index_found: Vec::new(),
+            index_search: Task::ready(()),
+            index_preview_buffer: None,
+            index_preview_load: Task::ready(()),
         }
+    }
+
+    fn selected_index_match(&self) -> Option<&project::symbol_index_store::IndexedSymbolMatch> {
+        self.selected_match_index
+            .checked_sub(self.matches.len())
+            .and_then(|ix| self.index_matches.get(ix))
+    }
+
+    /// Loads the buffer of the selected index match, then shows the preview again at the
+    /// match.
+    fn load_index_preview(&mut self, window: &mut Window, cx: &mut Context<Picker<Self>>) {
+        let Some(path) = self
+            .selected_index_match()
+            .map(|found| found.definition.path.clone())
+        else {
+            return;
+        };
+        if self
+            .index_preview_buffer
+            .as_ref()
+            .is_some_and(|(loaded, _)| *loaded == path)
+        {
+            return;
+        }
+        let open = self
+            .project
+            .update(cx, |project, cx| project.open_buffer(path.clone(), cx));
+        self.index_preview_load = cx.spawn_in(window, async move |this, cx| {
+            let Some(buffer) = open.await.log_err() else {
+                return;
+            };
+            this.update_in(cx, |picker, window, cx| {
+                picker.delegate.index_preview_buffer = Some((path, buffer));
+                picker.refresh_preview(window, cx);
+            })
+            .log_err();
+        });
     }
 
     // Note if you make changes to this, also change `agent_ui::completion_provider::search_symbols`
@@ -118,6 +170,22 @@ impl PickerDelegate for ProjectSymbolsDelegate {
     }
 
     fn confirm(&mut self, secondary: bool, window: &mut Window, cx: &mut Context<Picker<Self>>) {
+        if let Some(found) = self
+            .selected_match_index
+            .checked_sub(self.matches.len())
+            .and_then(|ix| self.index_matches.get(ix))
+        {
+            index_symbols::open_index_match(
+                found,
+                secondary,
+                self.workspace.clone(),
+                &self.project,
+                window,
+                cx,
+            );
+            cx.emit(DismissEvent);
+            return;
+        }
         if let Some(symbol) = self
             .matches
             .get(self.selected_match_index)
@@ -179,7 +247,7 @@ impl PickerDelegate for ProjectSymbolsDelegate {
     fn dismissed(&mut self, _window: &mut Window, _cx: &mut Context<Picker<Self>>) {}
 
     fn match_count(&self) -> usize {
-        self.matches.len()
+        self.matches.len() + self.index_matches.len()
     }
 
     fn selected_index(&self) -> usize {
@@ -189,13 +257,22 @@ impl PickerDelegate for ProjectSymbolsDelegate {
     fn set_selected_index(
         &mut self,
         ix: usize,
-        _window: &mut Window,
-        _cx: &mut Context<Picker<Self>>,
+        window: &mut Window,
+        cx: &mut Context<Picker<Self>>,
     ) {
         self.selected_match_index = ix;
+        self.load_index_preview(window, cx);
     }
 
-    fn try_get_preview_data_for_match(&self, _cx: &App) -> Option<PreviewUpdate> {
+    fn try_get_preview_data_for_match(&self, cx: &App) -> Option<PreviewUpdate> {
+        if let Some(found) = self.selected_index_match() {
+            let loaded = self
+                .index_preview_buffer
+                .as_ref()
+                .filter(|(path, _)| *path == found.definition.path)
+                .map(|(_, buffer)| buffer);
+            return index_symbols::preview_for_index_match(found, loaded, &self.project, cx);
+        }
         let candidate_id = self.matches.get(self.selected_match_index)?.candidate_id;
         let symbol = self.symbols.get(candidate_id)?.clone();
         Some(PreviewUpdate::from_symbol(symbol))
@@ -217,6 +294,24 @@ impl PickerDelegate for ProjectSymbolsDelegate {
             .to_owned();
         self.filter(&query_filter, window, cx);
         self.show_worktree_root_name = self.project.read(cx).visible_worktrees(cx).count() > 1;
+        // Replacing the task drops the previous keystroke's search, whose
+        // answer must not join this query's language server symbols either.
+        self.index_found.clear();
+        let index_search = index_symbols::search_index(&self.project, &query_filter, cx);
+        self.index_search = cx.spawn_in(window, async move |this, cx| {
+            let found = index_search.await;
+            this.update_in(cx, |this, window, cx| {
+                let delegate = &mut this.delegate;
+                delegate.index_matches =
+                    index_symbols::without_language_server_duplicates(&found, &delegate.symbols);
+                delegate.index_found = found;
+                // The selection may be on an index match now.
+                delegate.load_index_preview(window, cx);
+                this.refresh_preview(window, cx);
+                cx.notify();
+            })
+            .log_err();
+        });
         let symbols = self
             .project
             .update(cx, |project, cx| project.symbols(&query, cx));
@@ -245,6 +340,10 @@ impl PickerDelegate for ProjectSymbolsDelegate {
                     delegate.visible_match_candidates = visible_match_candidates;
                     delegate.external_match_candidates = external_match_candidates;
                     delegate.symbols = symbols;
+                    delegate.index_matches = index_symbols::without_language_server_duplicates(
+                        &delegate.index_found,
+                        &delegate.symbols,
+                    );
                     delegate.filter(&query_filter, window, cx);
                 })
                 .log_err();
@@ -259,6 +358,19 @@ impl PickerDelegate for ProjectSymbolsDelegate {
         _window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) -> Option<Self::ListItem> {
+        if let Some(found) = ix
+            .checked_sub(self.matches.len())
+            .and_then(|index_ix| self.index_matches.get(index_ix))
+        {
+            return Some(index_symbols::render_index_match(
+                ix,
+                found,
+                selected,
+                self.show_worktree_root_name,
+                &self.project,
+                cx,
+            ));
+        }
         let path_style = self.project.read(cx).path_style(cx);
         let string_match = &self.matches.get(ix)?;
         let symbol = &self.symbols.get(string_match.candidate_id)?;

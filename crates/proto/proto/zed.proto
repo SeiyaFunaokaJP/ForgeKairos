@@ -67,7 +67,34 @@ message Envelope {
     CancelSearchCommits cancel_search_commits = 10031;
     KillTerminalSession kill_terminal_session = 10032;
     CheckWireRevision check_wire_revision = 10033;
-    CheckWireRevisionResponse check_wire_revision_response = 10034; // jp-enhance current max
+    CheckWireRevisionResponse check_wire_revision_response = 10034;
+    GetClangdMemoryUsage get_clangd_memory_usage = 10035;
+    GetClangdMemoryUsageResponse get_clangd_memory_usage_response = 10036;
+    ClangdMemoryLimitExceeded clangd_memory_limit_exceeded = 10037;
+    // ADR-F68: the symbol index. Numbered from 10054 so that other additions
+    // made at the same time can take the numbers after 10034.
+    GetSymbolIndexStatus get_symbol_index_status = 10054;
+    GetSymbolIndexStatusResponse get_symbol_index_status_response = 10055;
+    UpdateSymbolIndexStatus update_symbol_index_status = 10056;
+    SymbolIndexDefinitions symbol_index_definitions = 10057;
+    SymbolIndexDefinitionsResponse symbol_index_definitions_response = 10058;
+    SymbolIndexCallers symbol_index_callers = 10059;
+    SymbolIndexCallersResponse symbol_index_callers_response = 10060;
+    SymbolIndexCallees symbol_index_callees = 10061;
+    SymbolIndexCalleesResponse symbol_index_callees_response = 10062;
+    SymbolIndexAssignments symbol_index_assignments = 10063;
+    SymbolIndexAssignmentsResponse symbol_index_assignments_response = 10064;
+    SymbolIndexSearch symbol_index_search = 10065;
+    SymbolIndexSearchResponse symbol_index_search_response = 10066;
+    RebuildSymbolIndex rebuild_symbol_index = 10067;
+    SymbolIndexDescribeType symbol_index_describe_type = 10068;
+    SymbolIndexDescribeTypeResponse symbol_index_describe_type_response = 10069;
+    SymbolIndexResolveType symbol_index_resolve_type = 10070;
+    SymbolIndexResolveTypeResponse symbol_index_resolve_type_response = 10071;
+    SymbolIndexExpandMember symbol_index_expand_member = 10072;
+    SymbolIndexExpandMemberResponse symbol_index_expand_member_response = 10073;
+    SymbolIndexTypeTree symbol_index_type_tree = 10074;
+    SymbolIndexTypeTreeResponse symbol_index_type_tree_response = 10075; // jp-enhance current max
 
     Hello hello = 4;
     Ack ack = 5;

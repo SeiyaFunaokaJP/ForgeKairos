@@ -19,8 +19,10 @@ fuzzy.workspace = true
 gpui.workspace = true
 language.workspace = true
 log.workspace = true
+lsp.workspace = true
 project.workspace = true
 settings.workspace = true
+symbol_index.workspace = true
 util.workspace = true
 
 [dev-dependencies]
@@ -30,4 +32,5 @@ lsp = { workspace = true, features = ["test-support"] }
 project = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 settings = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
 util = { workspace = true, features = ["test-support"] }

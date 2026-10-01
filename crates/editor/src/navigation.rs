@@ -1785,6 +1785,22 @@ impl Editor {
                 };
                 let title = editor
                     .update_in(cx, |_, _, cx| {
+                        // ADR-F68: name matches from the symbol index say so.
+                        let marked_tab_kind;
+                        let tab_kind: &str =
+                            if matches!(kind, Some(GotoDefinitionKind::Symbol) | None)
+                                && crate::symbol_index_definitions::are_name_matches(
+                                    locations.iter().flat_map(|(buffer, ranges)| {
+                                        ranges.iter().map(move |range| (buffer, range))
+                                    }),
+                                    cx,
+                                )
+                            {
+                                marked_tab_kind = i18n::t!("{tab_kind} (name match)");
+                                &marked_tab_kind
+                            } else {
+                                &tab_kind
+                            };
                         let target = locations
                             .iter()
                             .flat_map(|(k, v)| iter::repeat(k.clone()).zip(v))

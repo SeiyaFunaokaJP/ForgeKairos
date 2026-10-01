@@ -1706,6 +1706,8 @@ mod tests {
             // tools only show the agent's text in the editor, so neither asks.
             "hover",
             "search_symbols",
+            "call_hierarchy",
+            "type_layout",
             "highlight_code",
             "annotate_code",
             "code_tour",

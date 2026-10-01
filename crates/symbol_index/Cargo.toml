@@ -1,0 +1,32 @@
+[package]
+name = "symbol_index"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-or-later"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/symbol_index.rs"
+
+[dependencies]
+anyhow.workspace = true
+ignore.workspace = true
+log.workspace = true
+memmap2.workspace = true
+parking_lot.workspace = true
+rayon.workspace = true
+rustc-hash.workspace = true
+sha2.workspace = true
+tree-sitter.workspace = true
+tree-sitter-c.workspace = true
+tree-sitter-cpp.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[example]]
+name = "symbol_index_bench"
+path = "examples/symbol_index_bench.rs"

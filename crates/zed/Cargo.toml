@@ -81,6 +81,7 @@ auto_update.workspace = true
 auto_update_ui.workspace = true
 breadcrumbs.workspace = true
 browser_panel.workspace = true
+call_graph_panel.workspace = true
 call_hierarchy.workspace = true
 channel.workspace = true
 chrono.workspace = true

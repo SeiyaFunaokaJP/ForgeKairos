@@ -6630,6 +6630,8 @@ async fn test_every_tool_is_known_to_write_worktrees_or_not(cx: &mut TestAppCont
         "spawn_agent",
         "hover",
         "search_symbols",
+        "call_hierarchy",
+        "type_layout",
         "highlight_code",
         "annotate_code",
         "code_tour",

@@ -579,6 +579,7 @@
       "alt-ctrl-f12": "editor::GoToTypeDefinitionSplit",
       "alt-shift-f12": "editor::FindAllReferences",
       "ctrl-k ctrl-h": "call_hierarchy::ShowIncomingCalls",
+      "ctrl-k ctrl-shift-g": "call_graph_panel::ShowCallers",
       "ctrl-m": "editor::MoveToEnclosingBracket", // from jetbrains
       "ctrl-|": "editor::MoveToEnclosingBracket",
       "ctrl-{": "editor::Fold",
@@ -724,6 +725,7 @@
       "ctrl-shift-m": "diagnostics::Deploy",
       "ctrl-shift-e": "project_panel::ToggleFocus",
       "ctrl-shift-b": "outline_panel::ToggleFocus",
+      "ctrl-k ctrl-g": "call_graph_panel::ToggleFocus",
       "ctrl-shift-g": "git_panel::ToggleFocus",
       "ctrl-shift-d": "debug_panel::ToggleFocus",
       "ctrl-?": "agent::ToggleFocus",
@@ -994,6 +996,18 @@
       "shift-up": "menu::SelectPrevious",
       "alt-enter": "editor::OpenExcerpts",
       "ctrl-alt-enter": "editor::OpenExcerptsSplit",
+    },
+  },
+  {
+    "context": "CallGraphPanel && not_editing",
+    "use_key_equivalents": true,
+    "bindings": {
+      "left": "call_graph_panel::CollapseSelected",
+      "right": "call_graph_panel::ExpandSelected",
+      "space": "call_graph_panel::PreviewSelected",
+      "ctrl-c": "call_graph_panel::CopySymbolName",
+      "alt-left": "call_graph_panel::PreviousRoot",
+      "alt-right": "call_graph_panel::NextRoot",
     },
   },
   {

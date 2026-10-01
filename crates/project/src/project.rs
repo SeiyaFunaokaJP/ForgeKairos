@@ -21,6 +21,7 @@ pub mod project_settings;
 pub mod remote_exec;
 pub mod remote_launch_approvals;
 pub mod search;
+pub mod symbol_index_store;
 pub mod task_inventory;
 pub mod task_store;
 pub mod telemetry_snapshot;
@@ -63,6 +64,7 @@ pub use git_store::{
 };
 pub use manifest_tree::ManifestTree;
 pub use project_search::{Search, SearchResults};
+pub use symbol_index_store::{SymbolIndexStore, SymbolIndexStoreEvent, SymbolIndexUnavailable};
 pub use worktree_code_execution::{
     AgentWriteScope, AgentWriterKind, ExternalAgentSessionGuard, LeftoverSandboxProcess,
     LeftoverSandboxProcessReports, LeftoverSandboxProcesses, LeftoverSandboxProcessesHandle,
@@ -278,6 +280,8 @@ pub struct Project {
     /// ADR-F50: whether each worktree's own code may run, after agents wrote
     /// into it.
     worktree_code_execution: Entity<WorktreeCodeExecution>,
+    /// ADR-F68: the name-based symbol index of the project's C and C++ files.
+    symbol_index_store: Entity<SymbolIndexStore>,
 }
 
 struct DownloadingFile {
@@ -1368,6 +1372,15 @@ impl Project {
 
             let worktree_code_execution =
                 cx.new(|cx| WorktreeCodeExecution::local(&worktree_store, fs.clone(), cx));
+            let symbol_index_store = cx.new(|cx| {
+                SymbolIndexStore::local(
+                    worktree_store.clone(),
+                    buffer_store.downgrade(),
+                    fs.clone(),
+                    SymbolIndexStore::default_index_root(fs.as_ref()),
+                    cx,
+                )
+            });
 
             let lsp_store = cx.new(|cx| {
                 LspStore::new_local(
@@ -1449,6 +1462,7 @@ impl Project {
                 remote_exec: remote_exec::RemoteExec::default(),
                 _remote_launch_requests: None,
                 worktree_code_execution,
+                symbol_index_store,
             }
         })
     }
@@ -1658,6 +1672,15 @@ impl Project {
                 )
             });
 
+            let symbol_index_store = cx.new(|cx| {
+                SymbolIndexStore::remote(
+                    worktree_store.clone(),
+                    remote_proto.clone(),
+                    REMOTE_SERVER_PROJECT_ID,
+                    cx,
+                )
+            });
+
             let this = Self {
                 buffer_ordered_messages_tx: tx,
                 collaborators: Default::default(),
@@ -1720,6 +1743,7 @@ impl Project {
                 remote_exec: remote_exec::RemoteExec::default(),
                 _remote_launch_requests: Some(remote_launch_requests.clone()),
                 worktree_code_execution,
+                symbol_index_store,
             };
 
             // remote server -> local machine handlers
@@ -1733,6 +1757,7 @@ impl Project {
             remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &this.settings_observer);
             remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &this.git_store);
             remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &this.agent_server_store);
+            remote_proto.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &this.symbol_index_store);
 
             remote_proto.add_entity_message_handler(Self::handle_create_buffer_for_peer);
             remote_proto.add_entity_message_handler(Self::handle_create_image_for_peer);
@@ -1772,6 +1797,7 @@ impl Project {
             BreakpointStore::init(&remote_proto);
             GitStore::init(&remote_proto);
             AgentServerStore::init_remote(&remote_proto);
+            SymbolIndexStore::init_remote(&remote_proto);
 
             this
         })
@@ -1979,6 +2005,12 @@ impl Project {
 
             let worktree_code_execution =
                 cx.new(|cx| WorktreeCodeExecution::inert(&worktree_store, cx));
+            let symbol_index_store = cx.new(|_| {
+                SymbolIndexStore::unavailable(
+                    worktree_store.clone(),
+                    SymbolIndexUnavailable::Collaboration,
+                )
+            });
 
             let mut project = Self {
                 buffer_ordered_messages_tx: tx,
@@ -2027,6 +2059,7 @@ impl Project {
                 remote_exec: remote_exec::RemoteExec::default(),
                 _remote_launch_requests: None,
                 worktree_code_execution,
+                symbol_index_store,
             };
             project.set_role(role, cx);
             for worktree in worktrees {
@@ -4186,7 +4219,10 @@ impl Project {
                 });
                 cx.emit(Event::DisconnectedFromRemote { server_not_running });
             }
-            &remote::RemoteClientEvent::Reconnected => {}
+            &remote::RemoteClientEvent::Reconnected => {
+                self.symbol_index_store
+                    .update(cx, |store, cx| store.reconnected(cx));
+            }
         }
     }
 
@@ -6774,6 +6810,11 @@ impl Project {
 
     pub fn buffer_store(&self) -> &Entity<BufferStore> {
         &self.buffer_store
+    }
+
+    /// ADR-F68: the name-based symbol index of the project's C and C++ files.
+    pub fn symbol_index_store(&self) -> &Entity<SymbolIndexStore> {
+        &self.symbol_index_store
     }
 
     pub fn git_store(&self) -> &Entity<GitStore> {

@@ -2,8 +2,8 @@
 //!
 //! 表示 (`highlightCode` / `annotateCode` / `startCodeTour` / `clearAnnotations`) は
 //! [`ide_query::code_display`] 越しに `ide_assist` が描き、読み取り (`getHover` /
-//! `getDocumentSymbols` / `searchSymbols` / `findDefinition` / `findReferences`) は
-//! [`ide_query`] の関数に任せる。ここが受け持つのは引数の検査・パスの写像・結果の整形だけ。
+//! `getDocumentSymbols` / `searchSymbols` / `findDefinition` / `findReferences` /
+//! `getCallHierarchy`) は [`ide_query`] の関数に任せる。ここが受け持つのは引数の検査・パスの写像・結果の整形だけ。
 //!
 //! トークンはサンドボックスの中から読めるので、どのツールも「サンドボックスの中の任意の
 //! プロセスから呼ばれても無害」を前提にする: 引数のパスには既存の検査 (ワークツリーの中・
@@ -18,9 +18,12 @@ use collections::HashMap;
 use context_server::types::Tool;
 use gpui::{App, AsyncApp, Entity, WeakEntity};
 use ide_query::{
-    AssistSource, CodeAnnotation, CodeDisplay, CodeHighlight, CodeTour, DisplayOutcome,
-    LinePosition, LineRange, MAX_ANNOTATIONS, MAX_DISPLAY_MARKDOWN_CHARS, MAX_HIGHLIGHTS,
-    MAX_QUERY_RESULTS, MAX_TOUR_STEPS, QueryLocation, SymbolHit, SymbolSearchOptions, TourStep,
+    AssistSource, CallCandidates, CallDirection, CallExpansion, CallHierarchy, CallHierarchyAnswer,
+    CallHierarchyOptions, CallHierarchyTarget, CallNode, CallResolution, CallSource, CallWalkStop,
+    CodeAnnotation, CodeDisplay, CodeHighlight, CodeTour, DEFAULT_CALL_HIERARCHY_RESULTS,
+    DisplayOutcome, IndexBuilding, LinePosition, LineRange, MAX_ANNOTATIONS,
+    MAX_CALL_HIERARCHY_DEPTH, MAX_DISPLAY_MARKDOWN_CHARS, MAX_HIGHLIGHTS, MAX_QUERY_RESULTS,
+    MAX_TOUR_STEPS, QueryLocation, SymbolHit, SymbolSearchOptions, TourStep,
 };
 use project::{Project, ProjectPath, WorktreeSettings};
 use serde_json::{Value, json};
@@ -36,8 +39,11 @@ use crate::tools::{
 };
 use crate::transport::MessageLimits;
 
+#[path = "type_layout_tool.rs"]
+mod type_layout_tool;
+
 /// アシストのツール。モデルからは `mcp__zed__<名>` に見える。
-pub const ASSIST_TOOL_NAMES: [&str; 9] = [
+pub const ASSIST_TOOL_NAMES: [&str; 11] = [
     "highlightCode",
     "annotateCode",
     "startCodeTour",
@@ -47,6 +53,8 @@ pub const ASSIST_TOOL_NAMES: [&str; 9] = [
     "searchSymbols",
     "findDefinition",
     "findReferences",
+    "getCallHierarchy",
+    "getTypeLayout",
 ];
 
 /// CLI に渡す `--mcp-config` の JSON が `Authorization` ヘッダーの値 (`Bearer <トークン>`) を
@@ -86,6 +94,9 @@ const MAX_PATH_CHARS: usize = 4096;
 pub(crate) const INSTRUCTIONS: &str = "You are connected to the Zed editor that the user is looking at (zed-jp-enhance).
 Use highlightCode / annotateCode to point at code in the user's editor instead of pasting it, and startCodeTour for step-by-step walkthroughs across files (the user steps with ‹ › buttons).
 Use getHover / findDefinition / findReferences / getDocumentSymbols / searchSymbols for precise, language-server-backed navigation (searchSymbols is a structural symbol search, not embeddings).
+Use getCallHierarchy before grep to find the callers of a function or the functions it calls.
+In C and C++ getCallHierarchy also answers from a name index (even without a language server, and for a function name alone); calls with source nameIndex, macro or candidate are name matches, not resolved calls.
+Use getTypeLayout to see what a C or C++ struct, union, enum, typedef or macro contains before searching for its header.
 Paths may be absolute or relative to a workspace folder; lines are 1-based and inclusive.
 Annotations are not saved, and calling a display tool again replaces what you showed before.";
 
@@ -111,7 +122,8 @@ pub fn cli_assist_config_json(url: &str) -> String {
     .to_string()
 }
 
-/// CLI に足す引数: `--mcp-config <JSON>` と、9 本を事前に許可する `--allowedTools`。
+/// CLI に足す引数: `--mcp-config <JSON>` と、[`ASSIST_TOOL_NAMES`] の全部を事前に許可する
+/// `--allowedTools`。
 /// どれも表示だけか、ワークツリーの中の読み取りだけ (CLI の Read / Grep と同等)。
 pub fn cli_assist_arguments(url: &str) -> Vec<String> {
     let allowed_tools = ASSIST_TOOL_NAMES
@@ -276,7 +288,77 @@ pub(crate) fn tools() -> Vec<Tool> {
             "Find the references to a symbol, using the language server.",
             position_schema(),
         ),
+        tool(
+            "getCallHierarchy",
+            "Get the functions that call a function (incoming) or the functions it calls \
+             (outgoing) as a tree, using the language server and, in C and C++, a name index. \
+             Point it at the function's name where it is declared or called (path, line and \
+             symbol), or in C and C++ give the name alone as symbol. Prefer it over grep for \
+             callers and callees.",
+            call_hierarchy_schema(),
+        ),
+        tool(
+            "getTypeLayout",
+            type_layout_tool::DESCRIPTION,
+            type_layout_tool::type_layout_schema(),
+        ),
     ]
+}
+
+fn call_hierarchy_schema() -> Value {
+    let mut schema = position_schema();
+    if let Some(properties) = schema.get_mut("properties").and_then(Value::as_object_mut) {
+        properties.insert(
+            "path".to_string(),
+            json!({
+                "type": "string",
+                "description": format!("{PATH_DESCRIPTION} Omit it with line to look the function up by symbol alone (C and C++)."),
+            }),
+        );
+        properties.insert(
+            "line".to_string(),
+            line_schema("1-based line where the function's name appears (declared or called). Give it with path."),
+        );
+        properties.insert(
+            "symbol".to_string(),
+            text_schema(
+                MAX_QUERY_TEXT_CHARS,
+                "The function's name. With path and line it picks the column; alone (C and C++) \
+                 the function is looked up by name, and several functions of the name come back \
+                 as candidates to call again with.",
+            ),
+        );
+        properties.insert(
+            "direction".to_string(),
+            json!({
+                "type": "string",
+                "enum": ["incoming", "outgoing"],
+                "description": "incoming: the functions that call it. outgoing: the functions it calls.",
+            }),
+        );
+        properties.insert(
+            "depth".to_string(),
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_CALL_HIERARCHY_DEPTH,
+                "description": "Levels to follow (default 1: only direct calls).",
+            }),
+        );
+        properties.insert(
+            "maxResults".to_string(),
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_QUERY_RESULTS,
+                "description": format!("Most calls to list over all levels (default {DEFAULT_CALL_HIERARCHY_RESULTS})."),
+            }),
+        );
+    }
+    if let Some(object) = schema.as_object_mut() {
+        object.insert("required".to_string(), json!(["direction"]));
+    }
+    schema
 }
 
 /// 引数のパスの確かめ方。ホストのクライアント (サンドボックスの外) か、サンドボックスの
@@ -363,6 +445,8 @@ pub(crate) async fn run_assist_tool_with(
             .map_err(|error| context.query_failed(name, error))?;
             context.locations_json(locations, cx).await
         }
+        "getCallHierarchy" => get_call_hierarchy(&mut context, &arguments, cx).await?,
+        "getTypeLayout" => type_layout_tool::get_type_layout(&mut context, &arguments, cx).await?,
         other => return Err(anyhow!("unknown tool {other}")),
     };
     Ok(vec![json_content(&result)?])
@@ -497,6 +581,81 @@ async fn search_symbols(
     Ok(context.symbols_json(hits, limit, cx).await)
 }
 
+async fn get_call_hierarchy(
+    context: &mut AssistContext<'_>,
+    arguments: &Value,
+    cx: &mut AsyncApp,
+) -> Result<Value> {
+    let options = call_hierarchy_options(arguments)?;
+    let target = context.call_hierarchy_target(arguments, cx).await?;
+    let by_name = matches!(target, CallHierarchyTarget::Name { .. });
+    let project = context.project.clone();
+    let answer = cx
+        .update(|cx| ide_query::call_hierarchy(&project, target, options, cx))
+        .await
+        .map_err(|error| context.query_failed("getCallHierarchy", error))?;
+    Ok(match answer {
+        CallHierarchyAnswer::Found(hierarchy) => context.call_hierarchy_json(hierarchy, cx).await,
+        CallHierarchyAnswer::Candidates(candidates) => {
+            context.call_candidates_json(candidates, cx).await
+        }
+        CallHierarchyAnswer::NoFunction {
+            used_name_index,
+            index_building,
+        } => json!({
+            "root": null,
+            "message": if by_name {
+                "The name index has no function of that name. Check the spelling, or give the path and line where it is declared or called."
+            } else {
+                "There is no function at that position. Give the line where the function is declared or called, and its name as symbol."
+            },
+            "indexStatus": index_status_json(used_name_index, index_building),
+        }),
+    })
+}
+
+/// `getCallHierarchy` の `indexStatus`。索引を使わなかったときは `null`。
+fn index_status_json(used_name_index: bool, building: Option<IndexBuilding>) -> Value {
+    match (used_name_index, building) {
+        (false, _) => Value::Null,
+        (true, Some(building)) => json!({
+            "state": "building",
+            "doneFiles": building.done,
+            "totalFiles": building.total,
+        }),
+        (true, None) => json!({ "state": "ready" }),
+    }
+}
+
+/// `getCallHierarchy` の 1 つの関数に並べる呼び出し箇所の行の数。残りは件数 (`callLineCount`) だけ。
+const MAX_LISTED_CALL_LINES: usize = 20;
+
+/// `getCallHierarchy` の `direction` / `depth` / `maxResults`。深さと件数は上限で切る。
+pub(crate) fn call_hierarchy_options(arguments: &Value) -> Result<CallHierarchyOptions> {
+    let direction = match string_field(arguments, "direction")? {
+        "incoming" => CallDirection::Incoming,
+        "outgoing" => CallDirection::Outgoing,
+        _ => {
+            return Err(client_error(
+                "direction must be \"incoming\" or \"outgoing\".",
+            ));
+        }
+    };
+    let depth = match arguments.get("depth") {
+        None | Some(Value::Null) => 1,
+        Some(_) => (line_field(arguments, "depth")? as usize).min(MAX_CALL_HIERARCHY_DEPTH),
+    };
+    let max_results = match arguments.get("maxResults") {
+        None | Some(Value::Null) => DEFAULT_CALL_HIERARCHY_RESULTS,
+        Some(_) => (line_field(arguments, "maxResults")? as usize).min(MAX_QUERY_RESULTS),
+    };
+    Ok(CallHierarchyOptions {
+        direction,
+        depth,
+        max_results,
+    })
+}
+
 struct AssistContext<'a> {
     project: Entity<Project>,
     paths: AssistPaths<'a>,
@@ -542,6 +701,36 @@ impl AssistContext<'_> {
                 column,
             },
         ))
+    }
+
+    /// `getCallHierarchy` の起点: `path` + `line` (+ `symbol` / `column`) の位置か、`symbol` だけの
+    /// 名前 (C / C++ の名前の索引で引く)。`path` だけを添えた名前は、そのファイルに近い定義を選ぶ。
+    async fn call_hierarchy_target(
+        &mut self,
+        arguments: &Value,
+        cx: &mut AsyncApp,
+    ) -> Result<CallHierarchyTarget> {
+        let has_line = !matches!(arguments.get("line"), None | Some(Value::Null));
+        let path = optional_string(arguments, "path")?;
+        if has_line {
+            if path.is_none() {
+                return Err(client_error("path is required with line."));
+            }
+            let (path, position) = self.position(arguments, cx).await?;
+            return Ok(CallHierarchyTarget::Position { path, position });
+        }
+        let path = path.filter(|path| !path.trim().is_empty());
+        let symbol = optional_text(arguments, "symbol", MAX_QUERY_TEXT_CHARS)?
+            .map(|symbol| symbol.trim().to_string())
+            .filter(|symbol| !symbol.is_empty())
+            .ok_or_else(|| {
+                client_error("Give path and line (with the name as symbol), or symbol alone.")
+            })?;
+        let near = match path {
+            Some(path) => Some(self.resolve(path, cx).await?),
+            None => None,
+        };
+        Ok(CallHierarchyTarget::Name { name: symbol, near })
     }
 
     /// 引数のパス (絶対パス・ルートからの相対パス・`file://`) を、検査を通したうえで
@@ -676,6 +865,12 @@ impl AssistContext<'_> {
         }
     }
 
+    /// サンドボックスのクライアントに、`ide_query` が中身を出してよいとしたプロジェクト内の
+    /// ファイルを読めないとき、名前 (関数名・シンボル名) もそのファイルの中身として伏せる。
+    fn refuses_names(&self, allowed_by_query: bool, visible: bool) -> bool {
+        matches!(self.paths, AssistPaths::Sandbox(_)) && allowed_by_query && !visible
+    }
+
     fn path_fields(
         &self,
         project_path: &ProjectPath,
@@ -723,6 +918,11 @@ impl AssistContext<'_> {
         let mut results = Vec::new();
         for hit in hits.into_iter().take(limit) {
             let visible = hit.in_project && self.allows_contents(&hit.path, cx).await;
+            // 名前が問い合わせに一致したこと自体がそのファイルの中身なので、`ide_query` が
+            // `private_files` のシンボルを落とすのと同じく、項目ごと出さない。
+            if self.refuses_names(hit.in_project, visible) {
+                continue;
+            }
             let mut object = serde_json::Map::new();
             object.insert("name".to_string(), Value::String(hit.name));
             object.insert("kind".to_string(), Value::String(hit.kind));
@@ -738,6 +938,170 @@ impl AssistContext<'_> {
             results.push(Value::Object(object));
         }
         json!({ "symbols": results, "truncated": truncated })
+    }
+
+    /// 木に出てくるファイルごとの「中身を見せてよいか」。
+    async fn visible_paths<'a>(
+        &mut self,
+        nodes: impl IntoIterator<Item = &'a CallNode>,
+        cx: &mut AsyncApp,
+    ) -> HashMap<ProjectPath, bool> {
+        let mut paths = Vec::new();
+        let mut pending = nodes.into_iter().collect::<Vec<_>>();
+        while let Some(node) = pending.pop() {
+            paths.push(node.path.clone());
+            pending.extend(node.children.iter());
+        }
+        paths.sort();
+        paths.dedup();
+        let mut visible_paths = HashMap::default();
+        for path in paths {
+            let visible = self.allows_contents(&path, cx).await;
+            visible_paths.insert(path, visible);
+        }
+        visible_paths
+    }
+
+    /// 呼び出しの木。中身 (プレビュー) と、そこから先の呼び出しは、引数のパスと同じ検査を通る
+    /// ファイルのものだけ。`ide_query` が辿った先でも、ここで伏せたファイルの下は出さない。
+    async fn call_hierarchy_json(&mut self, hierarchy: CallHierarchy, cx: &mut AsyncApp) -> Value {
+        let visible_paths = self.visible_paths([&hierarchy.root], cx).await;
+        let root = cx.update(|cx| self.call_node_json(&hierarchy.root, &visible_paths, cx));
+        let stopped_early = hierarchy.stopped.map(|stop| match stop {
+            CallWalkStop::RequestLimit => "requestLimit",
+            CallWalkStop::ResultLimit => "resultLimit",
+            CallWalkStop::TimeLimit => "timeLimit",
+            CallWalkStop::RemoteFileLimit => "remoteFileLimit",
+        });
+        json!({
+            "direction": match hierarchy.direction {
+                CallDirection::Incoming => "incoming",
+                CallDirection::Outgoing => "outgoing",
+            },
+            "depth": hierarchy.depth,
+            "root": root,
+            "omitted": hierarchy.omitted,
+            "stoppedEarly": stopped_early,
+            "truncated": hierarchy.omitted > 0
+                || stopped_early.is_some()
+                || hierarchy.index_truncated,
+            "indexStatus": index_status_json(hierarchy.used_name_index, hierarchy.index_building),
+            "withoutLanguageServer": hierarchy.without_language_server,
+            "indexTruncated": hierarchy.index_truncated,
+        })
+    }
+
+    /// 名前だけで引いて関数が複数あったとき。どれかの `path` と `line` で呼び直させる。
+    async fn call_candidates_json(
+        &mut self,
+        candidates: CallCandidates,
+        cx: &mut AsyncApp,
+    ) -> Value {
+        let visible_paths = self.visible_paths(&candidates.candidates, cx).await;
+        let listed = cx.update(|cx| {
+            candidates
+                .candidates
+                .iter()
+                .map(|candidate| self.call_node_json(candidate, &visible_paths, cx))
+                .collect::<Vec<_>>()
+        });
+        json!({
+            "root": null,
+            "candidates": listed,
+            "totalCandidates": candidates.total,
+            "message": "Several functions have this name (name matches from the name index). Call again with the path and line of the one you mean.",
+            "indexStatus": index_status_json(true, candidates.index_building),
+        })
+    }
+
+    fn call_node_json(
+        &self,
+        node: &CallNode,
+        visible_paths: &HashMap<ProjectPath, bool>,
+        cx: &App,
+    ) -> Value {
+        let visible = node.in_project
+            && node.contents_allowed
+            && visible_paths.get(&node.path).copied().unwrap_or(false);
+        // プロジェクトの中で `ide_query` の検査は通ったが、このクライアント (サンドボックス) には
+        // 読めないファイル。関数名もそのファイルの中身なので出さない。ホストのクライアントは
+        // そのファイルを読めるので、項目の無いファイル (走査されていない無視ディレクトリ) の
+        // 関数名も今まで通り出す。
+        let refused_here = self.refuses_names(node.in_project && node.contents_allowed, visible);
+        let mut object = serde_json::Map::new();
+        // `ide_query` は private・除外のファイルの関数名を空にして返す (名前もファイルの中身)。
+        let name = if node.name.is_empty() || refused_here {
+            Value::Null
+        } else {
+            Value::String(node.name.clone())
+        };
+        object.insert("name".to_string(), name);
+        object.insert("kind".to_string(), Value::String(node.kind.clone()));
+        self.path_fields(&node.path, &mut object, cx);
+        insert_lines(&mut object, node.lines);
+        object.insert("inProject".to_string(), Value::Bool(visible));
+        if !node.call_lines.is_empty() {
+            // 言語サーバーは 1 つの呼び出し元に何件でも呼び出し箇所を返せる。
+            let listed = node
+                .call_lines
+                .iter()
+                .take(MAX_LISTED_CALL_LINES)
+                .copied()
+                .collect::<Vec<_>>();
+            object.insert("callLines".to_string(), json!(listed));
+            if node.call_lines.len() > MAX_LISTED_CALL_LINES {
+                object.insert("callLineCount".to_string(), json!(node.call_lines.len()));
+            }
+        }
+        if visible && !node.preview.is_empty() {
+            object.insert("preview".to_string(), Value::String(node.preview.clone()));
+        }
+        object.insert(
+            "source".to_string(),
+            json!(match node.source {
+                CallSource::LanguageServer => "languageServer",
+                CallSource::NameIndex => "nameIndex",
+                CallSource::Candidate => "candidate",
+                CallSource::Macro => "macro",
+            }),
+        );
+        if let Some(count) = node.ambiguous {
+            object.insert("ambiguous".to_string(), json!(count));
+        }
+        match &node.resolution {
+            CallResolution::Definition => {}
+            CallResolution::NoDefinition => {
+                object.insert("noDefinition".to_string(), Value::Bool(true));
+            }
+            CallResolution::Indirect { member } => {
+                let member = if member.is_empty() || refused_here {
+                    Value::Null
+                } else {
+                    Value::String(member.clone())
+                };
+                object.insert("indirectVia".to_string(), member);
+            }
+        }
+        let expansion = match node.expansion {
+            CallExpansion::Expanded if !visible => "withheld",
+            CallExpansion::Expanded => "expanded",
+            CallExpansion::DepthLimit => "depthLimit",
+            CallExpansion::Recursive => "recursive",
+            CallExpansion::Repeated => "repeated",
+            CallExpansion::Withheld => "withheld",
+            CallExpansion::Stopped => "stopped",
+            CallExpansion::Failed => "failed",
+        };
+        object.insert("expansion".to_string(), json!(expansion));
+        if visible && !node.children.is_empty() {
+            let calls = node
+                .children
+                .iter()
+                .map(|child| self.call_node_json(child, visible_paths, cx))
+                .collect::<Vec<_>>();
+            object.insert("calls".to_string(), Value::Array(calls));
+        }
+        Value::Object(object)
     }
 
     fn outcome_json(&self, outcome: DisplayOutcome, cx: &mut AsyncApp) -> Value {
@@ -784,6 +1148,21 @@ pub(crate) async fn format_symbols_for_test(
         contents_allowed: HashMap::default(),
     };
     context.symbols_json(hits, MAX_DOCUMENT_SYMBOLS, cx).await
+}
+
+#[cfg(test)]
+pub(crate) async fn format_call_hierarchy_for_test(
+    project: Entity<Project>,
+    paths: AssistPaths<'_>,
+    hierarchy: CallHierarchy,
+    cx: &mut AsyncApp,
+) -> Value {
+    let mut context = AssistContext {
+        project,
+        paths,
+        contents_allowed: HashMap::default(),
+    };
+    context.call_hierarchy_json(hierarchy, cx).await
 }
 
 /// `getHover` の結果。本文は [`MAX_HOVER_CHARS`] 文字で切る。
@@ -833,6 +1212,26 @@ pub(crate) fn query_failure(sandboxed: bool, tool: &str, error: anyhow::Error) -
         return client_error(
             "The language server isn't running (it is not installed, is starting, or is \
              waiting for approval). Wait for it to start, then call again.",
+        );
+    }
+    if error
+        .downcast_ref::<ide_query::NameIndexUnavailable>()
+        .is_some()
+    {
+        return client_error(
+            "This project has no name index (it covers C and C++ files when it is turned on), \
+             so a function can't be looked up by name alone. Give the path and line where it is \
+             declared or called, with its name as symbol.",
+        );
+    }
+    if error
+        .downcast_ref::<ide_query::CallHierarchyNotSupported>()
+        .is_some()
+    {
+        return client_error(
+            "The language server doesn't support call hierarchy, so this project can't answer \
+             it. To find the callers, grep for `name(`; to find what a function calls, read its \
+             body. Say that these are text matches, not resolved calls.",
         );
     }
     if sandboxed {

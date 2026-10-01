@@ -1,0 +1,3279 @@
+//! ADR-F68: in C and C++, the hover popover also shows what the hovered name's type holds
+//! (members, enumerators, a macro's definition), found by name in the symbol index.
+//!
+//! The section is its own popover, added after the language server's: it keeps the language
+//! server's popover where it was when it arrives later. Members expand in place, one level at a
+//! time, for as long as the popover is open.
+
+use std::{ops::Range, time::Duration};
+
+use collections::HashMap;
+use futures::{
+    FutureExt as _,
+    future::{Either, LocalBoxFuture},
+};
+use gpui::{
+    AnyElement, App, AsyncApp, AsyncWindowContext, ClipboardItem, Context, ElementId, Entity,
+    FontWeight, Pixels, ScrollHandle, SharedString, Size, Subscription, Task, TaskExt as _,
+    WeakEntity, Window, div, px,
+};
+use language::{Bias, Buffer, BufferSnapshot, CharKind, LanguageName, Point, ToOffset as _};
+use markdown::{CopyButtonVisibility, Markdown, MarkdownElement};
+use project::{
+    HoverBlockKind, Project, ProjectPath, WorktreeId,
+    project_settings::ProjectSettings,
+    symbol_index_store::{
+        Confidence, MemberExpansion, MemberExpansionTarget, MemberSelector, MemberSummary,
+        MemberSummaryKind, ResolvedTypes, SourceLanguage, SymbolIndexStore, TagKind, TypeHover,
+        TypeHoverSubject, TypeRef, TypeSummary, TypeSummaryKind, TypeTreeOptions, TypeTreeSubject,
+        type_name_of_text,
+    },
+};
+use settings::Settings as _;
+use theme_settings::ThemeSettings;
+use ui::{CommonAnimationExt as _, TextSize, Tooltip, prelude::*};
+use util::{ResultExt as _, paths::PathStyle};
+
+use crate::{
+    Anchor, Editor, SelectionEffects,
+    hover_popover::{InfoPopover, hover_markdown_style},
+    scroll::Autoscroll,
+};
+
+/// A section that answers within this of the language server is shown with it rather than
+/// added below it afterwards.
+const GRACE_PERIOD: Duration = Duration::from_millis(50);
+/// Rows of one type shown before "N more".
+const INITIAL_ROWS: usize = 30;
+/// Rows each "N more" adds. The rows are plain elements laid out on every frame of the editor,
+/// so a type with a thousand members is not shown all at once.
+const MORE_ROWS: usize = 100;
+const COMMENT_CHARS: usize = 60;
+const NAME_COLUMN_CHARS: usize = 24;
+const TYPE_COLUMN_CHARS: usize = 40;
+
+#[cfg(test)]
+thread_local! {
+    static QUERIES_FOR_TESTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn queries_for_tests() -> usize {
+    QUERIES_FOR_TESTS.with(|queries| queries.get())
+}
+
+/// A question to the index about the name under the pointer, asked alongside the language
+/// server's hover.
+pub(crate) struct TypeContentsQuery {
+    describe: Task<anyhow::Result<Option<TypeHover>>>,
+    grace_period: Task<()>,
+    store: WeakEntity<SymbolIndexStore>,
+    project: WeakEntity<Project>,
+    path: ProjectPath,
+    source_language: SourceLanguage,
+    language_name: LanguageName,
+    snapshot: BufferSnapshot,
+    position: Point,
+}
+
+/// A section being looked up, and when the language server's popover stops waiting for it.
+pub(crate) struct PendingTypeContents {
+    future: LocalBoxFuture<'static, Option<TypeContentsData>>,
+    grace_period: Task<()>,
+}
+
+pub(crate) struct TypeContentsData {
+    hover: TypeHover,
+    /// The type as the language server wrote it, when the index's own guess was not good
+    /// enough.
+    type_from_language_server: bool,
+    language_server_answered: bool,
+    lookup: Option<Lookup>,
+    store: WeakEntity<SymbolIndexStore>,
+    project: WeakEntity<Project>,
+    language_name: LanguageName,
+    snapshot: BufferSnapshot,
+}
+
+/// Starts looking up the name at `position` when the buffer is C or C++, the file is in the
+/// project and the setting allows it.
+pub(crate) fn query(
+    editor: &Editor,
+    buffer: &Entity<Buffer>,
+    position: text::Anchor,
+    cx: &mut App,
+) -> Option<TypeContentsQuery> {
+    let project = editor.project()?.clone();
+    let buffer = buffer.read(cx);
+    let language = buffer.language()?;
+    let source_language = match language.name().as_ref() {
+        "C" => SourceLanguage::C,
+        "C++" => SourceLanguage::Cpp,
+        _ => return None,
+    };
+    let file = buffer.file()?;
+    let path = ProjectPath {
+        worktree_id: file.worktree_id(cx),
+        path: file.path().clone(),
+    };
+    if !ProjectSettings::get(Some((&path).into()), cx)
+        .symbol_index
+        .hover_type_contents
+    {
+        return None;
+    }
+    let language_name = language.name();
+    let snapshot = buffer.snapshot();
+    let offset = position.to_offset(&snapshot);
+    let position = snapshot.offset_to_point(offset);
+    let store = project.read(cx).symbol_index_store().clone();
+    #[cfg(test)]
+    QUERIES_FOR_TESTS.with(|queries| queries.set(queries.get() + 1));
+    let describe = store.update(cx, |store, cx| {
+        store.describe_type_at(
+            path.clone(),
+            position,
+            Some(snapshot.clone()),
+            Some(source_language),
+            1,
+            cx,
+        )
+    });
+    Some(TypeContentsQuery {
+        describe,
+        grace_period: cx.background_executor().timer(GRACE_PERIOD),
+        store: store.downgrade(),
+        project: project.downgrade(),
+        path,
+        source_language,
+        language_name,
+        snapshot,
+        position,
+    })
+}
+
+impl TypeContentsQuery {
+    /// Completes the index's answer with the type the language server's hover names, when the
+    /// index could only guess the type by name or found nothing.
+    pub(crate) fn finish(
+        self,
+        language_server_hovers: &[project::Hover],
+        cx: &AsyncApp,
+    ) -> PendingTypeContents {
+        let type_text = language_server_type_text(language_server_hovers);
+        let language_server_answered = language_server_hovers.iter().any(|hover| !hover.is_empty());
+        let mut cx = cx.clone();
+        let Self {
+            describe,
+            grace_period,
+            store,
+            project,
+            path,
+            source_language,
+            language_name,
+            snapshot,
+            position,
+        } = self;
+        let future = async move {
+            let mut hover = describe.await.log_err().flatten();
+            let mut type_from_language_server = false;
+            if needs_language_server_type(hover.as_ref())
+                && let Some(type_text) = type_text
+                && let Some((core_name, tag)) = type_name_of_text(&type_text, source_language)
+            {
+                let resolve = store
+                    .update(&mut cx, |store, cx| {
+                        store.resolve_type(&core_name, tag, Some(path.clone()), 1, cx)
+                    })
+                    .ok()?;
+                if let Some(types) = resolve.await.log_err()
+                    && !types.types.is_empty()
+                {
+                    let (name, range) = match &hover {
+                        Some(hover) => (hover.name.clone(), hover.range.clone()),
+                        None => word_at(&snapshot, position)?,
+                    };
+                    hover = Some(TypeHover {
+                        name,
+                        range,
+                        subject: TypeHoverSubject::Variable {
+                            type_text,
+                            core_name: Some(core_name),
+                            confidence: Confidence::NameOnly,
+                            declaration: None,
+                        },
+                        types,
+                    });
+                    type_from_language_server = true;
+                }
+            }
+            let hover = hover?;
+            let lookup = root_lookup(&hover.subject, source_language, &path);
+            Some(TypeContentsData {
+                hover,
+                type_from_language_server,
+                language_server_answered,
+                lookup,
+                store,
+                project,
+                language_name,
+                snapshot,
+            })
+        }
+        .boxed_local();
+        PendingTypeContents {
+            future,
+            grace_period,
+        }
+    }
+}
+
+/// The section, when it is ready within [`GRACE_PERIOD`]; otherwise what is still to come.
+pub(crate) async fn within_grace_period(
+    pending: Option<PendingTypeContents>,
+) -> (
+    Option<TypeContentsData>,
+    Option<LocalBoxFuture<'static, Option<TypeContentsData>>>,
+) {
+    let Some(PendingTypeContents {
+        future,
+        grace_period,
+    }) = pending
+    else {
+        return (None, None);
+    };
+    match futures::future::select(future, Box::pin(grace_period)).await {
+        Either::Left((data, _)) => (data, None),
+        Either::Right(((), future)) => (None, Some(future)),
+    }
+}
+
+/// Adds the section below the popovers already shown once it is ready. Runs in the hover's
+/// task, so a hover that moves on or closes drops it.
+pub(crate) async fn append_later(
+    later: Option<LocalBoxFuture<'static, Option<TypeContentsData>>>,
+    editor: &WeakEntity<Editor>,
+    anchor: Anchor,
+    keyboard_grace: bool,
+    cx: &mut AsyncWindowContext,
+) {
+    let Some(later) = later else {
+        return;
+    };
+    let Some(data) = later.await else {
+        return;
+    };
+    editor
+        .update_in(cx, |editor, window, cx| {
+            if let Some(popover) = popover(data, editor, anchor, keyboard_grace, window, cx) {
+                editor.hover_state.info_popovers.push(popover);
+                cx.notify();
+                window.refresh();
+            }
+        })
+        .ok();
+}
+
+/// The popover of the section, or `None` when the index had nothing worth adding.
+pub(crate) fn popover(
+    data: TypeContentsData,
+    editor: &Editor,
+    anchor: Anchor,
+    keyboard_grace: bool,
+    _window: &mut Window,
+    cx: &mut Context<Editor>,
+) -> Option<InfoPopover> {
+    if !is_worth_showing(&data) {
+        return None;
+    }
+    let snapshot = &data.snapshot;
+    let start = snapshot.clip_point(data.hover.range.start, Bias::Left);
+    let end = snapshot.clip_point(data.hover.range.end, Bias::Left);
+    let buffer_range = snapshot.anchor_after(start)..snapshot.anchor_before(end.max(start));
+    let symbol_range = editor
+        .buffer()
+        .read(cx)
+        .snapshot(cx)
+        .buffer_anchor_range_to_anchor_range(buffer_range)
+        .unwrap_or(anchor..anchor);
+    let editor_handle = cx.entity().downgrade();
+    let contents = cx.new(|cx| TypeContents::new(data, editor_handle, cx));
+    Some(InfoPopover::for_type_contents(
+        symbol_range,
+        contents,
+        anchor,
+        keyboard_grace,
+        cx,
+    ))
+}
+
+fn is_worth_showing(data: &TypeContentsData) -> bool {
+    let has_types = !data.hover.types.types.is_empty();
+    match &data.hover.subject {
+        TypeHoverSubject::Macro { macros } => !macros.is_empty(),
+        TypeHoverSubject::Member { steps, .. } => !steps.is_empty(),
+        TypeHoverSubject::TypeName { .. } => has_types,
+        // A builtin type adds nothing to what the language server already says.
+        TypeHoverSubject::Variable { .. } => has_types || !data.language_server_answered,
+    }
+}
+
+fn needs_language_server_type(hover: Option<&TypeHover>) -> bool {
+    match hover {
+        None => true,
+        Some(hover) => match &hover.subject {
+            TypeHoverSubject::Variable {
+                confidence: Confidence::NameOnly,
+                ..
+            } => true,
+            TypeHoverSubject::Variable { .. } | TypeHoverSubject::TypeName { .. } => {
+                hover.types.types.is_empty()
+            }
+            TypeHoverSubject::Member { .. } | TypeHoverSubject::Macro { .. } => false,
+        },
+    }
+}
+
+fn word_at(snapshot: &BufferSnapshot, position: Point) -> Option<(String, Range<Point>)> {
+    let offset = snapshot.point_to_offset(position);
+    let (range, kind) = snapshot.surrounding_word(offset, None);
+    if kind != Some(CharKind::Word) || range.is_empty() {
+        return None;
+    }
+    let name = snapshot.text_for_range(range.clone()).collect::<String>();
+    Some((
+        name,
+        snapshot.offset_to_point(range.start)..snapshot.offset_to_point(range.end),
+    ))
+}
+
+/// The type a language server's hover names: clangd writes `Type: `...`` for variables and
+/// members, and a declaration in its first code block. Only a starting point for the index;
+/// the text is checked by [`type_name_of_text`].
+fn language_server_type_text(hovers: &[project::Hover]) -> Option<String> {
+    let blocks = hovers.iter().flat_map(|hover| hover.contents.iter());
+    for block in blocks.clone() {
+        if let Some(type_text) = block.text.lines().find_map(type_line) {
+            return Some(type_text);
+        }
+    }
+    for block in blocks {
+        let code = match &block.kind {
+            HoverBlockKind::Code { .. } => Some(block.text.as_str()),
+            HoverBlockKind::Markdown | HoverBlockKind::PlainText => first_fenced_code(&block.text),
+        };
+        if let Some(declaration) = code.and_then(declaration_line) {
+            return Some(declaration);
+        }
+    }
+    None
+}
+
+fn type_line(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix("Type:")?.trim();
+    let rest = match rest.split_once('`') {
+        Some((_, quoted)) => quoted.split('`').next().unwrap_or_default(),
+        None => rest.split(" (aka").next().unwrap_or_default(),
+    };
+    let rest = rest.trim();
+    (!rest.is_empty()).then(|| rest.to_string())
+}
+
+fn first_fenced_code(markdown: &str) -> Option<&str> {
+    let start = markdown.find("```")?;
+    let after_fence = &markdown[start..];
+    let body_start = after_fence.find('\n')? + 1;
+    let body = &after_fence[body_start..];
+    let end = body.find("```").unwrap_or(body.len());
+    Some(&body[..end])
+}
+
+fn declaration_line(code: &str) -> Option<String> {
+    let line = code
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with("//"))?;
+    let line = line.trim_end_matches(['{', ';', ' ']);
+    (!line.is_empty()).then(|| line.to_string())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Lookup {
+    name: String,
+    tag: Option<TagKind>,
+    near: Option<ProjectPath>,
+}
+
+fn root_lookup(
+    subject: &TypeHoverSubject,
+    source_language: SourceLanguage,
+    near: &ProjectPath,
+) -> Option<Lookup> {
+    let (name, tag) = match subject {
+        TypeHoverSubject::TypeName { name, tag } => (name.clone(), *tag),
+        TypeHoverSubject::Variable {
+            type_text,
+            core_name,
+            ..
+        } => type_name_of_text(type_text, source_language)
+            .or_else(|| core_name.clone().map(|name| (name, None)))?,
+        TypeHoverSubject::Member { steps, .. } => {
+            let member = steps.last()?.member.as_ref()?;
+            (member.core_name.clone()?, member.tag)
+        }
+        TypeHoverSubject::Macro { .. } => return None,
+    };
+    Some(Lookup {
+        name,
+        tag,
+        near: Some(near.clone()),
+    })
+}
+
+fn member_lookup(member: &MemberSummary, owner: &TypeSummary) -> Option<Lookup> {
+    Some(Lookup {
+        name: member.core_name.clone()?,
+        tag: member.tag,
+        near: Some(owner.path.clone()),
+    })
+}
+
+/// A member within the tree: at each level, the candidate shown and the member's index.
+type MemberPath = Vec<(usize, usize)>;
+
+struct Candidate {
+    summary: TypeSummary,
+    members: Vec<MemberState>,
+    shown_rows: usize,
+    load_failed: bool,
+}
+
+impl Candidate {
+    fn new(summary: TypeSummary) -> Self {
+        let members = summary
+            .members
+            .iter()
+            .map(|member| match &member.inline {
+                Some(body) => MemberState {
+                    open: true,
+                    expansion: Expansion::Ready(Box::new(CandidatesView::single((**body).clone()))),
+                },
+                None => MemberState {
+                    open: false,
+                    expansion: Expansion::None,
+                },
+            })
+            .collect();
+        Self {
+            summary,
+            members,
+            shown_rows: INITIAL_ROWS,
+            load_failed: false,
+        }
+    }
+}
+
+struct MemberState {
+    open: bool,
+    expansion: Expansion,
+}
+
+enum Expansion {
+    None,
+    Loading(#[allow(dead_code)] Task<()>),
+    Ready(Box<CandidatesView>),
+    NotFound,
+    NotExpandable,
+    Recursive,
+}
+
+/// Same-name definitions of one type, one of them shown.
+struct CandidatesView {
+    /// A body defined in place, shown under its member without a heading of its own.
+    inline: bool,
+    lookup: Option<Lookup>,
+    candidates: Vec<Candidate>,
+    total: usize,
+    truncated: bool,
+    selected: usize,
+    loading: Option<(usize, Task<()>)>,
+}
+
+impl CandidatesView {
+    fn new(types: ResolvedTypes, lookup: Option<Lookup>) -> Self {
+        Self {
+            inline: false,
+            lookup,
+            total: types.total.max(types.types.len()),
+            truncated: types.truncated,
+            candidates: types.types.into_iter().map(Candidate::new).collect(),
+            selected: 0,
+            loading: None,
+        }
+    }
+
+    fn single(summary: TypeSummary) -> Self {
+        Self {
+            inline: true,
+            lookup: None,
+            candidates: vec![Candidate::new(summary)],
+            total: 1,
+            truncated: false,
+            selected: 0,
+            loading: None,
+        }
+    }
+
+    fn selected(&self) -> Option<(usize, &Candidate)> {
+        let index = self.selected.min(self.candidates.len().checked_sub(1)?);
+        Some((index, self.candidates.get(index)?))
+    }
+}
+
+struct MacroView {
+    macros: Vec<project::symbol_index_store::MacroSummary>,
+    markdown: Vec<Entity<Markdown>>,
+    selected: usize,
+}
+
+enum Heading {
+    None,
+    Variable {
+        name: String,
+        type_text: String,
+        confidence: Option<Confidence>,
+    },
+    Member {
+        root_type: Option<String>,
+        steps: Vec<project::symbol_index_store::ChainStepSummary>,
+        complete: bool,
+    },
+}
+
+pub(crate) struct TypeContents {
+    editor: WeakEntity<Editor>,
+    project: WeakEntity<Project>,
+    store: WeakEntity<SymbolIndexStore>,
+    heading: Heading,
+    root: Option<CandidatesView>,
+    macros: Option<MacroView>,
+    path_labels: PathLabels,
+    copy_task: Option<Task<()>>,
+    _subscriptions: Vec<Subscription>,
+}
+
+/// How locations are written: with the project's separator, and with the worktree's name in
+/// front when the project has several (a relative path alone could be in any of them).
+struct PathLabels {
+    path_style: PathStyle,
+    root_names: Option<HashMap<WorktreeId, String>>,
+}
+
+impl PathLabels {
+    fn new(project: Option<&Project>, cx: &App) -> Self {
+        let Some(project) = project else {
+            return Self {
+                path_style: PathStyle::local(),
+                root_names: None,
+            };
+        };
+        let worktrees = project.visible_worktrees(cx).collect::<Vec<_>>();
+        let root_names = (worktrees.len() > 1).then(|| {
+            worktrees
+                .iter()
+                .map(|worktree| {
+                    let worktree = worktree.read(cx);
+                    (worktree.id(), worktree.root_name_str().to_string())
+                })
+                .collect()
+        });
+        Self {
+            path_style: project.path_style(cx),
+            root_names,
+        }
+    }
+}
+
+impl TypeContents {
+    fn new(data: TypeContentsData, editor: WeakEntity<Editor>, cx: &mut Context<Self>) -> Self {
+        let TypeContentsData {
+            hover,
+            type_from_language_server,
+            lookup,
+            store,
+            project,
+            language_name,
+            language_server_answered: _,
+            snapshot: _,
+        } = data;
+        let mut subscriptions = Vec::new();
+        let mut macros = None;
+        let mut root = None;
+        let heading = match hover.subject {
+            TypeHoverSubject::TypeName { .. } => Heading::None,
+            TypeHoverSubject::Variable {
+                type_text,
+                confidence,
+                ..
+            } => Heading::Variable {
+                name: hover.name.clone(),
+                type_text,
+                confidence: (!type_from_language_server).then_some(confidence),
+            },
+            TypeHoverSubject::Member {
+                root_type,
+                steps,
+                complete,
+                ..
+            } => {
+                if hover.types.types.is_empty()
+                    && let Some(body) = steps
+                        .last()
+                        .and_then(|step| step.member.as_ref())
+                        .and_then(|member| member.inline.as_ref())
+                {
+                    root = Some(CandidatesView::single((**body).clone()));
+                }
+                Heading::Member {
+                    root_type,
+                    steps,
+                    complete,
+                }
+            }
+            TypeHoverSubject::Macro { macros: found } => {
+                let language_registry = project
+                    .upgrade()
+                    .map(|project| project.read(cx).languages().clone());
+                let markdown = found
+                    .iter()
+                    .map(|found| {
+                        let markdown = cx.new(|cx| {
+                            Markdown::new(
+                                code_block(&found.text, &language_name).into(),
+                                language_registry.clone(),
+                                Some(language_name.clone()),
+                                cx,
+                            )
+                        });
+                        subscriptions.push(cx.observe(&markdown, |_, _, cx| cx.notify()));
+                        markdown
+                    })
+                    .collect();
+                macros = Some(MacroView {
+                    macros: found,
+                    markdown,
+                    selected: 0,
+                });
+                Heading::None
+            }
+        };
+        if root.is_none() && !hover.types.types.is_empty() {
+            root = Some(CandidatesView::new(hover.types, lookup));
+        }
+        let path_labels = PathLabels::new(
+            project.upgrade().as_ref().map(|project| project.read(cx)),
+            cx,
+        );
+        Self {
+            editor,
+            project,
+            store,
+            heading,
+            root,
+            macros,
+            path_labels,
+            copy_task: None,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    fn view_mut(&mut self, path: &[(usize, usize)]) -> Option<&mut CandidatesView> {
+        let mut view = self.root.as_mut()?;
+        for &(candidate, member) in path {
+            let member = view
+                .candidates
+                .get_mut(candidate)?
+                .members
+                .get_mut(member)?;
+            match &mut member.expansion {
+                Expansion::Ready(child) => view = child,
+                _ => return None,
+            }
+        }
+        Some(view)
+    }
+
+    fn view(&self, path: &[(usize, usize)]) -> Option<&CandidatesView> {
+        let mut view = self.root.as_ref()?;
+        for &(candidate, member) in path {
+            let member = view.candidates.get(candidate)?.members.get(member)?;
+            match &member.expansion {
+                Expansion::Ready(child) => view = child,
+                _ => return None,
+            }
+        }
+        Some(view)
+    }
+
+    /// The definitions a member at `path` is inside, outermost first.
+    fn ancestor_refs(&self, path: &[(usize, usize)]) -> Vec<TypeRef> {
+        let mut refs = Vec::new();
+        for depth in 0..path.len() {
+            let Some(view) = self.view(&path[..depth]) else {
+                break;
+            };
+            let Some((candidate, _)) = path.get(depth) else {
+                break;
+            };
+            if let Some(type_ref) = view
+                .candidates
+                .get(*candidate)
+                .and_then(|candidate| candidate.summary.type_ref.clone())
+            {
+                refs.push(type_ref);
+            }
+        }
+        refs
+    }
+
+    fn toggle_member(&mut self, path: MemberPath, cx: &mut Context<Self>) {
+        let Some(((candidate_index, member_index), parent)) = path.split_last() else {
+            return;
+        };
+        let (candidate_index, member_index) = (*candidate_index, *member_index);
+        let ancestors = self.ancestor_refs(&path);
+        let store = self.store.clone();
+        let Some(view) = self.view_mut(parent) else {
+            return;
+        };
+        let Some(candidate) = view.candidates.get_mut(candidate_index) else {
+            return;
+        };
+        let Some(member) = candidate.summary.members.get(member_index).cloned() else {
+            return;
+        };
+        let lookup = member_lookup(&member, &candidate.summary);
+        let owner = candidate.summary.type_ref.clone();
+        let Some(state) = candidate.members.get_mut(member_index) else {
+            return;
+        };
+        match &state.expansion {
+            Expansion::Loading(_) | Expansion::NotExpandable | Expansion::Recursive => {}
+            Expansion::Ready(_) | Expansion::NotFound => state.open = !state.open,
+            Expansion::None => {
+                let Some(owner) = owner else {
+                    state.expansion = Expansion::NotExpandable;
+                    cx.notify();
+                    return;
+                };
+                let selector = match (&member.name, member.index_path.is_empty()) {
+                    (_, false) => MemberSelector::Path(member.index_path.clone()),
+                    (Some(name), true) => MemberSelector::Name(name.clone()),
+                    (None, true) => {
+                        state.expansion = Expansion::NotExpandable;
+                        cx.notify();
+                        return;
+                    }
+                };
+                let Ok(expand) =
+                    store.update(cx, |store, cx| store.expand_member(owner, selector, 1, cx))
+                else {
+                    return;
+                };
+                let task_path = path.clone();
+                let task = cx.spawn(async move |this, cx| {
+                    let expansion = expand.await;
+                    this.update(cx, |this, cx| {
+                        let expansion = match expansion {
+                            Ok(expansion) => expansion_from(expansion, &ancestors, lookup),
+                            Err(error) => {
+                                log::error!("expanding a member for the hover: {error:#}");
+                                Expansion::NotFound
+                            }
+                        };
+                        if let Some(state) = this.member_state_mut(&task_path) {
+                            state.expansion = expansion;
+                            cx.notify();
+                        }
+                    })
+                    .ok();
+                });
+                state.open = true;
+                state.expansion = Expansion::Loading(task);
+            }
+        }
+        cx.notify();
+    }
+
+    fn member_state_mut(&mut self, path: &[(usize, usize)]) -> Option<&mut MemberState> {
+        let ((candidate, member), parent) = path.split_last()?;
+        self.view_mut(parent)?
+            .candidates
+            .get_mut(*candidate)?
+            .members
+            .get_mut(*member)
+    }
+
+    fn select_candidate(&mut self, path: MemberPath, forward: bool, cx: &mut Context<Self>) {
+        let store = self.store.clone();
+        let Some(view) = self.view_mut(&path) else {
+            return;
+        };
+        let count = view.candidates.len();
+        if count < 2 {
+            return;
+        }
+        let current = view.selected.min(count - 1);
+        let selected = if forward {
+            (current + 1) % count
+        } else {
+            (current + count - 1) % count
+        };
+        // What was opened under a definition is about that definition: coming back to it starts
+        // closed again, and the questions still pending for it stop.
+        if let Some(previous) = view.candidates.get_mut(current)
+            && previous.summary.members_read
+        {
+            *previous = Candidate::new(previous.summary.clone());
+        }
+        view.selected = selected;
+        cx.notify();
+        let Some(candidate) = view.candidates.get_mut(selected) else {
+            return;
+        };
+        if candidate.summary.members_read || candidate.load_failed {
+            return;
+        }
+        let Some(lookup) = view.lookup.clone() else {
+            candidate.load_failed = true;
+            return;
+        };
+        let wanted = candidate.summary.clone();
+        let Ok(resolve) = store.update(cx, |store, cx| {
+            store.resolve_type(
+                &lookup.name,
+                lookup.tag,
+                lookup.near.clone(),
+                project::symbol_index_store::MAX_TYPE_READ_LIMIT,
+                cx,
+            )
+        }) else {
+            return;
+        };
+        let task = cx.spawn(async move |this, cx| {
+            let resolved = resolve.await.log_err();
+            this.update(cx, |this, cx| {
+                let Some(view) = this.view_mut(&path) else {
+                    return;
+                };
+                if view.loading.as_ref().map(|(index, _)| *index) == Some(selected) {
+                    view.loading = None;
+                }
+                let found = resolved.and_then(|resolved| {
+                    resolved
+                        .types
+                        .into_iter()
+                        .find(|summary| summary.members_read && same_definition(summary, &wanted))
+                });
+                if let Some(candidate) = view.candidates.get_mut(selected) {
+                    match found {
+                        Some(summary) => *candidate = Candidate::new(summary),
+                        None => candidate.load_failed = true,
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        });
+        view.loading = Some((selected, task));
+    }
+
+    fn show_more_rows(&mut self, path: MemberPath, candidate: usize, cx: &mut Context<Self>) {
+        if let Some(candidate) = self
+            .view_mut(&path)
+            .and_then(|view| view.candidates.get_mut(candidate))
+        {
+            candidate.shown_rows = candidate.shown_rows.saturating_add(MORE_ROWS);
+            cx.notify();
+        }
+    }
+
+    fn select_macro(&mut self, forward: bool, cx: &mut Context<Self>) {
+        if let Some(macros) = &mut self.macros {
+            let count = macros.macros.len();
+            if count > 1 {
+                let current = macros.selected.min(count - 1);
+                macros.selected = if forward {
+                    (current + 1) % count
+                } else {
+                    (current + count - 1) % count
+                };
+                cx.notify();
+            }
+        }
+    }
+
+    /// Puts the shown type's members, two levels of named types down, on the clipboard.
+    fn copy_type_contents(&mut self, cx: &mut Context<Self>) {
+        let Some(root) = &self.root else {
+            return;
+        };
+        let Some((_, candidate)) = root.selected() else {
+            return;
+        };
+        let subject = match (&candidate.summary.type_ref, &root.lookup) {
+            (Some(type_ref), _) => TypeTreeSubject::Ref(type_ref.clone()),
+            (None, Some(lookup)) => TypeTreeSubject::Name {
+                name: lookup.name.clone(),
+                tag: lookup.tag,
+                near: lookup.near.clone(),
+            },
+            (None, None) => return,
+        };
+        let Ok(tree) = self.store.update(cx, |store, cx| {
+            store.type_tree_text(subject, TypeTreeOptions::default(), cx)
+        }) else {
+            return;
+        };
+        self.copy_task = Some(cx.spawn(async move |this, cx| {
+            let tree = tree.await.log_err().flatten();
+            this.update(cx, |this, cx| {
+                this.copy_task = None;
+                if let Some(tree) = tree {
+                    cx.write_to_clipboard(ClipboardItem::new_string(tree.text));
+                }
+                cx.notify();
+            })
+            .ok();
+        }));
+        cx.notify();
+    }
+
+    fn lines(&self) -> Vec<Line> {
+        let mut lines = Vec::new();
+        match &self.heading {
+            Heading::None => {}
+            Heading::Variable {
+                name,
+                type_text,
+                confidence,
+            } => lines.push(Line::Variable {
+                name: name.clone(),
+                type_text: type_text.clone(),
+                confidence: confidence_label(*confidence),
+            }),
+            Heading::Member {
+                root_type,
+                steps,
+                complete,
+            } => lines.push(Line::Chain(chain_segments(
+                root_type.as_deref(),
+                steps,
+                *complete,
+            ))),
+        }
+        if let Some(macros) = &self.macros
+            && let Some(index) = macros.macros.len().checked_sub(1)
+        {
+            let selected = macros.selected.min(index);
+            if let Some(found) = macros.macros.get(selected) {
+                lines.push(Line::Macro {
+                    name: found.name.clone(),
+                    location: location_label(&found.path, found.range.start, &self.path_labels),
+                    jump: (found.path.clone(), found.range.start),
+                    selected,
+                    total: macros.macros.len(),
+                    truncated: found.truncated,
+                });
+            }
+        }
+        if let Some(root) = &self.root {
+            let mut ancestors = Vec::new();
+            self.push_candidates(root, &mut Vec::new(), 0, &mut ancestors, &mut lines);
+        }
+        lines
+    }
+
+    fn push_candidates<'a>(
+        &self,
+        view: &'a CandidatesView,
+        path: &mut MemberPath,
+        depth: usize,
+        ancestors: &mut Vec<&'a TypeSummary>,
+        lines: &mut Vec<Line>,
+    ) {
+        let Some((selected, candidate)) = view.selected() else {
+            lines.push(Line::Note {
+                depth,
+                text: i18n::t!("Definition not found").into(),
+            });
+            return;
+        };
+        let summary = &candidate.summary;
+        if !view.inline || depth == 0 {
+            lines.push(Line::TypeHeading {
+                depth,
+                view_path: path.clone(),
+                name: summary.name.clone(),
+                location: location_label(&summary.path, summary.range.start, &self.path_labels),
+                jump: (summary.path.clone(), summary.range.start),
+                selected,
+                listed: view.candidates.len(),
+                total: view.total,
+                details: type_details(summary),
+                condition: summary.condition.clone(),
+                copying: depth == 0 && self.copy_task.is_some(),
+            });
+        }
+        if view.truncated {
+            lines.push(Line::Note {
+                depth,
+                text: i18n::t!("Only part is shown").into(),
+            });
+        }
+        if view.loading.as_ref().map(|(index, _)| *index) == Some(selected) {
+            lines.push(Line::Loading { depth });
+            return;
+        }
+        if !summary.members_read {
+            if summary.kind != TypeSummaryKind::Typedef || summary.alias.is_none() {
+                lines.push(Line::Note {
+                    depth,
+                    text: i18n::t!("Only the location of this definition is known").into(),
+                });
+            }
+            return;
+        }
+        let row_count = summary.members.len() + summary.enumerators.len();
+        let mut shown = 0;
+        ancestors.push(summary);
+        for (index, member) in summary.members.iter().enumerate() {
+            if shown >= candidate.shown_rows {
+                break;
+            }
+            shown += 1;
+            let Some(state) = candidate.members.get(index) else {
+                break;
+            };
+            let mut member_path = path.clone();
+            member_path.push((selected, index));
+            let can_expand =
+                member.inline.is_some() || (member.expandable && summary.type_ref.is_some());
+            let toggle = if !can_expand {
+                Toggle::None
+            } else if matches!(state.expansion, Expansion::Recursive)
+                || (member.inline.is_none() && refers_to_ancestor(member, ancestors))
+            {
+                Toggle::Recursive
+            } else {
+                match &state.expansion {
+                    Expansion::Loading(_) => Toggle::Loading,
+                    Expansion::NotExpandable => Toggle::None,
+                    _ if state.open => Toggle::Expanded,
+                    _ => Toggle::Collapsed,
+                }
+            };
+            lines.push(member_line(
+                member,
+                summary,
+                depth,
+                member_path.clone(),
+                toggle,
+            ));
+            if state.open && toggle != Toggle::Recursive {
+                match &state.expansion {
+                    Expansion::Ready(child) => {
+                        path.push((selected, index));
+                        self.push_candidates(child, path, depth + 1, ancestors, lines);
+                        path.pop();
+                    }
+                    Expansion::NotFound => lines.push(Line::Note {
+                        depth: depth + 1,
+                        text: i18n::t!("Definition not found").into(),
+                    }),
+                    Expansion::None
+                    | Expansion::Loading(_)
+                    | Expansion::NotExpandable
+                    | Expansion::Recursive => {}
+                }
+            }
+        }
+        ancestors.pop();
+        for enumerator in &summary.enumerators {
+            if shown >= candidate.shown_rows {
+                break;
+            }
+            shown += 1;
+            let value = if enumerator.value_is_inferred {
+                enumerator
+                    .value
+                    .map(|value| (value.to_string(), true))
+                    .or_else(|| enumerator.value_text.clone().map(|text| (text, false)))
+            } else {
+                enumerator
+                    .value_text
+                    .clone()
+                    .map(|text| (text, false))
+                    .or_else(|| enumerator.value.map(|value| (value.to_string(), false)))
+            };
+            lines.push(Line::Enumerator {
+                depth,
+                name: enumerator.name.clone(),
+                value,
+                comment: enumerator.comment.as_deref().map(first_line_clipped),
+                condition: enumerator.condition.clone(),
+                jump: (summary.path.clone(), enumerator.range.start),
+            });
+        }
+        if shown < row_count {
+            lines.push(Line::More {
+                depth,
+                view_path: path.clone(),
+                candidate: selected,
+                hidden: row_count - shown,
+            });
+        }
+        if summary.truncated {
+            lines.push(Line::Note {
+                depth,
+                text: i18n::t!("Only part is shown").into(),
+            });
+        }
+    }
+}
+
+fn expansion_from(
+    expansion: MemberExpansion,
+    ancestors: &[TypeRef],
+    lookup: Option<Lookup>,
+) -> Expansion {
+    match expansion.target {
+        MemberExpansionTarget::NotFound => Expansion::NotFound,
+        MemberExpansionTarget::NotExpandable => Expansion::NotExpandable,
+        MemberExpansionTarget::Inline(body) => {
+            Expansion::Ready(Box::new(CandidatesView::single(*body)))
+        }
+        MemberExpansionTarget::Types(types) => {
+            let first = types.types.first();
+            if first.is_none() {
+                Expansion::NotFound
+            } else if first
+                .and_then(|summary| summary.type_ref.as_ref())
+                .is_some_and(|type_ref| ancestors.contains(type_ref))
+            {
+                Expansion::Recursive
+            } else {
+                Expansion::Ready(Box::new(CandidatesView::new(types, lookup)))
+            }
+        }
+    }
+}
+
+fn same_definition(found: &TypeSummary, wanted: &TypeSummary) -> bool {
+    match (&found.type_ref, &wanted.type_ref) {
+        (Some(found), Some(wanted)) => found == wanted,
+        _ => found.path == wanted.path && found.range == wanted.range,
+    }
+}
+
+/// Whether a member names one of the types it is inside (`struct node *next` in
+/// `struct node`), which would expand forever. `ancestors` ends with the member's own type.
+///
+/// Only types defined in the member's own file are compared by name: in another file, the
+/// same name is often a different type of a large project (each module's `struct node`). Those
+/// are told apart by [`TypeRef`] once the member is expanded.
+fn refers_to_ancestor(member: &MemberSummary, ancestors: &[&TypeSummary]) -> bool {
+    let Some(core_name) = member.core_name.as_deref() else {
+        return false;
+    };
+    let Some(owner) = ancestors.last() else {
+        return false;
+    };
+    ancestors.iter().any(|ancestor| {
+        if ancestor.path != owner.path {
+            return false;
+        }
+        let tag_matches = match member.tag {
+            None => true,
+            Some(TagKind::Struct) => ancestor.kind == TypeSummaryKind::Struct,
+            Some(TagKind::Union) => ancestor.kind == TypeSummaryKind::Union,
+            Some(TagKind::Enum) => ancestor.kind == TypeSummaryKind::Enum,
+            Some(TagKind::Class) => {
+                matches!(
+                    ancestor.kind,
+                    TypeSummaryKind::Class | TypeSummaryKind::Struct
+                )
+            }
+        };
+        if !tag_matches {
+            return false;
+        }
+        let tag_name = ancestor
+            .name
+            .split_once(' ')
+            .map_or(ancestor.name.as_str(), |(_, name)| name);
+        tag_name == core_name
+            || ancestor
+                .type_ref
+                .as_ref()
+                .is_some_and(|type_ref| type_ref.name == core_name)
+            || (member.tag.is_none()
+                && ancestor
+                    .typedef_chain
+                    .iter()
+                    .any(|step| step.name == core_name))
+    })
+}
+
+fn type_details(summary: &TypeSummary) -> Option<String> {
+    let mut details = Vec::new();
+    if !summary.typedef_chain.is_empty() {
+        let mut chain = summary
+            .typedef_chain
+            .iter()
+            .map(|step| step.name.as_str())
+            .collect::<Vec<_>>();
+        chain.push(&summary.name);
+        details.push(chain.join(" → "));
+    }
+    if let Some(alias) = &summary.alias {
+        details.push(format!("= {alias}"));
+    }
+    if !summary.base_classes.is_empty() {
+        details.push(format!(": {}", summary.base_classes.join(", ")));
+    }
+    if summary.is_forward_declaration {
+        details.push(i18n::t!("forward declaration").to_string());
+    }
+    (!details.is_empty()).then(|| details.join("  "))
+}
+
+fn member_line(
+    member: &MemberSummary,
+    owner: &TypeSummary,
+    depth: usize,
+    path: MemberPath,
+    toggle: Toggle,
+) -> Line {
+    let unparsed = member.kind == MemberSummaryKind::Unparsed;
+    let name = match (&member.name, member.kind) {
+        (Some(name), _) => name.clone(),
+        (None, MemberSummaryKind::AnonymousAggregate) => member
+            .inline
+            .as_ref()
+            .map(|body| body.name.clone())
+            .unwrap_or_else(|| i18n::t!("(anonymous)").to_string()),
+        (None, _) => String::new(),
+    };
+    let type_text = if unparsed {
+        member
+            .unparsed_text
+            .clone()
+            .unwrap_or_else(|| member.text.clone())
+    } else if member.is_function_pointer || member.kind == MemberSummaryKind::Method {
+        member
+            .signature
+            .clone()
+            .unwrap_or_else(|| member.type_text.clone())
+    } else {
+        member.type_text.clone()
+    };
+    Line::Member {
+        depth,
+        path,
+        name,
+        type_text,
+        bit_width: member.bit_width.clone(),
+        comment: member.comment.as_deref().map(first_line_clipped),
+        condition: member.condition.clone(),
+        toggle,
+        unparsed,
+        jump: (owner.path.clone(), member.range.start),
+    }
+}
+
+fn first_line_clipped(comment: &str) -> String {
+    let line = comment.lines().map(str::trim).find(|line| !line.is_empty());
+    let line = line.unwrap_or_default();
+    match line.char_indices().nth(COMMENT_CHARS) {
+        Some((end, _)) => format!("{}…", &line[..end]),
+        None => line.to_string(),
+    }
+}
+
+fn confidence_label(confidence: Option<Confidence>) -> SharedString {
+    match confidence {
+        None => i18n::t!("type named by the language server").into(),
+        Some(Confidence::Declaration) => i18n::t!("at its declaration").into(),
+        Some(Confidence::Local) => i18n::t!("declared in this function").into(),
+        Some(Confidence::Parameter) => i18n::t!("a parameter of this function").into(),
+        Some(Confidence::FileScope) => i18n::t!("declared at file scope").into(),
+        Some(Confidence::NameOnly) => i18n::t!("guessed by name only").into(),
+    }
+}
+
+struct ChainSegment {
+    text: String,
+    type_text: Option<String>,
+    found: bool,
+}
+
+fn chain_segments(
+    root_type: Option<&str>,
+    steps: &[project::symbol_index_store::ChainStepSummary],
+    complete: bool,
+) -> Vec<ChainSegment> {
+    let mut segments = Vec::new();
+    // The type found for the start of the chain says more than how it was written
+    // (`struct outer` rather than `alias_t *`).
+    let root = steps
+        .first()
+        .and_then(|step| step.owner.as_ref())
+        .map(|owner| owner.display_name.clone())
+        .or_else(|| root_type.map(str::to_string));
+    if let Some(root) = root {
+        segments.push(ChainSegment {
+            text: root,
+            type_text: None,
+            found: true,
+        });
+    }
+    for step in steps {
+        let found = step.member.is_some();
+        segments.push(ChainSegment {
+            text: format!(".{}", step.name),
+            type_text: step.member.as_ref().map(|member| {
+                if member.is_function_pointer {
+                    member
+                        .signature
+                        .clone()
+                        .unwrap_or_else(|| member.type_text.clone())
+                } else {
+                    member.type_text.clone()
+                }
+            }),
+            found,
+        });
+        if !found {
+            break;
+        }
+    }
+    if !complete && segments.last().is_some_and(|segment| segment.found) {
+        segments.push(ChainSegment {
+            text: "…".to_string(),
+            type_text: None,
+            found: false,
+        });
+    }
+    segments
+}
+
+fn location_label(path: &ProjectPath, position: Point, labels: &PathLabels) -> (String, String) {
+    let relative = path.path.display(labels.path_style);
+    let shown = match labels
+        .root_names
+        .as_ref()
+        .and_then(|root_names| root_names.get(&path.worktree_id))
+    {
+        Some(root_name) => format!(
+            "{root_name}{}{relative}",
+            labels.path_style.primary_separator()
+        ),
+        None => relative.into_owned(),
+    };
+    let (folder, file) = labels.path_style.split(&shown);
+    (
+        folder.unwrap_or_default().to_string(),
+        format!("{file}:{}", position.row + 1),
+    )
+}
+
+fn code_block(text: &str, language_name: &LanguageName) -> String {
+    let mut longest_run = 0;
+    let mut run = 0;
+    for character in text.chars() {
+        if character == '`' {
+            run += 1;
+            longest_run = longest_run.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    let fence = "`".repeat((longest_run + 1).max(3));
+    let language = language_name.as_ref().to_lowercase().replace("++", "pp");
+    format!("{fence}{language}\n{text}\n{fence}")
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Toggle {
+    None,
+    Collapsed,
+    Expanded,
+    Loading,
+    Recursive,
+}
+
+type Jump = (ProjectPath, Point);
+
+enum Line {
+    Variable {
+        name: String,
+        type_text: String,
+        confidence: SharedString,
+    },
+    Chain(Vec<ChainSegment>),
+    Macro {
+        name: String,
+        location: (String, String),
+        jump: Jump,
+        selected: usize,
+        total: usize,
+        truncated: bool,
+    },
+    TypeHeading {
+        depth: usize,
+        view_path: MemberPath,
+        name: String,
+        location: (String, String),
+        jump: Jump,
+        selected: usize,
+        listed: usize,
+        total: usize,
+        details: Option<String>,
+        condition: Option<String>,
+        copying: bool,
+    },
+    Member {
+        depth: usize,
+        path: MemberPath,
+        name: String,
+        type_text: String,
+        bit_width: Option<String>,
+        comment: Option<String>,
+        condition: Option<String>,
+        toggle: Toggle,
+        unparsed: bool,
+        jump: Jump,
+    },
+    Enumerator {
+        depth: usize,
+        name: String,
+        /// The value, and whether it was counted rather than written.
+        value: Option<(String, bool)>,
+        comment: Option<String>,
+        condition: Option<String>,
+        jump: Jump,
+    },
+    More {
+        depth: usize,
+        view_path: MemberPath,
+        candidate: usize,
+        hidden: usize,
+    },
+    Note {
+        depth: usize,
+        text: SharedString,
+    },
+    Loading {
+        depth: usize,
+    },
+}
+
+fn definition_position_label(selected: usize, total: usize) -> String {
+    let index = selected + 1;
+    i18n::t!("Definition {index} of {total}")
+}
+
+/// The heading's narrow form of [`definition_position_label`], which is its tooltip.
+fn short_position_label(selected: usize, total: usize) -> String {
+    format!("{} / {}", selected + 1, total)
+}
+
+/// Where the shown definition is among the others, kept on one line: the heading wraps
+/// between its parts, not inside this one.
+fn position_element(id: ElementId, selected: usize, total: usize) -> impl IntoElement {
+    div()
+        .id(id)
+        .flex_none()
+        .tooltip(Tooltip::text(definition_position_label(selected, total)))
+        .child(
+            Label::new(short_position_label(selected, total))
+                .size(LabelSize::XSmall)
+                .color(Color::Muted)
+                .single_line(),
+        )
+}
+
+fn variable_label(name: &str) -> String {
+    i18n::t!("Type of {name}:")
+}
+
+fn more_label(hidden: usize) -> String {
+    i18n::tn!(hidden, "{count} more", "{count} more")
+}
+
+fn open_location(
+    editor: &WeakEntity<Editor>,
+    project: &WeakEntity<Project>,
+    (path, position): Jump,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let Some(workspace) = editor
+        .upgrade()
+        .and_then(|editor| editor.read(cx).workspace())
+    else {
+        return;
+    };
+    let Some(project) = project.upgrade() else {
+        return;
+    };
+    let open = project.update(cx, |project, cx| project.open_buffer(path, cx));
+    window
+        .spawn(cx, async move |cx| {
+            let buffer = open.await?;
+            workspace.update_in(cx, |workspace, window, cx| {
+                let position = buffer.read(cx).clip_point(position, Bias::Left);
+                let editor = workspace
+                    .open_project_item::<Editor>(None, buffer, true, true, true, true, window, cx);
+                editor.update(cx, |editor, cx| {
+                    editor.change_selections(
+                        SelectionEffects::scroll(Autoscroll::center()),
+                        window,
+                        cx,
+                        |selections| selections.select_ranges([position..position]),
+                    );
+                });
+            })?;
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+}
+
+/// The section's rows, scrollable within the popover's height.
+pub(crate) fn render(
+    contents: &Entity<TypeContents>,
+    scroll_handle: &ScrollHandle,
+    max_size: Size<Pixels>,
+    window: &mut Window,
+    cx: &mut Context<Editor>,
+) -> AnyElement {
+    let (lines, macro_markdown, editor, project) = {
+        let this = contents.read(cx);
+        let markdown = this.macros.as_ref().and_then(|macros| {
+            let index = macros.selected.min(macros.markdown.len().checked_sub(1)?);
+            macros.markdown.get(index).cloned()
+        });
+        (
+            this.lines(),
+            markdown,
+            this.editor.clone(),
+            this.project.clone(),
+        )
+    };
+    let contents = contents.downgrade();
+    let text_size = TextSize::Small.rems(cx).to_pixels(window.rem_size());
+    let buffer_font = ThemeSettings::get_global(cx).buffer_font.clone();
+    let font_id = window.text_system().resolve_font(&buffer_font);
+    let em_width = window
+        .text_system()
+        .em_advance(font_id, text_size)
+        .unwrap_or(text_size * 0.6_f32);
+    let (name_chars, type_chars) = lines
+        .iter()
+        .fold((4, 8), |(names, types), line| match line {
+            Line::Member {
+                name, type_text, ..
+            } => (
+                names.max(name.chars().count()),
+                types.max(type_text.chars().count()),
+            ),
+            Line::Enumerator { name, .. } => (names.max(name.chars().count()), types),
+            _ => (names, types),
+        });
+    let name_width = em_width * name_chars.min(NAME_COLUMN_CHARS) as f32 + px(4.);
+    let type_width = em_width * type_chars.min(TYPE_COLUMN_CHARS) as f32 + px(4.);
+    let indent = |depth: usize| px(14.) * depth as f32;
+    let muted = Color::Muted;
+    let hover_background = cx.theme().colors().element_hover;
+
+    let jump_handler = |jump: Jump| {
+        let editor = editor.clone();
+        let project = project.clone();
+        move |_: &gpui::ClickEvent, window: &mut Window, cx: &mut App| {
+            open_location(&editor, &project, jump.clone(), window, cx);
+        }
+    };
+
+    let mut rows: Vec<AnyElement> = Vec::new();
+    for (row_index, line) in lines.into_iter().enumerate() {
+        let row_id =
+            |kind: &str| ElementId::Name(format!("type-contents-{kind}-{row_index}").into());
+        let row = match line {
+            Line::Variable {
+                name,
+                type_text,
+                confidence,
+            } => h_flex()
+                .gap_1()
+                .flex_wrap()
+                .child(Label::new(variable_label(&name)).size(LabelSize::Small))
+                .child(Label::new(type_text).size(LabelSize::Small).buffer_font(cx))
+                .child(Label::new(confidence).size(LabelSize::XSmall).color(muted))
+                .into_any_element(),
+            Line::Chain(segments) => {
+                let mut row = h_flex().gap_1().flex_wrap();
+                for (index, segment) in segments.into_iter().enumerate() {
+                    if index > 0 {
+                        row = row.child(Label::new("→").size(LabelSize::Small).color(muted));
+                    }
+                    row = row.child(
+                        Label::new(segment.text)
+                            .size(LabelSize::Small)
+                            .buffer_font(cx)
+                            .color(if segment.found { Color::Default } else { muted }),
+                    );
+                    if let Some(type_text) = segment.type_text {
+                        row = row.child(
+                            Label::new(format!("({type_text})"))
+                                .size(LabelSize::Small)
+                                .buffer_font(cx)
+                                .color(muted),
+                        );
+                    }
+                    if !segment.found {
+                        row = row.child(
+                            Label::new(i18n::t!("could not be followed"))
+                                .size(LabelSize::XSmall)
+                                .color(muted),
+                        );
+                    }
+                }
+                row.into_any_element()
+            }
+            Line::Macro {
+                name,
+                location,
+                jump,
+                selected,
+                total,
+                truncated,
+            } => {
+                let contents = contents.clone();
+                let contents_back = contents.clone();
+                h_flex()
+                    .gap_1()
+                    .child(heading_name(name, cx))
+                    .child(name_match_badge(cx))
+                    .child(location_element(
+                        row_id("macro-location"),
+                        location,
+                        jump_handler(jump),
+                        cx,
+                    ))
+                    .when(total > 1, |row| {
+                        row.child(candidate_switcher(
+                            row_id("macro-switch"),
+                            selected,
+                            total,
+                            move |cx| {
+                                contents_back
+                                    .update(cx, |this, cx| this.select_macro(false, cx))
+                                    .ok();
+                            },
+                            move |cx| {
+                                contents
+                                    .update(cx, |this, cx| this.select_macro(true, cx))
+                                    .ok();
+                            },
+                        ))
+                    })
+                    .when(truncated, |row| {
+                        row.child(
+                            Label::new(i18n::t!("Only part is shown"))
+                                .size(LabelSize::XSmall)
+                                .color(muted),
+                        )
+                    })
+                    .into_any_element()
+            }
+            Line::TypeHeading {
+                depth,
+                view_path,
+                name,
+                location,
+                jump,
+                selected,
+                listed,
+                total,
+                details,
+                condition,
+                copying,
+            } => {
+                let forward_contents = contents.clone();
+                let back_contents = contents.clone();
+                let copy_contents = contents.clone();
+                let back_path = view_path.clone();
+                v_flex()
+                    .pl(indent(depth))
+                    .when(depth == 0, |this| this.pb_0p5())
+                    .child(
+                        h_flex()
+                            .when(depth == 0, |row| {
+                                row.debug_selector(|| "type-contents-heading".into())
+                            })
+                            .gap_1()
+                            .child(heading_name(name, cx))
+                            .when(depth == 0, |row| row.child(name_match_badge(cx)))
+                            .child(location_element(
+                                row_id("type-location"),
+                                location,
+                                jump_handler(jump),
+                                cx,
+                            ))
+                            .when(listed > 1, |row| {
+                                row.child(candidate_switcher(
+                                    row_id("type-switch"),
+                                    selected,
+                                    total,
+                                    move |cx| {
+                                        back_contents
+                                            .update(cx, |this, cx| {
+                                                this.select_candidate(back_path.clone(), false, cx)
+                                            })
+                                            .ok();
+                                    },
+                                    move |cx| {
+                                        forward_contents
+                                            .update(cx, |this, cx| {
+                                                this.select_candidate(view_path.clone(), true, cx)
+                                            })
+                                            .ok();
+                                    },
+                                ))
+                            })
+                            .when(listed <= 1 && total > 1, |row| {
+                                row.child(position_element(
+                                    row_id("type-position"),
+                                    selected,
+                                    total,
+                                ))
+                            })
+                            .when(depth == 0, |row| {
+                                row.child(
+                                    div().flex_none().child(
+                                        IconButton::new(row_id("copy"), IconName::Copy)
+                                            .icon_size(IconSize::XSmall)
+                                            .icon_color(muted)
+                                            .disabled(copying)
+                                            .tooltip(Tooltip::text(i18n::t!("Copy Type Contents")))
+                                            .on_click(move |_, _, cx| {
+                                                copy_contents
+                                                    .update(cx, |this, cx| {
+                                                        this.copy_type_contents(cx)
+                                                    })
+                                                    .ok();
+                                                cx.stop_propagation();
+                                            }),
+                                    ),
+                                )
+                            }),
+                    )
+                    .when_some(details, |this, details| {
+                        this.child(
+                            Label::new(details)
+                                .size(LabelSize::XSmall)
+                                .buffer_font(cx)
+                                .color(muted),
+                        )
+                    })
+                    .when_some(condition, |this, condition| {
+                        this.child(
+                            Label::new(format!("#if {condition}"))
+                                .size(LabelSize::XSmall)
+                                .buffer_font(cx)
+                                .color(muted),
+                        )
+                    })
+                    .into_any_element()
+            }
+            Line::Member {
+                depth,
+                path,
+                name,
+                type_text,
+                bit_width,
+                comment,
+                condition,
+                toggle,
+                unparsed,
+                jump,
+            } => {
+                let toggle_contents = contents.clone();
+                let full_text = type_text.clone();
+                h_flex()
+                    .id(row_id("member"))
+                    .pl(indent(depth))
+                    .gap_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .hover(move |style| style.bg(hover_background))
+                    .on_click(jump_handler(jump))
+                    .child(toggle_element(row_id("toggle"), toggle, move |cx| {
+                        toggle_contents
+                            .update(cx, |this, cx| this.toggle_member(path.clone(), cx))
+                            .ok();
+                    }))
+                    .child(
+                        div().w(name_width).flex_none().overflow_hidden().child(
+                            Label::new(name)
+                                .size(LabelSize::Small)
+                                .buffer_font(cx)
+                                .single_line()
+                                .truncate(),
+                        ),
+                    )
+                    .child(
+                        div()
+                            .id(row_id("type"))
+                            .w(type_width)
+                            .min_w_0()
+                            .flex_shrink(1.)
+                            .overflow_hidden()
+                            .tooltip(Tooltip::text(full_text))
+                            .child(
+                                Label::new(type_text)
+                                    .size(LabelSize::Small)
+                                    .buffer_font(cx)
+                                    .single_line()
+                                    .truncate()
+                                    .color(if unparsed { muted } else { Color::Default }),
+                            ),
+                    )
+                    .when_some(bit_width, |row, width| {
+                        row.child(
+                            Label::new(format!(": {width}"))
+                                .size(LabelSize::Small)
+                                .buffer_font(cx)
+                                .color(muted),
+                        )
+                    })
+                    .when_some(condition, |row, condition| {
+                        row.child(condition_badge(condition, cx))
+                    })
+                    .when_some(comment, |row, comment| {
+                        row.child(
+                            Label::new(comment)
+                                .size(LabelSize::XSmall)
+                                .color(muted)
+                                .single_line()
+                                .truncate(),
+                        )
+                    })
+                    .when(toggle == Toggle::Recursive, |row| {
+                        row.child(
+                            Label::new(i18n::t!("recursive"))
+                                .size(LabelSize::XSmall)
+                                .color(muted),
+                        )
+                    })
+                    .into_any_element()
+            }
+            Line::Enumerator {
+                depth,
+                name,
+                value,
+                comment,
+                condition,
+                jump,
+            } => h_flex()
+                .id(row_id("enumerator"))
+                .pl(indent(depth) + px(18.))
+                .gap_1()
+                .rounded_sm()
+                .cursor_pointer()
+                .hover(move |style| style.bg(hover_background))
+                .on_click(jump_handler(jump))
+                .child(
+                    div().w(name_width).flex_none().overflow_hidden().child(
+                        Label::new(name)
+                            .size(LabelSize::Small)
+                            .buffer_font(cx)
+                            .single_line()
+                            .truncate(),
+                    ),
+                )
+                .when_some(value, |row, (value, inferred)| {
+                    row.child(
+                        Label::new(if inferred {
+                            format!("≈ {value}")
+                        } else {
+                            format!("= {value}")
+                        })
+                        .size(LabelSize::Small)
+                        .buffer_font(cx)
+                        .color(if inferred {
+                            muted
+                        } else {
+                            Color::Default
+                        }),
+                    )
+                })
+                .when_some(condition, |row, condition| {
+                    row.child(condition_badge(condition, cx))
+                })
+                .when_some(comment, |row, comment| {
+                    row.child(
+                        Label::new(comment)
+                            .size(LabelSize::XSmall)
+                            .color(muted)
+                            .single_line()
+                            .truncate(),
+                    )
+                })
+                .into_any_element(),
+            Line::More {
+                depth,
+                view_path,
+                candidate,
+                hidden,
+            } => {
+                let contents = contents.clone();
+                h_flex()
+                    .id(row_id("more"))
+                    .pl(indent(depth) + px(18.))
+                    .cursor_pointer()
+                    .on_click(move |_, _, cx| {
+                        contents
+                            .update(cx, |this, cx| {
+                                this.show_more_rows(view_path.clone(), candidate, cx)
+                            })
+                            .ok();
+                        cx.stop_propagation();
+                    })
+                    .child(
+                        Label::new(more_label(hidden))
+                            .size(LabelSize::XSmall)
+                            .color(Color::Accent),
+                    )
+                    .into_any_element()
+            }
+            Line::Note { depth, text } => div()
+                .pl(indent(depth) + px(18.))
+                .child(Label::new(text).size(LabelSize::XSmall).color(muted))
+                .into_any_element(),
+            Line::Loading { depth } => h_flex()
+                .pl(indent(depth) + px(18.))
+                .gap_1()
+                .child(
+                    Icon::new(IconName::ArrowCircle)
+                        .size(IconSize::XSmall)
+                        .color(muted)
+                        .with_keyed_rotate_animation(row_id("spinner"), 2),
+                )
+                .child(
+                    Label::new(i18n::t!("Loading…"))
+                        .size(LabelSize::XSmall)
+                        .color(muted),
+                )
+                .into_any_element(),
+        };
+        rows.push(row);
+    }
+    if let Some(markdown) = macro_markdown {
+        rows.push(
+            div()
+                .child(
+                    MarkdownElement::new(markdown, hover_markdown_style(window, cx))
+                        .code_block_renderer(markdown::CodeBlockRenderer::Default {
+                            copy_button_visibility: CopyButtonVisibility::Hidden,
+                            wrap_button_visibility: markdown::WrapButtonVisibility::Hidden,
+                            border: false,
+                        }),
+                )
+                .into_any_element(),
+        );
+    }
+
+    div()
+        .id("type-contents-container")
+        .overflow_y_scroll()
+        .max_w(max_size.width)
+        .max_h(max_size.height)
+        .track_scroll(scroll_handle)
+        .child(v_flex().p_2().gap_0p5().children(rows))
+        .into_any_element()
+}
+
+/// A heading is one row, as wide as it needs up to the popover's limit: past it, the name
+/// and the location are cut short rather than the parts going to rows of their own.
+fn heading_name(name: impl Into<SharedString>, cx: &App) -> impl IntoElement {
+    div().min_w_0().overflow_hidden().child(
+        Label::new(name)
+            .size(LabelSize::Small)
+            .buffer_font(cx)
+            .weight(FontWeight::SEMIBOLD)
+            .single_line()
+            .truncate(),
+    )
+}
+
+fn name_match_badge(cx: &App) -> impl IntoElement {
+    div()
+        .flex_none()
+        .px_1()
+        .rounded_sm()
+        .bg(cx.theme().colors().element_background)
+        .child(
+            Label::new(i18n::t!("Name match"))
+                .size(LabelSize::XSmall)
+                .color(Color::Muted),
+        )
+}
+
+fn condition_badge(condition: String, cx: &App) -> impl IntoElement {
+    div()
+        .px_1()
+        .rounded_sm()
+        .border_1()
+        .border_color(cx.theme().colors().border_variant)
+        .child(
+            Label::new(condition)
+                .size(LabelSize::XSmall)
+                .buffer_font(cx)
+                .color(Color::Muted)
+                .single_line()
+                .truncate(),
+        )
+}
+
+fn location_element(
+    id: ElementId,
+    (folder, file): (String, String),
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
+    let full = format!("{folder}{file}");
+    h_flex()
+        .id(id)
+        .min_w_0()
+        .overflow_hidden()
+        .cursor_pointer()
+        .rounded_sm()
+        .hover(|style| style.bg(cx.theme().colors().element_hover))
+        .tooltip(Tooltip::text(full))
+        .on_click(move |event, window, cx| {
+            on_click(event, window, cx);
+            cx.stop_propagation();
+        })
+        .when(!folder.is_empty(), |row| {
+            row.child(
+                Label::new(folder)
+                    .size(LabelSize::XSmall)
+                    .color(Color::Muted)
+                    .single_line()
+                    .truncate_start(),
+            )
+        })
+        .child(
+            Label::new(file)
+                .size(LabelSize::XSmall)
+                .color(Color::Accent)
+                .single_line(),
+        )
+}
+
+fn candidate_switcher(
+    id: ElementId,
+    selected: usize,
+    total: usize,
+    on_back: impl Fn(&mut App) + 'static,
+    on_forward: impl Fn(&mut App) + 'static,
+) -> impl IntoElement {
+    let back_id = ElementId::Name(format!("{id}-back").into());
+    let forward_id = ElementId::Name(format!("{id}-forward").into());
+    let position_id = ElementId::Name(format!("{id}-position").into());
+    h_flex()
+        .debug_selector(|| "type-contents-switcher".into())
+        .flex_none()
+        .gap_0p5()
+        .child(
+            IconButton::new(back_id, IconName::ChevronLeft)
+                .icon_size(IconSize::XSmall)
+                .tooltip(Tooltip::text(i18n::t!("Previous Definition")))
+                .on_click(move |_, _, cx| {
+                    on_back(cx);
+                    cx.stop_propagation();
+                }),
+        )
+        .child(position_element(position_id, selected, total))
+        .child(
+            IconButton::new(forward_id, IconName::ChevronRight)
+                .icon_size(IconSize::XSmall)
+                .tooltip(Tooltip::text(i18n::t!("Next Definition")))
+                .on_click(move |_, _, cx| {
+                    on_forward(cx);
+                    cx.stop_propagation();
+                }),
+        )
+}
+
+fn toggle_element(
+    id: ElementId,
+    toggle: Toggle,
+    on_toggle: impl Fn(&mut App) + 'static,
+) -> AnyElement {
+    let slot = div().w(px(16.)).flex_none();
+    match toggle {
+        Toggle::None | Toggle::Recursive => slot.into_any_element(),
+        Toggle::Loading => slot
+            .child(
+                Icon::new(IconName::ArrowCircle)
+                    .size(IconSize::XSmall)
+                    .color(Color::Muted)
+                    .with_keyed_rotate_animation(id, 2),
+            )
+            .into_any_element(),
+        Toggle::Collapsed | Toggle::Expanded => slot
+            .child(
+                IconButton::new(
+                    id,
+                    if toggle == Toggle::Expanded {
+                        IconName::ChevronDown
+                    } else {
+                        IconName::ChevronRight
+                    },
+                )
+                .icon_size(IconSize::XSmall)
+                .on_click(move |_, _, cx| {
+                    on_toggle(cx);
+                    cx.stop_propagation();
+                }),
+            )
+            .into_any_element(),
+    }
+}
+
+/// Locations are written with the project's separator; tests compare them on every platform.
+#[cfg(test)]
+fn unix_folder(folder: &str) -> String {
+    folder.replace('\\', "/")
+}
+
+#[cfg(test)]
+impl TypeContents {
+    /// The section as text: one line per row, two spaces per level.
+    pub(crate) fn text_for_tests(&self) -> String {
+        let indent = |depth: usize| "  ".repeat(depth);
+        let mut text = Vec::new();
+        for line in self.lines() {
+            text.push(match line {
+                Line::Variable {
+                    name,
+                    type_text,
+                    confidence,
+                } => format!("{} {type_text} ({confidence})", variable_label(&name)),
+                Line::Chain(segments) => segments
+                    .iter()
+                    .map(|segment| {
+                        let mut text = segment.text.clone();
+                        if let Some(type_text) = &segment.type_text {
+                            text.push_str(&format!(" ({type_text})"));
+                        }
+                        if !segment.found {
+                            text.push_str(&format!(" {}", i18n::t!("could not be followed")));
+                        }
+                        text
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" → "),
+                Line::Macro {
+                    name,
+                    location: (folder, file),
+                    selected,
+                    total,
+                    ..
+                } => {
+                    let found = self
+                        .macros
+                        .as_ref()
+                        .and_then(|macros| macros.macros.get(selected));
+                    format!(
+                        "{name} [{}] {}{file} ({}) {}",
+                        i18n::t!("Name match"),
+                        unix_folder(&folder),
+                        definition_position_label(selected, total),
+                        found.map(|found| found.text.as_str()).unwrap_or_default()
+                    )
+                }
+                Line::TypeHeading {
+                    depth,
+                    name,
+                    location: (folder, file),
+                    selected,
+                    total,
+                    details,
+                    condition,
+                    ..
+                } => {
+                    let mut line = format!("{}{name}", indent(depth));
+                    if depth == 0 {
+                        line.push_str(&format!(" [{}]", i18n::t!("Name match")));
+                    }
+                    line.push_str(&format!(" {}{file}", unix_folder(&folder)));
+                    if total > 1 {
+                        line.push_str(&format!(
+                            " ({})",
+                            definition_position_label(selected, total)
+                        ));
+                    }
+                    if let Some(details) = details {
+                        line.push_str(&format!(" {{{details}}}"));
+                    }
+                    if let Some(condition) = condition {
+                        line.push_str(&format!(" #if {condition}"));
+                    }
+                    line
+                }
+                Line::Member {
+                    depth,
+                    name,
+                    type_text,
+                    bit_width,
+                    comment,
+                    condition,
+                    toggle,
+                    ..
+                } => {
+                    let glyph = match toggle {
+                        Toggle::None => " ",
+                        Toggle::Collapsed => "▸",
+                        Toggle::Expanded => "▾",
+                        Toggle::Loading => "…",
+                        Toggle::Recursive => "↺",
+                    };
+                    let mut line = format!("{}{glyph} {name} | {type_text}", indent(depth));
+                    if let Some(width) = bit_width {
+                        line.push_str(&format!(" : {width}"));
+                    }
+                    if let Some(condition) = condition {
+                        line.push_str(&format!(" [{condition}]"));
+                    }
+                    if let Some(comment) = comment {
+                        line.push_str(&format!(" // {comment}"));
+                    }
+                    if toggle == Toggle::Recursive {
+                        line.push_str(&format!(" ({})", i18n::t!("recursive")));
+                    }
+                    line
+                }
+                Line::Enumerator {
+                    depth, name, value, ..
+                } => match value {
+                    Some((value, true)) => format!("{}  {name} ≈ {value}", indent(depth)),
+                    Some((value, false)) => format!("{}  {name} = {value}", indent(depth)),
+                    None => format!("{}  {name}", indent(depth)),
+                },
+                Line::More { depth, hidden, .. } => {
+                    format!("{}  {}", indent(depth), more_label(hidden))
+                }
+                Line::Note { depth, text } => format!("{}  {text}", indent(depth)),
+                Line::Loading { depth } => {
+                    format!("{}  {}", indent(depth), i18n::t!("Loading…"))
+                }
+            });
+        }
+        text.join("\n")
+    }
+
+    fn member_path_for_tests(&self, name: &str) -> MemberPath {
+        self.lines()
+            .into_iter()
+            .find_map(|line| match line {
+                Line::Member {
+                    name: member, path, ..
+                } if member == name => Some(path),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no member {name:?} in\n{}", self.text_for_tests()))
+    }
+
+    fn jump_for_tests(&self, name: &str) -> Jump {
+        self.lines()
+            .into_iter()
+            .find_map(|line| match line {
+                Line::Member {
+                    name: shown, jump, ..
+                }
+                | Line::TypeHeading {
+                    name: shown, jump, ..
+                } if shown == name => Some(jump),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no row {name:?} in\n{}", self.text_for_tests()))
+    }
+
+    fn view_path_for_tests(&self, name: &str) -> MemberPath {
+        self.lines()
+            .into_iter()
+            .find_map(|line| match line {
+                Line::TypeHeading {
+                    name: shown,
+                    view_path,
+                    ..
+                } if shown == name => Some(view_path),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no type {name:?} in\n{}", self.text_for_tests()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use futures::StreamExt as _;
+    use gpui::{TestAppContext, UpdateGlobal as _};
+    use language::{Language, LanguageConfig, LanguageMatcher};
+    use multi_buffer::{MultiBufferOffset, ToPoint as _};
+    use project::symbol_index_store::build_index_for_tests;
+    use settings::SettingsStore;
+
+    use super::*;
+    use crate::{
+        EditorSettings, Hover,
+        editor_tests::init_test,
+        hover_popover::{hide_hover, hover, hover_at},
+        test::editor_lsp_test_context::EditorLspTestContext,
+    };
+
+    const TYPES_H: &str = "\
+#define MAX_ITEMS 16
+struct leaf { int value; };
+struct inner { int depth; struct leaf leaf; };
+struct node { struct node *next; int key; };
+typedef struct outer {
+    struct inner in; /* the inner part */
+    struct { int a; int b; } anon;
+    int (*callback)(int);
+    unsigned flags : 3;
+    struct missing *gone;
+} outer_t;
+typedef outer_t alias_t;
+enum color { RED, GREEN = 5, BLUE };
+struct dup { int in_header; };
+";
+
+    const FILE_C: &str = "\
+#include \"types.h\"
+struct dup { int in_main; };
+static struct node *head;
+static struct big *many;
+int use(alias_t *value)
+{
+    struct outer local;
+    enum color shade;
+    return value->in.depth + local.flags + MAX_ITEMS + mystery + shade;
+}
+";
+
+    fn big_h() -> String {
+        let members = (0..35)
+            .map(|index| format!("    int member_{index};\n"))
+            .collect::<String>();
+        format!("struct big {{\n{members}}};\n")
+    }
+
+    fn c_language() -> Language {
+        Language::new(
+            LanguageConfig {
+                name: "C".into(),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["c".to_string()],
+                    ..LanguageMatcher::default()
+                }
+                .into(),
+                ..LanguageConfig::default()
+            },
+            None,
+        )
+    }
+
+    async fn c_context(with_hover: bool, cx: &mut TestAppContext) -> EditorLspTestContext {
+        init_test(cx, |_| {});
+        cx.executor().allow_parking();
+        EditorLspTestContext::new(
+            c_language(),
+            lsp::ServerCapabilities {
+                hover_provider: with_hover.then_some(lsp::HoverProviderCapability::Simple(true)),
+                ..lsp::ServerCapabilities::default()
+            },
+            cx,
+        )
+        .await
+    }
+
+    /// Writes `others` next to the edited file and gives the project an index of them and of
+    /// `edited`, the edited file's text.
+    async fn install_index(
+        cx: &mut EditorLspTestContext,
+        edited: (&str, &str),
+        others: &[(&str, &str)],
+    ) -> tempfile::TempDir {
+        let project = cx.update_workspace(|workspace, _, _| workspace.project().clone());
+        let fs = cx.update_workspace(|workspace, _, cx| workspace.project().read(cx).fs().clone());
+        for (path, text) in others {
+            fs.as_fake()
+                .insert_file(
+                    EditorLspTestContext::root_path().join(path),
+                    text.as_bytes().to_vec(),
+                )
+                .await;
+        }
+        cx.executor().run_until_parked();
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let mut files = vec![edited];
+        files.extend_from_slice(others);
+        let index = build_index_for_tests(directory.path(), &files).expect("building the index");
+        cx.update_workspace(|_, _, cx| {
+            let worktree_id = project
+                .read(cx)
+                .worktrees(cx)
+                .next()
+                .expect("a worktree")
+                .read(cx)
+                .id();
+            project.update(cx, |project, cx| {
+                project.symbol_index_store().update(cx, |store, cx| {
+                    store.insert_index_for_tests(worktree_id, index, cx)
+                })
+            });
+        });
+        directory
+    }
+
+    /// A C file with the fixture's types, indexed.
+    async fn setup(
+        with_hover: bool,
+        cx: &mut TestAppContext,
+    ) -> (EditorLspTestContext, tempfile::TempDir) {
+        let mut cx = c_context(with_hover, cx).await;
+        cx.set_state(&format!("ˇ{FILE_C}"));
+        let big = big_h();
+        let index = install_index(
+            &mut cx,
+            ("dir/file.c", FILE_C),
+            &[
+                ("dir/types.h", TYPES_H),
+                ("dir/big.h", big.as_str()),
+                (
+                    "dir/other_dup.h",
+                    "struct dup { int in_other; };
+",
+                ),
+            ],
+        )
+        .await;
+        (cx, index)
+    }
+
+    fn anchor_of(cx: &mut EditorLspTestContext, needle: &str, occurrence: usize) -> Anchor {
+        cx.update_editor(|editor, window, cx| {
+            let snapshot = editor.snapshot(window, cx);
+            let text = snapshot.buffer_snapshot().text();
+            let offset = text
+                .match_indices(needle)
+                .nth(occurrence)
+                .map(|(offset, _)| offset)
+                .unwrap_or_else(|| panic!("{needle:?} #{occurrence} not in the buffer"));
+            snapshot
+                .buffer_snapshot()
+                .anchor_before(MultiBufferOffset(offset))
+        })
+    }
+
+    fn hover_delay(cx: &mut EditorLspTestContext) -> u64 {
+        cx.update(|_, cx| EditorSettings::get_global(cx).hover_popover_delay.0)
+    }
+
+    /// Moves the pointer onto the `occurrence`-th `needle` without waiting.
+    fn point_at(cx: &mut EditorLspTestContext, needle: &str, occurrence: usize) {
+        let anchor = anchor_of(cx, needle, occurrence);
+        cx.update_editor(|editor, window, cx| hover_at(editor, Some(anchor), None, window, cx));
+    }
+
+    /// Hovers the `occurrence`-th `needle` and waits for the popovers.
+    fn hover_over(cx: &mut EditorLspTestContext, needle: &str, occurrence: usize) {
+        point_at(cx, needle, occurrence);
+        let delay = hover_delay(cx);
+        cx.executor()
+            .advance_clock(Duration::from_millis(delay + 100));
+        cx.run_until_parked();
+    }
+
+    fn section(cx: &mut EditorLspTestContext) -> Option<Entity<TypeContents>> {
+        cx.editor(|editor, _, _| {
+            editor
+                .hover_state
+                .info_popovers
+                .iter()
+                .find_map(|popover| popover.type_contents.clone())
+        })
+    }
+
+    fn section_text(cx: &mut EditorLspTestContext) -> String {
+        let section = section(cx).expect("a type contents section");
+        cx.update(|_, cx| section.read(cx).text_for_tests())
+    }
+
+    fn toggle(cx: &mut EditorLspTestContext, member: &str) {
+        let section = section(cx).expect("a type contents section");
+        cx.update(|_, cx| {
+            section.update(cx, |section, cx| {
+                let path = section.member_path_for_tests(member);
+                section.toggle_member(path, cx);
+            })
+        });
+        cx.run_until_parked();
+    }
+
+    fn set_hover_type_contents(cx: &mut EditorLspTestContext, enabled: bool) {
+        cx.update(|_, cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .project
+                        .symbol_index
+                        .get_or_insert_default()
+                        .hover_type_contents = Some(enabled);
+                });
+            });
+        });
+    }
+
+    #[gpui::test]
+    async fn test_a_type_name_shows_its_members_and_typedefs(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "alias_t", 0);
+        let text = section_text(&mut cx);
+        assert_eq!(
+            text.lines().next(),
+            Some("struct outer [Name match] dir/types.h:5 {alias_t → struct outer}"),
+            "{text}"
+        );
+        for row in [
+            "▸ in | struct inner // the inner part",
+            "▾ anon | struct {...}
+    a | int",
+            "    b | int",
+            "  callback | int (*)(int)",
+            "  flags | unsigned : 3",
+            "▸ gone | struct missing *",
+        ] {
+            assert!(text.contains(row), "{row:?} not in\n{text}");
+        }
+    }
+
+    #[gpui::test]
+    async fn test_variables_members_macros_and_enums_are_described(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+
+        hover_over(&mut cx, "local", 1);
+        let text = section_text(&mut cx);
+        assert!(
+            text.starts_with(
+                "Type of local: struct outer (declared in this function)\nstruct outer"
+            ),
+            "{text}"
+        );
+
+        hover_over(&mut cx, "depth", 0);
+        let text = section_text(&mut cx);
+        assert_eq!(
+            text, "struct outer → .in (struct inner) → .depth (int)",
+            "an int has no contents"
+        );
+
+        hover_over(&mut cx, "in.", 0);
+        let text = section_text(&mut cx);
+        assert!(
+            text.starts_with(
+                "struct outer → .in (struct inner)\nstruct inner [Name match] dir/types.h:3\n  depth | int\n▸ leaf | struct leaf"
+            ),
+            "{text}"
+        );
+
+        hover_over(&mut cx, "MAX_ITEMS", 0);
+        assert_eq!(
+            section_text(&mut cx),
+            "MAX_ITEMS [Name match] dir/types.h:1 (Definition 1 of 1) #define MAX_ITEMS 16"
+        );
+
+        hover_over(&mut cx, "shade", 0);
+        let text = section_text(&mut cx);
+        assert!(
+            text.ends_with(
+                "enum color [Name match] dir/types.h:13\n  RED ≈ 0\n  GREEN = 5\n  BLUE ≈ 6"
+            ),
+            "{text}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_members_expand_level_by_level(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "alias_t", 0);
+
+        toggle(&mut cx, "in");
+        let text = section_text(&mut cx);
+        assert!(
+            text.contains(
+                "▾ in | struct inner // the inner part\n  struct inner dir/types.h:3\n    depth | int\n  ▸ leaf | struct leaf"
+            ),
+            "{text}"
+        );
+        toggle(&mut cx, "leaf");
+        let text = section_text(&mut cx);
+        assert!(
+            text.contains(
+                "  ▾ leaf | struct leaf\n    struct leaf dir/types.h:2\n      value | int"
+            ),
+            "{text}"
+        );
+
+        toggle(&mut cx, "gone");
+        let text = section_text(&mut cx);
+        assert!(
+            text.contains("▾ gone | struct missing *\n    Definition not found"),
+            "{text}"
+        );
+
+        // Collapsing keeps what was read while the popover is open.
+        toggle(&mut cx, "in");
+        let text = section_text(&mut cx);
+        assert!(text.contains("▸ in | struct inner"), "{text}");
+        assert!(!text.contains("value | int"), "{text}");
+        toggle(&mut cx, "in");
+        assert!(section_text(&mut cx).contains("      value | int"));
+    }
+
+    #[gpui::test]
+    async fn test_a_member_naming_its_own_type_is_not_expanded(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "node", 0);
+        let text = section_text(&mut cx);
+        assert!(
+            text.contains("↺ next | struct node * (recursive)"),
+            "{text}"
+        );
+        toggle(&mut cx, "next");
+        assert_eq!(section_text(&mut cx), text, "nothing to expand");
+    }
+
+    #[gpui::test]
+    async fn test_same_name_definitions_can_be_switched(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "dup", 0);
+        assert_eq!(
+            section_text(&mut cx),
+            "struct dup [Name match] dir/file.c:2 (Definition 1 of 3)
+  in_main | int"
+        );
+        let section = section(&mut cx).expect("a section");
+        let mut shown = Vec::new();
+        for _ in 0..3 {
+            cx.update(|_, cx| {
+                section.update(cx, |section, cx| {
+                    let path = section.view_path_for_tests("struct dup");
+                    section.select_candidate(path, true, cx);
+                })
+            });
+            cx.run_until_parked();
+            shown.push(section_text(&mut cx));
+        }
+        shown.sort();
+        assert_eq!(
+            shown,
+            vec![
+                "struct dup [Name match] dir/file.c:2 (Definition 1 of 3)
+  in_main | int",
+                "struct dup [Name match] dir/other_dup.h:1 (Definition 2 of 3)
+  in_other | int",
+                "struct dup [Name match] dir/types.h:14 (Definition 3 of 3)
+  in_header | int",
+            ],
+            "each definition is read when it is shown, and the one shown is the one read"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_long_types_show_their_first_rows(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "big", 0);
+        let text = section_text(&mut cx);
+        assert!(text.contains("member_29 | int"), "{text}");
+        assert!(!text.contains("member_30"), "{text}");
+        assert!(text.ends_with("5 more"), "{text}");
+        let section = section(&mut cx).expect("a section");
+        cx.update(|_, cx| {
+            section.update(cx, |section, cx| {
+                let path = section.view_path_for_tests("struct big");
+                section.show_more_rows(path, 0, cx);
+            })
+        });
+        let text = section_text(&mut cx);
+        assert!(text.ends_with("member_34 | int"), "{text}");
+    }
+
+    #[gpui::test]
+    async fn test_unsaved_edits_are_described(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        let edited =
+            format!("ˇ{FILE_C}struct fresh {{ int new_field; }};\nstruct fresh *pointer;\n");
+        cx.set_state(&edited);
+        hover_over(&mut cx, "fresh", 1);
+        assert_eq!(
+            section_text(&mut cx),
+            "struct fresh [Name match] dir/file.c:11\n  new_field | int"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_the_language_server_hover_comes_first(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(true, cx).await;
+        let mut requests =
+            cx.set_request_handler::<lsp::request::HoverRequest, _, _>(|_, _, _| async move {
+                Ok(Some(lsp::Hover {
+                    contents: lsp::HoverContents::Markup(lsp::MarkupContent {
+                        kind: lsp::MarkupKind::Markdown,
+                        value: "### variable `local`\n\n---\nType: `struct outer`".to_string(),
+                    }),
+                    range: None,
+                }))
+            });
+        hover_over(&mut cx, "local", 1);
+        requests.next().await;
+        cx.run_until_parked();
+        let (count, first_is_markdown) = cx.editor(|editor, _, _| {
+            let popovers = &editor.hover_state.info_popovers;
+            (
+                popovers.len(),
+                popovers
+                    .first()
+                    .is_some_and(|popover| popover.parsed_content.is_some()),
+            )
+        });
+        assert_eq!(count, 2);
+        assert!(
+            first_is_markdown,
+            "the language server's popover stays first"
+        );
+        assert!(section_text(&mut cx).contains("in | struct inner"));
+    }
+
+    #[gpui::test]
+    async fn test_the_language_server_type_helps_when_the_index_cannot_tell(
+        cx: &mut TestAppContext,
+    ) {
+        let (mut cx, _index) = setup(true, cx).await;
+        cx.set_request_handler::<lsp::request::HoverRequest, _, _>(|_, _, _| async move {
+            Ok(Some(lsp::Hover {
+                contents: lsp::HoverContents::Markup(lsp::MarkupContent {
+                    kind: lsp::MarkupKind::Markdown,
+                    value:
+                        "### variable `mystery`\n\n---\nType: `struct inner *` (aka `struct inner *`)"
+                            .to_string(),
+                }),
+                range: None,
+            }))
+        });
+        hover_over(&mut cx, "mystery", 0);
+        let text = section_text(&mut cx);
+        assert!(
+            text.starts_with(
+                "Type of mystery: struct inner * (type named by the language server)\nstruct inner"
+            ),
+            "{text}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_without_an_index_nothing_is_added(cx: &mut TestAppContext) {
+        let mut cx = c_context(true, cx).await;
+        cx.set_state(&format!("ˇ{FILE_C}"));
+        cx.set_request_handler::<lsp::request::HoverRequest, _, _>(|_, _, _| async move {
+            Ok(Some(lsp::Hover {
+                contents: lsp::HoverContents::Scalar(lsp::MarkedString::String("docs".to_string())),
+                range: None,
+            }))
+        });
+        let before = queries_for_tests();
+        hover_over(&mut cx, "local", 1);
+        assert_eq!(queries_for_tests(), before + 1, "the index was asked");
+        let count = cx.editor(|editor, _, _| editor.hover_state.info_popovers.len());
+        assert_eq!(count, 1, "the language server's hover alone");
+        assert!(section(&mut cx).is_none());
+    }
+
+    #[gpui::test]
+    async fn test_other_languages_are_not_asked_about(cx: &mut TestAppContext) {
+        init_test(cx, |_| {});
+        cx.executor().allow_parking();
+        let mut cx = EditorLspTestContext::new_rust(lsp::ServerCapabilities::default(), cx).await;
+        cx.set_state("ˇfn main() { let local = 1; }\n");
+        let _index = install_index(
+            &mut cx,
+            ("dir/file.rs", "fn main() { let local = 1; }\n"),
+            &[("dir/types.h", TYPES_H)],
+        )
+        .await;
+        let before = queries_for_tests();
+        hover_over(&mut cx, "local", 0);
+        assert_eq!(queries_for_tests(), before);
+        assert!(section(&mut cx).is_none());
+    }
+
+    #[gpui::test]
+    async fn test_the_setting_turns_the_section_off(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        set_hover_type_contents(&mut cx, false);
+        let before = queries_for_tests();
+        hover_over(&mut cx, "alias_t", 0);
+        assert!(section(&mut cx).is_none());
+        assert_eq!(queries_for_tests(), before, "the index is not asked");
+
+        set_hover_type_contents(&mut cx, true);
+        hover_over(&mut cx, "local", 1);
+        assert!(section(&mut cx).is_some());
+    }
+
+    #[gpui::test]
+    async fn test_moving_on_drops_the_earlier_question(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        let before = queries_for_tests();
+        point_at(&mut cx, "local", 0);
+        let delay = hover_delay(&mut cx);
+        cx.executor()
+            .advance_clock(Duration::from_millis(delay / 2 + 10));
+        assert_eq!(queries_for_tests(), before + 1, "the index was asked");
+        point_at(&mut cx, "shade", 0);
+        cx.executor()
+            .advance_clock(Duration::from_millis(delay + 100));
+        cx.run_until_parked();
+        assert_eq!(queries_for_tests(), before + 2);
+        let text = section_text(&mut cx);
+        assert!(text.contains("enum color"), "{text}");
+        assert!(!text.contains("struct outer"), "{text}");
+        let sections = cx.editor(|editor, _, _| {
+            editor
+                .hover_state
+                .info_popovers
+                .iter()
+                .filter(|popover| popover.type_contents.is_some())
+                .count()
+        });
+        assert_eq!(sections, 1);
+    }
+
+    #[gpui::test]
+    async fn test_closing_the_popover_drops_the_section(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "alias_t", 0);
+        let section = section(&mut cx).expect("a section").downgrade();
+        cx.update(|_, cx| {
+            section
+                .update(cx, |section, cx| {
+                    let path = section.member_path_for_tests("in");
+                    section.toggle_member(path, cx);
+                })
+                .ok();
+        });
+        cx.update_editor(|editor, _, cx| {
+            hide_hover(editor, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            section.upgrade().is_none(),
+            "nothing keeps it or its questions"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_the_keyboard_hover_shows_the_section(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        let offset = FILE_C.find("local.").expect("local.");
+        cx.set_state(&format!("{}ˇ{}", &FILE_C[..offset], &FILE_C[offset..]));
+        cx.update_editor(|editor, window, cx| hover(editor, &Hover, window, cx));
+        cx.run_until_parked();
+        assert!(section_text(&mut cx).starts_with("Type of local: struct outer"));
+    }
+
+    #[gpui::test]
+    async fn test_rows_jump_to_their_definitions(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "alias_t", 0);
+        let section = section(&mut cx).expect("a section");
+        let editor = cx.editor(|_, _, cx| cx.entity().downgrade());
+        let project = cx.update_workspace(|workspace, _, _| workspace.project().downgrade());
+        for (row, expected_row, expected_column) in [("struct outer", 4, 15), ("flags", 8, 13)] {
+            let jump = cx.update(|_, cx| section.read(cx).jump_for_tests(row));
+            cx.update(|window, cx| open_location(&editor, &project, jump, window, cx));
+            cx.run_until_parked();
+            let (path, position) = cx.update_workspace(|workspace, _, cx| {
+                let active = workspace
+                    .active_item_as::<Editor>(cx)
+                    .expect("an active editor");
+                let active = active.read(cx);
+                let buffer = active
+                    .buffer()
+                    .read(cx)
+                    .as_singleton()
+                    .expect("a singleton buffer");
+                let path = buffer
+                    .read(cx)
+                    .file()
+                    .expect("a file")
+                    .path()
+                    .as_unix_str()
+                    .to_string();
+                let snapshot = active.buffer().read(cx).snapshot(cx);
+                let head = active.selections.newest_anchor().head().to_point(&snapshot);
+                (path, head)
+            });
+            assert_eq!(path, "dir/types.h");
+            assert_eq!(
+                (position.row, position.column),
+                (expected_row, expected_column),
+                "{row}"
+            );
+        }
+    }
+
+    #[gpui::test]
+    async fn test_the_section_is_translated(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "dup", 0);
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja") as &'static dyn i18n::Catalog,
+        ));
+        let text = section_text(&mut cx);
+        assert_eq!(
+            text,
+            "struct dup [名前一致] dir/file.c:2 (3 件の定義のうち 1 件目)\n  in_main | int"
+        );
+        hover_over(&mut cx, "local", 1);
+        let text = section_text(&mut cx);
+        assert!(
+            text.starts_with("local の型: struct outer (この関数の中の宣言)"),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn test_the_type_is_read_from_a_language_server_hover() {
+        let hover = |kind: HoverBlockKind, text: &str| project::Hover {
+            contents: vec![project::HoverBlock {
+                text: text.to_string(),
+                kind,
+            }],
+            range: None,
+            language: None,
+        };
+        assert_eq!(
+            language_server_type_text(&[hover(
+                HoverBlockKind::Markdown,
+                "### field `ops`\n\n---\nType: `const struct file_operations *` (aka `x`)\n\n```cpp\n// In struct inode\nconst struct file_operations *ops\n```",
+            )]),
+            Some("const struct file_operations *".to_string())
+        );
+        assert_eq!(
+            language_server_type_text(&[hover(
+                HoverBlockKind::PlainText,
+                "variable ctx\nType: struct my_ctx * (aka struct my_ctx *)",
+            )]),
+            Some("struct my_ctx *".to_string())
+        );
+        assert_eq!(
+            language_server_type_text(&[hover(
+                HoverBlockKind::Markdown,
+                "### variable `ctx`\n\n```cpp\n// In main\nstruct my_ctx *ctx = make();\n```",
+            )]),
+            Some("struct my_ctx *ctx = make()".to_string())
+        );
+        assert_eq!(
+            language_server_type_text(&[hover(HoverBlockKind::Markdown, "just docs")]),
+            None
+        );
+    }
+
+    const RECURSION_C: &str = "\
+struct tree { struct branch *branch; };
+struct ring { struct link *link; };
+static struct tree *tree_root;
+static struct ring *ring_head;
+";
+
+    async fn recursion_setup(cx: &mut TestAppContext) -> (EditorLspTestContext, tempfile::TempDir) {
+        let mut cx = c_context(false, cx).await;
+        cx.set_state(&format!("ˇ{RECURSION_C}"));
+        // Expanding a member reads its type's file from the disk, and these types are in the
+        // edited file.
+        let fs = cx.update_workspace(|workspace, _, cx| workspace.project().read(cx).fs().clone());
+        fs.as_fake()
+            .insert_file(
+                EditorLspTestContext::root_path().join("dir/file.c"),
+                RECURSION_C.as_bytes().to_vec(),
+            )
+            .await;
+        let index = install_index(
+            &mut cx,
+            ("dir/file.c", RECURSION_C),
+            &[
+                ("dir/branch.h", "struct branch { struct tree *up; };\n"),
+                (
+                    "dir/link.h",
+                    "struct ring { int other_ring; };\nstruct link { struct ring *back; };\n",
+                ),
+            ],
+        )
+        .await;
+        (cx, index)
+    }
+
+    #[gpui::test]
+    async fn test_recursion_is_told_by_definition_not_by_name(cx: &mut TestAppContext) {
+        let (mut cx, _index) = recursion_setup(cx).await;
+
+        // `struct tree` in another file is the same definition: found once expanded.
+        hover_over(&mut cx, "tree *tree_root", 0);
+        toggle(&mut cx, "branch");
+        let text = section_text(&mut cx);
+        assert!(text.contains("  ▸ up | struct tree *"), "{text}");
+        toggle(&mut cx, "up");
+        let text = section_text(&mut cx);
+        assert!(
+            text.contains("  ↺ up | struct tree * (recursive)"),
+            "{text}"
+        );
+        toggle(&mut cx, "up");
+        assert_eq!(section_text(&mut cx), text, "nothing to expand");
+
+        // `struct ring` in `link.h` is another type of the same name.
+        hover_over(&mut cx, "ring *ring_head", 0);
+        toggle(&mut cx, "link");
+        toggle(&mut cx, "back");
+        let text = section_text(&mut cx);
+        assert!(
+            text.contains("  ▾ back | struct ring *\n    struct ring dir/link.h:1"),
+            "{text}"
+        );
+        assert!(text.contains("      other_ring | int"), "{text}");
+    }
+
+    #[gpui::test]
+    async fn test_switching_definitions_closes_what_was_opened(cx: &mut TestAppContext) {
+        let (mut cx, _index) = recursion_setup(cx).await;
+        hover_over(&mut cx, "ring *ring_head", 0);
+        toggle(&mut cx, "link");
+        let opened = section_text(&mut cx);
+        assert!(opened.contains("▾ link | struct link *"), "{opened}");
+        let section = section(&mut cx).expect("a section");
+        for _ in 0..2 {
+            cx.update(|_, cx| {
+                section.update(cx, |section, cx| {
+                    let path = section.view_path_for_tests("struct ring");
+                    section.select_candidate(path, true, cx);
+                })
+            });
+            cx.run_until_parked();
+        }
+        let text = section_text(&mut cx);
+        assert!(text.contains("dir/file.c:2"), "back to the first: {text}");
+        assert!(text.contains("▸ link | struct link *"), "{text}");
+        assert!(!text.contains("back | struct ring"), "{text}");
+    }
+
+    #[gpui::test]
+    async fn test_a_member_whose_type_went_away_is_not_found(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "alias_t", 0);
+        let fs = cx.update_workspace(|workspace, _, cx| workspace.project().read(cx).fs().clone());
+        fs.as_fake()
+            .insert_file(
+                EditorLspTestContext::root_path().join("dir/types.h"),
+                b"struct unrelated { int value; };\n".to_vec(),
+            )
+            .await;
+        cx.run_until_parked();
+        toggle(&mut cx, "in");
+        let text = section_text(&mut cx);
+        assert!(
+            text.contains("▾ in | struct inner // the inner part\n    Definition not found"),
+            "{text}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_more_rows_come_a_page_at_a_time(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        let members = (0..250)
+            .map(|index| format!("    int field_{index};\n"))
+            .collect::<String>();
+        let huge = format!("struct huge {{\n{members}}};\n");
+        let edited = format!("ˇ{FILE_C}{huge}struct huge *huge_value;\n");
+        cx.set_state(&edited);
+        hover_over(&mut cx, "huge *huge_value", 0);
+        let section = section(&mut cx).expect("a section");
+        let show_more = |cx: &mut EditorLspTestContext| {
+            cx.update(|_, cx| {
+                section.update(cx, |section, cx| {
+                    let path = section.view_path_for_tests("struct huge");
+                    section.show_more_rows(path, 0, cx);
+                })
+            });
+        };
+        let text = section_text(&mut cx);
+        assert!(text.ends_with("220 more"), "{text}");
+        show_more(&mut cx);
+        let text = section_text(&mut cx);
+        assert!(text.contains("field_129 | int"), "{text}");
+        assert!(!text.contains("field_130"), "{text}");
+        assert!(text.ends_with("120 more"), "{text}");
+        show_more(&mut cx);
+        show_more(&mut cx);
+        let text = section_text(&mut cx);
+        assert!(text.ends_with("field_249 | int"), "{text}");
+    }
+
+    #[gpui::test]
+    async fn test_copying_puts_the_shown_definition_on_the_clipboard(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "alias_t", 0);
+        let outer = section(&mut cx).expect("a section");
+        cx.update(|_, cx| outer.update(cx, |section, cx| section.copy_type_contents(cx)));
+        cx.run_until_parked();
+        let copied = cx
+            .update(|_, cx| cx.read_from_clipboard())
+            .and_then(|item| item.text())
+            .expect("copied text");
+        for expected in ["struct outer", "in", "depth", "callback", "flags"] {
+            assert!(copied.contains(expected), "{expected:?} not in\n{copied}");
+        }
+
+        hover_over(&mut cx, "dup", 0);
+        let dup = section(&mut cx).expect("a section");
+        cx.update(|_, cx| {
+            dup.update(cx, |section, cx| {
+                let path = section.view_path_for_tests("struct dup");
+                section.select_candidate(path, true, cx);
+            })
+        });
+        cx.run_until_parked();
+        let shown = section_text(&mut cx);
+        cx.update(|_, cx| dup.update(cx, |section, cx| section.copy_type_contents(cx)));
+        cx.run_until_parked();
+        let copied = cx
+            .update(|_, cx| cx.read_from_clipboard())
+            .and_then(|item| item.text())
+            .expect("copied text");
+        let shown_member = ["in_other", "in_header"]
+            .into_iter()
+            .find(|member| shown.contains(member))
+            .unwrap_or_else(|| panic!("a second definition in\n{shown}"));
+        assert!(copied.contains(shown_member), "{shown}\n---\n{copied}");
+        assert!(!copied.contains("in_main"), "{copied}");
+    }
+
+    #[test]
+    fn test_locations_name_the_worktree_when_there_are_several() {
+        let path = ProjectPath {
+            worktree_id: WorktreeId::from_usize(1),
+            path: util::rel_path::rel_path("include/linux/fs.h").into_arc(),
+        };
+        let single = PathLabels {
+            path_style: PathStyle::Unix,
+            root_names: None,
+        };
+        assert_eq!(
+            location_label(&path, Point::new(9, 4), &single),
+            ("include/linux/".to_string(), "fs.h:10".to_string())
+        );
+        let several = PathLabels {
+            path_style: PathStyle::Windows,
+            root_names: Some(HashMap::from_iter([
+                (WorktreeId::from_usize(1), "kernel".to_string()),
+                (WorktreeId::from_usize(2), "tools".to_string()),
+            ])),
+        };
+        assert_eq!(
+            location_label(&path, Point::new(0, 0), &several),
+            ("kernel\\include\\linux\\".to_string(), "fs.h:1".to_string())
+        );
+    }
+
+    #[gpui::test]
+    async fn test_a_slow_section_does_not_hold_the_popover_up(cx: &mut TestAppContext) {
+        let pending = |future: LocalBoxFuture<'static, Option<TypeContentsData>>,
+                       cx: &mut TestAppContext| PendingTypeContents {
+            future,
+            grace_period: cx.executor().timer(GRACE_PERIOD),
+        };
+
+        let ready = pending(async { None }.boxed_local(), cx);
+        let (now, later) = within_grace_period(Some(ready)).await;
+        assert!(now.is_none() && later.is_none(), "answered in time");
+
+        let (answer, answered) = futures::channel::oneshot::channel::<()>();
+        let slow = pending(
+            async move {
+                answered.await.ok();
+                None
+            }
+            .boxed_local(),
+            cx,
+        );
+        let waiting = cx
+            .foreground_executor()
+            .spawn(within_grace_period(Some(slow)));
+        cx.executor()
+            .advance_clock(GRACE_PERIOD - Duration::from_millis(10));
+        cx.run_until_parked();
+        assert!(!waiting.is_ready(), "still within the grace period");
+        cx.executor().advance_clock(Duration::from_millis(20));
+        cx.run_until_parked();
+        let (now, later) = waiting.await;
+        assert!(now.is_none());
+        let later = later.expect("added below later");
+        answer.send(()).ok();
+        assert!(later.await.is_none());
+    }
+
+    /// The heading of a definition with others of the same name stays one row: the popover is
+    /// as narrow as its widest row allows, and a heading that may wrap between its parts put
+    /// the name, the location, the switcher and the copy button on rows of their own.
+    #[gpui::test]
+    async fn test_the_heading_of_same_name_definitions_stays_on_one_row(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "dup", 0);
+        assert!(section_text(&mut cx).contains("(Definition 1 of 3)"));
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        let heading = cx
+            .debug_bounds("type-contents-heading")
+            .expect("the heading is drawn");
+        let switcher = cx
+            .debug_bounds("type-contents-switcher")
+            .expect("the switcher is drawn");
+        let line_height = cx.update(|window, _| window.line_height());
+        assert!(
+            heading.size.height < line_height * 2.,
+            "the heading wrapped: {heading:?}"
+        );
+        assert!(
+            switcher.top() < heading.top() + line_height,
+            "the switcher is on the heading's row: {switcher:?} in {heading:?}"
+        );
+        assert_eq!(short_position_label(1, 3), "2 / 3");
+        assert_eq!(definition_position_label(1, 3), "Definition 2 of 3");
+    }
+}

@@ -24,6 +24,7 @@ members = [
     "crates/breadcrumbs",
     "crates/browser_panel",
     "crates/buffer_diff",
+    "crates/call_graph_panel",
     "crates/call_hierarchy",
     "crates/channel",
     "crates/cli",
@@ -206,6 +207,7 @@ members = [
     "crates/streaming_diff",
     "crates/sum_tree",
     "crates/svg_preview",
+    "crates/symbol_index",
     "crates/syntax_theme",
     "crates/system_specs",
     "crates/tab_switcher",
@@ -323,6 +325,7 @@ breadcrumbs = { path = "crates/breadcrumbs" }
 browser_panel = { path = "crates/browser_panel" }
 buffer_diff = { path = "crates/buffer_diff" }
 call = { path = "crates/call" }
+call_graph_panel = { path = "crates/call_graph_panel" }
 call_hierarchy = { path = "crates/call_hierarchy" }
 channel = { path = "crates/channel" }
 cli = { path = "crates/cli" }
@@ -503,6 +506,7 @@ sqlez_macros = { path = "crates/sqlez_macros" }
 streaming_diff = { path = "crates/streaming_diff" }
 sum_tree = { path = "crates/sum_tree" }
 svg_preview = { path = "crates/svg_preview" }
+symbol_index = { path = "crates/symbol_index" }
 syntax_theme = { path = "crates/syntax_theme" }
 system_specs = { path = "crates/system_specs" }
 tab_switcher = { path = "crates/tab_switcher" }
@@ -718,6 +722,7 @@ lru = "0.16"
 lsp-types = { git = "https://github.com/zed-industries/lsp-types", rev = "f1783e63a7f4eb4397bf51d4148b4895a1f7ab16" }
 mach2 = "0.5"
 markup5ever_rcdom = "0.39"
+memmap2 = "0.9.8"
 metal = "0.33"
 mime = "0.3.17"
 minidumper = "0.11"

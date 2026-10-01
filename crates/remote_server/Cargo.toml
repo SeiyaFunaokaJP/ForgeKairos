@@ -93,6 +93,7 @@ gpui = { workspace = true, features = ["windows-manifest"] }
 action_log.workspace = true
 agent = { workspace = true, features = ["test-support"] }
 agent-client-protocol.workspace = true
+call_graph_panel.workspace = true
 client = { workspace = true, features = ["test-support"] }
 clock = { workspace = true, features = ["test-support"] }
 db = { workspace = true, features = ["test-support"] }

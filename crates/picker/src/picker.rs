@@ -1269,6 +1269,16 @@ impl<D: PickerDelegate> Picker<D> {
         });
     }
 
+    /// Shows the delegate's preview of the selected match again, for a delegate whose preview
+    /// data became available after the selection changed.
+    pub fn refresh_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(preview) = &mut self.preview
+            && let Some(update) = self.delegate.try_get_preview_data_for_match(cx)
+        {
+            preview.update(update, window, cx);
+        }
+    }
+
     fn matches_updated(
         &mut self,
         scroll_behavior: ScrollBehavior,

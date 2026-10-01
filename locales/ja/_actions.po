@@ -340,6 +340,70 @@ msgctxt "action"
 msgid "buffer_search::UseSelectionForFind"
 msgstr "検索: 選択範囲を検索語にする"
 
+msgctxt "action"
+msgid "call_graph_panel::CollapseAll"
+msgstr "呼び出しグラフパネル: すべて折りたたむ"
+
+msgctxt "action"
+msgid "call_graph_panel::CollapseSelected"
+msgstr "呼び出しグラフパネル: 選択項目を折りたたむ"
+
+msgctxt "action"
+msgid "call_graph_panel::CopySymbolName"
+msgstr "呼び出しグラフパネル: 関数名をコピー"
+
+msgctxt "action"
+msgid "call_graph_panel::ExpandSelected"
+msgstr "呼び出しグラフパネル: 選択項目を展開"
+
+msgctxt "action"
+msgid "call_graph_panel::InspectCursor"
+msgstr "呼び出しグラフパネル: カーソル位置の関数を調べる"
+
+msgctxt "action"
+msgid "call_graph_panel::NextRoot"
+msgstr "呼び出しグラフパネル: 次の起点"
+
+msgctxt "action"
+msgid "call_graph_panel::OpenSelected"
+msgstr "呼び出しグラフパネル: 選択項目を開く"
+
+msgctxt "action"
+msgid "call_graph_panel::PreviewSelected"
+msgstr "呼び出しグラフパネル: 選択項目をプレビュー"
+
+msgctxt "action"
+msgid "call_graph_panel::PreviousRoot"
+msgstr "呼び出しグラフパネル: 前の起点"
+
+msgctxt "action"
+msgid "call_graph_panel::Refresh"
+msgstr "呼び出しグラフパネル: 更新"
+
+msgctxt "action"
+msgid "call_graph_panel::ShowCallees"
+msgstr "呼び出しグラフパネル: 呼び出し先を表示"
+
+msgctxt "action"
+msgid "call_graph_panel::ShowCallers"
+msgstr "呼び出しグラフパネル: 呼び出し元を表示"
+
+msgctxt "action"
+msgid "call_graph_panel::Toggle"
+msgstr "呼び出しグラフパネル: 表示切り替え"
+
+msgctxt "action"
+msgid "call_graph_panel::ToggleDirection"
+msgstr "呼び出しグラフパネル: 呼び出し元と呼び出し先の切り替え"
+
+msgctxt "action"
+msgid "call_graph_panel::ToggleFocus"
+msgstr "呼び出しグラフパネル: フォーカス切り替え"
+
+msgctxt "action"
+msgid "call_graph_panel::ToggleFollowCursor"
+msgstr "呼び出しグラフパネル: カーソル追従の切り替え"
+
 #. call hierarchy: show incoming calls
 msgctxt "action"
 msgid "call_hierarchy::ShowIncomingCalls"

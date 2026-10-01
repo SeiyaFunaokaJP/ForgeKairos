@@ -1678,6 +1678,589 @@ async fn test_remote_call_hierarchy(cx: &mut TestAppContext, server_cx: &mut Tes
     });
 }
 
+// Added by zed-jp-enhance with the call graph panel: its tree keeps only weak
+// handles to buffers and opens them again by path when a row is expanded.
+#[gpui::test]
+async fn test_remote_call_graph_expands_released_files(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "src": {
+                    "lib.rs": "fn main() { helper(); }\nfn helper() {}\n",
+                    "other.rs": "fn other_caller() { helper(); }\n"
+                }
+            },
+            "external": {
+                "ext.rs": "fn outside() { helper(); }\n"
+            },
+        }),
+    )
+    .await;
+
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+
+    fs.insert_tree(
+        path!("/code/project1/.zed"),
+        json!({
+            "settings.json": r#"
+          {
+            "languages": {"Rust":{"language_servers":["rust-analyzer"]}},
+            "lsp": {
+              "rust-analyzer": {
+                "binary": {
+                  "path": "~/.cargo/bin/rust-analyzer"
+                }
+              }
+            }
+          }"#
+        }),
+    )
+    .await;
+
+    cx.update_entity(&project, |project, _| {
+        project.languages().register_test_language(LanguageConfig {
+            name: "Rust".into(),
+            matcher: Arc::new(LanguageMatcher {
+                path_suffixes: vec!["rs".into()],
+                ..LanguageMatcher::default()
+            }),
+            ..LanguageConfig::default()
+        });
+        project.languages().register_fake_lsp_adapter(
+            "Rust",
+            FakeLspAdapter {
+                name: "rust-analyzer",
+                capabilities: lsp::ServerCapabilities {
+                    call_hierarchy_provider: Some(lsp::CallHierarchyServerCapability::Simple(true)),
+                    ..lsp::ServerCapabilities::default()
+                },
+                ..FakeLspAdapter::default()
+            },
+        )
+    });
+
+    let mut fake_lsp = server_cx.update(|cx| {
+        headless.read(cx).languages.register_fake_lsp_server(
+            LanguageServerName("rust-analyzer".into()),
+            lsp::ServerCapabilities {
+                call_hierarchy_provider: Some(lsp::CallHierarchyServerCapability::Simple(true)),
+                ..lsp::ServerCapabilities::default()
+            },
+            None,
+        )
+    });
+
+    cx.run_until_parked();
+
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.languages().add(rust_lang());
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap()
+        .0
+        .read_with(cx, |worktree, _| worktree.id());
+
+    cx.run_until_parked();
+
+    let (buffer, _handle) = project
+        .update(cx, |project, cx| {
+            project.open_buffer_with_lsp((worktree_id, rel_path("src/lib.rs")), cx)
+        })
+        .await
+        .unwrap();
+
+    cx.run_until_parked();
+
+    let fake_lsp = fake_lsp.next().await.unwrap();
+    let lib_uri = lsp::Uri::from_file_path(path!("/code/project1/src/lib.rs")).unwrap();
+    let other_uri = lsp::Uri::from_file_path(path!("/code/project1/src/other.rs")).unwrap();
+    let ext_uri = lsp::Uri::from_file_path(path!("/code/external/ext.rs")).unwrap();
+    let item = |name: &str, uri: &lsp::Uri, end: u32| lsp::CallHierarchyItem {
+        name: name.into(),
+        kind: lsp::SymbolKind::FUNCTION,
+        tags: None,
+        detail: None,
+        uri: uri.clone(),
+        range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, end)),
+        selection_range: lsp::Range::new(
+            lsp::Position::new(0, 3),
+            lsp::Position::new(0, 3 + name.len() as u32),
+        ),
+        data: None,
+    };
+
+    fake_lsp.set_request_handler::<lsp::request::CallHierarchyPrepare, _, _>({
+        let mut helper = item("helper", &lib_uri, 14);
+        helper.range = lsp::Range::new(lsp::Position::new(1, 0), lsp::Position::new(1, 14));
+        helper.selection_range =
+            lsp::Range::new(lsp::Position::new(1, 3), lsp::Position::new(1, 9));
+        move |_, _| {
+            let helper = helper.clone();
+            async move { Ok(Some(vec![helper])) }
+        }
+    });
+    let asked_about = Arc::new(std::sync::Mutex::new(Vec::<(String, lsp::Uri)>::new()));
+    fake_lsp.set_request_handler::<lsp::request::CallHierarchyIncomingCalls, _, _>({
+        let callers = vec![
+            item("other_caller", &other_uri, 31),
+            item("outside", &ext_uri, 26),
+        ];
+        let asked_about = asked_about.clone();
+        move |params, _| {
+            let callers = callers.clone();
+            let asked_about = asked_about.clone();
+            async move {
+                asked_about
+                    .lock()
+                    .unwrap()
+                    .push((params.item.name.clone(), params.item.uri.clone()));
+                if params.item.name == "helper" {
+                    Ok(Some(
+                        callers
+                            .into_iter()
+                            .map(|from| lsp::CallHierarchyIncomingCall {
+                                from,
+                                from_ranges: Vec::new(),
+                            })
+                            .collect(),
+                    ))
+                } else {
+                    Ok(Some(Vec::new()))
+                }
+            }
+        }
+    });
+
+    let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(PointUtf16::new(1, 4)));
+    let root = cx
+        .update(|cx| {
+            call_graph_panel::prepare_root(
+                &project,
+                buffer.clone(),
+                position,
+                call_graph_panel::SourceFilter::All,
+                cx,
+            )
+        })
+        .await
+        .unwrap();
+    let call_graph_panel::RootOutcome::Found(root) = root else {
+        panic!("expected a root, got {root:?}");
+    };
+    assert_eq!(root.name, "helper");
+
+    let callers = cx
+        .update(|cx| {
+            call_graph_panel::fetch_children(
+                &project,
+                &root,
+                call_graph_panel::CallDirection::Incoming,
+                call_graph_panel::FetchOptions::default(),
+                cx,
+            )
+        })
+        .await
+        .unwrap()
+        .symbols;
+    let caller = |name: &str| {
+        callers
+            .iter()
+            .find(|caller| caller.name == name)
+            .cloned()
+            .unwrap_or_else(|| panic!("no caller named {name}"))
+    };
+    let other_caller = caller("other_caller");
+    let outside = caller("outside");
+    drop(callers);
+
+    let count_worktrees = |cx: &mut TestAppContext, server_cx: &mut TestAppContext| {
+        cx.run_until_parked();
+        server_cx.run_until_parked();
+        cx.run_until_parked();
+        let client = project.read_with(cx, |project, cx| project.worktrees(cx).count());
+        let server = headless.read_with(server_cx, |headless, cx| {
+            headless.worktree_store.read(cx).worktrees().count()
+        });
+        (client, server)
+    };
+    let is_open = |file_name: &str, cx: &mut TestAppContext| {
+        project.read_with(cx, |project, cx| {
+            project.opened_buffers(cx).iter().any(|buffer| {
+                buffer
+                    .read(cx)
+                    .file()
+                    .is_some_and(|file| file.file_name(cx) == file_name)
+            })
+        })
+    };
+
+    let after_first_answer = count_worktrees(cx, server_cx);
+    assert!(
+        !is_open("other.rs", cx),
+        "a caller inside the project is not kept open by the tree"
+    );
+    for _ in 0..3 {
+        for symbol in [&other_caller, &outside] {
+            let grandchildren = cx
+                .update(|cx| {
+                    call_graph_panel::fetch_children(
+                        &project,
+                        symbol,
+                        call_graph_panel::CallDirection::Incoming,
+                        call_graph_panel::FetchOptions::default(),
+                        cx,
+                    )
+                })
+                .await
+                .unwrap();
+            assert!(grandchildren.symbols.is_empty());
+        }
+        assert!(!is_open("other.rs", cx));
+        assert_eq!(
+            count_worktrees(cx, server_cx),
+            after_first_answer,
+            "expanding again does not leave worktrees behind on either side"
+        );
+    }
+
+    // A file outside the project's folders is not asked about at all over
+    // SSH, reopened or not: the client finds no language server for its
+    // invisible worktree. That is why only its worktrees are counted above.
+    let asked_about = asked_about.lock().unwrap().clone();
+    let mut expected = vec![("helper".to_string(), lib_uri.clone())];
+    for _ in 0..3 {
+        expected.push(("other_caller".to_string(), other_uri.clone()));
+    }
+    assert_eq!(
+        asked_about, expected,
+        "every expansion of a file inside the project reaches the language server on the host"
+    );
+
+    let site = call_graph_panel::resolve_location(
+        &project,
+        other_caller.jump_target(0),
+        &mut cx.to_async(),
+    )
+    .await
+    .unwrap();
+    site.buffer.read_with(cx, |buffer, _| {
+        assert_eq!(buffer.text(), "fn other_caller() { helper(); }\n");
+        assert_eq!(
+            site.range.to_point(buffer),
+            Point::new(0, 3)..Point::new(0, 15)
+        );
+    });
+}
+
+// Added by zed-jp-enhance with the call graph panel's symbol index (ADR-F68):
+// the index answers on the host, including for a function in a file outside
+// the project, which the language server cannot be asked about over SSH.
+#[gpui::test]
+async fn test_remote_call_graph_uses_the_symbol_index(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    cx.executor().allow_parking();
+    server_cx.executor().allow_parking();
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "main.c": "int helper(void) { return 1; }\nint main(void) { return outside(); }\n",
+                "other.c": "int other_caller(void) { return helper(); }\n",
+            },
+            "external": {
+                "ext.c": "int outside(void) { return helper(); }\n"
+            },
+        }),
+    )
+    .await;
+
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    let index_root = tempfile::tempdir().unwrap();
+    let server_store =
+        headless.read_with(server_cx, |headless, _| headless.symbol_index_store.clone());
+    server_store.update(server_cx, |store, cx| {
+        store.set_index_root_for_tests(Some(index_root.path().to_path_buf()), cx)
+    });
+
+    fs.insert_tree(
+        path!("/code/project1/.zed"),
+        json!({
+            "settings.json": r#"
+          {
+            "languages": {"C":{"language_servers":["clangd"]}},
+            "lsp": {
+              "clangd": {
+                "binary": {
+                  "path": "~/.local/bin/clangd"
+                }
+              }
+            }
+          }"#
+        }),
+    )
+    .await;
+
+    let c_config = LanguageConfig {
+        name: "C".into(),
+        matcher: Arc::new(LanguageMatcher {
+            path_suffixes: vec!["c".into()],
+            ..LanguageMatcher::default()
+        }),
+        ..LanguageConfig::default()
+    };
+    cx.update_entity(&project, |project, _| {
+        project.languages().register_test_language(c_config.clone());
+        project.languages().register_fake_lsp_adapter(
+            "C",
+            FakeLspAdapter {
+                name: "clangd",
+                capabilities: lsp::ServerCapabilities {
+                    call_hierarchy_provider: Some(lsp::CallHierarchyServerCapability::Simple(true)),
+                    ..lsp::ServerCapabilities::default()
+                },
+                ..FakeLspAdapter::default()
+            },
+        )
+    });
+    let mut fake_lsp = server_cx.update(|cx| {
+        headless.read(cx).languages.register_fake_lsp_server(
+            LanguageServerName("clangd".into()),
+            lsp::ServerCapabilities {
+                call_hierarchy_provider: Some(lsp::CallHierarchyServerCapability::Simple(true)),
+                ..lsp::ServerCapabilities::default()
+            },
+            None,
+        )
+    });
+    cx.run_until_parked();
+
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap()
+        .0
+        .read_with(cx, |worktree, _| worktree.id());
+    let client_store = project.read_with(cx, |project, _| project.symbol_index_store().clone());
+    let mut ready = false;
+    for _ in 0..1000 {
+        server_cx
+            .executor()
+            .advance_clock(Duration::from_millis(100));
+        server_cx.run_until_parked();
+        cx.run_until_parked();
+        ready = matches!(
+            client_store.read_with(cx, |store, _| store.status(worktree_id)),
+            project::symbol_index_store::SymbolIndexStatus::Ready { .. }
+        );
+        if ready {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(ready, "the client hears that the host's index is ready");
+
+    let (buffer, _handle) = project
+        .update(cx, |project, cx| {
+            project.open_buffer_with_lsp((worktree_id, rel_path("main.c")), cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    let position = buffer.read_with(cx, |buffer, _| buffer.anchor_before(Point::new(0, 5)));
+
+    // Name matches only: the root and its callers come from the host's index.
+    let root = cx
+        .update(|cx| {
+            call_graph_panel::prepare_root(
+                &project,
+                buffer.clone(),
+                position,
+                call_graph_panel::SourceFilter::NameMatch,
+                cx,
+            )
+        })
+        .await
+        .unwrap();
+    let call_graph_panel::RootOutcome::Found(root) = root else {
+        panic!("expected a root, got {root:?}");
+    };
+    assert_eq!(root.name, "helper");
+    assert_eq!(root.origin, call_graph_panel::CallOrigin::NameMatch);
+    let name_matches = call_graph_panel::FetchOptions {
+        sources: call_graph_panel::SourceFilter::NameMatch,
+        ..call_graph_panel::FetchOptions::default()
+    };
+    let callers = cx
+        .update(|cx| {
+            call_graph_panel::fetch_children(
+                &project,
+                &root,
+                call_graph_panel::CallDirection::Incoming,
+                name_matches.clone(),
+                cx,
+            )
+        })
+        .await
+        .unwrap()
+        .symbols;
+    assert_eq!(
+        callers
+            .iter()
+            .map(|caller| (caller.name.to_string(), caller.origin))
+            .collect::<Vec<_>>(),
+        vec![(
+            "other_caller".to_string(),
+            call_graph_panel::CallOrigin::NameMatch
+        )]
+    );
+    let site =
+        call_graph_panel::resolve_location(&project, callers[0].jump_target(0), &mut cx.to_async())
+            .await
+            .unwrap();
+    site.buffer.read_with(cx, |buffer, _| {
+        assert_eq!(
+            buffer.text(),
+            "int other_caller(void) { return helper(); }\n"
+        );
+        assert_eq!(
+            site.range.to_point(buffer),
+            Point::new(0, 32)..Point::new(0, 38),
+            "a name match opens its file only to jump to it"
+        );
+    });
+
+    // The language server lists a caller in a file outside the project.
+    let fake_lsp = fake_lsp.next().await.unwrap();
+    let main_uri = lsp::Uri::from_file_path(path!("/code/project1/main.c")).unwrap();
+    let ext_uri = lsp::Uri::from_file_path(path!("/code/external/ext.c")).unwrap();
+    let item = |name: &str, uri: &lsp::Uri| lsp::CallHierarchyItem {
+        name: name.into(),
+        kind: lsp::SymbolKind::FUNCTION,
+        tags: None,
+        detail: None,
+        uri: uri.clone(),
+        range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 30)),
+        selection_range: lsp::Range::new(
+            lsp::Position::new(0, 4),
+            lsp::Position::new(0, 4 + name.len() as u32),
+        ),
+        data: None,
+    };
+    fake_lsp.set_request_handler::<lsp::request::CallHierarchyPrepare, _, _>({
+        let helper = item("helper", &main_uri);
+        move |_, _| {
+            let helper = helper.clone();
+            async move { Ok(Some(vec![helper])) }
+        }
+    });
+    fake_lsp.set_request_handler::<lsp::request::CallHierarchyIncomingCalls, _, _>({
+        let outside = item("outside", &ext_uri);
+        move |params, _| {
+            let outside = outside.clone();
+            async move {
+                if params.item.name == "helper" {
+                    Ok(Some(vec![lsp::CallHierarchyIncomingCall {
+                        from: outside,
+                        from_ranges: Vec::new(),
+                    }]))
+                } else {
+                    Ok(Some(Vec::new()))
+                }
+            }
+        }
+    });
+
+    let root = cx
+        .update(|cx| {
+            call_graph_panel::prepare_root(
+                &project,
+                buffer.clone(),
+                position,
+                call_graph_panel::SourceFilter::All,
+                cx,
+            )
+        })
+        .await
+        .unwrap();
+    let call_graph_panel::RootOutcome::Found(root) = root else {
+        panic!("expected a root, got {root:?}");
+    };
+    assert_eq!(root.origin, call_graph_panel::CallOrigin::LanguageServer);
+    let callers = cx
+        .update(|cx| {
+            call_graph_panel::fetch_children(
+                &project,
+                &root,
+                call_graph_panel::CallDirection::Incoming,
+                call_graph_panel::FetchOptions::default(),
+                cx,
+            )
+        })
+        .await
+        .unwrap()
+        .symbols;
+    assert_eq!(
+        callers
+            .iter()
+            .map(|caller| (caller.name.to_string(), caller.origin))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                "outside".to_string(),
+                call_graph_panel::CallOrigin::LanguageServer
+            ),
+            (
+                "other_caller".to_string(),
+                call_graph_panel::CallOrigin::NameMatch
+            ),
+        ],
+        "the exact caller first, then what only the index found"
+    );
+
+    let outside = callers
+        .iter()
+        .find(|caller| caller.name == "outside")
+        .cloned()
+        .unwrap();
+    let callers_of_outside = cx
+        .update(|cx| {
+            call_graph_panel::fetch_children(
+                &project,
+                &outside,
+                call_graph_panel::CallDirection::Incoming,
+                call_graph_panel::FetchOptions::default(),
+                cx,
+            )
+        })
+        .await
+        .unwrap()
+        .symbols;
+    assert_eq!(
+        callers_of_outside
+            .iter()
+            .map(|caller| (caller.name.to_string(), caller.origin))
+            .collect::<Vec<_>>(),
+        vec![("main".to_string(), call_graph_panel::CallOrigin::NameMatch)],
+        "a function outside the project is expanded by the host's index"
+    );
+}
+
 #[gpui::test]
 async fn test_remote_code_action_resolve(cx: &mut TestAppContext, server_cx: &mut TestAppContext) {
     cx.update(|cx| {

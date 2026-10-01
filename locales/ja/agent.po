@@ -78,6 +78,15 @@ msgstr "リポジトリマップを作成"
 msgid "Build a repository map of {path}"
 msgstr "{path} のリポジトリマップを作成"
 
+msgid "Call hierarchy"
+msgstr "呼び出し階層"
+
+msgid "Callers of {}"
+msgstr "{} の呼び出し元"
+
+msgid "Calls made by {}"
+msgstr "{} の呼び出し先"
+
 msgid "Cancel"
 msgstr "キャンセル"
 
@@ -303,6 +312,12 @@ msgstr "設定が変わったため判定を中止しました"
 msgid "The settings allow writing anywhere in the file system"
 msgstr "設定でファイルシステムへの書き込みがすべて許可されています"
 
+msgid "Type layout"
+msgstr "型の中身"
+
+msgid "Type layout of {}"
+msgstr "{} の型の中身"
+
 msgid "Web Search Failed"
 msgstr "Web 検索に失敗しました"
 
@@ -317,6 +332,9 @@ msgstr "`{}` スキル"
 
 msgid "`{}` points outside the project (symlink to `{}`)"
 msgstr "`{}` はプロジェクトの外を指しています (シンボリックリンク → `{}`)"
+
+msgid "line {1} of {0}"
+msgstr "{0} の {1} 行目"
 
 msgid "outside the project"
 msgstr "プロジェクトの外"
@@ -345,6 +363,9 @@ msgstr "{title} (言語サーバーなし)"
 
 msgid "{title} (settings)"
 msgstr "{title} (設定)"
+
+msgid "{} (no name index)"
+msgstr "{} (名前索引なし)"
 
 msgid "{} (symlinks outside project)"
 msgstr "{} (プロジェクト外へのシンボリックリンク)"

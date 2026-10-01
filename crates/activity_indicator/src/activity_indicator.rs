@@ -17,6 +17,7 @@ use project::{
     git_store::{GitStoreEvent, Repository},
     lsp_store::dev_tools::{self, DevToolState},
     project_settings::ProjectSettings,
+    symbol_index_store::{SymbolIndexStatus, SymbolIndexStoreEvent},
 };
 use settings::Settings as _;
 use smallvec::SmallVec;
@@ -380,6 +381,13 @@ impl ActivityIndicator {
                         cx.notify()
                     }
                 },
+            )
+            .detach();
+
+            // ADR-F41: the first build of a large tree's symbol index takes a while.
+            cx.subscribe(
+                &project.read(cx).symbol_index_store().clone(),
+                |_, _, _: &SymbolIndexStoreEvent, cx| cx.notify(),
             )
             .detach();
 
@@ -1620,6 +1628,23 @@ impl ActivityIndicator {
             });
         }
 
+        if let Some(message) = symbol_index_progress(
+            self.project
+                .read(cx)
+                .symbol_index_store()
+                .read(cx)
+                .statuses(cx)
+                .into_iter()
+                .map(|(_, status)| status),
+        ) {
+            return Some(Content {
+                icon: ActivityIcon::LoadingSpinner,
+                message,
+                on_click: None,
+                tooltip_message: None,
+            });
+        }
+
         // Show any extension installation info.
         if let Some(extension_store) =
             ExtensionStore::try_global(cx).map(|extension_store| extension_store.read(cx))
@@ -1690,6 +1715,44 @@ impl ActivityIndicator {
 }
 
 impl EventEmitter<Event> for ActivityIndicator {}
+
+/// ADR-F41: what the status bar says while the symbol index of a worktree is being built.
+/// Waiting for the first scan is not mentioned: every project passes through it at startup,
+/// including those that turn out to have no C to index.
+fn symbol_index_progress(statuses: impl IntoIterator<Item = SymbolIndexStatus>) -> Option<String> {
+    let (done, total) = statuses
+        .into_iter()
+        .filter_map(|status| match status {
+            SymbolIndexStatus::Indexing { done, total } => Some((done, total)),
+            SymbolIndexStatus::Scanning
+            | SymbolIndexStatus::Ready { .. }
+            | SymbolIndexStatus::Disabled
+            | SymbolIndexStatus::Unavailable { .. } => None,
+        })
+        .fold((0, 0), |(all_done, all_total), (done, total)| {
+            (all_done + done, all_total + total)
+        });
+    (total > 0).then(|| {
+        i18n::t!(
+            "Building the symbol index ({done} / {total})",
+            done = group_digits(done),
+            total = group_digits(total)
+        )
+    })
+}
+
+/// `12345` as `12,345`.
+fn group_digits(number: usize) -> String {
+    let digits = number.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    grouped
+}
 
 const MAX_MESSAGE_LEN: usize = 50;
 
@@ -1837,6 +1900,7 @@ impl StatusItemView for ActivityIndicator {
 mod tests {
     use super::*;
     use gpui::TestAppContext;
+    use std::{cell::Cell, rc::Rc};
 
     fn server(name: &str) -> LanguageServerName {
         LanguageServerName(SharedString::from(name.to_string()))
@@ -1902,5 +1966,127 @@ mod tests {
         let unknown = manual_install_hint(&server("some-unknown-ls"));
         assert!(unknown.contains("some-unknown-ls"), "{unknown}");
         assert!(!unknown.contains("e.g."), "{unknown}");
+    }
+
+    #[test]
+    fn symbol_index_progress_sums_the_worktrees_being_built() {
+        let ready = SymbolIndexStatus::Ready {
+            stats: Default::default(),
+        };
+        assert_eq!(
+            symbol_index_progress([
+                SymbolIndexStatus::Indexing {
+                    done: 12_000,
+                    total: 50_000
+                },
+                ready.clone(),
+                SymbolIndexStatus::Indexing {
+                    done: 345,
+                    total: 10_000
+                },
+            ])
+            .as_deref(),
+            Some("Building the symbol index (12,345 / 60,000)")
+        );
+        assert_eq!(
+            symbol_index_progress([SymbolIndexStatus::Scanning, ready.clone()]),
+            None,
+            "every project waits for its first scan, C or not"
+        );
+        assert_eq!(
+            symbol_index_progress([SymbolIndexStatus::Indexing { done: 0, total: 0 }]),
+            None,
+            "nothing counted yet"
+        );
+        assert_eq!(
+            symbol_index_progress([ready, SymbolIndexStatus::Disabled]),
+            None
+        );
+    }
+
+    #[gpui::test]
+    async fn the_status_bar_shows_the_symbol_index_being_built(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+        });
+        let fs = project::FakeFs::new(cx.executor());
+        fs.insert_tree(
+            util::path!("/project"),
+            serde_json::json!({ "main.c": "int main(void) { return 0; }\n" }),
+        )
+        .await;
+        let project = Project::test(fs, [std::path::Path::new(util::path!("/project"))], cx).await;
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let index = project::symbol_index_store::build_index_for_tests(
+            directory.path(),
+            &[("main.c", "int main(void) { return 0; }\n")],
+        )
+        .expect("building the index");
+        let (multi_workspace, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace =
+            multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+        let indicator = workspace.update_in(cx, |workspace, window, cx| {
+            ActivityIndicator::new(workspace, window, cx)
+        });
+        let set_status = |status: SymbolIndexStatus, cx: &mut gpui::VisualTestContext| {
+            project.update(cx, |project, cx| {
+                project.symbol_index_store().update(cx, |store, cx| {
+                    store.set_status_for_tests(worktree_id, status, cx)
+                })
+            });
+            cx.run_until_parked();
+        };
+        let message = |cx: &mut gpui::VisualTestContext| {
+            indicator.update(cx, |indicator, cx| {
+                indicator
+                    .content_to_render(cx)
+                    .map(|content| content.message)
+            })
+        };
+        let notified = Rc::new(Cell::new(0));
+        let _observation = cx.update(|_, cx| {
+            let notified = notified.clone();
+            cx.observe(&indicator, move |_, _| notified.set(notified.get() + 1))
+        });
+        project.update(cx, |project, cx| {
+            project.symbol_index_store().update(cx, |store, cx| {
+                store.insert_index_for_tests(worktree_id, index, cx)
+            })
+        });
+        cx.run_until_parked();
+        let before = notified.get();
+
+        set_status(
+            SymbolIndexStatus::Indexing {
+                done: 12_345,
+                total: 60_000,
+            },
+            cx,
+        );
+        assert!(
+            notified.get() > before,
+            "the indicator is drawn again when the index reports progress"
+        );
+        assert_eq!(
+            message(cx).as_deref(),
+            Some("Building the symbol index (12,345 / 60,000)")
+        );
+        set_status(
+            SymbolIndexStatus::Ready {
+                stats: Default::default(),
+            },
+            cx,
+        );
+        assert_eq!(message(cx), None);
     }
 }

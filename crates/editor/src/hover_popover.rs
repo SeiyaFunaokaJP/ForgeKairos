@@ -225,6 +225,7 @@ pub fn hover_at_inlay(
                     keyboard_grace: Rc::new(RefCell::new(false)),
                     anchor: None,
                     last_bounds: Rc::new(Cell::new(None)),
+                    type_contents: None,
                     _subscription: subscription,
                 };
 
@@ -335,6 +336,12 @@ fn show_hover(
             };
 
             let hover_request = cx.update(|_, cx| provider.hover(&buffer, buffer_position, cx))?;
+            let type_contents = this
+                .update(cx, |editor, cx| {
+                    crate::type_contents_hover::query(editor, &buffer, buffer_position, cx)
+                })
+                .ok()
+                .flatten();
 
             if let Some(delay) = delay {
                 delay.await;
@@ -468,6 +475,7 @@ fn show_hover(
             } else {
                 Vec::new()
             };
+            let type_contents = type_contents.map(|query| query.finish(&hovers_response, cx));
             let snapshot = this.update_in(cx, |this, window, cx| this.snapshot(window, cx))?;
             let mut hover_highlights = Vec::with_capacity(hovers_response.len());
             let mut info_popovers = Vec::with_capacity(
@@ -496,6 +504,7 @@ fn show_hover(
                     keyboard_grace: Rc::new(RefCell::new(ignore_timeout)),
                     anchor: Some(anchor),
                     last_bounds: Rc::new(Cell::new(None)),
+                    type_contents: None,
                     _subscription: subscription,
                 })
             }
@@ -559,6 +568,7 @@ fn show_hover(
                     keyboard_grace: Rc::new(RefCell::new(ignore_timeout)),
                     anchor: Some(anchor),
                     last_bounds: Rc::new(Cell::new(None)),
+                    type_contents: None,
                     _subscription: subscription,
                 });
             }
@@ -585,11 +595,24 @@ fn show_hover(
                     keyboard_grace: Rc::new(RefCell::new(ignore_timeout)),
                     anchor: Some(anchor),
                     last_bounds: Rc::new(Cell::new(None)),
+                    type_contents: None,
                     _subscription: subscription,
                 });
             }
 
+            let (type_contents, type_contents_later) =
+                crate::type_contents_hover::within_grace_period(type_contents).await;
             this.update_in(cx, |editor, window, cx| {
+                info_popovers.extend(type_contents.and_then(|type_contents| {
+                    crate::type_contents_hover::popover(
+                        type_contents,
+                        editor,
+                        anchor,
+                        ignore_timeout,
+                        window,
+                        cx,
+                    )
+                }));
                 if hover_highlights.is_empty() {
                     editor.clear_background_highlights(HighlightKey::HoverState, cx);
                 } else {
@@ -606,6 +629,14 @@ fn show_hover(
                 cx.notify();
                 window.refresh();
             })?;
+            crate::type_contents_hover::append_later(
+                type_contents_later,
+                &this,
+                anchor,
+                ignore_timeout,
+                cx,
+            )
+            .await;
 
             anyhow::Ok(())
         }
@@ -1251,10 +1282,31 @@ pub struct InfoPopover {
     pub keyboard_grace: Rc<RefCell<bool>>,
     pub anchor: Option<Anchor>,
     pub last_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    pub(crate) type_contents: Option<Entity<crate::type_contents_hover::TypeContents>>,
     _subscription: Option<Subscription>,
 }
 
 impl InfoPopover {
+    pub(crate) fn for_type_contents(
+        symbol_range: Range<Anchor>,
+        type_contents: Entity<crate::type_contents_hover::TypeContents>,
+        anchor: Anchor,
+        keyboard_grace: bool,
+        cx: &mut Context<Editor>,
+    ) -> Self {
+        let subscription = cx.observe(&type_contents, |_, _, cx| cx.notify());
+        Self {
+            symbol_range: RangeInEditor::Text(symbol_range),
+            parsed_content: None,
+            scroll_handle: ScrollHandle::new(),
+            keyboard_grace: Rc::new(RefCell::new(keyboard_grace)),
+            anchor: Some(anchor),
+            last_bounds: Rc::new(Cell::new(None)),
+            type_contents: Some(type_contents),
+            _subscription: Some(subscription),
+        }
+    }
+
     pub(crate) fn render(
         &mut self,
         max_size: Size<Pixels>,
@@ -1328,6 +1380,21 @@ impl InfoPopover {
                                 .p_2(),
                         ),
                 )
+                .custom_scrollbars(
+                    Scrollbars::for_settings::<EditorSettingsScrollbarProxy>()
+                        .tracked_scroll_handle(&self.scroll_handle),
+                    window,
+                    cx,
+                )
+            })
+            .when_some(self.type_contents.clone(), |this, type_contents| {
+                this.child(crate::type_contents_hover::render(
+                    &type_contents,
+                    &self.scroll_handle,
+                    max_size,
+                    window,
+                    cx,
+                ))
                 .custom_scrollbars(
                     Scrollbars::for_settings::<EditorSettingsScrollbarProxy>()
                         .tracked_scroll_handle(&self.scroll_handle),

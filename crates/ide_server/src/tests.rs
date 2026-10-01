@@ -20,8 +20,9 @@ use gpui::{
     AppContext as _, Entity, Focusable as _, TestAppContext, UpdateGlobal as _, WindowHandle,
 };
 use ide_query::{
-    AssistSource, CodeAnnotation, CodeDisplay, CodeHighlight, CodeTour, DisplayOutcome, LineRange,
-    QueryLocation, SkippedDisplay, SymbolHit,
+    AssistSource, CallDirection, CallExpansion, CallHierarchy, CallNode, CallResolution,
+    CallSource, CallWalkStop, CodeAnnotation, CodeDisplay, CodeHighlight, CodeTour, DisplayOutcome,
+    IndexBuilding, LineRange, QueryLocation, SkippedDisplay, SymbolHit,
 };
 use language::{Diagnostic, DiagnosticEntry, DiagnosticSeverity, DiagnosticSourceKind, PointUtf16};
 use lsp::LanguageServerId;
@@ -3771,10 +3772,10 @@ fn sorted(names: &[&str]) -> Vec<String> {
     names
 }
 
-/// `/mcp/zed` はサンドボックスのセッションと同じトークン・同じ転送で 9 本を出し、CLI の
+/// `/mcp/zed` はサンドボックスのセッションと同じトークン・同じ転送でアシストのツールを全部出し、CLI の
 /// IDE の口 (WebSocket・`/mcp`) の一覧は変えない。initialize には `instructions` が入る。
 #[gpui::test]
-async fn the_assist_endpoint_offers_the_nine_tools_beside_the_cli_endpoint(
+async fn the_assist_endpoint_offers_every_assist_tool_beside_the_cli_endpoint(
     cx: &mut TestAppContext,
 ) {
     let fixture = start_sandbox_fixture(cx).await;
@@ -3912,7 +3913,7 @@ async fn the_assist_endpoint_follows_the_setting(cx: &mut TestAppContext) {
     );
 }
 
-/// ACP の制限セッションも同じ転送の `/mcp/zed` で 9 本を出す。`/mcp` は `getDiagnostics` のまま。
+/// ACP の制限セッションも同じ転送の `/mcp/zed` でアシストのツールを全部出す。`/mcp` は `getDiagnostics` のまま。
 #[gpui::test]
 async fn a_restricted_session_offers_the_assist_endpoint_too(cx: &mut TestAppContext) {
     let fixture = start_restricted_sandbox_fixture(cx).await;
@@ -4176,6 +4177,10 @@ async fn the_assist_tools_refuse_what_the_checks_refuse(cx: &mut TestAppContext)
                 "findReferences",
                 json!({ "path": path, "line": 1, "column": 4 }),
             ),
+            (
+                "getCallHierarchy",
+                json!({ "path": path, "line": 1, "symbol": "main", "direction": "incoming" }),
+            ),
         ] {
             let response = call_assist_tool(&fixture, tool, arguments).await;
             let text = tool_error_text(&response);
@@ -4200,6 +4205,636 @@ async fn the_assist_tools_refuse_what_the_checks_refuse(cx: &mut TestAppContext)
     assert!(
         !text.contains("can't be used") && !text.contains("wasn't found"),
         "{text}"
+    );
+    let response = call_assist_tool(
+        &fixture,
+        "getCallHierarchy",
+        json!({ "path": "main.rs", "line": 1, "direction": "outgoing", "depth": 2 }),
+    )
+    .await;
+    let text = tool_error_text(&response);
+    assert!(text.contains("language server isn't running"), "{text}");
+}
+
+/// `getCallHierarchy` の引数: `direction` は必須、深さは 3・件数は 100 で切る。一覧のスキーマも
+/// 同じ形。呼び出し階層に答えない言語サーバーは、次の一手 (grep) を添えて断る。
+#[gpui::test]
+async fn call_hierarchy_arguments_are_checked(cx: &mut TestAppContext) {
+    use crate::assist_tools::{call_hierarchy_options, query_failure};
+
+    let options =
+        call_hierarchy_options(&json!({ "direction": "incoming" })).expect("the defaults");
+    assert_eq!(options.direction, CallDirection::Incoming);
+    assert_eq!(options.depth, 1);
+    assert_eq!(
+        options.max_results,
+        ide_query::DEFAULT_CALL_HIERARCHY_RESULTS
+    );
+    let options =
+        call_hierarchy_options(&json!({ "direction": "outgoing", "depth": 9, "maxResults": 500 }))
+            .expect("capped");
+    assert_eq!(options.direction, CallDirection::Outgoing);
+    assert_eq!(options.depth, ide_query::MAX_CALL_HIERARCHY_DEPTH);
+    assert_eq!(options.max_results, ide_query::MAX_QUERY_RESULTS);
+
+    let schema = crate::assist_tools::tools()
+        .into_iter()
+        .find(|tool| tool.name == "getCallHierarchy")
+        .expect("the tool is listed")
+        .input_schema;
+    assert_eq!(schema["required"], json!(["direction"]), "{schema}");
+    assert!(
+        schema["properties"]["symbol"]["description"]
+            .as_str()
+            .is_some_and(|description| description.contains("alone")),
+        "{schema}"
+    );
+    assert_eq!(
+        schema["properties"]["direction"]["enum"],
+        json!(["incoming", "outgoing"])
+    );
+
+    let fixture = start_sandbox_fixture(cx).await;
+    for (arguments, reason) in [
+        (
+            json!({ "path": "main.rs", "line": 1 }),
+            "direction (a string) is required",
+        ),
+        (
+            json!({ "path": "main.rs", "line": 1, "direction": "sideways" }),
+            "direction must be",
+        ),
+        (
+            json!({ "path": "main.rs", "line": 1, "direction": "incoming", "depth": 0 }),
+            "depth must be",
+        ),
+        (
+            json!({ "path": "main.rs", "line": 1, "direction": "incoming", "maxResults": "ten" }),
+            "maxResults must be",
+        ),
+        (
+            json!({ "path": "main.rs", "line": 0, "direction": "incoming" }),
+            "line must be",
+        ),
+        (
+            json!({ "line": 1, "symbol": "main", "direction": "incoming" }),
+            "path is required with line",
+        ),
+        (
+            json!({ "direction": "incoming" }),
+            "Give path and line (with the name as symbol), or symbol alone",
+        ),
+        (
+            json!({ "path": "main.rs", "symbol": " ", "direction": "incoming" }),
+            "Give path and line (with the name as symbol), or symbol alone",
+        ),
+        (
+            json!({ "symbol": "main", "direction": "incoming" }),
+            "can't be looked up by name alone",
+        ),
+    ] {
+        let response = call_assist_tool(&fixture, "getCallHierarchy", arguments.clone()).await;
+        let text = tool_error_text(&response);
+        assert!(text.contains(reason), "{arguments}: {text}");
+    }
+
+    let not_supported = || {
+        anyhow::anyhow!(ide_query::CallHierarchyNotSupported {
+            path: "test/host-only.rs".to_string(),
+        })
+    };
+    let sandbox_scope = tools::ToolScope::Assist(Some(Arc::new(session_paths())));
+    for (sandboxed, scope) in [
+        (true, sandbox_scope),
+        (false, tools::ToolScope::Assist(None)),
+    ] {
+        let text = tools::error_text(
+            "getCallHierarchy",
+            &query_failure(sandboxed, "getCallHierarchy", not_supported()),
+            &scope,
+        );
+        assert!(
+            text.contains("doesn't support call hierarchy") && text.contains("grep for `name(`"),
+            "{text}"
+        );
+        assert!(!text.contains("host-only"), "{text}");
+    }
+}
+
+/// 呼び出しの木も読み取り結果と同じく、中身 (プレビュー) は検査を通るファイルのものだけ。
+/// `ide_query` が辿った先でも、サンドボックスから見えないファイルの下の呼び出しは出さない。
+#[gpui::test]
+async fn call_hierarchy_results_carry_contents_only_from_checked_project_files(
+    cx: &mut TestAppContext,
+) {
+    let fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    // セッションのルートに入っていない、プロジェクトの別の (見えている) ワークツリー。
+    fixture
+        .fs
+        .insert_tree(path!("/other"), json!({ "visible.rs": "// hunter2\n" }))
+        .await;
+    fixture
+        .project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/other"), true, cx)
+        })
+        .await
+        .expect("a second visible worktree");
+    cx.run_until_parked();
+    let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
+    let env_path = project_path(&fixture.project, path!("/test/.env"), cx);
+    let other_path = project_path(&fixture.project, path!("/other/visible.rs"), cx);
+    let unscanned_path = project::ProjectPath {
+        worktree_id: main_path.worktree_id,
+        path: util::rel_path::rel_path("build/generated.rs").into(),
+    };
+    let node = |name: &str,
+                path: &project::ProjectPath,
+                preview: &str,
+                expansion: CallExpansion,
+                children: Vec<CallNode>| CallNode {
+        name: name.to_string(),
+        kind: "function".to_string(),
+        path: path.clone(),
+        lines: LineRange {
+            start_line: 1,
+            end_line: 2,
+        },
+        call_lines: vec![1],
+        in_project: true,
+        contents_allowed: true,
+        preview: preview.to_string(),
+        source: CallSource::LanguageServer,
+        ambiguous: None,
+        resolution: CallResolution::Definition,
+        expansion,
+        children,
+    };
+    let hierarchy = CallHierarchy {
+        direction: CallDirection::Incoming,
+        depth: 3,
+        max_results: 50,
+        root: node(
+            "main",
+            &main_path,
+            "fn main() {",
+            CallExpansion::Expanded,
+            vec![
+                // `ide_query` は private なファイルの関数名を空にして返す。
+                CallNode {
+                    contents_allowed: false,
+                    ..node("", &env_path, "", CallExpansion::Withheld, Vec::new())
+                },
+                node(
+                    "other",
+                    &other_path,
+                    "// hunter2",
+                    CallExpansion::Expanded,
+                    vec![node(
+                        "deeper_hunter2",
+                        &main_path,
+                        "hunter2();",
+                        CallExpansion::DepthLimit,
+                        Vec::new(),
+                    )],
+                ),
+                CallNode {
+                    call_lines: (1..=30).collect(),
+                    ..node(
+                        "caller",
+                        &main_path,
+                        "main();",
+                        CallExpansion::Recursive,
+                        Vec::new(),
+                    )
+                },
+                // 2 段目で見えないファイルに入ったら、その下 (3 段目) も出さない。
+                node(
+                    "middle",
+                    &main_path,
+                    "other();",
+                    CallExpansion::Expanded,
+                    vec![node(
+                        "deep_other",
+                        &other_path,
+                        "// hunter2",
+                        CallExpansion::Expanded,
+                        vec![node(
+                            "deepest_hunter2",
+                            &main_path,
+                            "hunter2();",
+                            CallExpansion::DepthLimit,
+                            Vec::new(),
+                        )],
+                    )],
+                ),
+                // 走査されていない (無視された) ディレクトリのファイル。項目が無い。
+                node(
+                    "generated_hunter2",
+                    &unscanned_path,
+                    "// hunter2",
+                    CallExpansion::DepthLimit,
+                    Vec::new(),
+                ),
+            ],
+        ),
+        omitted: 1,
+        stopped: Some(CallWalkStop::ResultLimit),
+        used_name_index: false,
+        without_language_server: false,
+        index_truncated: false,
+        index_building: None,
+    };
+
+    let paths = session_paths();
+    let project = fixture.project.clone();
+    let mut async_cx = cx.to_async();
+    let request = tools::SandboxRequest::new(&paths, &project, &mut async_cx).await;
+    let formatted = crate::assist_tools::format_call_hierarchy_for_test(
+        project.clone(),
+        crate::assist_tools::AssistPaths::Sandbox(request),
+        hierarchy.clone(),
+        &mut async_cx,
+    )
+    .await;
+    assert!(!formatted.to_string().contains("hunter2"), "{formatted}");
+    let root = &formatted["root"];
+    assert_eq!(root["path"], json!(format!("{CLIENT_ROOT}/main.rs")));
+    assert_eq!(root["preview"], json!("fn main() {"));
+    assert_eq!(root["expansion"], json!("expanded"));
+    assert_eq!(root["source"], json!("languageServer"));
+    let calls = root["calls"].as_array().expect("the calls are an array");
+    assert_eq!(calls.len(), 5);
+    assert_eq!(calls[0]["name"], json!(null), "{formatted}");
+    assert_eq!(calls[4]["name"], json!(null), "{formatted}");
+    // セッションのルートの外のファイルは、関数名もそのファイルの中身なので出さない。
+    assert_eq!(calls[1]["name"], json!(null), "{formatted}");
+    for withheld in &calls[..2] {
+        assert_eq!(withheld["inProject"], json!(false), "{withheld}");
+        assert_eq!(withheld["expansion"], json!("withheld"), "{withheld}");
+        assert!(withheld.get("preview").is_none(), "{withheld}");
+        assert!(withheld.get("calls").is_none(), "{withheld}");
+        assert_eq!(withheld["callLines"], json!([1]));
+    }
+    assert_eq!(calls[2]["preview"], json!("main();"));
+    assert_eq!(calls[2]["expansion"], json!("recursive"));
+    assert_eq!(calls[2]["callLines"], json!((1..=20).collect::<Vec<u32>>()));
+    assert_eq!(calls[2]["callLineCount"], json!(30));
+    assert_eq!(calls[3]["preview"], json!("other();"), "{formatted}");
+    let deep_other = &calls[3]["calls"][0];
+    assert_eq!(deep_other["name"], json!(null), "{formatted}");
+    assert_eq!(deep_other["inProject"], json!(false), "{deep_other}");
+    assert_eq!(deep_other["expansion"], json!("withheld"), "{deep_other}");
+    assert!(deep_other.get("preview").is_none(), "{deep_other}");
+    assert!(deep_other.get("calls").is_none(), "{deep_other}");
+    assert_eq!(formatted["omitted"], json!(1));
+    assert_eq!(formatted["stoppedEarly"], json!("resultLimit"));
+    assert_eq!(formatted["truncated"], json!(true));
+    assert_eq!(formatted["direction"], json!("incoming"));
+    assert_eq!(formatted["indexStatus"], json!(null));
+
+    // ホストのクライアントにはセッションのルートは関係なく、別のワークツリーの下も出す。
+    let formatted = crate::assist_tools::format_call_hierarchy_for_test(
+        project,
+        crate::assist_tools::AssistPaths::Host,
+        hierarchy,
+        &mut async_cx,
+    )
+    .await;
+    let calls = formatted["root"]["calls"]
+        .as_array()
+        .expect("the calls are an array");
+    assert!(calls[0].get("preview").is_none(), "{formatted}");
+    assert_eq!(calls[1]["name"], json!("other"));
+    assert_eq!(calls[1]["preview"], json!("// hunter2"));
+    assert_eq!(calls[1]["calls"][0]["name"], json!("deeper_hunter2"));
+    // 項目の無いファイルは中身を出さないが、ホストのクライアントには関数名は今まで通り出す。
+    assert_eq!(calls[4]["name"], json!("generated_hunter2"), "{formatted}");
+    assert!(calls[4].get("preview").is_none(), "{formatted}");
+    let deep_other = &calls[3]["calls"][0];
+    assert_eq!(deep_other["preview"], json!("// hunter2"), "{formatted}");
+    assert_eq!(
+        deep_other["calls"][0]["name"],
+        json!("deepest_hunter2"),
+        "{formatted}"
+    );
+}
+
+/// 名前の索引から来た呼び出しの JSON: 出どころ (`nameIndex` / `macro` / `candidate`)・同名の定義の数・
+/// メンバー経由の呼び出し・定義の無い名前・索引の状態を、モデルに渡る形のまま確かめる。
+#[gpui::test]
+async fn call_hierarchy_json_marks_what_the_name_index_found(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
+    let node = |name: &str,
+                kind: &str,
+                line: u32,
+                call_lines: Vec<u32>,
+                preview: &str,
+                source: CallSource,
+                children: Vec<CallNode>| CallNode {
+        name: name.to_string(),
+        kind: kind.to_string(),
+        path: main_path.clone(),
+        lines: LineRange {
+            start_line: line,
+            end_line: line,
+        },
+        call_lines,
+        in_project: true,
+        contents_allowed: true,
+        preview: preview.to_string(),
+        source,
+        ambiguous: None,
+        resolution: CallResolution::Definition,
+        expansion: CallExpansion::DepthLimit,
+        children,
+    };
+    let hierarchy = CallHierarchy {
+        direction: CallDirection::Outgoing,
+        depth: 1,
+        max_results: 50,
+        root: CallNode {
+            expansion: CallExpansion::Expanded,
+            ..node(
+                "top",
+                "function",
+                1,
+                Vec::new(),
+                "fn main() {",
+                CallSource::NameIndex,
+                vec![
+                    node(
+                        "LOG",
+                        "macro",
+                        1,
+                        vec![2],
+                        "#define LOG(text) log_line(text)",
+                        CallSource::Macro,
+                        Vec::new(),
+                    ),
+                    CallNode {
+                        resolution: CallResolution::Indirect {
+                            member: "open".to_string(),
+                        },
+                        ..node(
+                            "open",
+                            "member call",
+                            2,
+                            vec![2],
+                            "ops->open(1);",
+                            CallSource::NameIndex,
+                            vec![node(
+                                "real_open",
+                                "function",
+                                3,
+                                Vec::new(),
+                                ".open = real_open,",
+                                CallSource::Candidate,
+                                Vec::new(),
+                            )],
+                        )
+                    },
+                    CallNode {
+                        resolution: CallResolution::NoDefinition,
+                        ..node(
+                            "printf",
+                            "function",
+                            2,
+                            vec![2],
+                            "printf(\"done\");",
+                            CallSource::NameIndex,
+                            Vec::new(),
+                        )
+                    },
+                    CallNode {
+                        ambiguous: Some(2),
+                        ..node(
+                            "dup",
+                            "function",
+                            3,
+                            vec![3],
+                            "int dup(void) { return 1; }",
+                            CallSource::NameIndex,
+                            Vec::new(),
+                        )
+                    },
+                ],
+            )
+        },
+        omitted: 0,
+        stopped: None,
+        used_name_index: true,
+        without_language_server: true,
+        index_truncated: true,
+        index_building: Some(IndexBuilding { done: 1, total: 4 }),
+    };
+
+    let project = fixture.project.clone();
+    let mut async_cx = cx.to_async();
+    let formatted = crate::assist_tools::format_call_hierarchy_for_test(
+        project,
+        crate::assist_tools::AssistPaths::Host,
+        hierarchy,
+        &mut async_cx,
+    )
+    .await;
+    let main = path!("/test/main.rs");
+    let call = |name: &str, kind: &str, line: u32, preview: &str, source: &str| {
+        json!({
+            "name": name,
+            "kind": kind,
+            "path": main,
+            "startLine": line,
+            "endLine": line,
+            "inProject": true,
+            "callLines": [2],
+            "preview": preview,
+            "source": source,
+            "expansion": "depthLimit",
+        })
+    };
+    let log = call(
+        "LOG",
+        "macro",
+        1,
+        "#define LOG(text) log_line(text)",
+        "macro",
+    );
+    let mut open = call("open", "member call", 2, "ops->open(1);", "nameIndex");
+    open["indirectVia"] = json!("open");
+    open["calls"] = json!([{
+        "name": "real_open",
+        "kind": "function",
+        "path": main,
+        "startLine": 3,
+        "endLine": 3,
+        "inProject": true,
+        "preview": ".open = real_open,",
+        "source": "candidate",
+        "expansion": "depthLimit",
+    }]);
+    let mut printf = call("printf", "function", 2, "printf(\"done\");", "nameIndex");
+    printf["noDefinition"] = json!(true);
+    let mut dup = call(
+        "dup",
+        "function",
+        3,
+        "int dup(void) { return 1; }",
+        "nameIndex",
+    );
+    dup["callLines"] = json!([3]);
+    dup["ambiguous"] = json!(2);
+    assert_eq!(
+        formatted,
+        json!({
+            "direction": "outgoing",
+            "depth": 1,
+            "root": {
+                "name": "top",
+                "kind": "function",
+                "path": main,
+                "startLine": 1,
+                "endLine": 1,
+                "inProject": true,
+                "preview": "fn main() {",
+                "source": "nameIndex",
+                "expansion": "expanded",
+                "calls": [log, open, printf, dup],
+            },
+            "omitted": 0,
+            "stoppedEarly": null,
+            "truncated": true,
+            "indexStatus": { "state": "building", "doneFiles": 1, "totalFiles": 4 },
+            "withoutLanguageServer": true,
+            "indexTruncated": true,
+        })
+    );
+}
+
+/// サンドボックスのクライアントが名前だけで呼ぶと、C の名前の索引が答える。セッションのルートの外の
+/// (プロジェクトには見えている) ワークツリーから呼ぶ関数は、名前もプレビューも出さず、その先も出さない。
+#[gpui::test]
+async fn call_hierarchy_answers_a_name_from_the_name_index_in_the_sandbox(cx: &mut TestAppContext) {
+    const MAIN_C: &str =
+        "int middle(void) { return 0; }\nint top(void) {\n    return middle();\n}\n";
+    const OTHER_C: &str = "int other_caller(void) {\n    return middle(); // hunter2\n}\n";
+    let fixture = start_sandbox_fixture(cx).await;
+    fixture
+        .fs
+        .insert_tree(path!("/test/src"), json!({ "main.c": MAIN_C }))
+        .await;
+    fixture
+        .fs
+        .insert_tree(path!("/other"), json!({ "other.c": OTHER_C }))
+        .await;
+    fixture
+        .project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/other"), true, cx)
+        })
+        .await
+        .expect("a second visible worktree");
+    cx.run_until_parked();
+
+    let index_directories = [
+        tempfile::tempdir().expect("a temporary directory"),
+        tempfile::tempdir().expect("a temporary directory"),
+    ];
+    for ((root, files), directory) in [
+        (path!("/test/src/main.c"), &[("src/main.c", MAIN_C)]),
+        (path!("/other/other.c"), &[("other.c", OTHER_C)]),
+    ]
+    .into_iter()
+    .zip(&index_directories)
+    {
+        let worktree_id = project_path(&fixture.project, root, cx).worktree_id;
+        let index = project::symbol_index_store::build_index_for_tests(directory.path(), files)
+            .expect("building the index");
+        fixture.project.update(cx, |project, cx| {
+            project.symbol_index_store().update(cx, |store, cx| {
+                store.insert_index_for_tests(worktree_id, index, cx)
+            })
+        });
+    }
+    cx.run_until_parked();
+
+    let response = call_assist_tool(
+        &fixture,
+        "getCallHierarchy",
+        json!({ "symbol": "middle", "direction": "incoming" }),
+    )
+    .await;
+    let result = first_text_as_json(&response);
+    assert!(!result.to_string().contains("hunter2"), "{result}");
+    assert!(!result.to_string().contains("other_caller"), "{result}");
+    assert_eq!(result["withoutLanguageServer"], json!(true), "{result}");
+    assert_eq!(result["indexStatus"], json!({ "state": "ready" }));
+    let root = &result["root"];
+    assert_eq!(root["name"], json!("middle"));
+    assert_eq!(root["path"], json!(format!("{CLIENT_ROOT}/src/main.c")));
+    assert_eq!(root["source"], json!("nameIndex"));
+    assert_eq!(root["preview"], json!("int middle(void) { return 0; }"));
+    let calls = root["calls"].as_array().expect("the calls are an array");
+    assert_eq!(calls.len(), 2, "{result}");
+    assert_eq!(calls[0]["name"], json!("top"));
+    assert_eq!(calls[0]["path"], json!(format!("{CLIENT_ROOT}/src/main.c")));
+    assert_eq!(calls[0]["callLines"], json!([3]));
+    assert_eq!(calls[0]["preview"], json!("return middle();"));
+    assert_eq!(calls[0]["source"], json!("nameIndex"));
+    assert_eq!(calls[1]["name"], json!(null), "{result}");
+    assert_eq!(calls[1]["inProject"], json!(false));
+    assert_eq!(calls[1]["source"], json!("nameIndex"));
+    assert!(calls[1].get("preview").is_none(), "{result}");
+    assert!(calls[1].get("calls").is_none(), "{result}");
+
+    // 名前の関数がいくつもあれば、呼び直すための候補を返す。
+    fixture
+        .fs
+        .insert_tree(
+            path!("/test/src"),
+            json!({ "again.c": "int middle(void) { return 1; }\n" }),
+        )
+        .await;
+    cx.run_until_parked();
+    let worktree_id = project_path(&fixture.project, path!("/test/src/main.c"), cx).worktree_id;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let index = project::symbol_index_store::build_index_for_tests(
+        directory.path(),
+        &[
+            ("src/main.c", MAIN_C),
+            ("src/again.c", "int middle(void) { return 1; }\n"),
+        ],
+    )
+    .expect("building the index");
+    fixture.project.update(cx, |project, cx| {
+        project.symbol_index_store().update(cx, |store, cx| {
+            store.insert_index_for_tests(worktree_id, index, cx)
+        })
+    });
+    cx.run_until_parked();
+    let response = call_assist_tool(
+        &fixture,
+        "getCallHierarchy",
+        json!({ "symbol": "middle", "direction": "outgoing" }),
+    )
+    .await;
+    let result = first_text_as_json(&response);
+    assert_eq!(result["root"], json!(null), "{result}");
+    assert_eq!(result["totalCandidates"], json!(2), "{result}");
+    let candidates = result["candidates"]
+        .as_array()
+        .expect("the candidates are an array");
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|candidate| (candidate["path"].clone(), candidate["startLine"].clone()))
+            .collect::<Vec<_>>(),
+        [
+            (json!(format!("{CLIENT_ROOT}/src/again.c")), json!(1)),
+            (json!(format!("{CLIENT_ROOT}/src/main.c")), json!(1)),
+        ]
     );
 }
 
@@ -4494,7 +5129,7 @@ async fn read_results_carry_contents_only_from_checked_project_files(cx: &mut Te
         location(env_path, true, "SECRET=hunter2"),
         location(link_path, true, "const SECRET: &str = \"hunter2\";"),
         // セッションのルートの外 (サンドボックスから見えないワークツリー) も出さない。
-        location(other_path, true, "// hunter2"),
+        location(other_path.clone(), true, "// hunter2"),
     ];
 
     let paths = session_paths();
@@ -4542,8 +5177,13 @@ async fn read_results_carry_contents_only_from_checked_project_files(cx: &mut Te
         project.clone(),
         crate::assist_tools::AssistPaths::Sandbox(request),
         vec![
-            hit(main_path, true, "fn main()"),
+            hit(main_path.clone(), true, "fn main()"),
             hit(outside_path, false, "hunter2"),
+            // セッションのルートの外のワークツリーのシンボルは、名前もそのファイルの中身。
+            SymbolHit {
+                name: "other_hunter2".to_string(),
+                ..hit(other_path.clone(), true, "fn other_hunter2()")
+            },
         ],
         &mut async_cx,
     )
@@ -4552,6 +5192,27 @@ async fn read_results_carry_contents_only_from_checked_project_files(cx: &mut Te
     assert_eq!(formatted["symbols"][0]["signature"], json!("fn main()"));
     assert_eq!(formatted["symbols"][0]["name"], json!("main"));
     assert!(formatted["symbols"][1].get("signature").is_none());
+    assert_eq!(formatted["symbols"].as_array().map(Vec::len), Some(2));
+
+    // ホストのクライアントには、そのワークツリーのシンボルも出す。
+    let formatted = crate::assist_tools::format_symbols_for_test(
+        project.clone(),
+        crate::assist_tools::AssistPaths::Host,
+        vec![
+            hit(main_path, true, "fn main()"),
+            SymbolHit {
+                name: "other_hunter2".to_string(),
+                ..hit(other_path, true, "fn other_hunter2()")
+            },
+        ],
+        &mut async_cx,
+    )
+    .await;
+    assert_eq!(formatted["symbols"][1]["name"], json!("other_hunter2"));
+    assert_eq!(
+        formatted["symbols"][1]["signature"],
+        json!("fn other_hunter2()")
+    );
 
     // ホストのクライアントも中身の扱いは同じで、パスはホストの絶対パス。サンドボックスの
     // セッションのルートは関係なく、プロジェクトの別のワークツリーの中身は出す。
@@ -6045,3 +6706,6 @@ async fn task_output_never_reaches_a_sandboxed_or_assist_scope(cx: &mut TestAppC
     );
     assert!(response.get("result").is_none(), "{response}");
 }
+
+#[path = "type_layout_tool_tests.rs"]
+mod type_layout_tool_tests;

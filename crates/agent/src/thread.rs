@@ -6,8 +6,8 @@ use crate::tool_permissions::{
     parse_permission_judge_response, permission_judge_system_prompt,
 };
 use crate::{
-    AnnotateCodeTool, ClearAnnotationsTool, CodeTourTool, HighlightCodeTool, HoverTool,
-    SearchSymbolsTool, ZED_AGENT_ASSIST_LABEL,
+    AnnotateCodeTool, CallHierarchyTool, ClearAnnotationsTool, CodeTourTool, HighlightCodeTool,
+    HoverTool, SearchSymbolsTool, ZED_AGENT_ASSIST_LABEL,
 };
 use crate::{
     ApplyCodeActionTool, AskUserTool, CodeActionStore, ContextServerRegistry, CopyPathTool,
@@ -2359,6 +2359,8 @@ impl Thread {
 
         self.add_tool(HoverTool::new(self.project.clone()));
         self.add_tool(SearchSymbolsTool::new(self.project.clone()));
+        self.add_tool(CallHierarchyTool::new(self.project.clone()));
+        self.add_tool(crate::TypeLayoutTool::new(self.project.clone()));
         let assist_source = AssistSource {
             id: self.id.0.clone().into(),
             label: ZED_AGENT_ASSIST_LABEL.into(),

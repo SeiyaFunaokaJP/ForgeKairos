@@ -1489,6 +1489,8 @@
           "search_web": true,
           "hover": true,
           "search_symbols": true,
+          "call_hierarchy": true,
+          "type_layout": true,
           "highlight_code": true,
           "annotate_code": true,
           "code_tour": true,
@@ -1519,6 +1521,8 @@
           "search_web": true,
           "hover": true,
           "search_symbols": true,
+          "call_hierarchy": true,
+          "type_layout": true,
           "highlight_code": true,
           "annotate_code": true,
           "code_tour": true,
@@ -1548,6 +1552,8 @@
           "grep": true,
           "hover": true,
           "search_symbols": true,
+          "call_hierarchy": true,
+          "type_layout": true,
           "highlight_code": true,
           "annotate_code": true,
           "code_tour": true,
@@ -1758,6 +1764,40 @@
     //
     // Default: medium
     "modal_max_width": "medium",
+  },
+  // Settings related to the call graph panel, a tree of the callers or
+  // callees of a function that asks the language server one level at a time.
+  "call_graph_panel": {
+    // Whether to show the call graph panel button in the status bar.
+    "button": true,
+    // Where to dock the call graph panel. Can be 'left' or 'right'.
+    "dock": "right",
+    // Default width of the call graph panel.
+    "default_width": 320,
+    // How many callers or callees of one function to list before a
+    // "Show more" row.
+    "max_children": 200,
+    // Whether the function under the cursor becomes the root whenever the
+    // cursor moves. When false, the root changes only when asked for.
+    "follow_cursor": false,
+    // Where calls come from: "all" (the language server and, in C and C++,
+    // the symbol index's name matches), "language_server" or "name_match".
+    "sources": "all",
+    // Callees left out of a function's callees. A row at the end counts them
+    // and shows them on request.
+    "excluded_callees": [
+      "printk",
+      "pr_info",
+      "pr_err",
+      "pr_debug",
+      "printf",
+      "fprintf",
+      "assert",
+      "BUG_ON",
+      "WARN_ON",
+      "likely",
+      "unlikely",
+    ],
   },
   // Settings related to the command palette.
   "command_palette": {
@@ -3001,6 +3041,40 @@
     // 案内しないツールの ID (例: "clangd" / "clang-format" / "ruff")。
     // 通知の「今後表示しない」を押すとここに追加されます。
     "ignored": [],
+  },
+  // How much memory clangd, the C and C++ language server, may use.
+  "clangd": {
+    // "full" indexes the whole project in the background, as clangd does by
+    // default. "light" indexes only the open files (`--background-index=false`)
+    // and saves the most memory; references, call hierarchy and renames then
+    // only cover the files that are open.
+    "index_mode": "full",
+    // How many threads clangd builds and indexes files with (`-j`).
+    // 0 leaves clangd's own default.
+    "max_workers": 0,
+    // Restart clangd when its resident memory, checked every 30 seconds, goes
+    // over this many megabytes; at most once every 10 minutes, and after that
+    // only a notification. 0 never restarts.
+    "memory_limit_mb": 0,
+  },
+  // The name-based symbol index of C and C++ files. It answers project-wide
+  // symbol search, "go to definition" when the language server has no answer,
+  // and callers and callees, without compilation information.
+  "symbol_index": {
+    // When to index a worktree's C and C++ files:
+    // "auto" once it has C or C++ files, "on" always, "off" never.
+    "enabled": "auto",
+    // Whether to index files that `.gitignore` excludes (only the ones the
+    // project panel has loaded: ignored folders are read when expanded).
+    "include_ignored": false,
+    // How long "go to definition" waits for the language server before it
+    // also offers the index's name matches, in milliseconds.
+    "language_server_timeout_ms": 1500,
+    // Whether hovering a name in C and C++ also shows what its type holds:
+    // the members of a struct, union or class (expandable level by level),
+    // the constants of an enum, and a macro's definition. They are found by
+    // name in the index, not resolved by the language server.
+    "hover_type_contents": true,
   },
   // Zed's Prettier integration settings.
   // Allows to enable/disable formatting with Prettier

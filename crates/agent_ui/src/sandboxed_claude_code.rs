@@ -937,7 +937,7 @@ exec "$0" "$@""#;
     ///
     /// ADR-F56: `assist_port` is the IDE channel's port inside the sandbox when
     /// the CLI is to get Zed's IDE tools: the `zed` server on the same channel's
-    /// `/mcp/zed`, all nine tools allowed up front. Its token is left for the
+    /// `/mcp/zed`, every assist tool allowed up front. Its token is left for the
     /// CLI to expand from the environment ([`LAUNCH_SCRIPT`]).
     pub(super) fn launch_invocation(
         claude_path: &str,
@@ -3459,7 +3459,7 @@ mod tests {
     }
 
     /// ADR-F56: with the IDE tools on, the CLI gets the `zed` server on its IDE
-    /// channel's `/mcp/zed` with the nine tools allowed up front, and the token
+    /// channel's `/mcp/zed` with every assist tool allowed up front, and the token
     /// only by name — the CLI expands it from what the launch script reads out
     /// of the lock file — never on its command line. Off, none of it.
     #[test]

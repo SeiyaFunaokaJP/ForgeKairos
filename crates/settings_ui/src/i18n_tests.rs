@@ -193,6 +193,116 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p12.i24[agent.prevent_idle_sleep].description",
         "エージェントのスレッドの実行中に、システムがスリープしないようにするかどうかを設定します。",
     ),
+    // Added by zed-jp-enhance with the call graph panel, at the end of the
+    // Panels page so that the rows above keep their keys.
+    ("p7.i80.header", "呼び出しグラフパネル"),
+    (
+        "p7.i81[call_graph_panel.button].title",
+        "呼び出しグラフパネルのボタン",
+    ),
+    (
+        "p7.i81[call_graph_panel.button].description",
+        "ステータスバーに呼び出しグラフパネルのボタンを表示します。",
+    ),
+    (
+        "p7.i82[call_graph_panel.dock].title",
+        "呼び出しグラフパネルのドック位置",
+    ),
+    (
+        "p7.i82[call_graph_panel.dock].description",
+        "呼び出しグラフパネルをドッキングする位置です。",
+    ),
+    (
+        "p7.i83[call_graph_panel.default_width].title",
+        "呼び出しグラフパネルの既定の幅",
+    ),
+    (
+        "p7.i83[call_graph_panel.default_width].description",
+        "呼び出しグラフパネルの既定の幅 (ピクセル) です。",
+    ),
+    (
+        "p7.i84[call_graph_panel.max_children].title",
+        "一覧する呼び出しの上限",
+    ),
+    (
+        "p7.i84[call_graph_panel.max_children].description",
+        "1 つの関数の呼び出し元 / 呼び出し先を、「さらに表示」の行の前にいくつまで並べるかです。",
+    ),
+    (
+        "p7.i85[call_graph_panel.follow_cursor].title",
+        "カーソルに追従",
+    ),
+    (
+        "p7.i85[call_graph_panel.follow_cursor].description",
+        "カーソルが動くたびに、カーソル位置の関数を起点にします。",
+    ),
+    (
+        "p7.i86[call_graph_panel.sources].title",
+        "呼び出しグラフの情報源",
+    ),
+    (
+        "p7.i86[call_graph_panel.sources].description",
+        "呼び出しをどこから取得するか。正確な言語サーバー、C と C++ のファイルを名前で照合する索引、またはその両方です。",
+    ),
+    (
+        "p7.i87[call_graph_panel.excluded_callees].title",
+        "除外する呼び出し先",
+    ),
+    (
+        "p7.i87[call_graph_panel.excluded_callees].description",
+        "関数の呼び出し先の一覧から外す呼び出し先 (ログやアサーションのマクロなど)。末尾の行に件数を出し、押すと表示します。",
+    ),
+    // zed-jp-enhance: clangd's memory settings, whose header moves the
+    // languages' one down.
+    ("p4.i36.header", "clangd"),
+    ("p4.i37[clangd.index_mode].title", "索引のモード"),
+    (
+        "p4.i37[clangd.index_mode].description",
+        "C / C++ の言語サーバー clangd がプロジェクトのどこまでを索引にするか。完全 (Full) は clangd の既定どおり、プロジェクト全体を背景で索引にします。軽量 (Light) は開いているファイルだけを索引にし、メモリを最も節約できます。その代わり、プロジェクト全体の参照とリネームが、開いているファイルの範囲になります (呼び出し階層と、開いていないファイルにある定義への移動も同じです)。`lsp.clangd.binary.arguments` に `--background-index` があるときは無視されます。変更すると clangd を再起動します。",
+    ),
+    ("p4.i38[clangd.max_workers].title", "最大ワーカー数"),
+    (
+        "p4.i38[clangd.max_workers].description",
+        "clangd がファイルの解析と索引作りに使うスレッド数 (`-j`)。少ないほど同時に使うメモリは減りますが、索引作りは遅くなります。0 のときは clangd の既定のままです。`lsp.clangd.binary.arguments` に `-j` があるときは無視されます。変更すると clangd を再起動します。この項目はユーザー設定でのみ有効です。",
+    ),
+    ("p4.i39[clangd.memory_limit_mb].title", "メモリの上限 (MB)"),
+    (
+        "p4.i39[clangd.memory_limit_mb].description",
+        "clangd のメモリ使用量 (30 秒ごとに確認) がこのメガバイト数を超えたら、clangd を再起動します。再起動は 10 分に 1 回までで、それ以上は通知だけを出します。リモートのプロジェクトでは、接続先のホストで測ります。0 のときは再起動しません。この項目はユーザー設定でのみ有効です。",
+    ),
+    // zed-jp-enhance: the symbol index's settings (ADR-F68), right after
+    // clangd's, which move the languages' header down again.
+    ("p4.i40.header", "シンボル索引"),
+    ("p4.i41[symbol_index.enabled].title", "索引を作る"),
+    (
+        "p4.i41[symbol_index.enabled].description",
+        "プロジェクトの C / C++ のファイルを名前で引く索引です。コンパイル情報が無くても (compile_commands.json は要りません)、定義への移動、関数の呼び出し元 / 呼び出し先、型の中身を、名前の一致で調べます。そのため、同じ名前の別のシンボルが結果に混ざることがあります。言語サーバーの答えがあれば、そちらが先です。自動 (Auto) は C / C++ のファイルがあるフォルダーで索引を作り、オン (On) は常に作り、オフ (Off) は作りません。既定は自動です。",
+    ),
+    (
+        "p4.i42[symbol_index.include_ignored].title",
+        "無視されたファイルも索引に入れる",
+    ),
+    (
+        "p4.i42[symbol_index.include_ignored].description",
+        "`.gitignore` で除外されたファイルも索引に入れるかどうか。入るのは、プロジェクトパネルが読み込んだ無視ファイルだけです (無視されたフォルダーは、展開したときに読み込まれます)。既定はオフです。",
+    ),
+    (
+        "p4.i43[symbol_index.language_server_timeout_ms].title",
+        "言語サーバーを待つ時間 (ミリ秒)",
+    ),
+    (
+        "p4.i43[symbol_index.language_server_timeout_ms].description",
+        "定義への移動で、言語サーバーの答えをどれだけ待ってから、索引の名前一致も候補に出すか (ミリ秒、100〜10000)。既定は 1500 です。",
+    ),
+    (
+        "p4.i44[symbol_index.hover_type_contents].title",
+        "ホバーで型の中身を表示",
+    ),
+    (
+        "p4.i44[symbol_index.hover_type_contents].description",
+        "C / C++ で名前にホバーしたとき、その型の中身 (メンバー、列挙子、マクロの定義) も、索引から名前で探して表示するかどうか。既定はオンです。",
+    ),
+    ("p4.i45.header", "言語"),
 ];
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.
@@ -509,6 +619,12 @@ fn translated_dropdowns() -> Vec<(
             vec!["自動", "常に表示", "表示しない"],
         ),
         (
+            "ClangdIndexMode",
+            settings::ClangdIndexMode::VARIANTS,
+            true,
+            vec!["完全", "軽量"],
+        ),
+        (
             "StatusUntrackedFilesSetting",
             settings::StatusUntrackedFilesSetting::VARIANTS,
             true,
@@ -550,6 +666,20 @@ fn translated_dropdowns() -> Vec<(
                 "Cursor (ベータ)",
                 "なし",
             ],
+        ),
+        // zed-jp-enhance: the call graph panel's sources (ADR-F68).
+        (
+            "CallGraphSources",
+            settings::CallGraphSources::VARIANTS,
+            true,
+            vec!["すべて", "言語サーバーのみ", "名前一致のみ"],
+        ),
+        // zed-jp-enhance: when the symbol index is built (ADR-F68).
+        (
+            "SymbolIndexEnabled",
+            settings::SymbolIndexEnabled::VARIANTS,
+            true,
+            vec!["自動", "オン", "オフ"],
         ),
     ]
 }
@@ -627,6 +757,8 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         BaseKeymapContent,
         BottomDockLayout,
         BufferLineHeightDiscriminants,
+        CallGraphSources,
+        ClangdIndexMode,
         CliDefaultOpenBehavior,
         ClosePosition,
         CloseWindowWhenNoItems,
@@ -711,6 +843,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         StatusStyle,
         StatusUntrackedFilesSetting,
         SteppingGranularity,
+        SymbolIndexEnabled,
         TerminalBell,
         TerminalBlink,
         TerminalDockPosition,

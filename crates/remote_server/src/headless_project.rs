@@ -35,6 +35,7 @@ use project::{
     project_settings::SettingsObserver,
     remote_launch_approvals::RemoteLaunchApprovals,
     search::SearchQuery,
+    symbol_index_store::SymbolIndexStore,
     task_store::TaskStore,
     trusted_worktrees::{PathTrust, RemoteHostLocation, TrustedWorktrees},
     worktree_code_execution::WorktreeCodeExecution,
@@ -76,6 +77,9 @@ pub struct HeadlessProject {
     /// ADR-F50: whether the IDE of this session lets each worktree's own code
     /// run here.
     pub worktree_code_execution: Entity<WorktreeCodeExecution>,
+    /// ADR-F68: the symbol index of this host's C and C++ files, which the
+    /// IDE asks over the wire.
+    pub symbol_index_store: Entity<SymbolIndexStore>,
     pub task_store: Entity<TaskStore>,
     pub dap_store: Entity<DapStore>,
     pub breakpoint_store: Entity<BreakpointStore>,
@@ -513,6 +517,18 @@ impl HeadlessProject {
             context_server_store
         });
 
+        let symbol_index_store = cx.new(|cx| {
+            let mut store = SymbolIndexStore::local(
+                worktree_store.clone(),
+                buffer_store.downgrade(),
+                fs.clone(),
+                SymbolIndexStore::default_index_root(fs.as_ref()),
+                cx,
+            );
+            store.shared(REMOTE_SERVER_PROJECT_ID, session.clone(), cx);
+            store
+        });
+
         cx.subscribe(&lsp_store, Self::on_lsp_store_event).detach();
 
         cx.subscribe(&buffer_store, |_this, _buffer_store, event, cx| {
@@ -537,6 +553,7 @@ impl HeadlessProject {
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &git_store);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &agent_server_store);
         session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &context_server_store);
+        session.subscribe_to_entity(REMOTE_SERVER_PROJECT_ID, &symbol_index_store);
 
         session.add_request_handler(cx.weak_entity(), Self::handle_list_remote_directory);
         session.add_request_handler(cx.weak_entity(), Self::handle_get_path_metadata);
@@ -598,6 +615,7 @@ impl HeadlessProject {
         GitStore::init(&session);
         AgentServerStore::init_headless(&session);
         ContextServerStore::init_headless(&session);
+        SymbolIndexStore::init(&session);
 
         HeadlessProject {
             next_entry_id: Default::default(),
@@ -611,6 +629,7 @@ impl HeadlessProject {
             lsp_store,
             launch_approvals,
             worktree_code_execution,
+            symbol_index_store,
             task_store,
             dap_store,
             breakpoint_store,

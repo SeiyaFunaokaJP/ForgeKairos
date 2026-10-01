@@ -1,9 +1,21 @@
-//! UI-free IDE queries (hover, definitions, references, symbols) and the display contract
+//! UI-free IDE queries (hover, definitions, references, symbols, call hierarchy) and the display contract
 //! shared by the IDE MCP server (`ide_server`) and Zed's own agent (`agent`). The UI side of the
 //! display contract lives in `ide_assist`, which registers itself through [`GlobalCodeDisplay`]
 //! so that neither caller has to depend on `editor` or `workspace`.
 
+mod call_hierarchy;
 mod symbol_search;
+mod type_layout;
+
+pub use call_hierarchy::{
+    CALL_HIERARCHY_TIME_BUDGET, CallCandidates, CallDirection, CallExpansion, CallHierarchy,
+    CallHierarchyAnswer, CallHierarchyNotSupported, CallHierarchyOptions, CallHierarchyTarget,
+    CallNode, CallResolution, CallSource, CallWalkStop, DEFAULT_CALL_HIERARCHY_RESULTS,
+    IndexBuilding, MAX_AMBIGUOUS_DEFINITIONS, MAX_CALL_CANDIDATES, MAX_CALL_HIERARCHY_DEPTH,
+    MAX_CALL_HIERARCHY_REQUESTS, MAX_INDIRECT_CANDIDATES, MAX_PREVIEW_FILES,
+    MAX_REMOTE_CALL_HIERARCHY_FILES, NameIndexUnavailable, call_hierarchy,
+};
+pub use type_layout::*;
 
 use std::{fmt, pin::pin, sync::Arc, time::Duration};
 

@@ -216,8 +216,10 @@ dependencies = [
  "paths",
  "project",
  "proto",
+ "serde_json",
  "settings",
  "smallvec",
+ "tempfile",
  "ui",
  "util",
  "workspace",
@@ -2417,6 +2419,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ade8366b8bd5ba243f0a58f036cc0ca8a2f069cff1a2351ef1cac6b083e16fc0"
 
 [[package]]
+name = "call_graph_panel"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "collections",
+ "db",
+ "editor",
+ "futures 0.3.34",
+ "gpui",
+ "i18n",
+ "i18n_catalog",
+ "language",
+ "log",
+ "lsp",
+ "menu",
+ "project",
+ "proto",
+ "serde",
+ "serde_json",
+ "settings",
+ "tempfile",
+ "tree-sitter-rust",
+ "ui",
+ "util",
+ "workspace",
+ "zed_actions",
+]
+
+[[package]]
 name = "call_hierarchy"
 version = "0.1.0"
 dependencies = [
@@ -2424,6 +2455,7 @@ dependencies = [
  "futures 0.3.34",
  "fuzzy",
  "gpui",
+ "i18n",
  "language",
  "log",
  "lsp",
@@ -5097,6 +5129,7 @@ dependencies = [
  "sum_tree",
  "task",
  "telemetry",
+ "tempfile",
  "text",
  "theme",
  "theme_settings",
@@ -8107,6 +8140,8 @@ dependencies = [
  "project",
  "serde_json",
  "settings",
+ "symbol_index",
+ "tempfile",
  "util",
 ]
 
@@ -13213,6 +13248,8 @@ dependencies = [
  "snippet",
  "snippet_provider",
  "sum_tree",
+ "symbol_index",
+ "sysinfo 0.39.6",
  "task",
  "tempfile",
  "terminal",
@@ -13322,6 +13359,7 @@ dependencies = [
  "semver",
  "serde_json",
  "settings",
+ "tempfile",
  "theme",
  "theme_settings",
  "util",
@@ -14270,6 +14308,7 @@ dependencies = [
  "anyhow",
  "askpass",
  "async-channel 2.5.0",
+ "call_graph_panel",
  "cargo_toml",
  "clap",
  "client",
@@ -16374,6 +16413,24 @@ dependencies = [
  "skrifa 0.37.0",
  "yazi",
  "zeno",
+]
+
+[[package]]
+name = "symbol_index"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ignore",
+ "log",
+ "memmap2",
+ "parking_lot",
+ "rayon",
+ "rustc-hash 2.1.1",
+ "sha2",
+ "tempfile",
+ "tree-sitter",
+ "tree-sitter-c",
+ "tree-sitter-cpp",
 ]
 
 [[package]]
@@ -21391,6 +21448,7 @@ dependencies = [
  "auto_update_ui",
  "breadcrumbs",
  "browser_panel",
+ "call_graph_panel",
  "call_hierarchy",
  "channel",
  "chrono",

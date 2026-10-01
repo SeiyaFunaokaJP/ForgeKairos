@@ -17,6 +17,9 @@ msgstr "({server_name}) 警告: "
 msgid "Add to Allowlist and Retry"
 msgstr "許可リストに追加して再試行"
 
+msgid "Building the symbol index ({done} / {total})"
+msgstr "シンボル索引を作成中 ({done} / {total})"
+
 msgid "Cancel {title}"
 msgstr "{title} をキャンセル"
 

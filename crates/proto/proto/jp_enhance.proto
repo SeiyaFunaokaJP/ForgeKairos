@@ -399,3 +399,515 @@ message InstallDevTool {
 message InstallDevToolResponse {
   string path = 1;
 }
+
+// clangd's memory, measured on the machine it runs on: for a remote project
+// that is the host, where the client can see neither the process nor its
+// memory.
+message GetClangdMemoryUsage {
+  uint64 project_id = 1;
+  uint64 language_server_id = 2;
+}
+
+message GetClangdMemoryUsageResponse {
+  // The resident memory of the process started as clangd (not of its
+  // children, for a wrapper script that does not exec). Absent when the
+  // process could not be found.
+  optional uint64 resident_bytes = 1;
+  // What clangd's `$/memoryUsage` says it holds. Absent when clangd is older
+  // than 12 or did not answer.
+  optional ClangdMemoryBreakdown breakdown = 2;
+}
+
+message ClangdMemoryBreakdown {
+  uint64 total_bytes = 1;
+  uint64 background_index_bytes = 2;
+  uint64 dynamic_index_bytes = 3;
+  uint64 open_files_bytes = 4;
+}
+
+// From the host to the client: clangd went over `clangd.memory_limit_mb`.
+// The host restarts it, at most once in a while; the client only tells the
+// user, whose settings are the ones to change.
+message ClangdMemoryLimitExceeded {
+  uint64 project_id = 1;
+  uint64 language_server_id = 2;
+  uint64 resident_bytes = 3;
+  uint64 limit_bytes = 4;
+  bool restarted = 5;
+}
+
+// ADR-F68: the name-based symbol index of C and C++ files, which the machine
+// that holds the files builds and answers from. Results are name matches, not
+// what a language server resolved. A server from before these messages cannot
+// decode them and never answers, so the client gives up after a while and
+// treats the index as unavailable.
+message GetSymbolIndexStatus {
+  uint64 project_id = 1;
+}
+
+message GetSymbolIndexStatusResponse {
+  repeated SymbolIndexWorktreeStatus statuses = 1;
+}
+
+// remote_server -> client, whenever the index of a worktree changes state.
+message UpdateSymbolIndexStatus {
+  uint64 project_id = 1;
+  repeated SymbolIndexWorktreeStatus statuses = 2;
+}
+
+message SymbolIndexWorktreeStatus {
+  uint64 worktree_id = 1;
+  SymbolIndexState state = 2;
+  // Indexing: files done and in total.
+  uint64 done = 3;
+  uint64 total = 4;
+  // Ready.
+  optional SymbolIndexStats stats = 5;
+  // Unavailable.
+  SymbolIndexUnavailableReason reason = 6;
+  // Unavailable because of an error: its message, for the log and a tooltip.
+  optional string error = 7;
+  // The worktree was removed and has no status any more.
+  bool removed = 8;
+}
+
+enum SymbolIndexState {
+  SymbolIndexDisabled = 0;
+  SymbolIndexScanning = 1;
+  SymbolIndexIndexing = 2;
+  SymbolIndexReady = 3;
+  SymbolIndexUnavailable = 4;
+}
+
+enum SymbolIndexUnavailableReason {
+  SymbolIndexUnavailableError = 0;
+  SymbolIndexUnavailableInUse = 1;
+  SymbolIndexUnavailableUnsupportedHost = 2;
+  SymbolIndexUnavailableCollaboration = 3;
+}
+
+message SymbolIndexStats {
+  uint64 files = 1;
+  uint64 definitions = 2;
+  uint64 calls = 3;
+  uint64 assignments = 4;
+  uint64 files_with_syntax_errors = 5;
+  uint64 disk_bytes = 6;
+}
+
+// Rows are 0-based and columns count UTF-8 bytes from the start of the line,
+// as the index records them.
+message SymbolIndexRange {
+  uint32 start_row = 1;
+  uint32 start_column = 2;
+  uint32 end_row = 3;
+  uint32 end_column = 4;
+}
+
+message SymbolIndexLocation {
+  uint64 worktree_id = 1;
+  // Relative to the worktree root, with `/` separators.
+  string path = 2;
+  SymbolIndexRange range = 3;
+}
+
+enum SymbolIndexDefinitionKind {
+  SymbolIndexKindUnknown = 0;
+  SymbolIndexKindFunction = 1;
+  SymbolIndexKindMethod = 2;
+  SymbolIndexKindMacro = 3;
+  SymbolIndexKindFunctionMacro = 4;
+  SymbolIndexKindStruct = 5;
+  SymbolIndexKindUnion = 6;
+  SymbolIndexKindEnum = 7;
+  SymbolIndexKindEnumConstant = 8;
+  SymbolIndexKindTypedef = 9;
+  SymbolIndexKindVariable = 10;
+  SymbolIndexKindClass = 11;
+}
+
+message SymbolIndexDefinition {
+  string name = 1;
+  SymbolIndexDefinitionKind kind = 2;
+  bool is_static = 3;
+  bool is_declaration = 4;
+  bool is_cpp = 5;
+  // The declared name.
+  SymbolIndexLocation location = 6;
+  // The whole definition, in the same file.
+  SymbolIndexRange item_range = 7;
+}
+
+message SymbolIndexCallSite {
+  SymbolIndexLocation location = 1;
+  string callee = 2;
+  bool is_member_call = 3;
+  bool in_macro_body = 4;
+  optional SymbolIndexDefinition caller = 5;
+}
+
+enum SymbolIndexCalleeTarget {
+  SymbolIndexTargetUnresolved = 0;
+  SymbolIndexTargetFunction = 1;
+  SymbolIndexTargetMacro = 2;
+  SymbolIndexTargetFunctionOrMacro = 3;
+  SymbolIndexTargetIndirect = 4;
+}
+
+message SymbolIndexCalleeSite {
+  SymbolIndexLocation location = 1;
+  string callee = 2;
+  bool is_member_call = 3;
+  bool in_macro_body = 4;
+  SymbolIndexCalleeTarget target = 5;
+}
+
+message SymbolIndexAssignment {
+  SymbolIndexLocation location = 1;
+  string field = 2;
+  string function = 3;
+  optional string container = 4;
+  bool is_designated_initializer = 5;
+}
+
+message SymbolIndexDefinitions {
+  uint64 project_id = 1;
+  string name = 2;
+  // The file the lookup starts from, which decides between `static`
+  // definitions of the same name.
+  optional uint64 near_worktree_id = 3;
+  optional string near_path = 4;
+}
+
+message SymbolIndexDefinitionsResponse {
+  repeated SymbolIndexDefinition definitions = 1;
+}
+
+message SymbolIndexCallers {
+  uint64 project_id = 1;
+  string name = 2;
+  // Capped by the host, which sets `truncated` when more call sites exist.
+  uint32 limit = 3;
+}
+
+message SymbolIndexCallersResponse {
+  repeated SymbolIndexCallSite calls = 1;
+  bool truncated = 2;
+}
+
+message SymbolIndexCallees {
+  uint64 project_id = 1;
+  uint64 worktree_id = 2;
+  string path = 3;
+  uint32 row = 4;
+  uint32 column = 5;
+}
+
+message SymbolIndexCalleesResponse {
+  // Absent when no function of the index contains the position.
+  optional SymbolIndexDefinition function = 1;
+  repeated SymbolIndexCalleeSite callees = 2;
+}
+
+message SymbolIndexAssignments {
+  uint64 project_id = 1;
+  string name = 2;
+  // Look `name` up as the assigned function rather than as the member.
+  bool by_function = 3;
+}
+
+message SymbolIndexAssignmentsResponse {
+  repeated SymbolIndexAssignment assignments = 1;
+}
+
+enum SymbolIndexSearchMode {
+  SymbolIndexSearchPrefix = 0;
+  SymbolIndexSearchSubstring = 1;
+  SymbolIndexSearchFuzzy = 2;
+}
+
+message SymbolIndexSearch {
+  uint64 project_id = 1;
+  string query = 2;
+  SymbolIndexSearchMode mode = 3;
+  uint32 limit = 4;
+}
+
+message SymbolIndexSearchResponse {
+  repeated SymbolIndexSymbolMatch matches = 1;
+}
+
+message SymbolIndexSymbolMatch {
+  SymbolIndexDefinition definition = 1;
+  uint32 score = 2;
+}
+
+// Opens the indexes again (one another window held may be free now) and
+// brings them up to date with the worktrees.
+message RebuildSymbolIndex {
+  uint64 project_id = 1;
+}
+
+// ADR-F68: the type engine of the symbol index, asked on the machine that
+// holds the files. Results are name matches, not what a language server
+// resolved. Every definition is checked against the host's settings before
+// it is sent, and against the client's own when it arrives.
+
+// A type definition found again by its position, since the index's own ids
+// do not survive an update.
+message SymbolIndexTypeRef {
+  uint64 worktree_id = 1;
+  string path = 2;
+  // The tag or typedef name the definition declares.
+  string name = 3;
+  // Where the definition starts, 0-based, the column in UTF-8 bytes.
+  uint32 row = 4;
+  uint32 column = 5;
+}
+
+enum SymbolIndexTypeKind {
+  SymbolIndexTypeStruct = 0;
+  SymbolIndexTypeUnion = 1;
+  SymbolIndexTypeEnum = 2;
+  SymbolIndexTypeClass = 3;
+  SymbolIndexTypeTypedef = 4;
+}
+
+enum SymbolIndexTagKind {
+  SymbolIndexTagNone = 0;
+  SymbolIndexTagStruct = 1;
+  SymbolIndexTagUnion = 2;
+  SymbolIndexTagEnum = 3;
+  SymbolIndexTagClass = 4;
+}
+
+enum SymbolIndexMemberKind {
+  SymbolIndexMemberField = 0;
+  SymbolIndexMemberFunctionPointer = 1;
+  SymbolIndexMemberMethod = 2;
+  SymbolIndexMemberAnonymousAggregate = 3;
+  SymbolIndexMemberNestedType = 4;
+  SymbolIndexMemberUnparsed = 5;
+}
+
+enum SymbolIndexConfidence {
+  SymbolIndexConfidenceDeclaration = 0;
+  SymbolIndexConfidenceLocal = 1;
+  SymbolIndexConfidenceParameter = 2;
+  SymbolIndexConfidenceFileScope = 3;
+  SymbolIndexConfidenceNameOnly = 4;
+}
+
+message SymbolIndexTypedefStep {
+  string name = 1;
+  SymbolIndexLocation location = 2;
+  // What the typedef names, as written: `struct foo *`.
+  string target = 3;
+}
+
+message SymbolIndexTypeSummary {
+  string name = 1;
+  SymbolIndexTypeKind kind = 2;
+  // The definition's name.
+  SymbolIndexLocation location = 3;
+  SymbolIndexTypeRef type_ref = 4;
+  repeated SymbolIndexTypedefStep typedef_chain = 5;
+  optional string condition = 6;
+  optional string alias = 7;
+  repeated string base_classes = 8;
+  repeated SymbolIndexMemberSummary members = 9;
+  repeated SymbolIndexEnumeratorSummary enumerators = 10;
+  // False for a candidate listed by its location only.
+  bool members_read = 11;
+  bool truncated = 12;
+  bool is_forward_declaration = 13;
+}
+
+message SymbolIndexMemberSummary {
+  optional string name = 1;
+  SymbolIndexMemberKind kind = 2;
+  string text = 3;
+  string type_text = 4;
+  optional string core_name = 5;
+  SymbolIndexTagKind tag = 6;
+  uint32 pointer_depth = 7;
+  repeated string array = 8;
+  optional string bit_width = 9;
+  bool is_function_pointer = 10;
+  optional string signature = 11;
+  optional string comment = 12;
+  optional string condition = 13;
+  SymbolIndexRange range = 14;
+  bool expandable = 15;
+  optional string unparsed_text = 16;
+  // Indices from the members of the type the summary came from down to this
+  // one, through bodies defined in place.
+  repeated uint32 index_path = 17;
+  // A body defined in place (`struct { ... } u;`).
+  optional SymbolIndexTypeSummary inline = 18;
+}
+
+message SymbolIndexEnumeratorSummary {
+  string name = 1;
+  optional string value_text = 2;
+  optional int64 value = 3;
+  bool value_is_inferred = 4;
+  SymbolIndexRange range = 5;
+  optional string comment = 6;
+  optional string condition = 7;
+}
+
+message SymbolIndexResolvedTypes {
+  repeated SymbolIndexTypeSummary types = 1;
+  uint64 total = 2;
+  bool truncated = 3;
+}
+
+message SymbolIndexMacroSummary {
+  string name = 1;
+  SymbolIndexLocation location = 2;
+  bool is_function_like = 3;
+  string text = 4;
+  bool truncated = 5;
+}
+
+message SymbolIndexChainOwner {
+  string display_name = 1;
+  // Absent for a body defined in place.
+  optional SymbolIndexLocation location = 2;
+  SymbolIndexRange range = 3;
+  optional SymbolIndexTypeRef type_ref = 4;
+  uint64 candidates = 5;
+}
+
+message SymbolIndexChainStep {
+  string name = 1;
+  optional SymbolIndexChainOwner owner = 2;
+  optional SymbolIndexMemberSummary member = 3;
+}
+
+message SymbolIndexHoverTypeName {
+  string name = 1;
+  SymbolIndexTagKind tag = 2;
+}
+
+message SymbolIndexHoverVariable {
+  string type_text = 1;
+  optional string core_name = 2;
+  SymbolIndexConfidence confidence = 3;
+  // In the file asked about.
+  optional SymbolIndexRange declaration = 4;
+}
+
+// Where the type of a member access chain's root was read from. A host that
+// predates the field leaves it unspecified.
+enum SymbolIndexChainRootOrigin {
+  SymbolIndexChainRootOriginUnspecified = 0;
+  SymbolIndexChainRootOriginInFile = 1;
+  SymbolIndexChainRootOriginGlobal = 2;
+  SymbolIndexChainRootOriginCall = 3;
+}
+
+message SymbolIndexHoverMember {
+  optional string root_type = 1;
+  repeated SymbolIndexChainStep steps = 2;
+  bool complete = 3;
+  SymbolIndexChainRootOrigin root_origin = 4;
+  // The variable or function the root names.
+  optional string root_name = 5;
+}
+
+message SymbolIndexHoverMacro {
+  repeated SymbolIndexMacroSummary macro_definitions = 1;
+}
+
+message SymbolIndexTypeHover {
+  string name = 1;
+  // In the file asked about.
+  SymbolIndexRange range = 2;
+  oneof subject {
+    SymbolIndexHoverTypeName type_name = 3;
+    SymbolIndexHoverVariable variable = 4;
+    SymbolIndexHoverMember member = 5;
+    SymbolIndexHoverMacro macro_text = 6;
+  }
+  SymbolIndexResolvedTypes types = 7;
+}
+
+message SymbolIndexDescribeType {
+  uint64 project_id = 1;
+  uint64 worktree_id = 2;
+  string path = 3;
+  uint32 row = 4;
+  uint32 column = 5;
+  // Whole lines of the client's buffer around the position, which may hold
+  // edits not saved yet; the host reads the rest of the file from disk.
+  // Absent: the file on disk is read. Cut by the host to its own limit.
+  optional string window = 6;
+  uint32 window_start_row = 7;
+  optional bool is_cpp = 8;
+  // Candidates whose members are read; the host caps it.
+  uint32 limit = 9;
+}
+
+message SymbolIndexDescribeTypeResponse {
+  optional SymbolIndexTypeHover hover = 1;
+}
+
+message SymbolIndexResolveType {
+  uint64 project_id = 1;
+  string name = 2;
+  SymbolIndexTagKind tag = 3;
+  optional uint64 near_worktree_id = 4;
+  optional string near_path = 5;
+  uint32 limit = 6;
+}
+
+message SymbolIndexResolveTypeResponse {
+  SymbolIndexResolvedTypes types = 1;
+}
+
+enum SymbolIndexExpansionKind {
+  SymbolIndexExpansionNotFound = 0;
+  SymbolIndexExpansionNotExpandable = 1;
+  SymbolIndexExpansionInline = 2;
+  SymbolIndexExpansionTypes = 3;
+}
+
+message SymbolIndexExpandMember {
+  uint64 project_id = 1;
+  SymbolIndexTypeRef owner = 2;
+  // By name, or else by `member_path` (a member summary's `index_path`).
+  optional string member_name = 3;
+  repeated uint32 member_path = 4;
+  uint32 limit = 5;
+}
+
+message SymbolIndexExpandMemberResponse {
+  SymbolIndexExpansionKind kind = 1;
+  optional SymbolIndexMemberSummary member = 2;
+  optional SymbolIndexTypeSummary inline = 3;
+  optional SymbolIndexResolvedTypes types = 4;
+}
+
+message SymbolIndexTypeTree {
+  uint64 project_id = 1;
+  // The type to expand, or else the best definition of `name`.
+  optional SymbolIndexTypeRef type_ref = 2;
+  optional string name = 3;
+  SymbolIndexTagKind tag = 4;
+  optional uint64 near_worktree_id = 5;
+  optional string near_path = 6;
+  // Each capped by the host.
+  uint32 max_depth = 7;
+  uint32 max_pointer_hops = 8;
+  uint32 max_nodes = 9;
+  uint32 max_chars = 10;
+}
+
+message SymbolIndexTypeTreeResponse {
+  bool found = 1;
+  string text = 2;
+  bool truncated = 3;
+  repeated SymbolIndexLocation definitions = 4;
+}

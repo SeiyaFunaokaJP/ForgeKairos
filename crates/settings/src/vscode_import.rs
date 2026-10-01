@@ -201,6 +201,7 @@ impl VsCodeSettings {
             editor: self.editor_settings_content(),
             extension: ExtensionSettingsContent::default(),
             call_hierarchy: None,
+            call_graph_panel: None,
             file_finder: None,
             git: self.git_settings_content(),
             git_panel: self.git_panel_settings_content(),
@@ -553,6 +554,8 @@ impl VsCodeSettings {
             git_hosting_providers: None,
             disable_ai: None,
             dev_tools: None,
+            clangd: None,
+            symbol_index: None,
         }
     }
 

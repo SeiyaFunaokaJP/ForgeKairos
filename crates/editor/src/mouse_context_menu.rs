@@ -305,6 +305,14 @@ pub fn deploy_context_menu(
                     i18n::t!("Show Outgoing Calls"),
                     Box::new(zed_actions::ShowOutgoingCalls),
                 )
+                .action(
+                    i18n::t!("Show Callers in Call Graph"),
+                    Box::new(zed_actions::call_graph_panel::ShowCallers),
+                )
+                .action(
+                    i18n::t!("Show Callees in Call Graph"),
+                    Box::new(zed_actions::call_graph_panel::ShowCallees),
+                )
                 .separator()
                 .action(i18n::t!("Rename Symbol"), Box::new(Rename))
                 .action(i18n::t!("Format Buffer"), Box::new(Format))

@@ -550,6 +550,34 @@ fn generated_code_puts_fork_messages_on_the_wire_under_their_fork_numbers() {
             "kill_terminal_session",
             envelope::Payload::KillTerminalSession(KillTerminalSession::default()),
         ),
+        (
+            "get_clangd_memory_usage",
+            envelope::Payload::GetClangdMemoryUsage(proto::GetClangdMemoryUsage::default()),
+        ),
+        (
+            "clangd_memory_limit_exceeded",
+            envelope::Payload::ClangdMemoryLimitExceeded(
+                proto::ClangdMemoryLimitExceeded::default(),
+            ),
+        ),
+        (
+            "get_symbol_index_status",
+            envelope::Payload::GetSymbolIndexStatus(proto::GetSymbolIndexStatus::default()),
+        ),
+        (
+            "rebuild_symbol_index",
+            envelope::Payload::RebuildSymbolIndex(proto::RebuildSymbolIndex::default()),
+        ),
+        (
+            "symbol_index_describe_type",
+            envelope::Payload::SymbolIndexDescribeType(proto::SymbolIndexDescribeType::default()),
+        ),
+        (
+            "symbol_index_type_tree_response",
+            envelope::Payload::SymbolIndexTypeTreeResponse(
+                proto::SymbolIndexTypeTreeResponse::default(),
+            ),
+        ),
     ];
     for (field_name, payload) in cases {
         let bytes = Envelope {

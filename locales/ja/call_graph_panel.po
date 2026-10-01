@@ -1,0 +1,198 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(file scope)"
+msgstr "(ファイルスコープ)"
+
+msgid "All Sources"
+msgstr "すべて"
+
+msgid "Call Graph Options"
+msgstr "呼び出しグラフのオプション"
+
+msgid "Call Graph Panel"
+msgstr "呼び出しグラフパネル"
+
+msgid "Callees"
+msgstr "呼び出し先"
+
+msgid "Callees in the call_graph_panel.excluded_callees setting. Click to show them."
+msgstr "設定 call_graph_panel.excluded_callees にある呼び出し先です。クリックすると表示します。"
+
+msgid "Callers"
+msgstr "呼び出し元"
+
+msgid "Calls come from the language server. For C and C++, clangd needs a compile_commands.json to find them."
+msgstr "呼び出しは言語サーバーから取得します。C と C++ では、clangd が呼び出しを見つけるには compile_commands.json が必要です。"
+
+msgid "Collapse All"
+msgstr "すべて折りたたむ"
+
+msgid "Could not find the function at the cursor: {error}"
+msgstr "カーソル位置の関数を特定できませんでした: {error}"
+
+msgid "Could not get the calls: {message}"
+msgstr "呼び出しを取得できませんでした: {message}"
+
+msgid "Definition not found"
+msgstr "定義が見つかりません"
+
+msgid "Exact: answered by the language server"
+msgstr "正確: 言語サーバーの回答です"
+
+msgid "Filter shown functions…"
+msgstr "表示中の関数を絞り込む…"
+
+msgid "Follow the Cursor"
+msgstr "カーソルに追従"
+
+msgid "Function pointer candidate"
+msgstr "関数ポインタ候補"
+
+msgid "Function pointer candidate: stored into the member this indirect call goes through, so it may be called there"
+msgstr "関数ポインタ候補: この間接呼び出しが経由するメンバーに代入されているため、ここで呼ばれる可能性があります"
+
+msgid "If the language server is still indexing, this is tried again when it finishes."
+msgstr "言語サーバーが索引を作成中の場合は、終わったときにもう一度試します。"
+
+msgid "Indexing symbols {done} / {total}"
+msgstr "索引を作成中 {done} / {total}"
+
+msgid "Indirect call: .{field}"
+msgstr "間接呼び出し: .{field}"
+
+msgid "Inspect Cursor"
+msgstr "カーソル位置を調べる"
+
+msgid "Inspect the Function at the Cursor"
+msgstr "カーソル位置の関数を調べる"
+
+msgid "It does not offer call hierarchy. Another language server for this language may."
+msgstr "この言語サーバーは呼び出し階層に対応していません。この言語の別の言語サーバーなら対応している可能性があります。"
+
+msgid "Language Server Only"
+msgstr "言語サーバーのみ"
+
+msgid "Language server"
+msgstr "言語サーバー"
+
+msgid "Looking for the function at the cursor…"
+msgstr "カーソル位置の関数を探しています…"
+
+msgid "Macro"
+msgstr "マクロ"
+
+msgid "Macro: a macro the symbol index found by name"
+msgstr "マクロ: 索引が名前で見つけたマクロです"
+
+msgid "Name Matches Only"
+msgstr "名前一致のみ"
+
+msgid "Name match"
+msgstr "名前一致"
+
+msgid "Name match: found by the symbol index by name, not resolved by a language server"
+msgstr "名前一致: 索引が名前で見つけたもので、言語サーバーが解決したものではありません"
+
+msgid "Name matches found so far may be incomplete; they are asked for again when indexing ends."
+msgstr "ここまでの名前一致は途中のものです。索引の作成が終わったら取り直します。"
+
+msgid "Next Root"
+msgstr "次の起点"
+
+msgid "No callees"
+msgstr "呼び出し先はありません"
+
+msgid "No callers"
+msgstr "呼び出し元はありません"
+
+msgid "No function selected"
+msgstr "関数が選ばれていません"
+
+msgid "No language server is running for this file."
+msgstr "このファイルの言語サーバーが動いていません。"
+
+msgid "Nothing is asked for until then, and each level is asked for only when you expand it."
+msgstr "それまでは何も問い合わせず、各階層は展開したときにだけ問い合わせます。"
+
+msgid "Only the first {limit} calls are shown"
+msgstr "先頭 {limit} 件のみ"
+
+msgid "Open a file and put the cursor on a function."
+msgstr "ファイルを開き、関数にカーソルを置いてください。"
+
+msgid "Preparing the symbol index…"
+msgstr "索引の準備中…"
+
+msgid "Previous Root"
+msgstr "前の起点"
+
+msgid "Put the cursor on a function and inspect it to see its calls."
+msgstr "関数にカーソルを置いて調べると、その呼び出しを表示します。"
+
+msgid "Rebuild the Symbol Index"
+msgstr "索引を作り直す"
+
+msgid "Recursive: this function is already on the path above"
+msgstr "再帰: この関数は上の経路にすでにあります"
+
+msgid "Retry"
+msgstr "再試行"
+
+msgid "Several functions are named {name}. Choose the root:"
+msgstr "{name} という名前の関数が複数あります。起点を選んでください:"
+
+msgid "Show {count} more"
+msgid_plural "Show {count} more"
+msgstr[0] "さらに {count} 件を表示"
+
+msgid "Symbol index: in use by another window"
+msgstr "索引: 別のウィンドウが使用中"
+
+msgid "Symbol index: not available in a shared project"
+msgstr "索引: 共有されたプロジェクトでは使えません"
+
+msgid "Symbol index: this server does not support it"
+msgstr "索引: このサーバーは未対応"
+
+msgid "Symbol index: {error}"
+msgstr "索引: {error}"
+
+msgid "Symbol index: {files} files, {definitions} definitions"
+msgstr "索引: ファイル {files} 個、定義 {definitions} 個"
+
+msgid "The language server for this file cannot list calls."
+msgstr "このファイルの言語サーバーは呼び出しを一覧できません。"
+
+msgid "The symbol index is off"
+msgstr "索引は無効です"
+
+msgid "There is no function at the cursor."
+msgstr "カーソル位置に関数がありません。"
+
+msgid "Turn it on with the symbol_index.enabled setting to find calls by name in C and C++."
+msgstr "設定 symbol_index.enabled で有効にすると、C と C++ の呼び出しを名前で探せます。"
+
+msgid "{count} definition with this name"
+msgid_plural "{count} definitions with this name"
+msgstr[0] "{count} 件の同名定義"
+
+msgid "{count} excluded"
+msgid_plural "{count} excluded"
+msgstr[0] "{count} 件を除外"
+
+msgid "{count} more are not listed"
+msgid_plural "{count} more are not listed"
+msgstr[0] "ほかの {count} 件は一覧にありません"
+
+msgctxt "call graph panel"
+msgid "Refresh"
+msgstr "更新"
+
+msgctxt "call graph panel"
+msgid "Sources"
+msgstr "情報源"

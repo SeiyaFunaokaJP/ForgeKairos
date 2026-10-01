@@ -82,6 +82,57 @@ pub struct ProjectSettings {
 
     /// ADR-F39: 足りない開発ツールの案内と導入
     pub dev_tools: DevToolsSettings,
+
+    /// clangd's index mode, worker count and memory limit.
+    pub clangd: ClangdSettings,
+
+    /// ADR-F68: the name-based symbol index of C and C++ files.
+    pub symbol_index: SymbolIndexSettings,
+}
+
+/// clangd starts this many background index threads up front, and the
+/// setting can come from a repository's `.zed/settings.json`, which must not
+/// be able to make it try billions.
+pub const CLANGD_MAX_WORKERS: u32 = 256;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ClangdSettings {
+    pub index_mode: settings::ClangdIndexMode,
+    /// Only what the user's own settings say counts; see [`Self::for_worktree`].
+    pub max_workers: Option<u32>,
+    /// Only what the user's own settings say counts; see [`Self::for_worktree`].
+    pub memory_limit_mb: Option<u64>,
+}
+
+impl ClangdSettings {
+    /// The settings clangd runs with in `worktree_id`. `index_mode` may come from the
+    /// project's own settings, but the worker count and the memory limit are the user's
+    /// alone (the global merge, which on a remote host includes the user settings the client
+    /// sends), so that a repository's `.zed/settings.json` cannot make clangd start thousands
+    /// of threads or restart it again and again.
+    pub fn for_worktree(worktree_id: WorktreeId, cx: &gpui::App) -> Self {
+        let location = SettingsLocation {
+            worktree_id,
+            path: RelPath::empty(),
+        };
+        let user = ProjectSettings::get_global(cx).clangd;
+        Self {
+            index_mode: ProjectSettings::get(Some(location), cx).clangd.index_mode,
+            max_workers: user.max_workers,
+            memory_limit_mb: user.memory_limit_mb,
+        }
+    }
+}
+
+/// Bounds of `symbol_index.language_server_timeout_ms`.
+pub const LANGUAGE_SERVER_TIMEOUT_MS_RANGE: std::ops::RangeInclusive<u64> = 100..=10_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SymbolIndexSettings {
+    pub enabled: settings::SymbolIndexEnabled,
+    pub include_ignored: bool,
+    pub language_server_timeout: Duration,
+    pub hover_type_contents: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -833,6 +884,45 @@ impl Settings for ProjectSettings {
                     ignored: dev_tools
                         .and_then(|dev_tools| dev_tools.ignored.clone())
                         .unwrap_or_default(),
+                }
+            },
+            clangd: {
+                let clangd = project.clangd.as_ref();
+                ClangdSettings {
+                    index_mode: clangd
+                        .and_then(|clangd| clangd.index_mode)
+                        .unwrap_or_default(),
+                    // Zero means unset rather than "no threads" or "no memory".
+                    max_workers: clangd
+                        .and_then(|clangd| clangd.max_workers)
+                        .filter(|workers| *workers > 0)
+                        .map(|workers| workers.min(CLANGD_MAX_WORKERS)),
+                    memory_limit_mb: clangd
+                        .and_then(|clangd| clangd.memory_limit_mb)
+                        .filter(|limit| *limit > 0),
+                }
+            },
+            symbol_index: {
+                let symbol_index = project.symbol_index.as_ref();
+                SymbolIndexSettings {
+                    enabled: symbol_index
+                        .and_then(|symbol_index| symbol_index.enabled)
+                        .unwrap_or_default(),
+                    include_ignored: symbol_index
+                        .and_then(|symbol_index| symbol_index.include_ignored)
+                        .unwrap_or(false),
+                    language_server_timeout: Duration::from_millis(
+                        symbol_index
+                            .and_then(|symbol_index| symbol_index.language_server_timeout_ms)
+                            .unwrap_or(1500)
+                            .clamp(
+                                *LANGUAGE_SERVER_TIMEOUT_MS_RANGE.start(),
+                                *LANGUAGE_SERVER_TIMEOUT_MS_RANGE.end(),
+                            ),
+                    ),
+                    hover_type_contents: symbol_index
+                        .and_then(|symbol_index| symbol_index.hover_type_contents)
+                        .unwrap_or(true),
                 }
             },
         }

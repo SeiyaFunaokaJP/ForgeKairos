@@ -47,6 +47,8 @@ mod selections_collection;
 pub mod semantic_tokens;
 mod split;
 pub mod split_editor_view;
+mod symbol_index_definitions;
+mod type_contents_hover;
 
 mod bookmarks;
 #[cfg(test)]
@@ -12003,7 +12005,12 @@ impl SemanticsProvider for WeakEntity<Project> {
         cx: &mut App,
     ) -> Option<Task<Result<Option<Vec<LocationLink>>>>> {
         self.update(cx, |project, cx| match kind {
-            GotoDefinitionKind::Symbol => project.definitions(buffer, position, cx),
+            // ADR-F68: C and C++ fall back on the symbol index.
+            GotoDefinitionKind::Symbol => {
+                symbol_index_definitions::definitions_with_index_fallback(
+                    project, buffer, position, cx,
+                )
+            }
             GotoDefinitionKind::Declaration => project.declarations(buffer, position, cx),
             GotoDefinitionKind::Type => project.type_definitions(buffer, position, cx),
             GotoDefinitionKind::Implementation => project.implementations(buffer, position, cx),

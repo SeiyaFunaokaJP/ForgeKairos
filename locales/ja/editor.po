@@ -5,6 +5,9 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "(anonymous)"
+msgstr "(無名)"
+
 msgid "2 years, 11 months ago"
 msgstr "2 年 11 か月前"
 
@@ -95,6 +98,9 @@ msgstr "この行への永続リンクをコピー"
 msgid "Copy Relative Path"
 msgstr "相対パスをコピー"
 
+msgid "Copy Type Contents"
+msgstr "型の中身をコピー"
+
 msgid "Copy and Trim"
 msgstr "余白を削ってコピー"
 
@@ -103,6 +109,12 @@ msgstr "切り取り"
 
 msgid "Declarations"
 msgstr "宣言"
+
+msgid "Definition not found"
+msgstr "定義が見つかりません"
+
+msgid "Definition {index} of {total}"
+msgstr "{total} 件の定義のうち {index} 件目"
 
 msgid "Definitions"
 msgstr "定義"
@@ -254,6 +266,9 @@ msgstr "{start_line} 行目"
 msgid "Lines {start_line}-{end_line}"
 msgstr "{start_line}-{end_line} 行目"
 
+msgid "Loading…"
+msgstr "読み込み中…"
+
 msgid "Message to log when a breakpoint is hit. Expressions within {{}} are interpolated."
 msgstr "ブレークポイント到達時に出力するメッセージ。{{}} 内の式は評価されて埋め込まれます。"
 
@@ -262,6 +277,12 @@ msgstr "メソッド"
 
 msgid "Module"
 msgstr "モジュール"
+
+msgid "Name match"
+msgstr "名前一致"
+
+msgid "Next Definition"
+msgstr "次の定義"
 
 msgid "Next Hunk"
 msgstr "次の変更箇所"
@@ -280,6 +301,12 @@ msgstr "選択範囲にマーカーの付いた部分がありません。"
 
 msgid "No part of the selection has a text color."
 msgstr "選択範囲に文字色の付いた部分がありません。"
+
+msgid "Only part is shown"
+msgstr "一部のみ表示"
+
+msgid "Only the location of this definition is known"
+msgstr "この定義は場所だけが分かっています"
 
 msgid "Open"
 msgstr "開く"
@@ -316,6 +343,9 @@ msgstr "貼り付け"
 
 msgid "Preview"
 msgstr "プレビュー"
+
+msgid "Previous Definition"
+msgstr "前の定義"
 
 msgid "Previous Hunk"
 msgstr "前の変更箇所"
@@ -386,6 +416,12 @@ msgstr "ヒットカウントブレークポイントを設定"
 msgid "Set Log Breakpoint"
 msgstr "ログポイントを設定"
 
+msgid "Show Callees in Call Graph"
+msgstr "呼び出しグラフで呼び出し先を表示"
+
+msgid "Show Callers in Call Graph"
+msgstr "呼び出しグラフで呼び出し元を表示"
+
 msgid "Show Code Actions"
 msgstr "コードアクションを表示"
 
@@ -440,6 +476,9 @@ msgstr "コードアクションの表示切り替え"
 msgid "Type Parameter"
 msgstr "型パラメーター"
 
+msgid "Type of {name}:"
+msgstr "{name} の型:"
+
 msgid "Types"
 msgstr "型"
 
@@ -482,8 +521,14 @@ msgstr "ファイルの履歴を表示"
 msgid "Your keymap currently overrides the default accept keybinding. To continue, assign one keybinding for the `editor::AcceptEditPrediction` action."
 msgstr "現在のキーマップが既定の採用キーバインドを上書きしています。続けるには `editor::AcceptEditPrediction` アクションにキーバインドを 1 つ割り当ててください。"
 
+msgid "a parameter of this function"
+msgstr "この関数の引数"
+
 msgid "architecture-beta\n    %% group is a grouping and service a component. :L :R :T :B choose the side a line connects to\n    group app(cloud)[App]\n    service web(server)[Web Server] in app\n    service db(database)[Database] in app\n    service disk(disk)[Storage] in app\n    web:R -- L:db\n    web:B -- T:disk"
 msgstr "architecture-beta\n    %% group はまとまり、service は部品。:L :R :T :B で線をつなぐ辺を決める\n    group app(cloud)[\"アプリ\"]\n    service web(server)[\"Web サーバー\"] in app\n    service db(database)[\"データベース\"] in app\n    service disk(disk)[\"ストレージ\"] in app\n    web:R -- L:db\n    web:B -- T:disk"
+
+msgid "at its declaration"
+msgstr "宣言そのもの"
 
 msgid "block-beta\n    %% columns sets the number of columns, space is an empty cell and --> an arrow\n    columns 3\n    input[\"Input\"] process[\"Process\"] output[\"Output\"]\n    space log[\"Log\"] space\n    input --> process\n    process --> output\n    process --> log"
 msgstr "block-beta\n    %% columns で列の数を決め、space は空きマス、--> で矢印\n    columns 3\n    input[\"入力\"] process[\"処理\"] output[\"出力\"]\n    space log[\"記録\"] space\n    input --> process\n    process --> output\n    process --> log"
@@ -494,8 +539,17 @@ msgstr "classDiagram\n    %% <|-- は継承、*-- は合成、o-- は集約\n   
 msgid "click to change min width"
 msgstr "クリックで最小幅を変更"
 
+msgid "could not be followed"
+msgstr "ここから先は辿れません"
+
 msgid "debug: {}"
 msgstr "デバッグ: {}"
+
+msgid "declared at file scope"
+msgstr "ファイルスコープの宣言"
+
+msgid "declared in this function"
+msgstr "この関数の中の宣言"
 
 msgid "erDiagram\n    %% ||--o{{ is one-to-many and }}o--o{{ many-to-many\n    CUSTOMER ||--o{{ ORDER : \"places\"\n    ORDER ||--|{{ ORDER_ITEM : \"contains\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
 msgstr "erDiagram\n    %% ||--o{{ は 1 対多、}}o--o{{ は多対多\n    CUSTOMER ||--o{{ ORDER : \"発注する\"\n    ORDER ||--|{{ ORDER_ITEM : \"含む\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
@@ -506,11 +560,17 @@ msgstr "eventmodeling\n    %% tf 番号 種類 名前。ui は画面、cmd は�
 msgid "flowchart TD\n    %% [] is a step and {{}} a decision. |label| annotates a branch\n    start[Start] --> condition{{Condition}}\n    condition -->|Yes| work[Process]\n    condition -->|No| finish[End]\n    work --> finish"
 msgstr "flowchart TD\n    %% [] は処理、{{}} は分岐。|ラベル| で分岐に注釈を付ける\n    start[開始] --> condition{{条件}}\n    condition -->|はい| work[処理]\n    condition -->|いいえ| finish[終了]\n    work --> finish"
 
+msgid "forward declaration"
+msgstr "前方宣言"
+
 msgid "gantt\n    title Development Schedule\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section Design\n    Requirements :done, req, 2026-01-06, 5d\n    Basic design :active, design, after req, 7d\n    section Implementation\n    Implementation :impl, after design, 10d"
 msgstr "gantt\n    title 開発スケジュール\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section 設計\n    要件定義 :done, req, 2026-01-06, 5d\n    基本設計 :active, design, after req, 7d\n    section 実装\n    実装 :impl, after design, 10d"
 
 msgid "gitGraph\n    commit id: \"Initial commit\"\n    branch feature\n    checkout feature\n    commit id: \"Add a feature\"\n    checkout main\n    merge feature"
 msgstr "gitGraph\n    commit id: \"初期化\"\n    branch feature\n    checkout feature\n    commit id: \"機能を追加\"\n    checkout main\n    merge feature"
+
+msgid "guessed by name only"
+msgstr "名前だけで推定"
 
 msgid "ishikawa-beta\n    %% The first line is the effect and indented lines its causes\n    Too many defects\n        People\n            Little experience\n        Method\n            Outdated procedures\n        Material\n            Inconsistent suppliers"
 msgstr "ishikawa-beta\n    %% 最初の行が結果、字下げした行が要因\n    不良品が多い\n        人\n            経験が浅い\n        方法\n            手順書が古い\n        材料\n            仕入れ先のばらつき"
@@ -536,6 +596,9 @@ msgstr "quadrantChart\n    %% 点は 名前: [横, 縦] で、どちらも 0〜1
 msgid "radar-beta\n    %% axis defines the axes and curve a series. List the values in the order of the axes\n    title Skill Comparison\n    axis design[\"Design\"], build[\"Implementation\"], test[\"Testing\"], ops[\"Operations\"]\n    curve a[\"Person A\"]{{4, 3, 5, 2}}\n    curve b[\"Person B\"]{{2, 5, 3, 4}}\n    max 5"
 msgstr "radar-beta\n    %% axis で軸、curve で系列。値は軸の順に並べる\n    title スキルの比較\n    axis design[\"設計\"], build[\"実装\"], test[\"テスト\"], ops[\"運用\"]\n    curve a[\"Aさん\"]{{4, 3, 5, 2}}\n    curve b[\"Bさん\"]{{2, 5, 3, 4}}\n    max 5"
 
+msgid "recursive"
+msgstr "再帰"
+
 msgid "requirementDiagram\n    %% requirement declares a requirement; element declares what satisfies it. Connect them with - satisfies ->\n    requirement login {{\n        id: 1\n        text: \"Users can log in\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"Screen\"\n    }}\n    login_page - satisfies -> login"
 msgstr "requirementDiagram\n    %% requirement は要求、element は満たす側。- satisfies -> で結ぶ\n    requirement login {{\n        id: 1\n        text: \"ログインできること\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"画面\"\n    }}\n    login_page - satisfies -> login"
 
@@ -560,6 +623,9 @@ msgstr "treeView-beta\n    %% 字下げで階層を表す\n    \"プロジェク
 msgid "treemap-beta\n    %% Indentation nests items. Give each leaf a value after :\n    \"Development\"\n        \"Design\": 30\n        \"Implementation\": 50\n    \"Operations\"\n        \"Maintenance\": 15\n        \"Monitoring\": 5"
 msgstr "treemap-beta\n    %% 字下げで入れ子。末端の項目に : で値を付ける\n    \"開発費\"\n        \"設計\": 30\n        \"実装\": 50\n    \"運用費\"\n        \"保守\": 15\n        \"監視\": 5"
 
+msgid "type named by the language server"
+msgstr "型名は言語サーバーから"
+
 msgid "venn-beta\n    %% set defines a set and union names an overlap\n    title Overlapping Responsibilities\n    set Front[\"Frontend\"]\n    set Back[\"Backend\"]\n    union Front,Back[\"API\"]"
 msgstr "venn-beta\n    %% set で集合、union で重なりに名前を付ける\n    title 担当の重なり\n    set Front[\"フロントエンド\"]\n    set Back[\"バックエンド\"]\n    union Front,Back[\"API\"]"
 
@@ -572,6 +638,13 @@ msgstr "{alt_as_text}+クリックで無効化\n右クリックでその他の�
 msgid "{count} Comment"
 msgid_plural "{count} Comments"
 msgstr[0] "コメント {count} 件"
+
+msgid "{count} more"
+msgid_plural "{count} more"
+msgstr[0] "さらに {count} 件"
+
+msgid "{tab_kind} (name match)"
+msgstr "{tab_kind} (名前一致)"
 
 msgid "{tab_kind} for {target}"
 msgstr "{target} の{tab_kind}"

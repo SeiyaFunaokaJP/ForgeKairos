@@ -580,6 +580,8 @@ fn init_renderers(cx: &mut App) {
         .add_basic_renderer::<settings::SnippetSortOrder>(render_dropdown)
         .add_basic_renderer::<settings::ClosePosition>(render_dropdown)
         .add_basic_renderer::<settings::DockSide>(render_dropdown)
+        // zed-jp-enhance: the call graph panel's sources (ADR-F68).
+        .add_basic_renderer::<settings::CallGraphSources>(render_dropdown)
         .add_basic_renderer::<settings::TerminalDockPosition>(render_dropdown)
         .add_basic_renderer::<settings::DockPosition>(render_dropdown)
         .add_basic_renderer::<settings::SidebarDockPosition>(render_dropdown)
@@ -685,6 +687,8 @@ fn init_renderers(cx: &mut App) {
         .add_basic_renderer::<settings::AudioInputDeviceName>(render_input_audio_device_dropdown)
         .add_basic_renderer::<settings::AudioOutputDeviceName>(render_output_audio_device_dropdown)
         .add_basic_renderer::<settings::TerminalBell>(render_dropdown)
+        .add_basic_renderer::<settings::ClangdIndexMode>(render_dropdown)
+        .add_basic_renderer::<settings::SymbolIndexEnabled>(render_dropdown)
         .add_basic_renderer::<settings::UiLanguageName>(pages::ui_language::render_ui_language_dropdown)
         // please semicolon stay on next line
         ;

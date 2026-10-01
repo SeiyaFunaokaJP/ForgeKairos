@@ -29,6 +29,7 @@ mod spawn_agent_tool;
 mod symbol_locator;
 mod terminal_tool;
 mod tool_permissions;
+mod type_layout_tool;
 mod web_search_tool;
 mod write_file_tool;
 
@@ -100,6 +101,7 @@ pub use symbol_locator::*;
 
 pub use terminal_tool::*;
 pub use tool_permissions::*;
+pub use type_layout_tool::*;
 pub use web_search_tool::*;
 pub use write_file_tool::*;
 
@@ -229,6 +231,8 @@ tools! {
     WriteFileTool,
     HoverTool,
     SearchSymbolsTool,
+    CallHierarchyTool,
+    TypeLayoutTool,
     HighlightCodeTool,
     AnnotateCodeTool,
     CodeTourTool,

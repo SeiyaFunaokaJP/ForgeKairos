@@ -3,6 +3,7 @@
 mod agent_registry_store;
 mod agent_sandbox;
 mod bookmark_store;
+mod clangd_memory;
 mod color_extractor;
 mod context_server_store;
 mod debugger;
@@ -16,6 +17,8 @@ mod project_search;
 mod search;
 mod search_history;
 mod signature_help;
+mod symbol_index_store;
+mod symbol_index_types;
 mod task_inventory;
 mod terminals;
 mod trusted_worktrees;

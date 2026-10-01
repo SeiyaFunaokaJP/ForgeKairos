@@ -37,6 +37,18 @@ crate::request_messages!(
     (CheckDevTools, CheckDevToolsResponse),
     (InstallDevTool, InstallDevToolResponse),
     (GitRunCommand, GitRunCommandResponse),
+    (GetClangdMemoryUsage, GetClangdMemoryUsageResponse),
+    (GetSymbolIndexStatus, GetSymbolIndexStatusResponse),
+    (SymbolIndexDefinitions, SymbolIndexDefinitionsResponse),
+    (SymbolIndexCallers, SymbolIndexCallersResponse),
+    (SymbolIndexCallees, SymbolIndexCalleesResponse),
+    (SymbolIndexAssignments, SymbolIndexAssignmentsResponse),
+    (SymbolIndexSearch, SymbolIndexSearchResponse),
+    (RebuildSymbolIndex, Ack),
+    (SymbolIndexDescribeType, SymbolIndexDescribeTypeResponse),
+    (SymbolIndexResolveType, SymbolIndexResolveTypeResponse),
+    (SymbolIndexExpandMember, SymbolIndexExpandMemberResponse),
+    (SymbolIndexTypeTree, SymbolIndexTypeTreeResponse),
 );
 
 crate::entity_messages!(
@@ -61,6 +73,20 @@ crate::entity_messages!(
     InstallDevTool,
     GitRunCommand,
     CancelSearchCommits,
+    GetClangdMemoryUsage,
+    ClangdMemoryLimitExceeded,
+    GetSymbolIndexStatus,
+    UpdateSymbolIndexStatus,
+    SymbolIndexDefinitions,
+    SymbolIndexCallers,
+    SymbolIndexCallees,
+    SymbolIndexAssignments,
+    SymbolIndexSearch,
+    RebuildSymbolIndex,
+    SymbolIndexDescribeType,
+    SymbolIndexResolveType,
+    SymbolIndexExpandMember,
+    SymbolIndexTypeTree,
 );
 
 #[cfg(test)]

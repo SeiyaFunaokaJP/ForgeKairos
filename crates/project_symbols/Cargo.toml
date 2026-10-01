@@ -18,6 +18,7 @@ editor.workspace = true
 fuzzy.workspace = true
 gpui.workspace = true
 i18n.workspace = true
+language.workspace = true
 ordered-float.workspace = true
 picker.workspace = true
 picker_preview.workspace = true
@@ -39,5 +40,6 @@ project = { workspace = true, features = ["test-support"] }
 release_channel.workspace = true
 semver.workspace = true
 settings = { workspace = true, features = ["test-support"] }
+tempfile.workspace = true
 theme = { workspace = true, features = ["test-support"] }
 workspace = { workspace = true, features = ["test-support"] }

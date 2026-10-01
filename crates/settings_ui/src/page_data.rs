@@ -3662,6 +3662,193 @@ fn languages_and_tools_page(cx: &App) -> SettingsPage {
         ]
     }
 
+    fn clangd_section() -> [SettingsPageItem; 4] {
+        [
+            SettingsPageItem::SectionHeader("clangd"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Index Mode",
+                description: "How much of the project clangd, the C and C++ language server, indexes. Full indexes the whole project in the background, as clangd does by default. Light indexes only the open files and saves the most memory: references across the project and renames then only cover the files that are open, as do the call hierarchy and going to a definition in a file that is not open. Ignored when `lsp.clangd.binary.arguments` already has `--background-index`. Changing it restarts clangd.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("clangd.index_mode"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .clangd
+                            .as_ref()?
+                            .index_mode
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project
+                            .clangd
+                            .get_or_insert_default()
+                            .index_mode = value;
+                    },
+                }),
+                metadata: None,
+                files: USER | PROJECT,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Maximum Workers",
+                description: "How many threads clangd builds and indexes files with (`-j`). Fewer threads use less memory at once but index more slowly. 0 leaves clangd's own default. Ignored when `lsp.clangd.binary.arguments` already has `-j`. Changing it restarts clangd. This setting only takes effect in your user settings.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("clangd.max_workers"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .clangd
+                            .as_ref()?
+                            .max_workers
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project
+                            .clangd
+                            .get_or_insert_default()
+                            .max_workers = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Memory Limit (MB)",
+                description: "Restarts clangd when its memory, checked every 30 seconds, goes over this many megabytes. It is restarted at most once every 10 minutes; after that, only a notification appears. On a remote project, the memory is measured on the remote host. 0 never restarts. This setting only takes effect in your user settings.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("clangd.memory_limit_mb"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .clangd
+                            .as_ref()?
+                            .memory_limit_mb
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project
+                            .clangd
+                            .get_or_insert_default()
+                            .memory_limit_mb = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
+    fn symbol_index_section() -> [SettingsPageItem; 5] {
+        [
+            SettingsPageItem::SectionHeader("Symbol Index"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Indexing",
+                description: "An index of the project's C and C++ files by name. Without compilation information (no compile_commands.json is needed), it finds the definition to go to, the callers and callees of a function and what a type holds, by matching names, so a result can be another symbol of the same name; a language server's answers come first. Auto indexes a folder once it has C or C++ files, On always indexes it and Off never does. Default: Auto.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("symbol_index.enabled"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .symbol_index
+                            .as_ref()?
+                            .enabled
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project
+                            .symbol_index
+                            .get_or_insert_default()
+                            .enabled = value;
+                    },
+                }),
+                metadata: None,
+                files: USER | PROJECT,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Include Ignored Files",
+                description: "Whether to also index the files that `.gitignore` excludes. Only the ignored files the project panel has loaded are indexed: an ignored folder is read when it is expanded. Default: off.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("symbol_index.include_ignored"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .symbol_index
+                            .as_ref()?
+                            .include_ignored
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project
+                            .symbol_index
+                            .get_or_insert_default()
+                            .include_ignored = value;
+                    },
+                }),
+                metadata: None,
+                files: USER | PROJECT,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Language Server Timeout (ms)",
+                description: "How long going to a definition waits for the language server before it also offers the index's name matches, in milliseconds, from 100 to 10000. Default: 1500.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("symbol_index.language_server_timeout_ms"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .symbol_index
+                            .as_ref()?
+                            .language_server_timeout_ms
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project
+                            .symbol_index
+                            .get_or_insert_default()
+                            .language_server_timeout_ms = value;
+                    },
+                }),
+                metadata: None,
+                files: USER | PROJECT,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Type Contents on Hover",
+                description: "Whether hovering a name in C and C++ also shows what its type holds (its members, enumerators or a macro's definition), found by name in the index. Default: on.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("symbol_index.hover_type_contents"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .symbol_index
+                            .as_ref()?
+                            .hover_type_contents
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .project
+                            .symbol_index
+                            .get_or_insert_default()
+                            .hover_type_contents = value;
+                    },
+                }),
+                metadata: None,
+                files: USER | PROJECT,
+            }),
+        ]
+    }
+
     fn languages_list_section(cx: &App) -> Box<[SettingsPageItem]> {
         // todo(settings_ui): Refresh on extension (un)/installed
         // Note that `crates/json_schema_store` solves the same problem, there is probably a way to unify the two
@@ -3705,6 +3892,8 @@ fn languages_and_tools_page(cx: &App) -> SettingsPage {
                 inline_diagnostics_section(),
                 lsp_pull_diagnostics_section(),
                 lsp_highlights_section(),
+                clangd_section(),
+                symbol_index_section(),
                 languages_list_section(cx),
             )
         },
@@ -6303,6 +6492,164 @@ fn panels_page() -> SettingsPage {
         ]
     }
 
+    fn call_graph_panel_section() -> [SettingsPageItem; 8] {
+        [
+            SettingsPageItem::SectionHeader("Call Graph Panel"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Call Graph Panel Button",
+                description: "Show the call graph panel button in the status bar.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("call_graph_panel.button"),
+                    pick: |settings_content| {
+                        settings_content.call_graph_panel.as_ref()?.button.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .call_graph_panel
+                            .get_or_insert_default()
+                            .button = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Call Graph Panel Dock",
+                description: "Where to dock the call graph panel.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("call_graph_panel.dock"),
+                    pick: |settings_content| {
+                        settings_content.call_graph_panel.as_ref()?.dock.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .call_graph_panel
+                            .get_or_insert_default()
+                            .dock = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Call Graph Panel Default Width",
+                description: "Default width of the call graph panel in pixels.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("call_graph_panel.default_width"),
+                    pick: |settings_content| {
+                        settings_content
+                            .call_graph_panel
+                            .as_ref()?
+                            .default_width
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .call_graph_panel
+                            .get_or_insert_default()
+                            .default_width = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Maximum Listed Calls",
+                description: "How many callers or callees of one function to list before a Show more row.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("call_graph_panel.max_children"),
+                    pick: |settings_content| {
+                        settings_content
+                            .call_graph_panel
+                            .as_ref()?
+                            .max_children
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .call_graph_panel
+                            .get_or_insert_default()
+                            .max_children = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Follow Cursor",
+                description: "Make the function under the cursor the root whenever the cursor moves.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("call_graph_panel.follow_cursor"),
+                    pick: |settings_content| {
+                        settings_content
+                            .call_graph_panel
+                            .as_ref()?
+                            .follow_cursor
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .call_graph_panel
+                            .get_or_insert_default()
+                            .follow_cursor = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Call Graph Sources",
+                description: "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("call_graph_panel.sources"),
+                    pick: |settings_content| {
+                        settings_content.call_graph_panel.as_ref()?.sources.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .call_graph_panel
+                            .get_or_insert_default()
+                            .sources = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Excluded Callees",
+                description: "Callees left out of a function's callees, such as logging and assertion macros. A row at the end counts them and shows them on request.",
+                field: Box::new(
+                    SettingField {
+                        organization_override: None,
+                        json_path: Some("call_graph_panel.excluded_callees"),
+                        pick: |settings_content| {
+                            settings_content
+                                .call_graph_panel
+                                .as_ref()?
+                                .excluded_callees
+                                .as_ref()
+                        },
+                        write: |settings_content, value, _| {
+                            settings_content
+                                .call_graph_panel
+                                .get_or_insert_default()
+                                .excluded_callees = value;
+                        },
+                    }
+                    .unimplemented(),
+                ),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
     fn outline_panel_section() -> [SettingsPageItem; 12] {
         [
             SettingsPageItem::SectionHeader("Outline Panel"),
@@ -7161,6 +7508,7 @@ fn panels_page() -> SettingsPage {
             debugger_panel_section(),
             collaboration_panel_section(),
             agent_panel_section(),
+            call_graph_panel_section(),
         ],
     }
 }

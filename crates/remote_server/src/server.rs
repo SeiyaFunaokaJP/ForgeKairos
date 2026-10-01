@@ -5,7 +5,11 @@ mod stale_files;
 pub mod terminal_session;
 
 #[cfg(test)]
+mod clangd_memory_remote_tests;
+#[cfg(test)]
 mod remote_editing_tests;
+#[cfg(test)]
+mod symbol_index_remote_tests;
 
 #[cfg(windows)]
 pub mod windows;

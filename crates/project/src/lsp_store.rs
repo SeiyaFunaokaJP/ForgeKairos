@@ -10,6 +10,7 @@
 //!
 //! Most of the interesting work happens at the local layer, as bulk of the complexity is with managing the lifecycle of language servers. The actual implementation of the LSP protocol is handled by [`lsp`] crate.
 pub mod clangd_ext;
+pub mod clangd_memory;
 pub mod code_lens;
 pub mod dev_tools;
 mod document_colors;
@@ -394,6 +395,7 @@ pub struct LocalLspStore {
     /// ADR-F50: the servers, running or waiting to, whose paused mode depends
     /// on guard files, and their worktrees.
     guard_dependent_servers: HashMap<LanguageServerId, WorktreeId>,
+    clangd_memory: clangd_memory::ClangdMemoryState,
 
     buffers_to_refresh_hash_set: HashSet<BufferId>,
     buffers_to_refresh_queue: VecDeque<BufferId>,
@@ -545,6 +547,11 @@ impl LocalLspStore {
         let code_state = self.worktree_code_execution.update(cx, |execution, cx| {
             execution.state_receiver(worktree_id, cx)
         });
+        let clangd_launch_options =
+            clangd_memory::launch_options_for(&adapter.name, worktree_id, cx);
+        if let Some(options) = clangd_launch_options {
+            self.note_clangd_launch(server_id, worktree_id, options, cx);
+        }
         let binary_request = LanguageServerBinaryRequest {
             worktree_abs_path: worktree_abs_path.clone(),
             adapter: adapter.clone(),
@@ -604,7 +611,10 @@ impl LocalLspStore {
             let lsp_store = self.weak.clone();
             let pending_workspace_folders = pending_workspace_folders.clone();
             async move |cx| {
-                let binary = binary.await?;
+                let mut binary = binary.await?;
+                if let Some(options) = clangd_launch_options {
+                    clangd_memory::apply_launch_options(&mut binary, options);
+                }
                 // ADR-F50: the process is spawned in the same turn as this
                 // check, so a pause cannot slip in between.
                 lsp_store.update(cx, |lsp_store, cx| {
@@ -6206,6 +6216,7 @@ impl LspStore {
 
         client.add_entity_request_handler(Self::handle_check_dev_tools);
         client.add_entity_request_handler(Self::handle_install_dev_tool);
+        Self::init_clangd_memory(client);
     }
 
     /// ADR-F39: which of a language's tools exist on the machine that owns the
@@ -6462,6 +6473,7 @@ impl LspStore {
                 worktree_code_use: HashMap::default(),
                 guard_checks: HashMap::default(),
                 guard_dependent_servers: HashMap::default(),
+                clangd_memory: Default::default(),
                 watched_manifest_filenames: ManifestProvidersStore::global(cx)
                     .manifest_file_names(),
             }),
@@ -7856,6 +7868,7 @@ impl LspStore {
 
     fn on_settings_changed(&mut self, cx: &mut Context<Self>) {
         self.request_workspace_config_refresh();
+        self.on_clangd_settings_changed(cx);
 
         let new_semantic_token_rules = crate::project_settings::ProjectSettings::get_global(cx)
             .global_lsp_settings

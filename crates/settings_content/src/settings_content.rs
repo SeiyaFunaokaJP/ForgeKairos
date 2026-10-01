@@ -200,6 +200,8 @@ pub struct SettingsContent {
 
     pub call_hierarchy: Option<CallHierarchySettingsContent>,
 
+    pub call_graph_panel: Option<CallGraphPanelSettingsContent>,
+
     pub git_panel: Option<GitPanelSettingsContent>,
 
     pub tabs: Option<ItemSettingsContent>,
@@ -447,7 +449,7 @@ impl SettingsContent {
 fallible_options::flattened_deserialize!(SettingsContent {
     sections: { project, theme, extension, workspace, editor, remote },
     options: {
-        call_hierarchy, command_palette, file_finder, git_panel, tabs, tab_bar, status_bar, preview_tabs, agent,
+        call_hierarchy, call_graph_panel, command_palette, file_finder, git_panel, tabs, tab_bar, status_bar, preview_tabs, agent,
         agent_servers, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
         git,
         global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
@@ -1135,6 +1137,71 @@ pub struct CallHierarchySettingsContent {
     ///
     /// Default: medium
     pub modal_max_width: Option<ModalWidthContent>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug, PartialEq)]
+pub struct CallGraphPanelSettingsContent {
+    /// Whether to show the call graph panel button in the status bar.
+    ///
+    /// Default: true
+    pub button: Option<bool>,
+    /// Where to dock the call graph panel.
+    ///
+    /// Default: right
+    pub dock: Option<DockSide>,
+    /// Default width of the call graph panel in pixels.
+    ///
+    /// Default: 320
+    pub default_width: Option<PixelSetting>,
+    /// How many callers or callees of one function to list before a
+    /// "Show more" row.
+    ///
+    /// Default: 200
+    pub max_children: Option<usize>,
+    /// Whether the panel follows the cursor, making the function under it the
+    /// root whenever the cursor moves. When off, the root changes only when
+    /// asked for.
+    ///
+    /// Default: false
+    pub follow_cursor: Option<bool>,
+    /// Which sources the panel lists calls from: the language server, which
+    /// is exact, the symbol index of C and C++ files, which matches names, or
+    /// both.
+    ///
+    /// Default: all
+    pub sources: Option<CallGraphSources>,
+    /// Callees left out of the list of a function's callees, such as logging
+    /// and assertion macros. A row at the end counts them and shows them on
+    /// request.
+    ///
+    /// Default: ["printk", "pr_info", "pr_err", "pr_debug", "printf", "fprintf", "assert", "BUG_ON", "WARN_ON", "likely", "unlikely"]
+    pub excluded_callees: Option<Vec<String>>,
+}
+
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CallGraphSources {
+    /// The language server and, in C and C++, the symbol index.
+    #[default]
+    All,
+    /// Only the language server.
+    LanguageServer,
+    /// Only the symbol index's name matches.
+    NameMatch,
 }
 
 #[with_fallible_options]

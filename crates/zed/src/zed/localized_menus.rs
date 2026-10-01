@@ -505,6 +505,8 @@ mod tests {
         ("Amend Last Commit", "直前のコミットを修正 (amend)"),
         ("Back", "戻る"),
         ("Browser Panel", "ブラウザーパネル"),
+        // Added by zed-jp-enhance with the call graph panel.
+        ("Call Graph Panel", "呼び出しグラフパネル"),
         ("Change Folder…", "フォルダーを変更…"),
         ("Check for Updates", "更新を確認"),
         ("Clear All Breakpoints", "すべてのブレークポイントを削除"),
@@ -615,6 +617,15 @@ mod tests {
         // Added by upstream v1.19.2.
         ("Show Incoming Calls", "呼び出し元を表示"),
         ("Show Outgoing Calls", "呼び出し先を表示"),
+        // Added by zed-jp-enhance with the call graph panel.
+        (
+            "Show Callees in Call Graph",
+            "呼び出しグラフで呼び出し先を表示",
+        ),
+        (
+            "Show Callers in Call Graph",
+            "呼び出しグラフで呼び出し元を表示",
+        ),
         ("Show Welcome", "ようこそページを表示"),
         ("Shrink Selection", "選択範囲を縮小"),
         ("Spawn Task", "タスクを実行"),
@@ -687,6 +698,7 @@ mod tests {
         "右に分割",
         "プロジェクトパネル",
         "アウトラインパネル",
+        "呼び出しグラフパネル",
         "ターミナルパネル",
         "デバッガーパネル",
         "エージェントパネル",
@@ -761,6 +773,8 @@ mod tests {
         "すべての参照を検索",
         "呼び出し元を表示",
         "呼び出し先を表示",
+        "呼び出しグラフで呼び出し元を表示",
+        "呼び出しグラフで呼び出し先を表示",
         "次の問題へ",
         "前の問題へ",
         "実行",
