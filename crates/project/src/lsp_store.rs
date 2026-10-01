@@ -14596,6 +14596,7 @@ impl LspStore {
             join_all(stop_tasks).await;
             lsp_store
                 .update(cx, |lsp_store, cx| {
+                    let buffers = lsp_store.buffers_to_reopen_after_restart(buffers, cx);
                     for buffer in &buffers {
                         lsp_store.register_buffer_with_language_servers(
                             buffer,
@@ -15014,6 +15015,7 @@ impl LspStore {
                             }
                         }
                     }
+                    let buffers = lsp_store.buffers_to_reopen_after_restart(buffers, cx);
                     for buffer in buffers {
                         lsp_store.register_buffer_with_language_servers(
                             &buffer,
@@ -15026,6 +15028,38 @@ impl LspStore {
             })
             .detach();
         }
+    }
+
+    /// Called once the old servers are stopped: stopping makes editors let go of
+    /// the multibuffer excerpts they no longer show. A buffer no one holds any
+    /// more, reopened with `ignore_refcounts`, would stay open in the new server
+    /// for good, as nothing would ever close it there.
+    pub(crate) fn buffers_to_reopen_after_restart(
+        &self,
+        buffers: Vec<Entity<Buffer>>,
+        cx: &App,
+    ) -> Vec<Entity<Buffer>> {
+        let Some(local) = self.as_local() else {
+            return buffers;
+        };
+        let mut buffers = buffers
+            .into_iter()
+            .filter(|buffer| {
+                local
+                    .registered_buffers
+                    .get(&buffer.read(cx).remote_id())
+                    .is_some_and(|refcount| *refcount > 0)
+            })
+            .collect::<Vec<_>>();
+        // A buffer of an invisible worktree (a file outside the project) reuses
+        // the server of a visible one; registered first, it would start its own.
+        buffers.sort_by_key(|buffer| {
+            std::cmp::Reverse(
+                File::from_dyn(buffer.read(cx).file())
+                    .map(|file| file.worktree.read(cx).is_visible()),
+            )
+        });
+        buffers
     }
 
     pub fn stop_language_servers_for_buffers(

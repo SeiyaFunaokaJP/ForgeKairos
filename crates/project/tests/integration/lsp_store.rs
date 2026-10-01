@@ -1831,3 +1831,394 @@ fn worktree_entries(project: &Entity<Project>, cx: &TestAppContext) -> Vec<Strin
             .collect()
     })
 }
+
+fn document_uri(abs_path: &str) -> Uri {
+    Uri::from_file_path(abs_path).expect("an absolute path")
+}
+
+/// The documents `server` was sent didOpen for since the last call, with their
+/// text as sent.
+fn opened_documents(server: &mut lsp::FakeLanguageServer) -> Vec<(Uri, String)> {
+    let mut opened = Vec::new();
+    while let Some(Some(params)) = server
+        .try_receive_notification::<lsp::notification::DidOpenTextDocument>()
+        .now_or_never()
+    {
+        // Windows sends the buffer's line endings.
+        opened.push((
+            params.text_document.uri,
+            params.text_document.text.replace("\r\n", "\n"),
+        ));
+    }
+    opened
+}
+
+// A restart reopens, in the new server, only the buffers something still
+// holds: a buffer opened with no one holding it has no refcount to close it
+// with, so it would stay open in the new server for good.
+#[gpui::test]
+async fn test_restart_reopens_only_the_buffers_still_held(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/dir"),
+        json!({
+            "held.rs": "fn held() {}",
+            "scrolled_away.rs": "fn scrolled_away() {}",
+            "never_shown.rs": "fn never_shown() {}",
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/dir").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp("Rust", FakeLspAdapter::default());
+    let lsp_store = project.read_with(cx, |project, _| project.lsp_store());
+
+    let (held, held_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/held.rs"), cx)
+        })
+        .await
+        .expect("opening held.rs");
+    let (scrolled_away, scrolled_away_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/scrolled_away.rs"), cx)
+        })
+        .await
+        .expect("opening scrolled_away.rs");
+    // Like a project search result no editor has shown.
+    let never_shown = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/dir/never_shown.rs"), cx)
+        })
+        .await
+        .expect("opening never_shown.rs");
+    let mut first = fake_servers.next().await.expect("the server starts");
+    cx.run_until_parked();
+    assert_eq!(
+        opened_documents(&mut first)
+            .into_iter()
+            .map(|(uri, _)| uri)
+            .collect::<HashSet<_>>(),
+        HashSet::from_iter([
+            document_uri(path!("/dir/held.rs")),
+            document_uri(path!("/dir/scrolled_away.rs")),
+        ])
+    );
+
+    held.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "// unsaved\n")], None, cx)
+    });
+    // Like an editor with scrolled_away.rs in an excerpt it no longer shows:
+    // it lets go of the buffer when its language server goes away.
+    let scrolled_away_handle = Rc::new(RefCell::new(Some(scrolled_away_handle)));
+    let _subscription = cx.update(|cx| {
+        let scrolled_away_handle = scrolled_away_handle.clone();
+        cx.subscribe(&lsp_store, move |_, event, _| {
+            if let LspStoreEvent::LanguageServerRemoved(_) = event {
+                scrolled_away_handle.borrow_mut().take();
+            }
+        })
+    });
+    // Clones: the buffers stay open in the project, as a search result does,
+    // rather than being dropped (and so closed) by the restart itself.
+    project.update(cx, |project, cx| {
+        project.restart_language_servers_for_buffers(
+            vec![never_shown.clone(), scrolled_away.clone(), held.clone()],
+            HashSet::default(),
+            true,
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    let mut second = fake_servers.next().await.expect("the server restarts");
+    cx.run_until_parked();
+    assert!(
+        scrolled_away_handle.borrow().is_none(),
+        "the old server was removed"
+    );
+    assert_eq!(
+        opened_documents(&mut second),
+        [(
+            document_uri(path!("/dir/held.rs")),
+            "// unsaved\nfn held() {}".to_string()
+        )],
+        "the new server gets the unsaved text of the buffer still held, and nothing no one holds"
+    );
+
+    // The buffer reopened is still counted: letting go of it closes it.
+    cx.update(|_| drop(held_handle));
+    cx.run_until_parked();
+    assert_eq!(
+        second
+            .receive_notification::<lsp::notification::DidCloseTextDocument>()
+            .await
+            .text_document
+            .uri,
+        document_uri(path!("/dir/held.rs"))
+    );
+}
+
+// A file outside the project uses the server of the project's worktree. A
+// restart that registered it first would start a server of its own for it.
+#[gpui::test]
+async fn test_restart_reopens_project_files_before_files_outside_it(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/dir"), json!({ "main.rs": "fn main() {}" }))
+        .await;
+    fs.insert_tree(path!("/outside"), json!({ "header.rs": "fn outside() {}" }))
+        .await;
+    let project = Project::test(fs, [path!("/dir").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp("Rust", FakeLspAdapter::default());
+
+    let (main, _main_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/main.rs"), cx)
+        })
+        .await
+        .expect("opening main.rs");
+    let outside = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/outside/header.rs"), cx)
+        })
+        .await
+        .expect("opening header.rs");
+    let _outside_handle = project.update(cx, |project, cx| {
+        project.register_buffer_with_language_servers(&outside, cx)
+    });
+    let mut first = fake_servers.next().await.expect("the server starts");
+    cx.run_until_parked();
+    assert_eq!(opened_documents(&mut first).len(), 2);
+    assert!(
+        fake_servers.next().now_or_never().is_none(),
+        "the file outside the project uses the project's server"
+    );
+
+    project.update(cx, |project, cx| {
+        project.restart_language_servers_for_buffers(
+            vec![outside.clone(), main.clone()],
+            HashSet::default(),
+            true,
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    let mut second = fake_servers.next().await.expect("the server restarts");
+    cx.run_until_parked();
+    assert!(
+        fake_servers.next().now_or_never().is_none(),
+        "the restart starts one server, not one more for the file outside the project"
+    );
+    assert_eq!(
+        opened_documents(&mut second)
+            .into_iter()
+            .map(|(uri, _)| uri)
+            .collect::<HashSet<_>>(),
+        HashSet::from_iter([
+            document_uri(path!("/dir/main.rs")),
+            document_uri(path!("/outside/header.rs")),
+        ])
+    );
+}
+
+// What a restart does to the diagnostics of a file no one holds: the stopped
+// server's go with it, and a new server that is not sent the file describes
+// it only if it does so on its own (clangd and rust-analyzer do, from their
+// index or check; a server that diagnoses only opened documents does not).
+#[gpui::test]
+async fn test_restart_leaves_a_file_no_one_holds_to_the_new_server(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/dir"),
+        json!({ "held.rs": "fn held() {}", "unheld.rs": "fn unheld() {}" }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/dir").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp("Rust", FakeLspAdapter::default());
+
+    let (held, _held_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/held.rs"), cx)
+        })
+        .await
+        .expect("opening held.rs");
+    let unheld = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/dir/unheld.rs"), cx)
+        })
+        .await
+        .expect("opening unheld.rs");
+    let first = fake_servers.next().await.expect("the server starts");
+    cx.run_until_parked();
+    let publish = |server: &lsp::FakeLanguageServer, abs_path: &str| {
+        server.notify::<lsp::notification::PublishDiagnostics>(lsp::PublishDiagnosticsParams {
+            uri: document_uri(abs_path),
+            version: None,
+            diagnostics: vec![lsp::Diagnostic {
+                range: lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 2)),
+                severity: Some(lsp::DiagnosticSeverity::ERROR),
+                message: lsp::DiagnosticMessage::String("an error".to_string()),
+                ..Default::default()
+            }],
+        });
+    };
+    let errors_in = |abs_path: &str, cx: &mut TestAppContext| {
+        project.read_with(cx, |project, cx| {
+            project
+                .diagnostic_summaries(false, cx)
+                .filter(|(project_path, _, _)| {
+                    project
+                        .absolute_path(project_path, cx)
+                        .is_some_and(|path| path == Path::new(abs_path))
+                })
+                .map(|(_, _, summary)| summary.error_count)
+                .sum::<usize>()
+        })
+    };
+    publish(&first, path!("/dir/held.rs"));
+    publish(&first, path!("/dir/unheld.rs"));
+    cx.run_until_parked();
+    assert_eq!(errors_in(path!("/dir/held.rs"), cx), 1);
+    assert_eq!(errors_in(path!("/dir/unheld.rs"), cx), 1);
+
+    project.update(cx, |project, cx| {
+        project.restart_language_servers_for_buffers(
+            vec![unheld.clone(), held.clone()],
+            HashSet::default(),
+            true,
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    let mut second = fake_servers.next().await.expect("the server restarts");
+    cx.run_until_parked();
+    assert_eq!(
+        opened_documents(&mut second)
+            .into_iter()
+            .map(|(uri, _)| uri)
+            .collect::<Vec<_>>(),
+        [document_uri(path!("/dir/held.rs"))]
+    );
+    assert_eq!(
+        errors_in(path!("/dir/unheld.rs"), cx),
+        0,
+        "the stopped server's diagnostics go with it"
+    );
+
+    publish(&second, path!("/dir/unheld.rs"));
+    cx.run_until_parked();
+    assert_eq!(
+        errors_in(path!("/dir/unheld.rs"), cx),
+        1,
+        "a server that describes files it was not sent still shows them"
+    );
+}
+
+// Restarting one server by name reopens, in it, only the buffers still held,
+// and opens nothing in the servers left running.
+#[gpui::test]
+async fn test_restarting_one_server_reopens_only_the_buffers_still_held(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/dir"),
+        json!({
+            "held.rs": "fn held() {}",
+            "scrolled_away.rs": "fn scrolled_away() {}",
+            "never_shown.rs": "fn never_shown() {}",
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/dir").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut restarted_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "restarted-server",
+            ..FakeLspAdapter::default()
+        },
+    );
+    let mut other_servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "other-server",
+            ..FakeLspAdapter::default()
+        },
+    );
+    let lsp_store = project.read_with(cx, |project, _| project.lsp_store());
+
+    let (held, _held_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/held.rs"), cx)
+        })
+        .await
+        .expect("opening held.rs");
+    let (scrolled_away, scrolled_away_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/scrolled_away.rs"), cx)
+        })
+        .await
+        .expect("opening scrolled_away.rs");
+    let never_shown = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/dir/never_shown.rs"), cx)
+        })
+        .await
+        .expect("opening never_shown.rs");
+    let mut first = restarted_servers.next().await.expect("the server starts");
+    let mut other = other_servers.next().await.expect("the other server starts");
+    cx.run_until_parked();
+    assert_eq!(opened_documents(&mut first).len(), 2);
+    assert_eq!(opened_documents(&mut other).len(), 2);
+
+    let scrolled_away_handle = Rc::new(RefCell::new(Some(scrolled_away_handle)));
+    let _subscription = cx.update(|cx| {
+        let scrolled_away_handle = scrolled_away_handle.clone();
+        cx.subscribe(&lsp_store, move |_, event, _| {
+            if let LspStoreEvent::LanguageServerRemoved(_) = event {
+                scrolled_away_handle.borrow_mut().take();
+            }
+        })
+    });
+    project.update(cx, |project, cx| {
+        project.restart_language_servers_for_buffers(
+            vec![never_shown.clone(), scrolled_away.clone(), held.clone()],
+            HashSet::from_iter([lsp::LanguageServerSelector::Name(LanguageServerName(
+                "restarted-server".into(),
+            ))]),
+            true,
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    let mut second = restarted_servers.next().await.expect("the server restarts");
+    cx.run_until_parked();
+    assert!(
+        scrolled_away_handle.borrow().is_none(),
+        "the old server was removed"
+    );
+    assert_eq!(
+        opened_documents(&mut second)
+            .into_iter()
+            .map(|(uri, _)| uri)
+            .collect::<Vec<_>>(),
+        [document_uri(path!("/dir/held.rs"))]
+    );
+    assert!(
+        other_servers.next().now_or_never().is_none(),
+        "the other server keeps running"
+    );
+    assert_eq!(
+        opened_documents(&mut other),
+        Vec::new(),
+        "nothing is reopened in the server left running"
+    );
+}

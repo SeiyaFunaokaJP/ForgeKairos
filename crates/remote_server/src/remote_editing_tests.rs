@@ -8153,3 +8153,141 @@ async fn test_each_session_hears_only_its_own_decisions(
         server_cx
     ));
 }
+
+/// The documents `server` was sent didOpen for since the last call, with their
+/// text as sent.
+fn documents_opened_in(server: &mut lsp::FakeLanguageServer) -> HashSet<(lsp::Uri, String)> {
+    let mut opened = HashSet::default();
+    while let Some(Some(params)) = futures::FutureExt::now_or_never(
+        server.try_receive_notification::<lsp::notification::DidOpenTextDocument>(),
+    ) {
+        // Windows sends the buffer's line endings.
+        opened.insert((
+            params.text_document.uri,
+            params.text_document.text.replace("\r\n", "\n"),
+        ));
+    }
+    opened
+}
+
+// The remote host reopens, in the restarted server, the buffers the client
+// registered: it holds a handle for each of them on the client's behalf.
+// Buffers the client only opened (a search result it never showed) are not.
+#[gpui::test]
+async fn test_remote_restart_reopens_the_buffers_the_client_registered(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    cx.update(ProjectLaunchApprovals::approve_everything_for_tests);
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "src": {
+                    "held.rs": "fn held() {}",
+                    "scrolled_away.rs": "fn scrolled_away() {}",
+                    "never_shown.rs": "fn never_shown() {}",
+                }
+            },
+        }),
+    )
+    .await;
+    let (project, headless) = init_test(&fs, cx, server_cx).await;
+    register_rust_on_client(&project, &["rust-analyzer"], cx);
+    let mut fake_servers = server_cx.update(|cx| {
+        headless.read(cx).languages.register_fake_lsp_server(
+            LanguageServerName("rust-analyzer".into()),
+            lsp::ServerCapabilities::default(),
+            None,
+        )
+    });
+    cx.run_until_parked();
+    let worktree_id = project
+        .update(cx, |project, cx| {
+            project.languages().add(rust_lang());
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .expect("adding the worktree")
+        .0
+        .read_with(cx, |worktree, _| worktree.id());
+    cx.run_until_parked();
+
+    let (held, _held_handle) = project
+        .update(cx, |project, cx| {
+            project.open_buffer_with_lsp((worktree_id, rel_path("src/held.rs")), cx)
+        })
+        .await
+        .expect("opening held.rs");
+    let (scrolled_away, scrolled_away_handle) = project
+        .update(cx, |project, cx| {
+            project.open_buffer_with_lsp((worktree_id, rel_path("src/scrolled_away.rs")), cx)
+        })
+        .await
+        .expect("opening scrolled_away.rs");
+    let never_shown = project
+        .update(cx, |project, cx| {
+            project.open_buffer((worktree_id, rel_path("src/never_shown.rs")), cx)
+        })
+        .await
+        .expect("opening never_shown.rs");
+    cx.run_until_parked();
+    let mut first = fake_servers.next().await.expect("the server starts");
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    let uri = |abs_path: &str| lsp::Uri::from_file_path(abs_path).expect("an absolute path");
+    assert_eq!(
+        documents_opened_in(&mut first),
+        HashSet::from_iter([
+            (
+                uri(path!("/code/project1/src/held.rs")),
+                "fn held() {}".to_string()
+            ),
+            (
+                uri(path!("/code/project1/src/scrolled_away.rs")),
+                "fn scrolled_away() {}".to_string()
+            ),
+        ])
+    );
+
+    held.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "// unsaved\n")], None, cx)
+    });
+    // The client lets go of its handle, but the remote host keeps the one it
+    // took for the client until the client closes the buffer.
+    drop(scrolled_away_handle);
+    cx.run_until_parked();
+    // Clones: a buffer the client drops is closed on the remote host too.
+    project.update(cx, |project, cx| {
+        project.restart_language_servers_for_buffers(
+            vec![never_shown.clone(), scrolled_away.clone(), held.clone()],
+            HashSet::default(),
+            true,
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    // Not awaited: with nothing reopened, no server would start to wait for.
+    let mut second = futures::FutureExt::now_or_never(fake_servers.next())
+        .flatten()
+        .expect("the server restarts for the buffers the client registered");
+    cx.run_until_parked();
+    server_cx.run_until_parked();
+    assert_eq!(
+        documents_opened_in(&mut second),
+        HashSet::from_iter([
+            (
+                uri(path!("/code/project1/src/held.rs")),
+                "// unsaved\nfn held() {}".to_string()
+            ),
+            (
+                uri(path!("/code/project1/src/scrolled_away.rs")),
+                "fn scrolled_away() {}".to_string()
+            ),
+        ]),
+        "the restarted server gets the client's unsaved text, and not the buffer the client never registered"
+    );
+}

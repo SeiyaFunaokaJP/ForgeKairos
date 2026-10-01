@@ -12,14 +12,16 @@ use std::{
 
 use collections::HashSet;
 use fs::{FakeFs, Fs as _};
-use futures::{StreamExt as _, channel::mpsc::UnboundedReceiver};
+use futures::{FutureExt as _, StreamExt as _, channel::mpsc::UnboundedReceiver};
 use gpui::{Entity, TestAppContext, UpdateGlobal as _};
 use language::{Buffer, FakeLspAdapter, WorktreeCodePausedMode, rust_lang};
 use lsp::{DEFAULT_LSP_REQUEST_TIMEOUT, FakeLanguageServer, LanguageServerName};
 use parking_lot::Mutex;
 use project::{
     AgentWriteScope, AgentWriterKind, Project, WorktreeId,
-    lsp_store::{FormatTrigger, LspFormatTarget, language_server_settings_in_worktree},
+    lsp_store::{
+        FormatTrigger, LspFormatTarget, LspStoreEvent, language_server_settings_in_worktree,
+    },
     worktree_code_execution::{
         GuardChecksWaitForTests, PausedLanguageServer, ResumeOutcome,
         StoredPausesAreNotKeptForTests, WorktreeCodeExecutionEvent, WorktreeCodeState,
@@ -1649,4 +1651,89 @@ async fn test_only_the_user_settings_can_turn_the_pause_off(cx: &mut TestAppCont
     );
     note_agent_write(&project, cx);
     assert_eq!(code_state(&project, cx), WorktreeCodeState::Allowed);
+}
+
+// The pause restarts the servers that run the worktree's code. It reopens in
+// them only the buffers still held once the old ones are stopped: an excerpt
+// an editor lets go of when its server goes away would otherwise stay open in
+// the restarted server, as nothing would ever close it there.
+#[gpui::test]
+async fn test_the_pause_reopens_only_the_buffers_still_held(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    let mut tree = rust_worktree();
+    tree["src"]["scrolled_away.rs"] = json!("fn scrolled_away() {}\n");
+    fs.insert_tree(path!("/root"), tree).await;
+    let project = Project::test(fs.clone(), [path!("/root").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut servers = language_registry.register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            name: "restricted-server",
+            worktree_code_paused_mode: WorktreeCodePausedMode::Restricted {
+                initialization_options: json!({ "buildScripts": { "enable": false } }),
+                workspace_configuration: json!({}),
+                unchanged_files: RUST_GUARD_FILES,
+                formatting_runs_programs: false,
+            },
+            ..FakeLspAdapter::default()
+        },
+    );
+    cx.run_until_parked();
+    let lsp_store = project.read_with(cx, |project, _| project.lsp_store());
+    let (_held, _held_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/root/src/main.rs"), cx)
+        })
+        .await
+        .expect("opening main.rs");
+    let (_scrolled_away, scrolled_away_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/root/src/scrolled_away.rs"), cx)
+        })
+        .await
+        .expect("opening scrolled_away.rs");
+    let mut first = servers.next().await.expect("the server starts");
+    cx.run_until_parked();
+    let mut opened_in_first = Vec::new();
+    while let Some(Some(params)) = first
+        .try_receive_notification::<lsp::notification::DidOpenTextDocument>()
+        .now_or_never()
+    {
+        opened_in_first.push(params.text_document.uri);
+    }
+    assert_eq!(opened_in_first.len(), 2);
+
+    let scrolled_away_handle = Rc::new(RefCell::new(Some(scrolled_away_handle)));
+    let _subscription = cx.update(|cx| {
+        let scrolled_away_handle = scrolled_away_handle.clone();
+        cx.subscribe(&lsp_store, move |_, event, _| {
+            if let LspStoreEvent::LanguageServerRemoved(_) = event {
+                scrolled_away_handle.borrow_mut().take();
+            }
+        })
+    });
+    note_agent_write(&project, cx);
+    cx.run_until_parked();
+    let mut restricted = servers
+        .next()
+        .await
+        .expect("the server restarts in its paused mode");
+    cx.run_until_parked();
+    assert!(
+        scrolled_away_handle.borrow().is_none(),
+        "the old server was removed"
+    );
+    let mut opened_in_restricted = Vec::new();
+    while let Some(Some(params)) = restricted
+        .try_receive_notification::<lsp::notification::DidOpenTextDocument>()
+        .now_or_never()
+    {
+        opened_in_restricted.push(params.text_document.uri);
+    }
+    assert_eq!(
+        opened_in_restricted,
+        [lsp::Uri::from_file_path(path!("/root/src/main.rs")).expect("an absolute path")]
+    );
 }

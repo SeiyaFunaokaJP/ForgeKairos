@@ -50104,3 +50104,141 @@ fn document_highlight_count(cx: &mut EditorLspTestContext) -> usize {
             .map_or(0, |(_, ranges)| ranges.len())
     })
 }
+
+/// The documents `server` was sent didOpen for since the last call, with their
+/// text as sent.
+fn documents_opened_in(server: &mut lsp::FakeLanguageServer) -> Vec<(lsp::Uri, String)> {
+    let mut opened = Vec::new();
+    while let Some(Some(params)) = futures::FutureExt::now_or_never(
+        server.try_receive_notification::<lsp::notification::DidOpenTextDocument>(),
+    ) {
+        // Windows sends the buffer's line endings.
+        opened.push((
+            params.text_document.uri,
+            params.text_document.text.replace("\r\n", "\n"),
+        ));
+    }
+    opened
+}
+
+// Restarting the language server from a multibuffer reopens, in the new
+// server, the buffers of the excerpts it shows, with their unsaved text. An
+// excerpt scrolled out of view is let go of when the old server goes away:
+// reopened anyway, it would stay open in the new server with nothing to close
+// it.
+#[gpui::test]
+async fn test_restart_language_server_reopens_the_excerpts_in_view(cx: &mut TestAppContext) {
+    init_test(cx, |_| {});
+    let fs = FakeFs::new(cx.executor());
+    let long_text = (0..200)
+        .map(|row| format!("let a{row} = {row};\n"))
+        .collect::<String>();
+    fs.insert_tree(
+        path!("/a"),
+        json!({
+            "in_view.rs": long_text,
+            "scrolled_away.rs": "fn scrolled_away() {}\n",
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/a").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp("Rust", FakeLspAdapter::default());
+
+    let in_view = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/a/in_view.rs"), cx)
+        })
+        .await
+        .expect("opening in_view.rs");
+    let scrolled_away = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer(path!("/a/scrolled_away.rs"), cx)
+        })
+        .await
+        .expect("opening scrolled_away.rs");
+    let multibuffer = cx.new(|cx| {
+        let mut multibuffer = MultiBuffer::new(ReadWrite);
+        multibuffer.set_excerpts_for_path(
+            PathKey::sorted(0),
+            in_view.clone(),
+            [Point::new(0, 0)..Point::new(200, 0)],
+            0,
+            cx,
+        );
+        multibuffer.set_excerpts_for_path(
+            PathKey::sorted(1),
+            scrolled_away.clone(),
+            [Point::new(0, 0)..Point::new(1, 0)],
+            0,
+            cx,
+        );
+        multibuffer
+    });
+    let editor = cx.add_window(|window, cx| {
+        Editor::for_multibuffer(multibuffer, Some(project.clone()), window, cx)
+    });
+    let uri = |abs_path: &str| lsp::Uri::from_file_path(abs_path).expect("an absolute path");
+
+    editor
+        .update(cx, |editor, window, cx| {
+            editor.set_visible_line_count(20.0, window, cx);
+        })
+        .expect("the window is open");
+    cx.executor().run_until_parked();
+    let mut first = fake_servers.next().await.expect("the server starts");
+    cx.executor().run_until_parked();
+    // Scroll down to the second excerpt and back.
+    editor
+        .update(cx, |editor, window, cx| {
+            let last_row = editor.display_snapshot(cx).max_point().row().0;
+            editor.set_scroll_position(
+                gpui::Point::new(0., f64::from(last_row.saturating_sub(5))),
+                window,
+                cx,
+            );
+        })
+        .expect("the window is open");
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.executor().run_until_parked();
+    editor
+        .update(cx, |editor, window, cx| {
+            editor.set_scroll_position(gpui::Point::new(0., 0.), window, cx);
+        })
+        .expect("the window is open");
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.executor().run_until_parked();
+    assert_eq!(
+        documents_opened_in(&mut first)
+            .into_iter()
+            .map(|(uri, _)| uri)
+            .collect::<HashSet<_>>(),
+        HashSet::from_iter([
+            uri(path!("/a/in_view.rs")),
+            uri(path!("/a/scrolled_away.rs"))
+        ]),
+        "both excerpts were shown once"
+    );
+
+    in_view.update(cx, |buffer, cx| {
+        buffer.edit([(0..0, "// unsaved\n")], None, cx)
+    });
+    editor
+        .update(cx, |editor, window, cx| {
+            editor.restart_language_server(&RestartLanguageServer, window, cx);
+        })
+        .expect("the window is open");
+    cx.executor().run_until_parked();
+    let mut second = fake_servers.next().await.expect("the server restarts");
+    cx.executor().advance_clock(Duration::from_secs(1));
+    cx.executor().run_until_parked();
+    assert_eq!(
+        documents_opened_in(&mut second),
+        [(
+            uri(path!("/a/in_view.rs")),
+            format!("// unsaved\n{long_text}")
+        )],
+        "the new server gets the unsaved text of the excerpt in view, and not the one scrolled away"
+    );
+}
