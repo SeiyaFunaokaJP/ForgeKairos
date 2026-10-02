@@ -23,6 +23,9 @@ msgstr "名前の無い `section` は構造化編集に対応していません 
 msgid "A `section` without a name is not supported by the structured editor ({trimmed}). Give it a name, or edit it as text."
 msgstr "名前の無い `section` は構造化編集に対応していません ({trimmed})。名前を付けるか、テキストのまま編集してください。"
 
+msgid "A comment (`%%`) on a line of data `{name}` is lost in the structured editor. Move the comment to a line of its own outside the block, then open it again."
+msgstr "データ `{name}` の行にあるコメント (`%%`) は構造化編集では失われます。コメントをブロックの外の単独の行に移してから、もう一度開いてください。"
+
 msgid "A comment at the end of a frame line is lost in the structured editor ({line}). Move the comment to a line of its own, then open it again."
 msgstr "フレームの行の末尾のコメントは構造化編集で失われます ({line})。コメントを独立した行に移してから開いてください。"
 
@@ -1950,6 +1953,9 @@ msgstr "`:` の前にタスク名がありません ({statement})。"
 
 msgid "Thick arrow"
 msgstr "太い矢印"
+
+msgid "This commit has the message `{message}`, which a merge cannot have, so it cannot be changed into a merge. Remove the `msg` in the text, or delete the commit and add a merge."
+msgstr "このコミットにはメッセージ `{message}` があり、マージにはメッセージを付けられないため、マージに変更できません。テキストで `msg` を消すか、このコミットを削除してマージを追加してください。"
 
 msgid "This could not be read as a mindmap node ({statement}). Edit it as text."
 msgstr "マインドマップのノードとして読めませんでした ({statement})。テキストのまま編集してください。"

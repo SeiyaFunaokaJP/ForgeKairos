@@ -7,9 +7,10 @@ use super::wire::{
 };
 use super::{
     EXIT_DETACHED, EXIT_FAILURE, EXIT_TAKEN_OVER, SESSION_ENDED_REASON, TerminalSessionCommand,
-    attach_failure_log, clamp_replay_bytes, fits_unix_socket_path, print_error,
-    replay_begin_marker, replay_end_marker, resumed_without_shell_notice, session_file_stem,
-    shell_exited_while_detached_notice, taken_over_notice,
+    UNATTACHED_HOLDER_TIMEOUT, attach_failure_log, clamp_replay_bytes, fits_unix_socket_path,
+    holder_detached_timeout, print_error, replay_begin_marker, replay_end_marker,
+    resumed_without_shell_notice, session_file_stem, shell_exited_while_detached_notice,
+    taken_over_notice,
 };
 use anyhow::{Context as _, Result, bail};
 use std::ffi::{CStr, CString, OsStr, OsString};
@@ -32,6 +33,10 @@ use util::ResultExt as _;
 const HOLDER_START_TIMEOUT: Duration = Duration::from_secs(15);
 const HOLDER_LOCK_TIMEOUT: Duration = Duration::from_secs(10);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+const _: () = assert!(
+    UNATTACHED_HOLDER_TIMEOUT.as_secs()
+        > HOLDER_START_TIMEOUT.as_secs() + HANDSHAKE_TIMEOUT.as_secs()
+);
 const KILL_TIMEOUT: Duration = Duration::from_secs(5);
 const RETIRING_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 /// Between the hangup and the kill of a shell that is being ended.
@@ -138,6 +143,20 @@ fn stalled_attach_timeout() -> Duration {
         return Duration::from_millis(milliseconds);
     }
     STALLED_ATTACH_TIMEOUT
+}
+
+#[cfg(test)]
+const TEST_UNATTACHED_HOLDER_TIMEOUT_VAR: &str = "ZED_TERMINAL_SESSION_TEST_UNATTACHED_HOLDER_MS";
+
+fn unattached_holder_timeout() -> Duration {
+    #[cfg(test)]
+    if let Some(milliseconds) = std::env::var(TEST_UNATTACHED_HOLDER_TIMEOUT_VAR)
+        .ok()
+        .and_then(|milliseconds| milliseconds.parse().ok())
+    {
+        return Duration::from_millis(milliseconds);
+    }
+    UNATTACHED_HOLDER_TIMEOUT
 }
 
 fn log_path() -> PathBuf {
@@ -979,8 +998,12 @@ impl Holder {
         if self.termination.is_some() || self.attached.is_some() {
             return None;
         }
-        self.detached_since?
-            .checked_add(self.options.detached_timeout?)
+        let shell_started = !matches!(self.shell, Shell::NotStarted);
+        self.detached_since?.checked_add(holder_detached_timeout(
+            self.options.detached_timeout,
+            shell_started,
+            unattached_holder_timeout(),
+        )?)
     }
 
     fn handle_deadlines(&mut self, now: Instant) {

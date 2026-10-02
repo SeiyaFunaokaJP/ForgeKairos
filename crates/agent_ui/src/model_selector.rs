@@ -478,7 +478,11 @@ pub(crate) fn agent_launch_entries(
     let mut entries = Vec::new();
     if current_agent != &*agent::ZED_AGENT_ID {
         entries.push(AgentLaunchEntry {
-            label: i18n::t!("New Thread with {agent}", agent = "Zed Agent").into(),
+            label: i18n::t!(
+                "New Thread with {agent}",
+                agent = agent::NATIVE_AGENT_DISPLAY_NAME
+            )
+            .into(),
             icon: AgentModelIcon::Named(IconName::ZedAgent),
             action: AgentLaunchAction::NewThread(agent::ZED_AGENT_ID.clone()),
         });
@@ -1923,9 +1927,9 @@ mod tests {
                 external_agents.clone()
             )),
             vec![
-                "New Thread with Zed Agent",
-                "Launch Claude Code",
-                "New Thread with Codex",
+                format!("New Thread with {}", agent::NATIVE_AGENT_DISPLAY_NAME),
+                "Launch Claude Code".to_string(),
+                "New Thread with Codex".to_string(),
             ]
         );
         assert_eq!(
@@ -2287,15 +2291,14 @@ mod tests {
         let mut labels = picker_labels(&picker, cx);
         assert_eq!(labels.first().map(String::as_str), Some("▼ Agents (3)"));
         labels.sort();
-        assert_eq!(
-            labels,
-            vec![
-                "@ Launch Claude Code",
-                "@ New Thread with Codex",
-                "@ New Thread with Zed Agent",
-                "▼ Agents (3)",
-            ]
-        );
+        let mut expected = vec![
+            "@ Launch Claude Code".to_string(),
+            "@ New Thread with Codex".to_string(),
+            format!("@ New Thread with {}", agent::NATIVE_AGENT_DISPLAY_NAME),
+            "▼ Agents (3)".to_string(),
+        ];
+        expected.sort();
+        assert_eq!(labels, expected);
     }
 
     #[gpui::test]

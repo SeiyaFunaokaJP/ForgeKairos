@@ -13,6 +13,7 @@ path = "src/ide_query.rs"
 
 [dependencies]
 anyhow.workspace = true
+branding.workspace = true
 collections.workspace = true
 futures.workspace = true
 fuzzy.workspace = true

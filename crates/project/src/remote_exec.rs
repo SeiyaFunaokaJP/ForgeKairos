@@ -112,7 +112,9 @@ pub type TransferAskPass =
 const CAPABILITY_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn unsupported_message() -> &'static str {
-    i18n::t!("The connected remote host does not support file transfer. Update zed-remote-server.")
+    i18n::t!(
+        "The connected remote host does not support file transfer. Update the Zed server on the remote host."
+    )
 }
 
 #[derive(Clone, Default)]

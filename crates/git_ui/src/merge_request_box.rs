@@ -1,6 +1,6 @@
 use crate::{
     branch_diff::RefComparison,
-    git_graph::{DraggedCommit, GitGraph},
+    git_graph::{CommitReveal, DraggedCommit, GitGraph},
     git_panel::GitPanel,
     picker_prompt, rewrite_range_modal,
 };
@@ -72,16 +72,30 @@ fn development_range_args(base: &str, development_branch: &str) -> Vec<String> {
 }
 
 /// `git log --no-walk` of commits the box holds from outside the development range, in the same
-/// format as [`development_range_args`], to fill in what was not known when they were added.
-fn outside_commit_args(shas: &[Oid]) -> Vec<String> {
-    let mut args = vec![
+/// format as [`development_range_args`], to fill in what was not known when they were added. The
+/// commits go in through [`outside_commit_stdin`]: up to [`MAX_RANGE_COMMITS`] full SHAs on the
+/// command line would pass Windows' 32,767-character limit.
+fn outside_commit_args() -> Vec<String> {
+    vec![
         "log".to_string(),
         "--no-walk=unsorted".to_string(),
         "-z".to_string(),
         "--format=%H%x1f%P%x1f%s%x1f%B".to_string(),
-    ];
-    args.extend(shas.iter().map(Oid::to_string));
-    args
+        "--stdin".to_string(),
+    ]
+}
+
+fn outside_commit_stdin(shas: &[Oid]) -> String {
+    shas.iter().map(|sha| format!("{sha}\n")).collect()
+}
+
+/// The unplaced commit to go to after `selected`: the next one when `selected` is one of them,
+/// wrapping around after the last, and the first otherwise.
+fn next_unplaced(unplaced: &[Oid], selected: Option<Oid>) -> Option<Oid> {
+    let next_index = selected
+        .and_then(|selected| unplaced.iter().position(|sha| *sha == selected))
+        .map_or(0, |index| (index + 1) % unplaced.len());
+    unplaced.get(next_index).copied()
 }
 
 /// What the box says when the development range is longer than it reads.
@@ -1198,7 +1212,7 @@ impl MergeRequestBox {
             return;
         };
         let receiver = repository.update(cx, |repository, _| {
-            repository.run_git_command(outside_commit_args(&shas), None)
+            repository.run_git_command(outside_commit_args(), Some(outside_commit_stdin(&shas)))
         });
         self._outside_task = Some(cx.spawn_in(window, async move |this, cx| {
             let output = match receiver.await {
@@ -1383,13 +1397,40 @@ impl MergeRequestBox {
         self.after_state_change(window, cx);
     }
 
-    fn select_first_unplaced(&mut self, cx: &mut Context<Self>) {
-        let Some(sha) = self.state.unplaced().first().map(|commit| commit.sha) else {
+    /// Selects the unplaced commit after the one selected in the graph, oldest first and round
+    /// again after the newest, so that pressing the button again walks through all of them.
+    fn select_next_unplaced(&mut self, cx: &mut Context<Self>) {
+        let unplaced: Vec<Oid> = self
+            .state
+            .unplaced()
+            .iter()
+            .map(|commit| commit.sha)
+            .collect();
+        let selected = self
+            .graph
+            .read_with(cx, |graph, _| graph.selected_commit_sha())
+            .ok()
+            .flatten();
+        let Some(sha) = next_unplaced(&unplaced, selected) else {
             return;
         };
-        self.graph
-            .update(cx, |graph, cx| graph.select_commit_by_sha(sha, cx))
-            .ok();
+        let Ok(reveal) = self
+            .graph
+            .update(cx, |graph, cx| graph.reveal_commit(sha, cx))
+        else {
+            return;
+        };
+        self.box_notice = match reveal {
+            CommitReveal::Selected | CommitReveal::Pending => None,
+            CommitReveal::ShowingAllBranches => Some(Notice::warning(i18n::t!(
+                "Switched the graph to all branches: the commit was not among the rows loaded for the branch it was showing."
+            ))),
+            CommitReveal::NotInGraph => Some(Notice::warning(i18n::t!(
+                "The commit {} is not in the graph. Refresh the graph and try again.",
+                sha.display_short()
+            ))),
+        };
+        cx.notify();
     }
 
     fn pick_development_branch(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2475,14 +2516,14 @@ impl MergeRequestBox {
                                     .child(
                                         Button::new(
                                             "merge-request-box-first-unplaced",
-                                            i18n::t!("Go to First Unplaced"),
+                                            i18n::t!("Go to Next Unplaced"),
                                         )
                                         .label_size(LabelSize::XSmall)
                                         .tooltip(Tooltip::text(i18n::t!(
-                                            "Selects the oldest unplaced commit in the graph"
+                                            "Selects the next unplaced commit in the graph, starting from the oldest. Press again for the one after it."
                                         )))
                                         .on_click(cx.listener(|this, _, _, cx| {
-                                            this.select_first_unplaced(cx);
+                                            this.select_next_unplaced(cx);
                                         })),
                                     ),
                             ),
@@ -2936,7 +2977,7 @@ mod tests {
     use super::*;
     use fs::FakeFs;
     use git::repository::{
-        CommitSummary, InitialGraphCommitData, Upstream, UpstreamTrackingStatus,
+        CommitSummary, InitialGraphCommitData, LogSource, Upstream, UpstreamTrackingStatus,
     };
     use gpui::{Modifiers, MouseButton, TestAppContext, VisualTestContext, point};
     use project::Project;
@@ -3005,16 +3046,17 @@ mod tests {
         state.add([range_candidate(&range_commit(1, false)), candidate(9)]);
         assert_eq!(state.outside_range_shas(), vec![oid(9)]);
         assert_eq!(
-            outside_commit_args(&[oid(9)]),
+            outside_commit_args(),
             [
                 "log".to_string(),
                 "--no-walk=unsorted".to_string(),
                 "-z".to_string(),
                 "--format=%H%x1f%P%x1f%s%x1f%B".to_string(),
-                oid(9).to_string(),
+                "--stdin".to_string(),
             ]
         );
-        git::repository::validate_git_command(&outside_commit_args(&[oid(9)])).unwrap();
+        assert_eq!(outside_commit_stdin(&[oid(9)]), format!("{}\n", oid(9)));
+        git::repository::validate_git_command(&outside_commit_args()).unwrap();
 
         let told = RangeCommit {
             sha: oid(9),
@@ -3033,6 +3075,87 @@ mod tests {
         assert!(
             !state.update_outside_commits(&[told]),
             "nothing new, nothing to save"
+        );
+    }
+
+    /// The command really reads the commits from stdin and answers in the order they were
+    /// given, with each commit's own subject and message.
+    #[test]
+    #[allow(clippy::disallowed_methods)]
+    fn test_outside_commits_read_by_a_real_git() {
+        use std::io::Write as _;
+        use std::process::{Command, Stdio};
+
+        let directory = util::test::TempTree::new(serde_json::json!({ "project": {} }));
+        let work_directory = directory.path().join("project");
+        // Dated a year apart, so that git sorting them by date would give them back the other way
+        // round from how they were asked for.
+        let git_at = |date: &str, arguments: &[&str]| {
+            let output = Command::new("git")
+                .args(arguments)
+                .current_dir(&work_directory)
+                .env("GIT_CONFIG_GLOBAL", "")
+                .env("GIT_CONFIG_SYSTEM", "")
+                .env("GIT_AUTHOR_DATE", date)
+                .env("GIT_COMMITTER_DATE", date)
+                .env("GIT_AUTHOR_NAME", "test")
+                .env("GIT_AUTHOR_EMAIL", "test@zed.dev")
+                .env("GIT_COMMITTER_NAME", "test")
+                .env("GIT_COMMITTER_EMAIL", "test@zed.dev")
+                .output()
+                .expect("git should run");
+            assert!(output.status.success(), "git {arguments:?} failed");
+            String::from_utf8(output.stdout)
+                .expect("UTF-8")
+                .trim()
+                .to_string()
+        };
+        let older = "2001-01-01T00:00:00Z";
+        let newer = "2002-01-01T00:00:00Z";
+        git_at(older, &["init", "-q"]);
+        git_at(
+            older,
+            &[
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "first",
+                "-m",
+                "body one",
+            ],
+        );
+        let first: Oid = git_at(older, &["rev-parse", "HEAD"]).parse().unwrap();
+        git_at(newer, &["commit", "-q", "--allow-empty", "-m", "second"]);
+        let second: Oid = git_at(newer, &["rev-parse", "HEAD"]).parse().unwrap();
+
+        let mut child = Command::new("git")
+            .args(outside_commit_args())
+            .current_dir(&work_directory)
+            .env("GIT_CONFIG_GLOBAL", "")
+            .env("GIT_CONFIG_SYSTEM", "")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("git should run");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(outside_commit_stdin(&[first, second]).as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success());
+        let commits = parse_development_range(&String::from_utf8(output.stdout).unwrap()).commits;
+        assert_eq!(
+            commits
+                .iter()
+                .map(|commit| (commit.sha, commit.subject.as_ref(), commit.message.as_ref()))
+                .collect::<Vec<_>>(),
+            vec![
+                (first, "first", "first\n\nbody one"),
+                (second, "second", "second"),
+            ]
         );
     }
 
@@ -3873,6 +3996,119 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_next_unplaced_goes_round() {
+        let unplaced = [oid(3), oid(2), oid(1)];
+        assert_eq!(next_unplaced(&unplaced, None), Some(oid(3)));
+        assert_eq!(next_unplaced(&unplaced, Some(oid(9))), Some(oid(3)));
+        assert_eq!(next_unplaced(&unplaced, Some(oid(3))), Some(oid(2)));
+        assert_eq!(next_unplaced(&unplaced, Some(oid(1))), Some(oid(3)));
+        assert_eq!(next_unplaced(&[], Some(oid(1))), None);
+    }
+
+    /// The box's button walks the unplaced commits one press at a time, and a graph showing a
+    /// branch they are not on switches to all branches to show them.
+    #[gpui::test]
+    async fn test_next_unplaced_walks_and_shows_all_branches(cx: &mut TestAppContext) {
+        let (fs, _workspace, graph, mut cx) = setup("dev-next", cx).await;
+        let merge_request_box = open_box(&graph, &mut cx);
+        let press = |cx: &mut VisualTestContext| {
+            merge_request_box.update(cx, |merge_request_box, cx| {
+                merge_request_box.select_next_unplaced(cx);
+            });
+            cx.run_until_parked();
+            graph.read_with(cx, |graph, _| graph.selected_commit_sha())
+        };
+        assert_eq!(press(&mut cx), Some(oid(3)), "the oldest first");
+        assert_eq!(press(&mut cx), Some(oid(2)));
+        assert_eq!(press(&mut cx), Some(oid(1)));
+        assert_eq!(press(&mut cx), Some(oid(3)), "round again after the newest");
+        assert!(merge_request_box.read_with(&cx, |merge_request_box, _| {
+            merge_request_box.box_notice.is_none()
+        }));
+
+        // A branch that has only the base on it.
+        fs.set_graph_commits(
+            dot_git(),
+            graph_commits()
+                .into_iter()
+                .filter(|commit| commit.sha == oid(4))
+                .collect(),
+        );
+        graph.update(&mut cx, |graph, cx| {
+            graph.set_log_source_for_test(LogSource::Branch("main".into()), cx);
+        });
+        cx.run_until_parked();
+        fs.set_graph_commits(dot_git(), graph_commits());
+        assert_eq!(
+            graph.read_with(&cx, |graph, _| graph
+                .initial_commit_data_for_test()
+                .iter()
+                .map(|commit| commit.sha)
+                .collect::<Vec<_>>()),
+            vec![oid(4)]
+        );
+
+        assert_eq!(press(&mut cx), Some(oid(3)));
+        assert_eq!(
+            graph.read_with(&cx, |graph, _| graph.log_source_for_test().clone()),
+            LogSource::All
+        );
+        assert!(
+            merge_request_box.read_with(&cx, |merge_request_box, _| merge_request_box
+                .box_notice
+                .is_some()),
+            "the box says why the graph changed"
+        );
+    }
+
+    /// A row menu opened while the box was open still works after the box is closed, and shows
+    /// the box again rather than changing it out of sight.
+    #[gpui::test]
+    async fn test_menu_entry_after_closing_the_box_opens_it_again(cx: &mut TestAppContext) {
+        let (_fs, _workspace, graph, mut cx) = setup("dev-closed", cx).await;
+        open_box(&graph, &mut cx);
+        let menu = graph
+            .update_in(&mut cx, |graph, window, cx| {
+                graph.open_row_menu_for_test(Some(2), window, cx)
+            })
+            .expect("the menu should open");
+        graph.update(&mut cx, |graph, cx| graph.close_merge_request_box(cx));
+        cx.run_until_parked();
+        assert!(graph.read_with(&cx, |graph, _| graph.visible_merge_request_box().is_none()));
+
+        menu.update_in(&mut cx, |menu, window, cx| {
+            menu.select_last(window, cx);
+            menu.select_previous(&menu::SelectPrevious, window, cx);
+            menu.confirm(&menu::Confirm, window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            graph.read_with(&cx, |graph, _| graph.visible_merge_request_box().is_some()),
+            "the box is shown again"
+        );
+        assert_eq!(mark_of(&graph, oid(3), &cx), Some(RowMark::Excluded));
+
+        let menu = graph
+            .update_in(&mut cx, |graph, window, cx| {
+                graph.open_row_menu_for_test(Some(2), window, cx)
+            })
+            .expect("the menu should open");
+        graph.update(&mut cx, |graph, cx| graph.close_merge_request_box(cx));
+        cx.run_until_parked();
+        menu.update_in(&mut cx, |menu, window, cx| {
+            menu.select_last(window, cx);
+            menu.select_previous(&menu::SelectPrevious, window, cx);
+            menu.confirm(&menu::Confirm, window, cx);
+        });
+        cx.run_until_parked();
+        assert!(
+            graph.read_with(&cx, |graph, _| graph.visible_merge_request_box().is_some()),
+            "stopping the exclusion shows the box again too"
+        );
+        assert_eq!(mark_of(&graph, oid(3), &cx), Some(RowMark::Unplaced));
+    }
+
     /// `git::ToggleMergeRequestBox` with no graph open opens one, with the box in it; again, it
     /// closes the box.
     #[gpui::test]
@@ -4039,7 +4275,7 @@ mod tests {
 
         set_git_result(
             &fs,
-            &outside_commit_args(&[outsider]).join(" "),
+            &outside_commit_args().join(" "),
             &format!("{outsider}\x1f\x1f基点の件名\x1f基点の件名\n\n本文\n\0"),
             0,
         );
@@ -4047,6 +4283,21 @@ mod tests {
             merge_request_box.reload_range(window, cx);
         });
         cx.run_until_parked();
+        let outside_reads = fs
+            .with_git_state(dot_git(), false, |state| {
+                state
+                    .run_command_log
+                    .iter()
+                    .filter(|(args, _)| *args == outside_commit_args())
+                    .map(|(_, stdin)| stdin.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap();
+        assert_eq!(
+            outside_reads.last(),
+            Some(&Some(format!("{outsider}\n"))),
+            "the commits go to git on stdin, not on the command line"
+        );
         merge_request_box.read_with(&cx, |merge_request_box, _| {
             let placed = merge_request_box
                 .state

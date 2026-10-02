@@ -85,14 +85,17 @@ async fn install_script(cx: &AsyncApp) -> Result<Option<PathBuf>> {
 }
 
 pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
-    const LINUX_PROMPT_DETAIL: &str = "If you installed Zed from our official release add ~/.local/bin to your PATH.\n\nIf you installed Zed from a different source like your package manager, then you may need to create an alias/symlink manually.\n\nDepending on your package manager, the CLI might be named zeditor, zedit, zed-editor or something else.";
+    let linux_prompt_detail = i18n::t!(
+        "If you installed Zed from our official release add ~/.local/bin to your PATH.\n\nIf you installed Zed from a different source like your package manager, then you may need to create an alias/symlink to `{cli_name}` manually.",
+        cli_name = branding::CURRENT.cli_name
+    );
 
     cx.spawn_in(window, async move |workspace, cx| {
         if cfg!(any(target_os = "linux", target_os = "freebsd")) {
             let prompt = cx.prompt(
                 PromptLevel::Warning,
-                "CLI should already be installed",
-                Some(LINUX_PROMPT_DETAIL),
+                i18n::t!("CLI should already be installed"),
+                Some(linux_prompt_detail.as_str()),
                 &["OK"],
             );
             cx.background_spawn(prompt).detach();
@@ -113,11 +116,14 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
                         |cx| {
                             cx.new(|cx| {
                                 MessageNotification::new(
-                                    "You can add `zed` to your PATH manually.",
+                                    i18n::t!(
+                                        "You can add `{cli_name}` to your PATH manually.",
+                                        cli_name = branding::CURRENT.cli_name
+                                    ),
                                     cx,
                                 )
-                                .with_title("Couldn't install the Zed CLI")
-                                .more_info_message("Show me how")
+                                .with_title(i18n::t!("Couldn't install the Zed CLI"))
+                                .more_info_message(i18n::t!("Show me how"))
                                 .more_info_url(CANT_INSTALL_DOCS_URL)
                             })
                         },
@@ -133,10 +139,11 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
             workspace.show_toast(
                 Toast::new(
                     NotificationId::unique::<InstalledZedCli>(),
-                    format!(
-                        "Installed `zed` to {}. You can launch {} from your terminal.",
-                        path.to_string_lossy(),
-                        ReleaseChannel::global(cx).display_name()
+                    i18n::t!(
+                        "Installed `{cli_name}` to {path}. You can launch {app} from your terminal.",
+                        path = path.to_string_lossy(),
+                        app = ReleaseChannel::global(cx).display_name(),
+                        cli_name = branding::CURRENT.cli_name
                     ),
                 ),
                 cx,
@@ -145,5 +152,10 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
         register_zed_scheme(cx).await.log_err();
         Ok(())
     })
-    .detach_and_prompt_err("Cannot install the Zed CLI", window, cx, |_, _, _| None);
+    .detach_and_prompt_err(
+        i18n::t!("Cannot install the Zed CLI"),
+        window,
+        cx,
+        |_, _, _| None,
+    );
 }

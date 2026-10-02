@@ -5805,6 +5805,120 @@ mod tests {
         assert!(!user_settings_have_it);
     }
 
+    const SHARED_PROJECT_SETTINGS: &str =
+        r#"{ "context_servers": { "shared": { "command": "old-server" } } }"#;
+
+    /// Opens the form on the project's `shared` server, fills in a new command,
+    /// and leaves it unsaved, so a test can change the file underneath it.
+    async fn open_project_server_form_with_an_edit(
+        cx: &mut TestAppContext,
+    ) -> (
+        Arc<FakeFs>,
+        Entity<SettingsWindow>,
+        &mut gpui::VisualTestContext,
+    ) {
+        let fs = init_command_picker_test(cx);
+        fs.insert_tree(
+            path!("/project"),
+            json!({ ".zed": { "settings.json": SHARED_PROJECT_SETTINGS }, "src": {} }),
+        )
+        .await;
+        fs.insert_tree(path!("/tools"), json!({ "new-server": "" }))
+            .await;
+        let project = project::Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        let multi_workspace = cx.add_window(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        cx.run_until_parked();
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project should have its worktree")
+                .read(cx)
+                .id()
+        });
+
+        let (settings_window, cx) = cx.add_window_view(|window, cx| {
+            let mut settings_window = SettingsWindow::test(window, cx);
+            settings_window.original_window = Some(multi_workspace);
+            settings_window
+        });
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            let form = project_server_form(
+                &id("shared"),
+                worktree_id,
+                path!("/project/.zed/settings.json").into(),
+                window,
+                cx,
+            )
+            .expect("the project's own entry opens in the form");
+            form.command.update(cx, |editor, cx| {
+                editor.set_text(path!("/tools/new-server"), window, cx);
+            });
+            push_mcp_server_form(settings_window, form, window, cx);
+        });
+        (fs, settings_window, cx)
+    }
+
+    async fn assert_project_server_edit_was_not_written(
+        fs: &FakeFs,
+        settings_window: &Entity<SettingsWindow>,
+        expected_error: &str,
+        expected_project_file: &str,
+        cx: &mut gpui::VisualTestContext,
+    ) {
+        let form_error = settings_window.read_with(cx, |settings_window, _| {
+            settings_window
+                .mcp_server_form
+                .as_ref()
+                .and_then(|form| form.error.clone())
+        });
+        assert_eq!(form_error.as_deref(), Some(expected_error));
+        settings_window.read_with(cx, |settings_window, _| {
+            assert!(
+                settings_window.mcp_server_form.is_some()
+                    && !settings_window.sub_page_stack.is_empty(),
+                "the form stays open so the edit is not lost"
+            );
+        });
+        let project_file = fs
+            .load(path!("/project/.zed/settings.json").as_ref())
+            .await
+            .expect("the project file is still there");
+        assert_eq!(project_file, expected_project_file);
+        let user_file = fs.load(paths::settings_file()).await.unwrap_or_default();
+        assert!(!user_file.contains("shared"), "{user_file}");
+    }
+
+    #[gpui::test]
+    async fn a_project_server_edit_is_not_written_over_a_definition_changed_since_opening(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, settings_window, cx) = open_project_server_form_with_an_edit(cx).await;
+        let planted = r#"{ "context_servers": { "shared": { "command": "planted-server" } } }"#;
+        fs.insert_file(
+            path!("/project/.zed/settings.json"),
+            planted.as_bytes().to_vec(),
+        )
+        .await;
+        cx.run_until_parked();
+
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            save_mcp_server_form(settings_window, window, cx);
+        });
+        cx.run_until_parked();
+
+        assert_project_server_edit_was_not_written(
+            &fs,
+            &settings_window,
+            PROJECT_DEFINITION_CHANGED,
+            planted,
+            cx,
+        )
+        .await;
+    }
+
     /// The command lookup makes the save wait; leaving the form meanwhile (the
     /// breadcrumb keeps the form around) must not close whatever page is on
     /// top by then, nor write what the user walked away from.

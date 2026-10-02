@@ -3,7 +3,7 @@ use gpui::{AsyncApp, actions};
 actions!(
     cli,
     [
-        /// Registers the zed:// URL scheme handler.
+        /// Registers this application's URL scheme handler.
         RegisterZedScheme
     ]
 );

@@ -132,7 +132,7 @@ msgid "Invalid path"
 msgstr "無効なパス"
 
 msgid "Invalid path specified when trying to open a folder inside WSL.\n\nPlease note that Zed currently does not support opening network share folders inside wsl.\n"
-msgstr "WSL 内のフォルダーを開こうとしたときに無効なパスが指定されました。\n\n現在 Zed は WSL 内でネットワーク共有フォルダーを開くことに対応していません。\n"
+msgstr "WSL 内のフォルダーを開こうとしたときに無効なパスが指定されました。\n\n現在 ForgeKairos は WSL 内でネットワーク共有フォルダーを開くことに対応していません。\n"
 
 msgid "Learn More"
 msgstr "詳細"
@@ -165,7 +165,7 @@ msgid "Open Remote Folder"
 msgstr "リモートフォルダーを開く"
 
 msgid "Open Zed Log"
-msgstr "Zed のログを開く"
+msgstr "ForgeKairos のログを開く"
 
 msgid "Open devcontainer.json"
 msgstr "devcontainer.json を開く"

@@ -1155,7 +1155,7 @@ fn select_distro<'a>(
 /// can run it, returning its absolute path inside the distro.
 ///
 /// The helper is the Linux `remote_server` and `slirp4netns` shipped next to
-/// `Zed.exe` (the same files `crates/remote` uploads to SSH hosts), copied into
+/// the executable (the same files `crates/remote` uploads to SSH hosts), copied into
 /// `~/.cache/forgekairos/sandbox/<key>/` inside the distro — nothing is
 /// downloaded, so this works offline and never runs a binary this build did not
 /// ship. `<key>` is derived from the artifacts' contents, so each build (and
@@ -3555,7 +3555,7 @@ const LINUX_DEFAULT_DATA_HOME_RELATIVE: &str = ".local/share";
 /// ADR-F49 決定 22: where an npm install is put together inside the distro,
 /// relative to the account's home. Deliberately *beside* the Zed data
 /// directory rather than in it: the staging directory has to be writable from
-/// inside the sandbox, and everything in `.local/share/zed-jp-enhance` is
+/// inside the sandbox, and everything in `.local/share/forgekairos` is
 /// protected and read-hidden. Path components are compared whole, so this name
 /// is not inside that one.
 const WSL_STAGING_HOME_RELATIVE: &str = branding::concat_const!(

@@ -92,18 +92,26 @@ const MAX_TITLE_CHARS: usize = 200;
 const MAX_PATH_CHARS: usize = 4096;
 
 /// MCP の initialize の結果に載せる、モデル向けの説明 (英語、短く)。
-pub(crate) const INSTRUCTIONS: &str = "You are connected to the Zed editor that the user is looking at (zed-jp-enhance).
+pub(crate) const INSTRUCTIONS: &str = branding::concat_const!(
+    "You are connected to the ",
+    crate::PRODUCT_NAME,
+    " editor (a fork of the Zed editor) that the user is looking at.
 Use highlightCode / annotateCode to point at code in the user's editor instead of pasting it, and startCodeTour for step-by-step walkthroughs across files (the user steps with ‹ › buttons).
 Use getHover / findDefinition / findReferences / getDocumentSymbols / searchSymbols for precise, language-server-backed navigation (searchSymbols is a structural symbol search, not embeddings).
 Use getCallHierarchy before grep to find the callers of a function or the functions it calls.
 In C and C++ getCallHierarchy also answers from a name index (even without a language server, and for a function name alone); calls with source nameIndex, macro or candidate are name matches, not resolved calls.
 Use getTypeLayout to see what a C or C++ struct, union, enum, typedef or macro contains before searching for its header.
 Paths may be absolute or relative to a workspace folder; lines are 1-based and inclusive.
-Annotations are not saved, and calling a display tool again replaces what you showed before.";
+Annotations are not saved, and calling a display tool again replaces what you showed before."
+);
 
-pub(crate) const ASSIST_UNAVAILABLE_MESSAGE: &str =
-    "The IDE tools (zed) are disabled in Zed's settings.";
-pub(crate) const IDE_SERVER_DISABLED_MESSAGE: &str = "Zed's IDE server is disabled.";
+pub(crate) const ASSIST_UNAVAILABLE_MESSAGE: &str = branding::concat_const!(
+    "The IDE tools (zed) are disabled in ",
+    crate::PRODUCT_NAME,
+    "'s settings."
+);
+pub(crate) const IDE_SERVER_DISABLED_MESSAGE: &str =
+    branding::concat_const!(crate::PRODUCT_NAME, "'s IDE server is disabled.");
 
 /// CLI の `--mcp-config` に渡す JSON。URL だけが具体的で、`Authorization` の値は
 /// [`ASSIST_BEARER_ENV_VAR`] を CLI に展開させる。空白を含まない (理由は
@@ -179,8 +187,11 @@ pub(crate) fn tools() -> Vec<Tool> {
     vec![
         tool(
             "highlightCode",
-            "Highlight line ranges in the user's Zed editor, with an optional short note each. \
-             Replaces your previous highlights.",
+            branding::concat_const!(
+                "Highlight line ranges in the user's ",
+                crate::PRODUCT_NAME,
+                " editor, with an optional short note each. Replaces your previous highlights."
+            ),
             object_schema(
                 json!({
                     "items": items_schema(
@@ -199,8 +210,11 @@ pub(crate) fn tools() -> Vec<Tool> {
         ),
         tool(
             "annotateCode",
-            "Show Markdown explanations next to line ranges in the user's Zed editor. \
-             Replaces your previous annotations. Images, links and HTML are not rendered.",
+            branding::concat_const!(
+                "Show Markdown explanations next to line ranges in the user's ",
+                crate::PRODUCT_NAME,
+                " editor. Replaces your previous annotations. Images, links and HTML are not rendered."
+            ),
             object_schema(
                 json!({
                     "items": items_schema(
@@ -219,8 +233,11 @@ pub(crate) fn tools() -> Vec<Tool> {
         ),
         tool(
             "startCodeTour",
-            "Start a step-by-step tour across files in the user's Zed editor. The user moves \
-             between the steps with ‹ › buttons. Replaces your previous tour.",
+            branding::concat_const!(
+                "Start a step-by-step tour across files in the user's ",
+                crate::PRODUCT_NAME,
+                " editor. The user moves between the steps with ‹ › buttons. Replaces your previous tour."
+            ),
             object_schema(
                 json!({
                     "title": text_schema(MAX_TITLE_CHARS, "Title of the tour."),
@@ -241,7 +258,11 @@ pub(crate) fn tools() -> Vec<Tool> {
         ),
         tool(
             "clearAnnotations",
-            "Remove every highlight, annotation and tour you showed in the user's Zed editor.",
+            branding::concat_const!(
+                "Remove every highlight, annotation and tour you showed in the user's ",
+                crate::PRODUCT_NAME,
+                " editor."
+            ),
             object_schema(json!({}), &[]),
         ),
         tool(
@@ -1493,7 +1514,8 @@ fn entry_refusal(
                 .is_path_excluded(&project_path.path);
         return Some(if in_git_directory || excluded {
             format!(
-                "{text} is somewhere Zed doesn't scan (.git or an excluded path), so it can't be used."
+                "{text} is somewhere {} doesn't scan (.git or an excluded path), so it can't be used.",
+                crate::PRODUCT_NAME
             )
         } else {
             format!("{text} wasn't found.")

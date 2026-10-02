@@ -14,6 +14,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace = true
+branding.workspace = true
 collections.workspace = true
 editor.workspace = true
 futures.workspace = true

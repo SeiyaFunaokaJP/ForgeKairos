@@ -3695,21 +3695,94 @@ impl GitPanel {
         .detach();
     }
 
-    /// What dragging the file row at `ix` carries. Conflicted files are left out: staging one
+    /// What dragging the file or folder row at `ix` carries: the row's files, or every marked
+    /// file when the row is one of the marked ones. Conflicted files are left out: staging one
     /// marks the conflict resolved and unstaging a resolved one throws its merge stages away,
     /// neither of which should happen by dropping a file somewhere.
     fn dragged_entries_for(&self, ix: usize) -> Option<DraggedGitPanelEntries> {
         let repository = self.active_repository.as_ref()?.downgrade();
-        let entry = self.entries.get(ix)?.status_entry()?;
+        let row_paths: Vec<RepoPath> = match self.entries.get(ix)? {
+            GitListEntry::Status(entry) => vec![entry.repo_path.clone()],
+            GitListEntry::TreeStatus(entry) => vec![entry.entry.repo_path.clone()],
+            GitListEntry::Directory(_) => self
+                .directory_descendants(ix)?
+                .iter()
+                .map(|entry| entry.repo_path.clone())
+                .unique()
+                .collect(),
+            GitListEntry::Header(_) | GitListEntry::EmptySection(_) => return None,
+        };
+        if row_paths.is_empty() {
+            return None;
+        }
         let section = self.section_for_entry_index(ix);
         if section == Some(Section::Conflict) {
             return None;
         }
+        let from_staged = section == Some(Section::Staged);
+        let marked = self.marked_paths_dragged_with(ix, from_staged);
+        let repo_paths = if marked.is_empty() { row_paths } else { marked };
         Some(DraggedGitPanelEntries {
             repository,
-            repo_paths: vec![entry.repo_path.clone()],
-            from_staged: section == Some(Section::Staged),
+            repo_paths,
+            from_staged,
         })
+    }
+
+    /// The marked files that go along when the row at `ix` is dragged: those on the same side of
+    /// the staging area as it, in display order, conflicted ones left out as in
+    /// [`Self::dragged_entries_for`]. Empty when the row itself is not marked.
+    fn marked_paths_dragged_with(&self, ix: usize, from_staged: bool) -> Vec<RepoPath> {
+        // Every row asks this on every render, so a row that cannot be marked (neither itself nor
+        // anything above it) answers without walking all the entries.
+        let row_path = match self.entries.get(ix) {
+            Some(GitListEntry::Directory(directory)) => &directory.key.path,
+            Some(entry) => match entry.status_entry() {
+                Some(status_entry) => &status_entry.repo_path,
+                None => return Vec::new(),
+            },
+            None => return Vec::new(),
+        };
+        let row_may_be_marked = self.marked_entries.contains(row_path)
+            || self
+                .marked_directories
+                .iter()
+                .any(|directory| row_path.starts_with(&directory.path));
+        if !row_may_be_marked {
+            return Vec::new();
+        }
+        let mut coverage = MarkedDirectoryCoverage::default();
+        let mut section = None;
+        let mut paths = Vec::new();
+        let mut seen = HashSet::default();
+        let mut includes_dragged = false;
+        for (index, entry) in self.entries.iter().enumerate() {
+            if let GitListEntry::Header(header) = entry {
+                section = Some(header.header);
+            }
+            let covered = coverage.observe(entry, &self.marked_directories);
+            let on_the_dragged_side = section != Some(Section::Conflict)
+                && (section == Some(Section::Staged)) == from_staged;
+            let marked = covered
+                || match entry {
+                    GitListEntry::Directory(directory) => {
+                        self.marked_directories.contains(&directory.key)
+                    }
+                    _ => entry
+                        .status_entry()
+                        .is_some_and(|status| self.marked_entries.contains(&status.repo_path)),
+                };
+            if index == ix {
+                includes_dragged = marked && on_the_dragged_side;
+            }
+            let Some(status_entry) = entry.status_entry() else {
+                continue;
+            };
+            if on_the_dragged_side && marked && seen.insert(&status_entry.repo_path) {
+                paths.push(status_entry.repo_path.clone());
+            }
+        }
+        if includes_dragged { paths } else { Vec::new() }
     }
 
     /// Whether dropping the files being dragged right now on `section` would stage them
@@ -10643,6 +10716,24 @@ impl GitPanel {
                     this.deploy_entry_context_menu(event.position, ix, window, cx);
                 }),
             )
+            .when_some(self.dragged_entries_for(ix), |row, dragged| {
+                row.relative()
+                    .child(
+                        crate::git_guide::drag_grip(
+                            ElementId::NamedInteger("git-panel-directory-grip".into(), ix as u64),
+                            crate::git_guide::FILE_DRAG_HINT,
+                        )
+                        .absolute()
+                        .left_0()
+                        .top_0()
+                        .h_full()
+                        .visible_on_hover(SECTION_DROP_ROW_GROUP),
+                    )
+                    .on_drag(dragged, |dragged: &DraggedGitPanelEntries, _, _, cx| {
+                        let label = dragged_entries_label(&dragged.repo_paths);
+                        cx.new(|_| DraggedGitPanelEntriesView { label })
+                    })
+            })
             .group(SECTION_DROP_ROW_GROUP)
             .map(|row| {
                 self.with_section_drop(
@@ -19339,6 +19430,196 @@ mod tests {
                 panel
                     .entry_by_path_in_section(&repo_path("conflict.rs"), Section::Conflict)
                     .is_some()
+            );
+        });
+    }
+
+    /// Dragging a marked file carries every marked file on its side of the staging area; an
+    /// unmarked row, or a single mark, carries just the row.
+    #[gpui::test]
+    async fn test_dragging_a_marked_file_carries_the_marked_ones(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                "a.rs": "a",
+                "b.rs": "b",
+                "c.rs": "c",
+                "conflict.rs": "conflict",
+                "staged.rs": "staged",
+            }),
+        )
+        .await;
+        fs.set_status_for_repo(
+            path!("/project/.git").as_ref(),
+            &[
+                ("a.rs", StatusCode::Modified.worktree()),
+                ("b.rs", StatusCode::Modified.worktree()),
+                ("c.rs", StatusCode::Modified.worktree()),
+                (
+                    "conflict.rs",
+                    UnmergedStatus {
+                        first_head: UnmergedStatusCode::Updated,
+                        second_head: UnmergedStatusCode::Updated,
+                    }
+                    .into(),
+                ),
+                ("staged.rs", FileStatus::index(StatusCode::Modified)),
+            ],
+        );
+
+        let project = Project::test(fs.clone(), [Path::new(path!("/project"))], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace = window_handle
+            .read_with(cx, |mw, _| mw.workspace().clone())
+            .unwrap();
+        let mut cx = VisualTestContext::from_window(window_handle.into(), cx);
+        cx.update(|_window, cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.git_panel.get_or_insert_default().group_by =
+                        Some(GitPanelGroupBy::Staging);
+                })
+            });
+        });
+        cx.executor().run_until_parked();
+        let panel = workspace.update_in(&mut cx, GitPanel::new);
+        await_git_panel_entries(&panel, &mut cx).await;
+
+        panel.update(&mut cx, |panel, _| {
+            let dragged_from = |panel: &GitPanel, path: &str, section: Section| {
+                panel
+                    .entry_by_path_in_section(&repo_path(path), section)
+                    .and_then(|row| panel.dragged_entries_for(row))
+                    .map(|dragged| dragged.repo_paths)
+            };
+
+            panel.marked_entries.insert(repo_path("a.rs"));
+            assert_eq!(
+                dragged_from(panel, "a.rs", Section::Unstaged),
+                Some(vec![repo_path("a.rs")]),
+                "a single mark is the row itself"
+            );
+
+            for path in ["b.rs", "conflict.rs", "staged.rs"] {
+                panel.marked_entries.insert(repo_path(path));
+            }
+            assert_eq!(
+                dragged_from(panel, "b.rs", Section::Unstaged),
+                Some(vec![repo_path("a.rs"), repo_path("b.rs")]),
+                "the marked unstaged files, without the conflict or the staged one"
+            );
+            assert_eq!(
+                dragged_from(panel, "c.rs", Section::Unstaged),
+                Some(vec![repo_path("c.rs")]),
+                "an unmarked row does not carry the marks"
+            );
+            assert_eq!(
+                dragged_from(panel, "staged.rs", Section::Staged),
+                Some(vec![repo_path("staged.rs")]),
+                "from the staged side, only the staged marks"
+            );
+        });
+    }
+
+    /// A folder row drags the files under it, and a marked folder goes along with the other
+    /// marks even while it is collapsed.
+    #[gpui::test]
+    async fn test_dragging_a_folder_carries_its_files(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.git_panel.get_or_insert_default().tree_view = Some(true);
+                })
+            });
+        });
+        let (_, _, _workspace, panel, mut cx) = setup_git_panel_with_changes(
+            cx,
+            json!({
+                ".git": {},
+                "folder": {
+                    "x.rs": "x",
+                    "y.rs": "y",
+                },
+                "top.rs": "top",
+            }),
+            &[
+                ("folder/x.rs", StatusCode::Modified),
+                ("folder/y.rs", StatusCode::Modified),
+                ("top.rs", StatusCode::Modified),
+            ],
+        )
+        .await;
+        await_git_panel_entries(&panel, &mut cx).await;
+
+        let folder_row = |panel: &GitPanel| {
+            panel
+                .entries
+                .iter()
+                .position(|entry| {
+                    matches!(entry, GitListEntry::Directory(directory)
+                        if directory.key.path == repo_path("folder"))
+                })
+                .expect("the folder has a row")
+        };
+        let folder_files = vec![repo_path("folder/x.rs"), repo_path("folder/y.rs")];
+        panel.update_in(&mut cx, |panel, window, cx| {
+            let row = folder_row(panel);
+            assert_eq!(
+                panel
+                    .dragged_entries_for(row)
+                    .map(|dragged| dragged.repo_paths),
+                Some(folder_files.clone())
+            );
+
+            let GitListEntry::Directory(directory) = &panel.entries[row] else {
+                unreachable!()
+            };
+            let key = directory.key.clone();
+            panel.marked_directories.insert(key.clone());
+            panel.marked_entries.insert(repo_path("top.rs"));
+            panel.toggle_directory(&key, window, cx);
+        });
+        await_git_panel_entries(&panel, &mut cx).await;
+        panel.read_with(&cx, |panel, _| {
+            let hidden_row = entry_index_for_repo_path(panel, &repo_path("folder/x.rs"))
+                .expect("a collapsed folder keeps its files' rows, hidden");
+            assert!(
+                !panel
+                    .view_mode
+                    .tree_state()
+                    .expect("tree view")
+                    .logical_indices
+                    .contains(&hidden_row),
+                "the folder is collapsed"
+            );
+            let top_row =
+                entry_index_for_repo_path(panel, &repo_path("top.rs")).expect("top.rs has a row");
+            let mut expected = folder_files.clone();
+            expected.push(repo_path("top.rs"));
+            assert_eq!(
+                panel
+                    .dragged_entries_for(top_row)
+                    .map(|dragged| dragged.repo_paths),
+                Some(expected.clone())
+            );
+            assert_eq!(
+                panel
+                    .dragged_entries_for(folder_row(panel))
+                    .map(|dragged| dragged.repo_paths),
+                Some(expected.clone()),
+                "the marked folder's own row carries the other marks too"
+            );
+            assert_eq!(
+                panel
+                    .dragged_entries_for(hidden_row)
+                    .map(|dragged| dragged.repo_paths),
+                Some(expected),
+                "so does a file under the marked folder"
             );
         });
     }

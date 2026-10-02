@@ -445,9 +445,17 @@ fn dropped_file_in_project(project: &Project, path: &Path, cx: &App) -> Option<P
 /// names, if it names one there.
 fn path_in_wsl_distribution(windows_path: &str, distribution: &str) -> Option<String> {
     let normalized = windows_path.replace('\\', "/");
-    let unc = normalized
-        .strip_prefix("//?/UNC/")
-        .or_else(|| normalized.strip_prefix("//"))?;
+    // Windows accepts `\\?\UNC\` and `\\.\UNC\` in any case, and both name the
+    // same share as a plain `\\`.
+    let device_unc = ["//?/", "//./"].iter().find_map(|device| {
+        let rest = normalized.strip_prefix(device)?;
+        let (unc, inside) = rest.split_once('/')?;
+        unc.eq_ignore_ascii_case("UNC").then_some(inside)
+    });
+    let unc = match device_unc {
+        Some(unc) => unc,
+        None => normalized.strip_prefix("//")?,
+    };
     let (host, rest) = unc.split_once('/')?;
     if !host.eq_ignore_ascii_case("wsl$") && !host.eq_ignore_ascii_case("wsl.localhost") {
         return None;

@@ -92,8 +92,10 @@ pub fn check(
     let mut languages = Vec::new();
     for entry in fs::read_dir(&locales).with_context(|| format!("reading {}", locales.display()))? {
         let entry = entry?;
-        if entry.file_type()?.is_dir() {
-            languages.push(entry.file_name().to_string_lossy().into_owned());
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // English holds no translation, only the product name that `brand` writes and checks.
+        if entry.file_type()?.is_dir() && !name.eq_ignore_ascii_case(crate::brand::ENGLISH) {
+            languages.push(name);
         }
     }
     languages.sort();

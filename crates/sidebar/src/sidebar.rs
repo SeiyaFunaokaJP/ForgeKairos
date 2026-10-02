@@ -104,7 +104,9 @@ gpui::actions!(
     ]
 );
 
-const OUTSIDE_SANDBOX_BADGE_TOOLTIP: &str = i18n::msg!("Running outside the sandbox");
+// The record behind the mark is kept after the agent stops, so it says where the
+// thread was started, not that anything is still running there.
+const OUTSIDE_SANDBOX_BADGE_TOOLTIP: &str = i18n::msg!("Thread started outside the sandbox");
 /// How a test finds the mark on a thread started outside its sandbox.
 const OUTSIDE_SANDBOX_BADGE_SELECTOR: &str = "SIDEBAR-OUTSIDE-SANDBOX-BADGE";
 

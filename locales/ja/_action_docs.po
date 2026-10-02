@@ -143,7 +143,7 @@ msgstr "エージェントの提案に従います。"
 #. Import agent threads from other Zed release channels (e.g. Preview, Nightly).
 msgctxt "action documentation"
 msgid "agent::ImportThreadsFromOtherChannels"
-msgstr "他の Zed リリースチャンネル (例: Preview、Nightly) からエージェントスレッドをインポートします。"
+msgstr "他の ForgeKairos リリースチャンネル (例: Preview、Nightly) からエージェントスレッドをインポートします。"
 
 #. Keeps the current suggestion or change.
 msgctxt "action documentation"
@@ -811,10 +811,10 @@ msgctxt "action documentation"
 msgid "call_graph_panel::ToggleFollowCursor"
 msgstr "起点がエディターのカーソルに追従するかどうかを切り替えます。"
 
-#. Registers the zed:// URL scheme handler.
+#. Registers this application's URL scheme handler.
 msgctxt "action documentation"
 msgid "cli::RegisterZedScheme"
-msgstr "zed:// URL スキームハンドラーを登録します。"
+msgstr "このアプリケーションの URL スキームハンドラーを登録します。"
 
 #. Reconnects to the collaboration server.
 msgctxt "action documentation"
@@ -4605,7 +4605,7 @@ msgstr "最後に取り消したファイル操作をやり直します。"
 #. Re-reads the project's folders from disk to pick up changes made outside of Zed.
 msgctxt "action documentation"
 msgid "project_panel::Refresh"
-msgstr "Zed の外で行った変更を反映するため、プロジェクトのフォルダーをディスクから読み直します。"
+msgstr "ForgeKairos の外で行った変更を反映するため、プロジェクトのフォルダーをディスクから読み直します。"
 
 #. Removes the selected folder from the project.
 msgctxt "action documentation"
@@ -5140,7 +5140,7 @@ msgstr "Claude Code CLI をエージェントパネルのタブ (パネルが無
 #. in the settings.
 msgctxt "action documentation"
 msgid "terminal::LaunchClaudeCodeOutsideSandbox"
-msgstr "Claude Code CLI を、サンドボックスの外 (Zed 本体の権限。SSH では接続先のユーザーの権限) で起動します。起動のたびに確認します (設定で「常にサンドボックスの外で起動」にしていれば確認しません)。"
+msgstr "Claude Code CLI を、サンドボックスの外 (ForgeKairos 本体の権限。SSH では接続先のユーザーの権限) で起動します。起動のたびに確認します (設定で「常にサンドボックスの外で起動」にしていれば確認しません)。"
 
 #. Opens a two-pane view for exchanging files with a remote host over SFTP, SCP or FTP.
 msgctxt "action documentation"
@@ -7104,7 +7104,7 @@ msgstr "選択した Git ワークツリーを強制削除します。"
 #. Shows information about Zed.
 msgctxt "action documentation"
 msgid "zed::About"
-msgstr "Zed についての情報を表示します。"
+msgstr "ForgeKairos についての情報を表示します。"
 
 #. Opens the ACP registry.
 msgctxt "action documentation"
@@ -7245,7 +7245,7 @@ msgstr "オープンソースライセンスを表示します。"
 #. Opens the Zed log file.
 msgctxt "action documentation"
 msgid "zed::OpenLog"
-msgstr "Zed のログファイルを開きます。"
+msgstr "ForgeKairos のログファイルを開きます。"
 
 #. Opens the onboarding view.
 msgctxt "action documentation"
@@ -7370,7 +7370,7 @@ msgstr "UI のフォントサイズを既定値にリセットします。"
 #. Reveals the Zed log file in the system file manager.
 msgctxt "action documentation"
 msgid "zed::RevealLogInFileManager"
-msgstr "Zed のログファイルをシステムのファイルマネージャーで表示します。"
+msgstr "ForgeKairos のログファイルをシステムのファイルマネージャーで表示します。"
 
 #. Saves an in-progress ETW trace to disk.
 msgctxt "action documentation"
@@ -7395,7 +7395,7 @@ msgstr "テスト用に自動更新の通知を表示します。"
 #. Show the Zed welcome screen
 msgctxt "action documentation"
 msgid "zed::ShowWelcome"
-msgstr "Zed のようこそ画面を表示します。"
+msgstr "ForgeKairos のようこそ画面を表示します。"
 
 #. Triggers a hard crash for debugging.
 msgctxt "action documentation"

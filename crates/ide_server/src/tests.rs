@@ -586,7 +586,10 @@ async fn negotiates_initialize_and_lists_tools(cx: &mut TestAppContext) {
     )
     .await;
     assert_eq!(response["result"]["protocolVersion"], json!("2025-06-18"));
-    assert_eq!(response["result"]["serverInfo"]["name"], json!("Zed"));
+    assert_eq!(
+        response["result"]["serverInfo"]["name"],
+        json!("ForgeKairos")
+    );
 
     // 知らないバージョンを言われたら、こちらの最新で答える。
     let response = request(
@@ -1024,7 +1027,7 @@ fn writes_the_sandbox_lock_file_the_cli_reads() {
     // pid が偽なら、CLI は古いロックの掃除でポートに繋いで生死を決める。
     assert_eq!(json["pid"], json!(0));
     assert_eq!(json["transport"], json!("ws"));
-    assert_eq!(json["ideName"], json!("Zed"));
+    assert_eq!(json["ideName"], json!("ForgeKairos"));
     assert_eq!(json["authToken"], json!("sandbox-token"));
     assert_eq!(json["workspaceFolders"], json!(["/mnt/i/zed-jp-llm"]));
 
@@ -1488,7 +1491,10 @@ async fn sandbox_session_checks_the_token_and_offers_only_the_cli_tools(cx: &mut
             }),
         )
         .await;
-    assert_eq!(response["result"]["serverInfo"]["name"], json!("Zed"));
+    assert_eq!(
+        response["result"]["serverInfo"]["name"],
+        json!("ForgeKairos")
+    );
 
     let response = client.request("tools/list", json!({})).await;
     assert_eq!(
@@ -2490,7 +2496,10 @@ async fn a_restricted_session_offers_only_get_diagnostics(cx: &mut TestAppContex
             }),
         )
         .await;
-    assert_eq!(response["result"]["serverInfo"]["name"], json!("Zed"));
+    assert_eq!(
+        response["result"]["serverInfo"]["name"],
+        json!("ForgeKairos")
+    );
 
     let response = client.request("tools/list", json!({})).await;
     assert_eq!(tool_names(&response), vec!["getDiagnostics"], "{response}");

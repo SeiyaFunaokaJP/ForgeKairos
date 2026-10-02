@@ -46,7 +46,7 @@ use anyhow::{Context as _, Result};
 use db::kvp::GlobalKeyValueStore;
 use fs::Fs;
 use futures::StreamExt as _;
-use gpui::{App, AsyncApp, Entity, Task, TaskExt as _};
+use gpui::{App, AsyncApp, Entity, Global, Task, TaskExt as _};
 use serde::{Deserialize, Serialize};
 use util::ResultExt as _;
 
@@ -146,12 +146,42 @@ pub fn migration_done() -> bool {
 /// `MIGRATION_DONE_KEY`.
 static MIGRATION_TASK_SPAWNED: AtomicBool = AtomicBool::new(false);
 
+struct IsolatedProfile;
+
+impl Global for IsolatedProfile {}
+
+/// Marks this process as running on a profile isolated with
+/// `--user-data-dir`, which turns off the startup migration.
+pub fn mark_isolated_profile(cx: &mut App) {
+    cx.set_global(IsolatedProfile);
+}
+
 /// Migrate non-Default user rules to global Skills, if not already done.
 ///
 /// Safe to call on every startup — short-circuits immediately when the
 /// migration has already run or when another invocation in this process
 /// has already started it.
 pub fn migrate_rules_to_skills_if_needed(fs: Arc<dyn Fs>, cx: &mut App) {
+    migrate_rules_to_skills_unless_done(fs, migration_done, cx);
+}
+
+/// Takes the done check as an argument so that tests do not open the
+/// key-value store in the real data directory.
+fn migrate_rules_to_skills_unless_done(
+    fs: Arc<dyn Fs>,
+    migration_done: impl FnOnce() -> bool,
+    cx: &mut App,
+) {
+    // The global skills directory lives in the real home directory, which
+    // `--user-data-dir` does not redirect. Migrating there would copy the
+    // isolated profile's Rules into the skills every other profile and tool
+    // reads. The Rules stay in the profile's database, so nothing is lost.
+    if cx.has_global::<IsolatedProfile>() {
+        log::info!(
+            "Skipping rules-to-skills migration: the profile is isolated with --user-data-dir"
+        );
+        return;
+    }
     if migration_done() {
         log::info!("Rules-to-skills migration already marked done; skipping startup migration");
         return;
@@ -664,6 +694,59 @@ mod tests {
         assert_eq!(skill.name, "my-rule");
         assert_eq!(skill.description, PLACEHOLDER_DESCRIPTION);
         assert!(skill.disable_model_invocation);
+    }
+
+    #[gpui::test]
+    async fn startup_migration_is_skipped_for_isolated_profile(cx: &mut TestAppContext) {
+        let fs = FakeFs::new(cx.executor());
+        let done_was_checked = std::cell::Cell::new(false);
+        cx.update(|cx| {
+            mark_isolated_profile(cx);
+            // Reporting "done" keeps even a broken skip from starting a
+            // migration that would open the real prompt store.
+            migrate_rules_to_skills_unless_done(
+                fs.clone(),
+                || {
+                    done_was_checked.set(true);
+                    true
+                },
+                cx,
+            );
+        });
+        cx.run_until_parked();
+
+        assert!(
+            !done_was_checked.get(),
+            "an isolated profile must skip the migration before anything else"
+        );
+        assert!(
+            !MIGRATION_TASK_SPAWNED.load(Ordering::Acquire),
+            "an isolated profile must not start the migration into the shared home directory"
+        );
+        assert!(!fs.is_dir(&global_skills_dir()).await);
+    }
+
+    #[gpui::test]
+    async fn startup_migration_goes_on_for_a_profile_not_marked_isolated(cx: &mut TestAppContext) {
+        let fs = FakeFs::new(cx.executor());
+        let done_was_checked = std::cell::Cell::new(false);
+        cx.update(|cx| {
+            // Reporting "done" stops the migration right after the check,
+            // before it would read any real store.
+            migrate_rules_to_skills_unless_done(
+                fs.clone(),
+                || {
+                    done_was_checked.set(true);
+                    true
+                },
+                cx,
+            );
+        });
+
+        assert!(
+            done_was_checked.get(),
+            "a normal startup must go on to the migration's done check"
+        );
     }
 
     #[gpui::test]

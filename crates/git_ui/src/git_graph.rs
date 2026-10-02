@@ -2344,6 +2344,17 @@ struct DetailPanelCommitMessage {
     scroll_handle: ScrollHandle,
 }
 
+/// What [`GitGraph::reveal_commit`] did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CommitReveal {
+    Selected,
+    /// Selected once the rows still loading get to it.
+    Pending,
+    /// The graph showed one branch only and now shows all of them; selected once they load.
+    ShowingAllBranches,
+    NotInGraph,
+}
+
 pub struct GitGraph {
     focus_handle: FocusHandle,
     search_state: SearchState,
@@ -3638,6 +3649,48 @@ impl GitGraph {
 
         if let Ok(oid) = sha.try_into() {
             inner(self, oid, cx);
+        }
+    }
+
+    /// The commit of the selected row, when one row is selected.
+    pub(crate) fn selected_commit_sha(&self) -> Option<Oid> {
+        let index = self.selected_entry_idx?;
+        Some(self.graph_data.commits.get(index)?.data.sha)
+    }
+
+    /// [`Self::select_commit_by_sha`] for a commit the graph is asked to show wherever it is: a
+    /// graph showing one branch only cannot hold a commit of another, so it switches to all
+    /// branches rather than leaving the request pending forever.
+    pub(crate) fn reveal_commit(&mut self, sha: Oid, cx: &mut Context<Self>) -> CommitReveal {
+        let Some(repository) = self.get_repository(cx) else {
+            return CommitReveal::NotInGraph;
+        };
+        let loaded = repository
+            .read(cx)
+            .get_graph_data(self.log_source.clone(), self.log_order)
+            .is_some_and(|data| data.commit_oid_to_index.contains_key(&sha));
+        if loaded {
+            self.select_commit_by_sha(sha, cx);
+            return CommitReveal::Selected;
+        }
+        match self.log_source {
+            LogSource::All => {
+                if matches!(
+                    self.graph_data.max_commit_count,
+                    AllCommitCount::FullyLoaded(_)
+                ) {
+                    CommitReveal::NotInGraph
+                } else {
+                    self.select_commit_by_sha(sha, cx);
+                    CommitReveal::Pending
+                }
+            }
+            LogSource::Branch(_) | LogSource::Sha(_) => {
+                self.set_log_source(LogSource::All, cx);
+                self.select_commit_by_sha(sha, cx);
+                CommitReveal::ShowingAllBranches
+            }
+            LogSource::Path(_) => CommitReveal::NotInGraph,
         }
     }
 
@@ -6941,7 +6994,8 @@ impl GitGraph {
     /// "MR の箱に入れる", "MR から除外する" and "MR の除外をやめる" for the rows a menu is about.
     /// The box has a say only while it is open, and only about the development branch's own
     /// commits when it comes to setting them aside. `offer_add` is false for a merge, which the
-    /// box never takes.
+    /// box never takes. A menu can stay open while the box is closed, so each entry opens the box
+    /// again before changing it rather than changing it out of sight.
     fn merge_request_menu_entries(
         &self,
         shas: &[Oid],
@@ -6953,12 +7007,12 @@ impl GitGraph {
             if !offer_add {
                 choices.addable.clear();
             }
-            (merge_request_box, choices)
+            choices
         });
         let graph = cx.weak_entity();
         let several = shas.len() > 1;
         move |mut menu| {
-            let Some((merge_request_box, choices)) = choices else {
+            let Some(choices) = choices else {
                 return menu;
             };
             if choices.addable.is_empty()
@@ -6978,6 +7032,7 @@ impl GitGraph {
                 } else {
                     i18n::tc!("commit action", "Add to MR Box").to_string()
                 };
+                let graph = graph.clone();
                 let addable = choices.addable;
                 menu = menu.item(
                     ContextMenuEntry::new(label)
@@ -7004,14 +7059,23 @@ impl GitGraph {
                 } else {
                     i18n::tc!("commit action", "Exclude from MR").to_string()
                 };
-                let merge_request_box = merge_request_box.clone();
+                let graph = graph.clone();
                 let excludable = choices.excludable;
                 menu = menu.item(
                     ContextMenuEntry::new(label)
                         .handler(move |window, cx| {
-                            merge_request_box.update(cx, |merge_request_box, cx| {
-                                merge_request_box.exclude_commits(&excludable, window, cx);
-                            });
+                            graph
+                                .update(cx, |graph, cx| {
+                                    let Some(merge_request_box) =
+                                        graph.open_merge_request_box(window, cx)
+                                    else {
+                                        return;
+                                    };
+                                    merge_request_box.update(cx, |merge_request_box, cx| {
+                                        merge_request_box.exclude_commits(&excludable, window, cx);
+                                    });
+                                })
+                                .log_err();
                         })
                         .documentation_aside(
                             DocumentationSide::Right,
@@ -7033,9 +7097,18 @@ impl GitGraph {
                 menu = menu.item(
                     ContextMenuEntry::new(label)
                         .handler(move |window, cx| {
-                            merge_request_box.update(cx, |merge_request_box, cx| {
-                                merge_request_box.restore_commits(&restorable, window, cx);
-                            });
+                            graph
+                                .update(cx, |graph, cx| {
+                                    let Some(merge_request_box) =
+                                        graph.open_merge_request_box(window, cx)
+                                    else {
+                                        return;
+                                    };
+                                    merge_request_box.update(cx, |merge_request_box, cx| {
+                                        merge_request_box.restore_commits(&restorable, window, cx);
+                                    });
+                                })
+                                .log_err();
                         })
                         .documentation_aside(
                             DocumentationSide::Right,
@@ -7156,6 +7229,15 @@ impl GitGraph {
     #[cfg(test)]
     pub(crate) fn selected_row_for_test(&self) -> Option<usize> {
         self.selected_entry_idx
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_log_source_for_test(
+        &mut self,
+        log_source: LogSource,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_log_source(log_source, cx);
     }
 
     /// Where the commit details go otherwise, sharing their resize handle: at 1280px there is no

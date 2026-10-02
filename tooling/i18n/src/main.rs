@@ -1,3 +1,4 @@
+mod brand;
 mod check;
 mod doc_catalogs;
 mod git;
@@ -72,6 +73,11 @@ enum Command {
         /// A file listing allowed paths, one per line (`#` starts a comment).
         #[arg(long)]
         allow_list: Option<PathBuf>,
+        /// Instead of Japanese, list the literals outside tests that name upstream's
+        /// application, other than the messages of the i18n macros, and exit with 1 when one
+        /// is missing from `tooling/i18n/brand_sources.txt` or a line there matches nothing.
+        #[arg(long, conflicts_with_all = ["fail_on_prod", "allow", "allow_list"])]
+        brand: bool,
     },
     /// Write a `.pot` template per crate from the `t!`, `tn!`, `tc!`, `tcn!` and `msg!` calls.
     Extract {
@@ -106,6 +112,19 @@ enum Command {
         /// schema's descriptions.
         #[arg(long)]
         settings_schema: Option<PathBuf>,
+    },
+    /// Put the product's own name in place of upstream's: write `locales/en/_brand.po` and
+    /// rename the application in the other languages' translations, keeping what
+    /// `locales/_brand_keep.txt` lists. Running it again changes nothing.
+    Brand {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Write the files. Without it nothing is written.
+        #[arg(long, conflicts_with = "check")]
+        write: bool,
+        /// Change nothing; exit with 1 when a file would change or the keep list has problems.
+        #[arg(long)]
+        check: bool,
     },
     /// Merge PO files into one, sorted. Exits with 1 without writing when they disagree.
     PoUnion {
@@ -145,9 +164,22 @@ fn main() -> Result<()> {
             repo,
             crates,
             list,
+            brand: true,
+            ..
+        } => {
+            if !brand::check_sources(&repo, &crates, list)? {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        Command::Scan {
+            repo,
+            crates,
+            list,
             fail_on_prod,
             allow,
             allow_list,
+            brand: false,
         } => scan(
             &repo,
             &crates,
@@ -177,6 +209,12 @@ fn main() -> Result<()> {
             actions.as_deref(),
             settings_schema.as_deref(),
         ),
+        Command::Brand { repo, write, .. } => {
+            if !brand::run(&repo, branding::CURRENT.product_name, !write)? {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
         Command::PoUnion { inputs, out } => po_union(&inputs, &out),
         Command::PoFormat { paths, check } => po_format(&paths, check),
     }
@@ -345,8 +383,14 @@ fn run_check(
             settings_schema_descriptions: settings_schema_descriptions.as_ref(),
         },
     )?;
-    let (output, failed) = check::report(&results, strict);
+    let (output, mut failed) = check::report(&results, strict);
     print!("{output}");
+    // The brand file overlays every file of every language, so it is checked only when
+    // the whole of them is.
+    if crates.is_empty() && languages.is_empty() {
+        println!("brand:");
+        failed |= !brand::run(repository, branding::CURRENT.product_name, true)?;
+    }
     if failed {
         std::process::exit(1);
     }

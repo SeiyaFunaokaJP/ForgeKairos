@@ -4341,7 +4341,10 @@ mod tests {
             }),
         )
         .await;
-        assert_eq!(response["result"]["serverInfo"]["name"], json!("Zed"));
+        assert_eq!(
+            response["result"]["serverInfo"]["name"],
+            json!(branding::CURRENT.product_name)
+        );
         let response = request(&mut socket, 2, "tools/list", json!({})).await;
         let mut names = response["result"]["tools"]
             .as_array()

@@ -63,7 +63,7 @@ msgid "Import Threads from Other Channels"
 msgstr "他のチャンネルのスレッドをインポート"
 
 msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client."
-msgstr "Zed で開始したものでも他のクライアントで開始したものでも、Claude Agent や Codex などのエージェントからスレッドをインポートします。"
+msgstr "ForgeKairos で開始したものでも他のクライアントで開始したものでも、Claude Agent や Codex などのエージェントからスレッドをインポートします。"
 
 msgid "Import threads from {} to continue where you left off."
 msgstr "{} からスレッドをインポートすると、続きから再開できます。"
@@ -113,9 +113,6 @@ msgstr "スレッドの名前変更"
 msgid "Rename Title"
 msgstr "タイトルの名前変更"
 
-msgid "Running outside the sandbox"
-msgstr "サンドボックスの外で実行中"
-
 msgid "Search threads…"
 msgstr "スレッドを検索…"
 
@@ -127,6 +124,9 @@ msgstr "エージェントの新規スレッドを開始"
 
 msgid "Stop Generation"
 msgstr "生成を停止"
+
+msgid "Thread started outside the sandbox"
+msgstr "サンドボックスの外で起動したスレッド"
 
 msgid "Threads Sidebar"
 msgstr "スレッドサイドバー"

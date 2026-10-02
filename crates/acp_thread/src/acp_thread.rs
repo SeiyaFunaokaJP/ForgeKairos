@@ -2421,9 +2421,10 @@ fn refused_read(path: &Path, error: anyhow::Error) -> acp::Error {
     }
     log::warn!("refused to read {} for an agent: {error:#}", path.display());
     acp::Error::invalid_params().data(format!(
-        "Zed did not read `{}`: {error:#}. A file an agent that runs in a sandbox asks for is \
+        "{} did not read `{}`: {error:#}. A file an agent that runs in a sandbox asks for is \
          read only where the project's folders hold it themselves, with no symbolic link, \
          junction or other redirection on the way.",
+        branding::CURRENT.product_name,
         path.display()
     ))
 }

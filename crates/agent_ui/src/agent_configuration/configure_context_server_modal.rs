@@ -13,9 +13,10 @@ use markdown::{Markdown, MarkdownElement, MarkdownStyle};
 use notifications::status_toast::StatusToast;
 use project::{
     context_server_store::{
-        ContextServerStatus, ContextServerStore, ServerStatusChangedEvent,
+        ContextServerSource, ContextServerStatus, ContextServerStore, ServerStatusChangedEvent,
         registry::ContextServerDescriptorRegistry, wait_for_context_server,
     },
+    project_launch_approvals::LaunchDefinitionFile,
     project_settings::{ContextServerSettings, OAuthClientSettings},
     worktree_store::WorktreeStore,
 };
@@ -682,13 +683,13 @@ impl ConfigureContextServerModal {
             }
         };
 
-        if defined_by_project(
+        if let Some(definition_file) = defining_project_file(
             self.context_server_store.read(cx),
             &id,
             self.original_server_id.as_ref(),
             cx,
         ) {
-            self.set_error(i18n::tr(DEFINED_BY_PROJECT_MESSAGE), cx);
+            self.set_error(i18n::tr(defined_by_project_message(&definition_file)), cx);
             return;
         }
 
@@ -956,21 +957,35 @@ impl ConfigureContextServerModal {
 /// This dialog writes the user's settings, where an entry for a name a
 /// project defines is shadowed by the project's and would only leave a copy
 /// behind that nothing runs.
-fn defined_by_project(
+fn defining_project_file(
     store: &ContextServerStore,
     id: &ContextServerId,
     original_id: Option<&ContextServerId>,
     cx: &App,
-) -> bool {
-    std::iter::once(id).chain(original_id).any(|id| {
-        store
-            .server_source(id, cx)
-            .is_some_and(|source| source.is_project())
-    })
+) -> Option<LaunchDefinitionFile> {
+    std::iter::once(id)
+        .chain(original_id)
+        .find_map(|id| match store.server_source(id, cx)? {
+            ContextServerSource::Project { settings_file, .. } => Some(settings_file),
+            ContextServerSource::User | ContextServerSource::Extension => None,
+        })
+}
+
+fn defined_by_project_message(definition_file: &LaunchDefinitionFile) -> &'static str {
+    match definition_file {
+        LaunchDefinitionFile::Worktree(_) => DEFINED_BY_PROJECT_MESSAGE,
+        LaunchDefinitionFile::RemoteServerSettings | LaunchDefinitionFile::ResolvedOnRemoteHost => {
+            DEFINED_BY_REMOTE_HOST_MESSAGE
+        }
+    }
 }
 
 const DEFINED_BY_PROJECT_MESSAGE: &str = i18n::msg!(
     "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
+);
+
+const DEFINED_BY_REMOTE_HOST_MESSAGE: &str = i18n::msg!(
+    "This server is defined on the remote host (its server settings or an extension running there). Saving here writes to your user settings, but the remote host's definition takes precedence, so it has no effect. Change it on the remote host; the MCP Servers page of the Settings window shows where it is defined."
 );
 
 fn parse_input(text: &str) -> Result<(ContextServerId, ContextServerCommand)> {
@@ -2182,24 +2197,82 @@ mod tests {
         project.read_with(cx, |project, cx| {
             let store = project.context_server_store();
             let store = store.read(cx);
-            assert!(defined_by_project(store, &shared, None, cx));
+            let shared_file = defining_project_file(store, &shared, None, cx);
             assert!(
-                defined_by_project(store, &other, Some(&shared), cx),
+                matches!(shared_file, Some(LaunchDefinitionFile::Worktree(_))),
+                "the project's own file defines it: {shared_file:?}"
+            );
+            assert_eq!(
+                shared_file.as_ref().map(defined_by_project_message),
+                Some(DEFINED_BY_PROJECT_MESSAGE)
+            );
+            assert!(
+                defining_project_file(store, &other, Some(&shared), cx).is_some(),
                 "renaming it does not take it out of the project's hands"
             );
-            assert!(defined_by_project(store, &shared, Some(&other), cx));
-            assert!(!defined_by_project(store, &other, None, cx));
+            assert!(defining_project_file(store, &shared, Some(&other), cx).is_some());
+            assert!(defining_project_file(store, &other, None, cx).is_none());
             let mine = ContextServerId("mine".into());
             assert!(
                 store.server_source(&mine, cx).is_some(),
                 "the store knows the user's own server"
             );
             assert!(
-                !defined_by_project(store, &mine, None, cx),
+                defining_project_file(store, &mine, None, cx).is_none(),
                 "a server only the user's settings define is saved as before"
             );
-            assert!(!defined_by_project(store, &mine, Some(&other), cx));
+            assert!(defining_project_file(store, &mine, Some(&other), cx).is_none());
         });
+
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_server_settings(
+                        r#"{ "context_servers": { "hosted": { "enabled": false, "command": "hosted-server" } } }"#,
+                        cx,
+                    )
+                    .expect("the server settings parse");
+            });
+        });
+        cx.run_until_parked();
+        let hosted = ContextServerId("hosted".into());
+        project.read_with(cx, |project, cx| {
+            let store = project.context_server_store();
+            let store = store.read(cx);
+            let hosted_file = defining_project_file(store, &hosted, None, cx);
+            assert_eq!(
+                hosted_file,
+                Some(LaunchDefinitionFile::RemoteServerSettings),
+                "a server the remote host's settings define is refused as well"
+            );
+            assert_eq!(
+                hosted_file.as_ref().map(defined_by_project_message),
+                Some(DEFINED_BY_REMOTE_HOST_MESSAGE)
+            );
+        });
+    }
+
+    /// A remote host's own settings and the commands its extensions resolve are
+    /// not a `.zed/settings.json`, so the refusal must not send the user there.
+    #[test]
+    fn a_server_the_remote_host_defines_is_not_attributed_to_the_project_file() {
+        for definition_file in [
+            LaunchDefinitionFile::RemoteServerSettings,
+            LaunchDefinitionFile::ResolvedOnRemoteHost,
+        ] {
+            let message = defined_by_project_message(&definition_file);
+            assert_eq!(
+                message, DEFINED_BY_REMOTE_HOST_MESSAGE,
+                "{definition_file:?}"
+            );
+            assert!(!message.contains(".zed/settings.json"), "{message}");
+        }
+        assert_eq!(
+            defined_by_project_message(&LaunchDefinitionFile::Worktree(
+                "/work/app/.zed/settings.json".into()
+            )),
+            DEFINED_BY_PROJECT_MESSAGE
+        );
     }
 
     #[test]

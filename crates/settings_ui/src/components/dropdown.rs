@@ -159,10 +159,29 @@ pub(crate) fn enum_context<T>() -> &'static str {
 /// or "Selection" would take the translation of the same English from anywhere
 /// else in the catalog, whatever it means there.
 pub(crate) fn display_label(enum_name: &str, label: &str, title_case: bool) -> String {
+    if let Some(name) = base_keymap_option_name(enum_name, label) {
+        return name.to_string();
+    }
     let english = if title_case {
         label.to_title_case()
     } else {
         label.to_string()
     };
     i18n::tr_ctx(enum_name, &english).to_string()
+}
+
+/// The strum names of the base keymaps are upstream's spellings ("Zed",
+/// "VSCode"); the window shows the names the onboarding picker gives the same
+/// keymaps, so the application's own keymap is called by the product's name in
+/// both places. The stored value is the variant, not this label.
+fn base_keymap_option_name(enum_name: &str, label: &str) -> Option<&'static str> {
+    type Content = settings::BaseKeymapContent;
+    if enum_name != enum_context::<Content>() {
+        return None;
+    }
+    let index = <Content as strum::VariantNames>::VARIANTS
+        .iter()
+        .position(|name| *name == label)?;
+    let variant = <Content as strum::VariantArray>::VARIANTS.get(index)?;
+    settings::BaseKeymap::from(*variant).option_name()
 }

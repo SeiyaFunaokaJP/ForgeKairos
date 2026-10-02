@@ -10987,8 +10987,9 @@ async fn prepare_agent_terminal(
     };
     if !allowed {
         return Err(anyhow!(
-            "The user denied this command. Zed asks the user before every command it cannot \
-             keep inside its sandbox; do not run it again unless the user asks you to."
+            "The user denied this command. {} asks the user before every command it cannot \
+             keep inside its sandbox; do not run it again unless the user asks you to.",
+            branding::CURRENT.product_name
         ));
     }
     Ok(Some(PreparedAgentTerminal {

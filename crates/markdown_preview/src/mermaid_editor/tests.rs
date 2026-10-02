@@ -2671,6 +2671,41 @@ mod sequence_7a {
         );
     }
 
+    /// A created column's description field is drawn on its `create` row, so
+    /// Tab reaches it there, between the messages around that row, and not
+    /// among the participant fields above.
+    #[gpui::test]
+    async fn the_description_of_a_created_column_is_reached_on_its_create_row(
+        cx: &mut TestAppContext,
+    ) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    participant アリス
+                    アリス->>アリス: 準備
+                    create participant カール as 客
+                    アリス->>カール: 挨拶
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|_window, cx| {
+            let modal = modal.read(cx);
+            let texts = form(modal)
+                .fields()
+                .iter()
+                .map(|field| field.read(cx).text(cx))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                texts,
+                vec!["", "アリス", "", "カール", "準備", "客", "挨拶"]
+            );
+        });
+    }
+
     /// The `create` row declares the column, so deleting the column from the
     /// participant list has to take the statement with it.
     #[gpui::test]
@@ -2884,6 +2919,42 @@ mod sequence_seq2 {
                     end
                     A->>D: x"},
         );
+    }
+
+    /// An empty box between two others is written after them, so the list
+    /// shows it there from the start rather than moving it on the first edit.
+    #[gpui::test]
+    async fn an_empty_box_is_listed_where_it_will_be_written(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                sequenceDiagramˇ
+                    box 一
+                        participant A
+                    end
+                    box 空
+                    end
+                    box 二
+                        participant B
+                    end
+                    A->>B: x
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|_window, cx| {
+            let modal = modal.read(cx);
+            assert_eq!(box_names(modal, cx), vec!["一", "二", "空"]);
+            let document_names = form(modal)
+                .document
+                .boxes
+                .iter()
+                .map(|group| group.name.clone().unwrap_or_default())
+                .collect::<Vec<_>>();
+            assert_eq!(document_names, vec!["一", "二", "空"]);
+        });
     }
 
     #[gpui::test]
@@ -3587,6 +3658,183 @@ mod flowchart_flow2 {
         for field in removed {
             field.assert_released();
         }
+    }
+
+    /// A definition added in the form and assigned from the menu takes its
+    /// assignments along when it is renamed afterwards. Its first name skips
+    /// one a node already carries, which the rename must leave alone.
+    #[gpui::test]
+    async fn renaming_an_added_class_definition_renames_its_assignments(cx: &mut TestAppContext) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  class B class
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.add_class_def(window, cx);
+                let (name, style) = class_def_fields(modal, 0);
+                assert_eq!(name.read(cx).text(cx), "class1");
+                set_text(&style, "fill:#f66", window, cx);
+                modal.toggle_class(ClassTarget::Node, 0, "class1", cx);
+                set_text(&name, "hot", window, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    A --> B
+                    class A hot
+                    class B class
+                    classDef hot fill:#f66"},
+        );
+    }
+
+    /// A second added definition does not start with the name the first was
+    /// added under and renamed from: assignments made from it would then be
+    /// renamed along with the first one's.
+    #[gpui::test]
+    async fn an_added_definition_does_not_reuse_the_first_name_of_a_renamed_one(
+        cx: &mut TestAppContext,
+    ) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.add_class_def(window, cx);
+                let (name, style) = class_def_fields(modal, 0);
+                set_text(&style, "fill:#f66", window, cx);
+                set_text(&name, "x", window, cx);
+                modal.add_class_def(window, cx);
+                let (name, style) = class_def_fields(modal, 1);
+                let second = name.read(cx).text(cx);
+                assert_eq!(second, "class1");
+                set_text(&style, "fill:#0f0", window, cx);
+                modal.toggle_class(ClassTarget::Node, 0, &second, cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    A --> B
+                    class A class1
+                    classDef x fill:#f66
+                    classDef class1 fill:#0f0"},
+        );
+    }
+
+    /// A name a definition was opened under stands for that definition even
+    /// after it is renamed, so choosing another row now called that does not
+    /// take the renamed one off.
+    #[gpui::test]
+    async fn choosing_a_name_another_definition_was_renamed_from_keeps_that_one(
+        cx: &mut TestAppContext,
+    ) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  class A hot
+                  classDef hot fill:#f00
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                let (name, _style) = class_def_fields(modal, 0);
+                set_text(&name, "warm", window, cx);
+                modal.add_class_def(window, cx);
+                let (name, style) = class_def_fields(modal, 1);
+                set_text(&style, "fill:#0f0", window, cx);
+                set_text(&name, "hot", window, cx);
+                modal.toggle_class(ClassTarget::Node, 0, "hot", cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    A --> B
+                    class A warm,hot
+                    classDef warm fill:#f00
+                    classDef hot fill:#0f0"},
+        );
+    }
+
+    /// A node can carry, without any definition, the name an added definition
+    /// is then renamed to. The menu shows it ticked under that name, and
+    /// choosing it has to take it off rather than add the added row's own.
+    #[gpui::test]
+    async fn a_class_a_node_carries_under_a_renamed_definition_name_can_be_taken_off(
+        cx: &mut TestAppContext,
+    ) {
+        let (mut cx, modal, _app_state) = open_on(
+            indoc! {"
+                ```mermaid
+                flowchart TD
+                  Aˇ --> B
+                  class A,B hot
+                ```
+            "},
+            cx,
+        )
+        .await;
+
+        cx.update(|window, cx| {
+            modal.update(cx, |modal, cx| {
+                modal.add_class_def(window, cx);
+                let (name, style) = class_def_fields(modal, 0);
+                set_text(&style, "fill:#f66", window, cx);
+                set_text(&name, "hot", window, cx);
+                modal.toggle_class(ClassTarget::Node, 0, "hot", cx);
+                modal.confirm(&menu::SecondaryConfirm, window, cx);
+            })
+        });
+
+        assert_eq!(
+            fence_body(&mut cx),
+            indoc! {"
+                flowchart TB
+                    A
+                    B
+                    A --> B
+                    class B hot
+                    classDef hot fill:#f66"},
+        );
     }
 
     #[gpui::test]

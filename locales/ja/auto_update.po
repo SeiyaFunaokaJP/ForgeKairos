@@ -13,3 +13,6 @@ msgstr "リモート開発サーバーをダウンロードしています"
 
 msgid "Fetching remote server release"
 msgstr "リモート開発サーバーのリリース情報を取得しています"
+
+msgid "Zed was installed via a package manager."
+msgstr "ForgeKairos はパッケージマネージャーでインストールされています。"

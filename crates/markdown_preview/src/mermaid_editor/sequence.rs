@@ -68,19 +68,43 @@ impl SequenceForm {
                     .zip(&self.document.participants)
                     .flat_map(|(row, participant)| {
                         // A column with a config object has no description
-                        // Mermaid could write, so its field is not drawn.
-                        if participant.preserved_settings.is_some() {
+                        // Mermaid could write, so its field is not drawn. A
+                        // created column's is drawn on its `create` row, and
+                        // is reached there.
+                        if participant.preserved_settings.is_some()
+                            || self.document.is_created(&participant.id)
+                        {
                             vec![row.id.clone()]
                         } else {
                             vec![row.id.clone(), row.alias.clone()]
                         }
                     }),
             )
-            .chain(self.items.iter().flat_map(|row| match row {
-                ItemRow::Text(field) => vec![field.clone()],
-                ItemRow::Autonumber { start, step } => vec![start.clone(), step.clone()],
-                ItemRow::Fixed => Vec::new(),
-            }))
+            .chain(
+                self.items
+                    .iter()
+                    .zip(&self.document.items)
+                    .flat_map(|(row, item)| match (row, item) {
+                        (ItemRow::Text(field), _) => vec![field.clone()],
+                        (ItemRow::Autonumber { start, step }, _) => {
+                            vec![start.clone(), step.clone()]
+                        }
+                        (ItemRow::Fixed, SequenceItem::Create(id)) => self
+                            .document
+                            .participant_index(id)
+                            .and_then(|column| {
+                                let participant = self.document.participants.get(column)?;
+                                let row = self.participants.get(column)?;
+                                participant
+                                    .preserved_settings
+                                    .is_none()
+                                    .then(|| row.alias.clone())
+                            })
+                            .into_iter()
+                            .collect(),
+                        (ItemRow::Fixed, _) => Vec::new(),
+                    }),
+            )
             .collect()
     }
 
@@ -382,13 +406,18 @@ impl MermaidEditor {
         for item in &document.items {
             items.push(self.new_sequence_row(item, window, cx));
         }
-        SequenceForm {
+        let mut form = SequenceForm {
             document,
             title,
             boxes,
             participants,
             items,
-        }
+        };
+        // An empty box written between two others is drawn, and written back,
+        // after them; the list starts out in that order rather than moving
+        // it on the first edit.
+        form.normalize_box_order();
+        form
     }
 
     pub(super) fn new_sequence_row(

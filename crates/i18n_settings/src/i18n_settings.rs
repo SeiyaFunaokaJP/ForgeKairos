@@ -24,7 +24,8 @@ pub enum UiLanguage {
     /// Follow the operating system's preferred languages.
     #[default]
     System,
-    /// A BCP 47 tag such as "ja" or "pt-BR". "en" means no catalog.
+    /// A BCP 47 tag such as "ja" or "pt-BR". "en" is the source text, with only the
+    /// product's name put in place of upstream's.
     Tag(String),
 }
 
@@ -229,16 +230,17 @@ fn resolve(
     language: &UiLanguage,
     user_locales_directory: Option<&Path>,
 ) -> (Option<&'static PoCatalog>, Vec<String>) {
+    let english = || i18n_catalog::english_catalog(user_locales_directory);
     let requested = match language {
         UiLanguage::System => i18n_catalog::system_locales(),
         UiLanguage::Tag(tag) => {
             let normalized = i18n_catalog::normalize_tag(tag);
-            if normalized.eq_ignore_ascii_case("en") {
-                return (None, Vec::new());
+            if normalized.eq_ignore_ascii_case(i18n_catalog::ENGLISH) {
+                return (english(), Vec::new());
             }
             if !i18n_catalog::is_valid_tag(&normalized) {
                 return (
-                    None,
+                    english(),
                     vec![t!("\"{}\" is not a language tag; showing English.", tag)],
                 );
             }
@@ -250,17 +252,17 @@ fn resolve(
         return match language {
             UiLanguage::Tag(tag)
                 if !i18n_catalog::base_language(&i18n_catalog::normalize_tag(tag))
-                    .eq_ignore_ascii_case("en") =>
+                    .eq_ignore_ascii_case(i18n_catalog::ENGLISH) =>
             {
                 (
-                    None,
+                    english(),
                     vec![t!(
                         "There is no translation for \"{}\"; showing English.",
                         tag
                     )],
                 )
             }
-            _ => (None, Vec::new()),
+            _ => (english(), Vec::new()),
         };
     };
     match i18n_catalog::load(&tag, user_locales_directory) {
@@ -272,8 +274,8 @@ fn resolve(
                 .collect();
             (Some(catalog), problems)
         }
-        Ok(None) => (None, Vec::new()),
-        Err(error) => (None, vec![format!("{error:#}")]),
+        Ok(None) => (english(), Vec::new()),
+        Err(error) => (english(), vec![format!("{error:#}")]),
     }
 }
 
@@ -338,6 +340,7 @@ fn show_restart_notification(cx: &mut App) {
 mod tests {
     use super::*;
     use gpui::{BorrowAppContext as _, TestAppContext};
+    use i18n::Catalog as _;
 
     // `EARLY_RESULT` is process-wide, so the tests that go through `init_early`
     // hold this lock; their installs are kept to their own thread by
@@ -505,6 +508,11 @@ mod tests {
             i18n::tr("i18n_settings test: Open"),
             "i18n_settings test: Open"
         );
+        assert_eq!(
+            i18n::tr_ctx(i18n::context::MENU, "About Zed"),
+            "About ForgeKairos",
+            "English shows the product's own name"
+        );
 
         let before = active(cx).generation;
         set_user_settings("{ \"ui_language\": \"fr\" }", cx);
@@ -568,17 +576,20 @@ mod tests {
         assert_eq!(problems.len(), 1);
         assert!(problems[0].contains("broken.po:4:"), "{problems:?}");
 
+        let is_english =
+            |catalog: Option<&PoCatalog>| catalog.is_some_and(|catalog| catalog.locale() == "en");
+
         let (catalog, problems) = resolve_tag("xx");
-        assert!(catalog.is_none());
+        assert!(is_english(catalog));
         assert_eq!(problems.len(), 1);
 
         let (catalog, problems) = resolve_tag("../zz");
-        assert!(catalog.is_none());
+        assert!(is_english(catalog));
         assert_eq!(problems.len(), 1);
 
         for english in ["en", "EN", "en_US", "en-GB"] {
             let (catalog, problems) = resolve_tag(english);
-            assert!(catalog.is_none(), "{english}");
+            assert!(is_english(catalog), "{english}");
             assert!(problems.is_empty(), "{english}: {problems:?}");
         }
     }

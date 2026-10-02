@@ -1,0 +1,719 @@
+# The product's own name in place of upstream's, for the English UI and for messages a
+# translation lacks. Generated from the other languages' files and locales/_brand_keep.txt
+# by `cargo run -p i18n_tool -- brand --write`; edit those instead.
+#
+msgid ""
+msgstr ""
+"Language: en\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "// Zed egress allowlist (docs/jp-enhance/DESIGN.md §4)\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// ForgeKairos egress allowlist (docs/jp-enhance/DESIGN.md §4)\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+
+msgid "A command server: Zed starts the executable and talks to it over standard input and output."
+msgstr "A command server: ForgeKairos starts the executable and talks to it over standard input and output."
+
+msgid "A path the agent asked to see read-only, as something it needs to run, is neither the agent's install folder (`external_agents`) nor Node.js (`node`) in Zed's data folder (or it overlaps credentials), so the command wasn't run."
+msgstr "A path the agent asked to see read-only, as something it needs to run, is neither the agent's install folder (`external_agents`) nor Node.js (`node`) in ForgeKairos's data folder (or it overlaps credentials), so the command wasn't run."
+
+msgid "About Zed"
+msgstr "About ForgeKairos"
+
+msgid "An HTTP server: Zed connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
+msgstr "An HTTP server: ForgeKairos connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
+
+msgid "Authentication failed for Vercel AI Gateway. Use a Vercel AI Gateway key (vck_...).\nCreate or manage keys in Vercel AI Gateway console.\nIf this persists, regenerate the key and update it in Vercel AI Gateway provider settings in Zed."
+msgstr "Authentication failed for Vercel AI Gateway. Use a Vercel AI Gateway key (vck_...).\nCreate or manage keys in Vercel AI Gateway console.\nIf this persists, regenerate the key and update it in Vercel AI Gateway provider settings in ForgeKairos."
+
+msgid "Automatically mark all new projects as trusted to unlock all Zed's features"
+msgstr "Automatically mark all new projects as trusted to unlock all ForgeKairos's features"
+
+msgid "Basedpyright (Python language server) support is built-in to Zed!"
+msgstr "Basedpyright (Python language server) support is built-in to ForgeKairos!"
+
+msgid "C support is built-in to Zed!"
+msgstr "C support is built-in to ForgeKairos!"
+
+msgid "C++ support is built-in to Zed!"
+msgstr "C++ support is built-in to ForgeKairos!"
+
+msgid "Cannot install the Zed CLI"
+msgstr "Cannot install the ForgeKairos CLI"
+
+msgid "Checking for Zed Updates…"
+msgstr "Checking for ForgeKairos Updates…"
+
+msgid "Claude Agent support is built-in to Zed!"
+msgstr "Claude Agent support is built-in to ForgeKairos!"
+
+msgid "Click 'Connect' below to start using Ollama in Zed"
+msgstr "Click 'Connect' below to start using Ollama in ForgeKairos"
+
+msgid "Click 'Connect' below to start using llama.cpp in Zed"
+msgstr "Click 'Connect' below to start using llama.cpp in ForgeKairos"
+
+msgid "Click to open by running Zed CLI"
+msgstr "Click to open by running ForgeKairos CLI"
+
+msgid "Codex CLI support is built-in to Zed!"
+msgstr "Codex CLI support is built-in to ForgeKairos!"
+
+msgid "Copied the MCP configuration. The auth token changes every time Zed starts, so paste it again each time"
+msgstr "Copied the MCP configuration. The auth token changes every time ForgeKairos starts, so paste it again each time"
+
+msgid "Could not find Zed's data folder in {distro}{details}."
+msgstr "Could not find ForgeKairos's data folder in {distro}{details}."
+
+msgid "Could not install the remote sandbox helper (slirp4netns). Agent commands that use the network will not run, because no sandbox can be created for them. Check that the remote `~/.zed_server/` is writable (free space and permissions) and that the bundled slirp4netns is in the same folder as Zed, then reconnect: {error}"
+msgstr "Could not install the remote sandbox helper (slirp4netns). Agent commands that use the network will not run, because no sandbox can be created for them. Check that the remote `~/.zed_server/` is writable (free space and permissions) and that the bundled slirp4netns is in the same folder as ForgeKairos, then reconnect: {error}"
+
+msgid "Could not read the bundled sandbox helper `{path}` ({error}). Reinstall Zed."
+msgstr "Could not read the bundled sandbox helper `{path}` ({error}). Reinstall ForgeKairos."
+
+msgid "Couldn't install the Zed CLI"
+msgstr "Couldn't install the ForgeKairos CLI"
+
+msgid "Creates \"{branch}\" on top of the base \"{base}\" from the box's {count} commit.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgid_plural "Creates \"{branch}\" on top of the base \"{base}\" by squashing the box's {count} commits into one.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgstr[0] "Creates \"{branch}\" on top of the base \"{base}\" from the box's {count} commit.\nThe work is done on the scratch branch \"{scratch}\", and then ForgeKairos returns to \"{origin}\"."
+msgstr[1] "Creates \"{branch}\" on top of the base \"{base}\" by squashing the box's {count} commits into one.\nThe work is done on the scratch branch \"{scratch}\", and then ForgeKairos returns to \"{origin}\"."
+
+msgid "Downloading Zed Update…"
+msgstr "Downloading ForgeKairos Update…"
+
+msgid "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from Zed itself."
+msgstr "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from ForgeKairos itself."
+
+msgid "Failed to move Zed to Applications"
+msgstr "Failed to move ForgeKairos to Applications"
+
+msgid "Gemini CLI support is built-in to Zed!"
+msgstr "Gemini CLI support is built-in to ForgeKairos!"
+
+msgid "Go support is built-in to Zed!"
+msgstr "Go support is built-in to ForgeKairos!"
+
+msgid "If you installed Zed from our official release add ~/.local/bin to your PATH.\n\nIf you installed Zed from a different source like your package manager, then you may need to create an alias/symlink to `{cli_name}` manually."
+msgstr "If you installed ForgeKairos from our official release add ~/.local/bin to your PATH.\n\nIf you installed ForgeKairos from a different source like your package manager, then you may need to create an alias/symlink to `{cli_name}` manually."
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client."
+msgstr "Import threads from agents like Claude Agent, Codex, and more, whether started in ForgeKairos or another client."
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client. Choose which agents to include, and their threads will appear in your thread history."
+msgstr "Import threads from agents like Claude Agent, Codex, and more, whether started in ForgeKairos or another client. Choose which agents to include, and their threads will appear in your thread history."
+
+msgid "Installing Zed Update…"
+msgstr "Installing ForgeKairos Update…"
+
+msgid "Installing Zed…"
+msgstr "Installing ForgeKairos…"
+
+msgid "Invalid path specified when trying to open a folder inside WSL.\n\nPlease note that Zed currently does not support opening network share folders inside wsl.\n"
+msgstr "Invalid path specified when trying to open a folder inside WSL.\n\nPlease note that ForgeKairos currently does not support opening network share folders inside wsl.\n"
+
+msgid "Move Zed to Applications?"
+msgstr "Move ForgeKairos to Applications?"
+
+msgid "Moving Zed to Applications"
+msgstr "Moving ForgeKairos to Applications"
+
+msgid "Multiple containers match this project's dev container labels ({ids}). Zed can't decide which to connect to. Stop and remove the stale one(s) with `docker stop <id>` and `docker rm <id>`, then try again."
+msgstr "Multiple containers match this project's dev container labels ({ids}). ForgeKairos can't decide which to connect to. Stop and remove the stale one(s) with `docker stop <id>` and `docker rm <id>`, then try again."
+
+msgid "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
+msgstr "Note: custom tool permissions only apply to the ForgeKairos native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
+
+msgid "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
+msgstr "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; ForgeKairos never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
+
+msgid "Open Zed Log"
+msgstr "Open ForgeKairos Log"
+
+msgid "Open your settings to add sensitive paths for which Zed will never predict edits."
+msgstr "Open your settings to add sensitive paths for which ForgeKairos will never predict edits."
+
+msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
+msgstr "Or set the {env_var_name} env var and restart ForgeKairos for it to take effect."
+
+msgid "Or set the {} env var and restart Zed."
+msgstr "Or set the {} env var and restart ForgeKairos."
+
+msgid "Paste a GitHub .md URL to fetch it and fill out the form. For private files, Zed retries using GITHUB_TOKEN, if set."
+msgstr "Paste a GitHub .md URL to fetch it and fill out the form. For private files, ForgeKairos retries using GITHUB_TOKEN, if set."
+
+msgid "Please restart Zed to Collaborate"
+msgstr "Please restart ForgeKairos to Collaborate"
+
+msgid "Please update Zed to Collaborate"
+msgstr "Please update ForgeKairos to Collaborate"
+
+msgid "Python support is built-in to Zed!"
+msgstr "Python support is built-in to ForgeKairos!"
+
+msgid "React support is built-in to Zed!"
+msgstr "React support is built-in to ForgeKairos!"
+
+msgid "Reinstall Zed."
+msgstr "Reinstall ForgeKairos."
+
+msgid "Reinstalling the remote server because it does not match this Zed"
+msgstr "Reinstalling the remote server because it does not match this ForgeKairos"
+
+msgid "Restart to update Zed"
+msgstr "Restart to update ForgeKairos"
+
+msgid "Ruff (linter for Python) support is built-in to Zed!"
+msgstr "Ruff (linter for Python) support is built-in to ForgeKairos!"
+
+msgid "Runs outside the sandbox (with Zed's own permissions)"
+msgstr "Runs outside the sandbox (with ForgeKairos's own permissions)"
+
+msgid "Rust support is built-in to Zed!"
+msgstr "Rust support is built-in to ForgeKairos!"
+
+msgid "Setup Zed REPL for {}"
+msgstr "Setup ForgeKairos REPL for {}"
+
+msgid "Shell support is built-in to Zed!"
+msgstr "Shell support is built-in to ForgeKairos!"
+
+msgid "Sign in with your ChatGPT Plus or Pro subscription to use OpenAI models in Zed's agent."
+msgstr "Sign in with your ChatGPT Plus or Pro subscription to use OpenAI models in ForgeKairos's agent."
+
+msgid "Sign in with your SuperGrok subscription to use Grok models in Zed's agent."
+msgstr "Sign in with your SuperGrok subscription to use Grok models in ForgeKairos's agent."
+
+msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
+msgstr "Started outside the sandbox, this agent runs with ForgeKairos's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
+
+msgid "Starting MCP server `{id}` timed out. See the Zed log for details."
+msgstr "Starting MCP server `{id}` timed out. See the ForgeKairos log for details."
+
+msgid "Subscription or API key: you sign in on Claude Code's own screen, and Zed never handles the credentials. The subscription can be turned off in Settings."
+msgstr "Subscription or API key: you sign in on Claude Code's own screen, and ForgeKairos never handles the credentials. The subscription can be turned off in Settings."
+
+msgid "Tailwind CSS support is built-in to Zed!"
+msgstr "Tailwind CSS support is built-in to ForgeKairos!"
+
+msgid "The Zed server on the remote host is not ready yet (internal error)."
+msgstr "The ForgeKairos server on the remote host is not ready yet (internal error)."
+
+msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
+msgstr "The ForgeKairos server on the remote host is not ready yet. Wait for the connection to finish and try again."
+
+msgid "The Zed server on the remote host is too old for the MR check (it refuses git rev-parse). Update Zed on the remote host."
+msgstr "The ForgeKairos server on the remote host is too old for the MR check (it refuses git rev-parse). Update ForgeKairos on the remote host."
+
+msgid "The Zed server on the remote host is too old for this operation. Update the server."
+msgstr "The ForgeKairos server on the remote host is too old for this operation. Update the server."
+
+msgid "The Zed server on the remote host is too old for this rewrite. Update Zed on the remote host."
+msgstr "The ForgeKairos server on the remote host is too old for this rewrite. Update ForgeKairos on the remote host."
+
+msgid "The Zed server on the remote host is too old to pack branches and tags."
+msgstr "The ForgeKairos server on the remote host is too old to pack branches and tags."
+
+msgid "The Zed server on the remote host is too old to search with these conditions. Update Zed on the remote host."
+msgstr "The ForgeKairos server on the remote host is too old to search with these conditions. Update ForgeKairos on the remote host."
+
+msgid "The Zed server on the remote host is too old to start agents in a sandbox. Reconnect to update the server."
+msgstr "The ForgeKairos server on the remote host is too old to start agents in a sandbox. Reconnect to update the server."
+
+msgid "The Zed server on the remote host is too old, so this ran as a force push with a lease. Reconnect to update the server."
+msgstr "The ForgeKairos server on the remote host is too old, so this ran as a force push with a lease. Reconnect to update the server."
+
+msgid "The bundled sandbox helper `{path}` is damaged ({error}). Reinstall Zed."
+msgstr "The bundled sandbox helper `{path}` is damaged ({error}). Reinstall ForgeKairos."
+
+msgid "The connected remote host does not support file transfer. Update the Zed server on the remote host."
+msgstr "The connected remote host does not support file transfer. Update the ForgeKairos server on the remote host."
+
+msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
+msgstr "The connection to {provider}'s API was interrupted. ForgeKairos will retry automatically. If the problem persists, check your network connection."
+
+msgid "The folder (or socket) that carries the IDE integration isn't in a safe state (its permissions aren't 0700, it has another owner, or it lies outside the protected paths), so the command wasn't run. Restart Zed and try again."
+msgstr "The folder (or socket) that carries the IDE integration isn't in a safe state (its permissions aren't 0700, it has another owner, or it lies outside the protected paths), so the command wasn't run. Restart ForgeKairos and try again."
+
+msgid "The only `bwrap` available is setuid-root, which Zed refuses to run. Install a non-setuid Bubblewrap to let the agent sandbox terminal commands."
+msgstr "The only `bwrap` available is setuid-root, which ForgeKairos refuses to run. Install a non-setuid Bubblewrap to let the agent sandbox terminal commands."
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only. Only the agent installations (`external_agents`) and Node.js (`node`) inside Zed's data folder (`{data_directory}`) can be shown (credentials and Zed's database, settings and logs are never shown)."
+msgstr "The path `{path}` (actually `{canonical}`) cannot be shown read-only. Only the agent installations (`external_agents`) and Node.js (`node`) inside ForgeKairos's data folder (`{data_directory}`) can be shown (credentials and ForgeKairos's database, settings and logs are never shown)."
+
+msgid "The reason was written to Zed's log."
+msgstr "The reason was written to ForgeKairos's log."
+
+msgid "The remote Zed server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
+msgstr "The remote ForgeKairos server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
+
+msgid "The remote instance of Zed does not support this yet. It must be upgraded to {}"
+msgstr "The remote instance of ForgeKairos does not support this yet. It must be upgraded to {}"
+
+msgid "The remote server does not match this Zed (it did not answer the protocol revision check; it may be a server from the official Zed or from an older version of this Zed)."
+msgstr "The remote server does not match this ForgeKairos (it did not answer the protocol revision check; it may be a server from the official Zed or from an older version of this ForgeKairos)."
+
+msgid "The remote server does not match this Zed (protocol revision: {ours} in this Zed, {theirs} on the server)."
+msgstr "The remote server does not match this ForgeKairos (protocol revision: {ours} in this ForgeKairos, {theirs} on the server)."
+
+msgid "The sandbox helper (or slirp4netns) doesn't match the one bundled with this Zed (it was replaced or is damaged). The command wasn't run, to be safe. Restarting Zed puts it back."
+msgstr "The sandbox helper (or slirp4netns) doesn't match the one bundled with this ForgeKairos (it was replaced or is damaged). The command wasn't run, to be safe. Restarting ForgeKairos puts it back."
+
+msgid "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't be isolated. Restarting Zed puts it back."
+msgstr "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't be isolated. Restarting ForgeKairos puts it back."
+
+msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build-dev.ps1` puts them in `target\\debug` (searched: {searched})."
+msgstr "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where ForgeKairos is installed. Reinstall ForgeKairos. In a development build, `script/build-dev.ps1` puts them in `target\\debug` (searched: {searched})."
+
+msgid "The sandbox's bridge executable wasn't found. Zed's installation may be damaged."
+msgstr "The sandbox's bridge executable wasn't found. ForgeKairos's installation may be damaged."
+
+msgid "The server that this Zed installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update Zed."
+msgstr "The server that this ForgeKairos installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update ForgeKairos."
+
+msgid "These fields weren't loaded because Zed doesn't use them: {keys}"
+msgstr "These fields weren't loaded because ForgeKairos doesn't use them: {keys}"
+
+msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
+msgstr "This agent can use ForgeKairos's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
+
+msgid "This approval lasts until Zed quits."
+msgstr "This approval lasts until ForgeKairos quits."
+
+msgid "This server starts in an empty folder of Zed's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
+msgstr "This server starts in an empty folder of ForgeKairos's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
+
+msgid "This view lets you determine the current context stack for creating custom key bindings in Zed. When a keyboard shortcut is triggered, it also shows all the possible contexts it could have triggered in, and which one matched."
+msgstr "This view lets you determine the current context stack for creating custom key bindings in ForgeKairos. When a keyboard shortcut is triggered, it also shows all the possible contexts it could have triggered in, and which one matched."
+
+msgid "To use OpenCode models in Zed, you need an API key."
+msgstr "To use OpenCode models in ForgeKairos, you need an API key."
+
+msgid "To use OpenCode models in Zed, you need an API key:"
+msgstr "To use OpenCode models in ForgeKairos, you need an API key:"
+
+msgid "To use Zed's agent with Bedrock, set a custom authentication strategy in your settings or use static credentials. Mantle-only models (e.g. GPT-5.5, GPT-5.4, Grok 4.3) additionally require IAM permissions for the `bedrock-mantle` endpoint."
+msgstr "To use ForgeKairos's agent with Bedrock, set a custom authentication strategy in your settings or use static credentials. Mantle-only models (e.g. GPT-5.5, GPT-5.4, Grok 4.3) additionally require IAM permissions for the `bedrock-mantle` endpoint."
+
+msgid "To use Zed's agent with Bedrock, you can set a custom authentication strategy through your settings file or use static credentials."
+msgstr "To use ForgeKairos's agent with Bedrock, you can set a custom authentication strategy through your settings file or use static credentials."
+
+msgid "To use Zed's agent with GitHub Copilot Chat, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot Chat subscription."
+msgstr "To use ForgeKairos's agent with GitHub Copilot Chat, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot Chat subscription."
+
+msgid "To use Zed's agent with an {provider_name}-compatible provider, you need to add an API key."
+msgstr "To use ForgeKairos's agent with an {provider_name}-compatible provider, you need to add an API key."
+
+msgid "Ty (Python language server) support is built-in to Zed!"
+msgstr "Ty (Python language server) support is built-in to ForgeKairos!"
+
+msgid "Typescript support is built-in to Zed!"
+msgstr "Typescript support is built-in to ForgeKairos!"
+
+msgid "Upgrade {} to work with Zed"
+msgstr "Upgrade {} to work with ForgeKairos"
+
+msgid "Use GitHub Copilot Chat in Zed"
+msgstr "Use GitHub Copilot Chat in ForgeKairos"
+
+msgid "Use GitHub Copilot Edit Predictions in Zed"
+msgstr "Use GitHub Copilot Edit Predictions in ForgeKairos"
+
+msgid "Use GitHub Copilot in Zed"
+msgstr "Use GitHub Copilot in ForgeKairos"
+
+msgid "Vim support is built-in to Zed!"
+msgstr "Vim support is built-in to ForgeKairos!"
+
+msgid "Welcome back to Zed"
+msgstr "Welcome back to ForgeKairos"
+
+msgid "Welcome to Zed"
+msgstr "Welcome to ForgeKairos"
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
+msgstr "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with ForgeKairos's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
+
+msgid "Writes and network access are not restricted (Zed's controls do not apply on the remote host)."
+msgstr "Writes and network access are not restricted (ForgeKairos's controls do not apply on the remote host)."
+
+msgid "You can also set the {access_key_id}, {secret_access_key} and {region} environment variables (or {bearer_token} for Bedrock API Key authentication) and restart Zed."
+msgstr "You can also set the {access_key_id}, {secret_access_key} and {region} environment variables (or {bearer_token} for Bedrock API Key authentication) and restart ForgeKairos."
+
+msgid "You can also set the {env_var_name} environment variable and restart Zed."
+msgstr "You can also set the {env_var_name} environment variable and restart ForgeKairos."
+
+msgid "Your are running an unsupported version of Zed. Please update to continue."
+msgstr "Your are running an unsupported version of ForgeKairos. Please update to continue."
+
+msgid "Zed (Default)"
+msgstr "ForgeKairos (Default)"
+
+msgid "Zed can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted."
+msgstr "ForgeKairos can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted."
+
+msgid "Zed cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+msgstr "ForgeKairos cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+
+msgid "Zed comes with basic Git support—more features are coming in the future."
+msgstr "ForgeKairos comes with basic Git support—more features are coming in the future."
+
+msgid "Zed is running from a temporary location. Move it to Applications to finish installing it."
+msgstr "ForgeKairos is running from a temporary location. Move it to Applications to finish installing it."
+
+msgid "Zed supports linking to a source line on GitHub and others."
+msgstr "ForgeKairos supports linking to a source line on GitHub and others."
+
+msgid "Zed uses {} for rendering and requires a compatible GPU.\n\nCurrently you are using a software emulated GPU ({}) which\nwill result in awful performance.\n\nFor troubleshooting see: {}\nSet ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.\n"
+msgstr "ForgeKairos uses {} for rendering and requires a compatible GPU.\n\nCurrently you are using a software emulated GPU ({}) which\nwill result in awful performance.\n\nFor troubleshooting see: {}\nSet ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.\n"
+
+msgid "Zed was installed via a package manager."
+msgstr "ForgeKairos was installed via a package manager."
+
+msgid "Zed will reopen when installation is complete."
+msgstr "ForgeKairos will reopen when installation is complete."
+
+msgid "Zed — Settings"
+msgstr "ForgeKairos — Settings"
+
+msgid "v{version} is not compatible with this version of Zed."
+msgstr "v{version} is not compatible with this version of ForgeKairos."
+
+msgid "{provider}'s API returned an unexpected error. If the problem persists, try switching models or restarting Zed."
+msgstr "{provider}'s API returned an unexpected error. If the problem persists, try switching models or restarting ForgeKairos."
+
+msgid "{provider}'s rate limit was reached. Zed will retry automatically. You can also wait a moment and try again."
+msgstr "{provider}'s rate limit was reached. ForgeKairos will retry automatically. You can also wait a moment and try again."
+
+msgid "{provider}'s servers are temporarily unavailable. Zed will retry automatically. If the problem persists, check the provider's status page."
+msgstr "{provider}'s servers are temporarily unavailable. ForgeKairos will retry automatically. If the problem persists, check the provider's status page."
+
+msgid "{} is viewing a window outside of Zed"
+msgstr "{} is viewing a window outside of ForgeKairos"
+
+msgid "{} is viewing an unshared Zed project"
+msgstr "{} is viewing an unshared ForgeKairos project"
+
+msgctxt "action documentation"
+msgid "agent::ImportThreadsFromOtherChannels"
+msgstr "Import agent threads from other ForgeKairos release channels (e.g. Preview, Nightly)."
+
+msgctxt "action documentation"
+msgid "project_panel::Refresh"
+msgstr "Re-reads the project's folders from disk to pick up changes made outside of ForgeKairos."
+
+msgctxt "action documentation"
+msgid "terminal::LaunchClaudeCodeOutsideSandbox"
+msgstr "Launches the Claude Code CLI outside the sandbox (with ForgeKairos's own permissions; over SSH, with\nthose of the remote user). Asks each time, unless \"always launch outside the sandbox\" is set\nin the settings."
+
+msgctxt "action documentation"
+msgid "zed::About"
+msgstr "Shows information about ForgeKairos."
+
+msgctxt "action documentation"
+msgid "zed::OpenLog"
+msgstr "Opens the ForgeKairos log file."
+
+msgctxt "action documentation"
+msgid "zed::RevealLogInFileManager"
+msgstr "Reveals the ForgeKairos log file in the system file manager."
+
+msgctxt "action documentation"
+msgid "zed::ShowWelcome"
+msgstr "Show the ForgeKairos welcome screen"
+
+msgctxt "menu"
+msgid "About Zed"
+msgstr "About ForgeKairos"
+
+msgctxt "menu"
+msgid "Hide Zed"
+msgstr "Hide ForgeKairos"
+
+msgctxt "menu"
+msgid "Quit Zed"
+msgstr "Quit ForgeKairos"
+
+msgctxt "menu"
+msgid "Zed"
+msgstr "ForgeKairos"
+
+msgctxt "settings"
+msgid "(Linux only) whether Zed or your compositor should draw window decorations."
+msgstr "(Linux only) whether ForgeKairos or your compositor should draw window decorations."
+
+msgctxt "settings"
+msgid "Command to automatically run when Zed creates a Terminal Thread shell in the agent panel. Runs in your configured shell."
+msgstr "Command to automatically run when ForgeKairos creates a Terminal Thread shell in the agent panel. Runs in your configured shell."
+
+msgctxt "settings"
+msgid "Disable all Git integration features in Zed."
+msgstr "Disable all Git integration features in ForgeKairos."
+
+msgctxt "settings"
+msgid "Expose Zed itself as an IDE server on 127.0.0.1 so the Claude Code CLI in the integrated terminal and external agents can read the open files, selections and diagnostics. Diffs can be accepted or rejected in an editor tab. Makes no outgoing connections. Disabled by default."
+msgstr "Expose ForgeKairos itself as an IDE server on 127.0.0.1 so the Claude Code CLI in the integrated terminal and external agents can read the open files, selections and diagnostics. Diffs can be accepted or rejected in an editor tab. Makes no outgoing connections. Disabled by default."
+
+msgctxt "settings"
+msgid "Files or globs of files that will be excluded by Zed entirely. They will be skipped during file scans, file searches, and not be displayed in the project file tree. Takes precedence over \"File Scan Inclusions\""
+msgstr "Files or globs of files that will be excluded by ForgeKairos entirely. They will be skipped during file scans, file searches, and not be displayed in the project file tree. Takes precedence over \"File Scan Inclusions\""
+
+msgctxt "settings"
+msgid "Files or globs of files that will be included by Zed, even when ignored by git. This is useful for files that are not tracked by git, but are still important to your project. Note that globs that are overly broad can slow down Zed's file scanning. \"File Scan Exclusions\" takes precedence over these inclusions"
+msgstr "Files or globs of files that will be included by ForgeKairos, even when ignored by git. This is useful for files that are not tracked by git, but are still important to your project. Note that globs that are overly broad can slow down ForgeKairos's file scanning. \"File Scan Exclusions\" takes precedence over these inclusions"
+
+msgctxt "settings"
+msgid "Hand the shells of SSH terminals to the remote Zed server. Running commands keep going when the connection drops, and reconnecting shows the output so far again so you can carry on. Closing the tab ends the shell. Not available on Windows remote hosts."
+msgstr "Hand the shells of SSH terminals to the remote ForgeKairos server. Running commands keep going when the connection drops, and reconnecting shows the output so far again so you can carry on. Closing the tab ends the shell. Not available on Windows remote hosts."
+
+msgctxt "settings"
+msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
+msgstr "Optimize ForgeKairos's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
+
+msgctxt "settings"
+msgid "Send anonymized usage data like what languages you're using Zed with."
+msgstr "Send anonymized usage data like what languages you're using ForgeKairos with."
+
+msgctxt "settings"
+msgid "The custom set of icons Zed will associate with files and directories."
+msgstr "The custom set of icons ForgeKairos will associate with files and directories."
+
+msgctxt "settings"
+msgid "The folder log files are written to (`~` is expanded). When empty, logs are saved to `terminal-sessions` in Zed's log folder."
+msgstr "The folder log files are written to (`~` is expanded). When empty, logs are saved to `terminal-sessions` in ForgeKairos's log folder."
+
+msgctxt "settings"
+msgid "The language of Zed's menus, settings and messages. Some text, such as tab titles, switches after a restart."
+msgstr "The language of ForgeKairos's menus, settings and messages. Some text, such as tab titles, switches after a restart."
+
+msgctxt "settings"
+msgid "Use LSP tasks over Zed language extension tasks."
+msgstr "Use LSP tasks over ForgeKairos language extension tasks."
+
+msgctxt "settings"
+msgid "What to restore from the previous session when opening Zed."
+msgstr "What to restore from the previous session when opening ForgeKairos."
+
+msgctxt "settings"
+msgid "When opening Zed, avoid Restricted Mode by auto-trusting all projects, enabling use of all features without having to give permission to each new project."
+msgstr "When opening ForgeKairos, avoid Restricted Mode by auto-trusting all projects, enabling use of all features without having to give permission to each new project."
+
+msgctxt "settings"
+msgid "Whether breakpoints should be reused across Zed sessions."
+msgstr "Whether breakpoints should be reused across ForgeKairos sessions."
+
+msgctxt "settings"
+msgid "Whether to automatically surround text with characters for you. For example, when you select text and type '(', Zed will automatically surround text with ()."
+msgstr "Whether to automatically surround text with characters for you. For example, when you select text and type '(', ForgeKairos will automatically surround text with ()."
+
+msgctxt "settings"
+msgid "Whether to automatically type closing characters for you. For example, when you type '(', Zed will automatically add a closing ')' at the correct position."
+msgstr "Whether to automatically type closing characters for you. For example, when you type '(', ForgeKairos will automatically add a closing ')' at the correct position."
+
+msgctxt "settings"
+msgid "Whether to disable all AI features in Zed."
+msgstr "Whether to disable all AI features in ForgeKairos."
+
+msgctxt "settings"
+msgid "Whether to log messages between active debug adapters and Zed."
+msgstr "Whether to log messages between active debug adapters and ForgeKairos."
+
+msgctxt "settings"
+msgid "Which settings should be activated only in Preview build of Zed."
+msgstr "Which settings should be activated only in Preview build of ForgeKairos."
+
+msgctxt "settings schema"
+msgid "Apply profile settings on top of Zed's default settings, ignoring user customizations."
+msgstr "Apply profile settings on top of ForgeKairos's default settings, ignoring user customizations."
+
+msgctxt "settings schema"
+msgid "Command to automatically run when Zed creates a Terminal Thread shell in the agent panel.\nThe command is sent to the shell as if typed, so it is interpreted by your\nconfigured shell (including on Windows and remote/WSL projects).\nAn empty string disables this behavior.\n\nDefault: \"\""
+msgstr "Command to automatically run when ForgeKairos creates a Terminal Thread shell in the agent panel.\nThe command is sent to the shell as if typed, so it is interpreted by your\nconfigured shell (including on Windows and remote/WSL projects).\nAn empty string disables this behavior.\n\nDefault: \"\""
+
+msgctxt "settings schema"
+msgid "Configuration for developer-oriented instrumentation tools that collect\ndiagnostic data about a running Zed instance."
+msgstr "Configuration for developer-oriented instrumentation tools that collect\ndiagnostic data about a running ForgeKairos instance."
+
+msgctxt "settings schema"
+msgid "Configuration of audio in Zed."
+msgstr "Configuration of audio in ForgeKairos."
+
+msgctxt "settings schema"
+msgid "Configuration of the terminal in Zed."
+msgstr "Configuration of the terminal in ForgeKairos."
+
+msgctxt "settings schema"
+msgid "Configuration of voice calls in Zed."
+msgstr "Configuration of voice calls in ForgeKairos."
+
+msgctxt "settings schema"
+msgid "Configures what draws Zed's window decorations on Linux.\nThis setting has no effect on other platforms."
+msgstr "Configures what draws ForgeKairos's window decorations on Linux.\nThis setting has no effect on other platforms."
+
+msgctxt "settings schema"
+msgid "Controls previous session restoration in freshly launched Zed instance.\nValues: empty_tab, last_workspace, last_session, launchpad\nDefault: last_session"
+msgstr "Controls previous session restoration in freshly launched ForgeKairos instance.\nValues: empty_tab, last_workspace, last_session, launchpad\nDefault: last_session"
+
+msgctxt "settings schema"
+msgid "Controls whether Zed or the window manager or compositor draws window decorations on Linux.\n\nDefault: client"
+msgstr "Controls whether ForgeKairos or the window manager or compositor draws window decorations on Linux.\n\nDefault: client"
+
+msgctxt "settings schema"
+msgid "Directory subtrees that sandboxed terminal commands may always write\nto without prompting. Each entry is either a bare path string or an\nobject `{requested, resolved}`; Zed writes objects (the canonical,\nsymlink-resolved target established at approval time), while\nhand-authored entries may be bare path strings. Paths written by Zed\nare absolute.\nDefault: []"
+msgstr "Directory subtrees that sandboxed terminal commands may always write\nto without prompting. Each entry is either a bare path string or an\nobject `{requested, resolved}`; ForgeKairos writes objects (the canonical,\nsymlink-resolved target established at approval time), while\nhand-authored entries may be bare path strings. Paths written by ForgeKairos\nare absolute.\nDefault: []"
+
+msgctxt "settings schema"
+msgid "Directory the log files are written to. `~` is expanded.\nWhen empty, logs go to Zed's log directory under `terminal-sessions`.\n\nDefault: \"\""
+msgstr "Directory the log files are written to. `~` is expanded.\nWhen empty, logs go to ForgeKairos's log directory under `terminal-sessions`.\n\nDefault: \"\""
+
+msgctxt "settings schema"
+msgid "Format code using Zed's Prettier integration."
+msgstr "Format code using ForgeKairos's Prettier integration."
+
+msgctxt "settings schema"
+msgid "Format files using Zed's Prettier integration (if applicable),\nor falling back to formatting via language server."
+msgstr "Format files using ForgeKairos's Prettier integration (if applicable),\nor falling back to formatting via language server."
+
+msgctxt "settings schema"
+msgid "If enabled, Zed will download its own copy of Node."
+msgstr "If enabled, ForgeKairos will download its own copy of Node."
+
+msgctxt "settings schema"
+msgid "If the server supports sending tasks over LSP extensions,\nthis setting can be used to enable or disable them in Zed.\nDefault: true"
+msgstr "If the server supports sending tasks over LSP extensions,\nthis setting can be used to enable or disable them in ForgeKairos.\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Open directories as a new workspace in the current Zed window's sidebar."
+msgstr "Open directories as a new workspace in the current ForgeKairos window's sidebar."
+
+msgctxt "settings schema"
+msgid "Open projects in the current Zed window."
+msgstr "Open projects in the current ForgeKairos window."
+
+msgctxt "settings schema"
+msgid "Per-tool permission rules for granular control over which tool actions\nrequire confirmation.\n\nThe global `default` applies when no tool-specific rules match.\nFor external agent servers (e.g. Claude Agent) that define their own\npermission modes, \"deny\" and \"confirm\" still take precedence — the\nexternal agent's permission system is only used when Zed would allow\nthe action. Per-tool regex patterns (`always_allow`, `always_deny`,\n`always_confirm`) match against the tool's text input (command, path,\nURL, etc.)."
+msgstr "Per-tool permission rules for granular control over which tool actions\nrequire confirmation.\n\nThe global `default` applies when no tool-specific rules match.\nFor external agent servers (e.g. Claude Agent) that define their own\npermission modes, \"deny\" and \"confirm\" still take precedence — the\nexternal agent's permission system is only used when ForgeKairos would allow\nthe action. Per-tool regex patterns (`always_allow`, `always_deny`,\n`always_confirm`) match against the tool's text input (command, path,\nURL, etc.)."
+
+msgctxt "settings schema"
+msgid "Restore all workspaces that were open when quitting Zed."
+msgstr "Restore all workspaces that were open when quitting ForgeKairos."
+
+msgctxt "settings schema"
+msgid "Send anonymized usage data like what languages you're using Zed with.\n\nDefault: true"
+msgstr "Send anonymized usage data like what languages you're using ForgeKairos with.\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Settings for using LSP pull diagnostics mechanism in Zed."
+msgstr "Settings for using LSP pull diagnostics mechanism in ForgeKairos."
+
+msgctxt "settings schema"
+msgid "Settings related to Vim mode in Zed."
+msgstr "Settings related to Vim mode in ForgeKairos."
+
+msgctxt "settings schema"
+msgid "The URL used as the key for credential storage.\n\nWhen set, credentials are stored under this URL instead of `server_url`.\nThis allows running multiple Zed instances side by side without them\noverwriting each other's keychain entries."
+msgstr "The URL used as the key for credential storage.\n\nWhen set, credentials are stored under this URL instead of `server_url`.\nThis allows running multiple ForgeKairos instances side by side without them\noverwriting each other's keychain entries."
+
+msgctxt "settings schema"
+msgid "The extensions that should be automatically installed by Zed.\n\nThis is used to make functionality provided by extensions (e.g., language support)\navailable out-of-the-box.\n\nDefault: {}"
+msgstr "The extensions that should be automatically installed by ForgeKairos.\n\nThis is used to make functionality provided by extensions (e.g., language support)\navailable out-of-the-box.\n\nDefault: {}"
+
+msgctxt "settings schema"
+msgid "The layout of window control buttons in the title bar (Linux only).\n\nThis can be set to \"platform_default\" to follow the system configuration, or\n\"standard\" to use Zed's built-in layout. For custom layouts, use a\nGNOME-style layout string like \"close:minimize,maximize\".\n\nDefault: \"platform_default\""
+msgstr "The layout of window control buttons in the title bar (Linux only).\n\nThis can be set to \"platform_default\" to follow the system configuration, or\n\"standard\" to use ForgeKairos's built-in layout. For custom layouts, use a\nGNOME-style layout string like \"close:minimize,maximize\".\n\nDefault: \"platform_default\""
+
+msgctxt "settings schema"
+msgid "The model's name in Zed's UI, such as in the model selector dropdown menu in the agent panel."
+msgstr "The model's name in ForgeKairos's UI, such as in the model selector dropdown menu in the agent panel."
+
+msgctxt "settings schema"
+msgid "The model's name in Zed's UI, such as in the model selector dropdown menu in the assistant panel."
+msgstr "The model's name in ForgeKairos's UI, such as in the model selector dropdown menu in the assistant panel."
+
+msgctxt "settings schema"
+msgid "The name of the Zed theme to use."
+msgstr "The name of the ForgeKairos theme to use."
+
+msgctxt "settings schema"
+msgid "The path to the npm binary Zed should use (defaults to `.path/../npm`)."
+msgstr "The path to the npm binary ForgeKairos should use (defaults to `.path/../npm`)."
+
+msgctxt "settings schema"
+msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed's keymap closely follows VSCode's\nkeymap, with minor adjustments, this corresponds to the \"VSCode\" setting.\n\nDefault: VSCode"
+msgstr "This base keymap settings adjusts the default keybindings in ForgeKairos to be similar\nto other common code editors. By default, ForgeKairos's keymap closely follows VSCode's\nkeymap, with minor adjustments, this corresponds to the \"VSCode\" setting.\n\nDefault: VSCode"
+
+msgctxt "settings schema"
+msgid "Use LSP tasks over Zed language extension ones.\nIf no LSP tasks are returned due to error/timeout or regular execution,\nZed language extension tasks will be used instead.\n\nOther Zed tasks will still be shown:\n* Zed task from either of the task config file\n* Zed task from history (e.g. one-off task was spawned before)"
+msgstr "Use LSP tasks over ForgeKairos language extension ones.\nIf no LSP tasks are returned due to error/timeout or regular execution,\nForgeKairos language extension tasks will be used instead.\n\nOther ForgeKairos tasks will still be shown:\n* ForgeKairos task from either of the task config file\n* ForgeKairos task from history (e.g. one-off task was spawned before)"
+
+msgctxt "settings schema"
+msgid "Use only the files Zed had indexed"
+msgstr "Use only the files ForgeKairos had indexed"
+
+msgctxt "settings schema"
+msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
+msgstr "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of ForgeKairos's default settings, ignoring user customizations"
+
+msgctxt "settings schema"
+msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"
+msgstr "Whether the breakpoints should be reused across ForgeKairos sessions.\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically surround text with characters for you. For example,\nwhen you select text and type '(', Zed will automatically surround text with ().\n\nDefault: true"
+msgstr "Whether to automatically surround text with characters for you. For example,\nwhen you select text and type '(', ForgeKairos will automatically surround text with ().\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically type closing characters for you. For example,\nwhen you type '(', Zed will automatically add a closing ')' at the correct position.\n\nDefault: true"
+msgstr "Whether to automatically type closing characters for you. For example,\nwhen you type '(', ForgeKairos will automatically add a closing ')' at the correct position.\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Whether to build dev container images with BuildKit.\n\nWhen unset, Zed auto-detects BuildKit by probing for the `buildx` CLI\nplugin. Set to `false` to force the classic Docker builder, which is\nrequired for Docker-compatible engines that lack an integrated BuildKit\n(e.g. Apple Container via a Docker-API bridge), where BuildKit builds\ncannot resolve locally-built images.\n\nDefault: null (auto-detect)"
+msgstr "Whether to build dev container images with BuildKit.\n\nWhen unset, ForgeKairos auto-detects BuildKit by probing for the `buildx` CLI\nplugin. Set to `false` to force the classic Docker builder, which is\nrequired for Docker-compatible engines that lack an integrated BuildKit\n(e.g. Apple Container via a Docker-API bridge), where BuildKit builds\ncannot resolve locally-built images.\n\nDefault: null (auto-detect)"
+
+msgctxt "settings schema"
+msgid "Whether to disable all AI features in Zed.\n\nDefault: false"
+msgstr "Whether to disable all AI features in ForgeKairos.\n\nDefault: false"
+
+msgctxt "settings schema"
+msgid "Whether to expose this window over the loopback IDE server, so that\nexternal agents such as the Claude Code CLI can read the open editors,\nthe selection and the diagnostics, and show diffs inside Zed.\n\nDefault: false"
+msgstr "Whether to expose this window over the loopback IDE server, so that\nexternal agents such as the Claude Code CLI can read the open editors,\nthe selection and the diagnostics, and show diffs inside ForgeKairos.\n\nDefault: false"
+
+msgctxt "settings schema"
+msgid "Whether to give agents Zed's IDE tools (the `zed` MCP server: highlights,\nannotations, code tours, hover, definitions, references and symbol\nsearch), in the Claude Code CLI tabs and in external agents' sessions\nalike. Independent of `enabled`: the server starts for them on demand\nand writes no lock file unless `enabled` is on.\n\nDefault: true"
+msgstr "Whether to give agents ForgeKairos's IDE tools (the `zed` MCP server: highlights,\nannotations, code tours, hover, definitions, references and symbol\nsearch), in the Claude Code CLI tabs and in external agents' sessions\nalike. Independent of `enabled`: the server starts for them on demand\nand writes no lock file unless `enabled` is on.\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Whether to log messages between active debug adapters and Zed\n\nDefault: true"
+msgstr "Whether to log messages between active debug adapters and ForgeKairos\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Whether to optimize Zed's interface for assistive technology such as\nscreen readers.\n\nDefault: false"
+msgstr "Whether to optimize ForgeKairos's interface for assistive technology such as\nscreen readers.\n\nDefault: false"
+
+msgctxt "settings schema"
+msgid "Whether to run agent terminal commands outside the OS sandbox, with\nZed's own permissions (the inverse of the settings UI's \"enable sandbox\"\nswitch). When true, the sandboxed terminal tool is not exposed and the\nsystem prompt omits the sandbox section, so the model uses the plain\n`terminal` tool; on Windows, WSL sandbox setup is skipped. Such commands\nare never auto-approved: each one asks first. Only the user sets this;\nthe agent has no way to ask for a command to run outside the sandbox.\nDefault: false"
+msgstr "Whether to run agent terminal commands outside the OS sandbox, with\nForgeKairos's own permissions (the inverse of the settings UI's \"enable sandbox\"\nswitch). When true, the sandboxed terminal tool is not exposed and the\nsystem prompt omits the sandbox section, so the model uses the plain\n`terminal` tool; on Windows, WSL sandbox setup is skipped. Such commands\nare never auto-approved: each one asks first. Only the user sets this;\nthe agent has no way to ask for a command to run outside the sandbox.\nDefault: false"
+
+msgctxt "settings schema"
+msgid "Whether to use gitignored files when searching.\nOnly the file Zed had indexed will be used, not necessary all the gitignored files.\n\nDefault: Smart"
+msgstr "Whether to use gitignored files when searching.\nOnly the file ForgeKairos had indexed will be used, not necessary all the gitignored files.\n\nDefault: Smart"
+
+msgctxt "settings schema"
+msgid "Whether to use the system provided dialogs for Open and Save As.\nWhen set to false, Zed will use the built-in keyboard-first pickers.\n\nDefault: true"
+msgstr "Whether to use the system provided dialogs for Open and Save As.\nWhen set to false, ForgeKairos will use the built-in keyboard-first pickers.\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Whether to use the system provided prompts.\nWhen set to false, Zed will use the built-in prompts.\nNote that this setting has no effect on Linux, where Zed will always\nuse the built-in prompts.\n\nDefault: true"
+msgstr "Whether to use the system provided prompts.\nWhen set to false, ForgeKairos will use the built-in prompts.\nNote that this setting has no effect on Linux, where ForgeKairos will always\nuse the built-in prompts.\n\nDefault: true"
+
+msgctxt "settings schema"
+msgid "Zed draws its own window decorations/titlebar (client-side decoration)."
+msgstr "ForgeKairos draws its own window decorations/titlebar (client-side decoration)."
+
+msgctxt "settings schema"
+msgid "Zed's Prettier integration settings.\nAllows to enable/disable formatting with Prettier\nand configure default Prettier, used when no project-level Prettier installation is found.\n\nDefault: off"
+msgstr "ForgeKairos's Prettier integration settings.\nAllows to enable/disable formatting with Prettier\nand configure default Prettier, used when no project-level Prettier installation is found.\n\nDefault: off"
+
+msgctxt "wsl sandbox step"
+msgid "checking Zed's data folder"
+msgstr "checking ForgeKairos's data folder"

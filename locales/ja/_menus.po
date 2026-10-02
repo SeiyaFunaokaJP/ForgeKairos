@@ -7,7 +7,7 @@ msgstr ""
 
 msgctxt "menu"
 msgid "About Zed"
-msgstr "Zed について"
+msgstr "ForgeKairos について"
 
 msgctxt "menu"
 msgid "Add Cursor Above"
@@ -231,7 +231,7 @@ msgstr "ほかを非表示"
 
 msgctxt "menu"
 msgid "Hide Zed"
-msgstr "Zed を非表示"
+msgstr "ForgeKairos を非表示"
 
 msgctxt "menu"
 msgid "Install CLI"
@@ -351,7 +351,7 @@ msgstr "プッシュ"
 
 msgctxt "menu"
 msgid "Quit Zed"
-msgstr "Zed を終了"
+msgstr "ForgeKairos を終了"
 
 msgctxt "menu"
 msgid "Redo"
@@ -559,7 +559,7 @@ msgstr "ウィンドウ"
 
 msgctxt "menu"
 msgid "Zed"
-msgstr "Zed"
+msgstr "ForgeKairos"
 
 msgctxt "menu"
 msgid "Zed Repository"

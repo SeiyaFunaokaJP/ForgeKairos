@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+branding.workspace = true
 clap = { workspace = true, features = ["derive"] }
 i18n.workspace = true
 i18n_catalog.workspace = true

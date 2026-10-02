@@ -910,7 +910,7 @@ msgid "Import Threads"
 msgstr "スレッドをインポート"
 
 msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client. Choose which agents to include, and their threads will appear in your thread history."
-msgstr "Zed で開始したものでも他のクライアントで開始したものでも、Claude Agent や Codex などのエージェントからスレッドをインポートします。含めるエージェントを選択すると、そのスレッドがスレッド履歴に表示されます。"
+msgstr "ForgeKairos で開始したものでも他のクライアントで開始したものでも、Claude Agent や Codex などのエージェントからスレッドをインポートします。含めるエージェントを選択すると、そのスレッドがスレッド履歴に表示されます。"
 
 msgid "Imported {count} thread from other channels."
 msgid_plural "Imported {count} threads from other channels."
@@ -1497,7 +1497,7 @@ msgid "Runs `{program}` on the remote host with that host user's permissions (ou
 msgstr "接続先のホストの `{program}` を、そのホストのユーザーの権限で (サンドボックスの外で) 実行します。"
 
 msgid "Runs outside the sandbox (with Zed's own permissions)"
-msgstr "サンドボックスの外 (Zed 本体の権限) で実行されます"
+msgstr "サンドボックスの外 (ForgeKairos 本体の権限) で実行されます"
 
 msgid "Sandbox"
 msgstr "サンドボックス"
@@ -1668,7 +1668,7 @@ msgid "Start `{program}` outside the sandbox?"
 msgstr "`{program}` をサンドボックスの外で起動しますか？"
 
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
-msgstr "サンドボックスの外で起動すると、このエージェントは Zed 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前にスレッドごとに確認します。"
+msgstr "サンドボックスの外で起動すると、このエージェントは ForgeKairos 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前にスレッドごとに確認します。"
 
 msgid "Steer"
 msgstr "割り込み"
@@ -1713,7 +1713,7 @@ msgid "Submitted"
 msgstr "送信済み"
 
 msgid "Subscription or API key: you sign in on Claude Code's own screen, and Zed never handles the credentials. The subscription can be turned off in Settings."
-msgstr "サブスクリプションまたは API キー: サインインは Claude Code 自身の画面で行われ、Zed は認証情報を扱いません。設定でサブスクリプションを無効にできます。"
+msgstr "サブスクリプションまたは API キー: サインインは Claude Code 自身の画面で行われ、ForgeKairos は認証情報を扱いません。設定でサブスクリプションを無効にできます。"
 
 msgid "Subscription sign-in is turned off by `allow_subscription_sign_in` in settings. You can still use an API key."
 msgstr "サブスクリプションでのサインインは、設定の `allow_subscription_sign_in` で無効にしています。API キーでの利用はこのまま使えます。"
@@ -1752,10 +1752,10 @@ msgid "The JSON is hidden because the saved settings contain values that look li
 msgstr "保存済みの設定に秘密情報らしい値が含まれるため、JSON を隠しています。"
 
 msgid "The Zed server on the remote host is not ready yet (internal error)."
-msgstr "接続先のホストの Zed サーバーがまだ用意されていません (内部エラー)。"
+msgstr "接続先のホストの ForgeKairos サーバーがまだ用意されていません (内部エラー)。"
 
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
-msgstr "接続先のホストの Zed サーバーがまだ用意されていません。接続が終わるまで待ってからもう一度お試しください。"
+msgstr "接続先のホストの ForgeKairos サーバーがまだ用意されていません。接続が終わるまで待ってからもう一度お試しください。"
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"
@@ -1767,7 +1767,7 @@ msgid "The agent's network access needs hosts added to the allowlist"
 msgstr "エージェントの通信に許可リストへの追加が必要です"
 
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
-msgstr "{provider} の API への接続が中断されました。Zed が自動的に再試行します。問題が続く場合は、ネットワーク接続を確認してください。"
+msgstr "{provider} の API への接続が中断されました。ForgeKairos が自動的に再試行します。問題が続く場合は、ネットワーク接続を確認してください。"
 
 msgid "The extension's settings must be a JSON object ({{ … }})."
 msgstr "拡張機能の設定は JSON オブジェクト ({{ … }}) にしてください。"
@@ -1891,7 +1891,7 @@ msgid "This Window"
 msgstr "このウィンドウ"
 
 msgid "This agent can use Zed's IDE tools: highlights, annotations, tours, hover, definitions, references, and symbol search"
-msgstr "このエージェントは Zed の IDE ツールを使えます: ハイライト・注釈・ツアー・ホバー・定義・参照・シンボル検索"
+msgstr "このエージェントは ForgeKairos の IDE ツールを使えます: ハイライト・注釈・ツアー・ホバー・定義・参照・シンボル検索"
 
 msgid "This agent does not support viewing previous messages. However, your session will still continue from where you last left off."
 msgstr "このエージェントは過去のメッセージの表示に対応していません。ただし、セッションは前回の続きから再開されます。"
@@ -1946,6 +1946,9 @@ msgstr "このプロンプトは外部リンクによってあらかじめ入力
 
 msgid "This server is defined in the project's settings file (.zed/settings.json). Saving here writes to your user settings, but the project's definition takes precedence, so it has no effect. Edit the file that defines it from the MCP Servers page of the Settings window."
 msgstr "このサーバーはプロジェクトの設定ファイル (.zed/settings.json) で定義されています。ここで保存するとユーザー設定に書き込まれますが、プロジェクトの定義が優先されるため反映されません。設定ウィンドウの「MCP サーバー」ページから、定義しているファイルを編集してください。"
+
+msgid "This server is defined on the remote host (its server settings or an extension running there). Saving here writes to your user settings, but the remote host's definition takes precedence, so it has no effect. Change it on the remote host; the MCP Servers page of the Settings window shows where it is defined."
+msgstr "このサーバーは接続先 (そのサーバー設定、または接続先で動く拡張機能) で定義されています。ここで保存するとユーザー設定に書き込まれますが、接続先の定義が優先されるため反映されません。接続先で変更してください。定義している場所は設定ウィンドウの「MCP サーバー」ページで確認できます。"
 
 msgid "This server is waiting for approval. Review it on the MCP Servers page of the Settings window."
 msgstr "このサーバーは承認待ちです。設定ウィンドウの「MCP サーバー」ページで確認してください。"
@@ -2077,7 +2080,7 @@ msgid "Upgrade {}"
 msgstr "{} をアップグレード"
 
 msgid "Upgrade {} to work with Zed"
-msgstr "Zed で使うには {} をアップグレードしてください"
+msgstr "ForgeKairos で使うには {} をアップグレードしてください"
 
 msgid "Verifying the signature of the Claude Code release information…"
 msgstr "Claude Code のリリース情報の署名を確認しています…"
@@ -2137,7 +2140,7 @@ msgid "Write Path"
 msgstr "書き込みパス"
 
 msgid "Writes and network access are not restricted (Zed's controls do not apply on the remote host)."
-msgstr "書き込みと通信の制限はありません (接続先では Zed の統制が効きません)。"
+msgstr "書き込みと通信の制限はありません (接続先では ForgeKairos の統制が効きません)。"
 
 msgid "Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings.\nThe sign-in is shared with your usual Claude Code."
 msgstr "書き込みの制限がなくなり、通信の制限はプロキシを読むものにだけ効きます。\nログインは普段の Claude Code と共有します。"
@@ -2290,13 +2293,13 @@ msgid "{provider} rejected the request due to insufficient permissions."
 msgstr "{provider} は権限が不足しているためリクエストを拒否しました。"
 
 msgid "{provider}'s API returned an unexpected error. If the problem persists, try switching models or restarting Zed."
-msgstr "{provider} の API が予期しないエラーを返しました。問題が続く場合は、モデルを切り替えるか Zed を再起動してみてください。"
+msgstr "{provider} の API が予期しないエラーを返しました。問題が続く場合は、モデルを切り替えるか ForgeKairos を再起動してみてください。"
 
 msgid "{provider}'s rate limit was reached. Zed will retry automatically. You can also wait a moment and try again."
-msgstr "{provider} のレート制限に達しました。Zed が自動的に再試行します。しばらく待ってからやり直すこともできます。"
+msgstr "{provider} のレート制限に達しました。ForgeKairos が自動的に再試行します。しばらく待ってからやり直すこともできます。"
 
 msgid "{provider}'s servers are temporarily unavailable. Zed will retry automatically. If the problem persists, check the provider's status page."
-msgstr "{provider} のサーバーが一時的に利用できません。Zed が自動的に再試行します。問題が続く場合は、プロバイダーのステータスページを確認してください。"
+msgstr "{provider} のサーバーが一時的に利用できません。ForgeKairos が自動的に再試行します。問題が続く場合は、プロバイダーのステータスページを確認してください。"
 
 msgid "{seconds} seconds ago"
 msgstr "{seconds} 秒前"

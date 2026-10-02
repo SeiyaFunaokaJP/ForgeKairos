@@ -1328,6 +1328,7 @@ mod tests {
 
     #[test]
     fn foreground_work_reports_long_task_without_window_draw() {
+        let _trace_test_guard = crate::profiler::TraceTestGuard::new();
         let (journal, _journal_guard) = install_test_foreground_journal(1024, 64);
         let dispatcher = Arc::new(ThreadedDispatcher::new());
         let foreground_executor = ForegroundExecutor::new(dispatcher);
@@ -1374,6 +1375,7 @@ mod tests {
 
     #[test]
     fn foreground_work_excludes_setup_before_trace_scope_starts() {
+        let _trace_test_guard = crate::profiler::TraceTestGuard::new();
         let (journal, _journal_guard) = install_test_foreground_journal(1024, 64);
         let dispatcher = Arc::new(ThreadedDispatcher::new());
         let foreground_executor = ForegroundExecutor::new(dispatcher);
@@ -1414,6 +1416,7 @@ mod tests {
 
     #[test]
     fn bench_task_reports_long_task_without_window() {
+        let _trace_test_guard = crate::profiler::TraceTestGuard::new();
         let platform = bench_platform(None, Arc::new(crate::NoopTextSystem::new()));
         let report = BenchReport::default();
         let name = "bench_task_reports_long_task_without_window";

@@ -606,10 +606,12 @@ impl SandboxPaths {
     /// CLI から来たパス (か `file://` URI) を、ワークツリーの中のホストのパスに直す。
     /// 返すのはワークツリーのルートの綴りに合わせた形 ([`Self::in_root_spelling`])。
     pub fn to_host(&self, client_path: &str) -> Result<PathBuf> {
-        let host_path = self
-            .mapper
-            .uri_to_host(client_path)
-            .with_context(|| format!("{client_path} is not a path Zed can open"))?;
+        let host_path = self.mapper.uri_to_host(client_path).with_context(|| {
+            format!(
+                "{client_path} is not a path {} can open",
+                branding::CURRENT.product_name
+            )
+        })?;
         self.in_root_spelling(&host_path)
             .with_context(|| format!("{client_path} is outside the workspace"))
     }

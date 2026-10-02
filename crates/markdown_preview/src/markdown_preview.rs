@@ -58,6 +58,10 @@ actions!(
 pub fn init(cx: &mut App) {
     workspace::register_serializable_item::<MarkdownPreviewView>(cx);
     image_paste::init(cx);
+    cx.observe_new(|editor: &mut editor::Editor, _, cx| {
+        MarkdownPreviewView::register_editor_actions(editor, cx)
+    })
+    .detach();
 
     cx.observe_new(|workspace: &mut Workspace, window, cx| {
         let Some(window) = window else {

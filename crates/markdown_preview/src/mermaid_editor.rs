@@ -9,8 +9,11 @@
 //! The shell is the same for every diagram kind: the header, the preview, the
 //! Tab order, the validation line and the single write back. Only the middle of
 //! the form changes, and each kind's half of it lives in a module of its own
-//! ([`pie`], [`state`], [`sequence`], [`er`], [`class`], [`gantt`]); the flowchart's
-//! stayed here because it was here first.
+//! ([`pie`], [`state`], [`sequence`], [`er`], [`class`], [`gantt`], [`mindmap`],
+//! [`timeline`], [`gitgraph`], [`journey`], [`quadrant`], [`xychart`], [`radar`],
+//! [`requirement`], [`c4`], [`block`], [`sankey`], [`packet`], [`venn`],
+//! [`kanban`], [`treemap`], [`architecture`], [`tree_view`], [`ishikawa`],
+//! [`event_modeling`]); the flowchart's stayed here because it was here first.
 //!
 //! Like the table editor, the buffer stays the single source of truth: the
 //! modal reads one fence, edits a copy, and writes the whole body back with one
@@ -798,17 +801,30 @@ impl MermaidEditor {
         // The menus offer the names the definition rows hold now, while the
         // assignments still use the names the diagram was opened with until the
         // rename is applied on the way out.
-        let class = self
-            .flowchart()
-            .and_then(|form| {
-                form.class_defs.iter().find_map(|row| {
+        let Some((stored, opened_names)) = self.flowchart().map(|form| {
+            let stored = form
+                .class_defs
+                .iter()
+                .find_map(|row| {
                     (FlowchartForm::class_def_name(row, cx) == class)
                         .then(|| row.original_name.clone())
                         .flatten()
                 })
-            })
-            .unwrap_or_else(|| class.to_string());
-        let class = class.as_str();
+                .unwrap_or_else(|| class.to_string());
+            let opened_names = form
+                .class_defs
+                .iter()
+                .filter_map(|row| row.original_name.clone())
+                .collect::<Vec<_>>();
+            (stored, opened_names)
+        }) else {
+            return;
+        };
+        // A node may also carry the shown name itself, with no definition
+        // opened under it: the renames leave that one as it is, so it shows
+        // ticked under the same entry and has to come off with it.
+        let shows_as_chosen =
+            |name: &String| *name == stored || (name == class && !opened_names.contains(name));
         let Some(form) = self.flowchart_mut() else {
             return;
         };
@@ -827,11 +843,10 @@ impl MermaidEditor {
         let Some(classes) = classes else {
             return;
         };
-        match classes.iter().position(|name| name == class) {
-            Some(position) => {
-                classes.remove(position);
-            }
-            None => classes.push(class.to_string()),
+        if classes.iter().any(shows_as_chosen) {
+            classes.retain(|name| !shows_as_chosen(name));
+        } else {
+            classes.push(stored);
         }
         self.schedule_preview(cx);
         cx.notify();
@@ -1311,7 +1326,28 @@ impl MermaidEditor {
         let Some(form) = self.flowchart() else {
             return;
         };
-        let taken = declared_class_names(&Self::current_flowchart(form, cx));
+        // A name some node carries, or that another row had when it was
+        // opened, is skipped as well: assignments hold the names rows were
+        // opened with until the renames are applied on the way out, and the
+        // new row's must only ever be the ones the user made from it.
+        let current = Self::current_flowchart(form, cx);
+        let mut taken = declared_class_names(&current);
+        for document in [&current, &form.document] {
+            taken.extend(
+                document
+                    .nodes
+                    .iter()
+                    .map(|node| &node.classes)
+                    .chain(document.subgraphs.iter().map(|group| &group.classes))
+                    .flatten()
+                    .cloned(),
+            );
+        }
+        taken.extend(
+            form.class_defs
+                .iter()
+                .filter_map(|row| row.original_name.clone()),
+        );
         let mut name = "class".to_string();
         let mut suffix = 1;
         while taken.contains(&name) {
@@ -1321,7 +1357,7 @@ impl MermaidEditor {
         let row = ClassDefRow {
             name: self.new_field(&name, window, cx),
             style: self.new_class_style_field("", window, cx),
-            original_name: None,
+            original_name: Some(name),
         };
         let Some(form) = self.flowchart_mut() else {
             return;

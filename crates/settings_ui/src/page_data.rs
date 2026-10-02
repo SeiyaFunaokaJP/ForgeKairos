@@ -285,7 +285,13 @@ fn general_page(cx: &App) -> SettingsPage {
             }),
             SettingsPageItem::SettingItem(SettingItem {
                 title: "CLI Default Open Behavior",
-                description: "How `zed <path>` opens directories when no flag is specified.",
+                // The table holds `&'static str`, so the command's name is
+                // put in when compiling; upstream's text names its own `zed`.
+                description: const_format::concatcp!(
+                    "How `",
+                    branding::CURRENT.cli_name,
+                    " <path>` opens directories when no flag is specified."
+                ),
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("cli_default_open_behavior"),

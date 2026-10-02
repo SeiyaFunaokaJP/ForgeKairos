@@ -163,7 +163,8 @@ impl RemoteRunningKernel {
             headers.insert(
                 "User-Agent",
                 HeaderValue::from_str(&format!(
-                    "Zed/{} ({}; {})",
+                    "{}/{} (zed-compatible; {}; {})",
+                    branding::CURRENT.product_name,
                     "repl",
                     std::env::consts::OS,
                     std::env::consts::ARCH

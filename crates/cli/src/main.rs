@@ -43,6 +43,92 @@ const URL_PREFIX: [&'static str; 6] = [
 
 const CLI_NAME: &str = branding::CURRENT.cli_name;
 
+#[cfg(target_os = "macos")]
+const DEFAULT_DATA_DIRECTORY: &str = branding::concat_const!(
+    "`~/Library/Application Support/",
+    branding::CURRENT.app_directory_name,
+    "`"
+);
+#[cfg(target_os = "windows")]
+const DEFAULT_DATA_DIRECTORY: &str = branding::concat_const!(
+    "`%LOCALAPPDATA%\\",
+    branding::CURRENT.app_directory_name,
+    "`"
+);
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+const DEFAULT_DATA_DIRECTORY: &str = branding::concat_const!(
+    "`$XDG_DATA_HOME/",
+    branding::CURRENT.app_directory_name_lowercase,
+    "`"
+);
+
+// A doc comment cannot name the data directory, which comes from `branding`.
+const USER_DATA_DIR_HELP: &str = branding::concat_const!(
+    "Sets a custom directory for all user data (e.g., database, extensions, logs).\n\
+     This overrides the default platform-specific data directory location: ",
+    DEFAULT_DATA_DIRECTORY,
+    "."
+);
+
+// Like the help above, these name the product, so they cannot be doc comments.
+const PRODUCT_NAME: &str = branding::CURRENT.product_name;
+const EXISTING_HELP: &str = branding::concat_const!("Open in existing ", PRODUCT_NAME, " window");
+const PATHS_HELP: &str =
+    branding::concat_const!("The paths to open in ", PRODUCT_NAME, " (space-separated)");
+const PATHS_LONG_HELP: &str = branding::concat_const!(
+    "The paths to open in ",
+    PRODUCT_NAME,
+    " (space-separated).\n\n\
+     Use `path:line:column` syntax to open a file at the given line and column."
+);
+const VERSION_HELP: &str =
+    branding::concat_const!("Print ", PRODUCT_NAME, "'s version and the app path");
+const FOREGROUND_HELP: &str = branding::concat_const!(
+    "Run ",
+    PRODUCT_NAME,
+    " in the foreground (useful for debugging)"
+);
+const ZED_PATH_HELP: &str = branding::concat_const!(
+    "Custom path to ",
+    PRODUCT_NAME,
+    ".app or the ",
+    PRODUCT_NAME,
+    " binary"
+);
+const DEV_SERVER_TOKEN_HELP: &str =
+    branding::concat_const!("Run ", PRODUCT_NAME, " in dev-server mode");
+#[cfg(target_os = "windows")]
+const WSL_HELP: &str = branding::concat_const!(
+    "The username and WSL distribution to use when opening paths. If not specified, ",
+    PRODUCT_NAME,
+    " will attempt to open the paths directly"
+);
+#[cfg(target_os = "windows")]
+const WSL_LONG_HELP: &str = branding::concat_const!(
+    "The username and WSL distribution to use when opening paths. If not specified, ",
+    PRODUCT_NAME,
+    " will attempt to open the paths directly.\n\n\
+     The username is optional, and if not specified, the default user for the distribution \
+     will be used.\n\n\
+     Example: `me@Ubuntu` or `Ubuntu`.\n\n\
+     WARN: You should not fill in this field by hand."
+);
+const SYSTEM_SPECS_HELP: &str = branding::concat_const!(
+    "Not supported in ",
+    PRODUCT_NAME,
+    " CLI, only supported on ",
+    PRODUCT_NAME,
+    " binary Will attempt to give the correct command to run"
+);
+const COMPLETIONS_HELP: &str =
+    branding::concat_const!("Generate shell completions for ", PRODUCT_NAME);
+#[cfg(all(
+    any(target_os = "linux", target_os = "macos"),
+    not(feature = "no-bundled-uninstall")
+))]
+const UNINSTALL_HELP: &str =
+    branding::concat_const!("Uninstall ", PRODUCT_NAME, " from user system");
+
 /// The editor binary a Linux install and the flatpak ship next to the
 /// launcher (`bin/{CLI_NAME}`).
 const LINUX_EDITOR_NAME: &str = branding::concat_const!(CLI_NAME, "-editor");
@@ -103,54 +189,27 @@ struct Args {
     /// Reuse an existing window, replacing its workspace
     #[arg(short, long, overrides_with_all = ["add", "new", "existing", "classic"], hide = true)]
     reuse: bool,
-    /// Open in existing Zed window
-    #[arg(short = 'e', long = "existing", overrides_with_all = ["add", "new", "reuse", "classic"])]
+    #[arg(short = 'e', long = "existing", overrides_with_all = ["add", "new", "reuse", "classic"], help = EXISTING_HELP)]
     existing: bool,
     /// Use the classic open behavior: new window for directories, reuse for files
     #[arg(long, hide = true, overrides_with_all = ["add", "new", "reuse", "existing"])]
     classic: bool,
-    /// Sets a custom directory for all user data (e.g., database, extensions, logs).
-    /// This overrides the default platform-specific data directory location:
-    #[cfg_attr(target_os = "macos", doc = "`~/Library/Application Support/Zed`.")]
-    #[cfg_attr(target_os = "windows", doc = "`%LOCALAPPDATA%\\Zed`.")]
-    #[cfg_attr(
-        not(any(target_os = "windows", target_os = "macos")),
-        doc = "`$XDG_DATA_HOME/zed`."
-    )]
-    #[arg(long, value_name = "DIR", value_hint = clap::ValueHint::DirPath)]
+    #[arg(long, value_name = "DIR", value_hint = clap::ValueHint::DirPath, help = USER_DATA_DIR_HELP)]
     user_data_dir: Option<String>,
-    /// The paths to open in Zed (space-separated).
-    ///
-    /// Use `path:line:column` syntax to open a file at the given line and column.
-    #[arg(trailing_var_arg = true, value_hint = clap::ValueHint::AnyPath)]
+    #[arg(trailing_var_arg = true, value_hint = clap::ValueHint::AnyPath, help = PATHS_HELP, long_help = PATHS_LONG_HELP)]
     paths_with_position: Vec<String>,
-    /// Print Zed's version and the app path.
-    #[arg(short, long)]
+    #[arg(short, long, help = VERSION_HELP)]
     version: bool,
-    /// Run zed in the foreground (useful for debugging)
-    #[arg(long)]
+    #[arg(long, help = FOREGROUND_HELP)]
     foreground: bool,
-    /// Custom path to Zed.app or the zed binary
-    #[arg(long)]
+    #[arg(long, help = ZED_PATH_HELP)]
     zed: Option<PathBuf>,
-    /// Run zed in dev-server mode
-    #[arg(long)]
+    #[arg(long, help = DEV_SERVER_TOKEN_HELP)]
     dev_server_token: Option<String>,
-    /// The username and WSL distribution to use when opening paths. If not specified,
-    /// Zed will attempt to open the paths directly.
-    ///
-    /// The username is optional, and if not specified, the default user for the distribution
-    /// will be used.
-    ///
-    /// Example: `me@Ubuntu` or `Ubuntu`.
-    ///
-    /// WARN: You should not fill in this field by hand.
     #[cfg(target_os = "windows")]
-    #[arg(long, value_name = "USER@DISTRO")]
+    #[arg(long, value_name = "USER@DISTRO", help = WSL_HELP, long_help = WSL_LONG_HELP)]
     wsl: Option<String>,
-    /// Not supported in Zed CLI, only supported on Zed binary
-    /// Will attempt to give the correct command to run
-    #[arg(long)]
+    #[arg(long, help = SYSTEM_SPECS_HELP)]
     system_specs: bool,
     /// Open the project in a dev container.
     ///
@@ -162,15 +221,13 @@ struct Args {
     /// When directories are provided, recurses into them and shows all changed files in a single multi-diff view.
     #[arg(long, action = clap::ArgAction::Append, num_args = 2, value_names = ["OLD_PATH", "NEW_PATH"], value_hint = clap::ValueHint::AnyPath)]
     diff: Vec<String>,
-    /// Generate shell completions for Zed
-    #[arg(long, value_names = ["SHELL"])]
+    #[arg(long, value_names = ["SHELL"], help = COMPLETIONS_HELP)]
     completions: Option<Shell>,
-    /// Uninstall Zed from user system
     #[cfg(all(
         any(target_os = "linux", target_os = "macos"),
         not(feature = "no-bundled-uninstall")
     ))]
-    #[arg(long)]
+    #[arg(long, help = UNINSTALL_HELP)]
     uninstall: bool,
 
     /// Used for SSH/Git password authentication, to remove the need for netcat as a dependency,
@@ -669,7 +726,10 @@ fn run() -> Result<()> {
     if args.system_specs {
         let path = app.path();
         let msg = [
-            "The `--system-specs` argument is not supported in the Zed CLI, only on Zed binary.",
+            &format!(
+                "The `--system-specs` argument is not supported in the {product} CLI, only on {product} binary.",
+                product = branding::CURRENT.product_name
+            ),
             "To retrieve the system specs on the command line, run the following command:",
             &format!("{} --system-specs", path.display()),
         ];
@@ -969,16 +1029,23 @@ fn prompt_open_behavior() -> Option<cli::CliBehaviorSetting> {
     let blue = console::Style::new().blue();
     let items = [
         format!(
-            "Add to existing Zed window ({})",
-            blue.apply_to("zed --existing")
+            "Add to existing {} window ({})",
+            branding::CURRENT.product_name,
+            blue.apply_to(format!("{CLI_NAME} --existing"))
         ),
-        format!("Open a new window ({})", blue.apply_to("zed --classic")),
+        format!(
+            "Open a new window ({})",
+            blue.apply_to(format!("{CLI_NAME} --classic"))
+        ),
     ];
 
     let prompt = format!(
         "Configure default behavior for {}\n{}",
-        blue.apply_to("zed <path>"),
-        console::style("You can change this later in Zed settings"),
+        blue.apply_to(format!("{CLI_NAME} <path>")),
+        console::style(format!(
+            "You can change this later in {} settings",
+            branding::CURRENT.product_name
+        )),
     );
 
     let selection = dialoguer::Select::new()

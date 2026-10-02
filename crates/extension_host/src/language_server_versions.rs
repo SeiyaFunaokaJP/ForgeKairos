@@ -36,23 +36,37 @@ pub(crate) struct SupersededVersionSweep<'a> {
 
 impl SupersededVersionSweep<'_> {
     pub async fn run(&self, fs: &dyn Fs) -> Vec<PathBuf> {
-        let in_use_entries = self.in_use_entries();
+        let mut removed = Vec::new();
+        let Some(mut listing) = fs.read_dir(self.extension_work_dir).await.log_err() else {
+            return removed;
+        };
+        let mut entries = Vec::new();
+        while let Some(entry) = listing.next().await {
+            if let Some(path) = entry.log_err() {
+                entries.push(path);
+            }
+        }
+        let entry_names = entries
+            .iter()
+            .filter_map(|path| path.file_name().and_then(|name| name.to_str()))
+            .collect::<HashSet<_>>();
+
+        // An argument that names nothing in the work directory is not a path
+        // at all (`--runtime jvm-17`), and must not make `jvm-11` an older copy
+        // of something in use.
+        let in_use_entries = in_use_entries(self.extension_work_dir, self.command_paths)
+            .into_iter()
+            .filter(|entry| entry_names.contains(entry.as_str()))
+            .collect::<Vec<_>>();
         let in_use_names = in_use_entries
             .iter()
             .filter_map(|entry| split_version(entry).map(|(name, _)| name))
             .collect::<HashSet<_>>();
         if in_use_names.is_empty() {
-            return Vec::new();
+            return removed;
         }
 
-        let mut removed = Vec::new();
-        let Some(mut entries) = fs.read_dir(self.extension_work_dir).await.log_err() else {
-            return removed;
-        };
-        while let Some(entry) = entries.next().await {
-            let Some(path) = entry.log_err() else {
-                continue;
-            };
+        for path in entries {
             let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
                 continue;
             };
@@ -71,14 +85,25 @@ impl SupersededVersionSweep<'_> {
             if metadata.is_symlink {
                 continue;
             }
-            let untouched_for = self
-                .now
-                .duration_since(metadata.mtime.timestamp_for_user())
-                .ok();
-            if !untouched_for.is_some_and(|age| age > SUPERSEDED_VERSION_AGE) {
+            if !self.is_untouched_for_long(metadata.mtime.timestamp_for_user()) {
                 continue;
             }
             if (self.is_used_by_a_process)(&path) {
+                continue;
+            }
+            // Another project may have just picked this version to start,
+            // which marks it as used before the process exists: looking again
+            // after the process list leaves only the moment of the removal
+            // itself for that to slip through.
+            let still_untouched =
+                fs.metadata(&path)
+                    .await
+                    .log_err()
+                    .flatten()
+                    .is_some_and(|metadata| {
+                        self.is_untouched_for_long(metadata.mtime.timestamp_for_user())
+                    });
+            if !still_untouched {
                 continue;
             }
             let options = RemoveOptions {
@@ -103,21 +128,72 @@ impl SupersededVersionSweep<'_> {
         removed
     }
 
-    /// The entries of the work directory the command runs from.
-    fn in_use_entries(&self) -> Vec<String> {
-        self.command_paths
-            .iter()
-            .filter_map(|path| {
-                let path = self.extension_work_dir.join(from_wasi_path(path));
-                let path = util::paths::normalize_lexically(&path).ok()?;
-                let relative = path.strip_prefix(self.extension_work_dir).ok()?;
-                match relative.components().next()? {
-                    Component::Normal(entry) => entry.to_str().map(str::to_string),
-                    _ => None,
-                }
-            })
-            .collect()
+    fn is_untouched_for_long(&self, modified: SystemTime) -> bool {
+        self.now
+            .duration_since(modified)
+            .is_ok_and(|age| age > SUPERSEDED_VERSION_AGE)
     }
+}
+
+/// The entries of the work directory the command runs from.
+fn in_use_entries(extension_work_dir: &Path, command_paths: &[PathBuf]) -> Vec<String> {
+    command_paths
+        .iter()
+        .filter_map(|path| {
+            let path = extension_work_dir.join(from_wasi_path(path));
+            let path = util::paths::normalize_lexically(&path).ok()?;
+            let relative = path.strip_prefix(extension_work_dir).ok()?;
+            match relative.components().next()? {
+                Component::Normal(entry) => entry.to_str().map(str::to_string),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+/// Records that the entries of the work directory the command runs from are
+/// in use, by moving their modification time to `now`. Without this a
+/// version's age would be the time it was downloaded, and one that a channel
+/// still starts every day would count as unused a month after it arrived.
+///
+/// Done before the server starts, so that a sweep running elsewhere at the
+/// same moment sees the version as fresh rather than as unused.
+pub(crate) fn mark_in_use(extension_work_dir: &Path, command_paths: &[PathBuf], now: SystemTime) {
+    let mut entries = in_use_entries(extension_work_dir, command_paths);
+    entries.sort();
+    entries.dedup();
+    for entry in entries {
+        let path = extension_work_dir.join(entry);
+        match set_modified(&path, now) {
+            Ok(()) => {}
+            // Not a path after all, only an argument that looked like one.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => log::warn!("could not mark {path:?} as in use: {error}"),
+        }
+    }
+}
+
+fn set_modified(path: &Path, modified: SystemTime) -> std::io::Result<()> {
+    // A link's own time is not what the sweep reads, and following it would
+    // touch whatever it points at.
+    if std::fs::symlink_metadata(path)?.file_type().is_symlink() {
+        return Ok(());
+    }
+    let mut options = std::fs::OpenOptions::new();
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        // Setting a time needs only the right to write attributes, and a
+        // directory opens only with backup semantics.
+        options
+            .access_mode(FILE_WRITE_ATTRIBUTES)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS);
+    }
+    #[cfg(not(windows))]
+    options.read(true);
+    options.open(path)?.set_modified(modified)
 }
 
 /// Undoes the leading slash WASI puts in front of a Windows path
@@ -336,6 +412,107 @@ mod tests {
         let removed = sweep(&fs, &["/usr/local/bin/gleam-v1.2.3", "lsp"], &[]).await;
 
         assert_eq!(removed, Vec::<PathBuf>::new());
+    }
+
+    #[gpui::test]
+    async fn an_argument_naming_nothing_in_the_work_directory_is_no_version_in_use(
+        cx: &mut TestAppContext,
+    ) {
+        let fs = FakeFs::new(cx.executor());
+        file_at(&fs, "gleam-v1.2.3/gleam", now() - DAY).await;
+        // Something of the extension's own that only shares a name with the
+        // argument below.
+        file_at(&fs, "jvm-11/release", long_ago()).await;
+
+        let removed = sweep(&fs, &["gleam-v1.2.3/gleam", "--runtime", "jvm-17"], &[]).await;
+        assert_eq!(removed, Vec::<PathBuf>::new());
+        assert!(fs.is_file(&work_path("jvm-11/release")).await);
+
+        // Once the argument does name an entry, it is a version in use.
+        file_at(&fs, "jvm-17/release", now() - DAY).await;
+        let removed = sweep(&fs, &["gleam-v1.2.3/gleam", "--runtime", "jvm-17"], &[]).await;
+        assert_eq!(removed, [work_path("jvm-11")]);
+    }
+
+    #[gpui::test]
+    async fn a_version_another_project_starts_during_the_sweep_stays(cx: &mut TestAppContext) {
+        let fs = FakeFs::new(cx.executor());
+        file_at(&fs, "gleam-v1.2.3/gleam", now() - DAY).await;
+        file_at(&fs, "gleam-v1.0.0/gleam", long_ago()).await;
+        file_at(&fs, "gleam-v0.9.0/gleam", long_ago()).await;
+
+        let command_paths = [PathBuf::from("gleam-v1.2.3/gleam")];
+        let started_meanwhile = work_path("gleam-v1.0.0");
+        let removed = SupersededVersionSweep {
+            extension_work_dir: Path::new(WORK_DIR),
+            command_paths: &command_paths,
+            now: now(),
+            // The other project marks the version as used after the sweep
+            // read its time, and its process is not running yet when the
+            // sweep looks for one.
+            is_used_by_a_process: &{
+                let fs = fs.clone();
+                move |path| {
+                    if path == started_meanwhile {
+                        fs.set_next_mtime(now());
+                        futures::executor::block_on(fs.touch_path(path));
+                    }
+                    false
+                }
+            },
+        }
+        .run(fs.as_ref())
+        .await;
+
+        assert_eq!(removed, [work_path("gleam-v0.9.0")]);
+        assert!(fs.is_file(&work_path("gleam-v1.0.0/gleam")).await);
+    }
+
+    #[test]
+    fn starting_a_server_marks_the_entries_it_runs_from_as_used() {
+        let temp_dir = tempfile::tempdir().expect("create a temporary directory");
+        let work_dir = temp_dir.path();
+        let in_use = work_dir.join("gleam-v1.2.3");
+        let sibling = work_dir.join("gleam-v1.2.2");
+        for directory in [&in_use, &sibling] {
+            std::fs::create_dir(directory).expect("create a version directory");
+            std::fs::write(directory.join("gleam"), b"binary").expect("write the binary");
+        }
+        let downloaded_at = SystemTime::now() - SUPERSEDED_VERSION_AGE - DAY;
+        for directory in [&in_use, &sibling] {
+            set_modified(directory, downloaded_at).expect("age the version directory");
+        }
+        let modified = |path: &Path| {
+            std::fs::metadata(path)
+                .and_then(|metadata| metadata.modified())
+                .expect("read the modification time")
+        };
+        assert!(modified(&in_use) < SystemTime::now() - SUPERSEDED_VERSION_AGE);
+
+        let now = SystemTime::now();
+        mark_in_use(
+            work_dir,
+            &[
+                in_use.join("gleam"),
+                PathBuf::from("--stdio"),
+                PathBuf::from("missing-1.0.0/server"),
+            ],
+            now,
+        );
+
+        let marked_at = modified(&in_use);
+        let difference = marked_at
+            .duration_since(now)
+            .unwrap_or_else(|error| error.duration());
+        assert!(
+            difference < Duration::from_secs(2),
+            "the version in use is marked as used now, not {marked_at:?}"
+        );
+        assert!(
+            modified(&sibling) < now - SUPERSEDED_VERSION_AGE,
+            "an older version is left as it was"
+        );
+        assert!(!work_dir.join("missing-1.0.0").exists());
     }
 
     #[test]

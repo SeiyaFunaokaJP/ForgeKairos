@@ -253,7 +253,7 @@ msgstr "補完に使用する API URL です。\n\n既定値: \"https://codestra
 
 msgctxt "settings schema"
 msgid "Apply profile settings on top of Zed's default settings, ignoring user customizations."
-msgstr "ユーザーのカスタマイズを無視して、Zed の既定設定の上にプロファイル設定を適用します。"
+msgstr "ユーザーのカスタマイズを無視して、ForgeKairos の既定設定の上にプロファイル設定を適用します。"
 
 msgctxt "settings schema"
 msgid "Apply profile settings on top of the user's current settings."
@@ -529,7 +529,7 @@ msgstr "エントリの広めの間隔です。"
 
 msgctxt "settings schema"
 msgid "Command to automatically run when Zed creates a Terminal Thread shell in the agent panel.\nThe command is sent to the shell as if typed, so it is interpreted by your\nconfigured shell (including on Windows and remote/WSL projects).\nAn empty string disables this behavior.\n\nDefault: \"\""
-msgstr "Zed がエージェントパネルでターミナルスレッドのシェルを作成するときに自動実行するコマンドです。コマンドは入力されたかのようにシェルに送信されるため、設定済みのシェル (Windows およびリモート/WSL プロジェクトを含む) によって解釈されます。空文字列を指定すると、この動作は無効になります。\n\n既定値: \"\""
+msgstr "ForgeKairos がエージェントパネルでターミナルスレッドのシェルを作成するときに自動実行するコマンドです。コマンドは入力されたかのようにシェルに送信されるため、設定済みのシェル (Windows およびリモート/WSL プロジェクトを含む) によって解釈されます。空文字列を指定すると、この動作は無効になります。\n\n既定値: \"\""
 
 msgctxt "settings schema"
 msgid "Common language server settings."
@@ -561,7 +561,7 @@ msgstr "言語モデルメッセージのキャッシュ設定です。"
 
 msgctxt "settings schema"
 msgid "Configuration for developer-oriented instrumentation tools that collect\ndiagnostic data about a running Zed instance."
-msgstr "実行中の Zed インスタンスに関する診断データを収集する開発者向けインストルメンテーションツールの設定です。"
+msgstr "実行中の ForgeKairos インスタンスに関する診断データを収集する開発者向けインストルメンテーションツールの設定です。"
 
 msgctxt "settings schema"
 msgid "Configuration for how direnv configuration should be loaded"
@@ -593,19 +593,19 @@ msgstr "Anthropic のキャッシュ API の設定です。"
 
 msgctxt "settings schema"
 msgid "Configuration of audio in Zed."
-msgstr "Zed のオーディオ設定。"
+msgstr "ForgeKairos のオーディオ設定。"
 
 msgctxt "settings schema"
 msgid "Configuration of the terminal in Zed."
-msgstr "Zed のターミナル設定。"
+msgstr "ForgeKairos のターミナル設定。"
 
 msgctxt "settings schema"
 msgid "Configuration of voice calls in Zed."
-msgstr "Zed の音声通話設定。"
+msgstr "ForgeKairos の音声通話設定。"
 
 msgctxt "settings schema"
 msgid "Configures what draws Zed's window decorations on Linux.\nThis setting has no effect on other platforms."
-msgstr "Linux で Zed のウィンドウ装飾を描画する側を設定します。この設定は他のプラットフォームでは効果がありません。"
+msgstr "Linux で ForgeKairos のウィンドウ装飾を描画する側を設定します。この設定は他のプラットフォームでは効果がありません。"
 
 msgctxt "settings schema"
 msgid "Conflict version control color."
@@ -669,7 +669,7 @@ msgstr "単語の補完方法を設定します。\n大きなドキュメント�
 
 msgctxt "settings schema"
 msgid "Controls previous session restoration in freshly launched Zed instance.\nValues: empty_tab, last_workspace, last_session, launchpad\nDefault: last_session"
-msgstr "新しく起動した Zed インスタンスでの前回のセッション復元動作を設定します。\n値: empty_tab, last_workspace, last_session, launchpad\n既定値: last_session"
+msgstr "新しく起動した ForgeKairos インスタンスでの前回のセッション復元動作を設定します。\n値: empty_tab, last_workspace, last_session, launchpad\n既定値: last_session"
 
 msgctxt "settings schema"
 msgid "Controls the soft-wrapping behavior in the editor."
@@ -701,7 +701,7 @@ msgstr "Zed の編集予測の使用時に、Zed がトレーニングデータ�
 
 msgctxt "settings schema"
 msgid "Controls whether Zed or the window manager or compositor draws window decorations on Linux.\n\nDefault: client"
-msgstr "Linux で Zed、ウィンドウマネージャー、コンポジターのいずれがウィンドウ装飾を描画するかを制御します。\n\n既定値: client"
+msgstr "Linux で ForgeKairos、ウィンドウマネージャー、コンポジターのいずれがウィンドウ装飾を描画するかを制御します。\n\n既定値: client"
 
 msgctxt "settings schema"
 msgid "Controls whether edit predictions are shown immediately (true)\nor manually by triggering `editor::ShowEditPrediction` (false).\n\nDefault: true"
@@ -1029,11 +1029,11 @@ msgstr "垂直分割の方向を設定します。\n\n既定値: \"left\""
 
 msgctxt "settings schema"
 msgid "Directory subtrees that sandboxed terminal commands may always write\nto without prompting. Each entry is either a bare path string or an\nobject `{requested, resolved}`; Zed writes objects (the canonical,\nsymlink-resolved target established at approval time), while\nhand-authored entries may be bare path strings. Paths written by Zed\nare absolute.\nDefault: []"
-msgstr "サンドボックス化されたターミナルコマンドが常に確認なしで書き込めるディレクトリのサブツリーです。各エントリは、単独のパス文字列またはオブジェクト `{requested, resolved}` です。Zed はオブジェクト (正規化され、承認時に確定したシンボリックリンク解決済みのターゲット) を書き込みます。一方、手動で記述したエントリには単独のパス文字列も使用できます。Zed が書き込むパスは絶対パスです。\n既定値: []"
+msgstr "サンドボックス化されたターミナルコマンドが常に確認なしで書き込めるディレクトリのサブツリーです。各エントリは、単独のパス文字列またはオブジェクト `{requested, resolved}` です。ForgeKairos はオブジェクト (正規化され、承認時に確定したシンボリックリンク解決済みのターゲット) を書き込みます。一方、手動で記述したエントリには単独のパス文字列も使用できます。ForgeKairos が書き込むパスは絶対パスです。\n既定値: []"
 
 msgctxt "settings schema"
 msgid "Directory the log files are written to. `~` is expanded.\nWhen empty, logs go to Zed's log directory under `terminal-sessions`.\n\nDefault: \"\""
-msgstr "ログファイルを書き込むディレクトリ。`~` は展開されます。空のときは、Zed のログディレクトリの `terminal-sessions` に書き込みます。\n\n既定値: \"\""
+msgstr "ログファイルを書き込むディレクトリ。`~` は展開されます。空のときは、ForgeKairos のログディレクトリの `terminal-sessions` に書き込みます。\n\n既定値: \"\""
 
 msgctxt "settings schema"
 msgid "Directory where git worktrees are created, relative to the repository\nworking directory.\n\nWhen the resolved directory is outside the project root, the\nproject's directory name is automatically appended so that\nsibling repos don't collide. For example, with the default\n`\"../worktrees\"` and a project at `~/code/zed`, worktrees are\ncreated under `~/code/worktrees/zed/`.\n\nWhen the resolved directory is inside the project root, no\nextra component is added (it's already project-scoped).\n\nExamples:\n- `\"../worktrees\"` — `~/code/worktrees/<project>/` (default)\n- `\".git/zed-worktrees\"` — `<project>/.git/zed-worktrees/`\n- `\"my-worktrees\"` — `<project>/my-worktrees/`\n\nTrailing slashes are ignored.\n\nDefault: ../worktrees"
@@ -1325,7 +1325,7 @@ msgstr "Vim Visual モードインジケーターの前景色です。"
 
 msgctxt "settings schema"
 msgid "Format code using Zed's Prettier integration."
-msgstr "Zed の Prettier 統合を使用してコードをフォーマットします。"
+msgstr "ForgeKairos の Prettier 統合を使用してコードをフォーマットします。"
 
 msgctxt "settings schema"
 msgid "Format code using a language server."
@@ -1345,7 +1345,7 @@ msgstr "現在の言語サーバーを使用してコードをフォーマット
 
 msgctxt "settings schema"
 msgid "Format files using Zed's Prettier integration (if applicable),\nor falling back to formatting via language server."
-msgstr "Zed の Prettier 統合を使用してファイルをフォーマットします (該当する場合)。該当しない場合は、言語サーバーによるフォーマットにフォールバックします。"
+msgstr "ForgeKairos の Prettier 統合を使用してファイルをフォーマットします (該当する場合)。該当しない場合は、言語サーバーによるフォーマットにフォールバックします。"
 
 msgctxt "settings schema"
 msgid "Git blame settings."
@@ -1565,7 +1565,7 @@ msgstr "アイコンテーマ名"
 
 msgctxt "settings schema"
 msgid "If enabled, Zed will download its own copy of Node."
-msgstr "有効にすると、Zed は独自の Node のコピーをダウンロードします。"
+msgstr "有効にすると、ForgeKairos は独自の Node のコピーをダウンロードします。"
 
 msgctxt "settings schema"
 msgid "If provider supports it, display inline when holding modifier key (e.g., alt).\nOtherwise, eager preview is used."
@@ -1573,7 +1573,7 @@ msgstr "プロバイダーが対応している場合、修飾キー (例: alt) 
 
 msgctxt "settings schema"
 msgid "If the server supports sending tasks over LSP extensions,\nthis setting can be used to enable or disable them in Zed.\nDefault: true"
-msgstr "サーバーが LSP の拡張仕様を通じてタスクの送信をサポートしている場合、この設定を使用して、Zed でそれらを有効または無効にできます。\n既定値: true"
+msgstr "サーバーが LSP の拡張仕様を通じてタスクの送信をサポートしている場合、この設定を使用して、ForgeKairos でそれらを有効または無効にできます。\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Ignored version control color."
@@ -1965,7 +1965,7 @@ msgstr "単一ファイルの差分ビューを開きます。"
 
 msgctxt "settings schema"
 msgid "Open directories as a new workspace in the current Zed window's sidebar."
-msgstr "現在の Zed ウィンドウのサイドバーで、ディレクトリを新しいワークスペースとして開きます。"
+msgstr "現在の ForgeKairos ウィンドウのサイドバーで、ディレクトリを新しいワークスペースとして開きます。"
 
 msgctxt "settings schema"
 msgid "Open paths in a new window unless they are subpaths of an existing project."
@@ -1977,7 +1977,7 @@ msgstr "新しいウィンドウでプロジェクトを開きます。"
 
 msgctxt "settings schema"
 msgid "Open projects in the current Zed window."
-msgstr "現在の Zed ウィンドウでプロジェクトを開きます。"
+msgstr "現在の ForgeKairos ウィンドウでプロジェクトを開きます。"
 
 msgctxt "settings schema"
 msgid "Open the excerpt clicked as a new buffer in the new tab, if no `alt` modifier was pressed during double click.\nOtherwise, behave as a regular buffer and select the whole word."
@@ -2029,7 +2029,7 @@ msgstr "そのドックを占めるパネル。ドックをそのままにする
 
 msgctxt "settings schema"
 msgid "Per-tool permission rules for granular control over which tool actions\nrequire confirmation.\n\nThe global `default` applies when no tool-specific rules match.\nFor external agent servers (e.g. Claude Agent) that define their own\npermission modes, \"deny\" and \"confirm\" still take precedence — the\nexternal agent's permission system is only used when Zed would allow\nthe action. Per-tool regex patterns (`always_allow`, `always_deny`,\n`always_confirm`) match against the tool's text input (command, path,\nURL, etc.)."
-msgstr "どのツール操作に確認を要求するかをきめ細かく制御するためのツールごとの権限ルールです。\n\nツール固有のルールが一致しない場合、グローバルの `default` が適用されます。独自の権限モードを定義する外部エージェントサーバー (例: Claude Agent) の場合、\"deny\" と \"confirm\" が引き続き優先され、外部エージェントの権限システムは、Zed がその操作を許可する場合にのみ使用されます。ツールごとの正規表現パターン (`always_allow`、`always_deny`、`always_confirm`) は、ツールのテキスト入力 (コマンド、パス、URL など) に照合されます。"
+msgstr "どのツール操作に確認を要求するかをきめ細かく制御するためのツールごとの権限ルールです。\n\nツール固有のルールが一致しない場合、グローバルの `default` が適用されます。独自の権限モードを定義する外部エージェントサーバー (例: Claude Agent) の場合、\"deny\" と \"confirm\" が引き続き優先され、外部エージェントの権限システムは、ForgeKairos がその操作を許可する場合にのみ使用されます。ツールごとの正規表現パターン (`always_allow`、`always_deny`、`always_confirm`) は、ツールのテキスト入力 (コマンド、パス、URL など) に照合されます。"
 
 msgctxt "settings schema"
 msgid "Per-tool permission rules.\nKeys are tool names (e.g. terminal, edit_file, fetch) including MCP\ntools (e.g. mcp:server_name:tool_name). Any tool name is accepted;\neven tools without meaningful text input can have a `default` set."
@@ -2169,7 +2169,7 @@ msgstr "30 秒ごとに測る clangd の常駐メモリがこのメガバイト�
 
 msgctxt "settings schema"
 msgid "Restore all workspaces that were open when quitting Zed."
-msgstr "Zed を終了したときに開いていたすべてのワークスペースを復元します。"
+msgstr "ForgeKairos を終了したときに開いていたすべてのワークスペースを復元します。"
 
 msgctxt "settings schema"
 msgid "Restore the workspace that was closed last."
@@ -2217,7 +2217,7 @@ msgstr "特定の出力オーディオデバイスを選択します。"
 
 msgctxt "settings schema"
 msgid "Send anonymized usage data like what languages you're using Zed with.\n\nDefault: true"
-msgstr "Zed で使用しているプログラミング言語など、匿名化された使用状況データを送信します。\n\n既定値: true"
+msgstr "ForgeKairos で使用しているプログラミング言語など、匿名化された使用状況データを送信します。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Send debug info like crash reports.\n\nDefault: true"
@@ -2329,11 +2329,11 @@ msgstr "which-key ポップアップの設定です。"
 
 msgctxt "settings schema"
 msgid "Settings for using LSP pull diagnostics mechanism in Zed."
-msgstr "Zed での LSP プル診断メカニズムの使用設定です。"
+msgstr "ForgeKairos での LSP プル診断メカニズムの使用設定です。"
 
 msgctxt "settings schema"
 msgid "Settings related to Vim mode in Zed."
-msgstr "Zed の Vim モードに関連する設定です。"
+msgstr "ForgeKairos の Vim モードに関連する設定です。"
 
 msgctxt "settings schema"
 msgid "Settings related to indent guides in the outline panel."
@@ -2665,7 +2665,7 @@ msgstr "アドレスバーの入力が URL でないときと、`browser_panel::
 
 msgctxt "settings schema"
 msgid "The URL used as the key for credential storage.\n\nWhen set, credentials are stored under this URL instead of `server_url`.\nThis allows running multiple Zed instances side by side without them\noverwriting each other's keychain entries."
-msgstr "認証情報の保存に使用されるキーとしての URL です。\n\n設定されている場合、認証情報は `server_url` の代わりにこの URL に保存されます。これにより、複数の Zed インスタンスを並行して実行しても、互いのキーチェーンエントリを上書きしないようにします。"
+msgstr "認証情報の保存に使用されるキーとしての URL です。\n\n設定されている場合、認証情報は `server_url` の代わりにこの URL に保存されます。これにより、複数の ForgeKairos インスタンスを並行して実行しても、互いのキーチェーンエントリを上書きしないようにします。"
 
 msgctxt "settings schema"
 msgid "The alt key\nSometimes also known as the 'meta' key"
@@ -2869,7 +2869,7 @@ msgstr "エディターは最終行を vertical_scroll_margin と同じ行数だ
 
 msgctxt "settings schema"
 msgid "The extensions that should be automatically installed by Zed.\n\nThis is used to make functionality provided by extensions (e.g., language support)\navailable out-of-the-box.\n\nDefault: {}"
-msgstr "Zed によって自動的にインストールされる拡張機能を指定します。\n\n拡張機能によって提供される機能 (例: 言語サポート) をすぐに利用できるようにします。\n\n既定値: {}"
+msgstr "ForgeKairos によって自動的にインストールされる拡張機能を指定します。\n\n拡張機能によって提供される機能 (例: 言語サポート) をすぐに利用できるようにします。\n\n既定値: {}"
 
 msgctxt "settings schema"
 msgid "The external program to run."
@@ -2937,7 +2937,7 @@ msgstr "ユーザー設定で表されるウィンドウコントロールボタ
 
 msgctxt "settings schema"
 msgid "The layout of window control buttons in the title bar (Linux only).\n\nThis can be set to \"platform_default\" to follow the system configuration, or\n\"standard\" to use Zed's built-in layout. For custom layouts, use a\nGNOME-style layout string like \"close:minimize,maximize\".\n\nDefault: \"platform_default\""
-msgstr "タイトルバー内のウィンドウ制御ボタンのレイアウトです (Linux のみ)。\n\nシステム設定に従う場合は \"platform_default\" に、または Zed の組み込みレイアウトを使用する場合は \"standard\" に設定できます。カスタムレイアウトには、\"close:minimize,maximize\" のような GNOME スタイルのレイアウト文字列を使用します。\n\n既定値: \"platform_default\""
+msgstr "タイトルバー内のウィンドウ制御ボタンのレイアウトです (Linux のみ)。\n\nシステム設定に従う場合は \"platform_default\" に、または ForgeKairos の組み込みレイアウトを使用する場合は \"standard\" に設定できます。カスタムレイアウトには、\"close:minimize,maximize\" のような GNOME スタイルのレイアウト文字列を使用します。\n\n既定値: \"platform_default\""
 
 msgctxt "settings schema"
 msgid "The list of custom Git hosting providers."
@@ -3033,11 +3033,11 @@ msgstr "モデルのモードです (例: thinking)"
 
 msgctxt "settings schema"
 msgid "The model's name in Zed's UI, such as in the model selector dropdown menu in the agent panel."
-msgstr "エージェントパネルのモデルセレクターのドロップダウンメニューなど、Zed の UI に表示されるモデル名です。"
+msgstr "エージェントパネルのモデルセレクターのドロップダウンメニューなど、ForgeKairos の UI に表示されるモデル名です。"
 
 msgctxt "settings schema"
 msgid "The model's name in Zed's UI, such as in the model selector dropdown menu in the assistant panel."
-msgstr "アシスタントパネルのモデルセレクターのドロップダウンメニューなど、Zed の UI に表示されるモデル名です。"
+msgstr "アシスタントパネルのモデルセレクターのドロップダウンメニューなど、ForgeKairos の UI に表示されるモデル名です。"
 
 msgctxt "settings schema"
 msgid "The model's name in the Anthropic API. e.g. claude-3-5-sonnet-latest, claude-3-opus-20240229, etc"
@@ -3085,7 +3085,7 @@ msgstr "エージェントパネルのユーザーメッセージに使用する
 
 msgctxt "settings schema"
 msgid "The name of the Zed theme to use."
-msgstr "使用する Zed テーマの名前です。"
+msgstr "使用する ForgeKairos テーマの名前です。"
 
 msgctxt "settings schema"
 msgid "The name of the icon theme to use."
@@ -3133,7 +3133,7 @@ msgstr "Node バイナリーのパスです。"
 
 msgctxt "settings schema"
 msgid "The path to the npm binary Zed should use (defaults to `.path/../npm`)."
-msgstr "Zed が使用する npm バイナリへのパスです (既定は `.path/../npm`)。"
+msgstr "ForgeKairos が使用する npm バイナリへのパスです (既定は `.path/../npm`)。"
 
 msgctxt "settings schema"
 msgid "The position of outline panel\n\nDefault: right (Agentic layout), left (Classic layout)"
@@ -3333,7 +3333,7 @@ msgstr "このモデルが Ollama の `think` パラメーターで受け付け�
 
 msgctxt "settings schema"
 msgid "This base keymap settings adjusts the default keybindings in Zed to be similar\nto other common code editors. By default, Zed's keymap closely follows VSCode's\nkeymap, with minor adjustments, this corresponds to the \"VSCode\" setting.\n\nDefault: VSCode"
-msgstr "このベースキーマップ設定は、Zed の既定キーバインドを他の一般的なコードエディターのキーバインドに近くなるよう調整します。既定では、Zed のキーマップは VSCode のキーマップに細かな調整を加えたものに近く、これは \"VSCode\" 設定に対応します。\n\n既定値: VSCode"
+msgstr "このベースキーマップ設定は、ForgeKairos の既定キーバインドを他の一般的なコードエディターのキーバインドに近くなるよう調整します。既定では、ForgeKairos のキーマップは VSCode のキーマップに細かな調整を加えたものに近く、これは \"VSCode\" 設定に対応します。\n\n既定値: VSCode"
 
 msgctxt "settings schema"
 msgid "Time in milliseconds until timeout error when connecting to a TCP debug adapter\n\nDefault: 2000ms"
@@ -3421,7 +3421,7 @@ msgstr "tree-sitter ハイライトと組み合わせて LSP セマンティッ�
 
 msgctxt "settings schema"
 msgid "Use LSP tasks over Zed language extension ones.\nIf no LSP tasks are returned due to error/timeout or regular execution,\nZed language extension tasks will be used instead.\n\nOther Zed tasks will still be shown:\n* Zed task from either of the task config file\n* Zed task from history (e.g. one-off task was spawned before)"
-msgstr "Zed の言語拡張機能タスクよりも LSP タスクを優先して使用します。エラー、タイムアウト、または通常の実行によって LSP タスクが返されない場合、代わりに Zed 言語拡張機能のタスクが使用されます。\n\nその他の Zed タスクは引き続き表示されます:\n* いずれかのタスク設定ファイルからの Zed タスク\n* 履歴からの Zed タスク (例: 以前に一回限りのタスクが起動された)"
+msgstr "ForgeKairos の言語拡張機能タスクよりも LSP タスクを優先して使用します。エラー、タイムアウト、または通常の実行によって LSP タスクが返されない場合、代わりに ForgeKairos 言語拡張機能のタスクが使用されます。\n\nその他の ForgeKairos タスクは引き続き表示されます:\n* いずれかのタスク設定ファイルからの ForgeKairos タスク\n* 履歴からの ForgeKairos タスク (例: 以前に一回限りのタスクが起動された)"
 
 msgctxt "settings schema"
 msgid "Use a custom line height."
@@ -3473,7 +3473,7 @@ msgstr "micromamba を使用"
 
 msgctxt "settings schema"
 msgid "Use only the files Zed had indexed"
-msgstr "Zed が索引したファイルのみを使用"
+msgstr "ForgeKairos が索引したファイルのみを使用"
 
 msgctxt "settings schema"
 msgid "Use platform default behavior."
@@ -3553,7 +3553,7 @@ msgstr "show_whitespaces が有効な場合に空白文字を表示するため�
 
 msgctxt "settings schema"
 msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
-msgstr "このプロファイルのオーバーライドを適用する前に使用するベース設定を指定します。\n\n- `user`: ユーザー設定の上に適用します (既定)\n- `default`: ユーザーのカスタマイズを無視して、Zed の既定設定の上に適用します"
+msgstr "このプロファイルのオーバーライドを適用する前に使用するベース設定を指定します。\n\n- `user`: ユーザー設定の上に適用します (既定)\n- `default`: ユーザーのカスタマイズを無視して、ForgeKairos の既定設定の上に適用します"
 
 msgctxt "settings schema"
 msgid "What format to display the hours in.\n\nDefault: hour12"
@@ -3965,7 +3965,7 @@ msgstr "エージェントパネルを左右にドックしたときに、可変
 
 msgctxt "settings schema"
 msgid "Whether the breakpoints should be reused across Zed sessions.\n\nDefault: true"
-msgstr "ブレークポイントを Zed セッション間で再利用するかどうかを設定します。\n\n既定値: true"
+msgstr "ブレークポイントを ForgeKairos セッション間で再利用するかどうかを設定します。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether the browser panel should open on startup, even if its dock was\nclosed last time.\n\nDefault: false"
@@ -4157,11 +4157,11 @@ msgstr "シグネチャヘルプのポップアップを自動的に表示する
 
 msgctxt "settings schema"
 msgid "Whether to automatically surround text with characters for you. For example,\nwhen you select text and type '(', Zed will automatically surround text with ().\n\nDefault: true"
-msgstr "テキストを文字で自動的に囲むかどうかを指定します。例えば、テキストを選択して '(' を入力すると、Zed は自動的にテキストを () で囲みます。\n\n既定値: true"
+msgstr "テキストを文字で自動的に囲むかどうかを指定します。例えば、テキストを選択して '(' を入力すると、ForgeKairos は自動的にテキストを () で囲みます。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to automatically type closing characters for you. For example,\nwhen you type '(', Zed will automatically add a closing ')' at the correct position.\n\nDefault: true"
-msgstr "閉じ括弧などの文字を自動的に入力するかどうかを指定します。例えば、'(' を入力すると、Zed は正しい位置に閉じ括弧 ')' を自動的に追加します。\n\n既定値: true"
+msgstr "閉じ括弧などの文字を自動的に入力するかどうかを指定します。例えば、'(' を入力すると、ForgeKairos は正しい位置に閉じ括弧 ')' を自動的に追加します。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to build dev container images with BuildKit.\n\nWhen unset, Zed auto-detects BuildKit by probing for the `buildx` CLI\nplugin. Set to `false` to force the classic Docker builder, which is\nrequired for Docker-compatible engines that lack an integrated BuildKit\n(e.g. Apple Container via a Docker-API bridge), where BuildKit builds\ncannot resolve locally-built images.\n\nDefault: null (auto-detect)"
@@ -4189,7 +4189,7 @@ msgstr "Enter キーを押したときに Markdown リストを続けるかど�
 
 msgctxt "settings schema"
 msgid "Whether to disable all AI features in Zed.\n\nDefault: false"
-msgstr "Zed のすべての AI 機能を無効にするかどうかを指定します。\n\n既定値: false"
+msgstr "ForgeKairos のすべての AI 機能を無効にするかどうかを指定します。\n\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether to display Agent review buttons in the editor toolbar.\nOnly applicable while reviewing a file edited by the Agent.\n\nDefault: true"
@@ -4253,7 +4253,7 @@ msgstr "エディターで単語の差分ハイライトを有効にするかど
 
 msgctxt "settings schema"
 msgid "Whether to expose this window over the loopback IDE server, so that\nexternal agents such as the Claude Code CLI can read the open editors,\nthe selection and the diagnostics, and show diffs inside Zed.\n\nDefault: false"
-msgstr "このウィンドウをループバックの IDE サーバーで公開し、Claude Code CLI などの外部のエージェントが、開いているエディター、選択範囲、診断を読んだり、Zed の中で差分を表示したりできるようにするかどうか。\n\n既定値: false"
+msgstr "このウィンドウをループバックの IDE サーバーで公開し、Claude Code CLI などの外部のエージェントが、開いているエディター、選択範囲、診断を読んだり、ForgeKairos の中で差分を表示したりできるようにするかどうか。\n\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether to fetch LSP completions or not.\n\nDefault: true"
@@ -4277,7 +4277,7 @@ msgstr "デバッグアダプターロガーに追加する際に DAP メッセ�
 
 msgctxt "settings schema"
 msgid "Whether to give agents Zed's IDE tools (the `zed` MCP server: highlights,\nannotations, code tours, hover, definitions, references and symbol\nsearch), in the Claude Code CLI tabs and in external agents' sessions\nalike. Independent of `enabled`: the server starts for them on demand\nand writes no lock file unless `enabled` is on.\n\nDefault: true"
-msgstr "Claude Code CLI のタブでも外部のエージェントのセッションでも、エージェントに Zed の IDE のツール (`zed` MCP サーバー: ハイライト、注釈、コードツアー、ホバー、定義、参照、シンボル検索) を渡すかどうか。`enabled` とは独立しています。サーバーはエージェントのために必要に応じて起動し、`enabled` がオンでない限りロックファイルを書きません。\n\n既定値: true"
+msgstr "Claude Code CLI のタブでも外部のエージェントのセッションでも、エージェントに ForgeKairos の IDE のツール (`zed` MCP サーバー: ハイライト、注釈、コードツアー、ホバー、定義、参照、シンボル検索) を渡すかどうか。`enabled` とは独立しています。サーバーはエージェントのために必要に応じて起動し、`enabled` がオンでない限りロックファイルを書きません。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to have edit cards in the agent panel expanded, showing a preview of the full diff.\n\nDefault: true"
@@ -4357,7 +4357,7 @@ msgstr "レンダリングされた Markdown コンテンツの幅を制限す�
 
 msgctxt "settings schema"
 msgid "Whether to log messages between active debug adapters and Zed\n\nDefault: true"
-msgstr "アクティブなデバッグアダプターと Zed 間のメッセージをログに記録するかどうかを指定します\n\n既定値: true"
+msgstr "アクティブなデバッグアダプターと ForgeKairos 間のメッセージをログに記録するかどうかを指定します\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to match case sensitively."
@@ -4401,7 +4401,7 @@ msgstr "CSV / TSV などの表形式ファイルを、表 (グリッド) で開�
 
 msgctxt "settings schema"
 msgid "Whether to optimize Zed's interface for assistive technology such as\nscreen readers.\n\nDefault: false"
-msgstr "スクリーンリーダーなどの支援技術向けに Zed のインターフェースを最適化するかどうかを設定します。\n\n既定値: false"
+msgstr "スクリーンリーダーなどの支援技術向けに ForgeKairos のインターフェースを最適化するかどうかを設定します。\n\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether to perform linked edits of associated ranges, if the language server supports it.\nFor example, when editing opening <html> tag, the contents of the closing </html> tag will be edited as well.\n\nDefault: true"
@@ -4453,7 +4453,7 @@ msgstr "プロジェクトパネルで自動的に表示するかどうかを設
 
 msgctxt "settings schema"
 msgid "Whether to run agent terminal commands outside the OS sandbox, with\nZed's own permissions (the inverse of the settings UI's \"enable sandbox\"\nswitch). When true, the sandboxed terminal tool is not exposed and the\nsystem prompt omits the sandbox section, so the model uses the plain\n`terminal` tool; on Windows, WSL sandbox setup is skipped. Such commands\nare never auto-approved: each one asks first. Only the user sets this;\nthe agent has no way to ask for a command to run outside the sandbox.\nDefault: false"
-msgstr "エージェントのターミナルのコマンドを OS のサンドボックスの外で、Zed 自身の権限で実行するかどうか (設定画面の「サンドボックスを有効にする」スイッチの逆)。true にすると、サンドボックスのターミナルのツールを渡さず、システムプロンプトからサンドボックスの節を省くので、モデルは通常の `terminal` ツールを使います。Windows では WSL のサンドボックスの準備を省きます。このようなコマンドは自動承認せず、毎回確認します。これを設定できるのはユーザーだけで、エージェントがコマンドをサンドボックスの外で実行するよう求める手段はありません。\n既定値: false"
+msgstr "エージェントのターミナルのコマンドを OS のサンドボックスの外で、ForgeKairos 自身の権限で実行するかどうか (設定画面の「サンドボックスを有効にする」スイッチの逆)。true にすると、サンドボックスのターミナルのツールを渡さず、システムプロンプトからサンドボックスの節を省くので、モデルは通常の `terminal` ツールを使います。Windows では WSL のサンドボックスの準備を省きます。このようなコマンドは自動承認せず、毎回確認します。これを設定できるのはユーザーだけで、エージェントがコマンドをサンドボックスの外で実行するよう求める手段はありません。\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether to run the context server on the remote server when using remote development.\n\nIf this is false, the context server will always run on the local machine.\n\nDefault: false"
@@ -4789,7 +4789,7 @@ msgstr "コマンドパレットでの並べ替えにコマンド履歴のラン
 
 msgctxt "settings schema"
 msgid "Whether to use gitignored files when searching.\nOnly the file Zed had indexed will be used, not necessary all the gitignored files.\n\nDefault: Smart"
-msgstr "検索時に gitignore されたファイルを使用するかどうかを設定します。Zed が索引したファイルのみが使用され、gitignore 対象のすべてのファイルが使用されるとは限りません。\n\n既定値: Smart"
+msgstr "検索時に gitignore されたファイルを使用するかどうかを設定します。ForgeKairos が索引したファイルのみが使用され、gitignore 対象のすべてのファイルが使用されるとは限りません。\n\n既定値: Smart"
 
 msgctxt "settings schema"
 msgid "Whether to use language servers to provide code intelligence.\n\nDefault: true"
@@ -4797,11 +4797,11 @@ msgstr "コードインテリジェンスを提供するために言語サーバ
 
 msgctxt "settings schema"
 msgid "Whether to use the system provided dialogs for Open and Save As.\nWhen set to false, Zed will use the built-in keyboard-first pickers.\n\nDefault: true"
-msgstr "開くおよび名前を付けて保存にシステム提供のダイアログを使用するかどうかを設定します。false に設定すると、Zed はキーボード優先の組み込みピッカーを使用します。\n\n既定値: true"
+msgstr "開くおよび名前を付けて保存にシステム提供のダイアログを使用するかどうかを設定します。false に設定すると、ForgeKairos はキーボード優先の組み込みピッカーを使用します。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to use the system provided prompts.\nWhen set to false, Zed will use the built-in prompts.\nNote that this setting has no effect on Linux, where Zed will always\nuse the built-in prompts.\n\nDefault: true"
-msgstr "システム提供のダイアログを使用するかどうかを設定します。false に設定すると、Zed は組み込みダイアログを使用します。この設定は Linux では効果がなく、Zed は常に組み込みダイアログを使用します。\n\n既定値: true"
+msgstr "システム提供のダイアログを使用するかどうかを設定します。false に設定すると、ForgeKairos は組み込みダイアログを使用します。この設定は Linux では効果がなく、ForgeKairos は常に組み込みダイアログを使用します。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to use tree-sitter bracket queries to detect and colorize the brackets in the editor.\n\nDefault: false"
@@ -4893,11 +4893,11 @@ msgstr "黄色の ANSI ターミナルカラーです。"
 
 msgctxt "settings schema"
 msgid "Zed draws its own window decorations/titlebar (client-side decoration)."
-msgstr "Zed が独自のウィンドウ装飾/タイトルバー (クライアントサイド装飾) を描画します。"
+msgstr "ForgeKairos が独自のウィンドウ装飾/タイトルバー (クライアントサイド装飾) を描画します。"
 
 msgctxt "settings schema"
 msgid "Zed's Prettier integration settings.\nAllows to enable/disable formatting with Prettier\nand configure default Prettier, used when no project-level Prettier installation is found.\n\nDefault: off"
-msgstr "Zed の Prettier 統合設定です。Prettier によるフォーマットを有効/無効にします。プロジェクトレベルの Prettier インストールが見つからない場合に使用される既定の Prettier を設定します。\n\n既定値: off"
+msgstr "ForgeKairos の Prettier 統合設定です。Prettier によるフォーマットを有効/無効にします。プロジェクトレベルの Prettier インストールが見つからない場合に使用される既定の Prettier を設定します。\n\n既定値: off"
 
 msgctxt "settings schema"
 msgid "clangd's memory use: its index mode, worker count and a limit at which it\nis restarted."

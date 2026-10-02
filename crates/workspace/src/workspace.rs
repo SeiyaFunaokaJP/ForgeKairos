@@ -14954,7 +14954,10 @@ mod tests {
             });
         });
         cx.executor().run_until_parked();
-        assert_eq!(cx.window_title().as_deref(), Some("Zed — root1, root2"));
+        assert_eq!(
+            cx.window_title().as_deref(),
+            Some("ForgeKairos — root1, root2")
+        );
 
         let item = cx.new(|cx| {
             TestItem::new(cx).with_project_items(&[TestProjectItem::new_in_worktree(
@@ -14971,7 +14974,7 @@ mod tests {
         let expected_file_path = path!("/root1/src/one.txt");
         assert_eq!(
             cx.window_title().as_deref(),
-            Some(format!("Zed — root1, root2 — one — {expected_file_path}").as_str())
+            Some(format!("ForgeKairos — root1, root2 — one — {expected_file_path}").as_str())
         );
     }
 

@@ -315,7 +315,7 @@ msgid "Some files have unresolved conflicts. Resolve them first."
 msgstr "コンフリクトが解決されていないファイルがあります。先に解決してください。"
 
 msgid "Starting MCP server `{id}` timed out. See the Zed log for details."
-msgstr "MCP サーバー `{id}` の起動がタイムアウトしました。詳細は Zed のログを確認してください。"
+msgstr "MCP サーバー `{id}` の起動がタイムアウトしました。詳細は ForgeKairos のログを確認してください。"
 
 msgid "Starting language server \"{server_name}\" was called off, so the approval of its executable is not awaited"
 msgstr "言語サーバー「{server_name}」の起動は取りやめられたため、実行ファイルの承認を待ちません"
@@ -351,10 +351,10 @@ msgid "The Windows program `{path}` cannot run inside the WSL sandbox. Set the a
 msgstr "Windows のプログラム `{path}` は WSL のサンドボックスの中では実行できません。エージェントの設定で Linux のプログラムの絶対パス (`/usr/local/bin/...` など) を指定するか、サンドボックスの外で起動してください。"
 
 msgid "The Zed server on the remote host is too old for this rewrite. Update Zed on the remote host."
-msgstr "接続先の Zed のサーバーが古いため、この書き換えは使えません。接続先の Zed を更新してください。"
+msgstr "接続先の ForgeKairos のサーバーが古いため、この書き換えは使えません。接続先の ForgeKairos を更新してください。"
 
 msgid "The Zed server on the remote host is too old to search with these conditions. Update Zed on the remote host."
-msgstr "接続先の Zed のサーバーが古いため、この条件では検索できません。接続先の Zed を更新してください。"
+msgstr "接続先の ForgeKairos のサーバーが古いため、この条件では検索できません。接続先の ForgeKairos を更新してください。"
 
 msgid "The agent sandbox the remote host prepared does not fit this editor's policy: {error}"
 msgstr "接続先が用意したエージェントのサンドボックスは、このエディターの方針と合いません: {error}"
@@ -380,8 +380,8 @@ msgstr "チェックアウトしているブランチが「{current}」に変わ
 msgid "The chosen files have no changes."
 msgstr "選んだファイルには変更がありません。"
 
-msgid "The connected remote host does not support file transfer. Update zed-remote-server."
-msgstr "接続中のリモートホストはファイル転送に対応していません。zed-remote-server を更新してください。"
+msgid "The connected remote host does not support file transfer. Update the Zed server on the remote host."
+msgstr "接続中のリモートホストはファイル転送に対応していません。リモートホストの ForgeKairos サーバーを更新してください。"
 
 msgid "The connection to the remote host is closed"
 msgstr "接続先との接続は閉じられています"

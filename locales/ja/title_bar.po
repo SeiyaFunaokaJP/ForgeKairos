@@ -102,10 +102,10 @@ msgid "Panel Layout"
 msgstr "パネルレイアウト"
 
 msgid "Please restart Zed to Collaborate"
-msgstr "Zed を再起動して更新を適用"
+msgstr "ForgeKairos を再起動して更新を適用"
 
 msgid "Please update Zed to Collaborate"
-msgstr "Zed を最新版に更新してください"
+msgstr "ForgeKairos を最新版に更新してください"
 
 msgid "Recent Projects"
 msgstr "最近のプロジェクト"
@@ -114,7 +114,7 @@ msgid "Remote Project"
 msgstr "リモートプロジェクト"
 
 msgid "Restart to update Zed"
-msgstr "再起動して Zed を更新"
+msgstr "再起動して ForgeKairos を更新"
 
 msgid "Restricted Mode"
 msgstr "制限モード"

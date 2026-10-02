@@ -252,3 +252,40 @@ async fn an_open_axis_survives_an_untouched_empty_field(cx: &mut TestAppContext)
         "},
     );
 }
+
+/// The button beside an open axis takes the arrow away, which the empty far
+/// end field cannot do by itself; an axis with no label left goes with it.
+#[gpui::test]
+async fn the_arrow_of_an_open_axis_can_be_removed(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(
+        indoc! {"
+            ```mermaid
+            quadrantChartˇ
+                x-axis 到達範囲 -->
+                y-axis -->
+                A: [0.1, 0.2]
+            ```
+        "},
+        cx,
+    )
+    .await;
+
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            modal.remove_quadrant_open_arrow(false, cx);
+            modal.remove_quadrant_open_arrow(true, cx);
+            modal.confirm(&menu::SecondaryConfirm, window, cx)
+        })
+    });
+
+    assert_eq!(
+        cx.update_editor(|editor, _window, cx| editor.text(cx)),
+        indoc! {"
+            ```mermaid
+            quadrantChart
+                x-axis 到達範囲
+                A: [0.1, 0.2]
+            ```
+        "},
+    );
+}

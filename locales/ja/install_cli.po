@@ -1,0 +1,27 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "CLI should already be installed"
+msgstr "CLI はすでにインストールされているはずです"
+
+msgid "Cannot install the Zed CLI"
+msgstr "ForgeKairos の CLI をインストールできません"
+
+msgid "Couldn't install the Zed CLI"
+msgstr "ForgeKairos の CLI をインストールできませんでした"
+
+msgid "If you installed Zed from our official release add ~/.local/bin to your PATH.\n\nIf you installed Zed from a different source like your package manager, then you may need to create an alias/symlink to `{cli_name}` manually."
+msgstr "公式リリースから ForgeKairos をインストールした場合は、~/.local/bin を PATH に追加してください。\n\nパッケージマネージャーなど別の方法でインストールした場合は、`{cli_name}` へのエイリアスかシンボリックリンクを手動で作る必要があるかもしれません。"
+
+msgid "Installed `{cli_name}` to {path}. You can launch {app} from your terminal."
+msgstr "`{cli_name}` を {path} にインストールしました。ターミナルから {app} を起動できます。"
+
+msgid "Show me how"
+msgstr "方法を見る"
+
+msgid "You can add `{cli_name}` to your PATH manually."
+msgstr "`{cli_name}` は手動で PATH に追加できます。"

@@ -2725,6 +2725,11 @@ fn model_id_to_selection(model_id: &AgentModelId, cx: &App) -> LanguageModelSele
 
 pub static ZED_AGENT_ID: LazyLock<AgentId> = LazyLock::new(|| AgentId::new("Zed Agent"));
 
+/// What the user sees the native agent called. Threads are stored under
+/// [`ZED_AGENT_ID`], so that stays upstream's.
+pub const NATIVE_AGENT_DISPLAY_NAME: &str =
+    branding::concat_const!(branding::CURRENT.product_name, " Agent");
+
 impl acp_thread::AgentConnection for NativeAgentConnection {
     fn agent_id(&self) -> AgentId {
         ZED_AGENT_ID.clone()

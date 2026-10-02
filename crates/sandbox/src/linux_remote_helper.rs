@@ -4104,7 +4104,7 @@ fn plan_subtree(
         }
         // An entry leading to a carve target is carved in turn instead of being
         // granted wholesale — this is what keeps `~/.config/gh` and
-        // `~/.local/share/zed-jp-enhance` protected while `~/.config` and
+        // `~/.local/share/forgekairos` protected while `~/.config` and
         // `~/.local` are inside a writable home directory.
         if carve_targets
             .iter()

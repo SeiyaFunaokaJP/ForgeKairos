@@ -60,7 +60,7 @@ msgid "Technical details"
 msgstr "技術的な詳細"
 
 msgid "The Zed server on the remote host is too old to start agents in a sandbox. Reconnect to update the server."
-msgstr "接続先の Zed のサーバーが古いため、エージェントをサンドボックスで起動できません。接続し直してサーバーを更新してください。"
+msgstr "接続先の ForgeKairos のサーバーが古いため、エージェントをサンドボックスで起動できません。接続し直してサーバーを更新してください。"
 
 msgid "The agent was started outside the sandbox (on this PC), so its commands run on this PC too (Windows commands don't run in the WSL sandbox)"
 msgstr "エージェントをサンドボックスの外 (この PC) で起動しているため、コマンドもこの PC で実行します (WSL のサンドボックスでは Windows のコマンドが動かないため)"
@@ -81,7 +81,7 @@ msgid "The project's folders span two WSL distributions (`{first}`, `{second}`),
 msgstr "プロジェクトのフォルダーが 2 つの WSL ディストリビューション (`{first}`、`{second}`) にまたがっており、サンドボックスは 1 つのディストリビューションでしか動きません。"
 
 msgid "The reason was written to Zed's log."
-msgstr "理由は Zed のログに記録しました。"
+msgstr "理由は ForgeKairos のログに記録しました。"
 
 msgid "The request to the sandbox is invalid."
 msgstr "サンドボックスへの要求の内容が不正です。"
@@ -93,7 +93,7 @@ msgid "The sandbox is turned off in the settings. The agent runs inside WSL, so 
 msgstr "設定でサンドボックスが無効になっています。エージェントは WSL の中で動いているため、コマンドも同じ WSL の中で書き込みと通信の制限を外して実行します"
 
 msgid "The sandbox's bridge executable wasn't found. Zed's installation may be damaged."
-msgstr "サンドボックスのブリッジ実行ファイルを見つけられませんでした。Zed のインストールが壊れている可能性があります。"
+msgstr "サンドボックスのブリッジ実行ファイルを見つけられませんでした。ForgeKairos のインストールが壊れている可能性があります。"
 
 msgid "The settings allow writing anywhere in the file system"
 msgstr "設定でファイルシステムへの書き込みがすべて許可されています"

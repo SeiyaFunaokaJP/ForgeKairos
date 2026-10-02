@@ -6,6 +6,10 @@ in `assets/licenses.md`, which `script/generate-licenses` builds from the
 dependency graph at release time; upstream Zed's own licenses are in
 `LICENSE-GPL` and `LICENSE-APACHE`.
 
+ForgeKairos is a fork of Zed, Copyright Zed Industries, Inc., under the licenses in
+`LICENSE-GPL` and `LICENSE-APACHE`. "Zed" is a trademark of Zed Industries, Inc.;
+ForgeKairos is not affiliated with Zed Industries.
+
 Add an entry here whenever the fork starts carrying, modifying or relying on
 third-party material outside that graph. Record the exact version, the license,
 the copyright notice, whether it is distributed with the application, and what

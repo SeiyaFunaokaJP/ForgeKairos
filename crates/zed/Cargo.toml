@@ -1,5 +1,5 @@
 [package]
-description = "The fast, collaborative code editor."
+description = "ForgeKairos, a fork of the Zed code editor."
 edition.workspace = true
 name = "zed"
 version = "1.21.0"

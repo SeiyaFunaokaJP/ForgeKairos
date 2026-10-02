@@ -235,12 +235,18 @@ impl EventEmitter<WorktreeStoreEvent> for WorktreeStore {}
 
 /// ADR-F49: what an agent is told when the host that holds the files never
 /// confirmed where a path it asked to read leads.
-const UNCONFIRMED_VERIFIED_READ: &str = "The remote server did not confirm that this path leads to \
-    the file it names, so nothing was read. A remote server from an older Zed cannot do this; \
-    reconnect to update it.";
+const UNCONFIRMED_VERIFIED_READ: &str = branding::concat_const!(
+    "The remote server did not confirm that this path leads to the file it names, so nothing \
+     was read. A remote server from an older ",
+    branding::CURRENT.product_name,
+    " cannot do this; reconnect to update it."
+);
 
-const UNVERIFIABLE_COLLAB_READ: &str = "Zed cannot check where this path leads in a project shared \
-    by someone else, so it did not read it.";
+const UNVERIFIABLE_COLLAB_READ: &str = branding::concat_const!(
+    branding::CURRENT.product_name,
+    " cannot check where this path leads in a project shared by someone else, so it did not \
+     read it."
+);
 
 /// ADR-F49: the remote server's answer to a verified read. No answer in time,
 /// or an answer that nothing handles such a request — a server from before

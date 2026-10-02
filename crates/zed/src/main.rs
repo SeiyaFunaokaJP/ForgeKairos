@@ -6,17 +6,18 @@ mod watcher_debug;
 mod zed;
 
 // zed-jp-enhance: upstream asserted APP_NAME_LOWERCASE == the binary name.
-// This fork deliberately decouples them: the binary stays `zed` (Zed.exe) so the
-// updater, installer, and remote-server naming keep working, while APP_NAME is
-// `Zed-JP-Enhance` so our data/config/cache/state directories never collide with
-// an official Zed install. The binary name is what we actually depend on staying
-// stable, so assert that instead.
+// This fork deliberately decouples them: the Cargo binary stays `zed`, which
+// upstream's build and bundle scripts expect, while the executable they install
+// and APP_NAME (the data/config/cache/state directories) take their names from
+// `branding::CURRENT`, so they never collide with an official Zed install. The
+// Cargo binary name is what we actually depend on staying stable, so assert
+// that instead.
 const _: () = assert!(
     env!("CARGO_BIN_NAME")
         .as_bytes()
         .eq_ignore_ascii_case(b"zed"),
-    "zed-jp-enhance keeps the binary named `zed` for updater/installer compatibility; \
-     APP_NAME (data dir) is intentionally separate — see crates/paths/src/paths.rs.",
+    "the Cargo binary stays named `zed` for the build and bundle scripts; the installed \
+     executable and APP_NAME (data dir) are named in crates/branding.",
 );
 
 use agent_ui::AgentPanel;
@@ -96,7 +97,7 @@ fn build_application() -> Application {
 }
 
 fn files_not_created_on_launch(errors: HashMap<io::ErrorKind, Vec<&Path>>) {
-    let message = "Zed failed to launch";
+    let message = branding::concat_const!(branding::CURRENT.product_name, " failed to launch");
     let error_details = errors
         .into_iter()
         .flat_map(|(kind, paths)| {
@@ -158,7 +159,8 @@ fn fail_to_open_window_async(e: anyhow::Error, cx: &mut AsyncApp) {
 
 fn fail_to_open_window(e: anyhow::Error, _cx: &mut App) {
     eprintln!(
-        "Zed failed to open a window: {e:?}. See https://zed.dev/docs/linux for troubleshooting steps."
+        "{} failed to open a window: {e:?}. See https://zed.dev/docs/linux for troubleshooting steps.",
+        branding::CURRENT.product_name
     );
     #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
     {
@@ -178,17 +180,18 @@ fn fail_to_open_window(e: anyhow::Error, _cx: &mut App) {
             proxy
                 .add_notification(
                     notification_id,
-                    Notification::new("Zed failed to launch")
-                        .body(Some(
-                            format!(
-                                "{e:?}. See https://zed.dev/docs/linux for troubleshooting steps."
-                            )
+                    Notification::new(branding::concat_const!(
+                        branding::CURRENT.product_name,
+                        " failed to launch"
+                    ))
+                    .body(Some(
+                        format!("{e:?}. See https://zed.dev/docs/linux for troubleshooting steps.")
                             .as_str(),
-                        ))
-                        .priority(Priority::High)
-                        .icon(ashpd::desktop::Icon::with_names(&[
-                            "dialog-question-symbolic",
-                        ])),
+                    ))
+                    .priority(Priority::High)
+                    .icon(ashpd::desktop::Icon::with_names(&[
+                        "dialog-question-symbolic",
+                    ])),
                 )
                 .await
                 .ok();
@@ -357,7 +360,11 @@ fn main() {
             client::telemetry::os_name(),
             client::telemetry::os_version(),
         );
-        println!("Zed System Specs (from CLI):\n{}", system_specs);
+        println!(
+            "{} System Specs (from CLI):\n{}",
+            branding::CURRENT.product_name,
+            system_specs
+        );
         return;
     }
 
@@ -549,8 +556,11 @@ fn main() {
         zed::watch_settings_files(fs.clone(), cx);
         handle_keymap_file_changes(user_keymap_file_rx, user_keymap_watcher, cx);
 
+        // `zed-compatible` keeps services that recognize upstream's clients
+        // treating this one the same way.
         let user_agent = format!(
-            "Zed/{} ({}; {})",
+            "{}/{} (zed-compatible; {}; {})",
+            branding::CURRENT.product_name,
             AppVersion::global(cx),
             std::env::consts::OS,
             std::env::consts::ARCH
@@ -794,6 +804,9 @@ fn main() {
             app_state.fs.clone(),
             app_state.client.http_client(),
         );
+        if args.user_data_dir.is_some() {
+            prompt_store::rules_to_skills_migration::mark_isolated_profile(cx);
+        }
         agent_ui::init(
             app_state.fs.clone(),
             prompt_builder,

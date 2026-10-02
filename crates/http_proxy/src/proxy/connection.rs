@@ -882,12 +882,16 @@ fn deny_request(
     let (proxy_token, policy_name, advice) = match &reason {
         DenyReason::NotPermittedByPolicy { .. } => (
             "zed-egress-proxy",
-            "the Zed network allowlist",
+            branding::concat_const!("the ", branding::CURRENT.product_name, " network allowlist"),
             "To proceed, add the host to `allowed_hosts` in network_allowlist.json.",
         ),
         _ => (
             "zed-sandbox-proxy",
-            "the Zed sandbox network policy",
+            branding::concat_const!(
+                "the ",
+                branding::CURRENT.product_name,
+                " sandbox network policy"
+            ),
             "To proceed, ask the user to approve the host on the next terminal call.",
         ),
     };

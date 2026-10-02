@@ -2,9 +2,9 @@
 
 ---
 
-# zed-jp-enhance (このリポジトリについて)
+# ForgeKairos (このリポジトリについて。旧名 zed-jp-enhance)
 
-Zed のフォーク (基点 v1.17.2)。履歴は upstream に繋がっており、upstream のリリースタグを `git merge` で
+Zed のフォーク (基点 v1.17.2、現在 v1.21.0 ベース)。製品名と識別子は `crates/branding` に集約してある (画面の文は `locales/README.md` の「製品名」の節)。履歴は upstream に繋がっており、upstream のリリースタグを `git merge` で
 1 版ずつ取り込む (ADR-F63。rebase はしない。upstream のタグは `refs/upstream/tags/*`)。
 多言語 UI (まず日本語と英語) + ローカル LLM 統制 (egress deny-by-default) を自前改造で足す。
 

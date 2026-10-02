@@ -305,8 +305,9 @@ fn format_type_layout(project: &Project, report: &TypeLayoutReport, cx: &App) ->
             } else {
                 writeln!(
                     output,
-                    "No struct, union, enum, typedef or macro named `{0}` was found in Zed's symbol index. It may be declared through a macro, in a file the index skips, or under another name: try `search_symbols` for `{0}`, or `grep` for `{0}`.",
-                    report.requested
+                    "No struct, union, enum, typedef or macro named `{0}` was found in {1}'s symbol index. It may be declared through a macro, in a file the index skips, or under another name: try `search_symbols` for `{0}`, or `grep` for `{0}`.",
+                    report.requested,
+                    branding::CURRENT.product_name
                 )
                 .ok();
             }

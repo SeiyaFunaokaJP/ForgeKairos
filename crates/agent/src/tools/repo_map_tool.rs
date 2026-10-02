@@ -1355,6 +1355,74 @@ mod tests {
         );
     }
 
+    /// "The last K" names a suffix of the map: files without parameters to drop
+    /// that come after the first compacted file are part of it, or the model
+    /// would take the compacted files before them for complete signatures.
+    #[gpui::test]
+    async fn test_repo_map_counts_the_whole_compacted_tail(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let mut tree = serde_json::Map::new();
+        for file in 0..10 {
+            let mut source = String::new();
+            for function in 0..3 {
+                source.push_str(&format!(
+                    "pub fn function_{file}_{function}(first_argument: u32, second_argument: u32) -> u32 {{ 0 }}\n"
+                ));
+            }
+            tree.insert(format!("file_{file}.rs"), json!(source));
+        }
+        // Sorted after the files with functions, so they sit in the compacted tail.
+        for file in 0..3 {
+            tree.insert(
+                format!("types_{file}.rs"),
+                json!(format!("pub struct Type{file};\n")),
+            );
+        }
+        fs.insert_tree(path!("/project"), serde_json::Value::Object(tree))
+            .await;
+        let project = Project::test(fs.clone(), [path!("/project").as_ref()], cx).await;
+        cx.update(|cx| project.read(cx).languages().add(language::rust_lang()));
+        cx.executor().run_until_parked();
+
+        let output = run_tool(
+            project,
+            RepoMapToolInput {
+                path: None,
+                max_bytes: Some(2_400),
+            },
+            cx,
+        )
+        .await
+        .unwrap();
+
+        assert!(
+            output.contains("13 of 13 files expanded with symbols (the last "),
+            "{output}"
+        );
+        for file in 0..3 {
+            assert!(output.contains(&format!("struct Type{file}")), "{output}");
+        }
+        let compacted_function_files = (0..10)
+            .filter(|file| output.contains(&format!("  pub fn function_{file}_0 [L1]")))
+            .count();
+        assert!((1..10).contains(&compacted_function_files), "{output}");
+        for file in 0..10 {
+            let compacted = output.contains(&format!("  pub fn function_{file}_0 [L1]"));
+            assert_eq!(
+                compacted,
+                file >= 10 - compacted_function_files,
+                "parameters stop at one file and stay dropped after it: {output}"
+            );
+        }
+        let tail = compacted_function_files + 3;
+        assert!(
+            output.contains(&format!("(the last {tail} without parameters)")),
+            "{output}"
+        );
+    }
+
     #[test]
     fn a_member_declarator_ends_where_its_item_ends() {
         assert_eq!(

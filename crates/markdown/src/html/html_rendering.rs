@@ -310,6 +310,9 @@ impl MarkdownElement {
                 .and_then(ParsedHtmlElement::source_range)
                 .unwrap_or_else(|| block.source_range.clone()),
         );
+        // The box centers what it holds, so a caption aligned any other way
+        // needs the box's whole width to be aligned in.
+        builder.push_div(div().w_full(), &block.source_range, markdown_end);
         self.render_html_elements(
             elements,
             &mut source_allocator,
@@ -318,6 +321,7 @@ impl MarkdownElement {
             window,
             cx,
         );
+        builder.pop_div();
     }
 
     fn push_html_spanning_cell(
@@ -662,6 +666,7 @@ impl MarkdownElement {
             if let Some(caption) = &table.caption {
                 self.render_html_table_caption(
                     caption,
+                    table.caption_text_align,
                     &table.source_range,
                     source_allocator,
                     builder,
@@ -707,6 +712,7 @@ impl MarkdownElement {
             if !table.caption_below {
                 self.render_html_table_caption(
                     caption,
+                    table.caption_text_align,
                     &table.source_range,
                     source_allocator,
                     builder,
@@ -835,7 +841,11 @@ impl MarkdownElement {
 
             // Whatever the row's own cells and the spans reaching into it from
             // above leave empty still needs a box, or the grid would pull the
-            // following rows up into the hole.
+            // following rows up into the hole. A `<tr>` with no cells of its
+            // own draws nothing, as in a browser, and so takes no height.
+            if row.columns.is_empty() {
+                continue;
+            }
             for column_index in 0..max_column_count {
                 if grid.is_occupied(row_index, column_index) {
                     continue;
@@ -861,6 +871,7 @@ impl MarkdownElement {
             if table.caption_below {
                 self.render_html_table_caption(
                     caption,
+                    table.caption_text_align,
                     &table.source_range,
                     source_allocator,
                     builder,
@@ -873,20 +884,30 @@ impl MarkdownElement {
         builder.pop_div();
     }
 
-    /// Draws a table's `<caption>` as a centered paragraph, the way a browser
-    /// centers it over the table.
+    /// Draws a table's `<caption>` as a paragraph over or under the table,
+    /// centered unless it asks for another `text-align`, as in a browser.
     fn render_html_table_caption(
         &self,
         caption: &HtmlParagraph,
+        text_align: Option<TextAlign>,
         source_range: &Range<usize>,
         source_allocator: &mut HtmlSourceAllocator,
         builder: &mut MarkdownElementBuilder,
         markdown_end: usize,
         cx: &mut App,
     ) {
-        self.push_markdown_paragraph(builder, source_range, markdown_end, Some(TextAlign::Center));
+        // The box centers what it holds, so a caption aligned any other way
+        // needs the box's whole width to be aligned in.
+        builder.push_div(div().w_full(), source_range, markdown_end);
+        self.push_markdown_paragraph(
+            builder,
+            source_range,
+            markdown_end,
+            Some(text_align.unwrap_or(TextAlign::Center)),
+        );
         self.render_html_paragraph(caption, source_allocator, builder, cx, markdown_end);
         self.pop_markdown_paragraph(builder);
+        builder.pop_div();
     }
 
     fn render_html_paragraph(
@@ -1283,6 +1304,22 @@ fn html_table_column_tracks(
     let fills_width = widths
         .iter()
         .any(|width| matches!(width, Some(HtmlColumnWidth::Fraction(_))));
+    // With no other column to take what the percentages leave, a browser
+    // hands it to them in proportion, so the table is not left with a gap on
+    // the right.
+    let fraction_total = widths
+        .iter()
+        .map(|width| match width {
+            Some(HtmlColumnWidth::Fraction(fraction)) => Some(*fraction),
+            _ => None,
+        })
+        .sum::<Option<f32>>();
+    // Dividing each share by the total, not multiplying by its reciprocal,
+    // keeps a vanishingly small total from scaling to infinity.
+    let fraction_divisor = match fraction_total {
+        Some(total) if total > 0. && total < 1. => total,
+        _ => 1.,
+    };
     let tracks = widths
         .iter()
         .enumerate()
@@ -1292,7 +1329,9 @@ fn html_table_column_tracks(
                 .copied()
                 .unwrap_or_default();
             match width {
-                Some(HtmlColumnWidth::Fraction(fraction)) => GridColumnWidth::Fraction(*fraction),
+                Some(HtmlColumnWidth::Fraction(fraction)) => {
+                    GridColumnWidth::Fraction(*fraction / fraction_divisor)
+                }
                 Some(HtmlColumnWidth::Pixels(pixels)) => GridColumnWidth::Content {
                     min: floor.max(px(*pixels)),
                 },
@@ -1332,11 +1371,15 @@ fn html_table_column_min_widths(
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use gpui::{Entity, TestAppContext, size};
+    use gpui::{Entity, GridColumnWidth, TestAppContext, size};
     use ui::prelude::*;
 
-    use super::{HtmlTableGrid, MAX_TABLE_COLUMNS, html_table_column_min_widths};
-    use crate::html::html_parser::{ParsedHtmlElement, ParsedHtmlTable, html_details_key};
+    use super::{
+        HtmlTableGrid, MAX_TABLE_COLUMNS, html_table_column_min_widths, html_table_column_tracks,
+    };
+    use crate::html::html_parser::{
+        HtmlColumnWidth, ParsedHtmlElement, ParsedHtmlTable, html_details_key,
+    };
     use crate::{
         CodeBlockRenderer, CopyButtonVisibility, Markdown, MarkdownElement, MarkdownOptions,
         MarkdownStyle,
@@ -2260,7 +2303,7 @@ mod tests {
     #[test]
     fn a_header_less_table_and_an_empty_row_still_have_a_grid() {
         // No `<thead>`, a header row spelled with `<th>` inside the body, and an
-        // empty `<tr>` the parser drops on the way in.
+        // empty `<tr>` that the header span reaches into, as in a browser.
         let table = parsed_table(concat!(
             "<table><tbody>",
             "<tr><th rowspan=\"2\">h</th><th>i</th></tr>",
@@ -2271,12 +2314,96 @@ mod tests {
         let grid = HtmlTableGrid::of(&table);
 
         assert_eq!(grid.column_count(), 2);
-        assert_eq!(
-            grid.cell_column(1, 0),
-            Some(1),
-            "the row under the header span starts beside it"
+        assert!(
+            grid.cell_column(1, 0).is_none(),
+            "the empty row has no cells"
         );
-        assert!(grid.cell_column(1, 1).is_none(), "and has nothing else");
+        assert!(grid.is_occupied(1, 0), "but the header span covers it");
+        assert_eq!(
+            grid.cell_column(2, 0),
+            Some(0),
+            "the row after the span starts at the first column"
+        );
+        assert!(grid.cell_column(2, 1).is_none(), "and has nothing else");
+    }
+
+    #[test]
+    fn percentages_short_of_the_whole_width_are_shared_out_when_no_column_takes_the_rest() {
+        let tracks = |widths: &[Option<HtmlColumnWidth>]| {
+            html_table_column_tracks(widths, None)
+                .map(|(tracks, _)| tracks)
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            tracks(&[
+                Some(HtmlColumnWidth::Fraction(0.2)),
+                Some(HtmlColumnWidth::Fraction(0.3)),
+            ]),
+            vec![
+                GridColumnWidth::Fraction(0.4),
+                GridColumnWidth::Fraction(0.6),
+            ]
+        );
+        assert_eq!(
+            tracks(&[Some(HtmlColumnWidth::Fraction(0.2)), None]),
+            vec![
+                GridColumnWidth::Fraction(0.2),
+                GridColumnWidth::Remainder { min: px(0.) },
+            ],
+            "a column with no width of its own takes what is left"
+        );
+        assert_eq!(
+            tracks(&[
+                Some(HtmlColumnWidth::Fraction(0.2)),
+                Some(HtmlColumnWidth::Pixels(100.)),
+            ]),
+            vec![
+                GridColumnWidth::Fraction(0.2),
+                GridColumnWidth::Content { min: px(100.) },
+            ],
+            "nor is a column of a fixed width given more"
+        );
+        assert_eq!(
+            tracks(&[Some(HtmlColumnWidth::Fraction(1e-40))]),
+            vec![GridColumnWidth::Fraction(1.0)],
+            "a vanishingly small total still shares out to the whole width"
+        );
+    }
+
+    #[test]
+    fn a_table_of_empty_rows_has_no_rows() {
+        let source = "<table><tr></tr></table>";
+        let children = crate::html::html_parser::parse_html_block(source, 0..source.len())
+            .map(|parsed| parsed.children)
+            .unwrap_or_default();
+        assert!(children.is_empty(), "nothing is drawn for it: {children:?}");
+    }
+
+    #[test]
+    fn an_empty_row_no_span_reaches_is_not_a_row() {
+        let table = parsed_table(concat!(
+            "<table><thead><tr></tr><tr><th>h</th></tr></thead><tbody>",
+            "<tr></tr><tr><td>a</td></tr><tr></tr><tr><td>b</td></tr><tr></tr>",
+            "</tbody></table>",
+        ));
+        assert_eq!(
+            (table.header.len(), table.body.len()),
+            (1, 2),
+            "the rows keep their stripes and the first keeps no top border"
+        );
+        let grid = HtmlTableGrid::of(&table);
+        assert_eq!(grid.cell_column(0, 0), Some(0));
+        assert_eq!(grid.cell_column(2, 0), Some(0));
+
+        let table = parsed_table(concat!(
+            "<table><tr><td rowspan=\"3\">a</td><td>b</td></tr>",
+            "<tr></tr><tr></tr><tr></tr><tr><td>c</td></tr></table>",
+        ));
+        assert_eq!(
+            table.body.len(),
+            4,
+            "the two empty rows the span reaches stay, the third does not"
+        );
     }
 
     #[gpui::test]
@@ -2708,6 +2835,78 @@ mod tests {
                     "{after:?} {table:?} {caption:?}"
                 );
             }
+        }
+    }
+
+    #[gpui::test]
+    fn test_an_empty_row_takes_no_height(cx: &mut TestAppContext) {
+        let gap = |source: &str, cx: &mut TestAppContext| {
+            let (rendered, table) = render_table_preview(source, px(600.), IN_ONE_BLOCK, cx);
+            assert!(table.is_some(), "the table should be drawn: {source:?}");
+            line_bounds(&rendered, "下").top() - line_bounds(&rendered, "上").bottom()
+        };
+        let without = gap(
+            "<table><tr><td>上</td><td>x</td></tr><tr><td>下</td><td>y</td></tr></table>\n",
+            cx,
+        );
+        let with = gap(
+            "<table><tr><td>上</td><td>x</td></tr><tr></tr><tr><td>下</td><td>y</td></tr></table>\n",
+            cx,
+        );
+        assert!(
+            (with - without).abs() < px(0.5),
+            "an empty row adds nothing between its neighbors: {with:?} vs {without:?}"
+        );
+        // The empty row a span reaches stays a row of the grid, and the column
+        // the span leaves free in it still gets no box.
+        let below_the_top = |source: &str, cx: &mut TestAppContext| {
+            let (rendered, table) = render_table_preview(source, px(600.), IN_ONE_BLOCK, cx);
+            let table = table.unwrap_or_else(|| panic!("the table should be drawn: {source:?}"));
+            line_bounds(&rendered, "下").top() - table.top()
+        };
+        let spanned_without = below_the_top(
+            "<table><tr><td>上</td><td>x</td></tr><tr><td>下</td><td>y</td></tr></table>\n",
+            cx,
+        );
+        let spanned_with = below_the_top(
+            "<table><tr><td rowspan=\"2\">上</td><td>x</td></tr><tr></tr><tr><td>下</td><td>y</td></tr></table>\n",
+            cx,
+        );
+        assert!(
+            (spanned_with - spanned_without).abs() < px(0.5),
+            "an empty row under a span adds nothing either: {spanned_with:?} vs {spanned_without:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn test_a_caption_keeps_its_own_text_align(cx: &mut TestAppContext) {
+        for (source, selector) in [
+            (
+                "<table><caption style=\"text-align: left\">表の題</caption><tr><td>とても長いセルの本文です</td></tr></table>\n",
+                IN_ONE_BLOCK,
+            ),
+            (
+                "<table>\n<caption style=\"text-align: left\">表の題</caption>\n<tr>\n<td>\n\nとても長いセルの本文です\n\n</td>\n</tr>\n</table>\n\n後ろ\n",
+                SPANNING_BLOCKS,
+            ),
+        ] {
+            let (rendered, table) = render_table_preview(source, px(600.), selector, cx);
+            let table = table.unwrap_or_else(|| panic!("the table should be drawn: {source:?}"));
+            let caption = line_bounds(&rendered, "表の題");
+            assert!(
+                (caption.left() - table.left()).abs() < px(2.),
+                "the caption starts at the table's left edge: {caption:?} {table:?} ({source:?})"
+            );
+            let caption_align = rendered
+                .lines
+                .iter()
+                .find(|line| line.layout.wrapped_text().contains("表の題"))
+                .map(|line| line.text_align);
+            assert_eq!(
+                caption_align,
+                Some(gpui::TextAlign::Left),
+                "the caption's own text-align reaches its text ({source:?})"
+            );
         }
     }
 }

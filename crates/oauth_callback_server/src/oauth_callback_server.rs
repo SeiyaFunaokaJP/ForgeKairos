@@ -33,7 +33,7 @@ pub fn oauth_callback_page(title: &str, message: &str, is_error: bool) -> String
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} — Zed</title>
+<title>{title} — {product_name}</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{
@@ -98,12 +98,13 @@ pub fn oauth_callback_page(title: &str, message: &str, is_error: bool) -> String
   </div>
   <h1>{title}</h1>
   <p>{message}</p>
-  <div class="brand">Zed</div>
+  <div class="brand">{product_name}</div>
 </div>
 </body>
 </html>"#,
         title = title,
         message = message,
+        product_name = branding::CURRENT.product_name,
         icon_bg = icon_bg,
         icon_svg = icon_svg,
     )
@@ -308,7 +309,10 @@ mod server {
                         200,
                         oauth_callback_page(
                             "Authorization Successful",
-                            "You can close this tab and return to Zed.",
+                            &format!(
+                                "You can close this tab and return to {}.",
+                                branding::CURRENT.product_name
+                            ),
                             false,
                         ),
                     ),
@@ -318,7 +322,10 @@ mod server {
                             400,
                             oauth_callback_page(
                                 "Authorization Failed",
-                                "Something went wrong. Please try again from Zed.",
+                                &format!(
+                                    "Something went wrong. Please try again from {}.",
+                                    branding::CURRENT.product_name
+                                ),
                                 true,
                             ),
                         )

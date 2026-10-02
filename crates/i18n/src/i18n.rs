@@ -169,7 +169,7 @@ fn lookup_in_current(context: Option<&str>, msgid: &str) -> Option<&'static str>
     }
     let catalog = current_catalog()?;
     let translation = catalog.lookup(context, msgid);
-    if translation.is_none() {
+    if translation.is_none() && !is_english(catalog) {
         diagnostics::report_missing(context, msgid);
     }
     translation
@@ -186,10 +186,20 @@ fn lookup_plural_in_current(
     }
     let catalog = current_catalog()?;
     let translation = catalog.lookup_plural(context, singular, plural, count);
-    if translation.is_none() {
+    if translation.is_none() && !is_english(catalog) {
         diagnostics::report_missing(context, singular);
     }
     translation
+}
+
+// The English catalog only renames the product, so every other message is meant to be
+// missing from it.
+fn is_english(catalog: &dyn Catalog) -> bool {
+    let locale = catalog.locale();
+    locale
+        .split('-')
+        .next()
+        .is_some_and(|language| language.eq_ignore_ascii_case("en"))
 }
 
 /// Translates a string known only at run time, such as a title from a table.
@@ -239,6 +249,8 @@ impl Drop for ForcedEnglish {
 
 /// Runs `build` with every lookup on this thread returning the English source text,
 /// for text a model reads: the display language must not change what it is told.
+/// The English catalog, which only puts the product's name in place of upstream's, is
+/// bypassed too, so a model reads the source text.
 ///
 /// Only what `build` does before it returns is in English. A future it returns is
 /// polled later, outside, and work it hands to another thread is not covered; use

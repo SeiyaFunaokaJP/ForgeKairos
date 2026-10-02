@@ -132,7 +132,7 @@ msgid "Ollama model not configured — configure a model before use"
 msgstr "Ollama のモデルが未設定です。使用する前にモデルを設定してください。"
 
 msgid "Open your settings to add sensitive paths for which Zed will never predict edits."
-msgstr "Zed が編集を予測しない機微なパスを追加するために、設定を開きます。"
+msgstr "ForgeKairos が編集を予測しない機微なパスを追加するために、設定を開きます。"
 
 msgid "Powered by Codestral"
 msgstr "Codestral を使用"

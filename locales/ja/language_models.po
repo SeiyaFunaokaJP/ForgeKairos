@@ -5,23 +5,98 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "API URL"
+msgstr "API URL"
+
+msgid "API key"
+msgstr "API キー"
+
+msgid "API key configured"
+msgstr "API キーは設定済み"
+
 msgid "API key configured for {}"
 msgstr "{} の API キーは設定済み"
 
 msgid "API key set in {env_var_name} environment variable"
 msgstr "API キーは環境変数 {env_var_name} で設定されています"
 
+msgid "Alternatively, you can connect to a remote llama.cpp server by specifying its URL and API key (set with --api-key, may not be required):"
+msgstr "リモートの llama.cpp サーバーに接続することもできます。URL と API キー (--api-key で設定したもの。不要な場合もあります) を指定してください:"
+
+msgid "Alternatively, you can connect to an LM Studio server by specifying its URL and API key (may not be required):"
+msgstr "LM Studio のサーバーに接続することもできます。URL と API キー (不要な場合もあります) を指定してください:"
+
+msgid "Alternatively, you can connect to an Ollama server by specifying its URL and API key (may not be required):"
+msgstr "Ollama のサーバーに接続することもできます。URL と API キー (不要な場合もあります) を指定してください:"
+
+msgid "Authentication failed for Vercel AI Gateway. Use a Vercel AI Gateway key (vck_...).\nCreate or manage keys in Vercel AI Gateway console.\nIf this persists, regenerate the key and update it in Vercel AI Gateway provider settings in Zed."
+msgstr "Vercel AI Gateway の認証に失敗しました。Vercel AI Gateway のキー (vck_...) を使ってください。\nキーは Vercel AI Gateway のコンソールで作成・管理できます。\n解決しない場合は、キーを作り直し、ForgeKairos の Vercel AI Gateway プロバイダーの設定で更新してください。"
+
+msgid "Browse GGUF Models"
+msgstr "GGUF モデルを探す"
+
 msgid "Cancel"
 msgstr "キャンセル"
+
+msgid "Click 'Connect' below to start using Ollama in Zed"
+msgstr "下の「接続」をクリックすると、ForgeKairos で Ollama を使い始められます"
+
+msgid "Click 'Connect' below to start using llama.cpp in Zed"
+msgstr "下の「接続」をクリックすると、ForgeKairos で llama.cpp を使い始められます"
+
+msgid "Connect"
+msgstr "接続"
 
 msgid "Connect without an API key (the server needs no authentication)"
 msgstr "API キーなしで接続する (認証不要のサーバー)"
 
+msgid "Connected"
+msgstr "接続済み"
+
 msgid "Connecting to {} without an API key (the server needs no authentication)"
 msgstr "{} には API キーなしで接続します (認証不要のサーバー)"
 
+msgid "Context Window"
+msgstr "コンテキストウィンドウ"
+
+msgid "Context Window: {}"
+msgstr "コンテキストウィンドウ: {}"
+
+msgid "Default: Discovered from the server"
+msgstr "既定: サーバーから取得"
+
+msgid "Default: Model specific"
+msgstr "既定: モデルごと"
+
+msgid "Download LM Studio"
+msgstr "LM Studio をダウンロード"
+
+msgid "Download Ollama"
+msgstr "Ollama をダウンロード"
+
+msgid "Download and install Ollama from"
+msgstr "Ollama をダウンロードしてインストール:"
+
+msgid "Get llama.cpp"
+msgstr "llama.cpp を入手"
+
+msgid "Install llama.cpp from"
+msgstr "llama.cpp をインストール:"
+
+msgid "LM Studio needs to be running with at least one model downloaded."
+msgstr "LM Studio を起動し、モデルを 1 つ以上ダウンロードしておく必要があります。"
+
 msgid "Loading credentials…"
 msgstr "認証情報を読み込んでいます…"
+
+msgid "Model Catalog"
+msgstr "モデルのカタログ"
+
+msgid "Open WebUI"
+msgstr "WebUI を開く"
+
+msgid "Refresh Models"
+msgstr "モデルの一覧を更新"
 
 msgid "Remove Provider"
 msgstr "プロバイダーを削除"
@@ -32,11 +107,38 @@ msgstr "リセット"
 msgid "Reset API Key"
 msgstr "キーをリセット"
 
+msgid "Reset API URL"
+msgstr "API URL をリセット"
+
+msgid "Run LLMs locally on your machine with Ollama, or connect to an Ollama server. Can provide access to Llama, Mistral, Gemma, and hundreds of other models."
+msgstr "Ollama でこの PC 上で LLM を動かすか、Ollama のサーバーに接続します。Llama、Mistral、Gemma など数百のモデルを使えます。"
+
+msgid "Run local LLMs like Llama, Phi, and Qwen with LM Studio."
+msgstr "LM Studio で Llama、Phi、Qwen などの LLM をローカルで動かします。"
+
+msgid "Run local LLMs like Llama, Phi, and Qwen."
+msgstr "Llama、Phi、Qwen などの LLM をローカルで動かします。"
+
+msgid "Run local models on your machine with LlamaCpp."
+msgstr "llama.cpp でこの PC 上でモデルを動かします。"
+
+msgid "Run local models on your machine with Ollama."
+msgstr "Ollama でこの PC 上でモデルを動かします。"
+
+msgid "Run open models locally with llama.cpp's built-in server, or connect to a remote llama.cpp server."
+msgstr "llama.cpp 内蔵のサーバーでオープンなモデルをローカルで動かすか、リモートの llama.cpp サーバーに接続します。"
+
 msgid "Sign In"
 msgstr "サインイン"
 
 msgid "Sign Out"
 msgstr "サインアウト"
+
+msgid "Sign in with your ChatGPT Plus or Pro subscription to use OpenAI models in Zed's agent."
+msgstr "ChatGPT Plus / Pro のサブスクリプションでサインインすると、ForgeKairos のエージェントで OpenAI のモデルを使えます。"
+
+msgid "Sign in with your SuperGrok subscription to use Grok models in Zed's agent."
+msgstr "SuperGrok のサブスクリプションでサインインすると、ForgeKairos のエージェントで Grok のモデルを使えます。"
 
 msgid "Signing in…"
 msgstr "サインインしています…"
@@ -44,14 +146,47 @@ msgstr "サインインしています…"
 msgid "Start Free Trial"
 msgstr "無料トライアルを開始"
 
+msgid "Start Ollama and download a model:"
+msgstr "Ollama を起動してモデルをダウンロード:"
+
+msgid "Start the server in router mode:"
+msgstr "サーバーをルーターモードで起動:"
+
 msgid "This can't be changed while an API key is set in the {env_var_name} environment variable."
 msgstr "環境変数 {env_var_name} で API キーが設定されているため変更できません。"
+
+msgid "To get your first model, try running"
+msgstr "最初のモデルを取得するには次を実行:"
 
 msgid "To reset your API key, unset the {env_var_name} environment variable."
 msgstr "API キーをリセットするには、環境変数 {env_var_name} を解除してください。"
 
+msgid "To use OpenCode models in Zed, you need an API key."
+msgstr "ForgeKairos で OpenCode のモデルを使うには API キーが必要です。"
+
+msgid "To use OpenCode models in Zed, you need an API key:"
+msgstr "ForgeKairos で OpenCode のモデルを使うには API キーが必要です:"
+
+msgid "To use Zed's agent with Bedrock, set a custom authentication strategy in your settings or use static credentials. Mantle-only models (e.g. GPT-5.5, GPT-5.4, Grok 4.3) additionally require IAM permissions for the `bedrock-mantle` endpoint."
+msgstr "ForgeKairos のエージェントで Bedrock を使うには、設定でカスタムの認証方式を指定するか、静的な認証情報を使ってください。Mantle 専用のモデル (GPT-5.5、GPT-5.4、Grok 4.3 など) には、さらに `bedrock-mantle` エンドポイントへの IAM 権限が必要です。"
+
+msgid "To use Zed's agent with Bedrock, you can set a custom authentication strategy through your settings file or use static credentials."
+msgstr "ForgeKairos のエージェントで Bedrock を使うには、設定ファイルでカスタムの認証方式を指定するか、静的な認証情報を使ってください。"
+
 msgid "To use Zed's agent with an {provider_name}-compatible provider, you need to add an API key."
 msgstr "{provider_name} 互換のプロバイダーをエージェントで使うには、API キーが必要です。"
 
+msgid "To use a local llama.cpp server:"
+msgstr "ローカルの llama.cpp サーバーを使うには:"
+
+msgid "To use local Ollama:"
+msgstr "ローカルの Ollama を使うには:"
+
+msgid "View All Models"
+msgstr "すべてのモデルを見る"
+
+msgid "You can also set the {access_key_id}, {secret_access_key} and {region} environment variables (or {bearer_token} for Bedrock API Key authentication) and restart Zed."
+msgstr "環境変数 {access_key_id}、{secret_access_key}、{region} (Bedrock の API キー認証では {bearer_token}) を設定して ForgeKairos を再起動することもできます。"
+
 msgid "You can also set the {env_var_name} environment variable and restart Zed."
-msgstr "または環境変数 {env_var_name} を設定し、Zed を再起動すると反映されます。"
+msgstr "または環境変数 {env_var_name} を設定し、ForgeKairos を再起動すると反映されます。"

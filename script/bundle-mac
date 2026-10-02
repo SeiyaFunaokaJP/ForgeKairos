@@ -263,7 +263,8 @@ function sign_app_binaries() {
     else
         dmg_target_directory="target/${target_triple}/${target_dir}"
         dmg_source_directory="${dmg_target_directory}/dmg"
-        dmg_file_path="${dmg_target_directory}/ForgeKairos-${arch_suffix}.dmg"
+        # The name the updater looks for in a release (`asset_name` in crates/auto_update).
+        dmg_file_path="${dmg_target_directory}/forgekairos-macos-${arch_suffix}.dmg"
         xcode_bin_dir_path="$(xcode-select -p)/usr/bin"
 
         rm -rf ${dmg_source_directory}

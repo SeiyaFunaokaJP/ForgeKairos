@@ -29,6 +29,12 @@ const MAX_HEADER_BYTES: u64 = 64 * 1024;
 /// fallback step scan the user's directory again.
 const MAX_TAG_LENGTH: usize = 64;
 
+/// The language of the source text. Its bundled directory holds no translation, only the
+/// product's own name in place of upstream's (`_brand.po`): it is installed when the UI is
+/// shown in English, and it is the last layer of every other language, so that a message a
+/// translation lacks names the product as English does.
+pub const ENGLISH: &str = "en";
+
 // `allow_missing` keeps the build working before any translation is checked in: git
 // does not track an empty `locales/` directory.
 #[derive(RustEmbed)]
@@ -430,6 +436,11 @@ pub fn available_locales(user_locales_directory: Option<&Path>) -> Vec<LocaleInf
     }
 
     for tag in embedded_tags() {
+        // English is always offered as the language of the source text, so its bundled
+        // directory does not add a second entry.
+        if tag.eq_ignore_ascii_case(ENGLISH) {
+            continue;
+        }
         let display_name = || {
             embedded_files(&tag)
                 .iter()
@@ -512,7 +523,9 @@ pub fn read_layers(
     }
     let mut problems = Vec::new();
     let mut layers = Vec::new();
-    for candidate in fallback_chain(&tag) {
+    let chain = fallback_chain(&tag);
+    for candidate in &chain {
+        let candidate = *candidate;
         if let Some(user_directory) = user_locales_directory
             .and_then(|directory| user_language_directory(directory, candidate))
         {
@@ -528,6 +541,18 @@ pub fn read_layers(
         if !files.is_empty() {
             layers.push(Layer {
                 name: format!("embedded/{candidate}"),
+                files,
+            });
+        }
+    }
+    let reaches_english = chain
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(ENGLISH));
+    if !layers.is_empty() && !reaches_english {
+        let files = embedded_files(ENGLISH);
+        if !files.is_empty() {
+            layers.push(Layer {
+                name: format!("embedded/{ENGLISH}"),
                 files,
             });
         }
@@ -569,6 +594,18 @@ pub fn load(
         log::warn!(target: "i18n", "{problem}");
     }
     Ok(Some(*CACHE.lock().entry(key).or_insert(catalog)))
+}
+
+/// The catalog to install when the UI is shown in English: the bundled product name in place
+/// of upstream's, under the user's own `<config_dir>/locales/en/*.po` if there are any.
+pub fn english_catalog(user_locales_directory: Option<&Path>) -> Option<&'static PoCatalog> {
+    match load(ENGLISH, user_locales_directory) {
+        Ok(catalog) => catalog,
+        Err(error) => {
+            log::warn!(target: "i18n", "cannot load the English catalog: {error:#}");
+            None
+        }
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -842,7 +879,7 @@ mod tests {
 
         let japanese = load("ja-JP", Some(root)).expect("load").expect("ja exists");
         assert_eq!(japanese.locale(), "ja-JP");
-        assert_eq!(japanese.layers(), ["user/ja", "embedded/ja"]);
+        assert_eq!(japanese.layers(), ["user/ja", "embedded/ja", "embedded/en"]);
         assert_eq!(
             japanese.lookup(None, "i18n_catalog test: Hello"),
             Some("ユーザーのこんにちは")
@@ -871,7 +908,7 @@ mod tests {
         let catalog = load("pt-BR", Some(root))
             .expect("load")
             .expect("pt-BR exists");
-        assert_eq!(catalog.layers(), ["user/pt-BR", "user/pt"]);
+        assert_eq!(catalog.layers(), ["user/pt-BR", "user/pt", "embedded/en"]);
         assert_eq!(catalog.lookup(None, "Open"), Some("Abrir (BR)"));
         assert_eq!(catalog.lookup(None, "Close"), Some("Fechar (PT)"));
 
@@ -924,7 +961,8 @@ msgstr \"Translated {index}\"
         let catalog = load("many", Some(root))
             .expect("load")
             .expect("many exists");
-        assert_eq!(catalog.len(), MAX_USER_FILES_PER_LANGUAGE);
+        let english_entries = english_catalog(None).map_or(0, PoCatalog::len);
+        assert_eq!(catalog.len(), MAX_USER_FILES_PER_LANGUAGE + english_entries);
         assert_eq!(catalog.problems().len(), 1, "{:?}", catalog.problems());
         assert!(
             catalog.lookup(None, "Message 0").is_some()
@@ -1053,15 +1091,17 @@ msgstr \"Translated {index}\"
                 let (file, _) = parse_po(&origin, &text);
                 for entry in file.entries {
                     let context = entry.context.as_deref();
-                    let in_place = match area_context {
-                        // The settings dropdowns translate their labels in the
-                        // context of the enum's name.
-                        Some(i18n::context::SETTINGS) => context.is_some(),
-                        Some(area_context) => context == Some(area_context),
-                        None => !area_contexts
-                            .iter()
-                            .any(|(_, reserved)| context == Some(*reserved)),
-                    };
+                    // The product name overlays every file of the language.
+                    let in_place = file_name == "_brand.po"
+                        || match area_context {
+                            // The settings dropdowns translate their labels in the
+                            // context of the enum's name.
+                            Some(i18n::context::SETTINGS) => context.is_some(),
+                            Some(area_context) => context == Some(area_context),
+                            None => !area_contexts
+                                .iter()
+                                .any(|(_, reserved)| context == Some(*reserved)),
+                        };
                     if !in_place {
                         misplaced.push(format!("{origin}: {context:?} {:?}", entry.msgid));
                     }
@@ -1069,6 +1109,62 @@ msgstr \"Translated {index}\"
             }
         }
         assert!(misplaced.is_empty(), "{misplaced:#?}");
+    }
+
+    #[test]
+    fn english_names_the_product_and_backs_every_language() {
+        assert!(
+            available_locales(None)
+                .iter()
+                .all(|locale| !locale.tag.eq_ignore_ascii_case(ENGLISH)),
+            "English is offered as the source language, not as a bundled translation"
+        );
+        assert_eq!(
+            negotiate(&requested(&["en-US", "ja"]), &available_locales(None)),
+            None
+        );
+
+        let english = english_catalog(None).expect("the English catalog is bundled");
+        assert_eq!(english.locale(), ENGLISH);
+        assert_eq!(english.layers(), ["embedded/en"]);
+        assert_eq!(
+            english.lookup(Some(i18n::context::MENU), "About Zed"),
+            Some("About ForgeKairos")
+        );
+        assert_eq!(english.lookup(None, "Upgrade to Zed Pro"), None);
+        assert!(english.problems().is_empty(), "{:?}", english.problems());
+        {
+            let _english = i18n::test_support::LocaleOverride::new(Some(english));
+            assert_eq!(i18n::current_locale(), ENGLISH);
+            assert_eq!(
+                i18n::tc!("menu", "About Zed").to_string(),
+                "About ForgeKairos"
+            );
+            assert_eq!(
+                i18n::in_english(|| i18n::tc!("menu", "About Zed").to_string()),
+                "About Zed",
+                "a model reads the source text"
+            );
+            assert_eq!(i18n::tr("Upgrade to Zed Pro"), "Upgrade to Zed Pro");
+        }
+
+        let japanese = load("ja", None).expect("load").expect("ja is bundled");
+        assert_eq!(japanese.layers(), ["embedded/ja", "embedded/en"]);
+
+        let directory = tempfile::tempdir().expect("create a temporary directory");
+        write(
+            &directory.path().join("xx/a.po"),
+            "msgid \"Open\"\nmsgstr \"Ope\"\n",
+        );
+        let partial = load("xx", Some(directory.path()))
+            .expect("load")
+            .expect("xx exists");
+        assert_eq!(
+            partial.lookup(Some(i18n::context::MENU), "About Zed"),
+            Some("About ForgeKairos"),
+            "a message the language lacks shows the English product name"
+        );
+        assert!(load("yy", Some(directory.path())).expect("load").is_none());
     }
 
     #[test]

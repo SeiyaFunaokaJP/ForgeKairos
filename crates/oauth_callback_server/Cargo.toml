@@ -15,6 +15,7 @@ doctest = false
 
 [dependencies]
 anyhow.workspace = true
+branding.workspace = true
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 futures.workspace = true

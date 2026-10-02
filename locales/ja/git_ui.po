@@ -36,8 +36,8 @@ msgid ". {count} changed file not from the development branch"
 msgid_plural ". {count} changed files not from the development branch"
 msgstr[0] "。開発ブランチに無い変更 {count} ファイル"
 
-msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to First Unplaced\" jumps there). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
-msgstr "1. 「開発ブランチ」(コミットの出どころ) と「基点」(MR の向け先) を選びます。2. コミットグラフの行を箱にドラッグするか、選んで「MR の箱に入れる」を押します。MR に入れないものは、行を右クリックして「MR から除外する」で脇に置きます。3. 箱の下の「未配置」が 0 件なら入れ忘れはありません (未配置の行はグラフに小さな ● が付き、「最初の未配置へ」で移動できます)。4. メッセージと MR ブランチ名を入れて「作成して比較」を押すと、基点の上で 1 コミットにまとめた MR ブランチを作り、開発ブランチと比べます。未コミットの変更があると作れないので、先にコミットかスタッシュしてください。"
+msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
+msgstr "1. 「開発ブランチ」(コミットの出どころ) と「基点」(MR の向け先) を選びます。2. コミットグラフの行を箱にドラッグするか、選んで「MR の箱に入れる」を押します。MR に入れないものは、行を右クリックして「MR から除外する」で脇に置きます。3. 箱の下の「未配置」が 0 件なら入れ忘れはありません (未配置の行はグラフに小さな ● が付き、「次の未配置へ」で順に移動できます)。4. メッセージと MR ブランチ名を入れて「作成して比較」を押すと、基点の上で 1 コミットにまとめた MR ブランチを作り、開発ブランチと比べます。未コミットの変更があると作れないので、先にコミットかスタッシュしてください。"
 
 msgid "<no branch>"
 msgstr "<ブランチなし>"
@@ -1185,11 +1185,11 @@ msgstr "fixup する前の状態に戻しますか?"
 msgid "Go back to the state before the reorder?"
 msgstr "並べ替える前の状態に戻しますか?"
 
-msgid "Go to First Unplaced"
-msgstr "最初の未配置へ"
-
 msgid "Go to Next Hunk"
 msgstr "次の変更箇所へ移動"
+
+msgid "Go to Next Unplaced"
+msgstr "次の未配置へ"
 
 msgid "Go to Previous Hunk"
 msgstr "前の変更箇所へ移動"
@@ -2047,8 +2047,8 @@ msgstr "選択中のブランチ"
 msgid "Selection Actions…"
 msgstr "選択した行の操作…"
 
-msgid "Selects the oldest unplaced commit in the graph"
-msgstr "グラフでいちばん古い未配置のコミットを選びます"
+msgid "Selects the next unplaced commit in the graph, starting from the oldest. Press again for the one after it."
+msgstr "グラフで次の未配置のコミットを選びます (最初はいちばん古いもの)。もう一度押すとその次へ進みます。"
 
 msgid "Send Review to Agent ({})"
 msgstr "レビューをエージェントへ送信 ({})"
@@ -2290,6 +2290,9 @@ msgstr[0] "{branch} に切り替えてから {count} 件を取り込みますか
 msgid "Switch to {branch} and then cherry-pick?"
 msgstr "{branch} に切り替えてから取り込みますか?"
 
+msgid "Switched the graph to all branches: the commit was not among the rows loaded for the branch it was showing."
+msgstr "コミットが表示中のブランチの読み込み済みの行に無かったため、グラフをすべてのブランチの表示に切り替えました。"
+
 msgid "Switches to this commit (detached HEAD: not on any branch)"
 msgstr "この時点に切り替えます (detached HEAD: どのブランチにも乗らない状態)"
 
@@ -2344,16 +2347,16 @@ msgid "The SHAs of the later commits change"
 msgstr "後のコミットの SHA が変わります"
 
 msgid "The Zed server on the remote host is too old for the MR check (it refuses git rev-parse). Update Zed on the remote host."
-msgstr "接続先の Zed のサーバーが古いため、MR チェックは使えません (git rev-parse を受け付けません)。接続先の Zed を更新してください。"
+msgstr "接続先の ForgeKairos のサーバーが古いため、MR チェックは使えません (git rev-parse を受け付けません)。接続先の ForgeKairos を更新してください。"
 
 msgid "The Zed server on the remote host is too old for this operation. Update the server."
-msgstr "接続先の Zed のサーバーが古いため、この操作は使えません。サーバーを更新してください。"
+msgstr "接続先の ForgeKairos のサーバーが古いため、この操作は使えません。サーバーを更新してください。"
 
 msgid "The Zed server on the remote host is too old to pack branches and tags."
-msgstr "接続先の Zed のサーバーが古いため、ブランチ・タグをまとめられません。"
+msgstr "接続先の ForgeKairos のサーバーが古いため、ブランチ・タグをまとめられません。"
 
 msgid "The Zed server on the remote host is too old, so this ran as a force push with a lease. Reconnect to update the server."
-msgstr "接続先の Zed のサーバーが古いため、lease 付きの強制プッシュとして実行しました。接続し直してサーバーを更新してください。"
+msgstr "接続先の ForgeKairos のサーバーが古いため、lease 付きの強制プッシュとして実行しました。接続し直してサーバーを更新してください。"
 
 msgid "The author's name or email address contains \"alice\""
 msgstr "著者の名前かメールアドレスに「山田」を含む"
@@ -2372,6 +2375,9 @@ msgstr "変更は作業ツリーに残ります。"
 
 msgid "The changes stay staged."
 msgstr "変更はステージに残ります。"
+
+msgid "The commit {} is not in the graph. Refresh the graph and try again."
+msgstr "コミット {} がグラフにありません。グラフを読み直してからもう一度試してください。"
 
 msgid "The commits that touched it are not in the loaded history (the newest {MAX_MERGE_REQUEST_HISTORY_COMMITS} commits)."
 msgstr "触ったコミットは、読み込んだ履歴 (新しい方から {MAX_MERGE_REQUEST_HISTORY_COMMITS} 件) にありません。"

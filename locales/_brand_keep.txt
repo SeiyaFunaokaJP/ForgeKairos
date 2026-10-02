@@ -1,0 +1,77 @@
+# What keeps upstream's name "Zed" when `cargo run -p i18n_tool -- brand --write` renames the
+# application to the product's own name in locales/en/_brand.po and in the translations.
+#
+# One line per item, four tab-separated fields: kind, reason, context (`-` for none), text.
+# The text is written with the escapes of a PO file (\n, \t, \", \\).
+#
+# Kinds:
+#   phrase       text that stays wherever it appears, in any language
+#   message      a message (msgctxt and msgid; the action name in _action_docs.po) whose
+#                every mention of Zed stays
+#   translation  a message whose English does not name the application but whose
+#                translations do: the translations are renamed (reason `application`)
+# Reasons:
+#   service      one of Zed's online services, its account, plans or support
+#   fact         a statement about upstream Zed, or a link to its own pages
+#   identifier   a value that is stored or typed
+#   application  this application (only for `translation`)
+
+phrase	service	-	Zed AI
+phrase	service	-	Zed Pro
+phrase	service	-	Zed Business
+phrase	service	-	Zed Student
+phrase	service	-	Zed VIP
+phrase	service	-	Zed Predict
+phrase	service	-	Zed team
+phrase	service	-	Zed チーム
+phrase	fact	-	official Zed
+phrase	fact	-	公式版の Zed
+phrase	fact	-	upstream Zed
+phrase	fact	-	upstream の Zed
+phrase	fact	-	上流の Zed
+phrase	fact	-	Zed's context_servers format
+phrase	fact	-	Zed の context_servers
+
+message	fact	menu	Zed Repository
+message	fact	menu	Zed Twitter
+message	fact	-	Based on Zed {version}
+message	service	settings	Controls whether Zed may collect training data when using Zed's Edit Predictions. Data is only collected for files in projects detected as open source. The default value uses the preference previously set via the status-bar toggle, or false if no preference has been stored.
+message	service	settings	The URL of the Zed server to connect to.
+message	service	settings	Set up different edit prediction providers in complement to Zed's built-in Zeta model.
+message	service	-	Rate this response as helpful. Sends the current conversation to the Zed team.
+message	service	-	Rate this response as not helpful. Sends the current conversation to the Zed team.
+message	service	-	Rating the thread sends all of your current conversation to the Zed team.
+message	service	-	$10 of tokens in Zed agent
+message	service	-	$5 of tokens in Zed agent
+message	service	-	Tokens in the Zed agent
+message	service	-	Zed AI is an external AI service. When it is enabled, the code, file contents, and conversations you enter are sent to Zed's servers and, depending on the provider's policies, may be stored and used to train models.
+message	service	-	Help us improve our open dataset model by sharing data from open source repositories. Zed must detect a license file in your repo for this setting to take effect. Files with sensitive data and secrets are excluded by default.
+message	fact	-	Help fix Zed by sending crash reports so we can fix critical issues fast
+message	fact	-	Help improve Zed by sending anonymous usage data
+message	service	-	This consent is shared with the \"Zed\" LLM provider on the AI page. Withdrawing it applies to both edit predictions and the agent.
+message	service	-	Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above.
+message	service	-	Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev.
+message	service	-	OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below.
+message	service	settings schema	Allow Zed to collect training data from open-source projects.
+message	identifier	settings schema	Base key bindings scheme. Base keymaps can be overridden with user keymaps.\n\nDefault: Zed
+message	service	settings schema	Control what info is collected by Zed.
+message	service	settings schema	Controls whether Zed collects training data when using Zed's Edit Predictions.
+message	service	settings schema	Controls whether Zed may collect training data when using Zed's Edit Predictions.\nData is only ever captured for files in projects that are detected as open source.\n\n- `\"default\"`: use the preference previously set via the status-bar toggle,\n  or false if no preference has been stored.\n- `\"yes\"`: allow data collection for files in open-source projects.\n- `\"no\"`: never allow data collection.
+message	service	settings schema	Settings specific to Zed's Edit Predictions provider.
+message	service	settings schema	The URL of the Zed server to connect to.
+message	service	action documentation	client::SignIn
+message	service	action documentation	client::SignOut
+message	service	action documentation	feedback::EmailZed
+message	service	action documentation	zed::GetMerch
+message	service	action documentation	zed::OpenStatusPage
+message	fact	action documentation	zed::OpenZedRepo
+message	service	action	client::SignIn
+message	service	action	client::SignOut
+message	service	action	feedback::EmailZed
+message	service	action	zed::GetMerch
+message	fact	action	zed::OpenZedRepo
+
+translation	application	action	zed::About
+translation	application	action	zed::Quit
+translation	application	WindowDecorations	Client
+translation	application	-	Coming from Neovim? Use our first-class implementation of Vim Mode

@@ -20,6 +20,9 @@ locales/
     _settings_schema.po  descriptions in the settings file's JSON schema, shown in
                          its hovers and completions, msgctxt "settings schema",
                          msgid = the English description
+  en/_brand.po           the product's own name in place of upstream's (generated;
+                         see "The product name" below)
+  _brand_keep.txt        where upstream's name "Zed" stays
 ```
 
 Every file of a directory goes into one catalog. A message without a msgctxt is one key
@@ -30,7 +33,7 @@ else. Crate files must not use the contexts `action`, `menu`, `settings`,
 `action documentation` or `settings schema`.
 
 Languages fall back from the most specific tag to the base language, then to English:
-`pt-BR` → `pt` → the English msgid. A message that is missing, empty or marked
+`pt-BR` → `pt` → `en/_brand.po` → the English msgid. A message that is missing, empty or marked
 `#, fuzzy` shows the next language in that chain.
 
 ## Starting a language
@@ -197,6 +200,33 @@ Text Zed sends to a language model (tool descriptions, system prompts, and the r
 and errors of tools) is English in the source and is not in the catalog, so the display
 language does not change what a model is told. Log messages are not translated either.
 
+## The product name
+
+Upstream's English names the application "Zed". The msgids keep upstream's text, so that
+merging upstream stays simple, and the name is changed in what is shown instead:
+
+- `en/_brand.po` gives every message that names the application its English text with the
+  product's own name. It is installed when the UI is shown in English (English is still
+  the language of the source text: it is not listed as a translation), and it is the last
+  layer of every other language. Text a model reads (`i18n::in_english`) does not go
+  through it.
+- The translations name the product themselves.
+- Not every "Zed" is the application: Zed's online services (Zed AI, Zed Pro), statements
+  about upstream (the official Zed) and stored values keep the name. `_brand_keep.txt`
+  lists them, each with its reason.
+
+`cargo run -p i18n_tool -- brand --write` writes `en/_brand.po` and renames the
+application in the translations; it changes nothing when run again, so run it after adding
+translations. `brand --check` (also part of `check`) fails when a file is out of date,
+when a translation names "Zed" where its English does not and the keep list does not say
+why, and when a line of the keep list matches nothing.
+
+Text outside the catalogs is checked too: `cargo run -p i18n_tool -- scan --brand` lists
+the string literals outside tests that still say "Zed" and fails unless
+`tooling/i18n/brand_sources.txt` gives each its reason. A message of the i18n macros is
+left out only once a translation has it (`brand` renames only what the catalogs hold), and
+the bare name "Zed" is always listed, as it is also an identifier in many places.
+
 ## Built-in snippets
 
 The snippets that ship with Zed, such as the Mermaid diagrams offered in Markdown, are
@@ -225,8 +255,8 @@ same prefix as a built-in one replaces it.
 ## Trying a translation without rebuilding
 
 Put the PO files in `<config dir>/locales/<tag>/`, where the config directory is
-`~/.config/zed` on macOS and Linux (`$XDG_CONFIG_HOME/zed` when it is set) and
-`%APPDATA%\Zed` on Windows. Then choose the language in Settings → General → Display
+`~/.config/forgekairos` on macOS and Linux (`$XDG_CONFIG_HOME/forgekairos` when it is
+set) and `%APPDATA%\ForgeKairos` on Windows. Then choose the language in Settings → General → Display
 Language, or set it in `settings.json`:
 
 ```json

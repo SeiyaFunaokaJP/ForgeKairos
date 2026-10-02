@@ -236,10 +236,11 @@ pub fn prevent_root_execution() {
     if is_root && !allow_root {
         eprintln!(
             "\
-Error: Running Zed as root or via sudo is unsupported.
-       Doing so (even once) may subtly break things for all subsequent non-root usage of Zed.
+Error: Running {product} as root or via sudo is unsupported.
+       Doing so (even once) may subtly break things for all subsequent non-root usage of {product}.
        It is untested and not recommended, don't complain when things break.
-       If you wish to proceed anyways, set `ZED_ALLOW_ROOT=true` in your environment."
+       If you wish to proceed anyways, set `ZED_ALLOW_ROOT=true` in your environment.",
+            product = branding::CURRENT.product_name
         );
         std::process::exit(1);
     }

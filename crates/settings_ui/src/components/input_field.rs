@@ -26,6 +26,9 @@ pub struct SettingsInputField {
     color: Option<Color>,
     aria_label: Option<SharedString>,
     aria_description: Option<SharedString>,
+    clear_on_escape: bool,
+    cancel: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    focus_when_shown: bool,
 }
 
 impl SettingsInputField {
@@ -51,6 +54,9 @@ impl SettingsInputField {
             color: None,
             aria_label: None,
             aria_description: None,
+            clear_on_escape: false,
+            cancel: None,
+            focus_when_shown: false,
         }
     }
 
@@ -94,6 +100,26 @@ impl SettingsInputField {
 
     pub fn action_slot(mut self, action: impl IntoElement) -> Self {
         self.action_slot = Some(action.into_any_element());
+        self
+    }
+
+    /// Escape discards what was typed instead of reaching the settings
+    /// window, which would close. With nothing typed it reaches the window as
+    /// before.
+    pub fn clear_on_escape(mut self) -> Self {
+        self.clear_on_escape = true;
+        self
+    }
+
+    /// Escape calls `cancel` instead of reaching the settings window.
+    pub fn on_cancel(mut self, cancel: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.cancel = Some(Rc::new(cancel));
+        self
+    }
+
+    /// Moves the focus into the field when it is first drawn.
+    pub fn focus_when_shown(mut self) -> Self {
+        self.focus_when_shown = true;
         self
     }
 
@@ -149,12 +175,20 @@ impl RenderOnce for SettingsInputField {
             let initial_text = self.initial_text.clone();
             let placeholder = self.placeholder;
             let mut confirm = self.confirm.clone();
+            let focus_when_shown = self.focus_when_shown;
 
             move |window, cx| {
                 let mut editor = Editor::single_line(window, cx);
                 let editor_focus_handle = editor.focus_handle(cx);
                 if let Some(text) = initial_text {
                     editor.set_text(text, window, cx);
+                    if focus_when_shown {
+                        editor.select_all(&editor::actions::SelectAll, window, cx);
+                    }
+                }
+                if focus_when_shown {
+                    let focus_handle = editor_focus_handle.clone();
+                    window.defer(cx, move |window, cx| window.focus(&focus_handle, cx));
                 }
 
                 if let Some(confirm) = confirm.take()
@@ -243,6 +277,9 @@ impl RenderOnce for SettingsInputField {
             text_field_a11y_state(self.id.clone(), &editor, window, cx);
 
         let theme_colors = cx.theme().colors();
+        let weak_editor_for_escape = editor.downgrade();
+        let clear_on_escape = self.clear_on_escape;
+        let cancel = self.cancel;
 
         h_flex()
             .id(self.id.clone())
@@ -357,6 +394,26 @@ impl RenderOnce for SettingsInputField {
                     )
                     .when_some(self.action_slot, |this, action| this.child(action)),
             )
+            // The editor's own `editor::Cancel` passes Escape on to the
+            // settings window, whose binding closes it; catching the action on
+            // the way down keeps what Escape means in a field local to it.
+            .when(clear_on_escape || cancel.is_some(), |this| {
+                this.capture_action(move |_: &editor::actions::Cancel, window, cx| {
+                    if let Some(cancel) = cancel.as_ref() {
+                        cx.stop_propagation();
+                        cancel(window, cx);
+                        return;
+                    }
+                    let Some(editor) = weak_editor_for_escape.upgrade() else {
+                        return;
+                    };
+                    if editor.read(cx).text(cx).is_empty() {
+                        return;
+                    }
+                    cx.stop_propagation();
+                    editor.update(cx, |editor, cx| editor.set_text("", window, cx));
+                })
+            })
             .when_some(self.confirm, |this, confirm| {
                 this.on_action::<menu::Confirm>({
                     move |_, window, cx| {

@@ -9,7 +9,7 @@ msgid "Bounds: ⌜{} - {}⌟"
 msgstr "範囲: ⌜{} - {}⌟"
 
 msgid "Click to open by running Zed CLI"
-msgstr "クリックすると Zed CLI 経由で開きます"
+msgstr "クリックすると ForgeKairos CLI 経由で開きます"
 
 msgid "Content size: {}"
 msgstr "コンテンツサイズ: {}"

@@ -1,0 +1,159 @@
+# String literals outside tests in crates/ that keep upstream's name "Zed", checked by
+# `cargo run -p i18n_tool -- scan --brand`. Messages of the i18n macros and the tables translated
+# where they are drawn are not listed: the catalogs rename them (locales/_brand_keep.txt).
+#
+# One line per literal, three tab-separated fields: the file, the reason, the literal with the
+# escapes of a PO file. Reasons:
+#   service     one of Zed's online services, its account or plans
+#   fact        a statement about upstream Zed, or its own pages and names
+#   identifier  a value that is stored, typed, matched or registered
+#   internal    text no one is shown, such as a comment inside a generated script
+#   log         a log message, panic or error that goes to the log
+#   dev         developer-only: tools, benchmarks, examples, component previews, the
+#               collaboration server
+#   table       an entry of a table the catalogs rename where it is drawn (the menus)
+#   pending     names this application and reaches the user, but is not renamed yet: upstream
+#               text not wrapped for translation, or a file another change owns
+
+crates/agent/src/agent.rs	identifier	Zed Agent
+crates/agent/src/tools/evals/fixtures/disable_cursor_blinking/before.rs	fact	The remote instance of Zed does not support this yet. It must be upgraded to {}
+crates/agent_servers/src/acp_paths.rs	log	a kind of content Zed does not know
+crates/agent_servers/src/acp_paths.rs	log	a kind of embedded resource Zed does not know
+crates/agent_servers/src/acp_paths.rs	log	a kind of session update Zed does not know
+crates/agent_servers/src/acp_paths.rs	log	a kind of tool call content Zed does not know
+crates/agent_ui/src/thread_worktree_archive.rs	log	refusing to delete worktree at {}: failed to verify that Zed created it
+crates/agent_ui/src/thread_worktree_archive.rs	log	refusing to delete worktree at {}: it is not the worktree Zed created (it was likely removed and recreated outside Zed)
+crates/agent_ui/src/conversation_view/elicitation.rs	dev	Authorize Zed in your browser to finish signing in.
+crates/agent_ui/src/conversation_view/elicitation.rs	dev	Choose how Zed should connect to this account.
+crates/ai_onboarding/src/ai_onboarding.rs	service	The onboarding surface shown to new agent panel users, guiding them through signing in to Zed and selecting a plan before they can start using the agent.
+crates/askpass/src/askpass.rs	internal	#!/bin/sh\nfor arg in \"$@\"; do\n    case \"$arg\" in\n        # Long-form signing options.\n        --sign|--detach-sign|--clearsign|--clear-sign) is_signing=1 ;;\n        # Skip other long options so flags like `--status-fd` don't match below.\n        --*) ;;\n        # Short-flag clusters containing `s`, e.g. git's `-bsau`.\n        -*s*) is_signing=1 ;;\n    esac\ndone\n\n# Not a signing request: run gpg as-is, leaving its prompting untouched.\nif [ -z \"${{is_signing}}\" ]; then\n    exec {gpg_program} \"$@\"\nfi\n\n# Signing. Buffer stdin (the payload) and each attempt's output\n# so we can retry cleanly on failure without git seeing partial output.\ntmpdir=$(mktemp -d) || exit 1\ntrap 'rm -rf \"$tmpdir\"' EXIT\npayload=\"$tmpdir/payload\"\nsignature=\"$tmpdir/signature\"\nstatus=\"$tmpdir/status\"\ncat > \"$payload\" || exit 1\n\n# Stage 1: fully silent. Only succeeds if gpg-agent already has the passphrase\n# cached or the key is unprotected; `--pinentry-mode error` forbids launching\n# any pinentry, so this can never prompt anywhere.\nif {gpg_program} --pinentry-mode error \"$@\" < \"$payload\" > \"$signature\" 2> \"$status\"; then\n    cat \"$status\" >&2\n    cat \"$signature\"\n    exit 0\nfi\n\n# Stage 2: let gpg launch the configured pinentry, matching terminal git. GUI\n# pinentries work without a TTY and may fetch the passphrase from an OS\n# keychain silently (or show their native dialog); TTY pinentries fail fast\n# with \"Inappropriate ioctl for device\" since gpg has no TTY here.\nif {gpg_program} \"$@\" < \"$payload\" > \"$signature\" 2> \"$status\"; then\n    cat \"$status\" >&2\n    cat \"$signature\"\n    exit 0\nfi\n\n# Stage 3: gpg cannot obtain the passphrase on its own. Ask Zed for it, then\n# hand it to gpg on fd 3 using loopback mode so no pinentry/terminal is\n# required.\npassphrase=$(printf '%s\\0' {prompt} | {askpass_program} --askpass={askpass_socket} 2>/dev/null)\nprintf '%s\\n' \"$passphrase\" |\n{gpg_program} --pinentry-mode loopback --passphrase-fd 3 \"$@\" 3<&0 < \"$payload\"\n
+crates/auto_update/src/auto_update.rs	identifier	Zed.dmg
+crates/auto_update/src/auto_update.rs	log	failed to copy Zed update from {:?} to {:?}: {:?}
+crates/auto_update_helper/src/auto_update_helper.rs	log	======= Starting Zed update =======
+crates/auto_update_helper/src/auto_update_helper.rs	log	Error: Zed update failed, {:?}
+crates/auto_update_helper/src/updater.rs	log	Failed to launch Zed after update
+crates/benchmarks/benches/markdown_renderer.rs	dev	author: Zed benchmark\n
+crates/branding/src/branding.rs	identifier	Zed Dev
+crates/branding/src/branding.rs	identifier	Zed Editor Dev Instance Running
+crates/branding/src/branding.rs	identifier	Zed Editor Nightly Instance Running
+crates/branding/src/branding.rs	identifier	Zed Editor Preview Instance Running
+crates/branding/src/branding.rs	identifier	Zed Editor Stable Instance Running
+crates/branding/src/branding.rs	identifier	Zed Nightly
+crates/branding/src/branding.rs	identifier	Zed Preview
+crates/branding/src/branding.rs	identifier	ZedIndustries.Zed
+crates/branding/src/branding.rs	identifier	ZedIndustries.Zed.Dev
+crates/branding/src/branding.rs	identifier	ZedIndustries.Zed.Nightly
+crates/branding/src/branding.rs	identifier	ZedIndustries.Zed.Preview
+crates/branding/src/branding.rs	identifier	dev.zed.Zed
+crates/browser_panel/src/webview_windows.rs	log	WebView2: the shared environment was created with proxy {:?}; restart Zed for browser.use_egress_proxy changes to take effect
+crates/cli/src/main.rs	identifier	Handshake after Zed spawn
+crates/cli/src/main.rs	identifier	Handshake before Zed spawn
+crates/collab/src/auth.rs	dev	Dev servers were removed in Zed 0.157 please upgrade to SSH remoting
+crates/collab/src/db/queries/rooms.rs	dev	user has not signed the Zed CLA
+crates/collab/src/rpc.rs	dev	The host (v{}) and guest (v{}) are using incompatible versions of Zed. The peer with the older version must update to collaborate.
+crates/collab/src/rpc.rs	dev	chat has been removed in the latest version of Zed
+crates/collab_ui/src/notifications/incoming_call_notification.rs	dev	{} is sharing a project in Zed
+crates/copilot_chat/src/copilot_chat.rs	identifier	Zed/{}
+crates/dap/src/transport.rs	identifier	When using the `stdio` transport, the path to a debug adapter binary must be set by Zed.
+crates/debugger_ui/src/new_process_modal.rs	dev	ENV=Zed ~/bin/program --option
+crates/docs_preprocessor/src/ai_discovery.rs	dev	# Zed Docs\n\n
+crates/docs_preprocessor/src/ai_discovery.rs	dev	> Official Zed documentation index with links to Markdown versions of each docs page.\n\n
+crates/docs_preprocessor/src/ai_discovery.rs	dev	Use these links for concise Markdown copies of Zed documentation pages. Each linked page mirrors the corresponding `/docs/*.html` page without site navigation or styling.\n\n
+crates/docs_preprocessor/src/main.rs	dev	- Zed
+crates/edit_prediction/src/edit_prediction.rs	service	You must update to Zed version {minimum_version} or higher to continue using edit predictions.
+crates/edit_prediction/src/edit_prediction.rs	service	not reporting {} rejected edit predictions: the external AI warning for Zed                      is not accepted
+crates/edit_prediction/src/edit_prediction.rs	service	not sending the edit prediction request to Zed Cloud: the external AI warning for Zed has not been accepted
+crates/edit_prediction/src/edit_prediction.rs	service	not sending the rating of an edit prediction Zed Cloud did not make
+crates/edit_prediction/src/zed_edit_prediction_delegate.rs	service	Zed's Edit Predictions
+crates/edit_prediction/src/zeta.rs	service	Update Zed
+crates/editor/src/clipboard.rs	log	There should always be at least one selection in Zed. This is a bug.
+crates/etw_tracing/etw_tracing.rs	dev	<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<WindowsPerformanceRecorder Version=\"1.0\" Author=\"Zed Industries\">\n  <Profiles>\n    {heap_provider}\n\n    <Profile Id=\"ZedHeap.Verbose.Memory\" Base=\"Heap.Verbose.Memory\" Name=\"ZedHeap\" DetailLevel=\"Verbose\" LoggingMode=\"Memory\" Description=\"Heap tracing\">\n      {heap_collector}\n    </Profile>\n  </Profiles>\n\n  <TraceMergeProperties>\n    <TraceMergeProperty Id=\"TraceMerge_Default\" Name=\"TraceMerge_Default\">\n      <FileCompression Value=\"true\"/>\n    </TraceMergeProperty>\n  </TraceMergeProperties>\n</WindowsPerformanceRecorder>
+crates/etw_tracing/etw_tracing.rs	dev	Receive command from Zed
+crates/eval_cli/src/headless.rs	dev	Zed Agent CLI/{} ({}; {})
+crates/eval_cli/src/main.rs	dev	Run Zed's agent headlessly in evaluation/benchmark environments
+crates/extension_cli/src/main.rs	dev	Zed Extension CLI/{} ({}; {})
+crates/extension_cli/src/main.rs	dev	query {file_name} is not supported by Zed and should be removed
+crates/extension_host/benches/extension_compilation_benchmark.rs	dev	Zed Extension CLI/{} ({}; {})
+crates/extension_host/src/wasm_host/wit.rs	service	unreleased versions of the extension API can only be used on development builds of Zed
+crates/extensions_ui/src/components/extension_card.rs	fact	Zed Industries
+crates/fs/src/fs_watcher.rs	log	{} of this user's {limit} inotify watches are in use, well over Zed's share; moving {over_share} watched paths to polling
+crates/git_ui/src/text_diff_view.rs	log	There should always be at least one selection in Zed. This is a bug.
+crates/gpui/src/text_system.rs	identifier	Zed Plex Mono
+crates/gpui/src/text_system.rs	identifier	Zed Plex Sans
+crates/gpui_windows/src/platform.rs	identifier	Zed::PlatformWindow
+crates/gpui_windows/src/window.rs	identifier	Zed::Window
+crates/ide_server/src/assist_tools.rs	fact	 editor (a fork of the Zed editor) that the user is looking at.\nUse highlightCode / annotateCode to point at code in the user's editor instead of pasting it, and startCodeTour for step-by-step walkthroughs across files (the user steps with ‹ › buttons).\nUse getHover / findDefinition / findReferences / getDocumentSymbols / searchSymbols for precise, language-server-backed navigation (searchSymbols is a structural symbol search, not embeddings).\nUse getCallHierarchy before grep to find the callers of a function or the functions it calls.\nIn C and C++ getCallHierarchy also answers from a name index (even without a language server, and for a function name alone); calls with source nameIndex, macro or candidate are name matches, not resolved calls.\nUse getTypeLayout to see what a C or C++ struct, union, enum, typedef or macro contains before searching for its header.\nPaths may be absolute or relative to a workspace folder; lines are 1-based and inclusive.\nAnnotations are not saved, and calling a display tool again replaces what you showed before.
+crates/keymap_editor/src/keymap_editor.rs	fact	Failed to load Zed Keybind Context language
+crates/keymap_editor/src/keymap_editor.rs	fact	Zed Keybind Context
+crates/language_models/src/provider.rs	log	ignoring custom {provider_name} header `{name}`: managed by Zed and cannot be overridden
+crates/language_models/src/provider/cloud.rs	service	Business Plan - Zed models disabled
+crates/language_models/src/provider/cloud.rs	service	Business Plan - Zed models enabled
+crates/language_models/src/provider/cloud.rs	service	Enable Fast Mode for Zed?
+crates/language_models/src/provider/cloud.rs	service	Failed to sign in with your Zed account (401).
+crates/language_models/src/provider/cloud.rs	service	Fast mode routes requests through the upstream provider's fast mode or priority tier. The upstream provider's premium per-token pricing applies and is passed through to your Zed billing.
+crates/language_models/src/provider/cloud.rs	service	Sign in to have access to Zed's complete agentic experience with hosted models.
+crates/language_models/src/provider/cloud.rs	service	Subscribe for access to Zed's hosted models.
+crates/language_models/src/provider/cloud.rs	service	The configuration surface for Zed's hosted AI models, showing the user's connection status, current plan, trial eligibility, and entry points for enabling the Zed model provider.
+crates/language_models/src/provider/cloud.rs	service	You are not signed in to your Zed account. Sign in to continue.
+crates/language_models/src/provider/cloud.rs	service	You have access to Zed's hosted models through your Pro subscription.
+crates/language_models/src/provider/cloud.rs	service	You have access to Zed's hosted models through your Student subscription.
+crates/language_models/src/provider/cloud.rs	service	You have access to Zed's hosted models through your VIP subscription.
+crates/language_models/src/provider/cloud.rs	service	You have access to Zed's hosted models through your organization.
+crates/language_models/src/provider/cloud.rs	service	Zed's hosted models are disabled by your organization's configuration.
+crates/markdown/examples/markdown_as_child.rs	dev	Zed Mono
+crates/node_runtime/src/node_runtime.rs	log	Zed managed Node.js binary at {} failed check with output: {:?}
+crates/node_runtime/src/node_runtime.rs	log	Zed managed Node.js binary at {} failed check, so re-downloading it. Error: {}
+crates/node_runtime/src/node_runtime.rs	log	failure while downloading and/or installing Zed managed Node.js, restart Zed to retry: {}
+crates/node_runtime/src/node_runtime.rs	log	using Zed managed Node.js at {} since {}
+crates/onboarding/src/basics_page.rs	identifier	Welcome Zed Agent Sign In Clicked
+crates/project/src/project_settings.rs	log	converting VSCode debug tasks into Zed ones, file {abs_path:?}
+crates/project/src/project_settings.rs	log	converting VSCode tasks into Zed ones, file {abs_path:?}
+crates/project/src/project_settings.rs	log	serializing Zed tasks into JSON, file {abs_path:?}
+crates/sandbox/src/ide_bridge.rs	log	Zed opened connection {}, but only the bridge opens connections
+crates/sandbox/src/ide_bridge.rs	log	reading from Zed
+crates/sandbox/src/remote_sandbox_test_helper.rs	dev	Zed's data directory itself
+crates/sandbox/src/remote_sandbox_test_helper.rs	dev	Zed's database
+crates/sandbox/src/remote_sandbox_test_helper.rs	dev	and Zed's answer reaches the command on that same connection
+crates/sandbox/src/remote_sandbox_test_helper.rs	dev	the rest of Zed's data, the other agents and the credentials stay hidden, and only the way down to what may be read is in the data directory — so what is added to it while the command runs is not there either
+crates/sandbox/src/remote_sandbox_test_helper.rs	dev	the rest of Zed's data, the other agents, the other projects and the credentials are as unreadable as the covers would have made them
+crates/settings_ui/src/settings_ui.rs	fact	Zed Keybind Context
+crates/theme/src/fallback_themes.rs	identifier	Zed Default
+crates/theme/src/icon_theme.rs	identifier	Zed (Default)
+crates/ui/src/components/ai/agent_setup_button.rs	dev	Zed Agent
+crates/ui/src/components/button/icon_button.rs	dev	A compact button that displays a single icon with an optional tooltip.The most frequently used button in the Zed codebase.
+crates/ui/src/components/collab/collab_notification.rs	dev	a_very_long_username_that_might_overflow is sharing a project in Zed:
+crates/ui/src/components/collab/update_button.rs	dev	A button component displayed in the title bar to show auto-update status and allow users to restart Zed.
+crates/ui/src/components/image.rs	dev	Zed X Copilot
+crates/ui/src/components/label/label.rs	dev	Welcome to Zed
+crates/ui/src/components/list/list_bullet_item.rs	dev	Create a Zed account by
+crates/ui/src/components/notification/announcement_toast.rs	dev	Mix and match Zed's agent with any ACP-compatible agent
+crates/util/src/util.rs	log	Failed to shell-escape Zed executable path.
+crates/windows_resources/src/windows_resources.rs	fact	Copyright 2026 ForgeKairos contributors. Based on Zed, Copyright 2022 - 2025 Zed Industries, Inc.
+crates/workspace/src/notifications.rs	dev	A new version of Zed is available for download.
+crates/workspace/src/notifications.rs	dev	Update Zed
+crates/workspace/src/notifications.rs	dev	Zed needs an xdg-desktop-portal implementation to open files.
+crates/zed/src/reliability.rs	dev	A GPU found on the users system. May or may not be the GPU Zed is running on
+crates/zed/src/reliability.rs	dev	The GPU Zed is running on
+crates/zed/src/reliability/hang_detection.rs	dev	Hanging the foreground executor for {hang_time:?} seconds to test performance monitoring! Zed will be unresponsive for that time. This should trigger a report in the log
+crates/zed/src/reliability/hang_detection.rs	dev	Hanging the foreground for {hang_time:?} by blocking in an action. Zed will be unresponsive for that time. This should trigger a report in the log
+crates/zed/src/visual_test_runner.rs	dev	# Test Project\n\nThis is a test project for visual testing of Zed.\n\n## Features\n\n- Feature 1\n- Feature 2\n- Feature 3\n\n## Usage\n\n```bash\ncargo run\n```\n
+crates/zed/src/visual_test_runner.rs	dev	Show me the Zed logo
+crates/zed/src/watcher_debug.rs	dev	Patterns Zed skips when scanning your open local projects. Excluded files may still produce watcher events.
+crates/zed/src/zed.rs	log	  {\n    // Runs automatically after Zed creates a new git worktree.\n    // $ZED_WORKTREE_ROOT is the new worktree's root directory, and\n    // $ZED_MAIN_GIT_WORKTREE is the original repository's working directory.\n    \"label\": \"Set up new worktree\",\n    \"command\": \"echo \\\"Setting up $ZED_WORKTREE_ROOT — edit this command\\\"\",\n    \"cwd\": \"$ZED_WORKTREE_ROOT\",\n    \"hooks\": [\"create_worktree\"]\n  }
+crates/zed/src/zed/windows_only_instance.rs	identifier	Handshake after Zed spawn
+crates/zed/src/zed/windows_only_instance.rs	identifier	Handshake before Zed spawn
+
+# The bare name, listed even where a table translates it where it is drawn.
+crates/branding/src/branding.rs	identifier	Zed
+crates/context_server/src/context_server.rs	identifier	Zed
+crates/etw_tracing/etw_tracing.rs	identifier	Zed
+crates/git/src/repository.rs	identifier	Zed
+crates/language_model_core/src/provider.rs	service	Zed
+crates/livekit_client/examples/test_app.rs	dev	Zed
+crates/project/src/debugger/dap_command.rs	identifier	Zed
+crates/settings/src/base_keymap_setting.rs	identifier	Zed
+crates/settings_content/src/language.rs	service	Zed
+crates/settings_content/src/settings_content.rs	identifier	Zed
+crates/settings_ui/src/pages/edit_prediction_provider_setup.rs	service	Zed
+crates/settings_ui/src/pages/external_ai_consent.rs	service	Zed
+crates/zed/src/zed/app_menus.rs	table	Zed

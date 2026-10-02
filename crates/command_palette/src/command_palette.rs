@@ -1118,6 +1118,9 @@ mod tests {
             "agent::ToggleFastMode",
             "エージェント: ファストモードの切り替え",
         ),
+        // The brand layer names this application instead of upstream.
+        ("zed::About", "ForgeKairos について"),
+        ("zed::Quit", "ForgeKairos を終了"),
     ];
 
     #[test]

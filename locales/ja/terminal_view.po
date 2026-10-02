@@ -676,7 +676,7 @@ msgid "The password is kept in the OS credential manager and is never written to
 msgstr "パスワードは OS の資格情報マネージャーに保存され、terminal_sessions.json には書き込まれません"
 
 msgid "The remote Zed server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
-msgstr "リモートの Zed サーバーが切断対策に対応していないため、通常のシェルで起動し直しました。"
+msgstr "リモートの ForgeKairos サーバーが切断対策に対応していないため、通常のシェルで起動し直しました。"
 
 msgid "The repeat count is empty"
 msgstr "繰り返し回数が未入力です"

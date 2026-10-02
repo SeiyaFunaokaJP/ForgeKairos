@@ -5,6 +5,9 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "About Zed"
+msgstr "ForgeKairos について"
+
 msgid "Add Cursor Above"
 msgstr "上にカーソルを追加"
 
@@ -31,6 +34,9 @@ msgstr "{} を自動再起動中"
 
 msgid "Backup and Update"
 msgstr "バックアップして更新"
+
+msgid "Based on Zed {version}"
+msgstr "Zed {version} ベース"
 
 msgid "Block Quote"
 msgstr "引用"
@@ -104,8 +110,8 @@ msgstr "エディターの表示設定"
 msgid "Enter adds two trailing spaces (a hard break) to the line it ends, so the line break survives saving. This key does the opposite once. The preview already shows line breaks as they are typed, so this is for line breaks that other tools should keep too."
 msgstr "Enter で改行するときに、行末へ半角スペース 2 つ (hard break) を補うので、改行が保存後もそのまま残ります。このキーでは 1 回だけ反対の動きをします。プレビューは既定で改行をそのまま改行として表示するので、これは他のツールでも改行にしたいときに使います。"
 
-msgid "Error registering zed:// scheme"
-msgstr "zed:// スキームの登録に失敗しました"
+msgid "Error registering {scheme}:// scheme"
+msgstr "{scheme}:// スキームの登録に失敗しました"
 
 msgid "Error with kernel {}: {}"
 msgstr "カーネル {} でエラーが発生しました: {}"
@@ -120,7 +126,7 @@ msgid "Export to PDF"
 msgstr "PDF に書き出す"
 
 msgid "Failed to move Zed to Applications"
-msgstr "Zed を Applications に移動できませんでした"
+msgstr "ForgeKairos を Applications に移動できませんでした"
 
 msgid "Failed to read telemetry log: {}"
 msgstr "テレメトリログの読み込みに失敗しました: {}"
@@ -213,7 +219,7 @@ msgid "Insert Mermaid Diagram"
 msgstr "Mermaid 図を挿入"
 
 msgid "Installing Zed…"
-msgstr "Zed をインストール中…"
+msgstr "ForgeKairos をインストール中…"
 
 msgid "Interrupt"
 msgstr "中断"
@@ -249,10 +255,10 @@ msgid "Move Line Up"
 msgstr "行を上へ移動"
 
 msgid "Move Zed to Applications?"
-msgstr "Zed を Applications に移動しますか?"
+msgstr "ForgeKairos を Applications に移動しますか?"
 
 msgid "Moving Zed to Applications"
-msgstr "Zed を Applications に移動しています"
+msgstr "ForgeKairos を Applications に移動しています"
 
 msgid "New Window"
 msgstr "新規ウィンドウ"
@@ -357,7 +363,7 @@ msgid "Semantic Highlights"
 msgstr "セマンティックハイライト"
 
 msgid "Setup Zed REPL for {}"
-msgstr "{} 向けに Zed REPL を設定"
+msgstr "{} 向けに ForgeKairos REPL を設定"
 
 msgid "Shrink Selection"
 msgstr "選択範囲を縮小"
@@ -420,13 +426,13 @@ msgid "Your {} file uses deprecated settings which can be automatically updated.
 msgstr "{} ファイルに非推奨の設定が含まれています。自動で更新できます。バックアップは `{}` に保存されます。"
 
 msgid "Zed is running from a temporary location. Move it to Applications to finish installing it."
-msgstr "Zed は一時的な場所から実行されています。インストールを完了するには Applications に移動してください。"
+msgstr "ForgeKairos は一時的な場所から実行されています。インストールを完了するには Applications に移動してください。"
 
 msgid "Zed uses {} for rendering and requires a compatible GPU.\n\nCurrently you are using a software emulated GPU ({}) which\nwill result in awful performance.\n\nFor troubleshooting see: {}\nSet ZED_ALLOW_EMULATED_GPU=1 env var to permanently override.\n"
-msgstr "Zed は描画に {} を使用するため、対応した GPU が必要です。\n\n現在はソフトウェアエミュレーションの GPU ({}) を使用しており、\n動作が極端に遅くなります。\n\n対処方法: {}\n常に無視するには環境変数 ZED_ALLOW_EMULATED_GPU=1 を設定してください。\n"
+msgstr "ForgeKairos は描画に {} を使用するため、対応した GPU が必要です。\n\n現在はソフトウェアエミュレーションの GPU ({}) を使用しており、\n動作が極端に遅くなります。\n\n対処方法: {}\n常に無視するには環境変数 ZED_ALLOW_EMULATED_GPU=1 を設定してください。\n"
 
 msgid "Zed will reopen when installation is complete."
-msgstr "インストールが完了すると Zed が再度開きます。"
+msgstr "インストールが完了すると ForgeKairos が再度開きます。"
 
 msgid "inotify_init returned {}\n\nThis may be due to system-wide limits on inotify instances. For troubleshooting see: https://zed.dev/docs/linux\n"
 msgstr "inotify_init が {} を返しました\n\nシステム全体の inotify インスタンス数の上限が原因の可能性があります。対処方法: https://zed.dev/docs/linux\n"
@@ -436,9 +442,6 @@ msgstr "カーネル: {} ({})"
 
 msgid "signed in"
 msgstr "サインイン済み"
-
-msgid "zed:// links will now open in {}."
-msgstr "zed:// のリンクは今後 {} で開きます。"
 
 msgid "{command} was not found (put it on PATH or in bin\\)."
 msgstr "{command} が見つかりません (PATH または bin\\ に配置してください)。"
@@ -452,6 +455,9 @@ msgstr "{formatter} は選択範囲だけのフォーマットに対応してい
 
 msgid "{formatter} can't format just a selection. Format the whole file instead."
 msgstr "{formatter} は選択範囲だけのフォーマットに対応していません。ファイル全体のフォーマットを使用してください。"
+
+msgid "{scheme}:// links will now open in {app}."
+msgstr "{scheme}:// のリンクは今後 {app} で開きます。"
 
 msgid "{} is shutting down"
 msgstr "{} を終了中"

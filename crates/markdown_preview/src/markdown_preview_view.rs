@@ -280,6 +280,83 @@ impl MarkdownPreviewView {
         });
     }
 
+    /// The format bar, the editor's context menu and the tab's context menu send
+    /// these through the editor they belong to, which need not be in the active
+    /// pane. The workspace-level handlers only know the active pane, so they would
+    /// preview (or export) another file there, or do nothing at all.
+    pub(crate) fn register_editor_actions(editor: &mut Editor, cx: &mut Context<Editor>) {
+        let source_editor = cx.entity().downgrade();
+        editor
+            .register_action({
+                let source_editor = source_editor.clone();
+                move |_: &OpenPreview, window, cx| {
+                    Self::run_for_source_editor(
+                        &source_editor,
+                        window,
+                        cx,
+                        Self::open_preview_in_pane,
+                    )
+                }
+            })
+            .detach();
+        editor
+            .register_action({
+                let source_editor = source_editor.clone();
+                move |_: &OpenPreviewToTheSide, window, cx| {
+                    Self::run_for_source_editor(
+                        &source_editor,
+                        window,
+                        cx,
+                        Self::open_preview_to_the_side_of_pane,
+                    )
+                }
+            })
+            .detach();
+        editor
+            .register_action(move |_: &ExportToPdf, window, cx| {
+                Self::run_for_source_editor(
+                    &source_editor,
+                    window,
+                    cx,
+                    |workspace, editor, _pane, window, cx| {
+                        Self::export_to_pdf(workspace, editor, window, cx)
+                    },
+                )
+            })
+            .detach();
+    }
+
+    fn run_for_source_editor(
+        source_editor: &WeakEntity<Editor>,
+        window: &mut Window,
+        cx: &mut App,
+        run: impl FnOnce(
+            &mut Workspace,
+            Entity<Editor>,
+            Entity<Pane>,
+            &mut Window,
+            &mut Context<Workspace>,
+        ),
+    ) {
+        let Some(editor) = source_editor.upgrade() else {
+            cx.propagate();
+            return;
+        };
+        let Some(workspace) = editor.read(cx).workspace() else {
+            cx.propagate();
+            return;
+        };
+        let Some(pane) = workspace.read(cx).pane_for(&editor) else {
+            cx.propagate();
+            return;
+        };
+        if !Self::is_markdown_file(&editor, cx) {
+            cx.propagate();
+            return;
+        }
+        workspace.update(cx, |workspace, cx| run(workspace, editor, pane, window, cx));
+    }
+
     /// Exports the markdown source this preview is showing, for the toolbar button that
     /// replaces the quick action bar while a preview is the active pane item.
     pub fn export_active_source_to_pdf(&self, window: &mut Window, cx: &mut App) {
@@ -4621,6 +4698,108 @@ mod tests {
             preview_source_path(cx, &preview).as_ref(),
             rel_path("targeted.md")
         );
+    }
+
+    #[gpui::test]
+    async fn preview_actions_sent_through_an_editor_in_an_inactive_pane_use_that_editor(
+        cx: &mut TestAppContext,
+    ) {
+        let (project, workspace, multi_workspace) = markdown_workspace(
+            cx,
+            json!({
+                "note.md": "# Note\n",
+                "plain.txt": "Plain\n",
+            }),
+            false,
+        )
+        .await;
+        let markdown_editor =
+            open_project_file(cx, &project, &multi_workspace, "note.md", None, true)
+                .await
+                .downcast::<Editor>()
+                .unwrap();
+        let (source_pane, other_pane) = multi_workspace
+            .update(cx, |_, window, cx| {
+                workspace.update(cx, |workspace, cx| {
+                    let source_pane = workspace.active_pane().clone();
+                    let other_pane = workspace.split_pane(
+                        source_pane.clone(),
+                        workspace::SplitDirection::Right,
+                        window,
+                        cx,
+                    );
+                    (source_pane, other_pane)
+                })
+            })
+            .unwrap();
+        open_project_file(
+            cx,
+            &project,
+            &multi_workspace,
+            "plain.txt",
+            Some(&other_pane),
+            true,
+        )
+        .await;
+        cx.update(|cx| assert_eq!(workspace.read(cx).active_pane(), &other_pane));
+
+        let previews_in = |pane: &Entity<Pane>, cx: &mut TestAppContext| {
+            pane.read_with(cx, |pane, _| {
+                pane.items_of_type::<MarkdownPreviewView>()
+                    .collect::<Vec<_>>()
+            })
+        };
+
+        multi_workspace
+            .update(cx, |_, window, cx| {
+                markdown_editor.focus_handle(cx).dispatch_action(
+                    &crate::OpenPreviewToTheSide,
+                    window,
+                    cx,
+                );
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let side_previews = previews_in(&other_pane, cx);
+        assert_eq!(
+            side_previews.len(),
+            1,
+            "to the side means beside the editor's own pane"
+        );
+        assert_eq!(
+            preview_source_path(cx, &side_previews[0]).as_ref(),
+            rel_path("note.md")
+        );
+        assert!(previews_in(&source_pane, cx).is_empty());
+
+        // Make the other pane the active one again, with the preview in it.
+        multi_workspace
+            .update(cx, |_, window, cx| {
+                side_previews[0].focus_handle(cx).focus(window, cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+        cx.update(|cx| assert_eq!(workspace.read(cx).active_pane(), &other_pane));
+
+        multi_workspace
+            .update(cx, |_, window, cx| {
+                markdown_editor
+                    .focus_handle(cx)
+                    .dispatch_action(&crate::OpenPreview, window, cx);
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let same_pane_previews = previews_in(&source_pane, cx);
+        assert_eq!(
+            same_pane_previews.len(),
+            1,
+            "the preview opens in the pane of the editor the action came through"
+        );
+        assert_eq!(
+            preview_source_path(cx, &same_pane_previews[0]).as_ref(),
+            rel_path("note.md")
+        );
+        assert_eq!(previews_in(&other_pane, cx).len(), 1);
     }
 
     #[gpui::test]

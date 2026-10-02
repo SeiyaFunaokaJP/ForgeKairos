@@ -350,6 +350,9 @@ msgstr "選択したメモリ範囲に書き込み"
 msgid "Yes"
 msgstr "はい"
 
+msgid "Zed cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+msgstr "ForgeKairos はこのデバッグシナリオの実行方法を判断できません。`build` フィールドが指定されておらず、デバッグアダプターが指定された構成を受け付けません。理由: {error}"
+
 msgid "history-{}"
 msgstr "履歴 {}"
 

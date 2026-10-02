@@ -2058,6 +2058,17 @@ fn pop_html_table_entries(
                             .map(|until| *until > current_row)
                             .collect(),
                     });
+                } else if record
+                    .covered_until
+                    .iter()
+                    .any(|until| *until > record.row_count)
+                {
+                    // A `<tr>` with no cells is still a row that a `rowspan`
+                    // from above reaches into, as in a browser; it draws
+                    // nothing of its own. One no span reaches takes no room,
+                    // and counting it would shift the stripes after it.
+                    record.current_row = record.row_count;
+                    record.row_count += 1;
                 }
                 record.row_has_cells = false;
             }
@@ -3367,6 +3378,59 @@ mod tests {
                     ("cell", 4, 1, 1, 2),
                     ("row", 4, 0b111, 3, 0),
                 ]
+            );
+        }
+
+        #[test]
+        fn test_an_empty_row_is_a_row_that_a_row_span_reaches_into() {
+            let cell = |contents: &str, attributes: &str| {
+                format!("<td{attributes}>\n\n{contents}\n\n</td>\n")
+            };
+            let source = [
+                "<table>\n<tr>\n".to_string(),
+                cell("A", " rowspan=\"2\""),
+                cell("B", ""),
+                "</tr>\n<tr></tr>\n<tr>\n".to_string(),
+                cell("C", ""),
+                cell("D", ""),
+                "</tr>\n</table>\n".to_string(),
+            ]
+            .concat();
+            assert_eq!(
+                table_layout(&source),
+                vec![
+                    ("cell", 0, 0, 2, 1),
+                    ("cell", 0, 1, 1, 1),
+                    ("row", 0, 0b11, 2, 0),
+                    // `A` ends with the empty row, so `C` starts the next one
+                    // at the first column, as in a browser.
+                    ("cell", 2, 0, 1, 1),
+                    ("cell", 2, 1, 1, 1),
+                    ("row", 2, 0b11, 2, 0),
+                ]
+            );
+        }
+
+        #[test]
+        fn test_an_empty_row_no_span_reaches_is_not_a_row() {
+            let cell = |contents: &str| format!("<td>\n\n{contents}\n\n</td>\n");
+            let source = [
+                "<table>\n<tr></tr>\n<tr>\n".to_string(),
+                cell("A"),
+                "</tr>\n<tr></tr>\n<tr>\n".to_string(),
+                cell("B"),
+                "</tr>\n<tr></tr>\n</table>\n".to_string(),
+            ]
+            .concat();
+            assert_eq!(
+                table_layout(&source),
+                vec![
+                    ("cell", 0, 0, 1, 1),
+                    ("row", 0, 0b1, 1, 0),
+                    ("cell", 1, 0, 1, 1),
+                    ("row", 1, 0b1, 1, 0),
+                ],
+                "the rows keep their stripes and the first keeps no top border"
             );
         }
 

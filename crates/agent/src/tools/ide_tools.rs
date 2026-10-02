@@ -26,7 +26,7 @@ use super::tool_permissions::{
 use crate::{AgentTool, ToolCallEventStream, ToolInput};
 
 /// What the frame around this agent's annotations in the editor is labelled with.
-pub const ZED_AGENT_ASSIST_LABEL: &str = "Zed Agent";
+pub const ZED_AGENT_ASSIST_LABEL: &str = crate::NATIVE_AGENT_DISPLAY_NAME;
 
 const DEFAULT_SYMBOL_SEARCH_LIMIT: usize = 30;
 /// A hover can carry a whole documentation page; the model rarely needs more than its start.

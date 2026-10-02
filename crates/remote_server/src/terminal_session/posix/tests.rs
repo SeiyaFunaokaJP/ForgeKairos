@@ -481,6 +481,57 @@ fn a_session_left_alone_ends_after_the_detached_timeout() {
 }
 
 #[test]
+fn a_holder_no_attach_reached_ends_even_when_kept_forever() {
+    let sessions = TestSessions::new();
+    let unattached_timeout = [(TEST_UNATTACHED_HOLDER_TIMEOUT_VAR, "1000")];
+    sessions.ids.borrow_mut().push("unreached".to_string());
+    let mut holder = sessions.spawn_with_env(
+        &[
+            "holder",
+            "--id",
+            "unreached",
+            "--detached-timeout-secs",
+            "0",
+            "--replay-bytes",
+            "1024",
+            "--",
+            "/bin/sh",
+        ],
+        &unattached_timeout,
+    );
+    wait_until("the holder listens", || {
+        sessions.socket("unreached").exists()
+    });
+    assert_eq!(exit_code(&mut holder), 0, "the holder ends on its own");
+    assert!(!sessions.socket("unreached").exists());
+
+    // Once an attach got through and started the shell, the same settings
+    // keep it for good.
+    sessions.ids.borrow_mut().push("reached".to_string());
+    let mut attach = Attach::new(sessions.spawn_with_env(
+        &[
+            "attach",
+            "--id",
+            "reached",
+            "--nonce",
+            NONCE,
+            "--detached-timeout-secs",
+            "0",
+            "--",
+            "/bin/sh",
+            "-c",
+            "echo \"pid=$$;\"; exec sleep 1000",
+        ],
+        &unattached_timeout,
+    ));
+    let pid = printed_pid(&attach);
+    attach.close_stdin();
+    std::thread::sleep(Duration::from_millis(2500));
+    assert!(process_is_alive(pid), "a started shell outlives the wait");
+    assert!(sessions.socket("reached").exists());
+}
+
+#[test]
 fn a_new_attach_takes_over() {
     let sessions = TestSessions::new();
     let program = ["/bin/sh", "-c", "echo ready; exec cat"];

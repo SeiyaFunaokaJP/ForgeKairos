@@ -15,6 +15,8 @@ use clap::Subcommand;
 use std::ffi::OsString;
 #[cfg(any(unix, test))]
 use std::path::Path;
+#[cfg(any(unix, test))]
+use std::time::Duration;
 
 pub const DEFAULT_DETACHED_TIMEOUT_SECS: u64 = 86_400;
 pub const DEFAULT_REPLAY_BYTES: u64 = 4 * 1024 * 1024;
@@ -185,6 +187,30 @@ fn attach_failure_log(id: &str, reason: &str) -> (log::Level, String) {
     }
 }
 
+/// How long a holder that no attach has got through to waits for one. Its
+/// shell has not started, so there is nothing to keep: an attach that failed
+/// on the way (one speaking another protocol version, or one whose connection
+/// dropped at once) would otherwise leave it waiting for the whole detached
+/// timeout. Longer than an attach takes to start a holder and introduce
+/// itself.
+#[cfg(any(unix, test))]
+const UNATTACHED_HOLDER_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How long a holder with nothing attached keeps going: `configured`, the
+/// detached timeout (`None` = forever), once its shell has started, and
+/// otherwise no longer than `unattached` (see [`UNATTACHED_HOLDER_TIMEOUT`]).
+#[cfg(any(unix, test))]
+fn holder_detached_timeout(
+    configured: Option<Duration>,
+    shell_started: bool,
+    unattached: Duration,
+) -> Option<Duration> {
+    if shell_started {
+        return configured;
+    }
+    Some(configured.map_or(unattached, |configured| configured.min(unattached)))
+}
+
 #[cfg(any(unix, test))]
 fn clamp_replay_bytes(requested: u64) -> usize {
     usize::try_from(requested.min(MAX_REPLAY_BYTES)).unwrap_or(usize::MAX)
@@ -264,6 +290,34 @@ mod tests {
         assert!(validate_nonce(&"a".repeat(65)).is_err());
         assert!(validate_nonce("abcd-EFGH").is_err());
         assert!(validate_nonce("abcd;EFGH").is_err());
+    }
+
+    #[test]
+    fn a_holder_no_attach_got_through_to_ends_soon() {
+        let day = Duration::from_secs(24 * 60 * 60);
+        assert_eq!(
+            holder_detached_timeout(Some(day), true, UNATTACHED_HOLDER_TIMEOUT),
+            Some(day)
+        );
+        assert_eq!(
+            holder_detached_timeout(None, true, UNATTACHED_HOLDER_TIMEOUT),
+            None,
+            "a started shell kept forever stays"
+        );
+        assert_eq!(
+            holder_detached_timeout(Some(day), false, UNATTACHED_HOLDER_TIMEOUT),
+            Some(UNATTACHED_HOLDER_TIMEOUT)
+        );
+        assert_eq!(
+            holder_detached_timeout(None, false, UNATTACHED_HOLDER_TIMEOUT),
+            Some(UNATTACHED_HOLDER_TIMEOUT),
+            "even with no detached timeout, a holder without a shell ends"
+        );
+        let short = Duration::from_secs(5);
+        assert_eq!(
+            holder_detached_timeout(Some(short), false, UNATTACHED_HOLDER_TIMEOUT),
+            Some(short)
+        );
     }
 
     #[test]

@@ -641,6 +641,23 @@ fn parse_data_block(
         bail!(i18n::t!("Data `{name}` has no contents."));
     }
     if !is_valid_data_value(&value) {
+        // A block that would be fine without its comments is refused for the
+        // comments alone, and the advice about one-line blocks would only
+        // mislead.
+        let without_comments = value
+            .lines()
+            .map(|line| {
+                line.find("%%")
+                    .map_or(line, |start| line.get(..start).unwrap_or_default())
+                    .trim_end()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if value.contains("%%") && is_valid_data_value(without_comments.trim()) {
+            bail!(i18n::t!(
+                "A comment (`%%`) on a line of data `{name}` is lost in the structured editor. Move the comment to a line of its own outside the block, then open it again."
+            ));
+        }
         bail!(i18n::t!(
             "Data `{name}` cannot be handled by the structured editor. Start it with the line `data {name} {{` and end it with a line that is only `}}` at the start (Mermaid does not accept a one-line block)."
         ));
@@ -1157,6 +1174,32 @@ eventmodeling
         ] {
             let message = refusal(source);
             assert!(message.contains(expected), "{source}: {message}");
+        }
+    }
+
+    /// A data block refused only for a comment on one of its lines says so,
+    /// rather than telling the user its block is written on one line; a block
+    /// that is on one line is still told that, comment or not.
+    #[test]
+    fn a_comment_on_a_data_line_is_named_as_the_reason() {
+        for source in [
+            "eventmodeling\ntf 01 ui A\ndata D {\n  a\n} %% note",
+            "eventmodeling\ntf 01 ui A\ndata D %% note\n{\n  a\n}",
+            "eventmodeling\ntf 01 ui A\ndata D { %% note\n  a\n}",
+            "eventmodeling\ntf 01 ui A\ndata D {\n  a %% note\n}",
+        ] {
+            let message = refusal(source);
+            assert!(
+                message.contains("comment") && !message.contains("one-line"),
+                "{source}: {message}"
+            );
+        }
+        for source in [
+            "eventmodeling\ntf 01 ui A\ndata D { a } %% note",
+            "eventmodeling\ntf 01 ui A\ndata D { a }",
+        ] {
+            let message = refusal(source);
+            assert!(message.contains("one-line"), "{source}: {message}");
         }
     }
 

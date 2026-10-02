@@ -24,10 +24,10 @@ pub const EDITORCONFIG_NAME: &str = ".editorconfig";
 ///
 /// zed-jp-enhance: renamed from upstream's "Zed" so this fork keeps its own
 /// data/config/cache/state directories and never shares them with an official
-/// Zed install on the same machine. Hyphenated (no spaces) on purpose: the
-/// lowercased form is used for XDG paths that are interpolated into remote
-/// `bash -c` command strings on SSH hosts (e.g. `--log-file
-/// ~/.local/share/zed-jp-enhance/...`), where a space would break quoting.
+/// Zed install on the same machine. Without spaces on purpose: the lowercased
+/// form is used for XDG paths that are interpolated into remote `bash -c`
+/// command strings on SSH hosts (e.g. `--log-file
+/// ~/.local/share/forgekairos/...`), where a space would break quoting.
 pub const APP_NAME: &str = branding::CURRENT.app_directory_name;
 
 /// Lowercased form of [`APP_NAME`], for use in XDG-style paths on

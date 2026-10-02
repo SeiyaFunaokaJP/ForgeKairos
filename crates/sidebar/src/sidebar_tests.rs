@@ -2225,7 +2225,10 @@ async fn test_closing_last_agent_panel_terminal_restores_empty_header(cx: &mut T
     // placeholder row, so the header reports having threads.
     assert_eq!(
         visible_entries_as_strings(&sidebar, cx),
-        vec!["v [my-project]", "  New Zed Agent Thread"]
+        vec![
+            "v [my-project]".to_string(),
+            format!("  New {} Thread", agent::NATIVE_AGENT_DISPLAY_NAME)
+        ]
     );
     assert_project_header_has_threads(&sidebar, "my-project", true, cx);
 

@@ -51,6 +51,20 @@ const NULL_VALUE_LABEL: &str = i18n::msg!("(Blank)");
 /// column was painted last.
 pub(crate) const FILTER_BUTTON_DEBUG_SELECTOR: &str = "tabular-grid-filter-button";
 
+/// How much of a heading's right end the filter button and the fade under it
+/// take while the pointer is elsewhere; the heading's text is hidden there.
+pub(crate) const HEADING_FADE_WIDTH: Pixels = px(44.);
+
+/// Marks a column's heading, which is as wide as the column.
+pub(crate) fn heading_debug_selector(col: AnyColumn) -> String {
+    format!("tabular-grid-heading-{}", col.get())
+}
+
+/// Marks the text of a column's heading, which is only as wide as the text.
+pub(crate) fn heading_text_debug_selector(col: AnyColumn) -> String {
+    format!("tabular-grid-heading-text-{}", col.get())
+}
+
 /// The sort button's counterpart of [`FILTER_BUTTON_DEBUG_SELECTOR`]. It is only
 /// recorded while the button is actually painted, which is what tells the two
 /// visibility rules apart.
@@ -984,7 +998,7 @@ impl TabularDataPreviewPane {
         let grad_width = if has_active_sort {
             grad_width_hovered
         } else {
-            px(44.)
+            HEADING_FADE_WIDTH
         };
         let insert_handle = self.insert_column_handle(col_idx, group_name.clone(), cx);
         let heading = h_flex()
@@ -1063,7 +1077,11 @@ impl TabularDataPreviewPane {
                             .size(LabelSize::XSmall)
                             .color(Color::Muted),
                     )
-                    .child(displayed_header),
+                    .child(
+                        div()
+                            .debug_selector(move || heading_text_debug_selector(col_idx))
+                            .child(displayed_header),
+                    ),
             )
             .child(
                 GradientFade::new(base_bg, base_bg, base_bg)
@@ -1122,6 +1140,7 @@ impl TabularDataPreviewPane {
             .relative()
             .flex()
             .w_full()
+            .debug_selector(move || heading_debug_selector(col_idx))
             .child(heading)
             .when(needs_probe, |this| this.child(self.active_cell_probe(cx)))
             .into_any_element()
@@ -1394,6 +1413,35 @@ mod tests {
         workspace_item::{FILTER_SAVE_DEBOUNCE, filters_key_for_editor},
     };
     use workspace::SaveIntent;
+
+    /// A column of short values under a longer name used to be sized by the
+    /// values alone, or by the name as if nothing else stood in the heading:
+    /// the column letter in front and the filter button at the end, under
+    /// which the text fades out, cut the name off.
+    #[gpui::test]
+    async fn test_a_heading_shows_its_whole_name_over_short_values(cx: &mut TestAppContext) {
+        let (_pane, _editor, mut cx) = open_grid("status,担当者の名前,x\nok,a,1\nng,b,2", cx).await;
+        cx.run_until_parked();
+
+        for col in 0..3 {
+            let column = AnyColumn(col);
+            let heading = cx
+                .debug_bounds(heading_debug_selector(column).leak())
+                .expect("every column has a heading");
+            let text = cx
+                .debug_bounds(heading_text_debug_selector(column).leak())
+                .expect("every heading draws its text");
+            assert!(
+                text.size.width > px(0.),
+                "column {col}'s heading text was drawn with no size ({text:?})"
+            );
+            assert!(
+                text.right() <= heading.right() - HEADING_FADE_WIDTH,
+                "column {col}'s name runs under the filter button: \
+                 text {text:?} in heading {heading:?}"
+            );
+        }
+    }
 
     fn row(value: &str, hidden_by: Option<AnyColumn>) -> ColumnFilterRow {
         ColumnFilterRow {

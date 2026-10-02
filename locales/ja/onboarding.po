@@ -9,7 +9,7 @@ msgid "Agent Setup"
 msgstr "エージェントの設定"
 
 msgid "Automatically mark all new projects as trusted to unlock all Zed's features"
-msgstr "新しいプロジェクトを自動的に信頼済みにして Zed のすべての機能を有効にする"
+msgstr "新しいプロジェクトを自動的に信頼済みにして ForgeKairos のすべての機能を有効にする"
 
 msgid "Automatically pull your settings from other editors"
 msgstr "他のエディターから設定を自動的に取り込みます"
@@ -21,7 +21,7 @@ msgid "Cancel"
 msgstr "キャンセル"
 
 msgid "Coming from Neovim? Use our first-class implementation of Vim Mode"
-msgstr "Neovim から移行しますか? Zed の本格的な Vim モード実装を利用できます"
+msgstr "Neovim から移行しますか? ForgeKairos の本格的な Vim モード実装を利用できます"
 
 msgid "Could not find or load a {source} settings file"
 msgstr "{source} の設定ファイルが見つからないか、読み込めませんでした"
@@ -102,10 +102,10 @@ msgid "Vim Mode"
 msgstr "Vim モード"
 
 msgid "Welcome to Zed"
-msgstr "Zed へようこそ"
+msgstr "ForgeKairos へようこそ"
 
 msgid "Your {} settings were successfully imported."
 msgstr "{} の設定をインポートしました。"
 
 msgid "Zed can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted."
-msgstr "新しいプロジェクトを信頼済みにするまで、Zed は言語サーバー・プロジェクト設定・MCP サーバーなどのサービスを実行しません。"
+msgstr "新しいプロジェクトを信頼済みにするまで、ForgeKairos は言語サーバー・プロジェクト設定・MCP サーバーなどのサービスを実行しません。"

@@ -707,7 +707,7 @@ impl LanguageModelProvider for BedrockLanguageModelProvider {
                     .into()
             })
             .description(InlineDescription::Text(
-                "To use Zed's agent with Bedrock, set a custom authentication strategy in your settings or use static credentials. Mantle-only models (e.g. GPT-5.5, GPT-5.4, Grok 4.3) additionally require IAM permissions for the `bedrock-mantle` endpoint.".into(),
+                i18n::t!("To use Zed's agent with Bedrock, set a custom authentication strategy in your settings or use static credentials. Mantle-only models (e.g. GPT-5.5, GPT-5.4, Grok 4.3) additionally require IAM permissions for the `bedrock-mantle` endpoint.").into(),
             )),
         ))
     }
@@ -2776,9 +2776,9 @@ impl Render for ConfigurationView {
             .gap_1()
             .child(Headline::new("Amazon Bedrock").size(HeadlineSize::Small))
             .child(
-                Label::new(
-                    "To use Zed's agent with Bedrock, you can set a custom authentication strategy through your settings file or use static credentials.",
-                )
+                Label::new(i18n::t!(
+                    "To use Zed's agent with Bedrock, you can set a custom authentication strategy through your settings file or use static credentials."
+                ))
                 .color(Color::Muted),
             )
             .child(
@@ -2884,12 +2884,12 @@ impl ConfigurationView {
                     .child(self.session_token_editor.clone()),
             )
             .child(
-                Label::new(format!(
-                    "You can also set the {}, {} and {} environment variables (or {} for Bedrock API Key authentication) and restart Zed.",
-                    ZED_BEDROCK_ACCESS_KEY_ID_VAR.name,
-                    ZED_BEDROCK_SECRET_ACCESS_KEY_VAR.name,
-                    ZED_BEDROCK_REGION_VAR.name,
-                    ZED_BEDROCK_BEARER_TOKEN_VAR.name
+                Label::new(i18n::t!(
+                    "You can also set the {access_key_id}, {secret_access_key} and {region} environment variables (or {bearer_token} for Bedrock API Key authentication) and restart Zed.",
+                    access_key_id = ZED_BEDROCK_ACCESS_KEY_ID_VAR.name,
+                    secret_access_key = ZED_BEDROCK_SECRET_ACCESS_KEY_VAR.name,
+                    region = ZED_BEDROCK_REGION_VAR.name,
+                    bearer_token = ZED_BEDROCK_BEARER_TOKEN_VAR.name
                 ))
                 .size(LabelSize::Small)
                 .color(Color::Muted),

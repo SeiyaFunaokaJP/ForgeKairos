@@ -13,7 +13,7 @@ use mermaid_render::quadrant_model::{
     is_valid_quadrant_coordinate, is_valid_quadrant_label, is_valid_quadrant_point_name,
     is_valid_quadrant_title, normalized_quadrant_styles,
 };
-use ui::prelude::*;
+use ui::{IconButtonShape, Tooltip, prelude::*};
 
 use super::{
     Form, ID_FIELD_WIDTH, LABEL_FIELD_WIDTH, MermaidEditor, NUMBER_FIELD_WIDTH, add_button,
@@ -303,6 +303,32 @@ impl MermaidEditor {
         self.quadrant_changed(cx);
     }
 
+    /// Takes away the arrow of an axis written with `-->` and nothing after
+    /// it. The empty far end field cannot say this by itself, because leaving
+    /// it empty is how the arrow is kept.
+    pub(super) fn remove_quadrant_open_arrow(&mut self, is_y_axis: bool, cx: &mut Context<Self>) {
+        self.sync_quadrant(cx);
+        let Some(form) = self.quadrant_mut() else {
+            return;
+        };
+        let axis = if is_y_axis {
+            &mut form.document.y_axis
+        } else {
+            &mut form.document.x_axis
+        };
+        let Some(current) = axis.as_mut() else {
+            return;
+        };
+        if current.high.as_deref() != Some("") {
+            return;
+        }
+        current.high = None;
+        if current.low.is_empty() {
+            *axis = None;
+        }
+        self.quadrant_changed(cx);
+    }
+
     pub(super) fn render_quadrant(
         &self,
         window: &mut Window,
@@ -375,6 +401,7 @@ impl MermaidEditor {
                 )))
                 .child(self.render_quadrant_axis(
                     i18n::t!("x-axis, left → right"),
+                    false,
                     &form.x_axis,
                     current.x_axis.as_ref(),
                     window,
@@ -382,6 +409,7 @@ impl MermaidEditor {
                 ))
                 .child(self.render_quadrant_axis(
                     i18n::t!("y-axis, bottom → top"),
+                    true,
                     &form.y_axis,
                     current.y_axis.as_ref(),
                     window,
@@ -396,12 +424,14 @@ impl MermaidEditor {
     fn render_quadrant_axis(
         &self,
         label: &'static str,
+        is_y_axis: bool,
         row: &AxisRow,
         axis: Option<&QuadrantAxis>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let is_valid = axis.is_none_or(is_valid_quadrant_axis);
+        let has_open_arrow = axis.is_some_and(|axis| axis.high.as_deref() == Some(""));
         h_flex()
             .w_full()
             .gap_1()
@@ -417,6 +447,26 @@ impl MermaidEditor {
                     .flex_1()
                     .child(row.high.clone()),
             )
+            .when(has_open_arrow, |this| {
+                this.child(
+                    IconButton::new(
+                        if is_y_axis {
+                            "mermaid-quadrant-y-axis-remove-arrow"
+                        } else {
+                            "mermaid-quadrant-x-axis-remove-arrow"
+                        },
+                        IconName::Close,
+                    )
+                    .shape(IconButtonShape::Square)
+                    .icon_size(IconSize::XSmall)
+                    .tooltip(Tooltip::text(i18n::t!(
+                        "Remove the arrow drawn after the label (the `-->` with nothing after it)"
+                    )))
+                    .on_click(cx.listener(move |this, _, _window, cx| {
+                        this.remove_quadrant_open_arrow(is_y_axis, cx)
+                    })),
+                )
+            })
             .into_any_element()
     }
 

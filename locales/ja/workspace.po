@@ -507,7 +507,7 @@ msgid "Welcome back to Zed"
 msgstr "おかえりなさい"
 
 msgid "Welcome to Zed"
-msgstr "Zed へようこそ"
+msgstr "ForgeKairos へようこそ"
 
 msgid "Wrapping Text"
 msgstr "折り返しテキスト"
@@ -522,7 +522,7 @@ msgid "You cannot change the folders of someone else's project"
 msgstr "他のユーザーのプロジェクトのフォルダーは変更できません"
 
 msgid "Your are running an unsupported version of Zed. Please update to continue."
-msgstr "サポートされていないバージョンの Zed を使用しています。続行するには更新してください。"
+msgstr "サポートされていないバージョンの ForgeKairos を使用しています。続行するには更新してください。"
 
 msgid "empty project"
 msgstr "空のプロジェクト"
@@ -549,10 +549,10 @@ msgid "{} is in an unshared pane"
 msgstr "{} は共有されていないペインを表示しています"
 
 msgid "{} is viewing a window outside of Zed"
-msgstr "{} は Zed 以外のウィンドウを表示しています"
+msgstr "{} は ForgeKairos 以外のウィンドウを表示しています"
 
 msgid "{} is viewing an unshared Zed project"
-msgstr "{} は共有されていない Zed プロジェクトを表示しています"
+msgstr "{} は共有されていない ForgeKairos プロジェクトを表示しています"
 
 msgid "{}'s screen"
 msgstr "{} の画面"

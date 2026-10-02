@@ -144,12 +144,12 @@ pub const FORGEKAIROS: Names = Names {
 /// each field is taken from either [`ZED_JP_ENHANCE`] or [`FORGEKAIROS`], and a
 /// part is switched by pointing its field at [`FORGEKAIROS`].
 pub const CURRENT: Names = Names {
-    product_name: ZED_JP_ENHANCE.product_name,
-    display_names: ZED_JP_ENHANCE.display_names,
+    product_name: FORGEKAIROS.product_name,
+    display_names: FORGEKAIROS.display_names,
     app_directory_name: FORGEKAIROS.app_directory_name,
     app_directory_name_lowercase: FORGEKAIROS.app_directory_name_lowercase,
     app_identifiers: FORGEKAIROS.app_identifiers,
-    app_ids: ZED_JP_ENHANCE.app_ids,
+    app_ids: FORGEKAIROS.app_ids,
     app_user_model_ids: FORGEKAIROS.app_user_model_ids,
     executable_stem: FORGEKAIROS.executable_stem,
     cli_name: FORGEKAIROS.cli_name,

@@ -147,6 +147,15 @@ impl BaseKeymap {
             .unwrap_or_default()
     }
 
+    /// The label the onboarding picker shows for this keymap, in the display
+    /// language, or `None` for a keymap the picker does not offer here.
+    pub fn option_name(self) -> Option<&'static str> {
+        Self::OPTIONS
+            .iter()
+            .find(|(_, value)| *value == self)
+            .map(|(name, value)| value.translated_option_name(name))
+    }
+
     // The onboarding picker shows `names()` and hands the chosen label back to
     // `from_names`, so both sides translate the same way. The vendors' names are
     // not messages and stay as they are.
@@ -222,7 +231,7 @@ mod tests {
         // edit.
         let _locale = japanese();
         let names = BaseKeymap::names().collect::<Vec<_>>();
-        assert!(names.contains(&"Zed (既定)"), "{names:?}");
+        assert!(names.contains(&"ForgeKairos (既定)"), "{names:?}");
         assert!(names.contains(&"Emacs (ベータ)"), "{names:?}");
         assert!(names.contains(&"Cursor (ベータ)"), "{names:?}");
         // The vendors' own spellings are left alone, and typing them still
@@ -240,8 +249,8 @@ mod tests {
         // `Display` is what `base_keymap_picker.rs` and `main.rs` report to
         // telemetry (ADR §5.11); translating it would change the values Zed
         // Industries already collects, so only `OPTIONS` (this UI's labels) is
-        // translated. `BaseKeymapContent::VARIANTS` (the settings UI's) is English
-        // and translated from `locales/ja/_settings.po` when the dropdown is drawn.
+        // translated. The settings window's dropdown shows `option_name`, the
+        // same labels.
         assert_eq!(BaseKeymap::Zed.to_string(), "Zed");
         assert_eq!(BaseKeymap::Emacs.to_string(), "Emacs (beta)");
         assert_eq!(BaseKeymap::Cursor.to_string(), "Cursor (beta)");

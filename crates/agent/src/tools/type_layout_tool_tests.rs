@@ -253,7 +253,7 @@ async fn test_positions_macros_and_missing_names(cx: &mut TestAppContext) {
     let (output, _) = run(&setup, by_name("no_such_type"), cx).await;
     assert_eq!(
         output.expect("an answer"),
-        "No struct, union, enum, typedef or macro named `no_such_type` was found in Zed's symbol index. It may be declared through a macro, in a file the index skips, or under another name: try `search_symbols` for `no_such_type`, or `grep` for `no_such_type`.\n"
+        "No struct, union, enum, typedef or macro named `no_such_type` was found in ForgeKairos's symbol index. It may be declared through a macro, in a file the index skips, or under another name: try `search_symbols` for `no_such_type`, or `grep` for `no_such_type`.\n"
     );
 }
 

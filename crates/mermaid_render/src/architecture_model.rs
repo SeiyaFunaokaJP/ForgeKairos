@@ -244,6 +244,9 @@ impl ArchitectureDocument {
     /// Removes the group at `index`. What was drawn inside it moves into the
     /// group it was itself inside, and any edge that ended on the group goes
     /// with it, since it would name a group that is no longer declared.
+    /// An edge that left the removed group through its border and now joins
+    /// two nodes of one group no longer crosses any border, so its group ends
+    /// are dropped: `merman` refuses them there.
     /// Returns the indices the removed edges had, in ascending order.
     pub fn remove_group(&mut self, index: usize) -> Vec<usize> {
         if index >= self.groups.len() {
@@ -255,9 +258,30 @@ impl ArchitectureDocument {
                 group.parent = removed.parent.clone();
             }
         }
+        let mut moved_nodes = Vec::new();
         for node in &mut self.nodes {
             if node.parent.as_deref() == Some(removed.id.as_str()) {
                 node.parent = removed.parent.clone();
+                moved_nodes.push(node.id.clone());
+            }
+        }
+        let nodes = &self.nodes;
+        let parent_of = |id: &str| {
+            nodes
+                .iter()
+                .find(|node| node.id == id)
+                .and_then(|node| node.parent.as_deref())
+        };
+        for edge in &mut self.edges {
+            if !(edge.from.group_boundary || edge.to.group_boundary)
+                || !(moved_nodes.contains(&edge.from.id) || moved_nodes.contains(&edge.to.id))
+            {
+                continue;
+            }
+            let from_parent = parent_of(&edge.from.id);
+            if from_parent.is_some() && from_parent == parent_of(&edge.to.id) {
+                edge.from.group_boundary = false;
+                edge.to.group_boundary = false;
             }
         }
         self.remove_edges_touching(&removed.id)
@@ -1885,6 +1909,39 @@ mod tests {
         assert!(document.edges.is_empty());
         assert_eq!(document.structure_error(), None);
         assert_renders(&emit_architecture(&document));
+    }
+
+    /// Removing a group can leave an edge that left it through its border
+    /// joining two nodes of one group, where `merman` refuses a group end. The
+    /// group ends go; an edge that still crosses a border keeps its own.
+    #[test]
+    fn removing_a_group_drops_group_ends_that_no_longer_cross_a_border() {
+        let mut document = parse(
+            "architecture-beta\n    group outer\n    group inner in outer\n    group other\n    service a in inner\n    service b in outer\n    service c in other\n    a{group}:R -- L:b\n    a{group}:B -- T:c{group}",
+        );
+        assert_eq!(document.structure_error(), None);
+        let removed = document.remove_group(1);
+        assert_eq!(removed, Vec::<usize>::new());
+        assert_eq!(document.structure_error(), None);
+        let emitted = emit_architecture(&document);
+        assert_eq!(
+            emitted,
+            "architecture-beta\n    group outer\n    group other\n    service a in outer\n    service b in outer\n    service c in other\n    a:R -- L:b\n    a{group}:B -- T:c{group}"
+        );
+        assert_renders(&emitted);
+
+        // Two nodes left outside every group are not in one group, and the
+        // edge between them is written as it was.
+        let mut document = parse(
+            "architecture-beta\n    group g\n    service a in g\n    service b\n    a{group}:R -- L:b",
+        );
+        assert_eq!(document.remove_group(0), Vec::<usize>::new());
+        let emitted = emit_architecture(&document);
+        assert_eq!(
+            emitted,
+            "architecture-beta\n    service a\n    service b\n    a{group}:R -- L:b"
+        );
+        assert_renders(&emitted);
     }
 
     /// `merman` reads an edge that ends on a group but its layout cannot place

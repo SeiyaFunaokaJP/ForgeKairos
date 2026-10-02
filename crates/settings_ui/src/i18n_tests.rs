@@ -28,7 +28,7 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     ("p0.i1[ui_language].title", "表示言語"),
     (
         "p0.i1[ui_language].description",
-        "Zed のメニュー、設定、メッセージを表示する言語です。タブ名など一部の表示は再起動後に切り替わります。",
+        "ForgeKairos のメニュー、設定、メッセージを表示する言語です。タブ名など一部の表示は再起動後に切り替わります。",
     ),
     // Added by upstream v1.19.2. The folder indicators replace the folder icon
     // switches, whose rows left the table.
@@ -682,8 +682,8 @@ fn translated_dropdowns() -> Vec<(
             settings::BaseKeymapContent::VARIANTS,
             false,
             vec![
-                "Zed",
-                "VSCode",
+                "ForgeKairos (既定)",
+                "VS Code",
                 "JetBrains",
                 "Sublime Text",
                 "Atom",
@@ -738,6 +738,55 @@ fn translated_dropdown_labels_show_the_japanese_they_used_to_have() {
     assert_eq!(
         dropdown_display("BaseKeymapContent", "Cursor", false),
         "Cursor (ベータ)"
+    );
+}
+
+#[test]
+fn the_base_keymap_dropdown_names_the_keymaps_as_onboarding_does() {
+    let english = i18n_catalog::test_support::bundled_catalog("en");
+    {
+        let _english = LocaleOverride::new(Some(english));
+        assert_eq!(
+            dropdown_display("BaseKeymapContent", "Zed", false),
+            "ForgeKairos (Default)"
+        );
+        assert_eq!(
+            dropdown_display("BaseKeymapContent", "VSCode", false),
+            "VS Code"
+        );
+        assert_eq!(
+            dropdown_display("BaseKeymapContent", "Emacs", false),
+            "Emacs (beta)"
+        );
+        assert_eq!(dropdown_display("BaseKeymapContent", "None", false), "None");
+    }
+    for catalog in [english, japanese()] {
+        let _locale = LocaleOverride::new(Some(catalog));
+        let onboarding: Vec<&str> = settings::BaseKeymap::names().collect();
+        let labels = <settings::BaseKeymapContent as strum::VariantNames>::VARIANTS;
+        let variants = <settings::BaseKeymapContent as strum::VariantArray>::VARIANTS;
+        let mut offered_by_onboarding = 0;
+        for (label, variant) in labels.iter().zip(variants) {
+            let keymap = settings::BaseKeymap::from(*variant);
+            if settings::BaseKeymap::OPTIONS
+                .iter()
+                .all(|(_, value)| *value != keymap)
+            {
+                continue;
+            }
+            offered_by_onboarding += 1;
+            let displayed = dropdown_display("BaseKeymapContent", label, false);
+            assert!(
+                onboarding.contains(&displayed.as_str()),
+                "{label}: the window shows {displayed:?}, onboarding {onboarding:?}"
+            );
+        }
+        assert_eq!(offered_by_onboarding, settings::BaseKeymap::OPTIONS.len());
+    }
+    // The label changes, the value written to settings.json does not.
+    assert_eq!(
+        serde_json::to_value(settings::BaseKeymapContent::Zed).ok(),
+        Some(serde_json::json!("Zed"))
     );
 }
 
@@ -915,7 +964,6 @@ const DROPDOWN_LABELS_KEPT_IN_ENGLISH: &[(&str, &str)] = &[
     ("BaseKeymapContent", "Sublime Text"),
     ("BaseKeymapContent", "TextMate"),
     ("BaseKeymapContent", "VSCode"),
-    ("BaseKeymapContent", "Zed"),
     ("MultiCursorModifier", "Alt"),
 ];
 
@@ -992,13 +1040,23 @@ fn dropdown_labels_on_screen(cx: &mut TestAppContext) -> Vec<(&'static str, Stri
 fn every_dropdown_label_on_screen_is_translated(cx: &mut TestAppContext) {
     let labels = dropdown_labels_on_screen(cx);
     assert!(labels.len() > 300, "only {} labels found", labels.len());
+    // `english` is already cased as the setting cases it. The English UI is
+    // set explicitly: under a catalog another test left installed, a label
+    // kept in English would be compared with its own translation.
+    let english_displayed: Vec<String> = {
+        let _english = LocaleOverride::new(Some(i18n_catalog::test_support::bundled_catalog("en")));
+        labels
+            .iter()
+            .map(|(name, english)| dropdown_display(name, english, false))
+            .collect()
+    };
     let _japanese = LocaleOverride::new(Some(japanese()));
     let mut untranslated = Vec::new();
-    for (name, english) in &labels {
-        let displayed = i18n::tr_ctx(name, english).to_string();
+    for ((name, english), english_displayed) in labels.iter().zip(&english_displayed) {
+        let displayed = dropdown_display(name, english, false);
         let kept_in_english = DROPDOWN_LABELS_KEPT_IN_ENGLISH.contains(&(name, english.as_str()));
         let as_expected = if kept_in_english {
-            displayed == *english
+            displayed == *english_displayed
         } else {
             has_japanese(&displayed)
         };
@@ -1263,6 +1321,128 @@ async fn search_finds_settings_by_english_and_japanese_names(cx: &mut TestAppCon
     assert!(found["accessible_mode"], "{found:?}");
 }
 
+/// Every row the search leaves on screen, as `page/header` for section headers
+/// and `page/json path` (or `page/title`) for the rest, and the navigation entry
+/// it picked as the best match.
+fn search_results(
+    settings_window: gpui::WindowHandle<SettingsWindow>,
+    query: &str,
+    cx: &mut gpui::VisualTestContext,
+) -> (BTreeSet<String>, &'static str) {
+    search(settings_window, query, cx);
+    settings_window
+        .read_with(cx, |settings_window, _| {
+            let mut rows = BTreeSet::new();
+            for (page, shown) in settings_window
+                .pages
+                .iter()
+                .zip(&settings_window.filter_table)
+            {
+                for (item, shown) in page.items.iter().zip(shown) {
+                    if !shown {
+                        continue;
+                    }
+                    let name = match item {
+                        SettingsPageItem::SectionHeader(header) => format!("# {header}"),
+                        SettingsPageItem::SettingItem(item)
+                        | SettingsPageItem::DynamicItem(DynamicItem {
+                            discriminant: item, ..
+                        }) => item.field.json_path().unwrap_or(item.title).to_string(),
+                        SettingsPageItem::SubPageLink(link) => link.title.to_string(),
+                        SettingsPageItem::ActionLink(link) => link.title.to_string(),
+                    };
+                    rows.insert(format!("{}/{name}", page.title));
+                }
+            }
+            let best_match = settings_window
+                .navbar_entries
+                .get(settings_window.navbar_entry)
+                .map_or("", |entry| entry.title);
+            (rows, best_match)
+        })
+        .expect("the settings window should be open")
+}
+
+#[gpui::test]
+async fn japanese_search_finds_words_in_the_middle_of_titles_and_descriptions(
+    cx: &mut TestAppContext,
+) {
+    let _japanese = LocaleOverride::new(Some(japanese()));
+    let (settings_window, cx) = open_settings_window(cx, Box::new(zed_actions::OpenSettings)).await;
+
+    // Japanese is not written with spaces, so each of these is in the middle of
+    // a run the index holds as one word.
+    for (query, expected_rows, expected_best_match) in [
+        (
+            // The header "リモートターミナルの切断対策" also finds the rows below it.
+            "切断",
+            &[
+                "Terminal/# Remote Terminal Persistence",
+                "Terminal/terminal.remote_persistence.detached_timeout_hours",
+            ][..],
+            "Remote Terminal Persistence",
+        ),
+        (
+            // "無視されたファイルも索引に入れる"
+            "索引",
+            &["Languages & Tools/symbol_index.include_ignored"][..],
+            "Symbol Index",
+        ),
+        (
+            // "保存時に末尾へ改行を確保"
+            "改行",
+            &["Editor/languages.$(language).ensure_final_newline_on_save"][..],
+            // No section header says it, so the first page that has a match.
+            "Editor",
+        ),
+        (
+            // "...のシェルをリモートの Zed サーバーに預けます。" in a description.
+            "預け",
+            &["Terminal/terminal.remote_persistence.enabled"][..],
+            "Terminal",
+        ),
+    ] {
+        let (rows, best_match) = search_results(settings_window, query, cx);
+        for expected in expected_rows {
+            assert!(rows.contains(*expected), "{query}: {expected} in {rows:#?}");
+        }
+        assert!(
+            !rows.iter().any(|row| row.ends_with("/vim_mode")),
+            "{query}: the search still filters: {rows:#?}"
+        );
+        assert_eq!(best_match, expected_best_match, "{query}");
+    }
+}
+
+/// Matching inside words is only for queries that are not ASCII: what English
+/// finds, and the page it picks, stay as they were.
+#[gpui::test]
+async fn english_search_still_matches_the_start_of_words(cx: &mut TestAppContext) {
+    let _japanese = LocaleOverride::new(Some(japanese()));
+    let (settings_window, cx) = open_settings_window(cx, Box::new(zed_actions::OpenSettings)).await;
+    // Taken from the search before it matched inside words; the counts move
+    // with the table, but "ine" and "mat" would find more if ASCII matched
+    // inside words ("line", "format").
+    for (query, expected_count, expected_best_match) in [
+        ("line", 57, "Appearance"),
+        ("font size", 15, "Font"),
+        ("tab", 41, "Preview Tabs"),
+        ("index", 12, "Symbol Index"),
+        ("save", 18, "Auto Save"),
+        ("vim", 20, "Vim"),
+        ("mat", 21, "General"),
+        ("ine", 0, "General"),
+        ("new", 25, "General"),
+    ] {
+        let (rows, best_match) = search_results(settings_window, query, cx);
+        assert_eq!(
+            (rows.len(), best_match),
+            (expected_count, expected_best_match),
+            "{query}: {rows:#?}"
+        );
+    }
+}
+
 fn set_ui_language(language: &str, cx: &mut gpui::VisualTestContext) {
     cx.update(|_, cx| {
         cx.update_global::<settings::SettingsStore, _>(|store, cx| {
@@ -1281,9 +1461,15 @@ async fn switching_the_ui_language_rebuilds_the_settings_window(cx: &mut TestApp
     cx.update(|_, cx| i18n_settings::init_for_tests(None, cx));
 
     for (language, general_page, japanese_finds, search_placeholder, window_title) in [
-        ("ja", "全般", true, "設定を検索…", "Zed — 設定"),
-        ("en", "General", false, "Search settings…", "Zed — Settings"),
-        ("ja", "全般", true, "設定を検索…", "Zed — 設定"),
+        ("ja", "全般", true, "設定を検索…", "ForgeKairos — 設定"),
+        (
+            "en",
+            "General",
+            false,
+            "Search settings…",
+            "ForgeKairos — Settings",
+        ),
+        ("ja", "全般", true, "設定を検索…", "ForgeKairos — 設定"),
     ] {
         set_ui_language(language, cx);
         assert_eq!(i18n::current_locale(), language);

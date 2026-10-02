@@ -46,7 +46,7 @@ use ui::{
 use util::ResultExt as _;
 use util::command::Stdio;
 use workspace::{
-    ItemId, ModalView, Panel as _, SerializableItem, Workspace, WorkspaceId,
+    ItemId, ModalView, Pane, Panel as _, SerializableItem, Workspace, WorkspaceId,
     item::{Item, ItemBufferKind, ItemEvent, SaveOptions},
 };
 use zed_actions::terminal::InstallClaudeCode;
@@ -594,18 +594,24 @@ fn open_macro_editor(
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) -> Option<Entity<MacroEditor>> {
+    let mut open_editors = open_macro_editors(workspace, cx).into_iter();
     let existing = match &edited {
-        None => workspace.items_of_type::<MacroEditor>(cx).next(),
+        None => open_editors.next(),
         Some(edited) if !edited.name.is_empty() => {
             let key = edited.key();
-            workspace
-                .items_of_type::<MacroEditor>(cx)
-                .find(|editor| editor.read(cx).original_key.as_ref() == Some(&key))
+            open_editors.find(|(_, editor)| editor.read(cx).original_key.as_ref() == Some(&key))
         }
         Some(_) => None,
     };
-    if let Some(editor) = existing {
-        workspace.activate_item(&editor, true, true, window, cx);
+    if let Some((pane, editor)) = existing {
+        if !workspace.panes().contains(&pane) {
+            workspace.reveal_panel::<TerminalPanel>(window, cx);
+        }
+        pane.update(cx, |pane, cx| {
+            if let Some(index) = pane.index_for_item(&editor) {
+                pane.activate_item(index, true, true, window, cx);
+            }
+        });
         return Some(editor);
     }
     let fs = workspace_fs(workspace)?;
@@ -613,6 +619,35 @@ fn open_macro_editor(
     let editor = cx.new(|cx| MacroEditor::new(store, edited, window, cx));
     workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
     Some(editor)
+}
+
+/// Every macro editor tab with the pane holding it, the center's first. A tab
+/// can be dragged into the terminal panel, whose panes the workspace's own
+/// item lookups do not see.
+fn open_macro_editors(workspace: &Workspace, cx: &App) -> Vec<(Entity<Pane>, Entity<MacroEditor>)> {
+    let terminal_panes = workspace
+        .panel::<TerminalPanel>(cx)
+        .map(|panel| {
+            panel
+                .read(cx)
+                .panes()
+                .into_iter()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    workspace
+        .panes()
+        .iter()
+        .cloned()
+        .chain(terminal_panes)
+        .flat_map(|pane| {
+            pane.read(cx)
+                .items_of_type::<MacroEditor>()
+                .map(|editor| (pane.clone(), editor))
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 /// The terminal the session tools act on: the focused one when the terminal
@@ -5075,7 +5110,7 @@ impl MacroEditor {
             .child(heading)
             .child(div().w_full().p_1().child(self.render_lane(
                 Some((path.clone(), list)),
-                (width - LANE_CHROME).max(px(0.)),
+                (width - lane_chrome(window.rem_size())).max(px(0.)),
                 reach,
                 window,
                 cx,
@@ -5570,10 +5605,9 @@ impl MacroEditor {
             })
         });
 
-        let inner_width = (width - CARD_CHROME).max(px(0.));
+        let inner_width = (width - card_chrome(window.rem_size())).max(px(0.));
         let lane_gap = px(8.);
-        let min_lane_width = rems(MIN_LANE_WIDTH).to_pixels(window.rem_size());
-        let side_by_side = inner_width >= min_lane_width * 2. + lane_gap;
+        let lanes_editable = path.depth() < MAX_EDITABLE_STEP_DEPTH;
         // A 分岐 with steps on one side only gives the empty side just enough
         // for its heading and 「+」, and the rest to the side that has cards.
         let narrow_lane_width = rems(NARROW_LANE_WIDTH).to_pixels(window.rem_size());
@@ -5582,6 +5616,16 @@ impl MacroEditor {
             (false, true) if kind == StepKind::If => Some(StepList::Else),
             _ => None,
         };
+        // Past the editable depth both sides are a line of text, which side
+        // by side, and above all on a narrow side, would wrap a few words to
+        // a line.
+        let side_by_side = lanes_editable
+            && branch_sides_fit(
+                inner_width,
+                narrow_side.is_some(),
+                lane_gap,
+                window.rem_size(),
+            );
         let lanes = match kind {
             StepKind::Repeat => vec![self.render_child_list(
                 path,
@@ -5684,6 +5728,9 @@ impl MacroEditor {
         let regex_path = path.clone();
         let selector = path.debug_selector();
         let header_selector = format!("{selector}-header");
+        let title_selector = format!("{selector}-title");
+        let kind_selector = format!("{selector}-kind");
+        let header_buttons_selector = format!("{selector}-header-buttons");
         let notes_selector = format!("{selector}-notes");
         let can_move_up = index > 0;
         let can_move_down = index + 1 < sibling_count;
@@ -5739,7 +5786,7 @@ impl MacroEditor {
                 let dragged = dragged.clone();
                 cx.new(|_| DraggedStepHeader(dragged))
             })
-            .child(
+            .child(div().flex_none().child(
                 Disclosure::new(("step-toggle", element_id), expanded).on_click(cx.listener(
                     move |this, _, _, cx| {
                         if let Some(row) = this.row_mut(&toggle_path) {
@@ -5748,12 +5795,17 @@ impl MacroEditor {
                         }
                     },
                 )),
-            )
+            ))
             .child(
+                // In a narrow column the title gives way to the buttons:
+                // without `min_w_0` and the clip, the labels keep their full
+                // width and are drawn over the buttons on its right.
                 h_flex()
                     .id(("step-title", element_id))
+                    .debug_selector(move || title_selector)
                     .flex_1()
                     .min_w_0()
+                    .overflow_hidden()
                     .gap_1()
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -5763,24 +5815,33 @@ impl MacroEditor {
                         }
                     }))
                     .child(
-                        Label::new(path.label())
-                            .size(LabelSize::Small)
-                            .color(Color::Muted),
+                        div().flex_none().child(
+                            Label::new(path.label())
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        ),
                     )
-                    .child(Icon::new(kind_icon).size(IconSize::Small).color(
-                        if unknown_kind.is_some() {
-                            Color::Warning
-                        } else {
-                            Color::Muted
-                        },
+                    .child(div().flex_none().child(
+                        Icon::new(kind_icon).size(IconSize::Small).color(
+                            if unknown_kind.is_some() {
+                                Color::Warning
+                            } else {
+                                Color::Muted
+                            },
+                        ),
                     ))
-                    .child(Label::new(kind_label).size(LabelSize::Small).color(
-                        if unknown_kind.is_some() {
-                            Color::Warning
-                        } else {
-                            Color::Default
-                        },
-                    ))
+                    .child(
+                        div().debug_selector(move || kind_selector).min_w_0().child(
+                            Label::new(kind_label)
+                                .size(LabelSize::Small)
+                                .color(if unknown_kind.is_some() {
+                                    Color::Warning
+                                } else {
+                                    Color::Default
+                                })
+                                .truncate(),
+                        ),
+                    )
                     .when(!expanded, |this| {
                         this.child(
                             div().flex_1().min_w_0().child(
@@ -5792,52 +5853,58 @@ impl MacroEditor {
                         )
                     }),
             )
-            .children(folded_notes)
             .child(
-                PopoverMenu::new(("step-menu", element_id))
-                    .trigger_with_tooltip(
-                        IconButton::new(("step-more", element_id), IconName::Ellipsis)
-                            .icon_size(IconSize::Small),
-                        Tooltip::text(i18n::t!("Opens the menu for moving and folding")),
-                    )
-                    .menu({
-                        let view = cx.weak_entity();
-                        let path = path.clone();
-                        move |window, cx| {
-                            Some(Self::step_menu(
-                                view.clone(),
-                                path.clone(),
-                                expanded,
-                                can_move_up,
-                                can_move_down,
-                                window,
-                                cx,
-                            ))
-                        }
-                    }),
-            )
-            .child(
-                IconButton::new(("step-delete", element_id), IconName::Trash)
-                    .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text(i18n::t!("Deletes this step")))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        if this.delete_step(&delete) {
-                            cx.notify();
-                        }
-                    })),
-            )
-            .child(
-                div()
-                    .id(("step-grip", element_id))
+                h_flex()
                     .flex_none()
-                    .cursor_grab()
-                    .tooltip(Tooltip::text(i18n::t!(
-                        "Drag onto a “+” along or at the end of a line to move the step"
-                    )))
+                    .gap_1()
+                    .debug_selector(move || header_buttons_selector)
+                    .children(folded_notes)
                     .child(
-                        Icon::new(IconName::Menu)
-                            .size(IconSize::Small)
-                            .color(Color::Muted),
+                        PopoverMenu::new(("step-menu", element_id))
+                            .trigger_with_tooltip(
+                                IconButton::new(("step-more", element_id), IconName::Ellipsis)
+                                    .icon_size(IconSize::Small),
+                                Tooltip::text(i18n::t!("Opens the menu for moving and folding")),
+                            )
+                            .menu({
+                                let view = cx.weak_entity();
+                                let path = path.clone();
+                                move |window, cx| {
+                                    Some(Self::step_menu(
+                                        view.clone(),
+                                        path.clone(),
+                                        expanded,
+                                        can_move_up,
+                                        can_move_down,
+                                        window,
+                                        cx,
+                                    ))
+                                }
+                            }),
+                    )
+                    .child(
+                        IconButton::new(("step-delete", element_id), IconName::Trash)
+                            .icon_size(IconSize::Small)
+                            .tooltip(Tooltip::text(i18n::t!("Deletes this step")))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                if this.delete_step(&delete) {
+                                    cx.notify();
+                                }
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id(("step-grip", element_id))
+                            .flex_none()
+                            .cursor_grab()
+                            .tooltip(Tooltip::text(i18n::t!(
+                                "Drag onto a “+” along or at the end of a line to move the step"
+                            )))
+                            .child(
+                                Icon::new(IconName::Menu)
+                                    .size(IconSize::Small)
+                                    .color(Color::Muted),
+                            ),
                     ),
             );
         let header = right_click_menu(("step-context-menu", element_id))
@@ -6146,14 +6213,38 @@ impl MacroEditor {
 /// The kind-colored stripe down a card's left edge.
 const CARD_STRIPE_WIDTH: Pixels = px(3.);
 
-/// A card's border, stripe and padding, which its lanes do not get.
-const CARD_CHROME: Pixels = px(2. + 3. + 12.);
+/// A card's border, stripe and padding (`p_1p5` on both sides), which its
+/// lanes do not get. The padding is in rems, so it follows the UI font size.
+fn card_chrome(rem_size: Pixels) -> Pixels {
+    px(2.) + CARD_STRIPE_WIDTH + rems(0.75).to_pixels(rem_size)
+}
 
-/// A lane's border and padding on both sides, which its cards do not get.
-const LANE_CHROME: Pixels = px(10.);
+/// A lane's border and padding (`p_1` on both sides), which its cards do not
+/// get.
+fn lane_chrome(rem_size: Pixels) -> Pixels {
+    px(2.) + rems(0.5).to_pixels(rem_size)
+}
 
-/// The narrowest a lane is drawn; a 分岐 whose card cannot give both of its
-/// sides this much stacks them instead of putting them side by side.
+/// Whether the two sides of a 分岐 fit beside each other in `inner_width`.
+/// When one side is empty it only needs its narrow width, so the side with
+/// cards is the one that has to get a lane's minimum.
+fn branch_sides_fit(
+    inner_width: Pixels,
+    one_side_empty: bool,
+    lane_gap: Pixels,
+    rem_size: Pixels,
+) -> bool {
+    let min_lane_width = rems(MIN_LANE_WIDTH).to_pixels(rem_size);
+    let other_side = if one_side_empty {
+        rems(NARROW_LANE_WIDTH).to_pixels(rem_size)
+    } else {
+        min_lane_width
+    };
+    inner_width >= min_lane_width + lane_gap + other_side
+}
+
+/// The narrowest a lane with cards is drawn; a 分岐 whose card cannot give
+/// its sides this much stacks them instead of putting them side by side.
 const MIN_LANE_WIDTH: f32 = 16.;
 
 /// The width (in rems) of the empty side of a 分岐 whose other side has steps:
@@ -6568,6 +6659,7 @@ impl Render for MacroEditor {
                                                     .child(name_field)
                                                     .child(
                                                         h_flex()
+                                                            .flex_wrap()
                                                             .gap_2()
                                                             .child(
                                                                 Label::new(i18n::t!("Folder"))
@@ -6580,20 +6672,34 @@ impl Render for MacroEditor {
                                                     .child(tags_field)
                                                     .child(description_field)
                                                     .child(
+                                                        // Each label stays with its field when the
+                                                        // row wraps in a narrow column.
                                                         h_flex()
+                                                            .flex_wrap()
                                                             .gap_2()
                                                             .child(
-                                                                Label::new(i18n::t!("Repeat Count"))
-                                                                    .size(LabelSize::Small)
-                                                                    .color(Color::Muted),
+                                                                h_flex()
+                                                                    .flex_none()
+                                                                    .gap_2()
+                                                                    .child(
+                                                                        Label::new(i18n::t!("Repeat Count"))
+                                                                            .size(LabelSize::Small)
+                                                                            .color(Color::Muted),
+                                                                    )
+                                                                    .child(repeat_field),
                                                             )
-                                                            .child(repeat_field)
                                                             .child(
-                                                                Label::new(i18n::t!("Interval (seconds)"))
-                                                                    .size(LabelSize::Small)
-                                                                    .color(Color::Muted),
+                                                                h_flex()
+                                                                    .debug_selector(|| "macro-repeat-interval".into())
+                                                                    .flex_none()
+                                                                    .gap_2()
+                                                                    .child(
+                                                                        Label::new(i18n::t!("Interval (seconds)"))
+                                                                            .size(LabelSize::Small)
+                                                                            .color(Color::Muted),
+                                                                    )
+                                                                    .child(repeat_interval_field),
                                                             )
-                                                            .child(repeat_interval_field)
                                                             .child(
                                                                 Label::new(i18n::t!("(0 = repeat until stopped)"))
                                                                     .size(LabelSize::Small)
@@ -9103,6 +9209,107 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn a_macro_whose_tab_was_moved_into_the_terminal_panel_opens_there(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [
+                { "name": "ログイン", "steps": [] },
+                { "name": "保存", "steps": [] },
+                { "name": "終了", "steps": [] }
+            ] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+        let login = stored_macro_in(&store, None, "ログイン", cx);
+        let save = stored_macro_in(&store, None, "保存", cx);
+        let quit = stored_macro_in(&store, None, "終了", cx);
+        let terminal_panel = workspace.update_in(cx, |workspace, window, cx| {
+            let panel = cx.new(|cx| TerminalPanel::new(workspace, window, cx));
+            workspace.add_panel(panel.clone(), window, cx);
+            panel
+        });
+        let open = |edited: TerminalMacro, cx: &mut VisualTestContext| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                open_macro_editor(workspace, Some(edited), window, cx)
+                    .expect("the editor should have opened")
+            })
+        };
+
+        let panel_pane = terminal_panel.read_with(cx, |panel, _| panel.active_pane.clone());
+        let move_to_panel = |editor: &Entity<MacroEditor>, cx: &mut VisualTestContext| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                let center_pane = workspace.active_pane().clone();
+                let index = panel_pane.read(cx).items_len();
+                workspace::move_item(
+                    &center_pane,
+                    &panel_pane,
+                    editor.entity_id(),
+                    index,
+                    true,
+                    window,
+                    cx,
+                );
+            });
+        };
+        let moved = open(login.clone(), cx);
+        move_to_panel(&moved, cx);
+        // Another tab in front of it in the panel, so that finding the tab is
+        // not enough: it has to be brought forward.
+        let in_front = open(quit, cx);
+        move_to_panel(&in_front, cx);
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.close_panel::<TerminalPanel>(window, cx);
+        });
+        let stays = open(save, cx);
+        cx.run_until_parked();
+        assert_eq!(macro_editor_count(&workspace, cx), 1);
+        assert_eq!(
+            panel_pane.read_with(cx, |pane, _| pane.active_item().map(|item| item.item_id())),
+            Some(in_front.entity_id())
+        );
+
+        let again = open(login, cx);
+        cx.run_until_parked();
+        assert_eq!(
+            again.entity_id(),
+            moved.entity_id(),
+            "the tab in the terminal panel is the macro's form; no second one opens"
+        );
+        assert_eq!(macro_editor_count(&workspace, cx), 1);
+        let all_tabs = workspace.read_with(cx, |workspace, cx| {
+            open_macro_editors(workspace, cx)
+                .into_iter()
+                .map(|(_, editor)| editor.entity_id())
+                .collect::<Vec<_>>()
+        });
+        assert_eq!(
+            all_tabs,
+            vec![stays.entity_id(), moved.entity_id(), in_front.entity_id()]
+        );
+        assert_eq!(
+            panel_pane.read_with(cx, |pane, _| pane.active_item().map(|item| item.item_id())),
+            Some(moved.entity_id())
+        );
+        assert!(
+            cx.update(|window, cx| moved.focus_handle(cx).contains_focused(window, cx)),
+            "the form that was asked for has the focus"
+        );
+        assert!(
+            workspace.read_with(cx, |workspace, cx| workspace.all_docks().iter().any(
+                |dock| {
+                    let dock = dock.read(cx);
+                    dock.panel::<TerminalPanel>().is_some() && dock.is_open()
+                }
+            )),
+            "the terminal panel holding the tab is shown"
+        );
+    }
+
+    #[gpui::test]
     async fn saving_writes_the_file_and_the_picker_follows(cx: &mut TestAppContext) {
         let (fs, workspace, window) =
             init_workspace(cx, r#"{ "macros": [{ "name": "既存", "steps": [] }] }"#).await;
@@ -10945,6 +11152,85 @@ mod tests {
         );
     }
 
+    #[gpui::test]
+    async fn a_narrow_form_keeps_step_titles_off_their_buttons(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_macro_list_shown(false, cx);
+            editor.load_macro(Some(branching_macro()), window, cx);
+        });
+        cx.simulate_resize(size(px(900.), px(900.)));
+        settle(cx);
+
+        let steps = ["macro-step-1", "macro-step-2", "macro-step-2-1"];
+        let bounds = |cx: &mut VisualTestContext, name: String| {
+            cx.debug_bounds(Box::leak(name.clone().into_boxed_str()))
+                .unwrap_or_else(|| panic!("{name} should have been drawn"))
+        };
+        let natural_kind_widths: Vec<Pixels> = steps
+            .iter()
+            .map(|step| bounds(cx, format!("{step}-kind")).size.width)
+            .collect();
+
+        let mut truncated = false;
+        for width in [px(420.), px(300.), px(240.), px(200.)] {
+            cx.simulate_resize(size(width, px(900.)));
+            settle(cx);
+            let form = bounds(cx, "macro-form".to_string());
+            let interval = bounds(cx, "macro-repeat-interval".to_string());
+            assert!(
+                interval.right() <= form.right(),
+                "at {width:?} the interval field ends at {} past the form at {}",
+                interval.right(),
+                form.right()
+            );
+            for (step, natural) in steps.iter().zip(&natural_kind_widths) {
+                let header = bounds(cx, format!("{step}-header"));
+                let title = bounds(cx, format!("{step}-title"));
+                let kind = bounds(cx, format!("{step}-kind"));
+                let buttons = bounds(cx, format!("{step}-header-buttons"));
+                assert!(
+                    title.right() <= buttons.left(),
+                    "at {width:?} the title of {step} ends at {} under its buttons from {}",
+                    title.right(),
+                    buttons.left()
+                );
+                assert!(
+                    buttons.right() <= header.right() + px(0.5),
+                    "at {width:?} the buttons of {step} end at {} past the card at {}",
+                    buttons.right(),
+                    header.right()
+                );
+                if kind.size.width > px(0.) {
+                    assert!(
+                        kind.right() <= title.right() + px(0.5),
+                        "at {width:?} the kind of {step} ends at {} past its title at {}",
+                        kind.right(),
+                        title.right()
+                    );
+                }
+                if kind.size.width + px(1.) < *natural {
+                    truncated = true;
+                }
+            }
+        }
+        assert!(truncated, "no width was narrow enough to shorten a title");
+
+        // Narrower than the buttons alone: drawn without panicking, and the
+        // layout comes to rest instead of asking for frame after frame.
+        for width in [px(100.), px(40.), px(1.)] {
+            cx.simulate_resize(size(width, px(900.)));
+            settle(cx);
+            let pending = cx.update(|window, cx| window.simulate_next_frame(cx));
+            assert_eq!(pending, 0, "at {width:?} the form keeps redrawing");
+        }
+    }
+
     /// Seven levels of steps, threaded through a 「そのとき」, a
     /// 「タイムアウト時」 and an 「それ以外」 so that every kind of child list has
     /// to be walked. The last two levels are past
@@ -11822,6 +12108,149 @@ mod tests {
                 && then_lane.right() <= else_lane.left(),
             "the inner lanes {then_lane:?} {else_lane:?} should be side by side"
         );
+    }
+
+    #[gpui::test]
+    async fn a_branch_with_one_empty_side_stays_side_by_side_where_two_full_sides_stack(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let branch = |then_steps: Vec<MacroStep>, else_steps: Vec<MacroStep>| TerminalMacro {
+            name: "分岐".to_string(),
+            steps: vec![MacroStep::If {
+                pattern: "router#".to_string(),
+                regex: false,
+                scope: MatchScope::Screen,
+                capture: None,
+                then_steps,
+                else_steps,
+            }],
+            ..TerminalMacro::default()
+        };
+        let width = cx.update(|window, _| rems(30.).to_pixels(window.rem_size()));
+        cx.simulate_resize(size(width, px(900.)));
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update(cx, |editor, cx| editor.set_macro_list_shown(false, cx));
+        let lanes = |then_steps, else_steps, cx: &mut VisualTestContext| {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.load_macro(Some(branch(then_steps, else_steps)), window, cx);
+            });
+            settle(cx);
+            let then_lane = cx
+                .debug_bounds("macro-lane-1-main")
+                .expect("“Then” should have been drawn");
+            let else_lane = cx
+                .debug_bounds("macro-lane-1-else")
+                .expect("“Else” should have been drawn");
+            (then_lane, else_lane)
+        };
+
+        let (then_lane, else_lane) = lanes(vec![sent("a")], vec![sent("b")], cx);
+        assert!(
+            else_lane.top() >= then_lane.bottom(),
+            "two sides with cards do not both fit their minimum here and stack: \
+             {then_lane:?} {else_lane:?}"
+        );
+
+        let (then_lane, else_lane) = lanes(vec![sent("a")], Vec::new(), cx);
+        assert!(
+            (then_lane.top() - else_lane.top()).abs() < px(1.)
+                && then_lane.right() <= else_lane.left(),
+            "an empty side only needs its narrow width, so the sides stay beside \
+             each other: {then_lane:?} {else_lane:?}"
+        );
+        let min_lane = cx.update(|window, _| rems(MIN_LANE_WIDTH).to_pixels(window.rem_size()));
+        assert!(
+            then_lane.size.width >= min_lane,
+            "the side with cards still gets a lane's minimum: {then_lane:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_sides_of_a_branch_past_the_drawn_depth_are_stacked_lines(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let mut edited = deeply_nested_macro();
+        fn deepest_branch(steps: &mut [MacroStep]) -> Option<&mut Vec<MacroStep>> {
+            for step in steps {
+                let found = match step {
+                    MacroStep::Repeat { steps, .. } => deepest_branch(steps),
+                    MacroStep::WaitFor {
+                        on_timeout: Some(steps),
+                        ..
+                    } => deepest_branch(steps),
+                    MacroStep::If {
+                        pattern,
+                        then_steps,
+                        else_steps,
+                        ..
+                    } => {
+                        if pattern == "五段目" {
+                            return Some(else_steps);
+                        }
+                        deepest_branch(then_steps)
+                    }
+                    _ => None,
+                };
+                if found.is_some() {
+                    return found;
+                }
+            }
+            None
+        }
+        deepest_branch(&mut edited.steps)
+            .expect("the nested macro has a branch at the deepest drawn level")
+            .clear();
+
+        let width = cx.update(|window, _| rems(120.).to_pixels(window.rem_size()));
+        cx.simulate_resize(size(width, px(900.)));
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.set_macro_list_shown(false, cx);
+            editor.load_macro(Some(edited), window, cx);
+        });
+        settle(cx);
+
+        let then_lane = cx
+            .debug_bounds("macro-lane-1-1-1-1-t1-main")
+            .expect("“Then” past the drawn depth is a line of text");
+        let else_lane = cx
+            .debug_bounds("macro-lane-1-1-1-1-t1-else")
+            .expect("“Else” past the drawn depth is a line of text");
+        assert!(
+            else_lane.top() >= then_lane.bottom(),
+            "the two lines are stacked: {then_lane:?} {else_lane:?}"
+        );
+        assert!(
+            (then_lane.size.width - else_lane.size.width).abs() <= px(1.),
+            "the empty side is not squeezed to the narrow width, where its line \
+             would wrap: {then_lane:?} {else_lane:?}"
+        );
+    }
+
+    #[test]
+    fn the_space_a_card_and_a_lane_take_follows_the_font_size() {
+        assert_eq!(card_chrome(px(16.)), px(2. + 3. + 12.));
+        assert_eq!(card_chrome(px(20.)), px(2. + 3. + 15.));
+        assert_eq!(lane_chrome(px(16.)), px(10.));
+        assert_eq!(lane_chrome(px(20.)), px(12.));
+
+        let rem = px(16.);
+        let gap = px(8.);
+        let one_empty = rems(MIN_LANE_WIDTH + NARROW_LANE_WIDTH).to_pixels(rem) + gap;
+        let both_full = rems(MIN_LANE_WIDTH * 2.).to_pixels(rem) + gap;
+        assert!(branch_sides_fit(one_empty, true, gap, rem));
+        assert!(!branch_sides_fit(one_empty - px(1.), true, gap, rem));
+        assert!(!branch_sides_fit(one_empty, false, gap, rem));
+        assert!(branch_sides_fit(both_full, false, gap, rem));
+        assert!(!branch_sides_fit(both_full - px(1.), false, gap, rem));
     }
 
     #[gpui::test]

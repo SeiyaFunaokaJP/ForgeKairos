@@ -209,12 +209,16 @@ impl StaleFileSweep<'_> {
             .collect::<Vec<_>>();
         logs.sort_by_key(|log| std::cmp::Reverse(log.modified));
 
+        // Only the logs that could go count against the size limit: a running
+        // daemon's log stays whatever its size, and counting it would cost
+        // the logs of gone daemons their place for nothing.
         let mut kept_bytes = 0;
         let mut removable = Vec::new();
         for (index, log) in logs.iter().enumerate() {
             if log.is_protected {
-                kept_bytes += log.bytes;
-            } else if index < KEPT_LOG_GENERATIONS {
+                continue;
+            }
+            if index < KEPT_LOG_GENERATIONS {
                 kept_bytes += log.bytes;
                 removable.push((log, false));
             } else {
@@ -546,6 +550,22 @@ mod tests {
             removed,
             [log("server-d-f0000002.log"), log("server-d-f0000003.log")]
         );
+    }
+
+    #[gpui::test]
+    async fn logs_that_are_kept_anyway_leave_the_size_limit_to_the_others(cx: &mut TestAppContext) {
+        let fs = setup(cx).await;
+        let megabyte = 1024 * 1024;
+        let long_ago = now() - STALE_STATE_DIR_AGE - DAY;
+        log_written_at(&fs, "server-d-00000000.log", now() - 2 * DAY, 6 * megabyte).await;
+        state_dir_used_at(&fs, "d-bbbbbbbb", long_ago, &[("daemon.pid", "777")]).await;
+        log_written_at(&fs, "server-d-bbbbbbbb.log", now() - 3 * DAY, 6 * megabyte).await;
+        log_written_at(&fs, "server-d-f0000000.log", now() - 10 * DAY, 8 * megabyte).await;
+        log_written_at(&fs, "server-d-f0000001.log", now() - 11 * DAY, 8 * megabyte).await;
+
+        let outcome = sweep(&fs, &[777], &[]).await;
+
+        assert_eq!(outcome.removed_logs, Vec::<PathBuf>::new());
     }
 
     #[test]

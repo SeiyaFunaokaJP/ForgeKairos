@@ -1205,6 +1205,9 @@ msgstr "関係"
 msgid "Relationships"
 msgstr "関係"
 
+msgid "Remove the arrow drawn after the label (the `-->` with nothing after it)"
+msgstr "ラベルの後ろに描かれる矢印を消す (後ろに何もない `-->`)"
+
 msgid "Rename in All Tasks"
 msgstr "全作業で名前を変更"
 

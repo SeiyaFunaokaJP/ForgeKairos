@@ -15,13 +15,24 @@ use remote::{DISPLAY_LANGUAGE_ENV_VAR, DisplayLanguageHandler};
 /// Makes the connections of this process apply the display language their
 /// client sends.
 pub fn init(cx: &mut gpui::App) {
+    install_english();
     cx.set_global(DisplayLanguageHandler(install));
+}
+
+/// `install` compares languages, and a process starts in English without a
+/// catalog, so the English one (the product's own name) is put in place first.
+fn install_english() {
+    i18n::install(
+        i18n_catalog::english_catalog(None).map(|catalog| catalog as &'static dyn i18n::Catalog),
+    );
 }
 
 /// Shows `tag` from here on, or English for `None`, for a tag this binary has
 /// no translation for, and for anything that is not a language tag.
 pub fn install(tag: Option<&str>) {
-    let catalog = tag.and_then(bundled_catalog);
+    let catalog = tag
+        .and_then(bundled_catalog)
+        .or_else(|| i18n_catalog::english_catalog(None));
     if catalog.map_or("en", |catalog| catalog.locale()) == i18n::current_locale() {
         return;
     }
@@ -31,6 +42,7 @@ pub fn install(tag: Option<&str>) {
 /// Applies the display language the client put in the environment of a
 /// `terminal-session` command. Without one, the process stays in English.
 pub fn install_from_environment() {
+    install_english();
     if let Ok(tag) = std::env::var(DISPLAY_LANGUAGE_ENV_VAR) {
         install(Some(&tag));
     }
@@ -96,6 +108,11 @@ mod tests {
                 i18n::t!("No operation was specified"),
                 "No operation was specified"
             );
+            assert_eq!(
+                i18n::tr_ctx(i18n::context::MENU, "About Zed"),
+                "About ForgeKairos",
+                "{not_japanese:?} names the product as English does"
+            );
         }
 
         let longest_valid = format!("ja-{}", ["abcdefgh"; 7].join("-"));
@@ -104,6 +121,21 @@ mod tests {
         assert_eq!(i18n::current_locale(), "en", "longer than a tag may be");
         install(Some(&"x".repeat(1024 * 1024)));
         assert_eq!(i18n::current_locale(), "en");
+    }
+
+    #[gpui::test]
+    fn a_client_without_a_language_sees_the_product_name_from_the_start(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let _installs = i18n::test_support::ThreadLocalInstalls::new();
+        cx.update(init);
+        // The first connection asks for English, which `install` takes for what is
+        // already shown, so the English catalog has to be in place before it.
+        install(None);
+        assert_eq!(
+            i18n::tr_ctx(i18n::context::MENU, "About Zed"),
+            "About ForgeKairos"
+        );
     }
 
     #[test]

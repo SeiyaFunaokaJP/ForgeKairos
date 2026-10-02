@@ -36,7 +36,7 @@ msgid "Could not delete the server file on the remote host ({status}): {error}"
 msgstr "接続先でサーバーのファイルを削除できませんでした ({status}): {error}"
 
 msgid "Could not install the remote sandbox helper (slirp4netns). Agent commands that use the network will not run, because no sandbox can be created for them. Check that the remote `~/.zed_server/` is writable (free space and permissions) and that the bundled slirp4netns is in the same folder as Zed, then reconnect: {error}"
-msgstr "リモートのサンドボックス用ヘルパー (slirp4netns) を配置できませんでした。ネットワークを使うエージェントのコマンドはサンドボックスを作れないため実行されません。リモートの `~/.zed_server/` に書き込めるか (空き容量・権限) と、Zed 本体と同じフォルダーに同梱の slirp4netns があるかを確認して再接続してください: {error}"
+msgstr "リモートのサンドボックス用ヘルパー (slirp4netns) を配置できませんでした。ネットワークを使うエージェントのコマンドはサンドボックスを作れないため実行されません。リモートの `~/.zed_server/` に書き込めるか (空き容量・権限) と、ForgeKairos 本体と同じフォルダーに同梱の slirp4netns があるかを確認して再接続してください: {error}"
 
 msgid "Could not read the remote development server file: {src_path}"
 msgstr "リモート開発サーバーのファイルを読めませんでした: {src_path}"
@@ -84,7 +84,7 @@ msgid "Opening workspace"
 msgstr "ワークスペースを開いています"
 
 msgid "Reinstalling the remote server because it does not match this Zed"
-msgstr "リモートサーバーがこの Zed と合わないため、入れ直しています"
+msgstr "リモートサーバーがこの ForgeKairos と合わないため、入れ直しています"
 
 msgid "Remote binary path not set"
 msgstr "リモート開発サーバーのパスが未設定です (接続の初期化に失敗しています)"
@@ -117,13 +117,13 @@ msgid "The remote may be out of disk space (the free space could not be determin
 msgstr "リモートの空き容量が不足している可能性があります (空き容量は取得できませんでした)"
 
 msgid "The remote server does not match this Zed (it did not answer the protocol revision check; it may be a server from the official Zed or from an older version of this Zed)."
-msgstr "リモートサーバーがこの Zed と合っていません (通信の版の問い合わせに応答がありません。公式版の Zed のサーバーか、この Zed より古い版のサーバーが動いている可能性があります)。"
+msgstr "リモートサーバーがこの ForgeKairos と合っていません (通信の版の問い合わせに応答がありません。公式版の Zed のサーバーか、この ForgeKairos より古い版のサーバーが動いている可能性があります)。"
 
 msgid "The remote server does not match this Zed (protocol revision: {ours} in this Zed, {theirs} on the server)."
-msgstr "リモートサーバーがこの Zed と合っていません (通信の版: この Zed は {ours}、サーバーは {theirs})。"
+msgstr "リモートサーバーがこの ForgeKairos と合っていません (通信の版: この ForgeKairos は {ours}、サーバーは {theirs})。"
 
 msgid "The server that this Zed installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update Zed."
-msgstr "この Zed が接続先に入れるサーバー自体が合っていない可能性があります。この PC の {folder} を削除してから接続し直すか、Zed を更新してください。"
+msgstr "この ForgeKairos が接続先に入れるサーバー自体が合っていない可能性があります。この PC の {folder} を削除してから接続し直すか、ForgeKairos を更新してください。"
 
 msgid "There is no bundled artifact (ADR-F15) and the download failed as well. Build with script\\build-dev.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
 msgstr "同梱アーティファクト (ADR-F15) も無く、ダウンロードにも失敗しました。script\\build-dev.ps1 でビルドして同梱アーティファクトを用意するか、この PC から配信元に接続できることを確認してください"

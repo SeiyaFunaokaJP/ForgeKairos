@@ -16,6 +16,7 @@ default = []
 
 [dependencies]
 anyhow.workspace = true
+branding.workspace = true
 client.workspace = true
 cloud_api_types.workspace = true
 collections.workspace = true

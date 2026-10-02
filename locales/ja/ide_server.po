@@ -18,7 +18,7 @@ msgid "Claude Code isn't connected"
 msgstr "Claude Code が接続していません"
 
 msgid "Copied the MCP configuration. The auth token changes every time Zed starts, so paste it again each time"
-msgstr "MCP 設定をコピーしました。認証トークンは Zed を起動するたびに変わるので、貼り付け先も毎回貼り直してください"
+msgstr "MCP 設定をコピーしました。認証トークンは ForgeKairos を起動するたびに変わるので、貼り付け先も毎回貼り直してください"
 
 msgid "Copy MCP Configuration"
 msgstr "MCP 設定をコピー"

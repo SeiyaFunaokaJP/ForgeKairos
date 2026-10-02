@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-zed-jp-enhance の開発ビルド (Windows)。zed.exe と cli.exe を -j 8 でビルドする。
+ForgeKairos の開発ビルド (Windows)。zed.exe と cli.exe を -j 8 でビルドする。
 
 .DESCRIPTION
 BUILD-WINDOWS.md のハマりどころを自動で回避する:

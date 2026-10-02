@@ -302,7 +302,7 @@ impl LanguageModelProvider for OpenCodeLanguageModelProvider {
                     .into()
             })
             .description(InlineDescription::Text(
-                "To use OpenCode models in Zed, you need an API key.".into(),
+                i18n::t!("To use OpenCode models in Zed, you need an API key.").into(),
             )),
         ))
     }
@@ -906,9 +906,12 @@ impl Render for ConfigurationView {
 
         let api_key_section = v_flex()
             .on_action(cx.listener(Self::save_api_key))
-            .child(Label::new(
-                "To use OpenCode models in Zed, you need an API key:",
-            ).color(Color::Muted))
+            .child(
+                Label::new(i18n::t!(
+                    "To use OpenCode models in Zed, you need an API key:"
+                ))
+                .color(Color::Muted),
+            )
             .child(
                 List::new()
                     .child(
@@ -920,18 +923,23 @@ impl Render for ConfigurationView {
                             )),
                     )
                     .when(is_editing, |this| {
-                        this.child(ListBulletItem::new(
-                            "Paste your API key below and hit enter to start using OpenCode",
-                        ).label_color(Color::Muted))
+                        this.child(
+                            ListBulletItem::new(
+                                "Paste your API key below and hit enter to start using OpenCode",
+                            )
+                            .label_color(Color::Muted),
+                        )
                     }),
             )
             .child(api_key_control)
             .child(
-                Label::new(format!(
-                    "You can also set the {API_KEY_ENV_VAR_NAME} environment variable and restart Zed."
+                Label::new(i18n::t!(
+                    "You can also set the {env_var_name} environment variable and restart Zed.",
+                    env_var_name = API_KEY_ENV_VAR_NAME
                 ))
                 .size(LabelSize::Small)
-                .color(Color::Muted).mt_1p5(),
+                .color(Color::Muted)
+                .mt_1p5(),
             )
             .into_any_element();
 

@@ -264,7 +264,7 @@ msgid "This project's settings choose clangd's full mode, which your own setting
 msgstr "このプロジェクトの設定が clangd の完全モードを指定しているため、ユーザー設定では変えられません。軽量モードでメモリを節約するには、プロジェクトの設定の `clangd.index_mode` を変えてください。"
 
 msgid "This view lets you determine the current context stack for creating custom key bindings in Zed. When a keyboard shortcut is triggered, it also shows all the possible contexts it could have triggered in, and which one matched."
-msgstr "このビューでは、Zed でキーバインドを自作するときに使う、現在のコンテキストスタックを確認できます。キーボードショートカットが実行されると、そのショートカットが実行され得たすべてのコンテキストと、実際にどれが一致したかも表示します。"
+msgstr "このビューでは、ForgeKairos でキーバインドを自作するときに使う、現在のコンテキストスタックを確認できます。キーボードショートカットが実行されると、そのショートカットが実行され得たすべてのコンテキストと、実際にどれが一致したかも表示します。"
 
 msgid "Trace level"
 msgstr "トレースレベル"

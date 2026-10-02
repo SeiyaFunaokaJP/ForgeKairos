@@ -368,6 +368,9 @@ pub(crate) struct ParsedHtmlTable {
     /// Whether the caption asks to go below the table, with `align="bottom"`
     /// or `caption-side: bottom`.
     pub caption_below: bool,
+    /// The caption's own `text-align`; a browser centers a caption that has none,
+    /// whatever the table's alignment.
+    pub caption_text_align: Option<TextAlign>,
     /// The alignment of an enclosing `<div align>`, which moves the table as a
     /// whole and reaches the cells that ask for no alignment of their own, the
     /// way it reaches a markdown table's cells.
@@ -1918,25 +1921,22 @@ fn consume_paragraph(
 }
 
 fn parse_table_row(source_range: Range<usize>, node: &Node) -> Option<ParsedHtmlTableRow> {
-    let mut columns = Vec::new();
-
-    if let NodeData::Element { name, .. } = &node.data {
-        if name.local != local_name!("tr") {
-            return None;
-        }
-
-        for child in node.children.borrow().iter() {
-            if let Some(column) = parse_table_column(source_range.clone(), child) {
-                columns.push(column);
-            }
-        }
+    let NodeData::Element { name, .. } = &node.data else {
+        return None;
+    };
+    if name.local != local_name!("tr") {
+        return None;
     }
 
-    if columns.is_empty() {
-        None
-    } else {
-        Some(ParsedHtmlTableRow { columns })
-    }
+    let columns = node
+        .children
+        .borrow()
+        .iter()
+        .filter_map(|child| parse_table_column(source_range.clone(), child))
+        .collect();
+    // A `<tr>` with no cells is still a row: a `rowspan` from above reaches
+    // into it, as in a browser, and the rows after it start where they should.
+    Some(ParsedHtmlTableRow { columns })
 }
 
 fn parse_table_column(source_range: Range<usize>, node: &Node) -> Option<ParsedHtmlTableColumn> {
@@ -2772,11 +2772,14 @@ fn extract_html_table(node: &Node, source_range: Range<usize>) -> Option<ParsedH
     let mut body_rows = Vec::new();
     let mut caption = None;
     let mut caption_below = false;
+    let mut caption_text_align = None;
 
     for child in node.children.borrow().iter() {
         if let NodeData::Element { name, attrs, .. } = &child.data {
             if name.local == local_name!("caption") && caption.is_none() {
-                caption_below = caption_goes_below(attrs, &extract_styles_from_attributes(attrs));
+                let styles = extract_styles_from_attributes(attrs);
+                caption_below = caption_goes_below(attrs, &styles);
+                caption_text_align = text_align_from_styles(&styles);
                 let mut paragraph = HtmlParagraph::new();
                 parse_paragraph(
                     source_range.clone(),
@@ -2804,14 +2807,47 @@ fn extract_html_table(node: &Node, source_range: Range<usize>) -> Option<ParsedH
         }
     }
 
+    // An empty `<tr>` takes no room in a browser, so it only matters where a
+    // `rowspan` from above reaches into it and ends there. Keeping the others
+    // would shift the stripes and the top border of the rows after them.
+    let mut kept_rows: usize = 0;
+    let mut spans_reach_until = 0;
+    let mut keep_row = |row: &ParsedHtmlTableRow| {
+        if row.columns.is_empty() && spans_reach_until <= kept_rows {
+            return false;
+        }
+        let tallest_span = row
+            .columns
+            .iter()
+            .map(|column| column.row_span)
+            .max()
+            .unwrap_or(1);
+        spans_reach_until = spans_reach_until.max(kept_rows.saturating_add(tallest_span));
+        kept_rows += 1;
+        true
+    };
+    header_rows.retain(&mut keep_row);
+    body_rows.retain(&mut keep_row);
+
+    // Rows that are all empty give a browser nothing to draw.
+    let has_cells = header_rows
+        .iter()
+        .chain(body_rows.iter())
+        .any(|row| !row.columns.is_empty());
+    if !has_cells {
+        header_rows.clear();
+        body_rows.clear();
+    }
+
     // A table with no rows still shows its caption, as it does in a browser.
-    if !header_rows.is_empty() || !body_rows.is_empty() || caption.is_some() {
+    if has_cells || caption.is_some() {
         Some(ParsedHtmlTable {
             source_range,
             body: body_rows,
             header: header_rows,
             caption,
             caption_below,
+            caption_text_align,
             text_align: None,
         })
     } else {
@@ -3113,6 +3149,15 @@ mod tests {
             panic!("expected a table, got {:?}", parsed.children);
         };
         assert!(!table.caption_below);
+        assert_eq!(table.caption_text_align, None);
+
+        let parsed = parse(
+            "<table style=\"text-align: right\"><caption style=\"text-align: left\">表題</caption><tr><td>a</td></tr></table>",
+        );
+        let [ParsedHtmlElement::Table(table)] = parsed.children.as_slice() else {
+            panic!("expected a table, got {:?}", parsed.children);
+        };
+        assert_eq!(table.caption_text_align, Some(TextAlign::Left));
     }
 
     #[test]

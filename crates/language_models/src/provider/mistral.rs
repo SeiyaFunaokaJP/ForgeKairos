@@ -422,7 +422,7 @@ pub fn into_mistral(
                                         text_parts.push(text.to_string());
                                     }
                                     LanguageModelToolResultContent::Image(_) => {
-                                        text_parts.push("[Tool responded with an image, but Zed doesn't support these in Mistral models yet]".to_string());
+                                        text_parts.push(format!("[Tool responded with an image, but {} doesn't support these in Mistral models yet]", branding::CURRENT.product_name));
                                     }
                                 }
                             }

@@ -275,6 +275,7 @@ dependencies = [
  "anyhow",
  "async-channel 2.5.0",
  "async-io",
+ "branding",
  "chrono",
  "client",
  "clock",
@@ -409,6 +410,7 @@ dependencies = [
  "agent_settings",
  "anyhow",
  "async-channel 2.5.0",
+ "branding",
  "chrono",
  "client",
  "collections",
@@ -3399,6 +3401,7 @@ dependencies = [
  "async-channel 2.5.0",
  "async-trait",
  "base64 0.22.1",
+ "branding",
  "collections",
  "futures 0.3.34",
  "futures-lite 2.6.1",
@@ -7749,6 +7752,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "branding",
  "futures 0.3.34",
  "httparse",
  "idna",
@@ -7937,6 +7941,7 @@ name = "i18n_tool"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "clap",
  "i18n",
  "i18n_catalog",
@@ -8123,6 +8128,7 @@ name = "ide_assist"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "collections",
  "editor",
  "futures 0.3.34",
@@ -8146,6 +8152,7 @@ name = "ide_query"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "collections",
  "futures 0.3.34",
  "fuzzy",
@@ -8168,6 +8175,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-tungstenite",
+ "branding",
  "collections",
  "context_server",
  "editor",
@@ -8437,6 +8445,7 @@ dependencies = [
  "anyhow",
  "branding",
  "gpui",
+ "i18n",
  "log",
  "release_channel",
  "smol",
@@ -9206,6 +9215,7 @@ dependencies = [
  "aws_http_client",
  "base64 0.22.1",
  "bedrock",
+ "branding",
  "client",
  "clock",
  "cloud_api_client",
@@ -11135,6 +11145,7 @@ name = "oauth_callback_server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "futures 0.3.34",
  "log",
  "tiny_http",
@@ -11573,6 +11584,7 @@ name = "onboarding"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "client",
  "cloud_api_types",
  "collections",
@@ -11711,6 +11723,7 @@ name = "open_router"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "futures 0.3.34",
  "http_client",
  "language_model_core",
@@ -13213,6 +13226,7 @@ dependencies = [
  "async-channel 2.5.0",
  "async-trait",
  "base64 0.22.1",
+ "branding",
  "buffer_diff",
  "circular-buffer",
  "client",
@@ -14421,6 +14435,7 @@ dependencies = [
  "async-trait",
  "async-tungstenite",
  "base64 0.22.1",
+ "branding",
  "client",
  "collections",
  "command_palette_hooks",
@@ -15583,11 +15598,13 @@ dependencies = [
  "agent_skills",
  "anyhow",
  "audio",
+ "branding",
  "client",
  "cloud_api_types",
  "codestral",
  "collections",
  "component",
+ "const_format",
  "context_server",
  "copilot",
  "copilot_ui",
@@ -16743,6 +16760,7 @@ name = "system_specs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "gpui",
  "human_bytes",
  "pciid-parser",

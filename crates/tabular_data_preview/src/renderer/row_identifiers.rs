@@ -1,17 +1,21 @@
 use editor::markdown_actions::display_width;
-use gpui::{AbsoluteLength, MouseButton, MouseDownEvent, MouseMoveEvent};
+use gpui::{AbsoluteLength, App, MouseButton, MouseDownEvent, MouseMoveEvent};
+use settings::Settings as _;
+use theme_settings::ThemeSettings;
 use ui::{
     ActiveTheme as _, AnyElement, ButtonCommon as _, ButtonSize, Clickable, Context, ElementId,
     FluentBuilder as _, IconButton, IconButtonShape, IconName, IconSize, InteractiveElement as _,
     IntoElement as _, ParentElement as _, SharedString, StatefulInteractiveElement as _,
-    Styled as _, StyledTypography as _, Tooltip, div, h_flex, px,
+    Styled as _, StyledTypography as _, Tooltip, div, h_flex, px, rems,
+    utils::replace_control_characters,
 };
 
 use crate::{
     TabularDataPreviewPane,
-    grid::GridRow,
+    grid::{GridRow, column_label},
+    renderer::table_header::HEADING_FADE_WIDTH,
     settings::RowIdentifiers,
-    types::{AnyColumn, DataRow, DisplayRow, LineNumber},
+    types::{AnyColumn, DataRow, DisplayRow, LineNumber, TableCell},
 };
 
 pub enum RowIdentDisplayMode {
@@ -52,12 +56,58 @@ impl LineNumber {
 /// Rows sampled to size a column. Enough to catch the shape of the data without
 /// walking a file of millions of rows on every reparse.
 const COLUMN_WIDTH_SAMPLE_ROWS: usize = 200;
-/// Rough advance of one character in the buffer font. Column widths are only a
-/// starting point that the user can drag, so an estimate is enough.
-const COLUMN_WIDTH_PER_CHARACTER: f32 = 8.0;
+/// Advance of one character when the buffer font cannot be measured. Column
+/// widths are only a starting point that the user can drag.
+const FALLBACK_CHARACTER_WIDTH_PER_FONT_SIZE: f32 = 0.6;
 const COLUMN_WIDTH_PADDING: f32 = 16.0;
+/// The heading's `border_2` on both sides.
+const HEADING_BORDER_WIDTH: f32 = 4.0;
+/// The heading's `gap_1` between its column letter and its text, in rems.
+const HEADING_GAP_REMS: f32 = 0.25;
+/// The `px_1` on both sides of the table's header cell around the heading, in
+/// rems.
+const HEADER_CELL_PADDING_REMS: f32 = 0.5;
 const MINIMUM_COLUMN_WIDTH: f32 = 64.0;
 const MAXIMUM_COLUMN_WIDTH: f32 = 480.0;
+
+/// How wide a heading has to be to show its column letter and all of its text
+/// before the fade under the filter button begins.
+fn heading_width(letter_width: f32, text_width: f32, gap: f32, cell_padding: f32) -> f32 {
+    let text = if text_width > 0.0 {
+        gap + text_width
+    } else {
+        0.0
+    };
+    cell_padding + HEADING_BORDER_WIDTH + letter_width + text + f32::from(HEADING_FADE_WIDTH)
+}
+
+/// How wide `text` is drawn, from each character's `advance` in the buffer
+/// font or, where that cannot be trusted, the width it is `laid_out` at.
+///
+/// Outside ASCII the buffer font may have no glyph, and on Windows the font
+/// then hands back the advance of its missing-glyph box rather than an error,
+/// although the character is drawn in a fallback font that is often twice as
+/// wide. Laying the character out goes through the same fallbacks as drawing
+/// it. Measuring stops past the widest a column starts at, so that a heading
+/// of any length costs the same.
+fn heading_text_width(
+    text: &str,
+    advance: impl Fn(char) -> Option<f32>,
+    laid_out: impl Fn(char) -> f32,
+) -> f32 {
+    let mut width = 0.0;
+    for character in text.chars() {
+        if width > MAXIMUM_COLUMN_WIDTH {
+            break;
+        }
+        width += if character.is_ascii() {
+            advance(character).unwrap_or_else(|| laid_out(character))
+        } else {
+            laid_out(character)
+        };
+    }
+    width
+}
 
 impl TabularDataPreviewPane {
     /// Calculate the optimal width for the row identifier column (line numbers or row numbers).
@@ -72,25 +122,80 @@ impl TabularDataPreviewPane {
     }
 
     /// Starting widths for the data columns, taken from the widest value each
-    /// one actually holds.
-    pub(crate) fn calculate_data_column_widths(&self) -> Vec<AbsoluteLength> {
+    /// one actually holds. The heading also has to show its column letter and
+    /// keep clear of the filter button its text fades out under, or a column
+    /// of short values cuts its own name off.
+    pub(crate) fn calculate_data_column_widths(&self, cx: &App) -> Vec<AbsoluteLength> {
+        let settings = ThemeSettings::get_global(cx);
+        let font_size = settings.buffer_font_size(cx);
+        let text_system = cx.text_system();
+        let font_id = text_system.resolve_font(&settings.buffer_font);
+        let character_width = match text_system.em_advance(font_id, font_size) {
+            Ok(width) => f32::from(width),
+            Err(error) => {
+                log::error!(
+                    "failed to measure a character of {:?} for the grid's columns: {error}",
+                    settings.buffer_font.family
+                );
+                f32::from(font_size) * FALLBACK_CHARACTER_WIDTH_PER_FONT_SIZE
+            }
+        };
+        let rem_size = settings.ui_font_size(cx);
+        let heading_gap = f32::from(rems(HEADING_GAP_REMS).to_pixels(rem_size));
+        let header_cell_padding = f32::from(rems(HEADER_CELL_PADDING_REMS).to_pixels(rem_size));
+        let has_header_row = self.settings.first_row_is_header;
+        // A heading is a single line whose text has to be seen whole, so it is
+        // measured glyph by glyph rather than estimated: a proportional buffer
+        // font draws most letters wider than its `m` is wide.
+        let measure = |text: &str| -> f32 {
+            heading_text_width(
+                text,
+                |character| {
+                    text_system
+                        .advance(font_id, font_size, character)
+                        .ok()
+                        .map(|advance| f32::from(advance.width))
+                },
+                |character| f32::from(text_system.layout_width(font_id, font_size, character)),
+            )
+        };
         (0..self.engine.contents.number_of_cols)
             .map(|col| {
-                let col = AnyColumn(col);
-                let widest = std::iter::once(&self.engine.contents.headers)
-                    .chain(
-                        self.engine
-                            .contents
-                            .rows
-                            .iter()
-                            .take(COLUMN_WIDTH_SAMPLE_ROWS),
-                    )
-                    .filter_map(|row| row.get(col))
-                    .filter_map(|cell| cell.display_value())
-                    .map(|value| value.lines().map(display_width).max().unwrap_or(0))
+                let column = AnyColumn(col);
+                let widest_line = |cell: &TableCell| {
+                    cell.display_value()
+                        .map(|value| value.lines().map(display_width).max().unwrap_or(0))
+                };
+                let widest_value = self
+                    .engine
+                    .contents
+                    .rows
+                    .iter()
+                    .take(COLUMN_WIDTH_SAMPLE_ROWS)
+                    .filter_map(|row| row.get(column))
+                    .filter_map(widest_line)
                     .max()
                     .unwrap_or(0);
-                let width = (widest as f32 * COLUMN_WIDTH_PER_CHARACTER + COLUMN_WIDTH_PADDING)
+                let header_text = if has_header_row {
+                    self.engine
+                        .contents
+                        .headers
+                        .get(column)
+                        .and_then(TableCell::display_value)
+                        .map(|text| replace_control_characters(text).into_owned())
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                let values = widest_value as f32 * character_width + COLUMN_WIDTH_PADDING;
+                let heading = heading_width(
+                    measure(&column_label(col)),
+                    measure(&header_text),
+                    heading_gap,
+                    header_cell_padding,
+                );
+                let width = values
+                    .max(heading)
                     .clamp(MINIMUM_COLUMN_WIDTH, MAXIMUM_COLUMN_WIDTH);
                 AbsoluteLength::Pixels(px(width))
             })
@@ -305,5 +410,51 @@ impl TabularDataPreviewPane {
             .child(self.insert_row_handle(grid_row, group_name, cx))
             .into_any_element();
         Some(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+
+    #[test]
+    fn a_heading_outside_ascii_is_measured_as_it_is_drawn() {
+        // The advance the buffer font reports for its missing-glyph box, and
+        // the width a fallback font actually draws the character at.
+        let missing_glyph_box = 9.0;
+        let drawn = 15.0;
+        let advance = |_| Some(missing_glyph_box);
+        let laid_out = |_| drawn;
+
+        assert_eq!(heading_text_width("ab", advance, laid_out), 18.0);
+        assert_eq!(heading_text_width("担当者", advance, laid_out), 45.0);
+        assert_eq!(heading_text_width("id担当", advance, laid_out), 48.0);
+        assert_eq!(heading_text_width("", advance, laid_out), 0.0);
+        assert_eq!(
+            heading_text_width("ab", |_| None, laid_out),
+            30.0,
+            "an ASCII character the font cannot measure is laid out instead"
+        );
+    }
+
+    #[test]
+    fn a_very_long_heading_is_only_measured_up_to_the_widest_column() {
+        let measured = Cell::new(0usize);
+        let width = heading_text_width(
+            &"name".repeat(100_000),
+            |_| {
+                measured.set(measured.get() + 1);
+                Some(8.0)
+            },
+            |_| 8.0,
+        );
+        assert!(width > MAXIMUM_COLUMN_WIDTH);
+        assert!(
+            measured.get() <= (MAXIMUM_COLUMN_WIDTH / 8.0) as usize + 1,
+            "measured {} characters",
+            measured.get()
+        );
     }
 }

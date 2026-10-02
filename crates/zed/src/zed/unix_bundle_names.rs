@@ -11,6 +11,7 @@ const FLATPAK_MANIFEST: &str = include_str!("../../resources/flatpak/manifest-te
 const FLATPAK_METAINFO: &str = include_str!("../../resources/flatpak/zed.metainfo.xml.in");
 const SNAPCRAFT: &str = include_str!("../../resources/snap/snapcraft.yaml.in");
 const SNAP_BUILD: &str = include_str!("../../../../script/snap-build");
+const BUNDLE_MAC: &str = include_str!("../../../../script/bundle-mac");
 
 fn channels(names: &ChannelNames) -> [(&'static str, &'static str); 4] {
     [
@@ -122,5 +123,44 @@ fn no_linux_package_names_an_official_zed() {
                 "{file} still contains {official:?}"
             );
         }
+    }
+}
+
+/// Wayland's app_id and X11's WM_CLASS come from the running build, and the
+/// desktop entry and the bundle install under `FORGEKAIROS.app_ids`: the two
+/// must agree, or the window would not be matched to its launcher and icon.
+#[test]
+fn the_running_build_presents_the_installed_app_ids() {
+    use release_channel::ReleaseChannel;
+    for (channel, (_, app_id)) in [
+        ReleaseChannel::Dev,
+        ReleaseChannel::Nightly,
+        ReleaseChannel::Preview,
+        ReleaseChannel::Stable,
+    ]
+    .into_iter()
+    .zip(channels(&FORGEKAIROS.app_ids))
+    {
+        assert_eq!(channel.app_id(), app_id, "{channel:?}");
+    }
+}
+
+/// The updater downloads `forgekairos-macos-<arch>.dmg` from a release, so the
+/// bundle has to be published under that name.
+#[test]
+fn the_macos_disk_image_has_the_name_the_updater_looks_for() {
+    let expected = format!(
+        "dmg_file_path=\"${{dmg_target_directory}}/{}-macos-${{arch_suffix}}.dmg\"",
+        FORGEKAIROS.cli_name
+    );
+    assert!(
+        BUNDLE_MAC.lines().any(|line| line.trim() == expected),
+        "script/bundle-mac does not create {expected}"
+    );
+    for arch in ["x86_64", "aarch64"] {
+        assert!(
+            BUNDLE_MAC.contains(&format!("arch_suffix=\"{arch}\"")),
+            "script/bundle-mac has no {arch} suffix"
+        );
     }
 }

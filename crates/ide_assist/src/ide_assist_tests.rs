@@ -1363,7 +1363,10 @@ async fn test_missing_workspace_is_reported_in_japanese(cx: &mut TestAppContext)
         )
     });
     let error = task.await.unwrap_err();
-    assert_eq!(error.to_string(), "No Zed window has this project open");
+    assert_eq!(
+        error.to_string(),
+        "No ForgeKairos window has this project open"
+    );
 }
 
 #[gpui::test]
@@ -1747,7 +1750,10 @@ async fn test_request_for_a_closed_window_fails_quietly(cx: &mut TestAppContext)
         pending
     });
     let error = pending.await.unwrap_err();
-    assert_eq!(error.to_string(), "No Zed window has this project open");
+    assert_eq!(
+        error.to_string(),
+        "No ForgeKairos window has this project open"
+    );
     cx.cx.update(|cx| display.clear(&project, &source("a"), cx));
     cx.cx.run_until_parked();
 }

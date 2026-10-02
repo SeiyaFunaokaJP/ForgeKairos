@@ -22,12 +22,15 @@ use super::{
 };
 use crate::tools::{client_error, object_schema};
 
-pub(super) const DESCRIPTION: &str = "Get what a C or C++ struct, union, enum, typedef or macro \
+pub(super) const DESCRIPTION: &str = branding::concat_const!(
+    "Get what a C or C++ struct, union, enum, typedef or macro \
      contains: its members with their types, bit-fields, #if conditions and comments, the named \
      types inside it expanded a few levels, and where each is defined. Ask by name, or by \
      position (path + line + symbol) for the type of a variable or a member such as `ops` in \
-     `dev->ops`. Use it before searching for a header and reading it. It is a name match from \
-     Zed's symbol index (a same-name type elsewhere may be the one used), not a compiler's view.";
+     `dev->ops`. Use it before searching for a header and reading it. It is a name match from ",
+    crate::PRODUCT_NAME,
+    "'s symbol index (a same-name type elsewhere may be the one used), not a compiler's view."
+);
 
 pub(super) fn type_layout_schema() -> Value {
     object_schema(
@@ -215,6 +218,6 @@ fn report_json(context: &AssistContext<'_>, report: &TypeLayoutReport, cx: &gpui
         "indexStatus": if report.index_note.is_some() { "indexing" } else { "ready" },
         "indexNote": report.index_note,
         "source": "nameIndex",
-        "note": "Found by name in Zed's symbol index, not resolved by a language server. Paths in text are relative to the definition's workspace folder; members under every #if branch are listed; macros are not expanded; (withheld) marks a type in a file you can't read.",
+        "note": format!("Found by name in {}'s symbol index, not resolved by a language server. Paths in text are relative to the definition's workspace folder; members under every #if branch are listed; macros are not expanded; (withheld) marks a type in a file you can't read.", crate::PRODUCT_NAME),
     })
 }

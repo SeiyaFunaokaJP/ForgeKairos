@@ -54,14 +54,6 @@ msgid "On Window Change"
 msgstr "ウィンドウを切り替えたとき"
 
 msgctxt "BaseKeymapContent"
-msgid "Cursor"
-msgstr "Cursor (ベータ)"
-
-msgctxt "BaseKeymapContent"
-msgid "Emacs"
-msgstr "Emacs (ベータ)"
-
-msgctxt "BaseKeymapContent"
 msgid "None"
 msgstr "なし"
 
@@ -1203,7 +1195,7 @@ msgstr "標準"
 
 msgctxt "WindowDecorations"
 msgid "Client"
-msgstr "Zed が描画"
+msgstr "ForgeKairos が描画"
 
 msgctxt "WindowDecorations"
 msgid "Server"
@@ -1247,7 +1239,7 @@ msgstr "(Linux のみ) タイトルバーのウィンドウ操作ボタンの配
 
 msgctxt "settings"
 msgid "(Linux only) whether Zed or your compositor should draw window decorations."
-msgstr "(Linux のみ) ウィンドウの装飾を Zed が描画するか、コンポジターに任せるかを設定します。"
+msgstr "(Linux のみ) ウィンドウの装飾を ForgeKairos が描画するか、コンポジターに任せるかを設定します。"
 
 msgctxt "settings"
 msgid "(macOS only) whether to allow Windows to tab together."
@@ -2163,7 +2155,7 @@ msgstr "Git 連携を無効にする"
 
 msgctxt "settings"
 msgid "Disable all Git integration features in Zed."
-msgstr "Zed の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。"
+msgstr "ForgeKairos の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。"
 
 msgctxt "settings"
 msgid "Disable in Language Scopes"
@@ -2375,7 +2367,7 @@ msgstr "ターミナルカードを展開"
 
 msgctxt "settings"
 msgid "Expose Zed itself as an IDE server on 127.0.0.1 so the Claude Code CLI in the integrated terminal and external agents can read the open files, selections and diagnostics. Diffs can be accepted or rejected in an editor tab. Makes no outgoing connections. Disabled by default."
-msgstr "Zed 自身を 127.0.0.1 の IDE サーバーとして公開し、統合ターミナルの Claude Code CLI や外部のエージェントから、開いているファイル・選択範囲・診断を読めるようにします。差分はエディターのタブで「採用 / 拒否」を選べます。外向きの通信はしません。既定では無効です。"
+msgstr "ForgeKairos 自身を 127.0.0.1 の IDE サーバーとして公開し、統合ターミナルの Claude Code CLI や外部のエージェントから、開いているファイル・選択範囲・診断を読めるようにします。差分はエディターのタブで「採用 / 拒否」を選べます。外向きの通信はしません。既定では無効です。"
 
 msgctxt "settings"
 msgid "Extend Comment On Newline"
@@ -2459,11 +2451,11 @@ msgstr "これより大きいファイルは全文ではなくアウトライン
 
 msgctxt "settings"
 msgid "Files or globs of files that will be excluded by Zed entirely. They will be skipped during file scans, file searches, and not be displayed in the project file tree. Takes precedence over \"File Scan Inclusions\""
-msgstr "Zed が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます"
+msgstr "ForgeKairos が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます"
 
 msgctxt "settings"
 msgid "Files or globs of files that will be included by Zed, even when ignored by git. This is useful for files that are not tracked by git, but are still important to your project. Note that globs that are overly broad can slow down Zed's file scanning. \"File Scan Exclusions\" takes precedence over these inclusions"
-msgstr "git に無視されていても Zed が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は Zed のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます"
+msgstr "git に無視されていても ForgeKairos が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は ForgeKairos のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます"
 
 msgctxt "settings"
 msgid "Focus Follows Mouse"
@@ -2727,7 +2719,7 @@ msgstr "ガター"
 
 msgctxt "settings"
 msgid "Hand the shells of SSH terminals to the remote Zed server. Running commands keep going when the connection drops, and reconnecting shows the output so far again so you can carry on. Closing the tab ends the shell. Not available on Windows remote hosts."
-msgstr "SSH のターミナルのシェルをリモートの Zed サーバーに預けます。接続が切れても実行中のコマンドは止まらず、再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。Windows のリモートホストでは使えません。"
+msgstr "SSH のターミナルのシェルをリモートの ForgeKairos サーバーに預けます。接続が切れても実行中のコマンドは止まらず、再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。Windows のリモートホストでは使えません。"
 
 msgctxt "settings"
 msgid "Hard Tabs"
@@ -2810,8 +2802,8 @@ msgid "How Git hunks are displayed visually in the editor."
 msgstr "エディターで Git の変更箇所をどのように表示するかを設定します。"
 
 msgctxt "settings"
-msgid "How `zed <path>` opens directories when no flag is specified."
-msgstr "フラグを指定しなかったときに `zed <path>` がディレクトリをどう開くかを設定します。"
+msgid "How `forgekairos <path>` opens directories when no flag is specified."
+msgstr "フラグを指定しなかったときに `forgekairos <path>` がディレクトリをどう開くかを設定します。"
 
 msgctxt "settings"
 msgid "How and when the scrollbar should be displayed."
@@ -3423,7 +3415,7 @@ msgstr "Markdown ファイルをプレビューで開く"
 
 msgctxt "settings"
 msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
-msgstr "スクリーンリーダーなどの支援技術向けに Zed のインターフェースを最適化します。有効にすると、通常は折りたたまれるコントロールが展開されたままになり、キーボードで操作できます。"
+msgstr "スクリーンリーダーなどの支援技術向けに ForgeKairos のインターフェースを最適化します。有効にすると、通常は折りたたまれるコントロールが展開されたままになり、キーボードで操作できます。"
 
 msgctxt "settings"
 msgid "Option As Meta"
@@ -3831,7 +3823,7 @@ msgstr "セマンティックトークン"
 
 msgctxt "settings"
 msgid "Send anonymized usage data like what languages you're using Zed with."
-msgstr "Zed でどの言語を使っているかなど、匿名化された利用データを送信します。"
+msgstr "ForgeKairos でどの言語を使っているかなど、匿名化された利用データを送信します。"
 
 msgctxt "settings"
 msgid "Send debug information like crash reports."
@@ -4607,7 +4599,7 @@ msgstr "折り返しが有効なバッファーで、行を折り返す列位置
 
 msgctxt "settings"
 msgid "The custom set of icons Zed will associate with files and directories."
-msgstr "Zed がファイルとディレクトリに関連付けるアイコンのセットです。"
+msgstr "ForgeKairos がファイルとディレクトリに関連付けるアイコンのセットです。"
 
 msgctxt "settings"
 msgid "The debounce delay before querying highlights from the language."
@@ -4647,7 +4639,7 @@ msgstr "新しいログのファイル名です。`{date}` `{time}` `{title}` `{
 
 msgctxt "settings"
 msgid "The folder log files are written to (`~` is expanded). When empty, logs are saved to `terminal-sessions` in Zed's log folder."
-msgstr "ログファイルを書き出すフォルダーです (`~` は展開されます)。空欄のときは Zed のログフォルダー配下の `terminal-sessions` に保存します。"
+msgstr "ログファイルを書き出すフォルダーです (`~` は展開されます)。空欄のときは ForgeKairos のログフォルダー配下の `terminal-sessions` に保存します。"
 
 msgctxt "settings"
 msgid "The font fallbacks to use for rendering in text buffers."
@@ -4667,7 +4659,7 @@ msgstr "モードがライトのとき、またはモードがシステムで OS
 
 msgctxt "settings"
 msgid "The language of Zed's menus, settings and messages. Some text, such as tab titles, switches after a restart."
-msgstr "Zed のメニュー、設定、メッセージを表示する言語です。タブ名など一部の表示は再起動後に切り替わります。"
+msgstr "ForgeKairos のメニュー、設定、メッセージを表示する言語です。タブ名など一部の表示は再起動後に切り替わります。"
 
 msgctxt "settings"
 msgid "The largest outline sent for a large attached file. When it does not fit, the most deeply nested symbols are left out first. Values below 512 are treated as 512."
@@ -4935,7 +4927,7 @@ msgstr "コマンドの履歴を使う"
 
 msgctxt "settings"
 msgid "Use LSP tasks over Zed language extension tasks."
-msgstr "Zed の言語拡張のタスクより、LSP のタスクを優先します。"
+msgstr "ForgeKairos の言語拡張のタスクより、LSP のタスクを優先します。"
 
 msgctxt "settings"
 msgid "Use Modifier To Send"
@@ -5071,7 +5063,7 @@ msgstr "タブがない状態で「アクティブな項目を閉じる」アク
 
 msgctxt "settings"
 msgid "What to restore from the previous session when opening Zed."
-msgstr "Zed を開いたときに前回のセッションから何を復元するかを設定します。"
+msgstr "ForgeKairos を開いたときに前回のセッションから何を復元するかを設定します。"
 
 msgctxt "settings"
 msgid "What to show for directories in the git panel."
@@ -5151,7 +5143,7 @@ msgstr "オンにすると、SSH などのリモートホストが行う外部�
 
 msgctxt "settings"
 msgid "When opening Zed, avoid Restricted Mode by auto-trusting all projects, enabling use of all features without having to give permission to each new project."
-msgstr "Zed を開くときにすべてのプロジェクトを自動的に信頼して制限モードを回避し、プロジェクトごとに許可を与えなくてもすべての機能を使えるようにします。"
+msgstr "ForgeKairos を開くときにすべてのプロジェクトを自動的に信頼して制限モードを回避し、プロジェクトごとに許可を与えなくてもすべての機能を使えるようにします。"
 
 msgctxt "settings"
 msgid "When the attachments of one message add up to more than this, the largest are reduced to outlines or references first. Attachments set to be sent in full are never reduced. Values below 4096 are treated as 4096."
@@ -5271,7 +5263,7 @@ msgstr "言語サーバーのコードレンズを表示するかどうか、ま
 
 msgctxt "settings"
 msgid "Whether breakpoints should be reused across Zed sessions."
-msgstr "Zed のセッションをまたいでブレークポイントを引き継ぐかどうかを設定します。"
+msgstr "ForgeKairos のセッションをまたいでブレークポイントを引き継ぐかどうかを設定します。"
 
 msgctxt "settings"
 msgid "Whether clicking the stop button on a running terminal tool should also cancel the agent's generation. Note that this only applies to the stop button, not to ctrl+c inside the terminal."
@@ -5455,11 +5447,11 @@ msgstr "新しく作成したファイルをエディターで自動的に開く
 
 msgctxt "settings"
 msgid "Whether to automatically surround text with characters for you. For example, when you select text and type '(', Zed will automatically surround text with ()."
-msgstr "テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、Zed がそのテキストを () で囲みます。"
+msgstr "テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、ForgeKairos がそのテキストを () で囲みます。"
 
 msgctxt "settings"
 msgid "Whether to automatically type closing characters for you. For example, when you type '(', Zed will automatically add a closing ')' at the correct position."
-msgstr "閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、Zed が正しい位置に ')' を自動的に追加します。"
+msgstr "閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、ForgeKairos が正しい位置に ')' を自動的に追加します。"
 
 msgctxt "settings"
 msgid "Whether to center the current match in the editor"
@@ -5487,7 +5479,7 @@ msgstr "読みやすさのために、Markdown プレビューの内容を最大
 
 msgctxt "settings"
 msgid "Whether to disable all AI features in Zed."
-msgstr "Zed の AI 機能をすべて無効にするかどうかを設定します。一度有効にすると設定ファイルから消すまで元に戻せません。"
+msgstr "ForgeKairos の AI 機能をすべて無効にするかどうかを設定します。一度有効にすると設定ファイルから消すまで元に戻せません。"
 
 msgctxt "settings"
 msgid "Whether to display inline and alongside documentation for items in the completions menu."
@@ -5571,7 +5563,7 @@ msgstr "クリップボードへコピーした後もテキストの選択を維
 
 msgctxt "settings"
 msgid "Whether to log messages between active debug adapters and Zed."
-msgstr "アクティブなデバッグアダプターと Zed の間のメッセージをログに記録するかどうかを設定します。"
+msgstr "アクティブなデバッグアダプターと ForgeKairos の間のメッセージをログに記録するかどうかを設定します。"
 
 msgctxt "settings"
 msgid "Whether to open tabs in preview mode when code navigation is used to open a multibuffer."
@@ -5723,7 +5715,7 @@ msgstr "エディターに表示する診断を絞り込む重大度です。"
 
 msgctxt "settings"
 msgid "Which settings should be activated only in Preview build of Zed."
-msgstr "Zed の Preview ビルドでのみ有効にする設定です。"
+msgstr "ForgeKairos の Preview ビルドでのみ有効にする設定です。"
 
 msgctxt "settings"
 msgid "Which side of the window the threads sidebar appears on."

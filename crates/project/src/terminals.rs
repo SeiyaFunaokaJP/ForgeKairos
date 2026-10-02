@@ -175,6 +175,31 @@ fn persistent_session_binary(
     Some(binary)
 }
 
+/// Resolves once `remote_client` has a connection to build commands on again,
+/// or has given up on getting one back, in which case building the command
+/// reports that.
+fn remote_connection_settled(remote_client: &Entity<RemoteClient>, cx: &mut App) -> Task<()> {
+    fn is_settled(remote_client: &RemoteClient) -> bool {
+        remote_client.remote_connection().is_some() || remote_client.is_disconnected()
+    }
+    if is_settled(remote_client.read(cx)) {
+        return Task::ready(());
+    }
+    let (sender, receiver) = futures::channel::oneshot::channel();
+    let mut sender = Some(sender);
+    let subscription = cx.observe(remote_client, move |remote_client, cx| {
+        if is_settled(remote_client.read(cx))
+            && let Some(sender) = sender.take()
+        {
+            sender.send(()).ok();
+        }
+    });
+    cx.spawn(async move |_| {
+        receiver.await.ok();
+        drop(subscription);
+    })
+}
+
 /// Zed が起こすターミナルに環境変数を足すためのフック。
 ///
 /// `project` は上位のクレート (内蔵 IDE サーバー等) に依存できないので、変数を足したい
@@ -773,10 +798,24 @@ impl Project {
         let lang_registry = self.languages.clone();
         let provided_environment = provided_terminal_environment(&cx.entity(), is_via_remote, cx);
         cx.spawn(async move |project, cx| {
-            let shell_kind = ShellKind::new(&shell, path_style.is_windows());
+            let mut shell_kind = ShellKind::new(&shell, path_style.is_windows());
             let mut env = env_task.await.unwrap_or_default();
             env.extend(provided_environment);
             env.extend(settings.env);
+
+            // A shell without a directory has had no environment to wait for,
+            // and the command for it cannot be built until there is a
+            // connection again.
+            if let Some(remote_client) = &remote_client {
+                cx.update(|cx| remote_connection_settled(remote_client, cx))
+                    .await;
+                // Without a connection the host's shell was not known when
+                // the tab was opened, and this one's activation script would
+                // be written for the local default shell instead.
+                if let Some(remote_shell) = cx.update(|cx| remote_client.read(cx).shell()) {
+                    shell_kind = ShellKind::new(&remote_shell, path_style.is_windows());
+                }
+            }
 
             // Not decided when the tab is opened: while the connection is
             // being re-established there is no server binary to ask, and the
@@ -1862,5 +1901,144 @@ mod tests {
             vec![("PROVIDED".to_string(), "1".to_string())]
         );
         assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    async fn connect_to_mock_remote(
+        cx: &mut gpui::TestAppContext,
+        server_cx: &mut gpui::TestAppContext,
+    ) -> (Entity<RemoteClient>, Entity<()>) {
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            release_channel::init(semver::Version::new(0, 0, 0), cx);
+        });
+        server_cx.update(|cx| release_channel::init(semver::Version::new(0, 0, 0), cx));
+        let (options, server_session, connect_guard) = RemoteClient::fake_server(cx, server_cx);
+        // Connecting pings the server, which a headless project would answer.
+        let ping_responder = server_cx.update(|cx| cx.new(|_| ()));
+        server_session.add_request_handler(
+            ping_responder.downgrade(),
+            |_, _: rpc::TypedEnvelope<rpc::proto::Ping>, _| async { Ok(rpc::proto::Ack {}) },
+        );
+        drop(connect_guard);
+        let remote_client = RemoteClient::connect_mock(options, cx).await;
+        (remote_client, ping_responder)
+    }
+
+    #[gpui::test]
+    async fn only_a_shell_started_in_a_session_is_told_the_display_language(
+        cx: &mut gpui::TestAppContext,
+        server_cx: &mut gpui::TestAppContext,
+    ) {
+        let (remote_client, _ping_responder) = connect_to_mock_remote(cx, server_cx).await;
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let launch = launch(None);
+
+        let (_, env, remote_session) = cx
+            .update(|cx| {
+                spawn_remote_command(
+                    None,
+                    HashMap::default(),
+                    None,
+                    remote_client.clone(),
+                    TaskSpawnEnvironment::Full,
+                    Some(&launch),
+                    cx,
+                )
+            })
+            .expect("the shell command builds");
+        assert_eq!(remote_session, Some(launch.session));
+        assert_eq!(
+            env.get(remote::DISPLAY_LANGUAGE_ENV_VAR)
+                .map(String::as_str),
+            Some("ja"),
+            "the attach and its holder write their notices in the display language"
+        );
+
+        let (_, env, remote_session) = cx
+            .update(|cx| {
+                spawn_remote_command(
+                    None,
+                    HashMap::default(),
+                    None,
+                    remote_client.clone(),
+                    TaskSpawnEnvironment::Full,
+                    None,
+                    cx,
+                )
+            })
+            .expect("the shell command builds");
+        assert_eq!(remote_session, None);
+        assert!(
+            !env.contains_key(remote::DISPLAY_LANGUAGE_ENV_VAR),
+            "a plain shell does not get the variable, since no holder takes it out again"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_shell_asked_for_while_reconnecting_waits_for_the_connection(
+        cx: &mut gpui::TestAppContext,
+        server_cx: &mut gpui::TestAppContext,
+    ) {
+        let (remote_client, _ping_responder) = connect_to_mock_remote(cx, server_cx).await;
+        let project = cx.update(|cx| {
+            let client = client::Client::new(
+                Arc::new(clock::FakeSystemClock::new()),
+                http_client::FakeHttpClient::with_404_response(),
+                cx,
+            );
+            let user_store = cx.new(|cx| client::UserStore::new(client.clone(), cx));
+            Project::remote(
+                remote_client.clone(),
+                client,
+                node_runtime::NodeRuntime::unavailable(),
+                user_store,
+                Arc::new(language::LanguageRegistry::test(
+                    cx.background_executor().clone(),
+                )),
+                fs::FakeFs::new(cx.background_executor().clone()),
+                false,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        let held = remote_client
+            .update(cx, |remote_client, cx| {
+                remote_client.begin_reconnecting_for_test(cx)
+            })
+            .expect("the client was connected");
+        let mut terminal =
+            project.update(cx, |project, cx| project.create_terminal_shell(None, cx));
+        cx.run_until_parked();
+        assert!(
+            (&mut terminal).now_or_never().is_none(),
+            "a shell without a directory must not fail for want of a connection"
+        );
+        // Starting it would run the mock connection's command for real.
+        drop(terminal);
+
+        let mut settled = cx.update(|cx| remote_connection_settled(&remote_client, cx));
+        cx.run_until_parked();
+        assert!((&mut settled).now_or_never().is_none());
+        remote_client.update(cx, |remote_client, cx| {
+            remote_client.end_reconnecting_for_test(held, cx)
+        });
+        cx.run_until_parked();
+        assert!(
+            settled.now_or_never().is_some(),
+            "the wait ends once the connection is back"
+        );
+
+        remote_client.update(cx, |remote_client, cx| {
+            remote_client.force_server_not_running(cx)
+        });
+        let given_up = cx.update(|cx| remote_connection_settled(&remote_client, cx));
+        assert!(
+            given_up.now_or_never().is_some(),
+            "a connection that will not come back is not waited for"
+        );
     }
 }

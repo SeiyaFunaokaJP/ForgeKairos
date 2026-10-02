@@ -41,10 +41,11 @@ const PROXY_CHILD_PROCESSES_NOTE: &str = i18n::msg!(
 
 /// Written when the file has to be created before it can be opened in the
 /// editor, so the user lands on something they can edit rather than a blank
-/// buffer.
+/// buffer. Upstream's name in it is the product's own once translated (the
+/// English catalog included).
 const FILE_TEMPLATE_HEADER: &str = i18n::msg!(
     "\
-// zed-jp-enhance egress allowlist (docs/jp-enhance/DESIGN.md §4)
+// Zed egress allowlist (docs/jp-enhance/DESIGN.md §4)
 //
 // Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,
 // external agent processes) is allowed only to the hosts written here.
@@ -1421,6 +1422,16 @@ mod tests {
     fn the_file_template_is_an_empty_allowlist() {
         let template = file_template();
         assert!(template.starts_with(FILE_TEMPLATE_HEADER));
+        {
+            let _english = i18n::test_support::LocaleOverride::new(
+                i18n_catalog::english_catalog(None).map(|catalog| catalog as &dyn i18n::Catalog),
+            );
+            let english = file_template();
+            assert!(
+                english.starts_with("// ForgeKairos egress allowlist (docs/jp-enhance/DESIGN.md"),
+                "{english}"
+            );
+        }
         let parsed: NetworkAllowlistFile =
             settings_json::parse_json_with_comments(&template).expect("the template should parse");
         assert!(parsed.allowed_hosts.is_empty());
@@ -1432,7 +1443,7 @@ mod tests {
         ));
         let japanese = file_template();
         assert!(
-            japanese.starts_with("// zed-jp-enhance 外部通信の許可リスト"),
+            japanese.starts_with("// ForgeKairos 外部通信の許可リスト"),
             "{japanese}"
         );
         let parsed: NetworkAllowlistFile = settings_json::parse_json_with_comments(&japanese)

@@ -484,23 +484,26 @@ fn confirmation_title(path: &Path, kind: SensitiveWrite) -> String {
     }
 }
 
+/// Agents read these messages, and the user sees them in the thread.
+const PRODUCT_NAME: &str = branding::CURRENT.product_name;
+
 fn not_in_project_message(path: &Path) -> String {
     format!(
-        "Zed refused to write `{}`: it is not inside any of the project's folders.",
+        "{PRODUCT_NAME} refused to write `{}`: it is not inside any of the project's folders.",
         path.display()
     )
 }
 
 fn unverifiable_message(path: &Path) -> String {
     format!(
-        "Zed refused to write `{}`: it could not check where that path leads.",
+        "{PRODUCT_NAME} refused to write `{}`: it could not check where that path leads.",
         path.display()
     )
 }
 
 fn leaves_project_message(path: &Path) -> String {
     format!(
-        "Zed refused to write `{}`: it leads out of the project through a symbolic link or \
+        "{PRODUCT_NAME} refused to write `{}`: it leads out of the project through a symbolic link or \
          junction. Agents may only write inside the project's folders.",
         path.display()
     )
@@ -508,7 +511,7 @@ fn leaves_project_message(path: &Path) -> String {
 
 fn changed_while_asking_message(path: &Path) -> String {
     format!(
-        "Zed refused to write `{}`: where it leads changed while the user was deciding, so \
+        "{PRODUCT_NAME} refused to write `{}`: where it leads changed while the user was deciding, so \
          what they allowed is not what would be written.",
         path.display()
     )
@@ -517,14 +520,14 @@ fn changed_while_asking_message(path: &Path) -> String {
 fn refusal_message(refusal: Refusal, path: &Path) -> String {
     match refusal {
         Refusal::GitMetadata => format!(
-            "Zed refused to write `{}`: it is Git metadata. Agents may not change anything \
+            "{PRODUCT_NAME} refused to write `{}`: it is Git metadata. Agents may not change anything \
              inside a `.git` directory, because Git runs commands configured there. If the \
              change is really needed, show the user the exact change and ask them to make it.",
             path.display()
         ),
         Refusal::ProtectedPath => format!(
-            "Zed refused to write `{}`: it holds credentials or configuration that runs \
-             programs, runs at login, or belongs to Zed itself, and agents may not change such \
+            "{PRODUCT_NAME} refused to write `{}`: it holds credentials or configuration that runs \
+             programs, runs at login, or belongs to {PRODUCT_NAME} itself, and agents may not change such \
              files. If the change is really needed, show the user the exact change and ask them \
              to make it.",
             path.display()

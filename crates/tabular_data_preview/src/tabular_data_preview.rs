@@ -150,21 +150,26 @@ impl TabularDataPreviewPane {
         let line_number_width = self.calculate_row_identifier_column_width();
 
         let append_width = append_column_width(cx);
-        let mut widths: Vec<AbsoluteLength> = self.calculate_data_column_widths();
-        widths.insert(0, AbsoluteLength::Pixels(px(line_number_width)));
-        widths.push(append_width);
+        // Measuring every heading is only worth it when the columns start
+        // over; a reparse on each edit keeps the widths it already has.
+        let new_state = (self.column_widths.widths.read(cx).cols() != cols).then(|| {
+            let mut widths: Vec<AbsoluteLength> = self.calculate_data_column_widths(cx);
+            widths.insert(0, AbsoluteLength::Pixels(px(line_number_width)));
+            widths.push(append_width);
 
-        let mut resize_behaviors = vec![TableResizeBehavior::Resizable; cols];
-        resize_behaviors[0] = TableResizeBehavior::None;
-        // The "+" column holds no value that could want more room, and dragging
-        // it would only take room away from the last data column.
-        if let Some(last) = resize_behaviors.last_mut() {
-            *last = TableResizeBehavior::None;
-        }
+            let mut resize_behaviors = vec![TableResizeBehavior::Resizable; cols];
+            resize_behaviors[0] = TableResizeBehavior::None;
+            // The "+" column holds no value that could want more room, and dragging
+            // it would only take room away from the last data column.
+            if let Some(last) = resize_behaviors.last_mut() {
+                *last = TableResizeBehavior::None;
+            }
+            ResizableColumnsState::new(cols, widths, resize_behaviors)
+        });
 
         self.column_widths.widths.update(cx, |state, _cx| {
-            if state.cols() != cols {
-                *state = ResizableColumnsState::new(cols, widths, resize_behaviors);
+            if let Some(new_state) = new_state {
+                *state = new_state;
             } else {
                 state.set_column_configuration(
                     0,

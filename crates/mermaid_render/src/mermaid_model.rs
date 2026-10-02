@@ -18,9 +18,9 @@
 //! - Emitting is idempotent from its second application, so opening and
 //!   confirming the editor twice does not keep rewriting the fence.
 //! - Nothing disappears. A construct the model does not carry is either held
-//!   verbatim in a preserved line, or the parse fails with a reason in
-//!   Japanese, which the editor shows instead of silently dropping the
-//!   construct.
+//!   verbatim in a preserved line, or the parse fails with a reason, which
+//!   the editor shows in the user's language instead of silently dropping
+//!   the construct.
 //!
 //! The scanning helpers that all the kinds need live here, because the parts of
 //! a fence that come before the diagram keyword — YAML frontmatter, `%%{init}%%`

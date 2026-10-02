@@ -13,7 +13,7 @@ use ui::{ConfiguredApiCard, prelude::*};
 use x_ai_subscribed::{PROVIDER_ID, PROVIDER_NAME, State, SuperGrokModel, create_language_model};
 
 const SUBSCRIPTION_DESCRIPTION: &str =
-    "Sign in with your SuperGrok subscription to use Grok models in Zed's agent.";
+    i18n::msg!("Sign in with your SuperGrok subscription to use Grok models in Zed's agent.");
 
 pub struct XAiSubscribedProvider {
     state: Entity<State>,
@@ -116,7 +116,9 @@ impl LanguageModelProvider for XAiSubscribedProvider {
         let description = if is_authenticated {
             None
         } else {
-            Some(InlineDescription::Text(SUBSCRIPTION_DESCRIPTION.into()))
+            Some(InlineDescription::Text(
+                i18n::tr(SUBSCRIPTION_DESCRIPTION).into(),
+            ))
         };
 
         Some(ProviderSettingsView::Inline(
@@ -194,7 +196,7 @@ impl Render for ConfigurationView {
         v_flex()
             .gap_2()
             .when(!self.compact, |this| {
-                this.child(Label::new(SUBSCRIPTION_DESCRIPTION))
+                this.child(Label::new(i18n::tr(SUBSCRIPTION_DESCRIPTION)))
             })
             .child(
                 Button::new("sign-in", button_label)

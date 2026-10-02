@@ -354,9 +354,13 @@ fn render_base_keymap_section(tab_index: &mut isize, cx: &mut App) -> impl IntoE
             ToggleButtonGroup::two_rows(
                 "base_keymap_selection",
                 [
-                    ToggleButtonWithIcon::new("Zed", IconName::AiZed, |_, _, cx| {
-                        write_keymap_base(BaseKeymap::Zed, cx);
-                    }),
+                    ToggleButtonWithIcon::new(
+                        branding::CURRENT.product_name,
+                        IconName::ForgeKairos,
+                        |_, _, cx| {
+                            write_keymap_base(BaseKeymap::Zed, cx);
+                        },
+                    ),
                     ToggleButtonWithIcon::new("VS Code", IconName::EditorVsCode, |_, _, cx| {
                         write_keymap_base(BaseKeymap::VSCode, cx);
                     }),
@@ -675,7 +679,10 @@ fn render_zed_agent_button(user_store: &Entity<UserStore>, cx: &mut App) -> impl
                 .size(IconSize::XSmall)
                 .color(Color::Muted),
         )
-        .name("Zed Agent")
+        .name(branding::concat_const!(
+            branding::CURRENT.product_name,
+            " Agent"
+        ))
         .state(state_element)
         .disabled(is_trial || is_pro)
         .map(|this| {

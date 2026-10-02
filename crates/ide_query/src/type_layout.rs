@@ -45,7 +45,11 @@ const MORE_MEMBERS_MARKER: &str = "... (more members not shown)";
 pub const WITHHELD_MARKER: &str = "(withheld)";
 /// Why a member's type is left out when the remote host doesn't say where the chain's root
 /// was declared.
-pub const HOST_TOO_OLD_TO_JUDGE_MEMBER: &str = "The remote host is too old to tell where the type this member belongs to comes from, so it can't be checked against the files you may read and isn't shown. Updating Zed on the remote host lifts this.";
+pub const HOST_TOO_OLD_TO_JUDGE_MEMBER: &str = branding::concat_const!(
+    "The remote host is too old to tell where the type this member belongs to comes from, so it can't be checked against the files you may read and isn't shown. Updating ",
+    branding::CURRENT.product_name,
+    " on the remote host lifts this."
+);
 
 /// What to describe: a type, typedef or macro by name, or the name at a position (a type name,
 /// a variable, a member in `a->b.c`, a macro), whose type is found from its declaration.
@@ -206,11 +210,13 @@ impl fmt::Display for TypeIndexUnavailable {
             ),
             TypeIndexUnavailableReason::InUseByAnotherWindow => write!(
                 formatter,
-                "Name index not available: another Zed window has this folder's index open"
+                "Name index not available: another {} window has this folder's index open",
+                branding::CURRENT.product_name
             ),
             TypeIndexUnavailableReason::Failed => write!(
                 formatter,
-                "Name index not available: it failed to open (details are in Zed's log)"
+                "Name index not available: it failed to open (details are in {}'s log)",
+                branding::CURRENT.product_name
             ),
         }
     }

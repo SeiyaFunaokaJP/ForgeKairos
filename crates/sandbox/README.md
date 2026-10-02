@@ -319,13 +319,13 @@ escape is already closed there without a seccomp filter.
 
 Windows does not use Bubblewrap (ADR-F46). It runs the same helper that isolates
 agent commands on an SSH host (ADR-F18, `linux_remote_helper`): the Linux
-`remote_server` shipped next to `Zed.exe`, invoked inside WSL as
+`remote_server` shipped next to `ForgeKairos.exe`, invoked inside WSL as
 `--remote-sandbox-helper --wsl …`. The zed host code runs on Windows and holds
 no Linux file descriptors, so everything that needs them — pinning inodes,
 Landlock rules, the network namespace — happens inside WSL, in the helper.
 
 `windows_wsl` copies the helper and `slirp4netns` from Zed's install directory
-into `~/.cache/zed-jp-enhance/sandbox/<key>/` in the distro (`<key>` is derived
+into `~/.cache/forgekairos/sandbox/<key>/` in the distro (`<key>` is derived
 from the artifacts' contents; the copy is verified and renamed into place), so
 nothing is downloaded and a build only ever runs its own helper. `--wsl` changes
 the helper in these ways:

@@ -465,7 +465,7 @@ msgid "The diagram text changed while it was being edited. Open it again."
 msgstr "図のテキストが編集中に変更されました。もう一度開き直してください。"
 
 msgid "The remote instance of Zed does not support this yet. It must be upgraded to {}"
-msgstr "リモートの Zed はまだこの機能に対応していません。{} へアップグレードしてください。"
+msgstr "リモートの ForgeKairos はまだこの機能に対応していません。{} へアップグレードしてください。"
 
 msgid "There is no text to format."
 msgstr "書式を付ける文字がありません。"

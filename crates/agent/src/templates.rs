@@ -20,6 +20,7 @@ impl Templates {
         let mut handlebars = Handlebars::new();
         handlebars.set_strict_mode(true);
         handlebars.register_helper("contains", Box::new(contains));
+        handlebars.register_helper("product_name", Box::new(product_name));
         handlebars.register_embed_templates::<Assets>().unwrap();
         Arc::new(Self(handlebars))
     }
@@ -84,6 +85,18 @@ impl Template for SystemPromptTemplate<'_> {
     const TEMPLATE_NAME: &'static str = "system_prompt.hbs";
 }
 
+/// The name the agent is told it runs in, which is this fork's, not upstream's.
+fn product_name(
+    _: &handlebars::Helper,
+    _: &handlebars::Handlebars,
+    _: &handlebars::Context,
+    _: &mut handlebars::RenderContext,
+    out: &mut dyn handlebars::Output,
+) -> handlebars::HelperResult {
+    out.write(branding::CURRENT.product_name)?;
+    Ok(())
+}
+
 /// Handlebars helper for checking if an item is in a list
 fn contains(
     h: &handlebars::Helper,
@@ -131,7 +144,10 @@ mod tests {
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
-        assert!(rendered.contains("You are the Zed coding agent"));
+        assert!(rendered.contains(
+            "You are the ForgeKairos coding agent running inside the ForgeKairos editor (a fork of the Zed editor)."
+        ));
+        assert!(!rendered.contains("{{"), "every helper is registered");
         assert!(rendered.contains("Today's Date: 2026-01-01"));
         assert!(rendered.contains("## Fixing Diagnostics"));
         assert!(rendered.contains("test-model"));
@@ -172,7 +188,9 @@ mod tests {
         assert!(with_tools.contains("`search_symbols` is usually more direct than `grep`"));
         assert!(with_tools.contains("use `call_hierarchy` before `grep`"));
         assert!(with_tools.contains("answers from a name index when no language server runs"));
-        assert!(with_tools.contains("You run inside the Zed editor the user is looking at"));
+        assert!(
+            with_tools.contains("You run inside the ForgeKairos editor the user is looking at")
+        );
 
         let without_tools = render(vec!["grep".into()], true);
         assert!(!without_tools.contains("search_symbols"));
@@ -181,7 +199,7 @@ mod tests {
 
         let headless = render(ide_tools(), false);
         assert!(headless.contains("`search_symbols` is usually more direct than `grep`"));
-        assert!(!headless.contains("You run inside the Zed editor the user is looking at"));
+        assert!(!headless.contains("You run inside the ForgeKairos editor the user is looking at"));
         assert!(!headless.contains("code_tour"));
     }
 
@@ -457,7 +475,9 @@ mod tests {
         let rendered = template.render(&templates).unwrap();
 
         assert!(rendered.contains("## Terminal sandbox"));
-        assert!(rendered.contains("commands run inside WSL, isolated by Zed's sandbox helper"));
+        assert!(
+            rendered.contains("commands run inside WSL, isolated by ForgeKairos's sandbox helper")
+        );
         assert!(rendered.contains("Protected Git metadata remains read-only"));
         // Host-specific grants are enforced by the helper's proxy, so they are
         // offered rather than rejected.

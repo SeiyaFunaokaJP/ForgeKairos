@@ -60,8 +60,8 @@ use zed_actions::{
 use crate::components::{
     EnumVariantDropdown, NumberField, NumberFieldMode, NumberFieldType, SettingsInputField,
     SettingsSectionHeader, StringListEditor, font_picker, icon_theme_picker,
-    render_ollama_model_picker, string_list_with_added, string_list_without, text_field_a11y_state,
-    theme_picker,
+    render_ollama_model_picker, string_list_with_added, string_list_with_replaced,
+    string_list_without, text_field_a11y_state, theme_picker,
 };
 use crate::pages::{
     CustomAgentForm, LlmProviderForm, McpServerForm, NetworkAllowlistState, load_network_allowlist,
@@ -1791,6 +1791,17 @@ fn shown_link_title(link: &SubPageLink) -> SharedString {
     }
 }
 
+/// Languages written without spaces, such as Japanese, run a whole phrase into
+/// one word, so a query word that is not ASCII is looked for anywhere in a word.
+/// ASCII query words keep matching only the start of a word, as upstream does.
+fn search_word_matches(word: &str, query_word: &str) -> bool {
+    if query_word.is_ascii() {
+        word.starts_with(query_word)
+    } else {
+        word.contains(query_word)
+    }
+}
+
 /// A table string and, when it differs, its translation, so that search finds
 /// a setting by its English name as well as by the name on screen.
 fn with_translation(text: &str) -> impl Iterator<Item = &str> {
@@ -2446,7 +2457,7 @@ impl SettingsWindow {
                             query_words.iter().all(|query_word| {
                                 doc.words
                                     .iter()
-                                    .any(|doc_word| doc_word.starts_with(query_word))
+                                    .any(|doc_word| search_word_matches(doc_word, query_word))
                             })
                         })
                         .map(|doc| doc.id)
@@ -2816,7 +2827,7 @@ impl SettingsWindow {
                     .filter(|query_word| {
                         title_lower
                             .split_whitespace()
-                            .any(|title_word| title_word.starts_with(*query_word))
+                            .any(|title_word| search_word_matches(title_word, query_word))
                     })
                     .count();
                 (logical_index, index, matching_words)
@@ -2844,7 +2855,7 @@ impl SettingsWindow {
                     query_words.iter().all(|query_word| {
                         title_lower
                             .split_whitespace()
-                            .any(|title_word| title_word.starts_with(query_word))
+                            .any(|title_word| search_word_matches(title_word, query_word))
                     })
                 }
                 _ => false,
@@ -5321,6 +5332,7 @@ fn render_string_list(
         .cloned()
         .unwrap_or_default();
     let file_for_remove = file.clone();
+    let file_for_replace = file.clone();
     StringListEditor::new(
         id,
         entries,
@@ -5335,6 +5347,15 @@ fn render_string_list(
             });
         },
     )
+    .on_replace(move |original, text, window, cx| {
+        edit_string_list(
+            field,
+            file_for_replace.clone(),
+            window,
+            cx,
+            move |entries| string_list_with_replaced(entries, &original, &text),
+        );
+    })
     .aria_label(title)
     .into_any_element()
 }
@@ -7450,6 +7471,7 @@ mod project_settings_update_tests {
 #[cfg(test)]
 mod string_list_tests {
     use super::*;
+    use crate::components::EditedEntry;
     use fs::{FakeFs, Fs as _};
     use gpui::TestAppContext;
 
@@ -7549,6 +7571,30 @@ mod string_list_tests {
         ]
         .map(String::from)
         .to_vec();
+        assert_eq!(written_entries(&fs).await, Some(expected.clone()));
+
+        // An entry changed in place twice before either is written ends up
+        // with the second change, where it stood.
+        cx.update(|window, cx| {
+            for (original, text) in [("assert", "ASSERT"), ("ASSERT", "static_assert")] {
+                let original = EditedEntry {
+                    text: original.to_string(),
+                    occurrence: 0,
+                };
+                edit_string_list(
+                    excluded_callees(),
+                    SettingsUiFile::User,
+                    window,
+                    cx,
+                    move |entries| string_list_with_replaced(entries, &original, text),
+                );
+            }
+        });
+        cx.run_until_parked();
+        let mut expected = expected;
+        if let Some(entry) = expected.iter_mut().find(|entry| *entry == "assert") {
+            *entry = "static_assert".to_string();
+        }
         assert_eq!(written_entries(&fs).await, Some(expected.clone()));
 
         // Once the file has the list, removing every entry writes an empty

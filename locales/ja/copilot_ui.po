@@ -102,16 +102,16 @@ msgid "To use Copilot for edit predictions, you need to be logged in to GitHub. 
 msgstr "編集予測に Copilot を使用するには、GitHub にログインしている必要があります。GitHub アカウントに有効な Copilot のサブスクリプションが必要な点にご注意ください。"
 
 msgid "To use Zed's agent with GitHub Copilot Chat, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot Chat subscription."
-msgstr "Zed のエージェントで GitHub Copilot Chat を使用するには、GitHub にログインしている必要があります。GitHub アカウントに有効な Copilot Chat のサブスクリプションが必要な点にご注意ください。"
+msgstr "ForgeKairos のエージェントで GitHub Copilot Chat を使用するには、GitHub にログインしている必要があります。GitHub アカウントに有効な Copilot Chat のサブスクリプションが必要な点にご注意ください。"
 
 msgid "Use GitHub Copilot Chat in Zed"
-msgstr "Zed で GitHub Copilot Chat を使用"
+msgstr "ForgeKairos で GitHub Copilot Chat を使用"
 
 msgid "Use GitHub Copilot Edit Predictions in Zed"
-msgstr "Zed で GitHub Copilot Edit Predictions を使用"
+msgstr "ForgeKairos で GitHub Copilot Edit Predictions を使用"
 
 msgid "Use GitHub Copilot in Zed"
-msgstr "Zed で GitHub Copilot を使用"
+msgstr "ForgeKairos で GitHub Copilot を使用"
 
 msgid "Using Copilot Chat requires an active subscription on GitHub."
 msgstr "Copilot Chat を使用するには、GitHub の有効なサブスクリプションが必要です。"

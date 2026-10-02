@@ -776,6 +776,11 @@ impl WasmHost {
         let command_paths = std::iter::once(command.command.clone())
             .chain(command.args.iter().map(PathBuf::from))
             .collect::<Vec<_>>();
+        crate::language_server_versions::mark_in_use(
+            &extension_work_dir,
+            &command_paths,
+            std::time::SystemTime::now(),
+        );
         let fs = self.fs.clone();
         self.executor
             .spawn(async move {

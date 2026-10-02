@@ -425,6 +425,11 @@ fn send_egress_allowlist(client: &Arc<ChannelClient>, cx: &App) {
         .log_err();
 }
 
+/// The connection a client had before
+/// [`RemoteClient::begin_reconnecting_for_test`].
+#[cfg(any(test, feature = "test-support"))]
+pub struct HeldConnectionForTest(State);
+
 #[derive(Debug)]
 pub enum RemoteClientEvent {
     Disconnected { server_not_running: bool },
@@ -1371,6 +1376,29 @@ impl RemoteClient {
     #[cfg(any(test, feature = "test-support"))]
     pub fn force_server_not_running(&mut self, cx: &mut Context<Self>) {
         self.set_state(State::ServerNotRunning, cx);
+    }
+
+    /// Puts the client where it is while a reconnect attempt is under way,
+    /// with no connection to build commands on, until
+    /// [`Self::end_reconnecting_for_test`] gives back the one it had.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn begin_reconnecting_for_test(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Option<HeldConnectionForTest> {
+        let held = self.state.replace(State::Reconnecting)?;
+        cx.notify();
+        Some(HeldConnectionForTest(held))
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn end_reconnecting_for_test(
+        &mut self,
+        held: HeldConnectionForTest,
+        cx: &mut Context<Self>,
+    ) {
+        self.set_state(held.0, cx);
+        cx.emit(RemoteClientEvent::Reconnected);
     }
 
     #[cfg(any(test, feature = "test-support"))]

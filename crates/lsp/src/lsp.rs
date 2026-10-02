@@ -1154,7 +1154,7 @@ impl LanguageServer {
             workspace_folders: Some(workspace_folders),
             client_info: release_channel::ReleaseChannel::try_global(cx).map(|release_channel| {
                 ClientInfo {
-                    name: release_channel.display_name().to_string(),
+                    name: release_channel.upstream_display_name().to_string(),
                     version: Some(release_channel::AppVersion::global(cx).to_string()),
                 }
             }),
@@ -2507,6 +2507,18 @@ mod tests {
         server.set_workspace_folders(BTreeSet::from_iter([project_uri.clone()]));
 
         let params = cx.update(|cx| server.default_initialize_params(false, false, cx));
+
+        // Language servers may recognize the editor by upstream's name, which this fork
+        // keeps sending although it shows its own name to the user.
+        let client_name = params
+            .client_info
+            .as_ref()
+            .map(|client_info| client_info.name.as_str())
+            .expect("client_info should be set");
+        assert!(
+            client_name == "Zed" || client_name.starts_with("Zed "),
+            "{client_name}"
+        );
 
         assert_eq!(
             params

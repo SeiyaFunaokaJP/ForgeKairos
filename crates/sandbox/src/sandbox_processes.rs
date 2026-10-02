@@ -253,7 +253,7 @@ fn sanitized_command(raw: &str) -> String {
 // ===========================================================================
 
 /// Where the helper's parent registers a session, below the account's Zed data
-/// directory (`~/.local/share/zed-jp-enhance` unless `XDG_DATA_HOME` moves it).
+/// directory (`~/.local/share/forgekairos` unless `XDG_DATA_HOME` moves it).
 ///
 /// That directory is already on the built-in protected list and already hidden
 /// from a sandboxed command's reads, so nothing inside the sandbox can write a

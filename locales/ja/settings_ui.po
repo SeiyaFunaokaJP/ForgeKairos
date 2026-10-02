@@ -74,8 +74,8 @@ msgstr "(省略可)"
 msgid "(unnamed)"
 msgstr "(名前なし)"
 
-msgid "// zed-jp-enhance egress allowlist (docs/jp-enhance/DESIGN.md §4)\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
-msgstr "// zed-jp-enhance 外部通信の許可リスト (docs/jp-enhance/DESIGN.md §4)\n//\n// AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・\n// 外部エージェントのプロセス) は、ここに書いたホストだけが許可されます。\n// 言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。\n// 127.0.0.1 / ::1 / localhost は書かなくても常に許可されます。\n// // コメントと末尾のカンマを書けます。変更は保存した時点で反映されます。\n"
+msgid "// Zed egress allowlist (docs/jp-enhance/DESIGN.md §4)\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// ForgeKairos 外部通信の許可リスト (docs/jp-enhance/DESIGN.md §4)\n//\n// AI が起点になる外部通信 (AI プロバイダー・エージェントのツール・MCP サーバー・\n// 外部エージェントのプロセス) は、ここに書いたホストだけが許可されます。\n// 言語サーバーや拡張機能など IDE 自身の道具立ての通信は対象外です。\n// 127.0.0.1 / ::1 / localhost は書かなくても常に許可されます。\n// // コメントと末尾のカンマを書けます。変更は保存した時点で反映されます。\n"
 
 msgid "127.0.0.1 / ::1 / localhost are always allowed without being registered, so local LLM servers (such as Ollama) work even with an empty allowlist. A small number of hosts, such as the external agent (ACP) registry, are allowed by built-in rules. Every redirect target is checked the same way, one hop at a time."
 msgstr "127.0.0.1 / ::1 / localhost は登録しなくても常に許可されるため、ローカルの LLM サーバー (Ollama など) は許可リストが空のままでも利用できます。外部エージェント (ACP) のレジストリなど、ごく一部のホストは組み込みで許可済みです。リダイレクト先も 1 ホップごとに同じ判定を受けます。"
@@ -87,7 +87,7 @@ msgid "A client secret is required to connect."
 msgstr "接続するにはクライアントシークレットが必要です。"
 
 msgid "A command server: Zed starts the executable and talks to it over standard input and output."
-msgstr "コマンド型のサーバーです。Zed が実行ファイルを起動し、標準入出力でやり取りします。"
+msgstr "コマンド型のサーバーです。ForgeKairos が実行ファイルを起動し、標準入出力でやり取りします。"
 
 msgid "A file (not a skill directory) already exists at {}. Delete it or pick a different skill name."
 msgstr "スキルのディレクトリではないファイルが {} に既に存在します。削除するか、別のスキル名を指定してください。"
@@ -276,7 +276,7 @@ msgid "Always Launch Outside the Sandbox"
 msgstr "常にサンドボックスの外で起動"
 
 msgid "An HTTP server: Zed connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
-msgstr "HTTP 型のサーバーです。Zed が URL に接続し、HTTP でやり取りします。接続先のホストはネットワーク許可リストの対象です。"
+msgstr "HTTP 型のサーバーです。ForgeKairos が URL に接続し、HTTP でやり取りします。接続先のホストはネットワーク許可リストの対象です。"
 
 msgid "An agent named \"{}\" already exists."
 msgstr "「{}」という名前のエージェントは既に存在します。"
@@ -584,6 +584,9 @@ msgstr "各項目は完全一致のホスト名 (api.anthropic.com)、先頭の 
 msgid "Each entry must be an absolute path and grants write access to the whole subtree, except protected Git metadata."
 msgstr "各項目は絶対パスで指定します。保護された Git のメタデータを除き、その配下すべてに書き込みアクセスを許可します。"
 
+msgid "Edit"
+msgstr "編集"
+
 msgid "Edit in Form (saves to the project settings file that defines this server)"
 msgstr "フォームで編集 (このサーバーを定義しているプロジェクトの設定ファイルに保存します)"
 
@@ -591,7 +594,10 @@ msgid "Edit in settings.json"
 msgstr "settings.json で編集"
 
 msgid "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from Zed itself."
-msgstr "編集予測の通信は Copilot の言語サーバー (別プロセス) が行うため、外部通信の許可リストの対象外です。ホストの登録は Zed 本体からのサインインにのみ効きます。"
+msgstr "編集予測の通信は Copilot の言語サーバー (別プロセス) が行うため、外部通信の許可リストの対象外です。ホストの登録は ForgeKairos 本体からのサインインにのみ効きます。"
+
+msgid "Edit {entry}"
+msgstr "{entry} を編集"
 
 msgid "Enable Sandbox"
 msgstr "サンドボックスを有効にする"
@@ -1039,7 +1045,7 @@ msgid "Not installed on this PC (claude is not on PATH)."
 msgstr "この PC には導入されていません (PATH に claude がありません)。"
 
 msgid "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
-msgstr "注意: ツールの権限設定が適用されるのは Zed 標準のエージェントだけで、Agent Client Protocol (ACP) で接続した外部エージェントには適用されません。"
+msgstr "注意: ツールの権限設定が適用されるのは ForgeKairos 標準のエージェントだけで、Agent Client Protocol (ACP) で接続した外部エージェントには適用されません。"
 
 msgid "Nothing configured"
 msgstr "設定されていません"
@@ -1048,7 +1054,7 @@ msgid "OAuth Client ID"
 msgstr "OAuth クライアント ID"
 
 msgid "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
-msgstr "サブスクリプション (Claude Pro / Max など) での利用は、Anthropic が 2026-06-15 に「これまでどおり」と告知しています。ログインは Claude Code 自身の画面で行われ、Zed は認証情報を見も保存も中継もしません。ここを切るとログインのボタンが認証カードから消えます (API キーでの利用はそのまま使えます)。"
+msgstr "サブスクリプション (Claude Pro / Max など) での利用は、Anthropic が 2026-06-15 に「これまでどおり」と告知しています。ログインは Claude Code 自身の画面で行われ、ForgeKairos は認証情報を見も保存も中継もしません。ここを切るとログインのボタンが認証カードから消えます (API キーでの利用はそのまま使えます)。"
 
 msgid "One of the {label} rows has no name. Enter a name or remove that row."
 msgstr "{label}の名前が空の行があります。名前を入力するか、その行を削除してください。"
@@ -1081,10 +1087,10 @@ msgid "Optional OAuth client ID used to authenticate with the server. Leave it e
 msgstr "サーバーの認証に使う OAuth クライアント ID です (省略可)。サーバーが自動登録に対応していれば空欄のままで、接続時にブラウザーでの認証を求められます。"
 
 msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
-msgstr "または環境変数 {env_var_name} を設定し、Zed を再起動すると反映されます。"
+msgstr "または環境変数 {env_var_name} を設定し、ForgeKairos を再起動すると反映されます。"
 
 msgid "Or set the {} env var and restart Zed."
-msgstr "または環境変数 {} を設定して Zed を再起動してください。"
+msgstr "または環境変数 {} を設定して ForgeKairos を再起動してください。"
 
 msgid "Outbound Traffic from Child Processes"
 msgstr "子プロセスの外部通信"
@@ -1495,7 +1501,7 @@ msgid "The value of `{key}` is not an object ({{ … }})."
 msgstr "`{key}` の値がオブジェクト ({{ … }}) ではありません。"
 
 msgid "These fields weren't loaded because Zed doesn't use them: {keys}"
-msgstr "次の項目は Zed では使わないため読み込みませんでした: {keys}"
+msgstr "次の項目は ForgeKairos では使わないため読み込みませんでした: {keys}"
 
 msgid "These patterns failed to compile as regular expressions. The tool will be blocked until they are fixed or removed."
 msgstr "これらのパターンは正規表現としてコンパイルできませんでした。修正または削除するまで、このツールはブロックされます。"
@@ -1510,7 +1516,7 @@ msgid "Thinking Effort: {effort}"
 msgstr "思考の深さ: {effort}"
 
 msgid "This approval lasts until Zed quits."
-msgstr "この承認は Zed を終了するまで有効です。"
+msgstr "この承認は ForgeKairos を終了するまで有効です。"
 
 msgid "This computer"
 msgstr "この PC"
@@ -1561,7 +1567,7 @@ msgid "This server is disabled. Enable it before testing the connection."
 msgstr "このサーバーは無効です。有効にしてから接続をテストしてください。"
 
 msgid "This server starts in an empty folder of Zed's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
-msgstr "このサーバーは Zed 専用の空のフォルダーで起動します (プロジェクトのフォルダーではありません)。プロジェクトを対象にするときは、引数にフォルダーの絶対パスを指定してください。"
+msgstr "このサーバーは ForgeKairos 専用の空のフォルダーで起動します (プロジェクトのフォルダーではありません)。プロジェクトを対象にするときは、引数にフォルダーの絶対パスを指定してください。"
 
 msgid "This server's child process goes through the loopback proxy, so its outbound traffic is controlled by the network allowlist."
 msgstr "このサーバーの子プロセスはループバックのプロキシを経由するため、外部通信はネットワーク許可リストで統制されます。"
@@ -1672,7 +1678,7 @@ msgid "Withdrawing consent does not stop Zed while it is the selected provider (
 msgstr "承諾を取り消しても、選択中の Zed は止まりません (再び警告が表示され、上の「プロバイダー」の一覧から Zed が消えるだけです)。停止するには上の「プロバイダー」で「なし」を選んでください。"
 
 msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
-msgstr "エージェントが実行するターミナルコマンドを OS レベルのサンドボックスで包みます。無効の間は、コマンドが Zed 本体の権限で実行されるため自動承認が効かず、コマンドごとに確認します。外部エージェント本体と Claude Code の起動には影響しません (それぞれの設定は「AI」ページにあります)。"
+msgstr "エージェントが実行するターミナルコマンドを OS レベルのサンドボックスで包みます。無効の間は、コマンドが ForgeKairos 本体の権限で実行されるため自動承認が効かず、コマンドごとに確認します。外部エージェント本体と Claude Code の起動には影響しません (それぞれの設定は「AI」ページにあります)。"
 
 msgid "Writable Paths"
 msgstr "書き込みを許可するパス"
@@ -1693,7 +1699,7 @@ msgid "Your settings file is out of date, automatic migration failed"
 msgstr "設定ファイルが古い形式で、自動移行に失敗しました"
 
 msgid "Zed — Settings"
-msgstr "Zed — 設定"
+msgstr "ForgeKairos — 設定"
 
 msgid "Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev."
 msgstr "Zed のクラウド編集予測 (Zeta) です。編集中のコードとその周辺が cloud.zed.dev へ送信されます。"

@@ -1126,6 +1126,17 @@ fn reads_windows_paths_into_the_wsl_distribution() {
         read(r"\\?\UNC\wsl.localhost\Ubuntu-24.04\srv\a.svg").as_deref(),
         Some("/srv/a.svg")
     );
+    assert_eq!(
+        read(r"\\?\unc\wsl$\Ubuntu-24.04\srv\a.svg").as_deref(),
+        Some("/srv/a.svg"),
+        "the device prefix is compared without regard to case"
+    );
+    assert_eq!(
+        read(r"\\.\UNC\wsl.localhost\Ubuntu-24.04\srv\a.svg").as_deref(),
+        Some("/srv/a.svg")
+    );
+    assert_eq!(read(r"\\?\C:\Users\me\pic.png"), None);
+    assert_eq!(read(r"\\.\pipe\wsl$\Ubuntu-24.04\a.png"), None);
     assert_eq!(read("//wsl$/Ubuntu-24.04/").as_deref(), Some("/"));
     assert_eq!(
         read(r"\\wsl$\Debian\home\me\pic.png"),

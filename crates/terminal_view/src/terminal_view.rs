@@ -214,6 +214,9 @@ pub struct TerminalView {
     /// was started again in a new session. Cleared once an attach gets
     /// through, so that each failure gets one more try, and only one.
     remote_session_retried: bool,
+    /// The shell's sessions could not be reached even in a new one, and it
+    /// was started without; its restarts stay without.
+    remote_sessions_given_up: bool,
     /// Focus listeners live on the `Window` they were registered against, so a
     /// terminal whose tab is torn off into another window has to register them
     /// again. Kept apart from `_subscriptions` so only these are rebuilt.
@@ -457,6 +460,7 @@ impl TerminalView {
             restart_task: None,
             removed_from_pane: Cell::new(false),
             remote_session_retried: false,
+            remote_sessions_given_up: false,
             _window_focus_subscriptions: window_focus_subscriptions,
             focus_listener_window,
             _subscriptions: subscriptions,
@@ -1115,13 +1119,10 @@ impl TerminalView {
                 default_working_directory(workspace, cx)
             });
         let is_remote_terminal = terminal.is_remote_terminal();
-        let (persistent, resume_session_id) = match session_restart {
-            SessionRestart::Continue => (
-                terminal.remote_session_id().is_some(),
-                session_to_resume(terminal),
-            ),
-            SessionRestart::NewSession => (true, None),
-            SessionRestart::WithoutSession => (false, None),
+        let persistent = restart_asks_for_session(session_restart, self.remote_sessions_given_up);
+        let resume_session_id = match session_restart {
+            SessionRestart::Continue => session_to_resume(terminal),
+            SessionRestart::NewSession | SessionRestart::WithoutSession => None,
         };
         let Some(project) = self.project.upgrade() else {
             return;
@@ -1205,6 +1206,9 @@ impl TerminalView {
             });
         }
         self.remote_session_retried = session_restart == SessionRestart::NewSession;
+        if gives_up_sessions(failure, session_restart) {
+            self.remote_sessions_given_up = true;
+        }
         self.workspace
             .update(cx, |workspace, cx| {
                 struct RemoteSessionFailureToast;
@@ -2056,12 +2060,32 @@ fn terminal_rerun_override(task: &TaskId) -> zed_actions::Rerun {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SessionRestart {
     /// The one the shell had, if it is still running there (see
-    /// [`session_to_resume`]), or a new one if the shell had one at all.
+    /// [`session_to_resume`]), or a new one.
     Continue,
     /// A new session, giving up the one the shell had.
     NewSession,
     /// No session, like any shell where persistence is off.
     WithoutSession,
+}
+
+/// Whether a restarted shell asks for a persistent session. A shell that ran
+/// without one (persistence was off, or the server could not offer it yet)
+/// asks again, so that it follows the setting and the server as they are
+/// now; the project still leaves out a server binary that refused sessions.
+fn restart_asks_for_session(session_restart: SessionRestart, sessions_given_up: bool) -> bool {
+    match session_restart {
+        SessionRestart::Continue => !sessions_given_up,
+        SessionRestart::NewSession => true,
+        SessionRestart::WithoutSession => false,
+    }
+}
+
+/// Whether a tab stops asking for sessions after answering `failure` with
+/// `session_restart`. An unsupported server is remembered by the project
+/// instead, for its binary, so that a newer one is asked again.
+fn gives_up_sessions(failure: RemoteSessionFailure, session_restart: SessionRestart) -> bool {
+    failure == RemoteSessionFailure::Unreachable
+        && session_restart == SessionRestart::WithoutSession
 }
 
 /// How a terminal whose attach never reached a holder starts again, and
@@ -4354,6 +4378,36 @@ mod tests {
                 "the shell a restored tab asked for may still be on the host"
             );
         });
+    }
+
+    #[test]
+    fn test_a_restarted_shell_asks_for_a_session_unless_its_tab_gave_up_on_them() {
+        assert!(
+            restart_asks_for_session(SessionRestart::Continue, false),
+            "a shell that ran without a session asks again, under today's setting and server"
+        );
+        assert!(!restart_asks_for_session(SessionRestart::Continue, true));
+        assert!(restart_asks_for_session(SessionRestart::NewSession, false));
+        assert!(!restart_asks_for_session(
+            SessionRestart::WithoutSession,
+            false
+        ));
+
+        let (restart, _) = recovery_from_session_failure(RemoteSessionFailure::Unreachable, true);
+        assert!(gives_up_sessions(
+            RemoteSessionFailure::Unreachable,
+            restart
+        ));
+        let (restart, _) = recovery_from_session_failure(RemoteSessionFailure::Unreachable, false);
+        assert!(!gives_up_sessions(
+            RemoteSessionFailure::Unreachable,
+            restart
+        ));
+        let (restart, _) = recovery_from_session_failure(RemoteSessionFailure::Unsupported, false);
+        assert!(
+            !gives_up_sessions(RemoteSessionFailure::Unsupported, restart),
+            "an updated server gets asked again"
+        );
     }
 
     #[test]

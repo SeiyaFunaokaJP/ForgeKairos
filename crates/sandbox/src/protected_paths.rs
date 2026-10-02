@@ -1062,8 +1062,9 @@ impl std::fmt::Display for ReadableRefusal {
                 write!(
                     formatter,
                     "resolves to {}, which is inside neither an agent installation nor \
-                     this Zed's Node.js (",
-                    canonical.display()
+                     this {}'s Node.js (",
+                    canonical.display(),
+                    branding::CURRENT.product_name
                 )?;
                 for (index, relative) in AGENT_RUNTIME_DATA_RELATIVE.iter().enumerate() {
                     if index > 0 {

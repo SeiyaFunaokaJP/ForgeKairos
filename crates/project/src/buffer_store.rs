@@ -418,9 +418,12 @@ impl RemoteBufferStore {
 /// this wait is what makes them fail closed there.
 pub(crate) const VERIFIED_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-const UNCONFIRMED_VERIFIED_SAVE: &str = "The remote server did not confirm that it wrote the file \
-    exactly where it was checked to land, so nothing was written. A remote server from an older \
-    Zed cannot do this; reconnect to update it.";
+const UNCONFIRMED_VERIFIED_SAVE: &str = branding::concat_const!(
+    "The remote server did not confirm that it wrote the file exactly where it was checked to \
+     land, so nothing was written. A remote server from an older ",
+    branding::CURRENT.product_name,
+    " cannot do this; reconnect to update it."
+);
 
 /// ADR-F49: the remote server's answer to a verified save. No answer in time,
 /// or an answer that nothing handles such a save, both mean nothing was

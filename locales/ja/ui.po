@@ -42,7 +42,7 @@ msgid "Cancel"
 msgstr "キャンセル"
 
 msgid "Checking for Zed Updates…"
-msgstr "Zed の更新を確認しています…"
+msgstr "ForgeKairos の更新を確認しています…"
 
 msgid "Choose one of the options below to use the {}"
 msgstr "{}を使うには、以下のいずれかを選択してください"
@@ -63,7 +63,7 @@ msgid "Dismiss"
 msgstr "閉じる"
 
 msgid "Downloading Zed Update…"
-msgstr "Zed の更新をダウンロードしています…"
+msgstr "ForgeKairos の更新をダウンロードしています…"
 
 msgid "Downloading version {version} needs network access to {hosts}"
 msgstr "バージョン {version} をダウンロードするには {hosts} への通信の許可が必要です"
@@ -72,7 +72,7 @@ msgid "Failed to Update"
 msgstr "更新に失敗しました"
 
 msgid "Installing Zed Update…"
-msgstr "Zed の更新をインストールしています…"
+msgstr "ForgeKairos の更新をインストールしています…"
 
 msgid "Learn More"
 msgstr "詳細"

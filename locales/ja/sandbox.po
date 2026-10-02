@@ -78,7 +78,7 @@ msgid "Could not extract the agent runtime"
 msgstr "エージェントの実行環境を展開できませんでした"
 
 msgid "Could not find Zed's data folder in {distro}{details}."
-msgstr "{distro}で Zed のデータフォルダーを確認できませんでした{details}。"
+msgstr "{distro}で ForgeKairos のデータフォルダーを確認できませんでした{details}。"
 
 msgid "Could not find the architecture of {distro}{details}."
 msgstr "{distro}のアーキテクチャを確認できませんでした{details}。"
@@ -111,7 +111,7 @@ msgid "Could not read inside the writable path `{path}` ({error}). The paths to 
 msgstr "書込を許可したパス `{path}` の中を読めませんでした ({error})。保護すべきパスを切り分けられないため、中止します。"
 
 msgid "Could not read the bundled sandbox helper `{path}` ({error}). Reinstall Zed."
-msgstr "同梱のサンドボックス用ヘルパー `{path}` を読み取れませんでした ({error})。Zed を再インストールしてください。"
+msgstr "同梱のサンドボックス用ヘルパー `{path}` を読み取れませんでした ({error})。ForgeKairos を再インストールしてください。"
 
 msgid "Could not read the {file} `{path}` ({error}). {fix}"
 msgstr "{file} `{path}` を読み取れませんでした ({error})。{fix}"
@@ -156,7 +156,7 @@ msgid "No default WSL distro is set. List the distros with `wsl --list --verbose
 msgstr "既定の WSL ディストリビューションが設定されていません。`wsl --list --verbose` で一覧を確認し、`wsl --set-default <名前>` で WSL 2 のディストリビューションを既定にしてください。"
 
 msgid "Reinstall Zed."
-msgstr "Zed を再インストールしてください。"
+msgstr "ForgeKairos を再インストールしてください。"
 
 msgid "Set the environment variable `ZED_WSL_SANDBOX_HELPER` to an absolute path inside WSL (UTF-8)."
 msgstr "環境変数 `ZED_WSL_SANDBOX_HELPER` には WSL 内の絶対パス (UTF-8) を指定してください。"
@@ -207,7 +207,7 @@ msgid "The agent runtime was installed in {distro}, but it could not be verified
 msgstr "エージェントの実行環境を{distro}に配置しましたが、確認できませんでした。もう一度実行してください。"
 
 msgid "The bundled sandbox helper `{path}` is damaged ({error}). Reinstall Zed."
-msgstr "同梱のサンドボックス用ヘルパー `{path}` が壊れています ({error})。Zed を再インストールしてください。"
+msgstr "同梱のサンドボックス用ヘルパー `{path}` が壊れています ({error})。ForgeKairos を再インストールしてください。"
 
 msgid "The home directory could not be determined, so the paths shown read-only cannot be checked. Stopping without building the sandbox."
 msgstr "ホームディレクトリを特定できないため、読み取り専用で見せるパスを確認できません。サンドボックスを構築せずに中止します。"
@@ -225,7 +225,7 @@ msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only beca
 msgstr "読み取り専用で見せるパス `{path}` (実際の場所 `{canonical}`) は、読み取りを禁止している `{entry}` と重なるため見せられません。"
 
 msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only. Only the agent installations (`external_agents`) and Node.js (`node`) inside Zed's data folder (`{data_directory}`) can be shown (credentials and Zed's database, settings and logs are never shown)."
-msgstr "読み取り専用で見せるパス `{path}` (実際の場所 `{canonical}`) は見せられません。見せられるのは Zed のデータフォルダー (`{data_directory}`) の中のエージェントのインストール先 (`external_agents`) と Node.js (`node`) だけです (認証情報や Zed のデータベース・設定・ログは見せません)。"
+msgstr "読み取り専用で見せるパス `{path}` (実際の場所 `{canonical}`) は見せられません。見せられるのは ForgeKairos のデータフォルダー (`{data_directory}`) の中のエージェントのインストール先 (`external_agents`) と Node.js (`node`) だけです (認証情報や ForgeKairos のデータベース・設定・ログは見せません)。"
 
 msgid "The path is in the WSL distro `{requested}`, but this session runs in `{session}`."
 msgstr "WSL ディストリビューション `{requested}` にありますが、このセッションは `{session}` で動いています。"
@@ -252,7 +252,7 @@ msgid "The sandbox helper was installed in {distro}, but it could not be verifie
 msgstr "サンドボックス用のヘルパーを{distro}に配置しましたが、確認できませんでした。もう一度実行してください。"
 
 msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build-dev.ps1` puts them in `target\\debug` (searched: {searched})."
-msgstr "サンドボックス用のヘルパー (`{server_name}` と `{slirp_name}`) が Zed のインストール先に見つかりません。Zed を再インストールしてください。開発ビルドでは `script/build-dev.ps1` が `target\\debug` に用意します (探した場所: {searched})。"
+msgstr "サンドボックス用のヘルパー (`{server_name}` と `{slirp_name}`) が ForgeKairos のインストール先に見つかりません。ForgeKairos を再インストールしてください。開発ビルドでは `script/build-dev.ps1` が `target\\debug` に用意します (探した場所: {searched})。"
 
 msgid "The terminal's working folder was not resolved (internal error)"
 msgstr "ターミナルの作業フォルダーの解決結果が見つかりません (内部エラー)"
@@ -428,7 +428,7 @@ msgstr "ランタイムのフォルダー"
 
 msgctxt "wsl sandbox step"
 msgid "checking Zed's data folder"
-msgstr "Zed のデータフォルダーの確認"
+msgstr "ForgeKairos のデータフォルダーの確認"
 
 msgctxt "wsl sandbox step"
 msgid "checking the WSL architecture"

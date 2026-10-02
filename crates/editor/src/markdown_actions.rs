@@ -2656,11 +2656,47 @@ impl<'a> MarkdownTextLayout<'a> {
         let mut link_definition_row = None;
         let mut link_definition_rows = Vec::new();
         let mut in_list = false;
+        // The quote depth of an unclosed comment, and the column a line must
+        // reach to stay in the list item holding it.
+        let mut open_comment: Option<(usize, usize)> = None;
         for row in 0..lines.len() {
             let Some(line_range) = lines.get(row).cloned() else {
                 break;
             };
             let line = line_text(row);
+            // A comment's HTML block runs to its `-->`, past blank lines, so a
+            // `[label]: url` line inside it defines nothing. The block quote or
+            // list item holding it can end first, though, as an HTML block has
+            // no lazy continuation lines; a definition after that counts.
+            if let Some((comment_quote_depth, comment_column)) = open_comment {
+                let prefix = line_prefix(line);
+                let rest_is_blank = line
+                    .get(prefix.after_quotes..)
+                    .unwrap_or_default()
+                    .trim()
+                    .is_empty();
+                let container_ends = if line.trim().is_empty() {
+                    comment_quote_depth > 0
+                } else {
+                    prefix.quote_depth < comment_quote_depth
+                        || (!rest_is_blank && prefix.after_quotes < comment_column)
+                };
+                if !container_ends {
+                    if let Some(block) = open_block.as_mut()
+                        && !line.trim().is_empty()
+                    {
+                        block.rows.end = row + 1;
+                        block.content.end = line_range.start + line.trim_end().len();
+                    }
+                    if line.contains("-->") {
+                        open_comment = None;
+                        blocks.extend(open_block.take());
+                    }
+                    continue;
+                }
+                open_comment = None;
+                blocks.extend(open_block.take());
+            }
             let is_code = code_rows.get(row).copied().unwrap_or(false);
             if is_code || line.trim().is_empty() {
                 blocks.extend(open_block.take());
@@ -2782,12 +2818,23 @@ impl<'a> MarkdownTextLayout<'a> {
             let text_start = line_range.start + prefix.text_start;
             if starts_html_block(content, paragraph_is_open) {
                 blocks.extend(open_block.take());
-                open_block = Some(TextBlock {
+                let block = TextBlock {
                     kind: TextBlockKind::Html,
                     rows: row..row + 1,
                     content: text_start..content_end,
                     quote_depth: prefix.quote_depth,
-                });
+                };
+                // A comment's block ends on the line of its `-->`, not at a
+                // blank line, so a definition right below it still counts.
+                if !content.starts_with("<!--") {
+                    open_block = Some(block);
+                } else if content.contains("-->") {
+                    blocks.push(block);
+                } else {
+                    let column = if in_list { prefix.text_start } else { 0 };
+                    open_comment = Some((prefix.quote_depth, column));
+                    open_block = Some(block);
+                }
                 continue;
             }
 
@@ -4406,6 +4453,52 @@ mod style_tests {
             ),
             "[te<mark>«xt][r»</mark>ef]\n\n```\n[ref]: https://example.com\n```"
         );
+        // Nor does one inside a comment, even past a blank line in it.
+        assert_eq!(
+            inline(
+                "[te«xt][r»ef]\n\n<!--\n\n[ref]: https://example.com\n-->",
+                Request::ToggleMarker
+            ),
+            "[te<mark>«xt][r»</mark>ef]\n\n<!--\n\n[ref]: https://example.com\n-->"
+        );
+        // After the comment closes, a definition counts again.
+        assert_eq!(
+            inline(
+                "[te«xt][r»ef]\n\n<!--\n\n-->\n\n[ref]: https://example.com",
+                Request::SetTextColor(RED)
+            ),
+            "refused: CrossesLink"
+        );
+        for marked in [
+            // The comment's block ends on the line of its `-->`.
+            "[te«xt][r»ef]\n\n<!-- note -->\n[ref]: https://example.com",
+            "[te«xt][r»ef]\n\n<!--\nnote\n-->\n[ref]: https://example.com",
+            // The block quote or list item holding an unclosed comment ends
+            // before the definition.
+            "[te«xt][r»ef]\n\n> <!--\n\n[ref]: https://example.com",
+            "[te«xt][r»ef]\n\n> <!--\n[ref]: https://example.com",
+            "[te«xt][r»ef]\n\n- <!--\n\n[ref]: https://example.com",
+            "[te«xt][r»ef]\n\n> - <!--\n> [ref]: https://example.com",
+        ] {
+            assert_eq!(
+                inline(marked, Request::SetTextColor(RED)),
+                "refused: CrossesLink",
+                "{marked}"
+            );
+        }
+        for marked in [
+            // Still inside the comment's block quote or list item.
+            "[te«xt][r»ef]\n\n> <!--\n>\n> [ref]: https://example.com\n> -->",
+            "[te«xt][r»ef]\n\n- <!--\n\n  [ref]: https://example.com\n  -->",
+            // A comment never closed runs to the end of the document.
+            "[te«xt][r»ef]\n\n<!--\n\n[ref]: https://example.com",
+        ] {
+            assert_eq!(
+                inline(marked, Request::ToggleMarker),
+                marked.replace("[te«xt][r»ef]", "[te<mark>«xt][r»</mark>ef]"),
+                "{marked}"
+            );
+        }
     }
 
     #[track_caller]

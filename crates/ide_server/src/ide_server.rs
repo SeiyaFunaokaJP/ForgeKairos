@@ -89,7 +89,10 @@ pub use util::path_mapping::{IdentityPathMapper, PathMapper, WslPathMapper};
 pub const CLAUDE_CODE_PORT_ENV_VAR: &str = "CLAUDE_CODE_SSE_PORT";
 
 /// ロックファイルに書く IDE 名。CLI 側の表示にそのまま使われる。
-const IDE_NAME: &str = "Zed";
+const IDE_NAME: &str = PRODUCT_NAME;
+
+/// The name the agents connected to this server see the editor under.
+pub(crate) const PRODUCT_NAME: &str = branding::CURRENT.product_name;
 
 /// ACP セッションと `.mcp.json` に載せるときのサーバー名。
 ///

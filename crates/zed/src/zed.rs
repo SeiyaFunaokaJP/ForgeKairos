@@ -1409,8 +1409,10 @@ fn register_actions(
                     workspace.show_toast(
                         Toast::new(
                             NotificationId::unique::<RegisterZedScheme>(),
-                            i18n::t!("zed:// links will now open in {}.",
-                                ReleaseChannel::global(cx).display_name()
+                            i18n::t!(
+                                "{scheme}:// links will now open in {app}.",
+                                scheme = branding::CURRENT.url_scheme,
+                                app = ReleaseChannel::global(cx).display_name()
                             ),
                         ),
                         cx,
@@ -1419,7 +1421,10 @@ fn register_actions(
                 Ok(())
             })
             .detach_and_prompt_err(
-                i18n::t!("Error registering zed:// scheme"),
+                &i18n::t!(
+                    "Error registering {scheme}:// scheme",
+                    scheme = branding::CURRENT.url_scheme
+                ),
                 window,
                 cx,
                 |_, _, _| None,
@@ -1673,6 +1678,7 @@ fn open_about_window(cx: &mut App) {
         copy_entry: NavigableEntry,
         app_icon: Arc<Image>,
         message: SharedString,
+        based_on: SharedString,
         commit: Option<SharedString>,
         full_version: SharedString,
     }
@@ -1690,6 +1696,8 @@ fn open_about_window(cx: &mut App) {
                 ""
             };
             let message: SharedString = format!("{release_channel_name} {version} {debug}").into();
+            // The version is upstream's: this fork keeps it to say which Zed it follows.
+            let based_on: SharedString = i18n::t!("Based on Zed {version}").into();
             let commit = AppCommitSha::try_global(cx)
                 .map(|sha| sha.full())
                 .filter(|commit| !commit.is_empty())
@@ -1701,6 +1709,7 @@ fn open_about_window(cx: &mut App) {
                 copy_entry: NavigableEntry::focusable(cx),
                 app_icon: about_window_icon(release_channel),
                 message,
+                based_on,
                 commit,
                 full_version,
             }
@@ -1710,11 +1719,14 @@ fn open_about_window(cx: &mut App) {
             let content = match self.commit.as_ref() {
                 Some(commit) => {
                     format!(
-                        "{}\nCommit: {}\nVersion: {}",
-                        self.message, commit, self.full_version
+                        "{}\n{}\nCommit: {}\nVersion: {}",
+                        self.message, self.based_on, commit, self.full_version
                     )
                 }
-                None => format!("{}\nVersion: {}", self.message, self.full_version),
+                None => format!(
+                    "{}\n{}\nVersion: {}",
+                    self.message, self.based_on, self.full_version
+                ),
             };
             cx.write_to_clipboard(ClipboardItem::new_string(content));
             window.remove_window();
@@ -1749,6 +1761,11 @@ fn open_about_window(cx: &mut App) {
                             .items_center()
                             .child(img(self.app_icon.clone()).size_16().flex_none())
                             .child(Headline::new(self.message.clone()))
+                            .child(
+                                Label::new(self.based_on.clone())
+                                    .color(Color::Muted)
+                                    .size(LabelSize::Small),
+                            )
                             .when_some(self.commit.clone(), |this, commit| {
                                 this.child(
                                     Label::new(i18n::t!("Commit"))
@@ -1843,7 +1860,7 @@ fn open_about_window(cx: &mut App) {
     cx.open_window(
         WindowOptions {
             titlebar: Some(TitlebarOptions {
-                title: Some("About Zed".into()),
+                title: Some(i18n::t!("About Zed").into()),
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(12.), px(12.))),
             }),

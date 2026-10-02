@@ -230,13 +230,21 @@ fn contains_japanese_text(text: &str) -> bool {
 }
 
 pub fn japanese_literals(files: &[RustFile]) -> Vec<JapaneseLiteral> {
+    literals_where(files, contains_japanese_text)
+}
+
+/// The string literals of `files` (outside comments) whose text satisfies `predicate`.
+pub fn literals_where(
+    files: &[RustFile],
+    predicate: impl Fn(&str) -> bool,
+) -> Vec<JapaneseLiteral> {
     let mut literals = Vec::new();
     for file in files {
         for index in 0..file.source.code.len() {
             let Some(literal) = file.source.literal(index) else {
                 continue;
             };
-            if !contains_japanese_text(&literal.value) {
+            if !predicate(&literal.value) {
                 continue;
             }
             literals.push(JapaneseLiteral {

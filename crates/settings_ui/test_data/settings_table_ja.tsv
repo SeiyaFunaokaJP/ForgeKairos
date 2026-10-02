@@ -1,7 +1,7 @@
 p0.title	全般
 p0.i0.header	全般設定
 p0.i2[accessible_mode].title	アクセシビリティモード
-p0.i2[accessible_mode].description	スクリーンリーダーなどの支援技術向けに Zed のインターフェースを最適化します。有効にすると、通常は折りたたまれるコントロールが展開されたままになり、キーボードで操作できます。
+p0.i2[accessible_mode].description	スクリーンリーダーなどの支援技術向けに ForgeKairos のインターフェースを最適化します。有効にすると、通常は折りたたまれるコントロールが展開されたままになり、キーボードで操作できます。
 p0.i3[when_closing_with_no_tabs].title	タブがない状態で閉じたとき
 p0.i3[when_closing_with_no_tabs].description	タブがない状態で「アクティブな項目を閉じる」アクションを使ったときの動作です。
 p0.i5[on_last_window_closed].title	最後のウィンドウを閉じたとき
@@ -15,29 +15,29 @@ p0.i8[redact_private_values].description	プライベートファイル内の変
 p0.i9[worktree.private_files].title	プライベートファイル
 p0.i9[worktree.private_files].description	ファイルがプライベートかどうかを判定するために、ファイルパスと照合する glob です。
 p0.i10[cli_default_open_behavior].title	CLI の既定の開き方
-p0.i10[cli_default_open_behavior].description	フラグを指定しなかったときに `zed <path>` がディレクトリをどう開くかを設定します。
+p0.i10[cli_default_open_behavior].description	フラグを指定しなかったときに `forgekairos <path>` がディレクトリをどう開くかを設定します。
 p0.i12[default_open_behavior].title	既定の開き方
 p0.i12[default_open_behavior].description	UI からプロジェクトを開くときの既定の動作です。
 p0.i13.header	セキュリティ
 p0.i14[session.trust_all_projects].title	すべてのプロジェクトを既定で信頼
-p0.i14[session.trust_all_projects].description	Zed を開くときにすべてのプロジェクトを自動的に信頼して制限モードを回避し、プロジェクトごとに許可を与えなくてもすべての機能を使えるようにします。
+p0.i14[session.trust_all_projects].description	ForgeKairos を開くときにすべてのプロジェクトを自動的に信頼して制限モードを回避し、プロジェクトごとに許可を与えなくてもすべての機能を使えるようにします。
 p0.i15.link	起動の許可・不許可の記録
 p0.i15.link_description	プロジェクトの設定が起動しようとした MCP サーバー・言語サーバー・外部フォーマッターについて、許可・不許可の記録を確認して取り消します。
 p0.i16.header	ワークスペースの復元
 p0.i17[session.restore_unsaved_buffers].title	未保存のバッファーを復元
 p0.i17[session.restore_unsaved_buffers].description	再起動時に未保存のバッファーを復元するかどうかを設定します。
 p0.i18[restore_on_startup].title	起動時に復元する内容
-p0.i18[restore_on_startup].description	Zed を開いたときに前回のセッションから何を復元するかを設定します。
+p0.i18[restore_on_startup].description	ForgeKairos を開いたときに前回のセッションから何を復元するかを設定します。
 p0.i19.header	適用範囲付きの設定
 p0.i20[preview_channel_settings].title	Preview チャンネル
-p0.i20[preview_channel_settings].description	Zed の Preview ビルドでのみ有効にする設定です。
+p0.i20[preview_channel_settings].description	ForgeKairos の Preview ビルドでのみ有効にする設定です。
 p0.i21[settings_profiles].title	設定プロファイル
 p0.i21[settings_profiles].description	既存のユーザー設定に一時的に上書き適用する設定プロファイルを、任意の数だけ定義できます。
 p0.i22.header	プライバシー
 p0.i23[telemetry.diagnostics].title	診断テレメトリ
 p0.i23[telemetry.diagnostics].description	クラッシュレポートなどのデバッグ情報を送信します。
 p0.i24[telemetry.metrics].title	利用状況テレメトリ
-p0.i24[telemetry.metrics].description	Zed でどの言語を使っているかなど、匿名化された利用データを送信します。
+p0.i24[telemetry.metrics].description	ForgeKairos でどの言語を使っているかなど、匿名化された利用データを送信します。
 p0.i25[telemetry.anthropic_retention].title	Anthropic のデータ保持
 p0.i25[telemetry.anthropic_retention].description	Zero Data Retention では提供できない Anthropic モデルへのリクエスト送信を許可します。
 p0.i26.header	自動更新
@@ -56,7 +56,7 @@ p1.i1.v1.f1[theme.light].description	モードがライトのとき、または�
 p1.i1.v1.f2[theme.dark].title	ダークテーマ
 p1.i1.v1.f2[theme.dark].description	モードがダークのとき、またはモードがシステムで OS がダークモードのときに使うテーマです。
 p1.i2[icon_theme$].title	アイコンテーマ
-p1.i2[icon_theme$].description	Zed がファイルとディレクトリに関連付けるアイコンのセットです。
+p1.i2[icon_theme$].description	ForgeKairos がファイルとディレクトリに関連付けるアイコンのセットです。
 p1.i2.v0.f0[icon_theme$string].title	アイコンテーマ名
 p1.i2.v0.f0[icon_theme$string].description	選択したアイコンテーマの名前です。
 p1.i2.v1.f0[icon_theme].title	モード
@@ -353,9 +353,9 @@ p3.i105[languages.$(language).code_actions_on_format].title	フォーマット�
 p3.i105[languages.$(language).code_actions_on_format].description	フォーマット時に追加で実行するコードアクションです。
 p3.i106.header	自動閉じ
 p3.i107[languages.$(language).use_autoclose].title	閉じ文字を自動的に挿入
-p3.i107[languages.$(language).use_autoclose].description	閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、Zed が正しい位置に ')' を自動的に追加します。
+p3.i107[languages.$(language).use_autoclose].description	閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、ForgeKairos が正しい位置に ')' を自動的に追加します。
 p3.i108[languages.$(language).use_auto_surround].title	囲み文字を自動的に挿入
-p3.i108[languages.$(language).use_auto_surround].description	テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、Zed がそのテキストを () で囲みます。
+p3.i108[languages.$(language).use_auto_surround].description	テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、ForgeKairos がそのテキストを () で囲みます。
 p3.i109[languages.$(language).always_treat_brackets_as_autoclosed].title	括弧を常に自動閉じとして扱う
 p3.i109[languages.$(language).always_treat_brackets_as_autoclosed].description	閉じ文字がどのように挿入されたかにかかわらず、常に読み飛ばして自動的に削除するかどうかを設定します。
 p3.i110[languages.$(language).jsx_tag_auto_close].title	JSX タグの自動閉じ
@@ -411,7 +411,7 @@ p3.i136[languages.$(language).tasks.enabled].description	この言語でタス�
 p3.i137[languages.$(language).tasks.variables].title	変数
 p3.i137[languages.$(language).tasks.variables].description	特定の言語に対して設定する、追加のタスク変数です。
 p3.i138[languages.$(language).tasks.prefer_lsp].title	LSP を優先
-p3.i138[languages.$(language).tasks.prefer_lsp].description	Zed の言語拡張のタスクより、LSP のタスクを優先します。
+p3.i138[languages.$(language).tasks.prefer_lsp].description	ForgeKairos の言語拡張のタスクより、LSP のタスクを優先します。
 p3.i139.header	その他
 p3.i141[languages.$(language).word_diff_enabled].title	単語単位の差分を有効にする
 p3.i141[languages.$(language).word_diff_enabled].description	エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。
@@ -531,9 +531,9 @@ p5.i15[file_finder.skip_focus_for_active_in_search].title	検索結果でアク�
 p5.i15[file_finder.skip_focus_for_active_in_search].description	ファイル検索の結果で、アクティブなファイルにはフォーカスを合わせないようにするかどうかを設定します。
 p5.i16.header	ファイルスキャン
 p5.i17[file_scan_exclusions].title	ファイルスキャンの除外
-p5.i17[file_scan_exclusions].description	Zed が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます
+p5.i17[file_scan_exclusions].description	ForgeKairos が完全に除外するファイルまたは glob です。ファイルスキャンとファイル検索から除外され、プロジェクトのファイルツリーにも表示されません。「ファイルスキャンの対象」より優先されます
 p5.i18[file_scan_inclusions].title	ファイルスキャンの対象
-p5.i18[file_scan_inclusions].description	git に無視されていても Zed が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は Zed のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます
+p5.i18[file_scan_inclusions].description	git に無視されていても ForgeKairos が対象に含めるファイルまたは glob です。git の管理外でもプロジェクトにとって重要なファイルに便利です。範囲が広すぎる glob は ForgeKairos のファイルスキャンを遅くする点に注意してください。「ファイルスキャンの除外」がこの設定より優先されます
 p5.i19[file_scan_depth].title	ファイルスキャンの深さ
 p5.i19[file_scan_depth].description	git リポジトリの外側で先読みインデックスを作成するディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点でインデックスされます。この深さより浅い位置にあるリポジトリは常に完全にインデックスされます。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします
 p5.i20[scan_symlinks].title	シンボリックリンクをスキャン
@@ -652,7 +652,7 @@ p6.i57[use_system_window_tabs].description	(macOS のみ) ウィンドウをタ�
 p6.i58[fullscreen_mode].title	全画面表示のモード
 p6.i58[fullscreen_mode].description	(macOS のみ) 全画面表示の切り替えアクションで入る全画面モードを設定します。
 p6.i59[window_decorations].title	ウィンドウの装飾
-p6.i59[window_decorations].description	(Linux のみ) ウィンドウの装飾を Zed が描画するか、コンポジターに任せるかを設定します。
+p6.i59[window_decorations].description	(Linux のみ) ウィンドウの装飾を ForgeKairos が描画するか、コンポジターに任せるかを設定します。
 p6.i60.header	ペインの表示調整
 p6.i61[active_pane_modifiers.inactive_opacity].title	非アクティブ時の不透明度
 p6.i61[active_pane_modifiers.inactive_opacity].description	非アクティブなパネルの不透明度です (0.0〜1.0)。
@@ -814,11 +814,11 @@ p8.i0.header	全般
 p8.i1[debugger.stepping_granularity].title	ステップ実行の粒度
 p8.i1[debugger.stepping_granularity].description	デバッグ操作のステップ実行の粒度を設定します。
 p8.i2[debugger.save_breakpoints].title	ブレークポイントを保存
-p8.i2[debugger.save_breakpoints].description	Zed のセッションをまたいでブレークポイントを引き継ぐかどうかを設定します。
+p8.i2[debugger.save_breakpoints].description	ForgeKairos のセッションをまたいでブレークポイントを引き継ぐかどうかを設定します。
 p8.i3[debugger.timeout].title	タイムアウト
 p8.i3[debugger.timeout].description	TCP のデバッグアダプターに接続するときに、タイムアウトエラーとするまでの時間 (ミリ秒) です。
 p8.i4[debugger.log_dap_communications].title	DAP の通信をログに記録
-p8.i4[debugger.log_dap_communications].description	アクティブなデバッグアダプターと Zed の間のメッセージをログに記録するかどうかを設定します。
+p8.i4[debugger.log_dap_communications].description	アクティブなデバッグアダプターと ForgeKairos の間のメッセージをログに記録するかどうかを設定します。
 p8.i5[debugger.format_dap_log_messages].title	DAP のログメッセージを整形
 p8.i5[debugger.format_dap_log_messages].description	デバッグアダプターのロガーに追加するときに、DAP のメッセージを整形するかどうかを設定します。
 p9.title	ターミナル
@@ -890,7 +890,7 @@ p9.i30.header	セッションログ
 p9.i31[terminal.session_log.auto].title	自動でログを記録する
 p9.i31[terminal.session_log.auto].description	新しく開いたターミナルが、出力の記録を自動で始めます。
 p9.i32[terminal.session_log.directory].title	保存先フォルダー
-p9.i32[terminal.session_log.directory].description	ログファイルを書き出すフォルダーです (`~` は展開されます)。空欄のときは Zed のログフォルダー配下の `terminal-sessions` に保存します。
+p9.i32[terminal.session_log.directory].description	ログファイルを書き出すフォルダーです (`~` は展開されます)。空欄のときは ForgeKairos のログフォルダー配下の `terminal-sessions` に保存します。
 p9.i33[terminal.session_log.file_name_template].title	ファイル名のテンプレート
 p9.i33[terminal.session_log.file_name_template].description	新しいログのファイル名です。`{date}` `{time}` `{title}` `{host}` `{pid}` を展開します。
 p9.i34[terminal.session_log.strip_control_sequences].title	制御シーケンスを除去する
@@ -899,7 +899,7 @@ p9.i35[terminal.session_log.timestamps].title	行頭にタイムスタンプを�
 p9.i35[terminal.session_log.timestamps].description	各行の先頭に `[YYYY-MM-DD HH:MM:SS] ` を付けます。記録中のターミナルでは、記録中のバーからも切り替えられます。
 p9.i36.header	リモートターミナルの切断対策
 p9.i37[terminal.remote_persistence.enabled].title	切断してもシェルを動かし続ける
-p9.i37[terminal.remote_persistence.enabled].description	SSH のターミナルのシェルをリモートの Zed サーバーに預けます。接続が切れても実行中のコマンドは止まらず、再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。Windows のリモートホストでは使えません。
+p9.i37[terminal.remote_persistence.enabled].description	SSH のターミナルのシェルをリモートの ForgeKairos サーバーに預けます。接続が切れても実行中のコマンドは止まらず、再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。Windows のリモートホストでは使えません。
 p9.i38[terminal.remote_persistence.detached_timeout_hours].title	未接続のシェルを終了するまでの時間
 p9.i38[terminal.remote_persistence.detached_timeout_hours].description	どのターミナルからも接続されていない状態がこの時間 (時間単位) 続いたら、リモートのシェルを終了します。0 のときは終了しません。新しく起動するシェルから反映されます。
 p9.i39.header	ツールバー
@@ -911,7 +911,7 @@ p9.i42[terminal.scrollbar.show].description	ターミナルにスクロールバ
 p10.title	バージョン管理
 p10.i0.header	Git 連携
 p10.i1[git.disable_git].title	Git 連携を無効にする
-p10.i1[git.disable_git].description	Zed の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。
+p10.i1[git.disable_git].description	ForgeKairos の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。
 p10.i1.v1.f0[git.enable_status].title	Git の状態を有効にする
 p10.i1.v1.f0[git.enable_status].description	エディターに Git の状態情報を表示します。
 p10.i1.v1.f1[git.enable_diff].title	Git の差分を有効にする
@@ -972,7 +972,7 @@ p12.i0.header	全般
 p12.i1[agent.enabled].title	エージェントを有効にする
 p12.i1[agent.enabled].description	エージェントパネル・インラインアシスタント・コミットメッセージ生成などのエージェント機能を有効にするかどうかを設定します。既定では無効です。
 p12.i2[disable_ai].title	AI を無効にする
-p12.i2[disable_ai].description	Zed の AI 機能をすべて無効にするかどうかを設定します。一度有効にすると設定ファイルから消すまで元に戻せません。
+p12.i2[disable_ai].description	ForgeKairos の AI 機能をすべて無効にするかどうかを設定します。一度有効にすると設定ファイルから消すまで元に戻せません。
 p12.i3[agent.sidebar_enabled].title	スレッドサイドバー
 p12.i3[agent.sidebar_enabled].description	ウィンドウ幅のスレッドサイドバーを表示します。オフのときはエージェントパネル内のスレッド履歴を使います。
 p12.i4[agent.sidebar_side].title	スレッドサイドバーの位置
@@ -993,7 +993,7 @@ p12.i10.button	同意を取り消す
 p12.i11[context_servers].link	MCP サーバー
 p12.i11[context_servers].link_description	Model Context Protocol サーバーの確認・追加・設定・削除を行います。
 p12.i12[ide_server.enabled].title	IDE サーバーを有効にする
-p12.i12[ide_server.enabled].description	Zed 自身を 127.0.0.1 の IDE サーバーとして公開し、統合ターミナルの Claude Code CLI や外部のエージェントから、開いているファイル・選択範囲・診断を読めるようにします。差分はエディターのタブで「採用 / 拒否」を選べます。外向きの通信はしません。既定では無効です。
+p12.i12[ide_server.enabled].description	ForgeKairos 自身を 127.0.0.1 の IDE サーバーとして公開し、統合ターミナルの Claude Code CLI や外部のエージェントから、開いているファイル・選択範囲・診断を読めるようにします。差分はエディターのタブで「採用 / 拒否」を選べます。外向きの通信はしません。既定では無効です。
 p12.i13[ide_server.assist_tools].title	エージェントに IDE ツールを渡す
 p12.i13[ide_server.assist_tools].description	Claude Code のタブや外部のエージェントに、ハイライト・注釈・ツアー・定義・参照・シンボル検索のツールを渡します。「IDE サーバーを有効にする」とは別の設定で、ロックファイルは書きません。外向きの通信はしません。
 p12.i14[ide_server.share_active_file].title	開いているファイルを Claude Code に伝える
@@ -1170,9 +1170,9 @@ language.i24[languages.$(language).code_actions_on_format].title	フォーマッ
 language.i24[languages.$(language).code_actions_on_format].description	フォーマット時に追加で実行するコードアクションです。
 language.i25.header	自動閉じ
 language.i26[languages.$(language).use_autoclose].title	閉じ文字を自動的に挿入
-language.i26[languages.$(language).use_autoclose].description	閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、Zed が正しい位置に ')' を自動的に追加します。
+language.i26[languages.$(language).use_autoclose].description	閉じ文字を自動的に入力するかどうかを設定します。たとえば '(' を入力すると、ForgeKairos が正しい位置に ')' を自動的に追加します。
 language.i27[languages.$(language).use_auto_surround].title	囲み文字を自動的に挿入
-language.i27[languages.$(language).use_auto_surround].description	テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、Zed がそのテキストを () で囲みます。
+language.i27[languages.$(language).use_auto_surround].description	テキストを自動的に文字で囲むかどうかを設定します。たとえばテキストを選択して '(' を入力すると、ForgeKairos がそのテキストを () で囲みます。
 language.i28[languages.$(language).always_treat_brackets_as_autoclosed].title	括弧を常に自動閉じとして扱う
 language.i28[languages.$(language).always_treat_brackets_as_autoclosed].description	閉じ文字がどのように挿入されたかにかかわらず、常に読み飛ばして自動的に削除するかどうかを設定します。
 language.i29[languages.$(language).jsx_tag_auto_close].title	JSX タグの自動閉じ
@@ -1228,7 +1228,7 @@ language.i55[languages.$(language).tasks.enabled].description	この言語でタ
 language.i56[languages.$(language).tasks.variables].title	変数
 language.i56[languages.$(language).tasks.variables].description	特定の言語に対して設定する、追加のタスク変数です。
 language.i57[languages.$(language).tasks.prefer_lsp].title	LSP を優先
-language.i57[languages.$(language).tasks.prefer_lsp].description	Zed の言語拡張のタスクより、LSP のタスクを優先します。
+language.i57[languages.$(language).tasks.prefer_lsp].description	ForgeKairos の言語拡張のタスクより、LSP のタスクを優先します。
 language.i58.header	その他
 language.i60[languages.$(language).word_diff_enabled].title	単語単位の差分を有効にする
 language.i60[languages.$(language).word_diff_enabled].description	エディターで単語単位の差分ハイライトを有効にするかどうかを設定します。有効にすると、変更された行の中で実際に変わった単語がハイライトされます。

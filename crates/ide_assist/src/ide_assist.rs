@@ -296,8 +296,12 @@ fn workspace_assist(workspace: &Workspace, cx: &App) -> Option<Entity<WorkspaceA
 }
 
 fn assist_for_project(project: &Entity<Project>, cx: &App) -> Result<Entity<WorkspaceAssist>> {
-    let workspace =
-        workspace_for_project(project, cx).context("No Zed window has this project open")?;
+    let workspace = workspace_for_project(project, cx).with_context(|| {
+        format!(
+            "No {} window has this project open",
+            branding::CURRENT.product_name
+        )
+    })?;
     workspace_assist(workspace.read(cx), cx).context("This window can't show the agent's displays")
 }
 

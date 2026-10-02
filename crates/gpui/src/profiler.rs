@@ -1186,6 +1186,13 @@ pub fn record_frame_event(event: FrameEvent) {
     }
     std::hint::cold_path(); // optimize for when profiling is off
 
+    // Windows of tests running in parallel draw while another test traces,
+    // so only the thread that turned tracing on records its frames.
+    #[cfg(test)]
+    if !HOLDS_TRACE_TEST_GUARD.with(std::cell::Cell::get) {
+        return;
+    }
+
     let mut frames = FRAME_TIMINGS.lock();
     if frames.timings.len() >= MAX_FRAME_TIMINGS {
         frames.timings.pop_front();
@@ -1237,9 +1244,52 @@ impl FrameTimingCollector {
 }
 
 #[cfg(all(test, feature = "profiler"))]
+static TRACE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(all(test, feature = "profiler"))]
+thread_local! {
+    static HOLDS_TRACE_TEST_GUARD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Held by every test that turns tracing on or reads the frame timings. Both
+/// are process-wide, so a test running in parallel would see another test's
+/// tracing and frames.
+#[cfg(all(test, feature = "profiler"))]
+pub(crate) struct TraceTestGuard {
+    was_enabled: bool,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(all(test, feature = "profiler"))]
+impl TraceTestGuard {
+    pub(crate) fn new() -> Self {
+        let lock = TRACE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let was_enabled = trace_enabled();
+        set_trace_enabled(false);
+        HOLDS_TRACE_TEST_GUARD.with(|holds_guard| holds_guard.set(true));
+        Self {
+            was_enabled,
+            _lock: lock,
+        }
+    }
+}
+
+#[cfg(all(test, feature = "profiler"))]
+impl Drop for TraceTestGuard {
+    fn drop(&mut self) {
+        HOLDS_TRACE_TEST_GUARD.with(|holds_guard| holds_guard.set(false));
+        set_trace_enabled(false);
+        if self.was_enabled {
+            set_trace_enabled(true);
+        }
+    }
+}
+
+#[cfg(all(test, feature = "profiler"))]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard};
 
     #[test]
     fn records_draw_events_only_while_tracing() {
@@ -1508,35 +1558,6 @@ mod tests {
     }
 
     const FRAME: Duration = Duration::from_millis(16);
-    static TRACE_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    struct TraceTestGuard {
-        was_enabled: bool,
-        _lock: MutexGuard<'static, ()>,
-    }
-
-    impl TraceTestGuard {
-        fn new() -> Self {
-            let lock = TRACE_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            let was_enabled = trace_enabled();
-            set_trace_enabled(false);
-            Self {
-                was_enabled,
-                _lock: lock,
-            }
-        }
-    }
-
-    impl Drop for TraceTestGuard {
-        fn drop(&mut self) {
-            set_trace_enabled(false);
-            if self.was_enabled {
-                set_trace_enabled(true);
-            }
-        }
-    }
 
     fn event_matches_window(event: FrameEvent, window_id: WindowId) -> bool {
         match event {

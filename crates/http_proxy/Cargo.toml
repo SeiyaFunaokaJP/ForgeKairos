@@ -23,6 +23,7 @@ nixos-integration-tests = []
 [dependencies]
 anyhow.workspace = true
 base64.workspace = true
+branding.workspace = true
 futures.workspace = true
 httparse.workspace = true
 idna.workspace = true

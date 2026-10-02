@@ -15,11 +15,9 @@ const NAME_MAP_KEYS: [&str; 4] = ["properties", "patternProperties", "$defs", "d
 ///
 /// An alternative whose `const` is an action name (`editor::Copy`) is described by the
 /// action's doc comment, so it is translated like the keymap editor translates it, by
-/// the action name; every other description is looked up by its English text.
+/// the action name; every other description is looked up by its English text. English
+/// has a catalog too, which puts the product's own name in place of upstream's.
 pub fn localize_descriptions(schema: &mut Value) {
-    if i18n::current_locale() == "en" {
-        return;
-    }
     localize_schema(schema);
 }
 
@@ -99,6 +97,18 @@ mod tests {
         let mut english = sample_schema();
         localize_descriptions(&mut english);
         assert_eq!(english, sample_schema());
+
+        {
+            let _english = LocaleOverride::new(
+                i18n_catalog::english_catalog(None).map(|catalog| catalog as &dyn i18n::Catalog),
+            );
+            let mut branded = json!({ "description": "Configuration of audio in Zed." });
+            localize_descriptions(&mut branded);
+            assert_eq!(
+                branded,
+                json!({ "description": "Configuration of audio in ForgeKairos." })
+            );
+        }
 
         let _locale = LocaleOverride::new(Some(japanese()));
         let mut schema = sample_schema();

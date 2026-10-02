@@ -12,8 +12,9 @@ use openai_subscribed::{PROVIDER_ID, PROVIDER_NAME, State, create_language_model
 use std::sync::Arc;
 use ui::{ConfiguredApiCard, prelude::*};
 
-const SUBSCRIPTION_DESCRIPTION: &str =
-    "Sign in with your ChatGPT Plus or Pro subscription to use OpenAI models in Zed's agent.";
+const SUBSCRIPTION_DESCRIPTION: &str = i18n::msg!(
+    "Sign in with your ChatGPT Plus or Pro subscription to use OpenAI models in Zed's agent."
+);
 
 pub struct OpenAiSubscribedProvider {
     state: Entity<State>,
@@ -118,7 +119,9 @@ impl LanguageModelProvider for OpenAiSubscribedProvider {
         let description = if is_authenticated {
             None
         } else {
-            Some(InlineDescription::Text(SUBSCRIPTION_DESCRIPTION.into()))
+            Some(InlineDescription::Text(
+                i18n::tr(SUBSCRIPTION_DESCRIPTION).into(),
+            ))
         };
 
         Some(ProviderSettingsView::Inline(
@@ -224,7 +227,7 @@ impl Render for ConfigurationView {
         v_flex()
             .gap_2()
             .when(!self.compact, |this| {
-                this.child(Label::new(SUBSCRIPTION_DESCRIPTION))
+                this.child(Label::new(i18n::tr(SUBSCRIPTION_DESCRIPTION)))
             })
             .child(
                 h_flex()

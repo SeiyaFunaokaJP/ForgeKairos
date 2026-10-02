@@ -448,6 +448,13 @@ impl GitGraphDocument {
                 })
             }
             (GitGraphItem::Commit(commit), GitGraphItemKind::Merge) => {
+                // A merge has no `msg`, and the form has no field showing it,
+                // so the change would drop it without a trace.
+                if let Some(message) = &commit.message {
+                    return Err(i18n::t!(
+                        "This commit has the message `{message}`, which a merge cannot have, so it cannot be changed into a merge. Remove the `msg` in the text, or delete the commit and add a merge."
+                    ));
+                }
                 GitGraphItem::Merge(GitMerge {
                     branch: self.default_merge_source(index),
                     id: commit.id.clone(),
@@ -1888,6 +1895,29 @@ mod tests {
         assert!(emitted.ends_with("merge \"fix:1\""), "{emitted}");
         assert_stable(&emitted);
         assert_renders(&emitted);
+    }
+
+    /// A merge cannot carry a `msg`, so a commit with one is not turned into a
+    /// merge; one without is, keeping its id and tags.
+    #[test]
+    fn a_commit_with_a_message_is_not_turned_into_a_merge() {
+        let source = "gitGraph\n    commit\n    branch dev\n    commit\n    checkout main\n    commit id: \"A\" msg: \"説明\" tag: \"v1\"";
+        let mut document = parse(source);
+        let error = document
+            .change_kind(4, GitGraphItemKind::Merge)
+            .err()
+            .unwrap_or_default();
+        assert!(error.contains("`説明`"), "{error}");
+        assert_eq!(emit_gitgraph(&document), source);
+
+        if let Some(GitGraphItem::Commit(commit)) = document.items.get_mut(4) {
+            commit.message = None;
+        }
+        assert!(document.change_kind(4, GitGraphItemKind::Merge).is_ok());
+        assert_eq!(
+            emit_gitgraph(&document),
+            "gitGraph\n    commit\n    branch dev\n    commit\n    checkout main\n    merge dev id: \"A\" tag: \"v1\""
+        );
     }
 
     #[test]

@@ -574,8 +574,8 @@ fn initialize_result_body(negotiated: &str) -> Value {
             tools: Some(ToolsCapabilities { list_changed: Some(false) }),
         },
         "serverInfo": Implementation {
-            name: "Zed".to_string(),
-            title: Some("Zed".to_string()),
+            name: crate::PRODUCT_NAME.to_string(),
+            title: Some(crate::PRODUCT_NAME.to_string()),
             version: env!("CARGO_PKG_VERSION").to_string(),
             description: None,
         },
@@ -646,9 +646,12 @@ pub fn tools() -> Vec<Tool> {
         ),
         tool(
             "getLastTaskOutput",
-            "Get the output of the most recent Zed task that failed (exited with a non-zero \
-             status) in this workspace: the last 4 KB of its terminal, with the task's label, \
-             command and exit code.",
+            branding::concat_const!(
+                "Get the output of the most recent ",
+                crate::PRODUCT_NAME,
+                " task that failed (exited with a non-zero status) in this workspace: the last \
+                 4 KB of its terminal, with the task's label, command and exit code."
+            ),
             object_schema(json!({}), &[]),
         ),
         tool(
@@ -712,7 +715,11 @@ pub fn tools() -> Vec<Tool> {
         ),
         tool(
             "executeCode",
-            "Not supported by Zed. Always returns an error.",
+            branding::concat_const!(
+                "Not supported by ",
+                crate::PRODUCT_NAME,
+                ". Always returns an error."
+            ),
             object_schema(json!({ "code": { "type": "string" } }), &["code"]),
         ),
     ]
@@ -781,7 +788,10 @@ pub(crate) async fn call_tool<H: ToolHost>(
             )
             .await
         }
-        (None, _) => Err(anyhow!("no Zed window has this workspace open")),
+        (None, _) => Err(anyhow!(
+            "no {} window has this workspace open",
+            crate::PRODUCT_NAME
+        )),
     };
     Some(match result {
         Ok(content) => json!({ "content": content, "isError": false }),
@@ -859,16 +869,21 @@ async fn run_tool<H: ToolHost>(
             let shares_task_output =
                 cx.update(|cx| crate::IdeServerSettings::get_global(cx).share_task_output);
             if !shares_task_output {
-                return Err(client_error(
-                    "Sharing task output is turned off in Zed (ide_server.share_task_output)",
-                ));
+                return Err(client_error(branding::concat_const!(
+                    "Sharing task output is turned off in ",
+                    crate::PRODUCT_NAME,
+                    " (ide_server.share_task_output)"
+                )));
             }
             let failure = server.read_with(cx, |server, _| server.last_task_failure().cloned());
             Ok(vec![json_content(&match failure {
                 Some(failure) => failure.to_tool_result(),
                 None => json!({
                     "success": false,
-                    "message": "No task has failed in this workspace since Zed started",
+                    "message": format!(
+                        "No task has failed in this workspace since {} started",
+                        crate::PRODUCT_NAME
+                    ),
                 }),
             })?])
         }
@@ -914,7 +929,8 @@ async fn run_tool<H: ToolHost>(
         }
         "openDiff" => open_diff(&arguments, server, workspace, connection, scope, cx).await,
         "executeCode" => Err(anyhow!(
-            "Zed does not implement executeCode; there is no Jupyter kernel attached to this IDE server"
+            "{} does not implement executeCode; there is no Jupyter kernel attached to this IDE server",
+            crate::PRODUCT_NAME
         )),
         other => Err(anyhow!("unknown tool {other}")),
     }
@@ -1594,7 +1610,7 @@ async fn open_file(
     Ok(json!({
         "success": true,
         "filePath": path.to_string_lossy(),
-        "message": "Opened file in Zed",
+        "message": format!("Opened file in {}", crate::PRODUCT_NAME),
     }))
 }
 
@@ -1918,7 +1934,7 @@ async fn open_diff<H: ToolHost>(
     let tab_name = arguments
         .get("tab_name")
         .and_then(Value::as_str)
-        .unwrap_or("Zed diff")
+        .unwrap_or(branding::concat_const!(crate::PRODUCT_NAME, " diff"))
         .to_string();
 
     // 上限のあるセッションでは、パスを調べて旧内容を読む前に枠を押さえる。枠は登録した差分が

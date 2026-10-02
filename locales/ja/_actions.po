@@ -837,7 +837,7 @@ msgstr "CLI をインストール"
 #. cli: register zed scheme
 msgctxt "action"
 msgid "cli::RegisterZedScheme"
-msgstr "zed:// の URL スキームを登録"
+msgstr "このアプリの URL スキームを登録"
 
 #. client: reconnect
 msgctxt "action"
@@ -7492,7 +7492,7 @@ msgstr "Git: ワークツリーを強制削除"
 #. zed: about
 msgctxt "action"
 msgid "zed::About"
-msgstr "Zed について"
+msgstr "ForgeKairos について"
 
 #. zed: acp registry
 msgctxt "action"
@@ -7722,7 +7722,7 @@ msgstr "zed:// の URL を開く"
 #. zed: quit
 msgctxt "action"
 msgid "zed::Quit"
-msgstr "Zed を終了"
+msgstr "ForgeKairos を終了"
 
 #. zed: rebuild dev extension
 msgctxt "action"

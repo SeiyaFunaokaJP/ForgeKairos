@@ -46,11 +46,15 @@ const MAX_REPORTED_DIAGNOSTICS: usize = 20;
 
 /// ADR-F50: what the model hears when saving skipped formatters that would
 /// have run the worktree's own code.
-pub(crate) const FORMATTING_SKIPPED_NOTE: &str = "Formatting on save skipped the formatters that \
+pub(crate) const FORMATTING_SKIPPED_NOTE: &str = branding::concat_const!(
+    "Formatting on save skipped the formatters that \
     would run this worktree's own code (such as the project's prettier or a formatter command \
-    from the project), because Zed does not run the worktree's code after an agent writes to it \
+    from the project), because ",
+    branding::CURRENT.product_name,
+    " does not run the worktree's code after an agent writes to it \
     until the user reviews the changes and resumes it. The file was saved without that \
-    formatting.";
+    formatting."
+);
 
 /// Operating mode used internally by `EditSession`/`Pipeline` to choose between
 /// applying granular edits (the `edit_file` tool) or replacing/creating the

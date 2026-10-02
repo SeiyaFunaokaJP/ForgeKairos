@@ -205,6 +205,13 @@ impl ReleaseChannel {
         self.branded(&branding::CURRENT.display_names)
     }
 
+    /// The name upstream's build of this channel gives itself, which this build keeps
+    /// telling the programs it talks a protocol with (language servers' `clientInfo`):
+    /// they may recognize the editor by it.
+    pub fn upstream_display_name(&self) -> &'static str {
+        self.branded(&branding::ZED_JP_ENHANCE.display_names)
+    }
+
     /// Returns the programmatic name for this [`ReleaseChannel`].
     pub fn dev_name(&self) -> &'static str {
         match self {
@@ -281,6 +288,51 @@ impl FromStr for ReleaseChannel {
 #[cfg(test)]
 mod tests {
     use super::ReleaseChannel;
+
+    const CHANNELS: [ReleaseChannel; 4] = [
+        ReleaseChannel::Dev,
+        ReleaseChannel::Nightly,
+        ReleaseChannel::Preview,
+        ReleaseChannel::Stable,
+    ];
+
+    /// The window titles, the About window and the OS (Wayland's app_id, X11's
+    /// WM_CLASS) see this build under its own name, never as an official Zed.
+    #[test]
+    fn names_shown_to_the_user_and_the_os_are_the_product_own() {
+        for channel in CHANNELS {
+            let display_name = channel.display_name();
+            let app_id = channel.app_id();
+            assert!(
+                display_name.starts_with(branding::FORGEKAIROS.product_name),
+                "{display_name}"
+            );
+            assert!(!display_name.contains("Zed"), "{display_name}");
+            assert!(
+                !app_id.contains("Zed") && !app_id.contains("zed"),
+                "{app_id}"
+            );
+            assert_eq!(
+                app_id,
+                channel.branded(&branding::FORGEKAIROS.app_ids),
+                "the bundle and the desktop entry use these IDs"
+            );
+        }
+    }
+
+    #[test]
+    fn language_servers_still_see_upstream_name() {
+        assert_eq!(ReleaseChannel::Stable.upstream_display_name(), "Zed");
+        assert_eq!(
+            ReleaseChannel::Preview.upstream_display_name(),
+            "Zed Preview"
+        );
+        assert_eq!(
+            ReleaseChannel::Nightly.upstream_display_name(),
+            "Zed Nightly"
+        );
+        assert_eq!(ReleaseChannel::Dev.upstream_display_name(), "Zed Dev");
+    }
 
     #[test]
     fn test_docs_url_for_release_channel() {

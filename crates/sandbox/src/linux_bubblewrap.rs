@@ -102,7 +102,11 @@ impl LauncherStatus {
         match self {
             LauncherStatus::BwrapNotFound => "no usable `bwrap` binary was found on PATH",
             LauncherStatus::SetuidRejected => {
-                "the only available `bwrap` is setuid-root, which Zed refuses to run"
+                branding::concat_const!(
+                    "the only available `bwrap` is setuid-root, which ",
+                    branding::CURRENT.product_name,
+                    " refuses to run"
+                )
             }
             LauncherStatus::SandboxProbeFailed => {
                 "`bwrap` is present but failed to create a sandbox (unprivileged user \
