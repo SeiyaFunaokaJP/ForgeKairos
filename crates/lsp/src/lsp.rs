@@ -1249,7 +1249,15 @@ impl LanguageServer {
             response_handlers.lock().take();
             Self::notify_internal::<notification::Exit>(&notification_serializers, ()).ok();
             notification_serializers.close();
-            output_done.recv().await;
+            // A server that stopped reading its input blocks the write of the
+            // exit notification for good.
+            let mut exit_timer = executor.timer(SERVER_SHUTDOWN_TIMEOUT).fuse();
+            select! {
+                _ = output_done.recv().fuse() => {},
+                _ = exit_timer => {
+                    log::warn!("language server {name} (id {server_id}) did not take the exit notification in time, killing it");
+                },
+            }
             server.lock().take().map(|mut child| child.kill());
             drop(tasks);
             log::debug!("language server shutdown finished");
@@ -2532,5 +2540,72 @@ mod tests {
             name: "my project".to_string(),
         }];
         assert_eq!(workspace_folders, expected_workspace_folders);
+    }
+
+    fn long_running_process() -> Child {
+        let mut command = if cfg!(windows) {
+            let mut command = util::command::new_command("ping");
+            command.args(["-n", "120", "127.0.0.1"]);
+            command
+        } else {
+            let mut command = util::command::new_command("sleep");
+            command.arg("120");
+            command
+        };
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawning a long-running process")
+    }
+
+    // A server that stopped reading its input never takes the exit
+    // notification, so waiting for it to be written would wait forever.
+    #[gpui::test]
+    async fn test_shutdown_of_a_server_that_stopped_reading_ends_and_kills_it(
+        cx: &mut TestAppContext,
+    ) {
+        let (stdin_writer, _stdin_reader) = async_pipe::pipe();
+        let (_stdout_writer, stdout_reader) = async_pipe::pipe();
+        let server = LanguageServer::new_internal(
+            LanguageServerId(0),
+            LanguageServerName("unresponsive".into()),
+            stdin_writer,
+            stdout_reader,
+            None::<async_pipe::PipeReader>,
+            Arc::new(Mutex::new(None)),
+            Some(long_running_process()),
+            None,
+            LanguageServerBinary {
+                path: "path/to/language-server".into(),
+                arguments: Vec::new(),
+                env: None,
+            },
+            FakeLanguageServer::root_path(),
+            None,
+            &mut cx.to_async(),
+            |_| true,
+        );
+        let shutdown = cx
+            .background_executor
+            .spawn(server.shutdown().expect("the server is running"));
+        cx.run_until_parked();
+        assert!(server.server.lock().is_some(), "still waiting");
+
+        cx.executor().advance_clock(SERVER_SHUTDOWN_TIMEOUT);
+        cx.run_until_parked();
+        cx.executor().advance_clock(SERVER_SHUTDOWN_TIMEOUT);
+        cx.run_until_parked();
+        assert_eq!(
+            shutdown.now_or_never(),
+            Some(Some(())),
+            "the shutdown ends once its timeouts have passed"
+        );
+        assert!(
+            server.server.lock().is_none(),
+            "the process was taken to be killed"
+        );
     }
 }

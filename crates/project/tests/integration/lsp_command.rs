@@ -445,15 +445,21 @@ mod result_buffers {
             ]))
         });
 
-        let references = project
-            .update(cx, |project, cx| project.references(&buffer, 15, cx))
+        let answer = project
+            .update(cx, |project, cx| {
+                project.references_reporting_omissions(&buffer, 15, cx)
+            })
             .await
             .expect("the request succeeds")
             .expect("the server answered");
         assert_eq!(
-            file_names(references.into_iter().map(|location| location.buffer), cx),
+            file_names(
+                answer.locations.into_iter().map(|location| location.buffer),
+                cx
+            ),
             ["first.txt", "small.rs"]
         );
+        assert_eq!(answer.omitted, 1, "the caller is told what was left out");
     }
 
     #[gpui::test]
@@ -498,12 +504,19 @@ mod result_buffers {
             .await
             .expect("the file opens");
 
-        let references = project
-            .update(cx, |project, cx| project.references(&buffer, 15, cx))
+        let answer = project
+            .update(cx, |project, cx| {
+                project.references_reporting_omissions(&buffer, 15, cx)
+            })
             .await
             .expect("the request succeeds")
             .expect("the server answered");
-        let names = file_names(references.into_iter().map(|location| location.buffer), cx);
+        // The one file past the bound, named twice.
+        assert_eq!(answer.omitted, 2);
+        let names = file_names(
+            answer.locations.into_iter().map(|location| location.buffer),
+            cx,
+        );
 
         let mut expected = (0..MAX_FILES_OPENED_PER_RESPONSE)
             .flat_map(|index| [index, index])

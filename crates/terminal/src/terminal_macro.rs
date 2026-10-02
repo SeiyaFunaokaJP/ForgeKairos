@@ -234,6 +234,50 @@ impl MacroStep {
         }
     }
 
+    /// Why a [`MacroStep::Unknown`] could not be read. A kind this version
+    /// has, written with a field missing or mistyped, is a mistake to fix in
+    /// the file rather than a step a later version added, and the user is
+    /// told which field it is.
+    pub fn unreadable_reason(&self) -> Option<UnreadableStep> {
+        let MacroStep::Unknown(value) = self else {
+            return None;
+        };
+        let kind = value.get("type").and_then(|kind| kind.as_str());
+        let unknown_kind = || UnreadableStep::UnknownKind(kind.map(str::to_string));
+        let (Some((label, rules)), Some(fields)) =
+            (kind.and_then(known_step_fields), value.as_object())
+        else {
+            return Some(unknown_kind());
+        };
+        for rule in rules {
+            match fields.get(rule.name) {
+                None if rule.required => {
+                    return Some(UnreadableStep::MissingField {
+                        kind: label,
+                        field: rule.name,
+                    });
+                }
+                Some(field) if !(rule.accepts)(field) => {
+                    return Some(UnreadableStep::InvalidField {
+                        kind: label,
+                        field: rule.name,
+                    });
+                }
+                _ => {}
+            }
+        }
+        let unknown_field = fields
+            .keys()
+            .find(|key| *key != "type" && !rules.iter().any(|rule| rule.name == *key));
+        Some(match unknown_field {
+            Some(field) => UnreadableStep::UnknownField {
+                kind: label,
+                field: field.clone(),
+            },
+            None => unknown_kind(),
+        })
+    }
+
     pub fn summary(&self) -> String {
         match self {
             MacroStep::Send { text, .. } => i18n::t!("Send: {text}"),
@@ -302,12 +346,132 @@ impl MacroStep {
             MacroStep::SetVariable { name, value } => {
                 i18n::t!("Variable: ${{{name}}} = “{value}”")
             }
-            MacroStep::Unknown(_) => match self.unknown_kind() {
-                Some(kind) => i18n::t!("Unknown step “{kind}” (this version can't run it)"),
-                None => i18n::t!("Unknown step (this version can't run it)").to_string(),
-            },
+            MacroStep::Unknown(_) => {
+                if let Some(problem) = self
+                    .unreadable_reason()
+                    .and_then(|reason| reason.field_problem())
+                {
+                    return problem;
+                }
+                match self.unknown_kind() {
+                    Some(kind) => i18n::t!("Unknown step “{kind}” (this version can't run it)"),
+                    None => i18n::t!("Unknown step (this version can't run it)").to_string(),
+                }
+            }
         }
     }
+}
+
+/// Why a step was set aside as [`MacroStep::Unknown`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UnreadableStep {
+    /// No `type`, or one this version does not have.
+    UnknownKind(Option<String>),
+    /// A kind this version has, without a field it needs. `kind` is the
+    /// kind's label.
+    MissingField {
+        kind: &'static str,
+        field: &'static str,
+    },
+    /// A kind this version has, with a field holding a value it cannot take
+    /// (`"ms": -5`).
+    InvalidField {
+        kind: &'static str,
+        field: &'static str,
+    },
+    /// A kind this version has, with a field it does not know: most likely
+    /// one a later version added, or a misspelt name.
+    UnknownField { kind: &'static str, field: String },
+}
+
+impl UnreadableStep {
+    /// What is wrong with a step of a kind this version has, naming the
+    /// field. `None` for a kind it does not have, which callers word as such.
+    pub fn field_problem(&self) -> Option<String> {
+        match self {
+            UnreadableStep::UnknownKind(_) => None,
+            UnreadableStep::MissingField { kind, field } => {
+                Some(i18n::t!("This “{kind}” step has no “{field}”"))
+            }
+            UnreadableStep::InvalidField { kind, field } => Some(i18n::t!(
+                "The “{field}” of this “{kind}” step has a value this version can't use"
+            )),
+            UnreadableStep::UnknownField { kind, field } => Some(i18n::t!(
+                "This “{kind}” step has a field this version doesn't know (“{field}”)"
+            )),
+        }
+    }
+}
+
+/// One field of a step kind, as [`MacroStep`] declares it.
+struct FieldRule {
+    name: &'static str,
+    /// Whether the field has no `serde(default)`.
+    required: bool,
+    accepts: fn(&serde_json::Value) -> bool,
+}
+
+fn accepts<T: serde::de::DeserializeOwned>(value: &serde_json::Value) -> bool {
+    T::deserialize(value).is_ok()
+}
+
+const fn field(
+    name: &'static str,
+    required: bool,
+    accepts: fn(&serde_json::Value) -> bool,
+) -> FieldRule {
+    FieldRule {
+        name,
+        required,
+        accepts,
+    }
+}
+
+/// The label and fields of the step kind spelt `kind` in the file, mirroring
+/// the variants of [`MacroStep`] (`the_field_table_matches_every_kind`
+/// checks the two agree).
+fn known_step_fields(kind: &str) -> Option<(&'static str, &'static [FieldRule])> {
+    const SEND: &[FieldRule] = &[
+        field("text", true, accepts::<String>),
+        field("newline", false, accepts::<bool>),
+    ];
+    const WAIT_FOR: &[FieldRule] = &[
+        field("pattern", true, accepts::<String>),
+        field("regex", false, accepts::<bool>),
+        field("timeout_ms", false, accepts::<u64>),
+        field("capture", false, accepts::<Option<String>>),
+        field("on_timeout", false, accepts::<Option<Vec<MacroStep>>>),
+    ];
+    const SLEEP: &[FieldRule] = &[field("ms", true, accepts::<u64>)];
+    const REPEAT: &[FieldRule] = &[
+        field("count", false, accepts::<u32>),
+        field("steps", false, accepts::<Vec<MacroStep>>),
+    ];
+    const IF: &[FieldRule] = &[
+        field("pattern", true, accepts::<String>),
+        field("regex", false, accepts::<bool>),
+        field("scope", false, accepts::<MatchScope>),
+        field("capture", false, accepts::<Option<String>>),
+        field("then", false, accepts::<Vec<MacroStep>>),
+        field("else", false, accepts::<Vec<MacroStep>>),
+    ];
+    const SET_VARIABLE: &[FieldRule] = &[
+        field("name", true, accepts::<String>),
+        field("value", false, accepts::<String>),
+    ];
+    Some(match kind {
+        "send" => (i18n::tc!("terminal macro step", "Send"), SEND),
+        "wait_for" => (i18n::tc!("terminal macro step", "Wait for Text"), WAIT_FOR),
+        "sleep" => (i18n::tc!("terminal macro step", "Sleep"), SLEEP),
+        "clear" => (i18n::tc!("terminal macro step", "Clear Screen"), &[]),
+        "repeat" => (i18n::tc!("terminal macro step", "Repeat"), REPEAT),
+        "if" => (i18n::tc!("terminal macro step", "Branch"), IF),
+        "set_variable" => (
+            i18n::tc!("terminal macro step", "Set Variable"),
+            SET_VARIABLE,
+        ),
+        _ => return None,
+    })
 }
 
 fn default_true() -> bool {
@@ -883,15 +1047,7 @@ pub fn run_macro(
 ) -> Task<Result<()>> {
     if let Some((label, step)) = first_unknown_step(&terminal_macro.steps, MacroStepList::Main, "")
     {
-        let message = match step.unknown_kind() {
-            Some(kind) => i18n::t!(
-                "Step {label} is of a kind this version can't run (“{kind}”). The macro was not run."
-            ),
-            None => {
-                i18n::t!("Step {label} is of a kind this version can't run. The macro was not run.")
-            }
-        };
-        return Task::ready(Err(anyhow!(message)));
+        return Task::ready(Err(anyhow!(unreadable_step_refusal(&label, step))));
     }
     let step_count = terminal_macro.steps.len();
     let iteration_count = terminal_macro.iteration_count();
@@ -943,6 +1099,22 @@ pub fn run_macro(
 
         Ok(())
     })
+}
+
+/// Why a macro holding the unreadable `step` at `label` was not run.
+fn unreadable_step_refusal(label: &str, step: &MacroStep) -> String {
+    let problem = step
+        .unreadable_reason()
+        .and_then(|reason| reason.field_problem());
+    match (problem, step.unknown_kind()) {
+        (Some(problem), _) => i18n::t!("Step {label}: {problem}. The macro was not run."),
+        (None, Some(kind)) => i18n::t!(
+            "Step {label} is of a kind this version can't run (“{kind}”). The macro was not run."
+        ),
+        (None, None) => {
+            i18n::t!("Step {label} is of a kind this version can't run. The macro was not run.")
+        }
+    }
 }
 
 /// The first [`MacroStep::Unknown`] in `steps` or under them, in the order
@@ -2587,6 +2759,242 @@ mod tests {
             "{written}"
         );
         assert_eq!(parse_sessions_file(&written), file);
+    }
+
+    #[test]
+    fn a_known_kind_written_wrong_names_the_field() {
+        let file = parse_sessions_file(
+            r##"{ "macros": [{ "name": "typo", "steps": [
+                { "type": "sleep", "ms": -5 },
+                { "type": "set_variable", "value": "x" },
+                { "type": "send", "text": "exit", "delay_ms": 500 },
+                { "type": "beep" },
+                { "ms": 5 },
+                { "type": "repeat", "count": 2, "steps": [
+                    { "type": "wait_for", "pattern": "#", "timeout_ms": "10s" }
+                ] }
+            ] }] }"##,
+        );
+        let steps = &file.macros[0].steps;
+        assert_eq!(
+            steps[0].unreadable_reason(),
+            Some(UnreadableStep::InvalidField {
+                kind: "Sleep",
+                field: "ms"
+            })
+        );
+        assert_eq!(
+            steps[0].summary(),
+            "The “ms” of this “Sleep” step has a value this version can't use"
+        );
+        assert_eq!(
+            steps[1].unreadable_reason(),
+            Some(UnreadableStep::MissingField {
+                kind: "Set Variable",
+                field: "name"
+            })
+        );
+        assert_eq!(steps[1].summary(), "This “Set Variable” step has no “name”");
+        assert_eq!(
+            steps[2].unreadable_reason(),
+            Some(UnreadableStep::UnknownField {
+                kind: "Send",
+                field: "delay_ms".to_string()
+            })
+        );
+        assert_eq!(
+            steps[2].summary(),
+            "This “Send” step has a field this version doesn't know (“delay_ms”)"
+        );
+        // A kind this version does not have keeps its own wording.
+        assert_eq!(
+            steps[3].unreadable_reason(),
+            Some(UnreadableStep::UnknownKind(Some("beep".to_string())))
+        );
+        assert_eq!(
+            steps[3].summary(),
+            "Unknown step “beep” (this version can't run it)"
+        );
+        assert_eq!(
+            steps[4].unreadable_reason(),
+            Some(UnreadableStep::UnknownKind(None))
+        );
+        assert_eq!(steps[5].unreadable_reason(), None);
+
+        let (label, step) = first_unknown_step(steps, MacroStepList::Main, "")
+            .expect("the macro holds unreadable steps");
+        assert_eq!(
+            unreadable_step_refusal(&label, step),
+            "Step 1: The “ms” of this “Sleep” step has a value this version can't use. The macro was not run."
+        );
+        let MacroStep::Repeat { steps: body, .. } = &steps[5] else {
+            panic!("the repeat itself is readable: {:?}", steps[5]);
+        };
+        let (label, step) = first_unknown_step(body.as_slice(), MacroStepList::Main, "6")
+            .expect("the repeat holds an unreadable step");
+        assert_eq!(
+            unreadable_step_refusal(&label, step),
+            "Step 6-1: The “timeout_ms” of this “Wait for Text” step has a value this version can't use. The macro was not run."
+        );
+        let (label, step) = first_unknown_step(&steps[3..4], MacroStepList::Main, "")
+            .expect("the step is unreadable");
+        assert_eq!(
+            unreadable_step_refusal(&label, step),
+            "Step 1 is of a kind this version can't run (“beep”). The macro was not run."
+        );
+    }
+
+    /// The table [`MacroStep::unreadable_reason`] names fields from has to
+    /// say what serde reads: every field of every kind, which of them may be
+    /// left out, and what each one takes.
+    #[test]
+    fn the_field_table_matches_every_kind() {
+        let samples = [
+            MacroStep::Send {
+                text: "show version".to_string(),
+                newline: false,
+            },
+            MacroStep::WaitFor {
+                pattern: "#".to_string(),
+                regex: true,
+                timeout_ms: 1_000,
+                capture: Some("prompt".to_string()),
+                on_timeout: Some(vec![MacroStep::Clear {}]),
+            },
+            MacroStep::Sleep { ms: 100 },
+            MacroStep::Clear {},
+            MacroStep::Repeat {
+                count: 2,
+                steps: vec![MacroStep::Clear {}],
+            },
+            MacroStep::If {
+                pattern: "#".to_string(),
+                regex: true,
+                scope: MatchScope::Screen,
+                capture: Some("reason".to_string()),
+                then_steps: vec![MacroStep::Clear {}],
+                else_steps: vec![MacroStep::Clear {}],
+            },
+            MacroStep::SetVariable {
+                name: "host".to_string(),
+                value: "rt01".to_string(),
+            },
+        ];
+        for sample in samples {
+            let written = serde_json::to_value(&sample).expect("a step serializes");
+            let serde_json::Value::Object(fields) = written.clone() else {
+                panic!("a step is written as an object: {written}");
+            };
+            let kind = fields
+                .get("type")
+                .and_then(|kind| kind.as_str())
+                .expect("a step is written with its kind");
+            let (_, rules) = known_step_fields(kind)
+                .unwrap_or_else(|| panic!("“{kind}” should be in the table"));
+            let mut written_names = fields
+                .keys()
+                .filter(|key| *key != "type")
+                .cloned()
+                .collect::<Vec<_>>();
+            written_names.sort();
+            let mut table_names = rules
+                .iter()
+                .map(|rule| rule.name.to_string())
+                .collect::<Vec<_>>();
+            table_names.sort();
+            assert_eq!(written_names, table_names, "the fields of “{kind}”");
+
+            let read = |value: serde_json::Value| -> MacroStep {
+                serde_json::from_value(value).expect("any object reads as some step")
+            };
+            for rule in rules {
+                let mut without = fields.clone();
+                without.remove(rule.name);
+                let step = read(serde_json::Value::Object(without));
+                if rule.required {
+                    assert_eq!(
+                        step.unreadable_reason(),
+                        Some(UnreadableStep::MissingField {
+                            kind: known_step_fields(kind).map_or("", |(label, _)| label),
+                            field: rule.name,
+                        }),
+                        "“{kind}” without “{}”",
+                        rule.name
+                    );
+                } else {
+                    assert_eq!(
+                        step.unreadable_reason(),
+                        None,
+                        "“{kind}” reads without “{}”",
+                        rule.name
+                    );
+                }
+
+                // The table takes a value exactly when serde does.
+                let probes = [
+                    serde_json::json!({ "not": ["a", "value", "of", "this", "field"] }),
+                    serde_json::json!(-1),
+                    serde_json::json!(1),
+                    serde_json::json!(4_294_967_296u64),
+                    serde_json::json!("x"),
+                    serde_json::json!(true),
+                    serde_json::Value::Null,
+                    serde_json::json!([]),
+                    serde_json::json!([{ "type": "clear" }]),
+                    serde_json::json!({ "variable": "v" }),
+                ];
+                for probe in probes {
+                    let mut probed = fields.clone();
+                    probed.insert(rule.name.to_string(), probe.clone());
+                    let step = read(serde_json::Value::Object(probed));
+                    if (rule.accepts)(&probe) {
+                        assert_eq!(
+                            step.unreadable_reason(),
+                            None,
+                            "“{kind}” reads with “{}”: {probe}",
+                            rule.name
+                        );
+                    } else {
+                        assert!(
+                            matches!(
+                                step.unreadable_reason(),
+                                Some(UnreadableStep::InvalidField { field, .. }) if field == rule.name
+                            ),
+                            "“{kind}” with “{}”: {probe} gives {:?}",
+                            rule.name,
+                            step.unreadable_reason()
+                        );
+                    }
+                }
+            }
+
+            let mut extended = fields.clone();
+            extended.insert("added_later".to_string(), serde_json::json!(1));
+            assert!(matches!(
+                read(serde_json::Value::Object(extended)).unreadable_reason(),
+                Some(UnreadableStep::UnknownField { field, .. }) if field == "added_later"
+            ));
+        }
+    }
+
+    #[test]
+    fn a_count_with_no_lower_bound_after_a_reference_is_refused_at_save_time() {
+        // The regex crate does not read `{,3}` as a repetition at all, so the
+        // pattern is refused as invalid whatever the variable holds, which
+        // says more than the warning about a repetition after a reference.
+        let no_lower_bound = String::from("a{,3}");
+        assert!(regex::Regex::new(&no_lower_bound).is_err());
+        assert!(check_pattern_regex(r"^${p}{,3}$").is_err());
+        assert!(check_pattern_regex(r"^(?:${p}){,3}$").is_err());
+        assert_eq!(
+            references_followed_by_repetition(r"^${p}{,3}$"),
+            Vec::<String>::new(),
+            "no second note that would suggest (?:${{p}}){{,3}}, which is refused too"
+        );
+        assert_eq!(
+            references_followed_by_repetition(r"${a}{3} ${b}{3,} ${c}{3,5}"),
+            vec!["a", "b", "c"]
+        );
     }
 
     #[test]

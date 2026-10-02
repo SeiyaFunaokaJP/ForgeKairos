@@ -257,6 +257,9 @@ msgstr "編集箇所へ移動"
 msgid "Jump to {file_name}"
 msgstr "{file_name} へ移動"
 
+msgid "Jumped by name match (no result from the language server)"
+msgstr "名前一致でジャンプしました (言語サーバーからは結果がありませんでした)"
+
 msgid "Keyword"
 msgstr "キーワード"
 
@@ -648,6 +651,9 @@ msgstr "{tab_kind} (名前一致)"
 
 msgid "{tab_kind} for {target}"
 msgstr "{target} の{tab_kind}"
+
+msgid "{title} (partial: {omitted} not shown)"
+msgstr "{title} (一部のみ表示: {omitted} 件を省略)"
 
 msgid "{} to toggle all"
 msgstr "{} ですべて切り替え"

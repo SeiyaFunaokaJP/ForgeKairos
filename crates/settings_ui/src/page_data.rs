@@ -3818,7 +3818,15 @@ fn languages_and_tools_page(cx: &App) -> SettingsPage {
                             .language_server_timeout_ms = value;
                     },
                 }),
-                metadata: None,
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    number_min: Some(
+                        *project::project_settings::LANGUAGE_SERVER_TIMEOUT_MS_RANGE.start() as f64,
+                    ),
+                    number_max: Some(
+                        *project::project_settings::LANGUAGE_SERVER_TIMEOUT_MS_RANGE.end() as f64,
+                    ),
+                    ..Default::default()
+                })),
                 files: USER | PROJECT,
             }),
             SettingsPageItem::SettingItem(SettingItem {
@@ -4218,23 +4226,20 @@ fn search_and_files_page() -> SettingsPage {
             SettingsPageItem::SettingItem(SettingItem {
                 title: "File Scan Inclusions",
                 description: "Files or globs of files that will be included by Zed, even when ignored by git. This is useful for files that are not tracked by git, but are still important to your project. Note that globs that are overly broad can slow down Zed's file scanning. \"File Scan Exclusions\" takes precedence over these inclusions",
-                field: Box::new(
-                    SettingField {
-                        organization_override: None,
-                        json_path: Some("file_scan_inclusions"),
-                        pick: |settings_content| {
-                            settings_content
-                                .project
-                                .worktree
-                                .file_scan_inclusions
-                                .as_ref()
-                        },
-                        write: |settings_content, value, _| {
-                            settings_content.project.worktree.file_scan_inclusions = value;
-                        },
-                    }
-                    .unimplemented(),
-                ),
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("file_scan_inclusions"),
+                    pick: |settings_content| {
+                        settings_content
+                            .project
+                            .worktree
+                            .file_scan_inclusions
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.project.worktree.file_scan_inclusions = value;
+                    },
+                }),
                 metadata: None,
                 files: USER,
             }),
@@ -6407,8 +6412,7 @@ fn panels_page() -> SettingsPage {
                         write: |settings_content, value, _| {
                             settings_content.project.worktree.hidden_files = value;
                         },
-                    }
-                    .unimplemented(),
+                    },
                 ),
                 metadata: None,
                 files: USER,
@@ -6576,7 +6580,10 @@ fn panels_page() -> SettingsPage {
                             .max_children = value;
                     },
                 }),
-                metadata: None,
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    number_min: Some(1.0),
+                    ..Default::default()
+                })),
                 files: USER,
             }),
             SettingsPageItem::SettingItem(SettingItem {
@@ -6624,26 +6631,23 @@ fn panels_page() -> SettingsPage {
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Excluded Callees",
                 description: "Callees left out of a function's callees, such as logging and assertion macros. A row at the end counts them and shows them on request.",
-                field: Box::new(
-                    SettingField {
-                        organization_override: None,
-                        json_path: Some("call_graph_panel.excluded_callees"),
-                        pick: |settings_content| {
-                            settings_content
-                                .call_graph_panel
-                                .as_ref()?
-                                .excluded_callees
-                                .as_ref()
-                        },
-                        write: |settings_content, value, _| {
-                            settings_content
-                                .call_graph_panel
-                                .get_or_insert_default()
-                                .excluded_callees = value;
-                        },
-                    }
-                    .unimplemented(),
-                ),
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("call_graph_panel.excluded_callees"),
+                    pick: |settings_content| {
+                        settings_content
+                            .call_graph_panel
+                            .as_ref()?
+                            .excluded_callees
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .call_graph_panel
+                            .get_or_insert_default()
+                            .excluded_callees = value;
+                    },
+                }),
                 metadata: None,
                 files: USER,
             }),

@@ -58,7 +58,7 @@ actions!(
 );
 
 /// Splits the active terminal pane into a grid of new shells in one go, instead
-/// of repeating 右に分割 / 下に分割 by hand.
+/// of repeating Split Right / Split Down by hand.
 #[derive(Clone, Debug, Deserialize, PartialEq, JsonSchema, Action)]
 #[action(namespace = terminal)]
 #[serde(deny_unknown_fields)]

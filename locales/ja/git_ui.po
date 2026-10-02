@@ -573,6 +573,9 @@ msgstr "ファイルの場所をプロジェクトのフォルダーから見た
 msgid "Copies the picked commits' changes onto the current branch, oldest first. The originals stay"
 msgstr "選んだコミットの変更を、古い順に今のブランチの上へコピーします。元のコミットは残ります"
 
+msgid "Copy"
+msgstr "コピー"
+
 msgid "Copy Commit SHA"
 msgstr "コミット SHA をコピー"
 
@@ -806,6 +809,9 @@ msgstr "現在のブランチ (今チェックアウトしているブランチ)
 msgid "Custom Commands"
 msgstr "カスタムコマンド"
 
+msgid "Cut"
+msgstr "切り取り"
+
 msgid "Cut off at {count} commit. Add conditions to narrow the search."
 msgid_plural "Cut off at {count} commits. Add conditions to narrow the search."
 msgstr[0] "{count} 件で打ち切りました。条件を足して絞り込んでください。"
@@ -858,6 +864,9 @@ msgstr "追跡中の変更を破棄"
 
 msgid "Discard changes to these files?"
 msgstr "これらのファイルの変更を破棄しますか?"
+
+msgid "Discard changes to these files? New files are moved to the trash."
+msgstr "これらのファイルの変更を破棄しますか? 新しいファイルはゴミ箱へ移動します。"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "このファイルの変更を破棄し、最後のコミットの内容に戻します"
@@ -1613,6 +1622,9 @@ msgstr[0] "ファイルのまま散らばった {formatted} 個の ref (ブラ�
 
 msgid "Part of a name or email address"
 msgstr "名前かメールアドレスの一部"
+
+msgid "Paste"
+msgstr "貼り付け"
 
 msgid "Path History"
 msgstr "ファイルの履歴"

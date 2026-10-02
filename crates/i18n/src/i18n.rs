@@ -94,6 +94,19 @@ pub mod context {
     pub const MENU: &str = "menu";
     /// Titles, descriptions and headers of the settings window's table.
     pub const SETTINGS: &str = "settings";
+    /// The description of an action (its doc comment), keyed by the action name like
+    /// `ACTION`, so that a reworded doc comment upstream keeps its translation until
+    /// someone updates it instead of losing it.
+    pub const ACTION_DOCUMENTATION: &str = "action documentation";
+    /// The `description` of a JSON schema Zed serves for its settings files, keyed by
+    /// the English description itself.
+    pub const SETTINGS_SCHEMA: &str = "settings schema";
+}
+
+/// The description of the action named `action_name` in the display language, or
+/// `english` (the action's doc comment) when there is no translation.
+pub fn action_documentation<'a>(action_name: &str, english: &'a str) -> &'a str {
+    lookup_in_current(Some(context::ACTION_DOCUMENTATION), action_name).unwrap_or(english)
 }
 
 static CURRENT_CATALOG: RwLock<Option<&'static dyn Catalog>> = RwLock::new(None);

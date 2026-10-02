@@ -3,7 +3,7 @@
 //! the Japanese the table used to hold, that the English is complete, and that
 //! search and page lookups work in both languages.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::OnceLock;
 
 use gpui::{App, AppContext as _, BorrowAppContext as _, TestAppContext};
@@ -310,6 +310,32 @@ const CHANGED_ON_PURPOSE: &[(&str, &str)] = &[
     // The title said 音声のテスト and the button 音声をテスト for the same
     // English; GLOSSARY.md has Test Audio = 音声のテスト.
     ("Test Audio", "音声のテスト"),
+    // These name the values of their dropdown, which now show in Japanese.
+    (
+        "Cursor shape for insert mode. Inherit uses the editor's cursor shape.",
+        "挿入モードのカーソルの形状です。「エディターと同じ」はエディターのカーソルの形状を使います。",
+    ),
+    (
+        "Default cursor shape for the terminal (bar, block, underline, or hollow).",
+        "ターミナルの既定のカーソルの形状です (縦線・ブロック・下線・中抜きのブロック)。",
+    ),
+    (
+        "Controls line number display in the editor's gutter. \"disabled\" shows absolute line numbers, \"enabled\" shows relative line numbers for each absolute line, and \"wrapped\" shows relative line numbers for every line, absolute or wrapped.",
+        "エディターのガターの行番号表示を制御します。「無効」は絶対行番号を、「有効」は各絶対行に対する相対行番号を、「折り返し行も数える」は折り返し行も含めたすべての行に対する相対行番号を表示します。",
+    ),
+    (
+        "How thinking blocks should be displayed by default. 'Auto' fully expands during streaming, then auto-collapses when done. 'Preview' auto-expands with a height constraint during streaming. 'Always Expanded' shows full content. 'Always Collapsed' keeps them collapsed.",
+        "思考ブロックを既定でどのように表示するかを設定します。「自動」はストリーミング中は完全に展開し、完了後に自動的に折りたたみます。「プレビュー」は高さを制限した状態でストリーミング中に自動展開します。「常に展開」は常に全体を表示します。「常に折りたたむ」は常に折りたたんだままにします。",
+    ),
+    (
+        "Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting.",
+        "オフ: 言語サーバーにセマンティックトークンを要求しません。\n併用: LSP のセマンティックトークンを tree-sitter のハイライトと併せて使います。\nLSP のみ: tree-sitter のハイライトの代わりに、LSP のセマンティックトークンだけを使います。",
+    ),
+    // Says 索引 for the index, as the settings schema's description of the same setting does.
+    (
+        "Maximum directory depth to eagerly index outside of git repositories; contents of directories at this depth or deeper are indexed on demand. Repositories rooted shallower than this depth are always indexed fully. In projects that are not rooted at a git repository, repositories directly inside a root folder activate their git features immediately; deeper ones activate on first use. 0 means no limit and activates all git repositories immediately",
+        "git リポジトリの外側で先読みの索引を作るディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点で索引に入ります。この深さより浅い位置にあるリポジトリは常に完全に索引に入ります。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします",
+    ),
 ];
 
 fn settings_po() -> &'static i18n_catalog::PoFile {
@@ -732,12 +758,17 @@ fn dropdown_labels_are_translated_in_the_context_of_their_enum() {
     }
 
     let _japanese = LocaleOverride::new(Some(japanese()));
-    // Plain "Default" and "None" stay English in the enums that give them no
-    // context of their own.
-    assert_eq!(dropdown_display("ShowScrollbar", "Never", true), "Never");
+    // The same English reads as each enum's own entry says.
     assert_eq!(dropdown_display("PanelTabBar", "Never", true), "表示しない");
-    assert_eq!(dropdown_display("SoftWrap", "None", true), "None");
+    assert_eq!(
+        dropdown_display("UseSystemClipboard", "Never", true),
+        "使わない"
+    );
+    assert_eq!(dropdown_display("SoftWrap", "None", true), "折り返さない");
     assert_eq!(dropdown_display("BaseKeymapContent", "None", false), "なし");
+    // A label no entry of its enum translates stays English, even where
+    // another enum translates the same English.
+    assert_eq!(dropdown_display("DockSide", "Never", true), "Never");
 }
 
 macro_rules! dropdown_types {
@@ -876,51 +907,146 @@ fn dropdown_list_matches_init_renderers() {
     assert_eq!(listed, registered);
 }
 
-/// Labels of upstream dropdowns whose Japanese changed on purpose: they were
-/// shown in English before, as `(enum, English label, Japanese)`.
-const DROPDOWN_LABELS_CHANGED_ON_PURPOSE: &[(&str, &str, &str)] = &[
-    // "Selection" alone reads as the menu's 選択; the setting shows whitespace
-    // in the selected text.
-    ("ShowWhitespaceSetting", "Selection", "選択範囲"),
+/// Dropdown labels that read the same in Japanese (names and notations), as
+/// `(enum, English label as displayed)`.
+const DROPDOWN_LABELS_KEPT_IN_ENGLISH: &[(&str, &str)] = &[
+    ("BaseKeymapContent", "Atom"),
+    ("BaseKeymapContent", "JetBrains"),
+    ("BaseKeymapContent", "Sublime Text"),
+    ("BaseKeymapContent", "TextMate"),
+    ("BaseKeymapContent", "VSCode"),
+    ("BaseKeymapContent", "Zed"),
+    ("MultiCursorModifier", "Alt"),
 ];
 
-/// A new table string or dropdown label must not quietly translate a label that
-/// is meant to stay English.
-#[test]
-fn untranslated_dropdown_labels_stay_english() {
-    let translated: HashSet<&str> = translated_dropdowns()
-        .into_iter()
-        .map(|(name, ..)| name)
-        .collect();
-    let _japanese = LocaleOverride::new(Some(japanese()));
-    let mut translated_by_accident = Vec::new();
-    for (name, labels) in all_dropdowns() {
-        if translated.contains(name) {
-            continue;
-        }
-        for label in labels {
-            for title_case in [false, true] {
-                let english = if title_case {
-                    label.to_title_case()
-                } else {
-                    label.to_string()
-                };
-                let displayed = dropdown_display(name, label, title_case);
-                let expected = DROPDOWN_LABELS_CHANGED_ON_PURPOSE
-                    .iter()
-                    .find(|(changed_enum, changed, _)| *changed_enum == name && *changed == english)
-                    .map_or(english.as_str(), |(_, _, japanese)| japanese);
-                if displayed != expected {
-                    translated_by_accident.push(format!("{name}::{label} shows {displayed:?}"));
+/// Every setting drawn as a dropdown, as the enum's name and whether the
+/// setting title-cases its labels. One enum can be drawn both ways.
+fn dropdowns_on_screen(cx: &App) -> BTreeSet<(&'static str, bool)> {
+    fn add(item: &SettingItem, output: &mut BTreeSet<(&'static str, bool)>) {
+        let type_name = crate::AnySettingField::type_name(item.field.as_ref());
+        let enum_name = type_name.rsplit("::").next().unwrap_or(type_name);
+        let title_case = item
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.should_do_titlecase)
+            .unwrap_or(true);
+        output.insert((enum_name, title_case));
+    }
+
+    fn walk(items: &[SettingsPageItem], output: &mut BTreeSet<(&'static str, bool)>) {
+        for item in items {
+            match item {
+                SettingsPageItem::SettingItem(item) => add(item, output),
+                SettingsPageItem::DynamicItem(DynamicItem {
+                    discriminant,
+                    fields,
+                    ..
+                }) => {
+                    add(discriminant, output);
+                    for field in fields.iter().flatten() {
+                        add(field, output);
+                    }
                 }
+                _ => {}
             }
         }
     }
+
+    let dropdown_names: HashSet<&str> = all_dropdowns().into_iter().map(|(name, _)| name).collect();
+    let mut output = BTreeSet::new();
+    for page in page_data::settings_data(cx) {
+        walk(&page.items, &mut output);
+    }
+    walk(&page_data::language_sub_page_items(), &mut output);
+    output.retain(|(name, _)| dropdown_names.contains(name));
+    output
+}
+
+/// The English of each label of each dropdown on screen, as `(enum, English
+/// as displayed)`.
+fn dropdown_labels_on_screen(cx: &mut TestAppContext) -> Vec<(&'static str, String)> {
+    let on_screen = cx.update(|cx| {
+        register_settings(cx);
+        let app_state = AppState::test(cx);
+        AppState::set_global(app_state, cx);
+        dropdowns_on_screen(cx)
+    });
+    let labels_by_name: HashMap<&str, &[&str]> = all_dropdowns().into_iter().collect();
+    let mut output = Vec::new();
+    for (name, title_case) in on_screen {
+        for label in labels_by_name[name] {
+            let english = if title_case {
+                label.to_title_case()
+            } else {
+                label.to_string()
+            };
+            output.push((name, english));
+        }
+    }
+    output
+}
+
+/// A dropdown in the settings window shows its value in the display language:
+/// every label has a translation under its enum's context.
+#[gpui::test]
+fn every_dropdown_label_on_screen_is_translated(cx: &mut TestAppContext) {
+    let labels = dropdown_labels_on_screen(cx);
+    assert!(labels.len() > 300, "only {} labels found", labels.len());
+    let _japanese = LocaleOverride::new(Some(japanese()));
+    let mut untranslated = Vec::new();
+    for (name, english) in &labels {
+        let displayed = i18n::tr_ctx(name, english).to_string();
+        let kept_in_english = DROPDOWN_LABELS_KEPT_IN_ENGLISH.contains(&(name, english.as_str()));
+        let as_expected = if kept_in_english {
+            displayed == *english
+        } else {
+            has_japanese(&displayed)
+        };
+        if !as_expected {
+            untranslated.push(format!(
+                "msgctxt \"{name}\"\nmsgid \"{english}\"\nshows \"{displayed}\"\n"
+            ));
+        }
+    }
     assert!(
-        translated_by_accident.is_empty(),
-        "{}",
-        translated_by_accident.join("\n")
+        untranslated.is_empty(),
+        "{} dropdown labels are not translated:\n{}",
+        untranslated.len(),
+        untranslated.join("\n")
     );
+
+    let on_screen: HashSet<(&str, &str)> = labels
+        .iter()
+        .map(|(name, english)| (*name, english.as_str()))
+        .collect();
+    let mut unused_kept: Vec<_> = DROPDOWN_LABELS_KEPT_IN_ENGLISH
+        .iter()
+        .filter(|entry| !on_screen.contains(entry))
+        .collect();
+    unused_kept.sort();
+    assert!(unused_kept.is_empty(), "not on screen: {unused_kept:?}");
+}
+
+/// Every dropdown entry of `_settings.po` translates a label some dropdown shows.
+#[gpui::test]
+fn every_dropdown_entry_translates_a_label_on_screen(cx: &mut TestAppContext) {
+    let labels = dropdown_labels_on_screen(cx);
+    let on_screen: HashSet<(&str, &str)> = labels
+        .iter()
+        .map(|(name, english)| (*name, english.as_str()))
+        .collect();
+    let mut stale: Vec<String> = settings_po()
+        .entries
+        .iter()
+        .filter_map(|entry| {
+            let context = entry.context.as_deref()?;
+            (context != i18n::context::SETTINGS
+                && !on_screen.contains(&(context, entry.msgid.as_str())))
+            .then(|| format!("{context}: {:?}", entry.msgid))
+        })
+        .collect();
+    stale.sort();
+    assert!(stale.is_empty(), "no dropdown shows {stale:#?}");
 }
 
 async fn open_settings_window(

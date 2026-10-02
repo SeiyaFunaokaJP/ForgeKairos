@@ -5,16 +5,22 @@
 //! and their number, and on a remote project each one is also copied to the client. Callers cap
 //! what they show, but only after all of that has happened.
 
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use anyhow::Result;
 use collections::HashMap;
-use gpui::{AsyncApp, Entity};
-use language::Buffer;
+use gpui::{AppContext as _, AsyncApp, Context, Entity, Task};
+use language::{Buffer, PointUtf16, ToPointUtf16};
 use lsp::LanguageServerId;
 use util::{ResultExt as _, paths::UrlExt as _};
 
-use crate::LspStore;
+use crate::{Location, LspStore, Project};
 
 /// Files one response may open that were not open before it.
 pub const MAX_FILES_OPENED_PER_RESPONSE: usize = 1000;
@@ -111,7 +117,8 @@ impl ResultBuffers {
         true
     }
 
-    pub(crate) fn finish(self, request: &str) {
+    /// Returns how many locations were dropped.
+    pub(crate) fn finish(self, request: &str) -> usize {
         if self.locations_dropped > 0 {
             log::warn!(
                 "{request}: dropped {} location(s) of the response after opening {} file(s) \
@@ -122,5 +129,56 @@ impl ResultBuffers {
                 self.bytes_opened,
             );
         }
+        self.locations_dropped
+    }
+}
+
+/// Locations the bound left out of a request's responses, shared by the copies of the request
+/// sent to each language server.
+#[derive(Clone, Debug, Default)]
+pub struct OmittedLocations(Arc<AtomicUsize>);
+
+impl OmittedLocations {
+    pub(crate) fn add(&self, count: usize) {
+        self.0.fetch_add(count, Ordering::Relaxed);
+    }
+
+    pub fn count(&self) -> usize {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+/// Locations, and how many of them the bound on what one response may open left out.
+#[derive(Debug)]
+pub struct LocationsAnswer {
+    pub locations: Vec<Location>,
+    /// Only counted where the language server runs on this machine: a remote host drops what it
+    /// can't open before the answer gets here, and says so only in its own log.
+    pub omitted: usize,
+}
+
+impl Project {
+    /// [`Project::references`], saying how many references were left out because the response
+    /// named more files than one response may open.
+    pub fn references_reporting_omissions<T: ToPointUtf16>(
+        &mut self,
+        buffer: &Entity<Buffer>,
+        position: T,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Option<LocationsAnswer>>> {
+        let position: PointUtf16 = position.to_point_utf16(buffer.read(cx));
+        let guard = self.retain_remotely_created_models(cx);
+        let omitted = OmittedLocations::default();
+        let task = self.lsp_store.update(cx, |lsp_store, cx| {
+            lsp_store.references_counting_omitted(buffer, position, omitted.clone(), cx)
+        });
+        cx.background_spawn(async move {
+            let result = task.await;
+            drop(guard);
+            Ok(result?.map(|locations| LocationsAnswer {
+                locations,
+                omitted: omitted.count(),
+            }))
+        })
     }
 }

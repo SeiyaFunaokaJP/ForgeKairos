@@ -96,10 +96,10 @@
   // Layout mode of the bottom dock. Defaults to "contained"
   //   choices: contained, full, left_aligned, right_aligned
   "bottom_dock_layout": "contained",
-  // フォーク既定: プロジェクトを初めて開いたときに、パネルを 2 枚並べておく
-  // ドックと、その 2 枚 (DESIGN.md ADR-F30 / ADR-F40)。保存済みレイアウトがある
-  // プロジェクトでは、そちらが優先される。ドック自体は開かない。起動時に開くには
-  // 各パネルの `starts_open` を使う (ADR-F48)。
+  // Fork default: when a project is opened for the first time, arrange two
+  // panels together in one dock (DESIGN.md ADR-F30 / ADR-F40). A project with
+  // a saved layout keeps that layout instead. This does not open the dock;
+  // use each panel's `starts_open` to open it on startup (ADR-F48).
   //   default_stacked_dock choices: left, right, bottom
   //   panel choices: none, agent, browser, terminal, project, git, outline, debug
   "default_stacked_dock": "right",
@@ -141,18 +141,18 @@
     // The maximum width, in pixels, of the rendered markdown content when
     // limit_content_width is enabled.
     "max_width": 800,
-    // 単一の改行を、そのまま改行として表示するかどうか。オフにすると
-    // CommonMark どおり空白 1 つになり、行末の半角スペース 2 つ / `\` /
-    // `<br>` だけが改行になります。
+    // Whether to render a single newline as a line break. When off, it is
+    // rendered as a single space as in CommonMark, and only two trailing
+    // spaces, a trailing `\` or `<br>` break the line.
     "soft_break_as_hard_break": true,
   },
-  // CSV / TSV などの表形式ファイルの設定
+  // Settings for tabular files such as CSV and TSV.
   "tabular_data": {
-    // 表形式のファイルを表 (グリッド) で開くかどうか。オフにすると
-    // テキストエディターで開く。どちらからでも横に切り替えられる。
+    // Whether to open tabular files as a grid. When off, they open in the text
+    // editor. Either view can switch to the other.
     "open_as_grid": true,
-    // 改行を含むセルを、行の高さを広げてすべて表示するかどうか。オフにすると
-    // 1 行に切り詰めて表示する。
+    // Whether to show cells that contain newlines in full by growing the row
+    // height. When off, such cells are truncated to one line.
     "multiline_cells": true,
   },
   // Determines the modifier to be used to add multiple cursors with the mouse. The open hover link mouse gestures will adapt such that it do not conflict with the multicursor modifier.
@@ -578,8 +578,8 @@
   // 2. Do not draw any tabs or spaces:
   //    "none"
   // 3. Draw all invisible symbols (default in this fork; upstream default is
-  //    "selection". Matches the convention of Japanese editors like サクラエディタ /
-  //    秀丸 of always showing whitespace as "・"):
+  //    "selection". Matches the convention of Japanese editors like Sakura Editor /
+  //    Hidemaru of always showing whitespace as "・"):
   //    "all"
   // 4. Draw whitespaces at boundaries only:
   //    "boundary"
@@ -650,7 +650,7 @@
     //
     // On in this fork: upstream collapses every menu behind a single hamburger
     // icon on Windows/Linux, but this fork targets users coming from VSCode who
-    // expect the labeled 「ファイル」「編集」… row to always be visible.
+    // expect the labeled "File", "Edit", … row to always be visible.
     "show_menus": true,
     // The layout of window control buttons in the title bar (Linux only).
     "button_layout": "platform_default",
@@ -905,8 +905,8 @@
     // Left in this fork: the default window mirrors VSCode, with the file tree
     // on the left and the AI chat on the right. All five dock defaults are kept
     // equal to `agent_settings::PanelLayout::EDITOR`, so the title bar's
-    // 「パネルレイアウト」 submenu shows 「クラシック」 as the active preset
-    // instead of falling through to 「カスタム」.
+    // "Panel Layout" submenu shows "Classic" as the active preset
+    // instead of falling through to "Custom".
     "dock": "left",
     // Spacing between worktree entries in the project panel. Can be 'comfortable' or 'standard'.
     "entry_spacing": "comfortable",
@@ -1095,59 +1095,68 @@
     // Does not affect single-file views.
     "multi_buffer_hide_symbols": false,
   },
-  // 内蔵ブラウザーパネル (ADR-F19)。
-  // Windows では Microsoft Edge WebView2 を使う。それ以外のプラットフォームでは
-  // 「未対応」表示 + 外部ブラウザーへの導線だけになる。
+  // The built-in browser panel (ADR-F19).
+  // Uses Microsoft Edge WebView2 on Windows. On other platforms the panel only
+  // shows a "not supported" notice and a way to open an external browser.
   "browser": {
-    // ブラウザーパネルのボタンをステータスバーに表示するかどうか。
+    // Whether to show the browser panel button in the status bar.
     "button": true,
-    // ブラウザーパネルをドッキングする位置。'left'、'right' または 'bottom'。
+    // Where to dock the browser panel. Can be 'left', 'right' or 'bottom'.
     "dock": "right",
-    // 起動時にブラウザーパネルを開くかどうか (前回ドックを閉じていても開く)。
-    // 既定のレイアウトはパネルを並べておくだけで、ドックは開かない (ADR-F48)。
+    // Whether the browser panel should open on startup, even if its dock was
+    // closed last time. The default layout only stacks the panel in the dock
+    // and does not open the dock (ADR-F48).
     "starts_open": false,
-    // 左右にドッキングしたときのブラウザーパネルの既定の幅。
+    // Default width of the browser panel when docked to the left or right.
     "default_width": 480,
-    // 下にドッキングしたときのブラウザーパネルの既定の高さ。
+    // Default height of the browser panel when docked to the bottom.
     "default_height": 320,
-    // ブラウザーを開いたときに最初に表示するページ (起動時に開くページ)。
-    // 内蔵ブラウザーのツールバーのピンボタンからも書き換えられる。
+    // The page shown first when the browser opens (the start page).
+    // The pin button in the built-in browser's toolbar also updates it.
     "home_url": "https://m365.cloud.microsoft/chat",
-    // アドレスバーの入力が URL でなかったときと、
-    // `browser_panel::SearchSelection` (選択テキストを Web で検索) が使う URL。
-    // `{query}` がパーセントエンコードした検索語に置き換わる。
+    // The URL used when the address bar input is not a URL, and by
+    // `browser_panel::SearchSelection` (search the web for the selected text).
+    // `{query}` is replaced with the percent-encoded search terms.
     "search_url": "https://www.google.com/search?q={query}",
-    // `browser_panel::AskCopilot` (選択テキストを Copilot に聞く) が使う URL。
-    // `{query}` を書けばそこに質問が埋め込まれる。プレースホルダーが無い場合は
-    // URL をそのまま開き、選択テキストはクリップボードにコピーする
-    // (GitHub Copilot はプロンプトを渡すクエリパラメーターを公開していないため、
-    // 既定はプレースホルダー無し)。
+    // The URL used by `browser_panel::AskCopilot` (ask Copilot about the
+    // selected text). If it contains `{query}`, the question is inserted
+    // there. Without the placeholder, the URL is opened as is and the selected
+    // text is copied to the clipboard (the default has no placeholder because
+    // GitHub Copilot does not expose a query parameter for passing a prompt).
     "copilot_url": "https://github.com/copilot",
-    // ブックマークは設定ではなく `browser_bookmarks.json` (settings.json と同じ
-    // フォルダー) に保存され、ブラウザーパネル内のブックマークペインで編集する。
-    // ファイルがまだ無いときだけ、既定のブックマーク 3 件 (Microsoft 365 Copilot /
-    // Claude / ChatGPT) を書き込む。
-    // オンにすると内蔵ブラウザーの通信も外部通信の許可リストで制限される。
-    // 既定では人間操作のターミナルと同様に許可リストの対象外 (ADR-F19)。
+    // Bookmarks are not settings: they are stored in `browser_bookmarks.json`
+    // (in the same folder as settings.json) and edited in the bookmarks pane
+    // of the browser panel. The three default bookmarks (Microsoft 365 Copilot /
+    // Claude / ChatGPT) are written only when that file does not exist yet.
+    // When on, the built-in browser's traffic is also restricted by the
+    // outbound network allowlist. By default it is exempt from the allowlist,
+    // like a terminal operated by a human (ADR-F19).
     "use_egress_proxy": false,
   },
-  // Zed 自身を loopback の IDE サーバーとして公開する (ADR-F26)。127.0.0.1 の空きポートにだけ
-  // bind し、外向きの通信は行わない (= 外部通信の許可リストの対象外)。有効なあいだ
-  // ~/.claude/ide/<port>.lock を書き、統合ターミナルの Claude Code CLI や .mcp.json から繋ぐ
-  // エージェントが選択範囲・開いているファイル・診断を読み、差分を Zed のタブでレビューできる。
+  // Expose Zed itself as a loopback IDE server (ADR-F26). It binds only to a
+  // free port on 127.0.0.1 and makes no outbound connections (so it is not
+  // subject to the outbound network allowlist). While enabled, it writes
+  // ~/.claude/ide/<port>.lock for each local project (not for remote ones),
+  // and agents connecting from the Claude Code CLI in the integrated terminal
+  // or from .mcp.json can read the selection, open files and diagnostics, and
+  // review diffs in Zed tabs.
   "ide_server": {
-    // 既定は無効 (AI 機能は既定オフ)。設定 GUI「AI」ページから有効化する。
+    // Disabled by default (AI features are off by default). Enable it from the
+    // "AI" page of the settings UI.
     "enabled": false,
-    // エージェント (Claude Code のタブ・外部のエージェント) に Zed の IDE ツール
-    // (ハイライト・注釈・ツアー・定義・参照・シンボル検索、MCP サーバー名 `zed`) を渡す。
-    // `enabled` とは独立で、ロックファイルは書かない。
+    // Give agents (Claude Code tabs and external agents) Zed's IDE tools
+    // (highlights, annotations, tours, definitions, references and symbol
+    // search, under the MCP server name `zed`). Independent of `enabled`;
+    // no lock file is written.
     "assist_tools": true,
-    // 何も選んでいないときも、開いているファイルを接続中の Claude Code CLI に伝える
-    // (CLI の入力欄に「In <ファイル名>」と出て、次の送信にそのファイルが添付される)。
-    // 無効にすると、行を選んだときの選択範囲だけを送る。
+    // Tell the connected Claude Code CLI about the open file even when nothing
+    // is selected (the CLI input shows "In <file name>" and the file is
+    // attached to the next message). When disabled, only the selection is
+    // sent when lines are selected.
     "share_active_file": true,
-    // 最後に失敗したタスク (0 以外で終了) の出力の末尾 (最大 4 KB) を、IDE サーバーの
-    // ツール `getLastTaskOutput` でエージェントが読めるようにする。
+    // Let agents read the tail (up to 4 KB) of the output of the last task
+    // that failed (exited with a non-zero code) through the IDE server's
+    // `getLastTaskOutput` tool.
     "share_task_output": true
   },
   "collaboration_panel": {
@@ -1458,7 +1467,7 @@
     "default_profile": "write",
     "profiles": {
       "write": {
-        "name": "書き込み",
+        "name": "Write",
         "enable_all_context_servers": true,
         "tools": {
           "copy_path": true,
@@ -1498,7 +1507,7 @@
         },
       },
       "ask": {
-        "name": "質問",
+        "name": "Ask",
         // We don't know which of the context server tools are safe for the "Ask" profile, so we don't enable them by default.
         // "enable_all_context_servers": true,
         "tools": {
@@ -1533,7 +1542,7 @@
       // network. Deleting, moving and copying paths are left out too: an edit
       // can be reviewed in the diff, a deletion cannot.
       "edit": {
-        "name": "編集のみ",
+        "name": "Edit Only",
         "enable_all_context_servers": false,
         "tools": {
           "create_directory": true,
@@ -1561,7 +1570,7 @@
         },
       },
       "minimal": {
-        "name": "最小",
+        "name": "Minimal",
         "enable_all_context_servers": false,
         "tools": {},
       },
@@ -1600,7 +1609,7 @@
     //
     // Example: "terminal_init_command": "claude"
     "terminal_init_command": "",
-    // Whether "Claude Code を起動" starts the CLI outside the sandbox every
+    // Whether "Launch Claude Code" starts the CLI outside the sandbox every
     // time, without asking (ADR-F49 decision 19). Outside the sandbox nothing
     // limits what it writes, and only programs that read the proxy settings
     // are held to the network allowlist. Only the user settings file is read.
@@ -1690,8 +1699,9 @@
     "show_nav_history_buttons": true,
     // Whether or not to show the tab bar buttons.
     "show_tab_bar_buttons": true,
-    // フォーカスされていないペインのタブバーにも、新規・分割・ズームなどのボタンを表示するか。
-    // false にすると、フォーカス中のペインだけに表示する (upstream の既定)。
+    // Whether to show the tab bar buttons (new, split, zoom, ...) on panes that
+    // are not focused as well. When false, they are shown only on the focused
+    // pane (the upstream default).
     "show_buttons_on_inactive_panes": true,
     // Whether or not to show pinned tabs in a separate row.
     // When enabled, pinned tabs appear in a top row and unpinned tabs in a bottom row.
@@ -1972,10 +1982,13 @@
   //
   // Default: []
   "acknowledged_external_ai_providers": [],
-  // UI の表示言語。"system" は OS の優先言語に従う (翻訳が無ければ英語)。
-  // "en" で英語 (翻訳を使わない)、"ja" や "pt-BR" などの BCP 47 の言語タグでその言語。
-  // 同梱の翻訳に加えて、<設定ディレクトリ>/locales/<言語タグ>/*.po を再ビルドなしで重ねて読む。
-  // 切り替えは即座に反映されるが、タブ名など一部の表示は再起動後に切り替わる。
+  // The display language of the UI. "system" follows the OS's preferred
+  // language (English when there is no translation for it). "en" is English
+  // (no translation), and a BCP 47 language tag such as "ja" or "pt-BR"
+  // selects that language. On top of the bundled translations,
+  // <config directory>/locales/<language tag>/*.po is loaded without a rebuild.
+  // Changes apply immediately, but some labels such as tab titles switch only
+  // after a restart.
   //
   // Default: "system"
   "ui_language": "system",
@@ -2087,11 +2100,13 @@
     "enable_status": true,
     // Whether to enable git diff display.
     "enable_diff": true,
-    // git status に追跡されていないファイルをどこまで報告させるか。
-    // "all"    = 追跡されていないフォルダーの中身も 1 件ずつ (プロジェクトパネルの色分けに必要)
-    // "normal" = 追跡されていないフォルダーそのものだけ
-    // "no"     = 追跡されていないファイルを扱わない
-    // 巨大なリポジトリでは "normal" / "no" が git status を大幅に軽くする。リモート SSH でも同じ値がサーバー側で使われる。
+    // How much git status should report about untracked files.
+    // "all"    = each file inside untracked folders as well (needed for the
+    //            project panel's coloring)
+    // "normal" = untracked folders themselves only
+    // "no"     = ignore untracked files
+    // In very large repositories, "normal" / "no" make git status much cheaper.
+    // Over remote SSH, the same value is used on the server.
     "status_untracked_files": "all",
     // Control whether the git gutter is shown. May take 2 values:
     // 1. Show the gutter
@@ -2399,7 +2414,7 @@
     "open_links_in_mouse_mode": true,
     // Whether to show the terminal button in the status bar
     "button": true,
-    // Whether the macro picker (「マクロを実行」) opens with every folder collapsed.
+    // Whether the macro picker ("Run Macro…") opens with every folder collapsed.
     "macro_picker_folders_collapsed": false,
     // Any key-value pairs added to this list will be added to the terminal's
     // environment. Use `:` to separate multiple values.
@@ -2435,28 +2450,29 @@
         "conda_manager": "auto",
       },
     },
-    // セッションログ (TeraTerm のログ保存に相当) の設定。
+    // Session log settings (like Tera Term's log saving).
     "session_log": {
-      // true にすると、新しく開いたターミナルが自動でログ記録を始めます。
+      // When true, newly opened terminals start logging automatically.
       "auto": false,
-      // ログの保存先ディレクトリ。`~` は展開されます。
-      // 空欄のときは Zed のログディレクトリ配下の `terminal-sessions` を使います。
+      // The directory to save logs in. `~` is expanded.
+      // When empty, `terminal-sessions` under Zed's log directory is used.
       "directory": "",
-      // ログのファイル名。`{date}` `{time}` `{title}` `{host}` `{pid}` を展開します。
+      // The log file name. `{date}` `{time}` `{title}` `{host}` `{pid}` are expanded.
       "file_name_template": "{date}_{time}_{title}.log",
-      // ANSI / VT のエスケープシーケンスを取り除いて、素のテキストとして保存します。
+      // Strip ANSI / VT escape sequences and save the log as plain text.
       "strip_control_sequences": true,
-      // 各行の先頭に `[YYYY-MM-DD HH:MM:SS] ` を付けます。
+      // Prefix each line with `[YYYY-MM-DD HH:MM:SS] `.
       "timestamps": false,
     },
-    // SSH のターミナルを切断に強くする設定 (Windows 以外のリモートホストのみ)。
-    // シェルはリモートの Zed サーバーが預かるので、接続が切れても実行中のコマンドは止まらず、
-    // 再接続するとそれまでの出力を表示し直して続きから使えます。タブを閉じるとシェルも終了します。
+    // Make SSH terminals survive disconnects (remote hosts other than Windows only).
+    // The remote Zed server holds the shell, so running commands keep going when
+    // the connection drops, and on reconnect the earlier output is shown again and
+    // the terminal picks up where it left off. Closing the tab ends the shell too.
     "remote_persistence": {
-      // false にすると、従来どおり接続が切れたときにシェルも終了します。
+      // When false, the shell ends when the connection drops, as before.
       "enabled": true,
-      // どのターミナルからも接続されていない状態がこの時間 (時間単位) 続いたら、
-      // リモートのシェルを終了します。0 のときは終了しません。
+      // End the remote shell once no terminal has been attached to it for this
+      // many hours. 0 means never.
       "detached_timeout_hours": 24,
     },
     "toolbar": {
@@ -2713,13 +2729,16 @@
       "prettier": {
         "allowed": false,
       },
-      // zed-jp-enhance: CustomFormatter (C Indented-Brace Formatter) 相当の既定。
-      // GNU ベース + 制御文/関数名の後に空白、1 行形式の禁止、case ラベル字下げ。
-      // clang-format は `zed.exe` と同じフォルダ → その `bin\` → PATH の順に解決する
-      // (docs/jp-enhance/BUILD-WINDOWS.md「clang-format」参照)。
-      // `--lines={start_line}:{end_line}` は「選択範囲をフォーマット」用。
-      // 選択範囲ごとに 1 回ずつ展開され (1 始まり・両端含む)、ファイル全体の
-      // フォーマットではこの引数ごと落ちる。
+      // zed-jp-enhance: defaults equivalent to CustomFormatter (C Indented-Brace
+      // Formatter). GNU based, with a space after control statements and
+      // function names, no single-line forms, and indented case labels.
+      // clang-format is resolved from the folder of `zed.exe`, then its `bin\`,
+      // then the copy installed through `dev_tools` (`tools/bin` in Zed's data
+      // directory), then PATH (see "clang-format" in
+      // docs/jp-enhance/BUILD-WINDOWS.md).
+      // `--lines={start_line}:{end_line}` is for "Format Selections". It is
+      // expanded once per selection (1-based, both ends inclusive), and the
+      // whole argument is dropped when formatting the entire file.
       "formatter": {
         "external": {
           "command": "clang-format",
@@ -2736,10 +2755,10 @@
       "prettier": {
         "allowed": false,
       },
-      // C と同じ既定を適用する。`.h` は Zed では C ではなく C++ に分類される
-      // (crates/grammars/src/cpp/config.toml の path_suffixes) ので、ここを空に
-      // すると同じプロジェクトのヘッダーだけ整形されない。スタイル文字列自体が
-      // `Language: Cpp` なので C++ でもそのまま有効。
+      // Apply the same defaults as C. Zed classifies `.h` as C++, not C
+      // (path_suffixes in crates/grammars/src/cpp/config.toml), so leaving this
+      // empty would skip formatting only the headers of the same project. The
+      // style string itself says `Language: Cpp`, so it works as is for C++.
       "formatter": {
         "external": {
           "command": "clang-format",
@@ -3030,16 +3049,19 @@
     // Default: false
     "trust_all_worktrees": false,
   },
-  // ADR-F39: 開いたファイルの言語に必要な開発ツール (言語サーバー・フォーマッタ) が
-  // 見つからないときに、通知から導入できるようにする設定。
-  // 導入先はユーザーのデータディレクトリ内だけで、管理者権限は要りません。
-  // リモート接続中は接続先のホストを調べ、導入もそちらへ行われます
-  // (取得はこの PC のネットワーク経由なので、接続先がオフラインでも入ります)。
+  // ADR-F39: Settings for installing, from a notification, the development
+  // tools (language servers and formatters) that an opened file's language
+  // needs when they cannot be found.
+  // Tools are installed only into the user's data directory and need no
+  // administrator rights. While connected to a remote host, the host is checked
+  // and the tools are installed there (with `remote.relay_http_through_client`
+  // on, the default, they are downloaded through this machine's network, so
+  // this works even when the host is offline).
   "dev_tools": {
-    // 足りない開発ツールを通知で知らせるかどうか。
+    // Whether to notify about missing development tools.
     "suggest_missing": true,
-    // 案内しないツールの ID (例: "clangd" / "clang-format" / "ruff")。
-    // 通知の「今後表示しない」を押すとここに追加されます。
+    // IDs of tools not to suggest (e.g. "clangd" / "clang-format" / "ruff").
+    // Clicking "Don't Show This Again" in the notification adds them here.
     "ignored": [],
   },
   // How much memory clangd, the C and C++ language server, may use.
@@ -3319,12 +3341,14 @@
   "ssh_connections": [],
   // Whether to read ~/.ssh/config for ssh connection sources.
   "read_ssh_config": true,
-  // リモートホスト (SSH / WSL / dev container) 側の設定 (ADR-F27)。
+  // Settings for the remote host side (SSH / WSL / dev container) (ADR-F27).
   "remote": {
-    // リモートホストの外向き HTTP(S) (言語サーバー・node のダウンロード、拡張機能のアーカイブ、
-    // エージェントのバイナリ) を、リモート自身のネットワークではなくこの PC 経由で行うかどうか。
-    // インターネットに出られないリモートでも言語サーバーを自動取得でき、取得はこの PC の
-    // 許可リスト・同意ダイアログ・プロキシの管理下に入る。切り替えは再接続なしで反映される。
+    // Whether the remote host's outbound HTTP(S) (language server and node
+    // downloads, extension archives, agent binaries) goes through this machine
+    // instead of the remote's own network. Language servers can then be
+    // fetched automatically even on a remote without internet access, and the
+    // downloads fall under this machine's allowlist, consent dialogs and proxy.
+    // Changes apply without reconnecting.
     "relay_http_through_client": true
   },
   // Default timeout in seconds for all context server tool calls.

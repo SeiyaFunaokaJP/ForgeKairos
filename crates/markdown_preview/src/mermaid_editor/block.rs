@@ -14,8 +14,8 @@ use gpui::{AnyElement, App, Context, Entity, Focusable as _, Window, rems};
 use mermaid_render::block_model::{
     BLOCK_LINKS, BlockArrow, BlockArrowDirection, BlockColumns, BlockDocument, BlockEdge,
     BlockEntry, BlockGroup, BlockItem, BlockItemKind, BlockNode, BlockOutlineItem, BlockShape,
-    BlockStatement, arrow_directions_text, block_can_indent, block_indent, block_outdent,
-    block_release_children, block_remove, convert_block_item, is_valid_arrow_label,
+    BlockStatement, arrow_directions_text, block_can_indent, block_indent, block_link_name,
+    block_outdent, block_release_children, block_remove, convert_block_item, is_valid_arrow_label,
     is_valid_block_class_name, is_valid_block_comment, is_valid_block_css, is_valid_block_id,
     is_valid_block_label, is_valid_edge_label, parse_arrow_directions, parse_block_width,
 };
@@ -84,6 +84,16 @@ impl BlockOutlineItem for EntryRow {
 pub(super) struct StatementRow {
     pub(super) first: Option<Entity<Editor>>,
     pub(super) second: Option<Entity<Editor>>,
+}
+
+// One message per kind, so a translation can word each button as a whole.
+fn add_block_item_label(kind: BlockItemKind) -> &'static str {
+    match kind {
+        BlockItemKind::Node => i18n::t!("Add Block"),
+        BlockItemKind::Arrow => i18n::t!("Add Arrow"),
+        BlockItemKind::Space => i18n::t!("Add Space"),
+        BlockItemKind::Group => i18n::t!("Add Group"),
+    }
 }
 
 fn field_text(field: &Entity<Editor>, cx: &App) -> String {
@@ -260,8 +270,8 @@ fn shape_label(shape: Option<BlockShape>) -> &'static str {
 }
 
 fn link_label(link: &str) -> SharedString {
-    match BLOCK_LINKS.iter().find(|(spelling, _)| *spelling == link) {
-        Some((spelling, name)) => format!("{spelling} {}", i18n::tr(name)).into(),
+    match block_link_name(link) {
+        Some(name) => format!("{link} {name}").into(),
         None => link.to_string().into(),
     }
 }
@@ -845,7 +855,7 @@ impl MermaidEditor {
         for kind in BlockItemKind::ALL {
             buttons = buttons.child(add_button(
                 SharedString::from(format!("mermaid-block-add-{}", kind.id_prefix())),
-                i18n::t!("Add {label}", label = kind.label()),
+                add_block_item_label(kind),
                 cx.listener(move |this, _, window, cx| this.add_block_item(kind, window, cx)),
             ));
         }
@@ -1327,7 +1337,7 @@ impl MermaidEditor {
             // it stays selectable so that looking at the menu changes nothing.
             let mut offered = BLOCK_LINKS
                 .iter()
-                .map(|(spelling, _)| spelling.to_string())
+                .map(|spelling| spelling.to_string())
                 .collect::<Vec<_>>();
             if !offered.contains(&selected) {
                 offered.push(selected.clone());

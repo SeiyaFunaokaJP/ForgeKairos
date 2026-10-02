@@ -1,0 +1,66 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgctxt "mcp_server_template"
+msgid "Absolute path of the file to store the memory in"
+msgstr "記憶を保存するファイルの絶対パス"
+
+msgctxt "mcp_server_template"
+msgid "Absolute path of the folder the server may use"
+msgstr "使わせるフォルダーの絶対パス"
+
+msgctxt "mcp_server_template"
+msgid "Bearer <GitHub personal access token>"
+msgstr "Bearer <GitHub の個人用アクセストークン>"
+
+msgctxt "mcp_server_template"
+msgid "Fetch (Web Page Retrieval)"
+msgstr "Fetch (Web ページの取得)"
+
+msgctxt "mcp_server_template"
+msgid "Fetches the web page at a given URL and passes it on as Markdown."
+msgstr "指定した URL の Web ページを取得し、Markdown に変換して渡します。"
+
+msgctxt "mcp_server_template"
+msgid "File System"
+msgstr "ファイルシステム"
+
+msgctxt "mcp_server_template"
+msgid "GitHub's official remote MCP server. Works with repositories, issues and pull requests. Requires a GitHub personal access token."
+msgstr "GitHub 公式のリモート MCP サーバーです。リポジトリ・Issue・プルリクエストを扱います。GitHub の個人用アクセストークンが必要です。"
+
+msgctxt "mcp_server_template"
+msgid "Launches a browser and operates it: opens pages, clicks and types."
+msgstr "ブラウザーを起動し、ページを開く・クリックする・入力するといった操作をします。"
+
+msgctxt "mcp_server_template"
+msgid "Memory (Knowledge Graph)"
+msgstr "Memory (知識グラフ)"
+
+msgctxt "mcp_server_template"
+msgid "Node.js (npx), Google Chrome"
+msgstr "Node.js (npx)、Google Chrome"
+
+msgctxt "mcp_server_template"
+msgid "Playwright (Browser Automation)"
+msgstr "Playwright (ブラウザー操作)"
+
+msgctxt "mcp_server_template"
+msgid "Reads, writes and searches files inside the folders you specify. Folders you don't specify are left alone."
+msgstr "指定したフォルダーの中のファイルを読み書き・検索します。指定していないフォルダーには触れません。"
+
+msgctxt "mcp_server_template"
+msgid "Saves what should be remembered across conversations to a file, as a knowledge graph."
+msgstr "会話をまたいで覚えておきたい事柄を、知識グラフとしてファイルに保存します。"
+
+msgctxt "mcp_server_template"
+msgid "The browser's own traffic may ignore the proxy environment variables, and then the network allowlist does not control it."
+msgstr "ブラウザー自身の通信はプロキシの環境変数に従わないことがあり、その場合はネットワーク許可リストで統制されません。"
+
+msgctxt "mcp_server_template"
+msgid "The hosts of the sites to fetch also have to be added to the network allowlist."
+msgstr "取得するサイトのホストも、ネットワーク許可リストに追加する必要があります。"

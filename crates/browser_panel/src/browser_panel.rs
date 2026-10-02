@@ -75,41 +75,41 @@ const MAX_QUERY_CHARS: usize = 400;
 actions!(
     browser_panel,
     [
-        /// 内蔵ブラウザーパネルの表示を切り替えます。
+        /// Toggles the built-in browser panel.
         Toggle,
-        /// 内蔵ブラウザーパネルのフォーカスを切り替えます。
+        /// Toggles focus on the built-in browser panel.
         ToggleFocus,
-        /// エディター領域に新しいブラウザータブを開きます。
+        /// Opens a new browser tab in the editor area.
         NewBrowserTab,
-        /// ブラウザーパネルに新しいタブを開きます。
+        /// Opens a new tab in the browser panel.
         NewPanelTab,
-        /// ブラウザーパネルの今のタブを閉じます。
+        /// Closes the current tab of the browser panel.
         ClosePanelTab,
-        /// ブラウザーパネルで開いているページをエディター領域のタブへ移します。
+        /// Moves the page open in the browser panel to a tab in the editor area.
         OpenInCenter,
-        /// 前のページに戻ります。
+        /// Goes back to the previous page.
         NavigateBack,
-        /// 次のページに進みます。
+        /// Goes forward to the next page.
         NavigateForward,
-        /// 現在のページを再読み込みします。
+        /// Reloads the current page.
         Reload,
-        /// アドレスバーにフォーカスを移します。
+        /// Moves focus to the address bar.
         FocusAddressBar,
-        /// アドレスバーに入力した URL または検索語を開きます。
+        /// Opens the URL or the search terms typed in the address bar.
         SubmitAddress,
-        /// ホームに設定した URL を開きます。
+        /// Opens the URL set as the home page.
         GoHome,
-        /// 現在のページを OS の既定のブラウザーで開きます。
+        /// Opens the current page in the system's default browser.
         OpenInExternalBrowser,
-        /// ブックマークの一覧を開閉します。
+        /// Shows or hides the list of bookmarks.
         ToggleBookmarks,
-        /// 現在のページをブックマークに追加します。
+        /// Adds the current page to the bookmarks.
         AddBookmark,
-        /// 今開いているページを「起動時に開くページ」(browser.home_url) にします。
+        /// Makes the current page the page opened at startup (browser.home_url).
         SetAsHomePage,
-        /// 今のタブを右に切り出して、ブラウザーパネルを左右に分割します。
+        /// Moves the current tab to the right, splitting the browser panel in two.
         SplitPanelRight,
-        /// 分割したブラウザーパネルの次のペインにフォーカスを移します。
+        /// Moves focus to the next pane of the split browser panel.
         FocusNextPaneGroup,
     ]
 );

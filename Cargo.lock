@@ -4550,6 +4550,7 @@ dependencies = [
  "gpui",
  "http 1.3.1",
  "http_client",
+ "i18n",
  "indoc",
  "log",
  "menu",
@@ -8142,6 +8143,7 @@ dependencies = [
  "settings",
  "symbol_index",
  "tempfile",
+ "unicode-normalization",
  "util",
 ]
 
@@ -8783,6 +8785,8 @@ dependencies = [
  "feature_flags",
  "fs",
  "gpui",
+ "i18n",
+ "i18n_catalog",
  "language",
  "parking_lot",
  "paths",
@@ -16422,6 +16426,7 @@ dependencies = [
  "anyhow",
  "ignore",
  "log",
+ "memchr",
  "memmap2",
  "parking_lot",
  "rayon",

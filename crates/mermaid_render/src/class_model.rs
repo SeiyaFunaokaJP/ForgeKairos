@@ -813,7 +813,7 @@ fn parse_plain_statement(statement: &str) -> Result<ClassItem> {
 
     if rest.starts_with(":::") {
         bail!(i18n::t!(
-            "Diagrams that give classes style classes with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+            "Style classes applied with `:::` are not supported by the structured editor ({statement}). Edit it as text."
         ));
     }
     // A name ends at `:`, so a statement whose next character is one adds a
@@ -836,7 +836,7 @@ fn parse_plain_statement(statement: &str) -> Result<ClassItem> {
     let rest = rest.trim();
     let label = match rest.strip_prefix(':') {
         Some(_) if rest.starts_with(":::") => bail!(i18n::t!(
-            "Diagrams that give classes style classes with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+            "Style classes applied with `:::` are not supported by the structured editor ({statement}). Edit it as text."
         )),
         Some(label) => Some(label.trim().to_string()),
         None if rest.is_empty() => None,

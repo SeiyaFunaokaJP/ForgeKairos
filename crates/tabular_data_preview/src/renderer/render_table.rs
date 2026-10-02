@@ -19,9 +19,9 @@ use crate::{
 actions!(
     tabular_data,
     [
-        /// 表の末尾に空の行を 1 行足します。
+        /// Adds an empty row at the end of the table.
         AppendRow,
-        /// 表の右端に空の列を 1 列足します。
+        /// Adds an empty column at the right end of the table.
         AppendColumn,
     ]
 );

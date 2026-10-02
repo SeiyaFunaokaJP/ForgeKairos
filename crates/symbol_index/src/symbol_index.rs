@@ -16,7 +16,7 @@ mod type_resolve;
 
 use std::{
     fs::{self, File},
-    io,
+    io, ops,
     path::{Path, PathBuf},
     sync::{
         Arc, OnceLock,
@@ -32,10 +32,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-    extract::{ExtractedFile, LanguageGuess, language_for_path},
+    extract::{ExtractedFile, LanguageGuess, MAX_QUALIFIED_NAMES, language_for_path},
     storage::{
         ContentHash, MANIFEST_FILE_NAME, Manifest, ManifestSegment, MetadataOverride, Segment,
-        SegmentFileInput, is_valid_relative_path, parse_segment_file_name, write_atomically,
+        SegmentFileInput, create_private_directory, is_valid_relative_path,
+        parse_segment_file_name, private_file_options, write_atomically,
     },
 };
 
@@ -49,12 +50,19 @@ pub use crate::type_resolve::*;
 /// Modification times closer than this to the moment a file was read cannot prove that the
 /// file did not change again within the same timestamp tick, so such files are re-hashed.
 const RACY_WINDOW_NANOS: u64 = 2_000_000_000;
+/// Names per unit of work when a search scans all names.
+const SEARCH_RUN_NAMES: u32 = 16 * 1024;
 /// Compaction starts once this many small or mostly superseded segments have accumulated.
 const COMPACTION_TRIGGER: usize = 4;
 /// Segments are cut by source size as well as file count, so a segment with few files can
 /// still be large; only segments below this size count as small.
 const SMALL_SEGMENT_BYTES: u64 = 8 * 1024 * 1024;
 const LOCK_FILE_NAME: &str = "lock";
+/// The manifest is rewritten at most this often while files keep changing (a branch switch
+/// changes thousands over several seconds), at the end of every full update, and by
+/// [`SymbolIndex::save`]. What was committed since the last write is redone by the full update
+/// that follows a crash.
+pub const MANIFEST_WRITE_INTERVAL: Duration = Duration::from_secs(5);
 /// Rewritten each time the index is opened; its modification time is when the index was
 /// last used (see [`index_last_used`]).
 const LAST_USED_FILE_NAME: &str = "last-used";
@@ -406,9 +414,55 @@ impl Snapshot {
 }
 
 struct WriterState {
+    /// What queries see. It is ahead of the manifest on disk until the next write.
     manifest: Manifest,
-    /// Superseded segment files that could not be deleted yet (still mapped on Windows).
+    /// Superseded segment files that could not be deleted yet (still mapped on Windows, or
+    /// still named by the manifest on disk).
     pending_deletions: Vec<u64>,
+    /// The segments named by the manifest on disk: their files must outlive that manifest.
+    written_segments: FxHashSet<u64>,
+    manifest_unwritten: bool,
+    manifest_written_at: Instant,
+    #[cfg(test)]
+    manifest_writes: usize,
+}
+
+impl WriterState {
+    /// Writes the manifest if it changed since it was last written. Until then a crash leaves
+    /// the previous manifest, whose segments are all still on disk (see
+    /// [`SymbolIndex::delete_pending`]); segments written since are unreferenced and removed
+    /// when the index is opened again.
+    fn write_manifest(&mut self, directory: &Path) -> Result<()> {
+        if !self.manifest_unwritten {
+            return Ok(());
+        }
+        write_atomically(&directory.join(MANIFEST_FILE_NAME), &self.manifest.encode())?;
+        self.written_segments = self
+            .manifest
+            .segments
+            .iter()
+            .map(|segment| segment.id)
+            .collect();
+        self.manifest_unwritten = false;
+        self.manifest_written_at = Instant::now();
+        #[cfg(test)]
+        {
+            self.manifest_writes += 1;
+        }
+        Ok(())
+    }
+
+    fn new(manifest: Manifest) -> Self {
+        Self {
+            written_segments: manifest.segments.iter().map(|segment| segment.id).collect(),
+            manifest,
+            pending_deletions: Vec::new(),
+            manifest_unwritten: false,
+            manifest_written_at: Instant::now(),
+            #[cfg(test)]
+            manifest_writes: 0,
+        }
+    }
 }
 
 /// An open index. Queries take `&self` and run against a consistent snapshot while an update
@@ -462,9 +516,8 @@ impl SymbolIndex {
     /// different format version, a damaged file) is discarded and starts empty; see
     /// [`SymbolIndex::reset_reason`].
     pub fn open(index_dir: &Path, config: IndexConfig) -> Result<Self> {
-        fs::create_dir_all(index_dir)
-            .with_context(|| format!("creating index directory {}", index_dir.display()))?;
-        let lock_file = File::options()
+        create_private_directory(index_dir)?;
+        let lock_file = private_file_options()
             .create(true)
             .truncate(false)
             .write(true)
@@ -486,17 +539,21 @@ impl SymbolIndex {
         }
         // Without the marker the index looks as old as its last change, and may be removed as
         // unused while it is used every day without changes.
-        if let Err(error) = fs::write(
-            index_dir.join(LAST_USED_FILE_NAME),
-            now_nanos().to_le_bytes(),
-        ) {
+        let marked = private_file_options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(index_dir.join(LAST_USED_FILE_NAME))
+            .and_then(|mut file| io::Write::write_all(&mut file, &now_nanos().to_le_bytes()));
+        if let Err(error) = marked {
             log::warn!(
                 "symbol_index: cannot mark the index in {} as used: {error}",
                 index_dir.display()
             );
         }
 
-        let (manifest, segments, reset_reason) = match load(index_dir, config.verify_checksums) {
+        let (mut manifest, segments, reset_reason) = match load(index_dir, config.verify_checksums)
+        {
             Ok((manifest, segments)) => (manifest, segments, None),
             Err(error) => {
                 let reason = format!("{error:#}");
@@ -519,6 +576,15 @@ impl SymbolIndex {
                 (manifest, Vec::new(), Some(reason))
             }
         };
+        // Segments written after the manifest was last saved are removed below, but a client of
+        // a remote server may still hold definition ids naming them, so their ids stay used.
+        if let Some(next_segment_id) = highest_segment_id(index_dir)?
+            .and_then(|id| id.checked_add(1))
+            .filter(|&id| id <= u64::MAX / 2)
+            && next_segment_id > manifest.next_segment_id
+        {
+            manifest.next_segment_id = next_segment_id;
+        }
         let referenced: FxHashSet<u64> =
             manifest.segments.iter().map(|segment| segment.id).collect();
         remove_index_files(index_dir, &referenced)?;
@@ -528,10 +594,7 @@ impl SymbolIndex {
             directory: index_dir.to_path_buf(),
             config,
             snapshot: RwLock::new(Arc::new(snapshot)),
-            writer: Mutex::new(WriterState {
-                manifest,
-                pending_deletions: Vec::new(),
-            }),
+            writer: Mutex::new(WriterState::new(manifest)),
             thread_pool: OnceLock::new(),
             reset_reason,
             _lock_file: lock_file,
@@ -638,6 +701,8 @@ impl SymbolIndex {
             let manifest = writer.manifest.clone();
             self.commit(&mut writer, manifest, Vec::new())?;
         }
+        self.write_manifest(&mut writer)?;
+        self.delete_pending(&mut writer);
         stats.elapsed = started.elapsed();
         Ok(stats)
     }
@@ -699,6 +764,8 @@ impl SymbolIndex {
             cancel,
             &mut stats,
         )?;
+        self.write_manifest_if_due(&mut writer)?;
+        self.delete_pending(&mut writer);
         stats.elapsed = started.elapsed();
         Ok(stats)
     }
@@ -825,7 +892,6 @@ impl SymbolIndex {
         if !stats.cancelled {
             self.compact(writer, progress, cancel, stats)?;
         }
-        self.delete_pending(writer);
         Ok(())
     }
 
@@ -951,7 +1017,6 @@ impl SymbolIndex {
             .overrides
             .retain(|metadata| !emptied.contains(&metadata.segment));
 
-        write_atomically(&self.directory.join(MANIFEST_FILE_NAME), &manifest.encode())?;
         let ordered: Vec<Arc<Segment>> = manifest
             .segments
             .iter()
@@ -980,7 +1045,29 @@ impl SymbolIndex {
             .collect();
         writer.pending_deletions.extend(removed);
         writer.manifest = manifest;
+        writer.manifest_unwritten = true;
         *self.snapshot.write() = Arc::new(snapshot);
+        self.write_manifest_if_due(writer)
+    }
+
+    fn write_manifest_if_due(&self, writer: &mut WriterState) -> Result<()> {
+        if writer.manifest_written_at.elapsed() >= MANIFEST_WRITE_INTERVAL {
+            writer.write_manifest(&self.directory)?;
+        }
+        Ok(())
+    }
+
+    fn write_manifest(&self, writer: &mut WriterState) -> Result<()> {
+        writer.write_manifest(&self.directory)
+    }
+
+    /// Writes what updates committed without writing it yet (they write at most every
+    /// [`MANIFEST_WRITE_INTERVAL`]), and removes the segment files no longer needed. Meant for
+    /// when updates have stopped; it does nothing when everything is written.
+    pub fn save(&self) -> Result<()> {
+        let mut writer = self.writer.lock();
+        self.write_manifest(&mut writer)?;
+        self.delete_pending(&mut writer);
         Ok(())
     }
 
@@ -995,6 +1082,11 @@ impl SymbolIndex {
             if live.contains(&id) {
                 log::error!("symbol_index: segment {id} is live and pending deletion");
                 return false;
+            }
+            // The manifest on disk still names it; deleting it now would make a crash discard
+            // the whole index.
+            if writer.written_segments.contains(&id) {
+                return true;
             }
             let path = Segment::path(&self.directory, id);
             match fs::remove_file(&path) {
@@ -1440,37 +1532,118 @@ impl SymbolIndex {
             .map(|byte| byte.to_ascii_lowercase())
             .collect();
         let folded_query = folded_query.as_slice();
-        // Substring and fuzzy matching visit every name, so spread segments over the workers;
-        // a prefix is a binary search plus a short run and is cheaper to do in place.
-        let per_segment: Vec<Vec<(&str, u32)>> = match (mode, self.thread_pool()) {
-            (SearchMode::Substring | SearchMode::Fuzzy, Ok(pool)) => pool.install(|| {
-                snapshot
+        // A C++ function is also recorded under up to `MAX_QUALIFIED_NAMES` qualified names, and
+        // only a qualified query matches those, so such a query reads enough names to fill the
+        // results after the names of one place are merged.
+        let query_is_qualified = query.contains("::");
+        let name_limit = if query_is_qualified {
+            limit.saturating_mul(MAX_QUALIFIED_NAMES)
+        } else {
+            limit
+        };
+        // Substring and fuzzy matching scan every name, so spread runs of names over the
+        // workers (runs rather than whole segments, which differ in size and are fewer than the
+        // workers on a large machine); a prefix is a binary search plus a short run and is
+        // cheaper to do in place.
+        let per_segment: Vec<Vec<(&str, u32)>> = match (mode, search_pool()) {
+            (SearchMode::Substring | SearchMode::Fuzzy, Some(pool)) => {
+                let runs: Vec<(&SegmentView, ops::Range<u32>)> = snapshot
                     .segments
-                    .par_iter()
-                    .map(|view| segment_candidates(view, mode, query, folded_query, limit))
-                    .collect()
-            }),
+                    .iter()
+                    .flat_map(|view| {
+                        let count = view.segment.name_count();
+                        (0..count)
+                            .step_by(SEARCH_RUN_NAMES as usize)
+                            .map(move |start| {
+                                (
+                                    view,
+                                    start..start.saturating_add(SEARCH_RUN_NAMES).min(count),
+                                )
+                            })
+                    })
+                    .collect();
+                pool.install(|| {
+                    runs.par_iter()
+                        .map(|(view, names)| {
+                            segment_candidates(
+                                view,
+                                names.clone(),
+                                mode,
+                                query,
+                                folded_query,
+                                name_limit,
+                            )
+                        })
+                        .collect()
+                })
+            }
             _ => snapshot
                 .segments
                 .iter()
-                .map(|view| segment_candidates(view, mode, query, folded_query, limit))
+                .map(|view| {
+                    segment_candidates(
+                        view,
+                        0..view.segment.name_count(),
+                        mode,
+                        query,
+                        folded_query,
+                        name_limit,
+                    )
+                })
                 .collect(),
         };
-        let mut scores: FxHashMap<&str, u32> = FxHashMap::default();
-        for (name, score) in per_segment.into_iter().flatten() {
-            let slot = scores.entry(name).or_insert(0);
-            *slot = (*slot).max(score);
-        }
-        let mut ranked: Vec<(&str, u32)> = scores.into_iter().collect();
-        ranked.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0)));
-        let mut matches = Vec::new();
-        for (name, score) in ranked {
-            if matches.len() >= limit {
-                break;
+        let mut candidates: Vec<(&str, u32)> = per_segment.into_iter().flatten().collect();
+        // Ranked by score, then by name. A name's score depends only on the name, so its copies
+        // from several segments fall in one group of equal scores; sorting by score alone first
+        // keeps the name comparisons to the groups that reach the limit.
+        candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.1));
+        let mut ranked: Vec<(&str, u32)> = Vec::new();
+        let mut group_start = 0;
+        while ranked.len() < name_limit
+            && let Some(&(_, score)) = candidates.get(group_start)
+        {
+            let group_length = candidates
+                .get(group_start..)
+                .unwrap_or_default()
+                .partition_point(|candidate| candidate.1 == score);
+            let group_end = group_start + group_length.max(1);
+            if let Some(group) = candidates.get_mut(group_start..group_end) {
+                group.sort_unstable_by(|left, right| rank_order(left, right, query_is_qualified));
+                for &(name, score) in group.iter() {
+                    if ranked.last().is_none_or(|&(last, _)| last != name) {
+                        ranked.push((name, score));
+                    }
+                }
             }
-            for definition in self.definitions_in(&snapshot, name) {
+            group_start = group_end;
+        }
+        // Every candidate has a definition, so the first `limit` names fill the results (of a
+        // qualified query, once merged by place). Their definitions are looked up in every
+        // segment, which is worth spreading over the workers.
+        ranked.truncate(name_limit);
+        let definitions: Vec<Vec<Definition>> = match search_pool() {
+            Some(pool) if ranked.len() > 1 => pool.install(|| {
+                ranked
+                    .par_iter()
+                    .map(|(name, _)| self.definitions_in(&snapshot, name))
+                    .collect()
+            }),
+            _ => ranked
+                .iter()
+                .map(|(name, _)| self.definitions_in(&snapshot, name))
+                .collect(),
+        };
+        if query_is_qualified {
+            return merge_qualified_names(
+                ranked.iter().map(|&(_, score)| score).zip(definitions),
+                limit,
+            );
+        }
+        let mut matches = Vec::new();
+        for (&(_, score), definitions) in ranked.iter().zip(definitions) {
+            for definition in definitions {
                 if matches.len() >= limit {
-                    break;
+                    return matches;
                 }
                 matches.push(SymbolMatch { definition, score });
             }
@@ -1479,9 +1652,68 @@ impl SymbolIndex {
     }
 }
 
+/// One place is listed once, under the name closest to the query. Names come best first, and
+/// for one place that is the closest: the query itself scores highest, then the best score, and
+/// equal scores rank the shorter qualified name first (see [`rank_order`]). Places come in the
+/// order of their best name; a declaration and a definition are different places.
+fn merge_qualified_names(
+    ranked: impl Iterator<Item = (u32, Vec<Definition>)>,
+    limit: usize,
+) -> Vec<SymbolMatch> {
+    let mut matches: Vec<SymbolMatch> = Vec::new();
+    let mut places: FxHashSet<(Arc<str>, Position, Position)> = FxHashSet::default();
+    for (score, definitions) in ranked {
+        for definition in definitions {
+            if matches.len() >= limit {
+                return matches;
+            }
+            let place = (
+                definition.path.clone(),
+                definition.name_range.start,
+                definition.name_range.end,
+            );
+            if places.insert(place) {
+                matches.push(SymbolMatch { definition, score });
+            }
+        }
+    }
+    matches
+}
+
+impl Drop for SymbolIndex {
+    fn drop(&mut self) {
+        if let Err(error) = self.writer.get_mut().write_manifest(&self.directory) {
+            log::warn!(
+                "symbol_index: cannot save the index in {}: {error:#}",
+                self.directory.display()
+            );
+        }
+    }
+}
+
+/// Workers for searches, shared by every index in the process. Searches do not use the
+/// indexing workers: rayon runs a job handed in from outside only once its workers run out of
+/// their own work, so a search would wait for a whole batch of files to be parsed.
+fn search_pool() -> Option<&'static rayon::ThreadPool> {
+    static POOL: OnceLock<Option<rayon::ThreadPool>> = OnceLock::new();
+    POOL.get_or_init(|| {
+        let threads = std::thread::available_parallelism().map_or(4, |count| count.get());
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .thread_name(|index| format!("symbol-search-{index}"))
+            .build()
+            .map_err(|error| log::error!("symbol_index: starting the search threads: {error}"))
+            .ok()
+    })
+    .as_ref()
+}
+
 /// Names in one segment that match and have a live definition there, with their scores.
+/// Substring and fuzzy matching look only at the `names` run; a prefix looks at the whole
+/// segment.
 fn segment_candidates<'a>(
     view: &'a SegmentView,
+    names: ops::Range<u32>,
     mode: SearchMode,
     query: &str,
     folded_query: &[u8],
@@ -1489,6 +1721,9 @@ fn segment_candidates<'a>(
 ) -> Vec<(&'a str, u32)> {
     let segment = &view.segment;
     let mut found = Vec::new();
+    // A C++ function is also recorded as `Class::method`; those names only answer a query
+    // that is qualified itself, so that `method` does not list the same function twice.
+    let query_is_qualified = query.contains("::");
     let mut consider = |name_index: u32| -> bool {
         let Some(record) = segment.name(name_index) else {
             return true;
@@ -1496,13 +1731,17 @@ fn segment_candidates<'a>(
         let Some(name) = segment.string_bytes(record.text) else {
             return true;
         };
+        // A prefix scan ends at the first name past the prefix, qualified or not.
+        if mode == SearchMode::Prefix && !starts_with_folded(name, folded_query) {
+            return false;
+        }
+        if !query_is_qualified && name.contains(&b':') {
+            return true;
+        }
         let score = match mode {
-            SearchMode::Prefix => {
-                if !starts_with_folded(name, folded_query) {
-                    return false;
-                }
-                prefix_score(name, query.as_bytes())
-            }
+            SearchMode::Prefix => prefix_score(name, query.as_bytes()),
+            // Many names are only called or assigned; skipping them before scoring is cheap.
+            _ if record.definitions.1 == 0 => return true,
             SearchMode::Substring => substring_score(name, query.as_bytes(), folded_query),
             SearchMode::Fuzzy => fuzzy_score(name, folded_query),
         };
@@ -1526,35 +1765,148 @@ fn segment_candidates<'a>(
             && let Ok(name) = std::str::from_utf8(name)
         {
             found.push((name, score));
+            if found.len() >= limit.saturating_mul(2).max(64) {
+                keep_best(&mut found, limit, query_is_qualified);
+            }
         }
         true
     };
-    match mode {
-        SearchMode::Prefix => {
+    match (mode, rarest_byte(folded_query)) {
+        (SearchMode::Prefix, _) => {
             let mut name_index = segment.folded_lower_bound(folded_query);
             while name_index < segment.name_count() && consider(name_index) {
                 name_index += 1;
             }
         }
-        SearchMode::Substring | SearchMode::Fuzzy => {
-            for name_index in 0..segment.name_count() {
+        // Both modes only match names containing every query byte, so only names containing
+        // the rarest one are scored. Those are found by scanning the packed name text, which
+        // is a fraction of the size of the name records a scan over all names reads.
+        (SearchMode::Substring | SearchMode::Fuzzy, Some(anchor)) => {
+            let text_end = names
+                .end
+                .checked_sub(1)
+                .and_then(|last| segment.name(last))
+                .map_or(0, |record| {
+                    (record.text.0 as usize).saturating_add(record.text.1 as usize)
+                });
+            let text = segment.names_text();
+            let text = text.get(..text_end.min(text.len())).unwrap_or_default();
+            let anchor_offset = folded_query
+                .iter()
+                .position(|&byte| byte == anchor)
+                .unwrap_or(0);
+            let mut position = segment
+                .name(names.start)
+                .map_or(text.len(), |record| record.text.0 as usize);
+            let mut cursor = names.start;
+            while let Some(offset) = text
+                .get(position..)
+                .and_then(|rest| find_folded_byte(rest, anchor))
+            {
+                let hit = position + offset;
+                // A substring must also surround the anchor; checking that in the packed text
+                // first skips looking up the name for most hits.
+                let match_start = match mode {
+                    SearchMode::Substring => {
+                        let surrounded = hit.checked_sub(anchor_offset).filter(|&start| {
+                            start
+                                .checked_add(folded_query.len())
+                                .and_then(|end| text.get(start..end))
+                                .is_some_and(|window| window.eq_ignore_ascii_case(folded_query))
+                        });
+                        let Some(start) = surrounded else {
+                            position = hit + 1;
+                            continue;
+                        };
+                        start
+                    }
+                    _ => hit,
+                };
+                let name_index = segment.name_at_text_offset(cursor, match_start);
+                if name_index >= names.end {
+                    break;
+                }
+                let Some(record) = segment.name(name_index) else {
+                    break;
+                };
+                let start = record.text.0 as usize;
+                let end = start.saturating_add(record.text.1 as usize);
+                let match_end = match mode {
+                    SearchMode::Substring => match_start.saturating_add(folded_query.len()),
+                    _ => match_start + 1,
+                };
+                if start <= match_start && match_end <= end {
+                    consider(name_index);
+                    position = end;
+                    cursor = name_index.saturating_add(1);
+                } else {
+                    // A substring match across two names, or a damaged segment; stepping one
+                    // byte still ends the scan.
+                    position = hit + 1;
+                    cursor = name_index;
+                }
+            }
+        }
+        (SearchMode::Substring | SearchMode::Fuzzy, None) => {
+            for name_index in names {
                 consider(name_index);
             }
         }
     }
-    // Every name has a definition, so the best `limit` names overall are among the best
-    // `limit` of each segment; keeping only those keeps short queries that match most names
-    // from building a huge candidate map.
-    let by_rank = |left: &(&str, u32), right: &(&str, u32)| {
-        right.1.cmp(&left.1).then_with(|| left.0.cmp(right.0))
-    };
+    keep_best(&mut found, limit, query_is_qualified);
+    found
+}
+
+/// Keeps the best `limit` of `found`. Every name has a definition, so the best `limit` names
+/// overall are among the best `limit` of each run of names; keeping only those keeps short
+/// queries that match most names from building (and freeing) huge candidate lists.
+fn keep_best(found: &mut Vec<(&str, u32)>, limit: usize, shorter_first: bool) {
     if limit == 0 {
         found.clear();
     } else if found.len() > limit {
-        found.select_nth_unstable_by(limit - 1, by_rank);
+        found.select_nth_unstable_by(limit - 1, |left, right| {
+            rank_order(left, right, shorter_first)
+        });
         found.truncate(limit);
     }
-    found
+}
+
+/// Best score first, then by name. Among the qualified names of one place the shorter one is
+/// closer to the query, so with `shorter_first` (for qualified queries) equal scores rank the
+/// shorter name first and the first name seen for a place is its closest one.
+fn rank_order(left: &(&str, u32), right: &(&str, u32), shorter_first: bool) -> std::cmp::Ordering {
+    let by_length = if shorter_first {
+        left.0.len().cmp(&right.0.len())
+    } else {
+        std::cmp::Ordering::Equal
+    };
+    right
+        .1
+        .cmp(&left.1)
+        .then(by_length)
+        .then_with(|| left.0.cmp(right.0))
+}
+
+/// The query byte that the fewest names are expected to contain, by how often bytes occur in C
+/// identifiers.
+fn rarest_byte(folded_query: &[u8]) -> Option<u8> {
+    const MOST_COMMON_FIRST: &[u8] = b"_etarisnoclduphmgfbkvwyx0123456789zjq";
+    folded_query.iter().copied().max_by_key(|&byte| {
+        MOST_COMMON_FIRST
+            .iter()
+            .position(|&common| common == byte)
+            .unwrap_or(MOST_COMMON_FIRST.len())
+    })
+}
+
+/// The first position of `folded_byte` in `haystack`, in either letter case.
+fn find_folded_byte(haystack: &[u8], folded_byte: u8) -> Option<usize> {
+    let upper = folded_byte.to_ascii_uppercase();
+    if upper == folded_byte {
+        memchr::memchr(folded_byte, haystack)
+    } else {
+        memchr::memchr2(folded_byte, upper, haystack)
+    }
 }
 
 fn starts_with_folded(name: &[u8], folded_prefix: &[u8]) -> bool {

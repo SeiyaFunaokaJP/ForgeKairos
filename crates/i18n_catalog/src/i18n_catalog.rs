@@ -1029,15 +1029,18 @@ msgstr \"Translated {index}\"
     }
 
     /// The files translated where Zed draws them (`_actions.po`, `_menus.po`,
-    /// `_settings.po`) keep every entry under a context, so their short labels
-    /// never translate the same English met elsewhere (a language named "Go",
-    /// another crate's "No"); the crates' files leave those contexts to them.
+    /// `_settings.po`, `_action_docs.po`, `_settings_schema.po`) keep every entry
+    /// under a context, so their short labels never translate the same English met
+    /// elsewhere (a language named "Go", another crate's "No"); the crates' files
+    /// leave those contexts to them.
     #[test]
     fn bundled_area_files_keep_to_their_contexts() {
         let area_contexts = [
             ("_actions.po", i18n::context::ACTION),
             ("_menus.po", i18n::context::MENU),
             ("_settings.po", i18n::context::SETTINGS),
+            ("_action_docs.po", i18n::context::ACTION_DOCUMENTATION),
+            ("_settings_schema.po", i18n::context::SETTINGS_SCHEMA),
         ];
         let mut misplaced = Vec::new();
         for tag in embedded_tags() {
@@ -1066,6 +1069,28 @@ msgstr \"Translated {index}\"
             }
         }
         assert!(misplaced.is_empty(), "{misplaced:#?}");
+    }
+
+    #[test]
+    fn action_descriptions_are_looked_up_by_the_action_name() {
+        let english = "Copies selected text to the clipboard.";
+        assert_eq!(i18n::action_documentation("editor::Copy", english), english);
+
+        let catalog = load("ja", None).expect("load").expect("ja is bundled");
+        let _override = i18n::test_support::LocaleOverride::new(Some(catalog));
+        assert_eq!(
+            i18n::action_documentation("editor::Copy", english),
+            "選択テキストをクリップボードにコピーします。"
+        );
+        assert_eq!(
+            i18n::action_documentation("editor::NotAnAction", english),
+            english
+        );
+        assert_eq!(
+            i18n::action_documentation(english, english),
+            english,
+            "the English text is not a key"
+        );
     }
 
     #[test]

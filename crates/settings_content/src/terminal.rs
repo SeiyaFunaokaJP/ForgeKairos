@@ -198,7 +198,7 @@ pub struct TerminalSettingsContent {
     /// Whether SSH terminals keep their shell running on the remote host
     /// across disconnects, and for how long.
     pub remote_persistence: Option<TerminalRemotePersistenceContent>,
-    /// マクロの実行ピッカーを開いたときフォルダーを閉じた状態にする。
+    /// Whether the folders of the macro picker start collapsed when it opens.
     ///
     /// Default: false
     pub macro_picker_folders_collapsed: Option<bool>,

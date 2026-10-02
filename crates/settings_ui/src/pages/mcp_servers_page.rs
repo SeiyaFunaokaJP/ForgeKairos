@@ -2830,7 +2830,7 @@ fn render_mcp_server_form_page(
                 .child(render_kv_section(
                     settings_window,
                     i18n::t!("Environment Variables"),
-                    i18n::t!("Environment variables provided to the server process."),
+                    i18n::t!("Environment variables provided to the server process. Enter the values the server's documentation asks for here, such as API keys or tokens."),
                     &form.env,
                     McpKvKind::Env,
                     cx,
@@ -2849,14 +2849,14 @@ fn render_mcp_server_form_page(
                 .child(render_form_field(
                     settings_window,
                     i18n::t!("URL"),
-                    i18n::t!("Required. The base URL of the remote MCP server."),
+                    i18n::t!("Required. The base URL of the remote MCP server, such as https://example.com/mcp."),
                     &form.url,
                     cx,
                 ))
                 .child(render_kv_section(
                     settings_window,
                     i18n::t!("Headers"),
-                    i18n::t!("HTTP headers sent with each request to the server."),
+                    i18n::t!("HTTP headers sent with each request to the server. For a server that authenticates with a token, set Authorization to \"Bearer <token>\"."),
                     &form.headers,
                     McpKvKind::Header,
                     cx,
@@ -2871,7 +2871,7 @@ fn render_mcp_server_form_page(
                 .child(render_form_field(
                     settings_window,
                     i18n::t!("OAuth Client ID"),
-                    i18n::t!("Optional OAuth client ID used to authenticate with the server."),
+                    i18n::t!("Optional OAuth client ID used to authenticate with the server. Leave it empty if the server supports dynamic client registration: connecting then asks you to authenticate in the browser."),
                     &form.oauth_client_id,
                     cx,
                 )),
@@ -3103,7 +3103,7 @@ fn render_command_field(
     crate::render_settings_item_layout(
         settings_window,
         i18n::t!("Command"),
-        i18n::t!("Required. Path to the executable that launches the server."),
+        i18n::t!("Required. Path to the executable that launches the server, or the name of a command on the PATH (such as npx or uvx). Saving only checks that it can be found; it does not run it."),
         control,
         None,
         None,

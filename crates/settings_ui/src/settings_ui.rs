@@ -59,8 +59,9 @@ use zed_actions::{
 
 use crate::components::{
     EnumVariantDropdown, NumberField, NumberFieldMode, NumberFieldType, SettingsInputField,
-    SettingsSectionHeader, font_picker, icon_theme_picker, render_ollama_model_picker,
-    text_field_a11y_state, theme_picker,
+    SettingsSectionHeader, StringListEditor, font_picker, icon_theme_picker,
+    render_ollama_model_picker, string_list_with_added, string_list_without, text_field_a11y_state,
+    theme_picker,
 };
 use crate::pages::{
     CustomAgentForm, LlmProviderForm, McpServerForm, NetworkAllowlistState, load_network_allowlist,
@@ -450,6 +451,10 @@ struct SettingsFieldMetadata {
     display_clear_button: bool,
     confirm_on_focus_out: bool,
     treat_missing_text_as_empty: bool,
+    /// Bounds a number field keeps its value within, for settings whose
+    /// readers clamp the value: the field then shows what takes effect.
+    number_min: Option<f64>,
+    number_max: Option<f64>,
 }
 
 pub fn init(cx: &mut App) {
@@ -557,6 +562,7 @@ fn init_renderers(cx: &mut App) {
         .add_basic_renderer::<bool>(render_toggle_button)
         .add_basic_renderer::<String>(render_text_field)
         .add_basic_renderer::<SharedString>(render_text_field)
+        .add_basic_renderer::<Vec<String>>(render_string_list)
         .add_basic_renderer::<settings::SaturatingBool>(render_toggle_button)
         .add_basic_renderer::<settings::CursorShape>(render_dropdown)
         .add_basic_renderer::<settings::RestoreOnStartupBehavior>(render_dropdown)
@@ -5299,6 +5305,68 @@ fn render_text_field<T: From<String> + Into<String> + AsRef<str> + Clone>(
         .into_any_element()
 }
 
+fn render_string_list(
+    field: SettingField<Vec<String>>,
+    file: SettingsUiFile,
+    _metadata: Option<&SettingsFieldMetadata>,
+    title: &'static str,
+    _description: &'static str,
+    _window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let id = field.json_path.unwrap_or("settings-string-list");
+    let entries = SettingsStore::global(cx)
+        .get_value_from_file(file.to_settings(), field.pick)
+        .1
+        .cloned()
+        .unwrap_or_default();
+    let file_for_remove = file.clone();
+    StringListEditor::new(
+        id,
+        entries,
+        move |text, window, cx| {
+            edit_string_list(field, file.clone(), window, cx, move |entries| {
+                string_list_with_added(entries, &text)
+            });
+        },
+        move |removed, window, cx| {
+            edit_string_list(field, file_for_remove.clone(), window, cx, move |entries| {
+                Some(string_list_without(entries, &removed))
+            });
+        },
+    )
+    .aria_label(title)
+    .into_any_element()
+}
+
+/// Applies `edit` to the list as the settings file holds it when the write
+/// runs, not as it was drawn: edits made in quick succession are written one
+/// after another, and each must see the ones before it. A file without the
+/// setting starts from the value it inherits.
+fn edit_string_list(
+    field: SettingField<Vec<String>>,
+    file: SettingsUiFile,
+    window: &mut Window,
+    cx: &mut App,
+    edit: impl 'static + Send + FnOnce(&[String]) -> Option<Vec<String>>,
+) {
+    let settings_file = file.to_settings();
+    update_settings_file(file, field.json_path, window, cx, move |settings, app| {
+        let entries = match (field.pick)(settings) {
+            Some(entries) => entries.clone(),
+            None => SettingsStore::global(app)
+                .get_value_up_to_file(settings_file, field.pick)
+                .1
+                .cloned()
+                .unwrap_or_default(),
+        };
+        if let Some(entries) = edit(&entries) {
+            (field.write)(settings, Some(entries), app);
+        }
+    })
+    .log_err();
+}
+
 fn render_toggle_button<B: Into<bool> + From<bool> + Copy>(
     field: SettingField<B>,
     file: SettingsUiFile,
@@ -5343,7 +5411,7 @@ fn render_toggle_button<B: Into<bool> + From<bool> + Copy>(
 fn render_editable_number_field<T: NumberFieldType + Send + Sync>(
     field: SettingField<T>,
     file: SettingsUiFile,
-    _metadata: Option<&SettingsFieldMetadata>,
+    metadata: Option<&SettingsFieldMetadata>,
     title: &'static str,
     description: &'static str,
     window: &mut Window,
@@ -5358,6 +5426,10 @@ fn render_editable_number_field<T: NumberFieldType + Send + Sync>(
         .unwrap_or_else(|| "numeric_stepper".to_string());
 
     NumberField::new(id, value, window, cx)
+        .range_from_f64(
+            metadata.and_then(|metadata| metadata.number_min),
+            metadata.and_then(|metadata| metadata.number_max),
+        )
         .mode(NumberFieldMode::Edit, cx)
         .tab_index(0_isize)
         .aria_label(title)
@@ -7372,5 +7444,127 @@ mod project_settings_update_tests {
             "Buffer should not contain the external modification value: {}",
             text
         );
+    }
+}
+
+#[cfg(test)]
+mod string_list_tests {
+    use super::*;
+    use fs::{FakeFs, Fs as _};
+    use gpui::TestAppContext;
+
+    fn excluded_callees() -> SettingField<Vec<String>> {
+        SettingField {
+            organization_override: None,
+            json_path: Some("call_graph_panel.excluded_callees"),
+            pick: |settings_content| {
+                settings_content
+                    .call_graph_panel
+                    .as_ref()?
+                    .excluded_callees
+                    .as_ref()
+            },
+            write: |settings_content, value, _| {
+                settings_content
+                    .call_graph_panel
+                    .get_or_insert_default()
+                    .excluded_callees = value;
+            },
+        }
+    }
+
+    async fn written_entries(fs: &FakeFs) -> Option<Vec<String>> {
+        let text = fs
+            .load(paths::settings_file())
+            .await
+            .expect("the settings file exists");
+        let content: SettingsContent =
+            settings::parse_json_with_comments(&text).expect("the settings file parses");
+        content.call_graph_panel?.excluded_callees
+    }
+
+    #[gpui::test]
+    async fn edits_in_quick_succession_each_see_the_ones_before(cx: &mut TestAppContext) {
+        let fs = FakeFs::new(cx.executor());
+        let settings_directory = paths::settings_file()
+            .parent()
+            .expect("the settings file is in a directory");
+        fs.create_dir(settings_directory)
+            .await
+            .expect("settings directory");
+        fs.insert_file(paths::settings_file(), b"{}".to_vec()).await;
+        cx.update(|cx| {
+            test::register_settings(cx);
+            <dyn fs::Fs>::set_global(fs.clone(), cx);
+        });
+        let cx = cx.add_empty_window();
+
+        // Nothing is written yet, so each edit starts from the inherited
+        // list; none of them may undo the one before it.
+        cx.update(|window, cx| {
+            edit_string_list(
+                excluded_callees(),
+                SettingsUiFile::User,
+                window,
+                cx,
+                |entries| string_list_with_added(entries, "trace"),
+            );
+            edit_string_list(
+                excluded_callees(),
+                SettingsUiFile::User,
+                window,
+                cx,
+                |entries| string_list_with_added(entries, "log_debug"),
+            );
+            edit_string_list(
+                excluded_callees(),
+                SettingsUiFile::User,
+                window,
+                cx,
+                |entries| Some(string_list_without(entries, "printk")),
+            );
+            edit_string_list(
+                excluded_callees(),
+                SettingsUiFile::User,
+                window,
+                cx,
+                |entries| string_list_with_added(entries, "trace"),
+            );
+        });
+        cx.run_until_parked();
+
+        let expected = [
+            "pr_info",
+            "pr_err",
+            "pr_debug",
+            "printf",
+            "fprintf",
+            "assert",
+            "BUG_ON",
+            "WARN_ON",
+            "likely",
+            "unlikely",
+            "trace",
+            "log_debug",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(written_entries(&fs).await, Some(expected.clone()));
+
+        // Once the file has the list, removing every entry writes an empty
+        // list rather than falling back to the inherited one.
+        cx.update(|window, cx| {
+            for entry in expected {
+                edit_string_list(
+                    excluded_callees(),
+                    SettingsUiFile::User,
+                    window,
+                    cx,
+                    move |entries| Some(string_list_without(entries, &entry)),
+                );
+            }
+        });
+        cx.run_until_parked();
+        assert_eq!(written_entries(&fs).await, Some(Vec::new()));
     }
 }

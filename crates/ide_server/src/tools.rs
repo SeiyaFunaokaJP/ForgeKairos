@@ -26,7 +26,7 @@ use context_server::types::{
 use editor::{Editor, MultiBufferOffset, SelectionEffects, scroll::Autoscroll};
 use gpui::{App, AppContext as _, AsyncApp, Context, Entity, WeakEntity};
 use language::{Buffer, DiagnosticSeverity, PointUtf16};
-use project::{File as WorktreeFile, Fs, Project, ProjectPath, WorktreeSettings};
+use project::{File as WorktreeFile, Fs, Project, ProjectPath, Worktree};
 use serde_json::{Value, json};
 use settings::Settings as _;
 use smol::lock::Semaphore;
@@ -836,6 +836,14 @@ async fn run_tool<H: ToolHost>(
                 .and_then(Value::as_str)
                 .map(str::to_string);
             let cursor = diagnostics_cursor(&arguments)?;
+            // `cursor` continues the listing of every file and `uri` asks for one, so taking
+            // either one quietly would answer a question the client did not ask.
+            if uri.is_some() && !matches!(arguments.get("cursor"), None | Some(Value::Null)) {
+                return Err(client_error(
+                    "Pass either uri or cursor, not both: cursor continues the listing of \
+                     every file, and uri asks for one file",
+                ));
+            }
             let page = collect_diagnostics(workspace, uri.as_deref(), cursor, scope, cx).await?;
             // CLI は最初のテキストだけを診断の配列として読むので、続きの案内は 2 つ目に置く。
             let mut content = vec![json_content(&page.files)?];
@@ -1160,7 +1168,7 @@ impl<'a> SandboxRequest<'a> {
                     worktree_id: worktree.id(),
                     path: file.path.clone(),
                 };
-                let is_private = is_private_file(&project_path, entry, cx);
+                let is_private = is_private_file(worktree, &project_path, entry, cx);
                 Some((
                     project_path,
                     worktree.absolutize(&file.path),
@@ -1339,13 +1347,13 @@ impl<'a> SandboxRequest<'a> {
 /// `private_files` (`.env` など) に当たるファイルか。内蔵エージェントの `read_file` と同じく、
 /// 全体の設定とワークツリーの設定の両方を見る。
 pub(crate) fn is_private_file(
+    worktree: &Worktree,
     project_path: &ProjectPath,
     entry: Option<&project::Entry>,
     cx: &App,
 ) -> bool {
     entry.is_some_and(|entry| entry.is_private)
-        || WorktreeSettings::get_global(cx).is_path_private(&project_path.path)
-        || WorktreeSettings::get(Some(project_path.into()), cx).is_path_private(&project_path.path)
+        || ide_query::worktree_matches_private_files(worktree, project_path, cx)
 }
 
 fn link_refused_error(text: &str) -> anyhow::Error {

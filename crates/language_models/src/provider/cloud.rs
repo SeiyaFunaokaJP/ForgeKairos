@@ -518,7 +518,7 @@ impl RenderOnce for ZedAiConfiguration {
                 .on_click(|_, _, cx| cx.open_url(&zed_urls::account_url(cx)))
                 .into_any_element()
         } else if self.plan.is_none() || self.eligible_for_trial {
-            Button::new("start_trial", "Start Free Trial")
+            Button::new("start_trial", i18n::t!("Start Free Trial"))
                 .when(!self.compact, |this| {
                     this.full_width().label_size(LabelSize::Small)
                 })

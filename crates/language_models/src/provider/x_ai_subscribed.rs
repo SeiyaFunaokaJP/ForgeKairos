@@ -172,7 +172,7 @@ impl Render for ConfigurationView {
                 .gap_2()
                 .child(
                     ConfiguredApiCard::new("x-ai-subscribed-sign-out", SharedString::from(label))
-                        .button_label("Sign Out")
+                        .button_label(i18n::t!("Sign Out"))
                         .on_click(cx.listener(move |_this, _, _window, cx| {
                             state_entity
                                 .update(cx, |state, cx| state.sign_out(cx))
@@ -186,9 +186,9 @@ impl Render for ConfigurationView {
         let provider_state = self.state.clone();
         let is_signing_in = state.is_signing_in();
         let button_label = if is_signing_in {
-            "Signing in…"
+            i18n::t!("Signing in…")
         } else {
-            "Sign In"
+            i18n::t!("Sign In")
         };
 
         v_flex()

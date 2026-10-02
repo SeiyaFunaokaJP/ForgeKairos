@@ -46,8 +46,8 @@ pub use crate::grid_search::GridMatch;
 pub use crate::grid_styles::{CellColor, ClearCellColors, SetFillColor, SetTextColor};
 pub use crate::workspace_item::TabularBuffer;
 
-/// 同じファイルをテキストとして開きます。既定では隣のペインに開き、
-/// `in_same_pane` を指定するとグリッドのタブをテキストのタブに差し替えます。
+/// Opens the same file as text, in the next pane by default. With `in_same_pane`,
+/// the text replaces the grid in its tab.
 #[derive(PartialEq, Clone, Default, Deserialize, JsonSchema, Action)]
 #[action(namespace = tabular_data)]
 #[serde(deny_unknown_fields)]

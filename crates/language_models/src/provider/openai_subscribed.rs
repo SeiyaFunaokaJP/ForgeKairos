@@ -186,7 +186,7 @@ impl Render for ConfigurationView {
                 .gap_2()
                 .child(
                     ConfiguredApiCard::new("openai-subscribed-sign-out", SharedString::from(label))
-                        .button_label("Sign Out")
+                        .button_label(i18n::t!("Sign Out"))
                         .on_click(cx.listener(move |_this, _, _window, cx| {
                             state_entity
                                 .update(cx, |state, cx| state.sign_out(cx))
@@ -216,9 +216,9 @@ impl Render for ConfigurationView {
         let is_signing_in = state.is_signing_in();
         let is_sign_in_cancellable = state.is_sign_in_cancellable();
         let button_label = if is_signing_in {
-            "Signing in…"
+            i18n::t!("Signing in…")
         } else {
-            "Sign In"
+            i18n::t!("Sign In")
         };
 
         v_flex()
@@ -242,7 +242,7 @@ impl Render for ConfigurationView {
                     )
                     .when(is_sign_in_cancellable, |this| {
                         this.child(
-                            Button::new("cancel-sign-in", "Cancel")
+                            Button::new("cancel-sign-in", i18n::t!("Cancel"))
                                 .style(ButtonStyle::Subtle)
                                 .size(ButtonSize::Medium)
                                 .on_click(move |_, _window, cx| {

@@ -6,10 +6,9 @@ use git::patch_summary::{self, FileChangeKind, PatchSummaryOptions};
 use git::repository::{DiffType, RepoPath};
 use gpui::{App, AsyncApp, Entity, SharedString, Task};
 use language::{OutlineItem, Point};
-use project::{Project, ProjectPath, WorktreeSettings, git_store::Repository};
+use project::{Project, ProjectPath, git_store::Repository};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use settings::Settings as _;
 use std::ops::Range;
 use std::sync::Arc;
 use util::markdown::MarkdownInlineCode;
@@ -137,7 +136,8 @@ pub async fn branch_diff_for_agent(
     request: Option<GitDiffSummaryRequest>,
     cx: &mut AsyncApp,
 ) -> String {
-    let (patch, withheld) = cx.update(|cx| withhold_hidden_files(diff_text, &repository, cx));
+    let (patch, withheld) =
+        cx.update(|cx| withhold_hidden_files(diff_text, project.read(cx), &repository, cx));
     let note = withheld.note();
     let mut content = if patch.trim().is_empty() {
         "No changes found in branch diff.".to_string()
@@ -261,17 +261,17 @@ impl HiddenReason {
 }
 
 /// Why the agent may not see `project_path`, mirroring the checks of the
-/// `read_file` tool, or `None` when it may.
-fn hidden_by_settings(project_path: &ProjectPath, cx: &App) -> Option<HiddenReason> {
-    let global_settings = WorktreeSettings::get_global(cx);
-    let worktree_settings = WorktreeSettings::get(Some(project_path.into()), cx);
-    if global_settings.is_path_excluded(&project_path.path)
-        || worktree_settings.is_path_excluded(&project_path.path)
-    {
+/// `read_file` tool, or `None` when it may. Git may spell a path otherwise than
+/// the file system does (a file renamed only in case on Windows keeps its old
+/// spelling in the index), so it is judged in every spelling that reaches the file.
+fn hidden_by_settings(
+    project: &Project,
+    project_path: &ProjectPath,
+    cx: &App,
+) -> Option<HiddenReason> {
+    if ide_query::matches_file_scan_exclusions(project, project_path, cx) {
         Some(HiddenReason::Excluded)
-    } else if global_settings.is_path_private(&project_path.path)
-        || worktree_settings.is_path_private(&project_path.path)
-    {
+    } else if ide_query::matches_private_files(project, project_path, cx) {
         Some(HiddenReason::Private)
     } else {
         None
@@ -328,6 +328,7 @@ impl WithheldFiles {
 /// `file_scan_exclusions`.
 pub fn withhold_hidden_files(
     patch: &str,
+    project: &Project,
     repository: &Entity<Repository>,
     cx: &App,
 ) -> (String, WithheldFiles) {
@@ -341,7 +342,7 @@ pub fn withhold_hidden_files(
             withheld.outside_project += 1;
             return false;
         };
-        match hidden_by_settings(&project_path, cx) {
+        match hidden_by_settings(project, &project_path, cx) {
             Some(HiddenReason::Private) => {
                 withheld.private += 1;
                 false
@@ -399,7 +400,7 @@ impl GitDiffTool {
                 let project_path = project
                     .find_project_path(path, cx)
                     .ok_or_else(|| anyhow!("{path} is not in the project."))?;
-                if let Some(reason) = hidden_by_settings(&project_path, cx) {
+                if let Some(reason) = hidden_by_settings(project, &project_path, cx) {
                     anyhow::bail!(
                         "Cannot show the diff of {path} because its path matches the `{}` setting.",
                         reason.setting()
@@ -450,7 +451,8 @@ impl GitDiffTool {
             Some(repo_path) => patch_summary::filter_patch(&patch, repo_path.as_unix_str()),
             None => patch,
         };
-        let (patch, withheld) = cx.update(|cx| withhold_hidden_files(&patch, &repository, cx));
+        let (patch, withheld) =
+            cx.update(|cx| withhold_hidden_files(&patch, project.read(cx), &repository, cx));
         let hidden_note = withheld.note();
 
         if patch.trim().is_empty() {
@@ -689,6 +691,47 @@ mod tests {
         );
     }
 
+    /// Git keeps the spelling a file was added with when it is renamed only in case on a file
+    /// system that ignores case, so the diff can name `.ENV` for the file on disk `.env`.
+    #[gpui::test]
+    async fn test_git_diff_hides_a_file_git_spells_otherwise(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.set_case_sensitive(false);
+        fs.insert_tree(
+            path!("/project"),
+            json!({
+                ".git": {},
+                ".env": "TOKEN=1\n",
+                "src": { "lib.rs": "fn main() {}\n" },
+            }),
+        )
+        .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+        let repository = project
+            .read_with(cx, |project, cx| project.active_repository(cx))
+            .expect("the repository is found");
+        let file = |path: &str| {
+            format!(
+                "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n-old\n+new\n"
+            )
+        };
+        let patch = [file(".ENV"), file("SRC/lib.rs")].concat();
+        let (kept, withheld) =
+            cx.update(|cx| withhold_hidden_files(&patch, project.read(cx), &repository, cx));
+        assert_eq!(
+            withheld,
+            WithheldFiles {
+                outside_project: 0,
+                private: 1,
+                excluded: 0,
+            },
+            "{kept}"
+        );
+        assert_eq!(kept, file("SRC/lib.rs"));
+    }
+
     #[gpui::test]
     async fn test_git_diff_hides_files_the_agent_cannot_read(cx: &mut TestAppContext) {
         init_test(cx);
@@ -723,7 +766,8 @@ mod tests {
             file("project/.DS_Store"),
         ]
         .concat();
-        let (kept, withheld) = cx.update(|cx| withhold_hidden_files(&patch, &repository, cx));
+        let (kept, withheld) =
+            cx.update(|cx| withhold_hidden_files(&patch, project.read(cx), &repository, cx));
         assert_eq!(
             withheld,
             WithheldFiles {

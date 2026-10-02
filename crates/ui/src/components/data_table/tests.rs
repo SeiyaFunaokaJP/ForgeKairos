@@ -655,3 +655,77 @@ mod column_filter {
         );
     }
 }
+
+mod widen_column {
+    use super::*;
+    use gpui::DefiniteLength;
+
+    fn fractions(state: &RedistributableColumnsState) -> Vec<f32> {
+        state
+            .preview_widths()
+            .as_slice()
+            .iter()
+            .map(|length| match length {
+                DefiniteLength::Fraction(fraction) => *fraction,
+                DefiniteLength::Absolute(_) => f32::NAN,
+            })
+            .collect()
+    }
+
+    fn state(widths: &[f32]) -> RedistributableColumnsState {
+        RedistributableColumnsState::new(
+            widths.len(),
+            widths
+                .iter()
+                .map(|width| DefiniteLength::Fraction(*width))
+                .collect(),
+            vec![TableResizeBehavior::Resizable; widths.len()],
+        )
+    }
+
+    #[test]
+    fn widens_a_narrow_column_from_the_donor() {
+        let mut columns = state(&[0.6, 0.1, 0.3]);
+        columns.set_cached_container_width(px(1000.));
+
+        assert!(columns.widen_column_to(1, px(150.), 0, px(16.)));
+        assert!(is_almost_eq(&fractions(&columns), &[0.55, 0.15, 0.3]));
+        assert_eq!(columns.preview_widths(), &columns.committed_widths);
+
+        // Already wide enough: nothing moves.
+        assert!(!columns.widen_column_to(1, px(150.), 0, px(16.)));
+        assert!(is_almost_eq(&fractions(&columns), &[0.55, 0.15, 0.3]));
+    }
+
+    #[test]
+    fn keeps_the_donor_above_its_minimum() {
+        let mut columns = state(&[0.1, 0.1, 0.8]);
+        columns.set_cached_container_width(px(1000.));
+
+        assert!(columns.widen_column_to(1, px(500.), 0, px(16.)));
+        // `Resizable` keeps at least 5% of the width.
+        assert!(is_almost_eq(&fractions(&columns), &[0.05, 0.15, 0.8]));
+    }
+
+    #[test]
+    fn leaves_a_column_being_dragged_alone() {
+        let mut columns = state(&[0.6, 0.1, 0.3]);
+        columns.set_cached_container_width(px(1000.));
+        columns.preview_widths = state(&[0.65, 0.05, 0.3]).preview_widths;
+
+        assert!(!columns.widen_column_to(1, px(150.), 0, px(16.)));
+        assert!(is_almost_eq(&fractions(&columns), &[0.65, 0.05, 0.3]));
+        assert_eq!(
+            columns.committed_widths,
+            state(&[0.6, 0.1, 0.3]).committed_widths
+        );
+    }
+
+    #[test]
+    fn waits_for_the_container_width() {
+        let mut columns = state(&[0.6, 0.1, 0.3]);
+
+        assert!(!columns.widen_column_to(1, px(150.), 0, px(16.)));
+        assert!(is_almost_eq(&fractions(&columns), &[0.6, 0.1, 0.3]));
+    }
+}

@@ -225,8 +225,11 @@ fn outline(node: &CallNode) -> Vec<String> {
             CallSource::Candidate => line.push_str(" [candidate]"),
             CallSource::Macro => line.push_str(" [macro]"),
         }
-        if let Some(count) = node.ambiguous {
-            line.push_str(&format!(" ambiguous:{count}"));
+        if let Some(counts) = &node.ambiguous {
+            line.push_str(&format!(" ambiguous:{}", counts.shown));
+            if counts.withheld > 0 {
+                line.push_str(&format!("+{}withheld", counts.withheld));
+            }
         }
         match &node.resolution {
             CallResolution::Definition => {}
@@ -1035,7 +1038,8 @@ async fn test_a_name_alone(cx: &mut TestAppContext) {
         panic!("expected candidates, got {answer:?}");
     };
     assert_eq!(candidates.name, "dup");
-    assert_eq!(candidates.total, 2);
+    assert_eq!(candidates.counts.shown, 2);
+    assert_eq!(candidates.counts.withheld, 0);
     assert_eq!(
         candidates
             .candidates
@@ -1057,7 +1061,7 @@ async fn test_a_name_alone(cx: &mut TestAppContext) {
     .await
     .expect("two static functions have the name");
     assert!(
-        matches!(&answer, CallHierarchyAnswer::Candidates(candidates) if candidates.total == 2),
+        matches!(&answer, CallHierarchyAnswer::Candidates(candidates) if candidates.counts.shown == 2),
         "{answer:?}"
     );
     let hierarchy = found(
@@ -1782,7 +1786,7 @@ async fn test_candidates_are_capped(cx: &mut TestAppContext) {
     let CallHierarchyAnswer::Candidates(candidates) = answer else {
         panic!("expected candidates, got {answer:?}");
     };
-    assert_eq!(candidates.total, MANY_DEFINITIONS);
+    assert_eq!(candidates.counts.shown, MANY_DEFINITIONS);
     assert_eq!(candidates.candidates.len(), MAX_CALL_CANDIDATES);
 }
 
@@ -1835,7 +1839,8 @@ async fn test_outgoing_lists_are_capped_and_lookups_are_kept(cx: &mut TestAppCon
         assert_eq!(many.len(), MAX_AMBIGUOUS_DEFINITIONS, "{}", child.name);
         assert!(
             many.iter()
-                .all(|call| call.ambiguous == Some(MANY_DEFINITIONS)),
+                .all(|call| call.ambiguous.as_ref().map(|counts| counts.shown)
+                    == Some(MANY_DEFINITIONS)),
             "{}",
             child.name
         );
@@ -1920,4 +1925,45 @@ async fn test_only_the_same_line_merges_with_the_language_server(cx: &mut TestAp
             "  g src/pair.c:3-3 [3] \"void g(void) { target(); }\" DepthLimit [name]",
         ]
     );
+}
+
+/// Definitions of a name in files withheld from the agent are counted apart from the ones that
+/// may be shown, so `ambiguous` and the candidates' total say how many the agent can look at.
+#[gpui::test]
+async fn test_definitions_in_withheld_files_are_counted_apart(cx: &mut TestAppContext) {
+    init_test(cx);
+    let fixture = fixture(cx).await;
+    let definition = |path: &str, row: u32| IndexedDefinition {
+        name: "dup".to_string(),
+        kind: DefinitionKind::Function,
+        is_static: false,
+        is_declaration: false,
+        language: symbol_index::SourceLanguage::C,
+        path: project_path(&fixture, path),
+        name_range: Point::new(row, 4)..Point::new(row, 7),
+        item_range: Point::new(row, 0)..Point::new(row, 27),
+    };
+    let definitions = [
+        definition("src/other.c", 6),
+        definition("src/third.c", 0),
+        definition("src/third.c", 3),
+        definition("secret.c", 0),
+        definition("excluded/gen.c", 0),
+        definition("link/linked.c", 0),
+    ];
+    let counts = fixture.project.read_with(cx, |project, cx| {
+        DefinitionCounts::of(project, &definitions, cx)
+    });
+    assert_eq!(
+        counts,
+        DefinitionCounts {
+            shown: 3,
+            withheld: 3,
+            shown_files: vec![
+                (project_path(&fixture, "src/other.c"), 1),
+                (project_path(&fixture, "src/third.c"), 2),
+            ],
+        }
+    );
+    assert_eq!(counts.total(), 6);
 }

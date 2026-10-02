@@ -11067,6 +11067,79 @@ mod tests {
         });
     }
 
+    // A settings file written by an earlier version holds copies of the built-in profiles under
+    // the Japanese names those versions shipped. They are still the shipped profiles, so a
+    // restricted workspace must downgrade them just the same.
+    #[gpui::test]
+    async fn test_restricted_workspace_downgrades_copies_with_earlier_default_names(
+        cx: &mut TestAppContext,
+    ) {
+        use gpui::UpdateGlobal as _;
+
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            project::trusted_worktrees::init(Default::default(), cx);
+        });
+
+        let fs = fs::FakeFs::new(cx.background_executor.clone());
+        fs.insert_tree(
+            util::path!("/project"),
+            json!({ "main.rs": "fn main() {}" }),
+        )
+        .await;
+        let project = Project::test(fs.clone(), [util::path!("/project").as_ref()], cx).await;
+        cx.run_until_parked();
+
+        let set_user_names = |write_name: &str, cx: &mut App| {
+            let copy = |id: &str, name: &str, cx: &App| {
+                let mut profile = cx
+                    .global::<settings::SettingsStore>()
+                    .raw_default_settings()
+                    .agent
+                    .as_ref()
+                    .and_then(|agent| agent.profiles.as_ref())
+                    .and_then(|profiles| profiles.get(id))
+                    .cloned()
+                    .expect("the profile ships in default.json");
+                profile.name = name.into();
+                serde_json::to_value(profile).expect("a profile serializes")
+            };
+            let settings = json!({ "agent": { "profiles": {
+                "write": copy("write", write_name, cx),
+                "minimal": copy("minimal", "最小", cx),
+            } } })
+            .to_string();
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(&settings, cx)
+                    .expect("valid user settings");
+            });
+        };
+
+        cx.update(|cx| {
+            set_user_names("書き込み", cx);
+            let (profile, was_downgraded) = Thread::profile_for_restricted_workspace(
+                AgentProfileId(builtin_profiles::WRITE.into()),
+                &project,
+                cx,
+            );
+            assert!(was_downgraded);
+            assert_eq!(profile.as_str(), builtin_profiles::MINIMAL);
+
+            // A name the user gave the profile makes it theirs, so it is left alone.
+            set_user_names("書き込み (自分用)", cx);
+            let (profile, was_downgraded) = Thread::profile_for_restricted_workspace(
+                AgentProfileId(builtin_profiles::WRITE.into()),
+                &project,
+                cx,
+            );
+            assert!(!was_downgraded);
+            assert_eq!(profile.as_str(), builtin_profiles::WRITE);
+        });
+    }
+
     #[gpui::test]
     async fn test_subagent_inherits_settings_at_creation(cx: &mut TestAppContext) {
         let (parent, _event_stream) = setup_thread_for_test(cx).await;

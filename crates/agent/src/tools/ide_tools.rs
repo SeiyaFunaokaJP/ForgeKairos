@@ -13,10 +13,9 @@ use ide_query::{
     MAX_REMOTE_CALL_HIERARCHY_FILES, MAX_TOUR_STEPS, NameIndexUnavailable, SymbolHit,
     SymbolSearchOptions, TourStep,
 };
-use project::{Project, ProjectPath, WorktreeSettings};
+use project::{Project, ProjectPath};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use settings::Settings as _;
 use util::markdown::MarkdownInlineCode;
 
 use super::deserialize_maybe_stringified;
@@ -670,7 +669,7 @@ fn format_call_candidates(project: &Project, candidates: &CallCandidates, cx: &A
     let mut output = index_notes(candidates.index_building, false);
     // The one function of the name lies where its calls can't be followed (`ide_query` lists it
     // instead of walking it); calling again with its place would only be refused.
-    if candidates.total == 1
+    if candidates.counts.total() == 1
         && candidates
             .candidates
             .iter()
@@ -683,10 +682,16 @@ fn format_call_candidates(project: &Project, candidates: &CallCandidates, cx: &A
         )
         .ok();
     } else {
+        let withheld = match candidates.counts.withheld {
+            0 => String::new(),
+            count => format!(
+                " (and {count} more in files that are private, excluded or outside the project, counted only)"
+            ),
+        };
         writeln!(
             output,
-            "{} functions are named `{}`; call again with the `path` and `line` of the one you mean. Each is listed under its file as `line name (kind)`.",
-            candidates.total, candidates.name
+            "{} functions are named `{}`{withheld}; call again with the `path` and `line` of the one you mean. Each is listed under its file as `line name (kind)`.",
+            candidates.counts.shown, candidates.name
         )
         .ok();
     }
@@ -694,7 +699,10 @@ fn format_call_candidates(project: &Project, candidates: &CallCandidates, cx: &A
     let mut lines = Vec::new();
     push_call_lines(project, &candidates.candidates, 0, false, &mut lines, cx);
     push_capped_lines(&mut output, lines);
-    let unlisted = candidates.total.saturating_sub(candidates.candidates.len());
+    let unlisted = candidates
+        .counts
+        .total()
+        .saturating_sub(candidates.candidates.len());
     if unlisted > 0 {
         writeln!(output, "{unlisted} more are not listed.").ok();
     }
@@ -773,8 +781,12 @@ fn push_call_lines(
         if let Some(mark) = source_mark(node) {
             write!(line, " {mark}").ok();
         }
-        if let Some(count) = node.ambiguous {
-            write!(line, " (ambiguous: {count} definitions)").ok();
+        if let Some(counts) = &node.ambiguous {
+            write!(line, " (ambiguous: {} definitions", counts.shown).ok();
+            if counts.withheld > 0 {
+                write!(line, ", and {} in withheld files", counts.withheld).ok();
+            }
+            line.push(')');
         }
         match &node.resolution {
             CallResolution::Definition => {}
@@ -1355,19 +1367,12 @@ fn resolve_shown_path(
     if entry.is_some_and(|entry| entry.is_dir()) {
         return Err(format!("`{path}` is a folder. Give a file"));
     }
-    let global_settings = WorktreeSettings::get_global(cx);
-    let worktree_settings = WorktreeSettings::get(Some((&project_path).into()), cx);
-    if global_settings.is_path_excluded(&project_path.path)
-        || worktree_settings.is_path_excluded(&project_path.path)
-    {
+    if ide_query::matches_file_scan_exclusions(project, &project_path, cx) {
         return Err(format!(
             "`{path}` can't be used, because it matches `file_scan_exclusions`"
         ));
     }
-    if entry.is_some_and(|entry| entry.is_private)
-        || global_settings.is_path_private(&project_path.path)
-        || worktree_settings.is_path_private(&project_path.path)
-    {
+    if ide_query::matches_private_files(project, &project_path, cx) {
         return Err(format!(
             "`{path}` can't be used, because it matches `private_files`"
         ));
@@ -2553,7 +2558,11 @@ mod tests {
                         },
                         CallNode {
                             source: CallSource::NameIndex,
-                            ambiguous: Some(2),
+                            ambiguous: Some(ide_query::DefinitionCounts {
+                                shown: 2,
+                                withheld: 1,
+                                shown_files: Vec::new(),
+                            }),
                             ..call_node(
                                 "dup",
                                 &lib_rs,
@@ -2604,7 +2613,7 @@ mod tests {
             "      4 real_open (function): .open = real_open, [candidate]".to_string(),
             "  12 printf (function) called on line 12: printf(\"done\"); (no definition in project)".to_string(),
             shown("root/src/lib.rs"),
-            "  7 dup (function) called on line 13: int dup(void) { return 1; } [name match] (ambiguous: 2 definitions)".to_string(),
+            "  7 dup (function) called on line 13: int dup(void) { return 1; } [name match] (ambiguous: 2 definitions, and 1 in withheld files)".to_string(),
             "2 more calls were not listed (the limit is 50 calls; ask for fewer levels or a larger max_results).".to_string(),
             "The name index found more calls of a name than one answer carries, so some callers may be missing.".to_string(),
             "Stopped early because it reached the limit of 60 requests to the language server and the name index; functions marked (not followed) were not expanded. Call again on one of them to go further.".to_string(),
@@ -2675,7 +2684,11 @@ mod tests {
                     )
                 },
             ],
-            total: 3,
+            counts: ide_query::DefinitionCounts {
+                shown: 2,
+                withheld: 1,
+                shown_files: Vec::new(),
+            },
             index_building: None,
         };
         let output = project.read_with(cx, |project, cx| {
@@ -2688,7 +2701,7 @@ mod tests {
                 .into_owned()
         };
         let expected = [
-            "3 functions are named `dup`; call again with the `path` and `line` of the one you mean. Each is listed under its file as `line name (kind)`.".to_string(),
+            "2 functions are named `dup` (and 1 more in files that are private, excluded or outside the project, counted only); call again with the `path` and `line` of the one you mean. Each is listed under its file as `line name (kind)`.".to_string(),
             "Lines marked `[name match]` were found by matching names, not resolved by a language server, so they can be another function of the same name; read the definition to confirm.".to_string(),
             shown("root/src/lib.rs"),
             "  7 dup (function): int dup(void) { return 1; } [name match]".to_string(),
@@ -2703,7 +2716,11 @@ mod tests {
         let only_withheld = CallCandidates {
             name: "load".to_string(),
             candidates: candidates.candidates[1..].to_vec(),
-            total: 1,
+            counts: ide_query::DefinitionCounts {
+                shown: 0,
+                withheld: 1,
+                shown_files: Vec::new(),
+            },
             index_building: None,
         };
         let output = project.read_with(cx, |project, cx| {

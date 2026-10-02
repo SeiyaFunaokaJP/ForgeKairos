@@ -440,6 +440,48 @@ pub fn resolve_project_path(
         .find_project_path(path, cx)
         .ok_or_else(|| anyhow!("Path {} is not in the project", path.display()))?;
 
+    // A file system that ignores case opens `secret.rs` for `SECRET.rs`, but the entries and
+    // the settings' patterns tell them apart: judge (and open) the file as the worktree spells it.
+    match ide_query::path_spelling(project, &project_path, cx) {
+        ide_query::PathSpelling::AsGiven => {
+            resolve_found_project_path(project, project_path, path, canonical_worktree_roots, cx)
+        }
+        ide_query::PathSpelling::OnDisk(on_disk) => {
+            resolve_found_project_path(project, on_disk, path, canonical_worktree_roots, cx)
+        }
+        ide_query::PathSpelling::Uncertain(respelled) => {
+            let as_given = resolve_found_project_path(
+                project,
+                project_path,
+                path,
+                canonical_worktree_roots,
+                cx,
+            )?;
+            let as_respelled =
+                resolve_found_project_path(project, respelled, path, canonical_worktree_roots, cx)?;
+            Ok(match (as_given, as_respelled) {
+                (
+                    ResolvedProjectPath::Safe(project_path),
+                    ResolvedProjectPath::SymlinkEscape {
+                        canonical_target, ..
+                    },
+                ) => ResolvedProjectPath::SymlinkEscape {
+                    project_path,
+                    canonical_target,
+                },
+                (as_given, _) => as_given,
+            })
+        }
+    }
+}
+
+fn resolve_found_project_path(
+    project: &Project,
+    project_path: ProjectPath,
+    path: &Path,
+    canonical_worktree_roots: &[PathBuf],
+    cx: &App,
+) -> Result<ResolvedProjectPath> {
     let worktree = project
         .worktree_for_id(project_path.worktree_id, cx)
         .ok_or_else(|| anyhow!("Could not resolve path {}", path.display()))?;

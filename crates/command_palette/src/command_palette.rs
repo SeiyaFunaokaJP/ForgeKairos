@@ -1104,14 +1104,36 @@ mod tests {
     /// `locales/ja/_actions.po`: one `action name<TAB>label` per line.
     const JA_LABELS_BEFORE: &str = include_str!("../test_data/ja_labels_before.tsv");
 
+    /// Labels retranslated since the table moved, which the frozen table above still holds
+    /// as they were.
+    const JA_LABELS_CHANGED_ON_PURPOSE: &[(&str, &str)] = &[
+        // The sidebar it toggles lists the agent's threads.
+        (
+            "multi_workspace::ToggleWorkspaceSidebar",
+            "表示: スレッドサイドバーの切り替え",
+        ),
+        // It switches to the previously open file, not a related one.
+        ("pane::AlternateFile", "ファイル: 直前のファイルへ切り替え"),
+        (
+            "agent::ToggleFastMode",
+            "エージェント: ファストモードの切り替え",
+        ),
+    ];
+
     #[test]
     fn test_actions_po_matches_pre_migration_ja_labels_table() {
         let _locale = install_actions_catalog();
         let before = JA_LABELS_BEFORE
             .lines()
             .map(|line| {
-                line.split_once('\t')
-                    .unwrap_or_else(|| panic!("fixture line without a tab: {line:?}"))
+                let (action_name, label) = line
+                    .split_once('\t')
+                    .unwrap_or_else(|| panic!("fixture line without a tab: {line:?}"));
+                let label = JA_LABELS_CHANGED_ON_PURPOSE
+                    .iter()
+                    .find(|(changed, _)| *changed == action_name)
+                    .map_or(label, |(_, changed_label)| *changed_label);
+                (action_name, label)
             })
             .collect::<Vec<_>>();
         let mismatches = before

@@ -5,6 +5,54 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgctxt "ActivateOnClose"
+msgid "History"
+msgstr "直前に使ったタブ"
+
+msgctxt "ActivateOnClose"
+msgid "Left Neighbour"
+msgstr "左隣のタブ"
+
+msgctxt "ActivateOnClose"
+msgid "Neighbour"
+msgstr "隣のタブ"
+
+msgctxt "AlternateScroll"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "AlternateScroll"
+msgid "On"
+msgstr "オン"
+
+msgctxt "AutoIndentMode"
+msgid "None"
+msgstr "なし"
+
+msgctxt "AutoIndentMode"
+msgid "Preserve Indent"
+msgstr "インデントを保つ"
+
+msgctxt "AutoIndentMode"
+msgid "Syntax Aware"
+msgstr "構文に従う"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "After Delay"
+msgstr "一定時間後"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "On Focus Change"
+msgstr "フォーカスが移ったとき"
+
+msgctxt "AutosaveSettingDiscriminants"
+msgid "On Window Change"
+msgstr "ウィンドウを切り替えたとき"
+
 msgctxt "BaseKeymapContent"
 msgid "Cursor"
 msgstr "Cursor (ベータ)"
@@ -16,6 +64,34 @@ msgstr "Emacs (ベータ)"
 msgctxt "BaseKeymapContent"
 msgid "None"
 msgstr "なし"
+
+msgctxt "BottomDockLayout"
+msgid "Contained"
+msgstr "左右のドックの間"
+
+msgctxt "BottomDockLayout"
+msgid "Full"
+msgstr "ウィンドウの全幅"
+
+msgctxt "BottomDockLayout"
+msgid "Left Aligned"
+msgstr "左に寄せる"
+
+msgctxt "BottomDockLayout"
+msgid "Right Aligned"
+msgstr "右に寄せる"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Comfortable"
+msgstr "ゆったり"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Custom"
+msgstr "カスタム"
+
+msgctxt "BufferLineHeightDiscriminants"
+msgid "Standard"
+msgstr "標準"
 
 msgctxt "CallGraphSources"
 msgid "All"
@@ -36,6 +112,110 @@ msgstr "完全"
 msgctxt "ClangdIndexMode"
 msgid "Light"
 msgstr "軽量"
+
+msgctxt "CliDefaultOpenBehavior"
+msgid "Add to Existing Window"
+msgstr "既存のウィンドウに追加"
+
+msgctxt "CliDefaultOpenBehavior"
+msgid "Open a New Window"
+msgstr "新しいウィンドウで開く"
+
+msgctxt "ClosePosition"
+msgid "Left"
+msgstr "左"
+
+msgctxt "ClosePosition"
+msgid "Right"
+msgstr "右"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Close Window"
+msgstr "ウィンドウを閉じる"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Keep Window Open"
+msgstr "ウィンドウを開いたままにする"
+
+msgctxt "CloseWindowWhenNoItems"
+msgid "Platform Default"
+msgstr "プラットフォームの既定"
+
+msgctxt "CodeLens"
+msgid "Menu"
+msgstr "メニュー"
+
+msgctxt "CodeLens"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "CodeLens"
+msgid "On"
+msgstr "オン"
+
+msgctxt "CompletionDetailAlignment"
+msgid "Left"
+msgstr "左"
+
+msgctxt "CompletionDetailAlignment"
+msgid "Right"
+msgstr "右"
+
+msgctxt "CompletionMenuItemKind"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "CompletionMenuItemKind"
+msgid "Symbol"
+msgstr "記号"
+
+msgctxt "CurrentLineHighlight"
+msgid "All"
+msgstr "すべて"
+
+msgctxt "CurrentLineHighlight"
+msgid "Gutter"
+msgstr "ガター"
+
+msgctxt "CurrentLineHighlight"
+msgid "Line"
+msgstr "行"
+
+msgctxt "CurrentLineHighlight"
+msgid "None"
+msgstr "なし"
+
+msgctxt "CursorShape"
+msgid "Bar"
+msgstr "縦線"
+
+msgctxt "CursorShape"
+msgid "Block"
+msgstr "ブロック"
+
+msgctxt "CursorShape"
+msgid "Hollow"
+msgstr "中抜きのブロック"
+
+msgctxt "CursorShape"
+msgid "Underline"
+msgstr "下線"
+
+msgctxt "CursorShapeContent"
+msgid "Bar"
+msgstr "縦線"
+
+msgctxt "CursorShapeContent"
+msgid "Block"
+msgstr "ブロック"
+
+msgctxt "CursorShapeContent"
+msgid "Hollow"
+msgstr "中抜きのブロック"
+
+msgctxt "CursorShapeContent"
+msgid "Underline"
+msgstr "下線"
 
 msgctxt "DefaultDockPanel"
 msgid "Agent Panel"
@@ -69,6 +249,114 @@ msgctxt "DefaultDockPanel"
 msgid "Terminal Panel"
 msgstr "ターミナルパネル"
 
+msgctxt "DefaultOpenBehavior"
+msgid "Add to Existing Window"
+msgstr "既存のウィンドウに追加"
+
+msgctxt "DefaultOpenBehavior"
+msgid "Open a New Window"
+msgstr "新しいウィンドウで開く"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "All"
+msgstr "すべて"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Error"
+msgstr "エラー"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Hint"
+msgstr "ヒント"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Info"
+msgstr "情報"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "DiagnosticSeverityContent"
+msgid "Warning"
+msgstr "警告"
+
+msgctxt "DiffViewStyle"
+msgid "Split"
+msgstr "左右分割"
+
+msgctxt "DiffViewStyle"
+msgid "Unified"
+msgstr "インライン表示"
+
+msgctxt "DisplayIn"
+msgid "Active Editor"
+msgstr "アクティブなエディター"
+
+msgctxt "DisplayIn"
+msgid "All Editors"
+msgstr "すべてのエディター"
+
+msgctxt "DockPosition"
+msgid "Bottom"
+msgstr "下"
+
+msgctxt "DockPosition"
+msgid "Left"
+msgstr "左"
+
+msgctxt "DockPosition"
+msgid "Right"
+msgstr "右"
+
+msgctxt "DockSide"
+msgid "Left"
+msgstr "左"
+
+msgctxt "DockSide"
+msgid "Right"
+msgstr "右"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Background"
+msgstr "背景"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Border"
+msgstr "枠線"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "Inlay"
+msgstr "インレイ"
+
+msgctxt "DocumentColorsRenderMode"
+msgid "None"
+msgstr "なし"
+
+msgctxt "DocumentFoldingRanges"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "DocumentFoldingRanges"
+msgid "On"
+msgstr "オン"
+
+msgctxt "DocumentSymbols"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "DocumentSymbols"
+msgid "On"
+msgstr "オン"
+
+msgctxt "DoubleClickInMultibuffer"
+msgid "Open"
+msgstr "開く"
+
+msgctxt "DoubleClickInMultibuffer"
+msgid "Select"
+msgstr "選択"
+
 msgctxt "EditPredictionDataCollectionChoice"
 msgid "Default"
 msgstr "既定 (過去の切替に従う)"
@@ -80,6 +368,354 @@ msgstr "いいえ"
 msgctxt "EditPredictionDataCollectionChoice"
 msgid "Yes"
 msgstr "はい"
+
+msgctxt "EditPredictionsMode"
+msgid "Eager"
+msgstr "積極的"
+
+msgctxt "EditPredictionsMode"
+msgid "Subtle"
+msgstr "控えめ"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Disabled"
+msgstr "表示しない"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Enabled"
+msgstr "常に表示"
+
+msgctxt "EncodingDisplayOptions"
+msgid "Non Utf8"
+msgstr "UTF-8 以外のとき"
+
+msgctxt "FolderIndicator"
+msgid "Both"
+msgstr "両方"
+
+msgctxt "FolderIndicator"
+msgid "Chevron"
+msgstr "矢印"
+
+msgctxt "FolderIndicator"
+msgid "Icon"
+msgstr "アイコン"
+
+msgctxt "FormatOnSave"
+msgid "Modifications"
+msgstr "変更箇所のみ"
+
+msgctxt "FormatOnSave"
+msgid "Modifications If Available"
+msgstr "可能なら変更箇所のみ"
+
+msgctxt "FormatOnSave"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "FormatOnSave"
+msgid "On"
+msgstr "オン"
+
+msgctxt "FullscreenMode"
+msgid "Native"
+msgstr "ネイティブ"
+
+msgctxt "FullscreenMode"
+msgid "Simple"
+msgstr "シンプル"
+
+msgctxt "GitDiffBaseSetting"
+msgid "Default Branch"
+msgstr "既定のブランチ"
+
+msgctxt "GitDiffBaseSetting"
+msgid "Head"
+msgstr "HEAD (未コミットの変更)"
+
+msgctxt "GitGutterSetting"
+msgid "Hide"
+msgstr "表示しない"
+
+msgctxt "GitGutterSetting"
+msgid "Tracked Files"
+msgstr "追跡中のファイル"
+
+msgctxt "GitGutterWidthDiscriminants"
+msgid "Custom"
+msgstr "カスタム"
+
+msgctxt "GitGutterWidthDiscriminants"
+msgid "Default"
+msgstr "既定"
+
+msgctxt "GitHunkStyleSetting"
+msgid "Staged Hollow"
+msgstr "ステージ済みを中抜き"
+
+msgctxt "GitHunkStyleSetting"
+msgid "Unstaged Hollow"
+msgstr "未ステージを中抜き"
+
+msgctxt "GitPanelClickBehavior"
+msgid "File Diff"
+msgstr "ファイルの差分"
+
+msgctxt "GitPanelClickBehavior"
+msgid "Project Diff"
+msgstr "プロジェクトの差分"
+
+msgctxt "GitPanelClickBehavior"
+msgid "View File"
+msgstr "ファイルを表示"
+
+msgctxt "GitPanelGroupBy"
+msgid "None"
+msgstr "なし"
+
+msgctxt "GitPanelGroupBy"
+msgid "Staging"
+msgstr "ステージ済みかどうか"
+
+msgctxt "GitPanelGroupBy"
+msgid "Status"
+msgstr "状態"
+
+msgctxt "GitPanelSortBy"
+msgid "Name"
+msgstr "名前"
+
+msgctxt "GitPanelSortBy"
+msgid "Path"
+msgstr "パス"
+
+msgctxt "GitPathStyle"
+msgid "File Name First"
+msgstr "ファイル名を先に"
+
+msgctxt "GitPathStyle"
+msgid "File Path First"
+msgstr "パスを先に"
+
+msgctxt "GoToDefinitionFallback"
+msgid "Find All References"
+msgstr "すべての参照を検索"
+
+msgctxt "GoToDefinitionFallback"
+msgid "None"
+msgstr "なし"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Center"
+msgstr "中央"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Minimum"
+msgstr "最小限"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Preserve"
+msgstr "位置を保つ"
+
+msgctxt "GoToDefinitionScrollStrategy"
+msgid "Top"
+msgstr "上端"
+
+msgctxt "HideMouseMode"
+msgid "Never"
+msgstr "隠さない"
+
+msgctxt "HideMouseMode"
+msgid "On Typing"
+msgstr "入力時"
+
+msgctxt "HideMouseMode"
+msgid "On Typing And Action"
+msgstr "入力時と操作時"
+
+msgctxt "IconThemeSelectionDiscriminants"
+msgid "Dynamic"
+msgstr "ライトとダークで切り替え"
+
+msgctxt "IconThemeSelectionDiscriminants"
+msgid "Static"
+msgstr "固定"
+
+msgctxt "ImageFileSizeUnit"
+msgid "Binary"
+msgstr "2 進 (KiB、MiB)"
+
+msgctxt "ImageFileSizeUnit"
+msgid "Decimal"
+msgstr "10 進 (KB、MB)"
+
+msgctxt "IncludeIgnoredContent"
+msgid "All"
+msgstr "すべて"
+
+msgctxt "IncludeIgnoredContent"
+msgid "Indexed"
+msgstr "読み込み済みのみ"
+
+msgctxt "IncludeIgnoredContent"
+msgid "Smart"
+msgstr "自動で判断"
+
+msgctxt "IndentGuideBackgroundColoring"
+msgid "Disabled"
+msgstr "無効"
+
+msgctxt "IndentGuideBackgroundColoring"
+msgid "Indent Aware"
+msgstr "深さごとの色"
+
+msgctxt "IndentGuideColoring"
+msgid "Disabled"
+msgstr "無効"
+
+msgctxt "IndentGuideColoring"
+msgid "Fixed"
+msgstr "固定"
+
+msgctxt "IndentGuideColoring"
+msgid "Indent Aware"
+msgstr "深さごとの色"
+
+msgctxt "InlineBlameLocation"
+msgid "Inline"
+msgstr "行内"
+
+msgctxt "InlineBlameLocation"
+msgid "Status Bar"
+msgstr "ステータスバー"
+
+msgctxt "LineEndingSetting"
+msgid "Detect"
+msgstr "自動検出"
+
+msgctxt "LineEndingSetting"
+msgid "Enforce CRLF"
+msgstr "常に CRLF"
+
+msgctxt "LineEndingSetting"
+msgid "Enforce LF"
+msgstr "常に LF"
+
+msgctxt "LineEndingSetting"
+msgid "Prefer CRLF"
+msgstr "CRLF を優先"
+
+msgctxt "LineEndingSetting"
+msgid "Prefer LF"
+msgstr "LF を優先"
+
+msgctxt "LspInsertMode"
+msgid "Insert"
+msgstr "挿入"
+
+msgctxt "LspInsertMode"
+msgid "Replace"
+msgstr "置換"
+
+msgctxt "LspInsertMode"
+msgid "Replace Subsequence"
+msgstr "部分列なら置換"
+
+msgctxt "LspInsertMode"
+msgid "Replace Suffix"
+msgstr "末尾が一致すれば置換"
+
+msgctxt "MinimapThumb"
+msgid "Always"
+msgstr "常に表示"
+
+msgctxt "MinimapThumb"
+msgid "Hover"
+msgstr "ホバー時"
+
+msgctxt "MinimapThumbBorder"
+msgid "Full"
+msgstr "全周"
+
+msgctxt "MinimapThumbBorder"
+msgid "Left Only"
+msgstr "左のみ"
+
+msgctxt "MinimapThumbBorder"
+msgid "Left Open"
+msgstr "左以外"
+
+msgctxt "MinimapThumbBorder"
+msgid "None"
+msgstr "なし"
+
+msgctxt "MinimapThumbBorder"
+msgid "Right Open"
+msgstr "右以外"
+
+msgctxt "ModeContent"
+msgid "Insert"
+msgstr "挿入モード"
+
+msgctxt "ModeContent"
+msgid "Normal"
+msgstr "ノーマルモード"
+
+msgctxt "MultiCursorModifier"
+msgid "Cmd Or Ctrl"
+msgstr "Cmd または Ctrl"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "All Screens"
+msgstr "すべての画面"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "Never"
+msgstr "通知しない"
+
+msgctxt "NotifyWhenAgentWaiting"
+msgid "Primary Screen"
+msgstr "メインの画面"
+
+msgctxt "OnLastWindowClosed"
+msgid "Platform Default"
+msgstr "プラットフォームの既定"
+
+msgctxt "OnLastWindowClosed"
+msgid "Quit App"
+msgstr "アプリを終了"
+
+msgctxt "OnNewWindow"
+msgid "Empty Tab"
+msgstr "空のタブ"
+
+msgctxt "OnNewWindow"
+msgid "Launchpad"
+msgstr "ランチパッド"
+
+msgctxt "OpenResultsIn"
+msgid "Multi Buffer"
+msgstr "マルチバッファー"
+
+msgctxt "OpenResultsIn"
+msgid "Picker"
+msgstr "絞り込みの一覧"
+
+msgctxt "PaneSplitDirectionHorizontal"
+msgid "Down"
+msgstr "下"
+
+msgctxt "PaneSplitDirectionHorizontal"
+msgid "Up"
+msgstr "上"
+
+msgctxt "PaneSplitDirectionVertical"
+msgid "Left"
+msgstr "左"
+
+msgctxt "PaneSplitDirectionVertical"
+msgid "Right"
+msgstr "右"
 
 msgctxt "PanelTabBar"
 msgid "Always"
@@ -93,9 +729,317 @@ msgctxt "PanelTabBar"
 msgid "Never"
 msgstr "表示しない"
 
+msgctxt "PlaySoundWhenAgentDone"
+msgid "Always"
+msgstr "常に"
+
+msgctxt "PlaySoundWhenAgentDone"
+msgid "Never"
+msgstr "鳴らさない"
+
+msgctxt "PlaySoundWhenAgentDone"
+msgid "When Hidden"
+msgstr "隠れているとき"
+
+msgctxt "ProjectPanelEntrySpacing"
+msgid "Comfortable"
+msgstr "ゆったり"
+
+msgctxt "ProjectPanelEntrySpacing"
+msgid "Standard"
+msgstr "標準"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Directories First"
+msgstr "フォルダーを先に"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Files First"
+msgstr "ファイルを先に"
+
+msgctxt "ProjectPanelSortMode"
+msgid "Mixed"
+msgstr "混在"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Default"
+msgstr "既定"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Lower"
+msgstr "小文字を先に"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Unicode"
+msgstr "Unicode の順"
+
+msgctxt "ProjectPanelSortOrder"
+msgid "Upper"
+msgstr "大文字を先に"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Custom"
+msgstr "カスタム"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Default"
+msgstr "既定"
+
+msgctxt "ProjectPanelTitleTooltipDelayDiscriminants"
+msgid "Disabled"
+msgstr "無効"
+
+msgctxt "ReduceMotionMode"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "ReduceMotionMode"
+msgid "On"
+msgstr "オン"
+
+msgctxt "RelativeLineNumbers"
+msgid "Disabled"
+msgstr "無効"
+
+msgctxt "RelativeLineNumbers"
+msgid "Enabled"
+msgstr "有効"
+
+msgctxt "RelativeLineNumbers"
+msgid "Wrapped"
+msgstr "折り返し行も数える"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Empty Tab"
+msgstr "空のタブ"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Last Session"
+msgstr "前回のセッション"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Last Workspace"
+msgstr "前回のワークスペース"
+
+msgctxt "RestoreOnStartupBehavior"
+msgid "Launchpad"
+msgstr "ランチパッド"
+
+msgctxt "RewrapBehavior"
+msgid "Anywhere"
+msgstr "どこでも"
+
+msgctxt "RewrapBehavior"
+msgid "In Comments"
+msgstr "コメント内"
+
+msgctxt "RewrapBehavior"
+msgid "In Selections"
+msgstr "選択範囲内"
+
+msgctxt "ScanSymlinksSetting"
+msgid "Always"
+msgstr "常に"
+
+msgctxt "ScanSymlinksSetting"
+msgid "Expanded"
+msgstr "展開したとき"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "One Page"
+msgstr "1 ページ分"
+
+msgctxt "ScrollBeyondLastLine"
+msgid "Vertical Scroll Margin"
+msgstr "縦スクロールの余白分"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "All"
+msgstr "すべて"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Error"
+msgstr "エラーのみ"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Information"
+msgstr "情報以上"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "None"
+msgstr "表示しない"
+
+msgctxt "ScrollbarDiagnostics"
+msgid "Warning"
+msgstr "警告以上"
+
+msgctxt "SeedQuerySetting"
+msgid "Always"
+msgstr "常に"
+
+msgctxt "SeedQuerySetting"
+msgid "Never"
+msgstr "しない"
+
+msgctxt "SeedQuerySetting"
+msgid "Selection"
+msgstr "選択しているとき"
+
+msgctxt "SemanticTokens"
+msgid "Combined"
+msgstr "併用"
+
+msgctxt "SemanticTokens"
+msgid "Full"
+msgstr "LSP のみ"
+
+msgctxt "SemanticTokens"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "ShellDiscriminants"
+msgid "Program"
+msgstr "プログラム"
+
+msgctxt "ShellDiscriminants"
+msgid "System"
+msgstr "システムの既定"
+
+msgctxt "ShellDiscriminants"
+msgid "With Arguments"
+msgstr "引数付きのプログラム"
+
+msgctxt "ShowCloseButton"
+msgid "Always"
+msgstr "常に表示"
+
+msgctxt "ShowCloseButton"
+msgid "Hidden"
+msgstr "表示しない"
+
+msgctxt "ShowCloseButton"
+msgid "Hover"
+msgstr "ホバー時"
+
+msgctxt "ShowDiagnostics"
+msgid "All"
+msgstr "すべて"
+
+msgctxt "ShowDiagnostics"
+msgid "Errors"
+msgstr "エラーのみ"
+
+msgctxt "ShowDiagnostics"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "ShowIndentGuides"
+msgid "Always"
+msgstr "常に表示"
+
+msgctxt "ShowIndentGuides"
+msgid "Never"
+msgstr "表示しない"
+
+msgctxt "ShowMinimap"
+msgid "Always"
+msgstr "常に表示"
+
+msgctxt "ShowMinimap"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "ShowMinimap"
+msgid "Never"
+msgstr "表示しない"
+
+msgctxt "ShowScrollbar"
+msgid "Always"
+msgstr "常に表示"
+
+msgctxt "ShowScrollbar"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "ShowScrollbar"
+msgid "Never"
+msgstr "表示しない"
+
+msgctxt "ShowScrollbar"
+msgid "System"
+msgstr "システムに従う"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "All"
+msgstr "すべて"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Boundary"
+msgstr "単語の境界"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "None"
+msgstr "表示しない"
+
 msgctxt "ShowWhitespaceSetting"
 msgid "Selection"
 msgstr "選択範囲"
+
+msgctxt "ShowWhitespaceSetting"
+msgid "Trailing"
+msgstr "行末のみ"
+
+msgctxt "SidebarDockPosition"
+msgid "Left"
+msgstr "左"
+
+msgctxt "SidebarDockPosition"
+msgid "Right"
+msgstr "右"
+
+msgctxt "SnippetSortOrder"
+msgid "Bottom"
+msgstr "末尾"
+
+msgctxt "SnippetSortOrder"
+msgid "Inline"
+msgstr "ほかの候補と混ぜる"
+
+msgctxt "SnippetSortOrder"
+msgid "None"
+msgstr "表示しない"
+
+msgctxt "SnippetSortOrder"
+msgid "Top"
+msgstr "先頭"
+
+msgctxt "SoftWrap"
+msgid "Bounded"
+msgstr "行の長さの上限"
+
+msgctxt "SoftWrap"
+msgid "Editor Width"
+msgstr "エディターの幅"
+
+msgctxt "SoftWrap"
+msgid "None"
+msgstr "折り返さない"
+
+msgctxt "SoftWrap"
+msgid "Prefer Line"
+msgstr "折り返さない (旧)"
+
+msgctxt "StatusStyle"
+msgid "Icon"
+msgstr "アイコン"
+
+msgctxt "StatusStyle"
+msgid "Label Color"
+msgstr "ラベルの色"
 
 msgctxt "StatusUntrackedFilesSetting"
 msgid "All Files"
@@ -109,6 +1053,18 @@ msgctxt "StatusUntrackedFilesSetting"
 msgid "Folders Only"
 msgstr "通常"
 
+msgctxt "SteppingGranularity"
+msgid "Instruction"
+msgstr "命令"
+
+msgctxt "SteppingGranularity"
+msgid "Line"
+msgstr "行"
+
+msgctxt "SteppingGranularity"
+msgid "Statement"
+msgstr "文"
+
 msgctxt "SymbolIndexEnabled"
 msgid "Auto"
 msgstr "自動"
@@ -120,6 +1076,170 @@ msgstr "オフ"
 msgctxt "SymbolIndexEnabled"
 msgid "On"
 msgstr "オン"
+
+msgctxt "TerminalBell"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "TerminalBell"
+msgid "System"
+msgstr "システムの音"
+
+msgctxt "TerminalBlink"
+msgid "Off"
+msgstr "オフ"
+
+msgctxt "TerminalBlink"
+msgid "On"
+msgstr "オン"
+
+msgctxt "TerminalBlink"
+msgid "Terminal Controlled"
+msgstr "ターミナルの指定に従う"
+
+msgctxt "TerminalDockPosition"
+msgid "Bottom"
+msgstr "下"
+
+msgctxt "TerminalDockPosition"
+msgid "Left"
+msgstr "左"
+
+msgctxt "TerminalDockPosition"
+msgid "Right"
+msgstr "右"
+
+msgctxt "TextRenderingMode"
+msgid "Grayscale"
+msgstr "グレースケール"
+
+msgctxt "TextRenderingMode"
+msgid "Platform Default"
+msgstr "プラットフォームの既定"
+
+msgctxt "TextRenderingMode"
+msgid "Subpixel"
+msgstr "サブピクセル"
+
+msgctxt "ThemeAppearanceMode"
+msgid "Dark"
+msgstr "ダーク"
+
+msgctxt "ThemeAppearanceMode"
+msgid "Light"
+msgstr "ライト"
+
+msgctxt "ThemeAppearanceMode"
+msgid "System"
+msgstr "システムに従う"
+
+msgctxt "ThemeSelectionDiscriminants"
+msgid "Dynamic"
+msgstr "ライトとダークで切り替え"
+
+msgctxt "ThemeSelectionDiscriminants"
+msgid "Static"
+msgstr "固定"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Always Collapsed"
+msgstr "常に折りたたむ"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Always Expanded"
+msgstr "常に展開"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Auto"
+msgstr "自動"
+
+msgctxt "ThinkingBlockDisplay"
+msgid "Preview"
+msgstr "プレビュー"
+
+msgctxt "UseSystemClipboard"
+msgid "Always"
+msgstr "常に使う"
+
+msgctxt "UseSystemClipboard"
+msgid "Never"
+msgstr "使わない"
+
+msgctxt "UseSystemClipboard"
+msgid "On Yank"
+msgstr "ヤンクのとき"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Bar"
+msgstr "縦線"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Block"
+msgstr "ブロック"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Hollow"
+msgstr "中抜きのブロック"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Inherit"
+msgstr "エディターと同じ"
+
+msgctxt "VimInsertModeCursorShape"
+msgid "Underline"
+msgstr "下線"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Custom"
+msgstr "カスタム"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Platform Default"
+msgstr "プラットフォームの既定"
+
+msgctxt "WindowButtonLayoutContentDiscriminants"
+msgid "Standard"
+msgstr "標準"
+
+msgctxt "WindowDecorations"
+msgid "Client"
+msgstr "Zed が描画"
+
+msgctxt "WindowDecorations"
+msgid "Server"
+msgstr "コンポジターに任せる"
+
+msgctxt "WordsCompletionMode"
+msgid "Disabled"
+msgstr "無効"
+
+msgctxt "WordsCompletionMode"
+msgid "Enabled"
+msgstr "有効"
+
+msgctxt "WordsCompletionMode"
+msgid "Fallback"
+msgstr "言語サーバーが答えないとき"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Always"
+msgstr "常に指定のフォルダー"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Always Home"
+msgstr "常にホーム"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Current File Directory"
+msgstr "現在のファイルのフォルダー"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "Current Project Directory"
+msgstr "現在のプロジェクトのフォルダー"
+
+msgctxt "WorkingDirectoryDiscriminants"
+msgid "First Project Directory"
+msgstr "最初のプロジェクトのフォルダー"
 
 msgctxt "settings"
 msgid "(Linux only) choose how window control buttons are laid out in the titlebar."
@@ -651,7 +1771,7 @@ msgstr "単語をどのように補完するかを設定します。"
 
 msgctxt "settings"
 msgid "Controls line number display in the editor's gutter. \"disabled\" shows absolute line numbers, \"enabled\" shows relative line numbers for each absolute line, and \"wrapped\" shows relative line numbers for every line, absolute or wrapped."
-msgstr "エディターのガターの行番号表示を制御します。\"disabled\" は絶対行番号を、\"enabled\" は各絶対行に対する相対行番号を、\"wrapped\" は折り返し行も含めたすべての行に対する相対行番号を表示します。"
+msgstr "エディターのガターの行番号表示を制御します。「無効」は絶対行番号を、「有効」は各絶対行に対する相対行番号を、「折り返し行も数える」は折り返し行も含めたすべての行に対する相対行番号を表示します。"
 
 msgctxt "settings"
 msgid "Controls the appearance behavior of the tab's close button."
@@ -739,7 +1859,7 @@ msgstr "カーソルの形状 - ビジュアルモード"
 
 msgctxt "settings"
 msgid "Cursor shape for insert mode. Inherit uses the editor's cursor shape."
-msgstr "挿入モードのカーソルの形状です。Inherit はエディターのカーソルの形状を使います。"
+msgstr "挿入モードのカーソルの形状です。「エディターと同じ」はエディターのカーソルの形状を使います。"
 
 msgctxt "settings"
 msgid "Cursor shape for normal mode."
@@ -875,7 +1995,7 @@ msgstr "Git で init.defaultbranch が設定されていないときに使うブ
 
 msgctxt "settings"
 msgid "Default cursor shape for the terminal (bar, block, underline, or hollow)."
-msgstr "ターミナルの既定のカーソルの形状です (bar・block・underline・hollow)。"
+msgstr "ターミナルの既定のカーソルの形状です (縦線・ブロック・下線・中抜きのブロック)。"
 
 msgctxt "settings"
 msgid "Default depth to expand outline items in the current file."
@@ -1755,7 +2875,7 @@ msgstr "UI からプロジェクトを開くときの既定の動作です。"
 
 msgctxt "settings"
 msgid "How thinking blocks should be displayed by default. 'Auto' fully expands during streaming, then auto-collapses when done. 'Preview' auto-expands with a height constraint during streaming. 'Always Expanded' shows full content. 'Always Collapsed' keeps them collapsed."
-msgstr "思考ブロックを既定でどのように表示するかを設定します。'Auto' はストリーミング中は完全に展開し、完了後に自動的に折りたたみます。'Preview' は高さを制限した状態でストリーミング中に自動展開します。'Always Expanded' は常に全体を表示します。'Always Collapsed' は常に折りたたんだままにします。"
+msgstr "思考ブロックを既定でどのように表示するかを設定します。「自動」はストリーミング中は完全に展開し、完了後に自動的に折りたたみます。「プレビュー」は高さを制限した状態でストリーミング中に自動展開します。「常に展開」は常に全体を表示します。「常に折りたたむ」は常に折りたたんだままにします。"
 
 msgctxt "settings"
 msgid "How to display diffs in the editor."
@@ -2135,7 +3255,7 @@ msgstr "内容の最大幅 (ピクセル) です。パネルがこの値より�
 
 msgctxt "settings"
 msgid "Maximum directory depth to eagerly index outside of git repositories; contents of directories at this depth or deeper are indexed on demand. Repositories rooted shallower than this depth are always indexed fully. In projects that are not rooted at a git repository, repositories directly inside a root folder activate their git features immediately; deeper ones activate on first use. 0 means no limit and activates all git repositories immediately"
-msgstr "git リポジトリの外側で先読みインデックスを作成するディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点でインデックスされます。この深さより浅い位置にあるリポジトリは常に完全にインデックスされます。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします"
+msgstr "git リポジトリの外側で先読みの索引を作るディレクトリの最大の深さです。この深さ以上のディレクトリの内容は、必要になった時点で索引に入ります。この深さより浅い位置にあるリポジトリは常に完全に索引に入ります。git リポジトリを起点としないプロジェクトでは、ルートフォルダーの直下にあるリポジトリは即座に git 機能が有効になり、それより深いものは最初に使われた時点で有効になります。0 は無制限を意味し、すべての git リポジトリを即座に有効にします"
 
 msgctxt "settings"
 msgid "Maximum length of the commit message title before a warning is shown. Set to 0 to disable."
@@ -2263,7 +3383,7 @@ msgstr "modeline を探す行数です (0 で無効)。"
 
 msgctxt "settings"
 msgid "Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting."
-msgstr "Off: Do not request semantic tokens from language servers.\nCombined: Use LSP semantic tokens together with tree-sitter highlighting.\nFull: Use LSP semantic tokens exclusively, replacing tree-sitter highlighting."
+msgstr "オフ: 言語サーバーにセマンティックトークンを要求しません。\n併用: LSP のセマンティックトークンを tree-sitter のハイライトと併せて使います。\nLSP のみ: tree-sitter のハイライトの代わりに、LSP のセマンティックトークンだけを使います。"
 
 msgctxt "settings"
 msgid "On Last Window Closed"

@@ -434,17 +434,222 @@ async fn monitor_clangd_memory(lsp_store: WeakEntity<LspStore>, cx: &mut AsyncAp
     }
 }
 
-/// The resident memory of a process, or `None` when it has gone.
+/// One process as the operating system's process table showed it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ProcessRecord {
+    process_id: u32,
+    parent_id: Option<u32>,
+    /// Seconds since the Unix epoch.
+    start_time: u64,
+    /// The creation time in 100-nanosecond units, read on Windows where whole
+    /// seconds cannot tell which of two processes started first.
+    precise_start_time: Option<u64>,
+    resident_bytes: u64,
+}
+
+fn process_table() -> Vec<ProcessRecord> {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+    let mut system = System::new();
+    // On Linux every thread is listed as a process of its own, a child of its
+    // process holding the same resident memory: counted, they would multiply
+    // clangd's memory by its thread count.
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_memory().without_tasks(),
+    );
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut table = system
+        .processes()
+        .values()
+        .filter(|process| process.thread_kind().is_none())
+        .map(|process| ProcessRecord {
+            process_id: process.pid().as_u32(),
+            parent_id: process.parent().map(|parent| parent.as_u32()),
+            start_time: process.start_time(),
+            precise_start_time: None,
+            resident_bytes: process.memory(),
+        })
+        .collect::<Vec<_>>();
+    #[cfg(windows)]
+    {
+        let start_times = table
+            .iter()
+            .map(|record| (record.process_id, record.start_time))
+            .collect::<HashMap<_, _>>();
+        let tied = table
+            .iter()
+            .filter_map(|record| {
+                let parent_id = record.parent_id?;
+                (start_times.get(&parent_id) == Some(&record.start_time))
+                    .then_some([record.process_id, parent_id])
+            })
+            .flatten()
+            .collect::<HashSet<_>>();
+        for record in &mut table {
+            if tied.contains(&record.process_id) {
+                record.precise_start_time = precise_start_time(record);
+            }
+        }
+    }
+    table
+}
+
+/// The creation time of the process `record` describes, or `None` when it
+/// cannot be read or the id has since gone to another process.
+#[cfg(windows)]
+fn precise_start_time(record: &ProcessRecord) -> Option<u64> {
+    use windows::Win32::{
+        Foundation::{CloseHandle, FILETIME},
+        System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
+    };
+    const TICKS_PER_SECOND: u64 = 10_000_000;
+    const SECONDS_FROM_1601_TO_1970: u64 = 11_644_473_600;
+    let handle =
+        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, record.process_id) }.ok()?;
+    let mut creation_time = FILETIME::default();
+    let mut exit_time = FILETIME::default();
+    let mut kernel_time = FILETIME::default();
+    let mut user_time = FILETIME::default();
+    let times = unsafe {
+        GetProcessTimes(
+            handle,
+            &mut creation_time,
+            &mut exit_time,
+            &mut kernel_time,
+            &mut user_time,
+        )
+    };
+    unsafe { CloseHandle(handle) }.log_err();
+    times.ok()?;
+    let ticks =
+        (u64::from(creation_time.dwHighDateTime) << 32) | u64::from(creation_time.dwLowDateTime);
+    let start_time = (ticks / TICKS_PER_SECOND).checked_sub(SECONDS_FROM_1601_TO_1970);
+    (start_time == Some(record.start_time)).then_some(ticks)
+}
+
+/// Whether `child`, which names `parent`'s id as its parent, was started by
+/// `parent`. A process outlives its parent with the parent's id still recorded
+/// on Windows, and that id can be reused: one that started before the process
+/// now holding the id is not its child. A child started right away shares its
+/// parent's second, and so may an older process given the id in that second,
+/// which only the finer creation times tell apart. Without them, a tie is
+/// taken as a child only where an orphan's parent id is replaced.
+fn started_by(child: &ProcessRecord, parent: &ProcessRecord) -> bool {
+    if child.start_time != parent.start_time {
+        return child.start_time > parent.start_time;
+    }
+    match (child.precise_start_time, parent.precise_start_time) {
+        (Some(child_start), Some(parent_start)) => child_start >= parent_start,
+        _ => !cfg!(windows),
+    }
+}
+
+/// `root` and all its descendants in `table`, `root` first, or nothing when
+/// `root` has gone.
+fn process_tree(root: u32, table: &[ProcessRecord]) -> Vec<ProcessRecord> {
+    let Some(root) = table.iter().find(|record| record.process_id == root) else {
+        return Vec::new();
+    };
+    let mut tree = vec![*root];
+    let mut next = 0;
+    while let Some(parent) = tree.get(next).copied() {
+        next += 1;
+        for record in table {
+            let is_child = record.parent_id == Some(parent.process_id)
+                && record.process_id != parent.process_id
+                && started_by(record, &parent);
+            if is_child
+                && !tree
+                    .iter()
+                    .any(|member| member.process_id == record.process_id)
+            {
+                tree.push(*record);
+            }
+        }
+    }
+    tree
+}
+
+/// The resident memory of a process and of all its descendants, or `None`
+/// when it has gone. A wrapper script that does not `exec` clangd leaves
+/// clangd as its child, holding all of the memory.
 fn resident_bytes(process_id: u32) -> Option<u64> {
+    tree_resident_bytes(process_id, &process_table())
+}
+
+fn tree_resident_bytes(root: u32, table: &[ProcessRecord]) -> Option<u64> {
+    let tree = process_tree(root, table);
+    if tree.is_empty() {
+        return None;
+    }
+    Some(
+        tree.iter()
+            .map(|record| record.resident_bytes)
+            .fold(0, u64::saturating_add),
+    )
+}
+
+/// The descendants of a process, to end once it has been stopped: stopping a
+/// language server kills only the process it started.
+fn descendants_of(process_id: u32) -> Vec<ProcessRecord> {
+    let descendants = process_tree(process_id, &process_table())
+        .into_iter()
+        .skip(1);
+    // Read for every one, so that an id given to another process started in
+    // the same second is not taken for it when killing.
+    #[cfg(windows)]
+    let descendants = descendants.map(|record| ProcessRecord {
+        precise_start_time: record
+            .precise_start_time
+            .or_else(|| precise_start_time(&record)),
+        ..record
+    });
+    descendants.collect()
+}
+
+/// Kills those of `processes` still running, and returns how many it killed.
+/// One whose id now belongs to a process started at another time is left.
+fn kill_remaining(processes: &[ProcessRecord]) -> usize {
     use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-    let pid = Pid::from_u32(process_id);
+    let process_ids = processes
+        .iter()
+        .map(|record| Pid::from_u32(record.process_id))
+        .collect::<Vec<_>>();
     let mut system = System::new();
     system.refresh_processes_specifics(
-        ProcessesToUpdate::Some(&[pid]),
+        ProcessesToUpdate::Some(&process_ids),
         true,
-        ProcessRefreshKind::nothing().with_memory(),
+        ProcessRefreshKind::nothing().without_tasks(),
     );
-    system.process(pid).map(|process| process.memory())
+    processes
+        .iter()
+        .filter(|record| {
+            let Some(process) = system.process(Pid::from_u32(record.process_id)) else {
+                return false;
+            };
+            // A thread's id, signalled, ends its whole process.
+            if process.thread_kind().is_some() || process.start_time() != record.start_time {
+                return false;
+            }
+            // `system` holds the process open, which keeps Windows from giving
+            // its id to another process before the kill.
+            #[cfg(windows)]
+            if record.precise_start_time.is_some()
+                && precise_start_time(record) != record.precise_start_time
+            {
+                return false;
+            }
+            let killed = process.kill();
+            if !killed {
+                log::warn!(
+                    "could not kill process {} left by a stopped clangd",
+                    record.process_id
+                );
+            }
+            killed
+        })
+        .count()
 }
 
 impl LspStore {
@@ -605,13 +810,38 @@ impl LspStore {
         };
         local.clangd_memory.launched.remove(&server_id);
         local.clangd_memory.without_memory_usage.remove(&server_id);
-        let (_, stop) = self.stop_local_language_servers_for_buffers(
-            &[],
-            HashSet::from_iter([LanguageServerSelector::Id(server_id)]),
-            cx,
-        );
+        let process_id = local
+            .running_language_server_for_id(server_id)
+            .and_then(|server| server.process_id());
         cx.spawn(async move |lsp_store, cx| {
+            // Listed before the stop: once the process clangd was started
+            // with is killed, its children no longer lead back to it.
+            let descendants = match process_id {
+                Some(process_id) => {
+                    cx.background_spawn(async move { descendants_of(process_id) })
+                        .await
+                }
+                None => Vec::new(),
+            };
+            let stop = lsp_store.update(cx, |lsp_store, cx| {
+                let (_, stop) = lsp_store.stop_local_language_servers_for_buffers(
+                    &[],
+                    HashSet::from_iter([LanguageServerSelector::Id(server_id)]),
+                    cx,
+                );
+                stop
+            })?;
             stop.await;
+            if !descendants.is_empty() {
+                let killed = cx
+                    .background_spawn(async move { kill_remaining(&descendants) })
+                    .await;
+                if killed > 0 {
+                    log::info!(
+                        "killed {killed} processes the stopped clangd ({server_id}) left running"
+                    );
+                }
+            }
             lsp_store.update(cx, |lsp_store, cx| {
                 if lsp_store.as_local().is_none() {
                     return;
@@ -901,6 +1131,260 @@ mod tests {
         assert!(resident > 1024 * 1024, "{resident}");
         assert!(resident < 1024 * 1024 * 1024 * 1024, "{resident}");
         assert_eq!(resident_bytes(u32::MAX - 1), None);
+    }
+
+    fn record(process_id: u32, parent_id: Option<u32>, start_time: u64) -> ProcessRecord {
+        ProcessRecord {
+            process_id,
+            parent_id,
+            start_time,
+            precise_start_time: None,
+            resident_bytes: u64::from(process_id) * 1000,
+        }
+    }
+
+    fn precise(record: ProcessRecord, precise_start_time: u64) -> ProcessRecord {
+        ProcessRecord {
+            precise_start_time: Some(precise_start_time),
+            ..record
+        }
+    }
+
+    fn process_ids(tree: &[ProcessRecord]) -> Vec<u32> {
+        tree.iter().map(|record| record.process_id).collect()
+    }
+
+    #[test]
+    fn process_tree_holds_every_descendant_and_nothing_else() {
+        let table = [
+            record(1, None, 0),
+            record(10, Some(1), 100),
+            // The wrapper's clangd, and what clangd started.
+            record(11, Some(10), 101),
+            record(12, Some(11), 102),
+            record(13, Some(10), 103),
+            record(20, Some(1), 100),
+            record(21, Some(20), 104),
+            // Its parent of the same id exited long before process 10
+            // started.
+            record(30, Some(10), 50),
+            // A parent naming itself.
+            record(40, Some(40), 100),
+        ];
+        assert_eq!(process_ids(&process_tree(10, &table)), [10, 11, 13, 12]);
+        assert_eq!(
+            tree_resident_bytes(10, &table),
+            Some((10 + 11 + 12 + 13) * 1000)
+        );
+        assert_eq!(process_ids(&process_tree(12, &table)), [12]);
+        assert_eq!(tree_resident_bytes(12, &table), Some(12 * 1000));
+        assert_eq!(process_ids(&process_tree(40, &table)), [40]);
+        assert_eq!(process_tree(99, &table), []);
+        assert_eq!(tree_resident_bytes(99, &table), None);
+    }
+
+    // On Windows an orphan keeps its exited parent's id, which a process
+    // started in the same second may be given.
+    #[test]
+    fn a_process_of_the_same_second_is_a_child_only_if_started_no_earlier() {
+        let table = [
+            precise(record(10, Some(1), 100), 1_000),
+            precise(record(11, Some(10), 100), 1_000),
+            precise(record(12, Some(10), 100), 1_005),
+            precise(record(13, Some(10), 100), 999),
+            precise(record(14, Some(13), 100), 999),
+            record(15, Some(10), 100),
+        ];
+        let tree = process_ids(&process_tree(10, &table));
+        if cfg!(windows) {
+            assert_eq!(tree, [10, 11, 12]);
+        } else {
+            assert_eq!(tree, [10, 11, 12, 15]);
+        }
+        assert_eq!(process_ids(&process_tree(13, &table)), [13, 14]);
+    }
+
+    fn long_running_process() -> util::command::Child {
+        let mut command = if cfg!(windows) {
+            let mut command = util::command::new_command("ping");
+            command.args(["-n", "120", "127.0.0.1"]);
+            command
+        } else {
+            let mut command = util::command::new_command("sleep");
+            command.arg("120");
+            command
+        };
+        command
+            .stdin(util::command::Stdio::null())
+            .stdout(util::command::Stdio::null())
+            .stderr(util::command::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawning a long-running process")
+    }
+
+    fn exited_within(child: &mut util::command::Child, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if matches!(child.try_status(), Ok(Some(_))) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
+    }
+
+    #[test]
+    fn a_child_process_is_measured_and_killed_with_its_parent() {
+        let mut child = long_running_process();
+        let child_id = child.id();
+        let table = process_table();
+        let tree = process_tree(std::process::id(), &table);
+        assert_eq!(
+            tree.first().map(|own| own.process_id),
+            Some(std::process::id())
+        );
+        let child_record = tree
+            .iter()
+            .find(|record| record.process_id == child_id)
+            .copied()
+            .unwrap_or_else(|| panic!("the child {child_id} is not in the tree {tree:?}"));
+        assert!(child_record.resident_bytes > 0, "{child_record:?}");
+        #[cfg(target_os = "linux")]
+        for thread in std::fs::read_dir("/proc/self/task").expect("listing own threads") {
+            let thread_id = thread
+                .expect("reading own threads")
+                .file_name()
+                .to_string_lossy()
+                .parse::<u32>()
+                .expect("a thread id");
+            assert!(
+                thread_id == std::process::id()
+                    || tree.iter().all(|record| record.process_id != thread_id),
+                "thread {thread_id} counted as a process"
+            );
+        }
+        let child_record = descendants_of(std::process::id())
+            .into_iter()
+            .find(|record| record.process_id == child_id)
+            .unwrap_or_else(|| panic!("the child {child_id} is not a descendant"));
+        if cfg!(windows) {
+            assert!(
+                child_record.precise_start_time.is_some(),
+                "{child_record:?}"
+            );
+        }
+
+        let reused_id = ProcessRecord {
+            start_time: child_record.start_time.saturating_sub(60),
+            precise_start_time: None,
+            ..child_record
+        };
+        let reused_in_the_same_second = ProcessRecord {
+            precise_start_time: child_record
+                .precise_start_time
+                .map(|start| start.saturating_sub(1)),
+            ..child_record
+        };
+        assert_eq!(kill_remaining(&[reused_id]), 0);
+        if cfg!(windows) {
+            assert_eq!(kill_remaining(&[reused_in_the_same_second]), 0);
+        }
+        assert!(
+            !exited_within(&mut child, Duration::from_millis(300)),
+            "a process started at another time is left alone"
+        );
+
+        assert_eq!(kill_remaining(&[child_record]), 1);
+        assert!(exited_within(&mut child, Duration::from_secs(10)));
+        assert_eq!(kill_remaining(&[child_record]), 0, "gone already");
+    }
+
+    // A wrapper that does not exec clangd: stopping the server kills only the
+    // wrapper, and what it started is listed before and killed after.
+    #[test]
+    fn what_a_killed_wrapper_started_is_killed_after_it() {
+        let mut command = if cfg!(windows) {
+            let mut command = util::command::new_command("cmd");
+            command.args(["/c", "ping -n 120 127.0.0.1 & exit"]);
+            command
+        } else {
+            let mut command = util::command::new_command("sh");
+            command.args(["-c", "sleep 120; exit"]);
+            command
+        };
+        let mut wrapper = command
+            .stdin(util::command::Stdio::null())
+            .stdout(util::command::Stdio::null())
+            .stderr(util::command::Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .expect("spawning a wrapper");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let started_program = if cfg!(windows) { "ping" } else { "sleep" };
+        let descendants = loop {
+            let descendants = descendants_of(wrapper.id());
+            let mut system = sysinfo::System::new();
+            system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+            let program_started = descendants.iter().any(|record| {
+                system
+                    .process(sysinfo::Pid::from_u32(record.process_id))
+                    .is_some_and(|process| {
+                        process
+                            .name()
+                            .to_string_lossy()
+                            .to_lowercase()
+                            .starts_with(started_program)
+                    })
+            });
+            if program_started {
+                break descendants;
+            }
+            assert!(Instant::now() < deadline, "the wrapper started nothing");
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        assert!(
+            descendants
+                .iter()
+                .all(|record| record.process_id != std::process::id()),
+            "{descendants:?}"
+        );
+
+        wrapper.kill().expect("killing the wrapper");
+        assert!(exited_within(&mut wrapper, Duration::from_secs(10)));
+        let table = process_table();
+        let survivors = descendants
+            .iter()
+            .filter(|listed| {
+                table.iter().any(|record| {
+                    record.process_id == listed.process_id && record.start_time == listed.start_time
+                })
+            })
+            .count();
+        assert!(
+            survivors > 0,
+            "the wrapper's child outlives the wrapper: {descendants:?}"
+        );
+
+        assert!(kill_remaining(&descendants) > 0);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let table = process_table();
+            let left = descendants
+                .iter()
+                .filter(|listed| {
+                    table.iter().any(|record| {
+                        record.process_id == listed.process_id
+                            && record.start_time == listed.start_time
+                    })
+                })
+                .collect::<Vec<_>>();
+            if left.is_empty() {
+                break;
+            }
+            assert!(Instant::now() < deadline, "left running: {left:?}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     #[test]

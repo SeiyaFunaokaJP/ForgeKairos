@@ -1,4 +1,5 @@
 mod check;
+mod doc_catalogs;
 mod git;
 mod lexer;
 mod placeholders;
@@ -97,6 +98,14 @@ enum Command {
         /// Also fail on untranslated and obsolete messages.
         #[arg(long)]
         strict: bool,
+        /// The output of `zed --dump-all-actions`, to compare `_action_docs.po` with the actions'
+        /// doc comments.
+        #[arg(long)]
+        actions: Option<PathBuf>,
+        /// The output of `zed --dump-settings-schema`, to compare `_settings_schema.po` with the
+        /// schema's descriptions.
+        #[arg(long)]
+        settings_schema: Option<PathBuf>,
     },
     /// Merge PO files into one, sorted. Exits with 1 without writing when they disagree.
     PoUnion {
@@ -158,7 +167,16 @@ fn main() -> Result<()> {
             languages,
             crates,
             strict,
-        } => run_check(&repo, &languages, &crates, strict),
+            actions,
+            settings_schema,
+        } => run_check(
+            &repo,
+            &languages,
+            &crates,
+            strict,
+            actions.as_deref(),
+            settings_schema.as_deref(),
+        ),
         Command::PoUnion { inputs, out } => po_union(&inputs, &out),
         Command::PoFormat { paths, check } => po_format(&paths, check),
     }
@@ -305,14 +323,27 @@ fn run_check(
     languages: &[String],
     crates: &[String],
     strict: bool,
+    actions: Option<&Path>,
+    settings_schema: Option<&Path>,
 ) -> Result<()> {
     let files = sources::load_crates(repository, crates)?;
     let extraction = sources::extract(&files);
     print_extract_warnings(&extraction);
+    let action_documentation = actions
+        .map(doc_catalogs::read_action_documentation)
+        .transpose()?;
+    let settings_schema_descriptions = settings_schema
+        .map(doc_catalogs::read_schema_descriptions)
+        .transpose()?;
     let results = check::check(
         repository,
         &extraction,
-        &check::CheckOptions { languages, crates },
+        &check::CheckOptions {
+            languages,
+            crates,
+            action_documentation: action_documentation.as_ref(),
+            settings_schema_descriptions: settings_schema_descriptions.as_ref(),
+        },
     )?;
     let (output, failed) = check::report(&results, strict);
     print!("{output}");

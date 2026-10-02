@@ -253,6 +253,13 @@ fn confidence_name(confidence: Confidence) -> &'static str {
     }
 }
 
+fn withheld_reason(report: &TypeLayoutReport) -> String {
+    match report.withheld_note {
+        Some(note) => format!("(it could not be checked): {note}"),
+        None => "(in files with restricted access).".to_string(),
+    }
+}
+
 /// The model-facing text. It says what the answer is (a name match), what the markers in the
 /// tree mean (only those that occur), and what was left out.
 fn format_type_layout(project: &Project, report: &TypeLayoutReport, cx: &App) -> String {
@@ -284,10 +291,11 @@ fn format_type_layout(project: &Project, report: &TypeLayoutReport, cx: &App) ->
             if report.withheld > 0 {
                 writeln!(
                     output,
-                    "{} definition{} of `{}` can't be shown (in files with restricted access).",
+                    "{} definition{} of `{}` can't be shown {}",
                     report.withheld,
                     if report.withheld == 1 { "" } else { "s" },
-                    report.requested
+                    report.requested,
+                    withheld_reason(report)
                 )
                 .ok();
             } else if report.inferred.is_some() {
@@ -424,9 +432,10 @@ fn format_type_layout(project: &Project, report: &TypeLayoutReport, cx: &App) ->
     if report.withheld > 0 {
         writeln!(
             output,
-            "{} definition{} can't be shown (in files with restricted access).",
+            "{} definition{} can't be shown {}",
             report.withheld,
-            if report.withheld == 1 { "" } else { "s" }
+            if report.withheld == 1 { "" } else { "s" },
+            withheld_reason(report)
         )
         .ok();
     }

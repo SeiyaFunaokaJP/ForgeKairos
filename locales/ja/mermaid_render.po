@@ -137,9 +137,6 @@ msgstr "爆発 )) (("
 msgid "Because of how `%%{{…}}%%` or similar is written, what the structured editor reads does not match the diagram Mermaid draws. Edit it as text."
 msgstr "`%%{{…}}%%` などの書き方のせいで、構造化エディターの読み取りが Mermaid の描く図と一致しません。テキストのまま編集してください。"
 
-msgid "Block"
-msgstr "ブロック"
-
 msgid "Both inline data and a data reference are written ({line}). Keep only one, then open it again."
 msgstr "データの直書きと参照の両方が書かれています ({line})。片方にしてから開いてください。"
 
@@ -188,9 +185,6 @@ msgstr "分岐 <<choice>>"
 
 msgid "Choose the commit to cherry-pick."
 msgstr "チェリーピックするコミットを選んでください。"
-
-msgid "Circle"
-msgstr "○ 印"
 
 msgid "Circle (( ))"
 msgstr "円 (( ))"
@@ -421,9 +415,6 @@ msgstr "スタイル指定として読めません ({text})。"
 msgid "Could not read this as an XY chart statement ({statement}). Edit it as text."
 msgstr "XY チャートの文として読めませんでした ({statement})。テキストのまま編集してください。"
 
-msgid "Cross"
-msgstr "× 印"
-
 msgid "Cross end"
 msgstr "×印"
 
@@ -480,9 +471,6 @@ msgstr "配置図"
 
 msgid "Derives (derives)"
 msgstr "派生する (derives)"
-
-msgid "Diagrams that give classes style classes with `:::` are not supported by the structured editor ({statement}). Edit it as text."
-msgstr "`:::` でスタイルクラスを付けた図は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
 
 msgid "Diagrams that use edge IDs (`{target}@`) are not supported by the structured editor ({statement}). Edit it as text."
 msgstr "エッジ ID (`{target}@`) を使った図は構造化編集に対応していません ({statement})。テキストのまま編集してください。"
@@ -582,9 +570,6 @@ msgstr "フレーム「{}」が参照するデータ「{reference}」があり�
 
 msgid "Give the point two coordinates, `[x, y]` (Mermaid skips any from the third on)."
 msgstr "点の座標は `[x, y]` の 2 つにしてください (3 つ目以降は Mermaid が読み飛ばします)。"
-
-msgid "Group"
-msgstr "グループ"
 
 msgid "Hexagon {{ }}"
 msgstr "六角形 {{ }}"
@@ -1012,9 +997,6 @@ msgstr "実線の線"
 msgid "Some names are read by Mermaid as the same node (for example after it removes HTML tags). Edit it as text."
 msgstr "Mermaid が同じノードとして読む名前があります (HTML タグの除去など)。テキストのまま編集してください。"
 
-msgid "Space"
-msgstr "空き"
-
 msgid "Square [ ]"
 msgstr "四角 [ ]"
 
@@ -1041,6 +1023,9 @@ msgstr "人型 (actor)"
 
 msgid "Style class names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
 msgstr "`` ` `` で囲んだスタイルクラス名は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
+
+msgid "Style classes applied with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "`:::` でスタイルクラスを付けた図は構造化エディターに対応していません ({statement})。テキストのまま編集してください。"
 
 msgid "Subroutine [[ ]]"
 msgstr "二重枠 [[ ]]"
@@ -2461,6 +2446,9 @@ msgstr "`{name}` は `namespace` の名前に使えません ({statement})。"
 msgid "`{name}` cannot be used as a class name ({statement})."
 msgstr "`{name}` はクラス名に使えません ({statement})。"
 
+msgid "`{name}` cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
+msgstr "「{name}」は名前に使えません (記号 \" - < > {{ }} : , # % ; と前後の空白、単語 direction は不可)。"
+
 msgid "`{name}` is defined twice. Mermaid ignores the second one, so merge them into one, then open it again."
 msgstr "`{name}` が二重に定義されています。Mermaid は 2 つ目を無視するため、1 つにまとめてからもう一度開いてください。"
 
@@ -2565,6 +2553,9 @@ msgstr "`{trimmed}` は構造化編集に対応していません。複数行の
 
 msgid "`{value}` cannot be read as a value of a pie chart ({statement}). Write a number of 0 or more."
 msgstr "`{value}` は円グラフの値として読めません ({statement})。0 以上の数値を書いてください。"
+
+msgid "`{value}` cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
+msgstr "`{owner}` の「{value}」は書けません (改行や前後の空白、`%%{{`、`\"` で始まる値、`\"` と `#` / `%%` の混在は不可)。"
 
 msgid "`{word}` cannot be used as an attribute type or name."
 msgstr "`{word}` は属性の型や名前として使えません。"
@@ -2673,12 +2664,6 @@ msgstr "{name} の `{value}` は書けません。{number_rule}"
 
 msgid "{problem} Edit it as text."
 msgstr "{problem}テキストのまま編集してください。"
-
-msgid "“{name}” cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
-msgstr "「{name}」は名前に使えません (記号 \" - < > {{ }} : , # % ; と前後の空白、単語 direction は不可)。"
-
-msgid "“{value}” cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
-msgstr "`{owner}` の「{value}」は書けません (改行や前後の空白、`%%{{`、`\"` で始まる値、`\"` と `#` / `%%` の混在は不可)。"
 
 msgctxt "C4 element"
 msgid "Bidirectional"
@@ -2963,6 +2948,30 @@ msgstr "右"
 msgctxt "architecture side"
 msgid "Top"
 msgstr "上"
+
+msgctxt "block diagram"
+msgid "Arrow"
+msgstr "矢印"
+
+msgctxt "block diagram"
+msgid "Block"
+msgstr "ブロック"
+
+msgctxt "block diagram"
+msgid "Circle"
+msgstr "○ 印"
+
+msgctxt "block diagram"
+msgid "Cross"
+msgstr "× 印"
+
+msgctxt "block diagram"
+msgid "Group"
+msgstr "グループ"
+
+msgctxt "block diagram"
+msgid "Space"
+msgstr "空き"
 
 msgctxt "event modeling frame field"
 msgid "name"

@@ -48,7 +48,7 @@ pub(crate) fn search_index(
                 }
                 if !found
                     .iter()
-                    .any(|known| known.definition == candidate.definition)
+                    .any(|known| is_same_place(&known.definition, &candidate.definition))
                 {
                     found.push(candidate);
                 }
@@ -58,14 +58,26 @@ pub(crate) fn search_index(
     })
 }
 
-/// Whether a language server's symbol is the same one as the index found.
+/// A C++ function is found under its own name and under qualified ones (`Box::set`) at one
+/// place; the two searches may each find it under another of them.
+fn is_same_place(left: &IndexedDefinition, right: &IndexedDefinition) -> bool {
+    left.path == right.path && left.name_range == right.name_range
+}
+
+/// Whether a language server's symbol is the same one as the index found. A language server
+/// names a C++ member without its scope (`set`, in `Box`), where the index may have found it as
+/// `Box::set`.
 fn is_same_symbol(symbol: &Symbol, definition: &IndexedDefinition) -> bool {
     let SymbolLocation::InProject(path) = &symbol.path else {
         return false;
     };
     let row = symbol.range.start.0.row;
+    let unqualified = definition
+        .name
+        .rsplit_once("::")
+        .map_or(definition.name.as_str(), |(_, name)| name);
     *path == definition.path
-        && symbol.name == definition.name
+        && (symbol.name == definition.name || symbol.name == unqualified)
         && (row == definition.name_range.start.row
             || (definition.item_range.start.row..=definition.item_range.end.row).contains(&row))
 }
@@ -232,6 +244,73 @@ mod tests {
     use workspace::MultiWorkspace;
 
     use crate::ProjectSymbolsDelegate;
+
+    use super::{
+        IndexedDefinition, IndexedSymbolMatch, Symbol, SymbolLocation, is_same_place,
+        without_language_server_duplicates,
+    };
+
+    fn indexed(name: &str, row: u32, worktree_id: project::WorktreeId) -> IndexedSymbolMatch {
+        let start = language::Point::new(row, 4);
+        IndexedSymbolMatch {
+            definition: IndexedDefinition {
+                name: name.to_string(),
+                kind: project::symbol_index_store::DefinitionKind::Method,
+                is_static: false,
+                is_declaration: false,
+                language: project::symbol_index_store::SourceLanguage::Cpp,
+                path: project::ProjectPath {
+                    worktree_id,
+                    path: util::rel_path::rel_path("box.cpp").into_arc(),
+                },
+                name_range: start..language::Point::new(row, 7),
+                item_range: start..language::Point::new(row + 2, 1),
+            },
+            score: 1,
+        }
+    }
+
+    /// The index finds a C++ member also under its qualified names; a language server's entry
+    /// for it (named without the scope) stands for all of them, and only for its own place.
+    #[test]
+    fn a_language_server_symbol_stands_for_qualified_index_names() {
+        let worktree_id = project::WorktreeId::from_usize(1);
+        let symbol = Symbol {
+            language_server_name: language::LanguageServerName::new_static("clangd"),
+            source_worktree_id: worktree_id,
+            source_language_server_id: lsp::LanguageServerId(0),
+            path: SymbolLocation::InProject(project::ProjectPath {
+                worktree_id,
+                path: util::rel_path::rel_path("box.cpp").into_arc(),
+            }),
+            label: language::CodeLabel::plain("set".to_string(), None),
+            name: "set".to_string(),
+            kind: language::SymbolKind::Method,
+            range: language::Unclipped(language::PointUtf16::new(3, 4))
+                ..language::Unclipped(language::PointUtf16::new(3, 7)),
+            container_name: Some("Box".to_string()),
+        };
+        let matches = [
+            indexed("set", 3, worktree_id),
+            indexed("Box::set", 3, worktree_id),
+            indexed("outer::Box::set", 3, worktree_id),
+            indexed("Box::reset", 3, worktree_id),
+            indexed("Other::set", 9, worktree_id),
+        ];
+        let kept: Vec<String> = without_language_server_duplicates(&matches, &[symbol])
+            .into_iter()
+            .map(|found| found.definition.name)
+            .collect();
+        assert_eq!(kept, ["Box::reset", "Other::set"]);
+        assert!(is_same_place(
+            &matches[1].definition,
+            &matches[2].definition
+        ));
+        assert!(!is_same_place(
+            &matches[1].definition,
+            &matches[4].definition
+        ));
+    }
 
     const A_C: &str = "int foo(void) { return 0; }\nint fold(void) { return 1; }\n";
     const B_C: &str = "int bar(void) { return foo(); }\n";

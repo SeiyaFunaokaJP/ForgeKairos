@@ -447,10 +447,10 @@ pub struct AgentSettingsContent {
     ///
     /// Default: ""
     pub terminal_init_command: Option<String>,
-    /// 「Claude Code を起動」を、確認なしで常にサンドボックスの外で起動するか
-    /// (ADR-F49 決定 19)。外では書き込みの制限がなくなり、通信の制限はプロキシの
-    /// 設定を読むプログラムにだけ効きます (SSH の接続先では統制が効きません)。
-    /// ユーザー設定にだけ書け、プロジェクトの設定では変えられません。
+    /// Whether "Launch Claude Code" always launches outside the sandbox, without
+    /// asking. Outside, writes are not restricted, and network restrictions only
+    /// apply to programs that read the proxy settings (and not at all on SSH
+    /// hosts). Can only be set in the user settings, not in a project's settings.
     ///
     /// Default: false
     pub claude_code_run_outside_sandbox: Option<bool>,
@@ -942,21 +942,20 @@ pub enum CustomAgentServerSettings {
         /// Default: {}
         #[serde(default, skip_serializing_if = "HashMap::is_empty")]
         favorite_config_option_values: HashMap<String, Vec<String>>,
-        /// このエージェントがサブスクリプションでのサインイン (`/login` などの
-        /// 認証メソッド) を出してよいか (ADR-F55)。
+        /// Whether this agent may offer signing in with a subscription (an
+        /// authentication method such as `/login`).
         ///
-        /// `false` にすると、そのエージェントのサインインは認証カードから消え、
-        /// 別の経路から要求されても断られます。API キーでの利用はこの設定に
-        /// 関係なく使えます。
+        /// When `false`, the agent's sign-in disappears from the authentication card
+        /// and is refused when it is requested another way. Using an API key works
+        /// regardless of this setting.
         ///
         /// Default: true
         allow_subscription_sign_in: Option<bool>,
-        /// このエージェントを、確認なしで常にサンドボックスの外で起動するか
-        /// (ADR-F49 決定 19)。
+        /// Whether this agent always launches outside the sandbox, without asking.
         ///
-        /// 外では書き込みの制限がなくなり、通信の制限はプロキシの設定を読む
-        /// プログラムにだけ効きます。ユーザー設定にだけ書け、プロジェクトの
-        /// 設定 (`.zed/settings.json`) では変えられません。
+        /// Outside, writes are not restricted, and network restrictions only apply
+        /// to programs that read the proxy settings. Can only be set in the user
+        /// settings, not in a project's settings (`.zed/settings.json`).
         ///
         /// Default: false
         run_outside_sandbox: Option<bool>,
@@ -989,21 +988,20 @@ pub enum CustomAgentServerSettings {
         /// Default: {}
         #[serde(default, skip_serializing_if = "HashMap::is_empty")]
         favorite_config_option_values: HashMap<String, Vec<String>>,
-        /// このエージェントがサブスクリプションでのサインイン (`/login` などの
-        /// 認証メソッド) を出してよいか (ADR-F55)。
+        /// Whether this agent may offer signing in with a subscription (an
+        /// authentication method such as `/login`).
         ///
-        /// `false` にすると、そのエージェントのサインインは認証カードから消え、
-        /// 別の経路から要求されても断られます。API キーでの利用はこの設定に
-        /// 関係なく使えます。
+        /// When `false`, the agent's sign-in disappears from the authentication card
+        /// and is refused when it is requested another way. Using an API key works
+        /// regardless of this setting.
         ///
         /// Default: true
         allow_subscription_sign_in: Option<bool>,
-        /// このエージェントを、確認なしで常にサンドボックスの外で起動するか
-        /// (ADR-F49 決定 19)。
+        /// Whether this agent always launches outside the sandbox, without asking.
         ///
-        /// 外では書き込みの制限がなくなり、通信の制限はプロキシの設定を読む
-        /// プログラムにだけ効きます。ユーザー設定にだけ書け、プロジェクトの
-        /// 設定 (`.zed/settings.json`) では変えられません。
+        /// Outside, writes are not restricted, and network restrictions only apply
+        /// to programs that read the proxy settings. Can only be set in the user
+        /// settings, not in a project's settings (`.zed/settings.json`).
         ///
         /// Default: false
         run_outside_sandbox: Option<bool>,
@@ -1252,8 +1250,8 @@ pub enum ToolPermissionMode {
     #[default]
     Confirm,
     /// Ask a separate, cheap language model whether the operation is dangerous,
-    /// and auto-approve it only when that model answers that it is safe
-    /// (ADR-F52). Every rule that outranks the default — the built-in security
+    /// and auto-approve it only when that model answers that it is safe.
+    /// Every rule that outranks the default — the built-in security
     /// rules and the user's `always_deny`/`always_confirm`/`always_allow`
     /// patterns — is applied first, so this only replaces the "ask every time"
     /// step.

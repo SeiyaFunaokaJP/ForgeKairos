@@ -261,6 +261,11 @@ fn main() {
         return;
     }
 
+    if args.dump_settings_schema {
+        dump_settings_schema();
+        return;
+    }
+
     let restart_arguments = if let Some(directory) = args.user_data_dir.as_deref() {
         let directory = paths::set_custom_data_dir(directory);
         vec![
@@ -845,6 +850,10 @@ fn main() {
         edit_prediction::init(cx);
         inspector_ui::init(app_state.clone(), cx);
         json_schema_store::init(cx);
+        cx.observe_global::<i18n_settings::ActiveUiLanguage>(
+            json_schema_store::reload_localized_schemas,
+        )
+        .detach();
         miniprofiler_ui::init(*STARTUP_TIME.get().unwrap(), cx);
         which_key::init(cx);
         #[cfg(target_os = "windows")]
@@ -1785,6 +1794,11 @@ struct Args {
     #[arg(long, hide = true)]
     dump_all_actions: bool,
 
+    /// Prints the JSON schema of the settings file with its English descriptions, the
+    /// input of `i18n_tool check --settings-schema`.
+    #[arg(long, hide = true)]
+    dump_settings_schema: bool,
+
     /// Output current environment variables as JSON to stdout
     #[arg(long, hide = true)]
     printenv: bool,
@@ -2015,6 +2029,27 @@ fn watch_languages(fs: Arc<dyn fs::Fs>, languages: Arc<LanguageRegistry>, cx: &m
         }
     })
     .detach();
+}
+
+fn dump_settings_schema() {
+    match serde_json::to_string_pretty(&english_settings_schema()) {
+        Ok(json) => println!("{json}"),
+        Err(error) => eprintln!("cannot serialize the settings schema: {error}"),
+    }
+}
+
+fn english_settings_schema() -> serde_json::Value {
+    settings::SettingsStore::json_schema(&settings::SettingsJsonSchemaParams {
+        language_names: &[],
+        font_names: &[],
+        theme_names: &[],
+        icon_theme_names: &[],
+        lsp_adapter_names: &[],
+        action_names: &[],
+        action_documentation: &HashMap::default(),
+        deprecations: &HashMap::default(),
+        deprecation_messages: &HashMap::default(),
+    })
 }
 
 fn dump_all_gpui_actions() {

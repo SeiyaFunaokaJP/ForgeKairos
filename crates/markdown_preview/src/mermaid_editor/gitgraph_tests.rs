@@ -365,3 +365,20 @@ async fn fields_whose_quotes_merman_would_rewrite_are_not_written(cx: &mut TestA
         "the modal should say the quotes would move, got {message:?}"
     );
 }
+
+#[test]
+fn add_buttons_are_worded_whole_in_japanese() {
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
+    assert_eq!(
+        GitGraphItemKind::ALL.map(add_gitgraph_item_label),
+        [
+            "コミットを追加",
+            "ブランチを追加",
+            "チェックアウトを追加",
+            "マージを追加",
+            "チェリーピックを追加",
+        ]
+    );
+}

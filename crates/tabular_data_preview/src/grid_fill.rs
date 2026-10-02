@@ -24,9 +24,9 @@ use crate::{
 actions!(
     tabular_data,
     [
-        /// 選択範囲の先頭行を範囲全体にコピーします。
+        /// Copies the first row of the selection to the whole selection.
         FillDown,
-        /// 選択範囲の先頭列を範囲全体にコピーします。
+        /// Copies the first column of the selection to the whole selection.
         FillRight,
     ]
 );

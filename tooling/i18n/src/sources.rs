@@ -258,6 +258,10 @@ enum MacroKind {
     TranslatePlural,
     TranslateWithContextPlural,
     Mark,
+    /// `i18n::tr("…")`, which looks up its argument unchanged.
+    Lookup,
+    /// `i18n::tr_ctx("context", "…")` and `i18n::tr_ctx_opt`.
+    LookupWithContext,
 }
 
 const MACROS: [(&str, MacroKind); 5] = [
@@ -268,15 +272,35 @@ const MACROS: [(&str, MacroKind); 5] = [
     ("msg", MacroKind::Mark),
 ];
 
+/// The lookup functions, whose calls with string literals are messages like the macros'. Calls
+/// with anything else look up text known only at run time and are not reported.
+const FUNCTIONS: [(&str, MacroKind); 3] = [
+    ("tr", MacroKind::Lookup),
+    ("tr_ctx", MacroKind::LookupWithContext),
+    ("tr_ctx_opt", MacroKind::LookupWithContext),
+];
+
 impl MacroKind {
     /// Argument positions of the context, the msgid and the plural msgid.
     fn positions(self) -> (Option<usize>, usize, Option<usize>) {
         match self {
-            MacroKind::Translate | MacroKind::Mark => (None, 0, None),
-            MacroKind::TranslateWithContext => (Some(0), 1, None),
+            MacroKind::Translate | MacroKind::Mark | MacroKind::Lookup => (None, 0, None),
+            MacroKind::TranslateWithContext | MacroKind::LookupWithContext => (Some(0), 1, None),
             MacroKind::TranslatePlural => (None, 1, Some(2)),
             MacroKind::TranslateWithContextPlural => (Some(0), 2, Some(3)),
         }
+    }
+
+    fn is_function(self) -> bool {
+        matches!(self, MacroKind::Lookup | MacroKind::LookupWithContext)
+    }
+
+    /// Whether the msgid is the literal as written rather than a `format!` template.
+    fn looks_up_unchanged(self) -> bool {
+        matches!(
+            self,
+            MacroKind::Mark | MacroKind::Lookup | MacroKind::LookupWithContext
+        )
     }
 }
 
@@ -343,12 +367,15 @@ pub fn extract(files: &[RustFile]) -> Extraction {
         }
         let source = &file.source;
         for index in 0..source.code.len() {
-            if !source.is_ident(index)
-                || !source.is_punct(index + 1, "!")
-                || !(source.is_punct(index + 2, "(")
+            if !source.is_ident(index) {
+                continue;
+            }
+            let is_macro_call = source.is_punct(index + 1, "!")
+                && (source.is_punct(index + 2, "(")
                     || source.is_punct(index + 2, "[")
-                    || source.is_punct(index + 2, "{"))
-            {
+                    || source.is_punct(index + 2, "{"));
+            let is_function_call = source.is_punct(index + 1, "(");
+            if !is_macro_call && !is_function_call {
                 continue;
             }
             let name = source.token_text(index);
@@ -360,18 +387,36 @@ pub fn extract(files: &[RustFile]) -> Extraction {
             let kind = if qualified {
                 MACROS
                     .iter()
-                    .find(|(macro_name, _)| *macro_name == name)
+                    .chain(FUNCTIONS.iter())
+                    .find(|(item_name, kind)| {
+                        *item_name == name && kind.is_function() == is_function_call
+                    })
                     .map(|(_, kind)| *kind)
             } else if index >= 1 && source.is_punct(index - 1, ":") {
                 None
             } else {
-                imported.get(name).copied()
+                imported
+                    .get(name)
+                    .copied()
+                    .filter(|kind| kind.is_function() == is_function_call)
             };
             let Some(kind) = kind else {
                 continue;
             };
+            // `fn tr(` declares a function of the same name, and `.tr(` calls a method.
+            if kind.is_function()
+                && index >= 1
+                && (source.is_punct(index - 1, ".")
+                    || (source.is_ident(index - 1) && source.token_text(index - 1) == "fn"))
+            {
+                continue;
+            }
             let line = source.line_of_token(index);
-            let arguments = source.arguments(index + 2);
+            let arguments = source.arguments(if kind.is_function() {
+                index + 1
+            } else {
+                index + 2
+            });
             let literal_at = |position: usize| -> Option<String> {
                 let (low, high) = *arguments.get(position)?;
                 if low != high {
@@ -384,7 +429,7 @@ pub fn extract(files: &[RustFile]) -> Extraction {
             // `msg!` expands to the literal itself, which `i18n::tr` looks up unchanged.
             let template_at = |position: usize| -> Option<String> {
                 let value = literal_at(position)?;
-                Some(if kind == MacroKind::Mark {
+                Some(if kind.looks_up_unchanged() {
                     value
                 } else {
                     runtime_msgid(&value)
@@ -398,11 +443,13 @@ pub fn extract(files: &[RustFile]) -> Extraction {
                 context.map_or(Some(None), |context| context.map(Some)),
                 msgid_plural.map_or(Some(None), |plural| plural.map(Some)),
             ) else {
-                warnings.push(ExtractWarning {
-                    path: file.path.clone(),
-                    line,
-                    message: format!("`{name}!` without string literals where messages go"),
-                });
+                if !kind.is_function() {
+                    warnings.push(ExtractWarning {
+                        path: file.path.clone(),
+                        line,
+                        message: format!("`{name}!` without string literals where messages go"),
+                    });
+                }
                 continue;
             };
             let key = MessageKey { context, msgid };
@@ -539,7 +586,7 @@ fn i18n_crate_names(source: &SourceFile) -> BTreeSet<String> {
     names
 }
 
-/// The macros a file brings into scope with `use i18n::…` (`use i18n::t;`,
+/// The macros and lookup functions a file brings into scope with `use i18n::…` (`use i18n::t;`,
 /// `use i18n::{t, tn as plural};`, `use i18n::*;`), by the name they are called with.
 fn imported_macros(
     source: &SourceFile,
@@ -567,7 +614,7 @@ fn imported_macros(
         if is_i18n {
             let path_start = cursor + 3;
             if source.is_punct(path_start, "*") {
-                for (name, kind) in MACROS {
+                for (name, kind) in MACROS.into_iter().chain(FUNCTIONS) {
                     imported.insert(name.to_string(), kind);
                 }
             }
@@ -576,7 +623,10 @@ fn imported_macros(
                     continue;
                 }
                 let name = source.token_text(position);
-                let Some((_, kind)) = MACROS.iter().find(|(macro_name, _)| *macro_name == name)
+                let Some((_, kind)) = MACROS
+                    .iter()
+                    .chain(FUNCTIONS.iter())
+                    .find(|(item_name, _)| *item_name == name)
                 else {
                     continue;
                 };
@@ -984,6 +1034,37 @@ mod tests {
             vec![
                 (None, "Root".into(), None, false),
                 (Some("ctx".into()), "Other".into(), None, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn lookups_of_literals_are_messages() {
+        let files = [file(
+            "crates/c/src/c.rs",
+            r#"
+use i18n::tr_ctx;
+fn f(name: &str) {
+    i18n::tr("Looked {up} as written");
+    tr_ctx("panel", "Context");
+    i18n::tr_ctx_opt("panel", "Optional");
+    i18n::tr(name);
+    tr("Not imported");
+    other::tr("Not ours");
+    value.tr_ctx("panel", "A method");
+    i18n::tr!("Not a function");
+}
+fn tr(text: &str) -> &str { text }
+"#,
+        )];
+        let extraction = extract(&files);
+        assert_eq!(extraction.warnings, Vec::new());
+        assert_eq!(
+            keys(&extraction),
+            vec![
+                (None, "Looked {up} as written".into(), None, false),
+                (Some("panel".into()), "Context".into(), None, false),
+                (Some("panel".into()), "Optional".into(), None, false),
             ]
         );
     }

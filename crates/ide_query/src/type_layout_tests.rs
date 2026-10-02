@@ -1215,3 +1215,68 @@ fn test_type_names_are_parsed() {
         assert!(parse_type_name(text).is_err(), "{text:?}");
     }
 }
+
+/// A host that doesn't say where the root of `a->b.c` was declared can't have it judged, and
+/// that is a different reason from a restricted file.
+#[test]
+fn test_where_a_member_chain_starts_decides_what_is_judged() {
+    let cases = [
+        (None, None, None, ChainRoot::Shown),
+        (
+            Some("struct a"),
+            Some(ChainRootOrigin::InFile),
+            None,
+            ChainRoot::Shown,
+        ),
+        (
+            Some("struct a"),
+            Some(ChainRootOrigin::Global),
+            Some("global_a"),
+            ChainRoot::Declarations("global_a", DefinitionKind::Variable),
+        ),
+        (
+            Some("struct a"),
+            Some(ChainRootOrigin::Call),
+            Some("make_a"),
+            ChainRoot::Declarations("make_a", DefinitionKind::Function),
+        ),
+        (
+            Some("struct a"),
+            Some(ChainRootOrigin::Global),
+            None,
+            ChainRoot::Unnamed,
+        ),
+        (Some("struct a"), None, None, ChainRoot::HostTooOld),
+        (
+            Some("struct a"),
+            None,
+            Some("global_a"),
+            ChainRoot::HostTooOld,
+        ),
+    ];
+    for (root_type, root_origin, root_name, expected) in cases {
+        assert_eq!(
+            chain_root(root_type, root_origin, root_name),
+            expected,
+            "{root_type:?} {root_origin:?} {root_name:?}"
+        );
+    }
+}
+
+/// A member withheld because the host can't say where its chain starts says so; one withheld
+/// for its files doesn't claim that reason.
+#[test]
+fn test_a_member_withheld_for_an_old_host_carries_the_reason() {
+    let report = withheld_member_report("id".to_string(), ChainRoot::HostTooOld);
+    assert_eq!(report.withheld, 1);
+    assert_eq!(report.withheld_note, Some(HOST_TOO_OLD_TO_JUDGE_MEMBER));
+    for root in [
+        ChainRoot::Shown,
+        ChainRoot::Unnamed,
+        ChainRoot::Declarations("global_a", DefinitionKind::Variable),
+    ] {
+        let report = withheld_member_report("id".to_string(), root);
+        assert_eq!(report.withheld, 1);
+        assert_eq!(report.withheld_note, None, "{root:?}");
+    }
+}

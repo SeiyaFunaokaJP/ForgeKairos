@@ -47,6 +47,9 @@ msgstr "最初のコミットを含む範囲は並べ替えられません。1 �
 msgid "A warning from the remote host has no program name"
 msgstr "接続先から届いた警告にプログラム名がありません"
 
+msgid "Agents can't be started in a sandbox in a project that has no folder open."
+msgstr "フォルダーを開いていないプロジェクトでは、エージェントをサンドボックスで起動できません。"
+
 msgid "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch}\"."
 msgstr "ブランチ「{merge_request_branch}」は既にあります。作り直すには「既存の {merge_request_branch} を作り直す」にチェックを入れてください。"
 
@@ -275,6 +278,9 @@ msgstr "このファイルをフォーマットできる言語サーバーがあ
 msgid "No language server can format this file. Install a language server on the remote host ({host})."
 msgstr "このファイルをフォーマットできる言語サーバーがありません。接続先 ({host}) に言語サーバーをインストールしてください。"
 
+msgid "No open file uses the restarted language servers, so they will start when you open a file."
+msgstr "再起動した言語サーバーを使うファイルが開かれていないため、言語サーバーはファイルを開いたときに起動します。"
+
 msgid "No running language server can format a selection in this file. The whole file can be formatted."
 msgstr "選択範囲のフォーマットに対応した言語サーバーがありません。ファイル全体ならフォーマットできます。"
 
@@ -349,9 +355,6 @@ msgstr "接続先の Zed のサーバーが古いため、この書き換えは�
 
 msgid "The Zed server on the remote host is too old to search with these conditions. Update Zed on the remote host."
 msgstr "接続先の Zed のサーバーが古いため、この条件では検索できません。接続先の Zed を更新してください。"
-
-msgid "The agent cannot start in a sandbox in a project that has no folder open."
-msgstr "フォルダーを開いていないプロジェクトでは、エージェントをサンドボックスで起動できません。"
 
 msgid "The agent sandbox the remote host prepared does not fit this editor's policy: {error}"
 msgstr "接続先が用意したエージェントのサンドボックスは、このエディターの方針と合いません: {error}"
@@ -585,46 +588,46 @@ msgctxt "list separator"
 msgid ", "
 msgstr "、"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Checking Node.js in WSL"
 msgstr "WSL の Node.js の確認"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Checking the WSL architecture"
 msgstr "WSL のアーキテクチャの確認"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Checking the agent's executable"
 msgstr "エージェントの実行ファイルの確認"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Checking the agent's runtime in WSL"
 msgstr "WSL のエージェントの実行環境の確認"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Checking the data folder in WSL"
 msgstr "WSL のデータフォルダーの確認"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Checking the installed npm package"
 msgstr "インストール済みの npm パッケージの確認"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Checking the npm package"
 msgstr "npm パッケージの確認"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Checking the npm package's executable"
 msgstr "npm パッケージの実行ファイルの確認"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Placing Node.js for Linux in WSL"
 msgstr "Linux 版 Node.js の WSL への配置"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "Placing the agent for Linux in WSL"
 msgstr "Linux 版のエージェントの WSL への配置"
 
-msgctxt "wsl step"
+msgctxt "wsl sandbox step"
 msgid "npm install inside the sandbox"
 msgstr "サンドボックスの中での npm install"

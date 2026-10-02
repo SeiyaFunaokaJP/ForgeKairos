@@ -756,6 +756,24 @@ fn lex(
                             }
                         }
                     }
+                    // `#define OPEN "/*"`: a literal does not start a comment. It ends at its
+                    // quote or at the end of the line, where a continuation is handled above.
+                    Some(quote @ (b'"' | b'\'')) => {
+                        index += 1;
+                        while let Some(inner) = at(index) {
+                            if inner == quote {
+                                index += 1;
+                                break;
+                            }
+                            if inner == b'\n'
+                                || (inner == b'\\' && matches!(at(index + 1), Some(b'\n' | b'\r')))
+                            {
+                                break;
+                            }
+                            index += if inner == b'\\' { 2 } else { 1 };
+                        }
+                        index = index.min(end);
+                    }
                     Some(b'\n') => break,
                     Some(_) => index += 1,
                 }
@@ -1223,6 +1241,8 @@ struct Declaration {
     base: Base,
     is_typedef: bool,
     qualifiers: Vec<String>,
+    /// Pointer levels that come with the base: `typeof(struct foo *)`.
+    base_pointer_depth: u32,
     /// Tokens `0..specifier_end` are the specifiers.
     specifier_end: usize,
     declarators: Vec<Declarator>,
@@ -1256,10 +1276,14 @@ struct Context<'a> {
     /// times per nesting level; unbalanced brackets or statements without an end would make
     /// some scans quadratic, so they stop (and the result is marked truncated) when it runs out.
     budget: Cell<usize>,
+    /// `typeof(...)` being read inside one another.
+    typeof_depth: Cell<usize>,
 }
 
 /// Token steps allowed per lexed token; see [`Context::budget`].
 const SCAN_STEPS_PER_TOKEN: usize = 48;
+/// `typeof(typeof(...))` nested deeper than this is not read.
+const MAX_TYPEOF_DEPTH: usize = 4;
 
 impl<'a> Context<'a> {
     fn new(source: &'a [u8], language: SourceLanguage, lexed: &'a Lexed) -> Self {
@@ -1274,6 +1298,58 @@ impl<'a> Context<'a> {
                     .saturating_mul(SCAN_STEPS_PER_TOKEN)
                     .saturating_add(1 << 16),
             ),
+            typeof_depth: Cell::new(0),
+        }
+    }
+
+    /// The type named inside `typeof(...)` when it is written as a type (`struct foo`,
+    /// `int`, `foo_t *`), with its pointer levels. A lone name may as well be a variable, and an
+    /// expression has no type here; both give `None`.
+    fn typeof_type(&self, inner: &[Token]) -> Option<(Base, u32)> {
+        let depth = self.typeof_depth.get();
+        if depth >= MAX_TYPEOF_DEPTH {
+            return None;
+        }
+        self.typeof_depth.set(depth + 1);
+        let inner = self.strip_attributes(inner);
+        let declaration = self.parse_declaration(&inner);
+        self.typeof_depth.set(depth);
+        let declaration = declaration?;
+        let pointer_depth = match declaration.declarators.as_slice() {
+            [] => 0,
+            [declarator]
+                if declarator.name.is_none()
+                    && declarator
+                        .operations
+                        .iter()
+                        .all(|operation| *operation == DeclarationOperation::Pointer) =>
+            {
+                to_u32(declarator.operations.len())
+            }
+            _ => return None,
+        };
+        let pointer_depth = pointer_depth.saturating_add(declaration.base_pointer_depth);
+        match declaration.base {
+            Base::Builtin(_) => Some((declaration.base, pointer_depth)),
+            Base::Named(_) if pointer_depth > 0 || declaration.base_pointer_depth > 0 => {
+                Some((declaration.base, pointer_depth))
+            }
+            Base::Tag {
+                kind,
+                name: Some(name),
+                body: None,
+                ..
+            } => Some((
+                Base::Tag {
+                    kind,
+                    name: Some(name),
+                    name_token: None,
+                    body: None,
+                    base_classes: Vec::new(),
+                },
+                pointer_depth,
+            )),
+            _ => None,
         }
     }
 
@@ -1464,6 +1540,7 @@ impl<'a> Context<'a> {
         let mut builtin_words: Vec<String> = Vec::new();
         let mut tag: Option<Base> = None;
         let mut opaque = false;
+        let mut typeof_base: Option<(Base, u32)> = None;
         // Plain identifiers in specifier position: (start token, last-component token, text).
         let mut run: Vec<(usize, usize, String)> = Vec::new();
         let mut after_body = false;
@@ -1501,8 +1578,20 @@ impl<'a> Context<'a> {
                 tag = Some(parsed);
                 index = next;
             } else if is_typeof(word) && self.is(tokens.get(index + 1), "(") {
-                index = self.matching(tokens, index + 1)? + 1;
-                opaque = true;
+                let close = self.matching(tokens, index + 1)?;
+                let inner = tokens.get(index + 2..close).unwrap_or_default();
+                match self.typeof_type(inner) {
+                    Some(base)
+                        if tag.is_none()
+                            && builtin_words.is_empty()
+                            && typeof_base.is_none()
+                            && !opaque =>
+                    {
+                        typeof_base = Some(base);
+                    }
+                    _ => opaque = true,
+                }
+                index = close + 1;
             } else if is_known_annotation(word) || (after_body && word.starts_with(b"__")) {
                 qualifiers.push(self.text(token).into_owned());
                 index += 1;
@@ -1549,7 +1638,8 @@ impl<'a> Context<'a> {
                     b";" | b"," | b"[" | b":" | b"=" | b"(" | b")" | b"{"
                 )
         });
-        let has_base = !builtin_words.is_empty() || tag.is_some() || opaque;
+        let has_base =
+            !builtin_words.is_empty() || tag.is_some() || opaque || typeof_base.is_some();
         // A C++ constructor declares a name without a type.
         let constructor = self.language == SourceLanguage::Cpp
             && !has_base
@@ -1567,11 +1657,16 @@ impl<'a> Context<'a> {
             run.pop();
         }
 
+        let mut base_pointer_depth = 0;
         let base = if let Some(tag) = tag {
             qualifiers.extend(run.iter().map(|(_, _, name)| name.clone()));
             tag
         } else if opaque {
             Base::Opaque
+        } else if let Some((base, pointer_depth)) = typeof_base {
+            qualifiers.extend(run.iter().map(|(_, _, name)| name.clone()));
+            base_pointer_depth = pointer_depth;
+            base
         } else if !builtin_words.is_empty() {
             qualifiers.extend(run.iter().map(|(_, _, name)| name.clone()));
             Base::Builtin(builtin_words.join(" "))
@@ -1624,6 +1719,7 @@ impl<'a> Context<'a> {
             base,
             is_typedef,
             qualifiers,
+            base_pointer_depth,
             specifier_end: declarator_start,
             declarators,
         })
@@ -1982,6 +2078,7 @@ impl<'a> Context<'a> {
             ..TypeText::default()
         };
         self.apply_base(&mut text, &declaration.base);
+        text.pointer_depth += declaration.base_pointer_depth;
         text
     }
 
@@ -2031,7 +2128,10 @@ impl<'a> Context<'a> {
             .position(|operation| *operation == DeclarationOperation::Function);
         let data_operations = match function_at {
             Some(position) => operations.get(..position).unwrap_or_default(),
-            None => operations.as_slice(),
+            None => {
+                text.pointer_depth += declaration.base_pointer_depth;
+                operations.as_slice()
+            }
         };
         for operation in data_operations {
             match operation {
@@ -2081,15 +2181,17 @@ impl<'a> Context<'a> {
             text.is_function_pointer = true;
             return Some(text);
         }
+        let mut added_pointers = 0;
         for operation in after {
             match operation {
-                DeclarationOperation::Pointer => text.pointer_depth += 1,
+                DeclarationOperation::Pointer => added_pointers += 1,
                 DeclarationOperation::Reference => text.is_reference = true,
                 DeclarationOperation::Array(_) | DeclarationOperation::Function => {}
             }
         }
-        if text.pointer_depth > 0 {
-            text.text = format!("{} {}", text.text, "*".repeat(text.pointer_depth as usize));
+        if added_pointers > 0 {
+            text.pointer_depth += added_pointers;
+            text.text = format!("{} {}", text.text, "*".repeat(added_pointers as usize));
         }
         Some(text)
     }
@@ -2422,6 +2524,25 @@ impl<'a> Context<'a> {
                 continue;
             }
             let condition = combine_conditions(outer_condition, conditions.current().as_deref());
+            if self.is_lone_member_macro(tokens, index) {
+                // `randomized_struct_fields_start` or `SUBTREE_BITS` brings its own members and
+                // semicolons; read as part of the next declaration it would change it.
+                let range = token.range();
+                let next_start = tokens.get(index + 1).map(|token| token.start);
+                let comment = self
+                    .leading_comment(previous_end, token.start)
+                    .or_else(|| self.trailing_comment(token.end, next_start));
+                previous_end = token.end;
+                members.push(unparsed_member(
+                    self.text(token).into_owned(),
+                    range,
+                    comment,
+                    condition,
+                ));
+                *budget = budget.saturating_sub(1);
+                index += 1;
+                continue;
+            }
             let mut statement = Vec::new();
             let mut end_token: Option<Token> = None;
             while let Some(token) = tokens.get(index) {
@@ -2478,19 +2599,164 @@ impl<'a> Context<'a> {
             let comment = self
                 .leading_comment(previous_end, first.start)
                 .or_else(|| self.trailing_comment(end, next_start));
-            previous_end = end;
-            let new_members = self.members_from_statement(
+            let mut statement_budget = *budget;
+            let mut new_members = self.members_from_statement(
                 &statement,
                 range,
                 depth,
                 condition.as_deref(),
-                comment,
-                budget,
+                comment.clone(),
+                &mut statement_budget,
             );
+            let unreadable = matches!(
+                new_members.as_slice(),
+                [only] if only.kind == MemberKind::Unparsed
+            );
+            // `DECLSPEC_XFGVIRT(IUnknown, AddRef)` on its own line annotates the declaration
+            // after it, which reads well with it.
+            let annotates_next = self
+                .identifier(statement.first())
+                .is_some_and(|word| word.starts_with(b"DECLSPEC"));
+            if (unreadable || !annotates_next)
+                && let Some(close) = self.member_macro_call_end(&statement)
+                && let (Some(macro_end), Some(rest_first)) =
+                    (statement.get(close), statement.get(close + 1))
+            {
+                // `RH_KABI_RESERVE(1)` on a line of its own brings its own semicolon: the
+                // declaration on the next line is separate.
+                let macro_range = Range {
+                    start: first.start,
+                    end: macro_end.end,
+                };
+                let macro_comment = self
+                    .leading_comment(previous_end, first.start)
+                    .or_else(|| self.trailing_comment(macro_end.end, Some(rest_first.start)));
+                members.push(unparsed_member(
+                    self.join_range(&statement, 0..close + 1),
+                    macro_range,
+                    macro_comment,
+                    condition.clone(),
+                ));
+                *budget = budget.saturating_sub(1);
+                let rest = statement.get(close + 1..).unwrap_or_default();
+                let rest_range = Range {
+                    start: rest_first.start,
+                    end,
+                };
+                let rest_comment = self
+                    .leading_comment(macro_end.end, rest_first.start)
+                    .or_else(|| self.trailing_comment(end, next_start));
+                new_members = self.members_from_statement(
+                    rest,
+                    rest_range,
+                    depth,
+                    condition.as_deref(),
+                    rest_comment,
+                    budget,
+                );
+            } else {
+                *budget = statement_budget;
+            }
+            previous_end = end;
             *budget = budget.saturating_sub(new_members.len().max(1));
             members.extend(new_members);
         }
         members
+    }
+
+    /// Whether the identifier at `index` stands alone on its line at the start of a member
+    /// declaration, as a macro that expands to members of its own.
+    fn is_lone_member_macro(&self, tokens: &[Token], index: usize) -> bool {
+        let (Some(token), Some(next)) = (tokens.get(index), tokens.get(index + 1)) else {
+            return false;
+        };
+        let Some(word) = self.identifier(Some(token)) else {
+            return false;
+        };
+        next.start.row > token.end.row
+            && word.len() >= 2
+            && !self.starts_declaration(word)
+            && self.declaration_follows(tokens, index + 1)
+    }
+
+    /// For a statement that starts with a call such as `RH_KABI_RESERVE(1)` ending its line,
+    /// the index of the call's `)`.
+    fn member_macro_call_end(&self, statement: &[Token]) -> Option<usize> {
+        let word = self.identifier(statement.first())?;
+        if self.starts_declaration(word) || !self.is(statement.get(1), "(") {
+            return None;
+        }
+        let close = self.matching(statement, 1)?;
+        let (close_token, next) = (statement.get(close)?, statement.get(close + 1)?);
+        (next.start.row > close_token.end.row && self.declaration_follows(statement, close + 1))
+            .then_some(close)
+    }
+
+    /// Words that are part of a declaration rather than a macro of their own.
+    fn starts_declaration(&self, word: &[u8]) -> bool {
+        is_word(word, TYPE_KEYWORDS)
+            || is_word(word, QUALIFIER_KEYWORDS)
+            || is_word(word, STORAGE_KEYWORDS)
+            || is_known_annotation(word)
+            || is_attribute_call(word)
+            || is_typeof(word)
+            || word.starts_with(b"__")
+            || TagKind::from_keyword(word, self.language).is_some()
+            || matches!(
+                word,
+                b"typedef"
+                    | b"struct"
+                    | b"union"
+                    | b"enum"
+                    | b"class"
+                    | b"using"
+                    | b"template"
+                    | b"operator"
+                    | b"static_assert"
+                    | b"_Static_assert"
+                    | b"public"
+                    | b"private"
+                    | b"protected"
+            )
+    }
+
+    /// Whether the tokens from `index` start a whole member declaration (`int x`,
+    /// `struct foo *p`, another macro, a directive) rather than finishing one begun before
+    /// them (`x` after a type on its own line).
+    fn declaration_follows(&self, tokens: &[Token], index: usize) -> bool {
+        let Some(first) = tokens.get(index) else {
+            return false;
+        };
+        if first.kind == TokenKind::Directive {
+            return true;
+        }
+        let Some(first_word) = self.identifier(Some(first)) else {
+            return false;
+        };
+        if is_all_caps(first_word) && self.is(tokens.get(index + 1), "(") {
+            return true;
+        }
+        if matches!(first_word, b"const" | b"volatile" | b"restrict") {
+            return false;
+        }
+        let mut words = 0;
+        for token in tokens.iter().skip(index).take(64) {
+            if token.kind == TokenKind::Identifier {
+                // After a name, `__aligned(8)` annotates it: `atomic_t` on the line before
+                // `refcount __aligned(8);` is its type. First, `__u32` is a type.
+                if words > 0
+                    && self
+                        .identifier(Some(token))
+                        .is_some_and(|word| word.starts_with(b"__"))
+                {
+                    continue;
+                }
+                words += 1;
+            } else if !(self.is(Some(token), "*") || self.is(Some(token), "&")) {
+                break;
+            }
+        }
+        words >= 2
     }
 
     fn is_method_body(&self, statement: &[Token]) -> bool {
@@ -2516,6 +2782,31 @@ impl<'a> Context<'a> {
         let mut output = Vec::with_capacity(text.len());
         let mut index = 0;
         while let Some(&byte) = text.get(index) {
+            if byte == b'"' || byte == b'\'' {
+                output.push(byte);
+                index += 1;
+                while let Some(&inner) = text.get(index) {
+                    if inner == b'\n' {
+                        break;
+                    }
+                    output.push(if inner == b'\r' { b' ' } else { inner });
+                    index += 1;
+                    if inner == byte {
+                        break;
+                    }
+                    if inner == b'\\'
+                        && let Some(&escaped) = text.get(index)
+                    {
+                        output.push(if matches!(escaped, b'\r' | b'\n') {
+                            b' '
+                        } else {
+                            escaped
+                        });
+                        index += 1;
+                    }
+                }
+                continue;
+            }
             if byte == b'/' && text.get(index + 1) == Some(&b'*') {
                 index += 2;
                 while index < text.len()
@@ -2801,6 +3092,26 @@ impl<'a> Context<'a> {
             *budget = budget.saturating_sub(1);
         }
         enumerators
+    }
+}
+
+fn unparsed_member(
+    text: String,
+    range: Range,
+    comment: Option<String>,
+    condition: Option<String>,
+) -> Member {
+    Member {
+        name: None,
+        kind: MemberKind::Unparsed,
+        ty: TypeText::default(),
+        text,
+        bit_width: None,
+        nested: None,
+        name_range: None,
+        range,
+        comment,
+        condition,
     }
 }
 
@@ -3169,6 +3480,16 @@ pub fn enclosing_condition(source: &[u8], byte: usize) -> Option<String> {
                     index += 2;
                     continue;
                 }
+            } else if let Some(&quote @ (b'"' | b'\'')) = line.get(index) {
+                // `"/*"` does not start a comment.
+                index += 1;
+                while let Some(&inner) = line.get(index) {
+                    index += if inner == b'\\' { 2 } else { 1 };
+                    if inner == quote {
+                        break;
+                    }
+                }
+                continue;
             } else if line.get(index) == Some(&b'/') {
                 match line.get(index + 1) {
                     Some(b'*') => {
@@ -3266,6 +3587,9 @@ pub struct VariableType {
 pub struct MemberStep {
     pub name: String,
     pub range: Range,
+    /// The member is called, and the chain goes on from what the call returns: `get` in
+    /// `a->ops->get()->x`.
+    pub called: bool,
 }
 
 /// Where a member access chain starts.
@@ -3576,7 +3900,7 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
                 let declared = self.declared_name(parent, name)?;
                 return Some(VariableType {
                     name: name.to_owned(),
-                    ty: declared.ty,
+                    ty: self.resolve_typeof(declared.ty, parent, 0),
                     declaration: Some(declared.name_range),
                     confidence: Confidence::Declaration,
                 });
@@ -3640,6 +3964,16 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
 
     /// Finds the declaration of `name` visible at `node`, innermost scope first.
     fn lookup(&self, node: Node<'tree>, name: &str) -> Option<VariableType> {
+        self.lookup_at_depth(node, name, 0)
+    }
+
+    /// [`Self::lookup`] from inside `typeof_depth` levels of `typeof(...)`.
+    fn lookup_at_depth(
+        &self,
+        node: Node<'tree>,
+        name: &str,
+        typeof_depth: usize,
+    ) -> Option<VariableType> {
         let use_start = node.start_byte();
         let mut in_function = false;
         for parent in self.ancestors(node).into_iter().rev() {
@@ -3652,7 +3986,9 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
                     } else {
                         Confidence::Local
                     };
-                    if let Some(found) = self.search_block(parent, name, use_start, confidence) {
+                    if let Some(found) =
+                        self.search_block(parent, name, use_start, confidence, typeof_depth)
+                    {
                         return Some(found);
                     }
                 }
@@ -3660,15 +3996,19 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
                     if let Some(initializer) = parent
                         .child_by_field_name("initializer")
                         .filter(|initializer| initializer.kind() == "declaration")
-                        && let Some(found) =
-                            self.from_declaration(initializer, name, Confidence::Local)
+                        && let Some(found) = self.from_declaration_at_depth(
+                            initializer,
+                            name,
+                            Confidence::Local,
+                            typeof_depth,
+                        )
                     {
                         return Some(found);
                     }
                 }
                 "function_definition" | "lambda_expression" => {
                     in_function = true;
-                    if let Some(found) = self.search_parameters(parent, name) {
+                    if let Some(found) = self.search_parameters(parent, name, typeof_depth) {
                         return Some(found);
                     }
                 }
@@ -3678,29 +4018,80 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
         None
     }
 
-    fn from_declaration(
+    fn from_declaration_at_depth(
         &self,
-        declaration: Node,
+        declaration: Node<'tree>,
         name: &str,
         confidence: Confidence,
+        typeof_depth: usize,
     ) -> Option<VariableType> {
         let declared = self.declared_name(declaration, name)?;
         Some(VariableType {
             name: name.to_owned(),
-            ty: declared.ty,
+            ty: self.resolve_typeof(declared.ty, declaration, typeof_depth),
             declaration: Some(declared.name_range),
             confidence,
         })
     }
 
+    /// A type written as `typeof(name)`, `typeof(*name)` or `typeof(&name)` (the kernel's
+    /// `typeof(*pos) *tmp`) takes the type of the variable `name` visible at `declaration`;
+    /// a lone name that is not a variable is taken as a type name. Other types are returned
+    /// as they are. The text stays as written.
+    fn resolve_typeof(&self, ty: TypeText, declaration: Node<'tree>, depth: usize) -> TypeText {
+        if ty.core_name.is_some() || ty.is_function || ty.is_function_pointer {
+            return ty;
+        }
+        let Some((name, address_of, dereferences)) = typeof_operand(&ty.text, self.language) else {
+            return ty;
+        };
+        let found = if depth < MAX_TYPEOF_DEPTH {
+            self.lookup_at_depth(declaration, &name, depth + 1)
+        } else {
+            None
+        };
+        let mut resolved = match found {
+            Some(variable) => {
+                let mut resolved = variable.ty;
+                resolved.pointer_depth = resolved.pointer_depth.saturating_add(address_of);
+                for _ in 0..dereferences {
+                    if resolved.array_dimensions.is_empty() {
+                        let Some(depth) = resolved.pointer_depth.checked_sub(1) else {
+                            return ty;
+                        };
+                        resolved.pointer_depth = depth;
+                    } else {
+                        resolved.array_dimensions.remove(0);
+                    }
+                }
+                resolved
+            }
+            None if address_of == 0 && dereferences == 0 => TypeText {
+                is_builtin: STANDARD_TYPEDEFS.contains(&name.as_str()),
+                core_name: Some(name),
+                ..TypeText::default()
+            },
+            None => return ty,
+        };
+        resolved.pointer_depth = resolved.pointer_depth.saturating_add(ty.pointer_depth);
+        resolved.is_reference |= ty.is_reference;
+        resolved
+            .array_dimensions
+            .splice(0..0, ty.array_dimensions.iter().cloned());
+        resolved.text = ty.text;
+        resolved.qualifiers = ty.qualifiers;
+        resolved
+    }
+
     fn search_block(
         &self,
-        block: Node,
+        block: Node<'tree>,
         name: &str,
         use_start: usize,
         confidence: Confidence,
+        typeof_depth: usize,
     ) -> Option<VariableType> {
-        let mut found = None;
+        let mut found: Option<(Node<'tree>, DeclaredName)> = None;
         self.visit_declarations(block, 0, &mut |declaration| {
             if declaration.start_byte() > use_start {
                 return;
@@ -3717,16 +4108,27 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
             if !mentions_name {
                 return;
             }
-            if let Some(variable) = self.from_declaration(declaration, name, confidence) {
-                found = Some(variable);
+            if let Some(declared) = self.declared_name(declaration, name) {
+                found = Some((declaration, declared));
             }
         });
-        found
+        let (declaration, declared) = found?;
+        Some(VariableType {
+            name: name.to_owned(),
+            ty: self.resolve_typeof(declared.ty, declaration, typeof_depth),
+            declaration: Some(declared.name_range),
+            confidence,
+        })
     }
 
     /// Calls `visit` on the declarations directly in `block`, in order, looking through
     /// preprocessor conditionals and `extern "C"` blocks but not into nested scopes.
-    fn visit_declarations(&self, block: Node, depth: usize, visit: &mut dyn FnMut(Node)) {
+    fn visit_declarations(
+        &self,
+        block: Node<'tree>,
+        depth: usize,
+        visit: &mut dyn FnMut(Node<'tree>),
+    ) {
         if depth > 16 {
             return;
         }
@@ -3734,6 +4136,19 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
         for child in block.named_children(&mut cursor) {
             match child.kind() {
                 "declaration" => visit(child),
+                // tree-sitter reads `typeof(*pos) *tmp = pos;` as a multiplication, since
+                // `*pos` is not a type.
+                "expression_statement"
+                    if child.child(0).is_some_and(|first| {
+                        matches!(first.kind(), "assignment_expression" | "binary_expression")
+                            && self
+                                .source
+                                .get(first.start_byte()..)
+                                .is_some_and(starts_with_typeof)
+                    }) =>
+                {
+                    visit(child)
+                }
                 "preproc_if" | "preproc_ifdef" | "preproc_else" | "preproc_elif"
                 | "preproc_elifdef" => self.visit_declarations(child, depth + 1, visit),
                 "linkage_specification" => {
@@ -3750,7 +4165,23 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
         }
     }
 
-    fn search_parameters(&self, function: Node, name: &str) -> Option<VariableType> {
+    fn search_parameters(
+        &self,
+        function: Node<'tree>,
+        name: &str,
+        typeof_depth: usize,
+    ) -> Option<VariableType> {
+        // A K&R definition (`int f(a, b) int a; char *b; { ... }`) lists only names; their
+        // types are declared between the list and the body.
+        let mut cursor = function.walk();
+        for child in function.named_children(&mut cursor) {
+            if child.kind() == "declaration"
+                && let Some(found) =
+                    self.from_declaration_at_depth(child, name, Confidence::Parameter, typeof_depth)
+            {
+                return Some(found);
+            }
+        }
         let mut declarator = function.child_by_field_name("declarator")?;
         for _ in 0..16 {
             if declarator.kind() == "function_declarator"
@@ -3771,7 +4202,9 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
             ) {
                 continue;
             }
-            if let Some(found) = self.from_declaration(parameter, name, Confidence::Parameter) {
+            if let Some(found) =
+                self.from_declaration_at_depth(parameter, name, Confidence::Parameter, typeof_depth)
+            {
                 return Some(found);
             }
         }
@@ -3784,15 +4217,34 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
         name: String,
         range: Range,
     ) -> Option<MemberAccess> {
-        let mut members = vec![MemberStep { name, range }];
+        let mut members = vec![MemberStep {
+            name,
+            range,
+            called: false,
+        }];
         let mut expression = field_expression.child_by_field_name("argument")?;
         for _ in 0..64 {
+            if expression.kind() == "call_expression"
+                && let Some(callee) = expression
+                    .child_by_field_name("function")
+                    .and_then(|function| self.called_member(function))
+            {
+                let field = callee.child_by_field_name("field")?;
+                members.push(MemberStep {
+                    name: self.text(field),
+                    range: node_range(field),
+                    called: true,
+                });
+                expression = callee.child_by_field_name("argument")?;
+                continue;
+            }
             match expression.kind() {
                 "field_expression" => {
                     let field = expression.child_by_field_name("field")?;
                     members.push(MemberStep {
                         name: self.text(field),
                         range: node_range(field),
+                        called: false,
                     });
                     expression = expression.child_by_field_name("argument")?;
                 }
@@ -3852,6 +4304,26 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
         None
     }
 
+    /// The member a call goes through: `ops->get` in `ops->get()` and in `(*ops->get)()`.
+    fn called_member<'n>(&self, function: Node<'n>) -> Option<Node<'n>> {
+        let mut callee = function;
+        for _ in 0..8 {
+            match callee.kind() {
+                "field_expression" => return Some(callee),
+                "parenthesized_expression" => callee = callee.named_child(0)?,
+                "pointer_expression"
+                    if callee
+                        .child_by_field_name("operator")
+                        .is_some_and(|operator| operator.kind() == "*") =>
+                {
+                    callee = callee.child_by_field_name("argument")?;
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
     /// `.a.b = value` inside `struct foo x = { ... }`: the chain from the initialized type.
     fn designated_chain(
         &self,
@@ -3859,7 +4331,11 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
         name: String,
         range: Range,
     ) -> Option<MemberAccess> {
-        let mut members = vec![MemberStep { name, range }];
+        let mut members = vec![MemberStep {
+            name,
+            range,
+            called: false,
+        }];
         let pair = designator.parent()?;
         {
             // Earlier designators of the same pair: `.a.b = 1` on `b`.
@@ -3875,6 +4351,7 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
                     members.push(MemberStep {
                         name: self.text(field),
                         range: node_range(field),
+                        called: false,
                     });
                 }
             }
@@ -3895,6 +4372,7 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
                             members.push(MemberStep {
                                 name: self.text(field),
                                 range: node_range(field),
+                                called: false,
                             });
                         }
                     }
@@ -3939,6 +4417,52 @@ impl<'a, 'tree> TypeFinder<'a, 'tree> {
         }
         None
     }
+}
+
+fn starts_with_typeof(text: &[u8]) -> bool {
+    let end = text
+        .iter()
+        .position(|&byte| !is_identifier_byte(byte))
+        .unwrap_or(text.len());
+    text.get(..end).is_some_and(is_typeof)
+}
+
+/// The operand of a `typeof(...)` in a type's text, when it is a name with `*` or `&` in
+/// front: the name, the `&`s and the `*`s.
+fn typeof_operand(text: &str, language: SourceLanguage) -> Option<(String, u32, u32)> {
+    let source = text.as_bytes();
+    let lexed = lex(source, 0, source.len(), Position::default(), true);
+    let context = Context::new(source, language, &lexed);
+    let tokens = &lexed.tokens;
+    let open = tokens
+        .iter()
+        .position(|token| context.identifier(Some(token)).is_some_and(is_typeof))?
+        + 1;
+    if !context.is(tokens.get(open), "(") {
+        return None;
+    }
+    let close = context.matching(tokens, open)?;
+    let (name_token, operators) = tokens.get(open + 1..close)?.split_last()?;
+    let name = context.identifier(Some(name_token))?;
+    if is_word(name, TYPE_KEYWORDS) || is_word(name, QUALIFIER_KEYWORDS) {
+        return None;
+    }
+    let mut address_of = 0;
+    let mut dereferences = 0;
+    for operator in operators {
+        if context.is(Some(operator), "*") {
+            dereferences += 1;
+        } else if context.is(Some(operator), "&") {
+            address_of += 1;
+        } else {
+            return None;
+        }
+    }
+    Some((
+        String::from_utf8_lossy(name).into_owned(),
+        address_of,
+        dereferences,
+    ))
 }
 
 /// The names declared by the declaration at `start..end` of a file. `start` must be a

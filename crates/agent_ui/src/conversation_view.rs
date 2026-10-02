@@ -5333,12 +5333,12 @@ fn placeholder_text(agent_name: &str, has_commands: bool) -> String {
             agent_name
         )
     } else if has_commands {
-        format!(
+        i18n::t!(
             "Message {} — @ to include context, / for commands",
             agent_name
         )
     } else {
-        format!("Message {} — @ to include context", agent_name)
+        i18n::t!("Message {} — @ to include context", agent_name)
     }
 }
 

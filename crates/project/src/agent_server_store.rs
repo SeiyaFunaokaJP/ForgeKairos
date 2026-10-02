@@ -3723,7 +3723,7 @@ async fn registry_archive_command_in_wsl(
         wsl_runtime::bounded(
             &executor,
             wsl_runtime::STEP_TIMEOUT,
-            i18n::tc!("wsl step", "Checking the agent's executable"),
+            i18n::tc!("wsl sandbox step", "Checking the agent's executable"),
             sandbox::wsl_runtime_executable(distro, &runtime_directory, relative),
         )
         .await?
@@ -3891,7 +3891,7 @@ mod wsl_runtime {
         if let Some(staged) = bounded(
             executor,
             STEP_TIMEOUT,
-            i18n::tc!("wsl step", "Checking Node.js in WSL"),
+            i18n::tc!("wsl sandbox step", "Checking Node.js in WSL"),
             sandbox::staged_wsl_runtime(distro, &relative, Some(archive.sha256)),
         )
         .await?
@@ -3924,7 +3924,7 @@ mod wsl_runtime {
         let staged = bounded(
             executor,
             WORK_TIMEOUT,
-            i18n::tc!("wsl step", "Placing Node.js for Linux in WSL"),
+            i18n::tc!("wsl sandbox step", "Placing Node.js for Linux in WSL"),
             sandbox::stage_wsl_runtime_archive(
                 distro,
                 &relative,
@@ -3963,7 +3963,7 @@ mod wsl_runtime {
         let data_directory = bounded(
             executor,
             STEP_TIMEOUT,
-            i18n::tc!("wsl step", "Checking the data folder in WSL"),
+            i18n::tc!("wsl sandbox step", "Checking the data folder in WSL"),
             sandbox::wsl_agent_runtime_data_directory(distro),
         )
         .await?;
@@ -3986,7 +3986,7 @@ mod wsl_runtime {
             bounded(
                 executor,
                 WORK_TIMEOUT,
-                i18n::tc!("wsl step", "npm install inside the sandbox"),
+                i18n::tc!("wsl sandbox step", "npm install inside the sandbox"),
                 sandbox::install_npm_package_in_wsl(
                     distro,
                     node_directory,
@@ -4008,7 +4008,7 @@ mod wsl_runtime {
         let package_json = bounded(
             executor,
             STEP_TIMEOUT,
-            i18n::tc!("wsl step", "Checking the npm package"),
+            i18n::tc!("wsl sandbox step", "Checking the npm package"),
             sandbox::read_wsl_npm_package_json(distro, &install_directory, package_name),
         )
         .await?
@@ -4018,7 +4018,7 @@ mod wsl_runtime {
         let executable = bounded(
             executor,
             STEP_TIMEOUT,
-            i18n::tc!("wsl step", "Checking the npm package's executable"),
+            i18n::tc!("wsl sandbox step", "Checking the npm package's executable"),
             sandbox::wsl_npm_package_executable(
                 distro,
                 &install_directory,
@@ -4042,7 +4042,7 @@ mod wsl_runtime {
         bounded(
             executor,
             STEP_TIMEOUT,
-            i18n::tc!("wsl step", "Checking the installed npm package"),
+            i18n::tc!("wsl sandbox step", "Checking the installed npm package"),
             sandbox::read_wsl_npm_package_json(distro, install_directory, package_name),
         )
         .await
@@ -4059,7 +4059,7 @@ mod wsl_runtime {
         bounded(
             executor,
             STEP_TIMEOUT,
-            i18n::tc!("wsl step", "Checking the WSL architecture"),
+            i18n::tc!("wsl sandbox step", "Checking the WSL architecture"),
             sandbox::wsl_machine_architecture(distro),
         )
         .await
@@ -4128,7 +4128,7 @@ mod wsl_runtime {
         if let Some(directory) = bounded(
             executor,
             STEP_TIMEOUT,
-            i18n::tc!("wsl step", "Checking the agent's runtime in WSL"),
+            i18n::tc!("wsl sandbox step", "Checking the agent's runtime in WSL"),
             sandbox::staged_wsl_runtime(distro, &relative, sha256.as_deref()),
         )
         .await?
@@ -4164,7 +4164,7 @@ mod wsl_runtime {
             Some(name) => bounded(
                 executor,
                 WORK_TIMEOUT,
-                i18n::tc!("wsl step", "Placing the agent for Linux in WSL"),
+                i18n::tc!("wsl sandbox step", "Placing the agent for Linux in WSL"),
                 sandbox::stage_wsl_runtime_file(distro, &relative, name, &local, &digest, true),
             )
             .await
@@ -4178,7 +4178,7 @@ mod wsl_runtime {
                 bounded(
                     executor,
                     WORK_TIMEOUT,
-                    i18n::tc!("wsl step", "Placing the agent for Linux in WSL"),
+                    i18n::tc!("wsl sandbox step", "Placing the agent for Linux in WSL"),
                     sandbox::stage_wsl_runtime_archive(
                         distro,
                         &relative,

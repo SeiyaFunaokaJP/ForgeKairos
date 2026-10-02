@@ -43,7 +43,7 @@ use std::{
     cell::Cell,
     ops::Range,
     rc::Rc,
-    sync::{Arc, OnceLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use zed_actions::{
@@ -53,7 +53,7 @@ use zed_actions::{
 
 use notifications::status_toast::StatusToast;
 use theme::AccentColors;
-use time::{OffsetDateTime, UtcOffset, format_description::BorrowedFormatItem};
+use time::{OffsetDateTime, UtcOffset};
 use ui::{
     Chip, ColumnWidthConfig, CommonAnimationExt as _, ContextMenu, ContextMenuEntry, DiffStat,
     Divider, DocumentationSide, HeaderResizeInfo, HighlightedLabel, IndentGuideColors, ListItem,
@@ -600,7 +600,7 @@ actions!(
         ScrollDown,
         /// Toggles the selected commit's changed files between flat and tree views.
         ToggleChangedFilesView,
-        /// 選択したコミットの並べ替え・まとめる・メッセージの変更・捨てるをまとめて編集します。
+        /// Reorders, squashes, rewords or drops the selected commits in one edit.
         EditSelectedCommits,
     ]
 );
@@ -1576,25 +1576,61 @@ fn decorate_row_for_drops(
         }))
 }
 
-fn timestamp_format() -> &'static [BorrowedFormatItem<'static>] {
-    static FORMAT: OnceLock<Vec<BorrowedFormatItem<'static>>> = OnceLock::new();
-    FORMAT.get_or_init(|| {
-        time::format_description::parse("[day] [month repr:short] [year] [hour]:[minute]")
-            .unwrap_or_default()
-    })
-}
-
+// The date follows the display language's date pattern when it has one, and the OS's date and
+// time format otherwise, rather than one fixed English layout.
 pub(crate) fn format_timestamp(timestamp: i64) -> String {
     let Ok(datetime) = OffsetDateTime::from_unix_timestamp(timestamp) else {
         return i18n::t!("Unknown").to_string();
     };
-
     let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
-    let local_datetime = datetime.to_offset(local_offset);
+    format_local_datetime(datetime, local_offset)
+}
 
-    local_datetime
-        .format(timestamp_format())
-        .unwrap_or_default()
+fn format_local_datetime(datetime: OffsetDateTime, local_offset: UtcOffset) -> String {
+    time_format::format_localized_timestamp(
+        datetime,
+        OffsetDateTime::now_utc(),
+        local_offset,
+        time_format::TimestampFormat::Absolute,
+    )
+}
+
+/// The width the date column needs to show a date without cutting it off. Two-digit days and
+/// hours late in the day stand in for the widest dates; September has the longest English month
+/// name and December the longest month number.
+fn date_column_min_width(window: &Window, cx: &App) -> Option<Pixels> {
+    let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+    let year = OffsetDateTime::now_utc().to_offset(local_offset).year();
+    let time_of_day = time::Time::from_hms(22, 58, 0).ok()?;
+    let font = <theme_settings::ThemeSettings as settings::Settings>::get_global(cx)
+        .ui_font
+        .clone();
+    let font_size = TextSize::Default.rems(cx).to_pixels(window.rem_size());
+    let text_width = [time::Month::September, time::Month::December]
+        .into_iter()
+        .filter_map(|month| {
+            let date = time::Date::from_calendar_date(year, month, 28).ok()?;
+            let widest =
+                time::PrimitiveDateTime::new(date, time_of_day).assume_offset(local_offset);
+            let text = SharedString::from(format_local_datetime(widest, local_offset));
+            let run = gpui::TextRun {
+                len: text.len(),
+                font: font.clone(),
+                color: gpui::Hsla::default(),
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            };
+            Some(
+                window
+                    .text_system()
+                    .shape_line(text, font_size, &[run], None)
+                    .width,
+            )
+        })
+        .reduce(|widest, width| if width > widest { width } else { widest })?;
+    // The cell's padding on both sides and the column divider.
+    Some(text_width + rems(1.).to_pixels(window.rem_size()))
 }
 
 fn accent_colors_count(accents: &AccentColors) -> usize {
@@ -2449,6 +2485,30 @@ impl GitGraph {
             value(offset + 2),
             value(offset + 3),
         ]
+    }
+
+    // How long a date is depends on the display language and the OS's date format, so the date
+    // column is widened to fit one, taking the width from the description column.
+    fn fit_date_column(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let description_index = if matches!(self.log_source, LogSource::Path(_)) {
+            0
+        } else {
+            1
+        };
+        let date_index = description_index + 1;
+        let is_hidden = |index: usize| self.column_visibility.get(index).copied().unwrap_or(false);
+        if is_hidden(date_index) || is_hidden(description_index) {
+            return;
+        }
+        let Some(min_width) = date_column_min_width(window, cx) else {
+            return;
+        };
+        let rem_size = window.rem_size();
+        self.column_widths.update(cx, |columns, cx| {
+            if columns.widen_column_to(date_index, min_width, description_index, rem_size) {
+                cx.notify();
+            }
+        });
     }
 
     fn table_column_width_config(&self, window: &Window, cx: &App) -> ColumnWidthConfig {
@@ -7172,6 +7232,7 @@ impl Render for GitGraph {
                     hint.map(|hint| Label::new(hint).color(Color::Muted).size(LabelSize::Small)),
                 )
         } else {
+            self.fit_date_column(window, cx);
             let is_path_history = matches!(self.log_source, LogSource::Path(_));
             let header_resize_info =
                 HeaderResizeInfo::from_redistributable(&self.column_widths, cx);
@@ -13307,6 +13368,90 @@ mod tests {
         assert_eq!(
             refs,
             [SharedString::from("v1"), SharedString::from("refs/tags/v1")]
+        );
+    }
+
+    #[test]
+    fn test_commit_dates_follow_the_display_language() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let datetime =
+            OffsetDateTime::from_unix_timestamp(1_790_682_120).expect("a valid timestamp");
+        assert_eq!(
+            format_local_datetime(datetime, UtcOffset::UTC),
+            "2026年9月29日 11:42"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_date_column_is_widened_to_fit_a_date(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            Path::new("/project"),
+            json!({
+                ".git": {},
+                "file.txt": "content",
+            }),
+        )
+        .await;
+        let mut rng = StdRng::seed_from_u64(7);
+        fs.set_graph_commits(
+            Path::new("/project/.git"),
+            generate_random_commit_dag(&mut rng, 5, false),
+        );
+
+        let project = Project::test(fs.clone(), [Path::new("/project")], cx).await;
+        cx.run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .active_repository(cx)
+                .expect("should have a repository")
+        });
+        let (multi_workspace, cx) = cx.add_window_view(|window, cx| {
+            workspace::MultiWorkspace::test_new(project.clone(), window, cx)
+        });
+        let workspace_weak =
+            multi_workspace.read_with(&*cx, |multi, _| multi.workspace().downgrade());
+        let git_graph = cx.new_window_entity(|window, cx| {
+            GitGraph::new(
+                repository.read(cx).id,
+                project.read(cx).git_store().clone(),
+                workspace_weak,
+                None,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+
+        // The first frame learns the table's width; the next one fits the column to it.
+        for _ in 0..2 {
+            cx.draw(
+                point(px(0.), px(0.)),
+                gpui::size(px(600.), px(800.)),
+                |_, _| git_graph.clone().into_any_element(),
+            );
+            cx.run_until_parked();
+        }
+
+        let (date_width, min_width) = cx.update(|window, cx| {
+            let date_width = git_graph
+                .read(cx)
+                .column_widths
+                .read(cx)
+                .preview_column_width(2, window);
+            (date_width, date_column_min_width(window, cx))
+        });
+        let date_width = date_width.expect("the table's width is known after drawing");
+        let min_width = min_width.expect("a date can be measured");
+        // The default share of a 600px table is far too narrow for a date.
+        assert!(min_width > px(600.) * 0.1032, "{min_width:?}");
+        assert!(
+            date_width + px(0.5) >= min_width,
+            "the date column is {date_width:?} wide but a date needs {min_width:?}"
         );
     }
 }

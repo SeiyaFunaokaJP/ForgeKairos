@@ -43,6 +43,9 @@ const MAX_TYPE_NAME_CHARS: usize = 200;
 const TRUNCATED_MARKER: &str = "... (truncated)";
 const MORE_MEMBERS_MARKER: &str = "... (more members not shown)";
 pub const WITHHELD_MARKER: &str = "(withheld)";
+/// Why a member's type is left out when the remote host doesn't say where the chain's root
+/// was declared.
+pub const HOST_TOO_OLD_TO_JUDGE_MEMBER: &str = "The remote host is too old to tell where the type this member belongs to comes from, so it can't be checked against the files you may read and isn't shown. Updating Zed on the remote host lifts this.";
 
 /// What to describe: a type, typedef or macro by name, or the name at a position (a type name,
 /// a variable, a member in `a->b.c`, a macro), whose type is found from its declaration.
@@ -121,6 +124,9 @@ pub struct TypeLayoutReport {
     pub other_candidates: Vec<TypeLayoutLocation>,
     /// Definitions left out because they lie in files the agent may not read.
     pub withheld: usize,
+    /// Why `withheld` counts a definition, when the reason isn't its file: the definition
+    /// couldn't be judged at all.
+    pub withheld_note: Option<&'static str>,
     pub inferred: Option<InferredType>,
     /// Branches of the tree were cut at definitions the agent may not read.
     pub pruned: bool,
@@ -142,6 +148,7 @@ impl TypeLayoutReport {
             candidates_truncated: false,
             other_candidates: Vec::new(),
             withheld,
+            withheld_note: None,
             inferred: None,
             pruned: false,
             truncated: false,
@@ -271,6 +278,45 @@ impl TypeLayoutPaths for AgentTypeLayoutPaths {
         }
         .boxed_local()
     }
+}
+
+/// Where the root of `a->b.c` got its type, and so what has to be readable before anything
+/// along the chain is shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ChainRoot<'a> {
+    Shown,
+    Declarations(&'a str, DefinitionKind),
+    /// The host doesn't say where the root came from, so it can't be judged.
+    HostTooOld,
+    /// The host said where, but not which name to look up.
+    Unnamed,
+}
+
+fn chain_root<'a>(
+    root_type: Option<&str>,
+    root_origin: Option<ChainRootOrigin>,
+    root_name: Option<&'a str>,
+) -> ChainRoot<'a> {
+    match (root_origin, root_name) {
+        _ if root_type.is_none() => ChainRoot::Shown,
+        (Some(ChainRootOrigin::InFile), _) => ChainRoot::Shown,
+        (Some(ChainRootOrigin::Global), Some(name)) => {
+            ChainRoot::Declarations(name, DefinitionKind::Variable)
+        }
+        (Some(ChainRootOrigin::Call), Some(name)) => {
+            ChainRoot::Declarations(name, DefinitionKind::Function)
+        }
+        (None, _) => ChainRoot::HostTooOld,
+        (Some(ChainRootOrigin::Global | ChainRootOrigin::Call), None) => ChainRoot::Unnamed,
+    }
+}
+
+fn withheld_member_report(name: String, root: ChainRoot<'_>) -> TypeLayoutReport {
+    let mut report = TypeLayoutReport::not_found(name, 1);
+    if root == ChainRoot::HostTooOld {
+        report.withheld_note = Some(HOST_TOO_OLD_TO_JUDGE_MEMBER);
+    }
+    report
 }
 
 /// What a C or C++ type (or typedef, or macro) holds, for Zed's own agent.
@@ -478,19 +524,13 @@ impl Finder<'_> {
             } => {
                 // The root's type may have been read from a global's or a function's
                 // declaration in another file, judged as a `NameOnly` variable is.
-                let mut chain_shown = match (root_origin, root_name.as_deref()) {
-                    _ if root_type.is_none() => true,
-                    (Some(ChainRootOrigin::InFile), _) => true,
-                    (Some(ChainRootOrigin::Global), Some(name)) => {
-                        self.declarations_shown(name, DefinitionKind::Variable, cx)
-                            .await
+                let root = chain_root(root_type.as_deref(), root_origin, root_name.as_deref());
+                let mut chain_shown = match root {
+                    ChainRoot::Shown => true,
+                    ChainRoot::Declarations(name, kind) => {
+                        self.declarations_shown(name, kind, cx).await
                     }
-                    (Some(ChainRootOrigin::Call), Some(name)) => {
-                        self.declarations_shown(name, DefinitionKind::Function, cx)
-                            .await
-                    }
-                    // A host too old to say where the root came from can't be judged.
-                    _ => false,
+                    ChainRoot::HostTooOld | ChainRoot::Unnamed => false,
                 };
                 // A member's declaration lies in the file of the type holding it, so every
                 // owner along `a->b.c` has to be shown before anything of the last member is.
@@ -513,7 +553,7 @@ impl Finder<'_> {
                     }
                 }
                 if !chain_shown {
-                    TypeLayoutReport::not_found(hover.name, 1)
+                    withheld_member_report(hover.name, root)
                 } else {
                     let last = steps.last();
                     let member = last.and_then(|step| step.member.as_ref());
@@ -706,6 +746,7 @@ impl Finder<'_> {
                 .map(location_of)
                 .collect(),
             withheld: withheld + layout.withheld,
+            withheld_note: None,
             inferred: None,
             pruned: layout.pruned,
             truncated: layout.truncated,
@@ -734,6 +775,7 @@ impl Finder<'_> {
             candidates_truncated: false,
             other_candidates: Vec::new(),
             withheld: layout.withheld,
+            withheld_note: None,
             inferred: None,
             pruned: layout.pruned,
             truncated: layout.truncated,
@@ -1175,6 +1217,7 @@ impl Finder<'_> {
             candidates_truncated: false,
             other_candidates: Vec::new(),
             withheld,
+            withheld_note: None,
             inferred: None,
             pruned: false,
             truncated: writer.truncated || writer.full,

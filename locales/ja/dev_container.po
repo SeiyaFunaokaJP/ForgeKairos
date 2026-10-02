@@ -1,0 +1,54 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Confirm Selections"
+msgstr "選択を確定"
+
+msgid "Continue"
+msgstr "続行"
+
+msgid "Create Dev Container"
+msgstr "Dev Container を作成"
+
+msgid "Error Creating Dev Container Definition"
+msgstr "Dev Container の定義の作成でエラー"
+
+msgid "Error Retrieving Templates"
+msgstr "テンプレートの取得でエラー"
+
+msgid "Go Back"
+msgstr "戻る"
+
+msgid "Overwrite"
+msgstr "上書き"
+
+msgid "Overwrite Existing Configuration?"
+msgstr "既存の設定を上書きしますか?"
+
+msgid "Querying features..."
+msgstr "フィーチャーを問い合わせています..."
+
+msgid "Querying template registry..."
+msgstr "テンプレートのレジストリーを問い合わせています..."
+
+msgid "Search for Dev Container Templates"
+msgstr "Dev Container のテンプレートを検索"
+
+msgid "Select Feature"
+msgstr "フィーチャーを選択"
+
+msgid "Select a template"
+msgstr "テンプレートを選択"
+
+msgid "Select features to add"
+msgstr "追加するフィーチャーを選択"
+
+msgid "Template Option: "
+msgstr "テンプレートのオプション: "

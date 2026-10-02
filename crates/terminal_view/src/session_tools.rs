@@ -5,7 +5,7 @@
 //! (see [`terminal::terminal_macro`]); this module is only the UI over it.
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     path::PathBuf,
     rc::Rc,
     sync::{Arc, atomic::AtomicBool},
@@ -17,9 +17,9 @@ use editor::{Editor, EditorEvent};
 use futures::StreamExt as _;
 use fuzzy::{StringMatch, StringMatchCandidate};
 use gpui::{
-    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, Entity, EntityId, EventEmitter,
-    FocusHandle, Focusable, FutureExt as _, Render, ScrollHandle, Subscription, Task, WeakEntity,
-    Window, actions,
+    App, AsyncWindowContext, BackgroundExecutor, DismissEvent, DragMoveEvent, Entity, EntityId,
+    EventEmitter, FocusHandle, Focusable, FutureExt as _, PromptLevel, Render, ScrollHandle,
+    Subscription, Task, WeakEntity, Window, actions, canvas,
 };
 use picker::{Picker, PickerDelegate};
 use project::Fs;
@@ -45,7 +45,10 @@ use ui::{
 };
 use util::ResultExt as _;
 use util::command::Stdio;
-use workspace::{ModalView, Panel as _, Workspace};
+use workspace::{
+    ItemId, ModalView, Panel as _, SerializableItem, Workspace, WorkspaceId,
+    item::{Item, ItemBufferKind, ItemEvent, SaveOptions},
+};
 use zed_actions::terminal::InstallClaudeCode;
 
 use crate::{TerminalPanel, TerminalView};
@@ -53,16 +56,17 @@ use crate::{TerminalPanel, TerminalView};
 actions!(
     terminal,
     [
-        /// 保存済みのマクロを選んで、アクティブなターミナルで実行します。
+        /// Chooses a saved macro and runs it in the active terminal.
         RunMacro,
-        /// マクロの一覧を編集します。
+        /// Edits the list of macros.
         EditMacros,
-        /// SSH / Telnet の接続先を指定してターミナルを開きます。
+        /// Opens a terminal connected to an SSH or Telnet host.
         QuickConnect,
     ]
 );
 
 pub fn init(cx: &mut App) {
+    workspace::register_serializable_item::<MacroEditor>(cx);
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
         workspace.register_action(|workspace, _: &RunMacro, window, cx| {
             let Some(fs) = workspace_fs(workspace) else {
@@ -75,13 +79,7 @@ pub fn init(cx: &mut App) {
             });
         });
         workspace.register_action(|workspace, _: &EditMacros, window, cx| {
-            let Some(fs) = workspace_fs(workspace) else {
-                return;
-            };
-            let store = TerminalSessionStore::global(fs, cx);
-            workspace.toggle_modal(window, cx, |window, cx| {
-                MacroEditor::new(store, None, window, cx)
-            });
+            open_macro_editor(workspace, None, window, cx);
         });
         workspace.register_action(|workspace, _: &QuickConnect, window, cx| {
             let Some(fs) = workspace_fs(workspace) else {
@@ -585,6 +583,38 @@ fn workspace_fs(workspace: &Workspace) -> Option<Arc<dyn Fs>> {
     Some(workspace.app_state().fs.clone())
 }
 
+/// Shows the macro editor as a tab of the center pane. A macro that a tab
+/// already has open brings that tab forward rather than opening a second form
+/// over the same macro; a macro without a name (「新規作成」) always gets a
+/// form of its own; `None` brings forward whichever editor tab is open, since
+/// each one lists every saved macro.
+fn open_macro_editor(
+    workspace: &mut Workspace,
+    edited: Option<TerminalMacro>,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> Option<Entity<MacroEditor>> {
+    let existing = match &edited {
+        None => workspace.items_of_type::<MacroEditor>(cx).next(),
+        Some(edited) if !edited.name.is_empty() => {
+            let key = edited.key();
+            workspace
+                .items_of_type::<MacroEditor>(cx)
+                .find(|editor| editor.read(cx).original_key.as_ref() == Some(&key))
+        }
+        Some(_) => None,
+    };
+    if let Some(editor) = existing {
+        workspace.activate_item(&editor, true, true, window, cx);
+        return Some(editor);
+    }
+    let fs = workspace_fs(workspace)?;
+    let store = TerminalSessionStore::global(fs, cx);
+    let editor = cx.new(|cx| MacroEditor::new(store, edited, window, cx));
+    workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
+    Some(editor)
+}
+
 /// The terminal the session tools act on: the focused one when the terminal
 /// panel has focus, otherwise the active center item.
 pub fn active_terminal_view(
@@ -999,22 +1029,18 @@ impl MacroPickerDelegate {
         window: &mut Window,
         cx: &mut Context<Picker<Self>>,
     ) {
-        let store = self.store.clone();
         let workspace = self.workspace.clone();
-        // Swapping modals goes through `ModalLayer::hide_modal`, which reads the
-        // outgoing modal's focus handle — and `MacroPicker` forwards that to this
-        // very picker. Doing it inline would read the picker while this handler
-        // still has it leased, which panics with a double lease (on Windows the
-        // window stops repainting first, so it reads as a freeze). Deferring lets
-        // the effect cycle return the picker first; `toggle_modal` then closes
-        // this picker and opens the editor as one swap, so no separate
-        // `DismissEvent` is emitted that could race ahead and close the editor.
+        // Closing the picker goes through `ModalLayer::hide_modal`, which reads
+        // the outgoing modal's focus handle — and `MacroPicker` forwards that to
+        // this very picker. Doing it inline would read the picker while this
+        // handler still has it leased, which panics with a double lease (on
+        // Windows the window stops repainting first, so it reads as a freeze).
+        // Deferring lets the effect cycle return the picker first.
         window.defer(cx, move |window, cx| {
             workspace
                 .update(cx, |workspace, cx| {
-                    workspace.toggle_modal(window, cx, |window, cx| {
-                        MacroEditor::new(store, edited, window, cx)
-                    });
+                    workspace.hide_modal(window, cx);
+                    open_macro_editor(workspace, edited, window, cx);
                 })
                 .log_err();
         });
@@ -1508,7 +1534,9 @@ impl PickerDelegate for MacroPickerDelegate {
                 .child(
                     Button::new("new-macro", i18n::t!("Create New")).on_click(cx.listener(
                         |picker, _, window, cx| {
-                            picker.delegate.open_editor(None, window, cx);
+                            picker
+                                .delegate
+                                .open_editor(Some(TerminalMacro::default()), window, cx);
                         },
                     )),
                 )
@@ -2572,6 +2600,12 @@ impl StepRow {
     /// The one line a folded card shows in place of its fields.
     fn summary(&self, cx: &App) -> String {
         if let Some(step) = &self.unknown {
+            if let Some(problem) = step
+                .unreadable_reason()
+                .and_then(|reason| reason.field_problem())
+            {
+                return problem;
+            }
             return match step.unknown_kind() {
                 Some(kind) => i18n::t!("A step of a kind this version can't run (“{kind}”)"),
                 None => i18n::t!("A step of a kind this version can't run").to_string(),
@@ -2837,6 +2871,26 @@ struct StepSnapshot {
 }
 
 impl StepRow {
+    /// Every field of this row and of the rows under it, hidden lists
+    /// included.
+    fn collect_field_editors(&self, fields: &mut Vec<Entity<Editor>>) {
+        fields.extend([
+            self.text.clone(),
+            self.number.clone(),
+            self.count.clone(),
+            self.capture.clone(),
+            self.scope_variable.clone(),
+        ]);
+        for child in self
+            .children
+            .iter()
+            .chain(&self.else_children)
+            .chain(&self.timeout_children)
+        {
+            child.collect_field_editors(fields);
+        }
+    }
+
     fn snapshot(&self, cx: &App) -> StepSnapshot {
         let snapshots = |rows: &[StepRow]| rows.iter().map(|row| row.snapshot(cx)).collect();
         StepSnapshot {
@@ -2886,9 +2940,15 @@ pub struct MacroEditor {
     /// that stands for nothing on disk (a 複製), which counts as unsaved from
     /// the moment it is made.
     saved_snapshot: Option<FormSnapshot>,
+    /// The macro as the file held it when the form was filled or last saved.
+    /// A tab stays open for a long time, and another tab, another window or a
+    /// hand edit of `terminal_sessions.json` may change the same macro in the
+    /// meantime; comparing the file against this is how the tab tells such a
+    /// change from its own, so that saving does not silently write over it.
+    base_macro: Option<TerminalMacro>,
     /// Whether the [`UNFILED_FOLDER`] heading is folded shut. A real folder
     /// keeps that in the file; this one has nowhere to live, so it lasts as
-    /// long as the modal.
+    /// long as the tab.
     unfiled_collapsed: bool,
     /// Folder whose name is being edited in the tree, with the field holding
     /// the new name.
@@ -2901,8 +2961,33 @@ pub struct MacroEditor {
     /// Whether the 「分岐と変数の使い方」 panel is open.
     show_help: bool,
     /// Whether the saved-macro tree is drawn beside the form. Hiding it gives
-    /// the form, and the side-by-side lanes of a 分岐, the modal's full width.
+    /// the form, and the side-by-side lanes of a 分岐, the tab's full width.
+    /// Follows the tab's width until the user picks with the button.
     show_macro_list: bool,
+    /// Set once the user has shown or hidden the tree with its button, after
+    /// which resizing the tab no longer overrides that choice.
+    macro_list_chosen: bool,
+    /// The editor's own width as last laid out. A tab shares the window with
+    /// docks and splits, so the window's width says little about its own.
+    measured_width: Rc<Cell<Option<Pixels>>>,
+    /// The width of the column the steps are laid out in, as last laid out.
+    measured_form_width: Rc<Cell<Option<Pixels>>>,
+    /// Whether a redraw by the widths just measured is already on its way.
+    redraw_requested: Rc<Cell<bool>>,
+    /// Scrolls the form while a dragged card is held near its top or bottom
+    /// edge; dropped to stop.
+    drag_scroll: Option<Task<()>>,
+    /// Macro a restored tab had open, loaded once `terminal_sessions.json` has
+    /// been read.
+    restore_key: Option<MacroKey>,
+    /// The macro the tab's title last named and whether it showed the unsaved
+    /// mark, so the pane is told only when either changes.
+    reported_tab: (Option<MacroKey>, bool),
+    /// One per text field of the form, by the field's entity. Inside a pane
+    /// the editor is not drawn again when only a field's own editor changes,
+    /// yet the warnings, the summaries and the unsaved mark all follow what is
+    /// typed.
+    field_subscriptions: HashMap<EntityId, Subscription>,
     error: Option<SharedString>,
     /// Macro whose 削除 has been asked for but not yet confirmed.
     pending_delete: Option<MacroKey>,
@@ -2914,7 +2999,26 @@ pub struct MacroEditor {
     /// 新規.
     pending_selection: Option<Option<TerminalMacro>>,
     focus_handle: FocusHandle,
-    _subscriptions: [Subscription; 2],
+    /// Whether the tab's conflict mark was last reported shown.
+    reported_conflict: bool,
+    /// Whether the open macro has been seen in the file under
+    /// `original_key`. Only then does its absence mean that it was deleted,
+    /// renamed or moved elsewhere.
+    on_disk: bool,
+    /// Set once the tab has asked its pane to close it for a macro gone
+    /// elsewhere, so that it asks only once.
+    closing_because_gone: bool,
+    /// The field the tab was left from, focused again when the tab is.
+    last_focused_field: Option<WeakEntity<Editor>>,
+    _subscriptions: [Subscription; 4],
+}
+
+pub enum MacroEditorEvent {
+    /// The tab's title or its unsaved mark may have changed.
+    TabChanged,
+    /// The macro the tab showed, with nothing unsaved, is no longer in the
+    /// file.
+    Close,
 }
 
 impl MacroEditor {
@@ -2944,7 +3048,40 @@ impl MacroEditor {
         // `terminal_sessions.json` is read asynchronously, so an editor opened
         // before the first read landed would otherwise show an empty tree of
         // saved macros for as long as it stays open.
-        let store_loaded = cx.observe(&store, |_, _, cx| cx.notify());
+        let store_loaded = cx.observe_in(&store, window, |this, _, window, cx| {
+            this.restore_macro(window, cx);
+            this.follow_change_made_elsewhere(window, cx);
+            this.close_if_gone_elsewhere(cx);
+            // The pane draws the conflict mark from its own render, which a
+            // change in the file alone does not cause.
+            this.report_tab_change(cx);
+            cx.notify();
+        });
+        // The pane focuses the tab itself; the form is typed into from the
+        // field the user left it in, or from its name.
+        let tab_focused = cx.on_focus(&focus_handle, window, |this, window, cx| {
+            let field = this
+                .last_focused_field
+                .as_ref()
+                .and_then(|field| field.upgrade())
+                .filter(|field| {
+                    this.field_editors()
+                        .iter()
+                        .any(|candidate| candidate.entity_id() == field.entity_id())
+                })
+                .unwrap_or_else(|| this.name.clone());
+            window.focus(&field.focus_handle(cx), cx);
+        });
+        let tab_left = cx.on_focus_out(&focus_handle, window, |this, event, _, cx| {
+            let Some(blurred) = event.blurred.upgrade() else {
+                return;
+            };
+            this.last_focused_field = this
+                .field_editors()
+                .into_iter()
+                .find(|field| field.focus_handle(cx) == blurred)
+                .map(|field| field.downgrade());
+        });
         // The tree is rebuilt during render, so the filter field only changes
         // it if the editor itself is re-rendered on every keystroke.
         let filter_edited = cx.subscribe(&list_filter, |_, _, event: &EditorEvent, cx| {
@@ -2964,27 +3101,224 @@ impl MacroEditor {
             repeat_interval,
             list_filter,
             saved_snapshot: None,
+            base_macro: None,
             unfiled_collapsed: false,
             renaming_folder: None,
             new_folder: None,
             steps: Vec::new(),
             form_scroll: ScrollHandle::new(),
             show_help: false,
+            // Until the tab has been laid out, the window is the most it can
+            // be given.
             show_macro_list: window.viewport_size().width
-                >= rems(MACRO_LIST_MIN_VIEWPORT_WIDTH).to_pixels(window.rem_size()),
+                >= rems(MACRO_LIST_MIN_WIDTH).to_pixels(window.rem_size()),
+            macro_list_chosen: false,
+            measured_width: Rc::default(),
+            measured_form_width: Rc::default(),
+            redraw_requested: Rc::default(),
+            drag_scroll: None,
+            restore_key: None,
+            reported_tab: (None, false),
+            field_subscriptions: HashMap::default(),
             error: None,
             pending_delete: None,
             pending_folder_delete: None,
             pending_selection: None,
             focus_handle,
-            _subscriptions: [store_loaded, filter_edited],
+            reported_conflict: false,
+            on_disk: false,
+            closing_because_gone: false,
+            last_focused_field: None,
+            _subscriptions: [store_loaded, filter_edited, tab_focused, tab_left],
         };
-        this.load_macro(edited, window, cx);
+        this.fill_form(edited, window, cx);
+        this.reported_tab = (this.original_key.clone(), this.has_unsaved_edits(cx));
         this
     }
 
-    /// Points the form at `edited`, or at a blank new macro when it is `None`.
+    /// A tab brought back on restart: it reopens the macro it had open, by
+    /// key, once the file has been read. What was typed and not saved is not
+    /// kept, so the tab opens the macro as saved.
+    fn restored(
+        store: Entity<TerminalSessionStore>,
+        key: Option<MacroKey>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut this = Self::new(store, None, window, cx);
+        this.restore_key = key;
+        this.restore_macro(window, cx);
+        this
+    }
+
+    fn restore_macro(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.restore_key.is_none() || !self.store.read(cx).is_loaded() {
+            return;
+        }
+        let Some(key) = self.restore_key.take() else {
+            return;
+        };
+        // Something typed while the file was still being read is kept: the
+        // tab would rather not reopen the old macro than throw that away.
+        if self.has_unsaved_edits(cx) {
+            return;
+        }
+        let restored = self
+            .store
+            .read(cx)
+            .macros()
+            .iter()
+            .find(|candidate| candidate.key() == key)
+            .cloned();
+        match restored {
+            Some(restored) => self.fill_form(Some(restored), window, cx),
+            None => log::info!(
+                "macro editor: the macro a restored tab had open is no longer saved: {:?}",
+                key
+            ),
+        }
+    }
+
+    /// The open macro as the file holds it now, when that is no longer what
+    /// the form was filled from. The folder and the name are left out of the
+    /// comparison: renaming or moving a folder from this tab carries the open
+    /// macro along under its new key without changing it.
+    fn macro_changed_elsewhere(&self, cx: &App) -> Option<TerminalMacro> {
+        let key = self.original_key.as_ref()?;
+        let base = self.base_macro.as_ref()?;
+        let store = self.store.read(cx);
+        if !store.is_loaded() {
+            return None;
+        }
+        let stored = store
+            .macros()
+            .iter()
+            .find(|candidate| candidate.key() == *key)?;
+        let content = |terminal_macro: &TerminalMacro| TerminalMacro {
+            name: String::new(),
+            folder: None,
+            ..terminal_macro.clone()
+        };
+        (content(stored) != content(base)).then(|| stored.clone())
+    }
+
+    fn stored_under_original_key(&self, cx: &App) -> Option<bool> {
+        let key = self.original_key.as_ref()?;
+        let store = self.store.read(cx);
+        store.is_loaded().then(|| {
+            store
+                .macros()
+                .iter()
+                .any(|candidate| candidate.key() == *key)
+        })
+    }
+
+    fn note_whether_on_disk(&mut self, cx: &App) {
+        if self.stored_under_original_key(cx) == Some(true) {
+            self.on_disk = true;
+        }
+    }
+
+    /// Whether the open macro, once in the file, has since been deleted,
+    /// renamed or moved by another tab, another window or a hand edit. Saving
+    /// then makes it again under the form's name, which is asked first.
+    fn macro_gone_elsewhere(&self, cx: &App) -> bool {
+        self.on_disk && self.stored_under_original_key(cx) == Some(false)
+    }
+
+    /// A tab with nothing unsaved over a macro that is gone has nothing left
+    /// to show, so it closes. One with edits stays, marked, until they are
+    /// saved or thrown away.
+    fn close_if_gone_elsewhere(&mut self, cx: &mut Context<Self>) {
+        self.note_whether_on_disk(cx);
+        if self.closing_because_gone || !self.macro_gone_elsewhere(cx) || self.has_unsaved_edits(cx)
+        {
+            return;
+        }
+        self.closing_because_gone = true;
+        cx.emit(MacroEditorEvent::Close);
+    }
+
+    /// Shows what another tab, window or a hand edit saved for the open
+    /// macro, unless the form holds edits of its own: those are kept, and
+    /// saving them asks before writing over the other change.
+    fn follow_change_made_elsewhere(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(stored) = self.macro_changed_elsewhere(cx) else {
+            return;
+        };
+        if self.has_unsaved_edits(cx) {
+            return;
+        }
+        self.fill_form(Some(stored), window, cx);
+    }
+
+    /// 「保存」 below the form. Saving over a change made elsewhere since the
+    /// form was filled asks first, the way the pane asks for a file changed
+    /// on disk.
+    fn save_from_button(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let answer = if self.macro_gone_elsewhere(cx) {
+            let name = self.name.read(cx).text(cx).trim().to_string();
+            let name = match &self.form_folder {
+                Some(folder) => format!("{folder} / {name}"),
+                None => name,
+            };
+            window.prompt(
+                PromptLevel::Warning,
+                &i18n::t!(
+                    "This macro has been deleted or renamed elsewhere. Saving creates it again as “{name}”."
+                ),
+                None,
+                &[i18n::t!("Save"), i18n::t!("Cancel")],
+                cx,
+            )
+        } else if self.macro_changed_elsewhere(cx).is_some() {
+            window.prompt(
+                PromptLevel::Warning,
+                i18n::t!(
+                    "This macro has been changed elsewhere since this tab opened it. Do you want to overwrite it?"
+                ),
+                None,
+                &[i18n::t!("Overwrite"), i18n::t!("Cancel")],
+                cx,
+            )
+        } else {
+            // A refused or failed save is shown in the form's error line,
+            // which is all a click has to report.
+            self.save_form(cx).detach();
+            return;
+        };
+        cx.spawn(async move |this, cx| {
+            if answer.await.ok() != Some(0) {
+                return;
+            }
+            this.update(cx, |this, cx| this.save_form(cx).detach())
+                .log_err();
+        })
+        .detach();
+    }
+
+    /// Shows or hides the saved-macro tree as the user asked with its button.
+    fn set_macro_list_shown(&mut self, shown: bool, cx: &mut Context<Self>) {
+        self.show_macro_list = shown;
+        self.macro_list_chosen = true;
+        cx.notify();
+    }
+
+    /// Points the form at `edited`, or at a blank new macro when it is `None`,
+    /// and puts the cursor in its name.
     fn load_macro(
+        &mut self,
+        edited: Option<TerminalMacro>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.fill_form(edited, window, cx);
+        window.focus(&self.name.focus_handle(cx), cx);
+    }
+
+    /// [`Self::load_macro`] without moving the focus, for a tab restored in
+    /// the background.
+    fn fill_form(
         &mut self,
         edited: Option<TerminalMacro>,
         window: &mut Window,
@@ -2994,6 +3328,9 @@ impl MacroEditor {
         // A macro with no name yet stands for nothing on disk, which is how the
         // tree hands the form 「このフォルダーに新しいマクロ」.
         self.original_key = (!edited.name.is_empty()).then(|| edited.key());
+        self.base_macro = self.original_key.is_some().then(|| edited.clone());
+        self.on_disk = false;
+        self.note_whether_on_disk(cx);
         self.name.update(cx, |editor, cx| {
             editor.set_text(edited.name, window, cx);
         });
@@ -3025,7 +3362,6 @@ impl MacroEditor {
         // The handle outlives the macro it scrolled, so a macro opened after
         // one that was scrolled to its end would otherwise open at its end.
         self.form_scroll.set_offset(gpui::Point::default());
-        window.focus(&self.name.focus_handle(cx), cx);
         cx.notify();
     }
 
@@ -3048,6 +3384,28 @@ impl MacroEditor {
             repeat_interval: self.repeat_interval.read(cx).text(cx),
             steps: self.steps.iter().map(|row| row.snapshot(cx)).collect(),
         }
+    }
+
+    /// Every text field of the editor.
+    fn field_editors(&self) -> Vec<Entity<Editor>> {
+        let mut fields = vec![
+            self.name.clone(),
+            self.tags.clone(),
+            self.description.clone(),
+            self.repeat.clone(),
+            self.repeat_interval.clone(),
+            self.list_filter.clone(),
+        ];
+        fields.extend(
+            self.renaming_folder
+                .as_ref()
+                .map(|(_, field)| field.clone()),
+        );
+        fields.extend(self.new_folder.as_ref().map(|entry| entry.field.clone()));
+        for row in &self.steps {
+            row.collect_field_editors(&mut fields);
+        }
+        fields
     }
 
     /// Whether leaving the form now would throw work away.
@@ -3344,9 +3702,18 @@ impl MacroEditor {
         let row = StepRow::new(&step, window, cx);
         let appended_to_macro = at.parent.is_none() && at.index >= self.steps.len();
         let Some(lane) = self.lane_mut(&at.parent) else {
+            log::warn!(
+                "macro editor: no list at {:?} to put a step into",
+                at.parent.as_ref().map(|(path, list)| (path.label(), *list))
+            );
             return;
         };
         if at.index > lane.len() {
+            log::warn!(
+                "macro editor: a step put in at {} of a list of {} steps",
+                at.index,
+                lane.len()
+            );
             return;
         }
         row.focus_first_field(window, cx);
@@ -4059,45 +4426,48 @@ impl MacroEditor {
         cx.notify();
     }
 
-    fn save(&mut self, cx: &mut Context<Self>) {
+    /// Shows `message` in the form's error line, and fails the save with it so
+    /// that closing the tab through 「保存」 stops at the form.
+    fn refuse_save(&mut self, message: String, cx: &mut Context<Self>) -> Task<anyhow::Result<()>> {
+        self.error = Some(message.clone().into());
+        cx.notify();
+        Task::ready(Err(anyhow::anyhow!(message)))
+    }
+
+    /// Writes the form to `terminal_sessions.json`. The tab stays open on the
+    /// macro just saved, which from then on is what counts as unchanged.
+    fn save_form(&mut self, cx: &mut Context<Self>) -> Task<anyhow::Result<()>> {
         // Writing before the first read would rewrite the file from an empty
         // in-memory copy, dropping every macro and connection already in it.
         if !self.store.read(cx).is_loaded() {
-            self.error = Some(loading_error().into());
-            cx.notify();
-            return;
+            return self.refuse_save(loading_error().to_string(), cx);
         }
 
         let name = self.name.read(cx).text(cx).trim().to_string();
         if name.is_empty() {
-            self.error = Some(i18n::t!("Enter a macro name.").into());
-            cx.notify();
-            return;
+            return self.refuse_save(i18n::t!("Enter a macro name.").to_string(), cx);
         }
 
         let mut steps = Vec::with_capacity(self.steps.len());
         for (index, row) in self.steps.iter().enumerate() {
             match row.to_step(&(index + 1).to_string(), cx) {
                 Ok(step) => steps.push(step),
-                Err(message) => {
-                    self.error = Some(message.into());
-                    cx.notify();
-                    return;
-                }
+                Err(message) => return self.refuse_save(message, cx),
             }
         }
 
         let Ok(repeat) = self.repeat.read(cx).text(cx).trim().parse::<u32>() else {
-            self.error =
-                Some(i18n::t!("Enter the repeat count as a whole number, 0 or more.").into());
-            cx.notify();
-            return;
+            return self.refuse_save(
+                i18n::t!("Enter the repeat count as a whole number, 0 or more.").to_string(),
+                cx,
+            );
         };
         let Some(repeat_interval_ms) = parse_seconds(&self.repeat_interval.read(cx).text(cx))
         else {
-            self.error = Some(i18n::t!("Enter the repeat interval in seconds, 0 or more.").into());
-            cx.notify();
-            return;
+            return self.refuse_save(
+                i18n::t!("Enter the repeat interval in seconds, 0 or more.").to_string(),
+                cx,
+            );
         };
 
         let terminal_macro = TerminalMacro {
@@ -4123,11 +4493,25 @@ impl MacroEditor {
             .iter()
             .position(|candidate| candidate.key() == key);
         if taken.is_some() && original_key.as_ref() != Some(&key) {
-            self.error = Some(i18n::t!("This folder already has a macro with this name.").into());
-            cx.notify();
-            return;
+            return self.refuse_save(
+                i18n::t!("This folder already has a macro with this name.").to_string(),
+                cx,
+            );
         }
 
+        // Taken now rather than once the write lands: anything typed in the
+        // meantime is not in the file, so it still counts as unsaved.
+        let saved_snapshot = self.snapshot(cx);
+        let saved_key = key.clone();
+        // Set before the store is told, so that its observers already compare
+        // the file against what this tab has just written.
+        self.base_macro = Some(terminal_macro.clone());
+        // The store takes the new file at once, whether or not the write to
+        // disk then succeeds; a rename read against the old key would look
+        // like the macro had gone elsewhere.
+        self.original_key = Some(key.clone());
+        self.on_disk = true;
+        self.closing_because_gone = false;
         let write = self.store.update(cx, |store, cx| {
             let mut file = store.file().clone();
             // Which connections run the macro has to be settled before it is
@@ -4163,17 +4547,24 @@ impl MacroEditor {
 
         cx.spawn(async move |this, cx| match write.await {
             Ok(()) => {
-                this.update(cx, |_, cx| cx.emit(DismissEvent)).ok();
+                this.update(cx, |this, cx| {
+                    this.original_key = Some(saved_key);
+                    this.saved_snapshot = Some(saved_snapshot);
+                    this.error = None;
+                    cx.notify();
+                })?;
+                Ok(())
             }
             Err(error) => {
+                let message = i18n::t!("Couldn't save: {error}");
                 this.update(cx, |this, cx| {
-                    this.error = Some(i18n::t!("Couldn't save: {error}").into());
+                    this.error = Some(message.clone().into());
                     cx.notify();
                 })
                 .ok();
+                Err(anyhow::anyhow!(message))
             }
         })
-        .detach();
     }
 
     fn request_delete(&mut self, key: MacroKey, cx: &mut Context<Self>) {
@@ -5055,6 +5446,11 @@ impl MacroEditor {
         let index = path.index();
         let expanded = row.expanded;
         let unknown_kind = row.unknown.as_ref().map(|step| step.unknown_kind());
+        let field_problem = row
+            .unknown
+            .as_ref()
+            .and_then(|step| step.unreadable_reason())
+            .and_then(|reason| reason.field_problem());
         let sibling_count = match path.lane_position() {
             Some((parent, _)) => self.lane(&parent).map_or(0, Vec::len),
             None => 0,
@@ -5483,12 +5879,16 @@ impl MacroEditor {
                         )
                     })
                     .when_some(unknown_kind, |this, unknown_kind| {
-                        let message = match unknown_kind {
-                            Some(kind) => i18n::t!(
+                        let message = match (field_problem, unknown_kind) {
+                            (Some(problem), _) => i18n::t!(
+                                "{problem}. Fix it in terminal_sessions.json. \
+                                 Saving here keeps it as it was, but a macro that contains it can't be run."
+                            ),
+                            (None, Some(kind)) => i18n::t!(
                                 "A step of a kind this version can't run (“{kind}”). \
                                  Saving keeps it as it was, but a macro that contains it can't be run."
                             ),
-                            None => i18n::t!(
+                            (None, None) => i18n::t!(
                                 "A step of a kind this version can't run. \
                                  Saving keeps it as it was, but a macro that contains it can't be run."
                             )
@@ -5760,23 +6160,21 @@ const MIN_LANE_WIDTH: f32 = 16.;
 /// room for its heading and its 「+」.
 const NARROW_LANE_WIDTH: f32 = 8.;
 
-/// What the macro editor's modal leaves of the window beside it.
-const MODAL_MARGIN_WIDTH: Pixels = px(48.);
+/// Below this width (in rems) of the editor's tab the saved-macro tree is
+/// hidden, so the form keeps a width worth editing in.
+const MACRO_LIST_MIN_WIDTH: f32 = 56.;
 
-/// How far down the window the workspace's modal layer puts the top of a
-/// modal (its `top_20`), which the modal's height has to leave out to end
-/// inside the window.
-const MODAL_LAYER_TOP: f32 = 5.;
+/// What the form keeps clear on its right for its scrollbar (its `pr_3`).
+const FORM_SCROLLBAR_ROOM: Pixels = px(12.);
 
-/// What the macro editor's modal leaves of the window under it.
-const MODAL_MARGIN_BOTTOM: Pixels = px(16.);
+/// How close (in rems) to the form's top or bottom edge a dragged card has
+/// to be for the form to scroll.
+const DRAG_SCROLL_EDGE: f32 = 3.;
 
-/// The widest (in rems) the macro editor's modal is drawn.
-const MODAL_MAX_WIDTH: f32 = 120.;
+/// How far the form scrolls on each tick while a card is held at its edge.
+const DRAG_SCROLL_STEP: Pixels = px(8.);
 
-/// Below this viewport width (in rems) the editor opens with the saved-macro
-/// tree hidden, so the form keeps a width worth editing in.
-const MACRO_LIST_MIN_VIEWPORT_WIDTH: f32 = 56.;
+const DRAG_SCROLL_INTERVAL: Duration = Duration::from_millis(16);
 
 /// A step card dragged by its header onto a 「+」.
 #[derive(Clone)]
@@ -5874,32 +6272,36 @@ fn timeout_choice_label(continue_on_timeout: bool) -> &'static str {
 
 impl Render for MacroEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.watch_fields(cx);
+        self.report_tab_change(cx);
         let defined = self.defined_variables(cx);
         let reach = self.variable_reach(&defined, cx);
-        let viewport = window.viewport_size();
         let rem_size = window.rem_size();
-        // The modal takes nearly the whole window, as an editor tab would;
-        // only a very wide one is capped, past which a wider form only
-        // spreads the same cards thinner.
-        let modal_width = (viewport.width - MODAL_MARGIN_WIDTH)
-            .min(rems(MODAL_MAX_WIDTH).to_pixels(rem_size))
-            .max(px(0.));
-        let modal_height =
-            (viewport.height - rems(MODAL_LAYER_TOP).to_pixels(rem_size) - MODAL_MARGIN_BOTTOM)
-                .max(px(0.));
-        // What the cards of the macro's own list get: the modal less its
-        // padding, the tree beside the form when it is shown, and the room
-        // the form keeps for its scrollbar.
-        let tree_width = if self.show_macro_list {
-            rems(17.).to_pixels(rem_size) + px(12.)
-        } else {
-            px(0.)
+        // The tab's width is only known once it has been laid out; before
+        // that the window is the most it can have.
+        let editor_width = self
+            .measured_width
+            .get()
+            .unwrap_or_else(|| window.viewport_size().width);
+        if !self.macro_list_chosen {
+            self.show_macro_list = editor_width >= rems(MACRO_LIST_MIN_WIDTH).to_pixels(rem_size);
+        }
+        // What the cards of the macro's own list get: the column they are
+        // laid out in, less the room the form keeps for its scrollbar. Before
+        // the column has been laid out, the tab less its padding and the tree
+        // beside the form.
+        let form_width = match self.measured_form_width.get() {
+            Some(width) => width,
+            None => {
+                let tree_width = if self.show_macro_list {
+                    rems(17.).to_pixels(rem_size) + px(12.)
+                } else {
+                    px(0.)
+                };
+                editor_width - DynamicSpacing::Base12.rems(cx).to_pixels(rem_size) * 2. - tree_width
+            }
         };
-        let form_width = (modal_width
-            - DynamicSpacing::Base12.rems(cx).to_pixels(rem_size) * 2.
-            - tree_width
-            - px(12.))
-        .max(px(0.));
+        let form_width = (form_width - FORM_SCROLLBAR_ROOM).max(px(0.));
         let steps = self.render_lane(None, form_width, &reach, window, cx);
         let steps_header = self.render_steps_header(&defined, cx);
         let tree = self
@@ -5952,25 +6354,29 @@ impl Render for MacroEditor {
         let repeat_field = field(&self.repeat, window, cx).w(rems(4.));
         let repeat_interval_field = field(&self.repeat_interval, window, cx).w(rems(4.));
 
+        let measured_width = self.measure_width(&self.measured_width, cx);
+        let measured_form_width = self.measure_width(&self.measured_form_width, cx);
         v_flex()
             // The two panes need a bounded box: the tree and the form each
-            // scroll inside it rather than growing the modal off screen.
-            .w(modal_width)
-            .h(modal_height)
+            // scroll inside it rather than growing the tab off screen.
+            .size_full()
+            .relative()
             .overflow_hidden()
-            .elevation_3(cx)
+            .bg(cx.theme().colors().editor_background)
             .key_context("TerminalMacroEditor")
             .debug_selector(|| "macro-editor".into())
             .track_focus(&self.focus_handle)
-            .on_action(cx.listener(|_, _: &menu::Cancel, _, cx| cx.emit(DismissEvent)))
+            .child(measured_width)
             .child(
-                Modal::new("terminal-macro-editor", None)
-                    .header(ModalHeader::new().headline(i18n::t!("Edit Macros")))
+                v_flex()
+                    .size_full()
+                    .min_h_0()
                     .child(
                         h_flex()
                             .w_full()
                             .flex_1()
                             .min_h_0()
+                            .pt_2()
                             .px(DynamicSpacing::Base12.rems(cx))
                             .gap_3()
                             .when_some(tree, |this, tree| this.child(
@@ -6076,9 +6482,10 @@ impl Render for MacroEditor {
                                                             },
                                                         ))
                                                         .on_click(cx.listener(|this, _, _, cx| {
-                                                            this.show_macro_list =
-                                                                !this.show_macro_list;
-                                                            cx.notify();
+                                                            this.set_macro_list_shown(
+                                                                !this.show_macro_list,
+                                                                cx,
+                                                            );
                                                         }))),
                                                     )
                                                     .child(
@@ -6141,8 +6548,14 @@ impl Render for MacroEditor {
                                         // shows there is more below.
                                         div()
                                             .id("macro-form-frame")
+                                            .debug_selector(|| "macro-form-frame".into())
+                                            .relative()
                                             .flex_1()
                                             .min_h_0()
+                                            .on_drag_move::<DraggedStep>(cx.listener(
+                                                Self::scroll_while_dragging,
+                                            ))
+                                            .child(measured_form_width)
                                             .child(
                                                 v_flex()
                                                     .id("macro-form")
@@ -6357,36 +6770,409 @@ impl Render for MacroEditor {
                                     }),
                             ),
                     )
-                    .footer(
-                        ModalFooter::new().end_slot(
-                            h_flex()
-                                .gap_1()
-                                .debug_selector(|| "macro-editor-buttons".into())
-                                .child(Button::new("cancel", i18n::t!("Cancel")).on_click(
-                                    cx.listener(|_, _, _, cx| cx.emit(DismissEvent)),
-                                ))
-                                .child(Button::new("save", i18n::t!("Save")).on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.save(cx);
-                                    },
-                                ))),
-                        ),
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .flex_none()
+                            .justify_end()
+                            .px(DynamicSpacing::Base12.rems(cx))
+                            .py_2()
+                            .border_t_1()
+                            .border_color(cx.theme().colors().border_variant)
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .debug_selector(|| "macro-editor-buttons".into())
+                                    .child(
+                                        Button::new("save", i18n::t!("Save"))
+                                            .style(ButtonStyle::Filled)
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.save_from_button(window, cx);
+                                            })),
+                                    ),
+                            ),
                     ),
             )
     }
 }
 
-impl EventEmitter<DismissEvent> for MacroEditor {}
+impl MacroEditor {
+    /// Tells the pane when the tab's title or its unsaved mark changes. Asked
+    /// on every render, since what the form holds changes in the fields'
+    /// own editors without passing through this view.
+    fn watch_fields(&mut self, cx: &mut Context<Self>) {
+        let fields = self.field_editors();
+        let current = fields
+            .iter()
+            .map(|field| field.entity_id())
+            .collect::<HashSet<_>>();
+        self.field_subscriptions
+            .retain(|entity_id, _| current.contains(entity_id));
+        for field in fields {
+            if self.field_subscriptions.contains_key(&field.entity_id()) {
+                continue;
+            }
+            let subscription = cx.subscribe(&field, |_, _, event: &EditorEvent, cx| {
+                if matches!(event, EditorEvent::BufferEdited) {
+                    cx.notify();
+                }
+            });
+            self.field_subscriptions
+                .insert(field.entity_id(), subscription);
+        }
+    }
 
-impl Focusable for MacroEditor {
-    // The modal layer focuses whatever this returns once the modal is shown, so
-    // handing it the name field is what makes the form typable on open.
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        self.name.focus_handle(cx)
+    fn report_tab_change(&mut self, cx: &mut Context<Self>) {
+        let shown = (self.original_key.clone(), self.has_unsaved_edits(cx));
+        let conflict = self.macro_changed_elsewhere(cx).is_some() || self.macro_gone_elsewhere(cx);
+        if shown != self.reported_tab || conflict != self.reported_conflict {
+            self.reported_tab = shown;
+            self.reported_conflict = conflict;
+            cx.emit(MacroEditorEvent::TabChanged);
+        }
+    }
+
+    /// An element that paints nothing and records the width its parent was
+    /// laid out at in `cell`, asking for another frame when that changed.
+    fn measure_width(
+        &self,
+        cell: &Rc<Cell<Option<Pixels>>>,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let cell = cell.clone();
+        let redraw_requested = self.redraw_requested.clone();
+        let view = cx.weak_entity();
+        canvas(
+            move |bounds, window, _| {
+                if cell.get() == Some(bounds.size.width) {
+                    return;
+                }
+                cell.set(Some(bounds.size.width));
+                if redraw_requested.replace(true) {
+                    return;
+                }
+                // A notify while the frame is being drawn is dropped, so the
+                // redraw is asked for from the next frame.
+                window.on_next_frame(move |_, cx| {
+                    redraw_requested.set(false);
+                    // The tab may be closed by then; nothing is left to
+                    // redraw.
+                    view.update(cx, |_, cx| cx.notify()).ok();
+                });
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full()
+    }
+
+    /// Scrolls the form while a card is dragged near its top or bottom edge,
+    /// so a card can be dropped on a 「+」 that is out of view. Holding the
+    /// pointer still keeps scrolling; moving it away from the edge, or letting
+    /// go, stops.
+    fn scroll_while_dragging(
+        &mut self,
+        event: &DragMoveEvent<DraggedStep>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let bounds = event.bounds;
+        let position = event.event.position;
+        let edge = rems(DRAG_SCROLL_EDGE)
+            .to_pixels(window.rem_size())
+            .min(bounds.size.height / 4.);
+        let inside_horizontally = position.x >= bounds.left() && position.x <= bounds.right();
+        let step = if !inside_horizontally {
+            None
+        } else if position.y < bounds.top() + edge {
+            Some(DRAG_SCROLL_STEP)
+        } else if position.y > bounds.bottom() - edge {
+            Some(-DRAG_SCROLL_STEP)
+        } else {
+            None
+        };
+        let Some(step) = step else {
+            self.drag_scroll = None;
+            return;
+        };
+        if self.drag_scroll.is_some() {
+            // The task already running keeps going; a new one per mouse move
+            // would only restart its timer.
+            return;
+        }
+        self.drag_scroll = Some(cx.spawn_in(window, async move |this, cx| {
+            loop {
+                let keep_going = this
+                    .update(cx, |this, cx| {
+                        if !cx.has_active_drag() {
+                            this.drag_scroll = None;
+                            return false;
+                        }
+                        let offset = this.form_scroll.offset();
+                        let max_offset = this.form_scroll.max_offset();
+                        let scrolled = (offset.y + step).min(px(0.)).max(-max_offset.y);
+                        if scrolled != offset.y {
+                            this.form_scroll.set_offset(gpui::point(offset.x, scrolled));
+                            cx.notify();
+                        }
+                        true
+                    })
+                    .unwrap_or(false);
+                if !keep_going {
+                    return;
+                }
+                cx.background_executor().timer(DRAG_SCROLL_INTERVAL).await;
+            }
+        }));
     }
 }
 
-impl ModalView for MacroEditor {}
+impl EventEmitter<MacroEditorEvent> for MacroEditor {}
+
+impl Focusable for MacroEditor {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Item for MacroEditor {
+    type Event = MacroEditorEvent;
+
+    fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
+        match &self.original_key {
+            Some((_, name)) => i18n::t!("Macro: {name}").into(),
+            None => i18n::t!("New Macro").into(),
+        }
+    }
+
+    fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
+        Some(Icon::new(IconName::PlayOutlined))
+    }
+
+    fn tab_tooltip_text(&self, _cx: &App) -> Option<SharedString> {
+        let (folder, name) = self.original_key.as_ref()?;
+        Some(match folder {
+            Some(folder) => format!("{folder} / {name}").into(),
+            None => name.clone().into(),
+        })
+    }
+
+    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+        match event {
+            MacroEditorEvent::TabChanged => f(ItemEvent::UpdateTab),
+            MacroEditorEvent::Close => f(ItemEvent::CloseItem),
+        }
+    }
+
+    fn added_to_workspace(
+        &mut self,
+        _workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // An editor's focus listeners belong to the window they were
+        // registered against, so the fields of a tab moved to another window
+        // have to register them again.
+        for field in self.field_editors() {
+            field.update(cx, |editor, cx| {
+                editor.rebind_window_focus_listeners(window, cx);
+            });
+        }
+    }
+
+    // Reads only the form's own fields: the workspace asks while it is
+    // being updated itself.
+    fn is_dirty(&self, cx: &App) -> bool {
+        self.has_unsaved_edits(cx)
+    }
+
+    // A pane only asks before closing a tab that holds no project file when
+    // the tab says it stands for one document of its own.
+    fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {
+        ItemBufferKind::Singleton
+    }
+
+    fn can_save(&self, _cx: &App) -> bool {
+        true
+    }
+
+    // The pane asks before a save writes over it (「上書き」 then calls
+    // `save`, 「編集を破棄」 calls `reload`).
+    fn has_conflict(&self, cx: &App) -> bool {
+        self.macro_changed_elsewhere(cx).is_some() || self.macro_gone_elsewhere(cx)
+    }
+
+    // With `has_conflict`, the pane asks whether to make it again.
+    fn has_deleted_file(&self, cx: &App) -> bool {
+        self.macro_gone_elsewhere(cx)
+    }
+
+    /// 「保存しない」: puts the form back to the macro as saved.
+    fn reload(
+        &mut self,
+        _project: Entity<project::Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let saved = self.original_key.as_ref().and_then(|key| {
+            self.store
+                .read(cx)
+                .macros()
+                .iter()
+                .find(|candidate| candidate.key() == *key)
+                .cloned()
+        });
+        self.fill_form(saved, window, cx);
+        Task::ready(Ok(()))
+    }
+
+    fn save(
+        &mut self,
+        _options: SaveOptions,
+        _project: Entity<project::Project>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        self.save_form(cx)
+    }
+}
+
+impl SerializableItem for MacroEditor {
+    fn serialized_item_kind() -> &'static str {
+        "TerminalMacroEditor"
+    }
+
+    fn cleanup(
+        workspace_id: WorkspaceId,
+        alive_items: Vec<ItemId>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<()>> {
+        let db = persistence::MacroEditorDb::global(cx);
+        workspace::delete_unloaded_items(
+            alive_items,
+            workspace_id,
+            "terminal_macro_editors",
+            &db,
+            cx,
+        )
+    }
+
+    fn deserialize(
+        _project: Entity<project::Project>,
+        workspace: WeakEntity<Workspace>,
+        workspace_id: WorkspaceId,
+        item_id: ItemId,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Task<anyhow::Result<Entity<Self>>> {
+        let db = persistence::MacroEditorDb::global(cx);
+        let fs = workspace
+            .upgrade()
+            .map(|workspace| workspace.read(cx).app_state().fs.clone());
+        window.spawn(cx, async move |cx| {
+            let Some(fs) = fs else {
+                anyhow::bail!("the workspace is gone, so the macro editor cannot be restored");
+            };
+            let Some((folder, name)) = db.get_macro_editor(item_id, workspace_id)? else {
+                anyhow::bail!("no macro editor was saved for this tab");
+            };
+            let key = name.map(|name| (folder, name));
+            cx.update(|window, cx| {
+                let store = TerminalSessionStore::global(fs, cx);
+                cx.new(|cx| MacroEditor::restored(store, key, window, cx))
+            })
+        })
+    }
+
+    fn serialize(
+        &mut self,
+        workspace: &mut Workspace,
+        item_id: ItemId,
+        closing: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<Task<anyhow::Result<()>>> {
+        // On quitting or closing the window, a tab that serializes is taken as
+        // having kept its unsaved edits and is closed without asking. This one
+        // keeps only which macro is open, so its edits would be lost without a
+        // word; declining here makes the workspace ask 保存 / 保存しない first.
+        if closing && self.has_unsaved_edits(cx) {
+            return None;
+        }
+        let workspace_id = workspace.database_id()?;
+        // Only which macro is open is kept; what was typed and not saved is
+        // not, so a restored tab opens the macro as it was last saved.
+        let (folder, name) = match self.original_key.clone() {
+            Some((folder, name)) => (folder, Some(name)),
+            None => (None, None),
+        };
+        let db = persistence::MacroEditorDb::global(cx);
+        Some(cx.background_spawn(async move {
+            db.save_macro_editor(item_id, workspace_id, folder, name)
+                .await
+        }))
+    }
+
+    fn should_serialize(&self, event: &Self::Event) -> bool {
+        matches!(event, MacroEditorEvent::TabChanged)
+    }
+}
+
+mod persistence {
+    use db::{
+        query,
+        sqlez::{domain::Domain, thread_safe_connection::ThreadSafeConnection},
+        sqlez_macros::sql,
+    };
+    use workspace::{ItemId, WorkspaceDb, WorkspaceId};
+
+    pub(super) struct MacroEditorDb(ThreadSafeConnection);
+
+    impl Domain for MacroEditorDb {
+        const NAME: &str = stringify!(MacroEditorDb);
+
+        const MIGRATIONS: &[&str] = &[sql!(
+            CREATE TABLE terminal_macro_editors (
+                workspace_id INTEGER,
+                item_id INTEGER,
+
+                macro_folder TEXT,
+                macro_name TEXT,
+
+                PRIMARY KEY(workspace_id, item_id),
+                FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id)
+                ON DELETE CASCADE
+            ) STRICT;
+        )];
+    }
+
+    db::static_connection!(MacroEditorDb, [WorkspaceDb]);
+
+    impl MacroEditorDb {
+        query! {
+            pub(super) async fn save_macro_editor(
+                item_id: ItemId,
+                workspace_id: WorkspaceId,
+                macro_folder: Option<String>,
+                macro_name: Option<String>
+            ) -> Result<()> {
+                INSERT OR REPLACE INTO terminal_macro_editors(item_id, workspace_id, macro_folder, macro_name)
+                VALUES (?, ?, ?, ?)
+            }
+        }
+
+        query! {
+            pub(super) fn get_macro_editor(
+                item_id: ItemId,
+                workspace_id: WorkspaceId
+            ) -> Result<Option<(Option<String>, Option<String>)>> {
+                SELECT macro_folder, macro_name
+                FROM terminal_macro_editors
+                WHERE item_id = ? AND workspace_id = ?
+            }
+        }
+    }
+}
 
 // -------------------------------------------------------------------------
 // Quick connect
@@ -7516,7 +8302,7 @@ mod tests {
     use settings::SettingsStore;
     use terminal::terminal_macro::parse_sessions_file;
     use util::path;
-    use workspace::MultiWorkspace;
+    use workspace::{MultiWorkspace, WorkspaceDb};
 
     use super::*;
 
@@ -7580,12 +8366,39 @@ mod tests {
     ) -> Entity<MacroEditor> {
         let store = store.clone();
         workspace.update_in(cx, |workspace, window, cx| {
-            workspace.toggle_modal(window, cx, |window, cx| {
-                MacroEditor::new(store, None, window, cx)
-            });
+            let editor = cx.new(|cx| MacroEditor::new(store, None, window, cx));
+            workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
+            editor
+        })
+    }
+
+    /// Lets the editor lay itself out again by the widths it measured: it
+    /// reads them during one frame and asks for the next.
+    fn settle(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        for _ in 0..4 {
+            let callbacks = cx.update(|window, cx| window.simulate_next_frame(cx));
+            cx.run_until_parked();
+            if callbacks == 0 {
+                break;
+            }
+        }
+    }
+
+    fn active_macro_editor(
+        workspace: &Entity<Workspace>,
+        cx: &mut VisualTestContext,
+    ) -> Option<Entity<MacroEditor>> {
+        workspace.read_with(cx, |workspace, cx| {
             workspace
-                .active_modal::<MacroEditor>(cx)
-                .expect("the editor should be the active modal")
+                .active_item(cx)
+                .and_then(|item| item.downcast::<MacroEditor>())
+        })
+    }
+
+    fn macro_editor_count(workspace: &Entity<Workspace>, cx: &mut VisualTestContext) -> usize {
+        workspace.read_with(cx, |workspace, cx| {
+            workspace.items_of_type::<MacroEditor>(cx).count()
         })
     }
 
@@ -8218,20 +9031,75 @@ mod tests {
         });
         cx.run_until_parked();
 
-        workspace.update(cx, |workspace, cx| {
-            let editor = workspace
-                .active_modal::<MacroEditor>(cx)
-                .expect("the editor should have replaced the picker");
+        let editor =
+            active_macro_editor(&workspace, cx).expect("the editor should open as the active tab");
+        editor.read_with(cx, |editor, _| {
             assert_eq!(
-                editor.read(cx).original_key,
+                editor.original_key,
                 Some((None, "ログイン".to_string())),
                 "the editor should have loaded the selected macro"
             );
+        });
+        workspace.update(cx, |workspace, cx| {
             assert!(
                 workspace.active_modal::<MacroPicker>(cx).is_none(),
                 "the picker should be gone"
             );
         });
+        assert_eq!(macro_editor_count(&workspace, cx), 1);
+    }
+
+    #[gpui::test]
+    async fn opening_a_macro_already_open_in_a_tab_brings_that_tab_forward(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "ログイン", "steps": [] }, { "name": "保存", "steps": [] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+        let login = stored_macro_in(&store, None, "ログイン", cx);
+        let save = stored_macro_in(&store, None, "保存", cx);
+
+        let open = |edited: Option<TerminalMacro>, cx: &mut VisualTestContext| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                open_macro_editor(workspace, edited, window, cx)
+                    .expect("the editor should have opened")
+            })
+        };
+        let first = open(Some(login.clone()), cx);
+        let second = open(Some(save), cx);
+        cx.run_until_parked();
+        assert_ne!(first.entity_id(), second.entity_id());
+        assert_eq!(macro_editor_count(&workspace, cx), 2);
+
+        // The same macro again: no second form over it, its tab comes forward.
+        let again = open(Some(login), cx);
+        cx.run_until_parked();
+        assert_eq!(again.entity_id(), first.entity_id());
+        assert_eq!(macro_editor_count(&workspace, cx), 2);
+        assert_eq!(
+            active_macro_editor(&workspace, cx).map(|editor| editor.entity_id()),
+            Some(first.entity_id())
+        );
+
+        // 「マクロを編集」 with no macro named shows a tab that is open.
+        let any = open(None, cx);
+        assert_eq!(macro_editor_count(&workspace, cx), 2);
+        assert!([first.entity_id(), second.entity_id()].contains(&any.entity_id()));
+
+        // 「新規作成」 always gets a form of its own.
+        let fresh = open(Some(TerminalMacro::default()), cx);
+        cx.run_until_parked();
+        assert_eq!(macro_editor_count(&workspace, cx), 3);
+        fresh.read_with(cx, |editor, _| assert_eq!(editor.original_key, None));
+        assert_eq!(
+            active_macro_editor(&workspace, cx).map(|editor| editor.entity_id()),
+            Some(fresh.entity_id())
+        );
     }
 
     #[gpui::test]
@@ -8251,7 +9119,7 @@ mod tests {
             editor.steps[0].text.update(cx, |text, cx| {
                 text.set_text("show version", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -8276,11 +9144,19 @@ mod tests {
             }]
         );
 
-        workspace.update(cx, |workspace, cx| {
-            assert!(
-                workspace.active_modal::<MacroEditor>(cx).is_none(),
-                "a successful save should close the editor"
+        // The tab stays on the macro just saved, which is now what counts as
+        // unchanged and what the tab is named after.
+        assert_eq!(
+            active_macro_editor(&workspace, cx).map(|active| active.entity_id()),
+            Some(editor.entity_id())
+        );
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(
+                editor.original_key,
+                Some((None, "新しいマクロ".to_string()))
             );
+            assert!(!editor.is_dirty(cx));
+            assert_eq!(editor.tab_content_text(0, cx), "Macro: 新しいマクロ");
         });
 
         let picker = open_picker(&workspace, &store, cx);
@@ -8289,6 +9165,806 @@ mod tests {
             picker_names(&picker, cx),
             vec!["新しいマクロ".to_string(), "既存".to_string()]
         );
+    }
+
+    fn close_active_tab(
+        workspace: &Entity<Workspace>,
+        cx: &mut VisualTestContext,
+    ) -> Task<anyhow::Result<()>> {
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+        pane.update_in(cx, |pane, window, cx| {
+            pane.close_active_item(
+                &workspace::CloseActiveItem {
+                    save_intent: None,
+                    close_pinned: false,
+                },
+                window,
+                cx,
+            )
+        })
+    }
+
+    #[gpui::test]
+    async fn closing_a_tab_with_unsaved_changes_asks_first(cx: &mut TestAppContext) {
+        let (fs, workspace, window) =
+            init_workspace(cx, r#"{ "macros": [{ "name": "既存", "steps": [] }] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        let existing = stored_macro(&editor, None, "既存", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(existing), window, cx);
+        });
+        cx.run_until_parked();
+        let tab_is_dirty = |cx: &mut VisualTestContext| {
+            workspace.read_with(cx, |workspace, cx| {
+                workspace
+                    .active_item(cx)
+                    .is_some_and(|item| item.is_dirty(cx))
+            })
+        };
+        assert!(!tab_is_dirty(cx));
+
+        // Typing into a field is what makes the tab unsaved; the tab learns
+        // it without the form being touched any other way.
+        editor.update_in(cx, |editor, window, cx| {
+            editor.description.update(cx, |description, cx| {
+                description.set_text("書き換えた説明", window, cx);
+            });
+        });
+        cx.run_until_parked();
+        assert!(tab_is_dirty(cx));
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.reported_tab,
+                (Some((None, "既存".to_string())), true),
+                "the pane should have been told that the tab is unsaved"
+            );
+        });
+
+        let close = close_active_tab(&workspace, cx);
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt(), "closing should ask what to do");
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
+        close.await.log_err();
+        assert_eq!(
+            macro_editor_count(&workspace, cx),
+            1,
+            "Cancel keeps the tab"
+        );
+
+        let close = close_active_tab(&workspace, cx);
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer("Save");
+        cx.run_until_parked();
+        close.await.expect("saving and closing should succeed");
+        assert_eq!(macro_editor_count(&workspace, cx), 0, "Save closes the tab");
+        let contents = fs
+            .load(Path::new(path!("/config/terminal_sessions.json")))
+            .await
+            .expect("the sessions file should have been written");
+        assert_eq!(
+            parse_sessions_file(&contents).macros[0].description,
+            "書き換えた説明"
+        );
+
+        // A tab with nothing unsaved closes without asking.
+        let editor = open_editor(&workspace, &store, cx);
+        cx.run_until_parked();
+        editor.read_with(cx, |editor, cx| assert!(!editor.is_dirty(cx)));
+        let close = close_active_tab(&workspace, cx);
+        cx.run_until_parked();
+        assert!(!cx.has_pending_prompt());
+        close.await.expect("closing a clean tab should succeed");
+        assert_eq!(macro_editor_count(&workspace, cx), 0);
+    }
+
+    #[gpui::test]
+    async fn saving_a_form_that_cannot_be_saved_keeps_the_tab_open(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.add_step(StepKind::Send, window, cx);
+        });
+        cx.run_until_parked();
+
+        // No name: 「保存」 in the close prompt is refused, the pane says why
+        // and offers to stay, and staying leaves the form as it was.
+        let close = close_active_tab(&workspace, cx);
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Save");
+        cx.run_until_parked();
+        assert!(
+            cx.has_pending_prompt(),
+            "a refused save should be reported before the tab closes"
+        );
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
+        close.await.expect("staying open is not an error");
+        assert_eq!(macro_editor_count(&workspace, cx), 1);
+        editor.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+            assert_eq!(editor.steps.len(), 1);
+        });
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(
+                editor.error.as_ref().map(|error| error.to_string()),
+                Some("Enter a macro name.".to_string())
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn a_restored_tab_reopens_its_macro_once_the_file_is_read(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "folder": "A", "name": "ls", "steps": [{ "type": "clear" }] },
+                            { "name": "ls", "steps": [] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        let focused = workspace.update_in(cx, |workspace, window, cx| {
+            let focused = cx.new(|cx| workspace::item::test::TestItem::new(cx));
+            workspace.add_item_to_active_pane(Box::new(focused.clone()), None, true, window, cx);
+            focused
+        });
+        // Restored tabs come back beside whatever has the focus.
+        let editor = workspace.update_in(cx, |workspace, window, cx| {
+            let key = Some((Some("A".to_string()), "ls".to_string()));
+            let editor = cx.new(|cx| MacroEditor::restored(store.clone(), key, window, cx));
+            workspace.add_item_to_active_pane(Box::new(editor.clone()), None, false, window, cx);
+            workspace.activate_item(&focused, true, true, window, cx);
+            editor
+        });
+        editor.read_with(cx, |editor, cx| {
+            assert!(!store.read(cx).is_loaded());
+            assert_eq!(editor.original_key, None, "nothing to open before the read");
+        });
+
+        cx.run_until_parked();
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(
+                editor.original_key,
+                Some((Some("A".to_string()), "ls".to_string())),
+                "the macro is found by its folder as well as its name"
+            );
+            assert_eq!(editor.steps.len(), 1);
+            assert!(
+                !editor.is_dirty(cx),
+                "a restored tab opens the macro as saved"
+            );
+        });
+        cx.update(|window, cx| {
+            assert!(
+                focused.focus_handle(cx).is_focused(window),
+                "a tab restored in the background does not take the focus"
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn typing_into_a_restored_tab_before_the_file_is_read_is_kept(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "ls", "description": "保存済み", "steps": [] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        let editor = workspace.update_in(cx, |workspace, window, cx| {
+            let key = Some((None, "ls".to_string()));
+            let editor = cx.new(|cx| MacroEditor::restored(store.clone(), key, window, cx));
+            workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
+            editor
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            assert!(!editor.store.read(cx).is_loaded());
+            editor.description.update(cx, |description, cx| {
+                description.set_text("読み込み中に入力", window, cx);
+            });
+        });
+        cx.run_until_parked();
+        editor.read_with(cx, |editor, cx| {
+            assert!(editor.store.read(cx).is_loaded());
+            assert_eq!(editor.description.read(cx).text(cx), "読み込み中に入力");
+            assert_eq!(editor.original_key, None);
+            assert!(editor.is_dirty(cx));
+        });
+    }
+
+    #[gpui::test]
+    async fn a_macro_changed_elsewhere_is_not_written_over_without_asking(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "ログイン", "description": "元", "steps": [] },
+                            { "name": "別", "steps": [{ "type": "clear" }] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+        let login = stored_macro_in(&store, None, "ログイン", cx);
+        // The same macro in two tabs: the list of each tab opens any macro,
+        // whatever the other tabs show.
+        let first = open_editor(&workspace, &store, cx);
+        let second = open_editor(&workspace, &store, cx);
+        for editor in [&first, &second] {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.load_macro(Some(login.clone()), window, cx);
+            });
+        }
+        cx.run_until_parked();
+        let description = |editor: &Entity<MacroEditor>, cx: &mut VisualTestContext| {
+            editor.read_with(cx, |editor, cx| editor.description.read(cx).text(cx))
+        };
+        let set_description =
+            |editor: &Entity<MacroEditor>, text: &str, cx: &mut VisualTestContext| {
+                editor.update_in(cx, |editor, window, cx| {
+                    editor.description.update(cx, |description, cx| {
+                        description.set_text(text, window, cx);
+                    });
+                });
+            };
+        async fn saved_description(fs: &Arc<FakeFs>) -> Option<String> {
+            saved_file(fs)
+                .await
+                .macros
+                .iter()
+                .find(|terminal_macro| terminal_macro.name == "ログイン")
+                .map(|terminal_macro| terminal_macro.description.clone())
+        }
+
+        // A tab with nothing of its own unsaved shows what the other saved.
+        set_description(&first, "一つ目", cx);
+        first.update(cx, |editor, cx| editor.save_form(cx).detach());
+        cx.run_until_parked();
+        assert_eq!(description(&second, cx), "一つ目");
+        second.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+            assert!(!editor.has_conflict(cx));
+        });
+
+        // A tab with edits of its own keeps them, and is marked.
+        set_description(&second, "二つ目", cx);
+        set_description(&first, "一つ目の再変更", cx);
+        first.update(cx, |editor, cx| editor.save_form(cx).detach());
+        cx.run_until_parked();
+        assert_eq!(description(&second, cx), "二つ目");
+        second.read_with(cx, |editor, cx| {
+            assert!(editor.is_dirty(cx));
+            assert!(editor.has_conflict(cx));
+        });
+        first.read_with(cx, |editor, cx| assert!(!editor.has_conflict(cx)));
+
+        // 「保存」 asks before writing over the other tab's save.
+        second.update_in(cx, |editor, window, cx| editor.save_from_button(window, cx));
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt(), "saving over a change should ask");
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
+        assert_eq!(
+            saved_description(&fs).await.as_deref(),
+            Some("一つ目の再変更")
+        );
+
+        second.update_in(cx, |editor, window, cx| editor.save_from_button(window, cx));
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Overwrite");
+        cx.run_until_parked();
+        assert_eq!(saved_description(&fs).await.as_deref(), Some("二つ目"));
+        second.read_with(cx, |editor, cx| {
+            assert!(!editor.is_dirty(cx));
+            assert!(!editor.has_conflict(cx));
+        });
+        assert_eq!(description(&first, cx), "二つ目");
+        assert_eq!(
+            saved_file(&fs).await.macros[1].steps,
+            vec![MacroStep::Clear {}],
+            "the other macro in the file is left as it was"
+        );
+
+        // A hand edit of the file reaches a tab with nothing unsaved.
+        fs.insert_file(
+            sessions_path(),
+            r#"{ "macros": [{ "name": "ログイン", "description": "手で直した", "steps": [] }] }"#
+                .as_bytes()
+                .to_vec(),
+        )
+        .await;
+        cx.run_until_parked();
+        assert_eq!(description(&first, cx), "手で直した");
+        assert_eq!(description(&second, cx), "手で直した");
+
+        // Saving through the pane (Ctrl+S) asks the same, and 「編集を破棄」
+        // puts the form back to what the file holds.
+        set_description(&second, "破棄する", cx);
+        fs.insert_file(
+            sessions_path(),
+            r#"{ "macros": [{ "name": "ログイン", "description": "外の変更", "steps": [] }] }"#
+                .as_bytes()
+                .to_vec(),
+        )
+        .await;
+        cx.run_until_parked();
+        let save = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&second, true, true, window, cx);
+            workspace.save_active_item(workspace::SaveIntent::Save, window, cx)
+        });
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer("Discard Edits");
+        cx.run_until_parked();
+        save.await.expect("discarding should succeed");
+        assert_eq!(description(&second, cx), "外の変更");
+        second.read_with(cx, |editor, cx| assert!(!editor.is_dirty(cx)));
+        assert_eq!(saved_description(&fs).await.as_deref(), Some("外の変更"));
+
+        // Saving from the close prompt goes through the pane too.
+        set_description(&first, "閉じる前", cx);
+        fs.insert_file(
+            sessions_path(),
+            r#"{ "macros": [{ "name": "ログイン", "description": "また手で", "steps": [] }] }"#
+                .as_bytes()
+                .to_vec(),
+        )
+        .await;
+        cx.run_until_parked();
+        first.read_with(cx, |editor, cx| assert!(editor.has_conflict(cx)));
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&first, true, true, window, cx);
+        });
+        let close = close_active_tab(&workspace, cx);
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Discard Edits");
+        cx.run_until_parked();
+        close
+            .await
+            .expect("closing after discarding should succeed");
+        assert_eq!(saved_description(&fs).await.as_deref(), Some("また手で"));
+    }
+
+    #[gpui::test]
+    async fn a_macro_gone_elsewhere_closes_its_tab_unless_the_tab_has_edits(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "消す1", "steps": [] },
+                            { "name": "消す2", "steps": [] },
+                            { "folder": "F", "name": "移す1", "steps": [] },
+                            { "folder": "F", "name": "移す2", "steps": [] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+        let open = |folder: Option<&str>, name: &str, cx: &mut VisualTestContext| {
+            let terminal_macro = stored_macro_in(&store, folder, name, cx);
+            let editor = open_editor(&workspace, &store, cx);
+            editor.update_in(cx, |editor, window, cx| {
+                editor.load_macro(Some(terminal_macro), window, cx);
+            });
+            editor
+        };
+        let edit = |editor: &Entity<MacroEditor>, cx: &mut VisualTestContext| {
+            editor.update_in(cx, |editor, window, cx| {
+                editor.description.update(cx, |description, cx| {
+                    description.set_text("未保存", window, cx);
+                });
+            });
+        };
+        let clean_deleted = open(None, "消す1", cx);
+        let edited_deleted = open(None, "消す2", cx);
+        edit(&edited_deleted, cx);
+        let clean_moved = open(Some("F"), "移す1", cx);
+        let edited_moved = open(Some("F"), "移す2", cx);
+        edit(&edited_moved, cx);
+        // A form not saved yet stands for nothing in the file to go missing.
+        let blank = open_editor(&workspace, &store, cx);
+        cx.run_until_parked();
+        assert_eq!(macro_editor_count(&workspace, cx), 5);
+
+        // Deleted by hand, and the folder renamed.
+        fs.insert_file(
+            sessions_path(),
+            r#"{ "macros": [{ "folder": "G", "name": "移す1", "steps": [] },
+                            { "folder": "G", "name": "移す2", "steps": [] }] }"#
+                .as_bytes()
+                .to_vec(),
+        )
+        .await;
+        cx.run_until_parked();
+        let open_ids = workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .items_of_type::<MacroEditor>(cx)
+                .map(|editor| editor.entity_id())
+                .collect::<HashSet<_>>()
+        });
+        assert_eq!(
+            open_ids,
+            HashSet::from_iter([
+                edited_deleted.entity_id(),
+                edited_moved.entity_id(),
+                blank.entity_id()
+            ]),
+            "the tabs with nothing unsaved over a macro that is gone close"
+        );
+        assert!(!open_ids.contains(&clean_deleted.entity_id()));
+        assert!(!open_ids.contains(&clean_moved.entity_id()));
+        for editor in [&edited_deleted, &edited_moved] {
+            editor.read_with(cx, |editor, cx| {
+                assert_eq!(editor.description.read(cx).text(cx), "未保存");
+                assert!(editor.has_conflict(cx));
+                assert!(editor.has_deleted_file(cx));
+            });
+        }
+        blank.read_with(cx, |editor, cx| assert!(!editor.has_conflict(cx)));
+
+        // 「保存」 says the macro will be made again before doing it.
+        edited_deleted.update_in(cx, |editor, window, cx| editor.save_from_button(window, cx));
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
+        assert!(saved_file(&fs).await.macro_named(None, "消す2").is_none());
+        edited_deleted.update_in(cx, |editor, window, cx| editor.save_from_button(window, cx));
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Save");
+        cx.run_until_parked();
+        assert_eq!(
+            saved_file(&fs)
+                .await
+                .macro_named(None, "消す2")
+                .map(|terminal_macro| terminal_macro.description.clone())
+                .as_deref(),
+            Some("未保存")
+        );
+        edited_deleted.read_with(cx, |editor, cx| {
+            assert!(!editor.has_conflict(cx));
+            assert!(!editor.is_dirty(cx));
+        });
+
+        // Closing asks too (the pane's own question for a file that is gone).
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&edited_moved, true, true, window, cx);
+        });
+        let close = close_active_tab(&workspace, cx);
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
+        close.await.log_err();
+        assert!(
+            saved_file(&fs)
+                .await
+                .macro_named(Some("F"), "移す2")
+                .is_none(),
+            "cancelling leaves the macro where the other change put it"
+        );
+        assert_eq!(macro_editor_count(&workspace, cx), 3);
+
+        // A rename saved from the tab itself is not taken for one made
+        // elsewhere.
+        let renamed = open(Some("G"), "移す1", cx);
+        renamed.update_in(cx, |editor, window, cx| {
+            editor
+                .name
+                .update(cx, |name, cx| name.set_text("移した", window, cx));
+            editor.save_form(cx).detach();
+        });
+        cx.run_until_parked();
+        assert!(
+            workspace.read_with(cx, |workspace, cx| {
+                workspace
+                    .items_of_type::<MacroEditor>(cx)
+                    .any(|editor| editor.entity_id() == renamed.entity_id())
+            }),
+            "the tab that renamed its own macro stays open"
+        );
+        renamed.read_with(cx, |editor, cx| {
+            assert!(!editor.has_conflict(cx));
+            assert_eq!(
+                editor.original_key,
+                Some((Some("G".to_string()), "移した".to_string()))
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn coming_back_to_the_tab_focuses_the_field_it_was_left_from(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.add_step(StepKind::Send, window, cx);
+            editor.add_step(StepKind::Send, window, cx);
+        });
+        cx.run_until_parked();
+        let other = workspace.update_in(cx, |workspace, window, cx| {
+            let other = cx.new(|cx| workspace::item::test::TestItem::new(cx));
+            workspace.add_item_to_active_pane(Box::new(other.clone()), None, false, window, cx);
+            other
+        });
+        let field_focused = |field: &dyn Fn(&MacroEditor) -> Entity<Editor>,
+                             cx: &mut VisualTestContext| {
+            cx.update(|window, cx| field(editor.read(cx)).focus_handle(cx).is_focused(window))
+        };
+        let leave_and_return = |cx: &mut VisualTestContext| {
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.activate_item(&other, true, true, window, cx);
+            });
+            cx.run_until_parked();
+            workspace.update_in(cx, |workspace, window, cx| {
+                workspace.activate_item(&editor, true, true, window, cx);
+            });
+            cx.run_until_parked();
+        };
+
+        let second_text = |editor: &MacroEditor| editor.steps[1].text.clone();
+        editor.update_in(cx, |editor, window, cx| {
+            window.focus(&editor.steps[1].text.focus_handle(cx), cx);
+        });
+        cx.run_until_parked();
+        assert!(field_focused(&second_text, cx));
+        leave_and_return(cx);
+        assert!(
+            field_focused(&second_text, cx),
+            "the step field the tab was left from has the focus again"
+        );
+
+        // A field that has left the form while the tab was away gives way to
+        // the name.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&other, true, true, window, cx);
+        });
+        cx.run_until_parked();
+        editor.update(cx, |editor, cx| {
+            editor.steps.truncate(1);
+            cx.notify();
+        });
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&editor, true, true, window, cx);
+        });
+        cx.run_until_parked();
+        assert!(field_focused(
+            &|editor: &MacroEditor| editor.name.clone(),
+            cx
+        ));
+    }
+
+    #[gpui::test]
+    async fn quitting_asks_about_unsaved_edits_rather_than_keeping_only_the_tab(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) =
+            init_workspace(cx, r#"{ "macros": [{ "name": "既存", "steps": [] }] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+        let editor = open_editor(&workspace, &store, cx);
+        let existing = stored_macro(&editor, None, "既存", cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(existing), window, cx);
+        });
+        workspace.update(cx, |workspace, _| workspace.set_random_database_id());
+        let item_id = editor.entity_id().as_u64() as ItemId;
+        // Whether the workspace may take the tab as kept on quitting: it only
+        // asks about the tabs that return `None`.
+        let serializes = |closing: bool, cx: &mut VisualTestContext| {
+            workspace.update(cx, |workspace, cx| {
+                editor.update(cx, |editor, cx| {
+                    editor.serialize(workspace, item_id, closing, cx).is_some()
+                })
+            })
+        };
+        assert!(serializes(true, cx), "nothing unsaved: the tab is kept");
+
+        editor.update_in(cx, |editor, window, cx| {
+            editor.description.update(cx, |description, cx| {
+                description.set_text("未保存", window, cx);
+            });
+        });
+        assert!(
+            !serializes(true, cx),
+            "the unsaved edits are not kept, so quitting has to ask about them"
+        );
+        assert!(serializes(false, cx), "which macro is open is still kept");
+    }
+
+    #[gpui::test]
+    async fn the_database_brings_back_the_macro_a_tab_had_open(cx: &mut TestAppContext) {
+        let (_fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let fs = workspace.read_with(cx, |workspace, _| workspace.app_state().fs.clone());
+        // What a restored tab reads: the app's own sessions file.
+        let store = cx.update(|_, cx| TerminalSessionStore::global(fs, cx));
+        cx.run_until_parked();
+        store
+            .update(cx, |store, cx| {
+                let mut file = store.file().clone();
+                file.macros.push(TerminalMacro {
+                    folder: Some("A".to_string()),
+                    name: "dir".to_string(),
+                    steps: vec![MacroStep::Clear {}],
+                    ..TerminalMacro::default()
+                });
+                store.write(file, cx)
+            })
+            .await
+            .expect("the sessions file should be written");
+        cx.run_until_parked();
+
+        let workspace_db = cx.update(|_, cx| WorkspaceDb::global(cx));
+        let workspace_id = workspace_db
+            .next_id()
+            .await
+            .expect("a workspace id should be handed out");
+        let db = cx.update(|_, cx| persistence::MacroEditorDb::global(cx));
+        db.save_macro_editor(
+            1,
+            workspace_id,
+            Some("A".to_string()),
+            Some("ls".to_string()),
+        )
+        .await
+        .expect("the tab should be saved");
+        // Saving the same tab again replaces its row.
+        db.save_macro_editor(
+            1,
+            workspace_id,
+            Some("A".to_string()),
+            Some("dir".to_string()),
+        )
+        .await
+        .expect("the tab should be saved again");
+        db.save_macro_editor(2, workspace_id, None, None)
+            .await
+            .expect("a new-macro tab should be saved");
+        assert_eq!(
+            db.get_macro_editor(1, workspace_id)
+                .expect("the row should be read"),
+            Some((Some("A".to_string()), Some("dir".to_string())))
+        );
+        assert_eq!(
+            db.get_macro_editor(2, workspace_id)
+                .expect("the row should be read"),
+            Some((None, None))
+        );
+        assert_eq!(
+            db.get_macro_editor(3, workspace_id)
+                .expect("no row is not an error"),
+            None
+        );
+
+        let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+        let deserialize = |item_id: ItemId, cx: &mut VisualTestContext| {
+            let project = project.clone();
+            let workspace = workspace.downgrade();
+            cx.update(|window, cx| {
+                <MacroEditor as SerializableItem>::deserialize(
+                    project,
+                    workspace,
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            })
+        };
+        let restored = deserialize(1, cx)
+            .await
+            .expect("the tab should be restored");
+        cx.run_until_parked();
+        restored.read_with(cx, |editor, cx| {
+            assert_eq!(
+                editor.original_key,
+                Some((Some("A".to_string()), "dir".to_string()))
+            );
+            assert_eq!(editor.steps.len(), 1);
+            assert!(!editor.is_dirty(cx));
+        });
+        let blank = deserialize(2, cx)
+            .await
+            .expect("a new-macro tab should be restored");
+        blank.read_with(cx, |editor, _| assert_eq!(editor.original_key, None));
+        assert!(
+            deserialize(3, cx).await.is_err(),
+            "a tab that saved nothing is not made up"
+        );
+
+        // Closed tabs do not stay in the table.
+        cx.update(|window, cx| {
+            <MacroEditor as SerializableItem>::cleanup(workspace_id, vec![1], window, cx)
+        })
+        .await
+        .expect("the closed tabs should be cleaned up");
+        assert_eq!(
+            db.get_macro_editor(2, workspace_id)
+                .expect("the row should be read"),
+            None
+        );
+        assert!(
+            db.get_macro_editor(1, workspace_id)
+                .expect("the row should be read")
+                .is_some()
+        );
+    }
+
+    #[gpui::test]
+    async fn holding_a_dragged_card_at_the_edge_of_the_form_scrolls_it(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(Some(long_macro()), window, cx);
+        });
+        cx.run_until_parked();
+        let offset = |cx: &mut VisualTestContext| {
+            editor.read_with(cx, |editor, _| editor.form_scroll.offset().y)
+        };
+        assert_eq!(offset(cx), px(0.));
+
+        let header = cx
+            .debug_bounds("macro-step-1-header")
+            .expect("the first card should be on screen");
+        let frame = cx
+            .debug_bounds("macro-form-frame")
+            .expect("the form should have been drawn");
+        cx.simulate_mouse_down(header.center(), MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(
+            header.center() + point(px(20.), px(0.)),
+            MouseButton::Left,
+            Modifiers::none(),
+        );
+        let near_bottom = point(frame.center().x, frame.bottom() - px(4.));
+        cx.simulate_mouse_move(near_bottom, MouseButton::Left, Modifiers::none());
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        let scrolled = offset(cx);
+        assert!(
+            scrolled < px(0.),
+            "holding the card at the bottom edge should scroll the form down"
+        );
+
+        // Away from the edges it stops, and stays where it got to.
+        cx.simulate_mouse_move(frame.center(), MouseButton::Left, Modifiers::none());
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        let stopped = offset(cx);
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        assert_eq!(offset(cx), stopped);
+
+        // At the top edge it comes back up, no further than the top.
+        let near_top = point(frame.center().x, frame.top() + px(4.));
+        cx.simulate_mouse_move(near_top, MouseButton::Left, Modifiers::none());
+        cx.executor().advance_clock(Duration::from_secs(30));
+        cx.run_until_parked();
+        assert_eq!(offset(cx), px(0.));
+
+        // Letting go ends it, even at the edge.
+        cx.simulate_mouse_move(near_bottom, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_up(near_bottom, MouseButton::Left, Modifiers::none());
+        cx.run_until_parked();
+        let dropped = offset(cx);
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        assert_eq!(offset(cx), dropped);
+        editor.read_with(cx, |editor, _| assert!(editor.drag_scroll.is_none()));
     }
 
     #[gpui::test]
@@ -8341,7 +10017,7 @@ mod tests {
                 window,
                 cx,
             );
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -8429,7 +10105,7 @@ mod tests {
             assert_eq!(wait.timeout_children.len(), 1);
         });
 
-        editor.update_in(cx, |editor, _, cx| editor.save(cx));
+        editor.update_in(cx, |editor, _, cx| editor.save_form(cx).detach());
         cx.run_until_parked();
 
         let contents = fs
@@ -8470,7 +10146,7 @@ mod tests {
             if let Some(row) = editor.row_mut(&StepPath::top(0)) {
                 row.continue_on_timeout = false;
             }
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -8504,7 +10180,7 @@ mod tests {
         });
         cx.run_until_parked();
 
-        let modal = cx
+        let tab = cx
             .debug_bounds("macro-editor")
             .expect("the editor should have been drawn");
         let form = cx
@@ -8512,18 +10188,24 @@ mod tests {
             .expect("the form should have been drawn");
         let buttons = cx
             .debug_bounds("macro-editor-buttons")
-            .expect("the Save / Cancel buttons should have been drawn");
+            .expect("the Save button should have been drawn");
+        let window_height = cx.update(|window, _| window.viewport_size().height);
         assert!(
-            form.bottom() <= modal.bottom(),
-            "the form ends at {} but the modal at {}, so its tail is clipped instead of scrolled",
-            form.bottom(),
-            modal.bottom()
+            tab.bottom() <= window_height,
+            "the tab ends at {} in a window {window_height} high",
+            tab.bottom(),
         );
         assert!(
-            buttons.bottom() <= modal.bottom(),
-            "Save ends at {} but the modal at {}, so it cannot be clicked",
+            form.bottom() <= tab.bottom(),
+            "the form ends at {} but the tab at {}, so its tail is clipped instead of scrolled",
+            form.bottom(),
+            tab.bottom()
+        );
+        assert!(
+            buttons.bottom() <= tab.bottom(),
+            "Save ends at {} but the tab at {}, so it cannot be clicked",
             buttons.bottom(),
-            modal.bottom()
+            tab.bottom()
         );
     }
 
@@ -8646,7 +10328,7 @@ mod tests {
                 text.set_text(r"^From ${host}: bytes", window, cx);
             });
             editor.steps[0].regex = true;
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -8699,7 +10381,7 @@ mod tests {
             editor.steps[1].scope_variable.update(cx, |variable, cx| {
                 variable.set_text("${host}", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -8743,7 +10425,7 @@ mod tests {
                 name.set_text("名前なし", window, cx);
             });
             editor.add_step(StepKind::SetVariable, window, cx);
-            editor.save(cx);
+            editor.save_form(cx).detach();
             assert_eq!(
                 editor.error.as_deref(),
                 Some("Step 1: enter a variable name.")
@@ -8757,7 +10439,7 @@ mod tests {
                 text.set_text("rt", window, cx);
             });
             editor.steps[1].scope = ScopeChoice::Variable;
-            editor.save(cx);
+            editor.save_form(cx).detach();
             assert_eq!(
                 editor.error.as_deref(),
                 Some("Step 2: enter the variable to check.")
@@ -9139,7 +10821,7 @@ mod tests {
             editor.steps[0].text.update(cx, |text, cx| {
                 text.set_text("show clock", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
             assert_eq!(editor.error, None);
         });
         cx.run_until_parked();
@@ -9179,7 +10861,7 @@ mod tests {
             editor.steps[0].capture.update(cx, |capture, cx| {
                 capture.set_text(" ${host} ", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -9245,8 +10927,10 @@ mod tests {
         );
 
         // …and one too narrow for two lanes stacks them.
-        cx.simulate_resize(size(px(600.), px(900.)));
-        cx.run_until_parked();
+        // (The tab hides the macro list at this width, which gives the form
+        // the whole of it.)
+        cx.simulate_resize(size(px(420.), px(900.)));
+        settle(cx);
         let then_side = cx
             .debug_bounds("macro-step-2-1")
             .expect("the “Then” row should have been drawn");
@@ -9340,7 +11024,7 @@ mod tests {
             );
         }
 
-        editor.update_in(cx, |editor, _, cx| editor.save(cx));
+        editor.update_in(cx, |editor, _, cx| editor.save_form(cx).detach());
         cx.run_until_parked();
 
         let contents = fs
@@ -9418,7 +11102,7 @@ mod tests {
                 siblings.remove(deleted.index());
             }
 
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -10107,7 +11791,7 @@ mod tests {
         let width = cx.update(|window, _| rems(55.).to_pixels(window.rem_size()));
         cx.simulate_resize(size(width, px(900.)));
         editor.update_in(cx, |editor, window, cx| {
-            editor.show_macro_list = false;
+            editor.set_macro_list_shown(false, cx);
             let inner = MacroStep::If {
                 pattern: "#".to_string(),
                 regex: false,
@@ -10118,7 +11802,7 @@ mod tests {
             };
             editor.load_macro(Some(branch(vec![inner], Vec::new())), window, cx);
         });
-        cx.run_until_parked();
+        settle(cx);
         let outer = cx
             .debug_bounds("macro-lane-1-main")
             .expect("the outer “Then” should have been drawn");
@@ -10138,6 +11822,92 @@ mod tests {
                 && then_lane.right() <= else_lane.left(),
             "the inner lanes {then_lane:?} {else_lane:?} should be side by side"
         );
+    }
+
+    #[gpui::test]
+    async fn a_value_set_only_where_a_timeout_stops_the_macro_is_set_nowhere(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        cx.run_until_parked();
+
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(
+                Some(TerminalMacro {
+                    name: "タイムアウト".to_string(),
+                    steps: vec![
+                        MacroStep::WaitFor {
+                            pattern: "router#".to_string(),
+                            regex: false,
+                            timeout_ms: 1_000,
+                            capture: None,
+                            on_timeout: Some(vec![MacroStep::SetVariable {
+                                name: "x".to_string(),
+                                value: "1".to_string(),
+                            }]),
+                        },
+                        sent("echo ${x}"),
+                        MacroStep::If {
+                            pattern: "^${p}{,3}".to_string(),
+                            regex: true,
+                            scope: MatchScope::Screen,
+                            capture: None,
+                            then_steps: Vec::new(),
+                            else_steps: Vec::new(),
+                        },
+                    ],
+                    ..TerminalMacro::default()
+                }),
+                window,
+                cx,
+            );
+        });
+        let notes = |editor: &MacroEditor, index: usize, cx: &App| {
+            let defined = editor.defined_variables(cx);
+            let reach = editor.variable_reach(&defined, cx);
+            editor
+                .step_notes(&editor.steps[index], &reach, cx)
+                .into_iter()
+                .map(|(note, _)| note)
+                .collect::<Vec<_>>()
+        };
+        editor.read_with(cx, |editor, cx| {
+            assert_eq!(
+                notes(editor, 1, cx),
+                Vec::<String>::new(),
+                "a wait that carries on may well have set it"
+            );
+        });
+
+        // 「マクロを中止する」: the timeout list is not part of the macro, so
+        // nothing sets the value, before or after.
+        editor.update(cx, |editor, _| {
+            if let Some(row) = editor.row_mut(&StepPath::top(0)) {
+                row.continue_on_timeout = false;
+            }
+        });
+        editor.read_with(cx, |editor, cx| {
+            assert!(
+                !editor
+                    .defined_variables(cx)
+                    .iter()
+                    .any(|(name, _)| name == "x"),
+                "the variable list leaves it out"
+            );
+            assert_eq!(
+                notes(editor, 1, cx),
+                vec!["No step sets ${x}. When the macro runs, it stays as written.".to_string()]
+            );
+            // `{,3}` is no repetition to the regex crate: the pattern is
+            // refused as it stands.
+            assert!(
+                editor.steps[2].pattern_error(cx).is_some(),
+                "“^${{p}}{{,3}}” should be reported as an invalid regular expression"
+            );
+        });
     }
 
     #[gpui::test]
@@ -10218,7 +11988,7 @@ mod tests {
                 !editor.has_unsaved_edits(cx),
                 "folding a card is how the form is looked at, not a change to the macro"
             );
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -10230,7 +12000,7 @@ mod tests {
     }
 
     #[gpui::test]
-    async fn a_narrow_window_opens_the_editor_with_the_macro_list_hidden(cx: &mut TestAppContext) {
+    async fn the_macro_list_follows_the_width_of_the_tab(cx: &mut TestAppContext) {
         let (fs, workspace, window) = init_workspace(
             cx,
             r#"{ "macros": [{ "name": "ルーター", "steps": [{ "type": "clear" }] }] }"#,
@@ -10238,29 +12008,53 @@ mod tests {
         .await;
         let cx = &mut VisualTestContext::from_window(*window, cx);
         let store = new_store(&fs, cx);
-        cx.run_until_parked();
+        settle(cx);
+        let rem_width = |width: f32, cx: &mut VisualTestContext| {
+            cx.update(|window, _| rems(width).to_pixels(window.rem_size()))
+        };
 
-        let editor = open_editor(&workspace, &store, cx);
-        cx.run_until_parked();
-        assert!(
-            cx.debug_bounds("macro-list-pane").is_some(),
-            "a wide window shows the list beside the form"
-        );
-        editor.update(cx, |_, cx| cx.emit(DismissEvent));
-        cx.run_until_parked();
-
-        // 50 rem wide, whatever the test's rem is.
-        let width = cx.update(|window, _| rems(50.).to_pixels(window.rem_size()));
-        cx.simulate_resize(size(width, px(700.)));
-        cx.run_until_parked();
+        let wide = rem_width(80., cx);
+        let very_wide = rem_width(130., cx);
+        let medium = rem_width(60., cx);
+        cx.simulate_resize(size(wide, px(700.)));
         let editor = open_editor(&workspace, &store, cx);
         let terminal_macro = stored_macro(&editor, None, "ルーター", cx);
         editor.update_in(cx, |editor, window, cx| {
             editor.load_macro(Some(terminal_macro), window, cx);
         });
-        cx.run_until_parked();
+        settle(cx);
+        assert!(
+            cx.debug_bounds("macro-list-pane").is_some(),
+            "a wide tab shows the list beside the form"
+        );
+        let tab = cx
+            .debug_bounds("macro-editor")
+            .expect("the editor should have been drawn");
+        assert!(
+            tab.left() >= px(0.) && tab.right() <= wide && tab.bottom() <= px(700.),
+            "the tab {tab:?} runs off the window"
+        );
+        assert!(
+            tab.size.width > wide - px(48.),
+            "the tab {tab:?} should fill its pane, which is the whole width"
+        );
 
-        assert!(cx.debug_bounds("macro-list-pane").is_none());
+        // The window stays as wide, but the tab gets only half of it: what
+        // counts is the tab's own width.
+        workspace.update_in(cx, |workspace, window, cx| {
+            let other = cx.new(|cx| workspace::item::test::TestItem::new(cx));
+            workspace.split_item(
+                workspace::SplitDirection::Right,
+                Box::new(other),
+                window,
+                cx,
+            );
+        });
+        settle(cx);
+        assert!(
+            cx.debug_bounds("macro-list-pane").is_none(),
+            "half of the window is too narrow for the list"
+        );
         assert!(
             cx.debug_bounds("macro-form-header").is_some(),
             "with the list hidden, the form's heading is what names the open macro"
@@ -10269,48 +12063,109 @@ mod tests {
             assert!(!editor.show_macro_list);
             assert_eq!(editor.form_heading(), "Edit “ルーター”");
         });
-        let modal = cx
-            .debug_bounds("macro-editor")
-            .expect("the editor should have been drawn");
-        let layer_top = cx.update(|window, _| rems(5.).to_pixels(window.rem_size()));
-        assert!(
-            (modal.size.width - (width - px(48.))).abs() <= px(1.)
-                && (modal.size.height - (px(700. - 16.) - layer_top)).abs() <= px(1.),
-            "the modal is {:?}, which is not the window less its margin",
-            modal.size
-        );
-        assert!(
-            modal.left() >= px(0.) && modal.right() <= width && modal.bottom() <= px(700.),
-            "the modal {modal:?} runs off the window"
-        );
 
+        // Wider again, the list comes back by itself; narrower, it goes.
+        cx.simulate_resize(size(very_wide, px(700.)));
+        settle(cx);
+        assert!(
+            cx.debug_bounds("macro-list-pane").is_some(),
+            "a tab widened past the threshold shows the list again"
+        );
+        cx.simulate_resize(size(wide, px(700.)));
+        settle(cx);
+        assert!(cx.debug_bounds("macro-list-pane").is_none());
+
+        // Once the user has picked with the button, resizing leaves it be.
         let toggle = cx
             .debug_bounds("macro-list-toggle")
             .expect("the list button should have been drawn");
         cx.simulate_click(toggle.center(), Modifiers::none());
-        cx.run_until_parked();
+        settle(cx);
         assert!(
             cx.debug_bounds("macro-list-pane").is_some(),
             "the button brings the list back"
         );
-        assert!(cx.debug_bounds("macro-form-header").is_some());
-
-        // A very wide window does not spread the form past a width worth reading.
-        let (wide, cap) = cx.update(|window, _| {
-            (
-                rems(MODAL_MAX_WIDTH + 30.).to_pixels(window.rem_size()),
-                rems(MODAL_MAX_WIDTH).to_pixels(window.rem_size()),
-            )
-        });
-        cx.simulate_resize(size(wide, px(700.)));
-        cx.run_until_parked();
-        let modal = cx
-            .debug_bounds("macro-editor")
-            .expect("the editor should have been drawn");
+        cx.simulate_resize(size(very_wide, px(700.)));
+        settle(cx);
+        cx.simulate_resize(size(medium, px(700.)));
+        settle(cx);
         assert!(
-            (modal.size.width - cap).abs() <= px(1.),
-            "the modal is {:?} wide in a {wide:?} window, not capped at {cap:?}",
-            modal.size.width
+            cx.debug_bounds("macro-list-pane").is_some(),
+            "a list the user brought back stays through a resize"
+        );
+        // What the button does when the list is shown.
+        editor.update(cx, |editor, cx| editor.set_macro_list_shown(false, cx));
+        settle(cx);
+        cx.simulate_resize(size(very_wide, px(700.)));
+        settle(cx);
+        assert!(
+            cx.debug_bounds("macro-list-pane").is_none(),
+            "a list the user hid stays hidden in a wide tab"
+        );
+    }
+
+    #[gpui::test]
+    async fn the_sides_of_a_branch_are_laid_out_by_the_width_of_the_tab(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        settle(cx);
+
+        // Wide enough for the two sides as the only tab, not as half of the
+        // window: a width taken from the window would put them side by side.
+        let width = cx.update(|window, _| rems(64.).to_pixels(window.rem_size()));
+        cx.simulate_resize(size(width, px(900.)));
+        let editor = open_editor(&workspace, &store, cx);
+        editor.update_in(cx, |editor, window, cx| {
+            editor.load_macro(
+                Some(TerminalMacro {
+                    name: "分岐".to_string(),
+                    steps: vec![MacroStep::If {
+                        pattern: "#".to_string(),
+                        regex: false,
+                        scope: MatchScope::Screen,
+                        capture: None,
+                        then_steps: vec![sent("a")],
+                        else_steps: vec![sent("b")],
+                    }],
+                    ..TerminalMacro::default()
+                }),
+                window,
+                cx,
+            );
+            editor.set_macro_list_shown(false, cx);
+        });
+        settle(cx);
+        let side_by_side = |cx: &mut VisualTestContext| {
+            let then_lane = cx
+                .debug_bounds("macro-lane-1-main")
+                .expect("“Then” should have been drawn");
+            let else_lane = cx
+                .debug_bounds("macro-lane-1-else")
+                .expect("“Else” should have been drawn");
+            (then_lane.top() - else_lane.top()).abs() < px(1.)
+        };
+        assert!(side_by_side(cx), "the whole window fits both sides");
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            let other = cx.new(|cx| workspace::item::test::TestItem::new(cx));
+            workspace.split_item(
+                workspace::SplitDirection::Right,
+                Box::new(other),
+                window,
+                cx,
+            );
+        });
+        settle(cx);
+        let frame = cx
+            .debug_bounds("macro-form-frame")
+            .expect("the form should have been drawn");
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(editor.measured_form_width.get(), Some(frame.size.width));
+        });
+        assert!(
+            !side_by_side(cx),
+            "in half of the window the sides of the branch stack"
         );
     }
 
@@ -10319,7 +12174,7 @@ mod tests {
         let (fs, workspace, window) = init_workspace(cx, r#"{ "macros": [] }"#).await;
         let cx = &mut VisualTestContext::from_window(*window, cx);
         let store = new_store(&fs, cx);
-        cx.run_until_parked();
+        settle(cx);
 
         let editor = open_editor(&workspace, &store, cx);
         editor.update_in(cx, |editor, window, cx| {
@@ -10328,7 +12183,7 @@ mod tests {
             });
             editor.add_step(StepKind::Clear, window, cx);
             editor.add_step(StepKind::If, window, cx);
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
 
         editor.read_with(cx, |editor, _| {
@@ -10358,7 +12213,7 @@ mod tests {
             editor.steps[0].capture.update(cx, |capture, cx| {
                 capture.set_text("ho}st", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
 
         editor.read_with(cx, |editor, _| {
@@ -10388,7 +12243,7 @@ mod tests {
             editor.steps[0].capture.update(cx, |capture, cx| {
                 capture.set_text("${ho$st}", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
 
         editor.read_with(cx, |editor, _| {
@@ -10439,7 +12294,7 @@ mod tests {
                 window,
                 cx,
             );
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
 
         editor.read_with(cx, |editor, _| {
@@ -10490,7 +12345,7 @@ mod tests {
             editor.steps[0].count.update(cx, |count, cx| {
                 count.set_text("なし", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
 
         editor.read_with(cx, |editor, _| {
@@ -10546,7 +12401,7 @@ mod tests {
                 interval.set_text("1.5", window, cx);
             });
             editor.add_step(StepKind::Clear, window, cx);
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -10639,10 +12494,18 @@ mod tests {
         name: &str,
         cx: &mut VisualTestContext,
     ) -> TerminalMacro {
-        editor.update(cx, |editor, cx| {
-            editor
-                .store
-                .read(cx)
+        let store = editor.read_with(cx, |editor, _| editor.store.clone());
+        stored_macro_in(&store, folder, name, cx)
+    }
+
+    fn stored_macro_in(
+        store: &Entity<TerminalSessionStore>,
+        folder: Option<&str>,
+        name: &str,
+        cx: &mut VisualTestContext,
+    ) -> TerminalMacro {
+        store.read_with(cx, |store, _| {
+            store
                 .macro_named(folder, name)
                 .unwrap_or_else(|| panic!("“{name}” should be in the store"))
                 .clone()
@@ -11100,7 +12963,7 @@ mod tests {
             );
         });
 
-        editor.update(cx, |editor, cx| editor.save(cx));
+        editor.update(cx, |editor, cx| editor.save_form(cx).detach());
         cx.run_until_parked();
 
         let saved = saved_file(&fs).await;
@@ -11253,7 +13116,7 @@ mod tests {
             editor.name.update(cx, |name, cx| {
                 name.set_text("show run", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
         assert_eq!(
@@ -11433,7 +13296,7 @@ mod tests {
                 name.set_text("ls", window, cx);
             });
             editor.form_folder = Some("B-PC用".to_string());
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -11465,7 +13328,7 @@ mod tests {
                 name.set_text("show run", window, cx);
             });
             editor.form_folder = Some("ルータ用".to_string());
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -11493,7 +13356,7 @@ mod tests {
             editor.name.update(cx, |name, cx| {
                 name.set_text("show run", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
         let saved = saved_file(&fs).await;
@@ -11526,7 +13389,7 @@ mod tests {
                 name.set_text("dir", window, cx);
             });
             editor.form_folder = Some("B-PC用".to_string());
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 
@@ -11569,7 +13432,7 @@ mod tests {
             editor.name.update(cx, |name, cx| {
                 name.set_text("ログイン2", window, cx);
             });
-            editor.save(cx);
+            editor.save_form(cx).detach();
         });
         cx.run_until_parked();
 

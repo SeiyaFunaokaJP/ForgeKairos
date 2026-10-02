@@ -539,14 +539,14 @@ pub fn invalid_name_message(name: &str) -> String {
         return i18n::t!("There is a requirement or element with an empty name.").to_string();
     }
     i18n::t!(
-        "“{name}” cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
+        "`{name}` cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
     )
 }
 
 /// Why `value` cannot be a field of the box named `owner`.
 pub fn invalid_value_message(owner: &str, value: &str) -> String {
     i18n::t!(
-        "“{value}” cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
+        "`{value}` cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
     )
 }
 

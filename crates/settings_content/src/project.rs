@@ -86,14 +86,14 @@ pub struct ProjectSettingsContent {
     /// Default: false
     pub disable_ai: Option<SaturatingBool>,
 
-    /// 開いたファイルの言語に必要な開発ツール (言語サーバー・フォーマッタ) が
-    /// 見つからないときの案内 (ADR-F39)。
+    /// Suggestions of the development tools (language servers, formatters) that
+    /// the language of an opened file needs, when they are missing.
     pub dev_tools: Option<DevToolsSettingsContent>,
 
     /// How much memory clangd, the C and C++ language server, may use.
     pub clangd: Option<ClangdSettingsContent>,
 
-    /// The name-based symbol index of C and C++ files (ADR-F68).
+    /// The name-based symbol index of C and C++ files.
     pub symbol_index: Option<SymbolIndexSettingsContent>,
 }
 
@@ -151,24 +151,25 @@ pub enum ClangdIndexMode {
     Light,
 }
 
-/// ADR-F39: 足りない開発ツールの案内と導入。
+/// Suggesting and installing missing development tools.
 #[with_fallible_options]
 #[derive(Debug, PartialEq, Clone, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct DevToolsSettingsContent {
-    /// 足りない開発ツールを通知で知らせ、その場で導入できるようにするかどうか。
-    /// リモート接続中は接続先のホストを調べ、導入もそちらへ行われます。
+    /// Whether to point out missing development tools in a notification and offer
+    /// to install them from it. While connected to a remote host, the host is
+    /// checked and the tools are installed there.
     ///
     /// Default: true
     pub suggest_missing: Option<bool>,
 
-    /// 案内しないツールの ID (`clangd` / `clang-format` / `ruff` など)。
-    /// 通知の「今後表示しない」を押すとここに追加されます。
+    /// IDs of the tools not to suggest (`clangd`, `clang-format`, `ruff` and so
+    /// on). "Don't show again" in the notification adds a tool here.
     ///
     /// Default: []
     pub ignored: Option<Vec<String>>,
 }
 
-/// ADR-F68: the name-based symbol index of C and C++ files, which answers
+/// The name-based symbol index of C and C++ files, which answers
 /// project-wide symbol search, "go to definition" when the language server has
 /// no answer, and callers and callees, without compilation information.
 #[with_fallible_options]

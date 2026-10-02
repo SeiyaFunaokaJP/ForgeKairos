@@ -2238,7 +2238,12 @@ impl Render for KeymapEditor {
                                                         let action_tooltip =
                                                             Tooltip::new(action_name);
                                                         let action_tooltip = match action_docs {
-                                                            Some(docs) => action_tooltip.meta(docs),
+                                                            Some(docs) => action_tooltip.meta(
+                                                                i18n::action_documentation(
+                                                                    action_name,
+                                                                    docs,
+                                                                ),
+                                                            ),
                                                             None => action_tooltip,
                                                         };
                                                         cx.new(|_| action_tooltip).into()
@@ -3158,7 +3163,12 @@ impl Render for KeybindingEditorModal {
                                         self.editing_keybind.action().display_name().clone(),
                                     ))
                                     .when_some(
-                                        self.editing_keybind.action().documentation,
+                                        self.editing_keybind.action().documentation.map(|docs| {
+                                            i18n::action_documentation(
+                                                self.editing_keybind.action().name,
+                                                docs,
+                                            )
+                                        }),
                                         |this, docs| {
                                             this.child(
                                                 Label::new(docs)

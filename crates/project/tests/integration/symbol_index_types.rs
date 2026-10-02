@@ -228,8 +228,8 @@ async fn test_a_type_name_is_described_through_its_typedefs(cx: &mut TestAppCont
             .iter()
             .map(|step| (step.name.as_str(), step.target.as_str()))
             .collect::<Vec<_>>(),
-        vec![("outer_alias_t", "outer_t")],
-        "`outer_t` is declared by the definition itself"
+        vec![("outer_alias_t", "outer_t"), ("outer_t", "struct outer")],
+        "`outer_t` is declared by the definition itself, and still a step"
     );
     assert!(outer.members_read);
     assert_eq!(
@@ -619,6 +619,65 @@ async fn test_the_edited_buffers_one_request_reads_are_capped(cx: &mut TestAppCo
         found += resolved.types.len();
     }
     assert_eq!(found, 32);
+}
+
+/// Past the limit, a request reads the most recently edited buffers.
+#[gpui::test]
+async fn test_the_most_recently_edited_buffers_are_read_first(cx: &mut TestAppContext) {
+    const EDITED: usize = 33;
+    let setup = setup(&files(), cx).await;
+    let fs = setup
+        .project
+        .read_with(cx, |project, _| project.fs().clone());
+    let fs = fs.as_fake();
+    let edited_files = (0..EDITED)
+        .map(|index| (format!("e{index}.h"), json!("\n")))
+        .collect::<serde_json::Map<_, _>>();
+    fs.insert_tree(
+        path!("/root/edited"),
+        serde_json::Value::Object(edited_files),
+    )
+    .await;
+    cx.run_until_parked();
+    let mut buffers = Vec::new();
+    for index in 0..EDITED {
+        let buffer = setup
+            .project
+            .update(cx, |project, cx| {
+                project.open_buffer(
+                    project_path(setup.worktree_id, &format!("edited/e{index}.h")),
+                    cx,
+                )
+            })
+            .await
+            .expect("opening the file");
+        buffers.push(buffer);
+    }
+    // The first buffer is edited again last, which leaves the second as the least recently
+    // edited.
+    for index in (0..EDITED).chain([0]) {
+        let added = format!("struct e{index}_recent {{ int member; }};\n");
+        buffers[index].update(cx, |buffer, cx| buffer.edit([(0..0, added)], None, cx));
+    }
+    cx.run_until_parked();
+
+    let mut found = Vec::new();
+    for index in 0..EDITED {
+        let resolved = resolve(
+            &setup,
+            &format!("e{index}_recent"),
+            Some(TagKind::Struct),
+            Some(&format!("edited/e{index}.h")),
+            1,
+            cx,
+        )
+        .await;
+        if !resolved.types.is_empty() {
+            found.push(index);
+        }
+    }
+    let expected: Vec<usize> = (0..EDITED).filter(|&index| index != 1).collect();
+    assert_eq!(found, expected);
 }
 
 /// A member added in an open buffer and not saved is listed, expanded and drawn: the store reads

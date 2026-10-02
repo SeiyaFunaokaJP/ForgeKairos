@@ -1813,28 +1813,26 @@ impl SymbolIndexStore {
                 canonical_root: None,
                 rules: Arc::new(PathRules::for_worktree(worktree_id, cx)),
             },
-            edited_buffers: self.edited_buffers(worktree_id, &local.buffer_store, cx),
+            edited_buffers: self.edited_buffers(worktree_id, local, cx),
             snapshot: worktree.snapshot(),
             include_ignored,
         })
     }
 
     /// The worktree's C and C++ buffers with edits not saved yet (on a remote server, a
-    /// client's edits are in the host's buffers too), that may be shown.
+    /// client's edits are in the host's buffers too), that may be shown; past the limit, the
+    /// most recently edited ones.
     fn edited_buffers(
         &self,
         worktree_id: WorktreeId,
-        buffer_store: &WeakEntity<BufferStore>,
+        local: &LocalStore,
         cx: &App,
     ) -> HashMap<String, text::BufferSnapshot> {
-        let Some(buffer_store) = buffer_store.upgrade() else {
+        let Some(buffer_store) = local.buffer_store.upgrade() else {
             return HashMap::default();
         };
-        let mut edited = HashMap::default();
+        let mut candidates = Vec::new();
         for buffer in buffer_store.read(cx).buffers() {
-            if edited.len() >= MAX_EDITED_BUFFERS {
-                break;
-            }
             let buffer = buffer.read(cx);
             if !buffer.is_dirty() {
                 continue;
@@ -1842,11 +1840,28 @@ impl SymbolIndexStore {
             let Some(file) = buffer.file() else {
                 continue;
             };
-            if file.worktree_id(cx) != worktree_id {
+            if file.worktree_id(cx) != worktree_id || !is_indexable_path(file.path().as_unix_str())
+            {
                 continue;
             }
+            let last_edit = local
+                .buffer_edits
+                .get(&buffer.remote_id())
+                .copied()
+                .unwrap_or(0);
+            candidates.push((last_edit, buffer));
+        }
+        candidates.sort_by_key(|(last_edit, _)| std::cmp::Reverse(*last_edit));
+        let mut edited = HashMap::default();
+        for (_, buffer) in candidates {
+            if edited.len() >= MAX_EDITED_BUFFERS {
+                break;
+            }
+            let Some(file) = buffer.file() else {
+                continue;
+            };
             let path = file.path().as_unix_str();
-            if !is_indexable_path(path) || self.allowed_path(worktree_id, path, cx).is_none() {
+            if self.allowed_path(worktree_id, path, cx).is_none() {
                 continue;
             }
             edited.insert(path.to_string(), buffer.text_snapshot());

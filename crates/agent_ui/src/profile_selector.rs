@@ -22,6 +22,32 @@ use ui::{
 };
 use workspace::ToggleWorktreeSecurity;
 
+/// The name to show for a profile. A built-in profile that still has its default name (or the
+/// one an earlier version shipped) is shown in the display language; any other name was chosen
+/// by the user and is shown as written.
+pub(crate) fn profile_display_name(
+    profile_id: &AgentProfileId,
+    name: &SharedString,
+) -> SharedString {
+    let has_default_name = |default_name: &str| {
+        name.as_ref() == default_name || builtin_profiles::is_earlier_default_name(profile_id, name)
+    };
+    let translated = match profile_id.as_str() {
+        builtin_profiles::WRITE if has_default_name("Write") => {
+            i18n::tc!("agent profile", "Write")
+        }
+        builtin_profiles::EDIT if has_default_name("Edit Only") => {
+            i18n::tc!("agent profile", "Edit Only")
+        }
+        builtin_profiles::ASK if has_default_name("Ask") => i18n::tc!("agent profile", "Ask"),
+        builtin_profiles::MINIMAL if has_default_name("Minimal") => {
+            i18n::tc!("agent profile", "Minimal")
+        }
+        _ => return name.clone(),
+    };
+    SharedString::new_static(translated)
+}
+
 /// Trait for types that can provide and manage agent profiles
 pub trait ProfileProvider {
     /// Get the current profile ID
@@ -198,7 +224,7 @@ impl Render for ProfileSelector {
         let profile = settings.profiles.get(&profile_id);
 
         let selected_profile = profile
-            .map(|profile| profile.name.clone())
+            .map(|profile| profile_display_name(&profile_id, &profile.name))
             .unwrap_or_else(|| i18n::t!("Unknown").into());
 
         let icon = if self.picker_handle.is_deployed() {
@@ -358,8 +384,8 @@ impl ProfilePickerDelegate {
             .into_iter()
             .map(|(id, name)| ProfileCandidate {
                 is_builtin: builtin_profiles::is_builtin(&id),
+                name: profile_display_name(&id, &name),
                 id,
-                name,
             })
             .collect()
     }
@@ -855,6 +881,44 @@ mod tests {
     use super::*;
     use fs::FakeFs;
     use gpui::TestAppContext;
+
+    #[test]
+    fn builtin_profile_names_follow_the_display_language() {
+        let display = |id: &str, name: &str| {
+            profile_display_name(
+                &AgentProfileId(id.into()),
+                &SharedString::from(name.to_string()),
+            )
+            .to_string()
+        };
+        assert_eq!(display("write", "Write"), "Write");
+        // A settings file written by an earlier version names the built-in profiles in Japanese.
+        assert_eq!(display("write", "書き込み"), "Write");
+        assert_eq!(display("edit", "編集のみ"), "Edit Only");
+        assert_eq!(display("ask", "質問"), "Ask");
+        assert_eq!(display("minimal", "最小"), "Minimal");
+        assert_eq!(display("ask", "書き込み"), "書き込み");
+        assert_eq!(display("my-profile", "書き込み"), "書き込み");
+        assert_eq!(display("write", "書き込み (自分用)"), "書き込み (自分用)");
+
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        assert_eq!(display("write", "Write"), "書き込み");
+        assert_eq!(display("ask", "Ask"), "質問");
+        assert_eq!(display("edit", "Edit Only"), "編集のみ");
+        assert_eq!(display("minimal", "Minimal"), "最小");
+        assert_eq!(display("write", "書き込み"), "書き込み");
+        assert_eq!(display("edit", "編集のみ"), "編集のみ");
+        // A name the user chose stays as written, even on a built-in profile.
+        assert_eq!(display("write", "Write Code"), "Write Code");
+        assert_eq!(display("my-profile", "Write"), "Write");
+        assert_eq!(display("my-profile", "Ask"), "Ask");
+        assert_eq!(display("my-profile", "Edit Only"), "Edit Only");
+        assert_eq!(display("my-profile", "Minimal"), "Minimal");
+        // Another built-in profile's default name is the user's choice here.
+        assert_eq!(display("ask", "Write"), "Write");
+    }
 
     #[gpui::test]
     fn entries_include_custom_profiles(_cx: &mut TestAppContext) {

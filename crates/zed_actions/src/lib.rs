@@ -438,17 +438,16 @@ pub mod terminal {
     use schemars::JsonSchema;
     use serde::Deserialize;
 
-    /// 公式のインストールコマンドを統合ターミナルで実行して Claude Code CLI を導入します。
+    /// Installs the Claude Code CLI by running its official install command in the integrated terminal.
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]
     pub struct InstallClaudeCode;
 
-    /// Claude Code CLI をエージェントパネルのタブ (パネルが無ければターミナル) で起動します。
-    /// Windows のローカルのプロジェクトではサンドボックス (WSL) の中で、SSH で繋いだ Linux の
-    /// プロジェクトでは接続先のサンドボックスの中で起動し、それ以外では起動のたびに確認してから
-    /// サンドボックスの外で起動します。設定で「常にサンドボックスの外で起動」にしていれば、確認
-    /// せずに外で起動します。
+    /// Launches the Claude Code CLI in a tab of the agent panel (in a terminal when there is no panel).
+    /// In a local project on Windows it runs inside the sandbox (WSL), in a Linux project over SSH
+    /// inside the remote host's sandbox, and elsewhere outside the sandbox after asking each time.
+    /// With "always launch outside the sandbox" set in the settings, it launches outside without asking.
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]
@@ -459,9 +458,9 @@ pub mod terminal {
         pub effort: Option<String>,
     }
 
-    /// Claude Code CLI を、サンドボックスの外 (Zed 本体の権限。SSH では接続先のユーザーの権限) で
-    /// 起動します。起動のたびに確認します (設定で「常にサンドボックスの外で起動」にしていれば
-    /// 確認しません)。
+    /// Launches the Claude Code CLI outside the sandbox (with Zed's own permissions; over SSH, with
+    /// those of the remote user). Asks each time, unless "always launch outside the sandbox" is set
+    /// in the settings.
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]
@@ -471,12 +470,11 @@ pub mod terminal {
         pub effort: Option<String>,
     }
 
-    /// SFTP / SCP / FTP でリモートホストとファイルをやり取りする 2 ペインの画面を開きます。
-    ///
-    /// ADR-F28。ハンドラーは `file_transfer` クレートにあり、フィールドが空のときは
-    /// アクティブなターミナルの接続元 (クイック接続) から接続先を推定する。
-    /// 引数を持てるようにしてあるのは、`terminal_view` 側 (クイック接続モーダル /
-    /// 右クリックメニュー) が `file_transfer` に依存せずに接続先を渡せるようにするため。
+    /// Opens a two-pane view for exchanging files with a remote host over SFTP, SCP or FTP.
+    //
+    // The handler is in the `file_transfer` crate; with empty fields it takes the host from the
+    // active terminal's quick connection. The fields let `terminal_view` (the quick connect modal
+    // and the context menu) pass a host without depending on `file_transfer`.
     #[derive(PartialEq, Clone, Default, Debug, Deserialize, JsonSchema, Action)]
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]
@@ -986,9 +984,9 @@ pub mod browser {
     actions!(
         browser_panel,
         [
-            /// 選択テキストを Web で検索します。
+            /// Searches the web for the selected text.
             SearchSelection,
-            /// 選択テキストを Copilot に聞きます。
+            /// Asks Copilot about the selected text.
             AskCopilot,
         ]
     );
@@ -1123,13 +1121,13 @@ pub mod ide_server {
     actions!(
         ide_server,
         [
-            /// 内蔵 IDE サーバーの有効・無効を切り替えます。
+            /// Turns the built-in IDE server on or off.
             ToggleIdeServer,
-            /// 外部エージェント用の MCP 設定断片をクリップボードにコピーします。
+            /// Copies the MCP configuration snippet for external agents to the clipboard.
             CopyMcpConfiguration,
-            /// Claude Code CLI が読むロックファイルの場所をファイルマネージャーで開きます。
+            /// Reveals the lock file that the Claude Code CLI reads in the file manager.
             RevealLockFile,
-            /// 選択範囲 (無ければカーソル行) を、接続中の Claude Code CLI に送ります。
+            /// Sends the selection (or the cursor's line when nothing is selected) to the connected Claude Code CLI.
             SendSelectionToClaudeCode,
         ]
     );

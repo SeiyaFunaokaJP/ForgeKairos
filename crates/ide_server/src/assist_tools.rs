@@ -11,6 +11,7 @@
 //! 上限を置き、読み取り結果の中身 (1 行のプレビュー・シグネチャ) はプロジェクトの中で同じ
 //! 検査を通るファイルのものだけを返す。
 
+use std::collections::VecDeque;
 use std::path::Path;
 
 use anyhow::{Result, anyhow};
@@ -21,7 +22,7 @@ use ide_query::{
     AssistSource, CallCandidates, CallDirection, CallExpansion, CallHierarchy, CallHierarchyAnswer,
     CallHierarchyOptions, CallHierarchyTarget, CallNode, CallResolution, CallSource, CallWalkStop,
     CodeAnnotation, CodeDisplay, CodeHighlight, CodeTour, DEFAULT_CALL_HIERARCHY_RESULTS,
-    DisplayOutcome, IndexBuilding, LinePosition, LineRange, MAX_ANNOTATIONS,
+    DefinitionCounts, DisplayOutcome, IndexBuilding, LinePosition, LineRange, MAX_ANNOTATIONS,
     MAX_CALL_HIERARCHY_DEPTH, MAX_DISPLAY_MARKDOWN_CHARS, MAX_HIGHLIGHTS, MAX_QUERY_RESULTS,
     MAX_TOUR_STEPS, QueryLocation, SymbolHit, SymbolSearchOptions, TourStep,
 };
@@ -399,6 +400,7 @@ pub(crate) async fn run_assist_tool_with(
         project,
         paths,
         contents_allowed: HashMap::default(),
+        contents_checks: 0,
     };
     let result = match name {
         "highlightCode" => highlight_code(&mut context, &arguments, source, cx).await?,
@@ -435,15 +437,23 @@ pub(crate) async fn run_assist_tool_with(
         "findDefinition" | "findReferences" => {
             let (path, position) = context.position(&arguments, cx).await?;
             let project = context.project.clone();
-            let locations = if name == "findDefinition" {
+            let (locations, omitted) = if name == "findDefinition" {
                 cx.update(|cx| ide_query::definitions(&project, path, position, cx))
                     .await
+                    .map(|locations| (locations, 0))
             } else {
-                cx.update(|cx| ide_query::references(&project, path, position, cx))
-                    .await
+                cx.update(|cx| {
+                    ide_query::references_reporting_omissions(&project, path, position, cx)
+                })
+                .await
             }
             .map_err(|error| context.query_failed(name, error))?;
-            context.locations_json(locations, cx).await
+            let mut result = context.locations_json(locations, cx).await;
+            // Left out before anything was judged, so the count says nothing of any file.
+            if omitted > 0 {
+                result["omittedByResponseBound"] = json!(omitted);
+            }
+            result
         }
         "getCallHierarchy" => get_call_hierarchy(&mut context, &arguments, cx).await?,
         "getTypeLayout" => type_layout_tool::get_type_layout(&mut context, &arguments, cx).await?,
@@ -630,6 +640,10 @@ fn index_status_json(used_name_index: bool, building: Option<IndexBuilding>) -> 
 /// `getCallHierarchy` の 1 つの関数に並べる呼び出し箇所の行の数。残りは件数 (`callLineCount`) だけ。
 const MAX_LISTED_CALL_LINES: usize = 20;
 
+/// Files of one name's definitions a sandbox has judged before it counts them; on a remote host
+/// each is a round trip.
+const MAX_RECOUNTED_DEFINITION_FILES: usize = 20;
+
 /// `getCallHierarchy` の `direction` / `depth` / `maxResults`。深さと件数は上限で切る。
 pub(crate) fn call_hierarchy_options(arguments: &Value) -> Result<CallHierarchyOptions> {
     let direction = match string_field(arguments, "direction")? {
@@ -662,6 +676,8 @@ struct AssistContext<'a> {
     /// 読み取り結果のファイルごとの「中身を見せてよいか」。同じファイルの結果が並ぶので、
     /// 確かめ (ファイルシステム・接続先への問い合わせ) は 1 ファイル 1 度にする。
     contents_allowed: HashMap<ProjectPath, bool>,
+    /// Files judged so far; for a remote project in a sandbox, each one is a round trip.
+    contents_checks: usize,
 }
 
 impl AssistContext<'_> {
@@ -839,6 +855,7 @@ impl AssistContext<'_> {
         if let Some(allowed) = self.contents_allowed.get(project_path) {
             return *allowed;
         }
+        self.contents_checks += 1;
         let allowed = self.check_contents(project_path, cx).await;
         self.contents_allowed.insert(project_path.clone(), allowed);
         allowed
@@ -940,32 +957,86 @@ impl AssistContext<'_> {
         json!({ "symbols": results, "truncated": truncated })
     }
 
-    /// 木に出てくるファイルごとの「中身を見せてよいか」。
+    /// 木に出てくるファイルごとの「中身を見せてよいか」。Only what [`Self::call_node_json`]
+    /// will show is judged: a node `ide_query` already withheld stays hidden whatever the
+    /// answer, and nothing below a hidden node is shown. On a remote host each file judged is
+    /// a round trip.
     async fn visible_paths<'a>(
         &mut self,
         nodes: impl IntoIterator<Item = &'a CallNode>,
         cx: &mut AsyncApp,
     ) -> HashMap<ProjectPath, bool> {
-        let mut paths = Vec::new();
-        let mut pending = nodes.into_iter().collect::<Vec<_>>();
-        while let Some(node) = pending.pop() {
-            paths.push(node.path.clone());
-            pending.extend(node.children.iter());
-        }
-        paths.sort();
-        paths.dedup();
         let mut visible_paths = HashMap::default();
-        for path in paths {
-            let visible = self.allows_contents(&path, cx).await;
-            visible_paths.insert(path, visible);
+        let mut pending = nodes.into_iter().collect::<VecDeque<_>>();
+        while let Some(node) = pending.pop_front() {
+            if let Some(counts) = &node.ambiguous {
+                self.judge_definition_files(counts, &mut visible_paths, cx)
+                    .await;
+            }
+            if !(node.in_project && node.contents_allowed) {
+                continue;
+            }
+            let visible = self.allows_contents(&node.path, cx).await;
+            visible_paths.insert(node.path.clone(), visible);
+            if visible {
+                pending.extend(node.children.iter());
+            }
         }
         visible_paths
+    }
+
+    /// A sandbox may not read some of the files `ide_query` counted as shown (outside the
+    /// session's roots, behind a link): those definitions are counted as withheld instead.
+    /// Past [`MAX_RECOUNTED_DEFINITION_FILES`] files a name's definitions are not judged, so
+    /// they count as withheld too.
+    async fn judge_definition_files(
+        &mut self,
+        counts: &DefinitionCounts,
+        visible_paths: &mut HashMap<ProjectPath, bool>,
+        cx: &mut AsyncApp,
+    ) {
+        if !self.is_sandboxed() {
+            return;
+        }
+        for (path, _) in counts
+            .shown_files
+            .iter()
+            .take(MAX_RECOUNTED_DEFINITION_FILES)
+        {
+            if !visible_paths.contains_key(path) {
+                let visible = self.allows_contents(path, cx).await;
+                visible_paths.insert(path.clone(), visible);
+            }
+        }
+    }
+
+    /// (shown, withheld) for this client.
+    fn definition_counts(
+        &self,
+        counts: &DefinitionCounts,
+        visible_paths: &HashMap<ProjectPath, bool>,
+    ) -> (usize, usize) {
+        if !self.is_sandboxed() {
+            return (counts.shown, counts.withheld);
+        }
+        let shown = counts
+            .shown_files
+            .iter()
+            .take(MAX_RECOUNTED_DEFINITION_FILES)
+            .filter(|(path, _)| visible_paths.get(path).copied().unwrap_or(false))
+            .map(|(_, count)| count)
+            .sum::<usize>();
+        (shown, counts.total().saturating_sub(shown))
     }
 
     /// 呼び出しの木。中身 (プレビュー) と、そこから先の呼び出しは、引数のパスと同じ検査を通る
     /// ファイルのものだけ。`ide_query` が辿った先でも、ここで伏せたファイルの下は出さない。
     async fn call_hierarchy_json(&mut self, hierarchy: CallHierarchy, cx: &mut AsyncApp) -> Value {
         let visible_paths = self.visible_paths([&hierarchy.root], cx).await;
+        log::debug!(
+            "ide_server: getCallHierarchy judged {} files",
+            self.contents_checks
+        );
         let root = cx.update(|cx| self.call_node_json(&hierarchy.root, &visible_paths, cx));
         let stopped_early = hierarchy.stopped.map(|stop| match stop {
             CallWalkStop::RequestLimit => "requestLimit",
@@ -997,7 +1068,10 @@ impl AssistContext<'_> {
         candidates: CallCandidates,
         cx: &mut AsyncApp,
     ) -> Value {
-        let visible_paths = self.visible_paths(&candidates.candidates, cx).await;
+        let mut visible_paths = self.visible_paths(&candidates.candidates, cx).await;
+        self.judge_definition_files(&candidates.counts, &mut visible_paths, cx)
+            .await;
+        let (shown, withheld) = self.definition_counts(&candidates.counts, &visible_paths);
         let listed = cx.update(|cx| {
             candidates
                 .candidates
@@ -1008,7 +1082,8 @@ impl AssistContext<'_> {
         json!({
             "root": null,
             "candidates": listed,
-            "totalCandidates": candidates.total,
+            "totalCandidates": shown,
+            "withheldCandidates": withheld,
             "message": "Several functions have this name (name matches from the name index). Call again with the path and line of the one you mean.",
             "indexStatus": index_status_json(true, candidates.index_building),
         })
@@ -1065,8 +1140,12 @@ impl AssistContext<'_> {
                 CallSource::Macro => "macro",
             }),
         );
-        if let Some(count) = node.ambiguous {
-            object.insert("ambiguous".to_string(), json!(count));
+        if let Some(counts) = &node.ambiguous {
+            let (shown, withheld) = self.definition_counts(counts, visible_paths);
+            object.insert("ambiguous".to_string(), json!(shown));
+            if withheld > 0 {
+                object.insert("ambiguousWithheld".to_string(), json!(withheld));
+            }
         }
         match &node.resolution {
             CallResolution::Definition => {}
@@ -1131,6 +1210,7 @@ pub(crate) async fn format_locations_for_test(
         project,
         paths,
         contents_allowed: HashMap::default(),
+        contents_checks: 0,
     };
     context.locations_json(locations, cx).await
 }
@@ -1146,6 +1226,7 @@ pub(crate) async fn format_symbols_for_test(
         project,
         paths,
         contents_allowed: HashMap::default(),
+        contents_checks: 0,
     };
     context.symbols_json(hits, MAX_DOCUMENT_SYMBOLS, cx).await
 }
@@ -1161,8 +1242,27 @@ pub(crate) async fn format_call_hierarchy_for_test(
         project,
         paths,
         contents_allowed: HashMap::default(),
+        contents_checks: 0,
     };
     context.call_hierarchy_json(hierarchy, cx).await
+}
+
+/// [`format_call_hierarchy_for_test`], with how many files were judged.
+#[cfg(test)]
+pub(crate) async fn count_call_hierarchy_checks_for_test(
+    project: Entity<Project>,
+    paths: AssistPaths<'_>,
+    hierarchy: CallHierarchy,
+    cx: &mut AsyncApp,
+) -> (Value, usize) {
+    let mut context = AssistContext {
+        project,
+        paths,
+        contents_allowed: HashMap::default(),
+        contents_checks: 0,
+    };
+    let formatted = context.call_hierarchy_json(hierarchy, cx).await;
+    (formatted, context.contents_checks)
 }
 
 /// `getHover` の結果。本文は [`MAX_HOVER_CHARS`] 文字で切る。
@@ -1408,7 +1508,7 @@ fn entry_refusal(
     if entry.is_fifo {
         return Some(format!("{text} isn't a regular file."));
     }
-    if is_private_file(project_path, Some(entry), cx) {
+    if is_private_file(worktree, project_path, Some(entry), cx) {
         return Some(format!(
             "{text} matches the private_files setting (.env and the like), so it can't be used."
         ));

@@ -213,15 +213,14 @@ pub struct SettingsContent {
     pub agent: Option<AgentSettingsContent>,
     pub agent_servers: Option<AllAgentServersSettings>,
 
-    /// Settings for the built-in loopback IDE server (ADR-F26).
+    /// Settings for the built-in loopback IDE server.
     pub ide_server: Option<IdeServerSettingsContent>,
 
-    /// Settings that apply to the host a remote project runs on (ADR-F27).
-    ///
-    /// Named `remote_host` in Rust only because [`RemoteSettingsContent`]
-    /// above already claims the field name `remote` for the *flattened*
-    /// top-level connection lists; on disk both live in the same file and this
-    /// one is the `"remote"` object.
+    /// Settings that apply to the host a remote project runs on.
+    // Named `remote_host` in Rust only because `RemoteSettingsContent` above
+    // already claims the field name `remote` for the *flattened* top-level
+    // connection lists; on disk both live in the same file and this one is the
+    // `"remote"` object.
     #[serde(rename = "remote")]
     pub remote_host: Option<RemoteHostSettingsContent>,
 
@@ -263,7 +262,7 @@ pub struct SettingsContent {
     /// The settings for the markdown preview.
     pub markdown_preview: Option<MarkdownPreviewSettingsContent>,
 
-    /// CSV / TSV などの表形式ファイルの設定です。
+    /// Settings for tabular files such as CSV and TSV.
     pub tabular_data: Option<TabularDataSettingsContent>,
 
     pub repl: Option<ReplSettingsContent>,
@@ -358,10 +357,10 @@ pub struct SettingsContent {
     /// AI providers whose "your input may be retained and used for training"
     /// warning the user has explicitly acknowledged. The settings UI refuses to
     /// take an API key for, or sign in to, an external provider that is not
-    /// listed here (zed-jp-enhance: see `docs/jp-enhance/DESIGN.md` ADR-F10).
+    /// listed here.
     ///
-    /// Entries are provider ids. Agent (LLM) providers use their
-    /// `LanguageModelProviderId` (`anthropic`, `openai`, `zed.dev`, ...);
+    /// Entries are provider ids. Agent (LLM) providers use their own ids
+    /// (`anthropic`, `openai`, `zed.dev`, ...);
     /// edit prediction providers are prefixed to keep the two surfaces
     /// independent (`edit_prediction:copilot`, `edit_prediction:codestral`, ...).
     ///
@@ -369,7 +368,7 @@ pub struct SettingsContent {
     pub acknowledged_external_ai_providers: Option<Vec<String>>,
 
     /// The language of the UI: "system" to follow the operating system, or a BCP 47
-    /// tag such as "en", "ja" or "pt-BR" (zed-jp-enhance).
+    /// tag such as "en", "ja" or "pt-BR".
     ///
     /// Default: "system"
     pub ui_language: Option<UiLanguageName>,
@@ -826,7 +825,7 @@ pub struct BrowserSettingsContent {
     /// Whether the built-in browser goes through the egress allowlist proxy.
     ///
     /// The browser is human-driven, so like the terminal it is outside egress
-    /// control by default (ADR-F19).
+    /// control by default.
     ///
     /// Default: false
     pub use_egress_proxy: Option<bool>,
@@ -1489,25 +1488,25 @@ pub struct MarkdownPreviewSettingsContent {
     ///
     /// Default: 800
     pub max_width: Option<PixelSetting>,
-    /// 単一の改行を、そのまま改行として表示するかどうかを設定します。
-    /// オフにすると CommonMark どおり空白 1 つになり、行末の半角スペース 2 つ /
-    /// `\` / `<br>` だけが改行になります。PDF の書き出しにも同じ設定が効きます。
+    /// Whether to show a single line break as a line break. When off, it is one
+    /// space as CommonMark specifies, and only two trailing spaces, `\` or `<br>`
+    /// break the line. Exporting to PDF follows the same setting.
     ///
     /// Default: true
     pub soft_break_as_hard_break: Option<bool>,
 }
 
-/// CSV / TSV などの表形式ファイルの設定です。
+/// Settings for tabular files such as CSV and TSV.
 #[with_fallible_options]
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, MergeFrom, Default, PartialEq)]
 pub struct TabularDataSettingsContent {
-    /// CSV / TSV などの表形式ファイルを、表 (グリッド) で開くかどうかを設定します。
-    /// オフにするとテキストエディターで開きます。
+    /// Whether to open tabular files such as CSV and TSV as a table (grid). When
+    /// off, they open in the text editor.
     ///
     /// Default: true
     pub open_as_grid: Option<bool>,
-    /// 改行を含むセルを、行の高さを広げてすべて表示するかどうかを設定します。
-    /// オフにすると 1 行に切り詰めて表示します。
+    /// Whether to show cells that contain line breaks in full, making the row
+    /// taller. When off, they are cut to one line.
     ///
     /// Default: true
     pub multiline_cells: Option<bool>,
@@ -1547,7 +1546,7 @@ pub enum ImageFileSizeUnit {
 }
 
 /// Settings for the machine a remote project runs on, as opposed to the
-/// connection lists in [`RemoteSettingsContent`]. Written under `"remote"` in
+/// lists of connections next to them. Written under `"remote"` in
 /// `settings.json`, and carried to the remote host with the rest of the user
 /// settings, which is where they take effect.
 #[with_fallible_options]
@@ -1555,7 +1554,7 @@ pub enum ImageFileSizeUnit {
 pub struct RemoteHostSettingsContent {
     /// Whether the remote host should make its outgoing HTTP(S) requests —
     /// language server and node downloads, extension archives, agent binaries
-    /// — through this machine instead of its own network (ADR-F27).
+    /// — through this machine instead of its own network.
     ///
     /// This is what makes a remote host that has no internet access able to
     /// install language servers at all, and it puts those downloads under this

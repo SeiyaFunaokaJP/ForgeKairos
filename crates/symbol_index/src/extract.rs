@@ -234,10 +234,16 @@ pub(crate) fn extract(
 ///   body after a comment, so the comment becomes spaces. A line break inside it gets a
 ///   continuation: comments are removed before directives are read, so it does not end the
 ///   directive, but the grammar would end it there.
-/// - A line holding nothing but an upper-case macro name inside a struct, union or class body,
-///   such as `SUBTREE_BITS` that expands to several members with their semicolons. The grammar
-///   reads it as the type of the next member, and before the closing brace as a member that
-///   never ends, which takes the rest of the file into the struct. The name becomes spaces.
+/// - A backslash followed by spaces at the end of a line in a `#define`, which compilers take
+///   as a continuation and the grammar does not. The backslash moves to the end of the line.
+/// - `/*` inside a literal in a `#define` (`#define OPEN "/*"`), which the grammar takes as the
+///   start of a comment that runs to the next `*/`. The `*` becomes a space.
+/// - A line starting a member declaration inside a struct, union or class body with a macro
+///   that brings its own semicolons: an upper-case name alone (`SUBTREE_BITS`), another name
+///   alone (`randomized_struct_fields_start`) or a call ending the line (`RH_KABI_RESERVE(1)`)
+///   when a whole declaration or the end of the body follows. The grammar reads it as the type
+///   of the next member, and before the closing brace as a member that never ends, which takes
+///   the rest of the file into the struct. The macro becomes spaces.
 ///
 /// Comments outside `#define` directives are left alone; the grammar handles them there, and
 /// turning them into spaces would break directives such as `#include` that must end right
@@ -245,6 +251,22 @@ pub(crate) fn extract(
 pub(crate) fn normalize_for_parsing(source: &[u8]) -> Cow<'_, [u8]> {
     fn is_crlf_continuation(source: &[u8], index: usize) -> bool {
         source.get(index..index.saturating_add(3)) == Some(b"\\\r\n".as_slice())
+    }
+    /// For a backslash at `index` followed by spaces or tabs and a line break, the index of
+    /// the `\n`.
+    fn spaced_continuation(source: &[u8], index: usize) -> Option<usize> {
+        let mut end = index + 1;
+        while matches!(source.get(end), Some(b' ' | b'\t')) {
+            end += 1;
+        }
+        if end == index + 1 {
+            return None;
+        }
+        match source.get(end) {
+            Some(b'\n') => Some(end),
+            Some(b'\r') if source.get(end + 1) == Some(&b'\n') => Some(end + 1),
+            _ => None,
+        }
     }
     fn directive_keyword(source: &[u8], hash: usize) -> &[u8] {
         let mut start = hash + 1;
@@ -284,9 +306,11 @@ pub(crate) fn normalize_for_parsing(source: &[u8]) -> Cow<'_, [u8]> {
             in_define = in_directive && directive_keyword(source, index) == b"define";
             if in_directive {
                 scope.directive(directive_keyword(source, index));
-            } else if let Some(end) = scope.lone_macro_line(source, index) {
+            } else if let Some(end) = scope.member_macro_end(source, index) {
                 for position in index..end {
-                    set(&mut output, source, position, b' ');
+                    if !matches!(source.get(position), Some(b'\n' | b'\r')) {
+                        set(&mut output, source, position, b' ');
+                    }
                 }
                 index = end;
                 continue;
@@ -297,6 +321,20 @@ pub(crate) fn normalize_for_parsing(source: &[u8]) -> Cow<'_, [u8]> {
                 swap_continuation(&mut output, source, index);
             }
             index += 3;
+        } else if byte == b'\\'
+            && in_define
+            && let Some(newline) = spaced_continuation(source, index)
+        {
+            // Compilers continue a line at a backslash followed by spaces; the grammar does
+            // not, so the backslash moves to the end of the line.
+            set(&mut output, source, index, b' ');
+            if source.get(newline.wrapping_sub(1)) == Some(&b'\r') {
+                set(&mut output, source, newline - 2, b'\r');
+                set(&mut output, source, newline - 1, b'\\');
+            } else {
+                set(&mut output, source, newline - 1, b'\\');
+            }
+            index = newline + 1;
         } else if byte == b'"' || byte == b'\'' {
             // Skipped so that `"/*"` does not start a comment. A literal ends at its closing
             // quote or, unterminated, at the end of the line.
@@ -304,6 +342,13 @@ pub(crate) fn normalize_for_parsing(source: &[u8]) -> Cow<'_, [u8]> {
             while let Some(&inner) = source.get(index) {
                 if inner == byte || inner == b'\n' || is_crlf_continuation(source, index) {
                     break;
+                }
+                if in_define
+                    && inner == b'*'
+                    && index.checked_sub(1).and_then(|before| source.get(before)) == Some(&b'/')
+                {
+                    // The grammar ends the text of a macro at `/*`, even inside a literal.
+                    set(&mut output, source, index, b' ');
                 }
                 index += if inner == b'\\' { 2 } else { 1 };
             }
@@ -407,6 +452,8 @@ struct BraceScope {
     untracked_conditions: usize,
     /// `struct`, `union` or `class` was seen since the last `;`, `,`, `=` or brace.
     aggregate_pending: bool,
+    /// The last token was the word `enum`.
+    after_enum: bool,
     parentheses: usize,
     last: LastToken,
 }
@@ -419,6 +466,7 @@ impl Default for BraceScope {
             conditions: Vec::new(),
             untracked_conditions: 0,
             aggregate_pending: false,
+            after_enum: false,
             parentheses: 0,
             last: LastToken::Boundary,
         }
@@ -427,8 +475,13 @@ impl Default for BraceScope {
 
 impl BraceScope {
     fn word(&mut self, word: &[u8]) {
+        let after_enum = std::mem::replace(&mut self.after_enum, word == b"enum");
         if matches!(word, b"struct" | b"union" | b"class") {
-            self.aggregate_pending = true;
+            // Not a parameter's type (`f(struct foo *p) const {`) nor `enum class`, whose
+            // braces hold no member declarations.
+            if self.parentheses == 0 && !after_enum {
+                self.aggregate_pending = true;
+            }
             self.last = LastToken::AggregateKeyword;
         } else if word.first().is_some_and(|byte| byte.is_ascii_digit()) {
             self.last = LastToken::Other;
@@ -438,11 +491,19 @@ impl BraceScope {
     }
 
     fn other(&mut self) {
+        self.after_enum = false;
         self.last = LastToken::Other;
     }
 
     fn punctuation(&mut self, byte: u8) {
+        self.after_enum = false;
         match byte {
+            // `template <class T>` ends what `class` began; a function such as
+            // `T Box<T>::get() const {` follows it.
+            b'>' if self.parentheses == 0 => {
+                self.aggregate_pending = false;
+                self.last = LastToken::Other;
+            }
             b'(' => {
                 self.parentheses = self.parentheses.saturating_add(1);
                 self.last = LastToken::Other;
@@ -522,9 +583,10 @@ impl BraceScope {
         }
     }
 
-    /// When the line starting at `start` is a lone upper-case name at the start of a member
-    /// declaration, the end of the name.
-    fn lone_macro_line(&self, source: &[u8], start: usize) -> Option<usize> {
+    /// When the line starting at `start` begins a member declaration with a macro that brings
+    /// its own semicolon, the end of the macro: a lone name (`SUBTREE_BITS`,
+    /// `randomized_struct_fields_start`) or a call that ends the line (`RH_KABI_RESERVE(1)`).
+    fn member_macro_end(&self, source: &[u8], start: usize) -> Option<usize> {
         if self.braces.last() != Some(&true)
             || self.untracked_braces > 0
             || self.parentheses > 0
@@ -535,26 +597,245 @@ impl BraceScope {
         let mut end = start;
         while source
             .get(end)
-            .is_some_and(|&byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+            .is_some_and(|&byte| byte.is_ascii_alphanumeric() || byte == b'_')
         {
             end += 1;
         }
         let name = source.get(start..end)?;
-        let has_letter = name.iter().any(|byte| byte.is_ascii_uppercase());
-        if name.len() < 2 || !has_letter || name.first().is_some_and(|byte| byte.is_ascii_digit()) {
+        if name.len() < 2
+            || name.first().is_some_and(|byte| byte.is_ascii_digit())
+            || NOT_MEMBER_MACROS.contains(&name)
+            || STATEMENT_KEYWORDS.contains(&name)
+        {
             return None;
         }
+        let is_upper_case = name.iter().any(|byte| byte.is_ascii_uppercase())
+            && !name.iter().any(|byte| byte.is_ascii_lowercase());
         let mut after = end;
         while matches!(source.get(after), Some(b' ' | b'\t')) {
             after += 1;
         }
-        match source.get(after) {
-            None | Some(b'\n') => Some(end),
-            Some(b'\r') if source.get(after + 1) == Some(&b'\n') => Some(end),
-            Some(b'/') if source.get(after + 1) == Some(&b'/') => Some(end),
-            _ => None,
+        if ends_line(source, after) {
+            // An upper-case name alone is a macro; another name may be the type of a member
+            // declared on the next line.
+            return (is_upper_case || declaration_follows(source, after)).then_some(end);
+        }
+        if source.get(after) != Some(&b'(') {
+            return None;
+        }
+        let close = closing_parenthesis(source, after)?;
+        let mut rest = close + 1;
+        while matches!(source.get(rest), Some(b' ' | b'\t')) {
+            rest += 1;
+        }
+        (ends_line(source, rest) && declaration_follows(source, rest)).then_some(close + 1)
+    }
+}
+
+/// Words that start a member declaration of their own rather than being a macro.
+const NOT_MEMBER_MACROS: &[&[u8]] = &[
+    b"auto",
+    b"bool",
+    b"char",
+    b"class",
+    b"const",
+    b"double",
+    b"enum",
+    b"explicit",
+    b"extern",
+    b"float",
+    b"friend",
+    b"inline",
+    b"int",
+    b"long",
+    b"mutable",
+    b"operator",
+    b"private",
+    b"protected",
+    b"public",
+    b"register",
+    b"restrict",
+    b"short",
+    b"signed",
+    b"static",
+    b"static_assert",
+    b"struct",
+    b"template",
+    b"typedef",
+    b"typename",
+    b"union",
+    b"unsigned",
+    b"using",
+    b"virtual",
+    b"void",
+    b"volatile",
+    b"_Atomic",
+    b"_Bool",
+    b"_Static_assert",
+];
+
+/// Words that begin a statement. A body taken for a struct's by mistake is a function's, and
+/// `if (ready(x))` before `return x;` must stay.
+const STATEMENT_KEYWORDS: &[&[u8]] = &[
+    b"break",
+    b"case",
+    b"catch",
+    b"co_await",
+    b"co_return",
+    b"co_yield",
+    b"continue",
+    b"default",
+    b"delete",
+    b"do",
+    b"else",
+    b"for",
+    b"goto",
+    b"if",
+    b"new",
+    b"return",
+    b"sizeof",
+    b"switch",
+    b"throw",
+    b"try",
+    b"while",
+];
+
+/// Bytes looked at past a member macro to tell whether it is one. Each line start of a body
+/// may look this far, so it bounds the time a body full of such lines takes.
+const MEMBER_MACRO_LOOKAHEAD: usize = 256;
+/// Bytes of comments skipped after a member macro.
+const MEMBER_COMMENT_LOOKAHEAD: usize = 64 * 1024;
+
+fn ends_line(source: &[u8], index: usize) -> bool {
+    match source.get(index) {
+        None | Some(b'\n') => true,
+        Some(b'\r') => source.get(index + 1) == Some(&b'\n'),
+        Some(b'/') => source.get(index + 1) == Some(&b'/'),
+        _ => false,
+    }
+}
+
+/// The `)` closing the `(` at `open` within one statement, past literals.
+fn closing_parenthesis(source: &[u8], open: usize) -> Option<usize> {
+    let limit = open
+        .saturating_add(MEMBER_MACRO_LOOKAHEAD)
+        .min(source.len());
+    let mut depth = 0usize;
+    let mut index = open;
+    while index < limit {
+        let byte = *source.get(index)?;
+        match byte {
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            b';' | b'{' | b'}' | b'#' => return None,
+            b'"' | b'\'' => {
+                index += 1;
+                while let Some(&inner) = source.get(index) {
+                    if inner == byte || inner == b'\n' || index >= limit {
+                        break;
+                    }
+                    index += if inner == b'\\' { 2 } else { 1 };
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+/// Whether what follows `index` (the end of a line holding a member macro) starts a whole
+/// member declaration, or ends the body, rather than continuing a declaration begun on that
+/// line. `my_type_t` then `field;` is one declaration over two lines; `int field;` is one of
+/// its own.
+fn declaration_follows(source: &[u8], index: usize) -> bool {
+    // Comments are skipped further: only the line before a comment looks across it, so this
+    // stays linear, and member comments are often long.
+    let comment_limit = index
+        .saturating_add(MEMBER_COMMENT_LOOKAHEAD)
+        .min(source.len());
+    let mut index = index;
+    loop {
+        while source
+            .get(index)
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
+            index += 1;
+        }
+        if source.get(index) == Some(&b'/') && source.get(index + 1) == Some(&b'/') {
+            while source.get(index).is_some_and(|&byte| byte != b'\n') {
+                index += 1;
+            }
+            continue;
+        }
+        if source.get(index) == Some(&b'/') && source.get(index + 1) == Some(&b'*') {
+            let Some(end) = source
+                .get(index + 2..comment_limit)
+                .and_then(|rest| rest.windows(2).position(|window| window == b"*/"))
+            else {
+                return false;
+            };
+            index += 2 + end + 2;
+            continue;
+        }
+        break;
+    }
+    let limit = index
+        .saturating_add(MEMBER_MACRO_LOOKAHEAD)
+        .min(source.len());
+    match source.get(index) {
+        None | Some(b'}' | b'#') => return true,
+        Some(byte) if byte.is_ascii_alphabetic() || *byte == b'_' => {}
+        _ => return false,
+    }
+    let mut words = 0;
+    let mut first_word: &[u8] = &[];
+    while index < limit {
+        match source.get(index) {
+            Some(byte) if byte.is_ascii_alphanumeric() || *byte == b'_' => {
+                let start = index;
+                while source
+                    .get(index)
+                    .is_some_and(|&byte| byte.is_ascii_alphanumeric() || byte == b'_')
+                {
+                    index += 1;
+                }
+                let word = source.get(start..index).unwrap_or_default();
+                // After a name, `__aligned(8)` annotates it: `atomic_t` on the line before
+                // `refcount __aligned(8);` is its type. First, `__u32` is a type.
+                if words > 0 && word.starts_with(b"__") {
+                    continue;
+                }
+                if words == 0 {
+                    if STATEMENT_KEYWORDS.contains(&word) {
+                        return false;
+                    }
+                    first_word = word;
+                    let mut after = index;
+                    while matches!(source.get(after), Some(b' ' | b'\t')) {
+                        after += 1;
+                    }
+                    // Another macro of the same kind.
+                    if source.get(after) == Some(&b'(')
+                        && word.iter().any(|byte| byte.is_ascii_uppercase())
+                        && !word.iter().any(|byte| byte.is_ascii_lowercase())
+                    {
+                        return true;
+                    }
+                }
+                words += 1;
+            }
+            // Only the next line is read, so that a body of such lines is read in linear time.
+            Some(b' ' | b'\t' | b'\r' | b'*' | b'&') => index += 1,
+            _ => break,
         }
     }
+    words >= 2 && !matches!(first_word, b"const" | b"volatile" | b"restrict")
 }
 
 thread_local! {
@@ -666,10 +947,12 @@ enum Kind {
     StorageClassSpecifier,
     CompoundStatement,
     ExpressionStatement,
+    NamespaceDefinition,
 }
 
 struct KindTable {
     kinds: Vec<Kind>,
+    field_scope: u16,
     field_declarator: u16,
     field_body: u16,
     field_name: u16,
@@ -701,6 +984,7 @@ impl KindTable {
         let field = |name: &str| language.field_id_for_name(name).map_or(0, |id| id.get());
         Self {
             kinds,
+            field_scope: field("scope"),
             field_declarator: field("declarator"),
             field_body: field("body"),
             field_name: field("name"),
@@ -771,6 +1055,7 @@ fn kind_from_name(name: &str) -> Kind {
         "storage_class_specifier" => Kind::StorageClassSpecifier,
         "compound_statement" => Kind::CompoundStatement,
         "expression_statement" => Kind::ExpressionStatement,
+        "namespace_definition" => Kind::NamespaceDefinition,
         _ => Kind::Other,
     }
 }
@@ -790,11 +1075,26 @@ struct Frame {
     in_class: bool,
 }
 
+/// A C++ namespace or class around the walker's position.
+struct Scope {
+    node_id: usize,
+    /// What it adds to a qualified name: `a` and `b` for `namespace a::b`, nothing for an
+    /// anonymous namespace or class.
+    names: Vec<String>,
+    is_anonymous_namespace: bool,
+}
+
+/// Qualified names recorded per C++ function besides its own name: `B::f` and `A::B::f` for
+/// `f` in `namespace A { class B {...} }`, so that both can be looked up. The innermost ones
+/// are kept.
+pub(crate) const MAX_QUALIFIED_NAMES: usize = 4;
+
 struct Walker<'a> {
     source: &'a [u8],
     language: SourceLanguage,
     table: &'a KindTable,
     frames: Vec<Frame>,
+    scopes: Vec<Scope>,
     output: ExtractedFile,
 }
 
@@ -805,6 +1105,7 @@ impl<'a> Walker<'a> {
             language,
             table,
             frames: Vec::new(),
+            scopes: Vec::new(),
             output: ExtractedFile::default(),
         }
     }
@@ -850,6 +1151,144 @@ impl<'a> Walker<'a> {
         {
             self.frames.pop();
         }
+        if self
+            .scopes
+            .last()
+            .is_some_and(|scope| scope.node_id == node.id())
+        {
+            self.scopes.pop();
+        }
+    }
+
+    /// Functions and variables in an anonymous namespace are only visible in their file, like
+    /// `static` ones.
+    fn in_anonymous_namespace(&self) -> bool {
+        self.scopes.iter().any(|scope| scope.is_anonymous_namespace)
+    }
+
+    fn namespace_definition(&mut self, node: Node) {
+        if self.language != SourceLanguage::Cpp {
+            return;
+        }
+        let (names, is_anonymous_namespace) = match self.field(node, self.table.field_name) {
+            Some(name) => (
+                std::str::from_utf8(self.text(name))
+                    .unwrap_or_default()
+                    .split("::")
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+                false,
+            ),
+            None => (Vec::new(), true),
+        };
+        self.scopes.push(Scope {
+            node_id: node.id(),
+            names,
+            is_anonymous_namespace,
+        });
+    }
+
+    /// The explicit qualifier of a declarator: `A`, `B` for `A::B::f`, and whether it starts
+    /// at the global namespace (`::f`). `None` when a part of it cannot be read as a name.
+    fn declarator_qualifier(&self, declarator: Node) -> Option<(bool, Vec<String>)> {
+        let mut node = declarator;
+        for _ in 0..64 {
+            match self.table.kind(node) {
+                Kind::QualifiedIdentifier => return self.qualifier_parts(node),
+                Kind::FunctionDeclarator
+                | Kind::PointerDeclarator
+                | Kind::ReferenceDeclarator
+                | Kind::ArrayDeclarator => {
+                    node = self
+                        .field(node, self.table.field_declarator)
+                        .or_else(|| last_named_child(node))?;
+                }
+                Kind::ParenthesizedDeclarator => node = last_named_child(node)?,
+                _ => return Some((false, Vec::new())),
+            }
+        }
+        None
+    }
+
+    fn qualifier_parts(&self, qualified: Node) -> Option<(bool, Vec<String>)> {
+        let mut node = qualified;
+        let mut parts = Vec::new();
+        let mut is_global = false;
+        for _ in 0..64 {
+            match self.field(node, self.table.field_scope) {
+                Some(scope) => {
+                    let name_node = match self.table.kind(scope) {
+                        Kind::TemplateType => self.field(scope, self.table.field_name)?,
+                        _ if matches!(
+                            scope.kind(),
+                            "namespace_identifier" | "type_identifier" | "identifier"
+                        ) =>
+                        {
+                            scope
+                        }
+                        _ => return None,
+                    };
+                    parts.push(self.name_text(name_node)?);
+                }
+                None => is_global |= parts.is_empty(),
+            }
+            let name = self.field(node, self.table.field_name)?;
+            if self.table.kind(name) != Kind::QualifiedIdentifier {
+                return Some((is_global, parts));
+            }
+            node = name;
+        }
+        None
+    }
+
+    /// Records the definition at `index` again under its qualified names (see
+    /// [`MAX_QUALIFIED_NAMES`]). They come after it, so that its own name stays the one that
+    /// owns the calls in its body.
+    fn push_qualified_names(&mut self, index: u32, declarator: Node) {
+        // A friend is not a member of the class it is declared in.
+        if self.language != SourceLanguage::Cpp || is_friend(declarator) {
+            return;
+        }
+        let Some((is_global, explicit)) = self.declarator_qualifier(declarator) else {
+            return;
+        };
+        // Only the innermost parts are used, so deeply nested scopes are not copied whole for
+        // each function.
+        let mut qualifier: Vec<String> = Vec::new();
+        if !is_global {
+            let wanted = MAX_QUALIFIED_NAMES.saturating_sub(explicit.len());
+            for scope in self.scopes.iter().rev() {
+                if qualifier.len() >= wanted {
+                    break;
+                }
+                for name in scope.names.iter().rev() {
+                    if qualifier.len() >= wanted {
+                        break;
+                    }
+                    qualifier.push(name.clone());
+                }
+            }
+            qualifier.reverse();
+        }
+        qualifier.extend(explicit);
+        if qualifier.is_empty() {
+            return;
+        }
+        let Some(definition) = self.output.definitions.get(index as usize).cloned() else {
+            return;
+        };
+        let first = qualifier.len().saturating_sub(MAX_QUALIFIED_NAMES);
+        for start in (first..qualifier.len()).rev() {
+            let Some(parts) = qualifier.get(start..) else {
+                continue;
+            };
+            self.output.definitions.push(ExtractedDefinition {
+                name: format!("{}::{}", parts.join("::"), definition.name),
+                ..definition.clone()
+            });
+        }
     }
 
     fn enter(&mut self, node: Node) {
@@ -860,10 +1299,20 @@ impl<'a> Walker<'a> {
         match self.table.kind(node) {
             Kind::FunctionDefinition => self.function_definition(node),
             Kind::Declaration => {
-                if !self.frame().in_function {
+                let frame = self.frame();
+                if self.language == SourceLanguage::Cpp
+                    && frame.in_class
+                    && !frame.in_function
+                    && !is_friend(node)
+                {
+                    // A member template's declaration (`template <class U> void f(U);`) is a
+                    // plain declaration inside the class body.
+                    self.method_declaration(node);
+                } else if !frame.in_function {
                     self.declaration(node);
                 }
             }
+            Kind::NamespaceDefinition => self.namespace_definition(node),
             Kind::FieldDeclaration => {
                 let frame = self.frame();
                 if self.language == SourceLanguage::Cpp && frame.in_class && !frame.in_function {
@@ -1047,8 +1496,14 @@ impl<'a> Walker<'a> {
             } else {
                 DefinitionKind::Function
             };
-            let is_static = self.has_storage_class(node, b"static");
+            // `static` on a member function means it has no object, not that it is local to
+            // the file.
+            let is_static = (self.has_storage_class(node, b"static") && !frame.in_class)
+                || self.in_anonymous_namespace();
             caller = self.push_definition(name, node, kind, is_static, false);
+            if let Some(index) = caller {
+                self.push_qualified_names(index, declarator);
+            }
         }
         self.frames.push(Frame {
             node_id: node.id(),
@@ -1059,7 +1514,7 @@ impl<'a> Walker<'a> {
     }
 
     fn declaration(&mut self, node: Node) {
-        let is_static = self.has_storage_class(node, b"static");
+        let is_static = self.has_storage_class(node, b"static") || self.in_anonymous_namespace();
         let is_extern = self.has_storage_class(node, b"extern");
         let declarators = self.field_children(node, self.table.field_declarator);
         for declarator in declarators {
@@ -1075,7 +1530,9 @@ impl<'a> Walker<'a> {
                     } else {
                         DefinitionKind::Function
                     };
-                    self.push_definition(name, node, kind, is_static, true);
+                    if let Some(index) = self.push_definition(name, node, kind, is_static, true) {
+                        self.push_qualified_names(index, declarator);
+                    }
                 }
                 DeclaratorShape::Object => {
                     self.push_definition(
@@ -1092,10 +1549,14 @@ impl<'a> Walker<'a> {
 
     fn method_declaration(&mut self, node: Node) {
         let declarators = self.field_children(node, self.table.field_declarator);
-        let is_static = self.has_storage_class(node, b"static");
+        // A member is never local to its file, `static` or not.
+        let is_static = self.in_anonymous_namespace();
         for declarator in declarators {
-            if let Some((name, DeclaratorShape::Function)) = self.resolve_declarator(declarator) {
-                self.push_definition(name, node, DefinitionKind::Method, is_static, true);
+            if let Some((name, DeclaratorShape::Function)) = self.resolve_declarator(declarator)
+                && let Some(index) =
+                    self.push_definition(name, node, DefinitionKind::Method, is_static, true)
+            {
+                self.push_qualified_names(index, declarator);
             }
         }
     }
@@ -1104,6 +1565,7 @@ impl<'a> Walker<'a> {
         if self.field(node, self.table.field_body).is_none() {
             return;
         }
+        let mut class_name = None;
         if let Some(name) = self.field(node, self.table.field_name) {
             let name = match self.table.kind(name) {
                 Kind::QualifiedIdentifier | Kind::TemplateType => {
@@ -1111,6 +1573,7 @@ impl<'a> Walker<'a> {
                 }
                 _ => name,
             };
+            class_name = self.name_text(name);
             self.push_definition(name, node, kind, false, false);
         }
         if matches!(kind, DefinitionKind::Class | DefinitionKind::Struct)
@@ -1122,6 +1585,11 @@ impl<'a> Walker<'a> {
                 caller: frame.caller,
                 in_function: false,
                 in_class: true,
+            });
+            self.scopes.push(Scope {
+                node_id: node.id(),
+                names: class_name.into_iter().collect(),
+                is_anonymous_namespace: false,
             });
         }
     }
@@ -1537,6 +2005,23 @@ impl SourceCursor<'_> {
 fn last_named_child(node: Node) -> Option<Node> {
     let count = u32::try_from(node.named_child_count()).ok()?;
     node.named_child(count.checked_sub(1)?)
+}
+
+/// Whether `node` is (part of) a `friend` declaration in a class body.
+fn is_friend(node: Node) -> bool {
+    let mut current = node;
+    for _ in 0..16 {
+        match current.kind() {
+            "friend_declaration" => return true,
+            "field_declaration_list" | "translation_unit" | "compound_statement" => return false,
+            _ => {}
+        }
+        let Some(parent) = current.parent() else {
+            return false;
+        };
+        current = parent;
+    }
+    false
 }
 
 fn to_u32(value: usize) -> u32 {
@@ -2066,6 +2551,344 @@ mod tests {
         }
     }
 
+    fn extract_cpp(source: &str) -> ExtractedFile {
+        extract(source.as_bytes(), SourceLanguage::Cpp, &|| false)
+    }
+
+    #[test]
+    fn cpp_templates_namespaces_and_qualified_names() {
+        // Shapes from LLVM-style code: templates, nested and anonymous namespaces, members
+        // defined in and out of the class, and calls through `this`, `ns::` and `<T>`.
+        let source = "namespace outer {\n\
+                      namespace inner {\n\
+                      int free_fn(int x) { return helper(x); }\n\
+                      }\n\
+                      namespace {\n\
+                      int anon_fn() { return inner::free_fn(0); }\n\
+                      }\n\
+                      template <typename T>\n\
+                      T maximum(T a, T b) { return compare<T>(a, b) ? a : b; }\n\
+                      template <typename T>\n\
+                      class Box {\n\
+                      public:\n\
+                      \tT get() const { return this->value_of(); }\n\
+                      \tvoid set(T v);\n\
+                      \ttemplate <typename U> void assign(U u);\n\
+                      };\n\
+                      template <typename T>\n\
+                      void Box<T>::set(T v) { this->store(v); ::outer::inner::free_fn(2); }\n\
+                      }\n\
+                      namespace a::b { void nested() { outer::maximum<int>(1, 2); } }\n\
+                      void user() { outer::Box<int> box; box.set(1); }\n";
+        let file = extract_cpp(source);
+
+        let qualified = |name: &str| -> Vec<String> {
+            let tail = definitions_named(&file, name);
+            file.definitions
+                .iter()
+                .filter(|definition| {
+                    definition.name.ends_with(&format!("::{name}"))
+                        && tail.iter().any(|tail| {
+                            tail.name_range == definition.name_range
+                                && tail.item_range == definition.item_range
+                                && tail.kind == definition.kind
+                        })
+                })
+                .map(|definition| definition.name.clone())
+                .collect()
+        };
+        assert_eq!(
+            qualified("free_fn"),
+            vec!["inner::free_fn", "outer::inner::free_fn"]
+        );
+        // An anonymous namespace adds nothing to the name.
+        assert_eq!(qualified("anon_fn"), vec!["outer::anon_fn"]);
+        assert_eq!(qualified("maximum"), vec!["outer::maximum"]);
+        assert_eq!(qualified("get"), vec!["Box::get", "outer::Box::get"]);
+        // The declaration in the class and the definition outside it.
+        assert_eq!(
+            qualified("set"),
+            vec!["Box::set", "outer::Box::set", "Box::set", "outer::Box::set"]
+        );
+        assert_eq!(
+            qualified("assign"),
+            vec!["Box::assign", "outer::Box::assign"]
+        );
+        assert_eq!(qualified("nested"), vec!["b::nested", "a::b::nested"]);
+        assert!(qualified("user").is_empty());
+        let set = definitions_named(&file, "set");
+        assert_eq!(
+            set.iter()
+                .map(|definition| (definition.kind, definition.is_declaration))
+                .collect::<Vec<_>>(),
+            vec![
+                (DefinitionKind::Method, true),
+                (DefinitionKind::Method, false)
+            ]
+        );
+        only_definition(&file, "Box");
+
+        for (callee, kind, caller) in [
+            ("helper", CallKind::Direct, "free_fn"),
+            ("compare", CallKind::Direct, "maximum"),
+            ("value_of", CallKind::Member, "get"),
+            ("store", CallKind::Member, "set"),
+            ("maximum", CallKind::Direct, "nested"),
+        ] {
+            let calls = calls_to(&file, callee);
+            assert_eq!(calls.len(), 1, "{callee}: {:#?}", file.calls);
+            assert_eq!(calls[0].kind, kind, "{callee}");
+            // The calls belong to the definition under its own name.
+            assert_eq!(
+                caller_name(&file, calls[0]).as_deref(),
+                Some(caller),
+                "{callee}"
+            );
+        }
+        let free_fn_callers = calls_to(&file, "free_fn")
+            .iter()
+            .map(|call| caller_name(&file, call))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            free_fn_callers,
+            vec![Some("anon_fn".to_owned()), Some("set".to_owned())]
+        );
+
+        // C code gets no qualified names.
+        let c_file = extract_c("int plain(void) { return other(); }\n");
+        assert!(
+            c_file
+                .definitions
+                .iter()
+                .all(|definition| !definition.name.contains("::"))
+        );
+    }
+
+    #[test]
+    fn cpp_static_members_are_not_local_to_their_file() {
+        let file = extract_cpp(
+            "struct Registry {\n\
+             \tstatic Registry &instance();\n\
+             \tstatic int count() { return counter(); }\n\
+             };\n\
+             Registry &Registry::instance() { static Registry registry; return registry; }\n\
+             static int file_local() { return 0; }\n\
+             namespace {\n\
+             int hidden() { return 1; }\n\
+             int hidden_value;\n\
+             }\n\
+             namespace named { int visible() { return 2; } }\n",
+        );
+        let is_static = |name: &str| {
+            definitions_named(&file, name)
+                .iter()
+                .map(|definition| definition.is_static)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(is_static("instance"), vec![false, false]);
+        assert_eq!(is_static("count"), vec![false]);
+        assert_eq!(is_static("file_local"), vec![true]);
+        // An anonymous namespace makes its names local to the file, like `static`.
+        assert_eq!(is_static("hidden"), vec![true]);
+        assert_eq!(is_static("hidden_value"), vec![true]);
+        assert_eq!(is_static("visible"), vec![false]);
+    }
+
+    #[test]
+    fn knr_definitions_and_typeof_declarations() {
+        let file = extract_c(
+            "int knr_add(a, b)\n\
+             int a;\n\
+             char *b;\n\
+             {\n\
+             \treturn helper_knr(a, b);\n\
+             }\n\
+             static long\n\
+             knr_static(x)\n\
+             \tregister struct foo *x;\n\
+             {\n\
+             \treturn x->count + other_call();\n\
+             }\n\
+             typeof(int) typed_global;\n\
+             __typeof__(struct foo) *typed_pointer;\n\
+             static __typeof__(knr_add) *function_alias;\n\
+             int after_all(void) { return final_call(); }\n",
+        );
+        assert!(!file.has_syntax_errors);
+        for (function, callee) in [
+            ("knr_add", "helper_knr"),
+            ("knr_static", "other_call"),
+            ("after_all", "final_call"),
+        ] {
+            let definition = only_definition(&file, function);
+            assert_eq!(definition.kind, DefinitionKind::Function);
+            assert_eq!(
+                caller_name(&file, calls_to(&file, callee)[0]).as_deref(),
+                Some(function)
+            );
+        }
+        assert!(only_definition(&file, "knr_static").is_static);
+        // The parameter declarations are not globals.
+        for parameter in ["a", "b", "x"] {
+            assert!(
+                definitions_named(&file, parameter).is_empty(),
+                "{parameter}"
+            );
+        }
+        for variable in ["typed_global", "typed_pointer", "function_alias"] {
+            assert_eq!(
+                only_definition(&file, variable).kind,
+                DefinitionKind::Variable
+            );
+        }
+    }
+
+    #[test]
+    fn member_macros_without_semicolons_of_every_shape() {
+        // From the Linux kernel (`randomized_struct_fields_start`), RHEL (`RH_KABI_RESERVE`)
+        // and the kernel's `struct_group` and `DECLARE_BITMAP`, which do have semicolons.
+        for newline in ["\n", "\r\n"] {
+            let source = [
+                "struct task {",
+                "\tint before;",
+                "\trandomized_struct_fields_start",
+                "\tint inside;",
+                "\tRH_KABI_RESERVE(1)",
+                "\tlong after_reserve;",
+                "\tstruct_group(addrs,",
+                "\t\tu8 saddr;",
+                "\t\tu8 daddr;",
+                "\t);",
+                "\tDECLARE_BITMAP(bits, 64);",
+                "\tkabi_reserve(2) // reserved",
+                "\tint last;",
+                "\trandomized_struct_fields_end",
+                "};",
+                "int follows(void) { return called_after(); }",
+                "struct split_type {",
+                "\tmy_type_t",
+                "\tfield;",
+                "\tSLIST_ENTRY(node)",
+                "\tlink;",
+                "};",
+                "",
+            ]
+            .join(newline);
+            let file = extract_c(&source);
+            let task = only_definition(&file, "task");
+            assert_eq!(task.kind, DefinitionKind::Struct);
+            assert_eq!(
+                (task.item_range.start.row, task.item_range.end.row),
+                (0, 14),
+                "{newline:?}"
+            );
+            for member in ["before", "inside", "after_reserve", "last", "field", "link"] {
+                assert!(
+                    definitions_named(&file, member).is_empty(),
+                    "{member} {newline:?}: {:#?}",
+                    file.definitions
+                );
+            }
+            assert_eq!(
+                caller_name(&file, calls_to(&file, "called_after")[0]).as_deref(),
+                Some("follows")
+            );
+            let split = only_definition(&file, "split_type");
+            assert_eq!(
+                (split.item_range.start.row, split.item_range.end.row),
+                (16, 21)
+            );
+            let normalized = normalize_for_parsing(source.as_bytes());
+            let normalized = String::from_utf8_lossy(&normalized);
+            // Only the macros that bring their own semicolons are blanked.
+            for kept in [
+                "my_type_t",
+                "SLIST_ENTRY(node)",
+                "struct_group(addrs,",
+                "DECLARE_BITMAP(bits, 64);",
+            ] {
+                assert!(normalized.contains(kept), "{kept}");
+            }
+            for blanked in [
+                "randomized_struct_fields_start",
+                "RH_KABI_RESERVE(1)",
+                "kabi_reserve(2)",
+                "randomized_struct_fields_end",
+            ] {
+                assert!(!normalized.contains(blanked), "{blanked}");
+            }
+            assert!(normalized.contains("// reserved"));
+        }
+        // A call-like macro may span lines; its line breaks stay.
+        let source = "struct s {\n\tRH_KABI_REPLACE(int a,\n\t\tint b)\n\tint c;\n};\n";
+        let normalized = normalize_for_parsing(source.as_bytes());
+        let expected = format!(
+            "struct s {{\n\t{}\n{}\n\tint c;\n}};\n",
+            " ".repeat("RH_KABI_REPLACE(int a,".len()),
+            " ".repeat("\t\tint b)".len())
+        );
+        assert_eq!(normalized.as_ref(), expected.as_bytes());
+        // Not a constructor that ends its line, nor a member whose type is on the line
+        // before.
+        for kept in [
+            "class Widget {\n\tWidget(int x)\n\t\t: x_(x) {}\n\tint x_;\n};\n",
+            "class Widget {\n\tWidget()\n\t{}\n};\n",
+            "struct s {\n\tunsigned\n\tlong x;\n\tmy_type_t\n\t*pointer;\n};\n",
+        ] {
+            assert!(
+                matches!(normalize_for_parsing(kept.as_bytes()), Cow::Borrowed(_)),
+                "{kept:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn macros_that_the_grammar_misreads() {
+        for (name, newline) in [("LF", "\n"), ("CRLF", "\r\n")] {
+            let source = [
+                "#define OPEN_COMMENT \"/*\"",
+                "int after_string(void) { return string_callee(); }",
+                "/* closes here */",
+                "#define OPEN_CHAR(x) open_call('/', \"x/*y\", x)",
+                "int after_char(void) { return char_callee(); }",
+                "#define TRAILING_SPACE(x) first_trailing(x) \\  ",
+                "\tsecond_trailing(x)",
+                "int after_trailing(void) { return trailing_callee(); }",
+                "/* unterminated in a string: \"*/",
+                "int last(void) { return last_callee(); }",
+                "",
+            ]
+            .join(newline);
+            let file = extract_c(&source);
+            for (function, callee) in [
+                ("after_string", "string_callee"),
+                ("after_char", "char_callee"),
+                ("after_trailing", "trailing_callee"),
+                ("OPEN_CHAR", "open_call"),
+                ("TRAILING_SPACE", "first_trailing"),
+                ("TRAILING_SPACE", "second_trailing"),
+                ("last", "last_callee"),
+            ] {
+                let calls = calls_to(&file, callee);
+                assert_eq!(calls.len(), 1, "{name} {callee}: {:#?}", file.calls);
+                assert_eq!(
+                    caller_name(&file, calls[0]).as_deref(),
+                    Some(function),
+                    "{name} {callee}"
+                );
+                assert_eq!(calls[0].position, position_of(&source, callee, 0));
+            }
+            let trailing = only_definition(&file, "TRAILING_SPACE");
+            assert_eq!(
+                trailing.item_range.end,
+                position_of(&source, "int after_trailing", 0),
+                "{name}"
+            );
+            let normalized = normalize_for_parsing(source.as_bytes());
+            assert_eq!(normalized.len(), source.len());
+        }
+    }
+
     #[test]
     fn functions_behind_annotation_macros() {
         // Export and inlining macros in front of the return type leave ERROR nodes, but the
@@ -2257,14 +3080,15 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(newlines(&normalized), newlines(source));
-        // Only `#define` directives change: continuations before CRLF swap their bytes, and
-        // comments followed by more of the macro become spaces with continuations.
+        // Only `#define` directives change: continuations before CRLF swap their bytes,
+        // comments followed by more of the macro become spaces with continuations, and `/*`
+        // in a literal loses its `*`.
         assert_eq!(
             normalized.as_ref(),
             b"a /* x\\\r\ny */ \"/*\" '\\'' // c /* d\r\n\
             #define M \r\\\n b     \r\\\n      \r\\\n e /* last */\r\n\
             #include \"x.h\" /* kept */\r\n\
-            # define N(a)         f(a) \"/*\" g(a)\r\n\
+            # define N(a)         f(a) \"/ \" g(a)\r\n\
             #if A \\\r\n && B\r\n/* open"
                 .as_slice()
         );
@@ -2482,6 +3306,170 @@ mod tests {
         assert_eq!(
             normalized.as_ref(),
             b"struct s {\n         \n};\nenum e {\n  LAST\n};\n".as_slice()
+        );
+    }
+
+    #[test]
+    fn function_bodies_keep_statements_that_look_like_member_macros() {
+        // Bodies that a scan for `struct`, `union` or `class` could take for a struct's:
+        // after `template <class T>`, with a `struct` parameter, and after an `enum class`
+        // whose only enumerator stands alone.
+        for source in [
+            "template <class T>\nT Box<T>::get() const {\n",
+            "class Box {\n\tint get(struct item *found) const {\n",
+            "enum class Mode {\n\tonly_mode\n};\nint get(void) {\n",
+        ] {
+            let source = format!(
+                "{source}\
+                 \tLOCK_GUARD(lock)\n\
+                 \tint value = read();\n\
+                 }}\n"
+            );
+            assert!(
+                matches!(normalize_for_parsing(source.as_bytes()), Cow::Borrowed(_)),
+                "{source}"
+            );
+        }
+        // A body that still reads as a struct's (`struct item` is the return type): its
+        // statements are not member macros.
+        let source = "struct item get() const {\n\
+                      \tif (ready(x))\n\
+                      \t\treturn a;\n\
+                      \telse\n\
+                      \t\treturn b;\n\
+                      \twhile (more(x))\n\
+                      \t\tdelete x;\n\
+                      \tdo\n\
+                      \t\tvalue_t next = step(x);\n\
+                      \twhile (next);\n\
+                      \tscoped_guard(mutex, &lock)\n\
+                      \t\treturn compute(x);\n\
+                      \tlowercase_alone\n\
+                      \t\treturn x;\n\
+                      }\n";
+        assert!(
+            matches!(normalize_for_parsing(source.as_bytes()), Cow::Borrowed(_)),
+            "{source}"
+        );
+        let file = extract_cpp(source);
+        for callee in ["ready", "more", "step", "compute"] {
+            assert_eq!(calls_to(&file, callee).len(), 1, "{callee}");
+        }
+        // The same shapes inside a struct are still member macros.
+        let source =
+            "struct s {\n\tkabi_reserve(1)\n\tint x;\n\tstruct_fields_start\n\tint y;\n};\n";
+        assert_eq!(
+            normalize_for_parsing(source.as_bytes()).as_ref(),
+            format!(
+                "struct s {{\n\t{}\n\tint x;\n\t{}\n\tint y;\n}};\n",
+                " ".repeat("kabi_reserve(1)".len()),
+                " ".repeat("struct_fields_start".len())
+            )
+            .as_bytes()
+        );
+        // An annotation after a member's name does not make a whole declaration of it, but a
+        // type such as `__u32` does.
+        for (source, blanked) in [
+            (
+                "struct s {\n\tatomic_t\n\t\trefcount __aligned(8);\n};\n",
+                false,
+            ),
+            ("struct s {\n\tfields_start\n\t__u32 flags;\n};\n", true),
+        ] {
+            assert_eq!(
+                matches!(normalize_for_parsing(source.as_bytes()), Cow::Owned(_)),
+                blanked,
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn friends_are_not_members() {
+        let file = extract_cpp(
+            "namespace ns {\n\
+             class Widget {\n\
+             \tfriend void helper(Widget &widget);\n\
+             \ttemplate <class U> friend U make();\n\
+             \tfriend bool operator==(const Widget &, const Widget &) { return same(); }\n\
+             };\n\
+             }\n",
+        );
+        let helper = only_definition(&file, "helper");
+        assert_eq!(
+            (helper.kind, helper.is_declaration),
+            (DefinitionKind::Function, true)
+        );
+        assert_eq!(
+            only_definition(&file, "make").kind,
+            DefinitionKind::Function
+        );
+        assert!(
+            file.definitions
+                .iter()
+                .all(|definition| !definition.name.contains("Widget::")),
+            "{:#?}",
+            file.definitions
+        );
+    }
+
+    #[test]
+    fn deeply_nested_namespaces_keep_four_qualified_names() {
+        let depth = 2_000;
+        let mut source = String::new();
+        for level in 0..depth {
+            source.push_str(&format!("namespace n{level} {{\n"));
+        }
+        source.push_str("void inner() {}\n");
+        source.push_str(&"}\n".repeat(depth));
+        let file = extract_cpp(&source);
+        let names = file
+            .definitions
+            .iter()
+            .filter(|definition| definition.name.ends_with("::inner"))
+            .map(|definition| definition.name.clone())
+            .collect::<Vec<_>>();
+        if names.is_empty() {
+            // The grammar may give up on nesting this deep; it must not panic.
+            return;
+        }
+        assert_eq!(
+            names,
+            vec![
+                "n1999::inner".to_owned(),
+                "n1998::n1999::inner".to_owned(),
+                "n1997::n1998::n1999::inner".to_owned(),
+                "n1996::n1997::n1998::n1999::inner".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn member_macro_scans_stay_linear() {
+        let mut source = String::from("struct s {\n");
+        for line in 0..100_000 {
+            source.push_str(if line % 2 == 0 {
+                "\tlowercase_macro\n"
+            } else {
+                "\tLIKE_A_CALL(1)\n"
+            });
+        }
+        source.push_str("\tint last;\n};\n");
+        source.push_str(&format!(
+            "struct t {{\n\tmacro_alone\n\t/*{}*/\n}};\n",
+            "x".repeat(1 << 20)
+        ));
+        source.push_str(&format!(
+            "struct u {{\n\tCALL({})\n\tint x;\n}};\n",
+            "(".repeat(1 << 20)
+        ));
+        let started = std::time::Instant::now();
+        let normalized = normalize_for_parsing(source.as_bytes());
+        assert_eq!(normalized.len(), source.len());
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(20),
+            "{:?}",
+            started.elapsed()
         );
     }
 }

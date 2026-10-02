@@ -2,10 +2,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use settings_macros::MergeFrom;
 
-/// Settings for the built-in IDE server (ADR-F26).
+/// Settings for the built-in IDE server.
 ///
 /// The server binds a random port on `127.0.0.1` only and never talks to the
-/// network, so it is outside the scope of the egress allowlist (ADR-F03).
+/// network, so it is outside the scope of the egress allowlist.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct IdeServerSettingsContent {
     /// Whether to expose this window over the loopback IDE server, so that

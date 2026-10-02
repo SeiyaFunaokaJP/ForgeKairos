@@ -404,6 +404,52 @@ async fn test_symbol_index_follows_file_changes(cx: &mut TestAppContext) {
     .await;
 }
 
+/// Updates write the index's manifest at most every few seconds; once they stop, what the last
+/// one committed is written without another update, so that a crash does not lose it.
+#[gpui::test]
+async fn test_symbol_index_saves_after_updates_stop(cx: &mut TestAppContext) {
+    init_test(cx);
+    let (project, fs, worktree_id) = new_project(project_files(), cx).await;
+    let index_root = tempfile::tempdir().expect("a temporary directory");
+    set_index_root(&project, index_root.path(), cx);
+    wait_for_ready(&project, worktree_id, cx);
+    let directory =
+        SymbolIndexStore::index_directory(index_root.path(), &PathBuf::from(path!("/root")));
+
+    fs.insert_file(
+        path!("/root/new.c"),
+        b"int saved_when_idle(void) { return 0; }
+"
+        .to_vec(),
+    )
+    .await;
+    wait_for_definitions(
+        &project,
+        "saved_when_idle",
+        "the new file is indexed",
+        cx,
+        |found| !found.is_empty(),
+    )
+    .await;
+    wait_until(cx, "the index is saved", |_| {
+        let copy = tempfile::tempdir().expect("a temporary directory");
+        for entry in std::fs::read_dir(&directory).expect("listing the index") {
+            let path = entry.expect("an index file").path();
+            // The lock file is locked by the open index, and a write in progress is skipped.
+            if let Some(name) = path.file_name()
+                && name != "lock"
+                && path.extension().is_none_or(|extension| extension != "tmp")
+            {
+                std::fs::copy(&path, copy.path().join(name)).expect("copying an index file");
+            }
+        }
+        let copied =
+            symbol_index::SymbolIndex::open(copy.path(), symbol_index::IndexConfig::default())
+                .expect("opening the copy");
+        !copied.definitions("saved_when_idle").is_empty()
+    });
+}
+
 #[gpui::test]
 async fn test_symbol_index_leaves_out_excluded_private_and_ignored_files(cx: &mut TestAppContext) {
     init_test(cx);

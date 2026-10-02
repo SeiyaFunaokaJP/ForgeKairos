@@ -612,6 +612,24 @@ fn damaged_or_outdated_indexes_are_rebuilt() {
             }),
         ),
         (
+            "index from format version 2",
+            Box::new(|directory: &Path| {
+                // Version 2 indexes lack what the extraction now records, so they must not be
+                // read as current ones.
+                let previous = 2u32.to_le_bytes();
+                corrupt(&directory.join(MANIFEST_FILE_NAME), |bytes| {
+                    bytes[8..12].copy_from_slice(&previous);
+                    refresh_manifest_checksum(bytes);
+                });
+                for path in segment_paths(directory) {
+                    corrupt(&path, |bytes| {
+                        bytes[8..12].copy_from_slice(&previous);
+                        refresh_segment_checksum(bytes);
+                    });
+                }
+            }),
+        ),
+        (
             "truncated segment",
             Box::new(|directory: &Path| {
                 corrupt(&segment_paths(directory)[0], |bytes| {
@@ -645,6 +663,10 @@ fn damaged_or_outdated_indexes_are_rebuilt() {
         let index = SymbolIndex::open(directory.path(), config())
             .unwrap_or_else(|error| panic!("{name}: open failed: {error:#}"));
         assert!(index.reset_reason().is_some(), "{name}: not detected");
+        if name == "index from format version 2" {
+            let reason = index.reset_reason().unwrap_or_default();
+            assert!(reason.contains("format version 2"), "{reason}");
+        }
         assert_eq!(index.stats().files, 0, "{name}");
         assert_eq!(index.definitions("helper"), vec![], "{name}");
         let stats = full_update(&index, &source, 1_000);
@@ -932,6 +954,937 @@ fn search_limit_is_not_taken_by_superseded_names() {
             .collect();
         assert_eq!(found, vec!["alpha_b"], "{mode:?}");
     }
+}
+
+const SYNTHETIC_WORDS: &[&str] = &[
+    "drm", "gem", "object", "init", "lock", "unlock", "page", "alloc", "free", "dev", "device",
+    "net", "skb", "buf", "queue", "irq", "handler", "pci", "usb", "read", "write", "open", "close",
+    "release", "probe", "remove", "set", "get", "put", "list", "head", "node", "tree", "map",
+    "unmap", "dma", "mem", "cache", "flush", "inode", "file", "dentry", "super", "block", "bio",
+    "request", "sched", "task", "thread", "timer", "work", "event", "notify", "power", "clock",
+    "reg", "config", "state", "status", "error", "reset", "start", "stop", "enable", "disable",
+    "count", "ref", "mutex", "spin", "atomic", "wait", "wake", "sync", "copy", "user", "kernel",
+    "sys", "call", "ops", "info", "data", "ctx", "priv", "hw", "fw", "phy", "link", "port", "mode",
+    "type", "flags", "attr", "show", "store", "debug", "trace", "stat", "rx", "tx", "ring", "desc",
+    "entry", "table", "hash", "key", "value", "slot", "zone",
+];
+
+/// Writes segments of synthetic files straight to `directory` (skipping the parser), so that
+/// an index with millions of names can be built in seconds. Names look like C identifiers:
+/// mostly lower case with underscores, some upper-case macros and some CamelCase.
+fn build_synthetic_index(directory: &Path, segments: u64, files: u64, names_per_file: u64) {
+    let mut random = Random(0x2545_f491_4f6c_dd1d);
+    let mut manifest = Manifest::default();
+    let mut serial = 0u64;
+    for segment in 0..segments {
+        let mut inputs = Vec::new();
+        for file in 0..files {
+            let mut extract = ExtractedFile::default();
+            for number in 0..names_per_file {
+                let parts = 2 + random.below(3);
+                let words: Vec<&str> = (0..parts)
+                    .map(|_| SYNTHETIC_WORDS[random.below(SYNTHETIC_WORDS.len() as u64) as usize])
+                    .collect();
+                let name = match random.below(10) {
+                    0 => format!("{}_{serial}", words.join("_").to_ascii_uppercase()),
+                    1 => {
+                        let mut camel = String::new();
+                        for word in &words {
+                            let mut characters = word.chars();
+                            if let Some(first) = characters.next() {
+                                camel.push(first.to_ascii_uppercase());
+                                camel.extend(characters);
+                            }
+                        }
+                        format!("{camel}{serial}")
+                    }
+                    _ => format!("{}_{serial}", words.join("_")),
+                };
+                serial += 1;
+                let position = Position {
+                    byte: number as u32 * 40,
+                    row: number as u32,
+                    column: 4,
+                };
+                // Half of the names are only called, as with library functions.
+                if number % 2 == 0 {
+                    extract.definitions.push(extract::ExtractedDefinition {
+                        name,
+                        kind: DefinitionKind::Function,
+                        is_static: false,
+                        is_declaration: false,
+                        name_range: Range::token(position, 8),
+                        item_range: Range::token(position, 8),
+                    });
+                } else {
+                    extract.calls.push(extract::ExtractedCall {
+                        callee: name,
+                        caller: None,
+                        kind: CallKind::Direct,
+                        in_macro_body: false,
+                        position,
+                    });
+                }
+            }
+            inputs.push(SegmentFileInput {
+                path: format!("dir{segment}/file{file}.c").into(),
+                mtime: 1_000_000_000,
+                size: 1000,
+                verified_at: 100_000_000_000,
+                hash: [0; 16],
+                language: SourceLanguage::C,
+                extract,
+            });
+        }
+        storage::write_segment(&Segment::path(directory, segment), 0, &inputs)
+            .expect("writing a segment");
+        manifest.segments.push(ManifestSegment {
+            id: segment,
+            file_count: files as u32,
+            dead: vec![0; (files as usize).div_ceil(64)],
+        });
+    }
+    manifest.next_segment_id = segments;
+    write_atomically(&directory.join(MANIFEST_FILE_NAME), &manifest.encode())
+        .expect("writing the manifest");
+}
+
+/// Measures substring and fuzzy search over about four million names. Run with
+/// `cargo test --profile release-fast -p symbol_index --lib search_speed -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn search_speed_over_four_million_names() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let started = Instant::now();
+    build_synthetic_index(directory.path(), 40, 1000, 100);
+    let index = SymbolIndex::open(
+        directory.path(),
+        IndexConfig {
+            verify_checksums: false,
+            ..IndexConfig::default()
+        },
+    )
+    .expect("open");
+    assert_eq!(index.reset_reason(), None);
+    let stats = index.stats();
+    let names: u64 = index
+        .current()
+        .segments
+        .iter()
+        .map(|view| u64::from(view.segment.name_count()))
+        .sum();
+    println!(
+        "built {names} names in {} segments ({} MiB) in {:?}",
+        stats.segments,
+        stats.disk_bytes / 1_048_576,
+        started.elapsed()
+    );
+    let queries = [
+        (SearchMode::Substring, "lock"),
+        (SearchMode::Substring, "page_alloc"),
+        (SearchMode::Substring, "qzx"),
+        (SearchMode::Substring, "e"),
+        (SearchMode::Fuzzy, "pgal"),
+        (SearchMode::Fuzzy, "drmgemi"),
+        (SearchMode::Fuzzy, "kq"),
+        (SearchMode::Prefix, "drm_g"),
+    ];
+    for (mode, query) in queries {
+        let found = index.search(query, mode, 50).len();
+        let mut timings: Vec<Duration> = (0..7)
+            .map(|_| {
+                let started = Instant::now();
+                index.search(query, mode, 50);
+                started.elapsed()
+            })
+            .collect();
+        timings.sort();
+        println!(
+            "{mode:?} {query:?}: median {:?}, best {:?} ({found} results)",
+            timings[timings.len() / 2],
+            timings[0]
+        );
+    }
+}
+
+/// Substring and fuzzy search only score names containing the query's rarest byte, found by
+/// scanning the packed name text; they must still return exactly the names that scoring every
+/// name would, in the same order.
+#[test]
+fn substring_and_fuzzy_search_find_exactly_the_matching_names() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    build_synthetic_index(directory.path(), 3, 20, 40);
+    let index = SymbolIndex::open(directory.path(), config()).expect("open");
+    assert_eq!(index.reset_reason(), None);
+    let defined: std::collections::BTreeSet<String> = index
+        .files()
+        .iter()
+        .flat_map(|path| index.file_symbols(path).expect("symbols").definitions)
+        .map(|definition| definition.name)
+        .collect();
+    assert_eq!(defined.len(), 1200);
+
+    let mut queries: Vec<String> = ["", "_", "Q", "zz", "9", "lock_", "LOCK", "UnLock", "ä"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    // Text spanning two neighbouring names in the packed text, which no single name contains.
+    for view in &index.current().segments {
+        let segment = &view.segment;
+        let text = segment.names_text();
+        for name_index in (0..segment.name_count() - 1).step_by(37) {
+            let name = segment.name(name_index).expect("name");
+            let end = (name.text.0 + name.text.1) as usize;
+            queries.push(String::from_utf8_lossy(&text[end - 2..end + 2]).into_owned());
+        }
+    }
+    let names: Vec<&String> = defined.iter().collect();
+    let mut random = Random(5);
+    for _ in 0..200 {
+        let name = names[random.below(names.len() as u64) as usize].as_bytes();
+        let start = random.below(name.len() as u64) as usize;
+        let length = 1 + random.below((name.len() - start).min(8) as u64) as usize;
+        let mut piece: Vec<u8> = name[start..start + length].to_vec();
+        for byte in &mut piece {
+            if random.below(3) == 0 {
+                *byte = if byte.is_ascii_lowercase() {
+                    byte.to_ascii_uppercase()
+                } else {
+                    byte.to_ascii_lowercase()
+                };
+            }
+        }
+        // Fuzzy queries skip some of the bytes.
+        if random.below(2) == 0 && piece.len() > 2 {
+            piece.remove(1);
+        }
+        queries.push(String::from_utf8(piece).expect("ASCII"));
+    }
+
+    let mut nonempty = 0;
+    for query in &queries {
+        let folded = query.to_ascii_lowercase();
+        for mode in [SearchMode::Substring, SearchMode::Fuzzy] {
+            let mut expected: Vec<(String, u32)> = defined
+                .iter()
+                .filter_map(|name| {
+                    let score = match mode {
+                        SearchMode::Substring => {
+                            substring_score(name.as_bytes(), query.as_bytes(), folded.as_bytes())
+                        }
+                        _ => fuzzy_score(name.as_bytes(), folded.as_bytes()),
+                    };
+                    Some((name.clone(), score?))
+                })
+                .collect();
+            expected.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+            let found = |limit: usize| -> Vec<(String, u32)> {
+                index
+                    .search(query, mode, limit)
+                    .into_iter()
+                    .map(|found| (found.definition.name, found.score))
+                    .collect()
+            };
+            assert_eq!(found(100_000), expected, "{mode:?} {query:?}");
+            expected.truncate(7);
+            assert_eq!(found(7), expected, "{mode:?} {query:?} limited");
+            if !expected.is_empty() {
+                nonempty += 1;
+            }
+        }
+    }
+    assert!(nonempty > 300, "only {nonempty} queries matched anything");
+}
+
+/// Every name with a live definition in some segment, read record by record rather than from
+/// the packed name text.
+fn live_names(index: &SymbolIndex) -> std::collections::BTreeSet<String> {
+    let snapshot = index.current();
+    let mut names = std::collections::BTreeSet::new();
+    for view in &snapshot.segments {
+        let segment = &view.segment;
+        for name_index in 0..segment.name_count() {
+            let record = segment.name(name_index).expect("name record");
+            let live = segment
+                .definition_postings(record.definitions)
+                .any(|definition| {
+                    segment
+                        .definition(definition)
+                        .is_some_and(|definition| view.is_live(definition.file))
+                });
+            if live {
+                let name = segment.string(record.text).expect("UTF-8 name");
+                names.insert(name.to_owned());
+            }
+        }
+    }
+    names
+}
+
+/// Search as it was before it scanned the packed name text: every live name is scored, and the
+/// names are ranked by score and then by name. Qualified names answer qualified queries only.
+fn rank_every_name(
+    names: &std::collections::BTreeSet<String>,
+    query: &str,
+    mode: SearchMode,
+) -> Vec<(String, u32)> {
+    let folded: Vec<u8> = query
+        .bytes()
+        .map(|byte| byte.to_ascii_lowercase())
+        .collect();
+    let mut ranked: Vec<(String, u32)> = names
+        .iter()
+        .filter(|name| query.contains("::") || !name.contains(':'))
+        .filter_map(|name| {
+            let name_bytes = name.as_bytes();
+            let score = match mode {
+                SearchMode::Prefix => starts_with_folded(name_bytes, &folded)
+                    .then(|| prefix_score(name_bytes, query.as_bytes()))
+                    .flatten(),
+                SearchMode::Substring => substring_score(name_bytes, query.as_bytes(), &folded),
+                SearchMode::Fuzzy => fuzzy_score(name_bytes, &folded),
+            };
+            Some((name.clone(), score?))
+        })
+        .collect();
+    ranked.sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+    ranked
+}
+
+fn expand_ranked(
+    index: &SymbolIndex,
+    query: &str,
+    ranked: &[(String, u32)],
+    limit: usize,
+) -> Vec<(Definition, u32)> {
+    if query.contains("::") {
+        return merge_places(index, query, ranked, limit);
+    }
+    let mut matches = Vec::new();
+    for (name, score) in ranked {
+        for definition in index.definitions(name) {
+            if matches.len() >= limit {
+                return matches;
+            }
+            matches.push((definition, *score));
+        }
+    }
+    matches
+}
+
+/// A qualified query lists each place (file and name range) once, under its name closest to the
+/// query: the query itself, else the best scored, else the shortest (else the first by name).
+/// Places are ordered by that name's score, then its length and the name, then as
+/// [`SymbolIndex::definitions`] orders them.
+fn merge_places(
+    index: &SymbolIndex,
+    query: &str,
+    ranked: &[(String, u32)],
+    limit: usize,
+) -> Vec<(Definition, u32)> {
+    type Closeness = (
+        bool,
+        u32,
+        std::cmp::Reverse<usize>,
+        std::cmp::Reverse<String>,
+    );
+    let mut places: BTreeMap<(Arc<str>, Position, Position), (Closeness, usize, Definition, u32)> =
+        BTreeMap::new();
+    for (name, score) in ranked {
+        for (order, definition) in index.definitions(name).into_iter().enumerate() {
+            let closeness = (
+                name == query,
+                *score,
+                std::cmp::Reverse(name.len()),
+                std::cmp::Reverse(name.clone()),
+            );
+            let place = (
+                definition.path.clone(),
+                definition.name_range.start,
+                definition.name_range.end,
+            );
+            let closer = places
+                .get(&place)
+                .is_none_or(|(kept, ..)| closeness > *kept);
+            if closer {
+                places.insert(place, (closeness, order, definition, *score));
+            }
+        }
+    }
+    let mut kept: Vec<(Closeness, usize, Definition, u32)> = places.into_values().collect();
+    kept.sort_by(|left, right| {
+        (
+            std::cmp::Reverse(left.3),
+            left.2.name.len(),
+            &left.2.name,
+            left.1,
+        )
+            .cmp(&(
+                std::cmp::Reverse(right.3),
+                right.2.name.len(),
+                &right.2.name,
+                right.1,
+            ))
+    });
+    kept.into_iter()
+        .take(limit)
+        .map(|(_, _, definition, score)| (definition, score))
+        .collect()
+}
+
+/// The packed-text scan must agree with scoring every name on names that make it hard: letter
+/// case, `_`, digits, multi-byte characters, empty and very long names, the same name in several
+/// files and segments, names that are only called or assigned, deleted and replaced files, and a
+/// segment large enough to be split into several runs; and C++ functions recorded again under
+/// qualified names, which answer qualified queries only and are listed once per place.
+#[test]
+fn search_agrees_with_scoring_every_name() {
+    const SCOPES: &[&str] = &["Box", "outer", "ns", "Ä", "box"];
+    const PIECES: &[&str] = &[
+        "a", "e", "z", "q", "Q", "E", "_", "__", "0", "7", "ä", "Ä", "漢", "😀", "lock", "LOCK",
+        "Lock", "x_y",
+    ];
+    let mut random = Random(0x9e37_79b9_7f4a_7c15);
+    let piece = |random: &mut Random| PIECES[random.below(PIECES.len() as u64) as usize];
+    let pool: Vec<String> = (0..40_000)
+        .map(|_| match random.below(300) {
+            0 => String::new(),
+            1..=3 => piece(&mut random).repeat(120),
+            _ => (0..1 + random.below(6))
+                .map(|_| piece(&mut random))
+                .collect(),
+        })
+        .collect();
+
+    let directory = tempfile::tempdir().expect("tempdir");
+    let mut manifest = Manifest::default();
+    let mut live_paths: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    let mut dead: Vec<Vec<u64>> = Vec::new();
+    let shapes: Vec<(usize, usize)> = [(100, 900)]
+        .into_iter()
+        .chain(std::iter::repeat_n((8, 60), 5))
+        .collect();
+    for (segment, &(files, entries)) in shapes.iter().enumerate() {
+        dead.push(vec![0; files.div_ceil(64)]);
+        let mut inputs = Vec::new();
+        for file in 0..files {
+            let earlier: Vec<&String> = live_paths
+                .iter()
+                .filter(|(_, location)| location.0 != segment)
+                .map(|(path, _)| path)
+                .collect();
+            let reused = earlier
+                .get(random.below(earlier.len().max(1) as u64) as usize)
+                .filter(|_| random.below(4) == 0)
+                .map(|path| (*path).clone());
+            let path = match reused {
+                Some(path) => {
+                    if let Some((old_segment, old_file)) = live_paths.remove(&path) {
+                        dead[old_segment][old_file / 64] |= 1 << (old_file % 64);
+                    }
+                    path
+                }
+                None => format!("s{segment}/f{file}.c"),
+            };
+            live_paths.insert(path.clone(), (segment, file));
+            let mut extract = ExtractedFile::default();
+            for number in 0..entries {
+                let name = pool[random.below(pool.len() as u64) as usize].clone();
+                let position = Position {
+                    byte: number as u32 * 10,
+                    row: number as u32,
+                    column: 0,
+                };
+                match random.below(10) {
+                    0..=5 => {
+                        let definition = extract::ExtractedDefinition {
+                            name,
+                            kind: DefinitionKind::Function,
+                            is_static: false,
+                            is_declaration: random.below(4) == 0,
+                            name_range: Range::token(position, 4),
+                            item_range: Range::token(position, 4),
+                        };
+                        // As the extraction records a C++ member: its own name, then the same
+                        // place under up to four qualified names, innermost scope first.
+                        let scopes: Vec<&str> = match random.below(3) {
+                            0 => (0..1 + random.below(MAX_QUALIFIED_NAMES as u64))
+                                .map(|_| SCOPES[random.below(SCOPES.len() as u64) as usize])
+                                .collect(),
+                            _ => Vec::new(),
+                        };
+                        let qualified: Vec<String> = (0..scopes.len())
+                            .rev()
+                            .map(|start| {
+                                format!("{}::{}", scopes[start..].join("::"), definition.name)
+                            })
+                            .collect();
+                        extract.definitions.push(definition.clone());
+                        for name in qualified {
+                            extract.definitions.push(extract::ExtractedDefinition {
+                                name,
+                                ..definition.clone()
+                            });
+                        }
+                    }
+                    6..=8 => extract.calls.push(extract::ExtractedCall {
+                        callee: name,
+                        caller: None,
+                        kind: CallKind::Direct,
+                        in_macro_body: false,
+                        position,
+                    }),
+                    _ => extract.assignments.push(extract::ExtractedAssignment {
+                        field: name,
+                        value: pool[random.below(pool.len() as u64) as usize].clone(),
+                        container: None,
+                        kind: AssignmentKind::Assignment,
+                        position,
+                    }),
+                }
+            }
+            inputs.push(SegmentFileInput {
+                path: path.into(),
+                mtime: 1_000_000_000,
+                size: 1000,
+                verified_at: 100_000_000_000,
+                hash: [0; 16],
+                language: SourceLanguage::C,
+                extract,
+            });
+        }
+        storage::write_segment(&Segment::path(directory.path(), segment as u64), 0, &inputs)
+            .expect("writing a segment");
+        // Files are deleted at random, too.
+        if segment + 1 < shapes.len() {
+            for file in 0..files {
+                if random.below(6) == 0 {
+                    dead[segment][file / 64] |= 1 << (file % 64);
+                    live_paths.retain(|_, location| *location != (segment, file));
+                }
+            }
+        }
+    }
+    for (segment, &(files, _)) in shapes.iter().enumerate() {
+        manifest.segments.push(ManifestSegment {
+            id: segment as u64,
+            file_count: files as u32,
+            dead: dead[segment].clone(),
+        });
+    }
+    manifest.next_segment_id = shapes.len() as u64;
+    write_atomically(
+        &directory.path().join(MANIFEST_FILE_NAME),
+        &manifest.encode(),
+    )
+    .expect("writing the manifest");
+    let index = SymbolIndex::open(directory.path(), config()).expect("open");
+    assert_eq!(index.reset_reason(), None);
+    let snapshot = index.current();
+    let names = live_names(&index);
+    assert!(snapshot.segments[0].segment.name_count() > SEARCH_RUN_NAMES);
+    assert!(
+        snapshot
+            .segments
+            .iter()
+            .filter(|view| view.has_dead)
+            .count()
+            >= 3
+    );
+
+    let mut queries: Vec<String> = [
+        "",
+        "a",
+        "A",
+        "_",
+        "ä",
+        "Ä",
+        "漢",
+        "😀",
+        "lock",
+        "LOCK",
+        "z_",
+        "0",
+        "q",
+        "ä_",
+        "漢q",
+        "aaaa",
+        "Ä😀",
+        "__",
+        "x_ylock",
+        "::",
+        "Box::",
+        "box::",
+        "::a",
+        "outer::Box::",
+        "ns::Ä::",
+        "x::B",
+        "Box::a",
+        "BOX::LOCK",
+        "s::o",
+        ":",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    for view in &snapshot.segments {
+        let segment = &view.segment;
+        let text = segment.names_text();
+        let count = segment.name_count();
+        for name_index in (0..count).step_by(4_001).chain([count - 1]) {
+            let name = segment.name(name_index).expect("name");
+            let end = (name.text.0 + name.text.1) as usize;
+            // Across the boundary to the next name, and the end of the last name.
+            for (before, after) in [(2, 2), (1, 1), (1, 0)] {
+                if let Some(bytes) = text.get(end.saturating_sub(before)..end + after)
+                    && let Ok(query) = std::str::from_utf8(bytes)
+                {
+                    queries.push(query.to_owned());
+                }
+            }
+        }
+    }
+    // The names on either side of each split between runs, and the last of each segment.
+    let mut live_at_splits = 0;
+    for view in &snapshot.segments {
+        let count = view.segment.name_count();
+        let splits = (SEARCH_RUN_NAMES..count).step_by(SEARCH_RUN_NAMES as usize);
+        for name_index in splits
+            .flat_map(|split| [split - 1, split])
+            .chain([count - 1])
+        {
+            let name = view.segment.name_text(name_index).expect("name");
+            if names.contains(name) {
+                live_at_splits += 1;
+                queries.push(name.to_owned());
+            }
+        }
+    }
+    assert!(live_at_splits >= 6, "{live_at_splits} live names at splits");
+    let qualified_names: Vec<&String> = names.iter().filter(|name| name.contains("::")).collect();
+    assert!(qualified_names.len() > 1_000);
+    for _ in 0..12 {
+        let name = qualified_names[random.below(qualified_names.len() as u64) as usize];
+        queries.push(name.clone());
+        if let Some((_, unqualified)) = name.rsplit_once("::") {
+            queries.push(format!("::{unqualified}"));
+        }
+    }
+    for _ in 0..35 {
+        let name: Vec<char> = pool[random.below(pool.len() as u64) as usize]
+            .chars()
+            .collect();
+        if name.is_empty() {
+            continue;
+        }
+        let start = random.below(name.len() as u64) as usize;
+        let length = 1 + random.below((name.len() - start).min(6) as u64) as usize;
+        let mut piece: Vec<char> = name[start..start + length]
+            .iter()
+            .map(|&character| match random.below(3) {
+                0 => character.to_ascii_uppercase(),
+                1 => character.to_ascii_lowercase(),
+                _ => character,
+            })
+            .collect();
+        if piece.len() > 2 && random.below(2) == 0 {
+            piece.remove(1);
+        }
+        queries.push(piece.into_iter().collect());
+    }
+
+    let mut matched = 0;
+    let mut qualified_matched = 0;
+    for (query_number, query) in queries.iter().enumerate() {
+        for mode in [SearchMode::Prefix, SearchMode::Substring, SearchMode::Fuzzy] {
+            let ranked = rank_every_name(&names, query, mode);
+            // Merging by place looks up every ranked name, which takes too long in a debug build
+            // for qualified queries that match most qualified names.
+            if query.contains("::") && ranked.len() > 1_000 {
+                continue;
+            }
+            let mut limits = vec![0, 1, 7, 64];
+            if query_number % 4 == 0 && ranked.len() <= 3_000 {
+                limits.push(1_000_000);
+            }
+            for limit in limits {
+                let found: Vec<(Definition, u32)> = index
+                    .search(query, mode, limit)
+                    .into_iter()
+                    .map(|found| (found.definition, found.score))
+                    .collect();
+                let expected = expand_ranked(&index, query, &ranked, limit);
+                assert_eq!(
+                    found.len(),
+                    expected.len(),
+                    "{mode:?} {query:?} limit {limit}"
+                );
+                for (position, (found, expected)) in found.iter().zip(&expected).enumerate() {
+                    assert_eq!(
+                        found, expected,
+                        "{mode:?} {query:?} limit {limit}, match {position}"
+                    );
+                }
+            }
+            if !ranked.is_empty() {
+                matched += 1;
+                if query.contains("::") {
+                    qualified_matched += 1;
+                }
+            }
+        }
+    }
+    assert!(matched > 150, "only {matched} queries matched anything");
+    assert!(
+        qualified_matched > 30,
+        "only {qualified_matched} qualified queries matched anything"
+    );
+}
+
+/// A file source whose reads wait until released, holding the indexing workers busy.
+#[derive(Default)]
+struct BlockingSource {
+    files: MemorySource,
+    entered: AtomicUsize,
+    release: AtomicBool,
+}
+
+impl FileSource for BlockingSource {
+    fn read(&self, path: &str) -> io::Result<Vec<u8>> {
+        self.entered.fetch_add(1, Ordering::SeqCst);
+        while !self.release.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        self.files.read(path)
+    }
+}
+
+#[test]
+fn searches_do_not_wait_for_indexing() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let index = Arc::new(SymbolIndex::open(directory.path(), config()).expect("open"));
+    let source = MemorySource::default();
+    source.set("a.c", "int searchable_name(void) { return 0; }\n");
+    full_update(&index, &source, 1_000);
+
+    let blocking = Arc::new(BlockingSource::default());
+    for number in 0..8 {
+        blocking.files.set(
+            &format!("b{number}.c"),
+            &format!("int blocked_{number}(void);\n"),
+        );
+    }
+    let updater = std::thread::spawn({
+        let index = index.clone();
+        let blocking = blocking.clone();
+        move || {
+            index.update_files(
+                &blocking.files.entries(1_000),
+                &[],
+                &*blocking,
+                &AtomicBool::new(false),
+            )
+        }
+    });
+    let waiting_since = Instant::now();
+    while blocking.entered.load(Ordering::SeqCst) < config().parallelism.unwrap_or(1) {
+        assert!(
+            waiting_since.elapsed() < Duration::from_secs(60),
+            "the indexing workers never started"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+
+    // Every indexing worker is now busy with a file.
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let found = [SearchMode::Substring, SearchMode::Fuzzy]
+            .map(|mode| index.search("searchable", mode, 10).len());
+        sender.send(found).ok();
+    });
+    let found = receiver.recv_timeout(Duration::from_secs(10));
+    blocking.release.store(true, Ordering::SeqCst);
+    let stats = updater
+        .join()
+        .expect("the update panicked")
+        .expect("update_files");
+    assert_eq!(stats.files_parsed, 8);
+    assert_eq!(
+        found.expect("a search waited for the indexing workers"),
+        [1, 1]
+    );
+}
+
+/// A branch switch changes many files in quick succession. The manifest is not rewritten for
+/// each update, yet a copy of the directory taken at any moment (as a crash leaves it) opens
+/// without being discarded and catches up with one full update.
+#[test]
+fn manifest_writes_are_batched_and_every_moment_is_recoverable() {
+    let started = Instant::now();
+    let directory = tempfile::tempdir().expect("tempdir");
+    let small_segments = IndexConfig {
+        segment_file_limit: 4,
+        ..config()
+    };
+    let index = SymbolIndex::open(directory.path(), small_segments.clone()).expect("open");
+    let source = MemorySource::default();
+    let contents = |number: usize, version: usize| {
+        format!(
+            "int stable_{number}(void) {{ return changing_{version}(); }}\n\
+             int version_{number}_{version}(void) {{ return stable_{number}(); }}\n"
+        )
+    };
+    for number in 0..12 {
+        source.set(&format!("f{number:02}.c"), &contents(number, 0));
+    }
+    // Three segments, written once at the end of the full update.
+    full_update(&index, &source, 1_000);
+    assert_eq!(index.writer.lock().manifest_writes, 1);
+
+    let mut compactions = 0;
+    for step in 1..=20usize {
+        let changed: Vec<FileEntry> = (0..3)
+            .map(|offset| {
+                let number = (step * 7 + offset * 5) % 12;
+                let path = format!("f{number:02}.c");
+                let text = contents(number, step);
+                source.set(&path, &text);
+                entry(&path, text.len(), 2_000 + step as u64)
+            })
+            .collect();
+        let stats = index
+            .update_files(&changed, &[], &source, &AtomicBool::new(false))
+            .expect("update_files");
+        compactions += stats.segments_compacted;
+
+        let copy = tempfile::tempdir().expect("tempdir");
+        copy_directory(directory.path(), copy.path());
+        let recovered = SymbolIndex::open(copy.path(), small_segments.clone()).expect("open copy");
+        assert_eq!(recovered.reset_reason(), None, "step {step}");
+        full_update(&recovered, &source, 9_000);
+        compare_with_rebuild(&recovered, &source, &small_segments, step as u64);
+    }
+    assert!(compactions > 0);
+    let allowed = 1 + started.elapsed().as_secs() / MANIFEST_WRITE_INTERVAL.as_secs();
+    let writes = index.writer.lock().manifest_writes;
+    assert!(
+        writes <= 1 + allowed as usize,
+        "{writes} manifest writes for 20 updates"
+    );
+
+    // Closing the index writes what is still unwritten.
+    let before = dump(&index);
+    drop(index);
+    let index = SymbolIndex::open(directory.path(), small_segments).expect("reopen");
+    assert_eq!(index.reset_reason(), None);
+    assert_eq!(dump(&index), before);
+}
+
+/// An update that comes soon after the last write leaves the manifest unwritten; `save` writes
+/// it, once.
+#[test]
+fn save_writes_what_updates_left_unwritten() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let index = SymbolIndex::open(directory.path(), config()).expect("open");
+    let source = sample_source();
+    full_update(&index, &source, 1_000);
+    change_file(
+        &index,
+        &source,
+        "lib/other.c",
+        "int saved_later(void) { return 0; }
+",
+        2_000,
+    );
+    assert_eq!(index.writer.lock().manifest_writes, 1);
+    let on_disk = |name: &str| {
+        let copy = tempfile::tempdir().expect("tempdir");
+        copy_directory(directory.path(), copy.path());
+        let copied = SymbolIndex::open(copy.path(), config()).expect("open copy");
+        assert_eq!(copied.reset_reason(), None);
+        copied.definitions(name).len()
+    };
+    assert_eq!(on_disk("saved_later"), 0);
+
+    index.save().expect("save");
+    assert_eq!(index.writer.lock().manifest_writes, 2);
+    assert_eq!(on_disk("saved_later"), 1);
+    index.save().expect("save");
+    assert_eq!(
+        index.writer.lock().manifest_writes,
+        2,
+        "nothing was left to write"
+    );
+}
+
+/// A crash before the manifest is written leaves segments that the manifest does not name. They
+/// are removed when the index is opened again, but their ids are not given to new segments: a
+/// definition id naming one must stay stale.
+#[test]
+fn segments_lost_in_a_crash_do_not_lend_their_ids() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let index = SymbolIndex::open(directory.path(), config()).expect("open");
+    let source = sample_source();
+    full_update(&index, &source, 1_000);
+    let saved = segment_ids(directory.path());
+    change_file(
+        &index,
+        &source,
+        "lib/other.c",
+        "int lost_in_the_crash(void) { return 0; }\n",
+        2_000,
+    );
+    let lost = index.definitions("lost_in_the_crash");
+    assert_eq!(lost.len(), 1);
+    let crashed = tempfile::tempdir().expect("tempdir");
+    copy_directory(directory.path(), crashed.path());
+    assert!(
+        segment_ids(crashed.path()).contains(&lost[0].id.segment),
+        "the update was not written as a segment"
+    );
+    assert!(!saved.contains(&lost[0].id.segment));
+
+    let recovered = SymbolIndex::open(crashed.path(), config()).expect("open");
+    assert_eq!(recovered.reset_reason(), None);
+    assert_eq!(segment_ids(crashed.path()), saved);
+    assert_eq!(recovered.definition(lost[0].id), None);
+    change_file(
+        &recovered,
+        &source,
+        "lib/other.c",
+        "int written_after_the_crash(void) { return 0; }\n",
+        3_000,
+    );
+    assert_eq!(recovered.definition(lost[0].id), None);
+    let rewritten = recovered.definitions("written_after_the_crash");
+    assert_eq!(rewritten.len(), 1);
+    assert!(rewritten[0].id.segment > lost[0].id.segment);
+}
+
+#[cfg(unix)]
+#[test]
+fn index_files_are_private_to_the_user() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let parent = tempfile::tempdir().expect("tempdir");
+    let directory = parent.path().join("index");
+    let mode = |path: &Path| fs::metadata(path).expect("metadata").permissions().mode() & 0o777;
+    {
+        let index = SymbolIndex::open(&directory, config()).expect("open");
+        full_update(&index, &sample_source(), 1_000);
+    }
+    assert_eq!(mode(&directory), 0o700);
+    let mut files = 0;
+    for entry in fs::read_dir(&directory).expect("list") {
+        let path = entry.expect("entry").path();
+        assert_eq!(mode(&path) & 0o077, 0, "{}", path.display());
+        files += 1;
+    }
+    assert!(files >= 4, "{files} files");
+
+    // A directory left readable by others (an older version, a loose umask) is tightened.
+    fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).expect("chmod");
+    let _index = SymbolIndex::open(&directory, config()).expect("reopen");
+    assert_eq!(mode(&directory), 0o700);
 }
 
 #[test]
@@ -1692,4 +2645,122 @@ fn a_changed_file_that_vanished_is_removed() {
     assert_eq!(index.definitions("dispatch"), vec![]);
     assert!(index.file_symbols("lib/other.c").is_none());
     assert_eq!(index.stats().files, 2);
+}
+
+#[test]
+fn cpp_functions_are_found_by_qualified_and_plain_names() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let index = SymbolIndex::open(directory.path(), config()).expect("open");
+    let source = MemorySource::default();
+    source.set(
+        "src/widget.hpp",
+        "namespace ui {\n\
+         class Widget {\n\
+         public:\n\
+         \tstatic Widget make();\n\
+         \tvoid draw();\n\
+         };\n\
+         }\n",
+    );
+    source.set(
+        "src/widget.cpp",
+        "#include \"widget.hpp\"\n\
+         namespace ui {\n\
+         void Widget::draw() { this->paint(); detail::helper(); }\n\
+         Widget Widget::make() { return Widget(); }\n\
+         namespace detail { int helper() { return 0; } }\n\
+         }\n",
+    );
+    source.set(
+        "src/main.cpp",
+        "int main() { ui::Widget::make().draw(); return ui::detail::helper(); }\n",
+    );
+    full_update(&index, &source, 1_000);
+
+    let places = |name: &str| definition_places(&index, name);
+    let draw = vec![
+        (
+            "src/widget.cpp".to_owned(),
+            DefinitionKind::Method,
+            false,
+            2,
+        ),
+        ("src/widget.hpp".to_owned(), DefinitionKind::Method, true, 4),
+    ];
+    assert_eq!(places("draw"), draw);
+    assert_eq!(places("Widget::draw"), draw);
+    assert_eq!(places("ui::Widget::draw"), draw);
+    assert_eq!(
+        places("detail::helper"),
+        vec![(
+            "src/widget.cpp".to_owned(),
+            DefinitionKind::Function,
+            false,
+            4
+        )]
+    );
+    assert_eq!(places("ui::detail::helper"), places("helper"));
+    assert!(places("Widget::helper").is_empty());
+
+    // A static member function is callable from every file.
+    assert!(
+        index
+            .definitions("make")
+            .iter()
+            .all(|definition| !definition.is_static)
+    );
+
+    // Calls are recorded under the called name alone and belong to the function's own
+    // definition, which also owns the calls in its body.
+    assert_eq!(
+        caller_names(&index, "helper"),
+        vec![
+            ("src/main.cpp".to_owned(), Some("main".to_owned())),
+            ("src/widget.cpp".to_owned(), Some("draw".to_owned())),
+        ]
+    );
+    let widget = source.read("src/widget.cpp").expect("widget.cpp");
+    let paint = widget
+        .windows(5)
+        .position(|window| window == b"paint")
+        .expect("paint call");
+    let body = index
+        .enclosing_definition("src/widget.cpp", paint as u32)
+        .expect("inside draw");
+    assert_eq!(body.name, "draw");
+    let callees = index
+        .callees(body.id)
+        .expect("live definition")
+        .into_iter()
+        .map(|callee| (callee.callee, callee.kind))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        callees,
+        vec![
+            ("paint".to_owned(), CallKind::Member),
+            ("helper".to_owned(), CallKind::Direct),
+        ]
+    );
+
+    // A plain query lists each function once; a qualified one finds the qualified names.
+    for mode in [SearchMode::Prefix, SearchMode::Substring, SearchMode::Fuzzy] {
+        let names = index
+            .search("draw", mode, 20)
+            .into_iter()
+            .map(|found| found.definition.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["draw", "draw"], "{mode:?}");
+    }
+    let names = index
+        .search("Widget::", SearchMode::Prefix, 20)
+        .into_iter()
+        .map(|found| found.definition.name)
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(
+        names,
+        ["Widget::draw", "Widget::make"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect()
+    );
 }

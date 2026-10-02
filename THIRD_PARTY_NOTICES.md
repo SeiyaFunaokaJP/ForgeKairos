@@ -38,6 +38,25 @@ crates.io at the same version and are covered by `assets/licenses.md`.
 merman is an independent implementation and is not affiliated with the Mermaid
 project.
 
+### zed-i18n translations (modified)
+
+| | |
+|---|---|
+| Used for | The first drafts of the Japanese descriptions of actions and of the settings schema |
+| Version | The `ja-JP` translations at commit `c45ba0f6c3f63ffea40ab4431a9f00c7895d9d50` (2026-09-25), made for Zed v1.21.0 |
+| Source | <https://github.com/LI-NA/zed-i18n> (`translations/ja-JP.json`, keyed by `catalog/en-US.json` and `manifest/ui-strings.json`) |
+| License | GPL-3.0 (the project's catalogs and translations; its tooling is MIT) |
+| Copyright | Copyright (c) 2026 LI-NA and the zed-i18n contributors |
+| Location | `locales/ja/_action_docs.po`, `locales/ja/_settings_schema.po` (bundled into the application) |
+| License text | `LICENSE-GPL` (GPL-3.0, the same license the application is distributed under) |
+
+Changed by this fork (October 2026): zed-i18n translates each line of a doc comment on its
+own; the fork joins the lines of one description into one translation, changes
+the terms and the style to those of the fork's other Japanese translations
+(`locales/ja/*.po`), and corrects mistranslations it found. Descriptions zed-i18n
+does not have, such as those of the actions and settings the fork adds, are the
+fork's own translations. Nothing was taken from zed-i18n's other files.
+
 ## Used for development only, not distributed
 
 ### Mermaid

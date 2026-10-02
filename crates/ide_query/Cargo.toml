@@ -23,6 +23,7 @@ lsp.workspace = true
 project.workspace = true
 settings.workspace = true
 symbol_index.workspace = true
+unicode-normalization = "0.1"
 util.workspace = true
 
 [dev-dependencies]

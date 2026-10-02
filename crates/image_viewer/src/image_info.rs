@@ -72,7 +72,7 @@ impl Render for ImageInfo {
                 ImageFormat::Bmp => "BMP",
                 ImageFormat::Ico => "ICO",
                 ImageFormat::Avif => "Avif",
-                // 画像フォーマット名はデータなので未翻訳。不明な場合のみ日本語表示にする。
+                // Format names are the same in every language; only the fallback is a word to translate.
                 _ => i18n::t!("Unknown"),
             }
             .to_string(),

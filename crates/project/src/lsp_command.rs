@@ -8,7 +8,7 @@ use crate::{
     ProjectTransaction, PulledDiagnostics, ResolveState,
     lsp_store::{
         LanguageServerToQuery, LocalLspStore, LspDocumentLink, LspFoldingRange, LspStore,
-        result_buffers::ResultBuffers,
+        result_buffers::{OmittedLocations, ResultBuffers},
     },
 };
 use anyhow::{Context as _, Result};
@@ -210,9 +210,10 @@ pub(crate) struct GetImplementations {
     pub position: PointUtf16,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct GetReferences {
     pub position: PointUtf16,
+    pub omitted: OmittedLocations,
 }
 
 #[derive(Debug)]
@@ -2385,7 +2386,8 @@ impl LspCommand for GetReferences {
                         });
                     });
             }
-            result_buffers.finish(self.display_name());
+            let omitted = result_buffers.finish(self.display_name());
+            self.omitted.add(omitted);
         }
 
         Ok(references)
@@ -2419,6 +2421,7 @@ impl LspCommand for GetReferences {
             .await?;
         Ok(Self {
             position: buffer.read_with(&cx, |buffer, _| position.to_point_utf16(buffer)),
+            omitted: OmittedLocations::default(),
         })
     }
 

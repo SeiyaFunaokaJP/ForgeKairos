@@ -9,10 +9,11 @@ use anyhow::Result;
 use collections::HashSet;
 use futures::FutureExt as _;
 use gpui::{App, AsyncApp, Context, Entity, EntityId, Global, Task, WeakEntity};
-use language::{Bias, Buffer, CharKind, Point, ToOffset as _};
+use language::{Bias, Buffer, BufferSnapshot, CharKind, Point, ToOffset as _};
 use project::{Location, LocationLink, Project, ProjectPath, project_settings::ProjectSettings};
 use settings::Settings as _;
 use util::ResultExt as _;
+use workspace::{Toast, Workspace, notifications::NotificationId};
 
 /// More candidates than this are not opened; a name this common is better
 /// searched for.
@@ -53,6 +54,9 @@ fn index_query(buffer: &Entity<Buffer>, position: text::Anchor, cx: &App) -> Opt
     if name.starts_with(|character: char| character.is_ascii_digit()) {
         return None;
     }
+    if is_in_comment_or_string(&snapshot, range.clone()) {
+        return None;
+    }
     let near = buffer_ref.file().map(|file| ProjectPath {
         worktree_id: file.worktree_id(cx),
         path: file.path().clone(),
@@ -65,6 +69,43 @@ fn index_query(buffer: &Entity<Buffer>, position: text::Anchor, cx: &App) -> Opt
             range: snapshot.anchor_after(range.start)..snapshot.anchor_before(range.end),
         },
     })
+}
+
+/// Whether `range` is in a comment, or in a string literal other than an `#include`'s path:
+/// a word there is prose, and a definition of the same name found by name alone would be a
+/// jump to something unrelated. An `#include`'s path keeps the fallback it always had.
+fn is_in_comment_or_string(snapshot: &BufferSnapshot, range: Range<usize>) -> bool {
+    for layer in snapshot.syntax_layers_for_range(range.clone(), false) {
+        let Some(mut node) = layer
+            .node()
+            .descendant_for_byte_range(range.start, range.end)
+        else {
+            continue;
+        };
+        let mut in_string = false;
+        loop {
+            match node.kind() {
+                "comment" => return true,
+                "string_literal"
+                | "raw_string_literal"
+                | "char_literal"
+                | "concatenated_string" => in_string = true,
+                "preproc_include" => {
+                    in_string = false;
+                    break;
+                }
+                _ => {}
+            }
+            match node.parent() {
+                Some(parent) => node = parent,
+                None => break,
+            }
+        }
+        if in_string {
+            return true;
+        }
+    }
+    false
 }
 
 /// `Project::definitions`, completed from the symbol index in C and C++ when
@@ -186,20 +227,32 @@ async fn links_from_index(
             target: Location { buffer, range },
         });
     }
-    // Only a list of candidates has a title to mark; a single one is jumped
-    // to, and must not leave its target behind for a later list to match.
-    let targets = if links.len() > 1 {
-        targets
-    } else {
-        HashSet::default()
-    };
+    // A single target left behind cannot label a later list, which has more
+    // than one location; a language server's answer forgets it.
     cx.update(|cx| cx.set_global(NameMatchTargets(targets)));
     links
 }
 
+struct NameMatchJump;
+
+/// Says that a jump went to the index's only name match: unlike a list, a jump
+/// has no title to tell a guess from a language server's answer.
+pub(crate) fn note_name_match_jump(workspace: &Entity<Workspace>, cx: &mut App) {
+    workspace.update(cx, |workspace, cx| {
+        workspace.show_toast(
+            Toast::new(
+                NotificationId::unique::<NameMatchJump>(),
+                i18n::t!("Jumped by name match (no result from the language server)"),
+            )
+            .autohide(),
+            cx,
+        );
+    });
+}
+
 /// Whether every one of `locations` is a target of the index's most recent
-/// answer, so that their list is labelled as name matches. The answer is
-/// used up by the list it labels.
+/// answer, so that their list (or jump) is labelled as name matches. The
+/// answer is used up by what it labels.
 pub(crate) fn are_name_matches<'a>(
     locations: impl IntoIterator<Item = (&'a Entity<Buffer>, &'a Range<Point>)>,
     cx: &mut App,
@@ -228,6 +281,7 @@ mod tests {
     use gpui::TestAppContext;
     use language::{Language, LanguageConfig, LanguageMatcher};
     use project::symbol_index_store::build_index_for_tests;
+    use workspace::notifications::NotificationId;
 
     use crate::{
         Editor, GoToDefinition, Navigated, editor_tests::init_test,
@@ -379,6 +433,94 @@ mod tests {
             .expect("the language server is asked first");
         assert_eq!(active_path(&mut cx), "dir/other.c");
         assert_eq!(active_selection_text(&mut cx), "foo");
+        assert!(
+            has_name_match_notice(&mut cx),
+            "a jump by name match says so"
+        );
+    }
+
+    fn has_name_match_notice(cx: &mut EditorLspTestContext) -> bool {
+        cx.update_workspace(|workspace, _, _| {
+            workspace.has_notification(&NotificationId::unique::<super::NameMatchJump>())
+        })
+    }
+
+    fn c_language_with_grammar() -> Language {
+        Language::new(
+            LanguageConfig {
+                name: "C".into(),
+                matcher: LanguageMatcher {
+                    path_suffixes: vec!["c".to_string()],
+                    ..LanguageMatcher::default()
+                }
+                .into(),
+                ..LanguageConfig::default()
+            },
+            Some(tree_sitter_c::LANGUAGE.into()),
+        )
+    }
+
+    #[gpui::test]
+    async fn test_words_in_comments_and_strings_are_not_looked_up_by_name(cx: &mut TestAppContext) {
+        init_test(cx, |_| {});
+        let mut cx = EditorLspTestContext::new(
+            c_language_with_grammar(),
+            lsp::ServerCapabilities {
+                definition_provider: Some(lsp::OneOf::Left(true)),
+                ..lsp::ServerCapabilities::default()
+            },
+            cx,
+        )
+        .await;
+        let text = "#include \"foo.h\"\n#define CALL foo()\n/* see foo */\nconst char *s = \"foo\";\nchar c = 'f';\nint main(void) { return foo(); } // foo\n";
+        cx.set_state(&format!("ˇ{text}"));
+        let _index = install_index(
+            &mut cx,
+            ("dir/file.c", text),
+            &[
+                ("dir/other.c", "int foo(void) { return 1; }\n"),
+                ("dir/defs.c", "int f(void) { return 2; }\n"),
+            ],
+        )
+        .await;
+        cx.lsp
+            .set_request_handler::<lsp::request::GotoDefinition, _, _>(
+                |_, _| async move { Ok(None) },
+            );
+        cx.executor().run_until_parked();
+
+        let original = active_editor(&mut cx);
+        // The cursor goes on the last character of `needle`.
+        let place_cursor = |cx: &mut EditorLspTestContext, needle: &str| {
+            let offset = text.find(needle).expect("the needle is in the text") + needle.len() - 1;
+            cx.update_workspace(|workspace, window, cx| {
+                workspace.activate_item(&original, true, true, window, cx);
+            });
+            cx.set_state(&format!("{}ˇ{}", &text[..offset], &text[offset..]));
+            cx.executor().run_until_parked();
+        };
+
+        for (needle, why) in [
+            ("see foo", "in a block comment"),
+            ("s = \"foo", "in a string"),
+            ("// foo", "in a line comment"),
+            ("'f", "in a character literal"),
+        ] {
+            place_cursor(&mut cx, needle);
+            assert_eq!(go_to_definition(&mut cx).await, Navigated::No, "{why}");
+            assert_eq!(active_path(&mut cx), "dir/file.c", "{why}");
+        }
+        assert!(!has_name_match_notice(&mut cx));
+
+        for (needle, why) in [
+            ("CALL foo", "in a macro's body"),
+            ("#include \"foo", "in an #include's path, as before"),
+            ("return foo", "in code"),
+        ] {
+            place_cursor(&mut cx, needle);
+            assert_eq!(go_to_definition(&mut cx).await, Navigated::Yes, "{why}");
+            assert_eq!(active_path(&mut cx), "dir/other.c", "{why}");
+        }
     }
 
     #[gpui::test]
@@ -433,6 +575,7 @@ mod tests {
         let editors =
             cx.update_workspace(|workspace, _, cx| workspace.items_of_type::<Editor>(cx).count());
         assert_eq!(editors, 1, "the index's candidate in other.c is not opened");
+        assert!(!has_name_match_notice(&mut cx));
     }
 
     #[gpui::test]

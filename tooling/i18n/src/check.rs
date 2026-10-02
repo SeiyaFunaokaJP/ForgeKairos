@@ -1,6 +1,7 @@
 //! Compares the messages the sources mark with the PO files of every language.
 
-use crate::po_document::{compare_entries, describe_key, entry_key};
+use crate::doc_catalogs::{self, ACTION_DOCS_STEM, SETTINGS_SCHEMA_STEM};
+use crate::po_document::{compare_entries, describe_key, entry_key, read_document};
 use crate::sources::{Extraction, Message};
 use anyhow::{Context as _, Result};
 use i18n_catalog::{LintKind, PoEntry, PoError, PoFile, lint, parse_po};
@@ -23,6 +24,13 @@ pub enum Finding {
         file: String,
         line: usize,
         message: String,
+    },
+    /// (b') The English a `_action_docs.po` or `_settings_schema.po` entry translates has changed.
+    SourceChanged {
+        file: String,
+        line: usize,
+        message: String,
+        now: String,
     },
     /// (c) Placeholders, format specs and plural forms, as `i18n_catalog::lint` reports them.
     Lint(String),
@@ -48,7 +56,9 @@ pub enum Finding {
 impl Finding {
     fn fails(&self, strict: bool) -> bool {
         match self {
-            Finding::Untranslated { .. } | Finding::Obsolete { .. } => strict,
+            Finding::Untranslated { .. }
+            | Finding::Obsolete { .. }
+            | Finding::SourceChanged { .. } => strict,
             _ => true,
         }
     }
@@ -57,6 +67,10 @@ impl Finding {
 pub struct CheckOptions<'a> {
     pub languages: &'a [String],
     pub crates: &'a [String],
+    /// Action name → doc comment, to compare `_action_docs.po` with.
+    pub action_documentation: Option<&'a BTreeMap<String, String>>,
+    /// The descriptions of the settings schema, to compare `_settings_schema.po` with.
+    pub settings_schema_descriptions: Option<&'a BTreeSet<String>>,
 }
 
 struct LanguageFile {
@@ -96,7 +110,7 @@ pub fn check(
         let files = read_language(repository, &language)?;
         results.insert(
             language.clone(),
-            check_language(&language, &files, extraction, options.crates),
+            check_language(&language, &files, extraction, options),
         );
     }
     Ok(results)
@@ -153,17 +167,25 @@ fn message_entry(message: &Message) -> PoEntry {
 /// the crate's sources.
 const FIXTURE_FILES: [&str; 1] = ["i18n_catalog"];
 
-/// Messages under the contexts of the menus, the settings table and the command palette go into
-/// `_menus.po`, `_settings.po` and `_actions.po`, not into the crate's file.
+/// Messages under the contexts of the menus, the settings table, the command palette, the action
+/// descriptions and the settings schema go into `_menus.po`, `_settings.po`, `_actions.po`,
+/// `_action_docs.po` and `_settings_schema.po`, not into the crate's file.
 pub fn is_area_message(message: &Message) -> bool {
     message.key.context.as_deref().is_some_and(|context| {
         [
             i18n::context::ACTION,
             i18n::context::MENU,
             i18n::context::SETTINGS,
+            i18n::context::ACTION_DOCUMENTATION,
+            i18n::context::SETTINGS_SCHEMA,
         ]
         .contains(&context)
     })
+}
+
+/// Files of plain text that Zed shows as it is: braces in them are not placeholders.
+fn is_unformatted(stem: &str) -> bool {
+    [ACTION_DOCS_STEM, SETTINGS_SCHEMA_STEM].contains(&stem)
 }
 
 fn first_production_location(message: &Message) -> String {
@@ -179,8 +201,9 @@ fn check_language(
     language: &str,
     files: &[LanguageFile],
     extraction: &Extraction,
-    crates: &[String],
+    options: &CheckOptions,
 ) -> Vec<Finding> {
+    let crates = options.crates;
     let selected = |stem: &str| {
         if crates.is_empty() {
             true
@@ -192,7 +215,11 @@ fn check_language(
 
     for language_file in files.iter().filter(|file| selected(&file.stem)) {
         let LanguageFile {
-            path, text, file, ..
+            path,
+            text,
+            file,
+            stem,
+            ..
         } = language_file;
         findings.extend(
             language_file
@@ -220,6 +247,13 @@ fn check_language(
         // Every entry checked against itself: placeholders, specs, plural counts, duplicates.
         let itself = template(path, file.entries.iter().cloned());
         for issue in lint(&itself, file) {
+            let is_placeholder_issue = matches!(
+                issue.kind,
+                LintKind::PlaceholderMismatch { .. } | LintKind::FormatSpec { .. }
+            );
+            if is_placeholder_issue && is_unformatted(stem) {
+                continue;
+            }
             if matches!(
                 issue.kind,
                 LintKind::PlaceholderMismatch { .. }
@@ -270,6 +304,8 @@ fn check_language(
                         match message.key.context.as_deref() {
                             Some(i18n::context::ACTION) => "_actions.po",
                             Some(i18n::context::MENU) => "_menus.po",
+                            Some(i18n::context::ACTION_DOCUMENTATION) => "_action_docs.po",
+                            Some(i18n::context::SETTINGS_SCHEMA) => "_settings_schema.po",
                             _ => "_settings.po",
                         }
                     ),
@@ -353,6 +389,17 @@ fn check_language(
         }
     }
 
+    if let Some(action_documentation) = options.action_documentation
+        && selected(ACTION_DOCS_STEM)
+    {
+        findings.extend(check_action_docs(language, files, action_documentation));
+    }
+    if let Some(descriptions) = options.settings_schema_descriptions
+        && selected(SETTINGS_SCHEMA_STEM)
+    {
+        findings.extend(check_settings_schema(language, files, descriptions));
+    }
+
     // (d): every file of a language goes into one catalog.
     let mut translations: BTreeMap<(Option<&str>, &str), Vec<(&str, &PoEntry)>> = BTreeMap::new();
     for language_file in files {
@@ -392,6 +439,130 @@ fn check_language(
     findings
 }
 
+fn doc_catalog<'a>(files: &'a [LanguageFile], stem: &str) -> Option<&'a LanguageFile> {
+    files.iter().find(|file| file.stem == stem)
+}
+
+/// (a), (b) and (b') for `_action_docs.po`: actions without a description, descriptions of
+/// actions that are gone or have none now, and descriptions whose doc comment has changed since
+/// they were translated (the English is kept in the entry's `#.` comments).
+fn check_action_docs(
+    language: &str,
+    files: &[LanguageFile],
+    action_documentation: &BTreeMap<String, String>,
+) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let language_file = doc_catalog(files, ACTION_DOCS_STEM);
+    let path = language_file.map_or_else(
+        || format!("locales/{language}/{ACTION_DOCS_STEM}.po (missing)"),
+        |file| file.path.clone(),
+    );
+    let document = language_file.and_then(|file| read_document(&file.path, &file.text).ok());
+    let mut translated = BTreeSet::new();
+    for document_entry in document.iter().flat_map(|document| &document.entries) {
+        let entry = &document_entry.entry;
+        if entry.context.as_deref() != Some(i18n::context::ACTION_DOCUMENTATION) {
+            continue;
+        }
+        let message = describe_key(entry);
+        match action_documentation.get(&entry.msgid) {
+            None => findings.push(Finding::Obsolete {
+                file: path.clone(),
+                line: entry.line,
+                message,
+            }),
+            Some(current) => {
+                if entry.is_translated() {
+                    translated.insert(entry.msgid.as_str());
+                }
+                if doc_catalogs::english_original(&document_entry.comments).as_ref()
+                    != Some(current)
+                {
+                    findings.push(Finding::SourceChanged {
+                        file: path.clone(),
+                        line: entry.line,
+                        message,
+                        now: current.clone(),
+                    });
+                }
+            }
+        }
+    }
+    for action_name in action_documentation.keys() {
+        if !translated.contains(action_name.as_str()) {
+            findings.push(Finding::Untranslated {
+                file: path.clone(),
+                message: format!("[{}] {action_name:?}", i18n::context::ACTION_DOCUMENTATION),
+                location: "zed --dump-all-actions".to_string(),
+                translated_in: Vec::new(),
+            });
+        }
+    }
+    findings
+}
+
+/// (a), (b) and (b') for `_settings_schema.po`, whose msgids are the English descriptions: a
+/// translated description the schema no longer has is reported as changed when a description
+/// the file lacks shares most of its words, and as obsolete otherwise.
+fn check_settings_schema(
+    language: &str,
+    files: &[LanguageFile],
+    descriptions: &BTreeSet<String>,
+) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let language_file = doc_catalog(files, SETTINGS_SCHEMA_STEM);
+    let path = language_file.map_or_else(
+        || format!("locales/{language}/{SETTINGS_SCHEMA_STEM}.po (missing)"),
+        |file| file.path.clone(),
+    );
+    let entries: Vec<&PoEntry> = language_file
+        .map(|file| {
+            file.file
+                .entries
+                .iter()
+                .filter(|entry| entry.context.as_deref() == Some(i18n::context::SETTINGS_SCHEMA))
+                .collect()
+        })
+        .unwrap_or_default();
+    let translated: BTreeSet<&str> = entries
+        .iter()
+        .filter(|entry| entry.is_translated())
+        .map(|entry| entry.msgid.as_str())
+        .collect();
+    let untranslated: Vec<&String> = descriptions
+        .iter()
+        .filter(|description| !translated.contains(description.as_str()))
+        .collect();
+    for entry in &entries {
+        if descriptions.contains(&entry.msgid) {
+            continue;
+        }
+        let message = describe_key(entry);
+        match doc_catalogs::closest_replacement(&entry.msgid, untranslated.iter().copied()) {
+            Some(now) => findings.push(Finding::SourceChanged {
+                file: path.clone(),
+                line: entry.line,
+                message,
+                now: now.clone(),
+            }),
+            None => findings.push(Finding::Obsolete {
+                file: path.clone(),
+                line: entry.line,
+                message,
+            }),
+        }
+    }
+    for description in untranslated {
+        findings.push(Finding::Untranslated {
+            file: path.clone(),
+            message: format!("[{}] {description:?}", i18n::context::SETTINGS_SCHEMA),
+            location: "the settings schema".to_string(),
+            translated_in: Vec::new(),
+        });
+    }
+    findings
+}
+
 /// The report and whether the check failed.
 pub fn report(results: &BTreeMap<String, Vec<Finding>>, strict: bool) -> (String, bool) {
     let mut output = String::new();
@@ -402,6 +573,7 @@ pub fn report(results: &BTreeMap<String, Vec<Finding>>, strict: bool) -> (String
             |predicate: fn(&Finding) -> bool| findings.iter().filter(|f| predicate(f)).count();
         let untranslated = count(|finding| matches!(finding, Finding::Untranslated { .. }));
         let obsolete = count(|finding| matches!(finding, Finding::Obsolete { .. }));
+        let changed = count(|finding| matches!(finding, Finding::SourceChanged { .. }));
         let lint_count = count(|finding| matches!(finding, Finding::Lint(_)));
         let disagreements = count(|finding| matches!(finding, Finding::Disagreement { .. }));
         let order = count(|finding| matches!(finding, Finding::Order { .. }));
@@ -428,6 +600,12 @@ pub fn report(results: &BTreeMap<String, Vec<Finding>>, strict: bool) -> (String
                     line,
                     message,
                 } => format!("(b) obsolete {file}:{line}: {message}"),
+                Finding::SourceChanged {
+                    file,
+                    line,
+                    message,
+                    now,
+                } => format!("(b') source changed {file}:{line}: {message}, now {now:?}"),
                 Finding::Lint(text) => format!("(c) {text}"),
                 Finding::Disagreement {
                     message,
@@ -450,7 +628,7 @@ pub fn report(results: &BTreeMap<String, Vec<Finding>>, strict: bool) -> (String
         }
         writeln!(
             output,
-            "  summary: (a) untranslated {untranslated}, (b) obsolete {obsolete}, (c) lint {lint_count}, (d) disagreements {disagreements}, (e) order {order}, (f) CR {carriage_returns}, syntax errors {syntax}"
+            "  summary: (a) untranslated {untranslated}, (b) obsolete {obsolete}, (b') source changed {changed}, (c) lint {lint_count}, (d) disagreements {disagreements}, (e) order {order}, (f) CR {carriage_returns}, syntax errors {syntax}"
         )
         .ok();
     }
@@ -531,6 +709,8 @@ mod tests {
             &CheckOptions {
                 languages: &[],
                 crates,
+                action_documentation: None,
+                settings_schema_descriptions: None,
             },
         )
         .expect("check");
@@ -558,7 +738,7 @@ mod tests {
                 "  (e) out of order locales/ja/alpha.po:9: \"Kept for tests\" (run po-format)",
                 "  (e) out of order locales/ja/alpha.po:12: \"Gone\" (run po-format)",
                 "  (f) locales/ja/beta.po has 2 CR characters (use LF line endings)",
-                "  summary: (a) untranslated 2, (b) obsolete 1, (c) lint 3, (d) disagreements 1, (e) order 2, (f) CR 1, syntax errors 0",
+                "  summary: (a) untranslated 2, (b) obsolete 1, (b') source changed 0, (c) lint 3, (d) disagreements 1, (e) order 2, (f) CR 1, syntax errors 0",
                 "",
             ]
             .join("\n")
@@ -580,12 +760,85 @@ mod tests {
         let (output, failed) = run(root, &alpha, false);
         assert!(!failed, "{output}");
         assert!(
-            output.contains("(a) untranslated 1, (b) obsolete 1, (c) lint 0"),
+            output
+                .contains("(a) untranslated 1, (b) obsolete 1, (b') source changed 0, (c) lint 0"),
             "{output}"
         );
         assert!(!output.contains("beta.po has"), "{output}");
         assert!(!output.contains("_menus.po"), "{output}");
         let (_, failed) = run(root, &alpha, true);
         assert!(failed);
+    }
+
+    #[test]
+    fn action_docs_and_settings_schema_against_what_zed_describes() {
+        let directory = repository();
+        let root = directory.path();
+        write(
+            root,
+            "locales/ja/_action_docs.po",
+            &format!(
+                "{HEADER}#. Copy the selection.\nmsgctxt \"action documentation\"\nmsgid \"editor::Copy\"\nmsgstr \"選択範囲をコピーします。\"\n\n#. Paste.\nmsgctxt \"action documentation\"\nmsgid \"editor::Paste\"\nmsgstr \"{{ と }} の間に貼り付けます。\"\n\n#. Gone.\nmsgctxt \"action documentation\"\nmsgid \"editor::Removed\"\nmsgstr \"削除しました。\"\n"
+            ),
+        );
+        write(
+            root,
+            "locales/ja/_settings_schema.po",
+            &format!(
+                "{HEADER}msgctxt \"settings schema\"\nmsgid \"The tab size.\"\nmsgstr \"タブの幅。\"\n\nmsgctxt \"settings schema\"\nmsgid \"Unrelated old text.\"\nmsgstr \"古い文。\"\n\nmsgctxt \"settings schema\"\nmsgid \"Whether to show the tab bar.\"\nmsgstr \"タブバーを表示するかどうか。\"\n"
+            ),
+        );
+        let action_documentation = BTreeMap::from([
+            (
+                "editor::Copy".to_string(),
+                "Copy the selection.".to_string(),
+            ),
+            (
+                "editor::Paste".to_string(),
+                "Paste between {\nand }.".to_string(),
+            ),
+            ("editor::Cut".to_string(), "Cut the selection.".to_string()),
+        ]);
+        let descriptions = BTreeSet::from([
+            "The tab size.".to_string(),
+            "Whether to show the tab bar in the editor.".to_string(),
+            "Brand new.".to_string(),
+        ]);
+        let files = crate::sources::load_crates(root, &[]).expect("load");
+        let extraction = crate::sources::extract(&files);
+        let results = check(
+            root,
+            &extraction,
+            &CheckOptions {
+                languages: &[],
+                crates: &[],
+                action_documentation: Some(&action_documentation),
+                settings_schema_descriptions: Some(&descriptions),
+            },
+        )
+        .expect("check");
+        let (output, _) = report(&results, false);
+        let lines: Vec<&str> = output
+            .lines()
+            .filter(|line| line.contains("_action_docs") || line.contains("_settings_schema"))
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                "  (a) untranslated locales/ja/_action_docs.po: [action documentation] \"editor::Cut\" used at zed --dump-all-actions",
+                "  (a) untranslated locales/ja/_settings_schema.po: [settings schema] \"Brand new.\" used at the settings schema",
+                "  (a) untranslated locales/ja/_settings_schema.po: [settings schema] \"Whether to show the tab bar in the editor.\" used at the settings schema",
+                "  (b) obsolete locales/ja/_action_docs.po:17: [action documentation] \"editor::Removed\"",
+                "  (b) obsolete locales/ja/_settings_schema.po:10: [settings schema] \"Unrelated old text.\"",
+                "  (b') source changed locales/ja/_action_docs.po:12: [action documentation] \"editor::Paste\", now \"Paste between {\\nand }.\"",
+                "  (b') source changed locales/ja/_settings_schema.po:14: [settings schema] \"Whether to show the tab bar.\", now \"Whether to show the tab bar in the editor.\"",
+            ]
+        );
+        let (_, failed_strictly) = report(&results, true);
+        assert!(failed_strictly);
+        let only_doc_findings = results.values().flatten().all(
+            |finding| !matches!(finding, Finding::Lint(text) if text.contains("_action_docs")),
+        );
+        assert!(only_doc_findings, "{output}");
     }
 }

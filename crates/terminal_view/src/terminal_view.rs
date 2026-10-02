@@ -117,21 +117,21 @@ actions!(
     [
         /// Reruns the last executed task in the terminal.
         RerunTask,
-        /// ターミナルの出力の記録を、設定した保存先で開始または停止します。
+        /// Starts or stops recording the terminal's output to the configured location.
         ToggleSessionLog,
-        /// ターミナルの出力をファイルに記録し始めます (保存先を選びます)。
+        /// Starts recording the terminal's output to a file (asks where to save it).
         StartSessionLog,
-        /// ターミナルの出力の記録を止めます。
+        /// Stops recording the terminal's output.
         StopSessionLog,
-        /// 記録中のログファイルをファイルマネージャーで表示します。
+        /// Reveals the log file being recorded in the file manager.
         OpenSessionLog,
-        /// 記録中のログファイルをエディターで開き、末尾に追従します。
+        /// Opens the log file being recorded in the editor and follows its end.
         TailSessionLog,
-        /// 同じターミナルパネル内のすべてのペインへ同時に入力するかどうかを切り替えます。
+        /// Toggles typing into every pane of the same terminal panel at once.
         ToggleBroadcastInput,
-        /// 実行中のマクロを中止します。
+        /// Stops the running macro.
         CancelMacro,
-        /// 終了したシェルを同じ作業ディレクトリで起動し直します。
+        /// Restarts an exited shell in the same working directory.
         RestartTerminal,
     ]
 );

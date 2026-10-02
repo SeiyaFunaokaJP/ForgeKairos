@@ -65,6 +65,9 @@ msgstr "ステップ {label} はこの版では扱えない種類のステップ
 msgid "Step {label} is of a kind this version can't run. The macro was not run."
 msgstr "ステップ {label} はこの版では扱えない種類のステップです。マクロは実行していません。"
 
+msgid "Step {label}: {problem}. The macro was not run."
+msgstr "ステップ {label}: {problem}。マクロは実行していません。"
+
 msgid "Step {step_label}: the regular expression “{display_pattern}” is invalid ({error})"
 msgstr "ステップ {step_label}: 『{display_pattern}』の正規表現が不正です ({error})"
 
@@ -80,8 +83,17 @@ msgstr "ステップ {}: 『{display_pattern}』が {} 秒以内に現れませ�
 msgid "The saved password was rejected. Enter the password again in Quick Connect."
 msgstr "保存されたパスワードが拒否されました。クイック接続でパスワードを入力し直してください。"
 
+msgid "The “{field}” of this “{kind}” step has a value this version can't use"
+msgstr "この「{kind}」ステップの「{field}」の値はこの版では扱えません"
+
 msgid "This terminal can't record its output (it has no PTY)"
 msgstr "このターミナルは出力を記録できません (PTY がありません)"
+
+msgid "This “{kind}” step has a field this version doesn't know (“{field}”)"
+msgstr "この「{kind}」ステップには、この版では扱えない項目「{field}」があります"
+
+msgid "This “{kind}” step has no “{field}”"
+msgstr "この「{kind}」ステップには「{field}」がありません"
 
 msgid "Timeout → Continue"
 msgstr "タイムアウト → 続行"

@@ -194,6 +194,17 @@ pub(super) fn problem(_document: &GitGraphDocument) -> Option<SharedString> {
     None
 }
 
+// One message per kind, so a translation can word each button as a whole.
+fn add_gitgraph_item_label(kind: GitGraphItemKind) -> &'static str {
+    match kind {
+        GitGraphItemKind::Commit => i18n::t!("Add Commit"),
+        GitGraphItemKind::Branch => i18n::t!("Add Branch"),
+        GitGraphItemKind::Checkout => i18n::t!("Add Checkout"),
+        GitGraphItemKind::Merge => i18n::t!("Add Merge"),
+        GitGraphItemKind::CherryPick => i18n::t!("Add Cherry-pick"),
+    }
+}
+
 fn commit_type_label(commit_type: Option<GitCommitType>) -> &'static str {
     commit_type.map_or(i18n::t!("Type: Default"), GitCommitType::label)
 }
@@ -583,7 +594,7 @@ impl MermaidEditor {
         for kind in GitGraphItemKind::ALL {
             buttons = buttons.child(add_button(
                 SharedString::from(format!("mermaid-git-add-{kind:?}")),
-                i18n::t!("Add {label}", label = kind.label()),
+                add_gitgraph_item_label(kind),
                 cx.listener(move |this, _, window, cx| this.add_gitgraph_item(kind, window, cx)),
             ));
         }

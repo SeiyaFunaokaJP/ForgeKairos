@@ -552,7 +552,7 @@ impl TableEditor {
             .child(div().flex_1())
             .child(
                 Label::new(i18n::t!(
-                    "Tab / arrow keys move between cells. Ctrl+Enter writes the table."
+                    "Tab / arrow keys move between cells. Ctrl+Enter applies the table to the document."
                 ))
                 .size(LabelSize::Small)
                 .color(Color::Muted),

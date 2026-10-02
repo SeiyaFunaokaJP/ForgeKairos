@@ -197,6 +197,9 @@ msgstr "ホストを追加 (例: api.anthropic.com、*.corp.example)…"
 msgid "Add an absolute path (e.g. /path/to/directory)…"
 msgstr "絶対パスを追加 (例: /path/to/directory)…"
 
+msgid "Add an entry"
+msgstr "項目を追加"
+
 msgid "Add domain (e.g. github.com or *.npmjs.org)…"
 msgstr "ドメインを追加 (例: github.com、*.npmjs.org)…"
 
@@ -623,7 +626,7 @@ msgstr "環境変数"
 msgid "Environment Variables"
 msgstr "環境変数"
 
-msgid "Environment variables provided to the server process."
+msgid "Environment variables provided to the server process. Enter the values the server's documentation asks for here, such as API keys or tokens."
 msgstr "サーバーのプロセスに渡す環境変数です。API キーやトークンなど、サーバーの説明書が求める値をここに入力します。"
 
 msgid "Environment variables to fill in: {inputs}"
@@ -747,7 +750,7 @@ msgstr "GitHub がスキルの取得時に {} を返しました。"
 msgid "GitHub skill URLs must use https://"
 msgstr "GitHub のスキル URL は https:// を使用してください。"
 
-msgid "HTTP headers sent with each request to the server."
+msgid "HTTP headers sent with each request to the server. For a server that authenticates with a token, set Authorization to \"Bearer <token>\"."
 msgstr "サーバーへの各リクエストに付与する HTTP ヘッダーです。トークンで認証するサーバーでは Authorization に「Bearer <トークン>」を指定します。"
 
 msgid "HTTP requests to URLs"
@@ -978,6 +981,9 @@ msgstr "認証済みのモデルがありません"
 msgid "No decisions have been recorded yet."
 msgstr "許可・不許可の記録はまだありません。"
 
+msgid "No entries"
+msgstr "項目がありません"
+
 msgid "No external agents added yet. Click \"Add Agent\" to get started."
 msgstr "外部エージェントはまだ追加されていません。「エージェントを追加」から始めてください。"
 
@@ -1071,7 +1077,7 @@ msgstr "{docs_url} を開きます"
 msgid "Optional OAuth client ID"
 msgstr "OAuth クライアント ID (省略可)"
 
-msgid "Optional OAuth client ID used to authenticate with the server."
+msgid "Optional OAuth client ID used to authenticate with the server. Leave it empty if the server supports dynamic client registration: connecting then asks you to authenticate in the browser."
 msgstr "サーバーの認証に使う OAuth クライアント ID です (省略可)。サーバーが自動登録に対応していれば空欄のままで、接続時にブラウザーでの認証を求められます。"
 
 msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
@@ -1227,6 +1233,9 @@ msgstr "パスを削除"
 msgid "Remove Registry Agent"
 msgstr "レジストリのエージェントを削除"
 
+msgid "Remove {entry}"
+msgstr "{entry} を削除"
+
 msgid "Removed from the allowlist: {removed}"
 msgstr "許可リストから削除しました: {removed}"
 
@@ -1251,10 +1260,10 @@ msgstr "ユーザー設定の同名サーバーを置き換えています"
 msgid "Required. A unique name used to identify this MCP server."
 msgstr "必須。この MCP サーバーを識別する一意の名前です。"
 
-msgid "Required. Path to the executable that launches the server."
+msgid "Required. Path to the executable that launches the server, or the name of a command on the PATH (such as npx or uvx). Saving only checks that it can be found; it does not run it."
 msgstr "必須。サーバーを起動する実行ファイルのパス、または PATH にあるコマンドの名前 (npx・uvx など) です。保存するときに、見つかるかどうかだけを確かめます (実行はしません)。"
 
-msgid "Required. The base URL of the remote MCP server."
+msgid "Required. The base URL of the remote MCP server, such as https://example.com/mcp."
 msgstr "必須。リモート MCP サーバーのエンドポイントの URL です (例: https://example.com/mcp)。"
 
 msgid "Requires: {requires}"

@@ -26,6 +26,7 @@ use gpui::{
     App, AppContext as _, AsyncApp, Context, Entity, EventEmitter, SharedString, Subscription,
     Task, TaskExt as _, WeakEntity,
 };
+use language::{Buffer, BufferEvent};
 use rpc::{AnyProtoClient, TypedEnvelope, proto};
 use settings::{Settings as _, SettingsLocation, SettingsStore, SymbolIndexEnabled};
 use sha2::{Digest as _, Sha256};
@@ -33,13 +34,13 @@ use symbol_index::{
     Definition, FileEntry, FileSource, IndexConfig, Position, Progress, ProgressPhase,
     StaleIndexOutcome, SymbolIndex, is_indexable_path,
 };
-use text::Point;
+use text::{BufferId, Point};
 use util::{ResultExt as _, paths::PathMatcher, rel_path::RelPath};
 use worktree::{PathChange, Snapshot, UpdatedEntriesSet, Worktree, WorktreeId, WorktreeSettings};
 
 use crate::{
     ProjectPath,
-    buffer_store::BufferStore,
+    buffer_store::{BufferStore, BufferStoreEvent},
     project_settings::ProjectSettings,
     worktree_store::{WorktreeStore, WorktreeStoreEvent},
 };
@@ -211,6 +212,11 @@ struct LocalStore {
     /// Type queries read the project's edited (not saved) C and C++ buffers instead of the
     /// files on disk.
     buffer_store: WeakEntity<BufferStore>,
+    /// When each open buffer was last edited, in edit order: a type query that may read only
+    /// some of the edited buffers reads the most recently edited ones.
+    buffer_edits: HashMap<BufferId, u64>,
+    buffer_edit_count: u64,
+    buffer_subscriptions: HashMap<BufferId, Subscription>,
     /// Where each worktree's index directory goes. `None` indexes nothing,
     /// which is what a project on a fake file system, and any project in a
     /// test, gets unless the test says otherwise, so that tests never write
@@ -258,6 +264,7 @@ struct WorktreeIndex {
     _scan: Option<Task<()>>,
     _debounce: Option<Task<()>>,
     _job: Option<Task<()>>,
+    _save: Option<Task<()>>,
 }
 
 impl Drop for WorktreeIndex {
@@ -265,6 +272,21 @@ impl Drop for WorktreeIndex {
         // The update thread holds the index; it stops at the next file and
         // releases the directory's lock when it ends.
         self.cancel.store(true, Ordering::SeqCst);
+        close_index_in_background(self.index.take());
+    }
+}
+
+/// Closing an index saves what it has not saved yet (a large file, flushed to disk), which the
+/// foreground thread must not wait for. Opening the index again meanwhile waits for its lock.
+fn close_index_in_background(index: Option<Arc<SymbolIndex>>) {
+    let Some(index) = index else {
+        return;
+    };
+    if let Err(error) = std::thread::Builder::new()
+        .name("symbol-index-close".to_string())
+        .spawn(move || drop(index))
+    {
+        log::error!("symbol_index: cannot start a thread to close an index: {error}");
     }
 }
 
@@ -502,21 +524,34 @@ impl SymbolIndexStore {
         index_root: Option<PathBuf>,
         cx: &mut Context<Self>,
     ) -> Self {
-        let subscriptions = vec![
+        let mut subscriptions = vec![
             cx.subscribe(&worktree_store, Self::on_worktree_store_event),
             cx.observe_global::<SettingsStore>(Self::on_settings_changed),
         ];
+        let open_buffers = match buffer_store.upgrade() {
+            Some(buffer_store) => {
+                subscriptions.push(cx.subscribe(&buffer_store, Self::on_buffer_store_event));
+                buffer_store.read(cx).buffers().collect::<Vec<_>>()
+            }
+            None => Vec::new(),
+        };
         let mut this = Self {
             worktree_store: worktree_store.clone(),
             state: StoreState::Local(LocalStore {
                 fs,
                 buffer_store,
+                buffer_edits: HashMap::default(),
+                buffer_edit_count: 0,
+                buffer_subscriptions: HashMap::default(),
                 index_root,
                 worktrees: HashMap::default(),
                 downstream: None,
             }),
             _subscriptions: subscriptions,
         };
+        for buffer in &open_buffers {
+            this.watch_buffer_edits(buffer, cx);
+        }
         let worktrees = worktree_store.read(cx).worktrees().collect::<Vec<_>>();
         for worktree in worktrees {
             this.add_local_worktree(&worktree, cx);
@@ -1117,7 +1152,7 @@ impl SymbolIndexStore {
                 for entry in local.worktrees.values_mut() {
                     entry.applied = None;
                     if matches!(entry.status, SymbolIndexStatus::Unavailable { .. }) {
-                        entry.index = None;
+                        close_index_in_background(entry.index.take());
                     }
                 }
                 for worktree_id in worktree_ids {
@@ -1211,6 +1246,7 @@ impl SymbolIndexStore {
                 _scan: None,
                 _debounce: None,
                 _job: None,
+                _save: None,
             },
         );
         self.status_changed(worktree_id, cx);
@@ -1272,6 +1308,41 @@ impl SymbolIndexStore {
         }
     }
 
+    fn on_buffer_store_event(
+        &mut self,
+        _: Entity<BufferStore>,
+        event: &BufferStoreEvent,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            BufferStoreEvent::BufferAdded(buffer) => self.watch_buffer_edits(buffer, cx),
+            BufferStoreEvent::BufferDropped(buffer_id) => {
+                if let StoreState::Local(local) = &mut self.state {
+                    local.buffer_edits.remove(buffer_id);
+                    local.buffer_subscriptions.remove(buffer_id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn watch_buffer_edits(&mut self, buffer: &Entity<Buffer>, cx: &mut Context<Self>) {
+        let buffer_id = buffer.read(cx).remote_id();
+        let subscription = cx.subscribe(buffer, |this, buffer, event: &BufferEvent, cx| {
+            if matches!(event, BufferEvent::Edited { .. })
+                && let StoreState::Local(local) = &mut this.state
+            {
+                local.buffer_edit_count += 1;
+                local
+                    .buffer_edits
+                    .insert(buffer.read(cx).remote_id(), local.buffer_edit_count);
+            }
+        });
+        if let StoreState::Local(local) = &mut self.state {
+            local.buffer_subscriptions.insert(buffer_id, subscription);
+        }
+    }
+
     fn add_local_worktree(&mut self, worktree: &Entity<Worktree>, cx: &mut Context<Self>) {
         let StoreState::Local(local) = &mut self.state else {
             return;
@@ -1327,6 +1398,7 @@ impl SymbolIndexStore {
                 _scan: scan,
                 _debounce: None,
                 _job: None,
+                _save: None,
             },
         );
         if covered {
@@ -1385,7 +1457,7 @@ impl SymbolIndexStore {
         if !enabled {
             entry.cancel.store(true, Ordering::SeqCst);
             entry.cancel = Arc::new(AtomicBool::new(false));
-            entry.index = None;
+            close_index_in_background(entry.index.take());
             entry.pending = PendingWork::default();
             entry._debounce = None;
             entry._job = None;
@@ -1527,6 +1599,7 @@ impl SymbolIndexStore {
             return;
         }
         entry.job_running = true;
+        entry._save = None;
         let is_first_build = entry.index.is_none();
         entry._job = Some(cx.spawn(async move |this, cx| {
             while let Some(message) = receiver.next().await {
@@ -1594,8 +1667,39 @@ impl SymbolIndexStore {
                     self.set_status(worktree_id, status, cx);
                 }
                 self.start_job(worktree_id, cx);
+                self.save_when_idle(worktree_id, cx);
             }
         }
+    }
+
+    /// Updates write the index's manifest at most every few seconds, so once they stop, what
+    /// the last ones committed is written after a while (unless another update starts first).
+    fn save_when_idle(&mut self, worktree_id: WorktreeId, cx: &mut Context<Self>) {
+        let StoreState::Local(local) = &mut self.state else {
+            return;
+        };
+        let Some(entry) = local.worktrees.get_mut(&worktree_id) else {
+            return;
+        };
+        if entry.job_running {
+            return;
+        }
+        // Weak, so that a closed index lets go of its directory without waiting for this.
+        let Some(index) = entry.index.as_ref().map(Arc::downgrade) else {
+            return;
+        };
+        entry._save = Some(cx.spawn(async move |_, cx| {
+            cx.background_executor()
+                .timer(symbol_index::MANIFEST_WRITE_INTERVAL)
+                .await;
+            let Some(index) = index.upgrade() else {
+                return;
+            };
+            let saved = cx.background_spawn(async move { index.save() }).await;
+            if let Err(error) = saved {
+                log::warn!("symbol_index: saving the index: {error:#}");
+            }
+        }));
     }
 
     fn set_status(

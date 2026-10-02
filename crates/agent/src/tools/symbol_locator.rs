@@ -530,6 +530,67 @@ mod tests {
         }
     }
 
+    /// A reference the bound on what one response opens left out is not
+    /// silently missing: the model is told how many there were.
+    #[gpui::test]
+    async fn test_references_left_out_by_the_response_bound_are_reported(cx: &mut TestAppContext) {
+        let project = project_with_withheld_files(cx).await;
+        let line = "fn helper() {}\n";
+        let huge = line.repeat(
+            project::lsp_store::result_buffers::MAX_BYTES_OPENED_PER_RESPONSE as usize / line.len()
+                + 1,
+        );
+        let fs = project.read_with(cx, |project, _| project.fs().clone());
+        fs.save(
+            path!("/root/src/huge.rs").as_ref(),
+            &huge.as_str().into(),
+            Default::default(),
+        )
+        .await
+        .expect("the large file is written");
+        cx.executor().run_until_parked();
+        let (server, _registration) = start_language_server(&project, cx).await;
+        server.set_request_handler::<lsp::request::References, _, _>(|_, _| async move {
+            Ok(Some(
+                [path!("/root/src/other.rs"), path!("/root/src/huge.rs")]
+                    .into_iter()
+                    .map(|abs_path| {
+                        lsp::Location::new(
+                            lsp::Uri::from_file_path(abs_path).expect("an absolute path"),
+                            lsp::Range::new(lsp::Position::new(0, 3), lsp::Position::new(0, 9)),
+                        )
+                    })
+                    .collect(),
+            ))
+        });
+
+        #[allow(clippy::arc_with_non_send_sync)]
+        let find_references = Arc::new(FindReferencesTool::new(project.clone()));
+        let (event_stream, _events) = ToolCallEventStream::test();
+        let references = cx
+            .update(|cx| {
+                find_references.run(
+                    ToolInput::resolved(FindReferencesToolInput {
+                        symbol: SymbolLocator {
+                            file_path: "root/src/lib.rs".into(),
+                            line: 2,
+                            symbol_name: "helper".into(),
+                        },
+                    }),
+                    event_stream,
+                    cx,
+                )
+            })
+            .await
+            .expect("the references are found");
+        assert!(references.contains("other.rs"), "{references}");
+        assert!(!references.contains("huge.rs"), "{references}");
+        assert!(
+            references.contains("1 more reference was left out"),
+            "{references}"
+        );
+    }
+
     /// The model names the file to start from, so it can name one it may not
     /// read. Resolving it would hand out the line: as the snippet of the
     /// answer, or inside the "symbol not found on this line" error.

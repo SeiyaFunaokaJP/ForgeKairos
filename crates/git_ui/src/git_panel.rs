@@ -1605,9 +1605,17 @@ pub(crate) fn commit_message_editor(
 
         Some(ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(focus_handle)
-                .action_disabled_when(!has_selection, "Cut", Box::new(editor::actions::Cut))
-                .action_disabled_when(!has_selection, "Copy", Box::new(editor::actions::Copy))
-                .action("Paste", Box::new(editor::actions::Paste))
+                .action_disabled_when(
+                    !has_selection,
+                    i18n::t!("Cut"),
+                    Box::new(editor::actions::Cut),
+                )
+                .action_disabled_when(
+                    !has_selection,
+                    i18n::t!("Copy"),
+                    Box::new(editor::actions::Copy),
+                )
+                .action(i18n::t!("Paste"), Box::new(editor::actions::Paste))
         }))
     });
     commit_editor
@@ -3005,19 +3013,30 @@ impl GitPanel {
                 .take(5)
                 .join("\n");
             if entries.len() > 5 {
-                details.push_str(&format!("\nand {} more…", entries.len() - 5));
+                details.push_str(&i18n::t!("\nand {} more…", entries.len() - 5));
             }
             let all_created = entries.iter().all(|entry| entry.status.is_created());
+            let any_created = entries.iter().any(|entry| entry.status.is_created());
             let (message, confirm_label) = if all_created {
-                ("Trash these files?", "Trash")
+                (i18n::t!("Trash these files?"), i18n::t!("Trash"))
+            } else if any_created {
+                // New files are moved to the trash below, which the plain question would not
+                // tell the user.
+                (
+                    i18n::t!("Discard changes to these files? New files are moved to the trash."),
+                    i18n::t!("Discard Changes"),
+                )
             } else {
-                ("Discard changes to these files?", "Discard Changes")
+                (
+                    i18n::t!("Discard changes to these files?"),
+                    i18n::t!("Discard Changes"),
+                )
             };
             let prompt = window.prompt(
                 PromptLevel::Warning,
                 message,
                 Some(&details),
-                &[confirm_label, "Cancel"],
+                &[confirm_label, i18n::t!("Cancel")],
                 cx,
             );
             cx.background_spawn(prompt)
@@ -9159,6 +9178,16 @@ impl GitPanel {
         )
     }
 
+    // gpui recognizes a cancel button from its label only when the label is the plain
+    // "Cancel" translation; this one is translated differently, so Escape would do nothing
+    // unless the button is marked as the cancel button here.
+    fn uncertain_abort_prompt_answers() -> [gpui::PromptButton; 2] {
+        [
+            gpui::PromptButton::new(i18n::tc!("git sequencer prompt", "Abort")),
+            gpui::PromptButton::cancel(i18n::tc!("git sequencer prompt", "Cancel")),
+        ]
+    }
+
     fn run_sequencer_step(
         &mut self,
         kind: SequencerKind,
@@ -9182,10 +9211,7 @@ impl GitPanel {
                     git::repository::uncertain_rebase_message(),
                     kind.subcommand()
                 )),
-                &[
-                    i18n::tc!("git sequencer prompt", "Abort"),
-                    i18n::tc!("git sequencer prompt", "Cancel"),
-                ],
+                &Self::uncertain_abort_prompt_answers(),
                 cx,
             );
             cx.spawn_in(window, async move |this, cx| {
@@ -18625,6 +18651,26 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_uncertain_abort_prompt_cancels_on_escape_in_japanese() {
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+
+        let answers = GitPanel::uncertain_abort_prompt_answers();
+        let labels: Vec<&str> = answers
+            .iter()
+            .map(|answer| answer.label().as_ref())
+            .collect();
+        assert_eq!(labels, ["中止する", "やめる"]);
+        // The translated label alone is not one gpui recognizes as cancel.
+        assert!(!gpui::PromptButton::from(labels[1]).is_cancel());
+        assert_eq!(
+            answers.iter().position(gpui::PromptButton::is_cancel),
+            Some(1)
+        );
+    }
+
     #[gpui::test]
     async fn test_discard_tracked_changes_prompt_in_japanese(cx: &mut TestAppContext) {
         init_test(cx);
@@ -20532,6 +20578,27 @@ mod tests {
             "created files should be trashed by bulk revert",
         );
         assert!(!fs.is_file(path!("/project/new2.txt").as_ref()).await);
+    }
+
+    #[gpui::test]
+    async fn test_bulk_revert_of_mixed_files_says_new_files_are_trashed(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (_fs, _project, panel, mut cx) = setup_flat_marks_fixture(cx).await;
+
+        panel.update_in(&mut cx, |panel, window, cx| {
+            panel.marked_entries.insert(repo_path("a.txt"));
+            panel.marked_entries.insert(repo_path("new1.txt"));
+            panel.selected_entry = entry_index_for_repo_path(panel, &repo_path("a.txt"));
+            panel.revert_selected(&git::RestoreFile::default(), window, cx);
+        });
+
+        let (message, _) = cx.pending_prompt().expect("a bulk revert should ask first");
+        assert_eq!(
+            message,
+            "Discard changes to these files? New files are moved to the trash."
+        );
+        cx.simulate_prompt_answer("Cancel");
+        cx.executor().run_until_parked();
     }
 
     #[gpui::test]

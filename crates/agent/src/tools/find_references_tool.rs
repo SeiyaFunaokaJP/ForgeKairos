@@ -9,6 +9,9 @@ use crate::{AgentTool, ToolCallEventStream, ToolInput};
 use agent_client_protocol::schema::v1 as acp;
 use gpui::{App, Entity, SharedString, Task};
 use project::Project;
+use project::lsp_store::result_buffers::{
+    MAX_BYTES_OPENED_PER_RESPONSE, MAX_FILES_OPENED_PER_RESPONSE,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -73,15 +76,16 @@ impl AgentTool for FindReferencesTool {
             let resolved = input.symbol.resolve(&project, cx).await?;
 
             let references_task = project.update(cx, |project, cx| {
-                project.references(&resolved.buffer, resolved.position, cx)
+                project.references_reporting_omissions(&resolved.buffer, resolved.position, cx)
             });
 
-            let references = references_task
+            let (references, omitted) = references_task
                 .await
                 .map_err(|e| format!("Find references failed: {e}"))?
+                .map(|answer| (answer.locations, answer.omitted))
                 .unwrap_or_default();
 
-            if references.is_empty() {
+            if references.is_empty() && omitted == 0 {
                 if !has_language_server(&project, &resolved.buffer, cx) {
                     mark_card_missing_language_server(
                         &event_stream,
@@ -110,10 +114,21 @@ impl AgentTool for FindReferencesTool {
                 });
                 write!(output, "\n## {display}\n").ok();
             }
+            if omitted > 0 {
+                write!(output, "\n{}\n", omitted_references_note(omitted)).ok();
+            }
 
             Ok(output)
         })
     }
+}
+
+fn omitted_references_note(omitted: usize) -> String {
+    format!(
+        "{omitted} more reference{} left out: one language server response opens at most {MAX_FILES_OPENED_PER_RESPONSE} files and {} MiB.",
+        if omitted == 1 { " was" } else { "s were" },
+        MAX_BYTES_OPENED_PER_RESPONSE / (1024 * 1024)
+    )
 }
 
 fn find_references_title(symbol_name: &str) -> String {

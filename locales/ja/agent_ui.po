@@ -1037,6 +1037,12 @@ msgstr "サブエージェントを全画面表示"
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド"
 
+msgid "Message {} — @ to include context"
+msgstr "{} にメッセージを送信、@ でコンテキストを追加"
+
+msgid "Message {} — @ to include context, / for commands"
+msgstr "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド"
+
 msgid "Minimize Message Editor"
 msgstr "メッセージエディターを最小化"
 
@@ -2409,6 +2415,22 @@ msgstr "自動"
 msgctxt "PanelTabBar"
 msgid "Never"
 msgstr "表示しない"
+
+msgctxt "agent profile"
+msgid "Ask"
+msgstr "質問"
+
+msgctxt "agent profile"
+msgid "Edit Only"
+msgstr "編集のみ"
+
+msgctxt "agent profile"
+msgid "Minimal"
+msgstr "最小"
+
+msgctxt "agent profile"
+msgid "Write"
+msgstr "書き込み"
 
 msgctxt "api key"
 msgid "Cancel"

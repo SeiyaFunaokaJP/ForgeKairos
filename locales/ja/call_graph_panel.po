@@ -47,6 +47,9 @@ msgstr "正確: 言語サーバーの回答です"
 msgid "Filter shown functions…"
 msgstr "表示中の関数を絞り込む…"
 
+msgid "Folders deeper than the file scan depth outside git repositories are not in the symbol index."
+msgstr "git リポジトリの外の、走査の深さ (file_scan_depth) より深いフォルダーはシンボル索引に入っていません。"
+
 msgid "Follow the Cursor"
 msgstr "カーソルに追従"
 
@@ -124,6 +127,9 @@ msgstr "先頭 {limit} 件のみ"
 
 msgid "Open a file and put the cursor on a function."
 msgstr "ファイルを開き、関数にカーソルを置いてください。"
+
+msgid "Open the Setting"
+msgstr "設定を開く"
 
 msgid "Preparing the symbol index…"
 msgstr "索引の準備中…"

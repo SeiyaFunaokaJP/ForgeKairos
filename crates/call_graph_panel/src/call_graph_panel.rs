@@ -208,6 +208,15 @@ impl RecentBuffers {
     }
 }
 
+/// The setting that decides how deep a worktree outside git repositories is scanned.
+const FILE_SCAN_DEPTH_SETTING: &str = "file_scan_depth";
+
+fn scan_depth_notice() -> &'static str {
+    i18n::t!(
+        "Folders deeper than the file scan depth outside git repositories are not in the symbol index."
+    )
+}
+
 /// What the status line says about the symbol index.
 #[derive(Clone, Debug, PartialEq)]
 enum IndexSummary {
@@ -302,6 +311,9 @@ pub struct CallGraphPanel {
     /// Whether the symbol index was being built when its status last changed,
     /// so that finishing asks again for what it answered in the meantime.
     index_was_building: bool,
+    /// Whether an indexed worktree left folders deeper than `file_scan_depth` unscanned, so
+    /// that their files are not in the index.
+    index_misses_deep_folders: bool,
     active_editor_subscription: Option<Subscription>,
     pending_serialization: Task<Option<()>>,
     _subscriptions: Vec<Subscription>,
@@ -366,6 +378,12 @@ impl CallGraphPanel {
                     if let project::Event::WorktreeRemoved(worktree_id) = event {
                         panel.recent_buffers.release_worktree(*worktree_id, cx);
                     }
+                    if let project::Event::WorktreeAdded(_)
+                    | project::Event::WorktreeRemoved(_)
+                    | project::Event::WorktreeUpdatedEntries(..) = event
+                    {
+                        panel.update_index_misses_deep_folders(cx);
+                    }
                     if let project::Event::LanguageServerBufferRegistered { buffer_id, .. } = event
                         && panel.pending_root.as_ref().is_some_and(|pending| {
                             pending
@@ -404,6 +422,7 @@ impl CallGraphPanel {
             let index_subscription =
                 cx.subscribe_in(&index_store, window, |panel, _, event, window, cx| {
                     let SymbolIndexStoreEvent::StatusChanged(_) = event;
+                    panel.update_index_misses_deep_folders(cx);
                     panel.index_status_changed(window, cx);
                 });
             let mut follow_cursor_setting = CallGraphPanelSettings::get_global(cx).follow_cursor;
@@ -431,6 +450,7 @@ impl CallGraphPanel {
                     } else if excluded_changed && panel.direction == CallDirection::Outgoing {
                         panel.rebuild_from_root(window, cx);
                     }
+                    panel.update_index_misses_deep_folders(cx);
                     cx.notify();
                 },
             );
@@ -463,6 +483,7 @@ impl CallGraphPanel {
                 recent_buffers: RecentBuffers::default(),
                 buffer_release_task: None,
                 index_was_building: false,
+                index_misses_deep_folders: false,
                 active_editor_subscription: None,
                 pending_serialization: Task::ready(None),
                 _subscriptions: vec![
@@ -475,6 +496,7 @@ impl CallGraphPanel {
                 ],
             };
             panel.index_was_building = panel.index_is_building(cx);
+            panel.index_misses_deep_folders = panel.compute_index_misses_deep_folders(cx);
             panel.watch_active_editor(workspace.active_item_as::<Editor>(cx), window, cx);
             panel
         })
@@ -728,6 +750,38 @@ impl CallGraphPanel {
                 SymbolIndexStatus::Indexing { .. } | SymbolIndexStatus::Scanning
             )
         })
+    }
+
+    /// Outside a git repository, a worktree scans folders only down to `file_scan_depth`;
+    /// the deeper ones wait to be opened, and the symbol index never sees their files. Decided
+    /// the way the status bar decides to say so.
+    fn compute_index_misses_deep_folders(&self, cx: &App) -> bool {
+        let project = self.project.read(cx);
+        project
+            .symbol_index_store()
+            .read(cx)
+            .statuses(cx)
+            .iter()
+            .any(|(worktree_id, status)| {
+                !matches!(status, SymbolIndexStatus::Disabled)
+                    && project
+                        .worktree_for_id(*worktree_id, cx)
+                        .is_some_and(|worktree| {
+                            let worktree = worktree.read(cx);
+                            worktree.deferred_scan_dir_count() > 0
+                                && worktree.as_local().is_none_or(|local_worktree| {
+                                    local_worktree.settings().file_scan_depth.is_some()
+                                })
+                        })
+            })
+    }
+
+    fn update_index_misses_deep_folders(&mut self, cx: &mut Context<Self>) {
+        let misses = self.compute_index_misses_deep_folders(cx);
+        if misses != self.index_misses_deep_folders {
+            self.index_misses_deep_folders = misses;
+            cx.notify();
+        }
     }
 
     fn index_status_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1698,7 +1752,15 @@ impl CallGraphPanel {
 
     fn render_index_status(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let summary = self.shown_index_summary(cx)?;
-        let (message, hint) = index_summary_text(&summary)?;
+        let text = index_summary_text(&summary);
+        let misses_deep_folders = self.index_misses_deep_folders
+            && !matches!(
+                summary,
+                IndexSummary::Disabled | IndexSummary::Unavailable(_)
+            );
+        if text.is_none() && !misses_deep_folders {
+            return None;
+        }
         let building = matches!(
             summary,
             IndexSummary::Building { .. } | IndexSummary::Preparing
@@ -1713,26 +1775,59 @@ impl CallGraphPanel {
                 .gap_0p5()
                 .border_b_1()
                 .border_color(cx.theme().colors().border_variant)
-                .child(
-                    h_flex()
-                        .gap_1()
-                        .when(building, |this| {
-                            this.child(
-                                Icon::new(IconName::ArrowCircle)
-                                    .size(IconSize::XSmall)
-                                    .color(Color::Muted)
-                                    .with_rotate_animation(2),
+                .when_some(text, |this, (message, hint)| {
+                    this.child(
+                        h_flex()
+                            .gap_1()
+                            .when(building, |this| {
+                                this.child(
+                                    Icon::new(IconName::ArrowCircle)
+                                        .size(IconSize::XSmall)
+                                        .color(Color::Muted)
+                                        .with_rotate_animation(2),
+                                )
+                            })
+                            .child(
+                                Label::new(message)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Muted),
+                            ),
+                    )
+                    .children(
+                        hint.map(|hint| {
+                            Label::new(hint).size(LabelSize::XSmall).color(Color::Muted)
+                        }),
+                    )
+                })
+                .when(misses_deep_folders, |this| {
+                    this.child(
+                        h_flex()
+                            .debug_selector(|| "call-graph-scan-depth-notice".into())
+                            .gap_1()
+                            .flex_wrap()
+                            .child(
+                                Label::new(scan_depth_notice())
+                                    .size(LabelSize::XSmall)
+                                    .color(Color::Warning),
                             )
-                        })
-                        .child(
-                            Label::new(message)
-                                .size(LabelSize::Small)
-                                .color(Color::Muted),
-                        ),
-                )
-                .children(
-                    hint.map(|hint| Label::new(hint).size(LabelSize::XSmall).color(Color::Muted)),
-                )
+                            .child(
+                                Button::new(
+                                    "call-graph-file-scan-depth",
+                                    i18n::t!("Open the Setting"),
+                                )
+                                .label_size(LabelSize::XSmall)
+                                .on_click(|_, window, cx| {
+                                    window.dispatch_action(
+                                        Box::new(zed_actions::OpenSettingsAt {
+                                            path: FILE_SCAN_DEPTH_SETTING.to_string(),
+                                            target: None,
+                                        }),
+                                        cx,
+                                    );
+                                }),
+                            ),
+                    )
+                })
                 .into_any_element(),
         )
     }

@@ -362,14 +362,14 @@ actions!(
         ImportThreadsFromOtherChannels,
         /// Starts a new terminal thread.
         NewTerminalThread,
-        /// いま見ているスレッドをワークスペースのタブとして開きます。パネルは
-        /// 新しい下書きに戻ります。
+        /// Opens the current thread as a tab in the workspace. The panel goes back
+        /// to a new draft.
         OpenThreadInTab,
-        /// いま見ているスレッドを右に分割したペインのタブとして開きます。
+        /// Opens the current thread as a tab in a pane split to the right.
         OpenThreadInSplit,
-        /// タブで開いているスレッドをエージェントパネルに戻します。
+        /// Moves the thread open in a tab back to the agent panel.
         MoveThreadToPanel,
-        /// 使われていないので止めたエージェントに、何も送らずに接続し直します。
+        /// Reconnects to an agent that was stopped while unused, without sending anything.
         ReconnectParkedAgent,
     ]
 );

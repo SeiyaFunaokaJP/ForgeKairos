@@ -30,7 +30,11 @@ pub(crate) const MANIFEST_MAGIC: &[u8; 8] = b"ZSYMMAN\0";
 /// Bump whenever the layout of segments or the manifest, or the meaning of extracted data,
 /// changes. Indexes with another version are discarded and rebuilt.
 /// 2: lone member macros in struct bodies are blanked before parsing (`extract.rs`).
-pub(crate) const FORMAT_VERSION: u32 = 2;
+/// 3: C++ definitions are also recorded under their qualified names, `static` follows
+/// anonymous namespaces and class members, and more is rewritten before parsing (member macros
+/// ending in a call, `\` with trailing spaces and `/*` inside literals in `#define`s)
+/// (`extract.rs`).
+pub(crate) const FORMAT_VERSION: u32 = 3;
 
 const NONE: u32 = u32::MAX;
 
@@ -306,8 +310,53 @@ pub(crate) fn parse_segment_file_name(name: &str) -> Option<u64> {
     u64::from_str_radix(hex, 16).ok()
 }
 
+/// Options for creating index files. The index holds the names in the user's sources, so on
+/// Unix only the user may read or write its files.
+pub(crate) fn private_file_options() -> fs::OpenOptions {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let mut options = File::options();
+        options.mode(0o600);
+        options
+    }
+    #[cfg(not(unix))]
+    File::options()
+}
+
+/// Creates `directory` (and its parents) so that on Unix only the user may enter it; another
+/// user's program truncating a mapped segment would otherwise crash the editor.
+pub(crate) fn create_private_directory(directory: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(directory)
+            .with_context(|| format!("creating index directory {}", directory.display()))?;
+        // A directory made by an older version, or with a looser umask, is tightened.
+        let mode = fs::metadata(directory)
+            .with_context(|| format!("reading index directory {}", directory.display()))?
+            .permissions()
+            .mode();
+        if mode & 0o077 != 0
+            && let Err(error) = fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
+        {
+            log::warn!(
+                "symbol_index: cannot restrict access to {}: {error}",
+                directory.display()
+            );
+        }
+    }
+    #[cfg(not(unix))]
+    fs::create_dir_all(directory)
+        .with_context(|| format!("creating index directory {}", directory.display()))?;
+    Ok(())
+}
+
 /// Writes `bytes` to `path` so that `path` either keeps its old contents or has all of the new
-/// ones, even if the process dies midway.
+/// ones, even if the process or the machine dies midway.
 pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
     let file_name = path
         .file_name()
@@ -315,7 +364,11 @@ pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
         .ok_or_else(|| anyhow!("invalid index file path {path:?}"))?;
     let temporary = path.with_file_name(format!("{file_name}.tmp"));
     {
-        let mut file = File::create(&temporary)
+        let mut file = private_file_options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&temporary)
             .with_context(|| format!("creating {}", temporary.display()))?;
         file.write_all(bytes)
             .with_context(|| format!("writing {}", temporary.display()))?;
@@ -324,6 +377,18 @@ pub(crate) fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
     }
     fs::rename(&temporary, path)
         .with_context(|| format!("renaming {} into place", temporary.display()))?;
+    // On Unix the rename itself is only durable once the directory is flushed: after a power
+    // loss the manifest could otherwise name a segment whose rename was lost. The standard
+    // library cannot open a directory for flushing on Windows.
+    #[cfg(unix)]
+    if let Some(directory) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        File::open(directory)
+            .and_then(|directory| directory.sync_all())
+            .with_context(|| format!("flushing the directory {}", directory.display()))?;
+    }
     Ok(())
 }
 
@@ -634,7 +699,8 @@ impl Segment {
         // keeps the mapping valid, and Windows refuses to delete or truncate one. Every access
         // below is bounds-checked against the mapped length. What remains is another program
         // truncating the file, which would fault the process on Unix (SIGBUS); the index
-        // directory belongs to the editor, so that is not guarded against.
+        // directory is private to the user there, so only the user's own programs could, and
+        // that is not guarded against.
         let map =
             unsafe { Mmap::map(&file) }.with_context(|| format!("mapping {}", path.display()))?;
         let bytes: &[u8] = &map;
@@ -859,6 +925,67 @@ impl Segment {
             }
         }
         None
+    }
+
+    /// The text of every name back to back, in name order: the writer puts the names at the
+    /// start of the string section, in the order of the name records. Scanning this instead of
+    /// the name records reads a fraction of the bytes.
+    pub fn names_text(&self) -> &[u8] {
+        let Some(strings) = self.sections.get(Section::Strings as usize) else {
+            return &[];
+        };
+        let end = self
+            .name_count()
+            .checked_sub(1)
+            .and_then(|last| self.name(last))
+            .map_or(0, |record| {
+                (record.text.0 as usize).saturating_add(record.text.1 as usize)
+            })
+            .min(strings.count);
+        strings
+            .offset
+            .checked_add(end)
+            .and_then(|end| self.map.get(strings.offset..end))
+            .unwrap_or_default()
+    }
+
+    /// The first name at or after `from` whose text ends after `byte` of [`Self::names_text`],
+    /// which is the name containing that byte when there is one. Names are visited in
+    /// increasing order, so this gallops forward from the previous answer rather than
+    /// searching all names. A damaged segment yields some index, never a panic.
+    pub fn name_at_text_offset(&self, from: u32, byte: usize) -> u32 {
+        let count = self.name_count();
+        let ends_by = |index: u32| {
+            self.name(index).is_some_and(|record| {
+                (record.text.0 as usize).saturating_add(record.text.1 as usize) <= byte
+            })
+        };
+        if from >= count || !ends_by(from) {
+            return from.min(count);
+        }
+        let mut low = from;
+        let mut step = 1u32;
+        let high = loop {
+            let probe = low.saturating_add(step);
+            if probe >= count {
+                break count;
+            }
+            if !ends_by(probe) {
+                break probe;
+            }
+            low = probe;
+            step = step.saturating_mul(2);
+        };
+        let (mut low, mut high) = (low + 1, high);
+        while low < high {
+            let middle = low + (high - low) / 2;
+            if ends_by(middle) {
+                low = middle + 1;
+            } else {
+                high = middle;
+            }
+        }
+        low
     }
 
     /// First name whose case-folded form is not less than `prefix`.

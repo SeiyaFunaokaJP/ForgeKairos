@@ -149,36 +149,36 @@ actions!(
         AddToGitInfoExclude,
         /// Copies the current branch name to the clipboard.
         CopyBranchName,
-        /// 登録済みのリモートリポジトリを削除します。
+        /// Removes a registered remote repository.
         RemoveRemote,
-        /// 選択したブランチを現在のブランチにマージします。
+        /// Merges the selected branch into the current branch.
         Merge,
-        /// フェッチしてから、ローカルをリモートの状態に強制的に合わせます (未コミットの変更は失われます)。
+        /// Fetches, then forces the local branch to match the remote (uncommitted changes are lost).
         ResetToRemote,
-        /// 変更内容からパッチファイルを作成します。
+        /// Creates a patch file from the changes.
         CreatePatch,
-        /// パッチファイルを作業ツリーに適用します。
+        /// Applies a patch file to the working tree.
         ApplyPatch,
-        /// lease を使わずに強制プッシュします (他の人が push したコミットも上書きします)。
+        /// Force-pushes without a lease (this also overwrites commits others have pushed).
         ForcePushWithoutLease,
-        /// ファイルのまま散らばった ref をまとめて、ブランチやタグの多いリポジトリを速くします (git pack-refs --all)。
+        /// Packs loose refs into one file, which speeds up repositories with many branches or tags (git pack-refs --all).
         PackRefs,
-        /// コミットグラフの「MR の箱」を開閉します。
+        /// Opens or closes the merge request box of the commit graph.
         ToggleMergeRequestBox,
-        /// Git パネルを開いて、直前のコミットの修正 (amend) を始めます。
+        /// Opens the Git panel and starts amending the last commit.
         StartAmend,
-        /// コミットグラフを開いて、今の変更を入れる先のコミット (fixup) を選べるようにします。
+        /// Opens the commit graph to choose the commit that the current changes go into (fixup).
         ChooseFixupCommit,
-        /// 2 つのブランチ / タグを選んで中身を比べます。
+        /// Compares the contents of two branches or tags.
         CompareRefs,
-        /// 確認してから強制プッシュ (lease 付き) します。
+        /// Force-pushes (with a lease) after asking for confirmation.
         ConfirmForcePush,
-        /// コミットグラフの「MR の箱」を開きます (開いていれば閉じずにそのまま)。
+        /// Opens the merge request box of the commit graph (and keeps it open if it already is).
         OpenMergeRequestBox,
     ]
 );
 
-/// Git の操作ガイド (やりたいことから操作を引く一覧) を開きます。
+/// Opens the Git guide, which lists operations by what you want to do.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -193,7 +193,7 @@ pub struct ShowGuide {
 #[allow(non_upper_case_globals)]
 pub const ShowGuide: ShowGuide = ShowGuide { topic: None };
 
-/// 選択したコミットを基点に新しいブランチを作成します。
+/// Creates a new branch from the selected commit.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -203,7 +203,7 @@ pub struct CreateBranchFrom {
     pub sha: String,
 }
 
-/// 選択したコミットをチェックアウトします (detached HEAD になります)。
+/// Checks out the selected commit (in a detached HEAD).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -213,7 +213,7 @@ pub struct CheckoutCommit {
     pub sha: String,
 }
 
-/// 選択したコミットにタグを付けます。
+/// Tags the selected commit.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -223,7 +223,7 @@ pub struct CreateTagAt {
     pub sha: String,
 }
 
-/// 選択したコミットを現在のブランチに取り込みます (cherry-pick)。
+/// Applies the selected commit to the current branch (cherry-pick).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -233,7 +233,7 @@ pub struct CherryPickCommit {
     pub sha: String,
 }
 
-/// 選択したコミットを打ち消すコミットを作ります (revert)。
+/// Creates a commit that undoes the selected commit (revert).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -243,7 +243,7 @@ pub struct RevertCommit {
     pub sha: String,
 }
 
-/// 選択したコミットのメッセージを書き換えます (以降のコミットの SHA が変わります)。
+/// Rewrites the message of the selected commit (the SHAs of the commits after it change).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -253,7 +253,7 @@ pub struct RewordCommit {
     pub sha: String,
 }
 
-/// 今の変更を選択したコミットに入れます (fixup。以降のコミットの SHA が変わります)。
+/// Puts the current changes into the selected commit (fixup; the SHAs of the commits after it change).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -263,7 +263,7 @@ pub struct FixupCommit {
     pub sha: String,
 }
 
-/// 選択したコミットを履歴から取り除きます (以降のコミットの SHA が変わります)。
+/// Removes the selected commit from the history (the SHAs of the commits after it change).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -286,7 +286,7 @@ pub enum ResetToCommitMode {
     Hard,
 }
 
-/// 選択したコミットまで現在のブランチを戻します。
+/// Resets the current branch to the selected commit.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
@@ -299,7 +299,7 @@ pub struct ResetToCommit {
     pub mode: ResetToCommitMode,
 }
 
-/// 直近のタグからの距離 (`v1.2.3-5-gabcdef`) をクリップボードにコピーします。
+/// Copies the distance from the latest tag (`v1.2.3-5-gabcdef`) to the clipboard.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema, Action)]
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]

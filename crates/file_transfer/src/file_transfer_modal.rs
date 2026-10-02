@@ -67,9 +67,9 @@ impl PaneSide {
 actions!(
     file_transfer,
     [
-        /// 次の入力欄へ移動
+        /// Moves to the next field.
         FocusNextField,
-        /// 前の入力欄へ移動
+        /// Moves to the previous field.
         FocusPreviousField,
     ]
 );

@@ -4,6 +4,7 @@
 //! so that neither caller has to depend on `editor` or `workspace`.
 
 mod call_hierarchy;
+mod path_spelling;
 mod symbol_search;
 mod type_layout;
 
@@ -11,20 +12,24 @@ pub use call_hierarchy::{
     CALL_HIERARCHY_TIME_BUDGET, CallCandidates, CallDirection, CallExpansion, CallHierarchy,
     CallHierarchyAnswer, CallHierarchyNotSupported, CallHierarchyOptions, CallHierarchyTarget,
     CallNode, CallResolution, CallSource, CallWalkStop, DEFAULT_CALL_HIERARCHY_RESULTS,
-    IndexBuilding, MAX_AMBIGUOUS_DEFINITIONS, MAX_CALL_CANDIDATES, MAX_CALL_HIERARCHY_DEPTH,
-    MAX_CALL_HIERARCHY_REQUESTS, MAX_INDIRECT_CANDIDATES, MAX_PREVIEW_FILES,
-    MAX_REMOTE_CALL_HIERARCHY_FILES, NameIndexUnavailable, call_hierarchy,
+    DefinitionCounts, IndexBuilding, MAX_AMBIGUOUS_DEFINITIONS, MAX_CALL_CANDIDATES,
+    MAX_CALL_HIERARCHY_DEPTH, MAX_CALL_HIERARCHY_REQUESTS, MAX_INDIRECT_CANDIDATES,
+    MAX_PREVIEW_FILES, MAX_REMOTE_CALL_HIERARCHY_FILES, NameIndexUnavailable, call_hierarchy,
+};
+pub use path_spelling::{
+    PathSpelling, matches_file_scan_exclusions, matches_private_files, path_spelling,
+    worktree_matches_private_files,
 };
 pub use type_layout::*;
 
+use path_spelling::PathSetting;
 use std::{fmt, pin::pin, sync::Arc, time::Duration};
 
 use anyhow::{Result, anyhow};
 use futures::future::{self, Either};
 use gpui::{App, AppContext as _, AsyncApp, Entity, Global, SharedString, Task};
 use language::{Buffer, BufferSnapshot, Location, OutlineItem, Point, ToPoint as _};
-use project::{DocumentSymbol, Hover, HoverBlockKind, Project, ProjectPath, WorktreeSettings};
-use settings::Settings as _;
+use project::{DocumentSymbol, Hover, HoverBlockKind, Project, ProjectPath};
 use util::markdown::MarkdownCodeBlock;
 
 pub const MAX_QUERY_RESULTS: usize = 100;
@@ -234,6 +239,18 @@ pub fn references(
     position: LinePosition,
     cx: &mut App,
 ) -> Task<Result<Vec<QueryLocation>>> {
+    let task = references_reporting_omissions(project, path, position, cx);
+    cx.background_spawn(async move { Ok(task.await?.0) })
+}
+
+/// [`references`], and how many references the bound on what one language server response may
+/// open left out.
+pub fn references_reporting_omissions(
+    project: &Entity<Project>,
+    path: ProjectPath,
+    position: LinePosition,
+    cx: &mut App,
+) -> Task<Result<(Vec<QueryLocation>, usize)>> {
     let project = project.clone();
     cx.spawn(async move |cx| {
         let target = open_target(&project, &path, cx).await?;
@@ -242,10 +259,16 @@ pub fn references(
         })?;
         let _language_server_registration = require_language_server(&project, &target, cx)?;
         let request = project.update(cx, |project, cx| {
-            project.references(&target.buffer, point, cx)
+            project.references_reporting_omissions(&target.buffer, point, cx)
         });
-        let locations = with_timeout(request, cx).await??.unwrap_or_default();
-        Ok(project.read_with(cx, |project, cx| query_locations(project, locations, cx)))
+        let (locations, omitted) = with_timeout(request, cx)
+            .await??
+            .map(|answer| (answer.locations, answer.omitted))
+            .unwrap_or_default();
+        Ok((
+            project.read_with(cx, |project, cx| query_locations(project, locations, cx)),
+            omitted,
+        ))
     })
 }
 
@@ -335,10 +358,18 @@ fn display_path(project: &Project, path: &ProjectPath, cx: &App) -> String {
 /// What lies behind such a link is not scanned until something opens it, so the file itself
 /// may have no entry yet: the link above it is what says so.
 pub(crate) fn is_in_project(project: &Project, path: &ProjectPath, cx: &App) -> bool {
-    project
-        .worktree_for_id(path.worktree_id, cx)
-        .is_some_and(|worktree| worktree.read(cx).is_visible())
-        && !path.path.ancestors().any(|ancestor| {
+    let spelling = path_spelling(project, path, cx);
+    is_in_project_spelled(project, path, &spelling, cx)
+}
+
+fn is_in_project_spelled(
+    project: &Project,
+    path: &ProjectPath,
+    spelling: &PathSpelling,
+    cx: &App,
+) -> bool {
+    let goes_through_external_entry = |path: &ProjectPath| {
+        path.path.ancestors().any(|ancestor| {
             let ancestor = ProjectPath {
                 worktree_id: path.worktree_id,
                 path: ancestor.into(),
@@ -347,26 +378,43 @@ pub(crate) fn is_in_project(project: &Project, path: &ProjectPath, cx: &App) -> 
                 .entry_for_path(&ancestor, cx)
                 .is_some_and(|entry| entry.is_external)
         })
+    };
+    project
+        .worktree_for_id(path.worktree_id, cx)
+        .is_some_and(|worktree| worktree.read(cx).is_visible())
+        && !goes_through_external_entry(path)
+        && match spelling {
+            PathSpelling::AsGiven => true,
+            PathSpelling::OnDisk(respelled) | PathSpelling::Uncertain(respelled) => {
+                !goes_through_external_entry(respelled)
+            }
+        }
 }
 
 /// Why the contents of `path` must not reach an agent, if they must not. The settings are
 /// checked as well as the worktree entry because a file the language server pointed at need
 /// not have been scanned.
 fn withheld_reason(project: &Project, path: &ProjectPath, cx: &App) -> Option<&'static str> {
-    let global_settings = WorktreeSettings::get_global(cx);
-    let worktree_settings = WorktreeSettings::get(Some(path.into()), cx);
-    let entry_is_private = project
-        .entry_for_path(path, cx)
-        .is_some_and(|entry| entry.is_private);
-    if entry_is_private
-        || global_settings.is_path_private(&path.path)
-        || worktree_settings.is_path_private(&path.path)
-    {
+    let spelling = path_spelling(project, path, cx);
+    withheld_reason_spelled(project, path, &spelling, cx)
+}
+
+fn withheld_reason_spelled(
+    project: &Project,
+    path: &ProjectPath,
+    spelling: &PathSpelling,
+    cx: &App,
+) -> Option<&'static str> {
+    let worktree = project
+        .worktree_for_id(path.worktree_id, cx)
+        .map(|worktree| worktree.read(cx));
+    if path_spelling::may_name_a_file_by_its_short_name(worktree, spelling) {
+        return Some("may be the short (8.3) name of another file");
+    }
+    if PathSetting::PrivateFiles.matches(worktree, path, spelling, cx) {
         return Some("matches `private_files`");
     }
-    if global_settings.is_path_excluded(&path.path)
-        || worktree_settings.is_path_excluded(&path.path)
-    {
+    if PathSetting::FileScanExclusions.matches(worktree, path, spelling, cx) {
         return Some("matches `file_scan_exclusions`");
     }
     None
@@ -380,9 +428,29 @@ pub fn agent_withheld_reason(
     path: &ProjectPath,
     cx: &App,
 ) -> Option<&'static str> {
-    if !is_in_project(project, path, cx) {
+    let spelling = path_spelling(project, path, cx);
+    agent_withheld_reason_spelled(project, path, &spelling, cx)
+}
+
+fn agent_withheld_reason_spelled(
+    project: &Project,
+    path: &ProjectPath,
+    spelling: &PathSpelling,
+    cx: &App,
+) -> Option<&'static str> {
+    if !is_in_project_spelled(project, path, spelling, cx) {
         return Some("lies outside the project");
     }
+    withheld_reason_spelled(project, path, spelling, cx)
+}
+
+/// The settings half of [`agent_withheld_reason`], for tools that judge links their own way
+/// (`read_file` asks before following one).
+pub fn agent_settings_withheld_reason(
+    project: &Project,
+    path: &ProjectPath,
+    cx: &App,
+) -> Option<&'static str> {
     withheld_reason(project, path, cx)
 }
 
@@ -734,6 +802,7 @@ mod tests {
     use project::{FakeFs, lsp_store::OpenLspBufferHandle};
     use serde_json::json;
     use settings::{SettingsStore, SplicingVec};
+    use unicode_normalization::UnicodeNormalization as _;
     use util::{path, paths::PathStyle, rel_path::rel_path};
 
     fn init_test(cx: &mut TestAppContext) {
@@ -1116,6 +1185,339 @@ mod tests {
             linked.preview, "",
             "what a link leads out to is not handed out"
         );
+    }
+
+    async fn differently_cased_project(
+        case_sensitive: bool,
+        cx: &mut TestAppContext,
+    ) -> Entity<Project> {
+        let fs = FakeFs::new(cx.executor());
+        fs.set_case_sensitive(case_sensitive);
+        fs.insert_tree(
+            path!("/root"),
+            json!({
+                "secret.rs": "fn hidden() {}\n",
+                "excluded": {"generated.rs": "fn generated() {}\n"},
+                "src": {"lib.rs": "fn main() {}\n"},
+            }),
+        )
+        .await;
+        fs.insert_tree(path!("/outside"), json!({"linked.rs": "fn helper() {}\n"}))
+            .await;
+        fs.insert_symlink(path!("/root/link"), path!("/outside").into())
+            .await;
+        let project = Project::test(fs, [path!("/root").as_ref()], cx).await;
+        project.read_with(cx, |project, _| project.languages().add(rust_lang()));
+        cx.executor().run_until_parked();
+        project
+    }
+
+    /// On a file system that ignores case, `SECRET.rs` opens `secret.rs`, so it is judged as
+    /// `secret.rs`: by the entry the worktree has, and by the settings folded to one case when
+    /// the worktree has no entry for it (an excluded directory is never scanned).
+    #[gpui::test]
+    async fn test_a_differently_cased_path_is_judged_as_the_file_it_reaches(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let project = differently_cased_project(false, cx).await;
+
+        for (path, expected) in [
+            ("secret.rs", "matches `private_files`"),
+            ("SECRET.rs", "matches `private_files`"),
+            ("Secret.RS", "matches `private_files`"),
+            ("EXCLUDED/generated.rs", "matches `file_scan_exclusions`"),
+            ("Excluded/Generated.rs", "matches `file_scan_exclusions`"),
+            ("LINK/linked.rs", "lies outside the project"),
+            ("Link/Linked.rs", "lies outside the project"),
+        ] {
+            let project_path = project_path(&project, path, cx);
+            project.read_with(cx, |project, cx| {
+                assert_eq!(
+                    agent_withheld_reason(project, &project_path, cx),
+                    Some(expected),
+                    "{path}"
+                );
+            });
+        }
+        let ordinary = project_path(&project, "SRC/LIB.rs", cx);
+        project.read_with(cx, |project, cx| {
+            assert_eq!(agent_withheld_reason(project, &ordinary, cx), None);
+        });
+
+        let secret = project_path(&project, "SECRET.rs", cx);
+        let error = cx
+            .update(|cx| document_symbols(&project, secret, cx))
+            .await
+            .expect_err("the private file is refused in any spelling");
+        assert!(error.to_string().contains("`private_files`"), "{error}");
+    }
+
+    /// A file system that reports telling case apart may still hold the worktree on a volume
+    /// that doesn't (the check runs in the temporary directory): an entry is judged as itself,
+    /// so `Secret.rs` and `secret.rs` stay two files, but a path with no entry is judged as
+    /// every file it could reach.
+    #[gpui::test]
+    async fn test_a_case_sensitive_file_system_judges_entries_as_spelled(cx: &mut TestAppContext) {
+        init_test(cx);
+        let project = differently_cased_project(true, cx).await;
+        let fs = project.read_with(cx, |project, _| project.fs().clone());
+        fs.as_fake()
+            .insert_file(path!("/root/Secret.rs"), b"fn shown() {}\n".to_vec())
+            .await;
+        cx.executor().run_until_parked();
+
+        for (path, expected) in [
+            ("secret.rs", Some("matches `private_files`")),
+            ("Secret.rs", None),
+            ("SECRET.rs", Some("matches `private_files`")),
+            (
+                "excluded/generated.rs",
+                Some("matches `file_scan_exclusions`"),
+            ),
+            (
+                "EXCLUDED/generated.rs",
+                Some("matches `file_scan_exclusions`"),
+            ),
+            ("link/linked.rs", Some("lies outside the project")),
+            ("LINK/linked.rs", Some("lies outside the project")),
+            ("SRC/LIB.rs", None),
+        ] {
+            let project_path = project_path(&project, path, cx);
+            project.read_with(cx, |project, cx| {
+                assert_eq!(
+                    agent_withheld_reason(project, &project_path, cx),
+                    expected,
+                    "{path}"
+                );
+            });
+        }
+    }
+
+    /// A remote host doesn't say whether it tells case apart, so a path it might open as
+    /// another file is judged as that file too.
+    #[gpui::test]
+    async fn test_an_unknown_case_rule_judges_every_file_the_path_could_reach(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let project = differently_cased_project(true, cx).await;
+
+        for (path, expected) in [
+            ("SECRET.rs", Some("matches `private_files`")),
+            (
+                "EXCLUDED/generated.rs",
+                Some("matches `file_scan_exclusions`"),
+            ),
+            ("LINK/linked.rs", Some("lies outside the project")),
+            ("SRC/LIB.rs", None),
+        ] {
+            let project_path = project_path(&project, path, cx);
+            project.read_with(cx, |project, cx| {
+                let worktree = project
+                    .worktree_for_id(project_path.worktree_id, cx)
+                    .expect("the worktree exists");
+                let spelling = path_spelling::path_spelling_under(
+                    worktree.read(cx),
+                    path_spelling::CaseRule::Unknown,
+                    &project_path,
+                );
+                assert!(
+                    matches!(spelling, PathSpelling::Uncertain(_)),
+                    "{path}: {spelling:?}"
+                );
+                assert_eq!(
+                    agent_withheld_reason_spelled(project, &project_path, &spelling, cx),
+                    expected,
+                    "{path}"
+                );
+            });
+        }
+    }
+
+    fn add_private_patterns(patterns: &[&str], cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    let mut private_files = vec!["**/secret.rs".to_string()];
+                    private_files.extend(patterns.iter().map(|pattern| pattern.to_string()));
+                    settings.project.worktree.private_files = Some(private_files.into());
+                    settings.project.worktree.file_scan_exclusions = Some(SplicingVec::from(vec![
+                        "**/excluded".to_string(),
+                        "**/生成データ".to_string(),
+                    ]));
+                });
+            });
+        });
+    }
+
+    /// Windows opens `secret.rs` for `secret.rs.`, `secret.rs ` and `secret.rs::$DATA`, and a
+    /// file by its short name: each is judged as the file it reaches, and a short name the
+    /// worktree can't map is withheld.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn test_names_windows_reads_as_another_name_are_judged_as_that_file(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        add_private_patterns(&["**/vault/**"], cx);
+        let project = differently_cased_project(false, cx).await;
+        let fs = project.read_with(cx, |project, _| project.fs().clone());
+        fs.as_fake()
+            .insert_tree(
+                path!("/root"),
+                json!({"vault": {"key.txt": "hunter2\n"}, "backup~1.rs": "fn old() {}\n"}),
+            )
+            .await;
+        cx.executor().run_until_parked();
+
+        for (path, expected) in [
+            ("secret.rs.", Some("matches `private_files`")),
+            ("secret.rs..", Some("matches `private_files`")),
+            ("secret.rs ", Some("matches `private_files`")),
+            ("SECRET.RS. .", Some("matches `private_files`")),
+            ("secret.rs::$DATA", Some("matches `private_files`")),
+            ("Secret.rs:hidden:$DATA", Some("matches `private_files`")),
+            ("VAULT./key.txt", Some("matches `private_files`")),
+            ("vault/KEY.TXT::$DATA", Some("matches `private_files`")),
+            (
+                "excluded./generated.rs",
+                Some("matches `file_scan_exclusions`"),
+            ),
+            ("link./linked.rs", Some("lies outside the project")),
+            ("LINK::$DATA/linked.rs", Some("lies outside the project")),
+            (
+                "SECRET~1.RS",
+                Some("may be the short (8.3) name of another file"),
+            ),
+            (
+                "LINK~1/linked.rs",
+                Some("may be the short (8.3) name of another file"),
+            ),
+            (
+                "src/LIB~1.RS",
+                Some("may be the short (8.3) name of another file"),
+            ),
+            ("backup~1.rs", None),
+            ("src/lib.rs.", None),
+            ("SRC /LIB.RS::$DATA", None),
+        ] {
+            let project_path = project_path(&project, path, cx);
+            project.read_with(cx, |project, cx| {
+                assert_eq!(
+                    agent_withheld_reason(project, &project_path, cx),
+                    expected,
+                    "{path:?}"
+                );
+            });
+        }
+    }
+
+    /// Where case is folded, so are the other differences a file system may overlook: the
+    /// composed and decomposed forms of a name (macOS), and letters that change case into
+    /// another letter (`ſ` is an `S` in upper case).
+    #[gpui::test]
+    async fn test_folding_covers_names_a_file_system_may_take_as_one(cx: &mut TestAppContext) {
+        init_test(cx);
+        add_private_patterns(&["**/データ/**", "**/café.rs"], cx);
+        let project = differently_cased_project(false, cx).await;
+        let fs = project.read_with(cx, |project, _| project.fs().clone());
+        fs.as_fake()
+            .insert_tree(
+                path!("/root"),
+                json!({
+                    "データ": {"key.txt": "hunter2\n"},
+                    "café.rs": "fn hidden() {}\n",
+                    "生成データ": {"out.rs": "fn generated() {}\n"},
+                }),
+            )
+            .await;
+        cx.executor().run_until_parked();
+
+        let decomposed = |text: &str| text.nfd().collect::<String>();
+        assert_ne!(decomposed("データ"), "データ");
+        for (path, expected) in [
+            (decomposed("データ/key.txt"), "matches `private_files`"),
+            (decomposed("CAFÉ.RS"), "matches `private_files`"),
+            ("CAFÉ.rs".to_string(), "matches `private_files`"),
+            ("ſECRET.rs".to_string(), "matches `private_files`"),
+            (
+                decomposed("生成データ/out.rs"),
+                "matches `file_scan_exclusions`",
+            ),
+        ] {
+            let project_path = project_path(&project, &path, cx);
+            project.read_with(cx, |project, cx| {
+                assert_eq!(
+                    agent_withheld_reason(project, &project_path, cx),
+                    Some(expected),
+                    "{path:?}"
+                );
+            });
+        }
+        let ordinary = project_path(&project, "SRC/Lib.RS", cx);
+        project.read_with(cx, |project, cx| {
+            assert_eq!(agent_withheld_reason(project, &ordinary, cx), None);
+        });
+    }
+
+    /// The forms above, on the real file system: Windows opens the private file for each of
+    /// them, and each is withheld.
+    #[cfg(target_os = "windows")]
+    #[gpui::test]
+    async fn test_names_windows_opens_as_a_private_file_are_withheld_on_disk(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        add_private_patterns(&["**/*.pem", "**/vault/**"], cx);
+        cx.executor().allow_parking();
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let root = directory.path().join("project");
+        std::fs::create_dir_all(root.join("vault")).expect("the directories are created");
+        std::fs::write(root.join("server.pem"), "PEM_CONTENTS").expect("the file is written");
+        std::fs::write(root.join("vault").join("key.txt"), "VAULT_CONTENTS")
+            .expect("the file is written");
+        std::fs::write(root.join("notes.txt"), "NOTES").expect("the file is written");
+        let fs = project::RealFs::new(None, cx.executor());
+        let project = Project::test(fs, [root.as_path()], cx).await;
+        let worktree = project.read_with(cx, |project, cx| {
+            project
+                .visible_worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+        });
+        cx.read(|cx| {
+            worktree
+                .read(cx)
+                .as_local()
+                .expect("a local worktree")
+                .scan_complete()
+        })
+        .await;
+
+        for (path, contents) in [
+            ("SERVER.PEM", "PEM_CONTENTS"),
+            ("server.pem.", "PEM_CONTENTS"),
+            ("server.pem ", "PEM_CONTENTS"),
+            ("server.pem. .", "PEM_CONTENTS"),
+            ("server.pem::$DATA", "PEM_CONTENTS"),
+            ("VAULT./key.txt", "VAULT_CONTENTS"),
+        ] {
+            let opened = std::fs::read_to_string(root.join(path));
+            assert_eq!(opened.ok().as_deref(), Some(contents), "{path:?}");
+            let project_path = project_path(&project, path, cx);
+            project.read_with(cx, |project, cx| {
+                assert_eq!(
+                    agent_withheld_reason(project, &project_path, cx),
+                    Some("matches `private_files`"),
+                    "{path:?}"
+                );
+            });
+        }
+        let notes = project_path(&project, "NOTES.TXT.", cx);
+        project.read_with(cx, |project, cx| {
+            assert_eq!(agent_withheld_reason(project, &notes, cx), None);
+        });
     }
 
     /// The server that answers was started for another file: the query has to register the

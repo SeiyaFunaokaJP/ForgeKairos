@@ -45,7 +45,7 @@ use crate::{
     },
 };
 
-/// 選択範囲を指定した色で塗りつぶします。
+/// Fills the selection with the given color.
 #[derive(PartialEq, Clone, Default, Deserialize, JsonSchema, Action)]
 #[action(namespace = tabular_data)]
 #[serde(deny_unknown_fields)]
@@ -54,7 +54,7 @@ pub struct SetFillColor {
     pub color: CellColor,
 }
 
-/// 選択範囲の文字の色を変えます。
+/// Changes the text color of the selection.
 #[derive(PartialEq, Clone, Default, Deserialize, JsonSchema, Action)]
 #[action(namespace = tabular_data)]
 #[serde(deny_unknown_fields)]
@@ -66,7 +66,7 @@ pub struct SetTextColor {
 actions!(
     tabular_data,
     [
-        /// 選択範囲の塗りつぶしと文字の色を消します。
+        /// Removes the fill and text colors of the selection.
         ClearCellColors,
     ]
 );

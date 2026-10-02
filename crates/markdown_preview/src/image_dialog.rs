@@ -2472,7 +2472,7 @@ fn intact_target_range(snapshot: &BufferSnapshot, target: &ImageTarget) -> Resul
     let current: String = snapshot.text_for_range(range.clone()).collect();
     if current != target.original_text {
         return Err(anyhow!(i18n::t!(
-            "The text to write to changed after the dialog was opened. Open the dialog again."
+            "The text the image is written into changed after the dialog was opened. Open the dialog again."
         )));
     }
     Ok(range)
@@ -4123,14 +4123,14 @@ impl Render for ImageDialog {
             (
                 i18n::t!("Edit Image"),
                 i18n::t!(
-                    "The image at the cursor was loaded. Change it and click \"Update\" to rewrite it."
+                    "Editing the image at the cursor. Make your changes and click \"Update\" to apply them."
                 ),
             )
         } else {
             (
                 i18n::t!("Insert Image"),
                 i18n::t!(
-                    "Inserts an image at the cursor. Setting an alignment or a size writes it as HTML."
+                    "Inserts an image at the cursor. An image with an alignment or a size is written as HTML."
                 ),
             )
         };

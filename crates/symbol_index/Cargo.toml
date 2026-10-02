@@ -15,6 +15,7 @@ path = "src/symbol_index.rs"
 anyhow.workspace = true
 ignore.workspace = true
 log.workspace = true
+memchr.workspace = true
 memmap2.workspace = true
 parking_lot.workspace = true
 rayon.workspace = true

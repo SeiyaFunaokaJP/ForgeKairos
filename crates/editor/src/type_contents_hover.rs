@@ -36,7 +36,7 @@ use util::{ResultExt as _, paths::PathStyle};
 
 use crate::{
     Anchor, Editor, SelectionEffects,
-    hover_popover::{InfoPopover, hover_markdown_style},
+    hover_popover::{HOVER_POPOVER_GAP, HoverState, InfoPopover, hover_markdown_style},
     scroll::Autoscroll,
 };
 
@@ -66,7 +66,6 @@ pub(crate) fn queries_for_tests() -> usize {
 /// server's hover.
 pub(crate) struct TypeContentsQuery {
     describe: Task<anyhow::Result<Option<TypeHover>>>,
-    grace_period: Task<()>,
     store: WeakEntity<SymbolIndexStore>,
     project: WeakEntity<Project>,
     path: ProjectPath,
@@ -141,7 +140,6 @@ pub(crate) fn query(
     });
     Some(TypeContentsQuery {
         describe,
-        grace_period: cx.background_executor().timer(GRACE_PERIOD),
         store: store.downgrade(),
         project: project.downgrade(),
         path,
@@ -163,9 +161,11 @@ impl TypeContentsQuery {
         let type_text = language_server_type_text(language_server_hovers);
         let language_server_answered = language_server_hovers.iter().any(|hover| !hover.is_empty());
         let mut cx = cx.clone();
+        // Counted from the language server's answer: the question was asked before the hover
+        // delay ran out, so a period counted from then would be over before any answer.
+        let grace_period = cx.background_executor().timer(GRACE_PERIOD);
         let Self {
             describe,
-            grace_period,
             store,
             project,
             path,
@@ -305,6 +305,48 @@ pub(crate) fn popover(
         keyboard_grace,
         cx,
     ))
+}
+
+/// Whether `point` is on one of the shown popovers or in a gap between two stacked ones. Only
+/// the popovers stop the pointer from reaching the editor; in a gap, it would otherwise count
+/// as leaving them, and start hiding them or hover the text underneath.
+pub(crate) fn is_in_popover_stack(hover_state: &HoverState, point: gpui::Point<Pixels>) -> bool {
+    let mut bounds = hover_state
+        .info_popovers
+        .iter()
+        .filter_map(|popover| popover.last_bounds.get())
+        .chain(
+            hover_state
+                .diagnostic_popover
+                .as_ref()
+                .and_then(|popover| popover.last_bounds.get()),
+        )
+        .collect::<Vec<_>>();
+    if bounds.iter().any(|bounds| bounds.contains(&point)) {
+        return true;
+    }
+    bounds.sort_by(|left, right| {
+        left.top()
+            .partial_cmp(&right.top())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    bounds
+        .iter()
+        .zip(bounds.iter().skip(1))
+        .any(|(upper, lower)| {
+            let gap = lower.top() - upper.bottom();
+            // Stacked popovers are a gap (and their borders, outside the bounds) apart; those on
+            // both sides of the line are further.
+            if gap < px(0.) || gap > HOVER_POPOVER_GAP + px(4.) {
+                return false;
+            }
+            let left = upper.left().min(lower.left());
+            let right = upper.right().max(lower.right());
+            point.y >= upper.bottom()
+                && point.y <= lower.top()
+                && point.x >= left
+                && point.x <= right
+        })
 }
 
 fn is_worth_showing(data: &TypeContentsData) -> bool {
@@ -849,11 +891,15 @@ impl TypeContents {
             return;
         };
         let wanted = candidate.summary.clone();
+        // The index reads the best-ranked definitions only, and ranks those in the file asked
+        // from first: asking from the wanted definition's own file reads it even when it is
+        // ranked past the read limit from where the hover was.
+        let near = Some(wanted.path.clone());
         let Ok(resolve) = store.update(cx, |store, cx| {
             store.resolve_type(
                 &lookup.name,
                 lookup.tag,
-                lookup.near.clone(),
+                near,
                 project::symbol_index_store::MAX_TYPE_READ_LIMIT,
                 cx,
             )
@@ -869,12 +915,7 @@ impl TypeContents {
                 if view.loading.as_ref().map(|(index, _)| *index) == Some(selected) {
                     view.loading = None;
                 }
-                let found = resolved.and_then(|resolved| {
-                    resolved
-                        .types
-                        .into_iter()
-                        .find(|summary| summary.members_read && same_definition(summary, &wanted))
-                });
+                let found = resolved.and_then(|resolved| read_definition(resolved, &wanted));
                 if let Some(candidate) = view.candidates.get_mut(selected) {
                     match found {
                         Some(summary) => *candidate = Candidate::new(summary),
@@ -1169,11 +1210,44 @@ fn expansion_from(
     }
 }
 
-fn same_definition(found: &TypeSummary, wanted: &TypeSummary) -> bool {
-    match (&found.type_ref, &wanted.type_ref) {
-        (Some(found), Some(wanted)) => found == wanted,
-        _ => found.path == wanted.path && found.range == wanted.range,
+/// The read one of `resolved` that is `wanted`, a definition listed by its location alone.
+fn read_definition(resolved: ResolvedTypes, wanted: &TypeSummary) -> Option<TypeSummary> {
+    let mut read = resolved
+        .types
+        .into_iter()
+        .filter(|summary| summary.members_read)
+        .collect::<Vec<_>>();
+    if let Some(position) = read
+        .iter()
+        .position(|summary| same_definition(summary, wanted))
+    {
+        return Some(read.swap_remove(position));
     }
+    // A typedef that defines the type it names in place (`typedef struct a { .. } a_t;`) is
+    // read as that type, with no typedef step to tell it by. Asked from its file, the one read
+    // there is it; with several there, which one is not known.
+    if wanted.kind != TypeSummaryKind::Typedef {
+        return None;
+    }
+    let mut in_file = read
+        .into_iter()
+        .filter(|summary| summary.path == wanted.path);
+    let first = in_file.next()?;
+    in_file.next().is_none().then_some(first)
+}
+
+fn same_definition(found: &TypeSummary, wanted: &TypeSummary) -> bool {
+    // A definition listed by its location alone is the one the index has under the name: for
+    // a typedef, the typedef, where a read one is what it names.
+    let through_typedef = found
+        .typedef_chain
+        .first()
+        .is_some_and(|step| step.path == wanted.path && step.range == wanted.range);
+    through_typedef
+        || match (&found.type_ref, &wanted.type_ref) {
+            (Some(found), Some(wanted)) => found == wanted,
+            _ => found.path == wanted.path && found.range == wanted.range,
+        }
 }
 
 /// Whether a member names one of the types it is inside (`struct node *next` in
@@ -1579,20 +1653,9 @@ pub(crate) fn render(
         .text_system()
         .em_advance(font_id, text_size)
         .unwrap_or(text_size * 0.6_f32);
-    let (name_chars, type_chars) = lines
-        .iter()
-        .fold((4, 8), |(names, types), line| match line {
-            Line::Member {
-                name, type_text, ..
-            } => (
-                names.max(name.chars().count()),
-                types.max(type_text.chars().count()),
-            ),
-            Line::Enumerator { name, .. } => (names.max(name.chars().count()), types),
-            _ => (names, types),
-        });
-    let name_width = em_width * name_chars.min(NAME_COLUMN_CHARS) as f32 + px(4.);
-    let type_width = em_width * type_chars.min(TYPE_COLUMN_CHARS) as f32 + px(4.);
+    let (name_columns, type_columns) = column_widths(&lines);
+    let name_width = em_width * name_columns as f32 + px(4.);
+    let type_width = em_width * type_columns as f32 + px(4.);
     let indent = |depth: usize| px(14.) * depth as f32;
     let muted = Color::Muted;
     let hover_background = cx.theme().colors().element_hover;
@@ -2003,6 +2066,22 @@ pub(crate) fn render(
         .track_scroll(scroll_handle)
         .child(v_flex().p_2().gap_0p5().children(rows))
         .into_any_element()
+}
+
+/// The widths of the member table's name and type columns, in the buffer font's half-width
+/// columns: a wide character, as in a Japanese identifier, takes two.
+fn column_widths(lines: &[Line]) -> (usize, usize) {
+    let width = crate::markdown_actions::display_width;
+    let (names, types) = lines
+        .iter()
+        .fold((4, 8), |(names, types), line| match line {
+            Line::Member {
+                name, type_text, ..
+            } => (names.max(width(name)), types.max(width(type_text))),
+            Line::Enumerator { name, .. } => (names.max(width(name)), types),
+            _ => (names, types),
+        });
+    (names.min(NAME_COLUMN_CHARS), types.min(TYPE_COLUMN_CHARS))
 }
 
 /// A heading is one row, as wide as it needs up to the popover's limit: past it, the name
@@ -2558,7 +2637,7 @@ int use(alias_t *value)
         let text = section_text(&mut cx);
         assert_eq!(
             text.lines().next(),
-            Some("struct outer [Name match] dir/types.h:5 {alias_t → struct outer}"),
+            Some("struct outer [Name match] dir/types.h:5 {alias_t → outer_t → struct outer}"),
             "{text}"
         );
         for row in [
@@ -2704,6 +2783,204 @@ int use(alias_t *value)
             ],
             "each definition is read when it is shown, and the one shown is the one read"
         );
+    }
+
+    #[gpui::test]
+    async fn test_definitions_past_the_read_limit_are_read_when_shown(cx: &mut TestAppContext) {
+        let mut cx = c_context(false, cx).await;
+        let edited = "static struct many *pointer;\n";
+        cx.set_state(&format!("ˇ{edited}"));
+        let count = project::symbol_index_store::MAX_TYPE_READ_LIMIT + 2;
+        let headers = (0..count)
+            .map(|index| {
+                (
+                    format!("dir/many_{index}.h"),
+                    format!("struct many {{ int in_{index}; }};\n"),
+                )
+            })
+            .collect::<Vec<_>>();
+        let others = headers
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let _index = install_index(&mut cx, ("dir/file.c", edited), &others).await;
+        hover_over(&mut cx, "many", 0);
+        let section = section(&mut cx).expect("a section");
+        let mut shown = vec![section_text(&mut cx)];
+        for _ in 1..count {
+            cx.update(|_, cx| {
+                section.update(cx, |section, cx| {
+                    let path = section.view_path_for_tests("struct many");
+                    section.select_candidate(path, true, cx);
+                })
+            });
+            cx.run_until_parked();
+            shown.push(section_text(&mut cx));
+        }
+        let mut members = Vec::new();
+        for text in &shown {
+            assert!(
+                !text.contains("Only the location of this definition is known"),
+                "every definition is read when it is shown:\n{text}"
+            );
+            let member = text
+                .lines()
+                .find_map(|line| line.trim().strip_suffix(" | int"))
+                .unwrap_or_else(|| panic!("a member in\n{text}"));
+            let header = text.lines().next().unwrap_or_default();
+            let index = member.trim_start_matches("in_");
+            assert!(
+                header.contains(&format!("many_{index}.h")),
+                "the definition shown is the one read:\n{text}"
+            );
+            members.push(member.to_string());
+        }
+        members.sort();
+        members.dedup();
+        assert_eq!(members.len(), count, "{shown:#?}");
+    }
+
+    #[gpui::test]
+    async fn test_typedefs_past_the_read_limit_are_read_when_shown(cx: &mut TestAppContext) {
+        let count = project::symbol_index_store::MAX_TYPE_READ_LIMIT + 2;
+        let headers = (0..count)
+            .map(|index| {
+                (
+                    format!("dir/many_{index}.h"),
+                    format!("typedef struct many_{index} {{ int in_{index}; }} many_t;\n"),
+                )
+            })
+            .collect::<Vec<_>>();
+        check_typedefs_are_read_when_shown(headers, count, cx).await;
+    }
+
+    #[gpui::test]
+    async fn test_typedefs_of_types_elsewhere_are_read_when_shown(cx: &mut TestAppContext) {
+        let count = project::symbol_index_store::MAX_TYPE_READ_LIMIT + 2;
+        let headers = (0..count)
+            .flat_map(|index| {
+                [
+                    (
+                        format!("dir/many_{index}.h"),
+                        format!("typedef struct body_{index} many_t;\n"),
+                    ),
+                    (
+                        format!("dir/body_{index}.h"),
+                        format!("struct body_{index} {{ int in_{index}; }};\n"),
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>();
+        check_typedefs_are_read_when_shown(headers, count, cx).await;
+    }
+
+    async fn check_typedefs_are_read_when_shown(
+        headers: Vec<(String, String)>,
+        count: usize,
+        cx: &mut TestAppContext,
+    ) {
+        let mut cx = c_context(false, cx).await;
+        let edited = "static many_t *pointer;\n";
+        cx.set_state(&format!("ˇ{edited}"));
+        let others = headers
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str()))
+            .collect::<Vec<_>>();
+        let _index = install_index(&mut cx, ("dir/file.c", edited), &others).await;
+        hover_over(&mut cx, "many_t", 0);
+        let section = section(&mut cx).expect("a section");
+        let mut shown = vec![section_text(&mut cx)];
+        for _ in 1..count {
+            cx.update(|_, cx| {
+                section.update(cx, |section, cx| {
+                    // Each definition is headed by the struct its typedef names.
+                    let text = section.text_for_tests();
+                    let heading = text
+                        .lines()
+                        .next()
+                        .and_then(|line| line.split(" [").next())
+                        .unwrap_or_default()
+                        .to_string();
+                    let path = section.view_path_for_tests(&heading);
+                    section.select_candidate(path, true, cx);
+                })
+            });
+            cx.run_until_parked();
+            shown.push(section_text(&mut cx));
+        }
+        let mut members = Vec::new();
+        for text in &shown {
+            assert!(
+                !text.contains("Only the location of this definition is known"),
+                "every typedef is read when it is shown:\n{text}"
+            );
+            let member = text
+                .lines()
+                .find_map(|line| line.trim().strip_suffix(" | int"))
+                .unwrap_or_else(|| panic!("a member in\n{text}"));
+            members.push(member.to_string());
+        }
+        members.sort();
+        members.dedup();
+        assert_eq!(members.len(), count, "{shown:#?}");
+    }
+
+    #[gpui::test]
+    async fn test_typedefs_sharing_a_file_are_not_guessed_between(cx: &mut TestAppContext) {
+        let mut cx = c_context(false, cx).await;
+        let edited = "static many_t *pointer;\n";
+        cx.set_state(&format!("ˇ{edited}"));
+        let _index = install_index(
+            &mut cx,
+            ("dir/file.c", edited),
+            &[
+                (
+                    "dir/many_0.h",
+                    "typedef struct many_0 { int in_0; } many_t;\n",
+                ),
+                (
+                    "dir/many_1.h",
+                    "#ifdef ONE\ntypedef struct one { int in_one; } many_t;\n#else\ntypedef struct two { int in_two; } many_t;\n#endif\n",
+                ),
+            ],
+        )
+        .await;
+        hover_over(&mut cx, "many_t", 0);
+        let section = section(&mut cx).expect("a section");
+        let first = section_text(&mut cx);
+        assert!(first.contains("in_0 | int"), "{first}");
+        let mut shown = Vec::new();
+        for _ in 0..2 {
+            cx.update(|_, cx| {
+                section.update(cx, |section, cx| {
+                    let text = section.text_for_tests();
+                    let heading = text
+                        .lines()
+                        .next()
+                        .and_then(|line| line.split(" [").next())
+                        .unwrap_or_default()
+                        .to_string();
+                    let path = section.view_path_for_tests(&heading);
+                    section.select_candidate(path, true, cx);
+                })
+            });
+            cx.run_until_parked();
+            shown.push(section_text(&mut cx));
+        }
+        // The index keeps the typedef step of a type defined in place, so each of the two is
+        // read by its own location rather than by being the only one in its file.
+        for (text, (member, other)) in shown
+            .iter()
+            .zip([("in_one | int", "in_two"), ("in_two | int", "in_one")])
+        {
+            assert!(text.contains("many_1.h"), "{shown:#?}");
+            assert!(text.contains(member), "{shown:#?}");
+            assert!(!text.contains(other), "{shown:#?}");
+            assert!(
+                !text.contains("Only the location of this definition is known"),
+                "{shown:#?}"
+            );
+        }
     }
 
     #[gpui::test]
@@ -3208,6 +3485,324 @@ static struct ring *ring_head;
         assert_eq!(
             location_label(&path, Point::new(0, 0), &several),
             ("kernel\\include\\linux\\".to_string(), "fs.h:1".to_string())
+        );
+    }
+
+    /// The language server's popover and the section, as drawn: nearest the line first.
+    fn drawn_popovers(cx: &mut EditorLspTestContext) -> Vec<gpui::Bounds<Pixels>> {
+        cx.update(|window, _| window.refresh());
+        cx.run_until_parked();
+        cx.editor(|editor, _, _| {
+            editor
+                .hover_state
+                .info_popovers
+                .iter()
+                .map(|popover| popover.last_bounds.get().expect("the popover is drawn"))
+                .collect()
+        })
+    }
+
+    fn answer_hovers_briefly(cx: &mut EditorLspTestContext) {
+        cx.set_request_handler::<lsp::request::HoverRequest, _, _>(|_, _, _| async move {
+            Ok(Some(lsp::Hover {
+                contents: lsp::HoverContents::Markup(lsp::MarkupContent {
+                    kind: lsp::MarkupKind::Markdown,
+                    value: "### variable `local`".to_string(),
+                }),
+                range: None,
+            }))
+        });
+    }
+
+    #[gpui::test]
+    async fn test_the_gap_between_stacked_popovers_keeps_them_open(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(true, cx).await;
+        answer_hovers_briefly(&mut cx);
+        hover_over(&mut cx, "local", 1);
+        let mut popovers = drawn_popovers(&mut cx);
+        assert_eq!(popovers.len(), 2, "the language server's and the section");
+        popovers.sort_by(|left, right| {
+            left.top()
+                .partial_cmp(&right.top())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let (upper, lower) = (popovers[0], popovers[1]);
+        let gap = lower.top() - upper.bottom();
+        assert!(
+            gap >= HOVER_POPOVER_GAP && gap <= HOVER_POPOVER_GAP + px(4.),
+            "stacked: {popovers:?}"
+        );
+        // Beside the narrower popover, where nothing covers the gap.
+        let in_gap = gpui::point(
+            upper.right().max(lower.right()) - px(2.),
+            upper.bottom() + HOVER_POPOVER_GAP / 2.,
+        );
+        let hiding_delay =
+            cx.update(|_, cx| EditorSettings::get_global(cx).hover_popover_hiding_delay.0);
+        let elsewhere = anchor_of(&mut cx, "shade", 0);
+
+        let assert_still_shown = |cx: &mut EditorLspTestContext, why: &str| {
+            let shown = cx.editor(|editor, _, _| editor.hover_state.info_popovers.len());
+            assert_eq!(shown, 2, "{why}");
+            let text = section_text(cx);
+            assert!(text.starts_with("Type of local:"), "{why}: {text}");
+        };
+
+        // Past the end of a line: the pointer is no longer over text.
+        cx.update_editor(|editor, window, cx| hover_at(editor, None, Some(in_gap), window, cx));
+        cx.executor()
+            .advance_clock(Duration::from_millis(hiding_delay + 100));
+        cx.run_until_parked();
+        assert_still_shown(&mut cx, "the gap does not start hiding the popovers");
+
+        // Over other text.
+        cx.update_editor(|editor, window, cx| {
+            hover_at(editor, Some(elsewhere), Some(in_gap), window, cx)
+        });
+        assert_still_shown(&mut cx, "the gap does not hover the text underneath");
+        let delay = hover_delay(&mut cx);
+        cx.executor()
+            .advance_clock(Duration::from_millis(delay.max(hiding_delay) + 100));
+        cx.run_until_parked();
+        assert_still_shown(&mut cx, "nor later");
+
+        let below = gpui::point(in_gap.x, lower.bottom() + HOVER_POPOVER_GAP * 3.);
+        cx.update_editor(|editor, window, cx| hover_at(editor, None, Some(below), window, cx));
+        cx.executor()
+            .advance_clock(Duration::from_millis(hiding_delay + 100));
+        cx.run_until_parked();
+        let shown = cx.editor(|editor, _, _| editor.hover_state.visible());
+        assert!(!shown, "leaving the stack still hides it");
+    }
+
+    /// Hovers the `occurrence`-th `needle`, draws the language server's popover alone, and then
+    /// with the section arriving: the popover alone, then the language server's and the section.
+    /// `shown_below` says the popover alone was shown below the line, where there is room above
+    /// too.
+    fn draw_section_arriving_later(
+        cx: &mut EditorLspTestContext,
+        needle: &str,
+        occurrence: usize,
+        shown_below: bool,
+    ) -> (
+        gpui::Bounds<Pixels>,
+        gpui::Bounds<Pixels>,
+        gpui::Bounds<Pixels>,
+    ) {
+        answer_hovers_briefly(cx);
+        hover_over(cx, needle, occurrence);
+        let section = cx.update_editor(|editor, _, _| {
+            let section = editor.hover_state.info_popovers.pop();
+            editor.hover_state.kept_side = None;
+            section.expect("a section")
+        });
+        let alone = drawn_popovers(cx);
+        let [alone] = alone.as_slice() else {
+            panic!("one popover: {alone:?}");
+        };
+        let alone = *alone;
+        if shown_below {
+            cx.update_editor(|editor, _, _| {
+                let (position, _) = editor
+                    .hover_state
+                    .kept_side
+                    .expect("the side the popover was shown on");
+                editor.hover_state.kept_side = Some((position, false));
+            });
+        }
+        cx.update_editor(|editor, _, cx| {
+            editor.hover_state.info_popovers.push(section);
+            cx.notify();
+        });
+        let both = drawn_popovers(cx);
+        let [first, section] = both.as_slice() else {
+            panic!("two popovers: {both:?}");
+        };
+        (alone, *first, *section)
+    }
+
+    #[gpui::test]
+    async fn test_a_section_arriving_later_keeps_the_side_while_the_stack_fits(
+        cx: &mut TestAppContext,
+    ) {
+        // Room above the line for the whole stack.
+        let edited = format!("{}{FILE_C}", "\n".repeat(12));
+        let mut cx = c_context(true, cx).await;
+        cx.set_state(&format!("ˇ{edited}"));
+        let _index = install_index(
+            &mut cx,
+            ("dir/file.c", edited.as_str()),
+            &[("dir/types.h", TYPES_H)],
+        )
+        .await;
+
+        let (alone, first, section) = draw_section_arriving_later(&mut cx, "shade", 0, false);
+        assert_eq!(first, alone, "{both:?}", both = (first, section));
+        assert!(
+            section.bottom() <= alone.top(),
+            "a fresh stack goes above: {section:?} after {alone:?}"
+        );
+        cx.update_editor(|editor, _, cx| hide_hover(editor, cx));
+
+        let (alone, first, section) = draw_section_arriving_later(&mut cx, "shade", 0, true);
+        assert!(
+            first.top() > alone.bottom() && section.top() > first.bottom(),
+            "shown below, the stack stays below while it fits there: {first:?} and {section:?} \
+             after {alone:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_a_section_arriving_later_moves_the_whole_stack_when_it_does_not_fit(
+        cx: &mut TestAppContext,
+    ) {
+        let (mut cx, _index) = setup(true, cx).await;
+        let line_height = cx.update(|window, _| window.line_height());
+
+        // A tall section does not fit above with the popover shown there: the whole stack moves
+        // below, rather than being split by the line.
+        let (alone, first, section) = draw_section_arriving_later(&mut cx, "local", 1, false);
+        assert!(
+            first.top() >= alone.bottom() + line_height && section.top() > first.bottom(),
+            "the whole stack goes to the other side of the line: {first:?} and {section:?} \
+             after {alone:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_a_stack_shown_again_is_placed_afresh(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(true, cx).await;
+        answer_hovers_briefly(&mut cx);
+        hover_over(&mut cx, "local", 1);
+        cx.update_editor(|editor, _, _| {
+            editor.hover_state.info_popovers.pop();
+            editor.hover_state.kept_side = None;
+        });
+        let alone = drawn_popovers(&mut cx);
+        let [alone] = alone.as_slice() else {
+            panic!("one popover: {alone:?}");
+        };
+
+        cx.update_editor(|editor, _, cx| hide_hover(editor, cx));
+        hover_over(&mut cx, "local", 1);
+        let both = drawn_popovers(&mut cx);
+        let [first, section] = both.as_slice() else {
+            panic!("two popovers: {both:?}");
+        };
+        assert!(
+            first.top() > alone.bottom() && section.top() > first.bottom(),
+            "the side the hidden stack had is forgotten, and the whole new one goes below: \
+             {first:?} and {section:?} after {alone:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_a_stack_without_a_section_is_placed_as_upstream_places_it(
+        cx: &mut TestAppContext,
+    ) {
+        let (mut cx, _index) = setup(true, cx).await;
+        answer_hovers_briefly(&mut cx);
+        hover_over(&mut cx, "local", 1);
+        let mut second = cx.update_editor(|editor, _, _| {
+            let section = editor.hover_state.info_popovers.pop();
+            editor.hover_state.kept_side = None;
+            section.expect("a section")
+        });
+        let alone = drawn_popovers(&mut cx);
+        let [alone] = alone.as_slice() else {
+            panic!("one popover: {alone:?}");
+        };
+        // A language server's popover, as tall as the section, grown after the first was shown.
+        let tall = (0..60)
+            .map(|line| format!("line {line}"))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let markdown = cx.update(|_, cx| cx.new(|cx| Markdown::new(tall.into(), None, None, cx)));
+        second.type_contents = None;
+        second.parsed_content = Some(markdown);
+        second.last_bounds.set(None);
+        cx.update_editor(|editor, _, cx| {
+            editor.hover_state.info_popovers.push(second);
+            cx.notify();
+        });
+        drawn_popovers(&mut cx);
+        let both = drawn_popovers(&mut cx);
+        let [first, second] = both.as_slice() else {
+            panic!("two popovers: {both:?}");
+        };
+        assert!(
+            first.top() > alone.bottom() && second.top() > first.bottom(),
+            "the whole stack goes below the line, as it always has: {first:?} and {second:?} \
+             after {alone:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_the_grace_period_starts_when_the_language_server_answers(
+        cx: &mut TestAppContext,
+    ) {
+        let (mut cx, _index) = setup(false, cx).await;
+        let anchor = anchor_of(&mut cx, "local", 1);
+        let query = cx
+            .update_editor(|editor, _, cx| {
+                let (position, _) = editor
+                    .buffer()
+                    .read(cx)
+                    .snapshot(cx)
+                    .anchor_to_buffer_anchor(anchor)?;
+                let buffer = editor.buffer().read(cx).as_singleton()?;
+                query(editor, &buffer, position, cx)
+            })
+            .expect("a question for the index");
+        // The language server answers long after the question was asked.
+        cx.executor().advance_clock(GRACE_PERIOD * 4);
+        cx.run_until_parked();
+        let async_cx = cx.update(|_, cx| cx.to_async());
+        let PendingTypeContents {
+            grace_period,
+            future: _,
+        } = query.finish(&[], &async_cx);
+        let waiting = cx.foreground_executor().spawn(grace_period);
+        cx.run_until_parked();
+        assert!(!waiting.is_ready(), "the period starts with the answer");
+        cx.executor()
+            .advance_clock(GRACE_PERIOD - Duration::from_millis(10));
+        cx.run_until_parked();
+        assert!(!waiting.is_ready());
+        cx.executor().advance_clock(Duration::from_millis(20));
+        cx.run_until_parked();
+        assert!(waiting.is_ready());
+    }
+
+    #[test]
+    fn test_columns_count_wide_characters_twice() {
+        let member = |name: &str, type_text: &str| Line::Member {
+            depth: 0,
+            path: Vec::new(),
+            name: name.to_string(),
+            type_text: type_text.to_string(),
+            bit_width: None,
+            comment: None,
+            condition: None,
+            toggle: Toggle::None,
+            unparsed: false,
+            jump: (
+                ProjectPath {
+                    worktree_id: WorktreeId::from_usize(1),
+                    path: util::rel_path::rel_path("a.h").into_arc(),
+                },
+                Point::zero(),
+            ),
+        };
+        assert_eq!(column_widths(&[member("counter", "unsigned int")]), (7, 12));
+        assert_eq!(
+            column_widths(&[member("名前の長さ", "構造体 名前 *")]),
+            (10, 13),
+            "a wide character takes two columns"
+        );
+        assert_eq!(
+            column_widths(&[member(&"幅".repeat(30), &"型".repeat(30))]),
+            (NAME_COLUMN_CHARS, TYPE_COLUMN_CHARS)
         );
     }
 

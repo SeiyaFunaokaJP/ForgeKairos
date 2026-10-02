@@ -2356,7 +2356,7 @@ enum AgentSandboxRoute {
         editor_allowlist: Option<Vec<String>>,
     },
     /// ADR-F18: a remote host's sandbox helper. The editor-wide allowlist
-    /// travels with the route for the same reason it does with [`Self::Wsl`]:
+    /// travels with the route for the same reason it does with the WSL route:
     /// the helper's proxy runs on the far side of the connection, where the
     /// live policy object cannot follow, so every sandbox built for this
     /// connection — the agent's and each sign-in's — has to be handed the same

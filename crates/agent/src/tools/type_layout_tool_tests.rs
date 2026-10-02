@@ -336,3 +336,46 @@ fn test_the_input_schema_explains_both_forms() {
     );
     assert_eq!(TypeLayoutTool::kind(), acp::ToolKind::Search);
 }
+
+/// A member an old remote host can't place is withheld, and the model is told why instead of
+/// being left to think its file is restricted.
+#[gpui::test]
+async fn test_a_member_an_old_host_cannot_place_says_why(cx: &mut TestAppContext) {
+    let setup = setup(false, cx).await;
+    let mut report = TypeLayoutReport {
+        kind: TypeLayoutKind::NotFound,
+        requested: "id".to_string(),
+        title: String::new(),
+        definition: None,
+        text: String::new(),
+        definitions: Vec::new(),
+        candidates: 0,
+        candidates_truncated: false,
+        other_candidates: Vec::new(),
+        withheld: 1,
+        withheld_note: Some(ide_query::HOST_TOO_OLD_TO_JUDGE_MEMBER),
+        inferred: None,
+        pruned: false,
+        truncated: false,
+        index_note: None,
+    };
+    let output = setup
+        .project
+        .read_with(cx, |project, cx| format_type_layout(project, &report, cx));
+    assert_eq!(
+        output,
+        format!(
+            "1 definition of `id` can't be shown (it could not be checked): {}\n",
+            ide_query::HOST_TOO_OLD_TO_JUDGE_MEMBER
+        )
+    );
+
+    report.withheld_note = None;
+    let output = setup
+        .project
+        .read_with(cx, |project, cx| format_type_layout(project, &report, cx));
+    assert_eq!(
+        output,
+        "1 definition of `id` can't be shown (in files with restricted access).\n"
+    );
+}

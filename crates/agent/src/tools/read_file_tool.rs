@@ -299,7 +299,7 @@ impl AgentTool for ReadFileTool {
                 }).map_err(tool_content_err)?;
 
             // Check settings exclusions synchronously
-            project.read_with(cx, |_project, cx| {
+            project.read_with(cx, |project, cx| {
                 let global_settings = WorktreeSettings::get_global(cx);
                 if global_settings.is_path_excluded(&project_path.path) {
                     anyhow::bail!(
@@ -328,6 +328,14 @@ impl AgentTool for ReadFileTool {
                         "Cannot read file because its path matches the worktree `private_files` setting: {}",
                         input.path
                     );
+                }
+
+                // The checks above match the spelling given; where case may be folded, a path
+                // the worktree has no entry for can still reach a file the settings cover.
+                if let Some(reason) =
+                    ide_query::agent_settings_withheld_reason(project, &project_path, cx)
+                {
+                    anyhow::bail!("Cannot read file because its path {reason}: {}", input.path);
                 }
 
                 anyhow::Ok(())
@@ -1722,6 +1730,114 @@ mod test {
             ),
             "No authorization should be requested when validation fails before read",
         );
+    }
+
+    /// On a file system that ignores case, a path spelled differently from the file on disk
+    /// still reaches that file, so it has to be judged as that file.
+    #[gpui::test]
+    async fn test_read_file_judges_a_differently_cased_path_as_the_file_it_reaches(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        fs.set_case_sensitive(false);
+        fs.insert_tree(
+            path!("/root"),
+            json!({
+                "project": {
+                    "secret.rs": "SECRET_KEY=abc123",
+                    "excluded": { "data.txt": "EXCLUDED_CONTENT" },
+                    "src": { "main.rs": "fn main() {}" }
+                },
+                "external": { "file.txt": "EXTERNAL_CONTENT" }
+            }),
+        )
+        .await;
+        fs.create_symlink(
+            path!("/root/project/link").as_ref(),
+            PathBuf::from("../external"),
+        )
+        .await
+        .expect("the link is created");
+
+        cx.update(|cx| {
+            settings::SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.worktree.private_files =
+                        Some(vec!["**/secret.rs".to_string()].into());
+                    settings.project.worktree.file_scan_exclusions =
+                        Some(SplicingVec::from(vec!["**/excluded".to_string()]));
+                });
+            });
+        });
+
+        let project = Project::test(fs.clone(), [path!("/root/project").as_ref()], cx).await;
+        cx.executor().run_until_parked();
+        let action_log = cx.new(|_| ActionLog::new(project.clone()));
+        let tool = Arc::new(ReadFileTool::new(project.clone(), action_log, true));
+        let read = |path: &str, cx: &mut TestAppContext| {
+            let (event_stream, event_rx) = ToolCallEventStream::test();
+            let task = cx.update(|cx| {
+                tool.clone().run(
+                    ToolInput::resolved(ReadFileToolInput {
+                        path: path.to_string(),
+                        start_line: None,
+                        end_line: None,
+                    }),
+                    event_stream,
+                    cx,
+                )
+            });
+            (task, event_rx)
+        };
+
+        let mut refused = vec![
+            ("project/secret.rs", "private_files"),
+            ("project/SECRET.rs", "private_files"),
+            ("project/Secret.RS", "private_files"),
+            ("project/excluded/data.txt", "file_scan_exclusions"),
+            ("project/EXCLUDED/data.txt", "file_scan_exclusions"),
+        ];
+        // Windows also opens a file for its name with trailing dots or spaces, with its data
+        // stream named, or by its short name.
+        if cfg!(windows) {
+            refused.extend([
+                ("project/secret.rs.", "private_files"),
+                ("project/secret.rs ", "private_files"),
+                ("project/SECRET.RS::$DATA", "private_files"),
+                ("project/excluded./data.txt", "file_scan_exclusions"),
+                ("project/SECRET~1.RS", "short (8.3) name"),
+            ]);
+        }
+        for (path, setting) in refused {
+            let (task, _event_rx) = read(path, cx);
+            let error = error_text(task.await.expect_err(path));
+            assert!(error.contains(setting), "{path}: {error}");
+            assert!(
+                !error.contains("SECRET_KEY") && !error.contains("EXCLUDED_CONTENT"),
+                "{path}: {error}"
+            );
+        }
+
+        // A link that leads out of the project still asks first, whatever its spelling.
+        let mut through_link = vec!["project/LINK/file.txt"];
+        if cfg!(windows) {
+            through_link.push("project/link./file.txt");
+        }
+        for path in through_link {
+            let (task, mut event_rx) = read(path, cx);
+            let authorization = event_rx.expect_authorization().await;
+            drop(authorization);
+            assert!(
+                task.await.is_err(),
+                "{path}: the read is refused without approval"
+            );
+        }
+
+        let (task, _event_rx) = read("project/SRC/MAIN.rs", cx);
+        let contents = task.await.expect("an ordinary file reads in any spelling");
+        assert_eq!(contents, "     1\tfn main() {}".into());
     }
 
     #[gpui::test]

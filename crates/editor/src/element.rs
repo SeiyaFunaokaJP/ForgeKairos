@@ -4609,7 +4609,32 @@ impl EditorElement {
             })
         };
 
-        if can_place_above {
+        // A stack shown below the line stays there while the whole of it fits, so that a
+        // section arriving later does not move the popover being read; otherwise it is placed
+        // as a whole, as before, never split by the line. Only a stack with a type contents
+        // section has one arriving later.
+        let hover_state = &self.editor.read(cx).hover_state;
+        let kept_below = hover_state.kept_side.is_some_and(|(position, above)| {
+            !above
+                && position == popover_position
+                && hover_state
+                    .info_popovers
+                    .iter()
+                    .any(|popover| popover.type_contents.is_some())
+        }) && can_place_below();
+        let place_above = can_place_above && !kept_below;
+        let placed_above = if place_above {
+            Some(true)
+        } else if can_place_below() {
+            Some(false)
+        } else {
+            None
+        };
+        self.editor.update(cx, |editor, _| {
+            editor.hover_state.kept_side = placed_above.map(|above| (popover_position, above));
+        });
+
+        if place_above {
             // try placing above hovered point
             place_popovers_above(hovered_point, measured_hover_popovers, window, cx);
         } else if can_place_below() {

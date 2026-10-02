@@ -2222,3 +2222,119 @@ async fn test_restarting_one_server_reopens_only_the_buffers_still_held(cx: &mut
         "nothing is reopened in the server left running"
     );
 }
+
+// A restart starts servers for the files open in them. With none open there
+// is nothing to start them for, so they stay stopped until a file is opened,
+// and the user is told so rather than left to wonder.
+#[gpui::test]
+async fn test_restart_with_no_file_open_says_the_servers_start_with_a_file(
+    cx: &mut TestAppContext,
+) {
+    init_test(cx);
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/dir"), json!({ "main.rs": "fn main() {}" }))
+        .await;
+    let project = Project::test(fs, [path!("/dir").as_ref()], cx).await;
+    let language_registry = project.read_with(cx, |project, _| project.languages().clone());
+    language_registry.add(rust_lang());
+    let mut fake_servers = language_registry.register_fake_lsp("Rust", FakeLspAdapter::default());
+    let lsp_store = project.read_with(cx, |project, _| project.lsp_store());
+    let notifications = Rc::new(RefCell::new(Vec::new()));
+    let _subscription = cx.update(|cx| {
+        let notifications = notifications.clone();
+        cx.subscribe(&lsp_store, move |_, event, _| {
+            if let LspStoreEvent::Notification(message) = event {
+                notifications.borrow_mut().push(message.clone());
+            }
+        })
+    });
+
+    let (_main, main_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/main.rs"), cx)
+        })
+        .await
+        .expect("opening main.rs");
+    let _first = fake_servers.next().await.expect("the server starts");
+    cx.run_until_parked();
+
+    lsp_store.update(cx, |lsp_store, cx| {
+        lsp_store.restart_all_language_servers(cx)
+    });
+    cx.run_until_parked();
+    let _second = fake_servers
+        .next()
+        .now_or_never()
+        .flatten()
+        .expect("the server restarts for the file open in it");
+    assert_eq!(*notifications.borrow(), Vec::<String>::new());
+
+    cx.update(|_| drop(main_handle));
+    cx.run_until_parked();
+    // As a change of the semantic tokens setting restarts them.
+    let buffers = lsp_store.read_with(cx, |lsp_store, cx| {
+        lsp_store
+            .buffer_store()
+            .read(cx)
+            .buffers()
+            .collect::<Vec<_>>()
+    });
+    lsp_store.update(cx, |lsp_store, cx| {
+        lsp_store.restart_language_servers_for_buffers(buffers, HashSet::default(), false, cx)
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        *notifications.borrow(),
+        Vec::<String>::new(),
+        "a restart the user did not ask for says nothing"
+    );
+    let (_main, main_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/main.rs"), cx)
+        })
+        .await
+        .expect("opening main.rs");
+    cx.run_until_parked();
+    assert!(
+        fake_servers.next().now_or_never().flatten().is_some(),
+        "the server starts again"
+    );
+    cx.update(|_| drop(main_handle));
+    cx.run_until_parked();
+
+    lsp_store.update(cx, |lsp_store, cx| {
+        lsp_store.restart_all_language_servers(cx)
+    });
+    cx.run_until_parked();
+    assert!(
+        fake_servers.next().now_or_never().is_none(),
+        "no server starts with no file open"
+    );
+    assert_eq!(
+        *notifications.borrow(),
+        [
+            "No open file uses the restarted language servers, so they will start when you open a file."
+        ]
+    );
+
+    let (_main, _main_handle) = project
+        .update(cx, |project, cx| {
+            project.open_local_buffer_with_lsp(path!("/dir/main.rs"), cx)
+        })
+        .await
+        .expect("opening main.rs again");
+    cx.run_until_parked();
+    assert!(
+        fake_servers.next().now_or_never().flatten().is_some(),
+        "opening a file starts the server"
+    );
+    lsp_store.update(cx, |lsp_store, cx| {
+        lsp_store.restart_all_language_servers(cx)
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        notifications.borrow().len(),
+        1,
+        "nothing to say when a file is open"
+    );
+}

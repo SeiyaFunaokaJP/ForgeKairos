@@ -35,9 +35,9 @@ use crate::{
 actions!(
     tabular_data,
     [
-        /// 表のすべての列の絞り込みを解除します。
+        /// Clears the filters of every column of the table.
         ClearAllFilters,
-        /// 選択中のセルの列の絞り込みメニューを開きます。
+        /// Opens the filter menu of the selected cell's column.
         ToggleFilterMenu,
     ]
 );

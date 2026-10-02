@@ -927,7 +927,7 @@ mod tests {
     // `tr` must show exactly as written rather than read as placeholders.
     #[test]
     fn labels_in_japanese_read_as_they_did_before_the_catalog() {
-        use crate::block_model::{BLOCK_LINKS, BlockItemKind, BlockShape};
+        use crate::block_model::{BLOCK_LINKS, BlockItemKind, BlockShape, block_link_name};
         use crate::mindmap_model::MindmapShape;
         use crate::state_model::{NotePlacement, StateKind};
 
@@ -999,8 +999,8 @@ mod tests {
             ["ブロック", "矢印", "空き", "グループ"]
         );
         assert_eq!(
-            BLOCK_LINKS.map(|(_, name)| i18n::tr(name)),
-            ["矢印", "線だけ", "× 印", "○ 印"]
+            BLOCK_LINKS.map(block_link_name),
+            [Some("矢印"), Some("線だけ"), Some("× 印"), Some("○ 印")]
         );
         assert_eq!(
             StateKind::ALL.map(StateKind::label),

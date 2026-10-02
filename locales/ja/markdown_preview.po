@@ -110,6 +110,9 @@ msgstr "軸を追加"
 msgid "Add Bar"
 msgstr "棒を追加"
 
+msgid "Add Block"
+msgstr "ブロックを追加"
+
 msgid "Add Block Branch"
 msgstr "分岐を追加"
 
@@ -122,6 +125,9 @@ msgstr "ブロック開始を追加"
 msgid "Add Boundary"
 msgstr "境界を追加"
 
+msgid "Add Branch"
+msgstr "ブランチを追加"
+
 msgid "Add Card"
 msgstr "カードを追加"
 
@@ -130,6 +136,12 @@ msgstr "項目を追加"
 
 msgid "Add Central Node"
 msgstr "中心ノードを追加"
+
+msgid "Add Checkout"
+msgstr "チェックアウトを追加"
+
+msgid "Add Cherry-pick"
+msgstr "チェリーピックを追加"
 
 msgid "Add Child"
 msgstr "子を追加"
@@ -145,6 +157,9 @@ msgstr "列を追加"
 
 msgid "Add Column at End"
 msgstr "末尾に列を追加"
+
+msgid "Add Commit"
+msgstr "コミットを追加"
 
 msgid "Add Composite State"
 msgstr "複合状態を追加"
@@ -206,6 +221,9 @@ msgstr "メンバーを追加"
 msgid "Add Member Line"
 msgstr "メンバー行を追加"
 
+msgid "Add Merge"
+msgstr "マージを追加"
+
 msgid "Add Message"
 msgstr "メッセージを追加"
 
@@ -262,6 +280,9 @@ msgstr "集合を追加"
 
 msgid "Add Sibling Below"
 msgstr "下に兄弟を追加"
+
+msgid "Add Space"
+msgstr "空きを追加"
 
 msgid "Add State"
 msgstr "状態を追加"
@@ -343,9 +364,6 @@ msgstr "namespaceを追加"
 
 msgid "Add style"
 msgstr "style を追加"
-
-msgid "Add {label}"
-msgstr "{label}を追加"
 
 msgid "Alignment"
 msgstr "配置"
@@ -713,6 +731,9 @@ msgstr "表を編集"
 msgid "Edit the cells directly. Pasting a range from Excel or a spreadsheet spreads it across the table."
 msgstr "セルを直接編集できます。Excel やスプレッドシートの範囲をそのまま貼り付けると、表に展開します。"
 
+msgid "Editing the image at the cursor. Make your changes and click \"Update\" to apply them."
+msgstr "カーソル位置の画像を編集しています。変更して「更新」を押すと反映します。"
+
 msgid "Effect (Problem)"
 msgstr "結果 (問題)"
 
@@ -875,7 +896,7 @@ msgstr "この行の上に行を挿入"
 msgid "Insert Row Below"
 msgstr "この行の下に行を挿入"
 
-msgid "Inserts an image at the cursor. Setting an alignment or a size writes it as HTML."
+msgid "Inserts an image at the cursor. An image with an alignment or a size is written as HTML."
 msgstr "カーソル位置に画像を挿入します。配置やサイズを指定すると HTML で書き込みます。"
 
 msgid "Interactions"
@@ -1317,7 +1338,7 @@ msgstr "スタイル (classDef でクラスを定義し、class で付ける。s
 msgid "Suggestions"
 msgstr "候補"
 
-msgid "Tab / arrow keys move between cells. Ctrl+Enter writes the table."
+msgid "Tab / arrow keys move between cells. Ctrl+Enter applies the table to the document."
 msgstr "Tab / 矢印キーでセルを移動。Ctrl+Enter で書き出し"
 
 msgid "Tab moves between fields. Ctrl+Enter applies."
@@ -1395,9 +1416,6 @@ msgstr "クラスの表示名に `\"`・`%%{{` と改行は使えません。"
 msgid "The generic type \"{generic}\" is not valid."
 msgstr "総称型「{generic}」は使えません。"
 
-msgid "The image at the cursor was loaded. Change it and click \"Update\" to rewrite it."
-msgstr "カーソル位置の画像を読み込みました。変更して「更新」を押すと書き換えます。"
-
 msgid "The image is too large ({} MiB). Images of up to {} MiB can be saved."
 msgstr "画像が大きすぎます ({} MiB)。保存できるのは {} MiB までです。"
 
@@ -1465,7 +1483,7 @@ msgstr "ソースが変更されたため、このラベルを書き換えられ
 msgid "The style of the class definition \"{name}\" has characters that cannot be used (; or %%, an unclosed quote, or a trailing {{)."
 msgstr "クラス定義「{name}」のスタイルに使えない文字があります (; や %% 、閉じていない引用符、末尾の {{)。"
 
-msgid "The text to write to changed after the dialog was opened. Open the dialog again."
+msgid "The text the image is written into changed after the dialog was opened. Open the dialog again."
 msgstr "ダイアログを開いた後に、書き込み先のテキストが変更されました。ダイアログを開き直してください。"
 
 msgid "The title cannot contain `%%` or line breaks (nor spaces at either end)."

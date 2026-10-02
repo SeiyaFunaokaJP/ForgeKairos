@@ -173,9 +173,9 @@ pub struct CallNode {
     /// [`MAX_PREVIEW_FILES`]).
     pub preview: String,
     pub source: CallSource,
-    /// The number of definitions of this name the name index found, when it found more than
-    /// one; this node is one of them.
-    pub ambiguous: Option<usize>,
+    /// The definitions of this name the name index found, when it found more than one; this
+    /// node is one of them.
+    pub ambiguous: Option<DefinitionCounts>,
     pub resolution: CallResolution,
     pub expansion: CallExpansion,
     pub children: Vec<CallNode>,
@@ -224,8 +224,51 @@ pub struct CallCandidates {
     /// At most [`MAX_CALL_CANDIDATES`], with the same checks as the calls of a tree: one in a file
     /// that must not reach an agent is placed without its name or preview.
     pub candidates: Vec<CallNode>,
-    pub total: usize,
+    /// Every function of the name, split by whether its file may be shown.
+    pub counts: DefinitionCounts,
     pub index_building: Option<IndexBuilding>,
+}
+
+/// Definitions that share a name. Those in files withheld from the agent are only counted
+/// (the display contract shows nothing of such a file, its names included), apart from the
+/// ones that may be shown.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DefinitionCounts {
+    pub shown: usize,
+    pub withheld: usize,
+    /// The files of the `shown` ones, with how many each holds, so that a caller that judges
+    /// files more strictly (a sandbox) can count again.
+    pub shown_files: Vec<(ProjectPath, usize)>,
+}
+
+impl DefinitionCounts {
+    fn of(project: &Project, definitions: &[IndexedDefinition], cx: &App) -> Self {
+        let mut counts = Self::default();
+        let mut judged: HashMap<&ProjectPath, bool> = HashMap::default();
+        for definition in definitions {
+            let shown = *judged
+                .entry(&definition.path)
+                .or_insert_with(|| agent_withheld_reason(project, &definition.path, cx).is_none());
+            if !shown {
+                counts.withheld += 1;
+                continue;
+            }
+            counts.shown += 1;
+            match counts
+                .shown_files
+                .iter_mut()
+                .find(|(path, _)| *path == definition.path)
+            {
+                Some((_, count)) => *count += 1,
+                None => counts.shown_files.push((definition.path.clone(), 1)),
+            }
+        }
+        counts
+    }
+
+    pub fn total(&self) -> usize {
+        self.shown + self.withheld
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -499,7 +542,7 @@ struct FoundCall {
     place: FoundPlace,
     source: CallSource,
     handle: CallHandle,
-    ambiguous: Option<usize>,
+    ambiguous: Option<DefinitionCounts>,
     resolution: CallResolution,
     /// Listed under this one without being followed.
     candidates: Vec<FoundCall>,
@@ -531,7 +574,7 @@ impl FoundCall {
         definition: IndexedDefinition,
         call_rows: Vec<u32>,
         preview_row: u32,
-        ambiguous: Option<usize>,
+        ambiguous: Option<DefinitionCounts>,
     ) -> Self {
         let name_row = definition.name_range.start.row;
         // A `#define` ends with its line break, at the start of the next line.
@@ -1112,7 +1155,9 @@ impl Walk {
         index_building: Option<IndexBuilding>,
         cx: &mut AsyncApp,
     ) -> CallCandidates {
-        let total = definitions.len();
+        let counts = self.project.read_with(cx, |project, cx| {
+            DefinitionCounts::of(project, &definitions, cx)
+        });
         let found = definitions
             .into_iter()
             .take(MAX_CALL_CANDIDATES)
@@ -1139,7 +1184,7 @@ impl Walk {
         CallCandidates {
             name,
             candidates: built.into_iter().map(|(node, _)| node).collect(),
-            total,
+            counts,
             index_building,
         }
     }
@@ -1379,15 +1424,17 @@ impl Walk {
                 ));
                 continue;
             }
-            let total = definitions.len();
-            let ambiguous = (total > 1).then_some(total);
+            let counts = self.project.read_with(cx, |project, cx| {
+                DefinitionCounts::of(project, &definitions, cx)
+            });
+            let ambiguous = (counts.total() > 1).then_some(counts);
             for definition in definitions.into_iter().take(MAX_AMBIGUOUS_DEFINITIONS) {
                 let row = definition.name_range.start.row;
                 found.push(FoundCall::from_definition(
                     definition,
                     group.rows.clone(),
                     row,
-                    ambiguous,
+                    ambiguous.clone(),
                 ));
             }
         }
@@ -1969,7 +2016,7 @@ fn call_node(
             contents_allowed,
             preview,
             source: found.source,
-            ambiguous: found.ambiguous,
+            ambiguous: found.ambiguous.clone(),
             resolution: if is_withheld {
                 match &found.resolution {
                     CallResolution::Indirect { .. } => CallResolution::Indirect {

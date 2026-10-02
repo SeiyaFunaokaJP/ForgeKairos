@@ -58,6 +58,16 @@ pub fn hover_at(
             return;
         }
 
+        // The gaps between stacked popovers count as the popovers, so that the pointer can
+        // pass slowly from one to the next.
+        if let Some(mouse_position) = mouse_position
+            && crate::type_contents_hover::is_in_popover_stack(&editor.hover_state, mouse_position)
+        {
+            editor.hover_state.closest_mouse_distance = Some(px(0.0));
+            editor.hover_state.hiding_delay_task = None;
+            return;
+        }
+
         if let Some(anchor) = anchor {
             editor.hover_state.hiding_delay_task = None;
             editor.hover_state.closest_mouse_distance = None;
@@ -256,6 +266,7 @@ pub fn hide_hover(editor: &mut Editor, cx: &mut Context<Editor>) -> bool {
     editor.hover_state.info_task = None;
     editor.hover_state.hiding_delay_task = None;
     editor.hover_state.closest_mouse_distance = None;
+    editor.hover_state.kept_side = None;
 
     editor.clear_background_highlights(HighlightKey::HoverState, cx);
 
@@ -1118,6 +1129,9 @@ pub struct HoverState {
     pub info_task: Option<Task<Option<()>>>,
     pub closest_mouse_distance: Option<Pixels>,
     pub hiding_delay_task: Option<Task<()>>,
+    /// Where the shown popovers are placed and whether above the line, kept while they are
+    /// shown so that one arriving later does not move them to the other side.
+    pub(crate) kept_side: Option<(DisplayPoint, bool)>,
 }
 
 impl HoverState {

@@ -1407,7 +1407,9 @@ impl Editor {
         let (buffer, head) = multi_buffer.text_anchor_for_position(head, cx)?;
         let workspace = self.workspace()?;
         let project = workspace.read(cx).project().clone();
-        let references = project.update(cx, |project, cx| project.references(&buffer, head, cx));
+        let references = project.update(cx, |project, cx| {
+            project.references_reporting_omissions(&buffer, head, cx)
+        });
         Some(cx.spawn_in(window, async move |editor, cx| {
             let _cleanup = cx.on_drop(&editor, move |editor, _| {
                 if let Ok(i) = editor
@@ -1418,7 +1420,9 @@ impl Editor {
                 }
             });
 
-            let Some(locations) = references.await? else {
+            let Some(project::lsp_store::result_buffers::LocationsAnswer { locations, omitted }) =
+                references.await?
+            else {
                 return anyhow::Ok(Navigated::No);
             };
             let mut locations = cx.update(|_, cx| {
@@ -1521,6 +1525,11 @@ impl Editor {
                     i18n::t!("References").to_owned()
                 } else {
                     i18n::t!("References to {target}")
+                };
+                let title = if omitted > 0 {
+                    i18n::t!("{title} (partial: {omitted} not shown)")
+                } else {
+                    title
                 };
                 let allow_preview = PreviewTabsSettings::get_global(cx)
                     .enable_preview_multibuffer_from_code_navigation;
@@ -1902,11 +1911,27 @@ impl Editor {
                     None => Ok(Navigated::No),
                 }
             } else {
+                // A jump to the symbol index's only name match says so.
+                let name_match_workspace =
+                    if matches!(kind, Some(GotoDefinitionKind::Symbol) | None)
+                        && cx.update(|_, cx| {
+                            crate::symbol_index_definitions::are_name_matches(
+                                locations.iter().flat_map(|(buffer, ranges)| {
+                                    ranges.iter().map(move |range| (buffer, range))
+                                }),
+                                cx,
+                            )
+                        })?
+                    {
+                        workspace.clone()
+                    } else {
+                        None
+                    };
                 let Some((target_buffer, target_ranges)) = locations.into_iter().next() else {
                     return Ok(Navigated::No);
                 };
 
-                editor.update_in(cx, |editor, window, cx| {
+                let navigated = editor.update_in(cx, |editor, window, cx| {
                     let target_ranges = target_ranges
                         .into_iter()
                         .map(|r| editor.range_for_match(&r))
@@ -2049,7 +2074,15 @@ impl Editor {
                         });
                     }
                     Navigated::Yes
-                })
+                })?;
+                if navigated == Navigated::Yes
+                    && let Some(workspace) = name_match_workspace
+                {
+                    cx.update(|_, cx| {
+                        crate::symbol_index_definitions::note_name_match_jump(&workspace, cx)
+                    })?;
+                }
+                Ok(navigated)
             }
         })
     }

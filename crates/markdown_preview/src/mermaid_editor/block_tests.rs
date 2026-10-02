@@ -323,3 +323,19 @@ async fn deleting_a_row_renamed_to_a_duplicate_keeps_the_other_blocks_edges(
         "},
     );
 }
+
+#[test]
+fn add_buttons_are_worded_whole_in_japanese() {
+    let _japanese = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja"),
+    ));
+    assert_eq!(
+        BlockItemKind::ALL.map(add_block_item_label),
+        [
+            "ブロックを追加",
+            "矢印を追加",
+            "空きを追加",
+            "グループを追加"
+        ]
+    );
+}

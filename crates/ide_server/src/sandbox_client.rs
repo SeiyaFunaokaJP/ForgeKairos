@@ -745,7 +745,7 @@ impl SandboxIdeSession {
             worktree_id: worktree.id(),
             path: file.path.clone(),
         };
-        if tools::is_private_file(&project_path, Some(entry), cx) {
+        if tools::is_private_file(worktree, &project_path, Some(entry), cx) {
             return None;
         }
         self.paths.to_client(&worktree.absolutize(&file.path))

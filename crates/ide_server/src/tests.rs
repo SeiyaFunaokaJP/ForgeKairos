@@ -4521,6 +4521,137 @@ async fn call_hierarchy_results_carry_contents_only_from_checked_project_files(
     );
 }
 
+/// 木の中身の確かめ (リモートでは 1 ファイル 1 往復) は、見せるものだけにする。`ide_query` が
+/// 伏せたノードと、見せないノードの下は、答えに関わらず出さないので確かめない。
+#[gpui::test]
+async fn call_hierarchy_judges_only_the_files_it_would_show(cx: &mut TestAppContext) {
+    let fixture = start_sandbox_fixture(cx).await;
+    add_assist_files(&fixture, cx).await;
+    fixture
+        .fs
+        .insert_tree(
+            path!("/other"),
+            json!({
+                "visible.rs": "// hunter2\n",
+                "a.rs": "// hunter2\n",
+                "b.rs": "// hunter2\n",
+                "c.rs": "// hunter2\n",
+            }),
+        )
+        .await;
+    fixture
+        .project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/other"), true, cx)
+        })
+        .await
+        .expect("a second visible worktree");
+    cx.run_until_parked();
+    let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
+    let env_path = project_path(&fixture.project, path!("/test/.env"), cx);
+    let mut other =
+        |name: &str| project_path(&fixture.project, &format!("{}/{name}", path!("/other")), cx);
+    let (visible_path, a_path, b_path, c_path) = (
+        other("visible.rs"),
+        other("a.rs"),
+        other("b.rs"),
+        other("c.rs"),
+    );
+    let node = |name: &str, path: &project::ProjectPath, children: Vec<CallNode>| CallNode {
+        name: name.to_string(),
+        kind: "function".to_string(),
+        path: path.clone(),
+        lines: LineRange {
+            start_line: 1,
+            end_line: 2,
+        },
+        call_lines: vec![1],
+        in_project: true,
+        contents_allowed: true,
+        // Only the files this client may read are free of the mark.
+        preview: if *path == main_path {
+            "fn main() {}".to_string()
+        } else {
+            "// hunter2".to_string()
+        },
+        source: CallSource::LanguageServer,
+        ambiguous: None,
+        resolution: CallResolution::Definition,
+        expansion: if children.is_empty() {
+            CallExpansion::DepthLimit
+        } else {
+            CallExpansion::Expanded
+        },
+        children,
+    };
+    let hierarchy = CallHierarchy {
+        direction: CallDirection::Incoming,
+        depth: 3,
+        max_results: 50,
+        root: node(
+            "main",
+            &main_path,
+            vec![
+                CallNode {
+                    contents_allowed: false,
+                    ..node("", &env_path, Vec::new())
+                },
+                // セッションのルートの外。その下の 3 ファイルは出さないので確かめない。
+                node(
+                    "outside",
+                    &visible_path,
+                    vec![
+                        node("a", &a_path, Vec::new()),
+                        node("b", &b_path, Vec::new()),
+                        node("c", &c_path, Vec::new()),
+                    ],
+                ),
+                // `dup` has 3 definitions `ide_query` would show and 1 it withheld; this
+                // client can't read `a.rs`, so 2 more are withheld here.
+                CallNode {
+                    ambiguous: Some(ide_query::DefinitionCounts {
+                        shown: 3,
+                        withheld: 1,
+                        shown_files: vec![(main_path.clone(), 1), (a_path.clone(), 2)],
+                    }),
+                    ..node("again", &main_path, Vec::new())
+                },
+            ],
+        ),
+        omitted: 0,
+        stopped: None,
+        used_name_index: false,
+        without_language_server: false,
+        index_truncated: false,
+        index_building: None,
+    };
+
+    let paths = session_paths();
+    let project = fixture.project.clone();
+    let mut async_cx = cx.to_async();
+    let request = tools::SandboxRequest::new(&paths, &project, &mut async_cx).await;
+    let (formatted, checks) = crate::assist_tools::count_call_hierarchy_checks_for_test(
+        project.clone(),
+        crate::assist_tools::AssistPaths::Sandbox(request),
+        hierarchy,
+        &mut async_cx,
+    )
+    .await;
+    assert!(!formatted.to_string().contains("hunter2"), "{formatted}");
+    let calls = formatted["root"]["calls"]
+        .as_array()
+        .expect("the calls are an array");
+    assert_eq!(calls.len(), 3, "{formatted}");
+    assert_eq!(calls[1]["inProject"], json!(false), "{formatted}");
+    assert!(calls[1].get("calls").is_none(), "{formatted}");
+    assert_eq!(calls[2]["name"], json!("again"), "{formatted}");
+    assert_eq!(calls[2]["ambiguous"], json!(1), "{formatted}");
+    assert_eq!(calls[2]["ambiguousWithheld"], json!(3), "{formatted}");
+    // `main.rs` (once, for all of its nodes), the outside file, and `a.rs` for `again`'s
+    // definitions; not `.env`, nor `b.rs` or `c.rs` below the outside file.
+    assert_eq!(checks, 3, "{formatted}");
+}
+
 /// 名前の索引から来た呼び出しの JSON: 出どころ (`nameIndex` / `macro` / `candidate`)・同名の定義の数・
 /// メンバー経由の呼び出し・定義の無い名前・索引の状態を、モデルに渡る形のまま確かめる。
 #[gpui::test]
@@ -4609,7 +4740,11 @@ async fn call_hierarchy_json_marks_what_the_name_index_found(cx: &mut TestAppCon
                         )
                     },
                     CallNode {
-                        ambiguous: Some(2),
+                        ambiguous: Some(ide_query::DefinitionCounts {
+                            shown: 2,
+                            withheld: 0,
+                            shown_files: Vec::new(),
+                        }),
                         ..node(
                             "dup",
                             "function",
@@ -5673,11 +5808,17 @@ async fn private_files_are_judged_by_the_settings_not_only_the_entry(cx: &mut Te
     let env_path = project_path(&fixture.project, path!("/test/.env"), cx);
     let main_path = project_path(&fixture.project, path!("/test/main.rs"), cx);
     cx.update(|cx| {
+        let worktree = fixture
+            .project
+            .read(cx)
+            .worktree_for_id(env_path.worktree_id, cx)
+            .expect("the worktree exists");
+        let worktree = worktree.read(cx);
         assert!(
-            tools::is_private_file(&env_path, None, cx),
+            tools::is_private_file(worktree, &env_path, None, cx),
             "without the entry's flag, the pattern still matches"
         );
-        assert!(!tools::is_private_file(&main_path, None, cx));
+        assert!(!tools::is_private_file(worktree, &main_path, None, cx));
     });
 }
 
@@ -6628,6 +6769,45 @@ async fn workspace_diagnostics_beyond_one_page_continue_with_a_cursor(cx: &mut T
     )
     .await;
     assert_eq!(response["result"]["isError"], json!(true), "{response}");
+}
+
+/// `cursor` pages through every file and `uri` asks for one, so a call with both is refused
+/// rather than answered with one of them quietly dropped.
+#[gpui::test]
+async fn diagnostics_with_both_a_uri_and_a_cursor_are_refused(cx: &mut TestAppContext) {
+    let (fs, workspace, server) = test_workspace_with_fs(cx).await;
+    let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+    fs.insert_tree(path!("/test/both"), json!({"main.rs": "x\n"}))
+        .await;
+    cx.run_until_parked();
+    let file = format!("{}/main.rs", path!("/test/both"));
+    set_diagnostic(&project, &file, "broken", cx);
+    cx.run_until_parked();
+    let uri = tools::file_uri(Path::new(&file));
+
+    let response = request(
+        &server,
+        get_diagnostics_request(json!({ "uri": uri, "cursor": "0" })),
+        cx,
+    )
+    .await;
+    assert_eq!(response["result"]["isError"], json!(true), "{response}");
+    let message = response["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        message.contains("uri") && message.contains("cursor"),
+        "{response}"
+    );
+
+    for arguments in [json!({ "uri": uri }), json!({ "uri": uri, "cursor": null })] {
+        let response = request(&server, get_diagnostics_request(arguments), cx).await;
+        assert_eq!(
+            diagnostic_uris(&first_text_as_json(&response)).len(),
+            1,
+            "{response}"
+        );
+    }
 }
 
 #[gpui::test]

@@ -324,6 +324,41 @@ fn is_type_kind(kind: DefinitionKind) -> bool {
     )
 }
 
+/// A typedef that defines its type in place (`typedef struct a { ... } a_t, *a_p;`) parses as
+/// the type itself. Reached by a typedef name, it is still a step of the chain, as a separate
+/// typedef would be, so that the answer names the typedef that was asked for.
+fn defining_typedef_step(layout: &TypeLayout, name: &str, path: &Arc<str>) -> Option<TypedefStep> {
+    let tag = layout.tag_name.as_deref().filter(|tag| *tag != name)?;
+    let tag_kind = match layout.kind {
+        TypeKind::Struct => TagKind::Struct,
+        TypeKind::Union => TagKind::Union,
+        TypeKind::Enum => TagKind::Enum,
+        TypeKind::Class => TagKind::Class,
+        TypeKind::Typedef => return None,
+    };
+    let typedef = layout
+        .typedef_names
+        .iter()
+        .find(|typedef| typedef.name == name)?;
+    let mut text = format!("{} {tag}", tag_kind.keyword());
+    if typedef.pointer_depth > 0 {
+        text.push(' ');
+        text.push_str(&"*".repeat(typedef.pointer_depth as usize));
+    }
+    Some(TypedefStep {
+        name: name.to_owned(),
+        path: path.clone(),
+        range: typedef.name_range,
+        target: TypeText {
+            text,
+            core_name: Some(tag.to_owned()),
+            tag: Some(tag_kind),
+            pointer_depth: typedef.pointer_depth,
+            ..TypeText::default()
+        },
+    })
+}
+
 fn declares(layout: &TypeLayout, name: &str) -> bool {
     layout.tag_name.as_deref() == Some(name)
         || layout
@@ -714,11 +749,14 @@ impl<'a> TypeResolver<'a> {
                 return;
             }
         }
+        let typedef_chain = defining_typedef_step(&layout, name, path)
+            .into_iter()
+            .collect();
         results.push(ResolvedType {
             layout,
             path: path.clone(),
             language,
-            typedef_chain: Vec::new(),
+            typedef_chain,
             proximity,
             condition,
         });
@@ -759,6 +797,46 @@ impl<'a> TypeResolver<'a> {
             .find(|declared| declared.name == name)
             .and_then(|declared| declared.return_type)
         })
+    }
+
+    /// What calling `member` returns: a function pointer member (`struct foo *(*get)(void)`),
+    /// a C++ method, or a member whose type is a typedef of a function pointer.
+    fn called_member_return_type(
+        &self,
+        member: &Member,
+        language: SourceLanguage,
+        near: &NearFile,
+    ) -> Option<TypeText> {
+        let name = member.name.as_deref()?;
+        if member.ty.is_function_pointer || member.ty.is_function {
+            let text = member.text.as_bytes();
+            return declared_names_in_file(text, Position::default(), text.len(), language)
+                .into_iter()
+                .find(|declared| declared.name == name)?
+                .return_type;
+        }
+        let type_name = member.ty.core_name.as_deref()?;
+        if member.ty.pointer_depth > 0 || member.ty.is_builtin {
+            return None;
+        }
+        let (typedef, _) = self.resolve_best(type_name, member.ty.tag, near);
+        let typedef = typedef.filter(|found| found.layout.kind == TypeKind::Typedef)?;
+        let contents = self.read(&typedef.path)?;
+        declared_names_in_file(
+            &contents,
+            typedef.layout.range.start,
+            typedef.layout.range.end.byte as usize,
+            typedef.language,
+        )
+        .into_iter()
+        .find(|declared| {
+            typedef
+                .layout
+                .typedef_names
+                .iter()
+                .any(|typedef_name| typedef_name.name == declared.name)
+        })?
+        .return_type
     }
 
     /// A global variable of this name declared in some file.
@@ -887,6 +965,20 @@ impl<'a> TypeResolver<'a> {
             let Some(member) = member else {
                 return chain;
             };
+            if step.called {
+                // `ops->get()->x`: the next member is looked up in what the call returns. When
+                // that is not known, the next step fails to find its owner.
+                let member_near = match &path {
+                    Some(path) => self.near_file(path),
+                    None => near.clone(),
+                };
+                current = Current::Text(
+                    self.called_member_return_type(&member, layout.language, &member_near)
+                        .unwrap_or_default(),
+                    member_near,
+                );
+                continue;
+            }
             current = match member.nested {
                 Some(nested) => Current::Inline(*nested, path),
                 None => {

@@ -11,6 +11,9 @@ msgstr "{} の API キーは設定済み"
 msgid "API key set in {env_var_name} environment variable"
 msgstr "API キーは環境変数 {env_var_name} で設定されています"
 
+msgid "Cancel"
+msgstr "キャンセル"
+
 msgid "Connect without an API key (the server needs no authentication)"
 msgstr "API キーなしで接続する (認証不要のサーバー)"
 
@@ -23,8 +26,23 @@ msgstr "認証情報を読み込んでいます…"
 msgid "Remove Provider"
 msgstr "プロバイダーを削除"
 
+msgid "Reset"
+msgstr "リセット"
+
 msgid "Reset API Key"
 msgstr "キーをリセット"
+
+msgid "Sign In"
+msgstr "サインイン"
+
+msgid "Sign Out"
+msgstr "サインアウト"
+
+msgid "Signing in…"
+msgstr "サインインしています…"
+
+msgid "Start Free Trial"
+msgstr "無料トライアルを開始"
 
 msgid "This can't be changed while an API key is set in the {env_var_name} environment variable."
 msgstr "環境変数 {env_var_name} で API キーが設定されているため変更できません。"

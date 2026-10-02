@@ -17,6 +17,7 @@ default = []
 [dev-dependencies]
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
+i18n_catalog = { workspace = true, features = ["test-support"] }
 language = { workspace = true, features = ["test-support"] }
 project = { workspace = true, features = ["test-support"] }
 settings = { workspace = true, features = ["test-support"] }
@@ -29,6 +30,7 @@ parking_lot.workspace = true
 extension.workspace = true
 feature_flags.workspace = true
 gpui.workspace = true
+i18n.workspace = true
 language.workspace = true
 paths.workspace = true
 project.workspace = true

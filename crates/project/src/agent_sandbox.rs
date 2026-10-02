@@ -941,7 +941,7 @@ impl AgentSandboxCommand {
         };
         ensure!(
             !canonical_roots.is_empty(),
-            i18n::t!("The agent cannot start in a sandbox in a project that has no folder open.")
+            i18n::t!("Agents can't be started in a sandbox in a project that has no folder open.")
         );
         let key = project_key(canonical_roots);
         let config_dir = ensure_agent_config_dir(home, &key, profile)?;

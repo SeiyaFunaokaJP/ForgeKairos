@@ -208,6 +208,7 @@ fn report_json(context: &AssistContext<'_>, report: &TypeLayoutReport, cx: &gpui
         "moreCandidates": report.candidates_truncated
             || report.candidates > report.other_candidates.len() + 1,
         "withheldDefinitions": report.withheld,
+        "withheldNote": report.withheld_note,
         "inferred": inferred,
         "pruned": report.pruned,
         "truncated": report.truncated,

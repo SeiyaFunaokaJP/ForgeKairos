@@ -14,13 +14,20 @@ locales/
     _menus.po            application menu names and items, msgctxt "menu"
     _settings.po         the settings window's table, msgctxt "settings";
                          dropdown labels use the enum's name as msgctxt
+    _action_docs.po      descriptions of actions (their doc comments), shown in the
+                         keymap editor and the keymap and settings files' hovers,
+                         msgctxt "action documentation", msgid = action name
+    _settings_schema.po  descriptions in the settings file's JSON schema, shown in
+                         its hovers and completions, msgctxt "settings schema",
+                         msgid = the English description
 ```
 
 Every file of a directory goes into one catalog. A message without a msgctxt is one key
 across all of them, so two files must not translate the same msgid differently (the
-tests fail if they do). The three `_` files keep every entry under their context, so
+tests fail if they do). The `_` files keep every entry under their context, so
 their short labels ("Go", "Selection") never translate the same English met anywhere
-else. Crate files must not use the contexts `action`, `menu` or `settings`.
+else. Crate files must not use the contexts `action`, `menu`, `settings`,
+`action documentation` or `settings schema`.
 
 Languages fall back from the most specific tag to the base language, then to English:
 `pt-BR` → `pt` → the English msgid. A message that is missing, empty or marked
@@ -70,7 +77,24 @@ cargo run -p i18n_tool -- <command> ...
   and lists messages a crate's file lacks, entries its code no longer uses, placeholder
   and plural mistakes, messages two files translate differently, entries out of order and
   CR line endings. The last four make it exit with 1; with `--strict`, missing and unused
-  entries do too. The `_` files are only checked for mistakes, not for missing entries.
+  entries do too. The `_` files are only checked for mistakes, not for missing entries,
+  except for the two below when their input is given. Messages are the literals of the
+  macros and of direct calls of `i18n::tr`, `i18n::tr_ctx` and `i18n::tr_ctx_opt`.
+  - `--actions <file>` takes the output of `zed --dump-all-actions` and compares
+    `_action_docs.po` with it: actions with a doc comment and no translation, entries for
+    actions that are gone or have no doc comment, and entries whose doc comment has
+    changed since they were translated (the `#.` comments of an entry hold the English
+    it was translated from).
+  - `--settings-schema <file>` takes the output of `zed --dump-settings-schema` and
+    compares `_settings_schema.po` with its descriptions: descriptions without a
+    translation, and entries the schema no longer has. An entry whose description was
+    reworded is reported as changed, with the new English, when a description without a
+    translation shares most of its words.
+
+  Those three findings fail only with `--strict`. Both dumps come from a build of Zed
+  (`cargo run -p zed -- --dump-all-actions > actions.json`). A Windows release build
+  prints them only with `--foreground` added. The settings schema dump leaves out the
+  descriptions of feature flags, so their entries are not compared.
 - `po-format <files or directories>` rewrites files in the layout above; `--check` only
   reports files that would change.
 - `po-union <a.po> <b.po> ... --out <file>` merges files, for instance both sides of a
@@ -139,6 +163,33 @@ A context says where the text appears (`search bar`, `keybinding`) or what it is
 (`list separator`, `Mermaid diagram kind`). The same English under two contexts is two
 entries, and each needs its translation. `list separator` is the `", "` placed between
 items of a list; translate it with your language's separator.
+
+### Descriptions of actions and settings
+
+`_action_docs.po` translates an action's doc comment under the action's name, so that
+upstream rewording the comment keeps the old translation until someone updates it.
+Write the English it translates in `#.` comments above the entry, one per line of the
+doc comment (`#.` alone for an empty line); `check --actions` compares them with the
+current doc comments:
+
+```po
+#. Copy the selection to the clipboard.
+msgctxt "action documentation"
+msgid "editor::Copy"
+msgstr "選択範囲をクリップボードにコピーします。"
+```
+
+`_settings_schema.po` translates the schema's descriptions by their English text, as
+the schema has it: the lines of the doc comment joined with `\n`. The same English is
+the same entry wherever it appears in the schema. Zed translates the schema when it
+gives it to the JSON language server, and gives it again when the display language
+changes.
+
+Both files are plain text: braces in them are not placeholders. Most of the Japanese
+entries started from the translations of the [zed-i18n](https://github.com/LI-NA/zed-i18n)
+project (GPL-3.0, the `ja-JP` translations at commit `c45ba0f`, made for Zed v1.21.0),
+joined per description and changed to the terms and style of the other files; see
+`THIRD_PARTY_NOTICES.md`.
 
 ### Text that is not translated
 

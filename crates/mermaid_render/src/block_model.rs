@@ -362,14 +362,21 @@ pub struct BlockEdge {
     pub link: String,
 }
 
-/// The links the form offers, with what they draw. The names are English
-/// msgids: translate them with `i18n::tr` where they are shown.
-pub const BLOCK_LINKS: [(&str, &str); 4] = [
-    ("-->", i18n::msg!("Arrow")),
-    ("---", i18n::msg!("Line Only")),
-    ("--x", i18n::msg!("Cross")),
-    ("--o", i18n::msg!("Circle")),
-];
+/// The links the form offers, as written.
+pub const BLOCK_LINKS: [&str; 4] = ["-->", "---", "--x", "--o"];
+
+/// What a link of [`BLOCK_LINKS`] draws, in the display language.
+pub fn block_link_name(link: &str) -> Option<&'static str> {
+    // The short names are translated under their own context, because the same
+    // English means something else elsewhere.
+    match link {
+        "-->" => Some(i18n::tc!("block diagram", "Arrow")),
+        "---" => Some(i18n::t!("Line Only")),
+        "--x" => Some(i18n::tc!("block diagram", "Cross")),
+        "--o" => Some(i18n::tc!("block diagram", "Circle")),
+        _ => None,
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlockStatement {
@@ -712,10 +719,10 @@ impl BlockItemKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Node => i18n::t!("Block"),
-            Self::Arrow => i18n::t!("Arrow"),
-            Self::Space => i18n::t!("Space"),
-            Self::Group => i18n::t!("Group"),
+            Self::Node => i18n::tc!("block diagram", "Block"),
+            Self::Arrow => i18n::tc!("block diagram", "Arrow"),
+            Self::Space => i18n::tc!("block diagram", "Space"),
+            Self::Group => i18n::tc!("block diagram", "Group"),
         }
     }
 

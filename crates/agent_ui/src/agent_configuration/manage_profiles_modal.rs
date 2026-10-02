@@ -20,6 +20,7 @@ use workspace::{ModalView, Workspace};
 use crate::agent_configuration::manage_profiles_modal::profile_modal_header::ProfileModalHeader;
 use crate::agent_configuration::tool_picker::{ToolPicker, ToolPickerDelegate};
 use crate::language_model_selector::{LanguageModelSelector, language_model_selector};
+use crate::profile_selector::profile_display_name;
 use crate::{AgentPanel, ManageProfiles};
 
 enum Mode {
@@ -53,7 +54,7 @@ impl Mode {
         for (profile_id, profile) in settings.profiles.iter() {
             let entry = ProfileEntry {
                 id: profile_id.clone(),
-                name: profile.name.clone(),
+                name: profile_display_name(profile_id, &profile.name),
                 navigation: NavigableEntry::focusable(cx),
             };
             if builtin_profiles::is_builtin(profile_id) {
@@ -654,7 +655,7 @@ impl ManageProfilesModal {
             settings
                 .profiles
                 .get(base_profile_id)
-                .map(|profile| profile.name.clone())
+                .map(|profile| profile_display_name(base_profile_id, &profile.name))
                 .unwrap_or_else(|| i18n::t!("Unknown").into())
         });
 
@@ -686,7 +687,7 @@ impl ManageProfilesModal {
         let profile_name = settings
             .profiles
             .get(&mode.profile_id)
-            .map(|profile| profile.name.clone())
+            .map(|profile| profile_display_name(&mode.profile_id, &profile.name))
             .unwrap_or_else(|| i18n::t!("Unknown").into());
 
         let icon = match mode.profile_id.as_str() {
@@ -1015,7 +1016,7 @@ impl Render for ManageProfilesModal {
                     let profile_name = settings
                         .profiles
                         .get(profile_id)
-                        .map(|profile| profile.name.clone())
+                        .map(|profile| profile_display_name(profile_id, &profile.name))
                         .unwrap_or_else(|| i18n::t!("Unknown").into());
 
                     v_flex()
@@ -1038,7 +1039,7 @@ impl Render for ManageProfilesModal {
                     let profile_name = settings
                         .profiles
                         .get(profile_id)
-                        .map(|profile| profile.name.clone())
+                        .map(|profile| profile_display_name(profile_id, &profile.name))
                         .unwrap_or_else(|| i18n::t!("Unknown").into());
 
                     v_flex()
@@ -1061,7 +1062,7 @@ impl Render for ManageProfilesModal {
                     let profile_name = settings
                         .profiles
                         .get(profile_id)
-                        .map(|profile| profile.name.clone())
+                        .map(|profile| profile_display_name(profile_id, &profile.name))
                         .unwrap_or_else(|| i18n::t!("Unknown").into());
 
                     v_flex()

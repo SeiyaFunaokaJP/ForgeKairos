@@ -2481,6 +2481,58 @@ fn declarator_shapes_comments_and_conditions() {
     assert_eq!(handler.text, "int (*)(int)");
 }
 
+/// A typedef that defines its type in place is reached through a step naming it, at its own
+/// name, as a separate typedef would be.
+#[test]
+fn a_typedef_defining_its_type_in_place_is_a_step_of_the_chain() {
+    let source = "typedef struct a { int x; } a_t;\n\
+                  typedef union u { int z; } u_t, *u_p;\n\
+                  typedef struct { int y; } anon_t;\n\
+                  typedef struct same { int w; } same;\n\
+                  typedef a_t b_t;\n";
+    let fixture = fixture(&[("t.h", source)]);
+    let resolver = fixture.resolver();
+    let near = fixture.near("t.h");
+    let chain = |name: &str, tag: Option<TagKind>| -> Vec<(String, String, u32, u32)> {
+        let resolved = resolver.resolve_type(name, tag, &near);
+        assert_eq!(resolved.len(), 1, "{name}: {resolved:#?}");
+        resolved[0]
+            .typedef_chain
+            .iter()
+            .map(|step| {
+                (
+                    step.name.clone(),
+                    step.target.text.clone(),
+                    step.range.start.row,
+                    step.range.start.column,
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        chain("a_t", None),
+        vec![("a_t".to_string(), "struct a".to_string(), 0, 28)]
+    );
+    assert_eq!(
+        chain("u_p", None),
+        vec![("u_p".to_string(), "union u *".to_string(), 1, 33)]
+    );
+    assert_eq!(
+        chain("b_t", None),
+        vec![
+            ("b_t".to_string(), "a_t".to_string(), 4, 12),
+            ("a_t".to_string(), "struct a".to_string(), 0, 28)
+        ]
+    );
+    // Asked for by its tag, or named by nothing else, the type is reached directly.
+    assert!(chain("a", Some(TagKind::Struct)).is_empty());
+    assert!(chain("anon_t", None).is_empty());
+    assert!(chain("same", None).is_empty());
+    let resolved = resolver.resolve_type("u_p", None, &near);
+    assert_eq!(resolved[0].layout.display_name(), "union u");
+    assert_eq!(resolved[0].typedef_chain[0].target.pointer_depth, 1);
+}
+
 #[test]
 fn every_name_of_a_typedef_gets_its_own_target() {
     let source = "typedef struct a *a_ptr, a_val;\nstruct a { int x; };\n";
@@ -2767,4 +2819,311 @@ int run(int argc)
         other => panic!("{other:#?}"),
     }
     assert_eq!(hover.types.len(), 1);
+}
+
+const OPS_HEADER: &str = "struct result { int value; struct result *next; };\n\
+                          typedef struct result *(*lookup_fn)(int key);\n\
+                          struct ops {\n\
+                          \tstruct result *(*get)(void);\n\
+                          \tlookup_fn lookup;\n\
+                          \tint (*count)(void);\n\
+                          };\n\
+                          struct device { const struct ops *ops; };\n";
+
+const OPS_SOURCE: &str = "#include \"ops.h\"\n\
+                          int use(struct device *a)\n\
+                          {\n\
+                          \ta->ops->get()->value = 1;\n\
+                          \t(*a->ops->get)()->next->value = 2;\n\
+                          \ta->ops->lookup(3)->value = 4;\n\
+                          \ta->ops->count()->value = 5;\n\
+                          \treturn 0;\n\
+                          }\n";
+
+#[test]
+fn member_chains_continue_through_function_pointer_calls() {
+    let access = match type_at(
+        OPS_SOURCE,
+        offset_of(OPS_SOURCE, "value = 1", 0),
+        SourceLanguage::C,
+    ) {
+        Some(TypeAt::MemberAccess { access, .. }) => access,
+        other => panic!("{other:#?}"),
+    };
+    assert_eq!(
+        access
+            .members
+            .iter()
+            .map(|step| (step.name.as_str(), step.called))
+            .collect::<Vec<_>>(),
+        vec![("ops", false), ("get", true), ("value", false)]
+    );
+    assert!(matches!(&access.root, ChainRoot::Variable(root) if root.name == "a"));
+
+    let fixture = fixture(&[("ops.h", OPS_HEADER), ("use.c", OPS_SOURCE)]);
+    let describe = |needle: &str| {
+        let hover = fixture
+            .resolver()
+            .describe_at(
+                "use.c",
+                OPS_SOURCE.as_bytes(),
+                offset_of(OPS_SOURCE, needle, 0),
+                SourceLanguage::C,
+            )
+            .unwrap_or_else(|| panic!("nothing at {needle}"));
+        match hover.subject {
+            HoverSubject::Member(chain) => chain,
+            other => panic!("{other:#?}"),
+        }
+    };
+    let owners = |chain: &MemberChain| {
+        chain
+            .steps
+            .iter()
+            .map(|step| step.owner.as_ref().map(|owner| owner.display_name.clone()))
+            .collect::<Vec<_>>()
+    };
+    let owner = |name: &str| Some(name.to_owned());
+
+    let chain = describe("value = 1");
+    assert!(chain.complete, "{chain:#?}");
+    assert_eq!(
+        owners(&chain),
+        vec![
+            owner("struct device"),
+            owner("struct ops"),
+            owner("struct result")
+        ]
+    );
+    assert_eq!(
+        chain.final_member().map(|member| member.text.as_str()),
+        Some("int value")
+    );
+
+    // Called through `*`, and a member after the returned one.
+    let chain = describe("value = 2");
+    assert!(chain.complete, "{chain:#?}");
+    assert_eq!(chain.steps.len(), 4);
+
+    // A member whose type is a typedef of a function pointer.
+    let chain = describe("value = 4");
+    assert!(chain.complete, "{chain:#?}");
+    assert_eq!(owners(&chain).last(), Some(&owner("struct result")));
+
+    // What `count` returns has no members.
+    let chain = describe("value = 5");
+    assert!(!chain.complete);
+    assert_eq!(
+        chain.steps.last().map(|step| step.name.as_str()),
+        Some("value")
+    );
+    assert!(chain.steps.last().is_some_and(|step| step.owner.is_none()));
+
+    // A long chain of calls is cut short, not followed into a deep recursion.
+    let long = format!(
+        "int f(struct device *a)\n{{\n\ta{}->value = 1;\n}}\n",
+        "->ops->get()".repeat(5_000)
+    );
+    let offset = offset_of(&long, "value = 1", 0);
+    std::thread::Builder::new()
+        .stack_size(1024 * 1024)
+        .spawn(move || type_at(&long, offset, SourceLanguage::C).is_some())
+        .expect("spawn")
+        .join()
+        .expect("no stack overflow");
+}
+
+#[test]
+fn knr_parameters_and_typeof_declarations() {
+    let source = "struct foo { int count; struct foo *next; };\n\
+                  int knr(x, y)\n\
+                  \tregister struct foo *x;\n\
+                  \tint y;\n\
+                  {\n\
+                  \treturn x->count + y;\n\
+                  }\n\
+                  void use(struct foo *pos)\n\
+                  {\n\
+                  \ttypeof(*pos) *tmp = pos;\n\
+                  \t__typeof__(pos) other = pos;\n\
+                  \ttypeof(struct foo) value;\n\
+                  \ttypeof(value) copy;\n\
+                  \ttypeof(value) *copy_pointer;\n\
+                  \ttmp->next = other->next;\n\
+                  \tvalue.count = copy.count + copy_pointer->count;\n\
+                  }\n";
+    let root_type = |needle: &str| -> VariableType {
+        match type_at(source, offset_of(source, needle, 0), SourceLanguage::C) {
+            Some(TypeAt::MemberAccess { access, .. }) => match access.root {
+                ChainRoot::Variable(variable) => variable,
+                other => panic!("{needle}: {other:#?}"),
+            },
+            other => panic!("{needle}: {other:#?}"),
+        }
+    };
+    for (needle, pointer_depth, confidence) in [
+        ("count + y", 1, Confidence::Parameter),
+        ("next = other", 1, Confidence::Local),
+        ("next;\n\tvalue", 1, Confidence::Local),
+        ("count = copy", 0, Confidence::Local),
+        ("count + copy_pointer", 0, Confidence::Local),
+        ("count;\n}", 1, Confidence::Local),
+    ] {
+        let variable = root_type(needle);
+        assert_eq!(variable.confidence, confidence, "{needle}");
+        assert_eq!(
+            variable.ty.core_name.as_deref(),
+            Some("foo"),
+            "{needle}: {variable:#?}"
+        );
+        assert_eq!(variable.ty.tag, Some(TagKind::Struct), "{needle}");
+        assert_eq!(variable.ty.pointer_depth, pointer_depth, "{needle}");
+    }
+    // The text stays as written.
+    assert_eq!(root_type("next = other").ty.text, "typeof(*pos) *");
+    match type_at(source, offset_of(source, "y;\n}", 0), SourceLanguage::C) {
+        Some(TypeAt::Variable { variable, .. }) => {
+            assert_eq!(variable.ty.core_name.as_deref(), Some("int"));
+            assert_eq!(variable.confidence, Confidence::Parameter);
+        }
+        other => panic!("{other:#?}"),
+    }
+    // A member declared with `typeof` of a type.
+    let layout = parse_c(
+        "struct holder { typeof(struct foo *) first; __typeof__(unsigned long) flags; };\n",
+        "holder",
+        None,
+    );
+    let first = member(&layout, "first");
+    assert_eq!(first.ty.core_name.as_deref(), Some("foo"));
+    assert_eq!(first.ty.tag, Some(TagKind::Struct));
+    assert_eq!(first.ty.pointer_depth, 1);
+    assert_eq!(
+        member(&layout, "flags").ty.core_name.as_deref(),
+        Some("unsigned long")
+    );
+    // Nested deeply, it stays unread rather than recursing.
+    let nested = format!(
+        "struct deep {{ {}int{} member; }};\n",
+        "typeof(".repeat(10_000),
+        ")".repeat(10_000)
+    );
+    let layout = std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(move || parse_c(&nested, "deep", None))
+        .expect("spawn")
+        .join()
+        .expect("no stack overflow");
+    assert_eq!(member(&layout, "member").ty.core_name, None);
+}
+
+#[test]
+fn member_macros_without_semicolons_are_members_of_their_own() {
+    let source = "struct task {\n\
+                  \tint before;\n\
+                  \trandomized_struct_fields_start\n\
+                  \tint inside;\n\
+                  \tRH_KABI_RESERVE(1)\n\
+                  \tlong after_reserve;\n\
+                  \tstruct_group(addrs,\n\
+                  \t\tu8 saddr;\n\
+                  \t\tu8 daddr;\n\
+                  \t);\n\
+                  \tDECLARE_BITMAP(bits, 64);\n\
+                  \tkabi_reserve(2) // reserved\n\
+                  \tint last;\n\
+                  \tmy_type_t\n\
+                  \tfield;\n\
+                  \tSLIST_ENTRY(node)\n\
+                  \tlink;\n\
+                  \trandomized_struct_fields_end\n\
+                  };\n";
+    let layout = parse_c(source, "task", None);
+    let summary: Vec<(MemberKind, &str)> = layout
+        .members
+        .iter()
+        .map(|member| (member.kind, member.text.as_str()))
+        .collect();
+    assert_eq!(
+        summary,
+        vec![
+            (MemberKind::Field, "int before"),
+            (MemberKind::Unparsed, "randomized_struct_fields_start"),
+            (MemberKind::Field, "int inside"),
+            (MemberKind::Unparsed, "RH_KABI_RESERVE(1)"),
+            (MemberKind::Field, "long after_reserve"),
+            (
+                MemberKind::Unparsed,
+                "struct_group(addrs, u8 saddr; u8 daddr; )"
+            ),
+            (MemberKind::Unparsed, "DECLARE_BITMAP(bits, 64)"),
+            (MemberKind::Unparsed, "kabi_reserve(2)"),
+            (MemberKind::Field, "int last"),
+            (MemberKind::Field, "my_type_t field"),
+            (MemberKind::Field, "SLIST_ENTRY(node) link"),
+            (MemberKind::Unparsed, "randomized_struct_fields_end"),
+        ]
+    );
+    let reserve = &layout.members[7];
+    assert_eq!(reserve.comment.as_deref(), Some("reserved"));
+    assert_eq!(
+        reserve.range.start,
+        position_of(source, "kabi_reserve(2)", 0)
+    );
+    assert_eq!(member(&layout, "last").comment, None);
+    assert_eq!(
+        member(&layout, "after_reserve").range.start,
+        position_of(source, "long after_reserve", 0)
+    );
+
+    // An annotation after the name does not make the line a declaration of its own, but a
+    // type such as `__u32` at its start does.
+    let layout = parse_c(
+        "struct counted {\n\
+         \tatomic_t\n\
+         \t\trefcount __aligned(8);\n\
+         \tatomic_long_t\n\
+         \t\tusers __project_marker;\n\
+         \tfields_start\n\
+         \t__u32 flags;\n\
+         };\n",
+        "counted",
+        None,
+    );
+    let summary: Vec<(MemberKind, &str)> = layout
+        .members
+        .iter()
+        .map(|member| (member.kind, member.text.as_str()))
+        .collect();
+    assert_eq!(
+        summary,
+        vec![
+            (MemberKind::Field, "atomic_t refcount"),
+            (MemberKind::Field, "atomic_long_t users __project_marker"),
+            (MemberKind::Unparsed, "fields_start"),
+            (MemberKind::Field, "__u32 flags"),
+        ]
+    );
+}
+
+#[test]
+fn comment_openers_in_literals_do_not_hide_code() {
+    let source = "#define OPEN \"/*\"\n\
+                  #define OPEN_CHAR '/' \"*\"\n\
+                  struct after { int a; };\n\
+                  /* a real comment */\n";
+    assert_eq!(names(&parse_c(source, "after", None)), vec![Some("a")]);
+
+    let source = "static const char *pattern = \"/*\";\n\
+                  #ifdef CONFIG_X\n\
+                  struct conditional { int a; };\n\
+                  #endif\n";
+    assert_eq!(
+        enclosing_condition(
+            source.as_bytes(),
+            offset_of(source, "struct conditional", 0)
+        )
+        .as_deref(),
+        Some("CONFIG_X")
+    );
 }

@@ -66,12 +66,56 @@ pub(super) struct TemplateInput {
     pub(super) prompt: String,
 }
 
+/// The msgctxt of the templates' display text in the catalog.
+const TEMPLATE_CONTEXT: &str = "mcp_server_template";
+
 pub(super) fn parse_templates(text: &str) -> Result<Vec<McpServerTemplate>, SharedString> {
-    serde_json::from_str(text)
-        .map_err(|error| SharedString::from(i18n::t!("Couldn't load the template list: {error}")))
+    let mut templates: Vec<McpServerTemplate> = serde_json::from_str(text).map_err(|error| {
+        SharedString::from(i18n::t!("Couldn't load the template list: {error}"))
+    })?;
+    for template in &mut templates {
+        template.translate_display_text();
+    }
+    Ok(templates)
+}
+
+fn translate_in_place(text: &mut String) {
+    let translated = i18n::tr_ctx(TEMPLATE_CONTEXT, text);
+    if translated != text.as_str() {
+        *text = translated.to_string();
+    }
 }
 
 impl McpServerTemplate {
+    /// Translates only what is shown to the user. The name, command,
+    /// arguments, URL, hosts and variable and header names go into the
+    /// settings or are checked against the egress allowlist, so they stay as
+    /// written.
+    fn translate_display_text(&mut self) {
+        translate_in_place(&mut self.title);
+        translate_in_place(&mut self.description);
+        if let Some(requires) = &mut self.requires {
+            translate_in_place(requires);
+        }
+        if let Some(note) = &mut self.note {
+            translate_in_place(note);
+        }
+        let inputs = match &mut self.definition {
+            TemplateDefinition::Stdio { args, env, .. } => {
+                for argument in args {
+                    if let TemplateArgument::Input { prompt } = argument {
+                        translate_in_place(prompt);
+                    }
+                }
+                env
+            }
+            TemplateDefinition::Http { headers, .. } => headers,
+        };
+        for input in inputs {
+            translate_in_place(&mut input.prompt);
+        }
+    }
+
     fn transport(&self) -> McpTransport {
         match self.definition {
             TemplateDefinition::Stdio { .. } => McpTransport::Stdio,
@@ -587,6 +631,185 @@ mod tests {
         );
         values.headers[0].1 = "Bearer x".into();
         assert!(build_settings_from_values(&values).is_ok());
+    }
+
+    struct TemplateCatalog;
+
+    impl i18n::Catalog for TemplateCatalog {
+        fn locale(&self) -> &str {
+            "ja"
+        }
+
+        fn lookup(&self, context: Option<&str>, msgid: &str) -> Option<&'static str> {
+            if context != Some(super::TEMPLATE_CONTEXT) {
+                return None;
+            }
+            Some(match msgid {
+                "File system" => "ファイルシステム",
+                "Reads files." => "ファイルを読みます。",
+                "Node.js" => "Node.js (翻訳)",
+                "Asks first." => "最初に確認します。",
+                "folder" => "フォルダー",
+                "token" => "トークン",
+                "Bearer <token>" => "Bearer <トークン>",
+                // Values that must never take a translation.
+                "fs"
+                | "npx"
+                | "-y"
+                | "TOKEN"
+                | "Authorization"
+                | "registry.npmjs.org"
+                | "https://example.com/mcp/" => "TRANSLATED",
+                _ => return None,
+            })
+        }
+
+        fn lookup_plural(
+            &self,
+            _context: Option<&str>,
+            _msgid: &str,
+            _msgid_plural: &str,
+            _count: u64,
+        ) -> Option<&'static str> {
+            None
+        }
+    }
+
+    const TRANSLATABLE_TEMPLATES: &str = r#"[
+        {
+            "name": "fs",
+            "title": "File system",
+            "description": "Reads files.",
+            "transport": "stdio",
+            "command": "npx",
+            "args": ["-y", { "prompt": "folder" }, { "prompt": "Not in the catalog" }],
+            "env": [{ "name": "TOKEN", "prompt": "token" }],
+            "requires": "Node.js",
+            "hosts": ["registry.npmjs.org"],
+            "note": "Asks first."
+        },
+        {
+            "name": "fs",
+            "title": "Untranslated title",
+            "description": "Untranslated description",
+            "transport": "http",
+            "url": "https://example.com/mcp/",
+            "headers": [{ "name": "Authorization", "prompt": "Bearer <token>" }]
+        }
+    ]"#;
+
+    #[test]
+    fn templates_show_their_text_in_the_display_language() {
+        static CATALOG: TemplateCatalog = TemplateCatalog;
+        let english = {
+            let _english = i18n::test_support::LocaleOverride::new(None);
+            parse_templates(TRANSLATABLE_TEMPLATES).expect("valid templates")
+        };
+        assert_eq!(english[0].title, "File system");
+        assert_eq!(english[0].requires.as_deref(), Some("Node.js"));
+
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(&CATALOG));
+        let templates = parse_templates(TRANSLATABLE_TEMPLATES).expect("valid templates");
+        let [stdio, http] = templates.as_slice() else {
+            panic!("two templates: {templates:?}");
+        };
+        assert_eq!(stdio.title, "ファイルシステム");
+        assert_eq!(stdio.description, "ファイルを読みます。");
+        assert_eq!(stdio.requires.as_deref(), Some("Node.js (翻訳)"));
+        assert_eq!(stdio.note.as_deref(), Some("最初に確認します。"));
+        assert_eq!(stdio.hosts, ["registry.npmjs.org"]);
+        let values = McpServerFormValues::from_template(stdio);
+        assert_eq!(values.name, "fs");
+        assert_eq!(values.command, "npx");
+        assert_eq!(values.args, ["-y", "", ""]);
+        assert_eq!(
+            values.prompts.args,
+            [
+                None,
+                Some("フォルダー".to_string()),
+                Some("Not in the catalog".to_string())
+            ]
+        );
+        assert_eq!(values.env, [("TOKEN".to_string(), String::new())]);
+        assert_eq!(values.prompts.env, [Some("トークン".to_string())]);
+
+        // Text the catalog does not have stays as written.
+        assert_eq!(http.title, "Untranslated title");
+        assert_eq!(http.description, "Untranslated description");
+        let values = McpServerFormValues::from_template(http);
+        assert_eq!(values.url, "https://example.com/mcp/");
+        assert_eq!(
+            values.headers,
+            [("Authorization".to_string(), String::new())]
+        );
+        assert_eq!(
+            values.prompts.headers,
+            [Some("Bearer <トークン>".to_string())]
+        );
+
+        // Everything else is what the English list holds.
+        let mut untranslated = templates.clone();
+        untranslated[0].title = english[0].title.clone();
+        untranslated[0].description = english[0].description.clone();
+        untranslated[0].requires = english[0].requires.clone();
+        untranslated[0].note = english[0].note.clone();
+        untranslated[0].definition = english[0].definition.clone();
+        untranslated[1].definition = english[1].definition.clone();
+        assert_eq!(untranslated, english);
+    }
+
+    /// The shipped list is written in English and each sentence of it is
+    /// looked up as written, so a catalog entry that differs from the JSON by
+    /// a character leaves the card in English.
+    #[test]
+    fn the_shipped_templates_show_in_japanese() {
+        fn display_text(template: &McpServerTemplate) -> Vec<String> {
+            let mut text = vec![template.title.clone(), template.description.clone()];
+            text.extend(template.requires.clone());
+            text.extend(template.note.clone());
+            match &template.definition {
+                TemplateDefinition::Stdio { args, env, .. } => {
+                    text.extend(args.iter().filter_map(|argument| match argument {
+                        TemplateArgument::Input { prompt } => Some(prompt.clone()),
+                        TemplateArgument::Fixed(_) => None,
+                    }));
+                    text.extend(env.iter().map(|input| input.prompt.clone()));
+                }
+                TemplateDefinition::Http { headers, .. } => {
+                    text.extend(headers.iter().map(|input| input.prompt.clone()));
+                }
+            }
+            text
+        }
+        fn has_japanese(text: &str) -> bool {
+            text.chars().any(
+                |character| matches!(character, '\u{3000}'..='\u{30ff}' | '\u{3400}'..='\u{9fff}'),
+            )
+        }
+        // Names of products and tools, which read the same in Japanese.
+        const KEPT_AS_WRITTEN: &[&str] = &["GitHub", "Node.js (npx)", "uv (uvx)"];
+
+        let english = {
+            let _english = i18n::test_support::LocaleOverride::new(None);
+            shipped_templates()
+        };
+        let _japanese = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog("ja"),
+        ));
+        let japanese = shipped_templates();
+        assert_eq!(english.len(), japanese.len());
+        let mut untranslated = Vec::new();
+        for (english, japanese) in english.iter().zip(&japanese) {
+            for (source, shown) in display_text(english)
+                .into_iter()
+                .zip(display_text(japanese))
+            {
+                if !has_japanese(&shown) && !KEPT_AS_WRITTEN.contains(&source.as_str()) {
+                    untranslated.push(format!("{}: {source:?}", english.name));
+                }
+            }
+        }
+        assert!(untranslated.is_empty(), "{untranslated:#?}");
     }
 
     #[test]

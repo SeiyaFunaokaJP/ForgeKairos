@@ -2783,3 +2783,95 @@ async fn test_an_index_being_built_shows_whatever_the_panel_shows(cx: &mut TestA
         "that the index is off only matters where it answers"
     );
 }
+
+/// Outside a git repository, folders deeper than `file_scan_depth` are not scanned, so their
+/// files are not in the index: the status row says so, and goes once the depth no longer
+/// leaves anything out.
+#[gpui::test]
+async fn test_folders_past_the_scan_depth_are_pointed_out(cx: &mut TestAppContext) {
+    init_test(cx);
+    let set_scan_depth = |depth: u32, cx: &mut App| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project.worktree.file_scan_depth = Some(depth);
+            });
+        });
+    };
+    cx.update(|cx| set_scan_depth(2, cx));
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/test"),
+        json!({
+            "src": {
+                "main.c": MAIN_C,
+                "deep": { "inner": { "more.c": "int more(void) { return 0; }\n" } },
+            },
+        }),
+    )
+    .await;
+    let project = Project::test(fs, [path!("/test").as_ref()], cx).await;
+    project.read_with(cx, |project, _| project.languages().add(c_lang()));
+    let (multi_workspace, cx) =
+        cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let workspace =
+        multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+    let worktree_id = project.read_with(cx, |project, cx| {
+        project
+            .worktrees(cx)
+            .next()
+            .expect("the test worktree")
+            .read(cx)
+            .id()
+    });
+    let panel = workspace.update_in(cx, |workspace, window, cx| {
+        let panel = CallGraphPanel::new(workspace, window, cx);
+        workspace.add_panel(panel.clone(), window, cx);
+        workspace.open_panel::<CallGraphPanel>(window, cx);
+        panel
+    });
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let index = project::symbol_index_store::build_index_for_tests(
+        directory.path(),
+        &[("src/main.c", MAIN_C)],
+    )
+    .expect("building the index");
+    project.update(cx, |project, cx| {
+        project.symbol_index_store().update(cx, |store, cx| {
+            store.insert_index_for_tests(worktree_id, index, cx);
+            store.set_status_for_tests(
+                worktree_id,
+                SymbolIndexStatus::Indexing { done: 1, total: 2 },
+                cx,
+            );
+        })
+    });
+    let notice_shown = |cx: &mut VisualTestContext| {
+        cx.update(|window, _| window.refresh());
+        cx.executor().run_until_parked();
+        cx.debug_bounds("call-graph-scan-depth-notice").is_some()
+    };
+
+    assert!(
+        notice_shown(cx),
+        "src/deep is past the depth of 2: {:?}",
+        panel.read_with(cx, |panel, cx| panel.shown_index_summary(cx))
+    );
+
+    cx.update(|_, cx| set_scan_depth(8, cx));
+    cx.executor().run_until_parked();
+    let deferred = project.read_with(cx, |project, cx| {
+        project
+            .worktree_for_id(worktree_id, cx)
+            .map(|worktree| worktree.read(cx).deferred_scan_dir_count())
+    });
+    assert_eq!(deferred, Some(0), "a deeper scan reaches every folder");
+    assert!(!notice_shown(cx), "nothing is left out at a depth of 8");
+
+    let _locale = i18n::test_support::LocaleOverride::new(Some(
+        i18n_catalog::test_support::bundled_catalog("ja") as &'static dyn i18n::Catalog,
+    ));
+    assert_ne!(
+        scan_depth_notice(),
+        "Folders deeper than the file scan depth outside git repositories are not in the symbol index."
+    );
+}

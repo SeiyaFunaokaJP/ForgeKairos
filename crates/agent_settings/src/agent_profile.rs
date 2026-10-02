@@ -25,6 +25,23 @@ pub mod builtin_profiles {
     pub fn is_builtin(profile_id: &AgentProfileId) -> bool {
         matches!(profile_id.as_str(), WRITE | EDIT | ASK | MINIMAL)
     }
+
+    // Earlier versions shipped these Japanese names, and a settings file that copied a built-in
+    // profile still holds them verbatim, so they are compared as data.
+    const EARLIER_DEFAULT_NAMES: [(&str, &str); 4] = [
+        (WRITE, "書き込み"),
+        (EDIT, "編集のみ"),
+        (ASK, "質問"),
+        (MINIMAL, "最小"),
+    ];
+
+    /// Whether `name` is the name an earlier version shipped for the built-in profile
+    /// `profile_id`, which counts as that profile's default name.
+    pub fn is_earlier_default_name(profile_id: &AgentProfileId, name: &str) -> bool {
+        EARLIER_DEFAULT_NAMES
+            .iter()
+            .any(|(id, earlier_name)| *id == profile_id.as_str() && *earlier_name == name)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -139,7 +156,12 @@ impl AgentProfileSettings {
             profile_in(store.merged_settings()),
             profile_in(store.raw_default_settings()),
         ) {
-            (Some(merged), Some(default)) => merged == default,
+            (Some(mut merged), Some(default)) => {
+                if builtin_profiles::is_earlier_default_name(profile_id, &merged.name) {
+                    merged.name = default.name.clone();
+                }
+                merged == default
+            }
             _ => false,
         }
     }
@@ -370,5 +392,71 @@ mod tests {
 
         assert!(!AgentProfileSettings::is_unmodified_default(&write, cx));
         assert!(AgentProfileSettings::is_unmodified_default(&minimal, cx));
+    }
+
+    /// A user settings file holding a copy of the shipped profile `id`, as the tool picker writes
+    /// one, under the name `name`.
+    fn copy_of_default_profile(id: &str, name: &str, cx: &App) -> serde_json::Value {
+        let mut profile = cx
+            .global::<SettingsStore>()
+            .raw_default_settings()
+            .agent
+            .as_ref()
+            .and_then(|agent| agent.profiles.as_ref())
+            .and_then(|profiles| profiles.get(id))
+            .cloned()
+            .expect("the profile ships in default.json");
+        profile.name = name.into();
+        serde_json::to_value(profile).expect("a profile serializes")
+    }
+
+    #[gpui::test]
+    fn copies_named_by_an_earlier_version_still_count_as_defaults(cx: &mut gpui::App) {
+        use gpui::UpdateGlobal as _;
+
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        project::DisableAiSettings::register(cx);
+        AgentSettings::register(cx);
+
+        let write = AgentProfileId(builtin_profiles::WRITE.into());
+        let ask = AgentProfileId(builtin_profiles::ASK.into());
+        let minimal = AgentProfileId(builtin_profiles::MINIMAL.into());
+        let set_user_profiles = |profiles: serde_json::Value, cx: &mut App| {
+            let settings = serde_json::json!({ "agent": { "profiles": profiles } }).to_string();
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(&settings, cx)
+                    .expect("valid user settings");
+            });
+        };
+
+        let profiles = serde_json::json!({
+            "write": copy_of_default_profile("write", "書き込み", cx),
+            "minimal": copy_of_default_profile("minimal", "最小", cx),
+            // The name `write` used to have, on another built-in profile, is the user's own.
+            "ask": copy_of_default_profile("ask", "書き込み", cx),
+        });
+        set_user_profiles(profiles, cx);
+        assert!(AgentProfileSettings::is_unmodified_default(&write, cx));
+        assert!(AgentProfileSettings::is_unmodified_default(&minimal, cx));
+        assert!(!AgentProfileSettings::is_unmodified_default(&ask, cx));
+
+        // A name the user chose, Japanese or not, still makes the profile their own.
+        let profiles = serde_json::json!({
+            "write": copy_of_default_profile("write", "書き込み (自分用)", cx),
+            "minimal": copy_of_default_profile("minimal", "Bare", cx),
+        });
+        set_user_profiles(profiles, cx);
+        assert!(!AgentProfileSettings::is_unmodified_default(&write, cx));
+        assert!(!AgentProfileSettings::is_unmodified_default(&minimal, cx));
+
+        // The rest of the profile is still compared exactly.
+        let mut profiles = serde_json::json!({
+            "write": copy_of_default_profile("write", "書き込み", cx),
+        });
+        profiles["write"]["tools"]["fetch"] = serde_json::json!(false);
+        set_user_profiles(profiles, cx);
+        assert!(!AgentProfileSettings::is_unmodified_default(&write, cx));
     }
 }

@@ -6251,6 +6251,21 @@ mod tests {
         // `#[action(no_register)]` のアクションはグローバル登録されないので
         // `all_action_names()` に出てこない。名前自体は実在するので除外する
         const UNREGISTERED: &[&str] = &["zed::ChangeKeybinding", "search::NewSearchInDirectory"];
+        // The crates that define these are only built for some platforms (ETW tracing only on
+        // Windows, the CLI installer everywhere else), so each is registered on some platforms and
+        // missing on the others, while the one translation file serves them all.
+        const WINDOWS_ONLY: &[&str] = &[
+            "zed::RecordEtwTrace",
+            "zed::RecordEtwTraceWithHeapTracing",
+            "zed::SaveEtwTrace",
+            "zed::CancelEtwTrace",
+        ];
+        const NOT_ON_WINDOWS: &[&str] = &["cli::InstallCliBinary"];
+        let (registered_here, missing_here) = if cfg!(target_os = "windows") {
+            (WINDOWS_ONLY, NOT_ON_WINDOWS)
+        } else {
+            (NOT_ON_WINDOWS, WINDOWS_ONLY)
+        };
 
         let (actions_po, errors) = i18n_catalog::parse_po(
             "_actions.po",
@@ -6283,10 +6298,18 @@ mod tests {
                 .iter()
                 .copied()
                 .collect::<std::collections::HashSet<_>>();
+            for action_name in registered_here {
+                assert!(
+                    registered.contains(action_name),
+                    "{action_name} should be registered on this platform"
+                );
+            }
             let unknown = msgids
                 .iter()
                 .filter(|action_name| {
-                    !registered.contains(*action_name) && !UNREGISTERED.contains(action_name)
+                    !registered.contains(*action_name)
+                        && !UNREGISTERED.contains(action_name)
+                        && !missing_here.contains(action_name)
                 })
                 .collect::<Vec<_>>();
             assert_eq!(
@@ -6295,6 +6318,75 @@ mod tests {
                 "locales/ja/_actions.po の msgid が実在しないアクションを指している"
             );
         });
+    }
+
+    /// `locales/ja/_action_docs.po` translates the doc comments of actions under their
+    /// names, and only actions registered with a doc comment show one, so any other name
+    /// is a misspelled or removed action whose translation is never shown.
+    #[gpui::test]
+    async fn test_action_docs_po_references_documented_actions(cx: &mut gpui::TestAppContext) {
+        let (action_docs_po, errors) = i18n_catalog::parse_po(
+            "_action_docs.po",
+            include_str!("../../../locales/ja/_action_docs.po"),
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(
+            action_docs_po
+                .entries
+                .iter()
+                .all(|entry| entry.context.as_deref() == Some(i18n::context::ACTION_DOCUMENTATION))
+        );
+        let msgids = action_docs_po
+            .entries
+            .iter()
+            .map(|entry| entry.msgid.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            msgids.len() >= 1000,
+            "expected the descriptions of most actions, got {}",
+            msgids.len()
+        );
+
+        init_keymap_test(cx);
+        cx.update(|cx| {
+            let documented = cx.action_documentation();
+            let unknown = msgids
+                .iter()
+                .filter(|action_name| !documented.contains_key(**action_name))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                unknown,
+                Vec::<&&str>::new(),
+                "locales/ja/_action_docs.po translates actions that are not registered with a doc comment"
+            );
+        });
+    }
+
+    /// `zed --dump-settings-schema` is what `i18n_tool check --settings-schema` compares
+    /// `locales/ja/_settings_schema.po` with, so it has to print the schema whose
+    /// descriptions that file translates, untranslated.
+    #[test]
+    fn test_dumped_settings_schema_has_the_translated_descriptions() {
+        let (settings_schema_po, errors) = i18n_catalog::parse_po(
+            "_settings_schema.po",
+            include_str!("../../../locales/ja/_settings_schema.po"),
+        );
+        assert!(errors.is_empty(), "{errors:?}");
+        let dumped = serde_json::to_string(&crate::english_settings_schema())
+            .expect("the settings schema serializes");
+        let found = settings_schema_po
+            .entries
+            .iter()
+            .filter(|entry| {
+                serde_json::to_string(&entry.msgid)
+                    .is_ok_and(|quoted_english| dumped.contains(&quoted_english))
+            })
+            .count();
+        assert!(
+            found * 10 >= settings_schema_po.entries.len() * 9,
+            "only {found} of {} descriptions are in the dumped schema",
+            settings_schema_po.entries.len()
+        );
     }
 
     #[gpui::test]

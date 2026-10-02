@@ -184,6 +184,57 @@ impl RedistributableColumnsState {
         self.committed_widths = self.preview_widths.clone();
     }
 
+    /// Widens the column at `column_index` to at least `min_width`, taking the width from the
+    /// column at `donor_index` as far as that column's own minimum allows. Returns whether the
+    /// widths changed. Does nothing before the container's width is known or while a column is
+    /// being dragged.
+    pub fn widen_column_to(
+        &mut self,
+        column_index: usize,
+        min_width: Pixels,
+        donor_index: usize,
+        rem_size: Pixels,
+    ) -> bool {
+        let container_width = self.cached_container_width;
+        if container_width <= px(0.)
+            || column_index == donor_index
+            || self.preview_widths != self.committed_widths
+        {
+            return false;
+        }
+        let mut widths = self
+            .committed_widths
+            .map_ref(|length| Self::get_fraction(length, container_width, rem_size));
+        let (Some(current), Some(donor)) = (
+            widths.get(column_index).copied(),
+            widths.get(donor_index).copied(),
+        ) else {
+            return false;
+        };
+        let donor_min = self
+            .resize_behavior
+            .get(donor_index)
+            .and_then(TableResizeBehavior::min_size)
+            .unwrap_or(0.0);
+        let deficit = min_width / container_width - current;
+        let moved = deficit.min(donor - donor_min);
+        // Below a thousandth of the width the change is invisible, and skipping it keeps
+        // repeated calls from nudging the columns on every frame.
+        if moved <= 0.001 {
+            return false;
+        }
+        let slice = widths.as_mut_slice();
+        if let Some(width) = slice.get_mut(column_index) {
+            *width += moved;
+        }
+        if let Some(width) = slice.get_mut(donor_index) {
+            *width -= moved;
+        }
+        self.committed_widths = widths.map(DefiniteLength::Fraction);
+        self.preview_widths = self.committed_widths.clone();
+        true
+    }
+
     pub fn reset_column_to_initial_width(&mut self, column_index: usize, window: &Window) {
         let bounds_width = self.cached_container_width;
         if bounds_width <= px(0.) {

@@ -36,6 +36,7 @@ use self::document_symbols::DocumentSymbolsData;
 use self::dynamic_registration::DynamicRegistrations;
 use self::format_failure::FormatFailure;
 use self::inlay_hints::BufferInlayHints;
+use self::result_buffers::OmittedLocations;
 use crate::{
     CodeAction, Completion, CompletionDisplayOptions, CompletionResponse, CompletionSource,
     CoreCompletion, Hover, InlayHint, InlayId, LocationLink, LspAction, LspPullDiagnostics,
@@ -9041,8 +9042,23 @@ impl LspStore {
         position: PointUtf16,
         cx: &mut Context<Self>,
     ) -> Task<Result<Option<Vec<Location>>>> {
+        self.references_counting_omitted(buffer, position, OmittedLocations::default(), cx)
+    }
+
+    /// [`Self::references`], adding to `omitted` the locations the bound on what one response
+    /// may open left out (only where this store asks the language server itself).
+    pub fn references_counting_omitted(
+        &mut self,
+        buffer: &Entity<Buffer>,
+        position: PointUtf16,
+        omitted: OmittedLocations,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Option<Vec<Location>>>> {
         if let Some((upstream_client, project_id)) = self.upstream_client() {
-            let request = GetReferences { position };
+            let request = GetReferences {
+                position,
+                omitted: omitted.clone(),
+            };
             if !self.is_capable_for_proto_request(buffer, &request, cx) {
                 return Task::ready(Ok(None));
             }
@@ -9067,7 +9083,11 @@ impl LspStore {
                 };
 
                 let locations = join_all(responses.payload.into_iter().map(|lsp_response| {
-                    GetReferences { position }.response_from_proto(
+                    GetReferences {
+                        position,
+                        omitted: omitted.clone(),
+                    }
+                    .response_from_proto(
                         lsp_response.response,
                         lsp_store.clone(),
                         buffer.clone(),
@@ -9087,7 +9107,7 @@ impl LspStore {
             let references_task = self.request_multiple_lsp_locally(
                 buffer,
                 Some(position),
-                GetReferences { position },
+                GetReferences { position, omitted },
                 cx,
             );
             cx.background_spawn(async move {
@@ -15029,6 +15049,16 @@ impl LspStore {
                         }
                     }
                     let buffers = lsp_store.buffers_to_reopen_after_restart(buffers, cx);
+                    // Servers start for the files that need them, so with none
+                    // open they stay stopped until one is opened. A restart
+                    // that keeps `stopped` comes from a settings change, not
+                    // from the user, who has nothing to be told.
+                    if clear_stopped && buffers.is_empty() && !stopped_names.is_empty() {
+                        cx.emit(LspStoreEvent::Notification(i18n::t!(
+                            "No open file uses the restarted language servers, so they will start when you open a file."
+                        )
+                        .to_string()));
+                    }
                     for buffer in buffers {
                         lsp_store.register_buffer_with_language_servers(
                             &buffer,

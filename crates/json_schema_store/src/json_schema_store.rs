@@ -1,3 +1,5 @@
+mod localized_schema;
+
 use std::sync::{Arc, LazyLock};
 
 use anyhow::{Context as _, Result};
@@ -37,10 +39,12 @@ static INSPECTOR_STYLE_SCHEMA: LazyLock<String> = LazyLock::new(|| {
         .expect("Inspector style schema should serialize")
 });
 
-static KEYMAP_SCHEMA: LazyLock<String> = LazyLock::new(|| {
-    serde_json::to_string(&settings::KeymapFile::generate_json_schema_from_inventory())
-        .expect("Keymap schema should serialize")
-});
+static KEYMAP_SCHEMA: LazyLock<serde_json::Value> =
+    LazyLock::new(settings::KeymapFile::generate_json_schema_from_inventory);
+
+// The keymap schema with its action descriptions in the display language, and the
+// `i18n::generation()` it was translated for.
+static LOCALIZED_KEYMAP_SCHEMA: RwLock<Option<(u64, String)>> = RwLock::new(None);
 
 static ACTION_SCHEMA_CACHE: LazyLock<RwLock<HashMap<String, String>>> =
     LazyLock::new(|| RwLock::new(HashMap::default()));
@@ -98,26 +102,18 @@ impl gpui::Global for SchemaStore {}
 enum ChangedSchemas {
     Settings,
     DebugTasks,
+    DisplayLanguage,
 }
 
 impl SchemaStore {
     fn notify_schema_changed(&mut self, changed_schemas: ChangedSchemas, cx: &mut App) {
         let uris_to_invalidate = match changed_schemas {
-            ChangedSchemas::Settings => {
-                let settings_uri_prefix = &format!("{SCHEMA_URI_PREFIX}settings");
-                let project_settings_uri = &format!("{SCHEMA_URI_PREFIX}project_settings");
-                DYNAMIC_SCHEMA_CACHE
-                    .write()
-                    .extract_if(|uri, _| {
-                        uri == project_settings_uri || uri.starts_with(settings_uri_prefix)
-                    })
-                    .map(|(url, _)| url)
-                    .collect()
-            }
+            ChangedSchemas::Settings => invalidate_settings_schemas(),
             ChangedSchemas::DebugTasks => DYNAMIC_SCHEMA_CACHE
                 .write()
                 .remove_entry(&format!("{SCHEMA_URI_PREFIX}debug_tasks"))
                 .map_or_else(Vec::new, |(uri, _)| vec![uri]),
+            ChangedSchemas::DisplayLanguage => invalidate_localized_schemas(),
         };
 
         if uris_to_invalidate.is_empty() {
@@ -136,6 +132,48 @@ impl SchemaStore {
             true
         })
     }
+}
+
+fn invalidate_settings_schemas() -> Vec<String> {
+    let settings_uri_prefix = &format!("{SCHEMA_URI_PREFIX}settings");
+    let project_settings_uri = &format!("{SCHEMA_URI_PREFIX}project_settings");
+    DYNAMIC_SCHEMA_CACHE
+        .write()
+        .extract_if(|uri, _| uri == project_settings_uri || uri.starts_with(settings_uri_prefix))
+        .map(|(url, _)| url)
+        .collect()
+}
+
+fn invalidate_localized_schemas() -> Vec<String> {
+    let mut uris = invalidate_settings_schemas();
+    // Served from a static, so only the language server's copy is stale.
+    uris.push(format!("{SCHEMA_URI_PREFIX}keymap"));
+    uris
+}
+
+/// Makes the language servers ask again for the schemas whose descriptions are shown in
+/// the display language. Call it when the display language changes.
+pub fn reload_localized_schemas(cx: &mut App) {
+    if !cx.has_global::<SchemaStore>() {
+        return;
+    }
+    cx.update_global::<SchemaStore, _>(|schema_store, cx| {
+        schema_store.notify_schema_changed(ChangedSchemas::DisplayLanguage, cx);
+    });
+}
+
+fn localized_keymap_schema() -> String {
+    let generation = i18n::generation();
+    if let Some((localized_generation, json)) = LOCALIZED_KEYMAP_SCHEMA.read().as_ref()
+        && *localized_generation == generation
+    {
+        return json.clone();
+    }
+    let mut schema = KEYMAP_SCHEMA.clone();
+    localized_schema::localize_descriptions(&mut schema);
+    let json = serde_json::to_string(&schema).expect("Keymap schema should serialize");
+    *LOCALIZED_KEYMAP_SCHEMA.write() = Some((generation, json.clone()));
+    json
 }
 
 pub fn handle_schema_request(
@@ -178,7 +216,7 @@ fn resolve_static_schema(path: &str) -> Option<String> {
         "tasks" => Some(TASKS_SCHEMA.clone()),
         "snippets" => Some(SNIPPETS_SCHEMA.clone()),
         "jsonc" => Some(JSONC_SCHEMA.clone()),
-        "keymap" => Some(KEYMAP_SCHEMA.clone()),
+        "keymap" => Some(localized_keymap_schema()),
         "zed_inspector_style" => {
             #[cfg(debug_assertions)]
             {
@@ -351,6 +389,7 @@ async fn resolve_dynamic_schema(
                         deprecation_messages,
                     });
                 inject_feature_flags_schema(&mut schema);
+                localized_schema::localize_descriptions(&mut schema);
                 schema
             })
         }
@@ -379,6 +418,7 @@ async fn resolve_dynamic_schema(
                     deprecation_messages: &HashMap::default(),
                 });
             inject_feature_flags_schema(&mut schema);
+            localized_schema::localize_descriptions(&mut schema);
             schema
         }
         "debug_tasks" => {

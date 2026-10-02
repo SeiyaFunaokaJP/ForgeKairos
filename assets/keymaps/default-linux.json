@@ -1772,7 +1772,7 @@
       "shift-tab": "file_transfer::FocusPreviousField",
     },
   },
-  // 内蔵ブラウザーパネル (ADR-F19)
+  // The built-in browser panel (ADR-F19)
   {
     "context": "Workspace",
     "bindings": {

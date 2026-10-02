@@ -224,9 +224,6 @@ msgstr "複製"
 msgid "Edit"
 msgstr "編集"
 
-msgid "Edit Macros"
-msgstr "マクロの編集"
-
 msgid "Edit Macros…"
 msgstr "マクロの編集…"
 
@@ -353,6 +350,9 @@ msgstr "マクロ「{name}」が完了しました"
 msgid "Macro “{name}”: {error}"
 msgstr "マクロ「{name}」: {error}"
 
+msgid "Macro: {name}"
+msgstr "マクロ: {name}"
+
 msgid "More Buttons"
 msgstr "その他のボタン"
 
@@ -421,6 +421,9 @@ msgstr "移動や折りたたみのメニューを開きます"
 
 msgid "Optional"
 msgstr "省略可"
+
+msgid "Overwrite"
+msgstr "上書き"
 
 msgid "Password (optional)"
 msgstr "パスワード (省略可)"
@@ -693,6 +696,12 @@ msgstr "マクロを実行するターミナルがありません。ターミナ
 msgid "This folder already has a macro with this name."
 msgstr "同じフォルダーに同名のマクロがあります。"
 
+msgid "This macro has been changed elsewhere since this tab opened it. Do you want to overwrite it?"
+msgstr "このタブで開いた後に、このマクロはほかの場所で変更されています。上書きしますか?"
+
+msgid "This macro has been deleted or renamed elsewhere. Saving creates it again as “{name}”."
+msgstr "このマクロはほかの場所で削除または改名されました。保存すると「{name}」として新しく作ります。"
+
 msgid "Timeout (seconds)"
 msgstr "タイムアウト (秒)"
 
@@ -830,6 +839,9 @@ msgstr[0] "{heading}: {count} ステップ (これより深い入れ子は JSON 
 
 msgid "{later} gets its value only after this step. Here it stays as written."
 msgstr "{later} に値が入るのはこのステップより後です。ここでは書いたままの文字になります。"
+
+msgid "{problem}. Fix it in terminal_sessions.json. Saving here keeps it as it was, but a macro that contains it can't be run."
+msgstr "{problem}。terminal_sessions.json で直してください。ここで保存しても元の内容のまま残りますが、このステップを含むマクロは実行できません。"
 
 msgid "{program} was not found on PATH."
 msgstr "{program} が PATH 上に見つかりません。"
