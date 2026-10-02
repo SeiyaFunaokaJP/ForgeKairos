@@ -33,7 +33,7 @@
 //! `--network` (`slirp4netns` beside this binary) the egress proxy keeping
 //! local addresses out of reach. It creates files only under the scratch
 //! directory, and — for the IDE channel, which has to be under this account's
-//! home — one directory of its own in `~/.cache/zed-jp-enhance/ide`.
+//! home — one directory of its own in `~/.cache/forgekairos/ide`.
 
 #![allow(
     clippy::disallowed_methods,
@@ -424,8 +424,10 @@ mod stdio_e2e {
         fn prepare(scratch: &Path, helper: PathBuf) -> Result<Self> {
             let work = scratch.join("work");
             let home = scratch.join("home");
-            let data = home.join(".local/share/zed-jp-enhance");
-            let projects = home.join(".zed-jp-enhance-claude/projects");
+            let data = home
+                .join(".local/share")
+                .join(branding::CURRENT.app_directory_name_lowercase);
+            let projects = home.join(sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE);
             for (directory, file, contents) in [
                 (work.clone(), "main.rs", "work"),
                 (
@@ -471,11 +473,14 @@ mod stdio_e2e {
         }
 
         fn data(&self) -> PathBuf {
-            self.home.join(".local/share/zed-jp-enhance")
+            self.home
+                .join(".local/share")
+                .join(branding::CURRENT.app_directory_name_lowercase)
         }
 
         fn projects(&self) -> PathBuf {
-            self.home.join(".zed-jp-enhance-claude/projects")
+            self.home
+                .join(sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE)
         }
 
         fn echo(&self, options: &[&str]) -> Vec<String> {
@@ -1117,7 +1122,8 @@ mod stdio_e2e {
             // Where Zed really puts it, which is also where the bridge insists
             // it be: under this account's home, in a private directory.
             let directory = home
-                .join(".cache/zed-jp-enhance/ide")
+                .join(branding::CURRENT.remote_cache_home_relative)
+                .join("ide")
                 .join(format!("e2e-{}", std::process::id()));
             std::fs::create_dir_all(&directory)
                 .with_context(|| format!("creating {}", directory.display()))?;

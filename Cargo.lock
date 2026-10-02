@@ -103,6 +103,7 @@ dependencies = [
  "anyhow",
  "async-channel 2.5.0",
  "base64 0.22.1",
+ "branding",
  "buffer_diff",
  "chrono",
  "collections",
@@ -508,6 +509,7 @@ dependencies = [
  "async-tungstenite",
  "audio",
  "base64 0.22.1",
+ "branding",
  "buffer_diff",
  "chrono",
  "client",
@@ -1379,6 +1381,7 @@ name = "auto_update"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "client",
  "clock",
  "ctor",
@@ -1411,6 +1414,7 @@ name = "auto_update_helper"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "branding",
  "log",
  "scopeguard",
  "simplelog",
@@ -2192,6 +2196,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "branding"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "breadcrumbs"
 version = "0.1.0"
 dependencies = [
@@ -2888,6 +2899,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "askpass",
+ "branding",
  "clap",
  "clap_complete",
  "clap_complete_nushell",
@@ -5579,6 +5591,7 @@ dependencies = [
 name = "explorer_command_injector"
 version = "0.1.0"
 dependencies = [
+ "branding",
  "windows 0.62.2",
  "windows-core 0.62.2",
  "windows-registry 0.6.1",
@@ -6188,6 +6201,7 @@ dependencies = [
  "async-std",
  "async-tar",
  "async-trait",
+ "branding",
  "collections",
  "dunce",
  "fs",
@@ -7702,6 +7716,7 @@ dependencies = [
  "async-compression",
  "async-fs",
  "async-tar",
+ "branding",
  "bytes 1.11.1",
  "derive_more",
  "futures 0.3.34",
@@ -8420,7 +8435,7 @@ name = "install_cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "client",
+ "branding",
  "gpui",
  "log",
  "release_channel",
@@ -12038,10 +12053,15 @@ dependencies = [
 name = "paths"
 version = "0.1.0"
 dependencies = [
+ "branding",
  "const_format",
  "dirs",
  "ignore",
+ "libc",
+ "log",
+ "tempfile",
  "util",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -14235,6 +14255,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 name = "release_channel"
 version = "0.1.0"
 dependencies = [
+ "branding",
  "gpui",
  "semver",
 ]
@@ -14247,6 +14268,7 @@ dependencies = [
  "askpass",
  "async-trait",
  "base64 0.22.1",
+ "branding",
  "bytes 1.11.1",
  "collections",
  "egress_policy",
@@ -14933,6 +14955,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-compression",
+ "branding",
  "futures 0.3.34",
  "gpui",
  "http_client",
@@ -18424,6 +18447,7 @@ dependencies = [
  "anyhow",
  "async-fs",
  "async_zip",
+ "branding",
  "collections",
  "command-fds",
  "dirs",
@@ -20436,6 +20460,7 @@ checksum = "1e7ac75179f18232fe9c285163565a57ef8d3c89254a30685b57d83a38d326c2"
 name = "windows_resources"
 version = "0.1.0"
 dependencies = [
+ "branding",
  "embed-resource",
 ]
 
@@ -21220,10 +21245,12 @@ dependencies = [
  "compliance",
  "gh-workflow",
  "guppy",
+ "image",
  "indexmap 2.14.0",
  "indoc",
  "itertools 0.14.0",
  "regex",
+ "resvg",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -21451,6 +21478,7 @@ dependencies = [
  "audio",
  "auto_update",
  "auto_update_ui",
+ "branding",
  "breadcrumbs",
  "browser_panel",
  "call_graph_panel",

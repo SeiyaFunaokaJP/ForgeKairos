@@ -553,15 +553,12 @@ mod tests {
     use super::*;
     use std::path::Path;
 
-    /// `sandbox::APP_DIRECTORY_NAME` duplicates `paths::APP_NAME` /
-    /// `APP_NAME_LOWERCASE` (see the doc comment on
-    /// `crates/sandbox/src/protected_paths.rs`'s `APP_DIRECTORY_NAME`) because
-    /// the `sandbox` crate is also the static musl remote-server helper and
-    /// keeps its dependency surface minimal. A rename that only updates
-    /// `paths::APP_NAME` would silently stop protecting this fork's own
-    /// config/data/state directory, so this test catches the drift: if it
-    /// fails, update `APP_DIRECTORY_NAME` in
-    /// `crates/sandbox/src/protected_paths.rs` to match.
+    /// `sandbox::APP_DIRECTORY_NAME` and `paths::APP_NAME` /
+    /// `APP_NAME_LOWERCASE` are both read from `branding::CURRENT`, the
+    /// `sandbox` crate not depending on `paths` because it is also the static
+    /// musl remote-server helper. Kept so that either side going back to a
+    /// name of its own — which would silently stop protecting this fork's own
+    /// config/data/state directory — fails here.
     #[test]
     fn sandbox_protected_app_directory_matches_paths_app_name() {
         let expected = if cfg!(target_os = "linux") {

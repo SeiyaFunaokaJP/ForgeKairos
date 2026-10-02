@@ -75,38 +75,42 @@ async fn the_key_is_taken_from_the_same_folders_everywhere(cx: &mut gpui::TestAp
 fn a_remote_folder_is_taken_only_where_the_client_names_it() {
     let claude = SandboxedAgentProfile::Claude;
     // ADR-F55: Claude's folder in the sandbox is the CLI session's `config`.
-    let accepted = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/config";
+    let projects = sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE;
+    let accepted = format!("/home/u/{projects}/0123456789abcdef/config");
     assert_eq!(
-        accept_remote_config_dir(accepted, &claude).expect("the folder the profile names"),
-        PathBuf::from(accepted)
+        accept_remote_config_dir(&accepted, &claude).expect("the folder the profile names"),
+        PathBuf::from(&accepted)
     );
 
     for refused in [
         // Another agent's folder, and with it its sign-in.
-        "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/codex",
+        format!("/home/u/{projects}/0123456789abcdef/codex"),
         // The folder this fork used before ADR-F55: still not the one the
         // client's policy names, so a host cannot hand it over either.
-        "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp",
+        format!("/home/u/{projects}/0123456789abcdef/claude-acp"),
         // Not a project's directory.
-        "/home/u/.zed-jp-enhance-claude/projects/not-a-key/config",
+        format!("/home/u/{projects}/not-a-key/config"),
+        // Below the projects directory builds before the rename used, which
+        // this build no longer signs in to.
+        "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/config".to_string(),
         // Not below the sandboxed agents' projects directory.
-        "/home/u/.ssh/config",
-        "/home/u/projects/0123456789abcdef/config",
+        "/home/u/.ssh/config".to_string(),
+        "/home/u/projects/0123456789abcdef/config".to_string(),
         // Walks out of it.
-        "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/../../../config",
+        format!("/home/u/{projects}/0123456789abcdef/../../../config"),
         // Not absolute, and nothing at all.
-        ".zed-jp-enhance-claude/projects/0123456789abcdef/config",
-        "",
+        format!("{projects}/0123456789abcdef/config"),
+        String::new(),
     ] {
         assert!(
-            accept_remote_config_dir(refused, &claude).is_err(),
+            accept_remote_config_dir(&refused, &claude).is_err(),
             "{refused} should be refused"
         );
     }
 
     assert!(
         accept_remote_config_dir(
-            "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/agent-my-agent",
+            &format!("/home/u/{projects}/0123456789abcdef/agent-my-agent"),
             &SandboxedAgentProfile::Other {
                 id: "my-agent".to_string()
             },
@@ -214,7 +218,7 @@ fn the_folder_is_below_the_projects_directory() {
     let home = Path::new("/home/user");
     assert_eq!(
         agent_config_dir(home, "0123456789abcdef", &SandboxedAgentProfile::Codex),
-        home.join(".zed-jp-enhance-claude")
+        home.join(sandbox::SANDBOXED_AGENT_CONFIG_HOME_RELATIVE)
             .join("projects")
             .join("0123456789abcdef")
             .join("codex")
@@ -230,7 +234,7 @@ fn the_acp_claude_shares_the_clis_sandboxed_folder() {
     let key = "0123456789abcdef";
     let sandboxed = agent_config_dir(home, key, &SandboxedAgentProfile::Claude);
     let cli_session = home
-        .join(".zed-jp-enhance-claude")
+        .join(sandbox::SANDBOXED_AGENT_CONFIG_HOME_RELATIVE)
         .join("projects")
         .join(key)
         .join(project::agent_sandbox::CLI_SESSION_FOLDER);
@@ -439,7 +443,9 @@ mod creation {
     fn refuses_a_link_on_the_way() {
         let home = tempfile::tempdir().expect("tempdir");
         let elsewhere = tempfile::tempdir().expect("tempdir");
-        let projects = home.path().join(".zed-jp-enhance-claude/projects");
+        let projects = home
+            .path()
+            .join(sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE);
         std::fs::create_dir_all(&projects).expect("projects");
         symlink(elsewhere.path(), projects.join(KEY)).expect("link");
 
@@ -464,7 +470,7 @@ mod creation {
         let elsewhere = tempfile::tempdir().expect("tempdir");
         let project = home
             .path()
-            .join(".zed-jp-enhance-claude/projects")
+            .join(sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE)
             .join(KEY);
         std::fs::create_dir_all(&project).expect("project");
         symlink(elsewhere.path(), project.join("config")).expect("link");
@@ -486,7 +492,9 @@ mod creation {
     #[test]
     fn refuses_a_level_other_accounts_can_write() {
         let home = tempfile::tempdir().expect("tempdir");
-        let projects = home.path().join(".zed-jp-enhance-claude/projects");
+        let projects = home
+            .path()
+            .join(sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE);
         std::fs::create_dir_all(&projects).expect("projects");
         std::fs::set_permissions(&projects, std::fs::Permissions::from_mode(0o770))
             .expect("permissions");

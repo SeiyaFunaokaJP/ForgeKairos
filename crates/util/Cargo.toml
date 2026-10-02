@@ -22,6 +22,7 @@ debug-embed = ["rust-embed/debug-embed"]
 [dependencies]
 anyhow.workspace = true
 async_zip.workspace = true
+branding.workspace = true
 collections.workspace = true
 dunce.workspace = true
 futures-lite.workspace = true

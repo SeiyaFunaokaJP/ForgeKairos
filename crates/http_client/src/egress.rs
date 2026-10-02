@@ -442,12 +442,10 @@ const APP_UPDATE_CHECK: &str = "app update check";
 /// here rather than in `auto_update` because the built-in entry below has to
 /// scope the update check to exactly this repository's releases, and
 /// `auto_update` already depends on this crate.
-pub const UPDATE_REPO: &str = "SeiyaFunaokaJP/zed-jp-enhance";
+pub const UPDATE_REPO: &str = branding::UPDATE_REPO;
 
-/// The GitHub API path prefix the update check reads. Spelled out because
-/// `concat!` cannot take a `const`; a test below asserts it stays equal to
-/// `/repos/{UPDATE_REPO}/releases`.
-const UPDATE_RELEASES_PATH: &str = "/repos/SeiyaFunaokaJP/zed-jp-enhance/releases";
+/// The GitHub API path prefix the update check reads.
+const UPDATE_RELEASES_PATH: &str = branding::concat_const!("/repos/", UPDATE_REPO, "/releases");
 
 /// Where a `github.com` release asset URL redirects to. GitHub answers the
 /// `…/releases/download/…` URL with a 302 to a pre-signed URL on one of these
@@ -1435,9 +1433,9 @@ mod tests {
     fn the_update_check_works_with_an_empty_user_policy() {
         let policy = policy(&[]);
         for url in [
-            "https://api.github.com/repos/SeiyaFunaokaJP/zed-jp-enhance/releases",
-            "https://api.github.com/repos/SeiyaFunaokaJP/zed-jp-enhance/releases/latest",
-            "https://api.github.com/repos/SeiyaFunaokaJP/zed-jp-enhance/releases/tags/v1.2.3",
+            "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases",
+            "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases/latest",
+            "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases/tags/v1.2.3",
         ] {
             assert!(check(&policy, url).is_ok(), "{url} should be allowed");
         }
@@ -1448,20 +1446,22 @@ mod tests {
         let policy = policy(&[]);
         for url in [
             // The binaries themselves: what the consent flow is for.
-            "https://github.com/SeiyaFunaokaJP/zed-jp-enhance/releases/download/v1.2.3/zed-windows-x86_64-setup.exe",
+            "https://github.com/SeiyaFunaokaJP/ForgeKairos/releases/download/v1.2.3/forgekairos-windows-x86_64-setup.exe",
             "https://objects.githubusercontent.com/github-production-release-asset/1/2",
             "https://release-assets.githubusercontent.com/github-production-release-asset/1/2",
             // Any other repository, including the upstream this fork does not
             // follow.
             "https://api.github.com/repos/zed-industries/zed/releases",
+            // The repository this fork was published from before it was renamed.
+            "https://api.github.com/repos/SeiyaFunaokaJP/zed-jp-enhance/releases",
             // Anything else on the API host.
-            "https://api.github.com/repos/SeiyaFunaokaJP/zed-jp-enhance",
-            "https://api.github.com/repos/SeiyaFunaokaJP/zed-jp-enhance/contents/README.md",
+            "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos",
+            "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/contents/README.md",
             "https://api.github.com/user",
             // A path that merely starts with the same characters.
-            "https://api.github.com/repos/SeiyaFunaokaJP/zed-jp-enhance/releases-private",
+            "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases-private",
             // Neighbouring hosts stay denied.
-            "https://raw.githubusercontent.com/SeiyaFunaokaJP/zed-jp-enhance/main/README.md",
+            "https://raw.githubusercontent.com/SeiyaFunaokaJP/ForgeKairos/main/README.md",
         ] {
             assert!(check(&policy, url).is_err(), "{url} should be denied");
         }

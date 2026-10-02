@@ -53,11 +53,11 @@ msgstr "{file}を{distro}にコピーできませんでした ({error})。"
 msgid "Could not copy the {file} to {distro}{details}. Check the free space in WSL and that the home directory is writable."
 msgstr "{file}を{distro}にコピーできませんでした{details}。WSL 内の空き容量と、ホームディレクトリへの書き込み権限を確認してください。"
 
-msgid "Could not create the IDE integration lock file (check the owner and permissions of ~/.zed-jp-enhance-claude {home}, and that it is not a symbolic link)."
-msgstr "IDE 連携のロックファイルを作成できませんでした ({home} ~/.zed-jp-enhance-claude の所有者と権限、シンボリックリンクになっていないかを確認してください)。"
+msgid "Could not create the IDE integration lock file (check the owner and permissions of {path} {home}, and that it is not a symbolic link)."
+msgstr "IDE 連携のロックファイルを作成できませんでした ({home} {path} の所有者と権限、シンボリックリンクになっていないかを確認してください)。"
 
-msgid "Could not create the IDE integration's rendezvous socket (check the owner and permissions of ~/.cache/zed-jp-enhance/ide {home})."
-msgstr "IDE 連携の受け渡し用のソケットを作成できませんでした ({home} ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+msgid "Could not create the IDE integration's rendezvous socket (check the owner and permissions of {path} {home})."
+msgstr "IDE 連携の受け渡し用のソケットを作成できませんでした ({home} {path} の所有者と権限を確認してください)。"
 
 msgid "Could not create the agent settings folder"
 msgstr "エージェントの設定フォルダーを作成できませんでした"

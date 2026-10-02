@@ -399,11 +399,16 @@ fn classify_agent_write(
             {
                 return AgentWriteVerdict::Refuse(Refusal::ProtectedPath);
             }
-            // The remote server keeps its settings where Zed on Linux does.
-            let remote_settings = format!(".config/{}", paths::APP_NAME_LOWERCASE);
+            // The remote server keeps its settings where Zed on Linux does,
+            // and a server from before the rename under the name it had then.
+            let remote_settings = remote_settings_home_relative();
+            let remote_settings = remote_settings
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>();
             if absolute
                 .iter()
-                .any(|path| rules.is_under_home_entry_anywhere(path, &[remote_settings.as_str()]))
+                .any(|path| rules.is_under_home_entry_anywhere(path, &remote_settings))
             {
                 return AgentWriteVerdict::Confirm(SensitiveWrite::Settings);
             }
@@ -429,6 +434,21 @@ fn classify_agent_write(
         return AgentWriteVerdict::Confirm(SensitiveWrite::AgentSkills);
     }
     AgentWriteVerdict::Allow
+}
+
+/// Where a remote server keeps its settings, relative to the remote account's
+/// home: under this build's directory name and under every name this fork has
+/// had, since the host can still hold the settings of a server from before the
+/// rename, which that server reads when it runs again.
+fn remote_settings_home_relative() -> Vec<String> {
+    let mut entries = vec![format!(".config/{}", paths::APP_NAME_LOWERCASE)];
+    for names in [&branding::FORGEKAIROS].into_iter().chain(branding::LEGACY) {
+        let entry = format!(".config/{}", names.app_directory_name_lowercase);
+        if !entries.contains(&entry) {
+            entries.push(entry);
+        }
+    }
+    entries
 }
 
 fn has_agent_skills_folder(path: &Path, rules: NameRules) -> bool {
@@ -704,14 +724,18 @@ mod tests {
             ),
             AgentWriteVerdict::Confirm(SensitiveWrite::Settings)
         );
-        assert_eq!(
-            classify(
-                "/home/user",
-                ".config/zed-jp-enhance/settings.json",
-                &ProtectedLocations::Remote
-            ),
-            AgentWriteVerdict::Confirm(SensitiveWrite::Settings)
-        );
+        // A remote server's settings, under the current name and under the
+        // one a server from before the rename still reads.
+        for relative in [
+            ".config/forgekairos/settings.json",
+            ".config/zed-jp-enhance/settings.json",
+        ] {
+            assert_eq!(
+                classify("/home/user", relative, &ProtectedLocations::Remote),
+                AgentWriteVerdict::Confirm(SensitiveWrite::Settings),
+                "{relative}"
+            );
+        }
     }
 
     #[test]

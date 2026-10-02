@@ -56,9 +56,14 @@ pub use ide_bridge::{
 /// helper.
 mod protected_paths;
 pub use protected_paths::{
-    APP_DIRECTORY_NAME, SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
-    SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE, UNIX_PROTECTED_HOME_RELATIVE,
-    WORKTREE_PROTECTED_RELATIVE, builtin_protected_paths, builtin_read_hidden_paths,
+    APP_DIRECTORY_NAME, LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+    SANDBOXED_AGENT_CONFIG_HOME_RELATIVE, SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE,
+    UNIX_PROTECTED_HOME_RELATIVE, WORKTREE_PROTECTED_RELATIVE, builtin_protected_paths,
+    builtin_read_hidden_paths,
+};
+#[cfg(target_os = "linux")]
+pub use protected_paths::{
+    LegacyAgentConfigurationMigration, migrate_legacy_sandboxed_agent_configuration,
 };
 
 /// ADR-F49 decision 18: what still runs inside a sandbox, as the trusted side
@@ -3700,14 +3705,14 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     fn data_directory(home: &Path) -> PathBuf {
-        home.join(".local").join("share").join("zed-jp-enhance")
+        home.join(".local").join("share").join(APP_DIRECTORY_NAME)
     }
 
     #[cfg(target_os = "macos")]
     fn data_directory(home: &Path) -> PathBuf {
         home.join("Library")
             .join("Application Support")
-            .join("Zed-JP-Enhance")
+            .join(APP_DIRECTORY_NAME)
     }
 
     /// ADR-F49 decision 14: a readable location outside an agent installation
@@ -3760,7 +3765,7 @@ mod tests {
         let data = data_directory(&home);
         let agents = data.join("external_agents").join("registry").join("npx");
         let agent = agents.join("claude");
-        let configurations = home.join(".zed-jp-enhance-claude");
+        let configurations = home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
         let projects = configurations.join("projects");
         let own = projects.join("own").join("config");
         let work = home.join("work");

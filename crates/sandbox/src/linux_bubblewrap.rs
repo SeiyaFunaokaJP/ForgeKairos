@@ -1770,10 +1770,13 @@ mod tests {
             return;
         };
         let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
-        let data = home.join(".local").join("share").join("zed-jp-enhance");
+        let data = home
+            .join(".local")
+            .join("share")
+            .join(crate::APP_DIRECTORY_NAME);
         let agents = data.join("external_agents").join("registry").join("npx");
         let agent = agents.join("claude");
-        let configurations = home.join(".zed-jp-enhance-claude");
+        let configurations = home.join(crate::SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
         let projects = configurations.join("projects");
         let own = projects.join("own").join("config");
         let work = home.join("work");

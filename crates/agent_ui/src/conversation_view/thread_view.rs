@@ -5219,7 +5219,7 @@ impl ThreadView {
                 IconName::LockOff,
             ),
             settings::ToolPermissionMode::Auto => {
-                (i18n::t!("AI Judge On"), Color::Info, IconName::AiZed)
+                (i18n::t!("AI Judge On"), Color::Info, IconName::ForgeKairos)
             }
             settings::ToolPermissionMode::Deny | settings::ToolPermissionMode::Confirm => {
                 (i18n::t!("Confirm Actions"), Color::Muted, IconName::Lock)
@@ -8565,14 +8565,14 @@ impl ThreadView {
         let judge = tool_call.permission_judge.as_ref()?;
         let (icon, color, text) = match judge.state {
             acp_thread::PermissionJudgeState::Judging => (
-                IconName::AiZed,
+                IconName::ForgeKairos,
                 Color::Muted,
                 SharedString::from(i18n::t!("AI judging…")),
             ),
             // A reused verdict says so, so the line is never read as a fresh
             // review of this call (ADR-F52).
             acp_thread::PermissionJudgeState::Safe if judge.reused => (
-                IconName::AiZed,
+                IconName::ForgeKairos,
                 Color::Info,
                 SharedString::from(i18n::t!(
                     "AI judge: safe (auto-run, earlier verdict reused) — {}",
@@ -8580,7 +8580,7 @@ impl ThreadView {
                 )),
             ),
             acp_thread::PermissionJudgeState::Safe => (
-                IconName::AiZed,
+                IconName::ForgeKairos,
                 Color::Info,
                 SharedString::from(i18n::t!("AI judge: safe (auto-run) — {}", judge.reason)),
             ),
@@ -8591,7 +8591,7 @@ impl ThreadView {
                 if judge.reason == acp_thread::PERMISSION_JUDGE_NO_ARGUMENTS_REASON =>
             {
                 (
-                    IconName::AiZed,
+                    IconName::ForgeKairos,
                     Color::Muted,
                     SharedString::from(i18n::t!("AI judge: not applicable — {}", judge.reason)),
                 )
@@ -8602,7 +8602,7 @@ impl ThreadView {
                 SharedString::from(i18n::t!("AI judge: unsafe — {}", judge.reason)),
             ),
             acp_thread::PermissionJudgeState::Superseded => (
-                IconName::AiZed,
+                IconName::ForgeKairos,
                 Color::Muted,
                 SharedString::from(i18n::t!("AI judge: canceled — {}", judge.reason)),
             ),

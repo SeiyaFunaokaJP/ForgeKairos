@@ -31,7 +31,31 @@ use walkdir::WalkDir;
 
 use std::io::IsTerminal;
 
-const URL_PREFIX: [&'static str; 5] = ["zed://", "http://", "https://", "file://", "ssh://"];
+const URL_PREFIX: [&'static str; 6] = [
+    "zed://",
+    // The scheme the OS knows this app by; the app reads it as `zed://`.
+    branding::concat_const!(branding::CURRENT.url_scheme, "://"),
+    "http://",
+    "https://",
+    "file://",
+    "ssh://",
+];
+
+const CLI_NAME: &str = branding::CURRENT.cli_name;
+
+/// The editor binary a Linux install and the flatpak ship next to the
+/// launcher (`bin/{CLI_NAME}`).
+const LINUX_EDITOR_NAME: &str = branding::concat_const!(CLI_NAME, "-editor");
+
+/// Where the Linux launcher looks for the editor, relative to itself: libexec
+/// is the standard, lib/{CLI_NAME} is for Arch (and other non-libexec distros),
+/// ./zed is the target directory in development builds (cargo's binary keeps
+/// upstream's name).
+const LINUX_EDITOR_LOCATIONS: [&str; 3] = [
+    branding::concat_const!("../libexec/", LINUX_EDITOR_NAME),
+    branding::concat_const!("../lib/", CLI_NAME, "/", LINUX_EDITOR_NAME),
+    "./zed",
+];
 
 struct Detect;
 
@@ -48,21 +72,21 @@ trait InstalledApp {
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "zed",
+    name = CLI_NAME,
     disable_version_flag = true,
-    before_help = "The Zed CLI binary.
-This CLI is a separate binary that invokes Zed.
+    before_help = branding::concat_const!("The ", branding::CURRENT.product_name, " CLI binary.
+This CLI is a separate binary that invokes ", branding::CURRENT.product_name, ".
 
 Examples:
-    `zed`
-          Simply opens Zed
-    `zed --foreground`
+    `", CLI_NAME, "`
+          Simply opens ", branding::CURRENT.product_name, "
+    `", CLI_NAME, " --foreground`
           Runs in foreground (shows all logs)
-    `zed path-to-your-project`
-          Open your project in Zed
-    `zed -n path-to-file `
-          Open file/folder in a new window",
-    after_help = "To read from stdin, append '-', e.g. 'ps axf | zed -'"
+    `", CLI_NAME, " path-to-your-project`
+          Open your project in ", branding::CURRENT.product_name, "
+    `", CLI_NAME, " -n path-to-file `
+          Open file/folder in a new window"),
+    after_help = branding::concat_const!("To read from stdin, append '-', e.g. 'ps axf | ", CLI_NAME, " -'")
 )]
 struct Args {
     /// Wait for all of the given paths to be opened/closed before exiting.
@@ -153,6 +177,28 @@ struct Args {
     /// by having Zed act like netcat communicating over a Unix socket.
     #[arg(long, hide = true)]
     askpass: Option<String>,
+}
+
+/// The sockets a running instance may be listening on, in the order to try
+/// them. An instance started before this fork was renamed keeps listening in
+/// its own data directory, next to the current one, until it exits; links are
+/// sent to it rather than starting a second instance beside it.
+fn instance_socket_candidates(
+    data_dir: &Path,
+    custom_data_dir: bool,
+    release_channel: &str,
+) -> Vec<PathBuf> {
+    let socket_name = format!("zed-{release_channel}.sock");
+    let mut candidates = vec![data_dir.join(&socket_name)];
+    if !custom_data_dir && let Some(parent) = data_dir.parent() {
+        for legacy in branding::LEGACY {
+            let legacy_data_dir = parent.join(legacy.app_directory_name_lowercase);
+            if legacy_data_dir != data_dir {
+                candidates.push(legacy_data_dir.join(&socket_name));
+            }
+        }
+    }
+    candidates
 }
 
 /// Parses a path containing a position (e.g. `path:line:column`)
@@ -322,6 +368,77 @@ mod tests {
                 SanitizedPath::new(Path::new(&$right))
             )
         };
+    }
+
+    #[test]
+    fn an_instance_started_before_the_rename_is_still_reached() {
+        let share = Path::new("/home/user/.local/share");
+        let data_dir = share.join(branding::FORGEKAIROS.app_directory_name_lowercase);
+        let candidates = instance_socket_candidates(&data_dir, false, "stable");
+        let mut expected = vec![data_dir.join("zed-stable.sock")];
+        expected.extend(branding::LEGACY.iter().map(|legacy| {
+            share
+                .join(legacy.app_directory_name_lowercase)
+                .join("zed-stable.sock")
+        }));
+        assert_eq!(candidates, expected);
+        assert!(expected.len() > 1, "there is a name from before the rename");
+    }
+
+    #[test]
+    fn a_custom_data_directory_only_reaches_its_own_instance() {
+        let data_dir = Path::new("/tmp/custom-data");
+        assert_eq!(
+            instance_socket_candidates(data_dir, true, "preview"),
+            vec![data_dir.join("zed-preview.sock")]
+        );
+    }
+
+    #[test]
+    fn the_linux_launcher_finds_the_editor_under_this_fork_s_names() {
+        assert_eq!(
+            LINUX_EDITOR_LOCATIONS,
+            [
+                "../libexec/forgekairos-editor",
+                "../lib/forgekairos/forgekairos-editor",
+                "./zed"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_linux_packages_install_the_files_the_launcher_looks_for() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let bundle = std::fs::read_to_string(repository.join("script/bundle-linux")).unwrap();
+        for installed in [
+            format!("\"${{zed_dir}}/bin/{CLI_NAME}\""),
+            format!("\"${{zed_dir}}/libexec/{LINUX_EDITOR_NAME}\""),
+        ] {
+            assert!(
+                bundle.contains(&installed),
+                "bundle-linux installs {installed}"
+            );
+        }
+        let flatpak = std::fs::read_to_string(
+            repository.join("crates/zed/resources/flatpak/manifest-template.json"),
+        )
+        .unwrap();
+        for installed in [
+            format!("/app/bin/{CLI_NAME}\""),
+            format!("/app/libexec/{LINUX_EDITOR_NAME}\""),
+        ] {
+            assert!(
+                flatpak.contains(&installed),
+                "the flatpak installs {installed}"
+            );
+        }
+    }
+
+    #[test]
+    fn links_in_the_registered_scheme_are_passed_through_as_urls() {
+        let link = format!("{}://file/tmp/a.txt", branding::CURRENT.url_scheme);
+        assert!(URL_PREFIX.iter().any(|prefix| link.starts_with(prefix)));
+        assert!(URL_PREFIX.contains(&"zed://"));
     }
 
     fn cwd() -> PathBuf {
@@ -523,6 +640,7 @@ fn run() -> Result<()> {
     if let Some(dir) = &user_data_dir {
         paths::set_custom_data_dir(dir);
     }
+    paths::resolve_app_dirs_without_migrating();
 
     #[cfg(target_os = "linux")]
     let args = flatpak::set_bin_if_no_escape(args);
@@ -906,10 +1024,7 @@ mod linux {
                 let cli = env::current_exe()?;
                 let dir = cli.parent().context("no parent path for cli")?;
 
-                // libexec is the standard, lib/zed is for Arch (and other non-libexec distros),
-                // ./zed is for the target directory in development builds.
-                let possible_locations =
-                    ["../libexec/zed-editor", "../lib/zed/zed-editor", "./zed"];
+                let possible_locations = crate::LINUX_EDITOR_LOCATIONS;
                 possible_locations
                     .iter()
                     .find_map(|p| dir.join(p).canonicalize().ok().filter(|path| path != &cli))
@@ -925,7 +1040,8 @@ mod linux {
     impl InstalledApp for App {
         fn zed_version_string(&self) -> String {
             format!(
-                "Zed {}{}{} – {}",
+                "{} {}{}{} – {}",
+                branding::CURRENT.product_name,
                 if *release_channel::RELEASE_CHANNEL_NAME == "stable" {
                     "".to_string()
                 } else {
@@ -945,15 +1061,18 @@ mod linux {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| paths::data_dir().clone());
 
-            let sock_path = data_dir.join(format!(
-                "zed-{}.sock",
-                *release_channel::RELEASE_CHANNEL_NAME
-            ));
             let sock = UnixDatagram::unbound()?;
-            if sock.connect(&sock_path).is_err() {
-                self.boot_background(ipc_url, user_data_dir)?;
-            } else {
+            let running_instance = crate::instance_socket_candidates(
+                &data_dir,
+                user_data_dir.is_some(),
+                &release_channel::RELEASE_CHANNEL_NAME,
+            )
+            .into_iter()
+            .find(|sock_path| sock.connect(sock_path).is_ok());
+            if running_instance.is_some() {
                 sock.send(ipc_url.as_bytes())?;
+            } else {
+                self.boot_background(ipc_url, user_data_dir)?;
             }
             Ok(())
         }
@@ -1035,6 +1154,8 @@ mod flatpak {
 
     const EXTRA_LIB_ENV_NAME: &str = "ZED_FLATPAK_LIB_PATH";
     const NO_ESCAPE_ENV_NAME: &str = "ZED_FLATPAK_NO_ESCAPE";
+    /// Every channel's flatpak ID starts with the stable one's.
+    const FLATPAK_ID_PREFIX: &str = branding::CURRENT.app_ids.stable;
 
     fn restart_cli_args(flatpak_dir: &Path, invocation_args: &[OsString]) -> Vec<OsString> {
         let mut args = Vec::with_capacity(invocation_args.len() + 2);
@@ -1042,7 +1163,12 @@ mod flatpak {
         if !invocation_args.iter().any(|arg| arg == "--zed") {
             // Positional paths consume all following arguments, so launcher options must precede them.
             args.push("--zed".into());
-            args.push(flatpak_dir.join("libexec").join("zed-editor").into());
+            args.push(
+                flatpak_dir
+                    .join("libexec")
+                    .join(crate::LINUX_EDITOR_NAME)
+                    .into(),
+            );
         }
 
         args.extend_from_slice(invocation_args);
@@ -1077,7 +1203,7 @@ mod flatpak {
                 )
                 .into(),
             );
-            args.push(flatpak_dir.join("bin").join("zed").into());
+            args.push(flatpak_dir.join("bin").join(crate::CLI_NAME).into());
 
             let invocation_args = env::args_os().skip(1).collect::<Vec<_>>();
             args.extend(restart_cli_args(&flatpak_dir, &invocation_args));
@@ -1090,10 +1216,10 @@ mod flatpak {
 
     pub fn set_bin_if_no_escape(mut args: super::Args) -> super::Args {
         if env::var(NO_ESCAPE_ENV_NAME).is_ok()
-            && env::var("FLATPAK_ID").is_ok_and(|id| id.starts_with("dev.zed.Zed"))
+            && env::var("FLATPAK_ID").is_ok_and(|id| id.starts_with(FLATPAK_ID_PREFIX))
             && args.zed.is_none()
         {
-            args.zed = Some("/app/libexec/zed-editor".into());
+            args.zed = Some(Path::new("/app/libexec").join(crate::LINUX_EDITOR_NAME));
             unsafe { env::set_var("ZED_UPDATE_EXPLANATION", "Please use flatpak to update zed") };
         }
         args
@@ -1105,7 +1231,7 @@ mod flatpak {
         }
 
         if let Ok(flatpak_id) = env::var("FLATPAK_ID") {
-            if !flatpak_id.starts_with("dev.zed.Zed") {
+            if !flatpak_id.starts_with(FLATPAK_ID_PREFIX) {
                 return None;
             }
 
@@ -1151,7 +1277,10 @@ mod flatpak {
                 crate::Args::try_parse_from(std::iter::once(OsString::from("zed")).chain(args))
                     .unwrap();
 
-            assert_eq!(parsed.zed, Some(flatpak_dir.join("libexec/zed-editor")));
+            assert_eq!(
+                parsed.zed,
+                Some(flatpak_dir.join("libexec").join(crate::LINUX_EDITOR_NAME))
+            );
             assert_eq!(parsed.paths_with_position, ["project"]);
 
             let invocation_args = ["--zed".into(), "/custom/zed-editor".into()];
@@ -1202,7 +1331,8 @@ mod windows {
     impl InstalledApp for App {
         fn zed_version_string(&self) -> String {
             format!(
-                "Zed {}{}{} – {}",
+                "{} {}{}{} – {}",
+                branding::CURRENT.product_name,
                 if *release_channel::RELEASE_CHANNEL_NAME == "stable" {
                     "".to_string()
                 } else {
@@ -1274,9 +1404,13 @@ mod windows {
                 let cli = std::env::current_exe()?;
                 let dir = cli.parent().context("no parent path for cli")?;
 
-                // ../Zed.exe is the standard, lib/zed is for MSYS2, ./zed.exe is for the target
-                // directory in development builds.
-                let possible_locations = ["../Zed.exe", "../lib/zed/zed-editor.exe", "./zed.exe"];
+                // ../{executable} is the standard, lib/zed is for MSYS2, ./zed.exe is for the
+                // target directory in development builds (cargo's binary keeps upstream's name).
+                let possible_locations = [
+                    branding::concat_const!("../", branding::CURRENT.executable_stem, ".exe"),
+                    "../lib/zed/zed-editor.exe",
+                    "./zed.exe",
+                ];
                 possible_locations
                     .iter()
                     .find_map(|p| dir.join(p).canonicalize().ok().filter(|path| path != &cli))
@@ -1375,7 +1509,12 @@ mod mac_os {
 
     impl InstalledApp for Bundle {
         fn zed_version_string(&self) -> String {
-            format!("Zed {} – {}", self.version(), self.path().display(),)
+            format!(
+                "{} {} – {}",
+                branding::CURRENT.product_name,
+                self.version(),
+                self.path().display(),
+            )
         }
 
         fn launch(&self, url: String, user_data_dir: Option<&str>) -> anyhow::Result<()> {

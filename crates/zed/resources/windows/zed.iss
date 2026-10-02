@@ -2,11 +2,14 @@
 AppId={#AppId}
 AppName={#AppName}
 AppVerName={#AppDisplayName}
-AppPublisher=zed-jp-enhance contributors
-AppPublisherURL=https://github.com/SeiyaFunaokaJP/zed-jp-enhance
-AppSupportURL=https://github.com/SeiyaFunaokaJP/zed-jp-enhance/issues
-AppUpdatesURL=https://github.com/SeiyaFunaokaJP/zed-jp-enhance/releases
+AppPublisher=ForgeKairos contributors
+AppPublisherURL=https://github.com/SeiyaFunaokaJP/ForgeKairos
+AppSupportURL=https://github.com/SeiyaFunaokaJP/ForgeKairos/issues
+AppUpdatesURL=https://github.com/SeiyaFunaokaJP/ForgeKairos/releases
 DefaultGroupName={#AppName}
+; The Start menu folder of a build from before the rename is removed below
+; (InstallDelete), so the shortcut goes into the folder of the current name.
+UsePreviousGroup=no
 DisableProgramGroupPage=yes
 DisableReadyPage=yes
 AllowNoIcons=yes
@@ -63,11 +66,23 @@ Name: "addcontextmenufolders"; Description: "{cm:AddContextMenuFolders,{#AppDisp
 Name: "associatewithfiles"; Description: "{cm:AssociateWithFiles,{#AppDisplayName}}"; GroupDescription: "{cm:Other}"
 Name: "addtopath"; Description: "{cm:AddToPath}"; GroupDescription: "{cm:Other}"
 
+[InstallDelete]
+; What a build from before the rename installed under upstream's executable
+; names. An update leaves these to auto_update_helper, which moves them out
+; once the running build has exited.
+Type: files; Name: "{app}\Zed.exe"; Check: not IsUpdating
+Type: files; Name: "{app}\bin\zed.exe"; Check: not IsUpdating
+Type: files; Name: "{app}\bin\zed"; Check: not IsUpdating
+#if LegacyAppName != ""
+Type: filesandordirs; Name: "{userprograms}\{#LegacyAppName}"
+Type: files; Name: "{autodesktop}\{#LegacyAppName}.lnk"
+#endif
+
 [Dirs]
 Name: "{app}"; AfterInstall: DisableAppDirInheritance
 
 [Files]
-Source: "{#ResourcesDir}\Zed.exe"; DestDir: "{code:GetInstallDir}"; Flags: ignoreversion
+Source: "{#ResourcesDir}\{#AppExeName}.exe"; DestDir: "{code:GetInstallDir}"; Flags: ignoreversion
 Source: "{#ResourcesDir}\bin\*"; DestDir: "{code:GetInstallDir}\bin"; Flags: ignoreversion
 Source: "{#ResourcesDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion
 ; Licenses of the third-party binaries shipped in bin\ (clang-format is Apache-2.0
@@ -1263,11 +1278,16 @@ Root: HKCU; Subkey: "Software\Classes\Drive\shell\{#RegValueName}\command"; Valu
 ; Environment
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{code:AddToPath|{app}\bin}"; Tasks: addtopath; Check: NeedsAddToPath(ExpandConstant('{app}\bin'))
 
-; URI Scheme
-Root: HKCU; Subkey: "Software\Classes\zed"; ValueType: "string"; ValueData: "URL:zed Protocol"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\zed"; ValueType: "string"; ValueName: "URL Protocol"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\zed\DefaultIcon"; ValueType: "string"; ValueData: "{app}\Zed.exe,1"
-Root: HKCU; Subkey: "Software\Classes\zed\shell\open\command"; ValueType: "string"; ValueData: """{app}\Zed.exe"" ""%1"""
+; The app registers this when it first shows a notification (gpui_windows'
+; system_notifications.rs); written here too so uninstalling removes it.
+Root: HKCU; Subkey: "Software\Classes\AppUserModelId\{#AppUserId}"; ValueType: string; ValueName: "DisplayName"; ValueData: "{#AppDisplayName}"; Flags: uninsdeletekey
+
+; URI Scheme. branding::CURRENT.url_scheme; the app reads it as its internal
+; zed:// form. The zed scheme itself is left to an official Zed install.
+Root: HKCU; Subkey: "Software\Classes\forgekairos"; ValueType: "string"; ValueData: "URL:forgekairos Protocol"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\forgekairos"; ValueType: "string"; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\forgekairos\DefaultIcon"; ValueType: "string"; ValueData: "{app}\{#AppExeName}.exe,1"
+Root: HKCU; Subkey: "Software\Classes\forgekairos\shell\open\command"; ValueType: "string"; ValueData: """{app}\{#AppExeName}.exe"" ""%1"""
 
 [Code]
 function WizardNotSilent(): Boolean;
@@ -1421,12 +1441,143 @@ begin
   end;
 end;
 
+function LaunchesLegacyExecutable(Subkey: string): Boolean;
+var
+  Command: string;
+begin
+  Result := RegQueryStringValue(HKCU, Subkey, '', Command)
+    and (Pos(Lowercase(ExpandConstant('{app}\Zed.exe')), Lowercase(Command)) > 0);
+end;
+
+// A build from before the rename registered upstream's zed scheme and
+// Applications\Zed.exe for {app}\Zed.exe, which this install no longer has.
+// An official Zed registers the same keys, so they are only removed while they
+// still launch this install's old executable.
+procedure RemoveLegacyRegistration();
+#if LegacyRegValueName != ""
+var
+  Classes: TArrayOfString;
+  Prefix: string;
+  Extension: string;
+  i: Integer;
+#endif
+begin
+  if LaunchesLegacyExecutable('Software\Classes\zed\shell\open\command') then
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\zed');
+  if LaunchesLegacyExecutable('Software\Classes\Applications\Zed.exe\shell\open\command') then
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Applications\Zed.exe');
+#if LegacyRegValueName != ""
+  Prefix := '{#LegacyRegValueName}.';
+  if RegGetSubkeyNames(HKCU, 'Software\Classes', Classes) then begin
+    for i := 0 to GetArrayLength(Classes) - 1 do begin
+      if CompareText(Copy(Classes[i], 1, Length(Prefix)), Prefix) = 0 then begin
+        Extension := Copy(Classes[i], Length(Prefix) + 1, Length(Classes[i]));
+        RegDeleteValue(HKCU, 'Software\Classes\.' + Extension + '\OpenWithProgids', Classes[i]);
+        RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\' + Classes[i]);
+      end;
+    end;
+  end;
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\{#LegacyRegValueName}SourceFile');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\{#LegacyRegValueName}ContextMenu');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\*\shell\{#LegacyRegValueName}');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\directory\shell\{#LegacyRegValueName}');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\directory\background\shell\{#LegacyRegValueName}');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\{#LegacyRegValueName}');
+#endif
+end;
+
+<event('CurStepChanged')>
+procedure RemoveLegacyRegistrationAfterInstall(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RemoveLegacyRegistration();
+end;
+
+// An install updated in place from a build before the rename keeps that
+// build's uninstall log, which deletes the zed scheme and Applications\Zed.exe
+// and removes the context menu package under upstream's identity. When those
+// belong to an official Zed by then, they are put back once uninstalling is
+// done.
+var
+  PreservedScheme: Boolean;
+  PreservedSchemeName: string;
+  PreservedSchemeIcon: string;
+  PreservedSchemeCommand: string;
+  PreservedApplication: Boolean;
+  PreservedApplicationIcon: string;
+  PreservedApplicationCommand: string;
+  OfficialContextMenuPackage: string;
+
+#if LegacyRegValueName != ""
+function OfficialZedInstallLocation(): string;
+var
+  Uninstall: string;
+begin
+  Result := '';
+  // The uninstall entry of upstream's stable AppId; this fork's installers
+  // use their own. An install for all users is registered under HKLM.
+  Uninstall := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{2DB0DA96-CA55-49BB-AF4F-64AF36A86712}_is1';
+  if not RegQueryStringValue(HKCU, Uninstall, 'InstallLocation', Result) then
+    if not RegQueryStringValue(HKLM, Uninstall, 'InstallLocation', Result) then
+      Result := '';
+end;
+#endif
+
+<event('CurUninstallStepChanged')>
+procedure PreserveOfficialZedRegistration(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+#if LegacyRegValueName != ""
+  Location: string;
+#endif
+begin
+  if CurUninstallStep = usUninstall then begin
+    PreservedScheme := RegKeyExists(HKCU, 'Software\Classes\zed')
+      and not LaunchesLegacyExecutable('Software\Classes\zed\shell\open\command');
+    if PreservedScheme then begin
+      RegQueryStringValue(HKCU, 'Software\Classes\zed', '', PreservedSchemeName);
+      RegQueryStringValue(HKCU, 'Software\Classes\zed\DefaultIcon', '', PreservedSchemeIcon);
+      RegQueryStringValue(HKCU, 'Software\Classes\zed\shell\open\command', '', PreservedSchemeCommand);
+    end;
+    PreservedApplication := RegKeyExists(HKCU, 'Software\Classes\Applications\Zed.exe')
+      and not LaunchesLegacyExecutable('Software\Classes\Applications\Zed.exe\shell\open\command');
+    if PreservedApplication then begin
+      RegQueryStringValue(HKCU, 'Software\Classes\Applications\Zed.exe\shell\open', 'Icon', PreservedApplicationIcon);
+      RegQueryStringValue(HKCU, 'Software\Classes\Applications\Zed.exe\shell\open\command', '', PreservedApplicationCommand);
+    end;
+    OfficialContextMenuPackage := '';
+#if LegacyRegValueName != ""
+    // Upstream's installer keeps this key only while its context menu package
+    // is meant to be registered.
+    Location := OfficialZedInstallLocation();
+    if IsWindows11OrLater() and (Location <> '') and RegKeyExists(HKCU, 'Software\Classes\ZedContextMenu') then
+      OfficialContextMenuPackage := AddBackslash(Location) + 'appx\zed_explorer_command_injector.appx';
+#endif
+  end else if CurUninstallStep = usPostUninstall then begin
+    if PreservedScheme and not RegKeyExists(HKCU, 'Software\Classes\zed') then begin
+      RegWriteStringValue(HKCU, 'Software\Classes\zed', '', PreservedSchemeName);
+      RegWriteStringValue(HKCU, 'Software\Classes\zed', 'URL Protocol', '');
+      if PreservedSchemeIcon <> '' then
+        RegWriteStringValue(HKCU, 'Software\Classes\zed\DefaultIcon', '', PreservedSchemeIcon);
+      RegWriteStringValue(HKCU, 'Software\Classes\zed\shell\open\command', '', PreservedSchemeCommand);
+    end;
+    if PreservedApplication and not RegKeyExists(HKCU, 'Software\Classes\Applications\Zed.exe') then begin
+      RegWriteStringValue(HKCU, 'Software\Classes\Applications\Zed.exe\shell\open', 'Icon', PreservedApplicationIcon);
+      RegWriteStringValue(HKCU, 'Software\Classes\Applications\Zed.exe\shell\open\command', '', PreservedApplicationCommand);
+    end;
+    if (OfficialContextMenuPackage <> '') and FileExists(OfficialContextMenuPackage) then begin
+      // Registering a package that is still registered is a no-op.
+      ShellExec('', 'powershell.exe', '-Command ' + AddQuotes('Add-AppxPackage -Path ''' + OfficialContextMenuPackage + ''' -ExternalLocation ''' + ExtractFileDir(OfficialContextMenuPackage) + ''''), '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end;
+end;
+
 function GetAppMutex(Param: string): string;
 begin
   if IsUpdating() then
     Result := ''
   else
-    Result := '{#AppMutex}';
+    Result := '{#AppMutex},{#AppLegacyMutex}';
 end;
 
 function GetInstallDir(Param: string): string;

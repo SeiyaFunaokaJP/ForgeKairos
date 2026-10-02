@@ -16,7 +16,7 @@ test-support = []
 
 [dependencies]
 anyhow.workspace = true
-client.workspace = true
+branding.workspace = true
 gpui.workspace = true
 log.workspace = true
 release_channel.workspace = true

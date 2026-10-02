@@ -1156,7 +1156,7 @@ fn select_distro<'a>(
 ///
 /// The helper is the Linux `remote_server` and `slirp4netns` shipped next to
 /// `Zed.exe` (the same files `crates/remote` uploads to SSH hosts), copied into
-/// `~/.cache/zed-jp-enhance/sandbox/<key>/` inside the distro — nothing is
+/// `~/.cache/forgekairos/sandbox/<key>/` inside the distro — nothing is
 /// downloaded, so this works offline and never runs a binary this build did not
 /// ship. `<key>` is derived from the artifacts' contents, so each build (and
 /// each development rebuild) has a directory of its own.
@@ -2049,7 +2049,7 @@ fi
 ///
 /// `source_windows_path` must hash to `expected_sha256`: that is checked before
 /// anything is copied, and again, inside WSL, on what arrives. The binary lands
-/// in `~/.cache/zed-jp-enhance/agents/<sha256>/<name>` with mode 755, moved
+/// in `~/.cache/forgekairos/agents/<sha256>/<name>` with mode 755, moved
 /// into place only once complete. That is inside the directory the helper
 /// protects, so it is read-only from inside the sandbox. A binary already
 /// staged with that digest is reused.
@@ -2239,7 +2239,7 @@ const IDE_RENDEZVOUS_SOCKET_NAME: &str = "bridge.sock";
 
 /// ADR-F49: where the IDE bridge of session `session_id` listens in `distro`
 /// (`None`: the default distro):
-/// `~/.cache/zed-jp-enhance/ide/<session_id>/bridge.sock`. That is inside the
+/// `~/.cache/forgekairos/ide/<session_id>/bridge.sock`. That is inside the
 /// directory the helper protects in WSL mode, which the helper insists on — it
 /// connects to the socket from outside the sandbox. `session_id` may hold
 /// letters, digits, `_` and `-`. Pass the result to [`ide_bridge_invocation`]
@@ -2300,7 +2300,7 @@ const SWEEP_REMOVED_PREFIX: &str = "zed-sweep-removed ";
 
 /// ADR-F49: remove the rendezvous directories under `prefix` whose bridge is
 /// gone — what a Zed or a WSL that went down before the bridge could clean up
-/// leaves in `~/.cache/zed-jp-enhance/ide`. Returns the names removed.
+/// leaves in `~/.cache/forgekairos/ide`. Returns the names removed.
 ///
 /// A directory a running bridge (or a helper splicing to one) names on its
 /// command line is left alone, so this is safe to run while other sessions of
@@ -2359,7 +2359,7 @@ fn removed_rendezvous_names(stdout: &str) -> Vec<String> {
         .collect()
 }
 
-/// `~/.cache/zed-jp-enhance/ide` in `distro`, where every session's rendezvous
+/// `~/.cache/forgekairos/ide` in `distro`, where every session's rendezvous
 /// directory is.
 async fn ide_rendezvous_root(distro: Option<&str>) -> Result<String> {
     ensure_distro_registered(distro)?;
@@ -2373,7 +2373,7 @@ async fn ide_rendezvous_root(distro: Option<&str>) -> Result<String> {
 }
 
 /// The distro account's home, read off the path of an installed helper
-/// (`<home>/.cache/zed-jp-enhance/sandbox/<key>/zed-remote-server`); `None`
+/// (`<home>/.cache/forgekairos/sandbox/<key>/zed-remote-server`); `None`
 /// for any other shape, such as a development override.
 fn home_from_helper_path(path: &str) -> Option<&str> {
     let directory = path.strip_suffix(HELPER_BINARY_NAME)?.strip_suffix('/')?;
@@ -3549,7 +3549,7 @@ impl<'a> WslRuntime<'a> {
 /// has to name the *distro's* directory, which is the Linux build's. So they
 /// are spelled out here and checked against the Windows build's spelling by
 /// `the_linux_data_directory_matches_this_fork` below.
-const LINUX_APP_DIRECTORY_NAME: &str = "zed-jp-enhance";
+const LINUX_APP_DIRECTORY_NAME: &str = branding::CURRENT.app_directory_name_lowercase;
 const LINUX_DEFAULT_DATA_HOME_RELATIVE: &str = ".local/share";
 
 /// ADR-F49 決定 22: where an npm install is put together inside the distro,
@@ -3558,7 +3558,11 @@ const LINUX_DEFAULT_DATA_HOME_RELATIVE: &str = ".local/share";
 /// inside the sandbox, and everything in `.local/share/zed-jp-enhance` is
 /// protected and read-hidden. Path components are compared whole, so this name
 /// is not inside that one.
-const WSL_STAGING_HOME_RELATIVE: &str = ".local/share/zed-jp-enhance-staging";
+const WSL_STAGING_HOME_RELATIVE: &str = branding::concat_const!(
+    ".local/share/",
+    branding::CURRENT.app_directory_name_lowercase,
+    "-staging"
+);
 
 /// Prefix of the result line of the scripts that stage a runtime archive.
 const ARCHIVE_RESULT_PREFIX: &str = "zed-wsl-archive:";
@@ -4888,7 +4892,7 @@ const PROJECT_KEY_LENGTH: usize = 16;
 
 /// ADR-F49 決定 15: make the configuration folder of one agent, for one
 /// project, inside the distro, and return it:
-/// `$HOME/.zed-jp-enhance-claude/projects/<project_key>/<folder_name>`, plus
+/// `$HOME/.forgekairos-claude/projects/<project_key>/<folder_name>`, plus
 /// `directories_below` (each relative to the folder) and the names every
 /// sandbox protects in a root it may write
 /// ([`crate::WORKTREE_PROTECTED_RELATIVE`]: the `.json` ones as files, the
@@ -4931,6 +4935,12 @@ pub async fn ensure_wsl_agent_config_dir(
     }
     ensure_distro_registered(distro)?;
     let wsl_exe = installed_wsl_exe()?;
+    // The helper's probe is what carries the agents' configuration over from
+    // the name builds before the rename gave it, and it only does so while the
+    // directory under the current name is not there yet: it has to run before
+    // this makes that directory. The command this folder is for needs the
+    // helper anyway, which then comes from the cache.
+    ensure_sandbox_helper(&wsl_exe, distro).await?;
 
     let mut args = vec![
         "--exec".to_string(),
@@ -6467,19 +6477,25 @@ zed-sweep-removed acp-2222
 
     #[test]
     fn the_distro_home_is_read_off_an_installed_helper() {
+        let cache = WSL_SANDBOX_HELPER_HOME_RELATIVE;
         assert_eq!(
-            home_from_helper_path("/root/.cache/zed-jp-enhance/sandbox/0123abcd/zed-remote-server"),
+            home_from_helper_path(&format!("/root/{cache}/sandbox/0123abcd/zed-remote-server")),
             Some("/root")
         );
         assert_eq!(
-            home_from_helper_path(
-                "/home/my user/.cache/zed-jp-enhance/sandbox/k/zed-remote-server"
-            ),
+            home_from_helper_path(&format!(
+                "/home/my user/{cache}/sandbox/k/zed-remote-server"
+            )),
             Some("/home/my user")
         );
         assert_eq!(home_from_helper_path("/opt/zed/remote_server"), None);
         assert_eq!(
-            home_from_helper_path("/.cache/zed-jp-enhance/sandbox/k/zed-remote-server"),
+            home_from_helper_path(&format!("/{cache}/sandbox/k/zed-remote-server")),
+            None
+        );
+        // What a build from before the rename installed is not this build's.
+        assert_eq!(
+            home_from_helper_path("/root/.cache/zed-jp-enhance/sandbox/k/zed-remote-server"),
             None
         );
     }
@@ -6595,10 +6611,11 @@ zed-sweep-removed acp-2222
                     "--exec",
                     "sh",
                     "-c",
-                    r#"rm -rf "$HOME/$1/$2"; rmdir "$HOME/$1" "$HOME/.cache/zed-jp-enhance" 2>/dev/null; true"#,
+                    r#"rm -rf "$HOME/$1/$2"; rmdir "$HOME/$1" "$HOME/$3" 2>/dev/null; true"#,
                     "zed-f49s-cleanup",
                     AGENT_BINARIES_HOME_RELATIVE,
                     digest.as_str(),
+                    WSL_SANDBOX_HELPER_HOME_RELATIVE,
                 ],
                 "test",
             )
@@ -6635,7 +6652,10 @@ zed-sweep-removed acp-2222
         );
         assert_eq!(
             format!("{LINUX_DEFAULT_DATA_HOME_RELATIVE}/{LINUX_APP_DIRECTORY_NAME}"),
-            ".local/share/zed-jp-enhance",
+            format!(
+                ".local/share/{}",
+                branding::CURRENT.app_directory_name_lowercase
+            ),
             "the helper's `remote_agent_runtime_data_directory` default"
         );
         // ADR-F49 決定 22: the staging directory is *beside* the data
@@ -8809,7 +8829,8 @@ zed-sweep-removed acp-2222
         ))
         .expect("making the agent's folder");
         assert!(config.ends_with(&format!(
-            ".zed-jp-enhance-claude/projects/{}/config",
+            "{}/{}/config",
+            crate::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE,
             e2e::PROJECT_KEY
         )));
 
@@ -9055,7 +9076,8 @@ zed-sweep-removed acp-2222
         let home =
             smol::block_on(query_distro_home(&wsl_exe_path(), None)).expect("the distro's home");
         e2e::remove(&format!(
-            "{home}/.zed-jp-enhance-claude/projects/{}",
+            "{home}/{}/{}",
+            crate::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE,
             e2e::PROJECT_KEY
         ));
         // 作業フォルダーの根は本番と共用で、中身はインストールごとの一時フォルダー

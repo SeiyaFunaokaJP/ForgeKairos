@@ -9,5 +9,6 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [dependencies]
+branding.workspace = true
 gpui.workspace = true
 semver.workspace = true

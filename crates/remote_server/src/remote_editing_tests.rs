@@ -5773,7 +5773,10 @@ async fn test_remote_external_agent_sandbox_is_placed_on_the_host(
         panic!("expected the agent to be placed, got {:?}", sandbox.state);
     };
     assert!(
-        config_dir.starts_with(home.path().join(".zed-jp-enhance-claude/projects")),
+        config_dir.starts_with(
+            home.path()
+                .join(sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE)
+        ),
         "{config_dir:?}"
     );
     assert_eq!(
@@ -5795,7 +5798,9 @@ async fn test_remote_external_agent_sandbox_is_placed_on_the_host(
 
     // A level the host cannot open safely: the whole placement fails and the
     // client is told why.
-    let projects = home.path().join(".zed-jp-enhance-claude/projects");
+    let projects = home
+        .path()
+        .join(sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE);
     std::fs::remove_dir_all(&projects).expect("the projects directory");
     std::os::unix::fs::symlink(project_dir.path(), &projects).expect("a link in its place");
 

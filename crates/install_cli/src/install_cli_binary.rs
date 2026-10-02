@@ -25,7 +25,12 @@ const CANT_INSTALL_DOCS_URL: &str = "https://zed.dev/docs/macos#cant-install-cli
 /// commonly because the user is not an admin.
 async fn install_script(cx: &AsyncApp) -> Result<Option<PathBuf>> {
     let cli_path = cx.update(|cx| cx.path_for_auxiliary_executable("cli"))?;
-    let link_path = Path::new("/usr/local/bin/zed");
+    // zed-jp-enhance: named after this app's launcher so that an official
+    // Zed's `zed` link is not replaced.
+    let link_path = Path::new(branding::concat_const!(
+        "/usr/local/bin/",
+        branding::CURRENT.cli_name
+    ));
     let bin_dir_path = link_path.parent().unwrap();
 
     // Don't re-create symlink if it points to the same CLI binary.

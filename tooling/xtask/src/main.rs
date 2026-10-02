@@ -13,6 +13,8 @@ struct Args {
 
 #[derive(Subcommand)]
 enum CliCommand {
+    /// Regenerates the app icons and in-app logos from `assets/branding`.
+    BrandIcons(tasks::brand_icons::BrandIconsArgs),
     /// Runs `cargo clippy`.
     Clippy(tasks::clippy::ClippyArgs),
     Compliance(tasks::compliance::ComplianceArgs),
@@ -37,6 +39,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.command {
+        CliCommand::BrandIcons(args) => tasks::brand_icons::run_brand_icons(args),
         CliCommand::Clippy(args) => tasks::clippy::run_clippy(args),
         CliCommand::Compliance(args) => tasks::compliance::check_compliance(args),
         CliCommand::Licenses(args) => tasks::licenses::run_licenses(args),

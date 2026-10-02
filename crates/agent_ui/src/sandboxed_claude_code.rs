@@ -753,8 +753,9 @@ mod session {
     /// Where the CLI looks for IDE locks under `CLAUDE_CONFIG_DIR`.
     const LOCK_DIRECTORY_NAME: &str = "ide";
     /// The shape `sandbox::ide_rendezvous_path` documents:
-    /// `<home>/.cache/zed-jp-enhance/ide/<session_id>/bridge.sock`.
-    const RENDEZVOUS_HOME_RELATIVE: &str = ".cache/zed-jp-enhance/ide";
+    /// `<home>/.cache/forgekairos/ide/<session_id>/bridge.sock`.
+    const RENDEZVOUS_HOME_RELATIVE: &str =
+        branding::concat_const!(branding::CURRENT.remote_cache_home_relative, "/ide");
     const RENDEZVOUS_SOCKET_NAME: &str = "bridge.sock";
     /// Names this launcher's rendezvous directories, so the sweep leaves every
     /// other one alone.
@@ -1608,7 +1609,18 @@ mod remote_launch {
     /// Protected for every session, so that one whose folder *is* the account's
     /// home cannot overwrite the very binary it runs: in WSL the helper adds
     /// this itself, but on an SSH host it is the client that has to ask.
-    const HOST_CACHE_HOME_RELATIVE: &str = ".cache/zed-jp-enhance";
+    const HOST_CACHE_HOME_RELATIVE: &str = branding::CURRENT.remote_cache_home_relative;
+    /// [`HOST_CACHE_HOME_RELATIVE`] as builds from before the rename named it:
+    /// a build from before the rename still stages and runs its CLI there.
+    const LEGACY_HOST_CACHE_HOME_RELATIVE: &str =
+        branding::ZED_JP_ENHANCE.remote_cache_home_relative;
+
+    /// The cache directories every session on the host at `home` is kept out
+    /// of, under the current name and the earlier one.
+    pub(super) fn host_cache_protected_paths(home: &str) -> [PathBuf; 2] {
+        [HOST_CACHE_HOME_RELATIVE, LEGACY_HOST_CACHE_HOME_RELATIVE]
+            .map(|relative| PathBuf::from(format!("{home}/{relative}")))
+    }
 
     /// Makes the project's configuration root (`$1`) and the directory the CLI
     /// is pointed at inside it (`$2`), owner-only: it holds the session's login
@@ -1822,7 +1834,7 @@ chmod 700 "$1" "$2" 2>/dev/null || true
             // and the cache is built from the home the host reported.
             protected_paths: git_dirs
                 .into_iter()
-                .chain([PathBuf::from(format!("{home}/{HOST_CACHE_HOME_RELATIVE}"))])
+                .chain(host_cache_protected_paths(&home))
                 .collect(),
             allow_fs_write: false,
             // The proxy that would confine it runs on the host, inside the
@@ -2752,12 +2764,24 @@ mod tests {
     };
 
     const SESSION_ID: &str = "claude-0123456789abcdef0123456789abcdef";
-    const RENDEZVOUS: &str =
-        "/root/.cache/zed-jp-enhance/ide/claude-0123456789abcdef0123456789abcdef/bridge.sock";
+    const RENDEZVOUS: &str = branding::concat_const!(
+        "/root/",
+        branding::CURRENT.remote_cache_home_relative,
+        "/ide/claude-0123456789abcdef0123456789abcdef/bridge.sock"
+    );
     const PORT: u16 = 45123;
-    const CLAUDE_PATH: &str = "/root/.cache/zed-jp-enhance/agents/3a62/claude";
+    const CLAUDE_PATH: &str = branding::concat_const!(
+        "/root/",
+        branding::CURRENT.remote_cache_home_relative,
+        "/agents/3a62/claude"
+    );
     const PROJECT_KEY: &str = "0123456789abcdef";
-    const CONFIG_ROOT: &str = "/root/.zed-jp-enhance-claude/projects/0123456789abcdef";
+    const CONFIG_ROOT: &str = branding::concat_const!(
+        "/root/",
+        sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE,
+        "/0123456789abcdef"
+    );
+    const CACHE: &str = branding::CURRENT.remote_cache_home_relative;
 
     fn layout() -> SessionLayout {
         SessionLayout::from_rendezvous(RENDEZVOUS, SESSION_ID, PROJECT_KEY, PORT)
@@ -2888,7 +2912,7 @@ mod tests {
         assert_eq!(
             layout(),
             SessionLayout {
-                rendezvous_directory: "/root/.cache/zed-jp-enhance/ide".to_string(),
+                rendezvous_directory: format!("/root/{CACHE}/ide"),
                 config_root: CONFIG_ROOT.to_string(),
                 config_dir: format!("{CONFIG_ROOT}/config"),
                 lock_directory: format!("{CONFIG_ROOT}/config/ide"),
@@ -2896,9 +2920,11 @@ mod tests {
             }
         );
         for unexpected in [
-            "/root/.cache/zed-jp-enhance/ide/claude-other/bridge.sock".to_string(),
+            format!("/root/{CACHE}/ide/claude-other/bridge.sock"),
             format!("/root/elsewhere/{SESSION_ID}/bridge.sock"),
-            format!("/.cache/zed-jp-enhance/ide/{SESSION_ID}/bridge.sock"),
+            format!("/{CACHE}/ide/{SESSION_ID}/bridge.sock"),
+            // Where builds from before the rename put it.
+            format!("/root/.cache/zed-jp-enhance/ide/{SESSION_ID}/bridge.sock"),
         ] {
             assert!(
                 SessionLayout::from_rendezvous(&unexpected, SESSION_ID, PROJECT_KEY, PORT).is_err(),
@@ -2960,7 +2986,7 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{home:?}: {error:#}"));
             assert_eq!(
                 rendezvous,
-                format!("{home}/.cache/zed-jp-enhance/ide/{SESSION_ID}/bridge.sock")
+                format!("{home}/{CACHE}/ide/{SESSION_ID}/bridge.sock")
             );
             let layout = SessionLayout::from_rendezvous(&rendezvous, SESSION_ID, PROJECT_KEY, PORT)
                 .unwrap_or_else(|error| panic!("{home:?}: {error:#}"));
@@ -3319,7 +3345,7 @@ mod tests {
                 ("CLAUDE_CODE_SSE_PORT", "45123"),
                 (
                     "CLAUDE_CONFIG_DIR",
-                    "/root/.zed-jp-enhance-claude/projects/0123456789abcdef/config"
+                    format!("{CONFIG_ROOT}/config").as_str()
                 ),
                 ("COLORTERM", "truecolor"),
                 ("DISABLE_AUTOUPDATER", "1"),
@@ -3374,6 +3400,21 @@ mod tests {
         assert!(plan_session(&layout, RENDEZVOUS, CLAUDE_PATH, None, &[], PORT, false).is_err());
     }
 
+    /// A session on an SSH host is kept out of the cache the CLI it runs is
+    /// staged in, under this build's name and under the one builds from
+    /// before the rename stage theirs in; spelled out so that dropping either
+    /// fails here.
+    #[test]
+    fn a_remote_session_is_kept_out_of_both_host_caches() {
+        assert_eq!(
+            super::remote_launch::host_cache_protected_paths("/home/ubuntu"),
+            [
+                PathBuf::from("/home/ubuntu/.cache/forgekairos"),
+                PathBuf::from("/home/ubuntu/.cache/zed-jp-enhance"),
+            ]
+        );
+    }
+
     /// 第 3 段: the session on an SSH host is placed by the same rule as the
     /// WSL one — the account's home decides, and the project's key names the
     /// folder — so the two never see each other's configuration. ADR-F53: the
@@ -3386,7 +3427,10 @@ mod tests {
             config_paths("/home/ubuntu", PROJECT_KEY).expect("a valid placement");
         assert_eq!(
             config_root,
-            "/home/ubuntu/.zed-jp-enhance-claude/projects/0123456789abcdef"
+            format!(
+                "/home/ubuntu/{}/0123456789abcdef",
+                sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE
+            )
         );
         assert_eq!(config_dir, format!("{config_root}/config"));
         // The same rule the rendezvous-derived layout applies, so the WSL
@@ -3651,9 +3695,10 @@ mod tests {
             session_write_scope(std::slice::from_ref(&root), CONFIG_ROOT, Some("Ubuntu")),
             [
                 root.clone(),
-                PathBuf::from(
-                    r"\\wsl.localhost\Ubuntu\root\.zed-jp-enhance-claude\projects\0123456789abcdef"
-                ),
+                PathBuf::from(format!(
+                    r"\\wsl.localhost\Ubuntu\root\{}\0123456789abcdef",
+                    sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE.replace('/', r"\")
+                )),
             ]
         );
         assert_eq!(

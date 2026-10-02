@@ -146,7 +146,9 @@ function BuildZedAndItsFriends {
     Write-Output "Building Zed and its friends, for channel: $channel"
     # Build zed.exe, cli.exe and auto_update_helper.exe
     cargo --config .cargo/bundle-config.toml build --release --package zed --package cli --package auto_update_helper --target $target
-    Copy-Item -Path ".\$CargoOutDir\zed.exe" -Destination "$innoDir\Zed.exe" -Force
+    # The cargo binary stays "zed"; the installed executable is named after
+    # branding::CURRENT.executable_stem.
+    Copy-Item -Path ".\$CargoOutDir\zed.exe" -Destination "$innoDir\ForgeKairos.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\cli.exe" -Destination "$innoDir\cli.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\auto_update_helper.exe" -Destination "$innoDir\auto_update_helper.exe" -Force
     # Build explorer_command_injector.dll
@@ -156,6 +158,11 @@ function BuildZedAndItsFriends {
         }
         "preview" {
             cargo --config .cargo/bundle-config.toml build --release --features preview --no-default-features --package explorer_command_injector --target $target
+        }
+        # No channel feature selects the dev CLSID and "{regValueName}ContextMenu"
+        # key, which match the dev installer and AppxManifest-Dev.xml.
+        "dev" {
+            cargo --config .cargo/bundle-config.toml build --release --no-default-features --package explorer_command_injector --target $target
         }
         default {
             cargo --config .cargo/bundle-config.toml build --release --package explorer_command_injector --target $target
@@ -238,7 +245,7 @@ function Compress-ToGzip {
 
 function BuildLinuxRemoteServer {
     # SSH-to-Linux remoting needs a Linux remote_server binary shipped alongside
-    # Zed.exe. This fork blocks egress by default, so the server cannot be fetched
+    # ForgeKairos.exe. This fork blocks egress by default, so the server cannot be fetched
     # on demand; crates/remote/src/transport.rs uploads a bundled artifact named
     # "zed-remote-server-linux-x86_64.gz" found in {app} or {app}\bin.
     #
@@ -319,7 +326,7 @@ function BuildLinuxRemoteServer {
 function DownloadSlirp4netns {
     # ADR-F18 remote sandbox: on a Linux remote, agent commands run in a netns and
     # slirp4netns provides their (proxied, egress-restricted) outbound path. Shipped
-    # next to Zed.exe as "slirp4netns-linux-x86_64"; crates/remote uploads it on
+    # next to ForgeKairos.exe as "slirp4netns-linux-x86_64"; crates/remote uploads it on
     # connect, mirroring the remote_server artifact. Static single binary, so it is
     # glibc-independent. License: slirp4netns is GPLv2+ (compatible with this GPL-3
     # fork); its bundled libslirp is MIT/BSD.
@@ -420,6 +427,9 @@ function MakeAppx {
         "preview" {
             $manifestFile = "$env:ZED_WORKSPACE\crates\explorer_command_injector\AppxManifest-Preview.xml"
         }
+        "dev" {
+            $manifestFile = "$env:ZED_WORKSPACE\crates\explorer_command_injector\AppxManifest-Dev.xml"
+        }
         default {
             $manifestFile = "$env:ZED_WORKSPACE\crates\explorer_command_injector\AppxManifest-Nightly.xml"
         }
@@ -436,7 +446,7 @@ function SignZedAndItsFriends {
         return
     }
 
-    $files = "$innoDir\Zed.exe,$innoDir\cli.exe,$innoDir\auto_update_helper.exe,$innoDir\zed_explorer_command_injector.dll,$innoDir\zed_explorer_command_injector.appx"
+    $files = "$innoDir\ForgeKairos.exe,$innoDir\cli.exe,$innoDir\auto_update_helper.exe,$innoDir\zed_explorer_command_injector.dll,$innoDir\zed_explorer_command_injector.appx"
     & "$innoDir\sign.ps1" $files
 }
 
@@ -460,8 +470,10 @@ function DownloadConpty {
 function CollectFiles {
     Move-Item -Path "$innoDir\zed_explorer_command_injector.appx" -Destination "$innoDir\appx\zed_explorer_command_injector.appx" -Force
     Move-Item -Path "$innoDir\zed_explorer_command_injector.dll" -Destination "$innoDir\appx\zed_explorer_command_injector.dll" -Force
-    Move-Item -Path "$innoDir\cli.exe" -Destination "$innoDir\bin\zed.exe" -Force
-    Move-Item -Path "$innoDir\zed.sh" -Destination "$innoDir\bin\zed" -Force
+    # branding::CURRENT.cli_name, so it does not shadow an official Zed's
+    # bin\zed.exe on PATH.
+    Move-Item -Path "$innoDir\cli.exe" -Destination "$innoDir\bin\forgekairos.exe" -Force
+    Move-Item -Path "$innoDir\zed.sh" -Destination "$innoDir\bin\forgekairos" -Force
     Move-Item -Path "$innoDir\auto_update_helper.exe" -Destination "$innoDir\tools\auto_update_helper.exe" -Force
     if($Architecture -eq "aarch64") {
         New-Item -Type Directory -Path "$innoDir\arm64" -Force
@@ -503,77 +515,91 @@ function BuildInstaller {
             # the uninstall entry and in-place upgrades).
             $appId = "{{9924BCC9-2563-4389-B8F4-37F62D0954C7}"
             $appIconName = "app-icon"
-            $appName = "Zed JP Enhance"
-            $appDisplayName = "Zed JP Enhance"
+            $appName = "ForgeKairos"
+            $appDisplayName = "ForgeKairos"
             # Must match auto_update's asset_name() exactly (all lowercase):
-            # zed-windows-x86_64-setup.exe. OutputBaseFilename in zed.iss uses this.
-            $appSetupName = "zed-windows-$Architecture-setup"
+            # forgekairos-windows-x86_64-setup.exe. OutputBaseFilename in zed.iss uses this.
+            $appSetupName = "forgekairos-windows-$Architecture-setup"
             # Must match the runtime mutex in crates\zed\src\zed\windows_only_instance.rs,
-            # which is "{app_identifier()}-Instance-Mutex" and app_identifier()
-            # returns "Zed-JP-Enhance-Editor-Stable" for the stable channel.
-            $appMutex = "Zed-JP-Enhance-Editor-Stable-Instance-Mutex"
-            # The launched binary stays Zed.exe (ADR-F16 update mechanism and the
-            # remote-server discovery both assume it); only the display name changes.
-            $appExeName = "Zed"
+            # which is "{app_identifier()}-Instance-Mutex"; app_identifier() comes from
+            # branding::CURRENT.app_identifiers.
+            $appMutex = "ForgeKairos-Editor-Stable-Instance-Mutex"
+            # The mutex a build from before the rename holds, so a manual install
+            # over it still waits for it to close.
+            $appLegacyMutex = "Zed-JP-Enhance-Editor-Stable-Instance-Mutex"
+            # branding::CURRENT.executable_stem; auto_update_helper moves this file.
+            $appExeName = "ForgeKairos"
             # Fork-specific ProgId prefix so file associations do not clobber an
-            # official Zed install's HKCU entries. Installer-local; the running app
-            # does not reference this name.
-            $regValueName = "ZedJPEnhance"
-            # AppUserModelID and the appx package identity are intentionally left as
-            # upstream: the appx name/hash is baked into the signed AppxManifest.xml
-            # and cannot be rebranded here without re-signing.
-            $appUserId = "ZedIndustries.Zed"
-            $appShellNameShort = "Zed JP &Enhance"
-            $appAppxFullName = "ZedIndustries.Zed_1.0.0.0_neutral__japxn1gcva8rg"
+            # official Zed install's HKCU entries. Must also match REG_PATH in
+            # crates\explorer_command_injector, which reads "{regValueName}ContextMenu".
+            $regValueName = "ForgeKairos"
+            # The ProgId prefix the build from before the rename registered. Only
+            # the stable channel had one of its own: the other channels used
+            # upstream's names, which an official Zed install may still own.
+            $legacyRegValueName = "ZedJPEnhance"
+            # The Start menu folder and desktop shortcut name of that build.
+            $legacyAppName = "Zed JP Enhance"
+            # branding::CURRENT.app_user_model_ids, which the app also sets at startup.
+            $appUserId = "SeiyaFunaokaJP.ForgeKairos"
+            $appShellNameShort = "&ForgeKairos"
+            # Identity Name, Version and the publisher ID derived from Publisher
+            # in crates\explorer_command_injector\AppxManifest.xml.
+            $appAppxFullName = "SeiyaFunaokaJP.ForgeKairos_1.0.0.0_neutral__w9cgtc1wq3tc4"
         }
         "preview" {
             # Fork-only AppId (upstream preview was {F70E4811-...}). Not built by
             # this stable-only fork, but kept off upstream's GUID space for safety.
             $appId = "{{7C80B45F-ADD1-4E31-AD8E-43A6005A64F4}"
             $appIconName = "app-icon-preview"
-            $appName = "Zed Preview"
-            $appDisplayName = "Zed Preview"
-            $appSetupName = "zed-windows-$Architecture-setup"
-            # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
-            # returns "Zed-JP-Enhance-Editor-Preview" for the preview channel.
-            $appMutex = "Zed-JP-Enhance-Editor-Preview-Instance-Mutex"
-            $appExeName = "Zed"
-            $regValueName = "ZedPreview"
-            $appUserId = "ZedIndustries.Zed.Preview"
-            $appShellNameShort = "Z&ed Preview"
-            $appAppxFullName = "ZedIndustries.Zed.Preview_1.0.0.0_neutral__japxn1gcva8rg"
+            $appName = "ForgeKairos Preview"
+            $appDisplayName = "ForgeKairos Preview"
+            $appSetupName = "forgekairos-windows-$Architecture-setup"
+            # Must match "{app_identifier()}-Instance-Mutex" for the preview channel.
+            $appMutex = "ForgeKairos-Editor-Preview-Instance-Mutex"
+            $appLegacyMutex = "Zed-JP-Enhance-Editor-Preview-Instance-Mutex"
+            $appExeName = "ForgeKairos"
+            $regValueName = "ForgeKairosPreview"
+            $legacyRegValueName = ""
+            $legacyAppName = ""
+            $appUserId = "SeiyaFunaokaJP.ForgeKairos.Preview"
+            $appShellNameShort = "&ForgeKairos Preview"
+            $appAppxFullName = "SeiyaFunaokaJP.ForgeKairos.Preview_1.0.0.0_neutral__w9cgtc1wq3tc4"
         }
         "nightly" {
             # Fork-only AppId (upstream nightly was {1BDB21D3-...}).
             $appId = "{{EF65D849-2DAF-46EF-9B85-016677EEDFEB}"
             $appIconName = "app-icon-nightly"
-            $appName = "Zed Nightly"
-            $appDisplayName = "Zed Nightly"
-            $appSetupName = "zed-windows-$Architecture-setup"
-            # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
-            # returns "Zed-JP-Enhance-Editor-Nightly" for the nightly channel.
-            $appMutex = "Zed-JP-Enhance-Editor-Nightly-Instance-Mutex"
-            $appExeName = "Zed"
-            $regValueName = "ZedNightly"
-            $appUserId = "ZedIndustries.Zed.Nightly"
-            $appShellNameShort = "Z&ed Editor Nightly"
-            $appAppxFullName = "ZedIndustries.Zed.Nightly_1.0.0.0_neutral__japxn1gcva8rg"
+            $appName = "ForgeKairos Nightly"
+            $appDisplayName = "ForgeKairos Nightly"
+            $appSetupName = "forgekairos-windows-$Architecture-setup"
+            # Must match "{app_identifier()}-Instance-Mutex" for the nightly channel.
+            $appMutex = "ForgeKairos-Editor-Nightly-Instance-Mutex"
+            $appLegacyMutex = "Zed-JP-Enhance-Editor-Nightly-Instance-Mutex"
+            $appExeName = "ForgeKairos"
+            $regValueName = "ForgeKairosNightly"
+            $legacyRegValueName = ""
+            $legacyAppName = ""
+            $appUserId = "SeiyaFunaokaJP.ForgeKairos.Nightly"
+            $appShellNameShort = "&ForgeKairos Nightly"
+            $appAppxFullName = "SeiyaFunaokaJP.ForgeKairos.Nightly_1.0.0.0_neutral__w9cgtc1wq3tc4"
         }
         "dev" {
             # Fork-only AppId (upstream dev was {8357632E-...}).
             $appId = "{{FBF63EC8-33D5-4339-8E91-58FD6DAE5653}"
             $appIconName = "app-icon-dev"
-            $appName = "Zed Dev"
-            $appDisplayName = "Zed Dev"
-            $appSetupName = "zed-windows-$Architecture-setup"
-            # Must match "{app_identifier()}-Instance-Mutex"; app_identifier()
-            # returns "Zed-JP-Enhance-Editor-Dev" for the dev channel.
-            $appMutex = "Zed-JP-Enhance-Editor-Dev-Instance-Mutex"
-            $appExeName = "Zed"
-            $regValueName = "ZedDev"
-            $appUserId = "ZedIndustries.Zed.Dev"
-            $appShellNameShort = "Z&ed Dev"
-            $appAppxFullName = "ZedIndustries.Zed.Dev_1.0.0.0_neutral__japxn1gcva8rg"
+            $appName = "ForgeKairos Dev"
+            $appDisplayName = "ForgeKairos Dev"
+            $appSetupName = "forgekairos-windows-$Architecture-setup"
+            # Must match "{app_identifier()}-Instance-Mutex" for the dev channel.
+            $appMutex = "ForgeKairos-Editor-Dev-Instance-Mutex"
+            $appLegacyMutex = "Zed-JP-Enhance-Editor-Dev-Instance-Mutex"
+            $appExeName = "ForgeKairos"
+            $regValueName = "ForgeKairosDev"
+            $legacyRegValueName = ""
+            $legacyAppName = ""
+            $appUserId = "SeiyaFunaokaJP.ForgeKairos.Dev"
+            $appShellNameShort = "&ForgeKairos Dev"
+            $appAppxFullName = "SeiyaFunaokaJP.ForgeKairos.Dev_1.0.0.0_neutral__w9cgtc1wq3tc4"
         }
         default {
             Write-Error "can't bundle installer for $channel."
@@ -609,7 +635,10 @@ function BuildInstaller {
         "AppName"        = $appName
         "AppDisplayName" = $appDisplayName
         "RegValueName"   = $regValueName
+        "LegacyRegValueName" = $legacyRegValueName
+        "LegacyAppName" = $legacyAppName
         "AppMutex"       = $appMutex
+        "AppLegacyMutex" = $appLegacyMutex
         "AppExeName"     = $appExeName
         "ResourcesDir"   = "$innoDir"
         "ShellNameShort" = $appShellNameShort
@@ -682,8 +711,8 @@ if($env:CI) {
 if ($buildSuccess) {
     Write-Output "Build successful"
     if ($Install) {
-        Write-Output "Installing Zed JP Enhance..."
-        Start-Process -FilePath "$env:ZED_WORKSPACE/target/zed-windows-$Architecture-setup.exe"
+        Write-Output "Installing ForgeKairos..."
+        Start-Process -FilePath "$env:ZED_WORKSPACE/target/forgekairos-windows-$Architecture-setup.exe"
     }
     exit 0
 }

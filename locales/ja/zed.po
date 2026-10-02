@@ -11,6 +11,9 @@ msgstr "上にカーソルを追加"
 msgid "Add Cursor Below"
 msgstr "下にカーソルを追加"
 
+msgid "An older version is still running, so this session keeps using the older version's data folders:\n{}\n\nQuit the older version and restart to move them to the new folders."
+msgstr "旧版がまだ起動しているため、このセッションは旧版のデータフォルダーをそのまま使います:\n{}\n\n旧版を終了してから再起動すると、新しいフォルダーへ移ります。"
+
 msgid "Are you sure you want to quit?"
 msgstr "終了してもよろしいですか?"
 
@@ -379,6 +382,12 @@ msgstr "テレメトリログ"
 
 msgid "Text Color"
 msgstr "文字色"
+
+msgid "The data folders of the older version could not be moved to the new folders, so this session keeps using them:\n{}\n\nClose every program that may be using them and restart to try again."
+msgstr "旧版のデータフォルダーを新しいフォルダーへ移せなかったため、このセッションはそれらをそのまま使います:\n{}\n\nそれらを使っている可能性のあるプログラムをすべて閉じてから再起動すると、もう一度移します。"
+
+msgid "The older version ({}) has created folders again that this version no longer uses, so changes made in them are not reflected here:\n{}\n\n(older version's folder → folder this version uses)"
+msgstr "旧版 ({}) が、この版ではもう使わないフォルダーを作り直しています。そこでの変更はこの版には反映されません:\n{}\n\n(旧版のフォルダー → この版が使うフォルダー)"
 
 msgid "Toggle Fold at Cursor"
 msgstr "カーソル位置の折り畳みを切り替え"

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 286 304" width="1024" height="1024" role="img" aria-labelledby="title desc">
+  <title id="title">ForgeKairos color mark</title>
+  <desc id="desc">ForgeKairos geometric mark with a blue to violet gradient.</desc>
+  <defs>
+    <linearGradient id="forgeKairosGradient" x1="0" y1="0" x2="0.08" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0%" stop-color="#0082FF"/>
+      <stop offset="38%" stop-color="#153FED"/>
+      <stop offset="72%" stop-color="#3030E3"/>
+      <stop offset="100%" stop-color="#581AD6"/>
+    </linearGradient>
+  </defs>
+  <path d="M 235 57 L 228 57 L 172 85 L 149 98 L 135 104 L 87 130 L 87 172 L 89 174 L 92 174 L 184 126 L 203 117 L 205 118 L 205 211 L 202 214 L 160 239 L 160 285 L 200 260 L 250 231 L 251 229 L 251 114 L 268 101 L 281 93 L 284 90 L 284 85 Z M 139 2 L 135 2 L 81 31 L 27 58 L 18 64 L 2 71 L 2 75 L 0 76 L 0 79 L 2 80 L 2 103 L 0 104 L 0 123 L 2 124 L 2 161 L 0 162 L 0 230 L 114 296 L 125 303 L 125 230 L 165 207 L 165 170 L 162 167 L 157 167 L 89 201 L 87 205 L 87 233 L 84 234 L 47 211 L 46 107 L 48 97 L 183 27 L 177 22 Z" fill="url(#forgeKairosGradient)" fill-rule="evenodd"/>
+</svg>

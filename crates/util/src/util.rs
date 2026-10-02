@@ -357,6 +357,21 @@ pub fn get_shell_safe_zed_path(shell_kind: shell::ShellKind) -> anyhow::Result<S
         .context("Failed to shell-escape Zed executable path.")
 }
 
+/// Where the Windows editor looks for the CLI, relative to itself: the
+/// installer puts it in bin under `branding::CURRENT.cli_name`, and ./cli.exe
+/// is for development builds.
+const WINDOWS_CLI_LOCATIONS: [&str; 2] = [
+    branding::concat_const!("bin/", branding::CURRENT.cli_name, ".exe"),
+    "./cli.exe",
+];
+
+/// Where the Linux editor looks for the CLI, relative to itself: bin is the
+/// standard, ./cli is for the target directory in development builds.
+const LINUX_CLI_LOCATIONS: [&str; 2] = [
+    branding::concat_const!("../bin/", branding::CURRENT.cli_name),
+    "./cli",
+];
+
 /// Returns a path for the zed cli executable, this function
 /// should be called from the zed executable, not zed-cli.
 pub fn get_zed_cli_path() -> Result<PathBuf> {
@@ -372,11 +387,9 @@ pub fn get_zed_cli_path() -> Result<PathBuf> {
         // so here ./cli is for both installed and development builds.
         &["./cli"]
     } else if cfg!(target_os = "windows") {
-        // bin/zed.exe is for installed builds, ./cli.exe is for development builds.
-        &["bin/zed.exe", "./cli.exe"]
+        &WINDOWS_CLI_LOCATIONS
     } else if cfg!(target_os = "linux") || cfg!(target_os = "freebsd") {
-        // bin is the standard, ./cli is for the target directory in development builds.
-        &["../bin/zed", "./cli"]
+        &LINUX_CLI_LOCATIONS
     } else {
         anyhow::bail!("unsupported platform for determining zed-cli path");
     };
@@ -1059,6 +1072,30 @@ impl<O> From<anyhow::Result<O>> for ConnectionResult<O> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An installed Windows build exits at startup when the CLI is not where
+    /// `get_zed_cli_path` looks, so the first location has to be where the
+    /// installer and the Linux bundle put the launcher.
+    #[test]
+    fn the_cli_is_looked_for_where_the_bundles_install_it() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let windows_bundle =
+            std::fs::read_to_string(repository.join("script/bundle-windows.ps1")).unwrap();
+        let windows_cli = WINDOWS_CLI_LOCATIONS[0].replace('/', "\\");
+        assert!(
+            windows_bundle.contains(&format!("-Destination \"$innoDir\\{windows_cli}\"")),
+            "bundle-windows.ps1 does not install the CLI as {windows_cli}"
+        );
+
+        let linux_bundle = std::fs::read_to_string(repository.join("script/bundle-linux")).unwrap();
+        let linux_cli = LINUX_CLI_LOCATIONS[0]
+            .strip_prefix("../")
+            .expect("the editor is in libexec, next to bin");
+        assert!(
+            linux_bundle.contains(&format!("\"${{zed_dir}}/{linux_cli}\"")),
+            "bundle-linux does not install the CLI as {linux_cli}"
+        );
+    }
 
     #[test]
     fn test_fs_embed_iter_and_get() {

@@ -27,6 +27,9 @@ pub use transport::ssh::{
 pub use transport::wsl::WslConnectionOptions;
 #[cfg(target_os = "windows")]
 pub use transport::wsl::wsl_path_to_windows_path;
+pub use transport::{
+    is_fork_server_binary_name, legacy_server_binary_name_prefixes, server_binary_name_prefix,
+};
 
 #[cfg(any(test, feature = "test-support"))]
 pub use transport::mock::{

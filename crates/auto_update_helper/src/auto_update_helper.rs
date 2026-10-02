@@ -123,7 +123,10 @@ mod windows_impl {
             MessageBoxW(
                 None,
                 &HSTRING::from(content),
-                windows::core::w!("Error: Zed update failed."),
+                &HSTRING::from(format!(
+                    "Error: {} update failed.",
+                    branding::CURRENT.product_name
+                )),
                 MB_ICONERROR | MB_SYSTEMMODAL,
             )
         };

@@ -1,6 +1,11 @@
+// Compiled into the tests on every platform so the port and handshake rules
+// can be checked off macOS; only the macOS app calls the rest.
+#![cfg_attr(not(target_os = "macos"), allow(dead_code))]
+
 use std::{
     io::{Read, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream},
+    sync::LazyLock,
     thread,
     time::Duration,
 };
@@ -13,7 +18,6 @@ const LOCALHOST: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(10);
 const RECEIVE_TIMEOUT: Duration = Duration::from_millis(35);
 const SEND_TIMEOUT: Duration = Duration::from_millis(20);
-const USER_BLOCK: u16 = 100;
 
 fn address() -> SocketAddr {
     // These port numbers are offset by the user ID to avoid conflicts between
@@ -23,36 +27,37 @@ fn address() -> SocketAddr {
     // interleaving the ports between different users and different release channels.
     //
     // On macOS user IDs start at 501 and on Linux they start at 1000. The first user
-    // on a Mac with ID 501 running a dev channel build will use port 44238, and the
-    // second user with ID 502 will use port 44239, and so on. User 501 will use ports
-    // 44338, 44438, and 44538 for the preview, stable, and nightly channels,
-    // respectively. User 502 will use ports 44339, 44439, and 44539 for the preview,
+    // on a Mac with ID 501 running a dev channel build will use port 34238, and the
+    // second user with ID 502 will use port 34239, and so on. User 501 will use ports
+    // 34338, 34438, and 34538 for the preview, stable, and nightly channels,
+    // respectively. User 502 will use ports 34339, 34439, and 34539 for the preview,
     // stable, and nightly channels, respectively.
-    let port = match *release_channel::RELEASE_CHANNEL {
-        ReleaseChannel::Dev => 43737,
-        ReleaseChannel::Preview => 43737 + USER_BLOCK,
-        ReleaseChannel::Stable => 43737 + (2 * USER_BLOCK),
-        ReleaseChannel::Nightly => 43737 + (3 * USER_BLOCK),
-    };
-    let mut user_port = port;
     let mut sys = System::new_all();
     sys.refresh_all();
-    if let Ok(current_pid) = sysinfo::get_current_pid()
-        && let Some(uid) = sys
-            .process(current_pid)
+    let user_id = sysinfo::get_current_pid().ok().and_then(|current_pid| {
+        sys.process(current_pid)
             .and_then(|process| process.user_id())
-    {
-        let uid_u32 = get_uid_as_u32(uid);
-        // Ensure that the user ID is not too large to avoid overflow when
-        // calculating the port number. This seems unlikely but it doesn't
-        // hurt to be safe.
-        let max_port = 65535;
-        let max_uid: u32 = max_port - port as u32;
-        let wrapped_uid: u16 = (uid_u32 % max_uid) as u16;
-        user_port += wrapped_uid;
-    }
+            .map(get_uid_as_u32)
+    });
 
-    SocketAddr::V4(SocketAddrV4::new(LOCALHOST, user_port))
+    SocketAddr::V4(SocketAddrV4::new(
+        LOCALHOST,
+        instance_port(*release_channel::RELEASE_CHANNEL, user_id),
+    ))
+}
+
+// zed-jp-enhance: an official Zed (and this fork before it was renamed) owns
+// every port from `LEGACY_MAC_INSTANCE_BASE_PORT` up, so this fork's ports sit
+// below it and never answer, or get answered by, an official instance. The
+// `paths` crate probes the same ports, so both compute them in `branding`.
+fn instance_port(channel: ReleaseChannel, user_id: Option<u32>) -> u16 {
+    let ports = branding::MAC_INSTANCE_PORTS.ports(user_id);
+    match channel {
+        ReleaseChannel::Dev => ports.dev,
+        ReleaseChannel::Nightly => ports.nightly,
+        ReleaseChannel::Preview => ports.preview,
+        ReleaseChannel::Stable => ports.stable,
+    }
 }
 
 #[cfg(unix)]
@@ -71,12 +76,13 @@ fn get_uid_as_u32(uid: &sysinfo::Uid) -> u32 {
 }
 
 fn instance_handshake() -> &'static str {
-    match *release_channel::RELEASE_CHANNEL {
-        ReleaseChannel::Dev => "Zed Editor Dev Instance Running",
-        ReleaseChannel::Nightly => "Zed Editor Nightly Instance Running",
-        ReleaseChannel::Preview => "Zed Editor Preview Instance Running",
-        ReleaseChannel::Stable => "Zed Editor Stable Instance Running",
-    }
+    static HANDSHAKE: LazyLock<String> =
+        LazyLock::new(|| handshake_for(release_channel::app_identifier()));
+    HANDSHAKE.as_str()
+}
+
+fn handshake_for(app_identifier: &str) -> String {
+    branding::mac_instance_handshake(app_identifier)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,17 +133,24 @@ pub fn ensure_only_instance() -> IsOnlyInstance {
 }
 
 fn check_got_handshake() -> bool {
-    match TcpStream::connect_timeout(&address(), CONNECT_TIMEOUT) {
-        Ok(mut stream) => {
-            let mut buf = vec![0u8; instance_handshake().len()];
+    check_got_handshake_at(&address(), instance_handshake())
+}
 
-            stream.set_read_timeout(Some(RECEIVE_TIMEOUT)).unwrap();
+fn check_got_handshake_at(address: &SocketAddr, handshake: &str) -> bool {
+    match TcpStream::connect_timeout(address, CONNECT_TIMEOUT) {
+        Ok(mut stream) => {
+            let mut buf = vec![0u8; handshake.len()];
+
+            if let Err(err) = stream.set_read_timeout(Some(RECEIVE_TIMEOUT)) {
+                log::warn!("Failed to set a timeout on the single instance port: {err}");
+                return false;
+            }
             if let Err(err) = stream.read_exact(&mut buf) {
                 log::warn!("Connected to single instance port but failed to read: {err}");
                 return false;
             }
 
-            if buf == instance_handshake().as_bytes() {
+            if buf == handshake.as_bytes() {
                 log::info!("Got instance handshake");
                 return true;
             }
@@ -147,5 +160,134 @@ fn check_got_handshake() -> bool {
         }
 
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CHANNELS: [ReleaseChannel; 4] = [
+        ReleaseChannel::Dev,
+        ReleaseChannel::Nightly,
+        ReleaseChannel::Preview,
+        ReleaseChannel::Stable,
+    ];
+
+    const OFFICIAL_HANDSHAKES: [&str; 4] = [
+        "Zed Editor Dev Instance Running",
+        "Zed Editor Nightly Instance Running",
+        "Zed Editor Preview Instance Running",
+        "Zed Editor Stable Instance Running",
+    ];
+
+    const OFFICIAL_BASE_PORT: u16 = 43737;
+
+    fn own_handshake(channel: ReleaseChannel) -> String {
+        handshake_for(channel.branded(&branding::CURRENT.app_identifiers))
+    }
+
+    /// An official Zed's port, as upstream's `address` computes it.
+    fn official_port(channel: ReleaseChannel, user_id: u32) -> u16 {
+        let port = match channel {
+            ReleaseChannel::Dev => OFFICIAL_BASE_PORT,
+            ReleaseChannel::Preview => OFFICIAL_BASE_PORT + 100,
+            ReleaseChannel::Stable => OFFICIAL_BASE_PORT + 200,
+            ReleaseChannel::Nightly => OFFICIAL_BASE_PORT + 300,
+        };
+        let max_uid = 65535 - u32::from(port);
+        port + (user_id % max_uid) as u16
+    }
+
+    fn user_ids() -> impl Iterator<Item = u32> {
+        (0..70_000)
+            .chain((u32::MAX - 70_000)..=u32::MAX)
+            .chain((0..32).map(|shift| 1u32 << shift))
+            .chain([1_000_000_000, 2_000_000_001])
+    }
+
+    #[test]
+    fn handshakes_differ_from_the_official_ones() {
+        for channel in CHANNELS {
+            let handshake = own_handshake(channel);
+            for official in OFFICIAL_HANDSHAKES {
+                // The reader compares a prefix of its own handshake's length,
+                // so neither may be a prefix of the other.
+                assert!(
+                    !official.starts_with(handshake.as_str()) && !handshake.starts_with(official),
+                    "{handshake:?} would be taken for the official {official:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_legacy_constants_are_the_official_values() {
+        assert_eq!(
+            branding::LEGACY_MAC_INSTANCE_HANDSHAKES.all(),
+            OFFICIAL_HANDSHAKES
+        );
+        assert_eq!(branding::LEGACY_MAC_INSTANCE_BASE_PORT, OFFICIAL_BASE_PORT);
+    }
+
+    #[test]
+    fn ports_never_fall_in_the_official_range() {
+        let official_lowest = CHANNELS
+            .into_iter()
+            .flat_map(|channel| user_ids().map(move |user_id| official_port(channel, user_id)))
+            .min();
+        assert_eq!(official_lowest, Some(OFFICIAL_BASE_PORT));
+
+        for channel in CHANNELS {
+            for user_id in user_ids().map(Some).chain([None]) {
+                let port = instance_port(channel, user_id);
+                assert!(
+                    (branding::MAC_INSTANCE_PORTS.base_port..OFFICIAL_BASE_PORT).contains(&port),
+                    "{channel:?} user {user_id:?}: port {port} is in the official range"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn channels_of_one_user_get_different_ports() {
+        for user_id in [0, 501, 502, 1000, 65_534] {
+            let mut ports: Vec<u16> = CHANNELS
+                .into_iter()
+                .map(|channel| instance_port(channel, Some(user_id)))
+                .collect();
+            ports.sort_unstable();
+            ports.dedup();
+            assert_eq!(ports.len(), 4, "user {user_id}");
+        }
+    }
+
+    fn serve_once(handshake: String) -> SocketAddr {
+        let listener = TcpListener::bind(SocketAddrV4::new(LOCALHOST, 0)).expect("bind");
+        let address = listener.local_addr().expect("local address");
+        thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                stream.write_all(handshake.as_bytes()).ok();
+            }
+        });
+        address
+    }
+
+    #[test]
+    fn an_official_instance_does_not_count_as_this_app_running() {
+        for (channel, official) in CHANNELS.into_iter().zip(OFFICIAL_HANDSHAKES) {
+            let handshake = own_handshake(channel);
+            let official_instance = serve_once(official.to_string());
+            assert!(
+                !check_got_handshake_at(&official_instance, &handshake),
+                "{channel:?}"
+            );
+
+            let own_instance = serve_once(handshake.clone());
+            assert!(
+                check_got_handshake_at(&own_instance, &handshake),
+                "{channel:?}"
+            );
+        }
     }
 }

@@ -57,7 +57,14 @@ pub const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
     ".config/git",
     ".claude.json",
     ".zed_server",
-    ".local/share/zed-jp-enhance",
+    branding::concat_const!(
+        ".local/share/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/share/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
     ".cargo/bin",
     ".local/bin",
     ".bashrc",

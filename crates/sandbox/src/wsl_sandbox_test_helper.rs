@@ -319,7 +319,10 @@ mod imp {
         // recreated with other contents), and one that does not exist yet
         // cannot be created.
         let home_wsl = format!("{root_base}/home");
-        let install_wsl = format!("{home_wsl}/.cache/zed-jp-enhance/sandbox");
+        let install_wsl = format!(
+            "{home_wsl}/{}/sandbox",
+            branding::CURRENT.remote_cache_home_relative
+        );
         let login_wsl = format!("{home_wsl}/.bash_login");
         let seed_home = wsl.run_sh(&format!(
             "mkdir -p {install}/key && echo helper > {install}/key/zed-remote-server",
@@ -556,7 +559,10 @@ mod imp {
     /// command able to write the install directory could) and check that the
     /// next command is refused rather than run through it.
     fn check_replaced_helper_refused(wsl: &Wsl, checks: &mut Checks) -> Result<()> {
-        let find = wsl.run_sh("ls -dt \"$HOME\"/.cache/zed-jp-enhance/sandbox/*/ | head -n 1")?;
+        let find = wsl.run_sh(&format!(
+            "ls -dt \"$HOME\"/{}/sandbox/*/ | head -n 1",
+            branding::CURRENT.remote_cache_home_relative
+        ))?;
         let install_dir = String::from_utf8_lossy(&find.stdout)
             .trim()
             .trim_end_matches('/')

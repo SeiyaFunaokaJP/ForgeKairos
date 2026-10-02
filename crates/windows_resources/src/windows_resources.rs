@@ -38,16 +38,22 @@ fn product_version() -> String {
     format!("{pkg_version}+{metadata}")
 }
 
+const COMPANY_NAME: &str = "ForgeKairos contributors";
+// The executable's details name this fork's authors as who publishes it, and
+// keep upstream's copyright for the Zed code it is derived from.
+const LEGAL_COPYRIGHT: &str = "Copyright 2026 ForgeKairos contributors. Based on Zed, Copyright 2022 - 2025 Zed Industries, Inc.";
+
 const ICON_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../zed/resources/windows");
 const MANIFEST_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/manifest.xml");
 
 pub fn compile(manifest: bool) -> Result<(), Box<dyn std::error::Error>> {
     let channel = option_env!("RELEASE_CHANNEL").unwrap_or("dev");
+    let display_names = branding::CURRENT.display_names;
     let (icon_filename, product_name) = match channel {
-        "stable" => ("app-icon.ico", "Zed"),
-        "preview" => ("app-icon-preview.ico", "Zed Preview"),
-        "nightly" => ("app-icon-nightly.ico", "Zed Nightly"),
-        _ => ("app-icon-dev.ico", "Zed Dev"),
+        "stable" => ("app-icon.ico", display_names.stable),
+        "preview" => ("app-icon-preview.ico", display_names.preview),
+        "nightly" => ("app-icon-nightly.ico", display_names.nightly),
+        _ => ("app-icon-dev.ico", display_names.dev),
     };
     let icon = std::path::PathBuf::from(ICON_DIR).join(icon_filename);
     let icon_escaped = icon.to_string_lossy().replace('\\', "\\\\");
@@ -94,8 +100,8 @@ BEGIN
             VALUE "FileVersion", "{pkg_version}\0"
             VALUE "ProductName", "{product_name}\0"
             VALUE "ProductVersion", "{product_version}\0"
-            VALUE "CompanyName", "Zed Industries, Inc.\0"
-            VALUE "LegalCopyright", "Copyright 2022 - 2025 Zed Industries, Inc.\0"
+            VALUE "CompanyName", "{COMPANY_NAME}\0"
+            VALUE "LegalCopyright", "{LEGAL_COPYRIGHT}\0"
         END
     END
     BLOCK "VarFileInfo"
@@ -122,4 +128,25 @@ END
         .unwrap();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_details_name_this_fork_as_the_publisher_and_credit_zed() {
+        let display_names = branding::CURRENT.display_names.all();
+        for name in display_names.iter().chain([&COMPANY_NAME]) {
+            assert!(
+                !name.contains("Zed Industries"),
+                "{name:?} names upstream's company as the publisher"
+            );
+        }
+        assert!(COMPANY_NAME.contains("ForgeKairos"));
+        assert!(LEGAL_COPYRIGHT.starts_with("Copyright 2026 ForgeKairos contributors."));
+        assert!(
+            LEGAL_COPYRIGHT.contains("Based on Zed, Copyright 2022 - 2025 Zed Industries, Inc.")
+        );
+    }
 }

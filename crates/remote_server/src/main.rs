@@ -29,6 +29,33 @@ fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
 
+    // Only the proxy, which the client starts on every connection, moves the
+    // directories. The daemon it spawns, the crash handlers, askpass and
+    // terminal sessions serve a running proxy or daemon, so they resolve the
+    // same directories without moving them out from under it.
+    if matches!(cli.command, Some(Commands::Proxy { .. })) {
+        let legacy_migration = paths::migrate_legacy_remote_server_dirs(&|pid| {
+            let pid = sysinfo::Pid::from_u32(pid);
+            let mut system = sysinfo::System::new();
+            system.refresh_processes_specifics(
+                sysinfo::ProcessesToUpdate::Some(&[pid]),
+                false,
+                sysinfo::ProcessRefreshKind::nothing(),
+            );
+            system.process(pid).is_some()
+        });
+        // Logging is set up per command, after this, so standard error is
+        // all there is.
+        for directory in legacy_migration.legacy_directories_in_use() {
+            eprintln!(
+                "using {:?} instead of {:?}: {:?}",
+                directory.legacy, directory.current, directory.outcome
+            );
+        }
+    } else {
+        paths::resolve_app_dirs_without_migrating();
+    }
+
     if let Some(socket_path) = &cli.askpass {
         askpass::main(socket_path);
         return Ok(());

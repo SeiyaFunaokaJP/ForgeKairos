@@ -520,8 +520,9 @@ fn manual_reinstall_steps(connection: &dyn RemoteConnection) -> String {
         "~/.zed_server"
     };
     i18n::t!(
-        "On the remote host, delete the files in {folder} whose names start with zed-remote-server-, \
-         then reconnect."
+        "On the remote host, delete the files in {folder} whose names start with {prefix}, \
+         then reconnect.",
+        prefix = branding::CURRENT.remote_server_binary_prefix
     )
 }
 
@@ -600,9 +601,11 @@ async fn reinstall_server(
 }
 
 /// The command that removes the server binary `connection` runs, when that is
-/// a file this can safely remove: only ever a `zed-remote-server-*` directly
-/// in the server directory, and only on a POSIX host, where a running binary
-/// can be removed and `$HOME` names the directory the path is relative to.
+/// a file this can safely remove: only ever a server binary of this fork
+/// ([`crate::transport::is_fork_server_binary_name`], never upstream Zed's,
+/// which shares the directory) directly in the server directory, and only on
+/// a POSIX host, where a running binary can be removed and `$HOME` names the
+/// directory the path is relative to.
 fn server_binary_removal_command(
     connection: &dyn RemoteConnection,
 ) -> Option<Result<CommandTemplate>> {
@@ -612,7 +615,7 @@ fn server_binary_removal_command(
     let path = connection.remote_server_binary_path()?;
     let is_server_binary = path.parent() == Some(paths::remote_server_dir_relative())
         && path.file_name().is_some_and(|name| {
-            name.starts_with("zed-remote-server-")
+            crate::transport::is_fork_server_binary_name(name)
                 && name.chars().all(|character| {
                     character.is_ascii_alphanumeric() || "._+-".contains(character)
                 })
@@ -1013,34 +1016,45 @@ mod tests {
             server_binary_removal_command(&connection)
                 .map(|command| command.expect("the command builds"))
         };
-        let binary = ".zed_server/zed-remote-server-stable-1.17.2-jp2";
+        let binary = ".zed_server/forgekairos-remote-server-stable-1.21.0-jp2";
         let command = removal(RemoteOs::Linux, Some(binary)).expect("removed");
         assert_eq!(command.program, "sh");
         assert_eq!(
             command.args,
             [
                 "-c",
-                "rm -f -- \"$HOME\"/.zed_server/zed-remote-server-stable-1.17.2-jp2"
+                "rm -f -- \"$HOME\"/.zed_server/forgekairos-remote-server-stable-1.21.0-jp2"
             ],
             "no positional parameter, which WSL's extra shell expands to nothing"
         );
         assert!(removal(RemoteOs::MacOs, Some(binary)).is_some());
-        let nightly = ".zed_server/zed-remote-server-nightly-1.17.2+nightly.0123abc-jp2";
-        assert!(
-            removal(RemoteOs::Linux, Some(nightly)).is_some(),
-            "{nightly}"
-        );
+        for removed in [
+            ".zed_server/forgekairos-remote-server-nightly-1.21.0+nightly.0123abc-jp2",
+            ".zed_server/forgekairos-remote-server-dev-build-jp2",
+            // What this fork installed before it was renamed.
+            ".zed_server/zed-remote-server-stable-1.17.2-jp2",
+            ".zed_server/zed-remote-server-nightly-1.17.2+nightly.0123abc-jp2",
+        ] {
+            assert!(
+                removal(RemoteOs::Linux, Some(removed)).is_some(),
+                "{removed}"
+            );
+        }
 
         for kept in [
-            "zed-remote-server-stable-1.17.2-jp2",
-            ".zed_server/nested/zed-remote-server-stable-1.17.2-jp2",
+            // Upstream Zed's own server binaries, which share the directory.
+            ".zed_server/zed-remote-server-stable-1.21.0",
+            ".zed_server/zed-remote-server-dev-build",
+            ".zed_server/zed-remote-server-stable-1.21.0-jp",
+            "forgekairos-remote-server-stable-1.21.0-jp2",
+            ".zed_server/nested/forgekairos-remote-server-stable-1.21.0-jp2",
             ".zed_server/other-file",
-            ".zed_server/zed-remote-server",
-            "other/zed-remote-server-stable-1.17.2-jp2",
-            ".zed_server/zed-remote-server-dev-build;rm -rf ~",
-            ".zed_server/zed-remote-server-dev-$HOME",
-            ".zed_server/zed-remote-server-dev-a b",
-            ".zed_server/zed-remote-server-dev-\"x\"",
+            ".zed_server/forgekairos-remote-server",
+            "other/forgekairos-remote-server-stable-1.21.0-jp2",
+            ".zed_server/forgekairos-remote-server-dev-build;rm -rf ~-jp2",
+            ".zed_server/forgekairos-remote-server-dev-$HOME-jp2",
+            ".zed_server/forgekairos-remote-server-dev-a b-jp2",
+            ".zed_server/forgekairos-remote-server-dev-\"x\"-jp2",
         ] {
             assert!(removal(RemoteOs::Linux, Some(kept)).is_none(), "{kept}");
         }
@@ -1114,7 +1128,10 @@ mod tests {
             "{message}"
         );
         // Nothing to remove on this connection, so the user is told how.
-        assert!(message.contains("zed-remote-server-"), "{message}");
+        assert!(
+            message.contains("whose names start with forgekairos-remote-server-,"),
+            "{message}"
+        );
         assert!(only_the_first_steps(&received), "{received:?}");
     }
 

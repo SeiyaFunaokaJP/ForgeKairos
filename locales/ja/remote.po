@@ -77,8 +77,8 @@ msgstr "リモートホストに curl も wget もありません (リモート�
 msgid "No remote server binary is available. Not on the remote at {remote_path} / bundled artifact `{artifact}` not found in {search_dirs} / build from source: {source_build_status}. The automatic build fails when cmake or zig is not on PATH. Building with script\\build-dev.ps1 prepares the bundled artifact."
 msgstr "リモートサーバーのバイナリが用意できませんでした。リモート側 {remote_path} に無し / 同梱アーティファクト `{artifact}` が {search_dirs} に無し / ソースからのビルド: {source_build_status}。cmake や zig が PATH に無いと自動ビルドが失敗します。script\\build-dev.ps1 でビルドすると同梱アーティファクトを用意できます。"
 
-msgid "On the remote host, delete the files in {folder} whose names start with zed-remote-server-, then reconnect."
-msgstr "接続先の {folder} から名前が zed-remote-server- で始まるファイルを削除してから、接続し直してください。"
+msgid "On the remote host, delete the files in {folder} whose names start with {prefix}, then reconnect."
+msgstr "接続先の {folder} から名前が {prefix} で始まるファイルを削除してから、接続し直してください。"
 
 msgid "Opening workspace"
 msgstr "ワークスペースを開いています"

@@ -26,6 +26,7 @@ doctest = true
 [dependencies]
 anyhow.workspace = true
 async-compression.workspace = true
+branding.workspace = true
 bytes.workspace = true
 derive_more.workspace = true
 futures.workspace = true

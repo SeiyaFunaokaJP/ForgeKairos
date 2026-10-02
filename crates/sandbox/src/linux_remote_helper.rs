@@ -90,6 +90,7 @@ use std::time::{Duration, Instant};
 use crate::RemoteSandboxNetwork;
 use crate::linux_bubblewrap::install_command_seccomp_filter;
 use crate::protected_paths::{
+    LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE, LEGACY_WSL_SANDBOX_HELPER_HOME_RELATIVE,
     SANDBOXED_AGENT_CONFIG_HOME_RELATIVE, UNIX_PROTECTED_HOME_RELATIVE,
     WSL_SANDBOX_HELPER_HOME_RELATIVE, account_from_passwd, app_state_directories_from_environment,
     around_reachable, git_config_directory_from_environment, home_dir_from_account,
@@ -610,21 +611,9 @@ fn run_helper(mut invocation: Stage1Invocation) -> ! {
     // does not narrow (see [`holds_writable_root`]).
     // Where the enclosure around it is, so that the protection and the one
     // root it steps aside for are decided about the same directory.
-    let agent_configs = hidden_home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
-    if !invocation.protected_paths.contains(&agent_configs) {
-        invocation.protected_paths.push(agent_configs);
-    }
-    if invocation.on_wsl {
-        // Where the Windows side installs this very binary, stages agent
-        // binaries, and keeps the IDE bridge's sockets and lock files:
-        // overwriting any of it runs code outside the sandbox on the next
-        // command (the WSL counterpart of `.zed_server`, which the list above
-        // already covers). Protected whenever the helper runs on a WSL kernel,
-        // `--wsl` or not — a WSL-remote project comes in over the SSH protocol
-        // without `--wsl` yet shares the same install root.
-        let install_root = home.join(WSL_SANDBOX_HELPER_HOME_RELATIVE);
-        if !invocation.protected_paths.contains(&install_root) {
-            invocation.protected_paths.push(install_root);
+    for path in helper_protected_directories(&home, &hidden_home, invocation.on_wsl) {
+        if !invocation.protected_paths.contains(&path) {
+            invocation.protected_paths.push(path);
         }
     }
     // ADR-F49 decision 11: what the command may not read, taken here from the
@@ -3926,7 +3915,7 @@ struct FilesystemPlan {
 /// entry that leads to it (see [`plan_subtree`]). Every directory on that
 /// chain then neither takes new entries nor gives any up. That is what stops a
 /// command from renaming `~/.cache` away and recreating
-/// `~/.cache/zed-jp-enhance/sandbox/<key>/zed-remote-server` with a binary of
+/// `~/.cache/forgekairos/sandbox/<key>/zed-remote-server` with a binary of
 /// its own, from creating a missing `~/.bash_login` or `.git`, and from
 /// replacing a protected symlink. Existing entries of a carved directory, and
 /// everything below them, stay writable.
@@ -3979,7 +3968,7 @@ fn plan_filesystem(
 
 /// Whether another writable root lies inside the protected entry at
 /// `location`. A read-only bind of the entry would make that root read-only
-/// too — the WSL home opened as a project holds `~/.zed-jp-enhance-claude`,
+/// too — the WSL home opened as a project holds `~/.forgekairos-claude`,
 /// and the sandboxed Claude Code session's own configuration below it — so
 /// such an entry is carved instead: no grant reaches it from the outer root,
 /// and the inner root keeps its own.
@@ -5909,11 +5898,56 @@ fn path_is_on_windows_fs(path: &Path) -> bool {
     }
 }
 
+/// What the helper protects beyond the home-relative list: the sandboxed
+/// agents' configuration under `hidden_home` and, on a WSL kernel, the
+/// directory the Windows side installs the helper in under `home`.
+///
+/// The configuration directory under the name builds from before the rename
+/// used is protected whole: it holds the same tokens and hooks, and no session
+/// of this build is granted anything inside it.
+///
+/// The install directory is where the Windows side installs this very binary,
+/// stages agent binaries, and keeps the IDE bridge's sockets and lock files:
+/// overwriting any of it runs code outside the sandbox on the next command
+/// (the WSL counterpart of `.zed_server`, which the home-relative list already
+/// covers). Protected whenever the helper runs on a WSL kernel, `--wsl` or not
+/// — a WSL-remote project comes in over the SSH protocol without `--wsl` yet
+/// shares the same install root. A build from before the rename installs and
+/// runs its helper under the old name.
+fn helper_protected_directories(home: &Path, hidden_home: &Path, on_wsl: bool) -> Vec<PathBuf> {
+    let mut directories = vec![
+        hidden_home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE),
+        hidden_home.join(LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE),
+    ];
+    if on_wsl {
+        directories.push(home.join(WSL_SANDBOX_HELPER_HOME_RELATIVE));
+        directories.push(home.join(LEGACY_WSL_SANDBOX_HELPER_HOME_RELATIVE));
+    }
+    directories
+}
+
 /// `--wsl-sandbox-probe`: report on one [`WSL_PROBE_RESULT_PREFIX`] line the
 /// Landlock ABI and whether a user + network namespace can be created — the
 /// two things a WSL kernel can lack — so that the Windows side can explain the
 /// problem before any command is run.
 fn run_wsl_probe() -> ! {
+    // The Windows side probes the helper before the first sandboxed command
+    // and the first agent session in the distro, which makes this the place to
+    // carry the agents' configuration over from the name builds before the
+    // rename gave it. A failure only costs the agents their sign-in.
+    match crate::protected_paths::migrate_legacy_sandboxed_agent_configuration() {
+        Ok(crate::protected_paths::LegacyAgentConfigurationMigration::Moved) => {
+            eprintln!("moved the sandboxed agents' configuration to its new name");
+        }
+        Ok(crate::protected_paths::LegacyAgentConfigurationMigration::NotOwnDirectory) => {
+            eprintln!(
+                "not moving the sandboxed agents' configuration: the old one is not a \
+                 directory of this account's own"
+            );
+        }
+        Ok(_) => {}
+        Err(error) => eprintln!("could not move the sandboxed agents' configuration: {error:#}"),
+    }
     let namespaces = match probe_user_and_network_namespaces() {
         Ok(()) => "ok".to_string(),
         Err(error) => error,
@@ -7125,6 +7159,33 @@ mod tests {
 
     /// The built-in set is resolved against `$HOME`, including the multi-segment
     /// and file entries, and a trailing separator on `$HOME` changes nothing.
+    /// The agents' configuration and the WSL install directory are protected
+    /// under the current name and under the one builds from before the rename
+    /// used, spelled out so that dropping either fails here.
+    #[test]
+    fn the_helper_protects_the_agent_configuration_and_install_root_under_both_names() {
+        let home = Path::new("/home/u");
+        let hidden_home = Path::new("/fake/u");
+        let off_wsl = helper_protected_directories(home, hidden_home, false);
+        assert_eq!(
+            off_wsl,
+            [
+                PathBuf::from("/fake/u/.forgekairos-claude"),
+                PathBuf::from("/fake/u/.zed-jp-enhance-claude"),
+            ]
+        );
+        let on_wsl = helper_protected_directories(home, hidden_home, true);
+        assert_eq!(
+            on_wsl,
+            [
+                PathBuf::from("/fake/u/.forgekairos-claude"),
+                PathBuf::from("/fake/u/.zed-jp-enhance-claude"),
+                PathBuf::from("/home/u/.cache/forgekairos"),
+                PathBuf::from("/home/u/.cache/zed-jp-enhance"),
+            ]
+        );
+    }
+
     #[test]
     fn builtin_protected_paths_resolve_against_home() {
         let paths = remote_builtin_protected_paths(Path::new("/home/u"));
@@ -7134,6 +7195,7 @@ mod tests {
             "/home/u/.config/gh",
             "/home/u/.config/fish",
             "/home/u/.docker/config.json",
+            "/home/u/.local/share/forgekairos",
             "/home/u/.local/share/zed-jp-enhance",
             "/home/u/.local/bin",
             "/home/u/.cargo/bin",
@@ -7932,7 +7994,7 @@ mod tests {
         unsafe { std::env::remove_var("XDG_DATA_HOME") };
         assert_eq!(
             remote_agent_runtime_data_directory(&home),
-            home.join(".local/share/zed-jp-enhance"),
+            home.join(".local/share").join(crate::APP_DIRECTORY_NAME),
             "with XDG_DATA_HOME unset the home-relative default is unchanged"
         );
 
@@ -7941,7 +8003,7 @@ mod tests {
         let data = remote_agent_runtime_data_directory(&home);
         assert_eq!(
             data,
-            moved.join("zed-jp-enhance"),
+            moved.join(crate::APP_DIRECTORY_NAME),
             "the helper follows XDG_DATA_HOME, not the home-relative default"
         );
 

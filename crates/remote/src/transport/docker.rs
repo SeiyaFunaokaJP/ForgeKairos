@@ -218,18 +218,13 @@ impl DockerExecConnection {
             .remote_platform
             .context("No remote platform defined; cannot proceed.")?;
 
-        let version_str = match release_channel {
+        let binary_name = match release_channel {
             ReleaseChannel::Nightly => {
                 let commit = commit.map(|s| s.full()).unwrap_or_default();
-                super::server_binary_version(release_channel, format!("{}-{}", version, commit))
+                super::server_binary_name(release_channel, format!("{}-{}", version, commit))
             }
-            _ => super::server_binary_version(release_channel, version),
+            _ => super::server_binary_name(release_channel, version),
         };
-        let binary_name = format!(
-            "zed-remote-server-{}-{}",
-            release_channel.dev_name(),
-            version_str
-        );
         let dst_path =
             paths::remote_server_dir_relative().join(RelPath::from_unix_str(&binary_name).unwrap());
 

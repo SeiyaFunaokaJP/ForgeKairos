@@ -267,6 +267,71 @@ pub(crate) fn server_binary_version(
     )
 }
 
+/// The part of the server binary's name that is the same for every version of
+/// `release_channel` this build installs.
+pub fn server_binary_name_prefix(release_channel: release_channel::ReleaseChannel) -> String {
+    format!(
+        "{}{}-",
+        branding::CURRENT.remote_server_binary_prefix,
+        release_channel.dev_name()
+    )
+}
+
+/// The name the server binary of `release_channel` and `version` is installed
+/// under in the remote's server directory (without `.exe`).
+pub(crate) fn server_binary_name(
+    release_channel: release_channel::ReleaseChannel,
+    version: impl std::fmt::Display,
+) -> String {
+    format!(
+        "{}{}",
+        server_binary_name_prefix(release_channel),
+        server_binary_version(release_channel, version)
+    )
+}
+
+/// What the server binaries of `release_channel` that earlier builds of this
+/// fork installed under its earlier names start with.
+///
+/// Upstream Zed installs its own server in the same directory, under a name
+/// that starts with one of these too; only the `-jp<revision>` ending
+/// ([`is_fork_server_binary_name`]) tells the fork's apart from it.
+pub fn legacy_server_binary_name_prefixes(
+    release_channel: release_channel::ReleaseChannel,
+) -> Vec<String> {
+    let mut prefixes = Vec::new();
+    for names in branding::LEGACY {
+        if names.remote_server_binary_prefix == branding::CURRENT.remote_server_binary_prefix {
+            continue;
+        }
+        let prefix = format!(
+            "{}{}-",
+            names.remote_server_binary_prefix,
+            release_channel.dev_name()
+        );
+        if !prefixes.contains(&prefix) {
+            prefixes.push(prefix);
+        }
+    }
+    prefixes
+}
+
+/// Whether `file_name` is a server binary some build of this fork installed:
+/// it starts with one of the fork's prefixes, current or earlier, and ends
+/// with the `-jp<revision>` [`server_binary_version`] gives every one of them
+/// (followed by `.exe` on Windows). Upstream Zed's own server binary, which
+/// shares the directory and the earlier prefix, ends with its version.
+pub fn is_fork_server_binary_name(file_name: &str) -> bool {
+    let has_fork_prefix = std::iter::once(&branding::CURRENT)
+        .chain(branding::LEGACY)
+        .any(|names| file_name.starts_with(names.remote_server_binary_prefix));
+    let stem = file_name.strip_suffix(".exe").unwrap_or(file_name);
+    let has_revision_suffix = stem.rsplit_once("-jp").is_some_and(|(_, revision)| {
+        !revision.is_empty() && revision.bytes().all(|byte| byte.is_ascii_digit())
+    });
+    has_fork_prefix && has_revision_suffix
+}
+
 /// File names of a remote server artifact for `platform`, most preferred first.
 ///
 /// The compressed name is exactly what `script/bundle-linux` and
@@ -1081,6 +1146,55 @@ mod tests {
             os: RemoteOs::Linux,
             arch: RemoteArch::X86_64,
         }
+    }
+
+    /// Upstream Zed installs its server in the same `~/.zed_server` under the
+    /// prefix this fork used to have, so the names this fork may treat as its
+    /// own are told apart by their `-jp<revision>` ending.
+    #[test]
+    fn test_is_fork_server_binary_name() {
+        for own in [
+            "forgekairos-remote-server-stable-1.21.0-jp2",
+            "forgekairos-remote-server-stable-1.21.0-jp2.exe",
+            "forgekairos-remote-server-dev-build-jp2",
+            "forgekairos-remote-server-nightly-1.21.0+nightly.0123abc-jp12",
+            "zed-remote-server-stable-1.17.2-jp1",
+            "zed-remote-server-dev-build-jp2",
+            "zed-remote-server-stable-1.17.2-jp2.exe",
+        ] {
+            assert!(is_fork_server_binary_name(own), "{own}");
+        }
+        for upstream_or_other in [
+            "zed-remote-server-stable-1.21.0",
+            "zed-remote-server-stable-1.21.0.exe",
+            "zed-remote-server-dev-build",
+            "zed-remote-server-preview-1.22.0-pre",
+            "zed-remote-server-stable-1.17.2-jp",
+            "zed-remote-server-stable-1.17.2-jp2-download-7.gz",
+            "zed-remote-server-stable-1.17.2-jpx",
+            "download-7-forgekairos-remote-server-stable-1.21.0-jp2",
+            "slirp4netns",
+        ] {
+            assert!(
+                !is_fork_server_binary_name(upstream_or_other),
+                "{upstream_or_other}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_server_binary_name_uses_the_current_prefix() {
+        assert_eq!(
+            server_binary_name(release_channel::ReleaseChannel::Stable, "1.21.0"),
+            format!(
+                "forgekairos-remote-server-stable-1.21.0-jp{}",
+                rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
+            )
+        );
+        assert_eq!(
+            legacy_server_binary_name_prefixes(release_channel::ReleaseChannel::Dev),
+            ["zed-remote-server-dev-"]
+        );
     }
 
     #[cfg(all(windows, any(debug_assertions, feature = "build-remote-server-binary")))]

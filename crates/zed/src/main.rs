@@ -214,6 +214,26 @@ fn main() {
 
     let args = Args::parse();
 
+    // Before anything resolves a directory, including the crash handler below.
+    // A helper process must not move the directories out from under the
+    // instance it serves, and a launch with `--user-data-dir` (which leaves the
+    // state and temporary directories in the real places) must not move the
+    // real ones.
+    let is_helper_process = args.crash_handler.is_some()
+        || args.printenv
+        || args.dump_all_actions
+        || args.dump_settings_schema;
+    #[cfg(not(target_os = "windows"))]
+    let is_helper_process = is_helper_process || args.askpass.is_some();
+    #[cfg(target_os = "windows")]
+    let is_helper_process = is_helper_process || args.record_etw_trace;
+    let legacy_migration = if is_helper_process || args.user_data_dir.is_some() {
+        paths::resolve_app_dirs_without_migrating();
+        None
+    } else {
+        Some(paths::migrate_legacy_app_dirs())
+    };
+
     // `zed --askpass` Makes zed operate in nc/netcat mode for use with askpass
     #[cfg(not(target_os = "windows"))]
     if let Some(socket) = &args.askpass {
@@ -315,6 +335,9 @@ fn main() {
             eprintln!("Could not open log file: {}... Defaulting to stdout", err);
             zlog::init_output_stdout();
         };
+    }
+    if let Some(legacy_migration) = &legacy_migration {
+        legacy_migration.log();
     }
     ztracing::init();
 
@@ -509,6 +532,12 @@ fn main() {
         zed_actions::init();
 
         release_channel::init(app_version, cx);
+        // Before any window opens: Windows groups taskbar buttons and attributes
+        // notifications by this ID, which the installer also gives the shortcuts.
+        cx.set_app_identity(
+            release_channel::RELEASE_CHANNEL.branded(&branding::CURRENT.app_user_model_ids),
+            release_channel::RELEASE_CHANNEL.display_name(),
+        );
         gpui_tokio::init(cx);
         if let Some(app_commit_sha) = app_commit_sha {
             AppCommitSha::set_global(app_commit_sha, cx);
@@ -703,6 +732,9 @@ fn main() {
             session: app_session,
         });
         AppState::set_global(app_state.clone(), cx);
+        if let Some(legacy_migration) = &legacy_migration {
+            show_legacy_directories_notification(legacy_migration, cx);
+        }
 
         watcher_debug::init(app_state.clone(), cx);
         auto_update::init(client.clone(), cx);
@@ -1700,6 +1732,78 @@ fn init_paths() -> HashMap<io::ErrorKind, Vec<&'static Path>> {
     })
 }
 
+fn show_legacy_directories_notification(legacy_migration: &paths::LegacyMigration, cx: &mut App) {
+    let created_again = legacy_migration.legacy_directories_created_again();
+    if let Some(legacy_name) = created_again.first().map(|directory| directory.legacy_name) {
+        let directories = created_again
+            .iter()
+            .map(|directory| {
+                format!(
+                    "{} → {}",
+                    directory.legacy.display(),
+                    directory.current.display()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        workspace::notifications::show_app_notification(
+            NotificationId::composite::<paths::LegacyMigration>("created-again"),
+            cx,
+            move |cx| {
+                let message = i18n::t!(
+                    "The older version ({}) has created folders again that this version no \
+                     longer uses, so changes made in them are not reflected here:\n{}\n\n(older \
+                     version's folder → folder this version uses)",
+                    legacy_name,
+                    directories
+                );
+                cx.new(|cx| {
+                    workspace::notifications::simple_message_notification::MessageNotification::new(
+                        message, cx,
+                    )
+                })
+            },
+        );
+    }
+
+    let directories_in_use = legacy_migration.legacy_directories_in_use();
+    if directories_in_use.is_empty() {
+        return;
+    }
+    let directories = directories_in_use
+        .iter()
+        .map(|directory| directory.legacy.display().to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let legacy_build_is_running = legacy_migration.legacy_build_is_running();
+    workspace::notifications::show_app_notification(
+        NotificationId::unique::<paths::LegacyMigration>(),
+        cx,
+        move |cx| {
+            let message = if legacy_build_is_running {
+                i18n::t!(
+                    "An older version is still running, so this session keeps using the older \
+                     version's data folders:\n{}\n\nQuit the older version and restart to move \
+                     them to the new folders.",
+                    directories
+                )
+            } else {
+                i18n::t!(
+                    "The data folders of the older version could not be moved to the new \
+                     folders, so this session keeps using them:\n{}\n\nClose every program that \
+                     may be using them and restart to try again.",
+                    directories
+                )
+            };
+            cx.new(|cx| {
+                workspace::notifications::simple_message_notification::MessageNotification::new(
+                    message, cx,
+                )
+            })
+        },
+    );
+}
+
 pub(crate) static FORCE_CLI_MODE: LazyLock<bool> = LazyLock::new(|| {
     let env_var = std::env::var(FORCE_CLI_MODE_ENV_VAR_NAME).ok().is_some();
     unsafe { std::env::remove_var(FORCE_CLI_MODE_ENV_VAR_NAME) };
@@ -1838,7 +1942,7 @@ fn parse_url_arg(arg: &str, cx: &App) -> String {
         Ok(path) => format!("file://{}", path.display()),
         Err(_) => {
             if arg.starts_with("file://")
-                || arg.starts_with("zed://")
+                || crate::zed::to_internal_url(arg).starts_with("zed://")
                 || arg.starts_with("zed-cli://")
                 || arg.starts_with("ssh://")
                 || parse_zed_link(arg, cx).is_some()

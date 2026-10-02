@@ -1,7 +1,7 @@
 mod app_menus;
 pub mod edit_prediction_registry;
 mod localized_menus;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 pub(crate) mod mac_only_instance;
 mod migrate;
 #[cfg(target_os = "macos")]
@@ -11,6 +11,8 @@ mod open_url_modal;
 mod quick_action_bar;
 pub mod remote_debug;
 pub mod telemetry_log;
+#[cfg(test)]
+mod unix_bundle_names;
 #[cfg(all(target_os = "macos", feature = "visual-tests"))]
 pub mod visual_tests;
 #[cfg(target_os = "windows")]

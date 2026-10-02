@@ -1,7 +1,7 @@
 use std::{
     ffi::{OsStr, OsString},
     os::windows::ffi::OsStrExt,
-    path::Path,
+    path::{Path, PathBuf},
     sync::LazyLock,
     time::{Duration, Instant},
 };
@@ -163,19 +163,83 @@ impl Job {
     }
 }
 
-#[cfg(not(test))]
-pub(crate) static JOBS: LazyLock<[Job; 22]> = LazyLock::new(|| {
+/// The executable the installer puts in the app directory, which is launched
+/// once the update is in place.
+const EXECUTABLE: &str = branding::concat_const!(branding::CURRENT.executable_stem, ".exe");
+
+/// The files an update replaces, relative to the app directory: the
+/// executable, the command-line launcher and its shell script. The names an
+/// earlier build of this fork installed under follow, because the build being
+/// updated may be one of those and its files have to be moved out of the way
+/// just the same.
+fn files_replaced_by_update() -> Vec<String> {
+    replaced_files(std::iter::once(&branding::CURRENT).chain(branding::LEGACY))
+}
+
+fn replaced_files<'a>(name_sets: impl IntoIterator<Item = &'a branding::Names>) -> Vec<String> {
+    let mut files: Vec<String> = Vec::new();
+    for names in name_sets {
+        for file in [
+            format!("{}.exe", names.executable_stem),
+            format!("bin\\{}.exe", names.cli_name),
+            format!("bin\\{}", names.cli_name),
+        ] {
+            // Windows file names are case-insensitive, so a name that differs
+            // only in case is the same file and must be moved only once.
+            if !files.iter().any(|known| known.eq_ignore_ascii_case(&file)) {
+                files.push(file);
+            }
+        }
+    }
+    files
+}
+
+/// What else the installer puts in `bin` (`"$innoDir\bin\..."` in
+/// `script/bundle-windows.ps1`): the remote servers and slirp4netns uploaded to
+/// remote hosts, and clang-format. An update stages them in `install\bin` like
+/// the launchers; left there, they would be deleted with it, and the previous
+/// release's remote server, whose version no longer matches the client's, would
+/// keep being uploaded.
+const BUNDLED_BIN_FILES: [&str; 5] = [
+    "bin\\zed-remote-server-windows-x86_64.zip",
+    "bin\\zed-remote-server-windows-aarch64.zip",
+    "bin\\zed-remote-server-linux-x86_64.gz",
+    "bin\\slirp4netns-linux-x86_64",
+    "bin\\clang-format.exe",
+];
+
+/// The helper runs once per update and exits, so the few paths built from
+/// `branding` at runtime are leaked to get the `'static` lifetime [`Job`] takes.
+fn leak(path: String) -> &'static Path {
+    Box::leak(PathBuf::from(path).into_boxed_path())
+}
+
+fn update_jobs() -> Vec<Job> {
     fn p(value: &str) -> &Path {
         Path::new(value)
     }
-    [
+    let cli = format!("bin\\{}.exe", branding::CURRENT.cli_name);
+    let cli_script = format!("bin\\{}", branding::CURRENT.cli_name);
+    let mut jobs = vec![
         // Move old files
         // Not deleting because installing new files can fail
         Job::mkdir(p("old")),
-        Job::move_file(p("Zed.exe"), p("old\\Zed.exe")),
         Job::mkdir(p("old\\bin")),
-        Job::move_file(p("bin\\Zed.exe"), p("old\\bin\\Zed.exe")),
-        Job::move_file(p("bin\\zed"), p("old\\bin\\zed")),
+    ];
+    // A build from before the rename has its own names instead of the
+    // current ones, so none of them is required to exist.
+    jobs.extend(files_replaced_by_update().into_iter().map(|file| {
+        let moved_to = leak(format!("old\\{file}"));
+        Job::move_if_exists(leak(file), moved_to)
+    }));
+    // A file the new release no longer ships goes too, as it would be absent
+    // from a fresh install of it.
+    jobs.extend(
+        BUNDLED_BIN_FILES
+            .into_iter()
+            .map(|file| Job::move_if_exists(Path::new(file), leak(format!("old\\{file}")))),
+    );
+    jobs.extend([
         //
         // TODO: remove after a few weeks once everyone is on the new version and this file never exists
         Job::move_if_exists(p("OpenConsole.exe"), p("old\\OpenConsole.exe")),
@@ -189,9 +253,16 @@ pub(crate) static JOBS: LazyLock<[Job; 22]> = LazyLock::new(|| {
         //
         Job::move_file(p("conpty.dll"), p("old\\conpty.dll")),
         // Copy new files
-        Job::move_file(p("install\\Zed.exe"), p("Zed.exe")),
-        Job::move_file(p("install\\bin\\Zed.exe"), p("bin\\Zed.exe")),
-        Job::move_file(p("install\\bin\\zed"), p("bin\\zed")),
+        Job::move_file(leak(format!("install\\{EXECUTABLE}")), p(EXECUTABLE)),
+        Job::move_file(leak(format!("install\\{cli}")), leak(cli)),
+        Job::move_file(leak(format!("install\\{cli_script}")), leak(cli_script)),
+    ]);
+    jobs.extend(
+        BUNDLED_BIN_FILES
+            .into_iter()
+            .map(|file| Job::move_if_exists(leak(format!("install\\{file}")), Path::new(file))),
+    );
+    jobs.extend([
         //
         Job::mkdir_if_exists(p("x64"), p("install\\x64")),
         Job::mkdir_if_exists(p("arm64"), p("install\\arm64")),
@@ -210,8 +281,12 @@ pub(crate) static JOBS: LazyLock<[Job; 22]> = LazyLock::new(|| {
         Job::rmdir_nofail(p("install")),
         // Cleanup old installation
         Job::rmdir_nofail(p("old")),
-    ]
-});
+    ]);
+    jobs
+}
+
+#[cfg(not(test))]
+pub(crate) static JOBS: LazyLock<Vec<Job>> = LazyLock::new(update_jobs);
 
 #[cfg(test)]
 pub(crate) static JOBS: LazyLock<[Job; 9]> = LazyLock::new(|| {
@@ -278,12 +353,11 @@ pub(crate) static JOBS: LazyLock<[Job; 9]> = LazyLock::new(|| {
 /// the retry logic.
 fn release_file_handles(app_dir: &Path) -> Result<()> {
     // Files that commonly get locked by Explorer or other processes
-    let files_to_release = [
-        app_dir.join("Zed.exe"),
-        app_dir.join("bin\\Zed.exe"),
-        app_dir.join("bin\\zed"),
-        app_dir.join("conpty.dll"),
-    ];
+    let files_to_release: Vec<PathBuf> = files_replaced_by_update()
+        .into_iter()
+        .chain(["conpty.dll".to_string()])
+        .map(|file| app_dir.join(file))
+        .collect();
 
     log::info!("Attempting to release file handles using Restart Manager...");
 
@@ -365,7 +439,7 @@ fn release_file_handles(app_dir: &Path) -> Result<()> {
 
 #[allow(clippy::disallowed_methods, reason = "doesn't run in the main binary")]
 fn zed_launch_command(app_dir: &Path, launch_arguments: &[OsString]) -> std::process::Command {
-    let mut command = std::process::Command::new(app_dir.join("Zed.exe"));
+    let mut command = std::process::Command::new(app_dir.join(EXECUTABLE));
     command.args(launch_arguments);
     command
 }
@@ -452,7 +526,10 @@ pub(crate) fn perform_update(
 mod test {
     use std::{ffi::OsString, path::Path};
 
-    use super::{perform_update, zed_launch_command};
+    use super::{
+        EXECUTABLE, files_replaced_by_update, perform_update, replaced_files, update_jobs,
+        zed_launch_command,
+    };
 
     #[test]
     fn test_zed_launch_command_preserves_arguments() {
@@ -464,7 +541,9 @@ mod test {
 
         assert_eq!(
             command.get_program(),
-            Path::new(r"C:\Program Files\Zed\Zed.exe").as_os_str()
+            Path::new(r"C:\Program Files\Zed")
+                .join(EXECUTABLE)
+                .as_os_str()
         );
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
@@ -499,5 +578,175 @@ mod test {
             ret.is_err_and(|e| e.to_string().as_str() == "Autoupdate failed, rollback successful")
         );
         assert!(std::env::var("ZED_AUTO_UPDATE_RB").is_ok_and(|e| e == "rollback1"));
+    }
+
+    fn write_file(app_dir: &Path, file: &str, contents: &str) {
+        let path = app_dir.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+
+    /// What the installer leaves in `install\` for the helper to move in.
+    fn write_staged_update(app_dir: &Path) {
+        let cli_name = branding::CURRENT.cli_name;
+        write_file(app_dir, &format!("install\\{EXECUTABLE}"), "new");
+        write_file(app_dir, &format!("install\\bin\\{cli_name}.exe"), "new");
+        write_file(app_dir, &format!("install\\bin\\{cli_name}"), "new");
+        write_file(app_dir, "install\\conpty.dll", "new");
+        write_file(app_dir, "conpty.dll", "old");
+    }
+
+    fn apply_update_jobs(app_dir: &Path) {
+        for job in update_jobs() {
+            (job.apply)(app_dir).unwrap();
+        }
+    }
+
+    fn assert_updated(app_dir: &Path) {
+        let cli_name = branding::CURRENT.cli_name;
+        for file in [
+            EXECUTABLE.to_string(),
+            format!("bin\\{cli_name}.exe"),
+            format!("bin\\{cli_name}"),
+            "conpty.dll".to_string(),
+        ] {
+            assert_eq!(
+                std::fs::read_to_string(app_dir.join(&file)).unwrap(),
+                "new",
+                "{file}"
+            );
+        }
+        for directory in ["install", "old"] {
+            assert!(
+                !app_dir.join(directory).exists(),
+                "{directory} is left behind"
+            );
+        }
+    }
+
+    #[test]
+    fn an_update_replaces_the_current_files() {
+        let app_dir = tempfile::tempdir().unwrap();
+        let app_dir = app_dir.path();
+        let cli_name = branding::CURRENT.cli_name;
+        write_file(app_dir, EXECUTABLE, "old");
+        write_file(app_dir, &format!("bin\\{cli_name}.exe"), "old");
+        write_file(app_dir, &format!("bin\\{cli_name}"), "old");
+        write_staged_update(app_dir);
+
+        apply_update_jobs(app_dir);
+
+        assert_updated(app_dir);
+    }
+
+    #[test]
+    fn an_update_from_a_build_before_the_rename_moves_its_files_out() {
+        for legacy in branding::LEGACY {
+            let app_dir = tempfile::tempdir().unwrap();
+            let app_dir = app_dir.path();
+            let legacy_files = [
+                format!("{}.exe", legacy.executable_stem),
+                format!("bin\\{}.exe", legacy.cli_name),
+                format!("bin\\{}", legacy.cli_name),
+            ];
+            for file in &legacy_files {
+                write_file(app_dir, file, "old");
+            }
+            write_staged_update(app_dir);
+
+            apply_update_jobs(app_dir);
+
+            assert_updated(app_dir);
+            for file in &legacy_files {
+                assert!(!app_dir.join(file).exists(), "{file} is left behind");
+            }
+        }
+    }
+
+    /// Every file `script/bundle-windows.ps1` puts in the installer's `bin`,
+    /// for each architecture it builds.
+    fn files_the_installer_puts_in_bin() -> Vec<String> {
+        let script_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../script/bundle-windows.ps1");
+        let script = std::fs::read_to_string(&script_path).unwrap();
+        let mut files: Vec<String> = Vec::new();
+        for rest in script.split("\"$innoDir\\bin\\").skip(1) {
+            let (name, _) = rest.split_once('"').unwrap();
+            for architecture in ["x86_64", "aarch64"] {
+                let file = format!("bin\\{}", name.replace("$Architecture", architecture));
+                if !files.contains(&file) {
+                    files.push(file);
+                }
+            }
+        }
+        files
+    }
+
+    #[test]
+    fn an_update_replaces_everything_the_installer_puts_in_bin() {
+        let files = files_the_installer_puts_in_bin();
+        assert!(
+            files.len() > 3,
+            "bundle-windows.ps1 puts more than the launchers in bin: {files:?}"
+        );
+        let app_dir = tempfile::tempdir().unwrap();
+        let app_dir = app_dir.path();
+        write_staged_update(app_dir);
+        for file in &files {
+            write_file(app_dir, file, "old");
+            write_file(app_dir, &format!("install\\{file}"), "new");
+        }
+
+        apply_update_jobs(app_dir);
+
+        assert_updated(app_dir);
+        for file in &files {
+            assert_eq!(
+                std::fs::read_to_string(app_dir.join(file)).unwrap(),
+                "new",
+                "{file} is installed to bin but not replaced by an update"
+            );
+        }
+    }
+
+    #[test]
+    fn a_bundled_file_the_update_does_not_ship_is_removed() {
+        let app_dir = tempfile::tempdir().unwrap();
+        let app_dir = app_dir.path();
+        write_staged_update(app_dir);
+        write_file(app_dir, "bin\\slirp4netns-linux-x86_64", "old");
+
+        apply_update_jobs(app_dir);
+
+        assert_updated(app_dir);
+        assert!(!app_dir.join("bin\\slirp4netns-linux-x86_64").exists());
+    }
+
+    #[test]
+    fn each_replaced_file_is_moved_once() {
+        let current = branding::CURRENT;
+        let differing_only_in_case = branding::Names {
+            executable_stem: "FORGEKAIROS-CASE",
+            cli_name: "forgekairos-case",
+            ..current
+        };
+        let same_file_in_other_case = branding::Names {
+            executable_stem: "forgekairos-case",
+            cli_name: "FORGEKAIROS-CASE",
+            ..current
+        };
+        let files = replaced_files([&differing_only_in_case, &same_file_in_other_case]);
+        assert_eq!(files.len(), 3, "{files:?}");
+
+        let files = files_replaced_by_update();
+        for (index, file) in files.iter().enumerate() {
+            assert!(
+                !files[..index]
+                    .iter()
+                    .any(|earlier| earlier.eq_ignore_ascii_case(file)),
+                "{file} is listed twice; the second move would fail"
+            );
+        }
+        assert!(files.iter().any(|file| file == EXECUTABLE));
     }
 }

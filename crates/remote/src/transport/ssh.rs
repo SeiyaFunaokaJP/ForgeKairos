@@ -1,7 +1,10 @@
 use crate::{
     RemoteArch, RemoteClientDelegate, RemoteOs, RemotePlatform,
     remote_client::{CommandTemplate, Interactive, RemoteConnection, RemoteConnectionOptions},
-    transport::{find_bundled_server_artifact, parse_platform, parse_shell},
+    transport::{
+        find_bundled_server_artifact, legacy_server_binary_name_prefixes, parse_platform,
+        parse_shell, server_binary_name_prefix,
+    },
 };
 use anyhow::{Context as _, Result, anyhow};
 use async_trait::async_trait;
@@ -1074,6 +1077,7 @@ impl SshRemoteConnection {
         // channel that have piled up on the remote.
         let (binary_name_prefix, binary_name) =
             server_binary_names(release_channel, &version, self.ssh_platform.os.is_windows());
+        let legacy_binary_name_prefixes = legacy_server_binary_name_prefixes(release_channel);
         let dst_path = paths::remote_server_dir_relative().join(
             RelPath::from_unix_str(&binary_name)
                 .context("building the remote server binary path")?,
@@ -1129,8 +1133,12 @@ impl SshRemoteConnection {
                 {
                     return Ok(dst_path.into());
                 }
-                self.remove_stale_server_files(&binary_name_prefix, &binary_name)
-                    .await;
+                self.remove_stale_server_files(
+                    &binary_name_prefix,
+                    &legacy_binary_name_prefixes,
+                    &binary_name,
+                )
+                .await;
                 self.upload_and_install_server_binary(&remote_server_path, &dst_path, delegate, cx)
                     .await
                     .context("installing locally built server binary")?;
@@ -1168,8 +1176,12 @@ impl SshRemoteConnection {
                 "remote server binary source: artifact bundled with this app, {}",
                 bundled_path.display()
             );
-            self.remove_stale_server_files(&binary_name_prefix, &binary_name)
-                .await;
+            self.remove_stale_server_files(
+                &binary_name_prefix,
+                &legacy_binary_name_prefixes,
+                &binary_name,
+            )
+            .await;
             self.upload_and_install_server_binary(&bundled_path, &dst_path, delegate, cx)
                 .await
                 .context("installing bundled server binary")?;
@@ -1222,8 +1234,12 @@ impl SshRemoteConnection {
             ))
             .unwrap(),
         );
-        self.remove_stale_server_files(&binary_name_prefix, &binary_name)
-            .await;
+        self.remove_stale_server_files(
+            &binary_name_prefix,
+            &legacy_binary_name_prefixes,
+            &binary_name,
+        )
+        .await;
 
         if !self.socket.connection_options.upload_binary_over_ssh
             && let Some(url) = delegate
@@ -1500,14 +1516,34 @@ impl SshRemoteConnection {
     /// right binary — that connection needs no extra SSH round trip — so the
     /// cleanup happens once per *install*, not once per connection.
     ///
+    /// The binaries this fork installed under its earlier names
+    /// (`legacy_binary_name_prefixes`) are removed too, but only those with the
+    /// fork's `-jp<revision>` ending: upstream Zed installs its own server in
+    /// the same directory under the same earlier prefix.
+    ///
     /// Best effort: failing to tidy up must not stop a connection that would
     /// otherwise work, so the error is logged rather than propagated.
-    async fn remove_stale_server_files(&self, binary_name_prefix: &str, keep_file_name: &str) {
+    async fn remove_stale_server_files(
+        &self,
+        binary_name_prefix: &str,
+        legacy_binary_name_prefixes: &[String],
+        keep_file_name: &str,
+    ) {
         let dir = remote_server_dir_relative().display(self.path_style());
         let script = if self.ssh_platform.os.is_windows() {
-            stale_server_files_cleanup_script_windows(&dir, binary_name_prefix, keep_file_name)
+            stale_server_files_cleanup_script_windows(
+                &dir,
+                binary_name_prefix,
+                legacy_binary_name_prefixes,
+                keep_file_name,
+            )
         } else {
-            stale_server_files_cleanup_script_posix(&dir, binary_name_prefix, keep_file_name)
+            stale_server_files_cleanup_script_posix(
+                &dir,
+                binary_name_prefix,
+                legacy_binary_name_prefixes,
+                keep_file_name,
+            )
         };
         let script = match script {
             Ok(script) => script,
@@ -2866,25 +2902,18 @@ fn server_binary_names(
     version: &Version,
     is_windows: bool,
 ) -> (String, String) {
-    let version_str = super::server_binary_version(release_channel, version);
     let prefix = server_binary_name_prefix(release_channel);
     let name = format!(
-        "{prefix}{version_str}{}",
+        "{}{}",
+        super::server_binary_name(release_channel, version),
         if is_windows { ".exe" } else { "" }
     );
     (prefix, name)
 }
 
-/// What every server binary's name begins with, whichever release channel and
-/// version installed it.
-const SERVER_BINARY_NAME_PREFIX: &str = "zed-remote-server-";
-
-/// The part of the server binary's name that is stable across every version of
-/// one release channel — the glob
-/// [`SshRemoteConnection::remove_stale_server_files`] sweeps with.
-fn server_binary_name_prefix(release_channel: ReleaseChannel) -> String {
-    format!("{SERVER_BINARY_NAME_PREFIX}{}-", release_channel.dev_name())
-}
+/// What every server binary this build installs begins with, whichever release
+/// channel and version installed it.
+const SERVER_BINARY_NAME_PREFIX: &str = branding::CURRENT.remote_server_binary_prefix;
 
 /// Renders a byte count for the connection dialog. Binary units, because that is
 /// what the rest of the tooling around this file (`ls -lh`, `df -h`) reports.
@@ -2905,7 +2934,8 @@ fn format_transfer_size(bytes: u64) -> String {
 /// *unquoted* — which is the whole point of the pattern — unless it is inert.
 ///
 /// Every caller passes a compile-time constant today (`.zed_server` from
-/// `paths`, and `zed-remote-server-{ReleaseChannel::dev_name}-`); this is what
+/// `paths`, and the `branding` prefixes followed by
+/// `{ReleaseChannel::dev_name}-`); this is what
 /// notices if one of them stops being one.
 fn is_inert_glob_fragment(fragment: &str) -> bool {
     !fragment.is_empty()
@@ -2921,23 +2951,58 @@ fn is_inert_glob_fragment(fragment: &str) -> bool {
 /// tests `-e` so that a glob that matched nothing (left literal by `sh`) is
 /// skipped, and ends in `exit 0` so that the last iteration's comparison does
 /// not decide the script's exit status.
+///
+/// A name under one of `legacy_binary_name_prefixes` is only removed when what
+/// follows its last `-jp` is a non-empty run of digits: the glob narrows the
+/// candidates to `…-jp<digit>…`, and the `case` refuses the rest, so upstream
+/// Zed's `zed-remote-server-<channel>-<version>` beside them stays.
 fn stale_server_files_cleanup_script_posix(
     dir: &str,
     binary_name_prefix: &str,
+    legacy_binary_name_prefixes: &[String],
     keep_file_name: &str,
 ) -> Result<String> {
     let shell_kind = ShellKind::Posix;
-    anyhow::ensure!(
-        is_inert_glob_fragment(dir) && is_inert_glob_fragment(binary_name_prefix),
-        "refusing to build a cleanup glob out of {dir:?} and {binary_name_prefix:?}"
-    );
+    ensure_inert_cleanup_fragments(dir, binary_name_prefix, legacy_binary_name_prefixes)?;
     let keep_path = format!("{dir}/{keep_file_name}");
     let keep = shell_kind.try_quote(&keep_path).context("shell quoting")?;
-    Ok(format!(
+    let mut script = format!(
         "for stale in {dir}/{binary_name_prefix}* {dir}/download-*; \
          do if [ -e \"$stale\" ] && [ \"$stale\" != {keep} ]; then rm -f -- \"$stale\"; fi; \
-         done; exit 0"
-    ))
+         done; "
+    );
+    if !legacy_binary_name_prefixes.is_empty() {
+        let legacy_globs = legacy_binary_name_prefixes
+            .iter()
+            .map(|prefix| format!("{dir}/{prefix}*-jp[0-9]*"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        script.push_str(&format!(
+            "for stale in {legacy_globs}; \
+             do if [ -e \"$stale\" ]; then case \"${{stale##*-jp}}\" in \
+             ''|*[!0-9]*) ;; *) rm -f -- \"$stale\";; esac; fi; \
+             done; "
+        ));
+    }
+    script.push_str("exit 0");
+    Ok(script)
+}
+
+fn ensure_inert_cleanup_fragments(
+    dir: &str,
+    binary_name_prefix: &str,
+    legacy_binary_name_prefixes: &[String],
+) -> Result<()> {
+    anyhow::ensure!(
+        is_inert_glob_fragment(dir)
+            && is_inert_glob_fragment(binary_name_prefix)
+            && legacy_binary_name_prefixes
+                .iter()
+                .all(|prefix| is_inert_glob_fragment(prefix)),
+        "refusing to build a cleanup glob out of {dir:?}, {binary_name_prefix:?} \
+         and {legacy_binary_name_prefixes:?}"
+    );
+    Ok(())
 }
 
 /// The PowerShell equivalent of [`stale_server_files_cleanup_script_posix`].
@@ -2951,22 +3016,43 @@ fn stale_server_files_cleanup_script_posix(
 /// where `~/.zed_server` does not exist yet — from looking like a failure:
 /// `powershell -C` exits 1 whenever `$?` is false at the end, even for an error
 /// `-ErrorAction SilentlyContinue` swallowed.
+///
+/// A name under one of `legacy_binary_name_prefixes` has to end with
+/// `-jp<digits>` or `-jp<digits>.exe` as well, as in the `sh` version. The
+/// regular expression ends in `\z` rather than `$` so that no layer of quoting
+/// between here and PowerShell has a character of its own to read in it.
 fn stale_server_files_cleanup_script_windows(
     dir: &str,
     binary_name_prefix: &str,
+    legacy_binary_name_prefixes: &[String],
     keep_file_name: &str,
 ) -> Result<String> {
-    anyhow::ensure!(
-        is_inert_glob_fragment(dir) && is_inert_glob_fragment(binary_name_prefix),
-        "refusing to build a cleanup glob out of {dir:?} and {binary_name_prefix:?}"
-    );
+    ensure_inert_cleanup_fragments(dir, binary_name_prefix, legacy_binary_name_prefixes)?;
     let dir = powershell_single_quoted(dir);
     let binary_glob = powershell_single_quoted(&format!("{binary_name_prefix}*"));
     let keep = powershell_single_quoted(keep_file_name);
+    let legacy_condition = if legacy_binary_name_prefixes.is_empty() {
+        String::new()
+    } else {
+        let legacy_prefix_condition = legacy_binary_name_prefixes
+            .iter()
+            .map(|prefix| {
+                format!(
+                    "$_.Name -like {}",
+                    powershell_single_quoted(&format!("{prefix}*"))
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" -or ");
+        format!(
+            " -or (({legacy_prefix_condition}) \
+             -and $_.Name -match '-jp[0-9]+(\\.exe)?\\z')"
+        )
+    };
     Ok(format!(
         "Get-ChildItem -LiteralPath {dir} -Force -ErrorAction SilentlyContinue | \
-         Where-Object {{ ($_.Name -like {binary_glob} -or $_.Name -like 'download-*') \
-         -and $_.Name -ne {keep} }} | \
+         Where-Object {{ (($_.Name -like {binary_glob} -or $_.Name -like 'download-*') \
+         -and $_.Name -ne {keep}){legacy_condition} }} | \
          Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; exit 0"
     ))
 }
@@ -3666,9 +3752,9 @@ mod tests {
         assert_eq!(
             server_binary_names(ReleaseChannel::Dev, &Version::new(1, 17, 2), false),
             (
-                "zed-remote-server-dev-".to_string(),
+                "forgekairos-remote-server-dev-".to_string(),
                 format!(
-                    "zed-remote-server-dev-build-jp{}",
+                    "forgekairos-remote-server-dev-build-jp{}",
                     rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
                 )
             )
@@ -3676,9 +3762,9 @@ mod tests {
         assert_eq!(
             server_binary_names(ReleaseChannel::Stable, &Version::new(1, 17, 2), true),
             (
-                "zed-remote-server-stable-".to_string(),
+                "forgekairos-remote-server-stable-".to_string(),
                 format!(
-                    "zed-remote-server-stable-1.17.2-jp{}.exe",
+                    "forgekairos-remote-server-stable-1.17.2-jp{}.exe",
                     rpc::proto::jp_enhance::JP_ENHANCE_WIRE_REVISION
                 )
             )
@@ -3690,12 +3776,27 @@ mod tests {
         assert_eq!(
             stale_server_files_cleanup_script_posix(
                 ".zed_server",
-                "zed-remote-server-dev-",
-                "zed-remote-server-dev-build",
+                "forgekairos-remote-server-dev-",
+                &[],
+                "forgekairos-remote-server-dev-build-jp2",
             )?,
-            "for stale in .zed_server/zed-remote-server-dev-* .zed_server/download-*; \
-             do if [ -e \"$stale\" ] && [ \"$stale\" != .zed_server/zed-remote-server-dev-build ]; \
+            "for stale in .zed_server/forgekairos-remote-server-dev-* .zed_server/download-*; \
+             do if [ -e \"$stale\" ] && [ \"$stale\" != .zed_server/forgekairos-remote-server-dev-build-jp2 ]; \
              then rm -f -- \"$stale\"; fi; done; exit 0"
+        );
+        assert_eq!(
+            stale_server_files_cleanup_script_posix(
+                ".zed_server",
+                "forgekairos-remote-server-dev-",
+                &["zed-remote-server-dev-".to_string()],
+                "forgekairos-remote-server-dev-build-jp2",
+            )?,
+            "for stale in .zed_server/forgekairos-remote-server-dev-* .zed_server/download-*; \
+             do if [ -e \"$stale\" ] && [ \"$stale\" != .zed_server/forgekairos-remote-server-dev-build-jp2 ]; \
+             then rm -f -- \"$stale\"; fi; done; \
+             for stale in .zed_server/zed-remote-server-dev-*-jp[0-9]*; \
+             do if [ -e \"$stale\" ]; then case \"${stale##*-jp}\" in \
+             ''|*[!0-9]*) ;; *) rm -f -- \"$stale\";; esac; fi; done; exit 0"
         );
         Ok(())
     }
@@ -3705,14 +3806,377 @@ mod tests {
         assert_eq!(
             stale_server_files_cleanup_script_windows(
                 ".zed_server",
-                "zed-remote-server-dev-",
-                "zed-remote-server-dev-build.exe",
+                "forgekairos-remote-server-dev-",
+                &["zed-remote-server-dev-".to_string()],
+                "forgekairos-remote-server-dev-build-jp2.exe",
             )?,
             "Get-ChildItem -LiteralPath '.zed_server' -Force -ErrorAction SilentlyContinue | \
-             Where-Object { ($_.Name -like 'zed-remote-server-dev-*' -or $_.Name -like 'download-*') \
-             -and $_.Name -ne 'zed-remote-server-dev-build.exe' } | \
+             Where-Object { (($_.Name -like 'forgekairos-remote-server-dev-*' -or $_.Name -like 'download-*') \
+             -and $_.Name -ne 'forgekairos-remote-server-dev-build-jp2.exe') \
+             -or (($_.Name -like 'zed-remote-server-dev-*') -and $_.Name -match '-jp[0-9]+(\\.exe)?\\z') } | \
              Remove-Item -Force -Recurse -ErrorAction SilentlyContinue; exit 0"
         );
+        Ok(())
+    }
+
+    /// What a remote's `~/.zed_server` can hold when this build installs its
+    /// stable 1.21.0 server: its own earlier versions, the other channels', the
+    /// earlier fork names, upstream Zed's own server, and leftovers.
+    const SERVER_DIRECTORY_BEFORE_THE_CLEANUP: &[&str] = &[
+        "forgekairos-remote-server-stable-1.21.0-jp2",
+        "forgekairos-remote-server-stable-1.20.0-jp2",
+        "forgekairos-remote-server-dev-build-jp2",
+        "zed-remote-server-stable-1.17.2-jp1",
+        "zed-remote-server-stable-1.20.0-jp2",
+        "zed-remote-server-stable-1.17.2-jpx",
+        "zed-remote-server-dev-build-jp2",
+        "zed-remote-server-stable-1.21.0",
+        "zed-remote-server-preview-1.22.0-pre",
+        "zed-remote-server-dev-build",
+        "download-7-forgekairos-remote-server-linux-x86_64",
+        "slirp4netns",
+    ];
+
+    /// What [`SERVER_DIRECTORY_BEFORE_THE_CLEANUP`] keeps: the binary being
+    /// installed, every other channel's, upstream Zed's (it carries no
+    /// `-jp<revision>`), and whatever is not a server binary.
+    const SERVER_DIRECTORY_AFTER_THE_CLEANUP: &[&str] = &[
+        "forgekairos-remote-server-dev-build-jp2",
+        "forgekairos-remote-server-stable-1.21.0-jp2",
+        "slirp4netns",
+        "zed-remote-server-dev-build",
+        "zed-remote-server-dev-build-jp2",
+        "zed-remote-server-preview-1.22.0-pre",
+        "zed-remote-server-stable-1.17.2-jpx",
+        "zed-remote-server-stable-1.21.0",
+    ];
+
+    /// Runs `script` with `program` in a new directory holding a
+    /// `.zed_server` with `names` in it, and returns the names left, sorted.
+    /// `None` when `program` cannot be started on this machine.
+    fn server_directory_after(
+        program: &str,
+        arguments: &[&str],
+        script: &str,
+        names: &[String],
+    ) -> Option<Vec<String>> {
+        let home = tempfile::tempdir().expect("tempdir");
+        let directory = home.path().join(".zed_server");
+        std::fs::create_dir(&directory).expect("create the server directory");
+        for name in names {
+            std::fs::write(directory.join(name), "binary").expect("write a server file");
+        }
+        let output = match smol::block_on(
+            smol::process::Command::new(program)
+                .args(arguments)
+                .arg(script)
+                .current_dir(home.path())
+                .output(),
+        ) {
+            Ok(output) => output,
+            Err(error) => {
+                eprintln!("not running the cleanup script, {program} cannot be started: {error}");
+                return None;
+            }
+        };
+        assert!(
+            output.status.success(),
+            "{program} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let mut left = std::fs::read_dir(&directory)
+            .expect("list the server directory")
+            .map(|entry| {
+                entry
+                    .expect("a directory entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect::<Vec<_>>();
+        left.sort();
+        Some(left)
+    }
+
+    /// H1: the cleanup removes this fork's earlier binaries of the channel it
+    /// installs, under the current name and the earlier one, and never
+    /// upstream Zed's server, which shares the directory and the earlier
+    /// prefix. Run by a real `sh` (Git for Windows' on Windows) rather than
+    /// only compared as a string.
+    #[test]
+    fn test_stale_server_files_cleanup_keeps_upstream_servers_under_sh() -> Result<()> {
+        let (prefix, _) =
+            server_binary_names(ReleaseChannel::Stable, &Version::new(1, 21, 0), false);
+        let script = stale_server_files_cleanup_script_posix(
+            ".zed_server",
+            &prefix,
+            &legacy_server_binary_name_prefixes(ReleaseChannel::Stable),
+            "forgekairos-remote-server-stable-1.21.0-jp2",
+        )?;
+        let names = SERVER_DIRECTORY_BEFORE_THE_CLEANUP
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>();
+        let Some(left) = server_directory_after("sh", &["-c"], &script, &names) else {
+            #[cfg(unix)]
+            panic!("sh must be available on a Unix host");
+            #[cfg(not(unix))]
+            return Ok(());
+        };
+        assert_eq!(left, SERVER_DIRECTORY_AFTER_THE_CLEANUP);
+        Ok(())
+    }
+
+    /// The PowerShell cleanup a Windows remote runs, with the `.exe` names a
+    /// Windows remote holds.
+    #[cfg(windows)]
+    #[test]
+    fn test_stale_server_files_cleanup_keeps_upstream_servers_under_powershell() -> Result<()> {
+        let (prefix, _) =
+            server_binary_names(ReleaseChannel::Stable, &Version::new(1, 21, 0), true);
+        let script = stale_server_files_cleanup_script_windows(
+            ".zed_server",
+            &prefix,
+            &legacy_server_binary_name_prefixes(ReleaseChannel::Stable),
+            "forgekairos-remote-server-stable-1.21.0-jp2.exe",
+        )?;
+        let with_exe = |name: &str| {
+            if name.contains("remote-server") && !name.starts_with("download-") {
+                format!("{name}.exe")
+            } else {
+                name.to_string()
+            }
+        };
+        let names = SERVER_DIRECTORY_BEFORE_THE_CLEANUP
+            .iter()
+            .map(|name| with_exe(name))
+            .collect::<Vec<_>>();
+        let left = server_directory_after(
+            "powershell",
+            &["-NoProfile", "-NonInteractive", "-Command"],
+            &script,
+            &names,
+        )
+        .expect("powershell is available on Windows");
+        let mut expected = SERVER_DIRECTORY_AFTER_THE_CLEANUP
+            .iter()
+            .map(|name| with_exe(name))
+            .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(left, expected);
+        Ok(())
+    }
+
+    /// When the remote is too full, the other channels' binaries make room,
+    /// but only this build's: upstream Zed's and the earlier fork names stay.
+    #[test]
+    fn test_other_channel_sweep_keeps_upstream_servers_under_sh() -> Result<()> {
+        let script = other_channel_server_binaries_cleanup_script_posix(
+            ".zed_server",
+            &server_binary_name_prefix(ReleaseChannel::Stable),
+        )?;
+        let names = SERVER_DIRECTORY_BEFORE_THE_CLEANUP
+            .iter()
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>();
+        let Some(left) = server_directory_after("sh", &["-c"], &script, &names) else {
+            #[cfg(unix)]
+            panic!("sh must be available on a Unix host");
+            #[cfg(not(unix))]
+            return Ok(());
+        };
+        let mut expected = SERVER_DIRECTORY_BEFORE_THE_CLEANUP
+            .iter()
+            .filter(|name| **name != "forgekairos-remote-server-dev-build-jp2")
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(left, expected);
+        Ok(())
+    }
+
+    /// Names at the edges of the `-jp<digits>` rule, names a shell could
+    /// misread, and entries that are not plain files, run through `sh` the way
+    /// the remote's login shell receives the script: quoted by
+    /// [`SshRemoteConnection::ssh_command`]'s rules, after a `cd` to `$HOME`.
+    #[test]
+    fn test_stale_server_files_cleanup_at_the_edges_under_sh() -> Result<()> {
+        let removed = [
+            "zed-remote-server-stable-1.20.0-jp2",
+            "zed-remote-server-stable-1.20.0-jp12",
+            "zed-remote-server-stable-1.20.0-jp2-jp3",
+            "zed-remote-server-stable-a b-jp2",
+            "zed-remote-server-stable-$(touch pwned)-jp2",
+            "zed-remote-server-stable-x;touch pwned;-jp2",
+            "zed-remote-server-stable-`touch pwned`-jp2",
+            "zed-remote-server-stable-*-jp2",
+            "zed-remote-server-stable-x\n-jp2",
+            "forgekairos-remote-server-stable-1.20.0-jp2",
+            "forgekairos-remote-server-stable-1.20.0",
+            "download-1-zed-remote-server-stable-1.21.0",
+        ];
+        let kept = [
+            "forgekairos-remote-server-stable-1.21.0-jp2",
+            "zed-remote-server-stable-1.21.0",
+            "zed-remote-server-stable-1.21.0.exe",
+            "zed-remote-server-stable-1.21.0-jp",
+            "zed-remote-server-stable-1.21.0-jp2x",
+            "zed-remote-server-stable-1.21.0-jp2.gz",
+            "zed-remote-server-stable-1.21.0-jp2.exe",
+            "zed-remote-server-stable-1.21.0-jp2-foo",
+            "zed-remote-server-stable-1.21.0-JP2",
+            "zed-remote-server-stablex-1.21.0-jp2",
+            "zed-remote-server-preview-1.22.0-jp2",
+            "zed-remote-server-dev-build-jp2",
+            "forgekairos-remote-server-dev-build-jp2",
+            "zed-remote-server-stable-1.21.0-jp2 ",
+        ];
+        let script = stale_server_files_cleanup_script_posix(
+            ".zed_server",
+            &server_binary_name_prefix(ReleaseChannel::Stable),
+            &legacy_server_binary_name_prefixes(ReleaseChannel::Stable),
+            "forgekairos-remote-server-stable-1.21.0-jp2",
+        )?;
+        let shell_kind = ShellKind::Posix;
+        let mut command = shell_kind
+            .try_quote_prefix_aware(&shell_kind.prepend_command_prefix("sh"))
+            .context("quoting")?
+            .into_owned();
+        for argument in shell_kind.args_for_shell(false, script) {
+            command.push(' ');
+            command.push_str(&shell_kind.try_quote(&argument).context("quoting")?);
+        }
+        let command = format!("cd{} {command}", shell_kind.sequential_commands_separator());
+
+        let home = tempfile::tempdir()?;
+        let directory = home.path().join(".zed_server");
+        std::fs::create_dir(&directory)?;
+        let mut names = removed.iter().chain(&kept).copied().collect::<Vec<_>>();
+        if cfg!(windows) {
+            // Not names a Windows file system can hold.
+            names.retain(|name| !name.contains(['*', '\n', '`']) && !name.ends_with(' '));
+        }
+        for name in &names {
+            std::fs::write(directory.join(name), "binary")?;
+        }
+        #[cfg(unix)]
+        {
+            // A link under a name of this fork's is removed, never what it
+            // points at; a directory under one is not a binary and stays.
+            std::os::unix::fs::symlink(
+                "zed-remote-server-stable-1.21.0",
+                directory.join("zed-remote-server-stable-1.19.0-jp2"),
+            )?;
+            std::fs::create_dir(directory.join("zed-remote-server-stable-1.18.0-jp2"))?;
+            std::fs::write(
+                directory
+                    .join("zed-remote-server-stable-1.18.0-jp2")
+                    .join("inside"),
+                "kept",
+            )?;
+        }
+
+        let output = match smol::block_on(
+            smol::process::Command::new("sh")
+                .arg("-c")
+                .arg(&command)
+                .env("HOME", home.path())
+                .current_dir(home.path())
+                .output(),
+        ) {
+            Ok(output) => output,
+            Err(error) => {
+                #[cfg(unix)]
+                panic!("sh must be available on a Unix host: {error}");
+                #[cfg(not(unix))]
+                {
+                    eprintln!("not running the cleanup script, sh cannot be started: {error}");
+                    return Ok(());
+                }
+            }
+        };
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!home.path().join("pwned").exists());
+        assert!(!directory.join("pwned").exists());
+        for name in &names {
+            assert_eq!(
+                std::fs::symlink_metadata(directory.join(name)).is_ok(),
+                kept.contains(name),
+                "{name:?}"
+            );
+        }
+        #[cfg(unix)]
+        {
+            assert!(
+                std::fs::symlink_metadata(directory.join("zed-remote-server-stable-1.19.0-jp2"))
+                    .is_err()
+            );
+            assert!(directory.join("zed-remote-server-stable-1.21.0").exists());
+            assert!(
+                directory
+                    .join("zed-remote-server-stable-1.18.0-jp2")
+                    .join("inside")
+                    .exists()
+            );
+        }
+        Ok(())
+    }
+
+    /// The PowerShell counterpart of
+    /// [`test_stale_server_files_cleanup_at_the_edges_under_sh`], with the
+    /// names a Windows file system can hold.
+    #[cfg(windows)]
+    #[test]
+    fn test_stale_server_files_cleanup_at_the_edges_under_powershell() -> Result<()> {
+        let removed = [
+            "zed-remote-server-stable-1.20.0-jp2.exe",
+            "zed-remote-server-stable-1.20.0-jp2",
+            "zed-remote-server-stable-1.20.0-jp12.exe",
+            "zed-remote-server-stable-a b-jp2.exe",
+            "zed-remote-server-stable-$(New-Item pwned)-jp2.exe",
+            "zed-remote-server-stable-x;New-Item pwned;-jp2.exe",
+            "forgekairos-remote-server-stable-1.20.0-jp2.exe",
+            "download-1-zed-remote-server-stable-1.21.0",
+        ];
+        let kept = [
+            "forgekairos-remote-server-stable-1.21.0-jp2.exe",
+            "zed-remote-server-stable-1.21.0.exe",
+            "zed-remote-server-stable-1.21.0",
+            "zed-remote-server-stable-1.21.0-jp.exe",
+            "zed-remote-server-stable-1.21.0-jp2x.exe",
+            "zed-remote-server-stable-1.21.0-jp2.gz",
+            "zed-remote-server-stable-1.21.0-jp2.exe.gz",
+            "zed-remote-server-stable-1.21.0-jp2-foo.exe",
+            "zed-remote-server-stablex-1.21.0-jp2.exe",
+            "zed-remote-server-preview-1.22.0-jp2.exe",
+            "zed-remote-server-dev-build-jp2.exe",
+            "forgekairos-remote-server-dev-build-jp2.exe",
+        ];
+        let script = stale_server_files_cleanup_script_windows(
+            ".zed_server",
+            &server_binary_name_prefix(ReleaseChannel::Stable),
+            &legacy_server_binary_name_prefixes(ReleaseChannel::Stable),
+            "forgekairos-remote-server-stable-1.21.0-jp2.exe",
+        )?;
+        let names = removed
+            .iter()
+            .chain(&kept)
+            .map(|name| name.to_string())
+            .collect::<Vec<_>>();
+        let left = server_directory_after(
+            "powershell",
+            &["-NoProfile", "-NonInteractive", "-Command"],
+            &script,
+            &names,
+        )
+        .expect("powershell is available on Windows");
+        let mut expected = kept.iter().map(|name| name.to_string()).collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(left, expected);
         Ok(())
     }
 
@@ -3728,12 +4192,21 @@ mod tests {
             (".zed_server", ""),
         ] {
             assert!(
-                stale_server_files_cleanup_script_posix(dir, prefix, "keep").is_err(),
+                stale_server_files_cleanup_script_posix(dir, prefix, &[], "keep").is_err(),
                 "{dir:?} / {prefix:?} should be refused"
             );
             assert!(
-                stale_server_files_cleanup_script_windows(dir, prefix, "keep").is_err(),
+                stale_server_files_cleanup_script_windows(dir, prefix, &[], "keep").is_err(),
                 "{dir:?} / {prefix:?} should be refused"
+            );
+            let legacy = [prefix.to_string()];
+            assert!(
+                stale_server_files_cleanup_script_posix(dir, "ok-", &legacy, "keep").is_err(),
+                "{dir:?} / legacy {prefix:?} should be refused"
+            );
+            assert!(
+                stale_server_files_cleanup_script_windows(dir, "ok-", &legacy, "keep").is_err(),
+                "{dir:?} / legacy {prefix:?} should be refused"
             );
             assert!(
                 other_channel_server_binaries_cleanup_script_posix(dir, prefix).is_err(),
@@ -3751,11 +4224,11 @@ mod tests {
         assert_eq!(
             other_channel_server_binaries_cleanup_script_posix(
                 ".zed_server",
-                "zed-remote-server-dev-",
+                "forgekairos-remote-server-dev-",
             )?,
-            "for stale in .zed_server/zed-remote-server-*; \
+            "for stale in .zed_server/forgekairos-remote-server-*; \
              do if [ -e \"$stale\" ]; then \
-             case \"${stale##*/}\" in zed-remote-server-dev-*) ;; \
+             case \"${stale##*/}\" in forgekairos-remote-server-dev-*) ;; \
              *) if rm -f -- \"$stale\"; then echo \"${stale##*/}\"; fi;; esac; fi; \
              done; exit 0"
         );
@@ -3767,11 +4240,11 @@ mod tests {
         assert_eq!(
             other_channel_server_binaries_cleanup_script_windows(
                 ".zed_server",
-                "zed-remote-server-stable-",
+                "forgekairos-remote-server-stable-",
             )?,
             "Get-ChildItem -LiteralPath '.zed_server' -Force -ErrorAction SilentlyContinue | \
-             Where-Object { $_.Name -like 'zed-remote-server-*' \
-             -and -not ($_.Name -like 'zed-remote-server-stable-*') } | \
+             Where-Object { $_.Name -like 'forgekairos-remote-server-*' \
+             -and -not ($_.Name -like 'forgekairos-remote-server-stable-*') } | \
              ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Force -Recurse \
              -ErrorAction Stop; $_.Name } catch { } }; exit 0"
         );

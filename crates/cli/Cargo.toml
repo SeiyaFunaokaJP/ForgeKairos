@@ -23,6 +23,7 @@ default = []
 [dependencies]
 anyhow.workspace = true
 askpass.workspace = true
+branding.workspace = true
 clap.workspace = true
 clap_complete.workspace = true
 clap_complete_nushell.workspace = true

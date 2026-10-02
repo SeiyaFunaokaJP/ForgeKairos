@@ -58,6 +58,7 @@ required-features = ["remote-sandbox-test"]
 
 [dependencies]
 anyhow.workspace = true
+branding.workspace = true
 futures.workspace = true
 # The editor-wide allowlist's host patterns, which the WSL helper's proxy
 # enforces with the same matching `egress_policy` uses (ADR-F17 / ADR-F46).

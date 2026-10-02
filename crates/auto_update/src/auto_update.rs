@@ -417,7 +417,7 @@ impl InstallerDir {
     async fn new() -> Result<Self> {
         let installer_dir = std::env::current_exe()?
             .parent()
-            .context("No parent dir for Zed.exe")?
+            .context("No parent dir for the running executable")?
             .join("updates");
         if smol::fs::metadata(&installer_dir).await.is_ok() {
             smol::fs::remove_dir_all(&installer_dir).await?;
@@ -998,7 +998,7 @@ impl AutoUpdater {
         let filename = match OS {
             "macos" => anyhow::Ok("Zed.dmg"),
             "linux" => Ok("zed.tar.gz"),
-            "windows" => Ok("Zed.exe"),
+            "windows" => Ok(WINDOWS_INSTALLER_FILE_NAME),
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
         }?;
 
@@ -1070,6 +1070,10 @@ impl AutoUpdater {
     }
 }
 
+/// What the downloaded Windows installer is saved as in the `updates` directory.
+const WINDOWS_INSTALLER_FILE_NAME: &str =
+    branding::concat_const!(branding::CURRENT.executable_stem, "-setup.exe");
+
 /// The file name this fork publishes an asset under on its GitHub Releases.
 ///
 /// The upstream endpoint this replaced chose the file server-side, so the
@@ -1081,9 +1085,14 @@ fn asset_name(asset: &str, os: &str, arch: &str) -> Result<String> {
     match asset {
         "zed-remote-server" => Ok(format!("zed-remote-server-{os}-{arch}.gz")),
         "zed" => match os {
-            "windows" => Ok(format!("zed-{os}-{arch}-setup.exe")),
-            "macos" => Ok(format!("zed-{os}-{arch}.dmg")),
-            "linux" => Ok(format!("zed-{os}-{arch}.tar.gz")),
+            // The installer's OutputBaseFilename ($appSetupName in
+            // script/bundle-windows.ps1).
+            "windows" => Ok(format!(
+                "{}-{os}-{arch}-setup.exe",
+                branding::CURRENT.cli_name
+            )),
+            "macos" => Ok(format!("{}-{os}-{arch}.dmg", branding::CURRENT.cli_name)),
+            "linux" => Ok(format!("{}-{os}-{arch}.tar.gz", branding::CURRENT.cli_name)),
             unsupported => anyhow::bail!("no update asset is published for {unsupported}"),
         },
         other => anyhow::bail!("unknown release asset {other:?}"),
@@ -1241,6 +1250,26 @@ async fn download_release(
     Ok(())
 }
 
+/// The editor binary inside a Linux install, next to which `bin/` holds the
+/// launcher.
+const LINUX_EDITOR_NAME: &str = branding::concat_const!(branding::CURRENT.cli_name, "-editor");
+
+/// The folder a Linux release unpacks to and is installed as under
+/// `~/.local`. It is this fork's own, because the update replaces it with
+/// `rsync --delete` and an official Zed installs to `~/.local/zed.app`.
+fn linux_app_folder_name(channel: &str) -> String {
+    let suffix = if channel != "stable" {
+        format!("-{}", channel)
+    } else {
+        String::default()
+    };
+    format!("{}{suffix}.app", branding::CURRENT.cli_name)
+}
+
+/// The volume name `script/bundle-mac` gives the disk image, which
+/// `hdiutil attach -mountroot` mounts the update under.
+const MACOS_DMG_VOLUME_NAME: &str = branding::CURRENT.executable_stem;
+
 async fn install_release_linux(
     temp_dir: &InstallerDir,
     downloaded_tar_gz: &Path,
@@ -1272,17 +1301,12 @@ async fn install_release_linux(
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let suffix = if channel != "stable" {
-        format!("-{}", channel)
-    } else {
-        String::default()
-    };
-    let app_folder_name = format!("zed{}.app", suffix);
+    let app_folder_name = linux_app_folder_name(channel);
 
     let from = extracted.join(&app_folder_name);
     let mut to = home_dir.join(".local");
 
-    let expected_suffix = format!("{}/libexec/zed-editor", app_folder_name);
+    let expected_suffix = format!("{app_folder_name}/libexec/{LINUX_EDITOR_NAME}");
 
     if let Some(prefix) = running_app_path
         .to_str()
@@ -1319,7 +1343,7 @@ async fn install_release_macos(
         .file_name()
         .with_context(|| format!("invalid running app path {running_app_path:?}"))?;
 
-    let mount_path = temp_dir.path().join("Zed");
+    let mount_path = temp_dir.path().join(MACOS_DMG_VOLUME_NAME);
     let mut mounted_app_path: OsString = mount_path.join(running_app_filename).into();
 
     mounted_app_path.push("/");
@@ -1414,7 +1438,7 @@ async fn cleanup_stale_installer_dirs() {
 async fn cleanup_windows() -> Result<()> {
     let parent = std::env::current_exe()?
         .parent()
-        .context("No parent dir for Zed.exe")?
+        .context("No parent dir for the running executable")?
         .to_owned();
 
     // keep in sync with crates/auto_update_helper/src/updater.rs
@@ -1441,7 +1465,7 @@ async fn install_release_windows(downloaded_installer: &Path) -> Result<Option<P
     // deleting the old one, and launching the new binary.
     let helper_path = std::env::current_exe()?
         .parent()
-        .context("No parent dir for Zed.exe")?
+        .context("No parent dir for the running executable")?
         .join("tools")
         .join("auto_update_helper.exe");
     Ok(Some(helper_path))
@@ -1523,15 +1547,15 @@ mod tests {
     fn asset_names_follow_the_published_naming_convention() {
         assert_eq!(
             asset_name("zed", "windows", "x86_64").unwrap(),
-            "zed-windows-x86_64-setup.exe"
+            "forgekairos-windows-x86_64-setup.exe"
         );
         assert_eq!(
             asset_name("zed", "macos", "aarch64").unwrap(),
-            "zed-macos-aarch64.dmg"
+            "forgekairos-macos-aarch64.dmg"
         );
         assert_eq!(
             asset_name("zed", "linux", "x86_64").unwrap(),
-            "zed-linux-x86_64.tar.gz"
+            "forgekairos-linux-x86_64.tar.gz"
         );
         // ADR-F15 looks for this exact name next to the executable, so the
         // bundled and downloaded paths can share one file.
@@ -1541,6 +1565,88 @@ mod tests {
         );
         assert!(asset_name("zed", "freebsd", "x86_64").is_err());
         assert!(asset_name("something-else", "linux", "x86_64").is_err());
+    }
+
+    #[test]
+    fn a_linux_update_replaces_only_this_fork_s_install() {
+        assert_eq!(linux_app_folder_name("stable"), "forgekairos.app");
+        assert_eq!(linux_app_folder_name("preview"), "forgekairos-preview.app");
+        assert_eq!(LINUX_EDITOR_NAME, "forgekairos-editor");
+        for channel in ["stable", "preview", "nightly", "dev"] {
+            // Where an official Zed installs; rsync --delete would replace it.
+            assert!(
+                !linux_app_folder_name(channel).starts_with("zed"),
+                "{channel}"
+            );
+        }
+    }
+
+    fn repository_script(relative: &str) -> String {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(relative);
+        std::fs::read_to_string(&path).unwrap()
+    }
+
+    #[test]
+    fn the_linux_update_unpacks_what_the_linux_bundle_packs() {
+        let script = repository_script("script/bundle-linux");
+        let folder = linux_app_folder_name("stable");
+        let folder_pattern = format!(
+            "{}$suffix.app",
+            folder.strip_suffix(".app").expect("an .app folder")
+        );
+        assert!(
+            script.contains(&format!("zed_dir=\"${{temp_dir}}/{folder_pattern}\"")),
+            "bundle-linux packs its files under {folder_pattern}"
+        );
+        assert!(
+            script.contains(&format!("-C ${{temp_dir}} \"{folder_pattern}\"")),
+            "bundle-linux archives {folder_pattern}"
+        );
+        assert!(
+            script.contains("suffix=\"-$channel\""),
+            "bundle-linux suffixes the folder with the channel, as linux_app_folder_name does"
+        );
+        let archive = asset_name("zed", "linux", "${arch}").unwrap();
+        assert!(
+            script.contains(&format!("archive=\"{archive}\"")),
+            "bundle-linux names the archive {archive}, the published asset name"
+        );
+        assert!(
+            script.contains(&format!("\"${{zed_dir}}/libexec/{LINUX_EDITOR_NAME}\"")),
+            "bundle-linux installs the editor as libexec/{LINUX_EDITOR_NAME}"
+        );
+    }
+
+    #[test]
+    fn the_macos_update_mounts_the_volume_the_disk_image_is_made_with() {
+        let script = repository_script("script/bundle-mac");
+        assert!(
+            script.contains(&format!("hdiutil create -volname {MACOS_DMG_VOLUME_NAME} ")),
+            "bundle-mac names the disk image's volume {MACOS_DMG_VOLUME_NAME}"
+        );
+    }
+
+    #[test]
+    fn the_windows_asset_is_what_the_installer_build_names_its_output() {
+        let script_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../script/bundle-windows.ps1");
+        let script = std::fs::read_to_string(&script_path).unwrap();
+        let setup_names: Vec<&str> = script
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("$appSetupName = "))
+            .map(|value| value.trim_matches('"'))
+            .collect();
+        assert_eq!(setup_names.len(), 4, "one setup name per release channel");
+        for arch in ["x86_64", "aarch64"] {
+            for setup_name in &setup_names {
+                assert_eq!(
+                    format!("{}.exe", setup_name.replace("$Architecture", arch)),
+                    asset_name("zed", "windows", arch).unwrap(),
+                );
+            }
+        }
     }
 
     fn parse_fixture(tag: &str, download_url: &str) -> GithubRelease {

@@ -122,6 +122,22 @@ impl std::fmt::Debug for OpenRequestKind {
     }
 }
 
+/// Rewrites a link in the scheme the operating system opens this app for into
+/// the `zed://` form the app parses, writes and stores, so that both spellings
+/// of a link behave the same. Any other URL is returned unchanged.
+pub fn to_internal_url(url: &str) -> std::borrow::Cow<'_, str> {
+    let registered_scheme = branding::CURRENT.url_scheme;
+    match url.split_once("://") {
+        Some((scheme, rest))
+            if scheme.eq_ignore_ascii_case(registered_scheme)
+                && !scheme.eq_ignore_ascii_case(branding::INTERNAL_URL_SCHEME) =>
+        {
+            format!("{}://{rest}", branding::INTERNAL_URL_SCHEME).into()
+        }
+        _ => url.into(),
+    }
+}
+
 impl OpenRequest {
     pub fn is_focus_app_only(&self) -> bool {
         matches!(self.kind, Some(OpenRequestKind::FocusApp))
@@ -155,6 +171,7 @@ impl OpenRequest {
         }
 
         for url in request.urls {
+            let url = to_internal_url(&url).into_owned();
             if let Some(server_name) = url.strip_prefix("zed-cli://") {
                 this.kind = Some(OpenRequestKind::CliConnection(connect_to_cli(server_name)?));
             } else if let Some(action_index) = url.strip_prefix("zed-dock-action://") {
@@ -1467,6 +1484,67 @@ mod tests {
             workspace::WorkspaceMatching::MatchExact
         );
         assert!(options.add_dirs_to_sidebar);
+    }
+
+    fn parse_one_url(url: String, cx: &mut TestAppContext) -> OpenRequest {
+        cx.update(|cx| {
+            OpenRequest::parse(
+                RawOpenRequest {
+                    urls: vec![url],
+                    ..Default::default()
+                },
+                cx,
+            )
+            .unwrap()
+        })
+    }
+
+    #[gpui::test]
+    fn test_links_in_the_registered_scheme_open_like_zed_links(cx: &mut TestAppContext) {
+        let _app_state = init_test(cx);
+        let scheme = branding::CURRENT.url_scheme;
+        assert_ne!(scheme, "zed", "the registered scheme is this fork's own");
+
+        let file = parse_one_url(format!("{scheme}://file/tmp/a.txt"), cx);
+        let zed_file = parse_one_url("zed://file/tmp/a.txt".into(), cx);
+        assert_eq!(file.open_paths, vec!["/tmp/a.txt"]);
+        assert_eq!(file.open_paths, zed_file.open_paths);
+
+        let settings = parse_one_url(
+            format!("{}://settings/vim_mode", scheme.to_ascii_uppercase()),
+            cx,
+        );
+        match settings.kind {
+            Some(OpenRequestKind::Setting { setting_path }) => {
+                assert_eq!(setting_path.as_deref(), Some("vim_mode"));
+            }
+            _ => panic!("Expected Setting kind"),
+        }
+
+        let focus = parse_one_url(format!("{scheme}://"), cx);
+        assert!(focus.is_focus_app_only());
+    }
+
+    #[test]
+    fn test_internal_and_other_urls_are_left_as_they_are() {
+        for url in [
+            "zed:///agent/thread/0123?name=a",
+            "zed://agent",
+            "zed-cli://server",
+            "file:///tmp/a.txt",
+            "https://forgekairos.example/",
+            "ssh://host/path",
+            "not a url",
+        ] {
+            assert_eq!(to_internal_url(url), url);
+        }
+        assert_eq!(
+            to_internal_url(&format!(
+                "{}:///agent/thread/0123",
+                branding::CURRENT.url_scheme
+            )),
+            "zed:///agent/thread/0123"
+        );
     }
 
     #[gpui::test]

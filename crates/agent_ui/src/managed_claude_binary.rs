@@ -141,7 +141,7 @@ const WINDOWS_ONLY: &str =
 /// Which Linux the CLI is staged on: the WSL distro of this machine's sandbox,
 /// or the Linux host of an SSH-remote project (ADR-F49 第 3 段). Only the
 /// wording differs — the same verified binary, the same layout below
-/// `~/.cache/zed-jp-enhance/agents/<sha256>/`, the same reuse — so it lives in
+/// `~/.cache/forgekairos/agents/<sha256>/`, the same reuse — so it lives in
 /// one place rather than in each message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AgentHostKind {
@@ -2167,9 +2167,10 @@ impl AgentBinaryHost for SystemWsl {
 
 /// Where the staged binaries live on the host, relative to the account's home
 /// — the same layout the WSL backend uses (`sandbox::stage_agent_binary`), so
-/// that the helper's protected set (`~/.cache/zed-jp-enhance`) covers it and
+/// that the helper's protected set (`~/.cache/forgekairos`) covers it and
 /// the sandbox can read but not replace what it runs.
-const REMOTE_AGENTS_HOME_RELATIVE: &str = ".cache/zed-jp-enhance/agents";
+const REMOTE_AGENTS_HOME_RELATIVE: &str =
+    branding::concat_const!(branding::CURRENT.remote_cache_home_relative, "/agents");
 /// How much the host must have free beyond the binary itself, so that staging
 /// does not fill the disk it shares with the project.
 const REMOTE_STAGING_HEADROOM: u64 = 64 * 1024 * 1024;
@@ -2219,12 +2220,13 @@ else
 fi
 "#;
 
-/// Makes the directory the upload lands in, owner-only, and removes what an
-/// interrupted upload of this digest left there.
+/// Makes the directory the upload lands in (`$2`), makes the cache directory
+/// that holds it (`$3`) owner-only, and removes what an interrupted upload of
+/// this digest (`$1`) left there.
 const REMOTE_PREPARE_SCRIPT: &str = r#"set -u
 root="$HOME/$2"
 mkdir -p "$root" || exit 1
-chmod 700 "$HOME/.cache/zed-jp-enhance" 2>/dev/null || true
+chmod 700 "$HOME/$3" 2>/dev/null || true
 rm -rf -- "$root/$1"
 "#;
 
@@ -2636,7 +2638,11 @@ impl RemoteAgentHost {
             &operations,
             &executor,
             REMOTE_PREPARE_SCRIPT,
-            vec![incoming.clone(), REMOTE_AGENTS_HOME_RELATIVE.to_string()],
+            vec![
+                incoming.clone(),
+                REMOTE_AGENTS_HOME_RELATIVE.to_string(),
+                branding::CURRENT.remote_cache_home_relative.to_string(),
+            ],
         )
         .await?;
         // The upload is of a directory, which is what every transport can do
@@ -3349,7 +3355,10 @@ mod tests {
     }
 
     fn staged_path(sha256: &str) -> String {
-        format!("/home/test/.cache/zed-jp-enhance/agents/{sha256}/claude")
+        format!(
+            "/home/test/{}/agents/{sha256}/claude",
+            branding::CURRENT.remote_cache_home_relative
+        )
     }
 
     fn release_requests(version: &str, platform: &str) -> Vec<String> {

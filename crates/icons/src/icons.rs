@@ -155,6 +155,7 @@ pub enum IconName {
     Font,
     FontSize,
     FontWeight,
+    ForgeKairos,
     Forgejo,
     FormatDocument,
     FormatSelection,

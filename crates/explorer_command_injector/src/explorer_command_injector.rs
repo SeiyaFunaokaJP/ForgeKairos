@@ -44,7 +44,7 @@ struct ExplorerCommandInjector;
 impl IExplorerCommand_Impl for ExplorerCommandInjector_Impl {
     fn GetTitle(&self, _: Ref<IShellItemArray>) -> Result<windows_core::PWSTR> {
         let command_description =
-            retrieve_command_description().unwrap_or(HSTRING::from("Open with Zed"));
+            retrieve_command_description().unwrap_or(HSTRING::from(DEFAULT_COMMAND_DESCRIPTION));
         unsafe { SHStrDupW(&command_description) }
     }
 
@@ -127,11 +127,17 @@ impl IClassFactory_Impl for ExplorerCommandInjectorFactory_Impl {
     }
 }
 
+const DEFAULT_COMMAND_DESCRIPTION: &str =
+    branding::concat_const!("Open with ", branding::CURRENT.product_name);
+
+// Distinct from upstream's, so an official Zed's context menu package and this
+// one can be registered side by side. Must match the Clsid in the
+// AppxManifest*.xml of the same channel.
 const MODULE_ID: GUID = cfg_select! {
-    feature = "stable" => { GUID::from_u128(0x6a1f6b13_3b82_48a1_9e06_7bb0a6d0bffd) },
-    feature = "preview" => { GUID::from_u128(0xaf8e85ea_fb20_4db2_93cf_56513c1ec697) },
-    feature = "nightly" => { GUID::from_u128(0x266f2cfe_1653_42af_b55c_fe3590c83871) },
-    _ => { GUID::from_u128(0x685f4d49_6718_4c55_b271_ebb5c6a48d6f) },
+    feature = "stable" => { GUID::from_u128(0xabb6f80b_b0fd_47f3_865c_bd64227295e0) },
+    feature = "preview" => { GUID::from_u128(0x49bf0feb_68e8_4570_89cf_a22d3bc1bb82) },
+    feature = "nightly" => { GUID::from_u128(0xac3c1b77_8231_4dce_b83d_eda852436c08) },
+    _ => { GUID::from_u128(0x0f6b34fe_b054_4e39_a0c2_a93743c62822) },
 };
 
 #[unsafe(no_mangle)]
@@ -174,16 +180,19 @@ fn get_zed_install_folder() -> Option<PathBuf> {
 
 #[inline]
 fn get_zed_exe_path() -> Option<String> {
-    get_zed_install_folder().map(|path| path.join("Zed.exe").to_string_lossy().into_owned())
+    const EXECUTABLE: &str = branding::concat_const!(branding::CURRENT.executable_stem, ".exe");
+    get_zed_install_folder().map(|path| path.join(EXECUTABLE).to_string_lossy().into_owned())
 }
 
 #[inline]
 fn retrieve_command_description() -> Result<HSTRING> {
+    // "{regValueName}ContextMenu", which the installer of the same channel
+    // (script/bundle-windows.ps1) writes the localized title to.
     const REG_PATH: &str = cfg_select! {
-        feature = "stable" => { r#"Software\Classes\ZedContextMenu"# },
-        feature = "preview" => { r#"Software\Classes\ZedPreviewContextMenu"# },
-        feature = "nightly" => { r#"Software\Classes\ZedNightlyContextMenu"# },
-        _ => { r#"Software\Classes\ZedDevContextMenu"# },
+        feature = "stable" => { r#"Software\Classes\ForgeKairosContextMenu"# },
+        feature = "preview" => { r#"Software\Classes\ForgeKairosPreviewContextMenu"# },
+        feature = "nightly" => { r#"Software\Classes\ForgeKairosNightlyContextMenu"# },
+        _ => { r#"Software\Classes\ForgeKairosDevContextMenu"# },
     };
 
     let key = windows_registry::CURRENT_USER.open(REG_PATH)?;

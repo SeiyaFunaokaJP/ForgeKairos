@@ -845,6 +845,16 @@ pub(crate) fn parse_bridge_status(line: &str) -> Option<BridgeStatus<'_>> {
         .then_some(BridgeStatus::Failed { code })
 }
 
+/// Where the bridge's rendezvous sockets are, as the reasons below show it.
+const RENDEZVOUS_DIRECTORY_SHOWN: &str =
+    branding::concat_const!("~/", branding::CURRENT.remote_cache_home_relative, "/ide");
+/// Where the sandboxed agents' configuration (and the lock files in it) is, as
+/// the reasons below show it.
+const AGENT_CONFIGURATION_DIRECTORY_SHOWN: &str = branding::concat_const!(
+    "~/",
+    crate::protected_paths::SANDBOXED_AGENT_CONFIG_HOME_RELATIVE
+);
+
 /// The Japanese reason for a bridge setup failure `code`, on `host`.
 pub(crate) fn bridge_failure_message(code: &str, host: BridgeHost) -> String {
     let home = host.home_of();
@@ -861,7 +871,8 @@ pub(crate) fn bridge_failure_message(code: &str, host: BridgeHost) -> String {
         ),
         "rendezvous-failed" => i18n::t!(
             "Could not create the IDE integration's rendezvous socket \
-             (check the owner and permissions of ~/.cache/zed-jp-enhance/ide {home})."
+             (check the owner and permissions of {path} {home}).",
+            path = RENDEZVOUS_DIRECTORY_SHOWN
         ),
         "lock-preamble-failed" => {
             i18n::t!("Could not pass the connection details to the IDE integration relay.")
@@ -869,7 +880,8 @@ pub(crate) fn bridge_failure_message(code: &str, host: BridgeHost) -> String {
         }
         "lock-file-failed" => i18n::t!(
             "Could not create the IDE integration lock file (check the owner and permissions of \
-             ~/.zed-jp-enhance-claude {home}, and that it is not a symbolic link)."
+             {path} {home}, and that it is not a symbolic link).",
+            path = AGENT_CONFIGURATION_DIRECTORY_SHOWN
         ),
         other => i18n::t!("Could not start the IDE integration relay (unknown reason: {other})."),
     }
@@ -2788,15 +2800,25 @@ mod tests {
             "The IDE integration relay could not be started because the home directory in WSL \
              could not be determined."
         );
+        let rendezvous_directory =
+            format!("~/{}/ide", branding::CURRENT.remote_cache_home_relative);
+        let configuration_directory = format!(
+            "~/{}",
+            branding::CURRENT.sandboxed_agent_config_home_relative
+        );
         assert_eq!(
             bridge_failure_message("rendezvous-failed", BridgeHost::WslDistro),
-            "Could not create the IDE integration's rendezvous socket \
-             (check the owner and permissions of ~/.cache/zed-jp-enhance/ide in WSL)."
+            format!(
+                "Could not create the IDE integration's rendezvous socket \
+                 (check the owner and permissions of {rendezvous_directory} in WSL)."
+            )
         );
         assert_eq!(
             bridge_failure_message("lock-file-failed", BridgeHost::WslDistro),
-            "Could not create the IDE integration lock file (check the owner and permissions of \
-             ~/.zed-jp-enhance-claude in WSL, and that it is not a symbolic link)."
+            format!(
+                "Could not create the IDE integration lock file (check the owner and permissions of \
+                 {configuration_directory} in WSL, and that it is not a symbolic link)."
+            )
         );
         // ADR-F53: the same codes, said about the machine the bridge is on.
         for code in ["home-unknown", "rendezvous-failed", "lock-file-failed"] {
@@ -2824,13 +2846,17 @@ mod tests {
             );
             assert_eq!(
                 bridge_failure_message("rendezvous-failed", BridgeHost::WslDistro),
-                "IDE 連携の受け渡し用のソケットを作成できませんでした \
-                 (WSL の ~/.cache/zed-jp-enhance/ide の所有者と権限を確認してください)。"
+                format!(
+                    "IDE 連携の受け渡し用のソケットを作成できませんでした \
+                     (WSL の {rendezvous_directory} の所有者と権限を確認してください)。"
+                )
             );
             assert_eq!(
                 bridge_failure_message("lock-file-failed", BridgeHost::RemoteHost),
-                "IDE 連携のロックファイルを作成できませんでした (接続先の ~/.zed-jp-enhance-claude の\
-                 所有者と権限、シンボリックリンクになっていないかを確認してください)。"
+                format!(
+                    "IDE 連携のロックファイルを作成できませんでした (接続先の {configuration_directory} の\
+                     所有者と権限、シンボリックリンクになっていないかを確認してください)。"
+                )
             );
         }
         // The one the Windows side turns into "the session already runs".

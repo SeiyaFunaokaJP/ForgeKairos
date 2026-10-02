@@ -674,6 +674,23 @@ pub fn execute_daemon(log_file: PathBuf, state_dir: PathBuf) -> Result<()> {
                 return;
             }
         };
+        // Before the first request is served, so that no sandboxed agent
+        // session on this host can start ahead of it: the agents keep the
+        // sign-in they had under the name builds before the rename used.
+        #[cfg(target_os = "linux")]
+        match sandbox::migrate_legacy_sandboxed_agent_configuration() {
+            Ok(sandbox::LegacyAgentConfigurationMigration::Moved) => {
+                log::info!("moved the sandboxed agents' configuration to its new name");
+            }
+            Ok(sandbox::LegacyAgentConfigurationMigration::NotOwnDirectory) => log::warn!(
+                "not moving the sandboxed agents' configuration: the old one is not a \
+                 directory of this account's own"
+            ),
+            Ok(_) => {}
+            Err(error) => {
+                log::warn!("could not move the sandboxed agents' configuration: {error:#}");
+            }
+        }
         daemon::serve(listener, registry.downgrade(), cx);
         cx.set_global(DaemonSessions(registry));
 
@@ -1815,15 +1832,14 @@ fn read_proxy_settings(cx: &App) -> Option<Url> {
 
 fn cleanup_old_binaries() -> Result<()> {
     let server_dir = paths::remote_server_dir_relative();
-    let release_channel = release_channel::RELEASE_CHANNEL.dev_name();
-    let prefix = format!("zed-remote-server-{}-", release_channel);
+    let release_channel = *release_channel::RELEASE_CHANNEL;
 
     for entry in std::fs::read_dir(server_dir.as_std_path())? {
         let path = entry?.path();
 
         if let Some(file_name) = path.file_name()
-            && let Some(version) = file_name.to_string_lossy().strip_prefix(&prefix)
-            && !is_new_version(version)
+            && let Some(version) = own_binary_version(&file_name.to_string_lossy(), release_channel)
+            && !is_new_version(&version)
             && !is_file_in_use(file_name)
         {
             log::info!("removing old remote server binary: {:?}", path);
@@ -1841,6 +1857,23 @@ fn cleanup_old_binaries_wsl() {
     if let Ok(()) = std::fs::remove_dir_all(server_dir.as_std_path()) {
         log::info!("removing old wsl remote server folder: {:?}", server_dir);
     }
+}
+
+/// The version part of `file_name` when it is a server binary of
+/// `release_channel` that a build of this fork installed, under its current
+/// name or an earlier one. Upstream Zed keeps its own server binaries in the
+/// same directory, under the name this fork had before; those lack the
+/// `-jp<revision>` ending and are never this fork's to remove.
+fn own_binary_version(
+    file_name: &str,
+    release_channel: release_channel::ReleaseChannel,
+) -> Option<String> {
+    if !remote::is_fork_server_binary_name(file_name) {
+        return None;
+    }
+    std::iter::once(remote::server_binary_name_prefix(release_channel))
+        .chain(remote::legacy_server_binary_name_prefixes(release_channel))
+        .find_map(|prefix| file_name.strip_prefix(&prefix).map(str::to_string))
 }
 
 fn is_new_version(version: &str) -> bool {
@@ -1903,6 +1936,39 @@ mod tests {
     use remote::protocol::{decode_envelope, read_message, write_envelope_frame, write_message};
     use rpc::proto::EnvelopedMessage as _;
     use std::cell::RefCell;
+
+    /// Upstream Zed's server binaries share the directory and the prefix this
+    /// fork had before it was renamed; only the fork's own, under either name,
+    /// are candidates for the old-binary cleanup.
+    #[test]
+    fn old_binary_cleanup_only_considers_this_forks_binaries() {
+        let stable = release_channel::ReleaseChannel::Stable;
+        for (file_name, version) in [
+            ("forgekairos-remote-server-stable-1.21.0-jp2", "1.21.0-jp2"),
+            (
+                "forgekairos-remote-server-stable-1.21.0-jp2.exe",
+                "1.21.0-jp2.exe",
+            ),
+            ("zed-remote-server-stable-1.17.2-jp1", "1.17.2-jp1"),
+        ] {
+            assert_eq!(
+                own_binary_version(file_name, stable).as_deref(),
+                Some(version),
+                "{file_name}"
+            );
+        }
+        for file_name in [
+            "zed-remote-server-stable-1.21.0",
+            "zed-remote-server-stable-1.21.0.exe",
+            "zed-remote-server-stable-1.20.0",
+            "forgekairos-remote-server-dev-build-jp2",
+            "zed-remote-server-dev-build-jp2",
+            "zed-remote-server-stable-1.17.2-jp1-download-7.gz",
+            "slirp4netns",
+        ] {
+            assert_eq!(own_binary_version(file_name, stable), None, "{file_name}");
+        }
+    }
 
     #[test]
     fn old_binary_cleanup_compares_the_wire_revision_in_the_name() {

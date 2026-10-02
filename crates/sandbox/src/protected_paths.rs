@@ -111,7 +111,16 @@ pub const UNIX_PROTECTED_HOME_RELATIVE: &[&str] = &[
     // the same, by the local list below and by the helper, which keeps out of
     // writes everything it hides from reads.
     ".zed_server",
-    ".local/share/zed-jp-enhance",
+    // The data directory under the name this build uses and under every
+    // earlier one: a build from before the rename can be the next to run.
+    branding::concat_const!(
+        ".local/share/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/share/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
     // Binaries already on `PATH` for the next interactive shell.
     ".cargo/bin",
     ".local/bin",
@@ -202,9 +211,21 @@ const WINDOWS_PROTECTED_HOME_RELATIVE: &[&str] = &[
     r"AppData\Local\Microsoft\WindowsApps",
     // This fork's own config/data/state: `settings.json` (rewrite it and the
     // next launch talks to whichever model endpoint the command chose), the
-    // thread database, and the logs.
-    r"AppData\Roaming\Zed-JP-Enhance",
-    r"AppData\Local\Zed-JP-Enhance",
+    // thread database, and the logs. Under every name this fork has used: the
+    // next build to run can be one from before the rename.
+    branding::concat_const!(
+        r"AppData\Roaming\",
+        branding::FORGEKAIROS.app_directory_name
+    ),
+    branding::concat_const!(r"AppData\Local\", branding::FORGEKAIROS.app_directory_name),
+    branding::concat_const!(
+        r"AppData\Roaming\",
+        branding::ZED_JP_ENHANCE.app_directory_name
+    ),
+    branding::concat_const!(
+        r"AppData\Local\",
+        branding::ZED_JP_ENHANCE.app_directory_name
+    ),
     // Binaries already on `PATH` for the next shell.
     r".cargo\bin",
     r".local\bin",
@@ -253,11 +274,26 @@ const LOCAL_PROTECTED_HOME_RELATIVE: &[&str] = UNIX_PROTECTED_HOME_RELATIVE;
 /// [`builtin_protected_paths`]).
 #[cfg(target_os = "linux")]
 const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[
-    ".config/zed-jp-enhance",
-    ".local/state/zed-jp-enhance",
+    branding::concat_const!(
+        ".config/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/state/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".config/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/state/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
     ".config/autostart",
     ".config/systemd/user",
     SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+    LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
 ];
 
 /// macOS also keeps this fork's data, and the browsers' and the system's
@@ -266,12 +302,35 @@ const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[
 /// reads is not writable either.
 #[cfg(target_os = "macos")]
 const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[
-    "Library/Application Support/Zed-JP-Enhance",
-    ".config/zed-jp-enhance",
-    ".local/state/zed-jp-enhance",
-    ".local/state/Zed-JP-Enhance",
+    branding::concat_const!(
+        "Library/Application Support/",
+        branding::FORGEKAIROS.app_directory_name
+    ),
+    branding::concat_const!(
+        ".config/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/state/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(".local/state/", branding::FORGEKAIROS.app_directory_name),
+    branding::concat_const!(
+        "Library/Application Support/",
+        branding::ZED_JP_ENHANCE.app_directory_name
+    ),
+    branding::concat_const!(
+        ".config/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/state/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
+    branding::concat_const!(".local/state/", branding::ZED_JP_ENHANCE.app_directory_name),
     "Library/LaunchAgents",
     SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+    LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
     "Library/Application Support/Google/Chrome",
     "Library/Application Support/Chromium",
     "Library/Application Support/Firefox",
@@ -304,9 +363,9 @@ const LOCAL_EXTRA_PROTECTED_HOME_RELATIVE: &[&str] = &[];
 /// test can compare it against `paths::APP_NAME`; that test lives in the
 /// `agent` crate, which already depends on both `paths` and `sandbox`.
 pub const APP_DIRECTORY_NAME: &str = if cfg!(target_os = "linux") {
-    "zed-jp-enhance"
+    branding::CURRENT.app_directory_name_lowercase
 } else {
-    "Zed-JP-Enhance"
+    branding::CURRENT.app_directory_name
 };
 
 /// Resolve `relative_paths` against `home`. A trailing separator on `home` is
@@ -578,9 +637,31 @@ pub(crate) const READ_HIDDEN_HOME_RELATIVE: &[&str] = &[
     ".gemini",
     ".codex",
     SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
-    ".config/zed-jp-enhance",
-    ".local/share/zed-jp-enhance",
-    ".local/state/zed-jp-enhance",
+    LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+    branding::concat_const!(
+        ".config/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/share/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/state/",
+        branding::FORGEKAIROS.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".config/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/share/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
+    branding::concat_const!(
+        ".local/state/",
+        branding::ZED_JP_ENHANCE.app_directory_name_lowercase
+    ),
     ".zed_server",
 ];
 
@@ -590,14 +671,144 @@ pub(crate) const READ_HIDDEN_HOME_RELATIVE: &[&str] = &[
 /// other sandboxed command may read it (a session reaches its own directory
 /// through its write grant, see [`around_reachable`]), and in WSL none may
 /// write it either.
-pub const SANDBOXED_AGENT_CONFIG_HOME_RELATIVE: &str = ".zed-jp-enhance-claude";
+pub const SANDBOXED_AGENT_CONFIG_HOME_RELATIVE: &str =
+    branding::CURRENT.sandboxed_agent_config_home_relative;
+
+/// [`SANDBOXED_AGENT_CONFIG_HOME_RELATIVE`] as builds from before the rename
+/// named it. It holds the same login tokens and hooks until they are moved to
+/// the new name, and a build from before the rename keeps using it, so it is
+/// hidden and protected the same way, as a whole: no session of this build is
+/// granted anything inside it.
+pub const LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE: &str =
+    branding::ZED_JP_ENHANCE.sandboxed_agent_config_home_relative;
 
 /// ADR-F49: the directory below [`SANDBOXED_AGENT_CONFIG_HOME_RELATIVE`] that
 /// holds each project's configuration directory, relative to the distro
 /// account's home. A session is granted its own project's directory in it; the
 /// WSL helper covers the rest of it whole, so that a project added while the
 /// session runs is not visible to it either.
-pub const SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE: &str = ".zed-jp-enhance-claude/projects";
+pub const SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE: &str =
+    branding::concat_const!(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE, "/projects");
+
+/// What [`migrate_legacy_sandboxed_agent_configuration`] did.
+#[cfg(any(target_os = "linux", test))]
+#[derive(Debug, PartialEq, Eq)]
+pub enum LegacyAgentConfigurationMigration {
+    /// The directory under the earlier name now has the current one.
+    Moved,
+    /// There was no directory under the earlier name.
+    NothingToMove,
+    /// The current one exists already (or the two names are the same): the
+    /// earlier one, if any, is left where it is.
+    AlreadyThere,
+    /// The earlier one is not a directory of this account's own, reached
+    /// without a symbolic link, and is left where it is.
+    NotOwnDirectory,
+}
+
+/// Gives the sandboxed agents' configuration directory under `home` its
+/// current name ([`SANDBOXED_AGENT_CONFIG_HOME_RELATIVE`]) when only the
+/// directory under the name builds from before the rename used is there, so
+/// that the agents stay signed in.
+///
+/// Only a real directory this account owns is moved, never one that is or is
+/// reached through a symbolic link: the move must not take something from
+/// elsewhere, or someone else's, into the place the sandbox treats as this
+/// account's agents' own. On Linux the rename itself refuses to replace a
+/// current one that appeared since it was looked for.
+#[cfg(any(target_os = "linux", test))]
+pub fn migrate_legacy_sandboxed_agent_configuration_in(
+    home: &Path,
+) -> std::io::Result<LegacyAgentConfigurationMigration> {
+    if LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE == SANDBOXED_AGENT_CONFIG_HOME_RELATIVE {
+        return Ok(LegacyAgentConfigurationMigration::AlreadyThere);
+    }
+    let current = home.join(SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
+    let legacy = home.join(LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE);
+    match std::fs::symlink_metadata(&current) {
+        Ok(_) => return Ok(LegacyAgentConfigurationMigration::AlreadyThere),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    let metadata = match std::fs::symlink_metadata(&legacy) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(LegacyAgentConfigurationMigration::NothingToMove);
+        }
+        Err(error) => return Err(error),
+    };
+    if !metadata.is_dir() || !is_owned_by_this_account(&metadata) {
+        return Ok(LegacyAgentConfigurationMigration::NotOwnDirectory);
+    }
+    // The home itself may be reached through a link (`/home` on a separate
+    // volume); what must not be a link is the directory being moved, which
+    // `symlink_metadata` above has looked at without following it.
+    rename_without_replacing(&legacy, &current)?;
+    Ok(LegacyAgentConfigurationMigration::Moved)
+}
+
+#[cfg(target_os = "linux")]
+fn is_owned_by_this_account(metadata: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+    // SAFETY: `geteuid` has no preconditions and cannot fail.
+    metadata.uid() == unsafe { libc::geteuid() }
+}
+
+/// Elsewhere (the tests on Windows and macOS) everything under a temporary
+/// home is this account's.
+#[cfg(all(not(target_os = "linux"), test))]
+fn is_owned_by_this_account(_metadata: &std::fs::Metadata) -> bool {
+    true
+}
+
+#[cfg(target_os = "linux")]
+fn rename_without_replacing(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::unix::ffi::OsStrExt as _;
+    let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
+    let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+    // SAFETY: both are NUL-terminated strings that outlive the call.
+    let result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            from.as_ptr(),
+            libc::AT_FDCWD,
+            to.as_ptr(),
+            libc::RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+/// Without `renameat2` (the tests elsewhere) the destination was checked to
+/// be missing just before, which is as close as a plain rename gets.
+#[cfg(all(not(target_os = "linux"), test))]
+fn rename_without_replacing(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}
+
+/// [`migrate_legacy_sandboxed_agent_configuration_in`] for this account's home,
+/// as the account database names it. For the processes on the Linux side that
+/// run before any sandboxed agent session: the remote server when it starts on
+/// an SSH host, and the WSL helper's probe.
+#[cfg(target_os = "linux")]
+pub fn migrate_legacy_sandboxed_agent_configuration()
+-> anyhow::Result<LegacyAgentConfigurationMigration> {
+    use anyhow::Context as _;
+    let home = home_dir_from_account().context("cannot determine the account's home directory")?;
+    migrate_legacy_sandboxed_agent_configuration_in(&home).with_context(|| {
+        format!(
+            "moving {} to {} in {}",
+            LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+            SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+            home.display()
+        )
+    })
+}
 
 /// What a Windows home hides on top of [`READ_HIDDEN_HOME_RELATIVE`]: `_netrc`,
 /// the spelling curl looks for there, and all of `AppData`, where browser
@@ -608,8 +819,16 @@ pub(crate) const READ_HIDDEN_WINDOWS_HOME_EXTRA: &[&str] = &["_netrc", "AppData"
 /// stores, outside the XDG-style locations above.
 #[cfg(target_os = "macos")]
 const LOCAL_READ_HIDDEN_EXTRA: &[&str] = &[
-    "Library/Application Support/Zed-JP-Enhance",
-    ".local/state/Zed-JP-Enhance",
+    branding::concat_const!(
+        "Library/Application Support/",
+        branding::FORGEKAIROS.app_directory_name
+    ),
+    branding::concat_const!(".local/state/", branding::FORGEKAIROS.app_directory_name),
+    branding::concat_const!(
+        "Library/Application Support/",
+        branding::ZED_JP_ENHANCE.app_directory_name
+    ),
+    branding::concat_const!(".local/state/", branding::ZED_JP_ENHANCE.app_directory_name),
     "Library/Application Support/Google/Chrome",
     "Library/Application Support/Chromium",
     "Library/Application Support/Firefox",
@@ -795,9 +1014,15 @@ pub(crate) fn read_hidden_entries(home: &Path) -> Vec<PathBuf> {
 /// no environment variable moved it), relative to a home, on the platforms
 /// whose sandbox decides what a command may be shown inside it.
 #[cfg(target_os = "linux")]
-const DATA_DIRECTORY_HOME_RELATIVE: &str = ".local/share/zed-jp-enhance";
+const DATA_DIRECTORY_HOME_RELATIVE: &str = branding::concat_const!(
+    ".local/share/",
+    branding::CURRENT.app_directory_name_lowercase
+);
 #[cfg(target_os = "macos")]
-const DATA_DIRECTORY_HOME_RELATIVE: &str = "Library/Application Support/Zed-JP-Enhance";
+const DATA_DIRECTORY_HOME_RELATIVE: &str = branding::concat_const!(
+    "Library/Application Support/",
+    branding::CURRENT.app_directory_name
+);
 
 /// ADR-F49 decision 14: what inside this fork's data directory a command may
 /// be shown although the read hiding covers the directory: the agents Zed
@@ -1025,7 +1250,17 @@ pub(crate) fn enclosures_to_cover(enclosures: &[PathBuf], granted: &[&Path]) -> 
 /// overwriting the binary that runs before every sandboxed command would be
 /// code execution outside the sandbox (the WSL counterpart of `.zed_server`).
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub(crate) const WSL_SANDBOX_HELPER_HOME_RELATIVE: &str = ".cache/zed-jp-enhance";
+pub(crate) const WSL_SANDBOX_HELPER_HOME_RELATIVE: &str =
+    branding::CURRENT.remote_cache_home_relative;
+
+/// [`WSL_SANDBOX_HELPER_HOME_RELATIVE`] as builds from before the rename named
+/// it. It is the remote server's cache directory too, which the server moves
+/// to the current name only when nothing is there under that name yet; a
+/// build from before the rename still installs and runs its helper under the
+/// earlier name, so it is protected alongside the current one either way.
+#[cfg(any(target_os = "linux", all(test, target_os = "windows")))]
+pub(crate) const LEGACY_WSL_SANDBOX_HELPER_HOME_RELATIVE: &str =
+    branding::ZED_JP_ENHANCE.remote_cache_home_relative;
 
 /// ADR-F49: where the IDE bridge keeps each session's rendezvous socket,
 /// relative to the distro account's home. It has to be inside
@@ -1033,13 +1268,15 @@ pub(crate) const WSL_SANDBOX_HELPER_HOME_RELATIVE: &str = ".cache/zed-jp-enhance
 /// mode: the helper connects to that socket from outside the sandbox, and
 /// refuses a rendezvous the sandboxed command could replace.
 #[cfg(target_os = "windows")]
-pub(crate) const IDE_RENDEZVOUS_HOME_RELATIVE: &str = ".cache/zed-jp-enhance/ide";
+pub(crate) const IDE_RENDEZVOUS_HOME_RELATIVE: &str =
+    branding::concat_const!(branding::CURRENT.remote_cache_home_relative, "/ide");
 
 /// ADR-F49: where agent binaries staged for the sandbox live, one directory
 /// per SHA-256, relative to the distro account's home. Inside
 /// [`WSL_SANDBOX_HELPER_HOME_RELATIVE`], so read-only from inside the sandbox.
 #[cfg(target_os = "windows")]
-pub(crate) const AGENT_BINARIES_HOME_RELATIVE: &str = ".cache/zed-jp-enhance/agents";
+pub(crate) const AGENT_BINARIES_HOME_RELATIVE: &str =
+    branding::concat_const!(branding::CURRENT.remote_cache_home_relative, "/agents");
 /// The account's home directory, read from the environment.
 ///
 /// Every process that runs a sandboxed command inherits it, whether it is the
@@ -1196,22 +1433,43 @@ pub(crate) fn app_state_directories_from_environment() -> Vec<PathBuf> {
 
     let mut directories = Vec::new();
     for variable in base_variables {
-        let Some(directory) = app_state_directory_from_environment(variable) else {
+        let Some(base) = absolute_env_path(variable) else {
             continue;
         };
-        if !directories.contains(&directory) {
-            directories.push(directory);
+        for name in app_directory_names() {
+            push_unique(&mut directories, base.join(name));
         }
     }
     directories
 }
 
+/// [`APP_DIRECTORY_NAME`] followed by the names builds from before the rename
+/// gave the same directory, spelled for this platform the same way. A build
+/// from before the rename keeps its settings there and can be the next one to
+/// run, so they are protected and hidden alongside the current one.
+fn app_directory_names() -> Vec<&'static str> {
+    let mut names = vec![APP_DIRECTORY_NAME];
+    for legacy in branding::LEGACY {
+        let name = if cfg!(target_os = "linux") {
+            legacy.app_directory_name_lowercase
+        } else {
+            legacy.app_directory_name
+        };
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// This fork's directory inside the config/data/state base directory the
 /// environment variable `name` points at, or `None` when it is unset or a
-/// relative path. The single place this fork's directory name is joined onto an
-/// env-named base, shared by [`app_state_directories_from_environment`] and
-/// [`remote_agent_runtime_data_directory`] so the readable check lands in the
-/// very directory the read hiding covers.
+/// relative path. [`remote_agent_runtime_data_directory`] uses it, and
+/// [`app_state_directories_from_environment`] joins the same
+/// [`APP_DIRECTORY_NAME`] onto the same bases (first among the names it
+/// covers), so the readable check lands in the very directory the read hiding
+/// covers.
+#[cfg(target_os = "linux")]
 fn app_state_directory_from_environment(name: &str) -> Option<PathBuf> {
     absolute_env_path(name).map(|base| base.join(APP_DIRECTORY_NAME))
 }
@@ -1241,6 +1499,7 @@ mod tests {
             home.join(".local").join("share").join("keyrings"),
             home.join(".claude"),
             home.join(".claude.json"),
+            home.join(".forgekairos-claude"),
             home.join(".zed-jp-enhance-claude"),
             home.join(".zed_server"),
         ] {
@@ -1720,19 +1979,26 @@ mod tests {
         assert!(contains(".cargo/bin"), "binaries already on PATH");
         if cfg!(target_os = "windows") {
             assert!(contains(r"Documents\PowerShell"), "shell init");
-            assert!(
-                contains(r"AppData\Roaming\Zed-JP-Enhance")
-                    || contains(r"AppData\Local\Zed-JP-Enhance"),
-                "this fork's own settings/state directory"
-            );
+            for name in ["ForgeKairos", "Zed-JP-Enhance"] {
+                assert!(
+                    contains(&format!(r"AppData\Roaming\{name}"))
+                        && contains(&format!(r"AppData\Local\{name}")),
+                    "this fork's own settings/state directory, under {name}"
+                );
+            }
             assert!(contains(".wslconfig"), "the sandbox's own WSL substrate");
         } else {
             assert!(contains(".bashrc"), "shell init");
-            assert!(
-                contains(".config/zed-jp-enhance")
-                    || contains("Library/Application Support/Zed-JP-Enhance"),
-                "this fork's own settings/state directory"
-            );
+            for (lowercase, name) in [
+                ("forgekairos", "ForgeKairos"),
+                ("zed-jp-enhance", "Zed-JP-Enhance"),
+            ] {
+                assert!(
+                    contains(&format!(".config/{lowercase}"))
+                        || contains(&format!("Library/Application Support/{name}")),
+                    "this fork's own settings/state directory, under {name}"
+                );
+            }
         }
     }
 
@@ -1749,23 +2015,31 @@ mod tests {
         } else {
             PathBuf::from("/home/u")
         };
-        let configuration = home.join(if cfg!(target_os = "windows") {
-            r"AppData\Roaming\Zed-JP-Enhance"
+        let configurations = if cfg!(target_os = "windows") {
+            [
+                r"AppData\Roaming\ForgeKairos",
+                r"AppData\Roaming\Zed-JP-Enhance",
+            ]
         } else if cfg!(target_os = "macos") {
-            "Library/Application Support/Zed-JP-Enhance"
+            [
+                "Library/Application Support/ForgeKairos",
+                "Library/Application Support/Zed-JP-Enhance",
+            ]
         } else {
-            ".config/zed-jp-enhance"
-        });
+            [".config/forgekairos", ".config/zed-jp-enhance"]
+        }
+        .map(|relative| home.join(relative));
 
         let home_as_project = builtin_protected_paths(&home, std::slice::from_ref(&home));
-        assert!(
-            home_as_project.contains(&configuration),
-            "{home_as_project:?}"
-        );
-
         let elsewhere = home.join("src").join("app");
         let ordinary = builtin_protected_paths(&home, std::slice::from_ref(&elsewhere));
-        assert!(ordinary.contains(&configuration), "{ordinary:?}");
+        for configuration in &configurations {
+            assert!(
+                home_as_project.contains(configuration),
+                "{home_as_project:?}"
+            );
+            assert!(ordinary.contains(configuration), "{ordinary:?}");
+        }
         let inside_the_project = ordinary
             .iter()
             .filter_map(|path| path.strip_prefix(&elsewhere).ok())
@@ -1912,7 +2186,8 @@ mod tests {
     fn an_agent_configuration_directory_gets_no_worktree_entries() {
         let temporary = tempfile::tempdir().expect("tempdir");
         let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
-        let projects = home.join(".zed-jp-enhance-claude").join("projects");
+        let mut projects = home.clone();
+        projects.extend(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE.split('/'));
         let configuration = projects.join("0123456789abcdef").join("config");
         let work = home.join("work");
         std::fs::create_dir_all(&configuration).expect("create");
@@ -2121,5 +2396,236 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    /// What the lists protect and hide under this fork's names, spelled out
+    /// rather than derived from `branding`, so that dropping one of them —
+    /// the name before the rename above all, which an older build still uses
+    /// — fails here.
+    #[test]
+    fn the_lists_hold_the_current_and_the_earlier_names() {
+        for entry in [
+            ".zed_server",
+            ".local/share/forgekairos",
+            ".local/share/zed-jp-enhance",
+        ] {
+            assert!(UNIX_PROTECTED_HOME_RELATIVE.contains(&entry), "{entry}");
+        }
+        for entry in [
+            ".zed_server",
+            ".forgekairos-claude",
+            ".zed-jp-enhance-claude",
+            ".config/forgekairos",
+            ".config/zed-jp-enhance",
+            ".local/share/forgekairos",
+            ".local/share/zed-jp-enhance",
+            ".local/state/forgekairos",
+            ".local/state/zed-jp-enhance",
+        ] {
+            assert!(READ_HIDDEN_HOME_RELATIVE.contains(&entry), "{entry}");
+        }
+        #[cfg(target_os = "windows")]
+        for entry in [
+            r"AppData\Roaming\ForgeKairos",
+            r"AppData\Local\ForgeKairos",
+            r"AppData\Roaming\Zed-JP-Enhance",
+            r"AppData\Local\Zed-JP-Enhance",
+        ] {
+            assert!(LOCAL_PROTECTED_HOME_RELATIVE.contains(&entry), "{entry}");
+        }
+        #[cfg(target_os = "linux")]
+        for entry in [
+            ".config/forgekairos",
+            ".config/zed-jp-enhance",
+            ".local/state/forgekairos",
+            ".local/state/zed-jp-enhance",
+            ".forgekairos-claude",
+            ".zed-jp-enhance-claude",
+        ] {
+            assert!(
+                LOCAL_EXTRA_PROTECTED_HOME_RELATIVE.contains(&entry),
+                "{entry}"
+            );
+        }
+        #[cfg(target_os = "macos")]
+        for entry in [
+            "Library/Application Support/ForgeKairos",
+            "Library/Application Support/Zed-JP-Enhance",
+            ".forgekairos-claude",
+            ".zed-jp-enhance-claude",
+        ] {
+            assert!(
+                LOCAL_EXTRA_PROTECTED_HOME_RELATIVE.contains(&entry),
+                "{entry}"
+            );
+        }
+        #[cfg(any(target_os = "linux", target_os = "windows"))]
+        assert_eq!(
+            [
+                WSL_SANDBOX_HELPER_HOME_RELATIVE,
+                LEGACY_WSL_SANDBOX_HELPER_HOME_RELATIVE
+            ],
+            [".cache/forgekairos", ".cache/zed-jp-enhance"]
+        );
+        assert_eq!(
+            [
+                SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+                LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE
+            ],
+            [".forgekairos-claude", ".zed-jp-enhance-claude"]
+        );
+    }
+
+    /// Every set of names this build or an earlier one used is in the lists:
+    /// a set added to `branding::LEGACY` has to be added to them as well.
+    #[test]
+    fn every_name_this_fork_has_used_is_protected_and_hidden() {
+        for names in std::iter::once(&branding::CURRENT).chain(branding::LEGACY) {
+            let lowercase = names.app_directory_name_lowercase;
+            let data = format!(".local/share/{lowercase}");
+            assert!(
+                UNIX_PROTECTED_HOME_RELATIVE.contains(&data.as_str()),
+                "{data}"
+            );
+            for hidden in [
+                format!(".config/{lowercase}"),
+                data.clone(),
+                format!(".local/state/{lowercase}"),
+                names.sandboxed_agent_config_home_relative.to_string(),
+            ] {
+                assert!(
+                    READ_HIDDEN_HOME_RELATIVE.contains(&hidden.as_str()),
+                    "{hidden}"
+                );
+            }
+            assert!(
+                [
+                    SANDBOXED_AGENT_CONFIG_HOME_RELATIVE,
+                    LEGACY_SANDBOXED_AGENT_CONFIG_HOME_RELATIVE
+                ]
+                .contains(&names.sandboxed_agent_config_home_relative)
+            );
+            #[cfg(any(target_os = "linux", target_os = "windows"))]
+            assert!(
+                [
+                    WSL_SANDBOX_HELPER_HOME_RELATIVE,
+                    LEGACY_WSL_SANDBOX_HELPER_HOME_RELATIVE
+                ]
+                .contains(&names.remote_cache_home_relative)
+            );
+            #[cfg(target_os = "windows")]
+            for directory in [
+                format!(r"AppData\Roaming\{}", names.app_directory_name),
+                format!(r"AppData\Local\{}", names.app_directory_name),
+            ] {
+                assert!(
+                    LOCAL_PROTECTED_HOME_RELATIVE.contains(&directory.as_str()),
+                    "{directory}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_agent_configuration_under_the_earlier_name_is_moved_to_the_current_one() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let legacy = home.path().join(".zed-jp-enhance-claude");
+        let token = legacy
+            .join("projects")
+            .join("key")
+            .join("config")
+            .join(".credentials.json");
+        std::fs::create_dir_all(token.parent().expect("a parent")).expect("create");
+        std::fs::write(&token, "token").expect("write");
+
+        assert_eq!(
+            migrate_legacy_sandboxed_agent_configuration_in(home.path()).expect("moves"),
+            LegacyAgentConfigurationMigration::Moved
+        );
+        let current = home.path().join(".forgekairos-claude");
+        assert_eq!(
+            std::fs::read_to_string(
+                current
+                    .join("projects")
+                    .join("key")
+                    .join("config")
+                    .join(".credentials.json")
+            )
+            .expect("the token came along"),
+            "token"
+        );
+        assert!(!legacy.exists());
+
+        assert_eq!(
+            migrate_legacy_sandboxed_agent_configuration_in(home.path()).expect("runs again"),
+            LegacyAgentConfigurationMigration::AlreadyThere
+        );
+        let empty = tempfile::tempdir().expect("tempdir");
+        assert_eq!(
+            migrate_legacy_sandboxed_agent_configuration_in(empty.path()).expect("runs"),
+            LegacyAgentConfigurationMigration::NothingToMove
+        );
+        assert!(!empty.path().join(".forgekairos-claude").exists());
+    }
+
+    /// With both there, the current one is what the agents use and the earlier
+    /// one is left alone: neither replaced nor merged.
+    #[test]
+    fn the_agent_configuration_is_not_moved_over_a_current_one() {
+        let home = tempfile::tempdir().expect("tempdir");
+        let legacy = home.path().join(".zed-jp-enhance-claude");
+        let current = home.path().join(".forgekairos-claude");
+        std::fs::create_dir_all(&legacy).expect("create");
+        std::fs::write(legacy.join("old"), "old").expect("write");
+        std::fs::create_dir_all(&current).expect("create");
+        std::fs::write(current.join("new"), "new").expect("write");
+
+        assert_eq!(
+            migrate_legacy_sandboxed_agent_configuration_in(home.path()).expect("runs"),
+            LegacyAgentConfigurationMigration::AlreadyThere
+        );
+        assert!(legacy.join("old").exists());
+        assert!(current.join("new").exists());
+        assert!(!current.join("old").exists());
+        assert!(!current.join(".zed-jp-enhance-claude").exists());
+    }
+
+    /// Only a real directory is moved: a file under the earlier name, or a
+    /// symbolic link there to somewhere else, stays where it is and the
+    /// current name is not created.
+    #[test]
+    fn only_a_real_directory_under_the_earlier_name_is_moved() {
+        let home = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            home.path().join(".zed-jp-enhance-claude"),
+            "not a directory",
+        )
+        .expect("write");
+        assert_eq!(
+            migrate_legacy_sandboxed_agent_configuration_in(home.path()).expect("runs"),
+            LegacyAgentConfigurationMigration::NotOwnDirectory
+        );
+        assert!(!home.path().join(".forgekairos-claude").exists());
+
+        #[cfg(unix)]
+        {
+            let home = tempfile::tempdir().expect("tempdir");
+            let elsewhere = home.path().join("elsewhere");
+            std::fs::create_dir(&elsewhere).expect("create");
+            std::fs::write(elsewhere.join("secret"), "secret").expect("write");
+            std::os::unix::fs::symlink(&elsewhere, home.path().join(".zed-jp-enhance-claude"))
+                .expect("symlink");
+            assert_eq!(
+                migrate_legacy_sandboxed_agent_configuration_in(home.path()).expect("runs"),
+                LegacyAgentConfigurationMigration::NotOwnDirectory
+            );
+            assert!(std::fs::symlink_metadata(home.path().join(".forgekairos-claude")).is_err());
+            assert!(
+                std::fs::symlink_metadata(home.path().join(".zed-jp-enhance-claude"))
+                    .expect("the link stays")
+                    .file_type()
+                    .is_symlink()
+            );
+        }
     }
 }

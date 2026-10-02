@@ -1,13 +1,13 @@
 ﻿<#
     register-explorer-menu.ps1
 
-    開発ビルドの zed.exe を、エクスプローラーの右クリックメニューに「Zed で開く」として
+    開発ビルドの zed.exe を、エクスプローラーの右クリックメニューに「ForgeKairos で開く」として
     手元だけで登録/削除するスクリプト。
 
     背景: 配布用インストーラー (script/bundle-windows.ps1 が作る) は Windows 11 では
     Appx (crates/explorer_command_injector) 経由でしか新しい右クリックメニューに項目を
     出せず、この Appx はコード署名 (Azure Trusted Signing) が無いと Add-AppxPackage が
-    失敗する。zed-jp-enhance フォークのビルド環境には Zed Industries 名義の署名鍵が無いため、
+    失敗する。このフォーク (ForgeKairos) のビルド環境にはコード署名の鍵が無いため、
     今のところこの経路は機能しない可能性が高い。本スクリプトは、その代わりに旧来の
     レジストリ (HKCU\Software\Classes\...\shell) へ直接登録する、開発機だけの回避策。
 
@@ -20,7 +20,7 @@
 
     登録後の見え方 (Windows 11):
         この方式はレジストリ直接登録 (旧来の右クリックメニュー) のため、右クリック →
-        「その他のオプションを表示」の中に「Zed で開く」が出る。トップレベルの新しい
+        「その他のオプションを表示」の中に「ForgeKairos で開く」が出る。トップレベルの新しい
         メニューに直接出すには、インストーラーが Appx を正しく (署名済みで) 登録できて
         いる必要がある。
         Windows 10 以前ではトップレベルの右クリックメニューにそのまま出る。
@@ -43,10 +43,11 @@ if ([string]::IsNullOrEmpty($ExePath)) {
     $ExePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\target\debug\zed.exe"))
 }
 
-# インストーラー (zed.iss) 側の {#RegValueName} ("ZedJPEnhance" 等) とはあえて別名にして、
-# 正規インストール時のレジストリキーと衝突・上書きしないようにする。
-$RegValueName = "ZedJpEnhance"
-$MenuLabel = "Zed で開く"
+# インストーラー (zed.iss) 側の {#RegValueName} ("ForgeKairos"、"ForgeKairosDev" 等。改名前の
+# "ZedJPEnhance" も) とは、大文字小文字を無視しても別の名前にして、正規インストール時の
+# レジストリキーと衝突・上書きしないようにする (レジストリのキー名は大文字小文字を区別しない)。
+$RegValueName = "ForgeKairosLocalBuild"
+$MenuLabel = "ForgeKairos で開く"
 
 if (-not $Remove -and -not (Test-Path -LiteralPath $ExePath)) {
     throw "zed.exe が見つかりません: $ExePath`n-ExePath でビルド済みの zed.exe の場所を指定してください。"

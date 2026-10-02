@@ -1,3 +1,4 @@
+pub mod brand_icons;
 pub mod clippy;
 pub mod compliance;
 pub mod gpui;
