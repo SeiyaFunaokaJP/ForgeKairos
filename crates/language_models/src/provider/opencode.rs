@@ -1211,7 +1211,8 @@ struct ConfigurationView {
 impl ConfigurationView {
     fn new(state: Entity<State>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let api_key_editor = cx.new(|cx| {
-            InputField::new(window, cx, "sk-00000000000000000000000000000000").label("API key")
+            InputField::new(window, cx, "sk-00000000000000000000000000000000")
+                .label(i18n::t!("API key"))
         });
 
         cx.observe(&state, |_, _, cx| {
@@ -1303,13 +1304,16 @@ impl Render for ConfigurationView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let env_var_set = self.state.read(cx).api_key_state.is_from_env_var();
         let configured_card_label = if env_var_set {
-            format!("API key set in {API_KEY_ENV_VAR_NAME} environment variable")
+            i18n::t!(
+                "API key set in {env_var_name} environment variable",
+                env_var_name = API_KEY_ENV_VAR_NAME
+            )
         } else {
             let api_url = OpenCodeLanguageModelProvider::api_url(cx);
             if api_url == OPENCODE_API_URL {
-                "API key configured".to_string()
+                i18n::t!("API key configured").to_string()
             } else {
-                format!("API key configured for {}", api_url)
+                i18n::t!("API key configured for {}", api_url)
             }
         };
 
@@ -1321,8 +1325,9 @@ impl Render for ConfigurationView {
             ConfiguredApiCard::new("opencode-reset-key", configured_card_label)
                 .disabled(env_var_set)
                 .when(env_var_set, |this| {
-                    this.tooltip_label(format!(
-                        "To reset your API key, unset the {API_KEY_ENV_VAR_NAME} environment variable."
+                    this.tooltip_label(i18n::t!(
+                        "To reset your API key, unset the {env_var_name} environment variable.",
+                        env_var_name = API_KEY_ENV_VAR_NAME
                     ))
                 })
                 .on_click(cx.listener(|this, _, window, cx| this.reset_api_key(window, cx)))
@@ -1341,17 +1346,20 @@ impl Render for ConfigurationView {
                 List::new()
                     .child(
                         ListBulletItem::new("")
-                            .child(Label::new("Sign in and get your key at").color(Color::Muted))
+                            .child(
+                                Label::new(i18n::t!("Sign in and get your key at"))
+                                    .color(Color::Muted),
+                            )
                             .child(ButtonLink::new(
-                                "OpenCode Console",
+                                i18n::t!("OpenCode Console"),
                                 "https://opencode.ai/auth",
                             )),
                     )
                     .when(is_editing, |this| {
                         this.child(
-                            ListBulletItem::new(
-                                "Paste your API key below and hit enter to start using OpenCode",
-                            )
+                            ListBulletItem::new(i18n::t!(
+                                "Paste your API key below and hit enter to start using OpenCode"
+                            ))
                             .label_color(Color::Muted),
                         )
                     }),
@@ -1369,7 +1377,7 @@ impl Render for ConfigurationView {
             .into_any_element();
 
         if self.load_credentials_task.is_some() {
-            Label::new("Loading Credentials…").into_any_element()
+            Label::new(i18n::t!("Loading credentials…")).into_any_element()
         } else {
             let settings = OpenCodeLanguageModelProvider::settings(cx);
             let show_zen = settings.show_zen_models;
@@ -1377,11 +1385,11 @@ impl Render for ConfigurationView {
 
             let subscription_toggles = v_flex()
                 .gap_2()
-                .child(Label::new("Subscriptions"))
+                .child(Label::new(i18n::t!("Subscriptions")))
                 .child(
                     Switch::new("opencode-show-zen-models", show_zen.into())
                         .full_width(true)
-                        .label("Show Zen models")
+                        .label(i18n::t!("Show Zen models"))
                         .label_position(SwitchLabelPosition::Start)
                         .on_click(cx.listener(|this, state, window, cx| {
                             this.set_subscription_enabled(
@@ -1396,7 +1404,7 @@ impl Render for ConfigurationView {
                 .child(
                     Switch::new("opencode-show-go-models", show_go.into())
                         .full_width(true)
-                        .label("Show Go models")
+                        .label(i18n::t!("Show Go models"))
                         .label_position(SwitchLabelPosition::Start)
                         .on_click(cx.listener(|this, state, window, cx| {
                             this.set_subscription_enabled(
@@ -1409,9 +1417,9 @@ impl Render for ConfigurationView {
                 );
 
             let no_subscriptions_warning = if !show_zen && !show_go {
-                Some(Banner::new().severity(Severity::Warning).child(Label::new(
-                    "No subscriptions enabled. Enable at least one subscription to use OpenCode.",
-                )))
+                Some(Banner::new().severity(Severity::Warning).child(Label::new(i18n::t!(
+                    "No subscriptions enabled. Enable at least one subscription to use OpenCode."
+                ))))
             } else {
                 None
             };
@@ -1423,9 +1431,10 @@ impl Render for ConfigurationView {
                     .map(|(subscription, error)| {
                         Banner::new()
                             .severity(Severity::Error)
-                            .child(Label::new(format!(
-                                "Failed to load OpenCode {} models: {error}",
-                                subscription.display_name()
+                            .child(Label::new(i18n::t!(
+                                "Failed to load OpenCode {subscription} models: {error}",
+                                subscription = subscription.display_name(),
+                                error = error
                             )))
                     });
 

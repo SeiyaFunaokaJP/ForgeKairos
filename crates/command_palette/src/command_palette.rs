@@ -1090,14 +1090,31 @@ mod tests {
         assert_eq!(command.search_text, "editor: go to definition");
     }
 
+    // Defined only here so that no catalog can label it, standing for an action a
+    // translation has not caught up with yet.
+    actions!(command_palette_test, [UnlabeledAction]);
+
     #[test]
     fn test_unmapped_action_keeps_humanized_name() {
         let _locale = install_actions_catalog();
-        // `menu` 名前空間は _actions.po の対象外なので、対応表に載らないアクションの代表として使う
-        let command = Command::for_action(Box::new(menu::SelectNext));
-        assert_eq!(command.name, "menu: select next");
+        let command = Command::for_action(Box::new(UnlabeledAction));
+        assert_eq!(command.name, "command palette test: unlabeled action");
         assert_eq!(command.search_text, command.name);
-        assert_eq!(i18n::tr_ctx_opt("action", "menu::SelectNext"), None);
+        assert_eq!(
+            i18n::tr_ctx_opt("action", "command_palette_test::UnlabeledAction"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_menu_actions_are_labeled() {
+        let _locale = install_actions_catalog();
+        let command = Command::for_action(Box::new(menu::SelectNext));
+        assert_eq!(command.name, "メニュー: 次の項目を選択");
+        assert_eq!(
+            command.search_text,
+            "メニュー: 次の項目を選択 menu: select next"
+        );
     }
 
     /// `ja_labels::LABEL_TABLE` as it was at a97e20b, before the labels moved to

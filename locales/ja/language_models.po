@@ -20,6 +20,9 @@ msgstr "{} の API キーは設定済み"
 msgid "API key set in {env_var_name} environment variable"
 msgstr "API キーは環境変数 {env_var_name} で設定されています"
 
+msgid "Access Key ID"
+msgstr "アクセスキー ID"
+
 msgid "Alternatively, you can connect to a remote llama.cpp server by specifying its URL and API key (set with --api-key, may not be required):"
 msgstr "リモートの llama.cpp サーバーに接続することもできます。URL と API キー (--api-key で設定したもの。不要な場合もあります) を指定してください:"
 
@@ -29,11 +32,29 @@ msgstr "LM Studio のサーバーに接続することもできます。URL と 
 msgid "Alternatively, you can connect to an Ollama server by specifying its URL and API key (may not be required):"
 msgstr "Ollama のサーバーに接続することもできます。URL と API キー (不要な場合もあります) を指定してください:"
 
+msgid "Attach the necessary Bedrock permissions to"
+msgstr "必要な Bedrock の権限を付与する先:"
+
 msgid "Authentication failed for Vercel AI Gateway. Use a Vercel AI Gateway key (vck_...).\nCreate or manage keys in Vercel AI Gateway console.\nIf this persists, regenerate the key and update it in Vercel AI Gateway provider settings in Zed."
 msgstr "Vercel AI Gateway の認証に失敗しました。Vercel AI Gateway のキー (vck_...) を使ってください。\nキーは Vercel AI Gateway のコンソールで作成・管理できます。\n解決しない場合は、キーを作り直し、ForgeKairos の Vercel AI Gateway プロバイダーの設定で更新してください。"
 
+msgid "Authentication method is configured in settings. Edit settings.json to change."
+msgstr "認証方式は設定で指定されています。変えるには settings.json を編集してください。"
+
+msgid "Bedrock API Key"
+msgstr "Bedrock の API キー"
+
+msgid "Bedrock Console"
+msgstr "Bedrock のコンソール"
+
+msgid "Bedrock Model Catalog"
+msgstr "Bedrock のモデルカタログ"
+
 msgid "Browse GGUF Models"
 msgstr "GGUF モデルを探す"
+
+msgid "But first, to access models on AWS, you need to:"
+msgstr "その前に、AWS のモデルを使うには次が必要です:"
 
 msgid "Cancel"
 msgstr "キャンセル"
@@ -43,6 +64,9 @@ msgstr "下の「接続」をクリックすると、ForgeKairos で Ollama を�
 
 msgid "Click 'Connect' below to start using llama.cpp in Zed"
 msgstr "下の「接続」をクリックすると、ForgeKairos で llama.cpp を使い始められます"
+
+msgid "Configure Copilot Chat"
+msgstr "Copilot Chat を設定"
 
 msgid "Connect"
 msgstr "接続"
@@ -77,8 +101,26 @@ msgstr "Ollama をダウンロード"
 msgid "Download and install Ollama from"
 msgstr "Ollama をダウンロードしてインストール:"
 
+msgid "Enter either access keys OR a Bedrock API Key below (not both)"
+msgstr "下にアクセスキーか Bedrock の API キーのどちらか一方を入力してください (両方は不可)"
+
+msgid "Failed to load OpenCode {subscription} models: {error}"
+msgstr "OpenCode {subscription} のモデルを読み込めませんでした: {error}"
+
+msgid "For Bedrock API Keys: Generate an API key from the"
+msgstr "Bedrock の API キーの場合: API キーを次で発行します:"
+
+msgid "For access keys: Create an IAM user in the AWS console with programmatic access"
+msgstr "アクセスキーの場合: AWS コンソールでプログラムによるアクセスを持つ IAM ユーザーを作成します"
+
 msgid "Get llama.cpp"
 msgstr "llama.cpp を入手"
+
+msgid "Grant permissions to the strategy you'll use according to the:"
+msgstr "使う認証方式に、次に従って権限を付与します:"
+
+msgid "IAM Console"
+msgstr "IAM コンソール"
 
 msgid "Install llama.cpp from"
 msgstr "llama.cpp をインストール:"
@@ -89,17 +131,44 @@ msgstr "LM Studio を起動し、モデルを 1 つ以上ダウンロードし�
 msgid "Loading credentials…"
 msgstr "認証情報を読み込んでいます…"
 
+msgid "Manage Subscription"
+msgstr "サブスクリプションを管理"
+
 msgid "Model Catalog"
 msgstr "モデルのカタログ"
+
+msgid "No subscriptions enabled. Enable at least one subscription to use OpenCode."
+msgstr "有効なサブスクリプションがありません。OpenCode を使うには少なくとも 1 つを有効にしてください。"
+
+msgid "Not authenticated"
+msgstr "未認証"
 
 msgid "Open WebUI"
 msgstr "WebUI を開く"
 
+msgid "OpenCode Console"
+msgstr "OpenCode のコンソール"
+
+msgid "Optionally, if your environment uses AWS CLI profiles, you can set {profile}; if it requires a custom endpoint, you can set {endpoint}; and if it requires a Session Token, you can set {session_token}."
+msgstr "必要に応じて、AWS CLI のプロファイルを使う環境では {profile} を、独自のエンドポイントが要る環境では {endpoint} を、セッショントークンが要る環境では {session_token} を設定できます。"
+
+msgid "Paste your API key below and hit enter to start using OpenCode"
+msgstr "下に API キーを貼り付けて Enter を押すと OpenCode を使い始められます"
+
+msgid "Prerequisites"
+msgstr "前提条件"
+
 msgid "Refresh Models"
 msgstr "モデルの一覧を更新"
 
+msgid "Region is configured via {region} environment variable or settings.json (defaults to us-east-1)."
+msgstr "リージョンは環境変数 {region} か settings.json で指定します (既定は us-east-1)。"
+
 msgid "Remove Provider"
 msgstr "プロバイダーを削除"
+
+msgid "Requires an active GitHub Copilot subscription."
+msgstr "有効な GitHub Copilot のサブスクリプションが必要です。"
 
 msgid "Reset"
 msgstr "リセット"
@@ -128,11 +197,35 @@ msgstr "Ollama でこの PC 上でモデルを動かします。"
 msgid "Run open models locally with llama.cpp's built-in server, or connect to a remote llama.cpp server."
 msgstr "llama.cpp 内蔵のサーバーでオープンなモデルをローカルで動かすか、リモートの llama.cpp サーバーに接続します。"
 
+msgid "Secret Access Key"
+msgstr "シークレットアクセスキー"
+
+msgid "Select the models you would like access to:"
+msgstr "使いたいモデルを選びます:"
+
+msgid "Session Token (Optional)"
+msgstr "セッショントークン (任意)"
+
+msgid "Show Go models"
+msgstr "Go のモデルを表示"
+
+msgid "Show Zen models"
+msgstr "Zen のモデルを表示"
+
 msgid "Sign In"
 msgstr "サインイン"
 
+msgid "Sign In to use Zed AI"
+msgstr "サインインして Zed AI を使う"
+
 msgid "Sign Out"
 msgstr "サインアウト"
+
+msgid "Sign in and get your key at"
+msgstr "サインインしてキーを取得:"
+
+msgid "Sign in to have access to Zed's complete agentic experience with hosted models."
+msgstr "サインインすると、Zed がホストするモデルでエージェントのすべての機能を使えます。"
 
 msgid "Sign in with your ChatGPT Plus or Pro subscription to use OpenAI models in Zed's agent."
 msgstr "ChatGPT Plus / Pro のサブスクリプションでサインインすると、ForgeKairos のエージェントで OpenAI のモデルを使えます。"
@@ -149,17 +242,50 @@ msgstr "無料トライアルを開始"
 msgid "Start Ollama and download a model:"
 msgstr "Ollama を起動してモデルをダウンロード:"
 
+msgid "Start a free trial with $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+msgstr "無料トライアルを開始すると、開始から 14 日間、GPT Luna の $5 分と無制限の編集予測を使えます。"
+
 msgid "Start the server in router mode:"
 msgstr "サーバーをルーターモードで起動:"
 
+msgid "Static Credentials"
+msgstr "静的な認証情報"
+
+msgid "Subscribe for access to Zed's hosted models."
+msgstr "サブスクリプションを購入すると Zed がホストするモデルを使えます。"
+
+msgid "Subscribed to Business"
+msgstr "Business を契約中"
+
+msgid "Subscribed to Pro"
+msgstr "Pro を契約中"
+
+msgid "Subscribed to Pro Trial"
+msgstr "Pro トライアルを利用中"
+
+msgid "Subscribed to Student"
+msgstr "Student を契約中"
+
+msgid "Subscribed to VIP"
+msgstr "VIP を契約中"
+
+msgid "Subscriptions"
+msgstr "サブスクリプション"
+
 msgid "This can't be changed while an API key is set in the {env_var_name} environment variable."
 msgstr "環境変数 {env_var_name} で API キーが設定されているため変更できません。"
+
+msgid "This method uses your AWS access key ID and secret access key, or a Bedrock API Key."
+msgstr "この方法では、AWS のアクセスキー ID とシークレットアクセスキー、または Bedrock の API キーを使います。"
 
 msgid "To get your first model, try running"
 msgstr "最初のモデルを取得するには次を実行:"
 
 msgid "To reset your API key, unset the {env_var_name} environment variable."
 msgstr "API キーをリセットするには、環境変数 {env_var_name} を解除してください。"
+
+msgid "To reset your credentials, unset the {access_key_id}, {secret_access_key}, and {session_token} or {bearer_token} environment variables."
+msgstr "認証情報をリセットするには、環境変数 {access_key_id}、{secret_access_key}、{session_token} または {bearer_token} を解除してください。"
 
 msgid "To use OpenCode models in Zed, you need an API key."
 msgstr "ForgeKairos で OpenCode のモデルを使うには API キーが必要です。"
@@ -182,6 +308,33 @@ msgstr "ローカルの llama.cpp サーバーを使うには:"
 msgid "To use local Ollama:"
 msgstr "ローカルの Ollama を使うには:"
 
+msgid "Upgrade to Pro"
+msgstr "Pro にアップグレード"
+
+msgid "Using AWS SSO profile: {profile_name}"
+msgstr "AWS SSO のプロファイルを使用中: {profile_name}"
+
+msgid "Using AWS profile: {profile_name}"
+msgstr "AWS のプロファイルを使用中: {profile_name}"
+
+msgid "Using Bedrock API Key"
+msgstr "Bedrock の API キーを使用中"
+
+msgid "Using Bedrock API Key from {bearer_token} environment variable"
+msgstr "環境変数 {bearer_token} の Bedrock の API キーを使用中"
+
+msgid "Using IAM credentials"
+msgstr "IAM 認証情報を使用中"
+
+msgid "Using IAM credentials from {access_key_id} and {secret_access_key} environment variables"
+msgstr "環境変数 {access_key_id} と {secret_access_key} の IAM 認証情報を使用中"
+
+msgid "Using automatic credentials (AWS default chain)"
+msgstr "自動の認証情報を使用中 (AWS の既定のチェーン)"
+
+msgid "Using the API key"
+msgstr "API キーを使う"
+
 msgid "View All Models"
 msgstr "すべてのモデルを見る"
 
@@ -190,3 +343,24 @@ msgstr "環境変数 {access_key_id}、{secret_access_key}、{region} (Bedrock �
 
 msgid "You can also set the {env_var_name} environment variable and restart Zed."
 msgstr "または環境変数 {env_var_name} を設定し、ForgeKairos を再起動すると反映されます。"
+
+msgid "You have access to Zed's hosted models through your Pro subscription."
+msgstr "Pro のサブスクリプションで Zed がホストするモデルを使えます。"
+
+msgid "You have access to Zed's hosted models through your Student subscription."
+msgstr "Student のサブスクリプションで Zed がホストするモデルを使えます。"
+
+msgid "You have access to Zed's hosted models through your VIP subscription."
+msgstr "VIP のサブスクリプションで Zed がホストするモデルを使えます。"
+
+msgid "You have access to Zed's hosted models through your organization."
+msgstr "組織を通じて Zed がホストするモデルを使えます。"
+
+msgid "Your Pro trial includes $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+msgstr "Pro トライアルでは、開始から 14 日間、GPT Luna の $5 分と無制限の編集予測を使えます。"
+
+msgid "Zed's hosted models are disabled by your organization's configuration."
+msgstr "Zed がホストするモデルは、組織の設定で無効になっています。"
+
+msgid "this user"
+msgstr "このユーザー"

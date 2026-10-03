@@ -452,8 +452,7 @@ pub mod terminal {
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]
     pub struct LaunchClaudeCode {
-        /// 公式 CLI の `--effort` に渡す値 (`low` / `medium` / `high` 等)。
-        /// 未指定なら `--effort` を付けず CLI の既定に任せる。
+        /// The value to pass to the CLI's `--effort`, such as `low`, `medium` or `high`. Without it, the CLI uses its default.
         #[serde(default)]
         pub effort: Option<String>,
     }
@@ -465,7 +464,7 @@ pub mod terminal {
     #[action(namespace = terminal)]
     #[serde(deny_unknown_fields)]
     pub struct LaunchClaudeCodeOutsideSandbox {
-        /// [`LaunchClaudeCode::effort`] と同じ。
+        /// The value to pass to the CLI's `--effort`, such as `low`, `medium` or `high`. Without it, the CLI uses its default.
         #[serde(default)]
         pub effort: Option<String>,
     }
@@ -485,7 +484,7 @@ pub mod terminal {
         pub port: Option<u16>,
         #[serde(default)]
         pub user: Option<String>,
-        /// `sftp` / `scp` / `ftp` / `ftps` のいずれか。未知の値は無視して既定 (SFTP) になる。
+        /// One of `sftp`, `scp`, `ftp` or `ftps`. Any other value means SFTP.
         #[serde(default)]
         pub protocol: Option<String>,
     }

@@ -6422,6 +6422,98 @@ mod tests {
         );
     }
 
+    /// The JSON language server shows the descriptions of the settings and keymap files'
+    /// schemas, which `json_schema_store` translates by their English text, so the source
+    /// has to describe them in English and `_settings_schema.po` has to hold the
+    /// translations, including those of the arguments of the fork's actions.
+    #[test]
+    fn test_schema_descriptions_are_english_with_translations() {
+        use i18n::Catalog as _;
+
+        fn collect_descriptions(value: &serde_json::Value, descriptions: &mut Vec<String>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (key, child) in map {
+                        if let ("description" | "markdownDescription", Some(text)) =
+                            (key.as_str(), child.as_str())
+                        {
+                            descriptions.push(text.to_string());
+                        } else {
+                            collect_descriptions(child, descriptions);
+                        }
+                    }
+                }
+                serde_json::Value::Array(items) => items
+                    .iter()
+                    .for_each(|item| collect_descriptions(item, descriptions)),
+                _ => {}
+            }
+        }
+        let is_japanese = |character: char| matches!(character, '\u{3040}'..='\u{30ff}' | '\u{4e00}'..='\u{9fff}');
+
+        let mut descriptions = Vec::new();
+        collect_descriptions(
+            &settings::KeymapFile::generate_json_schema_from_inventory(),
+            &mut descriptions,
+        );
+        collect_descriptions(&crate::english_settings_schema(), &mut descriptions);
+        let japanese = descriptions
+            .iter()
+            .filter(|description| description.chars().any(is_japanese))
+            .collect::<Vec<_>>();
+        assert_eq!(japanese, Vec::<&String>::new());
+
+        const FORK_ACTIONS_WITH_ARGUMENTS: &[&str] = &[
+            "git::CheckoutCommit",
+            "git::CherryPickCommit",
+            "git::CopyTagDistance",
+            "git::CreateBranchFrom",
+            "git::CreateTagAt",
+            "git::DropCommit",
+            "git::FixupCommit",
+            "git::ResetToCommit",
+            "git::RevertCommit",
+            "git::RewordCommit",
+            "git::ShowGuide",
+            "tabular_data::OpenAsText",
+            "terminal::LaunchClaudeCode",
+            "terminal::LaunchClaudeCodeOutsideSandbox",
+            "terminal::OpenFileTransfer",
+        ];
+        let mut generator = settings::KeymapFile::action_schema_generator();
+        let mut argument_descriptions = Vec::new();
+        for action_name in FORK_ACTIONS_WITH_ARGUMENTS {
+            let action = gpui::generate_list_of_all_registered_actions()
+                .find(|action| action.name == *action_name)
+                .unwrap_or_else(|| panic!("{action_name} is not registered"));
+            let schema = (action.json_schema)(&mut generator)
+                .unwrap_or_else(|| panic!("{action_name} takes no arguments"));
+            // The schema's own description is the action's, translated under its name.
+            if let Some(properties) = schema.get("properties") {
+                collect_descriptions(properties, &mut argument_descriptions);
+            }
+        }
+        for definition in generator.definitions().values() {
+            collect_descriptions(definition, &mut argument_descriptions);
+        }
+        assert!(
+            argument_descriptions
+                .iter()
+                .any(|description| description == "Keeps the changes staged."),
+            "the definitions of the arguments' types are collected too: {argument_descriptions:?}"
+        );
+        let catalog = i18n_catalog::test_support::bundled_catalog("ja");
+        let untranslated = argument_descriptions
+            .iter()
+            .filter(|description| {
+                catalog
+                    .lookup(Some(i18n::context::SETTINGS_SCHEMA), description)
+                    .is_none()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(untranslated, Vec::<&String>::new());
+    }
+
     #[gpui::test]
     fn test_bundled_settings_and_themes(cx: &mut App) {
         cx.text_system()

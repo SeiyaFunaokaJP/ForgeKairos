@@ -17,8 +17,9 @@ locales/
     _action_docs.po      descriptions of actions (their doc comments), shown in the
                          keymap editor and the keymap and settings files' hovers,
                          msgctxt "action documentation", msgid = action name
-    _settings_schema.po  descriptions in the settings file's JSON schema, shown in
-                         its hovers and completions, msgctxt "settings schema",
+    _settings_schema.po  descriptions in the settings file's JSON schema and of the
+                         arguments of actions in the keymap file's, shown in their
+                         hovers and completions, msgctxt "settings schema",
                          msgid = the English description
   en/_brand.po           the product's own name in place of upstream's (generated;
                          see "The product name" below)
@@ -79,8 +80,8 @@ cargo run -p i18n_tool -- <command> ...
 - `check` compares the code with `locales/<tag>/*.po` (`--lang <tag>`, `--crate <name>`)
   and lists messages a crate's file lacks, entries its code no longer uses, placeholder
   and plural mistakes, messages two files translate differently, entries out of order and
-  CR line endings. The last four make it exit with 1; with `--strict`, missing and unused
-  entries do too. The `_` files are only checked for mistakes, not for missing entries,
+  CR line endings. All but the unused entries make it exit with 1, so `check --crate <name>`
+  can gate a change to one crate; with `--strict`, unused entries do too. The `_` files are only checked for mistakes, not for missing entries,
   except for the two below when their input is given. Messages are the literals of the
   macros and of direct calls of `i18n::tr`, `i18n::tr_ctx` and `i18n::tr_ctx_opt`.
   - `--actions <file>` takes the output of `zed --dump-all-actions` and compares
@@ -92,9 +93,11 @@ cargo run -p i18n_tool -- <command> ...
     compares `_settings_schema.po` with its descriptions: descriptions without a
     translation, and entries the schema no longer has. An entry whose description was
     reworded is reported as changed, with the new English, when a description without a
-    translation shares most of its words.
+    translation shares most of its words. With `--actions` too, the descriptions of the
+    actions' arguments count as in use (they are not required).
 
-  Those three findings fail only with `--strict`. Both dumps come from a build of Zed
+  Descriptions without a translation fail like other missing messages; unused and changed
+  entries fail only with `--strict`. Both dumps come from a build of Zed
   (`cargo run -p zed -- --dump-all-actions > actions.json`). A Windows release build
   prints them only with `--foreground` added. The settings schema dump leaves out the
   descriptions of feature flags, so their entries are not compared.
@@ -184,7 +187,9 @@ msgstr "選択範囲をクリップボードにコピーします。"
 
 `_settings_schema.po` translates the schema's descriptions by their English text, as
 the schema has it: the lines of the doc comment joined with `\n`. The same English is
-the same entry wherever it appears in the schema. Zed translates the schema when it
+the same entry wherever it appears in the schema. The descriptions of the arguments of
+actions, which the keymap file's schema shows, are translated the same way in the same
+file. Zed translates the schema when it
 gives it to the JSON language server, and gives it again when the display language
 changes.
 

@@ -380,11 +380,11 @@ impl LanguageModelProvider for CloudLanguageModelProvider {
             None
         } else {
             match state.user_store.read(cx).plan() {
-                Some(Plan::ZedPro) => Some("Subscribed to Pro".into()),
-                Some(Plan::ZedProTrial) => Some("Subscribed to Pro Trial".into()),
-                Some(Plan::ZedStudent) => Some("Subscribed to Student".into()),
-                Some(Plan::ZedBusiness) => Some("Subscribed to Business".into()),
-                Some(Plan::ZedVip) => Some("Subscribed to VIP".into()),
+                Some(Plan::ZedPro) => Some(i18n::t!("Subscribed to Pro").into()),
+                Some(Plan::ZedProTrial) => Some(i18n::t!("Subscribed to Pro Trial").into()),
+                Some(Plan::ZedStudent) => Some(i18n::t!("Subscribed to Student").into()),
+                Some(Plan::ZedBusiness) => Some(i18n::t!("Subscribed to Business").into()),
+                Some(Plan::ZedVip) => Some(i18n::t!("Subscribed to VIP").into()),
                 Some(Plan::ZedFree) | None => None,
             }
         };
@@ -461,34 +461,40 @@ fn zed_ai_description(
     eligible_for_trial: bool,
 ) -> &'static str {
     if !is_connected {
-        return "Sign in to have access to Zed's complete agentic experience with hosted models.";
+        return i18n::t!(
+            "Sign in to have access to Zed's complete agentic experience with hosted models."
+        );
     }
 
     match plan {
         Some(Plan::ZedPro) => {
-            "You have access to Zed's hosted models through your Pro subscription."
+            i18n::t!("You have access to Zed's hosted models through your Pro subscription.")
         }
         Some(Plan::ZedProTrial) => {
-            "Your Pro trial includes $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+            i18n::t!(
+                "Your Pro trial includes $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+            )
         }
         Some(Plan::ZedStudent) => {
-            "You have access to Zed's hosted models through your Student subscription."
+            i18n::t!("You have access to Zed's hosted models through your Student subscription.")
         }
         Some(Plan::ZedBusiness) => {
             if is_zed_model_provider_enabled {
-                "You have access to Zed's hosted models through your organization."
+                i18n::t!("You have access to Zed's hosted models through your organization.")
             } else {
-                "Zed's hosted models are disabled by your organization's configuration."
+                i18n::t!("Zed's hosted models are disabled by your organization's configuration.")
             }
         }
         Some(Plan::ZedVip) => {
-            "You have access to Zed's hosted models through your VIP subscription."
+            i18n::t!("You have access to Zed's hosted models through your VIP subscription.")
         }
         Some(Plan::ZedFree) | None => {
             if eligible_for_trial {
-                "Start a free trial with $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+                i18n::t!(
+                    "Start a free trial with $5 of GPT Luna and unlimited edit predictions for 14 days from trial start."
+                )
             } else {
-                "Subscribe for access to Zed's hosted models."
+                i18n::t!("Subscribe for access to Zed's hosted models.")
             }
         }
     }
@@ -509,7 +515,7 @@ impl RenderOnce for ZedAiConfiguration {
         );
 
         let manage_subscription_buttons = if has_paid_plan {
-            Button::new("manage_settings", "Manage Subscription")
+            Button::new("manage_settings", i18n::t!("Manage Subscription"))
                 .when(!self.compact, |this| {
                     this.full_width().label_size(LabelSize::Small)
                 })
@@ -527,7 +533,7 @@ impl RenderOnce for ZedAiConfiguration {
                 .on_click(|_, _, cx| cx.open_url(&zed_urls::start_trial_url(cx)))
                 .into_any_element()
         } else {
-            Button::new("upgrade", "Upgrade to Pro")
+            Button::new("upgrade", i18n::t!("Upgrade to Pro"))
                 .when(!self.compact, |this| {
                     this.full_width().label_size(LabelSize::Small)
                 })
@@ -542,7 +548,7 @@ impl RenderOnce for ZedAiConfiguration {
                 .gap_2()
                 .when(!self.compact, |this| this.child(Label::new(description)))
                 .child(
-                    Button::new("sign_in", "Sign In to use Zed AI")
+                    Button::new("sign_in", i18n::t!("Sign In to use Zed AI"))
                         .start_icon(
                             Icon::new(IconName::Github)
                                 .size(IconSize::Small)
@@ -565,7 +571,7 @@ impl RenderOnce for ZedAiConfiguration {
             .map(|this| {
                 if self.account_too_young {
                     this.child(YoungAccountBanner).child(
-                        Button::new("upgrade", "Upgrade to Pro")
+                        Button::new("upgrade", i18n::t!("Upgrade to Pro"))
                             .style(ui::ButtonStyle::Tinted(ui::TintColor::Accent))
                             .when(!self.compact, |this| this.full_width())
                             .on_click(|_, _, cx| {

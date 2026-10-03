@@ -183,7 +183,7 @@ actions!(
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct ShowGuide {
-    /// 先頭に出す項目の話題 (例: "merge_request")。省略すると通常の並び。
+    /// The topic whose entries to show first, such as "merge_request". Without it, the usual order.
     #[serde(default)]
     pub topic: Option<String>,
 }
@@ -198,7 +198,7 @@ pub const ShowGuide: ShowGuide = ShowGuide { topic: None };
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct CreateBranchFrom {
-    /// 基点にするコミットの SHA。
+    /// The SHA of the commit to start the branch from.
     #[serde(default)]
     pub sha: String,
 }
@@ -208,7 +208,7 @@ pub struct CreateBranchFrom {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct CheckoutCommit {
-    /// チェックアウトするコミットの SHA。
+    /// The SHA of the commit to check out.
     #[serde(default)]
     pub sha: String,
 }
@@ -218,7 +218,7 @@ pub struct CheckoutCommit {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct CreateTagAt {
-    /// タグを付けるコミットの SHA。
+    /// The SHA of the commit to tag.
     #[serde(default)]
     pub sha: String,
 }
@@ -228,7 +228,7 @@ pub struct CreateTagAt {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct CherryPickCommit {
-    /// 取り込むコミットの SHA。
+    /// The SHA of the commit to apply.
     #[serde(default)]
     pub sha: String,
 }
@@ -238,7 +238,7 @@ pub struct CherryPickCommit {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct RevertCommit {
-    /// 打ち消すコミットの SHA。
+    /// The SHA of the commit to undo.
     #[serde(default)]
     pub sha: String,
 }
@@ -248,7 +248,7 @@ pub struct RevertCommit {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct RewordCommit {
-    /// 書き換えるコミットの SHA。
+    /// The SHA of the commit whose message to rewrite.
     #[serde(default)]
     pub sha: String,
 }
@@ -258,7 +258,7 @@ pub struct RewordCommit {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct FixupCommit {
-    /// 変更を入れる先のコミットの SHA。
+    /// The SHA of the commit to put the changes into.
     #[serde(default)]
     pub sha: String,
 }
@@ -268,21 +268,21 @@ pub struct FixupCommit {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct DropCommit {
-    /// 取り除くコミットの SHA。
+    /// The SHA of the commit to remove.
     #[serde(default)]
     pub sha: String,
 }
 
-/// `git reset` の残し方。
+/// What `git reset` keeps of the changes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ResetToCommitMode {
-    /// 変更をステージに残す。
+    /// Keeps the changes staged.
     #[default]
     Soft,
-    /// 変更を作業ツリーに残す。
+    /// Keeps the changes in the working tree, unstaged.
     Mixed,
-    /// 変更を捨てる。
+    /// Discards the changes.
     Hard,
 }
 
@@ -291,10 +291,10 @@ pub enum ResetToCommitMode {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct ResetToCommit {
-    /// 戻す先のコミットの SHA。
+    /// The SHA of the commit to reset to.
     #[serde(default)]
     pub sha: String,
-    /// 変更をどこに残すか。
+    /// Where to keep the changes.
     #[serde(default)]
     pub mode: ResetToCommitMode,
 }
@@ -304,7 +304,7 @@ pub struct ResetToCommit {
 #[action(namespace = git)]
 #[serde(deny_unknown_fields)]
 pub struct CopyTagDistance {
-    /// 対象のコミットの SHA。
+    /// The SHA of the commit.
     #[serde(default)]
     pub sha: String,
 }

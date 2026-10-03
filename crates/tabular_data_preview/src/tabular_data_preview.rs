@@ -52,7 +52,7 @@ pub use crate::workspace_item::TabularBuffer;
 #[action(namespace = tabular_data)]
 #[serde(deny_unknown_fields)]
 pub struct OpenAsText {
-    /// グリッドのタブをそのままテキストのタブに差し替えます。
+    /// Replaces the grid with the text in the same tab.
     #[serde(default)]
     pub in_same_pane: bool,
 }

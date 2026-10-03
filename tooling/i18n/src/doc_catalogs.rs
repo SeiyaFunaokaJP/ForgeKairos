@@ -39,6 +39,36 @@ pub fn read_action_documentation(path: &Path) -> Result<BTreeMap<String, String>
         .collect())
 }
 
+/// The descriptions in the argument schemas of `zed --dump-all-actions`. The keymap file's
+/// schema holds them, and `json_schema_store` translates them by their English text like the
+/// settings schema's, so their entries live in `_settings_schema.po` too.
+pub fn read_action_argument_descriptions(path: &Path) -> Result<BTreeSet<String>> {
+    #[derive(Deserialize)]
+    struct Dump {
+        actions: Vec<Action>,
+    }
+    #[derive(Deserialize)]
+    struct Action {
+        schema: Option<Value>,
+    }
+    let text = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let dump: Dump = serde_json::from_str(&text).with_context(|| {
+        format!(
+            "{} is not the output of zed --dump-all-actions",
+            path.display()
+        )
+    })?;
+    let mut descriptions = BTreeSet::new();
+    for schema in dump
+        .actions
+        .iter()
+        .filter_map(|action| action.schema.as_ref())
+    {
+        collect_descriptions(schema, &mut descriptions);
+    }
+    Ok(descriptions)
+}
+
 /// Every description of a JSON schema file, as `json_schema_store` translates them.
 pub fn read_schema_descriptions(path: &Path) -> Result<BTreeSet<String>> {
     let text = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
@@ -195,6 +225,30 @@ mod tests {
         assert_eq!(
             read_schema_descriptions(&schema).expect("a schema").len(),
             1
+        );
+    }
+
+    #[test]
+    fn argument_descriptions_are_read_from_the_actions_dump() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let actions_dump = directory.path().join("actions.json");
+        fs::write(
+            &actions_dump,
+            r#"{"actions": [
+                {"name": "editor::Copy", "documentation": "Copy.", "schema": null},
+                {"name": "git::Reset", "documentation": "Reset.", "schema": {
+                    "properties": {"sha": {"description": "The SHA.", "default": ""}},
+                    "$defs": {"Mode": {"oneOf": [{"const": "soft", "description": "Keep."}]}}
+                }}
+            ]}"#,
+        )
+        .expect("write");
+        assert_eq!(
+            read_action_argument_descriptions(&actions_dump)
+                .expect("an actions dump")
+                .into_iter()
+                .collect::<Vec<_>>(),
+            vec!["Keep.", "The SHA."]
         );
     }
 

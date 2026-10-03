@@ -101,7 +101,8 @@ enum Command {
         /// Only these crates' PO files; the `_` files are checked only without this option.
         #[arg(long = "crate")]
         crates: Vec<String>,
-        /// Also fail on untranslated and obsolete messages.
+        /// Also fail on entries nothing uses any more and on translations whose English has
+        /// changed (untranslated messages fail without it).
         #[arg(long)]
         strict: bool,
         /// The output of `zed --dump-all-actions`, to compare `_action_docs.po` with the actions'
@@ -373,6 +374,9 @@ fn run_check(
     let settings_schema_descriptions = settings_schema
         .map(doc_catalogs::read_schema_descriptions)
         .transpose()?;
+    let action_argument_descriptions = actions
+        .map(doc_catalogs::read_action_argument_descriptions)
+        .transpose()?;
     let results = check::check(
         repository,
         &extraction,
@@ -381,6 +385,7 @@ fn run_check(
             crates,
             action_documentation: action_documentation.as_ref(),
             settings_schema_descriptions: settings_schema_descriptions.as_ref(),
+            action_argument_descriptions: action_argument_descriptions.as_ref(),
         },
     )?;
     let (output, mut failed) = check::report(&results, strict);

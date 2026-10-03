@@ -4069,6 +4069,61 @@ msgctxt "action"
 msgid "markdown::WrapInCodeBlock"
 msgstr "Markdown: コードブロックで囲む"
 
+#. menu: cancel
+msgctxt "action"
+msgid "menu::Cancel"
+msgstr "メニュー: キャンセル"
+
+#. menu: confirm
+msgctxt "action"
+msgid "menu::Confirm"
+msgstr "メニュー: 確定"
+
+#. menu: end slot
+msgctxt "action"
+msgid "menu::EndSlot"
+msgstr "メニュー: 末尾のスロット"
+
+#. menu: restart
+msgctxt "action"
+msgid "menu::Restart"
+msgstr "メニュー: 最初からやり直す"
+
+#. menu: secondary confirm
+msgctxt "action"
+msgid "menu::SecondaryConfirm"
+msgstr "メニュー: セカンダリ確定"
+
+#. menu: select child
+msgctxt "action"
+msgid "menu::SelectChild"
+msgstr "メニュー: サブメニューに入る"
+
+#. menu: select first
+msgctxt "action"
+msgid "menu::SelectFirst"
+msgstr "メニュー: 最初の項目を選択"
+
+#. menu: select last
+msgctxt "action"
+msgid "menu::SelectLast"
+msgstr "メニュー: 最後の項目を選択"
+
+#. menu: select next
+msgctxt "action"
+msgid "menu::SelectNext"
+msgstr "メニュー: 次の項目を選択"
+
+#. menu: select parent
+msgctxt "action"
+msgid "menu::SelectParent"
+msgstr "メニュー: 親メニューに戻る"
+
+#. menu: select previous
+msgctxt "action"
+msgid "menu::SelectPrevious"
+msgstr "メニュー: 前の項目を選択"
+
 #. multi workspace: close workspace sidebar
 msgctxt "action"
 msgid "multi_workspace::CloseWorkspaceSidebar"

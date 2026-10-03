@@ -1048,6 +1048,10 @@ msgid "Disables the tooltip"
 msgstr "ツールチップを無効化します"
 
 msgctxt "settings schema"
+msgid "Discards the changes."
+msgstr "変更を捨てます。"
+
+msgctxt "settings schema"
 msgid "Display code lenses from language servers above code elements."
 msgstr "コード要素の上に言語サーバーからのコードレンズを表示します。"
 
@@ -1664,6 +1668,14 @@ msgid "Keep the tab bar hidden, leaving the in-panel thread history as the way\n
 msgstr "タブバーを隠したままにし、開いているタブへはパネル内のスレッド履歴からたどります。その一覧や、それを戻す帯を表示できないほど狭いパネルでは、タブバーを表示します。そうしないと、前面にないタブへ行く手段が無くなるためです。"
 
 msgctxt "settings schema"
+msgid "Keeps the changes in the working tree, unstaged."
+msgstr "変更をステージせずに作業ツリーに残します。"
+
+msgctxt "settings schema"
+msgid "Keeps the changes staged."
+msgstr "変更をステージに残します。"
+
+msgctxt "settings schema"
 msgid "Language server settings.\n\nRef: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#workspace_configuration\n\nConsult the documentation for the specific language server to see which settings are supported."
 msgstr "言語サーバーの設定。\n\n参考: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#workspace_configuration\n\n対応している設定は、各言語サーバーのドキュメントを参照してください。"
 
@@ -1916,6 +1928,10 @@ msgid "Ollama model name for edit predictions."
 msgstr "編集予測に使用する Ollama モデル名です。"
 
 msgctxt "settings schema"
+msgid "One of `sftp`, `scp`, `ftp` or `ftps`. Any other value means SFTP."
+msgstr "`sftp`、`scp`、`ftp`、`ftps` のいずれかです。それ以外の値は SFTP になります。"
+
+msgctxt "settings schema"
 msgid "Only if LSP response errors or times out,\nuse document's words to show completions."
 msgstr "LSP レスポンスがエラーまたはタイムアウトした場合のみ、ドキュメント内の単語を使用して補完を表示します。"
 
@@ -2134,6 +2150,10 @@ msgstr "LSP 仕様で定義された `replace` 範囲を使用して、カーソ
 msgctxt "settings schema"
 msgid "Replaces text before the cursor, using the `insert` range described in the LSP specification."
 msgstr "LSP 仕様で定義された `insert` 範囲を使用して、カーソル前のテキストを置換します。"
+
+msgctxt "settings schema"
+msgid "Replaces the grid with the text in the same tab."
+msgstr "グリッドのタブをそのままテキストのタブに差し替えます。"
 
 msgctxt "settings schema"
 msgid "Represents a hidden status, such as a file being hidden in a file tree."
@@ -2650,6 +2670,46 @@ msgstr "テキストバッファーのレンダリングで有効にする OpenT
 msgctxt "settings schema"
 msgid "The OpenType features to enable for text in the UI."
 msgstr "UI のテキストで有効にする OpenType フィーチャーです。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit to apply."
+msgstr "取り込むコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit to check out."
+msgstr "チェックアウトするコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit to put the changes into."
+msgstr "変更を入れる先のコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit to remove."
+msgstr "取り除くコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit to reset to."
+msgstr "戻す先のコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit to start the branch from."
+msgstr "ブランチの基点にするコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit to tag."
+msgstr "タグを付けるコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit to undo."
+msgstr "打ち消すコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit whose message to rewrite."
+msgstr "メッセージを書き換えるコミットの SHA です。"
+
+msgctxt "settings schema"
+msgid "The SHA of the commit."
+msgstr "対象のコミットの SHA です。"
 
 msgctxt "settings schema"
 msgid "The URL of the Zed server to connect to."
@@ -3280,12 +3340,20 @@ msgid "The threshold at which auto-compaction runs. This is one of:\n\n- A perce
 msgstr "自動圧縮を実行するしきい値です。次のいずれかを指定します:\n\n- `%` で終わるパーセンテージ文字列 (例: `\"90%\"`)。モデルのコンテキストウィンドウを基準に測定されます。`\"90%\"` はコンテキストが 90% 埋まると圧縮します。\n- 正の整数: その数のトークンが使用されると圧縮が実行されます。たとえば `100000` は、100,000 トークンが使用された後に圧縮します。\n- 負の整数: コンテキストウィンドウ内の残りトークン数がその数になると圧縮が実行されます。たとえば `-20000` は、コンテキストウィンドウの空き容量が 20,000 トークン未満になると圧縮します。\n\n`0` は有効なしきい値ではありません。\n\n既定値: \"90%\""
 
 msgctxt "settings schema"
+msgid "The topic whose entries to show first, such as \"merge_request\". Without it, the usual order."
+msgstr "先頭に出す項目の話題です (例: \"merge_request\")。省略すると通常の並びになります。"
+
+msgctxt "settings schema"
 msgid "The type of the provider.\n\nMust be one of `github`, `gitlab`, `bitbucket`, `gitea`, `forgejo`, `sourcehut`, or `tangled`."
 msgstr "プロバイダーの種類です。\n\n`github`、`gitlab`、`bitbucket`、`gitea`、`forgejo`、`sourcehut`、または `tangled` のいずれかを指定してください。"
 
 msgctxt "settings schema"
 msgid "The unit to use for displaying image file sizes.\n\nDefault: \"binary\""
 msgstr "画像ファイルサイズの表示に使用する単位です。\n\n既定値: \"binary\""
+
+msgctxt "settings schema"
+msgid "The value to pass to the CLI's `--effort`, such as `low`, `medium` or `high`. Without it, the CLI uses its default."
+msgstr "CLI の `--effort` に渡す値です (`low`、`medium`、`high` など)。省略すると CLI の既定になります。"
 
 msgctxt "settings schema"
 msgid "The weight of the UI font in CSS units from 100 to 900."
@@ -3556,6 +3624,10 @@ msgid "Visible characters used to render whitespace when show_whitespaces is ena
 msgstr "show_whitespaces が有効な場合に空白文字を表示するために使用する文字です。\n\n既定値: スペースには \"•\"、タブには \"→\"。"
 
 msgctxt "settings schema"
+msgid "What `git reset` keeps of the changes."
+msgstr "`git reset` で変更をどう残すかです。"
+
+msgctxt "settings schema"
 msgid "What base settings to start from before applying this profile's overrides.\n\n- `user`: Apply on top of user's settings (default)\n- `default`: Apply on top of Zed's default settings, ignoring user customizations"
 msgstr "このプロファイルのオーバーライドを適用する前に使用するベース設定を指定します。\n\n- `user`: ユーザー設定の上に適用します (既定)\n- `default`: ユーザーのカスタマイズを無視して、ForgeKairos の既定設定の上に適用します"
 
@@ -3730,6 +3802,10 @@ msgstr "呼び出しグラフパネルをドッキングする場所。\n\n既�
 msgctxt "settings schema"
 msgid "Where to dock the panel.\n\nDefault: right (Agentic layout), left (Classic layout)"
 msgstr "パネルをドッキングする場所を設定します。\n\n既定値: right (Agentic レイアウト)、left (Classic レイアウト)"
+
+msgctxt "settings schema"
+msgid "Where to keep the changes."
+msgstr "変更をどこに残すかです。"
 
 msgctxt "settings schema"
 msgid "Where to position the threads sidebar."

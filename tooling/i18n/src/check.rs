@@ -54,11 +54,11 @@ pub enum Finding {
 }
 
 impl Finding {
+    /// An untranslated message fails without `--strict`, so that a check of one crate can
+    /// gate its changes; an entry nothing uses any more shows nothing wrong on screen.
     fn fails(&self, strict: bool) -> bool {
         match self {
-            Finding::Untranslated { .. }
-            | Finding::Obsolete { .. }
-            | Finding::SourceChanged { .. } => strict,
+            Finding::Obsolete { .. } | Finding::SourceChanged { .. } => strict,
             _ => true,
         }
     }
@@ -71,6 +71,9 @@ pub struct CheckOptions<'a> {
     pub action_documentation: Option<&'a BTreeMap<String, String>>,
     /// The descriptions of the settings schema, to compare `_settings_schema.po` with.
     pub settings_schema_descriptions: Option<&'a BTreeSet<String>>,
+    /// The descriptions of the actions' arguments, which `_settings_schema.po` may also
+    /// translate (for the keymap file) without them being in the settings schema.
+    pub action_argument_descriptions: Option<&'a BTreeSet<String>>,
 }
 
 struct LanguageFile {
@@ -399,7 +402,12 @@ fn check_language(
     if let Some(descriptions) = options.settings_schema_descriptions
         && selected(SETTINGS_SCHEMA_STEM)
     {
-        findings.extend(check_settings_schema(language, files, descriptions));
+        findings.extend(check_settings_schema(
+            language,
+            files,
+            descriptions,
+            options.action_argument_descriptions,
+        ));
     }
 
     // (d): every file of a language goes into one catalog.
@@ -505,11 +513,13 @@ fn check_action_docs(
 
 /// (a), (b) and (b') for `_settings_schema.po`, whose msgids are the English descriptions: a
 /// translated description the schema no longer has is reported as changed when a description
-/// the file lacks shares most of its words, and as obsolete otherwise.
+/// the file lacks shares most of its words, and as obsolete otherwise. An entry for an action's
+/// argument is in use, but only the settings schema's descriptions are required.
 fn check_settings_schema(
     language: &str,
     files: &[LanguageFile],
     descriptions: &BTreeSet<String>,
+    action_argument_descriptions: Option<&BTreeSet<String>>,
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
     let language_file = doc_catalog(files, SETTINGS_SCHEMA_STEM);
@@ -536,7 +546,10 @@ fn check_settings_schema(
         .filter(|description| !translated.contains(description.as_str()))
         .collect();
     for entry in &entries {
-        if descriptions.contains(&entry.msgid) {
+        if descriptions.contains(&entry.msgid)
+            || action_argument_descriptions
+                .is_some_and(|arguments| arguments.contains(&entry.msgid))
+        {
             continue;
         }
         let message = describe_key(entry);
@@ -713,6 +726,7 @@ mod tests {
                 crates,
                 action_documentation: None,
                 settings_schema_descriptions: None,
+                action_argument_descriptions: None,
             },
         )
         .expect("check");
@@ -760,7 +774,10 @@ mod tests {
         );
         let alpha = vec!["alpha".to_string()];
         let (output, failed) = run(root, &alpha, false);
-        assert!(!failed, "{output}");
+        assert!(
+            failed,
+            "an untranslated message fails without --strict: {output}"
+        );
         assert!(
             output
                 .contains("(a) untranslated 1, (b) obsolete 1, (b') source changed 0, (c) lint 0"),
@@ -768,6 +785,23 @@ mod tests {
         );
         assert!(!output.contains("beta.po has"), "{output}");
         assert!(!output.contains("_menus.po"), "{output}");
+        let (_, failed) = run(root, &alpha, true);
+        assert!(failed);
+
+        write(
+            root,
+            "crates/alpha/src/alpha.rs",
+            "fn ui(count: usize) { i18n::t!(\"Open {path}\", path = p); i18n::t!(\"Save\"); i18n::tn!(count, \"{count} file\", \"{count} files\"); }",
+        );
+        let (output, failed) = run(root, &alpha, false);
+        assert!(
+            !failed,
+            "an obsolete entry fails only with --strict: {output}"
+        );
+        assert!(
+            output.contains("(a) untranslated 0, (b) obsolete 1"),
+            "{output}"
+        );
         let (_, failed) = run(root, &alpha, true);
         assert!(failed);
     }
@@ -787,7 +821,7 @@ mod tests {
             root,
             "locales/ja/_settings_schema.po",
             &format!(
-                "{HEADER}msgctxt \"settings schema\"\nmsgid \"The tab size.\"\nmsgstr \"タブの幅。\"\n\nmsgctxt \"settings schema\"\nmsgid \"Unrelated old text.\"\nmsgstr \"古い文。\"\n\nmsgctxt \"settings schema\"\nmsgid \"Whether to show the tab bar.\"\nmsgstr \"タブバーを表示するかどうか。\"\n"
+                "{HEADER}msgctxt \"settings schema\"\nmsgid \"The SHA.\"\nmsgstr \"SHA です。\"\n\nmsgctxt \"settings schema\"\nmsgid \"The tab size.\"\nmsgstr \"タブの幅。\"\n\nmsgctxt \"settings schema\"\nmsgid \"Unrelated old text.\"\nmsgstr \"古い文。\"\n\nmsgctxt \"settings schema\"\nmsgid \"Whether to show the tab bar.\"\nmsgstr \"タブバーを表示するかどうか。\"\n"
             ),
         );
         let action_documentation = BTreeMap::from([
@@ -806,6 +840,8 @@ mod tests {
             "Whether to show the tab bar in the editor.".to_string(),
             "Brand new.".to_string(),
         ]);
+        let action_arguments =
+            BTreeSet::from(["The tab size.".to_string(), "The SHA.".to_string()]);
         let files = crate::sources::load_crates(root, &[]).expect("load");
         let extraction = crate::sources::extract(&files);
         let results = check(
@@ -816,6 +852,7 @@ mod tests {
                 crates: &[],
                 action_documentation: Some(&action_documentation),
                 settings_schema_descriptions: Some(&descriptions),
+                action_argument_descriptions: Some(&action_arguments),
             },
         )
         .expect("check");
@@ -831,9 +868,9 @@ mod tests {
                 "  (a) untranslated locales/ja/_settings_schema.po: [settings schema] \"Brand new.\" used at the settings schema",
                 "  (a) untranslated locales/ja/_settings_schema.po: [settings schema] \"Whether to show the tab bar in the editor.\" used at the settings schema",
                 "  (b) obsolete locales/ja/_action_docs.po:17: [action documentation] \"editor::Removed\"",
-                "  (b) obsolete locales/ja/_settings_schema.po:10: [settings schema] \"Unrelated old text.\"",
+                "  (b) obsolete locales/ja/_settings_schema.po:14: [settings schema] \"Unrelated old text.\"",
                 "  (b') source changed locales/ja/_action_docs.po:12: [action documentation] \"editor::Paste\", now \"Paste between {\\nand }.\"",
-                "  (b') source changed locales/ja/_settings_schema.po:14: [settings schema] \"Whether to show the tab bar.\", now \"Whether to show the tab bar in the editor.\"",
+                "  (b') source changed locales/ja/_settings_schema.po:18: [settings schema] \"Whether to show the tab bar.\", now \"Whether to show the tab bar in the editor.\"",
             ]
         );
         let (_, failed_strictly) = report(&results, true);
