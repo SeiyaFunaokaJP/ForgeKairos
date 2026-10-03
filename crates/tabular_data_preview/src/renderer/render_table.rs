@@ -993,8 +993,11 @@ mod tests {
     async fn test_the_plus_column_follows_the_ui_language(cx: &mut TestAppContext) {
         let _installs = i18n::test_support::ThreadLocalInstalls::new();
         i18n::install(Some(i18n_catalog::test_support::bundled_catalog("ja")));
-        let (_pane, _editor, mut cx) = open_grid("a,b
-c,d", cx).await;
+        let (_pane, _editor, mut cx) = open_grid(
+            "a,b
+c,d", cx,
+        )
+        .await;
         cx.run_until_parked();
         assert_eq!(i18n::tr(APPEND_COLUMN_LABEL), "列を追加");
         assert_the_plus_column_label_fits(&mut cx);
