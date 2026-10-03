@@ -401,8 +401,9 @@ pub struct MermaidEditor {
     /// it at its own size.
     preview_fits: bool,
     /// The share of the tab's width the form takes when the two sit side by
-    /// side.
-    form_share: f32,
+    /// side, once the user has dragged the divider. Until then the form gets
+    /// its default share, widened up to what its rows need.
+    form_share: Option<f32>,
     width: Rc<Cell<Option<Pixels>>>,
     redraw_requested: Rc<Cell<bool>>,
     focus_handle: FocusHandle,
@@ -453,7 +454,7 @@ impl MermaidEditor {
             dirty: false,
             source_state: SourceState::InStep,
             preview_fits: true,
-            form_share: DEFAULT_FORM_SHARE,
+            form_share: None,
             width: Rc::new(Cell::new(None)),
             redraw_requested: Rc::new(Cell::new(false)),
             focus_handle,
@@ -2817,7 +2818,11 @@ impl MermaidEditor {
 /// which is the side that is too small in a dialog.
 const DEFAULT_FORM_SHARE: f32 = 0.45;
 const MIN_FORM_SHARE: f32 = 0.2;
+/// How far the default share grows to fit the form's rows; past it the form
+/// scrolls sideways, so that the preview keeps a useful width.
+const DEFAULT_MAX_FORM_SHARE: f32 = 0.6;
 const MAX_FORM_SHARE: f32 = 0.8;
+const FORM_MIN_WIDTH: Rems = Rems(40.);
 /// Below this the form and the preview are stacked rather than side by side.
 const SIDE_BY_SIDE_MIN_WIDTH: Pixels = px(700.);
 
@@ -3252,18 +3257,31 @@ impl Render for MermaidEditor {
             Form::Choosing => SharedString::from(i18n::t!("Create Mermaid Diagram")),
             _ => SharedString::from(i18n::t!("Edit Mermaid Diagram")),
         };
-        let side_by_side = self
-            .width
-            .get()
-            .is_none_or(|width| width >= SIDE_BY_SIDE_MIN_WIDTH);
+        let width = self.width.get();
+        let side_by_side = width.is_none_or(|width| width >= SIDE_BY_SIDE_MIN_WIDTH);
+        let form_share = self.form_share.unwrap_or_else(|| {
+            let needed = width
+                .filter(|width| *width > px(0.))
+                .map(|width| FORM_MIN_WIDTH.to_pixels(window.rem_size()) / width)
+                .unwrap_or(DEFAULT_FORM_SHARE);
+            needed.clamp(DEFAULT_FORM_SHARE, DEFAULT_MAX_FORM_SHARE)
+        });
 
+        // The rows were laid out for the dialog's width; squeezed below it
+        // their text fields collapse to slivers, so a narrow column scrolls
+        // sideways instead.
         let form = v_flex()
             .id("mermaid-form")
             .size_full()
-            .gap_3()
             .overflow_scroll()
             .track_scroll(&self.scroll_handle)
-            .children(sections);
+            .child(
+                v_flex()
+                    .w_full()
+                    .min_w(FORM_MIN_WIDTH)
+                    .gap_3()
+                    .children(sections),
+            );
 
         let body = if side_by_side {
             h_flex()
@@ -3274,7 +3292,7 @@ impl Render for MermaidEditor {
                 .child(
                     div()
                         .flex_none()
-                        .w(relative(self.form_share))
+                        .w(relative(form_share))
                         .h_full()
                         .min_h_0()
                         .pr_1()
@@ -3293,7 +3311,7 @@ impl Render for MermaidEditor {
                             return;
                         }
                         let share = (event.event.position.x - event.bounds.left()) / width;
-                        this.form_share = share.clamp(MIN_FORM_SHARE, MAX_FORM_SHARE);
+                        this.form_share = Some(share.clamp(MIN_FORM_SHARE, MAX_FORM_SHARE));
                         cx.notify();
                     },
                 ))
