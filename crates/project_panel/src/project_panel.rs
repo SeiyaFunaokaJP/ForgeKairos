@@ -7186,8 +7186,13 @@ impl ProjectPanel {
         let reserves_chevron_slot =
             chevron.is_none() && folder_indicator.shows_chevron() && folder_indicator.shows_icon();
 
-        let filename_text_color =
-            entry_git_aware_label_color(git_status, entry.is_ignored, is_marked);
+        // With git colors on, a clean entry keeps the normal text color (as in the
+        // editor tabs) so that it does not read as the dimmed ignored entries.
+        let filename_text_color = entry_git_aware_label_color(
+            git_status,
+            entry.is_ignored,
+            is_marked || ProjectPanelSettings::get_global(cx).git_status,
+        );
 
         let is_cut = self
             .clipboard

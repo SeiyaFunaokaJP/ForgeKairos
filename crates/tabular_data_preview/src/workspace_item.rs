@@ -443,7 +443,11 @@ impl Item for TabularDataPreviewPane {
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
         Label::new(self.tab_content_text(params.detail.unwrap_or_default(), cx))
             .single_line()
-            .color(params.text_color())
+            .color(if ItemSettings::get_global(cx).git_status {
+                editor::items::editor_tab_label_color(self.editor().read(cx), &params, cx)
+            } else {
+                params.text_color()
+            })
             .when(params.preview, |this| this.italic())
             .when(self.has_deleted_file(cx), |this| this.strikethrough())
             .into_any_element()

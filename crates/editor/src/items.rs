@@ -778,31 +778,7 @@ impl Item for Editor {
     }
 
     fn tab_content(&self, params: TabContentParams, _: &Window, cx: &App) -> AnyElement {
-        let label_color = if ItemSettings::get_global(cx).git_status {
-            self.buffer()
-                .read(cx)
-                .as_singleton()
-                .and_then(|buffer| {
-                    let buffer = buffer.read(cx);
-                    let path = buffer.project_path(cx)?;
-                    let buffer_id = buffer.remote_id();
-                    let project = self.project()?.read(cx);
-                    let entry = project.entry_for_path(&path, cx)?;
-                    let status = project
-                        .git_store()
-                        .read(cx)
-                        .display_status_for_buffer_id(buffer_id, cx)?;
-
-                    Some(entry_git_aware_label_color(
-                        status.summary(),
-                        entry.is_ignored,
-                        params.selected,
-                    ))
-                })
-                .unwrap_or_else(|| entry_label_color(params.selected))
-        } else {
-            entry_label_color(params.selected)
-        };
+        let label_color = editor_tab_label_color(self, &params, cx);
 
         let description = params.detail.and_then(|detail| {
             let path = path_for_buffer(&self.buffer, detail, false, cx)?;
@@ -2332,6 +2308,50 @@ pub fn entry_git_aware_label_color(git_status: GitSummary, ignored: bool, select
     }
 }
 
+/// The label color of a tab that shows `editor`'s file.
+///
+/// With `tabs.git_status` on, the color follows the file's git state the way
+/// VS Code does: ignored files are dimmed, changed files take the version
+/// control colors, and everything else (clean tracked files, files outside a
+/// repository, files whose state is not known yet) uses the normal text color
+/// whether or not the tab is active. Dimming inactive tabs as well would make a
+/// clean file look the same as an ignored one.
+pub fn editor_tab_label_color(editor: &Editor, params: &TabContentParams, cx: &App) -> Color {
+    if !ItemSettings::get_global(cx).git_status {
+        return entry_label_color(params.selected);
+    }
+    let Some(buffer) = editor.buffer().read(cx).as_singleton() else {
+        return entry_label_color(params.selected);
+    };
+    let Some((project, project_path)) = editor.project().zip(buffer.read(cx).project_path(cx))
+    else {
+        return Color::Default;
+    };
+    git_aware_tab_label_color(project, &project_path, cx)
+}
+
+/// The label color of a file tab when `tabs.git_status` is on; see
+/// [`editor_tab_label_color`].
+pub fn git_aware_tab_label_color(
+    project: &Entity<Project>,
+    project_path: &ProjectPath,
+    cx: &App,
+) -> Color {
+    let project = project.read(cx);
+    let Some(entry) = project.entry_for_path(project_path, cx) else {
+        return Color::Default;
+    };
+    // Clean files are absent from the repository's status list, so a missing
+    // status is the clean state rather than a reason to skip the ignored check.
+    let git_status = project
+        .git_store()
+        .read(cx)
+        .display_status_for_project_path(project_path, cx)
+        .map(|status| status.summary())
+        .unwrap_or_default();
+    entry_git_aware_label_color(git_status, entry.is_ignored, true)
+}
+
 fn path_for_buffer<'a>(
     buffer: &Entity<MultiBuffer>,
     height: usize,
@@ -2670,13 +2690,128 @@ mod tests {
 
     use super::*;
     use fs::MTime;
-    use gpui::{App, VisualTestContext};
+    use gpui::{App, UpdateGlobal as _, VisualTestContext};
     use language::TestFile;
     use project::FakeFs;
     use serde_json::json;
+    use settings::SettingsStore;
     use std::path::{Path, PathBuf};
     use util::{path, paths::PathWithPosition, rel_path::RelPath};
     use workspace::path_link::{OpenTarget, OpenTargetFoundBy};
+
+    #[gpui::test]
+    async fn test_tab_label_color_follows_git_status(cx: &mut gpui::TestAppContext) {
+        init_test(cx, |_| {});
+
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/root"),
+            json!({
+                "repo": {
+                    ".git": {},
+                    ".gitignore": "ignored.txt\n",
+                    "clean.txt": "clean",
+                    "modified.txt": "new",
+                    "untracked.txt": "untracked",
+                    "ignored.txt": "ignored",
+                },
+                "outside.txt": "outside",
+            }),
+        )
+        .await;
+        fs.set_head_and_index_for_repo(
+            path!("/root/repo/.git").as_ref(),
+            &[
+                (".gitignore", "ignored.txt\n".into()),
+                ("clean.txt", "clean".into()),
+                ("modified.txt", "old".into()),
+            ],
+        );
+
+        let project = Project::test(fs, [path!("/root").as_ref()], cx).await;
+        cx.run_until_parked();
+
+        let mut editors = Vec::new();
+        for file_name in [
+            "repo/clean.txt",
+            "repo/modified.txt",
+            "repo/untracked.txt",
+            "repo/ignored.txt",
+            "outside.txt",
+        ] {
+            let buffer = project
+                .update(cx, |project, cx| {
+                    project.open_local_buffer(Path::new(path!("/root")).join(file_name), cx)
+                })
+                .await
+                .unwrap();
+            let editor = cx.add_window(|window, cx| {
+                Editor::for_buffer(buffer, Some(project.clone()), window, cx)
+            });
+            editors.push((file_name, editor));
+        }
+        let untitled = cx.update(|cx| cx.new(|cx| Buffer::local("", cx)));
+        let untitled_editor = cx.add_window(|window, cx| {
+            Editor::for_buffer(untitled, Some(project.clone()), window, cx)
+        });
+        editors.push(("untitled", untitled_editor));
+        cx.run_until_parked();
+
+        let label_colors = |selected: bool, cx: &mut gpui::TestAppContext| {
+            let params = TabContentParams {
+                selected,
+                ..TabContentParams::default()
+            };
+            cx.update(|cx| {
+                editors
+                    .iter()
+                    .map(|(file_name, editor)| {
+                        let color = editor
+                            .read_with(cx, |editor, cx| editor_tab_label_color(editor, &params, cx))
+                            .unwrap();
+                        (*file_name, color)
+                    })
+                    .collect::<Vec<_>>()
+            })
+        };
+
+        let expected_with_git_status = vec![
+            ("repo/clean.txt", Color::Default),
+            ("repo/modified.txt", Color::Modified),
+            ("repo/untracked.txt", Color::Created),
+            ("repo/ignored.txt", Color::Ignored),
+            ("outside.txt", Color::Default),
+            ("untitled", Color::Default),
+        ];
+        assert_eq!(label_colors(true, cx), expected_with_git_status);
+        assert_eq!(
+            label_colors(false, cx),
+            expected_with_git_status,
+            "inactive tabs must not be dimmed like ignored files when git colors are on",
+        );
+
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.tabs.get_or_insert_default().git_status = Some(false);
+                });
+            });
+        });
+        let all_files = |color: Color| {
+            [
+                "repo/clean.txt",
+                "repo/modified.txt",
+                "repo/untracked.txt",
+                "repo/ignored.txt",
+                "outside.txt",
+                "untitled",
+            ]
+            .map(|file_name| (file_name, color))
+            .to_vec()
+        };
+        assert_eq!(label_colors(true, cx), all_files(Color::Default));
+        assert_eq!(label_colors(false, cx), all_files(Color::Muted));
+    }
 
     #[gpui::test]
     fn test_path_for_file(cx: &mut App) {

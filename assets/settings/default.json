@@ -931,7 +931,9 @@
     // 3. A disclosure chevron followed by a folder icon:
     //   "both"
     "folder_indicator": "icon",
-    // Whether to show the git status in the project panel.
+    // Whether to show the git status in the project panel. When true, ignored
+    // entries are dimmed, changed entries take the version control colors, and
+    // other entries use the normal text color.
     "git_status": true,
     // Amount of indentation for nested items.
     "indent_size": 20,
@@ -1725,8 +1727,11 @@
   },
   // Settings related to the editor's tabs
   "tabs": {
-    // Show git status colors in the editor tabs.
-    "git_status": false,
+    // Show git status colors in the editor tabs: ignored files are dimmed,
+    // changed, added and conflicted files take the version control colors, and
+    // other files use the normal text color even when their tab is inactive.
+    // When false, inactive tabs are dimmed (the upstream default).
+    "git_status": true,
     // Position of the close button on the editor tabs.
     // One of: ["right", "left"]
     "close_position": "right",

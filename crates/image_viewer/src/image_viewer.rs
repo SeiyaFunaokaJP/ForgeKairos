@@ -6,7 +6,7 @@ use std::{path::Path, sync::Arc};
 use anyhow::Context as _;
 use editor::{
     Editor, EditorEvent, EditorSettings, RevealInFileManager, actions::SelectAll,
-    items::entry_git_aware_label_color,
+    items::git_aware_tab_label_color,
 };
 use file_icons::FileIcons;
 use gpui::{
@@ -567,22 +567,7 @@ impl Item for ImageView {
         let project_path = self.image_item.read(cx).project_path(cx);
 
         let label_color = if ItemSettings::get_global(cx).git_status {
-            let git_status = self
-                .project
-                .read(cx)
-                .git_store()
-                .read(cx)
-                .display_status_for_project_path(&project_path, cx)
-                .map(|status| status.summary())
-                .unwrap_or_default();
-
-            self.project
-                .read(cx)
-                .entry_for_path(&project_path, cx)
-                .map(|entry| {
-                    entry_git_aware_label_color(git_status, entry.is_ignored, params.selected)
-                })
-                .unwrap_or_else(|| params.text_color())
+            git_aware_tab_label_color(&self.project, &project_path, cx)
         } else {
             params.text_color()
         };

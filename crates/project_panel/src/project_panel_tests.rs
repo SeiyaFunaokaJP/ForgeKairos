@@ -11160,6 +11160,83 @@ fn set_folder_indicator(indicator: FolderIndicator, cx: &mut VisualTestContext) 
     });
 }
 
+#[gpui::test]
+async fn test_filename_color_follows_git_status(cx: &mut gpui::TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(
+        path!("/root"),
+        json!({
+            ".git": {},
+            ".gitignore": "ignored.txt\n",
+            "clean.txt": "clean",
+            "modified.txt": "new",
+            "untracked.txt": "untracked",
+            "ignored.txt": "ignored",
+        }),
+    )
+    .await;
+    fs.set_head_and_index_for_repo(
+        path!("/root/.git").as_ref(),
+        &[
+            (".gitignore", "ignored.txt\n".into()),
+            ("clean.txt", "clean".into()),
+            ("modified.txt", "old".into()),
+        ],
+    );
+
+    let project = Project::test(fs.clone(), [path!("/root").as_ref()], cx).await;
+    let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+    let workspace = window
+        .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+        .unwrap();
+    let cx = &mut VisualTestContext::from_window(window.into(), cx);
+    let panel = workspace.update_in(cx, ProjectPanel::new);
+    cx.run_until_parked();
+
+    let filename_colors = |cx: &mut VisualTestContext| {
+        let mut colors = Vec::new();
+        panel.update_in(cx, |panel, window, cx| {
+            panel.for_each_visible_entry(0..10, window, cx, &mut |_, details, _, _| {
+                if details.filename.ends_with(".txt") {
+                    colors.push((details.filename.clone(), details.filename_text_color));
+                }
+            });
+        });
+        colors
+    };
+
+    assert_eq!(
+        filename_colors(cx),
+        [
+            ("clean.txt".to_string(), ui::Color::Default),
+            ("ignored.txt".to_string(), ui::Color::Ignored),
+            ("modified.txt".to_string(), ui::Color::Modified),
+            ("untracked.txt".to_string(), ui::Color::Created),
+        ],
+        "with git colors on, clean files keep the normal color so they stand apart from ignored ones",
+    );
+
+    cx.update(|_, cx| {
+        cx.update_global::<SettingsStore, _>(|store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.project_panel.get_or_insert_default().git_status = Some(false);
+            });
+        });
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        filename_colors(cx),
+        [
+            ("clean.txt".to_string(), ui::Color::Muted),
+            ("ignored.txt".to_string(), ui::Color::Ignored),
+            ("modified.txt".to_string(), ui::Color::Muted),
+            ("untracked.txt".to_string(), ui::Color::Muted),
+        ],
+    );
+}
+
 fn visible_entry_chevron_slots(
     panel: &Entity<ProjectPanel>,
     range: Range<usize>,
