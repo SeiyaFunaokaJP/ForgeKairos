@@ -7,3 +7,6 @@ msgstr ""
 
 msgid "+{} keybinds"
 msgstr "+{} 件のキーバインド"
+
+msgid "is waiting for more keys…"
+msgstr "は続きのキーを待っています…"

@@ -5,29 +5,29 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-msgid "Extend the agent with focused instructions and domain knowledge."
-msgstr "焦点を絞った指示とドメイン知識でエージェントを拡張できます。"
+msgid "Built on DeltaDB, so your threads and code stay in sync across machines and teammates."
+msgstr "DeltaDB の上に作られているので、スレッドとコードがマシンとチームメンバーの間で同期されます。"
 
-msgid "Introducing Skills Support"
-msgstr "スキル機能のご紹介"
+msgid "Introducing Delta"
+msgstr "Delta のご紹介"
 
-msgid "Read Documentation"
-msgstr "ドキュメントを読む"
+msgid "Learn More"
+msgstr "詳細"
 
-msgid "Skills live in {GLOBAL_SKILLS_DIR_DISPLAY}/<name>/SKILL.md"
-msgstr "スキルは {GLOBAL_SKILLS_DIR_DISPLAY}/<name>/SKILL.md に置かれます"
+msgid "Made by the Zed team, with the same quality and performance"
+msgstr "Zed チームが、同じ品質と性能で開発"
 
-msgid "The Rules Library is making way for skills: your default rules are now in a global AGENTS.md, and your other rules have been converted to skills"
-msgstr "ルールライブラリはスキルに置き換わります。既定のルールはグローバルな AGENTS.md に移動し、そのほかのルールはスキルに変換されました"
+msgid "Pick up your thread on the web or your phone, without committing or pushing"
+msgstr "コミットやプッシュをしなくても、Web やスマートフォンでスレッドの続きができます"
 
-msgid "Try Now"
-msgstr "今すぐ試す"
-
-msgid "Type / to manually invoke a skill"
-msgstr "/ を入力するとスキルを手動で呼び出せます"
+msgid "Try Delta"
+msgstr "Delta を試す"
 
 msgid "Updated to {app_name} {}"
 msgstr "{app_name} {} に更新しました"
 
 msgid "View Release Notes"
 msgstr "リリースノートを表示"
+
+msgid "Work with teammates and agents in the same thread, live or later"
+msgstr "チームメンバーやエージェントと同じスレッドで、リアルタイムでも後からでも作業できます"

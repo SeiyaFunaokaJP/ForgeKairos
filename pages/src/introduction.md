@@ -3,7 +3,7 @@
 [日本語](ja/introduction.md)
 
 ForgeKairos is a fork of the [Zed](https://zed.dev) code editor. It takes in Zed's releases one
-at a time (it is currently based on Zed v1.21.0) and adds:
+at a time (it is currently based on Zed v1.22.0) and adds:
 
 - a multilingual UI, starting with English and Japanese ([Display language and translations](language.md))
 - control over outbound traffic started by AI features, denied by default ([Outbound network control](network.md))

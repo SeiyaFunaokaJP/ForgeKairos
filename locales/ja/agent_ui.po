@@ -677,8 +677,14 @@ msgstr "中断された編集を破棄"
 msgid "Dismiss"
 msgstr "閉じる"
 
+msgid "Dismiss Notice"
+msgstr "通知を閉じる"
+
 msgid "Dismiss Warning"
 msgstr "警告を閉じる"
+
+msgid "Dismiss notice: {}"
+msgstr "通知を閉じる: {}"
 
 msgid "Don't show this warning again"
 msgstr "この警告を今後表示しない"

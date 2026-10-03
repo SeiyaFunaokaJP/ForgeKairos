@@ -3,96 +3,168 @@ use serde_json::Value;
 
 use crate::migrations::migrate_settings;
 
-const AGENT_KEY: &str = "agent";
-const SANDBOX_PERMISSIONS_KEY: &str = "sandbox_permissions";
-const WRITE_PATHS_KEY: &str = "write_paths";
-const REQUESTED_KEY: &str = "requested";
-const RESOLVED_KEY: &str = "resolved";
+const THREADS_SIDEBAR_KEY: &str = "threads_sidebar";
+const KEY_MAPPINGS: &[(&str, &str)] = &[
+    ("sidebar_side", "position"),
+    ("threads_sidebar_default_width", "default_width"),
+    ("threads_sidebar_auto_open", "auto_open"),
+];
 
-/// ADR-F49 decision 34: rewrite sandbox write grants that name a folder in a
-/// WSL distribution into the one spelling grants are now stored and compared
-/// in (`\\wsl.localhost\<distro in lower case>\…`), and drop the rows that
-/// become duplicates of an earlier one.
-///
-/// A grant approved before that decision recorded the distribution as
-/// `wsl.exe` reported it (`\\wsl.localhost\Ubuntu\…`), and grants are compared
-/// as plain paths, so approving the same folder again did not match: the user
-/// was asked a second time and the settings file kept both rows. Folding the
-/// rows makes the old grant cover the new one and leaves one row per folder.
-///
-/// Only the server name and the distribution's own case change; the names
-/// below it are left exactly as written, because they are case-sensitive on
-/// the distribution's filesystem. A path that is not a folder in a
-/// distribution — a Windows drive, another server's share, a bare Linux path —
-/// is left untouched.
-pub fn fold_wsl_sandbox_grant_spellings(value: &mut Value) -> Result<()> {
+pub fn nest_agent_threads_sidebar_settings(value: &mut Value) -> Result<()> {
     migrate_settings(value, &mut migrate_one)
 }
 
 fn migrate_one(object: &mut serde_json::Map<String, Value>) -> Result<()> {
-    let Some(write_paths) = object
-        .get_mut(AGENT_KEY)
-        .and_then(|agent| agent.as_object_mut())
-        .and_then(|agent| agent.get_mut(SANDBOX_PERMISSIONS_KEY))
-        .and_then(|permissions| permissions.as_object_mut())
-        .and_then(|permissions| permissions.get_mut(WRITE_PATHS_KEY))
-        .and_then(|paths| paths.as_array_mut())
-    else {
+    let Some(agent) = object.get_mut("agent").and_then(Value::as_object_mut) else {
         return Ok(());
     };
-
-    for entry in write_paths.iter_mut() {
-        match entry {
-            Value::String(path) => fold(path),
-            Value::Object(entry) => {
-                for key in [REQUESTED_KEY, RESOLVED_KEY] {
-                    if let Some(Value::String(path)) = entry.get_mut(key) {
-                        fold(path);
-                    }
-                }
-            }
-            _ => {}
-        }
+    let has_legacy_settings = KEY_MAPPINGS
+        .iter()
+        .any(|(old_key, _)| agent.contains_key(*old_key));
+    if !has_legacy_settings {
+        return Ok(());
     }
 
-    // What is enforced for a row is its resolved canonical when it has one, so
-    // that is what makes two rows the same grant. The first row wins: it is
-    // the one the rest of the file (and the settings UI's own list) was
-    // written against.
-    let mut enforced: Vec<String> = Vec::new();
-    write_paths.retain(|entry| {
-        let Some(path) = enforced_path(entry) else {
-            return true;
-        };
-        let duplicate = enforced.iter().any(|seen| seen == &path);
-        if !duplicate {
-            enforced.push(path);
+    let mut threads_sidebar = match agent.remove(THREADS_SIDEBAR_KEY) {
+        None | Some(Value::Null) => serde_json::Map::new(),
+        Some(Value::Object(settings)) => settings,
+        Some(value) => {
+            agent.insert(THREADS_SIDEBAR_KEY.into(), value);
+            return Ok(());
         }
-        !duplicate
-    });
+    };
+
+    for (old_key, new_key) in KEY_MAPPINGS {
+        if let Some(value) = agent.remove(*old_key) {
+            threads_sidebar.entry(*new_key).or_insert(value);
+        }
+    }
+    agent.insert(THREADS_SIDEBAR_KEY.into(), Value::Object(threads_sidebar));
 
     Ok(())
 }
 
-fn fold(path: &mut String) {
-    if let Some(folded) = util::path_mapping::canonical_wsl_grant_spelling(path) {
-        *path = folded;
-    }
-}
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
 
-/// The path a row grants write access to: its resolved canonical target, or
-/// the requested path when it has none (a hand-written row, resolved afresh
-/// when a command runs).
-fn enforced_path(entry: &Value) -> Option<String> {
-    match entry {
-        Value::String(path) => Some(path.clone()),
-        Value::Object(entry) => match entry.get(RESOLVED_KEY) {
-            Some(Value::String(resolved)) => Some(resolved.clone()),
-            _ => match entry.get(REQUESTED_KEY) {
-                Some(Value::String(requested)) => Some(requested.clone()),
-                _ => None,
-            },
-        },
-        _ => None,
+    use super::*;
+
+    fn migrate(value: &mut Value) {
+        nest_agent_threads_sidebar_settings(value).expect("migration should succeed");
+    }
+
+    #[test]
+    fn nest_agent_threads_sidebar_settings_moves_keys_and_preserves_unrelated_fields() {
+        let mut value = json!({
+            "agent": {
+                "sidebar_side": "right",
+                "threads_sidebar_default_width": 420,
+                "threads_sidebar_auto_open": false,
+                "button": false
+            }
+        });
+        migrate(&mut value);
+        assert_eq!(
+            value,
+            json!({
+                "agent": {
+                    "threads_sidebar": { "position": "right", "default_width": 420, "auto_open": false },
+                    "button": false
+                }
+            })
+        );
+        let migrated = value.clone();
+        migrate(&mut value);
+        assert_eq!(value, migrated);
+    }
+
+    #[test]
+    fn nest_agent_threads_sidebar_settings_preserves_nested_values_and_fills_missing_fields() {
+        let mut value = json!({
+            "agent": {
+                "sidebar_side": "left",
+                "threads_sidebar_default_width": 360,
+                "threads_sidebar_auto_open": true,
+                "threads_sidebar": { "position": null, "auto_open": false }
+            }
+        });
+        migrate(&mut value);
+        assert_eq!(
+            value,
+            json!({
+                "agent": {
+                    "threads_sidebar": { "position": null, "default_width": 360, "auto_open": false }
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn nest_agent_threads_sidebar_settings_handles_null_destinations_only_when_needed() {
+        let mut with_legacy = json!({
+            "agent": {
+                "sidebar_side": "right",
+                "threads_sidebar": null
+            }
+        });
+        migrate(&mut with_legacy);
+        assert_eq!(
+            with_legacy,
+            json!({ "agent": { "threads_sidebar": { "position": "right" } } })
+        );
+    }
+
+    #[test]
+    fn nest_agent_threads_sidebar_settings_leaves_unrelated_and_malformed_values_untouched() {
+        for mut value in [
+            json!({ "agent": { "threads_sidebar": null } }),
+            json!({ "agent": false }),
+            json!({
+                "agent": {
+                    "sidebar_side": "left",
+                    "threads_sidebar_default_width": 360,
+                    "threads_sidebar": false
+                }
+            }),
+        ] {
+            let original = value.clone();
+            migrate(&mut value);
+            assert_eq!(value, original);
+        }
+    }
+
+    #[test]
+    fn nest_agent_threads_sidebar_settings_migrates_all_supported_scopes() {
+        let legacy_agent = json!({
+            "sidebar_side": "right",
+            "threads_sidebar_default_width": 420,
+            "threads_sidebar_auto_open": false
+        });
+        let mut value = json!({
+            "agent": legacy_agent,
+            "macos": { "agent": legacy_agent },
+            "preview": { "agent": legacy_agent },
+            "profiles": {
+                "direct": { "agent": legacy_agent },
+                "wrapped": { "settings": { "agent": legacy_agent } }
+            }
+        });
+        migrate(&mut value);
+
+        for agent in [
+            &value["agent"],
+            &value["macos"]["agent"],
+            &value["preview"]["agent"],
+            &value["profiles"]["direct"]["agent"],
+            &value["profiles"]["wrapped"]["settings"]["agent"],
+        ] {
+            assert_eq!(
+                agent,
+                &json!({
+                    "threads_sidebar": { "position": "right", "default_width": 420, "auto_open": false }
+                })
+            );
+        }
     }
 }

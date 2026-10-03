@@ -60,10 +60,6 @@ msgid "A less dense line height."
 msgstr "密度を下げた行の高さです。"
 
 msgctxt "settings schema"
-msgid "A list of globs representing files that edit predictions should be disabled for.\nThis list adds to a pre-existing, sensible default set of globs.\nAny additional ones you add are combined with them."
-msgstr "編集予測を無効にするファイルを表す glob のリストです。このリストは、あらかじめ存在する適切な既定の glob セットに追加されます。追加したものはそれらと結合されます。"
-
-msgctxt "settings schema"
 msgid "A looser UI with more spacing and larger elements."
 msgstr "間隔を広げ、要素を大きくした、よりゆったりした UI です。"
 
@@ -162,10 +158,6 @@ msgstr "ターミナルモードを無視して、常にカーソルを点滅さ
 msgctxt "settings schema"
 msgid "Always fetch document's words for completions along with LSP completions."
 msgstr "LSP の補完と合わせて、常にドキュメントの単語を補完候補として取得します。"
-
-msgctxt "settings schema"
-msgid "Always include files that match these globs when scanning for files, even if they're\nignored by git. This setting is overridden by `file_scan_exclusions`.\nDefault: [\n \".env*\",\n \"docker-compose.*.yml\",\n]"
-msgstr "ファイルを走査するとき、git で無視されていても、これらの glob に一致するファイルは必ず含めます。この設定は `file_scan_exclusions` で上書きされます。\n既定値: [\n \".env*\",\n \"docker-compose.*.yml\",\n]"
 
 msgctxt "settings schema"
 msgid "Always index the worktree."
@@ -536,10 +528,6 @@ msgid "Common language server settings."
 msgstr "共通の言語サーバー設定です。"
 
 msgctxt "settings schema"
-msgid "Completely ignore files matching globs from `file_scan_exclusions`. Overrides\n`file_scan_inclusions`.\n\nA `\"...\"` entry expands to the value being overridden, so\n`[\"**/node_modules\", \"...\"]` adds to the inherited globs instead of\nreplacing them. Leave `\"...\"` out to replace them.\n\nDefault: [\n  \"**/.git\",\n  \"**/.svn\",\n  \"**/.hg\",\n  \"**/.jj\",\n  \"**/CVS\",\n  \"**/.DS_Store\",\n  \"**/Thumbs.db\",\n  \"**/.classpath\",\n  \"**/.settings\"\n]"
-msgstr "`file_scan_exclusions` の glob に一致するファイルを完全に無視します。`file_scan_inclusions` より優先されます。\n\n`\"...\"` の項目は上書きされる値に展開されるので、`[\"**/node_modules\", \"...\"]` は継承した glob を置き換えずに追加します。置き換えるには `\"...\"` を書かないでください。\n\n既定値: [\n  \"**/.git\",\n  \"**/.svn\",\n  \"**/.hg\",\n  \"**/.jj\",\n  \"**/CVS\",\n  \"**/.DS_Store\",\n  \"**/Thumbs.db\",\n  \"**/.classpath\",\n  \"**/.settings\"\n]"
-
-msgctxt "settings schema"
 msgid "Configuration for Debugger-related features"
 msgstr "デバッガー関連機能の設定です"
 
@@ -708,10 +696,6 @@ msgid "Controls whether edit predictions are shown immediately (true)\nor manual
 msgstr "編集予測を即座に表示するか (true) または `editor::ShowEditPrediction` をトリガーして手動で表示する (false) かを制御します。\n\n既定値: true"
 
 msgctxt "settings schema"
-msgid "Controls whether edit predictions are shown in the given language\nscopes.\n\nExample: [\"string\", \"comment\"]\n\nDefault: []"
-msgstr "指定した言語のスコープで編集予測を表示するかどうかを制御します。\n\n例: [\"string\", \"comment\"]\n\n既定値: []"
-
-msgctxt "settings schema"
 msgid "Controls whether folding ranges from language servers are used instead of\ntree-sitter and indent-based folding.\n\nOptions:\n- \"off\": Use tree-sitter and indent-based folding (default).\n- \"on\": Use LSP folding wherever possible, falling back to tree-sitter and indent-based folding when no results were returned by the server.\n\nDefault: \"off\""
 msgstr "言語サーバーの折りたたみ範囲を、tree-sitter とインデントベースの折りたたみの代わりに使用するかどうかを制御します。\n\nオプション:\n- \"off\": tree-sitter とインデントベースの折りたたみを使用します (既定)。\n- \"on\": 可能な限り LSP 折りたたみを使用し、サーバーから結果が返されなかった場合は tree-sitter とインデントベースの折りたたみにフォールバックします。\n\n既定値: \"off\""
 
@@ -856,10 +840,6 @@ msgid "Default values for session config options.\n\nThis is a map from config o
 msgstr "セッション設定オプションの既定値です。\n\nこれは設定オプション ID からそのオプションの既定値へのマップです。\n\n既定値: {}"
 
 msgctxt "settings schema"
-msgid "Default width in pixels for the Threads Sidebar.\n\nValues range from 200 to 800, matching the widths the sidebar can be\ndragged to. Values outside that range are clamped into it.\n\nDefault: 300"
-msgstr "スレッドサイドバーの既定幅 (ピクセル単位) です。\n\n値の範囲は 200 から 800 までで、サイドバーをドラッグして変更できる幅に対応しています。この範囲外の値は範囲内に制限されます。\n\n既定値: 300"
-
-msgctxt "settings schema"
 msgid "Default width in pixels when the browser panel is docked to the left or right.\n\nDefault: 480"
 msgstr "ブラウザーパネルを左または右にドッキングしたときの既定の幅 (ピクセル)。\n\n既定値: 480"
 
@@ -874,6 +854,10 @@ msgstr "パネルの既定幅 (ピクセル単位) です。\n\n既定値: 240"
 msgctxt "settings schema"
 msgid "Default width of the panel in pixels.\n\nDefault: 360"
 msgstr "パネルの既定幅 (ピクセル単位) です。\n\n既定値: 360"
+
+msgctxt "settings schema"
+msgid "Default width of the threads sidebar in pixels.\n\nValues range from 200 to 800, matching the widths the sidebar can be\ndragged to. Values outside that range are clamped into it.\n\nDefault: 300"
+msgstr "スレッドサイドバーの既定幅 (ピクセル単位) です。\n\n値の範囲は 200 から 800 までで、サイドバーをドラッグして変更できる幅に対応しています。この範囲外の値は範囲内に制限されます。\n\n既定値: 300"
 
 msgctxt "settings schema"
 msgid "Default width when the terminal is docked to the left or right.\n\nDefault: 640"
@@ -1048,6 +1032,14 @@ msgid "Disable certificate verification for the proxy (not recommended).\n\nDefa
 msgstr "プロキシの証明書の検証を無効化します (非推奨)。\n\n既定値: false"
 
 msgctxt "settings schema"
+msgid "Disable edit predictions for files matching these glob patterns.\n\nUse `\"...\"` to add patterns without repeating Zed's defaults. In project\nsettings, it extends the user or parent configuration value. Omit\n`\"...\"` to replace the inherited list.\n\n```json\n{\n  \"edit_predictions\": {\n    \"disabled_globs\": [\"**/build/**\", \"...\"]\n  }\n}\n```\n\nInherited patterns are inserted at `\"...\"`, and duplicates keep their first\noccurrence.\n\nSet `[]` to clear the inherited list. Omit this setting to inherit it unchanged.\n\nRelative patterns are matched against paths relative to the worktree root.\nAbsolute patterns are matched against absolute paths. A leading `~` is\nexpanded to your home folder."
+msgstr "これらの glob パターンに一致するファイルでは編集予測を無効にします。\n\n`\"...\"` を使うと、ForgeKairos の既定値を繰り返さずにパターンを追加できます。プロジェクトの設定では、ユーザーまたは親の設定の値を拡張します。継承した一覧を置き換えるには `\"...\"` を書かないでください。\n\n```json\n{\n  \"edit_predictions\": {\n    \"disabled_globs\": [\"**/build/**\", \"...\"]\n  }\n}\n```\n\n継承したパターンは `\"...\"` の位置に挿入され、重複したものは最初に現れたものが残ります。\n\n`[]` にすると継承した一覧を空にします。この設定を書かなければ、継承した一覧がそのまま使われます。\n\n相対パターンはワークツリーのルートからの相対パスと照合されます。絶対パターンは絶対パスと照合されます。先頭の `~` はホームフォルダーに展開されます。"
+
+msgctxt "settings schema"
+msgid "Disable edit predictions in these language scopes, such as \"comment\" and\n\"string\".\n\nDefault:\n\n```json\n{\n  \"edit_predictions_disabled_in\": []\n}\n```\n\nUse `\"...\"` to add scopes without repeating the inherited list. In project\nsettings, it extends the user or parent configuration value. In\nlanguage-specific settings, it extends the scopes inherited by that\nlanguage. Omit `\"...\"` to replace the inherited list.\n\n```json\n{\n  \"edit_predictions_disabled_in\": [\"comment\"],\n  \"languages\": {\n    \"Go\": {\n      \"edit_predictions_disabled_in\": [\"string\", \"...\"]\n    }\n  }\n}\n```\n\nInherited scopes are inserted at `\"...\"`, and duplicates keep their first\noccurrence.\n\nSet `[]` to clear the inherited list. Omit this setting to inherit it unchanged."
+msgstr "言語スコープ (\"comment\" や \"string\" など) のうち、これらのスコープでは編集予測を無効にします。\n\n既定値:\n\n```json\n{\n  \"edit_predictions_disabled_in\": []\n}\n```\n\n`\"...\"` を使うと、継承した一覧を繰り返さずにスコープを追加できます。プロジェクトの設定では、ユーザーまたは親の設定の値を拡張します。言語ごとの設定では、その言語が継承するスコープを拡張します。継承した一覧を置き換えるには `\"...\"` を書かないでください。\n\n```json\n{\n  \"edit_predictions_disabled_in\": [\"comment\"],\n  \"languages\": {\n    \"Go\": {\n      \"edit_predictions_disabled_in\": [\"string\", \"...\"]\n    }\n  }\n}\n```\n\n継承したスコープは `\"...\"` の位置に挿入され、重複したものは最初に現れたものが残ります。\n\n`[]` にすると継承した一覧を空にします。この設定を書かなければ、継承した一覧がそのまま使われます。"
+
+msgctxt "settings schema"
 msgid "Disables the fallback."
 msgstr "フォールバックを無効化します。"
 
@@ -1194,6 +1186,10 @@ msgstr "指定した言語での Prettier によるフォーマットを有効�
 msgctxt "settings schema"
 msgid "Enterprise URI for Copilot.\n\nDefault: none"
 msgstr "Copilot の Enterprise URI です。\n\n既定値: none"
+
+msgctxt "settings schema"
+msgid "Exclude files matching these glob patterns from file scans, file searches,\nand the project file tree. Takes precedence over `file_scan_inclusions`.\n\nDefault:\n\n```json\n{\n  \"file_scan_exclusions\": [\n    \"**/.git\",\n    \"**/.svn\",\n    \"**/.hg\",\n    \"**/.jj\",\n    \"**/.sl\",\n    \"**/.repo\",\n    \"**/CVS\",\n    \"**/.DS_Store\",\n    \"**/Thumbs.db\",\n    \"**/.classpath\",\n    \"**/.settings\"\n  ]\n}\n```\n\nUse `\"...\"` to add patterns without repeating Zed's defaults. In project\nsettings, it extends the user or parent configuration value. Omit\n`\"...\"` to replace the inherited list.\n\n```json\n{\n  \"file_scan_exclusions\": [\"**/node_modules\", \"...\"]\n}\n```\n\nInherited patterns are inserted at `\"...\"`, and duplicates keep their first\noccurrence."
+msgstr "これらの glob パターンに一致するファイルを、ファイルの走査、ファイルの検索、プロジェクトのファイルツリーから除外します。`file_scan_inclusions` より優先されます。\n\n既定値:\n\n```json\n{\n  \"file_scan_exclusions\": [\n    \"**/.git\",\n    \"**/.svn\",\n    \"**/.hg\",\n    \"**/.jj\",\n    \"**/.sl\",\n    \"**/.repo\",\n    \"**/CVS\",\n    \"**/.DS_Store\",\n    \"**/Thumbs.db\",\n    \"**/.classpath\",\n    \"**/.settings\"\n  ]\n}\n```\n\n`\"...\"` を使うと、ForgeKairos の既定値を繰り返さずにパターンを追加できます。プロジェクトの設定では、ユーザーまたは親の設定の値を拡張します。継承した一覧を置き換えるには `\"...\"` を書かないでください。\n\n```json\n{\n  \"file_scan_exclusions\": [\"**/node_modules\", \"...\"]\n}\n```\n\n継承したパターンは `\"...\"` の位置に挿入され、重複したものは最初に現れたものが残ります。"
 
 msgctxt "settings schema"
 msgid "Extends under the left dock while snapping to the right dock"
@@ -1578,6 +1574,10 @@ msgstr "サーバーが LSP の拡張仕様を通じてタスクの送信をサ�
 msgctxt "settings schema"
 msgid "Ignored version control color."
 msgstr "バージョン管理の無視済みカラーです。"
+
+msgctxt "settings schema"
+msgid "Include files matching these glob patterns when scanning, even if ignored\nby Git. Note that broad patterns can slow file scanning.\n`file_scan_exclusions` takes precedence.\n\nDefault:\n\n```json\n{\n  \"file_scan_inclusions\": [\".env*\"]\n}\n```\n\nUse `\"...\"` to add patterns without repeating Zed's defaults. In project\nsettings, it extends the user or parent configuration value. Omit\n`\"...\"` to replace the inherited list.\n\n```json\n{\n  \"file_scan_inclusions\": [\"**/build/**\", \"...\"]\n}\n```\n\nInherited patterns are inserted at `\"...\"`, and duplicates keep their first\noccurrence."
+msgstr "Git で無視されていても、これらの glob パターンに一致するファイルを走査の対象に含めます。広いパターンはファイルの走査を遅くすることがあります。`file_scan_exclusions` が優先されます。\n\n既定値:\n\n```json\n{\n  \"file_scan_inclusions\": [\".env*\"]\n}\n```\n\n`\"...\"` を使うと、ForgeKairos の既定値を繰り返さずにパターンを追加できます。プロジェクトの設定では、ユーザーまたは親の設定の値を拡張します。継承した一覧を置き換えるには `\"...\"` を書かないでください。\n\n```json\n{\n  \"file_scan_inclusions\": [\"**/build/**\", \"...\"]\n}\n```\n\n継承したパターンは `\"...\"` の位置に挿入され、重複したものは最初に現れたものが残ります。"
 
 msgctxt "settings schema"
 msgid "Indent guide related settings."
@@ -2116,8 +2116,8 @@ msgid "Regexes for inputs to auto-reject.\n**SECURITY**: These take precedence o
 msgstr "自動拒否する入力の正規表現です。**セキュリティ**: これらはすべての設定レイヤーにわたり、他のすべてのルールより優先されます。`copy_path` および `move_path` では、パターンは各パス (ソースと宛先) に対して個別に照合されます。パターンは設定レイヤー (ユーザー、プロジェクト、プロファイル) 間で蓄積され、優先度の高いレイヤーによって削除することはできず、新しいパターンのみ追加できます。\n既定値: []"
 
 msgctxt "settings schema"
-msgid "Regexes used to identify paths for hyperlink navigation.\n\nDefault: [\n  // Python-style diagnostics\n  \"File \\\"(?<path>[^\\\"]+)\\\", line (?<line>[0-9]+)\",\n  // Common path syntax with optional line, column, description, trailing punctuation, or\n  // surrounding symbols or quotes\n  [\n    \"(?x)\",\n    \"# optionally starts with 0-2 opening prefix symbols\",\n    \"[({\\\\[<]{0,2}\",\n    \"# which may be followed by an opening quote\",\n    \"(?<quote>[\\\"'`])?\",\n    \"# `path` is the shortest sequence of any non-space character\",\n    \"(?<link>(?<path>[^ ]+?\",\n    \"    # which may end with a line and optionally a column,\",\n    \"    (?<line_column>:+[0-9]+(:[0-9]+)?|:?\\\\([0-9]+([,:][0-9]+)?\\\\))?\",\n    \"))\",\n    \"# which must be followed by a matching quote\",\n    \"(?(<quote>)\\\\k<quote>)\",\n    \"# and optionally a single closing symbol\",\n    \"[)}\\\\]>]?\",\n    \"# if line/column matched, may be followed by a description\",\n    \"(?(<line_column>):[^ 0-9][^ ]*)?\",\n    \"# which may be followed by trailing punctuation\",\n    \"[.,:)}\\\\]>]*\",\n    \"# and always includes trailing whitespace or end of line\",\n    \"([ ]+|$)\"\n  ]\n]"
-msgstr "ハイパーリンクでたどるパスを見分ける正規表現。\n\n既定値: [\n  // Python-style diagnostics\n  \"File \\\"(?<path>[^\\\"]+)\\\", line (?<line>[0-9]+)\",\n  // Common path syntax with optional line, column, description, trailing punctuation, or\n  // surrounding symbols or quotes\n  [\n    \"(?x)\",\n    \"# optionally starts with 0-2 opening prefix symbols\",\n    \"[({\\\\[<]{0,2}\",\n    \"# which may be followed by an opening quote\",\n    \"(?<quote>[\\\"'`])?\",\n    \"# `path` is the shortest sequence of any non-space character\",\n    \"(?<link>(?<path>[^ ]+?\",\n    \"    # which may end with a line and optionally a column,\",\n    \"    (?<line_column>:+[0-9]+(:[0-9]+)?|:?\\\\([0-9]+([,:][0-9]+)?\\\\))?\",\n    \"))\",\n    \"# which must be followed by a matching quote\",\n    \"(?(<quote>)\\\\k<quote>)\",\n    \"# and optionally a single closing symbol\",\n    \"[)}\\\\]>]?\",\n    \"# if line/column matched, may be followed by a description\",\n    \"(?(<line_column>):[^ 0-9][^ ]*)?\",\n    \"# which may be followed by trailing punctuation\",\n    \"[.,:)}\\\\]>]*\",\n    \"# and always includes trailing whitespace or end of line\",\n    \"([ ]+|$)\"\n  ]\n]"
+msgid "Regexes used to identify paths for hyperlink navigation.\n\nDefault:\n\n```json\n{\n  \"terminal\": {\n    \"path_hyperlink_regexes\": [\n      // Python-style diagnostics\n      \"File \\\"(?<path>[^\\\"]+)\\\", line (?<line>[0-9]+)\",\n      // Common path syntax with optional line, column, description, trailing punctuation, or\n      // surrounding symbols or quotes\n      [\n        \"(?x)\",\n        \"(?<path>\",\n        \"    (\",\n        \"        # multi-char path: first char (not opening delimiter, space, or box drawing char)\",\n        \"        [^({\\\\[<\\\"'`\\\\ \\\\u2500-\\\\u257F]\",\n        \"        # middle chars: non-space, and colon/paren only if not followed by digit/paren/space\",\n        \"        ([^\\\\ :(]|[:(][^0-9()\\\\ ])*\",\n        \"        # last char: not closing delimiter or colon\",\n        \"        [^()}\\\\]>\\\"'`.,;:\\\\ ]\",\n        \"    |\",\n        \"        # single-char path: not delimiter, punctuation, space, or box drawing char\",\n        \"        [^(){}\\\\[\\\\]<>\\\"'`.,;:\\\\ \\\\u2500-\\\\u257F]\",\n        \"    )\",\n        \"    # optional line/column suffix (included in path for PathWithPosition::parse_str)\",\n        \"    (:+[0-9]+(:[0-9]+)?|:?\\\\([0-9]+([,:]?[0-9]+)?\\\\))?\",\n        \")\"\n      ]\n    ]\n  }\n}\n```\n\nUse `\"...\"` to add regexes without repeating Zed's defaults. In project\nsettings, it extends the user or parent configuration value. Omit\n`\"...\"` to replace the inherited list. Set `[]` to clear it. Omitting this\nsetting keeps the inherited list.\n\n```json\n{\n  \"terminal\": {\n    \"path_hyperlink_regexes\": [\n      \"\\\\s+(-->|:::|at) (?<link>(?<path>.+?))(:$|$)\",\n      \"\\\\s+(Compiling|Checking|Documenting) [^(]+\\\\((?<link>(?<path>.+))\\\\)\",\n      \"...\"\n    ]\n  }\n}\n```\n\nInherited regexes are inserted at `\"...\"`, and duplicates keep their first\noccurrence. Regexes are duplicates when their text is identical after\njoining multiline entries with newlines.\n\nEach regex can be a single string or an array of strings joined with\nnewlines. The marker is recognized only as a top-level string. To use\n`...` as a regex matching three characters, write `[\"...\"]` as an entry.\nA `\"...\"` line inside a multiline entry is always regex text.\n\nThe optional named capture `path` selects the hyperlink target. Without\nit, the entire match is the target. With `path`, `line` and `column`\nspecify the position. Without a captured `line`, built-in suffix\nprocessing parses `line:column` and `(line,column)` variants. The optional\n`link` capture selects the clickable text, otherwise the entire match is\nclickable.\n\nProcessing stops at the first regex that matches the terminal line, even\nif the cursor is outside its clickable text. Put more specific regexes\nbefore broader ones. Regexes use Rust's `regex` syntax. Invalid regexes\nare logged and ignored. The `path_hyperlink_timeout_ms` setting controls\nthe discovery timeout. Setting it to `0` disables path hyperlinks."
+msgstr "ハイパーリンクでたどるパスを見分ける正規表現。\n\n既定値:\n\n```json\n{\n  \"terminal\": {\n    \"path_hyperlink_regexes\": [\n      // Python-style diagnostics\n      \"File \\\"(?<path>[^\\\"]+)\\\", line (?<line>[0-9]+)\",\n      // Common path syntax with optional line, column, description, trailing punctuation, or\n      // surrounding symbols or quotes\n      [\n        \"(?x)\",\n        \"(?<path>\",\n        \"    (\",\n        \"        # multi-char path: first char (not opening delimiter, space, or box drawing char)\",\n        \"        [^({\\\\[<\\\"'`\\\\ \\\\u2500-\\\\u257F]\",\n        \"        # middle chars: non-space, and colon/paren only if not followed by digit/paren/space\",\n        \"        ([^\\\\ :(]|[:(][^0-9()\\\\ ])*\",\n        \"        # last char: not closing delimiter or colon\",\n        \"        [^()}\\\\]>\\\"'`.,;:\\\\ ]\",\n        \"    |\",\n        \"        # single-char path: not delimiter, punctuation, space, or box drawing char\",\n        \"        [^(){}\\\\[\\\\]<>\\\"'`.,;:\\\\ \\\\u2500-\\\\u257F]\",\n        \"    )\",\n        \"    # optional line/column suffix (included in path for PathWithPosition::parse_str)\",\n        \"    (:+[0-9]+(:[0-9]+)?|:?\\\\([0-9]+([,:]?[0-9]+)?\\\\))?\",\n        \")\"\n      ]\n    ]\n  }\n}\n```\n\n`\"...\"` を使うと、ForgeKairos の既定値を繰り返さずに正規表現を追加できます。プロジェクトの設定では、ユーザーまたは親の設定の値を拡張します。継承した一覧を置き換えるには `\"...\"` を書かないでください。`[]` にすると一覧を空にします。この設定を書かなければ、継承した一覧がそのまま使われます。\n\n```json\n{\n  \"terminal\": {\n    \"path_hyperlink_regexes\": [\n      \"\\\\s+(-->|:::|at) (?<link>(?<path>.+?))(:$|$)\",\n      \"\\\\s+(Compiling|Checking|Documenting) [^(]+\\\\((?<link>(?<path>.+))\\\\)\",\n      \"...\"\n    ]\n  }\n}\n```\n\n継承した正規表現は `\"...\"` の位置に挿入され、重複したものは最初に現れたものが残ります。複数行の項目を改行でつないだ文字列が同じなら、重複とみなします。\n\n各正規表現は 1 つの文字列か、改行でつなぐ文字列の配列で書けます。目印は最上位の文字列のときだけ認識されます。3 文字に一致する正規表現として `...` を使うには、項目に `[\"...\"]` と書きます。複数行の項目の中の `\"...\"` の行は、常に正規表現の文字列です。\n\n名前付きキャプチャ `path` (任意) はハイパーリンクの対象を選びます。無ければ一致した全体が対象です。`path` があるときは、`line` と `column` が位置を表します。`line` をキャプチャしないときは、組み込みの後処理が `line:column` と `(line,column)` の形を解析します。`link` キャプチャ (任意) はクリックできる文字列を選び、無ければ一致した全体がクリックできます。\n\n処理は、ターミナルの行に一致した最初の正規表現で止まります (カーソルがクリックできる文字列の外にあっても止まります)。具体的な正規表現を広いものより前に置いてください。正規表現は Rust の `regex` の構文です。不正な正規表現はログに記録され、無視されます。検出のタイムアウトは `path_hyperlink_timeout_ms` 設定で決まります。`0` にするとパスのハイパーリンクを無効にします。"
 
 msgctxt "settings schema"
 msgid "Renamed version control color."
@@ -2322,6 +2322,10 @@ msgstr "組み込みのループバックの IDE サーバーの設定。"
 msgctxt "settings schema"
 msgid "Settings for the machine a remote project runs on, as opposed to the\nlists of connections next to them. Written under `\"remote\"` in\n`settings.json`, and carried to the remote host with the rest of the user\nsettings, which is where they take effect."
 msgstr "リモートのプロジェクトが動くマシンの設定。並んで書かれる接続先の一覧とは別のものです。`settings.json` の `\"remote\"` に書き、ほかのユーザーの設定と一緒にリモートのホストへ運ばれ、そこで効きます。"
+
+msgctxt "settings schema"
+msgid "Settings for the threads sidebar."
+msgstr "スレッドサイドバーの設定です。"
 
 msgctxt "settings schema"
 msgid "Settings for the which-key popup."
@@ -3376,16 +3380,16 @@ msgid "Toolbar related settings"
 msgstr "ツールバー関連の設定"
 
 msgctxt "settings schema"
+msgid "Treat files and folders matching these glob patterns as hidden, including\nfiles inside matching folders. To hide these entries, run\n`project panel: toggle hide hidden` from the command palette or set\n`project_panel.hide_hidden` to `true`.\n\nDefault:\n\n```json\n{\n  \"hidden_files\": [\"**/.*\"]\n}\n```\n\nUse `\"...\"` to add patterns without repeating Zed's defaults. In project\nsettings, it extends the user or parent configuration value. Omit\n`\"...\"` to replace the inherited list.\n\n```json\n{\n  \"hidden_files\": [\"**/*.log\", \"...\"],\n  \"project_panel\": {\n    \"hide_hidden\": true\n  }\n}\n```\n\nInherited patterns are inserted at `\"...\"`, and duplicates keep their first\noccurrence."
+msgstr "これらの glob パターンに一致するファイルとフォルダー (一致するフォルダーの中のファイルを含む) を隠しファイルとして扱います。これらを非表示にするには、コマンドパレットから `project panel: toggle hide hidden` を実行するか、`project_panel.hide_hidden` を `true` にします。\n\n既定値:\n\n```json\n{\n  \"hidden_files\": [\"**/.*\"]\n}\n```\n\n`\"...\"` を使うと、ForgeKairos の既定値を繰り返さずにパターンを追加できます。プロジェクトの設定では、ユーザーまたは親の設定の値を拡張します。継承した一覧を置き換えるには `\"...\"` を書かないでください。\n\n```json\n{\n  \"hidden_files\": [\"**/*.log\", \"...\"],\n  \"project_panel\": {\n    \"hide_hidden\": true\n  }\n}\n```\n\n継承したパターンは `\"...\"` の位置に挿入され、重複したものは最初に現れたものが残ります。"
+
+msgctxt "settings schema"
+msgid "Treat files matching these glob patterns as read-only when opened. You can\nview but not edit them, which is useful for build outputs, external\ndependencies, or generated files.\n\nDefault:\n\n```json\n{\n  \"read_only_files\": []\n}\n```\n\nUse `\"...\"` to add patterns without repeating Zed's defaults. In project\nsettings, it extends the user or parent configuration value. Omit\n`\"...\"` to replace the inherited list.\n\n```json\n{\n  \"read_only_files\": [\"**/build/**\", \"...\"]\n}\n```\n\nInherited patterns are inserted at `\"...\"`, and duplicates keep their first\noccurrence."
+msgstr "これらの glob パターンに一致するファイルを、開いたときに読み取り専用として扱います。閲覧はできますが編集はできないので、ビルドの出力、外部の依存関係、生成されたファイルに便利です。\n\n既定値:\n\n```json\n{\n  \"read_only_files\": []\n}\n```\n\n`\"...\"` を使うと、ForgeKairos の既定値を繰り返さずにパターンを追加できます。プロジェクトの設定では、ユーザーまたは親の設定の値を拡張します。継承した一覧を置き換えるには `\"...\"` を書かないでください。\n\n```json\n{\n  \"read_only_files\": [\"**/build/**\", \"...\"]\n}\n```\n\n継承したパターンは `\"...\"` の位置に挿入され、重複したものは最初に現れたものが残ります。"
+
+msgctxt "settings schema"
 msgid "Treat the files matching these globs as `.env` files.\nDefault: [\"**/.env*\", \"**/*.pem\", \"**/*.key\", \"**/*.cert\", \"**/*.crt\", \"**/secrets.yml\"]"
 msgstr "これらの glob に一致するファイルを `.env` ファイルとして扱います。\n既定値: [\"**/.env*\", \"**/*.pem\", \"**/*.key\", \"**/*.cert\", \"**/*.crt\", \"**/secrets.yml\"]"
-
-msgctxt "settings schema"
-msgid "Treat the files matching these globs as hidden files. You can hide hidden files in the project panel.\nDefault: [\"**/.*\"]"
-msgstr "これらの glob に一致するファイルを隠しファイルとして扱います。隠しファイルはプロジェクトパネルで非表示にできます。\n既定値: [\"**/.*\"]"
-
-msgctxt "settings schema"
-msgid "Treat the files matching these globs as read-only. These files can be opened and viewed,\nbut cannot be edited. This is useful for generated files, build outputs, or files from\nexternal dependencies that should not be modified directly.\n\nA \"...\" entry expands to the value being overridden. Leave \"...\" out\nto replace the inherited globs, or use an empty list to clear them.\n\nDefault: []"
-msgstr "これらの glob に一致するファイルを読み取り専用として扱います。これらのファイルは開いて閲覧できますが、編集はできません。これは生成ファイル、ビルド出力、または直接変更すべきでない外部依存関係のファイルを扱う場合に便利です。\n\n\"...\" エントリは上書き対象の値に展開されます。継承された glob を置き換えるには \"...\" を省略し、クリアするには空のリストを使用します。\n\n既定値: []"
 
 msgctxt "settings schema"
 msgid "UNSTABLE: Expect many elements to be broken."
@@ -3728,12 +3732,12 @@ msgid "Where to dock the panel.\n\nDefault: right (Agentic layout), left (Classi
 msgstr "パネルをドッキングする場所を設定します。\n\n既定値: right (Agentic レイアウト)、left (Classic レイアウト)"
 
 msgctxt "settings schema"
-msgid "Where to position the sidebar holding the threads list and the agent panel.\n\nDefault: left"
-msgstr "スレッドリストとエージェントパネルを含むサイドバーを配置する場所を設定します。\n\n既定値: left"
-
-msgctxt "settings schema"
 msgid "Where to position the threads sidebar."
 msgstr "スレッドサイドバーを配置する場所を設定します。"
+
+msgctxt "settings schema"
+msgid "Where to position the threads sidebar.\n\nDefault: left"
+msgstr "スレッドサイドバーを配置する場所を設定します。\n\n既定値: left"
 
 msgctxt "settings schema"
 msgid "Where to render the blame information when enabled.\n\nDefault: inline"
@@ -3826,6 +3830,10 @@ msgstr "パネルがすでにフォーカスされている状態で `ToggleFocu
 msgctxt "settings schema"
 msgid "Whether newly opened file diffs show the full file instead of changes only.\n\nDefault: true"
 msgstr "新しく開いたファイル差分が、変更のみではなくファイル全体を表示するかどうかを設定します。\n\n既定値: true"
+
+msgctxt "settings schema"
+msgid "Whether opening a folder in an existing window automatically opens the\nThreads Sidebar. Applies when `default_open_behavior` or\n`cli_default_open_behavior` is set to `existing_window`.\n\nDefault: true"
+msgstr "既存のウィンドウでフォルダーを開いたときに、スレッドサイドバーを自動で開くかどうかを設定します。`default_open_behavior` または `cli_default_open_behavior` が `existing_window` のときに適用されます。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether or not selecting text in the terminal will automatically\ncopy to the system clipboard.\n\nDefault: false"
@@ -4096,7 +4104,7 @@ msgid "Whether to allow horizontal scrolling in the project panel.\nWhen false, 
 msgstr "プロジェクトパネルで水平スクロールを許可するかどうかを設定します。false の場合、ビューは最も左の位置に固定され、長いファイル名は切り詰められます。\n\n既定値: true"
 
 msgctxt "settings schema"
-msgid "Whether to allow windows to tab together based on the user’s tabbing preference (macOS only).\n\nDefault: false"
+msgid "Whether to allow windows to tab together based on the user's tabbing preference (macOS only).\n\nDefault: false"
 msgstr "ユーザーのタブ設定に基づいてウィンドウをまとめてタブ表示することを許可するかどうかを設定します (macOS のみ)。\n\n既定値: false"
 
 msgctxt "settings schema"
@@ -4500,8 +4508,8 @@ msgid "Whether to show active line endings button in the status bar.\n\nDefault:
 msgstr "ステータスバーにアクティブな改行コードボタンを表示するかどうかを設定します。\n\n既定値: false"
 
 msgctxt "settings schema"
-msgid "Whether to show an indicator with a countdown while timed multi-stroke input is pending.\nHovering the indicator pauses the timeout.\nIts binding preview popover is disabled when the which-key popup is enabled.\n\nDefault: true"
-msgstr "複数キーの入力が保留されている間、カウントダウン付きのインジケーターを表示するかどうかを設定します。インジケーターにホバーするとタイムアウトが一時停止します。which-key ポップアップが有効な場合、バインドプレビューポップオーバーは無効になります。\n\n既定値: true"
+msgid "Whether to show an indicator while multi-stroke input is pending.\nIf the input has a timeout, a countdown is shown and hovering the indicator pauses it.\nIts binding preview popover is disabled when the which-key popup is enabled.\n\nDefault: true"
+msgstr "複数キーの入力が保留されている間、インジケーターを表示するかどうかを設定します。入力にタイムアウトがあるときはカウントダウンを表示し、インジケーターにホバーすると一時停止します。which-key ポップアップが有効な場合、バインドプレビューポップオーバーは無効になります。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to show author name as part of the commit information.\n\nDefault: false"

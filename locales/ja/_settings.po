@@ -1786,10 +1786,6 @@ msgid "Controls whether edit predictions are shown immediately or manually."
 msgstr "編集予測をすぐに表示するか、手動で表示するかを設定します。"
 
 msgctxt "settings"
-msgid "Controls whether edit predictions are shown in the given language scopes."
-msgstr "指定した言語スコープで編集予測を表示するかどうかを設定します。"
-
-msgctxt "settings"
 msgid "Controls whether the closing characters are always skipped over and auto-removed no matter how they were inserted."
 msgstr "閉じ文字がどのように挿入されたかにかかわらず、常に読み飛ばして自動的に削除するかどうかを設定します。"
 
@@ -2018,8 +2014,8 @@ msgid "Default width of the Git panel in pixels."
 msgstr "Git パネルの既定の幅 (ピクセル) です。"
 
 msgctxt "settings"
-msgid "Default width of the Threads Sidebar. Resizing it takes precedence until you double-click the divider to reset."
-msgstr "スレッドサイドバーの既定の幅です。サイズを変えるとその幅が優先され、区切り線をダブルクリックすると既定に戻ります。"
+msgid "Default width of the Threads Sidebar. Changing this setting also updates a manually resized sidebar. Double-click the divider to reset to this width."
+msgstr "スレッドサイドバーの既定の幅です。この設定を変えると、手動でサイズを変えたサイドバーにも反映されます。区切り線をダブルクリックするとこの幅に戻ります。"
 
 msgctxt "settings"
 msgid "Default width of the browser panel in pixels when docked to the left or right."
@@ -2156,6 +2152,10 @@ msgstr "Git 連携を無効にする"
 msgctxt "settings"
 msgid "Disable all Git integration features in Zed."
 msgstr "ForgeKairos の Git 連携機能をすべて無効にします。表示だけでなく、ワークツリーの Git リポジトリ追跡と git status / git diff の実行自体を止めます。リモート SSH ではサーバー側の実行も止まります。切り替えは再起動なしで反映されます。"
+
+msgctxt "settings"
+msgid "Disable edit predictions in these language scopes, such as \"comment\" and \"string\". Use \"...\" to add scopes without repeating the inherited list."
+msgstr "これらの言語スコープ (\"comment\" や \"string\" など) では編集予測を無効にします。\"...\" を使うと、継承した一覧を繰り返さずにスコープを追加できます。"
 
 msgctxt "settings"
 msgid "Disable in Language Scopes"
@@ -4106,8 +4106,8 @@ msgid "Show agent review buttons in the editor toolbar."
 msgstr "エディターのツールバーにエージェントのレビューボタンを表示します。"
 
 msgctxt "settings"
-msgid "Show an indicator with a countdown while a multi-stroke key binding is pending. Its binding preview popover is disabled when the which-key menu is enabled."
-msgstr "複数ストロークのキーバインドの入力中に、カウントダウン付きのインジケーターを表示します。Which-key メニューが有効なときは、そのキーバインドのプレビューのポップオーバーは無効になります。"
+msgid "Show an indicator while a multi-stroke key binding is pending. If the input has a timeout, a countdown is shown and hovering pauses it. Its binding preview popover is disabled when the which-key menu is enabled."
+msgstr "複数ストロークのキーバインドの入力中にインジケーターを表示します。入力にタイムアウトがあるときはカウントダウンを表示し、ポインターを重ねると一時停止します。Which-key メニューが有効なときは、そのキーバインドのプレビューのポップオーバーは無効になります。"
 
 msgctxt "settings"
 msgid "Show author name as part of the commit information in branch picker."
@@ -4806,11 +4806,15 @@ msgid "Threads Sidebar"
 msgstr "スレッドサイドバー"
 
 msgctxt "settings"
+msgid "Threads Sidebar Auto Open"
+msgstr "スレッドサイドバーを自動で開く"
+
+msgctxt "settings"
 msgid "Threads Sidebar Default Width"
 msgstr "スレッドサイドバーの既定の幅"
 
 msgctxt "settings"
-msgid "Threads Sidebar Side"
+msgid "Threads Sidebar Position"
 msgstr "スレッドサイドバーの位置"
 
 msgctxt "settings"
@@ -5302,6 +5306,10 @@ msgid "Whether newly opened file diffs show the full file instead of changes onl
 msgstr "新しく開いたファイルの差分で、変更箇所だけでなくファイル全体を表示するかどうかを設定します。"
 
 msgctxt "settings"
+msgid "Whether opening a folder in an existing window automatically opens the Threads Sidebar."
+msgstr "既存のウィンドウでフォルダーを開いたときに、スレッドサイドバーを自動で開くかどうかを設定します。"
+
+msgctxt "settings"
 msgid "Whether or not to automatically check for updates."
 msgstr "更新を自動的に確認するかどうかを設定します。"
 
@@ -5726,7 +5734,7 @@ msgid "Which settings should be activated only in Preview build of Zed."
 msgstr "ForgeKairos の Preview ビルドでのみ有効にする設定です。"
 
 msgctxt "settings"
-msgid "Which side of the window the threads sidebar appears on."
+msgid "Which side of the window the Threads Sidebar appears on."
 msgstr "スレッドサイドバーをウィンドウのどちら側に表示するかを設定します。"
 
 msgctxt "settings"

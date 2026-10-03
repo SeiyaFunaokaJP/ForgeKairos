@@ -10,18 +10,19 @@ workspace = true
 
 [lib]
 path = "src/auto_update_ui.rs"
+test = false
+doctest = false
 
 [dependencies]
-agent_skills.workspace = true
 anyhow.workspace = true
 auto_update.workspace = true
-client.workspace = true
 db.workspace = true
 gpui.workspace = true
 i18n.workspace = true
-prompt_store.workspace = true
+project.workspace = true
 release_channel.workspace = true
 semver.workspace = true
+settings.workspace = true
 telemetry.workspace = true
 ui.workspace = true
 workspace.workspace = true

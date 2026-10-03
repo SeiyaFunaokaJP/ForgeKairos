@@ -365,7 +365,7 @@ pub(crate) mod m_2026_08_17 {
     pub(crate) use settings::make_git_gutter_width_an_enum;
 }
 
-pub(crate) mod m_2026_09_16 {
+pub(crate) mod m_2026_09_16_wsl_grants {
     mod settings;
 
     pub(crate) use settings::fold_wsl_sandbox_grant_spellings;
@@ -381,4 +381,10 @@ pub(crate) mod m_2026_08_30 {
     mod settings;
 
     pub(crate) use settings::nest_markdown_preview_settings;
+}
+
+pub(crate) mod m_2026_09_16 {
+    mod settings;
+
+    pub(crate) use settings::nest_agent_threads_sidebar_settings;
 }

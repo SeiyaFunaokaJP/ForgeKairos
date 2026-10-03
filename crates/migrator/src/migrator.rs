@@ -254,9 +254,10 @@ pub fn migrate_settings(text: &str) -> Result<Option<String>> {
             &SETTINGS_QUERY_2026_05_04,
         ),
         MigrationType::Json(migrations::m_2026_08_17::make_git_gutter_width_an_enum),
-        MigrationType::Json(migrations::m_2026_09_16::fold_wsl_sandbox_grant_spellings),
+        MigrationType::Json(migrations::m_2026_09_16_wsl_grants::fold_wsl_sandbox_grant_spellings),
         MigrationType::Json(migrations::m_2026_08_26::rename_folder_icons_to_folder_indicator),
         MigrationType::Json(migrations::m_2026_08_30::nest_markdown_preview_settings),
+        MigrationType::Json(migrations::m_2026_09_16::nest_agent_threads_sidebar_settings),
     ];
     run_migrations(text, migrations)
 }
@@ -5472,6 +5473,30 @@ mod tests {
                         "font_family": "Zed Sans",
                         "code_font_family": "Zed Mono",
                         "theme": "One Dark"
+                    }
+                }
+            "#}),
+        );
+    }
+
+    #[test]
+    fn test_nest_agent_threads_sidebar_settings_is_registered() {
+        assert_migrate_settings(
+            indoc! {r#"
+                {
+                    "agent": {
+                        "sidebar_side": "right",
+                        "threads_sidebar_default_width": 420
+                    }
+                }
+            "#},
+            Some(indoc! {r#"
+                {
+                    "agent": {
+                        "threads_sidebar": {
+                            "position": "right",
+                            "default_width": 420
+                        }
                     }
                 }
             "#}),

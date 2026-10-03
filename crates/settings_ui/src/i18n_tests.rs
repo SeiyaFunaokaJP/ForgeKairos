@@ -178,78 +178,86 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     ),
     // Added by upstream v1.21.0.
     (
-        "p7.i77[agent.threads_sidebar_default_width].title",
+        "p12.i5[agent.threads_sidebar.default_width].title",
         "スレッドサイドバーの既定の幅",
     ),
     (
-        "p7.i77[agent.threads_sidebar_default_width].description",
-        "スレッドサイドバーの既定の幅です。サイズを変えるとその幅が優先され、区切り線をダブルクリックすると既定に戻ります。",
+        "p12.i5[agent.threads_sidebar.default_width].description",
+        "スレッドサイドバーの既定の幅です。この設定を変えると、手動でサイズを変えたサイドバーにも反映されます。区切り線をダブルクリックするとこの幅に戻ります。",
     ),
     (
-        "p12.i24[agent.prevent_idle_sleep].title",
+        "p12.i6[agent.threads_sidebar.auto_open].title",
+        "スレッドサイドバーを自動で開く",
+    ),
+    (
+        "p12.i6[agent.threads_sidebar.auto_open].description",
+        "既存のウィンドウでフォルダーを開いたときに、スレッドサイドバーを自動で開くかどうかを設定します。",
+    ),
+    (
+        "p12.i26[agent.prevent_idle_sleep].title",
         "アイドル時のスリープを防ぐ",
     ),
     (
-        "p12.i24[agent.prevent_idle_sleep].description",
+        "p12.i26[agent.prevent_idle_sleep].description",
         "エージェントのスレッドの実行中に、システムがスリープしないようにするかどうかを設定します。",
     ),
     // Added by zed-jp-enhance with the call graph panel, at the end of the
     // Panels page so that the rows above keep their keys.
-    ("p7.i80.header", "呼び出しグラフパネル"),
+    ("p7.i79.header", "呼び出しグラフパネル"),
     (
-        "p7.i81[call_graph_panel.button].title",
+        "p7.i80[call_graph_panel.button].title",
         "呼び出しグラフパネルのボタン",
     ),
     (
-        "p7.i81[call_graph_panel.button].description",
+        "p7.i80[call_graph_panel.button].description",
         "ステータスバーに呼び出しグラフパネルのボタンを表示します。",
     ),
     (
-        "p7.i82[call_graph_panel.dock].title",
+        "p7.i81[call_graph_panel.dock].title",
         "呼び出しグラフパネルのドック位置",
     ),
     (
-        "p7.i82[call_graph_panel.dock].description",
+        "p7.i81[call_graph_panel.dock].description",
         "呼び出しグラフパネルをドッキングする位置です。",
     ),
     (
-        "p7.i83[call_graph_panel.default_width].title",
+        "p7.i82[call_graph_panel.default_width].title",
         "呼び出しグラフパネルの既定の幅",
     ),
     (
-        "p7.i83[call_graph_panel.default_width].description",
+        "p7.i82[call_graph_panel.default_width].description",
         "呼び出しグラフパネルの既定の幅 (ピクセル) です。",
     ),
     (
-        "p7.i84[call_graph_panel.max_children].title",
+        "p7.i83[call_graph_panel.max_children].title",
         "一覧する呼び出しの上限",
     ),
     (
-        "p7.i84[call_graph_panel.max_children].description",
+        "p7.i83[call_graph_panel.max_children].description",
         "1 つの関数の呼び出し元 / 呼び出し先を、「さらに表示」の行の前にいくつまで並べるかです。",
     ),
     (
-        "p7.i85[call_graph_panel.follow_cursor].title",
+        "p7.i84[call_graph_panel.follow_cursor].title",
         "カーソルに追従",
     ),
     (
-        "p7.i85[call_graph_panel.follow_cursor].description",
+        "p7.i84[call_graph_panel.follow_cursor].description",
         "カーソルが動くたびに、カーソル位置の関数を起点にします。",
     ),
     (
-        "p7.i86[call_graph_panel.sources].title",
+        "p7.i85[call_graph_panel.sources].title",
         "呼び出しグラフの情報源",
     ),
     (
-        "p7.i86[call_graph_panel.sources].description",
+        "p7.i85[call_graph_panel.sources].description",
         "呼び出しをどこから取得するか。正確な言語サーバー、C と C++ のファイルを名前で照合する索引、またはその両方です。",
     ),
     (
-        "p7.i87[call_graph_panel.excluded_callees].title",
+        "p7.i86[call_graph_panel.excluded_callees].title",
         "除外する呼び出し先",
     ),
     (
-        "p7.i87[call_graph_panel.excluded_callees].description",
+        "p7.i86[call_graph_panel.excluded_callees].description",
         "関数の呼び出し先の一覧から外す呼び出し先 (ログやアサーションのマクロなど)。末尾の行に件数を出し、押すと表示します。",
     ),
     // zed-jp-enhance: clangd's memory settings, whose header moves the
@@ -315,6 +323,15 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.
 const CHANGED_ON_PURPOSE: &[(&str, &str)] = &[
+    // Upstream reworded these, so their Japanese follows the new English.
+    (
+        "Show an indicator while a multi-stroke key binding is pending. If the input has a timeout, a countdown is shown and hovering pauses it. Its binding preview popover is disabled when the which-key menu is enabled.",
+        "複数ストロークのキーバインドの入力中にインジケーターを表示します。入力にタイムアウトがあるときはカウントダウンを表示し、ポインターを重ねると一時停止します。Which-key メニューが有効なときは、そのキーバインドのプレビューのポップオーバーは無効になります。",
+    ),
+    (
+        "Disable edit predictions in these language scopes, such as \"comment\" and \"string\". Use \"...\" to add scopes without repeating the inherited list.",
+        "これらの言語スコープ (\"comment\" や \"string\" など) では編集予測を無効にします。\"...\" を使うと、継承した一覧を繰り返さずにスコープを追加できます。",
+    ),
     // The title said 音声のテスト and the button 音声をテスト for the same
     // English; GLOSSARY.md has Test Audio = 音声のテスト.
     ("Test Audio", "音声のテスト"),

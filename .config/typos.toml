@@ -128,6 +128,7 @@ extend-ignore-re = [
 check-filename = true
 
 [default.extend-words]
+flate = "flate"
 scap = "scap"
 writeable = "writeable"
 # "ANDed" (two decisions combined with a logical AND) splits into a token the

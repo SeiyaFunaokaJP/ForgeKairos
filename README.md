@@ -6,7 +6,7 @@
 English | [日本語](README.ja.md)
 
 ForgeKairos is a fork of the [Zed](https://zed.dev) code editor. It follows upstream's
-releases one at a time with `git merge` (currently based on Zed v1.21.0) and adds a
+releases one at a time with `git merge` (currently based on Zed v1.22.0) and adds a
 multilingual UI (Japanese and English first), control over outbound network traffic
 (deny by default), a local-first approach to AI, and SSH remoting to old Linux hosts.
 It is developed mainly for Windows.

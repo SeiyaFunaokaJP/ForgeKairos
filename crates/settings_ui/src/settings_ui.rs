@@ -564,6 +564,7 @@ fn init_renderers(cx: &mut App) {
         .add_basic_renderer::<String>(render_text_field)
         .add_basic_renderer::<SharedString>(render_text_field)
         .add_basic_renderer::<Vec<String>>(render_string_list)
+        .add_basic_renderer::<settings::SplicingVec>(render_string_list)
         .add_basic_renderer::<settings::SaturatingBool>(render_toggle_button)
         .add_basic_renderer::<settings::CursorShape>(render_dropdown)
         .add_basic_renderer::<settings::RestoreOnStartupBehavior>(render_dropdown)
@@ -5013,6 +5014,20 @@ fn update_settings_file(
     cx: &mut App,
     update: impl 'static + Send + FnOnce(&mut SettingsContent, &App),
 ) -> Result<()> {
+    let mut update = Some(update);
+    update_settings_file_inner(file, file_name, window, cx, &mut || {
+        Box::new(update.take().expect("called once"))
+    })
+}
+
+#[inline(never)]
+fn update_settings_file_inner(
+    file: SettingsUiFile,
+    file_name: Option<&'static str>,
+    window: &mut Window,
+    cx: &mut App,
+    update: &mut dyn FnMut() -> Box<dyn Send + FnOnce(&mut SettingsContent, &App)>,
+) -> Result<()> {
     telemetry::event!("Settings Change", setting = file_name, type = file.setting_type());
 
     match file {
@@ -5026,7 +5041,7 @@ fn update_settings_file(
         }
         SettingsUiFile::User => {
             // todo(settings_ui) error?
-            SettingsStore::global(cx).update_settings_file(<dyn fs::Fs>::global(cx), update);
+            SettingsStore::global(cx).update_settings_file(<dyn fs::Fs>::global(cx), update());
             Ok(())
         }
         SettingsUiFile::Server(_) => unimplemented!(),
@@ -5162,10 +5177,11 @@ impl ProjectSettingsUpdateQueue {
     }
 }
 
+#[inline(never)]
 fn update_project_setting_file(
     worktree_id: WorktreeId,
     rel_path: Arc<RelPath>,
-    update: impl 'static + FnOnce(&mut SettingsContent, &App),
+    update: &mut dyn FnMut() -> Box<dyn Send + FnOnce(&mut SettingsContent, &App)>,
     settings_window: Entity<SettingsWindow>,
     cx: &mut App,
 ) -> Result<()> {
@@ -5186,7 +5202,7 @@ fn update_project_setting_file(
         settings_window: settings_window.downgrade(),
         project: project.downgrade(),
         worktree: worktree.downgrade(),
-        update: Box::new(update),
+        update: update(),
         completion: None,
     };
 
@@ -5317,8 +5333,26 @@ fn render_text_field<T: From<String> + Into<String> + AsRef<str> + Clone>(
         .into_any_element()
 }
 
-fn render_string_list(
-    field: SettingField<Vec<String>>,
+/// A setting that holds a list of strings, as plain `Vec<String>` or as
+/// upstream's `SplicingVec`, whose `"..."` entry is edited like any other.
+trait StringListSetting: 'static + Clone + Default + Send + From<Vec<String>> {
+    fn strings(&self) -> &[String];
+}
+
+impl StringListSetting for Vec<String> {
+    fn strings(&self) -> &[String] {
+        self
+    }
+}
+
+impl StringListSetting for settings::SplicingVec {
+    fn strings(&self) -> &[String] {
+        &self.0
+    }
+}
+
+fn render_string_list<T: StringListSetting>(
+    field: SettingField<T>,
     file: SettingsUiFile,
     _metadata: Option<&SettingsFieldMetadata>,
     title: &'static str,
@@ -5330,7 +5364,7 @@ fn render_string_list(
     let entries = SettingsStore::global(cx)
         .get_value_from_file(file.to_settings(), field.pick)
         .1
-        .cloned()
+        .map(|entries| entries.strings().to_vec())
         .unwrap_or_default();
     let file_for_remove = file.clone();
     let file_for_replace = file.clone();
@@ -5365,8 +5399,8 @@ fn render_string_list(
 /// runs, not as it was drawn: edits made in quick succession are written one
 /// after another, and each must see the ones before it. A file without the
 /// setting starts from the value it inherits.
-fn edit_string_list(
-    field: SettingField<Vec<String>>,
+fn edit_string_list<T: StringListSetting>(
+    field: SettingField<T>,
     file: SettingsUiFile,
     window: &mut Window,
     cx: &mut App,
@@ -5382,8 +5416,8 @@ fn edit_string_list(
                 .cloned()
                 .unwrap_or_default(),
         };
-        if let Some(entries) = edit(&entries) {
-            (field.write)(settings, Some(entries), app);
+        if let Some(entries) = edit(entries.strings()) {
+            (field.write)(settings, Some(T::from(entries)), app);
         }
     })
     .log_err();
