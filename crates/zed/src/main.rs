@@ -872,7 +872,7 @@ fn main() {
         theme_selector::init(cx);
         settings_profile_selector::init(cx);
         language_tools::init(cx);
-        // docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): `call::init` / `collab_ui::init` は除去済み。
+        // .forgekairos-docs/DESIGN.md §4.6 (ADR-F06): `call::init` / `collab_ui::init` は除去済み。
         // `notifications` (RPC 通知ストア) は他クレートが参照するので残す。
         // `title_bar::init` は collab とは無関係だが upstream では `collab_ui::init` から
         // 呼ばれていた。これが無いと `Workspace` にタイトルバーが差し込まれず、
@@ -1419,7 +1419,7 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
         }));
     }
 
-    // docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): `zed://channel/...` (チャンネル参加 /
+    // .forgekairos-docs/DESIGN.md §4.6 (ADR-F06): `zed://channel/...` (チャンネル参加 /
     // チャンネルノート) の処理は collab 除去に伴い削除した。CLI/URL 側のフィールドは
     // `cli` クレートのプロトコルに残っているが、ここで無視される。
     if !request.open_channel_notes.is_empty() || request.join_channel.is_some() {

@@ -373,7 +373,7 @@ fn general_page(cx: &App) -> SettingsPage {
             }),
             // The decisions ADR-F42 stores for MCP servers, language server
             // binaries and external formatters, with the only place to take
-            // one back (`docs/jp-enhance/DESIGN.md` §4.42, §4.50).
+            // one back (`.forgekairos-docs/DESIGN.md` §4.42, §4.50).
             SettingsPageItem::SubPageLink(SubPageLink {
                 title: "Launch Approvals".into(),
                 r#type: SubPageType::LaunchApprovals,
@@ -9389,7 +9389,7 @@ fn ai_page(cx: &App) -> SettingsPage {
     fn general_section() -> [SettingsPageItem; 16] {
         [
             SettingsPageItem::SectionHeader("General"),
-            // The only UI writer of `agent.enabled` (ADR-F13, `docs/jp-enhance/DESIGN.md`):
+            // The only UI writer of `agent.enabled` (ADR-F13, `.forgekairos-docs/DESIGN.md`):
             // keeping it unique is what makes the enablement audit meaningful.
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Enable Agent",
@@ -9530,7 +9530,7 @@ fn ai_page(cx: &App) -> SettingsPage {
             // The provider names listed here are the same ones warned about in
             // `llm_providers_page` / `edit_prediction_provider_setup`; this link
             // only shows what has already been acknowledged there and lets it be
-            // withdrawn (ADR-F10, `docs/jp-enhance/DESIGN.md` §4.10).
+            // withdrawn (ADR-F10, `.forgekairos-docs/DESIGN.md` §4.10).
             SettingsPageItem::SubPageLink(SubPageLink {
                 title: "External AI Providers You Consented To".into(),
                 r#type: Default::default(),
@@ -10431,7 +10431,7 @@ fn network_page() -> SettingsPage {
         ]
     }
 
-    /// The egress allowlist is this fork's own (`docs/jp-enhance/DESIGN.md` §4), and
+    /// The egress allowlist is this fork's own (`.forgekairos-docs/DESIGN.md` §4), and
     /// it does not live in settings.json, so it gets a section of its own rather
     /// than sitting next to the proxy and server-URL settings.
     fn remote_section() -> [SettingsPageItem; 2] {

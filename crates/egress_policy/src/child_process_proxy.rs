@@ -1,7 +1,7 @@
 //! The loopback forward proxy this fork points agent-harness child processes
 //! at, so that their runtime traffic is judged by the same allowlist
 //! [`http_client::AllowlistedHttpClient`] applies to the app's own requests.
-//! See `docs/jp-enhance/DESIGN.md` ADR-F13 (F2-7).
+//! See `.forgekairos-docs/DESIGN.md` ADR-F13 (F2-7).
 //!
 //! ACP agents, MCP servers and npm run in their own processes, on the far side
 //! of a process boundary the in-process HTTP decorator cannot see across

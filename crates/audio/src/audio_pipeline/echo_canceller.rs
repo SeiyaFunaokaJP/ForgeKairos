@@ -1,4 +1,4 @@
-// docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): the real canceller is LiveKit's `libwebrtc` APM,
+// .forgekairos-docs/DESIGN.md §4.6 (ADR-F06): the real canceller is LiveKit's `libwebrtc` APM,
 // whose prebuilt `webrtc-sys` library is what the fork drops from the build. Without calls the
 // microphone and the speakers never run together, so every target uses the no-op canceller
 // upstream keeps for windows-gnu and FreeBSD. `cfg(any())` switches the real one off instead of

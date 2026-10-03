@@ -1,4 +1,4 @@
-//! Deny-by-default egress allowlist. See `docs/jp-enhance/DESIGN.md` §4 (ADR-F03)
+//! Deny-by-default egress allowlist. See `.forgekairos-docs/DESIGN.md` §4 (ADR-F03)
 //! and §4.38 (ADR-F38) for the two lanes.
 //!
 //! [`AllowlistedHttpClient`] decorates the process-wide [`HttpClient`] at the
@@ -37,7 +37,7 @@ use url::{Host, Url};
 use crate::{AsyncBody, HttpClient, HttpClientWithUrl, Inner, RedirectPolicy, RequestTimeout};
 
 /// Which kind of traffic a request is, and therefore whether the allowlist
-/// applies to it (`docs/jp-enhance/DESIGN.md` ADR-F38).
+/// applies to it (`.forgekairos-docs/DESIGN.md` ADR-F38).
 ///
 /// The allowlist exists to keep *the AI* from talking to whatever it likes —
 /// a model provider, an agent's fetch/web-search tool, an MCP server, an
@@ -563,7 +563,7 @@ pub fn egress_denied_hosts(error: &anyhow::Error) -> Option<Vec<String>> {
 /// The ACP registry entry below is a second, narrower instance of the same
 /// idea (2026-08-28, F2-5): the fork installs external agent CLIs through an
 /// IDE-driven notify-and-button flow rather than bundling them (see
-/// `docs/jp-enhance/AGENTS-SETUP.md` "方針"), and *checking whether one exists or
+/// `.forgekairos-docs/AGENTS-SETUP.md` "方針"), and *checking whether one exists or
 /// has a newer version* has to work with an empty allowlist, the same as
 /// browsing extensions does — only the follow-up download of the agent
 /// binary itself goes through the F2-5 consent flow, which adds the vendor's
@@ -757,7 +757,7 @@ const CHILD_PROCESS_PROXY_VARS: &[&str] = &[
 const CHILD_PROCESS_NO_PROXY: &str = "localhost,127.0.0.1,::1";
 
 /// Endpoint of the loopback forward proxy this fork points agent-harness child
-/// processes at — ACP agents, MCP servers and npm (`docs/jp-enhance/DESIGN.md`
+/// processes at — ACP agents, MCP servers and npm (`.forgekairos-docs/DESIGN.md`
 /// ADR-F13). `None` until `egress_policy` has a listener up, and again if the
 /// user turns the feature off.
 ///

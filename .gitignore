@@ -63,7 +63,7 @@ crates/docs_preprocessor/actions.json
 .cache
 
 # Fork-internal working docs (dev notes; may contain environment details)
-/docs/jp-enhance/
+.forgekairos-docs
 
 # Windows release bundling byproducts (script/bundle-windows.ps1)
 /inno/

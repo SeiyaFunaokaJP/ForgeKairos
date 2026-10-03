@@ -158,7 +158,7 @@ impl ZedAiOnboarding {
         })
     }
 
-    /// zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): Zed AI is an external AI
+    /// zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10): Zed AI is an external AI
     /// service, so this card must not offer a way in until the data-retention
     /// warning has been acknowledged. Consent is granted in the settings window,
     /// which is also where the egress hosts it needs can be allowed, so this

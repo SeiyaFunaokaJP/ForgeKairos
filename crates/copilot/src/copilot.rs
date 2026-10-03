@@ -297,7 +297,7 @@ impl GlobalCopilotAuth {
 impl Global for GlobalCopilotAuth {}
 
 /// Whether Copilot edit predictions wait for the user to accept Copilot's external AI warning
-/// (zed-jp-enhance: `docs/jp-enhance/DESIGN.md` ADR-F10). Until then the language server is not
+/// (zed-jp-enhance: `.forgekairos-docs/DESIGN.md` ADR-F10). Until then the language server is not
 /// started, since starting it signs in with credentials already on this machine and contacts
 /// GitHub. Unlike the self-hosted providers, a loopback `enterprise_uri` is no exemption: the
 /// language server's own traffic is outside the egress allowlist.

@@ -1,7 +1,7 @@
 syntax = "proto3";
 package zed.messages;
 
-// ADR-F28 (docs/jp-enhance/DESIGN.md §4.28): the WinSCP-style transfer screen
+// ADR-F28 (.forgekairos-docs/DESIGN.md §4.28): the WinSCP-style transfer screen
 // can treat the *remote SSH host* as its "local" side, so a file can be moved
 // between the machine the project lives on and a third host without going
 // through the Windows IDE first.

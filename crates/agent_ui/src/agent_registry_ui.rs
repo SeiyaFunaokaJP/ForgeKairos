@@ -34,7 +34,7 @@ use workspace::{
 use crate::{Agent, AgentPanel, agent_connection_store::AgentConnectionStore};
 
 /// A registry agent's install requires network access this fork's
-/// deny-by-default egress policy has to be told about (`docs/jp-enhance/DESIGN.md`
+/// deny-by-default egress policy has to be told about (`.forgekairos-docs/DESIGN.md`
 /// §4, F2-5). For a `Binary` agent that is every host its current-platform
 /// archive download touches — which for a GitHub release asset is more than
 /// one, the URL's own host plus every host it is known to redirect to, hence

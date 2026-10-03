@@ -35,7 +35,7 @@ message CheckWireRevisionResponse {
 // Pushes the connecting IDE's egress allowlist to the remote host so the
 // host's own outgoing HTTP(S) requests (LSP/node downloads, extensions, LLM
 // providers) are gated by the same list. The allowlist on the client side is
-// the source of truth (see docs/jp-enhance/DESIGN.md ADR-F11); this is sent once,
+// the source of truth (see .forgekairos-docs/DESIGN.md ADR-F11); this is sent once,
 // right after the connection is established, and is not re-sent if the local
 // allowlist changes later in the session — the remote host picks up the
 // current allowlist again on its next fresh connection.
@@ -49,7 +49,7 @@ message SetEgressAllowlist {
   optional bool proxy_child_processes = 2;
 }
 
-// ADR-F27 (docs/jp-enhance/DESIGN.md §4.27): a remote host that cannot reach
+// ADR-F27 (.forgekairos-docs/DESIGN.md §4.27): a remote host that cannot reach
 // the internet relays its outgoing HTTP(S) through the connected IDE, so that
 // language server / node / extension downloads run against the client's
 // allowlist, consent flow and proxy instead of the remote host's network.

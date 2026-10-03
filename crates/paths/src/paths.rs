@@ -315,7 +315,7 @@ pub fn settings_file() -> &'static PathBuf {
 
 /// Returns the path to the `network_allowlist.json` egress policy file.
 /// On Windows this resolves to `%APPDATA%\ForgeKairos\network_allowlist.json`.
-/// See `docs/jp-enhance/DESIGN.md` §4 (ADR-F03).
+/// See `.forgekairos-docs/DESIGN.md` §4 (ADR-F03).
 pub fn network_allowlist_file() -> &'static PathBuf {
     static NETWORK_ALLOWLIST_FILE: OnceLock<PathBuf> = OnceLock::new();
     NETWORK_ALLOWLIST_FILE.get_or_init(|| config_dir().join("network_allowlist.json"))

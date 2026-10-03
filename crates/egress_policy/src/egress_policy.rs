@@ -1,5 +1,5 @@
 //! Reads and watches the egress allowlist policy file that drives
-//! [`http_client::AllowlistedHttpClient`]. See `docs/jp-enhance/DESIGN.md` §4
+//! [`http_client::AllowlistedHttpClient`]. See `.forgekairos-docs/DESIGN.md` §4
 //! (ADR-F03), and ADR-F38 for what the list covers: AI-originated traffic —
 //! model providers, agent tools, MCP servers, external agent processes — and
 //! not the IDE's own tooling.
@@ -37,7 +37,7 @@ pub mod child_process_proxy;
 /// that code with no other path to it — `crates/remote`, pushing the
 /// allowlist to a `remote_server` it just connected to — can read the current
 /// policy without `egress_policy` having to depend on `remote` itself. See
-/// `docs/jp-enhance/DESIGN.md` ADR-F11.
+/// `.forgekairos-docs/DESIGN.md` ADR-F11.
 ///
 /// [`init`] and [`watch`] set this before returning the handle, so any code
 /// that runs after the process's `HttpClient` has been built can rely on it

@@ -1739,7 +1739,7 @@ pub fn handle_settings_file_changes(
 }
 
 /// Whether this host relays its outgoing HTTP through the connected IDE
-/// (ADR-F27, `docs/jp-enhance/DESIGN.md` §4.27).
+/// (ADR-F27, `.forgekairos-docs/DESIGN.md` §4.27).
 ///
 /// The setting is written on the client and reaches this process with the rest
 /// of the user settings, so it is not readable when the HTTP client is built —

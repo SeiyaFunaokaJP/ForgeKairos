@@ -31,7 +31,7 @@ wsl-test = []
 
 # Builds `remote_sandbox_test_helper`, the ADR-F18 acceptance driver. It runs the
 # real remote (netns + slirp4netns + Landlock/mount-jail) helper end-to-end on a
-# Linux host (see `docs/jp-enhance/DESIGN.md` §4.18). Off by default and only
+# Linux host (see `.forgekairos-docs/DESIGN.md` §4.18). Off by default and only
 # meaningful cross-compiled to a Linux target.
 remote-sandbox-test = []
 

@@ -197,7 +197,7 @@ actions!(
     ]
 );
 
-/// docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): collab / LiveKit 除去後も、`workspace` クレートが
+/// .forgekairos-docs/DESIGN.md §4.6 (ADR-F06): collab / LiveKit 除去後も、`workspace` クレートが
 /// 宣言している通話系アクション (`collab` 名前空間) は型として残っている
 /// (`OpenChannelNotesById` は `file_finder` が参照しているため `workspace` からは消せない)。
 /// ハンドラが無いので発火しても何も起きないが、コマンドパレットに死んだ項目として

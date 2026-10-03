@@ -42,7 +42,7 @@ impl Render for EditPredictionOnboarding {
             .plan()
             .is_some_and(|plan| plan == Plan::ZedFree);
 
-        // zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): GitHub Copilot is an
+        // zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10): GitHub Copilot is an
         // external AI service, and this button would otherwise kick off its
         // sign-in flow directly, bypassing the consent gate that
         // `settings_ui::pages::edit_prediction_provider_setup` enforces for the

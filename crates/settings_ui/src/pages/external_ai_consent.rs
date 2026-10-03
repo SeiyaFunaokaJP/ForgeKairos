@@ -1,4 +1,4 @@
-//! 外部 AI プロバイダーの学習リスク警告とオプトイン (`docs/jp-enhance/DESIGN.md`
+//! 外部 AI プロバイダーの学習リスク警告とオプトイン (`.forgekairos-docs/DESIGN.md`
 //! ADR-F10)。
 //!
 //! Whether a provider counts as "external" is decided by the host its API URL

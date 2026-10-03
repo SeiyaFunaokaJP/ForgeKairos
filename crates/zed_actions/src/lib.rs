@@ -977,7 +977,7 @@ pub mod wsl_actions {
 
 /// Built-in browser panel actions that lower crates (the editor context menu)
 /// need to reference; the panel itself lives in `crates/browser_panel`
-/// (`docs/jp-enhance/DESIGN.md` §4.19, ADR-F19).
+/// (`.forgekairos-docs/DESIGN.md` §4.19, ADR-F19).
 pub mod browser {
     use gpui::actions;
 

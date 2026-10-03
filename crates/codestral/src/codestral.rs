@@ -257,7 +257,7 @@ impl EditPredictionDelegate for CodestralEditPredictionDelegate {
             .unwrap_or_else(|| "codestral-latest".to_string());
         let max_tokens = settings.edit_predictions.codestral.max_tokens;
         let api_url = codestral_api_url(cx).to_string();
-        // zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): an API key alone, even one only in
+        // zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10): an API key alone, even one only in
         // the environment, is not consent to send code off this machine.
         if !edit_prediction::endpoint_is_local_or_acknowledged(
             edit_prediction::CODESTRAL_CONSENT_ID,

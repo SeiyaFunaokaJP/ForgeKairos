@@ -188,7 +188,7 @@ pub trait HttpClient: 'static + Send + Sync {
     /// `Arc<dyn HttpClient>` — e.g. `remote_server`, which builds the process
     /// HTTP client once at startup — reach the same handle to update it
     /// later (once the connecting IDE pushes its allowlist; see
-    /// `docs/jp-enhance/DESIGN.md` ADR-F11), without every `HttpClient`
+    /// `.forgekairos-docs/DESIGN.md` ADR-F11), without every `HttpClient`
     /// construction site having to thread a separate `EgressPolicyHandle`
     /// through by hand.
     fn egress_policy(&self) -> Option<&EgressPolicyHandle> {

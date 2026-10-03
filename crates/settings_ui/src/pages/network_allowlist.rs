@@ -1,4 +1,4 @@
-//! Settings page for the egress allowlist (`docs/jp-enhance/DESIGN.md` §4,
+//! Settings page for the egress allowlist (`.forgekairos-docs/DESIGN.md` §4,
 //! ADR-F03).
 //!
 //! Since ADR-F38 the list governs AI-originated traffic only — the IDE's own
@@ -30,7 +30,7 @@ const HOSTS_DESCRIPTION: &str = i18n::msg!(
     "Each entry is an exact host name (api.anthropic.com), a subdomain wildcard with a leading *. (*.corp.example, which does not match the parent domain itself), or an IP address (10.0.0.5 / [fd00::1]). Entries are case-insensitive and take no port."
 );
 
-/// See `docs/jp-enhance/DESIGN.md` §4.14 (ADR-F14) for what this actually covers.
+/// See `.forgekairos-docs/DESIGN.md` §4.14 (ADR-F14) for what this actually covers.
 const PROXY_CHILD_PROCESSES_DESCRIPTION: &str = i18n::msg!(
     "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
 );
@@ -45,7 +45,7 @@ const PROXY_CHILD_PROCESSES_NOTE: &str = i18n::msg!(
 /// English catalog included).
 const FILE_TEMPLATE_HEADER: &str = i18n::msg!(
     "\
-// Zed egress allowlist (docs/jp-enhance/DESIGN.md §4)
+// Zed egress allowlist (.forgekairos-docs/DESIGN.md §4)
 //
 // Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,
 // external agent processes) is allowed only to the hosts written here.
@@ -1428,7 +1428,7 @@ mod tests {
             );
             let english = file_template();
             assert!(
-                english.starts_with("// ForgeKairos egress allowlist (docs/jp-enhance/DESIGN.md"),
+                english.starts_with("// ForgeKairos egress allowlist (.forgekairos-docs/DESIGN.md"),
                 "{english}"
             );
         }

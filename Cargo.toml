@@ -276,7 +276,7 @@ members = [
     "tooling/xtask",
 ]
 
-# docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): collab / LiveKit の除去。
+# .forgekairos-docs/DESIGN.md §4.6 (ADR-F06): collab / LiveKit の除去。
 # ソースは休眠参照として残すが、ワークスペースからは外して依存グラフに載せない。
 # `[workspace.dependencies]` の同名の行は upstream のまま残す (どこからも継承されない行は
 # 解決されない)。members と `[patch]` の行は消すしかないので、merge の衝突は

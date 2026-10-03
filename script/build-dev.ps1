@@ -61,7 +61,7 @@ if (-not (Get-Command cmake.exe -ErrorAction SilentlyContinue)) {
         $env:PATH = "$found;$env:PATH"
         Write-Host "CMake を PATH に追加: $found"
     } else {
-        Write-Warning 'cmake.exe が見つかりません。wasmtime 系のビルドで失敗します。docs/jp-enhance/BUILD-WINDOWS.md の前提条件を確認してください。'
+        Write-Warning 'cmake.exe が見つかりません。wasmtime 系のビルドで失敗します。.forgekairos-docs/BUILD-WINDOWS.md の前提条件を確認してください。'
     }
 }
 
@@ -315,7 +315,7 @@ function Copy-ClangFormat {
 Write-Host 'cargo build -p zed -j 8 …'
 cargo build -p zed -j 8
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "zed のビルドに失敗しました (exit $LASTEXITCODE)。docs/jp-enhance/BUILD-WINDOWS.md の gotcha を確認してください。"
+    Write-Error "zed のビルドに失敗しました (exit $LASTEXITCODE)。.forgekairos-docs/BUILD-WINDOWS.md の gotcha を確認してください。"
 }
 
 if (-not $SkipCli) {

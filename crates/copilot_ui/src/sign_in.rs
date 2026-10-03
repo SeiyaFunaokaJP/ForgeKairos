@@ -139,7 +139,7 @@ fn copilot_toast(message: Option<&'static str>, window: &Window, cx: &mut App) {
     })
 }
 
-/// zed-jp-enhance (`docs/jp-enhance/DESIGN.md` ADR-F10): without the consent to Copilot's
+/// zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10): without the consent to Copilot's
 /// external AI warning the language server does not start, so signing in could only show a
 /// sign-in window that never progresses. Like the status bar's sign-in item, this sends the user
 /// to the "プロバイダーの設定" sub-page, which holds Copilot's consent gate.

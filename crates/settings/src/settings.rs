@@ -91,13 +91,13 @@ pub const ZED_CLOUD_AI_CONSENT_KEY: &str = "zed.dev";
 /// separately from the agent (chat) provider's `copilot_chat` key (F2-4: the
 /// two surfaces opt in independently). Shared with `ai_onboarding`'s edit
 /// prediction upsell modal, which can kick off Copilot sign-in outside of
-/// `settings_ui` (zed-jp-enhance: `docs/jp-enhance/DESIGN.md` ADR-F10). Must match the
+/// `settings_ui` (zed-jp-enhance: `.forgekairos-docs/DESIGN.md` ADR-F10). Must match the
 /// key `settings_ui::pages::external_ai_consent::edit_prediction_target`
 /// builds for `"copilot"`; a test on that side pins the two together.
 pub const EDIT_PREDICTION_COPILOT_CONSENT_KEY: &str = "edit_prediction:copilot";
 
 /// Whether the user has explicitly acknowledged the data-retention warning for
-/// an external AI provider (zed-jp-enhance: `docs/jp-enhance/DESIGN.md` ADR-F10).
+/// an external AI provider (zed-jp-enhance: `.forgekairos-docs/DESIGN.md` ADR-F10).
 ///
 /// Read from the global merge (default + global + user + server), never from
 /// worktree-local settings, so that opening someone else's project cannot grant

@@ -1265,7 +1265,7 @@
     "language_servers_allowed_while_paused": [],
     // Whether the agent is enabled.
     // Off in this fork: every AI feature ships disabled and the user opts in
-    // explicitly from the settings UI ("AI" page). See docs/jp-enhance/DESIGN.md
+    // explicitly from the settings UI ("AI" page). See .forgekairos-docs/DESIGN.md
     // (ADR-F09). This is a plain boolean, so turning it back on is always
     // possible - unlike `disable_ai`, which is a one-way latch.
     "enabled": false,
@@ -1329,7 +1329,7 @@
     // Zed falls back to the first *authenticated* provider, so a running local
     // Ollama / LM Studio endpoint is picked up on its own and no cloud host is
     // contacted until the user configures one (and adds it to
-    // network_allowlist.json - see docs/jp-enhance/DESIGN.md §4).
+    // network_allowlist.json - see .forgekairos-docs/DESIGN.md §4).
     //
     // "default_model": {
     //   // The provider to use.
@@ -2735,7 +2735,7 @@
       // clang-format is resolved from the folder of `zed.exe`, then its `bin\`,
       // then the copy installed through `dev_tools` (`tools/bin` in Zed's data
       // directory), then PATH (see "clang-format" in
-      // docs/jp-enhance/BUILD-WINDOWS.md).
+      // .forgekairos-docs/BUILD-WINDOWS.md).
       // `--lines={start_line}:{end_line}` is for "Format Selections". It is
       // expanded once per selection (1-based, both ends inclusive), and the
       // whole argument is dropped when formatting the entire file.

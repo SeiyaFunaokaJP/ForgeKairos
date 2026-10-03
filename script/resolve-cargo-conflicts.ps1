@@ -13,7 +13,7 @@ Cargo.toml (ルートと各クレート):
     - 両側の並びがアルファベット順なら、結果も順に並べ直す
     - フォークが外したクレート (ルートの Cargo.toml の `exclude` + LiveKit のネイティブ依存) の行は、
       フォークが消したものは消したまま、upstream が新しく足したものも入れない
-      (`[workspace.dependencies]` は除く。docs/jp-enhance/DESIGN.md §4.6 ADR-F06)
+      (`[workspace.dependencies]` は除く。.forgekairos-docs/DESIGN.md §4.6 ADR-F06)
     - upstream の行から外したクレートの feature を除くとフォークの行と同じになる場合はフォークを採る
       (例: `git_ui = { workspace = true, features = ["call"] }` と `git_ui.workspace = true`)
     - 両側が変えた行でも、フォークの行が「フォークが最後に取り込んだ upstream のリリース」

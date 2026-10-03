@@ -86,7 +86,7 @@ impl fmt::Debug for ProxyConfig {
 /// rather than a destination. A caller enforcing a *different* policy supplies
 /// it here instead of loosening that one. This fork points ACP agent, MCP and
 /// npm child processes at the editor's own egress allowlist
-/// (`docs/jp-enhance/DESIGN.md` ADR-F13), which deliberately does permit IP
+/// (`.forgekairos-docs/DESIGN.md` ADR-F13), which deliberately does permit IP
 /// literals and loopback so that a local LLM server stays reachable.
 ///
 /// The same trait also fills [`ProxyConfig::outer_policy`], where an

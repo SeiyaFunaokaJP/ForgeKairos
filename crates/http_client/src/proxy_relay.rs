@@ -1,4 +1,4 @@
-//! Relaying HTTP through another machine. See `docs/jp-enhance/DESIGN.md`
+//! Relaying HTTP through another machine. See `.forgekairos-docs/DESIGN.md`
 //! §4.27 (ADR-F27).
 //!
 //! A remote host that cannot reach the internet still has to fetch language

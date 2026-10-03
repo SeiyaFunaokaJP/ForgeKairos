@@ -1,4 +1,4 @@
-//! The wire half of ADR-F27 (`docs/jp-enhance/DESIGN.md` §4.27): a remote host
+//! The wire half of ADR-F27 (`.forgekairos-docs/DESIGN.md` §4.27): a remote host
 //! that cannot reach the internet hands its outgoing HTTP(S) to the connected
 //! IDE, which runs it through its own client — network allowlist (ADR-F03),
 //! download consent (ADR-F22) and proxy included.

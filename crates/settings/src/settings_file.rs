@@ -130,7 +130,7 @@ pub fn test_settings() -> &'static str {
             crate::default_settings().as_ref(),
         )
         .unwrap();
-        // This fork ships the agent off by default (docs/jp-enhance/DESIGN.md
+        // This fork ships the agent off by default (.forgekairos-docs/DESIGN.md
         // ADR-F09). Tests across the workspace assume upstream's "on" default -
         // the multi-workspace sidebar in particular is gated on it and its
         // absence changes every layout measurement - so opt back in here rather

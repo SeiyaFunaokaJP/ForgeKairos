@@ -6284,7 +6284,7 @@ impl GitPanel {
         }
     }
 
-    /// docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): 共同編集者 (co-author) の候補は
+    /// .forgekairos-docs/DESIGN.md §4.6 (ADR-F06): 共同編集者 (co-author) の候補は
     /// collab の通話ルーム参加者からしか得られなかった。通話機能を除去したので
     /// 常に空 = 「Co-authored-by を足す」トグルは UI に出ない。
     fn potential_co_authors(&self, _cx: &App) -> Vec<(String, String)> {
@@ -11152,7 +11152,7 @@ impl Render for GitPanel {
         let has_entries = !self.entries.is_empty();
         let has_write_access = self.has_write_access(cx);
 
-        // docs/jp-enhance/DESIGN.md §4.6 (ADR-F06): 共同編集者は通話ルーム由来なので常に無し。
+        // .forgekairos-docs/DESIGN.md §4.6 (ADR-F06): 共同編集者は通話ルーム由来なので常に無し。
         let has_co_authors = false;
 
         v_flex()
