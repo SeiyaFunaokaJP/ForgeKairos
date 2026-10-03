@@ -82,7 +82,9 @@ if ($env:CARGO_TARGET_DIR) {
 }
 $cargoProfile = if ($Release) { 'release' } else { 'debug' }
 $profileDir = Join-Path $targetRoot $cargoProfile
-$cargoProfileArguments = if ($Release) { @('--release') } else { @() }
+# Always an array: `if` unrolls a one-element array into a string, and
+# splatting a string passes cargo one character at a time.
+$cargoProfileArguments = @(if ($Release) { '--release' })
 
 # These are the names crates/branding gives the cargo binaries
 # (EDITOR_CARGO_BIN_NAME, CLI_CARGO_BIN_NAME) and the bundled remote server
