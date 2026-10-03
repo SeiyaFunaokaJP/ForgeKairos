@@ -1321,6 +1321,26 @@ impl InfoPopover {
         }
     }
 
+    pub(crate) fn for_note(
+        symbol_range: Range<Anchor>,
+        markdown: Entity<Markdown>,
+        anchor: Anchor,
+        keyboard_grace: bool,
+        cx: &mut Context<Editor>,
+    ) -> Self {
+        let subscription = cx.observe(&markdown, |_, _, cx| cx.notify());
+        Self {
+            symbol_range: RangeInEditor::Text(symbol_range),
+            parsed_content: Some(markdown),
+            scroll_handle: ScrollHandle::new(),
+            keyboard_grace: Rc::new(RefCell::new(keyboard_grace)),
+            anchor: Some(anchor),
+            last_bounds: Rc::new(Cell::new(None)),
+            type_contents: None,
+            _subscription: Some(subscription),
+        }
+    }
+
     pub(crate) fn render(
         &mut self,
         max_size: Size<Pixels>,

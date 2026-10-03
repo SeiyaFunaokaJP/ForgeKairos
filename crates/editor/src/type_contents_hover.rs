@@ -24,12 +24,12 @@ use project::{
     project_settings::ProjectSettings,
     symbol_index_store::{
         Confidence, MemberExpansion, MemberExpansionTarget, MemberSelector, MemberSummary,
-        MemberSummaryKind, ResolvedTypes, SourceLanguage, SymbolIndexStore, TagKind, TypeHover,
-        TypeHoverSubject, TypeRef, TypeSummary, TypeSummaryKind, TypeTreeOptions, TypeTreeSubject,
-        type_name_of_text,
+        MemberSummaryKind, ResolvedTypes, SourceLanguage, SymbolIndexStatus, SymbolIndexStore,
+        SymbolIndexUnavailable, TagKind, TypeHover, TypeHoverSubject, TypeRef, TypeSummary,
+        TypeSummaryKind, TypeTreeOptions, TypeTreeSubject, type_name_of_text,
     },
 };
-use settings::Settings as _;
+use settings::{Settings as _, SymbolIndexEnabled};
 use theme_settings::ThemeSettings;
 use ui::{CommonAnimationExt as _, TextSize, Tooltip, prelude::*};
 use util::{ResultExt as _, paths::PathStyle};
@@ -73,11 +73,23 @@ pub(crate) struct TypeContentsQuery {
     language_name: LanguageName,
     snapshot: BufferSnapshot,
     position: Point,
+    gap: Option<IndexGap>,
+}
+
+/// What the popover adds below the language server's.
+pub(crate) enum Section {
+    Contents(TypeContentsData),
+    /// Nothing was found because the index cannot answer for this file.
+    IndexGap {
+        gap: IndexGap,
+        range: Range<Point>,
+        snapshot: BufferSnapshot,
+    },
 }
 
 /// A section being looked up, and when the language server's popover stops waiting for it.
 pub(crate) struct PendingTypeContents {
-    future: LocalBoxFuture<'static, Option<TypeContentsData>>,
+    future: LocalBoxFuture<'static, Option<Section>>,
     grace_period: Task<()>,
 }
 
@@ -125,6 +137,7 @@ pub(crate) fn query(
     let snapshot = buffer.snapshot();
     let offset = position.to_offset(&snapshot);
     let position = snapshot.offset_to_point(offset);
+    let gap = index_gap(project.read(cx), &path, cx);
     let store = project.read(cx).symbol_index_store().clone();
     #[cfg(test)]
     QUERIES_FOR_TESTS.with(|queries| queries.set(queries.get() + 1));
@@ -147,7 +160,158 @@ pub(crate) fn query(
         language_name,
         snapshot,
         position,
+        gap,
     })
+}
+
+/// Why the index cannot describe the names of a file. Told in the popover: without it, the
+/// section is just missing, which reads as the feature being broken.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum IndexGap {
+    /// A single file opened on its own, or a file outside the project's folders.
+    NotInAFolder,
+    /// Git ignores the file and `symbol_index.include_ignored` is off.
+    IgnoredFile,
+    Off,
+    NotReady,
+    Unavailable(SymbolIndexUnavailable),
+}
+
+fn index_gap(project: &Project, path: &ProjectPath, cx: &App) -> Option<IndexGap> {
+    let worktree = project.worktree_for_id(path.worktree_id, cx)?;
+    let worktree = worktree.read(cx);
+    if worktree.is_single_file() || !worktree.is_visible() {
+        return Some(IndexGap::NotInAFolder);
+    }
+    let entry = worktree.entry_for_path(&path.path)?;
+    // Private and excluded files are left out on purpose; the popover does not dwell on them.
+    if entry.is_private || entry.is_external {
+        return None;
+    }
+    let settings = &ProjectSettings::get(Some(path.into()), cx).symbol_index;
+    if entry.is_ignored && !settings.include_ignored {
+        return Some(IndexGap::IgnoredFile);
+    }
+    match project
+        .symbol_index_store()
+        .read(cx)
+        .status(path.worktree_id)
+    {
+        SymbolIndexStatus::Ready { .. } => None,
+        SymbolIndexStatus::Scanning | SymbolIndexStatus::Indexing { .. } => {
+            Some(IndexGap::NotReady)
+        }
+        SymbolIndexStatus::Disabled => {
+            (settings.enabled == SymbolIndexEnabled::Off).then_some(IndexGap::Off)
+        }
+        SymbolIndexStatus::Unavailable { reason } => Some(IndexGap::Unavailable(reason)),
+    }
+}
+
+impl IndexGap {
+    fn message(&self) -> String {
+        match self {
+            IndexGap::NotInAFolder => i18n::t!(
+                "Type contents are shown for files in an open folder. Open the folder that holds this file to see them."
+            )
+            .to_string(),
+            IndexGap::IgnoredFile => i18n::t!(
+                "Type contents are not shown: Git ignores this file, and the symbol index leaves ignored files out. Turn on the `symbol_index.include_ignored` setting to include them."
+            )
+            .to_string(),
+            IndexGap::Off => i18n::t!(
+                "Type contents are not shown: the symbol index is off (the `symbol_index.enabled` setting)."
+            )
+            .to_string(),
+            IndexGap::NotReady => i18n::t!(
+                "Type contents: the symbol index is still being built. Hover again in a moment."
+            )
+            .to_string(),
+            IndexGap::Unavailable(SymbolIndexUnavailable::InUseByAnotherWindow) => i18n::t!(
+                "Type contents are not shown: another window has this folder's symbol index open."
+            )
+            .to_string(),
+            IndexGap::Unavailable(SymbolIndexUnavailable::UnsupportedHost) => i18n::t!(
+                "Type contents are not shown: the remote server does not support the symbol index."
+            )
+            .to_string(),
+            IndexGap::Unavailable(SymbolIndexUnavailable::Collaboration) => i18n::t!(
+                "Type contents are not shown: the symbol index is not available in a shared project."
+            )
+            .to_string(),
+            IndexGap::Unavailable(SymbolIndexUnavailable::Error(error)) => i18n::t!(
+                "Type contents are not shown: the symbol index failed ({error}).",
+                error = error
+            ),
+        }
+    }
+}
+
+/// Words a note about the index would only be noise on.
+const KEYWORDS: &[&str] = &[
+    "alignas",
+    "alignof",
+    "auto",
+    "bool",
+    "break",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "constexpr",
+    "continue",
+    "default",
+    "delete",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "extern",
+    "false",
+    "float",
+    "for",
+    "goto",
+    "if",
+    "inline",
+    "int",
+    "long",
+    "namespace",
+    "new",
+    "nullptr",
+    "operator",
+    "private",
+    "protected",
+    "public",
+    "register",
+    "restrict",
+    "return",
+    "short",
+    "signed",
+    "sizeof",
+    "static",
+    "struct",
+    "switch",
+    "template",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typedef",
+    "typename",
+    "union",
+    "unsigned",
+    "using",
+    "virtual",
+    "void",
+    "volatile",
+    "while",
+    "_Bool",
+];
+
+fn is_name_worth_a_note(name: &str) -> bool {
+    name.starts_with(|character: char| character == '_' || character.is_alphabetic())
+        && !KEYWORDS.contains(&name)
 }
 
 impl TypeContentsQuery {
@@ -173,6 +337,7 @@ impl TypeContentsQuery {
             language_name,
             snapshot,
             position,
+            gap,
         } = self;
         let future = async move {
             let mut hover = describe.await.log_err().flatten();
@@ -207,9 +372,20 @@ impl TypeContentsQuery {
                     type_from_language_server = true;
                 }
             }
-            let hover = hover?;
+            let Some(hover) = hover else {
+                let gap = gap?;
+                let (name, range) = word_at(&snapshot, position)?;
+                if !is_name_worth_a_note(&name) {
+                    return None;
+                }
+                return Some(Section::IndexGap {
+                    gap,
+                    range,
+                    snapshot,
+                });
+            };
             let lookup = root_lookup(&hover.subject, source_language, &path);
-            Some(TypeContentsData {
+            Some(Section::Contents(TypeContentsData {
                 hover,
                 type_from_language_server,
                 language_server_answered,
@@ -218,7 +394,7 @@ impl TypeContentsQuery {
                 project,
                 language_name,
                 snapshot,
-            })
+            }))
         }
         .boxed_local();
         PendingTypeContents {
@@ -232,8 +408,8 @@ impl TypeContentsQuery {
 pub(crate) async fn within_grace_period(
     pending: Option<PendingTypeContents>,
 ) -> (
-    Option<TypeContentsData>,
-    Option<LocalBoxFuture<'static, Option<TypeContentsData>>>,
+    Option<Section>,
+    Option<LocalBoxFuture<'static, Option<Section>>>,
 ) {
     let Some(PendingTypeContents {
         future,
@@ -251,7 +427,7 @@ pub(crate) async fn within_grace_period(
 /// Adds the section below the popovers already shown once it is ready. Runs in the hover's
 /// task, so a hover that moves on or closes drops it.
 pub(crate) async fn append_later(
-    later: Option<LocalBoxFuture<'static, Option<TypeContentsData>>>,
+    later: Option<LocalBoxFuture<'static, Option<Section>>>,
     editor: &WeakEntity<Editor>,
     anchor: Anchor,
     keyboard_grace: bool,
@@ -276,26 +452,35 @@ pub(crate) async fn append_later(
 
 /// The popover of the section, or `None` when the index had nothing worth adding.
 pub(crate) fn popover(
-    data: TypeContentsData,
+    section: Section,
     editor: &Editor,
     anchor: Anchor,
     keyboard_grace: bool,
     _window: &mut Window,
     cx: &mut Context<Editor>,
 ) -> Option<InfoPopover> {
+    let data = match section {
+        Section::Contents(data) => data,
+        Section::IndexGap {
+            gap,
+            range,
+            snapshot,
+        } => {
+            let symbol_range = symbol_range(editor, &snapshot, range, anchor, cx);
+            let markdown = cx.new(|cx| Markdown::new(gap.message().into(), None, None, cx));
+            return Some(InfoPopover::for_note(
+                symbol_range,
+                markdown,
+                anchor,
+                keyboard_grace,
+                cx,
+            ));
+        }
+    };
     if !is_worth_showing(&data) {
         return None;
     }
-    let snapshot = &data.snapshot;
-    let start = snapshot.clip_point(data.hover.range.start, Bias::Left);
-    let end = snapshot.clip_point(data.hover.range.end, Bias::Left);
-    let buffer_range = snapshot.anchor_after(start)..snapshot.anchor_before(end.max(start));
-    let symbol_range = editor
-        .buffer()
-        .read(cx)
-        .snapshot(cx)
-        .buffer_anchor_range_to_anchor_range(buffer_range)
-        .unwrap_or(anchor..anchor);
+    let symbol_range = symbol_range(editor, &data.snapshot, data.hover.range.clone(), anchor, cx);
     let editor_handle = cx.entity().downgrade();
     let contents = cx.new(|cx| TypeContents::new(data, editor_handle, cx));
     Some(InfoPopover::for_type_contents(
@@ -305,6 +490,24 @@ pub(crate) fn popover(
         keyboard_grace,
         cx,
     ))
+}
+
+fn symbol_range(
+    editor: &Editor,
+    snapshot: &BufferSnapshot,
+    range: Range<Point>,
+    anchor: Anchor,
+    cx: &App,
+) -> Range<Anchor> {
+    let start = snapshot.clip_point(range.start, Bias::Left);
+    let end = snapshot.clip_point(range.end, Bias::Left);
+    let buffer_range = snapshot.anchor_after(start)..snapshot.anchor_before(end.max(start));
+    editor
+        .buffer()
+        .read(cx)
+        .snapshot(cx)
+        .buffer_anchor_range_to_anchor_range(buffer_range)
+        .unwrap_or(anchor..anchor)
 }
 
 /// Whether `point` is on one of the shown popovers or in a gap between two stacked ones. Only
@@ -2214,6 +2417,10 @@ fn toggle_element(
             )
             .into_any_element(),
         Toggle::Collapsed | Toggle::Expanded => slot
+            .debug_selector({
+                let id = id.clone();
+                move || id.to_string()
+            })
             .child(
                 IconButton::new(
                     id,
@@ -2750,6 +2957,43 @@ int use(alias_t *value)
     }
 
     #[gpui::test]
+    async fn test_clicking_a_toggle_expands_the_member(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        hover_over(&mut cx, "alias_t", 0);
+        let cursor_before = cx.editor(|editor, _, cx| {
+            editor
+                .selections
+                .newest_anchor()
+                .head()
+                .to_point(&editor.buffer().read(cx).snapshot(cx))
+        });
+        cx.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+        let toggle = cx
+            .debug_bounds("type-contents-toggle-1")
+            .expect("the toggle of `in` is drawn");
+        cx.simulate_mouse_move(toggle.center(), None, gpui::Modifiers::none());
+        cx.simulate_click(toggle.center(), gpui::Modifiers::none());
+        cx.run_until_parked();
+        let text = section_text(&mut cx);
+        assert!(text.contains("▾ in | struct inner"), "{text}");
+        assert!(text.contains("depth | int"), "{text}");
+        let cursor_after = cx.editor(|editor, _, cx| {
+            editor
+                .selections
+                .newest_anchor()
+                .head()
+                .to_point(&editor.buffer().read(cx).snapshot(cx))
+        });
+        assert_eq!(
+            cursor_before, cursor_after,
+            "the click stays in the popover"
+        );
+    }
+
+    #[gpui::test]
     async fn test_same_name_definitions_can_be_switched(cx: &mut TestAppContext) {
         let (mut cx, _index) = setup(false, cx).await;
         hover_over(&mut cx, "dup", 0);
@@ -3090,6 +3334,119 @@ int use(alias_t *value)
         let count = cx.editor(|editor, _, _| editor.hover_state.info_popovers.len());
         assert_eq!(count, 1, "the language server's hover alone");
         assert!(section(&mut cx).is_none());
+    }
+
+    /// The text of the popovers that are neither the language server's nor a section.
+    fn notes(cx: &mut EditorLspTestContext) -> Vec<String> {
+        cx.editor(|editor, _, cx| {
+            editor
+                .hover_state
+                .info_popovers
+                .iter()
+                .filter(|popover| popover.type_contents.is_none())
+                .filter_map(|popover| popover.parsed_content.as_ref())
+                .map(|markdown| markdown.read(cx).source().to_string())
+                .collect()
+        })
+    }
+
+    fn set_include_ignored(cx: &mut EditorLspTestContext, include: bool) {
+        cx.update(|_, cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings
+                        .project
+                        .symbol_index
+                        .get_or_insert_default()
+                        .include_ignored = Some(include);
+                });
+            });
+        });
+    }
+
+    #[gpui::test]
+    async fn test_an_ignored_file_tells_why_its_types_are_not_shown(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        let fs = cx.update_workspace(|workspace, _, cx| workspace.project().read(cx).fs().clone());
+        fs.as_fake()
+            .insert_file(
+                EditorLspTestContext::root_path().join(".gitignore"),
+                b"dir/file.c\n".to_vec(),
+            )
+            .await;
+        cx.executor().run_until_parked();
+
+        hover_over(&mut cx, "local", 1);
+        assert!(section(&mut cx).is_none());
+        let found = notes(&mut cx);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].contains("symbol_index.include_ignored"),
+            "{found:?}"
+        );
+
+        hover_over(&mut cx, "return", 0);
+        assert!(
+            cx.editor(|editor, _, _| editor.hover_state.info_popovers.is_empty()),
+            "a keyword gets no note"
+        );
+
+        set_include_ignored(&mut cx, true);
+        hover_over(&mut cx, "local", 1);
+        assert!(section_text(&mut cx).starts_with("Type of local: struct outer"));
+        assert!(notes(&mut cx).is_empty());
+    }
+
+    fn set_index_status(cx: &mut EditorLspTestContext, status: SymbolIndexStatus) {
+        let project = cx.update_workspace(|workspace, _, _| workspace.project().clone());
+        cx.update(|_, cx| {
+            let worktree_id = project
+                .read(cx)
+                .worktrees(cx)
+                .next()
+                .expect("a worktree")
+                .read(cx)
+                .id();
+            project.update(cx, |project, cx| {
+                project.symbol_index_store().update(cx, |store, cx| {
+                    store.set_status_for_tests(worktree_id, status, cx)
+                })
+            });
+        });
+    }
+
+    #[gpui::test]
+    async fn test_an_index_that_cannot_answer_says_why(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+
+        hover_over(&mut cx, "use", 0);
+        assert!(section(&mut cx).is_none(), "{:?}", notes(&mut cx));
+        assert!(
+            notes(&mut cx).is_empty(),
+            "a ready index has nothing to explain"
+        );
+
+        set_index_status(&mut cx, SymbolIndexStatus::Indexing { done: 1, total: 4 });
+        hover_over(&mut cx, "use", 0);
+        let found = notes(&mut cx);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("still being built"), "{found:?}");
+        hover_over(&mut cx, "local", 1);
+        assert!(
+            section(&mut cx).is_some() && notes(&mut cx).is_empty(),
+            "what the index already knows is shown while it is built"
+        );
+
+        set_index_status(
+            &mut cx,
+            SymbolIndexStatus::Unavailable {
+                reason: SymbolIndexUnavailable::InUseByAnotherWindow,
+            },
+        );
+        hover_over(&mut cx, "use", 0);
+        let found = notes(&mut cx);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("another window"), "{found:?}");
     }
 
     #[gpui::test]
@@ -3808,7 +4165,7 @@ static struct ring *ring_head;
 
     #[gpui::test]
     async fn test_a_slow_section_does_not_hold_the_popover_up(cx: &mut TestAppContext) {
-        let pending = |future: LocalBoxFuture<'static, Option<TypeContentsData>>,
+        let pending = |future: LocalBoxFuture<'static, Option<Section>>,
                        cx: &mut TestAppContext| PendingTypeContents {
             future,
             grace_period: cx.executor().timer(GRACE_PERIOD),
