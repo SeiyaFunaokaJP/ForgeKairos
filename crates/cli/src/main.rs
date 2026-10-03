@@ -88,6 +88,7 @@ const FOREGROUND_HELP: &str = branding::concat_const!(
     PRODUCT_NAME,
     " in the foreground (useful for debugging)"
 );
+#[cfg(target_os = "macos")]
 const ZED_PATH_HELP: &str = branding::concat_const!(
     "Custom path to ",
     PRODUCT_NAME,
@@ -95,6 +96,8 @@ const ZED_PATH_HELP: &str = branding::concat_const!(
     PRODUCT_NAME,
     " binary"
 );
+#[cfg(not(target_os = "macos"))]
+const ZED_PATH_HELP: &str = branding::concat_const!("Custom path to the ", PRODUCT_NAME, " binary");
 const DEV_SERVER_TOKEN_HELP: &str =
     branding::concat_const!("Run ", PRODUCT_NAME, " in dev-server mode");
 #[cfg(target_os = "windows")]
@@ -118,7 +121,7 @@ const SYSTEM_SPECS_HELP: &str = branding::concat_const!(
     PRODUCT_NAME,
     " CLI, only supported on ",
     PRODUCT_NAME,
-    " binary Will attempt to give the correct command to run"
+    " binary. Will attempt to give the correct command to run."
 );
 const COMPLETIONS_HELP: &str =
     branding::concat_const!("Generate shell completions for ", PRODUCT_NAME);
@@ -202,7 +205,8 @@ struct Args {
     version: bool,
     #[arg(long, help = FOREGROUND_HELP)]
     foreground: bool,
-    #[arg(long, help = ZED_PATH_HELP)]
+    // `--zed` stays the option's name, as scripts and the flatpak relaunch pass it.
+    #[arg(long, visible_alias = CLI_NAME, value_name = "PATH", help = ZED_PATH_HELP)]
     zed: Option<PathBuf>,
     #[arg(long, help = DEV_SERVER_TOKEN_HELP)]
     dev_server_token: Option<String>,
@@ -489,6 +493,41 @@ mod tests {
                 "the flatpak installs {installed}"
             );
         }
+    }
+
+    #[test]
+    fn the_editor_path_option_is_named_after_the_product_and_keeps_its_old_name() {
+        let product_option = format!("--{CLI_NAME}");
+        for option in ["--zed", product_option.as_str()] {
+            let args = Args::try_parse_from([CLI_NAME, option, "/custom/editor"])
+                .unwrap_or_else(|error| panic!("{option} is not accepted: {error}"));
+            assert_eq!(args.zed.as_deref(), Some(Path::new("/custom/editor")));
+        }
+
+        let help = Args::command().render_help().to_string();
+        let option_line = help
+            .lines()
+            .find(|line| line.trim_start().starts_with("--zed"))
+            .unwrap_or_else(|| panic!("no --zed in the help:\n{help}"));
+        assert!(option_line.contains("<PATH>"), "{option_line}");
+        assert!(!option_line.contains("<ZED>"), "{option_line}");
+        assert!(help.contains(&product_option), "{help}");
+        assert_eq!(
+            help.contains(".app"),
+            cfg!(target_os = "macos"),
+            "only macOS has an app bundle to point at:\n{help}"
+        );
+        let system_specs_help = Args::command()
+            .get_arguments()
+            .find(|argument| argument.get_id() == "system_specs")
+            .and_then(|argument| argument.get_help())
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert!(
+            system_specs_help
+                .ends_with(" binary. Will attempt to give the correct command to run."),
+            "{system_specs_help}"
+        );
     }
 
     #[test]
