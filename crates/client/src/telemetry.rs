@@ -760,6 +760,7 @@ mod tests {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
 
             telemetry.state.lock().max_queue_size = 4;
+            enable_metrics_in_state(&telemetry);
             telemetry.start(system_id, installation_id, session_id, cx);
 
             assert!(is_empty_state(&telemetry));
@@ -836,6 +837,7 @@ mod tests {
         cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
             telemetry.state.lock().max_queue_size = 4;
+            enable_metrics_in_state(&telemetry);
             telemetry.start(system_id, installation_id, session_id, cx);
 
             assert!(is_empty_state(&telemetry));
@@ -881,6 +883,7 @@ mod tests {
 
         let telemetry = cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
+            enable_metrics_in_state(&telemetry);
             telemetry.start(
                 Some("system_id".to_string()),
                 Some("installation_id".to_string()),
@@ -943,6 +946,77 @@ mod tests {
         assert_eq!(
             event.event_properties.get("remote_architecture"),
             Some(&serde_json::Value::String("aarch64".to_string()))
+        );
+    }
+
+    #[gpui::test]
+    async fn test_settings_cannot_turn_telemetry_on(
+        executor: BackgroundExecutor,
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            let mut settings_store = SettingsStore::test(cx);
+            settings_store
+                .set_user_settings(
+                    r#"{ "telemetry": { "metrics": true, "diagnostics": true, "anthropic_retention": true } }"#,
+                    cx,
+                )
+                .expect("the telemetry settings should parse");
+            cx.set_global(settings_store);
+        });
+        let requests_sent = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let http = FakeHttpClient::create({
+            let requests_sent = requests_sent.clone();
+            move |_| {
+                requests_sent.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move {
+                    Ok(http_client::Response::builder()
+                        .status(200)
+                        .body(Default::default())?)
+                }
+            }
+        });
+        let clock = Arc::new(FakeSystemClock::new());
+
+        let telemetry = cx.update(|cx| {
+            let settings = TelemetrySettings::get_global(cx);
+            assert!(!settings.metrics, "metrics stay off");
+            assert!(!settings.diagnostics, "crash reports stay off");
+            assert!(
+                settings.anthropic_retention,
+                "settings that are not Zed's telemetry are still read"
+            );
+
+            let telemetry = Telemetry::new(clock.clone(), http, cx);
+            telemetry.state.lock().max_queue_size = 1;
+            telemetry.start(
+                Some("system_id".to_string()),
+                Some("installation_id".to_string()),
+                "session_id".to_string(),
+                cx,
+            );
+            telemetry
+        });
+        assert!(!telemetry.metrics_enabled());
+        assert!(!telemetry.diagnostics_enabled());
+
+        cx.update(|_| {
+            telemetry.report_event(Event::Flexible(FlexibleEvent {
+                event_type: "test".to_string(),
+                event_properties: HashMap::default(),
+            }));
+            telemetry.set_authenticated_user_info(Some("metrics_id".to_string()), true);
+        });
+        assert!(is_empty_state(&telemetry), "the event was not queued");
+        assert_eq!(telemetry.metrics_id(), None);
+
+        telemetry.flush_events().await;
+        executor.advance_clock(FLUSH_INTERVAL);
+        executor.run_until_parked();
+        assert_eq!(
+            requests_sent.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "nothing was sent"
         );
     }
 
@@ -1061,15 +1135,16 @@ mod tests {
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            let mut settings_store = SettingsStore::test(cx);
-            // `telemetry.metrics` ships as false in this fork (DESIGN.md §4)
-            // and `report_event` drops every event while it is off, which
-            // would leave these tests asserting nothing.
-            settings_store
-                .set_user_settings(r#"{ "telemetry": { "metrics": true } }"#, cx)
-                .expect("telemetry must be enabled for these tests");
+            let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
         });
+    }
+
+    /// `report_event` drops every event while metrics are off, which no setting
+    /// can turn on in this build (`TELEMETRY_OFFERED`); the queueing tests turn
+    /// them on in the state directly so that they still assert something.
+    fn enable_metrics_in_state(telemetry: &Telemetry) {
+        telemetry.state.lock().settings.metrics = true;
     }
 
     fn is_empty_state(telemetry: &Telemetry) -> bool {

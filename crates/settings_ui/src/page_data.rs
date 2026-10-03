@@ -476,50 +476,11 @@ fn general_page(cx: &App) -> SettingsPage {
         ]
     }
 
-    fn privacy_section() -> [SettingsPageItem; 4] {
+    fn privacy_section() -> [SettingsPageItem; 2] {
         [
             SettingsPageItem::SectionHeader("Privacy"),
-            SettingsPageItem::SettingItem(SettingItem {
-                title: "Telemetry Diagnostics",
-                description: "Send debug information like crash reports.",
-                field: Box::new(SettingField {
-                    organization_override: None,
-                    json_path: Some("telemetry.diagnostics"),
-                    pick: |settings_content| {
-                        settings_content
-                            .telemetry
-                            .as_ref()
-                            .and_then(|telemetry| telemetry.diagnostics.as_ref())
-                    },
-                    write: |settings_content, value, _| {
-                        settings_content
-                            .telemetry
-                            .get_or_insert_default()
-                            .diagnostics = value;
-                    },
-                }),
-                metadata: None,
-                files: USER,
-            }),
-            SettingsPageItem::SettingItem(SettingItem {
-                title: "Telemetry Metrics",
-                description: "Send anonymized usage data like what languages you're using Zed with.",
-                field: Box::new(SettingField {
-                    organization_override: None,
-                    json_path: Some("telemetry.metrics"),
-                    pick: |settings_content| {
-                        settings_content
-                            .telemetry
-                            .as_ref()
-                            .and_then(|telemetry| telemetry.metrics.as_ref())
-                    },
-                    write: |settings_content, value, _| {
-                        settings_content.telemetry.get_or_insert_default().metrics = value;
-                    },
-                }),
-                metadata: None,
-                files: USER,
-            }),
+            // `telemetry.diagnostics` and `telemetry.metrics` are not offered:
+            // this build sends nothing to Zed Industries (`client::TELEMETRY_OFFERED`).
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Anthropic Data Retention",
                 description: "Allow sending requests to Anthropic models that cannot be offered with Zero Data Retention.",
@@ -9799,29 +9760,8 @@ fn ai_page(cx: &App) -> SettingsPage {
                 metadata: None,
                 files: USER,
             }),
-            SettingsPageItem::SettingItem(SettingItem {
-                title: "Enable Feedback",
-                description: "Show voting thumbs up/down icon buttons for feedback on agent edits.",
-                field: Box::new(SettingField {
-                    organization_override: Some(|org_config| if org_config.is_agent_thread_feedback_enabled {
-                        None
-                    } else {
-                        Some(&false)
-                    }),
-                    json_path: Some("agent.enable_feedback"),
-                    pick: |settings_content| {
-                        settings_content.agent.as_ref()?.enable_feedback.as_ref()
-                    },
-                    write: |settings_content, value, _| {
-                        settings_content
-                            .agent
-                            .get_or_insert_default()
-                            .enable_feedback = value;
-                    },
-                }),
-                metadata: None,
-                files: USER,
-            }),
+            // `agent.enable_feedback` is not offered: the ratings went to Zed
+            // Industries, which this build sends nothing to.
             SettingsPageItem::SettingItem(SettingItem {
                 title: "Notify When Agent Waiting",
                 description: "Where to show notifications when the agent has completed its response or needs confirmation before running a tool action.",

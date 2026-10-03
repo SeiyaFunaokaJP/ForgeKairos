@@ -543,12 +543,18 @@ pub struct TelemetrySettings {
     pub anthropic_retention: bool,
 }
 
+/// Whether this build offers to send usage data and crash reports to Zed
+/// Industries. ForgeKairos is a separate project, so it never does: the
+/// `telemetry.metrics` and `telemetry.diagnostics` settings read as off whatever
+/// settings.json says, and the switches for them are not shown.
+pub const TELEMETRY_OFFERED: bool = false;
+
 impl settings::Settings for TelemetrySettings {
     fn from_settings(content: &SettingsContent) -> Self {
         let telemetry = content.telemetry.as_ref().unwrap();
         Self {
-            diagnostics: telemetry.diagnostics.unwrap(),
-            metrics: telemetry.metrics.unwrap(),
+            diagnostics: TELEMETRY_OFFERED && telemetry.diagnostics.unwrap(),
+            metrics: TELEMETRY_OFFERED && telemetry.metrics.unwrap(),
             anthropic_retention: telemetry.anthropic_retention.unwrap(),
         }
     }

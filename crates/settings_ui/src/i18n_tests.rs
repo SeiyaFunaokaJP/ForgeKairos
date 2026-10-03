@@ -194,11 +194,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "既存のウィンドウでフォルダーを開いたときに、スレッドサイドバーを自動で開くかどうかを設定します。",
     ),
     (
-        "p12.i26[agent.prevent_idle_sleep].title",
+        "p12.i25[agent.prevent_idle_sleep].title",
         "アイドル時のスリープを防ぐ",
     ),
     (
-        "p12.i26[agent.prevent_idle_sleep].description",
+        "p12.i25[agent.prevent_idle_sleep].description",
         "エージェントのスレッドの実行中に、システムがスリープしないようにするかどうかを設定します。",
     ),
     // Added by zed-jp-enhance with the call graph panel, at the end of the
@@ -312,11 +312,11 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
     ),
     ("p4.i45.header", "言語"),
     (
-        "p0.i28[auto_update_include_prereleases].title",
+        "p0.i26[auto_update_include_prereleases].title",
         "プレリリースを含める",
     ),
     (
-        "p0.i28[auto_update_include_prereleases].description",
+        "p0.i26[auto_update_include_prereleases].description",
         "更新の確認でプレリリースも対象にします。既定ではリリースだけを対象にします。",
     ),
 ];
@@ -608,6 +608,33 @@ fn table_strings_display_the_japanese_they_used_to_hold(cx: &mut TestAppContext)
         mismatches.len(),
         strings.len(),
         mismatches.join("\n")
+    );
+}
+
+/// This build sends nothing to Zed Industries, so the window offers no switch
+/// for its telemetry, crash reports or agent ratings.
+#[gpui::test]
+fn the_table_offers_no_switch_for_sending_data_to_zed(cx: &mut TestAppContext) {
+    let strings = table_strings_in_test_app(cx);
+    let offered: Vec<&str> = strings
+        .iter()
+        .map(|(key, _)| key.as_str())
+        .filter(|key| {
+            [
+                "[telemetry.metrics]",
+                "[telemetry.diagnostics]",
+                "[agent.enable_feedback]",
+            ]
+            .iter()
+            .any(|json_path| key.contains(json_path))
+        })
+        .collect();
+    assert!(offered.is_empty(), "still offered: {offered:?}");
+    assert!(
+        strings
+            .iter()
+            .any(|(key, _)| key.contains("[telemetry.anthropic_retention]")),
+        "the rest of the Privacy section stays"
     );
 }
 

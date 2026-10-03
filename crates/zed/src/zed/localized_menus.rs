@@ -318,6 +318,49 @@ mod tests {
         assert_same_shape(&sample_menus(), &localized);
     }
 
+    /// This build sends nothing to Zed Industries and does not advertise it, so
+    /// neither the menus nor the command palette offer its telemetry log or
+    /// its promotions.
+    #[gpui::test]
+    fn test_zed_telemetry_log_and_promotions_are_not_offered(cx: &mut TestAppContext) {
+        fn action_names(items: &[MenuItem], names: &mut Vec<String>) {
+            for item in items {
+                match item {
+                    MenuItem::Submenu(menu) => action_names(&menu.items, names),
+                    MenuItem::Action { action, .. } => names.push(action.name().to_string()),
+                    MenuItem::Separator | MenuItem::SystemMenu(_) => {}
+                }
+            }
+        }
+
+        let _english = LocaleOverride::new(None);
+        for dev_channel in [false, true] {
+            let menus = build_app_menus(dev_channel, cx);
+            let labels = collect_labels(&menus);
+            for label in ["View Telemetry", "Zed Twitter", "Join the Team"] {
+                assert!(!labels.iter().any(|shown| shown == label), "{label}");
+            }
+            let mut names = Vec::new();
+            for menu in &menus {
+                action_names(&menu.items, &mut names);
+            }
+            assert!(
+                !names.iter().any(|name| name == "zed::OpenTelemetryLog"),
+                "{names:?}"
+            );
+        }
+
+        cx.update(|cx| {
+            command_palette_hooks::init(cx);
+            crate::zed::hide_zed_telemetry_and_promotion_actions_from_command_palette(cx);
+            let filter = command_palette_hooks::CommandPaletteFilter::try_global(cx)
+                .expect("the filter was just initialized");
+            assert!(filter.is_hidden(&zed_actions::OpenTelemetryLog));
+            assert!(filter.is_hidden(&zed_actions::GetMerch));
+            assert!(!filter.is_hidden(&zed_actions::OpenLicenses));
+        });
+    }
+
     #[gpui::test]
     fn test_every_app_menu_label_is_in_menus_po(cx: &mut TestAppContext) {
         let msgids = menus_po_msgids();
@@ -794,7 +837,6 @@ mod tests {
         "ズーム",
         "ヘルプ",
         "リリースノートをエディターで表示",
-        "テレメトリログを表示",
         "依存ライブラリのライセンス",
         "ようこそページを表示",
         "バグを報告...",
@@ -802,8 +844,6 @@ mod tests {
         "メールを送る...",
         "ドキュメント",
         "Zed のリポジトリ",
-        "Zed の Twitter",
-        "採用情報",
         "Git",
         "コミットグラフを開く",
         "ブランチを作成…",

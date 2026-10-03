@@ -767,6 +767,7 @@ fn main() {
             cx.background_executor().clone(),
         );
         command_palette::init(cx);
+        zed::hide_zed_telemetry_and_promotion_actions_from_command_palette(cx);
         let copilot_chat_configuration = copilot_chat::CopilotChatConfiguration {
             enterprise_uri: language::language_settings::all_language_settings(None, cx)
                 .edit_predictions

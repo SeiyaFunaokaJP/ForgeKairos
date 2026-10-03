@@ -936,7 +936,9 @@ impl Settings for AgentSettings {
             idle_disconnect_minutes: agent
                 .idle_disconnect_minutes
                 .unwrap_or(DEFAULT_IDLE_DISCONNECT_MINUTES),
-            enable_feedback: agent.enable_feedback.unwrap(),
+            // The ratings go to Zed Industries, which this separate project
+            // sends nothing to, so the buttons are never shown.
+            enable_feedback: false,
             expand_edit_card: agent.expand_edit_card.unwrap(),
             expand_terminal_card: agent.expand_terminal_card.unwrap(),
             terminal_init_command: agent
@@ -1242,6 +1244,22 @@ mod tests {
                 "{content}"
             );
         }
+    }
+
+    #[gpui::test]
+    fn test_enable_feedback_cannot_turn_the_rating_buttons_on(cx: &mut gpui::App) {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        project::DisableAiSettings::register(cx);
+        AgentSettings::register(cx);
+        assert!(!AgentSettings::get_global(cx).enable_feedback);
+
+        SettingsStore::update_global(cx, |store, cx| {
+            store
+                .set_user_settings(r#"{"agent": {"enable_feedback": true}}"#, cx)
+                .expect("user settings should load");
+        });
+        assert!(!AgentSettings::get_global(cx).enable_feedback);
     }
 
     #[gpui::test]

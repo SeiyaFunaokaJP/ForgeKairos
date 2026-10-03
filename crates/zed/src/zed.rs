@@ -306,6 +306,18 @@ mod excluded_collab_actions {
     }
 }
 
+/// This build sends nothing to Zed Industries, so its telemetry log stays
+/// empty, and it does not advertise Zed's merchandise store. Call it after
+/// `command_palette::init`, which replaces the filter.
+pub fn hide_zed_telemetry_and_promotion_actions_from_command_palette(cx: &mut App) {
+    CommandPaletteFilter::update_global(cx, |filter, _| {
+        filter.hide_action_types(&[
+            TypeId::of::<zed_actions::OpenTelemetryLog>(),
+            TypeId::of::<GetMerch>(),
+        ]);
+    });
+}
+
 pub fn init(cx: &mut App) {
     hide_collab_actions_from_command_palette(cx);
 
@@ -9008,9 +9020,11 @@ mod tests {
             handle_keymap_file_changes(keymap_rx, keymap_watcher, cx);
             reload_keymaps(cx, Vec::new());
         });
-        cx.update(|cx| workspace::open_new(Default::default(), app_state.clone(), cx, |_, _, _| {}))
-            .await
-            .expect("the workspace window opens");
+        cx.update(|cx| {
+            workspace::open_new(Default::default(), app_state.clone(), cx, |_, _, _| {})
+        })
+        .await
+        .expect("the workspace window opens");
         cx.run_until_parked();
         let multi_workspace = cx
             .update(|cx| {
@@ -9027,11 +9041,7 @@ mod tests {
                         .read(cx)
                         .titlebar_item()
                         .and_then(|item| item.downcast::<title_bar::TitleBar>().ok())
-                        .map(|title_bar| {
-                            title_bar
-                                .read(cx)
-                                .application_menu_item_names("View", cx)
-                        })
+                        .map(|title_bar| title_bar.read(cx).application_menu_item_names("View", cx))
                 })
                 .expect("the window is open")
                 .expect("the workspace has a title bar")

@@ -315,7 +315,9 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                     "View Release Notes Locally",
                     auto_update_ui::ViewReleaseNotesLocally,
                 ),
-                MenuItem::action("View Telemetry", zed_actions::OpenTelemetryLog),
+                // Upstream's "View Telemetry", "Zed Twitter" and "Join the Team" are
+                // left out: this build sends nothing to Zed Industries and does not
+                // advertise it.
                 MenuItem::action("View Dependency Licenses", zed_actions::OpenLicenses),
                 MenuItem::action("Show Welcome", onboarding::ShowWelcome),
                 MenuItem::separator(),
@@ -330,18 +332,6 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                     },
                 ),
                 MenuItem::action("Zed Repository", feedback::OpenZedRepo),
-                MenuItem::action(
-                    "Zed Twitter",
-                    super::OpenBrowser {
-                        url: "https://twitter.com/zeddotdev".into(),
-                    },
-                ),
-                MenuItem::action(
-                    "Join the Team",
-                    super::OpenBrowser {
-                        url: "https://zed.dev/jobs".into(),
-                    },
-                ),
             ],
         },
     ];

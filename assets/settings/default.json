@@ -1476,7 +1476,8 @@
     // of that agent is open any more; the agent and its sandbox are stopped
     // after that. 0 keeps every connection until the window closes.
     "idle_disconnect_minutes": 5,
-    // When enabled, show voting thumbs for feedback on agent edits.
+    // Not used by this build: the voting thumbs for feedback on agent edits
+    // sent the ratings to Zed Industries, so they are never shown.
     "enable_feedback": true,
     "default_profile": "write",
     "profiles": {
@@ -1976,9 +1977,11 @@
   // Both are off in this fork: they are the only settings that stop the
   // telemetry requests at the source rather than at the allowlist.
   "telemetry": {
-    // Send debug info like crash reports.
+    // Not used by this build, which never sends crash reports to Zed
+    // Industries whatever this says.
     "diagnostics": false,
-    // Send anonymized usage data like what languages you're using Zed with.
+    // Not used by this build, which never sends usage data to Zed Industries
+    // whatever this says.
     "metrics": false,
     // Allow sending requests to Anthropic models that cannot be offered with
     // Zero Data Retention

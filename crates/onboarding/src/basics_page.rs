@@ -758,6 +758,8 @@ pub(crate) fn render_basics_page(user_store: &Entity<UserStore>, cx: &mut App) -
         .child(render_import_settings_section(&mut tab_index, cx))
         .child(render_vim_mode_switch(&mut tab_index, cx))
         .child(render_worktree_auto_trust_switch(&mut tab_index, cx))
-        .child(Divider::horizontal().color(ui::DividerColor::BorderVariant))
-        .child(render_telemetry_section(&mut tab_index, cx))
+        .when(client::TELEMETRY_OFFERED, |this| {
+            this.child(Divider::horizontal().color(ui::DividerColor::BorderVariant))
+                .child(render_telemetry_section(&mut tab_index, cx))
+        })
 }
