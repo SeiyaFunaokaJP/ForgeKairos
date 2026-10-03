@@ -275,11 +275,12 @@ members = [
     "tooling/xtask",
 ]
 
-# .forgekairos-docs/DESIGN.md §4.6 (ADR-F06): collab / LiveKit の除去。
-# ソースは休眠参照として残すが、ワークスペースからは外して依存グラフに載せない。
-# `[workspace.dependencies]` の同名の行は upstream のまま残す (どこからも継承されない行は
-# 解決されない)。members と `[patch]` の行は消すしかないので、merge の衝突は
-# script/resolve-cargo-conflicts.ps1 が解く。
+# .forgekairos-docs/DESIGN.md section 4.6 (ADR-F06): collab and LiveKit are removed.
+# Their sources stay as dormant references, but they are kept out of the workspace
+# and so out of the dependency graph. Their lines in `[workspace.dependencies]` stay
+# as upstream has them (a line nothing inherits is never resolved). Their lines in
+# members and `[patch]` have to go, and script/resolve-cargo-conflicts.ps1 resolves
+# the merge conflicts that causes.
 exclude = [
     "crates/call",
     "crates/collab",
