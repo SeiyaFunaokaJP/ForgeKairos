@@ -104,6 +104,9 @@ msgstr "サーバーを起動しています。"
 msgid "Server is stopped."
 msgstr "サーバーは停止しています。"
 
+msgid "Up to Date"
+msgstr "最新です"
+
 msgid "Update Needs Permission"
 msgstr "更新には許可が必要です"
 
