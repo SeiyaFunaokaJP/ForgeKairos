@@ -199,14 +199,30 @@ fn replaced_files<'a>(name_sets: impl IntoIterator<Item = &'a branding::Names>) 
 /// remote hosts, and clang-format. An update stages them in `install\bin` like
 /// the launchers; left there, they would be deleted with it, and the previous
 /// release's remote server, whose version no longer matches the client's, would
-/// keep being uploaded.
-const BUNDLED_BIN_FILES: [&str; 5] = [
-    "bin\\zed-remote-server-windows-x86_64.zip",
-    "bin\\zed-remote-server-windows-aarch64.zip",
-    "bin\\zed-remote-server-linux-x86_64.gz",
-    "bin\\slirp4netns-linux-x86_64",
-    "bin\\clang-format.exe",
-];
+/// keep being uploaded. The remote servers are named after `branding::CURRENT`;
+/// the names of `branding::LEGACY` follow, so that the archives an earlier build
+/// installed are moved out too (crates/remote would fall back to them).
+fn bundled_bin_files() -> Vec<String> {
+    let mut files = Vec::new();
+    for names in std::iter::once(&branding::CURRENT).chain(branding::LEGACY) {
+        let prefix = names.remote_server_binary_prefix;
+        for file in [
+            format!("bin\\{prefix}windows-x86_64.zip"),
+            format!("bin\\{prefix}windows-aarch64.zip"),
+            format!("bin\\{prefix}linux-x86_64.gz"),
+        ] {
+            if !files
+                .iter()
+                .any(|known: &String| known.eq_ignore_ascii_case(&file))
+            {
+                files.push(file);
+            }
+        }
+    }
+    files.push("bin\\slirp4netns-linux-x86_64".to_string());
+    files.push("bin\\clang-format.exe".to_string());
+    files
+}
 
 /// The helper runs once per update and exits, so the few paths built from
 /// `branding` at runtime are leaked to get the `'static` lifetime [`Job`] takes.
@@ -234,11 +250,10 @@ fn update_jobs() -> Vec<Job> {
     }));
     // A file the new release no longer ships goes too, as it would be absent
     // from a fresh install of it.
-    jobs.extend(
-        BUNDLED_BIN_FILES
-            .into_iter()
-            .map(|file| Job::move_if_exists(Path::new(file), leak(format!("old\\{file}")))),
-    );
+    jobs.extend(bundled_bin_files().into_iter().map(|file| {
+        let moved_to = leak(format!("old\\{file}"));
+        Job::move_if_exists(leak(file), moved_to)
+    }));
     jobs.extend([
         //
         // TODO: remove after a few weeks once everyone is on the new version and this file never exists
@@ -257,11 +272,10 @@ fn update_jobs() -> Vec<Job> {
         Job::move_file(leak(format!("install\\{cli}")), leak(cli)),
         Job::move_file(leak(format!("install\\{cli_script}")), leak(cli_script)),
     ]);
-    jobs.extend(
-        BUNDLED_BIN_FILES
-            .into_iter()
-            .map(|file| Job::move_if_exists(leak(format!("install\\{file}")), Path::new(file))),
-    );
+    jobs.extend(bundled_bin_files().into_iter().map(|file| {
+        let staged = leak(format!("install\\{file}"));
+        Job::move_if_exists(staged, leak(file))
+    }));
     jobs.extend([
         //
         Job::mkdir_if_exists(p("x64"), p("install\\x64")),
@@ -720,6 +734,32 @@ mod test {
 
         assert_updated(app_dir);
         assert!(!app_dir.join("bin\\slirp4netns-linux-x86_64").exists());
+    }
+
+    #[test]
+    fn an_update_removes_the_remote_servers_installed_under_a_legacy_name() {
+        let app_dir = tempfile::tempdir().unwrap();
+        let app_dir = app_dir.path();
+        write_staged_update(app_dir);
+        let mut legacy_files = Vec::new();
+        for legacy in branding::LEGACY {
+            let prefix = legacy.remote_server_binary_prefix;
+            for file in [
+                format!("bin\\{prefix}linux-x86_64.gz"),
+                format!("bin\\{prefix}windows-x86_64.zip"),
+            ] {
+                write_file(app_dir, &file, "old");
+                legacy_files.push(file);
+            }
+        }
+        assert!(!legacy_files.is_empty());
+
+        apply_update_jobs(app_dir);
+
+        assert_updated(app_dir);
+        for file in &legacy_files {
+            assert!(!app_dir.join(file).exists(), "{file} is left behind");
+        }
     }
 
     #[test]
