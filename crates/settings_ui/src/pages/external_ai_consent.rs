@@ -166,9 +166,12 @@ const BUILTIN_PROVIDERS: &[BuiltinProvider] = &[
         note: None,
     },
     BuiltinProvider {
+        // The model list comes from `RICH_MODEL_CATALOG_URL` in
+        // `crates/language_models/src/provider/opencode.rs`, fetched once an
+        // API key is set and again every hour.
         id: "opencode",
         default_api_url: Some("https://opencode.ai/zen"),
-        extra_hosts: &[],
+        extra_hosts: &["models.opencode.ai"],
         always_external: false,
         note: None,
     },

@@ -118,6 +118,10 @@ impl UpdateButton {
             .disabled(true)
     }
 
+    pub fn up_to_date() -> Self {
+        Self::new(IconName::Check, "Up to Date").disabled(true)
+    }
+
     pub fn updated(version: impl Into<SharedString>) -> Self {
         Self::new(IconName::Download, i18n::t!("Restart to Update"))
             .tooltip(version)
@@ -274,6 +278,7 @@ impl Component for UpdateButton {
                             "Installing",
                             UpdateButton::installing(version).into_any_element(),
                         ),
+                        single_example("Up to Date", UpdateButton::up_to_date().into_any_element()),
                     ],
                 ),
                 example_group_with_title(

@@ -2,7 +2,7 @@
 description = "ForgeKairos, a fork of the Zed code editor."
 edition.workspace = true
 name = "zed"
-version = "1.21.0"
+version = "1.22.0"
 publish.workspace = true
 license = "GPL-3.0-or-later"
 authors = ["Zed Team <hi@zed.dev>"]
@@ -132,6 +132,7 @@ gpui_platform = { workspace = true, features = [
     "x11",
 ] }
 gpui_tokio.workspace = true
+hdrhistogram.workspace = true
 image = { workspace = true, optional = true }
 spin = "0.10.0"
 itertools.workspace = true

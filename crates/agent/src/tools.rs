@@ -254,9 +254,7 @@ tools! {
 /// ungated (TODO F13 ③).
 pub fn tool_feature_flag_enabled(tool_name: &str, cx: &App) -> bool {
     match tool_name {
-        CreateThreadTool::NAME | ListAgentsAndModelsTool::NAME => {
-            cx.has_flag::<CreateThreadToolFeatureFlag>()
-        }
+        CreateThreadTool::NAME => cx.has_flag::<CreateThreadToolFeatureFlag>(),
         _ => true,
     }
 }
