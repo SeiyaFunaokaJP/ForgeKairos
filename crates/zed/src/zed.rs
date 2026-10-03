@@ -9203,4 +9203,33 @@ mod tests {
             );
         }
     }
+
+    /// The onboarding crate has no tests of its own, and rendering its page
+    /// needs most of the app, so the gate on its telemetry switches is checked
+    /// in its source.
+    #[test]
+    fn test_onboarding_offers_telemetry_switches_only_when_telemetry_is_offered() {
+        assert!(!client::TELEMETRY_OFFERED);
+        let basics_page = include_str!("../../onboarding/src/basics_page.rs");
+        let calls: Vec<usize> = basics_page
+            .match_indices("render_telemetry_section(&mut tab_index")
+            .map(|(index, _)| index)
+            .collect();
+        let [call] = calls.as_slice() else {
+            panic!(
+                "the telemetry section is rendered {} times, not once",
+                calls.len()
+            );
+        };
+        let gate = basics_page
+            .find(".when(client::TELEMETRY_OFFERED, |this| {")
+            .expect("the telemetry section is behind `client::TELEMETRY_OFFERED`");
+        let gate_body = &basics_page[gate..];
+        let gate_end = gate_body.find("})").expect("the gate closes");
+        let call_offset = call.checked_sub(gate);
+        assert!(
+            call_offset.is_some_and(|offset| offset < gate_end),
+            "the telemetry section is rendered outside the `client::TELEMETRY_OFFERED` gate"
+        );
+    }
 }
