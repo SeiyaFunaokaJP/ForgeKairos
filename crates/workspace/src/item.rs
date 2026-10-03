@@ -402,6 +402,12 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         false
     }
 
+    /// What closing the item with unsaved edits asks, for an item that is not
+    /// a file: without it the pane asks about "this buffer".
+    fn unsaved_edits_prompt(&self, _cx: &App) -> Option<String> {
+        None
+    }
+
     /// Returns additional actions to add to the tab's context menu.
     /// Each entry is a label and an action to dispatch.
     fn tab_extra_context_menu_actions(
@@ -586,6 +592,7 @@ pub trait ItemHandle: 'static + Send {
         cx: &mut App,
     ) -> bool;
     fn accepts_drop(&self, active_pane: &Pane, dropped: &dyn Any, cx: &App) -> bool;
+    fn unsaved_edits_prompt(&self, cx: &App) -> Option<String>;
     fn tab_extra_context_menu_actions(
         &self,
         window: &mut Window,
@@ -1181,6 +1188,10 @@ impl<T: Item> ItemHandle for Entity<T> {
 
     fn accepts_drop(&self, active_pane: &Pane, dropped: &dyn Any, cx: &App) -> bool {
         self.read(cx).accepts_drop(active_pane, dropped, cx)
+    }
+
+    fn unsaved_edits_prompt(&self, cx: &App) -> Option<String> {
+        self.read(cx).unsaved_edits_prompt(cx)
     }
 
     fn tab_extra_context_menu_actions(

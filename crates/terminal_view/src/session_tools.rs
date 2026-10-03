@@ -6473,6 +6473,9 @@ impl Render for MacroEditor {
                             .when_some(tree, |this, tree| this.child(
                                 v_flex()
                                     .w(rems(17.))
+                                    // A list the user opened in a narrow tab
+                                    // leaves the form half of it.
+                                    .max_w(relative(0.5))
                                     .debug_selector(|| "macro-list-pane".into())
                                     .flex_none()
                                     .h_full()
@@ -7090,6 +7093,17 @@ impl Item for MacroEditor {
     // being updated itself.
     fn is_dirty(&self, cx: &App) -> bool {
         self.has_unsaved_edits(cx)
+    }
+
+    fn unsaved_edits_prompt(&self, _cx: &App) -> Option<String> {
+        Some(match &self.original_key {
+            Some((_, name)) => {
+                i18n::t!("The macro \"{name}\" has unsaved edits. Do you want to save it?")
+            }
+            None => {
+                i18n::t!("This new macro has unsaved edits. Do you want to save it?").to_string()
+            }
+        })
     }
 
     // A pane only asks before closing a tab that holds no project file when
@@ -9433,7 +9447,11 @@ mod tests {
 
         let close = close_active_tab(&workspace, cx);
         cx.run_until_parked();
-        assert!(cx.has_pending_prompt(), "closing should ask what to do");
+        let (message, _) = cx.pending_prompt().expect("closing should ask what to do");
+        assert!(
+            message.contains("既存"),
+            "the question should name the macro: {message}"
+        );
         cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         close.await.log_err();
@@ -12530,6 +12548,42 @@ mod tests {
         assert!(
             cx.debug_bounds("macro-list-pane").is_none(),
             "a list the user hid stays hidden in a wide tab"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_list_opened_in_a_narrow_tab_leaves_room_for_the_form(cx: &mut TestAppContext) {
+        let (fs, workspace, window) = init_workspace(
+            cx,
+            r#"{ "macros": [{ "name": "ルーター", "steps": [{ "type": "clear" }] }] }"#,
+        )
+        .await;
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let store = new_store(&fs, cx);
+        settle(cx);
+        cx.simulate_resize(size(px(260.), px(700.)));
+        let editor = open_editor(&workspace, &store, cx);
+        settle(cx);
+        assert!(cx.debug_bounds("macro-list-pane").is_none());
+
+        editor.update(cx, |editor, cx| editor.set_macro_list_shown(true, cx));
+        settle(cx);
+        let tab = cx
+            .debug_bounds("macro-editor")
+            .expect("the editor should have been drawn");
+        let list = cx
+            .debug_bounds("macro-list-pane")
+            .expect("the list the user opened should be drawn");
+        let form = cx
+            .debug_bounds("macro-form-frame")
+            .expect("the form should be drawn");
+        assert!(
+            list.size.width <= tab.size.width / 2.,
+            "the list {list:?} takes more than half of the tab {tab:?}"
+        );
+        assert!(
+            form.size.width >= tab.size.width / 4. && form.right() <= tab.right(),
+            "the form {form:?} has no room beside the list in the tab {tab:?}"
         );
     }
 

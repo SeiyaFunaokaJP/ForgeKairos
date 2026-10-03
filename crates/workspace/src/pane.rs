@@ -2500,7 +2500,9 @@ impl Pane {
                     let answer_task = pane.update_in(cx, |pane, window, cx| {
                         if pane.save_modals_spawned.insert(item_id) {
                             pane.activate_item(item_ix, true, true, window, cx);
-                            let prompt = dirty_message_for(item.project_path(cx), path_style);
+                            let prompt = item.unsaved_edits_prompt(cx).unwrap_or_else(|| {
+                                dirty_message_for(item.project_path(cx), path_style)
+                            });
                             Some(window.prompt(
                                 PromptLevel::Warning,
                                 &prompt,

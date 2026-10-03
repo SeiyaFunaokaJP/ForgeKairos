@@ -672,6 +672,9 @@ msgstr "送信する文字列 (${{変数}} が使えます)"
 msgid "The host name contains characters that aren't allowed."
 msgstr "ホスト名に使用できない文字が含まれています。"
 
+msgid "The macro \"{name}\" has unsaved edits. Do you want to save it?"
+msgstr "マクロ「{name}」に保存されていない変更があります。保存しますか?"
+
 msgid "The password is kept in the OS credential manager and is never written to terminal_sessions.json"
 msgstr "パスワードは OS の資格情報マネージャーに保存され、terminal_sessions.json には書き込まれません"
 
@@ -701,6 +704,9 @@ msgstr "このタブで開いた後に、このマクロはほかの場所で変
 
 msgid "This macro has been deleted or renamed elsewhere. Saving creates it again as “{name}”."
 msgstr "このマクロはほかの場所で削除または改名されました。保存すると「{name}」として新しく作ります。"
+
+msgid "This new macro has unsaved edits. Do you want to save it?"
+msgstr "この新しいマクロに保存されていない変更があります。保存しますか?"
 
 msgid "Timeout (seconds)"
 msgstr "タイムアウト (秒)"
