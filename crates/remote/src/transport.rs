@@ -1306,13 +1306,21 @@ mod tests {
             os: RemoteOs::Windows,
             arch: RemoteArch::X86_64,
         });
+        // The expressions that write the files, not just the names: a comment
+        // naming the artifact must not satisfy this.
         for (script, expected) in [
-            ("script/build.ps1", vec![linux[0].clone()]),
+            (
+                "script/build.ps1",
+                vec![format!("Join-Path $profileDir '{}'", linux[0])],
+            ),
             (
                 "script/bundle-windows.ps1",
                 vec![
-                    linux[0].clone(),
-                    windows[0].replace("x86_64", "$Architecture"),
+                    format!("-ArtifactPath \"$innoDir\\bin\\{}\"", linux[0]),
+                    format!(
+                        "-Destination \"$innoDir\\bin\\{}\"",
+                        windows[0].replace("x86_64", "$Architecture")
+                    ),
                 ],
             ),
         ] {
