@@ -27,6 +27,16 @@ Automatic updates are off (`auto_update` is `false`). To check for an update, us
 palette). ForgeKairos looks for updates only in this repository's GitHub Releases, never in
 Zed's. Release notes open the release page on GitHub.
 
+Only releases are considered by default. To be offered pre-releases too, turn on
+**Include Pre-releases** under Settings → General → Auto Update
+(`"auto_update_include_prereleases": true`). Among the releases it considers, ForgeKairos
+picks the one with the highest version in its tag, not the most recently published one.
+
+An update is downloaded only from this repository's release downloads, and is installed
+only if its size and SHA-256 digest match what GitHub reports for it. When the check fails
+(GitHub cannot be reached, there is no release or no installer for this system, or the
+download does not match), ForgeKairos says so instead of reporting that it is up to date.
+
 ## Moving from Zed-JP-Enhance
 
 ForgeKairos was previously named Zed-JP-Enhance.

@@ -121,7 +121,8 @@ starts.
 
 ## Telemetry, collaboration and updates
 
-- `telemetry.diagnostics` and `telemetry.metrics` are off.
+- This build sends neither telemetry nor crash reports to Zed, and does not show them in
+  the settings.
 - Collaboration (calls and screen sharing) is not built into ForgeKairos.
 - `auto_install_extensions` is empty, so nothing is downloaded at startup.
 - `auto_update` is off. The update check asks only ForgeKairos's GitHub Releases (see

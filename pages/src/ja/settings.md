@@ -20,6 +20,7 @@ ForgeKairos が Zed に足した設定と、既定値を変えた Zed の設定�
 | `default_stacked_secondary_panel` | `"browser"` | そのドックの 2 枚目のパネル (選択肢は同じ)。 |
 | `tab_bar.show_buttons_on_inactive_panes` | `true` | フォーカスの無いペインにもタブ行のボタンを出す。 |
 | `acknowledged_external_ai_providers` | `[]` | 学習リスクの警告を承諾した AI プロバイダー。設定 UI が書く。 |
+| `auto_update_include_prereleases` | `false` | 更新の確認で GitHub のプレリリースも対象にする ([インストールと更新](install.md#更新) を参照)。 |
 
 ### エディターとファイル
 

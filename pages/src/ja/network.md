@@ -112,7 +112,7 @@ ACP エージェントと MCP サーバーには、リモートのサーバー�
 
 ## テレメトリ、コラボレーション、更新
 
-- `telemetry.diagnostics` と `telemetry.metrics` はオフ。
+- このビルドは Zed 社へテレメトリもクラッシュレポートも送らず、設定にも出ない。
 - コラボレーション (通話と画面共有) は ForgeKairos に組み込んでいない。
 - `auto_install_extensions` は空で、起動時に何もダウンロードしない。
 - `auto_update` はオフ。更新の確認は ForgeKairos の GitHub Releases だけに問い合わせる

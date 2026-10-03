@@ -21,6 +21,7 @@ The outbound network allowlist is not a setting in `settings.json`; it is kept i
 | `default_stacked_secondary_panel` | `"browser"` | Second panel of that dock (same choices). |
 | `tab_bar.show_buttons_on_inactive_panes` | `true` | Show the tab bar buttons on panes that are not focused as well. |
 | `acknowledged_external_ai_providers` | `[]` | AI providers whose training-risk warning you have accepted. Written by the settings UI. |
+| `auto_update_include_prereleases` | `false` | Whether update checks also consider pre-releases on GitHub (see [Installation and updates](install.md#updates)). |
 
 ### Editor and files
 

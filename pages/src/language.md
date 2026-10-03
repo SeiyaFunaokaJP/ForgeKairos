@@ -28,7 +28,9 @@ titles, switches after a restart.
 - Menus, the settings window, the command palette and panel text.
 - Command palette entries are found by their translated name and by their English name.
 - Descriptions of actions (shown in the keymap editor and in the hovers of the keymap and
-  settings files) and descriptions in the settings file's JSON schema.
+  settings files) and descriptions in the settings file's JSON schema. In the keymap file,
+  the arguments of the actions ForgeKairos adds are described in the display language;
+  those of Zed's own actions stay English.
 - Built-in snippets, such as the Mermaid diagrams offered in Markdown, have a copy per
   language.
 

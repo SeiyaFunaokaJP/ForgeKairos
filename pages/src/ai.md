@@ -26,6 +26,21 @@ run on loopback, which the network allowlist always allows. They need no consent
 allowlist entry. OpenAI-compatible and Anthropic-compatible servers can be added as custom
 providers.
 
+A provider you added can be edited or removed later with the pencil and trash buttons on
+its header in Settings → AI → LLM Providers.
+
+- Editing leaves the API key field empty; an empty field keeps the saved key. Changing the
+  API URL asks for the key again, so a saved key is never sent to another URL. A new host
+  asks for consent again.
+- Renaming the provider moves the agent settings that name it, and its consent, to the new
+  name. Saved threads keep the old name.
+- Removing asks first and lists what goes: the settings entry, the saved API key (kept when
+  another provider uses the same URL), the consent and its allowlist hosts, and the model
+  choices that name the provider. **Remove Provider** in the provider's own view does the
+  same.
+- Providers defined in a release channel, OS or profile override are shown as not editable
+  there.
+
 ## Cloud providers
 
 Before an external AI provider can be used, ForgeKairos shows a warning that your input and
