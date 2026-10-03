@@ -57,9 +57,9 @@ use editor::markdown_actions::MermaidFenceTarget;
 use editor::{Editor, EditorEvent};
 use gpui::{
     App, Context, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, Focusable,
-    ImageSource, ObjectFit, Pixels, RenderImage, SMOOTH_SVG_SCALE_FACTOR, ScrollHandle, Size,
-    StyledImage as _, Subscription, Task, TextStyleRefinement, WeakEntity, Window, canvas, img, px,
-    relative, size,
+    ImageSource, ParsedSvg, Pixels, RenderImage, SMOOTH_SVG_SCALE_FACTOR, ScrollDelta,
+    ScrollHandle, ScrollWheelEvent, Size, Subscription, Task, TextStyleRefinement, WeakEntity,
+    Window, canvas, img, px, relative, size,
 };
 use mermaid_render::flowchart_model::{
     ArrowKind, CLICK_CLASS, EDGE_STYLE_PRESETS, FlowDirection, FlowchartClassDef,
@@ -349,11 +349,45 @@ enum Form {
 }
 
 /// The drawing of the source the form currently describes.
-#[derive(Default)]
 struct Preview {
     image: Option<Arc<RenderImage>>,
+    /// The drawing's size at 100%, which every zoom level is a multiple of.
+    natural_size: Option<Size<Pixels>>,
+    /// Kept so that a zoom change only rasterizes again rather than laying the
+    /// diagram out again.
+    parsed: Option<Arc<ParsedSvg>>,
+    /// The scale `image` was rasterized at, relative to `natural_size`.
+    raster_scale: f32,
+    /// The scale a rasterization under way will deliver.
+    pending_raster_scale: Option<f32>,
     error: Option<SharedString>,
     _task: Option<Task<()>>,
+    _raster_task: Option<Task<()>>,
+}
+
+impl Default for Preview {
+    fn default() -> Self {
+        Self {
+            image: None,
+            natural_size: None,
+            parsed: None,
+            raster_scale: 1.0,
+            pending_raster_scale: None,
+            error: None,
+            _task: None,
+            _raster_task: None,
+        }
+    }
+}
+
+/// How large the preview draws the diagram.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PreviewZoom {
+    /// As large as the pane allows, small diagrams included: the reason the
+    /// editor is a tab is that the drawing gets the room.
+    Fit,
+    /// A scale the user picked, relative to the drawing's natural size.
+    Scale(f32),
 }
 
 /// How the fence the tab writes to stands against what the tab last read
@@ -397,9 +431,12 @@ pub struct MermaidEditor {
     baseline: Option<String>,
     dirty: bool,
     source_state: SourceState,
-    /// Whether the preview shrinks the drawing to the pane rather than showing
-    /// it at its own size.
-    preview_fits: bool,
+    preview_zoom: PreviewZoom,
+    /// The size of the area the drawing is shown in, as last laid out.
+    preview_frame: Rc<Cell<Option<Size<Pixels>>>>,
+    /// The field that had the focus last, which is where it goes back to when
+    /// the tab is activated again.
+    last_focused_field: Option<WeakEntity<Editor>>,
     /// The share of the tab's width the form takes when the two sit side by
     /// side, once the user has dragged the divider. Until then the form gets
     /// its default share, widened up to what its rows need.
@@ -421,28 +458,16 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut source_subscriptions = Vec::new();
-        if let Some(source_editor) = editor.upgrade() {
-            source_subscriptions.push(cx.subscribe_in(
-                &source_editor,
-                window,
-                |this, _editor, event: &EditorEvent, window, cx| {
-                    if matches!(event, EditorEvent::BufferEdited) {
-                        this.source_edited(window, cx);
-                    }
-                },
-            ));
-            source_subscriptions.push(cx.observe_release(&source_editor, |this, _editor, cx| {
-                this.source_lost(cx);
-            }));
-        }
         let focus_handle = cx.focus_handle();
-        // The pane focuses the tab itself; typing belongs in the first field.
-        source_subscriptions.push(cx.on_focus(&focus_handle, window, |this, window, cx| {
-            if let Some(field) = this.fields().first() {
-                window.focus(&field.focus_handle(cx), cx);
+        let source_subscriptions = Self::subscribe_in_window(&editor, &focus_handle, window, cx);
+        // The rasters go to the window's texture atlas, which keeps them until
+        // told otherwise.
+        cx.on_release(|this: &mut Self, cx| {
+            if let Some(image) = this.preview.image.take() {
+                cx.drop_image(image, None);
             }
-        }));
+        })
+        .detach();
         let mut this = Self {
             editor,
             target,
@@ -453,7 +478,9 @@ impl MermaidEditor {
             baseline: None,
             dirty: false,
             source_state: SourceState::InStep,
-            preview_fits: true,
+            preview_zoom: PreviewZoom::Fit,
+            preview_frame: Rc::new(Cell::new(None)),
+            last_focused_field: None,
             form_share: None,
             width: Rc::new(Cell::new(None)),
             redraw_requested: Rc::new(Cell::new(false)),
@@ -468,6 +495,46 @@ impl MermaidEditor {
         }
         this.schedule_preview(cx);
         this
+    }
+
+    /// The subscriptions that run with a window, made again when the tab is
+    /// dragged to another one: those registered against the old window stop
+    /// firing once the tab is shown elsewhere.
+    fn subscribe_in_window(
+        editor: &WeakEntity<Editor>,
+        focus_handle: &FocusHandle,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Vec<Subscription> {
+        let mut subscriptions = Vec::new();
+        if let Some(source_editor) = editor.upgrade() {
+            subscriptions.push(cx.subscribe_in(
+                &source_editor,
+                window,
+                |this, _editor, event: &EditorEvent, window, cx| {
+                    if matches!(event, EditorEvent::BufferEdited) {
+                        this.source_edited(window, cx);
+                    }
+                },
+            ));
+            subscriptions.push(cx.observe_release(&source_editor, |this, _editor, cx| {
+                this.source_lost(cx);
+            }));
+        }
+        // The pane focuses the tab itself; typing belongs in the field the user
+        // was in, or the first one.
+        subscriptions.push(cx.on_focus(focus_handle, window, |this, window, cx| {
+            let fields = this.fields();
+            let last = this
+                .last_focused_field
+                .as_ref()
+                .and_then(|field| field.upgrade())
+                .filter(|last| fields.iter().any(|field| field == last));
+            if let Some(field) = last.as_ref().or(fields.first()) {
+                window.focus(&field.focus_handle(cx), cx);
+            }
+        }));
+        subscriptions
     }
 
     /// Whether this tab edits the fence whose body starts at `offset` in
@@ -852,13 +919,15 @@ impl MermaidEditor {
             editor
         });
         self.subscriptions.push(
-            cx.subscribe(&field, |this, _field, event: &EditorEvent, cx| {
-                if matches!(event, EditorEvent::BufferEdited) {
+            cx.subscribe(&field, |this, field, event: &EditorEvent, cx| match event {
+                EditorEvent::BufferEdited => {
                     this.schedule_preview(cx);
                     // The invalid-value frames are drawn from the field text,
                     // so they have to be redrawn as it changes.
                     cx.notify();
                 }
+                EditorEvent::Focused => this.last_focused_field = Some(field.downgrade()),
+                _ => {}
             }),
         );
         field
@@ -1300,6 +1369,9 @@ impl MermaidEditor {
         self.refresh_dirty(cx);
         let theme = markdown::build_mermaid_theme(cx);
         let svg_renderer = cx.svg_renderer();
+        // Drawn at the scale the last drawing settled on, so that a label typed
+        // into a zoomed preview does not flash a blurry frame first.
+        let wanted_raster_scale = self.preview.raster_scale;
         self.preview._task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(Duration::from_millis(200))
@@ -1316,7 +1388,11 @@ impl MermaidEditor {
             let Some((source, problem)) = described else {
                 // Nothing has been picked yet, so there is nothing to draw.
                 this.update(cx, |this, cx| {
-                    this.preview.image = None;
+                    if let Some(image) = this.preview.image.take() {
+                        cx.drop_image(image, None);
+                    }
+                    this.preview.natural_size = None;
+                    this.preview.parsed = None;
                     this.preview.error = None;
                     cx.notify();
                 })
@@ -1341,9 +1417,19 @@ impl MermaidEditor {
                         let tree = svg_renderer
                             .parse_svg(svg.as_bytes())
                             .map_err(|error| anyhow::anyhow!("{error}"))?;
-                        svg_renderer
+                        let image = svg_renderer
                             .render_parsed(&tree, 1.0)
-                            .map_err(|error| anyhow::anyhow!("{error}"))
+                            .map_err(|error| anyhow::anyhow!("{error}"))?;
+                        let natural_size = preview_size(&image, 1.0);
+                        let raster_scale = wanted_raster_scale.min(max_raster_scale(natural_size));
+                        let image = if raster_scale > 1.0 {
+                            svg_renderer
+                                .render_parsed(&tree, raster_scale)
+                                .map_err(|error| anyhow::anyhow!("{error}"))?
+                        } else {
+                            image
+                        };
+                        anyhow::Ok((Arc::new(tree), natural_size, image, raster_scale))
                     }
                 })
                 .await;
@@ -1351,8 +1437,13 @@ impl MermaidEditor {
             this.update(cx, |this, cx| {
                 this.message = None;
                 match rendered {
-                    Ok(image) => {
-                        this.preview.image = Some(image);
+                    Ok((parsed, natural_size, image, raster_scale)) => {
+                        this.replace_preview_image(image, raster_scale, cx);
+                        this.preview.parsed = Some(parsed);
+                        this.preview.natural_size = Some(natural_size);
+                        // A rasterization of the previous drawing is of no use.
+                        this.preview.pending_raster_scale = None;
+                        this.preview._raster_task = None;
                         this.preview.error = None;
                     }
                     Err(error) => this.preview.error = Some(format!("{error:#}").into()),
@@ -1361,6 +1452,130 @@ impl MermaidEditor {
             })
             .ok();
         }));
+    }
+
+    fn replace_preview_image(
+        &mut self,
+        image: Arc<RenderImage>,
+        raster_scale: f32,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(previous) = self.preview.image.replace(image) {
+            cx.drop_image(previous, None);
+        }
+        self.preview.raster_scale = raster_scale;
+    }
+
+    /// The scale the drawing is shown at, relative to its natural size; `None`
+    /// until there is a drawing.
+    fn preview_display_scale(&self) -> Option<f32> {
+        let natural_size = self.preview.natural_size?;
+        Some(match self.preview_zoom {
+            PreviewZoom::Scale(scale) => scale,
+            // Until the area has been laid out once, the drawing is shown at
+            // its own size; the next frame fits it.
+            PreviewZoom::Fit => self
+                .preview_frame
+                .get()
+                .map_or(1.0, |frame| fit_scale(natural_size, frame)),
+        })
+    }
+
+    /// Rasterizes the drawing again when the scale it is shown at has moved
+    /// far enough from the one it was drawn at to blur it or to waste memory.
+    /// Scales come in steps and the work waits for the pane to stop moving, so
+    /// dragging the divider does not rasterize once per frame.
+    fn request_raster_scale(&mut self, window: &Window, cx: &mut Context<Self>) {
+        let (Some(display_scale), Some(natural_size), Some(parsed)) = (
+            self.preview_display_scale(),
+            self.preview.natural_size,
+            self.preview.parsed.clone(),
+        ) else {
+            return;
+        };
+        let wanted = raster_scale_for(display_scale, window.scale_factor(), natural_size);
+        if self.preview.pending_raster_scale == Some(wanted) {
+            return;
+        }
+        if wanted == self.preview.raster_scale {
+            self.preview.pending_raster_scale = None;
+            self.preview._raster_task = None;
+            return;
+        }
+        self.preview.pending_raster_scale = Some(wanted);
+        let svg_renderer = cx.svg_renderer();
+        self.preview._raster_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(150))
+                .await;
+            let rendered = cx
+                .background_spawn({
+                    let parsed = parsed.clone();
+                    async move { svg_renderer.render_parsed(&parsed, wanted) }
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                let current = this
+                    .preview
+                    .parsed
+                    .as_ref()
+                    .is_some_and(|current| Arc::ptr_eq(current, &parsed));
+                if !current || this.preview.pending_raster_scale != Some(wanted) {
+                    return;
+                }
+                this.preview.pending_raster_scale = None;
+                match rendered {
+                    Ok(image) => this.replace_preview_image(image, wanted, cx),
+                    Err(error) => log::error!("rasterizing the Mermaid preview failed: {error}"),
+                }
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+
+    fn set_preview_zoom(&mut self, zoom: PreviewZoom, cx: &mut Context<Self>) {
+        self.preview_zoom = match zoom {
+            PreviewZoom::Fit => PreviewZoom::Fit,
+            PreviewZoom::Scale(scale) => {
+                PreviewZoom::Scale(scale.clamp(PREVIEW_MIN_SCALE, PREVIEW_MAX_SCALE))
+            }
+        };
+        cx.notify();
+    }
+
+    /// Zooms by `steps` steps from what is on screen, so that zooming out of
+    /// "fit to pane" starts from the size the drawing is shown at.
+    fn zoom_preview_by(&mut self, steps: f32, cx: &mut Context<Self>) {
+        let Some(current) = self.preview_display_scale() else {
+            return;
+        };
+        self.set_preview_zoom(
+            PreviewZoom::Scale(current * PREVIEW_ZOOM_STEP.powf(steps)),
+            cx,
+        );
+    }
+
+    fn zoom_preview_on_wheel(
+        &mut self,
+        event: &ScrollWheelEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !(event.modifiers.control || event.modifiers.platform) {
+            return;
+        }
+        // One notch is one step whatever the platform reports for it; a
+        // trackpad's many small deltas add up to the same rate.
+        let steps = match event.delta {
+            ScrollDelta::Lines(lines) => lines.y,
+            ScrollDelta::Pixels(pixels) => f32::from(pixels.y) / 20.,
+        }
+        .clamp(-1., 1.);
+        if steps != 0. {
+            self.zoom_preview_by(steps, cx);
+        }
+        cx.stop_propagation();
     }
 
     fn add_node(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -2608,28 +2823,85 @@ impl MermaidEditor {
         }
     }
 
+    fn render_zoom_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let display_scale = self.preview_display_scale();
+        let has_drawing = display_scale.is_some();
+        let fits = self.preview_zoom == PreviewZoom::Fit;
+        let actual = self.preview_zoom == PreviewZoom::Scale(1.0);
+        h_flex()
+            .gap_1()
+            .child(
+                IconButton::new("mermaid-preview-zoom-out", IconName::Dash)
+                    .icon_size(IconSize::Small)
+                    .disabled(!has_drawing)
+                    .tooltip(Tooltip::text(i18n::t!("Zoom Out (Ctrl+Scroll)")))
+                    .on_click(cx.listener(|this, _, _window, cx| this.zoom_preview_by(-1., cx))),
+            )
+            .child(
+                div().min_w(rems(3.)).flex().justify_center().child(
+                    Label::new(match display_scale {
+                        Some(scale) => format!("{}%", (scale * 100.).round()),
+                        None => "–".to_string(),
+                    })
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+                ),
+            )
+            .child(
+                IconButton::new("mermaid-preview-zoom-in", IconName::Plus)
+                    .icon_size(IconSize::Small)
+                    .disabled(!has_drawing)
+                    .tooltip(Tooltip::text(i18n::t!("Zoom In (Ctrl+Scroll)")))
+                    .on_click(cx.listener(|this, _, _window, cx| this.zoom_preview_by(1., cx))),
+            )
+            .child(
+                Button::new("mermaid-preview-fit", i18n::t!("Fit to Pane"))
+                    .label_size(LabelSize::Small)
+                    .toggle_state(fits)
+                    .on_click(cx.listener(|this, _, _window, cx| {
+                        this.set_preview_zoom(PreviewZoom::Fit, cx)
+                    })),
+            )
+            .child(
+                Button::new("mermaid-preview-actual-size", i18n::t!("Actual Size"))
+                    .label_size(LabelSize::Small)
+                    .toggle_state(actual)
+                    .on_click(cx.listener(|this, _, _window, cx| {
+                        this.set_preview_zoom(PreviewZoom::Scale(1.0), cx)
+                    })),
+            )
+    }
+
+    /// An element that paints nothing and records the size of the area the
+    /// drawing is shown in, asking for another frame when it changed so that
+    /// "fit to pane" follows the pane.
+    fn measure_preview_frame(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let cell = self.preview_frame.clone();
+        let view = cx.weak_entity();
+        canvas(
+            move |bounds, window, _| {
+                if cell.get() == Some(bounds.size) {
+                    return;
+                }
+                cell.set(Some(bounds.size));
+                window.on_next_frame(move |_, cx| {
+                    view.update(cx, |_, cx| cx.notify()).ok();
+                });
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full()
+    }
+
     fn render_preview(&self, cx: &mut Context<Self>) -> AnyElement {
-        let fits = self.preview_fits;
         let header = h_flex()
             .w_full()
             .flex_none()
+            .gap_2()
             .justify_between()
             .child(section_title(i18n::t!("Preview")))
-            .child(
-                Button::new(
-                    "mermaid-preview-size",
-                    if fits {
-                        i18n::t!("Actual Size")
-                    } else {
-                        i18n::t!("Fit to Pane")
-                    },
-                )
-                .label_size(LabelSize::Small)
-                .on_click(cx.listener(|this, _, _window, cx| {
-                    this.preview_fits = !this.preview_fits;
-                    cx.notify();
-                })),
-            );
+            .child(self.render_zoom_controls(cx));
 
         let mut pane = v_flex()
             .id("mermaid-preview")
@@ -2646,32 +2918,58 @@ impl MermaidEditor {
                     .color(Color::Error),
             );
         }
-        if let Some(image) = &self.preview.image {
-            let natural = preview_size(image);
-            let drawing = img(ImageSource::Render(image.clone()));
-            let frame = div()
-                .id("mermaid-preview-image")
-                .flex_1()
-                .min_h_0()
-                .w_full()
-                .bg(cx.theme().colors().editor_background)
-                .rounded_md()
-                .p_1();
-            pane = pane.child(if fits {
-                // Never drawn larger than its own size: the raster would only
-                // get blurrier.
-                frame.flex().items_center().justify_center().child(
-                    drawing
-                        .size_full()
-                        .max_w(natural.width)
-                        .max_h(natural.height)
-                        .object_fit(ObjectFit::Contain),
-                )
-            } else {
-                frame
-                    .overflow_scroll()
-                    .child(drawing.flex_none().w(natural.width).h(natural.height))
+        if let (Some(image), Some(natural_size), Some(display_scale)) = (
+            &self.preview.image,
+            self.preview.natural_size,
+            self.preview_display_scale(),
+        ) {
+            let shown = size(
+                natural_size.width * display_scale,
+                natural_size.height * display_scale,
+            );
+            let room = self
+                .preview_frame
+                .get()
+                .map(|frame| inner_frame_size(frame));
+            let fits_in_room = room.is_some_and(|room| {
+                shown.width <= room.width + px(0.5) && shown.height <= room.height + px(0.5)
             });
+            // The raster is drawn into whatever size the element has; its
+            // resolution is kept in step with the zoom by
+            // `request_raster_scale`.
+            let drawing = div()
+                .flex_none()
+                .w(shown.width)
+                .h(shown.height)
+                .on_scroll_wheel(cx.listener(Self::zoom_preview_on_wheel))
+                .child(img(ImageSource::Render(image.clone())).size_full());
+            let content = div()
+                .id("mermaid-preview-scroll")
+                .size_full()
+                .p(PREVIEW_MARGIN)
+                .on_scroll_wheel(cx.listener(Self::zoom_preview_on_wheel));
+            let content = if fits_in_room {
+                content
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .overflow_hidden()
+                    .child(drawing)
+            } else {
+                content.flex().overflow_scroll().child(drawing)
+            };
+            pane = pane.child(
+                div()
+                    .id("mermaid-preview-image")
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .bg(cx.theme().colors().editor_background)
+                    .rounded_md()
+                    .child(self.measure_preview_frame(cx))
+                    .child(content),
+            );
         } else if self.preview.error.is_none() {
             pane = pane.child(
                 Label::new(match self.form {
@@ -3236,17 +3534,86 @@ fn subgraph_direction_label(direction: Option<FlowDirection>) -> &'static str {
 }
 
 /// Rasters come back at [`SMOOTH_SVG_SCALE_FACTOR`] device pixels per logical
-/// pixel, so the natural size is the image's own size divided by it.
-fn preview_size(image: &RenderImage) -> Size<gpui::Pixels> {
+/// pixel times the scale they were drawn at, so the natural size is the
+/// image's own size divided by both.
+fn preview_size(image: &RenderImage, raster_scale: f32) -> Size<Pixels> {
     let device_size = image.size(0);
+    let device_scale = SMOOTH_SVG_SCALE_FACTOR * raster_scale;
     size(
-        px(device_size.width.0 as f32 / SMOOTH_SVG_SCALE_FACTOR),
-        px(device_size.height.0 as f32 / SMOOTH_SVG_SCALE_FACTOR),
+        px(device_size.width.0 as f32 / device_scale),
+        px(device_size.height.0 as f32 / device_scale),
     )
+}
+
+/// The space around the drawing inside the preview area.
+const PREVIEW_MARGIN: Pixels = px(12.);
+/// How far "fit to pane" enlarges a small diagram. Past this a two-node
+/// flowchart turns into a few giant boxes, which shows nothing more.
+const PREVIEW_MAX_FIT_SCALE: f32 = 4.;
+const PREVIEW_MIN_SCALE: f32 = 0.1;
+const PREVIEW_MAX_SCALE: f32 = 8.;
+const PREVIEW_ZOOM_STEP: f32 = 1.25;
+/// The scales the drawing is rasterized at, so that a pane being resized
+/// rasterizes again only when it crosses one.
+const RASTER_SCALES: [f32; 7] = [1., 1.5, 2., 3., 4., 6., 8.];
+/// What one raster may take: 4096 × 4096 pixels, 64 MiB.
+const MAX_RASTER_PIXELS: f32 = 4096. * 4096.;
+/// The side `SvgRenderer` shrinks a raster to stay under.
+const MAX_RASTER_SIDE: f32 = 8192.;
+
+fn inner_frame_size(frame: Size<Pixels>) -> Size<Pixels> {
+    size(
+        (frame.width - PREVIEW_MARGIN * 2.).max(px(1.)),
+        (frame.height - PREVIEW_MARGIN * 2.).max(px(1.)),
+    )
+}
+
+/// The scale at which a drawing of `natural_size` fills `frame`, keeping its
+/// proportions and the margin around it.
+fn fit_scale(natural_size: Size<Pixels>, frame: Size<Pixels>) -> f32 {
+    if natural_size.width <= px(0.) || natural_size.height <= px(0.) {
+        return 1.;
+    }
+    let room = inner_frame_size(frame);
+    (room.width / natural_size.width)
+        .min(room.height / natural_size.height)
+        .clamp(PREVIEW_MIN_SCALE, PREVIEW_MAX_FIT_SCALE)
+}
+
+/// The largest raster scale a drawing of `natural_size` can take without
+/// going over the memory a raster may use.
+fn max_raster_scale(natural_size: Size<Pixels>) -> f32 {
+    let width = f32::from(natural_size.width) * SMOOTH_SVG_SCALE_FACTOR;
+    let height = f32::from(natural_size.height) * SMOOTH_SVG_SCALE_FACTOR;
+    if width <= 0. || height <= 0. {
+        return 1.;
+    }
+    let limit = (MAX_RASTER_PIXELS / (width * height))
+        .sqrt()
+        .min(MAX_RASTER_SIDE / width.max(height));
+    RASTER_SCALES
+        .iter()
+        .copied()
+        .take_while(|scale| *scale <= limit)
+        .last()
+        .unwrap_or(1.)
+}
+
+/// The raster scale that keeps a drawing shown at `display_scale` sharp on a
+/// display with `device_scale` device pixels per logical pixel.
+fn raster_scale_for(display_scale: f32, device_scale: f32, natural_size: Size<Pixels>) -> f32 {
+    let needed = display_scale * device_scale / SMOOTH_SVG_SCALE_FACTOR;
+    let sharp = RASTER_SCALES
+        .iter()
+        .copied()
+        .find(|scale| *scale >= needed)
+        .unwrap_or(PREVIEW_MAX_SCALE);
+    sharp.min(max_raster_scale(natural_size))
 }
 
 impl Render for MermaidEditor {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.request_raster_scale(window, cx);
         let toolbar = self.render_toolbar(window, cx);
         let sections = self.render_form(window, cx);
         let preview = self.render_preview(cx);
@@ -3423,7 +3790,9 @@ impl Item for MermaidEditor {
     ) {
         // An editor's focus listeners belong to the window they were
         // registered against, so the fields of a tab moved to another window
-        // have to register them again.
+        // have to register them again, and so does the tab.
+        self._source_subscriptions =
+            Self::subscribe_in_window(&self.editor, &self.focus_handle, window, cx);
         for field in self.fields() {
             field.update(cx, |editor, cx| {
                 editor.rebind_window_focus_listeners(window, cx);

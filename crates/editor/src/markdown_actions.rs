@@ -5472,7 +5472,7 @@ impl Editor {
             i18n::t!("This buffer is read-only, so the diagram can't be written back.")
         );
         anyhow::ensure!(
-            self.mermaid_fence_body(target, cx) == target.source,
+            self.mermaid_fence_holds(target, cx),
             i18n::t!("The diagram text changed while it was being edited. Open it again.")
         );
 
@@ -5510,10 +5510,19 @@ impl Editor {
         Ok(mermaid_fence_target_at_row(&snapshot, row))
     }
 
-    /// Whether the fence `target` points at still holds what it held when
-    /// `target` was resolved.
+    /// Whether the fence `target` points at is still that Mermaid fence and
+    /// still holds what it held when `target` was resolved.
+    ///
+    /// Comparing the text under the anchors is not enough: removing only the
+    /// fence lines, changing the info string, or deleting an empty fence whole
+    /// all leave that text as it was, and a write would then land in plain
+    /// paragraphs or in another kind of code block.
     pub fn mermaid_fence_holds(&self, target: &MermaidFenceTarget, cx: &App) -> bool {
-        self.mermaid_fence_body(target, cx) == target.source
+        if target.fence.is_some() {
+            return self.mermaid_fence_body(target, cx) == target.source;
+        }
+        self.refreshed_mermaid_fence_target(target, cx)
+            .is_some_and(|fence| fence.source == target.source && fence.indent == target.indent)
     }
 
     /// The fence `target` points at as it reads now, for an editor that has to

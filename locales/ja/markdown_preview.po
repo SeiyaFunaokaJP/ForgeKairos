@@ -1615,6 +1615,12 @@ msgstr "x 軸"
 msgid "Y Axis"
 msgstr "y 軸"
 
+msgid "Zoom In (Ctrl+Scroll)"
+msgstr "拡大 (Ctrl+スクロール)"
+
+msgid "Zoom Out (Ctrl+Scroll)"
+msgstr "縮小 (Ctrl+スクロール)"
+
 msgid "[*] Start / End"
 msgstr "[*] 開始 / 終了"
 

@@ -1812,6 +1812,150 @@ async fn reverting_takes_the_document_version(cx: &mut TestAppContext) {
     });
 }
 
+/// Taking the fence lines away, or turning the block into another language,
+/// leaves the body text under the tab's anchors exactly as it was. The tab
+/// must still see that its diagram is gone rather than write Mermaid lines
+/// into paragraphs or into somebody's code sample.
+#[gpui::test]
+async fn removing_the_fence_lines_leaves_nothing_to_write_to(cx: &mut TestAppContext) {
+    assert_edited_tab_no_longer_writes(&[("```mermaid\n", ""), ("```\n", "")], cx).await;
+}
+
+#[gpui::test]
+async fn a_fence_turned_into_another_language_is_not_written_to(cx: &mut TestAppContext) {
+    assert_edited_tab_no_longer_writes(&[("```mermaid\n", "```text\n")], cx).await;
+}
+
+async fn assert_edited_tab_no_longer_writes(edits: &[(&str, &str)], cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(FENCE_BEFORE_A_PARAGRAPH, cx).await;
+    set_first_node_label("開始", &modal, &mut cx);
+    for (old, new) in edits {
+        rewrite_in_buffer(old, new, &mut cx);
+    }
+    cx.run_until_parked();
+    let before = cx.update_editor(|editor, _window, cx| editor.text(cx));
+
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            assert_eq!(modal.source_state, SourceState::Gone);
+            assert!(
+                modal.apply(true, window, cx).is_err(),
+                "saving must not write into what is left"
+            );
+        })
+    });
+    assert_eq!(
+        cx.update_editor(|editor, _window, cx| editor.text(cx)),
+        before
+    );
+}
+
+/// The same for a tab with no edits: it closes rather than staying on text
+/// that is no longer a diagram.
+#[gpui::test]
+async fn removing_the_fence_lines_closes_an_unedited_tab(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(FENCE_BEFORE_A_PARAGRAPH, cx).await;
+    let events = record_events(&modal, &mut cx);
+    rewrite_in_buffer("```mermaid\n", "", &mut cx);
+    rewrite_in_buffer("```\n", "", &mut cx);
+    cx.run_until_parked();
+    assert_eq!(events.borrow().last().copied(), Some("close"));
+}
+
+/// An empty fence has nothing under its anchors, so deleting it whole leaves
+/// "nothing" there just the same. The diagram picked in the tab afterwards
+/// must not be written where the fence used to be.
+#[gpui::test]
+async fn a_deleted_empty_fence_is_not_written_to(cx: &mut TestAppContext) {
+    let _app_state = init_test(cx);
+    let mut cx = EditorTestContext::new(cx).await;
+    cx.update_buffer(|buffer, cx| buffer.set_language(Some(markdown_language()), cx));
+    cx.set_state("前\n\n```mermaid\nˇ```\n\n後\n");
+    let editor = cx.editor.clone();
+    let target = cx
+        .update_editor(|editor, _window, cx| editor.mermaid_fence_target(cx))
+        .expect("the cursor is inside a mermaid fence");
+    assert!(!target.inserts_fence());
+    let modal = cx.update(|window, cx| {
+        cx.new(|cx| MermaidEditor::new(editor.downgrade(), target, None, window, cx))
+    });
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            let document = parse_document("flowchart LR\n    A --> B")
+                .unwrap_or_else(|error| panic!("the diagram should parse: {error}"));
+            modal.set_document(document, window, cx);
+        })
+    });
+    cx.run_until_parked();
+    rewrite_in_buffer("```mermaid\n```\n", "", &mut cx);
+    cx.run_until_parked();
+
+    let result =
+        cx.update(|window, cx| modal.update(cx, |modal, cx| modal.apply(true, window, cx)));
+    assert!(result.is_err(), "the fence is gone");
+    assert_eq!(
+        cx.update_editor(|editor, _window, cx| editor.text(cx)),
+        "前\n\n\n後\n"
+    );
+}
+
+#[test]
+fn fit_to_pane_enlarges_a_small_drawing_and_shrinks_a_large_one() {
+    let frame = size(px(1000.), px(800.));
+    let small = fit_scale(size(px(120.), px(60.)), frame);
+    assert_eq!(
+        small, PREVIEW_MAX_FIT_SCALE,
+        "a tiny diagram is enlarged up to the cap"
+    );
+    let medium = fit_scale(size(px(400.), px(100.)), frame);
+    assert!(
+        (medium - (1000. - 24.) / 400.).abs() < 0.001,
+        "the width limits a wide diagram: {medium}"
+    );
+    let large = fit_scale(size(px(3000.), px(400.)), frame);
+    assert!(large < 1., "a large diagram is shrunk: {large}");
+}
+
+#[test]
+fn the_raster_follows_the_zoom_in_steps_and_within_its_memory() {
+    let natural = size(px(200.), px(100.));
+    // At 100% on a 1x display the 2x smoothing raster is already sharp.
+    assert_eq!(raster_scale_for(1., 1., natural), 1.);
+    // Shown at 3x on a 1.5x display: 4.5 device pixels per natural pixel,
+    // which the raster scale steps up to cover.
+    assert_eq!(raster_scale_for(3., 1.5, natural), 3.);
+    assert_eq!(
+        raster_scale_for(2.9, 1.5, natural),
+        3.,
+        "steps, not every value"
+    );
+    // A large drawing stops where a raster would take too much memory.
+    let large = size(px(2000.), px(1500.));
+    assert!(raster_scale_for(4., 2., large) * 2. * 2000. <= MAX_RASTER_SIDE);
+    assert!((2000. * 1500.) * (raster_scale_for(4., 2., large) * 2.).powi(2) <= MAX_RASTER_PIXELS);
+}
+
+/// Zooming starts from what is on screen, so the first "+" after "fit to
+/// pane" enlarges the fitted drawing rather than jumping back to 100%.
+#[gpui::test]
+async fn zooming_steps_from_the_fitted_scale(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(FENCE_BEFORE_A_PARAGRAPH, cx).await;
+    cx.update(|_window, cx| {
+        modal.update(cx, |modal, cx| {
+            modal.preview.natural_size = Some(size(px(100.), px(50.)));
+            modal.preview_frame.set(Some(size(px(424.), px(424.))));
+            assert_eq!(modal.preview_display_scale(), Some(4.));
+            modal.zoom_preview_by(-1., cx);
+            assert_eq!(
+                modal.preview_zoom,
+                PreviewZoom::Scale(4. / PREVIEW_ZOOM_STEP)
+            );
+            modal.zoom_preview_by(100., cx);
+            assert_eq!(modal.preview_zoom, PreviewZoom::Scale(PREVIEW_MAX_SCALE));
+        })
+    });
+}
+
 fn set_first_node_label(
     text: &'static str,
     modal: &Entity<MermaidEditor>,

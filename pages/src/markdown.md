@@ -83,8 +83,9 @@ in the agent panel.
 - **Edit Mermaid Diagram…** (right-click, the **Edit** button on a diagram in the preview, or
   the formatting bar) opens a structured editor for the diagram at or near the cursor, as a
   tab beside your files: the form on the left and a large preview on the right (drag the line
-  between them; in a narrow pane they are stacked). The preview fits the pane, or shows the
-  diagram at its actual size with scrolling. Opening the same diagram again brings its tab
+  between them; in a narrow pane they are stacked). The preview enlarges or shrinks the
+  diagram to fill the pane, or shows it at the size you pick with the zoom buttons or
+  Ctrl+scroll (with scrolling when it is larger than the pane). Opening the same diagram again brings its tab
   forward. **Apply** (Ctrl+Enter, or saving the tab) writes the diagram back as one undo step
   and keeps the tab open; a dot on the tab marks edits not yet applied, and closing the tab
   asks what to do with them. If the diagram is changed in the document while the tab has no
