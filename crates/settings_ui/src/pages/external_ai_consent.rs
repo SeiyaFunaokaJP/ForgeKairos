@@ -264,7 +264,7 @@ fn revoke(
 /// Only entries naming a host outright are removed — see
 /// [`NetworkAllowlistState::lists_host`] — so a broader `*.corp.example` the
 /// user wrote for their own reasons is never collateral damage.
-fn release_hosts(
+pub(crate) fn release_hosts(
     settings_window: &mut SettingsWindow,
     key: &SharedString,
     hosts: &[SharedString],
@@ -394,9 +394,46 @@ pub(crate) fn acknowledge_in(settings: &mut settings::SettingsContent, key: &str
     apply_acknowledgement(settings, key, true);
 }
 
+/// Records or withdraws consent as part of a settings update the caller is
+/// already making, so that editing or deleting a provider and its consent land
+/// in one write.
+pub(crate) fn set_acknowledged_in(
+    settings: &mut settings::SettingsContent,
+    key: &str,
+    acknowledged: bool,
+) {
+    // Withdrawing from a file that never recorded any consent must not add an
+    // empty list to it.
+    if !acknowledged && settings.acknowledged_external_ai_providers.is_none() {
+        return;
+    }
+    apply_acknowledgement(settings, key, acknowledged);
+}
+
+/// Whether `settings` (one settings file's content) records consent for `key`.
+pub(crate) fn is_acknowledged_in(settings: &settings::SettingsContent, key: &str) -> bool {
+    settings
+        .acknowledged_external_ai_providers
+        .as_ref()
+        .is_some_and(|providers| providers.iter().any(|entry| entry == key))
+}
+
+/// The endpoint each built-in provider is using: the `api_url` the user set,
+/// or the provider's default. The system keychain keys API keys by this URL, so
+/// a user-defined provider aimed at the same URL shares its key with them.
+pub(crate) fn builtin_provider_api_urls(cx: &App) -> Vec<String> {
+    BUILTIN_PROVIDERS
+        .iter()
+        .filter_map(|builtin| {
+            configured_api_url(builtin.id, cx)
+                .or_else(|| builtin.default_api_url.map(str::to_string))
+        })
+        .collect()
+}
+
 /// The host of an API URL, or `None` when it has no host at all (a relative or
 /// malformed URL).
-fn host_of(api_url: &str) -> Option<SharedString> {
+pub(crate) fn host_of(api_url: &str) -> Option<SharedString> {
     let url = url::Url::parse(api_url.trim()).ok()?;
     let host = url.host_str()?;
     Some(http_client::RequestHost::parse(host)?.to_string().into())

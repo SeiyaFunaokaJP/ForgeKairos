@@ -1,19 +1,32 @@
-use std::{collections::HashSet, path::Path, sync::Arc, time::Duration};
+use std::{
+    collections::HashSet,
+    path::Path,
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Duration,
+};
 
 use editor::Editor;
 use futures::AsyncReadExt as _;
-use gpui::{AnyView, Entity, Focusable as _, FutureExt as _, ScrollHandle, Task, prelude::*};
+use gpui::{
+    AnyView, Entity, Focusable as _, FutureExt as _, PromptLevel, ScrollHandle, Task, prelude::*,
+};
 use http_client::{AsyncBody, EgressDenied, HttpClient, Request, StatusCode};
 use language_model::{
-    ApiKeyConfiguration, CreateProviderSettingsView, IconOrSvg, InlineDescription,
-    LanguageModelProvider, LanguageModelProviderId, LanguageModelRegistry, ProviderSettingsView,
+    ApiKeyConfiguration, CompatibleProviderRemoval, CreateProviderSettingsView, IconOrSvg,
+    InlineDescription, LanguageModelProvider, LanguageModelProviderId, LanguageModelRegistry,
+    ProviderSettingsView,
 };
 use serde::Deserialize;
 
 use settings::{
-    AnthropicCompatibleAvailableModel, AnthropicCompatibleModelCapabilities,
-    AnthropicCompatibleSettingsContent, OpenAiCompatibleAvailableModel,
-    OpenAiCompatibleModelCapabilities, OpenAiCompatibleSettingsContent, OpenAiReasoningEffort,
+    AllLanguageModelSettingsContent, AnthropicCompatibleAvailableModel,
+    AnthropicCompatibleModelCapabilities, AnthropicCompatibleSettingsContent,
+    LanguageModelSelection, OpenAiCompatibleAvailableModel, OpenAiCompatibleModelCapabilities,
+    OpenAiCompatibleSettingsContent, OpenAiReasoningEffort, SettingsContent, SettingsStore,
 };
 use ui::{
     Banner, ButtonLink, Checkbox, ConfiguredApiCard, ContextMenu, Divider, DividerColor,
@@ -166,6 +179,7 @@ fn render_claude_subscription_card(
         .child(render_provider_header(
             i18n::tr(CLAUDE_SUBSCRIPTION_NAME).into(),
             IconOrSvg::Icon(IconName::AiClaude),
+            None,
             cx,
         ))
         .child(
@@ -631,11 +645,29 @@ fn render_provider_section(
         }
     };
 
+    let origin = compatible_provider_origin(provider_id.0.as_ref(), cx);
+    let actions = (origin == Some(CompatibleProviderOrigin::UserFile))
+        .then(|| render_compatible_provider_actions(provider_id.0.clone(), cx));
+
     v_flex()
         .min_w_0()
         .map(|s| if is_first { s.pt_4() } else { s.pt_8() })
         .gap_1p5()
-        .child(render_provider_header(provider_name, provider.icon(), cx))
+        .child(render_provider_header(
+            provider_name,
+            provider.icon(),
+            actions,
+            cx,
+        ))
+        .when(origin == Some(CompatibleProviderOrigin::Elsewhere), |this| {
+            this.child(
+                Label::new(i18n::t!(
+                    "This provider is defined outside the top level of your settings.json (for example, in a release channel, OS or profile override), so it can't be edited or deleted here. Edit it in settings.json."
+                ))
+                .size(LabelSize::Small)
+                .color(Color::Muted),
+            )
+        })
         .child(body)
         .when(provider_id.0.as_ref() == ANTHROPIC_PROVIDER_ID, |this| {
             this.child(
@@ -654,6 +686,7 @@ fn render_provider_section(
 fn render_provider_header(
     provider_name: SharedString,
     icon: IconOrSvg,
+    actions: Option<AnyElement>,
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
     let icon = match icon {
@@ -666,14 +699,66 @@ fn render_provider_header(
         .w_full()
         .gap_1p5()
         .child(
-            h_flex().gap_1p5().child(icon).child(
-                Label::new(provider_name)
-                    .size(LabelSize::Small)
-                    .color(Color::Muted)
-                    .buffer_font(cx),
-            ),
+            h_flex()
+                .w_full()
+                .min_w_0()
+                .gap_1p5()
+                .child(icon)
+                .child(
+                    Label::new(provider_name)
+                        .size(LabelSize::Small)
+                        .color(Color::Muted)
+                        .buffer_font(cx)
+                        .truncate(),
+                )
+                .when_some(actions, |this, actions| {
+                    this.child(div().flex_1()).child(actions)
+                }),
         )
         .child(Divider::horizontal().color(DividerColor::BorderFaded))
+}
+
+/// The pencil and trash of a provider the user added, drawn the way the
+/// settings window's string lists draw theirs.
+fn render_compatible_provider_actions(
+    provider_name: SharedString,
+    cx: &mut Context<SettingsWindow>,
+) -> AnyElement {
+    let name = provider_name.to_string();
+    h_flex()
+        .flex_none()
+        .child(
+            IconButton::new(
+                SharedString::from(format!("edit-llm-provider-{provider_name}")),
+                IconName::Pencil,
+            )
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .tab_index(0_isize)
+            .aria_label(i18n::t!("Edit {name}", name = name.as_str()))
+            .tooltip(Tooltip::text(i18n::t!("Edit")))
+            .on_click(cx.listener({
+                let provider_name = provider_name.clone();
+                move |this, _, window, cx| {
+                    open_llm_provider_edit_form(this, provider_name.clone(), window, cx);
+                }
+            })),
+        )
+        .child(
+            IconButton::new(
+                SharedString::from(format!("delete-llm-provider-{provider_name}")),
+                IconName::Trash,
+            )
+            .icon_size(IconSize::Small)
+            .icon_color(Color::Muted)
+            .tab_index(0_isize)
+            .aria_label(i18n::t!("Delete {name}", name = name.as_str()))
+            .tooltip(Tooltip::text(i18n::t!("Delete")))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                confirm_delete_compatible_provider(this, provider_name.clone(), window, cx);
+            })),
+        )
+        .into_any_element()
 }
 
 fn render_api_key_providers_item(
@@ -1046,10 +1131,41 @@ pub(crate) struct LlmProviderForm {
     /// `acknowledged_external_ai_providers` once the provider is actually
     /// saved, since the consent is keyed by the provider name.
     consent_acknowledged: bool,
+    /// Set when the form edits a provider that is already saved rather than
+    /// adding one.
+    editing: Option<EditedProvider>,
     /// Redraws the form as the endpoint is typed, so that the warning appears
     /// and disappears with the URL. Editors notify their own view on edit, which
     /// would otherwise not reach the settings window.
     _api_url_subscription: gpui::Subscription,
+    /// Redraws the form as the name is typed, for the note about renaming.
+    _provider_name_subscription: gpui::Subscription,
+}
+
+/// What the edited provider looked like in settings.json when the form opened.
+#[derive(Clone, Debug)]
+struct EditedProvider {
+    original_name: String,
+    original_api_url: String,
+    /// Consent was recorded for the provider under its original name.
+    was_acknowledged: bool,
+}
+
+impl EditedProvider {
+    /// The system keychain keys an API key by the provider's URL, so a key saved
+    /// for one URL is never sent to another one.
+    fn api_url_changed(&self, api_url: &str) -> bool {
+        self.original_api_url != api_url
+    }
+
+    /// Consent is given for a host. It follows the provider through a rename,
+    /// but a new host has to be consented to again.
+    fn consent_carries_over(&self, api_url: &str) -> bool {
+        self.was_acknowledged
+            && external_ai_consent::host_of(api_url).is_some_and(|host| {
+                external_ai_consent::host_of(&self.original_api_url) == Some(host)
+            })
+    }
 }
 
 impl LlmProviderForm {
@@ -1061,6 +1177,7 @@ impl LlmProviderForm {
         let provider_name = new_input(kind.label(), None, false, window, cx);
         let api_url = new_input(kind.default_api_url(), None, false, window, cx);
         let api_url_subscription = cx.observe(&api_url, |_, _, cx| cx.notify());
+        let provider_name_subscription = cx.observe(&provider_name, |_, _, cx| cx.notify());
         Self {
             kind,
             provider_name,
@@ -1078,9 +1195,300 @@ impl LlmProviderForm {
             models_fetch: None,
             models_fetch_task: None,
             consent_acknowledged: false,
+            editing: None,
             _api_url_subscription: api_url_subscription,
+            _provider_name_subscription: provider_name_subscription,
         }
     }
+
+    /// The add form, filled in with a saved provider. The API key field starts
+    /// empty: the saved key stays in the system keychain unless a new one is
+    /// typed.
+    fn for_saved_provider(
+        name: &str,
+        entry: &CompatibleProviderEntry,
+        was_acknowledged: bool,
+        window: &mut Window,
+        cx: &mut Context<SettingsWindow>,
+    ) -> Self {
+        let mut form = Self::new(entry.kind(), window, cx);
+        set_input_text(&form.provider_name, name, window, cx);
+        set_input_text(&form.api_url, entry.api_url(), window, cx);
+        form.api_key.update(cx, |editor, cx| {
+            editor.set_placeholder_text(i18n::t!("Leave blank to keep the saved key"), window, cx);
+        });
+        form.no_api_key = entry.no_api_key();
+        form.models = match entry {
+            CompatibleProviderEntry::OpenAi(entry) => entry
+                .available_models
+                .iter()
+                .map(|model| ModelInput::from_open_ai(model, window, cx))
+                .collect(),
+            CompatibleProviderEntry::Anthropic(entry) => entry
+                .available_models
+                .iter()
+                .map(|model| ModelInput::from_anthropic(model, window, cx))
+                .collect(),
+        };
+        if form.models.is_empty() {
+            form.models.push(ModelInput::new(0, window, cx));
+        }
+        form.editing = Some(EditedProvider {
+            original_name: name.to_string(),
+            original_api_url: entry.api_url().to_string(),
+            was_acknowledged,
+        });
+        form
+    }
+}
+
+fn set_input_text(
+    editor: &Entity<Editor>,
+    text: &str,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    editor.update(cx, |editor, cx| editor.set_text(text, window, cx));
+}
+
+fn optional_number_text(value: Option<u64>) -> String {
+    value.map(|value| value.to_string()).unwrap_or_default()
+}
+
+/// A user-defined compatible provider as settings.json holds it.
+#[derive(Clone, Debug, PartialEq)]
+enum CompatibleProviderEntry {
+    OpenAi(OpenAiCompatibleSettingsContent),
+    Anthropic(AnthropicCompatibleSettingsContent),
+}
+
+impl CompatibleProviderEntry {
+    fn kind(&self) -> CompatibleProviderKind {
+        match self {
+            Self::OpenAi(_) => CompatibleProviderKind::OpenAi,
+            Self::Anthropic(_) => CompatibleProviderKind::Anthropic,
+        }
+    }
+
+    fn api_url(&self) -> &str {
+        match self {
+            Self::OpenAi(entry) => &entry.api_url,
+            Self::Anthropic(entry) => &entry.api_url,
+        }
+    }
+
+    fn no_api_key(&self) -> bool {
+        match self {
+            Self::OpenAi(entry) => entry.no_api_key == Some(true),
+            Self::Anthropic(entry) => entry.no_api_key == Some(true),
+        }
+    }
+}
+
+/// The entry named `name`, looked up the way the registry resolves the name:
+/// an OpenAI-compatible entry wins over an Anthropic-compatible one.
+fn compatible_provider_in(
+    language_models: Option<&AllLanguageModelSettingsContent>,
+    name: &str,
+) -> Option<CompatibleProviderEntry> {
+    let language_models = language_models?;
+    if let Some(entry) = language_models
+        .openai_compatible
+        .as_ref()
+        .and_then(|providers| providers.get(name))
+    {
+        return Some(CompatibleProviderEntry::OpenAi(entry.clone()));
+    }
+    language_models
+        .anthropic_compatible
+        .as_ref()
+        .and_then(|providers| providers.get(name))
+        .map(|entry| CompatibleProviderEntry::Anthropic(entry.clone()))
+}
+
+/// The entry as the top level of the user's settings.json has it, which is
+/// the only place the settings window writes providers to.
+fn user_file_compatible_provider(name: &str, cx: &App) -> Option<CompatibleProviderEntry> {
+    let user_settings = cx.global::<SettingsStore>().raw_user_settings()?;
+    compatible_provider_in(user_settings.content.language_models.as_ref(), name)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CompatibleProviderOrigin {
+    /// The top level of the user's settings.json: editable here.
+    UserFile,
+    /// A release channel, OS or profile override, which the settings window
+    /// does not write. A project's `.zed/settings.json` never gets here: the
+    /// provider registry reads the global settings only.
+    Elsewhere,
+}
+
+fn compatible_provider_origin(name: &str, cx: &App) -> Option<CompatibleProviderOrigin> {
+    let merged = cx.global::<SettingsStore>().merged_settings();
+    compatible_provider_in(merged.language_models.as_ref(), name)?;
+    Some(if user_file_compatible_provider(name, cx).is_some() {
+        CompatibleProviderOrigin::UserFile
+    } else {
+        CompatibleProviderOrigin::Elsewhere
+    })
+}
+
+/// Whether another provider talks to `api_url`, and so reads the API key the
+/// system keychain holds for it: another compatible provider, a built-in one,
+/// or an edit prediction provider.
+fn api_url_is_shared(api_url: &str, excluding: &str, cx: &App) -> bool {
+    let merged = cx.global::<SettingsStore>().merged_settings();
+    let used_by_compatible = merged
+        .language_models
+        .as_ref()
+        .is_some_and(|language_models| {
+            let openai = language_models
+                .openai_compatible
+                .iter()
+                .flatten()
+                .filter(|(name, _)| name.as_ref() != excluding)
+                .any(|(_, entry)| entry.api_url == api_url);
+            let anthropic = language_models
+                .anthropic_compatible
+                .iter()
+                .flatten()
+                .filter(|(name, _)| name.as_ref() != excluding)
+                .any(|(_, entry)| entry.api_url == api_url);
+            openai || anthropic
+        });
+    // Edit prediction keeps its Codestral and OpenAI-compatible keys in the same
+    // keychain, keyed by their URLs too.
+    let used_by_edit_prediction = [
+        codestral::codestral_api_url(cx),
+        edit_prediction::open_ai_compatible::open_ai_compatible_api_url(cx),
+    ]
+    .iter()
+    .any(|url| url.as_ref() == api_url);
+    used_by_compatible
+        || used_by_edit_prediction
+        || external_ai_consent::builtin_provider_api_urls(cx)
+            .iter()
+            .any(|url| url == api_url)
+}
+
+/// Points every model choice in the agent settings that names `provider` at
+/// `replacement`, or clears it when there is none. Returns the settings it
+/// changed, for the delete confirmation and for tests.
+fn rewrite_provider_references(
+    settings: &mut SettingsContent,
+    provider: &str,
+    replacement: Option<&str>,
+) -> Vec<String> {
+    let Some(agent) = settings.agent.as_mut() else {
+        return Vec::new();
+    };
+    let names_provider = |selection: &LanguageModelSelection| selection.provider.0 == provider;
+    let rename = |selection: &mut LanguageModelSelection, replacement: &str| {
+        selection.provider.0 = replacement.to_string();
+    };
+    let mut changed = Vec::new();
+
+    for (path, slot) in [
+        ("agent.default_model", &mut agent.default_model),
+        ("agent.subagent_model", &mut agent.subagent_model),
+        (
+            "agent.inline_assistant_model",
+            &mut agent.inline_assistant_model,
+        ),
+        (
+            "agent.commit_message_model",
+            &mut agent.commit_message_model,
+        ),
+        (
+            "agent.thread_summary_model",
+            &mut agent.thread_summary_model,
+        ),
+        (
+            "agent.permission_judge_model",
+            &mut agent.permission_judge_model,
+        ),
+        ("agent.compaction_model", &mut agent.compaction_model),
+    ] {
+        if !slot.as_ref().is_some_and(names_provider) {
+            continue;
+        }
+        match (replacement, slot.as_mut()) {
+            (Some(replacement), Some(selection)) => rename(selection, replacement),
+            _ => *slot = None,
+        }
+        changed.push(path.to_string());
+    }
+
+    for (path, list) in [
+        ("agent.favorite_models", Some(&mut agent.favorite_models)),
+        (
+            "agent.inline_alternatives",
+            agent.inline_alternatives.as_mut(),
+        ),
+    ] {
+        let Some(list) = list else {
+            continue;
+        };
+        if !list.iter().any(names_provider) {
+            continue;
+        }
+        match replacement {
+            Some(replacement) => list
+                .iter_mut()
+                .filter(|selection| names_provider(selection))
+                .for_each(|selection| rename(selection, replacement)),
+            None => list.retain(|selection| !names_provider(selection)),
+        }
+        changed.push(path.to_string());
+    }
+
+    if let Some(profiles) = agent.profiles.as_mut() {
+        for (profile_id, profile) in profiles.iter_mut() {
+            if !profile.default_model.as_ref().is_some_and(names_provider) {
+                continue;
+            }
+            match (replacement, profile.default_model.as_mut()) {
+                (Some(replacement), Some(selection)) => rename(selection, replacement),
+                _ => profile.default_model = None,
+            }
+            changed.push(format!("agent.profiles.{profile_id}.default_model"));
+        }
+    }
+
+    let parameter_names_provider = |parameters: &settings::LanguageModelParameters| {
+        parameters
+            .provider
+            .as_ref()
+            .is_some_and(|setting| setting.0 == provider)
+    };
+    if agent.model_parameters.iter().any(parameter_names_provider) {
+        match replacement {
+            Some(replacement) => {
+                for parameters in agent.model_parameters.iter_mut() {
+                    if let Some(setting) = parameters.provider.as_mut()
+                        && setting.0 == provider
+                    {
+                        setting.0 = replacement.to_string();
+                    }
+                }
+            }
+            None => agent
+                .model_parameters
+                .retain(|parameters| !parameter_names_provider(parameters)),
+        }
+        changed.push("agent.model_parameters".to_string());
+    }
+
+    changed
+}
+
+/// The agent settings in the user's settings.json that name `provider`.
+fn settings_referring_to(provider: &str, cx: &App) -> Vec<String> {
+    let Some(user_settings) = cx.global::<SettingsStore>().raw_user_settings() else {
+        return Vec::new();
+    };
+    let mut content = user_settings.content.as_ref().clone();
+    rewrite_provider_references(&mut content, provider, None)
 }
 
 /// What the last model-listing fetch produced, rendered inline in the model
@@ -1105,9 +1513,69 @@ struct ModelInput {
     supports_thinking: ToggleState,
     interleaved_reasoning: ToggleState,
     max_tokens_parameter: ToggleState,
+    /// The model's name in settings.json when the row was loaded from a saved
+    /// provider, so that the fields this form does not show (a display name,
+    /// for instance) are kept even when the row is renamed.
+    original_name: Option<String>,
 }
 
 impl ModelInput {
+    fn from_open_ai(
+        model: &OpenAiCompatibleAvailableModel,
+        window: &mut Window,
+        cx: &mut Context<SettingsWindow>,
+    ) -> Self {
+        let mut input = Self::new(0, window, cx);
+        set_input_text(&input.name, &model.name, window, cx);
+        set_input_text(
+            &input.max_completion_tokens,
+            &optional_number_text(model.max_completion_tokens),
+            window,
+            cx,
+        );
+        set_input_text(
+            &input.max_output_tokens,
+            &optional_number_text(model.max_output_tokens),
+            window,
+            cx,
+        );
+        set_input_text(&input.max_tokens, &model.max_tokens.to_string(), window, cx);
+        input.reasoning_effort = model
+            .reasoning_effort
+            .unwrap_or(OpenAiReasoningEffort::Medium);
+        input.supports_thinking = model.reasoning_effort.is_some().into();
+        let capabilities = &model.capabilities;
+        input.supports_tools = capabilities.tools.into();
+        input.supports_images = capabilities.images.into();
+        input.supports_parallel_tool_calls = capabilities.parallel_tool_calls.into();
+        input.supports_prompt_cache_key = capabilities.prompt_cache_key.into();
+        input.supports_chat_completions = capabilities.chat_completions.into();
+        input.interleaved_reasoning = capabilities.interleaved_reasoning.into();
+        input.max_tokens_parameter = capabilities.max_tokens_parameter.into();
+        input.original_name = Some(model.name.clone());
+        input
+    }
+
+    fn from_anthropic(
+        model: &AnthropicCompatibleAvailableModel,
+        window: &mut Window,
+        cx: &mut Context<SettingsWindow>,
+    ) -> Self {
+        let mut input = Self::new(0, window, cx);
+        set_input_text(&input.name, &model.name, window, cx);
+        set_input_text(
+            &input.max_output_tokens,
+            &optional_number_text(model.max_output_tokens),
+            window,
+            cx,
+        );
+        set_input_text(&input.max_tokens, &model.max_tokens.to_string(), window, cx);
+        input.supports_tools = model.capabilities.tools.into();
+        input.supports_images = model.capabilities.images.into();
+        input.original_name = Some(model.name.clone());
+        input
+    }
+
     fn new(_index: usize, window: &mut Window, cx: &mut Context<SettingsWindow>) -> Self {
         let OpenAiCompatibleModelCapabilities {
             tools,
@@ -1145,6 +1613,7 @@ impl ModelInput {
             supports_thinking: ToggleState::Unselected,
             interleaved_reasoning: interleaved_reasoning.into(),
             max_tokens_parameter: max_tokens_parameter.into(),
+            original_name: None,
         }
     }
 }
@@ -1187,6 +1656,37 @@ fn open_llm_provider_form(
     );
 }
 
+fn open_llm_provider_edit_form(
+    settings_window: &mut SettingsWindow,
+    provider_name: SharedString,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    // Read from the file the form will write back to, not from the merged
+    // settings: an override elsewhere must not be copied into it.
+    let Some(entry) = user_file_compatible_provider(&provider_name, cx) else {
+        log::warn!("provider {provider_name} is not in the user settings file");
+        return;
+    };
+    let was_acknowledged = external_ai_consent::is_acknowledged(&provider_name, cx);
+    settings_window.llm_provider_form = Some(LlmProviderForm::for_saved_provider(
+        &provider_name,
+        &entry,
+        was_acknowledged,
+        window,
+        cx,
+    ));
+    settings_window.push_dynamic_sub_page(
+        i18n::t!("Edit {name}", name = provider_name.as_ref()),
+        "Agent Configuration",
+        Some("llm_providers"),
+        true,
+        render_llm_provider_form_page,
+        window,
+        cx,
+    );
+}
+
 fn render_llm_provider_form_page(
     settings_window: &SettingsWindow,
     scroll_handle: &ScrollHandle,
@@ -1199,12 +1699,22 @@ fn render_llm_provider_form_page(
 
     // The provider does not exist yet, so the warning follows whatever endpoint
     // is currently typed: pointing it at loopback makes it disappear (ADR-F10).
-    let consent = external_ai_consent::form_target(
-        &form.provider_name.read(cx).text(cx),
-        &form.api_url.read(cx).text(cx),
-        form.kind.label(),
-    );
+    let typed_name = form.provider_name.read(cx).text(cx);
+    let typed_api_url = form.api_url.read(cx).text(cx);
+    // An edit that keeps the host keeps the consent already given for it; a new
+    // host is warned about exactly like a new provider.
+    let consent = external_ai_consent::form_target(&typed_name, &typed_api_url, form.kind.label())
+        .filter(|_| {
+            !form
+                .editing
+                .as_ref()
+                .is_some_and(|editing| editing.consent_carries_over(&typed_api_url))
+        });
     let consent_acknowledged = form.consent_acknowledged;
+    let is_renamed = form
+        .editing
+        .as_ref()
+        .is_some_and(|editing| editing.original_name != typed_name);
 
     v_flex()
         .size_full()
@@ -1240,6 +1750,15 @@ fn render_llm_provider_form_page(
                     &form.provider_name,
                     cx,
                 ))
+                .when(is_renamed, |this| {
+                    this.child(
+                        Label::new(i18n::t!(
+                            "Renaming: the settings that choose this provider's models and your consent move to the new name. Saved threads keep the old name; to continue one, choose a model again."
+                        ))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                    )
+                })
                 .child(render_form_field(
                     i18n::t!("API URL"),
                     i18n::t!("The base URL for the compatible API."),
@@ -1362,9 +1881,22 @@ fn render_api_key_field(
                     ),
                 )
             } else {
+                let description = match form.editing.as_ref() {
+                    None => i18n::t!("Stored in the system keychain, not in settings.json."),
+                    Some(editing)
+                        if editing.api_url_changed(&form.api_url.read(cx).text(cx)) =>
+                    {
+                        i18n::t!(
+                            "The saved key belongs to the previous API URL and is not sent to the new one. Enter the key for this URL."
+                        )
+                    }
+                    Some(_) => i18n::t!(
+                        "Leave blank to keep the key saved in the system keychain, or enter a new key to replace it."
+                    ),
+                };
                 this.child(render_form_field(
                     i18n::t!("API Key"),
-                    i18n::t!("Stored in the system keychain, not in settings.json."),
+                    description,
                     &form.api_key,
                     cx,
                 ))
@@ -1988,6 +2520,7 @@ struct LlmProviderFormValues {
     no_api_key: bool,
     models: Vec<ModelValues>,
     consent_acknowledged: bool,
+    editing: Option<EditedProvider>,
 }
 
 struct ModelValues {
@@ -2004,11 +2537,44 @@ struct ModelValues {
     supports_thinking: bool,
     interleaved_reasoning: bool,
     max_tokens_parameter: bool,
+    original_name: Option<String>,
 }
 
 enum ParsedModels {
     OpenAi(Vec<OpenAiCompatibleAvailableModel>),
     Anthropic(Vec<AnthropicCompatibleAvailableModel>),
+}
+
+fn llm_provider_form_values(form: &LlmProviderForm, cx: &App) -> LlmProviderFormValues {
+    LlmProviderFormValues {
+        kind: form.kind,
+        provider_name: form.provider_name.read(cx).text(cx),
+        api_url: form.api_url.read(cx).text(cx),
+        api_key: form.api_key.read(cx).text(cx),
+        no_api_key: form.no_api_key,
+        models: form
+            .models
+            .iter()
+            .map(|model| ModelValues {
+                name: model.name.read(cx).text(cx),
+                max_completion_tokens: model.max_completion_tokens.read(cx).text(cx),
+                max_output_tokens: model.max_output_tokens.read(cx).text(cx),
+                max_tokens: model.max_tokens.read(cx).text(cx),
+                reasoning_effort: model.reasoning_effort,
+                supports_tools: model.supports_tools.selected(),
+                supports_images: model.supports_images.selected(),
+                supports_parallel_tool_calls: model.supports_parallel_tool_calls.selected(),
+                supports_prompt_cache_key: model.supports_prompt_cache_key.selected(),
+                supports_chat_completions: model.supports_chat_completions.selected(),
+                supports_thinking: model.supports_thinking.selected(),
+                interleaved_reasoning: model.interleaved_reasoning.selected(),
+                max_tokens_parameter: model.max_tokens_parameter.selected(),
+                original_name: model.original_name.clone(),
+            })
+            .collect(),
+        consent_acknowledged: form.consent_acknowledged,
+        editing: form.editing.clone(),
+    }
 }
 
 fn save_llm_provider_form(
@@ -2020,43 +2586,10 @@ fn save_llm_provider_form(
         let Some(form) = settings_window.llm_provider_form.as_ref() else {
             return;
         };
-        LlmProviderFormValues {
-            kind: form.kind,
-            provider_name: form.provider_name.read(cx).text(cx),
-            api_url: form.api_url.read(cx).text(cx),
-            api_key: form.api_key.read(cx).text(cx),
-            no_api_key: form.no_api_key,
-            models: form
-                .models
-                .iter()
-                .map(|model| ModelValues {
-                    name: model.name.read(cx).text(cx),
-                    max_completion_tokens: model.max_completion_tokens.read(cx).text(cx),
-                    max_output_tokens: model.max_output_tokens.read(cx).text(cx),
-                    max_tokens: model.max_tokens.read(cx).text(cx),
-                    reasoning_effort: model.reasoning_effort,
-                    supports_tools: model.supports_tools.selected(),
-                    supports_images: model.supports_images.selected(),
-                    supports_parallel_tool_calls: model.supports_parallel_tool_calls.selected(),
-                    supports_prompt_cache_key: model.supports_prompt_cache_key.selected(),
-                    supports_chat_completions: model.supports_chat_completions.selected(),
-                    supports_thinking: model.supports_thinking.selected(),
-                    interleaved_reasoning: model.interleaved_reasoning.selected(),
-                    max_tokens_parameter: model.max_tokens_parameter.selected(),
-                })
-                .collect(),
-            consent_acknowledged: form.consent_acknowledged,
-        }
+        llm_provider_form_values(form, cx)
     };
 
-    let ValidatedLlmProviderForm {
-        provider_name,
-        api_url,
-        api_key,
-        no_api_key,
-        models,
-        needs_consent,
-    } = match validate_llm_provider_form(&values, cx) {
+    let validated = match validate_llm_provider_form(&values, cx) {
         Ok(value) => value,
         Err(error) => {
             if let Some(form) = settings_window.llm_provider_form.as_mut() {
@@ -2066,6 +2599,32 @@ fn save_llm_provider_form(
             return;
         }
     };
+
+    if let Some(editing) = values.editing {
+        let original_model_names = values
+            .models
+            .into_iter()
+            .map(|model| model.original_name)
+            .collect();
+        save_edited_llm_provider(
+            validated,
+            editing,
+            original_model_names,
+            values.consent_acknowledged,
+            window,
+            cx,
+        );
+        return;
+    }
+
+    let ValidatedLlmProviderForm {
+        provider_name,
+        api_url,
+        api_key,
+        no_api_key,
+        models,
+        needs_consent,
+    } = validated;
 
     let fs = <dyn fs::Fs>::global(cx);
     cx.spawn_in(window, async move |this, cx| {
@@ -2154,11 +2713,431 @@ fn save_llm_provider_form(
     .detach_and_log_err(cx);
 }
 
+/// The change an edit makes to a provider's entry, applied to the settings file
+/// as it is when the write runs.
+struct ProviderEdit {
+    original_name: String,
+    provider_name: String,
+    api_url: String,
+    no_api_key: bool,
+    models: ParsedModels,
+    original_model_names: Vec<Option<String>>,
+    needs_consent: bool,
+    /// The warning was accepted in this form. Otherwise the endpoint kept its
+    /// host, and the consent carries over only if the file still records it.
+    consent_checked: bool,
+}
+
+/// The rows of the form, each starting from the saved model it was loaded from
+/// so that the fields the form does not show survive the edit.
+fn merge_edited_models<T>(
+    edited: Vec<T>,
+    original_names: &[Option<String>],
+    saved: &[T],
+    name_of: impl Fn(&T) -> &str,
+    keep_unshown_fields: impl Fn(&T, T) -> T,
+) -> Vec<T> {
+    edited
+        .into_iter()
+        .enumerate()
+        .map(|(index, model)| {
+            let saved_model = original_names
+                .get(index)
+                .and_then(Option::as_deref)
+                .and_then(|original| saved.iter().find(|saved| name_of(saved) == original));
+            match saved_model {
+                Some(saved_model) => keep_unshown_fields(saved_model, model),
+                None => model,
+            }
+        })
+        .collect()
+}
+
+/// Applies `edit` to the entry the settings file holds when the write runs,
+/// so that edits made one after another each start from the previous one.
+/// Returns `false`, writing nothing, when the entry is no longer in the file.
+fn apply_provider_edit(settings: &mut SettingsContent, edit: ProviderEdit) -> bool {
+    let ProviderEdit {
+        original_name,
+        provider_name,
+        api_url,
+        no_api_key,
+        models,
+        original_model_names,
+        needs_consent,
+        consent_checked,
+    } = edit;
+    // Read from the file at write time: consent withdrawn while the form was
+    // open must not come back without the warning being accepted again.
+    let consented =
+        consent_checked || external_ai_consent::is_acknowledged_in(settings, &original_name);
+    let Some(language_models) = settings.language_models.as_mut() else {
+        return false;
+    };
+    let no_api_key = no_api_key.then_some(true);
+
+    match models {
+        ParsedModels::OpenAi(models) => {
+            let Some(providers) = language_models.openai_compatible.as_mut() else {
+                return false;
+            };
+            let Some(mut entry) = providers.remove(original_name.as_str()) else {
+                return false;
+            };
+            entry.available_models = merge_edited_models(
+                models,
+                &original_model_names,
+                &entry.available_models,
+                |model| model.name.as_str(),
+                |saved, model| OpenAiCompatibleAvailableModel {
+                    display_name: saved.display_name.clone(),
+                    ..model
+                },
+            );
+            entry.api_url = api_url;
+            entry.no_api_key = no_api_key;
+            providers.insert(Arc::from(provider_name.as_str()), entry);
+        }
+        ParsedModels::Anthropic(models) => {
+            let Some(providers) = language_models.anthropic_compatible.as_mut() else {
+                return false;
+            };
+            let Some(mut entry) = providers.remove(original_name.as_str()) else {
+                return false;
+            };
+            entry.available_models = merge_edited_models(
+                models,
+                &original_model_names,
+                &entry.available_models,
+                |model| model.name.as_str(),
+                |saved, model| AnthropicCompatibleAvailableModel {
+                    display_name: saved.display_name.clone(),
+                    tool_override: saved.tool_override.clone(),
+                    default_temperature: saved.default_temperature,
+                    extra_beta_headers: saved.extra_beta_headers.clone(),
+                    mode: saved.mode,
+                    capabilities: AnthropicCompatibleModelCapabilities {
+                        prompt_caching: saved.capabilities.prompt_caching,
+                        ..model.capabilities
+                    },
+                    ..model
+                },
+            );
+            entry.api_url = api_url;
+            entry.no_api_key = no_api_key;
+            providers.insert(Arc::from(provider_name.as_str()), entry);
+        }
+    }
+
+    if original_name != provider_name {
+        rewrite_provider_references(settings, &original_name, Some(&provider_name));
+        external_ai_consent::set_acknowledged_in(settings, &original_name, false);
+    }
+    // A provider aimed at loopback needs no consent; leaving one recorded would
+    // pre-approve whatever host the entry is later pointed at by hand.
+    external_ai_consent::set_acknowledged_in(settings, &provider_name, needs_consent && consented);
+    true
+}
+
+fn save_edited_llm_provider(
+    validated: ValidatedLlmProviderForm,
+    editing: EditedProvider,
+    original_model_names: Vec<Option<String>>,
+    consent_checked: bool,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let ValidatedLlmProviderForm {
+        provider_name,
+        api_url,
+        api_key,
+        no_api_key,
+        models,
+        needs_consent,
+    } = validated;
+    let api_url_changed = editing.api_url_changed(&api_url);
+    let original_host = external_ai_consent::host_of(&editing.original_api_url);
+    let released_host = original_host.filter(|host| {
+        editing.was_acknowledged && external_ai_consent::host_of(&api_url).as_ref() != Some(host)
+    });
+
+    let fs = <dyn fs::Fs>::global(cx);
+    cx.spawn_in(window, async move |this, cx| {
+        let result = async {
+            let provider_id = LanguageModelProviderId(provider_name.clone().into());
+            let original_id = LanguageModelProviderId(editing.original_name.clone().into());
+            let applied = Arc::new(AtomicBool::new(false));
+            let edit = ProviderEdit {
+                original_name: editing.original_name.clone(),
+                provider_name: provider_name.clone(),
+                api_url: api_url.clone(),
+                no_api_key,
+                models,
+                original_model_names,
+                needs_consent,
+                consent_checked,
+            };
+            let settings_update = cx.update(|_window, cx| {
+                let applied = applied.clone();
+                settings::update_settings_file_with_completion(fs, cx, move |settings, _cx| {
+                    applied.store(apply_provider_edit(settings, edit), Ordering::SeqCst);
+                })
+            })?;
+            settings_update
+                .await
+                .map_err(|_| anyhow::anyhow!("Settings update was canceled"))??;
+            if !applied.load(Ordering::SeqCst) {
+                anyhow::bail!(
+                    "{}",
+                    i18n::t!(
+                        "This provider is no longer in settings.json, so nothing was saved. Close the form and add it again."
+                    )
+                );
+            }
+
+            if let Some(api_key) = api_key {
+                let set_api_key = cx.update(|_window, cx| {
+                    let provider = LanguageModelRegistry::read_global(cx)
+                        .provider(&provider_id)
+                        .ok_or_else(|| anyhow::anyhow!("Provider was not registered"))?;
+                    anyhow::Ok(provider.set_api_key(Some(api_key), cx))
+                })??;
+                set_api_key.await?;
+            }
+
+            // The key saved for the old URL would otherwise stay in the keychain
+            // with nothing left to use it.
+            if api_url_changed {
+                let credentials = cx.update(|_window, cx| {
+                    (!api_url_is_shared(&editing.original_api_url, &provider_name, cx))
+                        .then(|| zed_credentials_provider::global(cx))
+                })?;
+                if let Some(credentials) = credentials {
+                    credentials
+                        .delete_credentials(&editing.original_api_url, cx)
+                        .await
+                        .log_err();
+                }
+            }
+
+            cx.update(|window, cx| {
+                this.update(cx, |this, cx| {
+                    this.provider_configuration_views.remove(&original_id);
+                    this.provider_configuration_views.remove(&provider_id);
+                    if let Some(host) = released_host {
+                        external_ai_consent::release_hosts(
+                            this,
+                            &SharedString::from(editing.original_name.clone()),
+                            &[host],
+                            cx,
+                        );
+                    }
+                    this.llm_provider_form = None;
+                    this.pop_sub_page(window, cx);
+                })
+            })??;
+
+            anyhow::Ok(())
+        }
+        .await;
+
+        if let Err(error) = result {
+            this.update(cx, |this, cx| {
+                if let Some(form) = this.llm_provider_form.as_mut() {
+                    form.error = Some(error.to_string().into());
+                }
+                cx.notify();
+            })?;
+        }
+
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
+}
+
+/// What deleting a provider removes, worked out before asking so that the
+/// confirmation says exactly that.
+#[derive(Debug, PartialEq)]
+struct ProviderDeletion {
+    provider_name: SharedString,
+    api_url: String,
+    /// The API key saved for `api_url` is deleted from the system keychain.
+    /// `false` when another provider uses the same URL, or the provider is
+    /// key-less.
+    deletes_api_key: bool,
+    /// Another provider talks to the same URL, so its key is kept.
+    api_key_is_shared: bool,
+    /// Consent was given; it is withdrawn and these hosts leave the allowlist
+    /// unless another provider the user consented to needs them.
+    consent_hosts: Option<Vec<SharedString>>,
+    /// Agent settings that choose one of this provider's models.
+    references: Vec<String>,
+}
+
+fn plan_provider_deletion(provider_name: &SharedString, cx: &App) -> Option<ProviderDeletion> {
+    let entry = user_file_compatible_provider(provider_name, cx)?;
+    let api_key_is_shared = api_url_is_shared(entry.api_url(), provider_name, cx);
+    let consent_hosts = external_ai_consent::is_acknowledged(provider_name, cx).then(|| {
+        external_ai_consent::host_of(entry.api_url())
+            .into_iter()
+            .collect::<Vec<_>>()
+    });
+    Some(ProviderDeletion {
+        provider_name: provider_name.clone(),
+        api_url: entry.api_url().to_string(),
+        deletes_api_key: !entry.no_api_key() && !api_key_is_shared,
+        api_key_is_shared: !entry.no_api_key() && api_key_is_shared,
+        consent_hosts,
+        references: settings_referring_to(provider_name, cx),
+    })
+}
+
+fn provider_deletion_detail(deletion: &ProviderDeletion) -> String {
+    let url = deletion.api_url.as_str();
+    let mut lines =
+        vec![i18n::t!("Removes its entry from language_models in settings.json.").to_string()];
+    if deletion.deletes_api_key {
+        lines.push(
+            i18n::t!(
+                "Deletes the API key saved in the system keychain for {url}. A key set in an environment variable is not affected."
+            ),
+        );
+    } else if deletion.api_key_is_shared {
+        lines.push(i18n::t!(
+            "Keeps the API key saved for {url}, because another provider uses the same URL."
+        ));
+    }
+    if deletion.consent_hosts.is_some() {
+        lines.push(
+            i18n::t!(
+                "Withdraws your consent to sending data to it, and removes its host from the allowlist unless another provider you consented to needs it."
+            )
+            .to_string(),
+        );
+    }
+    if !deletion.references.is_empty() {
+        let settings = deletion.references.join(i18n::tc!("list separator", ", "));
+        lines.push(
+            i18n::t!(
+                "Removes what refers to its models from these settings (a model chosen there goes back to the default): {settings}"
+            ),
+        );
+    }
+    lines.push(
+        i18n::t!(
+            "Saved threads that used it stay in the history; to continue one, choose another model."
+        )
+        .to_string(),
+    );
+    lines.join("\n\n")
+}
+
+/// Removes the provider, its consent and the model choices that name it, in
+/// one write from the file as it is when the write runs.
+fn apply_provider_deletion(settings: &mut SettingsContent, provider_name: &str) {
+    if let Some(language_models) = settings.language_models.as_mut() {
+        if let Some(providers) = language_models.openai_compatible.as_mut() {
+            providers.remove(provider_name);
+        }
+        if let Some(providers) = language_models.anthropic_compatible.as_mut() {
+            providers.remove(provider_name);
+        }
+    }
+    rewrite_provider_references(settings, provider_name, None);
+    external_ai_consent::set_acknowledged_in(settings, provider_name, false);
+}
+
+fn confirm_delete_compatible_provider(
+    _settings_window: &mut SettingsWindow,
+    provider_name: SharedString,
+    window: &mut Window,
+    cx: &mut Context<SettingsWindow>,
+) {
+    let Some(deletion) = plan_provider_deletion(&provider_name, cx) else {
+        log::warn!("provider {provider_name} is not in the user settings file");
+        return;
+    };
+    let name = provider_name.as_ref();
+    let message = i18n::t!("Delete the provider \"{name}\"?");
+    let detail = provider_deletion_detail(&deletion);
+    let answer = window.prompt(
+        PromptLevel::Warning,
+        &message,
+        Some(&detail),
+        &[i18n::t!("Delete"), i18n::t!("Cancel")],
+        cx,
+    );
+    let fs = <dyn fs::Fs>::global(cx);
+    cx.spawn_in(window, async move |this, cx| {
+        if answer.await != Ok(0) {
+            return anyhow::Ok(());
+        }
+        let ProviderDeletion {
+            provider_name,
+            api_url,
+            deletes_api_key,
+            consent_hosts,
+            ..
+        } = deletion;
+
+        let settings_update = cx.update(|_window, cx| {
+            let provider_name = provider_name.to_string();
+            settings::update_settings_file_with_completion(fs, cx, move |settings, _cx| {
+                apply_provider_deletion(settings, &provider_name);
+            })
+        })?;
+        settings_update
+            .await
+            .map_err(|_| anyhow::anyhow!("Settings update was canceled"))??;
+
+        if deletes_api_key {
+            let credentials = cx.update(|_window, cx| zed_credentials_provider::global(cx))?;
+            credentials.delete_credentials(&api_url, cx).await.log_err();
+        }
+
+        cx.update(|window, cx| {
+            this.update(cx, |this, cx| {
+                let provider_id = LanguageModelProviderId(provider_name.clone());
+                this.provider_configuration_views.remove(&provider_id);
+                if let Some(hosts) = consent_hosts {
+                    external_ai_consent::release_hosts(this, &provider_name, &hosts, cx);
+                }
+                if this.configuring_provider.as_ref() == Some(&provider_id) {
+                    this.configuring_provider = None;
+                    this.pop_sub_page(window, cx);
+                }
+                cx.notify();
+            })
+        })??;
+        anyhow::Ok(())
+    })
+    .detach_and_log_err(cx);
+}
+
+/// Routes "Remove Provider" in a compatible provider's own configuration view
+/// through [`confirm_delete_compatible_provider`].
+pub(crate) fn init_compatible_provider_removal(cx: &mut App) {
+    cx.set_global(CompatibleProviderRemoval(Rc::new(
+        |provider_id, window, cx| {
+            let Some(Some(settings_window)) = window.root::<SettingsWindow>() else {
+                return false;
+            };
+            if user_file_compatible_provider(&provider_id.0, cx).is_none() {
+                return false;
+            }
+            settings_window.update(cx, |settings_window, cx| {
+                confirm_delete_compatible_provider(settings_window, provider_id.0, window, cx);
+            });
+            true
+        },
+    )));
+}
+
 struct ValidatedLlmProviderForm {
     provider_name: String,
     api_url: String,
-    /// `None` when the provider is configured key-less: nothing is written to
-    /// the system keychain in that case.
+    /// `None` when the provider is configured key-less, or when an edit keeps
+    /// the saved key: nothing is written to the system keychain in that case.
     api_key: Option<String>,
     no_api_key: bool,
     models: ParsedModels,
@@ -2171,18 +3150,21 @@ fn validate_llm_provider_form(
     values: &LlmProviderFormValues,
     cx: &App,
 ) -> Result<ValidatedLlmProviderForm, SharedString> {
+    let editing = values.editing.as_ref();
     let provider_name = values.provider_name.clone();
     if provider_name.is_empty() {
         return Err(i18n::t!("Provider Name cannot be empty").into());
     }
 
-    if LanguageModelRegistry::read_global(cx)
-        .providers()
-        .iter()
-        .any(|provider| {
-            provider.id().0.as_ref() == provider_name.as_str()
-                || provider.name().0.as_ref() == provider_name.as_str()
-        })
+    let keeps_its_name = editing.is_some_and(|editing| editing.original_name == provider_name);
+    if !keeps_its_name
+        && LanguageModelRegistry::read_global(cx)
+            .providers()
+            .iter()
+            .any(|provider| {
+                provider.id().0.as_ref() == provider_name.as_str()
+                    || provider.name().0.as_ref() == provider_name.as_str()
+            })
     {
         return Err(i18n::t!("Provider Name is already taken by another provider").into());
     }
@@ -2194,7 +3176,9 @@ fn validate_llm_provider_form(
 
     let needs_consent =
         external_ai_consent::form_target(&provider_name, &api_url, values.kind.label()).is_some();
-    if needs_consent && !values.consent_acknowledged {
+    let consent_carries_over =
+        editing.is_some_and(|editing| editing.consent_carries_over(&api_url));
+    if needs_consent && !values.consent_acknowledged && !consent_carries_over {
         return Err(
             i18n::t!(
                 "This provider connects to an external service. Review the warning about training risks and check the box"
@@ -2203,21 +3187,31 @@ fn validate_llm_provider_form(
         );
     }
 
-    let api_key = validate_api_key(&values.api_key, values.no_api_key)?;
+    let api_key = match editing {
+        Some(editing) => validate_edited_api_key(
+            &values.api_key,
+            values.no_api_key,
+            editing.api_url_changed(&api_url),
+        )?,
+        None => validate_api_key(&values.api_key, values.no_api_key)?,
+    };
 
+    // A saved model may leave these out, and an edit has to be able to keep
+    // them that way.
+    let optional_may_be_blank = editing.is_some();
     let models = match values.kind {
         CompatibleProviderKind::OpenAi => ParsedModels::OpenAi(
             values
                 .models
                 .iter()
-                .map(parse_open_ai_model)
+                .map(|model| parse_open_ai_model(model, optional_may_be_blank))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
         CompatibleProviderKind::Anthropic => ParsedModels::Anthropic(
             values
                 .models
                 .iter()
-                .map(parse_anthropic_model)
+                .map(|model| parse_anthropic_model(model, optional_may_be_blank))
                 .collect::<Result<Vec<_>, _>>()?,
         ),
     };
@@ -2257,6 +3251,28 @@ fn validate_api_key(api_key: &str, no_api_key: bool) -> Result<Option<String>, S
     Ok(Some(api_key.to_string()))
 }
 
+/// An edit may leave the key blank to keep the saved one, but not when the URL
+/// changed: the saved key belongs to the old URL and is not carried to another.
+fn validate_edited_api_key(
+    api_key: &str,
+    no_api_key: bool,
+    api_url_changed: bool,
+) -> Result<Option<String>, SharedString> {
+    if no_api_key {
+        return Ok(None);
+    }
+    if api_key.is_empty() {
+        if api_url_changed {
+            return Err(i18n::t!(
+                "The API URL changed, so enter the API key for the new URL. The saved key is not sent to a different URL."
+            )
+            .into());
+        }
+        return Ok(None);
+    }
+    Ok(Some(api_key.to_string()))
+}
+
 fn parse_model_name(model: &ModelValues) -> Result<String, SharedString> {
     if model.name.is_empty() {
         return Err(i18n::t!("Model Name cannot be empty").into());
@@ -2266,18 +3282,21 @@ fn parse_model_name(model: &ModelValues) -> Result<String, SharedString> {
 
 fn parse_open_ai_model(
     model: &ModelValues,
+    optional_may_be_blank: bool,
 ) -> Result<OpenAiCompatibleAvailableModel, SharedString> {
     Ok(OpenAiCompatibleAvailableModel {
         name: parse_model_name(model)?,
         display_name: None,
-        max_completion_tokens: Some(parse_u64_field(
+        max_completion_tokens: parse_optional_u64_field(
             &model.max_completion_tokens,
             i18n::t!("Max Completion Tokens"),
-        )?),
-        max_output_tokens: Some(parse_u64_field(
+            optional_may_be_blank,
+        )?,
+        max_output_tokens: parse_optional_u64_field(
             &model.max_output_tokens,
             i18n::t!("Max Output Tokens"),
-        )?),
+            optional_may_be_blank,
+        )?,
         max_tokens: parse_u64_field(&model.max_tokens, i18n::t!("Max Tokens"))?,
         reasoning_effort: model.supports_thinking.then_some(model.reasoning_effort),
         capabilities: OpenAiCompatibleModelCapabilities {
@@ -2296,16 +3315,18 @@ fn parse_open_ai_model(
 
 fn parse_anthropic_model(
     model: &ModelValues,
+    optional_may_be_blank: bool,
 ) -> Result<AnthropicCompatibleAvailableModel, SharedString> {
     Ok(AnthropicCompatibleAvailableModel {
         name: parse_model_name(model)?,
         display_name: None,
         max_tokens: parse_u64_field(&model.max_tokens, i18n::t!("Max Tokens"))?,
         tool_override: None,
-        max_output_tokens: Some(parse_u64_field(
+        max_output_tokens: parse_optional_u64_field(
             &model.max_output_tokens,
             i18n::t!("Max Output Tokens"),
-        )?),
+            optional_may_be_blank,
+        )?,
         default_temperature: None,
         extra_beta_headers: Vec::new(),
         mode: None,
@@ -2321,6 +3342,17 @@ fn parse_u64_field(value: &str, name: &str) -> Result<u64, SharedString> {
     value
         .parse::<u64>()
         .map_err(|_| i18n::t!("{name} must be a number").into())
+}
+
+fn parse_optional_u64_field(
+    value: &str,
+    name: &str,
+    may_be_blank: bool,
+) -> Result<Option<u64>, SharedString> {
+    if may_be_blank && value.trim().is_empty() {
+        return Ok(None);
+    }
+    parse_u64_field(value, name).map(Some)
 }
 
 #[cfg(test)]
@@ -2563,5 +3595,796 @@ mod tests {
                 "provider description collapsed at {width}px"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod provider_edit_tests {
+    use std::{collections::HashMap, future::Future, pin::Pin, sync::Mutex};
+
+    use credentials_provider::CredentialsProvider;
+    use fs::{FakeFs, Fs as _};
+    use futures::FutureExt as _;
+    use gpui::{AsyncApp, TestAppContext, UpdateGlobal as _, VisualTestContext};
+    use language_models::provider::open_ai_compatible::OpenAiCompatibleLanguageModelProvider;
+    use serde_json::{Value, json};
+    use settings::Settings as _;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct FakeCredentials(Mutex<HashMap<String, Vec<u8>>>);
+
+    impl FakeCredentials {
+        fn keys(&self) -> HashMap<String, String> {
+            self.0
+                .lock()
+                .expect("credentials lock")
+                .iter()
+                .map(|(url, key)| (url.clone(), String::from_utf8_lossy(key).to_string()))
+                .collect()
+        }
+    }
+
+    impl CredentialsProvider for FakeCredentials {
+        fn read_credentials<'a>(
+            &'a self,
+            url: &'a str,
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = anyhow::Result<Option<(String, Vec<u8>)>>> + 'a>> {
+            let found = self
+                .0
+                .lock()
+                .expect("credentials lock")
+                .get(url)
+                .map(|key| ("Bearer".to_string(), key.clone()));
+            async move { Ok(found) }.boxed_local()
+        }
+
+        fn write_credentials<'a>(
+            &'a self,
+            url: &'a str,
+            _username: &'a str,
+            password: &'a [u8],
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'a>> {
+            self.0
+                .lock()
+                .expect("credentials lock")
+                .insert(url.to_string(), password.to_vec());
+            async move { Ok(()) }.boxed_local()
+        }
+
+        fn delete_credentials<'a>(
+            &'a self,
+            url: &'a str,
+            _cx: &'a AsyncApp,
+        ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'a>> {
+            self.0.lock().expect("credentials lock").remove(url);
+            async move { Ok(()) }.boxed_local()
+        }
+    }
+
+    async fn init_test(
+        cx: &mut TestAppContext,
+        user_settings: Value,
+    ) -> (Arc<FakeFs>, Arc<FakeCredentials>) {
+        let fs = FakeFs::new(cx.executor());
+        let credentials = Arc::new(FakeCredentials::default());
+        cx.update(|cx| {
+            let store = SettingsStore::test(cx);
+            cx.set_global(store);
+            theme_settings::init(theme::LoadThemes::JustBase, cx);
+            editor::init(cx);
+            menu::init();
+            language_model::init(cx);
+            <dyn fs::Fs>::set_global(fs.clone(), cx);
+            cx.set_global(zed_credentials_provider::ZedCredentialsProvider(
+                credentials.clone(),
+            ));
+        });
+        let text = serde_json::to_string_pretty(&user_settings).expect("settings serialize");
+        fs.create_dir(
+            paths::settings_file()
+                .parent()
+                .expect("settings file has a parent directory"),
+        )
+        .await
+        .expect("settings directory can be created");
+        fs.save(
+            paths::settings_file(),
+            &text.as_str().into(),
+            language::LineEnding::Unix,
+        )
+        .await
+        .expect("settings file can be written");
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(&text, cx)
+                    .result()
+                    .expect("the test settings parse");
+            });
+        });
+        (fs, credentials)
+    }
+
+    async fn user_file(fs: &FakeFs) -> Value {
+        let text = fs
+            .load(paths::settings_file())
+            .await
+            .expect("settings file can be read");
+        serde_json::from_str(&text).unwrap_or_else(|error| panic!("{error}: {text}"))
+    }
+
+    fn open_settings_window(
+        cx: &mut TestAppContext,
+    ) -> (Entity<SettingsWindow>, &mut VisualTestContext) {
+        cx.add_window_view(|window, cx| SettingsWindow::test(window, cx))
+    }
+
+    fn edit_form(
+        settings_window: &Entity<SettingsWindow>,
+        provider_name: &str,
+        cx: &mut VisualTestContext,
+        edit: impl FnOnce(&mut LlmProviderForm, &mut Window, &mut Context<SettingsWindow>),
+    ) {
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            open_llm_provider_edit_form(
+                settings_window,
+                provider_name.to_string().into(),
+                window,
+                cx,
+            );
+            let form = settings_window
+                .llm_provider_form
+                .as_mut()
+                .expect("the edit form opens on a saved provider");
+            edit(form, window, cx);
+        });
+    }
+
+    fn save(
+        settings_window: &Entity<SettingsWindow>,
+        cx: &mut VisualTestContext,
+    ) -> Option<SharedString> {
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            save_llm_provider_form(settings_window, window, cx);
+        });
+        cx.run_until_parked();
+        settings_window.read_with(cx, |settings_window, _| {
+            settings_window
+                .llm_provider_form
+                .as_ref()
+                .and_then(|form| form.error.clone())
+        })
+    }
+
+    fn set_text(
+        editor: &Entity<Editor>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<SettingsWindow>,
+    ) {
+        set_input_text(editor, text, window, cx);
+    }
+
+    fn local_provider() -> Value {
+        json!({
+            "api_url": "http://localhost:8000/v1",
+            "available_models": [{
+                "name": "qwen3",
+                "display_name": "Qwen 3 (team build)",
+                "max_tokens": 32000,
+                "capabilities": {
+                    "tools": true,
+                    "images": false,
+                    "parallel_tool_calls": false,
+                    "prompt_cache_key": false,
+                    "chat_completions": true
+                }
+            }],
+            "custom_headers": { "X-Team": "llm" },
+            "no_api_key": true
+        })
+    }
+
+    #[gpui::test]
+    async fn an_edit_rewrites_the_entry_as_the_file_has_it_and_keeps_what_the_form_does_not_show(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, _) = init_test(
+            cx,
+            json!({ "language_models": { "openai_compatible": { "Corp": local_provider() } } }),
+        )
+        .await;
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            let model = form.models.first().expect("the saved model is loaded");
+            assert_eq!(model.name.read(cx).text(cx), "qwen3");
+            assert_eq!(
+                model.max_output_tokens.read(cx).text(cx),
+                "",
+                "absent stays absent"
+            );
+            set_text(&model.max_tokens, "64000", window, cx);
+        });
+        // Something else writes the file while the form is open.
+        cx.update(|_, cx| {
+            settings::update_settings_file(<dyn fs::Fs>::global(cx), cx, |settings, _| {
+                if let Some(entry) = settings
+                    .language_models
+                    .as_mut()
+                    .and_then(|models| models.openai_compatible.as_mut())
+                    .and_then(|providers| providers.get_mut("Corp"))
+                {
+                    entry.custom_headers = Some(
+                        [("X-Team".to_string(), "platform".to_string())]
+                            .into_iter()
+                            .collect(),
+                    );
+                }
+            });
+        });
+        cx.run_until_parked();
+        assert_eq!(save(&settings_window, cx), None);
+
+        let file = user_file(&fs).await;
+        let entry = &file["language_models"]["openai_compatible"]["Corp"];
+        assert_eq!(
+            entry["available_models"][0]["max_tokens"],
+            json!(64000),
+            "{file}"
+        );
+        assert_eq!(
+            entry["available_models"][0]["display_name"],
+            json!("Qwen 3 (team build)"),
+            "a field the form does not show survives: {file}"
+        );
+        assert_eq!(
+            entry["available_models"][0].get("max_output_tokens"),
+            None,
+            "{file}"
+        );
+        assert_eq!(
+            entry["custom_headers"],
+            json!({ "X-Team": "platform" }),
+            "the write starts from the file, not from when the form opened: {file}"
+        );
+        assert_eq!(entry["no_api_key"], json!(true));
+
+        // A second edit in a row starts from the first one.
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.api_url, "http://127.0.0.1:9000/v1", window, cx);
+        });
+        assert_eq!(save(&settings_window, cx), None);
+        let file = user_file(&fs).await;
+        let entry = &file["language_models"]["openai_compatible"]["Corp"];
+        assert_eq!(
+            entry["api_url"],
+            json!("http://127.0.0.1:9000/v1"),
+            "{file}"
+        );
+        assert_eq!(
+            entry["available_models"][0]["max_tokens"],
+            json!(64000),
+            "{file}"
+        );
+        assert_eq!(
+            file.get("acknowledged_external_ai_providers"),
+            None,
+            "a loopback provider records no consent, and no empty list is added: {file}"
+        );
+    }
+
+    #[gpui::test]
+    async fn renaming_moves_the_consent_and_every_model_choice_to_the_new_name(
+        cx: &mut TestAppContext,
+    ) {
+        let selection = |model: &str| json!({ "provider": "Corp", "model": model });
+        let (fs, _) = init_test(
+            cx,
+            json!({
+                "acknowledged_external_ai_providers": ["Corp", "anthropic"],
+                "agent": {
+                    "default_model": selection("big"),
+                    "favorite_models": [selection("big"), { "provider": "anthropic", "model": "claude" }],
+                    "profiles": { "write": { "name": "Write", "default_model": selection("big") } },
+                    "model_parameters": [{ "provider": "Corp", "temperature": 0.5 }]
+                },
+                "language_models": { "openai_compatible": { "Corp": {
+                    "api_url": "https://llm.corp.example/v1",
+                    "available_models": [{ "name": "big", "max_tokens": 1000 }],
+                    "no_api_key": true
+                } } }
+            }),
+        )
+        .await;
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.provider_name, "Corp LLM", window, cx);
+        });
+        assert_eq!(
+            save(&settings_window, cx),
+            None,
+            "the host is unchanged, so the consent carries over"
+        );
+
+        let file = user_file(&fs).await;
+        let providers = &file["language_models"]["openai_compatible"];
+        assert_eq!(providers.get("Corp"), None, "{file}");
+        assert_eq!(
+            providers["Corp LLM"]["api_url"],
+            json!("https://llm.corp.example/v1")
+        );
+        assert_eq!(
+            file["acknowledged_external_ai_providers"],
+            json!(["anthropic", "Corp LLM"]),
+            "{file}"
+        );
+        assert_eq!(
+            file["agent"]["default_model"]["provider"],
+            json!("Corp LLM")
+        );
+        assert_eq!(
+            file["agent"]["favorite_models"][0]["provider"],
+            json!("Corp LLM")
+        );
+        assert_eq!(
+            file["agent"]["favorite_models"][1]["provider"],
+            json!("anthropic")
+        );
+        assert_eq!(
+            file["agent"]["profiles"]["write"]["default_model"]["provider"],
+            json!("Corp LLM")
+        );
+        assert_eq!(
+            file["agent"]["model_parameters"][0]["provider"],
+            json!("Corp LLM")
+        );
+    }
+
+    #[gpui::test]
+    async fn a_new_host_has_to_be_consented_to_again(cx: &mut TestAppContext) {
+        let (fs, _) = init_test(
+            cx,
+            json!({
+                "acknowledged_external_ai_providers": ["Corp"],
+                "language_models": { "openai_compatible": { "Corp": {
+                    "api_url": "https://llm.corp.example/v1",
+                    "available_models": [{ "name": "big", "max_tokens": 1000 }],
+                    "no_api_key": true
+                } } }
+            }),
+        )
+        .await;
+        let (settings_window, cx) = open_settings_window(cx);
+
+        // Same host, another path: the consent given for the host still holds.
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.api_url, "https://llm.corp.example/v2", window, cx);
+        });
+        assert_eq!(save(&settings_window, cx), None);
+
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.api_url, "https://elsewhere.example/v1", window, cx);
+        });
+        let error = save(&settings_window, cx);
+        assert!(
+            error.is_some(),
+            "a new host is refused until the warning is accepted"
+        );
+        let file = user_file(&fs).await;
+        assert_eq!(
+            file["language_models"]["openai_compatible"]["Corp"]["api_url"],
+            json!("https://llm.corp.example/v2"),
+            "nothing is written while consent is missing: {file}"
+        );
+
+        settings_window.update(cx, |settings_window, _| {
+            if let Some(form) = settings_window.llm_provider_form.as_mut() {
+                form.consent_acknowledged = true;
+            }
+        });
+        assert_eq!(save(&settings_window, cx), None);
+        let file = user_file(&fs).await;
+        assert_eq!(
+            file["language_models"]["openai_compatible"]["Corp"]["api_url"],
+            json!("https://elsewhere.example/v1")
+        );
+        assert_eq!(file["acknowledged_external_ai_providers"], json!(["Corp"]));
+    }
+
+    #[gpui::test]
+    async fn a_new_url_takes_a_new_key_and_the_old_one_leaves_the_keychain(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, credentials) = init_test(
+            cx,
+            json!({ "language_models": { "openai_compatible": { "Corp": {
+                "api_url": "http://localhost:8000/v1",
+                "available_models": [{ "name": "big", "max_tokens": 1000 }]
+            } } } }),
+        )
+        .await;
+        credentials
+            .0
+            .lock()
+            .expect("credentials lock")
+            .insert("http://localhost:8000/v1".into(), b"old-key".to_vec());
+        cx.update(|cx| {
+            let provider = OpenAiCompatibleLanguageModelProvider::new(
+                "Corp".into(),
+                http_client::FakeHttpClient::with_404_response(),
+                credentials.clone(),
+                cx,
+            );
+            LanguageModelRegistry::global(cx).update(cx, |registry, cx| {
+                registry.register_provider(Arc::new(provider), cx);
+            });
+        });
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.api_url, "http://localhost:9000/v1", window, cx);
+        });
+        assert!(
+            save(&settings_window, cx).is_some(),
+            "the saved key is not carried to another URL, so a new one is needed"
+        );
+        assert_eq!(
+            user_file(&fs).await["language_models"]["openai_compatible"]["Corp"]["api_url"],
+            json!("http://localhost:8000/v1")
+        );
+
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            if let Some(form) = settings_window.llm_provider_form.as_ref() {
+                set_text(&form.api_key.clone(), "new-key", window, cx);
+            }
+        });
+        assert_eq!(save(&settings_window, cx), None);
+        assert_eq!(
+            credentials.keys(),
+            [(
+                "http://localhost:9000/v1".to_string(),
+                "new-key".to_string()
+            )]
+            .into_iter()
+            .collect(),
+            "the old URL's key is deleted, the new one is saved for the new URL"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_blank_key_keeps_the_saved_one_while_the_url_stays(cx: &mut TestAppContext) {
+        assert_eq!(validate_edited_api_key("", false, false), Ok(None));
+        assert!(validate_edited_api_key("", false, true).is_err());
+        assert_eq!(validate_edited_api_key("", true, true), Ok(None));
+        assert_eq!(
+            validate_edited_api_key("sk", false, true),
+            Ok(Some("sk".to_string()))
+        );
+
+        let (_, credentials) = init_test(
+            cx,
+            json!({ "language_models": { "openai_compatible": { "Corp": {
+                "api_url": "http://localhost:8000/v1",
+                "available_models": [{ "name": "big", "max_tokens": 1000 }]
+            } } } }),
+        )
+        .await;
+        credentials
+            .0
+            .lock()
+            .expect("credentials lock")
+            .insert("http://localhost:8000/v1".into(), b"saved".to_vec());
+        let (settings_window, cx) = open_settings_window(cx);
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.models[0].max_tokens.clone(), "2000", window, cx);
+        });
+        assert_eq!(save(&settings_window, cx), None);
+        assert_eq!(
+            credentials
+                .keys()
+                .get("http://localhost:8000/v1")
+                .map(String::as_str),
+            Some("saved")
+        );
+    }
+
+    #[gpui::test]
+    async fn deleting_says_what_it_removes_and_removes_exactly_that(cx: &mut TestAppContext) {
+        let (fs, credentials) = init_test(
+            cx,
+            json!({
+                "acknowledged_external_ai_providers": ["Corp"],
+                "agent": {
+                    "default_model": { "provider": "Corp", "model": "big" },
+                    "commit_message_model": { "provider": "anthropic", "model": "claude" }
+                },
+                "language_models": { "openai_compatible": {
+                    "Corp": {
+                        "api_url": "https://llm.corp.example/v1",
+                        "available_models": [{ "name": "big", "max_tokens": 1000 }]
+                    },
+                    "Other": {
+                        "api_url": "http://localhost:8000/v1",
+                        "available_models": [{ "name": "small", "max_tokens": 1000 }]
+                    }
+                } }
+            }),
+        )
+        .await;
+        {
+            let mut keys = credentials.0.lock().expect("credentials lock");
+            keys.insert("https://llm.corp.example/v1".into(), b"corp".to_vec());
+            keys.insert("http://localhost:8000/v1".into(), b"other".to_vec());
+        }
+        let (settings_window, cx) = open_settings_window(cx);
+
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            confirm_delete_compatible_provider(settings_window, "Corp".into(), window, cx);
+        });
+        cx.run_until_parked();
+        let (message, detail) = cx.pending_prompt().expect("deleting asks first");
+        assert!(message.contains("Corp"), "{message}");
+        assert!(detail.contains("https://llm.corp.example/v1"), "{detail}");
+        assert!(detail.contains("agent.default_model"), "{detail}");
+        assert!(!detail.contains("agent.commit_message_model"), "{detail}");
+
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
+        assert!(
+            user_file(&fs).await["language_models"]["openai_compatible"]
+                .get("Corp")
+                .is_some(),
+            "cancelling deletes nothing"
+        );
+
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            confirm_delete_compatible_provider(settings_window, "Corp".into(), window, cx);
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer("Delete");
+        cx.run_until_parked();
+
+        let file = user_file(&fs).await;
+        let providers = &file["language_models"]["openai_compatible"];
+        assert_eq!(providers.get("Corp"), None, "{file}");
+        assert!(providers.get("Other").is_some(), "{file}");
+        assert_eq!(
+            file["acknowledged_external_ai_providers"],
+            json!([]),
+            "{file}"
+        );
+        assert_eq!(file["agent"].get("default_model"), None, "{file}");
+        assert_eq!(
+            file["agent"]["commit_message_model"]["provider"],
+            json!("anthropic"),
+            "{file}"
+        );
+        assert_eq!(
+            credentials.keys(),
+            [("http://localhost:8000/v1".to_string(), "other".to_string())]
+                .into_iter()
+                .collect()
+        );
+    }
+
+    #[gpui::test]
+    async fn a_key_another_provider_uses_survives_the_delete(cx: &mut TestAppContext) {
+        let (fs, credentials) = init_test(
+            cx,
+            json!({ "language_models": { "openai_compatible": {
+                // The built-in OpenAI provider reads the key saved for this URL too.
+                "Corp": {
+                    "api_url": "https://api.openai.com/v1",
+                    "available_models": [{ "name": "big", "max_tokens": 1000 }]
+                }
+            } } }),
+        )
+        .await;
+        credentials
+            .0
+            .lock()
+            .expect("credentials lock")
+            .insert("https://api.openai.com/v1".into(), b"shared".to_vec());
+        let (settings_window, cx) = open_settings_window(cx);
+
+        settings_window.update_in(cx, |settings_window, window, cx| {
+            confirm_delete_compatible_provider(settings_window, "Corp".into(), window, cx);
+        });
+        cx.run_until_parked();
+        let (_, detail) = cx.pending_prompt().expect("deleting asks first");
+        assert!(
+            detail.contains("another provider uses the same URL"),
+            "{detail}"
+        );
+        cx.simulate_prompt_answer("Delete");
+        cx.run_until_parked();
+
+        assert_eq!(
+            user_file(&fs).await["language_models"]["openai_compatible"].get("Corp"),
+            None
+        );
+        assert_eq!(
+            credentials
+                .keys()
+                .get("https://api.openai.com/v1")
+                .map(String::as_str),
+            Some("shared")
+        );
+    }
+
+    #[gpui::test]
+    async fn only_providers_at_the_top_of_the_user_file_can_be_edited(cx: &mut TestAppContext) {
+        let (_, _) = init_test(
+            cx,
+            json!({
+                "language_models": { "openai_compatible": { "Corp": local_provider() } },
+                std::env::consts::OS: {
+                    "language_models": { "openai_compatible": { "Override": local_provider() } }
+                }
+            }),
+        )
+        .await;
+        cx.update(|cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_local_settings(
+                        settings::WorktreeId::from_usize(1),
+                        settings::LocalSettingsPath::InWorktree(
+                            util::rel_path::RelPath::empty_arc(),
+                        ),
+                        settings::LocalSettingsKind::Settings,
+                        Some(r#"{ "language_models": { "openai_compatible": { "Project": { "api_url": "http://localhost:1/v1", "available_models": [] } } } }"#),
+                        cx,
+                    )
+                    .expect("project settings parse");
+            });
+        });
+        cx.update(|cx| {
+            assert_eq!(
+                compatible_provider_origin("Corp", cx),
+                Some(CompatibleProviderOrigin::UserFile)
+            );
+            assert_eq!(
+                compatible_provider_origin("Override", cx),
+                Some(CompatibleProviderOrigin::Elsewhere)
+            );
+            assert_eq!(
+                compatible_provider_origin("Project", cx),
+                None,
+                "a project's settings never define a provider: the registry reads the global settings"
+            );
+            assert_eq!(
+                language_models::AllLanguageModelSettings::get_global(cx)
+                    .openai_compatible
+                    .contains_key("Project"),
+                false
+            );
+            assert_eq!(compatible_provider_origin("anthropic", cx), None);
+        });
+    }
+
+    #[gpui::test]
+    async fn consent_withdrawn_while_the_form_is_open_does_not_come_back(
+        cx: &mut TestAppContext,
+    ) {
+        let (fs, _) = init_test(
+            cx,
+            json!({
+                "acknowledged_external_ai_providers": ["Corp", "anthropic"],
+                "language_models": { "openai_compatible": { "Corp": {
+                    "api_url": "https://llm.corp.example/v1",
+                    "available_models": [{ "name": "big", "max_tokens": 1000 }],
+                    "no_api_key": true
+                } } }
+            }),
+        )
+        .await;
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.provider_name, "Corp LLM", window, cx);
+        });
+        // Revoked elsewhere (the acknowledged-providers page) before saving.
+        cx.update(|_, cx| {
+            settings::update_settings_file(<dyn fs::Fs>::global(cx), cx, |settings, _| {
+                external_ai_consent::set_acknowledged_in(settings, "Corp", false);
+            });
+        });
+        cx.run_until_parked();
+        assert_eq!(save(&settings_window, cx), None);
+
+        let file = user_file(&fs).await;
+        assert!(
+            file["language_models"]["openai_compatible"]
+                .get("Corp LLM")
+                .is_some(),
+            "{file}"
+        );
+        assert_eq!(
+            file["acknowledged_external_ai_providers"],
+            json!(["anthropic"]),
+            "the withdrawn consent is not recorded again without the warning: {file}"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_key_edit_prediction_uses_survives_a_url_change(cx: &mut TestAppContext) {
+        let (fs, credentials) = init_test(
+            cx,
+            json!({
+                "edit_predictions": { "codestral": { "api_url": "http://localhost:8000/v1" } },
+                "language_models": { "openai_compatible": { "Corp": {
+                    "api_url": "http://localhost:8000/v1",
+                    "available_models": [{ "name": "big", "max_tokens": 1000 }],
+                    "no_api_key": true
+                } } }
+            }),
+        )
+        .await;
+        credentials
+            .0
+            .lock()
+            .expect("credentials lock")
+            .insert("http://localhost:8000/v1".into(), b"codestral".to_vec());
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.api_url, "http://localhost:9000/v1", window, cx);
+        });
+        assert_eq!(save(&settings_window, cx), None);
+        assert_eq!(
+            user_file(&fs).await["language_models"]["openai_compatible"]["Corp"]["api_url"],
+            json!("http://localhost:9000/v1")
+        );
+        assert_eq!(
+            credentials
+                .keys()
+                .get("http://localhost:8000/v1")
+                .map(String::as_str),
+            Some("codestral"),
+            "Codestral edit prediction still reads the key saved for the old URL"
+        );
+    }
+
+    #[test]
+    fn removing_references_only_touches_the_named_provider() {
+        let mut settings: SettingsContent = serde_json::from_value(json!({
+            "agent": {
+                "default_model": { "provider": "Corp", "model": "big" },
+                "inline_alternatives": [
+                    { "provider": "Corp", "model": "big" },
+                    { "provider": "openai", "model": "gpt" }
+                ],
+                "model_parameters": [{ "provider": "Corp", "temperature": 0.5 }, { "temperature": 0.1 }]
+            }
+        }))
+        .expect("settings parse");
+        let changed = rewrite_provider_references(&mut settings, "Corp", None);
+        assert_eq!(
+            changed,
+            vec![
+                "agent.default_model".to_string(),
+                "agent.inline_alternatives".to_string(),
+                "agent.model_parameters".to_string()
+            ]
+        );
+        let agent = settings.agent.expect("agent settings stay");
+        assert_eq!(agent.default_model, None);
+        assert_eq!(
+            agent
+                .inline_alternatives
+                .unwrap_or_default()
+                .iter()
+                .map(|selection| selection.provider.0.clone())
+                .collect::<Vec<_>>(),
+            vec!["openai".to_string()]
+        );
+        assert_eq!(agent.model_parameters.len(), 1);
     }
 }

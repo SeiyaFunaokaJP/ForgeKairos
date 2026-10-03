@@ -15610,6 +15610,7 @@ dependencies = [
  "copilot",
  "copilot_ui",
  "cpal",
+ "credentials_provider",
  "db",
  "edit_prediction",
  "edit_prediction_ui",

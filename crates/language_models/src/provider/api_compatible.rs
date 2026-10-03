@@ -5,7 +5,9 @@ use anyhow::Result;
 use convert_case::{Case, Casing};
 use credentials_provider::CredentialsProvider;
 use gpui::{App, AppContext as _, Context, Entity, SharedString, Task, TaskExt, Window};
-use language_model::{ApiKeyState, AuthenticateError, EnvVar};
+use language_model::{
+    ApiKeyState, AuthenticateError, CompatibleProviderRemoval, EnvVar, LanguageModelProviderId,
+};
 use settings::SettingsStore;
 use ui::{Checkbox, ElevationIndex, ToggleState, Tooltip, prelude::*};
 use ui_input::InputField;
@@ -200,8 +202,13 @@ impl<S: ApiCompatibleProviderSettings> ApiCompatibleProviderConfigurationView<S>
         .detach_and_log_err(cx);
     }
 
-    fn remove_provider(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+    fn remove_provider(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let id = self.state.read(cx).id.clone();
+        if let Some(removal) = cx.try_global::<CompatibleProviderRemoval>().cloned()
+            && (removal.0)(LanguageModelProviderId::from(id.clone()), window, cx)
+        {
+            return;
+        }
         let fs = <dyn fs::Fs>::global(cx);
         settings::update_settings_file(fs, cx, move |settings, _| {
             let Some(language_models) = settings.language_models.as_mut() else {

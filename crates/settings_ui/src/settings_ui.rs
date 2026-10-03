@@ -462,6 +462,7 @@ pub fn init(cx: &mut App) {
     let queue = ProjectSettingsUpdateQueue::new(cx);
     cx.set_global(queue);
     pages::init_launch_approval_prompts(cx);
+    pages::init_compatible_provider_removal(cx);
 
     cx.on_action(|_: &OpenSettings, cx| {
         open_settings_editor(None, None, None, cx);

@@ -542,8 +542,17 @@ msgstr "パターンを削除"
 msgid "Delete Skill"
 msgstr "スキルを削除"
 
+msgid "Delete the provider \"{name}\"?"
+msgstr "プロバイダー「{name}」を削除しますか?"
+
 msgid "Delete the {skill_scope} skill \"{skill_name}\"?"
 msgstr "{skill_scope}スキル「{skill_name}」を削除しますか?"
+
+msgid "Delete {name}"
+msgstr "{name} を削除"
+
+msgid "Deletes the API key saved in the system keychain for {url}. A key set in an environment variable is not affected."
+msgstr "システムのキーチェーンに {url} 用として保存した API キーも削除します。環境変数で設定したキーには影響しません。"
 
 msgid "Denied: {}"
 msgstr "拒否: {}"
@@ -598,6 +607,9 @@ msgstr "編集予測の通信は Copilot の言語サーバー (別プロセス)
 
 msgid "Edit {entry}"
 msgstr "{entry} を編集"
+
+msgid "Edit {name}"
+msgstr "{name} を編集"
 
 msgid "Enable Sandbox"
 msgstr "サンドボックスを有効にする"
@@ -855,6 +867,9 @@ msgstr "正規表現が正しくありません: {err}。パターンは保存�
 msgid "Judge Model"
 msgstr "判定に使うモデル"
 
+msgid "Keeps the API key saved for {url}, because another provider uses the same URL."
+msgstr "{url} 用に保存した API キーは、同じ URL を使う別のプロバイダーがあるため残します。"
+
 msgid "Kept these hosts because another provider you consented to uses them: {hosts}"
 msgstr "他の承諾済みプロバイダーが使用しているため、次のホストは残しました: {hosts}"
 
@@ -875,6 +890,12 @@ msgstr "詳細"
 
 msgid "Learn more about sandboxing"
 msgstr "サンドボックスについて詳しく見る"
+
+msgid "Leave blank to keep the key saved in the system keychain, or enter a new key to replace it."
+msgstr "空欄のままならシステムのキーチェーンに保存済みのキーをそのまま使います。新しいキーを入力すると置き換えます。"
+
+msgid "Leave blank to keep the saved key"
+msgstr "空欄なら保存済みのキーを使います"
 
 msgid "Let sandboxed commands reach any domain over the network without prompting. This only lifts the sandbox's own restriction, so commands can still reach only the hosts within the editor-wide network allowlist (localhost is always reachable)."
 msgstr "サンドボックス内のコマンドが、確認なしで任意のドメインへネットワーク接続できるようにします。外すのはサンドボックス側の制限だけなので、実際に接続できるのは IDE 全体のネットワーク許可リストの範囲内です (ローカルホストは常に接続できます)。"
@@ -1248,11 +1269,20 @@ msgstr "許可リストから削除しました: {removed}"
 msgid "Removed from the allowlist: {removed}. {kept}"
 msgstr "許可リストから削除しました: {removed}。{kept}"
 
+msgid "Removes its entry from language_models in settings.json."
+msgstr "settings.json の language_models からこのプロバイダーの項目を削除します。"
+
 msgid "Removes the record of the denial. The next time the same launch is requested, you'll be asked again."
 msgstr "「許可しない」の記録を消します。次に同じ内容の起動を求められたら、あらためて確認します。"
 
 msgid "Removes this provider's hosts from network_allowlist.json. Hosts that another provider you consented to needs, and separately written entries such as wildcards, are kept"
 msgstr "このプロバイダーのホストを network_allowlist.json から削除します。他の承諾済みプロバイダーが必要とするホストと、ワイルドカードなど別に書かれた項目は残します"
+
+msgid "Removes what refers to its models from these settings (a model chosen there goes back to the default): {settings}"
+msgstr "次の設定から、このプロバイダーのモデルを指している部分を消します (そこで選んでいたモデルは既定に戻ります): {settings}"
+
+msgid "Renaming: the settings that choose this provider's models and your consent move to the new name. Saved threads keep the old name; to continue one, choose a model again."
+msgstr "名前を変更します: このプロバイダーのモデルを選んでいる設定と承諾は新しい名前に引き継ぎます。保存済みのスレッドは古い名前のままなので、続けるときはモデルを選び直してください。"
 
 msgid "Replaces the binary your user settings specify for the same language server"
 msgstr "ユーザー設定の同じ言語サーバーの実行ファイル指定を置き換えています"
@@ -1328,6 +1358,9 @@ msgstr "プロバイダーを保存"
 
 msgid "Save Skill"
 msgstr "スキルを保存"
+
+msgid "Saved threads that used it stay in the history; to continue one, choose another model."
+msgstr "このプロバイダーを使った保存済みのスレッドは履歴に残ります。続けるときは別のモデルを選んでください。"
 
 msgid "Saving…"
 msgstr "保存中…"
@@ -1437,6 +1470,9 @@ msgstr "接続をテストしています…"
 msgid "Testing…"
 msgstr "テスト中…"
 
+msgid "The API URL changed, so enter the API key for the new URL. The saved key is not sent to a different URL."
+msgstr "API URL が変わったので、新しい URL 用の API キーを入力してください。保存済みのキーを別の URL へ送ることはしません。"
+
 msgid "The API key sent as Authorization: Bearer {{key}}."
 msgstr "API キーは Authorization: Bearer {{key}} として送信されます。"
 
@@ -1487,6 +1523,9 @@ msgstr "{host} への接続がネットワーク許可リストで拒否され�
 
 msgid "The sandbox is disabled, so terminal commands are confirmed every time, even with \"Allow\"."
 msgstr "サンドボックスが無効なため、ターミナルのコマンドは「許可」でも毎回確認します。"
+
+msgid "The saved key belongs to the previous API URL and is not sent to the new one. Enter the key for this URL."
+msgstr "保存済みのキーは変更前の API URL 用で、新しい URL へは送りません。この URL 用のキーを入力してください。"
 
 msgid "The server didn't become ready for connections."
 msgstr "サーバーが接続できる状態になりませんでした。"
@@ -1547,6 +1586,12 @@ msgstr "このプロジェクトの設定が起動を求めています"
 
 msgid "This provider connects to an external service. Review the warning about training risks and check the box"
 msgstr "外部のサービスに接続する設定です。学習リスクの警告を確認し、チェックを入れてください"
+
+msgid "This provider is defined outside the top level of your settings.json (for example, in a release channel, OS or profile override), so it can't be edited or deleted here. Edit it in settings.json."
+msgstr "このプロバイダーは settings.json の最上位以外 (リリースチャンネル・OS・プロファイルごとの上書きなど) で定義されているため、ここでは編集・削除できません。settings.json で編集してください。"
+
+msgid "This provider is no longer in settings.json, so nothing was saved. Close the form and add it again."
+msgstr "このプロバイダーは settings.json から既に消えているため、保存しませんでした。フォームを閉じて、追加し直してください。"
 
 msgid "This provider will use an Anthropic Messages-compatible API."
 msgstr "このプロバイダーは Anthropic Messages 互換の API を使用します。"
@@ -1676,6 +1721,9 @@ msgstr "Windows のみ: サンドボックスの許可対象が Windows ドラ�
 
 msgid "Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above."
 msgstr "承諾を取り消しても、選択中の Zed は止まりません (再び警告が表示され、上の「プロバイダー」の一覧から Zed が消えるだけです)。停止するには上の「プロバイダー」で「なし」を選んでください。"
+
+msgid "Withdraws your consent to sending data to it, and removes its host from the allowlist unless another provider you consented to needs it."
+msgstr "このプロバイダーへの送信の承諾を取り消し、そのホストを許可リストから外します (承諾済みの別のプロバイダーが使うホストは残します)。"
 
 msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
 msgstr "エージェントが実行するターミナルコマンドを OS レベルのサンドボックスで包みます。無効の間は、コマンドが ForgeKairos 本体の権限で実行されるため自動承認が効かず、コマンドごとに確認します。外部エージェント本体と Claude Code の起動には影響しません (それぞれの設定は「AI」ページにあります)。"

@@ -24,7 +24,8 @@ pub(crate) use external_agents_page::{
 pub(crate) use external_ai_consent::render_acknowledged_ai_providers_page;
 pub(crate) use feature_flags::render_feature_flags_page;
 pub(crate) use llm_providers_page::{
-    ClaudeCliState, LlmProviderForm, render_add_llm_provider_popover, render_llm_providers_page,
+    ClaudeCliState, LlmProviderForm, init_compatible_provider_removal,
+    render_add_llm_provider_popover, render_llm_providers_page,
 };
 pub(crate) use mcp_servers_page::{
     LaunchApprovalsPageState, McpPageState, McpServerForm, init_launch_approval_prompts,

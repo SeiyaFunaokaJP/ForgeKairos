@@ -488,6 +488,18 @@ impl SubPageProviderSettings {
     }
 }
 
+/// Installed by the settings UI so that removing a user-defined compatible
+/// provider from its own configuration view asks for confirmation and cleans up
+/// what refers to the provider (its consent, its saved API key, the models that
+/// name it) exactly as the settings window's delete button does. Returns
+/// `false` when it cannot take the removal over from where it was asked for.
+#[derive(Clone)]
+pub struct CompatibleProviderRemoval(
+    pub std::rc::Rc<dyn Fn(LanguageModelProviderId, &mut Window, &mut App) -> bool>,
+);
+
+impl gpui::Global for CompatibleProviderRemoval {}
+
 impl ApiKeyConfiguration {
     pub fn new(
         has_key: bool,
