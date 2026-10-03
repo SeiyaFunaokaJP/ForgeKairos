@@ -1,0 +1,20 @@
+# The Japanese edition. It is a second book over `../src/ja`, built after the English
+# one into its `ja/` folder (see `.github/workflows/pages.yml`).
+[book]
+title = "ForgeKairos"
+description = "Zed エディターのフォーク ForgeKairos が Zed に足した機能の文書。"
+language = "ja"
+src = "../src/ja"
+
+[build]
+build-dir = "../book/ja"
+create-missing = false
+
+[output.html]
+site-url = "/ForgeKairos/ja/"
+git-repository-url = "https://github.com/SeiyaFunaokaJP/ForgeKairos"
+edit-url-template = "https://github.com/SeiyaFunaokaJP/ForgeKairos/edit/main/pages/src/ja/{path}"
+no-section-label = true
+
+[output.html.search]
+enable = true

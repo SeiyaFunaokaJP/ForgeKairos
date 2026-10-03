@@ -13,6 +13,9 @@ It is developed mainly for Windows.
 
 Repository: <https://github.com/SeiyaFunaokaJP/ForgeKairos>
 
+Documentation: <https://seiyafunaokajp.github.io/ForgeKairos/> (available once GitHub Pages is
+published for the repository; the source is in `pages/`)
+
 ## Not affiliated with Zed Industries
 
 "Zed" is a trademark of Zed Industries, Inc. ForgeKairos is an independent fork; it is not

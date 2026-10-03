@@ -36,8 +36,8 @@ param(
     [switch]$SkipSlirp4netns,
     # C の既定フォーマッタ用 clang-format.exe の同梱を省略する
     [switch]$SkipClangFormat,
-    # 同梱する clang-format.exe の入手元。存在しなければ VS 2022 同梱の LLVM を探す
-    [string]$ClangFormatPath = 'I:\CustomFormatter\bin\win32\clang-format.exe'
+    # 同梱する clang-format.exe の入手元。空か存在しなければ VS 2022 同梱の LLVM を探す
+    [string]$ClangFormatPath = ''
 )
 
 $ErrorActionPreference = 'Stop'

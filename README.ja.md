@@ -2,6 +2,8 @@
 
 [English](README.md) | 日本語
 
+文書サイト: <https://seiyafunaokajp.github.io/ForgeKairos/ja/> (リポジトリの GitHub Pages を公開した後に有効。ソースは `pages/`)
+
 ForgeKairos は [Zed](https://zed.dev) のフォーク (upstream のリリースを `git merge` で 1 版ずつ取り込む。現在 v1.21.0 ベース)。
 日本語 UI、ネットワーク統制 (egress deny-by-default)、ローカル LLM 第一の AI 方針、
 そして VSCode が切り捨てた古い Linux への SSH リモート対応を自前改造で足した Windows 向け IDE。
@@ -87,7 +89,7 @@ remote_server (musl) のクロスビルドと同梱配置 (zig を winget で自
 
 | 項目 | 既定 | 変えたいとき |
 |---|---|---|
-| UI | 日本語 (固定) | — |
+| UI | OS の言語に従う (日本語 / 英語) | 設定 → 全般 → 表示言語 (`ui_language`) |
 | 外部通信 | 全遮断 (組み込み許可 3 つのみ) | 設定 → ネットワーク |
 | AI (エージェント / インライン補助) | 無効 | 設定 → AI → 「エージェントを有効にする」 |
 | 既定モデル | 未設定 (有効化後、認証済みプロバイダーから自動選択) | 設定 → AI → LLM プロバイダー |

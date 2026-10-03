@@ -5,8 +5,8 @@ Param(
     [Parameter()][Alias('a')][string]$Architecture,
     [Parameter()][string]$Name,
     # Source of the clang-format.exe shipped in {app}\bin (see CopyClangFormat).
-    # Defaults to this fork's reference copy; falls back to VS 2022's bundled LLVM.
-    [Parameter()][string]$ClangFormatPath = "I:\CustomFormatter\bin\win32\clang-format.exe"
+    # When empty or not found, VS 2022's bundled LLVM is used.
+    [Parameter()][string]$ClangFormatPath = ""
 )
 
 . "$PSScriptRoot/lib/workspace.ps1"

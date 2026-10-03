@@ -1,0 +1,18 @@
+[book]
+title = "ForgeKairos"
+description = "Documentation of the features that ForgeKairos, a fork of the Zed editor, adds to Zed."
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+site-url = "/ForgeKairos/"
+git-repository-url = "https://github.com/SeiyaFunaokaJP/ForgeKairos"
+edit-url-template = "https://github.com/SeiyaFunaokaJP/ForgeKairos/edit/main/pages/src/{path}"
+no-section-label = true
+
+[output.html.search]
+enable = true
