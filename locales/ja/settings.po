@@ -19,7 +19,7 @@ msgstr "ForgeKairos (既定)"
 
 msgctxt "BaseKeymap"
 msgid "Cursor"
-msgstr "Cursor (ベータ)"
+msgstr "Cursor"
 
 msgctxt "keybinding source"
 msgid "Base"

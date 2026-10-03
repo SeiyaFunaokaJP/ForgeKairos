@@ -34,6 +34,9 @@ pub struct EditedEntry {
 struct InPlaceEdit {
     entry: Option<EditedEntry>,
     generation: usize,
+    /// The text last confirmed is another entry's, so the field stays open
+    /// and says why instead of closing as if it had been saved.
+    duplicate: Option<String>,
 }
 
 impl StringListEditor {
@@ -129,7 +132,11 @@ impl RenderOnce for StringListEditor {
             cx,
             |_, _| InPlaceEdit::default(),
         );
-        let InPlaceEdit { entry, generation } = in_place_edit.read(cx).clone();
+        let InPlaceEdit {
+            entry,
+            generation,
+            duplicate,
+        } = in_place_edit.read(cx).clone();
         let mut seen: HashMap<&str, usize> = HashMap::new();
         let entries: Vec<EditedEntry> = self
             .entries
@@ -144,6 +151,7 @@ impl RenderOnce for StringListEditor {
                 }
             })
             .collect();
+        let texts: Rc<[String]> = self.entries.iter().cloned().collect();
         // An entry that was removed or changed in the file meanwhile has
         // nothing left to edit.
         let edited_entry = entry.filter(|entry| on_replace.is_some() && entries.contains(entry));
@@ -168,7 +176,8 @@ impl RenderOnce for StringListEditor {
                 {
                     let stop_on_confirm = in_place_edit.clone();
                     let stop_on_cancel = in_place_edit.clone();
-                    return SettingsInputField::new(ElementId::Name(
+                    let texts = texts.clone();
+                    let field = SettingsInputField::new(ElementId::Name(
                         format!("{id}-edit-entry-{generation}").into(),
                     ))
                     .tab_index(0)
@@ -180,12 +189,38 @@ impl RenderOnce for StringListEditor {
                         stop_editing(&stop_on_cancel, cx);
                     })
                     .on_confirm(move |text, window, cx| {
+                        if let Some(text) = text.as_deref()
+                            && let Some(duplicate) = duplicate_of_another(&texts, &edited, text)
+                        {
+                            stop_on_confirm.update(cx, |state, cx| {
+                                state.duplicate = Some(duplicate);
+                                cx.notify();
+                            });
+                            return;
+                        }
                         stop_editing(&stop_on_confirm, cx);
                         if let Some(text) = text {
                             on_replace(edited.clone(), text, window, cx);
                         }
-                    })
-                    .into_any_element();
+                    });
+                    return v_flex()
+                        .w_full()
+                        .gap_0p5()
+                        .child(field)
+                        .when_some(duplicate.clone(), |this, duplicate| {
+                            let selector = format!("{id}-duplicate");
+                            this.child(
+                                div().debug_selector(move || selector).child(
+                                    Label::new(i18n::t!(
+                                        "{entry} is already in the list.",
+                                        entry = duplicate.as_str()
+                                    ))
+                                    .size(LabelSize::Small)
+                                    .color(Color::Error),
+                                ),
+                            )
+                        })
+                        .into_any_element();
                 }
                 let on_remove = on_remove.clone();
                 let can_edit = on_replace.is_some();
@@ -204,6 +239,7 @@ impl RenderOnce for StringListEditor {
                             .id(("entry", index))
                             .debug_selector(move || entry_selector)
                             .min_w_0()
+                            .tooltip(Tooltip::text(entry.clone()))
                             .when(can_edit, |this| {
                                 this.cursor_pointer().on_click(move |_, _, cx| {
                                     start_editing(&start_from_label, entry_for_label.clone(), cx);
@@ -269,6 +305,7 @@ fn start_editing(in_place_edit: &Entity<InPlaceEdit>, entry: EditedEntry, cx: &m
     in_place_edit.update(cx, |state, cx| {
         state.entry = Some(entry);
         state.generation += 1;
+        state.duplicate = None;
         cx.notify();
     });
 }
@@ -276,8 +313,16 @@ fn start_editing(in_place_edit: &Entity<InPlaceEdit>, entry: EditedEntry, cx: &m
 fn stop_editing(in_place_edit: &Entity<InPlaceEdit>, cx: &mut App) {
     in_place_edit.update(cx, |state, cx| {
         state.entry = None;
+        state.duplicate = None;
         cx.notify();
     });
+}
+
+/// The trimmed `text` when another entry of the list already has it, which
+/// `string_list_with_replaced` refuses.
+fn duplicate_of_another(entries: &[String], edited: &EditedEntry, text: &str) -> Option<String> {
+    let text = text.trim();
+    (text != edited.text && entries.iter().any(|entry| entry == text)).then(|| text.to_string())
 }
 
 #[cfg(test)]
@@ -294,8 +339,8 @@ mod tests {
     use crate::components::SettingsInputField;
 
     use super::{
-        EditedEntry, StringListEditor, string_list_with_added, string_list_with_replaced,
-        string_list_without,
+        EditedEntry, StringListEditor, duplicate_of_another, string_list_with_added,
+        string_list_with_replaced, string_list_without,
     };
 
     fn list(entries: &[&str]) -> Vec<String> {
@@ -514,6 +559,59 @@ mod tests {
         cx.simulate_keystrokes("enter");
         assert_eq!(calls.borrow().replaced.len(), 1);
         assert!(cx.debug_bounds("list-entry-0").is_some());
+    }
+
+    #[gpui::test]
+    fn an_edit_to_another_entrys_text_keeps_the_field_open(cx: &mut TestAppContext) {
+        let (calls, editors, cx) = list_in_window(cx);
+        let bounds = cx
+            .debug_bounds("list-entry-1")
+            .unwrap_or_else(|| panic!("list-entry-1 should be drawn"));
+        cx.simulate_click(bounds.center(), Modifiers::none());
+        cx.run_until_parked();
+        let edit_field = editor_at(&editors, 1);
+        edit_field.update_in(cx, |editor, window, cx| {
+            editor.set_text(" printk ", window, cx)
+        });
+        cx.simulate_keystrokes("enter");
+
+        assert!(calls.borrow().replaced.is_empty());
+        assert!(
+            cx.debug_bounds("list-entry-1").is_none(),
+            "the field closed as if the edit had been saved"
+        );
+        assert!(
+            cx.debug_bounds("list-duplicate").is_some(),
+            "no reason shown"
+        );
+        assert_eq!(text(&edit_field, cx), " printk ", "the typed text is kept");
+
+        edit_field.update_in(cx, |editor, window, cx| {
+            editor.set_text("trace", window, cx)
+        });
+        cx.simulate_keystrokes("enter");
+        assert_eq!(
+            calls.borrow().replaced,
+            [("assert".to_string(), 0, "trace".to_string())]
+        );
+        assert!(cx.debug_bounds("list-duplicate").is_none());
+    }
+
+    #[test]
+    fn only_another_entrys_text_is_a_duplicate() {
+        let entries = list(&["printk", "assert"]);
+        assert_eq!(
+            duplicate_of_another(&entries, &first("assert"), " printk "),
+            Some("printk".to_string())
+        );
+        assert_eq!(
+            duplicate_of_another(&entries, &first("assert"), "assert"),
+            None
+        );
+        assert_eq!(
+            duplicate_of_another(&entries, &first("assert"), "trace"),
+            None
+        );
     }
 
     #[gpui::test]

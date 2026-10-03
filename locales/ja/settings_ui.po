@@ -975,6 +975,9 @@ msgstr "モデル名は重複できません"
 msgid "Models"
 msgstr "モデル"
 
+msgid "Modified in {modified_in}"
+msgstr "{modified_in} の設定で変更済み"
+
 msgid "Move Down"
 msgstr "下へ移動"
 
@@ -1808,6 +1811,9 @@ msgstr[0] "ルール {count} 件"
 msgid "{count} tool"
 msgid_plural "{count} tools"
 msgstr[0] "ツール {count} 個"
+
+msgid "{entry} is already in the list."
+msgstr "{entry} は既に一覧にあります。"
 
 msgid "{host} is already in the allowlist."
 msgstr "{host} はすでに許可リストにあります。"

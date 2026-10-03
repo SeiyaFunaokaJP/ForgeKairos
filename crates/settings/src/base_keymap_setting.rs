@@ -233,7 +233,10 @@ mod tests {
         let names = BaseKeymap::names().collect::<Vec<_>>();
         assert!(names.contains(&"ForgeKairos (既定)"), "{names:?}");
         assert!(names.contains(&"Emacs (ベータ)"), "{names:?}");
-        assert!(names.contains(&"Cursor (ベータ)"), "{names:?}");
+        // Upstream's picker names it "Cursor", without "(beta)"; the context
+        // keeps it from reading as the text cursor.
+        assert!(names.contains(&"Cursor"), "{names:?}");
+        assert!(!names.contains(&"カーソル"), "{names:?}");
         // The vendors' own spellings are left alone, and typing them still
         // finds the row: the picker matches on these strings.
         assert!(names.contains(&"VS Code"), "{names:?}");

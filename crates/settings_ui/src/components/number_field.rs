@@ -823,6 +823,29 @@ impl<T: NumberFieldType> RenderOnce for NumberField<T> {
                                             this.border_1()
                                                 .border_color(cx.theme().colors().border_focused)
                                         })
+                                        // Escape would otherwise reach the settings
+                                        // window and close it, committing the typed
+                                        // value on the way out; with something typed
+                                        // it puts the shown value back instead.
+                                        .capture_action::<editor::actions::Cancel>({
+                                            let editor = editor.downgrade();
+                                            move |_, window, cx| {
+                                                let Some(editor) = editor.upgrade() else {
+                                                    return;
+                                                };
+                                                if editor.read(cx).text(cx) == expected_text {
+                                                    return;
+                                                }
+                                                cx.stop_propagation();
+                                                editor.update(cx, |editor, cx| {
+                                                    editor.set_text(
+                                                        expected_text.clone(),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                });
+                                            }
+                                        })
                                         .child(editor)
                                         .on_action::<menu::Confirm>({
                                             move |_, window, cx| {
@@ -915,7 +938,7 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
 
     use editor::Editor;
-    use gpui::{Entity, Focusable as _, TestAppContext, VisualTestContext, WeakEntity};
+    use gpui::{Entity, Focusable as _, KeyBinding, TestAppContext, VisualTestContext, WeakEntity};
     use ui::prelude::*;
 
     use super::{NumberField, NumberFieldMode};
@@ -959,6 +982,100 @@ mod tests {
         // settings store, after the frame that committed it.
         cx.update(|window, _| window.refresh());
         cx.run_until_parked();
+    }
+
+    gpui::actions!(number_field_test, [CloseTestWindow]);
+
+    /// The field inside a stand-in for the settings window, whose Escape
+    /// binding closes it.
+    struct FieldInWindow {
+        value: u64,
+        committed: Rc<RefCell<Vec<u64>>>,
+        closed: Rc<RefCell<usize>>,
+    }
+
+    impl Render for FieldInWindow {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let committed = self.committed.clone();
+            let closed = self.closed.clone();
+            div()
+                .key_context("TestSettingsWindow")
+                .on_action(move |_: &CloseTestWindow, _, _| {
+                    *closed.borrow_mut() += 1;
+                })
+                .size_full()
+                .child(
+                    NumberField::new("field", self.value, window, cx)
+                        .mode(NumberFieldMode::Edit, cx)
+                        .tab_index(0)
+                        .on_change(move |value, _, _| committed.borrow_mut().push(*value)),
+                )
+        }
+    }
+
+    #[gpui::test]
+    fn escape_while_editing_puts_the_value_back_instead_of_closing_the_window(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            crate::test::register_settings(cx);
+            cx.bind_keys([
+                KeyBinding::new("escape", editor::actions::Cancel, Some("Editor")),
+                KeyBinding::new("escape", CloseTestWindow, Some("TestSettingsWindow")),
+            ]);
+        });
+        let editors: Rc<RefCell<Vec<WeakEntity<Editor>>>> = Rc::default();
+        cx.update(|cx| {
+            let editors = editors.clone();
+            cx.observe_new(move |_: &mut Editor, _, cx| {
+                editors.borrow_mut().push(cx.entity().downgrade());
+            })
+            .detach();
+        });
+        let committed: Rc<RefCell<Vec<u64>>> = Rc::default();
+        let closed: Rc<RefCell<usize>> = Rc::default();
+        let (_view, cx) = cx.add_window_view({
+            let committed = committed.clone();
+            let closed = closed.clone();
+            |_, _| FieldInWindow {
+                value: 500,
+                committed,
+                closed,
+            }
+        });
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+        let editor = editors
+            .borrow()
+            .iter()
+            .find_map(|editor| editor.upgrade())
+            .expect("the field has an editor");
+        let text = |cx: &mut VisualTestContext| editor.read_with(cx, |editor, cx| editor.text(cx));
+
+        cx.update(|window, cx| window.focus(&editor.focus_handle(cx), cx));
+        editor.update_in(cx, |editor, window, cx| editor.set_text("1200", window, cx));
+        cx.run_until_parked();
+
+        cx.simulate_keystrokes("escape");
+        assert_eq!(text(cx), "500", "Escape keeps the typed value");
+        assert_eq!(
+            *closed.borrow(),
+            0,
+            "Escape with a value typed closed the window"
+        );
+        assert!(
+            cx.update(|window, cx| editor.focus_handle(cx).is_focused(window)),
+            "the field keeps the focus"
+        );
+
+        // With nothing typed, Escape closes the window as in any other field.
+        cx.simulate_keystrokes("escape");
+        assert_eq!(*closed.borrow(), 1);
+        assert!(
+            committed.borrow().iter().all(|value| *value == 500),
+            "the discarded value was committed: {:?}",
+            committed.borrow()
+        );
     }
 
     #[gpui::test]

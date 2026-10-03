@@ -741,7 +741,7 @@ fn translated_dropdowns() -> Vec<(
                 "Atom",
                 "TextMate",
                 "Emacs (ベータ)",
-                "Cursor (ベータ)",
+                "Cursor",
                 "なし",
             ],
         ),
@@ -789,7 +789,7 @@ fn translated_dropdown_labels_show_the_japanese_they_used_to_have() {
     assert_eq!(crate::tr_table("Cursor"), "カーソル");
     assert_eq!(
         dropdown_display("BaseKeymapContent", "Cursor", false),
-        "Cursor (ベータ)"
+        "Cursor"
     );
 }
 
@@ -1012,6 +1012,7 @@ fn dropdown_list_matches_init_renderers() {
 /// `(enum, English label as displayed)`.
 const DROPDOWN_LABELS_KEPT_IN_ENGLISH: &[(&str, &str)] = &[
     ("BaseKeymapContent", "Atom"),
+    ("BaseKeymapContent", "Cursor"),
     ("BaseKeymapContent", "JetBrains"),
     ("BaseKeymapContent", "Sublime Text"),
     ("BaseKeymapContent", "TextMate"),
