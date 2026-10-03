@@ -155,12 +155,12 @@ function GenerateLicenses {
 
 function BuildZedAndItsFriends {
     Write-Output "Building Zed and its friends, for channel: $channel"
-    # Build zed.exe, cli.exe and auto_update_helper.exe
+    # Build ForgeKairos.exe, forgekairos-cli.exe and auto_update_helper.exe.
+    # cargo names the first two after branding::EDITOR_CARGO_BIN_NAME and
+    # branding::CLI_CARGO_BIN_NAME.
     cargo --config .cargo/bundle-config.toml build --release --package zed --package cli --package auto_update_helper --target $target
-    # The cargo binary stays "zed"; the installed executable is named after
-    # branding::CURRENT.executable_stem.
-    Copy-Item -Path ".\$CargoOutDir\zed.exe" -Destination "$innoDir\ForgeKairos.exe" -Force
-    Copy-Item -Path ".\$CargoOutDir\cli.exe" -Destination "$innoDir\cli.exe" -Force
+    Copy-Item -Path ".\$CargoOutDir\ForgeKairos.exe" -Destination "$innoDir\ForgeKairos.exe" -Force
+    Copy-Item -Path ".\$CargoOutDir\forgekairos-cli.exe" -Destination "$innoDir\cli.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\auto_update_helper.exe" -Destination "$innoDir\auto_update_helper.exe" -Force
     # Build explorer_command_injector.dll
     switch ($channel) {
@@ -194,7 +194,7 @@ function BuildRemoteServer {
         & "$innoDir\sign.ps1" $remoteServerSrc
     }
 
-    $remoteServerDst = "$env:ZED_WORKSPACE\target\zed-remote-server-windows-$Architecture.zip"
+    $remoteServerDst = "$env:ZED_WORKSPACE\target\forgekairos-remote-server-windows-$Architecture.zip"
     Write-Output "Compressing remote_server to $remoteServerDst"
     Compress-Archive -Path $remoteServerSrc -DestinationPath $remoteServerDst -Force
 
@@ -202,7 +202,7 @@ function BuildRemoteServer {
     # bundled_server_search_dirs); without it the connection falls back to a
     # download, which this fork's egress policy blocks by default. The copy in
     # target\ stays for release uploads.
-    Copy-Item -Path $remoteServerDst -Destination "$innoDir\bin\zed-remote-server-windows-$Architecture.zip" -Force
+    Copy-Item -Path $remoteServerDst -Destination "$innoDir\bin\forgekairos-remote-server-windows-$Architecture.zip" -Force
 
     Write-Output "Remote server compressed successfully"
 }
@@ -258,7 +258,7 @@ function BuildLinuxRemoteServer {
     # SSH-to-Linux remoting needs a Linux remote_server binary shipped alongside
     # ForgeKairos.exe. This fork blocks egress by default, so the server cannot be fetched
     # on demand; crates/remote/src/transport.rs uploads a bundled artifact named
-    # "zed-remote-server-linux-x86_64.gz" found in {app} or {app}\bin.
+    # "forgekairos-remote-server-linux-x86_64.gz" found in {app} or {app}\bin.
     #
     # This mirrors BuildRemoteServer (a plain --release build) but cross-compiles
     # to musl with cargo-zigbuild for a single static binary independent of the
@@ -269,7 +269,7 @@ function BuildLinuxRemoteServer {
     $linuxTarget = "x86_64-unknown-linux-musl"
     $linuxTargetDir = "$env:ZED_WORKSPACE\target\remote_server_linux"
     $binaryPath = "$linuxTargetDir\$linuxTarget\release\remote_server"
-    $artifactPath = "$innoDir\bin\zed-remote-server-linux-x86_64.gz"
+    $artifactPath = "$innoDir\bin\forgekairos-remote-server-linux-x86_64.gz"
 
     $zigPath = Get-ZigPath
     if (-not $zigPath) {
@@ -392,8 +392,8 @@ function CopyClangFormat {
 
 function ZipZedAndItsFriendsDebug {
     $items = @(
-        ".\$CargoOutDir\zed.pdb",
-        ".\$CargoOutDir\cli.pdb",
+        ".\$CargoOutDir\ForgeKairos.pdb",
+        ".\$CargoOutDir\forgekairos_cli.pdb",
         ".\$CargoOutDir\auto_update_helper.pdb",
         ".\$CargoOutDir\explorer_command_injector.pdb",
         ".\$CargoOutDir\remote_server.pdb"
@@ -507,8 +507,8 @@ function AssertBundledRemoteArtifacts {
     # without network access; a missing one only shows up on the user's machine as
     # a blocked download, so refuse to build an installer without it.
     $required = @(
-        "$innoDir\bin\zed-remote-server-windows-$Architecture.zip",
-        "$innoDir\bin\zed-remote-server-linux-x86_64.gz",
+        "$innoDir\bin\forgekairos-remote-server-windows-$Architecture.zip",
+        "$innoDir\bin\forgekairos-remote-server-linux-x86_64.gz",
         "$innoDir\bin\slirp4netns-linux-x86_64"
     )
     $missing = @($required | Where-Object { -not (Test-Path $_ -PathType Leaf) -or (Get-Item $_).Length -eq 0 })

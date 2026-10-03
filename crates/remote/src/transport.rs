@@ -334,17 +334,31 @@ pub fn is_fork_server_binary_name(file_name: &str) -> bool {
 
 /// File names of a remote server artifact for `platform`, most preferred first.
 ///
-/// The compressed name is exactly what `script/bundle-linux` and
-/// `script/bundle-mac` emit, so a release artifact can be dropped in as-is. The
-/// uncompressed name is accepted too, so a locally cross-compiled binary can be
-/// used without a compression step.
-pub(crate) fn bundled_server_artifact_names(platform: RemotePlatform) -> [String; 2] {
-    let stem = format!("zed-remote-server-{}-{}", platform.os, platform.arch);
-    if platform.os.is_windows() {
-        [format!("{stem}.zip"), format!("{stem}.exe")]
-    } else {
-        [format!("{stem}.gz"), stem]
+/// `script/build-dev.ps1` and `script/bundle-windows.ps1` name it after
+/// `branding::CURRENT`. The names of `branding::LEGACY` are accepted after it:
+/// they are what `script/bundle-linux` and `script/bundle-mac` emit (upstream's
+/// release artifact names), and what an earlier build left in a cargo output
+/// directory. The uncompressed name is accepted too, so a locally
+/// cross-compiled binary can be used without a compression step.
+pub(crate) fn bundled_server_artifact_names(platform: RemotePlatform) -> Vec<String> {
+    let mut names = Vec::new();
+    let prefixes = std::iter::once(&branding::CURRENT)
+        .chain(branding::LEGACY)
+        .map(|names| names.remote_server_binary_prefix);
+    for prefix in prefixes {
+        let stem = format!("{prefix}{}-{}", platform.os, platform.arch);
+        let candidates = if platform.os.is_windows() {
+            [format!("{stem}.zip"), format!("{stem}.exe")]
+        } else {
+            [format!("{stem}.gz"), stem]
+        };
+        for candidate in candidates {
+            if !names.contains(&candidate) {
+                names.push(candidate);
+            }
+        }
     }
+    names
 }
 
 fn find_bundled_server_artifact_in_dirs(
@@ -433,7 +447,7 @@ pub(crate) fn choose_server_binary_source(
 /// looks next to the running executable and in its `bin` subdirectory. Only
 /// meaningful for a Linux remote (slirp4netns is Linux-only); returns `None`
 /// otherwise. `script/build-dev.ps1` places `slirp4netns-linux-x86_64` next to
-/// `zed.exe`.
+/// the editor's executable.
 pub(crate) fn find_bundled_slirp4netns(platform: RemotePlatform) -> Option<PathBuf> {
     if platform.os != RemoteOs::Linux {
         return None;
@@ -1249,8 +1263,10 @@ mod tests {
         assert_eq!(
             bundled_server_artifact_names(linux_x86_64()),
             [
-                "zed-remote-server-linux-x86_64.gz".to_string(),
-                "zed-remote-server-linux-x86_64".to_string()
+                "forgekairos-remote-server-linux-x86_64.gz",
+                "forgekairos-remote-server-linux-x86_64",
+                "zed-remote-server-linux-x86_64.gz",
+                "zed-remote-server-linux-x86_64",
             ]
         );
         assert_eq!(
@@ -1259,8 +1275,10 @@ mod tests {
                 arch: RemoteArch::Aarch64,
             }),
             [
-                "zed-remote-server-macos-aarch64.gz".to_string(),
-                "zed-remote-server-macos-aarch64".to_string()
+                "forgekairos-remote-server-macos-aarch64.gz",
+                "forgekairos-remote-server-macos-aarch64",
+                "zed-remote-server-macos-aarch64.gz",
+                "zed-remote-server-macos-aarch64",
             ]
         );
         assert_eq!(
@@ -1269,10 +1287,40 @@ mod tests {
                 arch: RemoteArch::X86_64,
             }),
             [
-                "zed-remote-server-windows-x86_64.zip".to_string(),
-                "zed-remote-server-windows-x86_64.exe".to_string()
+                "forgekairos-remote-server-windows-x86_64.zip",
+                "forgekairos-remote-server-windows-x86_64.exe",
+                "zed-remote-server-windows-x86_64.zip",
+                "zed-remote-server-windows-x86_64.exe",
             ]
         );
+    }
+
+    /// The scripts that ship the artifact have to write the name this build
+    /// looks for first, or a stale artifact under an older name, left in the
+    /// same directory, would be uploaded instead.
+    #[test]
+    fn test_the_scripts_write_the_preferred_artifact_names() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let linux = bundled_server_artifact_names(linux_x86_64());
+        let windows = bundled_server_artifact_names(RemotePlatform {
+            os: RemoteOs::Windows,
+            arch: RemoteArch::X86_64,
+        });
+        for (script, expected) in [
+            ("script/build-dev.ps1", vec![linux[0].clone()]),
+            (
+                "script/bundle-windows.ps1",
+                vec![
+                    linux[0].clone(),
+                    windows[0].replace("x86_64", "$Architecture"),
+                ],
+            ),
+        ] {
+            let contents = std::fs::read_to_string(repository.join(script)).unwrap();
+            for name in expected {
+                assert!(contents.contains(&name), "{script} does not write {name}");
+            }
+        }
     }
 
     #[test]
@@ -1317,6 +1365,25 @@ mod tests {
             )
             .as_deref(),
             Some(bundled.as_path())
+        );
+    }
+
+    #[test]
+    fn test_find_bundled_server_artifact_prefers_the_current_name_to_a_legacy_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let dirs = [dir.path().to_path_buf()];
+        let legacy = dir.path().join("zed-remote-server-linux-x86_64.gz");
+        std::fs::write(&legacy, b"").unwrap();
+        assert_eq!(
+            find_bundled_server_artifact_in_dirs(linux_x86_64(), &dirs).as_deref(),
+            Some(legacy.as_path())
+        );
+
+        let current = dir.path().join("forgekairos-remote-server-linux-x86_64.gz");
+        std::fs::write(&current, b"").unwrap();
+        assert_eq!(
+            find_bundled_server_artifact_in_dirs(linux_x86_64(), &dirs).as_deref(),
+            Some(current.as_path())
         );
     }
 

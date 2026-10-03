@@ -1291,16 +1291,25 @@ struct HelperArtifacts {
 }
 
 /// File names of the artifacts for this machine's architecture: the server
-/// compressed (as shipped) then plain, and `slirp4netns`. Must match
+/// compressed (as shipped) then plain, under the current name and then under
+/// the names of `branding::LEGACY`, and `slirp4netns`. Must match
 /// `script/bundle-windows.ps1`, `script/build-dev.ps1`, and what `crates/remote`
 /// uploads to SSH hosts.
-fn helper_artifact_names() -> ([String; 2], String) {
+fn helper_artifact_names() -> (Vec<String>, String) {
     let architecture = std::env::consts::ARCH;
-    let server = format!("zed-remote-server-linux-{architecture}");
-    (
-        [format!("{server}.gz"), server],
-        format!("slirp4netns-linux-{architecture}"),
-    )
+    let mut server_names = Vec::new();
+    let prefixes = std::iter::once(&branding::CURRENT)
+        .chain(branding::LEGACY)
+        .map(|names| names.remote_server_binary_prefix);
+    for prefix in prefixes {
+        let server = format!("{prefix}linux-{architecture}");
+        for name in [format!("{server}.gz"), server] {
+            if !server_names.contains(&name) {
+                server_names.push(name);
+            }
+        }
+    }
+    (server_names, format!("slirp4netns-linux-{architecture}"))
 }
 
 /// Where the artifacts are looked for, most preferred first: next to the
@@ -1358,7 +1367,7 @@ fn locate_helper_artifacts() -> Result<HelperArtifacts> {
                     "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed \
                  is installed. Reinstall Zed. In a development build, `script/build-dev.ps1` puts them \
                  in `target\\debug` (searched: {searched}).",
-                    server_name = server_names[0]
+                    server_name = server_names.first().map(String::as_str).unwrap_or_default()
                 )
             }))
         }
@@ -5726,13 +5735,17 @@ mod tests {
 
     #[test]
     fn artifact_names_prefer_the_compressed_server() {
-        let ([compressed, plain], slirp) = helper_artifact_names();
+        let (server_names, slirp) = helper_artifact_names();
         let architecture = std::env::consts::ARCH;
         assert_eq!(
-            compressed,
-            format!("zed-remote-server-linux-{architecture}.gz")
+            server_names,
+            [
+                format!("forgekairos-remote-server-linux-{architecture}.gz"),
+                format!("forgekairos-remote-server-linux-{architecture}"),
+                format!("zed-remote-server-linux-{architecture}.gz"),
+                format!("zed-remote-server-linux-{architecture}"),
+            ]
         );
-        assert_eq!(plain, format!("zed-remote-server-linux-{architecture}"));
         assert_eq!(slirp, format!("slirp4netns-linux-{architecture}"));
     }
 

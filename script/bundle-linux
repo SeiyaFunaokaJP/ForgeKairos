@@ -100,7 +100,7 @@ else
         for attempt in 1 2 3; do
             echo "Attempting sentry upload (attempt $attempt/3)..."
             if sentry-cli debug-files upload --include-sources --wait -p zed -o zed-dev \
-                "${target_dir}/${target_triple}"/release/zed \
+                "${target_dir}/${target_triple}"/release/ForgeKairos \
                 "${target_dir}/${remote_server_triple}"/release/remote_server; then
                 echo "Sentry upload successful on attempt $attempt"
                 break
@@ -122,10 +122,10 @@ fi
 # is skipped.
 # We use llvm-objcopy because GNU objcopy on older distros (e.g. Ubuntu 20.04)
 # doesn't understand CREL sections produced by newer LLVM.
-llvm-objcopy --only-keep-debug "${target_dir}/${target_triple}/release/zed" "${target_dir}/${target_triple}/release/zed.dbg"
+llvm-objcopy --only-keep-debug "${target_dir}/${target_triple}/release/ForgeKairos" "${target_dir}/${target_triple}/release/zed.dbg"
 llvm-objcopy --only-keep-debug "${target_dir}/${remote_server_triple}/release/remote_server" "${target_dir}/${remote_server_triple}/release/remote_server.dbg"
-llvm-objcopy --strip-debug --discard-all "${target_dir}/${target_triple}/release/zed"
-llvm-objcopy --strip-debug --discard-all "${target_dir}/${target_triple}/release/cli"
+llvm-objcopy --strip-debug --discard-all "${target_dir}/${target_triple}/release/ForgeKairos"
+llvm-objcopy --strip-debug --discard-all "${target_dir}/${target_triple}/release/forgekairos-cli"
 llvm-objcopy --strip-debug --discard-all "${target_dir}/${remote_server_triple}/release/remote_server"
 
 # Ensure that remote_server does not depend on libssl nor libcrypto, as we got rid of these deps.
@@ -149,8 +149,8 @@ zed_dir="${temp_dir}/forgekairos$suffix.app"
 
 # Binary
 mkdir -p "${zed_dir}/bin" "${zed_dir}/libexec"
-cp "${target_dir}/${target_triple}/release/zed" "${zed_dir}/libexec/forgekairos-editor"
-cp "${target_dir}/${target_triple}/release/cli" "${zed_dir}/bin/forgekairos"
+cp "${target_dir}/${target_triple}/release/ForgeKairos" "${zed_dir}/libexec/forgekairos-editor"
+cp "${target_dir}/${target_triple}/release/forgekairos-cli" "${zed_dir}/bin/forgekairos"
 
 # Libs
 # Bundle libstdc++ so older supported systems can run binaries built with our
@@ -160,7 +160,7 @@ cp "${target_dir}/${target_triple}/release/cli" "${zed_dir}/bin/forgekairos"
 # get dlopen'd are built against the system GLib, and resolving them against an
 # older bundled copy fails with missing symbols.
 find_libs() {
-    ldd ${target_dir}/${target_triple}/release/zed |\
+    ldd ${target_dir}/${target_triple}/release/ForgeKairos |\
         cut -d' ' -f3 |\
         grep -v '\<\(libc.so\|libgcc_s.so\|libm.so\|libpthread.so\|libdl.so\|libasound.so\)' |\
         grep -v '\<\(libglib-2.0.so\|libgobject-2.0.so\|libgio-2.0.so\|libgmodule-2.0.so\|libpcre.so\|libpcre2-8.so\|libmount.so\|libblkid.so\|libselinux.so\|libffi.so\|libresolv.so\|libz.so\)'

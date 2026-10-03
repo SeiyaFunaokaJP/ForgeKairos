@@ -13,7 +13,7 @@ path = "src/cli.rs"
 doctest = false
 
 [[bin]]
-name = "cli"
+name = "forgekairos-cli"
 path = "src/main.rs"
 
 [features]

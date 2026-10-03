@@ -291,7 +291,7 @@ skipped.
 - `cargo test -p i18n_catalog` checks that every bundled file parses, that the files of
   a language agree on each message and that the `_` files keep to their contexts.
 - `cargo test -p settings_ui`, `cargo test -p command_palette` and
-  `cargo test -p zed --bin zed -- localized_menus` check the Japanese catalog against
+  `cargo test -p zed --bin ForgeKairos -- localized_menus` check the Japanese catalog against
   the Japanese the UI showed before these files existed. They do not check other
   languages.
 - To find untranslated messages while using Zed, run a debug build with

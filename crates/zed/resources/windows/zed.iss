@@ -73,6 +73,9 @@ Name: "addtopath"; Description: "{cm:AddToPath}"; GroupDescription: "{cm:Other}"
 Type: files; Name: "{app}\Zed.exe"; Check: not IsUpdating
 Type: files; Name: "{app}\bin\zed.exe"; Check: not IsUpdating
 Type: files; Name: "{app}\bin\zed"; Check: not IsUpdating
+; The remote server archives that build shipped. Nothing holds them open, and
+; crates/remote prefers the ones under the new name, so they go on an update too.
+Type: files; Name: "{app}\bin\zed-remote-server-*"
 #if LegacyAppName != ""
 Type: filesandordirs; Name: "{userprograms}\{#LegacyAppName}"
 Type: files; Name: "{autodesktop}\{#LegacyAppName}.lnk"

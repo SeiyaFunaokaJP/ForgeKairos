@@ -163,6 +163,37 @@ pub const CURRENT: Names = Names {
 /// is moved out of their directories, and their directories stay protected.
 pub const LEGACY: &[Names] = &[ZED_JP_ENHANCE];
 
+/// The name cargo builds the editor binary under (`[[bin]]` in
+/// `crates/zed/Cargo.toml`), so that `target\debug` holds the executable the
+/// installer installs. `crates/zed` asserts at compile time that its binary is
+/// named this.
+pub const EDITOR_CARGO_BIN_NAME: &str = CURRENT.executable_stem;
+
+/// The name cargo builds the command-line launcher under (`[[bin]]` in
+/// `crates/cli/Cargo.toml`). It cannot be [`Names::cli_name`], the name it is
+/// installed under: Windows matches file names case-insensitively, so
+/// `forgekairos.exe` would be the editor's `ForgeKairos.exe` in the cargo
+/// output directory. `crates/cli` asserts at compile time that its binary is
+/// named this.
+pub const CLI_CARGO_BIN_NAME: &str = concat_const!(CURRENT.cli_name, "-cli");
+
+/// Whether `left` and `right` are the same string, for `const` assertions.
+pub const fn str_eq(left: &str, right: &str) -> bool {
+    let left = left.as_bytes();
+    let right = right.as_bytes();
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if left[index] != right[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
 /// The scheme of the links this application writes for itself (agent mentions
 /// stored in thread databases, settings and schema links). It stays upstream's
 /// whatever [`Names::url_scheme`] the operating system knows the app by.
@@ -571,6 +602,60 @@ mod tests {
             43737 + (30_000 % (65535 - 43737))
         );
         assert_eq!(MAC_INSTANCE_PORTS.ports(None).stable, 33937);
+    }
+
+    #[test]
+    fn the_cargo_binaries_can_share_a_directory_with_the_installed_names() {
+        let editor = format!("{EDITOR_CARGO_BIN_NAME}.exe").to_ascii_lowercase();
+        let cli = format!("{CLI_CARGO_BIN_NAME}.exe").to_ascii_lowercase();
+        let installed_cli = format!("{}.exe", CURRENT.cli_name).to_ascii_lowercase();
+        assert_eq!(EDITOR_CARGO_BIN_NAME, CURRENT.executable_stem);
+        assert_ne!(editor, cli, "Windows would see one file");
+        assert_ne!(
+            installed_cli, cli,
+            "the cargo name is not the installed name"
+        );
+        assert!(
+            !CLI_CARGO_BIN_NAME.to_ascii_lowercase().contains("zed")
+                && !EDITOR_CARGO_BIN_NAME.to_ascii_lowercase().contains("zed"),
+            "the cargo binaries still name Zed"
+        );
+    }
+
+    #[test]
+    fn the_cargo_manifests_build_the_binaries_under_these_names() {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let read = |manifest: &str| {
+            std::fs::read_to_string(crates.join(manifest))
+                .unwrap_or_else(|error| panic!("reading {manifest}: {error}"))
+                .replace("\r\n", "\n")
+        };
+        let editor = read("zed/Cargo.toml");
+        for expected in [
+            format!("default-run = \"{EDITOR_CARGO_BIN_NAME}\"\n"),
+            format!("[[bin]]\nname = \"{EDITOR_CARGO_BIN_NAME}\"\npath = \"src/main.rs\"\n"),
+        ] {
+            assert!(
+                editor.contains(&expected),
+                "crates/zed/Cargo.toml lacks {expected:?}"
+            );
+        }
+        let cli = read("cli/Cargo.toml");
+        let expected =
+            format!("[[bin]]\nname = \"{CLI_CARGO_BIN_NAME}\"\npath = \"src/main.rs\"\n");
+        assert!(
+            cli.contains(&expected),
+            "crates/cli/Cargo.toml lacks {expected:?}"
+        );
+    }
+
+    #[test]
+    fn str_eq_compares_whole_strings() {
+        assert!(str_eq("ForgeKairos", "ForgeKairos"));
+        assert!(!str_eq("ForgeKairos", "forgekairos"));
+        assert!(!str_eq("ForgeKairos", "ForgeKairo"));
+        assert!(!str_eq("", "a"));
+        assert!(str_eq("", ""));
     }
 
     #[test]

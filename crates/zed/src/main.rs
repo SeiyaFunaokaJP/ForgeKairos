@@ -5,19 +5,13 @@ mod reliability;
 mod watcher_debug;
 mod zed;
 
-// zed-jp-enhance: upstream asserted APP_NAME_LOWERCASE == the binary name.
-// This fork deliberately decouples them: the Cargo binary stays `zed`, which
-// upstream's build and bundle scripts expect, while the executable they install
-// and APP_NAME (the data/config/cache/state directories) take their names from
-// `branding::CURRENT`, so they never collide with an official Zed install. The
-// Cargo binary name is what we actually depend on staying stable, so assert
-// that instead.
+// Upstream asserted APP_NAME_LOWERCASE == the binary name. This fork names the
+// data directories and the executable separately in `branding`, and cargo
+// builds the executable under the installed name so that a development build
+// does not run as `zed.exe`; the build and bundle scripts rely on that name.
 const _: () = assert!(
-    env!("CARGO_BIN_NAME")
-        .as_bytes()
-        .eq_ignore_ascii_case(b"zed"),
-    "the Cargo binary stays named `zed` for the build and bundle scripts; the installed \
-     executable and APP_NAME (data dir) are named in crates/branding.",
+    branding::str_eq(env!("CARGO_BIN_NAME"), branding::EDITOR_CARGO_BIN_NAME),
+    "the [[bin]] name in crates/zed/Cargo.toml must be branding::EDITOR_CARGO_BIN_NAME",
 );
 
 use agent_ui::AgentPanel;

@@ -360,7 +360,7 @@ craneLib.buildPackage (
           mkdir -p $out/Applications $out/bin
           # Zed expects git next to its own binary
           ln -s ${git}/bin/git "$app_path/Contents/MacOS/git"
-          mv $TARGET_DIR/cli "$app_path/Contents/MacOS/cli"
+          mv $TARGET_DIR/forgekairos-cli "$app_path/Contents/MacOS/cli"
           mv "$app_path" $out/Applications/
 
           # Physical location of the CLI must be inside the app bundle as this is used
@@ -374,8 +374,8 @@ craneLib.buildPackage (
           runHook preInstall
 
           mkdir -p $out/bin $out/libexec
-          cp $TARGET_DIR/zed $out/libexec/zed-editor
-          cp $TARGET_DIR/cli  $out/bin/zed
+          cp $TARGET_DIR/ForgeKairos $out/libexec/zed-editor
+          cp $TARGET_DIR/forgekairos-cli $out/bin/zed
           ln -s $out/bin/zed $out/bin/zeditor  # home-manager expects the CLI binary to be here
 
 

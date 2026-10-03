@@ -359,18 +359,19 @@ pub fn get_shell_safe_zed_path(shell_kind: shell::ShellKind) -> anyhow::Result<S
 }
 
 /// Where the Windows editor looks for the CLI, relative to itself: the
-/// installer puts it in bin under `branding::CURRENT.cli_name`, and ./cli.exe
-/// is for development builds.
+/// installer puts it in bin under `branding::CURRENT.cli_name`, and the second
+/// one is the cargo output directory of a development build.
 const WINDOWS_CLI_LOCATIONS: [&str; 2] = [
     branding::concat_const!("bin/", branding::CURRENT.cli_name, ".exe"),
-    "./cli.exe",
+    branding::concat_const!("./", branding::CLI_CARGO_BIN_NAME, ".exe"),
 ];
 
 /// Where the Linux editor looks for the CLI, relative to itself: bin is the
-/// standard, ./cli is for the target directory in development builds.
+/// standard, and the second one is the cargo output directory of a
+/// development build.
 const LINUX_CLI_LOCATIONS: [&str; 2] = [
     branding::concat_const!("../bin/", branding::CURRENT.cli_name),
-    "./cli",
+    branding::concat_const!("./", branding::CLI_CARGO_BIN_NAME),
 ];
 
 /// Returns a path for the zed cli executable, this function
@@ -1096,6 +1097,12 @@ mod tests {
             linux_bundle.contains(&format!("\"${{zed_dir}}/{linux_cli}\"")),
             "bundle-linux does not install the CLI as {linux_cli}"
         );
+    }
+
+    #[test]
+    fn a_development_build_finds_the_cli_cargo_builds_next_to_it() {
+        assert_eq!(WINDOWS_CLI_LOCATIONS[1], "./forgekairos-cli.exe");
+        assert_eq!(LINUX_CLI_LOCATIONS[1], "./forgekairos-cli");
     }
 
     #[test]

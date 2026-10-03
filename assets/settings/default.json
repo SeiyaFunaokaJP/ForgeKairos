@@ -2775,7 +2775,7 @@
       // zed-jp-enhance: defaults equivalent to CustomFormatter (C Indented-Brace
       // Formatter). GNU based, with a space after control statements and
       // function names, no single-line forms, and indented case labels.
-      // clang-format is resolved from the folder of `zed.exe`, then its `bin\`,
+      // clang-format is resolved from the editor executable's folder, then its `bin\`,
       // then the copy installed through `dev_tools` (`tools/bin` in Zed's data
       // directory), then PATH (see "clang-format" in
       // .forgekairos-docs/BUILD-WINDOWS.md).

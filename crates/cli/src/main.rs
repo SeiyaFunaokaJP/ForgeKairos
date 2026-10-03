@@ -138,13 +138,27 @@ const LINUX_EDITOR_NAME: &str = branding::concat_const!(CLI_NAME, "-editor");
 
 /// Where the Linux launcher looks for the editor, relative to itself: libexec
 /// is the standard, lib/{CLI_NAME} is for Arch (and other non-libexec distros),
-/// ./zed is the target directory in development builds (cargo's binary keeps
-/// upstream's name).
+/// and the last one is the cargo output directory of a development build.
 const LINUX_EDITOR_LOCATIONS: [&str; 3] = [
     branding::concat_const!("../libexec/", LINUX_EDITOR_NAME),
     branding::concat_const!("../lib/", CLI_NAME, "/", LINUX_EDITOR_NAME),
-    "./zed",
+    branding::concat_const!("./", branding::EDITOR_CARGO_BIN_NAME),
 ];
+
+/// Where the Windows launcher looks for the editor, relative to itself: the
+/// installer puts the launcher in bin, lib/zed is for MSYS2, and the last one
+/// is the cargo output directory of a development build.
+#[cfg(any(target_os = "windows", test))]
+const WINDOWS_EDITOR_LOCATIONS: [&str; 3] = [
+    branding::concat_const!("../", branding::CURRENT.executable_stem, ".exe"),
+    "../lib/zed/zed-editor.exe",
+    branding::concat_const!("./", branding::EDITOR_CARGO_BIN_NAME, ".exe"),
+];
+
+const _: () = assert!(
+    branding::str_eq(env!("CARGO_BIN_NAME"), branding::CLI_CARGO_BIN_NAME),
+    "the [[bin]] name in crates/cli/Cargo.toml must be branding::CLI_CARGO_BIN_NAME",
+);
 
 struct Detect;
 
@@ -462,7 +476,19 @@ mod tests {
             [
                 "../libexec/forgekairos-editor",
                 "../lib/forgekairos/forgekairos-editor",
-                "./zed"
+                "./ForgeKairos"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_windows_launcher_finds_the_installed_and_the_development_editor() {
+        assert_eq!(
+            WINDOWS_EDITOR_LOCATIONS,
+            [
+                "../ForgeKairos.exe",
+                "../lib/zed/zed-editor.exe",
+                "./ForgeKairos.exe"
             ]
         );
     }
@@ -1526,13 +1552,7 @@ mod windows {
                 let cli = std::env::current_exe()?;
                 let dir = cli.parent().context("no parent path for cli")?;
 
-                // ../{executable} is the standard, lib/zed is for MSYS2, ./zed.exe is for the
-                // target directory in development builds (cargo's binary keeps upstream's name).
-                let possible_locations = [
-                    branding::concat_const!("../", branding::CURRENT.executable_stem, ".exe"),
-                    "../lib/zed/zed-editor.exe",
-                    "./zed.exe",
-                ];
+                let possible_locations = crate::WINDOWS_EDITOR_LOCATIONS;
                 possible_locations
                     .iter()
                     .find_map(|p| dir.join(p).canonicalize().ok().filter(|path| path != &cli))

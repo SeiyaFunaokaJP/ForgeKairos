@@ -1193,8 +1193,10 @@ impl SshRemoteConnection {
         let wanted_version = cx.update(|cx| match release_channel {
             ReleaseChannel::Nightly => Ok(None),
             ReleaseChannel::Dev => {
-                let [bundled_artifact_name, _] =
-                    super::bundled_server_artifact_names(self.ssh_platform);
+                let bundled_artifact_name = super::bundled_server_artifact_names(self.ssh_platform)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
                 let bundled_search_dirs = super::bundled_server_search_dirs()
                     .map(|dirs| {
                         dirs.iter()

@@ -160,7 +160,7 @@ function Compress-ToGzip {
 
 function Build-RemoteServerArtifact {
     $target = 'x86_64-unknown-linux-musl'
-    $artifactPath = Join-Path $repoRoot 'target\debug\zed-remote-server-linux-x86_64.gz'
+    $artifactPath = Join-Path $repoRoot 'target\debug\forgekairos-remote-server-linux-x86_64.gz'
     $binaryPath = Join-Path $repoRoot "target\remote_server\$target\debug\remote_server"
 
     $newestSource = Get-NewestSourceWriteTimeUtc
@@ -357,7 +357,7 @@ if (-not $SkipClangFormat) {
     }
 }
 
-$zedExe = Join-Path $repoRoot 'target\debug\zed.exe'
+$zedExe = Join-Path $repoRoot 'target\debug\ForgeKairos.exe'
 Write-Host ''
 Write-Host ("ビルド完了: {0} ({1:N0} MB)" -f $zedExe, ((Get-Item $zedExe).Length / 1MB))
 
