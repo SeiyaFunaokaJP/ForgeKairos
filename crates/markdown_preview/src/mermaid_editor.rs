@@ -1,9 +1,9 @@
-//! The modal behind `markdown::EditMermaid`.
+//! The tab behind `markdown::EditMermaid`.
 //!
 //! Mermaid has no coordinates: the picture's geometry comes out of `merman`'s
 //! layout pass, so a canvas where boxes are dragged around cannot exist. What
 //! *is* editable is the diagram itself — its elements, their links, their
-//! labels and their order — and that is what this modal puts on screen, beside
+//! labels and their order — and that is what this tab puts on screen, beside
 //! a live drawing of what the fence will look like once it is written back.
 //!
 //! The shell is the same for every diagram kind: the header, the preview, the
@@ -16,7 +16,7 @@
 //! [`event_modeling`]); the flowchart's stayed here because it was here first.
 //!
 //! Like the table editor, the buffer stays the single source of truth: the
-//! modal reads one fence, edits a copy, and writes the whole body back with one
+//! tab reads one fence, edits a copy, and writes the whole body back with one
 //! `Buffer::edit` so that undo takes the diagram back in one step (ADR-F51).
 
 mod architecture;
@@ -46,7 +46,9 @@ mod treemap;
 mod venn;
 mod xychart;
 
+use std::cell::Cell;
 use std::ops::Range;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -54,9 +56,10 @@ use editor::actions::{Backtab, Tab};
 use editor::markdown_actions::MermaidFenceTarget;
 use editor::{Editor, EditorEvent};
 use gpui::{
-    App, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, ImageSource,
-    RenderImage, SMOOTH_SVG_SCALE_FACTOR, ScrollHandle, Size, Subscription, Task,
-    TextStyleRefinement, WeakEntity, Window, img, px, size,
+    App, Context, DragMoveEvent, Entity, EntityId, EventEmitter, FocusHandle, Focusable,
+    ImageSource, ObjectFit, Pixels, RenderImage, SMOOTH_SVG_SCALE_FACTOR, ScrollHandle, Size,
+    StyledImage as _, Subscription, Task, TextStyleRefinement, WeakEntity, Window, canvas, img, px,
+    relative, size,
 };
 use mermaid_render::flowchart_model::{
     ArrowKind, CLICK_CLASS, EDGE_STYLE_PRESETS, FlowDirection, FlowchartClassDef,
@@ -68,11 +71,14 @@ use mermaid_render::mermaid_model::{MermaidDiagramKind, MermaidDocument, parse_d
 use settings::Settings as _;
 use theme_settings::ThemeSettings;
 use ui::{
-    Checkbox, ContextMenu, DropdownMenu, DropdownStyle, IconButtonShape, IconPosition, Modal,
-    ModalFooter, ModalHeader, Section, ToggleState, Tooltip, prelude::*,
+    Checkbox, ContextMenu, DropdownMenu, DropdownStyle, IconButtonShape, IconPosition, ToggleState,
+    Tooltip, prelude::*,
 };
 use util::ResultExt as _;
-use workspace::{ModalView, Workspace};
+use workspace::{
+    Pane, Workspace,
+    item::{Item, ItemBufferKind, ItemEvent, SaveOptions},
+};
 use zed_actions::preview::markdown::EditMermaid;
 
 use crate::markdown_preview_view::MarkdownPreviewView;
@@ -98,8 +104,8 @@ pub fn register(workspace: &mut Workspace) {
             let target = editor
                 .mermaid_fence_target(cx)
                 .or_else(|| editor.new_mermaid_fence_target(cx))?;
-            // The diagram may be nowhere near the cursor, and confirming the
-            // modal rewrites it, so the editor is moved onto it first.
+            // The diagram may be nowhere near the cursor, and applying the
+            // tab rewrites it, so the editor is moved onto it first.
             editor.reveal_mermaid_fence_target(&target, window, cx);
             Some(target)
         });
@@ -107,7 +113,8 @@ pub fn register(workspace: &mut Workspace) {
     });
 }
 
-/// Opens the modal on `target`, or explains why it cannot be opened.
+/// Opens a tab on `target`, brings forward the tab already open on it, or
+/// explains why it cannot be opened.
 ///
 /// Shared with the preview's per-diagram edit button, which resolves its own
 /// target from the diagram the user pressed rather than from the cursor.
@@ -126,7 +133,19 @@ pub fn open(
         return;
     };
 
-    // The modal writes through the editor, which drops the edit when the buffer
+    // Before the fence is parsed: a tab with edits in it is brought forward
+    // even when the fence it reads has since become something it cannot open,
+    // since that tab is where the user decides what to do about it.
+    if let Some((pane, existing)) = open_tab_on(workspace, &editor, &target, cx) {
+        pane.update(cx, |pane, cx| {
+            if let Some(index) = pane.index_for_item(&existing) {
+                pane.activate_item(index, true, true, window, cx);
+            }
+        });
+        return;
+    }
+
+    // The tab writes through the editor, which drops the edit when the buffer
     // cannot take it. Saying so now is better than letting the user rebuild the
     // diagram and watch the result go nowhere.
     if editor.read(cx).read_only(cx) {
@@ -164,9 +183,33 @@ pub fn open(
         }
     };
 
-    workspace.toggle_modal(window, cx, move |window, cx| {
-        MermaidEditor::new(editor.downgrade(), target, document, window, cx)
-    });
+    let tab = cx.new(|cx| MermaidEditor::new(editor.downgrade(), target, document, window, cx));
+    workspace.add_item_to_active_pane(Box::new(tab), None, true, window, cx);
+}
+
+/// The tab already editing the fence `target` points at, with the pane that
+/// holds it. A fence that has yet to be inserted is never the same as another,
+/// like a macro without a name (ADR-F78): each start of a new diagram gets a
+/// tab of its own.
+fn open_tab_on(
+    workspace: &Workspace,
+    editor: &Entity<Editor>,
+    target: &MermaidFenceTarget,
+    cx: &App,
+) -> Option<(Entity<Pane>, Entity<MermaidEditor>)> {
+    let buffer = editor
+        .read(cx)
+        .buffer()
+        .read(cx)
+        .as_singleton()?
+        .entity_id();
+    let offset = editor.read(cx).mermaid_fence_offset(target, cx)?;
+    workspace.panes().iter().find_map(|pane| {
+        pane.read(cx)
+            .items_of_type::<MermaidEditor>()
+            .find(|tab| tab.read(cx).edits_fence_at(buffer, offset, cx))
+            .map(|tab| (pane.clone(), tab))
+    })
 }
 
 /// What opening a diagram the structured editor has no form for says. The
@@ -313,15 +356,60 @@ struct Preview {
     _task: Option<Task<()>>,
 }
 
+/// How the fence the tab writes to stands against what the tab last read
+/// from it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SourceState {
+    InStep,
+    /// The fence is still there but holds something else: somebody rewrote it
+    /// while the tab had edits of its own, or into something the form cannot
+    /// hold.
+    Changed,
+    /// The fence, or the editor the tab writes through, is gone.
+    Gone,
+}
+
+pub enum MermaidEditorEvent {
+    TabChanged,
+    Close,
+}
+
+/// A drag of the line between the form and the preview, naming the tab it
+/// belongs to so that two tabs side by side do not both follow it.
+#[derive(Clone)]
+struct DraggedDivider(EntityId);
+
+impl Render for DraggedDivider {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
+    }
+}
+
 pub struct MermaidEditor {
     editor: WeakEntity<Editor>,
     target: MermaidFenceTarget,
     form: Form,
+    kind: Option<MermaidDiagramKind>,
     preview: Preview,
     message: Option<SharedString>,
+    /// What the form emitted when it was last in step with the fence; `None`
+    /// for a diagram that is not in the buffer yet.
+    baseline: Option<String>,
+    dirty: bool,
+    source_state: SourceState,
+    /// Whether the preview shrinks the drawing to the pane rather than showing
+    /// it at its own size.
+    preview_fits: bool,
+    /// The share of the tab's width the form takes when the two sit side by
+    /// side.
+    form_share: f32,
+    width: Rc<Cell<Option<Pixels>>>,
+    redraw_requested: Rc<Cell<bool>>,
     focus_handle: FocusHandle,
     scroll_handle: ScrollHandle,
     subscriptions: Vec<Subscription>,
+    /// Kept apart from `subscriptions`, which is cleared with the form.
+    _source_subscriptions: Vec<Subscription>,
 }
 
 impl MermaidEditor {
@@ -332,21 +420,202 @@ impl MermaidEditor {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let mut source_subscriptions = Vec::new();
+        if let Some(source_editor) = editor.upgrade() {
+            source_subscriptions.push(cx.subscribe_in(
+                &source_editor,
+                window,
+                |this, _editor, event: &EditorEvent, window, cx| {
+                    if matches!(event, EditorEvent::BufferEdited) {
+                        this.source_edited(window, cx);
+                    }
+                },
+            ));
+            source_subscriptions.push(cx.observe_release(&source_editor, |this, _editor, cx| {
+                this.source_lost(cx);
+            }));
+        }
+        let focus_handle = cx.focus_handle();
+        // The pane focuses the tab itself; typing belongs in the first field.
+        source_subscriptions.push(cx.on_focus(&focus_handle, window, |this, window, cx| {
+            if let Some(field) = this.fields().first() {
+                window.focus(&field.focus_handle(cx), cx);
+            }
+        }));
         let mut this = Self {
             editor,
             target,
             form: Form::Choosing,
+            kind: None,
             preview: Preview::default(),
             message: None,
-            focus_handle: cx.focus_handle(),
+            baseline: None,
+            dirty: false,
+            source_state: SourceState::InStep,
+            preview_fits: true,
+            form_share: DEFAULT_FORM_SHARE,
+            width: Rc::new(Cell::new(None)),
+            redraw_requested: Rc::new(Cell::new(false)),
+            focus_handle,
             scroll_handle: ScrollHandle::new(),
             subscriptions: Vec::new(),
+            _source_subscriptions: source_subscriptions,
         };
         if let Some(document) = document {
             this.set_document(document, window, cx);
+            this.take_form_as_baseline(cx);
         }
         this.schedule_preview(cx);
         this
+    }
+
+    /// Whether this tab edits the fence whose body starts at `offset` in
+    /// `buffer`.
+    fn edits_fence_at(&self, buffer: EntityId, offset: usize, cx: &App) -> bool {
+        let Some(editor) = self.editor.upgrade() else {
+            return false;
+        };
+        let editor = editor.read(cx);
+        editor
+            .buffer()
+            .read(cx)
+            .as_singleton()
+            .is_some_and(|own| own.entity_id() == buffer)
+            && editor.mermaid_fence_offset(&self.target, cx) == Some(offset)
+    }
+
+    /// Takes what the form now describes as what the fence holds, so that the
+    /// tab is no longer dirty.
+    fn take_form_as_baseline(&mut self, cx: &mut Context<Self>) {
+        self.baseline = self.current_document(cx).map(|document| document.emit());
+        self.refresh_dirty(cx);
+    }
+
+    fn refresh_dirty(&mut self, cx: &mut Context<Self>) {
+        let dirty = match self.current_document(cx) {
+            None => false,
+            Some(document) => self.baseline.as_deref() != Some(document.emit().as_str()),
+        };
+        if dirty != self.dirty {
+            self.dirty = dirty;
+            cx.emit(MermaidEditorEvent::TabChanged);
+        }
+    }
+
+    fn set_source_state(&mut self, state: SourceState, cx: &mut Context<Self>) {
+        if state != self.source_state {
+            self.source_state = state;
+            cx.emit(MermaidEditorEvent::TabChanged);
+            cx.notify();
+        }
+    }
+
+    /// The document changed somewhere. A tab without edits of its own follows
+    /// the fence, and closes when it is gone; one with edits keeps them and
+    /// says what happened, and writing them then goes through the pane's
+    /// overwrite question.
+    fn source_edited(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(editor) = self.editor.upgrade() else {
+            self.source_lost(cx);
+            return;
+        };
+        if editor.read(cx).mermaid_fence_holds(&self.target, cx) {
+            self.set_source_state(SourceState::InStep, cx);
+            return;
+        }
+        let refreshed = editor
+            .read(cx)
+            .refreshed_mermaid_fence_target(&self.target, cx);
+        if self.dirty {
+            let state = match refreshed {
+                Some(_) => SourceState::Changed,
+                None => SourceState::Gone,
+            };
+            self.set_source_state(state, cx);
+            return;
+        }
+        match refreshed {
+            Some(refreshed) => {
+                if let Err(state) = self.follow(refreshed, window, cx) {
+                    self.set_source_state(state, cx);
+                }
+            }
+            None => cx.emit(MermaidEditorEvent::Close),
+        }
+    }
+
+    fn source_lost(&mut self, cx: &mut Context<Self>) {
+        if self.dirty {
+            self.set_source_state(SourceState::Gone, cx);
+        } else {
+            cx.emit(MermaidEditorEvent::Close);
+        }
+    }
+
+    /// Rebuilds the form from `target`, throwing away whatever the form held.
+    /// A fence the form cannot hold is left alone and reported as changed.
+    fn follow(
+        &mut self,
+        target: MermaidFenceTarget,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<(), SourceState> {
+        let document = if target.source.trim().is_empty() {
+            None
+        } else {
+            Some(parse_document(&target.source).map_err(|_| SourceState::Changed)?)
+        };
+        self.target = target;
+        match document {
+            Some(document) => self.set_document(document, window, cx),
+            None => self.clear_form(cx),
+        }
+        self.take_form_as_baseline(cx);
+        self.source_state = SourceState::InStep;
+        self.message = None;
+        cx.emit(MermaidEditorEvent::TabChanged);
+        cx.notify();
+        Ok(())
+    }
+
+    /// Back to the kind picker, for a diagram that has nothing in it yet.
+    fn clear_form(&mut self, cx: &mut Context<Self>) {
+        self.form = Form::Choosing;
+        self.kind = None;
+        self.subscriptions.clear();
+        self.message = None;
+        self.schedule_preview(cx);
+        cx.notify();
+    }
+
+    /// Throws the form's edits away and reads the fence again: the tab's
+    /// Revert button, and the pane's "Don't Save" and "Discard Edits".
+    fn revert(&mut self, window: &mut Window, cx: &mut Context<Self>) -> anyhow::Result<()> {
+        if self.target.inserts_fence() {
+            self.baseline = None;
+            self.clear_form(cx);
+            return Ok(());
+        }
+        let Some(editor) = self.editor.upgrade() else {
+            anyhow::bail!(source_gone_message());
+        };
+        let Some(refreshed) = editor
+            .read(cx)
+            .refreshed_mermaid_fence_target(&self.target, cx)
+        else {
+            self.set_source_state(SourceState::Gone, cx);
+            anyhow::bail!(source_gone_message());
+        };
+        if let Err(error) = parse_document(&refreshed.source)
+            && !refreshed.source.trim().is_empty()
+        {
+            self.set_source_state(SourceState::Changed, cx);
+            anyhow::bail!(i18n::t!(
+                "Cannot open the Mermaid diagram in the structured editor: {error}"
+            ));
+        }
+        self.follow(refreshed, window, cx)
+            .map_err(|_| anyhow::anyhow!(source_gone_message()))
     }
 
     /// Builds the form for `document`, replacing whatever was on screen. Only
@@ -360,6 +629,7 @@ impl MermaidEditor {
     ) {
         self.form = Form::Choosing;
         self.subscriptions.clear();
+        self.kind = Some(document.kind());
         self.form = match document {
             MermaidDocument::Flowchart(document) => {
                 Form::Flowchart(self.new_flowchart_form(document, window, cx))
@@ -1024,6 +1294,9 @@ impl MermaidEditor {
     /// Redraws the preview a beat after the last change, so that typing a label
     /// does not run the layout engine once per keystroke.
     fn schedule_preview(&mut self, cx: &mut Context<Self>) {
+        // Every change to the form comes through here, so this is also where
+        // the tab learns whether it still matches the fence.
+        self.refresh_dirty(cx);
         let theme = markdown::build_mermaid_theme(cx);
         let svg_renderer = cx.svg_renderer();
         self.preview._task = Some(cx.spawn(async move |this, cx| {
@@ -1410,16 +1683,29 @@ impl MermaidEditor {
         cx.notify();
     }
 
+    /// The Apply button and Ctrl+Enter. A fence that changed under the tab is
+    /// left alone; overwriting it is only done through the pane's question.
     fn confirm(&mut self, _: &menu::SecondaryConfirm, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(document) = self.current_document(cx) else {
-            self.message = Some(i18n::t!("Choose a diagram type.").into());
+        if let Err(error) = self.apply(false, window, cx) {
+            self.message = Some(format!("{error}").into());
             cx.notify();
-            return;
+        }
+    }
+
+    /// Writes the form into the fence. With `overwrite`, a fence somebody
+    /// rewrote meanwhile is written over, which the pane asks about first.
+    /// The tab stays open and in step with what it wrote.
+    fn apply(
+        &mut self,
+        overwrite: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> anyhow::Result<()> {
+        let Some(document) = self.current_document(cx) else {
+            anyhow::bail!(i18n::t!("Choose a diagram type."));
         };
         if let Some(problem) = Self::problem(&document) {
-            self.message = Some(problem);
-            cx.notify();
-            return;
+            anyhow::bail!(problem.to_string());
         }
 
         let source = document.emit();
@@ -1427,31 +1713,49 @@ impl MermaidEditor {
         // cannot read back would leave the fence in a state the editor could
         // not reopen, so it is not written at all.
         if let Err(error) = parse_document(&source) {
-            self.message = Some(i18n::t!("This content cannot be written back: {error}").into());
-            cx.notify();
-            return;
+            anyhow::bail!(i18n::t!("This content cannot be written back: {error}"));
+        }
+
+        let Some(editor) = self.editor.upgrade() else {
+            self.set_source_state(SourceState::Gone, cx);
+            anyhow::bail!(source_gone_message());
+        };
+        if !editor.read(cx).mermaid_fence_holds(&self.target, cx) {
+            let refreshed = editor
+                .read(cx)
+                .refreshed_mermaid_fence_target(&self.target, cx);
+            match refreshed {
+                None => {
+                    self.set_source_state(SourceState::Gone, cx);
+                    anyhow::bail!(source_gone_message());
+                }
+                Some(refreshed) if overwrite => self.target = refreshed,
+                Some(_) => {
+                    self.set_source_state(SourceState::Changed, cx);
+                    anyhow::bail!(source_changed_message());
+                }
+            }
         }
 
         let target = &self.target;
-        let written = self
-            .editor
-            .update(cx, |editor, cx| {
-                editor.write_mermaid_fence(target, &source, window, cx)
-            })
-            .log_err();
+        let written = editor.update(cx, |editor, cx| {
+            editor.write_mermaid_fence(target, &source, window, cx)
+        })?;
         match written {
-            // The fence changed under the modal — another pane, a reload — so
-            // the edit is dropped and the modal stays open with the work in it.
-            Some(Err(error)) => {
-                self.message = Some(format!("{error}").into());
-                cx.notify();
+            Some(written) => {
+                self.target = written;
+                self.baseline = Some(source);
+                self.source_state = SourceState::InStep;
+                self.message = None;
+                self.refresh_dirty(cx);
             }
-            _ => cx.emit(DismissEvent),
+            // Written, but the fence cannot be found again to write to a
+            // second time.
+            None => self.set_source_state(SourceState::Gone, cx),
         }
-    }
-
-    fn cancel(&mut self, _: &menu::Cancel, _window: &mut Window, cx: &mut Context<Self>) {
-        cx.emit(DismissEvent);
+        cx.emit(MermaidEditorEvent::TabChanged);
+        cx.notify();
+        Ok(())
     }
 
     /// Every text field, in the order they are drawn, which is the order Tab
@@ -2304,12 +2608,35 @@ impl MermaidEditor {
     }
 
     fn render_preview(&self, cx: &mut Context<Self>) -> AnyElement {
+        let fits = self.preview_fits;
+        let header = h_flex()
+            .w_full()
+            .flex_none()
+            .justify_between()
+            .child(section_title(i18n::t!("Preview")))
+            .child(
+                Button::new(
+                    "mermaid-preview-size",
+                    if fits {
+                        i18n::t!("Actual Size")
+                    } else {
+                        i18n::t!("Fit to Pane")
+                    },
+                )
+                .label_size(LabelSize::Small)
+                .on_click(cx.listener(|this, _, _window, cx| {
+                    this.preview_fits = !this.preview_fits;
+                    cx.notify();
+                })),
+            );
+
         let mut pane = v_flex()
             .id("mermaid-preview")
-            .w(PREVIEW_WIDTH)
-            .flex_none()
+            .size_full()
+            .min_w_0()
+            .min_h_0()
             .gap_1()
-            .child(section_title(i18n::t!("Preview")));
+            .child(header);
 
         if let Some(error) = &self.preview.error {
             pane = pane.child(
@@ -2319,22 +2646,31 @@ impl MermaidEditor {
             );
         }
         if let Some(image) = &self.preview.image {
-            let display = preview_size(image);
-            pane = pane.child(
-                div()
-                    .id("mermaid-preview-image")
-                    .w_full()
-                    .max_h(PREVIEW_HEIGHT)
+            let natural = preview_size(image);
+            let drawing = img(ImageSource::Render(image.clone()));
+            let frame = div()
+                .id("mermaid-preview-image")
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .bg(cx.theme().colors().editor_background)
+                .rounded_md()
+                .p_1();
+            pane = pane.child(if fits {
+                // Never drawn larger than its own size: the raster would only
+                // get blurrier.
+                frame.flex().items_center().justify_center().child(
+                    drawing
+                        .size_full()
+                        .max_w(natural.width)
+                        .max_h(natural.height)
+                        .object_fit(ObjectFit::Contain),
+                )
+            } else {
+                frame
                     .overflow_scroll()
-                    .bg(cx.theme().colors().editor_background)
-                    .rounded_md()
-                    .p_1()
-                    .child(
-                        img(ImageSource::Render(image.clone()))
-                            .w(display.width)
-                            .h(display.height),
-                    ),
-            );
+                    .child(drawing.flex_none().w(natural.width).h(natural.height))
+            });
         } else if self.preview.error.is_none() {
             pane = pane.child(
                 Label::new(match self.form {
@@ -2349,19 +2685,71 @@ impl MermaidEditor {
         pane.into_any_element()
     }
 
-    fn render_footer(&self, cx: &mut Context<Self>) -> ModalFooter {
-        ModalFooter::new()
-            .start_slot::<Label>(
-                Label::new(i18n::t!("Tab moves between fields. Ctrl+Enter applies."))
-                    .size(LabelSize::Small)
-                    .color(Color::Muted),
+    /// What the tab says about the fence when it is no longer the one the form
+    /// was read from, with the way back.
+    fn render_source_state(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let text = match self.source_state {
+            SourceState::InStep => return None,
+            SourceState::Changed => source_changed_message(),
+            SourceState::Gone => source_gone_message(),
+        };
+        Some(
+            h_flex()
+                .w_full()
+                .flex_none()
+                .gap_2()
+                .child(
+                    div().flex_1().min_w_0().child(
+                        Label::new(text)
+                            .size(LabelSize::Small)
+                            .color(Color::Warning),
+                    ),
+                )
+                .when(self.source_state == SourceState::Changed, |row| {
+                    row.child(
+                        Button::new(
+                            "mermaid-take-document",
+                            i18n::t!("Load the Document's Version"),
+                        )
+                        .label_size(LabelSize::Small)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            if let Err(error) = this.revert(window, cx) {
+                                this.message = Some(format!("{error}").into());
+                                cx.notify();
+                            }
+                        })),
+                    )
+                })
+                .into_any_element(),
+        )
+    }
+
+    fn render_footer(&self, cx: &mut Context<Self>) -> AnyElement {
+        h_flex()
+            .w_full()
+            .flex_none()
+            .gap_2()
+            .justify_between()
+            .child(
+                Label::new(i18n::t!(
+                    "Tab moves between fields. Ctrl+Enter applies to the document."
+                ))
+                .size(LabelSize::Small)
+                .color(Color::Muted),
             )
-            .end_slot::<AnyElement>(
+            .child(
                 h_flex()
                     .gap_1()
-                    .child(Button::new("mermaid-cancel", i18n::t!("Cancel")).on_click(
-                        cx.listener(|this, _, window, cx| this.cancel(&menu::Cancel, window, cx)),
-                    ))
+                    .child(
+                        Button::new("mermaid-revert", i18n::tc!("mermaid editor", "Revert"))
+                            .disabled(!self.dirty)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                if let Err(error) = this.revert(window, cx) {
+                                    this.message = Some(format!("{error}").into());
+                                    cx.notify();
+                                }
+                            })),
+                    )
                     .child(
                         Button::new("mermaid-confirm", i18n::tc!("mermaid editor", "Apply"))
                             .style(ButtonStyle::Filled)
@@ -2369,10 +2757,80 @@ impl MermaidEditor {
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.confirm(&menu::SecondaryConfirm, window, cx)
                             })),
-                    )
-                    .into_any_element(),
+                    ),
             )
+            .into_any_element()
     }
+
+    /// An element that paints nothing and records the width the tab was laid
+    /// out at, asking for another frame when it changed (ADR-F78).
+    fn measure_width(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let cell = self.width.clone();
+        let redraw_requested = self.redraw_requested.clone();
+        let view = cx.weak_entity();
+        canvas(
+            move |bounds, window, _| {
+                if cell.get() == Some(bounds.size.width) {
+                    return;
+                }
+                cell.set(Some(bounds.size.width));
+                if redraw_requested.replace(true) {
+                    return;
+                }
+                // A notify while the frame is being drawn is dropped, so the
+                // redraw is asked for from the next frame.
+                window.on_next_frame(move |_, cx| {
+                    redraw_requested.set(false);
+                    view.update(cx, |_, cx| cx.notify()).ok();
+                });
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full()
+    }
+
+    fn render_divider(&self, cx: &mut Context<Self>) -> AnyElement {
+        let entity_id = cx.entity_id();
+        div()
+            .id("mermaid-divider")
+            .flex_none()
+            .w(px(6.))
+            .h_full()
+            .cursor_col_resize()
+            .flex()
+            .justify_center()
+            .child(
+                div()
+                    .w(px(1.))
+                    .h_full()
+                    .bg(cx.theme().colors().border_variant),
+            )
+            .on_drag(DraggedDivider(entity_id), |divider, _, _, cx| {
+                cx.new(|_| divider.clone())
+            })
+            .into_any_element()
+    }
+}
+
+/// The share of the width the form starts with; the drawing gets the rest,
+/// which is the side that is too small in a dialog.
+const DEFAULT_FORM_SHARE: f32 = 0.45;
+const MIN_FORM_SHARE: f32 = 0.2;
+const MAX_FORM_SHARE: f32 = 0.8;
+/// Below this the form and the preview are stacked rather than side by side.
+const SIDE_BY_SIDE_MIN_WIDTH: Pixels = px(700.);
+
+fn source_changed_message() -> &'static str {
+    i18n::t!(
+        "The diagram was changed in the document after this tab read it. Applying will not write over it: load the document's version, or save this tab to choose whether to overwrite it."
+    )
+}
+
+fn source_gone_message() -> &'static str {
+    i18n::t!(
+        "The diagram's code block, or the editor it was opened from, is gone, so these edits cannot be applied."
+    )
 }
 
 /// The width the id fields get: enough for a short identifier without letting
@@ -2380,10 +2838,6 @@ impl MermaidEditor {
 const ID_FIELD_WIDTH: Rems = Rems(8.);
 const LABEL_FIELD_WIDTH: Rems = Rems(12.);
 const NUMBER_FIELD_WIDTH: Rems = Rems(5.);
-const PREVIEW_WIDTH: Rems = Rems(28.);
-const PREVIEW_HEIGHT: Rems = Rems(30.);
-const MODAL_WIDTH: Rems = Rems(72.);
-const FORM_HEIGHT: Rems = Rems(30.);
 
 fn section_title(text: impl Into<SharedString>) -> Label {
     Label::new(text).size(LabelSize::Small).color(Color::Muted)
@@ -2792,74 +3246,220 @@ impl Render for MermaidEditor {
         let sections = self.render_form(window, cx);
         let preview = self.render_preview(cx);
         let footer = self.render_footer(cx);
+        let source_state = self.render_source_state(cx);
         let message = self.message.clone();
         let headline = match &self.form {
             Form::Choosing => SharedString::from(i18n::t!("Create Mermaid Diagram")),
             _ => SharedString::from(i18n::t!("Edit Mermaid Diagram")),
         };
+        let side_by_side = self
+            .width
+            .get()
+            .is_none_or(|width| width >= SIDE_BY_SIDE_MIN_WIDTH);
 
-        div()
+        let form = v_flex()
+            .id("mermaid-form")
+            .size_full()
+            .gap_3()
+            .overflow_scroll()
+            .track_scroll(&self.scroll_handle)
+            .children(sections);
+
+        let body = if side_by_side {
+            h_flex()
+                .id("mermaid-body")
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .child(
+                    div()
+                        .flex_none()
+                        .w(relative(self.form_share))
+                        .h_full()
+                        .min_h_0()
+                        .pr_1()
+                        .child(form),
+                )
+                .child(self.render_divider(cx))
+                .child(div().flex_1().min_w_0().h_full().pl_1().child(preview))
+                .on_drag_move(cx.listener(
+                    |this, event: &DragMoveEvent<DraggedDivider>, _window, cx| {
+                        let ours = event
+                            .dragged_item()
+                            .downcast_ref::<DraggedDivider>()
+                            .is_some_and(|divider| divider.0 == cx.entity_id());
+                        let width = event.bounds.size.width;
+                        if !ours || width <= px(0.) {
+                            return;
+                        }
+                        let share = (event.event.position.x - event.bounds.left()) / width;
+                        this.form_share = share.clamp(MIN_FORM_SHARE, MAX_FORM_SHARE);
+                        cx.notify();
+                    },
+                ))
+        } else {
+            v_flex()
+                .id("mermaid-body")
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .gap_2()
+                .child(div().flex_1().min_h_0().w_full().child(form))
+                .child(div().flex_1().min_h_0().w_full().child(preview))
+        };
+
+        v_flex()
             .key_context("MermaidEditor")
             .track_focus(&self.focus_handle)
-            .elevation_3(cx)
-            .w(MODAL_WIDTH)
-            .on_action(cx.listener(Self::cancel))
+            .relative()
+            .size_full()
+            .p_3()
+            .gap_2()
+            .bg(cx.theme().colors().editor_background)
             .on_action(cx.listener(Self::confirm))
             .capture_action(cx.listener(Self::focus_next_field))
             .capture_action(cx.listener(Self::focus_previous_field))
+            .child(self.measure_width(cx))
             .child(
-                Modal::new("mermaid-editor", None)
-                    .header(ModalHeader::new().headline(headline).description(i18n::t!(
-                        "Mermaid lays out diagrams automatically (positions cannot be set). Here you edit the diagram's elements, links and text."
-                    )))
-                    .section(
-                        Section::new()
-                            .child(toolbar)
-                            .children(message.map(|message| {
-                                Label::new(message)
-                                    .size(LabelSize::Small)
-                                    .color(Color::Warning)
-                            }))
-                            .child(
-                                h_flex()
-                                    .w_full()
-                                    .items_start()
-                                    .gap_3()
-                                    .child(
-                                        v_flex()
-                                            .id("mermaid-form")
-                                            .flex_1()
-                                            .gap_3()
-                                            .max_h(FORM_HEIGHT)
-                                            .overflow_scroll()
-                                            .track_scroll(&self.scroll_handle)
-                                            .children(sections),
-                                    )
-                                    .child(preview),
-                            ),
-                    )
-                    .footer(footer),
+                v_flex()
+                    .flex_none()
+                    .child(Headline::new(headline).size(HeadlineSize::Small))
+                    .child(
+                        Label::new(i18n::t!(
+                            "Mermaid lays out diagrams automatically (positions cannot be set). Here you edit the diagram's elements, links and text."
+                        ))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                    ),
             )
+            .child(div().flex_none().w_full().child(toolbar))
+            .children(source_state)
+            .children(message.map(|message| {
+                div().flex_none().child(
+                    Label::new(message)
+                        .size(LabelSize::Small)
+                        .color(Color::Warning),
+                )
+            }))
+            .child(body)
+            .child(footer)
     }
 }
 
 impl Focusable for MermaidEditor {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
-        match self.fields().first() {
-            Some(field) => field.focus_handle(cx),
-            None => self.focus_handle.clone(),
-        }
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
     }
 }
 
-impl EventEmitter<DismissEvent> for MermaidEditor {}
+impl EventEmitter<MermaidEditorEvent> for MermaidEditor {}
 
-impl ModalView for MermaidEditor {
-    /// The modal holds anchors into the fence it read and a live handle on the
-    /// editor it will write to; reviving a stashed copy later would write over
-    /// a range the buffer has moved on from.
-    fn stash_when_dismissed(&self) -> bool {
-        false
+/// Not a `SerializableItem`: the tab is tied to a position in a buffer, which
+/// a restart does not bring back, and to an editor that the restored
+/// workspace builds anew.
+impl Item for MermaidEditor {
+    type Event = MermaidEditorEvent;
+
+    fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
+        let file = self
+            .editor
+            .upgrade()
+            .and_then(|editor| {
+                let buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
+                let file = buffer.read(cx).file()?;
+                Some(file.file_name(cx).to_string())
+            })
+            .unwrap_or_else(|| i18n::t!("Untitled").to_string());
+        match self.kind {
+            Some(kind) => {
+                let kind = kind.label();
+                i18n::t!("{kind} ({file})").into()
+            }
+            None => i18n::t!("New Mermaid Diagram ({file})").into(),
+        }
+    }
+
+    fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
+        Some(Icon::new(IconName::Blocks))
+    }
+
+    fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
+        let editor = self.editor.upgrade()?;
+        let buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
+        let path = buffer.read(cx).file()?.full_path(cx);
+        Some(path.to_string_lossy().to_string().into())
+    }
+
+    fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
+        match event {
+            MermaidEditorEvent::TabChanged => f(ItemEvent::UpdateTab),
+            MermaidEditorEvent::Close => f(ItemEvent::CloseItem),
+        }
+    }
+
+    fn added_to_workspace(
+        &mut self,
+        _workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // An editor's focus listeners belong to the window they were
+        // registered against, so the fields of a tab moved to another window
+        // have to register them again.
+        for field in self.fields() {
+            field.update(cx, |editor, cx| {
+                editor.rebind_window_focus_listeners(window, cx);
+            });
+        }
+    }
+
+    fn is_dirty(&self, _cx: &App) -> bool {
+        self.dirty
+    }
+
+    // A pane only asks before closing a tab that holds no project file when
+    // the tab says it stands for one document of its own.
+    fn buffer_kind(&self, _cx: &App) -> ItemBufferKind {
+        ItemBufferKind::Singleton
+    }
+
+    fn can_save(&self, _cx: &App) -> bool {
+        true
+    }
+
+    // Only a tab with edits of its own is in conflict: one without follows
+    // the fence or closes. The pane then asks before `save` writes over the
+    // fence ("Overwrite"), or calls `reload` ("Discard Edits").
+    fn has_conflict(&self, _cx: &App) -> bool {
+        self.dirty && self.source_state != SourceState::InStep
+    }
+
+    fn has_deleted_file(&self, _cx: &App) -> bool {
+        self.dirty && self.source_state == SourceState::Gone
+    }
+
+    fn reload(
+        &mut self,
+        _project: Entity<project::Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        Task::ready(self.revert(window, cx))
+    }
+
+    fn save(
+        &mut self,
+        _options: SaveOptions,
+        _project: Entity<project::Project>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<anyhow::Result<()>> {
+        let result = self.apply(true, window, cx);
+        if let Err(error) = &result {
+            self.message = Some(format!("{error}").into());
+            cx.notify();
+        }
+        Task::ready(result)
     }
 }
 

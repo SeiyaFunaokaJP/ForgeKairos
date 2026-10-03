@@ -6,6 +6,7 @@ use mermaid_render::flowchart_model::parse_flowchart;
 use mermaid_render::pie_model::PieDocument;
 use mermaid_render::sequence_model::SequenceItem;
 use mermaid_render::state_model::{StateDocument, StateItem};
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[gpui::test]
@@ -326,7 +327,6 @@ async fn the_modal_and_its_fields_are_released(cx: &mut TestAppContext) {
             };
             let label = row.label.clone();
             label.update(cx, |label, cx| label.set_text("途中", window, cx));
-            modal.cancel(&menu::Cancel, window, cx);
         })
     });
     drop(modal);
@@ -1511,7 +1511,7 @@ async fn an_empty_sequence_or_er_is_not_written_back(cx: &mut TestAppContext) {
     }
 }
 
-/// The modal stays open for as long as the user needs, and the fence it read
+/// The tab stays open for as long as the user needs, and the fence it read
 /// may have been rewritten in another pane meanwhile. Writing over that would
 /// throw away an edit nobody saw.
 #[gpui::test]
@@ -1528,16 +1528,11 @@ async fn a_fence_that_changed_while_the_editor_was_open_is_not_overwritten(
         cx,
     )
     .await;
+    set_first_node_label("開始", &modal, &mut cx);
 
     // A surgical edit rather than a fresh buffer, so that the fence is still
-    // the one the modal was opened on and only its body has moved on.
-    cx.update_buffer(|buffer, cx| {
-        let text = buffer.text();
-        let offset = text
-            .find("A --> B")
-            .expect("the fence holds the edge the test rewrites");
-        buffer.edit([(offset..offset + "A --> B".len(), "A --> C")], None, cx);
-    });
+    // the one the tab was opened on and only its body has moved on.
+    rewrite_in_buffer("A --> B", "A --> C", &mut cx);
     let changed = indoc! {"
         ```mermaid
         flowchart LR
@@ -1556,11 +1551,535 @@ async fn a_fence_that_changed_while_the_editor_was_open_is_not_overwritten(
         changed,
         "the diagram somebody else wrote must survive"
     );
-    let message = cx.update(|_window, cx| modal.read(cx).message.clone());
+    cx.update(|_window, cx| {
+        let modal = modal.read(cx);
+        assert_eq!(modal.message.as_deref(), Some(source_changed_message()));
+        assert!(
+            modal.has_conflict(cx),
+            "the pane should ask before saving over it"
+        );
+        assert!(!modal.has_deleted_file(cx));
+        assert!(modal.is_dirty(cx), "the edit in the form is kept");
+    });
+}
+
+/// Saving the tab is what the pane does after its overwrite question was
+/// answered with "Overwrite", so that writes over the changed fence.
+#[gpui::test]
+async fn saving_writes_over_a_fence_that_changed(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(
+        indoc! {"
+            ```mermaid
+            flowchart LRˇ
+                A --> B
+            ```
+        "},
+        cx,
+    )
+    .await;
+    set_first_node_label("開始", &modal, &mut cx);
+    rewrite_in_buffer("A --> B", "A --> C", &mut cx);
+
+    let Some(project) = cx.update_editor(|editor, _window, _cx| editor.project().cloned()) else {
+        panic!("the test editor has a project");
+    };
+    let save = cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            modal.save(SaveOptions::default(), project, window, cx)
+        })
+    });
+    save.await
+        .expect("an overwrite writes over the changed fence");
+
     assert_eq!(
-        message.as_deref(),
-        Some("The diagram text changed while it was being edited. Open it again.")
+        fence_body(&mut cx),
+        "flowchart LR
+    A[開始]
+    B
+    A --> B"
     );
+    cx.update(|_window, cx| {
+        let modal = modal.read(cx);
+        assert!(!modal.is_dirty(cx));
+        assert!(!modal.has_conflict(cx));
+    });
+}
+
+/// A tab without edits of its own has nothing to lose, so it shows what the
+/// document now says rather than a warning.
+#[gpui::test]
+async fn an_unedited_tab_follows_the_fence(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(
+        indoc! {"
+            ```mermaid
+            flowchart LRˇ
+                A --> B
+            ```
+        "},
+        cx,
+    )
+    .await;
+
+    rewrite_in_buffer("A --> B", "A --> C", &mut cx);
+    cx.run_until_parked();
+
+    cx.update(|_window, cx| {
+        let modal = modal.read(cx);
+        assert_eq!(modal.node_ids(cx), vec!["A".to_string(), "C".to_string()]);
+        assert_eq!(modal.source_state, SourceState::InStep);
+        assert!(!modal.is_dirty(cx));
+    });
+
+    // And it now writes to the fence as it reads after the change.
+    set_first_node_label("開始", &modal, &mut cx);
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            modal.confirm(&menu::SecondaryConfirm, window, cx)
+        })
+    });
+    assert_eq!(
+        fence_body(&mut cx),
+        "flowchart LR
+    A[開始]
+    C
+    A --> C"
+    );
+}
+
+/// Applying leaves the tab open, clean, and pointed at what it wrote, so that
+/// a second edit applies too rather than being refused as a change made
+/// elsewhere.
+#[gpui::test]
+async fn applying_keeps_the_tab_open_and_in_step(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(
+        indoc! {"
+            ```mermaid
+            flowchart LRˇ
+                A --> B
+            ```
+        "},
+        cx,
+    )
+    .await;
+    let events = record_events(&modal, &mut cx);
+    cx.update(|_window, cx| assert!(!modal.read(cx).is_dirty(cx)));
+
+    set_first_node_label("開始", &modal, &mut cx);
+    cx.update(|_window, cx| assert!(modal.read(cx).is_dirty(cx)));
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            modal.confirm(&menu::SecondaryConfirm, window, cx)
+        })
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        fence_body(&mut cx),
+        "flowchart LR
+    A[開始]
+    B
+    A --> B"
+    );
+    cx.update(|_window, cx| {
+        let modal = modal.read(cx);
+        assert!(!modal.is_dirty(cx));
+        assert_eq!(modal.source_state, SourceState::InStep);
+        assert_eq!(modal.message, None);
+    });
+
+    set_first_node_label("始まり", &modal, &mut cx);
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            modal.confirm(&menu::SecondaryConfirm, window, cx)
+        })
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        fence_body(&mut cx),
+        "flowchart LR
+    A[始まり]
+    B
+    A --> B"
+    );
+    assert!(
+        !events.borrow().contains(&"close"),
+        "applying must not close the tab"
+    );
+}
+
+const FENCE_BEFORE_A_PARAGRAPH: &str = indoc! {"
+    ```mermaid
+    flowchart LRˇ
+        A --> B
+    ```
+    後ろの段落
+"};
+const DELETED_FENCE: &str = "```mermaid\nflowchart LR\n    A --> B\n```\n";
+
+/// The fence going away closes a tab that has nothing to lose.
+#[gpui::test]
+async fn a_deleted_fence_closes_an_unedited_tab(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(FENCE_BEFORE_A_PARAGRAPH, cx).await;
+    let events = record_events(&modal, &mut cx);
+    rewrite_in_buffer(DELETED_FENCE, "", &mut cx);
+    cx.run_until_parked();
+    assert_eq!(events.borrow().last().copied(), Some("close"));
+}
+
+/// One that has edits stays, marked as having lost what it writes to.
+#[gpui::test]
+async fn a_deleted_fence_marks_an_edited_tab(cx: &mut TestAppContext) {
+    let fence = DELETED_FENCE;
+    let (mut cx, modal, _app_state) = open_on(FENCE_BEFORE_A_PARAGRAPH, cx).await;
+    let events = record_events(&modal, &mut cx);
+    set_first_node_label("開始", &modal, &mut cx);
+    rewrite_in_buffer(fence, "", &mut cx);
+    cx.run_until_parked();
+    assert!(!events.borrow().contains(&"close"));
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            assert_eq!(modal.source_state, SourceState::Gone);
+            assert!(modal.has_conflict(cx));
+            assert!(modal.has_deleted_file(cx));
+            modal.confirm(&menu::SecondaryConfirm, window, cx);
+            assert_eq!(modal.message.as_deref(), Some(source_gone_message()));
+        })
+    });
+    assert_eq!(
+        cx.update_editor(|editor, _window, cx| editor.text(cx)),
+        "後ろの段落\n"
+    );
+}
+
+/// A fence deleted wholesale lets its anchors collapse onto whatever comes
+/// next. When that is another diagram, the tab must not start writing to it.
+#[gpui::test]
+async fn a_deleted_fence_does_not_hand_the_tab_to_the_next_one(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(
+        indoc! {"
+            ```mermaid
+            flowchart LRˇ
+                A --> B
+            ```
+            ```mermaid
+            flowchart LR
+                X --> Y
+            ```
+        "},
+        cx,
+    )
+    .await;
+    set_first_node_label("開始", &modal, &mut cx);
+    rewrite_in_buffer("```mermaid\nflowchart LR\n    A --> B\n```\n", "", &mut cx);
+    cx.run_until_parked();
+
+    let save = cx.update(|window, cx| modal.update(cx, |modal, cx| modal.apply(true, window, cx)));
+    assert!(save.is_err(), "the diagram that is left is not this tab's");
+    assert_eq!(
+        cx.update_editor(|editor, _window, cx| editor.text(cx)),
+        "```mermaid\nflowchart LR\n    X --> Y\n```\n"
+    );
+}
+
+/// "Revert" and the pane's "Discard Edits" read the fence again.
+#[gpui::test]
+async fn reverting_takes_the_document_version(cx: &mut TestAppContext) {
+    let (mut cx, modal, _app_state) = open_on(
+        indoc! {"
+            ```mermaid
+            flowchart LRˇ
+                A --> B
+            ```
+        "},
+        cx,
+    )
+    .await;
+    set_first_node_label("開始", &modal, &mut cx);
+    rewrite_in_buffer("A --> B", "A --> C", &mut cx);
+    cx.run_until_parked();
+
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            modal
+                .revert(window, cx)
+                .expect("the fence is still there to read");
+        })
+    });
+    cx.update(|_window, cx| {
+        let modal = modal.read(cx);
+        assert_eq!(modal.node_ids(cx), vec!["A".to_string(), "C".to_string()]);
+        assert!(!modal.is_dirty(cx));
+        assert!(!modal.has_conflict(cx));
+    });
+}
+
+fn set_first_node_label(
+    text: &'static str,
+    modal: &Entity<MermaidEditor>,
+    cx: &mut EditorTestContext,
+) {
+    cx.update(|window, cx| {
+        modal.update(cx, |modal, cx| {
+            let Some(row) = flowchart(modal).nodes.first() else {
+                panic!("the diagram should have a node");
+            };
+            let label = row.label.clone();
+            label.update(cx, |label, cx| label.set_text(text, window, cx));
+        })
+    });
+    cx.run_until_parked();
+}
+
+/// Rewrites the first `old` in the buffer, the way another pane would.
+fn rewrite_in_buffer(old: &str, new: &str, cx: &mut EditorTestContext) {
+    cx.update_buffer(|buffer, cx| {
+        let text = buffer.text();
+        let offset = text
+            .find(old)
+            .unwrap_or_else(|| panic!("the buffer should hold {old:?}"));
+        buffer.edit([(offset..offset + old.len(), new)], None, cx);
+    });
+}
+
+fn record_events(
+    modal: &Entity<MermaidEditor>,
+    cx: &mut EditorTestContext,
+) -> Rc<std::cell::RefCell<Vec<&'static str>>> {
+    let events = Rc::new(std::cell::RefCell::new(Vec::new()));
+    cx.update(|_window, cx| {
+        cx.subscribe(modal, {
+            let events = events.clone();
+            move |_, event: &MermaidEditorEvent, _| {
+                events.borrow_mut().push(match event {
+                    MermaidEditorEvent::TabChanged => "tab changed",
+                    MermaidEditorEvent::Close => "close",
+                });
+            }
+        })
+        .detach();
+    });
+    events
+}
+
+/// The way in from the workspace: one tab per diagram, and closing a tab with
+/// edits asks first.
+mod in_the_workspace {
+    use super::*;
+    use fs::FakeFs;
+    use gpui::VisualTestContext;
+    use project::Project;
+    use serde_json::json;
+    use util::path;
+    use workspace::MultiWorkspace;
+
+    const DOCUMENT: &str = "# 図\n\n```mermaid\nflowchart LR\n    A --> B\n```\n\n```mermaid\nflowchart LR\n    X --> Y\n```\n";
+
+    async fn workspace_with_document(
+        cx: &mut TestAppContext,
+    ) -> (Entity<Workspace>, Entity<Editor>, &mut VisualTestContext) {
+        cx.update(|cx| cx.set_global(db::AppDatabase::test_new()));
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(path!("/project"), json!({ "doc.md": DOCUMENT }))
+            .await;
+        let project = Project::test(fs, [path!("/project").as_ref()], cx).await;
+        let (multi_workspace, cx) =
+            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
+        let workspace =
+            multi_workspace.read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone());
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .map(|worktree| worktree.read(cx).id())
+                .expect("the project has a worktree")
+        });
+        let open = workspace.update_in(cx, |workspace, window, cx| {
+            workspace.open_path(
+                project::ProjectPath {
+                    worktree_id,
+                    path: util::rel_path::rel_path("doc.md").into(),
+                },
+                None,
+                true,
+                window,
+                cx,
+            )
+        });
+        let item = open.await.expect("the document opens");
+        let editor = item
+            .downcast::<Editor>()
+            .expect("the document opens in an editor");
+        editor.update(cx, |editor, cx| {
+            if let Some(buffer) = editor.buffer().read(cx).as_singleton() {
+                buffer.update(cx, |buffer, cx| {
+                    buffer.set_language(Some(markdown_language()), cx)
+                });
+            }
+        });
+        cx.run_until_parked();
+        (workspace, editor, cx)
+    }
+
+    /// Opens the tab on the fence holding `needle`, the way the preview's edit
+    /// button does.
+    fn open_on_fence(
+        needle: &str,
+        workspace: &Entity<Workspace>,
+        editor: &Entity<Editor>,
+        cx: &mut VisualTestContext,
+    ) {
+        let offset = DOCUMENT
+            .find(needle)
+            .unwrap_or_else(|| panic!("the document holds {needle:?}"));
+        let target = editor.update(cx, |editor, cx| editor.mermaid_fence_target_at(offset, cx));
+        workspace.update_in(cx, |workspace, window, cx| {
+            open(workspace, editor.clone(), target, window, cx);
+        });
+        cx.run_until_parked();
+    }
+
+    fn tabs(
+        workspace: &Entity<Workspace>,
+        cx: &mut VisualTestContext,
+    ) -> Vec<Entity<MermaidEditor>> {
+        workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .active_pane()
+                .read(cx)
+                .items_of_type::<MermaidEditor>()
+                .collect()
+        })
+    }
+
+    fn active_tab(
+        workspace: &Entity<Workspace>,
+        cx: &mut VisualTestContext,
+    ) -> Option<Entity<MermaidEditor>> {
+        workspace.read_with(cx, |workspace, cx| {
+            workspace.active_item_as::<MermaidEditor>(cx)
+        })
+    }
+
+    #[gpui::test]
+    async fn the_same_diagram_brings_its_tab_forward(cx: &mut TestAppContext) {
+        let (workspace, editor, cx) = workspace_with_document(cx).await;
+
+        open_on_fence("A --> B", &workspace, &editor, cx);
+        let Some(first) = active_tab(&workspace, cx) else {
+            panic!("the tab should be the active item");
+        };
+        let title = first.read_with(cx, |tab, cx| tab.tab_content_text(0, cx));
+        assert_eq!(title.as_ref(), "Flowchart (doc.md)");
+
+        // Back to the document, then the same diagram again.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.activate_item(&editor, true, true, window, cx);
+        });
+        open_on_fence("A --> B", &workspace, &editor, cx);
+        assert_eq!(
+            tabs(&workspace, cx).len(),
+            1,
+            "no second tab on one diagram"
+        );
+        assert_eq!(active_tab(&workspace, cx), Some(first.clone()));
+
+        open_on_fence("X --> Y", &workspace, &editor, cx);
+        assert_eq!(
+            tabs(&workspace, cx).len(),
+            2,
+            "another diagram gets its own tab"
+        );
+        assert_ne!(active_tab(&workspace, cx), Some(first));
+    }
+
+    #[gpui::test]
+    async fn closing_an_edited_tab_asks_first(cx: &mut TestAppContext) {
+        let (workspace, editor, cx) = workspace_with_document(cx).await;
+        open_on_fence("A --> B", &workspace, &editor, cx);
+        let Some(tab) = active_tab(&workspace, cx) else {
+            panic!("the tab should be the active item");
+        };
+        tab.update_in(cx, |tab, window, cx| {
+            let Some(row) = flowchart(tab).nodes.first() else {
+                panic!("the diagram should have a node");
+            };
+            let label = row.label.clone();
+            label.update(cx, |label, cx| label.set_text("開始", window, cx));
+        });
+        cx.run_until_parked();
+        assert!(tab.read_with(cx, |tab, cx| tab.is_dirty(cx)));
+
+        let close = |cx: &mut VisualTestContext| {
+            let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+            pane.update_in(cx, |pane, window, cx| {
+                pane.close_active_item(
+                    &workspace::CloseActiveItem {
+                        save_intent: None,
+                        close_pinned: false,
+                    },
+                    window,
+                    cx,
+                )
+            })
+        };
+
+        let closing = close(cx);
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt(), "closing should ask what to do");
+        cx.simulate_prompt_answer("Cancel");
+        cx.run_until_parked();
+        closing.await.log_err();
+        assert_eq!(tabs(&workspace, cx).len(), 1, "Cancel keeps the tab");
+
+        let closing = close(cx);
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer("Save");
+        cx.run_until_parked();
+        closing.await.expect("saving and closing should succeed");
+        assert!(tabs(&workspace, cx).is_empty(), "Save closes the tab");
+        let text = editor.read_with(cx, |editor, cx| editor.text(cx));
+        assert!(
+            text.contains("A[開始]"),
+            "Save applies the edit to the document:\n{text}"
+        );
+    }
+
+    #[gpui::test]
+    async fn closing_without_saving_leaves_the_document_alone(cx: &mut TestAppContext) {
+        let (workspace, editor, cx) = workspace_with_document(cx).await;
+        open_on_fence("A --> B", &workspace, &editor, cx);
+        let Some(tab) = active_tab(&workspace, cx) else {
+            panic!("the tab should be the active item");
+        };
+        tab.update_in(cx, |tab, window, cx| {
+            let Some(row) = flowchart(tab).nodes.first() else {
+                panic!("the diagram should have a node");
+            };
+            let label = row.label.clone();
+            label.update(cx, |label, cx| label.set_text("開始", window, cx));
+        });
+        cx.run_until_parked();
+
+        let pane = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+        let closing = pane.update_in(cx, |pane, window, cx| {
+            pane.close_active_item(
+                &workspace::CloseActiveItem {
+                    save_intent: None,
+                    close_pinned: false,
+                },
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        assert!(cx.has_pending_prompt());
+        cx.simulate_prompt_answer("Don't Save");
+        cx.run_until_parked();
+        closing.await.expect("closing should succeed");
+        assert!(tabs(&workspace, cx).is_empty());
+        assert_eq!(editor.read_with(cx, |editor, cx| editor.text(cx)), DOCUMENT);
+    }
 }
 
 /// A fence holding a diagram no model can express is refused before the modal

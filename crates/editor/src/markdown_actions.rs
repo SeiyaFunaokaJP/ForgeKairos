@@ -5276,6 +5276,7 @@ fn escape_table_cell(cell: &str) -> String {
 }
 
 /// Where `markdown::EditMermaid` will write, and the diagram that is there now.
+#[derive(Debug)]
 pub struct MermaidFenceTarget {
     /// The fence's body: the whole lines between the opening and the closing
     /// fence, ending just before the closing fence's line. Empty when the fence
@@ -5298,9 +5299,18 @@ pub struct MermaidFenceTarget {
 /// The text written around the diagram body when the fence has yet to be
 /// inserted, so that the whole fence arrives in the one edit that `write_mermaid_fence`
 /// makes — and so that dismissing the editor leaves the document untouched.
+#[derive(Debug)]
 struct FenceToInsert {
     before: String,
     after: String,
+}
+
+impl MermaidFenceTarget {
+    /// Whether the fence is not in the buffer yet and arrives with the first
+    /// write.
+    pub fn inserts_fence(&self) -> bool {
+        self.fence.is_some()
+    }
 }
 
 impl Editor {
@@ -5446,13 +5456,17 @@ impl Editor {
     /// minutes at a time, and another pane — or a reload — may have rewritten
     /// the diagram underneath it. The anchors still point at the right place,
     /// so the text itself is what is compared.
+    ///
+    /// Returns the fence as it stands after the write, which is what a further
+    /// write from the same editor has to be resolved against; `None` only if
+    /// the written fence cannot be found again.
     pub fn write_mermaid_fence(
         &mut self,
         target: &MermaidFenceTarget,
         source: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Result<()> {
+    ) -> Result<Option<MermaidFenceTarget>> {
         anyhow::ensure!(
             !self.read_only(cx),
             i18n::t!("This buffer is read-only, so the diagram can't be written back.")
@@ -5480,13 +5494,64 @@ impl Editor {
             text.push_str(&fence.after);
         }
 
+        let body_start = target
+            .range
+            .start
+            .to_offset(&self.buffer.read(cx).snapshot(cx))
+            + cursor_offset;
         self.apply_markdown_edits(
             vec![(target.range.clone(), text)],
             vec![cursor_offset],
             window,
             cx,
         );
-        Ok(())
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let row = snapshot.offset_to_point(body_start).row;
+        Ok(mermaid_fence_target_at_row(&snapshot, row))
+    }
+
+    /// Whether the fence `target` points at still holds what it held when
+    /// `target` was resolved.
+    pub fn mermaid_fence_holds(&self, target: &MermaidFenceTarget, cx: &App) -> bool {
+        self.mermaid_fence_body(target, cx) == target.source
+    }
+
+    /// The fence `target` points at as it reads now, for an editor that has to
+    /// follow a diagram somebody else rewrote. `None` when that fence is gone —
+    /// deleted, or no longer a Mermaid fence — or when `target` is a fence that
+    /// has yet to be inserted.
+    ///
+    /// The fence found at the target's row must span exactly what the target's
+    /// anchors span: when a whole fence is deleted its anchors collapse onto
+    /// whatever follows, and that may be another diagram the editor must not
+    /// silently start writing to.
+    pub fn refreshed_mermaid_fence_target(
+        &self,
+        target: &MermaidFenceTarget,
+        cx: &App,
+    ) -> Option<MermaidFenceTarget> {
+        if target.fence.is_some() {
+            return None;
+        }
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        let start = target.range.start.to_offset(&snapshot);
+        let end = target.range.end.to_offset(&snapshot);
+        let refreshed =
+            mermaid_fence_target_at_row(&snapshot, snapshot.offset_to_point(start).row)?;
+        (refreshed.range.start.to_offset(&snapshot) == start
+            && refreshed.range.end.to_offset(&snapshot) == end)
+            .then_some(refreshed)
+    }
+
+    /// Where the body of the fence `target` points at starts in the buffer, so
+    /// that two targets resolved by different editors over the same buffer can
+    /// be told to be the same diagram. `None` for a fence not inserted yet.
+    pub fn mermaid_fence_offset(&self, target: &MermaidFenceTarget, cx: &App) -> Option<usize> {
+        if target.fence.is_some() {
+            return None;
+        }
+        let snapshot = self.buffer.read(cx).snapshot(cx);
+        Some(target.range.start.to_offset(&snapshot).0)
     }
 
     /// What the fence `target` points at holds now, spelled the way

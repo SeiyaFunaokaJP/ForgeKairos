@@ -89,6 +89,9 @@ msgstr "矢印の無い時間フレームには、直前の別レーンのフレ
 msgid "Activation"
 msgstr "活性化"
 
+msgid "Actual Size"
+msgstr "実寸"
+
 msgid "Add Activation"
 msgstr "活性化を追加"
 
@@ -797,6 +800,9 @@ msgstr "Mermaid 図を描画できませんでした: {error}"
 msgid "Failed to save the image: {}"
 msgstr "画像を保存できませんでした: {}"
 
+msgid "Fit to Pane"
+msgstr "ペインに合わせる"
+
 msgid "Flows (source → target, amount)"
 msgstr "流れ (流れ元 → 流れ先、量)"
 
@@ -932,6 +938,9 @@ msgstr "{position} 番目のつながりは、テキストのまま残した lin
 msgid "Links"
 msgstr "つながり"
 
+msgid "Load the Document's Version"
+msgstr "文書の版を読み込む"
+
 msgid "Looking for image files in the project…"
 msgstr "プロジェクトの画像ファイルを探しています…"
 
@@ -997,6 +1006,9 @@ msgstr "右の列へ移動"
 
 msgid "Namespace"
 msgstr "名前空間"
+
+msgid "New Mermaid Diagram ({file})"
+msgstr "新しい Mermaid 図 ({file})"
 
 msgid "New block"
 msgstr "新しいブロック"
@@ -1344,8 +1356,8 @@ msgstr "候補"
 msgid "Tab / arrow keys move between cells. Ctrl+Enter applies the table to the document."
 msgstr "Tab / 矢印キーでセルを移動。Ctrl+Enter で書き出し"
 
-msgid "Tab moves between fields. Ctrl+Enter applies."
-msgstr "Tab で項目を移動。Ctrl+Enter で反映"
+msgid "Tab moves between fields. Ctrl+Enter applies to the document."
+msgstr "Tab で項目を移動。Ctrl+Enter で文書に反映"
 
 msgid "Tag"
 msgstr "タグ"
@@ -1409,6 +1421,12 @@ msgstr "classDef の名前と、ここに入力した名前が「クラス」の
 
 msgid "The clipboard has nothing that can be read as a table."
 msgstr "クリップボードに表として読み取れる内容がありません。"
+
+msgid "The diagram was changed in the document after this tab read it. Applying will not write over it: load the document's version, or save this tab to choose whether to overwrite it."
+msgstr "このタブが読み込んだ後に、文書の側で図が変更されました。反映しても上書きはしません。文書の版を読み込むか、タブを保存して上書きするかを選んでください。"
+
+msgid "The diagram's code block, or the editor it was opened from, is gone, so these edits cannot be applied."
+msgstr "図のコードブロック、または開いたときのエディターが無くなったため、この変更は反映できません。"
 
 msgid "The display name of a `namespace` cannot contain `\"` or `%%{{`."
 msgstr "`namespace` の表示名に `\"` と `%%{{` は使えません。"
@@ -1558,6 +1576,9 @@ msgstr "見出しをすべて展開"
 msgid "Unsupported diagram type"
 msgstr "未対応の図の種類です"
 
+msgid "Untitled"
+msgstr "無題"
+
 msgid "Unused (not written until a flow uses it)"
 msgstr "未使用 (流れで使うまで書き出されません)"
 
@@ -1652,6 +1673,9 @@ msgid "{count} text statement"
 msgid_plural "{count} text statements"
 msgstr[0] "text {count} 件"
 
+msgid "{kind} ({file})"
+msgstr "{kind} ({file})"
+
 msgid "{label} (Unnamed)"
 msgstr "{label} (名前なし)"
 
@@ -1704,6 +1728,10 @@ msgstr "先"
 msgctxt "mermaid editor"
 msgid "Apply"
 msgstr "反映"
+
+msgctxt "mermaid editor"
+msgid "Revert"
+msgstr "元に戻す"
 
 msgctxt "mermaid gantt tag separator"
 msgid ", "
