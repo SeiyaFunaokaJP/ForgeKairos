@@ -207,6 +207,15 @@ if (-not $SkipClangFormat) {
     }
 }
 
+# A build from before the rename left these here. They are not removed: the
+# old zed.exe may be the one running. The new editor looks for the remote
+# server under its own name first and takes the old archive only without it.
+$legacyFiles = @('zed.exe', 'cli.exe', 'zed-remote-server-linux-x86_64.gz', 'zed-remote-server-linux-x86_64') |
+    Where-Object { Test-Path -PathType Leaf (Join-Path $profileDir $_) }
+if ($legacyFiles) {
+    Write-Warning ("Left from a build before the rename in {0}: {1}. The editor is ForgeKairos.exe and the launcher forgekairos-cli.exe now; delete the old files once nothing runs zed.exe." -f $profileDir, ($legacyFiles -join ', '))
+}
+
 Write-Host ''
 Write-Host ("Built: {0} ({1:N0} MB)" -f $editorExe, ((Get-Item $editorExe).Length / 1MB))
 
