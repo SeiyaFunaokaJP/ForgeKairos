@@ -2709,11 +2709,12 @@ mod tests {
             json!({
                 "repo": {
                     ".git": {},
-                    ".gitignore": "ignored.txt\n",
+                    ".gitignore": "ignored.txt\nignored_dir/\n",
                     "clean.txt": "clean",
                     "modified.txt": "new",
                     "untracked.txt": "untracked",
                     "ignored.txt": "ignored",
+                    "ignored_dir": { "inner.txt": "inner" },
                 },
                 "outside.txt": "outside",
             }),
@@ -2722,7 +2723,7 @@ mod tests {
         fs.set_head_and_index_for_repo(
             path!("/root/repo/.git").as_ref(),
             &[
-                (".gitignore", "ignored.txt\n".into()),
+                (".gitignore", "ignored.txt\nignored_dir/\n".into()),
                 ("clean.txt", "clean".into()),
                 ("modified.txt", "old".into()),
             ],
@@ -2737,6 +2738,7 @@ mod tests {
             "repo/modified.txt",
             "repo/untracked.txt",
             "repo/ignored.txt",
+            "repo/ignored_dir/inner.txt",
             "outside.txt",
         ] {
             let buffer = project
@@ -2780,6 +2782,7 @@ mod tests {
             ("repo/modified.txt", Color::Modified),
             ("repo/untracked.txt", Color::Created),
             ("repo/ignored.txt", Color::Ignored),
+            ("repo/ignored_dir/inner.txt", Color::Ignored),
             ("outside.txt", Color::Default),
             ("untitled", Color::Default),
         ];
@@ -2803,6 +2806,7 @@ mod tests {
                 "repo/modified.txt",
                 "repo/untracked.txt",
                 "repo/ignored.txt",
+                "repo/ignored_dir/inner.txt",
                 "outside.txt",
                 "untitled",
             ]

@@ -537,6 +537,17 @@ pub enum ImageViewEvent {
 
 impl EventEmitter<ImageViewEvent> for ImageView {}
 
+impl ImageView {
+    fn tab_label_color(&self, params: &TabContentParams, cx: &App) -> Color {
+        if ItemSettings::get_global(cx).git_status {
+            let project_path = self.image_item.read(cx).project_path(cx);
+            git_aware_tab_label_color(&self.project, &project_path, cx)
+        } else {
+            params.text_color()
+        }
+    }
+}
+
 impl Item for ImageView {
     type Event = ImageViewEvent;
 
@@ -564,17 +575,9 @@ impl Item for ImageView {
     }
 
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
-        let project_path = self.image_item.read(cx).project_path(cx);
-
-        let label_color = if ItemSettings::get_global(cx).git_status {
-            git_aware_tab_label_color(&self.project, &project_path, cx)
-        } else {
-            params.text_color()
-        };
-
         Label::new(self.tab_content_text(params.detail.unwrap_or_default(), cx))
             .single_line()
-            .color(label_color)
+            .color(self.tab_label_color(&params, cx))
             .when(params.preview, |this| this.italic())
             .into_any_element()
     }
@@ -1082,7 +1085,7 @@ mod tests {
     use fs::{FakeFs, Fs as _};
     use gpui::{TestAppContext, VisualTestContext};
     use settings::SettingsStore;
-    use util::rel_path::rel_path;
+    use util::{path, rel_path::rel_path};
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -1185,6 +1188,77 @@ mod tests {
 
     fn image_is_cached(image: &Arc<gpui::Image>, cx: &VisualTestContext) -> bool {
         cx.read(|cx| image.is_asset_cached(cx))
+    }
+
+    #[gpui::test]
+    async fn test_tab_label_color_follows_git_status(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.create_dir(Path::new(path!("/root/.git")))
+            .await
+            .expect("test repository should be created");
+        fs.insert_file(path!("/root/.gitignore"), b"ignored.ppm\n".to_vec())
+            .await;
+        fs.insert_file(path!("/root/clean.ppm"), test_image(0).bytes.clone())
+            .await;
+        fs.insert_file(path!("/root/ignored.ppm"), test_image(0).bytes.clone())
+            .await;
+        fs.set_head_and_index_for_repo(
+            Path::new(path!("/root/.git")),
+            &[
+                (".gitignore", "ignored.ppm\n".into()),
+                (
+                    "clean.ppm",
+                    String::from_utf8_lossy(&test_image(0).bytes).into(),
+                ),
+            ],
+        );
+        let project = Project::test(fs, [Path::new(path!("/root"))], cx).await;
+        cx.run_until_parked();
+        let worktree_id = cx.update(|cx| {
+            project
+                .read(cx)
+                .worktrees(cx)
+                .next()
+                .expect("test project should contain a worktree")
+                .read(cx)
+                .id()
+        });
+
+        let mut label_colors = Vec::new();
+        for file_name in ["clean.ppm", "ignored.ppm"] {
+            let image_item = project
+                .update(cx, |project, cx| {
+                    project.open_image(
+                        ProjectPath {
+                            worktree_id,
+                            path: rel_path(file_name).into(),
+                        },
+                        cx,
+                    )
+                })
+                .await
+                .expect("test image should open");
+            let (image_view, cx) = cx.add_window_view(|window, cx| {
+                ImageView::new(image_item, project.clone(), window, cx)
+            });
+            cx.run_until_parked();
+            let params = TabContentParams {
+                selected: false,
+                ..TabContentParams::default()
+            };
+            let color = cx.read(|cx| image_view.read(cx).tab_label_color(&params, cx));
+            label_colors.push((file_name, color));
+        }
+
+        assert_eq!(
+            label_colors,
+            [
+                ("clean.ppm", Color::Default),
+                ("ignored.ppm", Color::Ignored)
+            ],
+            "an inactive tab of a clean file keeps the normal color, unlike an ignored file",
+        );
     }
 
     #[gpui::test]

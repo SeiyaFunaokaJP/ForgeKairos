@@ -128,6 +128,16 @@ impl TabularDataPreviewPane {
     pub(crate) fn entry_id(&self, cx: &App) -> Option<ProjectEntryId> {
         project::ProjectItem::entry_id(self.buffer(cx)?.read(cx), cx)
     }
+
+    /// Follows the text editor's tab so that a grid tab and an editor tab of the
+    /// same file show the same git color.
+    fn tab_label_color(&self, params: &TabContentParams, cx: &App) -> Color {
+        if ItemSettings::get_global(cx).git_status {
+            editor::items::editor_tab_label_color(self.editor().read(cx), params, cx)
+        } else {
+            params.text_color()
+        }
+    }
 }
 
 ///// The filters and sorting kept between sessions /////
@@ -443,11 +453,7 @@ impl Item for TabularDataPreviewPane {
     fn tab_content(&self, params: TabContentParams, _window: &Window, cx: &App) -> AnyElement {
         Label::new(self.tab_content_text(params.detail.unwrap_or_default(), cx))
             .single_line()
-            .color(if ItemSettings::get_global(cx).git_status {
-                editor::items::editor_tab_label_color(self.editor().read(cx), &params, cx)
-            } else {
-                params.text_color()
-            })
+            .color(self.tab_label_color(&params, cx))
             .when(params.preview, |this| this.italic())
             .when(self.has_deleted_file(cx), |this| this.strikethrough())
             .into_any_element()
@@ -875,6 +881,58 @@ mod tests {
 
         let text = open_file(&workspace, worktree_id, "notes.txt", cx).await;
         assert_eq!(text.to_any_view().entity_type(), TypeId::of::<Editor>());
+    }
+
+    #[gpui::test]
+    async fn grid_tabs_take_the_git_colors_of_editor_tabs(cx: &mut TestAppContext) {
+        let app_state = init_test(cx);
+        let fs = app_state.fs.as_fake();
+        fs.insert_tree(
+            path!("/repo"),
+            json!({
+                ".git": {},
+                ".gitignore": "ignored.csv\n",
+                "clean.csv": "a,b\n",
+                "ignored.csv": "a,b\n",
+            }),
+        )
+        .await;
+        fs.set_head_and_index_for_repo(
+            path!("/repo/.git").as_ref(),
+            &[
+                (".gitignore", "ignored.csv\n".into()),
+                ("clean.csv", "a,b\n".into()),
+            ],
+        );
+        let project = Project::test(app_state.fs.clone(), [path!("/repo").as_ref()], cx).await;
+        let worktree_id = project.update(cx, |project, cx| {
+            project.worktrees(cx).next().unwrap().read(cx).id()
+        });
+        let (workspace, cx) =
+            cx.add_window_view(|window, cx| Workspace::test_new(project.clone(), window, cx));
+        cx.run_until_parked();
+
+        let mut label_colors = Vec::new();
+        for file_name in ["clean.csv", "ignored.csv"] {
+            let item = open_file(&workspace, worktree_id, file_name, cx).await;
+            let grid = item.downcast::<TabularDataPreviewPane>().unwrap();
+            cx.run_until_parked();
+            let params = TabContentParams {
+                selected: false,
+                ..TabContentParams::default()
+            };
+            let color = cx.update(|_, cx| grid.read(cx).tab_label_color(&params, cx));
+            label_colors.push((file_name, color));
+        }
+
+        assert_eq!(
+            label_colors,
+            [
+                ("clean.csv", Color::Default),
+                ("ignored.csv", Color::Ignored)
+            ],
+            "an inactive grid tab of a clean file keeps the normal color, unlike an ignored file",
+        );
     }
 
     /// A file opened on its own is a worktree whose root is the file, so its path within
