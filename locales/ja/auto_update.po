@@ -8,6 +8,25 @@ msgstr ""
 msgid "Couldn't add the hosts to the allowlist: {error}"
 msgstr "許可リストへの追加に失敗しました: {error}"
 
+msgid "Couldn't check for updates: GitHub answered with HTTP status {status}."
+msgstr "更新を確認できませんでした: GitHub が HTTP ステータス {status} を返しました。"
+
+msgid "Couldn't check for updates: GitHub could not be reached ({error})."
+msgstr "更新を確認できませんでした: GitHub に接続できません ({error})。"
+
+msgid "Couldn't check for updates: GitHub has no release list for {repository}. The repository may be private or not published yet."
+msgstr "更新を確認できませんでした: GitHub に {repository} のリリース一覧がありません。リポジトリが非公開か、まだ公開されていない可能性があります。"
+
+msgid "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minute."
+msgid_plural "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minutes."
+msgstr[0] "更新を確認できませんでした: サインインなしで GitHub に送れるリクエストの上限に達しました。{count} 分後にもう一度お試しください。"
+
+msgid "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again later."
+msgstr "更新を確認できませんでした: サインインなしで GitHub に送れるリクエストの上限に達しました。しばらくしてからもう一度お試しください。"
+
+msgid "Couldn't check for updates: GitHub's release list was not in the expected format."
+msgstr "更新を確認できませんでした: GitHub のリリース一覧が想定した形式ではありません。"
+
 msgid "Downloading remote server"
 msgstr "リモート開発サーバーをダウンロードしています"
 

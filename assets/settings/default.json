@@ -1994,9 +1994,12 @@
   "ui_language": "system",
   // Automatically update Zed. This setting may be ignored on Linux if
   // installed through a package manager.
-  // Off in this fork: it is a hard fork of v1.17.2 and does not track
-  // upstream releases (DESIGN.md ADR-F01).
+  // Updates are looked up in the GitHub Releases of SeiyaFunaokaJP/ForgeKairos.
+  // Off by default; "Check for Updates" in the menu still checks when asked.
   "auto_update": false,
+  // Whether update checks also consider pre-releases on GitHub. By default
+  // only releases are considered.
+  "auto_update_include_prereleases": false,
   // How to render LSP `textDocument/documentColor` colors in the editor.
   //
   // Possible values:

@@ -3832,8 +3832,8 @@ msgid "Whether or not selecting text in the terminal will automatically\ncopy to
 msgstr "ターミナルでテキストを選択した際に自動的にシステムクリップボードにコピーするかどうかを設定します。\n\n既定値: false"
 
 msgctxt "settings schema"
-msgid "Whether or not to automatically check for updates.\n\nDefault: true"
-msgstr "更新を自動的に確認するかどうかを設定します。\n\n既定値: true"
+msgid "Whether or not to automatically check for updates.\n\nDefault: false"
+msgstr "更新を自動的に確認するかどうかを設定します。\n\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether or not to debounce inlay hints updates after buffer edits.\n\nSet to 0 to disable debouncing.\n\nDefault: 700"
@@ -4822,6 +4822,10 @@ msgstr "プライマリ修飾キーを押しながらマウスホイールでエ
 msgctxt "settings schema"
 msgid "Whether type hints should be shown.\n\nDefault: true"
 msgstr "型ヒントを表示するかどうかを設定します。\n\n既定値: true"
+
+msgctxt "settings schema"
+msgid "Whether update checks also consider pre-releases. By default only releases are considered.\n\nDefault: false"
+msgstr "更新の確認でプレリリースも対象にします。既定ではリリースだけを対象にします。\n\n既定値: false"
 
 msgctxt "settings schema"
 msgid "Whether your current project should be shared when joining an empty channel.\n\nDefault: false"

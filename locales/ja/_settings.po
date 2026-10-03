@@ -2950,6 +2950,10 @@ msgid "Include Ignored in Search"
 msgstr "検索に無視されたファイルを含める"
 
 msgctxt "settings"
+msgid "Include Pre-releases"
+msgstr "プレリリースを含める"
+
+msgctxt "settings"
 msgid "Include Warnings"
 msgstr "警告を含める"
 
@@ -5692,6 +5696,10 @@ msgstr "主修飾キーを押しながらマウスホイールを回したとき
 msgctxt "settings"
 msgid "Whether type hints should be shown."
 msgstr "型のヒントを表示するかどうかを設定します。"
+
+msgctxt "settings"
+msgid "Whether update checks also consider pre-releases. By default only releases are considered."
+msgstr "更新の確認でプレリリースも対象にします。既定ではリリースだけを対象にします。"
 
 msgctxt "settings"
 msgid "Whether your current project should be shared when joining an empty channel."

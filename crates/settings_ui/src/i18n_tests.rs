@@ -303,6 +303,14 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "C / C++ で名前にホバーしたとき、その型の中身 (メンバー、列挙子、マクロの定義) も、索引から名前で探して表示するかどうか。既定はオンです。",
     ),
     ("p4.i45.header", "言語"),
+    (
+        "p0.i28[auto_update_include_prereleases].title",
+        "プレリリースを含める",
+    ),
+    (
+        "p0.i28[auto_update_include_prereleases].description",
+        "更新の確認でプレリリースも対象にします。既定ではリリースだけを対象にします。",
+    ),
 ];
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.

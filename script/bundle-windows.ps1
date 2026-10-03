@@ -4,6 +4,10 @@ Param(
     [Parameter()][Alias('h')][switch]$Help,
     [Parameter()][Alias('a')][string]$Architecture,
     [Parameter()][string]$Name,
+    # The GitHub release tag this build is published under (vX.Y.Z or vX.Y.Z-pre).
+    # The updater compares it with the published releases; without it a pre-release
+    # build cannot tell that the final release of the same version is newer.
+    [Parameter()][string]$ReleaseTag,
     # Source of the clang-format.exe shipped in {app}\bin (see CopyClangFormat).
     # When empty or not found, VS 2022's bundled LLVM is used.
     [Parameter()][string]$ClangFormatPath = ""
@@ -82,6 +86,7 @@ if ($Help) {
     Write-Output "  -Architecture, -a Which architecture to build (x86_64 or aarch64)"
     Write-Output "  -Install, -i      Run the installer after building."
     Write-Output "  -Help, -h         Show this help message."
+    Write-Output "  -ReleaseTag <tag> The GitHub release tag of this build (v1.2.3 or v1.2.3-pre)."
     exit 0
 }
 
@@ -90,6 +95,12 @@ $channel = Get-Content "RELEASE_CHANNEL"
 $env:ZED_RELEASE_CHANNEL = $channel
 $env:RELEASE_CHANNEL = $channel
 Pop-Location
+if ($ReleaseTag) {
+    if ($ReleaseTag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+        throw "-ReleaseTag must look like v1.2.3 or v1.2.3-pre (got '$ReleaseTag')."
+    }
+    $env:FORGEKAIROS_RELEASE_TAG = $ReleaseTag
+}
 
 function CheckEnvironmentVariables {
     if(-not $env:CI) {

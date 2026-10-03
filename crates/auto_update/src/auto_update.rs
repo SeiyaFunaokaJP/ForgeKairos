@@ -10,8 +10,10 @@ use gpui::{
     Window, actions,
 };
 use http_client::{
-    EgressDenied, HttpClient, RequestHost, UPDATE_REPO,
+    AsyncBody, EgressDenied, HttpClient, HttpRequestExt as _, RedirectPolicy, Request, RequestHost,
+    Response, StatusCode, UPDATE_REPO, Url,
     github::{GithubRelease, get_release_by_tag_name, latest_github_release},
+    http::{HeaderMap, header},
     ide_lane,
 };
 use paths::remote_servers_dir;
@@ -19,6 +21,7 @@ use release_channel::{AppCommitSha, ReleaseChannel};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use settings::{RegisterSetting, Settings, SettingsStore};
+use sha2::{Digest as _, Sha256};
 use smol::fs::File;
 use smol::{
     fs,
@@ -212,6 +215,8 @@ pub struct AutoUpdater {
 pub struct ReleaseAsset {
     pub version: String,
     pub url: String,
+    /// GitHub's `digest` for the asset (`sha256:<hex>`), when it lists one.
+    pub digest: Option<String>,
 }
 
 struct MacOsUnmounter<'a> {
@@ -275,6 +280,15 @@ struct AutoUpdateSetting(bool);
 impl Settings for AutoUpdateSetting {
     fn from_settings(content: &settings::SettingsContent) -> Self {
         Self(content.auto_update.unwrap())
+    }
+}
+
+#[derive(Clone, Copy, Debug, RegisterSetting)]
+struct IncludePrereleasesSetting(bool);
+
+impl Settings for IncludePrereleasesSetting {
+    fn from_settings(content: &settings::SettingsContent) -> Self {
+        Self(content.auto_update_include_prereleases.unwrap_or(false))
     }
 }
 
@@ -366,6 +380,9 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
 pub fn release_notes_url(cx: &mut App) -> Option<String> {
     let release_channel = ReleaseChannel::try_global(cx)?;
     let url = match release_channel {
+        ReleaseChannel::Stable | ReleaseChannel::Preview if let Some(tag) = RELEASE_TAG => {
+            format!("https://github.com/{UPDATE_REPO}/releases/tag/{tag}")
+        }
         ReleaseChannel::Stable | ReleaseChannel::Preview => {
             let auto_updater = AutoUpdater::get(cx)?;
             let mut current_version = auto_updater.read(cx).current_version.clone();
@@ -790,14 +807,19 @@ impl AutoUpdater {
     }
 
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> Result<()> {
-        let (client, installed_version, previous_status, release_channel) =
+        let (client, installed_version, previous_status, release_channel, include_prereleases) =
             this.read_with(cx, |this, cx| {
+                let release_channel =
+                    ReleaseChannel::try_global(cx).unwrap_or(ReleaseChannel::Stable);
                 (
                     // ADR-F38: updating the editor is IDE infrastructure.
                     ide_lane(this.client.http_client()),
                     this.current_version.clone(),
                     this.status.clone(),
-                    ReleaseChannel::try_global(cx).unwrap_or(ReleaseChannel::Stable),
+                    release_channel,
+                    // A preview or nightly build already runs pre-releases.
+                    IncludePrereleasesSetting::get_global(cx).0
+                        || !matches!(release_channel, ReleaseChannel::Stable),
                 )
             });
 
@@ -809,19 +831,31 @@ impl AutoUpdater {
             cx.notify();
         });
 
+        let asset_name = asset_name("zed", OS, ARCH)?;
+        let releases = fetch_published_releases(client.clone()).await?;
         let fetched_release_data =
-            Self::get_release_asset(&this, release_channel, None, "zed", OS, ARCH, cx).await?;
-        let fetched_version = fetched_release_data.clone().version;
-        let app_commit_sha = Ok(cx.update(|cx| AppCommitSha::try_global(cx).map(|sha| sha.full())));
-        let newer_version = Self::check_if_fetched_version_is_newer(
-            release_channel,
-            app_commit_sha,
-            installed_version,
-            fetched_version,
-            previous_status.clone(),
-        )?;
+            newest_update_release(releases, include_prereleases, &asset_name);
+        let newer_version = match &fetched_release_data {
+            Some(fetched_release_data) => {
+                let app_commit_sha =
+                    Ok(cx.update(|cx| AppCommitSha::try_global(cx).map(|sha| sha.full())));
+                Self::check_if_fetched_version_is_newer(
+                    release_channel,
+                    app_commit_sha,
+                    installed_release_version(&installed_version, RELEASE_TAG),
+                    fetched_release_data.version.clone(),
+                    previous_status.clone(),
+                )?
+            }
+            None => {
+                log::info!("Auto Update: no release of {UPDATE_REPO} carries {asset_name}");
+                None
+            }
+        };
 
-        let Some(newer_version) = newer_version else {
+        let (Some(newer_version), Some(fetched_release_data)) =
+            (newer_version, fetched_release_data)
+        else {
             this.update(cx, |this, cx| {
                 let status = match previous_status {
                     AutoUpdateStatus::Updated { .. } => previous_status,
@@ -1032,13 +1066,13 @@ impl AutoUpdater {
     }
 
     fn check_if_fetched_version_is_newer_non_nightly(
-        mut installed_version: Version,
+        installed_version: Version,
         fetched_version: Version,
     ) -> Option<Version> {
-        // For non-nightly releases, ignore build and pre-release fields as they're not provided by our endpoints right now.
-        installed_version.pre = semver::Prerelease::EMPTY;
-        installed_version.build = semver::BuildMetadata::EMPTY;
-        (fetched_version > installed_version).then_some(fetched_version)
+        // The pre-release field is compared, so that `1.2.0` replaces a
+        // `1.2.0-pre` build; build metadata only names the channel and commit.
+        (fetched_version.cmp_precedence(&installed_version) == std::cmp::Ordering::Greater)
+            .then_some(fetched_version)
     }
 
     pub fn set_should_show_update_notification(
@@ -1099,6 +1133,225 @@ fn asset_name(asset: &str, os: &str, arch: &str) -> Result<String> {
     }
 }
 
+/// The tag of the GitHub release this build was made for (`v1.2.0-pre`), set
+/// in the environment of the release build. The Cargo version alone cannot
+/// tell a pre-release build from the release that later ships with the same
+/// number.
+const RELEASE_TAG: Option<&str> = option_env!("FORGEKAIROS_RELEASE_TAG");
+
+/// GitHub lists releases newest-created first, which is not the same as
+/// highest version, so one page is read and compared as a whole. An update
+/// check is one request per poll, well inside the 60 an hour GitHub allows
+/// without signing in.
+const RELEASES_PER_PAGE: usize = 30;
+const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(30);
+
+fn release_tag_version(tag: &str) -> Option<Version> {
+    tag.strip_prefix('v').unwrap_or(tag).parse().ok()
+}
+
+/// The version an update has to be newer than. Without a release tag the
+/// build is taken to be the release of its Cargo version.
+fn installed_release_version(installed_version: &Version, release_tag: Option<&str>) -> Version {
+    let tagged = release_tag.and_then(|tag| {
+        let version = release_tag_version(tag);
+        if version.is_none() {
+            log::warn!("auto-update: ignoring the release tag {tag:?}, it is not a version");
+        }
+        version
+    });
+    let mut version = tagged.unwrap_or_else(|| {
+        let mut version = installed_version.clone();
+        version.pre = semver::Prerelease::EMPTY;
+        version
+    });
+    version.build = semver::BuildMetadata::EMPTY;
+    version
+}
+
+/// One entry of `GET /repos/{repo}/releases`, with only the fields the update
+/// check reads. Unlike [`GithubRelease`] it keeps `draft`: drafts are listed to
+/// a `GITHUB_TOKEN` with push access and must never be installed.
+#[derive(Deserialize, Debug)]
+struct PublishedRelease {
+    tag_name: String,
+    draft: bool,
+    prerelease: bool,
+    assets: Vec<PublishedAsset>,
+}
+
+#[derive(Deserialize, Debug)]
+struct PublishedAsset {
+    name: String,
+    browser_download_url: String,
+    digest: Option<String>,
+}
+
+/// Why the release list could not be read. Its `Display` is what a manual
+/// check shows, so it has to be the outermost error, without added context.
+#[derive(Debug)]
+enum UpdateCheckError {
+    Unreachable(anyhow::Error),
+    NotFound,
+    RateLimited { retry_after: Option<Duration> },
+    UnexpectedStatus(u16),
+    UnexpectedResponse(serde_json::Error),
+}
+
+impl std::fmt::Display for UpdateCheckError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let repository = UPDATE_REPO;
+        let message = match self {
+            Self::Unreachable(error) => i18n::t!(
+                "Couldn't check for updates: GitHub could not be reached ({error:#})."
+            ),
+            Self::NotFound => i18n::t!(
+                "Couldn't check for updates: GitHub has no release list for {repository}. The repository may be private or not published yet."
+            ),
+            Self::RateLimited {
+                retry_after: Some(retry_after),
+            } => {
+                let minutes = retry_after.as_secs().div_ceil(60).max(1);
+                i18n::tn!(
+                    minutes,
+                    "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minute.",
+                    "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again in {count} minutes."
+                )
+            }
+            Self::RateLimited { retry_after: None } => i18n::t!(
+                "Couldn't check for updates: GitHub's limit for requests without signing in was reached. Try again later."
+            ).to_string(),
+            Self::UnexpectedStatus(status) => {
+                i18n::t!("Couldn't check for updates: GitHub answered with HTTP status {status}.")
+            }
+            Self::UnexpectedResponse(_) => i18n::t!(
+                "Couldn't check for updates: GitHub's release list was not in the expected format."
+            ).to_string(),
+        };
+        formatter.write_str(&message)
+    }
+}
+
+impl std::error::Error for UpdateCheckError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Unreachable(error) => Some(error.as_ref()),
+            Self::UnexpectedResponse(error) => Some(error),
+            Self::NotFound | Self::RateLimited { .. } | Self::UnexpectedStatus(_) => None,
+        }
+    }
+}
+
+/// `Some` when GitHub refused the request for its rate limit, holding how
+/// long until it lifts when the response says. GitHub answers 403 or 429 for
+/// it; a 403 is only the limit when the limit headers say so.
+fn rate_limit_retry_after(
+    status: StatusCode,
+    headers: &HeaderMap,
+    now: SystemTime,
+) -> Option<Option<Duration>> {
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim)
+    };
+    let retry_after = header("retry-after").and_then(|value| value.parse::<u64>().ok());
+    let limit_exhausted = header("x-ratelimit-remaining") == Some("0");
+    let rate_limited = status == StatusCode::TOO_MANY_REQUESTS
+        || (status == StatusCode::FORBIDDEN && (limit_exhausted || retry_after.is_some()));
+    if !rate_limited {
+        return None;
+    }
+    let until_reset = || {
+        let reset = header("x-ratelimit-reset")?.parse::<u64>().ok()?;
+        let now = now.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_secs();
+        Some(Duration::from_secs(reset.saturating_sub(now)))
+    };
+    Some(retry_after.map(Duration::from_secs).or_else(until_reset))
+}
+
+async fn fetch_published_releases(
+    http_client: Arc<dyn HttpClient>,
+) -> Result<Vec<PublishedRelease>, UpdateCheckError> {
+    let url =
+        format!("https://api.github.com/repos/{UPDATE_REPO}/releases?per_page={RELEASES_PER_PAGE}");
+    let request = Request::get(&url)
+        .header("Accept", "application/vnd.github+json")
+        .follow_redirects(RedirectPolicy::FollowAll)
+        .timeout(UPDATE_CHECK_TIMEOUT)
+        // The same token the editor's other GitHub API calls send; it lifts
+        // the rate limit and lets the owner read a private repository.
+        .when_some(env::var("GITHUB_TOKEN").ok(), |builder, token| {
+            builder.header("Authorization", format!("Bearer {token}"))
+        })
+        .body(AsyncBody::default())
+        .map_err(|error| UpdateCheckError::Unreachable(error.into()))?;
+
+    let mut response = http_client
+        .send(request)
+        .await
+        .map_err(UpdateCheckError::Unreachable)?;
+    let status = response.status();
+    if let Some(retry_after) = rate_limit_retry_after(status, response.headers(), SystemTime::now())
+    {
+        log::info!("auto-update: GitHub's rate limit was reached, retry after {retry_after:?}");
+        return Err(UpdateCheckError::RateLimited { retry_after });
+    }
+    if status == StatusCode::NOT_FOUND {
+        return Err(UpdateCheckError::NotFound);
+    }
+    if !status.is_success() {
+        return Err(UpdateCheckError::UnexpectedStatus(status.as_u16()));
+    }
+
+    let mut body = Vec::new();
+    response
+        .body_mut()
+        .read_to_end(&mut body)
+        .await
+        .map_err(|error| UpdateCheckError::Unreachable(error.into()))?;
+    serde_json::from_slice(&body).map_err(|error| {
+        log::error!(
+            "auto-update: unexpected release list: {error}: {:?}",
+            String::from_utf8_lossy(&body)
+        );
+        UpdateCheckError::UnexpectedResponse(error)
+    })
+}
+
+/// The highest-versioned published release that carries `asset_name`.
+/// Drafts are never candidates, and pre-releases only when asked for.
+fn newest_update_release(
+    releases: Vec<PublishedRelease>,
+    include_prereleases: bool,
+    asset_name: &str,
+) -> Option<ReleaseAsset> {
+    releases
+        .into_iter()
+        .filter(|release| !release.draft && (include_prereleases || !release.prerelease))
+        .filter_map(|release| {
+            let Some(version) = release_tag_version(&release.tag_name) else {
+                log::warn!(
+                    "auto-update: skipping release {:?}, its tag is not a version",
+                    release.tag_name
+                );
+                return None;
+            };
+            let asset = release
+                .assets
+                .into_iter()
+                .find(|asset| asset.name == asset_name)?;
+            Some((version, asset))
+        })
+        .max_by(|(left, _), (right, _)| left.cmp_precedence(right))
+        .map(|(version, asset)| ReleaseAsset {
+            version: version.to_string(),
+            url: asset.browser_download_url,
+            digest: asset.digest,
+        })
+}
+
 /// Maps a GitHub release onto the shape the updater consumes: the tag with a
 /// leading `v` stripped as the version, and the named asset's download URL.
 fn asset_from_release(release: GithubRelease, asset_name: &str) -> Result<ReleaseAsset> {
@@ -1117,7 +1370,94 @@ fn asset_from_release(release: GithubRelease, asset_name: &str) -> Result<Releas
     Ok(ReleaseAsset {
         version,
         url: asset.browser_download_url,
+        digest: asset.digest,
     })
+}
+
+/// How many redirects a release download may take. GitHub answers the
+/// download URL with one, to its asset host.
+const RELEASE_DOWNLOAD_REDIRECT_LIMIT: usize = 5;
+
+/// Requests a release asset, following redirects one hop at a time.
+///
+/// The URL comes from the release list, and the IDE lane lets a request and
+/// its redirects go anywhere, so without this check a tampered or unexpected
+/// answer could have the updater download — and then run — a file from any
+/// host. The first hop has to be one of [`UPDATE_REPO`]'s release downloads
+/// and every later one has to stay on GitHub, over HTTPS.
+async fn send_release_download(
+    client: &Arc<dyn HttpClient>,
+    download_url: &str,
+) -> Result<Response<AsyncBody>> {
+    let mut url = Url::parse(download_url)
+        .with_context(|| format!("invalid release download URL {download_url:?}"))?;
+    let release_downloads = format!("/{UPDATE_REPO}/releases/download/").to_ascii_lowercase();
+    anyhow::ensure!(
+        url.scheme() == "https"
+            && url.host_str() == Some("github.com")
+            && url.port().is_none()
+            && url
+                .path()
+                .to_ascii_lowercase()
+                .starts_with(&release_downloads),
+        "refusing to download {url}: it is not a release download of {UPDATE_REPO}"
+    );
+
+    for _ in 0..=RELEASE_DOWNLOAD_REDIRECT_LIMIT {
+        let request = Request::get(url.as_str())
+            .follow_redirects(RedirectPolicy::NoFollow)
+            .body(AsyncBody::default())?;
+        let response = client.send(request).await?;
+        if !matches!(
+            response.status(),
+            StatusCode::MOVED_PERMANENTLY
+                | StatusCode::FOUND
+                | StatusCode::SEE_OTHER
+                | StatusCode::TEMPORARY_REDIRECT
+                | StatusCode::PERMANENT_REDIRECT
+        ) {
+            return Ok(response);
+        }
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .context("the release download redirected without a location")?
+            .to_str()
+            .context("the release download redirected to an unreadable location")?;
+        let target = url
+            .join(location)
+            .context("the release download redirected to an invalid location")?;
+        let on_github = target.scheme() == "https"
+            && target.port().is_none()
+            && target.host_str().is_some_and(|host| {
+                host == "github.com" || host.ends_with(".githubusercontent.com")
+            });
+        // Only the host is named: the asset host's URL carries a signature.
+        anyhow::ensure!(
+            on_github,
+            "refusing to follow the release download to {}: it is not a GitHub host",
+            target.host_str().unwrap_or("an unnamed host")
+        );
+        url = target;
+    }
+    anyhow::bail!("the release download redirected too many times")
+}
+
+/// A digest in a form other than GitHub's `sha256:` is let through with a
+/// warning rather than failing every update on a format change.
+fn check_release_digest(expected: Option<&str>, hasher: Sha256) -> Result<()> {
+    let Some(expected) = expected else {
+        return Ok(());
+    };
+    let actual = format!("{:x}", hasher.finalize());
+    match expected.strip_prefix("sha256:") {
+        Some(expected) => anyhow::ensure!(
+            expected.eq_ignore_ascii_case(&actual),
+            "the download does not match the digest GitHub lists for it"
+        ),
+        None => log::warn!("auto-update: cannot check the release digest {expected:?}"),
+    }
+    Ok(())
 }
 
 async fn download_remote_server_binary(
@@ -1128,13 +1468,26 @@ async fn download_remote_server_binary(
     let temp = tempfile::Builder::new().tempfile_in(remote_servers_dir())?;
     let mut temp_file = File::create(&temp).await?;
 
-    let mut response = client.get(&release.url, Default::default(), true).await?;
+    let mut response = send_release_download(&client, &release.url).await?;
     anyhow::ensure!(
         response.status().is_success(),
         "failed to download remote server release: {:?}",
         response.status()
     );
-    smol::io::copy(response.body_mut(), &mut temp_file).await?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 8192];
+    let body = response.body_mut();
+    loop {
+        let bytes_read = body.read(&mut buffer).await?;
+        let Some(chunk) = buffer.get(..bytes_read).filter(|chunk| !chunk.is_empty()) else {
+            break;
+        };
+        hasher.update(chunk);
+        temp_file.write_all(chunk).await?;
+    }
+    temp_file.flush().await?;
+    drop(temp_file);
+    check_release_digest(release.digest.as_deref(), hasher)?;
     smol::fs::rename(&temp, &target_path).await?;
 
     Ok(())
@@ -1205,7 +1558,7 @@ async fn download_release(
 ) -> Result<()> {
     let mut target_file = File::create(&target_path).await?;
 
-    let mut response = client.get(&release.url, Default::default(), true).await?;
+    let mut response = send_release_download(&client, &release.url).await?;
     anyhow::ensure!(
         response.status().is_success(),
         "failed to download update: {:?}",
@@ -1221,6 +1574,7 @@ async fn download_release(
 
     let mut downloaded_bytes: u64 = 0;
     let mut last_reported_percent: Option<u8> = None;
+    let mut hasher = Sha256::new();
     let mut buffer = [0u8; 8192];
     let body = response.body_mut();
     loop {
@@ -1229,6 +1583,7 @@ async fn download_release(
             break;
         }
         target_file.write_all(&buffer[..bytes_read]).await?;
+        hasher.update(&buffer[..bytes_read]);
         downloaded_bytes += bytes_read as u64;
 
         if let Some(total_bytes) = total_bytes {
@@ -1242,6 +1597,16 @@ async fn download_release(
         }
     }
     target_file.flush().await?;
+    drop(target_file);
+    // The installer is run next, so a cut-off or altered one has to stop here.
+    if let Some(total_bytes) = total_bytes
+        && downloaded_bytes != total_bytes
+    {
+        anyhow::bail!(
+            "the update download stopped after {downloaded_bytes} of {total_bytes} bytes"
+        );
+    }
+    check_release_digest(release.digest.as_deref(), hasher)?;
     if total_bytes.is_some() && last_reported_percent != Some(100) {
         on_progress(Some(1.0));
     }
@@ -1501,7 +1866,10 @@ mod tests {
     use clock::FakeSystemClock;
     use futures::channel::oneshot;
     use gpui::{TestAppContext, UpdateGlobal as _};
-    use http_client::{FakeHttpClient, Response};
+    use http_client::{
+        AllowlistedHttpClient, EgressPolicy, EgressPolicyHandle, FakeHttpClient, HttpClientWithUrl,
+        Response,
+    };
     use settings::default_settings;
     use std::{
         rc::Rc,
@@ -1529,6 +1897,7 @@ mod tests {
         format!(
             r#"[{{
                 "tag_name": "{tag}",
+                "draft": false,
                 "prerelease": false,
                 "tarball_url": "https://api.github.com/tarball/{tag}",
                 "zipball_url": "https://api.github.com/zipball/{tag}",
@@ -1721,16 +2090,21 @@ mod tests {
                 let dmg_rx = dmg_rx.clone();
                 async move {
                     if req.uri().path() == format!("/repos/{UPDATE_REPO}/releases") {
-                        let (tag, download) = if release_available {
-                            ("v0.100.1", "https://test.example/new-download")
+                        let tag = if release_available {
+                            "v0.100.1"
                         } else {
-                            ("v0.100.0", "https://test.example/old-download")
+                            "v0.100.0"
                         };
+                        let download = format!(
+                            "https://github.com/{UPDATE_REPO}/releases/download/{tag}/installer"
+                        );
                         return Ok(Response::builder()
                             .status(200)
-                            .body(github_releases_body(tag, download).into())
+                            .body(github_releases_body(tag, &download).into())
                             .unwrap());
-                    } else if req.uri().path() == "/new-download" {
+                    } else if req.uri().path()
+                        == format!("/{UPDATE_REPO}/releases/download/v0.100.1/installer")
+                    {
                         return Ok(Response::builder()
                             .status(200)
                             .body({
@@ -1839,7 +2213,8 @@ mod tests {
         let target_path = temp_dir.path().join("zed-download");
         let release = ReleaseAsset {
             version: "1.0.0".to_string(),
-            url: "https://test.example/download".to_string(),
+            url: format!("https://github.com/{UPDATE_REPO}/releases/download/v1.0.0/installer"),
+            digest: None,
         };
 
         let reported = Rc::new(std::cell::RefCell::new(Vec::<f32>::new()));
@@ -1899,7 +2274,8 @@ mod tests {
         let target_path = temp_dir.path().join("zed-download");
         let release = ReleaseAsset {
             version: "1.0.0".to_string(),
-            url: "https://test.example/download".to_string(),
+            url: format!("https://github.com/{UPDATE_REPO}/releases/download/v1.0.0/installer"),
+            digest: None,
         };
 
         let reported = Rc::new(std::cell::RefCell::new(Vec::<Option<f32>>::new()));
@@ -2187,5 +2563,612 @@ mod tests {
             newer_version.unwrap(),
             Some(fetched_version.parse().unwrap())
         );
+    }
+
+    fn release_json(
+        tag: &str,
+        draft: bool,
+        prerelease: bool,
+        asset: &str,
+        url: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "tag_name": tag,
+            "draft": draft,
+            "prerelease": prerelease,
+            "tarball_url": format!("https://api.github.com/tarball/{tag}"),
+            "zipball_url": format!("https://api.github.com/zipball/{tag}"),
+            "assets": [{ "name": asset, "browser_download_url": url }],
+        })
+    }
+
+    fn parse_releases(releases: Vec<serde_json::Value>) -> Vec<PublishedRelease> {
+        serde_json::from_value(serde_json::Value::Array(releases))
+            .expect("the fixture should parse as the GitHub API shape")
+    }
+
+    #[test]
+    fn the_update_is_the_highest_published_version_carrying_this_platform_s_asset() {
+        let asset = asset_name("zed", "windows", "x86_64").unwrap();
+        let releases = || {
+            parse_releases(vec![
+                // GitHub lists by creation date, so the first entry is not
+                // necessarily the highest version.
+                release_json("v1.1.0", false, false, &asset, "https://example/1.1.0"),
+                release_json("v9.0.0", true, false, &asset, "https://example/draft"),
+                release_json(
+                    "v1.3.0-pre",
+                    false,
+                    true,
+                    &asset,
+                    "https://example/1.3.0-pre",
+                ),
+                release_json("v1.2.0", false, false, &asset, "https://example/1.2.0"),
+                release_json(
+                    "v5.0.0",
+                    false,
+                    false,
+                    "forgekairos-plan9-x86_64.tar.gz",
+                    "https://example/other-platform",
+                ),
+                release_json("nightly", false, false, &asset, "https://example/nightly"),
+            ])
+        };
+
+        let release = newest_update_release(releases(), false, &asset).expect("a release");
+        assert_eq!(
+            (release.version.as_str(), release.url.as_str()),
+            ("1.2.0", "https://example/1.2.0"),
+            "releases only by default, and never a draft"
+        );
+
+        let release = newest_update_release(releases(), true, &asset).expect("a release");
+        assert_eq!(
+            (release.version.as_str(), release.url.as_str()),
+            ("1.3.0-pre", "https://example/1.3.0-pre"),
+        );
+
+        assert!(newest_update_release(Vec::new(), true, &asset).is_none());
+    }
+
+    #[test]
+    fn a_release_replaces_the_pre_release_of_the_same_version() {
+        let cargo_version: Version = "1.2.0+stable.0123abc".parse().unwrap();
+        let newer = |installed_tag: Option<&str>, fetched: &str| {
+            AutoUpdater::check_if_fetched_version_is_newer(
+                ReleaseChannel::Stable,
+                Ok(None),
+                installed_release_version(&cargo_version, installed_tag),
+                fetched.to_string(),
+                AutoUpdateStatus::Idle,
+            )
+            .unwrap()
+        };
+
+        assert_eq!(
+            newer(Some("v1.2.0-pre"), "1.2.0"),
+            Some(Version::new(1, 2, 0))
+        );
+        assert_eq!(newer(Some("v1.2.0-pre"), "1.2.0-pre"), None);
+        assert_eq!(newer(Some("v1.2.0"), "1.2.0-pre"), None);
+        assert_eq!(
+            newer(None, "1.2.0"),
+            None,
+            "a build without a release tag is the release of its Cargo version"
+        );
+        assert_eq!(newer(None, "1.3.0-pre"), Some("1.3.0-pre".parse().unwrap()));
+        assert_eq!(newer(None, "1.2.0+other.build"), None);
+        assert_eq!(
+            newer(Some("not a version"), "1.2.0"),
+            None,
+            "an unreadable tag falls back to the Cargo version"
+        );
+        assert_eq!(
+            installed_release_version(&"1.2.0-dev".parse().unwrap(), None),
+            Version::new(1, 2, 0),
+            "without a release tag, a pre-release suffix on the Cargo version does not make 1.2.0 an update"
+        );
+    }
+
+    #[test]
+    fn github_s_rate_limit_is_told_apart_from_other_refusals() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let headers = |pairs: &[(&'static str, &'static str)]| {
+            let mut headers = HeaderMap::new();
+            for (name, value) in pairs {
+                headers.insert(*name, value.parse().unwrap());
+            }
+            headers
+        };
+
+        assert_eq!(
+            rate_limit_retry_after(
+                StatusCode::FORBIDDEN,
+                &headers(&[
+                    ("x-ratelimit-remaining", "0"),
+                    ("x-ratelimit-reset", "1600")
+                ]),
+                now,
+            ),
+            Some(Some(Duration::from_secs(600)))
+        );
+        assert_eq!(
+            rate_limit_retry_after(
+                StatusCode::TOO_MANY_REQUESTS,
+                &headers(&[("retry-after", "120")]),
+                now,
+            ),
+            Some(Some(Duration::from_secs(120)))
+        );
+        assert_eq!(
+            rate_limit_retry_after(StatusCode::TOO_MANY_REQUESTS, &headers(&[]), now),
+            Some(None)
+        );
+        assert_eq!(
+            rate_limit_retry_after(
+                StatusCode::FORBIDDEN,
+                &headers(&[("x-ratelimit-remaining", "12")]),
+                now,
+            ),
+            None,
+            "a 403 with requests left is not the rate limit"
+        );
+        assert_eq!(
+            rate_limit_retry_after(StatusCode::NOT_FOUND, &headers(&[]), now),
+            None
+        );
+    }
+
+    fn answering(
+        status: u16,
+        headers: &'static [(&'static str, &'static str)],
+        body: &'static str,
+    ) -> Arc<HttpClientWithUrl> {
+        FakeHttpClient::create(move |_| async move {
+            let mut response = Response::builder().status(status);
+            for (name, value) in headers {
+                response = response.header(*name, *value);
+            }
+            Ok(response.body(body.into()).unwrap())
+        })
+    }
+
+    #[gpui::test]
+    async fn the_release_list_request_is_one_page_of_the_update_repository(
+        _cx: &mut TestAppContext,
+    ) {
+        let seen = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let client = FakeHttpClient::create({
+            let seen = seen.clone();
+            move |request| {
+                seen.lock().push((
+                    request.uri().to_string(),
+                    request
+                        .headers()
+                        .get("accept")
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_owned),
+                ));
+                async move { Ok(Response::builder().status(200).body("[]".into()).unwrap()) }
+            }
+        });
+
+        let releases = fetch_published_releases(client).await.unwrap();
+        assert!(releases.is_empty());
+        assert_eq!(
+            *seen.lock(),
+            vec![(
+                "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases?per_page=30"
+                    .to_string(),
+                Some("application/vnd.github+json".to_string()),
+            )]
+        );
+    }
+
+    #[gpui::test]
+    async fn a_release_list_that_cannot_be_read_is_a_failed_check(_cx: &mut TestAppContext) {
+        let not_found = fetch_published_releases(answering(404, &[], r#"{"message":"Not Found"}"#))
+            .await
+            .expect_err("a missing repository is not an empty one");
+        assert!(
+            matches!(not_found, UpdateCheckError::NotFound),
+            "{not_found:?}"
+        );
+        assert_eq!(
+            not_found.to_string(),
+            "Couldn't check for updates: GitHub has no release list for SeiyaFunaokaJP/ForgeKairos. \
+             The repository may be private or not published yet."
+        );
+
+        let rate_limited = fetch_published_releases(answering(
+            403,
+            &[("x-ratelimit-remaining", "0")],
+            r#"{"message":"API rate limit exceeded"}"#,
+        ))
+        .await
+        .expect_err("the rate limit is a failure");
+        assert!(
+            matches!(rate_limited, UpdateCheckError::RateLimited { .. }),
+            "{rate_limited:?}"
+        );
+
+        let server_error = fetch_published_releases(answering(502, &[], ""))
+            .await
+            .expect_err("a server error is a failure");
+        assert!(
+            matches!(server_error, UpdateCheckError::UnexpectedStatus(502)),
+            "{server_error:?}"
+        );
+
+        let wrong_shape =
+            fetch_published_releases(answering(200, &[], r#"{"message":"Moved Permanently"}"#))
+                .await
+                .expect_err("an object is not a release list");
+        assert!(
+            matches!(wrong_shape, UpdateCheckError::UnexpectedResponse(_)),
+            "{wrong_shape:?}"
+        );
+    }
+
+    fn init_updater(
+        cx: &mut TestAppContext,
+        release_channel: ReleaseChannel,
+        user_settings: &str,
+        http_client: Arc<HttpClientWithUrl>,
+    ) -> Entity<AutoUpdater> {
+        cx.update(|cx| {
+            settings::init(cx);
+            SettingsStore::update_global(cx, |store, cx| {
+                store
+                    .set_user_settings(user_settings, cx)
+                    .expect("valid user settings");
+            });
+            release_channel::init_test(Version::new(1, 2, 0), release_channel, cx);
+            let client = Client::new(Arc::new(FakeSystemClock::new()), http_client, cx);
+            crate::init(client, cx);
+            AutoUpdater::get(cx).expect("the updater exists")
+        })
+    }
+
+    async fn wait_for_poll(updater: &Entity<AutoUpdater>, cx: &mut TestAppContext) {
+        for _ in 0..1000 {
+            cx.background_executor.timer(Duration::from_millis(0)).await;
+            cx.run_until_parked();
+            if updater.read_with(cx, |updater, _| updater.pending_poll.is_none()) {
+                return;
+            }
+        }
+        panic!("the update check did not finish");
+    }
+
+    #[gpui::test]
+    async fn a_failed_check_is_shown_only_when_asked_for(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+        let updater = init_updater(
+            cx,
+            ReleaseChannel::Stable,
+            "{}",
+            answering(404, &[], r#"{"message":"Not Found"}"#),
+        );
+
+        updater.update(cx, |updater, cx| updater.poll(UpdateCheckType::Manual, cx));
+        wait_for_poll(&updater, cx).await;
+        let status = updater.read_with(cx, |updater, _| updater.status());
+        let AutoUpdateStatus::Errored { error } = status else {
+            panic!("a manual check that could not read the list must say so, got {status:?}");
+        };
+        assert!(
+            error.to_string().starts_with("Couldn't check for updates:"),
+            "the shown message is the check's own, not a wrapper: {error}"
+        );
+
+        updater.update(cx, |updater, cx| {
+            updater.dismiss(cx);
+            updater.poll(UpdateCheckType::Automatic, cx)
+        });
+        wait_for_poll(&updater, cx).await;
+        assert_eq!(
+            updater.read_with(cx, |updater, _| updater.status()),
+            AutoUpdateStatus::Idle,
+            "an automatic check fails quietly"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_dev_build_never_checks(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+        let requests = Arc::new(atomic::AtomicUsize::new(0));
+        let client = FakeHttpClient::create({
+            let requests = requests.clone();
+            move |_| {
+                requests.fetch_add(1, atomic::Ordering::SeqCst);
+                async move { Ok(Response::builder().status(200).body("[]".into()).unwrap()) }
+            }
+        });
+        init_updater(
+            cx,
+            ReleaseChannel::Dev,
+            r#"{ "auto_update": true }"#,
+            client,
+        );
+
+        // The first poll starts after the Windows cleanup, which runs on the
+        // real file system outside the test executor, so this waits in real
+        // time for as long as a poll would take to show up.
+        cx.background_executor.advance_clock(POLL_INTERVAL);
+        for _ in 0..200 {
+            std::thread::sleep(Duration::from_millis(10));
+            cx.background_executor.timer(Duration::from_millis(0)).await;
+            cx.run_until_parked();
+            if requests.load(atomic::Ordering::SeqCst) > 0 {
+                break;
+            }
+        }
+        assert_eq!(requests.load(atomic::Ordering::SeqCst), 0);
+    }
+
+    /// The update runs on the IDE lane, so neither the release list nor the
+    /// download's redirect to GitHub's asset host needs the user's allowlist;
+    /// on the gated lane only the list is open, through the built-in entry.
+    #[gpui::test]
+    async fn the_update_path_passes_the_egress_policy_with_an_empty_allowlist(
+        cx: &mut TestAppContext,
+    ) {
+        cx.background_executor.allow_parking();
+        let asset = asset_name("zed", OS, ARCH).unwrap();
+        let download_url =
+            format!("https://github.com/{UPDATE_REPO}/releases/download/v1.3.0/{asset}");
+        let body = serde_json::Value::Array(vec![release_json(
+            "v1.3.0",
+            false,
+            false,
+            &asset,
+            &download_url,
+        )])
+        .to_string();
+        let fake = FakeHttpClient::create(move |request| {
+            let body = body.clone();
+            async move {
+                let response = match request.uri().host() {
+                    Some("api.github.com") => Response::builder().status(200).body(body.into()),
+                    Some("github.com") => Response::builder()
+                        .status(302)
+                        .header(
+                            "location",
+                            "https://release-assets.githubusercontent.com/github-production-release-asset/1/2",
+                        )
+                        .body(AsyncBody::default()),
+                    Some("release-assets.githubusercontent.com") => {
+                        Response::builder().status(200).body("<installer>".into())
+                    }
+                    _ => Response::builder().status(404).body(AsyncBody::default()),
+                };
+                Ok(response.unwrap())
+            }
+        });
+        let (empty_policy, errors) = EgressPolicy::from_host_strings(Vec::<String>::new());
+        assert!(errors.is_empty());
+        let gated: Arc<dyn HttpClient> = Arc::new(AllowlistedHttpClient::new(
+            fake,
+            EgressPolicyHandle::new(empty_policy),
+        ));
+
+        let releases = fetch_published_releases(ide_lane(gated.clone()))
+            .await
+            .expect("the release list is reachable");
+        let release = newest_update_release(releases, false, &asset).expect("the release");
+        assert_eq!(release.url, download_url);
+
+        let directory = tempdir().unwrap();
+        let target = directory.path().join("installer");
+        download_release(&target, release.clone(), ide_lane(gated.clone()), |_| {})
+            .await
+            .expect("the download follows GitHub's redirect");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "<installer>");
+
+        fetch_published_releases(gated.clone())
+            .await
+            .expect("the built-in entry opens the release list on the gated lane");
+        let denied = download_release(&directory.path().join("denied"), release, gated, |_| {})
+            .await
+            .expect_err("the gated lane does not open the download");
+        assert!(
+            denied
+                .chain()
+                .any(|error| error.downcast_ref::<EgressDenied>().is_some()),
+            "{denied:?}"
+        );
+    }
+
+    #[gpui::test]
+    async fn pre_releases_are_offered_when_asked_for_or_on_a_pre_release_channel(
+        cx: &mut TestAppContext,
+    ) {
+        cx.background_executor.allow_parking();
+        let asset = asset_name("zed", OS, ARCH).unwrap();
+        let body = serde_json::Value::Array(vec![release_json(
+            "v1.3.0-pre",
+            false,
+            true,
+            &asset,
+            &format!("https://github.com/{UPDATE_REPO}/releases/download/v1.3.0-pre/{asset}"),
+        )])
+        .to_string();
+
+        // The download itself is refused, so a check that picked the
+        // pre-release ends as a failed download rather than as idle.
+        for (release_channel, user_settings, offered) in [
+            (ReleaseChannel::Stable, "{}", false),
+            (
+                ReleaseChannel::Stable,
+                r#"{ "auto_update_include_prereleases": true }"#,
+                true,
+            ),
+            (ReleaseChannel::Preview, "{}", true),
+        ] {
+            let client = FakeHttpClient::create({
+                let body = body.clone();
+                move |request| {
+                    let response = match request.uri().host() {
+                        Some("api.github.com") => {
+                            Response::builder().status(200).body(body.clone().into())
+                        }
+                        _ => Response::builder().status(404).body(AsyncBody::default()),
+                    };
+                    async move { Ok(response.unwrap()) }
+                }
+            });
+            let updater = init_updater(cx, release_channel, user_settings, client);
+            updater.update(cx, |updater, cx| updater.poll(UpdateCheckType::Manual, cx));
+            // Preparing the installer folder touches the real file system,
+            // outside the test executor, so this waits in real time.
+            for _ in 0..500 {
+                std::thread::sleep(Duration::from_millis(10));
+                cx.background_executor.timer(Duration::from_millis(0)).await;
+                cx.run_until_parked();
+                if updater.read_with(cx, |updater, _| updater.pending_poll.is_none()) {
+                    break;
+                }
+            }
+            let status = updater.read_with(cx, |updater, _| updater.status());
+            assert_eq!(
+                matches!(status, AutoUpdateStatus::Errored { .. }),
+                offered,
+                "{release_channel:?} with {user_settings}: {status:?}"
+            );
+        }
+    }
+
+    /// A GitHub-shaped download host that redirects to `redirect_to` and
+    /// records every URL it is asked for.
+    fn release_host(
+        redirect_to: &'static str,
+        body: &'static str,
+    ) -> (Arc<dyn HttpClient>, Arc<parking_lot::Mutex<Vec<String>>>) {
+        let seen = Arc::new(parking_lot::Mutex::new(Vec::new()));
+        let client = FakeHttpClient::create({
+            let seen = seen.clone();
+            move |request| {
+                seen.lock().push(request.uri().to_string());
+                let response = if request.uri().host() == Some("github.com") {
+                    Response::builder()
+                        .status(302)
+                        .header("location", redirect_to)
+                        .body(AsyncBody::default())
+                } else {
+                    Response::builder().status(200).body(body.into())
+                };
+                async move { Ok(response.unwrap()) }
+            }
+        });
+        (client, seen)
+    }
+
+    fn release_at(url: &str, digest: Option<&str>) -> ReleaseAsset {
+        ReleaseAsset {
+            version: "1.3.0".to_string(),
+            url: url.to_string(),
+            digest: digest.map(str::to_string),
+        }
+    }
+
+    #[gpui::test]
+    async fn a_release_download_never_leaves_github(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+        let directory = tempdir().unwrap();
+        let target = directory.path().join("installer");
+        let download_url =
+            format!("https://github.com/{UPDATE_REPO}/releases/download/v1.3.0/installer");
+
+        let (client, seen) = release_host(
+            "https://release-assets.githubusercontent.com/asset?signature=1",
+            "<installer>",
+        );
+        download_release(&target, release_at(&download_url, None), client, |_| {})
+            .await
+            .expect("GitHub's own redirect is followed");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "<installer>");
+        assert_eq!(seen.lock().len(), 2);
+
+        for refused in [
+            "https://evil.example/installer".to_string(),
+            "http://github.com/SeiyaFunaokaJP/ForgeKairos/releases/download/v1.3.0/installer"
+                .to_string(),
+            "https://github.com/someone-else/ForgeKairos/releases/download/v1.3.0/installer"
+                .to_string(),
+            "https://github.com:8443/SeiyaFunaokaJP/ForgeKairos/releases/download/v1.3.0/installer"
+                .to_string(),
+            "https://github.com.evil.example/SeiyaFunaokaJP/ForgeKairos/releases/download/v1.3.0/installer"
+                .to_string(),
+        ] {
+            let (client, seen) = release_host("https://unused.example/", "<other>");
+            download_release(&target, release_at(&refused, None), client, |_| {})
+                .await
+                .expect_err(&format!("{refused} is not this repository's release download"));
+            assert!(seen.lock().is_empty(), "{refused} was requested");
+        }
+
+        for redirect in [
+            "https://evil.example/installer",
+            "http://release-assets.githubusercontent.com/asset",
+            "https://githubusercontent.com.evil.example/asset",
+        ] {
+            let (client, seen) = release_host(redirect, "<other>");
+            let error = download_release(&target, release_at(&download_url, None), client, |_| {})
+                .await
+                .expect_err(&format!("the redirect to {redirect} is not followed"));
+            assert!(
+                error.to_string().contains("refusing to follow"),
+                "{redirect}: {error:#}"
+            );
+            assert_eq!(seen.lock().len(), 1, "{redirect} was requested");
+        }
+    }
+
+    #[gpui::test]
+    async fn a_release_download_has_to_match_what_github_lists(cx: &mut TestAppContext) {
+        cx.background_executor.allow_parking();
+        let directory = tempdir().unwrap();
+        let target = directory.path().join("installer");
+        let download_url =
+            format!("https://github.com/{UPDATE_REPO}/releases/download/v1.3.0/installer");
+        let digest = format!("sha256:{:x}", Sha256::digest(b"<installer>"));
+
+        let (client, _) = release_host("https://objects.githubusercontent.com/a", "<installer>");
+        download_release(
+            &target,
+            release_at(&download_url, Some(&digest)),
+            client,
+            |_| {},
+        )
+        .await
+        .expect("the published digest matches");
+
+        let (client, _) = release_host("https://objects.githubusercontent.com/a", "<altered>");
+        download_release(
+            &target,
+            release_at(&download_url, Some(&digest)),
+            client,
+            |_| {},
+        )
+        .await
+        .expect_err("a download that does not match its digest is not installed");
+
+        let truncated = FakeHttpClient::create(|_| async {
+            Ok(Response::builder()
+                .status(200)
+                .header(http_client::http::header::CONTENT_LENGTH, "100")
+                .body("<cut".into())
+                .unwrap())
+        });
+        download_release(&target, release_at(&download_url, None), truncated, |_| {})
+            .await
+            .expect_err("a download shorter than announced is not installed");
+
+        let mut listed = release_json("v1.3.0", false, false, "installer", &download_url);
+        listed["assets"][0]["digest"] = serde_json::Value::String(digest.clone());
+        let release = newest_update_release(parse_releases(vec![listed]), false, "installer")
+            .expect("the release");
+        assert_eq!(release.digest, Some(digest));
     }
 }

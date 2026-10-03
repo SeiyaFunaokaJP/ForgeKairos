@@ -229,8 +229,13 @@ pub struct SettingsContent {
 
     /// Whether or not to automatically check for updates.
     ///
-    /// Default: true
+    /// Default: false
     pub auto_update: Option<bool>,
+
+    /// Whether update checks also consider pre-releases. By default only releases are considered.
+    ///
+    /// Default: false
+    pub auto_update_include_prereleases: Option<bool>,
 
     /// This base keymap settings adjusts the default keybindings in Zed to be similar
     /// to other common code editors. By default, Zed's keymap closely follows VSCode's
@@ -449,7 +454,7 @@ fallible_options::flattened_deserialize!(SettingsContent {
     sections: { project, theme, extension, workspace, editor, remote },
     options: {
         call_hierarchy, call_graph_panel, command_palette, file_finder, git_panel, tabs, tab_bar, status_bar, preview_tabs, agent,
-        agent_servers, audio, auto_update, base_keymap, collaboration_panel, debugger, diagnostics,
+        agent_servers, audio, auto_update, auto_update_include_prereleases, base_keymap, collaboration_panel, debugger, diagnostics,
         git,
         global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
         journal, log, line_indicator_format, language_models, outline_panel, project_panel,

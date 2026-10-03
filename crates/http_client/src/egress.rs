@@ -1434,6 +1434,8 @@ mod tests {
         let policy = policy(&[]);
         for url in [
             "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases",
+            // What the update check requests: one page of the list.
+            "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases?per_page=30",
             "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases/latest",
             "https://api.github.com/repos/SeiyaFunaokaJP/ForgeKairos/releases/tags/v1.2.3",
         ] {

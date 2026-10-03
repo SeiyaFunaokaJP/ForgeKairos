@@ -545,7 +545,7 @@ fn general_page(cx: &App) -> SettingsPage {
         ]
     }
 
-    fn auto_update_section() -> [SettingsPageItem; 2] {
+    fn auto_update_section() -> [SettingsPageItem; 3] {
         [
             SettingsPageItem::SectionHeader("Auto Update"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -557,6 +557,22 @@ fn general_page(cx: &App) -> SettingsPage {
                     pick: |settings_content| settings_content.auto_update.as_ref(),
                     write: |settings_content, value, _| {
                         settings_content.auto_update = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Include Pre-releases",
+                description: "Whether update checks also consider pre-releases. By default only releases are considered.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("auto_update_include_prereleases"),
+                    pick: |settings_content| {
+                        settings_content.auto_update_include_prereleases.as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content.auto_update_include_prereleases = value;
                     },
                 }),
                 metadata: None,
