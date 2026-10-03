@@ -804,6 +804,9 @@ msgstr "上記のリスクを理解したうえで、このプロバイダーを
 msgid "I understand the risks above and want to enable {name}"
 msgstr "上記のリスクを理解したうえで、{name} を有効にします"
 
+msgid "I understand the risks above and want to save this provider"
+msgstr "上記のリスクを理解したうえで、このプロバイダーを保存します"
+
 msgid "IP addresses and local domains aren't allowed; enter a domain like github.com."
 msgstr "IP アドレスとローカルドメインは指定できません。github.com のようなドメインを入力してください。"
 

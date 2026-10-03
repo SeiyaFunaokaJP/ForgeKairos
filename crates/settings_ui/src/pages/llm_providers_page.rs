@@ -1149,6 +1149,8 @@ struct EditedProvider {
     original_api_url: String,
     /// Consent was recorded for the provider under its original name.
     was_acknowledged: bool,
+    /// The provider sent an API key, so one may be saved for its URL.
+    had_api_key: bool,
 }
 
 impl EditedProvider {
@@ -1156,6 +1158,12 @@ impl EditedProvider {
     /// for one URL is never sent to another one.
     fn api_url_changed(&self, api_url: &str) -> bool {
         self.original_api_url != api_url
+    }
+
+    /// Nothing is left to use the key saved for the original URL: the provider
+    /// moved to another URL, or stopped sending a key.
+    fn releases_saved_api_key(&self, api_url: &str, no_api_key: bool) -> bool {
+        self.api_url_changed(api_url) || (no_api_key && self.had_api_key)
     }
 
     /// Consent is given for a host. It follows the provider through a rename,
@@ -1237,6 +1245,7 @@ impl LlmProviderForm {
             original_name: name.to_string(),
             original_api_url: entry.api_url().to_string(),
             was_acknowledged,
+            had_api_key: !entry.no_api_key(),
         });
         form
     }
@@ -1740,6 +1749,7 @@ fn render_llm_provider_form_page(
                         settings_window,
                         target,
                         consent_acknowledged,
+                        form.editing.is_some(),
                         cx,
                     ))
                 })
@@ -1790,8 +1800,14 @@ fn render_form_consent(
     settings_window: &SettingsWindow,
     target: &external_ai_consent::ConsentTarget,
     acknowledged: bool,
+    is_editing: bool,
     cx: &mut Context<SettingsWindow>,
 ) -> impl IntoElement {
+    let label = if is_editing {
+        i18n::t!("I understand the risks above and want to save this provider")
+    } else {
+        i18n::t!("I understand the risks above and want to add this provider")
+    };
     Banner::new().severity(Severity::Warning).child(
         v_flex()
             .w_full()
@@ -1805,9 +1821,7 @@ fn render_form_consent(
             .child(Divider::horizontal())
             .child(
                 Checkbox::new("llm-provider-form-consent", acknowledged.into())
-                    .label(i18n::t!(
-                        "I understand the risks above and want to add this provider"
-                    ))
+                    .label(label)
                     .label_size(LabelSize::Small)
                     .on_click(cx.listener(|this, checked: &ToggleState, _, cx| {
                         if let Some(form) = this.llm_provider_form.as_mut() {
@@ -2855,7 +2869,7 @@ fn save_edited_llm_provider(
         models,
         needs_consent,
     } = validated;
-    let api_url_changed = editing.api_url_changed(&api_url);
+    let releases_saved_api_key = editing.releases_saved_api_key(&api_url, no_api_key);
     let original_host = external_ai_consent::host_of(&editing.original_api_url);
     let released_host = original_host.filter(|host| {
         editing.was_acknowledged && external_ai_consent::host_of(&api_url).as_ref() != Some(host)
@@ -2907,7 +2921,7 @@ fn save_edited_llm_provider(
 
             // The key saved for the old URL would otherwise stay in the keychain
             // with nothing left to use it.
-            if api_url_changed {
+            if releases_saved_api_key {
                 let credentials = cx.update(|_window, cx| {
                     (!api_url_is_shared(&editing.original_api_url, &provider_name, cx))
                         .then(|| zed_credentials_provider::global(cx))
@@ -4095,6 +4109,38 @@ mod provider_edit_tests {
     }
 
     #[gpui::test]
+    async fn switching_to_no_key_deletes_the_saved_key(cx: &mut TestAppContext) {
+        let (fs, credentials) = init_test(
+            cx,
+            json!({ "language_models": { "openai_compatible": { "Corp": {
+                "api_url": "http://localhost:8000/v1",
+                "available_models": [{ "name": "big", "max_tokens": 1000 }]
+            } } } }),
+        )
+        .await;
+        credentials
+            .0
+            .lock()
+            .expect("credentials lock")
+            .insert("http://localhost:8000/v1".into(), b"saved".to_vec());
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, _, _| {
+            form.no_api_key = true;
+        });
+        assert_eq!(save(&settings_window, cx), None);
+        assert_eq!(
+            user_file(&fs).await["language_models"]["openai_compatible"]["Corp"]["no_api_key"],
+            json!(true)
+        );
+        assert_eq!(
+            credentials.keys(),
+            HashMap::new(),
+            "a key-less provider leaves no key behind in the keychain"
+        );
+    }
+
+    #[gpui::test]
     async fn deleting_says_what_it_removes_and_removes_exactly_that(cx: &mut TestAppContext) {
         let (fs, credentials) = init_test(
             cx,
@@ -4270,9 +4316,7 @@ mod provider_edit_tests {
     }
 
     #[gpui::test]
-    async fn consent_withdrawn_while_the_form_is_open_does_not_come_back(
-        cx: &mut TestAppContext,
-    ) {
+    async fn consent_withdrawn_while_the_form_is_open_does_not_come_back(cx: &mut TestAppContext) {
         let (fs, _) = init_test(
             cx,
             json!({
