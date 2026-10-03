@@ -202,8 +202,9 @@ actions!(
 /// 宣言している通話系アクション (`collab` 名前空間) は型として残っている
 /// (`OpenChannelNotesById` は `file_finder` が参照しているため `workspace` からは消せない)。
 /// ハンドラが無いので発火しても何も起きないが、コマンドパレットに死んだ項目として
-/// 並ぶのは害なので、ここで一括して隠す。
-fn hide_collab_actions_from_command_palette(cx: &mut App) {
+/// 並ぶのは害なので、ここで一括して隠す。Call it after `command_palette::init`,
+/// which replaces the filter: before it there is no filter to update.
+pub fn hide_collab_actions_from_command_palette(cx: &mut App) {
     CommandPaletteFilter::update_global(cx, |filter, _| {
         filter.hide_action_types(&[
             TypeId::of::<workspace::OpenChannelNotes>(),
@@ -319,8 +320,6 @@ pub fn hide_zed_telemetry_and_promotion_actions_from_command_palette(cx: &mut Ap
 }
 
 pub fn init(cx: &mut App) {
-    hide_collab_actions_from_command_palette(cx);
-
     #[cfg(target_os = "macos")]
     cx.on_action(|_: &Hide, cx| cx.hide());
     #[cfg(target_os = "macos")]
@@ -9166,5 +9165,42 @@ mod tests {
             .items
             .iter()
             .any(|item| matches!(item, OwnedMenuItem::Action { name, .. } if name == item_name))
+    }
+
+    /// `command_palette::init` replaces the filter, so hiding actions from it
+    /// before then silently does nothing. `main` is not run by any test, so its
+    /// order is checked in its source.
+    #[gpui::test]
+    fn test_actions_this_build_does_not_offer_are_hidden_after_the_palette_starts(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            command_palette::init(cx);
+            hide_collab_actions_from_command_palette(cx);
+            let filter = CommandPaletteFilter::try_global(cx)
+                .expect("command_palette::init sets the filter");
+            assert!(filter.is_hidden(&workspace::ShareProject));
+            assert!(filter.is_hidden(&excluded_collab_actions::Toggle));
+            assert!(!filter.is_hidden(&zed_actions::OpenLicenses));
+        });
+
+        let main_source = include_str!("main.rs");
+        let palette_init = main_source
+            .find("command_palette::init(cx);")
+            .expect("main starts the command palette");
+        for hide_call in [
+            "zed::hide_collab_actions_from_command_palette(cx);",
+            "zed::hide_zed_telemetry_and_promotion_actions_from_command_palette(cx);",
+        ] {
+            let call = main_source
+                .find(hide_call)
+                .unwrap_or_else(|| panic!("main does not call `{hide_call}`"));
+            assert!(
+                call > palette_init,
+                "main calls `{hide_call}` before `command_palette::init`, which discards it"
+            );
+        }
     }
 }
