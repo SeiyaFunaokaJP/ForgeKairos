@@ -1,15 +1,15 @@
 ﻿<#
 .SYNOPSIS
-upstream スナップショットと現在の HEAD の差分台帳を出力する (再移植用。PORTING.md 参照)。
+Lists what changed between an upstream snapshot and HEAD, for porting the fork again (see PORTING.md).
 
 .EXAMPLE
 powershell -NoProfile -File script\fork-diff.ps1
 powershell -NoProfile -File script\fork-diff.ps1 -Detail
 #>
 param(
-    # 比較の基点 (既定: fork 元スナップショット)
+    # What to compare with (by default the snapshot the fork started from).
     [string]$Base = 'c8e44cf',
-    # 変更ファイルを全列挙する
+    # List every modified file.
     [switch]$Detail
 )
 
@@ -18,7 +18,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 $diff = git -C $repoRoot diff --name-status $Base HEAD
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "git diff が失敗しました (base=$Base)"
+    Write-Error "git diff failed (base=$Base)"
 }
 
 $added = @(); $modified = @(); $deleted = @(); $other = @()
@@ -33,26 +33,26 @@ foreach ($line in $diff) {
 }
 
 "base: $Base -> HEAD"
-"追加 {0} / 変更 {1} / 削除 {2}" -f $added.Count, $modified.Count, $deleted.Count
+"added {0} / modified {1} / deleted {2}" -f $added.Count, $modified.Count, $deleted.Count
 ""
-"== 追加ファイル (フォーク専有。再移植ではほぼそのまま持っていける) =="
+"== Added files (the fork's own; a port can mostly take them as they are) =="
 $added | ForEach-Object { "  A $_" }
 ""
-"== 削除ファイル =="
+"== Deleted files =="
 $deleted | ForEach-Object { "  D $_" }
 if ($other.Count) {
     ""
-    "== その他 (rename 等) =="
+    "== Other (renames and the like) =="
     $other | ForEach-Object { "  $_" }
 }
 ""
-"== 変更ファイルのクレート別集計 (再適用コストの目安) =="
+"== Modified files per crate (a measure of what porting them again costs) =="
 $modified | ForEach-Object { ($_ -split '/')[0..1] -join '/' } |
     Group-Object | Sort-Object Count -Descending |
     ForEach-Object { "  {0,4}  {1}" -f $_.Count, $_.Name }
 
 if ($Detail) {
     ""
-    "== 変更ファイル全列挙 =="
+    "== Every modified file =="
     $modified | ForEach-Object { "  M $_" }
 }

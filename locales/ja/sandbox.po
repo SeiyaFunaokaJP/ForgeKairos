@@ -251,8 +251,8 @@ msgstr "{distro}でユーザー名前空間を作成できないため、サン�
 msgid "The sandbox helper was installed in {distro}, but it could not be verified. Try again."
 msgstr "サンドボックス用のヘルパーを{distro}に配置しましたが、確認できませんでした。もう一度実行してください。"
 
-msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build-dev.ps1` puts them in `target\\debug` (searched: {searched})."
-msgstr "サンドボックス用のヘルパー (`{server_name}` と `{slirp_name}`) が ForgeKairos のインストール先に見つかりません。ForgeKairos を再インストールしてください。開発ビルドでは `script/build-dev.ps1` が `target\\debug` に用意します (探した場所: {searched})。"
+msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build.ps1` puts them in `target\\debug` (searched: {searched})."
+msgstr "サンドボックス用のヘルパー (`{server_name}` と `{slirp_name}`) が ForgeKairos のインストール先に見つかりません。ForgeKairos を再インストールしてください。開発ビルドでは `script/build.ps1` が `target\\debug` に用意します (探した場所: {searched})。"
 
 msgid "The terminal's working folder was not resolved (internal error)"
 msgstr "ターミナルの作業フォルダーの解決結果が見つかりません (内部エラー)"

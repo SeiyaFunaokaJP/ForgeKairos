@@ -334,7 +334,7 @@ pub fn is_fork_server_binary_name(file_name: &str) -> bool {
 
 /// File names of a remote server artifact for `platform`, most preferred first.
 ///
-/// `script/build-dev.ps1` and `script/bundle-windows.ps1` name it after
+/// `script/build.ps1` and `script/bundle-windows.ps1` name it after
 /// `branding::CURRENT`. The names of `branding::LEGACY` are accepted after it:
 /// they are what `script/bundle-linux` and `script/bundle-mac` emit (upstream's
 /// release artifact names), and what an earlier build left in a cargo output
@@ -380,7 +380,7 @@ fn find_bundled_server_artifact_in_dirs(
 /// `util::command::resolve_command_next_to_current_exe`).
 ///
 /// Debug builds also search the primary workspace's `target/debug`
-/// unconditionally, because `script/build-dev.ps1` always places its
+/// unconditionally, because `script/build.ps1` always places its
 /// bundled artifact there — even when this executable itself was built to a
 /// different `--target-dir` (e.g. `target/alt`, used to run a second `dev`
 /// instance side by side for testing while `target/debug` holds the main
@@ -446,7 +446,7 @@ pub(crate) fn choose_server_binary_source(
 /// ADR-F18's remote Linux sandbox. Mirrors [`find_bundled_server_artifact`]: it
 /// looks next to the running executable and in its `bin` subdirectory. Only
 /// meaningful for a Linux remote (slirp4netns is Linux-only); returns `None`
-/// otherwise. `script/build-dev.ps1` places `slirp4netns-linux-x86_64` next to
+/// otherwise. `script/build.ps1` places `slirp4netns-linux-x86_64` next to
 /// the editor's executable.
 pub(crate) fn find_bundled_slirp4netns(platform: RemotePlatform) -> Option<PathBuf> {
     if platform.os != RemoteOs::Linux {
@@ -1092,7 +1092,7 @@ async fn ensure_cmake_available(cx: &mut AsyncApp) -> Result<Option<std::ffi::Os
         anyhow::bail!(i18n::t!(
             "cmake is not on PATH (it is needed to build remote_server). Add the CMake that comes with \
              Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) to PATH, \
-             or build with script\\build-dev.ps1 to prepare the bundled artifact"
+             or build with script\\build.ps1 to prepare the bundled artifact"
         ));
     }
     #[cfg(not(windows))]
@@ -1103,7 +1103,7 @@ async fn ensure_cmake_available(cx: &mut AsyncApp) -> Result<Option<std::ffi::Os
 
 /// Directories where Visual Studio 2022 ships its own copy of CMake, most
 /// preferred first, searched when `cmake` is not already on `$PATH`. Mirrors
-/// `script/build-dev.ps1`'s own CMake search (see BUILD-WINDOWS.md) so a
+/// `script/build.ps1`'s own CMake search (see BUILD-WINDOWS.md) so a
 /// machine that can run that script can also drive this in-process
 /// cross-compile path without the developer having to launch Zed from a
 /// Visual Studio developer shell.
@@ -1307,7 +1307,7 @@ mod tests {
             arch: RemoteArch::X86_64,
         });
         for (script, expected) in [
-            ("script/build-dev.ps1", vec![linux[0].clone()]),
+            ("script/build.ps1", vec![linux[0].clone()]),
             (
                 "script/bundle-windows.ps1",
                 vec![

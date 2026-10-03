@@ -48,11 +48,14 @@ Requirements: Visual Studio 2022 (C++ workload, Spectre-mitigated libraries, Win
 SDK 26100) and rustup.
 
 ```powershell
-powershell -NoProfile -File script\build-dev.ps1        # the editor, the CLI and the bundled remote server
-powershell -NoProfile -File script\build-dev.ps1 -Run   # build, then start it
+powershell -NoProfile -File script\build.ps1            # ForgeKairos.exe, the CLI and the bundled remote server in target\debug
+powershell -NoProfile -File script\build.ps1 -Run       # build, then start it
+powershell -NoProfile -File script\build.ps1 -Release   # the same in target\release
+powershell -NoProfile -File script\bundle-windows.ps1   # the installer (needs Inno Setup 6)
 ```
 
-See [README.ja.md](README.ja.md) for details (in Japanese).
+See [Building on Windows](pages/src/building.md) for the options, and
+[README.ja.md](README.ja.md) for details (in Japanese).
 
 ## Relationship with upstream
 

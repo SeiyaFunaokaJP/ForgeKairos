@@ -15,43 +15,60 @@ This page summarizes how to build ForgeKairos on Windows. Zed's own build notes 
 - `RUSTFLAGS` not set
 - Plenty of free disk space: a full `target` folder can exceed 100 GB
 
-## Development build
+## Building
 
 ```powershell
-powershell -NoProfile -File script\build-dev.ps1        # the editor, the CLI and the bundled remote server
-powershell -NoProfile -File script\build-dev.ps1 -Run   # build, then start it
+powershell -NoProfile -File script\build.ps1            # debug build in target\debug
+powershell -NoProfile -File script\build.ps1 -Run       # build, then start it
+powershell -NoProfile -File script\build.ps1 -Release   # release build in target\release
 ```
 
 The script:
 
 - adds the CMake that comes with Visual Studio to `PATH` when CMake is missing
 - warns when disk space is low
-- builds with `-j 8`; unlimited parallelism can make rustc run out of memory
+- builds with `-j 8` (`-Jobs` changes it); unlimited parallelism can make rustc run out of memory
 - builds the remote server for Linux (`x86_64-unknown-linux-musl`, statically linked) with
   zig and `cargo-zigbuild`, installing them when missing (zig through `winget`), and places
-  it next to the editor
+  it next to the editor as `forgekairos-remote-server-linux-x86_64.gz`
 - downloads `slirp4netns`, used by the agent sandbox on remote hosts
-- places `clang-format.exe` in `target\debug\bin\`
+- places `clang-format.exe` in `bin\` next to the editor
+
+It writes to `target\debug`, or `target\release` with `-Release`; when `CARGO_TARGET_DIR`
+is set, to that folder instead of `target`.
 
 | Option | Effect |
 |---|---|
+| `-Release` | Build with the release profile into `target\release`. |
 | `-Run` | Start the editor after a successful build. |
-| `-FreeDisk` | First delete `target\debug\incremental` and the `.exe` and `.pdb` files in `target\debug\deps`. |
+| `-Jobs <n>` | Build with `-j <n>` instead of `-j 8`. |
+| `-FreeDisk` | First delete the `incremental` folder and the `.exe` and `.pdb` files in `deps` of the profile being built. |
 | `-SkipCli` | Do not build the command-line tool. |
 | `-SkipRemoteServer` | Do not build the remote server. |
 | `-SkipSlirp4netns` | Do not download `slirp4netns`. |
 | `-SkipClangFormat` | Do not place clang-format. |
 | `-ClangFormatPath <file>` | The `clang-format.exe` to place. When it is not given or does not exist, the LLVM that comes with Visual Studio 2022 is used. |
 
-The editor is `target\debug\zed.exe`. To use it from a console, `cli.exe` must be next to it
-(the script builds both).
+The editor is `ForgeKairos.exe` and the command-line tool `forgekairos-cli.exe`, both in
+`target\debug` (or `target\release`); the command-line tool looks for the editor next to
+itself. The installer installs the command-line tool as `bin\forgekairos.exe`; in the
+build folder it has another name, because Windows does not tell `forgekairos.exe` from
+`ForgeKairos.exe`.
+
+A release build uses the stable channel's data folder, the same one an installed
+ForgeKairos uses. To keep them apart, start it with `--user-data-dir <folder>`.
 
 ## Installer
 
-`script\bundle-windows.ps1` makes a release build, cross-builds the Linux remote server,
-adds clang-format with its license and `slirp4netns`, and runs Inno Setup 6
-(`winget install JRSoftware.InnoSetup`). Options include `-Architecture`, `-Install` (install
-the result) and `-ClangFormatPath`.
+`script\build.ps1` does not make an installer. `script\bundle-windows.ps1` does: it makes its
+own release build (for `x86_64-pc-windows-msvc`, into `target\x86_64-pc-windows-msvc\release`),
+builds the Windows remote server, cross-builds the Linux one, adds clang-format with its
+license and `slirp4netns`, and runs Inno Setup 6 (`winget install JRSoftware.InnoSetup`).
+The installer is written to `target\forgekairos-windows-x86_64-setup.exe`. Options include
+`-Architecture`, `-Install` (install the result), `-ReleaseTag <tag>` (the GitHub release tag
+the build is published under, which the update check compares with) and `-ClangFormatPath`.
+It needs Visual Studio 2022 and network access (it downloads ConPTY, the AMD GPU Services
+library, `slirp4netns` and, when missing, zig).
 
 ## Checks
 

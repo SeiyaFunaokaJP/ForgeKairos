@@ -1,39 +1,46 @@
 ﻿<#
 .SYNOPSIS
-upstream を git merge で取り込んだ途中に残った Cargo.toml / Cargo.lock の衝突を機械的に解く。
+Mechanically resolves the conflicts that `git merge` of an upstream release leaves in
+Cargo.toml and Cargo.lock.
 
 .DESCRIPTION
-衝突の印 (<<<<<<< / ||||||| / ======= / >>>>>>>) が残っている Cargo.toml と Cargo.lock だけを
-書き換え、何をしたかを表示する。git add も commit もしない。
+Rewrites only the Cargo.toml and Cargo.lock files that still hold conflict markers
+(<<<<<<< / ||||||| / ======= / >>>>>>>) and reports what it did. It neither runs
+git add nor commits.
 
-Cargo.toml (ルートと各クレート):
-  衝突の塊ごとに、基準 / フォーク / upstream の 3 つを「1 行 = 1 項目」(依存の行、members の
-  要素、features の要素、コメント行) として 3-way で合わせる。
-    - 片側だけが変えた項目はその側を採る。両側が足した行は両方残す
-    - 両側の並びがアルファベット順なら、結果も順に並べ直す
-    - フォークが外したクレート (ルートの Cargo.toml の `exclude` + LiveKit のネイティブ依存) の行は、
-      フォークが消したものは消したまま、upstream が新しく足したものも入れない
-      (`[workspace.dependencies]` は除く。.forgekairos-docs/DESIGN.md §4.6 ADR-F06)
-    - upstream の行から外したクレートの feature を除くとフォークの行と同じになる場合はフォークを採る
-      (例: `git_ui = { workspace = true, features = ["call"] }` と `git_ui.workspace = true`)
-    - 両側が変えた行でも、フォークの行が「フォークが最後に取り込んだ upstream のリリース」
-      (-ForkPoint。既定は HEAD から辿れる最新の refs/upstream/tags/*) の行そのままなら upstream を
-      採る。merge の基準は upstream の main からリリースブランチが分かれた点なので、リリース
-      ブランチの cherry-pick (`[package]` の version、wasmtime の版上げなど) が毎回ここに来る
-    - `[package]` の `version` は上に当てはまらなくても upstream を採る
-  それ以外 (同じ項目を両側が違うふうに変えた、複数行にまたがる値、表の見出し) は触らずに残して
-  一覧に出す。1 つの塊の中に解けない項目が 1 つでもあれば、その塊は丸ごと残す。
+Cargo.toml (the root and every crate):
+  Each conflict hunk is merged 3-way from its base, fork and upstream sides, one line
+  being one item (a dependency line, an element of members or of features, a comment
+  line).
+    - An item only one side changed takes that side. Lines both sides added are both kept.
+    - When both sides are in alphabetical order, so is the result.
+    - Lines of the crates the fork removed (the root Cargo.toml's `exclude` plus LiveKit's
+      native dependencies) stay removed where the fork removed them, and are not added
+      where upstream added them (except in `[workspace.dependencies]`;
+      .forgekairos-docs/DESIGN.md section 4.6, ADR-F06).
+    - When upstream's line without the features of removed crates is the fork's line, the
+      fork's line is taken (for example `git_ui = { workspace = true, features = ["call"] }`
+      and `git_ui.workspace = true`).
+    - A line both sides changed takes upstream's when the fork's line is still the line of
+      the upstream release the fork merged last (-ForkPoint; by default the newest
+      refs/upstream/tags/* reachable from HEAD). The merge base is where the release branch
+      left upstream's main, so the release branch's cherry-picks (the `[package]` version,
+      wasmtime version bumps) land here every time.
+    - `version` in `[package]` takes upstream's even when none of the above applies.
+  Anything else (an item both sides changed differently, a value over several lines, a
+  table header) is left as it is and listed. A hunk with one item that cannot be resolved
+  is left whole.
 
 Cargo.lock:
-  upstream の側 (:3:Cargo.lock) を置いてから `cargo update --workspace` に解き直させる。フォークが足した
-  依存は Cargo.toml から入る。Cargo.toml に衝突が残っているうちは何もしない (先に解いてから
-  もう一度実行する)。解き直しの後、フォークの Cargo.lock が -ForkPoint の Cargo.lock から版を
-  変えていたパッケージ (= Cargo.lock にしか現れない固定) が保たれているかを検査して、崩れたものを
-  表示する。
+  Puts upstream's side (:3:Cargo.lock) in place and lets `cargo update --workspace` resolve
+  it again; the dependencies the fork added come in from Cargo.toml. Does nothing while a
+  Cargo.toml still has conflicts (resolve them, then run this again). Afterwards it checks
+  that the packages whose versions the fork's Cargo.lock changed from -ForkPoint's (pins
+  that only exist in Cargo.lock) kept them, and lists the ones that did not.
 
-衝突の塊に基準の側 (|||||||) が無い場合は、index の :1: / :2: / :3: から
-`git merge-file --diff3` で作り直してから解く (ファイルを手で触っていない場合に限る)。
-merge の前に `git config merge.conflictStyle zdiff3` (または diff3) にしておくのが確実。
+A hunk without its base side (|||||||) is first rebuilt with `git merge-file --diff3` from
+the index stages :1: / :2: / :3:, as long as the file was not edited by hand. Setting
+`git config merge.conflictStyle zdiff3` (or diff3) before merging avoids this.
 
 .EXAMPLE
 git merge refs/upstream/tags/v1.18.1
@@ -41,26 +48,29 @@ powershell -NoProfile -File script\resolve-cargo-conflicts.ps1
 powershell -NoProfile -File script\resolve-cargo-conflicts.ps1 -DryRun
 
 .EXAMPLE
-# merge の外で、取り出した衝突ファイルの写しに対して試す (git はリポジトリ I:\zed-jp-llm に聞く)
+# Outside a merge, on copies of conflicted files (git is asked in the repository I:\zed-jp-llm)
 powershell -NoProfile -File script\resolve-cargo-conflicts.ps1 -RepoRoot C:\tmp\merged -GitRepo I:\zed-jp-llm `
     -Path "Cargo.toml,crates\zed\Cargo.toml,Cargo.lock" -ForkPoint refs/upstream/tags/v1.17.2 `
     -TheirsLock C:\tmp\theirs.lock -OursLock C:\tmp\ours.lock
 #>
 param(
-    # 対象の Cargo.toml / Cargo.lock (RepoRoot からの相対パス。カンマ区切り可)。既定: git が衝突と見なしているファイル
+    # The Cargo.toml / Cargo.lock files to resolve, relative to RepoRoot (comma-separated
+    # works too). By default the files git considers conflicted.
     [string[]]$Path,
-    # 作業ツリーの根 (既定: このスクリプトの親)
+    # The root of the working tree (by default this script's parent folder).
     [string]$RepoRoot,
-    # git に問い合わせるリポジトリ (既定: RepoRoot)
+    # The repository git is asked in (by default RepoRoot).
     [string]$GitRepo,
-    # フォークが最後に取り込んだ upstream のリリース (既定: HEAD から辿れる最新の refs/upstream/tags/*)
+    # The upstream release the fork merged last (by default the newest
+    # refs/upstream/tags/* reachable from HEAD).
     [string]$ForkPoint,
-    # Cargo.lock の upstream / フォークの側を index (:3: / :2:) ではなくファイルから読む (merge の外での確認用)
+    # Read upstream's and the fork's Cargo.lock from these files instead of the index
+    # (:3: / :2:), to try this outside a merge.
     [string]$TheirsLock,
     [string]$OursLock,
-    # Cargo.lock を解き直さない
+    # Do not resolve Cargo.lock again.
     [switch]$SkipLock,
-    # 何も書き換えずに、するはずのことだけを表示する
+    # Change nothing; only report what would be done.
     [switch]$DryRun
 )
 
@@ -75,8 +85,8 @@ if (-not $GitRepo) {
 $GitRepo = (Resolve-Path $GitRepo).Path
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
-# フォークが LiveKit を外したことで一緒に消えたサードパーティの依存。
-# クレートそのものはルートの Cargo.toml の `exclude` から読む。
+# The third-party dependencies that went away with LiveKit, which the fork removed.
+# The fork's own removed crates are read from the root Cargo.toml's `exclude`.
 $ExcludedThirdParty = @('livekit', 'libwebrtc', 'webrtc-sys')
 
 function Read-Text([string]$File) {
@@ -90,7 +100,8 @@ function Write-Text([string]$File, [string]$Text) {
 }
 
 function Invoke-Git([string[]]$Arguments) {
-    # PowerShell のパイプを通すと末尾の改行と文字コードが変わるので、出力を UTF-8 のまま受け取る
+    # A PowerShell pipe changes the trailing newline and the encoding, so the output is
+    # read as UTF-8 directly.
     $info = New-Object System.Diagnostics.ProcessStartInfo
     $info.FileName = 'git'
     $info.Arguments = ($Arguments | ForEach-Object { '"' + ($_ -replace '"', '\"') + '"' }) -join ' '
@@ -107,8 +118,9 @@ function Invoke-Git([string[]]$Arguments) {
 }
 
 function Invoke-Cargo([string[]]$Arguments) {
-    # cargo は進み具合を stderr に書く。Windows PowerShell は `2>&1` の stderr を
-    # $ErrorActionPreference = 'Stop' のもとでは例外にするので、ここだけ緩める
+    # cargo writes its progress to stderr, and Windows PowerShell turns stderr redirected
+    # with `2>&1` into an exception under $ErrorActionPreference = 'Stop', so it is
+    # relaxed here only.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     Push-Location $RepoRoot
@@ -176,7 +188,7 @@ function Get-ExcludedCrates {
             [void]$names.Add((Split-Path -Leaf $item.Groups[1].Value))
         }
     } else {
-        Write-Warning 'ルートの Cargo.toml に exclude が見つかりません (外したクレートの規則は LiveKit の依存だけに効きます)'
+        Write-Warning 'The root Cargo.toml has no exclude (the rule for removed crates only covers the LiveKit dependencies).'
     }
     return , $names
 }
@@ -184,7 +196,7 @@ function Get-ExcludedCrates {
 # --- Cargo.toml -------------------------------------------------------------------------------
 
 function ConvertTo-ManifestItem([string]$Line, [string]$Context) {
-    # 1 行を「項目」に分類する。解けない形は $null を返す。
+    # Classifies one line as an item; $null for a shape this cannot resolve.
     $trimmed = $Line.Trim()
     if ($trimmed -eq '') {
         return @{ Kind = 'text'; Key = 'blank'; Line = $Line }
@@ -226,7 +238,7 @@ function Test-ExcludedItem($Item, $Excluded) {
     }
     $name = $Item.Name
     if ($Item.Kind -eq 'item') {
-        # members の "crates/call"、features の "call/test-support" や "dep:call"
+        # "crates/call" in members, "call/test-support" or "dep:call" in features.
         $name = $name -replace '^dep:', ''
         $name = ($name -split '/')[0]
         if ($Item.Name -like 'crates/*') {
@@ -237,8 +249,8 @@ function Test-ExcludedItem($Item, $Excluded) {
 }
 
 function Remove-ExcludedFeatures([string]$Line, $Excluded) {
-    # `x = { workspace = true, features = ["call"] }` から外したクレートの feature を取り除いて、
-    # 残りが workspace だけなら `x.workspace = true` の形にする。
+    # Drops the features of removed crates from `x = { workspace = true, features = ["call"] }`,
+    # and writes `x.workspace = true` when only workspace is left.
     $match = [regex]::Match($Line, '^(\s*)([A-Za-z0-9_-]+)\s*=\s*\{(.*)\}\s*$')
     if (-not $match.Success) {
         return $Line
@@ -288,7 +300,8 @@ function Test-Sorted($Items) {
 }
 
 function ConvertTo-Items([string[]]$Lines, [string]$Context) {
-    # 同じ行 (空行やコメント) が複数あっても区別できるように出現回数を鍵に足す
+    # The occurrence count goes into the key so that repeated lines (blank lines,
+    # comments) stay apart.
     $seen = @{}
     $items = @()
     foreach ($line in $Lines) {
@@ -306,15 +319,15 @@ function ConvertTo-Items([string[]]$Lines, [string]$Context) {
 }
 
 function Resolve-Hunk($Hunk, [string]$Section, [string]$Context, $Excluded, $ForkPointLines, $Notes) {
-    # 戻り値: 解けたら結果の行の配列、解けなければ理由の文字列
+    # Returns the resulting lines when resolved, or the reason as a string when not.
     if ($null -eq $Hunk.Base) {
-        return '基準の側 (|||||||) がありません'
+        return 'the base side (|||||||) is missing'
     }
     $ours = ConvertTo-Items $Hunk.Ours $Context
     $base = ConvertTo-Items $Hunk.Base $Context
     $theirs = ConvertTo-Items $Hunk.Theirs $Context
     if ($null -eq $ours -or $null -eq $base -or $null -eq $theirs) {
-        return '1 行 1 項目の形ではありません (複数行の値・表の見出しなど)'
+        return 'not one item per line (a value over several lines, a table header, ...)'
     }
     $oursByKey = @{}; foreach ($item in $ours) { $oursByKey[$item.Key] = $item }
     $baseByKey = @{}; foreach ($item in $base) { $baseByKey[$item.Key] = $item }
@@ -333,7 +346,7 @@ function Resolve-Hunk($Hunk, [string]$Section, [string]$Context, $Excluded, $For
             $decided[$key] = $o
         } elseif ($oLine -ceq $bLine) {
             if ($t -and -not $b -and -not $keepExcludedAdditions -and (Test-ExcludedItem $t $Excluded)) {
-                $Notes.Add("  upstream が足した外したクレートの行を入れない: $($tLine.Trim())")
+                $Notes.Add("  not adding the line upstream added for a removed crate: $($tLine.Trim())")
                 $decided[$key] = $null
             } else {
                 $decided[$key] = $t
@@ -341,23 +354,24 @@ function Resolve-Hunk($Hunk, [string]$Section, [string]$Context, $Excluded, $For
         } elseif ($tLine -ceq $bLine) {
             $decided[$key] = $o
         } elseif ($null -eq $o -and $b -and (Test-ExcludedItem $any $Excluded)) {
-            $Notes.Add("  フォークが消した外したクレートの行を消したままにする (upstream の変更: $($tLine.Trim()))")
+            $Notes.Add("  keeping the removed crate's line the fork removed out (upstream changed it to: $($tLine.Trim()))")
             $decided[$key] = $null
         } elseif ($o -and $t -and (Remove-ExcludedFeatures $tLine $Excluded) -ceq $oLine) {
-            $Notes.Add("  外したクレートの feature を除けば同じなのでフォークの行を採る: $($oLine.Trim())")
+            $Notes.Add("  taking the fork's line, which is upstream's without removed crates' features: $($oLine.Trim())")
             $decided[$key] = $o
         } elseif ($o -and $t -and $any.Kind -ne 'text' -and $ForkPointLines.Contains($oLine.Trim())) {
-            $Notes.Add("  フォークの行は $($script:ResolvedForkPoint) のまま (リリースブランチの変更) なので upstream を採る: $($tLine.Trim())")
+            $Notes.Add("  taking upstream's line, since the fork's is still $($script:ResolvedForkPoint)'s (a release branch change): $($tLine.Trim())")
             $decided[$key] = $t
         } elseif ($o -and $t -and $Section -eq 'package' -and $any.Kind -eq 'entry' -and $any.FullKey -eq 'version') {
-            $Notes.Add("  [package] の version は upstream を採る: $($tLine.Trim())")
+            $Notes.Add("  taking upstream's [package] version: $($tLine.Trim())")
             $decided[$key] = $t
         } else {
-            return "両側が違うふうに変えた項目: ours=[$oLine] theirs=[$tLine]"
+            return "an item both sides changed differently: ours=[$oLine] theirs=[$tLine]"
         }
     }
 
-    # フォークの並びを土台に、upstream だけにある行を upstream での直前の行の後ろへ差し込む
+    # Starts from the fork's order and inserts each line only upstream has after the line
+    # it follows in upstream.
     $result = New-Object System.Collections.Generic.List[object]
     foreach ($item in $ours) {
         if ($decided[$item.Key]) { $result.Add($decided[$item.Key]) }
@@ -386,7 +400,8 @@ function Resolve-Hunk($Hunk, [string]$Section, [string]$Context, $Excluded, $For
     $hasText = @($result | Where-Object { $_.Kind -eq 'text' }).Count -gt 0
     $sortable = (@($ours | Where-Object { $_.Kind -ne 'text' }).Count + @($theirs | Where-Object { $_.Kind -ne 'text' }).Count) -gt 0
     if (-not $hasText -and $sortable -and (Test-Sorted $ours) -and (Test-Sorted $theirs)) {
-        # Sort-Object はカルチャ依存なので、Test-Sorted と同じ序数の比較で挿入ソートする
+        # Sort-Object depends on the culture, so this insertion sort compares ordinally,
+        # as Test-Sorted does.
         $sorted = New-Object System.Collections.Generic.List[object]
         foreach ($item in $result) {
             $position = $sorted.Count
@@ -401,7 +416,7 @@ function Resolve-Hunk($Hunk, [string]$Section, [string]$Context, $Excluded, $For
 }
 
 function Split-Conflicts([string]$Text) {
-    # 行と衝突の塊に分ける。印の形が崩れていたら $null
+    # Splits the text into lines and conflict hunks; $null when the markers are malformed.
     $lines = $Text -split "`n", -1
     $segments = New-Object System.Collections.Generic.List[object]
     $state = 'outside'
@@ -446,7 +461,8 @@ function Split-Conflicts([string]$Text) {
 }
 
 function Get-Context([string[]]$Before) {
-    # 塊の直前までの行から、今いる表 ([section]) と開いている配列 (members = [ など) を求める
+    # Finds, from the lines before a hunk, the table ([section]) it is in and the array
+    # (members = [ and the like) that is open.
     $section = ''
     $array = ''
     foreach ($line in $Before) {
@@ -470,9 +486,9 @@ function Get-Context([string[]]$Before) {
 }
 
 function Repair-MissingBase([string]$RelativePath, [string]$Text) {
-    # 基準の側の無い印 (merge 形式) を index の 3 つの段から diff3 形式で作り直す。
-    # 手で触ったファイルを壊さないように、merge 形式で作り直した結果が今のファイルと
-    # 印の行を除いて一致するときだけ置き換える。
+    # Rebuilds markers without a base side (merge style) in diff3 style from the three
+    # index stages. So as not to break a file edited by hand, it is replaced only when the
+    # merge-style rebuild matches the current file apart from the marker lines.
     if (-not (Test-InGitRepo)) { return $null }
     $stages = @{}
     foreach ($stage in 1, 2, 3) {
@@ -483,7 +499,7 @@ function Repair-MissingBase([string]$RelativePath, [string]$Text) {
         $stages[$stage] = $file
     }
     try {
-        # merge-file の終了コードは衝突の数なので、失敗の判定には使わない
+        # merge-file exits with the number of conflicts, so its exit code is not a failure.
         $merged = Invoke-Git @('merge-file', '-p', $stages[2], $stages[1], $stages[3])
         $normalize = { param($value) (($value -split "`n") | Where-Object { $_ -notmatch '^(<{7}|>{7}|\|{7}|={7})' }) -join "`n" }
         if ((& $normalize $merged.Output) -cne (& $normalize $Text)) {
@@ -501,7 +517,7 @@ function Resolve-Manifest([string]$RelativePath, $Excluded) {
     $text = Read-Text $file
     $segments = Split-Conflicts $text
     if ($null -eq $segments) {
-        return @{ Resolved = 0; Left = @("$RelativePath : 衝突の印の形が崩れているので触りません") }
+        return @{ Resolved = 0; Left = @("$RelativePath : the conflict markers are malformed, so it is left alone") }
     }
     $hunks = @($segments | Where-Object { $_.Hunk })
     if ($hunks.Count -eq 0) {
@@ -510,7 +526,7 @@ function Resolve-Manifest([string]$RelativePath, $Excluded) {
     if (@($hunks | Where-Object { $null -eq $_.Hunk.Base }).Count -gt 0) {
         $repaired = Repair-MissingBase $RelativePath $text
         if ($null -ne $repaired) {
-            Write-Host "$RelativePath : 基準の側が無いので index から diff3 形式で作り直しました"
+            Write-Host "$RelativePath : rebuilt in diff3 style from the index, since the base side was missing"
             $text = $repaired
             $segments = Split-Conflicts $text
         }
@@ -540,12 +556,12 @@ function Resolve-Manifest([string]$RelativePath, $Excluded) {
         $resolution = Resolve-Hunk $hunk $contextInfo.Section $contextInfo.Context $Excluded $forkPointLines $notes
         $firstLine = ($output.Count + 1)
         if ($resolution -is [string]) {
-            $left += "$RelativePath : 塊 $hunkIndex (結果の $firstLine 行目付近, [$($contextInfo.Section)]) を残しました: $resolution"
+            $left += "$RelativePath : left hunk $hunkIndex (near line $firstLine of the result, [$($contextInfo.Section)]): $resolution"
             foreach ($rawLine in $hunk.Raw) { $output.Add($rawLine) }
             continue
         }
         $resolvedCount++
-        Write-Host "$RelativePath : 塊 $hunkIndex ([$($contextInfo.Section)] $($contextInfo.Context)) を解きました ($($hunk.Ours.Count)/$($hunk.Theirs.Count) 行 -> $(@($resolution).Count) 行)"
+        Write-Host "$RelativePath : resolved hunk $hunkIndex ([$($contextInfo.Section)] $($contextInfo.Context)) ($($hunk.Ours.Count)/$($hunk.Theirs.Count) lines -> $(@($resolution).Count) lines)"
         foreach ($note in $notes) { Write-Host $note }
         foreach ($line in $resolution) { $output.Add($line) }
     }
@@ -587,40 +603,41 @@ function Get-LockSide([string]$FromFile, [int]$Stage) {
 function Resolve-Lock {
     $theirs = Get-LockSide $TheirsLock 3
     if ($null -eq $theirs) {
-        Write-Host 'Cargo.lock : upstream の側 (:3:Cargo.lock / -TheirsLock) が取れないので触りません'
+        Write-Host "Cargo.lock : upstream's side (:3:Cargo.lock / -TheirsLock) is not available, so it is left alone"
         return $false
     }
     $ours = Get-LockSide $OursLock 2
-    # 固定の検査の基準は merge の基準 (:1:) ではなくフォークが取り込んだリリース。:1: はリリース
-    # ブランチが分かれる前の main なので、リリースブランチの版上げまで「固定」に見えてしまう
+    # Pins are checked against the release the fork merged, not the merge base (:1:): :1: is
+    # main before the release branch left it, against which the release branch's version
+    # bumps would look like pins too.
     $base = Get-ForkPointText 'Cargo.lock'
     $lockFile = Join-Path $RepoRoot 'Cargo.lock'
     if ($DryRun) {
-        Write-Host 'Cargo.lock : upstream の側を置いて cargo update --workspace で解き直すはずです (-DryRun なので何もしません)'
+        Write-Host "Cargo.lock : would put upstream's side in place and resolve it with cargo update --workspace (nothing done with -DryRun)"
         return $true
     }
     Write-Text $lockFile $theirs
-    # `--workspace` はワークスペースのクレートだけを更新し、それ以外は Cargo.lock に無いものだけを
-    # 解く (= upstream が選んだ版を保ったまま、フォークが足した依存を入れて使われない依存を落とす)。
-    # cargo metadata と違ってパッケージのソースを落とさずに済む。
-    Write-Host 'Cargo.lock : upstream の側を置いて cargo update --workspace で解き直します'
+    # `--workspace` updates only the workspace's crates and resolves only what is missing
+    # from Cargo.lock otherwise: upstream's versions stay, the fork's dependencies come in
+    # and unused ones go. Unlike cargo metadata it does not download package sources.
+    Write-Host "Cargo.lock : putting upstream's side in place and resolving it with cargo update --workspace"
     $result = Invoke-Cargo @('update', '--workspace', '--offline')
     if ($result.ExitCode -ne 0) {
-        Write-Host 'Cargo.lock : --offline で解けなかったのでネットワークありでもう一度解きます'
+        Write-Host 'Cargo.lock : --offline could not resolve it, so trying again with the network'
         $result = Invoke-Cargo @('update', '--workspace')
         if ($result.ExitCode -ne 0) {
-            Write-Host 'Cargo.lock : cargo update が失敗しました。Cargo.lock は upstream の側のままです'
+            Write-Host "Cargo.lock : cargo update failed. Cargo.lock is still upstream's side"
             $result.Output | ForEach-Object { Write-Host "  $_" }
             return $false
         }
     }
     $changes = @($result.Output | Where-Object { $_ -match '^\s*(Adding|Removing|Updating|Downgrading)\s' } | ForEach-Object { $_.Trim() })
     $summary = @($changes | Group-Object { ($_ -split '\s+')[0] } | ForEach-Object { "$($_.Name) $($_.Count)" }) -join ' / '
-    Write-Host "Cargo.lock : upstream の側からの変化: $summary"
+    Write-Host "Cargo.lock : changes from upstream's side: $summary"
     $changes | Where-Object { $_ -like 'Adding*' } | ForEach-Object { Write-Host "  $_" }
 
     if ($null -eq $ours -or $null -eq $base) {
-        Write-Host 'Cargo.lock : フォークの側か -ForkPoint の Cargo.lock が取れないので固定の検査は省きます'
+        Write-Host "Cargo.lock : the fork's side or -ForkPoint's Cargo.lock is not available, so pins are not checked"
         return $true
     }
     $resolved = Get-LockPackages (Read-Text $lockFile)
@@ -633,23 +650,23 @@ function Resolve-Lock {
         foreach ($entry in $oursPackages[$name]) {
             $inBase = $basePackages.ContainsKey($name) -and $basePackages[$name].Contains($entry)
             if ($inBase) { continue }
-            # -ForkPoint に同名のパッケージが無いものはフォークが足した依存で、Cargo.toml から
-            # 入り直すはずなので、固定としては見ない
+            # A package -ForkPoint does not have is a dependency the fork added, which comes
+            # back in from Cargo.toml, so it is not a pin.
             if (-not $basePackages.ContainsKey($name)) { continue }
             $pins++
             $inTheirs = $theirsPackages.ContainsKey($name) -and $theirsPackages[$name].Contains($entry)
             $kept = $resolved.ContainsKey($name) -and $resolved[$name].Contains($entry)
             if (-not $kept -and -not $inTheirs) {
-                $now = if ($resolved.ContainsKey($name)) { ($resolved[$name] -join ', ') } else { '(無し)' }
-                $broken += "  $name : フォーク $entry / 解き直し後 $now  (戻すなら: cargo update -p $name --precise $(($entry -split ' ')[0]))"
+                $now = if ($resolved.ContainsKey($name)) { ($resolved[$name] -join ', ') } else { '(none)' }
+                $broken += "  $name : fork $entry / after resolving $now  (to restore: cargo update -p $name --precise $(($entry -split ' ')[0]))"
             }
         }
     }
     if ($broken.Count -gt 0) {
-        Write-Host "Cargo.lock : フォークが Cargo.lock で固定していた版のうち $($broken.Count) 件が変わりました"
+        Write-Host "Cargo.lock : $($broken.Count) of the versions the fork pinned in Cargo.lock changed"
         $broken | ForEach-Object { Write-Host $_ }
     } else {
-        Write-Host "Cargo.lock : 解き直しました (フォークが Cargo.lock だけで固定していた版: $pins 件、崩れたもの無し)"
+        Write-Host "Cargo.lock : resolved (versions the fork pinned only in Cargo.lock: $pins, none changed)"
     }
     return $true
 }
@@ -658,23 +675,23 @@ function Resolve-Lock {
 
 if (-not $Path) {
     if (-not (Test-InGitRepo)) {
-        Write-Error '-Path を指定するか、merge の途中の作業ツリーで実行してください'
+        Write-Error 'Pass -Path, or run this in a working tree in the middle of a merge.'
     }
     $Path = @((Invoke-Git @('diff', '--name-only', '--diff-filter=U')).Output -split "`n" | Where-Object { $_ -ne '' })
 }
-# `powershell -File` は配列を 1 つの文字列で渡すので、カンマ区切りも受け付ける
+# `powershell -File` passes an array as one string, so commas separate paths too.
 $Path = @($Path | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() -replace '\\', '/' } | Where-Object { $_ -ne '' })
 $manifests = @($Path | Where-Object { $_ -eq 'Cargo.toml' -or $_ -like '*/Cargo.toml' })
 $lockConflicted = @($Path | Where-Object { $_ -eq 'Cargo.lock' }).Count -gt 0
 $others = @($Path | Where-Object { $_ -ne 'Cargo.lock' -and $_ -ne 'Cargo.toml' -and $_ -notlike '*/Cargo.toml' })
 
 $excluded = Get-ExcludedCrates
-Write-Host ("外したクレートとして扱う名前: " + (($excluded | Sort-Object) -join ', '))
+Write-Host ("Names treated as removed crates: " + (($excluded | Sort-Object) -join ', '))
 $script:ResolvedForkPoint = Resolve-ForkPoint
 if ($script:ResolvedForkPoint) {
-    Write-Host "フォークが取り込んだ upstream のリリース: $($script:ResolvedForkPoint)"
+    Write-Host "The upstream release the fork merged: $($script:ResolvedForkPoint)"
 } else {
-    Write-Host 'フォークが取り込んだ upstream のリリースが分からないので、リリースブランチの規則と固定の検査は省きます (-ForkPoint で指定できます)'
+    Write-Host 'The upstream release the fork merged is unknown, so the release branch rule and the pin check are skipped (-ForkPoint names it).'
 }
 
 $left = @()
@@ -682,7 +699,7 @@ $resolvedTotal = 0
 foreach ($manifest in $manifests) {
     $file = Join-Path $RepoRoot $manifest
     if (-not (Test-Path -LiteralPath $file)) {
-        $left += "$manifest : 作業ツリーにありません (削除と変更の衝突など)"
+        $left += "$manifest : not in the working tree (a delete/modify conflict or the like)"
         continue
     }
     $result = Resolve-Manifest $manifest $excluded
@@ -697,19 +714,19 @@ $manifestsStillConflicted = @($manifests | Where-Object {
 
 if ($lockConflicted -and -not $SkipLock) {
     if ($manifestsStillConflicted.Count -gt 0 -and -not $DryRun) {
-        $left += 'Cargo.lock : Cargo.toml に衝突が残っているので解き直していません (解いてからもう一度実行してください)'
+        $left += 'Cargo.lock : not resolved, since a Cargo.toml still has conflicts (resolve them and run this again)'
     } else {
         [void](Resolve-Lock)
     }
 }
 
 Write-Host ''
-Write-Host "Cargo.toml の塊を $resolvedTotal 個解きました。git add はしていません。"
+Write-Host "Resolved $resolvedTotal Cargo.toml hunks. Nothing was added with git add."
 if ($left.Count -gt 0) {
-    Write-Host "残した衝突 ($($left.Count)):"
+    Write-Host "Conflicts left ($($left.Count)):"
     $left | ForEach-Object { Write-Host "  $_" }
 }
 if ($others.Count -gt 0) {
-    Write-Host "この道具が扱わない衝突ファイル ($($others.Count)):"
+    Write-Host "Conflicted files this tool does not handle ($($others.Count)):"
     $others | ForEach-Object { Write-Host "  $_" }
 }

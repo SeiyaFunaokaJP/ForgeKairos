@@ -1,56 +1,66 @@
-﻿<#
-    register-explorer-menu.ps1
+<#
+.SYNOPSIS
+Adds "Open with ForgeKairos" for a development build to the Explorer context
+menu of this machine, or removes it.
 
-    開発ビルドの zed.exe を、エクスプローラーの右クリックメニューに「ForgeKairos で開く」として
-    手元だけで登録/削除するスクリプト。
+.DESCRIPTION
+The installer (made by script/bundle-windows.ps1) puts its item in the
+Windows 11 context menu through an Appx package (crates/explorer_command_injector),
+and Add-AppxPackage fails unless that package is code signed (Azure Trusted
+Signing). This fork's build machine has no signing key, so that route most
+likely does not work. This script registers the item directly in the registry
+(HKCU\Software\Classes\...\shell) instead, for development machines only.
 
-    背景: 配布用インストーラー (script/bundle-windows.ps1 が作る) は Windows 11 では
-    Appx (crates/explorer_command_injector) 経由でしか新しい右クリックメニューに項目を
-    出せず、この Appx はコード署名 (Azure Trusted Signing) が無いと Add-AppxPackage が
-    失敗する。このフォーク (ForgeKairos) のビルド環境にはコード署名の鍵が無いため、
-    今のところこの経路は機能しない可能性が高い。本スクリプトは、その代わりに旧来の
-    レジストリ (HKCU\Software\Classes\...\shell) へ直接登録する、開発機だけの回避策。
+On Windows 11 an item registered this way is in the classic menu: right-click,
+then "Show more options". Only the signed Appx puts it in the top-level menu.
+Windows 10 and earlier show it in the top-level menu.
 
-    使い方 (PowerShell から実行。実行ポリシーで止まる場合は
-    `powershell -ExecutionPolicy Bypass -File .\script\register-explorer-menu.ps1` のように):
-        .\script\register-explorer-menu.ps1                 既定の ..\target\debug\zed.exe を登録
-        .\script\register-explorer-menu.ps1 -ExePath <path>  指定した zed.exe を登録
-        .\script\register-explorer-menu.ps1 -Remove          登録を削除
-        .\script\register-explorer-menu.ps1 -DryRun          レジストリを変更せず、内容だけ表示
+If the execution policy stops the script, run it as
+`powershell -ExecutionPolicy Bypass -File .\script\register-explorer-menu.ps1`.
 
-    登録後の見え方 (Windows 11):
-        この方式はレジストリ直接登録 (旧来の右クリックメニュー) のため、右クリック →
-        「その他のオプションを表示」の中に「ForgeKairos で開く」が出る。トップレベルの新しい
-        メニューに直接出すには、インストーラーが Appx を正しく (署名済みで) 登録できて
-        いる必要がある。
-        Windows 10 以前ではトップレベルの右クリックメニューにそのまま出る。
+.EXAMPLE
+.\script\register-explorer-menu.ps1
+Registers ..\target\debug\ForgeKairos.exe.
+
+.EXAMPLE
+.\script\register-explorer-menu.ps1 -ExePath <path>
+Registers the given editor executable.
+
+.EXAMPLE
+.\script\register-explorer-menu.ps1 -Remove
+Removes the item.
+
+.EXAMPLE
+.\script\register-explorer-menu.ps1 -DryRun
+Shows what would be written without changing the registry.
 #>
 
 [CmdletBinding()]
 param(
     [string]$ExePath,
     [switch]$Remove,
-    [switch]$DryRun
+    [switch]$DryRun,
+    # The text of the menu item.
+    [string]$MenuLabel = "Open with ForgeKairos"
 )
 
 $ErrorActionPreference = "Stop"
 
-# $PSScriptRoot は [CmdletBinding()] を付けた param() ブロックのデフォルト値の中では
-# 空文字列になってしまう (Advanced Function 化されたスクリプトが既定値を評価する段階では
-# まだスクリプトのファイルコンテキストが束縛されていないため)。そのため既定値はここ、
-# 本体の先頭で解決する。
+# $PSScriptRoot is empty while the default values of a [CmdletBinding()]
+# param() block are evaluated: the script's file context is not bound yet at
+# that point. So the default is resolved here, at the start of the body.
 if ([string]::IsNullOrEmpty($ExePath)) {
-    $ExePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\target\debug\zed.exe"))
+    $ExePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\target\debug\ForgeKairos.exe"))
 }
 
-# インストーラー (zed.iss) 側の {#RegValueName} ("ForgeKairos"、"ForgeKairosDev" 等。改名前の
-# "ZedJPEnhance" も) とは、大文字小文字を無視しても別の名前にして、正規インストール時の
-# レジストリキーと衝突・上書きしないようにする (レジストリのキー名は大文字小文字を区別しない)。
+# Differs, ignoring case, from the installer's {#RegValueName} in zed.iss
+# ("ForgeKairos", "ForgeKairosDev" and so on, and "ZedJPEnhance" from before the
+# rename), so that it never overwrites an installed build's registry keys
+# (registry key names are case-insensitive).
 $RegValueName = "ForgeKairosLocalBuild"
-$MenuLabel = "ForgeKairos で開く"
 
 if (-not $Remove -and -not (Test-Path -LiteralPath $ExePath)) {
-    throw "zed.exe が見つかりません: $ExePath`n-ExePath でビルド済みの zed.exe の場所を指定してください。"
+    throw "The editor executable was not found: $ExePath`nPass -ExePath with the location of a built ForgeKairos.exe."
 }
 
 $ResolvedExePath = $null
@@ -58,9 +68,9 @@ if (-not $Remove) {
     $ResolvedExePath = (Resolve-Path -LiteralPath $ExePath).ProviderPath
 }
 
-# 対象: ファイル全般 (*)、フォルダー自体 (Directory)、フォルダーの何もない場所
-# (Directory\Background)、ドライブのルート (Drive)。%1 はクリックした項目自身のパス、
-# %V はフォルダー/ドライブ自身のパス (Background と Drive では %1 は渡らない)。
+# Any file (*), a folder (Directory), the empty area of a folder
+# (Directory\Background) and a drive's root (Drive). %1 is the clicked item's
+# path; %V is the folder's or drive's own path (Background and Drive get no %1).
 $Targets = @(
     @{ ClassesKey = "*"; Argument = '"%1"' },
     @{ ClassesKey = "Directory"; Argument = '"%V"' },
@@ -74,14 +84,14 @@ foreach ($target in $Targets) {
 
     if ($Remove) {
         if ($DryRun) {
-            Write-Host "[DryRun] 削除予定: $shellKey (存在すればサブキーごと)"
+            Write-Host "[DryRun] Would remove: $shellKey (with its subkeys, if it exists)"
             continue
         }
         if (Test-Path -LiteralPath $shellKey) {
             Remove-Item -LiteralPath $shellKey -Recurse -Force
-            Write-Host "削除しました: $shellKey"
+            Write-Host "Removed: $shellKey"
         } else {
-            Write-Host "存在しないためスキップ: $shellKey"
+            Write-Host "Not present, skipped: $shellKey"
         }
         continue
     }
@@ -89,16 +99,16 @@ foreach ($target in $Targets) {
     $commandLine = "`"$ResolvedExePath`" $($target.Argument)"
 
     if ($DryRun) {
-        Write-Host "[DryRun] 作成/更新予定: $shellKey"
-        Write-Host "[DryRun]   (既定値) = $MenuLabel"
-        Write-Host "[DryRun]   Icon     = $ResolvedExePath"
-        Write-Host "[DryRun] 作成/更新予定: $commandKey"
-        Write-Host "[DryRun]   (既定値) = $commandLine"
+        Write-Host "[DryRun] Would create or update: $shellKey"
+        Write-Host "[DryRun]   (Default) = $MenuLabel"
+        Write-Host "[DryRun]   Icon      = $ResolvedExePath"
+        Write-Host "[DryRun] Would create or update: $commandKey"
+        Write-Host "[DryRun]   (Default) = $commandLine"
         continue
     }
 
     New-Item -Path $shellKey -Force -Value $MenuLabel | Out-Null
     New-ItemProperty -LiteralPath $shellKey -Name "Icon" -Value $ResolvedExePath -PropertyType String -Force | Out-Null
     New-Item -Path $commandKey -Force -Value $commandLine | Out-Null
-    Write-Host "登録しました: $shellKey -> $commandLine"
+    Write-Host "Registered: $shellKey -> $commandLine"
 }

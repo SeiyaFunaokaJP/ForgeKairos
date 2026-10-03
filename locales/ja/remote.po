@@ -74,8 +74,8 @@ msgstr "クロスコンパイル用の cargo-zigbuild を導入しています"
 msgid "Neither curl nor wget is available"
 msgstr "リモートホストに curl も wget もありません (リモート開発サーバーをダウンロードできません)"
 
-msgid "No remote server binary is available. Not on the remote at {remote_path} / bundled artifact `{artifact}` not found in {search_dirs} / build from source: {source_build_status}. The automatic build fails when cmake or zig is not on PATH. Building with script\\build-dev.ps1 prepares the bundled artifact."
-msgstr "リモートサーバーのバイナリが用意できませんでした。リモート側 {remote_path} に無し / 同梱アーティファクト `{artifact}` が {search_dirs} に無し / ソースからのビルド: {source_build_status}。cmake や zig が PATH に無いと自動ビルドが失敗します。script\\build-dev.ps1 でビルドすると同梱アーティファクトを用意できます。"
+msgid "No remote server binary is available. Not on the remote at {remote_path} / bundled artifact `{artifact}` not found in {search_dirs} / build from source: {source_build_status}. The automatic build fails when cmake or zig is not on PATH. Building with script\\build.ps1 prepares the bundled artifact."
+msgstr "リモートサーバーのバイナリが用意できませんでした。リモート側 {remote_path} に無し / 同梱アーティファクト `{artifact}` が {search_dirs} に無し / ソースからのビルド: {source_build_status}。cmake や zig が PATH に無いと自動ビルドが失敗します。script\\build.ps1 でビルドすると同梱アーティファクトを用意できます。"
 
 msgid "On the remote host, delete the files in {folder} whose names start with {prefix}, then reconnect."
 msgstr "接続先の {folder} から名前が {prefix} で始まるファイルを削除してから、接続し直してください。"
@@ -125,8 +125,8 @@ msgstr "リモートサーバーがこの ForgeKairos と合っていません (
 msgid "The server that this Zed installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update Zed."
 msgstr "この ForgeKairos が接続先に入れるサーバー自体が合っていない可能性があります。この PC の {folder} を削除してから接続し直すか、ForgeKairos を更新してください。"
 
-msgid "There is no bundled artifact (ADR-F15) and the download failed as well. Build with script\\build-dev.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
-msgstr "同梱アーティファクト (ADR-F15) も無く、ダウンロードにも失敗しました。script\\build-dev.ps1 でビルドして同梱アーティファクトを用意するか、この PC から配信元に接続できることを確認してください"
+msgid "There is no bundled artifact (ADR-F15) and the download failed as well. Build with script\\build.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
+msgstr "同梱アーティファクト (ADR-F15) も無く、ダウンロードにも失敗しました。script\\build.ps1 でビルドして同梱アーティファクトを用意するか、この PC から配信元に接続できることを確認してください"
 
 msgid "Uploading remote development server"
 msgstr "リモート開発サーバーを転送しています"
@@ -143,8 +143,8 @@ msgstr "リモート開発サーバーを照合しています"
 msgid "Waiting for existing connection attempt"
 msgstr "進行中の接続を待っています"
 
-msgid "cmake is not on PATH (it is needed to build remote_server). Add the CMake that comes with Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) to PATH, or build with script\\build-dev.ps1 to prepare the bundled artifact"
-msgstr "cmake が PATH にありません (remote_server のビルドに必要です)。Visual Studio 同梱の CMake (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) を PATH に追加するか、script\\build-dev.ps1 でビルドして同梱アーティファクトを用意してください"
+msgid "cmake is not on PATH (it is needed to build remote_server). Add the CMake that comes with Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) to PATH, or build with script\\build.ps1 to prepare the bundled artifact"
+msgstr "cmake が PATH にありません (remote_server のビルドに必要です)。Visual Studio 同梱の CMake (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) を PATH に追加するか、script\\build.ps1 でビルドして同梱アーティファクトを用意してください"
 
 msgid "cmake is not on PATH (it is needed to build remote_server). Install cmake"
 msgstr "cmake が PATH にありません (remote_server のビルドに必要です)。cmake をインストールしてください"

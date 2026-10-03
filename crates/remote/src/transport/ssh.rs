@@ -1214,7 +1214,7 @@ impl SshRemoteConnection {
                      bundled artifact `{artifact}` not found in {search_dirs} / \
                      build from source: {source_build_status}. \
                      The automatic build fails when cmake or zig is not on PATH. \
-                     Building with script\\build-dev.ps1 prepares the bundled artifact.",
+                     Building with script\\build.ps1 prepares the bundled artifact.",
                     remote_path = dst_path.display(self.path_style()),
                     artifact = bundled_artifact_name,
                     search_dirs = bundled_search_dirs,
@@ -1289,7 +1289,7 @@ impl SshRemoteConnection {
             .context(i18n::t!("downloading server binary locally"))
             .context(i18n::t!(
                 "There is no bundled artifact (ADR-F15) and the download failed as well. \
-                 Build with script\\build-dev.ps1 to prepare the bundled artifact, \
+                 Build with script\\build.ps1 to prepare the bundled artifact, \
                  or check that this computer can reach the download server"
             ))?;
         self.upload_local_server_binary(&src_path, &tmp_path_compressed, delegate, cx)

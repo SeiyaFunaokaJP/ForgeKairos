@@ -14,6 +14,7 @@ Param(
 )
 
 . "$PSScriptRoot/lib/workspace.ps1"
+. "$PSScriptRoot/lib/remote-artifacts.ps1"
 
 # https://stackoverflow.com/questions/57949031/powershell-script-stops-if-program-fails-like-bash-set-o-errexit
 $ErrorActionPreference = 'Stop'
@@ -207,187 +208,33 @@ function BuildRemoteServer {
     Write-Output "Remote server compressed successfully"
 }
 
-function Get-ZigPath {
-    $zig = Get-Command zig -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($zig) { return $zig.Source }
-
-    # winget-installed zig is not always on PATH; probe its known locations.
-    $wingetCandidates = @(
-        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\zig.zig_*\zig-*\zig.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\zig.exe')
-    )
-    foreach ($pattern in $wingetCandidates) {
-        $found = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1
-        if ($found) { return $found.FullName }
-    }
-    return $null
-}
-
-function Install-Zig {
-    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
-        throw "zig not found and winget is unavailable; install zig from https://ziglang.org/ and put it on PATH."
-    }
-    Write-Output "zig not found; installing via winget (winget install -e --id zig.zig) ..."
-    # winget returns non-zero even when already installed, so we re-probe for the
-    # binary afterwards instead of trusting the exit code.
-    winget install -e --id zig.zig --accept-source-agreements --accept-package-agreements --silent | Out-Host
-}
-
-function Compress-ToGzip {
-    param([string]$SourcePath, [string]$DestinationPath)
-
-    $source = $null
-    $destination = $null
-    $gzipStream = $null
-    try {
-        $source = [IO.File]::OpenRead($SourcePath)
-        $destination = [IO.File]::Create($DestinationPath)
-        $gzipStream = New-Object System.IO.Compression.GZipStream($destination, [System.IO.Compression.CompressionMode]::Compress)
-        $source.CopyTo($gzipStream)
-    } finally {
-        # GZipStream writes its footer on close, so dispose it before destination.
-        if ($gzipStream) { $gzipStream.Dispose() }
-        if ($destination) { $destination.Dispose() }
-        if ($source) { $source.Dispose() }
-    }
-}
-
 function BuildLinuxRemoteServer {
-    # SSH-to-Linux remoting needs a Linux remote_server binary shipped alongside
-    # ForgeKairos.exe. This fork blocks egress by default, so the server cannot be fetched
-    # on demand; crates/remote/src/transport.rs uploads a bundled artifact named
-    # "forgekairos-remote-server-linux-x86_64.gz" found in {app} or {app}\bin.
-    #
-    # This mirrors BuildRemoteServer (a plain --release build) but cross-compiles
-    # to musl with cargo-zigbuild for a single static binary independent of the
-    # target host's glibc. We deliberately do NOT pass --features debug-embed:
-    # that feature only forces rust-embed to embed assets in DEBUG builds (used by
-    # script/build-dev.ps1); a --release build embeds already, exactly like the
-    # canonical Windows BuildRemoteServer above.
-    $linuxTarget = "x86_64-unknown-linux-musl"
-    $linuxTargetDir = "$env:ZED_WORKSPACE\target\remote_server_linux"
-    $binaryPath = "$linuxTargetDir\$linuxTarget\release\remote_server"
-    $artifactPath = "$innoDir\bin\forgekairos-remote-server-linux-x86_64.gz"
-
-    $zigPath = Get-ZigPath
-    if (-not $zigPath) {
-        Install-Zig
-        $zigPath = Get-ZigPath
-    }
-    if (-not $zigPath) {
-        throw "zig still not found after install; open a new shell or put zig on PATH."
-    }
-    $zigDir = Split-Path -Parent $zigPath
-    if (($env:PATH -split ';') -notcontains $zigDir) {
-        $env:PATH = "$zigDir;$env:PATH"
-        Write-Output "Added zig to PATH: $zigDir"
-    }
-
-    Write-Output "rustup target add $linuxTarget ..."
-    rustup target add $linuxTarget
-    if ($LASTEXITCODE -ne 0) {
-        throw "rustup target add $linuxTarget failed (exit $LASTEXITCODE)."
-    }
-
-    if (-not (Get-Command cargo-zigbuild -CommandType Application -ErrorAction SilentlyContinue)) {
-        Write-Output "Installing cargo-zigbuild (cargo install cargo-zigbuild --locked) ..."
-        cargo install cargo-zigbuild --locked
-        if ($LASTEXITCODE -ne 0) {
-            throw "cargo install cargo-zigbuild failed (exit $LASTEXITCODE)."
-        }
-    }
-
-    # musl static link; strip=debuginfo drops DWARF but keeps symbol names (so
-    # backtraces still resolve). Scoped to this build and restored afterwards so
-    # it cannot leak into any other cargo invocation.
-    $previousRustFlags = $env:RUSTFLAGS
-    $rustFlags = "-C target-feature=+crt-static -C strip=debuginfo"
-    if ($previousRustFlags) { $rustFlags = "$previousRustFlags $rustFlags" }
-    if ($env:ZED_ZSTD_MUSL_LIB) { $rustFlags = "$rustFlags -C link-arg=-L$env:ZED_ZSTD_MUSL_LIB" }
-
-    $env:RUSTFLAGS = $rustFlags
-    try {
-        Write-Output "cargo zigbuild -p remote_server --release --target $linuxTarget ..."
-        cargo zigbuild -p remote_server --release --target $linuxTarget --target-dir $linuxTargetDir
-        $buildExitCode = $LASTEXITCODE
-    } finally {
-        if ($null -eq $previousRustFlags) {
-            if (Test-Path Env:\RUSTFLAGS) { Remove-Item Env:\RUSTFLAGS }
-        } else {
-            $env:RUSTFLAGS = $previousRustFlags
-        }
-    }
-    if ($buildExitCode -ne 0) {
-        throw "cargo zigbuild -p remote_server --release failed (exit $buildExitCode)."
-    }
-    if (-not (Test-Path $binaryPath)) {
-        throw "Linux remote_server build reported success but the artifact is missing: $binaryPath"
-    }
-
-    Write-Output "Compressing Linux remote_server to $artifactPath"
-    Compress-ToGzip -SourcePath $binaryPath -DestinationPath $artifactPath
-    Write-Output ("Linux remote_server: {0} ({1:N1} MB compressed / {2:N1} MB uncompressed)" -f `
-        $artifactPath, `
-        ((Get-Item $artifactPath).Length / 1MB), `
-        ((Get-Item $binaryPath).Length / 1MB))
+    # SSH and WSL remoting need a Linux remote_server shipped alongside
+    # ForgeKairos.exe: this fork blocks egress by default, so the server cannot be
+    # downloaded on demand. crates/remote/src/transport.rs uploads the archive it
+    # finds in {app} or {app}\bin under this name. A static musl build runs
+    # whatever glibc the host has.
+    Build-LinuxRemoteServer `
+        -TargetDir "$env:ZED_WORKSPACE\target\remote_server_linux" `
+        -ArtifactPath "$innoDir\bin\forgekairos-remote-server-linux-x86_64.gz" `
+        -Release
 }
 
 function DownloadSlirp4netns {
-    # ADR-F18 remote sandbox: on a Linux remote, agent commands run in a netns and
-    # slirp4netns provides their (proxied, egress-restricted) outbound path. Shipped
-    # next to ForgeKairos.exe as "slirp4netns-linux-x86_64"; crates/remote uploads it on
-    # connect, mirroring the remote_server artifact. Static single binary, so it is
-    # glibc-independent. License: slirp4netns is GPLv2+ (compatible with this GPL-3
-    # fork); its bundled libslirp is MIT/BSD.
-    $slirp4netnsVersion = "v1.2.3"
-    $artifactPath = "$innoDir\bin\slirp4netns-linux-x86_64"
-    $uri = "https://github.com/rootless-containers/slirp4netns/releases/download/$slirp4netnsVersion/slirp4netns-x86_64"
-    Write-Output ("Downloading slirp4netns {0} from {1}" -f $slirp4netnsVersion, $uri)
-    $previousProgress = $ProgressPreference
-    $ProgressPreference = "SilentlyContinue"  # progress rendering is slow for large downloads
-    try {
-        Invoke-WebRequest -Uri $uri -OutFile $artifactPath -UseBasicParsing
-    } finally {
-        $ProgressPreference = $previousProgress
-    }
-    if (-not (Test-Path $artifactPath) -or (Get-Item $artifactPath).Length -lt 100000) {
-        throw "slirp4netns download failed or the file is invalid: $artifactPath"
-    }
-    Write-Output ("slirp4netns: {0} ({1:N1} MB)" -f $artifactPath, ((Get-Item $artifactPath).Length / 1MB))
+    # crates/remote uploads it to a Linux host on connect, as it does the
+    # remote server, for ADR-F18's sandbox.
+    Get-Slirp4netns -Destination "$innoDir\bin\slirp4netns-linux-x86_64"
 }
 
 function CopyClangFormat {
-    # The C / C++ defaults in assets/settings/default.json format through a bare
-    # "clang-format" external command, which crates/util resolves as {app} ->
-    # {app}\bin -> PATH. Nothing installs clang-format on a user's machine, so
-    # without this copy the default formatter silently does nothing.
-    #
     # License: clang-format is part of LLVM (Apache-2.0 with LLVM Exceptions).
     # crates\zed\resources\windows\licenses\LLVM-LICENSE.txt ships alongside it,
     # copied into $innoDir by PrepareForBundle and installed by zed.iss.
-    $destination = "$innoDir\bin\clang-format.exe"
-
-    if ($ClangFormatPath -and (Test-Path -PathType Leaf $ClangFormatPath)) {
-        $source = (Resolve-Path $ClangFormatPath).Path
-    } else {
-        # LLVM shipped with the VS 2022 C++ workload; the edition varies per machine.
-        $vsCandidates = @("Enterprise", "Professional", "Community", "BuildTools") |
-            ForEach-Object { "C:\Program Files\Microsoft Visual Studio\2022\$_\VC\Tools\Llvm\bin\clang-format.exe" }
-        $source = $vsCandidates | Where-Object { Test-Path -PathType Leaf $_ } | Select-Object -First 1
-        if (-not $source) {
-            throw "clang-format.exe not found (tried -ClangFormatPath '$ClangFormatPath' and VS 2022's VC\Tools\Llvm\bin). Pass -ClangFormatPath to point at one."
-        }
-    }
-
-    Copy-Item -Path $source -Destination $destination -Force
-    Write-Output ("clang-format: {0} <- {1} ({2:N1} MB)" -f $destination, $source, ((Get-Item $destination).Length / 1MB))
-
     $licenseFile = "$innoDir\licenses\LLVM-LICENSE.txt"
     if (-not (Test-Path -PathType Leaf $licenseFile)) {
         throw "Missing $licenseFile; clang-format may not be shipped without LLVM's license."
     }
+    Copy-ClangFormat -Destination "$innoDir\bin\clang-format.exe" -SourcePath $ClangFormatPath
 }
 
 function ZipZedAndItsFriendsDebug {

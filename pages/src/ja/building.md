@@ -14,41 +14,55 @@ Windows で ForgeKairos をビルドする手順の概要。Zed 自身のビル�
 - `RUSTFLAGS` を設定しない
 - 十分なディスクの空き (`target` フォルダーは 100 GB を超えることがある)
 
-## 開発ビルド
+## ビルド
 
 ```powershell
-powershell -NoProfile -File script\build-dev.ps1        # エディター、CLI、同梱のリモートサーバー
-powershell -NoProfile -File script\build-dev.ps1 -Run   # ビルドしてから起動
+powershell -NoProfile -File script\build.ps1            # debug ビルド (target\debug)
+powershell -NoProfile -File script\build.ps1 -Run       # ビルドしてから起動
+powershell -NoProfile -File script\build.ps1 -Release   # release ビルド (target\release)
 ```
 
 スクリプトが行うこと:
 
 - CMake が無ければ、Visual Studio 同梱の CMake を `PATH` に足す
 - ディスクの空きが少なければ警告する
-- `-j 8` でビルドする (並列を制限しないと rustc がメモリ不足で落ちることがある)
+- `-j 8` でビルドする (`-Jobs` で変えられる。並列を制限しないと rustc がメモリ不足で落ちることがある)
 - Linux 用のリモートサーバー (`x86_64-unknown-linux-musl`、静的リンク) を zig と `cargo-zigbuild` で
-  ビルドし (無ければ入れる。zig は `winget` で)、エディターの隣に置く
+  ビルドし (無ければ入れる。zig は `winget` で)、`forgekairos-remote-server-linux-x86_64.gz` としてエディターの隣に置く
 - リモートのホストでエージェントのサンドボックスが使う `slirp4netns` を取ってくる
-- `clang-format.exe` を `target\debug\bin\` に置く
+- `clang-format.exe` をエディターの隣の `bin\` に置く
+
+出力先は `target\debug` (`-Release` では `target\release`)。`CARGO_TARGET_DIR` があれば `target` の代わりにそこを使う。
 
 | オプション | 効果 |
 |---|---|
+| `-Release` | release のプロファイルで `target\release` にビルドする。 |
 | `-Run` | ビルドに成功したらエディターを起動する。 |
-| `-FreeDisk` | 先に `target\debug\incremental` と、`target\debug\deps` の `.exe` と `.pdb` を消す。 |
+| `-Jobs <n>` | `-j 8` の代わりに `-j <n>` でビルドする。 |
+| `-FreeDisk` | 先に、ビルドするプロファイルの `incremental` フォルダーと、`deps` の `.exe` と `.pdb` を消す。 |
 | `-SkipCli` | コマンドラインの道具をビルドしない。 |
 | `-SkipRemoteServer` | リモートサーバーをビルドしない。 |
 | `-SkipSlirp4netns` | `slirp4netns` を取ってこない。 |
 | `-SkipClangFormat` | clang-format を置かない。 |
 | `-ClangFormatPath <ファイル>` | 置く `clang-format.exe`。指定が無いか、そのファイルが無ければ Visual Studio 2022 同梱の LLVM のものを使う。 |
 
-エディターは `target\debug\zed.exe`。コンソールから使うには、隣に `cli.exe` が要る (スクリプトは両方を
-ビルドする)。
+エディターは `ForgeKairos.exe`、コマンドラインの道具は `forgekairos-cli.exe` で、どちらも `target\debug`
+(または `target\release`) にできる。コマンドラインの道具は隣のエディターを探す。インストーラーはコマンドラインの
+道具を `bin\forgekairos.exe` として入れる。ビルドのフォルダーで名前が違うのは、Windows では `forgekairos.exe` と
+`ForgeKairos.exe` が同じファイルになるため。
+
+release ビルドは stable チャンネルのデータフォルダー (インストールした ForgeKairos と同じ) を使う。分けるには
+`--user-data-dir <フォルダー>` を付けて起動する。
 
 ## インストーラー
 
-`script\bundle-windows.ps1` は、リリースビルド、Linux 用リモートサーバーのクロスビルド、clang-format と
-そのライセンスと `slirp4netns` の同梱を行い、Inno Setup 6 (`winget install JRSoftware.InnoSetup`) を実行する。
-オプションには `-Architecture`、`-Install` (できたものを入れる)、`-ClangFormatPath` などがある。
+`script\build.ps1` はインストーラーを作らない。作るのは `script\bundle-windows.ps1`: 自前で release ビルド
+(`x86_64-pc-windows-msvc` 向け。出力は `target\x86_64-pc-windows-msvc\release`) をし、Windows 用のリモートサーバーの
+ビルド、Linux 用のクロスビルド、clang-format とそのライセンスと `slirp4netns` の同梱を行い、Inno Setup 6
+(`winget install JRSoftware.InnoSetup`) を実行する。インストーラーは `target\forgekairos-windows-x86_64-setup.exe` に
+できる。オプションには `-Architecture`、`-Install` (できたものを入れる)、`-ReleaseTag <タグ>` (公開する GitHub
+リリースのタグ。更新の確認が比べる)、`-ClangFormatPath` などがある。Visual Studio 2022 とネットワーク (ConPTY、
+AMD GPU Services のライブラリ、`slirp4netns`、無ければ zig を取ってくる) が要る。
 
 ## 確認
 

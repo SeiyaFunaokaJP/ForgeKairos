@@ -262,8 +262,8 @@ msgstr "The sandbox helper (or slirp4netns) doesn't match the one bundled with t
 msgid "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't be isolated. Restarting Zed puts it back."
 msgstr "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't be isolated. Restarting ForgeKairos puts it back."
 
-msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build-dev.ps1` puts them in `target\\debug` (searched: {searched})."
-msgstr "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where ForgeKairos is installed. Reinstall ForgeKairos. In a development build, `script/build-dev.ps1` puts them in `target\\debug` (searched: {searched})."
+msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build.ps1` puts them in `target\\debug` (searched: {searched})."
+msgstr "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where ForgeKairos is installed. Reinstall ForgeKairos. In a development build, `script/build.ps1` puts them in `target\\debug` (searched: {searched})."
 
 msgid "The sandbox's bridge executable wasn't found. Zed's installation may be damaged."
 msgstr "The sandbox's bridge executable wasn't found. ForgeKairos's installation may be damaged."

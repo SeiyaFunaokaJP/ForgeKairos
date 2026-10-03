@@ -48,7 +48,7 @@ ForgeKairos は [Zed](https://zed.dev) のフォーク (upstream のリリース
 
 - **musl 静的リンクの remote_server を同梱** — 接続先の glibc に依存しないため、
   **VSCode (glibc 2.28+ 必須) が接続できない古い Linux (Ubuntu 18.04 で実機確認済み) にも入れる**。
-  ビルド時に成果物を `zed.exe` の隣へ自動生成・配置し、接続時のユーザー操作はゼロ
+  ビルド時に成果物を `ForgeKairos.exe` の隣へ自動生成・配置し、接続時のユーザー操作はゼロ
 
 ### 編集機能の追加
 
@@ -66,24 +66,26 @@ ForgeKairos は [Zed](https://zed.dev) のフォーク (upstream のリリース
 前提: VS 2022 (C++ ワークロード + Spectre 緩和ライブラリ + Windows 11 SDK 26100)、rustup。
 
 ```powershell
-powershell -NoProfile -File script\build-dev.ps1        # zed.exe / cli.exe / remote_server 同梱物
-powershell -NoProfile -File script\build-dev.ps1 -Run   # ビルド後そのまま起動
+powershell -NoProfile -File script\build.ps1            # debug ビルド: ForgeKairos.exe / forgekairos-cli.exe / remote_server 同梱物
+powershell -NoProfile -File script\build.ps1 -Run       # ビルド後そのまま起動
+powershell -NoProfile -File script\build.ps1 -Release   # release ビルド (target\release)
+powershell -NoProfile -File script\bundle-windows.ps1   # インストーラー (Inno Setup 6 が要る)
 ```
 
 スクリプトは CMake (VS 同梱) の PATH 補完、ディスク残量チェック、SSH リモート用
 remote_server (musl) のクロスビルドと同梱配置 (zig を winget で自動調達) まで行う。
-**必ず `-j 8` を付ける** (無制限並列は rustc がメモリ枯渇で落ちる)。
-ディスクが埋まったら `-FreeDisk` スイッチ。
+並列度は既定で `-j 8` (無制限並列は rustc がメモリ枯渇で落ちる。`-Jobs` で変えられる)。
+ディスクが埋まったら `-FreeDisk` スイッチ。オプションの一覧は [Windows でのビルド](pages/src/ja/building.md)。
 
 ## 起動
 
-- 成果物は `target\debug\zed.exe`。**エクスプローラーからのダブルクリック
+- 成果物は `target\debug\ForgeKairos.exe`。**エクスプローラーからのダブルクリック
   (または `Start-Process`) で起動**する
-- コンソールから `zed <パス>` のように使うには `cli.exe` が `zed.exe` の隣に必要
-  (`build-dev.ps1` が一緒にビルドする)
-- C / C++ のフォーマットに使う `clang-format.exe` は `build-dev.ps1` が
+- コンソールから `<パス>` を開くには、隣の `forgekairos-cli.exe` を使う
+  (`build.ps1` が一緒にビルドする。インストール版では `forgekairos` コマンド)
+- C / C++ のフォーマットに使う `clang-format.exe` は `build.ps1` が
   `target\debug\bin\` へ置く (`-ClangFormatPath` で入手元を指定 / `-SkipClangFormat` で省略)。
-  手動で `zed.exe` の隣 (または `bin\`) に置くか PATH に通してもよい
+  手動で `ForgeKairos.exe` の隣 (または `bin\`) に置くか PATH に通してもよい
 
 ### 初回起動時の状態 (意図した既定)
 

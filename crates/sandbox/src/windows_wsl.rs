@@ -1293,7 +1293,7 @@ struct HelperArtifacts {
 /// File names of the artifacts for this machine's architecture: the server
 /// compressed (as shipped) then plain, under the current name and then under
 /// the names of `branding::LEGACY`, and `slirp4netns`. Must match
-/// `script/bundle-windows.ps1`, `script/build-dev.ps1`, and what `crates/remote`
+/// `script/bundle-windows.ps1`, `script/build.ps1`, and what `crates/remote`
 /// uploads to SSH hosts.
 fn helper_artifact_names() -> (Vec<String>, String) {
     let architecture = std::env::consts::ARCH;
@@ -1315,7 +1315,7 @@ fn helper_artifact_names() -> (Vec<String>, String) {
 /// Where the artifacts are looked for, most preferred first: next to the
 /// running executable, its `bin` directory (where the installer puts them),
 /// and in debug builds the workspace's `target\debug`, where
-/// `script/build-dev.ps1` always writes them — so a development binary built
+/// `script/build.ps1` always writes them — so a development binary built
 /// into another target directory finds them too. `crates/remote` searches the
 /// same places for its SSH uploads.
 fn helper_artifact_search_dirs() -> Vec<PathBuf> {
@@ -1365,7 +1365,7 @@ fn locate_helper_artifacts() -> Result<HelperArtifacts> {
             Err(unavailable(|| {
                 i18n::t!(
                     "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed \
-                 is installed. Reinstall Zed. In a development build, `script/build-dev.ps1` puts them \
+                 is installed. Reinstall Zed. In a development build, `script/build.ps1` puts them \
                  in `target\\debug` (searched: {searched}).",
                     server_name = server_names.first().map(String::as_str).unwrap_or_default()
                 )
