@@ -7703,17 +7703,17 @@ mod tests {
     }
 
     /// ADR-F49 decision 23: a project opened on a WSL share has worktrees
-    /// whose `abs_path` keeps the spelling Windows canonicalized it to
-    /// (`\\?\UNC\wsl.localhost\…`; `dunce` only folds a drive's `\\?\C:\…`).
-    /// An agent's read and write land in such a worktree when they arrive in
-    /// that spelling — which is why `SandboxPaths` answers the sandbox in each
-    /// root's own spelling: Zed finds the worktree for a path by comparing
-    /// spellings, so the `\\wsl.localhost\…` a path mapper builds on its own
-    /// would be judged as outside the project.
+    /// whose `abs_path` is the share as `SanitizedPath` folds it: Windows
+    /// canonicalizes it to `\\?\UNC\wsl.localhost\…`, and the verbatim prefix
+    /// is stripped back to `\\wsl.localhost\…`. An agent's read and write land
+    /// in such a worktree when they arrive in that spelling — which is why
+    /// `SandboxPaths` answers the sandbox in each root's own spelling: Zed
+    /// finds the worktree for a path by comparing spellings, so a path in any
+    /// other spelling of the same folder is judged as outside the project.
     #[cfg(target_os = "windows")]
     #[gpui::test]
     async fn test_agent_reads_and_writes_a_canonicalized_wsl_worktree(cx: &mut TestAppContext) {
-        const ROOT: &str = r"\\?\UNC\wsl.localhost\Ubuntu\root\p";
+        const ROOT: &str = r"\\wsl.localhost\Ubuntu\root\p";
         init_test(cx);
         let fs = FakeFs::new(cx.executor());
         fs.insert_tree(ROOT, json!({ "seed.txt": "seeded-by-zed\n" }))
@@ -7763,16 +7763,16 @@ mod tests {
         });
 
         for (path, what) in [
-            // The spelling a WSL path mapper builds on its own names the same
-            // folder, but Zed compares spellings, so a write that arrives this
-            // way is refused: `SandboxPaths` is where it is put back into the
-            // worktree's own spelling.
+            // Windows' verbatim spelling names the same folder, but Zed
+            // compares spellings, so a write that arrives this way is refused:
+            // `SandboxPaths` is where it is put back into the worktree's own
+            // spelling.
             (
-                r"\\wsl.localhost\Ubuntu\root\p\observed.txt",
+                r"\\?\UNC\wsl.localhost\Ubuntu\root\p\observed.txt",
                 "another spelling of the worktree",
             ),
             (
-                r"\\?\UNC\wsl.localhost\Ubuntu\root\q\escape.txt",
+                r"\\wsl.localhost\Ubuntu\root\q\escape.txt",
                 "a sibling folder",
             ),
         ] {

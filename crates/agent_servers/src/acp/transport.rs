@@ -118,6 +118,7 @@ mod tests {
                 "ACP_TRANSPORT_TEST".into(),
                 "value with spaces and $literal".into(),
             )])),
+            sandbox: None,
         };
 
         for attempt in 0..2 {

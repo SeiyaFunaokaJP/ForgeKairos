@@ -7100,6 +7100,7 @@ exit 7
             path: "/bin/sh".into(),
             args: vec!["-c".into(), script],
             env: None,
+            sandbox: None,
         };
         let timeout = cx
             .background_executor
@@ -7114,6 +7115,7 @@ exit 7
                     agent_server_store,
                     None,
                     HashMap::default(),
+                    true,
                     &mut cx.to_async(),
                 )
                 .await
