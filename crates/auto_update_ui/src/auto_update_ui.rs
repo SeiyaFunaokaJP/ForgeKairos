@@ -79,9 +79,14 @@ impl Dismissable for DeltaAnnouncement {
     const KEY: &'static str = "delta_announcement_dismissed";
 }
 
+/// Upstream announces Zed Industries' own products here (Delta, from v1.22.0).
+/// ForgeKairos is a separate project and does not advertise them.
+const SHOWS_UPSTREAM_ANNOUNCEMENTS: bool = false;
+
 fn announcement_for_version(version: &Version, cx: &App) -> Option<AnnouncementContent> {
     let version_with_delta = Version::new(1, 22, 0);
-    if *version < version_with_delta
+    if !SHOWS_UPSTREAM_ANNOUNCEMENTS
+        || *version < version_with_delta
         || DisableAiSettings::get_global(cx).disable_ai
         || DeltaAnnouncement::dismissed(cx)
     {
@@ -250,4 +255,28 @@ pub fn notify_if_app_was_updated(cx: &mut App) {
         anyhow::Ok(())
     })
     .detach();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use settings::SettingsStore;
+
+    #[gpui::test]
+    fn test_upstream_announcements_are_not_shown(cx: &mut App) {
+        let store = SettingsStore::test(cx);
+        cx.set_global(store);
+        DisableAiSettings::register(cx);
+
+        for version in [
+            Version::new(1, 22, 0),
+            Version::new(1, 22, 3),
+            Version::new(2, 0, 0),
+        ] {
+            assert!(
+                announcement_for_version(&version, cx).is_none(),
+                "an announcement for {version}"
+            );
+        }
+    }
 }
