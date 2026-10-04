@@ -130,7 +130,7 @@ The browser panel uses Microsoft Edge WebView2 on Windows. On other platforms it
 | `agent.default_model` | not set (the first authenticated provider is used) | `zed.dev` / `claude-sonnet-4` |
 | `edit_predictions.provider` | `"none"` | `"zed"` |
 | `edit_predictions.allow_data_collection` | `"no"` | `"default"` |
-| `telemetry.diagnostics`, `telemetry.metrics` | `false` | `true` |
+| `telemetry.diagnostics`, `telemetry.metrics` | `false`, and not used: nothing is sent to Zed whatever they say | `true` |
 | `auto_update` | `false` | `true` |
 | `auto_install_extensions` | `{}` | `{ "html": true }` |
 | `project_panel.dock`, `outline_panel.dock`, `git_panel.dock`, `collaboration_panel.dock` | `"left"` | `"right"` |

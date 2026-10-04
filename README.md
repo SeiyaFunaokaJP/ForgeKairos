@@ -38,9 +38,9 @@ affiliated with, endorsed by or supported by Zed Industries. Names of Zed's own 
 - **Editing additions** - Markdown input helpers and PDF export, a call graph panel, a name
   index for C and C++, and VS Code-like defaults.
 
-Telemetry and collaboration (calls and screen sharing) are disabled; the collaboration
-and LiveKit crates are not built. Updates are checked only against this repository's
-GitHub Releases.
+Telemetry, crash reports and collaboration (calls and screen sharing) are disabled:
+nothing is sent to Zed, and the collaboration and LiveKit crates are not built. Updates
+are checked only against this repository's GitHub Releases.
 
 ## Building (Windows)
 

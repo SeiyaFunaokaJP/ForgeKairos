@@ -128,7 +128,7 @@ ForgeKairos が Zed に足した設定と、既定値を変えた Zed の設定�
 | `agent.default_model` | 未設定 (認証済みの最初のプロバイダーを使う) | `zed.dev` / `claude-sonnet-4` |
 | `edit_predictions.provider` | `"none"` | `"zed"` |
 | `edit_predictions.allow_data_collection` | `"no"` | `"default"` |
-| `telemetry.diagnostics`、`telemetry.metrics` | `false` | `true` |
+| `telemetry.diagnostics`、`telemetry.metrics` | `false` (使われない。値によらず Zed へ送らない) | `true` |
 | `auto_update` | `false` | `true` |
 | `auto_install_extensions` | `{}` | `{ "html": true }` |
 | `project_panel.dock`、`outline_panel.dock`、`git_panel.dock`、`collaboration_panel.dock` | `"left"` | `"right"` |
