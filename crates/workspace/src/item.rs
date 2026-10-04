@@ -403,7 +403,9 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
     }
 
     /// What closing the item with unsaved edits asks, for an item that is not
-    /// a file: without it the pane asks about "this buffer".
+    /// a file: without it the pane asks about "this buffer". The answers stay
+    /// Save / Don't Save / Cancel, and the in-app prompt renders the text as
+    /// Markdown while the system one shows it as is.
     fn unsaved_edits_prompt(&self, _cx: &App) -> Option<String> {
         None
     }
