@@ -5,7 +5,7 @@
 //! server's popover where it was when it arrives later. Members expand in place, one level at a
 //! time, for as long as the popover is open.
 
-use std::{ops::Range, time::Duration};
+use std::{ops::Range, sync::Arc, time::Duration};
 
 use collections::HashMap;
 use futures::{
@@ -20,11 +20,12 @@ use gpui::{
 use language::{Bias, Buffer, BufferSnapshot, CharKind, LanguageName, Point, ToOffset as _};
 use markdown::{CopyButtonVisibility, Markdown, MarkdownElement};
 use project::{
-    HoverBlockKind, Project, ProjectPath, WorktreeId,
+    HoverBlockKind, Project, ProjectPath, WorktreeId, WorktreeSettings,
     project_settings::ProjectSettings,
     symbol_index_store::{
         Confidence, MemberExpansion, MemberExpansionTarget, MemberSelector, MemberSummary,
-        MemberSummaryKind, ResolvedTypes, SourceLanguage, SymbolIndexStatus, SymbolIndexStore,
+        MemberSummaryKind, ResolvedTypes, SCRATCH_MAX_FILE_BYTES, SCRATCH_MAX_FILES,
+        SCRATCH_MAX_INCLUDE_DEPTH, SourceLanguage, SymbolIndexStatus, SymbolIndexStore,
         SymbolIndexUnavailable, TagKind, TypeHover, TypeHoverSubject, TypeRef, TypeSummary,
         TypeSummaryKind, TypeTreeOptions, TypeTreeSubject, type_name_of_text,
     },
@@ -32,7 +33,7 @@ use project::{
 use settings::{Settings as _, SymbolIndexEnabled};
 use theme_settings::ThemeSettings;
 use ui::{CommonAnimationExt as _, TextSize, Tooltip, prelude::*};
-use util::{ResultExt as _, paths::PathStyle};
+use util::{ResultExt as _, paths::PathStyle, rel_path::RelPath};
 
 use crate::{
     Anchor, Editor, SelectionEffects,
@@ -212,11 +213,11 @@ impl IndexGap {
     fn message(&self) -> String {
         match self {
             IndexGap::NotInAFolder => i18n::t!(
-                "Type contents are shown for files in an open folder. Open the folder that holds this file to see them."
+                "No definition found in this file. Open the folder that holds it to search the whole folder."
             )
             .to_string(),
             IndexGap::IgnoredFile => i18n::t!(
-                "Type contents are not shown: Git ignores this file, and the symbol index leaves ignored files out. Turn on the `symbol_index.include_ignored` setting to include them."
+                "No definition found in this file or the headers it includes. Git ignores this file, so the folder's symbol index leaves it out; turn on the `symbol_index.include_ignored` setting to include it."
             )
             .to_string(),
             IndexGap::Off => i18n::t!(
@@ -245,6 +246,124 @@ impl IndexGap {
             ),
         }
     }
+}
+
+/// The file of `snapshot` and the headers it includes by a relative path (`#include "..."`,
+/// not `<...>`), as far as the worktree can name them and the settings let them be read:
+/// what a hover indexes on the spot for a file the worktree's index leaves out. Open buffers
+/// are read with their unsaved edits.
+async fn read_included_files(
+    project: &WeakEntity<Project>,
+    path: &ProjectPath,
+    snapshot: &BufferSnapshot,
+    cx: &mut AsyncApp,
+) -> Vec<(Arc<RelPath>, Vec<u8>)> {
+    let mut files = vec![(
+        path.path.clone(),
+        snapshot.text_with_line_endings().into_bytes(),
+    )];
+    // A single file's worktree cannot name the headers next to it.
+    if path.path.is_empty() {
+        return files;
+    }
+    let mut queue = std::collections::VecDeque::from([(0, path.path.clone())]);
+    let mut seen = collections::HashSet::from_iter([path.path.clone()]);
+    while let Some((depth, including)) = queue.pop_front() {
+        if depth >= SCRATCH_MAX_INCLUDE_DEPTH {
+            continue;
+        }
+        let Some(contents) = files
+            .iter()
+            .find(|(file, _)| *file == including)
+            .map(|(_, contents)| String::from_utf8_lossy(contents).into_owned())
+        else {
+            continue;
+        };
+        for header in quoted_includes(&contents) {
+            if files.len() >= SCRATCH_MAX_FILES {
+                return files;
+            }
+            let Some(header) = resolve_include(&including, header) else {
+                continue;
+            };
+            if !seen.insert(header.clone()) {
+                continue;
+            }
+            let header_path = ProjectPath {
+                worktree_id: path.worktree_id,
+                path: header.clone(),
+            };
+            let readable = project
+                .read_with(cx, |project, cx| may_read_header(project, &header_path, cx))
+                .unwrap_or(false);
+            if !readable {
+                continue;
+            }
+            let Ok(open) = project.update(cx, |project, cx| project.open_buffer(header_path, cx))
+            else {
+                return files;
+            };
+            let Some(buffer) = open.await.log_err() else {
+                continue;
+            };
+            let text = buffer.read_with(cx, |buffer, _| buffer.text_with_line_endings());
+            files.push((header.clone(), text.into_bytes()));
+            queue.push_back((depth + 1, header));
+        }
+    }
+    files
+}
+
+/// The paths of the `#include "..."` lines of `text`.
+fn quoted_includes(text: &str) -> impl Iterator<Item = &str> {
+    text.lines().filter_map(|line| {
+        let rest = line.trim_start().strip_prefix('#')?.trim_start();
+        let rest = rest.strip_prefix("include")?.trim_start();
+        let rest = rest.strip_prefix('"')?;
+        let end = rest.find('"')?;
+        rest.get(..end)
+    })
+}
+
+/// `header` as included from `including`, both relative to the worktree, when it stays in it.
+fn resolve_include(including: &RelPath, header: &str) -> Option<Arc<RelPath>> {
+    let mut components = including
+        .parent()
+        .map(|parent| parent.components().map(str::to_string).collect::<Vec<_>>())
+        .unwrap_or_default();
+    for component in header.split(['/', '\\']) {
+        match component {
+            "" | "." => {}
+            ".." => {
+                components.pop()?;
+            }
+            component => components.push(component.to_string()),
+        }
+    }
+    Some(
+        RelPath::from_unix_str(&components.join("/"))
+            .ok()?
+            .into_arc(),
+    )
+}
+
+/// Whether a hover may read the header at `path`: a file of the worktree, not private, not
+/// excluded, not outside it, and not too large. Git ignoring it does not matter.
+fn may_read_header(project: &Project, path: &ProjectPath, cx: &App) -> bool {
+    let Some(worktree) = project.worktree_for_id(path.worktree_id, cx) else {
+        return false;
+    };
+    let worktree = worktree.read(cx);
+    let Some(entry) = worktree.entry_for_path(&path.path) else {
+        return false;
+    };
+    let settings = WorktreeSettings::get(Some(path.into()), cx);
+    entry.is_file()
+        && !entry.is_private
+        && !entry.is_external
+        && entry.size <= SCRATCH_MAX_FILE_BYTES
+        && !settings.is_path_excluded(&path.path)
+        && !settings.is_path_private(&path.path)
 }
 
 /// Words a note about the index would only be noise on.
@@ -372,6 +491,35 @@ impl TypeContentsQuery {
                     type_from_language_server = true;
                 }
             }
+            let worth_showing = |hover: &Option<TypeHover>| {
+                hover
+                    .as_ref()
+                    .is_some_and(|hover| is_hover_worth_showing(hover, language_server_answered))
+            };
+            if !worth_showing(&hover)
+                && let Some(IndexGap::IgnoredFile | IndexGap::NotInAFolder) = gap
+            {
+                let files = read_included_files(&project, &path, &snapshot, &mut cx).await;
+                let describe = store
+                    .update(&mut cx, |store, cx| {
+                        store.describe_type_in_files(
+                            path.clone(),
+                            position,
+                            snapshot.clone(),
+                            source_language,
+                            files,
+                            1,
+                            cx,
+                        )
+                    })
+                    .ok()?;
+                hover = describe.await.log_err().flatten();
+            }
+            let hover = if gap.is_some() && !worth_showing(&hover) {
+                None
+            } else {
+                hover
+            };
             let Some(hover) = hover else {
                 let gap = gap?;
                 let (name, range) = word_at(&snapshot, position)?;
@@ -553,13 +701,17 @@ pub(crate) fn is_in_popover_stack(hover_state: &HoverState, point: gpui::Point<P
 }
 
 fn is_worth_showing(data: &TypeContentsData) -> bool {
-    let has_types = !data.hover.types.types.is_empty();
-    match &data.hover.subject {
+    is_hover_worth_showing(&data.hover, data.language_server_answered)
+}
+
+fn is_hover_worth_showing(hover: &TypeHover, language_server_answered: bool) -> bool {
+    let has_types = !hover.types.types.is_empty();
+    match &hover.subject {
         TypeHoverSubject::Macro { macros } => !macros.is_empty(),
         TypeHoverSubject::Member { steps, .. } => !steps.is_empty(),
         TypeHoverSubject::TypeName { .. } => has_types,
         // A builtin type adds nothing to what the language server already says.
-        TypeHoverSubject::Variable { .. } => has_types || !data.language_server_answered,
+        TypeHoverSubject::Variable { .. } => has_types || !language_server_answered,
     }
 }
 
@@ -812,6 +964,8 @@ pub(crate) struct TypeContents {
 struct PathLabels {
     path_style: PathStyle,
     root_names: Option<HashMap<WorktreeId, String>>,
+    /// The names of single files opened on their own, whose paths are empty.
+    single_files: HashMap<WorktreeId, String>,
 }
 
 impl PathLabels {
@@ -820,6 +974,7 @@ impl PathLabels {
             return Self {
                 path_style: PathStyle::local(),
                 root_names: None,
+                single_files: HashMap::default(),
             };
         };
         let worktrees = project.visible_worktrees(cx).collect::<Vec<_>>();
@@ -832,9 +987,19 @@ impl PathLabels {
                 })
                 .collect()
         });
+        let single_files = project
+            .worktrees(cx)
+            .filter_map(|worktree| {
+                let worktree = worktree.read(cx);
+                worktree
+                    .is_single_file()
+                    .then(|| (worktree.id(), worktree.root_name_str().to_string()))
+            })
+            .collect();
         Self {
             path_style: project.path_style(cx),
             root_names,
+            single_files,
         }
     }
 }
@@ -1646,6 +1811,11 @@ fn chain_segments(
 }
 
 fn location_label(path: &ProjectPath, position: Point, labels: &PathLabels) -> (String, String) {
+    if path.path.is_empty()
+        && let Some(name) = labels.single_files.get(&path.worktree_id)
+    {
+        return (String::new(), format!("{name}:{}", position.row + 1));
+    }
     let relative = path.path.display(labels.path_style);
     let shown = match labels
         .root_names
@@ -3350,34 +3520,57 @@ int use(alias_t *value)
         })
     }
 
-    fn set_include_ignored(cx: &mut EditorLspTestContext, include: bool) {
+    fn scratch_files(cx: &mut EditorLspTestContext) -> Vec<String> {
+        let project = cx.update_workspace(|workspace, _, _| workspace.project().clone());
         cx.update(|_, cx| {
-            SettingsStore::update_global(cx, |store, cx| {
-                store.update_user_settings(cx, |settings| {
-                    settings
-                        .project
-                        .symbol_index
-                        .get_or_insert_default()
-                        .include_ignored = Some(include);
-                });
-            });
-        });
+            project
+                .read(cx)
+                .symbol_index_store()
+                .read(cx)
+                .scratch_files_for_tests()
+        })
     }
 
-    #[gpui::test]
-    async fn test_an_ignored_file_tells_why_its_types_are_not_shown(cx: &mut TestAppContext) {
-        let (mut cx, _index) = setup(false, cx).await;
+    async fn ignore_dir(cx: &mut EditorLspTestContext) {
         let fs = cx.update_workspace(|workspace, _, cx| workspace.project().read(cx).fs().clone());
         fs.as_fake()
             .insert_file(
                 EditorLspTestContext::root_path().join(".gitignore"),
-                b"dir/file.c\n".to_vec(),
+                b"dir/\n".to_vec(),
             )
             .await;
         cx.executor().run_until_parked();
+    }
+
+    async fn insert_files(cx: &mut EditorLspTestContext, files: &[(&str, &str)]) {
+        let fs = cx.update_workspace(|workspace, _, cx| workspace.project().read(cx).fs().clone());
+        for (path, text) in files {
+            let path = EditorLspTestContext::root_path().join(path);
+            if let Some(parent) = path.parent() {
+                fs.create_dir(parent).await.expect("creating the folder");
+            }
+            fs.as_fake()
+                .insert_file(path, text.as_bytes().to_vec())
+                .await;
+        }
+        cx.executor().run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn test_an_ignored_file_reads_itself_and_its_headers(cx: &mut TestAppContext) {
+        let (mut cx, _index) = setup(false, cx).await;
+        ignore_dir(&mut cx).await;
 
         hover_over(&mut cx, "local", 1);
-        assert!(section(&mut cx).is_none());
+        let text = section_text(&mut cx);
+        assert!(
+            text.starts_with("Type of local: struct outer (declared in this function)"),
+            "{text}"
+        );
+        assert!(text.contains("dir/types.h:5"), "{text}");
+        assert!(notes(&mut cx).is_empty());
+
+        hover_over(&mut cx, "use", 0);
         let found = notes(&mut cx);
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(
@@ -3390,11 +3583,174 @@ int use(alias_t *value)
             cx.editor(|editor, _, _| editor.hover_state.info_popovers.is_empty()),
             "a keyword gets no note"
         );
+    }
 
-        set_include_ignored(&mut cx, true);
-        hover_over(&mut cx, "local", 1);
-        assert!(section_text(&mut cx).starts_with("Type of local: struct outer"));
-        assert!(notes(&mut cx).is_empty());
+    const NESTED_H: &str = "\
+struct inner { int depth; char tag; };
+typedef struct { struct inner in; int flags; } Outer;
+";
+
+    const NESTED_C: &str = "\
+#include \"nested.h\"
+int use(void) { Outer value; return value.flags; }
+";
+
+    #[gpui::test]
+    async fn test_nested_types_of_an_ignored_folder_expand(cx: &mut TestAppContext) {
+        let mut cx = c_context(false, cx).await;
+        insert_files(&mut cx, &[("dir/nested.h", NESTED_H)]).await;
+        ignore_dir(&mut cx).await;
+        cx.set_state(&format!("ˇ{NESTED_C}"));
+
+        hover_over(&mut cx, "value", 0);
+        let text = section_text(&mut cx);
+        assert!(text.starts_with("Type of value: Outer"), "{text}");
+        assert!(text.contains("in | struct inner"), "{text}");
+        assert!(!text.contains("depth | int"), "{text}");
+        toggle(&mut cx, "in");
+        let text = section_text(&mut cx);
+        assert!(text.contains("depth | int"), "{text}");
+        assert!(text.contains("tag | char"), "{text}");
+    }
+
+    #[gpui::test]
+    async fn test_headers_past_the_include_depth_are_not_read(cx: &mut TestAppContext) {
+        let mut cx = c_context(false, cx).await;
+        insert_files(
+            &mut cx,
+            &[
+                ("dir/h1.h", "#include \"h2.h\"\n"),
+                ("dir/h2.h", "#include \"sub/h3.h\"\n"),
+                ("dir/sub/h3.h", "#include \"../h4.h\"\n"),
+                (
+                    "dir/h4.h",
+                    "#include \"h5.h\"\nstruct reached { int four; };\n",
+                ),
+                ("dir/h5.h", "struct too_far { int five; };\n"),
+            ],
+        )
+        .await;
+        ignore_dir(&mut cx).await;
+        cx.set_state("ˇ#include \"h1.h\"\nstruct reached a;\nstruct too_far b;\n");
+
+        hover_over(&mut cx, "reached", 0);
+        assert!(section_text(&mut cx).contains("four | int"));
+
+        hover_over(&mut cx, "too_far", 0);
+        assert_eq!(
+            scratch_files(&mut cx),
+            [
+                "dir/file.c",
+                "dir/h1.h",
+                "dir/h2.h",
+                "dir/h4.h",
+                "dir/sub/h3.h"
+            ]
+        );
+        assert!(section(&mut cx).is_none());
+        assert_eq!(notes(&mut cx).len(), 1);
+    }
+
+    #[gpui::test]
+    async fn test_private_headers_are_not_read(cx: &mut TestAppContext) {
+        let mut cx = c_context(false, cx).await;
+        cx.update(|_, cx| {
+            SettingsStore::update_global(cx, |store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.project.worktree.private_files =
+                        Some(vec!["**/secret.h".to_string()].into());
+                });
+            });
+        });
+        insert_files(
+            &mut cx,
+            &[
+                ("dir/secret.h", "struct hidden { int key; };\n"),
+                ("dir/open.h", "struct shown { int value; };\n"),
+            ],
+        )
+        .await;
+        ignore_dir(&mut cx).await;
+        cx.set_state(
+            "ˇ#include \"secret.h\"\n#include \"open.h\"\nstruct hidden a;\nstruct shown b;\n",
+        );
+
+        hover_over(&mut cx, "shown", 0);
+        assert!(section_text(&mut cx).contains("value | int"));
+
+        hover_over(&mut cx, "hidden", 0);
+        assert_eq!(
+            scratch_files(&mut cx),
+            ["dir/file.c", "dir/open.h"],
+            "the private header is not read"
+        );
+        assert!(section(&mut cx).is_none());
+        let found = notes(&mut cx);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(!found[0].contains("key"), "{found:?}");
+    }
+
+    #[gpui::test]
+    async fn test_a_file_opened_on_its_own_shows_its_types(cx: &mut TestAppContext) {
+        let mut cx = c_context(false, cx).await;
+        let fs = cx.update_workspace(|workspace, _, cx| workspace.project().read(cx).fs().clone());
+        let solo = std::path::PathBuf::from(util::path!("/solo/solo.c"));
+        fs.create_dir(std::path::Path::new(util::path!("/solo")))
+            .await
+            .expect("creating the folder");
+        fs.as_fake()
+            .insert_file(
+                &solo,
+                "typedef struct { int x; int y; } Point;\nint use(void) { Point p; return p.x; }\n"
+                    .as_bytes()
+                    .to_vec(),
+            )
+            .await;
+        let open = cx.update_workspace(|workspace, window, cx| {
+            workspace.open_abs_path(solo.clone(), workspace::OpenOptions::default(), window, cx)
+        });
+        cx.executor().run_until_parked();
+        let editor = open
+            .await
+            .expect("opening the file")
+            .downcast::<Editor>()
+            .expect("an editor");
+        cx.executor().run_until_parked();
+        let is_single_file = cx.update(|_, cx| {
+            let buffer = editor.read(cx).buffer().read(cx).as_singleton();
+            let file = buffer.and_then(|buffer| buffer.read(cx).file().cloned());
+            file.is_some_and(|file| file.path().is_empty())
+        });
+        assert!(is_single_file, "the file is a worktree of its own");
+
+        let anchor = cx.update(|_, cx| {
+            let snapshot = editor.read(cx).buffer().read(cx).snapshot(cx);
+            let offset = snapshot
+                .text()
+                .find("Point p")
+                .expect("the variable's type");
+            snapshot.anchor_before(MultiBufferOffset(offset))
+        });
+        editor.update_in(&mut cx.cx.cx, |editor, window, cx| {
+            hover_at(editor, Some(anchor), None, window, cx)
+        });
+        let delay = hover_delay(&mut cx);
+        cx.executor()
+            .advance_clock(Duration::from_millis(delay + 100));
+        cx.run_until_parked();
+        let text = cx.update(|_, cx| {
+            editor
+                .read(cx)
+                .hover_state
+                .info_popovers
+                .iter()
+                .find_map(|popover| popover.type_contents.clone())
+                .map(|section| section.read(cx).text_for_tests())
+        });
+        let text = text.expect("a type contents section");
+        assert!(text.contains("solo.c:1"), "{text}");
+        assert!(text.contains("x | int"), "{text}");
+        assert!(text.contains("y | int"), "{text}");
     }
 
     fn set_index_status(cx: &mut EditorLspTestContext, status: SymbolIndexStatus) {
@@ -3827,6 +4183,7 @@ static struct ring *ring_head;
         let single = PathLabels {
             path_style: PathStyle::Unix,
             root_names: None,
+            single_files: HashMap::default(),
         };
         assert_eq!(
             location_label(&path, Point::new(9, 4), &single),
@@ -3838,6 +4195,7 @@ static struct ring *ring_head;
                 (WorktreeId::from_usize(1), "kernel".to_string()),
                 (WorktreeId::from_usize(2), "tools".to_string()),
             ])),
+            single_files: HashMap::default(),
         };
         assert_eq!(
             location_label(&path, Point::new(0, 0), &several),

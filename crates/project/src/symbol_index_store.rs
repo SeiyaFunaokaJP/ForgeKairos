@@ -198,6 +198,8 @@ pub struct IndexedSymbolMatch {
 pub struct SymbolIndexStore {
     worktree_store: Entity<WorktreeStore>,
     state: StoreState,
+    /// The index a hover made of files the worktree's index leaves out.
+    scratch: Option<Arc<symbol_index_types::ScratchIndex>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -547,6 +549,7 @@ impl SymbolIndexStore {
                 worktrees: HashMap::default(),
                 downstream: None,
             }),
+            scratch: None,
             _subscriptions: subscriptions,
         };
         for buffer in &open_buffers {
@@ -645,6 +648,7 @@ impl SymbolIndexStore {
                 statuses: HashMap::default(),
                 _probe: None,
             }),
+            scratch: None,
             _subscriptions: subscriptions,
         };
         this.probe_remote(cx);
@@ -659,6 +663,7 @@ impl SymbolIndexStore {
         Self {
             worktree_store,
             state: StoreState::Unavailable(reason),
+            scratch: None,
             _subscriptions: Vec::new(),
         }
     }

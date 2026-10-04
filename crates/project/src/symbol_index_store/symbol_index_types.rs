@@ -546,6 +546,9 @@ fn name_of_display_name(display_name: &str) -> Option<String> {
 /// Turns what the engine found into the project's types, keeping to the answer's size limit.
 struct Converter {
     worktree_id: WorktreeId,
+    /// The name a [`ScratchIndex`] gives the file of a single-file worktree, whose own path is
+    /// empty.
+    single_file: Option<Arc<str>>,
     budget: usize,
     truncated: bool,
 }
@@ -554,15 +557,21 @@ impl Converter {
     fn new(worktree_id: WorktreeId) -> Self {
         Self {
             worktree_id,
+            single_file: None,
             budget: MAX_TYPE_RESPONSE_BYTES,
             truncated: false,
         }
     }
 
     fn project_path(&self, path: &str) -> Option<ProjectPath> {
+        let path = if self.single_file.as_deref() == Some(path) {
+            RelPath::empty().into_arc()
+        } else {
+            RelPath::from_unix_str(path).ok()?.into_arc()
+        };
         Some(ProjectPath {
             worktree_id: self.worktree_id,
-            path: RelPath::from_unix_str(path).ok()?.into_arc(),
+            path,
         })
     }
 
@@ -1061,7 +1070,7 @@ const MAX_EDITED_BUFFERS: usize = 32;
 /// (a slow network drive), so that the engine finishes with what it has, and that reads the
 /// project's edited buffers rather than their files.
 struct DeadlineFileSource {
-    inner: WorktreeFileSource,
+    inner: EnvironmentFiles,
     /// By the worktree path, in the unix form the engine asks with.
     edited_buffers: HashMap<String, text::BufferSnapshot>,
     deadline: Instant,
@@ -1077,21 +1086,36 @@ impl FileSource for DeadlineFileSource {
                 "the type lookup ran out of time",
             ));
         }
+        let source = match &self.inner {
+            EnvironmentFiles::Worktree { source, .. } => source,
+            EnvironmentFiles::Scratch(scratch) => return scratch.read(path),
+        };
         if let Some(buffer) = self.edited_buffers.get(path) {
             // The buffer's name may be a link to a file the index must not read (private or
             // excluded under its own name); that file is refused here as on disk.
             let relative = RelPath::from_unix_str(path).map_err(|error| {
                 io::Error::new(io::ErrorKind::InvalidInput, format!("{error:#}"))
             })?;
-            self.inner.resolve(relative)?;
+            source.resolve(relative)?;
             // With the file's own line endings, as the index's offsets into it count them.
             let mut contents = buffer.text_with_line_endings().into_bytes();
             let limit = IndexConfig::default().max_file_bytes.saturating_add(1);
             contents.truncate(usize::try_from(limit).unwrap_or(usize::MAX));
             return Ok(contents);
         }
-        self.inner.read(path)
+        source.read(path)
     }
+}
+
+/// Where the files of a type request come from.
+enum EnvironmentFiles {
+    /// The worktree's files, each checked against the settings and the worktree's entries.
+    Worktree {
+        source: WorktreeFileSource,
+        snapshot: Snapshot,
+        include_ignored: bool,
+    },
+    Scratch(Arc<ScratchIndex>),
 }
 
 /// What a type request on one worktree needs, taken on the foreground and used on a
@@ -1105,13 +1129,11 @@ struct TypeEnvironment {
     include_ignored: bool,
 }
 
-/// A [`TypeEnvironment`] whose root was resolved, ready to answer.
+/// A [`TypeEnvironment`] whose root was resolved, or a [`ScratchIndex`], ready to answer.
 struct PreparedEnvironment {
     worktree_id: WorktreeId,
     index: Arc<SymbolIndex>,
     files: DeadlineFileSource,
-    snapshot: Snapshot,
-    include_ignored: bool,
 }
 
 impl TypeEnvironment {
@@ -1122,13 +1144,15 @@ impl TypeEnvironment {
             worktree_id: self.worktree_id,
             index: self.index,
             files: DeadlineFileSource {
-                inner: self.source,
+                inner: EnvironmentFiles::Worktree {
+                    source: self.source,
+                    snapshot: self.snapshot,
+                    include_ignored: self.include_ignored,
+                },
                 edited_buffers: self.edited_buffers,
                 deadline,
                 timed_out: AtomicBool::new(false),
             },
-            snapshot: self.snapshot,
-            include_ignored: self.include_ignored,
         })
     }
 }
@@ -1137,16 +1161,41 @@ impl PreparedEnvironment {
     /// Mirrors [`is_result_shown`] with what the background thread has: the rules of the
     /// settings and the worktree's entries.
     fn shows(&self, path: &str) -> bool {
+        let (source, snapshot, include_ignored) = match &self.files.inner {
+            EnvironmentFiles::Worktree {
+                source,
+                snapshot,
+                include_ignored,
+            } => (source, snapshot, *include_ignored),
+            // Its files were checked when they were read for the hover.
+            EnvironmentFiles::Scratch(scratch) => return scratch.files.contains_key(path),
+        };
         let Ok(relative) = RelPath::from_unix_str(path) else {
             return false;
         };
-        !self.files.inner.rules.hides(relative)
-            && self.snapshot.entry_for_path(relative).is_some_and(|entry| {
+        !source.rules.hides(relative)
+            && snapshot.entry_for_path(relative).is_some_and(|entry| {
                 entry.is_file()
                     && !entry.is_private
                     && !entry.is_external
-                    && (self.include_ignored || !entry.is_ignored)
+                    && (include_ignored || !entry.is_ignored)
             })
+    }
+
+    fn converter(&self) -> Converter {
+        let mut converter = Converter::new(self.worktree_id);
+        if let EnvironmentFiles::Scratch(scratch) = &self.files.inner {
+            converter.single_file = scratch.single_file.clone();
+        }
+        converter
+    }
+
+    /// The name the index knows `path` by.
+    fn index_path(&self, path: &RelPath) -> String {
+        match &self.files.inner {
+            EnvironmentFiles::Scratch(scratch) => scratch.index_path(path),
+            EnvironmentFiles::Worktree { .. } => path.as_unix_str().to_string(),
+        }
     }
 
     fn timed_out(&self) -> bool {
@@ -1183,7 +1232,7 @@ fn describe_in(
     read_limit: usize,
 ) -> Option<TypeHover> {
     environment.with_resolver(read_limit, |resolver| {
-        let mut converter = Converter::new(environment.worktree_id);
+        let mut converter = environment.converter();
         let mut hover = match source {
             DescribeSource::Window { text, start_row } => {
                 let row_in_window = position.row.checked_sub(start_row)?;
@@ -1230,7 +1279,7 @@ fn resolve_in(
     read_limit: usize,
 ) -> ResolvedTypes {
     environment.with_resolver(read_limit.max(1), |resolver| {
-        let mut converter = Converter::new(environment.worktree_id);
+        let mut converter = environment.converter();
         let near = near_path.map_or_else(NearFile::default, |path| resolver.near(path));
         let read = if read_limit == 0 {
             Vec::new()
@@ -1267,12 +1316,13 @@ fn expand_in(
         member: None,
         target: MemberExpansionTarget::NotFound,
     };
-    let owner_path = owner.path.path.as_unix_str();
+    let owner_path = environment.index_path(&owner.path.path);
+    let owner_path = owner_path.as_str();
     if !environment.shows(owner_path) {
         return not_found;
     }
     environment.with_resolver(read_limit, |resolver| {
-        let mut converter = Converter::new(environment.worktree_id);
+        let mut converter = environment.converter();
         let Some(root) = resolver.locate_type(
             owner_path,
             owner.position.row,
@@ -1355,12 +1405,12 @@ fn tree_in(
     environment.with_resolver(1, |resolver| {
         let root = match subject {
             TypeTreeSubject::Ref(type_ref) => {
-                let path = type_ref.path.path.as_unix_str();
-                if !environment.shows(path) {
+                let path = environment.index_path(&type_ref.path.path);
+                if !environment.shows(&path) {
                     return None;
                 }
                 resolver.locate_type(
-                    path,
+                    &path,
                     type_ref.position.row,
                     type_ref.position.column,
                     &type_ref.name,
@@ -1371,7 +1421,7 @@ fn tree_in(
                     .as_ref()
                     .filter(|near| near.worktree_id == environment.worktree_id)
                     .map_or_else(NearFile::default, |near| {
-                        resolver.near(near.path.as_unix_str())
+                        resolver.near(&environment.index_path(&near.path))
                     });
                 resolver
                     .resolve_type_limited(name, *tag, &near, 1)
@@ -1388,7 +1438,7 @@ fn tree_in(
             },
         );
         let text = symbol_index::render_text(&tree, options.max_chars);
-        let converter = Converter::new(environment.worktree_id);
+        let converter = environment.converter();
         let mut definitions = Vec::new();
         collect_tree_definitions(&tree.root, &converter, &mut definitions);
         Some(TypeTreeText {
@@ -1401,6 +1451,215 @@ fn tree_in(
             definitions,
         })
     })
+}
+
+/// Files a hover reads at most for a C or C++ file the worktree's index leaves out: the file
+/// and the headers it includes by a relative path.
+pub const SCRATCH_MAX_FILES: usize = 32;
+/// How many `#include "..."` steps a hover follows from the file.
+pub const SCRATCH_MAX_INCLUDE_DEPTH: usize = 4;
+/// Larger headers are not read for a hover.
+pub const SCRATCH_MAX_FILE_BYTES: u64 = 1024 * 1024;
+
+/// An index of a few files made for a hover over a file the worktree's index leaves out (Git
+/// ignores it, or it was opened on its own). It lives in a temporary directory until another
+/// such hover replaces it.
+pub(crate) struct ScratchIndex {
+    worktree_id: WorktreeId,
+    /// By the name the index knows each file by.
+    files: HashMap<String, Vec<u8>>,
+    single_file: Option<Arc<str>>,
+    // Dropped before the directory: the index holds files open in it.
+    index: Arc<SymbolIndex>,
+    _directory: tempfile::TempDir,
+}
+
+struct ScratchFiles<'a>(&'a HashMap<String, Vec<u8>>);
+
+impl FileSource for ScratchFiles<'_> {
+    fn read(&self, path: &str) -> io::Result<Vec<u8>> {
+        self.0
+            .get(path)
+            .cloned()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, path.to_string()))
+    }
+}
+
+impl ScratchIndex {
+    fn build(
+        worktree_id: WorktreeId,
+        files: HashMap<String, Vec<u8>>,
+        single_file: Option<Arc<str>>,
+    ) -> Result<Self> {
+        let directory = tempfile::Builder::new()
+            .prefix("symbol-index-hover-")
+            .tempdir()?;
+        let index = SymbolIndex::open(
+            directory.path(),
+            IndexConfig {
+                parallelism: Some(1),
+                ..IndexConfig::default()
+            },
+        )?;
+        let entries = files
+            .iter()
+            .map(|(path, contents)| FileEntry {
+                path: Arc::from(path.as_str()),
+                mtime: None,
+                size: contents.len() as u64,
+            })
+            .collect::<Vec<_>>();
+        index.update(
+            &entries,
+            &ScratchFiles(&files),
+            &|_| {},
+            &AtomicBool::new(false),
+        )?;
+        Ok(Self {
+            worktree_id,
+            files,
+            single_file,
+            index: Arc::new(index),
+            _directory: directory,
+        })
+    }
+
+    fn read(&self, path: &str) -> io::Result<Vec<u8>> {
+        ScratchFiles(&self.files).read(path)
+    }
+
+    fn index_path(&self, path: &RelPath) -> String {
+        match &self.single_file {
+            Some(name) if path.is_empty() => name.to_string(),
+            _ => path.as_unix_str().to_string(),
+        }
+    }
+
+    fn covers(&self, path: &ProjectPath) -> bool {
+        path.worktree_id == self.worktree_id
+            && self.files.contains_key(&self.index_path(&path.path))
+    }
+
+    fn environment(self: &Arc<Self>) -> PreparedEnvironment {
+        PreparedEnvironment {
+            worktree_id: self.worktree_id,
+            index: self.index.clone(),
+            files: DeadlineFileSource {
+                inner: EnvironmentFiles::Scratch(self.clone()),
+                edited_buffers: HashMap::default(),
+                deadline: Instant::now() + TYPE_QUERY_TIME_LIMIT,
+                timed_out: AtomicBool::new(false),
+            },
+        }
+    }
+}
+
+impl SymbolIndexStore {
+    /// Describes the name at `position` in a C or C++ file the worktree's index leaves out
+    /// (Git ignores it, or it was opened on its own), from `files` alone: the file and the
+    /// headers it includes, read by the caller from its buffers and checked against the
+    /// settings. They are indexed on the spot; expanding members and reading definitions in
+    /// them use that index too, until another such hover replaces it.
+    pub fn describe_type_in_files(
+        &mut self,
+        path: ProjectPath,
+        position: Point,
+        contents: language::BufferSnapshot,
+        language: SourceLanguage,
+        files: Vec<(Arc<RelPath>, Vec<u8>)>,
+        limit: usize,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<Option<TypeHover>>> {
+        let read_limit = clamp_read_limit(limit);
+        let worktree_id = path.worktree_id;
+        let single_file: Option<Arc<str>> = if path.path.is_empty() {
+            let Some(worktree) = self
+                .worktree_store
+                .read(cx)
+                .worktree_for_id(worktree_id, cx)
+            else {
+                return Task::ready(Ok(None));
+            };
+            Some(Arc::from(worktree.read(cx).root_name_str()))
+        } else {
+            None
+        };
+        let files = files
+            .into_iter()
+            .map(|(file_path, contents)| {
+                let name = match &single_file {
+                    Some(name) if file_path.is_empty() => name.to_string(),
+                    _ => file_path.as_unix_str().to_string(),
+                };
+                (name, contents)
+            })
+            .collect::<HashMap<_, _>>();
+        let reusable = self.scratch.clone().filter(|scratch| {
+            scratch.worktree_id == worktree_id
+                && scratch.single_file == single_file
+                && scratch.files == files
+        });
+        let scratch = match reusable {
+            Some(scratch) => Task::ready(Ok(scratch)),
+            None => cx.background_spawn(async move {
+                ScratchIndex::build(worktree_id, files, single_file).map(Arc::new)
+            }),
+        };
+        cx.spawn(async move |this, cx| {
+            let scratch = scratch.await?;
+            this.update(cx, |this, _| this.scratch = Some(scratch.clone()))?;
+            let request_path = scratch.index_path(&path.path);
+            let hover = cx
+                .background_spawn(async move {
+                    describe_in(
+                        &scratch.environment(),
+                        &request_path,
+                        position,
+                        DescribeSource::Buffer(contents),
+                        Some(language),
+                        read_limit,
+                    )
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                hover.map(|mut hover| {
+                    hover.retain_shown(&mut |path| this.is_scratch_result_shown(path, cx));
+                    hover
+                })
+            })
+        })
+    }
+
+    /// The files the last hover over a file the worktree's index leaves out indexed, sorted.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn scratch_files_for_tests(&self) -> Vec<String> {
+        let mut files = self
+            .scratch
+            .iter()
+            .flat_map(|scratch| scratch.files.keys().cloned())
+            .collect::<Vec<_>>();
+        files.sort();
+        files
+    }
+
+    /// The index made for a hover, when `path` is one of its files.
+    fn scratch_for(&self, path: &ProjectPath) -> Option<Arc<ScratchIndex>> {
+        self.scratch.clone().filter(|scratch| scratch.covers(path))
+    }
+
+    fn is_scratch_result_shown(&self, path: &ProjectPath, cx: &App) -> bool {
+        if self.scratch_for(path).is_none() {
+            return false;
+        }
+        let settings = WorktreeSettings::get(
+            Some(SettingsLocation {
+                worktree_id: path.worktree_id,
+                path: &path.path,
+            }),
+            cx,
+        );
+        !settings.is_path_excluded(&path.path) && !settings.is_path_private(&path.path)
+    }
 }
 
 impl SymbolIndexStore {
@@ -1481,6 +1740,24 @@ impl SymbolIndexStore {
         cx: &mut Context<Self>,
     ) -> Task<Result<ResolvedTypes>> {
         let read_limit = clamp_read_limit(limit);
+        if let Some(near) = &near
+            && let Some(scratch) = self.scratch_for(near)
+        {
+            let near = near.clone();
+            let name = name.to_string();
+            let lookup = cx.background_spawn(async move {
+                let environment = scratch.environment();
+                let near_path = environment.index_path(&near.path);
+                resolve_in(&environment, &name, tag, Some(&near_path), read_limit)
+            });
+            return cx.spawn(async move |this, cx| {
+                let mut types = lookup.await;
+                this.update(cx, |this, cx| {
+                    types.retain_shown(&mut |path| this.is_scratch_result_shown(path, cx));
+                    types
+                })
+            });
+        }
         match &self.state {
             StoreState::Local(_) => {
                 let mut worktree_ids = self.local_index_worktrees();
@@ -1574,6 +1851,18 @@ impl SymbolIndexStore {
         cx: &mut Context<Self>,
     ) -> Task<Result<MemberExpansion>> {
         let read_limit = clamp_read_limit(limit);
+        if let Some(scratch) = self.scratch_for(&owner.path) {
+            let lookup = cx.background_spawn(async move {
+                expand_in(&scratch.environment(), &owner, &member, read_limit)
+            });
+            return cx.spawn(async move |this, cx| {
+                let mut expansion = lookup.await;
+                this.update(cx, |this, cx| {
+                    expansion.retain_shown(&mut |path| this.is_scratch_result_shown(path, cx));
+                    expansion
+                })
+            });
+        }
         let not_found = MemberExpansion {
             member: None,
             target: MemberExpansionTarget::NotFound,
@@ -1639,6 +1928,26 @@ impl SymbolIndexStore {
         cx: &mut Context<Self>,
     ) -> Task<Result<Option<TypeTreeText>>> {
         let options = options.clamped();
+        let scratch = match &subject {
+            TypeTreeSubject::Ref(type_ref) => self.scratch_for(&type_ref.path),
+            TypeTreeSubject::Name { near, .. } => {
+                near.as_ref().and_then(|near| self.scratch_for(near))
+            }
+        };
+        if let Some(scratch) = scratch {
+            let lookup =
+                cx.background_spawn(
+                    async move { tree_in(&scratch.environment(), &subject, options) },
+                );
+            return cx.spawn(async move |this, cx| {
+                let tree = lookup.await;
+                this.update(cx, |this, cx| {
+                    tree.filter(|tree| {
+                        tree.is_shown(&mut |path| this.is_scratch_result_shown(path, cx))
+                    })
+                })
+            });
+        }
         match &self.state {
             StoreState::Local(_) => {
                 let worktree_ids = match &subject {

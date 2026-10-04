@@ -293,6 +293,12 @@ msgstr "次の変更箇所"
 msgid "Next Signature"
 msgstr "次のシグネチャ"
 
+msgid "No definition found in this file or the headers it includes. Git ignores this file, so the folder's symbol index leaves it out; turn on the `symbol_index.include_ignored` setting to include it."
+msgstr "このファイルと、そこから include で辿れるヘッダーの中に定義が見つかりません。このファイルは Git の無視の対象なので、フォルダーのシンボル索引には含まれていません。含めるには設定 `symbol_index.include_ignored` をオンにしてください。"
+
+msgid "No definition found in this file. Open the folder that holds it to search the whole folder."
+msgstr "このファイルの中に定義が見つかりません。このファイルを含むフォルダーを開くと、フォルダー全体から探します。"
+
 msgid "No executable code is associated with this line."
 msgstr "この行に実行可能なコードがありません。"
 
@@ -479,9 +485,6 @@ msgstr "コードアクションの表示切り替え"
 msgid "Type Parameter"
 msgstr "型パラメーター"
 
-msgid "Type contents are not shown: Git ignores this file, and the symbol index leaves ignored files out. Turn on the `symbol_index.include_ignored` setting to include them."
-msgstr "型の中身を表示できません: このファイルは Git の無視の対象で、シンボル索引は無視されたファイルを含めません。含めるには設定 `symbol_index.include_ignored` をオンにしてください。"
-
 msgid "Type contents are not shown: another window has this folder's symbol index open."
 msgstr "型の中身を表示できません: このフォルダーのシンボル索引を別のウィンドウが使用中です。"
 
@@ -496,9 +499,6 @@ msgstr "型の中身を表示できません: 共有されたプロジェクト�
 
 msgid "Type contents are not shown: the symbol index is off (the `symbol_index.enabled` setting)."
 msgstr "型の中身を表示できません: シンボル索引がオフです (設定 `symbol_index.enabled`)。"
-
-msgid "Type contents are shown for files in an open folder. Open the folder that holds this file to see them."
-msgstr "型の中身は、開いているフォルダーの中のファイルで表示されます。このファイルを含むフォルダーを開くと表示されます。"
 
 msgid "Type contents: the symbol index is still being built. Hover again in a moment."
 msgstr "型の中身: シンボル索引を作成中です。しばらくしてからもう一度ホバーしてください。"
