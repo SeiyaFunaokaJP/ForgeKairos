@@ -152,6 +152,17 @@ impl RenderOnce for StringListEditor {
             })
             .collect();
         let texts: Rc<[String]> = self.entries.iter().cloned().collect();
+        // What the add field last refused; the field clears itself on Enter, so
+        // the line below it names the entry. It goes once the entry does.
+        let add_duplicate = window.use_keyed_state(
+            ElementId::Name(format!("{}-add-duplicate", self.id).into()),
+            cx,
+            |_, _| None::<String>,
+        );
+        let add_duplicate_shown = add_duplicate
+            .read(cx)
+            .clone()
+            .filter(|duplicate| texts.contains(duplicate));
         // An entry that was removed or changed in the file meanwhile has
         // nothing left to edit.
         let edited_entry = entry.filter(|entry| on_replace.is_some() && entries.contains(entry));
@@ -208,17 +219,7 @@ impl RenderOnce for StringListEditor {
                         .gap_0p5()
                         .child(field)
                         .when_some(duplicate.clone(), |this, duplicate| {
-                            let selector = format!("{id}-duplicate");
-                            this.child(
-                                div().debug_selector(move || selector).child(
-                                    Label::new(i18n::t!(
-                                        "{entry} is already in the list.",
-                                        entry = duplicate.as_str()
-                                    ))
-                                    .size(LabelSize::Small)
-                                    .color(Color::Error),
-                                ),
-                            )
+                            this.child(duplicate_label(format!("{id}-duplicate"), &duplicate))
                         })
                         .into_any_element();
                 }
@@ -293,12 +294,36 @@ impl RenderOnce for StringListEditor {
                     .clear_on_confirm()
                     .clear_on_escape()
                     .on_confirm(move |text, window, cx| {
-                        if let Some(text) = text {
+                        let duplicate = text
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|text| texts.iter().any(|entry| entry == text))
+                            .map(str::to_string);
+                        let is_duplicate = duplicate.is_some();
+                        add_duplicate.update(cx, |state, cx| {
+                            *state = duplicate;
+                            cx.notify();
+                        });
+                        if !is_duplicate && let Some(text) = text {
                             on_add(text, window, cx);
                         }
                     }),
             )
+            .when_some(add_duplicate_shown, |this, duplicate| {
+                this.child(duplicate_label(
+                    format!("{}-add-duplicate", self.id),
+                    &duplicate,
+                ))
+            })
     }
+}
+
+fn duplicate_label(selector: String, entry: &str) -> impl IntoElement {
+    div().debug_selector(move || selector).child(
+        Label::new(i18n::t!("{entry} is already in the list."))
+            .size(LabelSize::Small)
+            .color(Color::Error),
+    )
 }
 
 fn start_editing(in_place_edit: &Entity<InPlaceEdit>, entry: EditedEntry, cx: &mut App) {
@@ -490,6 +515,29 @@ mod tests {
         });
         cx.simulate_keystrokes("enter");
         assert_eq!(calls.borrow().added, ["likely"]);
+    }
+
+    #[gpui::test]
+    fn adding_an_entry_already_in_the_list_says_so(cx: &mut TestAppContext) {
+        let (calls, editors, cx) = list_in_window(cx);
+        let add_field = editor_at(&editors, 0);
+        cx.update(|window, cx| window.focus(&add_field.focus_handle(cx), cx));
+        add_field.update_in(cx, |editor, window, cx| {
+            editor.set_text(" assert ", window, cx)
+        });
+        cx.simulate_keystrokes("enter");
+        assert!(calls.borrow().added.is_empty());
+        assert!(
+            cx.debug_bounds("list-add-duplicate").is_some(),
+            "no reason shown for the refused entry"
+        );
+
+        add_field.update_in(cx, |editor, window, cx| {
+            editor.set_text("trace", window, cx)
+        });
+        cx.simulate_keystrokes("enter");
+        assert_eq!(calls.borrow().added, ["trace"]);
+        assert!(cx.debug_bounds("list-add-duplicate").is_none());
     }
 
     #[gpui::test]
