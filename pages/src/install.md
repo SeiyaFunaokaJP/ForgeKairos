@@ -32,10 +32,11 @@ Only releases are considered by default. To be offered pre-releases too, turn on
 (`"auto_update_include_prereleases": true`). Among the releases it considers, ForgeKairos
 picks the one with the highest version in its tag, not the most recently published one.
 
-An update is downloaded only from this repository's release downloads, and is installed
-only if its size and SHA-256 digest match what GitHub reports for it. When the check fails
-(GitHub cannot be reached, there is no release or no installer for this system, or the
-download does not match), ForgeKairos says so instead of reporting that it is up to date.
+An update is downloaded only from this repository's release downloads. When GitHub lists
+a SHA-256 digest for the installer, an installer that does not match it is not installed.
+When the check fails (GitHub cannot be reached, or the download does not match),
+ForgeKairos says so instead of reporting that it is up to date. A release without an
+installer for this system is skipped, as if there were no newer version.
 
 ## Moving from Zed-JP-Enhance
 

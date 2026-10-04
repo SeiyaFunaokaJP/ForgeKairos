@@ -80,8 +80,9 @@ cargo run -p i18n_tool -- <command> ...
 - `check` compares the code with `locales/<tag>/*.po` (`--lang <tag>`, `--crate <name>`)
   and lists messages a crate's file lacks, entries its code no longer uses, placeholder
   and plural mistakes, messages two files translate differently, entries out of order and
-  CR line endings. All but the unused entries make it exit with 1, so `check --crate <name>`
-  can gate a change to one crate; with `--strict`, unused entries do too. The `_` files are only checked for mistakes, not for missing entries,
+  CR line endings. All but the unused entries (and the changed ones below) make it exit
+  with 1, so `check --crate <name>` can gate a change to one crate; with `--strict`, those
+  do too. The `_` files are only checked for mistakes, not for missing entries,
   except for the two below when their input is given. Messages are the literals of the
   macros and of direct calls of `i18n::tr`, `i18n::tr_ctx` and `i18n::tr_ctx_opt`.
   - `--actions <file>` takes the output of `zed --dump-all-actions` and compares

@@ -30,8 +30,10 @@ A provider you added can be edited or removed later with the pencil and trash bu
 its header in Settings → AI → LLM Providers.
 
 - Editing leaves the API key field empty; an empty field keeps the saved key. Changing the
-  API URL asks for the key again, so a saved key is never sent to another URL. A new host
-  asks for consent again.
+  API URL asks for the key again, so a saved key is never sent to another URL, and removes
+  the key saved for the old URL from the system keychain. Turning on **Connect without an
+  API key** removes the saved key too. Neither removes a key that another provider with the
+  same URL uses. A new host asks for consent again.
 - Renaming the provider moves the agent settings that name it, and its consent, to the new
   name. Saved threads keep the old name.
 - Removing asks first and lists what goes: the settings entry, the saved API key (kept when
