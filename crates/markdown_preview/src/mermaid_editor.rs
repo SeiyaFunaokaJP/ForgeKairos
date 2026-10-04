@@ -3739,6 +3739,19 @@ impl Focusable for MermaidEditor {
 
 impl EventEmitter<MermaidEditorEvent> for MermaidEditor {}
 
+impl MermaidEditor {
+    fn document_file_name(&self, cx: &App) -> String {
+        self.editor
+            .upgrade()
+            .and_then(|editor| {
+                let buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
+                let file = buffer.read(cx).file()?;
+                Some(file.file_name(cx).to_string())
+            })
+            .unwrap_or_else(|| i18n::t!("Untitled").to_string())
+    }
+}
+
 /// Not a `SerializableItem`: the tab is tied to a position in a buffer, which
 /// a restart does not bring back, and to an editor that the restored
 /// workspace builds anew.
@@ -3746,15 +3759,7 @@ impl Item for MermaidEditor {
     type Event = MermaidEditorEvent;
 
     fn tab_content_text(&self, _detail: usize, cx: &App) -> SharedString {
-        let file = self
-            .editor
-            .upgrade()
-            .and_then(|editor| {
-                let buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
-                let file = buffer.read(cx).file()?;
-                Some(file.file_name(cx).to_string())
-            })
-            .unwrap_or_else(|| i18n::t!("Untitled").to_string());
+        let file = self.document_file_name(cx);
         match self.kind {
             Some(kind) => {
                 let kind = kind.label();
@@ -3802,6 +3807,19 @@ impl Item for MermaidEditor {
 
     fn is_dirty(&self, _cx: &App) -> bool {
         self.dirty
+    }
+
+    fn unsaved_edits_prompt(&self, cx: &App) -> Option<String> {
+        let file = self.document_file_name(cx);
+        Some(match self.kind {
+            Some(kind) => {
+                let kind = kind.label();
+                i18n::t!("The {kind} in \"{file}\" has unsaved edits. Do you want to save them?")
+            }
+            None => i18n::t!(
+                "The new Mermaid diagram in \"{file}\" has unsaved edits. Do you want to save it?"
+            ),
+        })
     }
 
     // A pane only asks before closing a tab that holds no project file when

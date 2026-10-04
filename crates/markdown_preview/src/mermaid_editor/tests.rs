@@ -2169,7 +2169,13 @@ mod in_the_workspace {
 
         let closing = close(cx);
         cx.run_until_parked();
-        assert!(cx.has_pending_prompt(), "closing should ask what to do");
+        let Some((message, _)) = cx.pending_prompt() else {
+            panic!("closing should ask what to do");
+        };
+        assert_eq!(
+            message, "The Flowchart in \"doc.md\" has unsaved edits. Do you want to save them?",
+            "the question should name the diagram and its document"
+        );
         cx.simulate_prompt_answer("Cancel");
         cx.run_until_parked();
         closing.await.log_err();

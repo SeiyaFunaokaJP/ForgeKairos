@@ -1461,6 +1461,9 @@ msgstr "メンバー「{member}」は使えません (`}}` で始まる行、`%%
 msgid "The member \"{text}\" is not valid (no leading or trailing whitespace, no `%%{{`, and not a line of only `}}`)."
 msgstr "メンバー「{text}」は使えません (前後の空白、`%%{{` と `}}` だけの行は不可)。"
 
+msgid "The new Mermaid diagram in \"{file}\" has unsaved edits. Do you want to save it?"
+msgstr "「{file}」の新しい Mermaid 図に保存されていない変更があります。保存しますか?"
+
 msgid "The note text cannot contain `\"`, `%%{{` or line breaks."
 msgstr "ノートの本文に `\"`・`%%{{` と改行は使えません。"
 
@@ -1518,6 +1521,9 @@ msgstr "Markdown のあるワークツリーが見つかりません。"
 
 msgid "The worktree that contains the Markdown file was closed."
 msgstr "Markdown のあるワークツリーが閉じられました。"
+
+msgid "The {kind} in \"{file}\" has unsaved edits. Do you want to save them?"
+msgstr "「{file}」の{kind}に保存されていない変更があります。保存しますか?"
 
 msgid "There is no pair of frames to add an arrow between. Add a frame first."
 msgstr "矢印を足せる組がありません。先にフレームを追加してください。"
