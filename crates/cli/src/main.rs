@@ -1266,7 +1266,17 @@ mod flatpak {
     fn restart_cli_args(flatpak_dir: &Path, invocation_args: &[OsString]) -> Vec<OsString> {
         let mut args = Vec::with_capacity(invocation_args.len() + 2);
 
-        if !invocation_args.iter().any(|arg| arg == "--zed") {
+        let product_option = format!("--{}", crate::CLI_NAME);
+        let names_the_editor = |arg: &OsString| {
+            let arg = arg.to_string_lossy();
+            ["--zed", product_option.as_str()].iter().any(|option| {
+                arg == *option
+                    || arg
+                        .strip_prefix(option)
+                        .is_some_and(|rest| rest.starts_with('='))
+            })
+        };
+        if !invocation_args.iter().any(names_the_editor) {
             // Positional paths consume all following arguments, so launcher options must precede them.
             args.push("--zed".into());
             args.push(
@@ -1389,11 +1399,17 @@ mod flatpak {
             );
             assert_eq!(parsed.paths_with_position, ["project"]);
 
-            let invocation_args = ["--zed".into(), "/custom/zed-editor".into()];
-            assert_eq!(
-                restart_cli_args(flatpak_dir, &invocation_args),
-                invocation_args
-            );
+            let product_option = format!("--{}", crate::CLI_NAME);
+            for invocation_args in [
+                vec!["--zed".into(), "/custom/zed-editor".into()],
+                vec![product_option.clone().into(), "/custom/zed-editor".into()],
+                vec![format!("{product_option}=/custom/zed-editor").into()],
+            ] {
+                let args = restart_cli_args(flatpak_dir, &invocation_args);
+                assert_eq!(args, invocation_args);
+                crate::Args::try_parse_from(std::iter::once(OsString::from("zed")).chain(args))
+                    .unwrap();
+            }
         }
     }
 }
