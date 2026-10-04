@@ -481,12 +481,15 @@ fn show_hover(
                 None
             };
 
-            let hovers_response = if let Some(hover_request) = hover_request {
-                hover_request.await.unwrap_or_default()
-            } else {
-                Vec::new()
-            };
-            let type_contents = type_contents.map(|query| query.finish(&hovers_response, cx));
+            let (hovers_response, late_hovers) =
+                crate::type_contents_hover::language_server_hovers(
+                    hover_request,
+                    type_contents.is_some(),
+                    cx,
+                )
+                .await;
+            let type_contents = type_contents
+                .map(|query| query.finish(&hovers_response, late_hovers.is_some(), cx));
             let snapshot = this.update_in(cx, |this, window, cx| this.snapshot(window, cx))?;
             let mut hover_highlights = Vec::with_capacity(hovers_response.len());
             let mut info_popovers = Vec::with_capacity(
@@ -642,6 +645,8 @@ fn show_hover(
             })?;
             crate::type_contents_hover::append_later(
                 type_contents_later,
+                late_hovers,
+                language_registry,
                 &this,
                 anchor,
                 ignore_timeout,
@@ -696,7 +701,7 @@ fn same_diagnostic_hover(editor: &Editor, snapshot: &EditorSnapshot, anchor: Anc
         .unwrap_or(false)
 }
 
-fn parse_blocks(
+pub(crate) fn parse_blocks(
     blocks: &[HoverBlock],
     language_registry: Option<&Arc<LanguageRegistry>>,
     language: Option<Arc<Language>>,

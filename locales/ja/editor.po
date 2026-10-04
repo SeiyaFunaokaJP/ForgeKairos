@@ -497,9 +497,6 @@ msgstr "型の中身を表示できません: シンボル索引でエラーが�
 msgid "Type contents are not shown: the symbol index is not available in a shared project."
 msgstr "型の中身を表示できません: 共有されたプロジェクトではシンボル索引を使えません。"
 
-msgid "Type contents are not shown: the symbol index is off (the `symbol_index.enabled` setting)."
-msgstr "型の中身を表示できません: シンボル索引がオフです (設定 `symbol_index.enabled`)。"
-
 msgid "Type contents: the symbol index is still being built. Hover again in a moment."
 msgstr "型の中身: シンボル索引を作成中です。しばらくしてからもう一度ホバーしてください。"
 

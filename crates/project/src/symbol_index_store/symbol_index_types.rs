@@ -1643,12 +1643,51 @@ impl SymbolIndexStore {
     }
 
     /// The index made for a hover, when `path` is one of its files.
-    fn scratch_for(&self, path: &ProjectPath) -> Option<Arc<ScratchIndex>> {
-        self.scratch.clone().filter(|scratch| scratch.covers(path))
+    ///
+    /// Only for a file the worktree's index leaves out: the index made for the hover also holds
+    /// the headers that file includes, which the worktree's index may know too, as they are now
+    /// and with the whole worktree around them, long after the hover.
+    fn scratch_for(&self, path: &ProjectPath, cx: &App) -> Option<Arc<ScratchIndex>> {
+        self.scratch
+            .clone()
+            .filter(|scratch| scratch.covers(path) && self.leaves_out(path, cx))
+    }
+
+    /// Whether the worktree's index leaves `path` out for being in a worktree of a single file
+    /// or outside the project's folders, or for Git ignoring it.
+    fn leaves_out(&self, path: &ProjectPath, cx: &App) -> bool {
+        let Some(worktree) = self
+            .worktree_store
+            .read(cx)
+            .worktree_for_id(path.worktree_id, cx)
+        else {
+            return false;
+        };
+        let worktree = worktree.read(cx);
+        if worktree.is_single_file() || !worktree.is_visible() {
+            return true;
+        }
+        let include_ignored = ProjectSettings::get(
+            Some(SettingsLocation {
+                worktree_id: path.worktree_id,
+                path: RelPath::empty(),
+            }),
+            cx,
+        )
+        .symbol_index
+        .include_ignored;
+        !include_ignored
+            && worktree
+                .entry_for_path(&path.path)
+                .is_some_and(|entry| entry.is_ignored)
     }
 
     fn is_scratch_result_shown(&self, path: &ProjectPath, cx: &App) -> bool {
-        if self.scratch_for(path).is_none() {
+        if !self
+            .scratch
+            .as_ref()
+            .is_some_and(|scratch| scratch.covers(path))
+        {
             return false;
         }
         let settings = WorktreeSettings::get(
@@ -1741,7 +1780,7 @@ impl SymbolIndexStore {
     ) -> Task<Result<ResolvedTypes>> {
         let read_limit = clamp_read_limit(limit);
         if let Some(near) = &near
-            && let Some(scratch) = self.scratch_for(near)
+            && let Some(scratch) = self.scratch_for(near, cx)
         {
             let near = near.clone();
             let name = name.to_string();
@@ -1851,7 +1890,7 @@ impl SymbolIndexStore {
         cx: &mut Context<Self>,
     ) -> Task<Result<MemberExpansion>> {
         let read_limit = clamp_read_limit(limit);
-        if let Some(scratch) = self.scratch_for(&owner.path) {
+        if let Some(scratch) = self.scratch_for(&owner.path, cx) {
             let lookup = cx.background_spawn(async move {
                 expand_in(&scratch.environment(), &owner, &member, read_limit)
             });
@@ -1929,9 +1968,9 @@ impl SymbolIndexStore {
     ) -> Task<Result<Option<TypeTreeText>>> {
         let options = options.clamped();
         let scratch = match &subject {
-            TypeTreeSubject::Ref(type_ref) => self.scratch_for(&type_ref.path),
+            TypeTreeSubject::Ref(type_ref) => self.scratch_for(&type_ref.path, cx),
             TypeTreeSubject::Name { near, .. } => {
-                near.as_ref().and_then(|near| self.scratch_for(near))
+                near.as_ref().and_then(|near| self.scratch_for(near, cx))
             }
         };
         if let Some(scratch) = scratch {
