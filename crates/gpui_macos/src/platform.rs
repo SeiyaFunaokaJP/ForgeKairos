@@ -842,13 +842,7 @@ impl Platform for MacPlatform {
         self.foreground_executor()
             .spawn(async move {
                 unsafe {
-                    begin_save_panel(
-                        marker,
-                        &directory,
-                        suggested_name.as_deref(),
-                        None,
-                        done_tx,
-                    )
+                    begin_save_panel(marker, &directory, suggested_name.as_deref(), None, done_tx)
                 };
             })
             .detach();
