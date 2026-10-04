@@ -1346,6 +1346,9 @@ fn compatible_provider_origin(name: &str, cx: &App) -> Option<CompatibleProvider
 /// system keychain holds for it: another compatible provider, a built-in one,
 /// or an edit prediction provider.
 fn api_url_is_shared(api_url: &str, excluding: &str, cx: &App) -> bool {
+    // The Windows credential manager matches target names regardless of case,
+    // so URLs differing only in case read the same key there.
+    let same_key = |url: &str| url.eq_ignore_ascii_case(api_url);
     let merged = cx.global::<SettingsStore>().merged_settings();
     let used_by_compatible = merged
         .language_models
@@ -1356,13 +1359,13 @@ fn api_url_is_shared(api_url: &str, excluding: &str, cx: &App) -> bool {
                 .iter()
                 .flatten()
                 .filter(|(name, _)| name.as_ref() != excluding)
-                .any(|(_, entry)| entry.api_url == api_url);
+                .any(|(_, entry)| same_key(&entry.api_url));
             let anthropic = language_models
                 .anthropic_compatible
                 .iter()
                 .flatten()
                 .filter(|(name, _)| name.as_ref() != excluding)
-                .any(|(_, entry)| entry.api_url == api_url);
+                .any(|(_, entry)| same_key(&entry.api_url));
             openai || anthropic
         });
     // Edit prediction keeps its Codestral and OpenAI-compatible keys in the same
@@ -1372,12 +1375,12 @@ fn api_url_is_shared(api_url: &str, excluding: &str, cx: &App) -> bool {
         edit_prediction::open_ai_compatible::open_ai_compatible_api_url(cx),
     ]
     .iter()
-    .any(|url| url.as_ref() == api_url);
+    .any(|url| same_key(url.as_ref()));
     used_by_compatible
         || used_by_edit_prediction
         || external_ai_consent::builtin_provider_api_urls(cx)
             .iter()
-            .any(|url| url == api_url)
+            .any(|url| same_key(url))
 }
 
 /// Points every model choice in the agent settings that names `provider` at
@@ -4137,6 +4140,125 @@ mod provider_edit_tests {
             credentials.keys(),
             HashMap::new(),
             "a key-less provider leaves no key behind in the keychain"
+        );
+    }
+
+    #[gpui::test]
+    async fn renaming_to_no_key_deletes_the_saved_key(cx: &mut TestAppContext) {
+        let (_, credentials) = init_test(
+            cx,
+            json!({ "language_models": { "openai_compatible": { "Corp": {
+                "api_url": "http://localhost:8000/v1",
+                "available_models": [{ "name": "big", "max_tokens": 1000 }]
+            } } } }),
+        )
+        .await;
+        credentials
+            .0
+            .lock()
+            .expect("credentials lock")
+            .insert("http://localhost:8000/v1".into(), b"saved".to_vec());
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, window, cx| {
+            set_text(&form.provider_name, "Corp LLM", window, cx);
+            form.no_api_key = true;
+        });
+        assert_eq!(save(&settings_window, cx), None);
+        assert_eq!(
+            credentials.keys(),
+            HashMap::new(),
+            "the provider under its old name does not count as another user of the key"
+        );
+    }
+
+    #[gpui::test]
+    async fn switching_to_no_key_keeps_a_key_another_provider_reads(cx: &mut TestAppContext) {
+        let (fs, credentials) = init_test(
+            cx,
+            json!({ "language_models": { "openai_compatible": {
+                "Corp": {
+                    "api_url": "http://localhost:8000/v1",
+                    "available_models": [{ "name": "big", "max_tokens": 1000 }]
+                },
+                // The Windows credential manager reads the same key for this URL.
+                "Team": {
+                    "api_url": "http://LOCALHOST:8000/v1",
+                    "available_models": [{ "name": "small", "max_tokens": 1000 }]
+                }
+            } } }),
+        )
+        .await;
+        credentials
+            .0
+            .lock()
+            .expect("credentials lock")
+            .insert("http://localhost:8000/v1".into(), b"shared".to_vec());
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, _, _| {
+            form.no_api_key = true;
+        });
+        assert_eq!(save(&settings_window, cx), None);
+        assert_eq!(
+            user_file(&fs).await["language_models"]["openai_compatible"]["Corp"]["no_api_key"],
+            json!(true)
+        );
+        assert_eq!(
+            credentials
+                .keys()
+                .get("http://localhost:8000/v1")
+                .map(String::as_str),
+            Some("shared")
+        );
+    }
+
+    #[gpui::test]
+    async fn a_save_that_fails_leaves_the_saved_key(cx: &mut TestAppContext) {
+        let (fs, credentials) = init_test(
+            cx,
+            json!({ "language_models": { "openai_compatible": { "Corp": {
+                "api_url": "http://localhost:8000/v1",
+                "available_models": [{ "name": "big", "max_tokens": 1000 }]
+            } } } }),
+        )
+        .await;
+        credentials
+            .0
+            .lock()
+            .expect("credentials lock")
+            .insert("http://localhost:8000/v1".into(), b"saved".to_vec());
+        let (settings_window, cx) = open_settings_window(cx);
+
+        edit_form(&settings_window, "Corp", cx, |form, _, _| {
+            form.no_api_key = true;
+        });
+        // Something else removes the provider while the form is open, so the
+        // edit has nothing to write to.
+        cx.update(|_, cx| {
+            settings::update_settings_file(<dyn fs::Fs>::global(cx), cx, |settings, _| {
+                if let Some(providers) = settings
+                    .language_models
+                    .as_mut()
+                    .and_then(|models| models.openai_compatible.as_mut())
+                {
+                    providers.remove("Corp");
+                }
+            });
+        });
+        cx.run_until_parked();
+        assert!(save(&settings_window, cx).is_some(), "the save is refused");
+        assert_eq!(
+            user_file(&fs).await["language_models"]["openai_compatible"].get("Corp"),
+            None
+        );
+        assert_eq!(
+            credentials
+                .keys()
+                .get("http://localhost:8000/v1")
+                .map(String::as_str),
+            Some("saved"),
+            "nothing was saved, so nothing is deleted"
         );
     }
 
