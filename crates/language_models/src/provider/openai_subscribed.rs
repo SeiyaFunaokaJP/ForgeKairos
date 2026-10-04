@@ -114,7 +114,7 @@ impl LanguageModelProvider for OpenAiSubscribedProvider {
         let title = if is_authenticated {
             None
         } else {
-            Some("Configure ChatGPT".into())
+            Some(i18n::t!("Configure ChatGPT").into())
         };
         let description = if is_authenticated {
             None
@@ -179,8 +179,8 @@ impl Render for ConfigurationView {
         if state.is_authenticated() {
             let label = state
                 .email()
-                .map(|e| format!("Signed in as {e}"))
-                .unwrap_or_else(|| "Signed in".to_string());
+                .map(|email| i18n::t!("Signed in as {email}", email = email))
+                .unwrap_or_else(|| i18n::t!("Signed in").to_string());
             let model_catalog_error = state.model_catalog_error();
 
             let state_entity = self.state.clone();

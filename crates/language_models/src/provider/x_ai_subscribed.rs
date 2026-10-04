@@ -111,7 +111,7 @@ impl LanguageModelProvider for XAiSubscribedProvider {
         let title = if is_authenticated {
             None
         } else {
-            Some("Configure SuperGrok".into())
+            Some(i18n::t!("Configure SuperGrok").into())
         };
         let description = if is_authenticated {
             None
@@ -166,8 +166,8 @@ impl Render for ConfigurationView {
         if state.is_authenticated() {
             let label = state
                 .email()
-                .map(|email| format!("Signed in as {email}"))
-                .unwrap_or_else(|| "Signed in".to_string());
+                .map(|email| i18n::t!("Signed in as {email}", email = email))
+                .unwrap_or_else(|| i18n::t!("Signed in").to_string());
             let state_entity = self.state.clone();
 
             return v_flex()

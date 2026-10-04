@@ -65,8 +65,14 @@ msgstr "下の「接続」をクリックすると、ForgeKairos で Ollama を�
 msgid "Click 'Connect' below to start using llama.cpp in Zed"
 msgstr "下の「接続」をクリックすると、ForgeKairos で llama.cpp を使い始められます"
 
+msgid "Configure ChatGPT"
+msgstr "ChatGPT を設定"
+
 msgid "Configure Copilot Chat"
 msgstr "Copilot Chat を設定"
+
+msgid "Configure SuperGrok"
+msgstr "SuperGrok を設定"
 
 msgid "Connect"
 msgstr "接続"
@@ -232,6 +238,12 @@ msgstr "ChatGPT Plus / Pro のサブスクリプションでサインインす�
 
 msgid "Sign in with your SuperGrok subscription to use Grok models in Zed's agent."
 msgstr "SuperGrok のサブスクリプションでサインインすると、ForgeKairos のエージェントで Grok のモデルを使えます。"
+
+msgid "Signed in"
+msgstr "サインイン済み"
+
+msgid "Signed in as {email}"
+msgstr "{email} としてサインイン済み"
 
 msgid "Signing in…"
 msgstr "サインインしています…"
