@@ -64,6 +64,13 @@ release ビルドは stable チャンネルのデータフォルダー (イン�
 リリースのタグ。更新の確認が比べる)、`-ClangFormatPath` などがある。Visual Studio 2022 とネットワーク (ConPTY、
 AMD GPU Services のライブラリ、`slirp4netns`、無ければ zig を取ってくる) が要る。
 
+```powershell
+pwsh -NoProfile -File script\bundle-windows.ps1
+```
+
+PowerShell 7 (`pwsh`。`winget install Microsoft.PowerShell`) が要る。Windows PowerShell 5.1 (`powershell`)
+から起動すると同じオプションのまま `pwsh` で起動し直し、`pwsh` が入っていなければ説明を出して止まる。
+
 ## 確認
 
 upstream の規約は引き続き守る: `cargo clippy` ではなく `./script/clippy` を使う。翻訳の確認は

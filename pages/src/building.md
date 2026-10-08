@@ -70,6 +70,14 @@ the build is published under, which the update check compares with) and `-ClangF
 It needs Visual Studio 2022 and network access (it downloads ConPTY, the AMD GPU Services
 library, `slirp4netns` and, when missing, zig).
 
+```powershell
+pwsh -NoProfile -File script\bundle-windows.ps1
+```
+
+It needs PowerShell 7 (`pwsh`, `winget install Microsoft.PowerShell`). Started from Windows
+PowerShell 5.1 (`powershell`), it runs itself again under `pwsh` with the same options, and
+stops with an explanation when `pwsh` is not installed.
+
 ## Checks
 
 The upstream rules still apply: use `./script/clippy` rather than `cargo clippy`. For

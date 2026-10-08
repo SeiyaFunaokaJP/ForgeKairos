@@ -69,7 +69,7 @@ ForgeKairos は [Zed](https://zed.dev) のフォーク (upstream のリリース
 powershell -NoProfile -File script\build.ps1            # debug ビルド: ForgeKairos.exe / forgekairos-cli.exe / remote_server 同梱物
 powershell -NoProfile -File script\build.ps1 -Run       # ビルド後そのまま起動
 powershell -NoProfile -File script\build.ps1 -Release   # release ビルド (target\release)
-powershell -NoProfile -File script\bundle-windows.ps1   # インストーラー (Inno Setup 6 が要る)
+pwsh -NoProfile -File script\bundle-windows.ps1         # インストーラー (Inno Setup 6 と PowerShell 7 が要る)
 ```
 
 スクリプトは CMake (VS 同梱) の PATH 補完、ディスク残量チェック、SSH リモート用
