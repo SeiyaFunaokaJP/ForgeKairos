@@ -548,6 +548,14 @@ impl Telemetry {
         Ok(())
     }
 
+    /// `report_event` drops every event while metrics are off, which no setting
+    /// can turn on in this build (`TELEMETRY_OFFERED`); tests of the queue turn
+    /// them on in the state directly so that they still assert something.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn enable_metrics_for_tests(&self) {
+        self.state.lock().settings.metrics = true;
+    }
+
     /// Returns a snapshot of the currently queued (not-yet-flushed) telemetry
     /// events, for use in tests.
     #[cfg(any(test, feature = "test-support"))]
@@ -760,7 +768,7 @@ mod tests {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
 
             telemetry.state.lock().max_queue_size = 4;
-            enable_metrics_in_state(&telemetry);
+            telemetry.enable_metrics_for_tests();
             telemetry.start(system_id, installation_id, session_id, cx);
 
             assert!(is_empty_state(&telemetry));
@@ -837,7 +845,7 @@ mod tests {
         cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
             telemetry.state.lock().max_queue_size = 4;
-            enable_metrics_in_state(&telemetry);
+            telemetry.enable_metrics_for_tests();
             telemetry.start(system_id, installation_id, session_id, cx);
 
             assert!(is_empty_state(&telemetry));
@@ -883,7 +891,7 @@ mod tests {
 
         let telemetry = cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
-            enable_metrics_in_state(&telemetry);
+            telemetry.enable_metrics_for_tests();
             telemetry.start(
                 Some("system_id".to_string()),
                 Some("installation_id".to_string()),
@@ -1138,13 +1146,6 @@ mod tests {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
         });
-    }
-
-    /// `report_event` drops every event while metrics are off, which no setting
-    /// can turn on in this build (`TELEMETRY_OFFERED`); the queueing tests turn
-    /// them on in the state directly so that they still assert something.
-    fn enable_metrics_in_state(telemetry: &Telemetry) {
-        telemetry.state.lock().settings.metrics = true;
     }
 
     fn is_empty_state(telemetry: &Telemetry) -> bool {

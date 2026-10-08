@@ -530,6 +530,10 @@ async fn test_remote_telemetry_event_forwarding(
         })
         .detach();
 
+    project.read_with(cx, |project, _| {
+        project.client().telemetry().enable_metrics_for_tests()
+    });
+
     // The remote server forwards a bare `FlexibleEvent` as JSON; mirror that
     // here by sending the proto message the forwarding task would send.
     let event_json = json!({
