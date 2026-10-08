@@ -13,6 +13,34 @@ Param(
     [Parameter()][string]$ClangFormatPath = ""
 )
 
+# Windows PowerShell 5.1 cannot parse the scripts this one dot-sources
+# (generate-licenses.ps1 uses the ternary operator) and reads BOM-less UTF-8
+# as the ANSI code page, so `powershell -File` used to fail halfway through
+# the bundle. Hand the same arguments to PowerShell 7 instead.
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    $pwsh = Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $pwsh) {
+        Write-Error "This script needs PowerShell 7 (pwsh), but it is running on Windows PowerShell $($PSVersionTable.PSVersion) and pwsh was not found on PATH. Install it with 'winget install Microsoft.PowerShell' and run 'pwsh -NoProfile -File script\bundle-windows.ps1'."
+        exit 1
+    }
+    $forwardedArguments = @('-NoProfile', '-File', $PSCommandPath)
+    foreach ($parameter in $PSBoundParameters.GetEnumerator()) {
+        if ($parameter.Value -is [System.Management.Automation.SwitchParameter]) {
+            if ($parameter.Value.IsPresent) {
+                $forwardedArguments += "-$($parameter.Key)"
+            }
+        } elseif ([string]$parameter.Value -ne '') {
+            # Windows PowerShell drops empty strings when calling native commands,
+            # which would make the next argument the value; the defaults are empty anyway.
+            $forwardedArguments += "-$($parameter.Key)"
+            $forwardedArguments += [string]$parameter.Value
+        }
+    }
+    Write-Host "Windows PowerShell $($PSVersionTable.PSVersion) detected; rerunning with $($pwsh.Source)"
+    & $pwsh.Source @forwardedArguments
+    exit $LASTEXITCODE
+}
+
 . "$PSScriptRoot/lib/workspace.ps1"
 . "$PSScriptRoot/lib/remote-artifacts.ps1"
 
