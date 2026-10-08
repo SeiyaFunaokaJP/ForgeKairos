@@ -1,0 +1,17 @@
+#!/bin/sh
+# Makes ForgeKairos's release packages; see script/bundle.ps1 (-Help) for the options.
+
+set -eu
+
+if ! command -v pwsh >/dev/null 2>&1; then
+    cat >&2 <<'EOF'
+script/bundle runs script/bundle.ps1, which needs PowerShell 7 (pwsh):
+  macOS:          brew install powershell
+  Ubuntu/Debian:  https://learn.microsoft.com/powershell/scripting/install/install-ubuntu
+  other Linux:    https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-linux
+Or run script/bundle-linux or script/bundle-mac directly.
+EOF
+    exit 1
+fi
+
+exec pwsh -NoProfile -File "$(dirname "$0")/bundle.ps1" "$@"

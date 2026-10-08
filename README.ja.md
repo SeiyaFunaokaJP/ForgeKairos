@@ -77,6 +77,7 @@ pwsh -NoProfile -File script\bundle-windows.ps1 -Fast   # 手元で試す用の�
 remote_server (musl) のクロスビルドと同梱配置 (zig を winget で自動調達) まで行う。
 並列度は既定で `-j 8` (無制限並列は rustc がメモリ枯渇で落ちる。`-Jobs` で変えられる)。
 ディスクが埋まったら `-FreeDisk` スイッチ。オプションの一覧は [Windows でのビルド](pages/src/ja/building.md)。
+Linux と macOS のパッケージは `pwsh script/bundle.ps1 -Os linux|macos|all` で作る (Linux は WSL の Docker、macOS は GitHub Actions。[ほかの OS](pages/src/ja/building.md#ほかの-os))。
 
 ## 起動
 

@@ -82,6 +82,74 @@ pwsh -NoProfile -File script\bundle-windows.ps1
 PowerShell 7 (`pwsh`。`winget install Microsoft.PowerShell`) が要る。Windows PowerShell 5.1 (`powershell`)
 から起動すると同じオプションのまま `pwsh` で起動し直し、`pwsh` が入っていなければ説明を出して止まる。
 
+## ほかの OS
+
+`script/bundle.ps1` (PowerShell 7。Linux と macOS では `pwsh` で起動する `script/bundle` も使える) は、どの OS の
+パッケージも 1 つのコマンドで作る。`-Os` で選ぶ: `windows`、`linux`、`macos`、`all`。省くと動いている OS。
+
+```powershell
+pwsh -NoProfile -File script/bundle.ps1 -Os windows    # script\bundle-windows.ps1 (上を参照)
+pwsh -NoProfile -File script/bundle.ps1 -Os linux      # Windows では WSL の Docker の中で
+pwsh -NoProfile -File script/bundle.ps1 -Os macos -Wait
+pwsh -NoProfile -File script/bundle.ps1 -Os all -DryRun
+```
+
+| 作る OS | Windows で | Linux で | macOS で |
+|---|---|---|---|
+| Windows | `script\bundle-windows.ps1` | ワークフロー (`-Os all` か `-Ci` のときだけ) | ワークフロー (`-Os all` か `-Ci` のときだけ) |
+| Linux | WSL の Docker のコンテナーで `script/bundle-linux` | `script/bundle-linux` (`-Container` でコンテナー) | ワークフロー。`-Container` なら手元の Docker のコンテナー |
+| macOS | ワークフロー | ワークフロー | `script/bundle-mac` |
+
+パッケージは `target` に、更新の確認が探す名前でできる: `forgekairos-windows-x86_64-setup.exe`、
+`forgekairos-linux-x86_64.tar.gz`、`forgekairos-macos-aarch64.dmg`、`forgekairos-macos-x86_64.dmg`。リモート
+サーバーは `zed-remote-server-linux-x86_64.gz` と `zed-remote-server-macos-<arch>.gz`。
+
+オプション: `-Architecture` (`x86_64` か `aarch64`。既定はこの機械)、`-ReleaseTag` (インストーラーと同じ)、
+`-Jobs <n>` (cargo の `-j`)、`-Ci` (すべてワークフローで作る)、`-Wait` (ワークフローの終わりを待ち、できたものを
+`target/ci-<実行の ID>/` に落とす)、`-Ref` (ワークフローがビルドするブランチかタグ。既定は今のブランチ)、
+`-DryRun` (実行せずにコマンドを表示する)。Windows 用の `-Fast`、`-Install`、`-ClangFormatPath` は
+`script\bundle-windows.ps1` に渡す。
+
+### Linux
+
+Linux では先に `script/linux` でビルドに要るものを入れる。パッケージはその機械の glibc にリンクし、同じか新しい
+版の glibc でだけ動く。Windows では WSL の Docker (`wsl.exe -e docker`) の `ubuntu:22.04` のコンテナー
+(glibc 2.35) でビルドするので、Ubuntu 22.04、Debian 12 とそれ以降で動く。イメージは `script/linux` で依存を、
+`rust-toolchain.toml` のツールチェーンを入れる。`-LinuxImage` で別のベースイメージを、`-Container` で Linux の
+機械でもコンテナーを使う。
+
+作業ツリーをコンテナーにマウントするので、ビルドは手元の作業ツリー (コミットしていない変更も含む) から作る。cargo
+のレジストリと target フォルダーは `target` の下ではなく、WSL の中の Docker のボリューム
+`forgekairos-bundle-cargo-ubuntu-22.04` と `forgekairos-bundle-target-ubuntu-22.04` に置く (target は数十 GB に
+なる)。空けるには `wsl.exe -e docker volume rm` で消す。初回はイメージとすべての依存をビルドする。2 回目からは変わった
+ところだけをビルドし直す。
+
+### macOS
+
+macOS のパッケージは Mac (Xcode、`script/bundle-mac`) で作るか、下の GitHub Actions のワークフローで作る。
+ほかの OS では `script/bundle.ps1 -Os macos` が GitHub CLI (`gh workflow run`。先に `gh auth login`) で
+ワークフローを起動する。ワークフローは GitHub にある状態のブランチをビルドするので、先にプッシュする。署名の
+シークレットが無ければアプリはアドホック署名になり、ダウンロードしたアプリを macOS は初回は開かない: システム設定の
+「プライバシーとセキュリティ」の「このまま開く」で許可するか、
+`xattr -dr com.apple.quarantine /Applications/ForgeKairos.app` で隔離の印を外す。リポジトリにシークレット
+`MACOS_SIGNING_IDENTITY`、`MACOS_CERTIFICATE`、`MACOS_CERTIFICATE_PASSWORD`、`APPLE_NOTARIZATION_KEY`、
+`APPLE_NOTARIZATION_KEY_ID`、`APPLE_NOTARIZATION_ISSUER_ID` を設定すると、その Developer ID で署名し、
+公証 (notarization) も行う。
+
+### リリースのワークフロー
+
+`.github/workflows/forgekairos_release.yml` は GitHub のホストするランナーでビルドする: Windows x86_64 は
+`windows-2022`、Linux x86_64 は `ubuntu-22.04`、macOS の aarch64 と x86_64 は `macos-14` (x86_64 はクロス
+コンパイル)。各ジョブは `script/bundle.ps1 -Os <OS>` を実行し、パッケージをファイル名と同じ名前の
+アーティファクトとして上げる。動くのは、起動したとき (Actions のタブから入力 `os`、`macos_arch`、
+`release_tag` を付けて、または `script/bundle.ps1` から) と、`v*` のタグをプッシュしたときだけ。タグのときは
+最後のジョブがすべてのパッケージを付けた下書きの GitHub リリースを作る (確かめてから公開する)。
+
+リポジトリは非公開なので、ワークフローはアカウントの課金される Actions の時間を使い、macOS の時間は 10 倍に
+数える。標準のランナーでは 1 ジョブに数時間かかる (thin LTO の release ビルド) ので、要る OS だけを起動する
+(`-Os macos`、入力 `macos_arch`)。ジョブは `Swatinem/rust-cache` で cargo のレジストリとビルドをキャッシュし、
+依存が変わらない再実行を安くする。GitHub が保つキャッシュはリポジトリあたり 10 GB までで、古いものから消える。
+
 ## 確認
 
 upstream の規約は引き続き守る: `cargo clippy` ではなく `./script/clippy` を使う。翻訳の確認は

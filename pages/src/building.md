@@ -93,6 +93,83 @@ It needs PowerShell 7 (`pwsh`, `winget install Microsoft.PowerShell`). Started f
 PowerShell 5.1 (`powershell`), it runs itself again under `pwsh` with the same options, and
 stops with an explanation when `pwsh` is not installed.
 
+## Other operating systems
+
+`script/bundle.ps1` (PowerShell 7; on Linux and macOS also `script/bundle`, which runs it with
+`pwsh`) makes the packages for every operating system from one command. `-Os` chooses which:
+`windows`, `linux`, `macos` or `all`; without it, the system it runs on.
+
+```powershell
+pwsh -NoProfile -File script/bundle.ps1 -Os windows    # script\bundle-windows.ps1, see above
+pwsh -NoProfile -File script/bundle.ps1 -Os linux      # on Windows: in Docker inside WSL
+pwsh -NoProfile -File script/bundle.ps1 -Os macos -Wait
+pwsh -NoProfile -File script/bundle.ps1 -Os all -DryRun
+```
+
+| OS | On Windows | On Linux | On macOS |
+|---|---|---|---|
+| Windows | `script\bundle-windows.ps1` | the workflow (only with `-Os all` or `-Ci`) | the workflow (only with `-Os all` or `-Ci`) |
+| Linux | `script/bundle-linux` in a Docker container in WSL | `script/bundle-linux` (in a container with `-Container`) | the workflow, or a local Docker container with `-Container` |
+| macOS | the workflow | the workflow | `script/bundle-mac` |
+
+The packages are left in `target` under the names the update check looks for:
+`forgekairos-windows-x86_64-setup.exe`, `forgekairos-linux-x86_64.tar.gz`,
+`forgekairos-macos-aarch64.dmg` and `forgekairos-macos-x86_64.dmg`, plus the remote servers
+`zed-remote-server-linux-x86_64.gz` and `zed-remote-server-macos-<arch>.gz`.
+
+Options: `-Architecture` (`x86_64` or `aarch64`; by default this machine's), `-ReleaseTag`
+(as for the installer), `-Jobs <n>` (cargo's `-j`), `-Ci` (make everything through the
+workflow), `-Wait` (wait for the workflow and download what it made into
+`target/ci-<run id>/`), `-Ref` (the branch or tag the workflow builds; by default the current
+branch), `-DryRun` (print the commands instead of running them), and for Windows `-Fast`,
+`-Install` and `-ClangFormatPath`, which it hands to `script\bundle-windows.ps1`.
+
+### Linux
+
+On Linux, install the build dependencies with `script/linux` first; the package then links
+against the host's glibc and runs only on systems with that version or newer. On Windows the
+script builds in an `ubuntu:22.04` container (glibc 2.35) of the Docker in WSL
+(`wsl.exe -e docker`), so the package runs on Ubuntu 22.04, Debian 12 and newer. The image
+installs the dependencies with `script/linux` and the toolchain of `rust-toolchain.toml`.
+`-LinuxImage` chooses another base image, `-Container` uses a container on a Linux host too.
+
+The checkout is mounted into the container, so the build uses your working tree (including
+uncommitted changes). The cargo registry and the target folder live in the Docker volumes
+`forgekairos-bundle-cargo-ubuntu-22.04` and `forgekairos-bundle-target-ubuntu-22.04` inside
+WSL, not under `target`; remove them with `wsl.exe -e docker volume rm` to free the space
+(the target folder takes some tens of GB). The first run builds the image and every
+dependency; later runs only rebuild what changed.
+
+### macOS
+
+macOS packages are made on a Mac (Xcode, `script/bundle-mac`), or by the GitHub Actions
+workflow below, which `script/bundle.ps1 -Os macos` starts on any other system with the
+GitHub CLI (`gh workflow run`, after `gh auth login`). The workflow builds the branch as it
+is on GitHub, so push first. Without signing secrets the app is signed ad hoc and macOS
+refuses to open the downloaded app the first time: allow it under System Settings, Privacy &
+Security, "Open Anyway", or remove the quarantine flag with
+`xattr -dr com.apple.quarantine /Applications/ForgeKairos.app`. With the secrets
+`MACOS_SIGNING_IDENTITY`, `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`,
+`APPLE_NOTARIZATION_KEY`, `APPLE_NOTARIZATION_KEY_ID` and `APPLE_NOTARIZATION_ISSUER_ID`
+set in the repository, it is signed with that Developer ID and notarized.
+
+### The release workflow
+
+`.github/workflows/forgekairos_release.yml` builds on GitHub-hosted runners: Windows x86_64
+on `windows-2022`, Linux x86_64 on `ubuntu-22.04`, and macOS aarch64 and x86_64 on `macos-14`
+(x86_64 cross-compiled). Each job runs `script/bundle.ps1 -Os <os>` and uploads its package
+as an artifact named after the file. It runs only when started (from the Actions tab with
+the inputs `os`, `macos_arch` and `release_tag`, or by `script/bundle.ps1`) and when a `v*`
+tag is pushed; for a tag, a last job creates a draft GitHub release with all the packages
+for you to check and publish.
+
+The repository is private, so the workflow uses the account's billed Actions minutes, and
+macOS minutes count ten times. A full run takes hours per job on the standard runners (a
+release build with thin LTO), so start only the systems you need (`-Os macos`, the
+`macos_arch` input). The jobs cache the cargo registry and the build with
+`Swatinem/rust-cache`, which makes a rerun without dependency changes cheaper; GitHub keeps
+at most 10 GB of caches per repository and drops the oldest first.
+
 ## Checks
 
 The upstream rules still apply: use `./script/clippy` rather than `cargo clippy`. For

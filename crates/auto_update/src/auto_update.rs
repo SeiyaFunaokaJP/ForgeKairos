@@ -1999,6 +1999,52 @@ mod tests {
         );
     }
 
+    /// script/bundle.ps1 copies the packages out under these names and the
+    /// release workflow uploads them as release assets, so a name that drifts
+    /// from `asset_name` would publish a release no updater finds.
+    #[test]
+    fn the_bundle_script_and_release_workflow_use_the_published_names() {
+        let bundle = repository_script("script/bundle.ps1");
+        // Linux is copied out twice, after the native and the container build.
+        for (os, copies) in [("linux", 2), ("macos", 1)] {
+            for asset in ["zed", "zed-remote-server"] {
+                let name = asset_name(asset, os, "$arch").unwrap();
+                assert_eq!(
+                    bundle.matches(&name).count(),
+                    copies,
+                    "script/bundle.ps1 does not copy {name} after each build"
+                );
+            }
+        }
+
+        let container = repository_script("script/lib/linux-bundle-in-container.sh");
+        for asset in ["zed", "zed-remote-server"] {
+            let name = asset_name(asset, "linux", "${arch}").unwrap();
+            assert!(
+                container.contains(&name),
+                "linux-bundle-in-container.sh does not copy {name}"
+            );
+        }
+
+        let workflow = repository_script(".github/workflows/forgekairos_release.yml");
+        let matrix_arch = "${{ matrix.arch }}";
+        for (asset, os, arch) in [
+            ("zed", "windows", "x86_64"),
+            ("zed", "linux", "x86_64"),
+            ("zed-remote-server", "linux", "x86_64"),
+            ("zed", "macos", matrix_arch),
+            ("zed-remote-server", "macos", matrix_arch),
+        ] {
+            let name = asset_name(asset, os, arch).unwrap();
+            for expected in [format!("name: {name}"), format!("path: target/{name}")] {
+                assert!(
+                    workflow.contains(&expected),
+                    "forgekairos_release.yml does not upload {expected:?}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn the_macos_update_mounts_the_volume_the_disk_image_is_made_with() {
         let script = repository_script("script/bundle-mac");

@@ -53,6 +53,9 @@ pwsh -NoProfile -File script\bundle-windows.ps1         # the installer (needs I
 pwsh -NoProfile -File script\bundle-windows.ps1 -Fast   # a quicker installer to try on this machine (no LTO), not for publishing
 ```
 
+Linux and macOS packages come from `pwsh script/bundle.ps1 -Os linux|macos|all` (Linux in Docker
+in WSL, macOS through GitHub Actions); see [Other operating systems](pages/src/building.md#other-operating-systems).
+
 See [Building on Windows](pages/src/building.md) for the options, and
 [README.ja.md](README.ja.md) for details (in Japanese).
 

@@ -70,7 +70,14 @@ if command -v rustup >/dev/null 2>&1; then
 fi
 
 # Generate the licenses first, so they can be baked into the binaries
-script/generate-licenses
+# The binaries embed assets/licenses.md, so rewriting it even with the same text
+# makes cargo rebuild everything above the assets crate and relink with LTO.
+generated_licenses=$(mktemp)
+script/generate-licenses "$generated_licenses"
+if ! cmp -s "$generated_licenses" assets/licenses.md; then
+    cat "$generated_licenses" > assets/licenses.md
+fi
+rm -f "$generated_licenses"
 
 if "$rustup_installed"; then
     rustup target add "$remote_server_triple"
