@@ -1,6 +1,7 @@
 # 目次
 
 [はじめに](introduction.md)
+[Zed からの変更点](changes.md)
 
 # 使い方
 

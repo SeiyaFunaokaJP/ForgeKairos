@@ -15,7 +15,7 @@ ForgeKairos は [Zed](https://zed.dev) のコードエディターのフォー�
 - CSV と TSV の表計算ソフトのようなグリッド ([CSV と TSV のグリッド](tabular-data.md))
 - 古い Linux のホストへの SSH リモートと、切断をまたいで生きるターミナル ([リモート開発](remote.md))
 
-このサイトは ForgeKairos が足した点・変えた点だけを書く。それ以外は [Zed の文書](https://zed.dev/docs/) を見る。
+変更点の一覧は [Zed からの変更点](changes.md) にまとめてある。このサイトは ForgeKairos が足した点・変えた点だけを書く。それ以外は [Zed の文書](https://zed.dev/docs/) を見る。
 
 ## 対応するシステム
 

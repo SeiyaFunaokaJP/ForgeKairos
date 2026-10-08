@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-文書サイト: <https://seiyafunaokajp.github.io/ForgeKairos/ja/> (リポジトリの GitHub Pages を公開した後に有効。ソースは `pages/`)
+文書サイト: <https://seiyafunaokajp.github.io/ForgeKairos/ja/> (リポジトリの GitHub Pages を公開した後に有効。ソースは `pages/`)。Zed との違いの一覧は [Zed からの変更点](pages/src/ja/changes.md)。
 
 ForgeKairos は [Zed](https://zed.dev) のフォーク (upstream のリリースを `git merge` で 1 版ずつ取り込む。現在 v1.22.0 ベース)。
 日本語 UI、ネットワーク統制 (egress deny-by-default)、ローカル LLM 第一の AI 方針、

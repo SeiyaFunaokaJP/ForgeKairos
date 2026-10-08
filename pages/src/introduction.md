@@ -15,7 +15,8 @@ at a time (it is currently based on Zed v1.22.0) and adds:
 - a spreadsheet-like grid for CSV and TSV files ([CSV and TSV grid](tabular-data.md))
 - SSH remoting to old Linux hosts and terminals that survive disconnects ([Remote development](remote.md))
 
-This site describes only what ForgeKairos adds or changes. For everything else, see
+[Changes from Zed](changes.md) lists every change in one place. This site describes only
+what ForgeKairos adds or changes. For everything else, see
 [Zed's documentation](https://zed.dev/docs/).
 
 ## Supported systems

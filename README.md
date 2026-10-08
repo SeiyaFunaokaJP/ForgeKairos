@@ -1,6 +1,3 @@
-> [!IMPORTANT]
-> Remove this line to confirm you've reviewed this PR before submitting.
-
 # ForgeKairos
 
 English | [日本語](README.ja.md)
@@ -14,7 +11,8 @@ It is developed mainly for Windows.
 Repository: <https://github.com/SeiyaFunaokaJP/ForgeKairos>
 
 Documentation: <https://seiyafunaokajp.github.io/ForgeKairos/> (available once GitHub Pages is
-published for the repository; the source is in `pages/`)
+published for the repository; the source is in `pages/`). For a list of everything that
+differs from Zed, see [Changes from Zed](pages/src/changes.md).
 
 ## Not affiliated with Zed Industries
 
