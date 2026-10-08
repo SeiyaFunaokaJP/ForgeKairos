@@ -20,18 +20,25 @@ Works around the pitfalls described in .forgekairos-docs/BUILD-WINDOWS.md:
 - Copies clang-format.exe, which the default C formatter runs, to bin\ next to
   the editor (-SkipClangFormat skips this).
 
-Everything goes to <target>\debug, or <target>\release with -Release, where
-<target> is $env:CARGO_TARGET_DIR or the repository's target folder.
+Everything goes to <target>\debug, or <target>\x86_64-pc-windows-msvc\release
+with -Release, where <target> is $env:CARGO_TARGET_DIR or the repository's
+target folder.
+
+-Release builds exactly what script\bundle-windows.ps1 builds (the same
+packages, target triple, Visual Studio environment and release channel, see
+script\lib\windows-release-build.ps1), so making the installer afterwards
+reuses this build instead of compiling and linking the editor again. It also
+builds auto_update_helper, and -SkipCli does not apply to it.
 
 A release build reads its release channel from crates\zed\RELEASE_CHANNEL
-(stable), so running it from target\release uses the same data folder as an
-installed ForgeKairos. Pass --user-data-dir <folder> to keep them apart.
+(stable), so running it uses the same data folder as an installed ForgeKairos.
+Pass --user-data-dir <folder> to keep them apart.
 
 This script does not make an installer. script\bundle-windows.ps1 does: it
-makes its own release build for an explicit target triple, adds the Windows
-remote server, the Explorer context menu package and ConPTY, and runs Inno
-Setup 6 (ISCC.exe). Both scripts prepare the remote server, slirp4netns and
-clang-format with the functions in script\lib\remote-artifacts.ps1.
+adds the Windows remote server, the Explorer context menu package and ConPTY,
+and runs Inno Setup 6 (ISCC.exe). Both scripts prepare the remote server,
+slirp4netns and clang-format with the functions in
+script\lib\remote-artifacts.ps1.
 
 .EXAMPLE
 powershell -NoProfile -File script\build.ps1
@@ -42,7 +49,7 @@ powershell -NoProfile -File script\build.ps1 -SkipRemoteServer -SkipSlirp4netns
 powershell -NoProfile -File script\build.ps1 -ClangFormatPath C:\LLVM\bin\clang-format.exe
 #>
 param(
-    # Build with the release profile into <target>\release.
+    # Build with the release profile into <target>\x86_64-pc-windows-msvc\release.
     [switch]$Release,
     # Start the editor after a successful build.
     [switch]$Run,
@@ -70,6 +77,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
 . "$PSScriptRoot\lib\remote-artifacts.ps1"
+. "$PSScriptRoot\lib\windows-release-build.ps1"
 
 if ($env:CARGO_TARGET_DIR) {
     $targetRoot = if ([IO.Path]::IsPathRooted($env:CARGO_TARGET_DIR)) {
@@ -80,11 +88,12 @@ if ($env:CARGO_TARGET_DIR) {
 } else {
     $targetRoot = Join-Path $repoRoot 'target'
 }
-$cargoProfile = if ($Release) { 'release' } else { 'debug' }
-$profileDir = Join-Path $targetRoot $cargoProfile
-# Always an array: `if` unrolls a one-element array into a string, and
-# splatting a string passes cargo one character at a time.
-$cargoProfileArguments = @(if ($Release) { '--release' })
+if ($Release) {
+    $releaseTarget = "$(Get-WindowsHostArchitecture)-pc-windows-msvc"
+    $profileDir = Join-Path $targetRoot "$releaseTarget\release"
+} else {
+    $profileDir = Join-Path $targetRoot 'debug'
+}
 
 # These are the names crates/branding gives the cargo binaries
 # (EDITOR_CARGO_BIN_NAME, CLI_CARGO_BIN_NAME) and the bundled remote server
@@ -164,17 +173,27 @@ function Update-RemoteServerArtifact {
 }
 
 # --- Build ------------------------------------------------------------------
-Write-Host "cargo build$($cargoProfileArguments | ForEach-Object { " $_" }) -p zed -j $Jobs ..."
-cargo build @cargoProfileArguments -p zed -j $Jobs
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Building zed failed (exit $LASTEXITCODE). See the pitfalls in .forgekairos-docs/BUILD-WINDOWS.md."
+if ($Release) {
+    Enter-WindowsReleaseEnvironment -Architecture (Get-WindowsHostArchitecture) -RepoRoot $repoRoot | Out-Null
+    $releaseArguments = (Get-WindowsReleaseCargoArguments -Target $releaseTarget -CargoProfile 'release') + @('-j', $Jobs)
+    Write-Host "cargo $releaseArguments ..."
+    cargo @releaseArguments
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Building zed failed (exit $LASTEXITCODE). See the pitfalls in .forgekairos-docs/BUILD-WINDOWS.md."
+    }
+} else {
+    Write-Host "cargo build -p zed -j $Jobs ..."
+    cargo build -p zed -j $Jobs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Building zed failed (exit $LASTEXITCODE). See the pitfalls in .forgekairos-docs/BUILD-WINDOWS.md."
+    }
 }
 
-if (-not $SkipCli) {
+if (-not $SkipCli -and -not $Release) {
     # `forgekairos <path>` in a console runs the launcher, which looks for the
     # editor next to itself.
-    Write-Host "cargo build$($cargoProfileArguments | ForEach-Object { " $_" }) -p cli -j $Jobs ..."
-    cargo build @cargoProfileArguments -p cli -j $Jobs
+    Write-Host "cargo build -p cli -j $Jobs ..."
+    cargo build -p cli -j $Jobs
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Building cli failed (exit $LASTEXITCODE)."
     }

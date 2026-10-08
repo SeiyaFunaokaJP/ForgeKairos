@@ -10,7 +10,10 @@ Param(
     [Parameter()][string]$ReleaseTag,
     # Source of the clang-format.exe shipped in {app}\bin (see CopyClangFormat).
     # When empty or not found, VS 2022's bundled LLVM is used.
-    [Parameter()][string]$ClangFormatPath = ""
+    [Parameter()][string]$ClangFormatPath = "",
+    # A quicker installer for trying out on this machine, not for publishing:
+    # the release-fast profile (no LTO) and lighter compression.
+    [Parameter()][switch]$Fast
 )
 
 # Windows PowerShell 5.1 cannot parse the scripts this one dot-sources
@@ -43,6 +46,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 . "$PSScriptRoot/lib/workspace.ps1"
 . "$PSScriptRoot/lib/remote-artifacts.ps1"
+. "$PSScriptRoot/lib/windows-release-build.ps1"
 
 # https://stackoverflow.com/questions/57949031/powershell-script-stops-if-program-fails-like-bash-set-o-errexit
 $ErrorActionPreference = 'Stop'
@@ -51,60 +55,21 @@ $PSNativeCommandUseErrorActionPreference = $true
 $buildSuccess = $false
 $canCodeSign = $false
 
-$OSArchitecture = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
-    "X64" { "x86_64" }
-    "Arm64" { "aarch64" }
-    default { throw "Unsupported architecture" }
-}
-
 $Architecture = if ($Architecture) {
     $Architecture
 } else {
-    $OSArchitecture
+    Get-WindowsHostArchitecture
 }
 
-$CargoOutDir = "./target/$Architecture-pc-windows-msvc/release"
-
-function Get-VSArch {
-    param(
-        [string]$Arch
-    )
-
-    switch ($Arch) {
-        "x86_64" { "amd64" }
-        "aarch64" { "arm64" }
-    }
+# release-fast keeps full debug info by default, which makes its link and PDB
+# far larger; limited is what the release profile ships with.
+$cargoProfile = if ($Fast) { 'release-fast' } else { 'release' }
+if ($Fast) {
+    $env:CARGO_PROFILE_RELEASE_FAST_DEBUG = 'limited'
 }
+$innoCompression = if ($Fast) { 'lzma2/fast' } else { 'lzma' }
 
-function Find-VsDevShell {
-    # This fork is developed on VS 2022 Enterprise, while CI and other machines
-    # may only have Professional, Community, or the standalone Build Tools.
-    # Probe the known editions in descending order, then fall back to vswhere
-    # so a non-default install location is still found.
-    $base = "C:\Program Files\Microsoft Visual Studio\2022"
-    foreach ($edition in @("Enterprise", "Professional", "Community", "BuildTools")) {
-        $candidate = Join-Path $base "$edition\Common7\Tools\Launch-VsDevShell.ps1"
-        if (Test-Path $candidate) {
-            return $candidate
-        }
-    }
-    $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
-    if (Test-Path $vswhere) {
-        $installPath = & $vswhere -latest -products * -property installationPath 2>$null | Select-Object -First 1
-        if ($installPath) {
-            $candidate = Join-Path $installPath "Common7\Tools\Launch-VsDevShell.ps1"
-            if (Test-Path $candidate) {
-                return $candidate
-            }
-        }
-    }
-    throw "Could not find Launch-VsDevShell.ps1. Install Visual Studio 2022 (Enterprise/Professional/Community) or the Build Tools with the C++ workload."
-}
-
-Push-Location
-$vsDevShell = Find-VsDevShell
-& $vsDevShell -Arch (Get-VSArch -Arch $Architecture) -HostArch (Get-VSArch -Arch $OSArchitecture)
-Pop-Location
+$CargoOutDir = "./target/$Architecture-pc-windows-msvc/$(Get-CargoProfileDirectory -CargoProfile $cargoProfile)"
 
 $target = "$Architecture-pc-windows-msvc"
 
@@ -116,14 +81,12 @@ if ($Help) {
     Write-Output "  -Install, -i      Run the installer after building."
     Write-Output "  -Help, -h         Show this help message."
     Write-Output "  -ReleaseTag <tag> The GitHub release tag of this build (v1.2.3 or v1.2.3-pre)."
+    Write-Output "  -Fast             A quicker installer for this machine only (no LTO, lighter compression)."
     exit 0
 }
 
-Push-Location -Path crates/zed
-$channel = Get-Content "RELEASE_CHANNEL"
-$env:ZED_RELEASE_CHANNEL = $channel
-$env:RELEASE_CHANNEL = $channel
-Pop-Location
+# Shared with script\build.ps1 -Release, so this reuses its build.
+$channel = Enter-WindowsReleaseEnvironment -Architecture $Architecture -RepoRoot (Split-Path -Parent $PSScriptRoot)
 if ($ReleaseTag) {
     if ($ReleaseTag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
         throw "-ReleaseTag must look like v1.2.3 or v1.2.3-pre (got '$ReleaseTag')."
@@ -179,7 +142,16 @@ function PrepareForBundle {
 }
 
 function GenerateLicenses {
-    . $PSScriptRoot/generate-licenses.ps1
+    # The release build embeds assets\licenses.md, so rewriting it even with the
+    # same text makes cargo rebuild every crate above assets and relink the editor.
+    $licensesFile = "$env:ZED_WORKSPACE\assets\licenses.md"
+    $generatedFile = "$env:ZED_WORKSPACE\target\licenses.md.generated"
+    . $PSScriptRoot/generate-licenses.ps1 $generatedFile
+    if ((Test-Path $licensesFile) -and ((Get-FileHash $licensesFile).Hash -eq (Get-FileHash $generatedFile).Hash)) {
+        Remove-Item $generatedFile
+    } else {
+        Move-Item -Path $generatedFile -Destination $licensesFile -Force
+    }
 }
 
 function BuildZedAndItsFriends {
@@ -187,25 +159,26 @@ function BuildZedAndItsFriends {
     # Build ForgeKairos.exe, forgekairos-cli.exe and auto_update_helper.exe.
     # cargo names the first two after branding::EDITOR_CARGO_BIN_NAME and
     # branding::CLI_CARGO_BIN_NAME.
-    cargo --config .cargo/bundle-config.toml build --release --package zed --package cli --package auto_update_helper --target $target
+    $releaseArguments = Get-WindowsReleaseCargoArguments -Target $target -CargoProfile $cargoProfile
+    cargo @releaseArguments
     Copy-Item -Path ".\$CargoOutDir\ForgeKairos.exe" -Destination "$innoDir\ForgeKairos.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\forgekairos-cli.exe" -Destination "$innoDir\cli.exe" -Force
     Copy-Item -Path ".\$CargoOutDir\auto_update_helper.exe" -Destination "$innoDir\auto_update_helper.exe" -Force
     # Build explorer_command_injector.dll
     switch ($channel) {
         "stable" {
-            cargo --config .cargo/bundle-config.toml build --release --features stable --no-default-features --package explorer_command_injector --target $target
+            cargo --config .cargo/bundle-config.toml build --profile $cargoProfile --features stable --no-default-features --package explorer_command_injector --target $target
         }
         "preview" {
-            cargo --config .cargo/bundle-config.toml build --release --features preview --no-default-features --package explorer_command_injector --target $target
+            cargo --config .cargo/bundle-config.toml build --profile $cargoProfile --features preview --no-default-features --package explorer_command_injector --target $target
         }
         # No channel feature selects the dev CLSID and "{regValueName}ContextMenu"
         # key, which match the dev installer and AppxManifest-Dev.xml.
         "dev" {
-            cargo --config .cargo/bundle-config.toml build --release --no-default-features --package explorer_command_injector --target $target
+            cargo --config .cargo/bundle-config.toml build --profile $cargoProfile --no-default-features --package explorer_command_injector --target $target
         }
         default {
-            cargo --config .cargo/bundle-config.toml build --release --package explorer_command_injector --target $target
+            cargo --config .cargo/bundle-config.toml build --profile $cargoProfile --package explorer_command_injector --target $target
         }
     }
     Copy-Item -Path ".\$CargoOutDir\explorer_command_injector.dll" -Destination "$innoDir\zed_explorer_command_injector.dll" -Force
@@ -213,7 +186,7 @@ function BuildZedAndItsFriends {
 
 function BuildRemoteServer {
     Write-Output "Building remote_server for $target"
-    cargo --config .cargo/bundle-config.toml build --release --package remote_server --target $target
+    cargo --config .cargo/bundle-config.toml build --profile $cargoProfile --package remote_server --target $target
 
     # Create zipped remote server binary
     $remoteServerSrc = (Resolve-Path ".\$CargoOutDir\remote_server.exe").Path
@@ -243,7 +216,7 @@ function BuildLinuxRemoteServer {
     # finds in {app} or {app}\bin under this name. A static musl build runs
     # whatever glibc the host has.
     Build-LinuxRemoteServer `
-        -TargetDir "$env:ZED_WORKSPACE\target\remote_server_linux" `
+        -TargetDir "$env:ZED_WORKSPACE\target\remote_server" `
         -ArtifactPath "$innoDir\bin\forgekairos-remote-server-linux-x86_64.gz" `
         -Release
 }
@@ -533,6 +506,7 @@ function BuildInstaller {
         "Version"        = "$env:RELEASE_VERSION"
         "SourceDir"      = "$env:ZED_WORKSPACE"
         "AppxFullName"   = $appAppxFullName
+        "Compression"    = $innoCompression
     }
 
     $defs = @()
@@ -575,7 +549,10 @@ BuildZedAndItsFriends
 BuildRemoteServer
 MakeAppx
 SignZedAndItsFriends
-ZipZedAndItsFriendsDebug
+# Only the Sentry upload in CI reads this archive, and zipping the PDBs takes minutes.
+if ($env:CI) {
+    ZipZedAndItsFriendsDebug
+}
 DownloadAMDGpuServices
 DownloadConpty
 CollectFiles

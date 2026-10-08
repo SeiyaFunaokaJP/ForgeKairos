@@ -48,8 +48,9 @@ SDK 26100) and rustup.
 ```powershell
 powershell -NoProfile -File script\build.ps1            # ForgeKairos.exe, the CLI and the bundled remote server in target\debug
 powershell -NoProfile -File script\build.ps1 -Run       # build, then start it
-powershell -NoProfile -File script\build.ps1 -Release   # the same in target\release
+powershell -NoProfile -File script\build.ps1 -Release   # the same in target\x86_64-pc-windows-msvc\release, which the installer reuses
 pwsh -NoProfile -File script\bundle-windows.ps1         # the installer (needs Inno Setup 6 and PowerShell 7)
+pwsh -NoProfile -File script\bundle-windows.ps1 -Fast   # a quicker installer to try on this machine (no LTO), not for publishing
 ```
 
 See [Building on Windows](pages/src/building.md) for the options, and
