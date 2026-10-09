@@ -334,12 +334,13 @@ pub fn is_fork_server_binary_name(file_name: &str) -> bool {
 
 /// File names of a remote server artifact for `platform`, most preferred first.
 ///
-/// `script/build.ps1` and `script/bundle-windows.ps1` name it after
+/// The scripts that build it (`script/build.ps1`, `script/bundle-windows.ps1`,
+/// `script/bundle-linux`, `script/bundle-mac`) name it after
 /// `branding::CURRENT`. The names of `branding::LEGACY` are accepted after it:
-/// they are what `script/bundle-linux` and `script/bundle-mac` emit (upstream's
-/// release artifact names), and what an earlier build left in a cargo output
-/// directory. The uncompressed name is accepted too, so a locally
-/// cross-compiled binary can be used without a compression step.
+/// upstream's release artifact names, which those scripts used to emit too,
+/// and what an earlier build left in a cargo output directory. The
+/// uncompressed name is accepted too, so a locally cross-compiled binary can
+/// be used without a compression step.
 pub(crate) fn bundled_server_artifact_names(platform: RemotePlatform) -> Vec<String> {
     let mut names = Vec::new();
     let prefixes = std::iter::once(&branding::CURRENT)
@@ -374,9 +375,26 @@ fn find_bundled_server_artifact_in_dirs(
     })
 }
 
+/// Where the files shipped with the application for remote hosts sit, given
+/// the directory of the editor's executable: that directory, its `bin`
+/// subdirectory, and in a macOS app bundle (`Contents/MacOS`) the bundle's
+/// `Contents/Resources`. `script/bundle-mac` puts them there because codesign
+/// treats whatever is in `Contents/MacOS` as code, and these are Linux files.
+fn bundled_file_dirs(exe_dir: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![exe_dir.to_path_buf(), exe_dir.join("bin")];
+    let macos_bundle_contents = exe_dir
+        .parent()
+        .filter(|_| exe_dir.file_name() == Some(std::ffi::OsStr::new("MacOS")))
+        .filter(|contents| contents.file_name() == Some(std::ffi::OsStr::new("Contents")));
+    if let Some(contents) = macos_bundle_contents {
+        dirs.push(contents.join("Resources"));
+    }
+    dirs
+}
+
 /// Directories searched for a remote server artifact shipped with the
-/// application, most preferred first: next to the running executable, then
-/// its `bin` subdirectory (the same convention as
+/// application, most preferred first: [`bundled_file_dirs`] of the running
+/// executable (next to it and its `bin` subdirectory are the convention of
 /// `util::command::resolve_command_next_to_current_exe`).
 ///
 /// Debug builds also search the primary workspace's `target/debug`
@@ -393,9 +411,8 @@ fn find_bundled_server_artifact_in_dirs(
 /// to explain in an error message where this looked.
 pub(crate) fn bundled_server_search_dirs() -> Option<Vec<PathBuf>> {
     let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    let bin_dir = exe_dir.join("bin");
     #[allow(unused_mut)]
-    let mut dirs = vec![exe_dir, bin_dir];
+    let mut dirs = bundled_file_dirs(&exe_dir);
     #[cfg(debug_assertions)]
     dirs.push(PathBuf::from(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -444,19 +461,23 @@ pub(crate) fn choose_server_binary_source(
 
 /// Locates the bundled `slirp4netns` binary shipped with the application for
 /// ADR-F18's remote Linux sandbox. Mirrors [`find_bundled_server_artifact`]: it
-/// looks next to the running executable and in its `bin` subdirectory. Only
+/// looks in the [`bundled_file_dirs`] of the running executable. Only
 /// meaningful for a Linux remote (slirp4netns is Linux-only); returns `None`
 /// otherwise. `script/build.ps1` places `slirp4netns-linux-x86_64` next to
 /// the editor's executable.
 pub(crate) fn find_bundled_slirp4netns(platform: RemotePlatform) -> Option<PathBuf> {
-    if platform.os != RemoteOs::Linux {
-        return None;
-    }
-    let name = format!("slirp4netns-{}-{}", platform.os, platform.arch);
     let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    let bin_dir = exe_dir.join("bin");
-    [exe_dir, bin_dir]
-        .iter()
+    find_bundled_slirp4netns_in_dirs(platform, &bundled_file_dirs(&exe_dir))
+}
+
+fn bundled_slirp4netns_name(platform: RemotePlatform) -> Option<String> {
+    (platform.os == RemoteOs::Linux)
+        .then(|| format!("slirp4netns-{}-{}", platform.os, platform.arch))
+}
+
+fn find_bundled_slirp4netns_in_dirs(platform: RemotePlatform, dirs: &[PathBuf]) -> Option<PathBuf> {
+    let name = bundled_slirp4netns_name(platform)?;
+    dirs.iter()
         .map(|dir| dir.join(&name))
         .find(|candidate| candidate.is_file())
 }
@@ -1329,6 +1350,122 @@ mod tests {
                 assert!(contents.contains(&name), "{script} does not write {name}");
             }
         }
+    }
+
+    /// The files a packaging script writes under `root` (`"${root}/…"`),
+    /// relative to the package, with the architecture filled in.
+    fn package_paths(script: &str, root: &str) -> Vec<PathBuf> {
+        let opening = format!("\"{root}/");
+        script
+            .split(opening.as_str())
+            .skip(1)
+            .filter_map(|rest| rest.split_once('"').map(|(path, _)| path))
+            .map(|path| PathBuf::from(path.replace("${arch}", "x86_64")))
+            .collect()
+    }
+
+    /// The Linux and macOS packages have no installer that could put the
+    /// remote files somewhere else, so they have to land in one of the
+    /// directories the editor searches from where the package puts the
+    /// editor itself, under the names it searches for.
+    #[test]
+    fn test_the_linux_and_macos_packages_ship_the_remote_files_where_the_editor_looks() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let linux_editor = format!("libexec/{}-editor", branding::CURRENT.cli_name);
+        let server_name = bundled_server_artifact_names(linux_x86_64())
+            .into_iter()
+            .next()
+            .unwrap();
+        let slirp4netns_name = bundled_slirp4netns_name(linux_x86_64()).unwrap();
+        for (script, root, editor) in [
+            ("script/bundle-linux", "${zed_dir}", linux_editor.as_str()),
+            ("script/bundle-mac", "${app_path}", "Contents/MacOS/zed"),
+        ] {
+            let contents = std::fs::read_to_string(repository.join(script)).unwrap();
+            let package = Path::new("package");
+            let shipped: Vec<PathBuf> = package_paths(&contents, root)
+                .into_iter()
+                .map(|path| package.join(path))
+                .collect();
+            let editor = package.join(editor);
+            assert!(
+                shipped.contains(&editor),
+                "{script} does not install the editor as {editor:?}: {shipped:?}"
+            );
+            let dirs = bundled_file_dirs(editor.parent().unwrap());
+            for name in [&server_name, &slirp4netns_name] {
+                let found: Vec<&PathBuf> = dirs
+                    .iter()
+                    .filter(|dir| shipped.contains(&dir.join(name)))
+                    .collect();
+                assert!(
+                    !found.is_empty(),
+                    "{script} does not ship {name} in any of {dirs:?}: {shipped:?}"
+                );
+                // codesign takes everything in Contents/MacOS for code, and
+                // these are Linux files.
+                assert!(
+                    found.iter().all(|dir| !dir.ends_with("Contents/MacOS")
+                        && !dir.ends_with("Contents/MacOS/bin")),
+                    "{script} puts {name} among the macOS app's code: {found:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_bundled_file_dirs_add_the_resources_of_a_macos_app_bundle() {
+        let app = Path::new("/Applications/ForgeKairos.app");
+        assert_eq!(
+            bundled_file_dirs(&app.join("Contents/MacOS")),
+            [
+                app.join("Contents/MacOS"),
+                app.join("Contents/MacOS/bin"),
+                app.join("Contents/Resources"),
+            ]
+        );
+        let linux = Path::new("/opt/forgekairos.app/libexec");
+        assert_eq!(
+            bundled_file_dirs(linux),
+            [linux.to_path_buf(), linux.join("bin")]
+        );
+        let not_a_bundle = Path::new("/opt/MacOS");
+        assert_eq!(
+            bundled_file_dirs(not_a_bundle),
+            [not_a_bundle.to_path_buf(), not_a_bundle.join("bin")]
+        );
+    }
+
+    #[test]
+    fn test_find_bundled_slirp4netns_looks_in_a_macos_bundles_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        let contents = dir.path().join("ForgeKairos.app").join("Contents");
+        let resources = contents.join("Resources");
+        std::fs::create_dir_all(&resources).unwrap();
+        std::fs::create_dir_all(contents.join("MacOS")).unwrap();
+        let dirs = bundled_file_dirs(&contents.join("MacOS"));
+        assert_eq!(
+            find_bundled_slirp4netns_in_dirs(linux_x86_64(), &dirs),
+            None
+        );
+
+        let slirp4netns = resources.join("slirp4netns-linux-x86_64");
+        std::fs::write(&slirp4netns, b"").unwrap();
+        assert_eq!(
+            find_bundled_slirp4netns_in_dirs(linux_x86_64(), &dirs).as_deref(),
+            Some(slirp4netns.as_path())
+        );
+        assert_eq!(
+            find_bundled_slirp4netns_in_dirs(
+                RemotePlatform {
+                    os: RemoteOs::MacOs,
+                    arch: RemoteArch::X86_64,
+                },
+                &dirs
+            ),
+            None,
+            "slirp4netns is only for Linux hosts"
+        );
     }
 
     #[test]

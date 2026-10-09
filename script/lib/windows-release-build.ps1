@@ -70,7 +70,28 @@ function Enter-WindowsReleaseEnvironment {
     $channel = (Get-Content (Join-Path $RepoRoot 'crates\zed\RELEASE_CHANNEL') -TotalCount 1).Trim()
     $env:ZED_RELEASE_CHANNEL = $channel
     $env:RELEASE_CHANNEL = $channel
+    # The CLI compiles RELEASE_VERSION in (option_env!) and bundle-windows.ps1
+    # sets it, so a build without it recompiled the CLI on every switch
+    # between build.ps1 -Release and the installer.
+    $env:RELEASE_VERSION = Get-ZedCrateVersion -RepoRoot $RepoRoot
     return $channel
+}
+
+# The version in crates\zed\Cargo.toml's [package], what bundle-windows.ps1's
+# ParseZedWorkspace reads with cargo metadata.
+function Get-ZedCrateVersion {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    $manifest = Get-Content (Join-Path $RepoRoot 'crates\zed\Cargo.toml')
+    $inPackage = $false
+    foreach ($line in $manifest) {
+        if ($line -match '^\s*\[(.+)\]\s*$') {
+            $inPackage = $Matches[1] -eq 'package'
+        } elseif ($inPackage -and $line -match '^\s*version\s*=\s*"([^"]+)"') {
+            return $Matches[1]
+        }
+    }
+    throw "No version in the [package] of crates\zed\Cargo.toml."
 }
 
 # The cargo arguments of the shared release build, without -j.

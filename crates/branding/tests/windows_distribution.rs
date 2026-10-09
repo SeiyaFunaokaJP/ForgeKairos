@@ -376,6 +376,72 @@ fn nothing_claims_names_an_official_zed_owns() {
     assert!(registered.contains(&format!("\"URL:{scheme} Protocol\"")));
 }
 
+/// What remote connections upload to a host is looked for in `{app}\bin`
+/// under the `CURRENT` names (crates/remote's `bundled_server_artifact_names`
+/// and slirp4netns), and the download that would replace a missing one is
+/// blocked. The installer build has to refuse to finish without them, and has
+/// to check only after they are made and before the installer takes `bin\*`.
+#[test]
+fn the_installer_build_requires_what_remote_connections_upload() {
+    let (_, script) = repository_file("script/bundle-windows.ps1");
+    let check = script
+        .split_once("function AssertBundledRemoteArtifacts {")
+        .expect("bundle-windows.ps1 defines AssertBundledRemoteArtifacts")
+        .1
+        .split_once("\n}\n")
+        .expect("AssertBundledRemoteArtifacts is closed")
+        .0;
+    let prefix = CURRENT.remote_server_binary_prefix;
+    for name in [
+        format!("{prefix}windows-$Architecture.zip"),
+        format!("{prefix}linux-x86_64.gz"),
+        "slirp4netns-linux-x86_64".to_string(),
+    ] {
+        let path = format!("\"$innoDir\\bin\\{name}\"");
+        assert!(
+            check.contains(&path),
+            "AssertBundledRemoteArtifacts does not require {path}"
+        );
+        assert!(
+            script.matches(&path).count() >= 2,
+            "nothing in bundle-windows.ps1 writes {path}"
+        );
+    }
+
+    let steps: Vec<&str> = script
+        .split_once("\nCheckEnvironmentVariables\n")
+        .expect("bundle-windows.ps1 runs its steps after CheckEnvironmentVariables")
+        .1
+        .lines()
+        .map(str::trim)
+        .collect();
+    let position = |step: &str| {
+        steps
+            .iter()
+            .position(|line| *line == step)
+            .unwrap_or_else(|| panic!("bundle-windows.ps1 does not run {step}"))
+    };
+    let check_position = position("AssertBundledRemoteArtifacts");
+    for producer in [
+        "BuildRemoteServer",
+        "BuildLinuxRemoteServer",
+        "DownloadSlirp4netns",
+        "CopyClangFormat",
+    ] {
+        assert!(
+            position(producer) < check_position,
+            "{producer} runs after AssertBundledRemoteArtifacts"
+        );
+    }
+    assert!(check_position < position("BuildInstaller"));
+
+    let (_, iss) = repository_file("crates/zed/resources/windows/zed.iss");
+    assert!(
+        iss.contains(r#"Source: "{#ResourcesDir}\bin\*"; DestDir: "{code:GetInstallDir}\bin""#),
+        "zed.iss installs bin\\* into {{app}}\\bin"
+    );
+}
+
 #[test]
 fn every_installer_definition_zed_iss_uses_is_passed() {
     let (_, iss) = repository_file("crates/zed/resources/windows/zed.iss");

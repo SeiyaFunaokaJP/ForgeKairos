@@ -102,9 +102,18 @@ pwsh -NoProfile -File script/bundle.ps1 -Os all -DryRun
 
 パッケージは `target` に、更新の確認が探す名前でできる: `forgekairos-windows-x86_64-setup.exe`、
 `forgekairos-linux-x86_64.tar.gz`、`forgekairos-macos-aarch64.dmg`、`forgekairos-macos-x86_64.dmg`。リモート
-サーバーは `zed-remote-server-linux-x86_64.gz` と `zed-remote-server-macos-<arch>.gz`。
+サーバーは `forgekairos-remote-server-linux-x86_64.gz` と `forgekairos-remote-server-macos-<arch>.gz`。
 
-オプション: `-Architecture` (`x86_64` か `aarch64`。既定はこの機械)、`-ReleaseTag` (インストーラーと同じ)、
+Linux と macOS のパッケージにも、Windows のインストーラーと同じく、SSH・WSL・Docker の接続が Linux のホストに
+入れるもの (Linux x86_64 のリモートサーバー `forgekairos-remote-server-linux-x86_64.gz` と
+`slirp4netns-linux-x86_64`) が入る。無いとエディターはサーバーをダウンロードすることになり、既定のネットワークの
+方針がそれを止める。置き場所はエディターが探す所: Linux のパッケージではエディターと同じ `libexec/`、macOS では
+アプリの `Contents/Resources`。clang-format は Linux と macOS には入れない: エディターは `PATH` の
+`clang-format` (ディストリビューションのパッケージ、Homebrew の `brew install clang-format`、Xcode) を使う。
+
+オプション: `-Architecture` (この機械で作るものの `x86_64` か `aarch64`。既定はこの機械)、`-MacosArchitecture`
+(`both`、`aarch64`、`x86_64`: ワークフローが作る macOS。Windows と Linux はワークフローでは x86_64)、
+`-ReleaseTag` (インストーラーと同じ)、
 `-Jobs <n>` (cargo の `-j`)、`-Ci` (すべてワークフローで作る)、`-Wait` (ワークフローの終わりを待ち、できたものを
 `target/ci-<実行の ID>/` に落とす)、`-Ref` (ワークフローがビルドするブランチかタグ。既定は今のブランチ)、
 `-DryRun` (実行せずにコマンドを表示する)。Windows 用の `-Fast`、`-Install`、`-ClangFormatPath` は
@@ -126,7 +135,8 @@ Linux では先に `script/linux` でビルドに要るものを入れる。パ�
 
 ### macOS
 
-macOS のパッケージは Mac (Xcode、`script/bundle-mac`) で作るか、下の GitHub Actions のワークフローで作る。
+macOS のパッケージは Mac (Xcode、`script/bundle-mac`。Linux のリモートサーバーを `cargo-zigbuild` で
+クロスビルドするので zig も要る: `brew install zig`。`cargo-zigbuild` は無ければスクリプトが入れる) で作るか、下の GitHub Actions のワークフローで作る。
 ほかの OS では `script/bundle.ps1 -Os macos` が GitHub CLI (`gh workflow run`。先に `gh auth login`) で
 ワークフローを起動する。ワークフローは GitHub にある状態のブランチをビルドするので、先にプッシュする。署名の
 シークレットが無ければアプリはアドホック署名になり、ダウンロードしたアプリを macOS は初回は開かない: システム設定の
@@ -149,6 +159,40 @@ macOS のパッケージは Mac (Xcode、`script/bundle-mac`) で作るか、下
 数える。標準のランナーでは 1 ジョブに数時間かかる (thin LTO の release ビルド) ので、要る OS だけを起動する
 (`-Os macos`、入力 `macos_arch`)。ジョブは `Swatinem/rust-cache` で cargo のレジストリとビルドをキャッシュし、
 依存が変わらない再実行を安くする。GitHub が保つキャッシュはリポジトリあたり 10 GB までで、古いものから消える。
+
+## リリースの作り方
+
+1. タグを決める: `v` と `crates/zed/Cargo.toml` の版 (`v1.22.0`)。プレリリースは後ろに付ける
+   (`v1.22.0-pre`、`v1.22.0-pre.2`)。`-` を含むタグはプレリリースとして公開し、更新の確認は
+   `auto_update_include_prereleases` を有効にした人にだけ出す。タグはどのビルドにも `-ReleaseTag` で渡す:
+   ビルドに埋め込まれ、更新の確認は GitHub のリリースをこれと比べる。
+2. Windows と Linux は手元で作る:
+
+   ```powershell
+   pwsh -NoProfile -File script/bundle.ps1 -Os windows -ReleaseTag v1.22.0
+   pwsh -NoProfile -File script/bundle.ps1 -Os linux -ReleaseTag v1.22.0
+   ```
+
+3. macOS はワークフローで作る (先にコミットをプッシュする。課金される):
+   `pwsh -NoProfile -File script/bundle.ps1 -Os macos -ReleaseTag v1.22.0 -Wait` がディスクイメージと macOS の
+   リモートサーバーを `target/ci-<実行の ID>/` に落とす。
+4. 下書きのリリースを作り、パッケージをその名前のまま上げる (更新の確認はこの名前で探す):
+
+   ```powershell
+   gh release create v1.22.0 --repo SeiyaFunaokaJP/ForgeKairos --draft --target (git rev-parse HEAD) --title "ForgeKairos v1.22.0" --generate-notes
+   gh release upload v1.22.0 --repo SeiyaFunaokaJP/ForgeKairos `
+       target/forgekairos-windows-x86_64-setup.exe `
+       target/forgekairos-linux-x86_64.tar.gz target/forgekairos-remote-server-linux-x86_64.gz `
+       (Get-ChildItem -Recurse -File target/ci-<実行の ID>).FullName
+   ```
+
+   プレリリースなら `--prerelease` を足す。下書きを確かめてから GitHub で公開する。公開でタグができる。
+
+代わりにタグをプッシュする (`git push origin v1.22.0`) と、ワークフローがすべての OS をビルドし、下書きの
+リリースも作る。時間はいちばんかかる。下書きの公開でできたタグでもワークフローが動くことがある: パッケージを
+もう上げてあるなら、その実行は `gh run cancel` で止める。
+
+更新の確認はサインインせずにリリースを読むので、リポジトリが非公開のあいだは何も見えない。
 
 ## 確認
 

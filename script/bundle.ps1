@@ -26,8 +26,13 @@ its macOS minutes are billed at ten times the Linux rate.
 The packages are left in target/ under the names the updater looks for
 (asset_name in crates/auto_update): forgekairos-windows-<arch>-setup.exe,
 forgekairos-linux-<arch>.tar.gz, forgekairos-macos-<arch>.dmg, and the
-zed-remote-server-<os>-<arch>.gz files. Downloads from the workflow go to
-target/ci-<run id>/<asset>/.
+forgekairos-remote-server-<os>-<arch>.gz files. Downloads from the workflow go to
+target/ci-<run id>/<asset>/. The workflow builds Windows and Linux for x86_64 and
+macOS for -MacosArchitecture.
+
+Every package carries what remote connections upload to a Linux host (the Linux
+remote server and slirp4netns), since this fork blocks their download. Only the
+Windows installer carries clang-format; Linux and macOS run the one on PATH.
 
 The Linux container keeps its cargo registry and target folder in the Docker
 volumes forgekairos-bundle-cargo-<image> and forgekairos-bundle-target-<image>,
@@ -37,15 +42,19 @@ so later runs only rebuild what changed. `docker volume rm` them to start over.
 pwsh -NoProfile -File script/bundle.ps1                      # this OS
 pwsh -NoProfile -File script/bundle.ps1 -Os linux            # on Windows: in Docker in WSL
 pwsh -NoProfile -File script/bundle.ps1 -Os macos -Wait      # through GitHub Actions
+pwsh -NoProfile -File script/bundle.ps1 -Os macos -MacosArchitecture aarch64 -Wait
 pwsh -NoProfile -File script/bundle.ps1 -Os all -DryRun      # show what would run
 pwsh -NoProfile -File script/bundle.ps1 -Os windows -Fast -Install
 #>
 [CmdletBinding()]
 Param(
     [ValidateSet('windows', 'linux', 'macos', 'all')][string]$Os,
-    # x86_64 or aarch64. Default: this machine's (for macOS through the
-    # workflow: both).
+    # x86_64 or aarch64 of the packages built here. Default: this machine's.
+    # It does not reach the workflow, which builds Windows and Linux for
+    # x86_64 and macOS for -MacosArchitecture.
     [Alias('a')][string]$Architecture,
+    # The workflow: the macOS architectures to build.
+    [ValidateSet('both', 'aarch64', 'x86_64')][string]$MacosArchitecture = 'both',
     # The GitHub release tag the build is published under (vX.Y.Z or vX.Y.Z-pre).
     [string]$ReleaseTag,
     # Windows only: script\bundle-windows.ps1's quicker, unpublishable installer.
@@ -99,6 +108,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 }
 
 $ErrorActionPreference = 'Stop'
+$MacosArchitectureGiven = $PSBoundParameters.ContainsKey('MacosArchitecture')
 
 if ($Help) {
     Get-Help $PSCommandPath -Detailed
@@ -210,7 +220,7 @@ function Invoke-LinuxNativeBundle {
     if ($DryRun) { return }
     $cargoTarget = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { $OutputDir }
     Copy-Output (Join-Path $cargoTarget "release/forgekairos-linux-$arch.tar.gz")
-    Copy-Output (Join-Path $cargoTarget "zed-remote-server-linux-$arch.gz")
+    Copy-Output (Join-Path $cargoTarget "forgekairos-remote-server-linux-$arch.gz")
 }
 
 # Docker runs in WSL on Windows, where it sees the Windows drives under /mnt.
@@ -255,11 +265,17 @@ function Get-ContainerGitArguments {
 }
 
 function Invoke-LinuxContainerBundle {
-    try {
-        $dockerArch = (Invoke-Docker -Query @('info', '--format', '{{.Architecture}}') | Select-Object -First 1).Trim()
-    } catch {
-        $where = if ($IsWindows) { 'in WSL (wsl.exe -e docker info)' } else { '(docker info)' }
-        throw "Docker is not reachable $where. Install and start Docker there, or use -Ci. ($_)"
+    if ($DryRun) {
+        # A dry run touches neither Docker nor the build context; the
+        # architecture check waits for the real run.
+        $dockerArch = if ($Architecture) { $Architecture } else { Get-HostArchitecture }
+    } else {
+        try {
+            $dockerArch = (Invoke-Docker -Query @('info', '--format', '{{.Architecture}}') | Select-Object -First 1).Trim()
+        } catch {
+            $where = if ($IsWindows) { 'in WSL (wsl.exe -e docker info)' } else { '(docker info)' }
+            throw "Docker is not reachable $where. Install and start Docker there, or use -Ci. ($_)"
+        }
     }
     $arch = switch ($dockerArch) {
         'x86_64' { 'x86_64' }
@@ -278,10 +294,19 @@ function Invoke-LinuxContainerBundle {
     $targetVolume = "forgekairos-bundle-target-$imageSlug"
 
     $context = Join-Path $OutputDir 'linux-bundle-image'
-    New-Item -ItemType Directory -Force $context | Out-Null
-    Copy-Item (Join-Path $PSScriptRoot 'lib/linux-bundle.Dockerfile') (Join-Path $context 'Dockerfile') -Force
-    Copy-Item (Join-Path $PSScriptRoot 'linux') (Join-Path $context 'linux') -Force
-    Copy-Item (Join-Path $RepoRoot 'rust-toolchain.toml') (Join-Path $context 'rust-toolchain.toml') -Force
+    $contextFiles = [ordered]@{
+        'Dockerfile' = Join-Path $PSScriptRoot 'lib/linux-bundle.Dockerfile'
+        'linux' = Join-Path $PSScriptRoot 'linux'
+        'rust-toolchain.toml' = Join-Path $RepoRoot 'rust-toolchain.toml'
+    }
+    if ($DryRun) {
+        Write-Host "> (copy $($contextFiles.Values -join ', ') to $context)" -ForegroundColor Cyan
+    } else {
+        New-Item -ItemType Directory -Force $context | Out-Null
+        foreach ($file in $contextFiles.GetEnumerator()) {
+            Copy-Item $file.Value (Join-Path $context $file.Key) -Force
+        }
+    }
     $dockerContext = ConvertTo-DockerPath $context
     Invoke-Docker @('build', '--build-arg', "BASE_IMAGE=$LinuxImage", '-t', $image, $dockerContext)
 
@@ -304,7 +329,7 @@ function Invoke-LinuxContainerBundle {
 
     if ($DryRun) { return }
     Copy-Output (Join-Path $OutputDir "forgekairos-linux-$arch.tar.gz")
-    Copy-Output (Join-Path $OutputDir "zed-remote-server-linux-$arch.gz")
+    Copy-Output (Join-Path $OutputDir "forgekairos-remote-server-linux-$arch.gz")
 }
 
 # --- macOS -------------------------------------------------------------------
@@ -327,7 +352,7 @@ function Invoke-MacBundle {
     }
     if ($DryRun) { return }
     Copy-Output (Join-Path $OutputDir "$triple/release/forgekairos-macos-$arch.dmg")
-    Copy-Output (Join-Path $OutputDir "zed-remote-server-macos-$arch.gz")
+    Copy-Output (Join-Path $OutputDir "forgekairos-remote-server-macos-$arch.gz")
 }
 
 # --- GitHub Actions ----------------------------------------------------------
@@ -353,35 +378,61 @@ function Start-CiBundle {
         Write-Warning "The workflow builds '$ciRef' as it is on GitHub, but this checkout's HEAD ($($head.Substring(0, 10))) is not what its upstream branch has. Push first, or the result will not contain your latest commits."
     }
 
-    $macArch = if ($Architecture -and $OsList -contains 'macos') { $Architecture } else { 'both' }
+    # -Architecture is for the packages built here; the workflow takes its
+    # architectures from -MacosArchitecture and builds the rest for x86_64.
+    $x86Only = @($OsList | Where-Object { $_ -in @('windows', 'linux') })
+    if ($Architecture -and $Architecture -ne 'x86_64' -and $x86Only.Count -gt 0) {
+        throw "The workflow builds $($x86Only -join ' and ') for x86_64 only, not $Architecture."
+    }
+    if ($Architecture -and $OsList -contains 'macos' -and -not $MacosArchitectureGiven) {
+        Write-Warning "-Architecture does not reach the workflow; it builds macOS for '$MacosArchitecture' (-MacosArchitecture)."
+    }
     $osInput = if ($OsList.Count -eq 3) { 'all' } else { $OsList -join ',' }
     $arguments = @('workflow', 'run', $WorkflowFile, '--repo', $Repository, '--ref', $ciRef,
-        '-f', "os=$osInput", '-f', "macos_arch=$macArch")
+        '-f', "os=$osInput", '-f', "macos_arch=$MacosArchitecture")
     if ($ReleaseTag) { $arguments += @('-f', "release_tag=$ReleaseTag") }
+
+    # gh workflow run does not print the id of the run it starts. The run is
+    # told apart by the commit it builds (the ref's head on GitHub) and by not
+    # being one of that commit's runs from before.
+    $headSha = $null
+    $earlierRuns = @()
+    if (-not $DryRun) {
+        $escapedRef = [uri]::EscapeDataString($ciRef)
+        $headSha = (Invoke-Query 'gh' @('api', "repos/$Repository/commits/$escapedRef", '--jq', '.sha')).Trim()
+        $earlierRuns = @(Get-CiRuns $headSha | ForEach-Object { $_.databaseId })
+    }
     Write-Host "Starting $WorkflowFile in $Repository for $osInput at $ciRef (billed GitHub Actions minutes)."
-    $startedAt = [DateTimeOffset]::UtcNow
     Invoke-Step 'gh' $arguments
-    return [pscustomobject]@{ Ref = $ciRef; StartedAt = $startedAt }
+    return [pscustomobject]@{ Ref = $ciRef; HeadSha = $headSha; EarlierRuns = $earlierRuns }
+}
+
+function Get-CiRunListArguments {
+    param([string]$HeadSha)
+    @('run', 'list', '--repo', $Repository, '--workflow', $WorkflowFile,
+        '--commit', $HeadSha, '--event', 'workflow_dispatch', '--limit', '20',
+        '--json', 'databaseId,createdAt,headSha,url')
+}
+
+function Get-CiRuns {
+    param([string]$HeadSha)
+    @(Invoke-Query 'gh' (Get-CiRunListArguments $HeadSha) | ConvertFrom-Json) |
+        Where-Object { $_.headSha -eq $HeadSha }
 }
 
 function Wait-CiBundle {
     param($Started)
-    $listArguments = @('run', 'list', '--repo', $Repository, '--workflow', $WorkflowFile,
-        '--branch', $Started.Ref, '--event', 'workflow_dispatch', '--limit', '10',
-        '--json', 'databaseId,createdAt,url')
     if ($DryRun) {
-        Write-Host "> $(Format-Command 'gh' $listArguments)" -ForegroundColor Cyan
+        Write-Host "> $(Format-Command 'gh' (Get-CiRunListArguments '<head of the ref>'))" -ForegroundColor Cyan
         Write-Host "> gh run watch <run id> --repo $Repository --exit-status" -ForegroundColor Cyan
         Write-Host "> gh run download <run id> --repo $Repository --dir target/ci-<run id>" -ForegroundColor Cyan
         return
     }
-    # gh workflow run does not print the id of the run it started.
     $run = $null
     for ($attempt = 0; $attempt -lt 30 -and -not $run; $attempt++) {
         Start-Sleep -Seconds 4
-        $runs = Invoke-Query 'gh' $listArguments | ConvertFrom-Json
-        $run = $runs |
-            Where-Object { [DateTimeOffset]$_.createdAt -ge $Started.StartedAt.AddSeconds(-30) } |
+        $run = Get-CiRuns $Started.HeadSha |
+            Where-Object { $_.databaseId -notin $Started.EarlierRuns } |
             Sort-Object { [DateTimeOffset]$_.createdAt } |
             Select-Object -First 1
     }

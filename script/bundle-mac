@@ -2,6 +2,7 @@
 
 set -euo pipefail
 source script/lib/blob-store.sh
+source script/lib/remote-artifacts.sh
 
 build_flag="--release"
 zed_features=""
@@ -102,6 +103,15 @@ cp "target/${target_triple}/${target_dir}/forgekairos-cli" "target/${target_trip
 # Build remote_server in separate invocation to prevent feature unification from other crates
 # from influencing dynamic libraries required by it.
 cargo --config .cargo/bundle-config.toml build ${build_flag} ${remote_server_features} --package remote_server --target $target_triple
+
+# What SSH, WSL and Docker connections upload to a Linux host. The download
+# that would replace them is blocked by this fork's egress policy. clang-format
+# is not shipped: the editor runs the one on PATH (Homebrew's llvm or Xcode's).
+echo "Cross-compiling the Linux remote server"
+linux_remote_server_artifact="target/remote_server/forgekairos-remote-server-linux-x86_64.gz"
+build_linux_remote_server_with_zigbuild "${build_flag}" "${remote_server_features}" "${linux_remote_server_artifact}"
+slirp4netns_path="target/remote_server/slirp4netns-linux-x86_64"
+download_slirp4netns x86_64 "${slirp4netns_path}"
 
 echo "Creating application bundle"
 pushd crates/zed
@@ -378,7 +388,12 @@ fi
 
 cp target/${target_triple}/${target_dir}/zed "${app_path}/Contents/MacOS/zed"
 cp target/${target_triple}/${target_dir}/cli "${app_path}/Contents/MacOS/cli"
+# In Resources, which crates/remote searches in an app bundle: codesign takes
+# anything in Contents/MacOS for code, and these are Linux files.
+mkdir -p "${app_path}/Contents/Resources"
+cp "${linux_remote_server_artifact}" "${app_path}/Contents/Resources/forgekairos-remote-server-linux-x86_64.gz"
+cp "${slirp4netns_path}" "${app_path}/Contents/Resources/slirp4netns-linux-x86_64"
 sign_app_binaries
 
 sign_binary "target/$target_triple/release/remote_server"
-gzip -f --stdout --best target/$target_triple/release/remote_server > target/zed-remote-server-macos-$arch_suffix.gz
+gzip -f --stdout --best target/$target_triple/release/remote_server > target/forgekairos-remote-server-macos-$arch_suffix.gz

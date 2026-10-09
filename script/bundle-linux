@@ -2,6 +2,7 @@
 
 set -euxo pipefail
 source script/lib/blob-store.sh
+source script/lib/remote-artifacts.sh
 
 # Function for displaying help info
 help_info() {
@@ -159,6 +160,17 @@ mkdir -p "${zed_dir}/bin" "${zed_dir}/libexec"
 cp "${target_dir}/${target_triple}/release/ForgeKairos" "${zed_dir}/libexec/forgekairos-editor"
 cp "${target_dir}/${target_triple}/release/forgekairos-cli" "${zed_dir}/bin/forgekairos"
 
+# What SSH, WSL and Docker connections upload to the host, next to the editor,
+# where crates/remote looks for it (bundled_server_search_dirs). The download
+# that would replace them is blocked by this fork's egress policy. clang-format
+# is not shipped: the editor runs the one on PATH (the distribution's package).
+arch=$(uname -m)
+remote_server_artifact="forgekairos-remote-server-linux-${arch}.gz"
+gzip -f --stdout --best "${target_dir}/${remote_server_triple}/release/remote_server" > "${target_dir}/${remote_server_artifact}"
+cp "${target_dir}/${remote_server_artifact}" "${zed_dir}/libexec/forgekairos-remote-server-linux-${arch}.gz"
+download_slirp4netns "${arch}" "${target_dir}/slirp4netns-linux-${arch}"
+cp "${target_dir}/slirp4netns-linux-${arch}" "${zed_dir}/libexec/slirp4netns-linux-${arch}"
+
 # Libs
 # Bundle libstdc++ so older supported systems can run binaries built with our
 # toolchain even when their system libstdc++.so.6 lacks required GLIBCXX symbols.
@@ -210,12 +222,9 @@ chmod +x "${zed_dir}/share/applications/$APP_ID.desktop"
 cp "assets/licenses.md" "${zed_dir}/licenses.md"
 
 # Create archive out of everything that's in the temp directory
-arch=$(uname -m)
 archive="forgekairos-linux-${arch}.tar.gz"
 
 rm -rf "${archive}"
 remove_match="forgekairos(-[a-zA-Z0-9]+)?-linux-$(uname -m)\.tar\.gz"
 ls "${target_dir}/release" | grep -E ${remove_match} | xargs -d "\n" -I {} rm -f "${target_dir}/release/{}" || true
 tar -czvf "${target_dir}/release/$archive" -C ${temp_dir} "forgekairos$suffix.app"
-
-gzip -f --stdout --best "${target_dir}/${remote_server_triple}/release/remote_server" > "${target_dir}/zed-remote-server-linux-${arch}.gz"

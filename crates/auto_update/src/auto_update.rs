@@ -732,7 +732,8 @@ impl AutoUpdater {
         cx: &mut AsyncApp,
     ) -> Result<ReleaseAsset> {
         let http_client = this.read_with(cx, |this, _| ide_lane(this.client.http_client()));
-        let asset_name = asset_name(asset, os, arch)?;
+        let asset_names = asset_names(asset, os, arch)?;
+        let asset_name = asset_names.join(" or ");
 
         let release = match version {
             Some(mut version) => {
@@ -754,7 +755,7 @@ impl AutoUpdater {
         }
         .with_context(|| format!("fetching the {UPDATE_REPO} release carrying {asset_name}"))?;
 
-        asset_from_release(release, &asset_name)
+        asset_from_release(release, &asset_names)
     }
 
     /// Adds the hosts the held-back download needs to `network_allowlist.json`
@@ -1115,6 +1116,22 @@ impl AutoUpdater {
     }
 }
 
+/// The names a release may carry an asset under, the one [`asset_name`] gives
+/// first. Earlier packages published the remote server under the legacy
+/// prefix (upstream's `zed-remote-server-`), which is still accepted.
+fn asset_names(asset: &str, os: &str, arch: &str) -> Result<Vec<String>> {
+    let mut names = vec![asset_name(asset, os, arch)?];
+    if asset == "zed-remote-server" {
+        for legacy in branding::LEGACY {
+            let name = format!("{}{os}-{arch}.gz", legacy.remote_server_binary_prefix);
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    Ok(names)
+}
+
 /// What the downloaded Windows installer is saved as in the `updates` directory.
 const WINDOWS_INSTALLER_FILE_NAME: &str =
     branding::concat_const!(branding::CURRENT.executable_stem, "-setup.exe");
@@ -1123,12 +1140,15 @@ const WINDOWS_INSTALLER_FILE_NAME: &str =
 ///
 /// The upstream endpoint this replaced chose the file server-side, so the
 /// convention has to be spelled out on the client now. `zed-remote-server`
-/// keeps the name upstream's own bundle scripts produce, which is also the
-/// one ADR-F15 looks for next to the executable, so a single file in a
-/// release serves both the bundled and the downloaded path.
+/// is named after `branding::CURRENT`, the name ADR-F15 looks for first next
+/// to the executable, so a single file in a release serves both the bundled
+/// and the downloaded path.
 fn asset_name(asset: &str, os: &str, arch: &str) -> Result<String> {
     match asset {
-        "zed-remote-server" => Ok(format!("zed-remote-server-{os}-{arch}.gz")),
+        "zed-remote-server" => Ok(format!(
+            "{}{os}-{arch}.gz",
+            branding::CURRENT.remote_server_binary_prefix
+        )),
         "zed" => match os {
             // The installer's OutputBaseFilename ($appSetupName in
             // script/bundle-windows.ps1).
@@ -1364,19 +1384,28 @@ fn newest_update_release(
 }
 
 /// Maps a GitHub release onto the shape the updater consumes: the tag with a
-/// leading `v` stripped as the version, and the named asset's download URL.
-fn asset_from_release(release: GithubRelease, asset_name: &str) -> Result<ReleaseAsset> {
+/// leading `v` stripped as the version, and the download URL of the first of
+/// `asset_names` the release carries.
+fn asset_from_release(release: GithubRelease, asset_names: &[String]) -> Result<ReleaseAsset> {
     let GithubRelease {
-        tag_name, assets, ..
+        tag_name,
+        mut assets,
+        ..
     } = release;
     let version = tag_name
         .strip_prefix('v')
         .unwrap_or(tag_name.as_str())
         .to_string();
-    let asset = assets
-        .into_iter()
-        .find(|asset| asset.name == asset_name)
-        .with_context(|| format!("release {tag_name} has no asset named {asset_name}"))?;
+    let index = asset_names
+        .iter()
+        .find_map(|name| assets.iter().position(|asset| &asset.name == name))
+        .with_context(|| {
+            format!(
+                "release {tag_name} has no asset named {}",
+                asset_names.join(" or ")
+            )
+        })?;
+    let asset = assets.swap_remove(index);
 
     Ok(ReleaseAsset {
         version,
@@ -1941,7 +1970,19 @@ mod tests {
         // bundled and downloaded paths can share one file.
         assert_eq!(
             asset_name("zed-remote-server", "linux", "aarch64").unwrap(),
-            "zed-remote-server-linux-aarch64.gz"
+            "forgekairos-remote-server-linux-aarch64.gz"
+        );
+        // Releases published before the rename are still found.
+        assert_eq!(
+            asset_names("zed-remote-server", "linux", "aarch64").unwrap(),
+            [
+                "forgekairos-remote-server-linux-aarch64.gz",
+                "zed-remote-server-linux-aarch64.gz",
+            ]
+        );
+        assert_eq!(
+            asset_names("zed", "linux", "x86_64").unwrap(),
+            ["forgekairos-linux-x86_64.tar.gz"]
         );
         assert!(asset_name("zed", "freebsd", "x86_64").is_err());
         assert!(asset_name("something-else", "linux", "x86_64").is_err());
@@ -2087,16 +2128,56 @@ mod tests {
         let release = parse_fixture("v1.2.3", "https://test.example/zed");
 
         let asset_name = asset_name("zed", OS, ARCH).unwrap();
-        let mapped = asset_from_release(release, &asset_name).unwrap();
+        let mapped = asset_from_release(release, &[asset_name]).unwrap();
         assert_eq!(mapped.version, "1.2.3", "the `v` prefix is not a version");
         assert_eq!(mapped.url, "https://test.example/zed");
+    }
+
+    fn release_with_assets(names: &[&str]) -> GithubRelease {
+        let assets: Vec<String> = names
+            .iter()
+            .map(|name| {
+                format!(
+                    r#"{{ "name": "{name}", "browser_download_url": "https://test.example/{name}" }}"#
+                )
+            })
+            .collect();
+        serde_json::from_str(&format!(
+            r#"{{
+                "tag_name": "v1.2.3",
+                "draft": false,
+                "prerelease": false,
+                "tarball_url": "https://api.github.com/tarball/v1.2.3",
+                "zipball_url": "https://api.github.com/zipball/v1.2.3",
+                "assets": [{}]
+            }}"#,
+            assets.join(",")
+        ))
+        .expect("the fixture should parse as the GitHub API shape")
+    }
+
+    #[test]
+    fn the_remote_server_is_found_under_its_new_name_first_and_its_old_name_after() {
+        let names = asset_names("zed-remote-server", "linux", "x86_64").unwrap();
+        let current = "forgekairos-remote-server-linux-x86_64.gz";
+        let legacy = "zed-remote-server-linux-x86_64.gz";
+
+        let mapped = asset_from_release(release_with_assets(&[legacy, current]), &names).unwrap();
+        assert_eq!(mapped.url, format!("https://test.example/{current}"));
+
+        let mapped = asset_from_release(release_with_assets(&[legacy]), &names).unwrap();
+        assert_eq!(mapped.url, format!("https://test.example/{legacy}"));
+
+        let error = asset_from_release(release_with_assets(&["unrelated.gz"]), &names)
+            .expect_err("a release without the remote server is an error");
+        assert!(error.to_string().contains(current), "{error:#}");
     }
 
     #[test]
     fn a_release_without_this_platform_s_asset_is_an_error() {
         let release = parse_fixture("v1.2.3", "https://test.example/zed");
 
-        let error = asset_from_release(release, "zed-plan9-x86_64.tar.gz")
+        let error = asset_from_release(release, &["zed-plan9-x86_64.tar.gz".to_string()])
             .expect_err("a missing asset must not be silently skipped");
         assert!(error.to_string().contains("zed-plan9-x86_64.tar.gz"));
     }

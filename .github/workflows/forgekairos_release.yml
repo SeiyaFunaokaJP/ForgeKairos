@@ -108,8 +108,8 @@ jobs:
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: zed-remote-server-linux-x86_64.gz
-          path: target/zed-remote-server-linux-x86_64.gz
+          name: forgekairos-remote-server-linux-x86_64.gz
+          path: target/forgekairos-remote-server-linux-x86_64.gz
           if-no-files-found: error
 
   macos:
@@ -129,6 +129,10 @@ jobs:
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           key: ${{ matrix.arch }}
+      - name: Install zig
+        # script/bundle-mac cross-compiles the Linux remote server it ships
+        # in the app with cargo-zigbuild, which needs zig.
+        run: brew install zig
       - name: Bundle
         shell: pwsh
         env:
@@ -153,8 +157,8 @@ jobs:
           if-no-files-found: error
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: zed-remote-server-macos-${{ matrix.arch }}.gz
-          path: target/zed-remote-server-macos-${{ matrix.arch }}.gz
+          name: forgekairos-remote-server-macos-${{ matrix.arch }}.gz
+          path: target/forgekairos-remote-server-macos-${{ matrix.arch }}.gz
           if-no-files-found: error
 
   draft_release:

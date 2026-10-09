@@ -115,9 +115,20 @@ pwsh -NoProfile -File script/bundle.ps1 -Os all -DryRun
 The packages are left in `target` under the names the update check looks for:
 `forgekairos-windows-x86_64-setup.exe`, `forgekairos-linux-x86_64.tar.gz`,
 `forgekairos-macos-aarch64.dmg` and `forgekairos-macos-x86_64.dmg`, plus the remote servers
-`zed-remote-server-linux-x86_64.gz` and `zed-remote-server-macos-<arch>.gz`.
+`forgekairos-remote-server-linux-x86_64.gz` and `forgekairos-remote-server-macos-<arch>.gz`.
 
-Options: `-Architecture` (`x86_64` or `aarch64`; by default this machine's), `-ReleaseTag`
+Like the Windows installer, the Linux and macOS packages carry what SSH, WSL and Docker
+connections install on a Linux host: the Linux x86_64 remote server
+(`forgekairos-remote-server-linux-x86_64.gz`) and `slirp4netns-linux-x86_64`. Without them the
+editor would have to download the server, which the default network policy blocks. They sit
+where the editor looks for them: in `libexec/` next to the editor in the Linux package, and in
+`Contents/Resources` of the macOS app. clang-format is not included on Linux and macOS: the
+editor runs the `clang-format` on `PATH`, from the distribution's package manager, Homebrew
+(`brew install clang-format`) or Xcode.
+
+Options: `-Architecture` (`x86_64` or `aarch64` of what is built on this machine; by default
+this machine's), `-MacosArchitecture` (`both`, `aarch64` or `x86_64`: what the workflow builds
+for macOS; it builds Windows and Linux for x86_64), `-ReleaseTag`
 (as for the installer), `-Jobs <n>` (cargo's `-j`), `-Ci` (make everything through the
 workflow), `-Wait` (wait for the workflow and download what it made into
 `target/ci-<run id>/`), `-Ref` (the branch or tag the workflow builds; by default the current
@@ -142,8 +153,9 @@ dependency; later runs only rebuild what changed.
 
 ### macOS
 
-macOS packages are made on a Mac (Xcode, `script/bundle-mac`), or by the GitHub Actions
-workflow below, which `script/bundle.ps1 -Os macos` starts on any other system with the
+macOS packages are made on a Mac (Xcode, `script/bundle-mac`; zig, `brew install zig`, to
+cross-build the Linux remote server with `cargo-zigbuild`, which the script installs when
+missing), or by the GitHub Actions workflow below, which `script/bundle.ps1 -Os macos` starts on any other system with the
 GitHub CLI (`gh workflow run`, after `gh auth login`). The workflow builds the branch as it
 is on GitHub, so push first. Without signing secrets the app is signed ad hoc and macOS
 refuses to open the downloaded app the first time: allow it under System Settings, Privacy &
@@ -169,6 +181,45 @@ release build with thin LTO), so start only the systems you need (`-Os macos`, t
 `macos_arch` input). The jobs cache the cargo registry and the build with
 `Swatinem/rust-cache`, which makes a rerun without dependency changes cheaper; GitHub keeps
 at most 10 GB of caches per repository and drops the oldest first.
+
+## Making a release
+
+1. Choose the tag: `v` and the version in `crates/zed/Cargo.toml` (`v1.22.0`). A pre-release
+   adds a suffix (`v1.22.0-pre`, `v1.22.0-pre.2`); a tag with a `-` is published as a
+   pre-release, which the update check offers only to those who turned on
+   `auto_update_include_prereleases`. Pass the tag as `-ReleaseTag` to every build: it is
+   compiled in, and the update check compares the releases on GitHub with it.
+2. Build Windows and Linux here:
+
+   ```powershell
+   pwsh -NoProfile -File script/bundle.ps1 -Os windows -ReleaseTag v1.22.0
+   pwsh -NoProfile -File script/bundle.ps1 -Os linux -ReleaseTag v1.22.0
+   ```
+
+3. Build macOS through the workflow (push the commit first; billed minutes):
+   `pwsh -NoProfile -File script/bundle.ps1 -Os macos -ReleaseTag v1.22.0 -Wait` downloads
+   the disk images and the macOS remote servers into `target/ci-<run id>/`.
+4. Create a draft release and upload the packages under their names (the update check finds
+   them by these names):
+
+   ```powershell
+   gh release create v1.22.0 --repo SeiyaFunaokaJP/ForgeKairos --draft --target (git rev-parse HEAD) --title "ForgeKairos v1.22.0" --generate-notes
+   gh release upload v1.22.0 --repo SeiyaFunaokaJP/ForgeKairos `
+       target/forgekairos-windows-x86_64-setup.exe `
+       target/forgekairos-linux-x86_64.tar.gz target/forgekairos-remote-server-linux-x86_64.gz `
+       (Get-ChildItem -Recurse -File target/ci-<run id>).FullName
+   ```
+
+   Add `--prerelease` for a pre-release. Check the draft, then publish it on GitHub, which
+   creates the tag.
+
+Pushing the tag instead (`git push origin v1.22.0`) makes the workflow build every system and
+create the draft release itself; that costs the most minutes. Publishing a draft creates the
+tag, which can start the workflow too: cancel that run (`gh run cancel`) when the packages
+are already uploaded.
+
+The update check reads the releases without signing in, so it sees nothing while the
+repository is private.
 
 ## Checks
 

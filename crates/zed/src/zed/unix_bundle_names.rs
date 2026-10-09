@@ -164,3 +164,35 @@ fn the_macos_disk_image_has_the_name_the_updater_looks_for() {
         );
     }
 }
+
+/// The remote server these scripts publish beside the package is the release
+/// asset the client downloads (`asset_name` in crates/auto_update) and the
+/// name crates/remote looks for first, both named after `branding::CURRENT`.
+#[test]
+fn the_unix_bundles_publish_the_remote_server_under_the_new_name() {
+    let prefix = branding::CURRENT.remote_server_binary_prefix;
+    for (script, contents, expected) in [
+        (
+            "script/bundle-linux",
+            BUNDLE_LINUX,
+            format!("remote_server_artifact=\"{prefix}linux-${{arch}}.gz\""),
+        ),
+        (
+            "script/bundle-mac",
+            BUNDLE_MAC,
+            format!("> target/{prefix}macos-$arch_suffix.gz"),
+        ),
+    ] {
+        assert!(
+            contents.contains(&expected),
+            "{script} does not publish {expected}"
+        );
+        for legacy in branding::LEGACY {
+            assert!(
+                !contents.contains(legacy.remote_server_binary_prefix),
+                "{script} still names a file {}...",
+                legacy.remote_server_binary_prefix
+            );
+        }
+    }
+}

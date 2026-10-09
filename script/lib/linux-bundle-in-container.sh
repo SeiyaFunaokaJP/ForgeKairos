@@ -18,7 +18,7 @@ script/bundle-linux "$@"
 
 arch=$(uname -m)
 package="forgekairos-linux-${arch}.tar.gz"
-remote_server="zed-remote-server-linux-${arch}.gz"
+remote_server="forgekairos-remote-server-linux-${arch}.gz"
 mkdir -p /src/target
 cp "${CARGO_TARGET_DIR}/release/${package}" "${CARGO_TARGET_DIR}/${remote_server}" /src/target/
 
