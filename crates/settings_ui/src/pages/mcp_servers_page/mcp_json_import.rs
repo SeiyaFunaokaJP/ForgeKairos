@@ -610,9 +610,9 @@ mod tests {
         let servers = parse(
             r#"{
               "context_servers": {
-                "fitelnet": {
+                "example-mcp": {
                   "enabled": true,
-                  "command": "I:\\FITELnet-mcp\\.venv\\Scripts\\fitelnet-mcp.exe",
+                  "command": "C:\\tools\\example-mcp\\.venv\\Scripts\\example-mcp.exe",
                   "args": ["--stdio"],
                   "timeout": 120,
                   "remote": true
@@ -637,9 +637,9 @@ mod tests {
             servers,
             vec![
                 server(
-                    "fitelnet",
+                    "example-mcp",
                     ImportedDefinition::Local {
-                        command: r"I:\FITELnet-mcp\.venv\Scripts\fitelnet-mcp.exe".into(),
+                        command: r"C:\tools\example-mcp\.venv\Scripts\example-mcp.exe".into(),
                         args: vec!["--stdio".into()],
                         env: Vec::new(),
                         timeout: Some(120),

@@ -311,10 +311,10 @@ mod tests {
 
     #[test]
     fn test_external_command_location_for_a_remote_project() {
-        let location = external_command_location("clang-format", Some("192.168.100.150"));
+        let location = external_command_location("clang-format", Some("192.0.2.10"));
         assert_eq!(
             location,
-            "Uses `clang-format` on the remote host (192.168.100.150)."
+            "Uses `clang-format` on the remote host (192.0.2.10)."
         );
     }
 

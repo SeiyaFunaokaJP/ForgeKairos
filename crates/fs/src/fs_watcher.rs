@@ -3198,7 +3198,7 @@ mod tests {
             Path::new(r"\\wsl$\Ubuntu\home\user\project"),
             Path::new(r"\\?\UNC\wsl.localhost\Ubuntu\home\user\project"),
         ];
-        let drive = Path::new(r"I:\zed-jp-llm\crates");
+        let drive = Path::new(r"I:\proj\crates");
 
         for path in shares {
             assert!(requires_poll_watcher_with_mode(path, "auto"), "{path:?}");
@@ -3492,7 +3492,7 @@ mod tests {
         let roots = [
             (watch_root_key(Path::new(r"C:\wsl")), true),
             (watch_root_key(Path::new(r"C:\wsl\windows-side")), false),
-            (watch_root_key(Path::new(r"I:\zed-jp-llm")), false),
+            (watch_root_key(Path::new(r"I:\proj")), false),
         ];
         let answer =
             |path: &str| answer_of_nearest_root(&watch_root_key(Path::new(path)), &roots[..]);

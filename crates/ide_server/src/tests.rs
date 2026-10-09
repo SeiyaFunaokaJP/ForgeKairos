@@ -49,7 +49,7 @@ use crate::{
 fn writes_the_lock_file_fields_the_cli_reads() {
     let contents = LockFileContents {
         pid: 4242,
-        workspace_folders: vec!["I:\\zed-jp-llm".to_string()],
+        workspace_folders: vec!["I:\\proj".to_string()],
         ide_name: "Zed".to_string(),
         transport: "ws".to_string(),
         running_in_windows: true,
@@ -77,21 +77,18 @@ fn writes_the_lock_file_fields_the_cli_reads() {
     assert_eq!(json["transport"], json!("ws"));
     assert_eq!(json["ideName"], json!("Zed"));
     assert_eq!(json["runningInWindows"], json!(true));
-    assert_eq!(json["workspaceFolders"], json!(["I:\\zed-jp-llm"]));
+    assert_eq!(json["workspaceFolders"], json!(["I:\\proj"]));
 }
 
 #[test]
 fn reads_a_lock_file_written_by_another_ide() {
-    let raw = r#"{"pid":25180,"workspaceFolders":["i:\\zed-jp-llm"],"ideName":"Antigravity IDE","transport":"ws","runningInWindows":true,"authToken":"redacted"}"#;
+    let raw = r#"{"pid":25180,"workspaceFolders":["i:\\proj"],"ideName":"Antigravity IDE","transport":"ws","runningInWindows":true,"authToken":"redacted"}"#;
     let contents = LockFileContents::from_json(raw).expect("the lock file parses");
     assert_eq!(contents.pid, 25180);
     assert_eq!(contents.ide_name, "Antigravity IDE");
     assert_eq!(contents.transport, "ws");
     assert!(contents.running_in_windows);
-    assert_eq!(
-        contents.workspace_folders,
-        vec!["i:\\zed-jp-llm".to_string()]
-    );
+    assert_eq!(contents.workspace_folders, vec!["i:\\proj".to_string()]);
 }
 
 #[test]
@@ -1000,8 +997,7 @@ async fn does_not_write_through_a_hard_link_planted_at_the_lock_path(cx: &mut Te
 
 #[test]
 fn writes_the_sandbox_lock_file_the_cli_reads() {
-    let bytes =
-        crate::sandbox_lock_file_contents("sandbox-token", &["/mnt/i/zed-jp-llm".to_string()]);
+    let bytes = crate::sandbox_lock_file_contents("sandbox-token", &["/mnt/i/proj".to_string()]);
     let json: Value = serde_json::from_slice(&bytes).expect("the lock file is valid JSON");
 
     let mut keys = json
@@ -1029,7 +1025,7 @@ fn writes_the_sandbox_lock_file_the_cli_reads() {
     assert_eq!(json["transport"], json!("ws"));
     assert_eq!(json["ideName"], json!("ForgeKairos"));
     assert_eq!(json["authToken"], json!("sandbox-token"));
-    assert_eq!(json["workspaceFolders"], json!(["/mnt/i/zed-jp-llm"]));
+    assert_eq!(json["workspaceFolders"], json!(["/mnt/i/proj"]));
 
     let contents =
         LockFileContents::from_json(std::str::from_utf8(&bytes).expect("the lock file is UTF-8"))

@@ -1307,11 +1307,11 @@ mod tests {
     fn test_parent_directory_query_with_windows_style() {
         let parent = |dir| parent_directory_query(dir, PathStyle::Windows, "C:\\");
 
-        assert_eq!(parent("C:\\Users\\admin\\").as_deref(), Some("C:\\Users\\"));
+        assert_eq!(parent("C:\\Users\\user\\").as_deref(), Some("C:\\Users\\"));
         assert_eq!(parent("C:\\Users\\").as_deref(), Some("C:\\"));
         assert_eq!(parent("C:\\"), None);
-        assert_eq!(parent("C:/Users/admin/").as_deref(), Some("C:\\Users\\"));
-        assert_eq!(parent("C:\\Users\\admin\\..\\").as_deref(), Some("C:\\"));
+        assert_eq!(parent("C:/Users/user/").as_deref(), Some("C:\\Users\\"));
+        assert_eq!(parent("C:\\Users\\user\\..\\").as_deref(), Some("C:\\"));
     }
 
     #[test]

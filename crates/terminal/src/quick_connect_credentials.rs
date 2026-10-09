@@ -578,12 +578,8 @@ mod tests {
     #[test]
     fn credential_url_keys_on_protocol_host_and_port() {
         assert_eq!(
-            credential_url(&connection(
-                ConnectionProtocol::Ssh,
-                "192.168.100.150",
-                None
-            )),
-            "zed-quick-connect+ssh://192.168.100.150:22"
+            credential_url(&connection(ConnectionProtocol::Ssh, "192.0.2.10", None)),
+            "zed-quick-connect+ssh://192.0.2.10:22"
         );
         assert_eq!(
             credential_url(&connection(ConnectionProtocol::Ssh, "host", Some(2222))),
@@ -624,7 +620,7 @@ mod tests {
     #[test]
     fn prompts_are_classified_by_what_they_ask_for() {
         assert_eq!(
-            classify_prompt("ubuntu@192.168.100.150's password: "),
+            classify_prompt("ubuntu@192.0.2.10's password: "),
             AskPassPrompt::Password
         );
         assert_eq!(

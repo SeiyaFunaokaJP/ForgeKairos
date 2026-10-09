@@ -3995,7 +3995,7 @@ mod tests {
     #[test]
     fn test_command_lines_show_what_runs() {
         let target = LaunchTarget::Command {
-            program: "I:\\FITELnet-mcp\\.venv\\Scripts\\fitelnet-mcp.exe".into(),
+            program: "C:\\tools\\example-mcp\\.venv\\Scripts\\example-mcp.exe".into(),
             arguments: vec![
                 "say \"hi\"".into(),
                 "\u{202E}sj.exe".into(),
@@ -4005,7 +4005,7 @@ mod tests {
         };
         assert_eq!(
             target.display().to_string(),
-            "I:\\FITELnet-mcp\\.venv\\Scripts\\fitelnet-mcp.exe \"say \"hi\"\" <U+202E>sj.exe C:\\tools\\x.js \"\"",
+            "C:\\tools\\example-mcp\\.venv\\Scripts\\example-mcp.exe \"say \"hi\"\" <U+202E>sj.exe C:\\tools\\x.js \"\"",
             "paths read exactly as they run, and nothing invisible stays invisible"
         );
         assert_eq!(

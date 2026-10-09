@@ -5279,10 +5279,10 @@ mod tests {
     #[test]
     fn editing_an_existing_server_writes_back_exactly_what_was_loaded() {
         let cases = [
-            // The user's real server.
+            // A typical local server.
             r#"{
                 "enabled": true,
-                "command": "I:\\FITELnet-mcp\\.venv\\Scripts\\fitelnet-mcp.exe",
+                "command": "C:\\tools\\example-mcp\\.venv\\Scripts\\example-mcp.exe",
                 "args": ["--stdio"],
                 "timeout": 120
             }"#,
@@ -5310,11 +5310,11 @@ mod tests {
                 _ => McpTransport::Stdio,
             };
             let values =
-                McpServerFormValues::from_existing(transport, Some((id("fitelnet"), settings)));
+                McpServerFormValues::from_existing(transport, Some((id("example-mcp"), settings)));
 
             let (saved_id, original_id, saved) = build_settings_from_values(&values).unwrap();
-            assert_eq!(saved_id, id("fitelnet"));
-            assert_eq!(original_id, Some(id("fitelnet")));
+            assert_eq!(saved_id, id("example-mcp"));
+            assert_eq!(original_id, Some(id("example-mcp")));
             assert_eq!(saved, content, "{json}");
         }
     }
@@ -5514,13 +5514,13 @@ mod tests {
             ),
             r#""C:\Program Files\nodejs\node.exe" server.js "two words" """#
         );
-        // The user's real server: a Windows path is shown exactly as it runs.
+        // A typical local server: a Windows path is shown exactly as it runs.
         assert_eq!(
             display_command_line(
-                r"I:\FITELnet-mcp\.venv\Scripts\fitelnet-mcp.exe",
+                r"C:\tools\example-mcp\.venv\Scripts\example-mcp.exe",
                 &["--stdio".into()]
             ),
-            r"I:\FITELnet-mcp\.venv\Scripts\fitelnet-mcp.exe --stdio"
+            r"C:\tools\example-mcp\.venv\Scripts\example-mcp.exe --stdio"
         );
     }
 

@@ -2095,7 +2095,7 @@ drwxr-xr-x    2 ftp      ftp          4096 Sep  6 12:34 pub
         let listing = "sftp> ls -l -a \"/home/ubuntu\"
 drwxr-xr-x    5 ubuntu   ubuntu       4096 Sep  6 12:34 .
 drwxr-xr-x    3 root     root         4096 Mar  4  2026 ..
-drwxrwxr-x    8 ubuntu   ubuntu       4096 Sep  5 19:39 zed-jp-llm
+drwxrwxr-x    8 ubuntu   ubuntu       4096 Sep  5 19:39 proj
 -rw-rw-r--    1 ubuntu   ubuntu    12345678 Sep  6 09:00 backup.tar.gz
 lrwxrwxrwx    1 ubuntu   ubuntu          7 Apr 22  2024 bin -> /usr/bin
 -rw-------    1 ubuntu   ubuntu        512 Jan 10  2024 .bash_history
@@ -2105,10 +2105,7 @@ lrwxrwxrwx    1 ubuntu   ubuntu          7 Apr 22  2024 bin -> /usr/bin
             .iter()
             .map(|entry| entry.name.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(
-            names,
-            ["zed-jp-llm", "backup.tar.gz", "bin", ".bash_history"]
-        );
+        assert_eq!(names, ["proj", "backup.tar.gz", "bin", ".bash_history"]);
         assert_eq!(entries[0].kind, EntryKind::Directory);
         assert_eq!(entries[0].size, None);
         assert_eq!(entries[1].size, Some(12345678));
@@ -2159,7 +2156,7 @@ lrwxrwxrwx    1 ubuntu   ubuntu          7 Apr 22  2024 bin -> /usr/bin
 
     #[test]
     fn the_stored_password_answers_once_then_hands_over_to_the_user() {
-        let password = "ubuntu@192.168.100.150's password: ";
+        let password = "ubuntu@192.0.2.10's password: ";
         assert_eq!(
             decide_stored_password_use(password, false),
             StoredPasswordUse::Answer
@@ -2206,7 +2203,7 @@ lrwxrwxrwx    1 ubuntu   ubuntu          7 Apr 22  2024 bin -> /usr/bin
             );
         }
         for prompt in [
-            "ubuntu@192.168.100.150's password: ",
+            "ubuntu@192.0.2.10's password: ",
             "Enter passphrase for key '/home/ubuntu/.ssh/id_ed25519': ",
             // Not recognized, and more likely a one-time code than a name.
             "Verification code: ",

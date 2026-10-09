@@ -321,8 +321,8 @@ mod tests {
             i18n_catalog::test_support::bundled_catalog("ja"),
         ));
         assert_eq!(
-            not_found().user_message(Some("192.168.100.150")),
-            "フォーマッタ `clang-format` が見つかりません。接続先 (192.168.100.150) にインストールされていません。通知の「リモートにインストール」から、管理者権限なしで接続先のホームディレクトリに導入できます。"
+            not_found().user_message(Some("192.0.2.10")),
+            "フォーマッタ `clang-format` が見つかりません。接続先 (192.0.2.10) にインストールされていません。通知の「リモートにインストール」から、管理者権限なしで接続先のホームディレクトリに導入できます。"
         );
         assert_eq!(
             not_found().user_message(None),
@@ -352,8 +352,8 @@ mod tests {
         assert!(local.contains("clang-format"), "{local}");
         assert!(local.contains("C:\\Zed\\bin"), "{local}");
 
-        let remote = not_found().user_message(Some("192.168.100.150"));
-        assert!(remote.contains("192.168.100.150"), "{remote}");
+        let remote = not_found().user_message(Some("192.0.2.10"));
+        assert!(remote.contains("192.0.2.10"), "{remote}");
         // ADR-F39: a catalogued tool is offered as a one-button install rather
         // than as a `sudo` command that needs root and a network the host may
         // not have.
@@ -374,14 +374,14 @@ mod tests {
             requested: None,
             only_whole_buffer_formatting: false,
         };
-        let remote = whole_file_only.user_message(Some("192.168.100.150"));
+        let remote = whole_file_only.user_message(Some("192.0.2.10"));
         assert_eq!(
             remote,
             "No running language server can format a selection in this file. The whole file can be formatted."
         );
         // A server is already running there, so asking for one to be
         // installed on the host would send the user the wrong way.
-        assert_ne!(remote, nothing.user_message(Some("192.168.100.150")));
+        assert_ne!(remote, nothing.user_message(Some("192.0.2.10")));
         assert_eq!(
             whole_file_only.status_message(),
             "No language server can format a selection"

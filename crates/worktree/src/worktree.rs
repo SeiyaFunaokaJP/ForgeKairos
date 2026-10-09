@@ -7866,7 +7866,7 @@ mod tests {
             || anyhow::Error::new(std::io::Error::from_raw_os_error(ERROR_PATH_NOT_FOUND));
         let share = Path::new(r"\\wsl.localhost\Ubuntu\root\project\node_modules\.bin\tsc");
         let verbatim_share = Path::new(r"\\?\UNC\wsl.localhost\Ubuntu\root\project\link");
-        let drive = Path::new(r"I:\zed-jp-llm\crates\worktree\link");
+        let drive = Path::new(r"I:\proj\crates\worktree\link");
 
         assert!(is_link_only_wsl_can_follow(share, &unopenable()));
         assert!(is_link_only_wsl_can_follow(verbatim_share, &unopenable()));

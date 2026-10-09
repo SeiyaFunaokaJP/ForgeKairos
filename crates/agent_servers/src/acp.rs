@@ -9622,7 +9622,7 @@ done
     fn wsl_e2e_project_directory() -> PathBuf {
         std::env::var("ZED_WSL_AGENT_E2E_DIR")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from(r"I:\zed-3e-e2e-w"))
+            .unwrap_or_else(|_| PathBuf::from(r"C:\wsl-agent-e2e"))
     }
 
     /// ADR-F49 第 2b 段, end to end on a real distro: the agent's process is

@@ -48,8 +48,8 @@ powershell -NoProfile -File script\resolve-cargo-conflicts.ps1
 powershell -NoProfile -File script\resolve-cargo-conflicts.ps1 -DryRun
 
 .EXAMPLE
-# Outside a merge, on copies of conflicted files (git is asked in the repository I:\zed-jp-llm)
-powershell -NoProfile -File script\resolve-cargo-conflicts.ps1 -RepoRoot C:\tmp\merged -GitRepo I:\zed-jp-llm `
+# Outside a merge, on copies of conflicted files (git is asked in the repository C:\src\ForgeKairos)
+powershell -NoProfile -File script\resolve-cargo-conflicts.ps1 -RepoRoot C:\tmp\merged -GitRepo C:\src\ForgeKairos `
     -Path "Cargo.toml,crates\zed\Cargo.toml,Cargo.lock" -ForkPoint refs/upstream/tags/v1.17.2 `
     -TheirsLock C:\tmp\theirs.lock -OursLock C:\tmp\ours.lock
 #>

@@ -896,8 +896,8 @@ mod tests {
     #[test]
     fn maps_drive_paths_to_the_host() {
         assert_eq!(
-            host("/mnt/i/zed-jp-llm/src/main.rs").as_deref(),
-            Some(r"I:\zed-jp-llm\src\main.rs")
+            host("/mnt/i/proj/src/main.rs").as_deref(),
+            Some(r"I:\proj\src\main.rs")
         );
         assert_eq!(host("/mnt/c").as_deref(), Some(r"C:\"));
         assert_eq!(host("/mnt/c/").as_deref(), Some(r"C:\"));
@@ -983,8 +983,8 @@ mod tests {
     #[test]
     fn maps_host_paths_to_the_client() {
         assert_eq!(
-            client(r"I:\zed-jp-llm\src\main.rs").as_deref(),
-            Some("/mnt/i/zed-jp-llm/src/main.rs")
+            client(r"I:\proj\src\main.rs").as_deref(),
+            Some("/mnt/i/proj/src/main.rs")
         );
         assert_eq!(client(r"i:\x").as_deref(), Some("/mnt/i/x"));
         assert_eq!(client("I:/x/y").as_deref(), Some("/mnt/i/x/y"));
@@ -1052,7 +1052,7 @@ mod tests {
     #[test]
     fn round_trips_between_the_client_and_the_host() {
         for client_path in [
-            "/mnt/i/zed-jp-llm/src/main.rs",
+            "/mnt/i/proj/src/main.rs",
             "/mnt/c",
             "/mnt/d/My Project/a b.rs",
             "/mnt/i/プロジェクト/日本語.rs",
@@ -1069,7 +1069,7 @@ mod tests {
             );
         }
         for host_path in [
-            r"I:\zed-jp-llm\src\main.rs",
+            r"I:\proj\src\main.rs",
             r"\\wsl.localhost\Ubuntu\home\u\データ.txt",
             r"D:\with space\x",
         ] {
@@ -1808,8 +1808,8 @@ mod tests {
         }
 
         for path in [
-            r"I:\zed-jp-llm\crates",
-            r"\\?\I:\zed-jp-llm",
+            r"I:\proj\crates",
+            r"\\?\I:\proj",
             r"\\server\share\project",
             // 共有の名前 (ディストリビューション) が無いものは場所ではない。
             r"\\wsl.localhost",
@@ -1861,7 +1861,7 @@ mod tests {
         }
 
         for path in [
-            r"I:\zed-jp-llm\crates",
+            r"I:\proj\crates",
             r"\\server\share\project",
             "/home/u/repo",
             // ディストリビューションのルート自身は書込許可の形ではない。
