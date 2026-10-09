@@ -9,6 +9,8 @@
 
 $LinuxRemoteServerTarget = 'x86_64-unknown-linux-musl'
 $Slirp4netnsVersion = 'v1.2.3'
+# From that release's SHA256SUMS, the same sum script/lib/remote-artifacts.sh checks.
+$Slirp4netnsX86_64Sha256 = '2051ae25baba59c96f42bf2b7b7efa2eabb022e497b6c4b692b1428d2b2d1f5b'
 
 function Get-ZigPath {
     $zig = Get-Command zig -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -168,7 +170,9 @@ function Build-LinuxRemoteServer {
 function Get-Slirp4netns {
     param([Parameter(Mandatory)][string]$Destination)
 
-    if ((Test-Path $Destination) -and (Get-Item $Destination).Length -ge 100000) {
+    # The binary is uploaded to remote hosts and runs there, so only the
+    # published build is accepted.
+    if ((Test-Path $Destination) -and (Get-FileHash -Algorithm SHA256 $Destination).Hash -eq $Slirp4netnsX86_64Sha256) {
         Write-Host "slirp4netns is already downloaded: $Destination"
         return
     }
@@ -181,14 +185,18 @@ function Get-Slirp4netns {
     $previousProgress = $ProgressPreference
     # Drawing Invoke-WebRequest's progress makes a large download slow.
     $ProgressPreference = 'SilentlyContinue'
+    $download = "$Destination.download"
     try {
-        Invoke-WebRequest -Uri $uri -OutFile $Destination -UseBasicParsing
+        Invoke-WebRequest -Uri $uri -OutFile $download -UseBasicParsing
     } finally {
         $ProgressPreference = $previousProgress
     }
-    if (-not (Test-Path $Destination) -or (Get-Item $Destination).Length -lt 100000) {
-        throw "The slirp4netns download failed or is not a binary: $Destination"
+    $actual = (Get-FileHash -Algorithm SHA256 $download).Hash
+    if ($actual -ne $Slirp4netnsX86_64Sha256) {
+        Remove-Item -Force $download
+        throw "The slirp4netns download from $uri has SHA-256 $actual, expected $Slirp4netnsX86_64Sha256."
     }
+    Move-Item -Force -Path $download -Destination $Destination
     Write-Host ("slirp4netns: {0} ({1:N1} MB)" -f $Destination, ((Get-Item $Destination).Length / 1MB))
 }
 
