@@ -66,8 +66,9 @@ jobs:
       - name: Bundle
         shell: pwsh
         run: |
-          $arguments = @('-Os', 'windows', '-Architecture', 'x86_64')
-          if ($env:RELEASE_TAG) { $arguments += @('-ReleaseTag', $env:RELEASE_TAG) }
+          # An array splat passes '-Os' as a value; only a hashtable splat names parameters.
+          $arguments = @{ Os = 'windows'; Architecture = 'x86_64' }
+          if ($env:RELEASE_TAG) { $arguments.ReleaseTag = $env:RELEASE_TAG }
           ./script/bundle.ps1 @arguments
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -98,8 +99,9 @@ jobs:
       - name: Bundle
         shell: pwsh
         run: |
-          $arguments = @('-Os', 'linux', '-Architecture', 'x86_64')
-          if ($env:RELEASE_TAG) { $arguments += @('-ReleaseTag', $env:RELEASE_TAG) }
+          # An array splat passes '-Os' as a value; only a hashtable splat names parameters.
+          $arguments = @{ Os = 'linux'; Architecture = 'x86_64' }
+          if ($env:RELEASE_TAG) { $arguments.ReleaseTag = $env:RELEASE_TAG }
           ./script/bundle.ps1 @arguments
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -147,8 +149,9 @@ jobs:
           APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
           APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
         run: |
-          $arguments = @('-Os', 'macos', '-Architecture', $env:ARCH)
-          if ($env:RELEASE_TAG) { $arguments += @('-ReleaseTag', $env:RELEASE_TAG) }
+          # An array splat passes '-Os' as a value; only a hashtable splat names parameters.
+          $arguments = @{ Os = 'macos'; Architecture = $env:ARCH }
+          if ($env:RELEASE_TAG) { $arguments.ReleaseTag = $env:RELEASE_TAG }
           ./script/bundle.ps1 @arguments
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
