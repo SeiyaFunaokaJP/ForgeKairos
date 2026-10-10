@@ -10,9 +10,18 @@ It is developed mainly for Windows.
 
 Repository: <https://github.com/SeiyaFunaokaJP/ForgeKairos>
 
-Documentation: <https://seiyafunaokajp.github.io/ForgeKairos/> (available once GitHub Pages is
-published for the repository; the source is in `pages/`). For a list of everything that
+Documentation: <https://seiyafunaokajp.github.io/ForgeKairos/> (the source is in `pages/`). For a list of everything that
 differs from Zed, see [Changes from Zed](pages/src/changes.md).
+
+> [!NOTE]
+> ForgeKairos is built for its author's own development work. It is published as is and
+> maintained only occasionally: issues and pull requests may go unanswered, and it may
+> fall behind upstream Zed releases.
+
+## The name
+
+**Forge** (a smithy, where tools are made) + **Kairos** (the Greek god of the opportune
+moment). Read in Japanese, "kairo" is also *回路* (circuit), so Kairos is "circuits" too.
 
 ## Not affiliated with Zed Industries
 

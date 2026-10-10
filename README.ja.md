@@ -2,11 +2,20 @@
 
 [English](README.md) | 日本語
 
-文書サイト: <https://seiyafunaokajp.github.io/ForgeKairos/ja/> (リポジトリの GitHub Pages を公開した後に有効。ソースは `pages/`)。Zed との違いの一覧は [Zed からの変更点](pages/src/ja/changes.md)。
+文書サイト: <https://seiyafunaokajp.github.io/ForgeKairos/ja/> (ソースは `pages/`)。Zed との違いの一覧は [Zed からの変更点](pages/src/ja/changes.md)。
 
 ForgeKairos は [Zed](https://zed.dev) のフォーク (upstream のリリースを `git merge` で 1 版ずつ取り込む。現在 v1.22.0 ベース)。
 日本語 UI、ネットワーク統制 (egress deny-by-default)、ローカル LLM 第一の AI 方針、
 そして VSCode が切り捨てた古い Linux への SSH リモート対応を自前改造で足した Windows 向け IDE。
+
+> [!NOTE]
+> ForgeKairos は作者自身の開発用に作っているものを、そのまま公開しています。メンテナンスは不定期で、
+> Issue や Pull Request に応答できないことや、upstream の Zed のリリースから遅れることがあります。
+
+## 名前の由来
+
+**Forge** (鍛冶場。道具を鍛えて作る場所) + **Kairos** (ギリシャ神話の好機の神、カイロス)。
+日本語で読めば「カイロ」は**回路**でもあり、Kairos は「回路s」でもあります。
 
 ## 特徴
 

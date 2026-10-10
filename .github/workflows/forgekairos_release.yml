@@ -2,9 +2,8 @@
 # need Zed's private runners and secrets, so this workflow stands beside them.
 # Every job runs the script a developer runs (script/bundle.ps1 -Os <os>).
 #
-# The repository is private, so the minutes are billed (macOS at ten times the
-# Linux rate). It therefore never runs on push or pull request: only when
-# started by hand (or by script/bundle.ps1 through `gh workflow run`) and when
+# A full build takes hours per operating system, so it never runs on push or
+# pull request: only when started by hand (or by script/bundle.ps1 through `gh workflow run`) and when
 # a v* tag is pushed, which also makes a draft release with every package.
 name: ForgeKairos release
 
