@@ -7,6 +7,7 @@
 
 - [Installation and updates](install.md)
 - [Display language and translations](language.md)
+- [AI and network restrictions at a glance](overview.md)
 - [Outbound network control](network.md)
 - [AI](ai.md)
 - [C and C++ code navigation](editor.md)

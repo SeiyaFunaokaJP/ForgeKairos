@@ -4,7 +4,8 @@
 
 For the AI features that ForgeKairos shares with Zed (the agent panel, inline assistant,
 providers), see [Zed's AI documentation](https://zed.dev/docs/ai/overview). This page
-describes what ForgeKairos changes and adds.
+describes what ForgeKairos changes and adds. For diagrams of how AI and network access are
+restricted, see [AI and network restrictions at a glance](overview.md).
 
 ## Off by default
 

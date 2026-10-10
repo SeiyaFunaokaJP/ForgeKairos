@@ -7,6 +7,7 @@
 
 - [インストールと更新](install.md)
 - [表示言語と翻訳](language.md)
+- [AI と通信の制限の全体図](overview.md)
 - [外部通信の統制](network.md)
 - [AI](ai.md)
 - [C と C++ のコードの移動](editor.md)

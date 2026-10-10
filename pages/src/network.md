@@ -5,6 +5,8 @@
 ForgeKairos denies outbound traffic started by AI features unless you allow its host. The
 list of allowed hosts is the network allowlist.
 
+For diagrams of the whole picture, see [AI and network restrictions at a glance](overview.md).
+
 ## What the allowlist controls
 
 The allowlist applies to traffic that AI features start:

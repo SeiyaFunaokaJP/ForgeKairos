@@ -15,6 +15,8 @@ site-url = "/ForgeKairos/ja/"
 git-repository-url = "https://github.com/SeiyaFunaokaJP/ForgeKairos"
 edit-url-template = "https://github.com/SeiyaFunaokaJP/ForgeKairos/edit/main/pages/src/ja/{path}"
 no-section-label = true
+# The script lives beside the English book.toml; it lands in the site root, which both books share.
+additional-js = ["../mermaid-init.js"]
 
 [output.html.search]
 enable = true

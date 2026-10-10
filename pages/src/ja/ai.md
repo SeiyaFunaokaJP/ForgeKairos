@@ -4,6 +4,7 @@
 
 Zed と共通の AI の機能 (エージェントパネル、インラインアシスタント、プロバイダー) は
 [Zed の AI の文書](https://zed.dev/docs/ai/overview) を見る。この章は ForgeKairos が変えた点と足した点を書く。
+制限の全体の図は [AI と通信の制限の全体図](overview.md) を見る。
 
 ## 既定でオフ
 

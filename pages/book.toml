@@ -13,6 +13,7 @@ site-url = "/ForgeKairos/"
 git-repository-url = "https://github.com/SeiyaFunaokaJP/ForgeKairos"
 edit-url-template = "https://github.com/SeiyaFunaokaJP/ForgeKairos/edit/main/pages/src/{path}"
 no-section-label = true
+additional-js = ["mermaid-init.js"]
 
 [output.html.search]
 enable = true
