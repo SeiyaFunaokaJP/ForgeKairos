@@ -1003,10 +1003,11 @@ impl AgentServerStore {
 /// what wins — what its distribution needs, then what the IDE adds, then the
 /// agent's settings, which are the user's own word and override both.
 ///
-/// ADR-F53: the last of the three is why `agent_servers.<id>.env` is how an
-/// API key reaches an agent. Every route that starts a registry agent (this
-/// host's, and the WSL sandbox's, which builds its environment from nothing)
-/// composes it here, so the order holds for all of them.
+/// Every route that starts a registry agent on this host (outside its
+/// sandbox, and in the WSL sandbox, which builds its environment from nothing)
+/// composes it here, so the order holds for all of them. ADR-F88: an API key
+/// the card saved comes from the credential store in `extra_env`, so one the
+/// user spells out in `agent_servers.<id>.env` still wins over it.
 fn agent_environment(
     distribution_env: HashMap<String, String>,
     extra_env: HashMap<String, String>,
@@ -1014,8 +1015,45 @@ fn agent_environment(
 ) -> HashMap<String, String> {
     let mut env = distribution_env;
     env.extend(extra_env);
-    env.extend(settings_env);
+    env.extend(
+        settings_env
+            .into_iter()
+            .filter(|(name, value)| !is_blank_stored_api_key(name, value)),
+    );
     env
+}
+
+/// ADR-F88: the card and the migration take a blank key in the settings as no
+/// key at all, so it must not shadow the stored one either: the card would say
+/// the key is saved while the agent got an empty one.
+fn is_blank_stored_api_key(name: &str, value: &str) -> bool {
+    STORED_API_KEY_VARIABLES.contains(&name) && value.trim().is_empty()
+}
+
+/// ADR-F88: the names in `extra_env` that carry an API key the client read
+/// from its credential store. Routes that apply `extra_env` over the agent's
+/// own resolved environment (a custom agent's settings, a remote host's
+/// command) let these only fill in what that environment lacks, so a key the
+/// user spelled out there wins over the stored one, as on the registry route
+/// ([`agent_environment`]).
+pub const STORED_API_KEY_VARIABLES: &[&str] = &["ANTHROPIC_API_KEY"];
+
+/// Lays `extra_env` over `env`, except that a [`STORED_API_KEY_VARIABLES`]
+/// entry only fills in a name `env` does not have (or has blank).
+fn apply_extra_env<S: std::hash::BuildHasher>(
+    env: &mut std::collections::HashMap<String, String, S>,
+    extra_env: HashMap<String, String>,
+) {
+    for (name, value) in extra_env {
+        if STORED_API_KEY_VARIABLES.contains(&name.as_str()) {
+            let current = env.entry(name.clone()).or_default();
+            if is_blank_stored_api_key(&name, current) {
+                *current = value;
+            }
+        } else {
+            env.insert(name, value);
+        }
+    }
 }
 
 /// The environment of an agent this host is asked to describe, as it runs
@@ -1179,7 +1217,7 @@ impl ExternalAgentServer for RemoteExternalAgentServer {
                 })
             });
             response.args.extend(extra_args);
-            response.env.extend(extra_env);
+            apply_extra_env(&mut response.env, extra_env);
 
             Ok(AgentServerCommand {
                 path: response.path.into(),
@@ -2050,7 +2088,7 @@ impl ExternalAgentServer for LocalCustomAgent {
                 .unwrap_or_default();
             // ADR-F49: the sandbox takes the agent's own environment only.
             let mut agent_env = command.env.take().unwrap_or_default();
-            agent_env.extend(extra_env);
+            apply_extra_env(&mut agent_env, extra_env);
             env.extend(agent_env.clone());
 
             // ADR-F49 第 2b 段: on Windows the sandbox is the project's WSL
@@ -2474,6 +2512,172 @@ mod tests {
             from_settings.get("CLAUDE_CONFIG_DIR").map(String::as_str),
             Some("/srv/claude"),
             "a folder the user spelled out is their own word"
+        );
+    }
+
+    /// ADR-F88: on a remote host's sandbox too, the API key the client read
+    /// from its credential store only fills in what the host resolved.
+    #[test]
+    fn a_remote_sandbox_keeps_the_hosts_own_api_key() {
+        let projects = sandbox::SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE;
+        let remote_sandbox = |env: &[(&str, &str)]| proto::AgentServerSandbox {
+            config_dir: format!("/home/u/{projects}/0123456789abcdef/config"),
+            env: env
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect(),
+            readable_paths: Vec::new(),
+            hosts: Vec::new(),
+            hosts_from_editor_allowlist: true,
+        };
+        let extra_env = HashMap::from_iter([(
+            "ANTHROPIC_API_KEY".to_string(),
+            "sk-client-stored".to_string(),
+        )]);
+
+        let accepted = accept_remote_agent_sandbox(
+            &SandboxedAgentProfile::Claude,
+            remote_sandbox(&[("ANTHROPIC_API_KEY", "sk-host")]),
+            &extra_env,
+        )
+        .expect("the folder the profile names");
+        assert_eq!(
+            accepted.env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-host")
+        );
+
+        let accepted = accept_remote_agent_sandbox(
+            &SandboxedAgentProfile::Claude,
+            remote_sandbox(&[]),
+            &extra_env,
+        )
+        .expect("the folder the profile names");
+        assert_eq!(
+            accepted.env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-client-stored")
+        );
+    }
+
+    /// ADR-F88: the card takes a blank key in the settings as no key, so the
+    /// agent must get the stored one rather than the blank.
+    #[test]
+    fn a_blank_key_in_the_settings_does_not_shadow_the_stored_one() {
+        let stored =
+            HashMap::from_iter([("ANTHROPIC_API_KEY".to_string(), "sk-stored".to_string())]);
+        let blank = HashMap::from_iter([
+            ("ANTHROPIC_API_KEY".to_string(), " ".to_string()),
+            ("OTHER".to_string(), String::new()),
+        ]);
+
+        let env = agent_environment(HashMap::default(), stored.clone(), blank.clone());
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-stored")
+        );
+        assert_eq!(
+            env.get("OTHER").map(String::as_str),
+            Some(""),
+            "other blank values are the user's and stay"
+        );
+
+        let mut env = blank;
+        apply_extra_env(&mut env, stored);
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-stored")
+        );
+    }
+
+    /// ADR-F88: only the stored API key is held back; everything else the
+    /// client adds goes over the agent's resolved environment, as upstream.
+    #[test]
+    fn only_a_stored_api_key_fills_in() {
+        let mut env = HashMap::from_iter([
+            ("ANTHROPIC_API_KEY".to_string(), "sk-own".to_string()),
+            ("NO_BROWSER".to_string(), "0".to_string()),
+        ]);
+        apply_extra_env(
+            &mut env,
+            HashMap::from_iter([
+                ("ANTHROPIC_API_KEY".to_string(), "sk-stored".to_string()),
+                ("NO_BROWSER".to_string(), "1".to_string()),
+                ("HTTPS_PROXY".to_string(), "http://127.0.0.1:1".to_string()),
+            ]),
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-own")
+        );
+        assert_eq!(env.get("NO_BROWSER").map(String::as_str), Some("1"));
+        assert_eq!(
+            env.get("HTTPS_PROXY").map(String::as_str),
+            Some("http://127.0.0.1:1")
+        );
+
+        let mut env = HashMap::default();
+        apply_extra_env(
+            &mut env,
+            HashMap::from_iter([("ANTHROPIC_API_KEY".to_string(), "sk-stored".to_string())]),
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-stored")
+        );
+    }
+
+    /// ADR-F88: a custom agent's own `env` is the user's word, so an API key
+    /// spelled out there wins over the stored one the client adds — inside
+    /// the WSL sandbox as outside it.
+    #[cfg(all(target_os = "windows", feature = "test-support"))]
+    #[gpui::test]
+    async fn a_custom_agents_own_api_key_wins_over_the_stored_one(cx: &mut TestAppContext) {
+        init_test_settings(cx);
+        let extra_env = || {
+            HashMap::from_iter([
+                ("ANTHROPIC_API_KEY".to_string(), "sk-stored".to_string()),
+                ("NO_BROWSER".to_string(), "1".to_string()),
+            ])
+        };
+        let sandbox_env = |agent: &mut LocalCustomAgent, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                agent.get_command(
+                    Vec::new(),
+                    extra_env(),
+                    AgentLaunchTarget::Sandbox {
+                        wsl_distro: Some("Ubuntu".to_string()),
+                    },
+                    &mut cx.to_async(),
+                )
+            })
+        };
+
+        let mut agent = make_custom_agent(cx, "/usr/local/bin/my-agent");
+        agent
+            .command
+            .env
+            .get_or_insert_default()
+            .insert("ANTHROPIC_API_KEY".to_string(), "sk-settings".to_string());
+        let sandbox = sandbox_env(&mut agent, cx)
+            .await
+            .expect("a Linux command")
+            .sandbox
+            .expect("a sandbox part");
+        assert_eq!(
+            sandbox.env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-settings")
+        );
+        assert_eq!(sandbox.env.get("NO_BROWSER").map(String::as_str), Some("1"));
+
+        let mut agent = make_custom_agent(cx, "/usr/local/bin/my-agent");
+        let sandbox = sandbox_env(&mut agent, cx)
+            .await
+            .expect("a Linux command")
+            .sandbox
+            .expect("a sandbox part");
+        assert_eq!(
+            sandbox.env.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-stored"),
+            "with none in the settings, the stored key reaches the agent"
         );
     }
 

@@ -215,6 +215,8 @@ const API_KEY_CANCEL_SELECTOR: &str = "AUTH-API-KEY-CANCEL";
 /// 保存中は「保存」の代わりにこちらが出るので、目印も別にする: テストは
 /// 「押せない」ことを disabled 属性ではなく、どちらが出ているかで見る。
 const API_KEY_SAVING_SELECTOR: &str = "AUTH-API-KEY-SAVING";
+/// ADR-F88: the warning that the key is still in plain text in settings.json.
+const API_KEY_PLAINTEXT_SELECTOR: &str = "AUTH-API-KEY-PLAINTEXT";
 
 /// ADR-F55: 認証カードに出す注記を決める、サブスクリプションのサインインの
 /// 状態。「出ている」と「出せない」を混ぜない: 切ったのか、エージェントが
@@ -899,8 +901,15 @@ pub struct ConversationView {
     /// 「設定済み」のカードを出すので、その切り替え。
     api_key_editing: bool,
     /// キーを書く / 消す仕事。どちらも同じ枠を使うので、片方が走っている
-    /// あいだはもう片方を始めない (settings.json への書き込みが交差しない)。
+    /// あいだはもう片方を始めない (資格情報ストアと settings.json への書き込みが
+    /// 交差しない)。
     api_key_save_task: Option<Task<()>>,
+    /// ADR-F88: whether the credential store holds this agent's API key;
+    /// `None` until the first read finishes. The store is read asynchronously,
+    /// so the card shows what it last read — at creation, and after every save
+    /// and removal.
+    api_key_stored: Option<bool>,
+    api_key_status_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -1254,6 +1263,9 @@ impl ConversationView {
                     editor
                 })
             });
+        let api_key_status_task = api_key_editor
+            .is_some()
+            .then(|| Self::load_api_key_status(agent.agent_id(), cx));
 
         Self {
             agent: agent.clone(),
@@ -1299,6 +1311,8 @@ impl ConversationView {
             api_key_error: None,
             api_key_editing: false,
             api_key_save_task: None,
+            api_key_stored: None,
+            api_key_status_task,
             _subscriptions: subscriptions,
             focus_handle: cx.focus_handle(),
         }
@@ -3435,9 +3449,7 @@ impl ConversationView {
         // ADR-F55: どちらを使うかを決めるのは起動される CLI で、この IDE では
         // ない。両方そろっているカードで「ログイン」を押した利用者が、成功して
         // なお API キー側に課金される、という取り違えだけを先回りして断る。
-        let api_key_configured = self.api_key_variable().is_some_and(|variable| {
-            agent_servers::has_env_var(self.agent.agent_id().0.as_ref(), variable, cx)
-        });
+        let api_key_configured = self.api_key_configured(cx);
 
         v_flex()
             .debug_selector(|| FORK_AUTH_NOTICE_SELECTOR.to_string())
@@ -3490,25 +3502,91 @@ impl ConversationView {
             })
     }
 
-    /// ADR-F53 決定 4: エージェントの `env` へ API キーを入れるための部品
-    /// 一式 (案内・マスクした 1 行の入力欄・「保存」・断り書き・設定済みの
-    /// 表示)。
+    /// ADR-F88: whether the agent gets an API key when it starts — one the
+    /// card saved in the credential store, or one still written in
+    /// settings.json.
+    fn api_key_configured(&self, cx: &App) -> bool {
+        self.api_key_stored == Some(true)
+            || agent_servers::api_key_in_settings_file(self.agent.agent_id().0.as_ref(), cx)
+    }
+
+    /// ADR-F88: reads whether the credential store holds the agent's API key
+    /// into [`Self::api_key_stored`]. A store that cannot be read (a Linux
+    /// session without the Secret Service) says why on the card.
+    fn load_api_key_status(agent_id: AgentId, cx: &mut Context<Self>) -> Task<()> {
+        let status = agent_servers::load_agent_api_key_status(agent_id.0.as_ref(), cx);
+        cx.spawn(async move |this, cx| {
+            let status = status.await;
+            this.update(cx, |this, cx| {
+                this.api_key_status_task = None;
+                match status {
+                    Ok(stored) => this.api_key_stored = Some(stored),
+                    Err(error) => {
+                        this.api_key_stored = Some(false);
+                        this.api_key_error = Some(format!("{error:#}").into());
+                    }
+                }
+                cx.notify();
+            })
+            .log_err();
+        })
+    }
+
+    fn reload_api_key_status(&mut self, cx: &mut Context<Self>) {
+        if self.api_key_editor.is_none() {
+            return;
+        }
+        self.api_key_status_task = Some(Self::load_api_key_status(self.agent.agent_id(), cx));
+    }
+
+    /// ADR-F53 決定 4 / ADR-F88: API キーを入れるための部品一式 (案内・マスク
+    /// した 1 行の入力欄・「保存」・保存先の説明・設定済みの表示)。キーは OS の
+    /// 資格情報ストアに保存し、エージェントの起動のたびに環境変数として渡す。
     ///
-    /// ここはエージェントがキーを `env` から読むかどうか
+    /// ここはエージェントがキーを受け取るかどうか
     /// ([`agent_servers::api_key_variable`]) しか見ない。サインインを出すか
     /// どうか (ADR-F55) とは独立していて、カードのどこへ
     /// 置いてもよい。キーを読まないエージェントのビューは入力欄そのものを
     /// 持たないので `None`。
+    ///
+    /// 資格情報ストアを読み終えるまでは何も出さない: 一瞬だけ入力欄を出して
+    /// から「設定済み」に替わるより、少し遅れて正しい方が出るほうが
+    /// ちらつかない (読み出しは数ミリ秒で終わる)。
     fn render_api_key_field(&self, cx: &Context<Self>) -> Option<impl IntoElement> {
         let editor = self.api_key_editor.clone()?;
         let variable = self.api_key_variable()?;
-        let configured = agent_servers::has_env_var(self.agent.agent_id().0.as_ref(), variable, cx);
+        let agent_id = self.agent.agent_id();
+        let in_settings_file = agent_servers::api_key_in_settings_file(agent_id.0.as_ref(), cx);
+        if self.api_key_stored.is_none() && !in_settings_file {
+            return None;
+        }
+        let configured = self.api_key_configured(cx);
         let show_editor = !configured || self.api_key_editing;
         let saving = self.api_key_save_task.is_some();
+        let store = agent_servers::credential_store_name();
 
         Some(
             v_flex()
                 .gap_1()
+                // ADR-F88: a key still in settings.json is the one the agent
+                // gets, and it is readable by anything that reads the file.
+                .when(in_settings_file, |this| {
+                    this.child(
+                        div()
+                            .debug_selector(|| API_KEY_PLAINTEXT_SELECTOR.to_string())
+                            .child(
+                                Label::new(i18n::t!(
+                                    "An API key is still written in plain text in settings.json \
+                                     under `agent_servers` → `{}` → `env` → `{variable}`. \
+                                     Save the key here to move it to {store}, or remove it.",
+                                    agent_id.0,
+                                    store = store
+                                ))
+                                .size(LabelSize::Small)
+                                .color(Color::Warning),
+                            ),
+                    )
+                })
                 .map(|this| {
                     if show_editor {
                         this.child(
@@ -3520,12 +3598,11 @@ impl ConversationView {
                         )
                         .child(
                             Label::new(i18n::t!(
-                                "The key is saved in plain text in settings.json under \
-                                 `agent_servers` → `{}` → `env` → `{variable}`.",
-                                self.agent.agent_id().0
+                                "The key is saved in {store}, not in settings.json.",
+                                store = store
                             ))
                             .size(LabelSize::Small)
-                            .color(Color::Warning),
+                            .color(Color::Muted),
                         )
                         .child(
                             h_flex()
@@ -3622,7 +3699,17 @@ impl ConversationView {
                                         .child(
                                             ConfiguredApiCard::new(
                                                 "agent-api-key-configured",
-                                                i18n::t!("API key is set (settings.json)"),
+                                                if in_settings_file {
+                                                    i18n::t!(
+                                                        "API key is set (plain text in settings.json)"
+                                                    )
+                                                    .to_string()
+                                                } else {
+                                                    i18n::t!(
+                                                        "API key is saved in {store}",
+                                                        store = store
+                                                    )
+                                                },
                                             )
                                             .button_label(i18n::t!("Change"))
                                             .on_click(
@@ -3660,7 +3747,8 @@ impl ConversationView {
                                             .style(ButtonStyle::Outlined)
                                             .disabled(saving)
                                             .tooltip(Tooltip::text(i18n::t!(
-                                                "Removes this variable from env in settings.json"
+                                                "Removes the key from {store} and from settings.json",
+                                                store = store
                                             )))
                                             .on_click(
                                                 cx.listener(|this, _, window, cx| {
@@ -3705,21 +3793,17 @@ impl ConversationView {
         cx.notify();
     }
 
-    /// ADR-F55: 設定済みのキーを `agent_servers.<id>.env` から外す。
+    /// ADR-F55 / ADR-F88: 設定済みのキーを資格情報ストアから消し、
+    /// settings.json の `agent_servers.<id>.env` に残っていればそこからも外す。
     ///
-    /// 確認は取らない: 消しても失われるのは設定 1 行で、同じカードの入力欄から
-    /// すぐに入れ直せる。消せたらカードは「設定済み」から入力欄へ戻る
-    /// ([`Self::render_api_key_field`] が `has_env_var` を見ているため)。
+    /// 確認は取らない: 同じカードの入力欄からすぐに入れ直せる。消せたらカードは
+    /// 「設定済み」から入力欄へ戻る (資格情報ストアを読み直すため)。
     fn remove_api_key(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(variable) = self.api_key_variable() else {
-            return;
-        };
-        if self.api_key_save_task.is_some() {
+        if self.api_key_variable().is_none() || self.api_key_save_task.is_some() {
             return;
         }
         let fs = self.project.read(cx).fs().clone();
-        let removed =
-            agent_servers::remove_env_var(self.agent.agent_id().0.as_ref(), variable, fs, cx);
+        let removed = agent_servers::remove_agent_api_key(self.agent.agent_id().0.as_ref(), fs, cx);
 
         self.api_key_error = None;
         cx.notify();
@@ -3731,19 +3815,27 @@ impl ConversationView {
                     Ok(()) => {
                         this.api_key_editing = false;
                         this.api_key_error = None;
+                        this.api_key_stored = Some(false);
                     }
                     Err(error) => {
-                        this.api_key_error =
-                            Some(i18n::t!("Couldn't remove the API key: {error}").into());
+                        this.api_key_error = Some(
+                            i18n::t!(
+                                "Couldn't remove the API key: {error}",
+                                error = format!("{error:#}")
+                            )
+                            .into(),
+                        );
                     }
                 }
+                this.reload_api_key_status(cx);
                 cx.notify();
             })
             .log_err();
         }));
     }
 
-    /// ADR-F53 決定 4: 入力されたキーを `agent_servers.<id>.env` へ書く。
+    /// ADR-F53 決定 4 / ADR-F88: 入力されたキーを OS の資格情報ストアへ書く
+    /// (settings.json に平文が残っていれば、書けたあとでそこから外す)。
     ///
     /// キーの文字列はここから先へ持ち出さない: ログにもトーストにも載せず、
     /// 保存できたら入力欄からも消す。画面に残す唯一の文字列は
@@ -3752,34 +3844,27 @@ impl ConversationView {
         let Some(editor) = self.api_key_editor.clone() else {
             return;
         };
-        let Some(variable) = self.api_key_variable() else {
-            return;
-        };
-        if self.api_key_save_task.is_some() {
+        if self.api_key_variable().is_none() || self.api_key_save_task.is_some() {
             return;
         }
         let key = editor.read(cx).text(cx);
         let fs = self.project.read(cx).fs().clone();
 
-        let written = match agent_servers::set_env_var(
-            self.agent.agent_id().0.as_ref(),
-            variable,
-            &key,
-            fs,
-            cx,
-        ) {
-            Ok(written) => written,
-            Err(error) => {
-                self.api_key_error = Some(format!("{error}").into());
-                cx.notify();
-                return;
-            }
-        };
+        let written =
+            match agent_servers::save_agent_api_key(self.agent.agent_id().0.as_ref(), &key, fs, cx)
+            {
+                Ok(written) => written,
+                Err(error) => {
+                    self.api_key_error = Some(format!("{error}").into());
+                    cx.notify();
+                    return;
+                }
+            };
 
         self.api_key_error = None;
         cx.notify();
-        // 書き込みの失敗理由は設定側が作る文字列で、このコードが中身を決め
-        // られない。万一そこへ値が混ざっても画面には出ないよう、伏せてから
+        // 書き込みの失敗理由は OS や設定側が作る文字列で、このコードが中身を
+        // 決められない。万一そこへ値が混ざっても画面には出ないよう、伏せてから
         // 載せる。
         let saved = key.trim().to_string();
         self.api_key_save_task = Some(cx.spawn_in(window, async move |this, cx| {
@@ -3790,6 +3875,7 @@ impl ConversationView {
                     Ok(()) => {
                         this.api_key_editing = false;
                         this.api_key_error = None;
+                        this.api_key_stored = Some(true);
                         if let Some(editor) = this.api_key_editor.clone() {
                             editor.update(cx, |editor, cx| {
                                 editor.set_text("", window, cx);
@@ -3797,13 +3883,17 @@ impl ConversationView {
                         }
                     }
                     Err(error) => {
-                        let mut reason = i18n::t!("Couldn't save the API key: {error}");
+                        let mut reason = i18n::t!(
+                            "Couldn't save the API key: {error}",
+                            error = format!("{error:#}")
+                        );
                         if !saved.is_empty() {
                             reason = reason.replace(&saved, "***");
                         }
                         this.api_key_error = Some(reason.into());
                     }
                 }
+                this.reload_api_key_status(cx);
                 cx.notify();
             })
             .log_err();
@@ -5871,6 +5961,7 @@ pub(crate) mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use workspace::{Item, MultiWorkspace};
+    use zed_credentials_provider::test_support::InMemoryCredentialsProvider;
 
     use crate::agent_panel;
     use crate::completion_provider::AgentContextSource;
@@ -10548,6 +10639,10 @@ pub(crate) mod tests {
             cx.debug_bounds(API_KEY_WINS_SELECTOR).is_some(),
             "with both, says which one is used"
         );
+        assert!(
+            cx.debug_bounds(API_KEY_PLAINTEXT_SELECTOR).is_none(),
+            "a key in the credential store is not warned about"
+        );
 
         let remove = cx
             .debug_bounds(API_KEY_REMOVE_SELECTOR)
@@ -10696,12 +10791,30 @@ pub(crate) mod tests {
         );
     }
 
-    /// `agent_servers.claude-acp.env.ANTHROPIC_API_KEY` にいま入っている値。
-    /// `Registry { env }` の形まで固定して読む: 保存先が変われば落ちる。
+    /// ADR-F88: ACP Claude の API キーとして資格情報ストアにいま入っている値。
+    /// 入り口 (URL と user 名) まで固定して読む: 保存先が変われば落ちる。
     fn saved_api_key(cx: &mut VisualTestContext) -> Option<String> {
-        saved_env_var(cx, agent_servers::CLAUDE_API_KEY_VARIABLE)
+        cx.update(|_window, cx| {
+            let url = agent_servers::agent_api_key_credentials_url(
+                agent_servers::CLAUDE_AGENT_ID,
+                agent_servers::CLAUDE_API_KEY_VARIABLE,
+            );
+            let provider = zed_credentials_provider::global(cx);
+            let async_cx = cx.to_async();
+            let stored = provider
+                .read_credentials(&url, &async_cx)
+                .now_or_never()
+                .expect("the in-memory store answers at once")
+                .expect("the in-memory store can be read");
+            stored.map(|(username, key)| {
+                assert_eq!(username, agent_servers::CLAUDE_API_KEY_VARIABLE);
+                String::from_utf8(key).expect("the key is UTF-8")
+            })
+        })
     }
 
+    /// `agent_servers.claude-acp.env.<name>` in the user settings as the
+    /// settings store has them, in either shape of the entry.
     fn saved_env_var(cx: &mut VisualTestContext, name: &str) -> Option<String> {
         cx.update(|_window, cx| {
             cx.global::<SettingsStore>()
@@ -10712,9 +10825,29 @@ pub(crate) mod tests {
                         env,
                         ..
                     } => env.get(name).cloned(),
-                    project::agent_server_store::CustomAgentServerSettings::Custom { .. } => None,
+                    project::agent_server_store::CustomAgentServerSettings::Custom {
+                        command,
+                        ..
+                    } => command.env.as_ref().and_then(|env| env.get(name).cloned()),
                 })
         })
+    }
+
+    /// Puts `text` in the user's settings file and in the settings store, as
+    /// the file watcher would after the user edited it.
+    async fn write_user_settings(fs: &Arc<dyn Fs>, text: &str, cx: &mut VisualTestContext) {
+        fs.atomic_write(::paths::settings_file().to_path_buf(), text.to_string())
+            .await
+            .expect("the settings file can be written");
+        cx.update(|_window, cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(text, cx)
+                    .result()
+                    .expect("valid user settings");
+            });
+        });
+        cx.run_until_parked();
     }
 
     /// カードがいま画面に出しているうち、実装しだいで API キーが混ざりうる
@@ -10735,9 +10868,9 @@ pub(crate) mod tests {
         })
     }
 
-    /// ADR-F53 決定 4: ACP Claude の認証カードは API キーを直接受け取り、
-    /// `agent_servers.claude-acp.env` へ書く。空欄は書かずに断り、保存した
-    /// キーは画面にもエラー文にも残さない。
+    /// ADR-F53 決定 4 / ADR-F88: ACP Claude の認証カードは API キーを直接
+    /// 受け取り、OS の資格情報ストアへ書く。settings.json には何も書かない。
+    /// 空欄は書かずに断り、保存したキーは画面にもエラー文にも残さない。
     #[gpui::test]
     async fn the_acp_claude_card_takes_an_api_key(cx: &mut TestAppContext) {
         init_test(cx);
@@ -10805,7 +10938,16 @@ pub(crate) mod tests {
         assert_eq!(
             saved_api_key(cx).as_deref(),
             Some(FIRST_KEY),
-            "goes into agent_servers.claude-acp.env in settings.json"
+            "goes into the credential store"
+        );
+        assert!(
+            !fs.is_file(::paths::settings_file()).await,
+            "settings.json is not written at all"
+        );
+        assert_eq!(
+            saved_env_var(cx, agent_servers::CLAUDE_API_KEY_VARIABLE),
+            None,
+            "nor is the key in the settings"
         );
         let shown = api_key_card_text(&conversation_view, cx);
         assert!(
@@ -10929,20 +11071,25 @@ pub(crate) mod tests {
         );
     }
 
-    /// `agent_servers.claude-acp` が `custom` で、しかも env が既にあるとき。
-    /// キーを足すだけで、同じエージェントの他の env も、他のエージェントも、
-    /// 無関係な設定も潰さない。
+    /// ADR-F88: `agent_servers.claude-acp` が `custom` で、env に平文のキー
+    /// (以前のビルドが書いたもの) と他の変数があるとき。保存するとキーは
+    /// 資格情報ストアへ入り、settings.json の平文は消える。同じエージェントの
+    /// 他の env も、他のエージェントも、無関係な設定も潰さない。
     #[gpui::test]
-    async fn saving_an_api_key_keeps_the_other_settings(cx: &mut TestAppContext) {
+    async fn saving_an_api_key_moves_a_plain_text_one_out_of_the_settings(cx: &mut TestAppContext) {
         init_test(cx);
         const KEY: &str = "sk-ant-api03-kept";
+        const PLAIN_TEXT_KEY: &str = "sk-ant-api03-old-plain-text";
         const EXISTING_SETTINGS: &str = r#"{
   "buffer_font_size": 15,
   "agent_servers": {
     "claude-acp": {
       "type": "custom",
       "command": "/usr/bin/claude-code-acp",
-      "env": { "CLAUDE_CONFIG_DIR": "/tmp/keep-me" }
+      "env": {
+        "CLAUDE_CONFIG_DIR": "/tmp/keep-me",
+        "ANTHROPIC_API_KEY": "sk-ant-api03-old-plain-text"
+      }
     },
     "gemini": {
       "type": "registry",
@@ -10965,12 +11112,25 @@ pub(crate) mod tests {
         )
         .await
         .expect("the settings directory can be created");
-        fs.atomic_write(
-            ::paths::settings_file().to_path_buf(),
-            EXISTING_SETTINGS.to_string(),
-        )
-        .await
-        .expect("the settings file can be written");
+        write_user_settings(&fs, EXISTING_SETTINGS, cx).await;
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        assert!(
+            cx.update(|_window, cx| agent_servers::api_key_in_settings_file(
+                agent_servers::CLAUDE_AGENT_ID,
+                cx
+            )),
+            "read as configured for the custom variant too"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_PLAINTEXT_SELECTOR).is_some(),
+            "the card warns about the plain-text key"
+        );
+        assert!(
+            cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_some(),
+            "a plain-text key is still a configured one: the agent gets it"
+        );
 
         let editor = conversation_view.read_with(cx, |view, _cx| {
             view.api_key_editor.clone().expect("has an input field")
@@ -10991,6 +11151,7 @@ pub(crate) mod tests {
                 "written, so no reason is shown: {written}"
             );
         });
+        assert_eq!(saved_api_key(cx).as_deref(), Some(KEY));
         for kept in [
             "\"buffer_font_size\": 15",
             "/tmp/keep-me",
@@ -10999,24 +11160,37 @@ pub(crate) mod tests {
         ] {
             assert!(written.contains(kept), "{kept} was lost:\n{written}");
         }
-        assert!(written.contains(KEY), "the key is missing:\n{written}");
         assert!(
-            cx.update(|_window, cx| agent_servers::has_env_var(
+            !written.contains(PLAIN_TEXT_KEY) && !written.contains(KEY),
+            "no key is left in plain text:\n{written}"
+        );
+        assert!(
+            !written.contains(agent_servers::CLAUDE_API_KEY_VARIABLE),
+            "the variable's entry is gone:\n{written}"
+        );
+        assert!(
+            !cx.update(|_window, cx| agent_servers::api_key_in_settings_file(
                 agent_servers::CLAUDE_AGENT_ID,
-                agent_servers::CLAUDE_API_KEY_VARIABLE,
                 cx
             )),
-            "read as configured for the custom variant too:\n{written}"
+            "the settings no longer hold it"
+        );
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(API_KEY_PLAINTEXT_SELECTOR).is_none(),
+            "nothing left to warn about"
         );
     }
 
-    /// 設定ファイルが壊れていて書けないとき。黙って設定済みの顔をせず、
-    /// 理由をカードに出す。
+    /// ADR-F88: 資格情報ストアに書けないとき (Linux で Secret Service が無い
+    /// など)。黙って設定済みの顔をせず、平文へも落とさず、理由をカードに出す。
     #[gpui::test]
-    async fn a_settings_file_that_cannot_be_written_stops_the_save(cx: &mut TestAppContext) {
+    async fn a_credential_store_that_cannot_be_written_stops_the_save(cx: &mut TestAppContext) {
         init_test(cx);
         const KEY: &str = "sk-ant-api03-unwritable";
-        const BROKEN_SETTINGS: &str = "{ \"agent_servers\": ";
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        credentials.set_fail_writes(true);
 
         let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
         let (conversation_view, cx) =
@@ -11032,12 +11206,6 @@ pub(crate) mod tests {
         )
         .await
         .expect("the settings directory can be created");
-        fs.atomic_write(
-            ::paths::settings_file().to_path_buf(),
-            BROKEN_SETTINGS.to_string(),
-        )
-        .await
-        .expect("the settings file can be written");
 
         let editor = conversation_view.read_with(cx, |view, _cx| {
             view.api_key_editor.clone().expect("has an input field")
@@ -11048,12 +11216,10 @@ pub(crate) mod tests {
         conversation_view.update_in(cx, |view, window, cx| view.submit_api_key(window, cx));
         cx.run_until_parked();
 
-        assert_eq!(
-            fs.load(::paths::settings_file())
-                .await
-                .expect("the settings file can be read"),
-            BROKEN_SETTINGS,
-            "a broken file is not rewritten"
+        assert!(credentials.is_empty(), "nothing was stored");
+        assert!(
+            !fs.is_file(::paths::settings_file()).await,
+            "no plain-text fallback in settings.json"
         );
         conversation_view.read_with(cx, |view, _cx| {
             let error = view
@@ -11065,6 +11231,10 @@ pub(crate) mod tests {
                 "the reason starts with the card's own wording: {error}"
             );
             assert!(
+                error.contains("refuses writes"),
+                "the store's own reason is kept: {error}"
+            );
+            assert!(
                 !error.contains(KEY),
                 "the reason does not contain the key: {error}"
             );
@@ -11073,6 +11243,37 @@ pub(crate) mod tests {
                 "the next save is accepted after a failure"
             );
         });
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+        assert!(
+            cx.debug_bounds(API_KEY_CONFIGURED_SELECTOR).is_none(),
+            "not shown as configured"
+        );
+    }
+
+    /// ADR-F88: a credential store that cannot be read says so on the card
+    /// rather than leaving it empty, and the field to enter a key is there.
+    #[gpui::test]
+    async fn a_credential_store_that_cannot_be_read_says_so(cx: &mut TestAppContext) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        credentials.set_fail_reads(true);
+
+        let connection = AuthGatedAgentConnection::with_methods(&[CLAUDE_ACP_API_KEY_METHOD]);
+        let (conversation_view, cx) =
+            setup_conversation_view(ClaudeAcpAgentServer { connection }, cx).await;
+        add_to_workspace(conversation_view.clone(), cx);
+        cx.update(|window, _cx| window.refresh());
+        cx.run_until_parked();
+
+        conversation_view.read_with(cx, |view, _cx| {
+            let error = view
+                .api_key_error
+                .clone()
+                .expect("the card says the store could not be read");
+            assert!(error.contains("refuses reads"), "{error}");
+        });
+        assert!(cx.debug_bounds(API_KEY_INPUT_SELECTOR).is_some());
     }
 
     /// キーを `env` から読まないエージェントの認証カードには、入力欄そのものを
@@ -11298,8 +11499,9 @@ pub(crate) mod tests {
         );
     }
 
-    /// ADR-F55: 設定済みのカードの「キーを削除」で `env` から変数が外れ、
-    /// カードは認証待ち (入力欄) に戻る。ほかの `env` は残る。
+    /// ADR-F55 / ADR-F88: 設定済みのカードの「キーを削除」で、キーは資格情報
+    /// ストアからも settings.json の `env` からも消え、カードは認証待ち
+    /// (入力欄) に戻る。ほかの `env` は残る。
     #[gpui::test]
     async fn the_acp_claude_card_removes_a_saved_api_key(cx: &mut TestAppContext) {
         init_test(cx);
@@ -11324,16 +11526,26 @@ pub(crate) mod tests {
         // 同じ `env` に別の変数を先に置いておき、削除がそれを巻き込まない
         // ことを確かめる。
         let other = cx.update(|_window, cx| {
-            agent_servers::set_env_var(
-                agent_servers::CLAUDE_AGENT_ID,
-                "KEEP_ME",
-                "1",
-                fs.clone(),
-                cx,
-            )
-            .expect("the value is not empty")
+            settings::update_settings_file_with_completion(fs.clone(), cx, |settings, _cx| {
+                settings.agent_servers.get_or_insert_default().0.insert(
+                    agent_servers::CLAUDE_AGENT_ID.to_string(),
+                    settings::CustomAgentServerSettings::Registry {
+                        env: [("KEEP_ME".to_string(), "1".to_string())]
+                            .into_iter()
+                            .collect(),
+                        default_mode: None,
+                        default_config_options: Default::default(),
+                        favorite_config_option_values: Default::default(),
+                        allow_subscription_sign_in: None,
+                        run_outside_sandbox: None,
+                    },
+                );
+            })
         });
-        other.await.expect("can be written");
+        other
+            .await
+            .expect("the update finishes")
+            .expect("can be written");
         cx.run_until_parked();
 
         let editor = conversation_view.read_with(cx, |view, _cx| {
@@ -11346,6 +11558,32 @@ pub(crate) mod tests {
         cx.run_until_parked();
         assert_eq!(saved_api_key(cx).as_deref(), Some(KEY));
 
+        // A plain-text copy written by hand (or left by a failed migration)
+        // next to the stored one: removing takes both.
+        let plain_text = cx.update(|_window, cx| {
+            settings::update_settings_file_with_completion(fs.clone(), cx, |settings, _cx| {
+                if let Some(settings::CustomAgentServerSettings::Registry { env, .. }) =
+                    settings.agent_servers.as_mut().and_then(|agent_servers| {
+                        agent_servers.0.get_mut(agent_servers::CLAUDE_AGENT_ID)
+                    })
+                {
+                    env.insert(
+                        agent_servers::CLAUDE_API_KEY_VARIABLE.to_string(),
+                        "sk-ant-api03-plain".to_string(),
+                    );
+                }
+            })
+        });
+        plain_text
+            .await
+            .expect("the update finishes")
+            .expect("can be written");
+        cx.run_until_parked();
+        assert_eq!(
+            saved_env_var(cx, agent_servers::CLAUDE_API_KEY_VARIABLE).as_deref(),
+            Some("sk-ant-api03-plain")
+        );
+
         cx.update(|window, _cx| window.refresh());
         cx.run_until_parked();
         let remove = cx
@@ -11354,7 +11592,17 @@ pub(crate) mod tests {
         cx.simulate_click(remove.center(), gpui::Modifiers::default());
         cx.run_until_parked();
 
-        assert_eq!(saved_api_key(cx), None, "removed from env");
+        assert_eq!(saved_api_key(cx), None, "removed from the credential store");
+        assert_eq!(
+            saved_env_var(cx, agent_servers::CLAUDE_API_KEY_VARIABLE),
+            None,
+            "removed from env in settings.json"
+        );
+        let written = fs
+            .load(::paths::settings_file())
+            .await
+            .expect("the settings file can be read");
+        assert!(!written.contains("sk-ant-api03-plain"), "{written}");
         assert_eq!(
             saved_env_var(cx, "KEEP_ME").as_deref(),
             Some("1"),
@@ -11570,6 +11818,8 @@ pub(crate) mod tests {
             editor::init(cx);
             agent_panel::init(cx);
             release_channel::init(semver::Version::new(0, 0, 0), cx);
+            // ADR-F88: the API key card reads and writes the credential store.
+            InMemoryCredentialsProvider::install(cx);
             prompt_store::init(cx)
         });
     }

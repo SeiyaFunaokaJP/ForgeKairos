@@ -71,8 +71,11 @@ msgstr "AI が判定中…"
 msgid "API Error"
 msgstr "API エラー"
 
-msgid "API key is set (settings.json)"
-msgstr "API キーは設定済みです (settings.json)"
+msgid "API key is saved in {store}"
+msgstr "API キーは {store} に保存済みです"
+
+msgid "API key is set (plain text in settings.json)"
+msgstr "API キーは設定済みです (settings.json に平文)"
 
 msgid "AVX2 could not be confirmed on the WSL CPU, so the Linux build of Claude Code (x64) cannot run."
 msgstr "WSL の CPU で AVX2 を確認できないため、Linux 版 Claude Code (x64) は動作しません。"
@@ -184,6 +187,9 @@ msgstr "ターミナル内にカーソルを置いて通常のターミナルの
 
 msgid "Always for selected commands"
 msgstr "選択したコマンドで常に許可"
+
+msgid "An API key is still written in plain text in settings.json under `agent_servers` → `{}` → `env` → `{variable}`. Save the key here to move it to {store}, or remove it."
+msgstr "settings.json の `agent_servers` → `{}` → `env` → `{variable}` に API キーが平文のまま残っています。ここでキーを保存すると {store} に移せます。不要なら削除してください。"
 
 msgid "An Error Happened"
 msgstr "エラーが発生しました"
@@ -1412,8 +1418,8 @@ msgstr "キーを削除"
 msgid "Remove Message from Queue"
 msgstr "メッセージをキューから削除"
 
-msgid "Removes this variable from env in settings.json"
-msgstr "settings.json の env からこの変数を外します"
+msgid "Removes the key from {store} and from settings.json"
+msgstr "{store} と settings.json からキーを削除します"
 
 msgid "Request Failed"
 msgstr "リクエストに失敗しました"
@@ -1787,8 +1793,8 @@ msgstr "ダウンロードした Claude Code のハッシュがリリース情�
 msgid "The hosts were added to the allowlist, but the change has not taken effect yet. Wait a moment and try again."
 msgstr "許可リストには追加しましたが、まだ反映されていません。しばらく待ってからもう一度お試しください。"
 
-msgid "The key is saved in plain text in settings.json under `agent_servers` → `{}` → `env` → `{variable}`."
-msgstr "キーは settings.json の `agent_servers` → `{}` → `env` → `{variable}` に平文で保存されます。"
+msgid "The key is saved in {store}, not in settings.json."
+msgstr "キーは settings.json ではなく {store} に保存されます。"
 
 msgid "The location of the Claude Code used in the sandbox is not an absolute path (internal error): {claude_path}"
 msgstr "サンドボックスで使う Claude Code の場所が絶対パスではありません (内部エラー): {claude_path}"

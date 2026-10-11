@@ -50,6 +50,7 @@ ide_server.workspace = true
 indoc.workspace = true
 language_model.workspace = true
 log.workspace = true
+paths.workspace = true
 project.workspace = true
 release_channel.workspace = true
 remote.workspace = true
@@ -74,6 +75,7 @@ zed_credentials_provider.workspace = true
 
 [dev-dependencies]
 client = { workspace = true, features = ["test-support"] }
+credentials_provider.workspace = true
 env_logger.workspace = true
 fs.workspace = true
 
@@ -85,6 +87,7 @@ i18n_catalog = { workspace = true, features = ["test-support"] }
 project = { workspace = true, features = ["test-support"] }
 reqwest_client = { workspace = true, features = ["test-support"] }
 settings = { workspace = true, features = ["test-support"] }
+zed_credentials_provider = { workspace = true, features = ["test-support"] }
 # `project/test-support` は `remote/test-support` を連れてくるので、`workspace` が
 # match している `RemoteConnectionIdentity::Mock` が生える。`workspace` 側の
 # test-support を揃えないとその match が非網羅になる (`editor/test-support` が

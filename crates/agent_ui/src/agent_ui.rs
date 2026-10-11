@@ -760,6 +760,10 @@ pub fn init(
     #[cfg(not(any(test, feature = "test-support")))]
     {
         rules_to_skills_migration::migrate_rules_to_skills_if_needed(fs.clone(), cx);
+        // ADR-F88. Not in test builds: their settings file path is the real
+        // one, and the move writes to the real credential store.
+        agent_servers::migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx)
+            .detach_and_log_err(cx);
     }
 }
 

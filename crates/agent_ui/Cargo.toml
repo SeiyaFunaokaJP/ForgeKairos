@@ -165,3 +165,4 @@ reqwest_client.workspace = true
 tempfile.workspace = true
 vim.workspace = true
 terminal = { workspace = true, features = ["test-support"] }
+zed_credentials_provider = { workspace = true, features = ["test-support"] }

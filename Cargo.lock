@@ -410,6 +410,7 @@ dependencies = [
  "chrono",
  "client",
  "collections",
+ "credentials_provider",
  "egress_policy",
  "env_logger 0.11.8",
  "feature_flags",
@@ -426,6 +427,7 @@ dependencies = [
  "indoc",
  "language_model",
  "log",
+ "paths",
  "project",
  "release_channel",
  "remote",
@@ -604,6 +606,7 @@ dependencies = [
  "watch",
  "workspace",
  "zed_actions",
+ "zed_credentials_provider",
  "zstd 0.11.2+zstd.1.5.2",
 ]
 
@@ -21826,9 +21829,12 @@ dependencies = [
  "credentials_provider",
  "futures 0.3.34",
  "gpui",
+ "log",
  "paths",
  "release_channel",
+ "semver",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

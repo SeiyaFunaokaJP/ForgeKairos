@@ -34,8 +34,9 @@ pub const CLAUDE_API_KEY_VARIABLE: &str = "ANTHROPIC_API_KEY";
 /// トークンを見も保存も中継もしないため (ADR-F55 の根拠を参照)。
 pub const SUBSCRIPTION_SIGN_IN_ALLOWED_BY_DEFAULT: bool = true;
 
-/// ADR-F53 決定 4: そのエージェントが `agent_servers.<id>.env` から読む
-/// API キーの変数名。読まないエージェントでは `None`。
+/// ADR-F53 決定 4: そのエージェントが環境変数から読む API キーの変数名。
+/// 読まないエージェントでは `None`。キーそのものは OS の資格情報ストアに
+/// 置き、起動のたびにこの変数として渡す (ADR-F88)。
 ///
 /// [`subscription_sign_in_disabled`] とは別物: こちらは「キーを受け取れるか」
 /// だけを答え、「サブスクリプションでサインインできるか」には触れない。キーを
@@ -124,114 +125,324 @@ pub fn set_subscription_sign_in_allowed(
     })
 }
 
-/// ADR-F53 決定 4: `agent_servers.<agent_id>.env.<name>` を書く。
-/// [`project::agent_server_store`] の環境の組み立てでは設定の `env` が最後に
-/// 載る = いちばん強いので、ここへ書けば起動するエージェントに必ず届く。
-///
-/// 値は settings.json にそのまま (平文で) 残る。キーチェーンへは移さない:
-/// この変数は「エージェントのプロセスに渡す環境」であって IDE 自身の資格情報
-/// ではなく、WSL のサンドボックスを含むどの起動経路も設定の `env` からしか
-/// 読まないため。呼び出し側はユーザーにその旨を伝えること。
-///
-/// 空の値は「消したい」とも「設定したい」とも取れるので、黙って `""` を
-/// 書かずに断る (fail-closed)。書き込み自体は非同期なので、その成否は返した
-/// タスクが答える。
-pub fn set_env_var(
-    agent_id: &str,
-    name: &str,
-    value: &str,
-    fs: Arc<dyn Fs>,
-    cx: &App,
-) -> Result<Task<Result<()>>> {
-    anyhow::ensure!(
-        !name.is_empty(),
-        i18n::t!("The environment variable has no name (internal error)")
-    );
+/// ADR-F88: the entry of the operating system's credential store an agent's
+/// API key is kept under. Spelled so that it can be told apart in the store's
+/// own viewer (Windows Credential Manager prefixes it with `zed:url=`); the
+/// entry's user name is the variable.
+pub fn agent_api_key_credentials_url(agent_id: &str, variable: &str) -> String {
+    format!(
+        "{}://agent-servers/{agent_id}/env/{variable}",
+        branding::CURRENT.url_scheme
+    )
+}
+
+/// ADR-F88: the name of the credential store the card saves API keys in, as
+/// the user knows it on this platform.
+pub fn credential_store_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        i18n::t!("Windows Credential Manager")
+    } else if cfg!(target_os = "macos") {
+        i18n::t!("macOS Keychain")
+    } else {
+        i18n::t!("the system keyring (Secret Service)")
+    }
+}
+
+/// 1 行の入力欄は貼り付けられた改行を畳んで見せるだけで、中身には残す。
+/// 端を落としただけでは改行やタブが値に残り、保存は通るのにエージェントへは
+/// 壊れた環境が渡る (NUL ならプロセスの起動自体が失敗する)。空の値は
+/// 「消したい」とも「設定したい」とも取れる。どちらも黙って書かずに断る
+/// (fail-closed)。
+fn validated_api_key<'a>(name: &str, value: &'a str) -> Result<&'a str> {
     let value = value.trim();
     anyhow::ensure!(!value.is_empty(), i18n::t!("{name} has no value"));
-    // 1 行の入力欄は貼り付けられた改行を畳んで見せるだけで、中身には残す。
-    // 端を落としただけでは改行やタブが値に残り、settings.json への書き込みは
-    // 通るのにエージェントへは壊れた環境が渡る (NUL ならプロセスの起動自体が
-    // 失敗する)。黙って壊れた値を持たせないよう断る。
     anyhow::ensure!(
         !value.chars().any(char::is_control),
         i18n::t!("The value of {name} contains a line break or a control character")
     );
+    Ok(value)
+}
 
+/// ADR-F88: saves the API key `agent_id` reads ([`api_key_variable`]) in the
+/// operating system's credential store, and [`CustomAgentServer::connect`]
+/// hands it to the agent from there on every route (this host, the WSL
+/// sandbox, a remote host).
+///
+/// The input is checked before anything is written; the write itself is
+/// asynchronous, so whether it took is the returned task's to answer.
+pub fn save_agent_api_key(
+    agent_id: &str,
+    value: &str,
+    fs: Arc<dyn Fs>,
+    cx: &App,
+) -> Result<Task<Result<()>>> {
+    let variable = api_key_variable(agent_id)
+        .with_context(|| i18n::t!("This agent takes no API key (internal error)"))?;
+    let value = validated_api_key(variable, value)?.to_string();
+    let url = agent_api_key_credentials_url(agent_id, variable);
+    let credentials_provider = zed_credentials_provider::global(cx);
     let agent_id = agent_id.to_string();
-    let name = name.to_string();
-    let value = value.to_string();
-    let written = update_settings_file_with_completion(fs, cx, move |settings, _cx| {
-        let settings = settings
-            .agent_servers
-            .get_or_insert_default()
-            .entry(agent_id)
-            .or_insert_with(default_settings_for_agent);
-
-        match settings {
-            settings::CustomAgentServerSettings::Custom { env, .. }
-            | settings::CustomAgentServerSettings::Registry { env, .. } => {
-                env.insert(name, value);
-            }
-        }
-    });
-    Ok(cx.background_spawn(async move {
-        written
+    Ok(cx.spawn(async move |cx| {
+        credentials_provider
+            .write_credentials(&url, variable, value.as_bytes(), cx)
             .await
-            .context(i18n::t!("Writing to the settings file didn't finish"))?
+            .with_context(|| {
+                i18n::t!("Couldn't write to {store}", store = credential_store_name())
+            })?;
+        // A copy left in settings.json would keep the key in plain text, and
+        // the settings' `env` is applied after the stored key, so it would
+        // also go on being the one the agent gets.
+        let removed =
+            cx.update(|cx| remove_api_key_from_settings_file(&agent_id, variable, fs, cx));
+        if let Some(removed) = removed {
+            removed.await?;
+        }
+        Ok(())
     }))
 }
 
-/// ADR-F55: `agent_servers.<agent_id>.env.<name>` を消す。
-///
-/// 消すだけで、エージェントの項目そのものは残す (`env` 以外の設定はユーザーの
-/// もの)。エントリーが無ければ何も書かずに成功する: 「消えている」という結果は
-/// 同じで、消すために設定を作りに行く理由が無いため。
-pub fn remove_env_var(agent_id: &str, name: &str, fs: Arc<dyn Fs>, cx: &App) -> Task<Result<()>> {
-    let agent_id = agent_id.to_string();
-    let name = name.to_string();
-    let written = update_settings_file_with_completion(fs, cx, move |settings, _cx| {
-        let Some(settings) = settings
-            .agent_servers
-            .as_mut()
-            .and_then(|agent_servers| agent_servers.get_mut(&agent_id))
-        else {
-            return;
-        };
-
-        match settings {
-            settings::CustomAgentServerSettings::Custom { env, .. }
-            | settings::CustomAgentServerSettings::Registry { env, .. } => {
-                env.remove(&name);
+/// ADR-F88: removes `agent_id`'s API key from the credential store and from
+/// `agent_servers.<agent_id>.env` in settings.json, wherever it is. Both are
+/// tried even when one fails, and the first failure is returned.
+pub fn remove_agent_api_key(agent_id: &str, fs: Arc<dyn Fs>, cx: &App) -> Task<Result<()>> {
+    let Some(variable) = api_key_variable(agent_id) else {
+        return Task::ready(Ok(()));
+    };
+    let url = agent_api_key_credentials_url(agent_id, variable);
+    let credentials_provider = zed_credentials_provider::global(cx);
+    let from_settings = remove_api_key_from_settings_file(agent_id, variable, fs, cx);
+    cx.spawn(async move |cx| {
+        // Deleting an entry that isn't there is an error on Windows and macOS.
+        let from_store = async {
+            if credentials_provider
+                .read_credentials(&url, cx)
+                .await?
+                .is_some()
+            {
+                credentials_provider.delete_credentials(&url, cx).await?;
             }
+            anyhow::Ok(())
         }
-    });
-    cx.background_spawn(async move {
-        written
-            .await
-            .context(i18n::t!("Writing to the settings file didn't finish"))?
+        .await
+        .with_context(|| {
+            i18n::t!(
+                "Couldn't remove the key from {store}",
+                store = credential_store_name()
+            )
+        });
+        let from_settings = match from_settings {
+            Some(removed) => removed.await,
+            None => Ok(()),
+        };
+        from_store.and(from_settings)
     })
 }
 
-/// ADR-F53 決定 4: `agent_servers.<agent_id>.env.<name>` に値が入っているか。
-///
-/// 値そのものは返さない。API キーがここから UI やログへ漏れる経路を作らない
-/// ため、「設定済みか」だけを答える。
-pub fn has_env_var(agent_id: &str, name: &str, cx: &App) -> bool {
+/// ADR-F88: whether the credential store holds an API key for `agent_id`.
+/// Only that is answered, never the key: nothing that shows this status can
+/// leak it.
+pub fn load_agent_api_key_status(agent_id: &str, cx: &App) -> Task<Result<bool>> {
+    let Some(variable) = api_key_variable(agent_id) else {
+        return Task::ready(Ok(false));
+    };
+    let url = agent_api_key_credentials_url(agent_id, variable);
+    let credentials_provider = zed_credentials_provider::global(cx);
+    cx.spawn(async move |cx| {
+        let stored = credentials_provider
+            .read_credentials(&url, cx)
+            .await
+            .with_context(|| {
+                i18n::t!(
+                    "Couldn't read from {store}",
+                    store = credential_store_name()
+                )
+            })?;
+        Ok(stored.is_some_and(|(_, key)| !key.is_empty()))
+    })
+}
+
+/// ADR-F88: whether `agent_servers.<agent_id>.env` in the settings still
+/// spells out the API key in plain text — written by hand, or left by a
+/// migration that could not write to the credential store. That copy is the
+/// one the agent gets (the settings' `env` is applied last), so the card warns
+/// about it. Only whether it is there is answered, never the value.
+pub fn api_key_in_settings_file(agent_id: &str, cx: &App) -> bool {
+    let Some(variable) = api_key_variable(agent_id) else {
+        return false;
+    };
     cx.read_global(|settings: &SettingsStore, _| {
         let Some(agent) = settings.get::<AllAgentServersSettings>(None).get(agent_id) else {
             return false;
         };
         let value = match agent {
             project::agent_server_store::CustomAgentServerSettings::Registry { env, .. } => {
-                env.get(name)
+                env.get(variable)
             }
             project::agent_server_store::CustomAgentServerSettings::Custom { command, .. } => {
-                command.env.as_ref().and_then(|env| env.get(name))
+                command.env.as_ref().and_then(|env| env.get(variable))
             }
         };
         value.is_some_and(|value| !value.trim().is_empty())
     })
+}
+
+fn settings_env(settings: &settings::CustomAgentServerSettings) -> &HashMap<String, String> {
+    match settings {
+        settings::CustomAgentServerSettings::Custom { env, .. }
+        | settings::CustomAgentServerSettings::Registry { env, .. } => env,
+    }
+}
+
+/// Removes `agent_servers.<agent_id>.env.<variable>` from the user's
+/// settings file, or `None` when the file has no such entry: the file is not
+/// rewritten (or created) only to find that out. The agent's other settings
+/// and the rest of its `env` are the user's and stay.
+fn remove_api_key_from_settings_file(
+    agent_id: &str,
+    variable: &'static str,
+    fs: Arc<dyn Fs>,
+    cx: &App,
+) -> Option<Task<Result<()>>> {
+    let in_file = cx.read_global(|settings: &SettingsStore, _| {
+        settings
+            .raw_user_settings()
+            .and_then(|user| user.content.agent_servers.as_ref())
+            .and_then(|agent_servers| agent_servers.get(agent_id))
+            .is_some_and(|agent| settings_env(agent).contains_key(variable))
+    });
+    if !in_file {
+        return None;
+    }
+    let agent_id = agent_id.to_string();
+    let written = update_settings_file_with_completion(fs, cx, move |settings, _cx| {
+        if let Some(agent) = settings
+            .agent_servers
+            .as_mut()
+            .and_then(|agent_servers| agent_servers.get_mut(&agent_id))
+        {
+            match agent {
+                settings::CustomAgentServerSettings::Custom { env, .. }
+                | settings::CustomAgentServerSettings::Registry { env, .. } => {
+                    env.remove(variable);
+                }
+            }
+        }
+    });
+    Some(cx.background_spawn(async move {
+        written
+            .await
+            .context(i18n::t!("Writing to the settings file didn't finish"))?
+    }))
+}
+
+/// ADR-F88: moves the API keys an earlier build left in plain text in the
+/// user's settings file (`agent_servers.<id>.env.<variable>`) into the
+/// credential store. A key leaves the file only once the store has it — written
+/// and read back the same — so a store that cannot be written loses nothing;
+/// the key then stays where it was, and the card warns about it.
+///
+/// Only the user's own settings file: a project's settings are not the user's
+/// to have their secrets moved out of, and this fork does not read an agent's
+/// key from them.
+pub fn migrate_agent_api_keys_out_of_settings_file(fs: Arc<dyn Fs>, cx: &App) -> Task<Result<()>> {
+    use settings::RootUserSettings as _;
+
+    cx.spawn(async move |cx| {
+        let settings_path = paths::settings_file();
+        if !fs.is_file(settings_path).await {
+            return Ok(());
+        }
+        let text = fs.load(settings_path).await?;
+        let (Some(user_settings), _) = settings::UserSettingsContent::parse_json(&text) else {
+            return Ok(());
+        };
+        let keys = user_settings
+            .content
+            .agent_servers
+            .iter()
+            .flat_map(|agent_servers| agent_servers.iter())
+            .filter_map(|(agent_id, agent)| {
+                let variable = api_key_variable(agent_id)?;
+                let value = settings_env(agent).get(variable)?;
+                (!value.trim().is_empty()).then(|| (agent_id.clone(), variable, value.clone()))
+            })
+            .collect::<Vec<_>>();
+        for (agent_id, variable, value) in keys {
+            match move_api_key_to_credential_store(&agent_id, variable, value, fs.clone(), cx)
+                .await
+            {
+                Ok(()) => log::info!(
+                    "moved agent_servers.{agent_id}.env.{variable} from the settings file to the credential store"
+                ),
+                Err(error) => log::warn!(
+                    "agent_servers.{agent_id}.env.{variable} stays in the settings file: {error:#}"
+                ),
+            }
+        }
+        Ok(())
+    })
+}
+
+async fn move_api_key_to_credential_store(
+    agent_id: &str,
+    variable: &'static str,
+    value: String,
+    fs: Arc<dyn Fs>,
+    cx: &mut gpui::AsyncApp,
+) -> Result<()> {
+    let url = agent_api_key_credentials_url(agent_id, variable);
+    let credentials_provider = cx.update(|cx| zed_credentials_provider::global(cx));
+    let stored_value = value.trim();
+    // A different key already in the store was saved from the card (possibly
+    // while this ran, or by another build sharing the store), so it is newer
+    // than the plain-text one; neither is dropped until the user picks.
+    match credentials_provider
+        .read_credentials(&url, cx)
+        .await
+        .context("reading the credential store")?
+    {
+        Some((_, key)) if key == stored_value.as_bytes() => {}
+        Some(_) => anyhow::bail!(
+            "the credential store already holds a different key; remove one of the two"
+        ),
+        None => credentials_provider
+            .write_credentials(&url, variable, stored_value.as_bytes(), cx)
+            .await
+            .context("writing to the credential store")?,
+    }
+    let read_back = credentials_provider
+        .read_credentials(&url, cx)
+        .await
+        .context("reading the key back from the credential store")?;
+    anyhow::ensure!(
+        read_back.is_some_and(|(_, key)| key == stored_value.as_bytes()),
+        "the credential store did not give back the key that was written"
+    );
+
+    let agent_id = agent_id.to_string();
+    let written = cx.update(|cx| {
+        update_settings_file_with_completion(fs, cx, move |settings, _cx| {
+            if let Some(agent) = settings
+                .agent_servers
+                .as_mut()
+                .and_then(|agent_servers| agent_servers.get_mut(&agent_id))
+            {
+                match agent {
+                    settings::CustomAgentServerSettings::Custom { env, .. }
+                    | settings::CustomAgentServerSettings::Registry { env, .. } => {
+                        // Only the value that was stored: one the user changed
+                        // in the meantime is theirs and stays.
+                        if env.get(variable) == Some(&value) {
+                            env.remove(variable);
+                        }
+                    }
+                }
+            }
+        })
+    });
+    written
+        .await
+        .context("the settings file update didn't finish")?
 }
 
 /// ADR-F49 決定 19: whether `agent_id` starts outside its sandbox this time —
@@ -506,6 +717,13 @@ impl AgentServer for CustomAgentServer {
         if is_registry_agent {
             add_registry_agent_environment(agent_id.as_ref(), &mut extra_env);
         }
+        let stored_api_key = api_key_variable(agent_id.as_ref()).map(|variable| {
+            (
+                variable,
+                agent_api_key_credentials_url(agent_id.as_ref(), variable),
+                zed_credentials_provider::global(cx),
+            )
+        });
         let store = delegate.store.downgrade();
         log_overridden_legacy_outside_sandbox_choice(agent_id.as_ref(), cx);
         let run_outside_sandbox = delegate.starts_outside_sandbox(agent_id.as_ref(), cx);
@@ -528,6 +746,10 @@ impl AgentServer for CustomAgentServer {
                 if let Some(api_key) = cx.update(api_key_for_gemini_cli).await.ok() {
                     extra_env.insert("GEMINI_API_KEY".into(), api_key);
                 }
+            }
+            if let Some((variable, url, credentials_provider)) = stored_api_key {
+                let stored = credentials_provider.read_credentials(&url, cx).await;
+                add_stored_api_key(&mut extra_env, agent_id.as_ref(), variable, stored);
             }
             let command = store
                 .update(cx, |store, cx| {
@@ -565,6 +787,35 @@ impl AgentServer for CustomAgentServer {
 
     fn into_any(self: Rc<Self>) -> Rc<dyn std::any::Any> {
         self
+    }
+}
+
+/// ADR-F88: puts the API key read from the credential store into what the IDE
+/// adds to the agent's environment, which every route that starts it
+/// composes (`agent_environment` for this host and the WSL sandbox, the
+/// remote host's command otherwise). A key spelled out in the agent's
+/// settings is applied after this one and wins: that is the user's own word.
+///
+/// A store that cannot be read does not stop the agent: it starts without the
+/// key and asks for a sign-in, as it would without one.
+fn add_stored_api_key(
+    extra_env: &mut HashMap<String, String>,
+    agent_id: &str,
+    variable: &str,
+    stored: Result<Option<(String, Vec<u8>)>>,
+) {
+    match stored {
+        Ok(Some((_, key))) => match String::from_utf8(key) {
+            Ok(key) if !key.trim().is_empty() => {
+                extra_env.insert(variable.to_string(), key);
+            }
+            Ok(_) => {}
+            Err(_) => log::warn!("the stored {variable} for {agent_id} is not UTF-8; not used"),
+        },
+        Ok(None) => {}
+        Err(error) => {
+            log::warn!("couldn't read the stored {variable} for {agent_id}: {error:#}")
+        }
     }
 }
 
@@ -625,6 +876,7 @@ mod tests {
     };
     use settings::Settings as _;
     use ui::SharedString;
+    use zed_credentials_provider::test_support::InMemoryCredentialsProvider;
 
     fn init_test(cx: &mut TestAppContext) {
         cx.update(|cx| {
@@ -1054,5 +1306,421 @@ mod tests {
         cx.update(|cx| {
             assert!(is_registry_agent("agent-from-settings", cx));
         });
+    }
+
+    const PLAIN_TEXT_KEY: &str = "sk-ant-api03-plain-text";
+    const SETTINGS_WITH_A_PLAIN_TEXT_KEY: &str = r#"{
+  "buffer_font_size": 15,
+  "agent_servers": {
+    "claude-acp": {
+      "type": "registry",
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-api03-plain-text",
+        "CLAUDE_CONFIG_DIR": "/tmp/keep-me"
+      }
+    }
+  }
+}"#;
+
+    async fn settings_file_with(text: &str, cx: &mut TestAppContext) -> std::sync::Arc<fs::FakeFs> {
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.create_dir(
+            paths::settings_file()
+                .parent()
+                .expect("the settings file has a parent"),
+        )
+        .await
+        .expect("the settings directory can be created");
+        fs.atomic_write(paths::settings_file().to_path_buf(), text.to_string())
+            .await
+            .expect("the settings file can be written");
+        fs
+    }
+
+    fn claude_key_url() -> String {
+        agent_api_key_credentials_url(CLAUDE_AGENT_ID, CLAUDE_API_KEY_VARIABLE)
+    }
+
+    /// ADR-F88: someone reading the credential store's own viewer can tell
+    /// which product and which agent the entry is for.
+    #[test]
+    fn the_stored_key_is_named_for_the_product_and_the_agent() {
+        assert_eq!(
+            claude_key_url(),
+            "forgekairos://agent-servers/claude-acp/env/ANTHROPIC_API_KEY"
+        );
+    }
+
+    /// ADR-F88: a key left in plain text by an earlier build moves into the
+    /// credential store, and leaves the settings file only after that — the
+    /// rest of the file stays as it was.
+    #[gpui::test]
+    async fn the_migration_moves_a_plain_text_key_into_the_credential_store(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        let fs = settings_file_with(SETTINGS_WITH_A_PLAIN_TEXT_KEY, cx).await;
+
+        cx.update(|cx| migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx))
+            .await
+            .expect("the migration runs");
+        cx.run_until_parked();
+
+        assert_eq!(
+            credentials.get(&claude_key_url()),
+            Some((
+                CLAUDE_API_KEY_VARIABLE.to_string(),
+                PLAIN_TEXT_KEY.as_bytes().to_vec()
+            ))
+        );
+        let written = fs
+            .load(paths::settings_file())
+            .await
+            .expect("the settings file can be read");
+        assert!(!written.contains(PLAIN_TEXT_KEY), "{written}");
+        assert!(!written.contains(CLAUDE_API_KEY_VARIABLE), "{written}");
+        for kept in ["\"buffer_font_size\": 15", "/tmp/keep-me"] {
+            assert!(written.contains(kept), "{kept} was lost:\n{written}");
+        }
+    }
+
+    /// ADR-F88: fail-safe. A credential store that cannot be written leaves the
+    /// key where it was: the settings file is not touched.
+    #[gpui::test]
+    async fn the_migration_keeps_the_key_when_the_store_cannot_be_written(cx: &mut TestAppContext) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        credentials.set_fail_writes(true);
+        let fs = settings_file_with(SETTINGS_WITH_A_PLAIN_TEXT_KEY, cx).await;
+
+        cx.update(|cx| migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx))
+            .await
+            .expect("a key that could not be moved is not an error of the migration");
+        cx.run_until_parked();
+
+        assert!(credentials.is_empty());
+        assert_eq!(
+            fs.load(paths::settings_file())
+                .await
+                .expect("the settings file can be read"),
+            SETTINGS_WITH_A_PLAIN_TEXT_KEY,
+            "the key stays in the settings file"
+        );
+    }
+
+    /// ADR-F88: a different key already in the store was saved from the card
+    /// (or by another build sharing the store) and is not overwritten by the
+    /// older plain-text one; both stay until the user picks.
+    #[gpui::test]
+    async fn the_migration_keeps_both_when_the_store_holds_a_different_key(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        let url = agent_api_key_credentials_url(CLAUDE_AGENT_ID, CLAUDE_API_KEY_VARIABLE);
+        credentials.insert(&url, CLAUDE_API_KEY_VARIABLE, b"sk-ant-api03-from-the-card");
+        let fs = settings_file_with(SETTINGS_WITH_A_PLAIN_TEXT_KEY, cx).await;
+
+        cx.update(|cx| migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx))
+            .await
+            .expect("the migration runs");
+        cx.run_until_parked();
+
+        assert_eq!(
+            credentials.get(&url).map(|(_, key)| key),
+            Some(b"sk-ant-api03-from-the-card".to_vec()),
+            "the key saved from the card is kept"
+        );
+        assert_eq!(
+            fs.load(paths::settings_file())
+                .await
+                .expect("the settings file can be read"),
+            SETTINGS_WITH_A_PLAIN_TEXT_KEY,
+            "the plain-text key stays in the settings file"
+        );
+    }
+
+    /// ADR-F88: the same key already in the store needs no write, and the
+    /// plain-text copy goes.
+    #[gpui::test]
+    async fn the_migration_drops_a_plain_text_copy_the_store_already_holds(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        let url = agent_api_key_credentials_url(CLAUDE_AGENT_ID, CLAUDE_API_KEY_VARIABLE);
+        credentials.insert(&url, CLAUDE_API_KEY_VARIABLE, PLAIN_TEXT_KEY.as_bytes());
+        credentials.set_fail_writes(true);
+        let fs = settings_file_with(SETTINGS_WITH_A_PLAIN_TEXT_KEY, cx).await;
+
+        cx.update(|cx| migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx))
+            .await
+            .expect("the migration runs");
+        cx.run_until_parked();
+
+        let settings = fs
+            .load(paths::settings_file())
+            .await
+            .expect("the settings file can be read");
+        assert!(
+            !settings.contains(PLAIN_TEXT_KEY),
+            "the plain-text copy is removed: {settings}"
+        );
+    }
+
+    /// ADR-F88: a store that takes the write but does not give the key back
+    /// (a keyring that is locked again, say) is not trusted with it either.
+    #[gpui::test]
+    async fn the_migration_keeps_the_key_when_it_cannot_be_read_back(cx: &mut TestAppContext) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        credentials.set_fail_reads(true);
+        let fs = settings_file_with(SETTINGS_WITH_A_PLAIN_TEXT_KEY, cx).await;
+
+        cx.update(|cx| migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx))
+            .await
+            .expect("the migration runs");
+        cx.run_until_parked();
+
+        assert_eq!(
+            fs.load(paths::settings_file())
+                .await
+                .expect("the settings file can be read"),
+            SETTINGS_WITH_A_PLAIN_TEXT_KEY,
+            "the key stays in the settings file"
+        );
+    }
+
+    /// ADR-F88: a store that reports the write as done but keeps nothing is
+    /// caught by reading the key back.
+    #[gpui::test]
+    async fn the_migration_keeps_the_key_when_the_store_loses_it(cx: &mut TestAppContext) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        credentials.set_lose_writes(true);
+        let fs = settings_file_with(SETTINGS_WITH_A_PLAIN_TEXT_KEY, cx).await;
+
+        cx.update(|cx| migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx))
+            .await
+            .expect("the migration runs");
+        cx.run_until_parked();
+
+        assert_eq!(
+            fs.load(paths::settings_file())
+                .await
+                .expect("the settings file can be read"),
+            SETTINGS_WITH_A_PLAIN_TEXT_KEY,
+            "the key stays in the settings file"
+        );
+    }
+
+    /// ADR-F88: a key the user changed in the settings file while the old one
+    /// was being moved is theirs, and is not taken out with the old one.
+    #[gpui::test]
+    async fn the_migration_keeps_a_key_changed_while_it_ran(cx: &mut TestAppContext) {
+        const CHANGED: &str = "sk-ant-api03-changed-meanwhile";
+        init_test(cx);
+        let fs = settings_file_with(SETTINGS_WITH_A_PLAIN_TEXT_KEY, cx).await;
+        let credentials = std::sync::Arc::new(ChangesTheFileOnWrite {
+            store: InMemoryCredentialsProvider::default(),
+            fs: fs.clone(),
+            text: SETTINGS_WITH_A_PLAIN_TEXT_KEY.replace(PLAIN_TEXT_KEY, CHANGED),
+        });
+        cx.update(|cx| {
+            cx.set_global(zed_credentials_provider::ZedCredentialsProvider(
+                credentials.clone(),
+            ))
+        });
+
+        cx.update(|cx| migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx))
+            .await
+            .expect("the migration runs");
+        cx.run_until_parked();
+
+        let written = fs
+            .load(paths::settings_file())
+            .await
+            .expect("the settings file can be read");
+        assert!(written.contains(CHANGED), "{written}");
+    }
+
+    struct ChangesTheFileOnWrite {
+        store: InMemoryCredentialsProvider,
+        fs: std::sync::Arc<fs::FakeFs>,
+        text: String,
+    }
+
+    impl credentials_provider::CredentialsProvider for ChangesTheFileOnWrite {
+        fn read_credentials<'a>(
+            &'a self,
+            url: &'a str,
+            cx: &'a gpui::AsyncApp,
+        ) -> futures::future::LocalBoxFuture<'a, Result<Option<(String, Vec<u8>)>>> {
+            self.store.read_credentials(url, cx)
+        }
+
+        fn write_credentials<'a>(
+            &'a self,
+            url: &'a str,
+            username: &'a str,
+            password: &'a [u8],
+            cx: &'a gpui::AsyncApp,
+        ) -> futures::future::LocalBoxFuture<'a, Result<()>> {
+            use fs::Fs as _;
+            use futures::FutureExt as _;
+            async move {
+                self.fs
+                    .atomic_write(paths::settings_file().to_path_buf(), self.text.clone())
+                    .await?;
+                self.store
+                    .write_credentials(url, username, password, cx)
+                    .await
+            }
+            .boxed_local()
+        }
+
+        fn delete_credentials<'a>(
+            &'a self,
+            url: &'a str,
+            cx: &'a gpui::AsyncApp,
+        ) -> futures::future::LocalBoxFuture<'a, Result<()>> {
+            self.store.delete_credentials(url, cx)
+        }
+    }
+
+    /// ADR-F88: no settings file, or one without a key, is nothing to do — the
+    /// file is not created or rewritten.
+    #[gpui::test]
+    async fn the_migration_leaves_a_file_without_a_key_alone(cx: &mut TestAppContext) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        const WITHOUT_A_KEY: &str = r#"{ "agent_servers": { "claude-acp": { "type": "registry", "env": { "ANTHROPIC_API_KEY": "  " } } } }"#;
+        let fs = settings_file_with(WITHOUT_A_KEY, cx).await;
+
+        cx.update(|cx| migrate_agent_api_keys_out_of_settings_file(fs.clone(), cx))
+            .await
+            .expect("the migration runs");
+        cx.run_until_parked();
+
+        assert!(credentials.is_empty());
+        assert_eq!(
+            fs.load(paths::settings_file())
+                .await
+                .expect("the settings file can be read"),
+            WITHOUT_A_KEY
+        );
+    }
+
+    /// ADR-F88: the routes that would let the stored key override the agent's
+    /// own settings (a custom agent, a remote host) hold back exactly these
+    /// names, so every variable a key is stored for must be one of them.
+    #[test]
+    fn every_stored_key_only_fills_in_on_every_route() {
+        for agent_id in [CLAUDE_AGENT_ID, CODEX_ID, GEMINI_ID, "my-agent"] {
+            if let Some(variable) = api_key_variable(agent_id) {
+                assert!(
+                    project::agent_server_store::STORED_API_KEY_VARIABLES.contains(&variable),
+                    "{variable} of {agent_id}"
+                );
+            }
+        }
+    }
+
+    /// ADR-F88: what `connect` hands the agent. A stored key goes into the
+    /// environment under its variable; nothing stored, a store that could not
+    /// be read or an empty entry add nothing (the agent starts and asks for a
+    /// sign-in).
+    #[test]
+    fn a_stored_key_reaches_the_agents_environment() {
+        let mut env = HashMap::default();
+        add_stored_api_key(
+            &mut env,
+            CLAUDE_AGENT_ID,
+            CLAUDE_API_KEY_VARIABLE,
+            Ok(Some((
+                CLAUDE_API_KEY_VARIABLE.to_string(),
+                b"sk-ant-api03-stored".to_vec(),
+            ))),
+        );
+        assert_eq!(
+            env.get(CLAUDE_API_KEY_VARIABLE).map(String::as_str),
+            Some("sk-ant-api03-stored")
+        );
+
+        for stored in [
+            Ok(None),
+            Err(anyhow::anyhow!("the store is locked")),
+            Ok(Some((CLAUDE_API_KEY_VARIABLE.to_string(), Vec::new()))),
+            Ok(Some((
+                CLAUDE_API_KEY_VARIABLE.to_string(),
+                vec![0xff, 0xfe],
+            ))),
+        ] {
+            let mut env = HashMap::default();
+            add_stored_api_key(&mut env, CLAUDE_AGENT_ID, CLAUDE_API_KEY_VARIABLE, stored);
+            assert!(env.is_empty(), "{env:?}");
+        }
+    }
+
+    /// ADR-F88: the key is saved in the credential store and nothing is
+    /// written to settings.json; removing it takes it out of both.
+    #[gpui::test]
+    async fn a_saved_key_goes_to_the_credential_store_only(cx: &mut TestAppContext) {
+        init_test(cx);
+        let credentials = cx.update(InMemoryCredentialsProvider::install);
+        let fs = fs::FakeFs::new(cx.executor());
+
+        let saved = cx
+            .update(|cx| {
+                save_agent_api_key(CLAUDE_AGENT_ID, "  sk-ant-api03-saved ", fs.clone(), cx)
+            })
+            .expect("a valid key");
+        saved.await.expect("saved");
+        cx.run_until_parked();
+
+        assert_eq!(
+            credentials.get(&claude_key_url()),
+            Some((
+                CLAUDE_API_KEY_VARIABLE.to_string(),
+                b"sk-ant-api03-saved".to_vec()
+            ))
+        );
+        assert!(
+            !fs.is_file(paths::settings_file()).await,
+            "settings.json is not written"
+        );
+        assert!(
+            cx.update(|cx| load_agent_api_key_status(CLAUDE_AGENT_ID, cx))
+                .await
+                .expect("readable")
+        );
+
+        cx.update(|cx| remove_agent_api_key(CLAUDE_AGENT_ID, fs.clone(), cx))
+            .await
+            .expect("removed");
+        assert!(credentials.is_empty());
+        assert!(
+            !cx.update(|cx| load_agent_api_key_status(CLAUDE_AGENT_ID, cx))
+                .await
+                .expect("readable")
+        );
+        cx.update(|cx| remove_agent_api_key(CLAUDE_AGENT_ID, fs.clone(), cx))
+            .await
+            .expect("removing what isn't there is not an error");
+
+        for refused in ["", "   ", "sk-ant\nsecond-line"] {
+            assert!(
+                cx.update(|cx| save_agent_api_key(CLAUDE_AGENT_ID, refused, fs.clone(), cx))
+                    .is_err(),
+                "{refused:?}"
+            );
+        }
+        assert!(
+            cx.update(|cx| save_agent_api_key(CODEX_ID, "sk-anything", fs.clone(), cx))
+                .is_err(),
+            "an agent that takes no key"
+        );
+        assert!(credentials.is_empty());
     }
 }

@@ -44,11 +44,20 @@ msgstr "エージェントの設定フォルダーを用意できませんでし
 msgid "Couldn't put the sandbox configuration together"
 msgstr "サンドボックスの構成を組み立てられませんでした"
 
+msgid "Couldn't read from {store}"
+msgstr "{store} から読み出せませんでした"
+
+msgid "Couldn't remove the key from {store}"
+msgstr "{store} からキーを削除できませんでした"
+
 msgid "Couldn't start the agent in the sandbox"
 msgstr "エージェントをサンドボックスで起動できませんでした"
 
 msgid "Couldn't start the sign-in in the sandbox"
 msgstr "サインインをサンドボックスで起動できませんでした"
+
+msgid "Couldn't write to {store}"
+msgstr "{store} に書き込めませんでした"
 
 msgid "Environment Variables the Agent Sets"
 msgstr "エージェントが設定する環境変数"
@@ -64,9 +73,6 @@ msgstr "接続先の ForgeKairos のサーバーが古いため、エージェ�
 
 msgid "The agent was started outside the sandbox (on this PC), so its commands run on this PC too (Windows commands don't run in the WSL sandbox)"
 msgstr "エージェントをサンドボックスの外 (この PC) で起動しているため、コマンドもこの PC で実行します (WSL のサンドボックスでは Windows のコマンドが動かないため)"
-
-msgid "The environment variable has no name (internal error)"
-msgstr "環境変数の名前が空です (内部エラー)"
 
 msgid "The folder {} can't be shown to the sandbox"
 msgstr "フォルダー {} をサンドボックスから見せられません"
@@ -104,6 +110,9 @@ msgstr "{name} の値に改行や制御文字が含まれています"
 msgid "There's no sandbox implementation for this OS."
 msgstr "この OS 向けのサンドボックスの実装がありません。"
 
+msgid "This agent takes no API key (internal error)"
+msgstr "このエージェントは API キーを受け取りません (内部エラー)"
+
 msgid "This project's folders can't be shown to the WSL sandbox: {}"
 msgstr "このプロジェクトのフォルダーを WSL のサンドボックスから見せられません: {}"
 
@@ -113,6 +122,9 @@ msgstr "この起動方法では WSL のサンドボックスを使えません 
 msgid "WSL didn't respond within {} seconds. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
 msgstr "WSL が {} 秒以内に応答しませんでした。しばらく待ってから再試行し、改善しない場合は `wsl --shutdown` で WSL を再起動してください。"
 
+msgid "Windows Credential Manager"
+msgstr "Windows 資格情報マネージャー"
+
 msgid "Working Directory"
 msgstr "作業ディレクトリ"
 
@@ -121,6 +133,12 @@ msgstr "設定ファイルへの書き込みが終わりませんでした"
 
 msgid "`{name}` can't be used as a WSL distribution name."
 msgstr "`{name}` は WSL ディストリビューション名として使えません。"
+
+msgid "macOS Keychain"
+msgstr "macOS キーチェーン"
+
+msgid "the system keyring (Secret Service)"
+msgstr "システムのキーリング (Secret Service)"
 
 msgid "{headline}."
 msgstr "{headline}。"

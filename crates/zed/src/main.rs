@@ -770,6 +770,7 @@ fn main() {
                 .enterprise_uri
                 .clone(),
         };
+        zed_credentials_provider::migrate_development_credentials(cx);
         let credentials_provider = zed_credentials_provider::global(cx);
         copilot_chat::init(
             app_state.client.http_client(),

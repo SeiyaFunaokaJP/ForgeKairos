@@ -5975,6 +5975,91 @@ async fn test_remote_external_agent_server(
     );
 }
 
+/// ADR-F88: the API key the client read from its credential store only fills
+/// in what the host's own settings for the agent leave out: a key spelled out
+/// there wins, as the agent's settings do on the client's own host. What else
+/// the client adds still goes over the host's.
+#[gpui::test]
+async fn test_remote_agent_api_key_from_the_client_only_fills_in(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(path!("/project"), json!({})).await;
+
+    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/project"), true, cx)
+        })
+        .await
+        .unwrap();
+    server_cx.update_global::<SettingsStore, _>(|settings_store, cx| {
+        settings_store
+            .set_server_settings(
+                &json!({
+                    "agent_servers": {
+                        "with-key": {
+                            "type": "custom",
+                            "command": "with-key-cli",
+                            "env": {
+                                "ANTHROPIC_API_KEY": "sk-host",
+                                "VAR": "host"
+                            }
+                        },
+                        "without-key": {
+                            "type": "custom",
+                            "command": "without-key-cli"
+                        }
+                    }
+                })
+                .to_string(),
+                cx,
+            )
+            .unwrap();
+    });
+    server_cx.run_until_parked();
+    cx.run_until_parked();
+
+    let env_of = |name: &'static str, cx: &mut TestAppContext| {
+        project.update(cx, |project, cx| {
+            project.agent_server_store().update(cx, |store, cx| {
+                store
+                    .get_external_agent(&name.into())
+                    .unwrap()
+                    .get_command(
+                        vec![],
+                        HashMap::from_iter([
+                            ("ANTHROPIC_API_KEY".into(), "sk-client-stored".into()),
+                            ("VAR".into(), "client".into()),
+                        ]),
+                        project::AgentLaunchTarget::Host,
+                        &mut cx.to_async(),
+                    )
+            })
+        })
+    };
+
+    let env = env_of("with-key", cx).await.unwrap().env.unwrap();
+    assert_eq!(
+        env.get("ANTHROPIC_API_KEY").map(String::as_str),
+        Some("sk-host"),
+        "the host's own key wins"
+    );
+    assert_eq!(
+        env.get("VAR").map(String::as_str),
+        Some("client"),
+        "the rest of what the client adds still goes over the host's"
+    );
+
+    let env = env_of("without-key", cx).await.unwrap().env.unwrap();
+    assert_eq!(
+        env.get("ANTHROPIC_API_KEY").map(String::as_str),
+        Some("sk-client-stored"),
+        "with none on the host, the client's stored key reaches the agent"
+    );
+}
+
 /// ADR-F49 第 2a 段: on a real file system the host makes the agent's
 /// per-project configuration folder and describes it to the client, which
 /// takes it only as far as its own policy for the agent goes. A folder the

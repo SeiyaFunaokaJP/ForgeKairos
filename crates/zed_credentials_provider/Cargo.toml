@@ -10,14 +10,22 @@ workspace = true
 
 [lib]
 path = "src/zed_credentials_provider.rs"
-test = false
 doctest = false
+
+[features]
+test-support = []
 
 [dependencies]
 anyhow.workspace = true
 credentials_provider.workspace = true
 futures.workspace = true
 gpui.workspace = true
+log.workspace = true
 paths.workspace = true
 release_channel.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+semver.workspace = true
+tempfile.workspace = true
