@@ -134,11 +134,13 @@ const UNINSTALL_HELP: &str =
 
 /// The editor binary a Linux install and the flatpak ship next to the
 /// launcher (`bin/{CLI_NAME}`).
+#[cfg(any(target_os = "linux", target_os = "freebsd", test))]
 const LINUX_EDITOR_NAME: &str = branding::concat_const!(CLI_NAME, "-editor");
 
 /// Where the Linux launcher looks for the editor, relative to itself: libexec
 /// is the standard, lib/{CLI_NAME} is for Arch (and other non-libexec distros),
 /// and the last one is the cargo output directory of a development build.
+#[cfg(any(target_os = "linux", target_os = "freebsd", test))]
 const LINUX_EDITOR_LOCATIONS: [&str; 3] = [
     branding::concat_const!("../libexec/", LINUX_EDITOR_NAME),
     branding::concat_const!("../lib/", CLI_NAME, "/", LINUX_EDITOR_NAME),
@@ -258,6 +260,7 @@ struct Args {
 /// them. An instance started before this fork was renamed keeps listening in
 /// its own data directory, next to the current one, until it exits; links are
 /// sent to it rather than starting a second instance beside it.
+#[cfg(any(target_os = "linux", target_os = "freebsd", test))]
 fn instance_socket_candidates(
     data_dir: &Path,
     custom_data_dir: bool,

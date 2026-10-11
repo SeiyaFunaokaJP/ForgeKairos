@@ -16,6 +16,13 @@ rustflags = [
     "target-feature=+crt-static", # This fixes the linking issue when compiling livekit on Windows
 ]
 
+# ForgeKairos: the editor's __text outgrew the ±128 MB reach of an arm64 branch.
+# ld64 inserts branch islands only inside __text, so calls from ctor's bodies in
+# __text_startup into __text failed to link ("B/BL out of range"). Merging the
+# section into __text lets those calls get islands too.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-Wl,-rename_section,__TEXT,__text_startup,__TEXT,__text"]
+
 # We need lld to link libwebrtc.a successfully on aarch64-linux
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
