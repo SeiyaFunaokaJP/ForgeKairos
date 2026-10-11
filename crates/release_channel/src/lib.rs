@@ -40,8 +40,8 @@ pub static RELEASE_CHANNEL: LazyLock<ReleaseChannel> =
         _ => panic!("invalid release channel {}", *RELEASE_CHANNEL_NAME),
     });
 
-/// The app identifier for the current release channel, Windows only.
-#[cfg(target_os = "windows")]
+/// The app identifier for the current release channel, Windows and macOS only.
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 pub fn app_identifier() -> &'static str {
     // zed-jp-enhance: fork-specific identifiers so the single-instance mutex and
     // named pipe never collide with an official Zed install — the fork can run
