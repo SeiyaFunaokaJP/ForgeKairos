@@ -11,12 +11,15 @@ use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
 use askpass::{AskPassDelegate, EncryptedPassword};
+use collections::HashMap;
 use fs::Fs;
 use futures::channel::oneshot;
-use git::account::{GitHttpsLogin, GitHttpsPrompt, GitIdentity};
+pub use git::account::GitHttpsLogin;
+use git::account::{GitHttpsPrompt, GitIdentity};
 use gpui::{App, AppContext as _, AsyncApp, Task};
 use settings::GitAccountContent;
 
+use crate::git_store::{LocalRepositoryState, RepositoryState};
 use crate::project_settings::GitSettings;
 
 /// The key a repository's choice is kept under in `git.project_accounts`.
@@ -274,11 +277,19 @@ pub fn token_is_stored(login: &GitHttpsLogin, cx: &App) -> Task<Result<bool>> {
 /// `askpass`, except that git's prompts for the identity's HTTPS login are answered from the
 /// credential store, without asking the user. Every other prompt, and this one when no token is
 /// stored, goes to `askpass`.
+///
+/// An untrusted repository always gets `askpass`: its own configuration (`http.sslVerify`,
+/// `http.proxy`, `http.curloptResolve`, ...) can route the right host through someone else, and
+/// a `-c` option cannot outrank a more specific `http.<url>.*` of the repository.
 pub fn askpass_with_account_token(
     identity: Option<Arc<GitIdentity>>,
+    repository_is_trusted: bool,
     askpass: AskPassDelegate,
     cx: &mut AsyncApp,
 ) -> AskPassDelegate {
+    if !repository_is_trusted {
+        return askpass;
+    }
     let Some(login) = identity.and_then(|identity| identity.https_login.clone()) else {
         return askpass;
     };
@@ -321,6 +332,37 @@ pub fn askpass_with_account_token(
             None => forward_prompt(&fallback, prompt, response_sender, cx),
         }
     })
+}
+
+/// The environment a repository's git job runs with: the project's, with the picked account's
+/// author and committer over any the project's shell exports (`GitBinary` sets them too, but the
+/// commands apply the project's environment after it).
+pub fn environment_with_identity(
+    environment: &Arc<HashMap<String, String>>,
+    identity: Option<&GitIdentity>,
+) -> Arc<HashMap<String, String>> {
+    let Some(identity) = identity else {
+        return environment.clone();
+    };
+    let mut environment = (**environment).clone();
+    for (key, value) in identity.environment() {
+        environment.insert(key.to_string(), value.to_string());
+    }
+    Arc::new(environment)
+}
+
+pub(crate) fn with_account_environment(state: &RepositoryState) -> RepositoryState {
+    match state {
+        RepositoryState::Local(local) => RepositoryState::Local(LocalRepositoryState {
+            fs: local.fs.clone(),
+            backend: local.backend.clone(),
+            environment: environment_with_identity(
+                &local.environment,
+                local.backend.identity().as_deref(),
+            ),
+        }),
+        RepositoryState::Remote(remote) => RepositoryState::Remote(remote.clone()),
+    }
 }
 
 /// Never logs what it was given: the errors of these conversions can carry the bytes.
@@ -518,6 +560,30 @@ mod tests {
     }
 
     #[test]
+    fn test_account_environment_wins_over_the_projects() {
+        let environment = Arc::new(HashMap::from_iter([
+            ("PATH".to_string(), "/bin".to_string()),
+            ("GIT_AUTHOR_NAME".to_string(), "Shell User".to_string()),
+            (
+                "GIT_COMMITTER_EMAIL".to_string(),
+                "shell@example.com".to_string(),
+            ),
+        ]));
+        assert!(Arc::ptr_eq(
+            &environment_with_identity(&environment, None),
+            &environment
+        ));
+
+        let identity = identity_for_account(&account("work")).unwrap();
+        let overlaid = environment_with_identity(&environment, Some(&identity));
+        assert_eq!(overlaid["PATH"], "/bin");
+        assert_eq!(overlaid["GIT_AUTHOR_NAME"], "Ada Work");
+        assert_eq!(overlaid["GIT_AUTHOR_EMAIL"], "ada@work.example");
+        assert_eq!(overlaid["GIT_COMMITTER_NAME"], "Ada Work");
+        assert_eq!(overlaid["GIT_COMMITTER_EMAIL"], "ada@work.example");
+    }
+
+    #[test]
     fn test_login_is_used() {
         let accounts = vec![account("work")];
         assert!(login_is_used(
@@ -560,7 +626,8 @@ mod tests {
                     .ok();
             }
         });
-        let delegate = askpass_with_account_token(Some(identity), fallback, &mut cx.to_async());
+        let delegate =
+            askpass_with_account_token(Some(identity.clone()), true, fallback, &mut cx.to_async());
 
         assert_eq!(
             ask(&delegate, "Password for 'https://ada-work@github.com': ").await,
@@ -588,5 +655,28 @@ mod tests {
             Some("typed".to_string())
         );
         assert_eq!(forwarded.lock().len(), 4);
+        credentials.set_fail_reads(false);
+
+        // An untrusted repository's own configuration could send the request elsewhere.
+        let untrusted_fallback = AskPassDelegate::new(&mut cx.to_async(), {
+            let forwarded = forwarded.clone();
+            move |prompt, response_sender, _| {
+                forwarded.lock().push(prompt);
+                response_sender
+                    .send(EncryptedPassword::try_from("typed").unwrap())
+                    .ok();
+            }
+        });
+        let untrusted = askpass_with_account_token(
+            Some(identity),
+            false,
+            untrusted_fallback,
+            &mut cx.to_async(),
+        );
+        assert_eq!(
+            ask(&untrusted, "Password for 'https://ada-work@github.com': ").await,
+            Some("typed".to_string())
+        );
+        assert_eq!(forwarded.lock().len(), 5);
     }
 }

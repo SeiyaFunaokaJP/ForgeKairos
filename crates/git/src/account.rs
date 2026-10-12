@@ -122,8 +122,8 @@ impl GitHttpsLogin {
         anyhow::ensure!(
             !login.chars().any(|character| character.is_whitespace()
                 || character.is_control()
-                || matches!(character, '/' | ':')),
-            i18n::t!("The account's login cannot contain spaces, '/' or ':'")
+                || matches!(character, '/' | ':' | '@')),
+            i18n::t!("The account's login cannot contain spaces, '/', ':' or '@'")
         );
         Ok(Self {
             host: host.to_ascii_lowercase(),
@@ -230,6 +230,7 @@ mod tests {
         assert!(GitHttpsLogin::new("evil.com.helper", "ada").is_ok());
         assert!(GitHttpsLogin::new("github.com", "").is_err());
         assert!(GitHttpsLogin::new("github.com", "a b").is_err());
+        assert!(GitHttpsLogin::new("github.com", "ada@example.com").is_err());
         assert_eq!(
             GitHttpsLogin::new(" https://GitHub.com/ ", "ada").unwrap(),
             GitHttpsLogin {

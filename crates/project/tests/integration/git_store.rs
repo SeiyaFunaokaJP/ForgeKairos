@@ -3571,9 +3571,10 @@ mod git_account_tests {
     use project::{
         Project,
         git_accounts::{GitAccountChoice, account_choice, project_account_key},
-        git_store::Repository,
+        git_store::{Repository, RepositoryState},
         project_settings::ProjectSettings,
     };
+    use rpc::{AnyProtoClient, NoopProtoClient, proto};
     use serde_json::json;
     use settings::{
         GitAccountContent, LocalSettingsKind, LocalSettingsPath, Settings as _, SettingsStore,
@@ -3678,23 +3679,10 @@ mod git_account_tests {
 
     #[gpui::test]
     async fn test_commits_are_made_as_the_picked_account(cx: &mut TestAppContext) {
-        zlog::init_test();
-        cx.update(|cx| {
-            let settings_store = SettingsStore::test(cx);
-            cx.set_global(settings_store);
-        });
-        cx.executor().allow_parking();
-
+        init_settings(cx);
         let root = TempTree::new(json!({ "project": {} }));
         let work_dir = root.path().join("project");
-        git(&work_dir, &["init"]);
-        for (key, value) in [
-            ("user.name", "Committer"),
-            ("user.email", "committer@example.com"),
-            ("commit.gpgsign", "false"),
-        ] {
-            git(&work_dir, &["config", key, value]);
-        }
+        init_repository(&work_dir);
 
         let (_project, repository) = open_repository(&work_dir, cx).await;
         let repository_path = repository.read_with(cx, |repository, _| {
@@ -3735,27 +3723,126 @@ mod git_account_tests {
         );
     }
 
-    /// The project's own settings, which whoever wrote the repository controls, can neither add
-    /// an account nor pick one: only the user's settings do.
-    #[gpui::test]
-    async fn test_project_settings_cannot_pick_an_account(cx: &mut TestAppContext) {
+    fn init_repository(work_dir: &Path) {
+        git(work_dir, &["init"]);
+        for (key, value) in [
+            ("user.name", "Committer"),
+            ("user.email", "committer@example.com"),
+            ("commit.gpgsign", "false"),
+        ] {
+            git(work_dir, &["config", key, value]);
+        }
+    }
+
+    fn init_settings(cx: &mut TestAppContext) {
         zlog::init_test();
         cx.update(|cx| {
             let settings_store = SettingsStore::test(cx);
             cx.set_global(settings_store);
         });
         cx.executor().allow_parking();
+    }
 
+    async fn job_environment(
+        repository: &Entity<Repository>,
+        cx: &mut TestAppContext,
+    ) -> (Option<String>, Option<String>) {
+        repository
+            .update(cx, |repository, _| {
+                repository.send_job("read the environment", None, |state, _| async move {
+                    match state {
+                        RepositoryState::Local(local) => (
+                            local.environment.get("GIT_AUTHOR_NAME").cloned(),
+                            local.environment.get("GIT_COMMITTER_EMAIL").cloned(),
+                        ),
+                        RepositoryState::Remote(_) => (None, None),
+                    }
+                })
+            })
+            .await
+            .expect("the git job should not be dropped")
+    }
+
+    /// Commands apply the project's environment after `GitBinary`'s own, so a shell that
+    /// exports `GIT_AUTHOR_*` would otherwise win over the picked account: every job's
+    /// environment carries the account.
+    #[gpui::test]
+    async fn test_jobs_get_the_accounts_environment(cx: &mut TestAppContext) {
+        init_settings(cx);
         let root = TempTree::new(json!({ "project": {} }));
         let work_dir = root.path().join("project");
-        git(&work_dir, &["init"]);
-        for (key, value) in [
-            ("user.name", "Committer"),
-            ("user.email", "committer@example.com"),
-            ("commit.gpgsign", "false"),
-        ] {
-            git(&work_dir, &["config", key, value]);
-        }
+        init_repository(&work_dir);
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+        let repository_path = repository.read_with(cx, |repository, _| {
+            repository.work_directory_abs_path.clone()
+        });
+
+        assert_eq!(job_environment(&repository, cx).await, (None, None));
+        set_project_account(&repository_path, Some("work"), cx);
+        assert_eq!(
+            job_environment(&repository, cx).await,
+            (
+                Some("Ada Work".to_string()),
+                Some("ada@work.example".to_string())
+            )
+        );
+        set_project_account(&repository_path, None, cx);
+        assert_eq!(job_environment(&repository, cx).await, (None, None));
+    }
+
+    /// A remote server is sent the client's user settings, whose picks are keyed by the client's
+    /// paths: once the store serves a client as its remote server, no account applies, while a
+    /// project shared with collaborators keeps its owner's.
+    #[gpui::test]
+    async fn test_remote_server_ignores_the_accounts(cx: &mut TestAppContext) {
+        init_settings(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        init_repository(&work_dir);
+        let (project, repository) = open_repository(&work_dir, cx).await;
+        let repository_path = repository.read_with(cx, |repository, _| {
+            repository.work_directory_abs_path.clone()
+        });
+        set_project_account(&repository_path, Some("work"), cx);
+        let git_store = project.read_with(cx, |project, _| project.git_store().clone());
+
+        git_store.update(cx, |git_store, cx| {
+            assert!(git_store.applies_git_accounts());
+            git_store.shared(1, AnyProtoClient::new(NoopProtoClient::new()), cx);
+            assert!(git_store.applies_git_accounts());
+        });
+        cx.executor().run_until_parked();
+        commit(&repository, "shared with collaborators", cx).await;
+        assert_eq!(
+            git(&work_dir, &["log", "-1", "--format=%an <%ae>"]),
+            "Ada Work <ada@work.example>"
+        );
+
+        git_store.update(cx, |git_store, cx| {
+            git_store.unshared(cx);
+            git_store.shared(
+                proto::REMOTE_SERVER_PROJECT_ID,
+                AnyProtoClient::new(NoopProtoClient::new()),
+                cx,
+            );
+            assert!(!git_store.applies_git_accounts());
+        });
+        cx.executor().run_until_parked();
+        commit(&repository, "as a remote server", cx).await;
+        assert_eq!(
+            git(&work_dir, &["log", "-1", "--format=%an <%ae>|%cn <%ce>"]),
+            "Committer <committer@example.com>|Committer <committer@example.com>"
+        );
+    }
+
+    /// The project's own settings, which whoever wrote the repository controls, can neither add
+    /// an account nor pick one: only the user's settings do.
+    #[gpui::test]
+    async fn test_project_settings_cannot_pick_an_account(cx: &mut TestAppContext) {
+        init_settings(cx);
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        init_repository(&work_dir);
 
         let (project, repository) = open_repository(&work_dir, cx).await;
         let repository_path = repository.read_with(cx, |repository, _| {

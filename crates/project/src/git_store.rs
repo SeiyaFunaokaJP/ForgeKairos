@@ -1465,6 +1465,8 @@ impl GitStore {
                         })
                     }),
                 });
+                // ADR-F93: shared to a client as its remote server, the accounts are the client's.
+                self.apply_git_accounts(cx);
             }
         }
     }
@@ -9269,6 +9271,7 @@ impl Repository {
                     }) => {
                         let askpass = crate::git_accounts::askpass_with_account_token(
                             backend.identity(),
+                            backend.is_trusted(),
                             askpass,
                             &mut cx,
                         );
@@ -9343,6 +9346,7 @@ impl Repository {
                     }) => {
                         let askpass = crate::git_accounts::askpass_with_account_token(
                             backend.identity(),
+                            backend.is_trusted(),
                             askpass,
                             &mut cx,
                         );
@@ -9429,6 +9433,7 @@ impl Repository {
                     }) => {
                         let askpass = crate::git_accounts::askpass_with_account_token(
                             backend.identity(),
+                            backend.is_trusted(),
                             askpass,
                             &mut cx,
                         );
@@ -13042,7 +13047,8 @@ impl Repository {
                         .ok();
                         continue;
                     }
-                    (job.job)(state.clone(), cx).await;
+                    // ADR-F93: the account picked now, over the project's environment.
+                    (job.job)(crate::git_accounts::with_account_environment(&state), cx).await;
                 } else if let Some(job) = job_rx.next().await {
                     jobs.push_back(job);
                 } else {

@@ -128,8 +128,8 @@ msgstr "アカウントにユーザー名がありません"
 msgid "The account's host must be a host name such as github.com, optionally with a port"
 msgstr "アカウントのホストは github.com のようなホスト名にしてください (ポートは付けられます)"
 
-msgid "The account's login cannot contain spaces, '/' or ':'"
-msgstr "アカウントのログイン名には空白・「/」・「:」を使えません"
+msgid "The account's login cannot contain spaces, '/', ':' or '@'"
+msgstr "アカウントのログイン名には空白・「/」・「:」・「@」を使えません"
 
 msgid "The account's name and email cannot contain '<', '>' or control characters"
 msgstr "アカウントの名前とメールアドレスには「<」「>」と制御文字を使えません"

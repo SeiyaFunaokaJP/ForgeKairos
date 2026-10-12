@@ -7604,6 +7604,9 @@ pub(crate) struct GitBinary {
     envs: HashMap<String, String>,
     is_trusted: bool,
     identity: Option<Arc<GitIdentity>>,
+    /// Whether the identity's `-c` options (signing key, credential helper and login) are given
+    /// too, or only its author and committer environment.
+    identity_options: bool,
 }
 
 impl GitBinary {
@@ -7623,6 +7626,7 @@ impl GitBinary {
             envs: HashMap::default(),
             is_trusted,
             identity: None,
+            identity_options: true,
         }
     }
 
@@ -7975,6 +7979,21 @@ impl GitBinary {
         self
     }
 
+    /// ADR-F93 with ADR-F90: the agent's git commands commit as the picked account, but take none
+    /// of its `-c` options, which would meet the ones an untrusted repository's commands are
+    /// given, and need no credentials, as they never reach a remote.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "called from GitBinary::untrusted once ADR-F90 is merged"
+        )
+    )]
+    fn with_identity_environment_only(mut self) -> Self {
+        self.identity_options = false;
+        self
+    }
+
     pub(crate) async fn build_command<S>(&self, args: &[S]) -> util::command::Command
     where
         S: AsRef<OsStr>,
@@ -8005,7 +8024,9 @@ impl GitBinary {
             global_args.retain(|argument| *argument != "--no-pager");
         }
         command.args(global_args);
-        if let Some(identity) = &self.identity {
+        if let Some(identity) = &self.identity
+            && self.identity_options
+        {
             command.args(identity.config_args());
         }
         let mut applied_overrides = None;
@@ -11243,6 +11264,48 @@ mod tests {
                 .await
                 .unwrap()
                 .starts_with("Ada Work <ada@work.example> ")
+        );
+    }
+
+    /// ADR-F93 with ADR-F90: the agent's git commands get the account's author and committer, and
+    /// none of its options.
+    #[gpui::test]
+    async fn test_identity_environment_only_gives_no_options(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        git_command(&repo_dir, ["config", "credential.helper", "store"]);
+        let repo = RealGitRepository::new(
+            &repo_dir.join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        repo.set_trusted(true);
+        repo.set_identity(Some(test_identity()));
+
+        let git = repo.git_binary().with_identity_environment_only();
+        assert!(
+            git.run(&["var", "GIT_COMMITTER_IDENT"])
+                .await
+                .unwrap()
+                .starts_with("Ada Work <ada@work.example> ")
+        );
+        assert!(git.run(&["config", "user.signingkey"]).await.is_err());
+        assert_eq!(
+            git.run(&[
+                "config",
+                "--get-urlmatch",
+                "credential.helper",
+                "https://github.com/owner/repo"
+            ])
+            .await
+            .unwrap(),
+            "store"
         );
     }
 

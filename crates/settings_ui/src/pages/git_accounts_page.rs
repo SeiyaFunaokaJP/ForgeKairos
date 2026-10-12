@@ -2,11 +2,11 @@
 //! `git.accounts` in the user settings; a token goes to the operating system's credential store
 //! and is never shown again once saved.
 
-use editor::Editor;
-use gpui::{Entity, ReadGlobal as _, ScrollHandle, Task, prelude::*};
+use editor::{Editor, EditorEvent};
+use gpui::{Entity, ReadGlobal as _, ScrollHandle, Subscription, Task, prelude::*};
 use project::git_accounts::{
-    https_login_for_account, login_is_used, remove_account, remove_token, save_token,
-    token_is_stored, upsert_account,
+    GitHttpsLogin, https_login_for_account, login_is_used, remove_account, remove_token,
+    save_token, token_is_stored, upsert_account,
 };
 use settings::{GitAccountContent, SettingsStore, update_settings_file};
 use ui::{Divider, Tooltip, prelude::*};
@@ -24,12 +24,16 @@ pub(crate) struct GitAccountForm {
     login: Entity<Editor>,
     token: Entity<Editor>,
     signing_key: Entity<Editor>,
-    /// Whether the credential store has a token for the login the form was opened with; `None`
-    /// until that has been read.
+    /// The host and login the form's fields name now, which `token_stored` is about.
+    token_login: Option<GitHttpsLogin>,
+    /// Whether the credential store has a token for `token_login`; `None` until that has been
+    /// read.
     token_stored: Option<bool>,
     error: Option<SharedString>,
     saving: bool,
     _task: Option<Task<()>>,
+    _token_status_task: Option<Task<()>>,
+    _subscriptions: Vec<Subscription>,
 }
 
 /// The accounts as the user settings file has them, so that editing one does not copy defaults
@@ -197,22 +201,34 @@ fn open_form(
     window: &mut Window,
     cx: &mut Context<SettingsWindow>,
 ) {
-    let existing_login = existing
-        .as_ref()
-        .and_then(|account| https_login_for_account(account).ok().flatten());
-    let status_task = existing_login.map(|login| {
-        let stored = token_is_stored(&login, cx);
-        cx.spawn(async move |this, cx| {
-            let stored = stored.await.log_err().unwrap_or(false);
-            this.update(cx, |this, cx| {
-                if let Some(form) = this.git_account_form.as_mut() {
-                    form.token_stored = Some(stored);
-                    cx.notify();
+    let host = new_input(
+        "github.com",
+        existing
+            .as_ref()
+            .and_then(|account| non_empty(account.host.as_deref())),
+        false,
+        window,
+        cx,
+    );
+    let login = new_input(
+        "ada-work",
+        existing
+            .as_ref()
+            .and_then(|account| non_empty(account.login.as_deref())),
+        false,
+        window,
+        cx,
+    );
+    let subscriptions = [&host, &login]
+        .into_iter()
+        .map(|editor| {
+            cx.subscribe(editor, |this, _, event: &EditorEvent, cx| {
+                if matches!(event, EditorEvent::BufferEdited) {
+                    refresh_token_status(this, cx);
                 }
             })
-            .log_err();
         })
-    });
+        .collect();
     let form = GitAccountForm {
         original_id: existing.as_ref().map(|account| account.id.clone()),
         id: new_input(
@@ -236,24 +252,8 @@ fn open_form(
             window,
             cx,
         ),
-        host: new_input(
-            "github.com",
-            existing
-                .as_ref()
-                .and_then(|account| non_empty(account.host.as_deref())),
-            false,
-            window,
-            cx,
-        ),
-        login: new_input(
-            "ada-work",
-            existing
-                .as_ref()
-                .and_then(|account| non_empty(account.login.as_deref())),
-            false,
-            window,
-            cx,
-        ),
+        host,
+        login,
         token: new_input("", None, true, window, cx),
         signing_key: new_input(
             "",
@@ -264,12 +264,56 @@ fn open_form(
             window,
             cx,
         ),
+        token_login: None,
         token_stored: None,
         error: None,
         saving: false,
-        _task: status_task,
+        _task: None,
+        _token_status_task: None,
+        _subscriptions: subscriptions,
     };
     settings_window.git_account_form = Some(form);
+    refresh_token_status(settings_window, cx);
+    cx.notify();
+}
+
+/// The login the form's host and login fields name, if they name a valid one.
+fn form_login(form: &GitAccountForm, cx: &App) -> Option<GitHttpsLogin> {
+    let host = text(&form.host, cx);
+    let login = text(&form.login, cx);
+    if host.is_empty() || login.is_empty() {
+        return None;
+    }
+    GitHttpsLogin::new(&host, &login).ok()
+}
+
+/// Reads whether a token is stored for the login the fields name now, so that the form never
+/// describes the token of a login it is no longer about.
+fn refresh_token_status(settings_window: &mut SettingsWindow, cx: &mut Context<SettingsWindow>) {
+    let Some(form) = settings_window.git_account_form.as_mut() else {
+        return;
+    };
+    let login = form_login(form, cx);
+    if login == form.token_login && (login.is_none() || form.token_stored.is_some()) {
+        return;
+    }
+    form.token_login = login.clone();
+    form.token_stored = None;
+    form._token_status_task = login.map(|login| {
+        let stored = token_is_stored(&login, cx);
+        cx.spawn(async move |this, cx| {
+            let stored = stored.await.log_err().unwrap_or(false);
+            this.update(cx, |this, cx| {
+                if let Some(form) = this.git_account_form.as_mut()
+                    && form.token_login.as_ref() == Some(&login)
+                {
+                    form.token_stored = Some(stored);
+                    cx.notify();
+                }
+            })
+            .log_err();
+        })
+    });
     cx.notify();
 }
 
@@ -303,10 +347,10 @@ fn render_form(
 ) -> impl IntoElement {
     let token_description = match form.token_stored {
         Some(true) => i18n::t!("A token is stored. Leave this empty to keep it."),
-        Some(false) | None if form.original_id.is_some() => {
+        Some(false) => {
             i18n::t!("No token is stored. Without one, git asks for the password as usual.")
         }
-        _ => i18n::t!(
+        None => i18n::t!(
             "A personal access token for the login. Without one, git asks for the password as usual."
         ),
     };
@@ -430,6 +474,12 @@ fn save_form(settings_window: &mut SettingsWindow, cx: &mut Context<SettingsWind
     };
     let original_id = form.original_id.clone();
     let token = form.token.read(cx).text(cx);
+    let original_login = original_id.as_ref().and_then(|original_id| {
+        user_accounts(cx)
+            .into_iter()
+            .find(|account| &account.id == original_id)
+            .and_then(|account| https_login_for_account(&account).ok().flatten())
+    });
 
     // Checked against the file as it is now, so that the write below does not fail unseen.
     let mut checked = settings::GitSettings {
@@ -446,6 +496,14 @@ fn save_form(settings_window: &mut SettingsWindow, cx: &mut Context<SettingsWind
             return;
         }
     };
+    // The token of the login the account signed in with, once nothing signs in with it.
+    let orphaned_login = original_login.filter(|original_login| {
+        login.as_ref() != Some(original_login)
+            && !login_is_used(
+                checked.accounts.as_deref().unwrap_or_default(),
+                original_login,
+            )
+    });
     let token_save = match (login, token.trim().is_empty()) {
         (_, true) => None,
         (Some(login), false) => match save_token(&login, &token, cx) {
@@ -486,6 +544,9 @@ fn save_form(settings_window: &mut SettingsWindow, cx: &mut Context<SettingsWind
                         )
                         .log_err();
                     });
+                    if let Some(orphaned_login) = orphaned_login {
+                        remove_token(&orphaned_login, cx).detach_and_log_err(cx);
+                    }
                     this.git_account_form = None;
                 }
                 Err(error) => {
@@ -506,13 +567,7 @@ fn remove_form_token(settings_window: &mut SettingsWindow, cx: &mut Context<Sett
     let Some(form) = settings_window.git_account_form.as_mut() else {
         return;
     };
-    let original = form.original_id.as_ref().and_then(|original_id| {
-        user_accounts(cx)
-            .into_iter()
-            .find(|account| &account.id == original_id)
-    });
-    let Some(login) = original.and_then(|account| https_login_for_account(&account).ok().flatten())
-    else {
+    let Some(login) = form.token_login.clone() else {
         return;
     };
     let removal = remove_token(&login, cx);
@@ -521,7 +576,11 @@ fn remove_form_token(settings_window: &mut SettingsWindow, cx: &mut Context<Sett
         this.update(cx, |this, cx| {
             if let Some(form) = this.git_account_form.as_mut() {
                 match removed {
-                    Ok(()) => form.token_stored = Some(false),
+                    Ok(()) => {
+                        if form.token_login.as_ref() == Some(&login) {
+                            form.token_stored = Some(false);
+                        }
+                    }
                     Err(error) => form.error = Some(format!("{error:#}").into()),
                 }
             }
