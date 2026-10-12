@@ -108,6 +108,18 @@ msgstr "選択肢から選ぶ"
 msgid "Clear the editor annotations"
 msgstr "エディターの注釈を消去"
 
+msgid "Click on the page"
+msgstr "ページをクリック"
+
+msgid "Click {}"
+msgstr "{} をクリック"
+
+msgid "Close AI tab {}"
+msgstr "AI タブ {} を閉じる"
+
+msgid "Close an AI tab"
+msgstr "AI タブを閉じる"
+
 msgid "Code tour"
 msgstr "コードツアー"
 
@@ -166,6 +178,9 @@ msgstr "URL を取得"
 msgid "Fetch {}"
 msgstr "{} を取得"
 
+msgid "Find on the page"
+msgstr "ページ内を検索"
+
 msgid "Find paths"
 msgstr "パスを検索"
 
@@ -178,6 +193,9 @@ msgstr "参照を検索"
 msgid "Find references to `{symbol_name}`"
 msgstr "`{symbol_name}` の参照を検索"
 
+msgid "Find {} on the page"
+msgstr "ページで {} を検索"
+
 msgid "Get code actions"
 msgstr "コードアクションを取得"
 
@@ -189,6 +207,12 @@ msgstr "ホバー情報を取得"
 
 msgid "Get page {page} of search results for regex {regex_str}{case_info}"
 msgstr "正規表現 {regex_str}{case_info} の検索結果 {page} ページ目を取得"
+
+msgid "Go back in the browser"
+msgstr "ブラウザーで前のページに戻る"
+
+msgid "Go forward in the browser"
+msgstr "ブラウザーで次のページに進む"
 
 msgid "Go to definition"
 msgstr "定義へ移動"
@@ -209,11 +233,23 @@ msgstr "{0} の {1} 行目のホバー情報"
 msgid "Hover information for {}"
 msgstr "{} のホバー情報"
 
+msgid "Hover on the page"
+msgstr "ページにマウスを重ねる"
+
+msgid "Hover over {}"
+msgstr "{} にマウスを重ねる"
+
 msgid "List agents and models"
 msgstr "エージェントとモデルの一覧を取得"
 
 msgid "List directory"
 msgstr "ディレクトリを一覧表示"
+
+msgid "List the browser's AI tabs"
+msgstr "ブラウザーの AI タブを一覧表示"
+
+msgid "List the page's network requests"
+msgstr "ページのネットワーク要求を一覧表示"
 
 msgid "List the {path} directory's contents"
 msgstr "{path} ディレクトリの内容を一覧表示"
@@ -224,14 +260,32 @@ msgstr "パスを移動"
 msgid "Move {src} to {dest}"
 msgstr "{src} を {dest} に移動"
 
+msgid "Navigate the browser"
+msgstr "ブラウザーでページを開く"
+
+msgid "Navigate to {}"
+msgstr "{} に移動"
+
 msgid "No matches"
 msgstr "一致なし"
 
 msgid "Only this time"
 msgstr "今回のみ"
 
+msgid "Open a new AI tab"
+msgstr "新しい AI タブを開く"
+
+msgid "Open {} in a new AI tab"
+msgstr "新しい AI タブで {} を開く"
+
 msgid "Or type your own answer"
 msgstr "または回答を入力"
+
+msgid "Press keys in the page"
+msgstr "ページでキーを押す"
+
+msgid "Press {}"
+msgstr "{} を押す"
 
 msgid "Read file"
 msgstr "ファイルを読み込み"
@@ -245,8 +299,17 @@ msgstr "ファイル `{path}` を読み込み ({} 行目以降)"
 msgid "Read file `{path}` (lines {}-{})"
 msgstr "ファイル `{path}` を読み込み ({}-{} 行)"
 
+msgid "Read the page's console"
+msgstr "ページのコンソールを読む"
+
+msgid "Read the page's text"
+msgstr "ページのテキストを読む"
+
 msgid "Recommended"
 msgstr "推奨"
+
+msgid "Reload the page"
+msgstr "ページを再読み込み"
 
 msgid "Rename `{symbol_name}` to `{new_name}`"
 msgstr "`{symbol_name}` の名前を `{new_name}` に変更"
@@ -266,14 +329,23 @@ msgstr "再試行 ({} 回目)"
 msgid "Reviewed as safe"
 msgstr "安全と判定しました"
 
+msgid "Run JavaScript in the page"
+msgstr "ページで JavaScript を実行"
+
 msgid "Run MCP tool `{}`"
 msgstr "MCP ツール `{}` を実行"
 
 msgid "Run MCP tool `{}` {}"
 msgstr "MCP ツール `{}` を実行: {}"
 
+msgid "Run {} in the page"
+msgstr "ページで {} を実行"
+
 msgid "SKILL.md file exceeds maximum size of {}KB"
 msgstr "SKILL.md のサイズが上限の {}KB を超えています。"
+
+msgid "Scroll the page"
+msgstr "ページをスクロール"
 
 msgid "Search files for regex {regex_str}{case_info}"
 msgstr "正規表現 {regex_str}{case_info} でファイルを検索"
@@ -297,11 +369,29 @@ msgstr[0] "Web を検索しました: {count} 件"
 msgid "Searching the Web"
 msgstr "Web を検索"
 
+msgid "Set a form value"
+msgstr "フォームの値を設定"
+
+msgid "Set the value of {}"
+msgstr "{} の値を設定"
+
 msgid "Skill"
 msgstr "スキル"
 
 msgid "Spawning agent"
 msgstr "エージェントを起動"
+
+msgid "Switch AI tabs"
+msgstr "AI タブを切り替え"
+
+msgid "Switch to AI tab {}"
+msgstr "AI タブ {} に切り替え"
+
+msgid "Take a screenshot of the page"
+msgstr "ページのスクリーンショットを撮る"
+
+msgid "Take a snapshot of the page"
+msgstr "ページのスナップショットを取得"
 
 msgid "Terminal command"
 msgstr "ターミナルコマンド"
@@ -312,11 +402,23 @@ msgstr "設定が変わったため判定を中止しました"
 msgid "The settings allow writing anywhere in the file system"
 msgstr "設定でファイルシステムへの書き込みがすべて許可されています"
 
+msgid "Type into the page"
+msgstr "ページに入力"
+
 msgid "Type layout"
 msgstr "型の中身"
 
 msgid "Type layout of {}"
 msgstr "{} の型の中身"
+
+msgid "Type {}"
+msgstr "{} を入力"
+
+msgid "Use the browser"
+msgstr "ブラウザーを使う"
+
+msgid "Wait for the page"
+msgstr "ページの表示を待つ"
 
 msgid "Web Search Failed"
 msgstr "Web 検索に失敗しました"
@@ -377,6 +479,50 @@ msgstr "、"
 msgctxt "tool name"
 msgid "apply code action"
 msgstr "コードアクションの適用"
+
+msgctxt "tool name"
+msgid "browser: click"
+msgstr "ブラウザー: クリック"
+
+msgctxt "tool name"
+msgid "browser: close tab"
+msgstr "ブラウザー: タブを閉じる"
+
+msgctxt "tool name"
+msgid "browser: hover"
+msgstr "ブラウザー: ホバー"
+
+msgctxt "tool name"
+msgid "browser: navigate"
+msgstr "ブラウザー: 移動"
+
+msgctxt "tool name"
+msgid "browser: open tab"
+msgstr "ブラウザー: タブを開く"
+
+msgctxt "tool name"
+msgid "browser: press key"
+msgstr "ブラウザー: キー入力"
+
+msgctxt "tool name"
+msgid "browser: run script"
+msgstr "ブラウザー: スクリプト実行"
+
+msgctxt "tool name"
+msgid "browser: scroll"
+msgstr "ブラウザー: スクロール"
+
+msgctxt "tool name"
+msgid "browser: select tab"
+msgstr "ブラウザー: タブの切り替え"
+
+msgctxt "tool name"
+msgid "browser: set value"
+msgstr "ブラウザー: 値の設定"
+
+msgctxt "tool name"
+msgid "browser: type"
+msgstr "ブラウザー: 文字入力"
 
 msgctxt "tool name"
 msgid "copy path"

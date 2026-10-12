@@ -645,6 +645,11 @@ msgctxt "action documentation"
 msgid "browser_panel::NavigateForward"
 msgstr "次のページに進みます。"
 
+#. Opens a new AI tab in the browser panel: a tab with its own browser profile that AI agents can drive, with its traffic limited to the network allowlist.
+msgctxt "action documentation"
+msgid "browser_panel::NewAiTab"
+msgstr "ブラウザーパネルに新しい AI タブを開きます。AI タブは別のブラウザープロファイルを使い、AI エージェントが操作できます。通信は許可リストの範囲に限られます。"
+
 #. Opens a new browser tab in the editor area.
 msgctxt "action documentation"
 msgid "browser_panel::NewBrowserTab"
@@ -654,6 +659,11 @@ msgstr "エディター領域に新しいブラウザータブを開きます。
 msgctxt "action documentation"
 msgid "browser_panel::NewPanelTab"
 msgstr "ブラウザーパネルに新しいタブを開きます。"
+
+#. Opens the developer tools of the current browser tab.
+msgctxt "action documentation"
+msgid "browser_panel::OpenDeveloperTools"
+msgstr "今のブラウザータブの開発者ツールを開きます。"
 
 #. Moves the page open in the browser panel to a tab in the editor area.
 msgctxt "action documentation"
@@ -670,6 +680,11 @@ msgctxt "action documentation"
 msgid "browser_panel::Reload"
 msgstr "現在のページを再読み込みします。"
 
+#. Lets AI agents drive the current AI tab again after it was stopped.
+msgctxt "action documentation"
+msgid "browser_panel::ResumeAiControl"
+msgstr "止めた AI タブを、AI エージェントがまた操作できるようにします。"
+
 #. Searches the web for the selected text.
 msgctxt "action documentation"
 msgid "browser_panel::SearchSelection"
@@ -684,6 +699,11 @@ msgstr "今開いているページを「起動時に開くページ」(browser.
 msgctxt "action documentation"
 msgid "browser_panel::SplitPanelRight"
 msgstr "今のタブを右に切り出して、ブラウザーパネルを左右に分割します。"
+
+#. Stops AI control of the current AI tab: the running command is cancelled and further commands are refused until it is resumed.
+msgctxt "action documentation"
+msgid "browser_panel::StopAiControl"
+msgstr "今の AI タブの AI による操作を止めます。実行中のコマンドは取り消され、再開するまで以後のコマンドも受け付けません。"
 
 #. Opens the URL or the search terms typed in the address bar.
 msgctxt "action documentation"

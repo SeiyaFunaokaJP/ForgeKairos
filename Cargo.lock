@@ -272,6 +272,7 @@ dependencies = [
  "async-channel 2.5.0",
  "async-io",
  "branding",
+ "browser_control",
  "chrono",
  "client",
  "clock",
@@ -2228,15 +2229,26 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-recursion",
+ "block2 0.6.2",
  "browser_control",
  "db",
  "editor",
+ "egress_policy",
  "fs",
  "futures 0.3.34",
  "gpui",
  "http_client",
  "i18n",
+ "image",
+ "libc",
+ "libloading",
  "log",
+ "objc2 0.6.3",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-graphics",
+ "objc2-foundation 0.3.2",
+ "objc2-quartz-core 0.3.2",
+ "objc2-web-kit",
  "paths",
  "project",
  "raw-window-handle",
@@ -8193,7 +8205,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-tungstenite",
+ "base64 0.22.1",
  "branding",
+ "browser_control",
  "collections",
  "context_server",
  "editor",
@@ -11562,6 +11576,7 @@ dependencies = [
  "bitflags 2.13.1",
  "objc2 0.6.3",
  "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "objc2-metal 0.3.2",
 ]
@@ -11590,6 +11605,20 @@ dependencies = [
  "block2 0.6.2",
  "objc2 0.6.3",
  "objc2-core-location",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-web-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2e5aaab980c433cf470df9d7af96a7b46a9d892d521a2cbbb2f8a4c16751e7f"
+dependencies = [
+ "bitflags 2.13.1",
+ "block2 0.6.2",
+ "objc2 0.6.3",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
  "objc2-foundation 0.3.2",
 ]
 

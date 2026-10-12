@@ -645,6 +645,11 @@ msgctxt "action"
 msgid "browser_panel::NavigateForward"
 msgstr "ブラウザー: 進む"
 
+#. browser panel: new ai tab
+msgctxt "action"
+msgid "browser_panel::NewAiTab"
+msgstr "ブラウザー: 新しい AI タブを開く"
+
 #. browser panel: new browser tab
 msgctxt "action"
 msgid "browser_panel::NewBrowserTab"
@@ -654,6 +659,11 @@ msgstr "ブラウザー: 新しいタブ"
 msgctxt "action"
 msgid "browser_panel::NewPanelTab"
 msgstr "ブラウザー: パネルに新しいタブ"
+
+#. browser panel: open developer tools
+msgctxt "action"
+msgid "browser_panel::OpenDeveloperTools"
+msgstr "ブラウザー: 開発者ツールを開く"
 
 #. browser panel: open in center
 msgctxt "action"
@@ -670,6 +680,11 @@ msgctxt "action"
 msgid "browser_panel::Reload"
 msgstr "ブラウザー: 再読み込み"
 
+#. browser panel: resume ai control
+msgctxt "action"
+msgid "browser_panel::ResumeAiControl"
+msgstr "ブラウザー: AI による操作を再開"
+
 #. browser panel: search selection
 msgctxt "action"
 msgid "browser_panel::SearchSelection"
@@ -684,6 +699,11 @@ msgstr "ブラウザー: このページを起動時に開く"
 msgctxt "action"
 msgid "browser_panel::SplitPanelRight"
 msgstr "ブラウザー: パネルを右に分割"
+
+#. browser panel: stop ai control
+msgctxt "action"
+msgid "browser_panel::StopAiControl"
+msgstr "ブラウザー: AI による操作を止める"
 
 #. browser panel: submit address
 msgctxt "action"

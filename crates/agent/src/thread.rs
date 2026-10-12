@@ -10,13 +10,16 @@ use crate::{
     HoverTool, SearchSymbolsTool, ZED_AGENT_ASSIST_LABEL,
 };
 use crate::{
-    ApplyCodeActionTool, AskUserTool, CodeActionStore, ContextServerRegistry, CopyPathTool,
-    CreateDirectoryTool, CreateThreadTool, DbLanguageModel, DbThread, DeletePathTool,
-    DiagnosticsTool, EditFileTool, FetchTool, FindPathTool, FindReferencesTool, GetCodeActionsTool,
-    GitDiffTool, GoToDefinitionTool, GrepTool, ListAgentsAndModelsTool, ListDirectoryTool,
-    MovePathTool, ProjectSnapshot, ReadFileTool, RenameTool, RepoMapTool, RepoMapToolInput,
-    SandboxedTerminalTool, SpawnAgentTool, SystemPromptTemplate, Template, Templates,
-    TerminalExecution, TerminalTool, ToolPermissionDecision, WebSearchTool, WriteFileTool,
+    ApplyCodeActionTool, AskUserTool, BrowserClickTool, BrowserCloseTabTool, BrowserEvalTool,
+    BrowserHoverTool, BrowserNavigateTool, BrowserOpenTabTool, BrowserPressKeyTool,
+    BrowserScrollTool, BrowserSelectTabTool, BrowserSetValueTool, BrowserTypeTool, CodeActionStore,
+    ContextServerRegistry, CopyPathTool, CreateDirectoryTool, CreateThreadTool, DbLanguageModel,
+    DbThread, DeletePathTool, DiagnosticsTool, EditFileTool, FetchTool, FindPathTool,
+    FindReferencesTool, GetCodeActionsTool, GitDiffTool, GoToDefinitionTool, GrepTool,
+    ListAgentsAndModelsTool, ListDirectoryTool, MovePathTool, ProjectSnapshot, ReadFileTool,
+    RenameTool, RepoMapTool, RepoMapToolInput, SandboxedTerminalTool, SpawnAgentTool,
+    SystemPromptTemplate, Template, Templates, TerminalExecution, TerminalTool,
+    ToolPermissionDecision, WebSearchTool, WriteFileTool,
     decide_permission_for_paths_outside_project, decide_permission_from_settings,
     decide_terminal_permission,
 };
@@ -999,6 +1002,28 @@ fn localized_tool_name_for_permission(tool_name: &str) -> String {
         i18n::tc!("tool name", "apply code action")
     } else if tool_name == RenameTool::NAME {
         i18n::tc!("tool name", "rename symbol")
+    } else if tool_name == BrowserOpenTabTool::NAME {
+        i18n::tc!("tool name", "browser: open tab")
+    } else if tool_name == BrowserCloseTabTool::NAME {
+        i18n::tc!("tool name", "browser: close tab")
+    } else if tool_name == BrowserSelectTabTool::NAME {
+        i18n::tc!("tool name", "browser: select tab")
+    } else if tool_name == BrowserNavigateTool::NAME {
+        i18n::tc!("tool name", "browser: navigate")
+    } else if tool_name == BrowserClickTool::NAME {
+        i18n::tc!("tool name", "browser: click")
+    } else if tool_name == BrowserHoverTool::NAME {
+        i18n::tc!("tool name", "browser: hover")
+    } else if tool_name == BrowserTypeTool::NAME {
+        i18n::tc!("tool name", "browser: type")
+    } else if tool_name == BrowserPressKeyTool::NAME {
+        i18n::tc!("tool name", "browser: press key")
+    } else if tool_name == BrowserScrollTool::NAME {
+        i18n::tc!("tool name", "browser: scroll")
+    } else if tool_name == BrowserSetValueTool::NAME {
+        i18n::tc!("tool name", "browser: set value")
+    } else if tool_name == BrowserEvalTool::NAME {
+        i18n::tc!("tool name", "browser: run script")
     } else {
         return tool_name.replace('_', " ");
     };
@@ -1186,7 +1211,10 @@ impl ToolPermissionContext {
                     extract_path_pattern(value),
                     extract_path_pattern_display(value),
                 )
-            } else if tool_name == FetchTool::NAME {
+            } else if tool_name == FetchTool::NAME
+                || tool_name == BrowserNavigateTool::NAME
+                || tool_name == BrowserOpenTabTool::NAME
+            {
                 (
                     extract_url_pattern(value),
                     extract_url_pattern_display(value),
@@ -2394,6 +2422,10 @@ impl Thread {
             self.project.clone(),
             assist_source,
         ));
+
+        // Offered to the model only while `browser.ai_control` is on
+        // (`tool_feature_flag_enabled`).
+        crate::tools::add_browser_tools(self);
 
         if self.depth() < MAX_SUBAGENT_DEPTH {
             self.add_tool(SpawnAgentTool::new(environment.clone()));
@@ -5475,6 +5507,12 @@ where
         false
     }
 
+    /// The parts of the tool result the model receives. A tool whose result is text with an
+    /// image (a browser screenshot with its viewport size) overrides this to send both.
+    fn llm_output(output: Self::Output) -> Vec<LanguageModelToolResultContent> {
+        vec![output.into()]
+    }
+
     /// Some tools rely on a provider for the underlying billing or other reasons.
     /// Allow the tool to check if they are compatible, or should be filtered out.
     fn supports_provider(_provider: &LanguageModelProviderId) -> bool {
@@ -5626,7 +5664,7 @@ where
                 });
                 Ok(AgentToolOutput {
                     raw_output,
-                    llm_output: vec![output.into()],
+                    llm_output: T::llm_output(output),
                 })
             }
             Err(error_output) => {
@@ -5635,7 +5673,7 @@ where
                     serde_json::Value::Null
                 });
                 Err(AgentToolOutput {
-                    llm_output: vec![error_output.into()],
+                    llm_output: T::llm_output(error_output),
                     raw_output,
                 })
             }
@@ -10551,6 +10589,100 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// ADR-F89: the browser tools reach the model only while the built-in
+    /// browser is there and `browser.ai_control` is on, and turning it on or
+    /// off takes effect on the thread's next request. The `ask` profile gets
+    /// only the tools that read the page.
+    #[gpui::test]
+    async fn test_browser_tools_follow_the_ai_control_setting(cx: &mut TestAppContext) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct ToggledBrowser(AtomicBool);
+
+        impl browser_control::BrowserControl for ToggledBrowser {
+            fn is_enabled(&self, _cx: &App) -> bool {
+                self.0.load(Ordering::SeqCst)
+            }
+
+            fn run(
+                &self,
+                _project: &Entity<Project>,
+                _command: browser_control::BrowserCommand,
+                _cx: &mut App,
+            ) -> Task<Result<browser_control::BrowserOutput>> {
+                Task::ready(Ok(browser_control::BrowserOutput::default()))
+            }
+        }
+
+        let (thread, _event_stream) = setup_thread_for_test(cx).await;
+        let model = Arc::new(FakeLanguageModel::default());
+        cx.update(|cx| {
+            thread.update(cx, |thread, cx| {
+                thread.set_model(model, cx);
+                thread
+                    .add_default_tools(Rc::new(crate::tests::FakeThreadEnvironment::default()), cx);
+                thread.set_profile(AgentProfileId(builtin_profiles::WRITE.into()), cx);
+            });
+        });
+        let browser_tools = |cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                thread.read_with(cx, |thread, cx| {
+                    thread
+                        .enabled_tools(cx)
+                        .keys()
+                        .filter(|name| crate::is_browser_tool(name))
+                        .map(|name| name.to_string())
+                        .collect::<Vec<_>>()
+                })
+            })
+        };
+        let all_browser_tools = || {
+            let mut names = crate::BROWSER_TOOL_NAMES
+                .iter()
+                .map(|name| name.to_string())
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+
+        assert_eq!(
+            browser_tools(cx),
+            Vec::<String>::new(),
+            "no browser has registered itself"
+        );
+        let browser = Arc::new(ToggledBrowser(AtomicBool::new(false)));
+        cx.update(|cx| cx.set_global(browser_control::GlobalBrowserControl(browser.clone())));
+        assert_eq!(
+            browser_tools(cx),
+            Vec::<String>::new(),
+            "the setting is off"
+        );
+
+        browser.0.store(true, Ordering::SeqCst);
+        assert_eq!(browser_tools(cx), all_browser_tools());
+
+        cx.update(|cx| {
+            thread.update(cx, |thread, cx| {
+                thread.set_profile(AgentProfileId(builtin_profiles::ASK.into()), cx)
+            });
+        });
+        let mut reading = vec![
+            "browser_tabs",
+            "browser_page_text",
+            "browser_snapshot",
+            "browser_find",
+            "browser_screenshot",
+            "browser_console",
+            "browser_network",
+            "browser_wait_for",
+        ];
+        reading.sort_unstable();
+        assert_eq!(browser_tools(cx), reading);
+
+        browser.0.store(false, Ordering::SeqCst);
+        assert_eq!(browser_tools(cx), Vec::<String>::new());
     }
 
     /// 決定 3: every choice on the card for a path outside the project has to

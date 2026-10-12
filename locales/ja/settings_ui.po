@@ -353,6 +353,9 @@ msgstr "Claude (サブスクリプション)"
 msgid "Clear"
 msgstr "クリア"
 
+msgid "Clicking on pages in the built-in browser"
+msgstr "内蔵ブラウザーのページでのクリック"
+
 msgid "Client secret (leave empty for a public client)"
 msgstr "クライアントシークレット (パブリッククライアントの場合は空欄)"
 
@@ -367,6 +370,9 @@ msgstr "設定ウィンドウを閉じ、ファイルをエディターで開き
 
 msgid "Closes the settings window and runs the official install command `npm install -g @anthropic-ai/claude-code` in the integrated terminal. Requires Node.js (npm)."
 msgstr "設定ウィンドウを閉じ、統合ターミナルで公式のインストールコマンド `npm install -g @anthropic-ai/claude-code` を実行します。Node.js (npm) が必要です"
+
+msgid "Closing AI tabs in the built-in browser"
+msgstr "内蔵ブラウザーの AI タブを閉じる操作"
 
 msgid "Command"
 msgstr "コマンド"
@@ -915,6 +921,9 @@ msgstr "テンプレート「{title}」を読み込みました。「入力し�
 msgid "Loading agent skill instructions"
 msgstr "エージェントのスキル指示の読み込み"
 
+msgid "Loading pages in AI tabs of the built-in browser"
+msgstr "内蔵ブラウザーの AI タブでページを読み込む操作"
+
 msgid "Loading…"
 msgstr "読み込み中…"
 
@@ -983,6 +992,9 @@ msgstr "下へ移動"
 
 msgid "Move Up"
 msgstr "上へ移動"
+
+msgid "Moving the mouse over pages in the built-in browser"
+msgstr "内蔵ブラウザーのページ上でのマウス移動"
 
 msgid "Name"
 msgstr "名前"
@@ -1101,6 +1113,9 @@ msgstr "このサーバーを定義しているプロジェクトの設定ファ
 msgid "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below."
 msgstr "OpenAI 互換 API・Ollama・GitHub Copilot・Codestral・Mercury は、下の各プロバイダーで認証情報や接続先 URL を設定すると選択できるようになります。Zed は下の「Zed」で承諾すると選択できるようになります。"
 
+msgid "Opening AI tabs in the built-in browser"
+msgstr "内蔵ブラウザーで AI タブを開く操作"
+
 msgid "Opens the official Claude Code in a tab of the agent panel. You sign in on Claude Code's own screen. The CLI is not bundled; it is installed with the official install command. For pay-as-you-go billing with an API key, use Anthropic above."
 msgstr "エージェントパネルのタブで公式の Claude Code が開きます。ログインは Claude Code の画面で行います。CLI は同梱しておらず、公式のインストールコマンドで導入します。API キーの従量課金は上の Anthropic をご利用ください。"
 
@@ -1158,14 +1173,29 @@ msgstr "パターンのプレビューが判定エンジンと異なります。
 msgid "Patterns are matched against each command in the input. Commands chained with &&, ||, ;, or pipes are split and checked individually."
 msgstr "パターンは入力に含まれる各コマンドと照合されます。&&、||、;、パイプでつながれたコマンドは分割され、個別に判定されます。"
 
+msgid "Patterns are matched against the JavaScript expression being run."
+msgstr "パターンは実行する JavaScript の式と照合されます。"
+
 msgid "Patterns are matched against the URL being fetched."
 msgstr "パターンは取得対象の URL と照合されます。"
+
+msgid "Patterns are matched against the URL being loaded, or against back, forward or reload."
+msgstr "パターンは読み込む URL、または back・forward・reload と照合されます。"
+
+msgid "Patterns are matched against the URL the new tab opens (about:blank for an empty tab)."
+msgstr "パターンは新しいタブで開く URL (空のタブなら about:blank) と照合されます。"
 
 msgid "Patterns are matched against the absolute path to the skill's SKILL.md file."
 msgstr "パターンはスキルの SKILL.md ファイルの絶対パスと照合されます。"
 
+msgid "Patterns are matched against the direction: `up`, `down`, `left` or `right`."
+msgstr "パターンは方向 (`up`・`down`・`left`・`right`) と照合されます。"
+
 msgid "Patterns are matched against the directory path being created."
 msgstr "パターンは作成対象のディレクトリのパスと照合されます。"
+
+msgid "Patterns are matched against the element's ref, such as `e12`, or against the point as `x,y`."
+msgstr "パターンは要素の ref (`e12` など)、または位置 (`x,y` の形) と照合されます。"
 
 msgid "Patterns are matched against the file path being edited."
 msgstr "パターンは編集対象のファイルパスと照合されます。"
@@ -1173,8 +1203,14 @@ msgstr "パターンは編集対象のファイルパスと照合されます。
 msgid "Patterns are matched against the file path being written."
 msgstr "パターンは書き込み対象のファイルパスと照合されます。"
 
+msgid "Patterns are matched against the keys being pressed, such as `ctrl+a Backspace`."
+msgstr "パターンは押すキー (`ctrl+a Backspace` など) と照合されます。"
+
 msgid "Patterns are matched against the name of the code action. Its edits are written straight into the buffer without going through diff review."
 msgstr "パターンはコードアクションの名前と照合されます。編集内容は差分レビューを通らず直接バッファーに書き込まれます。"
+
+msgid "Patterns are matched against the new value (an array or other non-text value as JSON)."
+msgstr "パターンは新しい値 (配列などの文字列でない値は JSON) と照合されます。"
 
 msgid "Patterns are matched against the path being deleted."
 msgstr "パターンは削除対象のパスと照合されます。"
@@ -1185,6 +1221,12 @@ msgstr "パターンは検索クエリと照合されます。"
 msgid "Patterns are matched against the symbol's name before the rename. The rename skips diff review, and every file that references the symbol is saved."
 msgstr "パターンは変更前のシンボル名と照合されます。変更は差分レビューを通らず、参照するすべてのファイルが保存されます。"
 
+msgid "Patterns are matched against the tab's id, such as `1`."
+msgstr "パターンはタブの ID (`1` など) と照合されます。"
+
+msgid "Patterns are matched against the text being typed."
+msgstr "パターンは入力する文字列と照合されます。"
+
 msgid "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
 msgstr "パターンは元のパスと行き先のパスに対して個別に照合されます。下の入力欄でどちらのパスでも試せます。"
 
@@ -1193,6 +1235,9 @@ msgstr "エージェントが書き込んだフォルダーのコードを再開
 
 msgid "Preserves thinking in chat history"
 msgstr "チャット履歴に思考を保持"
+
+msgid "Pressing keys in pages in the built-in browser"
+msgstr "内蔵ブラウザーのページでのキー操作"
 
 msgid "Project"
 msgstr "プロジェクト"
@@ -1350,6 +1395,9 @@ msgstr "この PC で実行"
 msgid "Run on the SSH Host"
 msgstr "SSH 接続先で実行"
 
+msgid "Running JavaScript in pages in the built-in browser"
+msgstr "内蔵ブラウザーのページでの JavaScript の実行"
+
 msgid "Runs on"
 msgstr "実行ホスト"
 
@@ -1373,6 +1421,9 @@ msgstr "保存中…"
 
 msgid "Scope"
 msgstr "適用範囲"
+
+msgid "Scrolling pages in the built-in browser"
+msgstr "内蔵ブラウザーのページのスクロール"
 
 msgid "Search Settings"
 msgstr "設定を検索"
@@ -1415,6 +1466,9 @@ msgstr "{display_name} のサーバー設定"
 
 msgid "Servers can't be added all at once while one has a name that is already taken. Open each server marked \"A server with this name already exists\" in the form and rename it before adding it."
 msgstr "同名のサーバーがあるため、まとめては追加できません。「同名のサーバーがあります」と出ているサーバーをフォームで開き、名前を変えてから追加してください。"
+
+msgid "Setting the values of form fields in the built-in browser"
+msgstr "内蔵ブラウザーのフォーム項目の値の設定"
 
 msgid "Settings Content"
 msgstr "設定の内容"
@@ -1460,6 +1514,9 @@ msgstr "思考に対応"
 
 msgid "Supports tools"
 msgstr "ツールに対応"
+
+msgid "Switching the current AI tab in the built-in browser"
+msgstr "内蔵ブラウザーで現在の AI タブを切り替える操作"
 
 msgid "System Default"
 msgstr "システム既定"
@@ -1652,6 +1709,9 @@ msgstr "オフにすると、このプロジェクトの定義を「許可しな
 
 msgid "Turning this on allows this project's definition and starts the server."
 msgstr "オンにすると、このプロジェクトの定義を許可してサーバーを起動します。"
+
+msgid "Typing text into pages in the built-in browser"
+msgstr "内蔵ブラウザーのページへの文字入力"
 
 msgid "URL"
 msgstr "URL"
@@ -1866,6 +1926,50 @@ msgstr "無効 {} 件"
 msgctxt "agent tool"
 msgid "Apply Code Action"
 msgstr "コードアクションを適用"
+
+msgctxt "agent tool"
+msgid "Browser: Click"
+msgstr "ブラウザー: クリック"
+
+msgctxt "agent tool"
+msgid "Browser: Close Tab"
+msgstr "ブラウザー: タブを閉じる"
+
+msgctxt "agent tool"
+msgid "Browser: Hover"
+msgstr "ブラウザー: マウスを重ねる"
+
+msgctxt "agent tool"
+msgid "Browser: Navigate"
+msgstr "ブラウザー: ページの移動"
+
+msgctxt "agent tool"
+msgid "Browser: Open Tab"
+msgstr "ブラウザー: タブを開く"
+
+msgctxt "agent tool"
+msgid "Browser: Press Keys"
+msgstr "ブラウザー: キー操作"
+
+msgctxt "agent tool"
+msgid "Browser: Run JavaScript"
+msgstr "ブラウザー: JavaScript の実行"
+
+msgctxt "agent tool"
+msgid "Browser: Scroll"
+msgstr "ブラウザー: スクロール"
+
+msgctxt "agent tool"
+msgid "Browser: Set Value"
+msgstr "ブラウザー: 値の設定"
+
+msgctxt "agent tool"
+msgid "Browser: Switch Tab"
+msgstr "ブラウザー: タブの切り替え"
+
+msgctxt "agent tool"
+msgid "Browser: Type"
+msgstr "ブラウザー: 文字入力"
 
 msgctxt "agent tool"
 msgid "Copy Path"

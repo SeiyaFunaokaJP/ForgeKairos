@@ -11,9 +11,11 @@
 
 use std::{collections::HashSet, rc::Rc, sync::Arc};
 
+use anyhow::{Context as _, Result, bail};
+use browser_control::{NavigateTarget, TabId};
 use editor::Editor;
 use fs::Fs;
-use futures::StreamExt as _;
+use futures::{StreamExt as _, channel::oneshot};
 use gpui::{
     AnyElement, App, ClickEvent, Context, DispatchPhase, Entity, EventEmitter, FocusHandle,
     Focusable, MouseButton, MouseDownEvent, SharedString, Subscription, Task, WeakEntity, Window,
@@ -26,7 +28,12 @@ use workspace::Workspace;
 use crate::{
     AddBookmark, BookmarkNode, BookmarkPath, BookmarkRow, BookmarkStore, BookmarksFile,
     BrowserPanel, BrowserSettings, FocusAddressBar, GoHome, NavigateBack, NavigateForward,
-    OpenInCenter, OpenInExternalBrowser, Reload, SetAsHomePage, SubmitAddress, ToggleBookmarks,
+    OpenDeveloperTools, OpenInCenter, OpenInExternalBrowser, Reload, ResumeAiControl,
+    SetAsHomePage, StopAiControl, SubmitAddress, ToggleBookmarks,
+    browser_automation::{
+        self, AiNavigationVerdict, AiTabState, AutomationStatus, AutomationSurface, CommandTicket,
+        NavigationOutcome,
+    },
     normalize_bookmark_url, resolve_address_input,
 };
 
@@ -46,6 +53,16 @@ const MAX_TAB_TITLE_CHARS: usize = 40;
 /// URL もタイトルも無いときのタブ名。
 pub(crate) const UNTITLED_TAB_LABEL: &str = i18n::msg!("Browser");
 
+/// AI タブの印 (タブ・ツールバー) に添える説明。
+pub(crate) const AI_TAB_TOOLTIP: &str =
+    i18n::msg!("AI tab: separate profile, network limited to the allowlist");
+
+/// egress プロキシの起動を待つ AI タブが見に行く間隔。
+const EGRESS_PROXY_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// AI タブが最初に開くページ。利用者のホームページ (既定は Microsoft 365) へは出ていかない。
+pub(crate) const AI_TAB_BLANK_URL: &str = "about:blank";
+
 enum SurfaceState {
     /// WebView2 の生成をまだ始めていない。
     Idle,
@@ -56,6 +73,8 @@ enum SurfaceState {
     Unavailable {
         message: SharedString,
         offer_runtime_download: bool,
+        /// AI のツールに返す英文の理由。`None` なら `message` をそのまま返す。
+        detail: Option<String>,
     },
 }
 
@@ -126,6 +145,14 @@ pub struct BrowserView {
     focus_handle: FocusHandle,
     address_editor: Entity<Editor>,
     webview: Option<Rc<WebView>>,
+    /// AI のコマンドがページに触る入口。`webview` と同じものを指すが、テストでは
+    /// 偽物に差し替える。
+    automation_surface: Option<Rc<dyn AutomationSurface>>,
+    /// 生成時に決まり、以後変わらない。AI タブは別プロファイル・プロキシ必須・
+    /// ナビゲーションの事前検査付きで作る (ADR-F89)。
+    profile: WebViewProfile,
+    /// AI タブだけが持つ状態。`profile == Ai` のときに限り `Some`。
+    ai: Option<AiTabState>,
     /// サーフェスを作ったときのホストウィンドウ。タブを別ウィンドウへ移すと
     /// 子 HWND は元のウィンドウにぶら下がったままなので、変わったら作り直す。
     host_hwnd: Option<isize>,
@@ -159,16 +186,21 @@ pub struct BrowserView {
     /// 削除の確認待ち。行の中で確認するのでポップオーバーが要らない。
     pending_delete: Option<BookmarkPath>,
     event_task: Option<Task<()>>,
+    /// AI タブが egress プロキシの起動を待つ間だけ動く。プロキシは許可リストのファイルを
+    /// 読んだ後に (起動直後は少し遅れて) 立ち上がるので、それまでに描かれたタブを
+    /// 「開けない」のまま置き去りにしない。
+    proxy_wait_task: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
 
 impl EventEmitter<BrowserViewEvent> for BrowserView {}
 
 impl BrowserView {
-    pub fn new(
+    pub(crate) fn new(
         workspace: WeakEntity<Workspace>,
         fs: Arc<dyn Fs>,
         host: BrowserHost,
+        profile: WebViewProfile,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -179,8 +211,16 @@ impl BrowserView {
         });
 
         let bookmarks = BookmarkStore::global(fs.clone(), cx);
+        let focus_handle = cx.focus_handle();
 
         let mut subscriptions = Vec::new();
+        // ショートカットなどで GPUI のフォーカスがビューの外へ移ったら、キーボードも
+        // ページから取り上げる (macOS ではページが握ったままだとキー入力がページへ行く)。
+        subscriptions.push(cx.on_focus_out(&focus_handle, window, |this, _, _, _| {
+            if let Some(webview) = &this.webview {
+                webview.release_keyboard_focus();
+            }
+        }));
         subscriptions.push(cx.observe_global::<SettingsStore>(|this, cx| {
             this.sync_appearance(cx);
             cx.notify();
@@ -191,9 +231,12 @@ impl BrowserView {
             workspace,
             fs,
             host,
-            focus_handle: cx.focus_handle(),
+            focus_handle,
             address_editor,
             webview: None,
+            automation_surface: None,
+            profile,
+            ai: (profile == WebViewProfile::Ai).then(AiTabState::new),
             host_hwnd: None,
             surface: SurfaceState::Idle,
             warned_missing_window_handle: false,
@@ -214,6 +257,7 @@ impl BrowserView {
             bookmark_form: None,
             pending_delete: None,
             event_task: None,
+            proxy_wait_task: None,
             _subscriptions: subscriptions,
         }
     }
@@ -260,6 +304,200 @@ impl BrowserView {
     pub fn set_status_message(&mut self, message: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.status_message = Some(message.into());
         cx.notify();
+    }
+
+    pub fn is_loading(&self) -> bool {
+        self.loading
+    }
+
+    // -- AI タブ (ADR-F89) ---------------------------------------------------
+
+    pub(crate) fn profile(&self) -> WebViewProfile {
+        self.profile
+    }
+
+    pub fn is_ai_tab(&self) -> bool {
+        self.profile == WebViewProfile::Ai
+    }
+
+    pub(crate) fn ai_tab_id(&self) -> Option<&TabId> {
+        self.ai.as_ref()?.id.as_ref()
+    }
+
+    pub(crate) fn set_ai_tab_id(&mut self, id: TabId) {
+        if let Some(ai) = &mut self.ai {
+            ai.id = Some(id);
+        }
+    }
+
+    pub(crate) fn ai_last_used(&self) -> u64 {
+        self.ai.as_ref().map_or(0, |ai| ai.last_used)
+    }
+
+    /// このタブを「今の AI タブ」(ツールが `tab` を省いたときの宛先) にする。
+    pub(crate) fn touch_ai_tab(&mut self, cx: &mut Context<Self>) {
+        if let Some(ai) = &mut self.ai {
+            ai.last_used = browser_automation::next_use_stamp();
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn begin_ai_command(&mut self, cx: &mut Context<Self>) -> Result<CommandTicket> {
+        let ai = self.ai.as_mut().context("This tab is not an AI tab.")?;
+        let ticket = ai.begin_command()?;
+        cx.notify();
+        Ok(ticket)
+    }
+
+    pub(crate) fn end_ai_command(&mut self, command_id: u64, cx: &mut Context<Self>) {
+        if let Some(ai) = &mut self.ai {
+            ai.end_command(command_id);
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn ai_blocked_since(&self, start: usize) -> Vec<String> {
+        self.ai
+            .as_ref()
+            .map(|ai| ai.blocked_since(start).to_vec())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn ai_is_paused(&self) -> bool {
+        self.ai.as_ref().is_some_and(|ai| ai.paused)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn ai_is_running(&self) -> bool {
+        self.ai.as_ref().is_some_and(AiTabState::is_running)
+    }
+
+    pub(crate) fn automation_status(&self) -> AutomationStatus {
+        match (&self.surface, &self.automation_surface) {
+            (
+                SurfaceState::Unavailable {
+                    message, detail, ..
+                },
+                _,
+            ) => {
+                AutomationStatus::Unavailable(detail.clone().unwrap_or_else(|| message.to_string()))
+            }
+            (SurfaceState::Ready, Some(surface)) => AutomationStatus::Ready(surface.clone()),
+            (state, surface) => AutomationStatus::Waiting {
+                has_surface: surface.is_some() || matches!(state, SurfaceState::Starting),
+            },
+        }
+    }
+
+    /// AI のコマンドからのナビゲーション。読み込みの終わり (または遮断) を待つ受け口を返す。
+    /// 行き先は呼び出し側が許可リストで確かめ済み。ページが自分で動く分はバックエンドの
+    /// フィルターが止める。
+    pub(crate) fn ai_navigate(
+        &mut self,
+        surface: &Rc<dyn AutomationSurface>,
+        target: &NavigateTarget,
+        cx: &mut Context<Self>,
+    ) -> Result<oneshot::Receiver<NavigationOutcome>> {
+        match target {
+            NavigateTarget::Back if !self.can_go_back => {
+                bail!("There is no previous page in this AI tab's history.")
+            }
+            NavigateTarget::Forward if !self.can_go_forward => {
+                bail!("There is no next page in this AI tab's history.")
+            }
+            _ => {}
+        }
+        let ai = self.ai.as_mut().context("This tab is not an AI tab.")?;
+        let waiter = ai.expect_navigation();
+        ai.requested_navigation = None;
+        match target {
+            NavigateTarget::Url(url) => {
+                self.pending_home_url = None;
+                self.status_message = None;
+                ai.requested_navigation = Some(url.clone());
+                surface.navigate(url);
+            }
+            NavigateTarget::Back => surface.go_back(),
+            NavigateTarget::Forward => surface.go_forward(),
+            NavigateTarget::Reload => surface.reload(),
+        }
+        self.loading = true;
+        cx.notify();
+        Ok(waiter)
+    }
+
+    pub(crate) fn stop_ai_control(
+        &mut self,
+        _: &StopAiControl,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(ai) = &mut self.ai {
+            ai.stop();
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn resume_ai_control(
+        &mut self,
+        _: &ResumeAiControl,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(ai) = &mut self.ai {
+            ai.paused = false;
+            cx.notify();
+        }
+    }
+
+    fn open_developer_tools(
+        &mut self,
+        _: &OpenDeveloperTools,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match &self.webview {
+            Some(webview) => webview.open_developer_tools(),
+            None => self.set_status_message(i18n::t!("Open a page first."), cx),
+        }
+    }
+
+    /// テストではウィンドウにページを載せられないので、偽の入口を据えて「起動済み」にする。
+    #[cfg(test)]
+    pub(crate) fn set_automation_surface_for_test(
+        &mut self,
+        surface: Rc<dyn AutomationSurface>,
+        cx: &mut Context<Self>,
+    ) {
+        self.automation_surface = Some(surface);
+        self.surface = SurfaceState::Ready;
+        cx.notify();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_surface_unavailable_for_test(
+        &mut self,
+        message: SharedString,
+        cx: &mut Context<Self>,
+    ) {
+        self.automation_surface = None;
+        self.surface = SurfaceState::Unavailable {
+            message,
+            offer_runtime_download: false,
+            detail: None,
+        };
+        cx.notify();
+    }
+
+    /// バックエンドからのイベントを、テストから直接流す。
+    #[cfg(test)]
+    pub(crate) fn handle_webview_event_for_test(
+        &mut self,
+        event: WebViewEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.handle_webview_event(event, window, cx);
     }
 
     /// ホスト側の都合で子 HWND を隠す。
@@ -351,6 +589,7 @@ impl BrowserView {
             // しか呼ばれない (= タスクの中ではない) ため。
             log::info!("browser view: the host window changed; recreating the browsing surface");
             self.webview = None;
+            self.automation_surface = None;
             self.event_task = None;
             self.surface = SurfaceState::Idle;
             self.host_hwnd = None;
@@ -377,31 +616,32 @@ impl BrowserView {
         };
         self.host_is_composited = webview::host_uses_direct_composition(host_hwnd);
 
-        let settings = Self::settings(cx);
-        let proxy_endpoint = settings
-            .use_egress_proxy
-            .then(http_client::child_process_proxy)
-            .flatten()
-            .map(|endpoint| endpoint.as_str().trim_end_matches('/').to_string());
-        if settings.use_egress_proxy && proxy_endpoint.is_none() {
-            log::warn!(
-                "browser.use_egress_proxy is on but no egress proxy is running; \
-                 the built-in browser will connect directly"
-            );
-        }
-
-        let options = WebViewOptions {
-            profile: WebViewProfile::User,
-            user_data_folder: paths::data_dir().join("webview2"),
-            proxy_endpoint,
-            document_start_script: None,
-            navigation_filter: None,
-            block_downloads: false,
+        let Some(options) = self.surface_options(cx) else {
+            // AI タブはプロキシ無しでは作らない (直結すると AI の通信が許可リストの
+            // 外に出る)。閉じた状態のまま理由を出す。
+            log::warn!("browser view: no egress proxy is running, so the AI tab cannot start");
+            self.surface = SurfaceState::Unavailable {
+                message: i18n::t!(
+                    "AI tabs need the network allowlist proxy, which is not running, so this tab cannot open pages."
+                )
+                .into(),
+                offer_runtime_download: false,
+                detail: Some(
+                    "The network allowlist proxy is not running, so AI tabs cannot open pages \
+                     (they never connect directly)."
+                        .to_string(),
+                ),
+            };
+            self.wait_for_egress_proxy(cx);
+            cx.notify();
+            return;
         };
         let (events_tx, mut events_rx) = futures::channel::mpsc::unbounded();
         match WebView::new(host_hwnd, options, events_tx) {
             Ok(webview) => {
                 let webview = Rc::new(webview);
+                let surface: Rc<dyn AutomationSurface> = webview.clone();
+                self.automation_surface = Some(surface);
                 // 作り直し (別ウィンドウへの移動) では既に開いていたページを
                 // 引き継ぐ。コントローラーが出来るまでキューに積まれる。
                 if !self.current_url.is_empty() {
@@ -422,16 +662,105 @@ impl BrowserView {
                         }
                     }
                 }));
+                // GTK の main context は誰も回さないので、WebKitGTK のページが
+                // 1 つでもある間は gpui のタスクから回す。
+                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+                if webview::claim_main_loop_pump() {
+                    cx.spawn(async move |_, cx| {
+                        while webview::pump_main_loop() {
+                            cx.background_executor()
+                                .timer(webview::MAIN_LOOP_PUMP_INTERVAL)
+                                .await;
+                        }
+                    })
+                    .detach();
+                }
             }
             Err(error) => {
-                log::error!("failed to start WebView2: {error:#}");
-                self.surface = SurfaceState::Unavailable {
-                    message: webview::runtime_missing_message(),
-                    offer_runtime_download: cfg!(windows),
-                };
+                log::error!("failed to start the built-in browser: {error:#}");
+                self.set_surface_failed(format!("{error:#}"));
             }
         }
         cx.notify();
+    }
+
+    pub(crate) fn wait_for_egress_proxy(&mut self, cx: &mut Context<Self>) {
+        self.proxy_wait_task = Some(cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(EGRESS_PROXY_POLL_INTERVAL)
+                    .await;
+                if http_client::child_process_proxy().is_none() {
+                    continue;
+                }
+                let retried = this.update(cx, |this, cx| {
+                    this.proxy_wait_task = None;
+                    if matches!(this.surface, SurfaceState::Unavailable { .. }) {
+                        // 次の描画で作り直す。
+                        this.surface = SurfaceState::Idle;
+                        cx.notify();
+                    }
+                });
+                if retried.is_err() {
+                    log::debug!(
+                        "browser view: the AI tab closed while waiting for the egress proxy"
+                    );
+                }
+                return;
+            }
+        }));
+    }
+
+    /// 面を作れなかった。普段のタブはランタイムの案内を出す。AI タブだけが断られる理由
+    /// (プロキシの食い違い・古い macOS など) もあるので、AI タブは原因をそのまま添え、
+    /// ツールにも英文のまま返す。
+    fn set_surface_failed(&mut self, detail: String) {
+        self.surface = match self.profile {
+            WebViewProfile::User => SurfaceState::Unavailable {
+                message: webview::runtime_missing_message(),
+                // ダウンロードページは WebView2 のもの。他の OS には出さない。
+                offer_runtime_download: cfg!(windows),
+                detail: None,
+            },
+            WebViewProfile::Ai => SurfaceState::Unavailable {
+                message: i18n::t!("The AI tab's browser could not start: {detail}").into(),
+                offer_runtime_download: false,
+                detail: Some(format!("The AI tab's browser could not start: {detail}")),
+            },
+        };
+    }
+
+    /// 生成に渡すもの。`None` は「AI タブなのに egress プロキシが動いていない」。
+    fn surface_options(&self, cx: &App) -> Option<WebViewOptions> {
+        match self.profile {
+            WebViewProfile::User => {
+                let settings = Self::settings(cx);
+                let proxy_endpoint = settings
+                    .use_egress_proxy
+                    .then(http_client::child_process_proxy)
+                    .flatten()
+                    .map(|endpoint| browser_automation::proxy_endpoint(&endpoint));
+                if settings.use_egress_proxy && proxy_endpoint.is_none() {
+                    log::warn!(
+                        "browser.use_egress_proxy is on but no egress proxy is running; \
+                         the built-in browser will connect directly"
+                    );
+                }
+                Some(WebViewOptions {
+                    profile: WebViewProfile::User,
+                    user_data_folder: browser_automation::profile_data_folder(WebViewProfile::User),
+                    proxy_endpoint,
+                    document_start_script: None,
+                    navigation_filter: None,
+                    block_downloads: false,
+                })
+            }
+            // `browser.use_egress_proxy` に関わらず、AI タブは必ずプロキシを通す。
+            WebViewProfile::Ai => browser_automation::ai_web_view_options(
+                http_client::child_process_proxy().as_ref(),
+                browser_automation::egress_policy(cx),
+            ),
+        }
     }
 
     fn handle_webview_event(
@@ -454,16 +783,18 @@ impl BrowserView {
                     self.navigate_to(&home, cx);
                 }
             }
+            #[cfg(windows)]
             WebViewEvent::Failed(detail) => {
-                log::error!("WebView2 unavailable: {detail}");
+                log::error!("the built-in browser is unavailable: {detail}");
                 // Dropping the surface drops the event sender, which ends the
                 // stream this handler is running inside; the task must not be
                 // dropped from within itself.
                 self.webview = None;
-                self.surface = SurfaceState::Unavailable {
-                    message: webview::runtime_missing_message(),
-                    offer_runtime_download: true,
-                };
+                self.automation_surface = None;
+                self.set_surface_failed(detail);
+                if let Some(ai) = &mut self.ai {
+                    ai.navigation_ended(NavigationOutcome::Finished { succeeded: false });
+                }
             }
             WebViewEvent::UrlChanged(url) => {
                 if url != self.current_url {
@@ -487,6 +818,9 @@ impl BrowserView {
                 self.loading = false;
                 self.status_message =
                     (!succeeded).then(|| SharedString::from(i18n::t!("Couldn't load the page.")));
+                if let Some(ai) = &mut self.ai {
+                    ai.navigation_ended(NavigationOutcome::Finished { succeeded });
+                }
             }
             WebViewEvent::FocusReturned => {
                 self.page_has_focus = false;
@@ -495,15 +829,31 @@ impl BrowserView {
             WebViewEvent::PageFocusChanged(focused) => {
                 self.page_has_focus = focused;
                 if focused {
+                    // ページがキーボードを握ったら GPUI のフォーカスもこのビューへ寄せる。
+                    // パネルのペインはペインの切り替えで寄るが、中央のタブはここでしか寄らない。
+                    if !self.focus_handle.contains_focused(window, cx) {
+                        window.focus(&self.focus_handle, cx);
+                    }
+                    self.touch_ai_tab(cx);
                     cx.emit(BrowserViewEvent::Focused);
                 }
             }
             WebViewEvent::OpenInPlace(url) => self.navigate_to(&url, cx),
             WebViewEvent::NavigationBlocked { url, reason } => {
                 log::info!("browser view: blocked a navigation to {url}: {reason}");
+                self.loading = false;
+                self.status_message = Some(blocked_navigation_notice(&url));
+                if let Some(ai) = &mut self.ai {
+                    ai.navigation_blocked(&url, &reason);
+                }
             }
             WebViewEvent::DownloadBlocked { url } => {
                 log::info!("browser view: blocked a download of {url}");
+                self.status_message =
+                    Some(i18n::t!("Blocked a download in this AI tab: {url}").into());
+                if let Some(ai) = &mut self.ai {
+                    ai.record_blocked(browser_automation::blocked_download_message(&url));
+                }
             }
         }
         // 生成完了は非同期に届くので、ここで再描画しないと canvas が走らず、
@@ -546,6 +896,18 @@ impl BrowserView {
         if url.trim().is_empty() {
             return;
         }
+        // 人間がアドレス欄に打った行き先も、AI タブでは AI と同じ規則で止める
+        // (このタブのプロファイルとページは AI が読めるため)。
+        if self.profile == WebViewProfile::Ai
+            && browser_automation::ai_navigation_verdict(
+                url,
+                &browser_automation::egress_policy(cx),
+            ) != AiNavigationVerdict::Allowed
+        {
+            self.status_message = Some(blocked_navigation_notice(url));
+            cx.notify();
+            return;
+        }
         // ユーザーが行き先を選んだ = 待たせてあるホームは用済み (ブックマークを
         // 押した直後にホームが追い掛けてこないように)。
         self.pending_home_url = None;
@@ -554,6 +916,9 @@ impl BrowserView {
         self.status_message = None;
         match &self.webview {
             Some(webview) => webview.navigate(url),
+            // AI タブの行き先を利用者の既定のブラウザーへ回すと、その先は許可リストの
+            // 外になる。サーフェスが出来たときに `current_url` へ飛ぶのを待つ。
+            None if self.profile == WebViewProfile::Ai => {}
             None => cx.open_url(url),
         }
         cx.emit(BrowserViewEvent::LocationChanged);
@@ -944,6 +1309,28 @@ impl BrowserView {
                     })
                     .on_click(cx.listener(|this, _, window, cx| this.reload(&Reload, window, cx))),
             )
+            .when(self.is_ai_tab(), |this| {
+                this.child(
+                    h_flex()
+                        .id("browser-ai-tab-badge")
+                        .flex_none()
+                        .gap_0p5()
+                        .px_1()
+                        .rounded_sm()
+                        .bg(cx.theme().colors().element_background)
+                        .child(
+                            Icon::new(IconName::Sparkle)
+                                .size(IconSize::XSmall)
+                                .color(Color::Accent),
+                        )
+                        .child(
+                            Label::new(i18n::tc!("browser AI tab badge", "AI"))
+                                .size(LabelSize::XSmall)
+                                .color(Color::Accent),
+                        )
+                        .tooltip(Tooltip::text(i18n::tr(AI_TAB_TOOLTIP))),
+                )
+            })
             .child(
                 ui::input_frame_sized(ui::InputFrameSize::Compact, address_focused, cx)
                     .flex_1()
@@ -1027,6 +1414,24 @@ impl BrowserView {
                 )
             })
             .child(
+                IconButton::new("browser-developer-tools", IconName::Code)
+                    .icon_size(IconSize::Small)
+                    .tooltip({
+                        let focus_handle = focus_handle.clone();
+                        move |_, cx| {
+                            Tooltip::for_action_in(
+                                i18n::t!("Open Developer Tools"),
+                                &OpenDeveloperTools,
+                                &focus_handle,
+                                cx,
+                            )
+                        }
+                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.open_developer_tools(&OpenDeveloperTools, window, cx)
+                    })),
+            )
+            .child(
                 IconButton::new("browser-external", IconName::ArrowUpRight)
                     .icon_size(IconSize::Small)
                     .tooltip(move |_, cx| {
@@ -1042,6 +1447,60 @@ impl BrowserView {
                     })),
             )
             .into_any_element()
+    }
+
+    /// 状態行の右端に出す AI 操作の状態と、止める / 再開するボタン。AI タブ以外では出さない。
+    fn render_ai_control_state(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let ai = self.ai.as_ref()?;
+        let state = if !Self::settings(cx).ai_control {
+            h_flex()
+                .child(
+                    Label::new(i18n::t!("AI control is off"))
+                        .size(LabelSize::Small)
+                        .color(Color::Muted),
+                )
+                .into_any_element()
+        } else if ai.paused {
+            h_flex()
+                .gap_1()
+                .child(
+                    Label::new(i18n::t!("AI control paused"))
+                        .size(LabelSize::Small)
+                        .color(Color::Warning),
+                )
+                .child(
+                    Button::new("browser-resume-ai", i18n::t!("Resume"))
+                        .label_size(LabelSize::Small)
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.resume_ai_control(&ResumeAiControl, window, cx)
+                        })),
+                )
+                .into_any_element()
+        } else if ai.is_running() {
+            h_flex()
+                .gap_1()
+                .child(
+                    Label::new(i18n::t!("AI is operating…"))
+                        .size(LabelSize::Small)
+                        .color(Color::Accent),
+                )
+                .child(
+                    Button::new("browser-stop-ai", i18n::t!("Stop AI"))
+                        .label_size(LabelSize::Small)
+                        .start_icon(
+                            Icon::new(IconName::Stop)
+                                .size(IconSize::XSmall)
+                                .color(Color::Error),
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.stop_ai_control(&StopAiControl, window, cx)
+                        })),
+                )
+                .into_any_element()
+        } else {
+            return None;
+        };
+        Some(h_flex().flex_none().child(state).into_any_element())
     }
 
     /// このビューがブックマークバーを出すか (ADR-F33 追記 2)。
@@ -1593,13 +2052,20 @@ impl BrowserView {
             SurfaceState::Unavailable {
                 message,
                 offer_runtime_download,
+                ..
             } => self.render_unavailable(message.clone(), *offer_runtime_download, cx),
             SurfaceState::Idle | SurfaceState::Starting | SurfaceState::Ready => {
                 let presentation = self.surface_presentation(window, cx);
                 // 穴を開けてよいのは実際にページが載っているときだけ。ページの
                 // 無い矩形を透明にすると、ウィンドウの背後 (デスクトップ) が
                 // そのまま見えてしまう。
-                let surface_is_up = matches!(self.surface, SurfaceState::Ready);
+                // Wayland ではページが別ウィンドウに出る (他のクライアントの面を
+                // 埋め込めない)。パネルには案内と、そのウィンドウを前に出すボタンを置く。
+                let detached = self
+                    .webview
+                    .as_ref()
+                    .is_some_and(|webview| webview.is_detached());
+                let surface_is_up = matches!(self.surface, SurfaceState::Ready) && !detached;
                 // ドラッグプレビューは毎フレーム動くので、切り抜くと 1 フレームに
                 // 1 回 `SetWindowRgn` を撃つことになり、プレビューの周りに継ぎ目が
                 // 出る。ドラッグ中はウィンドウがマウスをキャプチャしていて子 HWND
@@ -1624,10 +2090,27 @@ impl BrowserView {
                             .justify_center()
                             .gap_2()
                             .p_4()
-                            .when(matches!(self.surface, SurfaceState::Starting), |this| {
+                            .when(
+                                matches!(self.surface, SurfaceState::Starting) && !detached,
+                                |this| {
+                                    this.child(
+                                        Label::new(i18n::t!("Starting the built-in browser…"))
+                                            .color(Color::Muted),
+                                    )
+                                },
+                            )
+                            .when(detached, |this| {
                                 this.child(
-                                    Label::new(i18n::t!("Starting the built-in browser…"))
+                                    Label::new(i18n::t!("Shown in a separate window"))
                                         .color(Color::Muted),
+                                )
+                                .child(
+                                    Button::new("browser-raise-detached", i18n::t!("Show Window"))
+                                        .on_click(cx.listener(|this, _, _, _| {
+                                            if let Some(webview) = &this.webview {
+                                                webview.raise_detached_window();
+                                            }
+                                        })),
                                 )
                             }),
                     )
@@ -1754,12 +2237,16 @@ impl Render for BrowserView {
             .on_action(cx.listener(Self::toggle_bookmarks))
             .on_action(cx.listener(Self::add_bookmark))
             .on_action(cx.listener(Self::set_as_home_page))
+            .on_action(cx.listener(Self::open_developer_tools))
+            .on_action(cx.listener(Self::stop_ai_control))
+            .on_action(cx.listener(Self::resume_ai_control))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, _, _, cx| {
                     if let Some(webview) = &this.webview {
                         webview.release_keyboard_focus();
                     }
+                    this.touch_ai_tab(cx);
                     cx.emit(BrowserViewEvent::Focused);
                 }),
             )
@@ -1771,12 +2258,16 @@ impl Render for BrowserView {
                     .min_h(window.line_height())
                     .px_2()
                     .pb_1()
+                    .gap_2()
                     .child(
-                        Label::new(status)
-                            .size(LabelSize::Small)
-                            .color(Color::Muted)
-                            .truncate(),
-                    ),
+                        div().flex_1().min_w_0().child(
+                            Label::new(status)
+                                .size(LabelSize::Small)
+                                .color(Color::Muted)
+                                .truncate(),
+                        ),
+                    )
+                    .children(self.render_ai_control_state(cx)),
             )
             .child(
                 // 内容領域は「残り全部」。子 HWND の矩形はこの canvas の bounds から
@@ -1803,6 +2294,13 @@ impl Focusable for BrowserView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
+}
+
+/// AI タブで止めたナビゲーションの知らせ。ツールの呼び出し側には別に、モデル向けの
+/// 英文で理由を返している。
+fn blocked_navigation_notice(url: &str) -> SharedString {
+    i18n::t!("Blocked {url}: AI tabs only open http and https pages on the network allowlist.")
+        .into()
 }
 
 /// ブックマークのツールチップ。「Ctrl+クリックで新しいタブ」は見た目からは

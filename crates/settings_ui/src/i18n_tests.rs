@@ -319,6 +319,16 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p0.i26[auto_update_include_prereleases].description",
         "更新の確認でプレリリースも対象にします。既定ではリリースだけを対象にします。",
     ),
+    // ForgeKairos: AI control of the built-in browser (ADR-F89).
+    ("p14.i12.header", "AI による操作"),
+    (
+        "p14.i13[browser.ai_control].title",
+        "AI エージェントに内蔵ブラウザーを使わせる",
+    ),
+    (
+        "p14.i13[browser.ai_control].description",
+        "オンにすると、AI エージェントが内蔵ブラウザーの AI タブを開いて操作し、Web アプリをデバッグできます。AI タブは別のブラウザープロファイルを使い、通信は許可リストの範囲に限られます (localhost は常に許可)。あなた自身のブラウザータブが AI エージェントに見えることはありません。",
+    ),
 ];
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.
@@ -1479,7 +1489,7 @@ async fn english_search_still_matches_the_start_of_words(cx: &mut TestAppContext
     for (query, expected_count, expected_best_match) in [
         ("line", 57, "Appearance"),
         ("font size", 15, "Font"),
-        ("tab", 41, "Preview Tabs"),
+        ("tab", 43, "Preview Tabs"),
         ("index", 12, "Symbol Index"),
         ("save", 18, "Auto Save"),
         ("vim", 20, "Vim"),

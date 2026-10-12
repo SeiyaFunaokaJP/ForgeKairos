@@ -5507,7 +5507,7 @@ async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
         .expect("the assist endpoint is open");
     assert_eq!(scope.assist.as_ref(), Some(&source));
     assert_eq!(
-        tool_names(&json!({ "result": tools::list_tools_result(&scope) })),
+        tool_names(&json!({ "result": cx.update(|cx| tools::list_tools_result(&scope, cx)) })),
         sorted(&crate::ASSIST_TOOL_NAMES)
     );
 
@@ -5540,12 +5540,15 @@ async fn a_host_assist_client_runs_the_server_without_opening_the_ide_endpoint(
     let http_scope = http_scope.expect("the IDE endpoint is open");
     assert_eq!(http_scope.assist.as_ref(), Some(&source));
     assert_eq!(
-        tool_names(&json!({ "result": tools::list_tools_result(&http_scope) })).len(),
+        tool_names(&json!({ "result": cx.update(|cx| tools::list_tools_result(&http_scope, cx)) }))
+            .len(),
         full + crate::ASSIST_TOOL_NAMES.len()
     );
     assert_eq!(
-        tool_names(&json!({ "result": tools::list_tools_result(&websocket_scope.expect("open")) }))
-            .len(),
+        tool_names(&json!({
+            "result": cx.update(|cx| tools::list_tools_result(&websocket_scope.expect("open"), cx)),
+        }))
+        .len(),
         full
     );
     assert!(server.read_with(cx, |server, _| server.port()).is_some());
@@ -6872,7 +6875,10 @@ async fn task_output_never_reaches_a_sandboxed_or_assist_scope(cx: &mut TestAppC
     ] {
         assert!(!scope.allows_tool("getLastTaskOutput"));
         let listed = tool_names(&json!({
-            "result": tools::list_tools_result(&tools::ConnectionScope::without_assist(scope)),
+            "result": cx.update(|cx| tools::list_tools_result(
+                &tools::ConnectionScope::without_assist(scope.clone()),
+                cx,
+            )),
         }));
         assert!(
             !listed.iter().any(|name| name == "getLastTaskOutput"),
@@ -6894,3 +6900,6 @@ async fn task_output_never_reaches_a_sandboxed_or_assist_scope(cx: &mut TestAppC
 
 #[path = "type_layout_tool_tests.rs"]
 mod type_layout_tool_tests;
+
+#[path = "browser_tool_tests.rs"]
+mod browser_tool_tests;

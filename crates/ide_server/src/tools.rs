@@ -18,6 +18,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use anyhow::{Context as _, Result, anyhow};
+use base64::Engine as _;
+use browser_control::{BrowserControl, BrowserOutput};
 use collections::HashSet;
 use context_server::types::{
     CallToolParams, Implementation, LATEST_PROTOCOL_VERSION, ProtocolVersion, ServerCapabilities,
@@ -725,7 +727,14 @@ pub fn tools() -> Vec<Tool> {
     ]
 }
 
-pub fn list_tools_result(scope: &ConnectionScope) -> Value {
+/// `tools/list` の結果。
+///
+/// 内蔵ブラウザーのツール (ADR-F89) は `browser.ai_control` が入っているときだけ載せる。一覧を
+/// 返した後で切り替わっても、こちらから知らせる手段は無い: `listChanged` は出しておらず、
+/// アシストの口は 1 要求ごとの HTTP で通知を流す道を持たない (WebSocket の CLI はモデルに
+/// `mcp__ide__*` を見せない)。クライアントは繋ぎ直すまで古い一覧のままなので、呼び出しのたびに
+/// [`call_tool`] が設定を見直して断る。
+pub fn list_tools_result(scope: &ConnectionScope, cx: &App) -> Value {
     let mut tools = tools()
         .into_iter()
         .filter(|tool| scope.tools.allows_tool(&tool.name))
@@ -733,8 +742,45 @@ pub fn list_tools_result(scope: &ConnectionScope) -> Value {
     if scope.assist.is_some() {
         tools.extend(crate::assist_tools::tools());
     }
+    if offers_browser_tools(scope) && enabled_browser_control(cx).is_some() {
+        tools.extend(
+            browser_control::tool_definitions()
+                .into_iter()
+                .map(|definition| {
+                    tool(
+                        definition.name,
+                        definition.description,
+                        definition.input_schema,
+                    )
+                }),
+        );
+    }
     json!({ "tools": tools })
 }
+
+/// 内蔵ブラウザーのツール (ADR-F89) を出す口: ホストの全ツールの口と、サンドボックスの外の
+/// アシストの口。サンドボックスのセッションには、アシストの口も含めて出さない。ブラウザーは
+/// ホストのネットワークの許可リストとこのマシンの `localhost` に届くので、サンドボックスの
+/// 外へ出る抜け道になる。
+pub(crate) fn offers_browser_tools(scope: &ConnectionScope) -> bool {
+    // 口が増えたら、ここで出すかどうかを決めさせる (`matches!` だと黙って出さない側に倒れる)。
+    match scope.tools {
+        ToolScope::Full | ToolScope::Assist(None) => true,
+        ToolScope::Sandboxed(_) | ToolScope::SandboxedReadOnly(_) | ToolScope::Assist(Some(_)) => {
+            false
+        }
+    }
+}
+
+fn enabled_browser_control(cx: &App) -> Option<Arc<dyn BrowserControl>> {
+    browser_control::browser_control(cx).filter(|control| control.is_enabled(cx))
+}
+
+/// ブラウザーのツールの結果 1 件の上限。出すのはホストの全ツールの口とアシストの口だけで、
+/// 小さいほうのアシストの口の送信の上限に、JSON-RPC の包みの分の余白を残して合わせる。
+/// 超える結果は壊れたメッセージにせず、エラーで返す。
+pub(crate) const MAX_BROWSER_RESULT_BYTES: usize =
+    crate::assist_tools::ASSIST_MESSAGE_LIMITS.outgoing - 64 * 1024;
 
 pub(crate) fn text_content(text: impl Into<String>) -> Value {
     json!({ "type": "text", "text": text.into() })
@@ -760,11 +806,20 @@ pub(crate) async fn call_tool<H: ToolHost>(
     cx: &mut AsyncApp,
 ) -> Option<Value> {
     let workspace = server.read_with(cx, |server, _| server.workspace());
-    if !scope.allows_tool(&params.name) {
+    let is_browser_tool = browser_control::TOOL_NAMES.contains(&params.name.as_str());
+    let offered = if is_browser_tool {
+        offers_browser_tools(scope)
+    } else {
+        scope.allows_tool(&params.name)
+    };
+    if !offered {
         return None;
     }
     let arguments = params.arguments.unwrap_or(Value::Null);
     let result = match (workspace, scope.assist.as_ref()) {
+        (Some(workspace), _) if is_browser_tool => {
+            run_browser_tool(&params.name, arguments, &workspace, cx).await
+        }
         (Some(workspace), Some(source)) if scope.is_assist_tool(&params.name) => {
             crate::assist_tools::run_assist_tool(
                 &params.name,
@@ -934,6 +989,44 @@ async fn run_tool<H: ToolHost>(
         )),
         other => Err(anyhow!("unknown tool {other}")),
     }
+}
+
+/// 内蔵ブラウザーのツール (ADR-F89)。一覧に出した後で設定が切られていることがあるので、
+/// 呼ばれるたびに `browser.ai_control` を見直す。
+async fn run_browser_tool(
+    name: &str,
+    arguments: Value,
+    workspace: &WeakEntity<Workspace>,
+    cx: &mut AsyncApp,
+) -> Result<Vec<Value>> {
+    let control = cx
+        .update(|cx| enabled_browser_control(cx))
+        .ok_or_else(|| anyhow!(browser_control::AI_CONTROL_OFF_MESSAGE))?;
+    let command = browser_control::parse_command(name, arguments)?;
+    let project = workspace.read_with(cx, |workspace, _| workspace.project().clone())?;
+    let output = cx.update(|cx| control.run(&project, command, cx)).await?;
+    browser_output_content(name, output)
+}
+
+pub(crate) fn browser_output_content(name: &str, output: BrowserOutput) -> Result<Vec<Value>> {
+    let mut content = vec![text_content(output.text)];
+    if let Some(png) = output.image_png {
+        content.push(json!({
+            "type": "image",
+            "data": base64::engine::general_purpose::STANDARD.encode(&png),
+            "mimeType": "image/png",
+        }));
+    }
+    let size = serde_json::to_vec(&content)
+        .context("serializing a browser tool result")?
+        .len();
+    if size > MAX_BROWSER_RESULT_BYTES {
+        return Err(anyhow!(
+            "the {name} result is {size} bytes, more than the {MAX_BROWSER_RESULT_BYTES} bytes \
+             one message can carry; ask for less (a smaller max_chars or limit)"
+        ));
+    }
+    Ok(content)
 }
 
 fn required_path(arguments: &Value, key: &str) -> Result<PathBuf> {

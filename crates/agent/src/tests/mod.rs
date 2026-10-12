@@ -6771,6 +6771,26 @@ async fn test_every_tool_is_known_to_write_worktrees_or_not(cx: &mut TestAppCont
         "annotate_code",
         "code_tour",
         "clear_annotations",
+        // The built-in browser runs pages, not the project's code (ADR-F89).
+        "browser_tabs",
+        "browser_open_tab",
+        "browser_close_tab",
+        "browser_select_tab",
+        "browser_navigate",
+        "browser_page_text",
+        "browser_snapshot",
+        "browser_find",
+        "browser_click",
+        "browser_hover",
+        "browser_type",
+        "browser_press_key",
+        "browser_scroll",
+        "browser_set_value",
+        "browser_screenshot",
+        "browser_console",
+        "browser_network",
+        "browser_eval",
+        "browser_wait_for",
     ];
     init_test(cx);
 

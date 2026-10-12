@@ -1502,7 +1502,9 @@ pub(crate) async fn handle_message_in<H: ToolHost>(
     Some(match method.as_str() {
         "initialize" => protocol::success_response(id, tools::initialize_result_in(&params, scope)),
         "ping" => protocol::success_response(id, serde_json::json!({})),
-        "tools/list" => protocol::success_response(id, tools::list_tools_result(scope)),
+        "tools/list" => {
+            protocol::success_response(id, cx.update(|cx| tools::list_tools_result(scope, cx)))
+        }
         "tools/call" => match tools::parse_call_params(params) {
             Ok(params) => {
                 let name = params.name.clone();

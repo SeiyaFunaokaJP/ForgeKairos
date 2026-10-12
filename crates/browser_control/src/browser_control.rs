@@ -260,6 +260,10 @@ pub trait BrowserControl: 'static + Send + Sync {
     ) -> Task<Result<BrowserOutput>>;
 }
 
+/// What every consumer answers a browser command with while `browser.ai_control` is off.
+pub const AI_CONTROL_OFF_MESSAGE: &str = "AI control of the built-in browser is turned off. \
+     Only the user can turn it on, in the settings (browser.ai_control).";
+
 pub struct GlobalBrowserControl(pub Arc<dyn BrowserControl>);
 
 impl Global for GlobalBrowserControl {}

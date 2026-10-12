@@ -20,6 +20,10 @@
 //! タブを閉じたら [`BrowserView`] ごと drop してコントローラーを Close する。
 //!
 //! ブックマークは設定ではなく `browser_bookmarks.json` に置く ([`browser_bookmarks`])。
+//!
+//! AI が操作できるのは **AI タブ** だけ (ADR-F89、[`browser_automation`])。別プロファイルで、
+//! 通信は `browser.use_egress_proxy` に関わらず egress プロキシ必須、トップレベルの
+//! ナビゲーションは許可リストで事前に検査する。
 
 use std::{sync::Arc, time::Duration};
 
@@ -44,6 +48,7 @@ use workspace::{
     searchable::SearchableItem as _,
 };
 
+mod browser_automation;
 mod browser_bookmarks;
 mod browser_item;
 mod browser_view;
@@ -61,9 +66,6 @@ pub use browser_view::{BrowserHost, BrowserView, BrowserViewEvent};
 mod webview_linux;
 #[cfg(target_os = "macos")]
 mod webview_macos;
-// TEMPORARY STUB (mac/linux): `webview_unsupported` が代役の間は読まれない項目がある。
-// 本物のバックエンドが入ったら外す。
-#[cfg_attr(not(windows), allow(dead_code))]
 mod webview_types;
 #[cfg(windows)]
 mod webview_windows;
@@ -85,6 +87,8 @@ use webview_macos as webview;
 use webview_unsupported as webview;
 #[cfg(windows)]
 use webview_windows as webview;
+
+use webview::WebViewProfile;
 
 const BROWSER_PANEL_KEY: &str = "BrowserPanel";
 const QUERY_PLACEHOLDER: &str = "{query}";
@@ -139,6 +143,14 @@ actions!(
         SplitPanelRight,
         /// Moves focus to the next pane of the split browser panel.
         FocusNextPaneGroup,
+        /// Opens a new AI tab in the browser panel: a tab with its own browser profile that AI agents can drive, with its traffic limited to the network allowlist.
+        NewAiTab,
+        /// Opens the developer tools of the current browser tab.
+        OpenDeveloperTools,
+        /// Stops AI control of the current AI tab: the running command is cancelled and further commands are refused until it is resumed.
+        StopAiControl,
+        /// Lets AI agents drive the current AI tab again after it was stopped.
+        ResumeAiControl,
     ]
 );
 
@@ -342,6 +354,7 @@ pub fn init(cx: &mut App) {
     // ブラウザータブはパネルの外 (エディター領域 / ターミナルパネル) にも置けるので、
     // 中央のタブと同じ per-kind の復元機構に載せる (ADR-F37)。
     workspace::register_serializable_item::<BrowserItem>(cx);
+    browser_automation::init(cx);
     cx.observe_new(
         |workspace: &mut Workspace, _window, _: &mut Context<Workspace>| {
             workspace.register_action(|workspace, _: &ToggleFocus, window, cx| {
@@ -354,6 +367,9 @@ pub fn init(cx: &mut App) {
             });
             workspace.register_action(|workspace, _: &NewBrowserTab, window, cx| {
                 BrowserItem::open(workspace, None, window, cx);
+            });
+            workspace.register_action(|workspace, _: &NewAiTab, window, cx| {
+                BrowserPanel::open_ai_tab_for_user(workspace, window, cx);
             });
             workspace.register_action(|workspace, _: &OpenInCenter, window, cx| {
                 // 「開く」ではなく「移す」。同じアイテムを中央のペインへ渡すので、
@@ -532,15 +548,64 @@ impl BrowserPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let item = cx.new(|cx| {
-            BrowserItem::new(
+        self.open_tab_in_pane_with_profile(pane, url, WebViewProfile::User, placement, window, cx);
+    }
+
+    /// AI タブを今のペインに開く (ADR-F89)。`url` が `None` なら空のページ。
+    pub(crate) fn open_ai_tab(
+        &mut self,
+        url: Option<String>,
+        placement: NewTabPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<BrowserItem> {
+        let pane = self.active_pane.clone();
+        self.open_tab_in_pane_with_profile(&pane, url, WebViewProfile::Ai, placement, window, cx)
+    }
+
+    /// `NewAiTab`: 利用者が自分で開く AI タブ (テスト対象のアプリに先にサインインして
+    /// おくため)。パネルを出してフォーカスも移す。
+    fn open_ai_tab_for_user(
+        workspace: &mut Workspace,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let Some(panel) = workspace.panel::<BrowserPanel>(cx) else {
+            BrowserItem::open_with_profile(workspace, None, WebViewProfile::Ai, window, cx);
+            return;
+        };
+        workspace.focus_panel::<BrowserPanel>(window, cx);
+        panel.update(cx, |panel, cx| {
+            panel.open_ai_tab(None, NewTabPlacement::Foreground, window, cx);
+        });
+    }
+
+    fn open_tab_in_pane_with_profile(
+        &mut self,
+        pane: &Entity<Pane>,
+        url: Option<String>,
+        profile: WebViewProfile,
+        placement: NewTabPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<BrowserItem> {
+        let item = cx.new(|cx| match profile {
+            WebViewProfile::User => BrowserItem::new(
                 self.workspace.clone(),
                 self.fs.clone(),
                 BrowserHost::Panel,
                 url,
                 window,
                 cx,
-            )
+            ),
+            WebViewProfile::Ai => BrowserItem::new_ai(
+                self.workspace.clone(),
+                self.fs.clone(),
+                BrowserHost::Panel,
+                url,
+                window,
+                cx,
+            ),
         });
         // 既にパネルの中にフォーカスがあるなら、フォーカスは新しいタブへ移す
         // (タブを閉じた直後に開いたときにフォーカスが宙に浮かないように)。
@@ -551,8 +616,17 @@ impl BrowserPanel {
         // `add_item_inner` で「足すだけ」にする (WebView2 はまだ作られない)。
         let activate = placement != NewTabPlacement::Background;
         pane.update(cx, |pane, cx| {
-            pane.add_item_inner(Box::new(item), focus, focus, activate, None, window, cx);
+            pane.add_item_inner(
+                Box::new(item.clone()),
+                focus,
+                focus,
+                activate,
+                None,
+                window,
+                cx,
+            );
         });
+        item
     }
 
     fn contains_focus(&self, window: &Window, cx: &App) -> bool {
@@ -587,8 +661,12 @@ impl BrowserPanel {
 
     pub fn navigate_to(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
         match self.active_view(cx) {
-            Some(view) => view.update(cx, |view, cx| view.navigate_to(url, cx)),
-            None => self.open_tab(
+            // 利用者の検索や Copilot への問い合わせを AI タブに流すと AI に読まれるうえ、
+            // 利用者のサインインも無い。AI タブが表なら普段のタブを開く。
+            Some(view) if !view.read(cx).is_ai_tab() => {
+                view.update(cx, |view, cx| view.navigate_to(url, cx))
+            }
+            _ => self.open_tab(
                 Some(url.to_string()),
                 NewTabPlacement::Foreground,
                 window,
@@ -603,6 +681,7 @@ impl BrowserPanel {
         &mut self,
         item_id: EntityId,
         url: Option<String>,
+        profile: WebViewProfile,
         placement: NewTabPlacement,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -610,7 +689,7 @@ impl BrowserPanel {
         let pane = self
             .pane_for_item(item_id, cx)
             .unwrap_or_else(|| self.active_pane.clone());
-        self.open_tab_in_pane(&pane, url, placement, window, cx);
+        self.open_tab_in_pane_with_profile(&pane, url, profile, placement, window, cx);
     }
 
     /// ファイルを落として開くときの受け口。端に落とされていたら (`split` が
@@ -711,6 +790,17 @@ impl BrowserPanel {
         (!url.is_empty()).then_some(url)
     }
 
+    /// そのペインで表に出ているブラウザータブのプロファイル。複製 (分割) は同じ
+    /// プロファイルで作り、AI タブのページを利用者のプロファイルへ持ち出さない。
+    fn profile_of_active_item(&self, pane: &Entity<Pane>, cx: &App) -> WebViewProfile {
+        pane.read(cx)
+            .active_item()
+            .and_then(|item| item.downcast::<BrowserItem>())
+            .map_or(WebViewProfile::User, |item| {
+                item.read(cx).view().read(cx).profile()
+            })
+    }
+
     fn pane_for_item(&self, item_id: EntityId, cx: &App) -> Option<Entity<Pane>> {
         self.center
             .panes()
@@ -782,8 +872,16 @@ impl BrowserPanel {
         }
         if items_len == 1 {
             let url = self.url_of_active_item(&pane, cx);
+            let profile = self.profile_of_active_item(&pane, cx);
             let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
-            self.open_tab_in_pane(&new_pane, url, NewTabPlacement::Foreground, window, cx);
+            self.open_tab_in_pane_with_profile(
+                &new_pane,
+                url,
+                profile,
+                NewTabPlacement::Foreground,
+                window,
+                cx,
+            );
             return;
         }
         let Some(item) = pane.update(cx, |pane, cx| pane.take_active_item(window, cx)) else {
@@ -893,16 +991,20 @@ impl BrowserPanel {
                 let pane = pane.clone();
                 match mode {
                     SplitMode::ClonePane | SplitMode::EmptyPane => {
-                        let url = if matches!(mode, SplitMode::ClonePane) {
-                            self.url_of_active_item(&pane, cx)
+                        let (url, profile) = if matches!(mode, SplitMode::ClonePane) {
+                            (
+                                self.url_of_active_item(&pane, cx),
+                                self.profile_of_active_item(&pane, cx),
+                            )
                         } else {
-                            None
+                            (None, WebViewProfile::User)
                         };
                         let new_pane = self.split_pane(&pane, direction, window, cx);
                         self.activate_pane(new_pane.clone(), cx);
-                        self.open_tab_in_pane(
+                        self.open_tab_in_pane_with_profile(
                             &new_pane,
                             url,
+                            profile,
                             NewTabPlacement::Foreground,
                             window,
                             cx,
@@ -1153,9 +1255,12 @@ fn new_browser_pane(
         let buttons_panel = browser_panel.downgrade();
         pane.set_render_tab_bar_buttons(cx, move |pane, _window, cx| {
             let new_tab_panel = buttons_panel.clone();
+            let new_ai_tab_panel = buttons_panel.clone();
             let split_panel = buttons_panel.clone();
             let pane_handle = cx.entity();
+            let ai_tab_pane_handle = pane_handle.clone();
             let focus_handle = pane.focus_handle(cx);
+            let ai_tab_focus_handle = focus_handle.clone();
             let split_focus_handle = focus_handle.clone();
             (
                 None,
@@ -1183,6 +1288,32 @@ fn new_browser_pane(
                                                 window,
                                                 cx,
                                             )
+                                        })
+                                        .log_err();
+                                }),
+                        )
+                        .child(
+                            IconButton::new("browser-panel-new-ai-tab", IconName::Sparkle)
+                                .icon_size(IconSize::Small)
+                                .tooltip(move |_, cx| {
+                                    Tooltip::for_action_in(
+                                        i18n::t!("New AI Tab"),
+                                        &NewAiTab,
+                                        &ai_tab_focus_handle,
+                                        cx,
+                                    )
+                                })
+                                .on_click(move |_, window, cx| {
+                                    new_ai_tab_panel
+                                        .update(cx, |panel, cx| {
+                                            panel.open_tab_in_pane_with_profile(
+                                                &ai_tab_pane_handle,
+                                                None,
+                                                WebViewProfile::Ai,
+                                                NewTabPlacement::Foreground,
+                                                window,
+                                                cx,
+                                            );
                                         })
                                         .log_err();
                                 }),
@@ -1447,6 +1578,9 @@ struct SerializedBrowserPane {
     /// 同上。`urls` の添字。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     active_item: Option<usize>,
+    /// `urls` のうち AI タブ (ADR-F89) だったものの添字。前の版のデータには無い = 普段のタブ。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ai_tabs: Vec<usize>,
 }
 
 /// `gpui::Axis` は `serde` を実装していないので、読める文字列で持つ
@@ -1542,6 +1676,7 @@ fn serialize_pane(
     if format == PanelLayoutFormat::Urls {
         let mut urls = Vec::new();
         let mut active_item = None;
+        let mut ai_tabs = Vec::new();
         for (index, item) in pane.read(cx).items().enumerate() {
             let Some(item) = item.downcast::<BrowserItem>() else {
                 continue;
@@ -1549,13 +1684,18 @@ fn serialize_pane(
             if index == active_item_index {
                 active_item = Some(urls.len());
             }
-            urls.push(item.read(cx).view().read(cx).current_url().to_string());
+            let view = item.read(cx).view().read(cx);
+            if view.is_ai_tab() {
+                ai_tabs.push(urls.len());
+            }
+            urls.push(view.current_url().to_string());
         }
         return SerializedBrowserPane {
             active,
             items: Vec::new(),
             urls,
             active_item,
+            ai_tabs,
         };
     }
 
@@ -1584,6 +1724,7 @@ fn serialize_pane(
         items,
         urls: Vec::new(),
         active_item: None,
+        ai_tabs: Vec::new(),
     }
 }
 
@@ -1681,9 +1822,15 @@ fn restore_urls(
             for (index, url) in serialized_pane.urls.iter().enumerate() {
                 // 復元直後はどのタブも裏。表に出す 1 枚だけをこの後選ぶので、
                 // 起動時に作られる WebView2 はペインごとに 1 つで済む。
-                panel.open_tab_in_pane(
+                let profile = if serialized_pane.ai_tabs.contains(&index) {
+                    WebViewProfile::Ai
+                } else {
+                    WebViewProfile::User
+                };
+                panel.open_tab_in_pane_with_profile(
                     pane,
                     Some(url.clone()),
+                    profile,
                     NewTabPlacement::Background,
                     window,
                     cx,
@@ -2569,6 +2716,261 @@ mod tests {
         assert!(pane.items[1].active);
     }
 
+    fn pane_profiles(pane: &Entity<Pane>, cx: &App) -> Vec<WebViewProfile> {
+        pane.read(cx)
+            .items()
+            .filter_map(|item| item.downcast::<BrowserItem>())
+            .map(|item| item.read(cx).view().read(cx).profile())
+            .collect()
+    }
+
+    #[gpui::test]
+    async fn ai_tabs_stay_ai_tabs_in_the_url_layout(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_tabs(&panel, &["https://example.com/one"], cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_ai_tab(
+                Some("http://localhost:3000/".to_string()),
+                NewTabPlacement::Foreground,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let root = panel.update(cx, |panel, cx| {
+            serialize_pane_group(
+                &panel.center.root,
+                &panel.active_pane,
+                PanelLayoutFormat::Urls,
+                cx,
+            )
+        });
+        let SerializedBrowserPaneGroup::Pane(serialized_pane) = &root else {
+            panic!("the panel has a single pane");
+        };
+        assert_eq!(serialized_pane.ai_tabs, vec![1]);
+        let json = serde_json::to_string(&SerializedBrowserPanel { root })
+            .expect("the layout should serialize");
+
+        let restored = new_panel(&window_handle, cx);
+        let mut async_cx = async_window(cx);
+        let round_tripped: SerializedBrowserPanel =
+            serde_json::from_str(&json).expect("the layout should deserialize");
+        assert!(restore(&restored, round_tripped, None, &mut async_cx).await);
+        cx.run_until_parked();
+        restored.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_profiles(&panel.active_pane, cx),
+                vec![WebViewProfile::User, WebViewProfile::Ai]
+            );
+        });
+
+        // A layout written before AI tabs existed has no flag: every tab is the user's.
+        let stored = r#"{"root":{"Pane":{"active":true,"urls":["https://example.com/one","http://localhost:3000/"],"active_item":1}}}"#;
+        let old: SerializedBrowserPanel =
+            serde_json::from_str(stored).expect("the old layout should deserialize");
+        let restored = new_panel(&window_handle, cx);
+        let mut async_cx = async_window(cx);
+        assert!(restore(&restored, old, None, &mut async_cx).await);
+        cx.run_until_parked();
+        restored.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_profiles(&panel.active_pane, cx),
+                vec![WebViewProfile::User, WebViewProfile::User]
+            );
+        });
+    }
+
+    fn open_ai_tab_in(panel: &Entity<BrowserPanel>, url: &str, cx: &mut VisualTestContext) {
+        panel.update_in(cx, |panel, window, cx| {
+            panel.open_ai_tab(
+                Some(url.to_string()),
+                NewTabPlacement::Foreground,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn tabs_opened_from_a_tab_keep_its_profile(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_tabs(&panel, &["https://example.com/user"], cx);
+        open_ai_tab_in(&panel, "http://localhost:3000/", cx);
+        let (user_view, ai_view) = panel.read_with(cx, |panel, cx| {
+            let views = panel
+                .active_pane
+                .read(cx)
+                .items()
+                .filter_map(|item| item.downcast::<BrowserItem>())
+                .map(|item| item.read(cx).view().clone())
+                .collect::<Vec<_>>();
+            (views[0].clone(), views[1].clone())
+        });
+        // A page's "open in a new tab" (a `target=_blank` link, a middle click).
+        for (view, url) in [
+            (&ai_view, "http://localhost:3000/from-ai"),
+            (&user_view, "https://example.com/from-user"),
+        ] {
+            view.update(cx, |_, cx| {
+                cx.emit(BrowserViewEvent::OpenInNewTab(url.to_string()))
+            });
+            cx.run_until_parked();
+        }
+        let tabs = panel.read_with(cx, |panel, cx| {
+            panel
+                .active_pane
+                .read(cx)
+                .items()
+                .filter_map(|item| item.downcast::<BrowserItem>())
+                .map(|item| {
+                    let view = item.read(cx).view().read(cx);
+                    (view.current_url().to_string(), view.profile())
+                })
+                .collect::<Vec<_>>()
+        });
+        assert!(
+            tabs.contains(&(
+                "http://localhost:3000/from-ai".to_string(),
+                WebViewProfile::Ai
+            )),
+            "{tabs:?}"
+        );
+        assert!(
+            tabs.contains(&(
+                "https://example.com/from-user".to_string(),
+                WebViewProfile::User
+            )),
+            "{tabs:?}"
+        );
+
+        // Duplicating an AI tab into a split keeps it an AI tab.
+        let only_ai = new_panel(&window_handle, cx);
+        open_ai_tab_in(&only_ai, "http://localhost:3000/", cx);
+        only_ai.update_in(cx, |panel, window, cx| {
+            panel.split_active_tab_right(window, cx)
+        });
+        cx.run_until_parked();
+        only_ai.read_with(cx, |panel, cx| {
+            assert_eq!(panel.center.panes().len(), 2);
+            for pane in panel.center.panes() {
+                assert_eq!(pane_profiles(pane, cx), vec![WebViewProfile::Ai]);
+            }
+        });
+    }
+
+    #[gpui::test]
+    async fn the_user_s_searches_never_go_to_an_ai_tab(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_ai_tab_in(&panel, "http://localhost:3000/", cx);
+        panel.update_in(cx, |panel, window, cx| {
+            panel.navigate_to("https://www.bing.com/search?q=secret", window, cx)
+        });
+        cx.run_until_parked();
+        panel.read_with(cx, |panel, cx| {
+            let pane = &panel.active_pane;
+            assert_eq!(
+                pane_urls(pane, cx),
+                vec![
+                    "http://localhost:3000/".to_string(),
+                    "https://www.bing.com/search?q=secret".to_string()
+                ]
+            );
+            assert_eq!(
+                pane_profiles(pane, cx),
+                vec![WebViewProfile::Ai, WebViewProfile::User]
+            );
+        });
+    }
+
+    #[gpui::test]
+    async fn an_ai_tab_keeps_typed_addresses_inside_its_rules(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+
+        open_ai_tab_in(&panel, "about:blank", cx);
+        let view = panel.read_with(cx, |panel, cx| panel.active_view(cx).expect("a tab"));
+        // No allowlist is installed in tests, so only loopback is allowed.
+        view.update(cx, |view, cx| {
+            view.navigate_to("file:///C:/Users/me/.ssh/id_rsa", cx);
+            view.navigate_to("https://evil.test/", cx);
+        });
+        assert_eq!(
+            view.read_with(cx, |view, _| view.current_url().to_string()),
+            "about:blank"
+        );
+        assert_eq!(cx.opened_url(), None);
+
+        // Without a browsing surface yet, an allowed address waits for it instead of going to
+        // the system browser (where the allowlist would not apply).
+        view.update(cx, |view, cx| {
+            view.navigate_to("http://localhost:5173/", cx)
+        });
+        assert_eq!(
+            view.read_with(cx, |view, _| view.current_url().to_string()),
+            "http://localhost:5173/"
+        );
+        assert_eq!(
+            cx.opened_url(),
+            None,
+            "nothing was handed to the system browser"
+        );
+    }
+
+    #[gpui::test]
+    async fn ai_tabs_stay_ai_tabs_in_the_database(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, _panel) = init_workspace_with_panel(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (workspace, workspace_id) = workspace_with_database_id(&window_handle, cx);
+
+        // A row of the previous build (no `ai` column value) and one of an AI tab.
+        store_urls(
+            vec![(9101, "https://example.com/old".to_string())],
+            workspace_id,
+            cx,
+        )
+        .await;
+        let db = cx.update(|_, cx| BrowserItemDb::global(cx));
+        db.save_tab(
+            9102,
+            workspace_id,
+            "http://localhost:3000/".to_string(),
+            true,
+        )
+        .await
+        .expect("saving an AI tab");
+
+        let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+        let mut profiles = Vec::new();
+        for item_id in [9101, 9102] {
+            let task = cx.update(|window, cx| {
+                <BrowserItem as workspace::SerializableItem>::deserialize(
+                    project.clone(),
+                    workspace.downgrade(),
+                    workspace_id,
+                    item_id,
+                    window,
+                    cx,
+                )
+            });
+            let item = task.await.expect("the tab should be restored");
+            profiles.push(item.read_with(cx, |item, cx| item.view().read(cx).profile()));
+        }
+        assert_eq!(profiles, vec![WebViewProfile::User, WebViewProfile::Ai]);
+    }
+
     #[gpui::test]
     async fn a_window_without_a_workspace_id_writes_the_url_list(cx: &mut TestAppContext) {
         init_test(cx);
@@ -3014,6 +3416,7 @@ mod tests {
                 }],
                 urls: Vec::new(),
                 active_item: None,
+                ai_tabs: Vec::new(),
             }),
         };
         let mut async_cx = async_window(cx);
@@ -3059,6 +3462,7 @@ mod tests {
                 ],
                 urls: Vec::new(),
                 active_item: None,
+                ai_tabs: Vec::new(),
             }),
         };
         let mut async_cx = async_window(cx);

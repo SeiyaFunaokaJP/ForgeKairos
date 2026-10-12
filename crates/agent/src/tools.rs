@@ -1,5 +1,6 @@
 mod apply_code_action_tool;
 mod ask_user_tool;
+mod browser_tools;
 mod context_server_registry;
 mod copy_path_tool;
 mod create_directory_tool;
@@ -74,6 +75,7 @@ where
 
 pub use apply_code_action_tool::*;
 pub use ask_user_tool::*;
+pub use browser_tools::*;
 pub use context_server_registry::*;
 pub use copy_path_tool::*;
 pub use create_directory_tool::*;
@@ -237,6 +239,25 @@ tools! {
     AnnotateCodeTool,
     CodeTourTool,
     ClearAnnotationsTool,
+    BrowserTabsTool,
+    BrowserOpenTabTool,
+    BrowserCloseTabTool,
+    BrowserSelectTabTool,
+    BrowserNavigateTool,
+    BrowserPageTextTool,
+    BrowserSnapshotTool,
+    BrowserFindTool,
+    BrowserClickTool,
+    BrowserHoverTool,
+    BrowserTypeTool,
+    BrowserPressKeyTool,
+    BrowserScrollTool,
+    BrowserSetValueTool,
+    BrowserScreenshotTool,
+    BrowserConsoleTool,
+    BrowserNetworkTool,
+    BrowserEvalTool,
+    BrowserWaitForTool,
 }
 
 /// Some built-in tools are gated behind a feature flag and only become usable
@@ -252,9 +273,14 @@ tools! {
 /// (`find_references` / `go_to_definition` / `get_code_actions` /
 /// `apply_code_action` / `rename_symbol`) were therefore dead code and are now
 /// ungated (TODO F13 ③).
+///
+/// The browser tools (ADR-F89) are gated the same way, on the user's
+/// `browser.ai_control` setting instead of a flag, so that they are neither
+/// sent to the model nor offered in the profile UI while it is off.
 pub fn tool_feature_flag_enabled(tool_name: &str, cx: &App) -> bool {
     match tool_name {
         CreateThreadTool::NAME => cx.has_flag::<CreateThreadToolFeatureFlag>(),
+        name if is_browser_tool(name) => browser_tools_enabled(cx),
         _ => true,
     }
 }
@@ -291,13 +317,14 @@ mod tests {
     }
 
     #[test]
-    fn fetch_and_terminal_are_forbidden_in_restricted_mode() {
+    fn fetch_terminal_and_browser_are_forbidden_in_restricted_mode() {
         assert!(!tool_allowed_in_restricted_mode(FetchTool::NAME));
         assert!(!tool_allowed_in_restricted_mode(TerminalTool::NAME));
 
         // Every other built-in tool, and unknown (e.g. MCP) tools, are allowed.
         for name in ALL_TOOL_NAMES {
-            let expected = *name != FetchTool::NAME && *name != TerminalTool::NAME;
+            let expected =
+                *name != FetchTool::NAME && *name != TerminalTool::NAME && !is_browser_tool(name);
             assert_eq!(
                 tool_allowed_in_restricted_mode(name),
                 expected,

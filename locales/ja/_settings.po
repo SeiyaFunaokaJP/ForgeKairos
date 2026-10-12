@@ -1262,6 +1262,10 @@ msgid "AI"
 msgstr "AI"
 
 msgctxt "settings"
+msgid "AI Control"
+msgstr "AI による操作"
+
+msgctxt "settings"
 msgid "Accessible Mode"
 msgstr "アクセシビリティモード"
 
@@ -3116,6 +3120,10 @@ msgstr "下ドックのレイアウトモードです。"
 msgctxt "settings"
 msgid "Left padding for centered layout."
 msgstr "中央寄せレイアウトの左側の余白です。"
+
+msgctxt "settings"
+msgid "Let AI Agents Use the Built-in Browser"
+msgstr "AI エージェントに内蔵ブラウザーを使わせる"
 
 msgctxt "settings"
 msgid "Let agents read the end (up to 4 KB) of the output of the last failed task (non-zero exit) through the IDE server's getLastTaskOutput tool."
@@ -5136,6 +5144,10 @@ msgstr "オフにすると CommonMark 準拠になり、行末の半角スペー
 msgctxt "settings"
 msgid "When off, these files open in the text editor. Either view can open the other one beside it."
 msgstr "オフにするとテキストエディターで開きます。どちらからでも横に切り替えられます。"
+
+msgctxt "settings"
+msgid "When on, AI agents can open and drive AI tabs of the built-in browser to debug web apps. AI tabs use a separate browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents."
+msgstr "オンにすると、AI エージェントが内蔵ブラウザーの AI タブを開いて操作し、Web アプリをデバッグできます。AI タブは別のブラウザープロファイルを使い、通信は許可リストの範囲に限られます (localhost は常に許可)。あなた自身のブラウザータブが AI エージェントに見えることはありません。"
 
 msgctxt "settings"
 msgid "When on, a notification appears when the language server or formatter that an opened file's language needs cannot be found (clangd and clang-format for C, Ruff for Python), and the tool can be installed right there. Tools go only into your user data directory, need no administrator rights and do not affect other users. While connected to a remote host, the host is checked and the tool is installed there, downloaded through this machine's network so it works even when the host has no internet access. To stop suggesting particular tools, list their IDs in `dev_tools.ignored` in settings.json (the notification's \"Don't Show Again\" adds them too)."

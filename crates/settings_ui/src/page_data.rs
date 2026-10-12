@@ -12776,9 +12776,34 @@ fn browser_page() -> SettingsPage {
         ]
     }
 
+    fn ai_control_section() -> [SettingsPageItem; 2] {
+        [
+            SettingsPageItem::SectionHeader("AI Control"),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Let AI Agents Use the Built-in Browser",
+                description: "When on, AI agents can open and drive AI tabs of the built-in browser to debug web apps. AI tabs use a separate browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.ai_control"),
+                    pick: |settings_content| settings_content.browser.as_ref()?.ai_control.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.browser.get_or_insert_default().ai_control = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+        ]
+    }
+
     SettingsPage {
         title: "Browser",
-        items: concat_sections![browsing_section(), panel_section(), egress_section()],
+        items: concat_sections![
+            browsing_section(),
+            panel_section(),
+            egress_section(),
+            ai_control_section()
+        ],
     }
 }
 

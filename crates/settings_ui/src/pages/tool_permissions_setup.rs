@@ -108,7 +108,93 @@ const TOOLS: &[ToolInfo] = &[
             "Patterns are matched against the absolute path to the skill's SKILL.md file."
         ),
     },
+    // The built-in browser's tools that act on its AI tabs (ADR-F89). The ones that only read
+    // the page don't ask and are in `EXCLUDED_TOOLS`.
+    ToolInfo {
+        id: "browser_open_tab",
+        name: || i18n::tc!("agent tool", "Browser: Open Tab"),
+        description: i18n::msg!("Opening AI tabs in the built-in browser"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the URL the new tab opens (about:blank for an empty tab)."
+        ),
+    },
+    ToolInfo {
+        id: "browser_close_tab",
+        name: || i18n::tc!("agent tool", "Browser: Close Tab"),
+        description: i18n::msg!("Closing AI tabs in the built-in browser"),
+        regex_explanation: BROWSER_TAB_EXPLANATION,
+    },
+    ToolInfo {
+        id: "browser_select_tab",
+        name: || i18n::tc!("agent tool", "Browser: Switch Tab"),
+        description: i18n::msg!("Switching the current AI tab in the built-in browser"),
+        regex_explanation: BROWSER_TAB_EXPLANATION,
+    },
+    ToolInfo {
+        id: "browser_navigate",
+        name: || i18n::tc!("agent tool", "Browser: Navigate"),
+        description: i18n::msg!("Loading pages in AI tabs of the built-in browser"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the URL being loaded, or against back, forward or reload."
+        ),
+    },
+    ToolInfo {
+        id: "browser_click",
+        name: || i18n::tc!("agent tool", "Browser: Click"),
+        description: i18n::msg!("Clicking on pages in the built-in browser"),
+        regex_explanation: BROWSER_TARGET_EXPLANATION,
+    },
+    ToolInfo {
+        id: "browser_hover",
+        name: || i18n::tc!("agent tool", "Browser: Hover"),
+        description: i18n::msg!("Moving the mouse over pages in the built-in browser"),
+        regex_explanation: BROWSER_TARGET_EXPLANATION,
+    },
+    ToolInfo {
+        id: "browser_type",
+        name: || i18n::tc!("agent tool", "Browser: Type"),
+        description: i18n::msg!("Typing text into pages in the built-in browser"),
+        regex_explanation: i18n::msg!("Patterns are matched against the text being typed."),
+    },
+    ToolInfo {
+        id: "browser_press_key",
+        name: || i18n::tc!("agent tool", "Browser: Press Keys"),
+        description: i18n::msg!("Pressing keys in pages in the built-in browser"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the keys being pressed, such as `ctrl+a Backspace`."
+        ),
+    },
+    ToolInfo {
+        id: "browser_scroll",
+        name: || i18n::tc!("agent tool", "Browser: Scroll"),
+        description: i18n::msg!("Scrolling pages in the built-in browser"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the direction: `up`, `down`, `left` or `right`."
+        ),
+    },
+    ToolInfo {
+        id: "browser_set_value",
+        name: || i18n::tc!("agent tool", "Browser: Set Value"),
+        description: i18n::msg!("Setting the values of form fields in the built-in browser"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the new value (an array or other non-text value as JSON)."
+        ),
+    },
+    ToolInfo {
+        id: "browser_eval",
+        name: || i18n::tc!("agent tool", "Browser: Run JavaScript"),
+        description: i18n::msg!("Running JavaScript in pages in the built-in browser"),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the JavaScript expression being run."
+        ),
+    },
 ];
+
+const BROWSER_TAB_EXPLANATION: &str =
+    i18n::msg!("Patterns are matched against the tab's id, such as `1`.");
+const BROWSER_TARGET_EXPLANATION: &str = i18n::msg!(
+    "Patterns are matched against the element's ref, such as `e12`, or against the point as `x,y`."
+);
 
 pub(crate) struct ToolInfo {
     id: &'static str,
@@ -348,6 +434,17 @@ fn get_tool_render_fn(
         "skill" => render_skill_tool_config,
         "apply_code_action" => render_apply_code_action_tool_config,
         "rename_symbol" => render_rename_symbol_tool_config,
+        "browser_open_tab" => render_browser_open_tab_tool_config,
+        "browser_close_tab" => render_browser_close_tab_tool_config,
+        "browser_select_tab" => render_browser_select_tab_tool_config,
+        "browser_navigate" => render_browser_navigate_tool_config,
+        "browser_click" => render_browser_click_tool_config,
+        "browser_hover" => render_browser_hover_tool_config,
+        "browser_type" => render_browser_type_tool_config,
+        "browser_press_key" => render_browser_press_key_tool_config,
+        "browser_scroll" => render_browser_scroll_tool_config,
+        "browser_set_value" => render_browser_set_value_tool_config,
+        "browser_eval" => render_browser_eval_tool_config,
         _ => render_terminal_tool_config, // fallback
     }
 }
@@ -1610,6 +1707,17 @@ tool_config_page_fn!(render_web_search_tool_config, "search_web");
 tool_config_page_fn!(render_skill_tool_config, "skill");
 tool_config_page_fn!(render_apply_code_action_tool_config, "apply_code_action");
 tool_config_page_fn!(render_rename_symbol_tool_config, "rename_symbol");
+tool_config_page_fn!(render_browser_open_tab_tool_config, "browser_open_tab");
+tool_config_page_fn!(render_browser_close_tab_tool_config, "browser_close_tab");
+tool_config_page_fn!(render_browser_select_tab_tool_config, "browser_select_tab");
+tool_config_page_fn!(render_browser_navigate_tool_config, "browser_navigate");
+tool_config_page_fn!(render_browser_click_tool_config, "browser_click");
+tool_config_page_fn!(render_browser_hover_tool_config, "browser_hover");
+tool_config_page_fn!(render_browser_type_tool_config, "browser_type");
+tool_config_page_fn!(render_browser_press_key_tool_config, "browser_press_key");
+tool_config_page_fn!(render_browser_scroll_tool_config, "browser_scroll");
+tool_config_page_fn!(render_browser_set_value_tool_config, "browser_set_value");
+tool_config_page_fn!(render_browser_eval_tool_config, "browser_eval");
 
 #[cfg(test)]
 mod tests {
@@ -1712,6 +1820,16 @@ mod tests {
             "annotate_code",
             "code_tour",
             "clear_annotations",
+            // The built-in browser's tools that only read the page (ADR-F89) run without
+            // asking; the ones that act on it are in TOOLS.
+            "browser_tabs",
+            "browser_page_text",
+            "browser_snapshot",
+            "browser_find",
+            "browser_screenshot",
+            "browser_console",
+            "browser_network",
+            "browser_wait_for",
         ];
 
         let tool_info_ids: Vec<&str> = TOOLS.iter().map(|t| t.id).collect();
@@ -1734,6 +1852,17 @@ mod tests {
                 tool_name,
             );
         }
+
+        let browser_tool_ids = tool_info_ids
+            .iter()
+            .filter(|id| id.starts_with("browser_"))
+            .copied()
+            .collect::<Vec<_>>();
+        assert_eq!(
+            browser_tool_ids,
+            agent::BROWSER_ACTING_TOOL_NAMES,
+            "the browser tools that ask are exactly the ones with permission rules"
+        );
 
         for tool_id in &tool_info_ids {
             assert!(

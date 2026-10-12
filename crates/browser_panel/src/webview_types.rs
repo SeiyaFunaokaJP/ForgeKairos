@@ -17,16 +17,12 @@ use futures::channel::oneshot;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WebViewProfile {
     User,
-    // TEMPORARY STUB (core): constructed once AI tabs exist.
-    #[allow(dead_code)]
     Ai,
 }
 
 /// The answer of [`WebViewOptions::navigation_filter`] for one top-level
 /// navigation. `Deny` carries the reason reported back to whoever navigated.
 #[derive(Clone, Debug, PartialEq, Eq)]
-// TEMPORARY STUB (core): constructed by the AI tab's navigation filter.
-#[allow(dead_code)]
 pub(crate) enum NavigationDecision {
     Allow,
     Deny(String),
@@ -36,6 +32,9 @@ pub(crate) enum NavigationDecision {
 #[derive(Clone)]
 pub(crate) struct WebViewOptions {
     pub(crate) profile: WebViewProfile,
+    /// WebKit on macOS keeps its stores under `~/Library/WebKit/<bundle id>/`
+    /// and has no API to put them elsewhere.
+    #[cfg_attr(all(target_os = "macos", not(test)), expect(dead_code))]
     pub(crate) user_data_folder: PathBuf,
     /// `http://127.0.0.1:<port>`; `None` connects directly.
     pub(crate) proxy_endpoint: Option<String>,
@@ -49,6 +48,8 @@ pub(crate) struct WebViewOptions {
     pub(crate) block_downloads: bool,
 }
 
+// Only WebView2 logs it; the other backends decide per option.
+#[cfg(windows)]
 impl WebViewOptions {
     /// Whether anything beyond the plain user profile is asked for.
     pub(crate) fn uses_ai_tab_features(&self) -> bool {
@@ -62,8 +63,6 @@ impl WebViewOptions {
 /// Trusted (browser-level, `isTrusted == true`) input. Coordinates are CSS
 /// pixels relative to the viewport's top-left corner.
 #[derive(Clone, Debug, PartialEq)]
-// TEMPORARY STUB (core): constructed by the browser automation.
-#[allow(dead_code)]
 pub(crate) enum NativeInput {
     MouseMove {
         x: f64,
@@ -110,7 +109,10 @@ impl std::error::Error for NativeInputUnsupported {}
 /// view drains from a GPUI task.
 pub(crate) enum WebViewEvent {
     Ready,
-    /// Creation failed; the payload says why, for the log.
+    /// Creation failed; the payload says why, for the log. Only WebView2
+    /// creates its page after `WebView::new` has returned; the other
+    /// backends fail from `new` itself.
+    #[cfg(windows)]
     Failed(String),
     UrlChanged(String),
     TitleChanged(String),
@@ -130,15 +132,11 @@ pub(crate) enum WebViewEvent {
     /// re-targeted at the current view instead of spawning a browser window.
     OpenInPlace(String),
     /// A top-level navigation that [`WebViewOptions::navigation_filter`] denied.
-    // TEMPORARY STUB (win/mac/linux): sent once the backends apply the filter.
-    #[allow(dead_code)]
     NavigationBlocked {
         url: String,
         reason: String,
     },
     /// A download cancelled because of [`WebViewOptions::block_downloads`].
-    // TEMPORARY STUB (win/mac/linux): sent once the backends block downloads.
-    #[allow(dead_code)]
     DownloadBlocked {
         url: String,
     },

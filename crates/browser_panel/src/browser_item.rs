@@ -45,6 +45,8 @@ use workspace::{
 use crate::{
     BrowserHost, BrowserPanel, BrowserSettings, BrowserView, BrowserViewEvent, ClosePanelTab,
     NewPanelTab, NewTabPlacement,
+    browser_view::{AI_TAB_BLANK_URL, AI_TAB_TOOLTIP},
+    webview::WebViewProfile,
 };
 
 /// 「1 周期のあいだ一度も描画されなかった」を判定する間隔。短くするほど隠れるのが
@@ -171,14 +173,25 @@ impl BrowserItem {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
+        Self::open_with_profile(workspace, url, WebViewProfile::User, window, cx);
+    }
+
+    pub(crate) fn open_with_profile(
+        workspace: &mut Workspace,
+        url: Option<String>,
+        profile: WebViewProfile,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
         let workspace_handle = workspace.weak_handle();
         let fs = workspace.app_state().fs.clone();
         let item = cx.new(|cx| {
-            BrowserItem::new(
+            BrowserItem::with_initial_page(
                 workspace_handle,
                 fs,
                 BrowserHost::EditorTab,
-                url,
+                profile,
+                InitialPage::Open(url),
                 window,
                 cx,
             )
@@ -196,7 +209,35 @@ impl BrowserItem {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::with_initial_page(workspace, fs, host, InitialPage::Open(url), window, cx)
+        Self::with_initial_page(
+            workspace,
+            fs,
+            host,
+            WebViewProfile::User,
+            InitialPage::Open(url),
+            window,
+            cx,
+        )
+    }
+
+    /// AI タブ (ADR-F89)。`url` が `None` なら空のページで、利用者のホームページは開かない。
+    pub(crate) fn new_ai(
+        workspace: WeakEntity<Workspace>,
+        fs: Arc<dyn Fs>,
+        host: BrowserHost,
+        url: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self::with_initial_page(
+            workspace,
+            fs,
+            host,
+            WebViewProfile::Ai,
+            InitialPage::Open(url),
+            window,
+            cx,
+        )
     }
 
     /// ブラウザーパネルが自分のために持っておくタブ。ホームページは読み込まず、
@@ -209,21 +250,36 @@ impl BrowserItem {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::with_initial_page(workspace, fs, host, InitialPage::DeferredHome, window, cx)
+        Self::with_initial_page(
+            workspace,
+            fs,
+            host,
+            WebViewProfile::User,
+            InitialPage::DeferredHome,
+            window,
+            cx,
+        )
     }
 
     fn with_initial_page(
         workspace: WeakEntity<Workspace>,
         fs: Arc<dyn Fs>,
         host: BrowserHost,
+        profile: WebViewProfile,
         page: InitialPage,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let view = cx.new(|cx| BrowserView::new(workspace.clone(), fs, host, window, cx));
+        let view = cx.new(|cx| BrowserView::new(workspace.clone(), fs, host, profile, window, cx));
 
         view.update(cx, |view, cx| match page {
             InitialPage::DeferredHome => view.defer_home_page(cx),
+            InitialPage::Open(url) if profile == WebViewProfile::Ai => {
+                let url = url
+                    .filter(|url| !url.trim().is_empty())
+                    .unwrap_or_else(|| AI_TAB_BLANK_URL.to_string());
+                view.set_initial_url(url, window, cx);
+            }
             InitialPage::Open(url) => {
                 let initial_url =
                     url.unwrap_or_else(|| BrowserSettings::get_global(cx).home_url.clone());
@@ -393,7 +449,14 @@ impl BrowserItem {
     }
 
     fn open_sibling_tab(&mut self, _: &NewPanelTab, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_tab_beside_self(None, NewTabPlacement::Foreground, window, cx);
+        // 「+」は普段のタブ。AI タブは `NewAiTab` で明示して開く。
+        self.open_tab_beside_self(
+            None,
+            WebViewProfile::User,
+            NewTabPlacement::Foreground,
+            window,
+            cx,
+        );
     }
 
     /// 「もう 1 枚」をこのタブの隣に開く。パネルに載っているならそのペイン、
@@ -401,25 +464,30 @@ impl BrowserItem {
     fn open_tab_beside_self(
         &mut self,
         url: Option<String>,
+        profile: WebViewProfile,
         placement: NewTabPlacement,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let host = self.view.read(cx).host();
         let item_id = cx.entity_id();
+        let workspace = self.workspace.clone();
         // ペインを触るのは次の機会に回す (このアイテムの更新中に、同じアイテムを
-        // 抱えるペインを触りに行かないように)。
-        cx.defer_in(window, move |this, window, cx| {
-            this.workspace
+        // 抱えるペインを触りに行かないように)。`cx.defer_in` ではこのアイテムを
+        // 更新中のまま呼ばれ、ペインがタブを足すときにこのアイテムを読んで panic する。
+        window.defer(cx, move |window, cx| {
+            workspace
                 .update(cx, |workspace, cx| match host {
                     BrowserHost::Panel => {
                         if let Some(panel) = workspace.panel::<BrowserPanel>(cx) {
                             panel.update(cx, |panel, cx| {
-                                panel.open_beside_item(item_id, url, placement, window, cx)
+                                panel.open_beside_item(item_id, url, profile, placement, window, cx)
                             });
                         }
                     }
-                    BrowserHost::EditorTab => BrowserItem::open(workspace, url, window, cx),
+                    BrowserHost::EditorTab => {
+                        BrowserItem::open_with_profile(workspace, url, profile, window, cx)
+                    }
                 })
                 .log_err();
         });
@@ -440,9 +508,12 @@ impl BrowserItem {
             // 「新しいタブで開く」は同じタブ列の中に開く。パネルに載っているなら
             // そのペイン、エディター領域ならアクティブなペイン。
             BrowserViewEvent::OpenInNewTab(url) => {
-                // ブラウザーと同じく背景タブ (今のページは見えたまま)。
+                // ブラウザーと同じく背景タブ (今のページは見えたまま)。AI タブから
+                // 開いたものは AI タブのまま (利用者のプロファイルへ持ち出さない)。
+                let profile = self.view.read(cx).profile();
                 self.open_tab_beside_self(
                     Some(url.clone()),
+                    profile,
                     NewTabPlacement::Background,
                     window,
                     cx,
@@ -585,13 +656,25 @@ impl Item for BrowserItem {
         self.view.read(cx).tab_label()
     }
 
-    fn tab_icon(&self, _: &Window, _: &App) -> Option<Icon> {
+    fn tab_icon(&self, _: &Window, cx: &App) -> Option<Icon> {
+        if self.view.read(cx).is_ai_tab() {
+            return Some(Icon::new(IconName::Sparkle).color(Color::Accent));
+        }
         Some(Icon::new(IconName::ToolWeb))
     }
 
     fn tab_tooltip_text(&self, cx: &App) -> Option<SharedString> {
-        let url = self.view.read(cx).current_url().trim().to_string();
-        (!url.is_empty()).then(|| crate::tab_tooltip(&url))
+        let view = self.view.read(cx);
+        let url = view.current_url().trim().to_string();
+        let url_tooltip = (!url.is_empty()).then(|| crate::tab_tooltip(&url));
+        if !view.is_ai_tab() {
+            return url_tooltip;
+        }
+        let ai_tooltip = i18n::tr(AI_TAB_TOOLTIP);
+        Some(match url_tooltip {
+            Some(url) => format!("{ai_tooltip}\n{url}").into(),
+            None => ai_tooltip.into(),
+        })
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -674,12 +757,14 @@ impl SerializableItem for BrowserItem {
         cx: &mut Context<Self>,
     ) -> Option<Task<anyhow::Result<()>>> {
         let workspace_id = workspace.database_id()?;
-        let url = self.view.read(cx).current_url().trim().to_string();
+        let view = self.view.read(cx);
+        let url = view.current_url().trim().to_string();
         if url.is_empty() {
             return None;
         }
+        let ai = view.is_ai_tab();
         let db = BrowserItemDb::global(cx);
-        Some(cx.background_spawn(async move { db.save_url(item_id, workspace_id, url).await }))
+        Some(cx.background_spawn(async move { db.save_tab(item_id, workspace_id, url, ai).await }))
     }
 
     /// URL が変わるたびに `ItemEvent::UpdateTab` が飛ぶ (`BrowserView` の
@@ -697,11 +782,13 @@ impl SerializableItem for BrowserItem {
         cx: &mut App,
     ) -> Task<anyhow::Result<Entity<Self>>> {
         let db = BrowserItemDb::global(cx);
-        let url = db
-            .get_url(item_id, workspace_id)
-            .log_err()
-            .flatten()
-            .filter(|url| !url.trim().is_empty());
+        let (url, ai) = match db.get_tab(item_id, workspace_id).log_err().flatten() {
+            Some((url, ai)) => (
+                url.filter(|url| !url.trim().is_empty()),
+                ai.unwrap_or(false),
+            ),
+            None => (None, false),
+        };
         let fs = workspace
             .upgrade()
             .map(|workspace| workspace.read(cx).app_state().fs.clone());
@@ -713,6 +800,10 @@ impl SerializableItem for BrowserItem {
         // ホストは `Item::added_to_workspace` が既定の「エディター領域のタブ」に
         // 直し、パネルに載ったならパネルが `AddItem` の直後に上書きする。
         Task::ready(Ok(cx.new(|cx| match url {
+            // AI タブは AI タブのまま戻す (戻した先で利用者のプロファイルに化けないように)。
+            Some(url) if ai => {
+                BrowserItem::new_ai(workspace, fs, BrowserHost::EditorTab, Some(url), window, cx)
+            }
             Some(url) => {
                 BrowserItem::new(workspace, fs, BrowserHost::EditorTab, Some(url), window, cx)
             }
@@ -745,23 +836,31 @@ mod persistence {
     impl Domain for BrowserItemDb {
         const NAME: &str = stringify!(BrowserItemDb);
 
-        const MIGRATIONS: &[&str] = &[sql!(
-            CREATE TABLE browser_items (
-                workspace_id INTEGER,
-                item_id INTEGER,
+        const MIGRATIONS: &[&str] = &[
+            sql!(
+                CREATE TABLE browser_items (
+                    workspace_id INTEGER,
+                    item_id INTEGER,
 
-                url TEXT,
+                    url TEXT,
 
-                PRIMARY KEY(workspace_id, item_id),
-                FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id)
-                ON DELETE CASCADE
-            ) STRICT;
-        )];
+                    PRIMARY KEY(workspace_id, item_id),
+                    FOREIGN KEY(workspace_id) REFERENCES workspaces(workspace_id)
+                    ON DELETE CASCADE
+                ) STRICT;
+            ),
+            // AI タブ (ADR-F89) か。前の版の行は NULL = 普段のタブ。
+            sql!(
+                ALTER TABLE browser_items ADD COLUMN ai INTEGER;
+            ),
+        ];
     }
 
     db::static_connection!(BrowserItemDb, [WorkspaceDb]);
 
     impl BrowserItemDb {
+        // 前の版と同じ書き方 (`ai` 列を持たない行)。テストが旧データの代役に使う。
+        #[cfg(test)]
         query! {
             pub async fn save_url(item_id: ItemId, workspace_id: WorkspaceId, url: String) -> Result<()> {
                 INSERT OR REPLACE INTO browser_items(item_id, workspace_id, url)
@@ -769,9 +868,25 @@ mod persistence {
             }
         }
 
+        #[cfg(test)]
         query! {
             pub fn get_url(item_id: ItemId, workspace_id: WorkspaceId) -> Result<Option<String>> {
                 SELECT url
+                FROM browser_items
+                WHERE item_id = ? AND workspace_id = ?
+            }
+        }
+
+        query! {
+            pub async fn save_tab(item_id: ItemId, workspace_id: WorkspaceId, url: String, ai: bool) -> Result<()> {
+                INSERT OR REPLACE INTO browser_items(item_id, workspace_id, url, ai)
+                VALUES (?, ?, ?, ?)
+            }
+        }
+
+        query! {
+            pub fn get_tab(item_id: ItemId, workspace_id: WorkspaceId) -> Result<Option<(Option<String>, Option<bool>)>> {
+                SELECT url, ai
                 FROM browser_items
                 WHERE item_id = ? AND workspace_id = ?
             }

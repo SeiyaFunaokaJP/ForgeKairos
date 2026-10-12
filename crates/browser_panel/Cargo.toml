@@ -20,11 +20,13 @@ async-recursion.workspace = true
 browser_control.workspace = true
 db.workspace = true
 editor.workspace = true
+egress_policy.workspace = true
 fs.workspace = true
 futures.workspace = true
 gpui.workspace = true
 http_client.workspace = true
 i18n.workspace = true
+image.workspace = true
 log.workspace = true
 paths.workspace = true
 project.workspace = true
@@ -53,11 +55,85 @@ features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
     "Win32_System_WinRT",
     "Win32_UI_HiDpi",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
 ]
+
+# WKWebView hosts the browsing surface on macOS. WebKit and Network.framework
+# ship with the OS, so nothing is bundled; the APIs newer than the deployment
+# target (10.15) are looked up at runtime.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2.workspace = true
+libc.workspace = true
+objc2.workspace = true
+objc2-app-kit = { workspace = true, features = [
+    "NSAppearance",
+    "NSBitmapImageRep",
+    "NSColor",
+    "NSEvent",
+    "NSImage",
+    "NSImageRep",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+] }
+objc2-core-graphics = { workspace = true, features = ["CGPath"] }
+objc2-foundation = { workspace = true, features = [
+    "NSArray",
+    "NSData",
+    "NSDictionary",
+    "NSError",
+    "NSGeometry",
+    "NSKeyValueObserving",
+    "NSObject",
+    "NSProcessInfo",
+    "NSRunLoop",
+    "NSString",
+    "NSURL",
+    "NSURLRequest",
+    "NSURLResponse",
+    "NSUUID",
+] }
+objc2-quartz-core = { workspace = true, features = [
+    "CALayer",
+    "CAShapeLayer",
+    "CATransaction",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+    "std",
+] }
+objc2-web-kit = { workspace = true, features = [
+    "block2",
+    "objc2-app-kit",
+    "objc2-core-foundation",
+    "std",
+    "WKDownload",
+    "WKFrameInfo",
+    "WKNavigation",
+    "WKNavigationAction",
+    "WKNavigationDelegate",
+    "WKNavigationResponse",
+    "WKPreferences",
+    "WKSecurityOrigin",
+    "WKSnapshotConfiguration",
+    "WKUIDelegate",
+    "WKUserContentController",
+    "WKUserScript",
+    "WKWebView",
+    "WKWebViewConfiguration",
+    "WKWebsiteDataStore",
+    "WKWindowFeatures",
+] }
+raw-window-handle.workspace = true
+
+# WebKitGTK 4.1 and GTK 3 are opened with dlopen at runtime (ADR-F89), so the
+# binary gains no link-time dependency on them and still starts without them.
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+libloading = "0.8"
+raw-window-handle.workspace = true
 
 [dev-dependencies]
 editor = { workspace = true, features = ["test-support"] }

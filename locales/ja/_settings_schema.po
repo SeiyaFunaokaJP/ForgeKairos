@@ -3844,6 +3844,10 @@ msgid "Whether \"Launch Claude Code\" always launches outside the sandbox, witho
 msgstr "「Claude Code を起動」を、確認なしで常にサンドボックスの外で起動するかどうか。外では書き込みが制限されず、通信の制限はプロキシの設定を読むプログラムにだけ効きます (SSH の接続先では通信の制限がまったく効きません)。ユーザー設定にだけ書け、プロジェクトの設定では変えられません。\n\n既定値: false"
 
 msgctxt "settings schema"
+msgid "Whether AI agents (the built-in agent and MCP clients) may drive the\nbuilt-in browser's AI tabs, for debugging web apps.\n\nAI tabs use their own browser profile and always go through the egress\nallowlist proxy, whatever `use_egress_proxy` says.\n\nDefault: false"
+msgstr "AI エージェント (内蔵のエージェントと MCP クライアント) が、Web アプリのデバッグのために内蔵ブラウザーの AI タブを操作してよいかどうか。\n\nAI タブは専用のブラウザープロファイルを使い、`use_egress_proxy` の値に関わらず、常に通信の許可リストのプロキシを通ります。\n\n既定値: false"
+
+msgctxt "settings schema"
 msgid "Whether Anthropic's fast mode is available for this model."
 msgstr "このモデルで Anthropic のファストモードを利用できるかどうかを設定します。"
 

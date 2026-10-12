@@ -5,6 +5,21 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "AI control is off"
+msgstr "AI による操作はオフです"
+
+msgid "AI control paused"
+msgstr "AI による操作を止めています"
+
+msgid "AI is operating…"
+msgstr "AI が操作中…"
+
+msgid "AI tab: separate profile, network limited to the allowlist"
+msgstr "AI タブ: 別プロファイル。通信は許可リストの範囲だけ"
+
+msgid "AI tabs need the network allowlist proxy, which is not running, so this tab cannot open pages."
+msgstr "AI タブには通信の許可リストのプロキシが必要ですが、動いていないため、このタブではページを開けません。"
+
 msgid "Add Bookmark"
 msgstr "ブックマークを追加"
 
@@ -13,6 +28,12 @@ msgstr "フォルダーを追加"
 
 msgid "Back"
 msgstr "戻る"
+
+msgid "Blocked a download in this AI tab: {url}"
+msgstr "この AI タブでのダウンロードを止めました: {url}"
+
+msgid "Blocked {url}: AI tabs only open http and https pages on the network allowlist."
+msgstr "{url} を止めました: AI タブで開けるのは、許可リストにある http と https のページだけです。"
 
 msgid "Bookmark This Page"
 msgstr "このページをブックマークに追加"
@@ -77,11 +98,17 @@ msgstr "読み込み中…"
 msgid "Move to Editor Area"
 msgstr "エディター領域へ移す"
 
+msgid "New AI Tab"
+msgstr "新しい AI タブ"
+
 msgid "New Tab"
 msgstr "新しいタブ"
 
 msgid "No bookmarks yet. Use the star button in the toolbar to add the current page."
 msgstr "ブックマークはまだありません。ツールバーの星ボタンで今のページを追加できます。"
+
+msgid "Open Developer Tools"
+msgstr "開発者ツールを開く"
 
 msgid "Open Download Page"
 msgstr "ダウンロードページを開く"
@@ -98,6 +125,9 @@ msgstr "外部ブラウザーで開く"
 msgid "Reload"
 msgstr "再読み込み"
 
+msgid "Resume"
+msgstr "再開"
+
 msgid "Save"
 msgstr "保存"
 
@@ -107,14 +137,29 @@ msgstr "起動時に開くページを {url} にしました。"
 msgid "Show Folder Contents"
 msgstr "フォルダーの中身を開く"
 
+msgid "Show Window"
+msgstr "ウィンドウを表示"
+
+msgid "Shown in a separate window"
+msgstr "別のウィンドウに表示しています"
+
 msgid "Split Right"
 msgstr "右に分割"
 
 msgid "Starting the built-in browser…"
 msgstr "内蔵ブラウザーを起動しています…"
 
+msgid "Stop AI"
+msgstr "AI を止める"
+
+msgid "The AI tab's browser could not start: {detail}"
+msgstr "AI タブのブラウザーを起動できませんでした: {detail}"
+
 msgid "The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime."
 msgstr "WebView2 ランタイムが見つかりません。Microsoft Edge WebView2 ランタイムをインストールしてください。"
+
+msgid "The built-in browser couldn't be started in this window."
+msgstr "このウィンドウでは内蔵ブラウザーを起動できませんでした。"
 
 msgid "The built-in browser isn't supported on this platform."
 msgstr "このプラットフォームでは内蔵ブラウザーは未対応です。"
@@ -122,8 +167,15 @@ msgstr "このプラットフォームでは内蔵ブラウザーは未対応で
 msgid "Top Level"
 msgstr "最上位"
 
+msgid "WebKitGTK 4.1 wasn't found. Install libwebkit2gtk-4.1-0 (Debian/Ubuntu) or webkit2gtk4.1 (Fedora)."
+msgstr "WebKitGTK 4.1 が見つかりません。libwebkit2gtk-4.1-0 (Debian/Ubuntu) または webkit2gtk4.1 (Fedora) をインストールしてください。"
+
 msgid "{url} — Ctrl-click or middle-click to open in a new tab"
 msgstr "{url} — Ctrl+クリック / 中クリックで新しいタブ"
+
+msgctxt "browser AI tab badge"
+msgid "AI"
+msgstr "AI"
 
 msgctxt "browser bookmark"
 msgid "Cancel"
