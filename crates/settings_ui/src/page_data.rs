@@ -1675,31 +1675,27 @@ fn keymap_page() -> SettingsPage {
         ]
     }
 
-    fn modal_editing_section() -> [SettingsPageItem; 3] {
+    fn editing_mode_section() -> [SettingsPageItem; 2] {
         [
-            SettingsPageItem::SectionHeader("Modal Editing"),
+            SettingsPageItem::SectionHeader("Editing Mode"),
+            // One choice over `vim_mode`, `helix_mode` and the Emacs base
+            // keymap (ADR-F91); its JSON path names the setting it most often
+            // writes.
             SettingsPageItem::SettingItem(SettingItem {
-                title: "Vim Mode",
-                description: "Enable Vim mode and key bindings.",
+                title: "Editing Mode",
+                description: "Normal, Vim, Helix, or Emacs key bindings. Vim and Helix work on top of the base keymap; Emacs is a base keymap of its own, so choosing it here also sets the base keymap.",
                 field: Box::new(SettingField {
                     organization_override: None,
                     json_path: Some("vim_mode"),
-                    pick: |settings_content| settings_content.vim_mode.as_ref(),
-                    write: write_vim_mode,
+                    pick: settings::EditingModeContent::read_static,
+                    write: |settings_content, value, _| {
+                        settings::EditingModeContent::write(settings_content, value);
+                    },
                 }),
-                metadata: None,
-                files: USER,
-            }),
-            SettingsPageItem::SettingItem(SettingItem {
-                title: "Helix Mode",
-                description: "Enable Helix mode and key bindings.",
-                field: Box::new(SettingField {
-                    organization_override: None,
-                    json_path: Some("helix_mode"),
-                    pick: |settings_content| settings_content.helix_mode.as_ref(),
-                    write: write_helix_mode,
-                }),
-                metadata: None,
+                metadata: Some(Box::new(SettingsFieldMetadata {
+                    should_do_titlecase: Some(false),
+                    ..Default::default()
+                })),
                 files: USER,
             }),
         ]
@@ -1708,7 +1704,7 @@ fn keymap_page() -> SettingsPage {
     let items: Box<[SettingsPageItem]> = concat_sections!(
         keybindings_section(),
         base_keymap_section(),
-        modal_editing_section(),
+        editing_mode_section(),
     );
 
     SettingsPage {
@@ -12566,32 +12562,6 @@ where
     <<T as strum::IntoDiscriminant>::Discriminant as strum::VariantArray>::VARIANTS
 }
 
-/// Updates the `vim_mode` setting, disabling `helix_mode` if present and
-/// `vim_mode` is being enabled.
-fn write_vim_mode(settings: &mut SettingsContent, value: Option<bool>, _: &App) {
-    write_vim_mode_inner(settings, value);
-}
-
-fn write_vim_mode_inner(settings: &mut SettingsContent, value: Option<bool>) {
-    if value == Some(true) && settings.helix_mode == Some(true) {
-        settings.helix_mode = Some(false);
-    }
-    settings.vim_mode = value;
-}
-
-/// Updates the `helix_mode` setting, disabling `vim_mode` if present and
-/// `helix_mode` is being enabled.
-fn write_helix_mode(settings: &mut SettingsContent, value: Option<bool>, _: &App) {
-    write_helix_mode_inner(settings, value);
-}
-
-fn write_helix_mode_inner(settings: &mut SettingsContent, value: Option<bool>) {
-    if value == Some(true) && settings.vim_mode == Some(true) {
-        settings.vim_mode = Some(false);
-    }
-    settings.helix_mode = value;
-}
-
 /// 内蔵ブラウザー (ADR-F19)。ブックマークは設定ではなく `browser_bookmarks.json`
 /// にあり、ブラウザーパネル内のブックマークペインで編集するのでここには出さない。
 fn browser_page() -> SettingsPage {
@@ -12924,50 +12894,4 @@ pub(crate) fn language_sub_page_items() -> Box<[SettingsPageItem]> {
         non_editor_language_settings_data(),
         edit_prediction_language_settings_section()
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_write_vim_helix_mode() {
-        // Enabling vim mode while `vim_mode` and `helix_mode` are not yet set
-        // should only update the `vim_mode` setting.
-        let mut settings = SettingsContent::default();
-        write_vim_mode_inner(&mut settings, Some(true));
-        assert_eq!(settings.vim_mode, Some(true));
-        assert_eq!(settings.helix_mode, None);
-
-        // Enabling helix mode while `vim_mode` and `helix_mode` are not yet set
-        // should only update the `helix_mode` setting.
-        let mut settings = SettingsContent::default();
-        write_helix_mode_inner(&mut settings, Some(true));
-        assert_eq!(settings.helix_mode, Some(true));
-        assert_eq!(settings.vim_mode, None);
-
-        // Disabling helix mode should only touch `helix_mode` setting when
-        // `vim_mode` is not set.
-        write_helix_mode_inner(&mut settings, Some(false));
-        assert_eq!(settings.helix_mode, Some(false));
-        assert_eq!(settings.vim_mode, None);
-
-        // Enabling vim mode should update `vim_mode` but leave `helix_mode`
-        // untouched.
-        write_vim_mode_inner(&mut settings, Some(true));
-        assert_eq!(settings.vim_mode, Some(true));
-        assert_eq!(settings.helix_mode, Some(false));
-
-        // Enabling helix mode should update `helix_mode` and disable
-        // `vim_mode`.
-        write_helix_mode_inner(&mut settings, Some(true));
-        assert_eq!(settings.helix_mode, Some(true));
-        assert_eq!(settings.vim_mode, Some(false));
-
-        // Enabling vim mode should update `vim_mode` and disable
-        // `helix_mode`.
-        write_vim_mode_inner(&mut settings, Some(true));
-        assert_eq!(settings.vim_mode, Some(true));
-        assert_eq!(settings.helix_mode, Some(false));
-    }
 }

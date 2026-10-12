@@ -1,6 +1,7 @@
 mod agent_api_keys_onboarding;
 mod agent_panel_onboarding_card;
 mod agent_panel_onboarding_content;
+mod ai_usage_notice;
 mod edit_prediction_onboarding_content;
 mod plan_definitions;
 mod young_account_banner;
@@ -8,6 +9,7 @@ mod young_account_banner;
 pub use agent_api_keys_onboarding::{ApiKeysWithProviders, ApiKeysWithoutProviders};
 pub use agent_panel_onboarding_card::AgentPanelOnboardingCard;
 pub use agent_panel_onboarding_content::AgentPanelOnboarding;
+pub use ai_usage_notice::AiUsageNotice;
 use cloud_api_types::Plan;
 pub use edit_prediction_onboarding_content::EditPredictionOnboarding;
 pub use plan_definitions::PlanDefinitions;
@@ -16,7 +18,7 @@ pub use young_account_banner::YoungAccountBanner;
 use std::sync::Arc;
 
 use client::{Client, UserStore, zed_urls};
-use gpui::{Action, AnyElement, Entity, IntoElement, ParentElement, TaskExt};
+use gpui::{AnyElement, Entity, IntoElement, ParentElement, TaskExt};
 use ui::{Divider, RegisterComponent, Tooltip, Vector, VectorName, prelude::*};
 
 #[derive(PartialEq)]
@@ -158,44 +160,18 @@ impl ZedAiOnboarding {
         })
     }
 
-    /// zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10): Zed AI is an external AI
-    /// service, so this card must not offer a way in until the data-retention
-    /// warning has been acknowledged. Consent is granted in the settings window,
-    /// which is also where the egress hosts it needs can be allowed, so this
-    /// only points at it rather than duplicating the checkbox.
+    /// zed-jp-enhance (`.forgekairos-docs/DESIGN.md` ADR-F10, ADR-F91): Zed AI is
+    /// an external AI service, so this card must not offer a way in until the
+    /// data-retention warning has been acknowledged in the settings window.
+    /// Until then it shows what holds for every AI this fork can use rather
+    /// than welcoming the user to one of them.
     fn render_consent_required(&self) -> AnyElement {
-        v_flex()
-            .w_full()
-            .relative()
-            .gap_1()
-            .child(Headline::new(i18n::t!("Welcome to Zed AI")))
-            .child(
-                Label::new(
-                    i18n::t!(
-                        "Zed AI is an external AI service. When it is enabled, the code, file contents, and conversations you enter are sent to Zed's servers and, depending on the provider's policies, may be stored and used to train models."
-                    ),
-                )
-                .color(Color::Muted),
-            )
-            .child(
-                Label::new(
-                    i18n::t!(
-                        "To use it, review the warning under AI → LLM Providers in Settings and check the box to enable it. If you use it for work, be sure to check your organization's policy first."
-                    ),
-                )
-                .color(Color::Muted)
-                .mb_2(),
-            )
-            .child(
-                Button::new("open_ai_settings", i18n::t!("Open AI Settings"))
-                    .full_width()
-                    .style(ButtonStyle::Outlined)
-                    .on_click(move |_, window, cx| {
-                        window.dispatch_action(zed_actions::agent::OpenSettings.boxed_clone(), cx);
-                    }),
-            )
-            .children(self.render_dismiss_button())
-            .into_any_element()
+        let notice = AiUsageNotice::new();
+        match &self.dismiss_onboarding {
+            Some(dismiss) => notice.on_dismiss(dismiss.clone()),
+            None => notice,
+        }
+        .into_any_element()
     }
 
     fn render_sign_in_disclaimer(&self, _cx: &mut App) -> AnyElement {
@@ -205,7 +181,7 @@ impl ZedAiOnboarding {
             .w_full()
             .relative()
             .gap_1()
-            .child(Headline::new(i18n::t!("Welcome to Zed AI")))
+            .child(Headline::new(i18n::t!("Zed AI (External Service)")))
             .child(
                 Label::new(i18n::t!(
                     "Sign in to try GPT Luna. Your 14 days begin when you start the trial."
@@ -237,7 +213,7 @@ impl ZedAiOnboarding {
                 .relative()
                 .min_w_0()
                 .gap_1()
-                .child(Headline::new(i18n::t!("Welcome to Zed AI")))
+                .child(Headline::new(i18n::t!("Zed AI (External Service)")))
                 .child(YoungAccountBanner)
                 .child(
                     v_flex()
@@ -274,7 +250,7 @@ impl ZedAiOnboarding {
                 .w_full()
                 .relative()
                 .gap_1()
-                .child(Headline::new(i18n::t!("Welcome to Zed AI")))
+                .child(Headline::new(i18n::t!("Zed AI (External Service)")))
                 .child(
                     v_flex()
                         .mt_2()

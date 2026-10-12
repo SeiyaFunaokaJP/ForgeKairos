@@ -47,7 +47,6 @@ message	service	-	$10 of tokens in Zed agent
 message	service	-	$5 of tokens in Zed agent
 message	service	-	Tokens in the Zed agent
 message	service	-	Sign in to have access to Zed's complete agentic experience with hosted models.
-message	service	-	Zed AI is an external AI service. When it is enabled, the code, file contents, and conversations you enter are sent to Zed's servers and, depending on the provider's policies, may be stored and used to train models.
 message	service	-	Help us improve our open dataset model by sharing data from open source repositories. Zed must detect a license file in your repo for this setting to take effect. Files with sensitive data and secrets are excluded by default.
 message	fact	-	Help fix Zed by sending crash reports so we can fix critical issues fast
 message	fact	-	Help improve Zed by sending anonymous usage data
@@ -77,4 +76,3 @@ message	fact	action	zed::OpenZedRepo
 translation	application	action	zed::About
 translation	application	action	zed::Quit
 translation	application	WindowDecorations	Client
-translation	application	-	Coming from Neovim? Use our first-class implementation of Vim Mode

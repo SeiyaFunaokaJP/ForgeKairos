@@ -17,6 +17,7 @@ doctest = false
 default = []
 
 [dependencies]
+ai_onboarding.workspace = true
 anyhow.workspace = true
 branding.workspace = true
 client.workspace = true

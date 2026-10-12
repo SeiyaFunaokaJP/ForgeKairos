@@ -144,8 +144,6 @@ p2.i3[base_keymap].description	基準にするキーバインドのセットの�
 p2.i4.header	モーダル編集
 p2.i5[vim_mode].title	Vim モード
 p2.i5[vim_mode].description	Vim モードとそのキーバインドを有効にします。
-p2.i6[helix_mode].title	Helix モード
-p2.i6[helix_mode].description	Helix モードとそのキーバインドを有効にします。
 p3.title	エディター
 p3.i0.header	自動保存
 p3.i1[autosave$].title	自動保存のモード

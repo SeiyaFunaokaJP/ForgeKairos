@@ -20,9 +20,6 @@ msgstr "ベースキーマップ"
 msgid "Cancel"
 msgstr "キャンセル"
 
-msgid "Coming from Neovim? Use our first-class implementation of Vim Mode"
-msgstr "Neovim から移行しますか? ForgeKairos の本格的な Vim モード実装を利用できます"
-
 msgid "Could not find or load a {source} settings file"
 msgstr "{source} の設定ファイルが見つからないか、読み込めませんでした"
 
@@ -34,6 +31,9 @@ msgstr "ヒントを閉じる"
 
 msgid "Edit and save files directly in the results multibuffer!"
 msgstr "検索結果のマルチバッファーで直接ファイルを編集・保存できます"
+
+msgid "Editing Mode"
+msgstr "編集モード"
 
 msgid "Failed to import settings. See log for details"
 msgstr "設定のインポートに失敗しました。詳細はログを確認してください"
@@ -68,6 +68,9 @@ msgstr "詳細"
 msgid "Light"
 msgstr "ライト"
 
+msgid "Normal"
+msgstr "通常"
+
 msgid "Onboarding"
 msgstr "初期設定"
 
@@ -98,8 +101,8 @@ msgstr "テーマ"
 msgid "Trust All Projects By Default"
 msgstr "すべてのプロジェクトを既定で信頼する"
 
-msgid "Vim Mode"
-msgstr "Vim モード"
+msgid "Vim and Helix work on top of the base keymap. Emacs is a base keymap of its own, so choosing it also selects it above."
+msgstr "Vim と Helix はベースキーマップの上に重なります。Emacs はそれ自体がベースキーマップなので、選ぶと上のベースキーマップも Emacs になります。"
 
 msgid "Welcome to Zed"
 msgstr "ForgeKairos へようこそ"

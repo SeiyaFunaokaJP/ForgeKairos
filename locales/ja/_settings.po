@@ -373,6 +373,10 @@ msgctxt "EditPredictionsMode"
 msgid "Subtle"
 msgstr "控えめ"
 
+msgctxt "EditingModeContent"
+msgid "Normal"
+msgstr "通常"
+
 msgctxt "EncodingDisplayOptions"
 msgid "Disabled"
 msgstr "表示しない"
@@ -2254,6 +2258,10 @@ msgid "Edit Predictions"
 msgstr "編集予測"
 
 msgctxt "settings"
+msgid "Editing Mode"
+msgstr "編集モード"
+
+msgctxt "settings"
 msgid "Editor"
 msgstr "エディター"
 
@@ -2280,10 +2288,6 @@ msgstr "Git の差分を有効にする"
 msgctxt "settings"
 msgid "Enable Git Status"
 msgstr "Git の状態を有効にする"
-
-msgctxt "settings"
-msgid "Enable Helix mode and key bindings."
-msgstr "Helix モードとそのキーバインドを有効にします。"
 
 msgctxt "settings"
 msgid "Enable IDE Server"
@@ -2316,10 +2320,6 @@ msgstr "プロジェクトパネルからのプレビュー"
 msgctxt "settings"
 msgid "Enable Preview Multibuffer From Code Navigation"
 msgstr "コードナビゲーションからのマルチバッファーのプレビュー"
-
-msgctxt "settings"
-msgid "Enable Vim mode and key bindings."
-msgstr "Vim モードとそのキーバインドを有効にします。"
 
 msgctxt "settings"
 msgid "Enable drag and drop selection."
@@ -2756,10 +2756,6 @@ msgstr "SSH のターミナルのシェルをリモートの ForgeKairos サー�
 msgctxt "settings"
 msgid "Hard Tabs"
 msgstr "タブ文字を使用"
-
-msgctxt "settings"
-msgid "Helix Mode"
-msgstr "Helix モード"
 
 msgctxt "settings"
 msgid "Hidden Files"
@@ -3362,10 +3358,6 @@ msgid "Miscellaneous"
 msgstr "その他"
 
 msgctxt "settings"
-msgid "Modal Editing"
-msgstr "モーダル編集"
-
-msgctxt "settings"
 msgid "Mode"
 msgstr "モード"
 
@@ -3404,6 +3396,10 @@ msgstr "ネットワーク許可リスト"
 msgctxt "settings"
 msgid "Newly opened terminals start recording their output automatically."
 msgstr "新しく開いたターミナルが、出力の記録を自動で始めます。"
+
+msgctxt "settings"
+msgid "Normal, Vim, Helix, or Emacs key bindings. Vim and Helix work on top of the base keymap; Emacs is a base keymap of its own, so choosing it here also sets the base keymap."
+msgstr "通常・Vim・Helix・Emacs のどのキーバインドで編集するかを選びます。Vim と Helix はベースキーマップの上に重なります。Emacs はそれ自体がベースキーマップなので、ここで選ぶとベースキーマップも Emacs になります。"
 
 msgctxt "settings"
 msgid "Notify When Agent Waiting"
@@ -5064,10 +5060,6 @@ msgstr "Model Context Protocol サーバーの確認・追加・設定・削除�
 msgctxt "settings"
 msgid "Vim"
 msgstr "Vim"
-
-msgctxt "settings"
-msgid "Vim Mode"
-msgstr "Vim モード"
 
 msgctxt "settings"
 msgid "Vim/Emacs Modeline Support"

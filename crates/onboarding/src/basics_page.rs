@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use ai_onboarding::AiUsageNotice;
 use client::{Client, TelemetrySettings, UserStore, zed_urls};
 use cloud_api_types::Plan;
 use collections::HashMap;
@@ -10,7 +11,8 @@ use project::agent_server_store::AllAgentServersSettings;
 use project::project_settings::ProjectSettings;
 use project::{AgentRegistryStore, RegistryAgent};
 use settings::{
-    BaseKeymap, CustomAgentServerSettings, Settings, SettingsStore, update_settings_file,
+    BaseKeymap, CustomAgentServerSettings, EditingModeContent, Settings, SettingsStore,
+    update_settings_file,
 };
 use theme::{Appearance, SystemAppearance, ThemeRegistry};
 use theme_settings::{ThemeAppearanceMode, ThemeName, ThemeSelection, ThemeSettings};
@@ -19,7 +21,7 @@ use ui::{
     ToggleButtonGroup, ToggleButtonGroupSize, ToggleButtonSimple, ToggleButtonWithIcon, Tooltip,
     prelude::*,
 };
-use vim_mode_setting::VimModeSetting;
+use vim_mode_setting::{HelixModeSetting, VimModeSetting};
 
 use crate::{
     ImportCursorSettings, ImportVsCodeSettings, SettingsImportState,
@@ -414,42 +416,76 @@ fn render_base_keymap_section(tab_index: &mut isize, cx: &mut App) -> impl IntoE
     }
 }
 
-fn render_vim_mode_switch(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
-    let toggle_state = if VimModeSetting::get_global(cx).0 {
-        ui::ToggleState::Selected
-    } else {
-        ui::ToggleState::Unselected
-    };
-    SwitchField::new(
-        "onboarding-vim-mode",
-        Some(i18n::t!("Vim Mode")),
-        Some(i18n::t!("Coming from Neovim? Use our first-class implementation of Vim Mode").into()),
-        toggle_state,
-        {
-            let fs = <dyn Fs>::global(cx);
-            move |&selection, _, cx| {
-                let vim_mode = match selection {
-                    ToggleState::Selected => true,
-                    ToggleState::Unselected => false,
-                    ToggleState::Indeterminate => {
-                        return;
-                    }
-                };
-                update_settings_file(fs.clone(), cx, move |setting, _| {
-                    setting.vim_mode = Some(vim_mode);
-                });
+fn render_editing_mode_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
+    let current_mode = EditingModeContent::from_resolved(
+        VimModeSetting::is_enabled(cx),
+        HelixModeSetting::is_enabled(cx),
+        *BaseKeymap::get_global(cx) == BaseKeymap::Emacs,
+    );
+    let modes = [
+        EditingModeContent::Normal,
+        EditingModeContent::Vim,
+        EditingModeContent::Helix,
+        EditingModeContent::Emacs,
+    ];
+    let selected_index = modes
+        .iter()
+        .position(|mode| *mode == current_mode)
+        .unwrap_or(0);
 
-                telemetry::event!(
-                    "Welcome Vim Mode Toggled",
-                    options = if vim_mode { "on" } else { "off" },
-                );
-            }
-        },
-    )
-    .tab_index({
-        *tab_index += 1;
-        *tab_index - 1
-    })
+    h_flex()
+        .gap_2()
+        .flex_wrap()
+        .justify_between()
+        .child(
+            v_flex()
+                .gap_0p5()
+                .max_w_1_2()
+                .child(Label::new(i18n::t!("Editing Mode")))
+                .child(
+                    Label::new(i18n::t!(
+                        "Vim and Helix work on top of the base keymap. Emacs is a base keymap of its own, so choosing it also selects it above."
+                    ))
+                    .color(Color::Muted),
+                ),
+        )
+        .child(
+            ToggleButtonGroup::single_row(
+                "onboarding-editing-mode",
+                modes.map(|mode| {
+                    let label: SharedString = match mode {
+                        EditingModeContent::Normal => i18n::t!("Normal").into(),
+                        EditingModeContent::Vim => "Vim".into(),
+                        EditingModeContent::Helix => "Helix".into(),
+                        EditingModeContent::Emacs => "Emacs".into(),
+                    };
+                    ToggleButtonSimple::new(label, move |_, _, cx| {
+                        write_editing_mode(mode, current_mode, cx);
+                    })
+                }),
+            )
+            .size(ToggleButtonGroupSize::Medium)
+            .tab_index(tab_index)
+            .selected_index(selected_index)
+            .style(ui::ToggleButtonGroupStyle::Outlined)
+            .width(rems_from_px(4.0_f32 * 64.0_f32)),
+        )
+}
+
+fn write_editing_mode(mode: EditingModeContent, previous_mode: EditingModeContent, cx: &App) {
+    if mode == previous_mode {
+        return;
+    }
+    let fs = <dyn Fs>::global(cx);
+    update_settings_file(fs, cx, move |setting, _| {
+        EditingModeContent::write(setting, Some(mode));
+    });
+
+    telemetry::event!(
+        "Welcome Editing Mode Changed",
+        from = format!("{previous_mode:?}"),
+        to = format!("{mode:?}"),
+    );
 }
 
 fn render_worktree_auto_trust_switch(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
@@ -744,6 +780,15 @@ fn render_ai_section(user_store: &Entity<UserStore>, cx: &mut App) -> impl IntoE
             .color(Color::Muted),
         )
         .child(grid)
+        .child(
+            div()
+                .mt_3()
+                .p_3()
+                .rounded_md()
+                .border_1()
+                .border_color(cx.theme().colors().border_variant)
+                .child(AiUsageNotice::compact()),
+        )
 }
 
 pub(crate) fn render_basics_page(user_store: &Entity<UserStore>, cx: &mut App) -> impl IntoElement {
@@ -754,9 +799,9 @@ pub(crate) fn render_basics_page(user_store: &Entity<UserStore>, cx: &mut App) -
         .gap_6()
         .child(render_theme_section(&mut tab_index, cx))
         .child(render_base_keymap_section(&mut tab_index, cx))
+        .child(render_editing_mode_section(&mut tab_index, cx))
         .child(render_ai_section(user_store, cx))
         .child(render_import_settings_section(&mut tab_index, cx))
-        .child(render_vim_mode_switch(&mut tab_index, cx))
         .child(render_worktree_auto_trust_switch(&mut tab_index, cx))
         .when(client::TELEMETRY_OFFERED, |this| {
             this.child(Divider::horizontal().color(ui::DividerColor::BorderVariant))

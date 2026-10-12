@@ -11720,6 +11720,7 @@ dependencies = [
 name = "onboarding"
 version = "0.1.0"
 dependencies = [
+ "ai_onboarding",
  "anyhow",
  "branding",
  "client",

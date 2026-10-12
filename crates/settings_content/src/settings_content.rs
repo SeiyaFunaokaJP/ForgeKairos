@@ -1,5 +1,6 @@
 mod action;
 mod agent;
+mod editing_mode;
 mod editor;
 mod extension;
 mod fallible_options;
@@ -17,6 +18,7 @@ mod workspace;
 pub use action::{ActionName, ActionWithArguments, CommandAliasTarget};
 pub use agent::*;
 use anyhow::Context;
+pub use editing_mode::EditingModeContent;
 pub use editor::*;
 pub use extension::*;
 pub use fallible_options::*;

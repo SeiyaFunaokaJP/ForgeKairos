@@ -378,6 +378,13 @@ const CHANGED_ON_PURPOSE: &[(&str, &str)] = &[
     // The title said 音声のテスト and the button 音声をテスト for the same
     // English; GLOSSARY.md has Test Audio = 音声のテスト.
     ("Test Audio", "音声のテスト"),
+    // The Vim and Helix mode switches became one editing mode choice that
+    // also offers Emacs (ADR-F91); the Helix switch's rows left the table.
+    ("Editing Mode", "編集モード"),
+    (
+        "Normal, Vim, Helix, or Emacs key bindings. Vim and Helix work on top of the base keymap; Emacs is a base keymap of its own, so choosing it here also sets the base keymap.",
+        "通常・Vim・Helix・Emacs のどのキーバインドで編集するかを選びます。Vim と Helix はベースキーマップの上に重なります。Emacs はそれ自体がベースキーマップなので、ここで選ぶとベースキーマップも Emacs になります。",
+    ),
     // These name the values of their dropdown, which now show in Japanese.
     (
         "Cursor shape for insert mode. Inherit uses the editor's cursor shape.",
@@ -958,6 +965,7 @@ fn all_dropdowns() -> Vec<(&'static str, &'static [&'static str])> {
         EditPredictionDataCollectionChoice,
         EditPredictionPromptFormatContent,
         EditPredictionsMode,
+        EditingModeContent,
         EncodingDisplayOptions,
         FolderIndicator,
         FormatOnSave,
@@ -1061,6 +1069,9 @@ const DROPDOWN_LABELS_KEPT_IN_ENGLISH: &[(&str, &str)] = &[
     ("BaseKeymapContent", "Sublime Text"),
     ("BaseKeymapContent", "TextMate"),
     ("BaseKeymapContent", "VSCode"),
+    ("EditingModeContent", "Emacs"),
+    ("EditingModeContent", "Helix"),
+    ("EditingModeContent", "Vim"),
     ("MultiCursorModifier", "Alt"),
 ];
 
