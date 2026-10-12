@@ -80,12 +80,12 @@ impl AiUsageNotice {
                 title: i18n::t!("Sandbox").into(),
                 detail: if compact {
                     i18n::t!(
-                        "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is off by default, and even when allowed each command asks you."
+                        "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
                     )
                     .into()
                 } else {
                     i18n::t!(
-                        "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is off by default and can be allowed in the sandbox settings; even then, each command asks for your confirmation."
+                        "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
                     )
                     .into()
                 },

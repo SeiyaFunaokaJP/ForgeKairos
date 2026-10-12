@@ -29,8 +29,8 @@ msgstr "API キー"
 msgid "Add your own keys to use AI without signing in."
 msgstr "サインインせずに AI を使うには、ご自身のキーを追加してください。"
 
-msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is off by default, and even when allowed each command asks you."
-msgstr "エージェントのコマンドは OS のサンドボックスの中で動きます。プロジェクトの外のファイル操作と新しいネットワークアクセスは先に確認されます。サンドボックスの外での実行は既定で無効で、許可してもコマンドごとに確認されます。"
+msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
+msgstr "エージェントのコマンドは OS のサンドボックスの中で動きます。プロジェクトの外のファイル操作と新しいネットワークアクセスは先に確認されます。サンドボックスの外での実行は既定で許可されていません。許可した場合もターミナルのコマンドは 1 件ずつ確認されますが、外で起動したエージェントは自分の道具を確認なしで使うことがあります。"
 
 msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
 msgstr "GitHub Copilot は設定済みのため、そのまま使い続けることもできます。"
@@ -41,8 +41,8 @@ msgstr "編集予測のプロバイダーとして GitHub Copilot を使うこ�
 msgid "Before You Use AI"
 msgstr "AI を使う前に"
 
-msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is off by default and can be allowed in the sandbox settings; even then, each command asks for your confirmation."
-msgstr "エージェントが実行するコマンドと外部エージェント自体は、OS のサンドボックス (macOS は Seatbelt、Linux は bubblewrap、Windows は WSL) の中で動きます。プロジェクトの外のファイル操作と新しいネットワークアクセスは確認を経ます。サンドボックスの外での実行は既定で無効で、サンドボックスの設定で許可できます。許可しても、コマンドごとに確認を経ます。"
+msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
+msgstr "エージェントが実行するコマンドと外部エージェント自体は、OS のサンドボックス (macOS は Seatbelt、Linux は bubblewrap、Windows は WSL) の中で動きます。プロジェクトの外のファイル操作と新しいネットワークアクセスは確認を経ます。サンドボックスの外での実行は既定で許可されておらず、サンドボックスの設定で許可できます。許可した場合も、サンドボックスの外で動かすターミナルのコマンドは 1 件ずつ確認を経ますが、サンドボックスの外で起動した外部エージェントや Claude Code は、自分の道具を確認なしで使うことがあります。"
 
 msgid "Configure Copilot"
 msgstr "Copilot を設定"
