@@ -70,7 +70,7 @@ impl AiUsageNotice {
                     .into()
                 } else {
                     i18n::t!(
-                        "Connections made by AI (model providers, agent tools, MCP servers, and external agents) are denied by default unless their host is on the network allowlist, and adding a host asks for your confirmation. The list is under Settings → Network → Network Allowlist. The IDE's own tooling, such as language servers and extensions, is not affected."
+                        "Connections made by AI (model providers, agent tools, MCP servers, and external agents) are denied by default unless their host is on the network allowlist, and adding a host asks for your confirmation. The list is under Settings → Network → Network Allowlist. The IDE's own tooling, such as language servers and extensions, is not affected. For an agent started outside the sandbox, the allowlist only reaches programs that honor its proxy settings; it is not enforced."
                     )
                     .into()
                 },
@@ -80,12 +80,12 @@ impl AiUsageNotice {
                 title: i18n::t!("Sandbox").into(),
                 detail: if compact {
                     i18n::t!(
-                        "Agent commands run inside an OS sandbox. Touching files outside the project, opening new network access, or running outside the sandbox asks you first."
+                        "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is off by default, and even when allowed each command asks you."
                     )
                     .into()
                 } else {
                     i18n::t!(
-                        "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project, new network access, and running outside the sandbox ask for your confirmation. Running outside the sandbox is not allowed by default; you can change this in the sandbox settings."
+                        "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is off by default and can be allowed in the sandbox settings; even then, each command asks for your confirmation."
                     )
                     .into()
                 },

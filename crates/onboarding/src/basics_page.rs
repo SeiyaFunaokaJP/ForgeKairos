@@ -460,7 +460,7 @@ fn render_editing_mode_section(tab_index: &mut isize, cx: &mut App) -> impl Into
                         EditingModeContent::Emacs => "Emacs".into(),
                     };
                     ToggleButtonSimple::new(label, move |_, _, cx| {
-                        write_editing_mode(mode, current_mode, cx);
+                        write_editing_mode(mode, cx);
                     })
                 }),
             )
@@ -472,13 +472,34 @@ fn render_editing_mode_section(tab_index: &mut isize, cx: &mut App) -> impl Into
         )
 }
 
-fn write_editing_mode(mode: EditingModeContent, previous_mode: EditingModeContent, cx: &App) {
-    if mode == previous_mode {
+fn write_editing_mode(mode: EditingModeContent, cx: &mut App) {
+    let resolved_vim_mode = VimModeSetting::is_enabled(cx);
+    let resolved_helix_mode = HelixModeSetting::is_enabled(cx);
+    let previous_mode = EditingModeContent::from_resolved(
+        resolved_vim_mode,
+        resolved_helix_mode,
+        *BaseKeymap::get_global(cx) == BaseKeymap::Emacs,
+    );
+    // With both on, the choice shown is Helix, but choosing it again still has
+    // to switch Vim off.
+    if mode == previous_mode && !(resolved_vim_mode && resolved_helix_mode) {
         return;
     }
+
+    // The quick action bar's switches override these for the session only. A
+    // settings file that already says what the choice writes is not reloaded,
+    // so the override would outlive the choice unless it is replaced here.
+    VimModeSetting::override_global(VimModeSetting(mode == EditingModeContent::Vim), cx);
+    HelixModeSetting::override_global(HelixModeSetting(mode == EditingModeContent::Helix), cx);
+
     let fs = <dyn Fs>::global(cx);
     update_settings_file(fs, cx, move |setting, _| {
-        EditingModeContent::write(setting, Some(mode));
+        EditingModeContent::write_over_resolved(
+            setting,
+            mode,
+            resolved_vim_mode,
+            resolved_helix_mode,
+        );
     });
 
     telemetry::event!(
@@ -807,4 +828,71 @@ pub(crate) fn render_basics_page(user_store: &Entity<UserStore>, cx: &mut App) -
             this.child(Divider::horizontal().color(ui::DividerColor::BorderVariant))
                 .child(render_telemetry_section(&mut tab_index, cx))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use fs::FakeFs;
+    use gpui::TestAppContext;
+
+    async fn init_with_user_settings(user_settings: &str, cx: &mut TestAppContext) -> Arc<FakeFs> {
+        let fs = FakeFs::new(cx.executor());
+        let settings_dir = paths::settings_file()
+            .parent()
+            .expect("the settings file is in a directory");
+        fs.create_dir(settings_dir)
+            .await
+            .expect("the fake settings directory is created");
+        fs.insert_file(paths::settings_file(), user_settings.as_bytes().to_vec())
+            .await;
+        cx.update(|cx| {
+            let store = SettingsStore::test(cx);
+            cx.set_global(store);
+            <dyn Fs>::set_global(fs.clone(), cx);
+            cx.update_global(|store: &mut SettingsStore, cx| {
+                store.set_user_settings(user_settings, cx).result()
+            })
+        })
+        .expect("the test's user settings parse");
+        fs
+    }
+
+    // The quick action bar switches Vim on for the session only. When the file
+    // already says what the choice writes, it is not reloaded, so the choice
+    // has to replace the override itself.
+    #[gpui::test]
+    async fn choosing_normal_ends_a_session_only_vim_mode(cx: &mut TestAppContext) {
+        init_with_user_settings("{\n  \"vim_mode\": false\n}\n", cx).await;
+        cx.update(|cx| {
+            VimModeSetting::override_global(VimModeSetting(true), cx);
+            write_editing_mode(EditingModeContent::Normal, cx);
+        });
+        cx.run_until_parked();
+        cx.update(|cx| {
+            assert!(!VimModeSetting::is_enabled(cx));
+            assert!(!HelixModeSetting::is_enabled(cx));
+        });
+    }
+
+    #[gpui::test]
+    async fn leaving_a_mode_the_file_does_not_name_writes_it_off(cx: &mut TestAppContext) {
+        let fs = init_with_user_settings("{}\n", cx).await;
+        cx.update(|cx| {
+            HelixModeSetting::override_global(HelixModeSetting(true), cx);
+            write_editing_mode(EditingModeContent::Emacs, cx);
+        });
+        cx.run_until_parked();
+
+        let written = fs
+            .load(paths::settings_file())
+            .await
+            .expect("the settings file was written");
+        assert!(written.contains("\"helix_mode\": false"), "{written}");
+        assert!(written.contains("\"base_keymap\": \"Emacs\""), "{written}");
+        cx.update(|cx| {
+            assert!(!HelixModeSetting::is_enabled(cx));
+            assert_eq!(*BaseKeymap::get_global(cx), BaseKeymap::Emacs);
+        });
+    }
 }

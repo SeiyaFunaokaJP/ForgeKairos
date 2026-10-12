@@ -11735,6 +11735,7 @@ dependencies = [
  "i18n",
  "menu",
  "notifications",
+ "paths",
  "picker",
  "project",
  "schemars 1.0.4",

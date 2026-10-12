@@ -94,6 +94,28 @@ impl EditingModeContent {
             content.base_keymap = None;
         }
     }
+
+    /// [`Self::write`] for a choice made against the resolved settings, as
+    /// onboarding shows them.
+    ///
+    /// Vim or Helix can be on without the file saying so (the quick action
+    /// bar's switches only override the setting for the session). Leaving the
+    /// key out would then change nothing in the file, the settings would not
+    /// be recomputed and the mode would stay on, so it is written as `false`.
+    pub fn write_over_resolved(
+        content: &mut SettingsContent,
+        mode: Self,
+        resolved_vim_mode: bool,
+        resolved_helix_mode: bool,
+    ) {
+        Self::write(content, Some(mode));
+        if resolved_vim_mode && mode != Self::Vim {
+            content.vim_mode = Some(false);
+        }
+        if resolved_helix_mode && mode != Self::Helix {
+            content.helix_mode = Some(false);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -258,6 +280,34 @@ mod tests {
             written(&content),
             (Some(false), None, Some(BaseKeymapContent::Emacs))
         );
+    }
+
+    #[test]
+    fn a_choice_over_resolved_settings_writes_off_what_is_on() {
+        use EditingModeContent as Mode;
+
+        let mut content = settings(None, None, None);
+        Mode::write_over_resolved(&mut content, Mode::Normal, true, false);
+        assert_eq!(written(&content), (Some(false), None, None));
+
+        let mut content = settings(None, None, None);
+        Mode::write_over_resolved(&mut content, Mode::Emacs, false, true);
+        assert_eq!(
+            written(&content),
+            (None, Some(false), Some(BaseKeymapContent::Emacs))
+        );
+
+        let mut content = settings(None, None, None);
+        Mode::write_over_resolved(&mut content, Mode::Helix, true, true);
+        assert_eq!(written(&content), (Some(false), Some(true), None));
+
+        let mut content = settings(None, None, None);
+        Mode::write_over_resolved(&mut content, Mode::Vim, true, false);
+        assert_eq!(written(&content), (Some(true), None, None));
+
+        let mut content = settings(None, None, None);
+        Mode::write_over_resolved(&mut content, Mode::Normal, false, false);
+        assert_eq!(written(&content), (None, None, None));
     }
 
     #[test]
