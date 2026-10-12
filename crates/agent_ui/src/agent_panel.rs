@@ -2777,6 +2777,14 @@ impl AgentPanel {
         self.activate_new_thread(true, AgentThreadSource::AgentPanel, window, cx);
     }
 
+    pub(crate) fn select_native_agent_for_new_thread(&mut self) {
+        self.selected_agent = Agent::NativeAgent;
+    }
+
+    pub(crate) fn fs(&self) -> Arc<dyn Fs> {
+        self.fs.clone()
+    }
+
     fn set_selected_agent_and_persist(&mut self, agent: Agent, cx: &mut Context<Self>) {
         if self.selected_agent != agent {
             self.selected_agent = agent.clone();
@@ -7211,6 +7219,30 @@ pub(crate) struct ExternalAgentMenuItem {
     pub(crate) icon_path: Option<SharedString>,
 }
 
+/// ADR-F49 決定 19: サンドボックスが使える環境でも、外で動かしたい人の入口。
+/// 確認はアクション側で毎回 (設定で常に外にしていれば出さない)。`+` メニューは
+/// これを「Claude Code」の直後に置く (ADR-F94)。
+fn claude_code_outside_sandbox_menu_entry(cx: &App) -> ContextMenuEntry {
+    ContextMenuEntry::new(i18n::t!("Launch Claude Code Outside the Sandbox…"))
+        .action(Box::new(
+            zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
+        ))
+        .icon(IconName::Terminal)
+        .icon_color(Color::Muted)
+        .documentation_aside(crate::ui::documentation_aside_side(cx), |_| {
+            Label::new(i18n::t!(
+                "Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings.\nThe sign-in is shared with your usual Claude Code."
+            ))
+            .into_any_element()
+        })
+        .handler(move |window, cx| {
+            window.dispatch_action(
+                Box::new(zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default()),
+                cx,
+            );
+        })
+}
+
 /// The configured external agents, by display name ignoring case. Shared by the
 /// `+` menu and the model selector so that both name an agent the same way.
 pub(crate) fn external_agent_menu_items(
@@ -8079,56 +8111,57 @@ impl AgentPanel {
             (None, self.selected_agent.label())
         };
 
+        // ADR-F94: the menu lists AIs by whose they are, each with how it signs
+        // in, what runs it and whether it is sandboxed (`ai_choices`).
         let new_thread_menu_builder: Rc<
             dyn Fn(&mut Window, &mut App) -> Option<Entity<ContextMenu>>,
         > = {
             let selected_agent = self.selected_agent.clone();
-            let is_agent_selected = move |agent: Agent| selected_agent == agent;
-
             let workspace = self.workspace.clone();
-            let is_via_collab = workspace
-                .update(cx, |workspace, cx| {
-                    workspace.project().read(cx).is_via_collab()
-                })
-                .unwrap_or_default();
-
+            let project = self.project.clone();
             let focus_handle = focus_handle.clone();
-            let agent_server_store = agent_server_store;
 
             Rc::new(move |window, cx| {
-                Some(ContextMenu::build(window, cx, |menu, _window, cx| {
-                    menu.context(focus_handle.clone())
-                        .item(
-                            ContextMenuEntry::new(agent::NATIVE_AGENT_DISPLAY_NAME)
-                                .when(
-                                    !showing_terminal && is_agent_selected(Agent::NativeAgent),
-                                    |this| this.action(Box::new(NewThread)),
-                                )
-                                .icon(IconName::ZedAgent)
-                                .icon_color(Color::Muted)
-                                .handler({
-                                    let workspace = workspace.clone();
-                                    move |window, cx| {
-                                        if let Some(workspace) = workspace.upgrade() {
-                                            workspace.update(cx, |workspace, cx| {
-                                                if let Some(panel) =
-                                                    workspace.panel::<AgentPanel>(cx)
-                                                {
-                                                    panel.update(cx, |panel, cx| {
-                                                        panel.selected_agent = Agent::NativeAgent;
-                                                        panel.activate_new_thread(
-                                                            true,
-                                                            AgentThreadSource::AgentPanel,
-                                                            window,
-                                                            cx,
-                                                        );
-                                                    });
-                                                }
-                                            });
-                                        }
-                                    }
-                                }),
-                        )
+                let inputs = crate::ai_choices::gather_ai_choice_inputs(
+                    &project,
+                    selected_agent.clone(),
+                    supports_terminal,
+                    cx,
+                );
+                let mut sections = crate::ai_choices::build_ai_choice_sections(&inputs);
+                // While the terminal is showing, `NewThread` opens another
+                // terminal, so no AI entry is what the shortcut repeats.
+                if showing_terminal {
+                    for choice in sections
+                        .iter_mut()
+                        .flat_map(|section| section.choices.iter_mut())
+                    {
+                        choice.is_current = false;
+                    }
+                }
+
+                Some(ContextMenu::build(window, cx, |mut menu, _window, cx| {
+                    menu = menu.context(focus_handle.clone());
+                    for (index, section) in sections.into_iter().enumerate() {
+                        if index > 0 {
+                            menu = menu.separator();
+                        }
+                        menu = menu.header(crate::ai_choices::vendor_label(section.vendor));
+                        for choice in section.choices {
+                            let is_claude_code = choice.target
+                                == crate::ai_choices::AiChoiceTarget::LaunchClaudeCode;
+                            menu = menu.item(crate::ai_choices::ai_choice_menu_item(
+                                choice,
+                                workspace.clone(),
+                                focus_handle.clone(),
+                                cx,
+                            ));
+                            if is_claude_code {
+                                menu = menu.item(claude_code_outside_sandbox_menu_entry(cx));
+                            }
+                        }
+                    }
+                    menu.separator()
                         .when(supports_terminal, |menu| {
                             menu.item(
                                 ContextMenuEntry::new(i18n::t!("Terminal"))
@@ -8160,121 +8193,7 @@ impl AgentPanel {
                                         }
                                     }),
                             )
-                            // 公式 CLI はこのパネルのタブで動く (ADR-F53)。
-                            // 起動は `LaunchClaudeCode` に任せる: ここでパネルを
-                            // 直接触るとペインのリースが二重になる。
-                            .item(
-                                ContextMenuEntry::new(i18n::t!("Launch Claude Code"))
-                                    .action(Box::new(
-                                        zed_actions::terminal::LaunchClaudeCode::default(),
-                                    ))
-                                    .icon(IconName::Terminal)
-                                    .icon_color(Color::Muted)
-                                    .documentation_aside(
-                                        crate::ui::documentation_aside_side(cx),
-                                        |_| {
-                                            Label::new(i18n::t!(
-                                                "Launches the official Claude Code CLI in a tab of this panel. You sign in on the CLI's screen."
-                                            ))
-                                            .into_any_element()
-                                        },
-                                    )
-                                    .handler(move |window, cx| {
-                                        window.dispatch_action(
-                                            Box::new(
-                                                zed_actions::terminal::LaunchClaudeCode::default(),
-                                            ),
-                                            cx,
-                                        );
-                                    }),
-                            )
-                            // ADR-F49 決定 19: サンドボックスが使える環境でも、
-                            // 外で動かしたい人の入口。確認はアクション側で毎回
-                            // (設定で常に外にしていれば出さない)。
-                            .item(
-                                ContextMenuEntry::new(i18n::t!(
-                                    "Launch Claude Code Outside the Sandbox…"
-                                ))
-                                    .action(Box::new(
-                                        zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
-                                    ))
-                                    .icon(IconName::Terminal)
-                                    .icon_color(Color::Muted)
-                                    .documentation_aside(
-                                        crate::ui::documentation_aside_side(cx),
-                                        |_| {
-                                            Label::new(i18n::t!(
-                                                "Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings.\nThe sign-in is shared with your usual Claude Code."
-                                            ))
-                                            .into_any_element()
-                                        },
-                                    )
-                                    .handler(move |window, cx| {
-                                        window.dispatch_action(
-                                            Box::new(
-                                                zed_actions::terminal::LaunchClaudeCodeOutsideSandbox::default(),
-                                            ),
-                                            cx,
-                                        );
-                                    }),
-                            )
                         })
-                        .map(|mut menu| {
-                            let agent_items =
-                                external_agent_menu_items(agent_server_store.read(cx), cx);
-
-                            if !agent_items.is_empty() {
-                                menu = menu.separator().header(i18n::t!("External Agents"));
-                            }
-                            for item in &agent_items {
-                                let mut entry = ContextMenuEntry::new(item.display_name.clone());
-
-                                if let Some(icon_path) = item.icon_path.clone() {
-                                    entry = entry.custom_icon_svg(icon_path);
-                                } else {
-                                    entry = entry.icon(IconName::Sparkle);
-                                }
-
-                                entry = entry
-                                    .when(
-                                        !showing_terminal
-                                            && is_agent_selected(Agent::Custom {
-                                                id: item.id.clone(),
-                                            }),
-                                        |this| this.action(Box::new(NewThread)),
-                                    )
-                                    .icon_color(Color::Muted)
-                                    .disabled(is_via_collab)
-                                    .handler({
-                                        let workspace = workspace.clone();
-                                        let agent_id = item.id.clone();
-                                        move |window, cx| {
-                                            if let Some(workspace) = workspace.upgrade() {
-                                                workspace.update(cx, |workspace, cx| {
-                                                    if let Some(panel) =
-                                                        workspace.panel::<AgentPanel>(cx)
-                                                    {
-                                                        panel.update(cx, |panel, cx| {
-                                                            panel.new_external_agent_thread(
-                                                                &NewExternalAgentThread {
-                                                                    agent: agent_id.clone(),
-                                                                },
-                                                                window,
-                                                                cx,
-                                                            );
-                                                        });
-                                                    }
-                                                });
-                                            }
-                                        }
-                                    });
-
-                                menu = menu.item(entry);
-                            }
-
-                            menu
-                        })
-                        .separator()
                         .item(
                             ContextMenuEntry::new(i18n::t!("Add More Agents"))
                                 .icon(IconName::Plus)
@@ -8284,6 +8203,21 @@ impl AgentPanel {
                                         window
                                             .dispatch_action(Box::new(zed_actions::AcpRegistry), cx)
                                     }
+                                }),
+                        )
+                        .item(
+                            ContextMenuEntry::new(i18n::t!("Manage AI Connections…"))
+                                .icon(IconName::Settings)
+                                .icon_color(Color::Muted)
+                                .handler(move |window, cx| {
+                                    window.dispatch_action(
+                                        Box::new(zed_actions::OpenSettingsAt {
+                                            path: zed_actions::AI_CONNECTIONS_SETTINGS_PATH
+                                                .to_string(),
+                                            target: None,
+                                        }),
+                                        cx,
+                                    )
                                 }),
                         )
                 }))

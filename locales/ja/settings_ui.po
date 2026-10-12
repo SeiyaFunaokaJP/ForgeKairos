@@ -98,6 +98,9 @@ msgstr "同じパターンがこのルール一覧に既に存在します。"
 msgid "A personal access token for the login. Without one, git asks for the password as usual."
 msgstr "ログイン名に対応する個人用アクセストークン。無ければ、git はいつもどおりパスワードを尋ねます。"
 
+msgid "A project window is needed to install agents"
+msgstr "エージェントのインストールにはプロジェクトのウィンドウが必要です"
+
 msgid "A project window is needed to run this in the terminal"
 msgstr "ターミナルで実行するにはプロジェクトのウィンドウが必要です"
 
@@ -131,8 +134,17 @@ msgstr "このプロバイダーを識別する一意の名前です。"
 msgid "A wildcard is allowed only as a leading `*.` (for example, *.corp.example)."
 msgstr "ワイルドカードは先頭の `*.` にのみ指定できます (例: *.corp.example)。"
 
+msgid "ACP Agent"
+msgstr "ACP エージェント"
+
 msgid "ACP Docs"
 msgstr "ACP のドキュメント"
+
+msgid "AI Connections"
+msgstr "AI の接続"
+
+msgid "AI features are off. Turn on \"Enable Agent\" on the AI page to use them."
+msgstr "AI 機能はオフです。使うには AI のページの「エージェントを有効にする」をオンにしてください。"
 
 msgid "API Key"
 msgstr "API キー"
@@ -160,6 +172,9 @@ msgstr "アカウント名"
 
 msgid "Accounts a repository can commit and push as. Pick one for each repository with the account button next to Commit in the Git panel; a repository without one follows git's own configuration. Tokens are kept in {store}, never in settings.json."
 msgstr "リポジトリがコミット・プッシュに使えるアカウントです。リポジトリごとに、Git パネルのコミットボタンの横にあるアカウントのボタンで選びます。選んでいないリポジトリは git 自身の設定に従います。トークンは {store} に保存し、settings.json には書きません。"
+
+msgid "Account"
+msgstr "アカウント"
 
 msgid "Action to take when no patterns match."
 msgstr "どのパターンにも一致しなかったときの動作です。"
@@ -364,6 +379,9 @@ msgstr "この PC の PATH を確認しています…"
 
 msgid "Choose File"
 msgstr "ファイルを選択"
+
+msgid "Claude (Anthropic)"
+msgstr "Claude (Anthropic)"
 
 msgid "Claude Code Thinking Effort (--effort)"
 msgstr "Claude Code の思考の深さ (--effort)"
@@ -695,6 +713,9 @@ msgstr "エラー: {}"
 msgid "Escalation Prompts"
 msgstr "権限昇格の確認"
 
+msgid "Every AI you can use here, by whose AI it is. Each row shows how you sign in and what runs it. In the agent panel, the + menu lists the same AIs."
+msgstr "ここで使える AI を、どこの AI かで分けて並べています。各行にサインインの方法と動かすものを示します。エージェントパネルの + メニューにも同じ AI が並びます。"
+
 msgid "Execution Host"
 msgstr "実行ホスト"
 
@@ -810,6 +831,12 @@ msgstr "GitHub がスキルの取得時に {} を返しました。"
 msgid "GitHub skill URLs must use https://"
 msgstr "GitHub のスキル URL は https:// を使用してください。"
 
+msgid "Go to \"Enable Agent\""
+msgstr "「エージェントを有効にする」へ"
+
+msgid "Google"
+msgstr "Google"
+
 msgid "HTTP headers sent with each request to the server. For a server that authenticates with a token, set Authorization to \"Bearer <token>\"."
 msgstr "サーバーへの各リクエストに付与する HTTP ヘッダーです。トークンで認証するサーバーでは Authorization に「Bearer <トークン>」を指定します。"
 
@@ -921,6 +948,9 @@ msgstr "他の承諾済みプロバイダーが使用しているため、次の
 msgid "Key"
 msgstr "キー"
 
+msgid "LLM Providers"
+msgstr "LLM プロバイダー"
+
 msgid "Launch Claude Code in Terminal"
 msgstr "ターミナルで Claude Code を起動"
 
@@ -977,6 +1007,12 @@ msgstr "ローカル"
 
 msgid "Local (command)"
 msgstr "ローカル (コマンド)"
+
+msgid "Local Model (Ollama, LM Studio, …)"
+msgstr "ローカルモデル (Ollama・LM Studio など)"
+
+msgid "Local Models"
+msgstr "ローカルモデル"
 
 msgid "Log Out"
 msgstr "ログアウト"
@@ -1116,6 +1152,9 @@ msgstr "統制外"
 msgid "Not Controlled (Own Proxy)"
 msgstr "統制外 (独自プロキシ)"
 
+msgid "Not Set Up"
+msgstr "未設定"
+
 msgid "Not a valid domain. Use a domain like github.com or *.npmjs.org."
 msgstr "有効なドメインではありません。github.com や *.npmjs.org のような形式で指定してください。"
 
@@ -1137,6 +1176,9 @@ msgstr "設定されていません"
 msgid "OAuth Client ID"
 msgstr "OAuth クライアント ID"
 
+msgid "Official CLI Tab"
+msgstr "公式 CLI のタブ"
+
 msgid "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
 msgstr "サブスクリプション (Claude Pro / Max など) での利用は、Anthropic が 2026-06-15 に「これまでどおり」と告知しています。ログインは Claude Code 自身の画面で行われ、ForgeKairos は認証情報を見も保存も中継もしません。ここを切るとログインのボタンが認証カードから消えます (API キーでの利用はそのまま使えます)。"
 
@@ -1154,6 +1196,9 @@ msgstr "network_allowlist.json をエディターで開く"
 
 msgid "Open the project settings file that defines this server"
 msgstr "このサーバーを定義しているプロジェクトの設定ファイルを開く"
+
+msgid "OpenAI"
+msgstr "OpenAI"
 
 msgid "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below."
 msgstr "OpenAI 互換 API・Ollama・GitHub Copilot・Codestral・Mercury は、下の各プロバイダーで認証情報や接続先 URL を設定すると選択できるようになります。Zed は下の「Zed」で承諾すると選択できるようになります。"
@@ -1184,6 +1229,9 @@ msgstr "または環境変数 {env_var_name} を設定し、ForgeKairos を再�
 
 msgid "Or set the {} env var and restart Zed."
 msgstr "または環境変数 {} を設定して ForgeKairos を再起動してください。"
+
+msgid "Other"
+msgstr "その他"
 
 msgid "Outbound Traffic from Child Processes"
 msgstr "子プロセスの外部通信"
@@ -1319,6 +1367,9 @@ msgstr "子プロセスへのプロキシ適用が無効なため、このサー
 
 msgid "Read the file again"
 msgstr "ファイルを読み直します"
+
+msgid "Ready"
+msgstr "使用可"
 
 msgid "Reason: {}"
 msgstr "理由: {}"
@@ -1503,6 +1554,9 @@ msgstr "設定を検索…"
 msgid "Search theme…"
 msgstr "テーマを検索…"
 
+msgid "See Details"
+msgstr "詳細を見る"
+
 msgid "Select"
 msgstr "選択"
 
@@ -1565,6 +1619,12 @@ msgstr "settings.json ではなく、システムのキーチェーンに保存�
 
 msgid "Submit"
 msgstr "送信"
+
+msgid "Subscription"
+msgstr "サブスクリプション"
+
+msgid "Subscription or API Key"
+msgstr "サブスクリプションまたは API キー"
 
 msgid "Supports /chat/completions"
 msgstr "/chat/completions に対応"

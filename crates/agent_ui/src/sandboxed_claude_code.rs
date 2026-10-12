@@ -34,6 +34,7 @@ use workspace::workspace_error::{ErrorAction, ErrorSeverity, WorkspaceError};
 use zed_actions::terminal::{LaunchClaudeCode, LaunchClaudeCodeOutsideSandbox};
 
 use crate::AgentPanel;
+use crate::ai_choices::AiPlacement;
 
 pub(crate) use session::cli_tab_session_key;
 
@@ -201,6 +202,25 @@ impl ProjectShape {
             outside_by_user_choice:
                 project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx),
         }
+    }
+}
+
+/// ADR-F94: where "Launch Claude Code" would start the CLI in `project`, as the
+/// "Choose AI" menu shows it. Read from the same route the launch takes.
+pub(crate) fn claude_code_placement(project: &Project, cx: &App) -> AiPlacement {
+    placement_of_route(route_for(ProjectShape::of(project, cx)))
+}
+
+fn placement_of_route(route: LaunchRoute) -> AiPlacement {
+    match route {
+        #[cfg(target_os = "windows")]
+        LaunchRoute::LocalSandbox => AiPlacement::Sandbox,
+        // Off Windows the local route still asks before starting outside.
+        #[cfg(not(target_os = "windows"))]
+        LaunchRoute::LocalSandbox => AiPlacement::OutsideAfterConfirmation,
+        LaunchRoute::RemoteSandbox => AiPlacement::Sandbox,
+        LaunchRoute::OutsideSandbox { .. } => AiPlacement::OutsideAfterConfirmation,
+        LaunchRoute::OutsideSandboxByUserChoice => AiPlacement::OutsideByChoice,
     }
 }
 
@@ -2851,14 +2871,15 @@ mod tests {
         session_environment, session_key, session_write_scope, stale_entries,
     };
     use super::{
-        CLAUDE_PROGRAM, COLLABORATION_REASON, HostLauncher, LaunchRoute, NO_FOLDER_REASON,
-        OPEN_SANDBOX_SETTINGS_LABEL, OUTSIDE_SANDBOX_CLAUDE_LOGIN, OUTSIDE_SANDBOX_LIMITS_LOCAL,
-        OUTSIDE_SANDBOX_LIMITS_REMOTE, OUTSIDE_SANDBOX_MESSAGE, OUTSIDE_SANDBOX_NEW_SESSION,
-        OUTSIDE_SANDBOX_NOT_ALLOWED_DETAIL, OUTSIDE_SANDBOX_NOT_ALLOWED_TITLE,
-        OUTSIDE_SANDBOX_NOTICE, OUTSIDE_SANDBOX_ONCE, OUTSIDE_SANDBOX_OTHER_LOGIN,
-        OutsideSandboxStart, ProjectShape, REMOTE_CONNECTION_REASON, REMOTE_NOT_LINUX_REASON,
-        RemoteShape, SandboxLaunchFailure, UNSUPPORTED_OS_REASON, outside_sandbox_detail,
-        outside_sandbox_message, register_launch_actions, route_for, show_launch_failure,
+        AiPlacement, CLAUDE_PROGRAM, COLLABORATION_REASON, HostLauncher, LaunchRoute,
+        NO_FOLDER_REASON, OPEN_SANDBOX_SETTINGS_LABEL, OUTSIDE_SANDBOX_CLAUDE_LOGIN,
+        OUTSIDE_SANDBOX_LIMITS_LOCAL, OUTSIDE_SANDBOX_LIMITS_REMOTE, OUTSIDE_SANDBOX_MESSAGE,
+        OUTSIDE_SANDBOX_NEW_SESSION, OUTSIDE_SANDBOX_NOT_ALLOWED_DETAIL,
+        OUTSIDE_SANDBOX_NOT_ALLOWED_TITLE, OUTSIDE_SANDBOX_NOTICE, OUTSIDE_SANDBOX_ONCE,
+        OUTSIDE_SANDBOX_OTHER_LOGIN, OutsideSandboxStart, ProjectShape, REMOTE_CONNECTION_REASON,
+        REMOTE_NOT_LINUX_REASON, RemoteShape, SandboxLaunchFailure, UNSUPPORTED_OS_REASON,
+        outside_sandbox_detail, outside_sandbox_message, placement_of_route,
+        register_launch_actions, route_for, show_launch_failure,
     };
 
     const SESSION_ID: &str = "claude-0123456789abcdef0123456789abcdef";
@@ -3003,6 +3024,35 @@ mod tests {
                 "{shape:?}"
             );
         }
+    }
+
+    /// ADR-F94: the "Choose AI" menu says where the CLI will run from the
+    /// route the launch itself takes, so the badge cannot claim a sandbox the
+    /// launch then skips.
+    #[test]
+    fn the_menu_badge_follows_the_launch_route() {
+        assert_eq!(
+            placement_of_route(LaunchRoute::RemoteSandbox),
+            AiPlacement::Sandbox
+        );
+        assert_eq!(
+            placement_of_route(LaunchRoute::OutsideSandbox {
+                reason: NO_FOLDER_REASON
+            }),
+            AiPlacement::OutsideAfterConfirmation
+        );
+        assert_eq!(
+            placement_of_route(LaunchRoute::OutsideSandboxByUserChoice),
+            AiPlacement::OutsideByChoice
+        );
+        assert_eq!(
+            placement_of_route(LaunchRoute::LocalSandbox),
+            if cfg!(target_os = "windows") {
+                AiPlacement::Sandbox
+            } else {
+                AiPlacement::OutsideAfterConfirmation
+            }
+        );
     }
 
     #[test]

@@ -6439,6 +6439,29 @@ pub mod test {
         );
     }
 
+    /// ADR-F94: the agent panel's "Manage AI Connections…" opens this path.
+    #[gpui::test]
+    fn ai_connections_deep_link_resolves_to_its_sub_page(cx: &mut gpui::TestAppContext) {
+        let pages = real_settings_pages(cx);
+        let matches = pages
+            .iter()
+            .flat_map(|page| page.items.iter().map(move |item| (page, item)))
+            .filter(|(_, item)| {
+                matches!(item, SettingsPageItem::SubPageLink(link)
+                    if link.json_path == Some(zed_actions::AI_CONNECTIONS_SETTINGS_PATH))
+            })
+            .collect::<Vec<_>>();
+        let [(page, item)] = matches.as_slice() else {
+            panic!(
+                "expected exactly one AI Connections link, got {}",
+                matches.len()
+            );
+        };
+        assert_eq!(page.title, "AI");
+        assert!(matches!(item, SettingsPageItem::SubPageLink(link)
+            if link.title.as_ref() == "AI Connections"));
+    }
+
     #[gpui::test]
     async fn test_settings_window_shows_worktrees_from_multiple_workspaces(
         cx: &mut gpui::TestAppContext,

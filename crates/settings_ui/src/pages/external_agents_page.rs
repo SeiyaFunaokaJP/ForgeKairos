@@ -69,19 +69,23 @@ pub(crate) fn render_external_agents_page(
 const CLAUDE_AGENT_ID: &str = "claude-acp";
 const SUBSCRIPTION_SIGN_IN_ALLOWED_BY_DEFAULT: bool = true;
 
+/// The merged view, not just the user file: the card in the agent panel reads
+/// the same one, so the switch and the card never disagree.
+pub(super) fn claude_subscription_sign_in_allowed(cx: &App) -> bool {
+    SettingsStore::global(cx)
+        .get::<project::agent_server_store::AllAgentServersSettings>(None)
+        .get(CLAUDE_AGENT_ID)
+        .and_then(|settings| settings.allow_subscription_sign_in())
+        .unwrap_or(SUBSCRIPTION_SIGN_IN_ALLOWED_BY_DEFAULT)
+}
+
 /// ADR-F55: `agent_servers.claude-acp.allow_subscription_sign_in`.
 ///
 /// カードの側 (`agent_ui`) と同じ設定を同じ注記で切り替える。切ると、
 /// サインインのボタンは認証カードから消え、別の経路から要求されても
 /// 断られる。API キーでの利用はこの設定に関係なく使える。
 fn render_claude_subscription_sign_in(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
-    // The merged view, not just the user file: the card in the agent panel
-    // reads the same one, so the switch and the card never disagree.
-    let allowed = SettingsStore::global(cx)
-        .get::<project::agent_server_store::AllAgentServersSettings>(None)
-        .get(CLAUDE_AGENT_ID)
-        .and_then(|settings| settings.allow_subscription_sign_in())
-        .unwrap_or(SUBSCRIPTION_SIGN_IN_ALLOWED_BY_DEFAULT);
+    let allowed = claude_subscription_sign_in_allowed(cx);
 
     v_flex().pt_6().child(
         SwitchField::new(

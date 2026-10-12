@@ -1,4 +1,5 @@
 mod agent_profile;
+pub mod ai_vendor;
 mod user_agents_md;
 
 use std::cmp::Ordering::{Equal, Greater, Less};

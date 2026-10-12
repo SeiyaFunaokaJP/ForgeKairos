@@ -170,6 +170,9 @@ pub struct OpenSettingsPage {
 /// `OpenSettingsAt` path of the agent skills page in the settings UI.
 pub const AGENT_SKILLS_SETTINGS_PATH: &str = "agent.skills";
 
+/// `OpenSettingsAt` path of the "AI Connections" page (ADR-F94).
+pub const AI_CONNECTIONS_SETTINGS_PATH: &str = "ai_connections";
+
 /// `OpenSettingsAt` path of the agent sandbox permissions page in the settings
 /// UI.
 pub const AGENT_SANDBOX_SETTINGS_PATH: &str = "agent.sandbox_permissions";

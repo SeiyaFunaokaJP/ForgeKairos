@@ -193,12 +193,13 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p12.i6[agent.threads_sidebar.auto_open].description",
         "既存のウィンドウでフォルダーを開いたときに、スレッドサイドバーを自動で開くかどうかを設定します。",
     ),
+    // Two rows further down since ADR-F94 put "AI Connections" above it.
     (
-        "p12.i25[agent.prevent_idle_sleep].title",
+        "p12.i27[agent.prevent_idle_sleep].title",
         "アイドル時のスリープを防ぐ",
     ),
     (
-        "p12.i25[agent.prevent_idle_sleep].description",
+        "p12.i27[agent.prevent_idle_sleep].description",
         "エージェントのスレッドの実行中に、システムがスリープしないようにするかどうかを設定します。",
     ),
     // Added by zed-jp-enhance with the call graph panel, at the end of the

@@ -1290,6 +1290,10 @@ msgid "AI Control"
 msgstr "AI による操作"
 
 msgctxt "settings"
+msgid "AI Connections"
+msgstr "AI の接続"
+
+msgctxt "settings"
 msgid "Accessible Mode"
 msgstr "アクセシビリティモード"
 
@@ -1772,6 +1776,10 @@ msgstr "プロバイダーの設定"
 msgctxt "settings"
 msgid "Configure natively-included model providers."
 msgstr "標準で同梱されているモデルプロバイダーを設定します。"
+
+msgctxt "settings"
+msgid "Connections"
+msgstr "接続"
 
 msgctxt "settings"
 msgid "Consent to Launch Outside the Sandbox"
@@ -2380,6 +2388,10 @@ msgstr "環境変数"
 msgctxt "settings"
 msgid "Environment variables provided to the agent process."
 msgstr "エージェントのプロセスに渡す環境変数です。"
+
+msgctxt "settings"
+msgid "Every AI you can use, by vendor (Claude, OpenAI, Google, local models…): how each signs in, what runs it, whether it is set up, and where to set it up."
+msgstr "使える AI をベンダーごとに (Claude・OpenAI・Google・ローカルモデル…) 一覧にします。サインインの方法、動かすもの、設定済みかどうか、設定する場所を示します。"
 
 msgctxt "settings"
 msgid "Excerpt Context Lines"

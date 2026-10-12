@@ -14,7 +14,7 @@ use crate::{
     SettingsPage, SettingsPageItem, SubPageLink, SubPageType, USER, active_language,
     all_language_names,
     pages::{
-        open_audio_test_window, render_acknowledged_ai_providers_page,
+        open_audio_test_window, render_acknowledged_ai_providers_page, render_ai_connections_page,
         render_edit_prediction_setup_page, render_external_agents_page, render_git_accounts_page,
         render_launch_approvals_page, render_llm_providers_page, render_mcp_servers_page,
         render_network_allowlist_page, render_sandbox_settings_page, render_skills_setup_page,
@@ -10400,11 +10400,47 @@ fn ai_page(cx: &App) -> SettingsPage {
         })]
     }
 
+    // ADR-F94: the page that lists every AI by vendor. It follows "General"
+    // because "Enable Agent" stays at the very top (ADR-F13); the detailed
+    // pages stay where they were.
+    fn connections_section() -> [SettingsPageItem; 2] {
+        [
+            SettingsPageItem::SectionHeader("Connections"),
+            SettingsPageItem::SubPageLink(SubPageLink {
+                title: "AI Connections".into(),
+                r#type: Default::default(),
+                json_path: Some(zed_actions::AI_CONNECTIONS_SETTINGS_PATH),
+                description: Some(
+                    "Every AI you can use, by vendor (Claude, OpenAI, Google, local models…): how each signs in, what runs it, whether it is set up, and where to set it up."
+                        .into(),
+                ),
+                search_aliases: &[
+                    "ai",
+                    "api key",
+                    "claude",
+                    "claude code",
+                    "codex",
+                    "connection",
+                    "gemini",
+                    "llm",
+                    "ollama",
+                    "openai",
+                    "sign in",
+                    "subscription",
+                ],
+                in_json: false,
+                files: USER,
+                render: render_ai_connections_page,
+            }),
+        ]
+    }
+
     SettingsPage {
         title: "AI",
         items: concat_sections!(
             @vec,
             general_section(),
+            connections_section(),
             agent_configuration_section(cx),
             edit_prediction_language_settings_section(),
             edit_prediction_display_sub_section(),

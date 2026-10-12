@@ -994,80 +994,83 @@ p12.i16[ide_server.share_active_file].title	開いているファイルを Claud
 p12.i16[ide_server.share_active_file].description	何も選んでいないときも、開いているファイルを接続中の Claude Code に伝えます (入力欄の「In <ファイル名>」)。オフにすると、行を選んだときだけ送ります。
 p12.i17[ide_server.share_task_output].title	失敗したタスクの出力をエージェントに渡す
 p12.i17[ide_server.share_task_output].description	最後に失敗したタスク (0 以外で終了) の出力の末尾 (最大 4 KB) を、IDE サーバーのツール getLastTaskOutput でエージェントが読めるようにします。
-p12.i18.header	エージェントの設定
-p12.i19[agent.skills].link	スキル
-p12.i19[agent.skills].link_description	グローバル、またはプロジェクトのワークツリーにインストールされたエージェントのスキルを確認・管理します。
-p12.i20[agent.sandbox_permissions].link	サンドボックス
-p12.i20[agent.sandbox_permissions].link_description	エージェントのターミナルコマンドを OS のサンドボックスで実行するかどうかを切り替え、サンドボックス内の許可 (書き込み先・ネットワーク) を設定します。自動承認はサンドボックス内で実行するときだけ効きます。
-p12.i21[agent.tool_permissions].link	ツールの権限
-p12.i21[agent.tool_permissions].link_description	特定のツール入力に対して自動的に許可・拒否する、あるいは常に確認を求める正規表現パターンを設定します。
-p12.i22[agent.single_file_review].title	単一ファイルでのレビュー
-p12.i22[agent.single_file_review].description	有効にすると、エージェントの編集を単一ファイルのバッファーにも表示してレビューできるようにします。
-p12.i23[agent.notify_when_agent_waiting].title	エージェントの待機時に通知
-p12.i23[agent.notify_when_agent_waiting].description	エージェントが応答を終えたとき、またはツールの実行前に確認が必要なときに、通知をどこに表示するかを設定します。
-p12.i24[agent.play_sound_when_agent_done].title	エージェントの完了時に音を鳴らす
-p12.i24[agent.play_sound_when_agent_done].description	エージェントが応答を終えたとき、またはユーザーの入力が必要なときに、音を鳴らすタイミングを設定します。
-p12.i26[agent.expand_edit_card].title	編集カードを展開
-p12.i26[agent.expand_edit_card].description	エージェントパネルの編集カードを展開し、差分のプレビューを表示するかどうかを設定します。
-p12.i27[agent.expand_terminal_card].title	ターミナルカードを展開
-p12.i27[agent.expand_terminal_card].description	エージェントパネルのターミナルカードを展開し、コマンドの出力全体を表示するかどうかを設定します。
-p12.i28[agent.terminal_init_command].title	ターミナルスレッドの初期化コマンド
-p12.i28[agent.terminal_init_command].description	エージェントパネルでターミナルスレッドのシェルを作成したときに、自動的に実行するコマンドです。設定済みのシェルで実行されます。
-p12.i28[agent.terminal_init_command].placeholder	例: claude
-p12.i29[agent.thinking_display].title	思考の表示
-p12.i29[agent.thinking_display].description	思考ブロックを既定でどのように表示するかを設定します。'Auto' はストリーミング中は完全に展開し、完了後に自動的に折りたたみます。'Preview' は高さを制限した状態でストリーミング中に自動展開します。'Always Expanded' は常に全体を表示します。'Always Collapsed' は常に折りたたんだままにします。
-p12.i30[agent.cancel_generation_on_terminal_stop].title	ターミナルの停止時に生成を中止
-p12.i30[agent.cancel_generation_on_terminal_stop].description	実行中のターミナルツールの停止ボタンを押したときに、エージェントの生成も中止するかどうかを設定します。これは停止ボタンにのみ適用され、ターミナル内の ctrl+c には適用されません。
-p12.i31[agent.use_modifier_to_send].title	修飾キーで送信
-p12.i31[agent.use_modifier_to_send].description	メッセージの送信に常に cmd + Enter (Linux と Windows では ctrl + Enter) を使うかどうかを設定します。
-p12.i32[agent.message_editor_min_lines].title	メッセージエディターの最小行数
-p12.i32[agent.message_editor_min_lines].description	エージェントのメッセージエディターに表示する最小の行数です。
-p12.i33[agent.show_turn_stats].title	ターンの統計を表示
-p12.i33[agent.show_turn_stats].description	生成中の経過時間やターンの所要時間などの統計を表示するかどうかを設定します。
-p12.i34[agent.show_merge_conflict_indicator].title	マージコンフリクトのインジケーターを表示
-p12.i34[agent.show_merge_conflict_indicator].description	エージェントでコンフリクトを解決できることを示すインジケーターを、ステータスバーに表示するかどうかを設定します。
-p12.i35[agent.auto_compact.enabled].title	自動圧縮
-p12.i35[agent.auto_compact.enabled].description	エージェントのコンテキストが大きくなりすぎたときに自動的に圧縮し、以前のメッセージを要約してモデルのコンテキストウィンドウに空きを作ります。
-p12.i36[agent.auto_compact.threshold].title	自動圧縮のしきい値
-p12.i36[agent.auto_compact.threshold].description	自動圧縮を実行する条件です。"90%" のようなパーセント文字列は、コンテキストウィンドウに対する割合として扱われます。正の整数は、使用トークン数がその値を超えたら圧縮することを意味します。負の整数は、コンテキストウィンドウの残りトークン数がその値を下回ったら圧縮することを意味します。
-p12.i36[agent.auto_compact.threshold].placeholder	90%
-p12.i37[agent.auto_compact_min_context_window].title	自動圧縮を行う最小コンテキストウィンドウ
-p12.i37[agent.auto_compact_min_context_window].description	自動圧縮を実行するモデルのコンテキストウィンドウの下限 (トークン数) です。これを下回るモデルでは圧縮を行わず、トークン上限の警告だけを表示します。ローカル LLM の小さいコンテキストでも自動圧縮を効かせたいときに下げてください。8000 未満を指定しても 8000 として扱われます。
-p12.i37[agent.auto_compact_min_context_window].placeholder	80000
-p12.i38[agent.attach_active_file].title	アクティブなファイルを自動で添付
-p12.i38[agent.attach_active_file].description	メッセージを送信するときに、アクティブなエディターを自動で添付します。選択範囲があればその行だけを、なければファイル全体を添付します。同じものを手で @ メンションしている場合は二重に添付しません。
-p12.i39[agent.context_attachments.inline_max_bytes].title	添付を全文で送る上限 (バイト)
-p12.i39[agent.context_attachments.inline_max_bytes].description	これより大きいファイルは全文ではなくアウトライン (シンボルと行番号の一覧) で送り、必要な範囲だけエージェントに読ませます。1024 未満は 1024 として扱われます。
-p12.i39[agent.context_attachments.inline_max_bytes].placeholder	16384
-p12.i40[agent.context_attachments.message_budget_bytes].title	1 メッセージの添付の合計上限 (バイト)
-p12.i40[agent.context_attachments.message_budget_bytes].description	1 つのメッセージの添付の合計がこれを超えたら、大きいものから順にアウトラインや参照だけに減らして送ります。「全文で送る」にした添付は減らしません。4096 未満は 4096 として扱われます。
-p12.i40[agent.context_attachments.message_budget_bytes].placeholder	65536
-p12.i41[agent.context_attachments.outline_max_bytes].title	アウトラインの上限 (バイト)
-p12.i41[agent.context_attachments.outline_max_bytes].description	大きいファイルを添付したときに送るアウトラインの大きさの上限です。収まらないときは深い階層のシンボルから省きます。512 未満は 512 として扱われます。
-p12.i41[agent.context_attachments.outline_max_bytes].placeholder	8192
-p12.i42[agent.context_attachments.fetch_max_bytes].title	Web ページの添付の上限 (バイト)
-p12.i42[agent.context_attachments.fetch_max_bytes].description	@fetch で添付した Web ページの本文のうち、送る部分の上限です。1024 未満は 1024 として扱われます。
-p12.i42[agent.context_attachments.fetch_max_bytes].placeholder	32768
-p12.i43[agent.context_attachments.diagnostics_max_files].title	診断を添付するファイル数の上限
-p12.i43[agent.context_attachments.diagnostics_max_files].description	@diagnostics で添付する診断を、この数のファイルまでに絞ります。1 未満は 1 として扱われます。
-p12.i43[agent.context_attachments.diagnostics_max_files].placeholder	50
-p12.i44[agent.system_prompt_repo_map_bytes].title	システムプロンプトに含めるリポジトリマップのバイト数
-p12.i44[agent.system_prompt_repo_map_bytes].description	システムプロンプトのプロジェクトのルートフォルダー一覧の直後に、リポジトリマップ (ファイルとそこで宣言されているシンボルの一覧) を差し込みます。0 で無効です。上限は 32768 バイトで、それより大きい値は 32768 として扱われます。プロジェクトの内容が変わったときだけ作り直します。
-p12.i44[agent.system_prompt_repo_map_bytes].placeholder	0
-p12.i45[agent.idle_disconnect_minutes].title	使わなくなったエージェントを止めるまでの分数
-p12.i45[agent.idle_disconnect_minutes].description	外部エージェントのスレッドが 1 つも開かれていない状態がこの分数だけ続いたら、そのエージェントとの接続を終了します (エージェントとそのサンドボックスも止まります)。スレッドを開き直すと接続し直します。0 でウィンドウを閉じるまで接続を保ちます。
-p12.i45[agent.idle_disconnect_minutes].placeholder	5
-p12.i46.header	編集予測
-p12.i47[edit_predictions.providers].link	プロバイダーの設定
-p12.i47[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
-p12.i48[edit_predictions.allow_data_collection].title	データの収集
-p12.i48[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
-p12.i49[languages.$(language).show_edit_predictions].title	編集予測を表示
-p12.i49[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
-p12.i50[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
-p12.i50[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。
-p12.i51[edit_prediction.display_mode].title	表示モード
-p12.i51[edit_prediction.display_mode].description	バッファーで編集予測のプレビューを表示するタイミングです。eager モードはインラインで表示し、subtle モードは修飾キーを押している間だけ表示します。
+p12.i18.header	接続
+p12.i19[ai_connections].link	AI の接続
+p12.i19[ai_connections].link_description	使える AI をベンダーごとに (Claude・OpenAI・Google・ローカルモデル…) 一覧にします。サインインの方法、動かすもの、設定済みかどうか、設定する場所を示します。
+p12.i20.header	エージェントの設定
+p12.i21[agent.skills].link	スキル
+p12.i21[agent.skills].link_description	グローバル、またはプロジェクトのワークツリーにインストールされたエージェントのスキルを確認・管理します。
+p12.i22[agent.sandbox_permissions].link	サンドボックス
+p12.i22[agent.sandbox_permissions].link_description	エージェントのターミナルコマンドを OS のサンドボックスで実行するかどうかを切り替え、サンドボックス内の許可 (書き込み先・ネットワーク) を設定します。自動承認はサンドボックス内で実行するときだけ効きます。
+p12.i23[agent.tool_permissions].link	ツールの権限
+p12.i23[agent.tool_permissions].link_description	特定のツール入力に対して自動的に許可・拒否する、あるいは常に確認を求める正規表現パターンを設定します。
+p12.i24[agent.single_file_review].title	単一ファイルでのレビュー
+p12.i24[agent.single_file_review].description	有効にすると、エージェントの編集を単一ファイルのバッファーにも表示してレビューできるようにします。
+p12.i25[agent.notify_when_agent_waiting].title	エージェントの待機時に通知
+p12.i25[agent.notify_when_agent_waiting].description	エージェントが応答を終えたとき、またはツールの実行前に確認が必要なときに、通知をどこに表示するかを設定します。
+p12.i26[agent.play_sound_when_agent_done].title	エージェントの完了時に音を鳴らす
+p12.i26[agent.play_sound_when_agent_done].description	エージェントが応答を終えたとき、またはユーザーの入力が必要なときに、音を鳴らすタイミングを設定します。
+p12.i28[agent.expand_edit_card].title	編集カードを展開
+p12.i28[agent.expand_edit_card].description	エージェントパネルの編集カードを展開し、差分のプレビューを表示するかどうかを設定します。
+p12.i29[agent.expand_terminal_card].title	ターミナルカードを展開
+p12.i29[agent.expand_terminal_card].description	エージェントパネルのターミナルカードを展開し、コマンドの出力全体を表示するかどうかを設定します。
+p12.i30[agent.terminal_init_command].title	ターミナルスレッドの初期化コマンド
+p12.i30[agent.terminal_init_command].description	エージェントパネルでターミナルスレッドのシェルを作成したときに、自動的に実行するコマンドです。設定済みのシェルで実行されます。
+p12.i30[agent.terminal_init_command].placeholder	例: claude
+p12.i31[agent.thinking_display].title	思考の表示
+p12.i31[agent.thinking_display].description	思考ブロックを既定でどのように表示するかを設定します。'Auto' はストリーミング中は完全に展開し、完了後に自動的に折りたたみます。'Preview' は高さを制限した状態でストリーミング中に自動展開します。'Always Expanded' は常に全体を表示します。'Always Collapsed' は常に折りたたんだままにします。
+p12.i32[agent.cancel_generation_on_terminal_stop].title	ターミナルの停止時に生成を中止
+p12.i32[agent.cancel_generation_on_terminal_stop].description	実行中のターミナルツールの停止ボタンを押したときに、エージェントの生成も中止するかどうかを設定します。これは停止ボタンにのみ適用され、ターミナル内の ctrl+c には適用されません。
+p12.i33[agent.use_modifier_to_send].title	修飾キーで送信
+p12.i33[agent.use_modifier_to_send].description	メッセージの送信に常に cmd + Enter (Linux と Windows では ctrl + Enter) を使うかどうかを設定します。
+p12.i34[agent.message_editor_min_lines].title	メッセージエディターの最小行数
+p12.i34[agent.message_editor_min_lines].description	エージェントのメッセージエディターに表示する最小の行数です。
+p12.i35[agent.show_turn_stats].title	ターンの統計を表示
+p12.i35[agent.show_turn_stats].description	生成中の経過時間やターンの所要時間などの統計を表示するかどうかを設定します。
+p12.i36[agent.show_merge_conflict_indicator].title	マージコンフリクトのインジケーターを表示
+p12.i36[agent.show_merge_conflict_indicator].description	エージェントでコンフリクトを解決できることを示すインジケーターを、ステータスバーに表示するかどうかを設定します。
+p12.i37[agent.auto_compact.enabled].title	自動圧縮
+p12.i37[agent.auto_compact.enabled].description	エージェントのコンテキストが大きくなりすぎたときに自動的に圧縮し、以前のメッセージを要約してモデルのコンテキストウィンドウに空きを作ります。
+p12.i38[agent.auto_compact.threshold].title	自動圧縮のしきい値
+p12.i38[agent.auto_compact.threshold].description	自動圧縮を実行する条件です。"90%" のようなパーセント文字列は、コンテキストウィンドウに対する割合として扱われます。正の整数は、使用トークン数がその値を超えたら圧縮することを意味します。負の整数は、コンテキストウィンドウの残りトークン数がその値を下回ったら圧縮することを意味します。
+p12.i38[agent.auto_compact.threshold].placeholder	90%
+p12.i39[agent.auto_compact_min_context_window].title	自動圧縮を行う最小コンテキストウィンドウ
+p12.i39[agent.auto_compact_min_context_window].description	自動圧縮を実行するモデルのコンテキストウィンドウの下限 (トークン数) です。これを下回るモデルでは圧縮を行わず、トークン上限の警告だけを表示します。ローカル LLM の小さいコンテキストでも自動圧縮を効かせたいときに下げてください。8000 未満を指定しても 8000 として扱われます。
+p12.i39[agent.auto_compact_min_context_window].placeholder	80000
+p12.i40[agent.attach_active_file].title	アクティブなファイルを自動で添付
+p12.i40[agent.attach_active_file].description	メッセージを送信するときに、アクティブなエディターを自動で添付します。選択範囲があればその行だけを、なければファイル全体を添付します。同じものを手で @ メンションしている場合は二重に添付しません。
+p12.i41[agent.context_attachments.inline_max_bytes].title	添付を全文で送る上限 (バイト)
+p12.i41[agent.context_attachments.inline_max_bytes].description	これより大きいファイルは全文ではなくアウトライン (シンボルと行番号の一覧) で送り、必要な範囲だけエージェントに読ませます。1024 未満は 1024 として扱われます。
+p12.i41[agent.context_attachments.inline_max_bytes].placeholder	16384
+p12.i42[agent.context_attachments.message_budget_bytes].title	1 メッセージの添付の合計上限 (バイト)
+p12.i42[agent.context_attachments.message_budget_bytes].description	1 つのメッセージの添付の合計がこれを超えたら、大きいものから順にアウトラインや参照だけに減らして送ります。「全文で送る」にした添付は減らしません。4096 未満は 4096 として扱われます。
+p12.i42[agent.context_attachments.message_budget_bytes].placeholder	65536
+p12.i43[agent.context_attachments.outline_max_bytes].title	アウトラインの上限 (バイト)
+p12.i43[agent.context_attachments.outline_max_bytes].description	大きいファイルを添付したときに送るアウトラインの大きさの上限です。収まらないときは深い階層のシンボルから省きます。512 未満は 512 として扱われます。
+p12.i43[agent.context_attachments.outline_max_bytes].placeholder	8192
+p12.i44[agent.context_attachments.fetch_max_bytes].title	Web ページの添付の上限 (バイト)
+p12.i44[agent.context_attachments.fetch_max_bytes].description	@fetch で添付した Web ページの本文のうち、送る部分の上限です。1024 未満は 1024 として扱われます。
+p12.i44[agent.context_attachments.fetch_max_bytes].placeholder	32768
+p12.i45[agent.context_attachments.diagnostics_max_files].title	診断を添付するファイル数の上限
+p12.i45[agent.context_attachments.diagnostics_max_files].description	@diagnostics で添付する診断を、この数のファイルまでに絞ります。1 未満は 1 として扱われます。
+p12.i45[agent.context_attachments.diagnostics_max_files].placeholder	50
+p12.i46[agent.system_prompt_repo_map_bytes].title	システムプロンプトに含めるリポジトリマップのバイト数
+p12.i46[agent.system_prompt_repo_map_bytes].description	システムプロンプトのプロジェクトのルートフォルダー一覧の直後に、リポジトリマップ (ファイルとそこで宣言されているシンボルの一覧) を差し込みます。0 で無効です。上限は 32768 バイトで、それより大きい値は 32768 として扱われます。プロジェクトの内容が変わったときだけ作り直します。
+p12.i46[agent.system_prompt_repo_map_bytes].placeholder	0
+p12.i47[agent.idle_disconnect_minutes].title	使わなくなったエージェントを止めるまでの分数
+p12.i47[agent.idle_disconnect_minutes].description	外部エージェントのスレッドが 1 つも開かれていない状態がこの分数だけ続いたら、そのエージェントとの接続を終了します (エージェントとそのサンドボックスも止まります)。スレッドを開き直すと接続し直します。0 でウィンドウを閉じるまで接続を保ちます。
+p12.i47[agent.idle_disconnect_minutes].placeholder	5
+p12.i48.header	編集予測
+p12.i49[edit_predictions.providers].link	プロバイダーの設定
+p12.i49[edit_predictions.providers].link_description	編集予測に使用するプロバイダーを選択します。Zed 組み込みの Zeta モデルに加えて、別の編集予測プロバイダーの認証情報や接続先もここで設定します。
+p12.i50[edit_predictions.allow_data_collection].title	データの収集
+p12.i50[edit_predictions.allow_data_collection].description	Zed の編集予測を使用するときに、Zed が学習データを収集してよいかどうかを設定します。データは、オープンソースと判定されたプロジェクトのファイルについてのみ収集されます。このフォークの既定値は「いいえ」です。「既定 (過去の切替に従う)」はステータスバーの切り替えで以前に設定した内容を使用し、設定がない場合は収集しません。
+p12.i51[languages.$(language).show_edit_predictions].title	編集予測を表示
+p12.i51[languages.$(language).show_edit_predictions].description	編集予測をすぐに表示するか、手動で表示するかを設定します。
+p12.i52[languages.$(language).edit_predictions_disabled_in].title	無効にする言語スコープ
+p12.i52[languages.$(language).edit_predictions_disabled_in].description	指定した言語スコープで編集予測を表示するかどうかを設定します。
+p12.i53[edit_prediction.display_mode].title	表示モード
+p12.i53[edit_prediction.display_mode].description	バッファーで編集予測のプレビューを表示するタイミングです。eager モードはインラインで表示し、subtle モードは修飾キーを押している間だけ表示します。
 p13.title	ネットワーク
 p13.i0.header	ネットワーク
 p13.i1[proxy].title	プロキシ

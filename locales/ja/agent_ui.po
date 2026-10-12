@@ -44,6 +44,9 @@ msgstr "グローバルルール 1 件"
 msgid "A host with a wildcard ({pattern}) cannot be added to the allowlist from a consent."
 msgstr "ワイルドカードを含むホスト ({pattern}) は、同意からは許可リストに追加できません。"
 
+msgid "ACP Agent"
+msgstr "ACP エージェント"
+
 msgid "ACP Registry"
 msgstr "ACP レジストリ"
 
@@ -74,6 +77,9 @@ msgstr "AI が判定中…"
 msgid "API Error"
 msgstr "API エラー"
 
+msgid "API Key"
+msgstr "API キー"
+
 msgid "API key is saved in {store}"
 msgstr "API キーは {store} に保存済みです"
 
@@ -95,8 +101,14 @@ msgstr "生成を採用"
 msgid "Accept Transform"
 msgstr "変換を採用"
 
+msgid "Account"
+msgstr "アカウント"
+
 msgid "Actions"
 msgstr "アクション"
+
+msgid "Add API Key…"
+msgstr "API キーを追加…"
 
 msgid "Add Context"
 msgstr "コンテキストを追加"
@@ -343,6 +355,9 @@ msgstr "ローカルフォルダーから選択"
 
 msgid "Choose one of the following authentication options:"
 msgstr "次の認証方法から 1 つを選択してください:"
+
+msgid "Claude (Anthropic)"
+msgstr "Claude (Anthropic)"
 
 msgid "Claude Code (Sandbox)"
 msgstr "Claude Code (サンドボックス)"
@@ -798,9 +813,6 @@ msgstr "キーと値のペアを 1 つだけ指定してください。"
 msgid "Expected object"
 msgstr "JSON オブジェクトを指定してください。"
 
-msgid "External Agents"
-msgstr "外部エージェント"
-
 msgid "External agents are not yet supported in shared projects."
 msgstr "共有プロジェクトでは外部エージェントはまだサポートされていません。"
 
@@ -902,6 +914,9 @@ msgstr "ファイルへ移動"
 
 msgid "Good Result"
 msgstr "良い結果"
+
+msgid "Google"
+msgstr "Google"
 
 msgid "Helpful Response"
 msgstr "役に立つ応答"
@@ -1043,6 +1058,15 @@ msgstr "レジストリを読み込んでいます..."
 msgid "Loading…"
 msgstr "読み込み中…"
 
+msgid "Local"
+msgstr "ローカル"
+
+msgid "Local Model (Ollama, LM Studio, …)"
+msgstr "ローカルモデル (Ollama・LM Studio など)"
+
+msgid "Local Models"
+msgstr "ローカルモデル"
+
 msgid "Log In with Claude Code (Subscription)"
 msgstr "Claude Code でログイン (サブスクリプション)"
 
@@ -1057,6 +1081,9 @@ msgstr "MCP サーバー"
 
 msgid "Make Subagent Full Screen"
 msgstr "サブエージェントを全画面表示"
+
+msgid "Manage AI Connections…"
+msgstr "AI の接続を管理…"
 
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド"
@@ -1211,11 +1238,17 @@ msgstr "役に立たない応答"
 msgid "Not Installed"
 msgstr "未インストール"
 
+msgid "Not set up yet. Opens Settings > AI > LLM Providers, where you add the key or sign in."
+msgstr "まだ設定されていません。「設定 > AI > LLM プロバイダー」を開き、キーを追加するかサインインします。"
+
 msgid "Not supported on this platform"
 msgstr "このプラットフォームには対応していません"
 
 msgid "Note: {} cannot be offered with Zero Data Retention."
 msgstr "注意: {} はゼロデータ保持では提供できません。"
+
+msgid "Official CLI Tab"
+msgstr "公式 CLI のタブ"
 
 msgid "Older"
 msgstr "それ以前"
@@ -1295,8 +1328,14 @@ msgstr "設定を開いてプロバイダーを設定してください"
 msgid "Open the settings to configure the selected provider"
 msgstr "設定を開いて選択中のプロバイダーを設定してください"
 
+msgid "OpenAI"
+msgstr "OpenAI"
+
 msgid "Or type @ to include context"
 msgstr "@ を入力してコンテキストを追加することもできます"
+
+msgid "Other"
+msgstr "その他"
 
 msgid "Output Limit Reached"
 msgstr "出力の上限に達しました"
@@ -1312,6 +1351,12 @@ msgstr "出力は切り詰められました"
 
 msgid "Output:"
 msgstr "出力:"
+
+msgid "Outside the Sandbox"
+msgstr "サンドボックスの外"
+
+msgid "Outside the Sandbox (Asks First)"
+msgstr "サンドボックスの外 (起動前に確認)"
 
 msgid "Package downloads by npm and the agent's network traffic after installation go through the child-process proxy and are subject to the allowlist. However, the extra hosts that a package's install scripts need cannot be listed in advance, and they are blocked and fail if they are not on the allowlist. Prefer Binary agents when possible."
 msgstr "npm によるパッケージの取得と、インストール後の実行時通信は子プロセスプロキシ経由で許可リストの対象になります。ただし、パッケージのインストールスクリプトが追加で必要とするホストは事前に列挙できず、許可リストに無いと遮断されて失敗します。可能であれば Binary 型のエージェントを優先してください。"
@@ -1637,6 +1682,9 @@ msgstr "大きいのでアウトライン (または参照だけ) で送りま�
 msgid "Server exited with status {status}"
 msgstr "サーバーがステータス {status} で終了しました"
 
+msgid "Set Up…"
+msgstr "設定…"
+
 msgid "Settings"
 msgstr "設定"
 
@@ -1651,6 +1699,9 @@ msgstr "アーカイブ済みのスレッドのみ表示"
 
 msgid "Show Thread History in Panel"
 msgstr "パネル内のスレッド履歴を表示"
+
+msgid "Sign In…"
+msgstr "サインイン…"
 
 msgid "Skill Failed to Load"
 msgstr "スキルの読み込みに失敗しました"
@@ -1700,6 +1751,12 @@ msgstr "`{program}` をサンドボックスの外で起動しますか？"
 msgid "Started outside the sandbox, this agent runs with Zed's own permissions and can also run the project's hooks and MCP servers. You'll be asked for each thread before it starts."
 msgstr "サンドボックスの外で起動すると、このエージェントは ForgeKairos 本体の権限で動き、プロジェクトのフックや MCP サーバーも実行できます。起動の前にスレッドごとに確認します。"
 
+msgid "Starts a thread of {agent} on {provider}'s models. The key or sign-in is the one in Settings > AI > LLM Providers."
+msgstr "{provider} のモデルで {agent} のスレッドを始めます。キーやサインインは「設定 > AI > LLM プロバイダー」のものを使います。"
+
+msgid "Starts a thread with {name} through the Agent Client Protocol. You sign in with the agent's own sign-in."
+msgstr "{name} のスレッドを Agent Client Protocol で始めます。サインインはエージェント自身の手順で行います。"
+
 msgid "Steer"
 msgstr "割り込み"
 
@@ -1741,6 +1798,12 @@ msgstr "送信"
 
 msgid "Submitted"
 msgstr "送信済み"
+
+msgid "Subscription"
+msgstr "サブスクリプション"
+
+msgid "Subscription or API Key"
+msgstr "サブスクリプションまたは API キー"
 
 msgid "Subscription or API key: you sign in on Claude Code's own screen, and Zed never handles the credentials. The subscription can be turned off in Settings."
 msgstr "サブスクリプションまたは API キー: サインインは Claude Code 自身の画面で行われ、ForgeKairos は認証情報を扱いません。設定でサブスクリプションを無効にできます。"
