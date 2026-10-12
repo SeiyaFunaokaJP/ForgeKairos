@@ -66,7 +66,16 @@ pub struct TabInfo {
     pub url: String,
     /// Whether this is the workspace's current AI tab (the one used when a tool omits `tab`).
     pub active: bool,
-    pub loading: bool,
+    pub page: PageState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PageState {
+    Loaded,
+    Loading,
+    /// The tab has no page yet, for example one restored after a restart: its `url` is where it
+    /// will go, and the first command on the tab loads it.
+    NotLoaded,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -294,9 +303,13 @@ pub fn format_tabs(tabs: &[TabInfo]) -> String {
         } else {
             tab.title.trim()
         };
-        let loading = if tab.loading { " (loading)" } else { "" };
+        let state = match tab.page {
+            PageState::Loaded => "",
+            PageState::Loading => " (loading)",
+            PageState::NotLoaded => " (not loaded yet; the first command on this tab loads it)",
+        };
         text.push_str(&format!(
-            "{marker} {}: {title} - {}{loading}\n",
+            "{marker} {}: {title} - {}{state}\n",
             tab.id, tab.url
         ));
     }
@@ -481,6 +494,7 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
             description: "Get an outline of the elements of the page in an AI tab (role, name, \
                           value and state), each with a ref to pass to browser_click, \
                           browser_hover, browser_type, browser_scroll and browser_set_value. \
+                          Fields marked [password] or [payment] cannot be typed into or set. \
                           Take a new snapshot after the page changes; refs stop working when the \
                           page navigates.",
             input_schema: object_schema(
@@ -568,7 +582,9 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
                           events. With `ref` the element is focused first; without it the text \
                           goes to the focused element. The text is inserted at the caret and the \
                           field's existing value is kept; use browser_set_value to replace a \
-                          value. With `submit`, Enter is pressed afterwards.",
+                          value. With `submit`, Enter is pressed afterwards. Password and payment \
+                          fields (marked [password] or [payment] by browser_snapshot) are \
+                          refused; ask the user to fill those in.",
             input_schema: object_schema(
                 json!({
                     "tab": tab_schema(),
@@ -634,7 +650,7 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
                           input and change events: a text field or text area (a string), a \
                           select (an option's value or visible text, or an array of them for a \
                           multiple select), a checkbox (true or false) or a radio button (true \
-                          selects it).",
+                          selects it). Password and payment fields are refused.",
             input_schema: object_schema(
                 json!({
                     "tab": tab_schema(),
@@ -1662,21 +1678,30 @@ mod tests {
                 title: "Dashboard".to_string(),
                 url: "http://localhost:3000/".to_string(),
                 active: true,
-                loading: false,
+                page: PageState::Loaded,
             },
             TabInfo {
                 id: TabId("2".to_string()),
                 title: String::new(),
                 url: "about:blank".to_string(),
                 active: false,
-                loading: true,
+                page: PageState::Loading,
+            },
+            TabInfo {
+                id: TabId("3".to_string()),
+                title: String::new(),
+                url: "http://localhost:5173/login".to_string(),
+                active: false,
+                page: PageState::NotLoaded,
             },
         ]);
         assert_eq!(
             text,
-            "2 AI tabs (* = current AI tab):\n\
+            "3 AI tabs (* = current AI tab):\n\
              * 1: Dashboard - http://localhost:3000/\n  \
-             2: (untitled) - about:blank (loading)\n"
+             2: (untitled) - about:blank (loading)\n  \
+             3: (untitled) - http://localhost:5173/login (not loaded yet; the first command on \
+             this tab loads it)\n"
         );
     }
 }

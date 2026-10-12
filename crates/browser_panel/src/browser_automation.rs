@@ -672,7 +672,7 @@ fn tab_infos(tabs: &[AiTab], cx: &App) -> Vec<TabInfo> {
                 title: view.page_title().to_string(),
                 url: view.current_url().to_string(),
                 active: Some(index) == current,
-                loading: view.is_loading(),
+                page: view.page_state(),
             }
         })
         .collect()
@@ -1115,13 +1115,13 @@ async fn execute_in_tab(
             )
             .await?;
             settle(cx).await;
-            Ok(text_output(format!(
-                "Set {} to {}.",
-                field.description,
+            Ok(text_output(format_set_value(
                 result
-                    .get("value")
-                    .map(Value::to_string)
-                    .unwrap_or_else(|| value.to_string())
+                    .get("element")
+                    .and_then(Value::as_str)
+                    .unwrap_or(&field.description),
+                result.get("previous"),
+                result.get("value").unwrap_or(&value),
             )))
         }
         BrowserCommand::Screenshot { .. } => screenshot(tab, &surface, cx).await,
@@ -1537,6 +1537,34 @@ pub(crate) fn refuse_sensitive_field(field: &FieldDescriptor) -> Result<()> {
         bail!(CROSS_ORIGIN_FRAME_REFUSAL);
     }
     Ok(())
+}
+
+/// `element` is the field's role and name without its state, which would show the value from
+/// before the change.
+fn format_set_value(element: &str, previous: Option<&Value>, value: &Value) -> String {
+    fn shown(value: &Value) -> String {
+        match value {
+            Value::Array(values) => values.iter().map(shown).collect::<Vec<_>>().join(", "),
+            value => value.to_string(),
+        }
+    }
+    fn is_empty(value: &Value) -> bool {
+        match value {
+            Value::Null => true,
+            Value::String(text) => text.is_empty(),
+            Value::Array(values) => values.is_empty(),
+            _ => false,
+        }
+    }
+    let value = if is_empty(value) {
+        "empty".to_string()
+    } else {
+        shown(value)
+    };
+    match previous.filter(|previous| !is_empty(previous)) {
+        Some(previous) => format!("Set {element} from {} to {value}.", shown(previous)),
+        None => format!("Set {element} to {value}."),
+    }
 }
 
 fn mouse_button_name(button: MouseButton) -> &'static str {
@@ -2572,6 +2600,50 @@ mod tests {
     }
 
     #[test]
+    fn set_values_name_the_old_and_the_new_value() {
+        assert_eq!(
+            format_set_value(
+                "combobox \"Color\"",
+                Some(&json!(["Red"])),
+                &json!(["Blue"])
+            ),
+            "Set combobox \"Color\" from \"Red\" to \"Blue\"."
+        );
+        assert_eq!(
+            format_set_value(
+                "listbox \"Toppings\"",
+                Some(&json!([])),
+                &json!(["Ham", "Olives"])
+            ),
+            "Set listbox \"Toppings\" to \"Ham\", \"Olives\"."
+        );
+        assert_eq!(
+            format_set_value("checkbox \"Agree\"", Some(&json!(false)), &json!(true)),
+            "Set checkbox \"Agree\" from false to true."
+        );
+        assert_eq!(
+            format_set_value(
+                "textbox \"Email\"",
+                Some(&json!("")),
+                &json!("me@example.com")
+            ),
+            "Set textbox \"Email\" to \"me@example.com\"."
+        );
+        assert_eq!(
+            format_set_value(
+                "textbox \"Email\"",
+                Some(&json!("old@example.com")),
+                &json!("")
+            ),
+            "Set textbox \"Email\" from \"old@example.com\" to empty."
+        );
+        assert_eq!(
+            format_set_value("slider \"Volume\"", None, &json!("7")),
+            "Set slider \"Volume\" to \"7\"."
+        );
+    }
+
+    #[test]
     fn screenshots_are_scaled_to_the_longest_edge() {
         assert_eq!(downscaled_size(800, 600, 1568), (800, 600));
         assert_eq!(downscaled_size(1568, 900, 1568), (1568, 900));
@@ -3201,6 +3273,59 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn a_tab_without_a_page_is_not_listed_as_loading(cx: &mut TestAppContext) {
+        let (fixture, mut cx) = fixture(cx).await;
+        let cx = &mut cx;
+        // Like a tab restored after a restart: it knows where it goes but has no surface yet.
+        fixture.panel.update_in(cx, |panel, window, cx| {
+            panel.open_ai_tab(
+                Some("http://localhost:5173/login".to_string()),
+                NewTabPlacement::Background,
+                window,
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        let tab = ai_tabs_of(&fixture, cx).pop().expect("the AI tab");
+        let listing = finished(run(&fixture, BrowserCommand::ListTabs, cx), cx).expect("listing");
+        assert!(
+            listing.text.contains(
+                "http://localhost:5173/login (not loaded yet; the first command on this tab loads it)"
+            ),
+            "{}",
+            listing.text
+        );
+        assert!(!listing.text.contains("(loading)"), "{}", listing.text);
+
+        let surface: Rc<dyn AutomationSurface> = Rc::new(FakeSurface::default());
+        tab.view.update(cx, |view, cx| {
+            view.set_automation_surface_for_test(surface, cx)
+        });
+        let listing = finished(run(&fixture, BrowserCommand::ListTabs, cx), cx).expect("listing");
+        assert!(
+            listing
+                .text
+                .contains("http://localhost:5173/login (loading)"),
+            "{}",
+            listing.text
+        );
+
+        tab.view.update_in(cx, |view, window, cx| {
+            view.handle_webview_event_for_test(
+                WebViewEvent::LoadFinished { succeeded: true },
+                window,
+                cx,
+            );
+        });
+        let listing = finished(run(&fixture, BrowserCommand::ListTabs, cx), cx).expect("listing");
+        assert!(
+            listing.text.contains("http://localhost:5173/login\n"),
+            "{}",
+            listing.text
+        );
+    }
+
+    #[gpui::test]
     async fn tabs_resolve_to_the_named_or_the_current_one(cx: &mut TestAppContext) {
         let (fixture, mut cx) = fixture(cx).await;
         let cx = &mut cx;
@@ -3506,6 +3631,59 @@ mod tests {
     }
 
     #[gpui::test]
+    async fn a_blocked_navigation_is_not_reported_as_a_failed_load(cx: &mut TestAppContext) {
+        let (fixture, mut cx) = fixture(cx).await;
+        let cx = &mut cx;
+        let (tab, _fake) = open_tab_with_fake(&fixture, cx);
+        let status = |cx: &mut VisualTestContext| {
+            tab.view
+                .read_with(cx, |view, _| view.status_message_for_test())
+                .map(|message| message.to_string())
+        };
+        let blocked = || WebViewEvent::NavigationBlocked {
+            url: "https://evil.test/".to_string(),
+            reason: "`evil.test` is not on the network allowlist".to_string(),
+        };
+        let send = |events: Vec<WebViewEvent>, cx: &mut VisualTestContext| {
+            tab.view.update_in(cx, |view, window, cx| {
+                for event in events {
+                    view.handle_webview_event_for_test(event, window, cx);
+                }
+            });
+        };
+
+        // WebView2 cancels the navigation and then completes it as failed, with the page that
+        // was already there still showing.
+        send(
+            vec![
+                blocked(),
+                WebViewEvent::UrlChanged("http://localhost:3000/".to_string()),
+                WebViewEvent::LoadFinished { succeeded: false },
+            ],
+            cx,
+        );
+        let notice = status(cx).expect("the blocked notice is shown");
+        assert!(notice.contains("https://evil.test/"), "{notice}");
+        assert!(!notice.contains("Couldn't load"), "{notice}");
+
+        // The next failure is a real one again.
+        send(vec![WebViewEvent::LoadFinished { succeeded: false }], cx);
+        assert_eq!(status(cx).as_deref(), Some("Couldn't load the page."));
+
+        // A blocked navigation that no failed load follows (WebKit) leaves no trace in a later
+        // navigation of the view's own.
+        send(vec![blocked()], cx);
+        tab.view.update(cx, |view, cx| {
+            view.navigate_to("http://localhost:3000/next", cx)
+        });
+        send(vec![WebViewEvent::LoadFinished { succeeded: false }], cx);
+        assert_eq!(status(cx).as_deref(), Some("Couldn't load the page."));
+
+        send(vec![WebViewEvent::LoadFinished { succeeded: true }], cx);
+        assert_eq!(status(cx), None);
+    }
+
+    #[gpui::test]
     async fn native_input_is_preferred_when_the_backend_has_it(cx: &mut TestAppContext) {
         let (fixture, mut cx) = fixture(cx).await;
         let cx = &mut cx;
@@ -3542,6 +3720,36 @@ mod tests {
                 click_count: 2,
                 modifiers: vec![KeyModifier::Shift],
             }]
+        );
+    }
+
+    #[gpui::test]
+    async fn setting_a_value_reports_the_old_and_the_new_one(cx: &mut TestAppContext) {
+        let (fixture, mut cx) = fixture(cx).await;
+        let cx = &mut cx;
+        let (_tab, fake) = open_tab_with_fake(&fixture, cx);
+        fake.respond(
+            "field",
+            &[json!({ "tag": "select", "type": "", "description": "combobox \"Color\" (value=\"Red\")" })],
+        );
+        fake.respond(
+            "setValue",
+            &[json!({ "element": "combobox \"Color\"", "previous": ["Red"], "value": ["Blue"] })],
+        );
+        let setting = run(
+            &fixture,
+            BrowserCommand::SetValue {
+                tab: None,
+                element: "e7".to_string(),
+                value: json!("Blue"),
+            },
+            cx,
+        );
+        advance(500, cx);
+        let output = finished(setting, cx).expect("set");
+        assert_eq!(
+            output.text,
+            "Set combobox \"Color\" from \"Red\" to \"Blue\"."
         );
     }
 

@@ -12,7 +12,7 @@
 use std::{collections::HashSet, rc::Rc, sync::Arc};
 
 use anyhow::{Context as _, Result, bail};
-use browser_control::{NavigateTarget, TabId};
+use browser_control::{NavigateTarget, PageState, TabId};
 use editor::Editor;
 use fs::Fs;
 use futures::{StreamExt as _, channel::oneshot};
@@ -199,6 +199,11 @@ pub struct BrowserView {
     pending_home_url: Option<String>,
     page_title: SharedString,
     status_message: Option<SharedString>,
+    /// 直前のナビゲーションがフィルターに止められた。WebView2 は止めた行き先についても
+    /// 失敗の `LoadFinished` を後から送り (WebKit もリダイレクトを止めたときは同じ)、
+    /// そのときも元のページは残っているので、「読み込めませんでした」で遮断の通知を
+    /// 上書きしない。
+    navigation_was_blocked: bool,
     can_go_back: bool,
     can_go_forward: bool,
     loading: bool,
@@ -282,6 +287,7 @@ impl BrowserView {
             pending_home_url: None,
             page_title: SharedString::default(),
             status_message: None,
+            navigation_was_blocked: false,
             can_go_back: false,
             can_go_forward: false,
             loading: false,
@@ -348,6 +354,19 @@ impl BrowserView {
 
     pub fn is_loading(&self) -> bool {
         self.loading
+    }
+
+    /// AI のツールに見せる読み込み状態。復元しただけのタブは面が無いまま行き先を
+    /// 持って待っている (`loading` も立っている) ので、「読み込み中」とは言わない。
+    pub(crate) fn page_state(&self) -> PageState {
+        match self.surface {
+            SurfaceState::Ready if self.loading => PageState::Loading,
+            SurfaceState::Ready => PageState::Loaded,
+            SurfaceState::Starting => PageState::Loading,
+            SurfaceState::Idle
+            | SurfaceState::Unavailable { .. }
+            | SurfaceState::Crashed { .. } => PageState::NotLoaded,
+        }
     }
 
     // -- AI タブ (ADR-F89) ---------------------------------------------------
@@ -458,6 +477,7 @@ impl BrowserView {
             }
             _ => {}
         }
+        self.navigation_was_blocked = false;
         let ai = self.ai.as_mut().context("This tab is not an AI tab.")?;
         let waiter = ai.expect_navigation();
         ai.requested_navigation = None;
@@ -554,6 +574,11 @@ impl BrowserView {
             retry_on_command: false,
         };
         cx.notify();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn status_message_for_test(&self) -> Option<SharedString> {
+        self.status_message.clone()
     }
 
     /// バックエンドからのイベントを、テストから直接流す。
@@ -992,8 +1017,12 @@ impl BrowserView {
             }
             WebViewEvent::LoadFinished { succeeded } => {
                 self.loading = false;
-                self.status_message =
-                    (!succeeded).then(|| SharedString::from(i18n::t!("Couldn't load the page.")));
+                let navigation_was_blocked = std::mem::take(&mut self.navigation_was_blocked);
+                if succeeded {
+                    self.status_message = None;
+                } else if !navigation_was_blocked {
+                    self.status_message = Some(i18n::t!("Couldn't load the page.").into());
+                }
                 if let Some(ai) = &mut self.ai {
                     ai.navigation_ended(NavigationOutcome::Finished { succeeded });
                 }
@@ -1019,6 +1048,7 @@ impl BrowserView {
                 log::info!("browser view: blocked a navigation to {url}: {reason}");
                 self.loading = false;
                 self.status_message = Some(blocked_navigation_notice(&url));
+                self.navigation_was_blocked = true;
                 if let Some(ai) = &mut self.ai {
                     ai.navigation_blocked(&url, &reason);
                 }
@@ -1090,6 +1120,7 @@ impl BrowserView {
         self.current_url = url.to_string();
         self.loading = true;
         self.status_message = None;
+        self.navigation_was_blocked = false;
         match &self.webview {
             Some(webview) => webview.navigate(url),
             // AI タブの行き先を利用者の既定のブラウザーへ回すと、その先は許可リストの
@@ -1126,6 +1157,7 @@ impl BrowserView {
 
     fn navigate_back(&mut self, _: &NavigateBack, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(webview) = &self.webview {
+            self.navigation_was_blocked = false;
             webview.go_back();
         }
         cx.notify();
@@ -1133,6 +1165,7 @@ impl BrowserView {
 
     fn navigate_forward(&mut self, _: &NavigateForward, _: &mut Window, cx: &mut Context<Self>) {
         if let Some(webview) = &self.webview {
+            self.navigation_was_blocked = false;
             webview.go_forward();
         }
         cx.notify();
@@ -1146,6 +1179,7 @@ impl BrowserView {
         match &self.webview {
             Some(webview) => {
                 self.loading = true;
+                self.navigation_was_blocked = false;
                 webview.reload();
             }
             None => {

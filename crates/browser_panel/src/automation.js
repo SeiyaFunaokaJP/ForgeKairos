@@ -1030,6 +1030,9 @@
         element.getAttribute("aria-level") || (/^h[1-6]$/.test(tag) ? tag.charAt(1) : "");
       if (level) parts.push("level=" + level);
     }
+    // Shown so that the model knows before it tries that the editor refuses these.
+    var sensitive = sensitiveKind(element);
+    if (sensitive) parts.push(sensitive);
     if (tag === "input" || tag === "textarea") {
       var type = inputType(element);
       if (type === "checkbox" || type === "radio") {
@@ -1068,11 +1071,15 @@
     return parts;
   }
 
+  function roleAndName(element, role) {
+    var name = accessibleName(element, role);
+    return role + (name ? " " + jsonStringify(name) : "");
+  }
+
   function describeElement(element) {
     try {
       var role = roleOf(element) || tagOf(element);
-      var name = accessibleName(element, role);
-      var text = role + (name ? " " + jsonStringify(name) : "");
+      var text = roleAndName(element, role);
       var state = stateAttributes(element, role).filter(function (part) {
         return part.indexOf("href=") !== 0;
       });
@@ -1955,20 +1962,36 @@
     return (tag === "iframe" || tag === "frame") && !sameOriginDocument(element);
   }
 
+  // "password", "payment" or "" for the fields the editor refuses to type into
+  // (`is_sensitive_field`).
+  function sensitiveKind(element) {
+    if (!element || !element.getAttribute) return "";
+    if (inputType(element) === "password") return "password";
+    var tokens = String(element.getAttribute("autocomplete") || "")
+      .toLowerCase()
+      .split(/\s+/);
+    if (
+      tokens.some(function (token) {
+        return token.indexOf("password") !== -1;
+      })
+    ) {
+      return "password";
+    }
+    if (
+      tokens.some(function (token) {
+        return token.indexOf("cc-") === 0;
+      })
+    ) {
+      return "payment";
+    }
+    return "";
+  }
+
   // The same check as the editor's, made again here because the focus can move
   // while text is typed in (a page that jumps to the next field by itself).
   function refuseSensitiveField(element) {
     if (!element || !element.getAttribute) return;
-    var tokens = String(element.getAttribute("autocomplete") || "")
-      .toLowerCase()
-      .split(/\s+/);
-    var sensitive =
-      inputType(element) === "password" ||
-      isOpaqueFrame(element) ||
-      tokens.some(function (token) {
-        return token.indexOf("password") !== -1 || token.indexOf("cc-") === 0;
-      });
-    if (sensitive) {
+    if (sensitiveKind(element) || isOpaqueFrame(element)) {
       throw automationError("Typing into password or payment fields is not allowed.");
     }
   }
@@ -2001,6 +2024,8 @@
     var value = args.value;
     var tag = tagOf(element);
     var label = "The element `" + args.ref + "` (" + describeElement(element) + ")";
+    // Without its state: the value in it is the one being replaced.
+    var name = roleAndName(element, roleOf(element) || tag);
     if (element.disabled) {
       throw automationError(label + " is disabled.");
     }
@@ -2010,6 +2035,16 @@
         throw automationError("This select takes one value, not a list.");
       }
       var options = Array.prototype.slice.call(element.options);
+      var optionTexts = function (selected) {
+        return selected.map(function (option) {
+          return normalizeSpace(option.text);
+        });
+      };
+      var previousOptions = optionTexts(
+        options.filter(function (option) {
+          return option.selected;
+        })
+      );
       var chosen = wanted.map(function (text) {
         var match = options.filter(function (option) {
           return (
@@ -2035,15 +2070,12 @@
       });
       dispatchInput(element, "insertReplacementText", null);
       dispatchChange(element);
-      return {
-        value: chosen.map(function (option) {
-          return normalizeSpace(option.text);
-        }),
-      };
+      return { element: name, previous: previousOptions, value: optionTexts(chosen) };
     }
     var type = inputType(element);
     if (type === "checkbox" || type === "radio") {
       var checked = truthy(value);
+      var wasChecked = element.checked;
       if (type === "radio" && !checked) {
         throw automationError(
           "A radio button cannot be cleared; select another one of its group instead."
@@ -2057,19 +2089,21 @@
         dispatchInput(element, "insertReplacementText", null);
         dispatchChange(element);
       }
-      return { value: element.checked };
+      return { element: name, previous: wasChecked, value: element.checked };
     }
     if (isTextField(element) || /^(range|color)$/.test(type)) {
       if (element.readOnly) {
         throw automationError(label + " is read-only.");
       }
+      var previousText = cap(element.value, NAME_LIMIT);
       if (typeof element.focus === "function") element.focus({ preventScroll: true });
       setNativeValue(element, value === null || value === undefined ? "" : String(value));
       dispatchInput(element, "insertReplacementText", null);
       dispatchChange(element);
-      return { value: element.value };
+      return { element: name, previous: previousText, value: element.value };
     }
     if (element.isContentEditable) {
+      var previousContent = cap(textOf(element), NAME_LIMIT);
       element.focus({ preventScroll: true });
       var ownerDocument = element.ownerDocument;
       var selection = ownerDocument.getSelection();
@@ -2087,7 +2121,7 @@
         element.textContent = String(value);
         dispatchInput(element, "insertReplacementText", null);
       }
-      return { value: textOf(element) };
+      return { element: name, previous: previousContent, value: textOf(element) };
     }
     throw automationError(label + " is not a form control whose value can be set.");
   }
