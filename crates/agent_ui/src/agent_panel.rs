@@ -8558,8 +8558,15 @@ impl AgentPanel {
             return None;
         }
 
+        // The before-you-use-AI card (ADR-F91) is taller than a short panel,
+        // such as one sharing the dock, and its buttons sit at the bottom, so
+        // it scrolls instead of being cut off.
         Some(
             div()
+                .id("agent-panel-new-user-onboarding")
+                .flex_none()
+                .max_h(gpui::relative(0.7))
+                .overflow_y_scroll()
                 .bg(cx.theme().colors().editor_background)
                 .child(self.new_user_onboarding.clone()),
         )

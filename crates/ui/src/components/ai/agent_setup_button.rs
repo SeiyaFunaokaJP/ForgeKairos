@@ -87,7 +87,9 @@ impl RenderOnce for AgentSetupButton {
                 .justify_center()
                 .when_some(self.icon, |this, icon| this.child(icon))
                 .when_some(self.name, |this, name| {
-                    this.child(Label::new(name).size(LabelSize::Small))
+                    // The buttons sit in equal grid columns, so a long name
+                    // would otherwise spill into the neighboring button.
+                    this.child(Label::new(name).size(LabelSize::Small).truncate())
                 })
         });
 
