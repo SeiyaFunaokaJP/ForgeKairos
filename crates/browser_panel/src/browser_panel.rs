@@ -55,8 +55,36 @@ pub use browser_bookmarks::{
 pub use browser_item::BrowserItem;
 pub use browser_view::{BrowserHost, BrowserView, BrowserViewEvent};
 
+// ページを載せるバックエンドは OS ごとに 1 つで、どれも同じ名前の型と関数を出す
+// (`webview_types` の型を再輸出する)。ほかのモジュールは `crate::webview` だけを見る。
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+mod webview_linux;
+#[cfg(target_os = "macos")]
+mod webview_macos;
+// TEMPORARY STUB (mac/linux): `webview_unsupported` が代役の間は読まれない項目がある。
+// 本物のバックエンドが入ったら外す。
+#[cfg_attr(not(windows), allow(dead_code))]
+mod webview_types;
 #[cfg(windows)]
 mod webview_windows;
+// 該当するバックエンドの無い OS 用。Windows でも型検査だけは通しておく
+// (macOS / Linux 向けのビルドは Windows では確かめられないため)。
+#[allow(dead_code)]
+mod webview_unsupported;
+
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use webview_linux as webview;
+#[cfg(target_os = "macos")]
+use webview_macos as webview;
+#[cfg(not(any(
+    windows,
+    target_os = "macos",
+    target_os = "linux",
+    target_os = "freebsd"
+)))]
+use webview_unsupported as webview;
+#[cfg(windows)]
+use webview_windows as webview;
 
 const BROWSER_PANEL_KEY: &str = "BrowserPanel";
 const QUERY_PLACEHOLDER: &str = "{query}";
@@ -133,6 +161,7 @@ pub struct BrowserSettings {
     pub search_url: String,
     pub copilot_url: String,
     pub use_egress_proxy: bool,
+    pub ai_control: bool,
 }
 
 pub const DEFAULT_HOME_URL: &str = "https://m365.cloud.microsoft/chat";
@@ -164,6 +193,7 @@ impl Settings for BrowserSettings {
                 .copilot_url
                 .unwrap_or_else(|| DEFAULT_COPILOT_URL.to_string()),
             use_egress_proxy: browser.use_egress_proxy.unwrap_or(false),
+            ai_control: browser.ai_control.unwrap_or(false),
         }
     }
 }
@@ -1757,76 +1787,6 @@ async fn restore_items(
         pane.activate_item(active_index.unwrap_or(0), false, false, window, cx);
     })
     .log_err();
-}
-
-/// Windows 以外でビュー本体を素通しでコンパイルするためのスタブ。
-/// `new` は必ず失敗し、ビューは「未対応」表示 + 外部ブラウザーへの導線になる。
-#[cfg(not(windows))]
-#[allow(dead_code)]
-pub(crate) mod webview_unsupported {
-    use std::path::Path;
-
-    use anyhow::{Result, anyhow};
-    use futures::channel::mpsc::UnboundedSender;
-
-    pub(crate) enum WebViewEvent {
-        Ready,
-        Failed(String),
-        UrlChanged(String),
-        TitleChanged(String),
-        HistoryChanged {
-            can_go_back: bool,
-            can_go_forward: bool,
-        },
-        LoadFinished {
-            succeeded: bool,
-        },
-        FocusReturned,
-        PageFocusChanged(bool),
-        OpenInPlace(String),
-    }
-
-    pub(crate) struct Viewport {
-        pub(crate) origin_x: f32,
-        pub(crate) origin_y: f32,
-        pub(crate) width: f32,
-        pub(crate) height: f32,
-        pub(crate) scale_factor: f32,
-        pub(crate) hidden_reason: Option<&'static str>,
-        pub(crate) input_blocked: bool,
-        pub(crate) overlays: Vec<OverlayRect>,
-    }
-
-    #[derive(Clone, Copy, Debug, PartialEq)]
-    pub(crate) struct OverlayRect {
-        pub(crate) left: f32,
-        pub(crate) top: f32,
-        pub(crate) right: f32,
-        pub(crate) bottom: f32,
-    }
-
-    pub(crate) struct WebView;
-
-    impl WebView {
-        pub(crate) fn new(
-            _host_hwnd: isize,
-            _user_data_folder: &Path,
-            _proxy_endpoint: Option<&str>,
-            _events: UnboundedSender<WebViewEvent>,
-        ) -> Result<Self> {
-            Err(anyhow!("the embedded browser requires Windows WebView2"))
-        }
-
-        pub(crate) fn sync_viewport(&self, _: Viewport) {}
-        pub(crate) fn hide(&self, _: &'static str) {}
-        pub(crate) fn navigate(&self, _: &str) {}
-        pub(crate) fn go_back(&self) {}
-        pub(crate) fn go_forward(&self) {}
-        pub(crate) fn reload(&self) {}
-        pub(crate) fn set_dark_mode(&self, _: bool) {}
-        pub(crate) fn release_keyboard_focus(&self) {}
-        pub(crate) fn focus_page(&self) {}
-    }
 }
 
 #[cfg(test)]

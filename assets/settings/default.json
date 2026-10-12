@@ -1108,8 +1108,9 @@
     "multi_buffer_hide_symbols": false,
   },
   // The built-in browser panel (ADR-F19).
-  // Uses Microsoft Edge WebView2 on Windows. On other platforms the panel only
-  // shows a "not supported" notice and a way to open an external browser.
+  // Uses Microsoft Edge WebView2 on Windows, WKWebView on macOS and WebKitGTK
+  // on Linux. When the platform's web engine is missing, the panel shows a
+  // notice and a way to open an external browser instead.
   "browser": {
     // Whether to show the browser panel button in the status bar.
     "button": true,
@@ -1144,6 +1145,12 @@
     // outbound network allowlist. By default it is exempt from the allowlist,
     // like a terminal operated by a human (ADR-F19).
     "use_egress_proxy": false,
+    // Whether AI agents (the built-in agent and MCP clients) may drive the
+    // built-in browser, for debugging web apps. They only ever see and drive
+    // "AI tabs", which use their own browser profile (separate cookies and
+    // storage) and always go through the outbound network allowlist, whatever
+    // `use_egress_proxy` says. When off, the browser tools are not offered.
+    "ai_control": false,
   },
   // Expose Zed itself as a loopback IDE server (ADR-F26). It binds only to a
   // free port on 127.0.0.1 and makes no outbound connections (so it is not

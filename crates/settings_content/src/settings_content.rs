@@ -834,6 +834,15 @@ pub struct BrowserSettingsContent {
     ///
     /// Default: false
     pub use_egress_proxy: Option<bool>,
+
+    /// Whether AI agents (the built-in agent and MCP clients) may drive the
+    /// built-in browser's AI tabs, for debugging web apps.
+    ///
+    /// AI tabs use their own browser profile and always go through the egress
+    /// allowlist proxy, whatever `use_egress_proxy` says.
+    ///
+    /// Default: false
+    pub ai_control: Option<bool>,
 }
 
 #[with_fallible_options]

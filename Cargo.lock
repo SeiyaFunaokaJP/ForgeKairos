@@ -2213,11 +2213,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "browser_control"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "project",
+ "serde_json",
+]
+
+[[package]]
 name = "browser_panel"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-recursion",
+ "browser_control",
  "db",
  "editor",
  "fs",

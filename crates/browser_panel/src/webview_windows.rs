@@ -20,8 +20,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{Context as _, Result};
-use futures::channel::mpsc::UnboundedSender;
+use anyhow::{Context as _, Result, anyhow, bail};
+use futures::channel::{mpsc::UnboundedSender, oneshot};
+use gpui::{SharedString, Window};
 use util::ResultExt as _;
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, CoreWebView2EnvironmentOptions,
@@ -60,53 +61,7 @@ use windows::{
     core::{BOOL, HSTRING, Interface as _, PCWSTR},
 };
 
-/// Everything the WebView2 callbacks need to tell the GPUI side about.
-pub(crate) enum WebViewEvent {
-    Ready,
-    /// Creation failed; the payload is the Japanese message to render in place
-    /// of the browsing surface.
-    Failed(String),
-    UrlChanged(String),
-    TitleChanged(String),
-    HistoryChanged {
-        can_go_back: bool,
-        can_go_forward: bool,
-    },
-    LoadFinished {
-        succeeded: bool,
-    },
-    /// The user asked (with `Esc`) to hand keyboard focus back to the editor.
-    FocusReturned,
-    /// Whether the page currently owns the Win32 keyboard focus. GPUI's own
-    /// focus state cannot see this, so the panel renders a hint from it.
-    PageFocusChanged(bool),
-    /// A `target="_blank"` navigation; the panel hosts a single view, so it is
-    /// re-targeted at the current view instead of spawning a browser window.
-    OpenInPlace(String),
-}
-
-/// Where the browsing surface should sit, in GPUI's logical pixels relative to
-/// the window's client origin, plus why it is (not) shown. Passed as one value
-/// because the panel recomputes all of it on every paint.
-pub(crate) struct Viewport {
-    pub(crate) origin_x: f32,
-    pub(crate) origin_y: f32,
-    pub(crate) width: f32,
-    pub(crate) height: f32,
-    pub(crate) scale_factor: f32,
-    /// `None` when the surface should be shown; otherwise why it is hidden.
-    /// Only used for logging, so the reason has to be a `'static` label.
-    pub(crate) hidden_reason: Option<&'static str>,
-    /// Whether the page stays on screen but takes no mouse input, because gpui
-    /// draws something over it that `overlays` cannot describe: a workspace
-    /// modal and the full-window backdrop that dismisses it.
-    pub(crate) input_blocked: bool,
-    /// What gpui paints on top of the element tree this frame (tooltips,
-    /// context menus, popovers), in the same logical pixels and origin as the
-    /// viewport itself. Whatever of it lands on the surface is cut out of the
-    /// child window; see [`WebView::sync_viewport`].
-    pub(crate) overlays: Vec<OverlayRect>,
-}
+pub(crate) use crate::webview_types::*;
 
 /// Corner radius of the holes cut for gpui's overlays, in logical pixels.
 ///
@@ -140,16 +95,6 @@ const OVERLAY_CORNER_RADIUS: f64 = 8.;
 /// the rows above the pages remain grabbable.
 const EDGE_SLIVER_DEPTH: f32 = 4.;
 
-/// A gpui overlay rectangle in logical pixels, relative to the host window's
-/// client origin - the same space [`Viewport`] uses.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct OverlayRect {
-    pub(crate) left: f32,
-    pub(crate) top: f32,
-    pub(crate) right: f32,
-    pub(crate) bottom: f32,
-}
-
 /// Whether the host window was created with `WS_EX_NOREDIRECTIONBITMAP`, which
 /// `gpui_windows` does unless `GPUI_DISABLE_DIRECT_COMPOSITION` is set.
 ///
@@ -165,6 +110,22 @@ pub(crate) fn host_uses_direct_composition(host_hwnd: isize) -> bool {
     let hwnd = HWND(host_hwnd as *mut c_void);
     let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
     (ex_style as u32) & WS_EX_NOREDIRECTIONBITMAP.0 != 0
+}
+
+pub(crate) fn host_window_handle(window: &Window) -> Option<isize> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    // `gpui::Window` has its own inherent `window_handle`, so the trait method
+    // has to be named explicitly.
+    match HasWindowHandle::window_handle(window).ok()?.as_raw() {
+        RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
+        _ => None,
+    }
+}
+
+pub(crate) fn runtime_missing_message() -> SharedString {
+    i18n::t!("The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime.")
+        .into()
 }
 
 /// Handed the shared environment once it exists, or the reason it does not.
@@ -573,10 +534,16 @@ impl WebView {
     /// failure) arrives as a [`WebViewEvent`].
     pub(crate) fn new(
         host_hwnd: isize,
-        user_data_folder: &Path,
-        proxy_endpoint: Option<&str>,
+        options: WebViewOptions,
         events: UnboundedSender<WebViewEvent>,
     ) -> Result<Self> {
+        // TEMPORARY STUB (win): the AI profile, the document start script, the
+        // navigation filter and the download block are not applied yet, so
+        // asking for any of them fails rather than opening an unrestricted page.
+        if options.uses_ai_tab_features() {
+            bail!("AI tabs are not supported by the WebView2 backend yet");
+        }
+
         let composited = host_uses_direct_composition(host_hwnd);
         let inner = Rc::new(Inner {
             host_hwnd: HWND(host_hwnd as *mut c_void),
@@ -607,7 +574,11 @@ impl WebView {
                 }
             }) as EnvironmentWaiter
         };
-        with_shared_environment(user_data_folder, proxy_endpoint, waiter)?;
+        with_shared_environment(
+            &options.user_data_folder,
+            options.proxy_endpoint.as_deref(),
+            waiter,
+        )?;
 
         Ok(Self { inner })
     }
@@ -776,6 +747,35 @@ impl WebView {
         }
         self.inner.move_focus_into_page();
     }
+}
+
+// TEMPORARY STUB (win): filled in by the WebView2 automation work. Nothing
+// calls these until the browser automation (core) lands.
+#[allow(dead_code)]
+impl WebView {
+    pub(crate) fn execute_script(&self, _script: &str) -> oneshot::Receiver<Result<String>> {
+        completed(Err(anyhow!(
+            "running scripts is not supported by the WebView2 backend yet"
+        )))
+    }
+
+    pub(crate) fn capture_png(&self) -> oneshot::Receiver<Result<Vec<u8>>> {
+        completed(Err(anyhow!(
+            "screenshots are not supported by the WebView2 backend yet"
+        )))
+    }
+
+    pub(crate) fn dispatch_input(&self, _input: NativeInput) -> oneshot::Receiver<Result<()>> {
+        completed(Err(NativeInputUnsupported.into()))
+    }
+
+    pub(crate) fn open_developer_tools(&self) {}
+
+    pub(crate) fn is_detached(&self) -> bool {
+        false
+    }
+
+    pub(crate) fn raise_detached_window(&self) {}
 }
 
 impl Drop for WebView {

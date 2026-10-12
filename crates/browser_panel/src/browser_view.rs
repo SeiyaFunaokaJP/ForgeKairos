@@ -30,11 +30,9 @@ use crate::{
     normalize_bookmark_url, resolve_address_input,
 };
 
-#[cfg(windows)]
-use crate::webview_windows::{OverlayRect, Viewport, WebView, WebViewEvent};
-
-#[cfg(not(windows))]
-use crate::webview_unsupported::{OverlayRect, Viewport, WebView, WebViewEvent};
+use crate::webview::{
+    self, OverlayRect, Viewport, WebView, WebViewEvent, WebViewOptions, WebViewProfile,
+};
 
 const WEBVIEW2_DOWNLOAD_URL: &str = "https://developer.microsoft.com/microsoft-edge/webview2/";
 
@@ -344,7 +342,7 @@ impl BrowserView {
     // -- WebView2 のライフサイクル ------------------------------------------
 
     fn ensure_surface(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let host_hwnd = host_window_handle(window);
+        let host_hwnd = webview::host_window_handle(window);
         if let (Some(current), Some(previous)) = (host_hwnd, self.host_hwnd)
             && current != previous
         {
@@ -377,7 +375,7 @@ impl BrowserView {
             }
             return;
         };
-        self.host_is_composited = host_is_composited(host_hwnd);
+        self.host_is_composited = webview::host_uses_direct_composition(host_hwnd);
 
         let settings = Self::settings(cx);
         let proxy_endpoint = settings
@@ -392,14 +390,16 @@ impl BrowserView {
             );
         }
 
-        let user_data_folder = paths::data_dir().join("webview2");
+        let options = WebViewOptions {
+            profile: WebViewProfile::User,
+            user_data_folder: paths::data_dir().join("webview2"),
+            proxy_endpoint,
+            document_start_script: None,
+            navigation_filter: None,
+            block_downloads: false,
+        };
         let (events_tx, mut events_rx) = futures::channel::mpsc::unbounded();
-        match WebView::new(
-            host_hwnd,
-            &user_data_folder,
-            proxy_endpoint.as_deref(),
-            events_tx,
-        ) {
+        match WebView::new(host_hwnd, options, events_tx) {
             Ok(webview) => {
                 let webview = Rc::new(webview);
                 // 作り直し (別ウィンドウへの移動) では既に開いていたページを
@@ -426,7 +426,7 @@ impl BrowserView {
             Err(error) => {
                 log::error!("failed to start WebView2: {error:#}");
                 self.surface = SurfaceState::Unavailable {
-                    message: runtime_missing_message(),
+                    message: webview::runtime_missing_message(),
                     offer_runtime_download: cfg!(windows),
                 };
             }
@@ -461,7 +461,7 @@ impl BrowserView {
                 // dropped from within itself.
                 self.webview = None;
                 self.surface = SurfaceState::Unavailable {
-                    message: runtime_missing_message(),
+                    message: webview::runtime_missing_message(),
                     offer_runtime_download: true,
                 };
             }
@@ -499,6 +499,12 @@ impl BrowserView {
                 }
             }
             WebViewEvent::OpenInPlace(url) => self.navigate_to(&url, cx),
+            WebViewEvent::NavigationBlocked { url, reason } => {
+                log::info!("browser view: blocked a navigation to {url}: {reason}");
+            }
+            WebViewEvent::DownloadBlocked { url } => {
+                log::info!("browser view: blocked a download of {url}");
+            }
         }
         // 生成完了は非同期に届くので、ここで再描画しないと canvas が走らず、
         // コントローラーは 0x0 のまま (= 何も表示されない) になる。
@@ -519,7 +525,8 @@ impl BrowserView {
         // 背景に合わせておけば、出ても地の色と見分けが付かない (ADR-F32)。
         let background = surface_background_color(cx);
         if self.applied_background_color != Some(background) {
-            apply_surface_background(&webview, background);
+            let (red, green, blue) = background;
+            webview.set_background_color(red, green, blue);
             self.applied_background_color = Some(background);
         }
     }
@@ -1846,7 +1853,6 @@ fn overlay_rects(window: &Window) -> Vec<OverlayRect> {
 /// `view_focused` はビューが GPUI のフォーカスを持っているか。ページの入力を
 /// 止めている間に来たフォーカス要求は、これが立っている間しか後から流さない
 /// (よそへ移ったフォーカスをページが奪わないように)。
-#[cfg(windows)]
 fn sync_surface_viewport(
     webview: &Rc<WebView>,
     viewport: Viewport,
@@ -1857,11 +1863,6 @@ fn sync_surface_viewport(
         let webview = webview.clone();
         window.on_next_frame(move |_, _| webview.apply_deferred_clip());
     }
-}
-
-#[cfg(not(windows))]
-fn sync_surface_viewport(webview: &Rc<WebView>, viewport: Viewport, _: bool, _: &mut Window) {
-    webview.sync_viewport(viewport);
 }
 
 /// このフレームで子 HWND をどう扱うか。[`surface_presentation_for`] が決める。
@@ -1919,53 +1920,6 @@ fn surface_background_color(cx: &App) -> (u8, u8, u8) {
     let color = gpui::Rgba::from(cx.theme().colors().editor_background);
     let channel = |value: f32| (value.clamp(0., 1.) * 255.).round() as u8;
     (channel(color.r), channel(color.g), channel(color.b))
-}
-
-#[cfg(windows)]
-fn apply_surface_background(webview: &Rc<WebView>, (red, green, blue): (u8, u8, u8)) {
-    webview.set_background_color(red, green, blue);
-}
-
-#[cfg(not(windows))]
-fn apply_surface_background(_: &Rc<WebView>, _: (u8, u8, u8)) {}
-
-/// GPUI がこのウィンドウを DirectComposition で合成しているか。合成していれば
-/// 子 HWND は GPUI の描画の**後ろ**なので、ツールチップもドラッグプレビューも
-/// サーフェスを隠さずに手前へ出せる (ADR-F32)。
-#[cfg(windows)]
-fn host_is_composited(host_hwnd: isize) -> bool {
-    crate::webview_windows::host_uses_direct_composition(host_hwnd)
-}
-
-#[cfg(not(windows))]
-fn host_is_composited(_: isize) -> bool {
-    false
-}
-
-fn runtime_missing_message() -> SharedString {
-    if cfg!(windows) {
-        i18n::t!("The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime.")
-            .into()
-    } else {
-        i18n::t!("The built-in browser isn't supported on this platform.").into()
-    }
-}
-
-#[cfg(windows)]
-fn host_window_handle(window: &Window) -> Option<isize> {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-
-    // `gpui::Window` has its own inherent `window_handle`, so the trait method
-    // has to be named explicitly.
-    match HasWindowHandle::window_handle(window).ok()?.as_raw() {
-        RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
-        _ => None,
-    }
-}
-
-#[cfg(not(windows))]
-fn host_window_handle(_: &Window) -> Option<isize> {
-    Some(0)
 }
 
 #[cfg(test)]

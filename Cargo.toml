@@ -23,6 +23,7 @@ members = [
     "crates/benchmarks",
     "crates/branding",
     "crates/breadcrumbs",
+    "crates/browser_control",
     "crates/browser_panel",
     "crates/buffer_diff",
     "crates/call_graph_panel",
@@ -324,6 +325,7 @@ aws_http_client = { path = "crates/aws_http_client" }
 bedrock = { path = "crates/bedrock" }
 branding = { path = "crates/branding" }
 breadcrumbs = { path = "crates/breadcrumbs" }
+browser_control = { path = "crates/browser_control" }
 browser_panel = { path = "crates/browser_panel" }
 buffer_diff = { path = "crates/buffer_diff" }
 call = { path = "crates/call" }
