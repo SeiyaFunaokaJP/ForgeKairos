@@ -16,6 +16,7 @@ mod find_path_tool;
 mod find_references_tool;
 mod get_code_actions_tool;
 mod git_diff_tool;
+mod git_tool;
 mod go_to_definition_tool;
 mod grep_tool;
 mod ide_tools;
@@ -88,6 +89,7 @@ pub use find_path_tool::*;
 pub use find_references_tool::*;
 pub use get_code_actions_tool::*;
 pub use git_diff_tool::*;
+pub use git_tool::*;
 pub use go_to_definition_tool::*;
 pub use grep_tool::*;
 pub use ide_tools::*;
@@ -218,6 +220,7 @@ tools! {
     FindReferencesTool,
     GetCodeActionsTool,
     GitDiffTool,
+    GitTool,
     GoToDefinitionTool,
     GrepTool,
     ListAgentsAndModelsTool,
@@ -317,14 +320,17 @@ mod tests {
     }
 
     #[test]
-    fn fetch_terminal_and_browser_are_forbidden_in_restricted_mode() {
+    fn fetch_terminal_browser_and_git_are_forbidden_in_restricted_mode() {
         assert!(!tool_allowed_in_restricted_mode(FetchTool::NAME));
         assert!(!tool_allowed_in_restricted_mode(TerminalTool::NAME));
+        assert!(!tool_allowed_in_restricted_mode(GitTool::NAME));
 
         // Every other built-in tool, and unknown (e.g. MCP) tools, are allowed.
         for name in ALL_TOOL_NAMES {
-            let expected =
-                *name != FetchTool::NAME && *name != TerminalTool::NAME && !is_browser_tool(name);
+            let expected = *name != FetchTool::NAME
+                && *name != TerminalTool::NAME
+                && *name != GitTool::NAME
+                && !is_browser_tool(name);
             assert_eq!(
                 tool_allowed_in_restricted_mode(name),
                 expected,

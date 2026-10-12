@@ -438,6 +438,13 @@ pub struct AgentSettingsContent {
     ///
     /// Default: false
     pub attach_active_file: Option<bool>,
+    /// Whether a new agent thread starts with Git operations turned on: the
+    /// agent gets the `git` tool, which runs git (with every hook turned off)
+    /// after each call is approved. The chat input's Git button turns it on
+    /// or off for one thread.
+    ///
+    /// Default: true
+    pub git_operations: Option<bool>,
     /// Limits on how much of an attachment (a file, a directory, a selection,
     /// a fetched page, diagnostics or a branch diff) is sent to the agent.
     /// Anything over these limits is sent as an outline or a reference the

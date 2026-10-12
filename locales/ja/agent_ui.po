@@ -882,6 +882,12 @@ msgstr "変更を生成しています…"
 msgid "Get help to write anything."
 msgstr "何でも書く手助けをします。"
 
+msgid "Git Operations: Off"
+msgstr "Git 操作: オフ"
+
+msgid "Git Operations: On"
+msgstr "Git 操作: オン"
+
 msgid "Go Back"
 msgstr "戻る"
 
@@ -1768,6 +1774,12 @@ msgstr "接続先のホストの ForgeKairos サーバーがまだ用意され�
 
 msgid "The Zed server on the remote host is not ready yet. Wait for the connection to finish and try again."
 msgstr "接続先のホストの ForgeKairos サーバーがまだ用意されていません。接続が終わるまで待ってからもう一度お試しください。"
+
+msgid "The agent can read the repository but not change it. Click to turn Git operations on for this thread."
+msgstr "エージェントはリポジトリを読めますが、変更はできません。クリックすると、このスレッドで Git 操作をオンにします。"
+
+msgid "The agent can stage, commit, switch branches and so on, with hooks turned off and no network access. Each command follows the git tool permissions. Click to turn this off for this thread."
+msgstr "エージェントはステージ・コミット・ブランチの切り替えなどを行えます (フックは無効、ネットワークへの接続なし)。各コマンドは git ツールの権限設定に従います。クリックすると、このスレッドでオフにします。"
 
 msgid "The agent can't use `getDiagnostics`, so it can't see the errors and warnings the editor shows. {reason}"
 msgstr "エージェントは `getDiagnostics` を使えないため、エディターが出しているエラーや警告は見えません。{reason}"

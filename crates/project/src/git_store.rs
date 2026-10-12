@@ -40,12 +40,12 @@ use git::{
     repository::{
         Branch, BranchesScanResult, CommitData, CommitDetails, CommitFileStatus, CommitOptions,
         CreateWorktreeTarget, DiffStatType, DiffType, FetchOptions, FileHistoryChangedFileSets,
-        GitCommandOutput, GitCommitTemplate, GitRepository, GitRepositoryCheckpoint,
-        InitialGraphCommitData, LogOrder, LogSource, LooseRefCount, PatchSource, PushOptions,
-        RefStorageScan, Remote, RemoteCommandOutput, RepoPath, ResetMode, SearchCommitArgs,
-        SequencerKind, SequencerProbes, SequencerState, TAG_LIST_FORMAT, TagDistance, TagInfo,
-        UpstreamTrackingStatus, Worktree as GitWorktree, delete_branch_flag, is_binary_content,
-        sequencer_state_from_probes,
+        GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY, GitCommandOutput, GitCommitTemplate, GitRepository,
+        GitRepositoryCheckpoint, InitialGraphCommitData, LogOrder, LogSource, LooseRefCount,
+        PatchSource, PushOptions, RefStorageScan, Remote, RemoteCommandOutput, RepoPath, ResetMode,
+        SearchCommitArgs, SequencerKind, SequencerProbes, SequencerState, TAG_LIST_FORMAT,
+        TagDistance, TagInfo, UpstreamTrackingStatus, Worktree as GitWorktree, delete_branch_flag,
+        is_binary_content, sequencer_state_from_probes,
     },
     stash::{GitStash, StashEntry},
     status::{
@@ -74,12 +74,14 @@ use settings::{GitDiffBaseSetting, Settings, SettingsLocation, SettingsStore, Wo
 use smallvec::SmallVec;
 use smol::future::yield_now;
 use std::{
+    cell::RefCell,
     cmp::Ordering,
     collections::{BTreeSet, HashSet, VecDeque, hash_map::Entry},
     future::Future,
     mem,
     ops::Range,
     path::{Path, PathBuf},
+    rc::Rc,
     str::FromStr,
     sync::{
         Arc,
@@ -121,6 +123,14 @@ pub struct GitStore {
     shared_diffs: HashMap<proto::PeerId, HashMap<BufferId, SharedDiffs>>,
     commit_searches: HashMap<(proto::PeerId, u64), oneshot::Sender<()>>,
     blob_read_limiter: Arc<Semaphore>,
+    /// ADR-F90: local worktrees whose first scan has not finished. A repository found while its
+    /// worktree is in here was there when the user opened the folder.
+    worktrees_in_initial_scan: HashSet<WorktreeId>,
+    /// ADR-F90: the working directories of the repositories the user opened: found by a
+    /// worktree's first scan, or made with [`Self::git_init`]. An AI agent's `git` tool runs only
+    /// in these; a repository that appears later may be one the agent made from its sandbox,
+    /// configuration and all.
+    repositories_opened_by_user: Rc<RefCell<HashSet<Arc<Path>>>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -716,6 +726,9 @@ pub struct RepositorySnapshot {
     /// tell; views that list tags then have to reload them whenever the branches or HEAD change
     /// instead.
     pub tags_fingerprint: Option<u64>,
+    /// ADR-F90: the repository was there when the user opened its folder, or the user made it in
+    /// Zed. See [`GitStore::repository_opened_by_user`].
+    pub opened_by_user: bool,
 }
 
 type JobId = u64;
@@ -1162,7 +1175,8 @@ impl GitStore {
         }));
 
         let diff_base_setting = ProjectSettings::get_global(cx).git.diff_base;
-        GitStore {
+        let existing_worktrees = worktree_store.read(cx).worktrees().collect::<Vec<_>>();
+        let mut this = GitStore {
             state,
             project: None,
             buffer_store,
@@ -1178,9 +1192,52 @@ impl GitStore {
             shared_diffs: HashMap::default(),
             commit_searches: HashMap::default(),
             blob_read_limiter: Arc::new(Semaphore::new(MAX_CONCURRENT_BLOB_READS)),
+            worktrees_in_initial_scan: HashSet::default(),
+            repositories_opened_by_user: Rc::default(),
             diffs: HashMap::default(),
             buffer_ids_by_index_text_buffer_id: HashMap::default(),
+        };
+        for worktree in &existing_worktrees {
+            this.track_initial_scan(worktree, cx);
         }
+        this
+    }
+
+    /// Notes that `worktree`'s first scan is under way until it finishes (ADR-F90).
+    fn track_initial_scan(&mut self, worktree: &Entity<Worktree>, cx: &mut Context<Self>) {
+        if !matches!(self.state, GitStoreState::Local { .. }) {
+            return;
+        }
+        let Some(scan_complete) = worktree
+            .read(cx)
+            .as_local()
+            .map(|worktree| worktree.scan_complete())
+        else {
+            return;
+        };
+        let worktree_id = worktree.read(cx).id();
+        self.worktrees_in_initial_scan.insert(worktree_id);
+        cx.spawn(async move |this, cx| {
+            scan_complete.await;
+            this.update(cx, |this, _| {
+                this.worktrees_in_initial_scan.remove(&worktree_id);
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Whether `repository` is one the user opened, in which an AI agent's `git` tool may run
+    /// (ADR-F90): found when its folder was opened, or made with [`Self::git_init`]. On a remote
+    /// project the host decides, and a host that does not say counts as no.
+    pub fn repository_opened_by_user(&self, repository: &Entity<Repository>, cx: &App) -> bool {
+        let repository = repository.read(cx);
+        repository.snapshot.opened_by_user
+            || (matches!(self.state, GitStoreState::Local { .. })
+                && self
+                    .repositories_opened_by_user
+                    .borrow()
+                    .contains(&repository.work_directory_abs_path))
     }
 
     pub(crate) fn set_project(&mut self, project: WeakEntity<Project>) {
@@ -2605,6 +2662,10 @@ impl GitStore {
         };
 
         match event {
+            WorktreeStoreEvent::WorktreeAdded(worktree) => {
+                let worktree = worktree.clone();
+                self.track_initial_scan(&worktree, cx);
+            }
             WorktreeStoreEvent::WorktreeUpdatedEntries(worktree_id, updated_entries) => {
                 if let Some(worktree) = self
                     .worktree_store
@@ -2773,6 +2834,15 @@ impl GitStore {
                 })
             })
             .unwrap_or(false);
+
+        if self.worktrees_in_initial_scan.contains(&worktree_id) {
+            let mut opened_by_user = self.repositories_opened_by_user.borrow_mut();
+            for update in updated_git_repositories.iter() {
+                if let Some(work_directory_abs_path) = &update.new_work_directory_abs_path {
+                    opened_by_user.insert(work_directory_abs_path.clone());
+                }
+            }
+        }
 
         let mut sorted_updates = updated_git_repositories.iter().collect::<Vec<_>>();
         sorted_updates.sort_by_key(|update| {
@@ -3075,6 +3145,10 @@ impl GitStore {
         let id = RepositoryId(next_repository_id.fetch_add(1, atomic::Ordering::Release));
         let git_store = cx.weak_entity();
         let blob_read_limiter = self.blob_read_limiter.clone();
+        let opened_by_user = self
+            .repositories_opened_by_user
+            .borrow()
+            .contains(&repository.work_directory_abs_path);
         let repo = cx.new(|cx| {
             let mut repo = Repository::local(
                 id,
@@ -3089,6 +3163,7 @@ impl GitStore {
                 blob_read_limiter,
                 cx,
             );
+            repo.snapshot.opened_by_user = opened_by_user;
             if let Some(updates_tx) = updates_tx.as_ref() {
                 // trigger an empty `UpdateRepository` to ensure remote active_repo_id is set correctly
                 updates_tx
@@ -3441,6 +3516,10 @@ impl GitStore {
     ) -> Task<Result<()>> {
         match &self.state {
             GitStoreState::Local { fs, .. } => {
+                // Before the repository exists, so that whichever scan finds it finds it opened.
+                self.repositories_opened_by_user
+                    .borrow_mut()
+                    .insert(path.clone());
                 let fs = fs.clone();
                 cx.background_executor()
                     .spawn(async move { fs.git_init(&path, fallback_branch_name).await })
@@ -5021,11 +5100,18 @@ impl GitStore {
         let repository_handle = Self::repository_for_request(&this, repository_id, &mut cx)?;
         let args = envelope.payload.args;
         let stdin = envelope.payload.stdin;
-        let command_env = envelope.payload.env.into_iter().collect();
+        let mut command_env: HashMap<String, String> = envelope.payload.env.into_iter().collect();
+        let without_hooks = command_env
+            .remove(GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY)
+            .is_some();
 
         let output = repository_handle
             .update(&mut cx, |repository_handle, _| {
-                repository_handle.run_git_command_with_env(args, stdin, command_env)
+                if without_hooks {
+                    repository_handle.run_git_command_without_hooks(args, stdin, command_env)
+                } else {
+                    repository_handle.run_git_command_with_env(args, stdin, command_env)
+                }
             })
             .await??;
 
@@ -5033,6 +5119,7 @@ impl GitStore {
             stdout: output.stdout,
             stderr: output.stderr,
             exit_code: output.exit_code,
+            hooks_disabled: without_hooks,
         })
     }
 
@@ -6475,6 +6562,7 @@ impl RepositorySnapshot {
             path_style,
             loose_refs: None,
             tags_fingerprint: None,
+            opened_by_user: false,
         }
     }
 
@@ -6530,6 +6618,7 @@ impl RepositorySnapshot {
             loose_ref_count_is_lower_bound: self
                 .loose_refs
                 .is_some_and(|loose_refs| !loose_refs.complete),
+            opened_by_user: self.opened_by_user,
         }
     }
 
@@ -6638,6 +6727,7 @@ impl RepositorySnapshot {
             loose_ref_count_is_lower_bound: self
                 .loose_refs
                 .is_some_and(|loose_refs| !loose_refs.complete),
+            opened_by_user: self.opened_by_user,
         }
     }
 
@@ -10144,6 +10234,57 @@ impl Repository {
         )
     }
 
+    /// [`Self::run_git_command_with_env`] with every hook turned off, through
+    /// [`git::repository::GitRepository::run_command_without_hooks`] wherever the repository is:
+    /// how an AI agent's git commands run (ADR-F90). A remote host that cannot say it turned
+    /// hooks off gets an error instead of the command.
+    pub fn run_git_command_without_hooks(
+        &mut self,
+        args: Vec<String>,
+        stdin: Option<String>,
+        command_env: HashMap<String, String>,
+    ) -> oneshot::Receiver<Result<GitCommandOutput>> {
+        let id = self.id;
+        let status = SharedString::from(format!("git {}", args.join(" ")));
+        self.send_job(
+            "run_git_command",
+            Some(status),
+            move |repo, _cx| async move {
+                match repo {
+                    RepositoryState::Local(LocalRepositoryState {
+                        backend,
+                        environment,
+                        ..
+                    }) => {
+                        backend
+                            .run_command_without_hooks(
+                                args,
+                                stdin,
+                                environment.clone(),
+                                command_env,
+                            )
+                            .await
+                    }
+                    RepositoryState::Remote(RemoteRepositoryState { project_id, client }) => {
+                        let mut env = command_env;
+                        env.insert(GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY.to_string(), String::new());
+                        let response = client
+                            .request(proto::GitRunCommand {
+                                project_id: project_id.0,
+                                repository_id: id.to_proto(),
+                                args,
+                                stdin,
+                                env: env.into_iter().collect(),
+                            })
+                            .await
+                            .map_err(remote_hooks_refusal)?;
+                        remote_output_without_hooks(response)
+                    }
+                }
+            },
+        )
+    }
+
     /// One git subcommand against a repository already in hand inside a job.
     ///
     /// The multi-step wrappers below each have to be a *single* job: [`Self::run_git_command`]
@@ -12519,6 +12660,7 @@ impl Repository {
         if let Some(common_dir_abs_path) = &update.common_dir_abs_path {
             self.snapshot.common_dir_abs_path = Path::new(common_dir_abs_path.as_str()).into();
         }
+        self.snapshot.opened_by_user = update.opened_by_user;
 
         let new_branch = update.branch_summary.as_ref().map(proto_to_branch);
         let new_head_commit = update
@@ -13956,6 +14098,37 @@ fn search_commit_args_from_proto(request: &proto::SearchCommits) -> Result<Searc
 }
 
 static NEXT_COMMIT_SEARCH_ID: AtomicU64 = AtomicU64::new(0);
+
+fn remote_host_cannot_disable_hooks() -> anyhow::Error {
+    anyhow!(i18n::t!(
+        "The remote server is too old to run git with hooks turned off, so the AI cannot run git \
+         commands there. Update the remote server to let it."
+    ))
+}
+
+/// What a remote host refusing [`GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY`] means: it is from before the
+/// key, and refused the command without running it.
+fn remote_hooks_refusal(error: anyhow::Error) -> anyhow::Error {
+    if format!("{error:#}").contains(GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY) {
+        remote_host_cannot_disable_hooks()
+    } else {
+        error
+    }
+}
+
+/// A remote host's answer to a command it was asked to run without hooks, refused unless the host
+/// says it did. A host from before the request would not have run it at all (see
+/// [`GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY`]); this is the second lock on the same door.
+fn remote_output_without_hooks(response: proto::GitRunCommandResponse) -> Result<GitCommandOutput> {
+    if !response.hooks_disabled {
+        return Err(remote_host_cannot_disable_hooks());
+    }
+    Ok(GitCommandOutput {
+        stdout: response.stdout,
+        stderr: response.stderr,
+        exit_code: response.exit_code,
+    })
+}
 
 #[derive(Debug, PartialEq, Eq)]
 enum RemoteCommitSearchEnd {
@@ -16409,6 +16582,90 @@ mod tests {
             .detach();
         });
         (fs, repository, events)
+    }
+
+    /// ADR-F90: an agent's command goes to the repository's hook-free entry point, and a remote
+    /// host is believed only when it says it turned hooks off.
+    #[gpui::test]
+    async fn test_run_git_command_without_hooks(cx: &mut TestAppContext) {
+        let (fs, repository, _) = fake_repository(cx).await;
+        let dot_git = Path::new(util::path!("/project/.git"));
+        fs.with_git_state(dot_git, false, |state| {
+            state.command_outputs.insert(
+                "log -1".to_string(),
+                GitCommandOutput {
+                    stdout: "commit\n".to_string(),
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                },
+            );
+        })
+        .unwrap();
+
+        let output = repository
+            .update(cx, |repository, _| {
+                repository.run_git_command_without_hooks(
+                    vec!["log".into(), "-1".into()],
+                    None,
+                    HashMap::default(),
+                )
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(output.stdout, "commit\n");
+        let without_hooks = fs
+            .with_git_state(dot_git, false, |state| {
+                state.run_command_without_hooks.last().copied()
+            })
+            .unwrap();
+        assert_eq!(without_hooks, Some(true));
+
+        // What a host from before the key does with it: the request reaches
+        // `run_git_command_with_env`, whose environment check refuses it before git runs.
+        let runs_before = fs
+            .with_git_state(dot_git, false, |state| state.run_command_log.len())
+            .unwrap();
+        let error = repository
+            .update(cx, |repository, _| {
+                repository.run_git_command_with_env(
+                    vec!["log".into(), "-1".into()],
+                    None,
+                    HashMap::from_iter([(
+                        GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY.to_string(),
+                        String::new(),
+                    )]),
+                )
+            })
+            .await
+            .unwrap()
+            .expect_err("an older host refuses the key");
+        let runs_after = fs
+            .with_git_state(dot_git, false, |state| state.run_command_log.len())
+            .unwrap();
+        assert_eq!(runs_before, runs_after, "nothing ran");
+        let error = remote_hooks_refusal(error);
+        assert!(
+            error.to_string().contains("too old"),
+            "the refusal is told apart: {error:#}"
+        );
+        let other = remote_hooks_refusal(anyhow!("connection lost"));
+        assert_eq!(other.to_string(), "connection lost");
+
+        // A host that answers without saying so is not believed.
+        let response = |hooks_disabled| proto::GitRunCommandResponse {
+            stdout: "out".to_string(),
+            stderr: String::new(),
+            exit_code: Some(0),
+            hooks_disabled,
+        };
+        let error =
+            remote_output_without_hooks(response(false)).expect_err("an answer from an older host");
+        assert!(error.to_string().contains("too old"), "{error:#}");
+        assert_eq!(
+            remote_output_without_hooks(response(true)).unwrap().stdout,
+            "out"
+        );
     }
 
     fn describe_invocations(fs: &FakeFs) -> Vec<String> {

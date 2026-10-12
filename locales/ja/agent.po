@@ -338,6 +338,12 @@ msgstr "MCP ツール `{}` を実行"
 msgid "Run MCP tool `{}` {}"
 msgstr "MCP ツール `{}` を実行: {}"
 
+msgid "Run a git command"
+msgstr "git コマンドを実行"
+
+msgid "Run {}"
+msgstr "{} を実行"
+
 msgid "Run {} in the page"
 msgstr "ページで {} を実行"
 

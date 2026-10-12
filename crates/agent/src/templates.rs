@@ -79,6 +79,10 @@ pub struct SystemPromptTemplate<'a> {
     /// tours. Headless hosts register the display tools too, but every call
     /// fails there, so the prompt must not invite the model to use them.
     pub code_display: bool,
+    /// The thread's Git switch (ADR-F90). Off, the prompt says the user
+    /// turned Git operations off rather than leaving the model to wonder why
+    /// the `git` tool is missing.
+    pub git_operations_enabled: bool,
 }
 
 impl Template for SystemPromptTemplate<'_> {
@@ -141,6 +145,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -171,6 +176,7 @@ mod tests {
                 restricted_workspace: false,
                 repo_map: None,
                 code_display,
+                git_operations_enabled: true,
             }
             .render(&Templates::new())
             .unwrap()
@@ -219,6 +225,7 @@ mod tests {
                 restricted_workspace: false,
                 repo_map: None,
                 code_display: false,
+                git_operations_enabled: true,
             }
             .render(&Templates::new())
             .expect("the template renders")
@@ -247,6 +254,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: Some("# Repository map\nsrc/main.rs\n  fn main [L1-3]".into()),
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -278,6 +286,7 @@ mod tests {
             restricted_workspace: true,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -314,6 +323,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -346,6 +356,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -382,6 +393,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -430,6 +442,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -470,6 +483,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -514,6 +528,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -539,6 +554,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -562,6 +578,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();
@@ -583,6 +600,7 @@ mod tests {
             restricted_workspace: false,
             repo_map: None,
             code_display: false,
+            git_operations_enabled: true,
         };
         let templates = Templates::new();
         let rendered = template.render(&templates).unwrap();

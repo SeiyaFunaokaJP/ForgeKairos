@@ -75,6 +75,10 @@ pub struct DbThread {
     pub thinking_enabled: bool,
     #[serde(default)]
     pub thinking_effort: Option<String>,
+    /// The thread's Git switch (ADR-F90). `None` in a thread saved before it
+    /// existed, which then starts with `agent.git_operations` like a new one.
+    #[serde(default)]
+    pub git_operations_enabled: Option<bool>,
     #[serde(default)]
     pub draft_prompt: Option<Vec<acp::ContentBlock>>,
     #[serde(default)]
@@ -209,6 +213,7 @@ impl SharedThread {
             speed: None,
             thinking_enabled: false,
             thinking_effort: None,
+            git_operations_enabled: None,
             draft_prompt: None,
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
@@ -396,6 +401,7 @@ impl DbThread {
             speed: None,
             thinking_enabled: false,
             thinking_effort: None,
+            git_operations_enabled: None,
             draft_prompt: None,
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,
@@ -868,6 +874,7 @@ mod tests {
             speed: None,
             thinking_enabled: false,
             thinking_effort: None,
+            git_operations_enabled: None,
             draft_prompt: None,
             ui_scroll_position: None,
             sandboxed_terminal_temp_dir: None,

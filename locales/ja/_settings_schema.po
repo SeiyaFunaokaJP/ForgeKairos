@@ -3872,6 +3872,10 @@ msgid "Whether SSH terminals keep their shell running on the remote host\nacross
 msgstr "SSH のターミナルが、接続が切れてもリモートのホストでシェルを動かし続けるかどうかと、その期間。"
 
 msgctxt "settings schema"
+msgid "Whether a new agent thread starts with Git operations turned on: the\nagent gets the `git` tool, which runs git (with every hook turned off)\nafter each call is approved. The chat input's Git button turns it on\nor off for one thread.\n\nDefault: true"
+msgstr "新しいエージェントのスレッドで Git 操作をオンにして始めるかどうか。オンにすると、エージェントは `git` ツールを使えます。このツールは各呼び出しが承認された後に git を (フックをすべて無効にして) 実行します。チャット入力欄の Git ボタンで、スレッドごとにオン・オフを切り替えられます。\n\n既定値: true"
+
+msgctxt "settings schema"
 msgid "Whether a terminal opened over SSH runs its shell inside a session the\nremote server keeps alive, so that a dropped connection neither stops\nrunning commands nor loses the output: reconnecting shows everything\nagain and continues. Only for SSH hosts that are not Windows.\n\nDefault: true"
 msgstr "SSH で開いたターミナルが、リモートのサーバーが生かし続けるセッションの中でシェルを動かすかどうか。接続が切れても実行中のコマンドは止まらず出力も失われず、接続し直すとすべて表示して続きから使えます。Windows ではない SSH のホストだけが対象です。\n\n既定値: true"
 

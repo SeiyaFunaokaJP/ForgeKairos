@@ -328,18 +328,22 @@ impl SandboxWrap {
     /// security-relevant event instead of running with the grant quietly
     /// missing.
     ///
-    /// Protected paths, by contrast, are **best-effort**: we protect only the
-    /// ones that exist at creation time (`capture` succeeding *is* the existence
-    /// check), and silently drop the rest. Unlike a writable grant, a protection
-    /// can't be materialized — you can't pin the inode of a path that isn't
-    /// there — and there is an inherent, *accepted* loophole regardless: a
-    /// command in a non-git directory can `git init` and write hooks into a
-    /// `.git` that didn't exist when the sandbox was built. Since the protection
-    /// is defeatable that way no matter what, failing sandbox creation over a
-    /// currently-absent (or otherwise uncapturable) `.git` would only break
-    /// legitimate cases — non-git projects, single-file worktrees whose
-    /// synthesized `settings.json/.git` routes through a file — without closing
-    /// the hole. So we drop and move on.
+    /// Protected paths, by contrast, are kept only where they can be captured,
+    /// and the rest are dropped rather than failing the command. Unlike a
+    /// writable grant, a protection can't be materialized, and failing over one
+    /// would only break legitimate cases — non-git projects, single-file
+    /// worktrees whose synthesized `settings.json/.git` routes through a file
+    /// and can never exist. What can be captured differs by backend: Seatbelt
+    /// takes a missing leaf by path, and on Windows the helper inside WSL
+    /// resolves each path itself, so there a missing `.git` reaches the sandbox
+    /// and its creation is denied. Bubblewrap can only pin what exists, so on
+    /// Linux a missing `.git` is dropped here — and `sandbox::Sandbox::new`
+    /// adds `<root>/.git` back for every writable root that has none yet, as a
+    /// missing entry whose root is carved: a command can't `git init` a project
+    /// without a repository and write the new `.git/config` that the editor's
+    /// git and the agent's `git` tool run outside the sandbox (ADR-F49). Under
+    /// `allow_fs_write` there is no root to carve, and on Linux a missing
+    /// protected path stays creatable, as a missing built-in one does.
     fn to_policy(&self) -> Result<sandbox::SandboxPolicy> {
         let protected_paths = self
             .protected_paths
@@ -1705,7 +1709,10 @@ pub fn sandbox_git_dirs(project: &Project, cx: &App) -> Vec<PathBuf> {
         let worktree = worktree.read(cx);
         let worktree_abs_path = worktree.abs_path();
         // Protect `<worktree>/.git` even when it doesn't exist yet, so a command
-        // can't `git init` and then write to the freshly created metadata.
+        // can't `git init` and then write to the freshly created metadata. On
+        // Linux a missing one can't be captured and is dropped by
+        // `SandboxWrap::to_policy`; `sandbox::Sandbox::new` adds it back for a
+        // writable root (see `SandboxWrap::to_policy`).
         //
         // We don't gate this on the worktree's scanned root being a directory:
         // that state can be stale/pending, and for a *single-file* worktree
@@ -2359,10 +2366,11 @@ mod linux_tests {
     /// fatal. That covers a missing path (`NotFound`) and one routed through a
     /// regular file (`NotADirectory`) — the latter is the synthesized `.git` of
     /// a single-file worktree (e.g. `settings.json/.git`). Unlike a writable
-    /// grant, a protection can't be materialized, and `.git` protection has an
-    /// inherent accepted loophole (`git init`), so failing here would only break
-    /// legitimate cases. Unit-level companion to the `settings.json/.git` NixOS
-    /// check.
+    /// grant, a protection can't be materialized, so failing here would only
+    /// break legitimate cases; a missing `<root>/.git` of a writable root is
+    /// kept from being created by `sandbox::Sandbox::new` instead (its test
+    /// `a_writable_root_without_a_git_directory_cannot_get_one`). Unit-level
+    /// companion to the `settings.json/.git` NixOS check.
     #[test]
     fn to_policy_skips_uncapturable_protected_paths() {
         let temp_dir = tempfile::tempdir().expect("create temp dir");

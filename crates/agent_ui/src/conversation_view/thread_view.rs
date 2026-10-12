@@ -4618,6 +4618,7 @@ impl ThreadView {
                                     .children(self.render_attachment_estimate(cx))
                                     .children(self.render_token_usage(cx))
                                     .children(self.render_tool_permission_control(cx))
+                                    .children(self.render_git_operations_toggle(cx))
                                     .children(self.profile_selector.clone())
                                     // 思考の制御はモデルセレクターの直左に置く。
                                     // 左クラスターに埋もれていて見つからないという
@@ -6073,6 +6074,51 @@ impl ThreadView {
             .on_click(cx.listener(move |this, _, window, cx| {
                 this.toggle_following(window, cx);
             }))
+    }
+
+    /// The native agent thread's Git switch (ADR-F90): whether the model gets the `git` tool
+    /// from the next request on. External agents run their own tools, so they have none.
+    fn render_git_operations_toggle(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let thread = self.as_native_thread(cx)?;
+        let enabled = thread.read(cx).git_operations_enabled();
+        let (tooltip_title, tooltip_meta) = if enabled {
+            (
+                i18n::t!("Git Operations: On"),
+                i18n::t!(
+                    "The agent can stage, commit, switch branches and so on, with hooks turned off \
+                     and no network access. Each command follows the git tool permissions. Click to \
+                     turn this off for this thread."
+                ),
+            )
+        } else {
+            (
+                i18n::t!("Git Operations: Off"),
+                i18n::t!(
+                    "The agent can read the repository but not change it. Click to turn Git \
+                     operations on for this thread."
+                ),
+            )
+        };
+        Some(
+            IconButton::new("git-operations", IconName::GitBranch)
+                .icon_size(IconSize::Small)
+                .icon_color(if enabled {
+                    Color::Accent
+                } else {
+                    Color::Custom(cx.theme().colors().icon_disabled.opacity(0.8))
+                })
+                .toggle_state(enabled)
+                .tooltip(move |_window, cx| {
+                    Tooltip::with_meta(tooltip_title, None, tooltip_meta, cx)
+                })
+                .on_click(cx.listener(move |_this, _, _window, cx| {
+                    thread.update(cx, |thread, cx| {
+                        thread.set_git_operations_enabled(!enabled, cx);
+                    });
+                    cx.notify();
+                }))
+                .into_any_element(),
+        )
     }
 }
 

@@ -1993,6 +1993,112 @@ mod tests {
         }
     }
 
+    /// A project without a repository cannot be given one by a command: the
+    /// caller's `<root>/.git` is dropped for not existing, so `Sandbox::new`
+    /// adds it as a missing entry, and the root is carved — a `git init` there
+    /// would otherwise leave a `.git/config` the editor's git and the agent's
+    /// `git` tool run outside the sandbox. Every agent configuration is already
+    /// in the root, so `.git` is the only entry that can be carving it.
+    /// Skipped where `bwrap` cannot create a sandbox.
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test runs bwrap synchronously to check the mounts it builds"
+    )]
+    fn test_bubblewrap_keeps_a_project_without_a_repository_from_getting_one() {
+        if let Err(status) = check_can_create_sandbox(SandboxPermissions::default()) {
+            eprintln!("skipped: {}", status.describe());
+            return;
+        }
+        let Ok(bwrap) = resolve_bwrap() else {
+            eprintln!("skipped: no bwrap");
+            return;
+        };
+        let Ok(temporary) = tempfile::Builder::new()
+            .prefix("zed-bwrap-git-init-")
+            .tempdir_in("/var/tmp")
+        else {
+            eprintln!("skipped: no /var/tmp");
+            return;
+        };
+        let work = std::fs::canonicalize(temporary.path()).expect("canonical worktree");
+        for directory in [".claude", ".gemini", ".codex", "src"] {
+            std::fs::create_dir(work.join(directory)).expect("create");
+        }
+        std::fs::write(work.join(".mcp.json"), "{}").expect("write .mcp.json");
+        std::fs::write(work.join("Cargo.toml"), "[package]\n").expect("write Cargo.toml");
+
+        let sandbox = crate::Sandbox::new(crate::SandboxPolicy {
+            fs: crate::SandboxFsPolicy::Restricted {
+                writable_paths: vec![
+                    crate::HostFilesystemLocation::capture(&work).expect("capture the worktree"),
+                ],
+                protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
+            },
+            network: crate::SandboxNetPolicy::Blocked,
+        })
+        .expect("a worktree without a repository is a valid grant");
+        let binds = crate::carve_writable_binds(
+            &sandbox.fs.writable_paths,
+            &sandbox.fs.missing_protected_paths,
+        )
+        .expect("carve the worktree");
+        let (paths, fds): (Vec<PathBuf>, Vec<OwnedFd>) = binds.into_iter().unzip();
+        let writable: Vec<&Path> = paths.iter().map(PathBuf::as_path).collect();
+        assert!(
+            !writable.contains(&work.as_path()),
+            "the root itself is not bound: {writable:?}"
+        );
+        drop(fds);
+
+        let quoted = |path: &Path| format!("'{}'", path.display());
+        let git_directory = quoted(&work.join(".git"));
+        let script = format!(
+            "mkdir {git_directory} 2>/dev/null && echo git-directory-created; \
+             touch {git_directory} 2>/dev/null && echo git-file-created; \
+             touch {new_in_src} && echo new-in-src; \
+             echo more >> {existing} && echo existing-written",
+            new_in_src = quoted(&work.join("src").join("main.rs")),
+            existing = quoted(&work.join("Cargo.toml")),
+        );
+        let mut args = build_bwrap_args(
+            BwrapMounts {
+                writable_directories: &writable,
+                ..Default::default()
+            },
+            SandboxPermissions::default(),
+            None,
+            None,
+        );
+        args.extend([
+            "--".to_string(),
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            script,
+        ]);
+        let output = std::process::Command::new(&bwrap)
+            .args(&args)
+            .output()
+            .expect("run bwrap");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let lines: Vec<&str> = stdout.lines().collect();
+        for expected in ["new-in-src", "existing-written"] {
+            assert!(
+                lines.contains(&expected),
+                "missing {expected}: {stdout} / {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        for unexpected in ["git-directory-created", "git-file-created"] {
+            assert!(!lines.contains(&unexpected), "{unexpected}: {stdout}");
+        }
+        assert!(
+            !work.join(".git").exists(),
+            "nothing named `.git` may appear"
+        );
+    }
+
     #[test]
     fn test_build_bwrap_args_allow_fs_write_binds_root_read_write() {
         let permissions = SandboxPermissions {

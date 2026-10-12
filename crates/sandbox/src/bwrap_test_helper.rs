@@ -230,11 +230,11 @@ mod imp {
     /// Capture protected paths best-effort, mirroring production
     /// (`SandboxWrap::to_policy`): protect only the ones that exist right now
     /// (`capture` succeeding is the existence check) and silently drop the rest.
-    /// A protection can't be materialized, and `.git` protection has an inherent
-    /// accepted loophole (`git init` in a non-git dir), so a currently-absent or
-    /// otherwise-uncapturable protected path is dropped rather than fatal. These
-    /// are never created here; whether one exists is exactly what several checks
-    /// turn on.
+    /// A protection can't be materialized, so a currently-absent or
+    /// otherwise-uncapturable protected path is dropped rather than fatal; a
+    /// missing `.git` of a writable root is kept from being created by
+    /// `Sandbox::new` instead. These are never created here; whether one exists
+    /// is exactly what several checks turn on.
     fn capture_protected_paths(paths: &[String]) -> Vec<HostFilesystemLocation> {
         paths
             .iter()

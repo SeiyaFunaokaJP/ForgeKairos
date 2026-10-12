@@ -759,6 +759,9 @@ msgstr[0] "{count} 件のサーバーが見つかりました。1 件ずつフ�
 msgid "Front-matter"
 msgstr "フロントマター"
 
+msgid "Git commands run outside the sandbox with hooks turned off (commit, branch, merge, …)"
+msgstr "サンドボックスの外でフックを無効にして実行する Git コマンド (コミット・ブランチ・マージなど)"
+
 msgid "GitHub response was not valid UTF-8"
 msgstr "GitHub からの応答が有効な UTF-8 ではありません。"
 
@@ -1226,6 +1229,9 @@ msgstr "パターンはタブの ID (`1` など) と照合されます。"
 
 msgid "Patterns are matched against the text being typed."
 msgstr "パターンは入力する文字列と照合されます。"
+
+msgid "Patterns are matched against the whole command, starting with `git`, such as `git commit -m 'Fix the parser'`."
+msgstr "パターンは `git` から始まるコマンド全体 (`git commit -m 'Fix the parser'` など) と照合されます。"
 
 msgid "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
 msgstr "パターンは元のパスと行き先のパスに対して個別に照合されます。下の入力欄でどちらのパスでも試せます。"
@@ -1990,6 +1996,10 @@ msgstr "ファイルを編集"
 msgctxt "agent tool"
 msgid "Fetch"
 msgstr "取得"
+
+msgctxt "agent tool"
+msgid "Git"
+msgstr "Git"
 
 msgctxt "agent tool"
 msgid "Move Path"

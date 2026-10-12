@@ -28,9 +28,14 @@
 //! deletable**. An entry that does not exist yet must not be creatable either
 //! (writing a missing `~/.bash_login` is as good as editing one): Seatbelt
 //! denies by path, and the WSL / SSH-remote helper denies new entries in the
-//! directory that would hold it. Bubblewrap can only bind what exists, so it
-//! skips them. An entry that exists but cannot be captured/pinned fails the
-//! command closed. Both directories and plain files appear here.
+//! directory that would hold it. Bubblewrap can only bind what exists, so the
+//! writable root that would hold one is carved instead (`carve_writable_binds`):
+//! nothing new can be created directly in it (under unrestricted writes there
+//! is no root to carve, and such an entry stays creatable). The same goes for
+//! the `.git` of a
+//! worktree root that has none yet ([`absent_worktree_git_directories`]). An
+//! entry that exists but cannot be captured/pinned fails the command closed.
+//! Both directories and plain files appear here.
 //!
 //! `/etc` and the rest of the system directories need no entry: they are outside
 //! any worktree, and no backend grants write outside the worktree.
@@ -525,6 +530,40 @@ pub(crate) fn worktree_protected_paths(home: &Path, worktree_roots: &[PathBuf]) 
         }
         for path in worktree_entries(root) {
             push_unique(&mut paths, path);
+        }
+    }
+    paths
+}
+
+/// `<root>/.git` for each of `worktree_roots` that has none yet, but the
+/// sandboxed agents' own configuration directories under `home`, which
+/// [`worktree_protected_paths`] leaves out as well.
+///
+/// The caller protects the `.git` it knows of (`acp_thread::sandbox_git_dirs`),
+/// but one that is not there yet cannot be pinned, so it would reach only the
+/// backends that protect by path. Without this a command in a project that has
+/// no repository could `git init` its root and write the new `.git/config` —
+/// whose `core.fsmonitor` or filters the editor's git and the agent's `git`
+/// tool then run outside the sandbox (ADR-F49). One that is there already is
+/// the caller's to protect: a write grant to another repository does not make
+/// its `.git` read-only. One that does not resolve — a dangling symlink — is
+/// kept, so that the merge fails the command closed rather than let a write
+/// through it create its target.
+pub(crate) fn absent_worktree_git_directories(
+    home: &Path,
+    worktree_roots: &[PathBuf],
+) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    for root in worktree_roots {
+        if is_sandboxed_agent_configuration(root, home) {
+            continue;
+        }
+        let git_directory = root.join(".git");
+        let absent = std::fs::metadata(&git_directory)
+            .err()
+            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+        if absent {
+            push_unique(&mut paths, git_directory);
         }
     }
     paths
@@ -2219,6 +2258,56 @@ mod tests {
             builtin_protected_paths(&home, std::slice::from_ref(&configuration))
                 .iter()
                 .all(|path| !path.starts_with(&configuration))
+        );
+    }
+
+    /// Only a root that has no `.git` yet gets one to protect: an existing one
+    /// is the caller's to protect (a write grant to another repository does not
+    /// make it read-only), and an agent's own configuration directory gets none,
+    /// as it gets no worktree entries.
+    #[test]
+    fn only_a_root_without_a_git_directory_gets_one_to_protect() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let mut projects = home.clone();
+        projects.extend(SANDBOXED_AGENT_PROJECTS_HOME_RELATIVE.split('/'));
+        let configuration = projects.join("0123456789abcdef").join("config");
+        let without = home.join("without");
+        let with_directory = home.join("with-directory");
+        let with_file = home.join("with-file");
+        for directory in [&configuration, &without, &with_directory, &with_file] {
+            std::fs::create_dir_all(directory).expect("create");
+        }
+        std::fs::create_dir(with_directory.join(".git")).expect("create .git");
+        std::fs::write(with_file.join(".git"), "gitdir: ../elsewhere\n").expect("write .git");
+
+        let paths = absent_worktree_git_directories(
+            &home,
+            &[
+                configuration,
+                without.clone(),
+                with_directory,
+                with_file,
+                without.clone(),
+            ],
+        );
+        assert_eq!(paths, vec![without.join(".git")]);
+    }
+
+    /// A `.git` that is a dangling symlink is kept, so the merge fails the
+    /// command closed instead of letting a write through it create its target.
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_git_symlink_is_kept() {
+        let temporary = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(temporary.path()).expect("canonical home");
+        let root = home.join("work");
+        std::fs::create_dir(&root).expect("create");
+        std::os::unix::fs::symlink(root.join("elsewhere"), root.join(".git")).expect("symlink");
+
+        assert_eq!(
+            absent_worktree_git_directories(&home, std::slice::from_ref(&root)),
+            vec![root.join(".git")]
         );
     }
 

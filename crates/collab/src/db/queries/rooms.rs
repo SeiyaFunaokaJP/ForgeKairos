@@ -815,6 +815,7 @@ impl Database {
                             tags_fingerprint: None,
                             loose_ref_count: None,
                             loose_ref_count_is_lower_bound: false,
+                            opened_by_user: false,
                         });
                     }
                 }

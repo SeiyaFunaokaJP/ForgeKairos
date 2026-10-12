@@ -588,6 +588,11 @@ const PROTECTS_NOT_YET_EXISTING_PATHS: bool = cfg!(target_os = "macos");
 ///   ([`HostFilesystemLocation`] compares filesystem objects, not path text); and
 /// - a writable grant that is the same object as, or inside, a built-in entry is
 ///   refused, exactly as an overlap with a caller-supplied protected path is.
+///
+/// The `.git` of a writable root that has none yet is added here as well
+/// ([`protected_paths::absent_worktree_git_directories`]): the caller's own
+/// entry for it cannot be captured before it exists, and every route to this
+/// function would otherwise have to remember not to drop it.
 fn add_builtin_protected_paths(
     requested: Vec<HostFilesystemLocation>,
     writable_paths: &[HostFilesystemLocation],
@@ -606,7 +611,12 @@ fn add_builtin_protected_paths(
         .iter()
         .filter_map(writable_directory_path)
         .collect();
-    let builtin_paths = protected_paths::builtin_protected_paths(&home, &worktree_roots);
+    let mut builtin_paths = protected_paths::builtin_protected_paths(&home, &worktree_roots);
+    for git_directory in protected_paths::absent_worktree_git_directories(&home, &worktree_roots) {
+        if !builtin_paths.contains(&git_directory) {
+            builtin_paths.push(git_directory);
+        }
+    }
     let requested_count = requested.len();
     let setup = merge_protected_paths(requested, writable_paths, builtin_paths)?;
 
@@ -1211,6 +1221,81 @@ mod builtin_protected_paths_tests {
             !protected.contains(&capture(&root.path().join("notes.txt"))),
             "an ordinary file of the worktree is not"
         );
+    }
+
+    /// A writable root with no `.git` cannot get one, even though the caller's
+    /// entry for it was dropped for not existing (`SandboxWrap::to_policy`):
+    /// Seatbelt denies it by path, and Bubblewrap carves the root. Every agent
+    /// configuration is already in the root, so `.git` is the only entry that
+    /// can be carving it.
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn a_writable_root_without_a_git_directory_cannot_get_one() {
+        let root = tempfile::tempdir().expect("create a worktree");
+        for directory in [".claude", ".gemini", ".codex"] {
+            std::fs::create_dir(root.path().join(directory)).expect("create");
+        }
+        std::fs::write(root.path().join(".mcp.json"), "{}").expect("write .mcp.json");
+        let git_directory = root.path().join(".git");
+
+        let sandbox = Sandbox::new(SandboxPolicy {
+            fs: SandboxFsPolicy::Restricted {
+                writable_paths: vec![capture(root.path())],
+                protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
+            },
+            network: SandboxNetPolicy::Blocked,
+        })
+        .expect("a worktree without a repository is a valid grant");
+
+        if PROTECTS_NOT_YET_EXISTING_PATHS {
+            assert!(
+                sandbox.protected_paths().contains(&capture(&git_directory)),
+                "the missing `.git` must be denied by path"
+            );
+        } else {
+            let expected = missing_entry_location(&git_directory).expect("a resolvable root");
+            assert!(
+                sandbox.fs.missing_protected_paths.contains(&expected),
+                "the missing `.git` must carve its root: {:?}",
+                sandbox.fs.missing_protected_paths
+            );
+            assert!(
+                !sandbox
+                    .fs
+                    .missing_protected_paths
+                    .iter()
+                    .any(|path| path.starts_with(&expected.parent().expect("a root"))
+                        && *path != expected),
+                "nothing else in the root may be what carves it: {:?}",
+                sandbox.fs.missing_protected_paths
+            );
+        }
+    }
+
+    /// A writable root that is a repository already keeps its `.git` as the
+    /// caller left it: a write grant to another repository does not make that
+    /// repository read-only, and nothing carves the root on its account.
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn an_existing_git_directory_is_left_to_the_caller() {
+        let root = tempfile::tempdir().expect("create a worktree");
+        let git_directory = root.path().join(".git");
+        std::fs::create_dir(&git_directory).expect("create .git");
+
+        let sandbox = Sandbox::new(SandboxPolicy {
+            fs: SandboxFsPolicy::Restricted {
+                writable_paths: vec![capture(root.path())],
+                protected_paths: Vec::new(),
+                readable_paths: Vec::new(),
+            },
+            network: SandboxNetPolicy::Blocked,
+        })
+        .expect("a repository is a valid grant");
+
+        assert!(!sandbox.protected_paths().contains(&capture(&git_directory)));
+        let canonical = std::fs::canonicalize(&git_directory).expect("canonical .git");
+        assert!(!sandbox.fs.missing_protected_paths.contains(&canonical));
     }
 }
 

@@ -458,6 +458,9 @@ msgstr "リモートホストが応答しません。"
 msgid "The remote host sent a kind of warning this IDE cannot show"
 msgstr "接続先から、この IDE が表示できない種類の警告が届きました"
 
+msgid "The remote server is too old to run git with hooks turned off, so the AI cannot run git commands there. Update the remote server to let it."
+msgstr "リモートサーバーが古く、フックを無効にして git を実行できないため、AI はそこで git コマンドを実行できません。実行させるにはリモートサーバーを更新してください。"
+
 msgid "The scratch branch \"{scratch_branch}\" does not start at the base, so it cannot go into the MR branch."
 msgstr "一時ブランチ「{scratch_branch}」が基点から始まっていないため、MR ブランチに反映できません。"
 

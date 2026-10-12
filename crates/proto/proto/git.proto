@@ -142,6 +142,10 @@ message UpdateRepository {
   optional uint64 loose_ref_count = 10003;
   // `loose_ref_count` stopped at a limit and is only a lower bound.
   bool loose_ref_count_is_lower_bound = 10004;
+  // ADR-F90: the repository was there when the host's folder was opened, or was made
+  // with GitInit, so that an AI agent's git tool may run in it. Hosts that do not
+  // know leave it false.
+  bool opened_by_user = 10005;
   uint64 project_id = 1;
   uint64 id = 2;
   string abs_path = 3;

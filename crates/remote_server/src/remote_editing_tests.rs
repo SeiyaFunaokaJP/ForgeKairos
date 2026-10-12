@@ -5461,6 +5461,150 @@ async fn test_remote_git_branches(cx: &mut TestAppContext, server_cx: &mut TestA
     assert_eq!(default_branch_with_remote.as_deref(), Some("origin/main"));
 }
 
+/// ADR-F90: an agent's command reaches the remote host's hook-free entry point, and the host
+/// says so; the git panel's commands keep theirs.
+#[gpui::test]
+async fn test_remote_git_command_without_hooks(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": {
+                ".git": {},
+                "README.md": "# project 1",
+            },
+        }),
+    )
+    .await;
+    let dot_git = Path::new(path!("/code/project1/.git"));
+    fs.with_git_state(dot_git, false, |state| {
+        state.command_outputs.insert(
+            "log -1".to_string(),
+            git::repository::GitCommandOutput {
+                stdout: "commit\n".to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+            },
+        );
+    })
+    .unwrap();
+
+    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
+    project
+        .update(cx, |project, cx| {
+            project.find_or_create_worktree(path!("/code/project1"), true, cx)
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+    let repository = project.update(cx, |project, cx| project.active_repository(cx).unwrap());
+    let log = || vec!["log".to_string(), "-1".to_string()];
+
+    let output = repository
+        .update(cx, |repository, _| {
+            repository.run_git_command_without_hooks(log(), None, HashMap::default())
+        })
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(output.stdout, "commit\n");
+    let output = repository
+        .update(cx, |repository, _| repository.run_git_command(log(), None))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(output.stdout, "commit\n");
+
+    // The repository's own scans run commands too.
+    let runs = fs
+        .with_git_state(dot_git, false, |state| {
+            state
+                .run_command_log
+                .iter()
+                .zip(&state.run_command_without_hooks)
+                .zip(&state.run_command_envs)
+                .filter(|(((args, _), _), _)| *args == log())
+                .map(|(((_, _), without_hooks), env)| (*without_hooks, env.clone()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap();
+    assert_eq!(
+        runs,
+        vec![(true, HashMap::default()), (false, HashMap::default())],
+        "the request's key does not reach git as a variable"
+    );
+}
+
+/// ADR-F90: the host says which repositories the user opened (there when the folder was opened,
+/// or made with the editor's `git init`), and the client goes by what the host says.
+#[gpui::test]
+async fn test_remote_repositories_opened_by_user(
+    cx: &mut TestAppContext,
+    server_cx: &mut TestAppContext,
+) {
+    let fs = FakeFs::new(server_cx.executor());
+    fs.insert_tree(
+        path!("/code"),
+        json!({
+            "project1": { ".git": {}, "README.md": "# project 1" },
+            "project2": { "README.md": "# project 2" },
+            "project3": { "README.md": "# project 3" },
+        }),
+    )
+    .await;
+    let (project, _headless_project) = init_test(&fs, cx, server_cx).await;
+    for root in [
+        path!("/code/project1"),
+        path!("/code/project2"),
+        path!("/code/project3"),
+    ] {
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree(root, true, cx)
+            })
+            .await
+            .unwrap();
+    }
+    cx.run_until_parked();
+
+    // Made in the session by something other than the editor, and by the editor.
+    fs.create_dir(Path::new(path!("/code/project2/.git")))
+        .await
+        .unwrap();
+    project
+        .update(cx, |project, cx| {
+            project.git_init(
+                Path::new(path!("/code/project3")).into(),
+                "main".to_string(),
+                cx,
+            )
+        })
+        .await
+        .unwrap();
+    cx.run_until_parked();
+
+    let opened_by_user = |root: &str, cx: &mut TestAppContext| {
+        project.read_with(cx, |project, cx| {
+            let git_store = project.git_store().read(cx);
+            let repository = git_store
+                .repositories()
+                .values()
+                .find(|repository| {
+                    repository.read(cx).work_directory_abs_path.as_ref() == Path::new(root)
+                })
+                .unwrap_or_else(|| panic!("no repository at {root}"))
+                .clone();
+            git_store.repository_opened_by_user(&repository, cx)
+        })
+    };
+    assert!(opened_by_user(path!("/code/project1"), cx));
+    assert!(!opened_by_user(path!("/code/project2"), cx));
+    assert!(opened_by_user(path!("/code/project3"), cx));
+}
+
 #[gpui::test]
 async fn test_remote_git_status_error_reaches_client(
     cx: &mut TestAppContext,
@@ -6024,18 +6168,15 @@ async fn test_remote_agent_api_key_from_the_client_only_fills_in(
     let env_of = |name: &'static str, cx: &mut TestAppContext| {
         project.update(cx, |project, cx| {
             project.agent_server_store().update(cx, |store, cx| {
-                store
-                    .get_external_agent(&name.into())
-                    .unwrap()
-                    .get_command(
-                        vec![],
-                        HashMap::from_iter([
-                            ("ANTHROPIC_API_KEY".into(), "sk-client-stored".into()),
-                            ("VAR".into(), "client".into()),
-                        ]),
-                        project::AgentLaunchTarget::Host,
-                        &mut cx.to_async(),
-                    )
+                store.get_external_agent(&name.into()).unwrap().get_command(
+                    vec![],
+                    HashMap::from_iter([
+                        ("ANTHROPIC_API_KEY".into(), "sk-client-stored".into()),
+                        ("VAR".into(), "client".into()),
+                    ]),
+                    project::AgentLaunchTarget::Host,
+                    &mut cx.to_async(),
+                )
             })
         })
     };

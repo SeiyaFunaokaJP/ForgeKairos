@@ -352,6 +352,7 @@ mod tests {
             "apply_code_action",
             "rename_symbol",
             "ask_user",
+            "git",
         ] {
             assert!(!profile.is_tool_enabled(tool), "{tool} should be disabled");
         }

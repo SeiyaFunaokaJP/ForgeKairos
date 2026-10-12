@@ -1474,6 +1474,13 @@
     // whole file. A file that is already mentioned by hand is not attached
     // twice.
     "attach_active_file": false,
+    // Whether a new agent thread starts with Git operations turned on. When
+    // on, the agent gets the `git` tool: it stages, commits, switches
+    // branches and so on, outside the terminal sandbox but with every
+    // repository hook turned off and without any network access, and each
+    // call follows the "git" tool permissions (confirmed by default). The Git
+    // button next to the chat input turns this on or off for one thread.
+    "git_operations": true,
     // Limits on how much of each chat attachment is sent to the agent. Anything
     // over them is sent as an outline or a reference the agent can follow up on.
     "context_attachments": {
@@ -1529,6 +1536,7 @@
           "read_file": true,
           "repo_map": true,
           "git_diff": true,
+          "git": true,
           "grep": true,
           "skill": true,
           "spawn_agent": true,

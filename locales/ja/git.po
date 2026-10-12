@@ -56,6 +56,9 @@ msgstr "リベースが途中で止まっている可能性があります (git 
 msgid "A row has no commits."
 msgstr "コミットを 1 件も含まない行があります。"
 
+msgid "An old git (older than {minimum}; this one is {version}) cannot turn off hooks, so the AI cannot run git commands. Update git to let it."
+msgstr "古い git ({minimum} より前。この git は {version}) はフックを無効にできないため、AI は git コマンドを実行できません。実行させるには git を更新してください。"
+
 msgid "Branch \"{branch}\" cannot be used in a search."
 msgstr "ブランチ「{branch}」は検索に使えません。"
 
@@ -142,6 +145,9 @@ msgstr "期間の指定が逆です (「{since_word}」が「{until_word}」よ�
 
 msgid "The sha filter \"{sha_prefix}\" is not hexadecimal."
 msgstr "sha の指定「{sha_prefix}」は 16 進数ではありません。"
+
+msgid "The version of git could not be determined, so it is not known whether git can turn off hooks, and the AI cannot run git commands."
+msgstr "git のバージョンを判別できず、フックを無効にできるか分からないため、AI は git コマンドを実行できません。"
 
 msgid "There are no files to fold in."
 msgstr "入れるファイルがありません。"

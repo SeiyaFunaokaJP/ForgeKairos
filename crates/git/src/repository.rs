@@ -1379,6 +1379,15 @@ pub const ALLOWED_GIT_COMMANDS: &[&str] = &[
 pub const ALLOWED_GIT_COMMAND_ENV: &[&str] =
     &["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE"];
 
+/// The key a client puts in a remote `GitRunCommand`'s `env` to have the host run the command
+/// with [`GitRepository::run_command_without_hooks`] (ADR-F90). The host takes it out before git
+/// sees the environment.
+///
+/// It is a key of the environment rather than a field of its own so that it fails closed: a host
+/// from before it reads no such field and would run the command with hooks, but it refuses an
+/// environment variable outside [`ALLOWED_GIT_COMMAND_ENV`] before running anything.
+pub const GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY: &str = "ZED_GIT_COMMAND_WITHOUT_HOOKS";
+
 /// Subcommands of [`ALLOWED_GIT_COMMANDS`] that run repository hooks, so that an untrusted project
 /// on a git too old to disable them gets an error instead (ADR-F47).
 pub const HOOK_RUNNING_GIT_COMMANDS: &[&str] = &[
@@ -1486,6 +1495,130 @@ pub fn validate_git_command(args: &[String]) -> Result<&str> {
         );
     }
     Ok(subcommand)
+}
+
+/// Subcommands of [`ALLOWED_GIT_COMMANDS`] that the git panel needs but an AI agent does not:
+/// plumbing that writes objects and packs refs.
+const AGENT_REFUSED_GIT_COMMANDS: &[&str] = &["commit-tree", "pack-refs"];
+
+/// Subcommands whose `-s` is `--strategy`, which names a `git-merge-<strategy>` program to run.
+const SHORT_STRATEGY_GIT_COMMANDS: &[&str] = &["merge", "rebase"];
+
+/// Subcommands that take `--strategy`.
+const STRATEGY_TAKING_GIT_COMMANDS: &[&str] = &["cherry-pick", "merge", "rebase", "revert"];
+
+/// Subcommands whose `-p` / `--patch` picks hunks interactively: it waits for answers on a
+/// terminal the agent's git has not got, and shows the hunks through the repository's own diff
+/// configuration. `add -i` / `--interactive` and `add -e` / `--edit` (an editor) go with them.
+const PATCH_MODE_GIT_COMMANDS: &[&str] = &["add", "checkout", "commit", "reset", "restore"];
+
+/// [`validate_git_command`], narrowed further for a command an AI agent asked for (ADR-F90),
+/// handing back the subcommand.
+///
+/// On top of what any caller is refused, an agent may not run the plumbing in
+/// [`AGENT_REFUSED_GIT_COMMANDS`], go into submodules (`--recurse-submodules`), whose own
+/// configuration Zed does not look at for every command, or pick a merge strategy, which git runs
+/// as a program found by name, have `apply --build-fake-ancestor` write an index file over any
+/// path outside the sandbox, or pick hunks interactively ([`PATCH_MODE_GIT_COMMANDS`]). Nothing
+/// on [`ALLOWED_GIT_COMMANDS`] reaches the network.
+pub fn validate_agent_git_command(args: &[String]) -> Result<&str> {
+    let subcommand = validate_git_command(args)?;
+    anyhow::ensure!(
+        !AGENT_REFUSED_GIT_COMMANDS.contains(&subcommand),
+        "unsupported git command: {subcommand}"
+    );
+    let takes_strategy = STRATEGY_TAKING_GIT_COMMANDS.contains(&subcommand);
+    let short_strategy = SHORT_STRATEGY_GIT_COMMANDS.contains(&subcommand);
+    let patch_mode = PATCH_MODE_GIT_COMMANDS.contains(&subcommand);
+    // Every argument is looked at, the value of `-m` and whatever follows `--` included: an option
+    // that takes a value (`merge -X`, `commit --trailer`, `checkout -b`) takes `-m` or `--` as that
+    // value, and git then reads the argument after it as an option (`merge -X -m -s <strategy>`,
+    // `commit --trailer -m --file=<path>`). A message or a path that starts with `-` is refused
+    // with them.
+    for argument in args.iter().skip(1) {
+        anyhow::ensure!(
+            !is_refused_git_argument(argument),
+            "unsupported git command argument: {argument}"
+        );
+        let refused = if let Some(long_option) = argument.strip_prefix("--") {
+            let name = long_option
+                .split_once('=')
+                .map_or(long_option, |(name, _)| name);
+            // Any unambiguous prefix of a long option is that option to git.
+            let is_prefix_of = |option: &str| !name.is_empty() && option.starts_with(name);
+            is_prefix_of("recurse-submodules")
+                || name.starts_with("recurse-submodules")
+                || (takes_strategy && is_prefix_of("strategy"))
+                || (subcommand == "apply" && is_prefix_of("build-fake-ancestor"))
+                || (patch_mode && is_prefix_of("patch"))
+                || (matches!(subcommand, "add" | "commit") && is_prefix_of("interactive"))
+                || (subcommand == "add" && is_prefix_of("edit"))
+        } else if let Some(short_options) = argument.strip_prefix('-') {
+            short_options
+                .chars()
+                .take_while(|letter| letter.is_ascii_alphabetic())
+                .any(|letter| {
+                    (short_strategy && letter == 's')
+                        || (patch_mode && letter == 'p')
+                        || (subcommand == "add" && matches!(letter, 'i' | 'e'))
+                })
+        } else {
+            false
+        };
+        anyhow::ensure!(!refused, "unsupported git command argument: {argument}");
+    }
+    if subcommand == "commit" {
+        ensure_agent_commit_opens_no_editor(args)?;
+    }
+    Ok(subcommand)
+}
+
+/// A commit that prepares a message for an editor writes the staged diff into it when asked
+/// (`-v`, or `commit.verbose` in the repository's own configuration), and that diff runs the
+/// `diff.<driver>.textconv` program the repository's configuration names. A repository nested in
+/// the project can have been created, configuration and all, by the agent from its sandbox, so an
+/// agent's commit must give its message on the command line and never ask for the editor
+/// (`-e`, `-c` / `--reedit-message`, or `-t` / `--template`, which also reads any file).
+fn ensure_agent_commit_opens_no_editor(args: &[String]) -> Result<()> {
+    let mut has_message = false;
+    // Every argument, as in [`validate_agent_git_command`].
+    for argument in args.iter().skip(1) {
+        let refused = if let Some(long_option) = argument.strip_prefix("--") {
+            let name = long_option
+                .split_once('=')
+                .map_or(long_option, |(name, _)| name);
+            if name == "message" {
+                has_message = true;
+            }
+            // `--e` is `--edit` to git.
+            let is_prefix_of = |option: &str| !name.is_empty() && option.starts_with(name);
+            is_prefix_of("verbose")
+                || is_prefix_of("edit")
+                || is_prefix_of("reedit-message")
+                || is_prefix_of("template")
+        } else if let Some(short_options) = argument.strip_prefix('-') {
+            let letters = short_options
+                .chars()
+                .take_while(|letter| letter.is_ascii_alphabetic())
+                .collect::<Vec<_>>();
+            if letters.contains(&'m') {
+                has_message = true;
+            }
+            // Up to `m`, whose value is the rest of the argument.
+            letters
+                .iter()
+                .take_while(|letter| **letter != 'm')
+                .any(|letter| matches!(letter, 'v' | 'e' | 'c' | 't'))
+        } else {
+            false
+        };
+        anyhow::ensure!(!refused, "unsupported git command argument: {argument}");
+    }
+    anyhow::ensure!(
+        has_message,
+        "an agent's git commit must give its message with -m"
+    );
+    Ok(())
 }
 
 /// Whether `message` is [`validate_git_command`] refusing `subcommand` itself, which is how a remote
@@ -2917,6 +3050,21 @@ pub trait GitRepository: Send + Sync {
     /// `env` is the repository's own environment; `command_env` is what the
     /// caller asked for and is validated against [`ALLOWED_GIT_COMMAND_ENV`].
     fn run_command(
+        &self,
+        args: Vec<String>,
+        stdin: Option<String>,
+        env: Arc<HashMap<String, String>>,
+        command_env: HashMap<String, String>,
+    ) -> BoxFuture<'_, Result<GitCommandOutput>>;
+
+    /// [`Self::run_command`] as if the repository were untrusted, whether or not it is: no hook
+    /// runs, and neither do the filter, merge, signing or diff programs the repository's own
+    /// configuration names (ADR-F90). This is how an AI agent's git commands run, outside its
+    /// sandbox: a hook, or a script a hook calls, is a file in the working tree the agent can
+    /// write, so running it would run the agent's code outside the sandbox. A git that cannot
+    /// turn hooks off (older than 2.9, or of an unknown version) is refused, and a partial
+    /// clone's lazy fetch, which would reach the network, is turned off.
+    fn run_command_without_hooks(
         &self,
         args: Vec<String>,
         stdin: Option<String>,
@@ -4482,72 +4630,34 @@ impl GitRepository for RealGitRepository {
     ) -> BoxFuture<'_, Result<GitCommandOutput>> {
         let git = self.git_binary_in_worktree();
         self.executor
-            .spawn(async move {
-                let subcommand = validate_git_command(&args)?;
-                validate_git_command_env(&command_env)?;
+            .spawn(run_allowed_git_command(
+                git,
+                args,
+                stdin,
+                env,
+                command_env,
+                HookPolicy::Repository,
+            ))
+            .boxed()
+    }
 
-                let git = git?;
-                if let Some(operation) = hook_running_operation_name(subcommand) {
-                    git.ensure_hooks_are_disabled_if_untrusted(operation).await?;
-                }
-
-                ensure_arguments_are_supported(subcommand, &args, git.version().await)?;
-                let adapted = adapt_command_to_git_version(args, git.version().await);
-                if adapted.dropped_autostash {
-                    // `--untracked-files=no`, because the stash `--autostash` takes would not have
-                    // covered untracked files either: refusing over them would leave the user with
-                    // an error they cannot act on.
-                    let status = git
-                        .build_command(&["status", "--porcelain", "--untracked-files=no"])
-                        .await
-                        .output()
-                        .await?;
-                    if !status.stdout.is_empty() {
-                        let version = git.version().await.map_or_else(
-                            || i18n::t!("unknown version").to_string(),
-                            |version| version.to_string(),
-                        );
-                        bail!(i18n::t!(
-                            "This git ({version}) does not support rebase --autostash, so commit or \
-                             stash the changes in the working tree first (git {minimum} or later is \
-                             needed).",
-                            minimum = GitFeature::RebaseAutostash.minimum_version()
-                        ));
-                    }
-                }
-
-                let mut command = git.build_command(&adapted.args).await;
-                command.envs(env.iter());
-                command.envs(&command_env);
-                // Last, so that neither the repository's environment nor the caller's can put an
-                // editor back. There is no terminal behind this process, so git must never try to
-                // open one (`cherry-pick --continue`, `commit` without `-m`, `tag -a`, …): it
-                // would hang the git worker. `:` is the one value git treats as "launch nothing",
-                // so this also keeps an untrusted repository's `core.editor` from running.
-                command.env("GIT_EDITOR", ":");
-                command.env("GIT_SEQUENCE_EDITOR", ":");
-
-                let output = if let Some(stdin_contents) = stdin {
-                    let mut child = command
-                        .stdin(Stdio::piped())
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
-                        .spawn()?;
-                    let mut child_stdin = child.stdin.take().context("git command has no stdin")?;
-                    child_stdin.write_all(stdin_contents.as_bytes()).await?;
-                    child_stdin.flush().await?;
-                    drop(child_stdin);
-                    child.output().await?
-                } else {
-                    command.output().await?
-                };
-
-                Ok(GitCommandOutput {
-                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                    exit_code: output.status.code(),
-                })
-            })
+    fn run_command_without_hooks(
+        &self,
+        args: Vec<String>,
+        stdin: Option<String>,
+        env: Arc<HashMap<String, String>>,
+        command_env: HashMap<String, String>,
+    ) -> BoxFuture<'_, Result<GitCommandOutput>> {
+        let git = self.git_binary_in_worktree().map(GitBinary::untrusted);
+        self.executor
+            .spawn(run_allowed_git_command(
+                git,
+                args,
+                stdin,
+                env,
+                command_env,
+                HookPolicy::Disabled,
+            ))
             .boxed()
     }
 
@@ -7358,6 +7468,106 @@ async fn add_files_to_index(git: &GitBinary, files: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Whether [`run_allowed_git_command`] leaves hooks to the repository's trust, or turns them off
+/// whatever it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HookPolicy {
+    Repository,
+    Disabled,
+}
+
+/// The body of [`GitRepository::run_command`] and [`GitRepository::run_command_without_hooks`].
+async fn run_allowed_git_command(
+    git: Result<GitBinary>,
+    args: Vec<String>,
+    stdin: Option<String>,
+    env: Arc<HashMap<String, String>>,
+    command_env: HashMap<String, String>,
+    hook_policy: HookPolicy,
+) -> Result<GitCommandOutput> {
+    let subcommand = validate_git_command(&args)?;
+    validate_git_command_env(&command_env)?;
+
+    let git = git?;
+    if hook_policy == HookPolicy::Disabled {
+        git.ensure_hooks_can_be_disabled().await?;
+    }
+    if let Some(operation) = hook_running_operation_name(subcommand) {
+        git.ensure_hooks_are_disabled_if_untrusted(operation)
+            .await?;
+    }
+
+    ensure_arguments_are_supported(subcommand, &args, git.version().await)?;
+    let adapted = adapt_command_to_git_version(args, git.version().await);
+    if adapted.dropped_autostash {
+        // `--untracked-files=no`, because the stash `--autostash` takes would not have
+        // covered untracked files either: refusing over them would leave the user with
+        // an error they cannot act on.
+        let status = git
+            .build_command(&["status", "--porcelain", "--untracked-files=no"])
+            .await
+            .output()
+            .await?;
+        if !status.stdout.is_empty() {
+            let version = git.version().await.map_or_else(
+                || i18n::t!("unknown version").to_string(),
+                |version| version.to_string(),
+            );
+            bail!(i18n::t!(
+                "This git ({version}) does not support rebase --autostash, so commit or \
+                 stash the changes in the working tree first (git {minimum} or later is \
+                 needed).",
+                minimum = GitFeature::RebaseAutostash.minimum_version()
+            ));
+        }
+    }
+
+    let mut command = git.build_command(&adapted.args).await;
+    command.envs(env.iter());
+    command.envs(&command_env);
+    // Last, so that neither the repository's environment nor the caller's can put an
+    // editor back. There is no terminal behind this process, so git must never try to
+    // open one (`cherry-pick --continue`, `commit` without `-m`, `tag -a`, …): it
+    // would hang the git worker. `:` is the one value git treats as "launch nothing",
+    // so this also keeps an untrusted repository's `core.editor` from running.
+    command.env("GIT_EDITOR", ":");
+    command.env("GIT_SEQUENCE_EDITOR", ":");
+    if hook_policy == HookPolicy::Disabled {
+        // An object a partial clone lacks would otherwise be fetched from its promisor remote,
+        // which for an agent's command is network access nobody approved. The first variable is
+        // only read by git 2.45.1 and later; the second, an empty list of allowed transports,
+        // stops every connection on any git that can disable hooks.
+        command.env("GIT_NO_LAZY_FETCH", "1");
+        command.env("GIT_ALLOW_PROTOCOL", "");
+        // The repository's `core.worktree` would otherwise point checkouts and resets at any
+        // directory, and a repository nested in the project may have been set up by the agent.
+        if git.working_directory != git.git_directory {
+            command.env("GIT_WORK_TREE", &git.working_directory);
+        }
+    }
+
+    let output = if let Some(stdin_contents) = stdin {
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        let mut child_stdin = child.stdin.take().context("git command has no stdin")?;
+        child_stdin.write_all(stdin_contents.as_bytes()).await?;
+        child_stdin.flush().await?;
+        drop(child_stdin);
+        child.output().await?
+    } else {
+        command.output().await?
+    };
+
+    Ok(GitCommandOutput {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        exit_code: output.status.code(),
+    })
+}
+
 pub(crate) struct GitBinary {
     git_binary_path: PathBuf,
     working_directory: PathBuf,
@@ -7390,6 +7600,31 @@ impl GitBinary {
     fn envs(mut self, envs: HashMap<String, String>) -> Self {
         self.envs = envs;
         self
+    }
+
+    /// This binary with every guard of an untrusted repository, whatever the project's trust.
+    fn untrusted(mut self) -> Self {
+        self.is_trusted = false;
+        self
+    }
+
+    /// For [`GitRepository::run_command_without_hooks`]: unlike
+    /// [`Self::ensure_hooks_are_disabled_if_untrusted`], every command is refused, whichever
+    /// hooks it runs, and so is a git whose version is not known.
+    async fn ensure_hooks_can_be_disabled(&self) -> Result<()> {
+        let feature = GitFeature::HooksPath;
+        match self.version().await {
+            Some(version) if feature.is_supported_by(Some(version)) => Ok(()),
+            Some(version) => bail!(i18n::t!(
+                "An old git (older than {minimum}; this one is {version}) cannot turn off hooks, \
+                 so the AI cannot run git commands. Update git to let it.",
+                minimum = feature.minimum_version()
+            )),
+            None => bail!(i18n::t!(
+                "The version of git could not be determined, so it is not known whether git can \
+                 turn off hooks, and the AI cannot run git commands."
+            )),
+        }
     }
 
     /// The version of this git binary, probed once per binary path for the whole process.
@@ -9697,6 +9932,328 @@ mod tests {
                 "unexpected error: {error:#}"
             );
         }
+    }
+
+    #[test]
+    fn test_validate_agent_git_command() {
+        let command = |args: &[&str]| -> Vec<String> {
+            args.iter().map(|argument| argument.to_string()).collect()
+        };
+        for args in [
+            vec!["commit", "-m", "Fix the parser"],
+            vec!["commit", "-am", "Fix the parser"],
+            vec!["commit", "--amend", "--message=Fix the parser"],
+            // A message is free text, whatever is in it, as long as it does not start with `-`.
+            vec![
+                "commit",
+                "-m",
+                "Handle -s and --recurse-submodules",
+                "--no-edit",
+            ],
+            vec!["commit", "-i", "src", "-m", "x"],
+            vec!["add", "--", "-s"],
+            vec!["switch", "-c", "feature"],
+            vec!["checkout", "--no-recurse-submodules", "main"],
+            vec!["merge", "--no-ff", "--strategy-option=theirs", "feature"],
+            vec!["merge", "--stat", "feature"],
+            vec!["cherry-pick", "-s", "HEAD~1"],
+            vec!["revert", "-s", "HEAD"],
+            vec!["log", "-s", "--oneline"],
+            vec!["rebase", "--root"],
+            vec!["reset", "--hard", "HEAD~1"],
+            vec!["add", "-A"],
+            vec!["add", "-N", "new.rs"],
+            vec!["add", "--ignore-errors", "src"],
+            vec!["checkout", "-b", "feature", "main"],
+            vec!["checkout", "--progress", "main"],
+            vec!["log", "-p", "-1"],
+            vec!["show", "--patch", "HEAD"],
+        ] {
+            let args = command(&args);
+            assert!(
+                validate_agent_git_command(&args).is_ok(),
+                "{args:?} should be allowed"
+            );
+        }
+        for args in [
+            // What the git panel needs and an agent does not.
+            vec!["commit-tree", "HEAD^{tree}", "-m", "x"],
+            vec!["pack-refs", "--all"],
+            // Submodules, whose configuration is not looked at for every command.
+            vec!["checkout", "--recurse-submodules", "main"],
+            vec!["switch", "--recurse-submodules=yes", "main"],
+            vec!["checkout", "--recurse", "main"],
+            // A merge strategy is a program git finds by name.
+            vec!["merge", "-s", "evil", "feature"],
+            vec!["merge", "-sevil", "feature"],
+            vec!["merge", "-ns", "evil", "feature"],
+            vec!["merge", "--strategy=evil", "feature"],
+            vec!["rebase", "--strat", "evil", "main"],
+            vec!["rebase", "-s", "evil", "main"],
+            vec!["cherry-pick", "--strategy", "evil", "HEAD~1"],
+            vec!["revert", "--strategy=evil", "HEAD"],
+            // An index file written wherever the agent says.
+            vec!["apply", "--build-fake-ancestor=../index", "change.patch"],
+            vec!["apply", "--build", "../index", "change.patch"],
+            // A commit that would prepare a message for the editor, which can write the staged
+            // diff into it through the repository's textconv programs.
+            vec!["commit"],
+            vec!["commit", "--amend"],
+            vec!["commit", "-v", "-m", "x"],
+            vec!["commit", "-avm", "x"],
+            vec!["commit", "-e", "-m", "x"],
+            vec!["commit", "--verb", "-m", "x"],
+            vec!["commit", "--edit", "-m", "x"],
+            vec!["commit", "-c", "HEAD"],
+            vec!["commit", "--template=notes", "-m", "x"],
+            // Picking hunks waits for a terminal and shows them through the repository's diff
+            // configuration; `add -e` opens an editor.
+            vec!["add", "-p"],
+            vec!["add", "--patch", "src"],
+            vec!["add", "--pat"],
+            vec!["add", "-Ap"],
+            vec!["add", "-i"],
+            vec!["add", "--interactive"],
+            vec!["add", "-ue"],
+            vec!["add", "-e"],
+            vec!["add", "--edit"],
+            vec!["checkout", "-p", "main"],
+            vec!["checkout", "--patch", "main", "--", "src"],
+            vec!["reset", "-p"],
+            vec!["reset", "--patch", "HEAD"],
+            vec!["commit", "-p", "-m", "x"],
+            vec!["commit", "--interactive", "-m", "x"],
+            vec!["commit", "--int", "-m", "x"],
+            vec!["commit", "--e", "-m", "x"],
+            // An option that takes a value takes `-m` or `--` as it, and git reads the argument
+            // after that as an option; so a message or a path that looks like an option is
+            // refused as well.
+            vec!["merge", "-X", "-m", "-s", "evil", "feature"],
+            vec!["merge", "-X", "--", "-s", "evil", "feature"],
+            vec![
+                "commit",
+                "--allow-empty",
+                "--trailer",
+                "-m",
+                "--file=/etc/passwd",
+            ],
+            vec!["commit", "--trailer", "-m", "-v", "-m", "x"],
+            vec!["checkout", "-b", "--", "-p", "main"],
+            vec!["commit", "-m", "-v -e", "--no-edit"],
+            vec!["commit", "-m", "--recurse-submodules -s ours"],
+            vec!["commit", "-m", "-p --patch"],
+            vec!["reset", "-q", "HEAD", "--", "-p"],
+            // Whatever any caller is refused.
+            vec!["rebase", "--exec", "touch /tmp/pwned", "HEAD~2"],
+            vec!["push", "origin", "main"],
+            vec!["fetch"],
+        ] {
+            let args = command(&args);
+            assert!(
+                validate_agent_git_command(&args).is_err(),
+                "{args:?} should be refused"
+            );
+        }
+    }
+
+    /// ADR-F90: an agent's command runs as in an untrusted repository whatever the project's
+    /// trust, so a hook in the working tree (husky's `core.hooksPath`), which the agent can
+    /// write from its sandbox, never runs outside it.
+    #[gpui::test]
+    async fn test_run_command_without_hooks_runs_no_hook_in_a_trusted_repository(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+        if !installed_git_supports(GitFeature::HooksPath) {
+            return;
+        }
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let hooks_dir = repo_dir.path().join(".husky");
+        fs::create_dir_all(&hooks_dir).unwrap();
+        for hook in ["pre-commit", "commit-msg", "post-commit", "post-checkout"] {
+            let path = hooks_dir.join(hook);
+            fs::write(
+                &path,
+                format!("#!/bin/sh\necho {hook} >> hooks-that-ran\nexit 1\n"),
+            )
+            .unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+        }
+        git_command(repo_dir.path(), ["config", "core.hooksPath", ".husky"]);
+        fs::write(repo_dir.path().join(".gitignore"), "hooks-that-ran\n").unwrap();
+        fs::write(repo_dir.path().join("file"), "one\n").unwrap();
+
+        let repository = open_repository(repo_dir.path(), cx);
+        repository.set_trusted(true);
+        let env = Arc::new(test_commit_envs());
+        let run_without_hooks = |args: &[&str]| {
+            repository.run_command_without_hooks(
+                args.iter().map(|argument| argument.to_string()).collect(),
+                None,
+                env.clone(),
+                HashMap::default(),
+            )
+        };
+        let hooks_that_ran =
+            || fs::read_to_string(repo_dir.path().join("hooks-that-ran")).unwrap_or_default();
+
+        for args in [
+            &["add", "file", ".gitignore"][..],
+            &["commit", "-m", "first"],
+            &["switch", "-c", "feature"],
+        ] {
+            let output = run_without_hooks(args).await.unwrap();
+            assert!(output.succeeded(), "{args:?}: {output:?}");
+        }
+        assert_eq!(hooks_that_ran(), "", "no hook may run");
+        assert_eq!(
+            git_command_output(repo_dir.path(), ["log", "-1", "--pretty=%s"]),
+            "first"
+        );
+
+        // The same commit through `run_command` runs the trusted repository's hooks, so the
+        // hooks above are ones git would have run.
+        fs::write(repo_dir.path().join("file"), "two\n").unwrap();
+        run_without_hooks(&["add", "file"]).await.unwrap();
+        let output = repository
+            .run_command(
+                vec!["commit".into(), "-m".into(), "second".into()],
+                None,
+                env.clone(),
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        assert!(!output.succeeded(), "the pre-commit hook fails the commit");
+        assert_eq!(hooks_that_ran(), "pre-commit\n");
+    }
+
+    /// ADR-F90: the repository's `core.worktree`, which the agent controls in a repository it set
+    /// up from its sandbox, does not move an agent's command out of the working directory.
+    #[gpui::test]
+    async fn test_run_command_without_hooks_ignores_core_worktree(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        let elsewhere = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        fs::write(repo_dir.path().join("file"), "one\n").unwrap();
+        git_command(repo_dir.path(), ["add", "file"]);
+        let env = Arc::new(test_commit_envs());
+        let repository = open_repository(repo_dir.path(), cx);
+        let output = repository
+            .run_command_without_hooks(
+                vec!["commit".into(), "-m".into(), "first".into()],
+                None,
+                env.clone(),
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        assert!(output.succeeded(), "{output:?}");
+        fs::write(repo_dir.path().join("file"), "changed\n").unwrap();
+        git_command(
+            repo_dir.path(),
+            [
+                "config",
+                "core.worktree",
+                elsewhere.path().to_str().unwrap(),
+            ],
+        );
+
+        let output = repository
+            .run_command_without_hooks(
+                vec!["checkout".into(), "HEAD".into(), "--".into(), "file".into()],
+                None,
+                env,
+                HashMap::default(),
+            )
+            .await
+            .unwrap();
+        assert!(output.succeeded(), "{output:?}");
+        assert!(
+            !elsewhere.path().join("file").exists(),
+            "nothing is written to core.worktree"
+        );
+        assert_eq!(
+            fs::read_to_string(repo_dir.path().join("file")).unwrap(),
+            "one\n"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_run_command_without_hooks_refuses_a_git_that_cannot_disable_them(
+        cx: &mut TestAppContext,
+    ) {
+        let old_git = pretend_git_binary("git-2.8-for-agent", GitVersion::new(2, 8, 0), true, cx);
+        let error = old_git
+            .ensure_hooks_can_be_disabled()
+            .await
+            .expect_err("git 2.8 ignores core.hooksPath");
+        assert!(
+            error.to_string().contains("cannot turn off hooks"),
+            "{error:#}"
+        );
+
+        // Before anything is run, so before the made-up binary path could fail to start.
+        disable_git_global_config();
+        cx.executor().allow_parking();
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        let repository = RealGitRepository::new(
+            &repo_dir.path().join(".git"),
+            None,
+            Some("git-2.8-for-agent".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        repository.set_trusted(true);
+        let error = repository
+            .run_command_without_hooks(
+                vec!["log".into()],
+                None,
+                Arc::new(HashMap::default()),
+                HashMap::default(),
+            )
+            .await
+            .expect_err("git 2.8 ignores core.hooksPath");
+        assert!(
+            error.to_string().contains("cannot turn off hooks"),
+            "{error:#}"
+        );
+
+        // A trusted repository is no exception, unlike `ensure_hooks_are_disabled_if_untrusted`.
+        old_git
+            .ensure_hooks_are_disabled_if_untrusted("Commit")
+            .await
+            .expect("the trusted repository's own operations still run");
+
+        let new_git = pretend_git_binary("git-2.9-for-agent", GitVersion::new(2, 9, 0), true, cx);
+        new_git.ensure_hooks_can_be_disabled().await.unwrap();
+
+        let unknown_git = GitBinary::new(
+            PathBuf::from("git-that-does-not-exist-for-agent"),
+            PathBuf::from("/"),
+            PathBuf::from("/.git"),
+            cx.executor(),
+            true,
+        );
+        let error = unknown_git
+            .ensure_hooks_can_be_disabled()
+            .await
+            .expect_err("a git of unknown version may not be able to");
+        assert!(
+            error.to_string().contains("could not be determined"),
+            "{error:#}"
+        );
     }
 
     /// `run_command` is reachable over RPC, so an allowed subcommand must not be usable to start

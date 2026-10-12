@@ -313,6 +313,8 @@ pub struct AgentSettings {
     /// [`AUTO_COMPACT_MIN_CONTEXT_WINDOW_FLOOR`].
     pub auto_compact_min_context_window: u64,
     pub attach_active_file: bool,
+    /// Whether a new thread starts with Git operations turned on (ADR-F90).
+    pub git_operations: bool,
     pub context_attachments: ContextAttachmentSettings,
     /// Byte budget for the repository map prepended to the system prompt,
     /// already clamped to `0..=`[`MAX_SYSTEM_PROMPT_REPO_MAP_BYTES`]. `0`
@@ -928,6 +930,7 @@ impl Settings for AgentSettings {
                 .unwrap_or(DEFAULT_AUTO_COMPACT_MIN_CONTEXT_WINDOW)
                 .max(AUTO_COMPACT_MIN_CONTEXT_WINDOW_FLOOR),
             attach_active_file: agent.attach_active_file.unwrap_or(false),
+            git_operations: agent.git_operations.unwrap_or(true),
             context_attachments: ContextAttachmentSettings::from_content(agent.context_attachments),
             system_prompt_repo_map_bytes: agent
                 .system_prompt_repo_map_bytes

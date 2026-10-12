@@ -243,6 +243,9 @@ message GitRunCommand {
   optional string stdin = 4;
   // Validated against ALLOWED_GIT_COMMAND_ENV on the host, which accepts only the
   // GIT_AUTHOR_* variables `commit-tree` reads. Anything else is refused there.
+  // The key GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY asks the host to run the command
+  // with every hook turned off (an AI agent's command, ADR-F90); it is a key here
+  // so that a host from before it refuses the command instead of running it.
   map<string, string> env = 5;
 }
 
@@ -251,6 +254,9 @@ message GitRunCommandResponse {
   string stderr = 2;
   // Absent when the process was terminated by a signal.
   optional int32 exit_code = 3;
+  // The command ran with every hook turned off, as GIT_COMMAND_WITHOUT_HOOKS_ENV_KEY
+  // asked. A host from before that key never sets it.
+  bool hooks_disabled = 4;
 }
 
 // Stops the server's `SearchCommits` with this `search_id` from the same client, and its git.

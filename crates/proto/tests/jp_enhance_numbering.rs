@@ -29,6 +29,7 @@ const FORK_FIELDS_IN_UPSTREAM_MESSAGES: &[(&str, &str)] = &[
     ("UpdateRepository", "tags_fingerprint"),
     ("UpdateRepository", "loose_ref_count"),
     ("UpdateRepository", "loose_ref_count_is_lower_bound"),
+    ("UpdateRepository", "opened_by_user"),
     ("Push", "force_without_lease"),
     ("RemoteMessageResponse", "forced_without_lease"),
     ("SearchCommits", "author"),

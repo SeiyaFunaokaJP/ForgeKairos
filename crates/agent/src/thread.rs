@@ -15,7 +15,7 @@ use crate::{
     BrowserScrollTool, BrowserSelectTabTool, BrowserSetValueTool, BrowserTypeTool, CodeActionStore,
     ContextServerRegistry, CopyPathTool, CreateDirectoryTool, CreateThreadTool, DbLanguageModel,
     DbThread, DeletePathTool, DiagnosticsTool, EditFileTool, FetchTool, FindPathTool,
-    FindReferencesTool, GetCodeActionsTool, GitDiffTool, GoToDefinitionTool, GrepTool,
+    FindReferencesTool, GetCodeActionsTool, GitDiffTool, GitTool, GoToDefinitionTool, GrepTool,
     ListAgentsAndModelsTool, ListDirectoryTool, MovePathTool, ProjectSnapshot, ReadFileTool,
     RenameTool, RepoMapTool, RepoMapToolInput, SandboxedTerminalTool, SpawnAgentTool,
     SystemPromptTemplate, Template, Templates, TerminalExecution, TerminalTool,
@@ -1448,6 +1448,10 @@ pub struct Thread {
     thinking_enabled: bool,
     thinking_effort: Option<String>,
     speed: Option<Speed>,
+    /// Whether the model gets the `git` tool in this thread (ADR-F90). The
+    /// chat input's Git button switches it; a new thread starts with
+    /// `agent.git_operations`.
+    git_operations_enabled: bool,
     prompt_capabilities_tx: watch::Sender<acp::PromptCapabilities>,
     pub(crate) prompt_capabilities_rx: watch::Receiver<acp::PromptCapabilities>,
     pub(crate) project: Entity<Project>,
@@ -1573,6 +1577,7 @@ impl Thread {
             .default_model
             .as_ref()
             .and_then(|model| model.speed);
+        let git_operations_enabled = settings.git_operations;
         let (prompt_capabilities_tx, prompt_capabilities_rx) =
             watch::channel(Self::prompt_capabilities(model.as_deref()));
         let model = match model {
@@ -1615,6 +1620,7 @@ impl Thread {
             thinking_enabled: enable_thinking,
             speed,
             thinking_effort,
+            git_operations_enabled,
             prompt_capabilities_tx,
             prompt_capabilities_rx,
             project,
@@ -1639,6 +1645,7 @@ impl Thread {
         let parent = parent_thread.read(cx);
         self.speed = parent.speed;
         self.thinking_enabled = parent.thinking_enabled;
+        self.git_operations_enabled = parent.git_operations_enabled;
         self.thinking_effort = parent.thinking_effort.clone();
         self.summarization_model = parent.summarization_model.clone();
         self.profile_id = parent.profile_id.clone();
@@ -1941,6 +1948,10 @@ impl Thread {
         let profile_id = db_thread
             .profile
             .unwrap_or_else(|| settings.default_profile.clone());
+        // A thread saved before the Git switch existed starts as a new one would.
+        let git_operations_enabled = db_thread
+            .git_operations_enabled
+            .unwrap_or(settings.git_operations);
 
         let saved_selection = db_thread.model.map(|model| SelectedModel {
             provider: model.provider.into(),
@@ -2009,6 +2020,7 @@ impl Thread {
             thinking_enabled: db_thread.thinking_enabled,
             thinking_effort: db_thread.thinking_effort,
             speed: db_thread.speed,
+            git_operations_enabled,
             project,
             action_log,
             updated_at: db_thread.updated_at,
@@ -2121,6 +2133,7 @@ impl Thread {
             speed: self.speed,
             thinking_enabled: self.thinking_enabled,
             thinking_effort: self.thinking_effort.clone(),
+            git_operations_enabled: Some(self.git_operations_enabled),
             draft_prompt: self.draft_prompt.clone(),
             ui_scroll_position: self.ui_scroll_position.map(|lo| {
                 crate::db::SerializedScrollPosition {
@@ -2282,6 +2295,24 @@ impl Thread {
         cx.notify();
     }
 
+    pub fn git_operations_enabled(&self) -> bool {
+        self.git_operations_enabled
+    }
+
+    /// Turns the `git` tool on or off for this thread and the subagents it
+    /// is running, from the next request on.
+    pub fn set_git_operations_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        self.git_operations_enabled = enabled;
+        for subagent in &self.running_subagents {
+            subagent
+                .update(cx, |thread, cx| {
+                    thread.set_git_operations_enabled(enabled, cx);
+                })
+                .ok();
+        }
+        cx.notify();
+    }
+
     pub fn thinking_effort(&self) -> Option<&String> {
         self.thinking_effort.as_ref()
     }
@@ -2372,6 +2403,7 @@ impl Thread {
         ));
         self.add_tool(RepoMapTool::new(self.project.clone()));
         self.add_tool(GitDiffTool::new(self.project.clone()));
+        self.add_tool(GitTool::new(self.project.clone(), cx.weak_entity()));
         // Register terminal tool variants; `enabled_tools` exposes the one
         // matching the current sandbox state to the model as `terminal`.
         self.add_tool(TerminalTool::new(self.project.clone(), environment.clone()));
@@ -4486,6 +4518,10 @@ impl Thread {
             .tools
             .iter()
             .filter(|(_, tool)| !is_restricted || tool.allow_in_restricted_mode())
+            // The thread's Git switch, whatever the profile enables (ADR-F90).
+            .filter(|(tool_name, _)| {
+                self.git_operations_enabled || tool_name.as_ref() != GitTool::NAME
+            })
             .filter_map(|(tool_name, tool)| {
                 let terminal_variant = matches!(
                     tool_name.as_ref(),
@@ -4693,6 +4729,7 @@ impl Thread {
                 .as_ref()
                 .map(|(_key, map)| map.clone()),
             code_display: ide_query::code_display(cx).is_some(),
+            git_operations_enabled: self.git_operations_enabled,
         }
         .render(&self.templates)
         .context("failed to build system prompt")
@@ -10582,6 +10619,7 @@ mod tests {
                 MovePathTool::NAME,
                 CopyPathTool::NAME,
                 SpawnAgentTool::NAME,
+                GitTool::NAME,
             ] {
                 assert!(
                     !enabled(name),

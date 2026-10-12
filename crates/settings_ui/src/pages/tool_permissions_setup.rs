@@ -31,6 +31,16 @@ const TOOLS: &[ToolInfo] = &[
         ),
     },
     ToolInfo {
+        id: "git",
+        name: || i18n::tc!("agent tool", "Git"),
+        description: i18n::msg!(
+            "Git commands run outside the sandbox with hooks turned off (commit, branch, merge, …)"
+        ),
+        regex_explanation: i18n::msg!(
+            "Patterns are matched against the whole command, starting with `git`, such as `git commit -m 'Fix the parser'`."
+        ),
+    },
+    ToolInfo {
         id: "edit_file",
         name: || i18n::tc!("agent tool", "Edit File"),
         description: i18n::msg!("File editing operations"),

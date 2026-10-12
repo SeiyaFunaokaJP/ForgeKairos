@@ -98,6 +98,9 @@ pub struct FakeGitRepositoryState {
     /// The caller-supplied environment of each of those calls, pushed alongside
     /// `run_command_log` so the two stay index-for-index.
     pub run_command_envs: Vec<HashMap<String, String>>,
+    /// Whether each of those calls came through
+    /// [`GitRepository::run_command_without_hooks`], index-for-index as well.
+    pub run_command_without_hooks: Vec<bool>,
     pub blob_read_gate: Option<FakeBlobReadGate>,
 }
 
@@ -175,6 +178,7 @@ impl FakeGitRepositoryState {
             ),
             run_command_log: Vec::new(),
             run_command_envs: Vec::new(),
+            run_command_without_hooks: Vec::new(),
         }
     }
 }
@@ -270,6 +274,34 @@ impl Drop for WaiterGuard {
 }
 
 impl FakeGitRepository {
+    /// [`GitRepository::run_command`] and [`GitRepository::run_command_without_hooks`].
+    fn fake_run_command(
+        &self,
+        args: Vec<String>,
+        stdin: Option<String>,
+        command_env: HashMap<String, String>,
+        without_hooks: bool,
+    ) -> BoxFuture<'static, Result<GitCommandOutput>> {
+        self.with_state_async(false, move |state| {
+            // The same checks a real repository applies, so that a wrapper building a command or
+            // an environment nobody allowed fails in tests too.
+            git::repository::validate_git_command(&args)?;
+            git::repository::validate_git_command_env(&command_env)?;
+            let key = args.join(" ");
+            state.run_command_log.push((args, stdin));
+            state.run_command_envs.push(command_env);
+            state.run_command_without_hooks.push(without_hooks);
+            // There is no git binary behind the fake repository, so a command
+            // the test did not prepare an answer for stays an explicit error
+            // rather than a silent success.
+            state
+                .command_outputs
+                .get(&key)
+                .cloned()
+                .with_context(|| format!("`git {key}` is not supported by the fake git repository"))
+        })
+    }
+
     fn with_state_async<F, T>(&self, write: bool, f: F) -> BoxFuture<'static, Result<T>>
     where
         F: 'static + Send + FnOnce(&mut FakeGitRepositoryState) -> Result<T>,
@@ -1394,23 +1426,17 @@ impl GitRepository for FakeGitRepository {
         _env: Arc<HashMap<String, String>>,
         command_env: HashMap<String, String>,
     ) -> BoxFuture<'_, Result<GitCommandOutput>> {
-        self.with_state_async(false, move |state| {
-            // The same checks a real repository applies, so that a wrapper building a command or
-            // an environment nobody allowed fails in tests too.
-            git::repository::validate_git_command(&args)?;
-            git::repository::validate_git_command_env(&command_env)?;
-            let key = args.join(" ");
-            state.run_command_log.push((args, stdin));
-            state.run_command_envs.push(command_env);
-            // There is no git binary behind the fake repository, so a command
-            // the test did not prepare an answer for stays an explicit error
-            // rather than a silent success.
-            state
-                .command_outputs
-                .get(&key)
-                .cloned()
-                .with_context(|| format!("`git {key}` is not supported by the fake git repository"))
-        })
+        self.fake_run_command(args, stdin, command_env, false)
+    }
+
+    fn run_command_without_hooks(
+        &self,
+        args: Vec<String>,
+        stdin: Option<String>,
+        _env: Arc<HashMap<String, String>>,
+        command_env: HashMap<String, String>,
+    ) -> BoxFuture<'_, Result<GitCommandOutput>> {
+        self.fake_run_command(args, stdin, command_env, true)
     }
 
     fn diff_stat(

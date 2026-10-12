@@ -6739,6 +6739,7 @@ async fn test_every_tool_is_known_to_write_worktrees_or_not(cx: &mut TestAppCont
         "create_directory",
         "delete_path",
         "edit_file",
+        "git",
         "move_path",
         "rename_symbol",
         "sandboxed_terminal",
@@ -6924,6 +6925,120 @@ async fn test_lsp_tools_are_exposed_without_a_feature_flag(cx: &mut TestAppConte
     );
     model.end_last_completion_stream();
     cx.run_until_parked();
+}
+
+/// ADR-F90: the thread's Git switch decides whether the model gets the `git` tool, whatever the
+/// profile enables, and what the system prompt says about Git; it starts from
+/// `agent.git_operations` and is saved with the thread.
+#[gpui::test]
+async fn test_git_operations_switch(cx: &mut TestAppContext) {
+    init_test(cx);
+
+    let fs = FakeFs::new(cx.executor());
+    fs.insert_tree(path!("/test"), json!({ ".git": {}, "a.txt": "a" }))
+        .await;
+    let project = Project::test(fs, [path!("/test").as_ref()], cx).await;
+    let project_context = cx.new(|_cx| ProjectContext::default());
+    let context_server_store = project.read_with(cx, |project, _| project.context_server_store());
+    let context_server_registry =
+        cx.new(|cx| ContextServerRegistry::new(context_server_store.clone(), cx));
+    let model = Arc::new(FakeLanguageModel::default());
+    let environment = Rc::new(cx.update(|cx| {
+        FakeThreadEnvironment::default().with_terminal(FakeTerminalHandle::new_never_exits(cx))
+    }));
+    let new_thread = |cx: &mut TestAppContext| {
+        cx.new(|cx| {
+            let mut thread = Thread::new(
+                project.clone(),
+                project_context.clone(),
+                context_server_registry.clone(),
+                Templates::new(),
+                Some(model.clone() as Arc<dyn LanguageModel>),
+                cx,
+            );
+            thread.add_default_tools(environment.clone(), cx);
+            thread
+        })
+    };
+    let request = |thread: &Entity<Thread>, cx: &mut TestAppContext| {
+        thread
+            .update(cx, |thread, cx| {
+                thread.send(ClientUserMessageId::new(), ["hello"], cx)
+            })
+            .unwrap();
+        cx.run_until_parked();
+        let completion = model.pending_completions().pop().unwrap();
+        model.end_last_completion_stream();
+        cx.run_until_parked();
+        let MessageContent::Text(system_prompt) = &completion.messages[0].content[0] else {
+            panic!("expected a text system prompt");
+        };
+        (
+            tool_names_for_completion(&completion),
+            system_prompt.to_string(),
+        )
+    };
+
+    let thread = new_thread(cx);
+    assert!(thread.read_with(cx, |thread, _| thread.git_operations_enabled()));
+    let (tools, system_prompt) = request(&thread, cx);
+    assert!(tools.iter().any(|tool| tool == GitTool::NAME), "{tools:?}");
+    assert!(
+        system_prompt.contains("use the `git` tool"),
+        "{system_prompt}"
+    );
+    assert!(!system_prompt.contains("turned off Git operations"));
+
+    thread.update(cx, |thread, cx| {
+        thread.set_git_operations_enabled(false, cx)
+    });
+    let (tools, system_prompt) = request(&thread, cx);
+    assert!(!tools.iter().any(|tool| tool == GitTool::NAME), "{tools:?}");
+    assert!(
+        tools.iter().any(|tool| tool == GitDiffTool::NAME),
+        "reading stays: {tools:?}"
+    );
+    assert!(
+        system_prompt.contains("The user has turned off Git operations for this thread."),
+        "{system_prompt}"
+    );
+    assert!(!system_prompt.contains("use the `git` tool"));
+
+    // Saved with the thread, and a thread saved before the switch existed starts as a new one.
+    let db_thread = thread.read_with(cx, |thread, cx| thread.to_db(cx)).await;
+    assert_eq!(db_thread.git_operations_enabled, Some(false));
+    let restore = |db_thread: DbThread, cx: &mut TestAppContext| {
+        cx.update(|cx| LanguageModelRegistry::test(cx));
+        cx.new(|cx| {
+            Thread::from_db(
+                acp::SessionId::new("restored"),
+                db_thread,
+                project.clone(),
+                project_context.clone(),
+                context_server_registry.clone(),
+                Templates::new(),
+                cx,
+            )
+        })
+        .read_with(cx, |thread, _| thread.git_operations_enabled())
+    };
+    let mut legacy = thread.read_with(cx, |thread, cx| thread.to_db(cx)).await;
+    legacy.git_operations_enabled = None;
+    assert!(!restore(db_thread, cx), "the saved switch wins");
+    assert!(restore(legacy, cx), "the setting's default is on");
+
+    cx.update(|cx| {
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |settings| {
+                settings.agent.get_or_insert_default().git_operations = Some(false);
+            });
+        });
+    });
+    let mut legacy = thread.read_with(cx, |thread, cx| thread.to_db(cx)).await;
+    legacy.git_operations_enabled = None;
+    assert!(!restore(legacy, cx));
+    let thread = new_thread(cx);
+    assert!(!thread.read_with(cx, |thread, _| thread.git_operations_enabled()));
 }
 
 /// With no language server for the file, an LSP tool's empty result is
