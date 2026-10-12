@@ -1368,6 +1368,32 @@ mod tests {
         });
     }
 
+    /// ADR-F92: a start outside the sandbox that the user confirmed, made after
+    /// running outside it stopped being allowed, fails rather than quietly
+    /// starting the agent in the sandbox the user chose to leave.
+    #[gpui::test]
+    async fn test_a_confirmed_start_outside_fails_once_it_is_not_allowed(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.executor().allow_parking();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let project = project::Project::example([temp_dir.path()], &mut cx.to_async()).await;
+        let store = project.read_with(cx, |project, _| project.agent_server_store().clone());
+
+        let connect = cx.update(|cx| {
+            assert!(!project::agent_sandbox::outside_sandbox_allowed(cx));
+            let delegate = AgentServerDelegate::new(store, None, None).outside_sandbox_once();
+            CustomAgentServer::new(AgentId::new(CLAUDE_AGENT_ID)).connect(
+                delegate,
+                project.clone(),
+                cx,
+            )
+        });
+        match connect.await {
+            Ok(_) => panic!("the agent must not start"),
+            Err(error) => assert_eq!(error.to_string(), i18n::tr(OUTSIDE_SANDBOX_NOT_ALLOWED)),
+        }
+    }
+
     #[gpui::test]
     fn test_unknown_agent_is_not_registry(cx: &mut TestAppContext) {
         init_test(cx);

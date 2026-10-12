@@ -1286,12 +1286,12 @@ msgid "AI Browser Panel Dock"
 msgstr "AI ブラウザーパネルのドック位置"
 
 msgctxt "settings"
-msgid "AI Control"
-msgstr "AI による操作"
-
-msgctxt "settings"
 msgid "AI Connections"
 msgstr "AI の接続"
+
+msgctxt "settings"
+msgid "AI Control"
+msgstr "AI による操作"
 
 msgctxt "settings"
 msgid "Accessible Mode"

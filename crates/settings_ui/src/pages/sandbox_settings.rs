@@ -26,7 +26,7 @@ const ALLOW_ALL_HOSTS_DESCRIPTION: &str = i18n::msg!(
 /// the sandbox, not after any one tool, so that it is not read as switching
 /// some agent feature on or off.
 const ALLOW_OUTSIDE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
-    "When off (the default), nothing that the agent features start runs outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. When on, each of those asks first or follows its own setting."
+    "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
 );
 
 const ENABLE_SANDBOX_DESCRIPTION: &str = i18n::msg!(

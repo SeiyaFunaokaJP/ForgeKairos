@@ -1168,14 +1168,15 @@ impl JsonSchema for GrantedWritePathContent {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct SandboxPermissionsContent {
     /// Whether anything the agent features start may run outside the sandbox
-    /// at all. While this is off, every way out is refused without asking:
+    /// at all. While this is off, every new way out is refused without asking:
     /// agent terminal commands that cannot run in the sandbox (and
     /// `allow_unsandboxed`, which is then ignored), external agents and Claude
     /// Code started outside it (the one-time starts and the "always outside"
-    /// settings, which are then ignored), and threads resumed outside it.
-    /// While it is on, each of those asks or follows its own setting as
-    /// before. Only the user settings file is read: neither a project's
-    /// settings nor an agent can turn it on.
+    /// settings, which are then ignored), and threads resumed outside it. A
+    /// connection already running outside the sandbox keeps running, and MCP
+    /// servers (context servers) are not covered. While it is on, each of
+    /// those asks or follows its own setting as before. Only the user settings
+    /// file is read: neither a project's settings nor an agent can turn it on.
     /// Default: false
     pub allow_outside_sandbox: Option<bool>,
 

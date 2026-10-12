@@ -302,7 +302,7 @@ pub fn agent_config_dir(
 
 /// ADR-F92: whether anything may run outside the sandbox at all
 /// (`agent.sandbox_permissions.allow_outside_sandbox`, off by default). While
-/// it is off, every way out is refused without asking, and the "always
+/// it is off, every new way out is refused without asking, and the "always
 /// outside" settings below read as off.
 ///
 /// Read from the user's own settings file only, as those settings are — and
