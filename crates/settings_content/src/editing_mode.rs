@@ -17,12 +17,13 @@ pub enum EditingModeContent {
 
 impl EditingModeContent {
     /// The mode the resolved settings give. When more than one is switched on,
-    /// the editor runs Vim over Helix, and either over the Emacs keymap.
+    /// the editor runs Helix over Vim (the `vim` crate starts in Helix's modes
+    /// whenever `helix_mode` is on), and either over the Emacs keymap.
     pub fn from_resolved(vim_mode: bool, helix_mode: bool, base_keymap_is_emacs: bool) -> Self {
-        if vim_mode {
-            Self::Vim
-        } else if helix_mode {
+        if helix_mode {
             Self::Helix
+        } else if vim_mode {
+            Self::Vim
         } else if base_keymap_is_emacs {
             Self::Emacs
         } else {
@@ -38,10 +39,10 @@ impl EditingModeContent {
     /// only names a base keymap other than Emacs says nothing, so that
     /// choosing VS Code keys does not show up as a choice of editing mode.
     pub fn read(content: &SettingsContent) -> Option<Self> {
-        if content.vim_mode == Some(true) {
-            Some(Self::Vim)
-        } else if content.helix_mode == Some(true) {
+        if content.helix_mode == Some(true) {
             Some(Self::Helix)
+        } else if content.vim_mode == Some(true) {
+            Some(Self::Vim)
         } else if content.base_keymap == Some(BaseKeymapContent::Emacs) {
             Some(Self::Emacs)
         } else if content.vim_mode.is_some() || content.helix_mode.is_some() {
@@ -119,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn resolved_settings_give_vim_over_helix_over_emacs() {
+    fn resolved_settings_give_helix_over_vim_over_emacs() {
         use EditingModeContent::*;
         assert_eq!(
             EditingModeContent::from_resolved(false, false, false),
@@ -128,7 +129,9 @@ mod tests {
         assert_eq!(EditingModeContent::from_resolved(true, false, false), Vim);
         assert_eq!(EditingModeContent::from_resolved(false, true, false), Helix);
         assert_eq!(EditingModeContent::from_resolved(false, false, true), Emacs);
-        assert_eq!(EditingModeContent::from_resolved(true, true, true), Vim);
+        assert_eq!(EditingModeContent::from_resolved(true, true, true), Helix);
+        assert_eq!(EditingModeContent::from_resolved(true, true, false), Helix);
+        assert_eq!(EditingModeContent::from_resolved(true, false, true), Vim);
         assert_eq!(EditingModeContent::from_resolved(false, true, true), Helix);
     }
 
@@ -178,6 +181,10 @@ mod tests {
                 Some(true),
                 Some(BaseKeymapContent::Emacs)
             )),
+            Some(Mode::Helix)
+        );
+        assert_eq!(
+            Mode::read(&settings(Some(true), None, Some(BaseKeymapContent::Emacs))),
             Some(Mode::Vim)
         );
         assert_eq!(
