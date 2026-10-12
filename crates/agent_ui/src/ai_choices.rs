@@ -488,8 +488,11 @@ pub(crate) fn open_ai_choice(
                 panel.select_native_agent_for_new_thread();
                 panel.activate_new_thread(true, AgentThreadSource::AgentPanel, window, cx);
                 // The empty draft the panel reuses was made with the model of
-                // its time; the draft has to follow the choice too.
+                // its time; the draft has to follow the choice too. Only a
+                // draft: where no draft could be opened (no folder), the view
+                // still shows a conversation whose model is not this menu's.
                 if let Some(model) = model
+                    && panel.active_thread_is_draft(cx)
                     && let Some(thread) = panel.active_native_agent_thread(cx)
                     && thread
                         .read(cx)
@@ -791,6 +794,104 @@ mod tests {
                 .iter()
                 .flat_map(|section| &section.choices)
                 .all(|choice| choice.runner == AiRunner::BuiltInAgent)
+        );
+    }
+
+    /// Picking the provider the default model is already on keeps the model
+    /// the user chose and leaves the settings file alone; another provider
+    /// becomes the default with its own default model, written to the file.
+    #[gpui::test]
+    async fn picking_a_provider_keeps_a_model_of_it_and_switches_from_another(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use language_model::fake_provider::{FakeLanguageModel, FakeLanguageModelProvider};
+        use language_model::{
+            LanguageModel, LanguageModelProvider, LanguageModelProviderId,
+            LanguageModelProviderName,
+        };
+
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.create_dir(::paths::settings_file().parent().expect("settings folder"))
+            .await
+            .expect("the settings folder can be made");
+        let fake_model = |provider: &str, id: &str| -> Arc<dyn LanguageModel> {
+            Arc::new(FakeLanguageModel::with_id_and_thinking(
+                provider, id, id, false,
+            ))
+        };
+        let fake_provider = |id: &str, models: Vec<Arc<dyn LanguageModel>>| {
+            Arc::new(
+                FakeLanguageModelProvider::new(
+                    LanguageModelProviderId::from(id.to_string()),
+                    LanguageModelProviderName::from(id.to_string()),
+                )
+                .with_models(models),
+            )
+        };
+        let anthropic = fake_provider(
+            "anthropic",
+            vec![
+                fake_model("anthropic", "claude-default"),
+                fake_model("anthropic", "claude-chosen"),
+            ],
+        );
+        let openai = fake_provider("openai", vec![fake_model("openai", "gpt-default")]);
+        cx.update(|cx| {
+            let settings_store = settings::SettingsStore::test(cx);
+            cx.set_global(settings_store);
+            LanguageModelRegistry::test(cx);
+            let chosen = anthropic
+                .provided_models(cx)
+                .get(1)
+                .cloned()
+                .expect("the model the user chose");
+            LanguageModelRegistry::global(cx).update(cx, |registry, cx| {
+                registry.register_provider(anthropic.clone(), cx);
+                registry.register_provider(openai.clone(), cx);
+                registry.set_default_model(
+                    Some(ConfiguredModel {
+                        provider: anthropic.clone(),
+                        model: chosen,
+                    }),
+                    cx,
+                );
+            });
+        });
+
+        let kept =
+            cx.update(|cx| switch_default_model_to_provider(&"anthropic".into(), fs.clone(), cx));
+        cx.run_until_parked();
+        assert_eq!(
+            kept.map(|configured| configured.model.id().0.to_string()),
+            Some("claude-chosen".to_string())
+        );
+        assert!(
+            fs.load(::paths::settings_file()).await.is_err(),
+            "nothing is written when the provider does not change"
+        );
+
+        let switched =
+            cx.update(|cx| switch_default_model_to_provider(&"openai".into(), fs.clone(), cx));
+        cx.run_until_parked();
+        assert_eq!(
+            switched.map(|configured| configured.model.id().0.to_string()),
+            Some("gpt-default".to_string())
+        );
+        cx.update(|cx| {
+            assert_eq!(
+                LanguageModelRegistry::read_global(cx)
+                    .default_model()
+                    .map(|configured| configured.model.id().0.to_string()),
+                Some("gpt-default".to_string())
+            );
+        });
+        let written = fs
+            .load(::paths::settings_file())
+            .await
+            .expect("the switch is written to the settings file");
+        assert!(
+            written.contains("\"openai\"") && written.contains("\"gpt-default\""),
+            "{written}"
         );
     }
 
