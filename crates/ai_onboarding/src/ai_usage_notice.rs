@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gpui::{Action, AnyElement, IntoElement, ParentElement};
+use gpui::{AnyElement, IntoElement, ParentElement};
 use ui::{Tooltip, prelude::*};
 
 /// What to know before using AI in this fork (ADR-F91): where the data goes
@@ -135,7 +135,15 @@ impl AiUsageNotice {
                     .style(style)
                     .when(!compact, |button| button.full_width())
                     .on_click(|_, window, cx| {
-                        window.dispatch_action(zed_actions::agent::OpenSettings.boxed_clone(), cx);
+                        // `agent::OpenSettings` focuses the agent panel first and
+                        // is lost while the panel has not been drawn yet.
+                        window.dispatch_action(
+                            Box::new(zed_actions::OpenSettingsAt {
+                                path: zed_actions::AI_CONNECTIONS_SETTINGS_PATH.to_string(),
+                                target: None,
+                            }),
+                            cx,
+                        );
                     }),
             )
             .child(
