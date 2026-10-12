@@ -4792,6 +4792,7 @@ mod tests {
 
     use super::*;
     use feature_flags::{AcpBetaFeatureFlag, FeatureFlag as _};
+    use gpui::BorrowAppContext as _;
 
     const CONFIG_DIR: &str = "/home/u/.zed-jp-enhance-claude/projects/0123456789abcdef/claude-acp";
 
@@ -7907,6 +7908,18 @@ exit 7
     ) -> Entity<project::Project> {
         init_feature_flags_test(cx);
         cx.update(|cx| {
+            // ADR-F92: the gates read the user settings file as well.
+            let allowed = standing.allow_outside_sandbox;
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |content| {
+                    content
+                        .agent
+                        .get_or_insert_default()
+                        .sandbox_permissions
+                        .get_or_insert_default()
+                        .allow_outside_sandbox = Some(allowed);
+                });
+            });
             let mut settings = AgentSettings::get_global(cx).clone();
             settings.sandbox_permissions = standing;
             AgentSettings::override_global(settings, cx);
@@ -8200,6 +8213,78 @@ exit 7
             }),
             AgentTerminalLaunch::Sandboxed(_)
         ));
+    }
+
+    /// ADR-F92: only the user's own settings file allows running outside the
+    /// sandbox. Merged settings that allow it (and turn the sandbox off) from
+    /// elsewhere — here the global settings file; an active profile is the
+    /// other — while that file does not let nothing out, and a WSL agent's
+    /// commands keep the sandbox's limits.
+    #[gpui::test]
+    async fn running_outside_needs_the_users_own_settings_file(cx: &mut gpui::TestAppContext) {
+        let project = project_with_sandbox_settings(SandboxPermissions::default(), cx).await;
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings("{}", cx)
+                    .result()
+                    .expect("valid user settings");
+                store
+                    .set_global_settings(
+                        r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true, "allow_unsandboxed": true } } }"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("valid global settings");
+            });
+            let standing = &AgentSettings::get_global(cx).sandbox_permissions;
+            assert!(standing.allow_outside_sandbox && standing.allow_unsandboxed);
+            assert!(!project::agent_sandbox::outside_sandbox_allowed(cx));
+        });
+        for commands_os in [AgentCommandsOs::WindowsHost, AgentCommandsOs::Projects] {
+            let launch = project.read_with(cx, |project, cx| {
+                agent_terminal_launch(project, commands_os, cx)
+            });
+            assert!(
+                matches!(launch, AgentTerminalLaunch::Refused { .. }),
+                "{commands_os:?}: {launch:?}"
+            );
+        }
+        let launch = project.read_with(cx, |project, cx| {
+            agent_terminal_launch(project, AgentCommandsOs::Wsl, cx)
+        });
+        assert!(
+            matches!(launch, AgentTerminalLaunch::Sandboxed(_)),
+            "{launch:?}"
+        );
+
+        // And the other way: the user's file allows it, the merged settings
+        // (here a layer merged over it) do not.
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } } }"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("valid user settings");
+                store
+                    .set_server_settings(
+                        r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": false } } }"#,
+                        cx,
+                    )
+                    .expect("valid server settings");
+            });
+            assert!(!project::agent_sandbox::outside_sandbox_allowed(cx));
+        });
+        let launch = project.read_with(cx, |project, cx| {
+            agent_terminal_launch(project, AgentCommandsOs::WindowsHost, cx)
+        });
+        assert!(
+            matches!(launch, AgentTerminalLaunch::Refused { .. }),
+            "{launch:?}"
+        );
     }
 
     /// ADR-F49 decision 5 (8c): with the sandbox turned off in the settings,
@@ -10992,8 +11077,9 @@ fn agent_terminal_launch(
     cx: &App,
 ) -> AgentTerminalLaunch {
     let standing = &AgentSettings::get_global(cx).sandbox_permissions;
+    let outside_allowed = project::agent_sandbox::outside_sandbox_allowed(cx);
     if commands_os == AgentCommandsOs::WindowsHost {
-        if !standing.allow_outside_sandbox {
+        if !outside_allowed {
             return AgentTerminalLaunch::Refused {
                 reason: i18n::in_english(|| {
                     i18n::tr(AGENT_ON_THIS_WINDOWS_HOST_REASON).to_string()
@@ -11009,9 +11095,7 @@ fn agent_terminal_launch(
     let unsandboxed =
         standing.allow_unsandboxed || !acp_thread::sandboxing_available_for_project(project, cx);
     if unsandboxed && commands_os != AgentCommandsOs::Wsl {
-        // `allow_unsandboxed` already reads as off while running outside is
-        // not allowed, so this is a project kind without a sandbox.
-        if !standing.allow_outside_sandbox {
+        if !outside_allowed {
             return AgentTerminalLaunch::Refused {
                 reason: i18n::in_english(|| acp_thread::unsandboxed_execution_reason(project, cx)),
             };
@@ -11031,7 +11115,10 @@ fn agent_terminal_launch(
         allow_fs_write: standing.allow_fs_write_all,
         is_local: project.is_local(),
     };
-    if unsandboxed {
+    // ADR-F92: with the limits taken off, the WSL commands could write to the
+    // whole PC through its drives, so while running outside the sandbox is
+    // not allowed they stay in the sandbox with its limits.
+    if unsandboxed && outside_allowed {
         // The helper is the only way into that distro from here, so "no
         // sandbox" is the helper with its limits taken off: what it still
         // keeps back are the protected paths and the IDE-wide allowlist.

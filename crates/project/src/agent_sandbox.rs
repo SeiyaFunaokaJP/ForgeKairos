@@ -305,17 +305,25 @@ pub fn agent_config_dir(
 /// it is off, every way out is refused without asking, and the "always
 /// outside" settings below read as off.
 ///
-/// Read from the user's own settings file only, as those settings are.
+/// Read from the user's own settings file only, as those settings are — and
+/// only while the merged settings agree: `AgentSettings` compiles
+/// `allow_unsandboxed` from those, where an active profile or the global
+/// settings file can say otherwise, and every gate has to read the same
+/// answer (or refuse).
 pub fn outside_sandbox_allowed(cx: &App) -> bool {
-    crate::worktree_code_execution::from_user_settings(cx, |content| {
+    fn read(content: &settings::SettingsContent) -> Option<bool> {
         content
             .agent
             .as_ref()?
             .sandbox_permissions
             .as_ref()?
             .allow_outside_sandbox
-    })
-    .unwrap_or(false)
+    }
+    crate::worktree_code_execution::from_user_settings(cx, read).unwrap_or(false)
+        && cx
+            .try_global::<settings::SettingsStore>()
+            .and_then(|store| read(store.merged_settings()))
+            .unwrap_or(false)
 }
 
 /// ADR-F49 decision 19: whether the user has chosen, in their own settings

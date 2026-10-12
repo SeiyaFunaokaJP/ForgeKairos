@@ -562,12 +562,9 @@ async fn run_terminal_tool(
                 .in_sandbox();
                 event_stream.authorize(SharedString::new(input.command.clone()), context, cx)
             } else {
-                // ADR-F92: `allow_unsandboxed` already reads as off while this
-                // is off, so what is left is a project without a sandbox.
-                if !agent_settings::AgentSettings::get_global(cx)
-                    .sandbox_permissions
-                    .allow_outside_sandbox
-                {
+                // ADR-F92: the one reader every gate shares, which refuses
+                // where the user's file and the merged settings disagree.
+                if !project::agent_sandbox::outside_sandbox_allowed(cx) {
                     let reason =
                         i18n::in_english(|| unsandboxed_execution_reason(project.read(cx), cx));
                     return Err(outside_sandbox_not_allowed_message(&reason));

@@ -68,11 +68,20 @@ pub(crate) fn init_test(cx: &mut TestAppContext) {
 /// ADR-F92: most tests here run the plain `terminal` tool, whose commands run
 /// outside the sandbox, and are about what happens then, so they allow it;
 /// the tests of the refusal turn it off again.
+/// Written to the user settings file, which the gates read along with the
+/// merged settings.
 pub(crate) fn allow_running_outside_sandbox(allowed: bool, cx: &mut TestAppContext) {
     cx.update(|cx| {
-        let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
-        settings.sandbox_permissions.allow_outside_sandbox = allowed;
-        agent_settings::AgentSettings::override_global(settings, cx);
+        SettingsStore::update_global(cx, |store, cx| {
+            store.update_user_settings(cx, |content| {
+                content
+                    .agent
+                    .get_or_insert_default()
+                    .sandbox_permissions
+                    .get_or_insert_default()
+                    .allow_outside_sandbox = Some(allowed);
+            });
+        });
     });
 }
 
@@ -5158,6 +5167,9 @@ async fn setup(cx: &mut TestAppContext, model: TestModel) -> ThreadTest {
         paths::settings_file(),
         json!({
             "agent": {
+                // ADR-F92: as `init_test` allows it, for the plain `terminal`
+                // tool's tests.
+                "sandbox_permissions": { "allow_outside_sandbox": true },
                 "default_profile": "test-profile",
                 "profiles": {
                     "test-profile": {

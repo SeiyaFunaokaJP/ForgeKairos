@@ -8701,6 +8701,10 @@ pub(crate) mod tests {
                 "the consent lets nothing out"
             );
         });
+        // Nor does a new start of the thread the user consented for.
+        conversation_view.update_in(cx, |view, window, cx| view.reset(window, cx));
+        cx.run_until_parked();
+        assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 0);
 
         conversation_view.update_in(cx, |view, window, cx| {
             view.start_agent_outside_sandbox_once(window, cx)
