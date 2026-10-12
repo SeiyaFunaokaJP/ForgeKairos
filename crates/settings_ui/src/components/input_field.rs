@@ -176,6 +176,7 @@ impl RenderOnce for SettingsInputField {
             let placeholder = self.placeholder;
             let mut confirm = self.confirm.clone();
             let focus_when_shown = self.focus_when_shown;
+            let synced_text = first_render_initial_text.clone();
 
             move |window, cx| {
                 let mut editor = Editor::single_line(window, cx);
@@ -201,8 +202,14 @@ impl RenderOnce for SettingsInputField {
                         &editor_focus_handle,
                         window,
                         move |editor, _, window, cx| {
-                            let text = Some(editor.text(cx));
-                            confirm(text, window, cx);
+                            let text = editor.text(cx);
+                            // The shown text falls back to the default when the file
+                            // has no value, so merely passing through the field must
+                            // not write that default into the file.
+                            if text == synced_text.read(cx).as_deref().unwrap_or_default() {
+                                return;
+                            }
+                            confirm(Some(text), window, cx);
                         },
                     )
                     .detach();

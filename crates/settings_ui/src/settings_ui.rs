@@ -7681,3 +7681,170 @@ mod string_list_tests {
         assert_eq!(written_entries(&fs).await, Some(Vec::new()));
     }
 }
+
+#[cfg(test)]
+mod text_field_focus_out_tests {
+    use super::*;
+    use fs::{FakeFs, Fs as _};
+    use gpui::{TestAppContext, VisualTestContext};
+
+    fn home_url_field() -> SettingField<String> {
+        SettingField {
+            organization_override: None,
+            json_path: Some("browser.home_url"),
+            pick: |settings_content| settings_content.browser.as_ref()?.home_url.as_ref(),
+            write: |settings_content, value, _| {
+                settings_content.browser.get_or_insert_default().home_url = value;
+            },
+        }
+    }
+
+    /// The home page field as the browser page shows it, next to something
+    /// else in the window the focus can move to.
+    struct HomeUrlField {
+        elsewhere: FocusHandle,
+    }
+
+    impl Render for HomeUrlField {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let metadata = SettingsFieldMetadata {
+                display_confirm_button: true,
+                display_clear_button: true,
+                confirm_on_focus_out: true,
+                ..Default::default()
+            };
+            div()
+                .size_full()
+                .child(div().track_focus(&self.elsewhere).child("elsewhere"))
+                .child(render_text_field(
+                    home_url_field(),
+                    SettingsUiFile::User,
+                    Some(&metadata),
+                    "Home Page",
+                    "",
+                    window,
+                    cx,
+                ))
+        }
+    }
+
+    async fn home_url_field_in_window<'a>(
+        user_settings: &'static str,
+        cx: &'a mut TestAppContext,
+    ) -> (
+        Arc<FakeFs>,
+        Entity<Editor>,
+        Entity<HomeUrlField>,
+        &'a mut VisualTestContext,
+    ) {
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            paths::config_dir(),
+            serde_json::json!({ "settings.json": user_settings }),
+        )
+        .await;
+        let editors: Rc<RefCell<Vec<Entity<Editor>>>> = Rc::default();
+        cx.update(|cx| {
+            test::register_settings(cx);
+            <dyn fs::Fs>::set_global(fs.clone(), cx);
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(user_settings, cx)
+                    .expect("test user settings should parse");
+            });
+            let editors = editors.clone();
+            cx.observe_new(move |_: &mut Editor, _, cx| {
+                editors.borrow_mut().push(cx.entity());
+            })
+            .detach();
+        });
+        let (view, cx) = cx.add_window_view(|_, cx| HomeUrlField {
+            elsewhere: cx.focus_handle(),
+        });
+        cx.update(|window, _| window.activate_window());
+        cx.run_until_parked();
+        let editor = {
+            let editors = editors.borrow();
+            assert_eq!(editors.len(), 1, "expected only the home page field");
+            editors[0].clone()
+        };
+        (fs, editor, view, cx)
+    }
+
+    fn move_focus_through(
+        editor: &Entity<Editor>,
+        view: &Entity<HomeUrlField>,
+        edit: Option<&str>,
+        cx: &mut VisualTestContext,
+    ) {
+        cx.update(|window, cx| window.focus(&editor.focus_handle(cx), cx));
+        cx.run_until_parked();
+        if let Some(text) = edit {
+            editor.update_in(cx, |editor, window, cx| editor.set_text(text, window, cx));
+            cx.run_until_parked();
+        }
+        view.update_in(cx, |view, window, cx| window.focus(&view.elsewhere, cx));
+        cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    async fn passing_through_a_field_leaves_the_settings_file_untouched(cx: &mut TestAppContext) {
+        let (fs, editor, view, cx) = home_url_field_in_window("{}", cx).await;
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.text(cx)),
+            "https://m365.cloud.microsoft/chat",
+            "the field should show the default home page"
+        );
+
+        move_focus_through(&editor, &view, None, cx);
+
+        let text = fs
+            .load(paths::settings_file())
+            .await
+            .expect("settings file should exist");
+        assert_eq!(
+            text, "{}",
+            "focusing and leaving the field wrote the default"
+        );
+    }
+
+    #[gpui::test]
+    async fn an_edit_is_saved_when_the_focus_leaves_the_field(cx: &mut TestAppContext) {
+        let (fs, editor, view, cx) = home_url_field_in_window("{}", cx).await;
+
+        move_focus_through(&editor, &view, Some("https://example.com/start"), cx);
+
+        let text = fs
+            .load(paths::settings_file())
+            .await
+            .expect("settings file should exist");
+        assert!(
+            text.contains(r#""home_url": "https://example.com/start""#),
+            "the edit was not saved: {text}"
+        );
+    }
+
+    #[gpui::test]
+    async fn clearing_a_field_is_saved_when_the_focus_leaves_it(cx: &mut TestAppContext) {
+        let (fs, editor, view, cx) = home_url_field_in_window(
+            r#"{ "browser": { "home_url": "https://example.com/start" } }"#,
+            cx,
+        )
+        .await;
+        assert_eq!(
+            editor.read_with(cx, |editor, cx| editor.text(cx)),
+            "https://example.com/start"
+        );
+
+        move_focus_through(&editor, &view, Some(""), cx);
+
+        let text = fs
+            .load(paths::settings_file())
+            .await
+            .expect("settings file should exist");
+        assert!(
+            text.contains(r#""home_url": """#) && !text.contains("example.com"),
+            "clearing the field was not saved: {text}"
+        );
+    }
+}
