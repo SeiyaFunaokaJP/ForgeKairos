@@ -113,6 +113,30 @@ msgstr "「{prefix}:」の指定が食い違っています。"
 msgid "The MR box has no commits."
 msgstr "箱にコミットがありません。"
 
+msgid "The account has no email"
+msgstr "アカウントにメールアドレスがありません"
+
+msgid "The account has no host"
+msgstr "アカウントにホストがありません"
+
+msgid "The account has no login"
+msgstr "アカウントにログイン名がありません"
+
+msgid "The account has no user name"
+msgstr "アカウントにユーザー名がありません"
+
+msgid "The account's host must be a host name such as github.com, optionally with a port"
+msgstr "アカウントのホストは github.com のようなホスト名にしてください (ポートは付けられます)"
+
+msgid "The account's login cannot contain spaces, '/' or ':'"
+msgstr "アカウントのログイン名には空白・「/」・「:」を使えません"
+
+msgid "The account's name and email cannot contain '<', '>' or control characters"
+msgstr "アカウントの名前とメールアドレスには「<」「>」と制御文字を使えません"
+
+msgid "The account's signing key contains a control character"
+msgstr "アカウントの署名鍵に制御文字が含まれています"
+
 msgid "The author filter is empty."
 msgstr "著者の指定が空です。"
 

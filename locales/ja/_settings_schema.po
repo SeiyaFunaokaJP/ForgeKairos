@@ -56,6 +56,10 @@ msgid "A font size value in pixels, wrapping around `f32` for custom settings UI
 msgstr "カスタム設定 UI のレンダリング用に `f32` をラップした、ピクセル単位のフォントサイズ値です。"
 
 msgctxt "settings schema"
+msgid "A git account a repository can commit and push as."
+msgstr "リポジトリがコミット・プッシュに使える Git アカウントです。"
+
+msgctxt "settings schema"
 msgid "A less dense line height."
 msgstr "密度を下げた行の高さです。"
 
@@ -1354,6 +1358,10 @@ msgstr "現在の言語サーバーを使用してコードをフォーマット
 msgctxt "settings schema"
 msgid "Format files using Zed's Prettier integration (if applicable),\nor falling back to formatting via language server."
 msgstr "ForgeKairos の Prettier 統合を使用してファイルをフォーマットします (該当する場合)。該当しない場合は、言語サーバーによるフォーマットにフォールバックします。"
+
+msgctxt "settings schema"
+msgid "Git accounts a repository can commit and push as. Which one a repository\nuses is picked in the git panel and kept in `project_accounts`. An\naccount's token is kept in the operating system's credential store, never\nin this file.\n\nDefault: []"
+msgstr "リポジトリがコミット・プッシュに使える Git アカウント。どのアカウントを使うかは Git パネルで選び、`project_accounts` に記録されます。アカウントのトークンは OS の資格情報ストアに保存され、このファイルには書かれません。\n\n既定値: []"
 
 msgctxt "settings schema"
 msgid "Git blame settings."
@@ -2656,6 +2664,10 @@ msgid "The Context Length parameter to the model (aka num_ctx or n_ctx)"
 msgstr "モデルの Context Length パラメーターです (num_ctx または n_ctx とも呼ばれます)"
 
 msgctxt "settings schema"
+msgid "The HTTPS host the account's token signs in to, such as `github.com`.\nWithout one, pushing and pulling sign in as git is configured to."
+msgstr "アカウントのトークンでサインインする HTTPS のホスト (`github.com` など)。無ければ、プッシュとプルは git の設定どおりにサインインします。"
+
+msgctxt "settings schema"
 msgid "The OAuth client ID obtained from out-of-band registration with the\nauthorization server."
 msgstr "認可サーバーへの帯域外登録で取得した OAuth クライアント ID です。"
 
@@ -2744,6 +2756,10 @@ msgid "The URL used as the key for credential storage.\n\nWhen set, credentials 
 msgstr "認証情報の保存に使用されるキーとしての URL です。\n\n設定されている場合、認証情報は `server_url` の代わりにこの URL に保存されます。これにより、複数の ForgeKairos インスタンスを並行して実行しても、互いのキーチェーンエントリを上書きしないようにします。"
 
 msgctxt "settings schema"
+msgid "The account each repository commits and pushes as, by the absolute path of\nthe repository's working directory. A repository not listed here uses git's\nown configuration. Only read from the user settings file.\n\nDefault: {}"
+msgstr "リポジトリごとにコミット・プッシュに使うアカウント。キーはリポジトリの作業ディレクトリの絶対パスです。ここに無いリポジトリは git 自身の設定に従います。ユーザー設定ファイルからだけ読みます。\n\n既定値: {}"
+
+msgctxt "settings schema"
 msgid "The alt key\nSometimes also known as the 'meta' key"
 msgstr "Alt キー\n'meta' キーとも呼ばれます"
 
@@ -2766,6 +2782,14 @@ msgstr "プログラムに渡す引数を指定します。"
 msgctxt "settings schema"
 msgid "The arguments to pass to the program.\n\nSupported placeholders:\n\n- `{buffer_path}`: the path of the buffer being formatted, or\n  `Untitled` when it has never been saved.\n- `{start_line}` and `{end_line}`: the first and last line of a\n  selected range, 1-based and inclusive. An argument naming either\n  of them is repeated once per selected range when formatting\n  selections (e.g. `\"--lines={start_line}:{end_line}\"` for\n  clang-format), and is dropped when formatting the whole buffer.\n  Naming them is also what marks the command as able to format\n  selections at all."
 msgstr "プログラムに渡す引数。\n\n使えるプレースホルダー:\n\n- `{buffer_path}`: フォーマットするバッファーのパス。一度も保存していなければ `Untitled`。\n- `{start_line}` と `{end_line}`: 選択範囲の最初と最後の行 (1 から数え、両端を含む)。どちらかを含む引数は、選択範囲をフォーマットするとき選択範囲ごとに 1 回ずつ繰り返し (例: clang-format の `\"--lines={start_line}:{end_line}\"`)、バッファー全体をフォーマットするときは省きます。これらを含めることが、そのコマンドが選択範囲をフォーマットできるという印にもなります。"
+
+msgctxt "settings schema"
+msgid "The author and committer email (`user.email`)."
+msgstr "作者とコミッターのメールアドレス (`user.email`)。"
+
+msgctxt "settings schema"
+msgid "The author and committer name (`user.name`)."
+msgstr "作者とコミッターの名前 (`user.name`)。"
 
 msgctxt "settings schema"
 msgid "The available agent profiles."
@@ -2996,6 +3020,10 @@ msgid "The icon theme to use for light mode."
 msgstr "ライトモードで使用するアイコンテーマです。"
 
 msgctxt "settings schema"
+msgid "The key commits are signed with (`user.signingkey`), when signing is on."
+msgstr "署名がオンのときにコミットの署名に使う鍵 (`user.signingkey`)。"
+
+msgctxt "settings schema"
 msgid "The key to use for adding multiple cursors\n\nDefault: alt"
 msgstr "複数カーソルを追加するために使用するキーです\n\n既定値: alt"
 
@@ -3174,6 +3202,10 @@ msgstr "フォーマットに使用する言語サーバーの名前です"
 msgctxt "settings schema"
 msgid "The name of the model.\n\nDefault: \"\""
 msgstr "モデルの名前です。\n\n既定値: \"\""
+
+msgctxt "settings schema"
+msgid "The name the account is picked by, unique among the accounts."
+msgstr "アカウントを選ぶときの名前。アカウントどうしで重複しないようにします。"
 
 msgctxt "settings schema"
 msgid "The name-based symbol index of C and C++ files, which answers\nproject-wide symbol search, \"go to definition\" when the language server has\nno answer, and callers and callees, without compilation information."
@@ -3362,6 +3394,10 @@ msgstr "プロバイダーの種類です。\n\n`github`、`gitlab`、`bitbucket
 msgctxt "settings schema"
 msgid "The unit to use for displaying image file sizes.\n\nDefault: \"binary\""
 msgstr "画像ファイルサイズの表示に使用する単位です。\n\n既定値: \"binary\""
+
+msgctxt "settings schema"
+msgid "The user name on `host` that goes with the token."
+msgstr "トークンに対応する `host` 上のユーザー名。"
 
 msgctxt "settings schema"
 msgid "The value to pass to the CLI's `--effort`, such as `low`, `medium` or `high`. Without it, the CLI uses its default."

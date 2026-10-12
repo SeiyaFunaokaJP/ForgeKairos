@@ -1172,6 +1172,7 @@ impl GitStore {
                 this.set_diff_base(setting, cx);
             }
             this.activate_parked_repositories_where_parking_disabled(cx);
+            this.apply_git_accounts(cx);
         }));
 
         let diff_base_setting = ProjectSettings::get_global(cx).git.diff_base;
@@ -1242,6 +1243,29 @@ impl GitStore {
 
     pub(crate) fn set_project(&mut self, project: WeakEntity<Project>) {
         self.project = Some(project);
+    }
+
+    /// ForgeKairos (ADR-F93): whether the git accounts in the settings pick who this store's
+    /// repositories commit as. Only where the repositories are the user's own: a remote server is
+    /// sent the user's settings too, whose `project_accounts` are keyed by the client's paths.
+    pub fn applies_git_accounts(&self) -> bool {
+        match &self.state {
+            GitStoreState::Local { downstream, .. } => {
+                !downstream.as_ref().is_some_and(|downstream| {
+                    downstream.project_id.0 == proto::REMOTE_SERVER_PROJECT_ID
+                })
+            }
+            GitStoreState::Remote { .. } => false,
+        }
+    }
+
+    fn apply_git_accounts(&mut self, cx: &mut Context<Self>) {
+        let applies = self.applies_git_accounts();
+        for repository in self.repositories.values() {
+            repository.update(cx, |repository, cx| {
+                repository.apply_git_account(applies, cx)
+            });
+        }
     }
 
     pub fn init(client: &AnyProtoClient) {
@@ -6949,8 +6973,8 @@ impl Repository {
         let dot_git_abs_path = self.snapshot.dot_git_abs_path.clone();
 
         let state = cx
-            .spawn(async move |_, cx| {
-                LocalRepositoryState::new(
+            .spawn(async move |this, cx| {
+                let state = LocalRepositoryState::new(
                     work_directory_abs_path,
                     dot_git_abs_path,
                     project_environment,
@@ -6961,7 +6985,21 @@ impl Repository {
                 .await
                 // `{:#}` keeps the cause (e.g. "no git binary available"), which
                 // the git panel shows when the repository cannot be opened.
-                .map_err(|err| format!("{err:#}"))
+                .map_err(|err| format!("{err:#}"))?;
+                // Before the state is handed to the worker, so that no command runs as
+                // anyone else (ADR-F93).
+                let identity = this
+                    .read_with(cx, |repository, cx| {
+                        let applies = repository
+                            .git_store
+                            .upgrade()
+                            .is_some_and(|git_store| git_store.read(cx).applies_git_accounts());
+                        repository.git_account_identity(applies, cx)
+                    })
+                    .ok()
+                    .flatten();
+                state.backend.set_identity(identity);
+                Ok(state)
             })
             .shared();
         self.job_sender.close_channel();
@@ -6980,6 +7018,35 @@ impl Repository {
                 Ok(RepositoryState::Local(state))
             })
             .shared();
+    }
+
+    /// ForgeKairos (ADR-F93): the identity this repository's git commands run as.
+    fn git_account_identity(
+        &self,
+        applies: bool,
+        cx: &App,
+    ) -> Option<Arc<git::account::GitIdentity>> {
+        if !applies {
+            return None;
+        }
+        crate::git_accounts::resolve_identity(
+            &ProjectSettings::get_global(cx).git,
+            &self.snapshot.work_directory_abs_path,
+        )
+    }
+
+    fn apply_git_account(&mut self, applies: bool, cx: &mut Context<Self>) {
+        let identity = self.git_account_identity(applies, cx);
+        let state = self.repository_state.clone();
+        cx.spawn(async move |this, cx| {
+            if let Ok(RepositoryState::Local(state)) = state.await
+                && state.backend.identity() != identity
+            {
+                state.backend.set_identity(identity);
+                this.update(cx, |_, cx| cx.notify()).ok();
+            }
+        })
+        .detach();
     }
 
     fn reinitialize_local_backend(
@@ -9200,6 +9267,11 @@ impl Repository {
                         environment,
                         ..
                     }) => {
+                        let askpass = crate::git_accounts::askpass_with_account_token(
+                            backend.identity(),
+                            askpass,
+                            &mut cx,
+                        );
                         let result = backend
                             .fetch(fetch_options, askpass, environment, cx.clone())
                             .await;
@@ -9269,6 +9341,11 @@ impl Repository {
                         environment,
                         ..
                     }) => {
+                        let askpass = crate::git_accounts::askpass_with_account_token(
+                            backend.identity(),
+                            askpass,
+                            &mut cx,
+                        );
                         let result = backend
                             .push(
                                 branch.to_string(),
@@ -9343,13 +9420,18 @@ impl Repository {
         self.send_job(
             "pull",
             Some(status.into()),
-            move |git_repo, cx| async move {
+            move |git_repo, mut cx| async move {
                 match git_repo {
                     RepositoryState::Local(LocalRepositoryState {
                         backend,
                         environment,
                         ..
                     }) => {
+                        let askpass = crate::git_accounts::askpass_with_account_token(
+                            backend.identity(),
+                            askpass,
+                            &mut cx,
+                        );
                         backend
                             .pull(
                                 branch.as_ref().map(|b| b.to_string()),

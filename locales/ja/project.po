@@ -50,6 +50,9 @@ msgstr "接続先から届いた警告にプログラム名がありません"
 msgid "Agents can't be started in a sandbox in a project that has no folder open."
 msgstr "フォルダーを開いていないプロジェクトでは、エージェントをサンドボックスで起動できません。"
 
+msgid "An account name may use only letters, digits, '-', '_' and '.'"
+msgstr "アカウント名に使えるのは文字・数字・「-」「_」「.」だけです"
+
 msgid "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch}\"."
 msgstr "ブランチ「{merge_request_branch}」は既にあります。作り直すには「既存の {merge_request_branch} を作り直す」にチェックを入れてください。"
 
@@ -199,6 +202,12 @@ msgstr "起動の承認を取り消せませんでした"
 
 msgid "Could not save the launch approval"
 msgstr "起動の承認を保存できませんでした"
+
+msgid "Couldn't remove the token from the credential store"
+msgstr "資格情報ストアからトークンを削除できませんでした"
+
+msgid "Couldn't write the token to the credential store"
+msgstr "資格情報ストアにトークンを書き込めませんでした"
 
 msgid "Distributions for the WSL architecture `{other}` are not supported, so the agent cannot start inside the sandbox."
 msgstr "WSL のアーキテクチャ `{other}` 向けの配布物は扱えないため、サンドボックスの中でエージェントを起動できません。"
@@ -476,6 +485,12 @@ msgstr "前回の一時ブランチ「{scratch_branch}」が残っています�
 msgid "The scratch branch \"{scratch_branch}\" of the previous rewrite is still there. Check its contents and delete it, then try again."
 msgstr "前回の書き換えの一時ブランチ「{scratch_branch}」が残っています。中身を確認して削除してからやり直してください。"
 
+msgid "The token contains a line break or a control character"
+msgstr "トークンに改行か制御文字が含まれています"
+
+msgid "The token is empty"
+msgstr "トークンが空です"
+
 msgid "The working directory of the launch the remote host asked about ({working_directory}) is not where the worktree ({known}) is"
 msgstr "接続先が問い合わせた起動の作業ディレクトリ ({working_directory}) がワークツリー ({known}) の場所と一致しません"
 
@@ -505,6 +520,9 @@ msgstr "Linux ({architecture}) 向けの Node.js の取得情報がありませ�
 
 msgid "There is no folder to open."
 msgstr "開くフォルダーがありません。"
+
+msgid "There is no git account named \"{id}\" any more"
+msgstr "Git アカウント「{id}」はもうありません"
 
 msgid "This agent has no distribution for {platform_key}, so it cannot start inside the WSL sandbox (available: {available})."
 msgstr "このエージェントには {platform_key} 向けの配布物がないため、WSL のサンドボックスの中では起動できません (用意されているのは {available})。"

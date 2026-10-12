@@ -3558,3 +3558,178 @@ mod status_error_tests {
         })
     }
 }
+
+/// ForgeKairos (ADR-F93): the account picked for a repository in the user's settings is who its
+/// commits are made as, from the moment the settings say so.
+mod git_account_tests {
+    use std::{path::Path, process::Command};
+
+    use askpass::AskPassDelegate;
+    use fs::RealFs;
+    use git::repository::CommitOptions;
+    use gpui::{BorrowAppContext as _, Entity, TestAppContext};
+    use project::{
+        Project,
+        git_accounts::{GitAccountChoice, account_choice, project_account_key},
+        git_store::Repository,
+        project_settings::ProjectSettings,
+    };
+    use serde_json::json;
+    use settings::{GitAccountContent, Settings as _, SettingsStore};
+    use util::test::TempTree;
+    use worktree::WorktreeModelHandle as _;
+
+    #[allow(clippy::disallowed_methods)]
+    #[track_caller]
+    fn git(work_dir: &Path, args: &[&str]) -> String {
+        let output = Command::new("git")
+            .current_dir(work_dir)
+            .args(args)
+            .output()
+            .expect("git should run");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout)
+            .trim_end()
+            .to_string()
+    }
+
+    fn set_project_account(work_dir: &Path, account_id: Option<&str>, cx: &mut TestAppContext) {
+        let key = project_account_key(work_dir);
+        let account_id = account_id.map(str::to_string);
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    let git = settings.git.get_or_insert_default();
+                    git.accounts = Some(vec![GitAccountContent {
+                        id: "work".to_string(),
+                        name: "Ada Work".to_string(),
+                        email: "ada@work.example".to_string(),
+                        host: Some("github.com".to_string()),
+                        login: Some("ada-work".to_string()),
+                        signing_key: None,
+                    }]);
+                    let project_accounts = git.project_accounts.get_or_insert_default();
+                    match account_id {
+                        Some(account_id) => {
+                            project_accounts.insert(key, account_id);
+                        }
+                        None => {
+                            project_accounts.remove(&key);
+                        }
+                    }
+                })
+            })
+        });
+        cx.executor().run_until_parked();
+    }
+
+    async fn commit(repository: &Entity<Repository>, message: &str, cx: &mut TestAppContext) {
+        let askpass = AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {});
+        repository
+            .update(cx, |repository, cx| {
+                repository.commit(
+                    message.to_string().into(),
+                    None,
+                    CommitOptions {
+                        allow_empty: true,
+                        ..CommitOptions::default()
+                    },
+                    askpass,
+                    cx,
+                )
+            })
+            .await
+            .expect("the git job should not be dropped")
+            .expect("the commit should be made");
+    }
+
+    async fn open_repository(
+        work_dir: &Path,
+        cx: &mut TestAppContext,
+    ) -> (Entity<Project>, Entity<Repository>) {
+        let project = Project::test(RealFs::new(None, cx.executor()), [work_dir], cx).await;
+        let tree = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+        });
+        tree.flush_fs_events(cx).await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        cx.executor().run_until_parked();
+        let repository = project.read_with(cx, |project, cx| {
+            project
+                .repositories(cx)
+                .values()
+                .next()
+                .expect("the project has a repository")
+                .clone()
+        });
+        (project, repository)
+    }
+
+    #[gpui::test]
+    async fn test_commits_are_made_as_the_picked_account(cx: &mut TestAppContext) {
+        zlog::init_test();
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+        });
+        cx.executor().allow_parking();
+
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        git(&work_dir, &["init"]);
+        for (key, value) in [
+            ("user.name", "Committer"),
+            ("user.email", "committer@example.com"),
+            ("commit.gpgsign", "false"),
+        ] {
+            git(&work_dir, &["config", key, value]);
+        }
+
+        let (_project, repository) = open_repository(&work_dir, cx).await;
+        let repository_path = repository.read_with(cx, |repository, _| {
+            repository.work_directory_abs_path.clone()
+        });
+
+        commit(&repository, "before picking", cx).await;
+        assert_eq!(
+            git(&work_dir, &["log", "-1", "--format=%an <%ae>"]),
+            "Committer <committer@example.com>"
+        );
+
+        set_project_account(&repository_path, Some("work"), cx);
+        assert!(cx.read(|cx| matches!(
+            account_choice(&ProjectSettings::get_global(cx).git, &repository_path),
+            GitAccountChoice::Account(account) if account.id == "work"
+        )));
+        commit(&repository, "as the account", cx).await;
+        assert_eq!(
+            git(&work_dir, &["log", "-1", "--format=%an <%ae>|%cn <%ce>"]),
+            "Ada Work <ada@work.example>|Ada Work <ada@work.example>"
+        );
+
+        set_project_account(&repository_path, None, cx);
+        commit(&repository, "back to git's configuration", cx).await;
+        assert_eq!(
+            git(&work_dir, &["log", "-1", "--format=%an <%ae>"]),
+            "Committer <committer@example.com>"
+        );
+
+        // A repository opened while an account is already picked starts out as that account.
+        set_project_account(&repository_path, Some("work"), cx);
+        let (_reopened_project, reopened) = open_repository(&work_dir, cx).await;
+        commit(&reopened, "as the account from the start", cx).await;
+        assert_eq!(
+            git(&work_dir, &["log", "-1", "--format=%an <%ae>"]),
+            "Ada Work <ada@work.example>"
+        );
+    }
+}

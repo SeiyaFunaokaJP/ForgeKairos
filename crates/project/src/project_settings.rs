@@ -573,6 +573,10 @@ pub struct GitSettings {
     ///
     /// Default: ../worktrees
     pub worktree_directory: String,
+    /// The git accounts a repository can commit and push as (ADR-F93).
+    pub accounts: Vec<settings::GitAccountContent>,
+    /// The account id picked for each repository, by its working directory's absolute path.
+    pub project_accounts: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -794,6 +798,8 @@ impl Settings for ProjectSettings {
                 .worktree_directory
                 .clone()
                 .unwrap_or_else(|| DEFAULT_WORKTREE_DIRECTORY.to_string()),
+            accounts: git.accounts.clone().unwrap_or_default(),
+            project_accounts: git.project_accounts.clone().unwrap_or_default(),
         };
         Self {
             context_servers: project

@@ -45,6 +45,8 @@ use uuid::Uuid;
 
 pub use askpass::{AskPassDelegate, AskPassResult, AskPassSession};
 
+use crate::account::GitIdentity;
+
 pub const REMOTE_CANCELLED_BY_USER: &str = "Operation cancelled by user";
 
 /// Format string used in graph log to get initial data for the git graph
@@ -3151,6 +3153,13 @@ pub trait GitRepository: Send + Sync {
 
     fn set_trusted(&self, trusted: bool);
     fn is_trusted(&self) -> bool;
+
+    /// ForgeKairos (ADR-F93): the git account this repository's commands run as, or `None` to
+    /// leave the identity to git's configuration.
+    fn set_identity(&self, _identity: Option<Arc<GitIdentity>>) {}
+    fn identity(&self) -> Option<Arc<GitIdentity>> {
+        None
+    }
 }
 
 pub enum DiffType {
@@ -3203,6 +3212,7 @@ pub struct RealGitRepository {
     any_git_binary_help_output: Arc<Mutex<Option<SharedString>>>,
     executor: BackgroundExecutor,
     is_trusted: Arc<AtomicBool>,
+    identity: Arc<Mutex<Option<Arc<GitIdentity>>>>,
 }
 
 #[derive(Debug)]
@@ -3292,6 +3302,7 @@ impl RealGitRepository {
             executor,
             any_git_binary_help_output: Arc::new(Mutex::new(None)),
             is_trusted: Arc::new(AtomicBool::new(false)),
+            identity: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -3314,7 +3325,8 @@ impl RealGitRepository {
             self.path(),
             self.executor.clone(),
             self.is_trusted(),
-        ))
+        )
+        .with_identity(self.identity()))
     }
 
     fn git_binary(&self) -> GitBinary {
@@ -3325,6 +3337,7 @@ impl RealGitRepository {
             self.executor.clone(),
             self.is_trusted(),
         )
+        .with_identity(self.identity())
     }
 
     fn edit_ref(&self, edit: RefEdit) -> BoxFuture<'_, Result<()>> {
@@ -5020,6 +5033,7 @@ impl GitRepository for RealGitRepository {
         let executor = cx.background_executor().clone();
         let git_binary_path = self.system_git_binary_path.clone();
         let is_trusted = self.is_trusted();
+        let identity = self.identity();
         // Note: Do not spawn this command on the background thread, it might pop open the credential helper
         // which we want to block on.
         async move {
@@ -5030,7 +5044,8 @@ impl GitRepository for RealGitRepository {
                 git_directory,
                 executor.clone(),
                 is_trusted,
-            );
+            )
+            .with_identity(identity);
             git.ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Push"))
                 .await?;
             if options == Some(PushOptions::Force) {
@@ -5068,6 +5083,7 @@ impl GitRepository for RealGitRepository {
         let executor = cx.background_executor().clone();
         let git_binary_path = self.system_git_binary_path.clone();
         let is_trusted = self.is_trusted();
+        let identity = self.identity();
         // Note: Do not spawn this command on the background thread, it might pop open the credential helper
         // which we want to block on.
         async move {
@@ -5078,7 +5094,8 @@ impl GitRepository for RealGitRepository {
                 git_directory,
                 executor.clone(),
                 is_trusted,
-            );
+            )
+            .with_identity(identity);
             git.ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Pull"))
                 .await?;
             let mut command = git.build_command(&["pull"]).await;
@@ -5112,6 +5129,7 @@ impl GitRepository for RealGitRepository {
         let git_binary_path = self.system_git_binary_path.clone();
         let executor = cx.background_executor().clone();
         let is_trusted = self.is_trusted();
+        let identity = self.identity();
         // Note: Do not spawn this command on the background thread, it might pop open the credential helper
         // which we want to block on.
         async move {
@@ -5122,7 +5140,8 @@ impl GitRepository for RealGitRepository {
                 git_directory,
                 executor.clone(),
                 is_trusted,
-            );
+            )
+            .with_identity(identity);
             git.ensure_transports_are_restricted_if_untrusted(i18n::tc!("git result", "Fetch"))
                 .await?;
             let mut command = git.build_command(&["fetch", &remote_name]).await;
@@ -5925,6 +5944,14 @@ impl GitRepository for RealGitRepository {
 
     fn is_trusted(&self) -> bool {
         self.is_trusted.load(std::sync::atomic::Ordering::Acquire)
+    }
+
+    fn set_identity(&self, identity: Option<Arc<GitIdentity>>) {
+        *self.identity.lock() = identity;
+    }
+
+    fn identity(&self) -> Option<Arc<GitIdentity>> {
+        self.identity.lock().clone()
     }
 }
 
@@ -7576,6 +7603,7 @@ pub(crate) struct GitBinary {
     index_file_path: Option<PathBuf>,
     envs: HashMap<String, String>,
     is_trusted: bool,
+    identity: Option<Arc<GitIdentity>>,
 }
 
 impl GitBinary {
@@ -7594,6 +7622,7 @@ impl GitBinary {
             index_file_path: None,
             envs: HashMap::default(),
             is_trusted,
+            identity: None,
         }
     }
 
@@ -7941,6 +7970,11 @@ impl GitBinary {
         Ok(overrides)
     }
 
+    fn with_identity(mut self, identity: Option<Arc<GitIdentity>>) -> Self {
+        self.identity = identity;
+        self
+    }
+
     pub(crate) async fn build_command<S>(&self, args: &[S]) -> util::command::Command
     where
         S: AsRef<OsStr>,
@@ -7971,6 +8005,9 @@ impl GitBinary {
             global_args.retain(|argument| *argument != "--no-pager");
         }
         command.args(global_args);
+        if let Some(identity) = &self.identity {
+            command.args(identity.config_args());
+        }
         let mut applied_overrides = None;
         let may_contact_remotes = command_may_contact_remotes(args);
         let mut lazy_fetch_is_safe = false;
@@ -8048,6 +8085,9 @@ impl GitBinary {
         }
         if let Some(index_file_path) = self.index_file_path.as_ref() {
             command.env("GIT_INDEX_FILE", index_file_path);
+        }
+        if let Some(identity) = &self.identity {
+            command.envs(identity.environment());
         }
         command.envs(&self.envs);
         (command, applied_overrides)
@@ -11074,6 +11114,135 @@ mod tests {
         assert_eq!(
             git_command_output(&repo_dir, ["log", "-1", "--format=%s"]),
             "unsigned"
+        );
+    }
+
+    fn test_identity() -> Arc<GitIdentity> {
+        Arc::new(
+            GitIdentity::new(
+                "Ada Work",
+                "ada@work.example",
+                Some("ABCD1234"),
+                Some(crate::account::GitHttpsLogin::new("github.com", "ada-work").unwrap()),
+            )
+            .unwrap(),
+        )
+    }
+
+    /// ADR-F93: a commit made while an account is picked is authored and committed as that
+    /// account, over the repository's own `user.name` / `user.email`.
+    #[gpui::test]
+    async fn test_commit_uses_the_picked_account(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        git_command(&repo_dir, ["config", "user.name", "Repository User"]);
+        git_command(&repo_dir, ["config", "user.email", "repo@example.com"]);
+
+        let repo = RealGitRepository::new(
+            &repo_dir.join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        trust_if_hooks_cannot_be_disabled(&repo);
+        let environment = Arc::new(HashMap::from_iter([(
+            "GIT_ASKPASS".to_string(),
+            "false".to_string(),
+        )]));
+        let commit = |message: &'static str| {
+            repo.commit(
+                message.into(),
+                None,
+                CommitOptions {
+                    allow_empty: true,
+                    ..CommitOptions::default()
+                },
+                AskPassDelegate::new(&mut cx.to_async(), |_, _, _| {}),
+                environment.clone(),
+            )
+        };
+
+        commit("as the repository's user").await.unwrap();
+        assert_eq!(
+            git_command_output(&repo_dir, ["log", "-1", "--format=%an <%ae>|%cn <%ce>"]),
+            "Repository User <repo@example.com>|Repository User <repo@example.com>"
+        );
+
+        repo.set_identity(Some(test_identity()));
+        commit("as the account").await.unwrap();
+        assert_eq!(
+            git_command_output(&repo_dir, ["log", "-1", "--format=%an <%ae>|%cn <%ce>"]),
+            "Ada Work <ada@work.example>|Ada Work <ada@work.example>"
+        );
+
+        repo.set_identity(None);
+        commit("back to git's configuration").await.unwrap();
+        assert_eq!(
+            git_command_output(&repo_dir, ["log", "-1", "--format=%an <%ae>"]),
+            "Repository User <repo@example.com>"
+        );
+    }
+
+    /// ADR-F93: with an account that has an HTTPS login, git's credential helpers are emptied for
+    /// that host only (so askpass, which answers with the token, is asked), and the login and
+    /// signing key are configured; the command line carries no secret.
+    #[gpui::test]
+    async fn test_identity_configures_git_for_its_host_only(cx: &mut TestAppContext) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_dir = temp_dir.path().join("repo");
+        git_init_repo(&repo_dir);
+        git_command(&repo_dir, ["config", "credential.helper", "store"]);
+        let repo = RealGitRepository::new(
+            &repo_dir.join(".git"),
+            None,
+            Some("git".into()),
+            cx.executor(),
+        )
+        .unwrap();
+        repo.set_trusted(true);
+
+        let helper_for = |url: &'static str| {
+            let git = repo.git_binary();
+            async move {
+                git.run(&["config", "--get-urlmatch", "credential.helper", url])
+                    .await
+                    .unwrap()
+            }
+        };
+        assert_eq!(helper_for("https://github.com/owner/repo").await, "store");
+
+        repo.set_identity(Some(test_identity()));
+        assert_eq!(helper_for("https://github.com/owner/repo").await, "");
+        assert_eq!(helper_for("https://gitlab.com/owner/repo").await, "store");
+        let git = repo.git_binary();
+        assert_eq!(
+            git.run(&[
+                "config",
+                "--get-urlmatch",
+                "credential.username",
+                "https://github.com/owner/repo"
+            ])
+            .await
+            .unwrap(),
+            "ada-work"
+        );
+        assert_eq!(
+            git.run(&["config", "user.signingkey"]).await.unwrap(),
+            "ABCD1234"
+        );
+        assert!(
+            git.run(&["var", "GIT_COMMITTER_IDENT"])
+                .await
+                .unwrap()
+                .starts_with("Ada Work <ada@work.example> ")
         );
     }
 

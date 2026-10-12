@@ -843,6 +843,38 @@ pub struct GitSettings {
     ///
     /// Default: ../worktrees
     pub worktree_directory: Option<String>,
+    /// Git accounts a repository can commit and push as. Which one a repository
+    /// uses is picked in the git panel and kept in `project_accounts`. An
+    /// account's token is kept in the operating system's credential store, never
+    /// in this file.
+    ///
+    /// Default: []
+    pub accounts: Option<Vec<GitAccountContent>>,
+    /// The account each repository commits and pushes as, by the absolute path of
+    /// the repository's working directory. A repository not listed here uses git's
+    /// own configuration. Only read from the user settings file.
+    ///
+    /// Default: {}
+    pub project_accounts: Option<BTreeMap<String, String>>,
+}
+
+/// A git account a repository can commit and push as.
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct GitAccountContent {
+    /// The name the account is picked by, unique among the accounts.
+    pub id: String,
+    /// The author and committer name (`user.name`).
+    pub name: String,
+    /// The author and committer email (`user.email`).
+    pub email: String,
+    /// The HTTPS host the account's token signs in to, such as `github.com`.
+    /// Without one, pushing and pulling sign in as git is configured to.
+    pub host: Option<String>,
+    /// The user name on `host` that goes with the token.
+    pub login: Option<String>,
+    /// The key commits are signed with (`user.signingkey`), when signing is on.
+    pub signing_key: Option<String>,
 }
 
 #[with_fallible_options]

@@ -2265,6 +2265,27 @@
     //
     // Trailing slashes are ignored.
     "worktree_directory": "../worktrees",
+    // Git accounts a repository can commit and push as (ForgeKairos). The git
+    // panel picks one per repository. Each account sets the author and
+    // committer, and optionally an HTTPS login and a signing key:
+    //
+    //   {
+    //     "id": "work",
+    //     "name": "Ada Lovelace",
+    //     "email": "ada@example.com",
+    //     "host": "github.com",
+    //     "login": "ada-work",
+    //     "signing_key": "ABCD1234"
+    //   }
+    //
+    // The token for "login" is kept in the operating system's credential
+    // store (set it from the Git Accounts page of the settings window), never
+    // in this file.
+    "accounts": [],
+    // The account each repository uses, by the absolute path of its working
+    // directory. The git panel writes these. A repository that is not listed
+    // follows git's own configuration.
+    "project_accounts": {},
   },
   // The list of custom Git hosting providers.
   "git_hosting_providers": [
