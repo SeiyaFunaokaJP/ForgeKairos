@@ -1,4 +1,3 @@
-use std::ops::Range;
 use std::time::Duration;
 
 use client::zed_urls;
@@ -8,8 +7,8 @@ use fs::Fs;
 use futures::{FutureExt as _, StreamExt as _, channel::mpsc::UnboundedReceiver};
 use gpui::{
     AnyElement, App, BackgroundExecutor, ClickEvent, Context, Entity, EventEmitter, Focusable,
-    KeyContext, ParentElement, Render, RenderOnce, SharedString, Styled, Task, TextStyle,
-    UniformListScrollHandle, WeakEntity, Window, point, uniform_list,
+    KeyContext, ListAlignment, ListOffset, ListState, ParentElement, Render, RenderOnce,
+    SharedString, Styled, Task, TextStyle, WeakEntity, Window, list,
 };
 use http_client::{EgressPolicyHandle, RequestHost, hosts_required_to_download};
 use project::agent_registry_store::current_platform_key;
@@ -21,7 +20,7 @@ use project::{AgentId, AgentRegistryStore, RegistryAgent};
 use settings::{Settings, SettingsStore, update_settings_file};
 use theme_settings::ThemeSettings;
 use ui::{
-    Banner, ButtonStyle, CommonAnimationExt, ScrollableHandle, ToggleButtonGroup,
+    Banner, ButtonStyle, CommonAnimationExt, ToggleButtonGroup,
     ToggleButtonGroupSize, ToggleButtonGroupStyle, ToggleButtonSimple, Tooltip, WithScrollbar,
     prelude::*,
 };
@@ -640,7 +639,9 @@ pub struct AgentRegistryPage {
     /// lists them.
     installed_archive_versions: HashMap<String, Vec<String>>,
     _installed_archive_versions_scan: Task<()>,
-    list: UniformListScrollHandle,
+    /// Not a `uniform_list`: a card grows when its install consent banner
+    /// opens, and uniform rows would draw it over the cards below.
+    list: ListState,
     registry_agents: Vec<RegistryAgent>,
     filtered_registry_indices: Vec<usize>,
     installed_statuses: HashMap<String, RegistryInstallStatus>,
@@ -694,7 +695,7 @@ impl AgentRegistryPage {
                 connection_store,
                 installed_archive_versions: HashMap::default(),
                 _installed_archive_versions_scan: Task::ready(()),
-                list: UniformListScrollHandle::new(),
+                list: ListState::new(0, ListAlignment::Top, px(1000.)).measure_all(),
                 registry_agents: Vec::new(),
                 filtered_registry_indices: Vec::new(),
                 installed_statuses: HashMap::default(),
@@ -827,7 +828,7 @@ impl AgentRegistryPage {
         let filter = self.filter;
         let installed_statuses = self.installed_statuses.clone();
 
-        let filtered_indices = self
+        let filtered_indices: Vec<usize> = self
             .registry_agents
             .iter()
             .enumerate()
@@ -858,13 +859,18 @@ impl AgentRegistryPage {
             .map(|(index, _)| index)
             .collect();
 
+        // Settings changes refilter too; resetting on those would lose the
+        // scroll position for a list that did not change.
+        if self.filtered_registry_indices != filtered_indices {
+            self.list.reset(filtered_indices.len());
+        }
         self.filtered_registry_indices = filtered_indices;
 
         cx.notify();
     }
 
     fn scroll_to_top(&mut self, cx: &mut Context<Self>) {
-        self.list.set_offset(point(px(0.), px(0.)));
+        self.list.scroll_to(ListOffset::default());
         cx.notify();
     }
 
@@ -1009,23 +1015,14 @@ impl AgentRegistryPage {
             })
     }
 
-    fn render_agents(
-        &mut self,
-        range: Range<usize>,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Vec<AgentRegistryCard> {
-        range
-            .map(|index| {
-                let Some(agent_index) = self.filtered_registry_indices.get(index).copied() else {
-                    return self.render_missing_agent();
-                };
-                let Some(agent) = self.registry_agents.get(agent_index) else {
-                    return self.render_missing_agent();
-                };
-                self.render_registry_agent(agent, cx)
-            })
-            .collect()
+    fn render_agent(&mut self, index: usize, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let Some(agent_index) = self.filtered_registry_indices.get(index).copied() else {
+            return self.render_missing_agent().into_any_element();
+        };
+        let Some(agent) = self.registry_agents.get(agent_index) else {
+            return self.render_missing_agent().into_any_element();
+        };
+        self.render_registry_agent(agent, cx).into_any_element()
     }
 
     fn render_missing_agent(&self) -> AgentRegistryCard {
@@ -1472,10 +1469,9 @@ impl Render for AgentRegistryPage {
                 } else {
                     let scroll_handle = &self.list;
                     this.child(
-                        uniform_list("registry-entries", count, cx.processor(Self::render_agents))
+                        list(scroll_handle.clone(), cx.processor(Self::render_agent))
                             .flex_grow_1()
-                            .pb_4()
-                            .track_scroll(scroll_handle),
+                            .pb_4(),
                     )
                     .vertical_scrollbar_for(scroll_handle, window, cx)
                     .into_any_element()
