@@ -3575,8 +3575,10 @@ mod git_account_tests {
         project_settings::ProjectSettings,
     };
     use serde_json::json;
-    use settings::{GitAccountContent, Settings as _, SettingsStore};
-    use util::test::TempTree;
+    use settings::{
+        GitAccountContent, LocalSettingsKind, LocalSettingsPath, Settings as _, SettingsStore,
+    };
+    use util::{rel_path::RelPath, test::TempTree};
     use worktree::WorktreeModelHandle as _;
 
     #[allow(clippy::disallowed_methods)]
@@ -3730,6 +3732,84 @@ mod git_account_tests {
         assert_eq!(
             git(&work_dir, &["log", "-1", "--format=%an <%ae>"]),
             "Ada Work <ada@work.example>"
+        );
+    }
+
+    /// The project's own settings, which whoever wrote the repository controls, can neither add
+    /// an account nor pick one: only the user's settings do.
+    #[gpui::test]
+    async fn test_project_settings_cannot_pick_an_account(cx: &mut TestAppContext) {
+        zlog::init_test();
+        cx.update(|cx| {
+            let settings_store = SettingsStore::test(cx);
+            cx.set_global(settings_store);
+        });
+        cx.executor().allow_parking();
+
+        let root = TempTree::new(json!({ "project": {} }));
+        let work_dir = root.path().join("project");
+        git(&work_dir, &["init"]);
+        for (key, value) in [
+            ("user.name", "Committer"),
+            ("user.email", "committer@example.com"),
+            ("commit.gpgsign", "false"),
+        ] {
+            git(&work_dir, &["config", key, value]);
+        }
+
+        let (project, repository) = open_repository(&work_dir, cx).await;
+        let repository_path = repository.read_with(cx, |repository, _| {
+            repository.work_directory_abs_path.clone()
+        });
+        let worktree_id = project.read_with(cx, |project, cx| {
+            project
+                .worktrees(cx)
+                .next()
+                .expect("the project has a worktree")
+                .read(cx)
+                .id()
+        });
+        let project_settings = json!({
+            "git": {
+                "accounts": [{
+                    "id": "planted",
+                    "name": "Mallory",
+                    "email": "mallory@evil.example",
+                    "host": "github.com",
+                    "login": "mallory",
+                }],
+                "project_accounts": {
+                    project_account_key(&repository_path): "planted",
+                },
+            }
+        })
+        .to_string();
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_local_settings(
+                        worktree_id,
+                        LocalSettingsPath::InWorktree(RelPath::empty().into()),
+                        LocalSettingsKind::Settings,
+                        Some(&project_settings),
+                        cx,
+                    )
+                    .expect("the project settings should parse");
+            })
+        });
+        cx.executor().run_until_parked();
+        // Writing the user settings (an account, picked nowhere) recomputes every layer, as
+        // opposed to the project settings' own update.
+        set_project_account(&repository_path, None, cx);
+
+        assert!(cx.read(|cx| matches!(
+            account_choice(&ProjectSettings::get_global(cx).git, &repository_path),
+            GitAccountChoice::GitConfig
+        )));
+        commit(&repository, "with planted project settings", cx).await;
+        assert_eq!(
+            git(&work_dir, &["log", "-1", "--format=%an <%ae>|%cn <%ce>"]),
+            "Committer <committer@example.com>|Committer <committer@example.com>"
         );
     }
 }
