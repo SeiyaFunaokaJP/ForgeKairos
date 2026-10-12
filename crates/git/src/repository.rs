@@ -3329,6 +3329,14 @@ impl RealGitRepository {
         .with_identity(self.identity()))
     }
 
+    /// The binary [`GitRepository::run_command_without_hooks`] runs the agent's commands with.
+    fn agent_git_binary(&self) -> Result<GitBinary> {
+        Ok(self
+            .git_binary_in_worktree()?
+            .untrusted()
+            .with_identity_environment_only())
+    }
+
     fn git_binary(&self) -> GitBinary {
         GitBinary::new(
             self.any_git_binary_path.clone(),
@@ -4661,10 +4669,9 @@ impl GitRepository for RealGitRepository {
         env: Arc<HashMap<String, String>>,
         command_env: HashMap<String, String>,
     ) -> BoxFuture<'_, Result<GitCommandOutput>> {
-        let git = self.git_binary_in_worktree().map(GitBinary::untrusted);
         self.executor
             .spawn(run_allowed_git_command(
-                git,
+                self.agent_git_binary(),
                 args,
                 stdin,
                 env,
@@ -7982,13 +7989,6 @@ impl GitBinary {
     /// ADR-F93 with ADR-F90: the agent's git commands commit as the picked account, but take none
     /// of its `-c` options, which would meet the ones an untrusted repository's commands are
     /// given, and need no credentials, as they never reach a remote.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "called from GitBinary::untrusted once ADR-F90 is merged"
-        )
-    )]
     fn with_identity_environment_only(mut self) -> Self {
         self.identity_options = false;
         self
@@ -11306,6 +11306,66 @@ mod tests {
             .await
             .unwrap(),
             "store"
+        );
+    }
+
+    /// ADR-F93 with ADR-F90: an agent's command through `run_command_without_hooks` commits as the
+    /// picked account, but gets neither its signing key nor its credential options.
+    #[gpui::test]
+    async fn test_run_command_without_hooks_gives_the_identity_environment_only(
+        cx: &mut TestAppContext,
+    ) {
+        disable_git_global_config();
+        cx.executor().allow_parking();
+        if !installed_git_supports(GitFeature::HooksPath) {
+            return;
+        }
+
+        let repo_dir = tempfile::tempdir().unwrap();
+        git_init_repo(repo_dir.path());
+        fs::write(repo_dir.path().join("file"), "one\n").unwrap();
+        let repository = open_repository(repo_dir.path(), cx);
+        repository.set_trusted(true);
+        repository.set_identity(Some(test_identity()));
+
+        let agent_git = repository.agent_git_binary().unwrap();
+        let command = agent_git.build_command(&["commit", "-m", "first"]).await;
+        let args = command.get_args().collect::<Vec<_>>();
+        let identity_options = test_identity()
+            .config_args()
+            .into_iter()
+            .filter(|option| option != "-c")
+            .collect::<Vec<_>>();
+        assert_eq!(identity_options.len(), 3, "{identity_options:?}");
+        for option in &identity_options {
+            assert!(
+                !args.contains(&option.as_os_str()),
+                "{option:?} in {args:?}"
+            );
+        }
+
+        let env = Arc::new(HashMap::from_iter([(
+            "GIT_ASKPASS".to_string(),
+            "false".to_string(),
+        )]));
+        for args in [&["add", "file"][..], &["commit", "-m", "first"]] {
+            let output = repository
+                .run_command_without_hooks(
+                    args.iter().map(|argument| argument.to_string()).collect(),
+                    None,
+                    env.clone(),
+                    HashMap::default(),
+                )
+                .await
+                .unwrap();
+            assert!(output.succeeded(), "{args:?}: {output:?}");
+        }
+        assert_eq!(
+            git_command_output(
+                repo_dir.path(),
+                ["log", "-1", "--format=%an <%ae>|%cn <%ce>"]
+            ),
+            "Ada Work <ada@work.example>|Ada Work <ada@work.example>"
         );
     }
 
