@@ -43,8 +43,8 @@ use workspace::{
 };
 
 use crate::{
-    BrowserHost, BrowserPanel, BrowserSettings, BrowserView, BrowserViewEvent, ClosePanelTab,
-    NewPanelTab, NewTabPlacement,
+    AiBrowserPanel, BrowserHost, BrowserPanel, BrowserSettings, BrowserTabsPanel, BrowserView,
+    BrowserViewEvent, ClosePanelTab, NewPanelTab, NewTabPlacement,
     browser_view::{AI_TAB_BLANK_URL, AI_TAB_TOOLTIP},
     webview::WebViewProfile,
 };
@@ -449,18 +449,19 @@ impl BrowserItem {
     }
 
     fn open_sibling_tab(&mut self, _: &NewPanelTab, window: &mut Window, cx: &mut Context<Self>) {
-        // 「+」は普段のタブ。AI タブは `NewAiTab` で明示して開く。
-        self.open_tab_beside_self(
-            None,
-            WebViewProfile::User,
-            NewTabPlacement::Foreground,
-            window,
-            cx,
-        );
+        // 「+」は普段のタブ。AI タブは `NewAiTab` で明示して開く。ただし AI のパネルには
+        // AI タブしか並べないので、そこでの「+」は AI タブ。
+        let profile = match self.view.read(cx).host() {
+            BrowserHost::AiPanel => WebViewProfile::Ai,
+            BrowserHost::Panel | BrowserHost::EditorTab => WebViewProfile::User,
+        };
+        self.open_tab_beside_self(None, profile, NewTabPlacement::Foreground, window, cx);
     }
 
     /// 「もう 1 枚」をこのタブの隣に開く。パネルに載っているならそのペイン、
-    /// エディター領域ならアクティブなペイン。
+    /// エディター領域ならアクティブなペイン。パネルのタブのプロファイルはパネルの
+    /// 種類で決まるので、合わないもの (人のパネルの AI タブから開くもの) は
+    /// エディター領域に開く。
     fn open_tab_beside_self(
         &mut self,
         url: Option<String>,
@@ -477,17 +478,22 @@ impl BrowserItem {
         // 更新中のまま呼ばれ、ペインがタブを足すときにこのアイテムを読んで panic する。
         window.defer(cx, move |window, cx| {
             workspace
-                .update(cx, |workspace, cx| match host {
-                    BrowserHost::Panel => {
+                .update(cx, |workspace, cx| match (host, profile) {
+                    (BrowserHost::Panel, WebViewProfile::User) => {
                         if let Some(panel) = workspace.panel::<BrowserPanel>(cx) {
                             panel.update(cx, |panel, cx| {
-                                panel.open_beside_item(item_id, url, profile, placement, window, cx)
+                                panel.open_beside_item(item_id, url, placement, window, cx)
                             });
                         }
                     }
-                    BrowserHost::EditorTab => {
-                        BrowserItem::open_with_profile(workspace, url, profile, window, cx)
+                    (BrowserHost::AiPanel, WebViewProfile::Ai) => {
+                        if let Some(panel) = workspace.panel::<AiBrowserPanel>(cx) {
+                            panel.update(cx, |panel, cx| {
+                                panel.open_beside_item(item_id, url, placement, window, cx)
+                            });
+                        }
                     }
+                    _ => BrowserItem::open_with_profile(workspace, url, profile, window, cx),
                 })
                 .log_err();
         });
@@ -523,18 +529,29 @@ impl BrowserItem {
             // パネルで「どちらのペインを触ったか」はこの申告でしか分からないので、
             // ここでそのペインを宛先にする (フォーカスがまだ外にあるなら移す)。
             BrowserViewEvent::Focused => {
-                if self.view.read(cx).host() != BrowserHost::Panel {
+                let host = self.view.read(cx).host();
+                if host == BrowserHost::EditorTab {
                     return;
                 }
                 let item_id = cx.entity_id();
                 cx.defer_in(window, move |this, window, cx| {
                     this.workspace
-                        .update(cx, |workspace, cx| {
-                            if let Some(panel) = workspace.panel::<BrowserPanel>(cx) {
-                                panel.update(cx, |panel, cx| {
-                                    panel.activate_pane_for_item(item_id, window, cx)
-                                });
+                        .update(cx, |workspace, cx| match host {
+                            BrowserHost::Panel => {
+                                if let Some(panel) = workspace.panel::<BrowserPanel>(cx) {
+                                    panel.update(cx, |panel, cx| {
+                                        panel.activate_pane_for_item(item_id, window, cx)
+                                    });
+                                }
                             }
+                            BrowserHost::AiPanel => {
+                                if let Some(panel) = workspace.panel::<AiBrowserPanel>(cx) {
+                                    panel.update(cx, |panel, cx| {
+                                        panel.activate_pane_for_item(item_id, window, cx)
+                                    });
+                                }
+                            }
+                            BrowserHost::EditorTab => {}
                         })
                         .log_err();
                 });
@@ -625,6 +642,11 @@ impl Item for BrowserItem {
         };
 
         let host = self.view.read(cx).host();
+        // AI のパネルには、ファイルを `file:` のページとして開かせない (AI タブには
+        // 読み込めないうえ、パネルのペインがそもそもファイルのドロップを受けない)。
+        if host == BrowserHost::AiPanel {
+            return false;
+        }
         let item_id = self.weak_self.entity_id();
         let workspace = self.workspace.clone();
         // 端に落とされていたらパネルを割ってから開く。エディター領域のタブでは
@@ -641,7 +663,7 @@ impl Item for BrowserItem {
                             });
                         }
                     }
-                    BrowserHost::EditorTab => {
+                    BrowserHost::AiPanel | BrowserHost::EditorTab => {
                         for url in urls {
                             BrowserItem::open(workspace, Some(url), window, cx);
                         }
@@ -679,6 +701,17 @@ impl Item for BrowserItem {
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
         None
+    }
+
+    /// AI タブを落とせるのは AI のパネルとエディター領域だけ (ADR-F89 追記 10)。
+    fn can_move_to_pane(
+        &self,
+        destination: &Entity<Pane>,
+        destination_workspace: &Entity<Workspace>,
+        cx: &App,
+    ) -> bool {
+        !self.view.read(cx).is_ai_tab()
+            || crate::ai_tab_may_move_to(destination, destination_workspace, cx)
     }
 
     /// パンくずリストも検索バーも持たないので、ツールバーごと消す。

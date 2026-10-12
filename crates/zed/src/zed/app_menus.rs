@@ -56,6 +56,10 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         MenuItem::action("Git Panel", git_panel::ToggleFocus),
         MenuItem::action("Browser Panel", browser_panel::ToggleFocus),
         MenuItem::action("New Browser Tab", browser_panel::NewBrowserTab),
+        MenuItem::action(
+            "AI Browser Panel",
+            browser_panel::ai_browser_panel::ToggleFocus,
+        ),
         MenuItem::separator(),
         MenuItem::action("Diagnostics", diagnostics::Deploy),
         MenuItem::separator(),

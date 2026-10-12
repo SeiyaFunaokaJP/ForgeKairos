@@ -313,7 +313,8 @@ macro_rules! network_note {
          host that is not allowed fails with an error naming it, and the user can add it to the \
          allowlist. `localhost` is the machine running the editor, also when the project is \
          remote (SSH or WSL). Only http, https, data: and about:blank URLs can be opened; \
-         downloads are blocked."
+         downloads are blocked. WebRTC calls connect only when they can be relayed through the \
+         allowlist, and on some systems WebRTC isn't available in AI tabs."
     };
 }
 
@@ -430,7 +431,9 @@ pub fn tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             name: "browser_select_tab",
             description: "Make an AI tab the current AI tab (the one the other browser tools use \
-                          when `tab` is omitted) and show it in the browser panel.",
+                          when `tab` is omitted) and the front tab of the AI browser panel. It \
+                          does not bring a hidden panel forward: every browser tool works on AI \
+                          tabs whether or not the user can see them.",
             input_schema: object_schema(
                 json!({
                     "tab": { "type": "string", "description": "Id of the AI tab, from browser_tabs." }

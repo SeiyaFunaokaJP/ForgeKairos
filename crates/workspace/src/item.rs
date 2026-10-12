@@ -402,6 +402,19 @@ pub trait Item: Focusable + EventEmitter<Self::Event> + Render + Sized {
         false
     }
 
+    /// Whether dropping this item's tab on `destination`, a pane of
+    /// `destination_workspace`, may move the item there. Returning false leaves
+    /// the item where it was; the pane being dropped on is mid-update, so it
+    /// must only be compared, not read.
+    fn can_move_to_pane(
+        &self,
+        _destination: &Entity<Pane>,
+        _destination_workspace: &Entity<Workspace>,
+        _cx: &App,
+    ) -> bool {
+        true
+    }
+
     /// What closing the item with unsaved edits asks, for an item that is not
     /// a file: without it the pane asks about "this buffer". The answers stay
     /// Save / Don't Save / Cancel, and the in-app prompt renders the text as
@@ -594,6 +607,12 @@ pub trait ItemHandle: 'static + Send {
         cx: &mut App,
     ) -> bool;
     fn accepts_drop(&self, active_pane: &Pane, dropped: &dyn Any, cx: &App) -> bool;
+    fn can_move_to_pane(
+        &self,
+        destination: &Entity<Pane>,
+        destination_workspace: &Entity<Workspace>,
+        cx: &App,
+    ) -> bool;
     fn unsaved_edits_prompt(&self, cx: &App) -> Option<String>;
     fn tab_extra_context_menu_actions(
         &self,
@@ -1190,6 +1209,16 @@ impl<T: Item> ItemHandle for Entity<T> {
 
     fn accepts_drop(&self, active_pane: &Pane, dropped: &dyn Any, cx: &App) -> bool {
         self.read(cx).accepts_drop(active_pane, dropped, cx)
+    }
+
+    fn can_move_to_pane(
+        &self,
+        destination: &Entity<Pane>,
+        destination_workspace: &Entity<Workspace>,
+        cx: &App,
+    ) -> bool {
+        self.read(cx)
+            .can_move_to_pane(destination, destination_workspace, cx)
     }
 
     fn unsaved_edits_prompt(&self, cx: &App) -> Option<String> {

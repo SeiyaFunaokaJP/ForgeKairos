@@ -7343,6 +7343,28 @@ impl Workspace {
                 multi_workspace.workspace().clone()
             })?;
 
+            // ForgeKairos (ADR-F89): the item may refuse the pane it was dropped on,
+            // as it can within one window (`Pane::handle_tab_drop`).
+            let may_move = cx.update(|_, cx| {
+                let Some(item) = source_pane
+                    .read(cx)
+                    .items()
+                    .find(|item| item.item_id() == item_id)
+                    .map(|item| item.boxed_clone())
+                else {
+                    return false;
+                };
+                let workspace = target_workspace.read(cx);
+                let pane = target_pane
+                    .as_ref()
+                    .filter(|pane| workspace.contains_pane(pane, cx))
+                    .unwrap_or_else(|| workspace.active_pane());
+                item.can_move_to_pane(pane, &target_workspace, cx)
+            })?;
+            if !may_move {
+                return anyhow::Ok(());
+            }
+
             // Taking the item out of the old pane has to happen in the old
             // window: removal activates a neighbouring tab and moves focus.
             let item = source_pane.update_in(cx, |pane, window, cx| {

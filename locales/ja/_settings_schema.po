@@ -800,6 +800,10 @@ msgid "Default fixed width in pixels when the agent panel is docked to the left 
 msgstr "エージェントパネルを左右にドックし、`flexible` が false の場合の既定の固定幅 (ピクセル単位) です。\n\n既定値: 640"
 
 msgctxt "settings schema"
+msgid "Default height in pixels when the AI browser panel is docked to the bottom.\n\nDefault: 320"
+msgstr "AI ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル)。\n\n既定値: 320"
+
+msgctxt "settings schema"
 msgid "Default height in pixels when the agent panel is docked to the bottom.\n\nDefault: 320"
 msgstr "エージェントパネルを下部にドックしたときの既定の高さ (ピクセル単位) です。\n\n既定値: 320"
 
@@ -838,6 +842,10 @@ msgstr "コンテキストサーバーのツール呼び出しの既定のタイ
 msgctxt "settings schema"
 msgid "Default values for session config options.\n\nThis is a map from config option ID to the default value for that option.\n\nDefault: {}"
 msgstr "セッション設定オプションの既定値です。\n\nこれは設定オプション ID からそのオプションの既定値へのマップです。\n\n既定値: {}"
+
+msgctxt "settings schema"
+msgid "Default width in pixels when the AI browser panel is docked to the left or right.\n\nDefault: 480"
+msgstr "AI ブラウザーパネルを左または右にドッキングしたときの既定の幅 (ピクセル)。\n\n既定値: 480"
 
 msgctxt "settings schema"
 msgid "Default width in pixels when the browser panel is docked to the left or right.\n\nDefault: 480"
@@ -2632,6 +2640,10 @@ msgid "Text color used for CodeLens items in the editor."
 msgstr "エディターのコードレンズ項目に使用するテキストの色です。"
 
 msgctxt "settings schema"
+msgid "The AI browser panel, which holds the AI tabs that AI agents drive."
+msgstr "AI ブラウザーパネル。AI エージェントが操作する AI タブを並べます。"
+
+msgctxt "settings schema"
 msgid "The API protocol to use for this model: \"anthropic\", \"openai_responses\", \"openai_chat\", or \"google\". Defaults to \"openai_chat\"."
 msgstr "このモデルに使用する API プロトコルです: \"anthropic\"、\"openai_responses\"、\"openai_chat\"、または \"google\"。既定は \"openai_chat\" です。"
 
@@ -3788,6 +3800,10 @@ msgid "When using OpenAiChat protocol, whether thinking tokens are sent as a ded
 msgstr "OpenAiChat プロトコルを使用する場合、thinking トークンを専用の `reasoning_content` フィールドとして送信するか、メッセージテキスト内にインラインで送信するかを設定します。"
 
 msgctxt "settings schema"
+msgid "Where to dock the AI browser panel. Can be 'left', 'right' or 'bottom'.\n\nDefault: right"
+msgstr "AI ブラウザーパネルをドッキングする場所。'left'、'right'、'bottom' のいずれか。\n\n既定値: right"
+
+msgctxt "settings schema"
 msgid "Where to dock the agent panel.\n\nDefault: left (Agentic layout), right (Classic layout)"
 msgstr "エージェントパネルをドッキングする場所を設定します。\n\n既定値: left (Agentic レイアウト)、right (Classic レイアウト)"
 
@@ -4698,6 +4714,10 @@ msgstr "小さな単一行の出力をブロックではなくインラインで
 msgctxt "settings schema"
 msgid "Whether to show tabs and spaces in the editor."
 msgstr "エディターでタブとスペースを表示するかどうかを設定します。"
+
+msgctxt "settings schema"
+msgid "Whether to show the AI browser panel button in the status bar while AI\ncontrol of the built-in browser is on.\n\nDefault: true"
+msgstr "内蔵ブラウザーの AI による操作がオンのあいだ、ステータスバーに AI ブラウザーパネルのボタンを表示するかどうか。\n\n既定値: true"
 
 msgctxt "settings schema"
 msgid "Whether to show the Git file status on a tab item.\n\nDefault: false"

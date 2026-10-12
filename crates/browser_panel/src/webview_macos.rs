@@ -33,7 +33,7 @@ use objc2::{
 use objc2_app_kit::{
     NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua,
     NSAutoresizingMaskOptions, NSBitmapImageFileType, NSBitmapImageRep, NSColor, NSEvent,
-    NSEventMask, NSImage, NSResponder, NSView, NSWindow,
+    NSEventMask, NSImage, NSResponder, NSView, NSWindow, NSWindowOcclusionState,
 };
 use objc2_core_graphics::CGMutablePath;
 use objc2_foundation::{
@@ -73,22 +73,9 @@ const OVERLAY_CORNER_RADIUS: f64 = 8.;
 /// `webview_windows` (a neighbouring dock's resize handle).
 const EDGE_SLIVER_DEPTH: f64 = 4.;
 
-/// `browser_eval` runs in every AI tab: one is only created once WebRTC and
-/// WebTransport are known to be off in it.
-///
-/// ICE (WebRTC) and QUIC (WebTransport) are UDP, which the HTTP CONNECT proxy
-/// cannot carry, so either would reach the network around the egress
-/// allowlist. WebKit has no public switch for them short of Lockdown Mode
-/// (which also takes JIT, WebAssembly and web fonts away from the app under
-/// test), so an AI tab turns them off through `WKPreferences` SPI, guarded by
-/// `respondsToSelector:` and read back; where that does not hold, no AI tab is
-/// created. Page JavaScript could get around anything weaker, such as
-/// [`DISABLE_WEBRTC_SCRIPT`] (a script-made frame keeps the constructors).
-pub(crate) const SUPPORTS_SCRIPT_EVAL: bool = true;
-
-/// Defence in depth behind the preferences of [`SUPPORTS_SCRIPT_EVAL`]:
-/// removes the WebRTC constructors before any page script runs, in every frame WebKit injects user scripts
-/// into. A frame it does not inject into (one a script creates and reads
+/// Defence in depth behind [`switch_off_unproxied_transports`] and
+/// [`enter_lockdown_mode`]: removes the WebRTC constructors before any page
+/// script runs, in every frame WebKit injects user scripts into. A frame it does not inject into (one a script creates and reads
 /// before it navigates) keeps them. `navigator.mediaDevices` stays: capturing
 /// a camera or a microphone opens no connection by itself.
 const DISABLE_WEBRTC_SCRIPT: &str = r#"(() => {
@@ -105,6 +92,10 @@ const DISABLE_WEBRTC_SCRIPT: &str = r#"(() => {
     }
   }
 })();"#;
+
+/// How far left of the GPUI view a parked page is put, in points, so that not
+/// even its edge reaches the window.
+const PARKING_MARGIN: f64 = 64.;
 
 /// Identifies this backend's key-value observations among any others the page
 /// view may have.
@@ -364,15 +355,28 @@ define_class!(
             cancel_download(self.ivars().surface(), download);
         }
 
+        /// WebKit leaves the page blank until it is reloaded. The view replaces
+        /// the surface instead, as for a crashed WebView2 page: a user tab
+        /// offers to reload it, and an AI tab's next command reopens its page.
+        /// No `LoadFinished` with it: a load waiting on the page gets the
+        /// crash as its reason from `Crashed`, not a plain failed load.
         #[unsafe(method(webViewWebContentProcessDidTerminate:))]
         fn web_content_process_did_terminate(&self, _web_view: &WKWebView) {
             log::error!("WKWebView: the web content process terminated");
             if let Some(surface) = self.ivars().surface() {
-                surface.load_finished(false);
+                surface.send(WebViewEvent::Crashed(
+                    "the page's web content process exited".to_string(),
+                ));
             }
         }
     }
 
+    // No `runJavaScript…Panel` methods, no `_webView:runBeforeUnloadConfirmPanel…` and no
+    // `webView:didReceiveAuthenticationChallenge:` on purpose: WebKit then answers without
+    // showing anything (alert returns, confirm is false, prompt is empty, `beforeunload` is not
+    // even dispatched, an HTTP sign-in is rejected and the server's 401 page shows), so no
+    // dialog can hold a page that nobody sees. See WebKit's `UIProcess/Cocoa/UIDelegate.mm`,
+    // `UIProcess/Cocoa/NavigationState.mm` and `FrameLoader::shouldClose`.
     unsafe impl WKUIDelegate for SurfaceDelegate {
         /// The panel hosts a single page per surface, so a `target="_blank"`
         /// link or `window.open` is re-targeted at this one instead.
@@ -443,6 +447,10 @@ struct Inner {
     navigation_filter: Option<Rc<dyn Fn(&str) -> NavigationDecision>>,
     block_downloads: bool,
     profile: WebViewProfile,
+    /// Whether WebKit was told to ignore the window's occlusion for this page
+    /// ([`keep_rendering_out_of_sight`]), so a covered window still counts as
+    /// visible to it.
+    ignores_occlusion: Cell<bool>,
     events: UnboundedSender<WebViewEvent>,
     state: RefCell<State>,
 }
@@ -453,7 +461,12 @@ struct State {
     bounds: SurfaceRect,
     /// Parts of `bounds` gpui draws over this frame, in the same space.
     holes: Vec<SurfaceRect>,
+    /// Whether the page is on screen. Off screen, a user tab's page is hidden
+    /// and an AI tab's page is parked (see [`placement`]).
     visible: bool,
+    /// The size, in points, the page last had: where an AI tab's page keeps
+    /// being laid out while it is parked.
+    last_size: Option<(f64, f64)>,
     hidden_reason: Option<&'static str>,
     input_blocked: bool,
     /// Whether the view held gpui's focus at the last paint.
@@ -462,7 +475,11 @@ struct State {
     /// page once it does again, if the view still holds gpui's focus.
     pending_focus: bool,
     applied_frame: Option<NSRect>,
+    /// The last `visible` acted on.
     applied_visible: Option<bool>,
+    /// Whether the container is shown to AppKit (`setHidden:`), which a
+    /// parked page is.
+    applied_shown: Option<bool>,
     applied_input_blocked: Option<bool>,
     /// The `(bounds, holes)` the current mask was built from.
     applied_clip: Option<(SurfaceRect, Vec<SurfaceRect>)>,
@@ -495,11 +512,18 @@ impl WebView {
         // Ahead of the container and the page, so that a refusal leaves
         // nothing behind in the host view.
         if options.profile == WebViewProfile::Ai {
+            // WebRTC and WebTransport would reach the network around the
+            // egress proxy, and page JavaScript (`browser_eval` included) gets
+            // around anything weaker than the engine's own switches. The SPI
+            // comes first because Lockdown Mode also takes JIT, WebAssembly
+            // and web fonts away from the app under test.
             let preferences = unsafe { configuration.preferences() };
-            if !switch_off_unproxied_transports(&preferences) {
+            if !switch_off_unproxied_transports(&preferences)
+                && !enter_lockdown_mode(&configuration)
+            {
                 bail!(
-                    "AI tabs need WebKit's switch for WebRTC, which this version of macOS \
-                     doesn't offer: WebRTC would reach the network around the egress proxy"
+                    "AI tabs aren't available with this version of WebKit: it offers no way \
+                     to turn WebRTC off in them"
                 );
             }
             add_document_start_script(&user_content, DISABLE_WEBRTC_SCRIPT, mtm);
@@ -521,10 +545,11 @@ impl WebView {
             navigation_filter: options.navigation_filter.clone(),
             block_downloads: options.block_downloads,
             profile: options.profile,
+            ignores_occlusion: Cell::new(false),
             events,
             state: RefCell::new(State {
                 hidden_reason: Some("the panel has not been painted yet"),
-                applied_visible: Some(false),
+                applied_shown: Some(false),
                 ..State::default()
             }),
         });
@@ -564,6 +589,9 @@ impl WebView {
         }
         {
             let mut state = self.inner.state.borrow_mut();
+            if !bounds.is_empty() {
+                state.last_size = Some((bounds.width(), bounds.height()));
+            }
             state.bounds = bounds;
             state.holes = holes;
             state.visible = hidden_reason.is_none();
@@ -586,7 +614,8 @@ impl WebView {
     }
 
     /// Hides the surface without touching the cached geometry, so the next
-    /// paint can show it again in place.
+    /// paint can show it again in place. An AI tab's page is parked instead:
+    /// out of the window, but still rendering.
     pub(crate) fn hide(&self, reason: &'static str) {
         {
             let mut state = self.inner.state.borrow_mut();
@@ -721,13 +750,22 @@ impl WebView {
             let result = unsafe { snapshot_png(image.as_ref(), error.as_ref()) };
             sender.send(result).ok();
         });
-        // A page that is not on screen presents no further updates, so waiting
-        // for the next one (the default) would never call back.
-        let on_screen = !self.inner.container.isHiddenOrHasHiddenAncestor()
-            && self.inner.page.window().is_some();
+        // A page WebKit does not consider visible presents no further updates,
+        // so waiting for the next one (the default) would never call back.
+        let window = self.inner.page.window();
+        let presents_updates = webkit_presents_updates(
+            self.inner.container.isHiddenOrHasHiddenAncestor(),
+            window.as_ref().map(|window| WindowVisibility {
+                visible: window.isVisible(),
+                occluded: !window
+                    .occlusionState()
+                    .contains(NSWindowOcclusionState::Visible),
+            }),
+            self.inner.ignores_occlusion.get(),
+        );
         let mtm = MainThreadMarker::from(&*self.inner.page);
         let configuration = unsafe { WKSnapshotConfiguration::new(mtm) };
-        unsafe { configuration.setAfterScreenUpdates(on_screen) };
+        unsafe { configuration.setAfterScreenUpdates(presents_updates) };
         unsafe {
             self.inner
                 .page
@@ -838,7 +876,18 @@ impl Inner {
                 )
             };
         }
+        if self.parks_out_of_sight() {
+            self.ignores_occlusion
+                .set(keep_rendering_out_of_sight(&self.page));
+        }
         self.install_key_monitor();
+    }
+
+    /// Whether the page keeps rendering out of sight instead of being hidden:
+    /// an AI tab has to load, run scripts and be captured while nobody looks
+    /// at it (ADR-F89).
+    fn parks_out_of_sight(&self) -> bool {
+        self.profile == WebViewProfile::Ai
     }
 
     /// `Esc` has to be caught before AppKit offers the key to the GPUI view
@@ -926,7 +975,10 @@ impl Inner {
         let Ok(state) = self.state.try_borrow() else {
             return false;
         };
-        state.applied_input_blocked == Some(true)
+        // A parked page is outside the window anyway; this keeps it so should
+        // the window ever reach that far.
+        state.applied_visible == Some(false)
+            || state.applied_input_blocked == Some(true)
             || state
                 .mouse_holes
                 .iter()
@@ -941,15 +993,22 @@ impl Inner {
         };
         // Collect the deltas, drop the borrow, then talk to AppKit: the calls
         // below can re-enter the overrides above, which borrow `state`.
-        let (bounds, input_blocked, visible, hidden_reason) = {
+        let (bounds, input_blocked, visible, shown, hidden_reason) = {
             let state = self.state.borrow();
+            let (bounds, shown) = placement(
+                self.parks_out_of_sight(),
+                state.visible,
+                state.bounds,
+                state.last_size,
+            );
             let showing = state.visible && state.applied_visible != Some(true);
             (
-                state.bounds,
+                bounds,
                 // Also on every show, like on Windows.
                 (showing || state.applied_input_blocked != Some(state.input_blocked))
                     .then_some(state.input_blocked),
                 (state.applied_visible != Some(state.visible)).then_some(state.visible),
+                (state.applied_shown != Some(shown)).then_some(shown),
                 state.hidden_reason,
             )
         };
@@ -981,16 +1040,23 @@ impl Inner {
             self.state.borrow_mut().applied_input_blocked = Some(input_blocked);
         }
 
+        // AppKit gives the first responder of a hidden view to the window
+        // itself, not to the GPUI view; and a parked page stays shown, so it
+        // would keep the keyboard for a page nobody sees.
+        if visible == Some(false) && self.page_owns_keyboard_focus() {
+            self.request_host_focus();
+        }
+        if let Some(shown) = shown {
+            self.container.setHidden(!shown);
+            self.state.borrow_mut().applied_shown = Some(shown);
+        }
         if let Some(visible) = visible {
-            // AppKit gives the first responder of a hidden view to the window
-            // itself, not to the GPUI view.
-            if !visible && self.page_owns_keyboard_focus() {
-                self.request_host_focus();
-            }
-            self.container.setHidden(!visible);
-            match hidden_reason {
-                Some(reason) => log::info!("WKWebView: surface hidden because {reason}"),
-                None => log::info!("WKWebView: surface shown"),
+            match (hidden_reason, self.parks_out_of_sight()) {
+                (None, _) => log::info!("WKWebView: surface shown"),
+                (Some(reason), true) => {
+                    log::info!("WKWebView: surface parked out of sight because {reason}")
+                }
+                (Some(reason), false) => log::info!("WKWebView: surface hidden because {reason}"),
             }
             self.state.borrow_mut().applied_visible = Some(visible);
         }
@@ -1128,24 +1194,6 @@ impl Inner {
         if !top_level {
             return WKNavigationActionPolicy::Allow;
         }
-        // Defence in depth: `new` refuses an AI tab without WebRTC switched
-        // off, and a `data:` page is the AI's own JavaScript, so one only opens
-        // while the switch still reads back as off.
-        if self.profile == WebViewProfile::Ai
-            && let Some(url) = url.as_deref()
-            && is_data_url(url)
-            && !peer_connections_are_off(&*unsafe { self.page.configuration().preferences() })
-        {
-            let reason =
-                "WebRTC is not switched off in this AI tab, so it does not open data: pages"
-                    .to_string();
-            log::info!("WKWebView: blocked a navigation to a data: URL: {reason}");
-            self.send(WebViewEvent::NavigationBlocked {
-                url: url.to_string(),
-                reason,
-            });
-            return WKNavigationActionPolicy::Cancel;
-        }
         let Some(filter) = &self.navigation_filter else {
             return WKNavigationActionPolicy::Allow;
         };
@@ -1250,6 +1298,104 @@ fn perform_make_first_responder(window: &NSWindow, responder: &NSView) {
     }
 }
 
+/// Out of sight, a user tab's page is hidden (`setHidden:`, and WebKit stops
+/// rendering it) and keeps its rectangle for when it comes back. An AI tab's
+/// page is parked instead: still shown to AppKit, at the size it last had on
+/// screen (or the default size of a page that was never shown), but moved left
+/// of the GPUI view, outside the window, where it is neither seen nor clicked.
+/// WebKit then keeps loading, running timers and painting. Returns the frame
+/// in points from the GPUI view's top-left corner and whether the container is
+/// shown.
+fn placement(
+    parks: bool,
+    visible: bool,
+    bounds: SurfaceRect,
+    last_size: Option<(f64, f64)>,
+) -> (SurfaceRect, bool) {
+    if visible {
+        return (bounds, true);
+    }
+    if !parks {
+        return (bounds, false);
+    }
+    let (width, height) = last_size.unwrap_or((
+        f64::from(BACKGROUND_VIEWPORT_WIDTH),
+        f64::from(BACKGROUND_VIEWPORT_HEIGHT),
+    ));
+    (
+        SurfaceRect {
+            left: -(width + PARKING_MARGIN),
+            top: 0.,
+            right: -PARKING_MARGIN,
+            bottom: height,
+        },
+        true,
+    )
+}
+
+/// What WebKit knows about the window a page is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WindowVisibility {
+    /// `-[NSWindow isVisible]`, which a minimised window is not.
+    visible: bool,
+    /// No part of the window is on screen: another window or another space
+    /// covers it.
+    occluded: bool,
+}
+
+/// Whether WebKit renders the page and presents updates, as WebKit itself
+/// decides it (`WebViewImpl::isViewVisible`): the view is shown, in a visible
+/// window that, unless occlusion is ignored, is not covered. A snapshot that
+/// waits for the next update of a page that presents none never returns.
+fn webkit_presents_updates(
+    hidden: bool,
+    window: Option<WindowVisibility>,
+    ignores_occlusion: bool,
+) -> bool {
+    !hidden
+        && window.is_some_and(|window| window.visible && (ignores_occlusion || !window.occluded))
+}
+
+/// Keeps WebKit from throttling an AI tab's page that nobody looks at, as far
+/// as WebKit lets an app; all of it is SPI (`WKWebViewPrivate.h`,
+/// `WKPreferencesPrivate.h`), so every selector is checked first, and what is
+/// missing only means slower timers out of sight. Returns whether WebKit now
+/// ignores the window's occlusion, so that a covered window (or one on
+/// another space) still renders the page.
+///
+/// What remains: a minimised window is not visible to WebKit (`isVisible` is
+/// false), so its pages stop painting and `requestAnimationFrame` pauses until
+/// it comes back; scripts, timers (with the throttling below off), loading and
+/// snapshots (taken without waiting for a screen update) keep working.
+fn keep_rendering_out_of_sight(page: &WKWebView) -> bool {
+    let ignores_occlusion = page.respondsToSelector(sel!(_setWindowOcclusionDetectionEnabled:));
+    if ignores_occlusion {
+        unsafe {
+            let () = msg_send![page, _setWindowOcclusionDetectionEnabled: false];
+        }
+    } else {
+        log::info!("WKWebView: this WebKit cannot ignore window occlusion");
+    }
+    let preferences = unsafe { page.configuration().preferences() };
+    if preferences.respondsToSelector(sel!(_setHiddenPageDOMTimerThrottlingEnabled:)) {
+        unsafe {
+            let () = msg_send![&*preferences, _setHiddenPageDOMTimerThrottlingEnabled: false];
+        }
+    }
+    if preferences.respondsToSelector(sel!(_setHiddenPageDOMTimerThrottlingAutoIncreases:)) {
+        unsafe {
+            let () = msg_send![&*preferences, _setHiddenPageDOMTimerThrottlingAutoIncreases: false];
+        }
+    }
+    if preferences.respondsToSelector(sel!(_setPageVisibilityBasedProcessSuppressionEnabled:)) {
+        unsafe {
+            let () =
+                msg_send![&*preferences, _setPageVisibilityBasedProcessSuppressionEnabled: false];
+        }
+    }
+    ignores_occlusion
+}
+
 fn add_document_start_script(
     user_content: &WKUserContentController,
     source: &str,
@@ -1268,18 +1414,19 @@ fn add_document_start_script(
 
 /// Turns off what an AI tab could reach the network with around the HTTP
 /// CONNECT proxy, and returns whether WebRTC and WebTransport are known to be
-/// off; see [`SUPPORTS_SCRIPT_EVAL`]. All of it is `WKPreferences` SPI
-/// (`WKPreferencesPrivate.h`), so every selector is checked first.
+/// off. All of it is `WKPreferences` SPI (`WKPreferencesPrivate.h`), so every
+/// selector is checked first.
 fn switch_off_unproxied_transports(preferences: &WKPreferences) -> bool {
     // `RTCPeerConnection` is `EnabledBySetting=PeerConnectionEnabled`: with it
     // off, no frame of the page has the constructor at all.
     let peer_connections_off = preferences.respondsToSelector(sel!(_setPeerConnectionEnabled:))
         && preferences.respondsToSelector(sel!(_peerConnectionEnabled))
         && {
-            unsafe {
+            let enabled: bool = unsafe {
                 let () = msg_send![preferences, _setPeerConnectionEnabled: false];
-            }
-            peer_connections_are_off(preferences)
+                msg_send![preferences, _peerConnectionEnabled]
+            };
+            !enabled
         };
     // Name lookups that skip the proxy, and could carry data out in the name;
     // gone altogether from WebKit on macOS 26.
@@ -1291,11 +1438,40 @@ fn switch_off_unproxied_transports(preferences: &WKPreferences) -> bool {
     peer_connections_off && switch_off_feature(preferences, "WebTransportEnabled")
 }
 
-fn peer_connections_are_off(preferences: &WKPreferences) -> bool {
-    preferences.respondsToSelector(sel!(_peerConnectionEnabled)) && {
-        let enabled: bool = unsafe { msg_send![preferences, _peerConnectionEnabled] };
-        !enabled
+/// Puts every page of `configuration` in Lockdown Mode (public API since
+/// macOS 13), and returns whether the configuration reads back as in it.
+/// WebKit lists `PeerConnectionEnabled` and `WebTransportEnabled` as
+/// `disableInLockdownMode: true`
+/// (`Source/WTF/Scripts/Preferences/UnifiedWebPreferences.yaml`), which
+/// `WebPage::adjustSettingsForLockdownMode` applies, so both are off then.
+fn enter_lockdown_mode(configuration: &WKWebViewConfiguration) -> bool {
+    if !configuration.respondsToSelector(sel!(defaultWebpagePreferences))
+        || !configuration.respondsToSelector(sel!(setDefaultWebpagePreferences:))
+    {
+        return false;
     }
+    let webpage_preferences: Option<Retained<AnyObject>> =
+        unsafe { msg_send![configuration, defaultWebpagePreferences] };
+    let Some(webpage_preferences) = webpage_preferences else {
+        return false;
+    };
+    let class = webpage_preferences.class();
+    if !class.responds_to(sel!(setLockdownModeEnabled:))
+        || !class.responds_to(sel!(isLockdownModeEnabled))
+    {
+        return false;
+    }
+    // The property is `copy`, so the changed object has to be set back.
+    unsafe {
+        let () = msg_send![&*webpage_preferences, setLockdownModeEnabled: true];
+        let () = msg_send![configuration, setDefaultWebpagePreferences: &*webpage_preferences];
+    }
+    let applied: Option<Retained<AnyObject>> =
+        unsafe { msg_send![configuration, defaultWebpagePreferences] };
+    applied.is_some_and(|applied| {
+        let enabled: bool = unsafe { msg_send![&*applied, isLockdownModeEnabled] };
+        enabled
+    })
 }
 
 /// Switches off the WebKit feature flag `key`, and returns whether it is off
@@ -1327,13 +1503,6 @@ fn switch_off_feature(preferences: &WKPreferences, key: &str) -> bool {
         }
     }
     true
-}
-
-/// Whether `url` is a `data:` URL; schemes are case-insensitive.
-fn is_data_url(url: &str) -> bool {
-    url.trim_start()
-        .get(..5)
-        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("data:"))
 }
 
 /// The user profile is WebKit's default store; an AI tab gets its own
@@ -1928,17 +2097,6 @@ mod tests {
     }
 
     #[test]
-    fn data_urls_are_recognised_in_any_case() {
-        assert!(is_data_url("data:text/html,<p>hi</p>"));
-        assert!(is_data_url("DATA:text/html,x"));
-        assert!(is_data_url(" Data:,"));
-        assert!(!is_data_url("https://example.com/data:x"));
-        assert!(!is_data_url("about:blank"));
-        assert!(!is_data_url("data"));
-        assert!(!is_data_url(""));
-    }
-
-    #[test]
     fn slivers_are_ignored_on_every_edge_but_deeper_overlays_are_cut() {
         let bounds = rect(100., 50., 500., 350.);
         let sliver = |overlay: SurfaceRect| {
@@ -1958,6 +2116,61 @@ mod tests {
         assert!(!sliver(rect(200., 340., 300., 360.)), "bottom, too deep");
         // As shallow as a sliver, but wholly inside: a thin popover border.
         assert!(!sliver(rect(102., 100., 105., 200.)), "inside");
+    }
+
+    #[test]
+    fn out_of_sight_an_ai_tab_is_parked_and_a_user_tab_is_hidden() {
+        let bounds = rect(100., 50., 500., 350.);
+
+        assert_eq!(placement(false, true, bounds, None), (bounds, true));
+        assert_eq!(placement(true, true, bounds, None), (bounds, true));
+        assert_eq!(
+            placement(false, false, bounds, Some((400., 300.))),
+            (bounds, false),
+            "a user tab is hidden where it was"
+        );
+
+        let (parked, shown) = placement(true, false, bounds, Some((400., 300.)));
+        assert!(shown, "a parked page stays shown to WebKit");
+        assert_eq!((parked.width(), parked.height()), (400., 300.));
+        assert!(
+            parked.right <= -PARKING_MARGIN + f64::EPSILON,
+            "the parked page is outside the window: {parked:?}"
+        );
+
+        let (never_shown, _) = placement(true, false, SurfaceRect::default(), None);
+        assert_eq!(
+            (never_shown.width(), never_shown.height()),
+            (
+                f64::from(BACKGROUND_VIEWPORT_WIDTH),
+                f64::from(BACKGROUND_VIEWPORT_HEIGHT)
+            )
+        );
+        assert!(never_shown.right < 0.);
+    }
+
+    #[test]
+    fn snapshots_only_wait_for_updates_webkit_presents() {
+        let window = |visible, occluded| Some(WindowVisibility { visible, occluded });
+
+        assert!(webkit_presents_updates(false, window(true, false), false));
+        assert!(
+            !webkit_presents_updates(true, window(true, false), true),
+            "hidden"
+        );
+        assert!(!webkit_presents_updates(false, None, true), "no window");
+        assert!(
+            !webkit_presents_updates(false, window(false, false), true),
+            "minimised"
+        );
+        assert!(
+            !webkit_presents_updates(false, window(true, true), false),
+            "covered, and WebKit watches occlusion"
+        );
+        assert!(
+            webkit_presents_updates(false, window(true, true), true),
+            "covered, but occlusion is ignored"
+        );
     }
 
     #[test]

@@ -26,7 +26,7 @@ use assets::Assets;
 pub use localized_menus::*;
 
 use breadcrumbs::Breadcrumbs;
-use browser_panel::BrowserPanel;
+use browser_panel::{AiBrowserPanel, BrowserPanel};
 use call_graph_panel::CallGraphPanel;
 use client::zed_urls;
 use collections::VecDeque;
@@ -917,6 +917,7 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
         let terminal_panel = TerminalPanel::load(workspace_handle.clone(), cx.clone());
         let git_panel = GitPanel::load(workspace_handle.clone(), cx.clone());
         let browser_panel = BrowserPanel::load(workspace_handle.clone(), cx.clone());
+        let ai_browser_panel = AiBrowserPanel::load(workspace_handle.clone(), cx.clone());
         let call_graph_panel = CallGraphPanel::load(workspace_handle.clone(), cx.clone());
         let debug_panel = DebugPanel::load(workspace_handle.clone(), cx);
 
@@ -941,6 +942,7 @@ fn initialize_panels(window: &mut Window, cx: &mut Context<Workspace>) -> Task<a
             add_panel_when_ready(terminal_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(git_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(browser_panel, workspace_handle.clone(), cx.clone()),
+            add_panel_when_ready(ai_browser_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(call_graph_panel, workspace_handle.clone(), cx.clone()),
             add_panel_when_ready(debug_panel, workspace_handle.clone(), cx.clone()),
             initialize_agent_panel(workspace_handle.clone(), cx.clone()).map(|r| r.log_err()),
@@ -6168,6 +6170,7 @@ mod tests {
                 "activity_indicator",
                 "agent",
                 "agents_sidebar",
+                "ai_browser_panel",
                 "app_menu",
                 "assistant",
                 "assistant2",

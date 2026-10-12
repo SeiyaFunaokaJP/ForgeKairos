@@ -329,6 +329,39 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p14.i13[browser.ai_control].description",
         "オンにすると、AI エージェントが内蔵ブラウザーの AI タブを開いて操作し、Web アプリをデバッグできます。AI タブは別のブラウザープロファイルを使い、通信は許可リストの範囲に限られます (localhost は常に許可)。あなた自身のブラウザータブが AI エージェントに見えることはありません。",
     ),
+    // ForgeKairos: the AI browser panel (ADR-F89 追記 10).
+    (
+        "p14.i14[browser.ai_panel.button].title",
+        "AI ブラウザーパネルのボタン",
+    ),
+    (
+        "p14.i14[browser.ai_panel.button].description",
+        "AI エージェントが内蔵ブラウザーを使える間、ステータスバーに AI ブラウザーパネルのボタンを表示します。",
+    ),
+    (
+        "p14.i15[browser.ai_panel.dock].title",
+        "AI ブラウザーパネルのドック位置",
+    ),
+    (
+        "p14.i15[browser.ai_panel.dock].description",
+        "AI ブラウザーパネル (AI エージェントが操作するタブを開く場所) をドッキングする位置です。",
+    ),
+    (
+        "p14.i16[browser.ai_panel.default_width].title",
+        "AI ブラウザーパネルの既定の幅",
+    ),
+    (
+        "p14.i16[browser.ai_panel.default_width].description",
+        "AI ブラウザーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。",
+    ),
+    (
+        "p14.i17[browser.ai_panel.default_height].title",
+        "AI ブラウザーパネルの既定の高さ",
+    ),
+    (
+        "p14.i17[browser.ai_panel.default_height].description",
+        "AI ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。",
+    ),
 ];
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.
@@ -726,6 +759,7 @@ fn translated_dropdowns() -> Vec<(
                 "並べない",
                 "エージェントパネル",
                 "ブラウザーパネル",
+                "AI ブラウザーパネル",
                 "ターミナルパネル",
                 "プロジェクトパネル",
                 "Git パネル",
@@ -1489,7 +1523,7 @@ async fn english_search_still_matches_the_start_of_words(cx: &mut TestAppContext
     for (query, expected_count, expected_best_match) in [
         ("line", 57, "Appearance"),
         ("font size", 15, "Font"),
-        ("tab", 43, "Preview Tabs"),
+        ("tab", 44, "Preview Tabs"),
         ("index", 12, "Symbol Index"),
         ("save", 18, "Auto Save"),
         ("vim", 20, "Vim"),

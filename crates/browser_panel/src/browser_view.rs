@@ -63,6 +63,26 @@ const EGRESS_PROXY_POLL_INTERVAL: std::time::Duration = std::time::Duration::fro
 /// AI タブが最初に開くページ。利用者のホームページ (既定は Microsoft 365) へは出ていかない。
 pub(crate) const AI_TAB_BLANK_URL: &str = "about:blank";
 
+#[cfg(test)]
+type TestSurfaceFactory = Rc<dyn Fn() -> Result<Rc<dyn AutomationSurface>, FailedStart>>;
+
+#[cfg(test)]
+thread_local! {
+    /// The stand-in that views created from now on start with, for tabs a test cannot reach
+    /// before they are created (a tab a command opens).
+    static NEW_VIEW_SURFACE_FACTORY: std::cell::RefCell<Option<TestSurfaceFactory>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// How a test's stand-in for creating a page fails.
+#[cfg(test)]
+pub(crate) enum FailedStart {
+    /// The page's browser went away as soon as it started, with the reason.
+    Crashed(String),
+    /// The browser could not be created at all (what `WebView::new` reports).
+    CouldNotStart(String),
+}
+
 enum SurfaceState {
     /// WebView2 の生成をまだ始めていない。
     Idle,
@@ -75,6 +95,15 @@ enum SurfaceState {
         offer_runtime_download: bool,
         /// AI のツールに返す英文の理由。`None` なら `message` をそのまま返す。
         detail: Option<String>,
+        /// AI タブの面が生成で失敗した。描画からは作り直さないが、次の AI のコマンドが
+        /// 1 回だけ作り直す (落ちた面と同じ扱い。一時的な失敗で AI タブを使えなくしない)。
+        retry_on_command: bool,
+    },
+    /// ページのプロセスが落ちて面を捨てた。描画からは作り直さない (落ち続けるページで
+    /// 作り直しを繰り返さないため)。利用者の「再読み込み」か、AI タブなら次のコマンドが
+    /// 作り直して `current_url` を開き直す。`message` は AI のツールに返す英文の理由。
+    Crashed {
+        message: String,
     },
 }
 
@@ -94,6 +123,8 @@ struct BookmarkForm {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BrowserHost {
     Panel,
+    /// AI ブラウザーパネル (ADR-F89 追記 10)。AI タブだけが載る。
+    AiPanel,
     EditorTab,
 }
 
@@ -157,6 +188,9 @@ pub struct BrowserView {
     /// 子 HWND は元のウィンドウにぶら下がったままなので、変わったら作り直す。
     host_hwnd: Option<isize>,
     surface: SurfaceState,
+    /// 面が一度でも描画されたか。AI タブの面は描画より先にコマンドから作られることがあり
+    /// ([`Self::ensure_background_surface`])、その間は既定の大きさで裏に置いておく。
+    surface_painted: Rc<std::cell::Cell<bool>>,
     warned_missing_window_handle: bool,
     current_url: String,
     /// ホームページを「ユーザーがブラウザーに向くまで」待たせているタブの
@@ -190,6 +224,9 @@ pub struct BrowserView {
     /// 読んだ後に (起動直後は少し遅れて) 立ち上がるので、それまでに描かれたタブを
     /// 「開けない」のまま置き去りにしない。
     proxy_wait_task: Option<Task<()>>,
+    /// Tests have no native window to host a page in; this stands in for creating one.
+    #[cfg(test)]
+    test_surface_factory: Option<TestSurfaceFactory>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -239,6 +276,7 @@ impl BrowserView {
             ai: (profile == WebViewProfile::Ai).then(AiTabState::new),
             host_hwnd: None,
             surface: SurfaceState::Idle,
+            surface_painted: Rc::default(),
             warned_missing_window_handle: false,
             current_url: String::new(),
             pending_home_url: None,
@@ -258,6 +296,8 @@ impl BrowserView {
             pending_delete: None,
             event_task: None,
             proxy_wait_task: None,
+            #[cfg(test)]
+            test_surface_factory: NEW_VIEW_SURFACE_FACTORY.with(|factory| factory.borrow().clone()),
             _subscriptions: subscriptions,
         }
     }
@@ -376,13 +416,24 @@ impl BrowserView {
         match (&self.surface, &self.automation_surface) {
             (
                 SurfaceState::Unavailable {
-                    message, detail, ..
+                    message,
+                    detail,
+                    retry_on_command,
+                    ..
                 },
                 _,
             ) => {
-                AutomationStatus::Unavailable(detail.clone().unwrap_or_else(|| message.to_string()))
+                let reason = detail.clone().unwrap_or_else(|| message.to_string());
+                if *retry_on_command {
+                    AutomationStatus::Restartable(reason)
+                } else {
+                    AutomationStatus::Unavailable(reason)
+                }
             }
             (SurfaceState::Ready, Some(surface)) => AutomationStatus::Ready(surface.clone()),
+            (SurfaceState::Crashed { message }, _) => {
+                AutomationStatus::Restartable(message.clone())
+            }
             (state, surface) => AutomationStatus::Waiting {
                 has_surface: surface.is_some() || matches!(state, SurfaceState::Starting),
             },
@@ -474,6 +525,21 @@ impl BrowserView {
         cx.notify();
     }
 
+    /// Makes surface creation (from painting or from a command) hand out `factory`'s surfaces,
+    /// as if the window could host a page.
+    #[cfg(test)]
+    pub(crate) fn set_surface_factory_for_test(&mut self, factory: TestSurfaceFactory) {
+        self.test_surface_factory = Some(factory);
+    }
+
+    /// [`Self::set_surface_factory_for_test`] for every view created afterwards on this thread.
+    #[cfg(test)]
+    pub(crate) fn set_surface_factory_for_new_views_for_test(factory: TestSurfaceFactory) {
+        NEW_VIEW_SURFACE_FACTORY.with(|new_view_factory| {
+            *new_view_factory.borrow_mut() = Some(factory);
+        });
+    }
+
     #[cfg(test)]
     pub(crate) fn set_surface_unavailable_for_test(
         &mut self,
@@ -485,6 +551,7 @@ impl BrowserView {
             message,
             offer_runtime_download: false,
             detail: None,
+            retry_on_command: false,
         };
         cx.notify();
     }
@@ -585,19 +652,36 @@ impl BrowserView {
             && current != previous
         {
             // タブが別ウィンドウへ移った。子 HWND は元のウィンドウの下にいるので
-            // 作り直す。`event_task` をここで落とせるのは、この関数が描画から
-            // しか呼ばれない (= タスクの中ではない) ため。
+            // 作り直す。`event_task` をここで落とせるのは、この関数が描画か
+            // AI のコマンドからしか呼ばれない (= タスクの中ではない) ため。
             log::info!("browser view: the host window changed; recreating the browsing surface");
-            self.webview = None;
-            self.automation_surface = None;
+            self.discard_surface();
             self.event_task = None;
             self.surface = SurfaceState::Idle;
-            self.host_hwnd = None;
-            self.applied_dark_mode = None;
-            self.applied_background_color = None;
         }
 
         if self.webview.is_some() || !matches!(self.surface, SurfaceState::Idle) {
+            return;
+        }
+
+        #[cfg(test)]
+        if let Some(factory) = self.test_surface_factory.clone() {
+            match factory() {
+                Ok(surface) => {
+                    if !self.current_url.is_empty() {
+                        surface.navigate(&self.current_url);
+                    }
+                    self.automation_surface = Some(surface);
+                    self.surface = SurfaceState::Ready;
+                }
+                Err(FailedStart::Crashed(detail)) => {
+                    self.surface = SurfaceState::Crashed {
+                        message: webview::crashed_page_message(&detail),
+                    };
+                }
+                Err(FailedStart::CouldNotStart(detail)) => self.set_surface_failed(detail),
+            }
+            cx.notify();
             return;
         }
 
@@ -614,6 +698,82 @@ impl BrowserView {
             }
             return;
         };
+        self.start_surface(host_hwnd, window, cx);
+    }
+
+    /// AI のコマンドが、まだ描画されたことのない AI タブ (裏のタブ・閉じたパネル・畳んだ
+    /// ドック・最小化したウィンドウ) の面を求めたときに、描画を待たずに作る。作るのは
+    /// 描画の経路と同じ面で、`window` はタブが載るワークスペースのウィンドウ。描画される
+    /// までは見えない場所に既定の大きさで置いたまま描かせておき (バックエンドの「待避」)、
+    /// 後で描画されれば同じ面がその場所へ置き直される。落ちた面はここで作り直す。
+    pub(crate) fn ensure_background_surface(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.is_ai_tab() {
+            return;
+        }
+        if matches!(
+            self.surface,
+            SurfaceState::Crashed { .. }
+                | SurfaceState::Unavailable {
+                    retry_on_command: true,
+                    ..
+                }
+        ) {
+            log::info!("browser view: restarting the AI tab's browser for a command");
+            self.surface = SurfaceState::Idle;
+        }
+        self.ensure_surface(window, cx);
+        if self.surface_painted.get() {
+            return;
+        }
+        if let Some(webview) = &self.webview {
+            let deferred = webview.sync_viewport(
+                Viewport {
+                    origin_x: 0.,
+                    origin_y: 0.,
+                    width: webview::BACKGROUND_VIEWPORT_WIDTH,
+                    height: webview::BACKGROUND_VIEWPORT_HEIGHT,
+                    scale_factor: window.scale_factor(),
+                    hidden_reason: Some(webview::PARKED_IN_BACKGROUND),
+                    input_blocked: false,
+                    overlays: Vec::new(),
+                },
+                false,
+            );
+            // Nothing is cut out of a page that is out of sight; should a backend still ask
+            // for it, there is no frame to wait for.
+            if deferred {
+                webview.apply_deferred_clip();
+            }
+        }
+    }
+
+    /// 面を手放す。`event_task` は残す: 面のイベントの処理中に呼ばれることがあり、
+    /// タスクが自分自身を落としてはいけないため (次に面を作るときに差し替わる)。
+    fn discard_surface(&mut self) {
+        self.webview = None;
+        self.automation_surface = None;
+        self.host_hwnd = None;
+        self.surface_painted.set(false);
+        self.applied_dark_mode = None;
+        self.applied_background_color = None;
+    }
+
+    /// 利用者の「再読み込み」で、落ちた面を作り直す。次の描画が `current_url` を開き直す。
+    fn restart_crashed_surface(&mut self, cx: &mut Context<Self>) {
+        if !matches!(self.surface, SurfaceState::Crashed { .. }) {
+            return;
+        }
+        log::info!("browser view: restarting the browser after the page stopped");
+        self.surface = SurfaceState::Idle;
+        self.status_message = None;
+        cx.notify();
+    }
+
+    fn start_surface(&mut self, host_hwnd: isize, window: &mut Window, cx: &mut Context<Self>) {
         self.host_is_composited = webview::host_uses_direct_composition(host_hwnd);
 
         let Some(options) = self.surface_options(cx) else {
@@ -631,6 +791,7 @@ impl BrowserView {
                      (they never connect directly)."
                         .to_string(),
                 ),
+                retry_on_command: false,
             };
             self.wait_for_egress_proxy(cx);
             cx.notify();
@@ -721,11 +882,13 @@ impl BrowserView {
                 // ダウンロードページは WebView2 のもの。他の OS には出さない。
                 offer_runtime_download: cfg!(windows),
                 detail: None,
+                retry_on_command: false,
             },
             WebViewProfile::Ai => SurfaceState::Unavailable {
                 message: i18n::t!("The AI tab's browser could not start: {detail}").into(),
                 offer_runtime_download: false,
                 detail: Some(format!("The AI tab's browser could not start: {detail}")),
+                retry_on_command: true,
             },
         };
     }
@@ -781,6 +944,19 @@ impl BrowserView {
                 if self.current_url.is_empty() && self.pending_home_url.is_none() {
                     let home = Self::settings(cx).home_url.clone();
                     self.navigate_to(&home, cx);
+                }
+            }
+            WebViewEvent::Crashed(detail) => {
+                log::error!("browser view: the page's browser process went away: {detail}");
+                self.discard_surface();
+                let message = webview::crashed_page_message(&detail);
+                self.surface = SurfaceState::Crashed {
+                    message: message.clone(),
+                };
+                self.loading = false;
+                if let Some(ai) = &mut self.ai {
+                    ai.record_blocked(message.clone());
+                    ai.navigation_ended(NavigationOutcome::Blocked { message });
                 }
             }
             #[cfg(windows)]
@@ -963,6 +1139,10 @@ impl BrowserView {
     }
 
     fn reload(&mut self, _: &Reload, _: &mut Window, cx: &mut Context<Self>) {
+        if matches!(self.surface, SurfaceState::Crashed { .. }) {
+            self.restart_crashed_surface(cx);
+            return;
+        }
         match &self.webview {
             Some(webview) => {
                 self.loading = true;
@@ -1513,6 +1693,8 @@ impl BrowserView {
     pub(crate) fn shows_bookmark_bar(&self, cx: &Context<Self>) -> bool {
         match self.host {
             BrowserHost::EditorTab => true,
+            // AI タブで開くのは開発中のアプリ。利用者のブックマークは並べない。
+            BrowserHost::AiPanel => false,
             BrowserHost::Panel => self
                 .workspace
                 .upgrade()
@@ -2054,6 +2236,7 @@ impl BrowserView {
                 offer_runtime_download,
                 ..
             } => self.render_unavailable(message.clone(), *offer_runtime_download, cx),
+            SurfaceState::Crashed { .. } => self.render_crashed(cx),
             SurfaceState::Idle | SurfaceState::Starting | SurfaceState::Ready => {
                 let presentation = self.surface_presentation(window, cx);
                 // 穴を開けてよいのは実際にページが載っているときだけ。ページの
@@ -2073,6 +2256,7 @@ impl BrowserView {
                 let cut_overlays = !cx.has_active_drag();
                 let webview = self.webview.clone();
                 let focus_handle = self.focus_handle.clone();
+                let surface_painted = self.surface_painted.clone();
                 div()
                     .relative()
                     .size_full()
@@ -2121,6 +2305,7 @@ impl BrowserView {
                                 let Some(webview) = webview else {
                                     return;
                                 };
+                                surface_painted.set(true);
                                 let view_focused = focus_handle.contains_focused(window, cx);
                                 sync_surface_viewport(
                                     &webview,
@@ -2166,6 +2351,21 @@ impl BrowserView {
                     .into_any_element()
             }
         }
+    }
+
+    fn render_crashed(&self, cx: &mut Context<Self>) -> AnyElement {
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .p_4()
+            .child(Label::new(i18n::t!("This page stopped working.")).color(Color::Muted))
+            .child(
+                Button::new("browser-restart-crashed", i18n::t!("Reload"))
+                    .on_click(cx.listener(|this, _, _, cx| this.restart_crashed_surface(cx))),
+            )
+            .into_any_element()
     }
 
     fn render_unavailable(

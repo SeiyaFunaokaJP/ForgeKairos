@@ -218,6 +218,8 @@ pub enum DefaultDockPanel {
     Agent,
     #[strum(serialize = "Browser Panel")]
     Browser,
+    #[strum(serialize = "AI Browser Panel")]
+    AiBrowser,
     #[strum(serialize = "Terminal Panel")]
     Terminal,
     #[strum(serialize = "Project Panel")]
@@ -238,6 +240,7 @@ impl DefaultDockPanel {
             Self::None => None,
             Self::Agent => Some("AgentPanel"),
             Self::Browser => Some("BrowserPanel"),
+            Self::AiBrowser => Some("AiBrowserPanel"),
             Self::Terminal => Some("TerminalPanel"),
             Self::Project => Some("Project Panel"),
             Self::Git => Some("GitPanel"),

@@ -23,17 +23,18 @@
 //!
 //! AI が操作できるのは **AI タブ** だけ (ADR-F89、[`browser_automation`])。別プロファイルで、
 //! 通信は `browser.use_egress_proxy` に関わらず egress プロキシ必須、トップレベルの
-//! ナビゲーションは許可リストで事前に検査する。
+//! ナビゲーションは許可リストで事前に検査する。AI タブは人のパネルには置かず、
+//! エージェントパネルの隣の [`AiBrowserPanel`] に並べる (ADR-F89 追記 10)。
 
-use std::{sync::Arc, time::Duration};
+use std::{any::Any, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use async_recursion::async_recursion;
 use db::kvp::KeyValueStore;
 use editor::Editor;
 use gpui::{
-    Action, App, AsyncWindowContext, Axis, Context, Entity, EntityId, EventEmitter, FocusHandle,
-    Focusable, MouseDownEvent, Pixels, Point, Task, WeakEntity, Window, actions,
+    Action, AnyElement, App, AsyncWindowContext, Axis, Context, Entity, EntityId, EventEmitter,
+    FocusHandle, Focusable, MouseDownEvent, Pixels, Point, Task, WeakEntity, Window, actions,
 };
 use project::Project;
 use serde::{Deserialize, Serialize};
@@ -41,18 +42,20 @@ use settings::{IntoGpui, RegisterSetting, Settings};
 use ui::{Tooltip, prelude::*};
 use util::{ResultExt as _, TryFutureExt as _};
 use workspace::{
-    CloseActiveItem, DraggedTab, ItemId, Member, Pane, PaneAxis, PaneGroup, SplitDirection,
-    SplitMode, Workspace, WorkspaceId,
+    CloseActiveItem, DraggedTab, ItemHandle, ItemId, Member, Pane, PaneAxis, PaneGroup,
+    SplitDirection, SplitMode, Workspace, WorkspaceId,
     dock::{DockPosition, Panel, PanelEvent},
     pane,
     searchable::SearchableItem as _,
 };
 
+pub mod ai_browser_panel;
 mod browser_automation;
 mod browser_bookmarks;
 mod browser_item;
 mod browser_view;
 
+pub use ai_browser_panel::AiBrowserPanel;
 pub use browser_bookmarks::{
     BookmarkNode, BookmarkPath, BookmarkRow, BookmarkStore, BookmarksFile, default_bookmarks,
     parse_bookmarks_file, serialize_bookmarks_file, should_seed_default_bookmarks,
@@ -143,7 +146,7 @@ actions!(
         SplitPanelRight,
         /// Moves focus to the next pane of the split browser panel.
         FocusNextPaneGroup,
-        /// Opens a new AI tab in the browser panel: a tab with its own browser profile that AI agents can drive, with its traffic limited to the network allowlist.
+        /// Opens a new AI tab in the AI browser panel: a tab with its own browser profile that AI agents can drive, with its traffic limited to the network allowlist.
         NewAiTab,
         /// Opens the developer tools of the current browser tab.
         OpenDeveloperTools,
@@ -174,6 +177,16 @@ pub struct BrowserSettings {
     pub copilot_url: String,
     pub use_egress_proxy: bool,
     pub ai_control: bool,
+    pub ai_panel: AiBrowserPanelSettings,
+}
+
+/// The AI browser panel (ADR-F89 追記 10), `browser.ai_panel`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AiBrowserPanelSettings {
+    pub button: bool,
+    pub dock: DockPosition,
+    pub default_width: Pixels,
+    pub default_height: Pixels,
 }
 
 pub const DEFAULT_HOME_URL: &str = "https://m365.cloud.microsoft/chat";
@@ -206,6 +219,21 @@ impl Settings for BrowserSettings {
                 .unwrap_or_else(|| DEFAULT_COPILOT_URL.to_string()),
             use_egress_proxy: browser.use_egress_proxy.unwrap_or(false),
             ai_control: browser.ai_control.unwrap_or(false),
+            ai_panel: {
+                let ai_panel = browser.ai_panel.unwrap_or_default();
+                AiBrowserPanelSettings {
+                    button: ai_panel.button.unwrap_or(true),
+                    dock: ai_panel.dock.map(Into::into).unwrap_or(DockPosition::Right),
+                    default_width: ai_panel
+                        .default_width
+                        .map(|width| width.into_gpui())
+                        .unwrap_or(px(480.)),
+                    default_height: ai_panel
+                        .default_height
+                        .map(|height| height.into_gpui())
+                        .unwrap_or(px(320.)),
+                }
+            },
         }
     }
 }
@@ -323,24 +351,727 @@ pub(crate) enum NewTabPlacement {
     Background,
 }
 
-/// ドックの内蔵ブラウザー。中身はワークスペースと同じ [`PaneGroup`] + [`Pane`] で、
-/// タブ 1 枚 = [`BrowserItem`] 1 つ = WebView2 コントローラー 1 つ。
-///
-/// ターミナルパネルと同じ作りにしてあるのは、**IDE 内のどのタブ列にもドラッグで
-/// 移せる**ようにするため (第 12 便)。パネル独自のタブ実装だと、掴んだタブは
-/// パネルの外へ出られない。
-pub struct BrowserPanel {
-    fs: Arc<dyn fs::Fs>,
-    workspace: WeakEntity<Workspace>,
-    project: Entity<Project>,
+/// ブラウザーのパネルの種類。人のブラウザーパネル ([`BrowserPanel`]) と、AI タブだけを
+/// 並べる AI ブラウザーパネル ([`AiBrowserPanel`]、ADR-F89 追記 10)。タブ列の作り
+/// ([`PanelTabs`] と [`BrowserTabsPanel`]) は同じで、どのタブを置くかだけが違う。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PanelKind {
+    User,
+    Ai,
+}
+
+impl PanelKind {
+    pub(crate) fn host(self) -> BrowserHost {
+        match self {
+            Self::User => BrowserHost::Panel,
+            Self::Ai => BrowserHost::AiPanel,
+        }
+    }
+
+    /// このパネルに置いてよいタブか。人のパネルにはターミナルやエディターも載る
+    /// (第 12 便) が、AI タブは載せない。AI のパネルには AI タブしか載せない。
+    pub(crate) fn accepts(self, item: &dyn ItemHandle, cx: &App) -> bool {
+        let profile = item
+            .downcast::<BrowserItem>()
+            .map(|item| item.read(cx).view().read(cx).profile());
+        match self {
+            Self::User => profile != Some(WebViewProfile::Ai),
+            Self::Ai => profile == Some(WebViewProfile::Ai),
+        }
+    }
+
+    /// ドラッグ中のものをこのパネルのペインに落とせるか。タブ以外 (ファイル・
+    /// プロジェクトパネルの選択) はエディターか `file:` のページになるので、
+    /// AI のパネルには落とさせない。
+    fn accepts_drop(self, dragged: &dyn Any, cx: &App) -> bool {
+        match dragged.downcast_ref::<DraggedTab>() {
+            Some(tab) => self.accepts(tab.item.as_ref(), cx),
+            None => self == Self::User,
+        }
+    }
+}
+
+/// パネルの中のタブ列。中身はワークスペースと同じ [`PaneGroup`] + [`Pane`] で、
+/// タブ 1 枚 = [`BrowserItem`] 1 つ = WebView2 コントローラー 1 つ。人のパネルと
+/// AI のパネルが 1 つずつ持つ。
+pub(crate) struct PanelTabs {
+    pub(crate) fs: Arc<dyn fs::Fs>,
+    pub(crate) workspace: WeakEntity<Workspace>,
+    pub(crate) project: Entity<Project>,
     /// タブが 1 枚も無いときに使うフォーカス先。タブがあるときはペインに渡す。
-    focus_handle: FocusHandle,
+    pub(crate) focus_handle: FocusHandle,
     pub(crate) center: PaneGroup,
     pub(crate) active_pane: Entity<Pane>,
     pending_serialization: Task<Option<()>>,
     /// 保存したレイアウトを組み立てている最中。この間の保存は「まだ空のパネル」を
-    /// 書いてしまうので止める ([`BrowserPanel::load_inner`])。
+    /// 書いてしまうので止める ([`restore`])。
     restoring: bool,
+}
+
+impl PanelTabs {
+    fn new<T: BrowserTabsPanel>(
+        workspace: &Workspace,
+        window: &mut Window,
+        cx: &mut Context<T>,
+    ) -> Self {
+        let project = workspace.project().clone();
+        let pane = new_browser_pane(workspace.weak_handle(), project.clone(), window, cx);
+        Self {
+            fs: workspace.app_state().fs.clone(),
+            workspace: workspace.weak_handle(),
+            project,
+            focus_handle: cx.focus_handle(),
+            center: PaneGroup::new(pane.clone()),
+            active_pane: pane,
+            pending_serialization: Task::ready(None),
+            restoring: false,
+        }
+    }
+
+    pub(crate) fn contains_focus(&self, window: &Window, cx: &App) -> bool {
+        self.center
+            .panes()
+            .into_iter()
+            .any(|pane| pane.focus_handle(cx).contains_focused(window, cx))
+    }
+
+    pub(crate) fn active_view(&self, cx: &App) -> Option<Entity<BrowserView>> {
+        self.active_pane
+            .read(cx)
+            .active_item()?
+            .downcast::<BrowserItem>()
+            .map(|item| item.read(cx).view().clone())
+    }
+
+    /// ブックマークバーを出してよいビューか (ADR-F33 追記 2)。バーはビューの中の
+    /// アドレス欄の下に戻したので、分割していても「アクティブなペインのアクティブな
+    /// ビュー」だけが出す。ビュー側が描くたびに聞きに来る (push しないので、
+    /// タブを閉じた・落とした後に古い旗が残らない)。
+    pub(crate) fn is_active_view(&self, view_id: EntityId, cx: &App) -> bool {
+        self.active_view(cx)
+            .is_some_and(|view| view.entity_id() == view_id)
+    }
+
+    pub(crate) fn pane_for_item(&self, item_id: EntityId, cx: &App) -> Option<Entity<Pane>> {
+        self.center
+            .panes()
+            .into_iter()
+            .find(|pane| pane.read(cx).items().any(|item| item.item_id() == item_id))
+            .cloned()
+    }
+
+    pub(crate) fn contains_pane(&self, pane: &Entity<Pane>) -> bool {
+        self.center.panes().contains(&pane)
+    }
+
+    fn url_of_active_item(&self, pane: &Entity<Pane>, cx: &App) -> Option<String> {
+        let url = pane
+            .read(cx)
+            .active_item()?
+            .downcast::<BrowserItem>()?
+            .read(cx)
+            .view()
+            .read(cx)
+            .current_url()
+            .trim()
+            .to_string();
+        (!url.is_empty()).then_some(url)
+    }
+
+    /// 表に出ていないタブの子 HWND を隠す。子 HWND は GPUI の描画に従わないので
+    /// 「隠すのは push、見せるのは pull」(次の描画で canvas が矩形を流し直す)。
+    /// 分割しているときは**ペインごとに 1 枚**が表に出る。
+    pub(crate) fn hide_inactive_surfaces(&self, cx: &mut App) {
+        for pane in self.center.panes() {
+            let active_item_id = pane.read(cx).active_item().map(|item| item.item_id());
+            let inactive = pane
+                .read(cx)
+                .items()
+                .filter(|item| Some(item.item_id()) != active_item_id)
+                .filter_map(|item| item.downcast::<BrowserItem>())
+                .collect::<Vec<_>>();
+            for item in inactive {
+                item.update(cx, |item, cx| item.hide_surface(HIDDEN_TAB_INACTIVE, cx));
+            }
+        }
+    }
+
+    pub(crate) fn hide_all_surfaces(&self, reason: &'static str, cx: &mut App) {
+        for pane in self.center.panes() {
+            let items = pane
+                .read(cx)
+                .items()
+                .filter_map(|item| item.downcast::<BrowserItem>())
+                .collect::<Vec<_>>();
+            for item in items {
+                item.update(cx, |item, cx| item.hide_surface(reason, cx));
+            }
+        }
+    }
+
+    pub(crate) fn has_no_tabs(&self, cx: &App) -> bool {
+        self.center
+            .panes()
+            .into_iter()
+            .all(|pane| pane.read(cx).items_len() == 0)
+    }
+
+    pub(crate) fn is_zoomed(&self, cx: &App) -> bool {
+        self.center
+            .panes()
+            .into_iter()
+            .any(|pane| pane.read(cx).is_zoomed())
+    }
+
+    pub(crate) fn set_zoomed(&self, zoomed: bool, cx: &mut App) {
+        for pane in self.center.panes() {
+            pane.update(cx, |pane, cx| pane.set_zoomed(zoomed, cx));
+        }
+    }
+
+    pub(crate) fn focus_handle(&self, cx: &App) -> FocusHandle {
+        if self.active_pane.read(cx).items_len() == 0 {
+            return self.focus_handle.clone();
+        }
+        self.active_pane.focus_handle(cx)
+    }
+
+    pub(crate) fn panes(&self) -> Vec<Entity<Pane>> {
+        self.center.panes().into_iter().cloned().collect()
+    }
+}
+
+/// [`PanelTabs`] を持つパネル (人のブラウザーパネルと AI ブラウザーパネル) の共通の
+/// 振る舞い。タブ列・分割・ドロップ・保存と復元はここに 1 つだけ書き、パネルごとに
+/// 違うのは [`PanelKind`] と下のフックだけにする。
+pub(crate) trait BrowserTabsPanel: Panel {
+    const KIND: PanelKind;
+
+    fn tabs(&self) -> &PanelTabs;
+
+    fn tabs_mut(&mut self) -> &mut PanelTabs;
+
+    /// `pane` の前面のタブが替わった。人のパネルはここで待機中のホームを起こす (ADR-F48)。
+    fn front_tab_changed(
+        &mut self,
+        _pane: &Entity<Pane>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+    }
+
+    /// 保存から戻したタブのうち、このパネルには置かないもの。
+    fn restored_foreign_item(&mut self, item: Box<dyn ItemHandle>, cx: &mut Context<Self>);
+
+    /// タブを 1 枚足す。プロファイルはパネルの種類で決まる。`url` が `None` なら、
+    /// 人のタブは `browser.home_url` (それも空ならブックマークを開いた空のタブ)、
+    /// AI タブは空のページになる ([`BrowserItem`] と同じ規則)。
+    ///
+    /// [`NewTabPlacement::Background`] のタブは WebView2 のコントローラーを
+    /// **まだ作らない**。生成は [`BrowserView`] の描画から起きるので、そのタブが
+    /// 表に出るまで msedgewebview2.exe は 1 つも増えない。
+    fn open_tab_in_pane(
+        &mut self,
+        pane: &Entity<Pane>,
+        url: Option<String>,
+        placement: NewTabPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<BrowserItem> {
+        let workspace = self.tabs().workspace.clone();
+        let fs = self.tabs().fs.clone();
+        let host = Self::KIND.host();
+        let item = cx.new(|cx| match Self::KIND {
+            PanelKind::User => BrowserItem::new(workspace, fs, host, url, window, cx),
+            PanelKind::Ai => BrowserItem::new_ai(workspace, fs, host, url, window, cx),
+        });
+        // 既にパネルの中にフォーカスがあるなら、フォーカスは新しいタブへ移す
+        // (タブを閉じた直後に開いたときにフォーカスが宙に浮かないように)。
+        let focus = placement == NewTabPlacement::Foreground
+            || (placement == NewTabPlacement::ForegroundWithoutFocus
+                && self.tabs().contains_focus(window, cx));
+        // `Pane::add_item` は必ず表に出してしまうので、背景タブは
+        // `add_item_inner` で「足すだけ」にする (WebView2 はまだ作られない)。
+        let activate = placement != NewTabPlacement::Background;
+        pane.update(cx, |pane, cx| {
+            pane.add_item_inner(
+                Box::new(item.clone()),
+                focus,
+                focus,
+                activate,
+                None,
+                window,
+                cx,
+            );
+        });
+        item
+    }
+
+    /// 「このタブの隣にもう 1 枚」の受け口。そのページを出していたペインの中に、
+    /// ブラウザーと同じく**背景タブ**として足す (今のページは見えたまま)。
+    fn open_beside_item(
+        &mut self,
+        item_id: EntityId,
+        url: Option<String>,
+        placement: NewTabPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let pane = self
+            .tabs()
+            .pane_for_item(item_id, cx)
+            .unwrap_or_else(|| self.tabs().active_pane.clone());
+        self.open_tab_in_pane(&pane, url, placement, window, cx);
+    }
+
+    /// ファイルを落として開くときの受け口。端に落とされていたら (`split` が
+    /// `Some`) まずそのペインを割り、開いたページを新しいペインに入れる。
+    /// 1 つ目だけ表に出し、残りは背景タブ。
+    fn open_dropped_urls(
+        &mut self,
+        item_id: EntityId,
+        urls: Vec<String>,
+        split: Option<SplitDirection>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let pane = self
+            .tabs()
+            .pane_for_item(item_id, cx)
+            .unwrap_or_else(|| self.tabs().active_pane.clone());
+        let pane = match split {
+            Some(direction) => self.split_pane(&pane, direction, window, cx),
+            None => pane,
+        };
+        for (index, url) in urls.into_iter().enumerate() {
+            let placement = if index == 0 {
+                NewTabPlacement::Foreground
+            } else {
+                NewTabPlacement::Background
+            };
+            self.open_tab_in_pane(&pane, Some(url), placement, window, cx);
+        }
+    }
+
+    /// ページの中がクリックされたときに、そのタブが載っているペインを
+    /// アクティブにする。子 HWND のクリックは GPUI に届かないので、
+    /// [`BrowserViewEvent::Focused`] の申告だけが手掛かりになる。
+    fn activate_pane_for_item(
+        &mut self,
+        item_id: EntityId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(pane) = self.tabs().pane_for_item(item_id, cx) else {
+            return;
+        };
+        // 既にそのペインの中にフォーカスがあるなら触らない。アドレス欄を
+        // クリックしたときもこの申告は飛ぶので、ここで奪うと入力できなくなる
+        // (ペインにフォーカスを移すと `Pane::focus_in` がビューへ送り直す)。
+        if !pane.focus_handle(cx).contains_focused(window, cx) {
+            window.focus(&pane.focus_handle(cx), cx);
+        }
+        self.activate_pane(pane, cx);
+    }
+
+    /// このペインを「次の操作の宛先」にする (ブックマークバー・アドレス欄・
+    /// `Ctrl+T` はすべてここを見る)。フォーカスは動かさない。
+    fn activate_pane(&mut self, pane: Entity<Pane>, cx: &mut Context<Self>) {
+        if pane == self.tabs().active_pane {
+            return;
+        }
+        // 宛先が移った両側のビューを描き直させる (ブックマークバーの出し入れは
+        // ビューの中で起きる)。ペインは `.cached()` なので、パネルの `notify` だけでは
+        // 前のフレームの描画がそのまま流し直される。
+        let previously_active_view = self.tabs().active_view(cx);
+        self.tabs_mut().active_pane = pane;
+        let newly_active_view = self.tabs().active_view(cx);
+        for view in [previously_active_view, newly_active_view]
+            .into_iter()
+            .flatten()
+        {
+            view.update(cx, |_, cx| cx.notify());
+        }
+        cx.notify();
+    }
+
+    /// クリックが落ちたペインをアクティブにする。
+    ///
+    /// [`pane::Event::Focus`] は**ペインの外から**フォーカスが入ったときにしか
+    /// 鳴らないので、既にそのペインの中にフォーカスがある状態でタブバーや
+    /// 「+」を押しても切り替わらない。逆に、フォーカスが子 HWND (ページ) に
+    /// あるあいだは GPUI 側のフォーカスが動かないままタブバーだけが押される。
+    /// どちらの取りこぼしもここで拾う。
+    fn activate_pane_at(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let Some(pane) = self.tabs().center.pane_at_pixel_position(position).cloned() else {
+            return;
+        };
+        self.activate_pane(pane, cx);
+    }
+
+    fn split_pane(
+        &mut self,
+        pane_to_split: &Entity<Pane>,
+        direction: SplitDirection,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<Pane> {
+        let new_pane = new_browser_pane(
+            self.tabs().workspace.clone(),
+            self.tabs().project.clone(),
+            window,
+            cx,
+        );
+        self.tabs_mut()
+            .center
+            .split(pane_to_split, &new_pane, direction, cx);
+        cx.notify();
+        new_pane
+    }
+
+    /// 今のタブを右に切り出して左右に分割する (`SplitPanelRight`)。ペインに 1 枚しか
+    /// 無いときは同じページをもう 1 枚開いてから出す (ブラウザーの「タブの複製」)。
+    fn split_active_tab_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let pane = self.tabs().active_pane.clone();
+        let items_len = pane.read(cx).items_len();
+        if items_len == 0 {
+            return;
+        }
+        if items_len == 1 {
+            let url = self.tabs().url_of_active_item(&pane, cx);
+            let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
+            self.open_tab_in_pane(&new_pane, url, NewTabPlacement::Foreground, window, cx);
+            return;
+        }
+        let Some(item) = pane.update(cx, |pane, cx| pane.take_active_item(window, cx)) else {
+            return;
+        };
+        let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
+        new_pane.update(cx, |pane, cx| {
+            pane.add_item(item, true, true, None, window, cx);
+        });
+        // フォーカスの往復を待たずに、次の操作 (新しいタブなど) が新しいペインに
+        // 向くようにしておく。
+        self.activate_pane(new_pane.clone(), cx);
+        window.focus(&new_pane.focus_handle(cx), cx);
+    }
+
+    fn focus_next_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let panes = self.tabs().center.panes();
+        if panes.len() < 2 {
+            return;
+        }
+        let Some(index) = panes
+            .iter()
+            .position(|pane| **pane == self.tabs().active_pane)
+        else {
+            return;
+        };
+        let Some(next) = panes.get((index + 1) % panes.len()) else {
+            return;
+        };
+        window.focus(&next.focus_handle(cx), cx);
+    }
+
+    fn handle_pane_event(
+        &mut self,
+        pane: &Entity<Pane>,
+        event: &pane::Event,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            pane::Event::ActivateItem { local, .. } => {
+                // `local` = そのペインの中でユーザーが選んだ (タブのクリック・
+                // 新しいタブ)。復元や裏での差し替えでは立たないので、これを
+                // 宛先の切り替えに使ってよい。
+                if *local {
+                    self.activate_pane(pane.clone(), cx);
+                }
+                self.front_tab_changed(pane, window, cx);
+                self.tabs().hide_inactive_surfaces(cx);
+                self.serialize(cx);
+            }
+            pane::Event::RemovedItem { item } => {
+                if let Some(item) = item.downcast::<BrowserItem>() {
+                    item.update(cx, |item, cx| item.hide_surface(HIDDEN_TAB_CLOSED, cx));
+                }
+                self.serialize(cx);
+            }
+            pane::Event::Remove { focus_on_pane } => {
+                let pane_count_before_removal = self.tabs().center.panes().len();
+                if let Err(error) = self.tabs_mut().center.remove(pane, cx) {
+                    log::warn!("browser panel: could not remove a pane: {error:#}");
+                }
+                if pane_count_before_removal == 1 {
+                    self.tabs().center.first_pane().update(cx, |pane, cx| {
+                        pane.set_zoomed(false, cx);
+                    });
+                    // 人のパネルは最後のタブと一緒に畳む。AI のパネルは開いたまま
+                    // 空の案内を出す (AI が閉じたタブでパネルごと消えないように)。
+                    match Self::KIND {
+                        PanelKind::User => cx.emit(PanelEvent::Close),
+                        PanelKind::Ai => cx.notify(),
+                    }
+                } else if let Some(focus_on_pane) = focus_on_pane
+                    .as_ref()
+                    .or_else(|| self.tabs().center.panes().pop())
+                {
+                    focus_on_pane.focus_handle(cx).focus(window, cx);
+                }
+                self.serialize(cx);
+            }
+            pane::Event::ZoomIn => {
+                self.tabs().set_zoomed(true, cx);
+                cx.emit(PanelEvent::ZoomIn);
+                cx.notify();
+            }
+            pane::Event::ZoomOut => {
+                self.tabs().set_zoomed(false, cx);
+                cx.emit(PanelEvent::ZoomOut);
+                cx.notify();
+            }
+            pane::Event::AddItem { item } => {
+                if let Some(workspace) = self.tabs().workspace.upgrade() {
+                    workspace.update(cx, |workspace, cx| {
+                        item.added_to_pane(workspace, pane.clone(), window, cx)
+                    })
+                }
+                // `Item::added_to_workspace` が既定の「エディター領域のタブ」に
+                // 戻すので、パネルに載ったことはここで上書きして教える
+                // (ツールバーの「エディター領域で開く」の出し分けに効く)。
+                if let Some(item) = item.downcast::<BrowserItem>() {
+                    item.update(cx, |item, cx| item.set_host(Self::KIND.host(), cx));
+                }
+                // ドロップの判定 (`PanelKind::accepts_drop`) を通らない経路 (タブバーの
+                // 余白へのドロップ、プログラムからの移動) で来た、このパネルに置かない
+                // タブは、置くべき場所へ送り出す。
+                if !self.tabs().restoring && !Self::KIND.accepts(item.as_ref(), cx) {
+                    self.send_away_foreign_item(pane, item.item_id(), window, cx);
+                }
+                self.tabs().hide_inactive_surfaces(cx);
+                self.serialize(cx);
+            }
+            &pane::Event::Split { direction, mode } => {
+                let pane = pane.clone();
+                match mode {
+                    SplitMode::ClonePane | SplitMode::EmptyPane => {
+                        let url = if matches!(mode, SplitMode::ClonePane) {
+                            self.tabs().url_of_active_item(&pane, cx)
+                        } else {
+                            None
+                        };
+                        let new_pane = self.split_pane(&pane, direction, window, cx);
+                        self.activate_pane(new_pane.clone(), cx);
+                        self.open_tab_in_pane(
+                            &new_pane,
+                            url,
+                            NewTabPlacement::Foreground,
+                            window,
+                            cx,
+                        );
+                        window.focus(&new_pane.focus_handle(cx), cx);
+                    }
+                    SplitMode::MovePane => {
+                        let Some(item) =
+                            pane.update(cx, |pane, cx| pane.take_active_item(window, cx))
+                        else {
+                            return;
+                        };
+                        let new_pane = self.split_pane(&pane, direction, window, cx);
+                        new_pane.update(cx, |pane, cx| {
+                            pane.add_item(item, true, true, None, window, cx);
+                        });
+                        self.activate_pane(new_pane.clone(), cx);
+                        window.focus(&new_pane.focus_handle(cx), cx);
+                    }
+                }
+            }
+            pane::Event::Focus => self.activate_pane(pane.clone(), cx),
+            pane::Event::ItemPinned | pane::Event::ItemUnpinned => self.serialize(cx),
+            _ => {}
+        }
+    }
+
+    /// このパネルに置かないタブを、置くべき場所へ移す: AI タブは AI のパネル
+    /// (無ければエディター領域)、それ以外はエディター領域。フォーカスは動かさない。
+    fn send_away_foreign_item(
+        &mut self,
+        pane: &Entity<Pane>,
+        item_id: EntityId,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let source = pane.clone();
+        let workspace = self.tabs().workspace.clone();
+        // このペインのイベントの最中なので、ペインを触るのは次の機会に回す。
+        window.defer(cx, move |window, cx| {
+            workspace
+                .update(cx, |workspace, cx| {
+                    let Some(item) = source
+                        .read(cx)
+                        .items()
+                        .find(|item| item.item_id() == item_id)
+                        .cloned()
+                    else {
+                        return;
+                    };
+                    let destination = home_pane_for_item(workspace, item.as_ref(), cx);
+                    if destination == source {
+                        return;
+                    }
+                    log::info!("browser panel: moving a tab that does not belong in it elsewhere");
+                    let destination_index = destination.read(cx).items_len();
+                    workspace::move_item(
+                        &source,
+                        &destination,
+                        item_id,
+                        destination_index,
+                        false,
+                        window,
+                        cx,
+                    );
+                })
+                .log_err();
+        });
+    }
+
+    fn serialize(&mut self, cx: &mut Context<Self>) {
+        if self.tabs().restoring {
+            return;
+        }
+        let Some((serialization_key, format)) = self
+            .tabs()
+            .workspace
+            .read_with(cx, |workspace, _| {
+                let key = serialization_key::<Self>(workspace)?;
+                Some((key, PanelLayoutFormat::of(workspace)))
+            })
+            .ok()
+            .flatten()
+        else {
+            return;
+        };
+        let kvp = KeyValueStore::global(cx);
+        self.tabs_mut().pending_serialization = cx.spawn(async move |panel, cx| {
+            // まとめて動く操作 (ドロップ = 取り外し + 追加) で 2 回書かないように。
+            cx.background_executor()
+                .timer(Duration::from_millis(50))
+                .await;
+            let panel = panel.upgrade()?;
+            let serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
+                root: serialize_pane_group(
+                    &panel.tabs().center.root,
+                    &panel.tabs().active_pane,
+                    format,
+                    cx,
+                ),
+            });
+            cx.background_spawn(
+                async move {
+                    kvp.write_kvp(serialization_key, serde_json::to_string(&serialized)?)
+                        .await?;
+                    anyhow::Ok(())
+                }
+                .log_err(),
+            )
+            .await;
+            Some(())
+        });
+    }
+
+    /// パネルの描画の中身 (ペインの木)。
+    fn render_panes(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let tabs = self.tabs();
+        tabs.workspace
+            .update(cx, |workspace, cx| {
+                let follower_states = Default::default();
+                let workspace_handle = workspace.weak_handle();
+                tabs.center
+                    .render(
+                        workspace.zoomed_item(),
+                        None,
+                        &workspace::PaneRenderContext {
+                            follower_states: &follower_states,
+                            active_call: workspace.active_call(),
+                            active_pane: &tabs.active_pane,
+                            app_state: workspace.app_state(),
+                            project: workspace.project(),
+                            workspace: &workspace_handle,
+                        },
+                        window,
+                        cx,
+                    )
+                    .into_any_element()
+            })
+            .ok()
+    }
+}
+
+/// タブ 1 枚の居場所。AI タブは AI のパネル (無ければエディター領域)、それ以外は
+/// エディター領域の今のペイン。
+pub(crate) fn home_pane_for_item(
+    workspace: &Workspace,
+    item: &dyn ItemHandle,
+    cx: &App,
+) -> Entity<Pane> {
+    if PanelKind::Ai.accepts(item, cx)
+        && let Some(panel) = workspace.panel::<AiBrowserPanel>(cx)
+    {
+        return panel.read(cx).tabs.active_pane.clone();
+    }
+    workspace.active_pane().clone()
+}
+
+/// AI タブをこのペインへ移してよいか (タブのドロップの判定、ADR-F89 追記 10)。
+/// AI タブが居てよいのは AI のパネルとエディター領域だけ。人のブラウザーパネルや
+/// ターミナルパネルへ落とすと、利用者のタブ列に AI の操作するページが混ざる。
+pub(crate) fn ai_tab_may_move_to(
+    destination: &Entity<Pane>,
+    destination_workspace: &Entity<Workspace>,
+    cx: &App,
+) -> bool {
+    let workspace = destination_workspace.read(cx);
+    workspace.panes().contains(destination)
+        || workspace
+            .panel::<AiBrowserPanel>(cx)
+            .is_some_and(|panel| panel.read(cx).tabs.contains_pane(destination))
+}
+
+fn serialization_key<T: Panel>(workspace: &Workspace) -> Option<String> {
+    workspace
+        .database_id()
+        .map(|id| i64::from(id).to_string())
+        .or(workspace.session_id())
+        .map(|id| format!("{:?}-{id:?}", T::panel_key()))
+}
+
+/// 保存したレイアウトを kvp から読む。
+async fn read_serialized_layout<T: Panel>(
+    workspace: &WeakEntity<Workspace>,
+    cx: &mut AsyncWindowContext,
+) -> Option<SerializedBrowserPanel> {
+    let (key, kvp) = workspace
+        .read_with(cx, |workspace, cx| {
+            serialization_key::<T>(workspace).map(|key| (key, KeyValueStore::global(cx)))
+        })
+        .ok()
+        .flatten()?;
+    cx.background_spawn(async move { kvp.read_kvp(&key) })
+        .await
+        .log_err()
+        .flatten()
+        .and_then(|raw| serde_json::from_str::<SerializedBrowserPanel>(&raw).log_err())
+}
+
+/// ドックの人のブラウザー。タブ列 ([`PanelTabs`]) はワークスペースと同じ
+/// [`PaneGroup`] + [`Pane`] で、ターミナルパネルと同じ作りにしてあるのは、
+/// **IDE 内のどのタブ列にもドラッグで移せる**ようにするため (第 12 便)。
+/// パネル独自のタブ実装だと、掴んだタブはパネルの外へ出られない。
+///
+/// AI タブは置かない (ADR-F89 追記 10)。それは [`AiBrowserPanel`] の役目。
+pub struct BrowserPanel {
+    pub(crate) tabs: PanelTabs,
     active: bool,
     /// ユーザーがこのパネルを名指しで出したか (ADR-F48)。右ドックの既定は
     /// 「エージェント + ブラウザーの 2 枚並べ」(ADR-F30) なので、エージェント
@@ -348,6 +1079,9 @@ pub struct BrowserPanel {
     /// ブラウザーを求めた表示とを分けるのがこの旗で、ホームページの読み込みは
     /// 立つまで待つ。ワークスペースごとの一時的な状態なので保存しない。
     revealed_by_user: bool,
+    /// 前の版がこのパネルに保存していた AI タブ。AI のパネルへ渡すまで預かる
+    /// ([`BrowserPanel::hand_over_migrated_ai_tabs`])。
+    migrated_ai_tabs: Vec<Entity<BrowserItem>>,
 }
 
 pub fn init(cx: &mut App) {
@@ -368,9 +1102,6 @@ pub fn init(cx: &mut App) {
             workspace.register_action(|workspace, _: &NewBrowserTab, window, cx| {
                 BrowserItem::open(workspace, None, window, cx);
             });
-            workspace.register_action(|workspace, _: &NewAiTab, window, cx| {
-                BrowserPanel::open_ai_tab_for_user(workspace, window, cx);
-            });
             workspace.register_action(|workspace, _: &OpenInCenter, window, cx| {
                 // 「開く」ではなく「移す」。同じアイテムを中央のペインへ渡すので、
                 // 読み込み済みのページも履歴もそのまま付いていく。
@@ -382,6 +1113,7 @@ pub fn init(cx: &mut App) {
             workspace.register_action(|workspace, _: &AskCopilot, window, cx| {
                 BrowserPanel::open_selection_query(workspace, QueryKind::Copilot, window, cx);
             });
+            ai_browser_panel::register(workspace);
         },
     )
     .detach();
@@ -426,22 +1158,7 @@ impl BrowserPanel {
         workspace: WeakEntity<Workspace>,
         mut cx: AsyncWindowContext,
     ) -> Result<Entity<Self>> {
-        let stored = workspace
-            .read_with(&cx, |workspace, cx| {
-                Self::serialization_key(workspace).map(|key| (key, KeyValueStore::global(cx)))
-            })
-            .ok()
-            .flatten();
-        let serialized = match stored {
-            Some((key, kvp)) => cx
-                .background_spawn(async move { kvp.read_kvp(&key) })
-                .await
-                .log_err()
-                .flatten()
-                .and_then(|raw| serde_json::from_str::<SerializedBrowserPanel>(&raw).log_err()),
-            None => None,
-        };
-
+        let serialized = read_serialized_layout::<Self>(&workspace, &mut cx).await;
         let workspace_id = workspace
             .read_with(&cx, |workspace, _| workspace.database_id())
             .ok()
@@ -453,15 +1170,7 @@ impl BrowserPanel {
         // タブを開くのはワークスペースの更新が終わってから。`BrowserItem` の生成が
         // ワークスペースを読みに行くので、`update_in` の中でやると二重借用になる。
         let restored = match serialized {
-            Some(serialized) => {
-                // 復元中のペインはまだ `panel.center` に載っていない。タブが 1 枚
-                // 足されるたびに `AddItem` で保存すると、その空のレイアウトが
-                // 保存済みのレイアウトを上書きしてしまう。
-                panel.update(&mut cx, |panel, _| panel.restoring = true);
-                let restored = restore(&panel, serialized, workspace_id, &mut cx).await;
-                panel.update(&mut cx, |panel, _| panel.restoring = false);
-                restored
-            }
+            Some(serialized) => restore(&panel, serialized, workspace_id, &mut cx).await,
             None => false,
         };
         if !restored {
@@ -469,35 +1178,50 @@ impl BrowserPanel {
                 panel.open_initial_tab(NewTabPlacement::ForegroundWithoutFocus, window, cx);
             })?;
         }
+        workspace
+            .update_in(&mut cx, |workspace, window, cx| {
+                panel.update(cx, |panel, cx| {
+                    panel.hand_over_migrated_ai_tabs(workspace, window, cx)
+                });
+            })
+            .log_err();
         Ok(panel)
     }
 
     fn new(workspace: &Workspace, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let project = workspace.project().clone();
-        let pane = new_browser_pane(workspace.weak_handle(), project.clone(), window, cx);
-        let fs = workspace.app_state().fs.clone();
         Self {
-            fs,
-            workspace: workspace.weak_handle(),
-            project,
-            focus_handle: cx.focus_handle(),
-            center: PaneGroup::new(pane.clone()),
-            active_pane: pane,
-            pending_serialization: Task::ready(None),
-            restoring: false,
+            tabs: PanelTabs::new(workspace, window, cx),
             active: false,
             revealed_by_user: false,
+            migrated_ai_tabs: Vec::new(),
         }
+    }
+
+    /// 前の版がこのパネルに置いていた AI タブを AI のパネルへ渡す。両方のパネルは
+    /// 並行して読み込まれるので、AI のパネルがまだ居なければ預かったままにし、
+    /// AI のパネルが読み込みの終わりに取りに来る ([`Self::take_migrated_ai_tabs`])。
+    fn hand_over_migrated_ai_tabs(
+        &mut self,
+        workspace: &Workspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.migrated_ai_tabs.is_empty() {
+            return;
+        }
+        let Some(ai_panel) = workspace.panel::<AiBrowserPanel>(cx) else {
+            return;
+        };
+        let tabs = std::mem::take(&mut self.migrated_ai_tabs);
+        ai_panel.update(cx, |ai_panel, cx| ai_panel.adopt_tabs(tabs, window, cx));
+    }
+
+    pub(crate) fn take_migrated_ai_tabs(&mut self) -> Vec<Entity<BrowserItem>> {
+        std::mem::take(&mut self.migrated_ai_tabs)
     }
 
     // -- タブ ----------------------------------------------------------------
 
-    /// タブを 1 枚足す。`url` が `None` なら `browser.home_url`、それも空なら
-    /// ブックマークを開いた空のタブになる ([`BrowserItem`] と同じ規則)。
-    ///
-    /// [`NewTabPlacement::Background`] のタブは WebView2 のコントローラーを
-    /// **まだ作らない**。生成は [`BrowserView`] の描画から起きるので、そのタブが
-    /// 表に出るまで msedgewebview2.exe は 1 つも増えない。
     fn open_tab(
         &mut self,
         url: Option<String>,
@@ -505,7 +1229,7 @@ impl BrowserPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let pane = self.active_pane.clone();
+        let pane = self.tabs.active_pane.clone();
         self.open_tab_in_pane(&pane, url, placement, window, cx);
     }
 
@@ -522,11 +1246,11 @@ impl BrowserPanel {
             self.open_tab(None, placement, window, cx);
             return;
         }
-        let pane = self.active_pane.clone();
+        let pane = self.tabs.active_pane.clone();
         let item = cx.new(|cx| {
             BrowserItem::with_deferred_home_page(
-                self.workspace.clone(),
-                self.fs.clone(),
+                self.tabs.workspace.clone(),
+                self.tabs.fs.clone(),
                 BrowserHost::Panel,
                 window,
                 cx,
@@ -534,123 +1258,18 @@ impl BrowserPanel {
         });
         let focus = placement == NewTabPlacement::Foreground
             || (placement == NewTabPlacement::ForegroundWithoutFocus
-                && self.contains_focus(window, cx));
+                && self.tabs.contains_focus(window, cx));
         pane.update(cx, |pane, cx| {
             pane.add_item_inner(Box::new(item), focus, focus, true, None, window, cx);
         });
     }
 
-    pub(crate) fn open_tab_in_pane(
-        &mut self,
-        pane: &Entity<Pane>,
-        url: Option<String>,
-        placement: NewTabPlacement,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_tab_in_pane_with_profile(pane, url, WebViewProfile::User, placement, window, cx);
-    }
-
-    /// AI タブを今のペインに開く (ADR-F89)。`url` が `None` なら空のページ。
-    pub(crate) fn open_ai_tab(
-        &mut self,
-        url: Option<String>,
-        placement: NewTabPlacement,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Entity<BrowserItem> {
-        let pane = self.active_pane.clone();
-        self.open_tab_in_pane_with_profile(&pane, url, WebViewProfile::Ai, placement, window, cx)
-    }
-
-    /// `NewAiTab`: 利用者が自分で開く AI タブ (テスト対象のアプリに先にサインインして
-    /// おくため)。パネルを出してフォーカスも移す。
-    fn open_ai_tab_for_user(
-        workspace: &mut Workspace,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) {
-        let Some(panel) = workspace.panel::<BrowserPanel>(cx) else {
-            BrowserItem::open_with_profile(workspace, None, WebViewProfile::Ai, window, cx);
-            return;
-        };
-        workspace.focus_panel::<BrowserPanel>(window, cx);
-        panel.update(cx, |panel, cx| {
-            panel.open_ai_tab(None, NewTabPlacement::Foreground, window, cx);
-        });
-    }
-
-    fn open_tab_in_pane_with_profile(
-        &mut self,
-        pane: &Entity<Pane>,
-        url: Option<String>,
-        profile: WebViewProfile,
-        placement: NewTabPlacement,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Entity<BrowserItem> {
-        let item = cx.new(|cx| match profile {
-            WebViewProfile::User => BrowserItem::new(
-                self.workspace.clone(),
-                self.fs.clone(),
-                BrowserHost::Panel,
-                url,
-                window,
-                cx,
-            ),
-            WebViewProfile::Ai => BrowserItem::new_ai(
-                self.workspace.clone(),
-                self.fs.clone(),
-                BrowserHost::Panel,
-                url,
-                window,
-                cx,
-            ),
-        });
-        // 既にパネルの中にフォーカスがあるなら、フォーカスは新しいタブへ移す
-        // (タブを閉じた直後に開いたときにフォーカスが宙に浮かないように)。
-        let focus = placement == NewTabPlacement::Foreground
-            || (placement == NewTabPlacement::ForegroundWithoutFocus
-                && self.contains_focus(window, cx));
-        // `Pane::add_item` は必ず表に出してしまうので、背景タブは
-        // `add_item_inner` で「足すだけ」にする (WebView2 はまだ作られない)。
-        let activate = placement != NewTabPlacement::Background;
-        pane.update(cx, |pane, cx| {
-            pane.add_item_inner(
-                Box::new(item.clone()),
-                focus,
-                focus,
-                activate,
-                None,
-                window,
-                cx,
-            );
-        });
-        item
-    }
-
-    fn contains_focus(&self, window: &Window, cx: &App) -> bool {
-        self.center
-            .panes()
-            .into_iter()
-            .any(|pane| pane.focus_handle(cx).contains_focused(window, cx))
-    }
-
     pub fn active_view(&self, cx: &App) -> Option<Entity<BrowserView>> {
-        self.active_pane
-            .read(cx)
-            .active_item()?
-            .downcast::<BrowserItem>()
-            .map(|item| item.read(cx).view().clone())
+        self.tabs.active_view(cx)
     }
 
-    /// ブックマークバーを出してよいビューか (ADR-F33 追記 2)。バーはビューの中の
-    /// アドレス欄の下に戻したので、分割していても「アクティブなペインのアクティブな
-    /// ビュー」だけが出す。ビュー側が描くたびに聞きに来る (push しないので、
-    /// タブを閉じた・落とした後に古い旗が残らない)。
     pub(crate) fn is_active_view(&self, view_id: EntityId, cx: &App) -> bool {
-        self.active_view(cx)
-            .is_some_and(|view| view.entity_id() == view_id)
+        self.tabs.is_active_view(view_id, cx)
     }
 
     pub fn current_url(&self, cx: &App) -> String {
@@ -662,7 +1281,7 @@ impl BrowserPanel {
     pub fn navigate_to(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
         match self.active_view(cx) {
             // 利用者の検索や Copilot への問い合わせを AI タブに流すと AI に読まれるうえ、
-            // 利用者のサインインも無い。AI タブが表なら普段のタブを開く。
+            // 利用者のサインインも無い。AI タブはこのパネルに置かないが、念のため。
             Some(view) if !view.read(cx).is_ai_tab() => {
                 view.update(cx, |view, cx| view.navigate_to(url, cx))
             }
@@ -675,367 +1294,10 @@ impl BrowserPanel {
         }
     }
 
-    /// 「このタブの隣にもう 1 枚」の受け口。そのページを出していたペインの中に、
-    /// ブラウザーと同じく**背景タブ**として足す (今のページは見えたまま)。
-    pub(crate) fn open_beside_item(
-        &mut self,
-        item_id: EntityId,
-        url: Option<String>,
-        profile: WebViewProfile,
-        placement: NewTabPlacement,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let pane = self
-            .pane_for_item(item_id, cx)
-            .unwrap_or_else(|| self.active_pane.clone());
-        self.open_tab_in_pane_with_profile(&pane, url, profile, placement, window, cx);
-    }
-
-    /// ファイルを落として開くときの受け口。端に落とされていたら (`split` が
-    /// `Some`) まずそのペインを割り、開いたページを新しいペインに入れる。
-    /// 1 つ目だけ表に出し、残りは背景タブ。
-    pub(crate) fn open_dropped_urls(
-        &mut self,
-        item_id: EntityId,
-        urls: Vec<String>,
-        split: Option<SplitDirection>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let pane = self
-            .pane_for_item(item_id, cx)
-            .unwrap_or_else(|| self.active_pane.clone());
-        let pane = match split {
-            Some(direction) => self.split_pane(&pane, direction, window, cx),
-            None => pane,
-        };
-        for (index, url) in urls.into_iter().enumerate() {
-            let placement = if index == 0 {
-                NewTabPlacement::Foreground
-            } else {
-                NewTabPlacement::Background
-            };
-            self.open_tab_in_pane(&pane, Some(url), placement, window, cx);
-        }
-    }
-
-    /// ページの中がクリックされたときに、そのタブが載っているペインを
-    /// アクティブにする。子 HWND のクリックは GPUI に届かないので、
-    /// [`BrowserViewEvent::Focused`] の申告だけが手掛かりになる。
-    pub(crate) fn activate_pane_for_item(
-        &mut self,
-        item_id: EntityId,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(pane) = self.pane_for_item(item_id, cx) else {
-            return;
-        };
-        // 既にそのペインの中にフォーカスがあるなら触らない。アドレス欄を
-        // クリックしたときもこの申告は飛ぶので、ここで奪うと入力できなくなる
-        // (ペインにフォーカスを移すと `Pane::focus_in` がビューへ送り直す)。
-        if !pane.focus_handle(cx).contains_focused(window, cx) {
-            window.focus(&pane.focus_handle(cx), cx);
-        }
-        self.activate_pane(pane, cx);
-    }
-
-    /// このペインを「次の操作の宛先」にする (ブックマークバー・アドレス欄・
-    /// `Ctrl+T` はすべてここを見る)。フォーカスは動かさない。
-    fn activate_pane(&mut self, pane: Entity<Pane>, cx: &mut Context<Self>) {
-        if pane == self.active_pane {
-            return;
-        }
-        // 宛先が移った両側のビューを描き直させる (ブックマークバーの出し入れは
-        // ビューの中で起きる)。ペインは `.cached()` なので、パネルの `notify` だけでは
-        // 前のフレームの描画がそのまま流し直される。
-        let previously_active_view = self.active_view(cx);
-        self.active_pane = pane;
-        let newly_active_view = self.active_view(cx);
-        for view in [previously_active_view, newly_active_view]
-            .into_iter()
-            .flatten()
-        {
-            view.update(cx, |_, cx| cx.notify());
-        }
-        cx.notify();
-    }
-
-    /// クリックが落ちたペインをアクティブにする。
-    ///
-    /// [`pane::Event::Focus`] は**ペインの外から**フォーカスが入ったときにしか
-    /// 鳴らないので、既にそのペインの中にフォーカスがある状態でタブバーや
-    /// 「+」を押しても切り替わらない。逆に、フォーカスが子 HWND (ページ) に
-    /// あるあいだは GPUI 側のフォーカスが動かないままタブバーだけが押される。
-    /// どちらの取りこぼしもここで拾う。
-    fn activate_pane_at(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
-        let Some(pane) = self.center.pane_at_pixel_position(position).cloned() else {
-            return;
-        };
-        self.activate_pane(pane, cx);
-    }
-
-    fn url_of_active_item(&self, pane: &Entity<Pane>, cx: &App) -> Option<String> {
-        let url = pane
-            .read(cx)
-            .active_item()?
-            .downcast::<BrowserItem>()?
-            .read(cx)
-            .view()
-            .read(cx)
-            .current_url()
-            .trim()
-            .to_string();
-        (!url.is_empty()).then_some(url)
-    }
-
-    /// そのペインで表に出ているブラウザータブのプロファイル。複製 (分割) は同じ
-    /// プロファイルで作り、AI タブのページを利用者のプロファイルへ持ち出さない。
-    fn profile_of_active_item(&self, pane: &Entity<Pane>, cx: &App) -> WebViewProfile {
-        pane.read(cx)
-            .active_item()
-            .and_then(|item| item.downcast::<BrowserItem>())
-            .map_or(WebViewProfile::User, |item| {
-                item.read(cx).view().read(cx).profile()
-            })
-    }
-
-    fn pane_for_item(&self, item_id: EntityId, cx: &App) -> Option<Entity<Pane>> {
-        self.center
-            .panes()
-            .into_iter()
-            .find(|pane| pane.read(cx).items().any(|item| item.item_id() == item_id))
-            .cloned()
-    }
-
-    /// 表に出ていないタブの子 HWND を隠す。子 HWND は GPUI の描画に従わないので
-    /// 「隠すのは push、見せるのは pull」(次の描画で canvas が矩形を流し直す)。
-    /// 分割しているときは**ペインごとに 1 枚**が表に出る。
-    fn hide_inactive_surfaces(&self, cx: &mut App) {
-        for pane in self.center.panes() {
-            let active_item_id = pane.read(cx).active_item().map(|item| item.item_id());
-            let inactive = pane
-                .read(cx)
-                .items()
-                .filter(|item| Some(item.item_id()) != active_item_id)
-                .filter_map(|item| item.downcast::<BrowserItem>())
-                .collect::<Vec<_>>();
-            for item in inactive {
-                item.update(cx, |item, cx| item.hide_surface(HIDDEN_TAB_INACTIVE, cx));
-            }
-        }
-    }
-
-    fn hide_all_surfaces(&self, reason: &'static str, cx: &mut App) {
-        for pane in self.center.panes() {
-            let items = pane
-                .read(cx)
-                .items()
-                .filter_map(|item| item.downcast::<BrowserItem>())
-                .collect::<Vec<_>>();
-            for item in items {
-                item.update(cx, |item, cx| item.hide_surface(reason, cx));
-            }
-        }
-    }
-
-    fn has_no_tabs(&self, cx: &App) -> bool {
-        self.center
-            .panes()
-            .into_iter()
-            .all(|pane| pane.read(cx).items_len() == 0)
-    }
-
-    // -- ペイン --------------------------------------------------------------
-
-    fn split_pane(
-        &mut self,
-        pane_to_split: &Entity<Pane>,
-        direction: SplitDirection,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Entity<Pane> {
-        let new_pane = new_browser_pane(self.workspace.clone(), self.project.clone(), window, cx);
-        self.center.split(pane_to_split, &new_pane, direction, cx);
-        cx.notify();
-        new_pane
-    }
-
-    /// 今のタブを右に切り出して左右に分割する (`SplitPanelRight`)。ペインに 1 枚しか
-    /// 無いときは同じページをもう 1 枚開いてから出す (ブラウザーの「タブの複製」)。
-    fn split_active_tab_right(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let pane = self.active_pane.clone();
-        let items_len = pane.read(cx).items_len();
-        if items_len == 0 {
-            return;
-        }
-        if items_len == 1 {
-            let url = self.url_of_active_item(&pane, cx);
-            let profile = self.profile_of_active_item(&pane, cx);
-            let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
-            self.open_tab_in_pane_with_profile(
-                &new_pane,
-                url,
-                profile,
-                NewTabPlacement::Foreground,
-                window,
-                cx,
-            );
-            return;
-        }
-        let Some(item) = pane.update(cx, |pane, cx| pane.take_active_item(window, cx)) else {
-            return;
-        };
-        let new_pane = self.split_pane(&pane, SplitDirection::Right, window, cx);
-        new_pane.update(cx, |pane, cx| {
-            pane.add_item(item, true, true, None, window, cx);
-        });
-        // フォーカスの往復を待たずに、次の操作 (新しいタブなど) が新しいペインに
-        // 向くようにしておく。
-        self.activate_pane(new_pane.clone(), cx);
-        window.focus(&new_pane.focus_handle(cx), cx);
-    }
-
-    fn focus_next_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let panes = self.center.panes();
-        if panes.len() < 2 {
-            return;
-        }
-        let Some(index) = panes.iter().position(|pane| **pane == self.active_pane) else {
-            return;
-        };
-        let Some(next) = panes.get((index + 1) % panes.len()) else {
-            return;
-        };
-        window.focus(&next.focus_handle(cx), cx);
-    }
-
-    fn handle_pane_event(
-        &mut self,
-        pane: &Entity<Pane>,
-        event: &pane::Event,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        match event {
-            pane::Event::ActivateItem { local, .. } => {
-                // `local` = そのペインの中でユーザーが選んだ (タブのクリック・
-                // 新しいタブ)。復元や裏での差し替えでは立たないので、これを
-                // 宛先の切り替えに使ってよい。
-                if *local {
-                    self.activate_pane(pane.clone(), cx);
-                }
-                // 名指しで出したあと (`revealed_by_user`) に、裏で待たせていた
-                // URL 無しのタブが前面へ来たら、この瞬間に起こす。名指しより前
-                // (復元・裏での差し替え) はここを通っても何もしない。
-                if self.revealed_by_user {
-                    Self::wake_active_browser_item(pane, window, cx);
-                }
-                self.hide_inactive_surfaces(cx);
-                self.serialize(cx);
-            }
-            pane::Event::RemovedItem { item } => {
-                if let Some(item) = item.downcast::<BrowserItem>() {
-                    item.update(cx, |item, cx| item.hide_surface(HIDDEN_TAB_CLOSED, cx));
-                }
-                self.serialize(cx);
-            }
-            pane::Event::Remove { focus_on_pane } => {
-                let pane_count_before_removal = self.center.panes().len();
-                if let Err(error) = self.center.remove(pane, cx) {
-                    log::warn!("browser panel: could not remove a pane: {error:#}");
-                }
-                if pane_count_before_removal == 1 {
-                    self.center.first_pane().update(cx, |pane, cx| {
-                        pane.set_zoomed(false, cx);
-                    });
-                    cx.emit(PanelEvent::Close);
-                } else if let Some(focus_on_pane) =
-                    focus_on_pane.as_ref().or_else(|| self.center.panes().pop())
-                {
-                    focus_on_pane.focus_handle(cx).focus(window, cx);
-                }
-                self.serialize(cx);
-            }
-            pane::Event::ZoomIn => {
-                for pane in self.center.panes() {
-                    pane.update(cx, |pane, cx| pane.set_zoomed(true, cx));
-                }
-                cx.emit(PanelEvent::ZoomIn);
-                cx.notify();
-            }
-            pane::Event::ZoomOut => {
-                for pane in self.center.panes() {
-                    pane.update(cx, |pane, cx| pane.set_zoomed(false, cx));
-                }
-                cx.emit(PanelEvent::ZoomOut);
-                cx.notify();
-            }
-            pane::Event::AddItem { item } => {
-                if let Some(workspace) = self.workspace.upgrade() {
-                    workspace.update(cx, |workspace, cx| {
-                        item.added_to_pane(workspace, pane.clone(), window, cx)
-                    })
-                }
-                // `Item::added_to_workspace` が既定の「エディター領域のタブ」に
-                // 戻すので、パネルに載ったことはここで上書きして教える
-                // (ツールバーの「エディター領域で開く」の出し分けに効く)。
-                if let Some(item) = item.downcast::<BrowserItem>() {
-                    item.update(cx, |item, cx| item.set_host(BrowserHost::Panel, cx));
-                }
-                self.hide_inactive_surfaces(cx);
-                self.serialize(cx);
-            }
-            &pane::Event::Split { direction, mode } => {
-                let pane = pane.clone();
-                match mode {
-                    SplitMode::ClonePane | SplitMode::EmptyPane => {
-                        let (url, profile) = if matches!(mode, SplitMode::ClonePane) {
-                            (
-                                self.url_of_active_item(&pane, cx),
-                                self.profile_of_active_item(&pane, cx),
-                            )
-                        } else {
-                            (None, WebViewProfile::User)
-                        };
-                        let new_pane = self.split_pane(&pane, direction, window, cx);
-                        self.activate_pane(new_pane.clone(), cx);
-                        self.open_tab_in_pane_with_profile(
-                            &new_pane,
-                            url,
-                            profile,
-                            NewTabPlacement::Foreground,
-                            window,
-                            cx,
-                        );
-                        window.focus(&new_pane.focus_handle(cx), cx);
-                    }
-                    SplitMode::MovePane => {
-                        let Some(item) =
-                            pane.update(cx, |pane, cx| pane.take_active_item(window, cx))
-                        else {
-                            return;
-                        };
-                        let new_pane = self.split_pane(&pane, direction, window, cx);
-                        new_pane.update(cx, |pane, cx| {
-                            pane.add_item(item, true, true, None, window, cx);
-                        });
-                        self.activate_pane(new_pane.clone(), cx);
-                        window.focus(&new_pane.focus_handle(cx), cx);
-                    }
-                }
-            }
-            pane::Event::Focus => self.activate_pane(pane.clone(), cx),
-            pane::Event::ItemPinned | pane::Event::ItemUnpinned => self.serialize(cx),
-            _ => {}
-        }
-    }
-
     /// そのペインで今前面にいるタブが待機ホーム ([`BrowserView::pending_home_url`])
     /// を持っていれば読み込む。パネルが名指しで出されたとき ([`Self::revealed_by_user`])
-    /// と、名指しされたあとに裏のタブが前面へ来たとき ([`Self::handle_pane_event`] の
-    /// `ActivateItem`) の両方から呼ぶ。既に読み込み済みのタブは `load_deferred_home_page`
+    /// と、名指しされたあとに裏のタブが前面へ来たとき ([`BrowserTabsPanel::front_tab_changed`])
+    /// の両方から呼ぶ。既に読み込み済みのタブは `load_deferred_home_page`
     /// が何もせずに戻る。
     fn wake_active_browser_item(pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Self>) {
         let Some(view) = pane
@@ -1049,54 +1311,6 @@ impl BrowserPanel {
         view.update(cx, |view, cx| view.load_deferred_home_page(window, cx));
     }
 
-    // -- 永続化 --------------------------------------------------------------
-
-    fn serialization_key(workspace: &Workspace) -> Option<String> {
-        workspace
-            .database_id()
-            .map(|id| i64::from(id).to_string())
-            .or(workspace.session_id())
-            .map(|id| format!("{BROWSER_PANEL_KEY:?}-{id:?}"))
-    }
-
-    fn serialize(&mut self, cx: &mut Context<Self>) {
-        if self.restoring {
-            return;
-        }
-        let Some((serialization_key, format)) = self
-            .workspace
-            .read_with(cx, |workspace, _| {
-                let key = Self::serialization_key(workspace)?;
-                Some((key, PanelLayoutFormat::of(workspace)))
-            })
-            .ok()
-            .flatten()
-        else {
-            return;
-        };
-        let kvp = KeyValueStore::global(cx);
-        self.pending_serialization = cx.spawn(async move |panel, cx| {
-            // まとめて動く操作 (ドロップ = 取り外し + 追加) で 2 回書かないように。
-            cx.background_executor()
-                .timer(Duration::from_millis(50))
-                .await;
-            let panel = panel.upgrade()?;
-            let serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
-                root: serialize_pane_group(&panel.center.root, &panel.active_pane, format, cx),
-            });
-            cx.background_spawn(
-                async move {
-                    kvp.write_kvp(serialization_key, serde_json::to_string(&serialized)?)
-                        .await?;
-                    anyhow::Ok(())
-                }
-                .log_err(),
-            )
-            .await;
-            Some(())
-        });
-    }
-
     // -- エディター領域との行き来 --------------------------------------------
 
     /// パネルの今のタブを中央のペインへ**移す** (`OpenInCenter`)。
@@ -1105,10 +1319,22 @@ impl BrowserPanel {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
-        let Some(panel) = workspace.panel::<BrowserPanel>(cx) else {
-            return;
+        // コマンドパレットからは AI ブラウザーの中でも呼べる。そのときに動かすのは
+        // AI ブラウザーのタブ (人のパネルのタブではない)。
+        let ai_pane = workspace.panel::<AiBrowserPanel>(cx).and_then(|panel| {
+            let tabs = &panel.read(cx).tabs;
+            tabs.contains_focus(window, cx)
+                .then(|| tabs.active_pane.clone())
+        });
+        let source_pane = match ai_pane {
+            Some(pane) => pane,
+            None => {
+                let Some(panel) = workspace.panel::<BrowserPanel>(cx) else {
+                    return;
+                };
+                panel.read(cx).tabs.active_pane.clone()
+            }
         };
-        let source_pane = panel.read(cx).active_pane.clone();
         let Some(item_id) = source_pane
             .read(cx)
             .active_item()
@@ -1160,6 +1386,8 @@ impl BrowserPanel {
         let carries_query = template_accepts_query(&template);
         let url = build_query_url(&template, &query);
 
+        // 行き先は必ず人のパネル。AI のパネル (ADR-F89 追記 10) にはフォーカスが
+        // あっても流さない (AI に読まれるうえ、利用者のサインインも無い)。
         let Some(panel) = workspace.panel::<BrowserPanel>(cx) else {
             cx.open_url(&url);
             return;
@@ -1186,14 +1414,48 @@ impl BrowserPanel {
     }
 }
 
+impl BrowserTabsPanel for BrowserPanel {
+    const KIND: PanelKind = PanelKind::User;
+
+    fn tabs(&self) -> &PanelTabs {
+        &self.tabs
+    }
+
+    fn tabs_mut(&mut self) -> &mut PanelTabs {
+        &mut self.tabs
+    }
+
+    fn front_tab_changed(
+        &mut self,
+        pane: &Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // 名指しで出したあと (`revealed_by_user`) に、裏で待たせていた
+        // URL 無しのタブが前面へ来たら、この瞬間に起こす。名指しより前
+        // (復元・裏での差し替え) はここを通っても何もしない。
+        if self.revealed_by_user {
+            Self::wake_active_browser_item(pane, window, cx);
+        }
+    }
+
+    fn restored_foreign_item(&mut self, item: Box<dyn ItemHandle>, _: &mut Context<Self>) {
+        match item.downcast::<BrowserItem>() {
+            Some(item) => self.migrated_ai_tabs.push(item),
+            None => log::info!("browser panel: dropping a restored tab that cannot be shown"),
+        }
+    }
+}
+
 /// パネルの中のペインを 1 枚作る。ターミナルパネルの `new_terminal_pane` と同じ作りで、
 /// 違うのは「+」が新しいブラウザータブになることと、分割を中央ではなくこのパネルの
-/// [`PaneGroup`] に向けること。
-fn new_browser_pane(
+/// [`PaneGroup`] に向けること。何を落とせるかはパネルの種類で決まる
+/// ([`PanelKind::accepts_drop`])。
+fn new_browser_pane<T: BrowserTabsPanel>(
     workspace: WeakEntity<Workspace>,
     project: Entity<Project>,
     window: &mut Window,
-    cx: &mut Context<BrowserPanel>,
+    cx: &mut Context<T>,
 ) -> Entity<Pane> {
     let browser_panel = cx.entity();
     let pane = cx.new(|cx| {
@@ -1201,7 +1463,9 @@ fn new_browser_pane(
             workspace.clone(),
             project.clone(),
             Default::default(),
-            None,
+            Some(Arc::new(|dragged, _window, cx| {
+                T::KIND.accepts_drop(dragged, cx)
+            })),
             NewPanelTab.boxed_clone(),
             false,
             window,
@@ -1217,9 +1481,12 @@ fn new_browser_pane(
             let Some(tab) = dragged_item.downcast_ref::<DraggedTab>() else {
                 return false;
             };
+            if !T::KIND.accepts(tab.item.as_ref(), cx) {
+                return false;
+            }
             let is_current_pane = tab.pane == cx.entity();
             let Ok(can_drag_away) = split_predicate_panel.read_with(cx, |panel, _| {
-                let panes = panel.center.panes();
+                let panes = panel.tabs().center.panes();
                 !panes.contains(&&tab.pane)
                     || panes.len() > 1
                     || (!is_current_pane || pane.items_len() > 1)
@@ -1244,7 +1511,7 @@ fn new_browser_pane(
             move |pane_to_split, direction, window, cx| {
                 let panel = split_handler_panel.upgrade()?;
                 panel.update(cx, |panel, cx| {
-                    if !panel.center.panes().contains(&pane_to_split) {
+                    if !panel.tabs().contains_pane(&pane_to_split) {
                         return None;
                     }
                     Some(panel.split_pane(pane_to_split, direction, window, cx))
@@ -1255,13 +1522,14 @@ fn new_browser_pane(
         let buttons_panel = browser_panel.downgrade();
         pane.set_render_tab_bar_buttons(cx, move |pane, _window, cx| {
             let new_tab_panel = buttons_panel.clone();
-            let new_ai_tab_panel = buttons_panel.clone();
             let split_panel = buttons_panel.clone();
             let pane_handle = cx.entity();
-            let ai_tab_pane_handle = pane_handle.clone();
             let focus_handle = pane.focus_handle(cx);
-            let ai_tab_focus_handle = focus_handle.clone();
             let split_focus_handle = focus_handle.clone();
+            let new_tab_label = match T::KIND {
+                PanelKind::User => i18n::t!("New Tab"),
+                PanelKind::Ai => i18n::t!("New AI Tab"),
+            };
             (
                 None,
                 Some(
@@ -1272,7 +1540,7 @@ fn new_browser_pane(
                                 .icon_size(IconSize::Small)
                                 .tooltip(move |_, cx| {
                                     Tooltip::for_action_in(
-                                        i18n::t!("New Tab"),
+                                        new_tab_label,
                                         &NewPanelTab,
                                         &focus_handle,
                                         cx,
@@ -1284,32 +1552,6 @@ fn new_browser_pane(
                                             panel.open_tab_in_pane(
                                                 &pane_handle,
                                                 None,
-                                                NewTabPlacement::Foreground,
-                                                window,
-                                                cx,
-                                            )
-                                        })
-                                        .log_err();
-                                }),
-                        )
-                        .child(
-                            IconButton::new("browser-panel-new-ai-tab", IconName::Sparkle)
-                                .icon_size(IconSize::Small)
-                                .tooltip(move |_, cx| {
-                                    Tooltip::for_action_in(
-                                        i18n::t!("New AI Tab"),
-                                        &NewAiTab,
-                                        &ai_tab_focus_handle,
-                                        cx,
-                                    )
-                                })
-                                .on_click(move |_, window, cx| {
-                                    new_ai_tab_panel
-                                        .update(cx, |panel, cx| {
-                                            panel.open_tab_in_pane_with_profile(
-                                                &ai_tab_pane_handle,
-                                                None,
-                                                WebViewProfile::Ai,
                                                 NewTabPlacement::Foreground,
                                                 window,
                                                 cx,
@@ -1345,7 +1587,7 @@ fn new_browser_pane(
         pane
     });
 
-    cx.subscribe_in(&pane, window, BrowserPanel::handle_pane_event)
+    cx.subscribe_in(&pane, window, T::handle_pane_event)
         .detach();
     cx.observe(&pane, |_, _, cx| cx.notify()).detach();
 
@@ -1354,33 +1596,10 @@ fn new_browser_pane(
 
 impl Render for BrowserPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let center = self
-            .workspace
-            .update(cx, |workspace, cx| {
-                let follower_states = Default::default();
-                let workspace_handle = workspace.weak_handle();
-                self.center
-                    .render(
-                        workspace.zoomed_item(),
-                        None,
-                        &workspace::PaneRenderContext {
-                            follower_states: &follower_states,
-                            active_call: workspace.active_call(),
-                            active_pane: &self.active_pane,
-                            app_state: workspace.app_state(),
-                            project: workspace.project(),
-                            workspace: &workspace_handle,
-                        },
-                        window,
-                        cx,
-                    )
-                    .into_any_element()
-            })
-            .ok();
-
+        let center = self.render_panes(window, cx);
         v_flex()
             .key_context(BROWSER_PANEL_KEY)
-            .track_focus(&self.focus_handle)
+            .track_focus(&self.tabs.focus_handle)
             .size_full()
             .bg(cx.theme().colors().panel_background)
             // 触ったペインを宛先にする。捕捉フェーズで拾うのは、タブや「+」が
@@ -1392,7 +1611,7 @@ impl Render for BrowserPanel {
                 this.open_tab(None, NewTabPlacement::Foreground, window, cx)
             }))
             .on_action(cx.listener(|this, _: &ClosePanelTab, window, cx| {
-                let pane = this.active_pane.clone();
+                let pane = this.tabs.active_pane.clone();
                 pane.update(cx, |pane, cx| {
                     pane.close_active_item(&CloseActiveItem::default(), window, cx)
                         .detach_and_log_err(cx);
@@ -1410,10 +1629,7 @@ impl Render for BrowserPanel {
 
 impl Focusable for BrowserPanel {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
-        if self.active_pane.read(cx).items_len() == 0 {
-            return self.focus_handle.clone();
-        }
-        self.active_pane.focus_handle(cx)
+        self.tabs.focus_handle(cx)
     }
 }
 
@@ -1437,7 +1653,7 @@ impl Panel for BrowserPanel {
     }
 
     fn set_position(&mut self, position: DockPosition, _: &mut Window, cx: &mut Context<Self>) {
-        settings::update_settings_file(self.fs.clone(), cx, move |settings, _| {
+        settings::update_settings_file(self.tabs.fs.clone(), cx, move |settings, _| {
             settings.browser.get_or_insert_default().dock = Some(position.into())
         });
     }
@@ -1469,24 +1685,19 @@ impl Panel for BrowserPanel {
     }
 
     fn pane(&self) -> Option<Entity<Pane>> {
-        Some(self.active_pane.clone())
+        Some(self.tabs.active_pane.clone())
     }
 
     fn panes(&self) -> Vec<Entity<Pane>> {
-        self.center.panes().into_iter().cloned().collect()
+        self.tabs.panes()
     }
 
     fn is_zoomed(&self, _: &Window, cx: &App) -> bool {
-        self.center
-            .panes()
-            .into_iter()
-            .any(|pane| pane.read(cx).is_zoomed())
+        self.tabs.is_zoomed(cx)
     }
 
     fn set_zoomed(&mut self, zoomed: bool, _: &mut Window, cx: &mut Context<Self>) {
-        for pane in self.center.panes() {
-            pane.update(cx, |pane, cx| pane.set_zoomed(zoomed, cx));
-        }
+        self.tabs.set_zoomed(zoomed, cx);
         cx.notify();
     }
 
@@ -1494,27 +1705,34 @@ impl Panel for BrowserPanel {
         let was_active = self.active;
         self.active = active;
         if !active {
-            self.hide_all_surfaces(HIDDEN_PANEL_INACTIVE, cx);
+            self.tabs.hide_all_surfaces(HIDDEN_PANEL_INACTIVE, cx);
             cx.notify();
             return;
         }
         cx.notify();
-        if was_active || !self.has_no_tabs(cx) {
+        if was_active || !self.tabs.has_no_tabs(cx) {
             return;
         }
         // 最後のタブを閉じてパネルを畳んだあと、また開いたとき。空のペインには
-        // タブバーすら出ないので、タブを 1 枚用意する。
+        // タブバーすら出ないので、タブを 1 枚用意する。フォーカスを渡すのは、パネルを
+        // 開いた操作がパネルにフォーカスを移していたときだけ (AI ブラウザーを隣に
+        // 出すためにドックが開いたとき (ADR-F89 追記 10) にフォーカスを奪わない)。
         cx.defer_in(window, |this, window, cx| {
-            this.open_initial_tab(NewTabPlacement::Foreground, window, cx)
+            let placement = if this.tabs.focus_handle.contains_focused(window, cx) {
+                NewTabPlacement::Foreground
+            } else {
+                NewTabPlacement::ForegroundWithoutFocus
+            };
+            this.open_initial_tab(placement, window, cx)
         });
     }
 
     fn revealed_by_user(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.revealed_by_user = true;
         // 画面に出ているタブ (ペインごとに 1 枚) だけを起こす。裏のタブはまだ
-        // 白いまま置き、`handle_pane_event` が前面に来た瞬間に起こす
+        // 白いまま置き、`front_tab_changed` が前面に来た瞬間に起こす
         // (表に出るまで通信しない、待機ホームの趣旨を保つ)。
-        for pane in self.center.panes().into_iter().cloned().collect::<Vec<_>>() {
+        for pane in self.tabs.panes() {
             Self::wake_active_browser_item(&pane, window, cx);
         }
     }
@@ -1537,7 +1755,8 @@ impl Panel for BrowserPanel {
 
 /// パネルのレイアウトはワークスペースの kvp に置く (ターミナルパネルと同じ流儀)。
 /// タブの中身は種類ごとの `SerializableItem` が自分の DB 行に書くので、ここには
-/// 「どの種類のタブがどの順で並んでいたか」だけを残す (ADR-F37)。
+/// 「どの種類のタブがどの順で並んでいたか」だけを残す (ADR-F37)。人のパネルと
+/// AI のパネルは同じ形式で、別の鍵 ([`Panel::panel_key`]) に書く。
 #[derive(Debug, Serialize, Deserialize)]
 struct SerializedBrowserPanel {
     root: SerializedBrowserPaneGroup,
@@ -1728,30 +1947,40 @@ fn serialize_pane(
     }
 }
 
-/// 保存したレイアウトを組み立て直す。1 枚も復元できなければ `false` を返し、
-/// 呼び出し側がホームのタブを 1 枚開く。
-async fn restore(
-    panel: &Entity<BrowserPanel>,
+/// 保存したレイアウトを組み立て直す。1 枚も復元できなければ `false` を返す
+/// (人のパネルはホームのタブを 1 枚開き、AI のパネルは空の案内を出す)。
+///
+/// 復元中のペインはまだ `center` に載っていない。タブが 1 枚足されるたびに
+/// `AddItem` で保存すると、その空のレイアウトが保存済みのレイアウトを上書きして
+/// しまうので、その間は保存を止める。
+async fn restore<T: BrowserTabsPanel>(
+    panel: &Entity<T>,
     serialized: SerializedBrowserPanel,
     workspace_id: Option<WorkspaceId>,
     cx: &mut AsyncWindowContext,
 ) -> bool {
-    let Some((root, active_pane)) =
-        deserialize_pane_group(panel, &serialized.root, workspace_id, cx).await
-    else {
-        return false;
-    };
+    panel.update(cx, |panel, _| panel.tabs_mut().restoring = true);
+    let restored = deserialize_pane_group(panel, &serialized.root, workspace_id, cx).await;
     panel.update(cx, |panel, cx| {
-        panel.center = PaneGroup::with_root(root);
-        panel.active_pane = active_pane.unwrap_or_else(|| panel.center.first_pane());
-        panel.hide_inactive_surfaces(cx);
-    });
-    true
+        panel.tabs_mut().restoring = false;
+        let Some((root, active_pane)) = restored else {
+            return false;
+        };
+        let tabs = panel.tabs_mut();
+        tabs.center = PaneGroup::with_root(root);
+        tabs.active_pane = active_pane.unwrap_or_else(|| tabs.center.first_pane());
+        tabs.hide_inactive_surfaces(cx);
+        // 戻したタブには新しい item id が付き、古い id の行は起動後の掃除で消える。
+        // 古い id のままのレイアウトを残すと、次の起動でタブが空で戻る (AI のパネルでは
+        // 捨てられる)。移した AI タブもここで人のパネルのレイアウトから外れる。
+        panel.serialize(cx);
+        true
+    })
 }
 
 #[async_recursion(?Send)]
-async fn deserialize_pane_group(
-    panel: &Entity<BrowserPanel>,
+async fn deserialize_pane_group<T: BrowserTabsPanel>(
+    panel: &Entity<T>,
     serialized: &SerializedBrowserPaneGroup,
     workspace_id: Option<WorkspaceId>,
     cx: &mut AsyncWindowContext,
@@ -1787,7 +2016,12 @@ async fn deserialize_pane_group(
             }
             let pane = panel
                 .update_in(cx, |panel, window, cx| {
-                    new_browser_pane(panel.workspace.clone(), panel.project.clone(), window, cx)
+                    new_browser_pane(
+                        panel.tabs().workspace.clone(),
+                        panel.tabs().project.clone(),
+                        window,
+                        cx,
+                    )
                 })
                 .log_err()?;
 
@@ -1811,26 +2045,40 @@ async fn deserialize_pane_group(
 
 /// 第 12 便の形式 (URL の並び) の読み出し。ワークスペース ID を要らないので、
 /// 切り離しウィンドウのセッション鍵で保存されたものもここまでは戻せる。
-fn restore_urls(
-    panel: &Entity<BrowserPanel>,
+fn restore_urls<T: BrowserTabsPanel>(
+    panel: &Entity<T>,
     pane: &Entity<Pane>,
     serialized_pane: &SerializedBrowserPane,
     cx: &mut AsyncWindowContext,
 ) {
     panel
         .update_in(cx, |panel, window, cx| {
+            let mut next_index = 0;
+            let mut active_item = None;
             for (index, url) in serialized_pane.urls.iter().enumerate() {
+                // AI のパネルのタブはすべて AI タブ。人のパネルの `ai_tabs` は前の版が
+                // そこに置いていた AI タブで、AI のパネルへ移す。
+                if T::KIND == PanelKind::User && serialized_pane.ai_tabs.contains(&index) {
+                    let workspace = panel.tabs().workspace.clone();
+                    let fs = panel.tabs().fs.clone();
+                    let item = cx.new(|cx| {
+                        BrowserItem::new_ai(
+                            workspace,
+                            fs,
+                            PanelKind::Ai.host(),
+                            Some(url.clone()),
+                            window,
+                            cx,
+                        )
+                    });
+                    panel.restored_foreign_item(Box::new(item), cx);
+                    continue;
+                }
                 // 復元直後はどのタブも裏。表に出す 1 枚だけをこの後選ぶので、
                 // 起動時に作られる WebView2 はペインごとに 1 つで済む。
-                let profile = if serialized_pane.ai_tabs.contains(&index) {
-                    WebViewProfile::Ai
-                } else {
-                    WebViewProfile::User
-                };
-                panel.open_tab_in_pane_with_profile(
+                panel.open_tab_in_pane(
                     pane,
                     Some(url.clone()),
-                    profile,
                     NewTabPlacement::Background,
                     window,
                     cx,
@@ -1838,13 +2086,17 @@ fn restore_urls(
                 // `Pane` は「表に出ているタブの次」に挿すので、裏で足し続けると
                 // 3 枚目から順序が崩れる。足すたびに末尾を選んで並びを保つ。
                 pane.update(cx, |pane, cx| {
-                    pane.activate_item(index, false, false, window, cx);
+                    pane.activate_item(next_index, false, false, window, cx);
                 });
+                if serialized_pane.active_item == Some(index) {
+                    active_item = Some(next_index);
+                }
+                next_index += 1;
             }
-            let active_item = serialized_pane
-                .active_item
-                .unwrap_or(0)
-                .min(serialized_pane.urls.len().saturating_sub(1));
+            if next_index == 0 {
+                return;
+            }
+            let active_item = active_item.unwrap_or(0).min(next_index - 1);
             pane.update(cx, |pane, cx| {
                 pane.activate_item(active_item, false, false, window, cx);
             });
@@ -1853,9 +2105,11 @@ fn restore_urls(
 }
 
 /// 種類ごとの復元。`workspace` に登録の無い種類は飛ばす (それを知っていた版で
-/// 保存された可能性があるので、失敗ではなく読み飛ばしとして扱う)。
-async fn restore_items(
-    panel: &Entity<BrowserPanel>,
+/// 保存された可能性があるので、失敗ではなく読み飛ばしとして扱う)。このパネルに
+/// 置かないタブ ([`PanelKind::accepts`]) はペインに足さず、パネルに引き渡す
+/// ([`BrowserTabsPanel::restored_foreign_item`])。
+async fn restore_items<T: BrowserTabsPanel>(
+    panel: &Entity<T>,
     pane: &Entity<Pane>,
     items: &[SerializedPanelItem],
     workspace_id: Option<WorkspaceId>,
@@ -1868,7 +2122,7 @@ async fn restore_items(
         return;
     };
     let (workspace, project) = panel.read_with(cx, |panel, _| {
-        (panel.workspace.clone(), panel.project.clone())
+        (panel.tabs().workspace.clone(), panel.tabs().project.clone())
     });
 
     let mut tasks = Vec::new();
@@ -1914,6 +2168,11 @@ async fn restore_items(
                 continue;
             }
         };
+        let belongs_here = panel.read_with(cx, |_, cx| T::KIND.accepts(item.as_ref(), cx));
+        if !belongs_here {
+            panel.update(cx, |panel, cx| panel.restored_foreign_item(item, cx));
+            continue;
+        }
         // 表に出すのは最後に選ぶ 1 枚だけ (裏のブラウザータブは WebView2 を
         // 作らない)。裏で足すときの挿し先は `Pane` に任せると「表のタブの次」に
         // なって並びが崩れるので、末尾を明示する。
@@ -2145,6 +2404,7 @@ mod tests {
     ) {
         let rows = panel.read_with(cx, |panel, cx| {
             panel
+                .tabs
                 .center
                 .panes()
                 .into_iter()
@@ -2223,16 +2483,16 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |panel, cx| {
-            assert_eq!(panel.center.panes().len(), 1);
+            assert_eq!(panel.tabs.center.panes().len(), 1);
             assert_eq!(
-                pane_urls(&panel.active_pane, cx),
+                pane_urls(&panel.tabs.active_pane, cx),
                 vec![
                     "https://example.com/one".to_string(),
                     "https://example.com/two".to_string()
                 ]
             );
             // 背景タブは表に出ない = そのタブの WebView2 はまだ作られない。
-            assert_eq!(panel.active_pane.read(cx).active_item_index(), 0);
+            assert_eq!(panel.tabs.active_pane.read(cx).active_item_index(), 0);
         });
     }
 
@@ -2253,7 +2513,7 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |panel, cx| {
-            let panes = panel.center.panes();
+            let panes = panel.tabs.center.panes();
             assert_eq!(panes.len(), 2, "the panel should own both panes itself");
             assert_eq!(
                 pane_urls(panes[0], cx),
@@ -2304,7 +2564,7 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |panel, _| {
-            let panes = panel.center.panes();
+            let panes = panel.tabs.center.panes();
             assert_eq!(panes.len(), 2);
             (panes[0].clone(), panes[1].clone())
         })
@@ -2318,7 +2578,7 @@ mod tests {
         let (first, second) = split_panel(&window_handle, &panel, cx);
         panel.read_with(cx, |panel, _| {
             assert_eq!(
-                panel.active_pane, second,
+                panel.tabs.active_pane, second,
                 "the pane the split created takes over"
             );
         });
@@ -2334,7 +2594,7 @@ mod tests {
 
         panel.read_with(cx, |panel, cx| {
             assert_eq!(
-                panel.active_pane, first,
+                panel.tabs.active_pane, first,
                 "focus moving into a pane makes it the active one"
             );
             let view = panel
@@ -2370,7 +2630,7 @@ mod tests {
                 vec!["https://example.com/two".to_string()],
                 "the other pane is left alone"
             );
-            assert_eq!(panel.active_pane, first);
+            assert_eq!(panel.tabs.active_pane, first);
         });
     }
 
@@ -2390,7 +2650,7 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |panel, cx| {
-            assert_eq!(panel.active_pane, first);
+            assert_eq!(panel.tabs.active_pane, first);
             assert_eq!(
                 panel
                     .active_view(cx)
@@ -2413,7 +2673,7 @@ mod tests {
         });
         cx.run_until_parked();
         panel.read_with(cx, |panel, cx| {
-            assert_eq!(panel.active_pane, second);
+            assert_eq!(panel.tabs.active_pane, second);
             assert_eq!(
                 pane_urls(&second, cx),
                 vec![
@@ -2441,7 +2701,7 @@ mod tests {
             cx,
         );
 
-        let pane = panel.read_with(cx, |panel, _| panel.active_pane.clone());
+        let pane = panel.read_with(cx, |panel, _| panel.tabs.active_pane.clone());
         pane.update_in(cx, |pane, window, cx| {
             let item = pane
                 .item_for_index(1)
@@ -2461,7 +2721,7 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |panel, cx| {
-            let panes = panel.center.panes();
+            let panes = panel.tabs.center.panes();
             assert_eq!(panes.len(), 2, "the drop should split the panel");
             assert_eq!(
                 pane_urls(panes[0], cx),
@@ -2493,7 +2753,7 @@ mod tests {
 
         open_tabs(&panel, &["https://example.com/one"], cx);
 
-        let pane = panel.read_with(cx, |panel, _| panel.active_pane.clone());
+        let pane = panel.read_with(cx, |panel, _| panel.tabs.active_pane.clone());
         let dropped = if cfg!(windows) {
             PathBuf::from(r"C:\tmp\page.html")
         } else {
@@ -2512,7 +2772,7 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |panel, cx| {
-            let panes = panel.center.panes();
+            let panes = panel.tabs.center.panes();
             assert_eq!(panes.len(), 2, "the drop should split the panel");
             assert_eq!(
                 pane_urls(panes[0], cx),
@@ -2563,8 +2823,8 @@ mod tests {
 
         let serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
             root: serialize_pane_group(
-                &panel.center.root,
-                &panel.active_pane,
+                &panel.tabs.center.root,
+                &panel.tabs.active_pane,
                 PanelLayoutFormat::Items,
                 cx,
             ),
@@ -2580,7 +2840,7 @@ mod tests {
         cx.run_until_parked();
 
         restored.read_with(cx, |panel, cx| {
-            let panes = panel.center.panes();
+            let panes = panel.tabs.center.panes();
             assert_eq!(panes.len(), 2);
             assert_eq!(
                 pane_urls(panes[0], cx),
@@ -2608,7 +2868,7 @@ mod tests {
         // ドラッグでブラウザー以外のタブが載った状態。
         panel.update_in(cx, |panel, window, cx| {
             let item = cx.new(TestItem::new);
-            panel.active_pane.update(cx, |pane, cx| {
+            panel.tabs.active_pane.update(cx, |pane, cx| {
                 pane.add_item(Box::new(item), false, false, None, window, cx);
             });
         });
@@ -2617,8 +2877,8 @@ mod tests {
 
         let mut serialized = panel.update(cx, |panel, cx| SerializedBrowserPanel {
             root: serialize_pane_group(
-                &panel.center.root,
-                &panel.active_pane,
+                &panel.tabs.center.root,
+                &panel.tabs.active_pane,
                 PanelLayoutFormat::Items,
                 cx,
             ),
@@ -2653,7 +2913,7 @@ mod tests {
         cx.run_until_parked();
 
         restored.read_with(cx, |panel, cx| {
-            let panes = panel.center.panes();
+            let panes = panel.tabs.center.panes();
             assert_eq!(panes.len(), 1);
             assert_eq!(pane_kinds(panes[0], cx), vec!["Browser", "TestItem"]);
             assert_eq!(
@@ -2681,7 +2941,7 @@ mod tests {
         cx.run_until_parked();
 
         restored.read_with(cx, |panel, cx| {
-            let panes = panel.center.panes();
+            let panes = panel.tabs.center.panes();
             assert_eq!(panes.len(), 1);
             assert_eq!(
                 pane_urls(panes[0], cx),
@@ -2696,8 +2956,8 @@ mod tests {
         // 次の保存で新形式に移る。
         let reserialized = restored.update(cx, |panel, cx| {
             serialize_pane_group(
-                &panel.center.root,
-                &panel.active_pane,
+                &panel.tabs.center.root,
+                &panel.tabs.active_pane,
                 PanelLayoutFormat::Items,
                 cx,
             )
@@ -2724,67 +2984,28 @@ mod tests {
             .collect()
     }
 
-    #[gpui::test]
-    async fn ai_tabs_stay_ai_tabs_in_the_url_layout(cx: &mut TestAppContext) {
-        init_test(cx);
+    /// The window's workspace with the user's browser panel and the AI browser panel in it.
+    async fn init_workspace_with_both_panels(
+        cx: &mut TestAppContext,
+    ) -> (
+        gpui::WindowHandle<MultiWorkspace>,
+        Entity<BrowserPanel>,
+        Entity<AiBrowserPanel>,
+    ) {
         let (window_handle, panel) = init_workspace_with_panel(cx).await;
-        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
-
-        open_tabs(&panel, &["https://example.com/one"], cx);
-        panel.update_in(cx, |panel, window, cx| {
-            panel.open_ai_tab(
-                Some("http://localhost:3000/".to_string()),
-                NewTabPlacement::Foreground,
-                window,
-                cx,
-            );
-        });
-        cx.run_until_parked();
-        let root = panel.update(cx, |panel, cx| {
-            serialize_pane_group(
-                &panel.center.root,
-                &panel.active_pane,
-                PanelLayoutFormat::Urls,
-                cx,
-            )
-        });
-        let SerializedBrowserPaneGroup::Pane(serialized_pane) = &root else {
-            panic!("the panel has a single pane");
-        };
-        assert_eq!(serialized_pane.ai_tabs, vec![1]);
-        let json = serde_json::to_string(&SerializedBrowserPanel { root })
-            .expect("the layout should serialize");
-
-        let restored = new_panel(&window_handle, cx);
-        let mut async_cx = async_window(cx);
-        let round_tripped: SerializedBrowserPanel =
-            serde_json::from_str(&json).expect("the layout should deserialize");
-        assert!(restore(&restored, round_tripped, None, &mut async_cx).await);
-        cx.run_until_parked();
-        restored.read_with(cx, |panel, cx| {
-            assert_eq!(
-                pane_profiles(&panel.active_pane, cx),
-                vec![WebViewProfile::User, WebViewProfile::Ai]
-            );
-        });
-
-        // A layout written before AI tabs existed has no flag: every tab is the user's.
-        let stored = r#"{"root":{"Pane":{"active":true,"urls":["https://example.com/one","http://localhost:3000/"],"active_item":1}}}"#;
-        let old: SerializedBrowserPanel =
-            serde_json::from_str(stored).expect("the old layout should deserialize");
-        let restored = new_panel(&window_handle, cx);
-        let mut async_cx = async_window(cx);
-        assert!(restore(&restored, old, None, &mut async_cx).await);
-        cx.run_until_parked();
-        restored.read_with(cx, |panel, cx| {
-            assert_eq!(
-                pane_profiles(&panel.active_pane, cx),
-                vec![WebViewProfile::User, WebViewProfile::User]
-            );
-        });
+        let ai_panel = window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    let ai_panel = cx.new(|cx| AiBrowserPanel::new(workspace, window, cx));
+                    workspace.add_panel(ai_panel.clone(), window, cx);
+                    ai_panel
+                })
+            })
+            .expect("failed to add the AI browser panel");
+        (window_handle, panel, ai_panel)
     }
 
-    fn open_ai_tab_in(panel: &Entity<BrowserPanel>, url: &str, cx: &mut VisualTestContext) {
+    fn open_ai_tab_in(panel: &Entity<AiBrowserPanel>, url: &str, cx: &mut VisualTestContext) {
         panel.update_in(cx, |panel, window, cx| {
             panel.open_ai_tab(
                 Some(url.to_string()),
@@ -2796,111 +3017,578 @@ mod tests {
         cx.run_until_parked();
     }
 
-    #[gpui::test]
-    async fn tabs_opened_from_a_tab_keep_its_profile(cx: &mut TestAppContext) {
-        init_test(cx);
-        let (window_handle, panel) = init_workspace_with_panel(cx).await;
-        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+    fn workspace_of(
+        window_handle: &gpui::WindowHandle<MultiWorkspace>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<Workspace> {
+        window_handle
+            .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
+            .expect("the window should hold a workspace")
+    }
 
-        open_tabs(&panel, &["https://example.com/user"], cx);
-        open_ai_tab_in(&panel, "http://localhost:3000/", cx);
-        let (user_view, ai_view) = panel.read_with(cx, |panel, cx| {
-            let views = panel
-                .active_pane
-                .read(cx)
-                .items()
-                .filter_map(|item| item.downcast::<BrowserItem>())
-                .map(|item| item.read(cx).view().clone())
-                .collect::<Vec<_>>();
-            (views[0].clone(), views[1].clone())
-        });
-        // A page's "open in a new tab" (a `target=_blank` link, a middle click).
-        for (view, url) in [
-            (&ai_view, "http://localhost:3000/from-ai"),
-            (&user_view, "https://example.com/from-user"),
-        ] {
-            view.update(cx, |_, cx| {
-                cx.emit(BrowserViewEvent::OpenInNewTab(url.to_string()))
-            });
-            cx.run_until_parked();
-        }
-        let tabs = panel.read_with(cx, |panel, cx| {
-            panel
-                .active_pane
-                .read(cx)
-                .items()
-                .filter_map(|item| item.downcast::<BrowserItem>())
-                .map(|item| {
-                    let view = item.read(cx).view().read(cx);
-                    (view.current_url().to_string(), view.profile())
-                })
-                .collect::<Vec<_>>()
-        });
-        assert!(
-            tabs.contains(&(
-                "http://localhost:3000/from-ai".to_string(),
-                WebViewProfile::Ai
-            )),
-            "{tabs:?}"
-        );
-        assert!(
-            tabs.contains(&(
-                "https://example.com/from-user".to_string(),
-                WebViewProfile::User
-            )),
-            "{tabs:?}"
-        );
-
-        // Duplicating an AI tab into a split keeps it an AI tab.
-        let only_ai = new_panel(&window_handle, cx);
-        open_ai_tab_in(&only_ai, "http://localhost:3000/", cx);
-        only_ai.update_in(cx, |panel, window, cx| {
-            panel.split_active_tab_right(window, cx)
-        });
-        cx.run_until_parked();
-        only_ai.read_with(cx, |panel, cx| {
-            assert_eq!(panel.center.panes().len(), 2);
-            for pane in panel.center.panes() {
-                assert_eq!(pane_profiles(pane, cx), vec![WebViewProfile::Ai]);
-            }
-        });
+    fn ai_panel_tabs(ai_panel: &Entity<AiBrowserPanel>, cx: &App) -> Vec<(String, WebViewProfile)> {
+        ai_panel
+            .read(cx)
+            .tabs
+            .panes()
+            .iter()
+            .flat_map(|pane| {
+                pane.read(cx)
+                    .items()
+                    .filter_map(|item| item.downcast::<BrowserItem>())
+                    .map(|item| {
+                        let view = item.read(cx).view().read(cx);
+                        (view.current_url().to_string(), view.profile())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     #[gpui::test]
     async fn the_user_s_searches_never_go_to_an_ai_tab(cx: &mut TestAppContext) {
         init_test(cx);
-        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let (window_handle, panel, ai_panel) = init_workspace_with_both_panels(cx).await;
         let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace = workspace_of(&window_handle, cx);
 
-        open_ai_tab_in(&panel, "http://localhost:3000/", cx);
-        panel.update_in(cx, |panel, window, cx| {
-            panel.navigate_to("https://www.bing.com/search?q=secret", window, cx)
+        open_ai_tab_in(&ai_panel, "http://localhost:3000/", cx);
+        // The tab the browser panel keeps for itself (`BrowserPanel::load_inner`).
+        open_initial_tab(&panel, cx);
+        let editor = workspace.update_in(cx, |workspace, window, cx| {
+            let editor = cx.new(|cx| {
+                let mut editor = Editor::multi_line(window, cx);
+                editor.set_text("secret plans", window, cx);
+                editor
+            });
+            workspace.add_item_to_active_pane(Box::new(editor.clone()), None, true, window, cx);
+            editor
+        });
+        editor.update_in(cx, |editor, window, cx| {
+            editor.select_all(&editor::actions::SelectAll, window, cx)
+        });
+        // Even with the AI browser in front and focused, the user's search goes to their own
+        // browser panel.
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.focus_panel::<AiBrowserPanel>(window, cx);
+            BrowserPanel::open_selection_query(workspace, QueryKind::Search, window, cx);
         });
         cx.run_until_parked();
+
         panel.read_with(cx, |panel, cx| {
-            let pane = &panel.active_pane;
             assert_eq!(
-                pane_urls(pane, cx),
-                vec![
-                    "http://localhost:3000/".to_string(),
-                    "https://www.bing.com/search?q=secret".to_string()
-                ]
+                pane_urls(&panel.tabs.active_pane, cx),
+                vec!["https://www.google.com/search?q=secret%20plans".to_string()]
             );
             assert_eq!(
-                pane_profiles(pane, cx),
-                vec![WebViewProfile::Ai, WebViewProfile::User]
+                pane_profiles(&panel.tabs.active_pane, cx),
+                vec![WebViewProfile::User]
+            );
+        });
+        ai_panel.read_with(cx, |_, cx| {
+            assert_eq!(
+                ai_panel_tabs(&ai_panel, cx),
+                vec![("http://localhost:3000/".to_string(), WebViewProfile::Ai)],
+                "the AI browser is left alone"
             );
         });
     }
 
     #[gpui::test]
+    async fn ai_tabs_left_in_the_url_layout_move_to_the_ai_panel(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel, ai_panel) = init_workspace_with_both_panels(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace = workspace_of(&window_handle, cx);
+        drop(panel);
+
+        // The url layout a build from before the AI browser panel wrote for the browser panel.
+        let stored = r#"{"root":{"Pane":{"active":true,"urls":["https://example.com/one","http://localhost:3000/","https://example.com/two"],"active_item":2,"ai_tabs":[1]}}}"#;
+        let serialized: SerializedBrowserPanel =
+            serde_json::from_str(stored).expect("the layout should deserialize");
+        let restored = new_panel(&window_handle, cx);
+        let mut async_cx = async_window(cx);
+        assert!(restore(&restored, serialized, None, &mut async_cx).await);
+        cx.run_until_parked();
+
+        restored.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_urls(&panel.tabs.active_pane, cx),
+                vec![
+                    "https://example.com/one".to_string(),
+                    "https://example.com/two".to_string()
+                ],
+                "the browser panel keeps only the user's tabs"
+            );
+            assert_eq!(
+                panel.tabs.active_pane.read(cx).active_item_index(),
+                1,
+                "the tab that was in front stays in front"
+            );
+            assert_eq!(panel.migrated_ai_tabs.len(), 1);
+        });
+
+        workspace.update_in(cx, |workspace, window, cx| {
+            restored.update(cx, |panel, cx| {
+                panel.hand_over_migrated_ai_tabs(workspace, window, cx)
+            });
+        });
+        cx.run_until_parked();
+        ai_panel.read_with(cx, |_, cx| {
+            assert_eq!(
+                ai_panel_tabs(&ai_panel, cx),
+                vec![("http://localhost:3000/".to_string(), WebViewProfile::Ai)]
+            );
+        });
+        restored.read_with(cx, |panel, _| assert!(panel.migrated_ai_tabs.is_empty()));
+
+        // A layout of nothing but AI tabs leaves the browser panel with nothing restored, so it
+        // opens its own waiting tab.
+        let stored = r#"{"root":{"Pane":{"active":true,"urls":["http://localhost:5173/"],"active_item":0,"ai_tabs":[0]}}}"#;
+        let serialized: SerializedBrowserPanel =
+            serde_json::from_str(stored).expect("the layout should deserialize");
+        let only_ai = new_panel(&window_handle, cx);
+        let mut async_cx = async_window(cx);
+        assert!(!restore(&only_ai, serialized, None, &mut async_cx).await);
+    }
+
+    /// Writes the layout a build from before the AI browser panel saved for the browser panel:
+    /// one of the user's tabs and one AI tab, with their `browser_items` rows.
+    async fn store_layout_with_an_ai_tab(
+        workspace: &Entity<Workspace>,
+        workspace_id: WorkspaceId,
+        cx: &mut VisualTestContext,
+    ) {
+        store_urls(
+            vec![(9301, "https://example.com/user".to_string())],
+            workspace_id,
+            cx,
+        )
+        .await;
+        let db = cx.update(|_, cx| BrowserItemDb::global(cx));
+        db.save_tab(
+            9302,
+            workspace_id,
+            "http://localhost:3000/".to_string(),
+            true,
+        )
+        .await
+        .expect("saving an AI tab");
+        let layout = SerializedBrowserPanel {
+            root: SerializedBrowserPaneGroup::Pane(SerializedBrowserPane {
+                active: true,
+                items: vec![
+                    SerializedPanelItem {
+                        kind: "Browser".into(),
+                        item_id: 9301,
+                        active: false,
+                        preview: false,
+                    },
+                    SerializedPanelItem {
+                        kind: "Browser".into(),
+                        item_id: 9302,
+                        active: true,
+                        preview: false,
+                    },
+                ],
+                urls: Vec::new(),
+                active_item: None,
+                ai_tabs: Vec::new(),
+            }),
+        };
+        let key = workspace.read_with(cx, |workspace, _| {
+            serialization_key::<BrowserPanel>(workspace).expect("the workspace has an id")
+        });
+        let kvp = cx.update(|_, cx| KeyValueStore::global(cx));
+        kvp.write_kvp(
+            key,
+            serde_json::to_string(&layout).expect("the layout should serialize"),
+        )
+        .await
+        .expect("writing the browser panel's layout");
+    }
+
+    async fn load_and_add<T: Panel>(
+        load: impl std::future::Future<Output = Result<Entity<T>>>,
+        workspace: &Entity<Workspace>,
+        cx: &mut VisualTestContext,
+    ) -> Entity<T> {
+        let panel = load.await.expect("the panel should load");
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.add_panel(panel.clone(), window, cx);
+        });
+        cx.run_until_parked();
+        panel
+    }
+
+    fn assert_the_ai_tab_moved(
+        panel: &Entity<BrowserPanel>,
+        ai_panel: &Entity<AiBrowserPanel>,
+        cx: &mut VisualTestContext,
+    ) {
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_urls(&panel.tabs.active_pane, cx),
+                vec!["https://example.com/user".to_string()]
+            );
+            assert_eq!(
+                pane_profiles(&panel.tabs.active_pane, cx),
+                vec![WebViewProfile::User]
+            );
+            assert!(panel.migrated_ai_tabs.is_empty());
+        });
+        ai_panel.read_with(cx, |ai_panel_ref, cx| {
+            assert_eq!(
+                ai_panel_tabs(ai_panel, cx),
+                vec![("http://localhost:3000/".to_string(), WebViewProfile::Ai)]
+            );
+            let view = ai_panel_ref
+                .tabs
+                .active_view(cx)
+                .expect("the moved AI tab is in front");
+            assert_eq!(view.read(cx).host(), BrowserHost::AiPanel);
+        });
+    }
+
+    #[gpui::test]
+    async fn ai_tabs_saved_in_the_browser_panel_move_once_both_panels_load(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (workspace, workspace_id) = workspace_with_database_id(&window_handle, cx);
+        store_layout_with_an_ai_tab(&workspace, workspace_id, cx).await;
+        // zed counts a restore of its own around loading every panel, so the rows of tabs that a
+        // later panel restores are not cleaned up when the first panel is done.
+        workspace.update(cx, |workspace, _| workspace.begin_item_restore());
+
+        // The browser panel finishes loading first: the AI tab waits there for the AI panel.
+        let panel = load_and_add(
+            BrowserPanel::load(workspace.downgrade(), async_window(cx)),
+            &workspace,
+            cx,
+        )
+        .await;
+        panel.read_with(cx, |panel, _| assert_eq!(panel.migrated_ai_tabs.len(), 1));
+        let ai_panel = load_and_add(
+            AiBrowserPanel::load(workspace.downgrade(), async_window(cx)),
+            &workspace,
+            cx,
+        )
+        .await;
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.end_item_restore(window, cx)
+        });
+        cx.run_until_parked();
+        assert_the_ai_tab_moved(&panel, &ai_panel, cx);
+    }
+
+    #[gpui::test]
+    async fn ai_tabs_saved_in_the_browser_panel_move_when_the_ai_panel_loads_first(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (workspace, workspace_id) = workspace_with_database_id(&window_handle, cx);
+        store_layout_with_an_ai_tab(&workspace, workspace_id, cx).await;
+        // zed counts a restore of its own around loading every panel, so the rows of tabs that a
+        // later panel restores are not cleaned up when the first panel is done.
+        workspace.update(cx, |workspace, _| workspace.begin_item_restore());
+
+        let ai_panel = load_and_add(
+            AiBrowserPanel::load(workspace.downgrade(), async_window(cx)),
+            &workspace,
+            cx,
+        )
+        .await;
+        ai_panel.read_with(cx, |ai_panel, cx| assert!(ai_panel.tabs.has_no_tabs(cx)));
+        let panel = load_and_add(
+            BrowserPanel::load(workspace.downgrade(), async_window(cx)),
+            &workspace,
+            cx,
+        )
+        .await;
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.end_item_restore(window, cx)
+        });
+        cx.run_until_parked();
+        assert_the_ai_tab_moved(&panel, &ai_panel, cx);
+    }
+
+    fn stored_item_ids<T: Panel>(
+        workspace: &Entity<Workspace>,
+        cx: &mut VisualTestContext,
+    ) -> Vec<u64> {
+        fn collect(group: &SerializedBrowserPaneGroup, ids: &mut Vec<u64>) {
+            match group {
+                SerializedBrowserPaneGroup::Pane(pane) => {
+                    ids.extend(pane.items.iter().map(|item| item.item_id))
+                }
+                SerializedBrowserPaneGroup::Group { children, .. } => {
+                    for child in children {
+                        collect(child, ids);
+                    }
+                }
+            }
+        }
+        let key = workspace.read_with(cx, |workspace, _| {
+            serialization_key::<T>(workspace).expect("the workspace has an id")
+        });
+        let kvp = cx.update(|_, cx| KeyValueStore::global(cx));
+        let raw = kvp
+            .read_kvp(&key)
+            .expect("reading the kvp")
+            .expect("the layout is stored");
+        let layout: SerializedBrowserPanel =
+            serde_json::from_str(&raw).expect("the layout should deserialize");
+        let mut ids = Vec::new();
+        collect(&layout.root, &mut ids);
+        ids
+    }
+
+    fn live_item_ids(panes: Vec<Entity<Pane>>, cx: &mut VisualTestContext) -> Vec<u64> {
+        cx.update(|_, cx| {
+            panes
+                .iter()
+                .flat_map(|pane| {
+                    pane.read(cx)
+                        .items()
+                        .map(|item| item.item_id().as_u64())
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        })
+    }
+
+    /// Restored tabs get new item ids, and the cleanup then drops the rows of the old ones. A
+    /// layout still naming the old ids would bring the tabs back empty at the next start (and the
+    /// AI panel would drop them).
+    #[gpui::test]
+    async fn restored_layouts_are_written_again_with_the_new_item_ids(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let window_handle =
+            cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let (workspace, workspace_id) = workspace_with_database_id(&window_handle, cx);
+        store_layout_with_an_ai_tab(&workspace, workspace_id, cx).await;
+        workspace.update(cx, |workspace, _| workspace.begin_item_restore());
+        let panel = load_and_add(
+            BrowserPanel::load(workspace.downgrade(), async_window(cx)),
+            &workspace,
+            cx,
+        )
+        .await;
+        let ai_panel = load_and_add(
+            AiBrowserPanel::load(workspace.downgrade(), async_window(cx)),
+            &workspace,
+            cx,
+        )
+        .await;
+        workspace.update_in(cx, |workspace, window, cx| {
+            workspace.end_item_restore(window, cx)
+        });
+        cx.executor().advance_clock(Duration::from_millis(500));
+        cx.run_until_parked();
+        assert_the_ai_tab_moved(&panel, &ai_panel, cx);
+
+        let user_panes = panel.read_with(cx, |panel, _| panel.tabs.panes());
+        let ai_panes = ai_panel.read_with(cx, |panel, _| panel.tabs.panes());
+        assert_eq!(
+            stored_item_ids::<BrowserPanel>(&workspace, cx),
+            live_item_ids(user_panes, cx),
+            "the browser panel's layout no longer names the AI tab that moved out of it"
+        );
+        assert_eq!(
+            stored_item_ids::<AiBrowserPanel>(&workspace, cx),
+            live_item_ids(ai_panes, cx)
+        );
+
+        // A restart restores the AI panel from what it stored, with the rows still there.
+        let ai_panes_before = ai_panel.read_with(cx, |panel, _| panel.tabs.panes());
+        let ai_ids = live_item_ids(ai_panes_before, cx);
+        let db = cx.update(|_, cx| BrowserItemDb::global(cx));
+        for item_id in ai_ids {
+            assert_eq!(
+                db.get_tab(item_id, workspace_id).expect("reading the row"),
+                Some((Some("http://localhost:3000/".to_string()), Some(true))),
+                "the moved AI tab's row is stored under its new id"
+            );
+        }
+    }
+
+    #[gpui::test]
+    async fn a_tab_that_does_not_belong_in_a_panel_is_moved_out_of_it(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel, ai_panel) = init_workspace_with_both_panels(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace = workspace_of(&window_handle, cx);
+        open_tabs(&panel, &["https://example.com/user"], cx);
+
+        // An AI tab that reached the user's browser panel some other way than a checked drop.
+        panel.update_in(cx, |panel, window, cx| {
+            let item = cx.new(|cx| {
+                BrowserItem::new_ai(
+                    panel.tabs.workspace.clone(),
+                    panel.tabs.fs.clone(),
+                    BrowserHost::EditorTab,
+                    Some("http://localhost:3000/".to_string()),
+                    window,
+                    cx,
+                )
+            });
+            panel.tabs.active_pane.update(cx, |pane, cx| {
+                pane.add_item(Box::new(item), false, false, None, window, cx);
+            });
+        });
+        cx.run_until_parked();
+        panel.read_with(cx, |panel, cx| {
+            assert_eq!(
+                pane_profiles(&panel.tabs.active_pane, cx),
+                vec![WebViewProfile::User],
+                "the browser panel never shows an AI tab"
+            );
+        });
+        ai_panel.read_with(cx, |_, cx| {
+            assert_eq!(
+                ai_panel_tabs(&ai_panel, cx),
+                vec![("http://localhost:3000/".to_string(), WebViewProfile::Ai)]
+            );
+        });
+
+        // And anything but an AI tab that reached the AI panel goes to the editor area.
+        ai_panel.update_in(cx, |ai_panel, window, cx| {
+            let item = cx.new(TestItem::new);
+            ai_panel.tabs.active_pane.update(cx, |pane, cx| {
+                pane.add_item(Box::new(item), false, false, None, window, cx);
+            });
+        });
+        cx.run_until_parked();
+        ai_panel.read_with(cx, |ai_panel, cx| {
+            assert_eq!(
+                ai_panel.tabs.active_pane.read(cx).items_len(),
+                1,
+                "only the AI tab is left"
+            );
+        });
+        workspace.read_with(cx, |workspace, cx| {
+            assert_eq!(pane_kinds(workspace.active_pane(), cx), vec!["TestItem"]);
+        });
+    }
+
+    #[gpui::test]
+    async fn ai_tabs_cannot_be_dropped_on_the_user_s_panes(cx: &mut TestAppContext) {
+        init_test(cx);
+        let (window_handle, panel, ai_panel) = init_workspace_with_both_panels(cx).await;
+        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
+        let workspace = workspace_of(&window_handle, cx);
+        open_tabs(&panel, &["https://example.com/user"], cx);
+        open_ai_tab_in(&ai_panel, "http://localhost:3000/", cx);
+
+        let (ai_pane, ai_item) = ai_panel.read_with(cx, |ai_panel, cx| {
+            let pane = ai_panel.tabs.active_pane.clone();
+            let item = pane
+                .read(cx)
+                .active_item()
+                .expect("the AI tab is open")
+                .boxed_clone();
+            (pane, item)
+        });
+        let user_item = panel.read_with(cx, |panel, cx| {
+            panel
+                .tabs
+                .active_pane
+                .read(cx)
+                .active_item()
+                .expect("the user's tab is open")
+                .boxed_clone()
+        });
+        let dragged = |pane: &Entity<Pane>, item: &dyn ItemHandle| DraggedTab {
+            pane: pane.clone(),
+            item: item.boxed_clone(),
+            ix: 0,
+            detail: 0,
+            is_active: true,
+        };
+
+        // What each panel's panes offer to take while something is dragged over them.
+        cx.update(|_, cx| {
+            let ai_tab = dragged(&ai_pane, ai_item.as_ref());
+            let user_tab = dragged(&ai_pane, user_item.as_ref());
+            assert!(!PanelKind::User.accepts_drop(&ai_tab, cx));
+            assert!(PanelKind::User.accepts_drop(&user_tab, cx));
+            assert!(PanelKind::Ai.accepts_drop(&ai_tab, cx));
+            assert!(!PanelKind::Ai.accepts_drop(&user_tab, cx));
+            let paths = ExternalPaths(vec![PathBuf::from("page.html")].into());
+            assert!(PanelKind::User.accepts_drop(&paths, cx));
+            assert!(!PanelKind::Ai.accepts_drop(&paths, cx));
+        });
+
+        // A drop that gets through anyway (the tab bar's own drop target does not ask) is
+        // refused by the AI tab: on the user's browser panel ...
+        let user_pane = panel.read_with(cx, |panel, _| panel.tabs.active_pane.clone());
+        user_pane.update_in(cx, |pane, window, cx| {
+            pane.handle_tab_drop(&dragged(&ai_pane, ai_item.as_ref()), 1, false, window, cx);
+        });
+        cx.run_until_parked();
+        // ... and on any other pane outside the center, like the terminal panel's.
+        let project = workspace.read_with(cx, |workspace, _| workspace.project().clone());
+        let other_pane = workspace.update_in(cx, |workspace, window, cx| {
+            let workspace_handle = workspace.weak_handle();
+            cx.new(|cx| {
+                Pane::new(
+                    workspace_handle,
+                    project,
+                    Default::default(),
+                    None,
+                    NewPanelTab.boxed_clone(),
+                    false,
+                    window,
+                    cx,
+                )
+            })
+        });
+        other_pane.update_in(cx, |pane, window, cx| {
+            pane.handle_tab_drop(&dragged(&ai_pane, ai_item.as_ref()), 0, false, window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(
+            cx.update(|_, cx| pane_profiles(&user_pane, cx)),
+            vec![WebViewProfile::User]
+        );
+        other_pane.read_with(cx, |pane, _| assert_eq!(pane.items_len(), 0));
+        ai_pane.read_with(cx, |pane, _| assert_eq!(pane.items_len(), 1));
+
+        // The editor area takes it (the user may want the page beside their code).
+        let center = workspace.read_with(cx, |workspace, _| workspace.active_pane().clone());
+        center.update_in(cx, |pane, window, cx| {
+            pane.handle_tab_drop(&dragged(&ai_pane, ai_item.as_ref()), 0, false, window, cx);
+        });
+        cx.run_until_parked();
+        ai_pane.read_with(cx, |pane, _| assert_eq!(pane.items_len(), 0));
+        assert_eq!(
+            cx.update(|_, cx| pane_profiles(&center, cx)),
+            vec![WebViewProfile::Ai]
+        );
+    }
+
+    #[gpui::test]
     async fn an_ai_tab_keeps_typed_addresses_inside_its_rules(cx: &mut TestAppContext) {
         init_test(cx);
-        let (window_handle, panel) = init_workspace_with_panel(cx).await;
+        let (window_handle, _panel, ai_panel) = init_workspace_with_both_panels(cx).await;
         let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
 
-        open_ai_tab_in(&panel, "about:blank", cx);
-        let view = panel.read_with(cx, |panel, cx| panel.active_view(cx).expect("a tab"));
+        open_ai_tab_in(&ai_panel, "about:blank", cx);
+        let view = ai_panel.read_with(cx, |panel, cx| panel.tabs.active_view(cx).expect("a tab"));
         // No allowlist is installed in tests, so only loopback is allowed.
         view.update(cx, |view, cx| {
             view.navigate_to("file:///C:/Users/me/.ssh/id_rsa", cx);
@@ -2992,7 +3680,7 @@ mod tests {
             cx,
         );
         let root = panel.update(cx, |panel, cx| {
-            serialize_pane_group(&panel.center.root, &panel.active_pane, format, cx)
+            serialize_pane_group(&panel.tabs.center.root, &panel.tabs.active_pane, format, cx)
         });
         let SerializedBrowserPaneGroup::Pane(serialized_pane) = &root else {
             panic!("the panel has a single pane");
@@ -3022,13 +3710,13 @@ mod tests {
         cx.run_until_parked();
         restored.read_with(cx, |panel, cx| {
             assert_eq!(
-                pane_urls(&panel.active_pane, cx),
+                pane_urls(&panel.tabs.active_pane, cx),
                 vec![
                     "https://example.com/one".to_string(),
                     "https://example.com/two".to_string()
                 ]
             );
-            assert_eq!(panel.active_pane.read(cx).active_item_index(), 1);
+            assert_eq!(panel.tabs.active_pane.read(cx).active_item_index(), 1);
         });
     }
 
@@ -3040,6 +3728,7 @@ mod tests {
     ) -> Vec<bool> {
         let views = panel.read_with(cx, |panel, cx| {
             panel
+                .tabs
                 .center
                 .panes()
                 .into_iter()
@@ -3065,7 +3754,7 @@ mod tests {
         let (window_handle, panel) = init_workspace_with_panel(cx).await;
         let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
 
-        let fs = panel.read_with(cx, |panel, _| panel.fs.clone());
+        let fs = panel.read_with(cx, |panel, _| panel.tabs.fs.clone());
         cx.update(|_, cx| {
             let bookmarks = BookmarkStore::global(fs, cx);
             bookmarks.update(cx, |bookmarks, cx| {
@@ -3082,7 +3771,7 @@ mod tests {
 
         let (first, second) = split_panel(&window_handle, &panel, cx);
         // 分割で切り出した右のペインがアクティブ。バーはそのビューの中だけ。
-        panel.read_with(cx, |panel, _| assert_eq!(panel.active_pane, second));
+        panel.read_with(cx, |panel, _| assert_eq!(panel.tabs.active_pane, second));
         assert_eq!(
             bookmark_bar_per_pane(&panel, cx),
             vec![false, true],
@@ -3097,14 +3786,14 @@ mod tests {
             let _ = window.draw(cx);
         });
         cx.run_until_parked();
-        panel.read_with(cx, |panel, _| assert_eq!(panel.active_pane, first));
+        panel.read_with(cx, |panel, _| assert_eq!(panel.tabs.active_pane, first));
         assert_eq!(bookmark_bar_per_pane(&panel, cx), vec![true, false]);
 
         // ブラウザーでないタブを落としてもパネルの枠組みは動かない (そのタブに
         // バーが無いだけ)。前のビューにバーが残らないことも見る。
         panel.update_in(cx, |panel, window, cx| {
             let item = cx.new(TestItem::new);
-            panel.active_pane.update(cx, |pane, cx| {
+            panel.tabs.active_pane.update(cx, |pane, cx| {
                 pane.add_item(Box::new(item), false, false, None, window, cx);
             });
         });
@@ -3133,7 +3822,7 @@ mod tests {
         cx.run_until_parked();
 
         panel.read_with(cx, |panel, cx| {
-            assert_eq!(panel.active_pane.read(cx).items_len(), 0);
+            assert_eq!(panel.tabs.active_pane.read(cx).items_len(), 0);
         });
         let center_view = window_handle
             .read_with(cx, |multi_workspace, cx| {
@@ -3369,7 +4058,7 @@ mod tests {
         cx.run_until_parked();
         panel.read_with(cx, |panel, cx| {
             assert_eq!(
-                pane_urls(&panel.active_pane, cx),
+                pane_urls(&panel.tabs.active_pane, cx),
                 vec![DEFAULT_HOME_URL.to_string(); 2]
             );
         });
@@ -3390,7 +4079,7 @@ mod tests {
 
         panel.read_with(cx, |panel, cx| {
             assert_eq!(
-                pane_urls(&panel.active_pane, cx),
+                pane_urls(&panel.tabs.active_pane, cx),
                 vec![String::new(), DEFAULT_HOME_URL.to_string()],
                 "the tab the user opened goes home; the one the panel kept stays empty"
             );
@@ -3476,7 +4165,7 @@ mod tests {
         cx.run_until_parked();
         panel.read_with(cx, |panel, cx| {
             assert_eq!(
-                pane_urls(&panel.active_pane, cx),
+                pane_urls(&panel.tabs.active_pane, cx),
                 vec![DEFAULT_HOME_URL.to_string(), String::new()],
                 "the panel is revealed, but the background tab is still white"
             );
@@ -3485,14 +4174,14 @@ mod tests {
         // Bringing the background tab to the front (a tab click) wakes it too,
         // without needing the panel to be revealed again.
         panel.update_in(cx, |panel, window, cx| {
-            panel.active_pane.update(cx, |pane, cx| {
+            panel.tabs.active_pane.update(cx, |pane, cx| {
                 pane.activate_item(1, true, true, window, cx);
             });
         });
         cx.run_until_parked();
         panel.read_with(cx, |panel, cx| {
             assert_eq!(
-                pane_urls(&panel.active_pane, cx),
+                pane_urls(&panel.tabs.active_pane, cx),
                 vec![DEFAULT_HOME_URL.to_string(); 2],
                 "the background tab wakes up as soon as it becomes the front tab"
             );

@@ -140,6 +140,10 @@ pub(crate) enum WebViewEvent {
     DownloadBlocked {
         url: String,
     },
+    /// The page's browser or renderer process went away. The surface is dead:
+    /// every later page operation fails, and the view replaces it with a new
+    /// one. The payload says why, in English, for the log and the AI tools.
+    Crashed(String),
 }
 
 /// Where the browsing surface should sit, in GPUI's logical pixels relative to
@@ -165,6 +169,15 @@ pub(crate) struct Viewport {
     pub(crate) overlays: Vec<OverlayRect>,
 }
 
+/// The size, in GPUI's logical pixels, an AI tab's page is laid out at while
+/// it has never been on screen (a command reached a tab that was never shown).
+/// Once it has been shown it keeps the last size it had on screen.
+pub(crate) const BACKGROUND_VIEWPORT_WIDTH: f32 = 1280.;
+pub(crate) const BACKGROUND_VIEWPORT_HEIGHT: f32 = 800.;
+
+/// Why an AI tab's page is out of sight but still rendering ("parked").
+pub(crate) const PARKED_IN_BACKGROUND: &str = "the AI tab is in the background";
+
 /// A gpui overlay rectangle in logical pixels, relative to the host window's
 /// client origin - the same space [`Viewport`] uses.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -173,6 +186,16 @@ pub(crate) struct OverlayRect {
     pub(crate) top: f32,
     pub(crate) right: f32,
     pub(crate) bottom: f32,
+}
+
+/// Why a page operation failed, or what the AI tools report, once the
+/// surface's page crashed ([`WebViewEvent::Crashed`]): only AI commands run
+/// page operations, and the next one replaces the surface.
+pub(crate) fn crashed_page_message(detail: &str) -> String {
+    format!(
+        "The AI tab's browser stopped ({detail}). The next browser command restarts it and \
+         reloads the page."
+    )
 }
 
 /// A receiver that already holds `value`, for the asynchronous `WebView`

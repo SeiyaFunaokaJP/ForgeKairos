@@ -60,11 +60,6 @@ macro_rules! gcallback {
 /// still gets a working browser.
 pub(crate) const DETACHED_HOST: isize = -1;
 
-/// Page scripts in an AI tab cannot reach the network around the proxy:
-/// WebRTC, the only UDP a page can open, is turned off in the engine
-/// (`enable-webrtc`), so `browser_eval` may run arbitrary scripts.
-pub(crate) const SUPPORTS_SCRIPT_EVAL: bool = true;
-
 /// How long the view waits between two [`pump_main_loop`] calls. Short enough
 /// that typing into a page does not lag, long enough that an idle browser costs
 /// next to nothing.
@@ -87,6 +82,10 @@ const OVERLAY_CORNER_RADIUS: f64 = 8.;
 /// See `EDGE_SLIVER_DEPTH` in `webview_windows`: a dock's resize handle reaches
 /// a few pixels into the surface without painting anything there.
 const EDGE_SLIVER_DEPTH: f32 = 4.;
+
+/// How far outside the host window a parked page is put, in physical pixels,
+/// so that not even a pixel of it reaches the window.
+const PARKING_MARGIN: i32 = 64;
 
 pub(crate) fn host_window_handle(window: &Window) -> Option<isize> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -456,13 +455,22 @@ struct State {
     bounds: DeviceRect,
     holes: Vec<DeviceRect>,
     scale: f64,
+    /// Whether the page is on screen. Off screen, a user tab's page is hidden
+    /// (unmapped) and an AI tab's page is parked (see [`placement`]).
     visible: bool,
+    /// The size, in physical pixels, the page last had: where an AI tab's
+    /// page keeps being laid out while it is parked.
+    last_size: Option<(i32, i32)>,
     hidden_reason: Option<&'static str>,
     input_blocked: bool,
     view_focused: bool,
     applied_bounds: Option<DeviceRect>,
     applied_scale: Option<f64>,
+    /// The last `visible` acted on.
     applied_visible: Option<bool>,
+    /// Whether the window is mapped (`gtk_widget_show`), which a parked page's
+    /// is.
+    applied_shown: Option<bool>,
     /// The `(bounds, holes, input_blocked)` the window's shapes were built
     /// from; the holes are window-relative, so a resize invalidates them.
     applied_shape: Option<(DeviceRect, Vec<DeviceRect>, bool)>,
@@ -531,7 +539,16 @@ impl WebView {
             if ai_profile {
                 // WebRTC's UDP would bypass the HTTP proxy. Both are already
                 // off by default; turning them off explicitly keeps it that way
-                // should a distribution change the default.
+                // should a distribution change the default. `enable-webrtc` is
+                // WebCore's `PeerConnectionEnabled`, the only switch for
+                // `RTCPeerConnection` whichever backend (GStreamer or
+                // libwebrtc) a build uses. WebTransport, the other UDP a page
+                // could open, does not exist in WebKitGTK: its only
+                // implementation is Network.framework, so
+                // `defaultWebTransportEnabled()` is false without
+                // `HAVE(WEBTRANSPORT)` (Source/WebKit/Shared/
+                // WebPreferencesDefaultValues.cpp), and this backend never
+                // turns the feature on.
                 set_boolean_property(functions, settings, c"enable-webrtc", false);
                 set_boolean_property(functions, settings, c"enable-media-stream", false);
                 // A prefetch would send page-chosen names to the system
@@ -647,6 +664,9 @@ impl WebView {
         }
         {
             let mut state = self.inner.state.borrow_mut();
+            if !bounds.is_empty() {
+                state.last_size = Some((bounds.width(), bounds.height()));
+            }
             state.bounds = bounds;
             state.holes = holes;
             state.scale = viewport.scale_factor.max(0.1) as f64;
@@ -671,6 +691,9 @@ impl WebView {
             .with_x_errors_ignored(|| inner.apply_shape(false));
     }
 
+    /// Hides an embedded page, or parks an AI tab's: still mapped and
+    /// rendering, but moved outside the host window. A detached window is the
+    /// user's to show and hide.
     pub(crate) fn hide(&self, reason: &'static str) {
         if self.inner.embedding.is_none() {
             return;
@@ -1040,6 +1063,11 @@ impl Inner {
         self.connect(view, c"load-failed", gcallback!(on_load_failed, LoadFailed));
         self.connect(view, c"notify::title", gcallback!(on_title_changed, Notify));
         self.connect(view, c"notify::uri", gcallback!(on_uri_changed, Notify));
+        self.connect(
+            view,
+            c"web-process-terminated",
+            gcallback!(on_web_process_terminated, ProcessTerminated),
+        );
         if self.ai_profile {
             self.connect(view, c"print", gcallback!(on_print, Print));
             // WebKit's own default denies too, except pointer lock; denying
@@ -1055,6 +1083,16 @@ impl Inner {
                 c"run-file-chooser",
                 gcallback!(on_run_file_chooser, Request),
             );
+            // WebKit's defaults show a dialog inside the page (a script dialog, an HTTP
+            // sign-in form) and hold the page until someone answers it, which nobody does for
+            // an AI tab out of sight. The page script answers alert/confirm/prompt itself;
+            // these answer what gets past it (a frame it did not run in, `beforeunload`).
+            self.connect(
+                view,
+                c"script-dialog",
+                gcallback!(on_script_dialog, Request),
+            );
+            self.connect(view, c"authenticate", gcallback!(on_authenticate, Request));
         }
         let back_forward_list = unsafe { (functions.webkit_web_view_get_back_forward_list)(view) };
         if !back_forward_list.is_null() {
@@ -1319,8 +1357,15 @@ impl Inner {
         self.send(WebViewEvent::FocusReturned);
     }
 
+    /// An AI tab's window is also shown for a command that reaches a tab the
+    /// panel never painted: an unmapped page is one WebKit does not render, and
+    /// on Wayland a window cannot be kept mapped yet out of sight. It is shown
+    /// without taking the focus, and like any detached window it is never
+    /// hidden by the panel; minimised by the user, WebKit may slow its
+    /// rendering, but scripts, loading and snapshots carry on.
     fn sync_detached(&self, viewport: &Viewport) {
-        if viewport.hidden_reason.is_some() || self.state.borrow().detached_shown {
+        let wanted = viewport.hidden_reason.is_none() || self.ai_profile;
+        if !wanted || self.state.borrow().detached_shown {
             return;
         }
         self.state.borrow_mut().detached_shown = true;
@@ -1330,9 +1375,32 @@ impl Inner {
         let functions = self.functions();
         unsafe {
             (functions.gtk_window_set_default_size)(self.window, width, height);
+            if viewport.hidden_reason.is_some() {
+                (functions.gtk_window_set_focus_on_map)(self.window, FALSE);
+            }
             (functions.gtk_widget_show)(self.window);
         }
         log::info!("WebKitGTK: showed the detached window at {width}x{height}");
+    }
+
+    fn web_process_terminated(&self, reason: c_int) {
+        let detail = match reason {
+            WEBKIT_WEB_PROCESS_CRASHED => "the page's web process crashed".to_string(),
+            WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT => {
+                "the page's web process ran out of memory".to_string()
+            }
+            WEBKIT_WEB_PROCESS_TERMINATED_BY_API => return,
+            other => format!("the page's web process exited (reason {other})"),
+        };
+        log::error!("WebKitGTK: {detail}");
+        self.send(WebViewEvent::Crashed(detail));
+    }
+
+    /// Whether the page keeps rendering out of sight instead of being hidden:
+    /// an AI tab has to load, run scripts and be captured while nobody looks
+    /// at it (ADR-F89).
+    fn parks_out_of_sight(&self) -> bool {
+        self.ai_profile
     }
 
     /// GDK counts in its own integer scale (`GDK_SCALE`), gpui in device
@@ -1346,18 +1414,32 @@ impl Inner {
     }
 
     fn apply_viewport(&self, defer_cuts: bool) -> bool {
-        let (bounds, scale, visible, input_blocked, hidden_reason) = {
+        let (bounds, scale, visible, shown, input_blocked, hidden_reason) = {
             let state = self.state.borrow();
+            let (bounds, shown) = placement(
+                self.parks_out_of_sight(),
+                state.visible,
+                state.bounds,
+                state.last_size,
+                state.scale,
+            );
             (
-                (state.applied_bounds != Some(state.bounds)).then_some(state.bounds),
+                (state.applied_bounds != Some(bounds)).then_some(bounds),
                 (state.applied_scale != Some(state.scale)).then_some(state.scale),
                 (state.applied_visible != Some(state.visible)).then_some(state.visible),
+                (state.applied_shown != Some(shown)).then_some(shown),
                 state.input_blocked,
                 state.hidden_reason,
             )
         };
         let functions = self.functions();
         let gdk_scale = self.gdk_scale();
+
+        // A parked page stays mapped, so unlike a hidden one it would keep the
+        // keyboard, and typing would go to a page nobody sees.
+        if visible == Some(false) && self.state.borrow().page_has_focus {
+            self.return_keyboard_focus();
+        }
 
         if let Some(bounds) = bounds
             && !bounds.is_empty()
@@ -1399,17 +1481,23 @@ impl Inner {
         }
         let deferred = self.apply_shape(defer_cuts);
 
-        if let Some(visible) = visible {
+        if let Some(shown) = shown {
             unsafe {
-                if visible {
+                if shown {
                     (functions.gtk_widget_show)(self.window);
                 } else {
                     (functions.gtk_widget_hide)(self.window);
                 }
             }
-            match hidden_reason {
-                Some(reason) => log::info!("WebKitGTK: surface hidden because {reason}"),
-                None => log::info!("WebKitGTK: surface shown"),
+            self.state.borrow_mut().applied_shown = Some(shown);
+        }
+        if let Some(visible) = visible {
+            match (hidden_reason, self.parks_out_of_sight()) {
+                (None, _) => log::info!("WebKitGTK: surface shown"),
+                (Some(reason), true) => {
+                    log::info!("WebKitGTK: surface parked out of sight because {reason}")
+                }
+                (Some(reason), false) => log::info!("WebKitGTK: surface hidden because {reason}"),
             }
             self.state.borrow_mut().applied_visible = Some(visible);
         }
@@ -1505,6 +1593,24 @@ type WidgetEvent = unsafe extern "C" fn(Gpointer, Gpointer, Gpointer) -> Gboolea
 type Print = unsafe extern "C" fn(Gpointer, Gpointer, Gpointer) -> Gboolean;
 type Request = unsafe extern "C" fn(Gpointer, Gpointer, Gpointer) -> Gboolean;
 type KeyPress = unsafe extern "C" fn(Gpointer, *const GdkEventKeyPrefix, Gpointer) -> Gboolean;
+type ProcessTerminated = unsafe extern "C" fn(Gpointer, c_int, Gpointer);
+
+/// `WebKitScriptDialogType`.
+const WEBKIT_SCRIPT_DIALOG_BEFORE_UNLOAD_CONFIRM: c_int = 3;
+
+/// How an AI tab answers a script dialog nobody sees. Leaving a page is what the AI asked for
+/// (`beforeunload` would otherwise keep the tab on the page); every other dialog gets the answer
+/// the page script gives: Cancel (`confirmed` and the prompt's text stay unset).
+fn accepts_script_dialog(dialog_type: c_int) -> bool {
+    dialog_type == WEBKIT_SCRIPT_DIALOG_BEFORE_UNLOAD_CONFIRM
+}
+
+/// `WebKitWebProcessTerminationReason`.
+const WEBKIT_WEB_PROCESS_CRASHED: c_int = 0;
+const WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT: c_int = 1;
+/// The app asked for it (`webkit_web_view_terminate_web_process`), which this
+/// one never does.
+const WEBKIT_WEB_PROCESS_TERMINATED_BY_API: c_int = 2;
 
 unsafe extern "C" fn release_signal_data(data: Gpointer, _closure: Gpointer) {
     drop(unsafe { Box::from_raw(data.cast::<Weak<Inner>>()) });
@@ -1562,6 +1668,12 @@ unsafe extern "C" fn on_uri_changed(_view: Gpointer, _property: Gpointer, data: 
     }
 }
 
+unsafe extern "C" fn on_web_process_terminated(_view: Gpointer, reason: c_int, data: Gpointer) {
+    if let Some(surface) = unsafe { surface_of(data) } {
+        surface.web_process_terminated(reason);
+    }
+}
+
 unsafe extern "C" fn on_history_changed(
     _list: Gpointer,
     _added: Gpointer,
@@ -1607,6 +1719,41 @@ unsafe extern "C" fn on_run_file_chooser(
         unsafe { (surface.functions().webkit_file_chooser_request_cancel)(request) };
     }
     // Handled either way: WebKit's default would show the dialog.
+    TRUE
+}
+
+unsafe extern "C" fn on_script_dialog(
+    _view: Gpointer,
+    dialog: Gpointer,
+    data: Gpointer,
+) -> Gboolean {
+    if let Some(surface) = unsafe { surface_of(data) } {
+        let functions = surface.functions();
+        let dialog_type = unsafe { (functions.webkit_script_dialog_get_dialog_type)(dialog) };
+        let accept = accepts_script_dialog(dialog_type);
+        log::info!(
+            "WebKitGTK: answered a script dialog (type {dialog_type}) in an AI tab: {}",
+            if accept { "accepted" } else { "dismissed" }
+        );
+        if accept {
+            unsafe { (functions.webkit_script_dialog_confirm_set_confirmed)(dialog, TRUE) };
+        }
+    }
+    // Handled either way: WebKit's default would show the dialog. The dialog closes when the
+    // signal returns.
+    TRUE
+}
+
+unsafe extern "C" fn on_authenticate(
+    _view: Gpointer,
+    request: Gpointer,
+    data: Gpointer,
+) -> Gboolean {
+    if let Some(surface) = unsafe { surface_of(data) } {
+        log::info!("WebKitGTK: cancelled an HTTP sign-in prompt in an AI tab");
+        unsafe { (surface.functions().webkit_authentication_request_cancel)(request) };
+    }
+    // Handled either way: WebKit's default would show its sign-in form.
     TRUE
 }
 
@@ -1863,6 +2010,44 @@ impl DeviceRect {
     }
 }
 
+/// Out of sight, a user tab's page is hidden (unmapped, and WebKit stops
+/// rendering it) and keeps its rectangle for when it comes back. An AI tab's
+/// page is parked instead: still mapped, at the size it last had on screen (or
+/// the default size of a page that was never shown), but moved above and to
+/// the left of the host window, where X clips all of it away and no click can
+/// reach it. WebKit then keeps loading, running timers and painting. Returns
+/// the rectangle and whether the window is mapped.
+fn placement(
+    parks: bool,
+    visible: bool,
+    bounds: DeviceRect,
+    last_size: Option<(i32, i32)>,
+    scale: f64,
+) -> (DeviceRect, bool) {
+    if visible {
+        return (bounds, true);
+    }
+    if !parks {
+        return (bounds, false);
+    }
+    let (width, height) = last_size.unwrap_or_else(|| {
+        let to_device = |value: f32| ((f64::from(value) * scale).round() as i32).max(1);
+        (
+            to_device(BACKGROUND_VIEWPORT_WIDTH),
+            to_device(BACKGROUND_VIEWPORT_HEIGHT),
+        )
+    });
+    (
+        DeviceRect {
+            left: -(width + PARKING_MARGIN),
+            top: -(height + PARKING_MARGIN),
+            right: -PARKING_MARGIN,
+            bottom: -PARKING_MARGIN,
+        },
+        true,
+    )
+}
+
 /// The surface bounds and the overlay holes in physical pixels; the same
 /// rounding and dock-handle rule as `webview_windows::viewport_geometry`.
 fn viewport_geometry(viewport: &Viewport) -> (DeviceRect, Vec<DeviceRect>) {
@@ -1938,6 +2123,15 @@ fn rounded_rect_pieces(rect: DeviceRect, radius: i32) -> Vec<DeviceRect> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn ai_tabs_leave_pages_but_cancel_every_other_dialog() {
+        // `WebKitScriptDialogType`: alert, confirm, prompt, before-unload confirm.
+        assert!(accepts_script_dialog(3));
+        for dialog_type in [0, 1, 2] {
+            assert!(!accepts_script_dialog(dialog_type), "{dialog_type}");
+        }
+    }
+
     fn viewport(overlays: Vec<OverlayRect>, scale_factor: f32) -> Viewport {
         Viewport {
             origin_x: 10.,
@@ -2010,6 +2204,35 @@ mod tests {
                 bottom: 120
             }]
         );
+    }
+
+    #[test]
+    fn out_of_sight_an_ai_tab_is_parked_and_a_user_tab_is_hidden() {
+        let bounds = DeviceRect {
+            left: 200,
+            top: 100,
+            right: 1000,
+            bottom: 700,
+        };
+        assert_eq!(placement(false, true, bounds, None, 2.), (bounds, true));
+        assert_eq!(placement(true, true, bounds, None, 2.), (bounds, true));
+        assert_eq!(
+            placement(false, false, bounds, Some((800, 600)), 2.),
+            (bounds, false),
+            "a user tab is unmapped where it was"
+        );
+
+        let (parked, mapped) = placement(true, false, bounds, Some((800, 600)), 2.);
+        assert!(mapped, "a parked page stays mapped");
+        assert_eq!((parked.width(), parked.height()), (800, 600));
+        assert!(
+            parked.right <= -PARKING_MARGIN && parked.bottom <= -PARKING_MARGIN,
+            "the parked page is outside the host: {parked:?}"
+        );
+
+        let (never_shown, _) = placement(true, false, DeviceRect::default(), None, 2.);
+        assert_eq!((never_shown.width(), never_shown.height()), (2560, 1600));
+        assert!(never_shown.right < 0 && never_shown.bottom < 0);
     }
 
     #[test]
@@ -2151,8 +2374,16 @@ mod tests {
                 .to_string(),
             None => target,
         };
-        let (content_type, extra_headers, body) = if path.starts_with("/download") {
+        let (status, content_type, extra_headers, body) = if path.starts_with("/auth") {
             (
+                "401 Unauthorized",
+                "text/plain",
+                "WWW-Authenticate: Basic realm=\"harness\"\r\n",
+                "sign-in required".to_string(),
+            )
+        } else if path.starts_with("/download") {
+            (
+                "200 OK",
                 "application/octet-stream",
                 "Content-Disposition: attachment; filename=payload.bin\r\n",
                 "binary".to_string(),
@@ -2161,12 +2392,14 @@ mod tests {
             // A type WebKit can display, so only the `download-started`
             // backstop can stop it.
             (
+                "200 OK",
                 "text/plain",
                 "Content-Disposition: attachment; filename=notes.txt\r\n",
                 "attached".to_string(),
             )
         } else {
             (
+                "200 OK",
                 "text/html; charset=utf-8",
                 "",
                 "<!doctype html><html><head><title>Harness</title></head>\
@@ -2179,7 +2412,7 @@ mod tests {
             )
         };
         let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\n{extra_headers}\
+            "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\n{extra_headers}\
              Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
@@ -2735,6 +2968,48 @@ mod tests {
             "a denied navigation reached the network"
         );
 
+        // Dialogs the page script did not answer (this test injects none) are answered without
+        // being shown: WebKit's own would hold the page, and the script asking, until someone
+        // answered it.
+        for (script, answer) in [
+            ("confirm('Delete everything?')", "false"),
+            ("prompt('Name?', 'default')", "null"),
+            ("alert('Hello'); 'answered'", "\"answered\""),
+        ] {
+            assert_eq!(
+                wait_result(ai.execute_script(script), script).unwrap(),
+                answer
+            );
+        }
+        // A script the backend runs counts as a user gesture, so the page gets to ask.
+        wait_result(
+            ai.execute_script(
+                "addEventListener('beforeunload', (event) => { event.preventDefault(); \
+                 event.returnValue = ''; }); 1",
+            ),
+            "the beforeunload handler",
+        )
+        .unwrap();
+        ai.navigate(&format!("{origin}/page?left"));
+        assert!(wait_for(&mut ai_events, "leaving the page", load_finished));
+        assert!(
+            server
+                .requests()
+                .iter()
+                .any(|target| target == "/page?left"),
+            "beforeunload kept the AI tab on the page"
+        );
+
+        // WebKit's sign-in form would hold the load until someone signed in.
+        ai.navigate(&format!("{origin}/auth"));
+        wait_for(&mut ai_events, "the sign-in page", load_finished);
+        let auth_page = wait_result(
+            ai.execute_script("document.body ? document.body.innerText : ''"),
+            "the sign-in page's text",
+        )
+        .unwrap();
+        eprintln!("cancelled sign-in shows: {auth_page}");
+
         ai.navigate("http://harness.test/download");
         let downloaded = wait_for(
             &mut ai_events,
@@ -2823,6 +3098,216 @@ mod tests {
         wait_result(orphaned, "the reply for a closed surface").ok();
         assert!(!pump_main_loop(), "pumping stops with the last surface");
         eprintln!("requests seen: {:?}", server.requests());
+        std::fs::remove_dir_all(&folder).ok();
+    }
+
+    /// The width, height and luminance spread of a PNG; a page that rendered
+    /// nothing (blank, all one colour) has a spread near zero.
+    fn image_spread(png: &[u8]) -> (u32, u32, f64) {
+        let image = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+            .expect("the snapshot is a PNG")
+            .to_rgba8();
+        let luminances = image
+            .pixels()
+            .map(|pixel| {
+                0.299 * f64::from(pixel[0])
+                    + 0.587 * f64::from(pixel[1])
+                    + 0.114 * f64::from(pixel[2])
+            })
+            .collect::<Vec<_>>();
+        let count = luminances.len().max(1) as f64;
+        let mean = luminances.iter().sum::<f64>() / count;
+        let variance = luminances
+            .iter()
+            .map(|luminance| (luminance - mean).powi(2))
+            .sum::<f64>()
+            / count;
+        (image.width(), image.height(), variance.sqrt())
+    }
+
+    fn script(surface: &WebView, source: &str) -> String {
+        wait_result(surface.execute_script(source), source).unwrap()
+    }
+
+    /// Counts timer ticks and animation frames for a while, and reads what the
+    /// page thinks of its own visibility; then takes a snapshot.
+    fn assert_alive(surface: &WebView, what: &str, size: (u32, u32)) {
+        script(
+            surface,
+            "(() => { window.__ticks = 0; window.__frames = 0; \
+             clearInterval(window.__timer); window.__timer = setInterval(() => window.__ticks++, 50); \
+             const frame = () => { window.__frames++; requestAnimationFrame(frame); }; \
+             if (!window.__animating) { window.__animating = true; requestAnimationFrame(frame); } \
+             return 1; })()",
+        );
+        pump_for(Duration::from_millis(1500));
+        let ticks: u32 = script(surface, "window.__ticks").parse().unwrap();
+        let frames: u32 = script(surface, "window.__frames").parse().unwrap();
+        let visibility = script(surface, "document.visibilityState");
+        let png = wait_result(surface.capture_png(), what).unwrap();
+        let (width, height, spread) = image_spread(&png);
+        eprintln!(
+            "{what}: {ticks} ticks, {frames} frames, visibility {visibility}, \
+             snapshot {width}x{height} spread {spread:.1}"
+        );
+        assert_eq!(
+            visibility, "\"visible\"",
+            "{what}: the page thinks it is hidden"
+        );
+        assert!(ticks >= 20, "{what}: timers were throttled ({ticks} ticks)");
+        assert!(frames >= 20, "{what}: rendering stopped ({frames} frames)");
+        assert_eq!(
+            (width, height),
+            size,
+            "{what}: the snapshot has the wrong size"
+        );
+        assert!(
+            spread > 20.,
+            "{what}: the snapshot is blank (spread {spread:.1})"
+        );
+    }
+
+    /// The `WebKitWebProcess` children of this process.
+    fn web_processes() -> Vec<u32> {
+        let parent = std::process::id();
+        std::fs::read_dir("/proc")
+            .unwrap()
+            .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<u32>().ok())
+            .filter(|pid| {
+                let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+                    return false;
+                };
+                // `pid (comm) state ppid ...`; the name may hold spaces.
+                let Some((name, rest)) = stat.split_once(") ") else {
+                    return false;
+                };
+                let ppid = rest
+                    .split_whitespace()
+                    .nth(1)
+                    .and_then(|ppid| ppid.parse().ok());
+                name.ends_with("WebKitWebProces") && ppid == Some(parent)
+            })
+            .collect()
+    }
+
+    /// An AI tab works while nobody sees it: never painted, then shown and put
+    /// away again; and its surface reports a web process that died.
+    #[test]
+    #[ignore = "needs a display and WebKitGTK 4.1"]
+    fn webkitgtk_ai_tab_keeps_rendering_out_of_sight() {
+        let server = TestServer::start();
+        let origin = format!("http://127.0.0.1:{}", server.port);
+        let folder =
+            std::env::temp_dir().join(format!("fk-webkitgtk-parked-{}", std::process::id()));
+        let embedded = std::env::var_os("WAYLAND_DISPLAY").is_none();
+        let host = if embedded {
+            let runtime = runtime(0).unwrap();
+            let functions = &runtime.functions;
+            unsafe {
+                let window = (functions.gtk_window_new)(GTK_WINDOW_TOPLEVEL);
+                (functions.gtk_window_set_default_size)(window, 900, 700);
+                (functions.gtk_widget_show)(window);
+                let gdk_window = (functions.gtk_widget_get_window)(window);
+                (functions.gdk_x11_window_get_xid.unwrap())(gdk_window) as isize
+            }
+        } else {
+            DETACHED_HOST
+        };
+
+        let (events_tx, mut events) = futures::channel::mpsc::unbounded();
+        let ai = WebView::new(
+            host,
+            WebViewOptions {
+                profile: WebViewProfile::Ai,
+                user_data_folder: folder.join("ai"),
+                proxy_endpoint: Some(origin),
+                document_start_script: None,
+                navigation_filter: None,
+                block_downloads: true,
+            },
+            events_tx,
+        )
+        .unwrap();
+        wait_for(&mut events, "the AI surface", |event| {
+            matches!(event, WebViewEvent::Ready).then_some(())
+        });
+        // What the view does for a command reaching a tab it never painted.
+        let deferred = ai.sync_viewport(
+            Viewport {
+                origin_x: 0.,
+                origin_y: 0.,
+                width: BACKGROUND_VIEWPORT_WIDTH,
+                height: BACKGROUND_VIEWPORT_HEIGHT,
+                scale_factor: 1.,
+                hidden_reason: Some(PARKED_IN_BACKGROUND),
+                input_blocked: false,
+                overlays: Vec::new(),
+            },
+            false,
+        );
+        assert!(!deferred);
+        // Something with contrast to tell a rendered page from a blank one;
+        // `data:` needs no proxy.
+        ai.navigate(
+            "data:text/html,<body style='margin:0;background:linear-gradient(90deg,%23d02020,%232020d0)'>\
+             <h1 style='color:white;font:bold 64px sans-serif;margin:40px'>Background page</h1>",
+        );
+        assert!(wait_for(&mut events, "the page", load_finished));
+        eprintln!(
+            "WebTransport in WebKitGTK: {}",
+            script(&ai, "typeof WebTransport")
+        );
+
+        if embedded {
+            let embedding = ai.inner.embedding.unwrap();
+            let (parent, (x, y, width, height)) =
+                x_parent_and_geometry(embedding.x_display, embedding.surface);
+            assert_eq!(parent, host as XWindow);
+            assert!(
+                x + width as c_int <= 0 && y + height as c_int <= 0,
+                "the parked page reaches into the host: {:?}",
+                (x, y, width, height)
+            );
+            assert_alive(&ai, "never shown", (1280, 800));
+
+            if ai.sync_viewport(visible_viewport(), false) {
+                ai.apply_deferred_clip();
+            }
+            pump_for(Duration::from_millis(300));
+            assert_alive(&ai, "on screen", (640, 400));
+            ai.hide("the test put the tab away");
+            let (_, (x, y, width, height)) =
+                x_parent_and_geometry(embedding.x_display, embedding.surface);
+            assert_eq!((width, height), (640, 400), "the parked page kept its size");
+            assert!(x + width as c_int <= 0 && y + height as c_int <= 0);
+            assert_alive(&ai, "put away", (640, 400));
+        } else {
+            // The separate window is shown for it, without the focus.
+            assert!(ai.inner.state.borrow().detached_shown);
+            pump_for(Duration::from_millis(500));
+            let png = wait_result(ai.capture_png(), "the detached snapshot").unwrap();
+            let (width, height, spread) = image_spread(&png);
+            eprintln!("detached: snapshot {width}x{height} spread {spread:.1}");
+            assert!(spread > 20., "the detached snapshot is blank");
+        }
+
+        let processes = web_processes();
+        eprintln!("web processes: {processes:?}");
+        assert!(!processes.is_empty(), "no web process to end");
+        for pid in &processes {
+            #[allow(clippy::disallowed_methods, reason = "a live test on its own thread")]
+            std::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .status()
+                .unwrap();
+        }
+        let detail = wait_for(&mut events, "the crash report", |event| match event {
+            WebViewEvent::Crashed(detail) => Some(detail.clone()),
+            _ => None,
+        });
+        eprintln!("crash reported: {detail}");
+        drop(ai);
+        pump_for(Duration::from_millis(300));
         std::fs::remove_dir_all(&folder).ok();
     }
 }

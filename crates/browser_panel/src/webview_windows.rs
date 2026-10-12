@@ -17,7 +17,7 @@ use std::{
     collections::VecDeque,
     ffi::{OsString, c_void},
     path::PathBuf,
-    rc::Rc,
+    rc::{Rc, Weak},
     time::{Duration, Instant},
 };
 
@@ -28,24 +28,35 @@ use gpui::{SharedString, Window};
 use util::ResultExt as _;
 use webview2_com::{
     AcceleratorKeyPressedEventHandler, AddScriptToExecuteOnDocumentCreatedCompletedHandler,
-    CallDevToolsProtocolMethodCompletedHandler, CapturePreviewCompletedHandler,
-    CoreWebView2EnvironmentOptions, CreateCoreWebView2ControllerCompletedHandler,
-    CreateCoreWebView2EnvironmentCompletedHandler, DocumentTitleChangedEventHandler,
-    DownloadStartingEventHandler, ExecuteScriptCompletedHandler, FocusChangedEventHandler,
-    HistoryChangedEventHandler,
+    BasicAuthenticationRequestedEventHandler, CallDevToolsProtocolMethodCompletedHandler,
+    CapturePreviewCompletedHandler, CoreWebView2EnvironmentOptions,
+    CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
+    DocumentTitleChangedEventHandler, DownloadStartingEventHandler, ExecuteScriptCompletedHandler,
+    FocusChangedEventHandler, HistoryChangedEventHandler,
     Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, COREWEBVIEW2_COLOR,
         COREWEBVIEW2_KEY_EVENT_KIND, COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN,
         COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC, COREWEBVIEW2_PERMISSION_KIND,
         COREWEBVIEW2_PERMISSION_STATE_DENY, COREWEBVIEW2_PREFERRED_COLOR_SCHEME,
         COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK, COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT,
-        CreateCoreWebView2EnvironmentWithOptions, ICoreWebView2, ICoreWebView2_4, ICoreWebView2_13,
+        COREWEBVIEW2_PROCESS_FAILED_KIND, COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED, COREWEBVIEW2_PROCESS_FAILED_REASON,
+        COREWEBVIEW2_PROCESS_FAILED_REASON_CRASHED,
+        COREWEBVIEW2_PROCESS_FAILED_REASON_LAUNCH_FAILED,
+        COREWEBVIEW2_PROCESS_FAILED_REASON_OUT_OF_MEMORY,
+        COREWEBVIEW2_PROCESS_FAILED_REASON_PROFILE_DELETED,
+        COREWEBVIEW2_PROCESS_FAILED_REASON_TERMINATED,
+        COREWEBVIEW2_PROCESS_FAILED_REASON_UNEXPECTED,
+        COREWEBVIEW2_PROCESS_FAILED_REASON_UNRESPONSIVE, COREWEBVIEW2_SCRIPT_DIALOG_KIND,
+        COREWEBVIEW2_SCRIPT_DIALOG_KIND_BEFOREUNLOAD, CreateCoreWebView2EnvironmentWithOptions,
+        ICoreWebView2, ICoreWebView2_4, ICoreWebView2_10, ICoreWebView2_13,
         ICoreWebView2Controller, ICoreWebView2Controller2, ICoreWebView2Controller3,
         ICoreWebView2Environment, ICoreWebView2EnvironmentOptions,
+        ICoreWebView2ProcessFailedEventArgs, ICoreWebView2ProcessFailedEventArgs2,
     },
     NavigationCompletedEventHandler, NavigationStartingEventHandler,
-    NewWindowRequestedEventHandler, PermissionRequestedEventHandler, SourceChangedEventHandler,
-    take_pwstr,
+    NewWindowRequestedEventHandler, PermissionRequestedEventHandler, ProcessFailedEventHandler,
+    ScriptDialogOpeningEventHandler, SourceChangedEventHandler, take_pwstr,
 };
 use windows::{
     Win32::{
@@ -71,11 +82,6 @@ use windows::{
 };
 
 pub(crate) use crate::webview_types::*;
-
-/// Page scripts in an AI tab cannot reach the network around the proxy: the AI
-/// profile's browser only sends WebRTC over proxied connections (see
-/// [`browser_arguments`]), so `browser_eval` may run arbitrary scripts.
-pub(crate) const SUPPORTS_SCRIPT_EVAL: bool = true;
 
 /// Corner radius of the holes cut for gpui's overlays, in logical pixels.
 ///
@@ -405,7 +411,7 @@ fn browser_arguments(profile: WebViewProfile, proxy_endpoint: Option<&str>) -> R
             let Some(proxy_endpoint) = proxy_endpoint else {
                 bail!("AI tabs need the egress proxy, and it is not running");
             };
-            Ok(vec![
+            let arguments = vec![
                 format!("--proxy-server={proxy_endpoint}"),
                 format!("--proxy-bypass-list={AI_PROXY_BYPASS_LIST}"),
                 format!("--host-resolver-rules={AI_HOST_RESOLVER_RULES}"),
@@ -414,9 +420,37 @@ fn browser_arguments(profile: WebViewProfile, proxy_endpoint: Option<&str>) -> R
                 // `--force-webrtc-ip-handling-policy` has no effect in
                 // WebView2; this content-level switch does.
                 "--webrtc-ip-handling-policy=disable_non_proxied_udp".to_string(),
-            ])
+                // QUIC is UDP as well. Chromium does not speak it through an
+                // HTTP proxy, so it is off already; switched off outright so
+                // that no later change of that rule can open a path around the
+                // proxy.
+                "--disable-quic".to_string(),
+                // An AI tab works while nobody looks at it: a background tab,
+                // a closed panel, a minimised or covered window (its page is
+                // parked out of sight rather than hidden, see `placement`).
+                // These are Chromium's switches against slowing down a page
+                // it thinks nobody sees. WebView2 154 kept parked, covered and
+                // minimised pages at full speed without them too; they keep it
+                // that way should a runtime start to track occlusion.
+                "--disable-background-timer-throttling".to_string(),
+                "--disable-backgrounding-occluded-windows".to_string(),
+                "--disable-renderer-backgrounding".to_string(),
+            ];
+            #[cfg(test)]
+            let arguments = [
+                arguments,
+                TEST_BROWSER_ARGUMENTS.with(|extra| extra.borrow().clone()),
+            ]
+            .concat();
+            Ok(arguments)
         }
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Extra arguments for the AI profile's browser, for the live tests (a net log).
+    static TEST_BROWSER_ARGUMENTS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
 /// WebView2 splits its additional browser arguments like a Windows command
@@ -689,6 +723,11 @@ struct Inner {
     document_start_script: Option<String>,
     navigation_filter: Option<Rc<dyn Fn(&str) -> NavigationDecision>>,
     block_downloads: bool,
+    /// The answers owed for scripts, captures and inputs WebView2 is still
+    /// working on. Weak: the completion handler holds the answer, and once it
+    /// has run nothing is owed. Answered with the reason when the page's
+    /// process goes away, since WebView2 may never call those handlers then.
+    in_flight: RefCell<Vec<Weak<dyn PendingAnswer>>>,
     state: RefCell<State>,
 }
 
@@ -700,6 +739,9 @@ type PageOperation = Box<dyn FnOnce(Result<ICoreWebView2, String>)>;
 struct State {
     controller: Option<ICoreWebView2Controller>,
     webview: Option<ICoreWebView2>,
+    /// The environment the controller was created in, so that a browser
+    /// process that went away can take that environment with it.
+    environment: Option<ICoreWebView2Environment>,
     /// Whether the page may be navigated and scripted: the controller exists
     /// and the document start script, if any, is registered. A page loaded
     /// before that would run without the script, so until then navigations
@@ -720,14 +762,23 @@ struct State {
     /// coordinates. Cut out of the child windows so the overlay stays visible.
     holes: Vec<RECT>,
     scale: f64,
+    /// Whether the page is on screen. Off screen, a user tab's page is hidden
+    /// and an AI tab's page is parked (see [`placement`]).
     visible: bool,
+    /// The size, in physical pixels, the surface last had: where an AI tab's
+    /// page keeps being laid out while it is parked.
+    last_size: Option<(i32, i32)>,
     applied_bounds: Option<RECT>,
     /// The `(bounds, holes)` the current window regions were built from. The
     /// holes are relative to the host window, so a move of the surface
     /// invalidates them just as much as a change of the overlays does.
     applied_clip: Option<(RECT, Vec<RECT>)>,
     applied_scale: Option<f64>,
+    /// The last `visible` acted on.
     applied_visible: Option<bool>,
+    /// The last `ICoreWebView2Controller::IsVisible` set: whether WebView2
+    /// renders the page at all.
+    applied_rendering: Option<bool>,
     input_blocked: bool,
     applied_input_blocked: Option<bool>,
     page_has_focus: bool,
@@ -778,6 +829,7 @@ impl WebView {
             document_start_script: options.document_start_script,
             navigation_filter: options.navigation_filter,
             block_downloads: options.block_downloads,
+            in_flight: RefCell::new(Vec::new()),
             state: RefCell::new(State {
                 scale: 1.0,
                 hidden_reason: Some("the panel has not been painted yet"),
@@ -856,6 +908,9 @@ impl WebView {
 
         {
             let mut state = self.inner.state.borrow_mut();
+            if let Some(size) = rect_size(bounds) {
+                state.last_size = Some(size);
+            }
             state.bounds = bounds;
             state.holes = holes;
             state.scale = scale;
@@ -879,7 +934,8 @@ impl WebView {
     }
 
     /// Hides the surface without touching the cached geometry, so the next
-    /// paint can show it again in place.
+    /// paint can show it again in place. An AI tab's page is parked instead:
+    /// out of sight and out of reach of the mouse, but still rendering.
     pub(crate) fn hide(&self, reason: &'static str) {
         {
             let mut state = self.inner.state.borrow_mut();
@@ -988,6 +1044,7 @@ impl WebView {
     /// Waits for the page to be ready when asked earlier.
     pub(crate) fn execute_script(&self, script: &str) -> oneshot::Receiver<Result<String>> {
         let (reply, receiver) = Reply::new();
+        self.inner.track(&reply);
         let script = HSTRING::from(script);
         self.inner.when_page_ready(Box::new(move |webview| {
             let webview = match webview {
@@ -1015,6 +1072,7 @@ impl WebView {
     /// A PNG of what the surface shows, at its size in physical pixels.
     pub(crate) fn capture_png(&self) -> oneshot::Receiver<Result<Vec<u8>>> {
         let (reply, receiver) = Reply::new();
+        self.inner.track(&reply);
         self.inner.when_page_ready(Box::new(move |webview| {
             let webview = match webview {
                 Ok(webview) => webview,
@@ -1062,6 +1120,7 @@ impl WebView {
     /// page holds the Win32 keyboard focus.
     pub(crate) fn dispatch_input(&self, input: NativeInput) -> oneshot::Receiver<Result<()>> {
         let (reply, receiver) = Reply::new();
+        self.inner.track(&reply);
         let calls = devtools_calls(&input);
         self.inner
             .when_page_ready(Box::new(move |webview| match webview {
@@ -1099,6 +1158,19 @@ struct Reply<T>(Rc<Cell<Option<oneshot::Sender<Result<T>>>>>);
 impl<T> Clone for Reply<T> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
+    }
+}
+
+/// An answer that may still be owed; see [`Inner::in_flight`].
+trait PendingAnswer {
+    fn fail(&self, message: &str);
+}
+
+impl<T> PendingAnswer for Cell<Option<oneshot::Sender<Result<T>>>> {
+    fn fail(&self, message: &str) {
+        if let Some(sender) = self.take() {
+            sender.send(Err(anyhow!("{message}"))).ok();
+        }
     }
 }
 
@@ -1590,7 +1662,11 @@ impl Inner {
             self.host_hwnd.0 as isize
         );
         let children_before_controller = enumerate_child_windows(self.host_hwnd);
-        self.state.borrow_mut().children_before_controller = children_before_controller;
+        {
+            let mut state = self.state.borrow_mut();
+            state.children_before_controller = children_before_controller;
+            state.environment = Some(environment.clone());
+        }
         if let Err(error) =
             unsafe { environment.CreateCoreWebView2Controller(self.host_hwnd, &handler) }
         {
@@ -1658,6 +1734,7 @@ impl Inner {
             state.applied_bounds = None;
             state.applied_scale = None;
             state.applied_visible = None;
+            state.applied_rendering = None;
             state.applied_input_blocked = None;
             (
                 state.pending_dark_mode.take(),
@@ -1846,6 +1923,40 @@ impl Inner {
                 unsafe { args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY) }
             }));
             unsafe { webview.add_PermissionRequested(&handler, &mut token) }?;
+
+            // Nobody is there to answer a dialog for the AI, and WebView2's own would pop up
+            // over the editor from a page the user may not even see (a parked tab). The page
+            // script answers alert/confirm/prompt itself; this answers what gets past it (a
+            // frame it did not run in, `beforeunload`) without showing anything.
+            let settings = unsafe { webview.Settings() }?;
+            unsafe { settings.SetAreDefaultScriptDialogsEnabled(false) }?;
+            let handler = ScriptDialogOpeningEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else { return Ok(()) };
+                let mut kind = COREWEBVIEW2_SCRIPT_DIALOG_KIND::default();
+                unsafe { args.Kind(&mut kind) }?;
+                let accept = accepts_script_dialog(kind);
+                log::info!(
+                    "WebView2: answered a script dialog (kind {}) in an AI tab: {}",
+                    kind.0,
+                    if accept { "accepted" } else { "dismissed" }
+                );
+                if accept {
+                    unsafe { args.Accept() }?;
+                }
+                Ok(())
+            }));
+            unsafe { webview.add_ScriptDialogOpening(&handler, &mut token) }?;
+
+            // The sign-in prompt for HTTP authentication is a dialog of the same kind. The AI
+            // gets the server's 401 page instead.
+            let handler =
+                BasicAuthenticationRequestedEventHandler::create(Box::new(move |_, args| {
+                    let Some(args) = args else { return Ok(()) };
+                    log::info!("WebView2: cancelled an HTTP sign-in prompt in an AI tab");
+                    unsafe { args.SetCancel(true) }
+                }));
+            let webview = webview.cast::<ICoreWebView2_10>()?;
+            unsafe { webview.add_BasicAuthenticationRequested(&handler, &mut token) }?;
         }
 
         {
@@ -1891,6 +2002,21 @@ impl Inner {
         webview: &ICoreWebView2,
     ) {
         let mut token = 0i64;
+
+        // Weak: the controller holds the handler, and the surface holds the
+        // controller.
+        {
+            let surface = Rc::downgrade(self);
+            let handler = ProcessFailedEventHandler::create(Box::new(move |_, args| {
+                let Some(args) = args else { return Ok(()) };
+                let failure = read_process_failure(&args);
+                if let Some(surface) = surface.upgrade() {
+                    surface.process_failed(failure);
+                }
+                Ok(())
+            }));
+            unsafe { webview.add_ProcessFailed(&handler, &mut token) }.log_err();
+        }
 
         {
             let events = self.events.clone();
@@ -2086,24 +2212,43 @@ impl Inner {
     fn apply_viewport(&self, defer_cuts: bool) -> bool {
         // Collect the deltas, drop the borrow, then talk to WebView2: the calls
         // below can re-enter handlers that write to `state`.
-        let (controller, scale, bounds, input_blocked, visible, hidden_reason) = {
+        let (controller, scale, bounds, input_blocked, visible, rendering, hidden_reason) = {
             let state = self.state.borrow();
             let Some(controller) = state.controller.clone() else {
                 return false;
             };
+            let placement = placement(
+                self.parks_out_of_sight(),
+                state.visible,
+                state.bounds,
+                state.last_size,
+                state.scale,
+            );
             let showing = state.visible && state.applied_visible != Some(true);
             (
                 controller,
                 (state.applied_scale != Some(state.scale)).then_some(state.scale),
-                (state.applied_bounds != Some(state.bounds)).then_some(state.bounds),
+                (state.applied_bounds != Some(placement.bounds)).then_some(placement.bounds),
                 // Also on every show, so that a window whose enabled state was
                 // changed behind this surface's back gets its own state back.
                 (showing || state.applied_input_blocked != Some(state.input_blocked))
                     .then_some(state.input_blocked),
                 (state.applied_visible != Some(state.visible)).then_some(state.visible),
+                (state.applied_rendering != Some(placement.rendering))
+                    .then_some(placement.rendering),
                 state.hidden_reason,
             )
         };
+
+        // A parked page keeps its windows shown, so unlike a hidden one it
+        // would keep the keyboard, and typing would go to a page nobody sees.
+        if visible == Some(false) && self.parks_out_of_sight() {
+            let owned_children = self.state.borrow().owned_children.clone();
+            let children = direct_children(self.host_hwnd, &owned_children).collect::<Vec<_>>();
+            if self.page_owns_keyboard_focus(&children) {
+                self.return_keyboard_focus();
+            }
+        }
 
         if let Some(scale) = scale
             && let Ok(scaled) = controller.cast::<ICoreWebView2Controller3>()
@@ -2136,22 +2281,18 @@ impl Inner {
             self.apply_input_blocked(input_blocked);
         }
 
-        if let Some(visible) = visible
-            && unsafe { controller.SetIsVisible(visible) }
+        if let Some(rendering) = rendering
+            && unsafe { controller.SetIsVisible(rendering) }
                 .log_err()
                 .is_some()
         {
-            match hidden_reason {
-                Some(reason) => log::info!("WebView2: surface hidden because {reason}"),
-                None => log::info!("WebView2: surface shown"),
-            }
             // The borrow has to be gone before the Win32 calls below, and
             // holding it across the `if` would deadlock this cell.
             let first_show = {
                 let mut state = self.state.borrow_mut();
-                state.applied_visible = Some(visible);
-                let first_show = visible && !state.nudged_child_windows;
-                state.nudged_child_windows |= visible;
+                state.applied_rendering = Some(rendering);
+                let first_show = rendering && !state.nudged_child_windows;
+                state.nudged_child_windows |= rendering;
                 first_show
             };
             if first_show {
@@ -2163,6 +2304,20 @@ impl Inner {
             }
         }
 
+        if let Some(visible) = visible {
+            match (hidden_reason, self.parks_out_of_sight()) {
+                (None, _) => log::info!("WebView2: surface shown"),
+                (Some(reason), true) => {
+                    log::info!("WebView2: surface parked out of sight because {reason}")
+                }
+                (Some(reason), false) => log::info!("WebView2: surface hidden because {reason}"),
+            }
+            self.state.borrow_mut().applied_visible = Some(visible);
+            if self.parks_out_of_sight() {
+                self.allow_context_menus(visible);
+            }
+        }
+
         // After the visibility, so that a page shown in this same pass can take
         // it.
         if input_blocked == Some(false) {
@@ -2170,6 +2325,71 @@ impl Inner {
         }
 
         self.apply_clip(defer_cuts)
+    }
+
+    /// Whether the page keeps rendering out of sight instead of being hidden:
+    /// an AI tab has to load, run scripts, take input and be captured while
+    /// nobody looks at it (ADR-F89).
+    fn parks_out_of_sight(&self) -> bool {
+        self.profile == WebViewProfile::Ai
+    }
+
+    /// Unlike a `<select>`'s list, a context menu is moved onto the nearest
+    /// monitor, so a right click on a parked page would show one to the user,
+    /// outside the window.
+    fn allow_context_menus(&self, allowed: bool) {
+        let Some(webview) = self.webview() else {
+            return;
+        };
+        if let Some(settings) = unsafe { webview.Settings() }.log_err() {
+            unsafe { settings.SetAreDefaultContextMenusEnabled(allowed) }.log_err();
+        }
+    }
+
+    fn track<T: 'static>(&self, reply: &Reply<T>) {
+        let mut in_flight = self.in_flight.borrow_mut();
+        in_flight.retain(|answer| answer.strong_count() > 0);
+        let answer: Weak<dyn PendingAnswer> = Rc::downgrade(&reply.0) as Weak<_>;
+        in_flight.push(answer);
+    }
+
+    /// A process the page needs went away. When that was the page's own
+    /// renderer or the browser process, the surface is dead for good: every
+    /// answer still owed and every later page operation fails with the reason,
+    /// and the view is told to replace the surface.
+    fn process_failed(&self, failure: ProcessFailure) {
+        if !failure.loses_the_page() {
+            log::warn!("WebView2: {}; the page carries on", failure.describe());
+            return;
+        }
+        let detail = failure.describe();
+        log::error!("WebView2: {detail}; the surface is replaced");
+        let message = crashed_page_message(&detail);
+        let (operations, environment) = {
+            let mut state = self.state.borrow_mut();
+            if state.failure.is_some() {
+                return;
+            }
+            state.failure = Some(message.clone());
+            state.page_ready = false;
+            (
+                std::mem::take(&mut state.pending_operations),
+                state.environment.clone(),
+            )
+        };
+        if failure.kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+            && let Some(environment) = environment
+        {
+            forget_environment(self.profile, &environment);
+        }
+        let in_flight = std::mem::take(&mut *self.in_flight.borrow_mut());
+        for answer in in_flight.iter().filter_map(Weak::upgrade) {
+            answer.fail(&message);
+        }
+        for operation in operations {
+            operation(Err(message.clone()));
+        }
+        self.send(WebViewEvent::Crashed(detail));
     }
 
     /// Disables the controller's own top-level children while `input_blocked`
@@ -2316,10 +2536,178 @@ impl Inner {
     }
 }
 
+/// How far outside the host's client area a parked page is put, in physical
+/// pixels. The child window is clipped to the host whatever the distance, but
+/// the lists a `<select>`, a colour or a date input open are windows of their
+/// own, placed at the page's screen position: a page parked just outside the
+/// host would open them on a monitor next to or above the window, where the
+/// user sees and clicks them. This far out, no monitor arrangement reaches
+/// them, and the coordinates still fit the 16 bits of `WM_MOVE`.
+const PARKING_MARGIN: i32 = 16_000;
+
+/// Where the controller goes and whether WebView2 renders it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Placement {
+    bounds: RECT,
+    rendering: bool,
+}
+
+/// Out of sight, a user tab's page is hidden (`IsVisible(false)`: WebView2
+/// stops rendering it) and keeps its rectangle for when it comes back. An AI
+/// tab's page is parked instead: it stays visible to WebView2, at the size it
+/// last had on screen (or the default size of a page that was never shown),
+/// but moved above and to the left of the host's client area, where a child
+/// window shows nothing and takes no clicks. Chromium then keeps loading,
+/// running timers and `requestAnimationFrame`, and painting frames that a
+/// capture can read. Kept pure so that the geometry can be tested.
+fn placement(
+    parks: bool,
+    visible: bool,
+    bounds: RECT,
+    last_size: Option<(i32, i32)>,
+    scale: f64,
+) -> Placement {
+    if visible {
+        return Placement {
+            bounds,
+            rendering: true,
+        };
+    }
+    if !parks {
+        return Placement {
+            bounds,
+            rendering: false,
+        };
+    }
+    let (width, height) = last_size.unwrap_or_else(|| {
+        let to_device = |value: f32| ((f64::from(value) * scale).round() as i32).max(1);
+        (
+            to_device(BACKGROUND_VIEWPORT_WIDTH),
+            to_device(BACKGROUND_VIEWPORT_HEIGHT),
+        )
+    });
+    Placement {
+        bounds: RECT {
+            left: -(width + PARKING_MARGIN),
+            top: -(height + PARKING_MARGIN),
+            right: -PARKING_MARGIN,
+            bottom: -PARKING_MARGIN,
+        },
+        rendering: true,
+    }
+}
+
+/// The size of a rectangle that has one.
+fn rect_size(rect: RECT) -> Option<(i32, i32)> {
+    let (width, height) = (rect.right - rect.left, rect.bottom - rect.top);
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+/// What a `ProcessFailed` event said.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ProcessFailure {
+    kind: COREWEBVIEW2_PROCESS_FAILED_KIND,
+    reason: Option<COREWEBVIEW2_PROCESS_FAILED_REASON>,
+    exit_code: Option<i32>,
+}
+
+impl ProcessFailure {
+    /// The browser process takes every page of its environment with it, and
+    /// the renderer of the page's main frame takes the page (WebView2 shows
+    /// an error page in its place). A frame's renderer, the GPU process or a
+    /// utility process going away is something WebView2 recovers from on its
+    /// own, and a renderer that is merely unresponsive may still come back.
+    fn loses_the_page(&self) -> bool {
+        self.kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+            || self.kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+    }
+
+    fn describe(&self) -> String {
+        let process = match self.kind {
+            COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED => {
+                "the browser process exited".to_string()
+            }
+            COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED => {
+                "the page's renderer process exited".to_string()
+            }
+            other => format!("a browser helper process failed (kind {})", other.0),
+        };
+        let reason = self.reason.map(|reason| match reason {
+            COREWEBVIEW2_PROCESS_FAILED_REASON_CRASHED => "crashed".to_string(),
+            COREWEBVIEW2_PROCESS_FAILED_REASON_UNEXPECTED => "ended unexpectedly".to_string(),
+            COREWEBVIEW2_PROCESS_FAILED_REASON_TERMINATED => "terminated".to_string(),
+            COREWEBVIEW2_PROCESS_FAILED_REASON_OUT_OF_MEMORY => "out of memory".to_string(),
+            COREWEBVIEW2_PROCESS_FAILED_REASON_LAUNCH_FAILED => "failed to start".to_string(),
+            COREWEBVIEW2_PROCESS_FAILED_REASON_UNRESPONSIVE => "not responding".to_string(),
+            COREWEBVIEW2_PROCESS_FAILED_REASON_PROFILE_DELETED => {
+                "its profile was deleted".to_string()
+            }
+            other => format!("reason {}", other.0),
+        });
+        match (reason, self.exit_code) {
+            (Some(reason), Some(exit_code)) => {
+                format!("{process}: {reason}, exit code {exit_code:#x}")
+            }
+            (Some(reason), None) => format!("{process}: {reason}"),
+            (None, Some(exit_code)) => format!("{process}: exit code {exit_code:#x}"),
+            (None, None) => process,
+        }
+    }
+}
+
+fn read_process_failure(args: &ICoreWebView2ProcessFailedEventArgs) -> ProcessFailure {
+    let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+    unsafe { args.ProcessFailedKind(&mut kind) }.log_err();
+    // Runtimes from 2021 on; older ones only say which process it was.
+    let (reason, exit_code) = match args.cast::<ICoreWebView2ProcessFailedEventArgs2>() {
+        Ok(args) => {
+            let mut reason = COREWEBVIEW2_PROCESS_FAILED_REASON::default();
+            let mut exit_code = 0i32;
+            (
+                unsafe { args.Reason(&mut reason) }
+                    .log_err()
+                    .map(|()| reason),
+                unsafe { args.ExitCode(&mut exit_code) }
+                    .log_err()
+                    .map(|()| exit_code),
+            )
+        }
+        Err(_) => (None, None),
+    };
+    ProcessFailure {
+        kind,
+        reason,
+        exit_code,
+    }
+}
+
+/// Lets the next surface of `profile` start from a new environment: the
+/// browser process behind `environment` is gone, and so is every page it held.
+/// WebView2 154 also starts a new browser process for a controller created in
+/// the old environment; a fresh one does not depend on that. Leaves alone an
+/// environment that already replaced it.
+fn forget_environment(profile: WebViewProfile, environment: &ICoreWebView2Environment) {
+    ENVIRONMENTS.with(|environments| {
+        let mut environments = environments.borrow_mut();
+        let slot = &mut environments.profile_mut(profile).slot;
+        if matches!(slot, EnvironmentSlot::Ready(current) if current == environment) {
+            log::info!("WebView2: the {profile:?} environment's browser process is gone");
+            *slot = EnvironmentSlot::Idle;
+        }
+    });
+}
+
 /// The receiver is dropped together with the panel, and WebView2 keeps firing
 /// callbacks until the controller is closed, so a closed channel is expected.
 fn send_on(events: &UnboundedSender<WebViewEvent>, event: WebViewEvent) {
     events.unbounded_send(event).ok();
+}
+
+/// How an AI tab answers a script dialog nobody sees. Leaving a page is what the AI asked for
+/// (`beforeunload` would otherwise keep the tab on the page), and every other dialog gets the
+/// answer the page script gives: Cancel.
+fn accepts_script_dialog(kind: COREWEBVIEW2_SCRIPT_DIALOG_KIND) -> bool {
+    kind == COREWEBVIEW2_SCRIPT_DIALOG_KIND_BEFOREUNLOAD
 }
 
 /// What a page's request for a new window becomes: the view hosts a single
@@ -2682,6 +3070,24 @@ fn read_history(webview: &ICoreWebView2) -> (bool, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_SCRIPT_DIALOG_KIND_ALERT, COREWEBVIEW2_SCRIPT_DIALOG_KIND_CONFIRM,
+        COREWEBVIEW2_SCRIPT_DIALOG_KIND_PROMPT,
+    };
+
+    #[test]
+    fn ai_tabs_leave_pages_but_cancel_every_other_dialog() {
+        assert!(accepts_script_dialog(
+            COREWEBVIEW2_SCRIPT_DIALOG_KIND_BEFOREUNLOAD
+        ));
+        for kind in [
+            COREWEBVIEW2_SCRIPT_DIALOG_KIND_ALERT,
+            COREWEBVIEW2_SCRIPT_DIALOG_KIND_CONFIRM,
+            COREWEBVIEW2_SCRIPT_DIALOG_KIND_PROMPT,
+        ] {
+            assert!(!accepts_script_dialog(kind), "{kind:?}");
+        }
+    }
 
     fn viewport(scale_factor: f32, overlays: Vec<OverlayRect>) -> Viewport {
         Viewport {
@@ -3090,6 +3496,96 @@ mod tests {
     }
 
     #[test]
+    fn out_of_sight_an_ai_tab_is_parked_and_a_user_tab_is_hidden() {
+        let bounds = RECT {
+            left: 200,
+            top: 100,
+            right: 1000,
+            bottom: 700,
+        };
+        let shown = Placement {
+            bounds,
+            rendering: true,
+        };
+        assert_eq!(placement(false, true, bounds, None, 2.), shown);
+        assert_eq!(placement(true, true, bounds, None, 2.), shown);
+        assert_eq!(
+            placement(false, false, bounds, Some((800, 600)), 2.),
+            Placement {
+                bounds,
+                rendering: false,
+            },
+            "a user tab stops rendering where it was"
+        );
+
+        let parked = placement(true, false, bounds, Some((800, 600)), 2.);
+        assert!(parked.rendering, "a parked page keeps rendering");
+        assert_eq!(rect_size(parked.bounds), Some((800, 600)));
+        assert!(
+            parked.bounds.right <= -PARKING_MARGIN && parked.bounds.bottom <= -PARKING_MARGIN,
+            "the parked page is outside the client area: {:?}",
+            parked.bounds
+        );
+
+        // Never on screen: the default size, in physical pixels.
+        let never_shown = placement(true, false, RECT::default(), None, 1.5);
+        assert!(never_shown.rendering);
+        assert_eq!(rect_size(never_shown.bounds), Some((1920, 1200)));
+        assert!(never_shown.bounds.right < 0 && never_shown.bounds.bottom < 0);
+    }
+
+    #[test]
+    fn only_rectangles_with_an_area_have_a_size() {
+        let rect = |left, top, right, bottom| RECT {
+            left,
+            top,
+            right,
+            bottom,
+        };
+        assert_eq!(rect_size(rect(10, 20, 110, 70)), Some((100, 50)));
+        assert_eq!(rect_size(rect(10, 20, 10, 70)), None);
+        assert_eq!(rect_size(rect(10, 20, 110, 20)), None);
+        assert_eq!(rect_size(rect(10, 20, 0, 70)), None);
+    }
+
+    #[test]
+    fn only_the_browser_or_the_page_s_renderer_going_away_loses_the_page() {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE,
+        };
+        let failure = |kind| ProcessFailure {
+            kind,
+            reason: Some(COREWEBVIEW2_PROCESS_FAILED_REASON_CRASHED),
+            exit_code: Some(-1_073_741_819),
+        };
+        assert!(failure(COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED).loses_the_page());
+        assert!(failure(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED).loses_the_page());
+        for recovers in [
+            COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE,
+        ] {
+            assert!(!failure(recovers).loses_the_page(), "{recovers:?}");
+        }
+
+        assert_eq!(
+            failure(COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED).describe(),
+            "the page's renderer process exited: crashed, exit code 0xc0000005"
+        );
+        assert_eq!(
+            ProcessFailure {
+                kind: COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+                reason: None,
+                exit_code: None,
+            }
+            .describe(),
+            "the browser process exited"
+        );
+    }
+
+    #[test]
     fn the_ai_profile_cannot_start_without_the_egress_proxy() {
         assert!(browser_arguments(WebViewProfile::Ai, None).is_err());
     }
@@ -3107,6 +3603,11 @@ mod tests {
                 "--proxy-bypass-list=<-loopback>;localhost;127.0.0.1/8;[::1]",
                 "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.*, EXCLUDE ::1, EXCLUDE [::1]",
                 "--webrtc-ip-handling-policy=disable_non_proxied_udp",
+                "--disable-quic",
+                // An AI tab keeps working out of sight.
+                "--disable-background-timer-throttling",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
             ]
         );
         assert_eq!(
@@ -3114,7 +3615,9 @@ mod tests {
             "--proxy-server=http://127.0.0.1:4100 \
              --proxy-bypass-list=<-loopback>;localhost;127.0.0.1/8;[::1] \
              \"--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.*, EXCLUDE ::1, EXCLUDE [::1]\" \
-             --webrtc-ip-handling-policy=disable_non_proxied_udp"
+             --webrtc-ip-handling-policy=disable_non_proxied_udp --disable-quic \
+             --disable-background-timer-throttling --disable-backgrounding-occluded-windows \
+             --disable-renderer-backgrounding"
         );
     }
 
@@ -3453,11 +3956,13 @@ mod live_tests {
     use windows::{
         Win32::{
             Foundation::{LRESULT, WPARAM},
+            Graphics::Gdi::{MONITOR_DEFAULTTONULL, MonitorFromRect},
             System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx},
             UI::WindowsAndMessaging::{
                 CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumWindows,
-                GetWindowTextW, MSG, PM_REMOVE, PeekMessageW, RegisterClassW, TranslateMessage,
-                WNDCLASSW, WS_CLIPCHILDREN, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_POPUP,
+                GetWindowTextW, GetWindowThreadProcessId, MSG, PM_REMOVE, PeekMessageW,
+                RegisterClassW, SW_MINIMIZE, SW_RESTORE, SWP_NOZORDER, TranslateMessage, WNDCLASSW,
+                WS_CLIPCHILDREN, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
                 WS_VISIBLE,
             },
         },
@@ -3551,6 +4056,14 @@ mod live_tests {
                 ],
                 &[0u8; 64],
             ),
+            "/auth" => response(
+                "401 Unauthorized",
+                &[
+                    "Content-Type: text/plain",
+                    "WWW-Authenticate: Basic realm=\"live test\"",
+                ],
+                b"sign-in required",
+            ),
             _ => response("404 Not Found", &[], b""),
         }
     }
@@ -3638,6 +4151,7 @@ mod live_tests {
     enum Observed {
         Ready,
         Failed(String),
+        Crashed(String),
         LoadFinished(bool),
         NavigationBlocked(String),
         DownloadBlocked(String),
@@ -3652,22 +4166,33 @@ mod live_tests {
 
     impl Surface {
         fn new(host: HWND, options: WebViewOptions) -> Self {
-            let (sender, events) = futures::channel::mpsc::unbounded();
-            let webview = WebView::new(host.0 as isize, options, sender)
-                .expect("the surface could not be requested");
-            let deferred = webview.sync_viewport(
+            Self::with_viewport(host, options, on_screen_viewport())
+        }
+
+        /// What the view does for a command that reaches an AI tab which was
+        /// never painted (`BrowserView::ensure_background_surface`).
+        fn never_shown(host: HWND, options: WebViewOptions) -> Self {
+            Self::with_viewport(
+                host,
+                options,
                 Viewport {
                     origin_x: 0.,
                     origin_y: 0.,
-                    width: 800.,
-                    height: 600.,
+                    width: BACKGROUND_VIEWPORT_WIDTH,
+                    height: BACKGROUND_VIEWPORT_HEIGHT,
                     scale_factor: 1.,
-                    hidden_reason: None,
+                    hidden_reason: Some(PARKED_IN_BACKGROUND),
                     input_blocked: false,
                     overlays: Vec::new(),
                 },
-                false,
-            );
+            )
+        }
+
+        fn with_viewport(host: HWND, options: WebViewOptions, viewport: Viewport) -> Self {
+            let (sender, events) = futures::channel::mpsc::unbounded();
+            let webview = WebView::new(host.0 as isize, options, sender)
+                .expect("the surface could not be requested");
+            let deferred = webview.sync_viewport(viewport, false);
             assert!(!deferred);
             Self {
                 webview,
@@ -3681,6 +4206,7 @@ mod live_tests {
                 self.observed.push(match event {
                     WebViewEvent::Ready => Observed::Ready,
                     WebViewEvent::Failed(message) => Observed::Failed(message),
+                    WebViewEvent::Crashed(message) => Observed::Crashed(message),
                     WebViewEvent::LoadFinished { succeeded } => Observed::LoadFinished(succeeded),
                     WebViewEvent::NavigationBlocked { url, .. } => Observed::NavigationBlocked(url),
                     WebViewEvent::DownloadBlocked { url } => Observed::DownloadBlocked(url),
@@ -3722,6 +4248,21 @@ mod live_tests {
             }
         }
 
+        /// Whether an event matching `wanted` arrives (since the last
+        /// `forget`) within `timeout`.
+        fn saw(&mut self, timeout: Duration, wanted: impl Fn(&Observed) -> bool) -> bool {
+            let deadline = Instant::now() + timeout;
+            while Instant::now() < deadline {
+                pump_messages();
+                self.drain();
+                if self.observed.iter().any(&wanted) {
+                    return true;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            false
+        }
+
         fn script(&mut self, script: &str) -> String {
             wait(script, self.webview.execute_script(script))
         }
@@ -3749,6 +4290,19 @@ mod live_tests {
                     .then_some(())
             });
             self.script("window.__candidates.length").parse().unwrap()
+        }
+    }
+
+    fn on_screen_viewport() -> Viewport {
+        Viewport {
+            origin_x: 0.,
+            origin_y: 0.,
+            width: 800.,
+            height: 600.,
+            scale_factor: 1.,
+            hidden_reason: None,
+            input_blocked: false,
+            overlays: Vec::new(),
         }
     }
 
@@ -4086,6 +4640,65 @@ mod live_tests {
         assert!(saved.is_empty(), "the download was saved: {saved:?}");
         println!("blocked download: ok");
 
+        // Dialogs the page script did not answer (this test injects none) are answered without
+        // being shown: a native one would sit over the editor and block the page and the
+        // script asking for it.
+        let dialogs_before = visible_dialogs();
+        assert_eq!(ai.script("confirm('Delete everything?')"), "false");
+        assert_eq!(ai.script("prompt('Name?', 'default')"), "null");
+        assert_eq!(ai.script("(alert('Hello'), 'answered')"), "\"answered\"");
+        assert!(
+            visible_dialogs()
+                .iter()
+                .all(|dialog| dialogs_before.contains(dialog)),
+            "a script dialog was shown"
+        );
+        println!("script dialogs answered unseen: ok");
+
+        // A page only gets to ask before it is left once the user has interacted with it.
+        ai.script(
+            "(() => { addEventListener('beforeunload', (event) => { event.preventDefault(); \
+             event.returnValue = ''; }); return true; })()",
+        );
+        ai.input(NativeInput::MouseClick {
+            x: 120.,
+            y: 50.,
+            button: MouseButton::Left,
+            click_count: 1,
+            modifiers: Vec::new(),
+        });
+        ai.load(&format!("{base}/ping"));
+        assert_eq!(ai.script("location.pathname"), "\"/ping\"");
+        println!("beforeunload leaves the page: ok");
+
+        ai.forget();
+        ai.webview.navigate(&format!("{base}/auth"));
+        // A sign-in prompt would hold the navigation until someone answered it.
+        ai.wait_for("the sign-in page", |observed| {
+            matches!(observed, Observed::LoadFinished(_))
+        });
+        assert!(
+            site_requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|line| line.starts_with("GET /auth")),
+            "the server was not asked"
+        );
+        // Cancelled, the server's own 401 page shows (unanswered, WebView2 shows an error page
+        // under its prompt).
+        pump_until("the 401 page", Duration::from_secs(10), || {
+            (ai.script("document.body ? document.body.innerText : ''") == "\"sign-in required\"")
+                .then_some(())
+        });
+        assert!(
+            visible_dialogs()
+                .iter()
+                .all(|dialog| dialogs_before.contains(dialog)),
+            "a sign-in dialog was shown"
+        );
+        println!("HTTP sign-in prompt cancelled: ok");
+
         // The user's profile runs beside it, in its own environment, without
         // any of the restrictions.
         let mut user = Surface::new(
@@ -4133,6 +4746,23 @@ mod live_tests {
             "the WebRTC probe gathers nothing at all"
         );
 
+        // Put away, a user tab's page stops rendering where it was; only an AI
+        // tab's page is parked.
+        let shown_at = user.webview.inner.state.borrow().applied_bounds;
+        user.webview.hide("the test put the tab away");
+        pump_for(Duration::from_millis(300));
+        {
+            let state = user.webview.inner.state.borrow();
+            assert_eq!(
+                state.applied_rendering,
+                Some(false),
+                "the user tab kept rendering"
+            );
+            assert_eq!(state.applied_bounds, shown_at, "the user tab was moved");
+        }
+        assert_eq!(user.script("document.visibilityState"), "\"hidden\"");
+        println!("user tab hidden, not parked: ok");
+
         ai.webview.open_developer_tools();
         pump_until(
             "the developer tools window",
@@ -4147,6 +4777,537 @@ mod live_tests {
         println!("developer tools: ok");
 
         drop(user);
+        drop(ai);
+        pump_for(Duration::from_millis(500));
+        unsafe { DestroyWindow(host) }.unwrap();
+    }
+
+    const BUSY_PAGE: &str = r#"<!doctype html><html><head><title>busy</title></head>
+<body style="margin:0;background:linear-gradient(90deg,#d02020,#2020d0)">
+<h1 style="color:#fff;font:bold 64px sans-serif;margin:40px">Background page</h1>
+<div id="box" style="width:300px;height:200px;background:#20c020"></div>
+<button style="position:absolute;left:20px;top:420px;width:200px;height:60px"
+  onclick="window.__clicked = event.isTrusted">Click</button>
+</body></html>"#;
+
+    fn respond_as_busy_site(request_line: &str) -> Vec<u8> {
+        let path = request_line.split(' ').nth(1).unwrap_or("/");
+        match path {
+            "/" => response("200 OK", &["Content-Type: text/html"], BUSY_PAGE.as_bytes()),
+            _ => response("404 Not Found", &[], b""),
+        }
+    }
+
+    /// The width, height and the standard deviation of the luminance: a page
+    /// that rendered nothing (blank, all one colour) has a spread near zero.
+    fn image_spread(png: &[u8]) -> (u32, u32, f64) {
+        let image = image::load_from_memory_with_format(png, image::ImageFormat::Png)
+            .expect("the capture is a PNG")
+            .to_rgba8();
+        let luminances = image
+            .pixels()
+            .map(|pixel| {
+                0.299 * f64::from(pixel[0])
+                    + 0.587 * f64::from(pixel[1])
+                    + 0.114 * f64::from(pixel[2])
+            })
+            .collect::<Vec<_>>();
+        let count = luminances.len().max(1) as f64;
+        let mean = luminances.iter().sum::<f64>() / count;
+        let variance = luminances
+            .iter()
+            .map(|luminance| (luminance - mean).powi(2))
+            .sum::<f64>()
+            / count;
+        (image.width(), image.height(), variance.sqrt())
+    }
+
+    /// Counts timer ticks and animation frames for a while, and reads what
+    /// the page thinks of its own visibility.
+    fn liveliness(surface: &mut Surface, duration: Duration) -> (u32, u32, String) {
+        surface.script(
+            "(() => { window.__ticks = 0; window.__frames = 0; \
+             clearInterval(window.__timer); window.__timer = setInterval(() => window.__ticks++, 50); \
+             const frame = () => { window.__frames++; requestAnimationFrame(frame); }; \
+             if (!window.__animating) { window.__animating = true; requestAnimationFrame(frame); } \
+             return true; })()",
+        );
+        pump_for(duration);
+        let ticks = surface.script("window.__ticks").parse().unwrap();
+        let frames = surface.script("window.__frames").parse().unwrap();
+        let visibility = surface.script("document.visibilityState");
+        (ticks, frames, visibility)
+    }
+
+    fn assert_alive(surface: &mut Surface, what: &str, size: (u32, u32)) {
+        let (ticks, frames, visibility) = liveliness(surface, Duration::from_millis(1500));
+        println!("{what}: {ticks} timer ticks, {frames} frames, visibility {visibility}");
+        assert_eq!(
+            visibility, "\"visible\"",
+            "{what}: the page thinks it is hidden"
+        );
+        assert!(ticks >= 20, "{what}: timers were throttled ({ticks} ticks)");
+        assert!(frames >= 20, "{what}: rendering stopped ({frames} frames)");
+        let png = wait(what, surface.webview.capture_png());
+        let (width, height, spread) = image_spread(&png);
+        println!("{what}: capture {width}x{height}, luminance spread {spread:.1}");
+        assert_eq!(
+            (width, height),
+            size,
+            "{what}: the capture has the wrong size"
+        );
+        assert!(
+            spread > 20.,
+            "{what}: the capture is blank (spread {spread:.1})"
+        );
+    }
+
+    fn ai_options(name: &str, proxy_endpoint: &str) -> WebViewOptions {
+        WebViewOptions {
+            profile: WebViewProfile::Ai,
+            user_data_folder: scratch_folder(name),
+            proxy_endpoint: Some(proxy_endpoint.to_string()),
+            document_start_script: None,
+            navigation_filter: Some(Rc::new(loopback_only)),
+            block_downloads: true,
+        }
+    }
+
+    fn browser_process_id(surface: &Surface) -> u32 {
+        let webview = surface.webview.inner.webview().unwrap();
+        let mut process_id = 0u32;
+        unsafe { webview.BrowserProcessId(&mut process_id) }.unwrap();
+        process_id
+    }
+
+    /// An AI tab works while nobody sees it: never shown, shown and then put
+    /// away, in a minimised window; and it comes back after its renderer or
+    /// its browser process dies.
+    #[test]
+    #[ignore = "drives a real WebView2; run with --ignored on a Windows desktop"]
+    fn live_ai_tab_in_the_background() {
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+            .ok()
+            .unwrap();
+        let site = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://127.0.0.1:{}", site.local_addr().unwrap().port());
+        let _site_requests = serve(site, respond_as_busy_site);
+        let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
+        let proxy_endpoint = format!("http://127.0.0.1:{}", proxy.local_addr().unwrap().port());
+        let _proxy_requests = serve(proxy, respond_as_proxy);
+        let host = create_host_window();
+
+        // A command reached an AI tab that was never painted.
+        let mut ai = Surface::never_shown(host, ai_options("background", &proxy_endpoint));
+        ai.wait_for("the AI surface", |observed| *observed == Observed::Ready);
+        ai.load(&format!("{base}/"));
+        assert_alive(&mut ai, "never shown", (1280, 800));
+        let parked = ai.webview.inner.state.borrow().applied_bounds.unwrap();
+        assert!(
+            parked.right <= 0 && parked.bottom <= 0,
+            "the parked page reaches into the window: {parked:?}"
+        );
+
+        // Painted once, then put away (another tab, a closed panel): it keeps
+        // the size it had on screen, and gives the keyboard back.
+        let deferred = ai.webview.sync_viewport(on_screen_viewport(), false);
+        assert!(!deferred);
+        pump_for(Duration::from_millis(300));
+        assert_alive(&mut ai, "on screen", (800, 600));
+        ai.webview.focus_page();
+        pump_until(
+            "the page takes the keyboard",
+            Duration::from_secs(5),
+            || ai.webview.inner.state.borrow().page_has_focus.then_some(()),
+        );
+        ai.webview.hide("the test put the tab away");
+        assert_eq!(
+            unsafe { GetFocus() },
+            host,
+            "the parked page kept the keyboard"
+        );
+        assert_alive(&mut ai, "put away", (800, 600));
+        ai.input(NativeInput::MouseClick {
+            x: 120.,
+            y: 450.,
+            button: MouseButton::Left,
+            click_count: 1,
+            modifiers: Vec::new(),
+        });
+        assert_eq!(ai.script("window.__clicked"), "true");
+        println!("trusted click on a parked page: ok");
+
+        // Another window covers the editor's window entirely: Chromium's
+        // occlusion tracking would call both pages hidden.
+        let deferred = ai.webview.sync_viewport(on_screen_viewport(), false);
+        assert!(!deferred);
+        let cover = unsafe {
+            CreateWindowExW(
+                WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                w!("BrowserPanelLiveTestHost"),
+                w!("browser panel live test cover"),
+                WS_POPUP | WS_VISIBLE,
+                -100,
+                -100,
+                1100,
+                900,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        .unwrap();
+        pump_for(Duration::from_secs(3));
+        assert_alive(&mut ai, "covered while shown", (800, 600));
+        ai.webview.hide("the test put the tab away");
+        assert_alive(&mut ai, "covered and put away", (800, 600));
+        unsafe { DestroyWindow(cover) }.unwrap();
+
+        // The whole window minimised, with the page on screen and parked.
+        let deferred = ai.webview.sync_viewport(on_screen_viewport(), false);
+        assert!(!deferred);
+        let _was_visible = unsafe { ShowWindow(host, SW_MINIMIZE) };
+        pump_for(Duration::from_millis(500));
+        assert!(unsafe { IsIconic(host) }.as_bool());
+        assert_alive(&mut ai, "minimised while shown", (800, 600));
+        ai.webview.hide("the test put the tab away");
+        assert_alive(&mut ai, "minimised and put away", (800, 600));
+        let _was_visible = unsafe { ShowWindow(host, SW_RESTORE) };
+        pump_for(Duration::from_millis(300));
+
+        // The renderer dies: the surface reports it, owes nothing, and a new
+        // one takes its place.
+        ai.forget();
+        let mut after_crash = None;
+        // `Page.crash` now and then goes unanswered right after the window was
+        // restored; asked again, it lands.
+        for attempt in 1..=3 {
+            call_devtools_methods(
+                ai.webview.inner.webview().unwrap(),
+                VecDeque::from([("Page.crash", serde_json::json!({}))]),
+                Box::new(|result| println!("Page.crash answered: {result:?}")),
+            );
+            after_crash.get_or_insert_with(|| ai.webview.execute_script("1"));
+            if ai.saw(Duration::from_secs(8), |observed| {
+                matches!(observed, Observed::Crashed(_))
+            }) {
+                break;
+            }
+            assert!(attempt < 3, "the renderer never crashed");
+            println!("Page.crash attempt {attempt} did nothing; asking again");
+        }
+        let mut after_crash = after_crash.unwrap();
+        println!("renderer crash reported: {:?}", ai.observed);
+        let answer = pump_until(
+            "the script sent with the crash",
+            Duration::from_secs(20),
+            || after_crash.try_recv().expect("the answer was dropped"),
+        );
+        println!("the script sent with the crash: {answer:?}");
+        let later = wait_error("a script after the crash", ai.webview.execute_script("2"));
+        assert!(later.contains("browser stopped"), "{later}");
+        drop(ai);
+        let mut ai = Surface::never_shown(host, ai_options("background", &proxy_endpoint));
+        ai.wait_for("the replaced surface", |observed| {
+            *observed == Observed::Ready
+        });
+        ai.load(&format!("{base}/"));
+        assert_eq!(ai.script("1+1"), "2");
+        println!("renderer crash recovery: ok");
+
+        // The browser process dies: the environment goes with it, and the next
+        // surface starts a new one.
+        let old_process = browser_process_id(&ai);
+        let old_environment = ai.webview.inner.state.borrow().environment.clone();
+        assert!(old_environment.is_some());
+        ai.forget();
+        #[allow(clippy::disallowed_methods, reason = "a live test on its own thread")]
+        let killed = std::process::Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &old_process.to_string()])
+            .output()
+            .unwrap();
+        println!(
+            "taskkill: {}",
+            String::from_utf8_lossy(&killed.stdout).trim()
+        );
+        ai.wait_for("the browser crash", |observed| {
+            matches!(observed, Observed::Crashed(_))
+        });
+        println!("browser crash reported: {:?}", ai.observed);
+        drop(ai);
+        let mut ai = Surface::never_shown(host, ai_options("background", &proxy_endpoint));
+        ai.wait_for("the surface in a new browser", |observed| {
+            *observed == Observed::Ready
+        });
+        assert_ne!(browser_process_id(&ai), old_process);
+        assert_ne!(
+            ai.webview.inner.state.borrow().environment,
+            old_environment,
+            "the surface was created in the environment whose browser went away"
+        );
+        ai.load(&format!("{base}/"));
+        assert_eq!(ai.script("1+1"), "2");
+        assert_alive(&mut ai, "after the browser restarted", (1280, 800));
+        println!("browser crash recovery: ok");
+
+        drop(ai);
+        pump_for(Duration::from_millis(500));
+        unsafe { DestroyWindow(host) }.unwrap();
+    }
+
+    fn wait_error<T: std::fmt::Debug>(
+        what: &str,
+        receiver: oneshot::Receiver<Result<T>>,
+    ) -> String {
+        let mut receiver = receiver;
+        let answer = pump_until(what, Duration::from_secs(20), || {
+            receiver.try_recv().expect("the answer was dropped")
+        });
+        match answer {
+            Ok(value) => panic!("{what} succeeded: {value:?}"),
+            Err(error) => format!("{error:#}"),
+        }
+    }
+
+    /// Nothing an AI tab's page does sends UDP past the proxy: WebTransport
+    /// (HTTP/3, QUIC) to an address literal, which no name resolution stops,
+    /// and fetches of sites that would offer HTTP/3. Read from Chromium's own
+    /// net log of the AI profile's browser.
+    #[test]
+    #[ignore = "drives a real WebView2; run with --ignored on a Windows desktop"]
+    fn live_ai_tab_network_stays_proxied() {
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+            .ok()
+            .unwrap();
+        let net_log = scratch_folder("netlog").join("netlog.json");
+        std::fs::remove_file(&net_log).ok();
+        TEST_BROWSER_ARGUMENTS.with(|arguments| {
+            *arguments.borrow_mut() = vec![
+                format!("--log-net-log={}", net_log.display()),
+                "--net-log-capture-mode=Everything".to_string(),
+            ];
+        });
+        let site = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://127.0.0.1:{}", site.local_addr().unwrap().port());
+        let _site_requests = serve(site, respond_as_busy_site);
+        let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
+        let proxy_endpoint = format!("http://127.0.0.1:{}", proxy.local_addr().unwrap().port());
+        let proxy_requests = serve(proxy, respond_as_proxy);
+        let host = create_host_window();
+
+        let mut ai = Surface::new(host, ai_options("netlog", &proxy_endpoint));
+        ai.wait_for("the AI surface", |observed| *observed == Observed::Ready);
+        ai.load(&format!("{base}/"));
+        ai.script(
+            "(() => { window.__outcomes = {}; \
+             const note = (name) => (value) => { window.__outcomes[name] = String(value && (value.message || value)); }; \
+             try { const transport = new WebTransport('https://1.1.1.1:443/'); \
+               transport.ready.then(note('webtransport ready'), note('webtransport')); } \
+             catch (error) { note('webtransport')(error); } \
+             try { const transport = new WebTransport('https://[2606:4700:4700::1111]:443/'); \
+               transport.ready.then(note('webtransport6 ready'), note('webtransport6')); } \
+             catch (error) { note('webtransport6')(error); } \
+             fetch('https://1.1.1.1/').then(note('fetch ip'), note('fetch ip')); \
+             fetch('https://cloudflare-quic.com/').then(note('fetch h3'), note('fetch h3')); \
+             return true; })()",
+        );
+        pump_until("the page's attempts", Duration::from_secs(30), || {
+            let outcomes = ai.script("Object.keys(window.__outcomes).length");
+            (outcomes == "4").then_some(())
+        });
+        println!(
+            "page outcomes: {}",
+            ai.script("JSON.stringify(window.__outcomes)")
+        );
+        println!("proxy saw: {:?}", proxy_requests.lock().unwrap());
+        drop(ai);
+        // The net log is complete once the browser process has shut down.
+        pump_for(Duration::from_secs(3));
+        unsafe { DestroyWindow(host) }.unwrap();
+
+        let log = std::fs::read_to_string(&net_log).expect("the net log was written");
+        let leaks = udp_leaks(&log);
+        println!("UDP sockets to other hosts: {leaks:?}");
+        assert!(leaks.is_empty(), "UDP left the machine: {leaks:?}");
+    }
+
+    /// The UDP datagrams in a Chromium net log that went anywhere but
+    /// loopback, and any QUIC session. A `UDP_CONNECT` alone sends nothing:
+    /// Chromium's IPv6 reachability check connects a UDP socket only to ask
+    /// the system for a route, so those are printed but not counted. Reads
+    /// event by event, so that a log cut short by the browser's exit still
+    /// counts.
+    fn udp_leaks(log: &str) -> Vec<String> {
+        let constants_start = log
+            .find("\"logEventTypes\"")
+            .expect("the log has its constants");
+        let types_start = log[constants_start..].find('{').unwrap() + constants_start;
+        let types_end = log[types_start..].find('}').unwrap() + types_start;
+        let types: std::collections::HashMap<String, u64> =
+            serde_json::from_str(&log[types_start..=types_end]).unwrap();
+        let wanted = [
+            "UDP_CONNECT",
+            "UDP_BYTES_SENT",
+            "QUIC_SESSION_POOL_JOB",
+            "QUIC_SESSION",
+        ]
+        .iter()
+        .filter_map(|name| types.get(*name).map(|id| (*id, *name)))
+        .collect::<std::collections::HashMap<_, _>>();
+        let mut leaks = Vec::new();
+        for line in log.lines() {
+            let line = line.trim().trim_end_matches(',');
+            if !line.starts_with("{\"params\"") && !line.starts_with("{\"phase\"") {
+                continue;
+            }
+            let Ok(event) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let Some(name) = event
+                .get("type")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|id| wanted.get(&id))
+            else {
+                continue;
+            };
+            let address = event
+                .pointer("/params/address")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let loopback = address.starts_with("127.") || address.starts_with("[::1]");
+            if *name == "UDP_CONNECT" {
+                println!("UDP socket connected (nothing sent by that): {address}");
+            } else if name.starts_with("QUIC") || !loopback {
+                leaks.push(format!(
+                    "{name} {address} {}",
+                    event.get("params").unwrap_or(&serde_json::Value::Null)
+                ));
+            }
+        }
+        leaks
+    }
+
+    const POPUP_PAGE: &str = r#"<!doctype html><html><head><title>popups</title></head>
+<body style="margin:0">
+<select style="position:absolute;left:20px;top:20px;width:200px;height:30px">
+<option>one</option><option>two</option><option>three</option><option>four</option>
+</select>
+</body></html>"#;
+
+    fn respond_as_popup_site(request_line: &str) -> Vec<u8> {
+        let path = request_line.split(' ').nth(1).unwrap_or("/");
+        match path {
+            "/" => response(
+                "200 OK",
+                &["Content-Type: text/html"],
+                POPUP_PAGE.as_bytes(),
+            ),
+            _ => response("404 Not Found", &[], b""),
+        }
+    }
+
+    unsafe extern "system" fn collect_process_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let found = unsafe { &mut *(lparam.0 as *mut (u32, Vec<(RECT, bool)>)) };
+        let mut process_id = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut process_id)) };
+        if process_id == found.0 && unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            let mut rect = RECT::default();
+            if unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok() {
+                let monitor = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONULL) };
+                found.1.push((rect, !monitor.is_invalid()));
+            }
+        }
+        true.into()
+    }
+
+    /// The visible top-level windows of a process, and whether each reaches a
+    /// monitor.
+    fn visible_windows_of(process_id: u32) -> Vec<(RECT, bool)> {
+        let mut found = (process_id, Vec::new());
+        unsafe {
+            EnumWindows(
+                Some(collect_process_window),
+                LPARAM(&mut found as *mut _ as isize),
+            )
+        }
+        .unwrap();
+        found.1
+    }
+
+    /// What a parked page opens on its own (a `<select>`'s list, a context
+    /// menu) never shows up on a monitor, wherever the editor's window is.
+    #[test]
+    #[ignore = "drives a real WebView2; run with --ignored on a Windows desktop"]
+    fn live_ai_tab_in_the_background_keeps_popups_off_screen() {
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+            .ok()
+            .unwrap();
+        let site = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://127.0.0.1:{}", site.local_addr().unwrap().port());
+        let _site_requests = serve(site, respond_as_popup_site);
+        let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
+        let proxy_endpoint = format!("http://127.0.0.1:{}", proxy.local_addr().unwrap().port());
+        let _proxy_requests = serve(proxy, respond_as_proxy);
+        let host = create_host_window();
+        // Far enough from the primary monitor's top-left corner that a page
+        // parked just outside the window would open its lists on that monitor.
+        unsafe {
+            SetWindowPos(
+                host,
+                None,
+                1400,
+                900,
+                800,
+                600,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            )
+        }
+        .unwrap();
+
+        let mut ai = Surface::never_shown(host, ai_options("popups", &proxy_endpoint));
+        ai.wait_for("the AI surface", |observed| *observed == Observed::Ready);
+        ai.load(&format!("{base}/"));
+        let browser = browser_process_id(&ai);
+        let on_a_monitor = |what: &str| {
+            let windows = visible_windows_of(browser);
+            println!("{what}: {windows:?}");
+            assert!(
+                windows.iter().all(|(_, on_a_monitor)| !on_a_monitor),
+                "{what}: a window of the parked page is on a monitor: {windows:?}"
+            );
+            windows.len()
+        };
+        assert_eq!(on_a_monitor("parked"), 0);
+
+        let click = |x: f64, y: f64, button: MouseButton| NativeInput::MouseClick {
+            x,
+            y,
+            button,
+            click_count: 1,
+            modifiers: Vec::new(),
+        };
+        ai.input(click(60., 35., MouseButton::Left));
+        pump_for(Duration::from_millis(1500));
+        assert!(
+            on_a_monitor("the list of a <select>") > 0,
+            "the <select> opened no list, so nothing was checked"
+        );
+        ai.input(NativeInput::Key {
+            key: "Escape".to_string(),
+            code: "Escape".to_string(),
+            modifiers: Vec::new(),
+        });
+        pump_for(Duration::from_millis(500));
+        ai.input(click(300., 300., MouseButton::Right));
+        pump_for(Duration::from_millis(1500));
+        assert_eq!(
+            on_a_monitor("a right click"),
+            0,
+            "a context menu opened for the parked page"
+        );
+
         drop(ai);
         pump_for(Duration::from_millis(500));
         unsafe { DestroyWindow(host) }.unwrap();

@@ -6,6 +6,10 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "menu"
+msgid "AI Browser Panel"
+msgstr "AI ブラウザーパネル"
+
+msgctxt "menu"
 msgid "About Zed"
 msgstr "ForgeKairos について"
 

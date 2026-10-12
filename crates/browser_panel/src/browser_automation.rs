@@ -48,7 +48,7 @@ use crate::webview::{
     NativeInput, NativeInputUnsupported, NavigationDecision, WebView, WebViewOptions,
     WebViewProfile,
 };
-use crate::{BrowserItem, BrowserPanel, BrowserSettings, BrowserView, NewTabPlacement};
+use crate::{AiBrowserPanel, BrowserItem, BrowserSettings, BrowserView, NewTabPlacement};
 
 /// The page instrumentation, injected at document start into AI tabs only.
 pub(crate) const AUTOMATION_SCRIPT: &str = include_str!("automation.js");
@@ -84,9 +84,6 @@ const STOPPED_BY_USER: &str = "The user stopped AI control of this AI tab. Ask t
 const TAB_CLOSED: &str = "The AI tab was closed.";
 const NO_AI_TAB: &str =
     "No AI tab is open in this workspace. browser_open_tab or browser_navigate opens one.";
-const EVAL_UNSUPPORTED: &str = "browser_eval is not available on this platform: its browser \
-     engine cannot keep page scripts from opening direct WebRTC connections around the network \
-     allowlist.";
 const NOT_INSTRUMENTED: &str = "The page did not run the browser automation script; it may still \
      be loading or navigating. Try again in a moment.";
 
@@ -162,16 +159,6 @@ impl AiNavigationVerdict {
 /// Reads `policy` at the moment of the decision, so an allowlist edit applies to the very next
 /// navigation.
 pub(crate) fn ai_navigation_verdict(url: &str, policy: &EgressPolicyHandle) -> AiNavigationVerdict {
-    verdict_for_engine(url, policy, crate::webview::SUPPORTS_SCRIPT_EVAL)
-}
-
-/// A `data:` document is a page whose scripts the AI wrote, so it is `browser_eval` by another
-/// name and only allowed where `browser_eval` is.
-fn verdict_for_engine(
-    url: &str,
-    policy: &EgressPolicyHandle,
-    engine_runs_ai_scripts: bool,
-) -> AiNavigationVerdict {
     let Ok(parsed) = Url::parse(url.trim()) else {
         return AiNavigationVerdict::SchemeNotAllowed;
     };
@@ -180,7 +167,7 @@ fn verdict_for_engine(
             Ok(()) => AiNavigationVerdict::Allowed,
             Err(denied) => AiNavigationVerdict::HostNotAllowed { host: denied.host },
         },
-        "data" if engine_runs_ai_scripts => AiNavigationVerdict::Allowed,
+        "data" => AiNavigationVerdict::Allowed,
         "about" if parsed.path() == "blank" => AiNavigationVerdict::Allowed,
         _ => AiNavigationVerdict::SchemeNotAllowed,
     }
@@ -556,41 +543,29 @@ pub(crate) struct AiTab {
 impl AiTab {
     fn downgrade(&self) -> WeakAiTab {
         WeakAiTab {
-            pane: self.pane.downgrade(),
-            item: self.item.downgrade(),
             view: self.view.downgrade(),
         }
     }
 }
 
 /// What a running command holds on to. Weak, so that closing the tab drops its view (and its
-/// browser with it), which cancels the command instead of keeping a removed page alive.
+/// browser with it), which cancels the command instead of keeping a removed page alive. A
+/// command never needs the tab to be shown (see `ready_surface`), so the view is all it keeps.
 struct WeakAiTab {
-    pane: WeakEntity<Pane>,
-    item: WeakEntity<BrowserItem>,
     view: WeakEntity<BrowserView>,
 }
 
-impl WeakAiTab {
-    fn reveal(&self, workspace: &mut Workspace, window: &mut Window, cx: &mut App) -> Result<()> {
-        let closed = || anyhow!(TAB_CLOSED);
-        let tab = AiTab {
-            id: TabId(String::new()),
-            last_used: 0,
-            pane: self.pane.upgrade().ok_or_else(closed)?,
-            item: self.item.upgrade().ok_or_else(closed)?,
-            view: self.view.upgrade().ok_or_else(closed)?,
-        };
-        reveal_tab(&tab, workspace, window, cx);
-        Ok(())
-    }
-}
-
-/// Every AI tab of the workspace, in pane order: the center, then the docks' panes (the browser
-/// panel, the terminal panel, ...). Ids are handed out here, the first time a tab is seen.
+/// Every AI tab of the workspace, in pane order: the AI browser panel's, then the center's (where
+/// the user may have dragged some). AI tabs cannot be dropped anywhere else (ADR-F89 追記 10), so
+/// no other pane is looked at. Ids are handed out here, the first time a tab is seen.
 pub(crate) fn ai_tabs(workspace: &Workspace, cx: &mut App) -> Vec<AiTab> {
+    let mut panes = workspace
+        .panel::<AiBrowserPanel>(cx)
+        .map(|panel| panel.read(cx).tabs.panes())
+        .unwrap_or_default();
+    panes.extend(workspace.panes().iter().cloned());
     let mut found = Vec::new();
-    for pane in workspace.all_panes(cx) {
+    for pane in panes {
         let items = pane
             .read(cx)
             .items_of_type::<BrowserItem>()
@@ -709,43 +684,35 @@ fn tab_keys(tabs: &[AiTab]) -> Vec<(TabId, u64)> {
         .collect()
 }
 
-/// Shows the pane a tab lives in without moving keyboard focus: the tab becomes its pane's
-/// active item and the dock holding the pane (if any) opens. The browser panel is not told that
-/// the user asked for it, so its own waiting home tab stays unloaded (ADR-F48).
-fn reveal_tab(tab: &AiTab, workspace: &mut Workspace, window: &mut Window, cx: &mut App) {
+/// Makes a tab the active tab of its pane without moving keyboard focus and without showing a
+/// panel or dock that is out of sight: only opening a tab brings the AI browser forward
+/// ([`open_ai_tab`]); every other command works on the tab where it is.
+fn select_tab(tab: &AiTab, window: &mut Window, cx: &mut App) {
     tab.pane.update(cx, |pane, cx| {
         if let Some(index) = pane.index_for_item(&tab.item) {
             pane.activate_item(index, false, false, window, cx);
         }
     });
-    for dock in workspace.all_docks() {
-        let index = dock
-            .read(cx)
-            .panels()
-            .position(|panel| panel.panes(cx).contains(&tab.pane));
-        if let Some(index) = index {
-            dock.update(cx, |dock, cx| {
-                dock.restore_active_panel(index, window, cx);
-                if !dock.is_open() {
-                    dock.set_open(true, window, cx);
-                }
-            });
-        }
-    }
 }
 
-/// Opens an AI tab in the browser panel (or, without one, the active center pane) without
-/// taking keyboard focus.
+/// Opens an AI tab in the AI browser panel (or, without one, the active center pane) without
+/// taking keyboard focus, and shows the panel ([`AiBrowserPanel::reveal_without_focus`]). The
+/// tab's browser starts right away, so its page loads even when the panel cannot paint (a
+/// minimised window, another workspace in front).
 fn open_ai_tab(
     workspace: &mut Workspace,
     url: Option<String>,
     window: &mut Window,
     cx: &mut gpui::Context<Workspace>,
 ) -> Entity<BrowserItem> {
-    let item = match workspace.panel::<BrowserPanel>(cx) {
-        Some(panel) => panel.update(cx, |panel, cx| {
-            panel.open_ai_tab(url, NewTabPlacement::ForegroundWithoutFocus, window, cx)
-        }),
+    let item = match workspace.panel::<AiBrowserPanel>(cx) {
+        Some(panel) => {
+            let item = panel.update(cx, |panel, cx| {
+                panel.open_ai_tab(url, NewTabPlacement::ForegroundWithoutFocus, window, cx)
+            });
+            AiBrowserPanel::reveal_without_focus(workspace, window, cx);
+            item
+        }
         None => {
             let workspace_handle = workspace.weak_handle();
             let fs = workspace.app_state().fs.clone();
@@ -763,12 +730,8 @@ fn open_ai_tab(
             item
         }
     };
-    let tab = ai_tabs(workspace, cx)
-        .into_iter()
-        .find(|tab| tab.item == item);
-    if let Some(tab) = tab {
-        reveal_tab(&tab, workspace, window, cx);
-    }
+    let view = item.read(cx).view().clone();
+    view.update(cx, |view, cx| view.ensure_background_surface(window, cx));
     item
 }
 
@@ -794,14 +757,21 @@ async fn run_command(
                 refuse_denied_url(url, cx)?;
             }
             ensure_egress_proxy(http_client::child_process_proxy().as_ref())?;
-            let id = target.update(cx, |workspace, window, cx| {
+            let (id, status) = target.update(cx, |workspace, window, cx| {
                 let item = open_ai_tab(workspace, url.clone(), window, cx);
-                ai_tabs(workspace, cx)
+                let status = item.read(cx).view().read(cx).automation_status();
+                let id = ai_tabs(workspace, cx)
                     .into_iter()
                     .find(|tab| tab.item == item)
-                    .map(|tab| tab.id)
+                    .map(|tab| tab.id);
+                (id, status)
             })?;
             let id = id.context("The AI tab could not be opened.")?;
+            if let AutomationStatus::Unavailable(reason) | AutomationStatus::Restartable(reason) =
+                status
+            {
+                bail!("Opened AI tab {id}, but it cannot load pages: {reason}");
+            }
             Ok(text_output(match url {
                 Some(url) => format!(
                     "Opened AI tab {id} and started loading {url}; it is now the current AI tab."
@@ -840,7 +810,7 @@ async fn run_command(
                     bail!(STOPPED_BY_USER);
                 }
                 selected.view.update(cx, |view, cx| view.touch_ai_tab(cx));
-                reveal_tab(selected, workspace, window, cx);
+                select_tab(selected, window, cx);
                 anyhow::Ok(())
             })??;
             Ok(text_output(format!(
@@ -1154,7 +1124,7 @@ async fn execute_in_tab(
                     .unwrap_or_else(|| value.to_string())
             )))
         }
-        BrowserCommand::Screenshot { .. } => screenshot(target, tab, &surface, cx).await,
+        BrowserCommand::Screenshot { .. } => screenshot(tab, &surface, cx).await,
         BrowserCommand::Console {
             only_errors,
             pattern,
@@ -1202,12 +1172,7 @@ async fn execute_in_tab(
                 )))
             }
         },
-        BrowserCommand::Eval { expression, .. } => {
-            if !crate::webview::SUPPORTS_SCRIPT_EVAL {
-                bail!(EVAL_UNSUPPORTED);
-            }
-            evaluate(&surface, &expression, cx).await
-        }
+        BrowserCommand::Eval { expression, .. } => evaluate(&surface, &expression, cx).await,
         BrowserCommand::WaitFor {
             text,
             selector,
@@ -1223,15 +1188,17 @@ async fn execute_in_tab(
     }
 }
 
-/// Waits until the tab has a browsing surface. A tab that was never shown has none yet (the
-/// backends create it when the tab is first painted), so it is brought to the front once.
+/// Waits until the tab has a browsing surface. A tab that was never painted (a background tab,
+/// a closed panel or dock, a minimised window) has none yet, so it is created right here, in
+/// the workspace's window, without showing the tab: the backends keep an AI tab's page
+/// rendering out of sight. A surface whose page crashed is replaced the same way.
 async fn ready_surface(
     target: &WorkspaceTarget,
     tab: &WeakAiTab,
     cx: &mut AsyncApp,
 ) -> Result<Rc<dyn AutomationSurface>> {
     let deadline = cx.background_executor().now() + SURFACE_WAIT;
-    let mut revealed = false;
+    let mut requested = false;
     loop {
         let status = tab
             .view
@@ -1245,12 +1212,20 @@ async fn ready_surface(
                 }));
             }
             AutomationStatus::Unavailable(message) => bail!("{message}"),
-            AutomationStatus::Waiting { has_surface } => {
-                if !has_surface && !revealed {
-                    revealed = true;
-                    target.update(cx, |workspace, window, cx| {
-                        tab.reveal(workspace, window, cx)
-                    })??;
+            // Restarted once per command: a page that crashes (or fails to start) again right
+            // away fails the command with the reason instead of being restarted over and over.
+            AutomationStatus::Restartable(message) if requested => bail!("{message}"),
+            AutomationStatus::Waiting { has_surface: true } => {}
+            AutomationStatus::Waiting { has_surface: false } | AutomationStatus::Restartable(_) => {
+                if !requested {
+                    requested = true;
+                    let view = tab.view.upgrade().context(TAB_CLOSED)?;
+                    target.update(cx, |_, window, cx| {
+                        view.update(cx, |view, cx| view.ensure_background_surface(window, cx))
+                    })?;
+                    // Creation can fail on the spot (no proxy, no engine), which the next look
+                    // reports without waiting.
+                    continue;
                 }
             }
         }
@@ -1266,8 +1241,13 @@ async fn ready_surface(
 
 pub(crate) enum AutomationStatus {
     Ready(Rc<dyn AutomationSurface>),
-    Waiting { has_surface: bool },
+    Waiting {
+        has_surface: bool,
+    },
     Unavailable(String),
+    /// The page's browser went away or could not be created; the next command starts it again.
+    /// The payload says why, for the AI.
+    Restartable(String),
 }
 
 async fn settle(cx: &mut AsyncApp) {
@@ -1870,15 +1850,12 @@ pub(crate) fn downscale_png(png: &[u8], max_edge: u32) -> Result<(Vec<u8>, u32, 
 }
 
 async fn screenshot(
-    target: &WorkspaceTarget,
     tab: &WeakAiTab,
     surface: &Rc<dyn AutomationSurface>,
     cx: &mut AsyncApp,
 ) -> Result<BrowserOutput> {
-    // A hidden surface does not paint, so the tab is brought to the front of its pane first.
-    target.update(cx, |workspace, window, cx| {
-        tab.reveal(workspace, window, cx)
-    })??;
+    // An AI tab out of sight keeps rendering where nobody sees it (the backends park it rather
+    // than hide it), so the screenshot shows the page without bringing the tab forward.
     settle(cx).await;
     let viewport = call(surface, "viewport", json!({})).await?;
     let png = surface.capture_png().await.map_err(|_| {
@@ -2343,20 +2320,32 @@ mod tests {
     }
 
     #[test]
-    fn data_documents_are_denied_where_page_scripts_are_not_contained() {
+    fn data_documents_load_whatever_the_allowlist_says() {
         let policy = policy(&[]);
-        let page = "data:text/html,<script>new RTCPeerConnection()</script>";
+        for page in [
+            "data:text/html,<script>new RTCPeerConnection()</script>",
+            "DATA:text/plain,x",
+            "data:,",
+        ] {
+            assert_eq!(
+                ai_navigation_verdict(page, &policy),
+                AiNavigationVerdict::Allowed,
+                "{page}"
+            );
+        }
         assert_eq!(
-            verdict_for_engine(page, &policy, true),
+            ai_navigation_verdict("http://localhost/", &policy),
             AiNavigationVerdict::Allowed
         );
         assert_eq!(
-            verdict_for_engine(page, &policy, false),
+            ai_navigation_verdict("https://example.com/", &policy),
+            AiNavigationVerdict::HostNotAllowed {
+                host: "example.com".to_string(),
+            }
+        );
+        assert_eq!(
+            ai_navigation_verdict("file:///etc/passwd", &policy),
             AiNavigationVerdict::SchemeNotAllowed
-        );
-        assert_eq!(
-            verdict_for_engine("http://localhost/", &policy, false),
-            AiNavigationVerdict::Allowed
         );
     }
 
@@ -2910,6 +2899,7 @@ mod tests {
 
     // -- ワークスペースを通した経路 (偽のページで) ----------------------------
 
+    use crate::browser_view::FailedStart;
     use crate::webview::{self, WebViewEvent, completed};
     use crate::{ResumeAiControl, StopAiControl};
     use futures::FutureExt as _;
@@ -3028,7 +3018,8 @@ mod tests {
     struct Fixture {
         project: Entity<Project>,
         workspace: Entity<Workspace>,
-        panel: Entity<BrowserPanel>,
+        panel: Entity<AiBrowserPanel>,
+        user_panel: Entity<crate::BrowserPanel>,
     }
 
     fn init_test(cx: &mut TestAppContext) {
@@ -3063,10 +3054,12 @@ mod tests {
             .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
             .expect("the window holds a workspace");
         let mut visual = VisualTestContext::from_window(window_handle.into(), cx);
-        let panel = workspace.update_in(&mut visual, |workspace, window, cx| {
-            let panel = cx.new(|cx| BrowserPanel::new(workspace, window, cx));
+        let (panel, user_panel) = workspace.update_in(&mut visual, |workspace, window, cx| {
+            let panel = cx.new(|cx| AiBrowserPanel::new(workspace, window, cx));
             workspace.add_panel(panel.clone(), window, cx);
-            panel
+            let user_panel = cx.new(|cx| crate::BrowserPanel::new(workspace, window, cx));
+            workspace.add_panel(user_panel.clone(), window, cx);
+            (panel, user_panel)
         });
         set_ai_control(true, &mut visual);
         visual.run_until_parked();
@@ -3075,6 +3068,7 @@ mod tests {
                 project,
                 workspace,
                 panel,
+                user_panel,
             },
             visual,
         )
@@ -3181,7 +3175,7 @@ mod tests {
     async fn the_user_s_own_tabs_are_never_listed(cx: &mut TestAppContext) {
         let (fixture, mut cx) = fixture(cx).await;
         let cx = &mut cx;
-        fixture.panel.update_in(cx, |panel, window, cx| {
+        fixture.user_panel.update_in(cx, |panel, window, cx| {
             panel.open_tab(
                 Some("https://outlook.office.com/".to_string()),
                 NewTabPlacement::Foreground,
@@ -3460,13 +3454,13 @@ mod tests {
         let tabs = ai_tabs_of(&fixture, cx);
         assert_eq!(tabs.len(), 1);
         let in_panel = fixture.panel.read_with(cx, |panel, cx| {
-            panel.center.panes().iter().any(|pane| {
+            panel.tabs.center.panes().iter().any(|pane| {
                 pane.read(cx)
                     .items()
                     .any(|item| item.item_id() == tabs[0].item.entity_id())
             })
         });
-        assert!(in_panel, "the AI tab opens in the browser panel");
+        assert!(in_panel, "the AI tab opens in the AI browser panel");
     }
 
     #[gpui::test]
@@ -4030,6 +4024,352 @@ mod tests {
         advance(1_500, cx);
         let error = error_text(finished(waiting, cx));
         assert!(error.starts_with("Timed out after 1000 ms"), "{error}");
+    }
+
+    /// Installs a stand-in for creating `view`'s page, as if its window could host one, and
+    /// returns the surfaces created so far.
+    fn count_surfaces(
+        view: &Entity<BrowserView>,
+        cx: &mut VisualTestContext,
+    ) -> Rc<RefCell<Vec<Rc<FakeSurface>>>> {
+        count_surfaces_crashing(view, Rc::default(), Rc::default(), cx)
+    }
+
+    /// [`count_surfaces`], where the next `crashes` starts crash right away; `starts` counts
+    /// every start, crashed or not.
+    fn count_surfaces_crashing(
+        view: &Entity<BrowserView>,
+        crashes: Rc<Cell<u32>>,
+        starts: Rc<Cell<u32>>,
+        cx: &mut VisualTestContext,
+    ) -> Rc<RefCell<Vec<Rc<FakeSurface>>>> {
+        let created = Rc::new(RefCell::new(Vec::<Rc<FakeSurface>>::new()));
+        view.update(cx, |view, _| {
+            view.set_surface_factory_for_test(Rc::new({
+                let created = created.clone();
+                move || {
+                    starts.set(starts.get() + 1);
+                    if crashes.get() > 0 {
+                        crashes.set(crashes.get() - 1);
+                        return Err(FailedStart::Crashed(
+                            "the browser process exited: crashed".to_string(),
+                        ));
+                    }
+                    let fake = Rc::new(FakeSurface::default());
+                    fake.respond(
+                        "pageText",
+                        &[json!({ "title": "T", "url": "u", "text": "Hello", "truncated": false })],
+                    );
+                    created.borrow_mut().push(fake.clone());
+                    Ok(fake as Rc<dyn AutomationSurface>)
+                }
+            }))
+        });
+        created
+    }
+
+    /// Draws `view` the way a pane that shows it does.
+    fn paint(view: &Entity<BrowserView>, cx: &mut VisualTestContext) {
+        use gpui::{ParentElement as _, Styled as _};
+        let view = view.clone();
+        cx.draw(
+            gpui::point(gpui::px(0.), gpui::px(0.)),
+            gpui::size(gpui::px(800.), gpui::px(600.)),
+            move |_, _| gpui::div().size_full().child(view),
+        );
+    }
+
+    fn page_text(tab: Option<TabId>) -> BrowserCommand {
+        BrowserCommand::PageText {
+            tab,
+            max_chars: 100,
+        }
+    }
+
+    #[gpui::test]
+    async fn a_command_starts_a_tab_that_was_never_shown_without_showing_it(
+        cx: &mut TestAppContext,
+    ) {
+        let (fixture, mut cx) = fixture(cx).await;
+        let cx = &mut cx;
+        let (front, _front_fake) = open_tab_with_fake(&fixture, cx);
+        let item = fixture.panel.update_in(cx, |panel, window, cx| {
+            panel.open_ai_tab(
+                Some("http://localhost:5173/".to_string()),
+                NewTabPlacement::Background,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let background = ai_tabs_of(&fixture, cx)
+            .into_iter()
+            .find(|tab| tab.item == item)
+            .expect("the background tab is listed");
+        let created = count_surfaces(&background.view, cx);
+        let active_item = |cx: &mut VisualTestContext| {
+            background
+                .pane
+                .read_with(cx, |pane, _| pane.active_item().map(|item| item.item_id()))
+        };
+        assert_eq!(active_item(cx), Some(front.item.entity_id()));
+
+        let output = finished(
+            run(&fixture, page_text(Some(background.id.clone())), cx),
+            cx,
+        )
+        .expect("the never shown tab answers");
+        assert_eq!(output.text, "T - u\n\nHello");
+        assert_eq!(created.borrow().len(), 1, "one surface was created");
+        let surface = created.borrow()[0].clone();
+        assert_eq!(
+            surface.navigations.borrow().as_slice(),
+            ["http://localhost:5173/"],
+            "the new surface opened the tab's page"
+        );
+        assert_eq!(
+            active_item(cx),
+            Some(front.item.entity_id()),
+            "the command did not bring the tab forward"
+        );
+
+        finished(
+            run(&fixture, page_text(Some(background.id.clone())), cx),
+            cx,
+        )
+        .expect("the second command");
+        assert_eq!(created.borrow().len(), 1, "the surface is kept");
+        assert_eq!(surface.calls("pageText"), 2);
+
+        // Shown later, the tab paints with the surface it already has.
+        paint(&background.view, cx);
+        assert_eq!(created.borrow().len(), 1, "painting reused the surface");
+    }
+
+    #[gpui::test]
+    async fn a_crashed_tab_fails_what_waits_on_it_and_restarts_with_the_next_command(
+        cx: &mut TestAppContext,
+    ) {
+        let (fixture, mut cx) = fixture(cx).await;
+        let cx = &mut cx;
+        let item = fixture.panel.update_in(cx, |panel, window, cx| {
+            panel.open_ai_tab(
+                Some("http://localhost:3000/".to_string()),
+                NewTabPlacement::Background,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let tab = ai_tabs_of(&fixture, cx)
+            .into_iter()
+            .find(|tab| tab.item == item)
+            .expect("the tab is listed");
+        let created = count_surfaces(&tab.view, cx);
+        finished(run(&fixture, page_text(None), cx), cx).expect("the first command");
+        assert_eq!(created.borrow().len(), 1);
+
+        let loading = run(
+            &fixture,
+            BrowserCommand::Navigate {
+                tab: None,
+                target: NavigateTarget::Url("http://localhost:3000/next".to_string()),
+                timeout_ms: 60_000,
+            },
+            cx,
+        );
+        cx.run_until_parked();
+        tab.view.update_in(cx, |view, window, cx| {
+            // The new page committed, then its renderer died while it loaded.
+            view.handle_webview_event_for_test(
+                WebViewEvent::UrlChanged("http://localhost:3000/next".to_string()),
+                window,
+                cx,
+            );
+            view.handle_webview_event_for_test(
+                WebViewEvent::Crashed("the page's renderer process exited: crashed".to_string()),
+                window,
+                cx,
+            );
+        });
+        let error = error_text(finished(loading, cx));
+        assert!(error.contains("browser stopped"), "{error}");
+        assert!(error.contains("renderer process exited"), "{error}");
+
+        // Painting a crashed tab does not restart it (a page that keeps crashing would
+        // otherwise restart in a loop); the next command does.
+        paint(&tab.view, cx);
+        assert_eq!(created.borrow().len(), 1);
+        let output = finished(run(&fixture, page_text(None), cx), cx).expect("restarted");
+        assert_eq!(output.text, "T - u\n\nHello");
+        assert_eq!(
+            created.borrow().len(),
+            2,
+            "a new surface replaced the dead one"
+        );
+        let replacement = created.borrow()[1].clone();
+        assert_eq!(
+            replacement.navigations.borrow().as_slice(),
+            ["http://localhost:3000/next"],
+            "the new surface reopened the page the tab was on"
+        );
+    }
+
+    #[gpui::test]
+    async fn a_browser_that_crashes_as_it_restarts_fails_the_command_once(cx: &mut TestAppContext) {
+        let (fixture, mut cx) = fixture(cx).await;
+        let cx = &mut cx;
+        let item = fixture.panel.update_in(cx, |panel, window, cx| {
+            panel.open_ai_tab(
+                Some("http://localhost:3000/".to_string()),
+                NewTabPlacement::Background,
+                window,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let tab = ai_tabs_of(&fixture, cx)
+            .into_iter()
+            .find(|tab| tab.item == item)
+            .expect("the tab is listed");
+        let crashes = Rc::new(Cell::new(0));
+        let starts = Rc::new(Cell::new(0));
+        let created = count_surfaces_crashing(&tab.view, crashes.clone(), starts.clone(), cx);
+        finished(run(&fixture, page_text(None), cx), cx).expect("the first command");
+        tab.view.update_in(cx, |view, window, cx| {
+            view.handle_webview_event_for_test(
+                WebViewEvent::Crashed("the page's renderer process exited: crashed".to_string()),
+                window,
+                cx,
+            );
+        });
+
+        // The restart crashes too: the command says why at once, without waiting for a
+        // browser that will not come and without restarting it again.
+        crashes.set(1);
+        let error = error_text(finished(run(&fixture, page_text(None), cx), cx));
+        assert!(error.contains("browser stopped"), "{error}");
+        assert!(error.contains("browser process exited"), "{error}");
+        assert_eq!(starts.get(), 2, "one restart for the command");
+
+        let output = finished(run(&fixture, page_text(None), cx), cx).expect("the next command");
+        assert_eq!(
+            output.text,
+            "T - u
+
+Hello"
+        );
+        assert_eq!(starts.get(), 3);
+        assert_eq!(created.borrow().len(), 2);
+    }
+
+    /// Makes every view created from now on start its page with `start`, counting the starts.
+    fn start_new_views_with(
+        start: impl Fn(u32) -> Result<Rc<FakeSurface>, FailedStart> + 'static,
+    ) -> Rc<Cell<u32>> {
+        let starts = Rc::new(Cell::new(0));
+        BrowserView::set_surface_factory_for_new_views_for_test(Rc::new({
+            let starts = starts.clone();
+            move || {
+                starts.set(starts.get() + 1);
+                start(starts.get()).map(|fake| fake as Rc<dyn AutomationSurface>)
+            }
+        }));
+        starts
+    }
+
+    #[gpui::test]
+    async fn a_tab_whose_browser_could_not_start_is_retried_by_the_next_command(
+        cx: &mut TestAppContext,
+    ) {
+        let (fixture, mut cx) = fixture(cx).await;
+        let cx = &mut cx;
+        // Process-wide; no test expects it to be absent (see `ensure_egress_proxy`).
+        http_client::set_child_process_proxy(Some(
+            Url::parse("http://127.0.0.1:49152/").expect("valid url"),
+        ));
+        let starts = start_new_views_with(|start| {
+            if start <= 2 {
+                return Err(FailedStart::CouldNotStart(
+                    "the browser engine is busy".to_string(),
+                ));
+            }
+            let fake = Rc::new(FakeSurface::default());
+            fake.respond(
+                "pageText",
+                &[json!({ "title": "T", "url": "u", "text": "Hello", "truncated": false })],
+            );
+            Ok(fake)
+        });
+
+        // The command starts the tab's browser itself (the panel may not be able to paint: a
+        // minimised window, another workspace in front), so it can tell that it failed.
+        let error = error_text(finished(
+            run(
+                &fixture,
+                BrowserCommand::OpenTab {
+                    url: Some("http://localhost:3000/".to_string()),
+                },
+                cx,
+            ),
+            cx,
+        ));
+        assert!(error.starts_with("Opened AI tab 1"), "{error}");
+        assert!(error.contains("the browser engine is busy"), "{error}");
+        assert_eq!(starts.get(), 1);
+
+        // The next command starts it once more and, failing again, says why without waiting.
+        let error = error_text(finished(run(&fixture, page_text(None), cx), cx));
+        assert!(error.contains("could not start"), "{error}");
+        assert!(error.contains("the browser engine is busy"), "{error}");
+        assert_eq!(starts.get(), 2, "one retry for the command");
+
+        // Painting the tab does not retry (a browser that keeps failing would retry in a loop).
+        let tab = ai_tabs_of(&fixture, cx).pop().expect("the tab stays open");
+        paint(&tab.view, cx);
+        assert_eq!(starts.get(), 2);
+
+        let output = finished(run(&fixture, page_text(None), cx), cx).expect("started");
+        assert_eq!(output.text, "T - u\n\nHello");
+        assert_eq!(starts.get(), 3);
+    }
+
+    #[gpui::test]
+    async fn selecting_a_tab_brings_it_forward_only_inside_its_pane(cx: &mut TestAppContext) {
+        let (fixture, mut cx) = fixture(cx).await;
+        let cx = &mut cx;
+        let (first, _) = open_tab_with_fake(&fixture, cx);
+        let (second, _) = open_tab_with_fake(&fixture, cx);
+        fixture.workspace.update_in(cx, |workspace, window, cx| {
+            workspace.close_all_docks(window, cx);
+        });
+        cx.run_until_parked();
+        let active_item = |cx: &mut VisualTestContext| {
+            first
+                .pane
+                .read_with(cx, |pane, _| pane.active_item().map(|item| item.item_id()))
+        };
+        assert_eq!(active_item(cx), Some(second.item.entity_id()));
+
+        finished(
+            run(
+                &fixture,
+                BrowserCommand::SelectTab {
+                    tab: first.id.clone(),
+                },
+                cx,
+            ),
+            cx,
+        )
+        .expect("selected");
+        assert_eq!(active_item(cx), Some(first.item.entity_id()));
+        let any_dock_open = fixture.workspace.read_with(cx, |workspace, cx| {
+            workspace
+                .all_docks()
+                .iter()
+                .any(|dock| dock.read(cx).is_open())
+        });
+        assert!(!any_dock_open, "the closed AI browser stays closed");
     }
 
     #[gpui::test]

@@ -520,6 +520,16 @@ msgctxt "action"
 msgid "agents_sidebar::ToggleThreadSwitcher"
 msgstr "スレッドサイドバー: スレッドの切り替えを開く"
 
+#. ai browser panel: toggle
+msgctxt "action"
+msgid "ai_browser_panel::Toggle"
+msgstr "AI ブラウザー: パネルの表示切り替え"
+
+#. ai browser panel: toggle focus
+msgctxt "action"
+msgid "ai_browser_panel::ToggleFocus"
+msgstr "AI ブラウザー: パネルのフォーカス切り替え"
+
 #. app menu: activate menu left
 msgctxt "action"
 msgid "app_menu::ActivateMenuLeft"

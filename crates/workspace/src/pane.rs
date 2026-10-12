@@ -4004,6 +4004,14 @@ impl Pane {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // ForgeKairos (ADR-F89): an item may refuse a pane it does not belong in.
+        if let Some(workspace) = self.workspace.upgrade()
+            && !dragged_tab
+                .item
+                .can_move_to_pane(&cx.entity(), &workspace, cx)
+        {
+            return;
+        }
         if is_pane_target
             && ix == self.active_item_index
             && let Some(active_item) = self.active_item()

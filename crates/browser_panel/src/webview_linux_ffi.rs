@@ -201,6 +201,7 @@ functions! {
         gtk_window_move: unsafe extern "C" fn(Gpointer, c_int, c_int),
         gtk_window_resize: unsafe extern "C" fn(Gpointer, c_int, c_int),
         gtk_window_present: unsafe extern "C" fn(Gpointer),
+        gtk_window_set_focus_on_map: unsafe extern "C" fn(Gpointer, Gboolean),
         gtk_container_add: unsafe extern "C" fn(Gpointer, Gpointer),
         gtk_widget_show: unsafe extern "C" fn(Gpointer),
         gtk_widget_hide: unsafe extern "C" fn(Gpointer),
@@ -248,6 +249,9 @@ functions! {
         webkit_download_cancel: unsafe extern "C" fn(Gpointer),
         webkit_permission_request_deny: unsafe extern "C" fn(Gpointer),
         webkit_file_chooser_request_cancel: unsafe extern "C" fn(Gpointer),
+        webkit_script_dialog_get_dialog_type: unsafe extern "C" fn(Gpointer) -> c_int,
+        webkit_script_dialog_confirm_set_confirmed: unsafe extern "C" fn(Gpointer, Gboolean),
+        webkit_authentication_request_cancel: unsafe extern "C" fn(Gpointer),
 
         // JavaScriptCore
         jsc_value_to_json: unsafe extern "C" fn(Gpointer, c_uint) -> *mut c_char,

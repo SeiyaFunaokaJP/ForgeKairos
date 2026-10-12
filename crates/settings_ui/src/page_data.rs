@@ -12776,7 +12776,7 @@ fn browser_page() -> SettingsPage {
         ]
     }
 
-    fn ai_control_section() -> [SettingsPageItem; 2] {
+    fn ai_control_section() -> [SettingsPageItem; 6] {
         [
             SettingsPageItem::SectionHeader("AI Control"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -12788,6 +12788,114 @@ fn browser_page() -> SettingsPage {
                     pick: |settings_content| settings_content.browser.as_ref()?.ai_control.as_ref(),
                     write: |settings_content, value, _| {
                         settings_content.browser.get_or_insert_default().ai_control = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "AI Browser Panel Button",
+                description: "Show the AI browser panel button in the status bar while AI agents may use the built-in browser.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.ai_panel.button"),
+                    pick: |settings_content| {
+                        settings_content
+                            .browser
+                            .as_ref()?
+                            .ai_panel
+                            .as_ref()?
+                            .button
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .browser
+                            .get_or_insert_default()
+                            .ai_panel
+                            .get_or_insert_default()
+                            .button = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "AI Browser Panel Dock",
+                description: "Where to dock the AI browser panel, where AI agents open the tabs they drive.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.ai_panel.dock"),
+                    pick: |settings_content| {
+                        settings_content
+                            .browser
+                            .as_ref()?
+                            .ai_panel
+                            .as_ref()?
+                            .dock
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .browser
+                            .get_or_insert_default()
+                            .ai_panel
+                            .get_or_insert_default()
+                            .dock = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "AI Browser Panel Default Width",
+                description: "Default width of the AI browser panel in pixels when docked to the left or right.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.ai_panel.default_width"),
+                    pick: |settings_content| {
+                        settings_content
+                            .browser
+                            .as_ref()?
+                            .ai_panel
+                            .as_ref()?
+                            .default_width
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .browser
+                            .get_or_insert_default()
+                            .ai_panel
+                            .get_or_insert_default()
+                            .default_width = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "AI Browser Panel Default Height",
+                description: "Default height of the AI browser panel in pixels when docked to the bottom.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("browser.ai_panel.default_height"),
+                    pick: |settings_content| {
+                        settings_content
+                            .browser
+                            .as_ref()?
+                            .ai_panel
+                            .as_ref()?
+                            .default_height
+                            .as_ref()
+                    },
+                    write: |settings_content, value, _| {
+                        settings_content
+                            .browser
+                            .get_or_insert_default()
+                            .ai_panel
+                            .get_or_insert_default()
+                            .default_height = value;
                     },
                 }),
                 metadata: None,

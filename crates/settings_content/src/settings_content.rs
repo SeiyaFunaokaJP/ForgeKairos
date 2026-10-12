@@ -843,6 +843,34 @@ pub struct BrowserSettingsContent {
     ///
     /// Default: false
     pub ai_control: Option<bool>,
+
+    /// The AI browser panel, which holds the AI tabs that AI agents drive.
+    pub ai_panel: Option<AiBrowserPanelSettingsContent>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema, MergeFrom, Debug)]
+pub struct AiBrowserPanelSettingsContent {
+    /// Whether to show the AI browser panel button in the status bar while AI
+    /// control of the built-in browser is on.
+    ///
+    /// Default: true
+    pub button: Option<bool>,
+
+    /// Where to dock the AI browser panel. Can be 'left', 'right' or 'bottom'.
+    ///
+    /// Default: right
+    pub dock: Option<DockPosition>,
+
+    /// Default width in pixels when the AI browser panel is docked to the left or right.
+    ///
+    /// Default: 480
+    pub default_width: Option<PixelSetting>,
+
+    /// Default height in pixels when the AI browser panel is docked to the bottom.
+    ///
+    /// Default: 320
+    pub default_height: Option<PixelSetting>,
 }
 
 #[with_fallible_options]
@@ -1930,6 +1958,7 @@ mod tests {
                 r#""none""#,
                 r#""agent""#,
                 r#""browser""#,
+                r#""ai_browser""#,
                 r#""terminal""#,
                 r#""project""#,
                 r#""git""#,

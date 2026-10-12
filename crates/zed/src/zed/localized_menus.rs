@@ -540,6 +540,8 @@ mod tests {
     /// `app_menus.rs` at a97e20b (Japanese) and after the migration (English),
     /// paired by their order in the file, which the migration left unchanged.
     const MENU_LABELS_BEFORE_PO_MIGRATION: &[(&str, &str)] = &[
+        // Added by ForgeKairos with the AI browser panel (ADR-F89).
+        ("AI Browser Panel", "AI ブラウザーパネル"),
         ("About Zed", "ForgeKairos について"),
         ("Add Cursor Above", "上にカーソルを追加"),
         ("Add Cursor Below", "下にカーソルを追加"),
@@ -748,6 +750,7 @@ mod tests {
         "Git パネル",
         "ブラウザーパネル",
         "新しいブラウザータブ",
+        "AI ブラウザーパネル",
         "診断",
         "ForgeKairos",
         "ForgeKairos について",

@@ -524,6 +524,16 @@ msgctxt "action documentation"
 msgid "agents_sidebar::ToggleThreadSwitcher"
 msgstr "サイドバーにフォーカスがあるとき、スレッドの切り替えのポップアップを開閉します。"
 
+#. Toggles the AI browser panel, where AI agents open the browser tabs they drive.
+msgctxt "action documentation"
+msgid "ai_browser_panel::Toggle"
+msgstr "AI ブラウザーパネル (AI エージェントが操作するブラウザータブを開く場所) の表示を切り替えます。"
+
+#. Toggles focus on the AI browser panel, where AI agents open the browser tabs they drive.
+msgctxt "action documentation"
+msgid "ai_browser_panel::ToggleFocus"
+msgstr "AI ブラウザーパネル (AI エージェントが操作するブラウザータブを開く場所) のフォーカスを切り替えます。"
+
 #. Activates the menu on the left in the client-side application menu.
 #.
 #. Does not apply to platform menu bars (e.g. on macOS).
@@ -645,10 +655,10 @@ msgctxt "action documentation"
 msgid "browser_panel::NavigateForward"
 msgstr "次のページに進みます。"
 
-#. Opens a new AI tab in the browser panel: a tab with its own browser profile that AI agents can drive, with its traffic limited to the network allowlist.
+#. Opens a new AI tab in the AI browser panel: a tab with its own browser profile that AI agents can drive, with its traffic limited to the network allowlist.
 msgctxt "action documentation"
 msgid "browser_panel::NewAiTab"
-msgstr "ブラウザーパネルに新しい AI タブを開きます。AI タブは別のブラウザープロファイルを使い、AI エージェントが操作できます。通信は許可リストの範囲に限られます。"
+msgstr "AI ブラウザーパネルに新しい AI タブを開きます。AI タブは別のブラウザープロファイルを使い、AI エージェントが操作できます。通信は許可リストの範囲に限られます。"
 
 #. Opens a new browser tab in the editor area.
 msgctxt "action documentation"

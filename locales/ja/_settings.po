@@ -210,6 +210,10 @@ msgid "Underline"
 msgstr "下線"
 
 msgctxt "DefaultDockPanel"
+msgid "AI Browser Panel"
+msgstr "AI ブラウザーパネル"
+
+msgctxt "DefaultDockPanel"
 msgid "Agent Panel"
 msgstr "エージェントパネル"
 
@@ -1262,6 +1266,22 @@ msgid "AI"
 msgstr "AI"
 
 msgctxt "settings"
+msgid "AI Browser Panel Button"
+msgstr "AI ブラウザーパネルのボタン"
+
+msgctxt "settings"
+msgid "AI Browser Panel Default Height"
+msgstr "AI ブラウザーパネルの既定の高さ"
+
+msgctxt "settings"
+msgid "AI Browser Panel Default Width"
+msgstr "AI ブラウザーパネルの既定の幅"
+
+msgctxt "settings"
+msgid "AI Browser Panel Dock"
+msgstr "AI ブラウザーパネルのドック位置"
+
+msgctxt "settings"
 msgid "AI Control"
 msgstr "AI による操作"
 
@@ -1998,6 +2018,10 @@ msgid "Default fixed width when the agent panel is docked to the left or right a
 msgstr "エージェントパネルを左右にドッキングし、可変サイズを無効にしているときの既定の固定幅です。"
 
 msgctxt "settings"
+msgid "Default height of the AI browser panel in pixels when docked to the bottom."
+msgstr "AI ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。"
+
+msgctxt "settings"
 msgid "Default height of the browser panel in pixels when docked to the bottom."
 msgstr "ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。"
 
@@ -2012,6 +2036,10 @@ msgstr "ターミナルを下にドッキングしたときの既定の高さ (�
 msgctxt "settings"
 msgid "Default timeout in seconds for MCP server tool calls."
 msgstr "MCP サーバーのツール呼び出しの既定のタイムアウト (秒) です。"
+
+msgctxt "settings"
+msgid "Default width of the AI browser panel in pixels when docked to the left or right."
+msgstr "AI ブラウザーパネルを左右にドッキングしたときの既定の幅 (ピクセル) です。"
 
 msgctxt "settings"
 msgid "Default width of the Git panel in pixels."
@@ -4226,6 +4254,10 @@ msgid "Show selected text occurrences in the scrollbar."
 msgstr "スクロールバーに選択テキストと一致する箇所を表示します。"
 
 msgctxt "settings"
+msgid "Show the AI browser panel button in the status bar while AI agents may use the built-in browser."
+msgstr "AI エージェントが内蔵ブラウザーを使える間、ステータスバーに AI ブラウザーパネルのボタンを表示します。"
+
+msgctxt "settings"
 msgid "Show the Git file status on a tab item."
 msgstr "タブの項目に Git のファイルの状態を表示します。"
 
@@ -5224,6 +5256,10 @@ msgstr "ターミナルにスクロールバーを表示するタイミングで
 msgctxt "settings"
 msgid "Where calls come from: the language server, which is exact, the symbol index of C and C++ files, which matches names, or both."
 msgstr "呼び出しをどこから取得するか。正確な言語サーバー、C と C++ のファイルを名前で照合する索引、またはその両方です。"
+
+msgctxt "settings"
+msgid "Where to dock the AI browser panel, where AI agents open the tabs they drive."
+msgstr "AI ブラウザーパネル (AI エージェントが操作するタブを開く場所) をドッキングする位置です。"
 
 msgctxt "settings"
 msgid "Where to dock the Git panel."

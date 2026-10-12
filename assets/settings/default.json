@@ -1151,6 +1151,20 @@
     // storage) and always go through the outbound network allowlist, whatever
     // `use_egress_proxy` says. When off, the browser tools are not offered.
     "ai_control": false,
+    // The AI browser panel holds the AI tabs, next to the agent panel. When an
+    // AI agent opens a tab, the panel is stacked below the panel its dock shows
+    // (the agent panel by default) without taking the keyboard focus.
+    "ai_panel": {
+      // Whether to show the AI browser panel button in the status bar while
+      // `ai_control` is on.
+      "button": true,
+      // Where to dock the AI browser panel. Can be 'left', 'right' or 'bottom'.
+      "dock": "right",
+      // Default width of the AI browser panel when docked to the left or right.
+      "default_width": 480,
+      // Default height of the AI browser panel when docked to the bottom.
+      "default_height": 320,
+    },
   },
   // Expose Zed itself as a loopback IDE server (ADR-F26). It binds only to a
   // free port on 127.0.0.1 and makes no outbound connections (so it is not

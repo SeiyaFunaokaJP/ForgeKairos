@@ -8,10 +8,6 @@ use gpui::{SharedString, Window};
 
 pub(crate) use crate::webview_types::*;
 
-/// Whether `browser_eval` may run arbitrary page scripts in AI tabs. A backend whose engine
-/// cannot stop page scripts from opening WebRTC connections around the egress proxy says no.
-pub(crate) const SUPPORTS_SCRIPT_EVAL: bool = true;
-
 pub(crate) struct WebView;
 
 impl WebView {
