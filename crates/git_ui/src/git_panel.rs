@@ -8193,6 +8193,12 @@ impl GitPanel {
                             .child(
                                 h_flex()
                                     .gap_0p5()
+                                    .child(crate::git_account_picker::render_git_account_picker(
+                                        &active_repository,
+                                        &self.project,
+                                        self.fs.clone(),
+                                        cx,
+                                    ))
                                     .children(enable_coauthors)
                                     .child(self.render_commit_button(cx)),
                             ),

@@ -468,6 +468,9 @@ msgstr "コミット SHA をコピーしました"
 msgid "Commit Tracked"
 msgstr "追跡中をコミット"
 
+msgid "Commit and Push As"
+msgstr "コミット・プッシュに使うアカウント"
+
 msgid "Commit in progress"
 msgstr "コミットを実行中"
 
@@ -486,8 +489,14 @@ msgstr "{operation}の前に、未コミットの変更をコミットかスタ�
 msgid "Commit {sha_short}"
 msgstr "コミット {sha_short}"
 
+msgid "Commits and pushes as git is configured. Click to pick a git account."
+msgstr "git の設定どおりにコミット・プッシュします。クリックすると Git アカウントを選べます。"
+
 msgid "Commits are reordered one at a time. Drag a single commit."
 msgstr "並べ替えは 1 件ずつです。1 件だけをドラッグしてください。"
+
+msgid "Commits as {name} <{email}> (git account \"{id}\")"
+msgstr "{name} <{email}> としてコミットします (Git アカウント「{id}」)"
 
 msgid "Commits on feature that the default branch does not have"
 msgstr "feature にあって、デフォルトブランチに無いコミット"
@@ -1164,6 +1173,12 @@ msgstr "Git の操作ガイド (やりたいことから操作を探せます)"
 msgid "Git Panel"
 msgstr "Git パネル"
 
+msgid "Git accounts apply to local projects only. This project commits and pushes as git is configured on its host."
+msgstr "Git アカウントはローカルのプロジェクトにだけ使えます。このプロジェクトは接続先の git の設定どおりにコミット・プッシュします。"
+
+msgid "Git's Own Configuration"
+msgstr "git 自身の設定に従う"
+
 msgid "Git's history has no copy of it, so once the trash is emptied it cannot be restored"
 msgstr "Git の履歴には無いので、ゴミ箱を空にすると戻せません"
 
@@ -1329,6 +1344,9 @@ msgstr "MR の基点 (マージ先) のブランチ"
 
 msgid "Make one commit for an MR (MR box)"
 msgstr "MR 用に 1 コミットにしたい (MR の箱)"
+
+msgid "Manage Git Accounts…"
+msgstr "Git アカウントを管理…"
 
 msgid "Marks every change in this folder to go into the next commit"
 msgstr "このフォルダーの中の変更を全部、次のコミットに入れる印を付けます"
@@ -2418,6 +2436,9 @@ msgstr "既存の「{}」({previous}) は新しいコミットを指すように
 
 msgid "The folder of the patch file was removed from the project."
 msgstr "パッチファイルのあるフォルダーがプロジェクトから外されました。"
+
+msgid "The git account \"{id}\" picked for this repository cannot be used ({reason}), so it commits and pushes as git is configured."
+msgstr "このリポジトリに選んだ Git アカウント「{id}」は使えないため ({reason})、git の設定どおりにコミット・プッシュします。"
 
 msgid "The git command was interrupted."
 msgstr "git の実行が中断されました。"

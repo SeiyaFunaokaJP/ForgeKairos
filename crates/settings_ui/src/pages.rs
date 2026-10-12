@@ -4,6 +4,7 @@ mod edit_prediction_provider_setup;
 mod external_agents_page;
 mod external_ai_consent;
 mod feature_flags;
+mod git_accounts_page;
 mod llm_providers_page;
 mod mcp_servers_page;
 mod network_allowlist;
@@ -23,6 +24,7 @@ pub(crate) use external_agents_page::{
 };
 pub(crate) use external_ai_consent::render_acknowledged_ai_providers_page;
 pub(crate) use feature_flags::render_feature_flags_page;
+pub(crate) use git_accounts_page::{GitAccountForm, render_git_accounts_page};
 pub(crate) use llm_providers_page::{
     ClaudeCliState, LlmProviderForm, init_compatible_provider_removal,
     render_add_llm_provider_popover, render_llm_providers_page,

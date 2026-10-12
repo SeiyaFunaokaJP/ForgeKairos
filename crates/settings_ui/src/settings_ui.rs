@@ -1040,6 +1040,8 @@ pub struct SettingsWindow {
     pub(crate) mcp_add_server_focus_handle: FocusHandle,
     /// State for the active "add/edit custom external agent" form sub-page, if open.
     pub(crate) custom_agent_form: Option<CustomAgentForm>,
+    /// The git account being added or edited on the Git Accounts page (ADR-F93), if any.
+    pub(crate) git_account_form: Option<pages::GitAccountForm>,
     /// Stable focus handle for the external agents "Add Agent" button, so it can
     /// show a focus ring when the page auto-focuses it on open (which happens via
     /// mouse, where `focus_visible` styling would otherwise be suppressed).
@@ -2139,6 +2141,7 @@ impl SettingsWindow {
             launch_approvals: pages::LaunchApprovalsPageState::default(),
             mcp_add_server_focus_handle: cx.focus_handle(),
             custom_agent_form: None,
+            git_account_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
             claude_code_effort: None,
             claude_cli: pages::ClaudeCliState::default(),
@@ -5846,6 +5849,7 @@ pub mod test {
                 launch_approvals: pages::LaunchApprovalsPageState::default(),
                 mcp_add_server_focus_handle: cx.focus_handle(),
                 custom_agent_form: None,
+                git_account_form: None,
                 external_agent_add_focus_handle: cx.focus_handle(),
                 claude_code_effort: None,
                 claude_cli: pages::ClaudeCliState::default(),
@@ -5990,6 +5994,7 @@ pub mod test {
             launch_approvals: pages::LaunchApprovalsPageState::default(),
             mcp_add_server_focus_handle: cx.focus_handle(),
             custom_agent_form: None,
+            git_account_form: None,
             external_agent_add_focus_handle: cx.focus_handle(),
             claude_code_effort: None,
             claude_cli: pages::ClaudeCliState::default(),

@@ -57,7 +57,7 @@ fn account_choice_in(
     let Some(account) = accounts.iter().find(|account| &account.id == id) else {
         return GitAccountChoice::Unavailable {
             id: id.clone(),
-            reason: i18n::t!("There is no git account named \"{id}\" any more").to_string(),
+            reason: i18n::t!("There is no git account named \"{id}\" any more"),
         };
     };
     match identity_for_account(account) {
@@ -124,6 +124,65 @@ pub fn validate_account_id(id: &str) -> Result<()> {
         i18n::t!("An account name may use only letters, digits, '-', '_' and '.'")
     );
     Ok(())
+}
+
+/// Puts `account` in the user's git settings, in place of the account named `original_id` when
+/// it is edited, and checks it first. A renamed account stays picked where it was.
+pub fn upsert_account(
+    git: &mut settings::GitSettings,
+    original_id: Option<&str>,
+    account: GitAccountContent,
+) -> Result<()> {
+    validate_account_id(&account.id)?;
+    identity_for_account(&account)?;
+    let accounts = git.accounts.get_or_insert_default();
+    anyhow::ensure!(
+        !accounts
+            .iter()
+            .any(|existing| existing.id == account.id && Some(existing.id.as_str()) != original_id),
+        i18n::t!("A git account named \"{id}\" already exists", id = account.id)
+    );
+    let position = original_id.and_then(|original_id| {
+        accounts
+            .iter()
+            .position(|existing| existing.id == original_id)
+    });
+    if let Some(original_id) = original_id
+        && original_id != account.id
+        && let Some(project_accounts) = git.project_accounts.as_mut()
+    {
+        for picked in project_accounts.values_mut() {
+            if picked == original_id {
+                *picked = account.id.clone();
+            }
+        }
+    }
+    match position.and_then(|position| accounts.get_mut(position)) {
+        Some(slot) => *slot = account,
+        None => accounts.push(account),
+    }
+    Ok(())
+}
+
+/// Removes the account named `id`, and the picks of it: those repositories go back to git's
+/// configuration rather than pointing at an account that is gone.
+pub fn remove_account(git: &mut settings::GitSettings, id: &str) {
+    if let Some(accounts) = git.accounts.as_mut() {
+        accounts.retain(|account| account.id != id);
+    }
+    if let Some(project_accounts) = git.project_accounts.as_mut() {
+        project_accounts.retain(|_, picked| picked != id);
+    }
+}
+
+/// Whether any of `accounts` signs in as `login`, so that its token is still needed.
+pub fn login_is_used(accounts: &[GitAccountContent], login: &GitHttpsLogin) -> bool {
+    accounts.iter().any(|account| {
+        https_login_for_account(account)
+            .ok()
+            .flatten()
+            .is_some_and(|account_login| &account_login == login)
+    })
 }
 
 /// The credential store entry an HTTPS login's token is kept under.
@@ -410,6 +469,62 @@ mod tests {
         assert!(validate_account_id("").is_err());
         assert!(validate_account_id("a b").is_err());
         assert!(validate_account_id("a/b").is_err());
+    }
+
+    #[test]
+    fn test_upsert_and_remove_keep_the_picks_consistent() {
+        let mut git = settings::GitSettings::default();
+        upsert_account(&mut git, None, account("work")).unwrap();
+        upsert_account(&mut git, None, account("personal")).unwrap();
+        assert!(
+            upsert_account(&mut git, None, account("work")).is_err(),
+            "a second account cannot take a name in use"
+        );
+        assert!(upsert_account(&mut git, Some("personal"), account("work")).is_err());
+        let mut invalid = account("broken");
+        invalid.email = String::new();
+        assert!(upsert_account(&mut git, None, invalid).is_err());
+        let mut bad_name = account("a b");
+        bad_name.id = "a b".to_string();
+        assert!(upsert_account(&mut git, None, bad_name).is_err());
+        assert_eq!(git.accounts.as_ref().unwrap().len(), 2);
+
+        git.project_accounts = Some(BTreeMap::from_iter([
+            ("/a".to_string(), "work".to_string()),
+            ("/b".to_string(), "personal".to_string()),
+        ]));
+        let mut renamed = account("office");
+        renamed.name = "Ada Office".to_string();
+        upsert_account(&mut git, Some("work"), renamed).unwrap();
+        let ids: Vec<_> = git
+            .accounts
+            .iter()
+            .flatten()
+            .map(|account| account.id.as_str())
+            .collect();
+        assert_eq!(ids, ["office", "personal"]);
+        assert_eq!(git.project_accounts.as_ref().unwrap()["/a"], "office");
+        assert_eq!(git.project_accounts.as_ref().unwrap()["/b"], "personal");
+
+        remove_account(&mut git, "office");
+        assert_eq!(git.accounts.as_ref().unwrap().len(), 1);
+        assert_eq!(
+            git.project_accounts.as_ref().unwrap(),
+            &BTreeMap::from_iter([("/b".to_string(), "personal".to_string())])
+        );
+    }
+
+    #[test]
+    fn test_login_is_used() {
+        let accounts = vec![account("work")];
+        assert!(login_is_used(
+            &accounts,
+            &GitHttpsLogin::new("github.com", "ada-work").unwrap()
+        ));
+        assert!(!login_is_used(
+            &accounts,
+            &GitHttpsLogin::new("gitlab.com", "ada-work").unwrap()
+        ));
     }
 
     async fn ask(delegate: &AskPassDelegate, prompt: &str) -> Option<String> {

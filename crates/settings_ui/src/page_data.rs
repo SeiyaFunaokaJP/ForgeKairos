@@ -15,7 +15,7 @@ use crate::{
     all_language_names,
     pages::{
         open_audio_test_window, render_acknowledged_ai_providers_page,
-        render_edit_prediction_setup_page, render_external_agents_page,
+        render_edit_prediction_setup_page, render_external_agents_page, render_git_accounts_page,
         render_launch_approvals_page, render_llm_providers_page, render_mcp_servers_page,
         render_network_allowlist_page, render_sandbox_settings_page, render_skills_setup_page,
         render_tool_permissions_setup_page,
@@ -9112,6 +9112,37 @@ fn version_control_page() -> SettingsPage {
         ]
     }
 
+    /// ForgeKairos (ADR-F93).
+    fn git_accounts_section() -> [SettingsPageItem; 2] {
+        [
+            SettingsPageItem::SectionHeader("Git Accounts"),
+            SettingsPageItem::SubPageLink(SubPageLink {
+                title: "Git Accounts".into(),
+                r#type: Default::default(),
+                json_path: Some("git.accounts"),
+                description: Some(
+                    "Accounts a repository can commit and push as, picked per repository in the Git panel."
+                        .into(),
+                ),
+                search_aliases: &[
+                    "account",
+                    "author",
+                    "committer",
+                    "credential",
+                    "email",
+                    "github",
+                    "identity",
+                    "token",
+                    "user.email",
+                    "user.name",
+                ],
+                in_json: false,
+                files: USER,
+                render: render_git_accounts_page,
+            }),
+        ]
+    }
+
     fn git_hunks_section() -> [SettingsPageItem; 5] {
         [
             SettingsPageItem::SectionHeader("Git Hunks"),
@@ -9226,6 +9257,7 @@ fn version_control_page() -> SettingsPage {
             branch_picker_section(),
             file_diff_section(),
             git_hunks_section(),
+            git_accounts_section(),
         ],
     }
 }

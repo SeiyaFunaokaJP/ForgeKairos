@@ -41,6 +41,7 @@ pub mod commit_tooltip;
 pub mod commit_view;
 mod conflict_view;
 mod diff_multibuffer;
+mod git_account_picker;
 pub mod git_graph;
 mod git_guide;
 pub mod git_panel;

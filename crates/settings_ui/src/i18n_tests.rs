@@ -362,6 +362,13 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "p14.i17[browser.ai_panel.default_height].description",
         "AI ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。",
     ),
+    // ADR-F93.
+    ("p10.i23.header", "Git アカウント"),
+    ("p10.i24[git.accounts].link", "Git アカウント"),
+    (
+        "p10.i24[git.accounts].link_description",
+        "リポジトリがコミット・プッシュに使えるアカウント。リポジトリごとに Git パネルで選びます。",
+    ),
 ];
 
 /// Strings whose Japanese changed on purpose when the table moved to the catalog.

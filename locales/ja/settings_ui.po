@@ -95,6 +95,9 @@ msgstr "スキルのディレクトリではないファイルが {} に既に�
 msgid "A pattern with that name already exists in this rule list."
 msgstr "同じパターンがこのルール一覧に既に存在します。"
 
+msgid "A personal access token for the login. Without one, git asks for the password as usual."
+msgstr "ログイン名に対応する個人用アクセストークン。無ければ、git はいつもどおりパスワードを尋ねます。"
+
 msgid "A project window is needed to run this in the terminal"
 msgstr "ターミナルで実行するにはプロジェクトのウィンドウが必要です"
 
@@ -115,6 +118,12 @@ msgstr "「{name}」という名前のスキルは {} に既に存在します�
 
 msgid "A small, fast model is enough (for example, an 8B-class model on Ollama). When none is set, the fast model is used, then the default model. To judge an action, the tool name, command, and paths are sent to that model's provider, so a local model is recommended. If no answer comes back within 10 seconds, no model is available, or the answer can't be read, a confirmation is shown."
 msgstr "小さく速いモデルで足ります (例: Ollama の 8B 級)。未設定のときは、速いモデル、次に既定のモデルが使われます。判定のためにツール名・コマンド・パスがそのモデルの提供元へ送られるので、ローカルのモデルをお勧めします。10 秒以内に答えが返らない、モデルが無い、答えを読み取れない場合は確認を表示します。"
+
+msgid "A token is stored. Leave this empty to keep it."
+msgstr "トークンは保存済みです。そのまま使うなら空欄にしておきます。"
+
+msgid "A token needs a host and a login to sign in with."
+msgstr "トークンを使うには、サインイン先のホストとログイン名が必要です。"
 
 msgid "A unique name used to identify this provider."
 msgstr "このプロバイダーを識別する一意の名前です。"
@@ -146,6 +155,12 @@ msgstr "API URL を入力してください"
 msgid "Accept the external AI warning to list models from this server."
 msgstr "このサーバーのモデルの一覧を取得するには、外部 AI の警告を承諾してください。"
 
+msgid "Account Name"
+msgstr "アカウント名"
+
+msgid "Accounts a repository can commit and push as. Pick one for each repository with the account button next to Commit in the Git panel; a repository without one follows git's own configuration. Tokens are kept in {store}, never in settings.json."
+msgstr "リポジトリがコミット・プッシュに使えるアカウントです。リポジトリごとに、Git パネルのコミットボタンの横にあるアカウントのボタンで選びます。選んでいないリポジトリは git 自身の設定に従います。トークンは {store} に保存し、settings.json には書きません。"
+
 msgid "Action to take when no patterns match."
 msgstr "どのパターンにも一致しなかったときの動作です。"
 
@@ -155,6 +170,9 @@ msgstr "使用中のプロバイダー"
 msgid "Add"
 msgstr "追加"
 
+msgid "Add Account"
+msgstr "アカウントを追加"
+
 msgid "Add Agent"
 msgstr "エージェントを追加"
 
@@ -163,6 +181,9 @@ msgstr "追加する"
 
 msgid "Add Custom Agent"
 msgstr "カスタムエージェントを追加"
+
+msgid "Add Git Account"
+msgstr "Git アカウントを追加"
 
 msgid "Add Local MCP Server"
 msgstr "ローカル MCP サーバーの追加"
@@ -605,6 +626,9 @@ msgstr "各項目は絶対パスで指定します。保護された Git のメ�
 msgid "Edit"
 msgstr "編集"
 
+msgid "Edit Git Account"
+msgstr "Git アカウントを編集"
+
 msgid "Edit in Form (saves to the project settings file that defines this server)"
 msgstr "フォームで編集 (このサーバーを定義しているプロジェクトの設定ファイルに保存します)"
 
@@ -619,6 +643,9 @@ msgstr "{entry} を編集"
 
 msgid "Edit {name}"
 msgstr "{name} を編集"
+
+msgid "Email"
+msgstr "メールアドレス"
 
 msgid "Enable Sandbox"
 msgstr "サンドボックスを有効にする"
@@ -764,6 +791,9 @@ msgstr "フロントマター"
 
 msgid "Git commands run outside the sandbox with hooks turned off (commit, branch, merge, …)"
 msgstr "サンドボックスの外でフックを無効にして実行する Git コマンド (コミット・ブランチ・マージなど)"
+
+msgid "Git Accounts"
+msgstr "Git アカウント"
 
 msgid "GitHub response was not valid UTF-8"
 msgstr "GitHub からの応答が有効な UTF-8 ではありません。"
@@ -951,6 +981,9 @@ msgstr "ローカル (コマンド)"
 msgid "Log Out"
 msgstr "ログアウト"
 
+msgid "Login"
+msgstr "ログイン名"
+
 msgid "MCP server \"{name}\""
 msgstr "MCP サーバー「{name}」"
 
@@ -1038,6 +1071,9 @@ msgstr "項目がありません"
 msgid "No external agents added yet. Click \"Add Agent\" to get started."
 msgstr "外部エージェントはまだ追加されていません。「エージェントを追加」から始めてください。"
 
+msgid "No git accounts yet."
+msgstr "Git アカウントはまだありません。"
+
 msgid "No global skills installed."
 msgstr "グローバルなスキルはインストールされていません。"
 
@@ -1061,6 +1097,9 @@ msgstr "「{}」に一致する設定はありません"
 
 msgid "No skills available for this context."
 msgstr "この文脈で利用できるスキルはありません。"
+
+msgid "No token is stored. Without one, git asks for the password as usual."
+msgstr "トークンは保存されていません。無ければ、git はいつもどおりパスワードを尋ねます。"
 
 msgid "No tools"
 msgstr "ツールはありません"
@@ -1133,6 +1172,12 @@ msgstr "OAuth クライアント ID (省略可)"
 
 msgid "Optional OAuth client ID used to authenticate with the server. Leave it empty if the server supports dynamic client registration: connecting then asks you to authenticate in the browser."
 msgstr "サーバーの認証に使う OAuth クライアント ID です (省略可)。サーバーが自動登録に対応していれば空欄のままで、接続時にブラウザーでの認証を求められます。"
+
+msgid "Optional. The HTTPS host the token signs in to, such as github.com. Remotes on other hosts and SSH remotes sign in as git is configured."
+msgstr "省略可。トークンでサインインする HTTPS のホスト (github.com など)。ほかのホストのリモートと SSH のリモートは git の設定どおりにサインインします。"
+
+msgid "Optional. The key commits are signed with when signing is on (user.signingkey)."
+msgstr "省略可。署名がオンのときにコミットの署名に使う鍵 (user.signingkey)。"
 
 msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
 msgstr "または環境変数 {env_var_name} を設定し、ForgeKairos を再起動すると反映されます。"
@@ -1320,6 +1365,12 @@ msgstr "パスを削除"
 msgid "Remove Registry Agent"
 msgstr "レジストリのエージェントを削除"
 
+msgid "Remove Stored Token"
+msgstr "保存したトークンを削除"
+
+msgid "Remove the account, its token if no other account uses it, and every repository's pick of it"
+msgstr "アカウントを削除します。ほかのアカウントが使っていなければトークンも削除し、このアカウントを選んでいたリポジトリは git の設定に戻ります"
+
 msgid "Remove {entry}"
 msgstr "{entry} を削除"
 
@@ -1488,6 +1539,15 @@ msgstr "設定ファイル"
 msgid "Settings Navigation"
 msgstr "設定のナビゲーション"
 
+msgid "Signing Key"
+msgstr "署名鍵"
+
+msgid "Signs in as git is configured"
+msgstr "git の設定どおりにサインイン"
+
+msgid "Signs in to {host} as {login}"
+msgstr "{host} に {login} としてサインイン"
+
 msgid "Skill Content"
 msgstr "スキルの内容"
 
@@ -1563,6 +1623,12 @@ msgstr "承認の記録を読み込めないため、起動しません: {error}
 msgid "The approval records can't be read, so no decision can be made."
 msgstr "承認の記録を読み込めないため、決定できません。"
 
+msgid "The author and committer email of commits (user.email)."
+msgstr "コミットの作者とコミッターのメールアドレス (user.email)。"
+
+msgid "The author and committer name of commits (user.name)."
+msgstr "コミットの作者とコミッターの名前 (user.name)。"
+
 msgid "The base URL for the compatible API."
 msgstr "互換 API のベース URL です。"
 
@@ -1590,6 +1656,9 @@ msgstr "モデルのコンテキストウィンドウのサイズです。"
 msgid "The model's name in the provider's API."
 msgstr "プロバイダーの API におけるモデルの名前です。"
 
+msgid "The name the account is picked by in the Git panel."
+msgstr "Git パネルでアカウントを選ぶときの名前。"
+
 msgid "The network allowlist blocked the connection to {host}. Add this host under \"Network Allowlist\" on the \"Network\" page."
 msgstr "{host} への接続がネットワーク許可リストで拒否されました。「ネットワーク」ページの「ネットワーク許可リスト」でこのホストを追加してください。"
 
@@ -1607,6 +1676,9 @@ msgstr "サーバーが HTTP {status} を返しました。"
 
 msgid "The server returned HTTP {status}: {body}"
 msgstr "サーバーが HTTP {status} を返しました: {body}"
+
+msgid "The user name on the host that goes with the token."
+msgstr "トークンに対応する、ホスト上のユーザー名。"
 
 msgid "The value of `{key}` is not an object ({{ … }})."
 msgstr "`{key}` の値がオブジェクト ({{ … }}) ではありません。"
@@ -1713,6 +1785,9 @@ msgstr "API キーをリセットするには、環境変数 {env_var_name} を�
 msgid "To reset your API key, unset the {} environment variable."
 msgstr "API キーをリセットするには、環境変数 {} を解除してください。"
 
+msgid "Token"
+msgstr "トークン"
+
 msgid "Turning this off sets this project's definition to \"Don't Allow\" and stops the server."
 msgstr "オフにすると、このプロジェクトの定義を「許可しない」にしてサーバーを止めます。"
 
@@ -1739,6 +1814,9 @@ msgstr "このテンプレートを使う"
 
 msgid "User"
 msgstr "ユーザー"
+
+msgid "User Name"
+msgstr "ユーザー名"
 
 msgid "Uses max_tokens for output limit"
 msgstr "出力の上限に max_tokens を使用"
@@ -1793,6 +1871,9 @@ msgstr "解析できない間は許可リストが空 (ループバックのみ�
 
 msgid "Wildcards are only allowed as a leading label, e.g. *.github.com."
 msgstr "ワイルドカードは先頭のラベルにのみ指定できます (例: *.github.com)。"
+
+msgid "Windows Credential Manager"
+msgstr "Windows 資格情報マネージャー"
 
 msgid "Windows only: warn when a sandbox grant targets a file on a Windows drive (accessed inside WSL via DrvFs). Such grants are enforced through a translated path and their sandbox-integrity guarantees are weaker than files on the Linux distro's own filesystem."
 msgstr "Windows のみ: サンドボックスの許可対象が Windows ドライブ上のファイル (WSL 内から DrvFs 経由でアクセスされるもの) のときに警告します。この場合の許可は変換されたパスを通じて適用されるため、Linux ディストリビューション自身のファイルシステム上のファイルに比べてサンドボックスの保証が弱くなります。"
@@ -1872,8 +1953,14 @@ msgstr "{} の書き込みに失敗しました。"
 msgid "header"
 msgstr "ヘッダー"
 
+msgid "macOS Keychain"
+msgstr "macOS キーチェーン"
+
 msgid "network_allowlist.json does not exist yet. The allowlist is treated as empty (only loopback is allowed). The file is created when you add a host."
 msgstr "network_allowlist.json はまだありません。許可リストは空 (ループバックのみ許可) として扱われます。ホストを追加すると作成されます。"
+
+msgid "the system keyring (Secret Service)"
+msgstr "システムのキーリング (Secret Service)"
 
 msgid "{count} entry registered"
 msgid_plural "{count} entries registered"

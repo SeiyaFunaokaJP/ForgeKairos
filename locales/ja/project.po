@@ -20,6 +20,9 @@ msgstr "現在のブランチの履歴に無いコミットは書き換えられ
 msgid "A detached HEAD cannot be reordered. Switch to a branch first."
 msgstr "detached HEAD では並べ替えられません。先にブランチに切り替えてください。"
 
+msgid "A git account named \"{id}\" already exists"
+msgstr "Git アカウント「{id}」はすでにあります"
+
 msgid "A launch of language server \"{name}\", which this IDE does not know, cannot be approved"
 msgstr "この IDE が知らない言語サーバー「{name}」の起動は承認できません"
 
