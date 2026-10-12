@@ -118,7 +118,9 @@ fn fork_settings_are_read_from_their_keys() {
                 "remote_persistence": { "detached_timeout_hours": 3 },
                 "macro_picker_folders_collapsed": true
             },
-            "agent": { "sandbox_permissions": { "allow_unsandboxed": false } },
+            "agent": {
+                "sandbox_permissions": { "allow_unsandboxed": false, "allow_outside_sandbox": true }
+            },
             "private_files": ["**/.env"]
         }"#,
     );
@@ -164,6 +166,14 @@ fn fork_settings_are_read_from_their_keys() {
         Some(3)
     );
     assert_eq!(terminal.macro_picker_folders_collapsed, Some(true));
+    assert_eq!(
+        settings
+            .agent
+            .as_ref()
+            .and_then(|agent| agent.sandbox_permissions.as_ref())
+            .and_then(|permissions| permissions.allow_outside_sandbox),
+        Some(true)
+    );
     assert_eq!(
         settings
             .agent

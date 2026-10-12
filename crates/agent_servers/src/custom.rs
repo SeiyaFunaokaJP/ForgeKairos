@@ -454,9 +454,19 @@ async fn move_api_key_to_credential_store(
 /// all go the same way — except a thread read back from the history whose
 /// session was started in the sandbox, which
 /// [`AgentServerDelegate::in_sandbox_whatever_the_settings`] keeps there.
+///
+/// ADR-F92: nothing starts outside while running outside the sandbox is not
+/// allowed — neither the confirmed start nor the settings.
 pub fn starts_outside_sandbox(delegate_outside: bool, agent_id: &str, cx: &App) -> bool {
-    delegate_outside || project::agent_sandbox::runs_outside_sandbox_by_user_choice(agent_id, cx)
+    (delegate_outside && project::agent_sandbox::outside_sandbox_allowed(cx))
+        || project::agent_sandbox::runs_outside_sandbox_by_user_choice(agent_id, cx)
 }
+
+/// ADR-F92: why a start outside the sandbox was refused, for the card it
+/// fails on.
+pub const OUTSIDE_SANDBOX_NOT_ALLOWED: &str = i18n::msg!(
+    "Running outside the sandbox is not allowed. To allow it, turn on \"Allow Running Outside the Sandbox\" in Settings > AI > Sandbox."
+);
 
 /// ADR-F49 決定 19: whether the user chose, in their own settings file, to
 /// start `agent_id` outside its sandbox every time.
@@ -726,6 +736,14 @@ impl AgentServer for CustomAgentServer {
         });
         let store = delegate.store.downgrade();
         log_overridden_legacy_outside_sandbox_choice(agent_id.as_ref(), cx);
+        // ADR-F92: a confirmed start outside that is no longer allowed fails
+        // rather than quietly going into the sandbox the user chose to leave.
+        if delegate.runs_outside_sandbox() && !project::agent_sandbox::outside_sandbox_allowed(cx) {
+            return Task::ready(Err(anyhow::anyhow!(
+                "{}",
+                i18n::tr(OUTSIDE_SANDBOX_NOT_ALLOWED)
+            )));
+        }
         let run_outside_sandbox = delegate.starts_outside_sandbox(agent_id.as_ref(), cx);
         // ADR-F49 第 2b 段: on Windows the sandbox is the WSL distro of the
         // project's folders, so the command is resolved for it.
@@ -1129,7 +1147,9 @@ mod tests {
         );
     }
 
-    const OUTSIDE_FOR_CLAUDE: &str = r#"{ "agent_servers": { "claude-acp": { "type": "registry", "run_outside_sandbox": true } } }"#;
+    const OUTSIDE_FOR_CLAUDE: &str = r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } }, "agent_servers": { "claude-acp": { "type": "registry", "run_outside_sandbox": true } } }"#;
+    const OUTSIDE_ALLOWED: &str =
+        r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } } }"#;
 
     /// ADR-F49 決定 19: the user's own settings file makes every start of that
     /// agent one outside its sandbox — and only that agent's.
@@ -1138,6 +1158,12 @@ mod tests {
         init_test(cx);
         cx.update(|cx| {
             assert!(!starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx));
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(OUTSIDE_ALLOWED, cx)
+                    .result()
+                    .expect("valid user settings");
+            });
             assert!(
                 starts_outside_sandbox(true, CLAUDE_AGENT_ID, cx),
                 "the one start the user confirmed"
@@ -1187,7 +1213,7 @@ mod tests {
         };
         cx.update(|cx| {
             set_user_settings(
-                r#"{ "agent_servers": {
+                r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } }, "agent_servers": {
                     "codebuddy": { "type": "registry", "run_outside_sandbox": true },
                     "codebuddy-code": { "type": "registry", "run_outside_sandbox": false }
                 } }"#,
@@ -1206,7 +1232,7 @@ mod tests {
             );
 
             set_user_settings(
-                r#"{ "agent_servers": {
+                r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } }, "agent_servers": {
                     "codebuddy": { "type": "registry", "run_outside_sandbox": false },
                     "codebuddy-code": { "type": "registry", "run_outside_sandbox": true }
                 } }"#,
@@ -1215,7 +1241,7 @@ mod tests {
             assert!(runs_outside_sandbox_by_user_choice("codebuddy-code", cx));
 
             set_user_settings(
-                r#"{ "agent_servers": {
+                r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } }, "agent_servers": {
                     "codebuddy": { "type": "registry", "run_outside_sandbox": true },
                     "codebuddy-code": { "type": "registry" }
                 } }"#,
@@ -1265,6 +1291,80 @@ mod tests {
             });
             assert!(!starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx));
             assert!(!runs_outside_sandbox_by_user_choice(CLAUDE_AGENT_ID, cx));
+            assert!(!project::agent_sandbox::outside_sandbox_allowed(cx));
+        });
+    }
+
+    /// ADR-F92: while running outside the sandbox is not allowed, neither the
+    /// start the user confirmed nor the "always outside" settings let an
+    /// agent or Claude Code out, and turning it on brings both back.
+    #[gpui::test]
+    fn test_nothing_starts_outside_while_it_is_not_allowed(cx: &mut TestAppContext) {
+        init_test(cx);
+        let set_user_settings = |settings: &str, cx: &mut App| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(settings, cx)
+                    .result()
+                    .expect("valid user settings");
+            });
+        };
+        cx.update(|cx| {
+            for allowed in [None, Some(false)] {
+                let allowed = allowed.map_or(String::new(), |allowed| {
+                    format!(r#""sandbox_permissions": {{ "allow_outside_sandbox": {allowed} }},"#)
+                });
+                set_user_settings(
+                    &format!(
+                        r#"{{ "agent": {{ {allowed} "claude_code_run_outside_sandbox": true }}, "agent_servers": {{ "claude-acp": {{ "type": "registry", "run_outside_sandbox": true }} }} }}"#
+                    ),
+                    cx,
+                );
+                assert!(!project::agent_sandbox::outside_sandbox_allowed(cx));
+                assert!(!starts_outside_sandbox(true, CLAUDE_AGENT_ID, cx));
+                assert!(!starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx));
+                assert!(!runs_outside_sandbox_by_user_choice(CLAUDE_AGENT_ID, cx));
+                assert!(!project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx));
+            }
+
+            set_user_settings(
+                r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true }, "claude_code_run_outside_sandbox": true }, "agent_servers": { "claude-acp": { "type": "registry", "run_outside_sandbox": true } } }"#,
+                cx,
+            );
+            assert!(project::agent_sandbox::outside_sandbox_allowed(cx));
+            assert!(starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx));
+            assert!(runs_outside_sandbox_by_user_choice(CLAUDE_AGENT_ID, cx));
+            assert!(project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx));
+        });
+    }
+
+    /// ADR-F92: a project's settings cannot allow running outside the sandbox.
+    #[gpui::test]
+    fn test_a_projects_settings_cannot_allow_running_outside_the_sandbox(cx: &mut TestAppContext) {
+        init_test(cx);
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(
+                        r#"{ "agent_servers": { "claude-acp": { "type": "registry", "run_outside_sandbox": true } } }"#,
+                        cx,
+                    )
+                    .result()
+                    .expect("valid user settings");
+                store
+                    .set_local_settings(
+                        settings::WorktreeId::from_usize(1),
+                        settings::LocalSettingsPath::InWorktree(
+                            util::rel_path::RelPath::empty().into(),
+                        ),
+                        settings::LocalSettingsKind::Settings,
+                        Some(r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } } }"#),
+                        cx,
+                    )
+                    .ok();
+            });
+            assert!(!project::agent_sandbox::outside_sandbox_allowed(cx));
+            assert!(!starts_outside_sandbox(false, CLAUDE_AGENT_ID, cx));
         });
     }
 

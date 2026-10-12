@@ -8087,7 +8087,14 @@ exit 7
     /// way a command is when the sandbox is turned off.
     #[gpui::test]
     async fn a_windows_host_agents_command_runs_here_after_asking(cx: &mut gpui::TestAppContext) {
-        let project = project_with_sandbox_settings(SandboxPermissions::default(), cx).await;
+        let project = project_with_sandbox_settings(
+            SandboxPermissions {
+                allow_outside_sandbox: true,
+                ..Default::default()
+            },
+            cx,
+        )
+        .await;
         match project.read_with(cx, |project, cx| {
             agent_terminal_launch(project, AgentCommandsOs::WindowsHost, cx)
         }) {
@@ -8131,6 +8138,70 @@ exit 7
         assert!(prepared.confirmation.is_some());
     }
 
+    /// ADR-F92: while running outside the sandbox is not allowed, a command
+    /// that would run outside it — an agent's on this Windows machine, or one
+    /// in a project without a sandbox — is refused without a card, and the
+    /// agent is told why.
+    #[gpui::test]
+    async fn a_command_outside_the_sandbox_is_refused_while_not_allowed(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let project = project_with_sandbox_settings(SandboxPermissions::default(), cx).await;
+        match project.read_with(cx, |project, cx| {
+            agent_terminal_launch(project, AgentCommandsOs::WindowsHost, cx)
+        }) {
+            AgentTerminalLaunch::Refused { reason } => {
+                assert_eq!(reason, AGENT_ON_THIS_WINDOWS_HOST_REASON);
+            }
+            launch => panic!("expected a refusal, got {launch:?}"),
+        }
+        let thread = stub_thread(&project, cx).await;
+        let error = spawn_prepare_agent_terminal_of(
+            &thread,
+            terminal_request("dir"),
+            AgentCommandsOs::WindowsHost,
+            cx,
+        )
+        .await
+        .err()
+        .expect("refused");
+        assert!(
+            error
+                .to_string()
+                .contains("Allow Running Outside the Sandbox"),
+            "{error}"
+        );
+        thread.read_with(cx, |thread, _| {
+            assert!(thread.entries().is_empty(), "nothing is asked");
+        });
+
+        // Where the project has no sandbox (here: the switch that turns it off
+        // set without the one that allows running outside, which the settings
+        // never produce, so that this branch is reached on any machine).
+        let project = project_with_sandbox_settings(
+            SandboxPermissions {
+                allow_unsandboxed: true,
+                ..Default::default()
+            },
+            cx,
+        )
+        .await;
+        assert!(matches!(
+            project.read_with(cx, |project, cx| {
+                agent_terminal_launch(project, AgentCommandsOs::Projects, cx)
+            }),
+            AgentTerminalLaunch::Refused { .. }
+        ));
+        // A WSL agent's commands still go into its sandbox.
+        let sandboxed = project_with_sandbox_settings(SandboxPermissions::default(), cx).await;
+        assert!(matches!(
+            sandboxed.read_with(cx, |project, cx| {
+                agent_terminal_launch(project, AgentCommandsOs::Wsl, cx)
+            }),
+            AgentTerminalLaunch::Sandboxed(_)
+        ));
+    }
+
     /// ADR-F49 decision 5 (8c): with the sandbox turned off in the settings,
     /// an agent in a WSL sandbox still has its Linux commands run in that WSL
     /// — with the limits taken off and after the user allows each — rather
@@ -8141,6 +8212,7 @@ exit 7
     ) {
         let project = project_with_sandbox_settings(
             SandboxPermissions {
+                allow_outside_sandbox: true,
                 allow_unsandboxed: true,
                 ..Default::default()
             },
@@ -8236,6 +8308,7 @@ exit 7
     ) {
         let project = project_with_sandbox_settings(
             SandboxPermissions {
+                allow_outside_sandbox: true,
                 allow_unsandboxed: true,
                 ..Default::default()
             },
@@ -8291,6 +8364,7 @@ exit 7
     ) {
         let project = project_with_sandbox_settings(
             SandboxPermissions {
+                allow_outside_sandbox: true,
                 allow_unsandboxed: true,
                 ..Default::default()
             },
@@ -8379,6 +8453,7 @@ exit 7
     async fn agent_terminal_without_the_sandbox_asks_every_time(cx: &mut gpui::TestAppContext) {
         let project = project_with_sandbox_settings(
             SandboxPermissions {
+                allow_outside_sandbox: true,
                 allow_unsandboxed: true,
                 ..Default::default()
             },
@@ -8441,6 +8516,7 @@ exit 7
     async fn agent_terminal_card_shortens_very_long_commands(cx: &mut gpui::TestAppContext) {
         let project = project_with_sandbox_settings(
             SandboxPermissions {
+                allow_outside_sandbox: true,
                 allow_unsandboxed: true,
                 ..Default::default()
             },
@@ -10876,6 +10952,24 @@ enum AgentTerminalLaunch {
         writes_anywhere: bool,
         sandbox_wrap: Option<acp_thread::SandboxWrap>,
     },
+    /// ADR-F92: it would run outside any sandbox, which the user has not
+    /// allowed, so it is refused without a card; `reason` says where it
+    /// would have run.
+    Refused { reason: String },
+}
+
+/// ADR-F92: what the agent is told when a command it asked for would run
+/// outside the sandbox and that is not allowed.
+fn outside_sandbox_refusal(reason: &str) -> String {
+    i18n::in_english(|| {
+        format!(
+            "The command was not run: it can't run inside a sandbox here ({reason}), and the \
+             user has not allowed running outside the sandbox (the \"Allow Running Outside the \
+             Sandbox\" setting in Settings > AI > Sandbox is off). Don't try to work around \
+             the sandbox: tell the user the exact command, and that they can run it themselves \
+             or turn that setting on."
+        )
+    })
 }
 
 /// ADR-F49 decision 5 (8c): why a command of an agent started outside its
@@ -10899,6 +10993,13 @@ fn agent_terminal_launch(
 ) -> AgentTerminalLaunch {
     let standing = &AgentSettings::get_global(cx).sandbox_permissions;
     if commands_os == AgentCommandsOs::WindowsHost {
+        if !standing.allow_outside_sandbox {
+            return AgentTerminalLaunch::Refused {
+                reason: i18n::in_english(|| {
+                    i18n::tr(AGENT_ON_THIS_WINDOWS_HOST_REASON).to_string()
+                }),
+            };
+        }
         return AgentTerminalLaunch::Confirm {
             outside_sandbox_reason: i18n::tr(AGENT_ON_THIS_WINDOWS_HOST_REASON).to_string(),
             writes_anywhere: false,
@@ -10908,6 +11009,13 @@ fn agent_terminal_launch(
     let unsandboxed =
         standing.allow_unsandboxed || !acp_thread::sandboxing_available_for_project(project, cx);
     if unsandboxed && commands_os != AgentCommandsOs::Wsl {
+        // `allow_unsandboxed` already reads as off while running outside is
+        // not allowed, so this is a project kind without a sandbox.
+        if !standing.allow_outside_sandbox {
+            return AgentTerminalLaunch::Refused {
+                reason: i18n::in_english(|| acp_thread::unsandboxed_execution_reason(project, cx)),
+            };
+        }
         return AgentTerminalLaunch::Confirm {
             outside_sandbox_reason: acp_thread::unsandboxed_execution_reason(project, cx),
             writes_anywhere: false,
@@ -11009,6 +11117,9 @@ async fn prepare_agent_terminal(
             writes_anywhere,
             sandbox_wrap,
         } => (outside_sandbox_reason, writes_anywhere, sandbox_wrap),
+        AgentTerminalLaunch::Refused { reason } => {
+            return Err(anyhow!(outside_sandbox_refusal(&reason)));
+        }
     };
 
     let details = acp_thread::SandboxAuthorizationDetails {

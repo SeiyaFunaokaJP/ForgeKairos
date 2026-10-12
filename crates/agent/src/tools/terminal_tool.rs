@@ -375,6 +375,20 @@ command inside the sandbox, requesting the network or write access it needs if a
 work inside the sandbox (for example, it has to write Git metadata), don't try to work around the \
 sandbox: tell the user the exact command and ask them to run it.";
 
+/// ADR-F92: returned to the model, without a card, for a command that would
+/// run outside the sandbox while the user has not allowed that.
+fn outside_sandbox_not_allowed_message(reason: &str) -> String {
+    i18n::in_english(|| {
+        format!(
+            "The command was not run: it can't run inside the sandbox ({reason}), and the user \
+             has not allowed running outside the sandbox (the \"Allow Running Outside the \
+             Sandbox\" setting in Settings > AI > Sandbox is off). Don't try to work around the \
+             sandbox: tell the user the exact command, and that they can run it themselves or \
+             turn that setting on."
+        )
+    })
+}
+
 fn terminal_initial_title(input: Result<String, serde_json::Value>) -> SharedString {
     match input {
         Ok(command) => command.into(),
@@ -548,6 +562,16 @@ async fn run_terminal_tool(
                 .in_sandbox();
                 event_stream.authorize(SharedString::new(input.command.clone()), context, cx)
             } else {
+                // ADR-F92: `allow_unsandboxed` already reads as off while this
+                // is off, so what is left is a project without a sandbox.
+                if !agent_settings::AgentSettings::get_global(cx)
+                    .sandbox_permissions
+                    .allow_outside_sandbox
+                {
+                    let reason =
+                        i18n::in_english(|| unsandboxed_execution_reason(project.read(cx), cx));
+                    return Err(outside_sandbox_not_allowed_message(&reason));
+                }
                 let reason = unsandboxed_execution_reason(project.read(cx), cx);
                 event_stream.authorize_unsandboxed_command(input.command.clone(), reason, false, cx)
             };
@@ -2853,6 +2877,59 @@ mod tests {
                 acp::PermissionOptionKind::AllowOnce,
             ))
             .expect("authorization response should send");
+    }
+
+    /// ADR-F92: while running outside the sandbox is not allowed, a command
+    /// that would run outside it is refused without a card — even with the
+    /// tool allowed — and the model is told why and what to tell the user.
+    #[gpui::test]
+    async fn test_run_outside_the_sandbox_is_refused_while_not_allowed(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        crate::tests::init_test(cx);
+        crate::tests::allow_running_outside_sandbox(false, cx);
+
+        let fs = fs::FakeFs::new(cx.executor());
+        fs.insert_tree("/root", serde_json::json!({})).await;
+        let project = project::Project::test(fs, ["/root".as_ref()], cx).await;
+
+        let environment = std::rc::Rc::new(cx.update(|cx| {
+            crate::tests::FakeThreadEnvironment::default().with_terminal(
+                crate::tests::FakeTerminalHandle::new_with_immediate_exit(cx, 0),
+            )
+        }));
+
+        cx.update(|cx| {
+            let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+            settings.tool_permissions.default = settings::ToolPermissionMode::Allow;
+            agent_settings::AgentSettings::override_global(settings, cx);
+        });
+
+        #[allow(clippy::arc_with_non_send_sync)]
+        let tool = std::sync::Arc::new(TerminalTool::new(project, environment.clone()));
+        let (event_stream, mut rx) = crate::ToolCallEventStream::test();
+
+        let task = cx.update(|cx| {
+            tool.run(
+                crate::ToolInput::resolved(TerminalToolInput {
+                    command: "git log --oneline".to_string(),
+                    cd: "root".to_string(),
+                    timeout_ms: None,
+                    ..Default::default()
+                }),
+                event_stream,
+                cx,
+            )
+        });
+
+        cx.run_until_parked();
+        rx.expect_no_authorization();
+        let error = task.await.expect_err("the command is refused");
+        assert!(
+            error.contains("Allow Running Outside the Sandbox"),
+            "the model is told which setting refuses it: {error}"
+        );
+        assert_eq!(environment.terminal_creation_count(), 0, "nothing runs");
     }
 
     /// ADR-F46: an `always_allow` pattern doesn't reach a command outside the

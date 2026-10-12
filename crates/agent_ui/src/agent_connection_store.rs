@@ -1426,7 +1426,7 @@ mod tests {
     ) {
         let (store, _project) = setup(cx).await;
         set_user_settings(
-            r#"{ "agent_servers": { "sandboxed-stub": { "type": "custom", "command": "/bin/sandboxed-stub", "run_outside_sandbox": true } } }"#,
+            r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } }, "agent_servers": { "sandboxed-stub": { "type": "custom", "command": "/bin/sandboxed-stub", "run_outside_sandbox": true } } }"#,
             cx,
         );
         let shared = store.update(cx, |store, cx| {

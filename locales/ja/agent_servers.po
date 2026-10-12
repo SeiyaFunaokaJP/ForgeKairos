@@ -65,6 +65,9 @@ msgstr "エージェントが設定する環境変数"
 msgid "Parts of this are left out because it is long. If you allow it, it runs in full, including the parts left out."
 msgstr "表示が長いため一部を省略しています。許可すると、省略した部分も含めてそのまま実行されます。"
 
+msgid "Running outside the sandbox is not allowed. To allow it, turn on \"Allow Running Outside the Sandbox\" in Settings > AI > Sandbox."
+msgstr "サンドボックスの外での実行は許可されていません。許可するには、設定 > AI > サンドボックスの「サンドボックスの外での実行を許可する」をオンにしてください。"
+
 msgid "Technical details"
 msgstr "技術的な詳細"
 

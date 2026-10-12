@@ -207,16 +207,28 @@ const CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
 
 /// ADR-F49 決定 19 (8c): `agent.claude_code_run_outside_sandbox`. The switch
 /// shows what the launch acts on: the user's own settings file only.
+///
+/// ADR-F92: while running outside the sandbox is not allowed, it keeps showing
+/// what the file says, can't be changed, and says that it is ignored.
 fn render_claude_code_outside_sandbox(cx: &mut Context<SettingsWindow>) -> impl IntoElement {
+    let outside_allowed = project::agent_sandbox::outside_sandbox_allowed(cx);
+    let mut description = i18n::tr(CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION).to_string();
+    if !outside_allowed {
+        description.push(' ');
+        description.push_str(i18n::tr(
+            project::agent_sandbox::IGNORED_WHILE_OUTSIDE_NOT_ALLOWED,
+        ));
+    }
     SwitchField::new(
         "claude-code-run-outside-sandbox",
         Some(i18n::tr(CLAUDE_CODE_OUTSIDE_SANDBOX_LABEL)),
-        Some(i18n::tr(CLAUDE_CODE_OUTSIDE_SANDBOX_DESCRIPTION).into()),
-        project::agent_sandbox::claude_code_runs_outside_sandbox_by_user_choice(cx),
+        Some(description.into()),
+        project::agent_sandbox::claude_code_outside_sandbox_choice(cx),
         |state, _window, cx| {
             set_claude_code_run_outside_sandbox(*state == ToggleState::Selected, cx);
         },
     )
+    .disabled(!outside_allowed)
     .tab_index(0)
 }
 

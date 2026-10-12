@@ -248,6 +248,9 @@ msgstr "すべてのドメインを許可"
 msgid "Allow All File System Writes"
 msgstr "ファイルシステムへの書き込みをすべて許可"
 
+msgid "Allow Running Outside the Sandbox"
+msgstr "サンドボックスの外での実行を許可する"
+
 msgid "Allow and Start"
 msgstr "許可して起動"
 
@@ -1776,6 +1779,9 @@ msgstr "有効にすると、入力したコードや会話の内容が {name} �
 msgid "When it runs on the SSH host, the command is resolved there (a server provided by an extension needs the same extension installed there too). When it runs on this computer, the files the server reads and writes are the ones on this computer."
 msgstr "SSH 接続先で実行する場合、コマンドは接続先で解決されます (拡張機能提供の場合は接続先にも同じ拡張機能が必要です)。この PC で実行する場合、サーバーが読み書きするファイルはこの PC のものになります。"
 
+msgid "When off (the default), nothing that the agent features start runs outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. When on, each of those asks first or follows its own setting."
+msgstr "オフ (既定) の間は、エージェントの機能が始めるものをサンドボックスの外では一切実行しません。サンドボックスで実行できないターミナルコマンド、外部エージェントや Claude Code のサンドボックスの外での起動、サンドボックスの外で始めたスレッドの再開は、確認せずに拒否し、常にサンドボックスの外で起動する設定も無視します。オンの間は、それぞれ従来どおり確認するか、それぞれの設定に従います。"
+
 msgid "When the server runs on the SSH host, type the path on the host directly."
 msgstr "SSH 接続先で実行する場合は、接続先のパスを直接入力してください。"
 
@@ -1796,6 +1802,9 @@ msgstr "承諾を取り消しても、選択中の Zed は止まりません (�
 
 msgid "Withdraws your consent to sending data to it, and removes its host from the allowlist unless another provider you consented to needs it."
 msgstr "このプロバイダーへの送信の承諾を取り消し、そのホストを許可リストから外します (承諾済みの別のプロバイダーが使うホストは残します)。"
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. It can only be turned off while running outside the sandbox is allowed (above)."
+msgstr "エージェントが実行するターミナルコマンドを OS レベルのサンドボックスで包みます。無効にできるのは、サンドボックスの外での実行を許可している間 (上の設定) だけです。"
 
 msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
 msgstr "エージェントが実行するターミナルコマンドを OS レベルのサンドボックスで包みます。無効の間は、コマンドが ForgeKairos 本体の権限で実行されるため自動承認が効かず、コマンドごとに確認します。外部エージェント本体と Claude Code の起動には影響しません (それぞれの設定は「AI」ページにあります)。"

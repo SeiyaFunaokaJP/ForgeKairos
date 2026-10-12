@@ -372,7 +372,84 @@ pub(crate) fn confirm_running_outside_sandbox(
 }
 
 /// [`confirm_running_outside_sandbox`] for a start that is not a plain one.
+///
+/// ADR-F92: while running outside the sandbox is not allowed, nothing is
+/// asked: the user is told so, with the way to the setting, and the answer is
+/// no.
 pub(crate) fn confirm_starting_outside_sandbox(
+    program: &str,
+    on_remote_host: bool,
+    reason: Option<&str>,
+    start: OutsideSandboxStart,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl Future<Output = bool> + use<> {
+    let answer = if project::agent_sandbox::outside_sandbox_allowed(cx) {
+        Some(ask_to_start_outside_sandbox(
+            program,
+            on_remote_host,
+            reason,
+            start,
+            window,
+            cx,
+        ))
+    } else {
+        show_outside_sandbox_refusal(window, cx);
+        None
+    };
+    async move {
+        match answer {
+            Some(answer) => answer.await,
+            None => false,
+        }
+    }
+}
+
+/// ADR-F92: the title of the notice that a start outside the sandbox was
+/// refused, and of the cards that say so.
+pub(crate) const OUTSIDE_SANDBOX_NOT_ALLOWED_TITLE: &str =
+    i18n::msg!("Running Outside the Sandbox Is Not Allowed");
+pub(crate) const OUTSIDE_SANDBOX_NOT_ALLOWED_DETAIL: &str = i18n::msg!(
+    "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
+);
+pub(crate) const OPEN_SANDBOX_SETTINGS_LABEL: &str = i18n::msg!("Open Sandbox Settings");
+const CLOSE_LABEL: &str = i18n::msg!("Close");
+
+/// ADR-F92: says that running outside the sandbox is not allowed, offering
+/// to open the setting that allows it. Not a question: nothing runs either
+/// way.
+pub(crate) fn show_outside_sandbox_refusal(window: &mut Window, cx: &mut App) {
+    let answer = window.prompt(
+        PromptLevel::Info,
+        i18n::tr(OUTSIDE_SANDBOX_NOT_ALLOWED_TITLE),
+        Some(i18n::tr(OUTSIDE_SANDBOX_NOT_ALLOWED_DETAIL)),
+        &[
+            PromptButton::ok(i18n::tr(OPEN_SANDBOX_SETTINGS_LABEL)),
+            PromptButton::cancel(i18n::tr(CLOSE_LABEL)),
+        ],
+        cx,
+    );
+    window
+        .spawn(cx, async move |cx| {
+            if answer.await.is_ok_and(|index| index == 0) {
+                cx.update(|window, cx| open_sandbox_settings(window, cx))
+                    .log_err();
+            }
+        })
+        .detach();
+}
+
+pub(crate) fn open_sandbox_settings(window: &mut Window, cx: &mut App) {
+    window.dispatch_action(
+        Box::new(zed_actions::OpenSettingsAt {
+            path: zed_actions::AGENT_SANDBOX_SETTINGS_PATH.to_string(),
+            target: None,
+        }),
+        cx,
+    );
+}
+
+fn ask_to_start_outside_sandbox(
     program: &str,
     on_remote_host: bool,
     reason: Option<&str>,
@@ -429,6 +506,7 @@ fn confirm_and_launch_outside_sandbox(
 struct SandboxLaunchFailure {
     message: String,
     effort: Option<String>,
+    outside_sandbox_allowed: bool,
 }
 
 impl WorkspaceError for SandboxLaunchFailure {
@@ -437,6 +515,17 @@ impl WorkspaceError for SandboxLaunchFailure {
     }
 
     fn primary_action(&self) -> ErrorAction {
+        // ADR-F92: where starting outside is not allowed, the way there is the
+        // setting rather than a start that would only be refused.
+        if !self.outside_sandbox_allowed {
+            return ErrorAction::new(
+                i18n::tr(OPEN_SANDBOX_SETTINGS_LABEL),
+                zed_actions::OpenSettingsAt {
+                    path: zed_actions::AGENT_SANDBOX_SETTINGS_PATH.to_string(),
+                    target: None,
+                },
+            );
+        }
         ErrorAction::new(
             i18n::tr(LAUNCH_OUTSIDE_AFTER_FAILURE_LABEL),
             LaunchClaudeCodeOutsideSandbox {
@@ -460,7 +549,15 @@ fn show_launch_failure(
     effort: Option<String>,
     cx: &mut Context<Workspace>,
 ) {
-    workspace.show_error(SandboxLaunchFailure { message, effort }, cx);
+    let outside_sandbox_allowed = project::agent_sandbox::outside_sandbox_allowed(cx);
+    workspace.show_error(
+        SandboxLaunchFailure {
+            message,
+            effort,
+            outside_sandbox_allowed,
+        },
+        cx,
+    );
 }
 
 /// CLI のタブを置けるエージェントパネル。置けないときは `None` で、呼び出し元は
@@ -2755,12 +2852,13 @@ mod tests {
     };
     use super::{
         CLAUDE_PROGRAM, COLLABORATION_REASON, HostLauncher, LaunchRoute, NO_FOLDER_REASON,
-        OUTSIDE_SANDBOX_CLAUDE_LOGIN, OUTSIDE_SANDBOX_LIMITS_LOCAL, OUTSIDE_SANDBOX_LIMITS_REMOTE,
-        OUTSIDE_SANDBOX_MESSAGE, OUTSIDE_SANDBOX_NEW_SESSION, OUTSIDE_SANDBOX_NOTICE,
-        OUTSIDE_SANDBOX_ONCE, OUTSIDE_SANDBOX_OTHER_LOGIN, OutsideSandboxStart, ProjectShape,
-        REMOTE_CONNECTION_REASON, REMOTE_NOT_LINUX_REASON, RemoteShape, SandboxLaunchFailure,
-        UNSUPPORTED_OS_REASON, outside_sandbox_detail, outside_sandbox_message,
-        register_launch_actions, route_for, show_launch_failure,
+        OPEN_SANDBOX_SETTINGS_LABEL, OUTSIDE_SANDBOX_CLAUDE_LOGIN, OUTSIDE_SANDBOX_LIMITS_LOCAL,
+        OUTSIDE_SANDBOX_LIMITS_REMOTE, OUTSIDE_SANDBOX_MESSAGE, OUTSIDE_SANDBOX_NEW_SESSION,
+        OUTSIDE_SANDBOX_NOT_ALLOWED_DETAIL, OUTSIDE_SANDBOX_NOT_ALLOWED_TITLE,
+        OUTSIDE_SANDBOX_NOTICE, OUTSIDE_SANDBOX_ONCE, OUTSIDE_SANDBOX_OTHER_LOGIN,
+        OutsideSandboxStart, ProjectShape, REMOTE_CONNECTION_REASON, REMOTE_NOT_LINUX_REASON,
+        RemoteShape, SandboxLaunchFailure, UNSUPPORTED_OS_REASON, outside_sandbox_detail,
+        outside_sandbox_message, register_launch_actions, route_for, show_launch_failure,
     };
 
     const SESSION_ID: &str = "claude-0123456789abcdef0123456789abcdef";
@@ -3758,6 +3856,10 @@ mod tests {
             window.focus(&pane, cx);
         });
         cx.run_until_parked();
+        // ADR-F92: these tests are about the starts outside, which are only
+        // offered once the user allows running outside the sandbox. Set once
+        // the workspace has settled, which reads the (empty) settings file.
+        set_user_settings(OUTSIDE_ALLOWED, cx);
     }
 
     #[gpui::test]
@@ -3800,7 +3902,55 @@ mod tests {
         cx.run_until_parked();
     }
 
-    const ALWAYS_OUTSIDE: &str = r#"{ "agent": { "claude_code_run_outside_sandbox": true } }"#;
+    const OUTSIDE_ALLOWED: &str =
+        r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } } }"#;
+    const ALWAYS_OUTSIDE: &str = r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true }, "claude_code_run_outside_sandbox": true } }"#;
+
+    /// ADR-F92: while running outside the sandbox is not allowed, the start
+    /// outside asks nothing and starts nothing — it says so, with the way to
+    /// the setting — and the "always outside" setting is ignored.
+    #[gpui::test]
+    async fn nothing_starts_outside_while_it_is_not_allowed(cx: &mut TestAppContext) {
+        let (_project, workspace, mut cx) = open_workspace(&[path!("/test").as_ref()], cx).await;
+        let (launcher, launches) = recording_launcher();
+        register_and_focus(&workspace, launcher, &mut cx);
+
+        for settings in [
+            "{}",
+            r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": false }, "claude_code_run_outside_sandbox": true } }"#,
+        ] {
+            set_user_settings(settings, &mut cx);
+            cx.dispatch_action(LaunchClaudeCodeOutsideSandbox {
+                effort: Some("high".to_string()),
+            });
+            cx.run_until_parked();
+            let (message, detail) = cx.pending_prompt().expect("the refusal is shown");
+            assert_eq!(message, OUTSIDE_SANDBOX_NOT_ALLOWED_TITLE, "{settings}");
+            assert_eq!(detail, OUTSIDE_SANDBOX_NOT_ALLOWED_DETAIL);
+            cx.simulate_prompt_answer("Close");
+            cx.run_until_parked();
+            assert!(!cx.has_pending_prompt(), "nothing asked after the refusal");
+            assert!(launches.borrow().is_empty(), "{settings}");
+        }
+
+        // The failed launch's notification leads to the setting instead.
+        let failure = SandboxLaunchFailure {
+            message: String::new(),
+            effort: None,
+            outside_sandbox_allowed: false,
+        };
+        let action = workspace::workspace_error::WorkspaceError::primary_action(&failure);
+        assert_eq!(action.label.as_ref(), OPEN_SANDBOX_SETTINGS_LABEL);
+
+        set_user_settings(OUTSIDE_ALLOWED, &mut cx);
+        cx.dispatch_action(LaunchClaudeCodeOutsideSandbox { effort: None });
+        cx.run_until_parked();
+        let (message, _) = cx.pending_prompt().expect("asked once it is allowed");
+        assert_eq!(message, OUTSIDE_SANDBOX_MESSAGE);
+        cx.simulate_prompt_answer("Start (This Time Only)");
+        cx.run_until_parked();
+        assert_eq!(*launches.borrow(), [None]);
+    }
 
     /// ADR-F49 決定 19: with the user's own choice to start the CLI outside
     /// every time, neither launch asks — and turning it back off brings the
@@ -3825,7 +3975,7 @@ mod tests {
         assert!(!cx.has_pending_prompt());
         assert_eq!(*launches.borrow(), [Some("high".to_string()), None]);
 
-        set_user_settings("{}", &mut cx);
+        set_user_settings(OUTSIDE_ALLOWED, &mut cx);
         cx.dispatch_action(LaunchClaudeCodeOutsideSandbox { effort: None });
         cx.run_until_parked();
         assert!(
@@ -3907,6 +4057,7 @@ mod tests {
         let failure = SandboxLaunchFailure {
             message: String::new(),
             effort: Some("high".to_string()),
+            outside_sandbox_allowed: true,
         };
         let action = workspace::workspace_error::WorkspaceError::primary_action(&failure);
         assert_eq!(action.label.as_ref(), "Start Outside the Sandbox…");

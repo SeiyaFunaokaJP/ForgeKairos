@@ -300,9 +300,28 @@ pub fn agent_config_dir(
     path
 }
 
+/// ADR-F92: whether anything may run outside the sandbox at all
+/// (`agent.sandbox_permissions.allow_outside_sandbox`, off by default). While
+/// it is off, every way out is refused without asking, and the "always
+/// outside" settings below read as off.
+///
+/// Read from the user's own settings file only, as those settings are.
+pub fn outside_sandbox_allowed(cx: &App) -> bool {
+    crate::worktree_code_execution::from_user_settings(cx, |content| {
+        content
+            .agent
+            .as_ref()?
+            .sandbox_permissions
+            .as_ref()?
+            .allow_outside_sandbox
+    })
+    .unwrap_or(false)
+}
+
 /// ADR-F49 decision 19: whether the user has chosen, in their own settings
 /// file, to start `agent_id` outside its sandbox every time
-/// (`agent_servers.<id>.run_outside_sandbox`).
+/// (`agent_servers.<id>.run_outside_sandbox`), and running outside the
+/// sandbox is allowed at all (ADR-F92).
 ///
 /// Only the user's file counts — the rule ADR-F50 set for its own switch
 /// ([`crate::worktree_code_execution`]): a project's `.zed/settings.json` can
@@ -310,8 +329,9 @@ pub fn agent_config_dir(
 /// remote host's settings. Agents named by their old extension id are found
 /// under the registry id they are started by, as the merged settings do.
 pub fn runs_outside_sandbox_by_user_choice(agent_id: &str, cx: &App) -> bool {
-    user_choice_to_run_outside_sandbox(agent_id, cx)
-        .is_some_and(|choice| choice.run_outside_sandbox)
+    outside_sandbox_allowed(cx)
+        && user_choice_to_run_outside_sandbox(agent_id, cx)
+            .is_some_and(|choice| choice.run_outside_sandbox)
 }
 
 /// The value `agent_servers.<id>.run_outside_sandbox` takes for `agent_id` in
@@ -385,13 +405,27 @@ fn outside_sandbox_choice_in(
 /// ADR-F49 decision 19: whether the user has chosen, in their own settings
 /// file, to start the Claude Code CLI outside its sandbox every time
 /// (`agent.claude_code_run_outside_sandbox`). Read the way
-/// [`runs_outside_sandbox_by_user_choice`] is, for the same reason.
+/// [`runs_outside_sandbox_by_user_choice`] is, for the same reason, and off
+/// while running outside the sandbox is not allowed (ADR-F92).
 pub fn claude_code_runs_outside_sandbox_by_user_choice(cx: &App) -> bool {
+    outside_sandbox_allowed(cx) && claude_code_outside_sandbox_choice(cx)
+}
+
+/// `agent.claude_code_run_outside_sandbox` as the user's own settings file
+/// has it, whether or not running outside the sandbox is allowed: what the
+/// settings page shows (ADR-F92).
+pub fn claude_code_outside_sandbox_choice(cx: &App) -> bool {
     crate::worktree_code_execution::from_user_settings(cx, |content| {
         content.agent.as_ref()?.claude_code_run_outside_sandbox
     })
     .unwrap_or(false)
 }
+
+/// ADR-F92: what a settings switch for an "always outside the sandbox"
+/// setting adds to its description while running outside is not allowed.
+pub const IGNORED_WHILE_OUTSIDE_NOT_ALLOWED: &str = i18n::msg!(
+    "Ignored while \"Allow Running Outside the Sandbox\" is off (Settings > AI > Sandbox)."
+);
 
 /// The account's home, below which the sandboxed agents' per-project folders
 /// live. A test can put a directory of its own in its place, so that placing

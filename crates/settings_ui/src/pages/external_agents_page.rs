@@ -135,18 +135,31 @@ fn set_allow_subscription_sign_in(allowed: bool, cx: &mut App) {
 /// ADR-F49 決定 19 (8c): `agent_servers.<id>.run_outside_sandbox`, per agent.
 /// What the switch shows is what the agent panel acts on: the user's own
 /// settings file only, which a project's settings cannot override.
+///
+/// ADR-F92: while running outside the sandbox is not allowed, it keeps showing
+/// what the file says, can't be changed, and says that it is ignored.
 fn render_run_outside_sandbox(id: &AgentId, cx: &mut Context<SettingsWindow>) -> impl IntoElement {
-    let enabled = project::agent_sandbox::runs_outside_sandbox_by_user_choice(id.0.as_ref(), cx);
+    let outside_allowed = project::agent_sandbox::outside_sandbox_allowed(cx);
+    let enabled = project::agent_sandbox::user_choice_to_run_outside_sandbox(id.0.as_ref(), cx)
+        .is_some_and(|choice| choice.run_outside_sandbox);
+    let mut description = i18n::tr(RUN_OUTSIDE_SANDBOX_DESCRIPTION).to_string();
+    if !outside_allowed {
+        description.push(' ');
+        description.push_str(i18n::tr(
+            project::agent_sandbox::IGNORED_WHILE_OUTSIDE_NOT_ALLOWED,
+        ));
+    }
     let id = id.clone();
     SwitchField::new(
         format!("run-outside-sandbox-{}", id.0),
         Some(i18n::tr(RUN_OUTSIDE_SANDBOX_LABEL)),
-        Some(i18n::tr(RUN_OUTSIDE_SANDBOX_DESCRIPTION).into()),
+        Some(description.into()),
         enabled,
         move |state, _window, cx| {
             set_run_outside_sandbox(&id, *state == ToggleState::Selected, cx);
         },
     )
+    .disabled(!outside_allowed)
     .tab_index(0)
 }
 

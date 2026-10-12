@@ -152,6 +152,16 @@ fn consent_to_outside_sandbox(thread_id: ThreadId, agent_id: AgentId, cx: &mut A
     crate::thread_metadata_store::record_outside_sandbox_consent(thread_id, agent_id, cx);
 }
 
+/// ADR-F92: on a card whose start outside the sandbox is not allowed.
+fn open_sandbox_settings_button(id: &'static str) -> AnyElement {
+    Button::new(
+        id,
+        i18n::tr(crate::sandboxed_claude_code::OPEN_SANDBOX_SETTINGS_LABEL),
+    )
+    .on_click(|_, window, cx| crate::sandboxed_claude_code::open_sandbox_settings(window, cx))
+    .into_any_element()
+}
+
 /// ADR-F49 決定 19 (8c): said on a thread read back in its sandbox although
 /// the user's settings start the agent outside every time.
 const RESUMED_IN_SANDBOX_LABEL: &str =
@@ -4296,6 +4306,21 @@ impl ConversationView {
                 msg.into(),
                 Some(self.create_copy_button(msg.to_string()).into_any_element()),
             ),
+            // ADR-F92: while running outside is not allowed, the cards say so
+            // and lead to the setting instead of offering the start outside.
+            LoadError::SandboxUnavailable(reason)
+                if !project::agent_sandbox::outside_sandbox_allowed(cx) =>
+            {
+                (
+                    i18n::t!("Can't Start in the Sandbox"),
+                    format!(
+                        "{reason}\n{}",
+                        i18n::tr(crate::sandboxed_claude_code::OUTSIDE_SANDBOX_NOT_ALLOWED_DETAIL)
+                    )
+                    .into(),
+                    Some(open_sandbox_settings_button("start-agent-outside-sandbox")),
+                )
+            }
             LoadError::SandboxUnavailable(reason) => (
                 i18n::t!("Can't Start in the Sandbox"),
                 format!("{reason}\n{}", i18n::tr(OUTSIDE_SANDBOX_EXPLANATION)).into(),
@@ -4310,6 +4335,20 @@ impl ConversationView {
                     .into_any_element(),
                 ),
             ),
+            LoadError::SessionStartedOutsideSandbox
+                if !project::agent_sandbox::outside_sandbox_allowed(cx) =>
+            {
+                (
+                    i18n::t!("Thread Started Outside the Sandbox"),
+                    format!(
+                        "{}\n{}",
+                        i18n::tr(SESSION_STARTED_OUTSIDE_SANDBOX_EXPLANATION),
+                        i18n::tr(crate::sandboxed_claude_code::OUTSIDE_SANDBOX_NOT_ALLOWED_DETAIL)
+                    )
+                    .into(),
+                    Some(open_sandbox_settings_button("resume-agent-outside-sandbox")),
+                )
+            }
             LoadError::SessionStartedOutsideSandbox => (
                 i18n::t!("Thread Started Outside the Sandbox"),
                 i18n::tr(SESSION_STARTED_OUTSIDE_SANDBOX_EXPLANATION).into(),
@@ -5010,7 +5049,10 @@ impl ConversationView {
             | ServerState::LoadError { .. }
             | ServerState::Parked(_) => {}
         }
+        // ADR-F92: while running outside is not allowed, none of these lets
+        // the thread out, so the tab does not say it is.
         self.is_external_agent()
+            && project::agent_sandbox::outside_sandbox_allowed(cx)
             && (outside_sandbox_consented(self.thread_id, self.agent.agent_id(), cx)
                 || thread_started_outside_sandbox(self.thread_id, cx)
                 || (!self.resumed_in_sandbox_despite_choice
@@ -5044,8 +5086,10 @@ impl ConversationView {
     /// offering: the one that failed went through the sandbox, the agent is
     /// an external one, and the project is not shared (where external agents
     /// do not run at all).
+    /// Never while running outside the sandbox is not allowed (ADR-F92).
     fn can_offer_start_outside_sandbox(&self, cx: &App) -> bool {
-        self.outside_sandbox.is_none()
+        project::agent_sandbox::outside_sandbox_allowed(cx)
+            && self.outside_sandbox.is_none()
             && self.is_external_agent()
             && !self.project.read(cx).is_via_collab()
             && (self.resumed_in_sandbox_despite_choice
@@ -5078,6 +5122,11 @@ impl ConversationView {
         connection_key: &Agent,
         cx: &mut App,
     ) -> Option<OutsideSandboxConnectionId> {
+        // ADR-F92: once running outside is no longer allowed, a start goes
+        // into the sandbox, whatever was consented to or is still running.
+        if !project::agent_sandbox::outside_sandbox_allowed(cx) {
+            return None;
+        }
         if let Some(id) = current
             && connection_store
                 .read(cx)
@@ -8625,6 +8674,69 @@ pub(crate) mod tests {
         }
     }
 
+    /// ADR-F92: while running outside the sandbox is not allowed, the card of
+    /// an agent its sandbox cannot take leads to the setting, and a start
+    /// outside asks nothing and starts nothing — even for a thread the user
+    /// once consented for.
+    #[gpui::test]
+    async fn test_nothing_starts_outside_the_sandbox_while_it_is_not_allowed(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        allow_running_outside_sandbox(false, cx);
+        let outside_starts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let server = SandboxRefusingAgentServer {
+            connection: StubAgentConnection::new(),
+            outside_starts: outside_starts.clone(),
+        };
+        let (conversation_view, cx) = setup_conversation_view(server, cx).await;
+        cx.run_until_parked();
+        let (thread_id, agent_id) =
+            conversation_view.read_with(cx, |view, _| (view.thread_id, view.agent.agent_id()));
+        cx.update(|_, cx| consent_to_outside_sandbox(thread_id, agent_id, cx));
+        conversation_view.read_with(cx, |view, cx| {
+            assert!(!view.can_offer_start_outside_sandbox(cx));
+            assert!(
+                !view.is_outside_sandbox_thread(cx),
+                "the consent lets nothing out"
+            );
+        });
+
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.start_agent_outside_sandbox_once(window, cx)
+        });
+        cx.run_until_parked();
+        let (message, _) = cx.pending_prompt().expect("the refusal is shown");
+        assert_eq!(
+            message,
+            crate::sandboxed_claude_code::OUTSIDE_SANDBOX_NOT_ALLOWED_TITLE
+        );
+        cx.simulate_prompt_answer("Close");
+        cx.run_until_parked();
+        assert!(!cx.has_pending_prompt(), "and nothing is asked after it");
+        assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 0);
+        conversation_view.read_with(cx, |view, _| {
+            assert!(view.outside_sandbox.is_none());
+            assert!(matches!(
+                view.server_state,
+                ServerState::LoadError {
+                    error: LoadError::SandboxUnavailable(_),
+                    ..
+                }
+            ));
+        });
+
+        // Allowed again, the same start is asked for as before.
+        allow_running_outside_sandbox(true, cx);
+        conversation_view.update_in(cx, |view, window, cx| {
+            view.start_agent_outside_sandbox_once(window, cx)
+        });
+        cx.run_until_parked();
+        cx.simulate_prompt_answer(LAUNCH_FOR_THIS_THREAD_LABEL);
+        cx.run_until_parked();
+        assert_eq!(outside_starts.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
     /// ADR-F49 decision 19: an agent its sandbox cannot take is not started;
     /// the user may start it outside the sandbox, once, after confirming it.
     #[gpui::test]
@@ -9313,7 +9425,7 @@ pub(crate) mod tests {
         );
     }
 
-    const ALWAYS_OUTSIDE_FOR_THE_TEST_AGENT: &str = r#"{ "agent_servers": { "Sandboxed": { "type": "registry", "run_outside_sandbox": true } } }"#;
+    const ALWAYS_OUTSIDE_FOR_THE_TEST_AGENT: &str = r#"{ "agent": { "sandbox_permissions": { "allow_outside_sandbox": true } }, "agent_servers": { "Sandboxed": { "type": "registry", "run_outside_sandbox": true } } }"#;
 
     /// ADR-F49 決定 19 (8c): with the user's choice to start this agent
     /// outside every time, a new thread, a thread read back from the history
@@ -11821,6 +11933,26 @@ pub(crate) mod tests {
             // ADR-F88: the API key card reads and writes the credential store.
             InMemoryCredentialsProvider::install(cx);
             prompt_store::init(cx)
+        });
+        // ADR-F92: the tests of the starts outside the sandbox are about what
+        // happens once the user allows them; the refusal's turn it off.
+        allow_running_outside_sandbox(true, cx);
+    }
+
+    pub(crate) fn allow_running_outside_sandbox(allowed: bool, cx: &mut TestAppContext) {
+        use gpui::BorrowAppContext as _;
+        cx.update(|cx| {
+            cx.update_global::<SettingsStore, _>(|store, cx| {
+                store
+                    .set_user_settings(
+                        &format!(
+                            r#"{{ "agent": {{ "sandbox_permissions": {{ "allow_outside_sandbox": {allowed} }} }} }}"#
+                        ),
+                        cx,
+                    )
+                    .result()
+                    .expect("valid user settings");
+            });
         });
     }
 

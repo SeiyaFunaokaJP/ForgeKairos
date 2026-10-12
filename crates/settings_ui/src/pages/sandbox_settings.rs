@@ -22,6 +22,21 @@ const ALLOW_ALL_HOSTS_DESCRIPTION: &str = i18n::msg!(
     "Let sandboxed commands reach any domain over the network without prompting. This only lifts the sandbox's own restriction, so commands can still reach only the hosts within the editor-wide network allowlist (localhost is always reachable)."
 );
 
+/// ADR-F92: the switch at the top of the page. Named after running outside
+/// the sandbox, not after any one tool, so that it is not read as switching
+/// some agent feature on or off.
+const ALLOW_OUTSIDE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
+    "When off (the default), nothing that the agent features start runs outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. When on, each of those asks first or follows its own setting."
+);
+
+const ENABLE_SANDBOX_DESCRIPTION: &str = i18n::msg!(
+    "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
+);
+
+const ENABLE_SANDBOX_LOCKED_DESCRIPTION: &str = i18n::msg!(
+    "Wrap agent-run terminal commands in an OS-level sandbox. It can only be turned off while running outside the sandbox is allowed (above)."
+);
+
 const WRITE_PATHS_DESCRIPTION: &str = i18n::msg!(
     "Each entry must be an absolute path and grants write access to the whole subtree, except protected Git metadata."
 );
@@ -59,6 +74,9 @@ pub(crate) fn render_sandbox_settings_page(
     let add_path_input = render_add_path_input(cx);
 
     let empty_border = cx.theme().colors().border_variant;
+    // ADR-F92: `allow_unsandboxed` already reads as off while running outside
+    // the sandbox is not allowed, so the switch below shows what applies.
+    let outside_allowed = project::agent_sandbox::outside_sandbox_allowed(cx);
     let sandbox_enabled = !permissions.allow_unsandboxed;
 
     v_flex()
@@ -72,19 +90,37 @@ pub(crate) fn render_sandbox_settings_page(
         .track_scroll(scroll_handle)
         .child(
             SwitchField::new(
+                "sandbox-allow-outside",
+                Some(i18n::t!("Allow Running Outside the Sandbox")),
+                Some(i18n::tr(ALLOW_OUTSIDE_SANDBOX_DESCRIPTION).into()),
+                outside_allowed,
+                move |state, _window, cx| {
+                    set_allow_outside_sandbox(*state == ToggleState::Selected, cx);
+                },
+            )
+            .tab_index(0),
+        )
+        .child(
+            SwitchField::new(
                 "sandbox-enabled",
                 Some(i18n::t!("Enable Sandbox")),
                 Some(
-                    i18n::t!("Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page).")
-                        .into(),
+                    i18n::tr(if outside_allowed {
+                        ENABLE_SANDBOX_DESCRIPTION
+                    } else {
+                        ENABLE_SANDBOX_LOCKED_DESCRIPTION
+                    })
+                    .into(),
                 ),
                 sandbox_enabled,
                 move |state, _window, cx| {
                     set_sandbox_enabled(*state == ToggleState::Selected, cx);
                 },
             )
+            .disabled(!outside_allowed)
             .tab_index(0),
         )
+        .child(Divider::horizontal())
         .child(
             SwitchField::new(
                 "pause-worktree-code-after-agent-writes",
@@ -498,6 +534,13 @@ fn set_pause_worktree_code_after_agent_writes(value: bool, cx: &mut App) {
             .agent
             .get_or_insert_default()
             .pause_worktree_code_after_agent_writes = Some(value);
+    });
+}
+
+/// ADR-F92: written to the user settings file, the only one it is read from.
+fn set_allow_outside_sandbox(value: bool, cx: &mut App) {
+    update_sandbox_permissions(cx, move |permissions| {
+        permissions.allow_outside_sandbox = Some(value);
     });
 }
 

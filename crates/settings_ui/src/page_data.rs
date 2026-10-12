@@ -9718,6 +9718,7 @@ fn ai_page(cx: &App) -> SettingsPage {
                     "network",
                     "sandbox",
                     "unsandboxed",
+                    "outside the sandbox",
                     "permissions",
                 ],
                 in_json: true,

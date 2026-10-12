@@ -8,6 +8,9 @@ msgstr ""
 msgid " (Outside Sandbox)"
 msgstr " (サンドボックスの外)"
 
+msgid "\"Allow Running Outside the Sandbox\" is off in Settings > AI > Sandbox, so nothing starts outside the sandbox, and the settings that always start an agent or Claude Code outside it are ignored. To allow it, turn that setting on."
+msgstr "設定 > AI > サンドボックスの「サンドボックスの外での実行を許可する」がオフのため、サンドボックスの外では何も起動しません。エージェントや Claude Code を常にサンドボックスの外で起動する設定も無視されます。許可するには、この設定をオンにしてください。"
+
 msgid "\"{title}\" is required."
 msgstr "「{title}」は必須です。"
 
@@ -382,6 +385,9 @@ msgstr "クリックするとこのエージェントのスレッドを開きま
 
 msgid "Clipboard does not contain text"
 msgstr "クリップボードにテキストが含まれていません。"
+
+msgid "Close"
+msgstr "閉じる"
 
 msgid "Close Assistant"
 msgstr "アシスタントを閉じる"
@@ -1247,6 +1253,9 @@ msgstr "プロジェクトルールを開く"
 msgid "Open Repository"
 msgstr "リポジトリを開く"
 
+msgid "Open Sandbox Settings"
+msgstr "サンドボックスの設定を開く"
+
 msgid "Open Skill"
 msgstr "スキルを開く"
 
@@ -1510,6 +1519,9 @@ msgstr "ルールからスキルへの移行を再実行しました。AGENTS.md
 
 msgid "Run Command"
 msgstr "実行するコマンド"
+
+msgid "Running Outside the Sandbox Is Not Allowed"
+msgstr "サンドボックスの外での実行は許可されていません"
 
 msgid "Runs `{program}` on the remote host with that host user's permissions (outside the sandbox)."
 msgstr "接続先のホストの `{program}` を、そのホストのユーザーの権限で (サンドボックスの外で) 実行します。"

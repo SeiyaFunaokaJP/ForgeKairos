@@ -527,6 +527,10 @@ pub struct SandboxPermissions {
     /// is nearly the same as running outside the sandbox, so while it is on
     /// terminal commands are never auto-approved (ADR-F46).
     pub allow_fs_write_all: bool,
+    /// ADR-F92: whether anything may run outside the sandbox at all. While it
+    /// is off, a terminal command that cannot run in the sandbox is refused
+    /// without a card, and `allow_unsandboxed` reads as off.
+    pub allow_outside_sandbox: bool,
     /// Run agent terminal commands outside the OS sandbox, with Zed's own
     /// permissions. This is the model-facing "off switch": when set, the
     /// sandboxed terminal tool is not exposed and the system prompt omits the
@@ -534,7 +538,8 @@ pub struct SandboxPermissions {
     /// Windows, WSL sandbox setup is skipped). Such commands are never
     /// auto-approved (ADR-F46). Only the user's settings set this; the agent
     /// has no way to ask for a command to run outside the sandbox — see
-    /// `agent::sandboxing`.
+    /// `agent::sandboxing`. Always off while `allow_outside_sandbox` is off
+    /// (ADR-F92).
     pub allow_unsandboxed: bool,
     /// Directory subtree grants, each paired with the canonical
     /// (symlink-resolved) target established when the grant was approved.
@@ -555,6 +560,7 @@ impl Default for SandboxPermissions {
             allow_all_hosts: false,
             network_hosts: Vec::new(),
             allow_fs_write_all: false,
+            allow_outside_sandbox: false,
             allow_unsandboxed: false,
             write_paths: Vec::new(),
             // The confusable-Unicode warning is a safety net, so it defaults on.
@@ -998,11 +1004,15 @@ fn compile_sandbox_permissions(
         .map(|hosts| hosts.0)
         .unwrap_or_default();
 
+    let allow_outside_sandbox = content.allow_outside_sandbox.unwrap_or(false);
     SandboxPermissions {
         allow_all_hosts: content.allow_all_hosts.unwrap_or(false),
         network_hosts,
         allow_fs_write_all: content.allow_fs_write_all.unwrap_or(false),
-        allow_unsandboxed: content.allow_unsandboxed.unwrap_or(false),
+        allow_outside_sandbox,
+        // ADR-F92: the switch that turns the sandbox off is a way out of it,
+        // so it only counts while running outside the sandbox is allowed.
+        allow_unsandboxed: allow_outside_sandbox && content.allow_unsandboxed.unwrap_or(false),
         write_paths,
         warn_confusable_unicode: content.warn_confusable_unicode.unwrap_or(true),
         warn_ntfs_grants: content.warn_ntfs_grants.unwrap_or(true),
@@ -1680,6 +1690,7 @@ mod tests {
         let json = json!({
             "allow_all_hosts": true,
             "network_hosts": ["github.com", "*.npmjs.org"],
+            "allow_outside_sandbox": true,
             "allow_unsandboxed": true,
             "write_paths": [
                 "/tmp/build/cache",
@@ -1705,6 +1716,34 @@ mod tests {
                 settings::GrantedWritePath::from_requested(PathBuf::from("/var/log")),
             ]
         );
+    }
+
+    /// ADR-F92: turning the sandbox off is a way out of it, so it is read as
+    /// off until running outside the sandbox is allowed.
+    #[test]
+    fn test_allow_unsandboxed_only_counts_while_outside_is_allowed() {
+        for (allow_outside_sandbox, allow_unsandboxed, expected) in [
+            (None, Some(true), false),
+            (Some(false), Some(true), false),
+            (Some(true), Some(true), true),
+            (Some(true), None, false),
+        ] {
+            let content = settings::SandboxPermissionsContent {
+                allow_outside_sandbox,
+                allow_unsandboxed,
+                ..Default::default()
+            };
+            let permissions = compile_sandbox_permissions(Some(content));
+            assert_eq!(
+                permissions.allow_unsandboxed, expected,
+                "allow_outside_sandbox: {allow_outside_sandbox:?}, allow_unsandboxed: {allow_unsandboxed:?}"
+            );
+            assert_eq!(
+                permissions.allow_outside_sandbox,
+                allow_outside_sandbox.unwrap_or(false)
+            );
+        }
+        assert!(!compile_sandbox_permissions(None).allow_outside_sandbox);
     }
 
     #[test]

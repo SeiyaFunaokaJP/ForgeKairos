@@ -62,6 +62,18 @@ pub(crate) fn init_test(cx: &mut TestAppContext) {
         let settings_store = SettingsStore::test(cx);
         cx.set_global(settings_store);
     });
+    allow_running_outside_sandbox(true, cx);
+}
+
+/// ADR-F92: most tests here run the plain `terminal` tool, whose commands run
+/// outside the sandbox, and are about what happens then, so they allow it;
+/// the tests of the refusal turn it off again.
+pub(crate) fn allow_running_outside_sandbox(allowed: bool, cx: &mut TestAppContext) {
+    cx.update(|cx| {
+        let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+        settings.sandbox_permissions.allow_outside_sandbox = allowed;
+        agent_settings::AgentSettings::override_global(settings, cx);
+    });
 }
 
 pub(crate) fn release_dropped_entities(cx: &mut TestAppContext) {
@@ -317,6 +329,7 @@ fn always_allow_tools(cx: &mut TestAppContext) {
 fn disable_sandboxing(cx: &mut TestAppContext) {
     cx.update(|cx| {
         let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+        settings.sandbox_permissions.allow_outside_sandbox = true;
         settings.sandbox_permissions.allow_unsandboxed = true;
         agent_settings::AgentSettings::override_global(settings, cx);
     });
@@ -8994,6 +9007,7 @@ async fn test_fetch_tool_unsandboxed_lifts_restrictions(cx: &mut TestAppContext)
 
     cx.update(|cx| {
         let mut settings = agent_settings::AgentSettings::get_global(cx).clone();
+        settings.sandbox_permissions.allow_outside_sandbox = true;
         settings.sandbox_permissions.allow_unsandboxed = true;
         // Allow the tool itself so only the per-host gate is under test.
         settings.tool_permissions.tools.insert(

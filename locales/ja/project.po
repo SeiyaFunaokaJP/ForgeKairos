@@ -245,6 +245,9 @@ msgstr "フォーマットに失敗しました: {error}"
 msgid "Go toolchain"
 msgstr "Go ツールチェーン"
 
+msgid "Ignored while \"Allow Running Outside the Sandbox\" is off (Settings > AI > Sandbox)."
+msgstr "「サンドボックスの外での実行を許可する」(設定 > AI > サンドボックス) がオフの間は無視されます。"
+
 msgid "Language server `{name}` cannot format"
 msgstr "言語サーバー `{name}` はフォーマットに使えません"
 

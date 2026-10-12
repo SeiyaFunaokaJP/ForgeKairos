@@ -63,8 +63,9 @@ impl AgentServerDelegate {
     /// ADR-F49 decision 19: whether `agent_id` starts outside its sandbox on
     /// this delegate — the one start the user confirmed, or, unless this start
     /// is to stay in the sandbox, every start the user's own settings let out.
+    /// Neither while running outside the sandbox is not allowed (ADR-F92).
     pub fn starts_outside_sandbox(&self, agent_id: &str, cx: &App) -> bool {
-        self.run_outside_sandbox
+        (self.run_outside_sandbox && project::agent_sandbox::outside_sandbox_allowed(cx))
             || (!self.keep_in_sandbox && custom::runs_outside_sandbox_by_user_choice(agent_id, cx))
     }
 
