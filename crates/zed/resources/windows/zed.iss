@@ -46,9 +46,12 @@ ArchitecturesInstallIn64BitMode=x64compatible
 
 [Languages]
 ; Listed first so Japanese is preselected when Windows' UI language matches none of these.
-Name: "japanese"; MessagesFile: "{#ResourcesDir}\messages\Default.ja.isl,{#ResourcesDir}\messages\ja.isl"; LicenseFile: "script\terms\terms.rtf"
-Name: "english"; MessagesFile: "compiler:Default.isl,{#ResourcesDir}\messages\en.isl"; LicenseFile: "script\terms\terms.rtf"
-Name: "simplifiedChinese"; MessagesFile: "{#ResourcesDir}\messages\Default.zh-cn.isl,{#ResourcesDir}\messages\zh-cn.isl"; LicenseFile: "script\terms\terms.rtf"
+; Upstream shows Zed Industries' Terms of Service as a license to accept. This fork
+; shows its own notice instead, as an information page: the GPL needs no acceptance
+; to install or run the program. The RTF comes from script\generate-notice-rtf.py.
+Name: "japanese"; MessagesFile: "{#ResourcesDir}\messages\Default.ja.isl,{#ResourcesDir}\messages\ja.isl"; InfoBeforeFile: "script\terms\notice.ja.rtf"
+Name: "english"; MessagesFile: "compiler:Default.isl,{#ResourcesDir}\messages\en.isl"; InfoBeforeFile: "script\terms\notice.en.rtf"
+Name: "simplifiedChinese"; MessagesFile: "{#ResourcesDir}\messages\Default.zh-cn.isl,{#ResourcesDir}\messages\zh-cn.isl"; InfoBeforeFile: "script\terms\notice.zh-cn.rtf"
 
 [UninstallDelete]
 ; Delete logs

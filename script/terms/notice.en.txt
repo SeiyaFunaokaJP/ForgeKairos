@@ -1,0 +1,17 @@
+# ForgeKairos - License and notices
+
+ForgeKairos is an independent fork of the Zed code editor. "Zed" is a trademark of Zed Industries, Inc. ForgeKairos is not affiliated with, endorsed by or supported by Zed Industries, and installing it does not create any agreement between you and Zed Industries.
+
+## License
+
+ForgeKairos is free software. Most of it is licensed under the GNU General Public License, version 3 or (at your option) any later version; some components are licensed under the Apache License, Version 2.0, as each component states. Zed is Copyright Zed Industries, Inc. You do not need to accept these licenses to install or run ForgeKairos; they set the conditions for copying, modifying and redistributing it.
+
+The source code, the full license texts (LICENSE-GPL, LICENSE-APACHE) and the notices for third-party components (THIRD_PARTY_NOTICES.md) are available at https://github.com/SeiyaFunaokaJP/ForgeKairos
+
+## No warranty
+
+ForgeKairos is provided "as is", without warranty of any kind, to the extent permitted by applicable law. See sections 15 and 16 of the GNU General Public License for details.
+
+## Third-party services
+
+ForgeKairos denies outbound network traffic by default. Services you choose to connect to (AI providers, Zed's own services, extension and language server downloads and so on) are provided by their operators under their own terms.
