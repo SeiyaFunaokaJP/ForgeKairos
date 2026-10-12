@@ -9115,7 +9115,7 @@ fn version_control_page() -> SettingsPage {
     /// ForgeKairos (ADR-F93).
     fn git_accounts_section() -> [SettingsPageItem; 2] {
         [
-            SettingsPageItem::SectionHeader("Git Accounts"),
+            SettingsPageItem::SectionHeader("Accounts"),
             SettingsPageItem::SubPageLink(SubPageLink {
                 title: "Git Accounts".into(),
                 r#type: Default::default(),

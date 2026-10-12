@@ -1294,6 +1294,10 @@ msgid "Accessible Mode"
 msgstr "アクセシビリティモード"
 
 msgctxt "settings"
+msgid "Accounts"
+msgstr "アカウント"
+
+msgctxt "settings"
 msgid "Accounts a repository can commit and push as, picked per repository in the Git panel."
 msgstr "リポジトリがコミット・プッシュに使えるアカウント。リポジトリごとに Git パネルで選びます。"
 

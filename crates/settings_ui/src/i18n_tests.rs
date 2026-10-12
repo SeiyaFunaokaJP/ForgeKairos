@@ -363,7 +363,7 @@ const ADDED_AFTER_THE_MIGRATION: &[(&str, &str)] = &[
         "AI ブラウザーパネルを下にドッキングしたときの既定の高さ (ピクセル) です。",
     ),
     // ADR-F93.
-    ("p10.i23.header", "Git アカウント"),
+    ("p10.i23.header", "アカウント"),
     ("p10.i24[git.accounts].link", "Git アカウント"),
     (
         "p10.i24[git.accounts].link_description",
