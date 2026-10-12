@@ -107,7 +107,7 @@ pub(crate) fn connection_sections(
         AiVendor::Anthropic,
         ConnectionRow {
             label: "Claude Code".into(),
-            sign_in: ConnectionSignIn::Subscription,
+            sign_in: ConnectionSignIn::SubscriptionOrApiKey,
             runner: ConnectionRunner::OfficialCli,
             status: ConnectionStatus::SeeDetails,
             destination: ConnectionDestination::LlmProviders,
@@ -656,7 +656,7 @@ mod tests {
         };
         assert_eq!(
             row_badges(&find("Claude Code")),
-            ["Subscription", "Official CLI Tab"]
+            ["Subscription or API Key", "Official CLI Tab"]
         );
         assert_eq!(
             row_badges(&find("ChatGPT Subscription")),

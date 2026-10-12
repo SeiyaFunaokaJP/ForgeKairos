@@ -10,17 +10,20 @@
 
 use std::sync::Arc;
 
+use agent_settings::AgentSettings;
 use agent_settings::ai_vendor::{
     AiVendor, ProviderSignIn, is_language_model_provider_offered_before_setup,
     sign_in_of_language_model_provider, vendor_of_external_agent,
     vendor_of_language_model_provider,
 };
+use db::kvp::KeyValueStore;
 use fs::Fs;
 use gpui::{App, Entity, FocusHandle, SharedString, WeakEntity, Window};
 use language_model::{ConfiguredModel, IconOrSvg, LanguageModelRegistry};
 use project::{AgentId, Project};
-use settings::update_settings_file;
+use settings::{LanguageModelSelection, Settings as _, update_settings_file};
 use ui::{ContextMenuItem, DocumentationAside, KeyBinding, prelude::*};
+use util::ResultExt as _;
 use workspace::Workspace;
 
 use crate::{Agent, AgentThreadSource, NewExternalAgentThread, NewThread, agent_panel::AgentPanel};
@@ -65,6 +68,10 @@ pub(crate) enum AiChoiceTarget {
     LaunchClaudeCode,
     /// The provider still needs its key or sign-in: open its settings.
     SetUpProvider,
+    /// The provider is signed in but offers no model yet (a local server with
+    /// nothing downloaded, say): open its settings rather than start a thread
+    /// that would silently keep the previous provider's model.
+    SetUpModels,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -87,7 +94,10 @@ pub(crate) struct AiChoice {
 
 impl AiChoice {
     pub(crate) fn needs_setup(&self) -> bool {
-        self.target == AiChoiceTarget::SetUpProvider
+        matches!(
+            self.target,
+            AiChoiceTarget::SetUpProvider | AiChoiceTarget::SetUpModels
+        )
     }
 }
 
@@ -103,6 +113,7 @@ pub(crate) struct NativeProviderInput {
     pub(crate) name: SharedString,
     pub(crate) icon: AiChoiceIcon,
     pub(crate) authenticated: bool,
+    pub(crate) has_models: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,7 +159,7 @@ pub(crate) fn build_ai_choice_sections(inputs: &AiChoiceInputs) -> Vec<AiChoiceS
             AiChoice {
                 label: "Claude Code".into(),
                 icon: AiChoiceIcon::Icon(IconName::AiClaude),
-                sign_in: AiSignIn::Subscription,
+                sign_in: AiSignIn::SubscriptionOrApiKey,
                 runner: AiRunner::OfficialCli,
                 placement: Some(placement),
                 target: AiChoiceTarget::LaunchClaudeCode,
@@ -204,6 +215,18 @@ pub(crate) fn build_ai_choice_sections(inputs: &AiChoiceInputs) -> Vec<AiChoiceS
             continue;
         }
         local_offered |= vendor == AiVendor::Local;
+        let target = if !provider.authenticated {
+            AiChoiceTarget::SetUpProvider
+        } else if !provider.has_models {
+            AiChoiceTarget::SetUpModels
+        } else {
+            AiChoiceTarget::NativeThread {
+                provider_id: provider.id.clone(),
+            }
+        };
+        let is_current = matches!(target, AiChoiceTarget::NativeThread { .. })
+            && inputs.selected_agent == Agent::NativeAgent
+            && inputs.native_default_provider.as_ref() == Some(&provider.id);
         push(
             vendor,
             AiChoice {
@@ -217,16 +240,8 @@ pub(crate) fn build_ai_choice_sections(inputs: &AiChoiceInputs) -> Vec<AiChoiceS
                 },
                 runner: AiRunner::BuiltInAgent,
                 placement: None,
-                target: if provider.authenticated {
-                    AiChoiceTarget::NativeThread {
-                        provider_id: provider.id.clone(),
-                    }
-                } else {
-                    AiChoiceTarget::SetUpProvider
-                },
-                is_current: provider.authenticated
-                    && inputs.selected_agent == Agent::NativeAgent
-                    && inputs.native_default_provider.as_ref() == Some(&provider.id),
+                target,
+                is_current,
             },
         );
     }
@@ -272,6 +287,7 @@ pub(crate) fn gather_ai_choice_inputs(
                 IconOrSvg::Svg(path) => AiChoiceIcon::Svg(path),
             },
             authenticated: provider.is_authenticated(cx),
+            has_models: !provider.provided_models(cx).is_empty(),
         })
         .collect();
     let native_default_provider = registry
@@ -329,9 +345,9 @@ pub(crate) fn vendor_label(vendor: AiVendor) -> SharedString {
 pub(crate) fn choice_badges(choice: &AiChoice) -> Vec<SharedString> {
     let mut badges = Vec::with_capacity(3);
     if choice.needs_setup() {
-        badges.push(match choice.sign_in {
-            AiSignIn::Subscription | AiSignIn::Account => i18n::t!("Sign In…").into(),
-            AiSignIn::Local => i18n::t!("Set Up…").into(),
+        badges.push(match (&choice.target, choice.sign_in) {
+            (AiChoiceTarget::SetUpModels, _) | (_, AiSignIn::Local) => i18n::t!("Set Up…").into(),
+            (_, AiSignIn::Subscription | AiSignIn::Account) => i18n::t!("Sign In…").into(),
             _ => i18n::t!("Add API Key…").into(),
         });
         return badges;
@@ -381,6 +397,10 @@ fn choice_explanation(choice: &AiChoice) -> SharedString {
             "Not set up yet. Opens Settings > AI > LLM Providers, where you add the key or sign in."
         )
         .into(),
+        AiChoiceTarget::SetUpModels => i18n::t!(
+            "No model is available from this provider yet. Opens Settings > AI > LLM Providers."
+        )
+        .into(),
     }
 }
 
@@ -395,6 +415,7 @@ pub(crate) fn ai_choice_menu_item(
     let badges = choice_badges(&choice);
     let explanation = choice_explanation(&choice);
     let needs_setup = choice.needs_setup();
+    let launches_claude_code = choice.target == AiChoiceTarget::LaunchClaudeCode;
     let AiChoice {
         label,
         icon,
@@ -438,6 +459,13 @@ pub(crate) fn ai_choice_menu_item(
                 .when(is_current, |this| {
                     this.child(KeyBinding::for_action_in(&NewThread, &focus_handle, cx))
                 })
+                .when(launches_claude_code, |this| {
+                    this.child(KeyBinding::for_action_in(
+                        &zed_actions::terminal::LaunchClaudeCode::default(),
+                        &focus_handle,
+                        cx,
+                    ))
+                })
                 .into_any_element()
         },
         move |window, cx| open_ai_choice(&target, &workspace, window, cx),
@@ -461,14 +489,8 @@ pub(crate) fn open_ai_choice(
                 cx,
             );
         }
-        AiChoiceTarget::SetUpProvider => {
-            window.dispatch_action(
-                Box::new(zed_actions::OpenSettingsAt {
-                    path: "llm_providers".to_string(),
-                    target: None,
-                }),
-                cx,
-            );
+        AiChoiceTarget::SetUpProvider | AiChoiceTarget::SetUpModels => {
+            open_llm_providers(window, cx);
         }
         AiChoiceTarget::ExternalAgentThread { agent_id } => {
             with_panel(workspace, window, cx, |panel, window, cx| {
@@ -482,28 +504,56 @@ pub(crate) fn open_ai_choice(
             });
         }
         AiChoiceTarget::NativeThread { provider_id } => {
-            let provider_id = provider_id.clone();
+            let Some(fs) = workspace
+                .upgrade()
+                .and_then(|workspace| workspace.read(cx).panel::<AgentPanel>(cx))
+                .map(|panel| panel.read(cx).fs())
+            else {
+                return;
+            };
+            let switch = switch_default_model_to_provider(provider_id, fs, cx);
+            if matches!(switch, ModelSwitch::NoModels) {
+                open_llm_providers(window, cx);
+                return;
+            }
             with_panel(workspace, window, cx, move |panel, window, cx| {
-                let model = switch_default_model_to_provider(&provider_id, panel.fs(), cx);
                 panel.select_native_agent_for_new_thread();
                 panel.activate_new_thread(true, AgentThreadSource::AgentPanel, window, cx);
                 // The empty draft the panel reuses was made with the model of
-                // its time; the draft has to follow the choice too. Only a
-                // draft: where no draft could be opened (no folder), the view
-                // still shows a conversation whose model is not this menu's.
-                if let Some(model) = model
+                // its time, and a new one reads the settings file before the
+                // switch reaches it; the draft has to follow the choice too.
+                // Only a draft: where no draft could be opened (no folder),
+                // the view still shows a conversation whose model is not this
+                // menu's.
+                if let ModelSwitch::Switched {
+                    model,
+                    selection: Some(selection),
+                } = switch
                     && panel.active_thread_is_draft(cx)
                     && let Some(thread) = panel.active_native_agent_thread(cx)
-                    && thread
-                        .read(cx)
-                        .model()
-                        .is_none_or(|current| current.provider_id() != model.provider.id())
                 {
-                    thread.update(cx, |thread, cx| thread.set_model(model.model, cx));
+                    thread.update(cx, |thread, cx| {
+                        thread.set_model(model.model, cx);
+                        thread.set_thinking_enabled(selection.enable_thinking, cx);
+                        thread.set_thinking_effort(selection.effort, cx);
+                        if let Some(speed) = selection.speed {
+                            thread.set_speed(speed, cx);
+                        }
+                    });
                 }
             });
         }
     }
+}
+
+fn open_llm_providers(window: &mut Window, cx: &mut App) {
+    window.dispatch_action(
+        Box::new(zed_actions::OpenSettingsAt {
+            path: "llm_providers".to_string(),
+            target: None,
+        }),
+        cx,
+    );
 }
 
 fn with_panel(
@@ -522,41 +572,118 @@ fn with_panel(
     });
 }
 
-/// Makes `provider_id`'s default model the built-in agent's, unless the
-/// current one is already that provider's: picking "Anthropic" while on one
-/// of its models keeps the model the user chose.
+enum ModelSwitch {
+    /// `selection` is `None` when the default model already was this
+    /// provider's and stays as the user chose it.
+    Switched {
+        model: ConfiguredModel,
+        selection: Option<LanguageModelSelection>,
+    },
+    NoModels,
+    UnknownProvider,
+}
+
+/// Where the model last used with each provider is kept, so that coming back
+/// to a provider through this menu returns to it. In the key-value store
+/// rather than the settings file: it is a memory of what was used, not a
+/// setting, and the settings file already holds the one that is in use.
+/// One key per provider, so that two quick switches never write over each
+/// other's entry.
+const LAST_MODEL_OF_PROVIDER_KEY_PREFIX: &str = "agent_ui_last_model_of_provider:";
+
+fn last_model_of_provider(provider_id: &str, cx: &App) -> Option<LanguageModelSelection> {
+    KeyValueStore::global(cx)
+        .read_kvp(&format!("{LAST_MODEL_OF_PROVIDER_KEY_PREFIX}{provider_id}"))
+        .log_err()
+        .flatten()
+        .and_then(|json| serde_json::from_str(&json).log_err())
+}
+
+fn remember_last_model_of_provider(selection: &LanguageModelSelection, cx: &App) {
+    let Some(json) = serde_json::to_string(selection).log_err() else {
+        return;
+    };
+    let key = format!(
+        "{LAST_MODEL_OF_PROVIDER_KEY_PREFIX}{}",
+        selection.provider.0
+    );
+    let kvp = KeyValueStore::global(cx);
+    cx.background_spawn(async move { kvp.write_kvp(key, json).await.log_err() })
+        .detach();
+}
+
+/// Makes a model of `provider_id` the built-in agent's default, unless the
+/// current one already is that provider's: picking "Anthropic" while on one
+/// of its models keeps the model the user chose. Otherwise the model last used
+/// with that provider comes back, with its thinking and effort, then one of
+/// the user's favorites from it, then the provider's own default.
 fn switch_default_model_to_provider(
     provider_id: &SharedString,
     fs: Arc<dyn Fs>,
     cx: &mut App,
-) -> Option<ConfiguredModel> {
+) -> ModelSwitch {
     let registry = LanguageModelRegistry::global(cx);
     if let Some(current) = registry.read(cx).default_model()
         && current.provider.id().0 == *provider_id
     {
-        return Some(current);
+        return ModelSwitch::Switched {
+            model: current,
+            selection: None,
+        };
     }
-    let provider = registry
+    let Some(provider) = registry
         .read(cx)
         .provider(&language_model::LanguageModelProviderId(
             provider_id.clone(),
-        ))?;
-    let model = provider
-        .default_model(cx)
-        .or_else(|| provider.recommended_models(cx).into_iter().next())
-        .or_else(|| provider.provided_models(cx).into_iter().next())?;
-    let configured = ConfiguredModel {
-        provider,
-        model: model.clone(),
+        ))
+    else {
+        return ModelSwitch::UnknownProvider;
     };
+    let models = provider.provided_models(cx);
+    let settings = AgentSettings::get_global(cx);
+    let leaving = settings.default_model.clone();
+    let remembered = last_model_of_provider(provider_id, cx)
+        .into_iter()
+        .chain(
+            settings
+                .favorite_models
+                .iter()
+                .filter(|favorite| favorite.provider.0 == provider_id.as_ref())
+                .cloned(),
+        )
+        .find_map(|selection| {
+            models
+                .iter()
+                .find(|model| model.id().0.as_ref() == selection.model)
+                .map(|model| (model.clone(), Some(selection)))
+        });
+    let Some((model, earlier_selection)) = remembered.or_else(|| {
+        provider
+            .default_model(cx)
+            .or_else(|| provider.recommended_models(cx).into_iter().next())
+            .or_else(|| models.first().cloned())
+            .map(|model| (model, None))
+    }) else {
+        return ModelSwitch::NoModels;
+    };
+    let selection = agent_settings::language_model_to_selection(&model, earlier_selection.as_ref());
+    if let Some(leaving) = &leaving {
+        remember_last_model_of_provider(leaving, cx);
+    }
+    let configured = ConfiguredModel { provider, model };
     registry.update(cx, |registry, cx| {
         registry.set_default_model(Some(configured.clone()), cx)
     });
-    let selection = agent_settings::language_model_to_selection(&model, None);
-    update_settings_file(fs, cx, move |settings, _| {
-        settings.agent.get_or_insert_default().set_model(selection);
+    update_settings_file(fs, cx, {
+        let selection = selection.clone();
+        move |settings, _| {
+            settings.agent.get_or_insert_default().set_model(selection);
+        }
     });
-    Some(configured)
+    ModelSwitch::Switched {
+        model: configured,
+        selection: Some(selection),
+    }
 }
 
 #[cfg(test)]
@@ -569,6 +696,7 @@ mod tests {
             name: name.to_string().into(),
             icon: AiChoiceIcon::Icon(IconName::Sparkle),
             authenticated,
+            has_models: true,
         }
     }
 
@@ -664,7 +792,7 @@ mod tests {
         let sections = build_ai_choice_sections(&everything());
 
         let claude_code = choice(&sections, "Claude Code");
-        assert_eq!(claude_code.sign_in, AiSignIn::Subscription);
+        assert_eq!(claude_code.sign_in, AiSignIn::SubscriptionOrApiKey);
         assert_eq!(claude_code.runner, AiRunner::OfficialCli);
         assert_eq!(claude_code.placement, Some(AiPlacement::Sandbox));
         assert_eq!(claude_code.target, AiChoiceTarget::LaunchClaudeCode);
@@ -724,7 +852,7 @@ mod tests {
         assert_eq!(
             choice_badges(claude_code),
             [
-                "Subscription",
+                "Subscription or API Key",
                 "Official CLI Tab",
                 "Outside the Sandbox (Asks First)"
             ]
@@ -797,13 +925,45 @@ mod tests {
         );
     }
 
-    /// Picking the provider the default model is already on keeps the model
-    /// the user chose and leaves the settings file alone; another provider
-    /// becomes the default with its own default model, written to the file.
-    #[gpui::test]
-    async fn picking_a_provider_keeps_a_model_of_it_and_switches_from_another(
+    fn switched_to(switch: &ModelSwitch) -> Option<(String, Option<LanguageModelSelection>)> {
+        match switch {
+            ModelSwitch::Switched { model, selection } => {
+                Some((model.model.id().0.to_string(), selection.clone()))
+            }
+            ModelSwitch::NoModels | ModelSwitch::UnknownProvider => None,
+        }
+    }
+
+    fn default_model_id(cx: &mut gpui::TestAppContext) -> Option<String> {
+        cx.update(|cx| {
+            LanguageModelRegistry::read_global(cx)
+                .default_model()
+                .map(|configured| configured.model.id().0.to_string())
+        })
+    }
+
+    /// What the settings file would say after a switch: the store of a test
+    /// does not watch the fake file system.
+    fn settings_say_default_model(
+        selection: LanguageModelSelection,
         cx: &mut gpui::TestAppContext,
     ) {
+        cx.update(|cx| {
+            cx.update_global::<settings::SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    settings.agent.get_or_insert_default().set_model(selection);
+                });
+            });
+        });
+    }
+
+    /// Picking the provider the default model is already on keeps the model
+    /// the user chose and leaves the settings file alone. Another provider
+    /// becomes the default with one of the user's favorites from it; coming
+    /// back returns to the model last used there, thinking included. A
+    /// provider with no model is not switched to.
+    #[gpui::test]
+    async fn switching_providers_comes_back_to_the_model_used_last(cx: &mut gpui::TestAppContext) {
         use language_model::fake_provider::{FakeLanguageModel, FakeLanguageModelProvider};
         use language_model::{
             LanguageModel, LanguageModelProvider, LanguageModelProviderId,
@@ -814,9 +974,9 @@ mod tests {
         fs.create_dir(::paths::settings_file().parent().expect("settings folder"))
             .await
             .expect("the settings folder can be made");
-        let fake_model = |provider: &str, id: &str| -> Arc<dyn LanguageModel> {
+        let fake_model = |provider: &str, id: &str, thinking: bool| -> Arc<dyn LanguageModel> {
             Arc::new(FakeLanguageModel::with_id_and_thinking(
-                provider, id, id, false,
+                provider, id, id, thinking,
             ))
         };
         let fake_provider = |id: &str, models: Vec<Arc<dyn LanguageModel>>| {
@@ -831,16 +991,33 @@ mod tests {
         let anthropic = fake_provider(
             "anthropic",
             vec![
-                fake_model("anthropic", "claude-default"),
-                fake_model("anthropic", "claude-chosen"),
+                fake_model("anthropic", "claude-default", true),
+                fake_model("anthropic", "claude-chosen", true),
             ],
         );
-        let openai = fake_provider("openai", vec![fake_model("openai", "gpt-default")]);
+        let openai = fake_provider(
+            "openai",
+            vec![
+                fake_model("openai", "gpt-default", false),
+                fake_model("openai", "gpt-favorite", false),
+            ],
+        );
+        let ollama = fake_provider("ollama", Vec::new());
+        let chosen = LanguageModelSelection {
+            provider: "anthropic".to_string().into(),
+            model: "claude-chosen".to_string(),
+            // Off on a model that supports it: the provider default would turn it on.
+            enable_thinking: false,
+            effort: None,
+            speed: None,
+        };
         cx.update(|cx| {
             let settings_store = settings::SettingsStore::test(cx);
             cx.set_global(settings_store);
+            cx.set_global(db::AppDatabase::test_new());
+            AgentSettings::register(cx);
             LanguageModelRegistry::test(cx);
-            let chosen = anthropic
+            let chosen_model = anthropic
                 .provided_models(cx)
                 .get(1)
                 .cloned()
@@ -848,13 +1025,27 @@ mod tests {
             LanguageModelRegistry::global(cx).update(cx, |registry, cx| {
                 registry.register_provider(anthropic.clone(), cx);
                 registry.register_provider(openai.clone(), cx);
+                registry.register_provider(ollama.clone(), cx);
                 registry.set_default_model(
                     Some(ConfiguredModel {
                         provider: anthropic.clone(),
-                        model: chosen,
+                        model: chosen_model,
                     }),
                     cx,
                 );
+            });
+            cx.update_global::<settings::SettingsStore, _>(|store, cx| {
+                store.update_user_settings(cx, |settings| {
+                    let agent = settings.agent.get_or_insert_default();
+                    agent.set_model(chosen.clone());
+                    agent.favorite_models = vec![LanguageModelSelection {
+                        provider: "openai".to_string().into(),
+                        model: "gpt-favorite".to_string(),
+                        enable_thinking: false,
+                        effort: None,
+                        speed: None,
+                    }];
+                });
             });
         });
 
@@ -862,36 +1053,82 @@ mod tests {
             cx.update(|cx| switch_default_model_to_provider(&"anthropic".into(), fs.clone(), cx));
         cx.run_until_parked();
         assert_eq!(
-            kept.map(|configured| configured.model.id().0.to_string()),
-            Some("claude-chosen".to_string())
+            switched_to(&kept),
+            Some(("claude-chosen".to_string(), None))
         );
         assert!(
             fs.load(::paths::settings_file()).await.is_err(),
             "nothing is written when the provider does not change"
         );
 
-        let switched =
+        let to_openai =
             cx.update(|cx| switch_default_model_to_provider(&"openai".into(), fs.clone(), cx));
         cx.run_until_parked();
-        assert_eq!(
-            switched.map(|configured| configured.model.id().0.to_string()),
-            Some("gpt-default".to_string())
-        );
-        cx.update(|cx| {
-            assert_eq!(
-                LanguageModelRegistry::read_global(cx)
-                    .default_model()
-                    .map(|configured| configured.model.id().0.to_string()),
-                Some("gpt-default".to_string())
-            );
-        });
+        let (model, selection) = switched_to(&to_openai).expect("switched to OpenAI");
+        assert_eq!(model, "gpt-favorite", "a favorite comes before the default");
+        let selection = selection.expect("a new selection");
+        assert_eq!(default_model_id(cx), Some("gpt-favorite".to_string()));
         let written = fs
             .load(::paths::settings_file())
             .await
             .expect("the switch is written to the settings file");
         assert!(
-            written.contains("\"openai\"") && written.contains("\"gpt-default\""),
+            written.contains("\"openai\"") && written.contains("\"gpt-favorite\""),
             "{written}"
+        );
+        settings_say_default_model(selection, cx);
+
+        let back =
+            cx.update(|cx| switch_default_model_to_provider(&"anthropic".into(), fs.clone(), cx));
+        cx.run_until_parked();
+        assert_eq!(
+            switched_to(&back),
+            Some(("claude-chosen".to_string(), Some(chosen))),
+            "the model last used with Anthropic comes back, thinking included"
+        );
+        assert_eq!(default_model_id(cx), Some("claude-chosen".to_string()));
+
+        let to_ollama =
+            cx.update(|cx| switch_default_model_to_provider(&"ollama".into(), fs.clone(), cx));
+        cx.run_until_parked();
+        assert!(matches!(to_ollama, ModelSwitch::NoModels));
+        assert_eq!(
+            default_model_id(cx),
+            Some("claude-chosen".to_string()),
+            "a provider without a model does not take the default"
+        );
+    }
+
+    #[test]
+    fn a_provider_without_a_model_opens_its_settings() {
+        let mut inputs = everything();
+        inputs.native_default_provider = Some("ollama".into());
+        for provider in &mut inputs.native_providers {
+            if provider.id.as_ref() == "ollama" {
+                provider.has_models = false;
+            }
+        }
+        let sections = build_ai_choice_sections(&inputs);
+        let ollama = choice(&sections, "Ollama");
+        assert_eq!(ollama.target, AiChoiceTarget::SetUpModels);
+        assert_eq!(choice_badges(ollama), ["Set Up…"]);
+        assert!(
+            !ollama.is_current,
+            "the shortcut would not open it, so it does not show there"
+        );
+    }
+
+    #[test]
+    fn an_unauthenticated_default_provider_is_not_marked_current() {
+        let mut inputs = everything();
+        inputs.native_default_provider = Some("openai".into());
+        let sections = build_ai_choice_sections(&inputs);
+        assert!(
+            sections
+                .iter()
+                .flat_map(|section| &section.choices)
+                .all(|choice| !choice.is_current),
+            "OpenAI still needs its key, so no entry carries the shortcut"
         );
     }
 

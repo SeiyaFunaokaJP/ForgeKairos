@@ -1190,6 +1190,9 @@ msgstr "インストール済みのエージェントはありません。"
 msgid "No matches"
 msgstr "一致なし"
 
+msgid "No model is available from this provider yet. Opens Settings > AI > LLM Providers."
+msgstr "このプロバイダーから使えるモデルがまだありません。「設定 > AI > LLM プロバイダー」を開きます。"
+
 msgid "No model is configured for summarizing thread titles."
 msgstr "スレッドタイトルの要約に使用するモデルが設定されていません。"
 
