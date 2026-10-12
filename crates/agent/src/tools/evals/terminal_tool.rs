@@ -229,6 +229,7 @@ impl TerminalToolTest {
                 date: chrono::Local::now().format("%Y-%m-%d").to_string(),
                 user_agents_md: None,
                 sandboxing: false,
+                git_operations_enabled: true,
                 is_linux: cfg!(target_os = "linux"),
                 is_windows: cfg!(target_os = "windows"),
                 restricted_workspace: false,
