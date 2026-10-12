@@ -140,7 +140,10 @@ pub fn upsert_account(
         !accounts
             .iter()
             .any(|existing| existing.id == account.id && Some(existing.id.as_str()) != original_id),
-        i18n::t!("A git account named \"{id}\" already exists", id = account.id)
+        i18n::t!(
+            "A git account named \"{id}\" already exists",
+            id = account.id
+        )
     );
     let position = original_id.and_then(|original_id| {
         accounts

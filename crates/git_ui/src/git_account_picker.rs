@@ -12,7 +12,9 @@ use project::{
     project_settings::ProjectSettings,
 };
 use settings::Settings as _;
-use ui::{ButtonLike, ContextMenu, ContextMenuEntry, IconPosition, PopoverMenu, Tooltip, prelude::*};
+use ui::{
+    ButtonLike, ContextMenu, ContextMenuEntry, IconPosition, PopoverMenu, Tooltip, prelude::*,
+};
 
 /// The settings window's path to the accounts page.
 const GIT_ACCOUNTS_SETTINGS_PATH: &str = "git.accounts";

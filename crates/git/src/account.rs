@@ -46,7 +46,9 @@ impl GitIdentity {
         for value in [name, email] {
             anyhow::ensure!(
                 !value.contains(['<', '>']) && !value.chars().any(char::is_control),
-                i18n::t!("The account's name and email cannot contain '<', '>' or control characters")
+                i18n::t!(
+                    "The account's name and email cannot contain '<', '>' or control characters"
+                )
             );
         }
         let signing_key = signing_key
@@ -112,7 +114,9 @@ impl GitHttpsLogin {
             host.chars()
                 .all(|character| character.is_ascii_alphanumeric()
                     || matches!(character, '-' | '.' | ':')),
-            i18n::t!("The account's host must be a host name such as github.com, optionally with a port")
+            i18n::t!(
+                "The account's host must be a host name such as github.com, optionally with a port"
+            )
         );
         anyhow::ensure!(!login.is_empty(), i18n::t!("The account has no login"));
         anyhow::ensure!(
