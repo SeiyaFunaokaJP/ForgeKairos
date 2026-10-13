@@ -17,6 +17,7 @@ FONTS = {
     "en": ("Segoe UI", 0),
     "ja": ("Yu Gothic UI", 128),
     "zh-cn": ("Microsoft YaHei UI", 134),
+    "zh-tw": ("Microsoft JhengHei UI", 136),
 }
 
 

@@ -53,12 +53,33 @@ fn is_selected(choice: &LanguageChoice, current_value: &str) -> bool {
     choice.value.eq_ignore_ascii_case(current_value)
 }
 
-/// The label of the chosen language, or the raw value when it names a language
-/// that has no translation files (Zed then shows English and says so).
-pub(crate) fn current_label(choices: &[LanguageChoice], current_value: &str) -> SharedString {
-    choices
+/// The choice the UI is shown in: the one written in the setting, or else the one
+/// it negotiates to (`zh-TW` is shown in `zh-Hant`, `en-GB` in English), which the
+/// setting keeps as the user wrote it.
+fn shown_choice<'a>(
+    choices: &'a [LanguageChoice],
+    current_value: &str,
+) -> Option<&'a LanguageChoice> {
+    if let Some(choice) = choices
         .iter()
         .find(|choice| is_selected(choice, current_value))
+    {
+        return Some(choice);
+    }
+    let tags = choices
+        .iter()
+        .filter(|choice| choice.value != SYSTEM)
+        .map(|choice| choice.value.as_ref());
+    let shown = i18n_settings::shown_tag(current_value, tags)?;
+    choices
+        .iter()
+        .find(|choice| choice.value.eq_ignore_ascii_case(&shown))
+}
+
+/// The label of the language the UI is shown in, or the raw value when it names a
+/// language that has no translation files (Zed then shows English and says so).
+pub(crate) fn current_label(choices: &[LanguageChoice], current_value: &str) -> SharedString {
+    shown_choice(choices, current_value)
         .map(|choice| choice.label.clone())
         .unwrap_or_else(|| SharedString::from(current_value.to_string()))
 }
@@ -88,6 +109,7 @@ pub(crate) fn render_ui_language_dropdown(
     );
     let choices = choices.read(cx).clone();
     let label = current_label(&choices, &current_value);
+    let shown_value = shown_choice(&choices, &current_value).map(|choice| choice.value.clone());
 
     let menu = window.use_keyed_state(
         SharedString::from(format!("ui-language-menu-{current_value}-{language_key}")),
@@ -95,7 +117,7 @@ pub(crate) fn render_ui_language_dropdown(
         move |window, cx| {
             ContextMenu::new(window, cx, move |mut menu, _, _| {
                 for choice in choices {
-                    let selected = is_selected(&choice, &current_value);
+                    let selected = shown_value.as_ref() == Some(&choice.value);
                     let file = file.clone();
                     menu = menu.toggleable_entry(
                         choice.label,

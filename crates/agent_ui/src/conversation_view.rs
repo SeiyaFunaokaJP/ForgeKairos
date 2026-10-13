@@ -1949,11 +1949,7 @@ impl ConversationView {
                 })
             });
 
-        let agent_display_name = self
-            .agent_server_store
-            .read(cx)
-            .agent_display_name(&agent_id.clone())
-            .unwrap_or_else(|| agent_id.0.clone());
+        let agent_display_name = agent_display_name(self.agent_server_store.read(cx), &agent_id);
 
         let agent_icon = self.agent.logo();
         let agent_icon_from_external_svg = self
@@ -2475,34 +2471,34 @@ impl ConversationView {
                         .and_then(|entry| entry.title())
                 })
                 .unwrap_or_else(|| i18n::tr(DEFAULT_THREAD_TITLE).into()),
-            ServerState::LoadError { error, .. } => match error {
-                LoadError::Unsupported { .. } => {
-                    i18n::t!("Upgrade {}", self.agent.agent_id()).into()
+            ServerState::LoadError { error, .. } => {
+                let agent_name =
+                    agent_display_name(self.agent_server_store.read(cx), &self.agent.agent_id());
+                match error {
+                    LoadError::Unsupported { .. } => i18n::t!("Upgrade {}", agent_name).into(),
+                    LoadError::FailedToInstall(_) => {
+                        i18n::t!("Failed to Install {}", agent_name).into()
+                    }
+                    LoadError::Exited { .. } => i18n::t!("{} Exited", agent_name).into(),
+                    LoadError::Other(_) => i18n::t!("Error Loading {}", agent_name).into(),
+                    LoadError::SandboxUnavailable(_) => {
+                        i18n::t!("Can't Start {} in the Sandbox", agent_name).into()
+                    }
+                    LoadError::SandboxHostsNotAllowed(_) => {
+                        i18n::t!("{} Needs Hosts Added to the Allowlist", agent_name).into()
+                    }
+                    // The thread is one the user knows by its name; the card
+                    // says why it has not come back.
+                    LoadError::SessionStartedOutsideSandbox => ThreadMetadataStore::try_global(cx)
+                        .and_then(|store| {
+                            store
+                                .read(cx)
+                                .entry(self.thread_id)
+                                .and_then(|entry| entry.title())
+                        })
+                        .unwrap_or_else(|| i18n::tr(DEFAULT_THREAD_TITLE).into()),
                 }
-                LoadError::FailedToInstall(_) => {
-                    i18n::t!("Failed to Install {}", self.agent.agent_id()).into()
-                }
-                LoadError::Exited { .. } => i18n::t!("{} Exited", self.agent.agent_id()).into(),
-                LoadError::Other(_) => i18n::t!("Error Loading {}", self.agent.agent_id()).into(),
-                LoadError::SandboxUnavailable(_) => {
-                    i18n::t!("Can't Start {} in the Sandbox", self.agent.agent_id()).into()
-                }
-                LoadError::SandboxHostsNotAllowed(_) => i18n::t!(
-                    "{} Needs Hosts Added to the Allowlist",
-                    self.agent.agent_id()
-                )
-                .into(),
-                // The thread is one the user knows by its name; the card
-                // says why it has not come back.
-                LoadError::SessionStartedOutsideSandbox => ThreadMetadataStore::try_global(cx)
-                    .and_then(|store| {
-                        store
-                            .read(cx)
-                            .entry(self.thread_id)
-                            .and_then(|entry| entry.title())
-                    })
-                    .unwrap_or_else(|| i18n::tr(DEFAULT_THREAD_TITLE).into()),
-            },
+            }
         }
     }
 
@@ -2865,11 +2861,10 @@ impl ConversationView {
                     let has_slash_completions =
                         !available_commands.is_empty() || !available_skills.is_empty();
 
-                    let agent_display_name = self
-                        .agent_server_store
-                        .read(cx)
-                        .agent_display_name(&self.agent.agent_id())
-                        .unwrap_or_else(|| self.agent.agent_id().0.to_string().into());
+                    let agent_display_name = agent_display_name(
+                        self.agent_server_store.read(cx),
+                        &self.agent.agent_id(),
+                    );
 
                     let new_placeholder =
                         placeholder_text(agent_display_name.as_ref(), has_slash_completions);
@@ -3396,11 +3391,8 @@ impl ConversationView {
                 SubscriptionSignIn::NotAdvertised
             };
 
-        let agent_display_name = self
-            .agent_server_store
-            .read(cx)
-            .agent_display_name(&self.agent.agent_id())
-            .unwrap_or_else(|| self.agent.agent_id().0);
+        let agent_display_name =
+            agent_display_name(self.agent_server_store.read(cx), &self.agent.agent_id());
 
         let show_fallback_description = auth_methods.len() > 1
             && description.is_none()
@@ -4046,11 +4038,8 @@ impl ConversationView {
         };
 
         let handlers = Self::request_elicitation_card_handlers(view);
-        let agent_display_name = self
-            .agent_server_store
-            .read(cx)
-            .agent_display_name(&self.agent.agent_id())
-            .unwrap_or_else(|| self.agent.agent_id().0);
+        let agent_display_name =
+            agent_display_name(self.agent_server_store.read(cx), &self.agent.agent_id());
 
         store
             .read(cx)
@@ -5580,8 +5569,21 @@ fn native_available_skills(
         .collect()
 }
 
+/// The built-in agent is stored under [`agent::ZED_AGENT_ID`], which is not the name it is shown by.
+pub(crate) fn agent_display_name(
+    agent_server_store: &AgentServerStore,
+    agent_id: &AgentId,
+) -> SharedString {
+    if agent_id.as_ref() == agent::ZED_AGENT_ID.as_ref() {
+        return agent::NATIVE_AGENT_DISPLAY_NAME.into();
+    }
+    agent_server_store
+        .agent_display_name(agent_id)
+        .unwrap_or_else(|| agent_id.0.clone())
+}
+
 fn placeholder_text(agent_name: &str, has_commands: bool) -> String {
-    if agent_name == agent::ZED_AGENT_ID.as_ref() {
+    if agent_name == agent::NATIVE_AGENT_DISPLAY_NAME {
         i18n::t!(
             "Message the {}, @ to include context, / for commands",
             agent_name
@@ -7255,6 +7257,89 @@ pub(crate) mod tests {
         );
     }
 
+    /// Translations of "Open Trust Settings" are long. In the callout's actions
+    /// slot the button took its full width beside the title, leaving the title
+    /// and the description a narrow, tall column that a short panel cut off.
+    #[gpui::test]
+    async fn test_restricted_workspace_notice_wraps_its_text_above_the_button(
+        cx: &mut TestAppContext,
+    ) {
+        init_test(cx);
+        cx.update(|cx| {
+            project::trusted_worktrees::init(Default::default(), cx);
+            language_model::LanguageModelRegistry::test(cx);
+        });
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(util::path!("/project"), json!({ "main.rs": "" }))
+            .await;
+        let project =
+            Project::test_with_worktree_trust(fs, [Path::new(util::path!("/project"))], cx).await;
+        let (conversation_view, cx) = setup_conversation_view_in_project(
+            StubAgentServer::new(StubAgentConnection::new()),
+            None,
+            project,
+            cx,
+        );
+        cx.run_until_parked();
+        add_to_workspace_with_size(conversation_view, true, cx);
+        cx.simulate_resize(gpui::size(px(360.), px(320.)));
+        cx.run_until_parked();
+
+        let notice = cx
+            .debug_bounds("restricted-workspace-notice")
+            .expect("an untrusted project shows the notice");
+        let description = cx
+            .debug_bounds("restricted-workspace-notice-description")
+            .expect("the notice has a description");
+        let button = cx
+            .debug_bounds("restricted-workspace-notice-button")
+            .expect("the notice has a button");
+
+        assert!(
+            description.size.width > notice.size.width * 0.75,
+            "the description takes the notice's width: {description:?} in {notice:?}"
+        );
+        assert!(
+            button.top() >= description.bottom(),
+            "the button is under the description: {button:?}, {description:?}"
+        );
+        assert!(
+            description.size.height > px(20.),
+            "the description wraps onto several lines: {description:?}"
+        );
+        assert!(
+            button.bottom() <= notice.bottom(),
+            "the button is inside the notice: {button:?} in {notice:?}"
+        );
+
+        // A panel too short for the notice: it scrolls instead of running past
+        // the bottom, where the button was cut off.
+        let viewport_height = px(120.);
+        cx.simulate_resize(gpui::size(px(360.), viewport_height));
+        cx.run_until_parked();
+        let notice = cx
+            .debug_bounds("restricted-workspace-notice")
+            .expect("an untrusted project shows the notice");
+        assert!(
+            notice.bottom() <= viewport_height,
+            "the notice {notice:?} ends inside the {viewport_height:?} panel"
+        );
+        cx.simulate_event(gpui::ScrollWheelEvent {
+            position: notice.center(),
+            delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-10_000.))),
+            modifiers: gpui::Modifiers::default(),
+            touch_phase: gpui::TouchPhase::Moved,
+        });
+        cx.run_until_parked();
+        let button = cx
+            .debug_bounds("restricted-workspace-notice-button")
+            .expect("the notice has a button");
+        assert!(
+            button.bottom() <= notice.bottom(),
+            "scrolling the notice brings the end of the button {button:?} into it {notice:?}"
+        );
+    }
+
     #[gpui::test]
     async fn test_session_notices_render_and_dismiss_outside_transcript(cx: &mut TestAppContext) {
         init_test(cx);
@@ -7551,6 +7636,54 @@ pub(crate) mod tests {
                 "pending form elicitations that predate ThreadView construction should be usable"
             );
         });
+    }
+
+    /// The built-in agent's ID is a stored value that still says "Zed Agent";
+    /// the message editor names it by the product's name in every language.
+    #[gpui::test]
+    async fn test_native_agent_placeholder_uses_display_name(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let (native_name, custom_name) = project.read_with(cx, |project, cx| {
+            let store = project.agent_server_store().read(cx);
+            (
+                agent_display_name(store, &agent::ZED_AGENT_ID),
+                agent_display_name(store, &AgentId::new("Some Agent")),
+            )
+        });
+        assert_eq!(native_name.as_ref(), agent::NATIVE_AGENT_DISPLAY_NAME);
+        assert_eq!(custom_name.as_ref(), "Some Agent");
+
+        {
+            let _english = i18n::test_support::LocaleOverride::new(None);
+            assert_eq!(
+                placeholder_text(&native_name, true),
+                format!(
+                    "Message the {}, @ to include context, / for commands",
+                    agent::NATIVE_AGENT_DISPLAY_NAME
+                )
+            );
+            assert_eq!(
+                placeholder_text(&custom_name, false),
+                "Message Some Agent — @ to include context"
+            );
+        }
+        {
+            let _japanese = i18n::test_support::LocaleOverride::new(Some(
+                i18n_catalog::test_support::bundled_catalog("ja"),
+            ));
+            let placeholder = placeholder_text(&native_name, true);
+            assert_eq!(
+                placeholder,
+                format!(
+                    "{} にメッセージを送信、@ でコンテキストを追加、/ でコマンド",
+                    agent::NATIVE_AGENT_DISPLAY_NAME
+                )
+            );
+            assert!(!placeholder.contains(agent::ZED_AGENT_ID.as_ref()));
+        }
     }
 
     #[gpui::test]
@@ -9325,6 +9458,15 @@ pub(crate) mod tests {
     ) -> (Entity<ConversationView>, &mut VisualTestContext) {
         let fs = FakeFs::new(cx.executor());
         let project = Project::test(fs, [], cx).await;
+        setup_conversation_view_in_project(agent, initial_content, project, cx)
+    }
+
+    fn setup_conversation_view_in_project(
+        agent: impl AgentServer + 'static,
+        initial_content: Option<AgentInitialContent>,
+        project: Entity<Project>,
+        cx: &mut TestAppContext,
+    ) -> (Entity<ConversationView>, &mut VisualTestContext) {
         let (multi_workspace, cx) =
             cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
         let workspace = multi_workspace.read_with(cx, |mw, _| mw.workspace().clone());

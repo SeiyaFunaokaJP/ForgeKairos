@@ -5166,7 +5166,7 @@ msgstr "마지막 창이 닫힐 때 수행할 동작을 설정합니다."
 
 msgctxt "settings"
 msgid "What to do when using the 'close active item' action with no tabs."
-msgstr "탭이 없을 때 'close active item' 작업을 사용하면 수행할 동작을 설정합니다."
+msgstr "탭이 없을 때 '활성 항목 닫기' 작업을 사용하면 수행할 동작을 설정합니다."
 
 msgctxt "settings"
 msgid "What to restore from the previous session when opening Zed."

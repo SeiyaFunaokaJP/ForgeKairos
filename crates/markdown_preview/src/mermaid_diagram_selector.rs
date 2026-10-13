@@ -19,6 +19,8 @@ use workspace::{ModalView, Workspace};
 use crate::InsertMermaidDiagramPicker;
 use crate::markdown_preview_view::MarkdownPreviewView;
 
+const SELECTOR_WIDTH: f32 = 24.;
+
 pub fn register(workspace: &mut Workspace) {
     workspace.register_action(|workspace, _: &InsertMermaidDiagramPicker, window, cx| {
         let Some(editor) =
@@ -44,14 +46,21 @@ impl MermaidDiagramSelector {
             matches: MermaidDiagramKind::ALL.to_vec(),
             selected_index: 0,
         };
-        let picker = cx.new(|cx| Picker::uniform_list(delegate, window, cx));
+        // The picker draws its own width (34 rem by default) and overflows the
+        // narrower container, whose background stops short of the rows.
+        let picker = cx.new(|cx| {
+            Picker::uniform_list(delegate, window, cx).initial_width(rems(SELECTOR_WIDTH))
+        });
         Self { picker }
     }
 }
 
 impl Render for MermaidDiagramSelector {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex().w(rems(24.)).child(self.picker.clone())
+        v_flex()
+            .w(rems(SELECTOR_WIDTH))
+            .debug_selector(|| "markdown-selector".into())
+            .child(self.picker.clone())
     }
 }
 
@@ -162,9 +171,13 @@ impl PickerDelegate for MermaidDiagramSelectorDelegate {
                 .toggle_state(selected)
                 .child(Label::new(diagram.label()))
                 .end_slot(
-                    Label::new(diagram_keyword(diagram))
-                        .size(LabelSize::Small)
-                        .color(Color::Muted),
+                    div()
+                        .debug_selector(move || format!("mermaid-diagram-keyword-{ix}"))
+                        .child(
+                            Label::new(diagram_keyword(diagram))
+                                .size(LabelSize::Small)
+                                .color(Color::Muted),
+                        ),
                 ),
         )
     }
@@ -199,6 +212,32 @@ mod tests {
                 diagram.label()
             );
         }
+    }
+
+    /// The picker used to keep its default width inside the narrower selector,
+    /// so the keywords at the end of the rows were drawn past the background,
+    /// over whatever was beside the modal.
+    #[gpui::test]
+    async fn the_rows_stay_inside_the_selector(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            workspace::AppState::test(cx);
+            editor::init(cx);
+        });
+        let (_selector, cx) = cx.add_window_view(|window, cx| {
+            MermaidDiagramSelector::new(WeakEntity::new_invalid(), window, cx)
+        });
+        cx.run_until_parked();
+
+        let selector = cx
+            .debug_bounds("markdown-selector")
+            .expect("the selector is drawn");
+        let keyword = cx
+            .debug_bounds("mermaid-diagram-keyword-0")
+            .expect("the first row shows its keyword");
+        assert!(
+            keyword.right() <= selector.right() && keyword.size.width > gpui::px(0.),
+            "the keyword {keyword:?} is inside the selector {selector:?}"
+        );
     }
 
     #[test]

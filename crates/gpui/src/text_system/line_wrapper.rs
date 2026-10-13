@@ -85,7 +85,10 @@ impl LineWrapper {
                             }
                         } else {
                             // CJK may not be space separated, e.g.: `Hello world你好世界`
-                            if c != ' ' && first_non_whitespace_ix.is_some() {
+                            if c != ' '
+                                && first_non_whitespace_ix.is_some()
+                                && !Self::is_kinsoku_prohibited_break(prev_c, c)
+                            {
                                 last_candidate_ix = ix;
                                 last_candidate_width = width;
                             }
@@ -433,7 +436,10 @@ impl LineWrapper {
                     last_candidate_ix = ix;
                     last_candidate_width = width;
                 }
-            } else if c != ' ' && first_non_whitespace_ix.is_some() {
+            } else if c != ' '
+                && first_non_whitespace_ix.is_some()
+                && !Self::is_kinsoku_prohibited_break(prev_c, c)
+            {
                 last_candidate_ix = ix;
                 last_candidate_width = width;
             }
@@ -522,6 +528,15 @@ impl LineWrapper {
         // Bengali (https://en.wikipedia.org/wiki/Bengali_(Unicode_block))
         matches!(c, '\u{0980}'..='\u{09FF}') ||
 
+        // Hangul separates words with spaces, so a Korean word must not be
+        // broken between syllables the way Chinese or Japanese text is.
+        // Jamo, Compatibility Jamo, Jamo Extended-A, Syllables, Jamo Extended-B.
+        matches!(c, '\u{1100}'..='\u{11FF}') ||
+        matches!(c, '\u{3130}'..='\u{318F}') ||
+        matches!(c, '\u{A960}'..='\u{A97F}') ||
+        matches!(c, '\u{AC00}'..='\u{D7AF}') ||
+        matches!(c, '\u{D7B0}'..='\u{D7FF}') ||
+
         // Some other known special characters that should be treated as word characters,
         // e.g. `a-b`, `var_name`, `I'm`/`won’t`, '@mention`, `#hashtag`, `100%`, `3.1415`,
         // `2^3`, `a~b`, `a=1`, `Self::new`, etc. Trailing punctuation like `,`, `.`, `:`, `;`
@@ -538,6 +553,72 @@ impl LineWrapper {
 
         // Non-breaking glue characters
         matches!(c, '\u{202F}' | '\u{00A0}' | '\u{2011}')
+    }
+
+    /// Simple kinsoku shori for CJK text: a break between `prev_c` and `c` is not allowed
+    /// when it would start a line with closing punctuation (or a small kana / prolonged
+    /// sound mark) or end a line with an opening bracket. The wrapper then falls back to
+    /// the previous candidate, i.e. it breaks one character earlier.
+    #[inline(always)]
+    pub(crate) fn is_kinsoku_prohibited_break(prev_c: char, c: char) -> bool {
+        matches!(
+            c,
+            '、' | '。'
+                | '，'
+                | '．'
+                | '：'
+                | '；'
+                | '！'
+                | '？'
+                | '）'
+                | '］'
+                | '｝'
+                | '」'
+                | '』'
+                | '】'
+                | '〕'
+                | '〉'
+                | '》'
+                | '〙'
+                | '〗'
+                | '…'
+                | '‥'
+                | '・'
+                | '〜'
+                | '々'
+                | 'ー'
+                | 'ぁ'
+                | 'ぃ'
+                | 'ぅ'
+                | 'ぇ'
+                | 'ぉ'
+                | 'っ'
+                | 'ゃ'
+                | 'ゅ'
+                | 'ょ'
+                | 'ゎ'
+                | 'ゕ'
+                | 'ゖ'
+                | 'ァ'
+                | 'ィ'
+                | 'ゥ'
+                | 'ェ'
+                | 'ォ'
+                | 'ッ'
+                | 'ャ'
+                | 'ュ'
+                | 'ョ'
+                | 'ヮ'
+                | 'ヵ'
+                | 'ヶ'
+                | 'ゝ'
+                | 'ゞ'
+                | 'ヽ'
+                | 'ヾ'
+        ) || matches!(
+            prev_c,
+            '（' | '［' | '｛' | '「' | '『' | '【' | '〔' | '〈' | '《' | '〘' | '〖'
+        )
     }
 
     #[inline(always)]
@@ -1260,10 +1341,13 @@ mod tests {
         assert_word("গিয়েছিলেন");
         assert_word("ছেলে");
         assert_word("হচ্ছিল");
+        // Hangul (Korean separates words with spaces)
+        assert_word("안녕하세요");
+        assert_word("ᄀᄁᆨ");
+        assert_word("ㄱㅏ");
 
         // non-word characters
         assert_not_word("你好");
-        assert_not_word("안녕하세요");
         assert_not_word("こんにちは");
         assert_not_word("😀😁😂");
         assert_not_word("()[]{}<>");
@@ -1273,6 +1357,51 @@ mod tests {
         assert_word("\u{202F}"); // NNBSP " "
         assert_word("\u{00A0}"); // NBSP " "
         assert_word("\u{2011}"); // NBH "‑"
+    }
+
+    #[test]
+    fn test_wrap_line_hangul_and_kinsoku() {
+        let mut wrapper = build_wrapper();
+        let mut wrap = |text: &str| {
+            wrapper
+                .wrap_line(
+                    &[LineFragment::text(text)],
+                    px(72.),
+                    IndentAdjustment::default(),
+                )
+                .collect::<Vec<_>>()
+        };
+
+        // Korean breaks at the space, not between syllables of a word.
+        assert_eq!(wrap("가나다 라마바사 아자"), &[Boundary::new(10, 0)]);
+        // A Hangul word wider than the line still has to break inside.
+        assert_eq!(wrap("가나다라마바사아자차"), &[Boundary::new(21, 0)]);
+
+        // Closing punctuation does not start a line: break one character earlier.
+        assert_eq!(wrap("あいうえおかき。く"), &[Boundary::new(18, 0)]);
+        assert_eq!(wrap("あいうえおかき，No"), &[Boundary::new(18, 0)]);
+        assert_eq!(wrap("あいうえおかきー"), &[Boundary::new(18, 0)]);
+        // An opening bracket does not end a line.
+        assert_eq!(wrap("あいうえおい「かき」"), &[Boundary::new(18, 0)]);
+        // Ordinary CJK text still breaks between any two characters.
+        assert_eq!(wrap("あいうえおかきく"), &[Boundary::new(21, 0)]);
+    }
+
+    #[test]
+    fn test_truncate_wrapped_line_kinsoku() {
+        let mut wrapper = build_wrapper();
+        let text = "あいうえおかき。くけこさしすせそたちつてと";
+        let (result, _) = wrapper.truncate_wrapped_line(
+            text.into(),
+            px(72.),
+            2,
+            "…",
+            &generate_test_runs(&[text.len()]),
+            TruncateFrom::End,
+        );
+        // The first line ends before `き` so `。` does not start the second line,
+        // which then holds `き。くけこさ` plus the ellipsis.
+        assert_eq!(result.as_ref(), "あいうえおかき。くけこさ…");
     }
 
     // For compatibility with the test macro

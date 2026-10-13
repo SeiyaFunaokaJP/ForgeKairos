@@ -3512,28 +3512,61 @@ impl ThreadView {
             .as_native_thread(cx)
             .is_some_and(|thread| thread.read(cx).profile_was_downgraded(cx));
 
+        // The button sits under the description rather than in the callout's
+        // actions slot: there it takes its full width beside the title, which
+        // squeezes the title and the description into a narrow, tall column
+        // once the translated label is long. In a panel too short for the whole
+        // notice, the notice scrolls as one unit (text and button together) and
+        // leaves at least half of the height to the message editor.
         Some(
-            Callout::new()
-                .border_position(CalloutBorderPosition::Top)
-                .icon(IconName::Warning)
-                .severity(Severity::Warning)
-                .title(if downgraded {
-                    i18n::t!("All tools are disabled because this project isn't trusted")
-                } else {
-                    i18n::t!("Some tools are disabled because this project isn't trusted")
-                })
-                .description(
-                    i18n::t!("Reading and writing files and running commands are unavailable until you trust the folder."),
-                )
-                .actions_slot(
-                    Button::new("trust-restricted-workspace", i18n::t!("Open Trust Settings"))
-                        .label_size(LabelSize::Small)
-                        .on_click(|_, window, cx| {
-                            window.dispatch_action(
-                                workspace::ToggleWorktreeSecurity.boxed_clone(),
-                                cx,
-                            );
-                        }),
+            div()
+                .id("restricted-workspace-notice")
+                .flex_shrink_0()
+                .max_h(gpui::relative(0.5))
+                .overflow_y_scroll()
+                .debug_selector(|| "restricted-workspace-notice".into())
+                .child(
+                    Callout::new()
+                        .border_position(CalloutBorderPosition::Top)
+                        .icon(IconName::Warning)
+                        .severity(Severity::Warning)
+                        .title(if downgraded {
+                            i18n::t!("All tools are disabled because this project isn't trusted")
+                        } else {
+                            i18n::t!("Some tools are disabled because this project isn't trusted")
+                        })
+                        .scrollable_description(false)
+                        .description_slot(
+                            v_flex()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .debug_selector(|| {
+                                            "restricted-workspace-notice-description".into()
+                                        })
+                                        .text_color(cx.theme().colors().text_muted)
+                                        .child(i18n::t!("Reading and writing files and running commands are unavailable until you trust the folder.")),
+                                )
+                                .child(
+                                    h_flex()
+                                        .debug_selector(|| {
+                                            "restricted-workspace-notice-button".into()
+                                        })
+                                        .child(
+                                            Button::new(
+                                                "trust-restricted-workspace",
+                                                i18n::t!("Open Trust Settings"),
+                                            )
+                                            .label_size(LabelSize::Small)
+                                            .on_click(|_, window, cx| {
+                                                window.dispatch_action(
+                                                    workspace::ToggleWorktreeSecurity.boxed_clone(),
+                                                    cx,
+                                                );
+                                            }),
+                                        ),
+                                ),
+                        ),
                 )
                 .into_any_element(),
         )
@@ -4769,7 +4802,9 @@ impl ThreadView {
                         .border_color(cx.theme().colors().border)
                         .when(editor_expanded, |this| this.h(vh(0.8, window)))
                 } else {
-                    this.flex_1().size_full()
+                    // Without `min_h_0` the area grows to its content and is
+                    // cut by the bottom of a short panel.
+                    this.flex_1().size_full().min_h_0()
                 }
             })
             .child(
@@ -6272,17 +6307,18 @@ impl ThreadView {
     fn render_follow_toggle(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let following = self.is_following(cx);
 
+        let is_native_agent = self.agent_id.as_ref() == agent::ZED_AGENT_ID.as_ref();
         let tooltip_label = if following {
-            if self.agent_id.as_ref() == agent::ZED_AGENT_ID.as_ref() {
-                i18n::t!("Stop Following the {}", self.agent_id)
+            if is_native_agent {
+                i18n::t!("Stop Following the {}", self.agent_display_name)
             } else {
-                i18n::t!("Stop Following {}", self.agent_id)
+                i18n::t!("Stop Following {}", self.agent_display_name)
             }
         } else {
-            if self.agent_id.as_ref() == agent::ZED_AGENT_ID.as_ref() {
-                i18n::t!("Follow the {}", self.agent_id)
+            if is_native_agent {
+                i18n::t!("Follow the {}", self.agent_display_name)
             } else {
-                i18n::t!("Follow {}", self.agent_id)
+                i18n::t!("Follow {}", self.agent_display_name)
             }
         };
 

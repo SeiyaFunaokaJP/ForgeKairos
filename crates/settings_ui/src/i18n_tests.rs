@@ -1723,6 +1723,13 @@ fn display_language_offers_the_system_english_and_every_translation(cx: &mut Tes
     assert_eq!(current_label(&choices, "ja"), "日本語");
     assert_eq!(current_label(&choices, "JA"), "日本語");
     assert_eq!(current_label(&choices, "xx-YY"), "xx-YY");
+    // The setting is kept as written; the dropdown names the language it is shown in.
+    assert_eq!(current_label(&choices, "zh-TW"), "繁體中文");
+    assert_eq!(current_label(&choices, "zh-HK"), "繁體中文");
+    assert_eq!(current_label(&choices, "zh-CN"), "简体中文");
+    assert_eq!(current_label(&choices, "pt-PT"), "Português (Brasil)");
+    assert_eq!(current_label(&choices, "ja-JP"), "日本語");
+    assert_eq!(current_label(&choices, "en-GB"), "English");
 
     drop(_japanese);
     let _english = LocaleOverride::new(None);
@@ -1791,4 +1798,65 @@ fn only_the_tables_own_sub_page_titles_are_translated() {
             "{title} ({kind})"
         );
     }
+}
+
+/// The sidebar has a fixed width, and the French placeholder of the search
+/// field and label of the footer's key hint are wider than it. The editor clips
+/// a placeholder without an ellipsis, and the hint's label did not truncate.
+#[gpui::test]
+async fn long_translations_fit_the_sidebar(cx: &mut TestAppContext) {
+    use gpui::{TextRun, px, rems};
+    use settings::Settings as _;
+    use theme_settings::ThemeSettings;
+
+    let _french = LocaleOverride::new(Some(i18n_catalog::test_support::bundled_catalog("fr")));
+    let (settings_window, cx) = open_settings_window(cx, Box::new(zed_actions::OpenSettings)).await;
+    cx.run_until_parked();
+
+    let (placeholder, placeholder_width, editor_width) = settings_window
+        .update(cx, |settings_window, window, cx| {
+            let search_bar = settings_window.search_bar.clone();
+            let placeholder = search_bar
+                .update(cx, |editor, cx| editor.placeholder_text(cx))
+                .unwrap_or_default();
+            let editor_width = search_bar
+                .read(cx)
+                .last_bounds()
+                .map(|bounds| bounds.size.width);
+            let font = ThemeSettings::get_global(cx).ui_font.clone();
+            let shaped = window.text_system().shape_line(
+                placeholder.clone().into(),
+                rems(0.875).to_pixels(window.rem_size()),
+                &[TextRun {
+                    len: placeholder.len(),
+                    font,
+                    ..Default::default()
+                }],
+                None,
+            );
+            (placeholder, shaped.width, editor_width)
+        })
+        .expect("the settings window should be open");
+    let full = i18n::t!("Search settings…").to_string();
+    assert_ne!(placeholder, full, "the French placeholder is cut");
+    assert!(placeholder.ends_with('…'), "{placeholder:?}");
+    let editor_width = editor_width.expect("the search field is drawn");
+    assert!(
+        placeholder_width > px(0.) && placeholder_width <= editor_width,
+        "{placeholder:?} is {placeholder_width:?} wide in a {editor_width:?} field"
+    );
+
+    // `cx` draws the workspace window; the settings window is another one.
+    let mut settings_cx = gpui::VisualTestContext::from_window(settings_window.into(), cx);
+    settings_cx.run_until_parked();
+    let footer = settings_cx
+        .debug_bounds("settings-nav-footer")
+        .expect("the sidebar has a footer");
+    let label = settings_cx
+        .debug_bounds("settings-nav-footer-label")
+        .expect("the footer has a label");
+    assert!(
+        label.size.width > px(0.) && label.right() <= footer.right(),
+        "the label {label:?} stays inside the footer {footer:?}"
+    );
 }

@@ -1,0 +1,17 @@
+# ForgeKairos - 授權與聲明
+
+ForgeKairos 是程式碼編輯器 Zed 的獨立分支。「Zed」是 Zed Industries, Inc. 的商標。ForgeKairos 與 Zed Industries 沒有關聯，也未獲得其認可或支持；安裝本軟體不會在您與 Zed Industries 之間產生任何合約。
+
+## 授權
+
+ForgeKairos 是自由軟體。其大部分依據 GNU 通用公共授權條款（GNU General Public License）第 3 版或（由您選擇）任何更新的版本授權，部分元件依據 Apache 授權條款 2.0 版授權（以各元件的聲明為準）。Zed 的著作權屬於 Zed Industries, Inc.。安裝或執行 ForgeKairos 無須接受這些授權條款；它們規定的是複製、修改和再散布的條件。
+
+原始碼、授權條款全文（LICENSE-GPL、LICENSE-APACHE）以及第三方元件的聲明（THIRD_PARTY_NOTICES.md）可從 https://github.com/SeiyaFunaokaJP/ForgeKairos 取得。
+
+## 不提供擔保
+
+在適用法律允許的範圍內，ForgeKairos 依「現狀」提供，不附帶任何形式的擔保。詳情請參閱 GNU 通用公共授權條款第 15 條和第 16 條。
+
+## 第三方服務
+
+ForgeKairos 預設拒絕所有對外的網路通訊。您選擇連線的服務（AI 提供者、Zed 本身的服務、擴充功能和語言伺服器的下載等）由各自的營運者依據其本身的條款提供。

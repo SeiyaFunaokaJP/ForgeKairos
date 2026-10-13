@@ -16,8 +16,9 @@ use fuzzy::StringMatchCandidate;
 use gpui::{
     Action, App, AsyncApp, ClipboardItem, DEFAULT_ADDITIONAL_WINDOW_SIZE, Div, Entity, FocusHandle,
     Focusable, Global, KeyContext, ListState, ReadGlobal as _, Role, ScrollHandle, Stateful,
-    Subscription, Task, TitlebarOptions, UniformListScrollHandle, WeakEntity, Window, WindowBounds,
-    WindowHandle, WindowOptions, actions, div, list, point, prelude::*, px, uniform_list,
+    Subscription, Task, TextRun, TitlebarOptions, TruncateFrom, UniformListScrollHandle,
+    WeakEntity, Window, WindowBounds, WindowHandle, WindowOptions, actions, div, list, point,
+    prelude::*, px, uniform_list,
 };
 
 use language::Buffer;
@@ -995,6 +996,8 @@ pub struct SettingsWindow {
     sub_page_stack: Vec<SubPage>,
     opening_link: bool,
     search_bar: Entity<Editor>,
+    /// The placeholder `fit_search_placeholder` last gave the search bar.
+    search_placeholder: SharedString,
     search_task: Option<Task<()>>,
     /// Cached settings file buffers to avoid repeated disk I/O on each settings change
     project_setting_file_buffers: HashMap<ProjectPath, Entity<Buffer>>,
@@ -2116,6 +2119,7 @@ impl SettingsWindow {
             navbar_entry: 0,
             navbar_scroll_handle: UniformListScrollHandle::default(),
             search_bar,
+            search_placeholder: SharedString::default(),
             search_task: None,
             filter_table: vec![],
             has_query: false,
@@ -2715,10 +2719,7 @@ impl SettingsWindow {
             // `build_ui` searched with the index it replaced.
             self.update_matches(cx);
             // The search bar outlives the pages and keeps the placeholder it was
-            // created with.
-            self.search_bar.update(cx, |editor, cx| {
-                editor.set_placeholder_text(i18n::t!("Search settings…"), window, cx);
-            });
+            // created with; `fit_search_placeholder` replaces it.
             window.set_window_title(i18n::t!("Zed — Settings"));
         }
     }
@@ -3182,6 +3183,44 @@ impl SettingsWindow {
     //     }
     // }
 
+    /// The editor clips a placeholder that is wider than the field without an
+    /// ellipsis, and the sidebar has a fixed width that several translations of
+    /// the placeholder do not fit.
+    fn fit_search_placeholder(&mut self, window: &mut Window, cx: &mut Context<SettingsWindow>) {
+        let placeholder = SharedString::from(i18n::t!("Search settings…"));
+        let rem_size = window.rem_size();
+        // What `render_nav` and `render_search` put beside the editor: the
+        // sidebar's padding and right border, the field's border and padding,
+        // the magnifying glass and the gap after it, plus room for the cursor.
+        let taken = rems(0.625 * 2. + 0.375 + 0.125 + 0.375).to_pixels(rem_size)
+            + IconSize::default().rems().to_pixels(rem_size)
+            + px(5.);
+        // The single-line editor draws its placeholder in the UI font at this size.
+        let font = ThemeSettings::get_global(cx).ui_font.clone();
+        let font_size = rems(0.875).to_pixels(rem_size);
+        let runs = [TextRun {
+            len: placeholder.len(),
+            font: font.clone(),
+            ..Default::default()
+        }];
+        let (fitted, _) = window
+            .text_system()
+            .line_wrapper(font, font_size)
+            .truncate_line(
+                placeholder,
+                SIDEBAR_WIDTH - taken,
+                "…",
+                &runs,
+                TruncateFrom::End,
+            );
+        if fitted != self.search_placeholder {
+            self.search_bar.update(cx, |editor, cx| {
+                editor.set_placeholder_text(&fitted, window, cx);
+            });
+            self.search_placeholder = fitted;
+        }
+    }
+
     fn render_search(
         &self,
         window: &mut Window,
@@ -3465,16 +3504,33 @@ impl SettingsWindow {
                     .flex_shrink_0()
                     .border_t_1()
                     .border_color(cx.theme().colors().border_variant)
+                    .gap_1()
+                    .debug_selector(|| "settings-nav-footer".into())
+                    // The hint's own suffix never truncates, so the label is a
+                    // sibling that can: the sidebar has a fixed width and the
+                    // translated labels are longer than the English one.
                     .child(
-                        KeybindingHint::new(
+                        div().flex_none().child(KeybindingHint::new(
                             KeyBinding::for_action_in(
                                 &ToggleFocusNav,
                                 &self.navbar_focus_handle.focus_handle(cx),
                                 cx,
                             ),
                             cx.theme().colors().surface_background.opacity(0.5),
-                        )
-                        .suffix(focus_keybind_label),
+                        )),
+                    )
+                    .child(
+                        div()
+                            .min_w_0()
+                            .debug_selector(|| "settings-nav-footer-label".into())
+                            .child(
+                                Label::new(focus_keybind_label)
+                                    .size(LabelSize::Small)
+                                    .color(Color::Disabled)
+                                    .italic()
+                                    .buffer_font(cx)
+                                    .truncate(),
+                            ),
                     ),
             )
     }
@@ -4827,6 +4883,7 @@ impl SettingsWindow {
 impl Render for SettingsWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.rebuild_pages_if_language_changed(window, cx);
+        self.fit_search_placeholder(window, cx);
         let ui_font = theme_settings::setup_ui_font(window, cx);
 
         client_side_decorations(
@@ -5823,6 +5880,7 @@ pub mod test {
                 project_setting_file_buffers: HashMap::default(),
                 pages: vec![dummy_page],
                 search_bar,
+                search_placeholder: SharedString::default(),
                 navbar_entry: 0,
                 navbar_entries: Vec::default(),
                 navbar_scroll_handle: UniformListScrollHandle::default(),
@@ -5969,6 +6027,7 @@ pub mod test {
             project_setting_file_buffers: HashMap::default(),
             pages,
             search_bar: cx.new(|cx| Editor::single_line(window, cx)),
+            search_placeholder: SharedString::default(),
             navbar_entry: selected_idx.expect("Must have a selected navbar entry"),
             navbar_entries: Vec::default(),
             navbar_scroll_handle: UniformListScrollHandle::default(),
