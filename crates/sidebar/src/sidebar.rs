@@ -7130,16 +7130,26 @@ impl Sidebar {
         let Some(multi_workspace) = self.multi_workspace.upgrade() else {
             return;
         };
+        let was_active = multi_workspace.read(cx).workspace() == workspace;
         multi_workspace.update(cx, |multi_workspace, cx| {
             multi_workspace.activate(workspace.clone(), None, window, cx);
         });
         workspace.update(cx, |workspace, cx| {
             workspace.focus_panel::<AgentPanel>(window, cx);
         });
-        // `open` acts on `workspace` itself rather than through an action
-        // dispatched in the window, so it need not wait for that workspace
-        // to be drawn; deferred only because this sidebar is being updated.
-        window.defer(cx, move |window, cx| open(window, cx));
+        if was_active {
+            // Deferred only because this sidebar is being updated.
+            window.defer(cx, move |window, cx| open(window, cx));
+        } else {
+            // Claude Code and a thread are started on `workspace` itself, but
+            // the setup window for a provider is a workspace action dispatched
+            // in the window, which reaches the workspace the last frame drew.
+            // Next-frame callbacks run before that frame is drawn, so the one
+            // just brought forward is drawn by the frame after.
+            window.on_next_frame(move |window, _| {
+                window.on_next_frame(move |window, cx| open(window, cx));
+            });
+        }
     }
 
     fn create_new_terminal(

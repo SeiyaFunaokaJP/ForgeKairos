@@ -1847,6 +1847,7 @@ mod tests {
         struct Gate {
             set_ups: Rc<RefCell<Vec<Option<String>>>>,
             workspace: WeakEntity<Workspace>,
+            project: WeakEntity<Project>,
             cx: VisualTestContext,
         }
 
@@ -1862,6 +1863,7 @@ mod tests {
             cx.update(|cx| <dyn Fs>::set_global(fs.clone(), cx));
             fs.insert_tree("/project", json!({})).await;
             let project = Project::test(fs, [Path::new("/project")], cx).await;
+            let weak_project = project.downgrade();
             let window = cx.add_window(|window, cx| MultiWorkspace::test_new(project, window, cx));
             let workspace = window
                 .read_with(cx, |multi_workspace, _| multi_workspace.workspace().clone())
@@ -1882,6 +1884,7 @@ mod tests {
             Gate {
                 set_ups,
                 workspace: workspace.downgrade(),
+                project: weak_project,
                 cx,
             }
         }
@@ -1934,6 +1937,104 @@ mod tests {
                 self.cx.run_until_parked();
                 self.set_ups.borrow().clone()
             }
+
+            fn fake_choice() -> AiChoice {
+                AiChoice {
+                    label: "Fake".into(),
+                    icon: AiChoiceIcon::Icon(IconName::Sparkle),
+                    sign_in: AiSignIn::ApiKey,
+                    runner: AiRunner::BuiltInAgent,
+                    placement: None,
+                    target: AiChoiceTarget::NativeThread {
+                        provider_id: "fake".into(),
+                    },
+                    is_current: false,
+                }
+            }
+
+            /// The same, chosen in the model picker of an external agent's
+            /// thread, where it starts a thread of its own.
+            fn choose_in_picker(&mut self) -> Vec<Option<String>> {
+                self.set_ups.borrow_mut().clear();
+                let source = crate::model_selector::agent_launch_source(
+                    self.project.clone(),
+                    self.workspace.clone(),
+                    AgentId::new("test-agent"),
+                );
+                let entry = crate::model_selector::AgentLaunchEntry {
+                    vendor: AiVendor::Other,
+                    choice: Self::fake_choice(),
+                    transition: AiChoiceTransition::NewThread,
+                };
+                self.cx.update(|window, cx| {
+                    crate::model_selector::open_agent_launch_entry(
+                        Some(&source),
+                        &entry,
+                        window,
+                        cx,
+                    );
+                });
+                self.cx.run_until_parked();
+                self.set_ups.borrow().clone()
+            }
+
+            /// The same, chosen in the rows the sidebar's project menu adds
+            /// (through a runner, as the sidebar's brings its project forward).
+            fn choose_in_project_menu(&mut self) -> Vec<Option<String>> {
+                self.set_ups.borrow_mut().clear();
+                let workspace = self.workspace.clone();
+                let ran = Rc::new(std::cell::Cell::new(0));
+                let run: AiChoiceRunner = Rc::new({
+                    let ran = ran.clone();
+                    move |open, window, cx| {
+                        ran.set(ran.get() + 1);
+                        open(window, cx)
+                    }
+                });
+                let menu = self.cx.update(|window, cx| {
+                    ContextMenu::build(window, cx, |menu, _, cx| {
+                        add_ai_choice_rows(
+                            menu,
+                            vec![AiChoiceSection {
+                                vendor: AiVendor::Other,
+                                choices: vec![Self::fake_choice()],
+                            }],
+                            workspace,
+                            cx.focus_handle(),
+                            run,
+                            cx,
+                        )
+                    })
+                });
+                menu.update_in(&mut self.cx, |menu, window, cx| {
+                    menu.select_first(&menu::SelectFirst, window, cx);
+                    menu.confirm(&menu::Confirm, window, cx);
+                });
+                self.cx.run_until_parked();
+                assert_eq!(ran.get(), 1, "the entry went through the menu's runner");
+                self.set_ups.borrow().clone()
+            }
+        }
+
+        #[gpui::test]
+        async fn the_picker_and_the_project_menu_start_no_thread_without_the_consent(
+            cx: &mut TestAppContext,
+        ) {
+            let mut gate = gate(cx).await;
+            let to_setup = vec![Some("fake".to_string())];
+            gate.set_ai_enabled(true);
+            gate.set_consent(|_, _| false);
+            assert_eq!(gate.choose_in_picker(), to_setup);
+            assert_eq!(gate.choose_in_project_menu(), to_setup);
+
+            gate.set_consent(|provider_id, _| provider_id == "fake");
+            gate.set_ai_enabled(false);
+            assert_eq!(gate.choose_in_picker(), to_setup, "AI off (ADR-F09)");
+            assert_eq!(gate.choose_in_project_menu(), to_setup, "AI off (ADR-F09)");
+
+            gate.set_ai_enabled(true);
+            assert_eq!(gate.choose_in_picker(), Vec::<Option<String>>::new());
+            assert_eq!(gate.choose_in_project_menu(), Vec::<Option<String>>::new());
         }
 
         #[gpui::test]

@@ -2373,6 +2373,71 @@ mod tests {
         );
     }
 
+    /// ADR-F94 step 4 in the picker: what still has to be set up or
+    /// installed is listed under its vendor and, chosen, opens the same setup
+    /// as the `+` menu's entry rather than a thread.
+    #[gpui::test]
+    async fn what_still_needs_setting_up_opens_its_setup_from_the_picker(cx: &mut TestAppContext) {
+        init_picker_test(cx);
+        let opened = Rc::new(RefCell::new(Vec::<AiChoiceTarget>::new()));
+        let source = AgentLaunchSource {
+            choices: Rc::new(|_| {
+                Some(PickerAiChoices {
+                    runner: claude_agent_runner(),
+                    sections: build_ai_choice_sections(&AiChoiceInputs {
+                        native_providers: vec![native_provider("google", "Google AI", false)],
+                        installable_agents: vec![crate::ai_choices::InstallableAgentInput {
+                            id: AgentId::new("gemini"),
+                            display_name: "Gemini CLI".into(),
+                            icon_path: None,
+                        }],
+                        selected_agent: Agent::NativeAgent,
+                        ..AiChoiceInputs::default()
+                    }),
+                })
+            }),
+            open: Rc::new({
+                let opened = opened.clone();
+                move |target, _, _| opened.borrow_mut().push(target.clone())
+            }),
+        };
+        let (picker, cx) = open_picker(Rc::new(TestModelSelector::new()), Some(source), cx);
+
+        let entries = picker.read_with(cx, |picker, _| picker.delegate.filtered_entries.clone());
+        let found = transitions(&entries);
+        for label in ["Gemini CLI", "Google AI"] {
+            assert!(
+                found.contains(&(label.to_string(), AiChoiceTransition::SetUp)),
+                "{label} in {found:?}"
+            );
+        }
+
+        for (query, target) in [
+            (
+                "gemini cli",
+                AiChoiceTarget::InstallExternalAgent {
+                    agent_id: AgentId::new("gemini"),
+                },
+            ),
+            (
+                "google ai",
+                AiChoiceTarget::SetUpProvider {
+                    provider_id: Some("google".into()),
+                },
+            ),
+        ] {
+            picker.update_in(cx, |picker, window, cx| picker.set_query(query, window, cx));
+            cx.run_until_parked();
+            cx.update(|window, _| window.refresh());
+            cx.run_until_parked();
+            picker.update_in(cx, |picker, window, cx| {
+                picker.delegate.confirm(false, window, cx);
+            });
+            cx.run_until_parked();
+            assert_eq!(opened.borrow().last(), Some(&target), "{query}");
+        }
+    }
+
     #[gpui::test]
     async fn the_other_ais_do_not_keep_the_project_alive(cx: &mut TestAppContext) {
         crate::test_support::init_test(cx);
