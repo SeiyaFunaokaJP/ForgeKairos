@@ -4244,7 +4244,10 @@ impl Project {
         match event {
             SettingsObserverEvent::LocalSettingsUpdated(result) => match result {
                 Err(InvalidSettingsError::LocalSettings { message, path }) => {
-                    let message = format!("Failed to set local settings in {path:?}:\n{message}");
+                    let message = i18n::t!(
+                        "Failed to set local settings in {path}:\n{message}",
+                        path = format!("{path:?}")
+                    );
                     cx.emit(Event::Toast {
                         notification_id: format!("local-settings-{path:?}").into(),
                         link: None,
@@ -4258,11 +4261,14 @@ impl Project {
             },
             SettingsObserverEvent::LocalTasksUpdated(result) => match result {
                 Err(InvalidSettingsError::Tasks { message, path }) => {
-                    let message = format!("Failed to set local tasks in {path:?}:\n{message}");
+                    let message = i18n::t!(
+                        "Failed to set local tasks in {path}:\n{message}",
+                        path = format!("{path:?}")
+                    );
                     cx.emit(Event::Toast {
                         notification_id: format!("local-tasks-{path:?}").into(),
                         link: Some(ToastLink {
-                            label: "Open Tasks Documentation",
+                            label: i18n::t!("Open Tasks Documentation"),
                             url: "https://zed.dev/docs/tasks",
                         }),
                         message,
@@ -4275,8 +4281,10 @@ impl Project {
             },
             SettingsObserverEvent::LocalDebugScenariosUpdated(result) => match result {
                 Err(InvalidSettingsError::Debug { message, path }) => {
-                    let message =
-                        format!("Failed to set local debug scenarios in {path:?}:\n{message}");
+                    let message = i18n::t!(
+                        "Failed to set local debug scenarios in {path}:\n{message}",
+                        path = format!("{path:?}")
+                    );
                     cx.emit(Event::Toast {
                         notification_id: format!("local-debug-scenarios-{path:?}").into(),
                         link: None,

@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Arguments"
+msgstr "引数"
+
+msgid "Executing command…"
+msgstr "コマンドを実行中…"
+
+msgid "Failed to execute LSP command {command}: {error}"
+msgstr "LSP コマンド {command} を実行できませんでした: {error}"
+
+msgid "JSON arguments (42, {{\"key\": \"value\"}}, …) or plain text for one string"
+msgstr "JSON の引数 (42、{{\"key\": \"value\"}}、…)、または 1 つの文字列として渡すプレーンテキスト"
+
+msgid "Select a language server command…"
+msgstr "言語サーバーのコマンドを選択…"
+
+msgid "to switch focus"
+msgstr "でフォーカスを切り替え"

@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Arguments"
+msgstr "Arguments"
+
+msgid "Executing command…"
+msgstr "Exécution de la commande…"
+
+msgid "Failed to execute LSP command {command}: {error}"
+msgstr "Impossible d'exécuter la commande LSP {command} : {error}"
+
+msgid "JSON arguments (42, {{\"key\": \"value\"}}, …) or plain text for one string"
+msgstr "Arguments JSON (42, {{\"key\": \"value\"}}, …) ou texte brut pour une seule chaîne"
+
+msgid "Select a language server command…"
+msgstr "Sélectionnez une commande du serveur de langage…"
+
+msgid "to switch focus"
+msgstr "pour changer le focus"

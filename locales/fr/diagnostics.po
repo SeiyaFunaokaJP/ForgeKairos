@@ -1,0 +1,87 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Buffer Diagnostics"
+msgstr "Diagnostics du tampon"
+
+msgid "Buffer Diagnostics - {}"
+msgstr "Diagnostics du tampon - {}"
+
+msgid "Buffer Search"
+msgstr "Recherche dans le tampon"
+
+msgid "Copy Diagnostic"
+msgstr "Copier le diagnostic"
+
+msgid "Diagnostics"
+msgstr "Diagnostics"
+
+msgid "Exclude Warnings"
+msgstr "Exclure les avertissements"
+
+msgid "Expand Diagnostics"
+msgstr "Développer les diagnostics"
+
+msgid "Include Warnings"
+msgstr "Inclure les avertissements"
+
+msgid "Inline Assist"
+msgstr "Assistance inline"
+
+msgid "Next Diagnostic"
+msgstr "Diagnostic suivant"
+
+msgid "No errors in workspace"
+msgstr "Aucune erreur dans l'espace de travail"
+
+msgid "No errors in {file}"
+msgstr "Aucune erreur dans {file}"
+
+msgid "No problems"
+msgstr "Aucun problème"
+
+msgid "No problems in workspace"
+msgstr "Aucun problème dans l'espace de travail"
+
+msgid "No problems in {file}"
+msgstr "Aucun problème dans {file}"
+
+msgid "Open File"
+msgstr "Ouvrir le fichier"
+
+msgid "Project Diagnostics"
+msgstr "Diagnostics du projet"
+
+msgid "Project diagnostics: no problems"
+msgstr "Diagnostics du projet : aucun problème"
+
+msgid "Project diagnostics: {}"
+msgstr "Diagnostics du projet : {}"
+
+msgid "Refresh Diagnostics"
+msgstr "Actualiser les diagnostics"
+
+msgid "Show {count} warning"
+msgid_plural "Show {count} warnings"
+msgstr[0] "Afficher {count} avertissement"
+msgstr[1] "Afficher {count} avertissements"
+
+msgid "Stop Diagnostics Update"
+msgstr "Arrêter la mise à jour des diagnostics"
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "{count} erreur"
+msgstr[1] "{count} erreurs"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "{count} avertissement"
+msgstr[1] "{count} avertissements"

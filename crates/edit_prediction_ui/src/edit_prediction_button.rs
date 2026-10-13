@@ -140,7 +140,7 @@ impl Render for EditPredictionButton {
                             }))
                             .tooltip(|_window, cx| {
                                 Tooltip::for_action(
-                                    "GitHub Copilot Edit Predictions",
+                                    i18n::t!("GitHub Copilot Edit Predictions"),
                                     &ToggleMenu,
                                     cx,
                                 )
@@ -194,14 +194,14 @@ impl Render for EditPredictionButton {
                             move |_window, cx| {
                                 if copilot_awaits_consent {
                                     Tooltip::with_meta(
-                                        "GitHub Copilot Edit Predictions",
+                                        i18n::t!("GitHub Copilot Edit Predictions"),
                                         Some(&ToggleMenu),
                                         i18n::t!("External AI warning not accepted"),
                                         cx,
                                     )
                                 } else {
                                     Tooltip::for_action(
-                                        "GitHub Copilot Edit Predictions",
+                                        i18n::t!("GitHub Copilot Edit Predictions"),
                                         &ToggleMenu,
                                         cx,
                                     )
@@ -913,7 +913,7 @@ impl EditPredictionButton {
                 .separator()
                 .header(i18n::t!("Display Modes"))
                 .item(
-                    ContextMenuEntry::new("Eager")
+                    ContextMenuEntry::new(i18n::tc!("edit prediction display mode", "Eager"))
                         .toggleable(IconPosition::Start, eager_mode)
                         .documentation_aside(DocumentationSide::Left, move |_| {
                             Label::new(i18n::t!("Display predictions inline when there are no language server completions available.")).into_any_element()
@@ -931,7 +931,7 @@ impl EditPredictionButton {
                         }),
                 )
                 .item(
-                    ContextMenuEntry::new("Subtle")
+                    ContextMenuEntry::new(i18n::tc!("edit prediction display mode", "Subtle"))
                         .toggleable(IconPosition::Start, subtle_mode)
                         .documentation_aside(DocumentationSide::Left, move |_| {
                             Label::new(i18n::t!(
@@ -1469,11 +1469,11 @@ impl EditPredictionButton {
                     let active = store.active_experiment().map(|s| s.to_owned());
 
                     let preferred_for_submenu = preferred.clone();
-                    menu = menu
-                        .separator()
-                        .submenu("Experiment", move |menu, _window, _cx| {
+                    menu = menu.separator().submenu(
+                        i18n::t!("Experiment"),
+                        move |menu, _window, _cx| {
                             let mut menu = menu.toggleable_entry(
-                                "Default",
+                                i18n::t!("Default"),
                                 preferred_for_submenu.is_none(),
                                 IconPosition::Start,
                                 None,
@@ -1508,7 +1508,8 @@ impl EditPredictionButton {
                                 );
                             }
                             menu
-                        });
+                        },
+                    );
                 }
             }
 

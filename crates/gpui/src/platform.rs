@@ -2627,16 +2627,69 @@ impl PromptButton {
 
 impl From<&str> for PromptButton {
     fn from(value: &str) -> Self {
-        match value.to_lowercase().as_str() {
+        let lowercase = value.to_lowercase();
+        match lowercase.as_str() {
             "ok" => PromptButton::Ok("OK".into()),
             "cancel" => PromptButton::Cancel("Cancel".into()),
-            // zed-jp-enhance (DESIGN.md §3): プロンプトのボタンを日本語化すると、この分類が
-            // `Other` に落ちて `is_cancel()` が偽になり、Esc / ネイティブダイアログの
-            // キャンセル判定が壊れる。日本語ラベルも Cancel として分類する。
-            // 訳語は .forgekairos-docs/GLOSSARY.md の「Cancel = キャンセル」に対応。
-            "キャンセル" => PromptButton::Cancel("キャンセル".into()),
+            // zed-jp-enhance (DESIGN.md §3): callers pass `t!("Cancel")`, so in a translated
+            // UI the label would otherwise fall to `Other`, and Escape and the native
+            // dialog's close box would have no cancel button to answer with. Only the
+            // translation without a msgctxt counts: a translation of "Cancel" under some
+            // context may equal a destructive answer elsewhere ("Abort"), which Escape
+            // must never pick. Callers with such a label use `PromptButton::cancel`.
+            _ if i18n::tr("Cancel").to_lowercase() == lowercase => {
+                PromptButton::Cancel(SharedString::from(value.to_owned()))
+            }
             _ => PromptButton::Other(SharedString::from(value.to_owned())),
         }
+    }
+}
+
+#[cfg(test)]
+mod prompt_button_tests {
+    use super::PromptButton;
+
+    struct GermanCatalog;
+
+    impl i18n::Catalog for GermanCatalog {
+        fn locale(&self) -> &str {
+            "de"
+        }
+
+        fn lookup(&self, context: Option<&str>, msgid: &str) -> Option<&'static str> {
+            match (context, msgid) {
+                (None, "Cancel") => Some("Abbrechen"),
+                (Some("bookmark"), "Cancel") => Some("Verwerfen"),
+                (None, "Delete") => Some("Löschen"),
+                _ => None,
+            }
+        }
+
+        fn lookup_plural(
+            &self,
+            context: Option<&str>,
+            msgid: &str,
+            _msgid_plural: &str,
+            _count: u64,
+        ) -> Option<&'static str> {
+            self.lookup(context, msgid)
+        }
+    }
+
+    #[test]
+    fn the_translation_of_cancel_in_the_current_language_is_cancel() {
+        static GERMAN: GermanCatalog = GermanCatalog;
+        assert!(!PromptButton::from("Abbrechen").is_cancel());
+
+        let _german = i18n::test_support::LocaleOverride::new(Some(&GERMAN));
+        for cancel in ["Abbrechen", "abbrechen", "Cancel", "cancel"] {
+            assert!(PromptButton::from(cancel).is_cancel(), "{cancel}");
+        }
+        assert_eq!(PromptButton::from("Abbrechen").label(), "Abbrechen");
+        for other in ["Löschen", "Verwerfen", "キャンセル"] {
+            assert!(!PromptButton::from(other).is_cancel(), "{other}");
+        }
+        assert!(matches!(PromptButton::from("OK"), PromptButton::Ok(_)));
     }
 }
 

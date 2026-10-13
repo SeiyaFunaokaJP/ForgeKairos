@@ -1,0 +1,175 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A folder allowed for writing is your Windows user folder itself or contains it, which the sandbox can't use (it keeps the credentials inside it from being read). Open the project from a folder below it."
+msgstr "允许写入的某个文件夹就是你的 Windows 用户文件夹本身或包含该文件夹，沙盒无法使用它（沙盒会阻止读取其中的凭据）。请从其下级文件夹打开项目。"
+
+msgid "A path allowed for writing was replaced after the approval so that it points somewhere else (through a symbolic link, for example). The command wasn't run, to be safe."
+msgstr "允许写入的某个路径在批准后被替换，指向了其他位置（例如通过符号链接）。为安全起见，未运行该命令。"
+
+msgid "A path the agent asked to see read-only, as something it needs to run, is neither the agent's install folder (`external_agents`) nor Node.js (`node`) in Zed's data folder (or it overlaps credentials), so the command wasn't run."
+msgstr "智能体请求以只读方式查看的、运行所需的某个路径既不是 ForgeKairos 数据文件夹中智能体的安装文件夹（`external_agents`），也不是其中的 Node.js（`node`）（或与凭据重叠），因此未运行该命令。"
+
+msgid "Allow once"
+msgstr "允许一次"
+
+msgid "An internal error occurred while preparing the sandbox ({code})."
+msgstr "准备沙盒时发生内部错误（{code}）。"
+
+msgid "Asking you, because the call has no arguments"
+msgstr "由于该调用没有参数，需要你确认"
+
+msgid "Collaboration"
+msgstr "协作"
+
+msgid "Could not create the sandbox in WSL: "
+msgstr "无法在 WSL 中创建沙盒："
+
+msgid "Could not create the sandbox in WSL: WSL didn't respond within {seconds} seconds ({attempts} attempts). WSL may be slow to start. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
+msgstr "无法在 WSL 中创建沙盒：WSL 在 {seconds} 秒内没有响应（尝试了 {attempts} 次）。WSL 可能启动较慢。请稍候再试；如果仍然无效，请使用 `wsl --shutdown` 重启 WSL。"
+
+msgid "Couldn't create the sandbox on the remote host: "
+msgstr "无法在远程主机上创建沙盒："
+
+msgid "Deny"
+msgstr "拒绝"
+
+msgid "Edit {path} (agent configuration)"
+msgstr "编辑 {path}（智能体配置）"
+
+msgid "Edit {path} (agent skills)"
+msgstr "编辑 {path}（智能体技能）"
+
+msgid "Edit {path} (local settings)"
+msgstr "编辑 {path}（项目设置）"
+
+msgid "Edit {path} (settings)"
+msgstr "编辑 {path}（设置）"
+
+msgid "Neither file isolation method (Landlock or mounts) is available."
+msgstr "两种文件隔离方式（Landlock 或挂载）都不可用。"
+
+msgid "Network control couldn't be set up."
+msgstr "无法设置网络管控。"
+
+msgid "No usable `bwrap` binary was found on your PATH. Install Bubblewrap to let the agent sandbox terminal commands."
+msgstr "在 PATH 中未找到可用的 `bwrap` 二进制文件。请安装 Bubblewrap，以便智能体在沙盒中运行终端命令。"
+
+msgid "Remote"
+msgstr "远程"
+
+msgid "SSH (not Linux)"
+msgstr "SSH（非 Linux）"
+
+msgid "The WSL home directory couldn't be determined (the command isn't run, because the paths that are always protected can't be settled)."
+msgstr "无法确定 WSL 主目录（由于无法确定始终受保护的路径，不运行该命令）。"
+
+msgid "The command couldn't be started inside the sandbox."
+msgstr "无法在沙盒内启动该命令。"
+
+msgid "The command's capabilities couldn't be dropped."
+msgstr "无法移除该命令的权能（capability）。"
+
+msgid "The file write restrictions couldn't be applied."
+msgstr "无法应用文件写入限制。"
+
+msgid "The folder (or socket) that carries the IDE integration isn't in a safe state (its permissions aren't 0700, it has another owner, or it lies outside the protected paths), so the command wasn't run. Restart Zed and try again."
+msgstr "承载 IDE 集成的文件夹（或套接字）不处于安全状态（其权限不是 0700、所有者不同，或位于受保护的路径之外），因此未运行该命令。请重启 ForgeKairos 后重试。"
+
+msgid "The only `bwrap` available is setuid-root, which Zed refuses to run. Install a non-setuid Bubblewrap to let the agent sandbox terminal commands."
+msgstr "唯一可用的 `bwrap` 是 setuid-root 版本，ForgeKairos 拒绝运行它。请安装非 setuid 的 Bubblewrap，以便智能体在沙盒中运行终端命令。"
+
+msgid "The protected paths (credentials and shell startup files such as `.git`, `~/.ssh` and `~/.bashrc`) couldn't be checked (check their permissions)."
+msgstr "无法检查受保护的路径（凭据和 Shell 启动文件，例如 `.git`、`~/.ssh` 和 `~/.bashrc`）（请检查其权限）。"
+
+msgid "The remote home directory couldn't be determined (the command isn't run, because the paths that are always protected can't be settled)."
+msgstr "无法确定远程主目录（由于无法确定始终受保护的路径，不运行该命令）。"
+
+msgid "The remote kernel refused to create a PID namespace, so processes left behind when the command ends can't be reliably stopped. The command wasn't run, to be safe (a `user.max_pid_namespaces=0` setting or a container's seccomp profile can cause this)."
+msgstr "远程内核拒绝创建 PID 命名空间，因此命令结束后遗留的进程无法可靠地停止。为安全起见，未运行该命令（`user.max_pid_namespaces=0` 设置或容器的 seccomp 配置文件可能导致此问题）。"
+
+msgid "The remote kernel refused to let the helper reap child processes (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be cleaned up. The command wasn't run, to be safe."
+msgstr "远程内核拒绝让辅助程序回收子进程（PR_SET_CHILD_SUBREAPER），因此无法清理命令结束后遗留的进程。为安全起见，未运行该命令。"
+
+msgid "The run was canceled"
+msgstr "运行已取消"
+
+msgid "The sandbox helper (or slirp4netns) doesn't match the one bundled with this Zed (it was replaced or is damaged). The command wasn't run, to be safe. Restarting Zed puts it back."
+msgstr "沙盒辅助程序（或 slirp4netns）与此 ForgeKairos 附带的版本不一致（已被替换或已损坏）。为安全起见，未运行该命令。重启 ForgeKairos 会将其恢复。"
+
+msgid "The sandbox helper (slirp4netns) is missing from `~/.zed_server/` on the remote host, so network access can't be isolated. Reconnecting puts it back."
+msgstr "远程主机上的 `~/.zed_server/` 中缺少沙盒辅助程序（slirp4netns），因此无法隔离网络访问。重新连接会将其恢复。"
+
+msgid "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't be isolated. Restarting Zed puts it back."
+msgstr "在 WSL 中找不到沙盒辅助程序（slirp4netns），因此无法隔离网络访问。重启 ForgeKairos 会将其恢复。"
+
+msgid "The sandbox helper's signal handling couldn't be set up. The command wasn't run, to be safe."
+msgstr "无法设置沙盒辅助程序的信号处理。为安全起见，未运行该命令。"
+
+msgid "The sandbox is turned off in the settings"
+msgstr "沙盒已在设置中关闭"
+
+msgid "The sandbox's launch arguments are invalid (internal error)."
+msgstr "沙盒的启动参数无效（内部错误）。"
+
+msgid "The system call restrictions couldn't be applied."
+msgstr "无法应用系统调用限制。"
+
+msgid "The user ID mapping (uid_map / gid_map) couldn't be set up in the user namespace."
+msgstr "无法在用户命名空间中设置用户 ID 映射（uid_map / gid_map）。"
+
+msgid "These hosts aren't in the editor-wide allowlist: {}"
+msgstr "以下主机不在编辑器全局的允许列表中：{}"
+
+msgid "This project can't use the sandbox ({project_kind})"
+msgstr "此项目无法使用沙盒（{project_kind}）"
+
+msgid "This thread is a conversation with an agent that was started outside the sandbox"
+msgstr "此会话是与在沙盒外启动的智能体进行的对话"
+
+msgid "Tool call not found"
+msgstr "找不到工具调用"
+
+msgid "Unknown reason ({other})"
+msgstr "未知原因（{other}）"
+
+msgid "Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again."
+msgstr "请使用 `wsl --update` 更新 WSL，使用 `wsl --shutdown` 重启后重试。"
+
+msgid "User namespaces can't be created (they may be disabled). In a dev container (Docker), the default seccomp profile refuses `unshare`, so add `--cap-add SYS_ADMIN` (or `--security-opt seccomp=unconfined`) to `runArgs`, and `--device /dev/net/tun` for commands that use the network."
+msgstr "无法创建用户命名空间（可能已被禁用）。在开发容器（Docker）中，默认的 seccomp 配置文件会拒绝 `unshare`，因此请在 `runArgs` 中添加 `--cap-add SYS_ADMIN`（或 `--security-opt seccomp=unconfined`），并为使用网络的命令添加 `--device /dev/net/tun`。"
+
+msgid "User namespaces can't be created in WSL."
+msgstr "无法在 WSL 中创建用户命名空间。"
+
+msgid "WSL remote"
+msgstr "WSL 远程"
+
+msgid "WSL's kernel doesn't support Landlock."
+msgstr "WSL 的内核不支持 Landlock。"
+
+msgid "WSL's kernel refused to create a PID namespace, so processes left behind when the command ends can't be reliably stopped. The command wasn't run, to be safe (a `user.max_pid_namespaces=0` setting can cause this)."
+msgstr "WSL 的内核拒绝创建 PID 命名空间，因此命令结束后遗留的进程无法可靠地停止。为安全起见，未运行该命令（`user.max_pid_namespaces=0` 设置可能导致此问题）。"
+
+msgid "WSL's kernel refused to let the helper reap child processes (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be cleaned up. The command wasn't run, to be safe."
+msgstr "WSL 的内核拒绝让辅助程序回收子进程（PR_SET_CHILD_SUBREAPER），因此无法清理命令结束后遗留的进程。为安全起见，未运行该命令。"
+
+msgid "`bwrap` is installed but couldn't create a sandbox, likely because unprivileged user namespaces are disabled on this system (Ubuntu 23.10 and later need an AppArmor profile for Bubblewrap)."
+msgstr "已安装 `bwrap`，但无法创建沙盒，可能是因为此系统禁用了非特权用户命名空间（Ubuntu 23.10 及更高版本需要为 Bubblewrap 配置 AppArmor 配置文件）。"
+
+msgid "not supported on this OS"
+msgstr "此操作系统不支持"
+
+msgid "sandboxing is turned off"
+msgstr "沙盒已关闭"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

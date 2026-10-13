@@ -1,0 +1,383 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(low precedence)"
+msgstr "（優先順序較低）"
+
+msgid "(match)"
+msgstr "（相符）"
+
+msgid "(no match)"
+msgstr "（不相符）"
+
+msgid "* Server: {NAME} (id {ID})\n\n* Version: {VERSION}\n\n* Binary: {BINARY}\n\n* Registered workspace folders:\n{WORKSPACE_FOLDERS}\n\n* Capabilities: {CAPABILITIES}\n\n* Configuration: {CONFIGURATION}"
+msgstr "* 伺服器：{NAME}（ID {ID}）\n\n* 版本：{VERSION}\n\n* 二進位檔：{BINARY}\n\n* 已註冊的工作區資料夾：\n{WORKSPACE_FOLDERS}\n\n* 功能：{CAPABILITIES}\n\n* 設定：{CONFIGURATION}"
+
+msgid "All Servers Operational"
+msgstr "所有伺服器運作正常"
+
+msgid "All highlights are filtered out"
+msgstr "所有醒目提示都已被篩除"
+
+msgid "An agent wrote again after this dialog opened. Review the changes, then press Resume again."
+msgstr "此對話方塊開啟後，代理又再次寫入。請檢閱變更，然後再按一次「繼續執行」。"
+
+msgid "An agent wrote to {name}"
+msgstr "代理已寫入「{name}」"
+
+msgid "Clear"
+msgstr "清除"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Current Context Stack"
+msgstr "目前上下文堆疊"
+
+msgid "Current editor has no associated language"
+msgstr "目前編輯器沒有關聯的語言"
+
+msgid "Download Denied"
+msgstr "已拒絕下載"
+
+msgid "Edit Keymap File"
+msgstr "編輯按鍵對應檔"
+
+msgid "Enable text, syntax, or semantic highlights in the toolbar"
+msgstr "在工具列中啟用文字、語法或語意醒目提示"
+
+msgid "Error"
+msgstr "錯誤"
+
+msgid "Failed to revoke approval: {error}"
+msgstr "無法撤回核准：{error}"
+
+msgid "Failed to serialize capabilities: {e}"
+msgstr "無法序列化功能：{e}"
+
+msgid "Failed to serialize configuration: {e}"
+msgstr "無法序列化設定：{e}"
+
+msgid "Focus an editor to show a new tree view"
+msgstr "聚焦編輯器以顯示新的樹狀檢視"
+
+msgid "Focus an editor to show highlights"
+msgstr "聚焦編輯器以顯示醒目提示"
+
+msgid "Folder Code Paused"
+msgstr "已暫停資料夾中的程式碼"
+
+msgid "Folder code is paused after an agent write"
+msgstr "代理寫入後，已暫停資料夾中的程式碼"
+
+msgid "Highlights"
+msgstr "醒目提示"
+
+msgid "Highlights Settings"
+msgstr "醒目提示設定"
+
+msgid "Info"
+msgstr "資訊"
+
+msgid "Key Equivalents"
+msgstr "等效按鍵"
+
+msgid "Keyboard Context"
+msgstr "鍵盤上下文"
+
+msgid "LSP Logs"
+msgstr "LSP 記錄"
+
+msgid "Language Servers"
+msgstr "語言伺服器"
+
+msgid "Language Servers can't run until you trust this project."
+msgstr "信任此專案後，語言伺服器才能執行。"
+
+msgid "Language server {server_name}:\n\n{message}"
+msgstr "語言伺服器 {server_name}：\n\n{message}"
+
+msgid "Language servers and formatters on the remote host are paused the same way."
+msgstr "遠端主機上的語言伺服器和格式器也以相同方式暫停。"
+
+msgid "Language servers running in Restricted Mode: {restricted}"
+msgstr "以受限模式執行的語言伺服器：{restricted}"
+
+msgid "Language servers stay in Restricted Mode or stopped until you review and resume."
+msgstr "在您檢閱並繼續執行之前，語言伺服器會保持在受限模式或停止狀態。"
+
+msgid "Last Keystroke"
+msgstr "最後的按鍵輸入"
+
+msgid "Light mode saves the most memory by not indexing the whole project; references and renames then only cover the open files."
+msgstr "輕量模式不會為整個專案建立索引，因此最能節省記憶體；但尋找參考和重新命名只會涵蓋已開啟的檔案。"
+
+msgid "Log"
+msgstr "記錄"
+
+msgid "Log level"
+msgstr "記錄層級"
+
+msgid "Memory {used}"
+msgstr "記憶體 {used}"
+
+msgid "Memory {used} (background index {background_index}, open files {open_files})"
+msgstr "記憶體 {used}（背景索引 {background_index}，已開啟的檔案 {open_files}）"
+
+msgid "Messages"
+msgstr "訊息"
+
+msgid "No folders are paused."
+msgstr "沒有已暫停的資料夾。"
+
+msgid "No highlights found"
+msgstr "找不到醒目提示"
+
+msgid "No language servers"
+msgstr "沒有語言伺服器"
+
+msgid "No language servers or formatters have been held back yet. They follow this state when they start or run."
+msgstr "尚未有任何語言伺服器或格式器被暫停。它們在啟動或執行時會遵循此狀態。"
+
+msgid "No server selected"
+msgstr "未選取伺服器"
+
+msgid "Not attached to an editor"
+msgstr "未附加至編輯器"
+
+msgid "Not stopped yet. Either the host isn't responding or the processes are ignoring the request to exit. They stay in the list if they're still running at the next check."
+msgstr "尚未停止。可能是主機沒有回應，或處理序忽略了結束要求。如果下次檢查時仍在執行，會保留在清單中。"
+
+msgid "Off"
+msgstr "關閉"
+
+msgid "Open Documentation"
+msgstr "開啟文件"
+
+msgid "Open Git Panel"
+msgstr "開啟 Git 面板"
+
+msgid "Open Project Settings"
+msgstr "開啟專案設定"
+
+msgid "Processes left behind by an agent response are running in the sandbox. You can't resume until they end."
+msgstr "代理回應遺留的處理序正在沙箱中執行。在它們結束之前無法繼續執行。"
+
+msgid "Project is in Restricted Mode"
+msgstr "專案處於受限模式"
+
+msgid "RPC Messages"
+msgstr "RPC 訊息"
+
+msgid "Restart All Servers"
+msgstr "重新啟動所有伺服器"
+
+msgid "Restart Server"
+msgstr "重新啟動伺服器"
+
+msgid "Restricted Mode"
+msgstr "受限模式"
+
+msgid "Resume"
+msgstr "繼續執行"
+
+msgid "Revoke Launch Approval"
+msgstr "撤回啟動核准"
+
+msgid "Running"
+msgstr "執行中"
+
+msgid "Semantic Tokens"
+msgstr "語意標記"
+
+msgid "Server Info"
+msgstr "伺服器資訊"
+
+msgid "Server Logs"
+msgstr "伺服器記錄"
+
+msgid "Server Trace"
+msgstr "伺服器追蹤"
+
+msgid "Server with errors"
+msgstr "伺服器發生錯誤"
+
+msgid "Server with notifications"
+msgstr "伺服器有通知"
+
+msgid "Server with warnings"
+msgstr "伺服器發生警告"
+
+msgid "Shortcuts defined using some characters have been remapped so that shortcuts can be typed without holding option."
+msgstr "使用某些字元定義的快速鍵已重新對應，讓輸入快速鍵時不必按住 option。"
+
+msgid "Since an agent wrote to the following folders, the language servers and formatters that run each folder's code are paused. Review the agent's changes before you resume."
+msgstr "由於代理已寫入下列資料夾，因此已暫停執行各資料夾程式碼的語言伺服器和格式器。請先檢閱代理的變更，再繼續執行。"
+
+msgid "Skipped formatters: {formatters}"
+msgstr "已略過的格式器：{formatters}"
+
+msgid "Starting…"
+msgstr "正在啟動…"
+
+msgid "Stop All Servers"
+msgstr "停止所有伺服器"
+
+msgid "Stop Leftover Processes"
+msgstr "停止遺留的處理序"
+
+msgid "Stop Server"
+msgstr "停止伺服器"
+
+msgid "Stopped"
+msgstr "已停止"
+
+msgid "Stopped language servers: {stopped}"
+msgstr "已停止的語言伺服器：{stopped}"
+
+msgid "Switch to Light Mode"
+msgstr "切換為輕量模式"
+
+msgid "Syntax Tokens"
+msgstr "語法標記"
+
+msgid "Syntax Tree"
+msgstr "語法樹"
+
+msgid "Text Highlights"
+msgstr "文字醒目提示"
+
+msgid "The editor has no text, syntax, or semantic token highlights"
+msgstr "此編輯器沒有文字、語法或語意標記醒目提示"
+
+msgid "The remote server is too old, so language servers and formatters on the remote host are not paused"
+msgstr "遠端伺服器版本太舊，因此遠端主機上的語言伺服器和格式器未暫停"
+
+msgid "This folder's code (language servers and formatters) won't run until you review and resume."
+msgstr "在您檢閱並繼續執行之前，不會執行此資料夾中的程式碼（語言伺服器和格式器）。"
+
+msgid "This project's settings choose clangd's full mode, which your own settings do not change. To save memory with light mode, change `clangd.index_mode` in the project's settings."
+msgstr "此專案的設定選擇了 clangd 的完整模式，您自己的設定無法變更此項目。若要以輕量模式節省記憶體，請變更專案設定中的 `clangd.index_mode`。"
+
+msgid "This view lets you determine the current context stack for creating custom key bindings in Zed. When a keyboard shortcut is triggered, it also shows all the possible contexts it could have triggered in, and which one matched."
+msgstr "此檢視可讓您判斷在 ForgeKairos 中建立自訂按鍵繫結時的目前上下文堆疊。觸發鍵盤快速鍵時，也會顯示它可能觸發的所有上下文，以及符合的是哪一個。"
+
+msgid "Trace level"
+msgstr "追蹤層級"
+
+msgid "Try assigning a language or switching to a different buffer"
+msgstr "請嘗試指派語言，或切換至其他緩衝區"
+
+msgid "Typed: {}"
+msgstr "已輸入：{}"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Unknown worktree"
+msgstr "未知的工作樹"
+
+msgid "Update view to '{active_tab_name}'"
+msgstr "更新檢視至「{active_tab_name}」"
+
+msgid "Verbose"
+msgstr "詳細"
+
+msgid "View Agent Changes"
+msgstr "檢視代理的變更"
+
+msgid "View Default Keymap"
+msgstr "檢視預設按鍵對應"
+
+msgid "View Logs"
+msgstr "檢視記錄"
+
+msgid "View Message"
+msgstr "檢視訊息"
+
+msgid "Waiting for more input: {}"
+msgstr "等待更多輸入：{}"
+
+msgid "Waiting for the remote server to respond."
+msgstr "正在等待遠端伺服器回應。"
+
+msgid "Warning"
+msgstr "警告"
+
+msgid "You can't resume until the agent's response ends. If it doesn't end, stop the agent."
+msgstr "在代理的回應結束之前無法繼續執行。如果回應沒有結束，請停止代理。"
+
+msgid "You can't resume until the running sessions and commands end."
+msgstr "在執行中的工作階段和命令結束之前無法繼續執行。"
+
+msgid "clangd is using {used} of memory, over its limit of {limit}. It was restarted less than 10 minutes ago, so it is left running."
+msgstr "clangd 正在使用 {used} 的記憶體，超過其上限 {limit}。由於上次重新啟動距今不到 10 分鐘，因此讓它繼續執行。"
+
+msgid "clangd was using {used} of memory, over its limit of {limit}, and was restarted."
+msgstr "clangd 曾使用 {used} 的記憶體，超過其上限 {limit}，已重新啟動。"
+
+msgid "process with an unreadable command name"
+msgstr "無法讀取命令名稱的處理序"
+
+msgid "running for under a second"
+msgstr "已執行不到 1 秒"
+
+msgid "running for {count} minute"
+msgid_plural "running for {count} minutes"
+msgstr[0] "已執行 {count} 分鐘"
+
+msgid "running for {count} second"
+msgid_plural "running for {count} seconds"
+msgstr[0] "已執行 {count} 秒"
+
+msgid "running for {} h {} min"
+msgstr "已執行 {} 小時 {} 分鐘"
+
+msgid "started at an unknown time"
+msgstr "啟動時間不明"
+
+msgid "supplementary"
+msgstr "輔助"
+
+msgid "unknown server"
+msgstr "未知的伺服器"
+
+msgid "{command} ({}, PID {}, {})"
+msgstr "{command}（{}，PID {}，{}）"
+
+msgid "{} / {} highlights"
+msgstr "{} / {} 個醒目提示"
+
+msgid "{} highlights"
+msgstr "{} 個醒目提示"
+
+msgctxt "highlight style"
+msgid "bold"
+msgstr "粗體"
+
+msgctxt "highlight style"
+msgid "italic"
+msgstr "斜體"
+
+msgctxt "highlight style"
+msgid "none"
+msgstr "無"
+
+msgctxt "highlight style"
+msgid "strike"
+msgstr "刪除線"
+
+msgctxt "highlight style"
+msgid "underline"
+msgstr "底線"
+
+msgctxt "paused folder code"
+msgid "Review"
+msgstr "檢閱"

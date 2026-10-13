@@ -1,0 +1,28 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Adapter Logs"
+msgstr "介面卡記錄"
+
+msgid "DAP Logs"
+msgstr "DAP 記錄"
+
+msgid "Initialization Sequence"
+msgstr "初始化序列"
+
+msgid "No adapter selected"
+msgstr "未選取介面卡"
+
+msgid "RPC Messages"
+msgstr "RPC 訊息"
+
+msgctxt "dap log"
+msgid "Clear"
+msgstr "清除"

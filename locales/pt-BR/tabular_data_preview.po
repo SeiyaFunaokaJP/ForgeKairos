@@ -1,0 +1,550 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid " ({count} row hidden)"
+msgid_plural " ({count} rows hidden)"
+msgstr[0] " ({count} linha oculta)"
+msgstr[1] " ({count} linhas ocultas)"
+
+msgid "(Blank)"
+msgstr "(Em branco)"
+
+msgid "A single cell is compared against the clipboard, but the clipboard is empty (select several ranges with Ctrl, or two or more columns or rows, to compare within them)"
+msgstr "Uma única célula é comparada com a área de transferência, mas a área de transferência está vazia (selecione vários intervalos com Ctrl, ou duas ou mais colunas ou linhas, para comparar entre eles)"
+
+msgid "A-Z, then Count"
+msgstr "A-Z, depois contagem"
+
+msgid "Add Column"
+msgstr "Adicionar coluna"
+
+msgid "Add Row"
+msgstr "Adicionar linha"
+
+msgid "Add a column at the end"
+msgstr "Adicionar uma coluna no fim"
+
+msgid "Add a row at the end"
+msgstr "Adicionar uma linha no fim"
+
+msgid "Alt+Enter for a line break in a cell"
+msgstr "Alt+Enter para quebra de linha em uma célula"
+
+msgid "Begins With"
+msgstr "Começa com"
+
+msgid "Blank"
+msgstr "Em branco"
+
+msgid "Cell Comparison ({} ↔ {})"
+msgstr "Comparação de células ({} ↔ {})"
+
+msgid "Center"
+msgstr "Centro"
+
+msgid "Choose how filter values are sorted in the filter menu"
+msgstr "Escolha como os valores do filtro são ordenados no menu de filtro"
+
+msgid "Choose vertical text alignment within cells"
+msgstr "Escolha o alinhamento vertical do texto nas células"
+
+msgid "Choose what to compare on this side"
+msgstr "Escolha o que comparar deste lado"
+
+msgid "Clear Colors"
+msgstr "Limpar cores"
+
+msgid "Clear Contents"
+msgstr "Limpar conteúdo"
+
+msgid "Clear Filters"
+msgstr "Limpar filtros"
+
+msgid "Clear Second"
+msgstr "Limpar a segunda"
+
+msgid "Clear Selection Contents"
+msgstr "Limpar conteúdo da seleção"
+
+msgid "Clear Sort"
+msgstr "Limpar ordenação"
+
+msgid "Clears the filters of every column. Filter a single column from the ▾ in its heading"
+msgstr "Limpa os filtros de todas as colunas. Filtre uma única coluna pelo ▾ no cabeçalho dela"
+
+msgid "Clears this column's filters"
+msgstr "Limpa os filtros desta coluna"
+
+msgid "Clipboard"
+msgstr "Área de transferência"
+
+msgid "Color"
+msgstr "Cor"
+
+msgid "Colors aren't saved for this file"
+msgstr "As cores não são salvas para este arquivo"
+
+msgid "Column {label}"
+msgstr "Coluna {label}"
+
+msgid "Columns"
+msgstr "Colunas"
+
+msgid "Compare"
+msgstr "Comparar"
+
+msgid "Compare Again"
+msgstr "Comparar novamente"
+
+msgid "Compare Selected Cells"
+msgstr "Comparar células selecionadas"
+
+msgid "Compare this table with another version or another file"
+msgstr "Compara esta tabela com outra versão ou outro arquivo"
+
+msgid "Compare with File…"
+msgstr "Comparar com arquivo…"
+
+msgid "Compare with HEAD"
+msgstr "Comparar com HEAD"
+
+msgid "Comparing…"
+msgstr "Comparando…"
+
+msgid "Condition: {}"
+msgstr "Condição: {}"
+
+msgid "Contains"
+msgstr "Contém"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Couldn't read the chosen file"
+msgstr "Não foi possível ler o arquivo escolhido"
+
+msgid "Count, then A-Z"
+msgstr "Contagem, depois A-Z"
+
+msgid "Creates the first row"
+msgstr "Cria a primeira linha"
+
+msgid "Cut"
+msgstr "Recortar"
+
+msgid "Delete Columns"
+msgstr "Excluir colunas"
+
+msgid "Delete Rows"
+msgstr "Excluir linhas"
+
+msgid "Delete Selected Columns"
+msgstr "Excluir colunas selecionadas"
+
+msgid "Delete Selected Rows"
+msgstr "Excluir linhas selecionadas"
+
+msgid "Dev-only section used for debugging purposes.\nWill be removed on public release of the tabular data preview feature"
+msgstr "Seção somente para desenvolvimento, usada para depuração.\nSerá removida no lançamento público do recurso de visualização de dados tabulares"
+
+msgid "Dev-only: Rendering Mode"
+msgstr "Somente desenvolvimento: modo de renderização"
+
+msgid "Diff"
+msgstr "Diff"
+
+msgid "Diff of {} and {}"
+msgstr "Diff de {} e {}"
+
+msgid "Display multiline rows"
+msgstr "Exibir células em várias linhas"
+
+msgid "Does Not Contain"
+msgstr "Não contém"
+
+msgid "Ends With"
+msgstr "Termina com"
+
+msgid "Equals"
+msgstr "É igual a"
+
+msgid "Fill Color"
+msgstr "Cor de preenchimento"
+
+msgid "Filter Sort"
+msgstr "Ordenação do filtro"
+
+msgid "Filter and sort menu (Alt+↓)"
+msgstr "Menu de filtro e ordenação (Alt+↓)"
+
+msgid "Filtered by the chosen values. Click to change"
+msgstr "Filtrado pelos valores escolhidos. Clique para alterar"
+
+msgid "Filtering by this condition. Click to clear"
+msgstr "Filtrando por esta condição. Clique para limpar"
+
+msgid "Filtering: {}. Click to change"
+msgstr "Filtrando: {}. Clique para alterar"
+
+msgid "Filters to only the values listed now (use it together with the search)"
+msgstr "Filtra somente os valores listados agora (use em conjunto com a pesquisa)"
+
+msgid "Filter…"
+msgstr "Filtrar…"
+
+msgid "First Row Is Header"
+msgstr "A primeira linha é o cabeçalho"
+
+msgid "Hidden by other filters"
+msgstr "Ocultos por outros filtros"
+
+msgid "Insert a column here"
+msgstr "Inserir uma coluna aqui"
+
+msgid "Insert a row here"
+msgstr "Inserir uma linha aqui"
+
+msgid "Joins the first condition with \"{}\" to show {}"
+msgstr "Une a primeira condição com \"{}\" para mostrar {}"
+
+msgid "Joins the two conditions with \"{}\""
+msgstr "Une as duas condições com \"{}\""
+
+msgid "Loading…"
+msgstr "Carregando…"
+
+msgid "Makes the next condition you press the second, joined with \"{}\""
+msgstr "Faz da próxima condição que você pressionar a segunda, unida com \"{}\""
+
+msgid "Next Difference"
+msgstr "Próxima diferença"
+
+msgid "No differences"
+msgstr "Nenhuma diferença"
+
+msgid "No matching values. The conditions below can still use this text"
+msgstr "Nenhum valor correspondente. As condições abaixo ainda podem usar este texto"
+
+msgid "Not Blank"
+msgstr "Não está em branco"
+
+msgid "Not sorted. Click to sort ascending"
+msgstr "Sem ordenação. Clique para ordenar em ordem crescente"
+
+msgid "Nothing to compare"
+msgstr "Nada para comparar"
+
+msgid "Only the first {} rows were compared"
+msgstr "Somente as primeiras {} linhas foram comparadas"
+
+msgid "Open Text Beside"
+msgstr "Abrir texto ao lado"
+
+msgid "Opens the underlying text in the adjacent pane"
+msgstr "Abre o texto subjacente no subpainel adjacente"
+
+msgid "Paste"
+msgstr "Colar"
+
+msgid "Pick values, or filter with the conditions below"
+msgstr "Escolha valores ou filtre com as condições abaixo"
+
+msgid "Previous Difference"
+msgstr "Diferença anterior"
+
+msgid "Reads both sides again and compares them"
+msgstr "Lê os dois lados novamente e os compara"
+
+msgid "Removes the second condition and filters by the first one only"
+msgstr "Remove a segunda condição e filtra somente pela primeira"
+
+msgid "Restored the previous filters"
+msgstr "Os filtros anteriores foram restaurados"
+
+msgid "Restored the previous filters and sorting"
+msgstr "Os filtros e a ordenação anteriores foram restaurados"
+
+msgid "Restored the previous sorting"
+msgstr "A ordenação anterior foi restaurada"
+
+msgid "Row {number}"
+msgstr "Linha {number}"
+
+msgid "Row {}"
+msgstr "Linha {}"
+
+msgid "Rows"
+msgstr "Linhas"
+
+msgid "Rows can't be inserted above the header row"
+msgstr "Não é possível inserir linhas acima da linha de cabeçalho"
+
+msgid "Search {} values, or type text for a condition"
+msgstr "Pesquisar {} valores ou digitar texto para uma condição"
+
+msgid "Second Condition"
+msgstr "Segunda condição"
+
+msgid "Select All"
+msgstr "Selecionar tudo"
+
+msgid "Select All Cells"
+msgstr "Selecionar todas as células"
+
+msgid "Show Only Rows with Differences"
+msgstr "Mostrar somente linhas com diferenças"
+
+msgid "Show cell positions"
+msgstr "Mostrar posições das células"
+
+msgid "Show perf metrics"
+msgstr "Mostrar métricas de desempenho"
+
+msgid "Showing file line numbers.\nClick to show sequential row numbers."
+msgstr "Mostrando números de linha do arquivo.\nClique para mostrar numeração sequencial de registros."
+
+msgid "Showing sequential row numbers.\nClick to show file line numbers."
+msgstr "Mostrando numeração sequencial de registros.\nClique para mostrar números de linha do arquivo."
+
+msgid "Shows only {kept}"
+msgstr "Mostra somente {kept}"
+
+msgid "Sort Ascending"
+msgstr "Ordenar em ordem crescente"
+
+msgid "Sort Descending"
+msgstr "Ordenar em ordem decrescente"
+
+msgid "Sorted ascending. Click to sort descending"
+msgstr "Em ordem crescente. Clique para ordenar em ordem decrescente"
+
+msgid "Sorted descending. Click to clear"
+msgstr "Em ordem decrescente. Clique para limpar"
+
+msgid "Table Settings"
+msgstr "Configurações da tabela"
+
+msgid "Text Alignment"
+msgstr "Alinhamento do texto"
+
+msgid "That makes {count} things to compare. Select again so that there are at most {MAX_CELL_CANDIDATES} (the candidates are the ranges selected with Ctrl, the rows selected by their numbers, the columns when two or more are selected, or the cells of a single column)"
+msgstr "Isso resulta em {count} itens a comparar. Selecione novamente para que haja no máximo {MAX_CELL_CANDIDATES} (os candidatos são os intervalos selecionados com Ctrl, as linhas selecionadas pelos números, as colunas quando duas ou mais estão selecionadas ou as células de uma única coluna)"
+
+msgid "The added row is hidden by the filters"
+msgstr "A linha adicionada está oculta pelos filtros"
+
+msgid "The candidates add up to {} cells. Comparing three or more is limited to {} cells (select a smaller range, or only two columns, two rows or two ranges to compare)"
+msgstr "Os candidatos somam {} células. A comparação de três ou mais é limitada a {} células (selecione um intervalo menor ou apenas duas colunas, duas linhas ou dois intervalos para comparar)"
+
+msgid "The next condition you press becomes the second, joined with \"{}\". Press again to cancel"
+msgstr "A próxima condição que você pressionar se torna a segunda, unida com \"{}\". Pressione novamente para cancelar"
+
+msgid "The original table's tab is closed, so this can't be redone"
+msgstr "A aba da tabela original está fechada, então isto não pode ser refeito"
+
+msgid "The original table's tab is closed, so this comparison can't be redone"
+msgstr "A aba da tabela original está fechada, então esta comparação não pode ser refeita"
+
+msgid "The selection is too large (up to {limit} cells) to set colors"
+msgstr "A seleção é grande demais (até {limit} células) para definir cores"
+
+msgid "The selection is too large (up to {limit} cells). Open the text beside the grid to edit it"
+msgstr "A seleção é grande demais (até {limit} células). Abra o texto ao lado da grade para editá-lo"
+
+msgid "This file is empty. Typing in a cell creates the first row"
+msgstr "Este arquivo está vazio. Digitar em uma célula cria a primeira linha"
+
+msgid "This file isn't tracked by git or has never been committed"
+msgstr "Este arquivo não é rastreado pelo Git ou nunca teve commit"
+
+msgid "This file no longer exists in {} (showing the last contents that could be read)"
+msgstr "Este arquivo não existe mais em {} (mostrando o último conteúdo que pôde ser lido)"
+
+msgid "This operation can't be performed on multiple selections."
+msgstr "Esta operação não pode ser executada em várias seleções."
+
+msgid "Too many matches; only the first 100,000 are included"
+msgstr "Correspondências demais; somente as primeiras 100.000 estão incluídas"
+
+msgid "Top"
+msgstr "Superior"
+
+msgid "Type in the search box, then press \"{}\""
+msgstr "Digite na caixa de pesquisa e pressione \"{}\""
+
+msgid "Uniform Height"
+msgstr "Altura uniforme"
+
+msgid "Untitled"
+msgstr "Sem título"
+
+msgid "Use First Row as Header"
+msgstr "Usar a primeira linha como cabeçalho"
+
+msgid "Used as the second condition. Click to clear"
+msgstr "Usada como segunda condição. Clique para limpar"
+
+msgid "Variable Height"
+msgstr "Altura variável"
+
+msgid "When enabled, row height grows to show all content. When disabled, only the first line is visible — hover a cell to see the rest."
+msgstr "Quando habilitado, a altura da linha aumenta para exibir todo o conteúdo. Quando desabilitado, apenas a primeira linha fica visível — passe o cursor sobre uma célula para ver o restante."
+
+msgid "When off, the first row is treated as data too"
+msgstr "Quando desativado, a primeira linha também é tratada como dados"
+
+msgid "begins with \"{needle}\""
+msgstr "começa com \"{needle}\""
+
+msgid "contains \"{needle}\""
+msgstr "contém \"{needle}\""
+
+msgid "does not contain \"{needle}\""
+msgstr "não contém \"{needle}\""
+
+msgid "ends with \"{needle}\""
+msgstr "termina com \"{needle}\""
+
+msgid "equals \"{needle}\""
+msgstr "é igual a \"{needle}\""
+
+msgid "is blank"
+msgstr "está em branco"
+
+msgid "is not blank"
+msgstr "não está em branco"
+
+msgid "rows where the cell {}"
+msgstr "linhas em que a célula {}"
+
+msgid "rows with blank cells"
+msgstr "linhas com células em branco"
+
+msgid "rows with non-blank cells"
+msgstr "linhas com células preenchidas"
+
+msgid "{count} cell wasn't replaced because its content had changed"
+msgid_plural "{count} cells weren't replaced because their content had changed"
+msgstr[0] "{count} célula não foi substituída porque o conteúdo dela havia mudado"
+msgstr[1] "{count} células não foram substituídas porque o conteúdo delas havia mudado"
+
+msgid "{count} column"
+msgid_plural "{count} columns"
+msgstr[0] "{count} coluna"
+msgstr[1] "{count} colunas"
+
+msgid "{count} difference ({} added / {} removed / {} changed)"
+msgid_plural "{count} differences ({} added / {} removed / {} changed)"
+msgstr[0] "{count} diferença ({} adicionadas / {} removidas / {} alteradas)"
+msgstr[1] "{count} diferenças ({} adicionadas / {} removidas / {} alteradas)"
+
+msgid "{count} row"
+msgid_plural "{count} rows"
+msgstr[0] "{count} linha"
+msgstr[1] "{count} linhas"
+
+msgid "{selected_rows} of {count} row selected"
+msgid_plural "{selected_rows} of {count} rows selected"
+msgstr[0] "{selected_rows} de {count} linha selecionada"
+msgstr[1] "{selected_rows} de {count} linhas selecionadas"
+
+msgid "{shown_rows} of {count} row"
+msgid_plural "{shown_rows} of {count} rows"
+msgstr[0] "{shown_rows} de {count} linha"
+msgstr[1] "{shown_rows} de {count} linhas"
+
+msgid "{} (read at {})"
+msgstr "{} (lido às {})"
+
+msgid "{} to switch this tab instead"
+msgstr "{} para trocar esta aba em vez disso"
+
+msgid "{} wasn't found (showing the last contents that could be read)"
+msgstr "{} não foi encontrado (mostrando o último conteúdo que pôde ser lido)"
+
+msgctxt "cell color"
+msgid "Blue"
+msgstr "Azul"
+
+msgctxt "cell color"
+msgid "Gray"
+msgstr "Cinza"
+
+msgctxt "cell color"
+msgid "Green"
+msgstr "Verde"
+
+msgctxt "cell color"
+msgid "None"
+msgstr "Nenhum"
+
+msgctxt "cell color"
+msgid "Orange"
+msgstr "Laranja"
+
+msgctxt "cell color"
+msgid "Purple"
+msgstr "Roxo"
+
+msgctxt "cell color"
+msgid "Red"
+msgstr "Vermelho"
+
+msgctxt "cell color"
+msgid "Text Color"
+msgstr "Cor do texto"
+
+msgctxt "cell color"
+msgid "Yellow"
+msgstr "Amarelo"
+
+msgctxt "table diff"
+msgid "Current"
+msgstr "Atual"
+
+msgctxt "table diff"
+msgid "{current} of {total}"
+msgstr "{current} de {total}"
+
+msgctxt "table filter"
+msgid "And"
+msgstr "E"
+
+msgctxt "table filter"
+msgid "Clear All"
+msgstr "Limpar tudo"
+
+msgctxt "table filter"
+msgid "Or"
+msgstr "Ou"
+
+msgctxt "table filter"
+msgid "{} and {}"
+msgstr "{} e {}"
+
+msgctxt "table filter"
+msgid "{} or {}"
+msgstr "{} ou {}"
+
+msgctxt "table grid"
+msgid "Insert Column Left"
+msgstr "Inserir coluna à esquerda"
+
+msgctxt "table grid"
+msgid "Insert Column Right"
+msgstr "Inserir coluna à direita"
+
+msgctxt "table grid"
+msgid "Insert Row Above"
+msgstr "Inserir linha acima"
+
+msgctxt "table grid"
+msgid "Insert Row Below"
+msgstr "Inserir linha abaixo"

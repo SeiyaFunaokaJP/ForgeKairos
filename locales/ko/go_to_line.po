@@ -1,0 +1,57 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Character Count (Selection)"
+msgstr "문자 수 (선택 영역)"
+
+msgid "Character Count (Whole Document)"
+msgstr "문자 수 (전체 문서)"
+
+msgid "Current Line: {} of {} (column {})"
+msgstr "현재 줄: {}/{} (열 {})"
+
+msgid "Go to Line/Column"
+msgstr "줄/열로 이동"
+
+msgid "Go to line {line}"
+msgstr "{line}줄로 이동"
+
+msgid "Go to line {line}, character {character}"
+msgstr "{line}줄, {character}번째 문자로 이동"
+
+msgid "Go to line {target_line} ({offset} from current)"
+msgstr "{target_line}줄로 이동 (현재 위치에서 {offset})"
+
+msgid "Line {}, column {}"
+msgstr "줄 {}, 열 {}"
+
+msgid "{count} character"
+msgid_plural "{count} characters"
+msgstr[0] "{count}자"
+
+msgid "{count} line"
+msgid_plural "{count} lines"
+msgstr[0] "{count}줄"
+
+msgid "{count} selection"
+msgid_plural "{count} selections"
+msgstr[0] "선택 영역 {count}개"
+
+msgctxt "abbreviated count"
+msgid "{characters} c"
+msgstr "{characters}자"
+
+msgctxt "abbreviated count"
+msgid "{lines} l"
+msgstr "{lines}줄"
+
+msgctxt "abbreviated count"
+msgid "{selections} s"
+msgstr "{selections}개 선택"

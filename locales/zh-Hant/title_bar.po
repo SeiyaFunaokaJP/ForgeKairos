@@ -1,0 +1,165 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Add to Allowlist and Update"
+msgstr "加入允許清單並更新"
+
+msgid "Agentic"
+msgstr "代理模式"
+
+msgid "Application menu"
+msgstr "應用程式選單"
+
+msgid "Branch & Stash"
+msgstr "分支與貯藏"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Classic"
+msgstr "經典"
+
+msgid "Click to Follow"
+msgstr "按一下以跟隨"
+
+msgid "Close Announcement Banner"
+msgstr "關閉公告橫幅"
+
+msgid "Connected to: {host}"
+msgstr "已連線至：{host}"
+
+msgid "Connecting to: {host}"
+msgstr "正在連線至：{host}"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "與 {host} 的連線嘗試未成功。正在重試..."
+
+msgid "Create Branch"
+msgstr "建立分支"
+
+msgid "Creating {}…"
+msgstr "正在建立 {}…"
+
+msgid "Currently Checked Out: {}"
+msgstr "目前簽出：{}"
+
+msgid "Currently In Use: {}"
+msgstr "目前使用中：{}"
+
+msgid "Custom"
+msgstr "自訂"
+
+msgid "Detached HEAD: {}"
+msgstr "Detached HEAD：{}"
+
+msgid "Dev Container"
+msgstr "Dev Container"
+
+msgid "Disconnected"
+msgstr "已中斷連線"
+
+msgid "Disconnected from {host}"
+msgstr "已中斷與 {host} 的連線"
+
+msgid "Downloading the update needs network access"
+msgstr "下載更新需要網路存取權"
+
+msgid "Extensions"
+msgstr "擴充功能"
+
+msgid "Icon Themes…"
+msgstr "圖示佈景主題…"
+
+msgid "Introducing:"
+msgstr "介紹："
+
+msgid "It won't show again for this feature"
+msgstr "此功能的公告橫幅將不再顯示"
+
+msgid "Keymap"
+msgstr "按鍵對應"
+
+msgid "Loading {}…"
+msgstr "正在載入 {}…"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "已失去與 {host} 的連線。正在重新連線..."
+
+msgid "Mark this project as trusted and unlock all features"
+msgstr "將此專案標記為受信任並解鎖所有功能"
+
+msgid "Open Application Menu"
+msgstr "開啟應用程式選單"
+
+msgid "Open Recent Project"
+msgstr "開啟最近的專案"
+
+msgid "Organization"
+msgstr "組織"
+
+msgid "Panel Layout"
+msgstr "面板配置"
+
+msgid "Please restart Zed to Collaborate"
+msgstr "請重新啟動 ForgeKairos 以進行共同作業"
+
+msgid "Please update Zed to Collaborate"
+msgstr "請更新 ForgeKairos 以進行共同作業"
+
+msgid "Recent Projects"
+msgstr "最近的專案"
+
+msgid "Remote Project"
+msgstr "遠端專案"
+
+msgid "Restart to update Zed"
+msgstr "重新啟動以更新 ForgeKairos"
+
+msgid "Restricted Mode"
+msgstr "受限模式"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Sign In"
+msgstr "登入"
+
+msgid "Sign Out"
+msgstr "登出"
+
+msgid "Signing in…"
+msgstr "正在登入…"
+
+msgid "Themes…"
+msgstr "佈景主題…"
+
+msgid "To download version {version}, these hosts must be added to the network allowlist:\n\n{hosts}\n\nOnce added, connections to them are always allowed. You can remove them at any time on the Network page of the settings."
+msgstr "若要下載版本 {version}，必須將下列主機加入網路允許清單：\n\n{hosts}\n\n加入後，與這些主機的連線將一律允許。您可以隨時在設定的「網路」頁面中移除它們。"
+
+msgid "Toggle AI chat"
+msgstr "開啟/關閉 AI 聊天"
+
+msgid "Update Needs Permission"
+msgstr "更新需要權限"
+
+msgid "Updating..."
+msgstr "正在更新..."
+
+msgid "User menu"
+msgstr "使用者選單"
+
+msgid "Worktree"
+msgstr "工作樹"
+
+msgid "You're in Restricted Mode"
+msgstr "目前處於受限模式"
+
+msgid "{} is sharing this project. Click to follow."
+msgstr "{} 正在分享此專案。按一下以跟隨。"

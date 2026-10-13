@@ -1,0 +1,268 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\n\n1 of these has unsaved changes, which will be lost."
+msgstr "\n\n이 중 1개에 저장되지 않은 변경 사항이 있으며, 이 변경 사항은 손실됩니다."
+
+msgid "\n\nIt has unsaved changes, which will be lost."
+msgstr "\n\n저장되지 않은 변경 사항이 있으며, 이 변경 사항은 손실됩니다."
+
+msgid "\n\n{dirty_buffers} of these have unsaved changes, which will be lost."
+msgstr "\n\n이 중 {dirty_buffers}개에 저장되지 않은 변경 사항이 있으며, 이 변경 사항은 손실됩니다."
+
+msgid ".. 1 file not shown"
+msgstr ".. 파일 1개 표시되지 않음"
+
+msgid ".. {omitted_count} files not shown"
+msgstr ".. 파일 {omitted_count}개 표시되지 않음"
+
+msgid "A file or folder with name {} already exists in the destination folder. Do you want to replace it?"
+msgstr "이름이 {}인 파일 또는 폴더가 대상 폴더에 이미 있습니다. 바꾸시겠습니까?"
+
+msgid "Add Folders to Project…"
+msgstr "프로젝트에 폴더 추가…"
+
+msgid "Add to .git/info/exclude"
+msgstr ".git/info/exclude에 추가"
+
+msgid "Add to .gitignore"
+msgstr ".gitignore에 추가"
+
+msgid "Apply Patch File…"
+msgstr "패치 파일 적용…"
+
+msgid "Are you sure you want to permanently delete the following {} files?\n{}"
+msgstr "다음 파일 {}개를 영구적으로 삭제하시겠습니까?\n{}"
+
+msgid "Are you sure you want to permanently delete {}?"
+msgstr "{}을(를) 영구적으로 삭제하시겠습니까?"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Change Folder…"
+msgstr "폴더 변경…"
+
+msgid "Collapse All"
+msgstr "모두 접기"
+
+msgid "Compare Marked Files"
+msgstr "표시한 파일 비교"
+
+msgid "Copy"
+msgstr "복사"
+
+msgid "Copy File Permalink"
+msgstr "파일 고유 링크 복사"
+
+msgid "Copy Path"
+msgstr "경로 복사"
+
+msgid "Copy Relative Path"
+msgstr "상대 경로 복사"
+
+msgid "Create Patch File…"
+msgstr "패치 파일 만들기…"
+
+msgid "Created an excluded directory at {}.\nAlter `file_scan_exclusions` in the settings to show it in the panel"
+msgstr "{}에 제외된 디렉터리를 만들었습니다.\n패널에 표시하려면 설정에서 `file_scan_exclusions`를 변경하세요"
+
+msgid "Cut"
+msgstr "잘라내기"
+
+msgid "Discard changes to {}?"
+msgstr "{}의 변경 사항을 버리시겠습니까?"
+
+msgid "Disconnected from SSH host"
+msgstr "SSH 호스트와 연결이 끊어졌습니다"
+
+msgid "Disconnected from remote project"
+msgstr "원격 프로젝트와 연결이 끊어졌습니다"
+
+msgid "Do you want to trash the following {} files?\n{}"
+msgstr "다음 파일 {}개를 휴지통으로 이동하시겠습니까?\n{}"
+
+msgid "Do you want to trash {}?"
+msgstr "{}을(를) 휴지통으로 이동하시겠습니까?"
+
+msgid "Download"
+msgstr "다운로드"
+
+msgid "Download..."
+msgstr "다운로드..."
+
+msgid "Downloaded {} files"
+msgstr "{}개 파일 다운로드 완료"
+
+msgid "Downloading 0/{} files..."
+msgstr "0/{}개 파일 다운로드 중..."
+
+msgid "Downloading {}/{} files..."
+msgstr "{}/{}개 파일 다운로드 중..."
+
+msgid "Duplicate"
+msgstr "복제"
+
+msgid "Expand All"
+msgstr "모두 펼치기"
+
+msgid "Failed to add to .git/info/exclude: {}"
+msgstr ".git/info/exclude에 추가하지 못했습니다: {}"
+
+msgid "Failed to add to .gitignore: {}"
+msgstr ".gitignore에 추가하지 못했습니다: {}"
+
+msgid "Failed to delete {failed_count} of {total_count} file."
+msgstr "{total_count}개 파일 중 {failed_count}개를 삭제하지 못했습니다."
+
+msgid "Failed to delete {failed_count} of {total_count} files."
+msgstr "{total_count}개 파일 중 {failed_count}개를 삭제하지 못했습니다."
+
+msgid "Failed to open file"
+msgstr "파일을 열지 못했습니다"
+
+msgid "Failed to refresh"
+msgstr "새로 고치지 못했습니다"
+
+msgid "Failed to restore `{name}`. It may have been permanently deleted."
+msgstr "`{name}`을(를) 복원하지 못했습니다. 영구적으로 삭제되었을 수 있습니다."
+
+msgid "Failed to restore `{name}`. Something already exists at its original location."
+msgstr "`{name}`을(를) 복원하지 못했습니다. 원래 위치에 다른 항목이 이미 있습니다."
+
+msgid "Failed to restore {}: {}"
+msgstr "{}을(를) 복원하지 못했습니다: {}"
+
+msgid "Failed to trash `{name}`."
+msgstr "`{name}`을(를) 휴지통으로 이동하지 못했습니다."
+
+msgid "Failed to trash `{name}`. It no longer exists."
+msgstr "`{name}`을(를) 휴지통으로 이동하지 못했습니다. 더 이상 존재하지 않습니다."
+
+msgid "Failed to trash {failed_count} of {total_count} file."
+msgstr "{total_count}개 파일 중 {failed_count}개를 휴지통으로 이동하지 못했습니다."
+
+msgid "Failed to trash {failed_count} of {total_count} files."
+msgstr "{total_count}개 파일 중 {failed_count}개를 휴지통으로 이동하지 못했습니다."
+
+msgid "Failed to {operation} `{from_name}` to `{to_name}`. A file or folder already exists there."
+msgstr "`{from_name}`을(를) `{to_name}`(으)로 {operation}하지 못했습니다. 해당 위치에 파일이나 폴더가 이미 있습니다."
+
+msgid "Failed to {operation} `{from_name}`. It no longer exists."
+msgstr "`{from_name}`을(를) {operation}하지 못했습니다. 더 이상 존재하지 않습니다."
+
+msgid "File or directory '{}' already exists at location. Please choose a different name."
+msgstr "파일 또는 디렉터리 '{}'이(가) 해당 위치에 이미 있습니다. 다른 이름을 선택하세요."
+
+msgid "File or directory name cannot be empty."
+msgstr "파일 또는 디렉터리 이름은 비워 둘 수 없습니다."
+
+msgid "File or directory name contains leading or trailing whitespace."
+msgstr "파일 또는 디렉터리 이름에 앞뒤 공백이 포함되어 있습니다."
+
+msgid "Find in Folder…"
+msgstr "폴더에서 찾기…"
+
+msgid "Fold Directory"
+msgstr "디렉터리 접기"
+
+msgid "New File"
+msgstr "새 파일"
+
+msgid "New Folder"
+msgstr "새 폴더"
+
+msgid "Open File Permalink"
+msgstr "파일 고유 링크 열기"
+
+msgid "Open Markdown Preview"
+msgstr "Markdown 미리 보기 열기"
+
+msgid "Open in Default App"
+msgstr "기본 앱에서 열기"
+
+msgid "Open in Terminal"
+msgstr "터미널에서 열기"
+
+msgid "Paste"
+msgstr "붙여넣기"
+
+msgid "Project Panel"
+msgstr "프로젝트 패널"
+
+msgid "Redo"
+msgstr "다시 실행"
+
+msgid "Redo Failed"
+msgstr "다시 실행 실패"
+
+msgid "Refresh"
+msgstr "새로 고침"
+
+msgid "Remove from Project"
+msgstr "프로젝트에서 제거"
+
+msgid "Rename"
+msgstr "이름 변경"
+
+msgid "Replace"
+msgstr "바꾸기"
+
+msgid "Restore"
+msgstr "복원"
+
+msgid "Search Inside"
+msgstr "내부 검색"
+
+msgid "Symbolic Link"
+msgstr "심볼릭 링크"
+
+msgid "This cannot be undone."
+msgstr "이 작업은 되돌릴 수 없습니다."
+
+msgid "Trash"
+msgstr "휴지통으로 이동"
+
+msgid "Undo"
+msgstr "실행 취소"
+
+msgid "Undo Failed"
+msgstr "실행 취소 실패"
+
+msgid "Unfold Directory"
+msgstr "디렉터리 펼치기"
+
+msgid "View History"
+msgstr "기록 보기"
+
+msgid "item"
+msgstr "항목"
+
+msgid "{} entries"
+msgstr "{}개 항목"
+
+msgid "{} is not shared by the host. This could be because it has been marked as `private`"
+msgstr "{}은(는) 호스트에서 공유되지 않았습니다. `private`로 표시되었기 때문일 수 있습니다"
+
+msgctxt "delete permanently"
+msgid "Delete"
+msgstr "삭제"
+
+msgctxt "discard file changes"
+msgid "Restore File"
+msgstr "파일 복원"
+
+msgctxt "file operation"
+msgid "move"
+msgstr "이동"
+
+msgctxt "file operation"
+msgid "rename"
+msgstr "이름 변경"

@@ -1,0 +1,60 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Character Count (Selection)"
+msgstr "Número de caracteres (selección)"
+
+msgid "Character Count (Whole Document)"
+msgstr "Número de caracteres (documento completo)"
+
+msgid "Current Line: {} of {} (column {})"
+msgstr "Línea actual: {} de {} (columna {})"
+
+msgid "Go to Line/Column"
+msgstr "Ir a la línea/columna"
+
+msgid "Go to line {line}"
+msgstr "Ir a la línea {line}"
+
+msgid "Go to line {line}, character {character}"
+msgstr "Ir a la línea {line}, carácter {character}"
+
+msgid "Go to line {target_line} ({offset} from current)"
+msgstr "Ir a la línea {target_line} ({offset} desde la actual)"
+
+msgid "Line {}, column {}"
+msgstr "Línea {}, columna {}"
+
+msgid "{count} character"
+msgid_plural "{count} characters"
+msgstr[0] "{count} carácter"
+msgstr[1] "{count} caracteres"
+
+msgid "{count} line"
+msgid_plural "{count} lines"
+msgstr[0] "{count} línea"
+msgstr[1] "{count} líneas"
+
+msgid "{count} selection"
+msgid_plural "{count} selections"
+msgstr[0] "{count} selección"
+msgstr[1] "{count} selecciones"
+
+msgctxt "abbreviated count"
+msgid "{characters} c"
+msgstr "{characters} car."
+
+msgctxt "abbreviated count"
+msgid "{lines} l"
+msgstr "{lines} lín."
+
+msgctxt "abbreviated count"
+msgid "{selections} s"
+msgstr "{selections} sel."

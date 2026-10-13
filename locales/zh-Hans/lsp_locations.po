@@ -1,0 +1,36 @@
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Filter declarations…"
+msgstr "筛选声明…"
+
+msgid "Filter definitions…"
+msgstr "筛选定义…"
+
+msgid "Filter implementations…"
+msgstr "筛选实现…"
+
+msgid "Filter references…"
+msgstr "筛选引用…"
+
+msgid "Filter type definitions…"
+msgstr "筛选类型定义…"
+
+msgid "No declarations found"
+msgstr "未找到声明"
+
+msgid "No definitions found"
+msgstr "未找到定义"
+
+msgid "No implementations found"
+msgstr "未找到实现"
+
+msgid "No references found"
+msgstr "未找到引用"
+
+msgid "No type definitions found"
+msgstr "未找到类型定义"

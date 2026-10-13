@@ -5,6 +5,15 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Auto-updates disabled for non-bundled app."
+msgstr "バンドルされていないアプリでは自動更新は無効です。"
+
+msgid "Could not auto-update because the required rsync utility was not found."
+msgstr "必要な rsync が見つからないため、自動更新できませんでした。"
+
+msgid "Could not check for updates"
+msgstr "更新を確認できませんでした"
+
 msgid "Couldn't add the hosts to the allowlist: {error}"
 msgstr "許可リストへの追加に失敗しました: {error}"
 
@@ -33,5 +42,23 @@ msgstr "リモート開発サーバーをダウンロードしています"
 msgid "Fetching remote server release"
 msgstr "リモート開発サーバーのリリース情報を取得しています"
 
+msgid "Install it with: sudo apt install rsync"
+msgstr "次のコマンドでインストールしてください: sudo apt install rsync"
+
+msgid "Install it with: sudo dnf install rsync"
+msgstr "次のコマンドでインストールしてください: sudo dnf install rsync"
+
+msgid "Install it with: sudo pacman -S rsync"
+msgstr "次のコマンドでインストールしてください: sudo pacman -S rsync"
+
+msgid "Install pkgs.rsync from nixpkgs"
+msgstr "nixpkgs から pkgs.rsync をインストールしてください"
+
+msgid "Please install rsync using your package manager"
+msgstr "パッケージマネージャーで rsync をインストールしてください"
+
 msgid "Zed was installed via a package manager."
 msgstr "ForgeKairos はパッケージマネージャーでインストールされています。"
+
+msgid "rsync is required for auto-updates but is not installed. {install_hint}"
+msgstr "自動更新には rsync が必要ですが、インストールされていません。{install_hint}"

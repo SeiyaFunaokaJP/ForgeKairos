@@ -1,0 +1,36 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Actions…"
+msgstr "Ações…"
+
+msgid "No matches"
+msgstr "Nenhuma correspondência"
+
+msgid "Open"
+msgstr "Abrir"
+
+msgid "Preview"
+msgstr "Visualização"
+
+msgid "Preview Below"
+msgstr "Visualizar abaixo"
+
+msgid "Preview to the Right"
+msgstr "Visualizar à direita"
+
+msgid "Project Scan in Progress…"
+msgstr "Varredura do projeto em andamento…"
+
+msgid "Select"
+msgstr "Selecionar"
+
+msgid "Toggle Multi Select"
+msgstr "Alternar seleção múltipla"

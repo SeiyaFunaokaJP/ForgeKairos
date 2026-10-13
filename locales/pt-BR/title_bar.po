@@ -1,0 +1,165 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Add to Allowlist and Update"
+msgstr "Adicionar à lista de permissões e atualizar"
+
+msgid "Agentic"
+msgstr "Agêntico"
+
+msgid "Application menu"
+msgstr "Menu do aplicativo"
+
+msgid "Branch & Stash"
+msgstr "Branch e stash"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Classic"
+msgstr "Clássico"
+
+msgid "Click to Follow"
+msgstr "Clique para seguir"
+
+msgid "Close Announcement Banner"
+msgstr "Fechar banner de anúncio"
+
+msgid "Connected to: {host}"
+msgstr "Conectado a: {host}"
+
+msgid "Connecting to: {host}"
+msgstr "Conectando a: {host}"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "Tentativa de conexão com {host} perdida. Tentando novamente..."
+
+msgid "Create Branch"
+msgstr "Criar branch"
+
+msgid "Creating {}…"
+msgstr "Criando {}…"
+
+msgid "Currently Checked Out: {}"
+msgstr "Branch atual: {}"
+
+msgid "Currently In Use: {}"
+msgstr "Em uso atualmente: {}"
+
+msgid "Custom"
+msgstr "Personalizado"
+
+msgid "Detached HEAD: {}"
+msgstr "HEAD destacado: {}"
+
+msgid "Dev Container"
+msgstr "Dev Container"
+
+msgid "Disconnected"
+msgstr "Desconectado"
+
+msgid "Disconnected from {host}"
+msgstr "Desconectado de {host}"
+
+msgid "Downloading the update needs network access"
+msgstr "Baixar a atualização requer acesso à rede"
+
+msgid "Extensions"
+msgstr "Extensões"
+
+msgid "Icon Themes…"
+msgstr "Temas de ícones…"
+
+msgid "Introducing:"
+msgstr "Apresentando:"
+
+msgid "It won't show again for this feature"
+msgstr "Não será exibido novamente para este recurso"
+
+msgid "Keymap"
+msgstr "Mapa de teclas"
+
+msgid "Loading {}…"
+msgstr "Carregando {}…"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "Conexão com {host} perdida. Reconectando..."
+
+msgid "Mark this project as trusted and unlock all features"
+msgstr "Marcar este projeto como confiável e desbloquear todos os recursos"
+
+msgid "Open Application Menu"
+msgstr "Abrir menu do aplicativo"
+
+msgid "Open Recent Project"
+msgstr "Abrir projeto recente"
+
+msgid "Organization"
+msgstr "Organização"
+
+msgid "Panel Layout"
+msgstr "Layout de painéis"
+
+msgid "Please restart Zed to Collaborate"
+msgstr "Reinicie o ForgeKairos para colaborar"
+
+msgid "Please update Zed to Collaborate"
+msgstr "Atualize o ForgeKairos para colaborar"
+
+msgid "Recent Projects"
+msgstr "Projetos recentes"
+
+msgid "Remote Project"
+msgstr "Projeto remoto"
+
+msgid "Restart to update Zed"
+msgstr "Reiniciar para atualizar o ForgeKairos"
+
+msgid "Restricted Mode"
+msgstr "Modo restrito"
+
+msgid "Settings"
+msgstr "Configurações"
+
+msgid "Sign In"
+msgstr "Entrar"
+
+msgid "Sign Out"
+msgstr "Sair"
+
+msgid "Signing in…"
+msgstr "Entrando…"
+
+msgid "Themes…"
+msgstr "Temas…"
+
+msgid "To download version {version}, these hosts must be added to the network allowlist:\n\n{hosts}\n\nOnce added, connections to them are always allowed. You can remove them at any time on the Network page of the settings."
+msgstr "Para baixar a versão {version}, estes hosts precisam ser adicionados à lista de permissões de rede:\n\n{hosts}\n\nDepois de adicionados, as conexões com eles são sempre permitidas. Você pode removê-los a qualquer momento na página Rede das configurações."
+
+msgid "Toggle AI chat"
+msgstr "Alternar chat de IA"
+
+msgid "Update Needs Permission"
+msgstr "A atualização requer permissão"
+
+msgid "Updating..."
+msgstr "Atualizando..."
+
+msgid "User menu"
+msgstr "Menu do usuário"
+
+msgid "Worktree"
+msgstr "Árvore de trabalho"
+
+msgid "You're in Restricted Mode"
+msgstr "Você está no modo restrito"
+
+msgid "{} is sharing this project. Click to follow."
+msgstr "{} está compartilhando este projeto. Clique para seguir."

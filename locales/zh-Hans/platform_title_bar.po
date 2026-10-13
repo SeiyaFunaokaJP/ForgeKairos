@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Close Other Tabs"
+msgstr "关闭其他标签页"
+
+msgid "Close Tab"
+msgstr "关闭标签页"
+
+msgid "Move Tab to New Window"
+msgstr "将标签页移至新窗口"
+
+msgid "Show All Tabs"
+msgstr "显示所有标签页"

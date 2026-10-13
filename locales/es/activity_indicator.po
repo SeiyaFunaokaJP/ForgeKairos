@@ -1,0 +1,132 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid " + {} more"
+msgstr " + {} más"
+
+msgid "({server_name}) Error: "
+msgstr "({server_name}) Error: "
+
+msgid "({server_name}) Warning: "
+msgstr "({server_name}) Advertencia: "
+
+msgid "Add to Allowlist and Retry"
+msgstr "Agregar a la lista de permitidos y reintentar"
+
+msgid "Building the symbol index ({done} / {total})"
+msgstr "Creando el índice de símbolos ({done} / {total})"
+
+msgid "Cancel {title}"
+msgstr "Cancelar {title}"
+
+msgid "Checking for updates to {}..."
+msgstr "Buscando actualizaciones de {}..."
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "No se pudieron agregar los hosts a la lista de permitidos: {error}"
+
+msgid "Couldn't download the {display_name} language server"
+msgstr "No se pudo descargar el servidor de lenguaje {display_name}"
+
+msgid "Couldn't download {}. Click to show error."
+msgstr "No se pudo descargar {}. Haga clic para mostrar el error."
+
+msgid "Couldn't install {display_name}: {error}"
+msgstr "No se pudo instalar {display_name}: {error}"
+
+msgid "Debug: {}"
+msgstr "Depuración: {}"
+
+msgid "Directories outside of git repositories and deeper than the `file_scan_depth` setting will be indexed on demand."
+msgstr "Los directorios que estén fuera de repositorios Git y a una profundidad superior a la configurada en `file_scan_depth` se indexarán bajo demanda."
+
+msgid "Don't Allow This Time"
+msgstr "No permitir esta vez"
+
+msgid "Don't Show This Again"
+msgstr "No volver a mostrar"
+
+msgid "Downloading the {language} language server"
+msgstr "Descargando el servidor de lenguaje de {language}"
+
+msgid "Downloading {display_name} needs the following hosts, but the network allowlist denied them."
+msgstr "Para descargar {display_name} se necesitan los siguientes hosts, pero la lista de permitidos de red los denegó."
+
+msgid "Downloading {} was blocked by the egress control. Click to show the hosts it needs."
+msgstr "El control del tráfico saliente bloqueó la descarga de {}. Haga clic para mostrar los hosts que necesita."
+
+msgid "Downloading {}..."
+msgstr "Descargando {}..."
+
+msgid "Failed to run {}. Click to show error."
+msgstr "No se pudo ejecutar {}. Haga clic para mostrar el error."
+
+msgid "Formatting failed: {failure}. Click to see logs."
+msgstr "No se pudo formatear: {failure}. Haga clic para ver los registros."
+
+msgid "If you'd rather not allow them: {}"
+msgstr "Si prefiere no permitirlos: {}"
+
+msgid "Install"
+msgstr "Instalar"
+
+msgid "Install on Remote"
+msgstr "Instalar en el remoto"
+
+msgid "Installed {}"
+msgstr "Se instaló {}"
+
+msgid "Installing {display_name}"
+msgstr "Instalando {display_name}"
+
+msgid "Installing {extension_id} extension…"
+msgstr "Instalando extensión {extension_id}…"
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this (e.g. {command})."
+msgstr "También se soluciona instalando {server_name} en este equipo (en el host remoto si hay una conexión remota) y agregándolo al PATH (p. ej., {command})."
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this."
+msgstr "También se soluciona instalando {server_name} en este equipo (en el host remoto si hay una conexión remota) y agregándolo al PATH."
+
+msgid "Language server {server_name}:\n\n{status}"
+msgstr "Servidor de lenguaje {server_name}:\n\n{status}"
+
+msgid "Partial file index"
+msgstr "Índice parcial de archivos"
+
+msgid "Removing {extension_id} extension…"
+msgstr "Eliminando extensión {extension_id}…"
+
+msgid "The following hosts needed for the download were denied by the network allowlist:\n{}\n\n{}\n\n{error}"
+msgstr "La lista de permitidos de red denegó los siguientes hosts necesarios para la descarga:\n{}\n\n{}\n\n{error}"
+
+msgid "The following hosts needed to download {display_name} were denied by the network allowlist:\n{}"
+msgstr "La lista de permitidos de red denegó los siguientes hosts necesarios para descargar {display_name}:\n{}"
+
+msgid "They're downloaded over this computer's network and placed only in {host}'s home directory (no administrator rights needed; other users aren't affected)."
+msgstr "Se descargan a través de la red de este equipo y se colocan solo en el directorio principal de {host} (no se necesitan derechos de administrador; no afecta a otros usuarios)."
+
+msgid "They're placed only in this user's data directory."
+msgstr "Se colocan solo en el directorio de datos de este usuario."
+
+msgid "Updating {extension_id} extension…"
+msgstr "Actualizando extensión {extension_id}…"
+
+msgid "{language} tools are missing"
+msgstr "Faltan las herramientas de {language}"
+
+msgid "{language} tools are missing on the remote host ({host})"
+msgstr "Faltan las herramientas de {language} en el host remoto ({host})"
+
+msgid "• {host}"
+msgstr "• {host}"
+
+msgid "• {label}"
+msgstr "• {label}"

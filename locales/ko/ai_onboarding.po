@@ -1,0 +1,163 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "$10 of tokens in Zed agent"
+msgstr "Zed 에이전트의 $10 상당 토큰"
+
+msgid "$5 of GPT Luna"
+msgstr "$5 상당의 GPT Luna"
+
+msgid "$5 of tokens in Zed agent"
+msgstr "Zed 에이전트의 $5 상당 토큰"
+
+msgid "(Current Plan)"
+msgstr "(현재 플랜)"
+
+msgid "14 days from trial start, no credit card required"
+msgstr "체험 시작 시점부터 14일, 신용카드 필요 없음"
+
+msgid "2,000 accepted edit predictions"
+msgstr "수락된 편집 예측 2,000개"
+
+msgid "API Keys"
+msgstr "API 키"
+
+msgid "Add your own keys to use AI without signing in."
+msgstr "로그인하지 않고 AI를 사용하려면 본인의 키를 추가하세요."
+
+msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
+msgstr "에이전트 명령은 OS 샌드박스 안에서 실행됩니다. 프로젝트 외부의 파일을 건드리거나 새 네트워크 액세스를 열 때는 먼저 확인합니다. 샌드박스 외부 실행은 기본적으로 허용되지 않습니다. 허용하더라도 터미널 명령은 하나씩 확인하지만, 외부에서 시작된 에이전트는 자체 도구를 확인 없이 사용할 수 있습니다."
+
+msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
+msgstr "또는 이미 설정되어 있는 GitHub Copilot을 계속 사용할 수도 있습니다."
+
+msgid "Alternatively, you can use GitHub Copilot as your edit prediction provider."
+msgstr "또는 GitHub Copilot을 편집 예측 프로바이더로 사용할 수도 있습니다."
+
+msgid "Before You Use AI"
+msgstr "AI를 사용하기 전에"
+
+msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
+msgstr "에이전트가 실행하는 명령과 외부 에이전트 자체는 OS 샌드박스(macOS에서는 Seatbelt, Linux에서는 bubblewrap, Windows에서는 WSL) 안에서 실행됩니다. 프로젝트 외부의 파일 작업과 새 네트워크 액세스는 확인을 요청합니다. 샌드박스 외부 실행은 기본적으로 허용되지 않으며 샌드박스 설정에서 허용할 수 있습니다. 그 경우에도 외부에서 실행되는 터미널 명령은 하나씩 확인을 요청하지만, 샌드박스 외부에서 시작된 외부 에이전트나 Claude Code는 자체 도구를 확인 없이 사용할 수 있습니다."
+
+msgid "Configure Copilot"
+msgstr "Copilot 구성"
+
+msgid "Configure Providers"
+msgstr "프로바이더 구성"
+
+msgid "Connections made by AI (model providers, agent tools, MCP servers, and external agents) are denied by default unless their host is on the network allowlist, and adding a host asks for your confirmation. The list is under Settings → Network → Network Allowlist. The IDE's own tooling, such as language servers and extensions, is not affected. For an agent started outside the sandbox, the allowlist only reaches programs that honor its proxy settings; it is not enforced."
+msgstr "AI가 만드는 연결(모델 프로바이더, 에이전트 도구, MCP 서버, 외부 에이전트)은 호스트가 네트워크 허용 목록에 없으면 기본적으로 거부되며, 호스트를 추가할 때는 확인을 요청합니다. 목록은 설정 → 네트워크 → 네트워크 허용 목록에 있습니다. 언어 서버나 확장 프로그램 같은 IDE 자체 도구는 영향을 받지 않습니다. 샌드박스 외부에서 시작된 에이전트의 경우 허용 목록은 프록시 설정을 따르는 프로그램에만 적용되며 강제되지 않습니다."
+
+msgid "Connections made by AI are denied unless their host is on the network allowlist, and adding a host asks you first."
+msgstr "AI가 만드는 연결은 호스트가 네트워크 허용 목록에 없으면 거부되며, 호스트를 추가할 때는 먼저 확인합니다."
+
+msgid "Dismiss"
+msgstr "닫기"
+
+msgid "External AI (cloud APIs and external agents) receives the code, file contents, and conversations you give it, and depending on the provider's terms may store them or use them to train models. Local models served on this machine (loopback) send nothing out. Before using external AI for work, check your organization's policy."
+msgstr "외부 AI(클라우드 API 및 외부 에이전트)는 사용자가 제공한 코드, 파일 내용, 대화를 받으며, 프로바이더의 약관에 따라 이를 저장하거나 모델 학습에 사용할 수 있습니다. 이 PC에서 제공되는 로컬 모델(루프백)은 외부로 아무것도 보내지 않습니다. 업무에 외부 AI를 사용하기 전에 조직의 정책을 확인하세요."
+
+msgid "External AI receives the code, files, and conversations you give it and may store them or train on them. Local models on this machine send nothing out."
+msgstr "외부 AI는 사용자가 제공한 코드, 파일, 대화를 받으며 이를 저장하거나 학습에 사용할 수 있습니다. 이 PC의 로컬 모델은 외부로 아무것도 보내지 않습니다."
+
+msgid "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
+msgstr "GitHub Copilot도 편집 예측 프로바이더로 사용할 수 있지만 외부 AI 서비스입니다. AI 페이지의 프로바이더 구성에서 편집 예측을 활성화하고 모델 학습 위험 경고를 확인하세요."
+
+msgid "Here's what you get:"
+msgstr "제공되는 혜택:"
+
+msgid "Included for 14 days from when your trial started:"
+msgstr "체험 시작 시점부터 14일 동안 포함되는 항목:"
+
+msgid "Network"
+msgstr "네트워크"
+
+msgid "No credit card required"
+msgstr "신용카드 필요 없음"
+
+msgid "Open AI Settings"
+msgstr "AI 설정 열기"
+
+msgid "Open Configure Providers"
+msgstr "프로바이더 구성 열기"
+
+msgid "Open Sandbox Settings"
+msgstr "샌드박스 설정 열기"
+
+msgid "Optional credit packs for additional usage"
+msgstr "추가 사용량을 위한 선택적 크레딧 팩"
+
+msgid "Pro Trial"
+msgstr "Pro 체험판"
+
+msgid "Sandbox"
+msgstr "샌드박스"
+
+msgid "Sign In to Try GPT Luna"
+msgstr "로그인하여 GPT Luna 체험하기"
+
+msgid "Sign in to try GPT Luna. Your 14 days begin when you start the trial."
+msgstr "로그인하여 GPT Luna를 체험해 보세요. 14일 체험 기간은 체험을 시작한 시점부터 시작됩니다."
+
+msgid "Start Free Trial"
+msgstr "무료 체험 시작"
+
+msgid "Start now using API keys from your environment for the following providers:"
+msgstr "다음 프로바이더에 대해 환경 변수의 API 키를 사용하여 지금 시작하세요:"
+
+msgid "To prevent abuse of our service, GitHub accounts created fewer than 30 days ago are not eligible for the Pro trial. You can request an exception by reaching out to billing-support@zed.dev"
+msgstr "서비스 남용을 방지하기 위해 생성된 지 30일이 지나지 않은 GitHub 계정은 Pro 체험 대상이 아닙니다. billing-support@zed.dev로 문의하여 예외를 요청할 수 있습니다"
+
+msgid "Tokens in the Zed agent"
+msgstr "Zed 에이전트의 토큰"
+
+msgid "Unlimited edit predictions"
+msgstr "무제한 편집 예측"
+
+msgid "Unlimited prompts with your AI API keys"
+msgstr "AI API 키로 무제한 프롬프트"
+
+msgid "Unlimited use of external agents"
+msgstr "외부 에이전트 무제한 사용"
+
+msgid "Usage-based billing"
+msgstr "사용량 기반 청구"
+
+msgid "Usage-based billing beyond $5"
+msgstr "$5 초과분에 대한 사용량 기반 청구"
+
+msgid "Use Copilot"
+msgstr "Copilot 사용"
+
+msgid "Welcome to Zed Business"
+msgstr "Zed Business에 오신 것을 환영합니다"
+
+msgid "Welcome to Zed Pro"
+msgstr "Zed Pro에 오신 것을 환영합니다"
+
+msgid "Welcome to Zed Student"
+msgstr "Zed Student에 오신 것을 환영합니다"
+
+msgid "Welcome to Zed VIP"
+msgstr "Zed VIP에 오신 것을 환영합니다"
+
+msgid "Welcome to the Zed Pro Trial"
+msgstr "Zed Pro 체험에 오신 것을 환영합니다"
+
+msgid "Your data"
+msgstr "데이터 처리"
+
+msgid "Zed AI (External Service)"
+msgstr "Zed AI (외부 서비스)"
+
+msgctxt "plan"
+msgid "Get Started"
+msgstr "시작하기"

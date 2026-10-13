@@ -1,0 +1,60 @@
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Cancelling ETW recording..."
+msgstr "Cancelando a gravação ETW..."
+
+msgid "ETW recording cancelled"
+msgstr "Gravação ETW cancelada"
+
+msgid "ETW recording ended unexpectedly"
+msgstr "A gravação ETW terminou inesperadamente"
+
+msgid "ETW recording failed: {message}"
+msgstr "Falha na gravação ETW: {message}"
+
+msgid "ETW recording is already in progress"
+msgstr "A gravação ETW já está em andamento"
+
+msgid "ETW recording is already stopping"
+msgstr "A gravação ETW já está sendo interrompida"
+
+msgid "ETW recording is already waiting for a save location"
+msgstr "A gravação ETW já está aguardando um local para salvar"
+
+msgid "ETW recording started"
+msgstr "Gravação ETW iniciada"
+
+msgid "ETW trace saved to {}"
+msgstr "Rastreamento ETW salvo em {}"
+
+msgid "Failed to cancel ETW recording: {error}"
+msgstr "Falha ao cancelar a gravação ETW: {error}"
+
+msgid "Failed to complete ETW recording: {error}"
+msgstr "Falha ao concluir a gravação ETW: {error}"
+
+msgid "Failed to pick save location: {error}"
+msgstr "Falha ao escolher o local para salvar: {error}"
+
+msgid "Failed to start ETW recording: {error}"
+msgstr "Falha ao iniciar a gravação ETW: {error}"
+
+msgid "Failed to stop ETW recording: {error}"
+msgstr "Falha ao parar a gravação ETW: {error}"
+
+msgid "No active ETW recording to cancel"
+msgstr "Nenhuma gravação ETW ativa para cancelar"
+
+msgid "No active ETW recording to stop"
+msgstr "Nenhuma gravação ETW ativa para parar"
+
+msgid "Show in File Manager"
+msgstr "Mostrar no gerenciador de arquivos"
+
+msgid "Stopping ETW recording..."
+msgstr "Parando a gravação ETW..."

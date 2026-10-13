@@ -1,0 +1,173 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "(none)"
+msgstr "(aucun)"
+
+msgid "(not given)"
+msgstr "(non indiqué)"
+
+msgid "Agents can't be started in a sandbox in a project that has no folder open."
+msgstr "Les agents ne peuvent pas être démarrés dans un bac à sable dans un projet sans dossier ouvert."
+
+msgid "Agents can't be started in a sandbox on this remote host (it isn't a Linux host, or the sandbox helper can't be put on it)."
+msgstr "Les agents ne peuvent pas être démarrés dans un bac à sable sur cet hôte distant (ce n'est pas un hôte Linux, ou l'assistant du bac à sable ne peut pas y être placé)."
+
+msgid "An I/O error occurred while preparing the sandbox."
+msgstr "Une erreur d'E/S s'est produite lors de la préparation du bac à sable."
+
+msgid "Arguments (one per line)"
+msgstr "Arguments (un par ligne)"
+
+msgid "Command"
+msgstr "Commande"
+
+msgid "Couldn't check the agent's install folder `{}`"
+msgstr "Impossible de vérifier le dossier d'installation de l'agent `{}`"
+
+msgid "Couldn't check the folder `{}` that writing is allowed in"
+msgstr "Impossible de vérifier le dossier `{}` dans lequel l'écriture est autorisée"
+
+msgid "Couldn't create the sandbox."
+msgstr "Impossible de créer le bac à sable."
+
+msgid "Couldn't prepare the agent's configuration folder"
+msgstr "Impossible de préparer le dossier de configuration de l'agent"
+
+msgid "Couldn't prepare the agent's configuration folder."
+msgstr "Impossible de préparer le dossier de configuration de l'agent."
+
+msgid "Couldn't put the sandbox configuration together"
+msgstr "Impossible d'assembler la configuration du bac à sable"
+
+msgid "Couldn't read from {store}"
+msgstr "Impossible de lire depuis {store}"
+
+msgid "Couldn't remove the key from {store}"
+msgstr "Impossible de supprimer la clé de {store}"
+
+msgid "Couldn't start the agent in the sandbox"
+msgstr "Impossible de démarrer l'agent dans le bac à sable"
+
+msgid "Couldn't start the sign-in in the sandbox"
+msgstr "Impossible de démarrer la connexion dans le bac à sable"
+
+msgid "Couldn't write to {store}"
+msgstr "Impossible d'écrire dans {store}"
+
+msgid "Environment Variables the Agent Sets"
+msgstr "Variables d'environnement définies par l'agent"
+
+msgid "Parts of this are left out because it is long. If you allow it, it runs in full, including the parts left out."
+msgstr "Certaines parties sont omises, car le contenu est long. Si vous l'autorisez, il est exécuté en entier, y compris les parties omises."
+
+msgid "Running outside the sandbox is not allowed. To allow it, turn on \"Allow Running Outside the Sandbox\" in Settings > AI > Sandbox."
+msgstr "L'exécution hors du bac à sable n'est pas autorisée. Pour l'autoriser, activez \"Autoriser l'exécution hors du bac à sable\" dans Paramètres > IA > Bac à sable."
+
+msgid "Technical details"
+msgstr "Détails techniques"
+
+msgid "The Zed server on the remote host is too old to start agents in a sandbox. Reconnect to update the server."
+msgstr "Le serveur ForgeKairos de l'hôte distant est trop ancien pour démarrer des agents dans un bac à sable. Reconnectez-vous pour mettre à jour le serveur."
+
+msgid "The agent was started outside the sandbox (on this PC), so its commands run on this PC too (Windows commands don't run in the WSL sandbox)"
+msgstr "L'agent a été démarré hors du bac à sable (sur ce PC) : ses commandes s'exécutent donc aussi sur ce PC (les commandes Windows ne s'exécutent pas dans le bac à sable WSL)"
+
+msgid "The folder {} can't be shown to the sandbox"
+msgstr "Le dossier {} ne peut pas être rendu visible pour le bac à sable"
+
+msgid "The project is in the WSL distribution `{project}`, but the name of the default distribution the sandbox runs in isn't known."
+msgstr "Le projet se trouve dans la distribution WSL `{project}`, mais le nom de la distribution par défaut dans laquelle s'exécute le bac à sable est inconnu."
+
+msgid "The project is in the WSL distribution `{project}`, but the sandbox runs in `{sandbox}`."
+msgstr "Le projet se trouve dans la distribution WSL `{project}`, mais le bac à sable s'exécute dans `{sandbox}`."
+
+msgid "The project's folders span two WSL distributions (`{first}`, `{second}`), and the sandbox runs in only one."
+msgstr "Les dossiers du projet s'étendent sur deux distributions WSL (`{first}`, `{second}`), et le bac à sable ne s'exécute que dans une seule."
+
+msgid "The reason was written to Zed's log."
+msgstr "La raison a été écrite dans le journal de ForgeKairos."
+
+msgid "The request to the sandbox is invalid."
+msgstr "La requête adressée au bac à sable n'est pas valide."
+
+msgid "The requested sandbox configuration can't be applied in this environment."
+msgstr "La configuration de bac à sable demandée ne peut pas être appliquée dans cet environnement."
+
+msgid "The sandbox is turned off in the settings. The agent runs inside WSL, so its commands run in the same WSL, without the write and network restrictions"
+msgstr "Le bac à sable est désactivé dans les paramètres. L'agent s'exécute dans WSL : ses commandes s'exécutent donc dans ce même WSL, sans les restrictions d'écriture et de réseau"
+
+msgid "The sandbox's bridge executable wasn't found. Zed's installation may be damaged."
+msgstr "L'exécutable passerelle du bac à sable est introuvable. L'installation de ForgeKairos est peut-être endommagée."
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "Les paramètres autorisent l'écriture n'importe où dans le système de fichiers"
+
+msgid "The value of {name} contains a line break or a control character"
+msgstr "La valeur de {name} contient un saut de ligne ou un caractère de contrôle"
+
+msgid "There's no sandbox implementation for this OS."
+msgstr "Il n'existe aucune implémentation de bac à sable pour ce système d'exploitation."
+
+msgid "This agent takes no API key (internal error)"
+msgstr "Cet agent n'accepte pas de clé API (erreur interne)"
+
+msgid "This project's folders can't be shown to the WSL sandbox: {}"
+msgstr "Les dossiers de ce projet ne peuvent pas être rendus visibles pour le bac à sable WSL : {}"
+
+msgid "This way of starting the agent can't use the WSL sandbox (on Windows, agents run as their Linux versions inside WSL)."
+msgstr "Ce mode de démarrage de l'agent ne peut pas utiliser le bac à sable WSL (sous Windows, les agents s'exécutent dans leur version Linux dans WSL)."
+
+msgid "WSL didn't respond within {} seconds. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
+msgstr "WSL n'a pas répondu dans un délai de {} secondes. Patientez un instant et réessayez ; si cela ne suffit pas, redémarrez WSL avec `wsl --shutdown`."
+
+msgid "Windows Credential Manager"
+msgstr "Gestionnaire d'identifiants Windows"
+
+msgid "Working Directory"
+msgstr "Répertoire de travail"
+
+msgid "Writing to the settings file didn't finish"
+msgstr "L'écriture dans le fichier de paramètres ne s'est pas terminée"
+
+msgid "`{name}` can't be used as a WSL distribution name."
+msgstr "`{name}` ne peut pas être utilisé comme nom de distribution WSL."
+
+msgid "macOS Keychain"
+msgstr "Trousseau macOS"
+
+msgid "the system keyring (Secret Service)"
+msgstr "le trousseau du système (Secret Service)"
+
+msgid "{headline}."
+msgstr "{headline}."
+
+msgid "{headline}: {reason}"
+msgstr "{headline} : {reason}"
+
+msgid "{kept}… ({count} byte left out)"
+msgid_plural "{kept}… ({count} bytes left out)"
+msgstr[0] "{kept}… ({count} octet omis)"
+msgstr[1] "{kept}… ({count} octets omis)"
+
+msgid "{name} has no value"
+msgstr "{name} n'a pas de valeur"
+
+msgid "{} is a Windows drive seen through WSL. Open it by its drive letter."
+msgstr "{} est un lecteur Windows vu à travers WSL. Ouvrez-le par sa lettre de lecteur."
+
+msgid "{} is on a network share, which the WSL sandbox can't reach."
+msgstr "{} se trouve sur un partage réseau, inaccessible depuis le bac à sable WSL."
+
+msgid "{} isn't an absolute Windows path."
+msgstr "{} n'est pas un chemin Windows absolu."
+
+msgid "… ({remaining} more)"
+msgstr "… ({remaining} de plus)"

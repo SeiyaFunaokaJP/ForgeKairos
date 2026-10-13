@@ -1,0 +1,272 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Add your feedback…"
+msgstr "添加你的反馈…"
+
+msgid "All Files"
+msgstr "所有文件"
+
+msgid "Bad Prediction"
+msgstr "差评"
+
+msgid "Check your payment status or contact us at billing-support@zed.dev to continue using this feature."
+msgstr "检查付款状态或通过 billing-support@zed.dev 联系我们以继续使用此功能。"
+
+msgid "Choose a Plan"
+msgstr "选择套餐"
+
+msgid "Configure Excluded Files"
+msgstr "配置排除的文件"
+
+msgid "Configure Providers"
+msgstr "配置提供商"
+
+msgid "Configure a Provider"
+msgstr "配置提供商"
+
+msgid "Copilot Edit Predictions can't be started: {}"
+msgstr "Copilot Edit Predictions 无法启动：{}"
+
+msgid "Copilot: Next Edit Suggestions"
+msgstr "Copilot：下一个编辑建议"
+
+msgid "Default"
+msgstr "默认"
+
+msgid "Disable Copilot Edit Predictions"
+msgstr "禁用 Copilot Edit Predictions"
+
+msgid "Disabled For This File"
+msgstr "此文件已禁用"
+
+msgid "Display Modes"
+msgstr "显示模式"
+
+msgid "Display predictions inline only when holding a modifier key ({} by default)."
+msgstr "仅在按住修饰键（默认为 {}）时以内联方式显示预测。"
+
+msgid "Display predictions inline when there are no language server completions available."
+msgstr "当没有可用的语言服务器补全时内联显示预测。"
+
+msgid "Edit Prediction"
+msgstr "编辑预测"
+
+msgid "Edit Prediction Context"
+msgstr "编辑预测上下文"
+
+msgid "Edit Predictions"
+msgstr "编辑预测"
+
+msgid "Edit predictions are disabled for this organization."
+msgstr "此组织已禁用编辑预测。"
+
+msgid "Edit predictions are disabled for {}"
+msgstr "{} 的编辑预测已禁用"
+
+msgid "Edits Available"
+msgstr "有可用编辑"
+
+msgid "Enable to Use"
+msgstr "启用以使用"
+
+msgid "Expected Patch"
+msgstr "预期补丁"
+
+msgid "Experiment"
+msgstr "实验"
+
+msgid "Explain what's bad about it before reporting it"
+msgstr "报告前先说明它的问题所在"
+
+msgid "Explain why this completion is good or bad. If it's negative, describe what you expected instead."
+msgstr "请说明此补全好或不好的原因。如果是负面评价，请描述你原本期望的内容。"
+
+msgid "External AI warning not accepted"
+msgstr "未接受外部 AI 警告"
+
+msgid "Free tier limit reached"
+msgstr "已达到免费套餐限制"
+
+msgid "From most recent to oldest"
+msgstr "从最新到最旧"
+
+msgid "GitHub Copilot Edit Predictions"
+msgstr "GitHub Copilot 编辑预测"
+
+msgid "Go to Copilot Settings"
+msgstr "转到 Copilot 设置"
+
+msgid "Go to next run"
+msgstr "转到下一次运行"
+
+msgid "Go to previous run"
+msgstr "转到上一次运行"
+
+msgid "Good Prediction"
+msgstr "好评"
+
+msgid "Help us improve our open dataset model by sharing data from open source repositories. Zed must detect a license file in your repo for this setting to take effect. Files with sensitive data and secrets are excluded by default."
+msgstr "通过共享开源仓库中的数据帮助我们改进开放数据集模型。Zed 必须在你的仓库中检测到许可证文件，此设置才能生效。含有敏感数据和密钥的文件默认被排除在外。"
+
+msgid "Issue"
+msgstr "问题"
+
+msgid "Learn More"
+msgstr "了解详情"
+
+msgid "Mercury free tier limit reached"
+msgstr "已达到 Mercury 免费额度上限"
+
+msgid "Missing API key for Codestral"
+msgstr "缺少 Codestral 的 API 密钥"
+
+msgid "Missing API key for Mercury"
+msgstr "缺少 Mercury 的 API 密钥"
+
+msgid "No Edits Produced"
+msgstr "未生成任何编辑"
+
+msgid "No active completion"
+msgstr "无当前补全"
+
+msgid "No completions yet. Use the editor to generate some, and make sure to rate them!"
+msgstr "暂无补全。请使用编辑器生成一些补全，并务必对其进行评价！"
+
+msgid "No data captured."
+msgstr "未收集数据。"
+
+msgid "No edits produced."
+msgstr "未生成任何编辑。"
+
+msgid "No retrieval runs yet"
+msgstr "暂无检索运行"
+
+msgid "Ollama model not configured — configure a model before use"
+msgstr "Ollama 模型未配置——使用前需先配置模型"
+
+msgid "Open your settings to add sensitive paths for which Zed will never predict edits."
+msgstr "打开设置以添加 ForgeKairos 永远不会预测编辑的敏感路径。"
+
+msgid "Powered by Codestral"
+msgstr "由 Codestral 提供支持"
+
+msgid "Powered by Mercury"
+msgstr "由 Mercury 提供支持"
+
+msgid "Powered by Ollama ({})"
+msgstr "由 Ollama ({}) 提供支持"
+
+msgid "Powered by Zeta"
+msgstr "由 Zeta 提供支持"
+
+msgid "Predict Edit at Cursor"
+msgstr "在光标处预测编辑"
+
+msgid "Predicted Patch"
+msgstr "预测补丁"
+
+msgid "Privacy"
+msgstr "隐私"
+
+msgid "Project identified as open source, and you're sharing data."
+msgstr "项目已识别为开源，你正在共享数据。"
+
+msgid "Project identified as open source, but you're not sharing data."
+msgstr "项目已识别为开源，但你未共享数据。"
+
+msgid "Project not identified as open source, and setting turned off."
+msgstr "项目未识别为开源，且该设置已关闭。"
+
+msgid "Project not identified as open source. No data captured."
+msgstr "项目未识别为开源，未收集数据。"
+
+msgid "Providers"
+msgstr "提供商"
+
+msgid "Rate Predictions"
+msgstr "评价预测"
+
+msgid "Rated Prediction"
+msgstr "已评价的预测"
+
+msgid "Rated completion."
+msgstr "补全已评价。"
+
+msgid "Recorded Events & Input"
+msgstr "已记录的事件与输入"
+
+msgid "Reinstall Copilot Edit Predictions"
+msgstr "重新安装 Copilot Edit Predictions"
+
+msgid "Show Edit Predictions For"
+msgstr "显示编辑预测范围"
+
+msgid "Sign In & Start Using"
+msgstr "登录并开始使用"
+
+msgid "Sign In Or Configure a Provider"
+msgstr "登录或配置提供商"
+
+msgid "Sign In to Copilot Edit Predictions"
+msgstr "登录 Copilot Edit Predictions"
+
+msgid "Sign Out"
+msgstr "注销"
+
+msgid "Subscribe to increase your limit"
+msgstr "订阅以提升使用限额"
+
+msgid "Suggested Edits"
+msgstr "建议编辑"
+
+msgid "This Buffer"
+msgstr "此缓冲区"
+
+msgid "This file is excluded."
+msgstr "此文件已被排除。"
+
+msgid "Training Data Collection"
+msgstr "训练数据收集"
+
+msgid "Upgrade to Zed Pro or contact us."
+msgstr "升级至 Zed Pro 或联系我们。"
+
+msgid "Upgrade to a paid plan to continue using the service"
+msgstr "升级到付费套餐以继续使用该服务"
+
+msgid "Usage"
+msgstr "用量"
+
+msgid "View Docs"
+msgstr "查看文档"
+
+msgid "You get 2,000 accepted suggestions at every keystroke for free, powered by Zeta, our open-source, open-data model"
+msgstr "由我们的开源、开放数据模型 Zeta 提供支持，你可以免费获得 2,000 次每次按键时被接受的建议"
+
+msgid "You have an outstanding invoice"
+msgstr "你有未结清的账单"
+
+msgid "Your GitHub account is less than 30 days old."
+msgstr "你的 GitHub 账户创建时间不足 30 天。"
+
+msgid "{tooltip_text} • Trigger: {trigger_tooltip}"
+msgstr "{tooltip_text} • 触发方式：{trigger_tooltip}"
+
+msgctxt "edit prediction display mode"
+msgid "Eager"
+msgstr "主动"
+
+msgctxt "edit prediction display mode"
+msgid "Subtle"
+msgstr "低调"

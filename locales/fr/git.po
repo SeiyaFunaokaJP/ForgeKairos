@@ -1,0 +1,378 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "\"{name}\" cannot be used as a branch name."
+msgstr "\"{name}\" ne peut pas être utilisé comme nom de branche."
+
+msgid "\"{name}\" is the repository's default branch, so it cannot be the MR branch. Choose another name."
+msgstr "\"{name}\" est la branche par défaut du dépôt : elle ne peut donc pas être la branche de la MR. Choisissez un autre nom."
+
+msgid "\"{prefix}:\" can only be used while the graph shows all branches."
+msgstr "\"{prefix}:\" ne peut être utilisé que lorsque le graphe affiche toutes les branches."
+
+msgid "\"{prefix}:\" cannot be used in a file's history."
+msgstr "\"{prefix}:\" ne peut pas être utilisé dans l'historique d'un fichier."
+
+msgid "\"{prefix}:{value}\" names the whole repository, so it does not narrow the search. Write the name of a file or folder."
+msgstr "\"{prefix}:{value}\" désigne le dépôt entier : il ne restreint donc pas la recherche. Indiquez le nom d'un fichier ou d'un dossier."
+
+msgid "\"{scratch_branch}\" is not a scratch branch, so it cannot be deleted."
+msgstr "\"{scratch_branch}\" n'est pas une branche temporaire : elle ne peut donc pas être supprimée."
+
+msgid "\"{scratch_branch}\" is not a scratch branch, so the MR branch cannot be built on it."
+msgstr "\"{scratch_branch}\" n'est pas une branche temporaire : la branche de la MR ne peut donc pas être construite dessus."
+
+msgid "\"{what}\" needs git {minimum} or later (this git is {version})."
+msgstr "\"{what}\" nécessite git {minimum} ou une version ultérieure (ce git est en version {version})."
+
+msgid "A branch name cannot contain \"..\", \"@{{\" or \"//\"."
+msgstr "Un nom de branche ne peut pas contenir \"..\", \"@{{\" ni \"//\"."
+
+msgid "A branch name cannot contain spaces."
+msgstr "Un nom de branche ne peut pas contenir d'espaces."
+
+msgid "A branch name cannot contain ~ ^ : ? * [ \\."
+msgstr "Un nom de branche ne peut pas contenir ~ ^ : ? * [ \\."
+
+msgid "A branch name cannot have a part that starts with \".\" or ends with \".lock\"."
+msgstr "Un nom de branche ne peut pas comporter de partie commençant par \".\" ou se terminant par \".lock\"."
+
+msgid "A branch name cannot start or end with \"/\", or end with \".\"."
+msgstr "Un nom de branche ne peut pas commencer ni se terminer par \"/\", ni se terminer par \".\"."
+
+msgid "A branch name cannot start with \"-\"."
+msgstr "Un nom de branche ne peut pas commencer par \"-\"."
+
+msgid "A branch name cannot start with \"refs/\"."
+msgstr "Un nom de branche ne peut pas commencer par \"refs/\"."
+
+msgid "A rebase may have stopped partway (git before {major}.{minor} cannot tell for sure)"
+msgstr "Un rebasage s'est peut-être arrêté en cours de route (git antérieur à {major}.{minor} ne peut pas le déterminer avec certitude)"
+
+msgid "A row has no commits."
+msgstr "Une ligne ne contient aucune validation."
+
+msgid "An old git (older than {minimum}; this one is {version}) cannot turn off hooks, so the AI cannot run git commands. Update git to let it."
+msgstr "Un git ancien (antérieur à {minimum} ; celui-ci est en version {version}) ne peut pas désactiver les hooks : l'IA ne peut donc pas exécuter de commandes git. Mettez git à jour pour le lui permettre."
+
+msgid "Branch \"{branch}\" cannot be used in a search."
+msgstr "La branche \"{branch}\" ne peut pas être utilisée dans une recherche."
+
+msgid "Cannot read \"sha:{value}\". Write 4 to 40 hexadecimal digits."
+msgstr "Impossible de lire \"sha:{value}\". Indiquez de 4 à 40 chiffres hexadécimaux."
+
+msgid "Cannot read \"{prefix}:{value}\". Write one of yes, no or only."
+msgstr "Impossible de lire \"{prefix}:{value}\". Indiquez yes, no ou only."
+
+msgid "Cannot read the date in \"{prefix}:{value}\". Write it like 2026-09-01, \"2026-09-01 12:00\", or 3d, 2w, 1m, 1y."
+msgstr "Impossible de lire la date dans \"{prefix}:{value}\". Écrivez-la sous la forme 2026-09-01, \"2026-09-01 12:00\" ou 3d, 2w, 1m, 1y."
+
+msgid "Could not determine the base commit."
+msgstr "Impossible de déterminer la validation de base."
+
+msgid "Could not determine the commits in the MR box."
+msgstr "Impossible de déterminer les validations de la boîte MR."
+
+msgid "Could not determine the range to rewrite."
+msgstr "Impossible de déterminer la plage à réécrire."
+
+msgid "Could not search the commits: {error}"
+msgstr "Impossible de rechercher dans les validations : {error}"
+
+msgid "Enter a commit message."
+msgstr "Saisissez un message de validation."
+
+msgid "Enter an MR branch name."
+msgstr "Saisissez un nom de branche de MR."
+
+msgid "Names starting with \"{prefix}\" are kept for scratch branches."
+msgstr "Les noms commençant par \"{prefix}\" sont réservés aux branches temporaires."
+
+msgid "No tag has \"{value}\" in its name."
+msgstr "Aucune étiquette ne contient \"{value}\" dans son nom."
+
+msgid "Only one \"{prefix}:\" condition can be given."
+msgstr "Une seule condition \"{prefix}:\" peut être indiquée."
+
+msgid "Squashed commits need a message."
+msgstr "Les validations combinées nécessitent un message."
+
+msgid "Stopped because the ignored local files {names} and {count} more would be overwritten and lost during the rewrite. Move them somewhere else and try again."
+msgstr "Arrêté, car les fichiers locaux ignorés {names} et {count} autres seraient écrasés et perdus pendant la réécriture. Déplacez-les ailleurs et réessayez."
+
+msgid "Stopped because the ignored local files {names} would be overwritten and lost during the rewrite. Move them somewhere else and try again."
+msgstr "Arrêté, car les fichiers locaux ignorés {names} seraient écrasés et perdus pendant la réécriture. Déplacez-les ailleurs et réessayez."
+
+msgid "The \"{prefix}:\" conditions contradict each other."
+msgstr "Les conditions \"{prefix}:\" se contredisent."
+
+msgid "The MR box has no commits."
+msgstr "La boîte MR ne contient aucune validation."
+
+msgid "The SSH key of the picked git account was not found: {path}"
+msgstr "La clé SSH du compte Git choisi est introuvable : {path}"
+
+msgid "The account has no email"
+msgstr "Le compte n'a pas d'adresse e-mail"
+
+msgid "The account has no host"
+msgstr "Le compte n'a pas d'hôte"
+
+msgid "The account has no login"
+msgstr "Le compte n'a pas d'identifiant de connexion"
+
+msgid "The account has no user name"
+msgstr "Le compte n'a pas de nom d'utilisateur"
+
+msgid "The account's SSH key must be given as an absolute path"
+msgstr "La clé SSH du compte doit être indiquée sous forme de chemin absolu"
+
+msgid "The account's SSH key path contains a control character"
+msgstr "Le chemin de la clé SSH du compte contient un caractère de contrôle"
+
+msgid "The account's host must be a host name such as github.com, optionally with a port"
+msgstr "L'hôte du compte doit être un nom d'hôte comme github.com, éventuellement avec un port"
+
+msgid "The account's login cannot contain spaces, '/', ':' or '@'"
+msgstr "L'identifiant de connexion du compte ne peut pas contenir d'espaces, '/', ':' ni '@'"
+
+msgid "The account's name and email cannot contain '<', '>' or control characters"
+msgstr "Le nom et l'adresse e-mail du compte ne peuvent pas contenir '<', '>' ni de caractères de contrôle"
+
+msgid "The account's signing key contains a control character"
+msgstr "La clé de signature du compte contient un caractère de contrôle"
+
+msgid "The author filter is empty."
+msgstr "Le filtre d'auteur est vide."
+
+msgid "The branch to go back to is unknown, so there is no way back from the scratch branch."
+msgstr "La branche de retour est inconnue : il est donc impossible de revenir depuis la branche temporaire."
+
+msgid "The changed-text filter is empty."
+msgstr "Le filtre de texte modifié est vide."
+
+msgid "The commit to fold the changes into is unknown."
+msgstr "La validation dans laquelle intégrer les modifications est inconnue."
+
+msgid "The default branch was not found, so \"{prefix}:\" cannot narrow the search."
+msgstr "La branche par défaut est introuvable : \"{prefix}:\" ne peut donc pas restreindre la recherche."
+
+msgid "The file filter \"{path}\" names the whole repository, so it does not narrow the search."
+msgstr "Le filtre de fichier \"{path}\" désigne le dépôt entier : il ne restreint donc pas la recherche."
+
+msgid "The gpg settings of the untrusted repository are not used. Committed without a signature."
+msgstr "Les paramètres gpg du dépôt non approuvé ne sont pas utilisés. Validation effectuée sans signature."
+
+msgid "The name of branch \"{branch}\" cannot be used in a search."
+msgstr "Le nom de la branche \"{branch}\" ne peut pas être utilisé dans une recherche."
+
+msgid "The original branch \"{origin_branch}\" cannot be the MR branch. Choose another name."
+msgstr "La branche d'origine \"{origin_branch}\" ne peut pas être la branche de la MR. Choisissez un autre nom."
+
+msgid "The period is reversed (\"{since_word}\" is later than \"{until_word}\")."
+msgstr "La période est inversée (\"{since_word}\" est postérieur à \"{until_word}\")."
+
+msgid "The sha filter \"{sha_prefix}\" is not hexadecimal."
+msgstr "Le filtre sha \"{sha_prefix}\" n'est pas hexadécimal."
+
+msgid "The version of git could not be determined, so it is not known whether git can turn off hooks, and the AI cannot run git commands."
+msgstr "La version de git n'a pas pu être déterminée : on ignore donc si git peut désactiver les hooks, et l'IA ne peut pas exécuter de commandes git."
+
+msgid "There are no files to fold in."
+msgstr "Aucun fichier à intégrer."
+
+msgid "There is no branch \"{branch}\"."
+msgstr "La branche \"{branch}\" n'existe pas."
+
+msgid "This git ({version}) does not support rebase --autostash, so commit or stash the changes in the working tree first (git {minimum} or later is needed)."
+msgstr "Cette version de git ({version}) ne prend pas en charge rebase --autostash : validez ou remisez d'abord les modifications de la copie de travail (git {minimum} ou ultérieur est nécessaire)."
+
+msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot stop the repository's settings from running programs, so \"{operation}\" cannot run. Trust the project to run it."
+msgstr "Ce projet n'est pas approuvé, et une ancienne version de git (antérieure à {minimum} ; celle-ci est {version}) ne peut pas empêcher les paramètres du dépôt d'exécuter des programmes : \"{operation}\" ne peut donc pas s'exécuter. Faites confiance au projet pour l'exécuter."
+
+msgid "This project is not trusted, and an old git (older than {minimum}; this one is {version}) cannot turn off hooks, so \"{operation}\" cannot run. Trust the project to run it."
+msgstr "Ce projet n'est pas approuvé, et une ancienne version de git (antérieure à {minimum} ; celle-ci est {version}) ne peut pas désactiver les hooks : \"{operation}\" ne peut donc pas s'exécuter. Faites confiance au projet pour l'exécuter."
+
+msgid "core.sshCommand is set in git's configuration (Git for Windows sets it when told to use the external OpenSSH)"
+msgstr "core.sshCommand est défini dans la configuration de git (Git for Windows le définit lorsqu'on lui demande d'utiliser l'OpenSSH externe)"
+
+msgid "git exited with status {code}."
+msgstr "git s'est terminé avec l'état {code}."
+
+msgid "git terminated abnormally."
+msgstr "git s'est terminé anormalement."
+
+msgid "git that connects to a remote was not run because the uploadpack / receivepack settings of the untrusted repository can start programs"
+msgstr "Le git qui se connecte à un dépôt distant n'a pas été exécuté, car les paramètres uploadpack / receivepack du dépôt non approuvé peuvent lancer des programmes"
+
+msgid "git was not run because the filters of the untrusted repository could not be turned off"
+msgstr "git n'a pas été exécuté, car les filtres du dépôt non approuvé n'ont pas pu être désactivés"
+
+msgid "unknown version"
+msgstr "version inconnue"
+
+msgid "{variable} is set in the environment"
+msgstr "{variable} est défini dans l'environnement"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "Auteur"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "Branche"
+
+msgctxt "commit search"
+msgid "Change"
+msgstr "Modification"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "Fichier"
+
+msgctxt "commit search"
+msgid "Merge"
+msgstr "Fusion"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "Depuis"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "Étiquette"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "Jusqu'à"
+
+msgctxt "commit search"
+msgid "no"
+msgstr "non"
+
+msgctxt "commit search"
+msgid "only"
+msgstr "uniquement"
+
+msgctxt "commit search"
+msgid "yes"
+msgstr "oui"
+
+msgctxt "git result"
+msgid "Checkout"
+msgstr "Extraction"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "Application (cherry-pick)"
+
+msgctxt "git result"
+msgid "Commit"
+msgstr "Validation"
+
+msgctxt "git result"
+msgid "Create branch"
+msgstr "Création de branche"
+
+msgctxt "git result"
+msgid "Create worktree"
+msgstr "Création d'arborescence de travail"
+
+msgctxt "git result"
+msgid "Fetch"
+msgstr "Récupération (fetch)"
+
+msgctxt "git result"
+msgid "Filter by file"
+msgstr "Filtrage par fichier"
+
+msgctxt "git result"
+msgid "Force push (--force-with-lease)"
+msgstr "Envoi forcé (--force-with-lease)"
+
+msgctxt "git result"
+msgid "Merge"
+msgstr "Fusion"
+
+msgctxt "git result"
+msgid "Move worktree"
+msgstr "Déplacement d'arborescence de travail"
+
+msgctxt "git result"
+msgid "Pull"
+msgstr "Tirage (pull)"
+
+msgctxt "git result"
+msgid "Push"
+msgstr "Envoi (push)"
+
+msgctxt "git result"
+msgid "Rebase"
+msgstr "Rebasage"
+
+msgctxt "git result"
+msgid "Remove worktree"
+msgstr "Suppression d'arborescence de travail"
+
+msgctxt "git result"
+msgid "Repair worktree"
+msgstr "Réparation d'arborescence de travail"
+
+msgctxt "git result"
+msgid "Restore checkpoint"
+msgstr "Restauration du point de contrôle"
+
+msgctxt "git result"
+msgid "Restore files"
+msgstr "Restauration des fichiers"
+
+msgctxt "git result"
+msgid "Revert"
+msgstr "Inversion (revert)"
+
+msgctxt "git result"
+msgid "Search by changed text"
+msgstr "Recherche par texte modifié"
+
+msgctxt "git result"
+msgid "Skip this commit"
+msgstr "Ignorer cette validation"
+
+msgctxt "git result"
+msgid "Stash including untracked files"
+msgstr "Remise incluant les fichiers non suivis"
+
+msgctxt "git result"
+msgid "Stash staged changes"
+msgstr "Remise des modifications indexées"
+
+msgctxt "git result"
+msgid "Stash that leaves newly staged files"
+msgstr "Remise conservant les fichiers nouvellement indexés"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "Changement de branche"
+
+msgctxt "git sequencer"
+msgid "cherry-pick"
+msgstr "cherry-pick"
+
+msgctxt "git sequencer"
+msgid "rebase"
+msgstr "rebasage (rebase)"
+
+msgctxt "git sequencer"
+msgid "revert"
+msgstr "inversion (revert)"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

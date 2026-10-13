@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Could not install the Go language server `gopls`, because `go` was not found."
+msgstr "Impossible d'installer le serveur de langage Go `gopls`, car `go` est introuvable."

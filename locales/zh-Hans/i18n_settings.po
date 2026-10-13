@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"{}\" is not a language tag; showing English."
+msgstr "“{}”不是语言标记；将显示英语。"
+
+msgid "Problems in the UI translation files"
+msgstr "UI 翻译文件中存在问题"
+
+msgid "Restart Now"
+msgstr "立即重启"
+
+msgid "Some parts of the UI switch to the new language after a restart."
+msgstr "部分 UI 将在重启后切换为新语言。"
+
+msgid "There is no translation for \"{}\"; showing English."
+msgstr "没有“{}”的翻译；将显示英语。"
+
+msgid "…and {} more (see the log)."
+msgstr "…以及其他 {} 个（请参阅日志）。"
+
+msgctxt "dialog title"
+msgid "Critical"
+msgstr "严重"
+
+msgctxt "dialog title"
+msgid "Info"
+msgstr "信息"
+
+msgctxt "dialog title"
+msgid "Warning"
+msgstr "警告"

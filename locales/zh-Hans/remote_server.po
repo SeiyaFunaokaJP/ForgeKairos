@@ -1,0 +1,30 @@
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Another connection took over this shell"
+msgstr "另一个连接接管了此 Shell"
+
+msgid "Could not open standard input"
+msgstr "无法打开标准输入"
+
+msgid "Could not run {program} on the remote. Check that it is installed."
+msgstr "无法在远程上运行 {program}。请检查它是否已安装。"
+
+msgid "No operation was specified"
+msgstr "未指定操作"
+
+msgid "Older output was omitted"
+msgstr "较早的输出已省略"
+
+msgid "The previous shell was no longer running. Starting a new shell"
+msgstr "之前的 Shell 已不再运行。正在启动新的 Shell"
+
+msgid "The shell exited while disconnected (exit code {code})"
+msgstr "Shell 在断开连接期间退出（退出代码 {code}）"
+
+msgid "{program} cannot be run on the remote."
+msgstr "无法在远程上运行 {program}。"

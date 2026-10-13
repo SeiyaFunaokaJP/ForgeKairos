@@ -1,0 +1,2310 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "\"Sandbox\" on the \"AI\" page is a separate setting that isolates the commands agents run (restricting which domains they can reach and where they can write). However, domains allowed there take effect only within this list. Think of the sandbox as narrowing this scope further rather than widening what is allowed."
+msgstr "„Sandbox“ auf der Seite „KI“ ist eine separate Einstellung, die die von Agenten ausgeführten Befehle isoliert (sie beschränkt, welche Domains erreichbar sind und wohin geschrieben werden darf). Dort zugelassene Domains wirken jedoch nur innerhalb dieser Liste. Die Sandbox schränkt diesen Bereich also weiter ein, statt das Zugelassene zu erweitern."
+
+msgid "\"{label}\": \"{name}\" in `{key}` must be a string."
+msgstr "„{label}“: „{name}“ in `{key}` muss eine Zeichenfolge sein."
+
+msgid "\"{label}\": `args` must be an array of strings."
+msgstr "„{label}“: `args` muss ein Array von Zeichenfolgen sein."
+
+msgid "\"{label}\": `command.path` must be a string."
+msgstr "„{label}“: `command.path` muss eine Zeichenfolge sein."
+
+msgid "\"{label}\": `command` is empty."
+msgstr "„{label}“: `command` ist leer."
+
+msgid "\"{label}\": `command` must be a string."
+msgstr "„{label}“: `command` muss eine Zeichenfolge sein."
+
+msgid "\"{label}\": `enabled` must be true or false."
+msgstr "„{label}“: `enabled` muss true oder false sein."
+
+msgid "\"{label}\": `oauth` must look like {{ \"client_id\": \"…\" }}."
+msgstr "„{label}“: `oauth` muss die Form {{ \"client_id\": \"…\" }} haben."
+
+msgid "\"{label}\": `remote` must be true or false."
+msgstr "„{label}“: `remote` muss true oder false sein."
+
+msgid "\"{label}\": `timeout` must be a positive whole number of seconds."
+msgstr "„{label}“: `timeout` muss eine positive ganze Zahl von Sekunden sein."
+
+msgid "\"{label}\": `type` \"{kind}\" is not supported. Use `stdio`, `http`, or `sse`."
+msgstr "„{label}“: `type` „{kind}“ wird nicht unterstützt. Verwenden Sie `stdio`, `http` oder `sse`."
+
+msgid "\"{label}\": `type` must be a string."
+msgstr "„{label}“: `type` muss eine Zeichenfolge sein."
+
+msgid "\"{label}\": `url` is not set."
+msgstr "„{label}“: `url` ist nicht festgelegt."
+
+msgid "\"{label}\": `{key}` must be a URL string."
+msgstr "„{label}“: `{key}` muss eine URL-Zeichenfolge sein."
+
+msgid "\"{label}\": `{key}` must be an object ({{ … }})."
+msgstr "„{label}“: `{key}` muss ein Objekt sein ({{ … }})."
+
+msgid "\"{label}\": neither `command` nor `url` is set."
+msgstr "„{label}“: Weder `command` noch `url` ist festgelegt."
+
+msgid "\"{name}\": the value is not an object ({{ … }})."
+msgstr "„{name}“: Der Wert ist kein Objekt ({{ … }})."
+
+msgid "\"{name}\": {error}"
+msgstr "„{name}“: {error}"
+
+msgid "(added)"
+msgstr "(hinzugefügt)"
+
+msgid "(loading the allowlist)"
+msgstr "(Zulassungsliste wird geladen)"
+
+msgid "(not added)"
+msgstr "(nicht hinzugefügt)"
+
+msgid "(optional)"
+msgstr "(optional)"
+
+msgid "(unnamed)"
+msgstr "(unbenannt)"
+
+msgid "// Zed egress allowlist\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// ForgeKairos-Zulassungsliste für ausgehende Verbindungen\n//\n// Ausgehender Datenverkehr, den die KI auslöst (KI-Anbieter, Agent-Tools, MCP-Server,\n// externe Agent-Prozesse), ist nur zu den hier eingetragenen Hosts erlaubt.\n// Datenverkehr der IDE-eigenen Werkzeuge wie Sprachserver und Erweiterungen ist nicht betroffen.\n// 127.0.0.1 / ::1 / localhost sind immer zugelassen, ohne hier eingetragen zu sein.\n// Sie können //-Kommentare und abschließende Kommas verwenden. Änderungen werden beim Speichern wirksam.\n"
+
+msgid "127.0.0.1 / ::1 / localhost are always allowed without being registered, so local LLM servers (such as Ollama) work even with an empty allowlist. A small number of hosts, such as the external agent (ACP) registry, are allowed by built-in rules. Every redirect target is checked the same way, one hop at a time."
+msgstr "127.0.0.1 / ::1 / localhost sind immer zugelassen, ohne registriert zu sein, daher funktionieren lokale LLM-Server (z. B. Ollama) auch mit leerer Zulassungsliste. Einige wenige Hosts, etwa die Registry externer Agenten (ACP), sind durch integrierte Regeln zugelassen. Jedes Weiterleitungsziel wird auf dieselbe Weise geprüft, eine Weiterleitung nach der anderen."
+
+msgid "A client secret is required to connect this server"
+msgstr "Zum Verbinden dieses Servers ist ein Clientgeheimnis erforderlich"
+
+msgid "A client secret is required to connect."
+msgstr "Zum Verbinden ist ein Clientgeheimnis erforderlich."
+
+msgid "A command server: Zed starts the executable and talks to it over standard input and output."
+msgstr "Ein Befehlsserver: ForgeKairos startet die ausführbare Datei und kommuniziert über Standardeingabe und -ausgabe mit ihr."
+
+msgid "A file (not a skill directory) already exists at {}. Delete it or pick a different skill name."
+msgstr "Unter {} ist bereits eine Datei (kein Skill-Verzeichnis) vorhanden. Löschen Sie sie oder wählen Sie einen anderen Skill-Namen."
+
+msgid "A pattern with that name already exists in this rule list."
+msgstr "Ein Muster mit diesem Namen ist bereits in dieser Regelliste vorhanden."
+
+msgid "A personal access token for the login. Without one, git asks for the password as usual."
+msgstr "Ein persönliches Zugriffstoken für die Anmeldung. Ohne Token fragt Git wie gewohnt nach dem Passwort."
+
+msgid "A project window is needed to install agents"
+msgstr "Zum Installieren von Agenten wird ein Projektfenster benötigt"
+
+msgid "A project window is needed to run this in the terminal"
+msgstr "Zum Ausführen im Terminal wird ein Projektfenster benötigt"
+
+msgid "A server defined in the project settings starts in the project's folder once you allow it."
+msgstr "Ein in den Projekteinstellungen definierter Server startet im Projektordner, sobald Sie ihn zulassen."
+
+msgid "A server named \"{name}\" already exists. Open it in the form and rename it before adding it."
+msgstr "Ein Server namens „{name}“ ist bereits vorhanden. Öffnen Sie ihn im Formular, und benennen Sie ihn vor dem Hinzufügen um."
+
+msgid "A server named \"{}\" already exists."
+msgstr "Ein Server namens „{}“ ist bereits vorhanden."
+
+msgid "A server with this name already exists"
+msgstr "Ein Server mit diesem Namen ist bereits vorhanden"
+
+msgid "A skill named \"{name}\" already exists at {}. Pick a different name."
+msgstr "Ein Skill namens „{name}“ ist bereits unter {} vorhanden. Wählen Sie einen anderen Namen."
+
+msgid "A small, fast model is enough (for example, an 8B-class model on Ollama). When none is set, the fast model is used, then the default model. To judge an action, the tool name, command, and paths are sent to that model's provider, so a local model is recommended. If no answer comes back within 10 seconds, no model is available, or the answer can't be read, a confirmation is shown."
+msgstr "Ein kleines, schnelles Modell genügt (z. B. ein Modell der 8B-Klasse in Ollama). Ist keines festgelegt, wird das schnelle Modell verwendet, danach das Standardmodell. Zur Beurteilung einer Aktion werden Toolname, Befehl und Pfade an den Anbieter dieses Modells gesendet, daher wird ein lokales Modell empfohlen. Kommt innerhalb von 10 Sekunden keine Antwort, ist kein Modell verfügbar oder kann die Antwort nicht gelesen werden, wird eine Bestätigung angezeigt."
+
+msgid "A token is stored. Leave this empty to keep it."
+msgstr "Ein Token ist gespeichert. Lassen Sie dieses Feld leer, um es beizubehalten."
+
+msgid "A token needs a host and a login to sign in with."
+msgstr "Für ein Token werden ein Host und ein Anmeldename benötigt."
+
+msgid "A unique name used to identify this provider."
+msgstr "Ein eindeutiger Name zur Identifizierung dieses Anbieters."
+
+msgid "A wildcard is allowed only as a leading `*.` (for example, *.corp.example)."
+msgstr "Ein Platzhalter ist nur als vorangestelltes `*.` zulässig (z. B. *.corp.example)."
+
+msgid "ACP Agent"
+msgstr "ACP-Agent"
+
+msgid "ACP Docs"
+msgstr "ACP-Dokumentation"
+
+msgid "AI Connections"
+msgstr "KI-Verbindungen"
+
+msgid "AI features are off. Turn on \"Enable Agent\" on the AI page to use them."
+msgstr "KI-Funktionen sind deaktiviert. Aktivieren Sie „Agent aktivieren“ auf der Seite „KI“, um sie zu verwenden."
+
+msgid "API Key"
+msgstr "API-Schlüssel"
+
+msgid "API Key Configured"
+msgstr "API-Schlüssel konfiguriert"
+
+msgid "API Key Set in Environment Variable"
+msgstr "API-Schlüssel in einer Umgebungsvariable gesetzt"
+
+msgid "API Key cannot be empty"
+msgstr "API-Schlüssel darf nicht leer sein"
+
+msgid "API URL"
+msgstr "API-URL"
+
+msgid "API URL cannot be empty"
+msgstr "API-URL darf nicht leer sein"
+
+msgid "Accept the external AI warning to list models from this server."
+msgstr "Stimmen Sie der Warnung zu externer KI zu, um die Modelle dieses Servers aufzulisten."
+
+msgid "Account"
+msgstr "Konto"
+
+msgid "Account Name"
+msgstr "Kontoname"
+
+msgid "Accounts a repository can commit and push as. Pick one for each repository with the account button next to Commit in the Git panel; a repository without one follows git's own configuration. Tokens are kept in {store}, never in settings.json."
+msgstr "Konten, mit denen ein Repository committen und pushen kann. Wählen Sie für jedes Repository eines über die Kontoschaltfläche neben „Committen“ im Git-Panel aus; ein Repository ohne Konto folgt der eigenen Konfiguration von Git. Tokens werden im Anmeldedatenspeicher ({store}) abgelegt, niemals in settings.json."
+
+msgid "Action to take when no patterns match."
+msgstr "Aktion, wenn kein Muster zutrifft."
+
+msgid "Active Provider"
+msgstr "Aktiver Anbieter"
+
+msgid "Add"
+msgstr "Hinzufügen"
+
+msgid "Add Account"
+msgstr "Konto hinzufügen"
+
+msgid "Add Agent"
+msgstr "Agent hinzufügen"
+
+msgid "Add All"
+msgstr "Alle hinzufügen"
+
+msgid "Add Custom Agent"
+msgstr "Benutzerdefinierten Agenten hinzufügen"
+
+msgid "Add Git Account"
+msgstr "Git-Konto hinzufügen"
+
+msgid "Add Local MCP Server"
+msgstr "Lokalen MCP-Server hinzufügen"
+
+msgid "Add Local Server"
+msgstr "Lokalen Server hinzufügen"
+
+msgid "Add MCP Server from Template"
+msgstr "MCP-Server aus Vorlage hinzufügen"
+
+msgid "Add MCP Servers from JSON"
+msgstr "MCP-Server aus JSON hinzufügen"
+
+msgid "Add Model"
+msgstr "Modell hinzufügen"
+
+msgid "Add Provider"
+msgstr "Anbieter hinzufügen"
+
+msgid "Add Remote MCP Server"
+msgstr "Remote-MCP-Server hinzufügen"
+
+msgid "Add Remote Server"
+msgstr "Remote-Server hinzufügen"
+
+msgid "Add Server"
+msgstr "Server hinzufügen"
+
+msgid "Add a host (for example, api.anthropic.com, *.corp.example)…"
+msgstr "Host hinzufügen (z. B. api.anthropic.com, *.corp.example)…"
+
+msgid "Add an absolute path (e.g. /path/to/directory)…"
+msgstr "Absoluten Pfad hinzufügen (z. B. /path/to/directory)…"
+
+msgid "Add an entry"
+msgstr "Eintrag hinzufügen"
+
+msgid "Add domain (e.g. github.com or *.npmjs.org)…"
+msgstr "Domain hinzufügen (z. B. github.com oder *.npmjs.org)…"
+
+msgid "Add from Template"
+msgstr "Aus Vorlage hinzufügen"
+
+msgid "Add regex pattern…"
+msgstr "Regex-Muster hinzufügen…"
+
+msgid "Add skill content…"
+msgstr "Skill-Inhalt hinzufügen…"
+
+msgid "Add to Allowlist"
+msgstr "Zur Zulassungsliste hinzufügen"
+
+msgid "Add {count} Server"
+msgid_plural "Add All {count} Servers"
+msgstr[0] "{count} Server hinzufügen"
+msgstr[1] "Alle {count} Server hinzufügen"
+
+msgid "Add {count} server to your user settings?"
+msgid_plural "Add all {count} servers to your user settings?"
+msgstr[0] "{count} Server zu Ihren Benutzereinstellungen hinzufügen?"
+msgstr[1] "Alle {count} Server zu Ihren Benutzereinstellungen hinzufügen?"
+
+msgid "Add {}-Compatible Provider"
+msgstr "{}-kompatiblen Anbieter hinzufügen"
+
+msgid "Added {count} model"
+msgid_plural "Added {count} models"
+msgstr[0] "{count} Modell hinzugefügt"
+msgstr[1] "{count} Modelle hinzugefügt"
+
+msgid "Adds the hosts to network_allowlist.json. Unless they are added, downloading or connecting to this server stays refused"
+msgstr "Fügt die Hosts zu network_allowlist.json hinzu. Solange sie nicht hinzugefügt sind, bleiben Download und Verbindung zu diesem Server verweigert"
+
+msgid "Adds them to network_allowlist.json. If you don't add them, traffic to this provider stays denied"
+msgstr "Fügt sie zu network_allowlist.json hinzu. Wenn Sie sie nicht hinzufügen, bleibt der Datenverkehr zu diesem Anbieter abgelehnt"
+
+msgid "Agent name is required."
+msgstr "Agent-Name ist erforderlich."
+
+msgid "Agents connected through the Agent Client Protocol."
+msgstr "Agenten, die über das Agent Client Protocol verbunden sind."
+
+msgid "Allow All Domains"
+msgstr "Alle Domains zulassen"
+
+msgid "Allow All File System Writes"
+msgstr "Alle Dateisystemschreibvorgänge zulassen"
+
+msgid "Allow Running Outside the Sandbox"
+msgstr "Ausführung außerhalb der Sandbox zulassen"
+
+msgid "Allow and Start"
+msgstr "Zulassen und starten"
+
+msgid "Allowed"
+msgstr "Zugelassen"
+
+msgid "Allowed Domains"
+msgstr "Zugelassene Domains"
+
+msgid "Allowed Hosts"
+msgstr "Zugelassene Hosts"
+
+msgid "Allowed host"
+msgstr "Zugelassener Host"
+
+msgid "Always Allow"
+msgstr "Immer zulassen"
+
+msgid "Always Confirm"
+msgstr "Immer bestätigen"
+
+msgid "Always Deny"
+msgstr "Immer ablehnen"
+
+msgid "Always Launch Outside the Sandbox"
+msgstr "Immer außerhalb der Sandbox starten"
+
+msgid "An HTTP server: Zed connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
+msgstr "Ein HTTP-Server: ForgeKairos verbindet sich mit der URL und kommuniziert über HTTP mit ihr. Der Zielhost unterliegt der Netzwerk-Zulassungsliste."
+
+msgid "An agent named \"{}\" already exists."
+msgstr "Ein Agent namens „{}“ ist bereits vorhanden."
+
+msgid "Apply the Proxy to AI Agent Child Processes"
+msgstr "Proxy auf untergeordnete Prozesse von KI-Agenten anwenden"
+
+msgid "Applying language server code actions"
+msgstr "Anwenden von Codeaktionen des Sprachservers"
+
+msgid "Argument"
+msgstr "Argument"
+
+msgid "Arguments"
+msgstr "Argumente"
+
+msgid "Arguments passed to the command, one per row (an argument containing spaces is passed as it is). Rows added and left empty are ignored."
+msgstr "Argumente, die an den Befehl übergeben werden, eines pro Zeile (ein Argument mit Leerzeichen wird unverändert übergeben). Hinzugefügte und leer gelassene Zeilen werden ignoriert."
+
+msgid "Audio Test"
+msgstr "Audiotest"
+
+msgid "Authenticate"
+msgstr "Authentifizieren"
+
+msgid "Authenticate to connect this server"
+msgstr "Authentifizieren, um eine Verbindung zu diesem Server herzustellen"
+
+msgid "Authenticating…"
+msgstr "Wird authentifiziert…"
+
+msgid "Authentication failed ({status}). Check the API key. If the server needs no authentication, check \"Connect without an API key\"."
+msgstr "Authentifizierung fehlgeschlagen ({status}). Prüfen Sie den API-Schlüssel. Wenn der Server keine Authentifizierung benötigt, aktivieren Sie „Ohne API-Schlüssel verbinden“."
+
+msgid "Authentication is required to connect."
+msgstr "Zum Verbinden ist eine Authentifizierung erforderlich."
+
+msgid "Binary for language server \"{name}\""
+msgstr "Binärdatei für den Sprachserver „{name}“"
+
+msgid "Body is required."
+msgstr "Inhalt ist erforderlich."
+
+msgid "Browse…"
+msgstr "Durchsuchen…"
+
+msgid "Can't save to the project settings file because no project is open."
+msgstr "In der Projekteinstellungsdatei kann nicht gespeichert werden, da kein Projekt geöffnet ist."
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Cannot add {host}: {reason}"
+msgstr "{host} kann nicht hinzugefügt werden: {reason}"
+
+msgid "Change Scope"
+msgstr "Geltungsbereich ändern"
+
+msgid "Changes take effect from the next child process that starts (no restart needed). Processes that ignore proxy settings cannot be controlled even when this is enabled. Child processes unrelated to AI, such as npm used by language servers or extensions, are not covered even when this is enabled."
+msgstr "Änderungen gelten ab dem nächsten gestarteten untergeordneten Prozess (kein Neustart erforderlich). Prozesse, die Proxyeinstellungen ignorieren, können auch bei aktivierter Option nicht kontrolliert werden. Untergeordnete Prozesse ohne Bezug zur KI, etwa von Sprachservern oder Erweiterungen verwendetes npm, sind auch bei aktivierter Option nicht betroffen."
+
+msgid "Checking PATH on this PC…"
+msgstr "PATH auf diesem Computer wird geprüft…"
+
+msgid "Checking…"
+msgstr "Wird geprüft…"
+
+msgid "Choose File"
+msgstr "Datei auswählen"
+
+msgid "Claude (Anthropic)"
+msgstr "Claude (Anthropic)"
+
+msgid "Claude Code Thinking Effort (--effort)"
+msgstr "Denkaufwand von Claude Code (--effort)"
+
+msgid "Claude Pro / Max subscriptions can't be used here (pay-as-you-go with an API key only). See \"Claude Subscription\" below."
+msgstr "Claude-Pro-/Max-Abonnements können hier nicht verwendet werden (nur nutzungsbasierte Abrechnung mit API-Schlüssel). Siehe „Claude (Abonnement)“ unten."
+
+msgid "Claude Subscription"
+msgstr "Claude (Abonnement)"
+
+msgid "Clear"
+msgstr "Leeren"
+
+msgid "Clicking on pages in the built-in browser"
+msgstr "Klicken auf Seiten im integrierten Browser"
+
+msgid "Client secret (leave empty for a public client)"
+msgstr "Clientgeheimnis (bei einem öffentlichen Client leer lassen)"
+
+msgid "Closes the settings window and launches Claude Code in a tab of the agent panel. For a local project on Windows it runs inside the sandbox (WSL); on a Linux host connected over SSH it runs inside that host's sandbox."
+msgstr "Schließt das Einstellungsfenster und startet Claude Code in einem Tab des Agent-Panels. Bei einem lokalen Projekt unter Windows läuft es in der Sandbox (WSL); auf einem über SSH verbundenen Linux-Host läuft es in der Sandbox dieses Hosts."
+
+msgid "Closes the settings window and launches `claude` on this PC (on the SSH host, when connected over SSH) outside the sandbox. Asks for confirmation every time (unless \"Always Launch Outside the Sandbox\" below is on)."
+msgstr "Schließt das Einstellungsfenster und startet `claude` auf diesem Computer (bei einer SSH-Verbindung auf dem SSH-Host) außerhalb der Sandbox. Fragt jedes Mal nach einer Bestätigung (außer wenn „Immer außerhalb der Sandbox starten“ unten aktiviert ist)."
+
+msgid "Closes the settings window and opens the file in the editor. Creates the file if it does not exist"
+msgstr "Schließt das Einstellungsfenster und öffnet die Datei im Editor. Erstellt die Datei, falls sie nicht vorhanden ist"
+
+msgid "Closes the settings window and runs the official install command `npm install -g @anthropic-ai/claude-code` in the integrated terminal. Requires Node.js (npm)."
+msgstr "Schließt das Einstellungsfenster und führt den offiziellen Installationsbefehl `npm install -g @anthropic-ai/claude-code` im integrierten Terminal aus. Erfordert Node.js (npm)."
+
+msgid "Closing AI tabs in the built-in browser"
+msgstr "Schließen von KI-Tabs im integrierten Browser"
+
+msgid "Command"
+msgstr "Befehl"
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). To save anyway, press \"Save\" again."
+msgstr "Der Befehl „{program}“ wurde nicht gefunden (er ist weder im PATH noch am angegebenen Ort; der Befehl wurde nicht ausgeführt). Um trotzdem zu speichern, klicken Sie erneut auf „Speichern“."
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). {hint} To save anyway, press \"Save\" again."
+msgstr "Der Befehl „{program}“ wurde nicht gefunden (er ist weder im PATH noch am angegebenen Ort; der Befehl wurde nicht ausgeführt). {hint} Um trotzdem zu speichern, klicken Sie erneut auf „Speichern“."
+
+msgid "Command chosen by an extension on the remote host (no settings file)"
+msgstr "Von einer Erweiterung auf dem Remote-Host gewählter Befehl (keine Einstellungsdatei)"
+
+msgid "Command chosen by an extension on {display_name} (no settings file)"
+msgstr "Von einer Erweiterung auf {display_name} gewählter Befehl (keine Einstellungsdatei)"
+
+msgid "Command is required."
+msgstr "Befehl ist erforderlich."
+
+msgid "Command: starts an executable and talks to it over standard input and output."
+msgstr "Befehl: Startet eine ausführbare Datei und kommuniziert über Standardeingabe und -ausgabe mit ihr."
+
+msgid "Commands executed in the terminal"
+msgstr "Im Terminal ausgeführte Befehle"
+
+msgid "Compatible APIs"
+msgstr "Kompatible APIs"
+
+msgid "Configure"
+msgstr "Konfigurieren"
+
+msgid "Configure Agent"
+msgstr "Agent konfigurieren"
+
+msgid "Configure External Agent"
+msgstr "Externen Agenten konfigurieren"
+
+msgid "Configure MCP Server"
+msgstr "MCP-Server konfigurieren"
+
+msgid "Configure Provider"
+msgstr "Anbieter konfigurieren"
+
+msgid "Configure {}"
+msgstr "{} konfigurieren"
+
+msgid "Configured Servers"
+msgstr "Konfigurierte Server"
+
+msgid "Confirm"
+msgstr "Bestätigen"
+
+msgid "Connect without an API key (server needs no authentication)"
+msgstr "Ohne API-Schlüssel verbinden (Server benötigt keine Authentifizierung)"
+
+msgid "Connection test: connected."
+msgstr "Verbindungstest: verbunden."
+
+msgid "Connection test: {message}"
+msgstr "Verbindungstest: {message}"
+
+msgid "Contact your organization admins to adjust this setting."
+msgstr "Wenden Sie sich an Ihre Organisationsadministratoren, um diese Einstellung anzupassen."
+
+msgid "Controls only outbound traffic that AI initiates. All such traffic is denied by default, and only the hosts registered here are allowed."
+msgstr "Steuert nur ausgehenden Datenverkehr, den die KI auslöst. Dieser Datenverkehr wird standardmäßig vollständig abgelehnt, und nur die hier registrierten Hosts sind zugelassen."
+
+msgid "Controls the default behavior for all tool actions. Per-tool rules and patterns can override this. \"Allow\" is the same setting as \"Auto-Approve (In Sandbox)\" in the agent panel. \"AI Judge\" runs automatically only the actions that a separate model judges not dangerous, and asks for confirmation for everything else. In either case, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files all still apply. File operations outside the project (worktree) are always confirmed, whatever this is set to, unless you wrote an \"Always Allow\" pattern for that path yourself. Terminal commands that run outside the sandbox (when the sandbox is disabled, or in a project without one) are confirmed every time, regardless of \"Allow\", \"AI Judge\", or \"Always Allow\". Which tools are available is chosen by the profile, not by this setting."
+msgstr "Steuert das Standardverhalten für alle Tool-Aktionen. Regeln und Muster pro Tool können dies überschreiben. „Zulassen“ ist dieselbe Einstellung wie „Automatisch genehmigen (in der Sandbox)“ im Agent-Panel. „KI entscheidet“ führt nur die Aktionen automatisch aus, die ein separates Modell als ungefährlich beurteilt, und fragt bei allen anderen nach einer Bestätigung. In beiden Fällen gelten weiterhin die integrierten Sicherheitsregeln, Ihre Ablehnungs- und Bestätigungsmuster, die Sandbox und die Bestätigung für Schreibzugriffe auf Einstellungsdateien. Dateivorgänge außerhalb des Projekts (Worktree) werden unabhängig von dieser Einstellung immer bestätigt, außer Sie haben selbst ein „Immer zulassen“-Muster für diesen Pfad geschrieben. Terminalbefehle, die außerhalb der Sandbox ausgeführt werden (wenn die Sandbox deaktiviert ist oder in einem Projekt ohne Sandbox), werden unabhängig von „Zulassen“, „KI entscheidet“ oder „Immer zulassen“ jedes Mal bestätigt. Welche Tools verfügbar sind, wird über das Profil festgelegt, nicht über diese Einstellung."
+
+msgid "Copy Link"
+msgstr "Link kopieren"
+
+msgid "Copy Share Link"
+msgstr "Freigabelink kopieren"
+
+msgid "Could not connect: {error}"
+msgstr "Verbindung fehlgeschlagen: {error}"
+
+msgid "Could not determine the range to rewrite"
+msgstr "Der umzuschreibende Bereich konnte nicht ermittelt werden"
+
+msgid "Couldn't choose the file: {error}"
+msgstr "Die Datei konnte nicht ausgewählt werden: {error}"
+
+msgid "Couldn't connect to the server: {error}"
+msgstr "Verbindung zum Server konnte nicht hergestellt werden: {error}"
+
+msgid "Couldn't create the request: {error}"
+msgstr "Die Anfrage konnte nicht erstellt werden: {error}"
+
+msgid "Couldn't fetch the tool list: {error}"
+msgstr "Die Toolliste konnte nicht abgerufen werden: {error}"
+
+msgid "Couldn't get the approval details for this server."
+msgstr "Die Genehmigungsdetails für diesen Server konnten nicht abgerufen werden."
+
+msgid "Couldn't load the template list: {error}"
+msgstr "Die Vorlagenliste konnte nicht geladen werden: {error}"
+
+msgid "Couldn't parse the model list response: {error}"
+msgstr "Die Antwort mit der Modellliste konnte nicht analysiert werden: {error}"
+
+msgid "Couldn't read shared skill: {err}"
+msgstr "Geteilter Skill konnte nicht gelesen werden: {err}"
+
+msgid "Couldn't read this as JSON: {error}"
+msgstr "Dies konnte nicht als JSON gelesen werden: {error}"
+
+msgid "Couldn't revoke the approval: {error}"
+msgstr "Die Genehmigung konnte nicht widerrufen werden: {error}"
+
+msgid "Couldn't revoke: {error}"
+msgstr "Widerruf fehlgeschlagen: {error}"
+
+msgid "Couldn't save \"Don't Allow\": {error}"
+msgstr "„Nicht zulassen“ konnte nicht gespeichert werden: {error}"
+
+msgid "Couldn't save because the project settings file can't be read. Fix the JSON errors in the file, then save again."
+msgstr "Speichern nicht möglich, da die Projekteinstellungsdatei nicht gelesen werden kann. Beheben Sie die JSON-Fehler in der Datei, und speichern Sie dann erneut."
+
+msgid "Couldn't save the decision: {error}"
+msgstr "Die Entscheidung konnte nicht gespeichert werden: {error}"
+
+msgid "Couldn't save the permission: {error}"
+msgstr "Die Berechtigung konnte nicht gespeichert werden: {error}"
+
+msgid "Couldn't save to the project settings file: the save was cancelled."
+msgstr "In der Projekteinstellungsdatei konnte nicht gespeichert werden: Das Speichern wurde abgebrochen."
+
+msgid "Couldn't save to the project settings file: {error}"
+msgstr "In der Projekteinstellungsdatei konnte nicht gespeichert werden: {error}"
+
+msgid "Couldn't submit the client secret: {error}"
+msgstr "Das Clientgeheimnis konnte nicht gesendet werden: {error}"
+
+msgid "Create Skill"
+msgstr "Skill erstellen"
+
+msgid "Create a Skill"
+msgstr "Skill erstellen"
+
+msgid "Decision"
+msgstr "Entscheidung"
+
+msgid "Decrement"
+msgstr "Verringern"
+
+msgid "Default"
+msgstr "Standard"
+
+msgid "Default (Fast Model)"
+msgstr "Standard (schnelles Modell)"
+
+msgid "Default Action"
+msgstr "Standardaktion"
+
+msgid "Default Permission"
+msgstr "Standardberechtigung"
+
+msgid "Default reasoning effort"
+msgstr "Standard-Denkaufwand"
+
+msgid "Defined in"
+msgstr "Definiert in"
+
+msgid "Delete"
+msgstr "Löschen"
+
+msgid "Delete Invalid Pattern"
+msgstr "Ungültiges Muster löschen"
+
+msgid "Delete Pattern"
+msgstr "Muster löschen"
+
+msgid "Delete Skill"
+msgstr "Skill löschen"
+
+msgid "Delete the provider \"{name}\"?"
+msgstr "Anbieter „{name}“ löschen?"
+
+msgid "Delete the {skill_scope} skill \"{skill_name}\"?"
+msgstr "Skill „{skill_name}“ ({skill_scope}) löschen?"
+
+msgid "Delete {name}"
+msgstr "{name} löschen"
+
+msgid "Deletes the API key saved in the system keychain for {url}. A key set in an environment variable is not affected."
+msgstr "Löscht den im Systemschlüsselbund für {url} gespeicherten API-Schlüssel. Ein in einer Umgebungsvariablen festgelegter Schlüssel ist nicht betroffen."
+
+msgid "Denied: {}"
+msgstr "Abgelehnt: {}"
+
+msgid "Description"
+msgstr "Beschreibung"
+
+msgid "Directory creation"
+msgstr "Verzeichniserstellung"
+
+msgid "Disable model invocation"
+msgstr "Modellaufruf deaktivieren"
+
+msgid "Disabled"
+msgstr "Deaktiviert"
+
+msgid "Disabled in the project settings."
+msgstr "In den Projekteinstellungen deaktiviert."
+
+msgid "Dismiss"
+msgstr "Schließen"
+
+msgid "Domain cannot be empty."
+msgstr "Domain darf nicht leer sein."
+
+msgid "Don't Allow"
+msgstr "Nicht zulassen"
+
+msgid "Duplicate {label} \"{key}\"."
+msgstr "Doppelter Eintrag für {label} „{key}“."
+
+msgid "Each entry is an exact domain (github.com) or a leading-*. subdomain wildcard (*.npmjs.org). IP addresses and local domains are not allowed. An entry here only takes effect within the editor-wide network allowlist: a host that is not on that list stays unreachable even if you add it here."
+msgstr "Jeder Eintrag ist eine exakte Domain (github.com) oder ein Subdomain-Platzhalter mit vorangestelltem *. (*.npmjs.org). IP-Adressen und lokale Domains sind nicht zulässig. Ein Eintrag hier wirkt nur innerhalb der editorweiten Netzwerk-Zulassungsliste: Ein Host, der nicht auf dieser Liste steht, bleibt unerreichbar, auch wenn Sie ihn hier hinzufügen."
+
+msgid "Each entry is an exact host name (api.anthropic.com), a subdomain wildcard with a leading *. (*.corp.example, which does not match the parent domain itself), or an IP address (10.0.0.5 / [fd00::1]). Entries are case-insensitive and take no port."
+msgstr "Jeder Eintrag ist ein exakter Hostname (api.anthropic.com), ein Subdomain-Platzhalter mit vorangestelltem *. (*.corp.example, der nicht auf die übergeordnete Domain selbst zutrifft) oder eine IP-Adresse (10.0.0.5 / [fd00::1]). Bei Einträgen wird die Groß-/Kleinschreibung nicht beachtet, und sie enthalten keinen Port."
+
+msgid "Each entry must be an absolute path and grants write access to the whole subtree, except protected Git metadata."
+msgstr "Jeder Eintrag muss ein absoluter Pfad sein und gewährt Schreibzugriff auf den gesamten Teilbaum, mit Ausnahme geschützter Git-Metadaten."
+
+msgid "Edit"
+msgstr "Bearbeiten"
+
+msgid "Edit Git Account"
+msgstr "Git-Konto bearbeiten"
+
+msgid "Edit in Form (saves to the project settings file that defines this server)"
+msgstr "Im Formular bearbeiten (speichert in der Projekteinstellungsdatei, die diesen Server definiert)"
+
+msgid "Edit in settings.json"
+msgstr "In settings.json bearbeiten"
+
+msgid "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from Zed itself."
+msgstr "Datenverkehr der Bearbeitungsvorhersage wird vom Copilot-Sprachserver (einem separaten Prozess) gesendet und unterliegt daher nicht der Zulassungsliste für ausgehende Verbindungen. Die Registrierung der Hosts betrifft nur die Anmeldung aus ForgeKairos selbst."
+
+msgid "Edit {entry}"
+msgstr "{entry} bearbeiten"
+
+msgid "Edit {name}"
+msgstr "{name} bearbeiten"
+
+msgid "Email"
+msgstr "E-Mail"
+
+msgid "Enable Sandbox"
+msgstr "Sandbox aktivieren"
+
+msgid "Enter \"{prompt}\"."
+msgstr "Geben Sie „{prompt}“ ein."
+
+msgid "Enter Secret"
+msgstr "Geheimnis eingeben"
+
+msgid "Enter a host."
+msgstr "Geben Sie einen Host ein."
+
+msgid "Enter a tool input to test your rules…"
+msgstr "Tool-Eingabe zum Testen Ihrer Regeln eingeben…"
+
+msgid "Enter a valid GitHub URL"
+msgstr "Geben Sie eine gültige GitHub-URL ein"
+
+msgid "Enter a value for the {label} \"{key}\"."
+msgstr "Geben Sie einen Wert für {label} „{key}“ ein."
+
+msgid "Enter the API key."
+msgstr "Geben Sie den API-Schlüssel ein."
+
+msgid "Enter to Confirm"
+msgstr "Enter zum Bestätigen"
+
+msgid "Enter: {prompt}"
+msgstr "Eingabe: {prompt}"
+
+msgid "Environment"
+msgstr "Umgebung"
+
+msgid "Environment Variables"
+msgstr "Umgebungsvariablen"
+
+msgid "Environment variables provided to the server process. Enter the values the server's documentation asks for here, such as API keys or tokens."
+msgstr "Umgebungsvariablen, die dem Serverprozess übergeben werden. Geben Sie hier die Werte ein, die die Dokumentation des Servers verlangt, etwa API-Schlüssel oder Tokens."
+
+msgid "Environment variables to fill in: {inputs}"
+msgstr "Auszufüllende Umgebungsvariablen: {inputs}"
+
+msgid "Environment variables: {names}"
+msgstr "Umgebungsvariablen: {names}"
+
+msgid "Error: {}"
+msgstr "Fehler: {}"
+
+msgid "Escalation Prompts"
+msgstr "Abfragen zur Rechteerweiterung"
+
+msgid "Every AI you can use here, by whose AI it is. Each row shows how you sign in and what runs it. In the agent panel, the + menu lists the same AIs."
+msgstr "Alle hier verfügbaren KIs, gruppiert nach Anbieter. Jede Zeile zeigt, wie Sie sich anmelden und was sie ausführt. Im Agent-Panel listet das Menü + dieselben KIs auf."
+
+msgid "Execution Host"
+msgstr "Ausführungshost"
+
+msgid "Extension: the extension provides the command. Its settings are made in the extension's own form."
+msgstr "Erweiterung: Die Erweiterung stellt den Befehl bereit. Die Einstellungen erfolgen im eigenen Formular der Erweiterung."
+
+msgid "External Agents"
+msgstr "Externe Agenten"
+
+msgid "External formatter \"{name}\""
+msgstr "Externer Formatierer „{name}“"
+
+msgid "Failed to add the hosts to the allowlist: {error}"
+msgstr "Die Hosts konnten nicht zur Zulassungsliste hinzugefügt werden: {error}"
+
+msgid "Failed to load your settings. Some values may be incorrect and changes may be lost."
+msgstr "Ihre Einstellungen konnten nicht geladen werden. Einige Werte sind möglicherweise falsch und Änderungen können verloren gehen."
+
+msgid "Failed to parse network_allowlist.json"
+msgstr "network_allowlist.json konnte nicht analysiert werden"
+
+msgid "Failed to parse network_allowlist.json: {error}"
+msgstr "network_allowlist.json konnte nicht analysiert werden: {error}"
+
+msgid "Failed to read network_allowlist.json"
+msgstr "network_allowlist.json konnte nicht gelesen werden"
+
+msgid "Failed to read network_allowlist.json: {error}"
+msgstr "network_allowlist.json konnte nicht gelesen werden: {error}"
+
+msgid "Failed to read the response body: {error}"
+msgstr "Der Antworttext konnte nicht gelesen werden: {error}"
+
+msgid "Failed to save the allowlist: {write_error}"
+msgstr "Die Zulassungsliste konnte nicht gespeichert werden: {write_error}"
+
+msgid "Failed to save the child process proxy setting: {write_error}"
+msgstr "Die Proxyeinstellung für untergeordnete Prozesse konnte nicht gespeichert werden: {write_error}"
+
+msgid "Failed to write network_allowlist.json"
+msgstr "network_allowlist.json konnte nicht geschrieben werden"
+
+msgid "Fetch Models"
+msgstr "Modelle abrufen"
+
+msgid "Fetching and parsing…"
+msgstr "Wird abgerufen und geparst…"
+
+msgid "Fetching the tool list…"
+msgstr "Toolliste wird abgerufen…"
+
+msgid "Fetching…"
+msgstr "Wird abgerufen…"
+
+msgid "File System"
+msgstr "Dateisystem"
+
+msgid "File and directory copying"
+msgstr "Kopieren von Dateien und Verzeichnissen"
+
+msgid "File and directory deletion"
+msgstr "Löschen von Dateien und Verzeichnissen"
+
+msgid "File and directory moves/renames"
+msgstr "Verschieben/Umbenennen von Dateien und Verzeichnissen"
+
+msgid "File creation and overwrite operations"
+msgstr "Dateierstellungs- und Überschreibvorgänge"
+
+msgid "File editing operations"
+msgstr "Dateibearbeitungsvorgänge"
+
+msgid "Files whose contents are part of this approval: {files}. A change to their contents asks for confirmation again, but the command line alone doesn't show what they do, so review their contents too before allowing."
+msgstr "Dateien, deren Inhalt Teil dieser Genehmigung ist: {files}. Bei einer Änderung ihres Inhalts wird erneut um Bestätigung gebeten, aber die Befehlszeile allein zeigt nicht, was sie tun. Prüfen Sie daher vor dem Zulassen auch ihren Inhalt."
+
+msgid "Finish the steps below to start a thread with {name}."
+msgstr "Schließen Sie die folgenden Schritte ab, um einen Thread mit {name} zu starten."
+
+msgid "Fix in settings.json"
+msgstr "In settings.json beheben"
+
+msgid "Focus Content"
+msgstr "Inhalt fokussieren"
+
+msgid "Focus Navbar"
+msgstr "Navigationsleiste fokussieren"
+
+msgid "Folder"
+msgstr "Ordner"
+
+msgid "For a public client, leave this empty and submit."
+msgstr "Lassen Sie dieses Feld bei einem öffentlichen Client leer, und senden Sie es ab."
+
+msgid "Found {count} server. Open it in the form to review it, or add it right away."
+msgid_plural "Found {count} servers. Open each one in the form to review it, or add them all at once."
+msgstr[0] "{count} Server gefunden. Öffnen Sie ihn zur Prüfung im Formular, oder fügen Sie ihn sofort hinzu."
+msgstr[1] "{count} Server gefunden. Öffnen Sie jeden zur Prüfung im Formular, oder fügen Sie alle auf einmal hinzu."
+
+msgid "Front-matter"
+msgstr "Frontmatter"
+
+msgid "Git Accounts"
+msgstr "Git-Konten"
+
+msgid "Git commands run outside the sandbox with hooks turned off (commit, branch, merge, …)"
+msgstr "Git-Befehle, die außerhalb der Sandbox mit deaktivierten Hooks ausgeführt werden (commit, branch, merge, …)"
+
+msgid "GitHub response was not valid UTF-8"
+msgstr "Die GitHub-Antwort war kein gültiges UTF-8"
+
+msgid "GitHub returned 404 while fetching the skill; no repository exists at this URL, or it is private"
+msgstr "GitHub hat beim Abrufen des Skills 404 zurückgegeben; unter dieser URL ist kein Repository vorhanden oder es ist privat"
+
+msgid "GitHub returned an unexpected redirect ({}) for the authenticated request to {raw_url}"
+msgstr "GitHub hat eine unerwartete Weiterleitung ({}) für die authentifizierte Anfrage an {raw_url} zurückgegeben"
+
+msgid "GitHub returned {} while fetching the skill"
+msgstr "GitHub hat beim Abrufen des Skills {} zurückgegeben"
+
+msgid "GitHub skill URLs must use https://"
+msgstr "GitHub-Skill-URLs müssen https:// verwenden"
+
+msgid "Go to \"Enable Agent\""
+msgstr "Zu „Agent aktivieren“ wechseln"
+
+msgid "Google"
+msgstr "Google"
+
+msgid "HTTP headers sent with each request to the server. For a server that authenticates with a token, set Authorization to \"Bearer <token>\"."
+msgstr "HTTP-Header, die mit jeder Anfrage an den Server gesendet werden. Legen Sie für einen Server, der sich per Token authentifiziert, Authorization auf „Bearer <token>“ fest."
+
+msgid "HTTP requests to URLs"
+msgstr "HTTP-Anfragen an URLs"
+
+msgid "HTTP: connects over HTTP to a server published at a URL."
+msgstr "HTTP: Verbindet sich über HTTP mit einem unter einer URL veröffentlichten Server."
+
+msgid "Headers"
+msgstr "Header"
+
+msgid "Headers to fill in: {inputs}"
+msgstr "Auszufüllende Header: {inputs}"
+
+msgid "Headers: {names}"
+msgstr "Header: {names}"
+
+msgid "Hide this skill from the model's catalog. It can still be invoked via slash command."
+msgstr "Blendet diesen Skill aus dem Modellkatalog aus. Er kann weiterhin per Slash-Befehl aufgerufen werden."
+
+msgid "Host"
+msgstr "Host"
+
+msgid "Hosts that need to be allowed:"
+msgstr "Hosts, die zugelassen werden müssen:"
+
+msgid "How long to wait for the server to respond before timing out."
+msgstr "Legt fest, wie lange auf eine Antwort des Servers gewartet wird, bevor eine Zeitüberschreitung auftritt."
+
+msgid "I understand the risks above and want to add this provider"
+msgstr "Ich verstehe die oben genannten Risiken und möchte diesen Anbieter hinzufügen"
+
+msgid "I understand the risks above and want to enable {name}"
+msgstr "Ich verstehe die oben genannten Risiken und möchte {name} aktivieren"
+
+msgid "I understand the risks above and want to save this provider"
+msgstr "Ich verstehe die oben genannten Risiken und möchte diesen Anbieter speichern"
+
+msgid "IP addresses and local domains aren't allowed; enter a domain like github.com."
+msgstr "IP-Adressen und lokale Domains sind nicht erlaubt; geben Sie eine Domain ein, z. B. github.com."
+
+msgid "If any of these regexes match, a confirmation will be shown unless an Always Deny regex matches."
+msgstr "Wenn einer dieser regulären Ausdrücke auf die Eingabe zutrifft, wird eine Bestätigung angezeigt, sofern kein regulärer Ausdruck unter „Immer ablehnen“ auf die Eingabe zutrifft."
+
+msgid "If any of these regexes match, the action will be approved—unless an Always Confirm or Always Deny matches."
+msgstr "Wenn einer dieser regulären Ausdrücke auf die Eingabe zutrifft, wird die Aktion genehmigt, es sei denn, ein regulärer Ausdruck unter „Immer bestätigen“ oder „Immer ablehnen“ trifft ebenfalls auf die Eingabe zu."
+
+msgid "If any of these regexes match, the tool action will be denied."
+msgstr "Wenn einer dieser regulären Ausdrücke auf die Eingabe zutrifft, wird die Toolaktion abgelehnt."
+
+msgid "Import from URL"
+msgstr "Aus URL importieren"
+
+msgid "In a project folder where the agent has written files, language servers and formatters do not run that folder's code (the project's Prettier and ESLint configuration, build scripts, and so on) until you press Resume. This setting is saved only in your user settings and cannot be changed by project settings."
+msgstr "In einem Projektordner, in den der Agent Dateien geschrieben hat, führen Sprachserver und Formatierer den Code dieses Ordners (Prettier- und ESLint-Konfiguration des Projekts, Build-Skripts usw.) erst aus, wenn Sie auf „Fortsetzen“ klicken. Diese Einstellung wird nur in Ihren Benutzereinstellungen gespeichert und kann nicht durch Projekteinstellungen geändert werden."
+
+msgid "Increment"
+msgstr "Erhöhen"
+
+msgid "Input Device"
+msgstr "Eingabegerät"
+
+msgid "Install Claude Code (Official Command)"
+msgstr "Claude Code installieren (offizieller Befehl)"
+
+msgid "Install Docker to make it available."
+msgstr "Installieren Sie Docker, um dies verfügbar zu machen."
+
+msgid "Install Node.js to make it available."
+msgstr "Installieren Sie Node.js, um dies verfügbar zu machen."
+
+msgid "Install from Extensions"
+msgstr "Aus Erweiterungen installieren"
+
+msgid "Install from Registry"
+msgstr "Aus Registry installieren"
+
+msgid "Install uv to make it available."
+msgstr "Installieren Sie uv, um dies verfügbar zu machen."
+
+msgid "Installed on this PC ({version})"
+msgstr "Auf diesem Computer installiert ({version})"
+
+msgid "Installed on this PC."
+msgstr "Auf diesem Computer installiert."
+
+msgid "Invalid Patterns"
+msgstr "Ungültige Muster"
+
+msgid "Invalid URL in settings."
+msgstr "Ungültige URL in den Einstellungen."
+
+msgid "Invalid URL: {error}"
+msgstr "Ungültige URL: {error}"
+
+msgid "Invalid regex: {err}. Pattern saved but will block this tool until fixed or removed."
+msgstr "Ungültiger regulärer Ausdruck: {err}. Das Muster wurde gespeichert, blockiert dieses Tool jedoch, bis es korrigiert oder entfernt wird."
+
+msgid "Judge Model"
+msgstr "Beurteilungsmodell"
+
+msgid "Keeps the API key saved for {url}, because another provider uses the same URL."
+msgstr "Behält den für {url} gespeicherten API-Schlüssel bei, da ein anderer Anbieter dieselbe URL verwendet."
+
+msgid "Kept these hosts because another provider you consented to uses them: {hosts}"
+msgstr "Diese Hosts wurden beibehalten, da ein anderer Anbieter, dem Sie zugestimmt haben, sie verwendet: {hosts}"
+
+msgid "Key"
+msgstr "Schlüssel"
+
+msgid "LLM Providers"
+msgstr "LLM-Anbieter"
+
+msgid "Launch Claude Code in Terminal"
+msgstr "Claude Code im Terminal starten"
+
+msgid "Launch Outside the Sandbox"
+msgstr "Außerhalb der Sandbox starten"
+
+msgid "Launches this agent outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Saved only in your user settings."
+msgstr "Startet diesen Agenten jedes Mal ohne Nachfrage außerhalb der Sandbox. Schreibzugriffe sind dann nicht mehr eingeschränkt, und Netzwerkbeschränkungen gelten nur für Programme, die die Proxyeinstellungen auswerten (auf einem SSH-Host gilt die Kontrolle ausgehender Verbindungen überhaupt nicht). Wird nur in Ihren Benutzereinstellungen gespeichert."
+
+msgid "Learn More"
+msgstr "Mehr erfahren"
+
+msgid "Learn more about sandboxing"
+msgstr "Mehr über die Sandbox erfahren"
+
+msgid "Leave blank to keep the key saved in the system keychain, or enter a new key to replace it."
+msgstr "Leer lassen, um den im Systemschlüsselbund gespeicherten Schlüssel beizubehalten, oder einen neuen Schlüssel eingeben, um ihn zu ersetzen."
+
+msgid "Leave blank to keep the saved key"
+msgstr "Leer lassen, um den gespeicherten Schlüssel beizubehalten"
+
+msgid "Let sandboxed commands reach any domain over the network without prompting. This only lifts the sandbox's own restriction, so commands can still reach only the hosts within the editor-wide network allowlist (localhost is always reachable)."
+msgstr "Befehlen in der Sandbox ohne Nachfrage den Netzwerkzugriff auf beliebige Domains erlauben. Dadurch wird nur die Beschränkung der Sandbox selbst aufgehoben; Befehle können weiterhin nur Hosts innerhalb der editorweiten Netzwerk-Zulassungsliste erreichen (localhost ist immer erreichbar)."
+
+msgid "Let sandboxed commands write anywhere except protected paths (such as Git metadata). This is almost the same as running outside the sandbox, so while it is on, auto-approval does not apply and each command asks for confirmation."
+msgstr "Befehlen in der Sandbox erlauben, überall außer in geschützten Pfaden (z. B. Git-Metadaten) zu schreiben. Dies entspricht fast der Ausführung außerhalb der Sandbox; solange die Option aktiviert ist, gilt daher keine automatische Genehmigung, und für jeden Befehl wird eine Bestätigung angefordert."
+
+msgid "Load"
+msgstr "Laden"
+
+msgid "Loaded the template \"{title}\". Fill in the fields that ask for a value before saving."
+msgstr "Die Vorlage „{title}“ wurde geladen. Füllen Sie vor dem Speichern die Felder aus, die einen Wert verlangen."
+
+msgid "Loading agent skill instructions"
+msgstr "Laden von Agent-Skill-Anweisungen"
+
+msgid "Loading models…"
+msgstr "Modelle werden geladen…"
+
+msgid "Loading pages in AI tabs of the built-in browser"
+msgstr "Laden von Seiten in KI-Tabs des integrierten Browsers"
+
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+msgid "Loads mcpServers JSON, such as the one in a server's README, into the form."
+msgstr "Lädt mcpServers-JSON, etwa aus der README eines Servers, in das Formular."
+
+msgid "Loads the settings of a commonly used MCP server into the form. Nothing is written to your settings until you click Save."
+msgstr "Lädt die Einstellungen eines häufig verwendeten MCP-Servers in das Formular. Es wird nichts in Ihre Einstellungen geschrieben, bis Sie auf „Speichern“ klicken."
+
+msgid "Loads the settings of a commonly used server, such as Filesystem or GitHub, into the form."
+msgstr "Lädt die Einstellungen eines häufig verwendeten Servers wie Filesystem oder GitHub in das Formular."
+
+msgid "Local"
+msgstr "Lokal"
+
+msgid "Local (command)"
+msgstr "Lokal (Befehl)"
+
+msgid "Local Model (Ollama, LM Studio, …)"
+msgstr "Lokales Modell (Ollama, LM Studio, …)"
+
+msgid "Local Models"
+msgstr "Lokale Modelle"
+
+msgid "Log Out"
+msgstr "Abmelden"
+
+msgid "Login"
+msgstr "Anmeldename"
+
+msgid "MCP server \"{name}\""
+msgstr "MCP-Server „{name}“"
+
+msgid "MCP server did not respond (timed out)"
+msgstr "Der MCP-Server hat nicht geantwortet (Zeitüberschreitung)"
+
+msgid "Makes \"Launch Claude Code\" start outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Sign-in is shared with your regular Claude Code. Saved only in your user settings."
+msgstr "Sorgt dafür, dass „Claude Code starten“ jedes Mal ohne Nachfrage außerhalb der Sandbox startet. Schreibzugriffe sind dann nicht mehr eingeschränkt, und Netzwerkbeschränkungen gelten nur für Programme, die die Proxyeinstellungen auswerten (auf einem SSH-Host gilt die Kontrolle ausgehender Verbindungen überhaupt nicht). Die Anmeldung wird mit Ihrem normalen Claude Code geteilt. Wird nur in Ihren Benutzereinstellungen gespeichert."
+
+msgid "Manage Trust"
+msgstr "Vertrauen verwalten"
+
+msgid "Manage servers connected directly or via extensions."
+msgstr "Server verwalten, die direkt oder über Erweiterungen verbunden sind."
+
+msgid "Max Completion Tokens"
+msgstr "Maximale Antwort-Token"
+
+msgid "Max Output Tokens"
+msgstr "Maximale Ausgabe-Token"
+
+msgid "Max Tokens"
+msgstr "Maximale Token"
+
+msgid "Maximum completion tokens for OpenAI-compatible requests."
+msgstr "Maximale Antwort-Token für OpenAI-kompatible Anfragen."
+
+msgid "Model Name"
+msgstr "Modellname"
+
+msgid "Model Name cannot be empty"
+msgstr "Modellname darf nicht leer sein"
+
+msgid "Model Names must be unique"
+msgstr "Modellnamen müssen eindeutig sein"
+
+msgid "Models"
+msgstr "Modelle"
+
+msgid "Modified in {modified_in}"
+msgstr "Geändert in {modified_in}"
+
+msgid "Move Down"
+msgstr "Nach unten verschieben"
+
+msgid "Move Up"
+msgstr "Nach oben verschieben"
+
+msgid "Moving the mouse over pages in the built-in browser"
+msgstr "Bewegen der Maus über Seiten im integrierten Browser"
+
+msgid "Name"
+msgstr "Name"
+
+msgid "Network"
+msgstr "Netzwerk"
+
+msgid "No API key is sent, because this connects to a server that needs no authentication."
+msgstr "Es wird kein API-Schlüssel gesendet, da hier eine Verbindung zu einem Server ohne Authentifizierung hergestellt wird."
+
+msgid "No MCP server settings were found. Paste JSON that contains `command` (local) or `url` (remote)."
+msgstr "Es wurden keine MCP-Server-Einstellungen gefunden. Fügen Sie JSON ein, das `command` (lokal) oder `url` (remote) enthält."
+
+msgid "No MCP servers added yet. Click \"Add Server\" to get started."
+msgstr "Noch keine MCP-Server hinzugefügt. Klicken Sie auf „Server hinzufügen“, um zu beginnen."
+
+msgid "No Models"
+msgstr "Keine Modelle"
+
+msgid "No Results"
+msgstr "Keine Ergebnisse"
+
+msgid "No active project found. Open a workspace to manage MCP servers."
+msgstr "Kein aktives Projekt gefunden. Öffnen Sie einen Arbeitsbereich, um MCP-Server zu verwalten."
+
+msgid "No active project found. Open a workspace to manage external agents."
+msgstr "Kein aktives Projekt gefunden. Öffnen Sie einen Arbeitsbereich, um externe Agenten zu verwalten."
+
+msgid "No authenticated models"
+msgstr "Keine authentifizierten Modelle"
+
+msgid "No decisions have been recorded yet."
+msgstr "Es wurden noch keine Entscheidungen aufgezeichnet."
+
+msgid "No entries"
+msgstr "Keine Einträge"
+
+msgid "No external agents added yet. Click \"Add Agent\" to get started."
+msgstr "Noch keine externen Agenten hinzugefügt. Klicken Sie auf „Agent hinzufügen“, um zu beginnen."
+
+msgid "No git accounts yet."
+msgstr "Noch keine Git-Konten."
+
+msgid "No global skills installed."
+msgstr "Keine globalen Skills installiert."
+
+msgid "No hosts configured (everything except loopback is denied)"
+msgstr "Keine Hosts konfiguriert (alles außer Loopback wird abgelehnt)"
+
+msgid "No models found. Check your Ollama server URL."
+msgstr "Keine Modelle gefunden. Prüfen Sie die URL Ihres Ollama-Servers."
+
+msgid "No new models were found to add"
+msgstr "Es wurden keine neuen Modelle zum Hinzufügen gefunden"
+
+msgid "No patterns configured"
+msgstr "Keine Muster konfiguriert"
+
+msgid "No project skills found."
+msgstr "Keine Projekt-Skills gefunden."
+
+msgid "No regex matches, using the default action."
+msgstr "Keine Regex-Treffer, Standardaktion wird verwendet."
+
+msgid "No settings match \"{}\""
+msgstr "Keine Einstellungen entsprechen „{}“"
+
+msgid "No skills available for this context."
+msgstr "Keine Skills für diesen Kontext verfügbar."
+
+msgid "No token is stored. Without one, git asks for the password as usual."
+msgstr "Es ist kein Token gespeichert. Ohne Token fragt Git wie gewohnt nach dem Passwort."
+
+msgid "No tools"
+msgstr "Keine Tools"
+
+msgid "None"
+msgstr "Keine"
+
+msgid "None (disable edit predictions)"
+msgstr "Keine (Bearbeitungsvorhersagen deaktivieren)"
+
+msgid "Not Controlled"
+msgstr "Nicht kontrolliert"
+
+msgid "Not Controlled (Own Proxy)"
+msgstr "Nicht kontrolliert (eigener Proxy)"
+
+msgid "Not Installed"
+msgstr "Nicht installiert"
+
+msgid "Not Set Up"
+msgstr "Nicht eingerichtet"
+
+msgid "Not a valid domain. Use a domain like github.com or *.npmjs.org."
+msgstr "Keine gültige Domain. Verwenden Sie eine Domain wie github.com oder *.npmjs.org."
+
+msgid "Not a valid host name or IP address. Examples: api.anthropic.com, *.corp.example, 10.0.0.5"
+msgstr "Kein gültiger Hostname und keine gültige IP-Adresse. Beispiele: api.anthropic.com, *.corp.example, 10.0.0.5"
+
+msgid "Not allowed"
+msgstr "Nicht zugelassen"
+
+msgid "Not installed on this PC (claude is not on PATH)."
+msgstr "Nicht auf diesem Computer installiert (claude ist nicht im PATH)."
+
+msgid "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
+msgstr "Hinweis: Benutzerdefinierte Toolberechtigungen gelten nur für den nativen Agenten von ForgeKairos und erstrecken sich nicht auf externe Agenten, die über das Agent Client Protocol (ACP) verbunden sind."
+
+msgid "Nothing configured"
+msgstr "Nichts konfiguriert"
+
+msgid "OAuth Client ID"
+msgstr "OAuth-Client-ID"
+
+msgid "Official CLI Tab"
+msgstr "Tab der offiziellen CLI"
+
+msgid "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
+msgstr "Am 2026-06-15 hat Anthropic angekündigt, dass die Nutzung über ein Abonnement (Claude Pro, Max usw.) wie bisher weiter möglich ist. Die Anmeldung erfolgt in den eigenen Bildschirmen von Claude Code; ForgeKairos sieht, speichert oder übermittelt Ihre Anmeldedaten nie. Wenn Sie dies deaktivieren, wird die Anmeldeschaltfläche von der Authentifizierungskarte entfernt (die Nutzung mit API-Schlüssel funktioniert weiterhin)."
+
+msgid "One of the {label} rows has no name. Enter a name or remove that row."
+msgstr "Eine der Zeilen von {label} hat keinen Namen. Geben Sie einen Namen ein, oder entfernen Sie die Zeile."
+
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Open Detailed Settings"
+msgstr "Detaillierte Einstellungen öffnen"
+
+msgid "Open in Form"
+msgstr "Im Formular öffnen"
+
+msgid "Open network_allowlist.json in Editor"
+msgstr "network_allowlist.json im Editor öffnen"
+
+msgid "Open the project settings file that defines this server"
+msgstr "Die Projekteinstellungsdatei öffnen, die diesen Server definiert"
+
+msgid "OpenAI"
+msgstr "OpenAI"
+
+msgid "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below."
+msgstr "OpenAI-kompatible API, Ollama, GitHub Copilot, Codestral und Mercury können ausgewählt werden, sobald ihre Anmeldedaten oder Endpunkt-URL in den jeweiligen Abschnitten unten eingerichtet sind. Zed kann ausgewählt werden, sobald Sie im Abschnitt „Zed“ unten zugestimmt haben."
+
+msgid "Opening AI tabs in the built-in browser"
+msgstr "Öffnen von KI-Tabs im integrierten Browser"
+
+msgid "Opens the official Claude Code in a tab of the agent panel. You sign in on Claude Code's own screen. The CLI is not bundled; it is installed with the official install command. For pay-as-you-go billing with an API key, use Anthropic above."
+msgstr "Öffnet das offizielle Claude Code in einem Tab des Agent-Panels. Sie melden sich im eigenen Bildschirm von Claude Code an. Die CLI ist nicht enthalten; sie wird mit dem offiziellen Installationsbefehl installiert. Für die nutzungsbasierte Abrechnung mit API-Schlüssel verwenden Sie Anthropic oben."
+
+msgid "Opens {docs_url}"
+msgstr "Öffnet {docs_url}"
+
+msgid "Optional OAuth client ID"
+msgstr "Optionale OAuth-Client-ID"
+
+msgid "Optional OAuth client ID used to authenticate with the server. Leave it empty if the server supports dynamic client registration: connecting then asks you to authenticate in the browser."
+msgstr "Optionale OAuth-Client-ID zur Authentifizierung beim Server. Lassen Sie das Feld leer, wenn der Server die dynamische Clientregistrierung unterstützt: Beim Verbinden werden Sie dann zur Authentifizierung im Browser aufgefordert."
+
+msgid "Optional. The HTTPS host the token signs in to, such as github.com. Remotes on other hosts and SSH remotes sign in as git is configured."
+msgstr "Optional. Der HTTPS-Host, bei dem sich das Token anmeldet, z. B. github.com. Remotes auf anderen Hosts und SSH-Remotes melden sich entsprechend der Git-Konfiguration an."
+
+msgid "Optional. The key commits are signed with when signing is on (user.signingkey)."
+msgstr "Optional. Der Schlüssel, mit dem Commits signiert werden, wenn die Signierung aktiviert ist (user.signingkey)."
+
+msgid "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set, which Git for Windows does in its system configuration when installed to use the external OpenSSH. A passphrase is asked for each time."
+msgstr "Optional. Die private Schlüsseldatei, mit der beim Pushen, Pullen und Fetchen SSH-Remotes erreicht werden (nur dieser Schlüssel wird angeboten). Nur für lokale Projekte. Wird nicht verwendet, wenn GIT_SSH_COMMAND, GIT_SSH oder core.sshCommand festgelegt ist, was Git for Windows in seiner Systemkonfiguration tut, wenn es für die Verwendung des externen OpenSSH installiert wurde. Die Passphrase wird jedes Mal abgefragt."
+
+msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
+msgstr "Oder setzen Sie die Umgebungsvariable {env_var_name} und starten Sie ForgeKairos neu, damit die Änderung wirksam wird."
+
+msgid "Or set the {} env var and restart Zed."
+msgstr "Oder setzen Sie die Umgebungsvariable {} und starten Sie ForgeKairos neu."
+
+msgid "Other"
+msgstr "Sonstiges"
+
+msgid "Outbound Traffic from Child Processes"
+msgstr "Ausgehender Datenverkehr untergeordneter Prozesse"
+
+msgid "Output Device"
+msgstr "Ausgabegerät"
+
+msgid "Overridden by Organization"
+msgstr "Von der Organisation überschrieben"
+
+msgid "Paste a GitHub .md URL"
+msgstr "Fügen Sie eine GitHub-.md-URL ein"
+
+msgid "Paste a GitHub .md URL to fetch it and fill out the form. For private files, Zed retries using GITHUB_TOKEN, if set."
+msgstr "Fügen Sie eine GitHub-.md-URL ein, um sie abzurufen und das Formular auszufüllen. Bei privaten Dateien versucht ForgeKairos es erneut mit GITHUB_TOKEN, falls gesetzt."
+
+msgid "Paste a GitHub URL that points to a .md file"
+msgstr "Fügen Sie eine GitHub-URL ein, die auf eine .md-Datei verweist"
+
+msgid "Paste a GitHub blob URL that points to a .md file"
+msgstr "Fügen Sie eine GitHub-Blob-URL ein, die auf eine .md-Datei verweist"
+
+msgid "Paste a JSON object ({{ … }})."
+msgstr "Fügen Sie ein JSON-Objekt ein ({{ … }})."
+
+msgid "Paste from JSON"
+msgstr "Aus JSON einfügen"
+
+msgid "Paste some JSON."
+msgstr "Fügen Sie JSON ein."
+
+msgid "Paste the configuration JSON from an MCP server's README or similar, then press \"Load\". The mcpServers format of Claude Desktop and Cursor, the servers format of VS Code and Zed's context_servers format are supported. What is loaded goes into the form and isn't written to your settings until you press \"Save\"."
+msgstr "Fügen Sie das Konfigurations-JSON aus der README eines MCP-Servers o. Ä. ein, und klicken Sie dann auf „Laden“. Unterstützt werden das mcpServers-Format von Claude Desktop und Cursor, das servers-Format von VS Code und das context_servers-Format von Zed. Der geladene Inhalt wird in das Formular übernommen und erst in Ihre Einstellungen geschrieben, wenn Sie auf „Speichern“ klicken."
+
+msgid "Pattern preview differs from engine — showing authoritative result."
+msgstr "Mustervorschau weicht von der Engine ab – maßgebliches Ergebnis wird angezeigt."
+
+msgid "Patterns are matched against each command in the input. Commands chained with &&, ||, ;, or pipes are split and checked individually."
+msgstr "Muster werden mit jedem Befehl in der Eingabe abgeglichen. Mit &&, ||, ; oder Pipes verkettete Befehle werden aufgeteilt und einzeln geprüft."
+
+msgid "Patterns are matched against the JavaScript expression being run."
+msgstr "Muster werden mit dem ausgeführten JavaScript-Ausdruck abgeglichen."
+
+msgid "Patterns are matched against the URL being fetched."
+msgstr "Muster werden mit der abzurufenden URL abgeglichen."
+
+msgid "Patterns are matched against the URL being loaded, or against back, forward or reload."
+msgstr "Muster werden mit der geladenen URL oder mit back, forward oder reload abgeglichen."
+
+msgid "Patterns are matched against the URL the new tab opens (about:blank for an empty tab)."
+msgstr "Muster werden mit der URL abgeglichen, die der neue Tab öffnet (about:blank für einen leeren Tab)."
+
+msgid "Patterns are matched against the absolute path to the skill's SKILL.md file."
+msgstr "Muster werden mit dem absoluten Pfad zur Datei SKILL.md des Skills abgeglichen."
+
+msgid "Patterns are matched against the direction: `up`, `down`, `left` or `right`."
+msgstr "Muster werden mit der Richtung abgeglichen: `up`, `down`, `left` oder `right`."
+
+msgid "Patterns are matched against the directory path being created."
+msgstr "Muster werden mit dem zu erstellenden Verzeichnispfad abgeglichen."
+
+msgid "Patterns are matched against the element's ref, such as `e12`, or against the point as `x,y`."
+msgstr "Muster werden mit der ref des Elements, z. B. `e12`, oder mit dem Punkt als `x,y` abgeglichen."
+
+msgid "Patterns are matched against the file path being edited."
+msgstr "Muster werden mit dem zu bearbeitenden Dateipfad abgeglichen."
+
+msgid "Patterns are matched against the file path being written."
+msgstr "Muster werden mit dem zu schreibenden Dateipfad abgeglichen."
+
+msgid "Patterns are matched against the keys being pressed, such as `ctrl+a Backspace`."
+msgstr "Muster werden mit den gedrückten Tasten abgeglichen, z. B. `ctrl+a Backspace`."
+
+msgid "Patterns are matched against the name of the code action. Its edits are written straight into the buffer without going through diff review."
+msgstr "Muster werden mit dem Namen der Codeaktion abgeglichen. Ihre Bearbeitungen werden direkt in den Puffer geschrieben, ohne die Diff-Prüfung zu durchlaufen."
+
+msgid "Patterns are matched against the new value (an array or other non-text value as JSON)."
+msgstr "Muster werden mit dem neuen Wert abgeglichen (ein Array oder ein anderer Nicht-Text-Wert als JSON)."
+
+msgid "Patterns are matched against the path being deleted."
+msgstr "Muster werden mit dem zu löschenden Pfad abgeglichen."
+
+msgid "Patterns are matched against the search query."
+msgstr "Muster werden mit der Suchanfrage abgeglichen."
+
+msgid "Patterns are matched against the symbol's name before the rename. The rename skips diff review, and every file that references the symbol is saved."
+msgstr "Muster werden mit dem Namen des Symbols vor der Umbenennung abgeglichen. Die Umbenennung überspringt die Diff-Prüfung, und jede Datei, die auf das Symbol verweist, wird gespeichert."
+
+msgid "Patterns are matched against the tab's id, such as `1`."
+msgstr "Muster werden mit der ID des Tabs abgeglichen, z. B. `1`."
+
+msgid "Patterns are matched against the text being typed."
+msgstr "Muster werden mit dem eingegebenen Text abgeglichen."
+
+msgid "Patterns are matched against the whole command, starting with `git`, such as `git commit -m 'Fix the parser'`."
+msgstr "Muster werden mit dem gesamten Befehl abgeglichen, beginnend mit `git`, z. B. `git commit -m 'Fix the parser'`."
+
+msgid "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
+msgstr "Muster werden unabhängig voneinander mit dem Quellpfad und dem Zielpfad abgeglichen. Geben Sie einen der Pfade unten ein, um zu testen."
+
+msgid "Pause Folder Code After Agent Writes Until Resumed"
+msgstr "Code im Ordner nach Agent-Schreibzugriff bis zum Fortsetzen anhalten"
+
+msgid "Preserves thinking in chat history"
+msgstr "Bewahrt Denkprozesse im Chatverlauf"
+
+msgid "Pressing keys in pages in the built-in browser"
+msgstr "Drücken von Tasten auf Seiten im integrierten Browser"
+
+msgid "Project"
+msgstr "Projekt"
+
+msgid "Project-wide symbol renames by the language server"
+msgstr "Projektweite Symbolumbenennungen durch den Sprachserver"
+
+msgid "Provider"
+msgstr "Anbieter"
+
+msgid "Provider Name"
+msgstr "Anbietername"
+
+msgid "Provider Name cannot be empty"
+msgstr "Anbietername darf nicht leer sein"
+
+msgid "Provider Name is already taken by another provider"
+msgstr "Anbietername wird bereits von einem anderen Anbieter verwendet"
+
+msgid "Proxied"
+msgstr "Über Proxy"
+
+msgid "Proxying for child processes is turned off, so this server's outbound traffic is not controlled by the network allowlist."
+msgstr "Die Proxynutzung für untergeordnete Prozesse ist deaktiviert, daher wird der ausgehende Datenverkehr dieses Servers nicht durch die Netzwerk-Zulassungsliste kontrolliert."
+
+msgid "Read the file again"
+msgstr "Datei erneut lesen"
+
+msgid "Ready"
+msgstr "Bereit"
+
+msgid "Reason: {}"
+msgstr "Grund: {}"
+
+msgid "Reconnects the server to check whether it can be connected to."
+msgstr "Verbindet den Server erneut, um zu prüfen, ob eine Verbindung möglich ist."
+
+msgid "Registered in the allowlist: {hosts}"
+msgstr "In der Zulassungsliste registriert: {hosts}"
+
+msgid "Reload"
+msgstr "Neu laden"
+
+msgid "Remote"
+msgstr "Remote"
+
+msgid "Remote (HTTP)"
+msgstr "Remote (HTTP)"
+
+msgid "Remote host ({display_name})"
+msgstr "Remote-Host ({display_name})"
+
+msgid "Remove"
+msgstr "Entfernen"
+
+msgid "Remove Allowed Hosts"
+msgstr "Zugelassene Hosts entfernen"
+
+msgid "Remove Custom Agent"
+msgstr "Benutzerdefinierten Agenten entfernen"
+
+msgid "Remove Domain"
+msgstr "Domain entfernen"
+
+msgid "Remove Host"
+msgstr "Host entfernen"
+
+msgid "Remove Model"
+msgstr "Modell entfernen"
+
+msgid "Remove Path"
+msgstr "Pfad entfernen"
+
+msgid "Remove Registry Agent"
+msgstr "Registry-Agenten entfernen"
+
+msgid "Remove Stored Token"
+msgstr "Gespeichertes Token entfernen"
+
+msgid "Remove the account, its token if no other account uses it, and every repository's pick of it"
+msgstr "Das Konto, sein Token (falls kein anderes Konto es verwendet) und die Auswahl dieses Kontos in allen Repositorys entfernen"
+
+msgid "Remove {entry}"
+msgstr "{entry} entfernen"
+
+msgid "Removed from the allowlist: {removed}"
+msgstr "Aus der Zulassungsliste entfernt: {removed}"
+
+msgid "Removed from the allowlist: {removed}. {kept}"
+msgstr "Aus der Zulassungsliste entfernt: {removed}. {kept}"
+
+msgid "Removes its entry from language_models in settings.json."
+msgstr "Entfernt den zugehörigen Eintrag aus language_models in settings.json."
+
+msgid "Removes the record of the denial. The next time the same launch is requested, you'll be asked again."
+msgstr "Entfernt die Aufzeichnung der Ablehnung. Wenn derselbe Start das nächste Mal angefordert wird, werden Sie erneut gefragt."
+
+msgid "Removes this provider's hosts from network_allowlist.json. Hosts that another provider you consented to needs, and separately written entries such as wildcards, are kept"
+msgstr "Entfernt die Hosts dieses Anbieters aus network_allowlist.json. Hosts, die ein anderer Anbieter benötigt, dem Sie zugestimmt haben, sowie separat eingetragene Einträge wie Platzhalter bleiben erhalten"
+
+msgid "Removes what refers to its models from these settings (a model chosen there goes back to the default): {settings}"
+msgstr "Entfernt Verweise auf seine Modelle aus diesen Einstellungen (ein dort ausgewähltes Modell wird auf den Standard zurückgesetzt): {settings}"
+
+msgid "Renaming: the settings that choose this provider's models and your consent move to the new name. Saved threads keep the old name; to continue one, choose a model again."
+msgstr "Umbenennen: Die Einstellungen, die Modelle dieses Anbieters auswählen, und Ihre Zustimmung werden auf den neuen Namen übertragen. Gespeicherte Threads behalten den alten Namen; um einen fortzusetzen, wählen Sie erneut ein Modell aus."
+
+msgid "Replaces the binary your user settings specify for the same language server"
+msgstr "Ersetzt die in Ihren Benutzereinstellungen für denselben Sprachserver angegebene Binärdatei"
+
+msgid "Replaces the formatter your user settings specify"
+msgstr "Ersetzt den in Ihren Benutzereinstellungen angegebenen Formatierer"
+
+msgid "Replaces the server of the same name in your user settings"
+msgstr "Ersetzt den gleichnamigen Server in Ihren Benutzereinstellungen"
+
+msgid "Required. A unique name used to identify this MCP server."
+msgstr "Erforderlich. Ein eindeutiger Name zur Identifizierung dieses MCP-Servers."
+
+msgid "Required. Path to the executable that launches the server, or the name of a command on the PATH (such as npx or uvx). Saving only checks that it can be found; it does not run it."
+msgstr "Erforderlich. Pfad zur ausführbaren Datei, die den Server startet, oder der Name eines Befehls im PATH (z. B. npx oder uvx). Beim Speichern wird nur geprüft, ob er gefunden wird; er wird nicht ausgeführt."
+
+msgid "Required. The base URL of the remote MCP server, such as https://example.com/mcp."
+msgstr "Erforderlich. Die Basis-URL des Remote-MCP-Servers, z. B. https://example.com/mcp."
+
+msgid "Requires: {requires}"
+msgstr "Erfordert: {requires}"
+
+msgid "Reset"
+msgstr "Zurücksetzen"
+
+msgid "Reset Key"
+msgstr "Schlüssel zurücksetzen"
+
+msgid "Reset to Default"
+msgstr "Auf Standard zurücksetzen"
+
+msgid "Restricted Mode"
+msgstr "Eingeschränkter Modus"
+
+msgid "Result:"
+msgstr "Ergebnis:"
+
+msgid "Retry"
+msgstr "Erneut versuchen"
+
+msgid "Revoke Approval"
+msgstr "Genehmigung widerrufen"
+
+msgid "Revoke Consent"
+msgstr "Zustimmung widerrufen"
+
+msgid "Revoke Denial"
+msgstr "Ablehnung widerrufen"
+
+msgid "Revokes the approval and stops the program if it is running. Starting it again will need your approval again."
+msgstr "Widerruft die Genehmigung und beendet das Programm, falls es ausgeführt wird. Für einen erneuten Start ist wieder Ihre Genehmigung erforderlich."
+
+msgid "Revokes the approval and stops the server. Starting it again requires allowing it again."
+msgstr "Widerruft die Genehmigung und beendet den Server. Für einen erneuten Start muss er wieder zugelassen werden."
+
+msgid "Revoking consent shows the warning again, and the provider can no longer be configured. Also removes the hosts registered in the allowlist for this provider"
+msgstr "Wenn Sie die Zustimmung widerrufen, wird die Warnung erneut angezeigt, und der Anbieter kann nicht mehr konfiguriert werden. Entfernt außerdem die für diesen Anbieter in der Zulassungsliste registrierten Hosts"
+
+msgid "Run on This Computer"
+msgstr "Auf diesem Computer ausführen"
+
+msgid "Run on the SSH Host"
+msgstr "Auf dem SSH-Host ausführen"
+
+msgid "Running JavaScript in pages in the built-in browser"
+msgstr "Ausführen von JavaScript auf Seiten im integrierten Browser"
+
+msgid "Runs on"
+msgstr "Ausgeführt auf"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "Die Datei SKILL.md überschreitet die maximale Größe von {} KB"
+
+msgid "SSH Key"
+msgstr "SSH-Schlüssel"
+
+msgid "Save"
+msgstr "Speichern"
+
+msgid "Save Provider"
+msgstr "Anbieter speichern"
+
+msgid "Save Skill"
+msgstr "Skill speichern"
+
+msgid "Save and Start"
+msgstr "Speichern und starten"
+
+msgid "Saved threads that used it stay in the history; to continue one, choose another model."
+msgstr "Gespeicherte Threads, die ihn verwendet haben, bleiben im Verlauf; um einen fortzusetzen, wählen Sie ein anderes Modell aus."
+
+msgid "Saving…"
+msgstr "Wird gespeichert…"
+
+msgid "Scope"
+msgstr "Geltungsbereich"
+
+msgid "Scrolling pages in the built-in browser"
+msgstr "Scrollen von Seiten im integrierten Browser"
+
+msgid "Search Settings"
+msgstr "Einstellungen durchsuchen"
+
+msgid "Search fonts…"
+msgstr "Schriften durchsuchen…"
+
+msgid "Search icon themes…"
+msgstr "Symboldesigns durchsuchen…"
+
+msgid "Search models…"
+msgstr "Modelle durchsuchen…"
+
+msgid "Search settings…"
+msgstr "Einstellungen durchsuchen…"
+
+msgid "Search theme…"
+msgstr "Design durchsuchen…"
+
+msgid "Select"
+msgstr "Auswählen"
+
+msgid "Select a model…"
+msgstr "Modell auswählen…"
+
+msgid "Select which provider to use for edit predictions."
+msgstr "Anbieter für Bearbeitungsvorhersagen auswählen."
+
+msgid "Server Name"
+msgstr "Servername"
+
+msgid "Server name is required."
+msgstr "Servername ist erforderlich."
+
+msgid "Server settings on the remote host"
+msgstr "Servereinstellungen auf dem Remote-Host"
+
+msgid "Server settings on {display_name}"
+msgstr "Servereinstellungen auf {display_name}"
+
+msgid "Servers can't be added all at once while one has a name that is already taken. Open each server marked \"A server with this name already exists\" in the form and rename it before adding it."
+msgstr "Server können nicht alle auf einmal hinzugefügt werden, solange einer einen bereits vergebenen Namen hat. Öffnen Sie jeden Server mit dem Hinweis „Ein Server mit diesem Namen ist bereits vorhanden“ im Formular, und benennen Sie ihn vor dem Hinzufügen um."
+
+msgid "Set Up {name}"
+msgstr "{name} einrichten"
+
+msgid "Setting the values of form fields in the built-in browser"
+msgstr "Festlegen der Werte von Formularfeldern im integrierten Browser"
+
+msgid "Settings Content"
+msgstr "Einstellungsinhalt"
+
+msgid "Settings File"
+msgstr "Einstellungsdatei"
+
+msgid "Settings Navigation"
+msgstr "Einstellungsnavigation"
+
+msgid "Signing Key"
+msgstr "Signaturschlüssel"
+
+msgid "Signs in as git is configured"
+msgstr "Meldet sich entsprechend der Git-Konfiguration an"
+
+msgid "Signs in to {host} as {login}"
+msgstr "Meldet sich bei {host} als {login} an"
+
+msgid "Skill Content"
+msgstr "Skill-Inhalt"
+
+msgid "Start Testing"
+msgstr "Test starten"
+
+msgid "Start {name} on this computer. If it has no model yet, download one first (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "Starten Sie {name} auf diesem Computer. Wenn noch kein Modell vorhanden ist, laden Sie zuerst eines herunter (bei Ollama z. B.: ollama pull qwen3:8b), und klicken Sie dann auf „Erneut versuchen“."
+
+msgid "Starting with these details is not allowed."
+msgstr "Der Start mit diesen Details ist nicht zugelassen."
+
+msgid "Stop Testing"
+msgstr "Test beenden"
+
+msgid "Stored in the system keychain, not in settings.json."
+msgstr "Wird im Systemschlüsselbund gespeichert, nicht in settings.json."
+
+msgid "Submit"
+msgstr "Senden"
+
+msgid "Subscription"
+msgstr "Abonnement"
+
+msgid "Subscription or API Key"
+msgstr "Abonnement oder API-Schlüssel"
+
+msgid "Supports /chat/completions"
+msgstr "Unterstützt /chat/completions"
+
+msgid "Supports images"
+msgstr "Unterstützt Bilder"
+
+msgid "Supports parallel_tool_calls"
+msgstr "Unterstützt parallel_tool_calls"
+
+msgid "Supports prompt_cache_key"
+msgstr "Unterstützt prompt_cache_key"
+
+msgid "Supports thinking"
+msgstr "Unterstützt Denken"
+
+msgid "Supports tools"
+msgstr "Unterstützt Tools"
+
+msgid "Switching the current AI tab in the built-in browser"
+msgstr "Wechseln des aktuellen KI-Tabs im integrierten Browser"
+
+msgid "System Default"
+msgstr "Systemstandard"
+
+msgid "Test Connection"
+msgstr "Verbindung testen"
+
+msgid "Test Your Rules"
+msgstr "Regeln testen"
+
+msgid "Testing the connection…"
+msgstr "Verbindung wird getestet…"
+
+msgid "Testing…"
+msgstr "Wird getestet…"
+
+msgid "The API URL changed, so enter the API key for the new URL. The saved key is not sent to a different URL."
+msgstr "Die API-URL hat sich geändert. Geben Sie daher den API-Schlüssel für die neue URL ein. Der gespeicherte Schlüssel wird nicht an eine andere URL gesendet."
+
+msgid "The API key could not be saved: {error}"
+msgstr "Der API-Schlüssel konnte nicht gespeichert werden: {error}"
+
+msgid "The API key sent as Authorization: Bearer {{key}}."
+msgstr "Der API-Schlüssel, der als Authorization: Bearer {{key}} gesendet wird."
+
+msgid "The approval records are unavailable, so the decision can't be revoked."
+msgstr "Die Genehmigungsaufzeichnungen sind nicht verfügbar, daher kann die Entscheidung nicht widerrufen werden."
+
+msgid "The approval records are unavailable, so the decision can't be saved."
+msgstr "Die Genehmigungsaufzeichnungen sind nicht verfügbar, daher kann die Entscheidung nicht gespeichert werden."
+
+msgid "The approval records are unavailable, so the list can't be shown."
+msgstr "Die Genehmigungsaufzeichnungen sind nicht verfügbar, daher kann die Liste nicht angezeigt werden."
+
+msgid "The approval records can't be read, so it won't be started: {error}"
+msgstr "Die Genehmigungsaufzeichnungen können nicht gelesen werden, daher wird nicht gestartet: {error}"
+
+msgid "The approval records can't be read, so no decision can be made."
+msgstr "Die Genehmigungsaufzeichnungen können nicht gelesen werden, daher kann keine Entscheidung getroffen werden."
+
+msgid "The author and committer email of commits (user.email)."
+msgstr "Die E-Mail-Adresse von Autor und Committer der Commits (user.email)."
+
+msgid "The author and committer name of commits (user.name)."
+msgstr "Der Name von Autor und Committer der Commits (user.name)."
+
+msgid "The base URL for the compatible API."
+msgstr "Die Basis-URL für die kompatible API."
+
+msgid "The connection can't be tested until the server is allowed to start."
+msgstr "Die Verbindung kann erst getestet werden, wenn der Start des Servers zugelassen wurde."
+
+msgid "The contents of the argument file {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "Der Inhalt der Argumentdatei {path} ist nicht Teil der Genehmigung. Sie werden nicht erneut gefragt, wenn sich der Inhalt später ändert."
+
+msgid "The contents of the folder {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "Der Inhalt des Ordners {path} ist nicht Teil der Genehmigung. Sie werden nicht erneut gefragt, wenn sich der Inhalt später ändert."
+
+msgid "The contents of the remote file {path} can't be checked from here, so they are not part of the approval. You won't be asked again if the contents change later."
+msgstr "Der Inhalt der Remote-Datei {path} kann von hier aus nicht geprüft werden und ist daher nicht Teil der Genehmigung. Sie werden nicht erneut gefragt, wenn sich der Inhalt später ändert."
+
+msgid "The endpoint depends on the AWS region (for example, bedrock-runtime.us-east-1.amazonaws.com). Register the host for the region you actually use in the allowlist."
+msgstr "Der Endpunkt hängt von der AWS-Region ab (z. B. bedrock-runtime.us-east-1.amazonaws.com). Registrieren Sie den Host für die tatsächlich verwendete Region in der Zulassungsliste."
+
+msgid "The key is kept in this computer's credential store, not in a settings file."
+msgstr "Der Schlüssel wird im Anmeldedatenspeicher dieses Computers aufbewahrt, nicht in einer Einstellungsdatei."
+
+msgid "The maximum number of tokens the model can output."
+msgstr "Die maximale Anzahl von Token, die das Modell ausgeben kann."
+
+msgid "The model context window size."
+msgstr "Die Kontextfenstergröße des Modells."
+
+msgid "The model's name in the provider's API."
+msgstr "Der Name des Modells in der API des Anbieters."
+
+msgid "The name the account is picked by in the Git panel."
+msgstr "Der Name, unter dem das Konto im Git-Panel ausgewählt wird."
+
+msgid "The network allowlist blocked the connection to {host}. Add this host under \"Network Allowlist\" on the \"Network\" page."
+msgstr "Die Netzwerk-Zulassungsliste hat die Verbindung zu {host} blockiert. Fügen Sie diesen Host unter „Netzwerk-Zulassungsliste“ auf der Seite „Netzwerk“ hinzu."
+
+msgid "The sandbox is disabled, so terminal commands are confirmed every time, even with \"Allow\"."
+msgstr "Die Sandbox ist deaktiviert, daher werden Terminalbefehle auch mit „Zulassen“ jedes Mal bestätigt."
+
+msgid "The saved key belongs to the previous API URL and is not sent to the new one. Enter the key for this URL."
+msgstr "Der gespeicherte Schlüssel gehört zur vorherigen API-URL und wird nicht an die neue gesendet. Geben Sie den Schlüssel für diese URL ein."
+
+msgid "The server didn't become ready for connections."
+msgstr "Der Server wurde nicht für Verbindungen bereit."
+
+msgid "The server returned HTTP {status}."
+msgstr "Der Server hat HTTP {status} zurückgegeben."
+
+msgid "The server returned HTTP {status}: {body}"
+msgstr "Der Server hat HTTP {status} zurückgegeben: {body}"
+
+msgid "The user name on the host that goes with the token."
+msgstr "Der zum Token gehörende Benutzername auf dem Host."
+
+msgid "The value of `{key}` is not an object ({{ … }})."
+msgstr "Der Wert von `{key}` ist kein Objekt ({{ … }})."
+
+msgid "These fields weren't loaded because Zed doesn't use them: {keys}"
+msgstr "Diese Felder wurden nicht geladen, da ForgeKairos sie nicht verwendet: {keys}"
+
+msgid "These patterns failed to compile as regular expressions. The tool will be blocked until they are fixed or removed."
+msgstr "Diese Muster konnten nicht als reguläre Ausdrücke kompiliert werden. Das Tool wird gesperrt, bis sie behoben oder entfernt werden."
+
+msgid "They can be automatically migrated to the latest version."
+msgstr "Sie können automatisch auf die neueste Version migriert werden."
+
+msgid "They must be manually migrated to the latest version."
+msgstr "Sie müssen manuell auf die neueste Version migriert werden."
+
+msgid "Thinking Effort: {effort}"
+msgstr "Denkaufwand: {effort}"
+
+msgid "This approval lasts until Zed quits."
+msgstr "Diese Genehmigung gilt, bis ForgeKairos beendet wird."
+
+msgid "This computer"
+msgstr "Dieser Computer"
+
+msgid "This consent is shared with the \"Zed\" LLM provider on the AI page. Withdrawing it applies to both edit predictions and the agent."
+msgstr "Diese Zustimmung wird mit dem LLM-Anbieter „Zed“ auf der Seite „KI“ geteilt. Ein Widerruf gilt sowohl für Bearbeitungsvorhersagen als auch für den Agenten."
+
+msgid "This covers outbound traffic from AI providers (LLMs), agent tools (fetch / web search), MCP servers, external agent (ACP) processes, and commands that agents run in the sandbox. Traffic from the IDE's own tooling, such as language servers, formatters, debug adapters, extensions, app updates, remote development servers, Git, and the browser panel, is not covered and is not restricted."
+msgstr "Dies umfasst ausgehenden Datenverkehr von KI-Anbietern (LLMs), Agent-Tools (fetch / Websuche), MCP-Servern, Prozessen externer Agenten (ACP) und Befehlen, die Agenten in der Sandbox ausführen. Datenverkehr der IDE-eigenen Werkzeuge wie Sprachserver, Formatierer, Debugadapter, Erweiterungen, App-Updates, Remote-Entwicklungsserver, Git und das Browser-Panel ist nicht betroffen und wird nicht eingeschränkt."
+
+msgid "This entry is ignored because its format is invalid."
+msgstr "Dieser Eintrag wird ignoriert, da sein Format ungültig ist."
+
+msgid "This project is in restricted mode. Some project settings may not apply."
+msgstr "Dieses Projekt befindet sich im eingeschränkten Modus. Einige Projekteinstellungen gelten möglicherweise nicht."
+
+msgid "This project's definition is not allowed to start."
+msgstr "Für die Definition dieses Projekts ist der Start nicht zugelassen."
+
+msgid "This project's folder is no longer open."
+msgstr "Der Ordner dieses Projekts ist nicht mehr geöffnet."
+
+msgid "This project's settings are trying to start a program as shown below. Review it before choosing."
+msgstr "Die Einstellungen dieses Projekts versuchen, ein Programm wie unten gezeigt zu starten. Prüfen Sie es, bevor Sie eine Auswahl treffen."
+
+msgid "This project's settings want to start a program"
+msgstr "Die Einstellungen dieses Projekts möchten ein Programm starten"
+
+msgid "This provider connects to an external service. Review the warning about training risks and check the box"
+msgstr "Dieser Anbieter verbindet sich mit einem externen Dienst. Lesen Sie die Warnung zu Trainingsrisiken, und aktivieren Sie das Kontrollkästchen"
+
+msgid "This provider is defined outside the top level of your settings.json (for example, in a release channel, OS or profile override), so it can't be edited or deleted here. Edit it in settings.json."
+msgstr "Dieser Anbieter ist außerhalb der obersten Ebene Ihrer settings.json definiert (z. B. in einer Überschreibung für einen Release-Kanal, ein Betriebssystem oder ein Profil) und kann daher hier nicht bearbeitet oder gelöscht werden. Bearbeiten Sie ihn in settings.json."
+
+msgid "This provider is no longer in settings.json, so nothing was saved. Close the form and add it again."
+msgstr "Dieser Anbieter ist nicht mehr in settings.json vorhanden, daher wurde nichts gespeichert. Schließen Sie das Formular, und fügen Sie ihn erneut hinzu."
+
+msgid "This provider will use an Anthropic Messages-compatible API."
+msgstr "Dieser Anbieter verwendet eine Anthropic-Messages-kompatible API."
+
+msgid "This provider will use an OpenAI-compatible API."
+msgstr "Dieser Anbieter verwendet eine OpenAI-kompatible API."
+
+msgid "This provider's endpoint cannot be determined from settings. Verify where your data will be sent before enabling it."
+msgstr "Der Endpunkt dieses Anbieters kann nicht aus den Einstellungen ermittelt werden. Prüfen Sie vor dem Aktivieren, wohin Ihre Daten gesendet werden."
+
+msgid "This server hasn't been created yet. Check its settings and extension."
+msgstr "Dieser Server wurde noch nicht erstellt. Prüfen Sie seine Einstellungen und seine Erweiterung."
+
+msgid "This server is defined in the project settings file {file_label}. Saving rewrites this file (not your user settings). Because the definition changes, the server must be allowed again before it starts."
+msgstr "Dieser Server ist in der Projekteinstellungsdatei {file_label} definiert. Beim Speichern wird diese Datei neu geschrieben (nicht Ihre Benutzereinstellungen). Da sich die Definition ändert, muss der Server vor dem Start erneut zugelassen werden."
+
+msgid "This server is disabled. Enable it before testing the connection."
+msgstr "Dieser Server ist deaktiviert. Aktivieren Sie ihn, bevor Sie die Verbindung testen."
+
+msgid "This server starts in an empty folder of Zed's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
+msgstr "Dieser Server startet in einem leeren, ForgeKairos-eigenen Ordner, nicht im Projektordner. Damit er mit einem Projekt arbeitet, übergeben Sie den absoluten Pfad des Ordners als Argument."
+
+msgid "This server's child process goes through the loopback proxy, so its outbound traffic is controlled by the network allowlist."
+msgstr "Der untergeordnete Prozess dieses Servers läuft über den Loopback-Proxy, daher wird sein ausgehender Datenverkehr durch die Netzwerk-Zulassungsliste kontrolliert."
+
+msgid "This server's definition in the project settings file changed after the form was opened. Open the form again."
+msgstr "Die Definition dieses Servers in der Projekteinstellungsdatei hat sich nach dem Öffnen des Formulars geändert. Öffnen Sie das Formular erneut."
+
+msgid "This server's environment variables name a proxy, so the loopback proxy is not applied. Its outbound traffic is not controlled by the network allowlist."
+msgstr "Die Umgebungsvariablen dieses Servers geben einen Proxy an, daher wird der Loopback-Proxy nicht angewendet. Sein ausgehender Datenverkehr wird nicht durch die Netzwerk-Zulassungsliste kontrolliert."
+
+msgid "This will move {} to the trash. This skill is shared with other agent tools {shared_scope}, so it will no longer be available to them either."
+msgstr "{} wird in den Papierkorb verschoben. Dieser Skill wird mit anderen Agent-Tools {shared_scope} geteilt und ist dann auch für diese nicht mehr verfügbar."
+
+msgid "Timeout (seconds)"
+msgstr "Zeitlimit (Sekunden)"
+
+msgid "Timeout must be a positive whole number of seconds."
+msgstr "Das Zeitlimit muss eine positive ganze Zahl von Sekunden sein."
+
+msgid "To find an API key, visit the {link}"
+msgstr "Einen API-Schlüssel finden Sie unter {link}"
+
+msgid "To reset your API key, unset the {env_var_name} environment variable."
+msgstr "Um Ihren API-Schlüssel zurückzusetzen, entfernen Sie die Umgebungsvariable {env_var_name}."
+
+msgid "To reset your API key, unset the {} environment variable."
+msgstr "Um Ihren API-Schlüssel zurückzusetzen, entfernen Sie die Umgebungsvariable {}."
+
+msgid "Token"
+msgstr "Token"
+
+msgid "Turning this off sets this project's definition to \"Don't Allow\" and stops the server."
+msgstr "Wenn Sie dies deaktivieren, wird die Definition dieses Projekts auf „Nicht zulassen“ gesetzt und der Server beendet."
+
+msgid "Turning this on allows this project's definition and starts the server."
+msgstr "Wenn Sie dies aktivieren, wird die Definition dieses Projekts zugelassen und der Server gestartet."
+
+msgid "Typing text into pages in the built-in browser"
+msgstr "Eingeben von Text auf Seiten im integrierten Browser"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "URL is required."
+msgstr "URL ist erforderlich."
+
+msgid "Uninstall MCP Server"
+msgstr "MCP-Server deinstallieren"
+
+msgid "Use Subscription Sign-In for Claude (ACP)"
+msgstr "Abonnement-Anmeldung für Claude (ACP) verwenden"
+
+msgid "Use This Template"
+msgstr "Diese Vorlage verwenden"
+
+msgid "User"
+msgstr "Benutzer"
+
+msgid "User Name"
+msgstr "Benutzername"
+
+msgid "Uses max_tokens for output limit"
+msgstr "Verwendet max_tokens als Ausgabelimit"
+
+msgid "Value"
+msgstr "Wert"
+
+msgid "View Other Projects"
+msgstr "Andere Projekte anzeigen"
+
+msgid "Visit the {link} to generate an API key."
+msgstr "Besuchen Sie {link}, um einen API-Schlüssel zu generieren."
+
+msgid "Waiting for approval: this command was resolved on the remote host and needs your permission to start. Review the details before allowing it."
+msgstr "Warten auf Genehmigung: Dieser Befehl wurde auf dem Remote-Host ermittelt und benötigt zum Starten Ihre Erlaubnis. Prüfen Sie die Details, bevor Sie ihn zulassen."
+
+msgid "Waiting for approval: this project's settings ask to start this server. Review the details before allowing it."
+msgstr "Warten auf Genehmigung: Die Einstellungen dieses Projekts möchten diesen Server starten. Prüfen Sie die Details, bevor Sie ihn zulassen."
+
+msgid "Warn About Confusable Unicode"
+msgstr "Vor verwechselbaren Unicode-Zeichen warnen"
+
+msgid "Warn About Windows-Drive Grants"
+msgstr "Vor Sandbox-Berechtigungen für Windows-Laufwerke warnen"
+
+msgid "Warn when an approval prompt requests a domain or write path that contains potentially confusable Unicode characters, such as homoglyphs (i.e. two symbols that look similar, such as a Cyrillic `а`)"
+msgstr "Warnt, wenn eine Bestätigungsabfrage eine Domain oder einen Schreibpfad anfordert, der potenziell verwechselbare Unicode-Zeichen enthält, wie zum Beispiel Homoglyphen (d. h. zwei Symbole, die einander ähnlich sehen, wie ein kyrillisches `а`)"
+
+msgid "Web search queries"
+msgstr "Websuchanfragen"
+
+msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
+msgstr "Wenn aktiviert, erhält jeder untergeordnete Prozess für ACP-Agenten, MCP-Server und das npm, das KI-Agenten installiert, einen Loopback-Proxy, sodass auch sein ausgehender Datenverkehr mit der obigen Zulassungsliste abgeglichen wird. Standardmäßig aktiviert. Wenn deaktiviert, unterliegt der ausgehende Datenverkehr dieser untergeordneten Prozesse nicht der Kontrolle durch die Zulassungsliste (KI-Datenverkehr der IDE selbst bleibt kontrolliert)."
+
+msgid "When enabled, the code you enter and the content of your conversations are sent to {name}'s servers. Depending on the provider's policies, they may be stored and used to train models. If you use this for work, be sure to check your organization's policies."
+msgstr "Wenn aktiviert, werden der eingegebene Code und der Inhalt Ihrer Unterhaltungen an die Server von {name} gesendet. Abhängig von den Richtlinien des Anbieters können sie gespeichert und zum Trainieren von Modellen verwendet werden. Wenn Sie dies beruflich nutzen, prüfen Sie unbedingt die Richtlinien Ihrer Organisation."
+
+msgid "When it runs on the SSH host, the command is resolved there (a server provided by an extension needs the same extension installed there too). When it runs on this computer, the files the server reads and writes are the ones on this computer."
+msgstr "Bei Ausführung auf dem SSH-Host wird der Befehl dort ermittelt (ein von einer Erweiterung bereitgestellter Server benötigt dieselbe Erweiterung auch dort). Bei Ausführung auf diesem Computer liest und schreibt der Server die Dateien auf diesem Computer."
+
+msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
+msgstr "Wenn deaktiviert (Standard), wird nichts, was die Agent-Funktionen neu starten oder ausführen, außerhalb der Sandbox ausgeführt: Terminalbefehle, die nicht in der Sandbox laufen können, das Starten eines externen Agenten oder von Claude Code außerhalb der Sandbox und das Fortsetzen eines dort gestarteten Threads werden ohne Nachfrage abgelehnt, und die Einstellungen, die sie immer außerhalb starten, werden ignoriert. Eine bereits außerhalb der Sandbox laufende Verbindung läuft weiter. MCP-Server (Kontextserver) sind von dieser Einstellung nicht betroffen. Wenn aktiviert, fragt jeder dieser Fälle zuerst nach oder folgt seiner eigenen Einstellung."
+
+msgid "When the server runs on the SSH host, type the path on the host directly."
+msgstr "Wenn der Server auf dem SSH-Host läuft, geben Sie den Pfad auf dem Host direkt ein."
+
+msgid "Whether each program that a project's settings tried to start was allowed or denied. Revoking a decision stops the program if it is running, and you'll be asked again the next time it needs to start."
+msgstr "Ob jedes Programm, das die Einstellungen eines Projekts starten wollten, zugelassen oder abgelehnt wurde. Wenn Sie eine Entscheidung widerrufen, wird das Programm beendet, falls es läuft, und Sie werden beim nächsten erforderlichen Start erneut gefragt."
+
+msgid "While the file cannot be parsed, the allowlist is treated as empty (only loopback is allowed). Fix the file directly. Editing from this page is disabled."
+msgstr "Solange die Datei nicht analysiert werden kann, wird die Zulassungsliste als leer behandelt (nur Loopback ist zugelassen). Korrigieren Sie die Datei direkt. Die Bearbeitung über diese Seite ist deaktiviert."
+
+msgid "Wildcards are only allowed as a leading label, e.g. *.github.com."
+msgstr "Platzhalter sind nur als führendes Label zulässig, z. B. *.github.com."
+
+msgid "Windows Credential Manager"
+msgstr "Windows-Anmeldeinformationsverwaltung"
+
+msgid "Windows only: warn when a sandbox grant targets a file on a Windows drive (accessed inside WSL via DrvFs). Such grants are enforced through a translated path and their sandbox-integrity guarantees are weaker than files on the Linux distro's own filesystem."
+msgstr "Nur unter Windows: Warnt, wenn eine Sandbox-Berechtigung auf eine Datei auf einem Windows-Laufwerk abzielt (Zugriff innerhalb von WSL über DrvFs). Solche Berechtigungen werden über einen übersetzten Pfad durchgesetzt, und ihre Sandbox-Integritätsgarantien sind schwächer als bei Dateien im eigenen Dateisystem der Linux-Distribution."
+
+msgid "Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above."
+msgstr "Ein Widerruf der Zustimmung beendet Zed nicht, solange es der ausgewählte Anbieter ist (die Warnung wird erneut angezeigt, und Zed verschwindet aus der Liste „Anbieter“ oben). Um es zu beenden, wählen Sie oben unter „Anbieter“ die Option „Keine“."
+
+msgid "Withdraws your consent to sending data to it, and removes its host from the allowlist unless another provider you consented to needs it."
+msgstr "Widerruft Ihre Zustimmung zum Senden von Daten an diesen Anbieter und entfernt seinen Host aus der Zulassungsliste, sofern ihn kein anderer Anbieter benötigt, dem Sie zugestimmt haben."
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. It can only be turned off while running outside the sandbox is allowed (above)."
+msgstr "Von Agenten ausgeführte Terminalbefehle in einer Sandbox auf Betriebssystemebene ausführen. Kann nur deaktiviert werden, solange die Ausführung außerhalb der Sandbox zugelassen ist (oben)."
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
+msgstr "Von Agenten ausgeführte Terminalbefehle in einer Sandbox auf Betriebssystemebene ausführen. Wenn deaktiviert, werden Befehle mit den Berechtigungen von ForgeKairos selbst ausgeführt; daher gilt keine automatische Genehmigung, und für jeden Befehl wird eine Bestätigung angefordert. Externe Agenten selbst und die Art, wie Claude Code gestartet wird, sind davon nicht betroffen (deren Einstellungen befinden sich auf der Seite „KI“)."
+
+msgid "Writable Paths"
+msgstr "Beschreibbare Pfade"
+
+msgid "You have consented to using this as an external AI service."
+msgstr "Sie haben der Verwendung als externer KI-Dienst zugestimmt."
+
+msgid "You have not consented to any providers."
+msgstr "Sie haben keinem Anbieter zugestimmt."
+
+msgid "You have not given consent, but the hosts above are still in the allowlist."
+msgstr "Sie haben nicht zugestimmt, aber die oben genannten Hosts sind weiterhin in der Zulassungsliste."
+
+msgid "Your settings are out of date, and need to be updated."
+msgstr "Ihre Einstellungen sind veraltet und müssen aktualisiert werden."
+
+msgid "Your settings file is out of date, automatic migration failed"
+msgstr "Ihre Einstellungsdatei ist veraltet, die automatische Migration ist fehlgeschlagen"
+
+msgid "Zed — Settings"
+msgstr "ForgeKairos — Einstellungen"
+
+msgid "Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev."
+msgstr "Cloud-Bearbeitungsvorhersagen von Zed (Zeta). Der bearbeitete Code und der umgebende Code werden an cloud.zed.dev gesendet."
+
+msgid "`*.` cannot be used with an IP address."
+msgstr "`*.` kann nicht mit einer IP-Adresse verwendet werden."
+
+msgid "`rm -rf` commands are always blocked when run on `$HOME`, `~`, `.`, `..`, or `/`"
+msgstr "`rm -rf`-Befehle werden immer blockiert, wenn sie auf `$HOME`, `~`, `.`, `..` oder `/` ausgeführt werden"
+
+msgid "e.g. gpt-5, claude-opus-4, gemini-2.5-pro"
+msgstr "z. B. gpt-5, claude-opus-4, gemini-2.5-pro"
+
+msgid "e.g., Fill the PR description following this template."
+msgstr "z. B. PR-Beschreibung nach dieser Vorlage ausfüllen."
+
+msgid "enabled for all"
+msgstr "für alle aktiviert"
+
+msgid "environment variable"
+msgstr "Umgebungsvariable"
+
+msgid "failed to check whether {} already exists"
+msgstr "Es konnte nicht geprüft werden, ob {} bereits vorhanden ist"
+
+msgid "failed to create skill directory {}"
+msgstr "Skill-Verzeichnis {} konnte nicht erstellt werden"
+
+msgid "failed to fetch {raw_url}"
+msgstr "{raw_url} konnte nicht abgerufen werden"
+
+msgid "failed to read response body"
+msgstr "Antworttext konnte nicht gelesen werden"
+
+msgid "failed to serialize skill frontmatter as YAML"
+msgstr "Skill-Frontmatter konnte nicht als YAML serialisiert werden"
+
+msgid "failed to write {}"
+msgstr "{} konnte nicht geschrieben werden"
+
+msgid "header"
+msgstr "Header"
+
+msgid "macOS Keychain"
+msgstr "macOS-Schlüsselbund"
+
+msgid "network_allowlist.json does not exist yet. The allowlist is treated as empty (only loopback is allowed). The file is created when you add a host."
+msgstr "network_allowlist.json ist noch nicht vorhanden. Die Zulassungsliste wird als leer behandelt (nur Loopback ist zugelassen). Die Datei wird erstellt, wenn Sie einen Host hinzufügen."
+
+msgid "the system keyring (Secret Service)"
+msgstr "System-Schlüsselbund (Secret Service)"
+
+msgid "{count} entry registered"
+msgid_plural "{count} entries registered"
+msgstr[0] "{count} Eintrag registriert"
+msgstr[1] "{count} Einträge registriert"
+
+msgid "{count} rule"
+msgid_plural "{count} rules"
+msgstr[0] "{count} Regel"
+msgstr[1] "{count} Regeln"
+
+msgid "{count} tool"
+msgid_plural "{count} tools"
+msgstr[0] "{count} Tool"
+msgstr[1] "{count} Tools"
+
+msgid "{entry} is already in the list."
+msgstr "{entry} ist bereits in der Liste."
+
+msgid "{host} is already in the allowlist."
+msgstr "{host} ist bereits in der Zulassungsliste."
+
+msgid "{names} (values not shown)"
+msgstr "{names} (Werte nicht angezeigt)"
+
+msgid "{name} (Edit Prediction)"
+msgstr "{name} (Bearbeitungsvorhersage)"
+
+msgid "{name} is an external AI service"
+msgstr "{name} ist ein externer KI-Dienst"
+
+msgid "{name} is not available here. Its settings may have been removed."
+msgstr "{name} ist hier nicht verfügbar. Möglicherweise wurden die Einstellungen entfernt."
+
+msgid "{name} is ready. Opening a new thread…"
+msgstr "{name} ist bereit. Ein neuer Thread wird geöffnet…"
+
+msgid "{name} is running but has no model. Download one (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "{name} läuft, hat aber kein Modell. Laden Sie eines herunter (bei Ollama z. B.: ollama pull qwen3:8b), und klicken Sie dann auf „Erneut versuchen“."
+
+msgid "{name} is signed in, but no model could be listed. The list is fetched from {name}, so its hosts have to be in the allowlist; also check that your account or plan includes models. Then press Retry."
+msgstr "Sie sind bei {name} angemeldet, aber es konnten keine Modelle aufgelistet werden. Die Liste wird von {name} abgerufen, daher müssen dessen Hosts in der Zulassungsliste stehen; prüfen Sie außerdem, ob Ihr Konto oder Tarif Modelle umfasst. Klicken Sie dann auf „Erneut versuchen“."
+
+msgid "{name} must be a number"
+msgstr "{name} muss eine Zahl sein"
+
+msgid "{path} can't be read, so its contents can't be checked."
+msgstr "{path} kann nicht gelesen werden, daher kann der Inhalt nicht geprüft werden."
+
+msgid "{path} is a file in the project, but its contents are not part of the approval. You won't be asked again if the contents change later."
+msgstr "{path} ist eine Datei im Projekt, ihr Inhalt ist aber nicht Teil der Genehmigung. Sie werden nicht erneut gefragt, wenn sich der Inhalt später ändert."
+
+msgid "{program} starts another program. Its contents are not part of the approval."
+msgstr "{program} startet ein anderes Programm. Dessen Inhalt ist nicht Teil der Genehmigung."
+
+msgid "{program} starts in the project folder {working_directory} and may load code from it. You won't be asked again if the contents change later."
+msgstr "{program} startet im Projektordner {working_directory} und lädt möglicherweise Code daraus. Sie werden nicht erneut gefragt, wenn sich der Inhalt später ändert."
+
+msgid "{provider_name} API Key"
+msgstr "{provider_name}-API-Schlüssel"
+
+msgid "{provider_name} dashboard"
+msgstr "{provider_name}-Dashboard"
+
+msgid "{provider_name} dashboard."
+msgstr "{provider_name}-Dashboard."
+
+msgid "{{ \"mcpServers\": {{ \"server-name\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+msgstr "{{ \"mcpServers\": {{ \"server-name\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+
+msgid "{} API Key"
+msgstr "{}-API-Schlüssel"
+
+msgid "{} Tool"
+msgstr "{}-Tool"
+
+msgid "{} invalid"
+msgstr "{} ungültig"
+
+msgctxt "agent tool"
+msgid "Apply Code Action"
+msgstr "Codeaktion anwenden"
+
+msgctxt "agent tool"
+msgid "Browser: Click"
+msgstr "Browser: Klicken"
+
+msgctxt "agent tool"
+msgid "Browser: Close Tab"
+msgstr "Browser: Tab schließen"
+
+msgctxt "agent tool"
+msgid "Browser: Hover"
+msgstr "Browser: Hover"
+
+msgctxt "agent tool"
+msgid "Browser: Navigate"
+msgstr "Browser: Navigieren"
+
+msgctxt "agent tool"
+msgid "Browser: Open Tab"
+msgstr "Browser: Tab öffnen"
+
+msgctxt "agent tool"
+msgid "Browser: Press Keys"
+msgstr "Browser: Tasten drücken"
+
+msgctxt "agent tool"
+msgid "Browser: Run JavaScript"
+msgstr "Browser: JavaScript ausführen"
+
+msgctxt "agent tool"
+msgid "Browser: Scroll"
+msgstr "Browser: Scrollen"
+
+msgctxt "agent tool"
+msgid "Browser: Set Value"
+msgstr "Browser: Wert festlegen"
+
+msgctxt "agent tool"
+msgid "Browser: Switch Tab"
+msgstr "Browser: Tab wechseln"
+
+msgctxt "agent tool"
+msgid "Browser: Type"
+msgstr "Browser: Text eingeben"
+
+msgctxt "agent tool"
+msgid "Copy Path"
+msgstr "Pfad kopieren"
+
+msgctxt "agent tool"
+msgid "Create Directory"
+msgstr "Verzeichnis erstellen"
+
+msgctxt "agent tool"
+msgid "Delete Path"
+msgstr "Pfad löschen"
+
+msgctxt "agent tool"
+msgid "Edit File"
+msgstr "Datei bearbeiten"
+
+msgctxt "agent tool"
+msgid "Fetch"
+msgstr "Abrufen"
+
+msgctxt "agent tool"
+msgid "Git"
+msgstr "Git"
+
+msgctxt "agent tool"
+msgid "Move Path"
+msgstr "Pfad verschieben"
+
+msgctxt "agent tool"
+msgid "Rename Symbol"
+msgstr "Symbol umbenennen"
+
+msgctxt "agent tool"
+msgid "Skill"
+msgstr "Skill"
+
+msgctxt "agent tool"
+msgid "Terminal"
+msgstr "Terminal"
+
+msgctxt "agent tool"
+msgid "Web Search"
+msgstr "Websuche"
+
+msgctxt "agent tool"
+msgid "Write File"
+msgstr "Datei schreiben"
+
+msgctxt "launch approval"
+msgid "Details"
+msgstr "Details"
+
+msgctxt "launch approval"
+msgid "Review"
+msgstr "Überprüfen"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "page title"
+msgid "Add Custom Agent"
+msgstr "Benutzerdefinierten Agenten hinzufügen"
+
+msgctxt "page title"
+msgid "Configure MCP Server"
+msgstr "MCP-Server konfigurieren"
+
+msgctxt "skill scope"
+msgid "global"
+msgstr "global"
+
+msgctxt "skill scope"
+msgid "on this machine"
+msgstr "auf diesem Computer"
+
+msgctxt "skill scope"
+msgid "project"
+msgstr "projektbezogen"
+
+msgctxt "skill scope"
+msgid "used in this project"
+msgstr "in diesem Projekt"
+
+msgctxt "tool permission mode"
+msgid "AI Judge"
+msgstr "KI entscheidet"
+
+msgctxt "tool permission mode"
+msgid "Allow"
+msgstr "Zulassen"
+
+msgctxt "tool permission mode"
+msgid "Confirm"
+msgstr "Bestätigen"
+
+msgctxt "tool permission mode"
+msgid "Deny"
+msgstr "Ablehnen"

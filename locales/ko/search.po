@@ -1,0 +1,182 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Also search files ignored by configuration"
+msgstr "설정에서 무시된 파일도 검색"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Close Search Bar"
+msgstr "검색 표시줄 닫기"
+
+msgid "Collapse All Files"
+msgstr "모든 파일 접기"
+
+msgid "Collapse All Search Results"
+msgstr "모든 검색 결과 접기"
+
+msgid "Don't Save"
+msgstr "저장 안 함"
+
+msgid "Down"
+msgstr "아래"
+
+msgid "Exclude: e.g. vendor/*, *.lock"
+msgstr "제외: 예: vendor/*, *.lock"
+
+msgid "Expand All Files"
+msgstr "모든 파일 펼치기"
+
+msgid "Expand All Search Results"
+msgstr "모든 검색 결과 펼치기"
+
+msgid "Find and replace"
+msgstr "찾기 및 바꾸기"
+
+msgid "Find in Results"
+msgstr "결과에서 찾기"
+
+msgid "Fold"
+msgstr "접기"
+
+msgid "Hit enter to search. For more options:"
+msgstr "검색하려면 Enter를 누르세요. 더 많은 옵션:"
+
+msgid "Include/exclude specific paths"
+msgstr "특정 경로 포함/제외"
+
+msgid "Include: e.g. src/**/*.rs"
+msgstr "포함: 예: src/**/*.rs"
+
+msgid "Left"
+msgstr "왼쪽"
+
+msgid "Loading project…"
+msgstr "프로젝트 로드 중…"
+
+msgid "Match Case Sensitivity"
+msgstr "대소문자 구분"
+
+msgid "Match Whole Words"
+msgstr "단어 단위로 일치"
+
+msgid "Match case"
+msgstr "대소문자 구분"
+
+msgid "Match whole words"
+msgstr "단어 단위로 일치"
+
+msgid "Match with regex"
+msgstr "정규식으로 일치"
+
+msgid "No Results"
+msgstr "결과 없음"
+
+msgid "No more matches"
+msgstr "더 이상 일치하는 항목 없음"
+
+msgid "No results found in this project for the provided query"
+msgstr "이 프로젝트에서 입력한 검색어에 대한 결과를 찾을 수 없습니다"
+
+msgid "One Match Per Line"
+msgstr "한 줄에 하나씩 일치"
+
+msgid "Only Search Open Files"
+msgstr "열린 파일만 검색"
+
+msgid "Open File"
+msgstr "파일 열기"
+
+msgid "Open Multiple"
+msgstr "여러 항목 열기"
+
+msgid "Open as Tab"
+msgstr "탭으로 열기"
+
+msgid "Project Search"
+msgstr "프로젝트 검색"
+
+msgid "Project search buffer contains unsaved edits. Do you want to save it?"
+msgstr "프로젝트 검색 버퍼에 저장되지 않은 편집 내용이 있습니다. 저장하시겠습니까?"
+
+msgid "Replace All Matches"
+msgstr "모든 일치 항목 바꾸기"
+
+msgid "Replace Next Match"
+msgstr "다음 일치 항목 바꾸기"
+
+msgid "Replace in project…"
+msgstr "프로젝트에서 바꾸기…"
+
+msgid "Replace with…"
+msgstr "바꿀 내용…"
+
+msgid "Right"
+msgstr "오른쪽"
+
+msgid "Save"
+msgstr "저장"
+
+msgid "Search All Files"
+msgstr "모든 파일 검색"
+
+msgid "Search Backwards"
+msgstr "뒤로 검색"
+
+msgid "Search Limits Reached\nTry narrowing your search"
+msgstr "검색 한도에 도달했습니다\n검색 범위를 좁혀 보세요"
+
+msgid "Search all files…"
+msgstr "모든 파일 검색…"
+
+msgid "Searching…"
+msgstr "검색 중…"
+
+msgid "Search…"
+msgstr "검색…"
+
+msgid "Select All Matches"
+msgstr "모든 일치 항목 선택"
+
+msgid "Split…"
+msgstr "분할…"
+
+msgid "Start typing to search. For more options:"
+msgstr "검색하려면 입력을 시작하세요. 더 많은 옵션:"
+
+msgid "Toggle Filters"
+msgstr "필터 전환"
+
+msgid "Toggle Replace"
+msgstr "바꾸기 전환"
+
+msgid "Toggle Search Selection"
+msgstr "선택 영역 검색 전환"
+
+msgid "Unfold"
+msgstr "펼치기"
+
+msgid "Up"
+msgstr "위"
+
+msgid "Use Regular Expressions"
+msgstr "정규식 사용"
+
+msgid "{} to toggle all"
+msgstr "전체를 전환하려면 {}"
+
+msgctxt "search bar"
+msgid "Select Next Match"
+msgstr "다음 일치 항목 선택"
+
+msgctxt "search bar"
+msgid "Select Previous Match"
+msgstr "이전 일치 항목 선택"

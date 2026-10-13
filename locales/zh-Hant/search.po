@@ -1,0 +1,182 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Also search files ignored by configuration"
+msgstr "也搜尋設定忽略的檔案"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Close Search Bar"
+msgstr "關閉搜尋列"
+
+msgid "Collapse All Files"
+msgstr "摺疊所有檔案"
+
+msgid "Collapse All Search Results"
+msgstr "摺疊所有搜尋結果"
+
+msgid "Don't Save"
+msgstr "不要儲存"
+
+msgid "Down"
+msgstr "向下"
+
+msgid "Exclude: e.g. vendor/*, *.lock"
+msgstr "排除：例如 vendor/*、*.lock"
+
+msgid "Expand All Files"
+msgstr "展開所有檔案"
+
+msgid "Expand All Search Results"
+msgstr "展開所有搜尋結果"
+
+msgid "Find and replace"
+msgstr "尋找並取代"
+
+msgid "Find in Results"
+msgstr "在結果中尋找"
+
+msgid "Fold"
+msgstr "摺疊"
+
+msgid "Hit enter to search. For more options:"
+msgstr "按 Enter 開始搜尋。更多選項："
+
+msgid "Include/exclude specific paths"
+msgstr "包含/排除特定路徑"
+
+msgid "Include: e.g. src/**/*.rs"
+msgstr "包含：例如 src/**/*.rs"
+
+msgid "Left"
+msgstr "左"
+
+msgid "Loading project…"
+msgstr "正在載入專案…"
+
+msgid "Match Case Sensitivity"
+msgstr "大小寫須相符"
+
+msgid "Match Whole Words"
+msgstr "全字拼寫須相符"
+
+msgid "Match case"
+msgstr "大小寫須相符"
+
+msgid "Match whole words"
+msgstr "全字拼寫須相符"
+
+msgid "Match with regex"
+msgstr "使用規則運算式比對"
+
+msgid "No Results"
+msgstr "沒有結果"
+
+msgid "No more matches"
+msgstr "沒有更多符合項目"
+
+msgid "No results found in this project for the provided query"
+msgstr "在此專案中找不到符合所提供查詢的結果"
+
+msgid "One Match Per Line"
+msgstr "每行一個符合項目"
+
+msgid "Only Search Open Files"
+msgstr "僅搜尋開啟的檔案"
+
+msgid "Open File"
+msgstr "開啟檔案"
+
+msgid "Open Multiple"
+msgstr "開啟多個檔案"
+
+msgid "Open as Tab"
+msgstr "以分頁開啟"
+
+msgid "Project Search"
+msgstr "專案搜尋"
+
+msgid "Project search buffer contains unsaved edits. Do you want to save it?"
+msgstr "專案搜尋緩衝區包含未儲存的編輯。要儲存嗎？"
+
+msgid "Replace All Matches"
+msgstr "取代所有符合項目"
+
+msgid "Replace Next Match"
+msgstr "取代下一個符合項目"
+
+msgid "Replace in project…"
+msgstr "在專案中取代…"
+
+msgid "Replace with…"
+msgstr "取代為…"
+
+msgid "Right"
+msgstr "右"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Search All Files"
+msgstr "搜尋所有檔案"
+
+msgid "Search Backwards"
+msgstr "反向搜尋"
+
+msgid "Search Limits Reached\nTry narrowing your search"
+msgstr "已達搜尋限制\n請縮小搜尋範圍"
+
+msgid "Search all files…"
+msgstr "搜尋所有檔案…"
+
+msgid "Searching…"
+msgstr "正在搜尋…"
+
+msgid "Search…"
+msgstr "搜尋…"
+
+msgid "Select All Matches"
+msgstr "選取所有符合項目"
+
+msgid "Split…"
+msgstr "分割…"
+
+msgid "Start typing to search. For more options:"
+msgstr "開始輸入即可搜尋。更多選項："
+
+msgid "Toggle Filters"
+msgstr "切換篩選條件"
+
+msgid "Toggle Replace"
+msgstr "切換取代"
+
+msgid "Toggle Search Selection"
+msgstr "切換僅在選取範圍內搜尋"
+
+msgid "Unfold"
+msgstr "展開"
+
+msgid "Up"
+msgstr "向上"
+
+msgid "Use Regular Expressions"
+msgstr "使用規則運算式"
+
+msgid "{} to toggle all"
+msgstr "按 {} 以切換全部"
+
+msgctxt "search bar"
+msgid "Select Next Match"
+msgstr "下一個符合項目"
+
+msgctxt "search bar"
+msgid "Select Previous Match"
+msgstr "上一個符合項目"

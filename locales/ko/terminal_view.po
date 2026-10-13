@@ -1,0 +1,966 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " Checks right away without waiting."
+msgstr " 기다리지 않고 바로 확인합니다."
+
+msgid " If it doesn't, runs the “On Timeout” steps and moves on."
+msgstr " 나타나지 않으면 “시간 초과 시” 단계를 실행하고 다음으로 넘어갑니다."
+
+msgid " If it doesn't, stops the macro."
+msgstr " 나타나지 않으면 매크로를 중지합니다."
+
+msgid " On a match, puts the line found into ${{{name}}}."
+msgstr " 일치하면 찾은 줄을 ${{{name}}}에 넣습니다."
+
+msgid " On a match, puts the matched part into ${{{name}}}."
+msgstr " 일치하면 일치한 부분을 ${{{name}}}에 넣습니다."
+
+msgid " Puts the line found into ${{{name}}}."
+msgstr " 찾은 줄을 ${{{name}}}에 넣습니다."
+
+msgid " Puts the matched part into ${{{name}}}."
+msgstr " 일치한 부분을 ${{{name}}}에 넣습니다."
+
+msgid "${{{name}}} (step {})"
+msgstr "${{{name}}} ({}단계)"
+
+msgid "${{{name}}} gets its value only after this branch, so “Else” runs here."
+msgstr "${{{name}}}은(는) 이 분기 이후에야 값을 가지므로 여기서는 “그 외”가 실행됩니다."
+
+msgid "(0 = repeat until stopped)"
+msgstr "(0 = 중지할 때까지 반복)"
+
+msgid "(0 repeats until stopped)"
+msgstr "(0이면 중지할 때까지 반복)"
+
+msgid "(No folder)"
+msgstr "(폴더 없음)"
+
+msgid "(None)"
+msgstr "(없음)"
+
+msgid "A folder with this name already exists."
+msgstr "같은 이름의 폴더가 이미 있습니다."
+
+msgid "A repetition right after ${{{name}}} applies only to the last character of its value, and when the value is empty it applies to the character before it or makes the regular expression invalid. To apply it to the whole value, wrap it as (?:${{{name}}})."
+msgstr "${{{name}}} 바로 뒤의 반복 지정은 값의 마지막 문자에만 적용되며, 값이 비어 있으면 그 앞의 문자에 적용되거나 정규식이 잘못됩니다. 값 전체에 적용하려면 (?:${{{name}}})(으)로 감싸세요."
+
+msgid "A step of a kind this version can't run"
+msgstr "이 버전에서 실행할 수 없는 종류의 단계"
+
+msgid "A step of a kind this version can't run (“{kind}”)"
+msgstr "이 버전에서 실행할 수 없는 종류의 단계 (“{kind}”)"
+
+msgid "A step of a kind this version can't run (“{kind}”). Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "이 버전에서 실행할 수 없는 종류의 단계입니다 (“{kind}”). 저장해도 원래대로 유지되지만, 이 단계가 포함된 매크로는 실행할 수 없습니다."
+
+msgid "A step of a kind this version can't run. Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "이 버전에서 실행할 수 없는 종류의 단계입니다. 저장해도 원래대로 유지되지만, 이 단계가 포함된 매크로는 실행할 수 없습니다."
+
+msgid "Add Step"
+msgstr "단계 추가"
+
+msgid "Add a step here"
+msgstr "여기에 단계 추가"
+
+msgid "Another connection took over this shell"
+msgstr "다른 연결이 이 셸을 넘겨받았습니다"
+
+msgid "Branch: runs the “Then” steps if the “Target” (output since last send / whole screen / variable) contains the “Text to match”, and the “Else” steps if not. It checks right away without waiting, so to check a response, put a “Wait for Text” step before it."
+msgstr "분기: “대상”(마지막으로 보낸 이후의 출력 / 전체 화면 / 변수)에 “일치시킬 텍스트”가 있으면 “그러면” 단계를, 없으면 “그 외” 단계를 실행합니다. 기다리지 않고 바로 확인하므로, 응답을 확인하려면 앞에 “문자열 대기” 단계를 두세요."
+
+msgid "Branching on a value: set the branch's “Target” to “Variable” to check the value of that variable. A variable that has no value yet takes “Else”. Named groups of a regular expression can pull part of a value out into another variable."
+msgstr "값으로 분기: 분기의 “대상”을 “변수”로 설정하면 해당 변수의 값을 확인합니다. 아직 값이 없는 변수는 “그 외”로 갑니다. 정규식의 명명된 그룹을 사용하면 값의 일부를 다른 변수로 꺼낼 수 있습니다."
+
+msgid "Brings the shell back to this tab (the other connection is detached)"
+msgstr "셸을 이 탭으로 다시 가져옵니다 (다른 연결은 분리됨)"
+
+msgid "Broadcast Input to All Panes"
+msgstr "모든 분할 영역에 동시 입력"
+
+msgid "Broadcasting input"
+msgstr "동시 입력 중"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Cancel creating the folder"
+msgstr "폴더 만들기 취소"
+
+msgid "Cancel renaming"
+msgstr "이름 변경 취소"
+
+msgid "Capture Into"
+msgstr "캡처할 변수"
+
+msgid "Chooses the steps to run by whether the output or a variable contains some text"
+msgstr "출력이나 변수에 특정 텍스트가 있는지에 따라 실행할 단계를 선택합니다"
+
+msgid "Claude Code (Outside the Sandbox)"
+msgstr "Claude Code (샌드박스 외부)"
+
+msgid "Clears the screen and the scrollback"
+msgstr "화면과 스크롤백을 지웁니다"
+
+msgid "Close"
+msgstr "닫기"
+
+msgid "Close Help"
+msgstr "도움말 닫기"
+
+msgid "Close Terminal Tab"
+msgstr "터미널 탭 닫기"
+
+msgid "Collapse All"
+msgstr "모두 접기"
+
+msgid "Connect"
+msgstr "연결"
+
+msgid "Connection name (for saving)"
+msgstr "연결 이름 (저장용)"
+
+msgid "Connects to network devices over SSH or Telnet."
+msgstr "SSH 또는 Telnet으로 네트워크 장치에 연결합니다."
+
+msgid "Copy"
+msgstr "복사"
+
+msgid "Couldn't choose a location: {error}"
+msgstr "위치를 선택하지 못했습니다: {error}"
+
+msgid "Couldn't connect: {error}"
+msgstr "연결하지 못했습니다: {error}"
+
+msgid "Couldn't create the folder"
+msgstr "폴더를 만들지 못했습니다"
+
+msgid "Couldn't delete"
+msgstr "삭제하지 못했습니다"
+
+msgid "Couldn't delete the folder"
+msgstr "폴더를 삭제하지 못했습니다"
+
+msgid "Couldn't move the folder"
+msgstr "폴더를 이동하지 못했습니다"
+
+msgid "Couldn't open the log: {error}"
+msgstr "로그를 열지 못했습니다: {error}"
+
+msgid "Couldn't reach the remote shell, so the terminal restarted with a new shell."
+msgstr "원격 셸에 연결하지 못해 새 셸로 터미널을 다시 시작했습니다."
+
+msgid "Couldn't reach the remote shell, so the terminal restarted without surviving disconnects."
+msgstr "원격 셸에 연결하지 못해 연결 끊김 유지 기능 없이 터미널을 다시 시작했습니다."
+
+msgid "Couldn't rename the folder"
+msgstr "폴더 이름을 변경하지 못했습니다"
+
+msgid "Couldn't restart the terminal: {error}"
+msgstr "터미널을 다시 시작하지 못했습니다: {error}"
+
+msgid "Couldn't resume logging: {error}"
+msgstr "로그 기록을 재개하지 못했습니다: {error}"
+
+msgid "Couldn't run the command in the terminal: {error}"
+msgstr "터미널에서 명령을 실행하지 못했습니다: {error}"
+
+msgid "Couldn't save whether the folder is open"
+msgstr "폴더 열림 상태를 저장하지 못했습니다"
+
+msgid "Couldn't save: {error}"
+msgstr "저장하지 못했습니다: {error}"
+
+msgid "Couldn't start logging: {error}"
+msgstr "로그 기록을 시작하지 못했습니다: {error}"
+
+msgid "Create New"
+msgstr "새로 만들기"
+
+msgid "Create a folder with this name"
+msgstr "이 이름으로 폴더 만들기"
+
+msgid "Creates a folder to group macros"
+msgstr "매크로를 묶을 폴더를 만듭니다"
+
+msgid "Delete"
+msgstr "삭제"
+
+msgid "Delete with Macros"
+msgstr "매크로와 함께 삭제"
+
+msgid "Delete “{name}”?"
+msgstr "“{name}”을(를) 삭제하시겠습니까?"
+
+msgid "Deletes this connection (and its saved password)"
+msgstr "이 연결 대상을 삭제합니다 (저장된 비밀번호 포함)"
+
+msgid "Deletes this step"
+msgstr "이 단계를 삭제합니다"
+
+msgid "Delete…"
+msgstr "삭제…"
+
+msgid "Deleting the folder “{folder}”. What should happen to the macros in it?"
+msgstr "폴더 “{folder}”을(를) 삭제합니다. 안에 있는 매크로를 어떻게 하시겠습니까?"
+
+msgid "Description (optional)"
+msgstr "설명 (선택 사항)"
+
+msgid "Discard and Switch"
+msgstr "버리고 전환"
+
+msgid "Drag onto a “+” along or at the end of a line to move the step"
+msgstr "단계를 이동하려면 줄 중간이나 끝의 “+”로 드래그하세요"
+
+msgid "Duplicate"
+msgstr "복제"
+
+msgid "Edit"
+msgstr "편집"
+
+msgid "Edit Macros…"
+msgstr "매크로 편집…"
+
+msgid "Edit Settings"
+msgstr "설정 편집"
+
+msgid "Edit settings.json"
+msgstr "settings.json 편집"
+
+msgid "Edit “{name}”"
+msgstr "“{name}” 편집"
+
+msgid "Enter a folder name."
+msgstr "폴더 이름을 입력하세요."
+
+msgid "Enter a host name or IP address."
+msgstr "호스트 이름 또는 IP 주소를 입력하세요."
+
+msgid "Enter a macro name."
+msgstr "매크로 이름을 입력하세요."
+
+msgid "Enter a variable name and a value. Wherever a later step says ${{name}}, it becomes the value."
+msgstr "변수 이름과 값을 입력하세요. 이후 단계에서 ${{name}}이라고 쓴 곳은 모두 이 값이 됩니다."
+
+msgid "Enter the interval in seconds, 0 or more."
+msgstr "간격을 0 이상의 초 단위로 입력하세요."
+
+msgid "Enter the repeat count as a whole number, 0 or more."
+msgstr "반복 횟수를 0 이상의 정수로 입력하세요."
+
+msgid "Enter the repeat interval in seconds, 0 or more."
+msgstr "반복 간격을 0 이상의 초 단위로 입력하세요."
+
+msgid "Example: Send “show version” → Wait for Text “Version (?<ver>[0-9.]+)” (regular expression) → Branch (Target: variable ver, text to match “^15\\.”, regular expression) → Then: Send “…”"
+msgstr "예: 보내기 “show version” → 문자열 대기 “Version (?<ver>[0-9.]+)” (정규식) → 분기 (대상: 변수 ver, 일치시킬 텍스트 “^15\\.”, 정규식) → 그러면: 보내기 “…”"
+
+msgid "Expand All"
+msgstr "모두 펼치기"
+
+msgid "Expected text (${{variable}} allowed)"
+msgstr "기다릴 텍스트 (${{variable}} 사용 가능)"
+
+msgid "Failed to spawn terminal"
+msgstr "터미널을 시작하지 못했습니다"
+
+msgid "File Transfer…"
+msgstr "파일 전송…"
+
+msgid "Filter by folder, name, or tag"
+msgstr "폴더, 이름 또는 태그로 필터링"
+
+msgid "Filter by folder, name, or tag…"
+msgstr "폴더, 이름 또는 태그로 필터링…"
+
+msgid "Folder"
+msgstr "폴더"
+
+msgid "Folder (e.g. Sites/HQ; optional)"
+msgstr "폴더 (예: Sites/HQ, 선택 사항)"
+
+msgid "Folder name"
+msgstr "폴더 이름"
+
+msgid "Forgets the saved password of this connection"
+msgstr "이 연결 대상의 저장된 비밀번호를 삭제합니다"
+
+msgid "Hides the list of saved macros to widen the editor"
+msgstr "저장된 매크로 목록을 숨겨 편집 영역을 넓힙니다"
+
+msgid "Host name / IP address"
+msgstr "호스트 이름 / IP 주소"
+
+msgid "How Branches and Variables Work"
+msgstr "분기와 변수 사용 방법"
+
+msgid "Inline Assist"
+msgstr "인라인 어시스트"
+
+msgid "Install Claude Code"
+msgstr "Claude Code 설치"
+
+msgid "Interval (seconds)"
+msgstr "간격 (초)"
+
+msgid "Invalid port number."
+msgstr "포트 번호가 잘못되었습니다."
+
+msgid "Invalid regular expression: {error}"
+msgstr "정규식이 잘못되었습니다: {error}"
+
+msgid "Keep Editing"
+msgstr "계속 편집"
+
+msgid "Kind"
+msgstr "종류"
+
+msgid "Launch Claude Code"
+msgstr "Claude Code 실행"
+
+msgid "Launch Claude Code Outside the Sandbox"
+msgstr "샌드박스 외부에서 Claude Code 실행"
+
+msgid "Loading…"
+msgstr "로드 중…"
+
+msgid "Location: {}"
+msgstr "위치: {}"
+
+msgid "Logging to {file_name}"
+msgstr "{file_name}에 로그 기록 중"
+
+msgid "Macro"
+msgstr "매크로"
+
+msgid "Macro name"
+msgstr "매크로 이름"
+
+msgid "Macro to Run After Connecting"
+msgstr "연결 후 실행할 매크로"
+
+msgid "Macro “{name}” finished"
+msgstr "매크로 “{name}”이(가) 완료되었습니다"
+
+msgid "Macro “{name}”: {error}"
+msgstr "매크로 “{name}”: {error}"
+
+msgid "Macro: {name}"
+msgstr "매크로: {name}"
+
+msgid "More Buttons"
+msgstr "추가 버튼"
+
+msgid "Move Down"
+msgstr "아래로 이동"
+
+msgid "Move Macros to Unfiled"
+msgstr "매크로를 미분류로 이동"
+
+msgid "Move Up"
+msgstr "위로 이동"
+
+msgid "New Center Terminal"
+msgstr "가운데 분할 영역에 새 터미널"
+
+msgid "New Folder…"
+msgstr "새 폴더…"
+
+msgid "New Macro"
+msgstr "새 매크로"
+
+msgid "New Macro in Folder"
+msgstr "폴더에 새 매크로"
+
+msgid "New Terminal"
+msgstr "새 터미널"
+
+msgid "New…"
+msgstr "새로 만들기…"
+
+msgid "No macros match the filter"
+msgstr "필터와 일치하는 매크로 없음"
+
+msgid "No macros — add one here"
+msgstr "매크로 없음 — 여기에 추가"
+
+msgid "No saved macros"
+msgstr "저장된 매크로 없음"
+
+msgid "No step sets ${{{name}}}, so this branch always runs “Else”."
+msgstr "${{{name}}}을(를) 설정하는 단계가 없으므로 이 분기는 항상 “그 외”를 실행합니다."
+
+msgid "No step sets {nowhere}. When the macro runs, it stays as written."
+msgstr "{nowhere}을(를) 설정하는 단계가 없습니다. 매크로를 실행하면 작성한 그대로 유지됩니다."
+
+msgid "Open File Transfer"
+msgstr "파일 전송 열기"
+
+msgid "Open Log File Location"
+msgstr "로그 파일 위치 열기"
+
+msgid "Open Log in Editor"
+msgstr "편집기에서 로그 열기"
+
+msgid "Open Settings"
+msgstr "설정 열기"
+
+msgid "Opens a new macro with the same contents"
+msgstr "같은 내용으로 새 매크로를 엽니다"
+
+msgid "Opens an empty macro on the right"
+msgstr "오른쪽에 빈 매크로를 엽니다"
+
+msgid "Opens the menu for moving and folding"
+msgstr "이동 및 접기 메뉴를 엽니다"
+
+msgid "Optional"
+msgstr "선택 사항"
+
+msgid "Overwrite"
+msgstr "덮어쓰기"
+
+msgid "Password (optional)"
+msgstr "비밀번호 (선택 사항)"
+
+msgid "Paste"
+msgstr "붙여넣기"
+
+msgid "Paste Text"
+msgstr "텍스트 붙여넣기"
+
+msgid "Port"
+msgstr "포트"
+
+msgid "Prefixes each line of the log being recorded with the time. Takes effect from the next line."
+msgstr "기록 중인 로그의 각 줄 앞에 시간을 붙입니다. 다음 줄부터 적용됩니다."
+
+msgid "Process ID (PID): {}"
+msgstr "프로세스 ID (PID): {}"
+
+msgid "Quick Connect"
+msgstr "빠른 연결"
+
+msgid "Quick Connect…"
+msgstr "빠른 연결…"
+
+msgid "Reconnect"
+msgstr "다시 연결"
+
+msgid "Reconnects to the remote shell and resumes its output"
+msgstr "원격 셸에 다시 연결하여 출력을 이어서 표시합니다"
+
+msgid "Record a Log"
+msgstr "로그 기록"
+
+msgid "Regular Expression"
+msgstr "정규식"
+
+msgid "Remember password"
+msgstr "비밀번호 기억"
+
+msgid "Remote connection lost"
+msgstr "원격 연결이 끊어졌습니다"
+
+msgid "Remote connection lost. The shell keeps running on the remote host; reconnect to resume its output"
+msgstr "원격 연결이 끊어졌습니다. 셸은 원격 호스트에서 계속 실행 중이며, 다시 연결하면 출력이 이어서 표시됩니다"
+
+msgid "Rename"
+msgstr "이름 변경"
+
+msgid "Rename Folder"
+msgstr "폴더 이름 변경"
+
+msgid "Rename to this name"
+msgstr "이 이름으로 변경"
+
+msgid "Renames the folder (the macros in it move along)"
+msgstr "폴더 이름을 변경합니다 (안에 있는 매크로도 함께 이동)"
+
+msgid "Repeat Count"
+msgstr "반복 횟수"
+
+msgid "Repeats the steps inside it the given number of times"
+msgstr "안에 있는 단계를 지정한 횟수만큼 반복합니다"
+
+msgid "Repeats until stopped"
+msgstr "중지할 때까지 반복합니다"
+
+msgid "Repeats {count} time"
+msgid_plural "Repeats {count} times"
+msgstr[0] "{count}번 반복합니다"
+
+msgid "Rerun task"
+msgstr "작업 다시 실행"
+
+msgid "Restart"
+msgstr "다시 시작"
+
+msgid "Restarts the shell in the same working directory"
+msgstr "같은 작업 디렉터리에서 셸을 다시 시작합니다"
+
+msgid "Restoring terminals…"
+msgstr "터미널 복원 중…"
+
+msgid "Run"
+msgstr "실행"
+
+msgid "Run Macro…"
+msgstr "매크로 실행…"
+
+msgid "Run Repeatedly"
+msgstr "반복 실행"
+
+msgid "Run Repeatedly…"
+msgstr "반복 실행…"
+
+msgid "Run the Next Step"
+msgstr "다음 단계 실행"
+
+msgid "Running macro “{name}” ({detail})"
+msgstr "매크로 “{name}” 실행 중 ({detail})"
+
+msgid "Runs the macro “{name}” repeatedly."
+msgstr "매크로 “{name}”을(를) 반복 실행합니다."
+
+msgid "Runs this macro with a repeat count and interval you choose."
+msgstr "지정한 반복 횟수와 간격으로 이 매크로를 실행합니다."
+
+msgid "Runs “Then” if {target} contains {}, and “Else” if not."
+msgstr "{target}에 {}이(가) 포함되어 있으면 “그러면”을, 그렇지 않으면 “그 외”를 실행합니다."
+
+msgid "Runs “Then” if {target} matches the regular expression {}, and “Else” if not."
+msgstr "{target}이(가) 정규식 {}과(와) 일치하면 “그러면”을, 그렇지 않으면 “그 외”를 실행합니다."
+
+msgid "Save"
+msgstr "저장"
+
+msgid "Saved"
+msgstr "저장됨"
+
+msgid "Saved Connections"
+msgstr "저장된 연결 대상"
+
+msgid "Saved Macros ({listed} / {total})"
+msgstr "저장된 매크로 ({listed} / {total})"
+
+msgid "Saved Macros ({total})"
+msgstr "저장된 매크로 ({total})"
+
+msgid "Seconds"
+msgstr "초"
+
+msgid "Select All"
+msgstr "모두 선택"
+
+msgid "Send Enter at the End"
+msgstr "끝에 Enter 보내기"
+
+msgid "Sends text to the terminal"
+msgstr "터미널에 텍스트를 보냅니다"
+
+msgid "Sets ${{{name}}} to {}. Wherever a later step says ${{{name}}}, it becomes this value."
+msgstr "${{{name}}}을(를) {}(으)로 설정합니다. 이후 단계에서 ${{{name}}}이라고 쓴 곳은 모두 이 값이 됩니다."
+
+msgid "Sets a variable. Wherever a later step says ${{name}}, it becomes the value"
+msgstr "변수를 설정합니다. 이후 단계에서 ${{name}}이라고 쓴 곳은 모두 이 값이 됩니다"
+
+msgid "Setting variables: a “Set Variable” step, or the “Capture Into” field of “Wait for Text” and “Branch” (it gets the line found, or the matched part for a regular expression). A named group (?<name>…) of a regular expression puts the part it matched into the variable of that name."
+msgstr "변수 설정: “변수 설정” 단계, 또는 “문자열 대기”와 “분기”의 “캡처할 변수” 필드(찾은 줄, 정규식이면 일치한 부분이 들어감)를 사용합니다. 정규식의 명명된 그룹 (?<name>…)은 일치한 부분을 같은 이름의 변수에 넣습니다."
+
+msgid "Shows only the heading and summary of every step"
+msgstr "모든 단계의 제목과 요약만 표시합니다"
+
+msgid "Shows the fields of every step"
+msgstr "모든 단계의 필드를 표시합니다"
+
+msgid "Shows the list of saved macros"
+msgstr "저장된 매크로 목록을 표시합니다"
+
+msgid "Spawn Task"
+msgstr "작업 실행"
+
+msgid "Split Down"
+msgstr "아래로 분할"
+
+msgid "Split Left"
+msgstr "왼쪽으로 분할"
+
+msgid "Split Pane"
+msgstr "분할 영역 나누기"
+
+msgid "Split Right"
+msgstr "오른쪽으로 분할"
+
+msgid "Split Up"
+msgstr "위로 분할"
+
+msgid "Split into 2×2"
+msgstr "2×2로 분할"
+
+msgid "Split into 3 Columns"
+msgstr "세로 3분할"
+
+msgid "Start Logging (Choose Location)…"
+msgstr "로그 기록 시작 (위치 선택)…"
+
+msgid "Start Logging (Default Location)"
+msgstr "로그 기록 시작 (기본 위치)"
+
+msgid "Starting terminal…"
+msgstr "터미널 시작 중…"
+
+msgid "Step {label}: enter a variable name."
+msgstr "{label} 단계: 변수 이름을 입력하세요."
+
+msgid "Step {label}: enter the expected text."
+msgstr "{label} 단계: 기다릴 텍스트를 입력하세요."
+
+msgid "Step {label}: enter the repeat count as a whole number, 0 or more."
+msgstr "{label} 단계: 반복 횟수를 0 이상의 정수로 입력하세요."
+
+msgid "Step {label}: enter the text to match."
+msgstr "{label} 단계: 일치시킬 텍스트를 입력하세요."
+
+msgid "Step {label}: enter the variable to check."
+msgstr "{label} 단계: 확인할 변수를 입력하세요."
+
+msgid "Step {label}: invalid number of seconds."
+msgstr "{label} 단계: 초 값이 잘못되었습니다."
+
+msgid "Step {label}: invalid regular expression."
+msgstr "{label} 단계: 정규식이 잘못되었습니다."
+
+msgid "Step {label}: the variable name can't contain $, {{ or }}."
+msgstr "{label} 단계: 변수 이름에 $, {{ 또는 }}을(를) 포함할 수 없습니다."
+
+msgid "Step {label}: the variable to capture into can't contain $, {{ or }}."
+msgstr "{label} 단계: 캡처할 변수에 $, {{ 또는 }}을(를) 포함할 수 없습니다."
+
+msgid "Step {label}: the variable to check can't contain $, {{ or }}."
+msgstr "{label} 단계: 확인할 변수에 $, {{ 또는 }}을(를) 포함할 수 없습니다."
+
+msgid "Steps ({})"
+msgstr "단계 ({})"
+
+msgid "Steps to Repeat ({})"
+msgstr "반복할 단계 ({})"
+
+msgid "Stop Broadcasting Input to All Panes"
+msgstr "모든 분할 영역에 동시 입력 중지"
+
+msgid "Stop Logging"
+msgstr "로그 기록 중지"
+
+msgid "Stop the Macro"
+msgstr "매크로 중지"
+
+msgid "Stopped macro “{}”"
+msgstr "매크로 “{}”을(를) 중지했습니다"
+
+msgid "Tags (comma-separated, optional)"
+msgstr "태그 (쉼표로 구분, 선택 사항)"
+
+msgid "Terminal Panel"
+msgstr "터미널 패널"
+
+msgid "Text to match (${{variable}} allowed)"
+msgstr "일치시킬 텍스트 (${{variable}} 사용 가능)"
+
+msgid "Text to send (${{variable}} allowed)"
+msgstr "보낼 텍스트 (${{variable}} 사용 가능)"
+
+msgid "The host name contains characters that aren't allowed."
+msgstr "호스트 이름에 허용되지 않는 문자가 포함되어 있습니다."
+
+msgid "The macro \"{name}\" has unsaved edits. Do you want to save it?"
+msgstr "매크로 \"{name}\"에 저장되지 않은 편집 내용이 있습니다. 저장하시겠습니까?"
+
+msgid "The password is kept in the OS credential manager and is never written to terminal_sessions.json"
+msgstr "비밀번호는 OS 자격 증명 관리자에 보관되며 terminal_sessions.json에는 기록되지 않습니다"
+
+msgid "The remote Zed server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
+msgstr "원격 ForgeKairos 서버가 연결 끊김 유지 기능을 지원하지 않으므로 일반 셸로 터미널을 다시 시작했습니다."
+
+msgid "The repeat count is empty"
+msgstr "반복 횟수가 비어 있습니다"
+
+msgid "The settings file hasn't finished loading. Wait a moment and try again."
+msgstr "설정 파일 로드가 끝나지 않았습니다. 잠시 후 다시 시도하세요."
+
+msgid "The terminal panel is unavailable."
+msgstr "터미널 패널을 사용할 수 없습니다."
+
+msgid "The user name contains characters that aren't allowed."
+msgstr "사용자 이름에 허용되지 않는 문자가 포함되어 있습니다."
+
+msgid "There is no terminal to run the macro in. Open a terminal."
+msgstr "매크로를 실행할 터미널이 없습니다. 터미널을 여세요."
+
+msgid "This folder already has a macro with this name."
+msgstr "이 폴더에 같은 이름의 매크로가 이미 있습니다."
+
+msgid "This macro has been changed elsewhere since this tab opened it. Do you want to overwrite it?"
+msgstr "이 탭에서 연 이후 다른 곳에서 이 매크로가 변경되었습니다. 덮어쓰시겠습니까?"
+
+msgid "This macro has been deleted or renamed elsewhere. Saving creates it again as “{name}”."
+msgstr "이 매크로는 다른 곳에서 삭제되었거나 이름이 변경되었습니다. 저장하면 “{name}”(으)로 다시 만듭니다."
+
+msgid "This new macro has unsaved edits. Do you want to save it?"
+msgstr "이 새 매크로에 저장되지 않은 편집 내용이 있습니다. 저장하시겠습니까?"
+
+msgid "Timeout (seconds)"
+msgstr "시간 제한(초)"
+
+msgid "Timestamps"
+msgstr "타임스탬프"
+
+msgid "Transfers files with this host over SFTP / FTP"
+msgstr "SFTP / FTP로 이 호스트와 파일을 전송합니다"
+
+msgid "Unfiled"
+msgstr "미분류"
+
+msgid "User name (SSH)"
+msgstr "사용자 이름 (SSH)"
+
+msgid "Using variables: write ${{name}} in the text to send, the expected text, the text to match, or the value to set, and it is replaced by the value when the macro runs. To send ${{ as text, write $${{."
+msgstr "변수 사용: 보낼 텍스트, 기다릴 텍스트, 일치시킬 텍스트 또는 설정할 값에 ${{name}}을(를) 쓰면 매크로 실행 시 그 값으로 바뀝니다. ${{을(를) 텍스트로 보내려면 $${{을(를) 쓰세요."
+
+msgid "Value"
+msgstr "값"
+
+msgid "Value to set (${{variable}} allowed too)"
+msgstr "설정할 값 (${{variable}}도 사용 가능)"
+
+msgid "Variable name"
+msgstr "변수 이름"
+
+msgid "Variable to Check"
+msgstr "확인할 변수"
+
+msgid "Variables: none yet (create them with “Set Variable” or “Capture Into”)"
+msgstr "변수: 아직 없음 (“변수 설정” 또는 “캡처할 변수”로 만들 수 있음)"
+
+msgid "Variables: {listed}"
+msgstr "변수: {listed}"
+
+msgid "Waits for the given number of seconds"
+msgstr "지정한 초만큼 기다립니다"
+
+msgid "Waits until the given text appears in the output"
+msgstr "지정한 텍스트가 출력에 나타날 때까지 기다립니다"
+
+msgid "Waits up to {seconds} s for {} to appear in new output.{}"
+msgstr "{}이(가) 새 출력에 나타날 때까지 최대 {seconds}초 기다립니다.{}"
+
+msgid "Waits {seconds} s"
+msgstr "{seconds}초 기다립니다"
+
+msgid "Your changes haven't been saved. Discard them and open a new macro?"
+msgstr "변경 사항이 저장되지 않았습니다. 버리고 새 매크로를 여시겠습니까?"
+
+msgid "Your changes haven't been saved. Discard them and open “{}”?"
+msgstr "변경 사항이 저장되지 않았습니다. 버리고 “{}”을(를) 여시겠습니까?"
+
+msgid "an empty string"
+msgstr "빈 문자열"
+
+msgid "claude was not found on PATH. Run “terminal: install claude code” from the command palette first."
+msgstr "PATH에서 claude를 찾을 수 없습니다. 먼저 명령 팔레트에서 “터미널: Claude Code 설치(공식 명령)”를 실행하세요."
+
+msgid "claude was not found on the remote host. Install it by running this command in a terminal on the remote host:\ncurl -fsSL https://claude.ai/install.sh | bash\nIt is installed to `~/.local/bin/claude` and can be launched from then on."
+msgstr "원격 호스트에서 claude를 찾을 수 없습니다. 원격 호스트의 터미널에서 다음 명령을 실행하여 설치하세요:\ncurl -fsSL https://claude.ai/install.sh | bash\n`~/.local/bin/claude`에 설치되며 그 이후부터 실행할 수 있습니다."
+
+msgid "no count"
+msgstr "횟수 없음"
+
+msgid "npm was not found on PATH. Installing Claude Code requires Node.js. Install Node.js from https://nodejs.org/ and try again."
+msgstr "PATH에서 npm을 찾을 수 없습니다. Claude Code를 설치하려면 Node.js가 필요합니다. https://nodejs.org/에서 Node.js를 설치한 후 다시 시도하세요."
+
+msgid "npm was not found on the remote host. Install Node.js in a terminal on the remote host and try again."
+msgstr "원격 호스트에서 npm을 찾을 수 없습니다. 원격 호스트의 터미널에서 Node.js를 설치한 후 다시 시도하세요."
+
+msgid "repeat {}, step"
+msgstr "반복 {}, 단계"
+
+msgid "repeat {}/{count}, step"
+msgstr "반복 {}/{count}, 단계"
+
+msgid "run {}, step {step}"
+msgstr "실행 {}, 단계 {step}"
+
+msgid "run {}/{count}, step {step}"
+msgstr "실행 {}/{count}, 단계 {step}"
+
+msgid "telnet was not found. Add “Telnet Client” from Windows “Optional features”, or run `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` in PowerShell as an administrator."
+msgstr "telnet을 찾을 수 없습니다. Windows “선택적 기능”에서 “Telnet 클라이언트”를 추가하거나 관리자 권한 PowerShell에서 `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient`를 실행하세요."
+
+msgid "the expected text"
+msgstr "기다릴 텍스트"
+
+msgid "the output after the last send"
+msgstr "마지막으로 보낸 이후의 출력"
+
+msgid "the text to match"
+msgstr "일치시킬 텍스트"
+
+msgid "the value of ${{{name}}}"
+msgstr "${{{name}}}의 값"
+
+msgid "the variable's value"
+msgstr "변수 값"
+
+msgid "the whole screen"
+msgstr "전체 화면"
+
+msgid "until stopped"
+msgstr "중지할 때까지"
+
+msgid "{base} (copy {suffix})"
+msgstr "{base} (사본 {suffix})"
+
+msgid "{base} (copy)"
+msgstr "{base} (사본)"
+
+msgid "{count} step"
+msgid_plural "{count} steps"
+msgstr[0] "{count}단계"
+
+msgid "{count} time"
+msgid_plural "{count} times"
+msgstr[0] "{count}번"
+
+msgid "{detail} → {inner_iteration} {}/{} “{}”"
+msgstr "{detail} → {inner_iteration} {}/{} “{}”"
+
+msgid "{detail}, branch: {}"
+msgstr "{detail}, 분기: {}"
+
+msgid "{display_path}\nClick to open it in the editor and follow its end."
+msgstr "{display_path}\n클릭하면 편집기에서 열고 끝부분을 따라갑니다."
+
+msgid "{heading}: {count} step (edit deeper nesting in the JSON file)"
+msgid_plural "{heading}: {count} steps (edit deeper nesting in the JSON file)"
+msgstr[0] "{heading}: {count}단계 (더 깊은 중첩은 JSON 파일에서 편집하세요)"
+
+msgid "{later} gets its value only after this step. Here it stays as written."
+msgstr "{later}은(는) 이 단계 이후에야 값을 가집니다. 여기서는 작성한 그대로 유지됩니다."
+
+msgid "{problem}. Fix it in terminal_sessions.json. Saving here keeps it as it was, but a macro that contains it can't be run."
+msgstr "{problem}. terminal_sessions.json에서 수정하세요. 여기서 저장해도 원래대로 유지되지만, 이 단계가 포함된 매크로는 실행할 수 없습니다."
+
+msgid "{program} was not found on PATH."
+msgstr "PATH에서 {program}을(를) 찾을 수 없습니다."
+
+msgid "{steps} / until stopped"
+msgstr "{steps} / 중지할 때까지"
+
+msgid "{steps} / ×{times}"
+msgstr "{steps} / ×{times}"
+
+msgid "“{fallback}”"
+msgstr "“{fallback}”"
+
+msgid "“{text}”"
+msgstr "“{text}”"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "terminal"
+msgid "Add to Agent Thread"
+msgstr "에이전트 스레드에 추가"
+
+msgctxt "terminal"
+msgid "Clear"
+msgstr "지우기"
+
+msgctxt "terminal"
+msgid "Stop Logging"
+msgstr "로그 기록 중지"
+
+msgctxt "terminal"
+msgid "Zoom In"
+msgstr "확대"
+
+msgctxt "terminal"
+msgid "Zoom Out"
+msgstr "축소"
+
+msgctxt "terminal macro"
+msgid "Cancel"
+msgstr "취소"
+
+msgctxt "terminal macro"
+msgid "Collapse"
+msgstr "접기"
+
+msgctxt "terminal macro"
+msgid "Else"
+msgstr "그 외"
+
+msgctxt "terminal macro"
+msgid "Expand"
+msgstr "펼치기"
+
+msgctxt "terminal macro"
+msgid "New"
+msgstr "새로 만들기"
+
+msgctxt "terminal macro"
+msgid "On Timeout"
+msgstr "시간 초과 시"
+
+msgctxt "terminal macro"
+msgid "Target"
+msgstr "대상"
+
+msgctxt "terminal macro"
+msgid "Then"
+msgstr "그러면"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "분기"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "화면 지우기"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "반복"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "보내기"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "변수 설정"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "초 대기"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "알 수 없는 단계"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "문자열 대기"
+
+msgctxt "terminal tab title"
+msgid "Failed to spawn terminal"
+msgstr "터미널을 시작하지 못했습니다"

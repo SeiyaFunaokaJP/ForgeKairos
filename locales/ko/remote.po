@@ -1,0 +1,202 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Adding rustup target for cross-compilation"
+msgstr "크로스 컴파일용 rustup 타깃 추가 중"
+
+msgid "Building remote binary from source for {platform_label} with Zig (development build)"
+msgstr "Zig로 {platform_label}용 원격 바이너리를 소스에서 빌드 중 (개발 빌드)"
+
+msgid "Building remote server binary from source for {platform_label} (development build)"
+msgstr "{platform_label}용 원격 서버 바이너리를 소스에서 빌드 중 (개발 빌드)"
+
+msgid "Checking the remote environment"
+msgstr "원격 환경 확인 중"
+
+msgid "Compressing binary"
+msgstr "바이너리 압축 중"
+
+msgid "Connecting"
+msgstr "연결 중"
+
+msgid "Connecting (reusing session)"
+msgstr "연결 중 (세션 재사용)"
+
+msgid "Could not build a PATH that includes the cmake directory"
+msgstr "cmake 디렉터리를 포함하는 PATH를 만들지 못했습니다"
+
+msgid "Could not create a directory on the remote (check the free disk space and the permissions): {dir}"
+msgstr "원격에 디렉터리를 만들지 못했습니다 (디스크 여유 공간과 권한을 확인하세요): {dir}"
+
+msgid "Could not delete the server file on the remote host ({status}): {error}"
+msgstr "원격 호스트에서 서버 파일을 삭제하지 못했습니다 ({status}): {error}"
+
+msgid "Could not install the remote sandbox helper (slirp4netns). Agent commands that use the network will not run, because no sandbox can be created for them. Check that the remote `~/.zed_server/` is writable (free space and permissions) and that the bundled slirp4netns is in the same folder as Zed, then reconnect: {error}"
+msgstr "원격 샌드박스 도우미(slirp4netns)를 설치하지 못했습니다. 샌드박스를 만들 수 없으므로 네트워크를 사용하는 에이전트 명령은 실행되지 않습니다. 원격의 `~/.zed_server/`에 쓸 수 있는지(여유 공간과 권한)와 번들된 slirp4netns가 ForgeKairos와 같은 폴더에 있는지 확인한 후 다시 연결하세요: {error}"
+
+msgid "Could not read the remote development server file: {src_path}"
+msgstr "원격 개발 서버 파일을 읽지 못했습니다: {src_path}"
+
+msgid "Could not start the command that deletes the server file"
+msgstr "서버 파일을 삭제하는 명령을 시작하지 못했습니다"
+
+msgid "Detecting WSL environment"
+msgstr "WSL 환경 감지 중"
+
+msgid "Downloading remote development server on host"
+msgstr "호스트에서 원격 개발 서버 다운로드 중"
+
+msgid "Extracting remote development server"
+msgstr "원격 개발 서버 압축 해제 중"
+
+msgid "Extracting remote server"
+msgstr "원격 서버 압축 해제 중"
+
+msgid "Failed to connect to host"
+msgstr "호스트에 연결하지 못했습니다"
+
+msgid "Failed to upload the directory to the remote ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+msgstr "원격에 디렉터리를 업로드하지 못했습니다 ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+
+msgid "Failed to upload the file to the remote ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+msgstr "원격에 파일을 업로드하지 못했습니다 ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+
+msgid "Initializing remote server"
+msgstr "원격 서버 초기화 중"
+
+msgid "Installing cargo-zigbuild for cross-compilation"
+msgstr "크로스 컴파일용 cargo-zigbuild 설치 중"
+
+msgid "Neither curl nor wget is available"
+msgstr "curl과 wget을 모두 사용할 수 없습니다"
+
+msgid "No remote server binary is available. Not on the remote at {remote_path} / bundled artifact `{artifact}` not found in {search_dirs} / build from source: {source_build_status}. The automatic build fails when cmake or zig is not on PATH. Building with script\\build.ps1 prepares the bundled artifact."
+msgstr "사용할 수 있는 원격 서버 바이너리가 없습니다. 원격의 {remote_path}에 없음 / 번들 아티팩트 `{artifact}`을(를) {search_dirs}에서 찾을 수 없음 / 소스에서 빌드: {source_build_status}. cmake 또는 zig가 PATH에 없으면 자동 빌드가 실패합니다. script\\build.ps1로 빌드하면 번들 아티팩트가 준비됩니다."
+
+msgid "On the remote host, delete the files in {folder} whose names start with {prefix}, then reconnect."
+msgstr "원격 호스트의 {folder}에서 이름이 {prefix}(으)로 시작하는 파일을 삭제한 후 다시 연결하세요."
+
+msgid "Opening workspace"
+msgstr "작업 영역 여는 중"
+
+msgid "Reinstalling the remote server because it does not match this Zed"
+msgstr "원격 서버가 이 ForgeKairos와 일치하지 않으므로 다시 설치하는 중"
+
+msgid "Remote binary path not set"
+msgstr "원격 바이너리 경로가 설정되지 않았습니다"
+
+msgid "SSH connection canceled"
+msgstr "SSH 연결이 취소되었습니다"
+
+msgid "Starting proxy"
+msgstr "프록시 시작 중"
+
+msgid "Streaming remote server into WSL"
+msgstr "WSL로 원격 서버 전송 중"
+
+msgid "The connection to the remote server was lost while checking its protocol revision"
+msgstr "프로토콜 리비전을 확인하는 동안 원격 서버와의 연결이 끊어졌습니다"
+
+msgid "The remote development server path has no file name: {src_path}"
+msgstr "원격 개발 서버 경로에 파일 이름이 없습니다: {src_path}"
+
+msgid "The remote does not have enough free disk space (about {required} MB needed, {free} MB free). Delete files you no longer need on the remote host, then reconnect."
+msgstr "원격의 디스크 여유 공간이 부족합니다 (약 {required} MB 필요, {free} MB 남음). 원격 호스트에서 더 이상 필요 없는 파일을 삭제한 후 다시 연결하세요."
+
+msgid "The remote host did not finish deleting the server file within {seconds} seconds"
+msgstr "원격 호스트가 {seconds}초 안에 서버 파일 삭제를 끝내지 못했습니다"
+
+msgid "The remote may be out of disk space (currently: {free_space})"
+msgstr "원격의 디스크 공간이 부족할 수 있습니다 (현재: {free_space})"
+
+msgid "The remote may be out of disk space (the free space could not be determined)"
+msgstr "원격의 디스크 공간이 부족할 수 있습니다 (여유 공간을 확인할 수 없음)"
+
+msgid "The remote server does not match this Zed (it did not answer the protocol revision check; it may be a server from the official Zed or from an older version of this Zed)."
+msgstr "원격 서버가 이 ForgeKairos와 일치하지 않습니다 (프로토콜 리비전 확인에 응답하지 않았습니다. 공식 Zed의 서버이거나 이 ForgeKairos의 이전 버전 서버일 수 있습니다)."
+
+msgid "The remote server does not match this Zed (protocol revision: {ours} in this Zed, {theirs} on the server)."
+msgstr "원격 서버가 이 ForgeKairos와 일치하지 않습니다 (프로토콜 리비전: 이 ForgeKairos는 {ours}, 서버는 {theirs})."
+
+msgid "The server that this Zed installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update Zed."
+msgstr "이 ForgeKairos가 원격 호스트에 설치하는 서버 자체가 일치하지 않을 수 있습니다. 이 PC에서 {folder}을(를) 삭제한 후 다시 연결하거나 ForgeKairos를 업데이트하세요."
+
+msgid "There is no bundled artifact and the download failed as well. Build with script\\build.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
+msgstr "번들 아티팩트가 없고 다운로드도 실패했습니다. script\\build.ps1로 빌드하여 번들 아티팩트를 준비하거나 이 PC가 다운로드 서버에 연결할 수 있는지 확인하세요"
+
+msgid "Uploading remote development server"
+msgstr "원격 개발 서버 업로드 중"
+
+msgid "Uploading remote development server ({size})"
+msgstr "원격 개발 서버 업로드 중 ({size})"
+
+msgid "Uploading remote server"
+msgstr "원격 서버 업로드 중"
+
+msgid "Verifying remote development server"
+msgstr "원격 개발 서버 확인 중"
+
+msgid "Waiting for existing connection attempt"
+msgstr "진행 중인 연결 시도 대기 중"
+
+msgid "cmake is not on PATH (it is needed to build remote_server). Add the CMake that comes with Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) to PATH, or build with script\\build.ps1 to prepare the bundled artifact"
+msgstr "cmake가 PATH에 없습니다 (remote_server를 빌드하는 데 필요합니다). Visual Studio에 포함된 CMake(…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin)를 PATH에 추가하거나 script\\build.ps1로 빌드하여 번들 아티팩트를 준비하세요"
+
+msgid "cmake is not on PATH (it is needed to build remote_server). Install cmake"
+msgstr "cmake가 PATH에 없습니다 (remote_server를 빌드하는 데 필요합니다). cmake를 설치하세요"
+
+msgid "connecting to host timed out"
+msgstr "호스트 연결 시간이 초과되었습니다"
+
+msgid "downloading server binary locally"
+msgstr "서버 바이너리를 로컬에 다운로드하지 못했습니다"
+
+msgid "extracting server binary"
+msgstr "서버 바이너리 압축을 풀지 못했습니다"
+
+msgid "failed to connect: {}"
+msgstr "연결하지 못했습니다: {}"
+
+msgid "failed to upload server binary"
+msgstr "서버 바이너리를 업로드하지 못했습니다"
+
+msgid "nocompress (default)"
+msgstr "nocompress (기본값)"
+
+msgid "not run (ZED_BUILD_REMOTE_SERVER={build_remote_server})"
+msgstr "실행 안 함 (ZED_BUILD_REMOTE_SERVER={build_remote_server})"
+
+msgid "not searched, because the executable's location is unknown"
+msgstr "실행 파일의 위치를 알 수 없으므로 검색하지 않음"
+
+msgid "this build cannot build the remote server from source"
+msgstr "이 빌드는 원격 서버를 소스에서 빌드할 수 없습니다"
+
+msgid "uploading server binary"
+msgstr "서버 바이너리를 업로드하지 못했습니다"
+
+msgid "{again} The server still does not match after it was reinstalled. {steps_after_reinstall}"
+msgstr "{again} 다시 설치한 후에도 서버가 여전히 일치하지 않습니다. {steps_after_reinstall}"
+
+msgid "{available} free, {capacity} used"
+msgstr "{available} 남음, {capacity} 사용"
+
+msgid "{free_space} free"
+msgstr "{free_space} 남음"
+
+msgid "{message}\nRemote servers of other release channels ({removed}) were removed automatically, but there is still not enough space."
+msgstr "{message}\n다른 릴리스 채널의 원격 서버({removed})를 자동으로 제거했지만 여전히 공간이 부족합니다."
+
+msgid "{mismatch} The server cannot be reinstalled automatically on this host. {steps}"
+msgstr "{mismatch} 이 호스트에서는 서버를 자동으로 다시 설치할 수 없습니다. {steps}"
+
+msgid "{mismatch} The server could not be reinstalled. {steps}"
+msgstr "{mismatch} 서버를 다시 설치하지 못했습니다. {steps}"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

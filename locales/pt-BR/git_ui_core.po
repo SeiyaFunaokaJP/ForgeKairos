@@ -1,0 +1,108 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "A worktree with this name already exists"
+msgstr "Já existe uma árvore de trabalho com este nome"
+
+msgid "Automate Setup"
+msgstr "Automatizar configuração"
+
+msgid "Automate Worktree Setup"
+msgstr "Automatizar configuração da árvore de trabalho"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Cannot create a named worktree in a project with multiple repositories"
+msgstr "Não é possível criar uma árvore de trabalho nomeada em um projeto com vários repositórios"
+
+msgid "Create"
+msgstr "Criar"
+
+msgid "Create \"{name}\" based on {branch_label}"
+msgstr "Criar \"{name}\" com base em {branch_label}"
+
+msgid "Create new worktree based on {branch_label}"
+msgstr "Criar nova árvore de trabalho com base em {branch_label}"
+
+msgid "Delete"
+msgstr "Excluir"
+
+msgid "Delete Worktree"
+msgstr "Excluir árvore de trabalho"
+
+msgid "Deleting…"
+msgstr "Excluindo…"
+
+msgid "Failed to connect"
+msgstr "Falha ao conectar"
+
+msgid "Force Delete"
+msgstr "Forçar exclusão"
+
+msgid "Force Delete Worktree"
+msgstr "Forçar exclusão da árvore de trabalho"
+
+msgid "Hold {} to force delete"
+msgstr "Mantenha {} pressionado para forçar a exclusão"
+
+msgid "Learn more"
+msgstr "Saiba mais"
+
+msgid "Open"
+msgstr "Abrir"
+
+msgid "Open in New Window"
+msgstr "Abrir em nova janela"
+
+msgid "Output from git {operation}"
+msgstr "Saída do git {operation}"
+
+msgid "Remove Worktree from Window"
+msgstr "Remover árvore de trabalho da janela"
+
+msgid "Requires a Git repository in the project"
+msgstr "Requer um repositório Git no projeto"
+
+msgid "Select or type to create a worktree…"
+msgstr "Selecione ou digite para criar uma árvore de trabalho…"
+
+msgid "Show Error Logs"
+msgstr "Mostrar logs de erro"
+
+msgid "Some project folders are not git repositories. They were included as-is without creating a worktree."
+msgstr "Algumas pastas do projeto não são repositórios Git. Elas foram incluídas como estão, sem criar uma árvore de trabalho."
+
+msgid "This Window"
+msgstr "Esta janela"
+
+msgid "Use local {}"
+msgstr "Usar {} local"
+
+msgid "View Log"
+msgstr "Exibir log"
+
+msgid "Worktree \"{display_name}\" contains modified or untracked files. Force delete it?"
+msgstr "A árvore de trabalho \"{display_name}\" contém arquivos modificados ou não rastreados. Forçar exclusão?"
+
+msgid "Worktree creation is not supported in collaborative projects"
+msgstr "A criação de árvores de trabalho não é compatível com projetos colaborativos"
+
+msgid "You may need to configure git for Github."
+msgstr "Pode ser necessário configurar o git para o GitHub."
+
+msgid "current branches"
+msgstr "branches atuais"
+
+msgid "git fetch failed for {}"
+msgstr "Falha ao executar git fetch para {}"
+
+msgid "git {} failed"
+msgstr "git {} falhou"

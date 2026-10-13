@@ -1,0 +1,207 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(file scope)"
+msgstr "(파일 범위)"
+
+msgid "All Sources"
+msgstr "모든 출처"
+
+msgid "Call Graph Options"
+msgstr "호출 그래프 옵션"
+
+msgid "Call Graph Panel"
+msgstr "호출 그래프 패널"
+
+msgid "Callees"
+msgstr "피호출자"
+
+msgid "Callees in the call_graph_panel.excluded_callees setting. Click to show them."
+msgstr "call_graph_panel.excluded_callees 설정에 있는 피호출자입니다. 클릭하면 표시합니다."
+
+msgid "Callers"
+msgstr "호출자"
+
+msgid "Calls come from the language server. For C and C++, clangd needs a compile_commands.json to find them."
+msgstr "호출은 언어 서버에서 가져옵니다. C 및 C++에서 clangd가 호출을 찾으려면 compile_commands.json이 필요합니다."
+
+msgid "Collapse All"
+msgstr "모두 접기"
+
+msgid "Could not find the function at the cursor: {error}"
+msgstr "커서 위치의 함수를 찾을 수 없습니다: {error}"
+
+msgid "Could not get the calls: {message}"
+msgstr "호출을 가져오지 못했습니다: {message}"
+
+msgid "Definition not found"
+msgstr "정의를 찾을 수 없음"
+
+msgid "Exact: answered by the language server"
+msgstr "정확: 언어 서버의 응답"
+
+msgid "Filter shown functions…"
+msgstr "표시된 함수 필터링…"
+
+msgid "Folders deeper than the file scan depth outside git repositories are not in the symbol index."
+msgstr "git 저장소 외부에서 파일 검색 깊이보다 깊은 폴더는 심볼 색인에 포함되지 않습니다."
+
+msgid "Follow the Cursor"
+msgstr "커서 따라가기"
+
+msgid "Function pointer candidate"
+msgstr "함수 포인터 후보"
+
+msgid "Function pointer candidate: stored into the member this indirect call goes through, so it may be called there"
+msgstr "함수 포인터 후보: 이 간접 호출이 거치는 멤버에 저장되므로 여기에서 호출될 수 있습니다"
+
+msgid "If the language server is still indexing, this is tried again when it finishes."
+msgstr "언어 서버가 아직 색인 중이면 완료될 때 다시 시도합니다."
+
+msgid "Indexing symbols {done} / {total}"
+msgstr "심볼 색인 중 {done} / {total}"
+
+msgid "Indirect call: .{field}"
+msgstr "간접 호출: .{field}"
+
+msgid "Inspect Cursor"
+msgstr "커서 위치 검사"
+
+msgid "Inspect the Function at the Cursor"
+msgstr "커서 위치의 함수 검사"
+
+msgid "It does not offer call hierarchy. Another language server for this language may."
+msgstr "이 언어 서버는 호출 계층을 제공하지 않습니다. 이 언어의 다른 언어 서버는 제공할 수 있습니다."
+
+msgid "Language Server Only"
+msgstr "언어 서버만"
+
+msgid "Language server"
+msgstr "언어 서버"
+
+msgid "Looking for the function at the cursor…"
+msgstr "커서 위치의 함수를 찾는 중…"
+
+msgid "Macro"
+msgstr "매크로"
+
+msgid "Macro: a macro the symbol index found by name"
+msgstr "매크로: 심볼 색인이 이름으로 찾은 매크로"
+
+msgid "Name Matches Only"
+msgstr "이름 일치만"
+
+msgid "Name match"
+msgstr "이름 일치"
+
+msgid "Name match: found by the symbol index by name, not resolved by a language server"
+msgstr "이름 일치: 언어 서버가 확인한 것이 아니라 심볼 색인이 이름으로 찾은 항목"
+
+msgid "Name matches found so far may be incomplete; they are asked for again when indexing ends."
+msgstr "지금까지 찾은 이름 일치 항목은 불완전할 수 있으며, 색인이 끝나면 다시 요청합니다."
+
+msgid "Next Root"
+msgstr "다음 루트"
+
+msgid "No callees"
+msgstr "피호출자 없음"
+
+msgid "No callers"
+msgstr "호출자 없음"
+
+msgid "No function selected"
+msgstr "선택된 함수 없음"
+
+msgid "No language server is running for this file."
+msgstr "이 파일에 대해 실행 중인 언어 서버가 없습니다."
+
+msgid "Nothing is asked for until then, and each level is asked for only when you expand it."
+msgstr "그때까지는 아무것도 요청하지 않으며, 각 수준은 펼칠 때만 요청합니다."
+
+msgid "Only the first {limit} calls are shown"
+msgstr "처음 {limit}개의 호출만 표시됨"
+
+msgid "Open a file and put the cursor on a function."
+msgstr "파일을 열고 함수에 커서를 놓으세요."
+
+msgid "Open the Setting"
+msgstr "설정 열기"
+
+msgid "Preparing the symbol index…"
+msgstr "심볼 색인 준비 중…"
+
+msgid "Previous Root"
+msgstr "이전 루트"
+
+msgid "Put the cursor on a function and inspect it to see its calls."
+msgstr "함수에 커서를 놓고 검사하면 호출을 볼 수 있습니다."
+
+msgid "Rebuild the Symbol Index"
+msgstr "심볼 색인 다시 빌드"
+
+msgid "Recursive: this function is already on the path above"
+msgstr "재귀: 이 함수는 이미 위쪽 경로에 있습니다"
+
+msgid "Retry"
+msgstr "다시 시도"
+
+msgid "Several functions are named {name}. Choose the root:"
+msgstr "이름이 {name}인 함수가 여러 개 있습니다. 루트를 선택하세요:"
+
+msgid "Show {count} more"
+msgid_plural "Show {count} more"
+msgstr[0] "{count}개 더 표시"
+
+msgid "Symbol index: in use by another window"
+msgstr "심볼 색인: 다른 창에서 사용 중"
+
+msgid "Symbol index: not available in a shared project"
+msgstr "심볼 색인: 공유 프로젝트에서는 사용할 수 없음"
+
+msgid "Symbol index: this server does not support it"
+msgstr "심볼 색인: 이 서버는 지원하지 않음"
+
+msgid "Symbol index: {error}"
+msgstr "심볼 색인: {error}"
+
+msgid "Symbol index: {files} files, {definitions} definitions"
+msgstr "심볼 색인: 파일 {files}개, 정의 {definitions}개"
+
+msgid "The language server for this file cannot list calls."
+msgstr "이 파일의 언어 서버는 호출을 나열할 수 없습니다."
+
+msgid "The symbol index is off"
+msgstr "심볼 색인이 꺼져 있음"
+
+msgid "There is no function at the cursor."
+msgstr "커서 위치에 함수가 없습니다."
+
+msgid "Turn it on with the symbol_index.enabled setting to find calls by name in C and C++."
+msgstr "C 및 C++에서 이름으로 호출을 찾으려면 symbol_index.enabled 설정으로 켜세요."
+
+msgid "{count} definition with this name"
+msgid_plural "{count} definitions with this name"
+msgstr[0] "이 이름의 정의 {count}개"
+
+msgid "{count} excluded"
+msgid_plural "{count} excluded"
+msgstr[0] "{count}개 제외됨"
+
+msgid "{count} more are not listed"
+msgid_plural "{count} more are not listed"
+msgstr[0] "{count}개가 더 있지만 나열되지 않음"
+
+msgctxt "call graph panel"
+msgid "Refresh"
+msgstr "새로 고침"
+
+msgctxt "call graph panel"
+msgid "Sources"
+msgstr "출처"

@@ -1,0 +1,135 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "An Error Happened"
+msgstr "오류가 발생했습니다"
+
+msgid "Authenticate To Use"
+msgstr "사용하려면 인증"
+
+msgid "Authorized"
+msgstr "인증됨"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Connect to GitHub"
+msgstr "GitHub에 연결"
+
+msgid "Copied!"
+msgstr "복사됨!"
+
+msgid "Copilot Chat Enabled!"
+msgstr "Copilot Chat 활성화됨!"
+
+msgid "Copilot Chat had an issue signing in. Please try again."
+msgstr "Copilot Chat에 로그인하는 중 문제가 발생했습니다. 다시 시도하세요."
+
+msgid "Copilot Chat requires an active GitHub Copilot subscription. Please ensure Copilot Chat is configured and try again, or use a different LLM provider."
+msgstr "Copilot Chat에는 활성 GitHub Copilot 구독이 필요합니다. Copilot Chat이 구성되어 있는지 확인한 후 다시 시도하거나, 다른 LLM 프로바이더를 사용하세요."
+
+msgid "Copilot Edit Predictions Enabled!"
+msgstr "Copilot 편집 예측 활성화됨!"
+
+msgid "Copilot Edit Predictions had issues starting. You can try reinstalling it and signing in again."
+msgstr "Copilot 편집 예측 시작 중 문제가 발생했습니다. 재설치한 후 다시 로그인해 보세요."
+
+msgid "Copilot Edit Predictions has started."
+msgstr "Copilot 편집 예측이 시작되었습니다."
+
+msgid "Copilot Edit Predictions is reinstalling…"
+msgstr "Copilot 편집 예측 재설치 중…"
+
+msgid "Copilot Edit Predictions is starting…"
+msgstr "Copilot 편집 예측 시작 중…"
+
+msgid "Copilot Edit Predictions requires an active GitHub Copilot subscription. Please ensure Copilot Edit Predictions is configured and try again, or use a different edit predictions provider."
+msgstr "Copilot 편집 예측에는 활성 GitHub Copilot 구독이 필요합니다. Copilot 편집 예측이 구성되어 있는지 확인한 후 다시 시도하거나, 다른 편집 예측 프로바이더를 사용하세요."
+
+msgid "Copy"
+msgstr "복사"
+
+msgid "Done"
+msgstr "완료"
+
+msgid "Enable Copilot edit predictions by connecting your existing license once you have subscribed or renewed your subscription."
+msgstr "구독하거나 구독을 갱신한 후 기존 라이선스를 연결하여 Copilot 편집 예측을 활성화하세요."
+
+msgid "Error: {err}"
+msgstr "오류: {err}"
+
+msgid "Paste this code into GitHub after clicking the button below."
+msgstr "아래 버튼을 클릭한 후 이 코드를 GitHub에 붙여넣으세요."
+
+msgid "Reinstall Copilot Edit Predictions and Sign In"
+msgstr "Copilot 편집 예측 재설치 후 로그인"
+
+msgid "Reinstall Copilot and Sign in"
+msgstr "Copilot 재설치 후 로그인"
+
+msgid "Reinstall and Sign in"
+msgstr "재설치 후 로그인"
+
+msgid "Sign In"
+msgstr "로그인"
+
+msgid "Sign Out"
+msgstr "로그아웃"
+
+msgid "Sign in to GitHub"
+msgstr "GitHub에 로그인"
+
+msgid "Signed out of Copilot Edit Predictions"
+msgstr "Copilot 편집 예측에서 로그아웃됨"
+
+msgid "Signing into {product}…"
+msgstr "{product}에 로그인 중…"
+
+msgid "Signing out of Copilot Edit Predictions…"
+msgstr "Copilot 편집 예측에서 로그아웃 중…"
+
+msgid "Starting {product}…"
+msgstr "{product} 시작 중…"
+
+msgid "Subscribe on GitHub"
+msgstr "GitHub에서 구독"
+
+msgid "To use Copilot for edit predictions, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot subscription."
+msgstr "편집 예측에 Copilot을 사용하려면 GitHub에 로그인해야 합니다. GitHub 계정에 활성 Copilot 구독이 있어야 한다는 점에 유의하세요."
+
+msgid "To use Zed's agent with GitHub Copilot Chat, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot Chat subscription."
+msgstr "GitHub Copilot Chat과 함께 ForgeKairos의 에이전트를 사용하려면 GitHub에 로그인해야 합니다. GitHub 계정에 활성 Copilot Chat 구독이 있어야 한다는 점에 유의하세요."
+
+msgid "Use GitHub Copilot Chat in Zed"
+msgstr "ForgeKairos에서 GitHub Copilot Chat 사용"
+
+msgid "Use GitHub Copilot Edit Predictions in Zed"
+msgstr "ForgeKairos에서 GitHub Copilot 편집 예측 사용"
+
+msgid "Use GitHub Copilot in Zed"
+msgstr "ForgeKairos에서 GitHub Copilot 사용"
+
+msgid "Using Copilot Chat requires an active subscription on GitHub."
+msgstr "Copilot Chat을 사용하려면 GitHub에서 활성 구독이 필요합니다."
+
+msgid "Using Copilot edit predictions requires an active subscription on GitHub."
+msgstr "Copilot 편집 예측을 사용하려면 GitHub에서 활성 구독이 필요합니다."
+
+msgid "Waiting for connection…"
+msgstr "연결 대기 중…"
+
+msgid "You must have an active GitHub Copilot subscription."
+msgstr "활성화된 GitHub Copilot 구독이 필요합니다."
+
+msgid "You're all set to use Copilot Chat."
+msgstr "이제 Copilot Chat을 사용할 준비가 되었습니다."
+
+msgid "You're all set to use Copilot edit predictions."
+msgstr "이제 Copilot 편집 예측을 사용할 준비가 되었습니다."

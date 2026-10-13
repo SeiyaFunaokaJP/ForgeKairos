@@ -1,0 +1,240 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "<global>"
+msgstr "<全局>"
+
+msgid "<no arguments>"
+msgstr "<无参数>"
+
+msgid "Action"
+msgstr "操作"
+
+msgid "Action '{}' not found"
+msgstr "未找到操作“{}”"
+
+msgid "Action Arguments"
+msgstr "操作参数"
+
+msgid "Action name is required"
+msgstr "必须填写操作名称"
+
+msgid "Arguments"
+msgstr "参数"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot remove a keybinding that does not exist"
+msgstr "无法删除不存在的键绑定"
+
+msgid "Clear Keystrokes"
+msgstr "清除按键记录"
+
+msgid "Copy Action"
+msgstr "复制操作"
+
+msgid "Copy Context"
+msgstr "复制上下文"
+
+msgid "Could not save updated keybinding"
+msgstr "无法保存更新后的键绑定"
+
+msgid "Create Keybinding"
+msgstr "创建键绑定"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Edit Arguments"
+msgstr "编辑参数"
+
+msgid "Edit Context"
+msgstr "编辑上下文"
+
+msgid "Edit Keybinding"
+msgstr "编辑键绑定"
+
+msgid "Edit Keystroke"
+msgstr "编辑按键"
+
+msgid "Edit in JSON"
+msgstr "在 JSON 中编辑"
+
+msgid "Edit this binding"
+msgstr "编辑此绑定"
+
+msgid "Failed to load keymap file"
+msgstr "无法加载键映射文件"
+
+msgid "Failed to parse action arguments as JSON"
+msgstr "无法将操作参数解析为 JSON"
+
+msgid "Failed to parse key context"
+msgstr "解析键上下文失败"
+
+msgid "Failed to update keybinding"
+msgstr "无法更新键绑定"
+
+msgid "Failed to validate action arguments"
+msgstr "验证操作参数失败"
+
+msgid "Failed to write keymap file"
+msgstr "无法写入键映射文件"
+
+msgid "Filter action names…"
+msgstr "筛选操作名称…"
+
+msgid "Filters"
+msgstr "筛选器"
+
+msgid "Hit it three times to execute"
+msgstr "连按三次以执行"
+
+msgid "Keybinding Context"
+msgstr "键绑定上下文"
+
+msgid "Keymap Editor"
+msgstr "键映射编辑器"
+
+msgid "Keystrokes"
+msgstr "按键"
+
+msgid "Keystrokes cannot be empty"
+msgstr "按键不能为空"
+
+msgid "No Action"
+msgstr "无操作"
+
+msgid "No conflicting keybinds found"
+msgstr "未找到冲突的键绑定"
+
+msgid "No conflicting keybinds found that match the provided query"
+msgstr "未找到与查询匹配的冲突键绑定"
+
+msgid "No keybinds found matching the entered keystrokes"
+msgstr "未找到与输入按键匹配的键绑定"
+
+msgid "No matches found for the provided query"
+msgstr "没有找到与所提供查询匹配的结果"
+
+msgid "REC"
+msgstr "录制"
+
+msgid "SEARCH"
+msgstr "搜索"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Saved edits to the {} action."
+msgstr "已保存对 {} 操作的编辑。"
+
+msgid "Search by Keystrokes"
+msgstr "按键搜索"
+
+msgid "Show Matching Keybindings"
+msgstr "显示匹配的键绑定"
+
+msgid "Show matching keybinds"
+msgstr "显示匹配的键绑定"
+
+msgid "Source"
+msgstr "来源"
+
+msgid "Start Recording"
+msgstr "开始录制"
+
+msgid "Start Searching"
+msgstr "开始搜索"
+
+msgid "Stop Recording"
+msgstr "停止录制"
+
+msgid "Stop Searching"
+msgstr "停止搜索"
+
+msgid "There is {count} binding with the same keystrokes."
+msgid_plural "There are {count} bindings with the same keystrokes."
+msgstr[0] "有 {count} 个键绑定使用相同的按键。"
+
+msgid "This action is unbound"
+msgstr "此操作未绑定"
+
+msgid "This binding is overridden by other bindings."
+msgstr "此键绑定已被其他键绑定覆盖。"
+
+msgid "This binding is overridden by other bindings.\nUse {}+click to edit this binding"
+msgstr "此键绑定被其他键绑定覆盖。\n使用 {}+点击可编辑此键绑定"
+
+msgid "This binding is overridden."
+msgstr "此键绑定已被覆盖。"
+
+msgid "This keybinding is overridden by the '{}' binding from {}."
+msgstr "此键绑定被“{}”绑定（来自 {}）覆盖。"
+
+msgid "Toggle Exact Match Mode"
+msgstr "切换精确匹配模式"
+
+msgid "Type an action name"
+msgstr "输入操作名称"
+
+msgid "Use {}+click to show all conflicts"
+msgstr "使用 {}+点击可显示所有冲突"
+
+msgid "User"
+msgstr "用户"
+
+msgid "View"
+msgstr "查看"
+
+msgid "View conflicts"
+msgstr "查看冲突"
+
+msgid "Your keybind would conflict with other actions"
+msgstr "你的键绑定会与其他操作冲突"
+
+msgid "Your keybind would conflict with the \"{}\" action"
+msgstr "你的键绑定会与“{}”操作冲突"
+
+msgid "Your keybind would conflict with the \"{}\" action and {} other bindings"
+msgstr "你的键绑定会与“{}”操作及其他 {} 个绑定冲突"
+
+msgid "the vim keymap"
+msgstr "Vim 键映射"
+
+msgid "your base keymap"
+msgstr "你的基础键映射"
+
+msgid "your keymap"
+msgstr "你的键映射"
+
+msgctxt "keybinding"
+msgid "Categories"
+msgstr "类别"
+
+msgctxt "keybinding"
+msgid "Conflicts"
+msgstr "冲突"
+
+msgctxt "keybinding"
+msgid "Context"
+msgstr "上下文"
+
+msgctxt "keybinding"
+msgid "Create"
+msgstr "创建"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "默认"

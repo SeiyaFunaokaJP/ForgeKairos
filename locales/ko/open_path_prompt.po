@@ -1,0 +1,63 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "같은 이름의 파일이나 폴더가 이미 있습니다. 바꾸면 현재 내용을 덮어씁니다."
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Cannot open {dir}: {error}"
+msgstr "{dir}을(를) 열 수 없습니다: {error}"
+
+msgid "Enter: Go into Folder"
+msgstr "Enter: 폴더로 들어가기"
+
+msgid "Enter: Open"
+msgstr "Enter: 열기"
+
+msgid "No such file or directory"
+msgstr "해당 파일 또는 디렉터리 없음"
+
+msgid "Open This Folder"
+msgstr "이 폴더 열기"
+
+msgid "Open {listed_directory} itself"
+msgstr "{listed_directory} 자체 열기"
+
+msgid "Replace"
+msgstr "바꾸기"
+
+msgid "Type a path…"
+msgstr "경로를 입력하세요…"
+
+msgid "[directory{}]filename.ext"
+msgstr "[directory{}]filename.ext"
+
+msgid "go to parent directory"
+msgstr "상위 디렉터리로 이동"
+
+msgid "go to parent directory ({parent})"
+msgstr "상위 디렉터리로 이동 ({parent})"
+
+msgid "open this directory"
+msgstr "이 디렉터리 열기"
+
+msgid "{confirm_hint} / Ctrl+Enter: Choose Selected Folder"
+msgstr "{confirm_hint} / Ctrl+Enter: 선택한 폴더 선택"
+
+msgid "{label} (create)"
+msgstr "{label} (만들기)"
+
+msgid "{label} (replace)"
+msgstr "{label} (바꾸기)"
+
+msgid "{prompted_path} already exists. Do you want to replace it?"
+msgstr "{prompted_path}이(가) 이미 있습니다. 바꾸시겠습니까?"

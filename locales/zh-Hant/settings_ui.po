@@ -1,0 +1,2303 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\"Sandbox\" on the \"AI\" page is a separate setting that isolates the commands agents run (restricting which domains they can reach and where they can write). However, domains allowed there take effect only within this list. Think of the sandbox as narrowing this scope further rather than widening what is allowed."
+msgstr "「AI」頁面上的「沙箱」是另一項設定，用於隔離代理執行的命令（限制其可連線的網域與可寫入的位置）。不過，在該處允許的網域只會在此清單的範圍內生效。請將沙箱視為進一步縮小此範圍，而不是擴大允許的內容。"
+
+msgid "\"{label}\": \"{name}\" in `{key}` must be a string."
+msgstr "「{label}」：`{key}` 中的「{name}」必須是字串。"
+
+msgid "\"{label}\": `args` must be an array of strings."
+msgstr "「{label}」：`args` 必須是字串陣列。"
+
+msgid "\"{label}\": `command.path` must be a string."
+msgstr "「{label}」：`command.path` 必須是字串。"
+
+msgid "\"{label}\": `command` is empty."
+msgstr "「{label}」：`command` 為空。"
+
+msgid "\"{label}\": `command` must be a string."
+msgstr "「{label}」：`command` 必須是字串。"
+
+msgid "\"{label}\": `enabled` must be true or false."
+msgstr "「{label}」：`enabled` 必須是 true 或 false。"
+
+msgid "\"{label}\": `oauth` must look like {{ \"client_id\": \"…\" }}."
+msgstr "「{label}」：`oauth` 必須是 {{ \"client_id\": \"…\" }} 的形式。"
+
+msgid "\"{label}\": `remote` must be true or false."
+msgstr "「{label}」：`remote` 必須是 true 或 false。"
+
+msgid "\"{label}\": `timeout` must be a positive whole number of seconds."
+msgstr "「{label}」：`timeout` 必須是正整數的秒數。"
+
+msgid "\"{label}\": `type` \"{kind}\" is not supported. Use `stdio`, `http`, or `sse`."
+msgstr "「{label}」：不支援 `type`「{kind}」。請使用 `stdio`、`http` 或 `sse`。"
+
+msgid "\"{label}\": `type` must be a string."
+msgstr "「{label}」：`type` 必須是字串。"
+
+msgid "\"{label}\": `url` is not set."
+msgstr "「{label}」：未設定 `url`。"
+
+msgid "\"{label}\": `{key}` must be a URL string."
+msgstr "「{label}」：`{key}` 必須是 URL 字串。"
+
+msgid "\"{label}\": `{key}` must be an object ({{ … }})."
+msgstr "「{label}」：`{key}` 必須是物件（{{ … }}）。"
+
+msgid "\"{label}\": neither `command` nor `url` is set."
+msgstr "「{label}」：`command` 與 `url` 皆未設定。"
+
+msgid "\"{name}\": the value is not an object ({{ … }})."
+msgstr "「{name}」：值不是物件（{{ … }}）。"
+
+msgid "\"{name}\": {error}"
+msgstr "「{name}」：{error}"
+
+msgid "(added)"
+msgstr "（已加入）"
+
+msgid "(loading the allowlist)"
+msgstr "（正在載入允許清單）"
+
+msgid "(not added)"
+msgstr "（未加入）"
+
+msgid "(optional)"
+msgstr "（選用）"
+
+msgid "(unnamed)"
+msgstr "（未命名）"
+
+msgid "// Zed egress allowlist\n//\n// Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,\n// external agent processes) is allowed only to the hosts written here.\n// Traffic from the IDE's own tooling, such as language servers and extensions, is not covered.\n// 127.0.0.1 / ::1 / localhost are always allowed without being written here.\n// You can use // comments and trailing commas. Changes take effect when you save.\n"
+msgstr "// ForgeKairos 對外連線允許清單\n//\n// 由 AI 發起的對外連線（AI 提供者、代理工具、MCP 伺服器、\n// 外部代理處理序）只允許連線至此處列出的主機。\n// IDE 本身工具（例如語言伺服器與擴充功能）的連線不在此範圍內。\n// 127.0.0.1 / ::1 / localhost 即使未列出也一律允許。\n// 可以使用 // 註解與結尾逗號。儲存後變更即生效。\n"
+
+msgid "127.0.0.1 / ::1 / localhost are always allowed without being registered, so local LLM servers (such as Ollama) work even with an empty allowlist. A small number of hosts, such as the external agent (ACP) registry, are allowed by built-in rules. Every redirect target is checked the same way, one hop at a time."
+msgstr "127.0.0.1 / ::1 / localhost 即使未登錄也一律允許，因此即使允許清單為空，本機 LLM 伺服器（例如 Ollama）也能運作。少數主機（例如外部代理（ACP）登錄庫）由內建規則允許。每個重新導向目標也會以相同方式逐一躍點檢查。"
+
+msgid "A client secret is required to connect this server"
+msgstr "連線至此伺服器需要用戶端密碼"
+
+msgid "A client secret is required to connect."
+msgstr "需要用戶端密碼才能連線。"
+
+msgid "A command server: Zed starts the executable and talks to it over standard input and output."
+msgstr "命令型伺服器：ForgeKairos 會啟動執行檔，並透過標準輸入與輸出與其通訊。"
+
+msgid "A file (not a skill directory) already exists at {}. Delete it or pick a different skill name."
+msgstr "{} 已存在一個檔案（而非技能資料夾）。請刪除該檔案或選擇其他技能名稱。"
+
+msgid "A pattern with that name already exists in this rule list."
+msgstr "此規則清單中已存在同名模式。"
+
+msgid "A personal access token for the login. Without one, git asks for the password as usual."
+msgstr "此登入名稱的個人存取權杖。若未提供，git 會照常詢問密碼。"
+
+msgid "A project window is needed to install agents"
+msgstr "需要專案視窗才能安裝代理"
+
+msgid "A project window is needed to run this in the terminal"
+msgstr "需要專案視窗才能在終端機中執行此項目"
+
+msgid "A server defined in the project settings starts in the project's folder once you allow it."
+msgstr "專案設定中定義的伺服器在您允許後，會在專案資料夾中啟動。"
+
+msgid "A server named \"{name}\" already exists. Open it in the form and rename it before adding it."
+msgstr "已存在名為「{name}」的伺服器。請在表單中開啟它並重新命名，然後再新增。"
+
+msgid "A server named \"{}\" already exists."
+msgstr "已存在名為「{}」的伺服器。"
+
+msgid "A server with this name already exists"
+msgstr "已存在同名的伺服器"
+
+msgid "A skill named \"{name}\" already exists at {}. Pick a different name."
+msgstr "名為「{name}」的技能已存在於 {}。請選擇其他名稱。"
+
+msgid "A small, fast model is enough (for example, an 8B-class model on Ollama). When none is set, the fast model is used, then the default model. To judge an action, the tool name, command, and paths are sent to that model's provider, so a local model is recommended. If no answer comes back within 10 seconds, no model is available, or the answer can't be read, a confirmation is shown."
+msgstr "小型、快速的模型就足夠了（例如 Ollama 上的 8B 等級模型）。未設定時，會使用快速模型，其次是預設模型。為了判斷動作，工具名稱、命令與路徑會傳送給該模型的提供者，因此建議使用本機模型。若 10 秒內未收到回答、沒有可用的模型，或無法解讀回答，則會顯示確認。"
+
+msgid "A token is stored. Leave this empty to keep it."
+msgstr "已儲存權杖。若要保留它，請將此欄位留空。"
+
+msgid "A token needs a host and a login to sign in with."
+msgstr "權杖需要用來登入的主機與登入名稱。"
+
+msgid "A unique name used to identify this provider."
+msgstr "用來識別此提供者的唯一名稱。"
+
+msgid "A wildcard is allowed only as a leading `*.` (for example, *.corp.example)."
+msgstr "萬用字元只能用於開頭的 `*.`（例如：*.corp.example）。"
+
+msgid "ACP Agent"
+msgstr "ACP 代理"
+
+msgid "ACP Docs"
+msgstr "ACP 文件"
+
+msgid "AI Connections"
+msgstr "AI 連線"
+
+msgid "AI features are off. Turn on \"Enable Agent\" on the AI page to use them."
+msgstr "AI 功能已關閉。若要使用，請在 AI 頁面開啟「啟用代理」。"
+
+msgid "API Key"
+msgstr "API 金鑰"
+
+msgid "API Key Configured"
+msgstr "API 金鑰已設定"
+
+msgid "API Key Set in Environment Variable"
+msgstr "API 金鑰已設定於環境變數"
+
+msgid "API Key cannot be empty"
+msgstr "API 金鑰不可為空"
+
+msgid "API URL"
+msgstr "API URL"
+
+msgid "API URL cannot be empty"
+msgstr "API URL 不可為空"
+
+msgid "Accept the external AI warning to list models from this server."
+msgstr "請接受外部 AI 警告，以列出此伺服器的模型。"
+
+msgid "Account"
+msgstr "帳戶"
+
+msgid "Account Name"
+msgstr "帳戶名稱"
+
+msgid "Accounts a repository can commit and push as. Pick one for each repository with the account button next to Commit in the Git panel; a repository without one follows git's own configuration. Tokens are kept in {store}, never in settings.json."
+msgstr "儲存庫可用來提交與推送的帳戶。請使用 Git 面板中「提交」旁的帳戶按鈕為每個儲存庫選擇一個；未選擇的儲存庫會依循 Git 本身的設定。權杖會保存在 {store} 中，絕不會寫入 settings.json。"
+
+msgid "Action to take when no patterns match."
+msgstr "當無符合模式時所採取的動作。"
+
+msgid "Active Provider"
+msgstr "目前提供者"
+
+msgid "Add"
+msgstr "新增"
+
+msgid "Add Account"
+msgstr "新增帳戶"
+
+msgid "Add Agent"
+msgstr "新增代理"
+
+msgid "Add All"
+msgstr "全部新增"
+
+msgid "Add Custom Agent"
+msgstr "新增自訂代理"
+
+msgid "Add Git Account"
+msgstr "新增 Git 帳戶"
+
+msgid "Add Local MCP Server"
+msgstr "新增本機 MCP 伺服器"
+
+msgid "Add Local Server"
+msgstr "新增本機伺服器"
+
+msgid "Add MCP Server from Template"
+msgstr "從範本新增 MCP 伺服器"
+
+msgid "Add MCP Servers from JSON"
+msgstr "從 JSON 新增 MCP 伺服器"
+
+msgid "Add Model"
+msgstr "新增模型"
+
+msgid "Add Provider"
+msgstr "新增提供者"
+
+msgid "Add Remote MCP Server"
+msgstr "新增遠端 MCP 伺服器"
+
+msgid "Add Remote Server"
+msgstr "新增遠端伺服器"
+
+msgid "Add Server"
+msgstr "新增伺服器"
+
+msgid "Add a host (for example, api.anthropic.com, *.corp.example)…"
+msgstr "新增主機（例如：api.anthropic.com、*.corp.example）…"
+
+msgid "Add an absolute path (e.g. /path/to/directory)…"
+msgstr "新增絕對路徑（例如 /path/to/directory）…"
+
+msgid "Add an entry"
+msgstr "新增項目"
+
+msgid "Add domain (e.g. github.com or *.npmjs.org)…"
+msgstr "新增網域（例如 github.com 或 *.npmjs.org）…"
+
+msgid "Add from Template"
+msgstr "從範本新增"
+
+msgid "Add regex pattern…"
+msgstr "新增規則運算式模式…"
+
+msgid "Add skill content…"
+msgstr "新增技能內容…"
+
+msgid "Add to Allowlist"
+msgstr "加入允許清單"
+
+msgid "Add {count} Server"
+msgid_plural "Add All {count} Servers"
+msgstr[0] "新增全部 {count} 個伺服器"
+
+msgid "Add {count} server to your user settings?"
+msgid_plural "Add all {count} servers to your user settings?"
+msgstr[0] "要將全部 {count} 個伺服器新增至使用者設定嗎？"
+
+msgid "Add {}-Compatible Provider"
+msgstr "新增與 {} 相容的提供者"
+
+msgid "Added {count} model"
+msgid_plural "Added {count} models"
+msgstr[0] "已新增 {count} 個模型"
+
+msgid "Adds the hosts to network_allowlist.json. Unless they are added, downloading or connecting to this server stays refused"
+msgstr "將這些主機加入 network_allowlist.json。除非加入，否則下載或連線至此伺服器仍會遭到拒絕"
+
+msgid "Adds them to network_allowlist.json. If you don't add them, traffic to this provider stays denied"
+msgstr "將它們加入 network_allowlist.json。若不加入，連線至此提供者的流量仍會遭到拒絕"
+
+msgid "Agent name is required."
+msgstr "代理名稱為必填。"
+
+msgid "Agents connected through the Agent Client Protocol."
+msgstr "透過 Agent Client Protocol 連線的代理。"
+
+msgid "Allow All Domains"
+msgstr "允許所有網域"
+
+msgid "Allow All File System Writes"
+msgstr "允許寫入整個檔案系統"
+
+msgid "Allow Running Outside the Sandbox"
+msgstr "允許在沙箱外執行"
+
+msgid "Allow and Start"
+msgstr "允許並啟動"
+
+msgid "Allowed"
+msgstr "允許"
+
+msgid "Allowed Domains"
+msgstr "允許的網域"
+
+msgid "Allowed Hosts"
+msgstr "允許的主機"
+
+msgid "Allowed host"
+msgstr "允許的主機"
+
+msgid "Always Allow"
+msgstr "一律允許"
+
+msgid "Always Confirm"
+msgstr "一律確認"
+
+msgid "Always Deny"
+msgstr "一律拒絕"
+
+msgid "Always Launch Outside the Sandbox"
+msgstr "一律在沙箱外啟動"
+
+msgid "An HTTP server: Zed connects to the URL and talks to it over HTTP. The host it connects to is subject to the network allowlist."
+msgstr "HTTP 伺服器：ForgeKairos 會連線至該 URL，並透過 HTTP 與其通訊。連線的主機受網路允許清單管控。"
+
+msgid "An agent named \"{}\" already exists."
+msgstr "已存在名為「{}」的代理。"
+
+msgid "Apply the Proxy to AI Agent Child Processes"
+msgstr "將 Proxy 套用至 AI 代理的子處理序"
+
+msgid "Applying language server code actions"
+msgstr "套用語言伺服器的程式碼動作"
+
+msgid "Argument"
+msgstr "引數"
+
+msgid "Arguments"
+msgstr "引數"
+
+msgid "Arguments passed to the command, one per row (an argument containing spaces is passed as it is). Rows added and left empty are ignored."
+msgstr "傳給命令的引數，每列一個（包含空白的引數會原樣傳遞）。新增後留空的列會被忽略。"
+
+msgid "Audio Test"
+msgstr "音訊測試"
+
+msgid "Authenticate"
+msgstr "驗證"
+
+msgid "Authenticate to connect this server"
+msgstr "驗證以連線至此伺服器"
+
+msgid "Authenticating…"
+msgstr "正在驗證…"
+
+msgid "Authentication failed ({status}). Check the API key. If the server needs no authentication, check \"Connect without an API key\"."
+msgstr "驗證失敗（{status}）。請檢查 API 金鑰。若伺服器不需要驗證，請勾選「不使用 API 金鑰連線」。"
+
+msgid "Authentication is required to connect."
+msgstr "需要驗證才能連線。"
+
+msgid "Binary for language server \"{name}\""
+msgstr "語言伺服器「{name}」的二進位檔"
+
+msgid "Body is required."
+msgstr "內容為必填。"
+
+msgid "Browse…"
+msgstr "瀏覽…"
+
+msgid "Can't save to the project settings file because no project is open."
+msgstr "未開啟任何專案，因此無法儲存至專案設定檔案。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot add {host}: {reason}"
+msgstr "無法新增 {host}：{reason}"
+
+msgid "Change Scope"
+msgstr "變更範圍"
+
+msgid "Changes take effect from the next child process that starts (no restart needed). Processes that ignore proxy settings cannot be controlled even when this is enabled. Child processes unrelated to AI, such as npm used by language servers or extensions, are not covered even when this is enabled."
+msgstr "變更會從下一個啟動的子處理序開始生效（不需重新啟動）。即使啟用此項，也無法管控忽略 Proxy 設定的處理序。即使啟用此項，與 AI 無關的子處理序（例如語言伺服器或擴充功能使用的 npm）也不在範圍內。"
+
+msgid "Checking PATH on this PC…"
+msgstr "正在檢查這台電腦上的 PATH…"
+
+msgid "Checking…"
+msgstr "正在檢查…"
+
+msgid "Choose File"
+msgstr "選擇檔案"
+
+msgid "Claude (Anthropic)"
+msgstr "Claude（Anthropic）"
+
+msgid "Claude Code Thinking Effort (--effort)"
+msgstr "Claude Code 思考深度（--effort）"
+
+msgid "Claude Pro / Max subscriptions can't be used here (pay-as-you-go with an API key only). See \"Claude Subscription\" below."
+msgstr "此處無法使用 Claude Pro / Max 訂閱（僅限使用 API 金鑰的隨用隨付）。請參閱下方的「Claude 訂閱」。"
+
+msgid "Claude Subscription"
+msgstr "Claude 訂閱"
+
+msgid "Clear"
+msgstr "清除"
+
+msgid "Clicking on pages in the built-in browser"
+msgstr "在內建瀏覽器的頁面上點按"
+
+msgid "Client secret (leave empty for a public client)"
+msgstr "用戶端密碼（公用用戶端請留空）"
+
+msgid "Closes the settings window and launches Claude Code in a tab of the agent panel. For a local project on Windows it runs inside the sandbox (WSL); on a Linux host connected over SSH it runs inside that host's sandbox."
+msgstr "關閉設定視窗，並在代理面板的分頁中啟動 Claude Code。在 Windows 上的本機專案中，它會在沙箱（WSL）內執行；在透過 SSH 連線的 Linux 主機上，它會在該主機的沙箱內執行。"
+
+msgid "Closes the settings window and launches `claude` on this PC (on the SSH host, when connected over SSH) outside the sandbox. Asks for confirmation every time (unless \"Always Launch Outside the Sandbox\" below is on)."
+msgstr "關閉設定視窗，並在沙箱外啟動這台電腦上的 `claude`（透過 SSH 連線時為 SSH 主機上的）。每次都會要求確認（除非開啟了下方的「一律在沙箱外啟動」）。"
+
+msgid "Closes the settings window and opens the file in the editor. Creates the file if it does not exist"
+msgstr "關閉設定視窗，並在編輯器中開啟檔案。若檔案不存在則會建立"
+
+msgid "Closes the settings window and runs the official install command `npm install -g @anthropic-ai/claude-code` in the integrated terminal. Requires Node.js (npm)."
+msgstr "關閉設定視窗，並在整合式終端機中執行官方安裝命令 `npm install -g @anthropic-ai/claude-code`。需要 Node.js（npm）。"
+
+msgid "Closing AI tabs in the built-in browser"
+msgstr "關閉內建瀏覽器中的 AI 分頁"
+
+msgid "Command"
+msgstr "命令"
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). To save anyway, press \"Save\" again."
+msgstr "找不到命令「{program}」（不在 PATH 中，也不在指定的位置；命令未執行）。若仍要儲存，請再按一次「儲存」。"
+
+msgid "Command \"{program}\" was not found (it is neither on PATH nor at the given location; the command was not run). {hint} To save anyway, press \"Save\" again."
+msgstr "找不到命令「{program}」（不在 PATH 中，也不在指定的位置；命令未執行）。{hint} 若仍要儲存，請再按一次「儲存」。"
+
+msgid "Command chosen by an extension on the remote host (no settings file)"
+msgstr "由遠端主機上的擴充功能選擇的命令（沒有設定檔案）"
+
+msgid "Command chosen by an extension on {display_name} (no settings file)"
+msgstr "由 {display_name} 上的擴充功能選擇的命令（沒有設定檔案）"
+
+msgid "Command is required."
+msgstr "命令為必填。"
+
+msgid "Command: starts an executable and talks to it over standard input and output."
+msgstr "命令：啟動執行檔，並透過標準輸入與輸出與其通訊。"
+
+msgid "Commands executed in the terminal"
+msgstr "在終端機中執行的命令"
+
+msgid "Compatible APIs"
+msgstr "相容的 API"
+
+msgid "Configure"
+msgstr "設定"
+
+msgid "Configure Agent"
+msgstr "設定代理"
+
+msgid "Configure External Agent"
+msgstr "設定外部代理"
+
+msgid "Configure MCP Server"
+msgstr "設定 MCP 伺服器"
+
+msgid "Configure Provider"
+msgstr "設定提供者"
+
+msgid "Configure {}"
+msgstr "設定 {}"
+
+msgid "Configured Servers"
+msgstr "已設定的伺服器"
+
+msgid "Confirm"
+msgstr "確認"
+
+msgid "Connect without an API key (server needs no authentication)"
+msgstr "不使用 API 金鑰連線（伺服器不需要驗證）"
+
+msgid "Connection test: connected."
+msgstr "連線測試：已連線。"
+
+msgid "Connection test: {message}"
+msgstr "連線測試：{message}"
+
+msgid "Contact your organization admins to adjust this setting."
+msgstr "請聯絡組織管理員以調整此設定。"
+
+msgid "Controls only outbound traffic that AI initiates. All such traffic is denied by default, and only the hosts registered here are allowed."
+msgstr "只管控由 AI 發起的對外連線。此類連線預設全部拒絕，只允許此處登錄的主機。"
+
+msgid "Controls the default behavior for all tool actions. Per-tool rules and patterns can override this. \"Allow\" is the same setting as \"Auto-Approve (In Sandbox)\" in the agent panel. \"AI Judge\" runs automatically only the actions that a separate model judges not dangerous, and asks for confirmation for everything else. In either case, the built-in security rules, your deny and confirm patterns, the sandbox, and the confirmation for writes to settings files all still apply. File operations outside the project (worktree) are always confirmed, whatever this is set to, unless you wrote an \"Always Allow\" pattern for that path yourself. Terminal commands that run outside the sandbox (when the sandbox is disabled, or in a project without one) are confirmed every time, regardless of \"Allow\", \"AI Judge\", or \"Always Allow\". Which tools are available is chosen by the profile, not by this setting."
+msgstr "控制所有工具動作的預設行為。個別工具的規則與模式可覆寫此設定。「允許」與代理面板中的「全自動（沙箱內）」是同一項設定。「由 AI 判斷」只會自動執行另一個模型判斷為不危險的動作，其他動作則要求確認。無論哪一種，內建安全性規則、您設定的拒絕與確認模式、沙箱，以及寫入設定檔案時的確認都仍然適用。專案（工作樹）外的檔案操作無論如何設定都一律要求確認，除非您自己為該路徑撰寫了「一律允許」模式。在沙箱外執行的終端機命令（停用沙箱時，或在沒有沙箱的專案中）無論「允許」、「由 AI 判斷」或「一律允許」，每次都會要求確認。可用的工具由設定檔選擇，而不是由此設定。"
+
+msgid "Copy Link"
+msgstr "複製連結"
+
+msgid "Copy Share Link"
+msgstr "複製分享連結"
+
+msgid "Could not connect: {error}"
+msgstr "無法連線：{error}"
+
+msgid "Could not determine the range to rewrite"
+msgstr "無法判斷要重寫的範圍"
+
+msgid "Couldn't choose the file: {error}"
+msgstr "無法選擇檔案：{error}"
+
+msgid "Couldn't connect to the server: {error}"
+msgstr "無法連線至伺服器：{error}"
+
+msgid "Couldn't create the request: {error}"
+msgstr "無法建立要求：{error}"
+
+msgid "Couldn't fetch the tool list: {error}"
+msgstr "無法取得工具清單：{error}"
+
+msgid "Couldn't get the approval details for this server."
+msgstr "無法取得此伺服器的核准詳細資料。"
+
+msgid "Couldn't load the template list: {error}"
+msgstr "無法載入範本清單：{error}"
+
+msgid "Couldn't parse the model list response: {error}"
+msgstr "無法剖析模型清單的回應：{error}"
+
+msgid "Couldn't read shared skill: {err}"
+msgstr "無法讀取共用的技能：{err}"
+
+msgid "Couldn't read this as JSON: {error}"
+msgstr "無法將此內容讀取為 JSON：{error}"
+
+msgid "Couldn't revoke the approval: {error}"
+msgstr "無法撤回核准：{error}"
+
+msgid "Couldn't revoke: {error}"
+msgstr "無法撤回：{error}"
+
+msgid "Couldn't save \"Don't Allow\": {error}"
+msgstr "無法儲存「不允許」：{error}"
+
+msgid "Couldn't save because the project settings file can't be read. Fix the JSON errors in the file, then save again."
+msgstr "無法讀取專案設定檔案，因此無法儲存。請修正檔案中的 JSON 錯誤，然後再儲存一次。"
+
+msgid "Couldn't save the decision: {error}"
+msgstr "無法儲存決定：{error}"
+
+msgid "Couldn't save the permission: {error}"
+msgstr "無法儲存權限：{error}"
+
+msgid "Couldn't save to the project settings file: the save was cancelled."
+msgstr "無法儲存至專案設定檔案：儲存已取消。"
+
+msgid "Couldn't save to the project settings file: {error}"
+msgstr "無法儲存至專案設定檔案：{error}"
+
+msgid "Couldn't submit the client secret: {error}"
+msgstr "無法送出用戶端密碼：{error}"
+
+msgid "Create Skill"
+msgstr "建立技能"
+
+msgid "Create a Skill"
+msgstr "建立技能"
+
+msgid "Decision"
+msgstr "決定"
+
+msgid "Decrement"
+msgstr "遞減"
+
+msgid "Default"
+msgstr "預設"
+
+msgid "Default (Fast Model)"
+msgstr "預設（快速模型）"
+
+msgid "Default Action"
+msgstr "預設動作"
+
+msgid "Default Permission"
+msgstr "預設權限"
+
+msgid "Default reasoning effort"
+msgstr "預設思考深度"
+
+msgid "Defined in"
+msgstr "定義於"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "Delete Invalid Pattern"
+msgstr "刪除無效模式"
+
+msgid "Delete Pattern"
+msgstr "刪除模式"
+
+msgid "Delete Skill"
+msgstr "刪除技能"
+
+msgid "Delete the provider \"{name}\"?"
+msgstr "要刪除提供者「{name}」嗎？"
+
+msgid "Delete the {skill_scope} skill \"{skill_name}\"?"
+msgstr "要刪除 {skill_scope} 技能「{skill_name}」嗎？"
+
+msgid "Delete {name}"
+msgstr "刪除 {name}"
+
+msgid "Deletes the API key saved in the system keychain for {url}. A key set in an environment variable is not affected."
+msgstr "刪除系統鑰匙圈中為 {url} 儲存的 API 金鑰。在環境變數中設定的金鑰不受影響。"
+
+msgid "Denied: {}"
+msgstr "已拒絕：{}"
+
+msgid "Description"
+msgstr "描述"
+
+msgid "Directory creation"
+msgstr "建立資料夾"
+
+msgid "Disable model invocation"
+msgstr "停用模型呼叫"
+
+msgid "Disabled"
+msgstr "已停用"
+
+msgid "Disabled in the project settings."
+msgstr "已在專案設定中停用。"
+
+msgid "Dismiss"
+msgstr "關閉"
+
+msgid "Domain cannot be empty."
+msgstr "網域不可為空。"
+
+msgid "Don't Allow"
+msgstr "不允許"
+
+msgid "Duplicate {label} \"{key}\"."
+msgstr "重複的 {label}「{key}」。"
+
+msgid "Each entry is an exact domain (github.com) or a leading-*. subdomain wildcard (*.npmjs.org). IP addresses and local domains are not allowed. An entry here only takes effect within the editor-wide network allowlist: a host that is not on that list stays unreachable even if you add it here."
+msgstr "每個項目都是完全相符的網域（github.com），或以 *. 開頭的子網域萬用字元（*.npmjs.org）。不允許 IP 位址與本機網域。此處的項目只會在整個編輯器的網路允許清單範圍內生效：不在該清單中的主機，即使在此新增也仍無法連線。"
+
+msgid "Each entry is an exact host name (api.anthropic.com), a subdomain wildcard with a leading *. (*.corp.example, which does not match the parent domain itself), or an IP address (10.0.0.5 / [fd00::1]). Entries are case-insensitive and take no port."
+msgstr "每個項目都是完全相符的主機名稱（api.anthropic.com）、以 *. 開頭的子網域萬用字元（*.corp.example，不符合上層網域本身），或 IP 位址（10.0.0.5 / [fd00::1]）。項目不區分大小寫，且不指定連接埠。"
+
+msgid "Each entry must be an absolute path and grants write access to the whole subtree, except protected Git metadata."
+msgstr "每個項目都必須是絕對路徑，並授予整個子樹的寫入權限，但受保護的 Git 中繼資料除外。"
+
+msgid "Edit"
+msgstr "編輯"
+
+msgid "Edit Git Account"
+msgstr "編輯 Git 帳戶"
+
+msgid "Edit in Form (saves to the project settings file that defines this server)"
+msgstr "在表單中編輯（儲存至定義此伺服器的專案設定檔案）"
+
+msgid "Edit in settings.json"
+msgstr "在 settings.json 中編輯"
+
+msgid "Edit prediction traffic is sent by the Copilot language server (a separate process), so it is not covered by the egress allowlist. Registering the hosts only affects signing in from Zed itself."
+msgstr "編輯預測的流量是由 Copilot 語言伺服器（另一個處理序）傳送的，因此不受對外連線允許清單管控。登錄主機只會影響從 ForgeKairos 本身登入。"
+
+msgid "Edit {entry}"
+msgstr "編輯 {entry}"
+
+msgid "Edit {name}"
+msgstr "編輯 {name}"
+
+msgid "Email"
+msgstr "電子郵件"
+
+msgid "Enable Sandbox"
+msgstr "啟用沙箱"
+
+msgid "Enter \"{prompt}\"."
+msgstr "請輸入「{prompt}」。"
+
+msgid "Enter Secret"
+msgstr "輸入密碼"
+
+msgid "Enter a host."
+msgstr "請輸入主機。"
+
+msgid "Enter a tool input to test your rules…"
+msgstr "輸入工具參數以測試規則…"
+
+msgid "Enter a valid GitHub URL"
+msgstr "輸入有效的 GitHub URL"
+
+msgid "Enter a value for the {label} \"{key}\"."
+msgstr "請輸入 {label}「{key}」的值。"
+
+msgid "Enter the API key."
+msgstr "請輸入 API 金鑰。"
+
+msgid "Enter to Confirm"
+msgstr "按 Enter 確認"
+
+msgid "Enter: {prompt}"
+msgstr "請輸入：{prompt}"
+
+msgid "Environment"
+msgstr "環境"
+
+msgid "Environment Variables"
+msgstr "環境變數"
+
+msgid "Environment variables provided to the server process. Enter the values the server's documentation asks for here, such as API keys or tokens."
+msgstr "提供給伺服器處理序的環境變數。請在此輸入伺服器文件要求的值，例如 API 金鑰或權杖。"
+
+msgid "Environment variables to fill in: {inputs}"
+msgstr "需要填寫的環境變數：{inputs}"
+
+msgid "Environment variables: {names}"
+msgstr "環境變數：{names}"
+
+msgid "Error: {}"
+msgstr "錯誤：{}"
+
+msgid "Escalation Prompts"
+msgstr "權限提升確認"
+
+msgid "Every AI you can use here, by whose AI it is. Each row shows how you sign in and what runs it. In the agent panel, the + menu lists the same AIs."
+msgstr "此處可使用的所有 AI，依其所屬來源分類。每一列會顯示登入方式與執行方式。在代理面板中，+ 選單會列出相同的 AI。"
+
+msgid "Execution Host"
+msgstr "執行主機"
+
+msgid "Extension: the extension provides the command. Its settings are made in the extension's own form."
+msgstr "擴充功能：由擴充功能提供命令。其設定在擴充功能自己的表單中進行。"
+
+msgid "External Agents"
+msgstr "外部代理"
+
+msgid "External formatter \"{name}\""
+msgstr "外部格式器「{name}」"
+
+msgid "Failed to add the hosts to the allowlist: {error}"
+msgstr "無法將主機加入允許清單：{error}"
+
+msgid "Failed to load your settings. Some values may be incorrect and changes may be lost."
+msgstr "無法載入設定。部分值可能不正確，且變更可能會遺失。"
+
+msgid "Failed to parse network_allowlist.json"
+msgstr "無法剖析 network_allowlist.json"
+
+msgid "Failed to parse network_allowlist.json: {error}"
+msgstr "無法剖析 network_allowlist.json：{error}"
+
+msgid "Failed to read network_allowlist.json"
+msgstr "無法讀取 network_allowlist.json"
+
+msgid "Failed to read network_allowlist.json: {error}"
+msgstr "無法讀取 network_allowlist.json：{error}"
+
+msgid "Failed to read the response body: {error}"
+msgstr "無法讀取回應本文：{error}"
+
+msgid "Failed to save the allowlist: {write_error}"
+msgstr "無法儲存允許清單：{write_error}"
+
+msgid "Failed to save the child process proxy setting: {write_error}"
+msgstr "無法儲存子處理序的 Proxy 設定：{write_error}"
+
+msgid "Failed to write network_allowlist.json"
+msgstr "無法寫入 network_allowlist.json"
+
+msgid "Fetch Models"
+msgstr "取得模型清單"
+
+msgid "Fetching and parsing…"
+msgstr "正在取得並解析…"
+
+msgid "Fetching the tool list…"
+msgstr "正在取得工具清單…"
+
+msgid "Fetching…"
+msgstr "正在擷取…"
+
+msgid "File System"
+msgstr "檔案系統"
+
+msgid "File and directory copying"
+msgstr "檔案與資料夾複製"
+
+msgid "File and directory deletion"
+msgstr "檔案與資料夾刪除"
+
+msgid "File and directory moves/renames"
+msgstr "檔案與資料夾移動/重新命名"
+
+msgid "File creation and overwrite operations"
+msgstr "檔案建立與覆寫操作"
+
+msgid "File editing operations"
+msgstr "檔案編輯操作"
+
+msgid "Files whose contents are part of this approval: {files}. A change to their contents asks for confirmation again, but the command line alone doesn't show what they do, so review their contents too before allowing."
+msgstr "內容包含在此核准中的檔案：{files}。這些檔案的內容變更時會再次要求確認，但單從命令列看不出它們會做什麼，因此請在允許前也檢閱其內容。"
+
+msgid "Finish the steps below to start a thread with {name}."
+msgstr "完成以下步驟，即可與 {name} 開始會話。"
+
+msgid "Fix in settings.json"
+msgstr "在 settings.json 中修正"
+
+msgid "Focus Content"
+msgstr "聚焦內容"
+
+msgid "Focus Navbar"
+msgstr "聚焦導覽列"
+
+msgid "Folder"
+msgstr "資料夾"
+
+msgid "For a public client, leave this empty and submit."
+msgstr "若為公用用戶端，請將此欄位留空並送出。"
+
+msgid "Found {count} server. Open it in the form to review it, or add it right away."
+msgid_plural "Found {count} servers. Open each one in the form to review it, or add them all at once."
+msgstr[0] "找到 {count} 個伺服器。您可以在表單中逐一開啟以檢閱，或一次全部新增。"
+
+msgid "Front-matter"
+msgstr "前置資料"
+
+msgid "Git Accounts"
+msgstr "Git 帳戶"
+
+msgid "Git commands run outside the sandbox with hooks turned off (commit, branch, merge, …)"
+msgstr "在沙箱外以停用 Hook 的方式執行的 Git 命令（提交、分支、合併等）"
+
+msgid "GitHub response was not valid UTF-8"
+msgstr "GitHub 回應不是有效的 UTF-8"
+
+msgid "GitHub returned 404 while fetching the skill; no repository exists at this URL, or it is private"
+msgstr "取得技能時 GitHub 傳回 404；此 URL 沒有對應的儲存庫，或該儲存庫為私人"
+
+msgid "GitHub returned an unexpected redirect ({}) for the authenticated request to {raw_url}"
+msgstr "GitHub 對 {raw_url} 的已驗證要求傳回非預期的重新導向（{}）"
+
+msgid "GitHub returned {} while fetching the skill"
+msgstr "取得技能時 GitHub 傳回 {}"
+
+msgid "GitHub skill URLs must use https://"
+msgstr "GitHub 技能 URL 必須使用 https://"
+
+msgid "Go to \"Enable Agent\""
+msgstr "前往「啟用代理」"
+
+msgid "Google"
+msgstr "Google"
+
+msgid "HTTP headers sent with each request to the server. For a server that authenticates with a token, set Authorization to \"Bearer <token>\"."
+msgstr "隨每個要求傳送至伺服器的 HTTP 標頭。對於使用權杖驗證的伺服器，請將 Authorization 設定為「Bearer <token>」。"
+
+msgid "HTTP requests to URLs"
+msgstr "對 URL 發出 HTTP 要求"
+
+msgid "HTTP: connects over HTTP to a server published at a URL."
+msgstr "HTTP：透過 HTTP 連線至以 URL 公開的伺服器。"
+
+msgid "Headers"
+msgstr "標頭"
+
+msgid "Headers to fill in: {inputs}"
+msgstr "需要填寫的標頭：{inputs}"
+
+msgid "Headers: {names}"
+msgstr "標頭：{names}"
+
+msgid "Hide this skill from the model's catalog. It can still be invoked via slash command."
+msgstr "從模型目錄中隱藏此技能。仍可透過斜線命令呼叫。"
+
+msgid "Host"
+msgstr "主機"
+
+msgid "Hosts that need to be allowed:"
+msgstr "需要允許的主機："
+
+msgid "How long to wait for the server to respond before timing out."
+msgstr "逾時前等待伺服器回應的時間長度。"
+
+msgid "I understand the risks above and want to add this provider"
+msgstr "我了解上述風險，並要新增此提供者"
+
+msgid "I understand the risks above and want to enable {name}"
+msgstr "我了解上述風險，並要啟用 {name}"
+
+msgid "I understand the risks above and want to save this provider"
+msgstr "我了解上述風險，並要儲存此提供者"
+
+msgid "IP addresses and local domains aren't allowed; enter a domain like github.com."
+msgstr "不允許 IP 位址和本機網域；請輸入網域，例如 github.com。"
+
+msgid "If any of these regexes match, a confirmation will be shown unless an Always Deny regex matches."
+msgstr "若任一規則運算式相符，將顯示確認提示，除非符合「一律拒絕」的規則運算式。"
+
+msgid "If any of these regexes match, the action will be approved—unless an Always Confirm or Always Deny matches."
+msgstr "若任一規則運算式相符，動作將獲准執行，除非符合「一律確認」或「一律拒絕」條件。"
+
+msgid "If any of these regexes match, the tool action will be denied."
+msgstr "若任一規則運算式相符，工具動作將被拒絕。"
+
+msgid "Import from URL"
+msgstr "從 URL 匯入"
+
+msgid "In a project folder where the agent has written files, language servers and formatters do not run that folder's code (the project's Prettier and ESLint configuration, build scripts, and so on) until you press Resume. This setting is saved only in your user settings and cannot be changed by project settings."
+msgstr "在代理寫入過檔案的專案資料夾中，語言伺服器與格式器在您按下「繼續執行」前，不會執行該資料夾的程式碼（專案的 Prettier 與 ESLint 設定、建置指令碼等）。此設定只會儲存在使用者設定中，無法由專案設定變更。"
+
+msgid "Increment"
+msgstr "遞增"
+
+msgid "Input Device"
+msgstr "輸入裝置"
+
+msgid "Install Claude Code (Official Command)"
+msgstr "安裝 Claude Code（官方命令）"
+
+msgid "Install Docker to make it available."
+msgstr "安裝 Docker 即可使用。"
+
+msgid "Install Node.js to make it available."
+msgstr "安裝 Node.js 即可使用。"
+
+msgid "Install from Extensions"
+msgstr "從擴充功能安裝"
+
+msgid "Install from Registry"
+msgstr "從登錄庫安裝"
+
+msgid "Install uv to make it available."
+msgstr "安裝 uv 即可使用。"
+
+msgid "Installed on this PC ({version})"
+msgstr "已安裝在這台電腦上（{version}）"
+
+msgid "Installed on this PC."
+msgstr "已安裝在這台電腦上。"
+
+msgid "Invalid Patterns"
+msgstr "無效的模式"
+
+msgid "Invalid URL in settings."
+msgstr "設定中的 URL 無效。"
+
+msgid "Invalid URL: {error}"
+msgstr "URL 無效：{error}"
+
+msgid "Invalid regex: {err}. Pattern saved but will block this tool until fixed or removed."
+msgstr "無效的規則運算式：{err}。模式已儲存，但在修正或移除前會封鎖此工具。"
+
+msgid "Judge Model"
+msgstr "判斷用模型"
+
+msgid "Keeps the API key saved for {url}, because another provider uses the same URL."
+msgstr "保留為 {url} 儲存的 API 金鑰，因為另一個提供者使用相同的 URL。"
+
+msgid "Kept these hosts because another provider you consented to uses them: {hosts}"
+msgstr "保留了下列主機，因為您已同意的另一個提供者正在使用它們：{hosts}"
+
+msgid "Key"
+msgstr "鍵"
+
+msgid "LLM Providers"
+msgstr "LLM 提供者"
+
+msgid "Launch Claude Code in Terminal"
+msgstr "在終端機中啟動 Claude Code"
+
+msgid "Launch Outside the Sandbox"
+msgstr "在沙箱外啟動"
+
+msgid "Launches this agent outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Saved only in your user settings."
+msgstr "每次都不詢問，直接在沙箱外啟動此代理。寫入將不再受限，網路限制只會套用至讀取 Proxy 設定的程式（在 SSH 主機上，對外連線管控完全不適用）。只會儲存在使用者設定中。"
+
+msgid "Learn More"
+msgstr "深入了解"
+
+msgid "Learn more about sandboxing"
+msgstr "深入了解沙箱"
+
+msgid "Leave blank to keep the key saved in the system keychain, or enter a new key to replace it."
+msgstr "留空即可保留系統鑰匙圈中已儲存的金鑰，或輸入新的金鑰加以取代。"
+
+msgid "Leave blank to keep the saved key"
+msgstr "留空即可保留已儲存的金鑰"
+
+msgid "Let sandboxed commands reach any domain over the network without prompting. This only lifts the sandbox's own restriction, so commands can still reach only the hosts within the editor-wide network allowlist (localhost is always reachable)."
+msgstr "讓沙箱中的命令無須確認即可透過網路連線至任何網域。這只會解除沙箱本身的限制，因此命令仍只能連線至整個編輯器網路允許清單範圍內的主機（localhost 一律可連線）。"
+
+msgid "Let sandboxed commands write anywhere except protected paths (such as Git metadata). This is almost the same as running outside the sandbox, so while it is on, auto-approval does not apply and each command asks for confirmation."
+msgstr "讓沙箱中的命令可寫入受保護路徑（例如 Git 中繼資料）以外的任何位置。這幾乎等同於在沙箱外執行，因此開啟期間自動核准不適用，每個命令都會要求確認。"
+
+msgid "Load"
+msgstr "載入"
+
+msgid "Loaded the template \"{title}\". Fill in the fields that ask for a value before saving."
+msgstr "已載入範本「{title}」。儲存前請填寫要求輸入值的欄位。"
+
+msgid "Loading agent skill instructions"
+msgstr "載入代理技能指示"
+
+msgid "Loading models…"
+msgstr "正在載入模型…"
+
+msgid "Loading pages in AI tabs of the built-in browser"
+msgstr "在內建瀏覽器的 AI 分頁中載入頁面"
+
+msgid "Loading…"
+msgstr "正在載入…"
+
+msgid "Loads mcpServers JSON, such as the one in a server's README, into the form."
+msgstr "將 mcpServers JSON（例如伺服器 README 中的 JSON）載入至表單。"
+
+msgid "Loads the settings of a commonly used MCP server into the form. Nothing is written to your settings until you click Save."
+msgstr "將常用 MCP 伺服器的設定載入至表單。在您按一下「儲存」之前，不會寫入任何設定。"
+
+msgid "Loads the settings of a commonly used server, such as Filesystem or GitHub, into the form."
+msgstr "將常用伺服器（例如 Filesystem 或 GitHub）的設定載入至表單。"
+
+msgid "Local"
+msgstr "本機"
+
+msgid "Local (command)"
+msgstr "本機（命令）"
+
+msgid "Local Model (Ollama, LM Studio, …)"
+msgstr "本機模型（Ollama、LM Studio…）"
+
+msgid "Local Models"
+msgstr "本機模型"
+
+msgid "Log Out"
+msgstr "登出"
+
+msgid "Login"
+msgstr "登入名稱"
+
+msgid "MCP server \"{name}\""
+msgstr "MCP 伺服器「{name}」"
+
+msgid "MCP server did not respond (timed out)"
+msgstr "MCP 伺服器沒有回應（逾時）"
+
+msgid "Makes \"Launch Claude Code\" start outside the sandbox every time, without asking. Writes are no longer restricted, and network restrictions only apply to programs that read the proxy settings (on an SSH host, egress control does not apply at all). Sign-in is shared with your regular Claude Code. Saved only in your user settings."
+msgstr "讓「啟動 Claude Code」每次都不詢問，直接在沙箱外啟動。寫入將不再受限，網路限制只會套用至讀取 Proxy 設定的程式（在 SSH 主機上，對外連線管控完全不適用）。登入狀態與您平常使用的 Claude Code 共用。只會儲存在使用者設定中。"
+
+msgid "Manage Trust"
+msgstr "管理信任"
+
+msgid "Manage servers connected directly or via extensions."
+msgstr "管理直接連線或透過擴充功能連線的伺服器。"
+
+msgid "Max Completion Tokens"
+msgstr "完成 Token 上限"
+
+msgid "Max Output Tokens"
+msgstr "輸出 Token 上限"
+
+msgid "Max Tokens"
+msgstr "Token 上限"
+
+msgid "Maximum completion tokens for OpenAI-compatible requests."
+msgstr "OpenAI 相容要求的完成 Token 上限。"
+
+msgid "Model Name"
+msgstr "模型名稱"
+
+msgid "Model Name cannot be empty"
+msgstr "模型名稱不可為空"
+
+msgid "Model Names must be unique"
+msgstr "模型名稱不可重複"
+
+msgid "Models"
+msgstr "模型"
+
+msgid "Modified in {modified_in}"
+msgstr "已在 {modified_in} 中修改"
+
+msgid "Move Down"
+msgstr "下移"
+
+msgid "Move Up"
+msgstr "上移"
+
+msgid "Moving the mouse over pages in the built-in browser"
+msgstr "在內建瀏覽器的頁面上移動滑鼠"
+
+msgid "Name"
+msgstr "名稱"
+
+msgid "Network"
+msgstr "網路"
+
+msgid "No API key is sent, because this connects to a server that needs no authentication."
+msgstr "由於連線的是不需要驗證的伺服器，因此不會傳送 API 金鑰。"
+
+msgid "No MCP server settings were found. Paste JSON that contains `command` (local) or `url` (remote)."
+msgstr "找不到 MCP 伺服器設定。請貼上包含 `command`（本機）或 `url`（遠端）的 JSON。"
+
+msgid "No MCP servers added yet. Click \"Add Server\" to get started."
+msgstr "尚未新增任何 MCP 伺服器。按一下「新增伺服器」即可開始。"
+
+msgid "No Models"
+msgstr "沒有模型"
+
+msgid "No Results"
+msgstr "沒有結果"
+
+msgid "No active project found. Open a workspace to manage MCP servers."
+msgstr "找不到使用中的專案。請開啟工作區以管理 MCP 伺服器。"
+
+msgid "No active project found. Open a workspace to manage external agents."
+msgstr "找不到使用中的專案。請開啟工作區以管理外部代理。"
+
+msgid "No authenticated models"
+msgstr "沒有已驗證的模型"
+
+msgid "No decisions have been recorded yet."
+msgstr "尚未記錄任何決定。"
+
+msgid "No entries"
+msgstr "沒有項目"
+
+msgid "No external agents added yet. Click \"Add Agent\" to get started."
+msgstr "尚未新增任何外部代理。按一下「新增代理」即可開始。"
+
+msgid "No git accounts yet."
+msgstr "尚無 Git 帳戶。"
+
+msgid "No global skills installed."
+msgstr "未安裝全域技能。"
+
+msgid "No hosts configured (everything except loopback is denied)"
+msgstr "未設定任何主機（回送位址以外的連線全部拒絕）"
+
+msgid "No models found. Check your Ollama server URL."
+msgstr "找不到模型。請檢查 Ollama 伺服器 URL。"
+
+msgid "No new models were found to add"
+msgstr "找不到可新增的新模型"
+
+msgid "No patterns configured"
+msgstr "未設定任何模式"
+
+msgid "No project skills found."
+msgstr "找不到專案技能。"
+
+msgid "No regex matches, using the default action."
+msgstr "沒有符合的規則運算式，將使用預設動作。"
+
+msgid "No settings match \"{}\""
+msgstr "沒有設定符合「{}」"
+
+msgid "No skills available for this context."
+msgstr "此上下文沒有可用的技能。"
+
+msgid "No token is stored. Without one, git asks for the password as usual."
+msgstr "未儲存權杖。若未提供，git 會照常詢問密碼。"
+
+msgid "No tools"
+msgstr "沒有工具"
+
+msgid "None"
+msgstr "無"
+
+msgid "None (disable edit predictions)"
+msgstr "無（停用編輯預測）"
+
+msgid "Not Controlled"
+msgstr "未管控"
+
+msgid "Not Controlled (Own Proxy)"
+msgstr "未管控（自有 Proxy）"
+
+msgid "Not Installed"
+msgstr "未安裝"
+
+msgid "Not Set Up"
+msgstr "尚未設定"
+
+msgid "Not a valid domain. Use a domain like github.com or *.npmjs.org."
+msgstr "不是有效的網域。請使用類似 github.com 或 *.npmjs.org 的網域。"
+
+msgid "Not a valid host name or IP address. Examples: api.anthropic.com, *.corp.example, 10.0.0.5"
+msgstr "不是有效的主機名稱或 IP 位址。例如：api.anthropic.com、*.corp.example、10.0.0.5"
+
+msgid "Not allowed"
+msgstr "不允許"
+
+msgid "Not installed on this PC (claude is not on PATH)."
+msgstr "未安裝在這台電腦上（PATH 中沒有 claude）。"
+
+msgid "Note: custom tool permissions only apply to the Zed native agent and don’t extend to external agents connected through the Agent Client Protocol (ACP)."
+msgstr "注意：自訂工具權限僅適用於 ForgeKairos 原生代理，不適用於透過 Agent Client Protocol（ACP）連線的外部代理。"
+
+msgid "Nothing configured"
+msgstr "尚未設定"
+
+msgid "OAuth Client ID"
+msgstr "OAuth 用戶端 ID"
+
+msgid "Official CLI Tab"
+msgstr "官方 CLI 分頁"
+
+msgid "On 2026-06-15, Anthropic announced that use through a subscription (Claude Pro, Max, and so on) continues as before. Sign-in happens in Claude Code's own screens; Zed never sees, stores, or relays your credentials. Turning this off removes the sign-in button from the authentication card (using an API key keeps working)."
+msgstr "Anthropic 已於 2026-06-15 宣布，透過訂閱（Claude Pro、Max 等）的使用方式將維持不變。登入是在 Claude Code 自己的畫面中進行；ForgeKairos 絕不會查看、儲存或轉送您的認證資訊。關閉此項會從驗證卡片中移除登入按鈕（使用 API 金鑰仍可正常運作）。"
+
+msgid "One of the {label} rows has no name. Enter a name or remove that row."
+msgstr "有一列 {label} 沒有名稱。請輸入名稱或移除該列。"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Open Detailed Settings"
+msgstr "開啟詳細設定"
+
+msgid "Open in Form"
+msgstr "在表單中開啟"
+
+msgid "Open network_allowlist.json in Editor"
+msgstr "在編輯器中開啟 network_allowlist.json"
+
+msgid "Open the project settings file that defines this server"
+msgstr "開啟定義此伺服器的專案設定檔案"
+
+msgid "OpenAI"
+msgstr "OpenAI"
+
+msgid "OpenAI Compatible API, Ollama, GitHub Copilot, Codestral, and Mercury become selectable once their credentials or endpoint URL are set up in their sections below. Zed becomes selectable once you give consent in the \"Zed\" section below."
+msgstr "OpenAI 相容 API、Ollama、GitHub Copilot、Codestral 與 Mercury 在下方各自的區段中設定認證資訊或端點 URL 後即可選取。您在下方「Zed」區段中同意後，即可選取 Zed。"
+
+msgid "Opening AI tabs in the built-in browser"
+msgstr "在內建瀏覽器中開啟 AI 分頁"
+
+msgid "Opens the official Claude Code in a tab of the agent panel. You sign in on Claude Code's own screen. The CLI is not bundled; it is installed with the official install command. For pay-as-you-go billing with an API key, use Anthropic above."
+msgstr "在代理面板的分頁中開啟官方 Claude Code。您會在 Claude Code 自己的畫面中登入。CLI 並未隨附，需使用官方安裝命令安裝。若要使用 API 金鑰的隨用隨付計費，請使用上方的 Anthropic。"
+
+msgid "Opens {docs_url}"
+msgstr "開啟 {docs_url}"
+
+msgid "Optional OAuth client ID"
+msgstr "OAuth 用戶端 ID（選用）"
+
+msgid "Optional OAuth client ID used to authenticate with the server. Leave it empty if the server supports dynamic client registration: connecting then asks you to authenticate in the browser."
+msgstr "用於向伺服器驗證的 OAuth 用戶端 ID（選用）。若伺服器支援動態用戶端註冊，請將其留空：連線時會要求您在瀏覽器中進行驗證。"
+
+msgid "Optional. The HTTPS host the token signs in to, such as github.com. Remotes on other hosts and SSH remotes sign in as git is configured."
+msgstr "選用。權杖用來登入的 HTTPS 主機，例如 github.com。其他主機上的遠端與 SSH 遠端會依 git 的設定登入。"
+
+msgid "Optional. The key commits are signed with when signing is on (user.signingkey)."
+msgstr "選用。開啟簽署時用來簽署提交的金鑰（user.signingkey）。"
+
+msgid "Optional. The private key file pushing, pulling and fetching reach SSH remotes with, offered alone. Local projects only. Not used when GIT_SSH_COMMAND, GIT_SSH or core.sshCommand is set, which Git for Windows does in its system configuration when installed to use the external OpenSSH. A passphrase is asked for each time."
+msgstr "選用。推送、拉取與擷取連線至 SSH 遠端時使用的私密金鑰檔案（僅提供此金鑰）。僅限本機專案。設定了 GIT_SSH_COMMAND、GIT_SSH 或 core.sshCommand 時不會使用；若 Git for Windows 安裝時選擇使用外部 OpenSSH，就會在其系統設定中設定此項。每次都會詢問複雜密碼。"
+
+msgid "Or set the {env_var_name} env var and restart Zed for it to take effect."
+msgstr "或設定 {env_var_name} 環境變數，並重新啟動 ForgeKairos 使其生效。"
+
+msgid "Or set the {} env var and restart Zed."
+msgstr "或設定 {} 環境變數後重新啟動 ForgeKairos。"
+
+msgid "Other"
+msgstr "其他"
+
+msgid "Outbound Traffic from Child Processes"
+msgstr "子處理序的對外連線"
+
+msgid "Output Device"
+msgstr "輸出裝置"
+
+msgid "Overridden by Organization"
+msgstr "已由組織覆寫"
+
+msgid "Paste a GitHub .md URL"
+msgstr "貼上 GitHub .md URL"
+
+msgid "Paste a GitHub .md URL to fetch it and fill out the form. For private files, Zed retries using GITHUB_TOKEN, if set."
+msgstr "貼上 GitHub .md URL 以取得內容並填寫表單。若為私人檔案，且已設定 GITHUB_TOKEN，ForgeKairos 會使用 GITHUB_TOKEN 重試。"
+
+msgid "Paste a GitHub URL that points to a .md file"
+msgstr "貼上指向 .md 檔案的 GitHub URL"
+
+msgid "Paste a GitHub blob URL that points to a .md file"
+msgstr "貼上指向 .md 檔案的 GitHub blob URL"
+
+msgid "Paste a JSON object ({{ … }})."
+msgstr "請貼上 JSON 物件（{{ … }}）。"
+
+msgid "Paste from JSON"
+msgstr "從 JSON 貼上"
+
+msgid "Paste some JSON."
+msgstr "請貼上 JSON。"
+
+msgid "Paste the configuration JSON from an MCP server's README or similar, then press \"Load\". The mcpServers format of Claude Desktop and Cursor, the servers format of VS Code and Zed's context_servers format are supported. What is loaded goes into the form and isn't written to your settings until you press \"Save\"."
+msgstr "請貼上 MCP 伺服器 README 等處提供的設定 JSON，然後按「載入」。支援 Claude Desktop 與 Cursor 的 mcpServers 格式、VS Code 的 servers 格式，以及 Zed 的 context_servers 格式。載入的內容會放入表單，在您按「儲存」之前不會寫入設定。"
+
+msgid "Pattern preview differs from engine — showing authoritative result."
+msgstr "模式預覽與引擎結果不同，顯示實際結果。"
+
+msgid "Patterns are matched against each command in the input. Commands chained with &&, ||, ;, or pipes are split and checked individually."
+msgstr "模式會與輸入中的每個命令比對。使用 &&、||、; 或管線串接的命令會被分割並個別檢查。"
+
+msgid "Patterns are matched against the JavaScript expression being run."
+msgstr "模式會與要執行的 JavaScript 運算式比對。"
+
+msgid "Patterns are matched against the URL being fetched."
+msgstr "模式會與正在取得的 URL 比對。"
+
+msgid "Patterns are matched against the URL being loaded, or against back, forward or reload."
+msgstr "模式會與要載入的 URL 比對，或與 back、forward 或 reload 比對。"
+
+msgid "Patterns are matched against the URL the new tab opens (about:blank for an empty tab)."
+msgstr "模式會與新分頁開啟的 URL 比對（空白分頁為 about:blank）。"
+
+msgid "Patterns are matched against the absolute path to the skill's SKILL.md file."
+msgstr "模式會與技能 SKILL.md 檔案的絕對路徑比對。"
+
+msgid "Patterns are matched against the direction: `up`, `down`, `left` or `right`."
+msgstr "模式會與方向比對：`up`、`down`、`left` 或 `right`。"
+
+msgid "Patterns are matched against the directory path being created."
+msgstr "模式會與正在建立的資料夾路徑比對。"
+
+msgid "Patterns are matched against the element's ref, such as `e12`, or against the point as `x,y`."
+msgstr "模式會與元素的 ref（例如 `e12`）比對，或與以 `x,y` 表示的位置比對。"
+
+msgid "Patterns are matched against the file path being edited."
+msgstr "模式會與正在編輯的檔案路徑比對。"
+
+msgid "Patterns are matched against the file path being written."
+msgstr "模式會與正在寫入的檔案路徑比對。"
+
+msgid "Patterns are matched against the keys being pressed, such as `ctrl+a Backspace`."
+msgstr "模式會與按下的按鍵比對，例如 `ctrl+a Backspace`。"
+
+msgid "Patterns are matched against the name of the code action. Its edits are written straight into the buffer without going through diff review."
+msgstr "模式會與程式碼動作的名稱比對。其編輯內容會直接寫入緩衝區，不經過差異檢閱。"
+
+msgid "Patterns are matched against the new value (an array or other non-text value as JSON)."
+msgstr "模式會與新值比對（陣列或其他非文字值以 JSON 表示）。"
+
+msgid "Patterns are matched against the path being deleted."
+msgstr "模式會與正在刪除的路徑比對。"
+
+msgid "Patterns are matched against the search query."
+msgstr "模式會與搜尋查詢比對。"
+
+msgid "Patterns are matched against the symbol's name before the rename. The rename skips diff review, and every file that references the symbol is saved."
+msgstr "模式會與重新命名前的符號名稱比對。重新命名會略過差異檢閱，且所有參考該符號的檔案都會被儲存。"
+
+msgid "Patterns are matched against the tab's id, such as `1`."
+msgstr "模式會與分頁的 ID 比對，例如 `1`。"
+
+msgid "Patterns are matched against the text being typed."
+msgstr "模式會與要輸入的文字比對。"
+
+msgid "Patterns are matched against the whole command, starting with `git`, such as `git commit -m 'Fix the parser'`."
+msgstr "模式會與以 `git` 開頭的完整命令比對，例如 `git commit -m 'Fix the parser'`。"
+
+msgid "Patterns are matched independently against the source path and the destination path. Enter either path below to test."
+msgstr "模式會分別與來源路徑和目的地路徑比對。請在下方輸入任一路徑進行測試。"
+
+msgid "Pause Folder Code After Agent Writes Until Resumed"
+msgstr "代理寫入後暫停資料夾中的程式碼，直到繼續執行"
+
+msgid "Preserves thinking in chat history"
+msgstr "在聊天歷程記錄中保留思考"
+
+msgid "Pressing keys in pages in the built-in browser"
+msgstr "在內建瀏覽器的頁面中按下按鍵"
+
+msgid "Project"
+msgstr "專案"
+
+msgid "Project-wide symbol renames by the language server"
+msgstr "由語言伺服器在整個專案中重新命名符號"
+
+msgid "Provider"
+msgstr "提供者"
+
+msgid "Provider Name"
+msgstr "提供者名稱"
+
+msgid "Provider Name cannot be empty"
+msgstr "提供者名稱不可為空"
+
+msgid "Provider Name is already taken by another provider"
+msgstr "提供者名稱已被其他提供者使用"
+
+msgid "Proxied"
+msgstr "經由 Proxy"
+
+msgid "Proxying for child processes is turned off, so this server's outbound traffic is not controlled by the network allowlist."
+msgstr "子處理序的 Proxy 已關閉，因此此伺服器的對外連線不受網路允許清單管控。"
+
+msgid "Read the file again"
+msgstr "重新讀取檔案"
+
+msgid "Ready"
+msgstr "就緒"
+
+msgid "Reason: {}"
+msgstr "原因：{}"
+
+msgid "Reconnects the server to check whether it can be connected to."
+msgstr "重新連線伺服器，以檢查是否能夠連線。"
+
+msgid "Registered in the allowlist: {hosts}"
+msgstr "已登錄至允許清單：{hosts}"
+
+msgid "Reload"
+msgstr "重新載入"
+
+msgid "Remote"
+msgstr "遠端"
+
+msgid "Remote (HTTP)"
+msgstr "遠端（HTTP）"
+
+msgid "Remote host ({display_name})"
+msgstr "遠端主機（{display_name}）"
+
+msgid "Remove"
+msgstr "移除"
+
+msgid "Remove Allowed Hosts"
+msgstr "移除允許的主機"
+
+msgid "Remove Custom Agent"
+msgstr "移除自訂代理"
+
+msgid "Remove Domain"
+msgstr "移除網域"
+
+msgid "Remove Host"
+msgstr "移除主機"
+
+msgid "Remove Model"
+msgstr "移除模型"
+
+msgid "Remove Path"
+msgstr "移除路徑"
+
+msgid "Remove Registry Agent"
+msgstr "移除登錄庫代理"
+
+msgid "Remove Stored Token"
+msgstr "移除已儲存的權杖"
+
+msgid "Remove the account, its token if no other account uses it, and every repository's pick of it"
+msgstr "移除帳戶、其權杖（若無其他帳戶使用），以及所有儲存庫對它的選擇"
+
+msgid "Remove {entry}"
+msgstr "移除 {entry}"
+
+msgid "Removed from the allowlist: {removed}"
+msgstr "已從允許清單移除：{removed}"
+
+msgid "Removed from the allowlist: {removed}. {kept}"
+msgstr "已從允許清單移除：{removed}。{kept}"
+
+msgid "Removes its entry from language_models in settings.json."
+msgstr "從 settings.json 的 language_models 中移除其項目。"
+
+msgid "Removes the record of the denial. The next time the same launch is requested, you'll be asked again."
+msgstr "移除拒絕的記錄。下次要求相同的啟動時，會再次詢問您。"
+
+msgid "Removes this provider's hosts from network_allowlist.json. Hosts that another provider you consented to needs, and separately written entries such as wildcards, are kept"
+msgstr "從 network_allowlist.json 中移除此提供者的主機。您已同意的其他提供者所需的主機，以及另外撰寫的項目（例如萬用字元）會保留"
+
+msgid "Removes what refers to its models from these settings (a model chosen there goes back to the default): {settings}"
+msgstr "從下列設定中移除參考其模型的部分（在該處選擇的模型會恢復為預設）：{settings}"
+
+msgid "Renaming: the settings that choose this provider's models and your consent move to the new name. Saved threads keep the old name; to continue one, choose a model again."
+msgstr "重新命名：選擇此提供者模型的設定與您的同意會移至新名稱。已儲存的會話會保留舊名稱；若要繼續其中一個，請重新選擇模型。"
+
+msgid "Replaces the binary your user settings specify for the same language server"
+msgstr "取代使用者設定中為同一語言伺服器指定的二進位檔"
+
+msgid "Replaces the formatter your user settings specify"
+msgstr "取代使用者設定中指定的格式器"
+
+msgid "Replaces the server of the same name in your user settings"
+msgstr "取代使用者設定中的同名伺服器"
+
+msgid "Required. A unique name used to identify this MCP server."
+msgstr "必填。用來識別此 MCP 伺服器的唯一名稱。"
+
+msgid "Required. Path to the executable that launches the server, or the name of a command on the PATH (such as npx or uvx). Saving only checks that it can be found; it does not run it."
+msgstr "必填。啟動伺服器的執行檔路徑，或 PATH 中的命令名稱（例如 npx 或 uvx）。儲存時只會檢查是否找得到，不會執行。"
+
+msgid "Required. The base URL of the remote MCP server, such as https://example.com/mcp."
+msgstr "必填。遠端 MCP 伺服器的基礎 URL，例如 https://example.com/mcp。"
+
+msgid "Requires: {requires}"
+msgstr "需要：{requires}"
+
+msgid "Reset"
+msgstr "重設"
+
+msgid "Reset Key"
+msgstr "重設金鑰"
+
+msgid "Reset to Default"
+msgstr "重設為預設值"
+
+msgid "Restricted Mode"
+msgstr "受限模式"
+
+msgid "Result:"
+msgstr "結果："
+
+msgid "Retry"
+msgstr "重試"
+
+msgid "Revoke Approval"
+msgstr "撤回核准"
+
+msgid "Revoke Consent"
+msgstr "撤回同意"
+
+msgid "Revoke Denial"
+msgstr "撤回拒絕"
+
+msgid "Revokes the approval and stops the program if it is running. Starting it again will need your approval again."
+msgstr "撤回核准，並在程式執行中時停止它。再次啟動時需要重新核准。"
+
+msgid "Revokes the approval and stops the server. Starting it again requires allowing it again."
+msgstr "撤回核准並停止伺服器。再次啟動時需要重新允許。"
+
+msgid "Revoking consent shows the warning again, and the provider can no longer be configured. Also removes the hosts registered in the allowlist for this provider"
+msgstr "撤回同意後會再次顯示警告，且無法再設定此提供者。同時也會移除為此提供者登錄至允許清單的主機"
+
+msgid "Run on This Computer"
+msgstr "在這台電腦上執行"
+
+msgid "Run on the SSH Host"
+msgstr "在 SSH 連線目標上執行"
+
+msgid "Running JavaScript in pages in the built-in browser"
+msgstr "在內建瀏覽器的頁面中執行 JavaScript"
+
+msgid "Runs on"
+msgstr "執行於"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md 檔案超過 {}KB 的大小上限"
+
+msgid "SSH Key"
+msgstr "SSH 金鑰"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Save Provider"
+msgstr "儲存提供者"
+
+msgid "Save Skill"
+msgstr "儲存技能"
+
+msgid "Save and Start"
+msgstr "儲存並啟動"
+
+msgid "Saved threads that used it stay in the history; to continue one, choose another model."
+msgstr "使用過它的已儲存會話會保留在歷程記錄中；若要繼續其中一個，請選擇其他模型。"
+
+msgid "Saving…"
+msgstr "正在儲存…"
+
+msgid "Scope"
+msgstr "範圍"
+
+msgid "Scrolling pages in the built-in browser"
+msgstr "捲動內建瀏覽器中的頁面"
+
+msgid "Search Settings"
+msgstr "搜尋設定"
+
+msgid "Search fonts…"
+msgstr "搜尋字型…"
+
+msgid "Search icon themes…"
+msgstr "搜尋圖示佈景主題…"
+
+msgid "Search models…"
+msgstr "搜尋模型…"
+
+msgid "Search settings…"
+msgstr "搜尋設定…"
+
+msgid "Search theme…"
+msgstr "搜尋佈景主題…"
+
+msgid "Select"
+msgstr "選取"
+
+msgid "Select a model…"
+msgstr "選取模型…"
+
+msgid "Select which provider to use for edit predictions."
+msgstr "選取要用於編輯預測的提供者。"
+
+msgid "Server Name"
+msgstr "伺服器名稱"
+
+msgid "Server name is required."
+msgstr "伺服器名稱為必填。"
+
+msgid "Server settings on the remote host"
+msgstr "遠端主機上的伺服器設定"
+
+msgid "Server settings on {display_name}"
+msgstr "{display_name} 上的伺服器設定"
+
+msgid "Servers can't be added all at once while one has a name that is already taken. Open each server marked \"A server with this name already exists\" in the form and rename it before adding it."
+msgstr "有伺服器的名稱已被使用時，無法一次新增所有伺服器。請在表單中開啟每個標示為「已存在同名的伺服器」的伺服器，重新命名後再新增。"
+
+msgid "Set Up {name}"
+msgstr "設定 {name}"
+
+msgid "Setting the values of form fields in the built-in browser"
+msgstr "在內建瀏覽器中設定表單欄位的值"
+
+msgid "Settings Content"
+msgstr "設定內容"
+
+msgid "Settings File"
+msgstr "設定檔案"
+
+msgid "Settings Navigation"
+msgstr "設定導覽"
+
+msgid "Signing Key"
+msgstr "簽署金鑰"
+
+msgid "Signs in as git is configured"
+msgstr "依 git 的設定登入"
+
+msgid "Signs in to {host} as {login}"
+msgstr "以 {login} 身分登入 {host}"
+
+msgid "Skill Content"
+msgstr "技能內容"
+
+msgid "Start Testing"
+msgstr "開始測試"
+
+msgid "Start {name} on this computer. If it has no model yet, download one first (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "請在這台電腦上啟動 {name}。若尚未有模型，請先下載一個（以 Ollama 為例：ollama pull qwen3:8b），然後按「重試」。"
+
+msgid "Starting with these details is not allowed."
+msgstr "不允許以這些詳細資料啟動。"
+
+msgid "Stop Testing"
+msgstr "停止測試"
+
+msgid "Stored in the system keychain, not in settings.json."
+msgstr "儲存在系統鑰匙圈中，而非 settings.json。"
+
+msgid "Submit"
+msgstr "送出"
+
+msgid "Subscription"
+msgstr "訂閱"
+
+msgid "Subscription or API Key"
+msgstr "訂閱或 API 金鑰"
+
+msgid "Supports /chat/completions"
+msgstr "支援 /chat/completions"
+
+msgid "Supports images"
+msgstr "支援影像"
+
+msgid "Supports parallel_tool_calls"
+msgstr "支援 parallel_tool_calls"
+
+msgid "Supports prompt_cache_key"
+msgstr "支援 prompt_cache_key"
+
+msgid "Supports thinking"
+msgstr "支援思考"
+
+msgid "Supports tools"
+msgstr "支援工具"
+
+msgid "Switching the current AI tab in the built-in browser"
+msgstr "在內建瀏覽器中切換目前的 AI 分頁"
+
+msgid "System Default"
+msgstr "系統預設"
+
+msgid "Test Connection"
+msgstr "測試連線"
+
+msgid "Test Your Rules"
+msgstr "測試規則"
+
+msgid "Testing the connection…"
+msgstr "正在測試連線…"
+
+msgid "Testing…"
+msgstr "正在測試…"
+
+msgid "The API URL changed, so enter the API key for the new URL. The saved key is not sent to a different URL."
+msgstr "API URL 已變更，請輸入新 URL 的 API 金鑰。已儲存的金鑰不會傳送至其他 URL。"
+
+msgid "The API key could not be saved: {error}"
+msgstr "無法儲存 API 金鑰：{error}"
+
+msgid "The API key sent as Authorization: Bearer {{key}}."
+msgstr "API 金鑰會以 Authorization: Bearer {{key}} 的形式傳送。"
+
+msgid "The approval records are unavailable, so the decision can't be revoked."
+msgstr "無法使用核准記錄，因此無法撤回決定。"
+
+msgid "The approval records are unavailable, so the decision can't be saved."
+msgstr "無法使用核准記錄，因此無法儲存決定。"
+
+msgid "The approval records are unavailable, so the list can't be shown."
+msgstr "無法使用核准記錄，因此無法顯示清單。"
+
+msgid "The approval records can't be read, so it won't be started: {error}"
+msgstr "無法讀取核准記錄，因此不會啟動：{error}"
+
+msgid "The approval records can't be read, so no decision can be made."
+msgstr "無法讀取核准記錄，因此無法做出決定。"
+
+msgid "The author and committer email of commits (user.email)."
+msgstr "提交的作者與提交者電子郵件（user.email）。"
+
+msgid "The author and committer name of commits (user.name)."
+msgstr "提交的作者與提交者名稱（user.name）。"
+
+msgid "The base URL for the compatible API."
+msgstr "相容 API 的基礎 URL。"
+
+msgid "The connection can't be tested until the server is allowed to start."
+msgstr "在允許伺服器啟動之前，無法測試連線。"
+
+msgid "The contents of the argument file {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "引數檔案 {path} 的內容不包含在核准中。之後內容變更時，不會再次詢問您。"
+
+msgid "The contents of the folder {path} are not part of the approval. You won't be asked again if the contents change later."
+msgstr "資料夾 {path} 的內容不包含在核准中。之後內容變更時，不會再次詢問您。"
+
+msgid "The contents of the remote file {path} can't be checked from here, so they are not part of the approval. You won't be asked again if the contents change later."
+msgstr "無法從此處檢查遠端檔案 {path} 的內容，因此不包含在核准中。之後內容變更時，不會再次詢問您。"
+
+msgid "The endpoint depends on the AWS region (for example, bedrock-runtime.us-east-1.amazonaws.com). Register the host for the region you actually use in the allowlist."
+msgstr "端點取決於 AWS 區域（例如 bedrock-runtime.us-east-1.amazonaws.com）。請將您實際使用的區域的主機登錄至允許清單。"
+
+msgid "The key is kept in this computer's credential store, not in a settings file."
+msgstr "金鑰會保存在這台電腦的認證資訊存放區中，而不是設定檔案中。"
+
+msgid "The maximum number of tokens the model can output."
+msgstr "模型可輸出的 Token 數上限。"
+
+msgid "The model context window size."
+msgstr "模型的上下文視窗大小。"
+
+msgid "The model's name in the provider's API."
+msgstr "提供者 API 中的模型名稱。"
+
+msgid "The name the account is picked by in the Git panel."
+msgstr "在 Git 面板中選擇帳戶時所使用的名稱。"
+
+msgid "The network allowlist blocked the connection to {host}. Add this host under \"Network Allowlist\" on the \"Network\" page."
+msgstr "網路允許清單封鎖了與 {host} 的連線。請在「網路」頁面的「網路允許清單」下新增此主機。"
+
+msgid "The sandbox is disabled, so terminal commands are confirmed every time, even with \"Allow\"."
+msgstr "沙箱已停用，因此即使設為「允許」，終端機命令每次都會要求確認。"
+
+msgid "The saved key belongs to the previous API URL and is not sent to the new one. Enter the key for this URL."
+msgstr "已儲存的金鑰屬於先前的 API URL，不會傳送至新的 URL。請輸入此 URL 的金鑰。"
+
+msgid "The server didn't become ready for connections."
+msgstr "伺服器未進入可連線的狀態。"
+
+msgid "The server returned HTTP {status}."
+msgstr "伺服器傳回 HTTP {status}。"
+
+msgid "The server returned HTTP {status}: {body}"
+msgstr "伺服器傳回 HTTP {status}：{body}"
+
+msgid "The user name on the host that goes with the token."
+msgstr "與權杖對應的主機使用者名稱。"
+
+msgid "The value of `{key}` is not an object ({{ … }})."
+msgstr "`{key}` 的值不是物件（{{ … }}）。"
+
+msgid "These fields weren't loaded because Zed doesn't use them: {keys}"
+msgstr "下列欄位因 ForgeKairos 不使用而未載入：{keys}"
+
+msgid "These patterns failed to compile as regular expressions. The tool will be blocked until they are fixed or removed."
+msgstr "這些模式無法編譯為規則運算式。在修正或移除這些模式之前，該工具將無法執行。"
+
+msgid "They can be automatically migrated to the latest version."
+msgstr "可自動移轉至最新版本。"
+
+msgid "They must be manually migrated to the latest version."
+msgstr "必須手動移轉至最新版本。"
+
+msgid "Thinking Effort: {effort}"
+msgstr "思考深度：{effort}"
+
+msgid "This approval lasts until Zed quits."
+msgstr "此核准在 ForgeKairos 結束前有效。"
+
+msgid "This computer"
+msgstr "這台電腦"
+
+msgid "This consent is shared with the \"Zed\" LLM provider on the AI page. Withdrawing it applies to both edit predictions and the agent."
+msgstr "此同意與 AI 頁面上的「Zed」LLM 提供者共用。撤回後將同時套用至編輯預測與代理。"
+
+msgid "This covers outbound traffic from AI providers (LLMs), agent tools (fetch / web search), MCP servers, external agent (ACP) processes, and commands that agents run in the sandbox. Traffic from the IDE's own tooling, such as language servers, formatters, debug adapters, extensions, app updates, remote development servers, Git, and the browser panel, is not covered and is not restricted."
+msgstr "此範圍涵蓋來自 AI 提供者（LLM）、代理工具（fetch / 網頁搜尋）、MCP 伺服器、外部代理（ACP）處理序，以及代理在沙箱中執行的命令的對外連線。IDE 本身工具的連線，例如語言伺服器、格式器、偵錯介面卡、擴充功能、應用程式更新、遠端開發伺服器、Git 與瀏覽器面板，不在範圍內，也不受限制。"
+
+msgid "This entry is ignored because its format is invalid."
+msgstr "此項目的格式無效，因此會被忽略。"
+
+msgid "This project is in restricted mode. Some project settings may not apply."
+msgstr "此專案處於受限模式，部分專案設定可能無法套用。"
+
+msgid "This project's definition is not allowed to start."
+msgstr "不允許啟動此專案的定義。"
+
+msgid "This project's folder is no longer open."
+msgstr "此專案的資料夾已不再開啟。"
+
+msgid "This project's settings are trying to start a program as shown below. Review it before choosing."
+msgstr "此專案的設定正嘗試以下列內容啟動程式。請先檢閱再做選擇。"
+
+msgid "This project's settings want to start a program"
+msgstr "此專案的設定要求啟動程式"
+
+msgid "This provider connects to an external service. Review the warning about training risks and check the box"
+msgstr "此提供者會連線至外部服務。請檢閱有關模型訓練風險的警告並勾選方塊"
+
+msgid "This provider is defined outside the top level of your settings.json (for example, in a release channel, OS or profile override), so it can't be edited or deleted here. Edit it in settings.json."
+msgstr "此提供者定義於 settings.json 的最上層之外（例如發行頻道、作業系統或設定檔的覆寫），因此無法在此編輯或刪除。請在 settings.json 中編輯。"
+
+msgid "This provider is no longer in settings.json, so nothing was saved. Close the form and add it again."
+msgstr "此提供者已不在 settings.json 中，因此未儲存任何內容。請關閉表單並重新新增。"
+
+msgid "This provider will use an Anthropic Messages-compatible API."
+msgstr "此提供者將使用與 Anthropic Messages 相容的 API。"
+
+msgid "This provider will use an OpenAI-compatible API."
+msgstr "此提供者將使用與 OpenAI 相容的 API。"
+
+msgid "This provider's endpoint cannot be determined from settings. Verify where your data will be sent before enabling it."
+msgstr "無法從設定中判斷此提供者的端點。啟用前請確認您的資料將傳送至何處。"
+
+msgid "This server hasn't been created yet. Check its settings and extension."
+msgstr "此伺服器尚未建立。請檢查其設定與擴充功能。"
+
+msgid "This server is defined in the project settings file {file_label}. Saving rewrites this file (not your user settings). Because the definition changes, the server must be allowed again before it starts."
+msgstr "此伺服器定義於專案設定檔案 {file_label} 中。儲存時會重寫此檔案（而非使用者設定）。由於定義會變更，伺服器啟動前必須再次允許。"
+
+msgid "This server is disabled. Enable it before testing the connection."
+msgstr "此伺服器已停用。請先啟用再測試連線。"
+
+msgid "This server starts in an empty folder of Zed's own, not in the project's folder. To have it work on a project, pass the folder's absolute path as an argument."
+msgstr "此伺服器會在 ForgeKairos 專用的空資料夾中啟動，而不是在專案資料夾中。若要讓它處理專案，請將資料夾的絕對路徑作為引數傳入。"
+
+msgid "This server's child process goes through the loopback proxy, so its outbound traffic is controlled by the network allowlist."
+msgstr "此伺服器的子處理序會經由回送 Proxy，因此其對外連線受網路允許清單管控。"
+
+msgid "This server's definition in the project settings file changed after the form was opened. Open the form again."
+msgstr "開啟表單後，專案設定檔案中此伺服器的定義已變更。請重新開啟表單。"
+
+msgid "This server's environment variables name a proxy, so the loopback proxy is not applied. Its outbound traffic is not controlled by the network allowlist."
+msgstr "此伺服器的環境變數指定了 Proxy，因此不會套用回送 Proxy。其對外連線不受網路允許清單管控。"
+
+msgid "This will move {} to the trash. This skill is shared with other agent tools {shared_scope}, so it will no longer be available to them either."
+msgstr "這會將 {} 移至垃圾桶。此技能與 {shared_scope} 的其他代理工具共用，因此這些工具也將無法再使用此技能。"
+
+msgid "Timeout (seconds)"
+msgstr "逾時（秒）"
+
+msgid "Timeout must be a positive whole number of seconds."
+msgstr "逾時秒數必須是正整數。"
+
+msgid "To find an API key, visit the {link}"
+msgstr "請前往 {link} 取得 API 金鑰"
+
+msgid "To reset your API key, unset the {env_var_name} environment variable."
+msgstr "若要重設 API 金鑰，請取消設定 {env_var_name} 環境變數。"
+
+msgid "To reset your API key, unset the {} environment variable."
+msgstr "若要重設 API 金鑰，請取消設定 {} 環境變數。"
+
+msgid "Token"
+msgstr "權杖"
+
+msgid "Turning this off sets this project's definition to \"Don't Allow\" and stops the server."
+msgstr "關閉此項會將此專案的定義設為「不允許」並停止伺服器。"
+
+msgid "Turning this on allows this project's definition and starts the server."
+msgstr "開啟此項會允許此專案的定義並啟動伺服器。"
+
+msgid "Typing text into pages in the built-in browser"
+msgstr "在內建瀏覽器的頁面中輸入文字"
+
+msgid "URL"
+msgstr "URL"
+
+msgid "URL is required."
+msgstr "URL 為必填。"
+
+msgid "Uninstall MCP Server"
+msgstr "解除安裝 MCP 伺服器"
+
+msgid "Use Subscription Sign-In for Claude (ACP)"
+msgstr "為 Claude（ACP）使用訂閱登入"
+
+msgid "Use This Template"
+msgstr "使用此範本"
+
+msgid "User"
+msgstr "使用者"
+
+msgid "User Name"
+msgstr "使用者名稱"
+
+msgid "Uses max_tokens for output limit"
+msgstr "使用 max_tokens 作為輸出上限"
+
+msgid "Value"
+msgstr "值"
+
+msgid "View Other Projects"
+msgstr "檢視其他專案"
+
+msgid "Visit the {link} to generate an API key."
+msgstr "請前往 {link} 產生 API 金鑰。"
+
+msgid "Waiting for approval: this command was resolved on the remote host and needs your permission to start. Review the details before allowing it."
+msgstr "等待核准：此命令是在遠端主機上解析的，需要您的允許才能啟動。允許前請檢閱詳細資料。"
+
+msgid "Waiting for approval: this project's settings ask to start this server. Review the details before allowing it."
+msgstr "等待核准：此專案的設定要求啟動此伺服器。允許前請檢閱詳細資料。"
+
+msgid "Warn About Confusable Unicode"
+msgstr "易混淆 Unicode 字元警告"
+
+msgid "Warn About Windows-Drive Grants"
+msgstr "Windows 磁碟機授權警告"
+
+msgid "Warn when an approval prompt requests a domain or write path that contains potentially confusable Unicode characters, such as homoglyphs (i.e. two symbols that look similar, such as a Cyrillic `а`)"
+msgstr "當核准提示要求的網域或寫入路徑包含可能造成混淆的 Unicode 字元（例如同形字，即兩個外觀相似的符號，如西里爾字母 `а`）時發出警告"
+
+msgid "Web search queries"
+msgstr "網頁搜尋查詢"
+
+msgid "When enabled, each child process for ACP agents, MCP servers, and the npm that installs AI agents is given a loopback proxy, so its outbound traffic is also checked against the allowlist above. Enabled by default. When disabled, outbound traffic from these child processes is outside the allowlist's control (AI traffic from the IDE itself stays controlled)."
+msgstr "啟用時，ACP 代理、MCP 伺服器，以及用於安裝 AI 代理的 npm 的每個子處理序都會取得回送 Proxy，因此其對外連線也會依上方的允許清單檢查。預設為啟用。停用時，這些子處理序的對外連線將不受允許清單管控（IDE 本身的 AI 連線仍受管控）。"
+
+msgid "When enabled, the code you enter and the content of your conversations are sent to {name}'s servers. Depending on the provider's policies, they may be stored and used to train models. If you use this for work, be sure to check your organization's policies."
+msgstr "啟用後，您輸入的程式碼與對話內容會傳送至 {name} 的伺服器。視提供者的政策而定，這些內容可能會被儲存並用於訓練模型。若用於工作，請務必確認您組織的政策。"
+
+msgid "When it runs on the SSH host, the command is resolved there (a server provided by an extension needs the same extension installed there too). When it runs on this computer, the files the server reads and writes are the ones on this computer."
+msgstr "在 SSH 主機上執行時，命令會在該處解析（由擴充功能提供的伺服器，該處也需要安裝相同的擴充功能）。在這台電腦上執行時，伺服器讀寫的是這台電腦上的檔案。"
+
+msgid "When off (the default), nothing that the agent features newly start or run goes outside the sandbox: terminal commands that can't run in the sandbox, starting an external agent or Claude Code outside the sandbox, and resuming a thread that was started there are all refused without asking, and the settings that always start them outside are ignored. A connection already running outside the sandbox keeps running. MCP servers (context servers) are not covered by this setting. When on, each of those asks first or follows its own setting."
+msgstr "關閉時（預設），代理功能新啟動或執行的任何項目都不會在沙箱外執行：無法在沙箱中執行的終端機命令、在沙箱外啟動外部代理或 Claude Code，以及繼續在沙箱外開始的會話，全部都會直接拒絕而不詢問，且一律在沙箱外啟動的設定也會被忽略。已在沙箱外執行的連線會繼續執行。MCP 伺服器（上下文伺服器）不在此設定的範圍內。開啟時，上述各項會先詢問，或依循各自的設定。"
+
+msgid "When the server runs on the SSH host, type the path on the host directly."
+msgstr "伺服器在 SSH 主機上執行時，請直接輸入主機上的路徑。"
+
+msgid "Whether each program that a project's settings tried to start was allowed or denied. Revoking a decision stops the program if it is running, and you'll be asked again the next time it needs to start."
+msgstr "專案設定嘗試啟動的每個程式是被允許還是被拒絕。撤回決定會在程式執行中時停止它，且下次需要啟動時會再次詢問您。"
+
+msgid "While the file cannot be parsed, the allowlist is treated as empty (only loopback is allowed). Fix the file directly. Editing from this page is disabled."
+msgstr "無法剖析檔案期間，允許清單會被視為空白（只允許回送位址）。請直接修正檔案。已停用從此頁面編輯。"
+
+msgid "Wildcards are only allowed as a leading label, e.g. *.github.com."
+msgstr "萬用字元只允許作為開頭標籤，例如 *.github.com。"
+
+msgid "Windows Credential Manager"
+msgstr "Windows 認證管理員"
+
+msgid "Windows only: warn when a sandbox grant targets a file on a Windows drive (accessed inside WSL via DrvFs). Such grants are enforced through a translated path and their sandbox-integrity guarantees are weaker than files on the Linux distro's own filesystem."
+msgstr "僅限 Windows：當沙箱授權指向 Windows 磁碟機上的檔案（在 WSL 中透過 DrvFs 存取）時發出警告。此類授權是透過轉換後的路徑強制執行，其沙箱完整性保證弱於 Linux 發行版自身檔案系統中的檔案。"
+
+msgid "Withdrawing consent does not stop Zed while it is the selected provider (the warning is shown again and Zed disappears from the \"Provider\" list above). To stop it, choose \"None\" under \"Provider\" above."
+msgstr "撤回同意並不會在 Zed 為所選提供者時停止它（會再次顯示警告，且 Zed 會從上方的「提供者」清單中消失）。若要停止，請在上方的「提供者」下選擇「無」。"
+
+msgid "Withdraws your consent to sending data to it, and removes its host from the allowlist unless another provider you consented to needs it."
+msgstr "撤回您對傳送資料給它的同意，並從允許清單中移除其主機（除非您已同意的其他提供者需要該主機）。"
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. It can only be turned off while running outside the sandbox is allowed (above)."
+msgstr "以作業系統層級的沙箱包覆代理執行的終端機命令。只有在允許於沙箱外執行（上方）時才能關閉。"
+
+msgid "Wrap agent-run terminal commands in an OS-level sandbox. When off, commands run with Zed's own permissions, so auto-approval does not apply and each command asks for confirmation. This does not affect external agents themselves or how Claude Code is launched (their settings are on the AI page)."
+msgstr "以作業系統層級的沙箱包覆代理執行的終端機命令。關閉時，命令會以 ForgeKairos 本身的權限執行，因此自動核准不適用，每個命令都會要求確認。這不會影響外部代理本身或 Claude Code 的啟動方式（其設定位於 AI 頁面）。"
+
+msgid "Writable Paths"
+msgstr "可寫入路徑"
+
+msgid "You have consented to using this as an external AI service."
+msgstr "您已同意將此作為外部 AI 服務使用。"
+
+msgid "You have not consented to any providers."
+msgstr "您尚未同意任何提供者。"
+
+msgid "You have not given consent, but the hosts above are still in the allowlist."
+msgstr "您尚未同意，但上方的主機仍在允許清單中。"
+
+msgid "Your settings are out of date, and need to be updated."
+msgstr "設定已過時，需要更新。"
+
+msgid "Your settings file is out of date, automatic migration failed"
+msgstr "設定檔案已過時，自動移轉失敗"
+
+msgid "Zed — Settings"
+msgstr "ForgeKairos — 設定"
+
+msgid "Zed's cloud edit predictions (Zeta). The code you are editing and the code around it are sent to cloud.zed.dev."
+msgstr "Zed 的雲端編輯預測（Zeta）。您正在編輯的程式碼及其周圍的程式碼會傳送至 cloud.zed.dev。"
+
+msgid "`*.` cannot be used with an IP address."
+msgstr "`*.` 不能與 IP 位址一起使用。"
+
+msgid "`rm -rf` commands are always blocked when run on `$HOME`, `~`, `.`, `..`, or `/`"
+msgstr "以 `$HOME`、`~`、`.`、`..` 或 `/` 為目標的 `rm -rf` 命令一律會被封鎖"
+
+msgid "e.g. gpt-5, claude-opus-4, gemini-2.5-pro"
+msgstr "例如 gpt-5、claude-opus-4、gemini-2.5-pro"
+
+msgid "e.g., Fill the PR description following this template."
+msgstr "例如：依照此範本填寫 PR 描述。"
+
+msgid "enabled for all"
+msgstr "對所有項目啟用"
+
+msgid "environment variable"
+msgstr "環境變數"
+
+msgid "failed to check whether {} already exists"
+msgstr "檢查 {} 是否已存在時失敗"
+
+msgid "failed to create skill directory {}"
+msgstr "建立技能資料夾 {} 失敗"
+
+msgid "failed to fetch {raw_url}"
+msgstr "取得 {raw_url} 失敗"
+
+msgid "failed to read response body"
+msgstr "讀取回應內文失敗"
+
+msgid "failed to serialize skill frontmatter as YAML"
+msgstr "將技能前置資料序列化為 YAML 失敗"
+
+msgid "failed to write {}"
+msgstr "寫入 {} 失敗"
+
+msgid "header"
+msgstr "標頭"
+
+msgid "macOS Keychain"
+msgstr "macOS 鑰匙圈"
+
+msgid "network_allowlist.json does not exist yet. The allowlist is treated as empty (only loopback is allowed). The file is created when you add a host."
+msgstr "network_allowlist.json 尚不存在。允許清單會被視為空白（只允許回送位址）。新增主機時會建立此檔案。"
+
+msgid "the system keyring (Secret Service)"
+msgstr "系統金鑰圈（Secret Service）"
+
+msgid "{count} entry registered"
+msgid_plural "{count} entries registered"
+msgstr[0] "已登錄 {count} 個項目"
+
+msgid "{count} rule"
+msgid_plural "{count} rules"
+msgstr[0] "{count} 項規則"
+
+msgid "{count} tool"
+msgid_plural "{count} tools"
+msgstr[0] "{count} 個工具"
+
+msgid "{entry} is already in the list."
+msgstr "{entry} 已在清單中。"
+
+msgid "{host} is already in the allowlist."
+msgstr "{host} 已在允許清單中。"
+
+msgid "{names} (values not shown)"
+msgstr "{names}（不顯示值）"
+
+msgid "{name} (Edit Prediction)"
+msgstr "{name}（編輯預測）"
+
+msgid "{name} is an external AI service"
+msgstr "{name} 是外部 AI 服務"
+
+msgid "{name} is not available here. Its settings may have been removed."
+msgstr "{name} 在此處無法使用。其設定可能已被移除。"
+
+msgid "{name} is ready. Opening a new thread…"
+msgstr "{name} 已就緒。正在開啟新的會話…"
+
+msgid "{name} is running but has no model. Download one (for Ollama, for example: ollama pull qwen3:8b), then press Retry."
+msgstr "{name} 正在執行，但沒有模型。請下載一個（以 Ollama 為例：ollama pull qwen3:8b），然後按「重試」。"
+
+msgid "{name} is signed in, but no model could be listed. The list is fetched from {name}, so its hosts have to be in the allowlist; also check that your account or plan includes models. Then press Retry."
+msgstr "已登入 {name}，但無法列出任何模型。清單是從 {name} 取得的，因此其主機必須在允許清單中；另請確認您的帳戶或方案包含模型。然後按「重試」。"
+
+msgid "{name} must be a number"
+msgstr "{name} 必須是數字"
+
+msgid "{path} can't be read, so its contents can't be checked."
+msgstr "無法讀取 {path}，因此無法檢查其內容。"
+
+msgid "{path} is a file in the project, but its contents are not part of the approval. You won't be asked again if the contents change later."
+msgstr "{path} 是專案中的檔案，但其內容不包含在核准中。之後內容變更時，不會再次詢問您。"
+
+msgid "{program} starts another program. Its contents are not part of the approval."
+msgstr "{program} 會啟動另一個程式。其內容不包含在核准中。"
+
+msgid "{program} starts in the project folder {working_directory} and may load code from it. You won't be asked again if the contents change later."
+msgstr "{program} 會在專案資料夾 {working_directory} 中啟動，並可能從中載入程式碼。之後內容變更時，不會再次詢問您。"
+
+msgid "{provider_name} API Key"
+msgstr "{provider_name} API 金鑰"
+
+msgid "{provider_name} dashboard"
+msgstr "{provider_name} 儀表板"
+
+msgid "{provider_name} dashboard."
+msgstr "{provider_name} 儀表板。"
+
+msgid "{{ \"mcpServers\": {{ \"server-name\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+msgstr "{{ \"mcpServers\": {{ \"伺服器名稱\": {{ \"command\": \"…\", \"args\": [\"…\"] }} }} }}"
+
+msgid "{} API Key"
+msgstr "{} API 金鑰"
+
+msgid "{} Tool"
+msgstr "{} 工具"
+
+msgid "{} invalid"
+msgstr "{} 個無效模式"
+
+msgctxt "agent tool"
+msgid "Apply Code Action"
+msgstr "套用程式碼動作"
+
+msgctxt "agent tool"
+msgid "Browser: Click"
+msgstr "瀏覽器：點按"
+
+msgctxt "agent tool"
+msgid "Browser: Close Tab"
+msgstr "瀏覽器：關閉分頁"
+
+msgctxt "agent tool"
+msgid "Browser: Hover"
+msgstr "瀏覽器：暫留"
+
+msgctxt "agent tool"
+msgid "Browser: Navigate"
+msgstr "瀏覽器：前往"
+
+msgctxt "agent tool"
+msgid "Browser: Open Tab"
+msgstr "瀏覽器：開啟分頁"
+
+msgctxt "agent tool"
+msgid "Browser: Press Keys"
+msgstr "瀏覽器：按下按鍵"
+
+msgctxt "agent tool"
+msgid "Browser: Run JavaScript"
+msgstr "瀏覽器：執行 JavaScript"
+
+msgctxt "agent tool"
+msgid "Browser: Scroll"
+msgstr "瀏覽器：捲動"
+
+msgctxt "agent tool"
+msgid "Browser: Set Value"
+msgstr "瀏覽器：設定值"
+
+msgctxt "agent tool"
+msgid "Browser: Switch Tab"
+msgstr "瀏覽器：切換分頁"
+
+msgctxt "agent tool"
+msgid "Browser: Type"
+msgstr "瀏覽器：輸入文字"
+
+msgctxt "agent tool"
+msgid "Copy Path"
+msgstr "複製路徑"
+
+msgctxt "agent tool"
+msgid "Create Directory"
+msgstr "建立資料夾"
+
+msgctxt "agent tool"
+msgid "Delete Path"
+msgstr "刪除路徑"
+
+msgctxt "agent tool"
+msgid "Edit File"
+msgstr "編輯檔案"
+
+msgctxt "agent tool"
+msgid "Fetch"
+msgstr "擷取"
+
+msgctxt "agent tool"
+msgid "Git"
+msgstr "Git"
+
+msgctxt "agent tool"
+msgid "Move Path"
+msgstr "移動路徑"
+
+msgctxt "agent tool"
+msgid "Rename Symbol"
+msgstr "重新命名符號"
+
+msgctxt "agent tool"
+msgid "Skill"
+msgstr "技能"
+
+msgctxt "agent tool"
+msgid "Terminal"
+msgstr "終端機"
+
+msgctxt "agent tool"
+msgid "Web Search"
+msgstr "網頁搜尋"
+
+msgctxt "agent tool"
+msgid "Write File"
+msgstr "寫入檔案"
+
+msgctxt "launch approval"
+msgid "Details"
+msgstr "詳細資料"
+
+msgctxt "launch approval"
+msgid "Review"
+msgstr "檢閱"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "page title"
+msgid "Add Custom Agent"
+msgstr "新增自訂代理"
+
+msgctxt "page title"
+msgid "Configure MCP Server"
+msgstr "設定 MCP 伺服器"
+
+msgctxt "skill scope"
+msgid "global"
+msgstr "全域"
+
+msgctxt "skill scope"
+msgid "on this machine"
+msgstr "本機上使用"
+
+msgctxt "skill scope"
+msgid "project"
+msgstr "專案"
+
+msgctxt "skill scope"
+msgid "used in this project"
+msgstr "此專案中使用"
+
+msgctxt "tool permission mode"
+msgid "AI Judge"
+msgstr "由 AI 判斷"
+
+msgctxt "tool permission mode"
+msgid "Allow"
+msgstr "允許"
+
+msgctxt "tool permission mode"
+msgid "Confirm"
+msgstr "確認"
+
+msgctxt "tool permission mode"
+msgid "Deny"
+msgstr "拒絕"

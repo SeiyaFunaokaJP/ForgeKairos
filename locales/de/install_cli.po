@@ -1,0 +1,30 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "CLI should already be installed"
+msgstr "CLI sollte bereits installiert sein"
+
+msgid "Cannot install the Zed CLI"
+msgstr "Die ForgeKairos-CLI kann nicht installiert werden"
+
+msgid "Couldn't install the Zed CLI"
+msgstr "Die ForgeKairos-CLI konnte nicht installiert werden"
+
+msgid "If you installed Zed from our official release add ~/.local/bin to your PATH.\n\nIf you installed Zed from a different source like your package manager, then you may need to create an alias/symlink to `{cli_name}` manually."
+msgstr "Wenn Sie ForgeKairos aus unserem offiziellen Release installiert haben, fügen Sie ~/.local/bin zu Ihrem PATH hinzu.\n\nWenn Sie ForgeKairos aus einer anderen Quelle wie Ihrem Paketmanager installiert haben, müssen Sie möglicherweise manuell einen Alias oder Symlink auf `{cli_name}` erstellen."
+
+msgid "Installed `{cli_name}` to {path}. You can launch {app} from your terminal."
+msgstr "`{cli_name}` wurde in {path} installiert. Sie können {app} aus Ihrem Terminal starten."
+
+msgid "Show me how"
+msgstr "Anleitung anzeigen"
+
+msgid "You can add `{cli_name}` to your PATH manually."
+msgstr "Sie können `{cli_name}` manuell zu Ihrem PATH hinzufügen."

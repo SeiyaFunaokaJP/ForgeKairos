@@ -1,0 +1,202 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Adding rustup target for cross-compilation"
+msgstr "Agregando el destino de rustup para la compilación cruzada"
+
+msgid "Building remote binary from source for {platform_label} with Zig (development build)"
+msgstr "Compilando desde el código fuente el binario remoto para {platform_label} con Zig (compilación de desarrollo)"
+
+msgid "Building remote server binary from source for {platform_label} (development build)"
+msgstr "Compilando desde el código fuente el binario del servidor remoto para {platform_label} (compilación de desarrollo)"
+
+msgid "Checking the remote environment"
+msgstr "Comprobando el entorno remoto"
+
+msgid "Compressing binary"
+msgstr "Comprimiendo el binario"
+
+msgid "Connecting"
+msgstr "Conectando"
+
+msgid "Connecting (reusing session)"
+msgstr "Conectando (reutilizando la sesión)"
+
+msgid "Could not build a PATH that includes the cmake directory"
+msgstr "No se pudo construir un PATH que incluya el directorio de cmake"
+
+msgid "Could not create a directory on the remote (check the free disk space and the permissions): {dir}"
+msgstr "No se pudo crear un directorio en el remoto (compruebe el espacio libre en disco y los permisos): {dir}"
+
+msgid "Could not delete the server file on the remote host ({status}): {error}"
+msgstr "No se pudo eliminar el archivo del servidor en el host remoto ({status}): {error}"
+
+msgid "Could not install the remote sandbox helper (slirp4netns). Agent commands that use the network will not run, because no sandbox can be created for them. Check that the remote `~/.zed_server/` is writable (free space and permissions) and that the bundled slirp4netns is in the same folder as Zed, then reconnect: {error}"
+msgstr "No se pudo instalar el programa auxiliar del sandbox remoto (slirp4netns). Los comandos del agente que usan la red no se ejecutarán, porque no se puede crear un sandbox para ellos. Compruebe que se puede escribir en `~/.zed_server/` del remoto (espacio libre y permisos) y que el slirp4netns incluido está en la misma carpeta que ForgeKairos; luego vuelva a conectarse: {error}"
+
+msgid "Could not read the remote development server file: {src_path}"
+msgstr "No se pudo leer el archivo del servidor de desarrollo remoto: {src_path}"
+
+msgid "Could not start the command that deletes the server file"
+msgstr "No se pudo iniciar el comando que elimina el archivo del servidor"
+
+msgid "Detecting WSL environment"
+msgstr "Detectando el entorno de WSL"
+
+msgid "Downloading remote development server on host"
+msgstr "Descargando el servidor de desarrollo remoto en el host"
+
+msgid "Extracting remote development server"
+msgstr "Extrayendo el servidor de desarrollo remoto"
+
+msgid "Extracting remote server"
+msgstr "Extrayendo el servidor remoto"
+
+msgid "Failed to connect to host"
+msgstr "No se pudo conectar al host"
+
+msgid "Failed to upload the directory to the remote ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+msgstr "No se pudo subir el directorio al remoto ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+
+msgid "Failed to upload the file to the remote ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+msgstr "No se pudo subir el archivo al remoto ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+
+msgid "Initializing remote server"
+msgstr "Inicializando el servidor remoto"
+
+msgid "Installing cargo-zigbuild for cross-compilation"
+msgstr "Instalando cargo-zigbuild para la compilación cruzada"
+
+msgid "Neither curl nor wget is available"
+msgstr "No está disponible ni curl ni wget"
+
+msgid "No remote server binary is available. Not on the remote at {remote_path} / bundled artifact `{artifact}` not found in {search_dirs} / build from source: {source_build_status}. The automatic build fails when cmake or zig is not on PATH. Building with script\\build.ps1 prepares the bundled artifact."
+msgstr "No hay ningún binario del servidor remoto disponible. No está en el remoto en {remote_path} / no se encontró el artefacto incluido `{artifact}` en {search_dirs} / compilación desde el código fuente: {source_build_status}. La compilación automática falla cuando cmake o zig no están en el PATH. Compilar con script\\build.ps1 prepara el artefacto incluido."
+
+msgid "On the remote host, delete the files in {folder} whose names start with {prefix}, then reconnect."
+msgstr "En el host remoto, elimine los archivos de {folder} cuyo nombre empiece por {prefix} y luego vuelva a conectarse."
+
+msgid "Opening workspace"
+msgstr "Abriendo el área de trabajo"
+
+msgid "Reinstalling the remote server because it does not match this Zed"
+msgstr "Reinstalando el servidor remoto porque no coincide con este ForgeKairos"
+
+msgid "Remote binary path not set"
+msgstr "No se estableció la ruta del binario remoto"
+
+msgid "SSH connection canceled"
+msgstr "Se canceló la conexión SSH"
+
+msgid "Starting proxy"
+msgstr "Iniciando el proxy"
+
+msgid "Streaming remote server into WSL"
+msgstr "Transfiriendo el servidor remoto a WSL"
+
+msgid "The connection to the remote server was lost while checking its protocol revision"
+msgstr "Se perdió la conexión con el servidor remoto mientras se comprobaba su revisión del protocolo"
+
+msgid "The remote development server path has no file name: {src_path}"
+msgstr "La ruta del servidor de desarrollo remoto no tiene nombre de archivo: {src_path}"
+
+msgid "The remote does not have enough free disk space (about {required} MB needed, {free} MB free). Delete files you no longer need on the remote host, then reconnect."
+msgstr "El remoto no tiene suficiente espacio libre en disco (se necesitan unos {required} MB; hay {free} MB libres). Elimine los archivos que ya no necesite en el host remoto y luego vuelva a conectarse."
+
+msgid "The remote host did not finish deleting the server file within {seconds} seconds"
+msgstr "El host remoto no terminó de eliminar el archivo del servidor en {seconds} segundos"
+
+msgid "The remote may be out of disk space (currently: {free_space})"
+msgstr "Es posible que el remoto no tenga espacio en disco (actualmente: {free_space})"
+
+msgid "The remote may be out of disk space (the free space could not be determined)"
+msgstr "Es posible que el remoto no tenga espacio en disco (no se pudo determinar el espacio libre)"
+
+msgid "The remote server does not match this Zed (it did not answer the protocol revision check; it may be a server from the official Zed or from an older version of this Zed)."
+msgstr "El servidor remoto no coincide con este ForgeKairos (no respondió a la comprobación de la revisión del protocolo; puede ser un servidor del Zed oficial o de una versión anterior de este ForgeKairos)."
+
+msgid "The remote server does not match this Zed (protocol revision: {ours} in this Zed, {theirs} on the server)."
+msgstr "El servidor remoto no coincide con este ForgeKairos (revisión del protocolo: {ours} en este ForgeKairos, {theirs} en el servidor)."
+
+msgid "The server that this Zed installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update Zed."
+msgstr "Es posible que el propio servidor que este ForgeKairos instala en el host remoto no coincida. Elimine {folder} en este equipo y vuelva a conectarse, o actualice ForgeKairos."
+
+msgid "There is no bundled artifact and the download failed as well. Build with script\\build.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
+msgstr "No hay ningún artefacto incluido y la descarga también falló. Compile con script\\build.ps1 para preparar el artefacto incluido o compruebe que este equipo puede acceder al servidor de descarga"
+
+msgid "Uploading remote development server"
+msgstr "Subiendo el servidor de desarrollo remoto"
+
+msgid "Uploading remote development server ({size})"
+msgstr "Subiendo el servidor de desarrollo remoto ({size})"
+
+msgid "Uploading remote server"
+msgstr "Subiendo el servidor remoto"
+
+msgid "Verifying remote development server"
+msgstr "Verificando el servidor de desarrollo remoto"
+
+msgid "Waiting for existing connection attempt"
+msgstr "Esperando el intento de conexión en curso"
+
+msgid "cmake is not on PATH (it is needed to build remote_server). Add the CMake that comes with Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) to PATH, or build with script\\build.ps1 to prepare the bundled artifact"
+msgstr "cmake no está en el PATH (es necesario para compilar remote_server). Agregue al PATH el CMake incluido con Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) o compile con script\\build.ps1 para preparar el artefacto incluido"
+
+msgid "cmake is not on PATH (it is needed to build remote_server). Install cmake"
+msgstr "cmake no está en el PATH (es necesario para compilar remote_server). Instale cmake"
+
+msgid "connecting to host timed out"
+msgstr "se agotó el tiempo de espera al conectar con el host"
+
+msgid "downloading server binary locally"
+msgstr "no se pudo descargar localmente el binario del servidor"
+
+msgid "extracting server binary"
+msgstr "no se pudo extraer el binario del servidor"
+
+msgid "failed to connect: {}"
+msgstr "no se pudo conectar: {}"
+
+msgid "failed to upload server binary"
+msgstr "no se pudo subir el binario del servidor"
+
+msgid "nocompress (default)"
+msgstr "nocompress (predeterminado)"
+
+msgid "not run (ZED_BUILD_REMOTE_SERVER={build_remote_server})"
+msgstr "no se ejecutó (ZED_BUILD_REMOTE_SERVER={build_remote_server})"
+
+msgid "not searched, because the executable's location is unknown"
+msgstr "no se buscó, porque se desconoce la ubicación del ejecutable"
+
+msgid "this build cannot build the remote server from source"
+msgstr "esta compilación no puede compilar el servidor remoto desde el código fuente"
+
+msgid "uploading server binary"
+msgstr "no se pudo subir el binario del servidor"
+
+msgid "{again} The server still does not match after it was reinstalled. {steps_after_reinstall}"
+msgstr "{again} El servidor sigue sin coincidir después de reinstalarlo. {steps_after_reinstall}"
+
+msgid "{available} free, {capacity} used"
+msgstr "{available} libres, {capacity} en uso"
+
+msgid "{free_space} free"
+msgstr "{free_space} libres"
+
+msgid "{message}\nRemote servers of other release channels ({removed}) were removed automatically, but there is still not enough space."
+msgstr "{message}\nLos servidores remotos de otros canales de versión ({removed}) se eliminaron automáticamente, pero sigue sin haber espacio suficiente."
+
+msgid "{mismatch} The server cannot be reinstalled automatically on this host. {steps}"
+msgstr "{mismatch} El servidor no se puede reinstalar automáticamente en este host. {steps}"
+
+msgid "{mismatch} The server could not be reinstalled. {steps}"
+msgstr "{mismatch} No se pudo reinstalar el servidor. {steps}"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

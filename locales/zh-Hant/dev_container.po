@@ -1,0 +1,61 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Confirm Selections"
+msgstr "確認選擇"
+
+msgid "Create Dev Container"
+msgstr "建立 Dev Container"
+
+msgid "Error Creating Dev Container Definition"
+msgstr "建立 Dev Container 定義時發生錯誤"
+
+msgid "Error Retrieving Templates"
+msgstr "擷取範本時發生錯誤"
+
+msgid "Go Back"
+msgstr "返回"
+
+msgid "Multiple containers match this project's dev container labels ({ids}). Zed can't decide which to connect to. Stop and remove the stale one(s) with `docker stop <id>` and `docker rm <id>`, then try again."
+msgstr "有多個容器符合此專案的 Dev Container 標籤（{ids}）。ForgeKairos 無法決定要連線至哪一個。請以 `docker stop <id>` 與 `docker rm <id>` 停止並移除過時的容器，然後再試一次。"
+
+msgid "Overwrite"
+msgstr "覆寫"
+
+msgid "Overwrite Existing Configuration?"
+msgstr "要覆寫現有設定嗎？"
+
+msgid "Querying features..."
+msgstr "正在查詢功能..."
+
+msgid "Querying template registry..."
+msgstr "正在查詢範本登錄庫..."
+
+msgid "Search for Dev Container Templates"
+msgstr "搜尋 Dev Container 範本"
+
+msgid "Select Feature"
+msgstr "選取功能"
+
+msgid "Select a template"
+msgstr "選取範本"
+
+msgid "Select features to add"
+msgstr "選取要新增的功能"
+
+msgid "Template Option: "
+msgstr "範本選項："
+
+msgctxt "dev container wizard"
+msgid "Continue"
+msgstr "繼續"

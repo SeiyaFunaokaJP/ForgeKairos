@@ -439,11 +439,11 @@ impl NewProcessModal {
         };
         let scenario = self.debug_scenario(adapter, cx);
         cx.spawn_in(window, async move |this, cx| {
-            let scenario = scenario.await.context("no scenario to save")?;
+            let scenario = scenario.await.context(i18n::t!("no scenario to save"))?;
             let worktree_id = task_contexts
-                .context("no task contexts")?
+                .context(i18n::t!("no task contexts"))?
                 .worktree()
-                .context("no active worktree")?;
+                .context(i18n::t!("no active worktree"))?;
             this.update_in(cx, |this, window, cx| {
                 this.debug_panel.update(cx, |panel, cx| {
                     panel.save_scenario(scenario, worktree_id, window, cx)

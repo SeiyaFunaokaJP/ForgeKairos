@@ -1,0 +1,60 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cancelling ETW recording..."
+msgstr "ETW の記録をキャンセルしています..."
+
+msgid "ETW recording cancelled"
+msgstr "ETW の記録をキャンセルしました"
+
+msgid "ETW recording ended unexpectedly"
+msgstr "ETW の記録が予期せず終了しました"
+
+msgid "ETW recording failed: {message}"
+msgstr "ETW の記録に失敗しました: {message}"
+
+msgid "ETW recording is already in progress"
+msgstr "ETW の記録はすでに実行中です"
+
+msgid "ETW recording is already stopping"
+msgstr "ETW の記録はすでに停止しているところです"
+
+msgid "ETW recording is already waiting for a save location"
+msgstr "ETW の記録はすでに保存先の選択を待っています"
+
+msgid "ETW recording started"
+msgstr "ETW の記録を開始しました"
+
+msgid "ETW trace saved to {}"
+msgstr "ETW トレースを {} に保存しました"
+
+msgid "Failed to cancel ETW recording: {error}"
+msgstr "ETW の記録をキャンセルできませんでした: {error}"
+
+msgid "Failed to complete ETW recording: {error}"
+msgstr "ETW の記録を完了できませんでした: {error}"
+
+msgid "Failed to pick save location: {error}"
+msgstr "保存先を選択できませんでした: {error}"
+
+msgid "Failed to start ETW recording: {error}"
+msgstr "ETW の記録を開始できませんでした: {error}"
+
+msgid "Failed to stop ETW recording: {error}"
+msgstr "ETW の記録を停止できませんでした: {error}"
+
+msgid "No active ETW recording to cancel"
+msgstr "キャンセルする ETW の記録がありません"
+
+msgid "No active ETW recording to stop"
+msgstr "停止する ETW の記録がありません"
+
+msgid "Show in File Manager"
+msgstr "ファイルマネージャーで表示"
+
+msgid "Stopping ETW recording..."
+msgstr "ETW の記録を停止しています..."

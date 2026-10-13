@@ -1,0 +1,241 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "<global>"
+msgstr "<global>"
+
+msgid "<no arguments>"
+msgstr "<keine Argumente>"
+
+msgid "Action"
+msgstr "Aktion"
+
+msgid "Action '{}' not found"
+msgstr "Aktion '{}' nicht gefunden"
+
+msgid "Action Arguments"
+msgstr "Aktionsargumente"
+
+msgid "Action name is required"
+msgstr "Ein Aktionsname ist erforderlich"
+
+msgid "Arguments"
+msgstr "Argumente"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Cannot remove a keybinding that does not exist"
+msgstr "Eine nicht vorhandene Tastenkombination kann nicht entfernt werden"
+
+msgid "Clear Keystrokes"
+msgstr "Tastenanschläge löschen"
+
+msgid "Copy Action"
+msgstr "Aktion kopieren"
+
+msgid "Copy Context"
+msgstr "Kontext kopieren"
+
+msgid "Could not save updated keybinding"
+msgstr "Aktualisierte Tastenkombination konnte nicht gespeichert werden"
+
+msgid "Create Keybinding"
+msgstr "Tastenkombination erstellen"
+
+msgid "Delete"
+msgstr "Löschen"
+
+msgid "Edit"
+msgstr "Bearbeiten"
+
+msgid "Edit Arguments"
+msgstr "Argumente bearbeiten"
+
+msgid "Edit Context"
+msgstr "Kontext bearbeiten"
+
+msgid "Edit Keybinding"
+msgstr "Tastenkombination bearbeiten"
+
+msgid "Edit Keystroke"
+msgstr "Tastenanschlag bearbeiten"
+
+msgid "Edit in JSON"
+msgstr "In JSON bearbeiten"
+
+msgid "Edit this binding"
+msgstr "Diese Tastenkombination bearbeiten"
+
+msgid "Failed to load keymap file"
+msgstr "Die Keymap-Datei konnte nicht geladen werden"
+
+msgid "Failed to parse action arguments as JSON"
+msgstr "Die Aktionsargumente konnten nicht als JSON geparst werden"
+
+msgid "Failed to parse key context"
+msgstr "Tastenkontext konnte nicht geparst werden"
+
+msgid "Failed to update keybinding"
+msgstr "Die Tastenkombination konnte nicht aktualisiert werden"
+
+msgid "Failed to validate action arguments"
+msgstr "Aktionsargumente konnten nicht validiert werden"
+
+msgid "Failed to write keymap file"
+msgstr "Die Keymap-Datei konnte nicht geschrieben werden"
+
+msgid "Filter action names…"
+msgstr "Aktionsnamen filtern…"
+
+msgid "Filters"
+msgstr "Filter"
+
+msgid "Hit it three times to execute"
+msgstr "Dreimal drücken, um auszuführen"
+
+msgid "Keybinding Context"
+msgstr "Tastenkombinationskontext"
+
+msgid "Keymap Editor"
+msgstr "Keymap-Editor"
+
+msgid "Keystrokes"
+msgstr "Tastenanschläge"
+
+msgid "Keystrokes cannot be empty"
+msgstr "Tastenanschläge dürfen nicht leer sein"
+
+msgid "No Action"
+msgstr "Keine Aktion"
+
+msgid "No conflicting keybinds found"
+msgstr "Keine in Konflikt stehenden Tastenkombinationen gefunden"
+
+msgid "No conflicting keybinds found that match the provided query"
+msgstr "Keine in Konflikt stehenden Tastenkombinationen gefunden, die zur Suchanfrage passen"
+
+msgid "No keybinds found matching the entered keystrokes"
+msgstr "Keine Tastenkombinationen für die eingegebenen Tastenanschläge gefunden"
+
+msgid "No matches found for the provided query"
+msgstr "Keine Treffer für die angegebene Abfrage gefunden"
+
+msgid "REC"
+msgstr "AUFN"
+
+msgid "SEARCH"
+msgstr "SUCHE"
+
+msgid "Save"
+msgstr "Speichern"
+
+msgid "Saved edits to the {} action."
+msgstr "Bearbeitungen der Aktion {} wurden gespeichert."
+
+msgid "Search by Keystrokes"
+msgstr "Nach Tastenanschlägen suchen"
+
+msgid "Show Matching Keybindings"
+msgstr "Übereinstimmende Tastenkombinationen anzeigen"
+
+msgid "Show matching keybinds"
+msgstr "Übereinstimmende Tastenkombinationen anzeigen"
+
+msgid "Source"
+msgstr "Quelle"
+
+msgid "Start Recording"
+msgstr "Aufzeichnung starten"
+
+msgid "Start Searching"
+msgstr "Suche starten"
+
+msgid "Stop Recording"
+msgstr "Aufzeichnung beenden"
+
+msgid "Stop Searching"
+msgstr "Suche beenden"
+
+msgid "There is {count} binding with the same keystrokes."
+msgid_plural "There are {count} bindings with the same keystrokes."
+msgstr[0] "Es gibt {count} Tastenkombination mit denselben Tastenanschlägen."
+msgstr[1] "Es gibt {count} Tastenkombinationen mit denselben Tastenanschlägen."
+
+msgid "This action is unbound"
+msgstr "Diese Aktion ist nicht zugewiesen"
+
+msgid "This binding is overridden by other bindings."
+msgstr "Diese Tastenkombination wird durch andere Tastenkombinationen überschrieben."
+
+msgid "This binding is overridden by other bindings.\nUse {}+click to edit this binding"
+msgstr "Diese Tastenkombination wird von anderen Tastenkombinationen überschrieben.\n{}+Klick, um diese Tastenkombination zu bearbeiten"
+
+msgid "This binding is overridden."
+msgstr "Diese Tastenkombination wird überschrieben."
+
+msgid "This keybinding is overridden by the '{}' binding from {}."
+msgstr "Diese Tastenkombination wird von der Tastenkombination '{}' aus {} überschrieben."
+
+msgid "Toggle Exact Match Mode"
+msgstr "Modus für exakte Übereinstimmung umschalten"
+
+msgid "Type an action name"
+msgstr "Aktionsnamen eingeben"
+
+msgid "Use {}+click to show all conflicts"
+msgstr "{}+Klick, um alle Konflikte anzuzeigen"
+
+msgid "User"
+msgstr "Benutzer"
+
+msgid "View"
+msgstr "Ansicht"
+
+msgid "View conflicts"
+msgstr "Konflikte anzeigen"
+
+msgid "Your keybind would conflict with other actions"
+msgstr "Ihre Tastenkombination würde mit anderen Aktionen in Konflikt stehen"
+
+msgid "Your keybind would conflict with the \"{}\" action"
+msgstr "Ihre Tastenkombination würde mit der Aktion \"{}\" in Konflikt stehen"
+
+msgid "Your keybind would conflict with the \"{}\" action and {} other bindings"
+msgstr "Ihre Tastenkombination würde mit der Aktion \"{}\" und {} weiteren Tastenkombinationen in Konflikt stehen"
+
+msgid "the vim keymap"
+msgstr "der Vim-Keymap"
+
+msgid "your base keymap"
+msgstr "Ihrer Basis-Keymap"
+
+msgid "your keymap"
+msgstr "Ihrer Keymap"
+
+msgctxt "keybinding"
+msgid "Categories"
+msgstr "Kategorien"
+
+msgctxt "keybinding"
+msgid "Conflicts"
+msgstr "Konflikte"
+
+msgctxt "keybinding"
+msgid "Context"
+msgstr "Kontext"
+
+msgctxt "keybinding"
+msgid "Create"
+msgstr "Hinzufügen"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "Standard"

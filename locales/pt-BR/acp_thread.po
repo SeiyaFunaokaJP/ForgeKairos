@@ -1,0 +1,175 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "A folder allowed for writing is your Windows user folder itself or contains it, which the sandbox can't use (it keeps the credentials inside it from being read). Open the project from a folder below it."
+msgstr "Uma pasta com permissão de escrita é a própria pasta de usuário do Windows ou a contém, o que o sandbox não pode usar (ele impede que as credenciais dentro dela sejam lidas). Abra o projeto a partir de uma pasta abaixo dela."
+
+msgid "A path allowed for writing was replaced after the approval so that it points somewhere else (through a symbolic link, for example). The command wasn't run, to be safe."
+msgstr "Um caminho com permissão de escrita foi substituído após a aprovação para apontar para outro lugar (por meio de um link simbólico, por exemplo). Por segurança, o comando não foi executado."
+
+msgid "A path the agent asked to see read-only, as something it needs to run, is neither the agent's install folder (`external_agents`) nor Node.js (`node`) in Zed's data folder (or it overlaps credentials), so the command wasn't run."
+msgstr "Um caminho que o agente pediu para ver em somente leitura, como algo necessário para sua execução, não é a pasta de instalação do agente (`external_agents`) nem o Node.js (`node`) na pasta de dados do ForgeKairos (ou se sobrepõe a credenciais), por isso o comando não foi executado."
+
+msgid "Allow once"
+msgstr "Permitir uma vez"
+
+msgid "An internal error occurred while preparing the sandbox ({code})."
+msgstr "Ocorreu um erro interno ao preparar o sandbox ({code})."
+
+msgid "Asking you, because the call has no arguments"
+msgstr "Perguntando a você, porque a chamada não tem argumentos"
+
+msgid "Collaboration"
+msgstr "Colaboração"
+
+msgid "Could not create the sandbox in WSL: "
+msgstr "Não foi possível criar o sandbox no WSL: "
+
+msgid "Could not create the sandbox in WSL: WSL didn't respond within {seconds} seconds ({attempts} attempts). WSL may be slow to start. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
+msgstr "Não foi possível criar o sandbox no WSL: o WSL não respondeu em {seconds} segundos ({attempts} tentativas). O WSL pode estar demorando para iniciar. Aguarde um momento e tente novamente; se não resolver, reinicie o WSL com `wsl --shutdown`."
+
+msgid "Couldn't create the sandbox on the remote host: "
+msgstr "Não foi possível criar o sandbox no host remoto: "
+
+msgid "Deny"
+msgstr "Negar"
+
+msgid "Edit {path} (agent configuration)"
+msgstr "Editar {path} (configuração do agente)"
+
+msgid "Edit {path} (agent skills)"
+msgstr "Editar {path} (habilidades do agente)"
+
+msgid "Edit {path} (local settings)"
+msgstr "Editar {path} (configurações do projeto)"
+
+msgid "Edit {path} (settings)"
+msgstr "Editar {path} (configurações)"
+
+msgid "Neither file isolation method (Landlock or mounts) is available."
+msgstr "Nenhum dos métodos de isolamento de arquivos (Landlock ou montagens) está disponível."
+
+msgid "Network control couldn't be set up."
+msgstr "Não foi possível configurar o controle de rede."
+
+msgid "No usable `bwrap` binary was found on your PATH. Install Bubblewrap to let the agent sandbox terminal commands."
+msgstr "Nenhum binário `bwrap` utilizável foi encontrado no seu PATH. Instale o Bubblewrap para permitir que o agente execute comandos do terminal em um sandbox."
+
+msgid "Remote"
+msgstr "Remoto"
+
+msgid "SSH (not Linux)"
+msgstr "SSH (não Linux)"
+
+msgid "The WSL home directory couldn't be determined (the command isn't run, because the paths that are always protected can't be settled)."
+msgstr "Não foi possível determinar o diretório inicial do WSL (o comando não é executado, porque os caminhos sempre protegidos não podem ser definidos)."
+
+msgid "The command couldn't be started inside the sandbox."
+msgstr "Não foi possível iniciar o comando dentro do sandbox."
+
+msgid "The command's capabilities couldn't be dropped."
+msgstr "Não foi possível remover as capabilities do comando."
+
+msgid "The file write restrictions couldn't be applied."
+msgstr "Não foi possível aplicar as restrições de escrita de arquivos."
+
+msgid "The folder (or socket) that carries the IDE integration isn't in a safe state (its permissions aren't 0700, it has another owner, or it lies outside the protected paths), so the command wasn't run. Restart Zed and try again."
+msgstr "A pasta (ou o socket) que faz a integração com o IDE não está em um estado seguro (as permissões não são 0700, ela tem outro proprietário ou está fora dos caminhos protegidos), por isso o comando não foi executado. Reinicie o ForgeKairos e tente novamente."
+
+msgid "The only `bwrap` available is setuid-root, which Zed refuses to run. Install a non-setuid Bubblewrap to let the agent sandbox terminal commands."
+msgstr "O único `bwrap` disponível é setuid-root, que o ForgeKairos se recusa a executar. Instale um Bubblewrap sem setuid para permitir que o agente execute comandos do terminal em um sandbox."
+
+msgid "The protected paths (credentials and shell startup files such as `.git`, `~/.ssh` and `~/.bashrc`) couldn't be checked (check their permissions)."
+msgstr "Não foi possível verificar os caminhos protegidos (credenciais e arquivos de inicialização do shell, como `.git`, `~/.ssh` e `~/.bashrc`). Verifique as permissões deles."
+
+msgid "The remote home directory couldn't be determined (the command isn't run, because the paths that are always protected can't be settled)."
+msgstr "Não foi possível determinar o diretório inicial remoto (o comando não é executado, porque os caminhos sempre protegidos não podem ser definidos)."
+
+msgid "The remote kernel refused to create a PID namespace, so processes left behind when the command ends can't be reliably stopped. The command wasn't run, to be safe (a `user.max_pid_namespaces=0` setting or a container's seccomp profile can cause this)."
+msgstr "O kernel remoto recusou a criação de um namespace de PID, então os processos que restarem quando o comando terminar não podem ser parados com segurança. Por segurança, o comando não foi executado (uma configuração `user.max_pid_namespaces=0` ou o perfil seccomp de um contêiner podem causar isso)."
+
+msgid "The remote kernel refused to let the helper reap child processes (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be cleaned up. The command wasn't run, to be safe."
+msgstr "O kernel remoto não permitiu que o auxiliar recolhesse processos filhos (PR_SET_CHILD_SUBREAPER), então os processos que restarem quando o comando terminar não podem ser limpos. Por segurança, o comando não foi executado."
+
+msgid "The run was canceled"
+msgstr "A execução foi cancelada"
+
+msgid "The sandbox helper (or slirp4netns) doesn't match the one bundled with this Zed (it was replaced or is damaged). The command wasn't run, to be safe. Restarting Zed puts it back."
+msgstr "O auxiliar do sandbox (ou o slirp4netns) não corresponde ao que acompanha este ForgeKairos (foi substituído ou está danificado). Por segurança, o comando não foi executado. Reiniciar o ForgeKairos o restaura."
+
+msgid "The sandbox helper (slirp4netns) is missing from `~/.zed_server/` on the remote host, so network access can't be isolated. Reconnecting puts it back."
+msgstr "O auxiliar do sandbox (slirp4netns) está ausente de `~/.zed_server/` no host remoto, então o acesso à rede não pode ser isolado. Reconectar o restaura."
+
+msgid "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't be isolated. Restarting Zed puts it back."
+msgstr "O auxiliar do sandbox (slirp4netns) não foi encontrado no WSL, então o acesso à rede não pode ser isolado. Reiniciar o ForgeKairos o restaura."
+
+msgid "The sandbox helper's signal handling couldn't be set up. The command wasn't run, to be safe."
+msgstr "Não foi possível configurar o tratamento de sinais do auxiliar do sandbox. Por segurança, o comando não foi executado."
+
+msgid "The sandbox is turned off in the settings"
+msgstr "O sandbox está desativado nas configurações"
+
+msgid "The sandbox's launch arguments are invalid (internal error)."
+msgstr "Os argumentos de inicialização do sandbox são inválidos (erro interno)."
+
+msgid "The system call restrictions couldn't be applied."
+msgstr "Não foi possível aplicar as restrições de chamadas de sistema."
+
+msgid "The user ID mapping (uid_map / gid_map) couldn't be set up in the user namespace."
+msgstr "Não foi possível configurar o mapeamento de IDs de usuário (uid_map / gid_map) no namespace de usuário."
+
+msgid "These hosts aren't in the editor-wide allowlist: {}"
+msgstr "Estes hosts não estão na lista de permissões de todo o editor: {}"
+
+msgid "This project can't use the sandbox ({project_kind})"
+msgstr "Este projeto não pode usar o sandbox ({project_kind})"
+
+msgid "This thread is a conversation with an agent that was started outside the sandbox"
+msgstr "Esta conversa é com um agente que foi iniciado fora do sandbox"
+
+msgid "Tool call not found"
+msgstr "Chamada de ferramenta não encontrada"
+
+msgid "Unknown reason ({other})"
+msgstr "Motivo desconhecido ({other})"
+
+msgid "Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again."
+msgstr "Atualize o WSL com `wsl --update`, reinicie-o com `wsl --shutdown` e tente novamente."
+
+msgid "User namespaces can't be created (they may be disabled). In a dev container (Docker), the default seccomp profile refuses `unshare`, so add `--cap-add SYS_ADMIN` (or `--security-opt seccomp=unconfined`) to `runArgs`, and `--device /dev/net/tun` for commands that use the network."
+msgstr "Não é possível criar namespaces de usuário (talvez estejam desabilitados). Em um dev container (Docker), o perfil seccomp padrão recusa `unshare`; adicione `--cap-add SYS_ADMIN` (ou `--security-opt seccomp=unconfined`) a `runArgs`, e `--device /dev/net/tun` para comandos que usam a rede."
+
+msgid "User namespaces can't be created in WSL."
+msgstr "Não é possível criar namespaces de usuário no WSL."
+
+msgid "WSL remote"
+msgstr "WSL remoto"
+
+msgid "WSL's kernel doesn't support Landlock."
+msgstr "O kernel do WSL não oferece suporte ao Landlock."
+
+msgid "WSL's kernel refused to create a PID namespace, so processes left behind when the command ends can't be reliably stopped. The command wasn't run, to be safe (a `user.max_pid_namespaces=0` setting can cause this)."
+msgstr "O kernel do WSL recusou a criação de um namespace de PID, então os processos que restarem quando o comando terminar não podem ser parados com segurança. Por segurança, o comando não foi executado (uma configuração `user.max_pid_namespaces=0` pode causar isso)."
+
+msgid "WSL's kernel refused to let the helper reap child processes (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be cleaned up. The command wasn't run, to be safe."
+msgstr "O kernel do WSL não permitiu que o auxiliar recolhesse processos filhos (PR_SET_CHILD_SUBREAPER), então os processos que restarem quando o comando terminar não podem ser limpos. Por segurança, o comando não foi executado."
+
+msgid "`bwrap` is installed but couldn't create a sandbox, likely because unprivileged user namespaces are disabled on this system (Ubuntu 23.10 and later need an AppArmor profile for Bubblewrap)."
+msgstr "O `bwrap` está instalado, mas não conseguiu criar um sandbox, provavelmente porque os namespaces de usuário sem privilégios estão desabilitados neste sistema (o Ubuntu 23.10 e posteriores precisam de um perfil do AppArmor para o Bubblewrap)."
+
+msgid "not supported on this OS"
+msgstr "não suportado neste sistema operacional"
+
+msgid "sandboxing is turned off"
+msgstr "o isolamento em sandbox está desativado"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

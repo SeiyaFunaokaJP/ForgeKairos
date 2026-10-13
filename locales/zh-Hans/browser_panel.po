@@ -1,0 +1,228 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "AI Browser"
+msgstr "AI 浏览器"
+
+msgid "AI agents open the browser tabs they drive here, to debug web apps. These AI tabs use their own browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents."
+msgstr "AI 智能体会在此处打开它们操控的浏览器标签页，用于调试 Web 应用。这些 AI 标签页使用独立的浏览器配置文件，其流量限制在网络允许列表范围内；localhost 始终允许。你自己的浏览器标签页永远不会显示给 AI 智能体。"
+
+msgid "AI control is off"
+msgstr "AI 控制已关闭"
+
+msgid "AI control of the built-in browser is off, so AI agents cannot open tabs here."
+msgstr "内置浏览器的 AI 控制已关闭，因此 AI 智能体无法在此处打开标签页。"
+
+msgid "AI control of the built-in browser is on: AI agents can open and drive tabs here."
+msgstr "内置浏览器的 AI 控制已开启：AI 智能体可以在此处打开并操控标签页。"
+
+msgid "AI control paused"
+msgstr "AI 控制已暂停"
+
+msgid "AI is operating…"
+msgstr "AI 正在操作…"
+
+msgid "AI tab: separate profile, network limited to the allowlist"
+msgstr "AI 标签页：独立配置文件，网络限制在允许列表范围内"
+
+msgid "AI tabs need the network allowlist proxy, which is not running, so this tab cannot open pages."
+msgstr "AI 标签页需要网络允许列表代理，但该代理未运行，因此此标签页无法打开页面。"
+
+msgid "Add Folder"
+msgstr "添加文件夹"
+
+msgid "Back"
+msgstr "后退"
+
+msgid "Blocked a download in this AI tab: {url}"
+msgstr "已阻止此 AI 标签页中的下载：{url}"
+
+msgid "Blocked {url}: AI tabs only open http and https pages on the network allowlist."
+msgstr "已阻止 {url}：AI 标签页只能打开网络允许列表中的 http 和 https 页面。"
+
+msgid "Bookmark This Page"
+msgstr "将此页面添加到书签"
+
+msgid "Bookmarks are still loading. Try again in a moment."
+msgstr "书签仍在加载。请稍后重试。"
+
+msgid "Browser"
+msgstr "浏览器"
+
+msgid "Browser Panel"
+msgstr "浏览器面板"
+
+msgid "Close Bookmarks"
+msgstr "关闭书签"
+
+msgid "Copied the selection to the clipboard. Paste it to ask your question."
+msgstr "已将所选内容复制到剪贴板。粘贴后即可提问。"
+
+msgid "Couldn't load the page."
+msgstr "无法加载页面。"
+
+msgid "Couldn't save the bookmarks."
+msgstr "无法保存书签。"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete the folder and everything in it?"
+msgstr "删除该文件夹及其中的所有内容？"
+
+msgid "Delete?"
+msgstr "删除？"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Edit Folder"
+msgstr "编辑文件夹"
+
+msgid "Enter a URL or search terms"
+msgstr "输入 URL 或搜索词"
+
+msgid "Enter a URL."
+msgstr "请输入 URL。"
+
+msgid "Enter a name."
+msgstr "请输入名称。"
+
+msgid "Forward"
+msgstr "前进"
+
+msgid "Loading…"
+msgstr "正在加载…"
+
+msgid "Move to Editor Area"
+msgstr "移至编辑器区域"
+
+msgid "New AI Tab"
+msgstr "新建 AI 标签页"
+
+msgid "New Tab"
+msgstr "新建标签页"
+
+msgid "No bookmarks yet. Use the star button in the toolbar to add the current page."
+msgstr "暂无书签。使用工具栏中的星形按钮添加当前页面。"
+
+msgid "Open Developer Tools"
+msgstr "打开开发者工具"
+
+msgid "Open Download Page"
+msgstr "打开下载页面"
+
+msgid "Open This Page at Startup"
+msgstr "启动时打开此页面"
+
+msgid "Open a page first."
+msgstr "请先打开一个页面。"
+
+msgid "Open in External Browser"
+msgstr "在外部浏览器中打开"
+
+msgid "Open the Setting"
+msgstr "打开设置"
+
+msgid "Reload"
+msgstr "重新加载"
+
+msgid "Resume"
+msgstr "继续"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Set the startup page to {url}."
+msgstr "已将启动页面设置为 {url}。"
+
+msgid "Show Folder Contents"
+msgstr "显示文件夹内容"
+
+msgid "Show Window"
+msgstr "显示窗口"
+
+msgid "Shown in a separate window"
+msgstr "在单独的窗口中显示"
+
+msgid "Split Right"
+msgstr "向右拆分"
+
+msgid "Starting the built-in browser…"
+msgstr "正在启动内置浏览器…"
+
+msgid "Stop AI"
+msgstr "停止 AI"
+
+msgid "The AI tab's browser could not start: {detail}"
+msgstr "无法启动 AI 标签页的浏览器：{detail}"
+
+msgid "The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime."
+msgstr "找不到 WebView2 Runtime。请安装 Microsoft Edge WebView2 Runtime。"
+
+msgid "The built-in browser couldn't be started in this window."
+msgstr "无法在此窗口中启动内置浏览器。"
+
+msgid "The built-in browser isn't supported on this platform."
+msgstr "此平台不支持内置浏览器。"
+
+msgid "This page stopped working."
+msgstr "此页面已停止响应。"
+
+msgid "Top Level"
+msgstr "顶层"
+
+msgid "Turn On in Settings"
+msgstr "在设置中开启"
+
+msgid "WebKitGTK 4.1 wasn't found. Install libwebkit2gtk-4.1-0 (Debian/Ubuntu) or webkit2gtk4.1 (Fedora)."
+msgstr "找不到 WebKitGTK 4.1。请安装 libwebkit2gtk-4.1-0（Debian/Ubuntu）或 webkit2gtk4.1（Fedora）。"
+
+msgid "You can also open an AI tab yourself, for example to sign in to the app under test first."
+msgstr "你也可以自己打开 AI 标签页，例如先登录要测试的应用。"
+
+msgid "{url} — Ctrl-click or middle-click to open in a new tab"
+msgstr "{url}——按住 Ctrl 点击或中键点击以在新标签页中打开"
+
+msgctxt "browser AI tab badge"
+msgid "AI"
+msgstr "AI"
+
+msgctxt "browser bookmark"
+msgid "Add Bookmark"
+msgstr "添加书签"
+
+msgctxt "browser bookmark"
+msgid "Bookmarks"
+msgstr "书签"
+
+msgctxt "browser bookmark"
+msgid "Cancel"
+msgstr "取消"
+
+msgctxt "browser bookmark"
+msgid "Edit Bookmark"
+msgstr "编辑书签"
+
+msgctxt "browser bookmark"
+msgid "Location"
+msgstr "位置"
+
+msgctxt "browser bookmark"
+msgid "Move Down"
+msgstr "下移"
+
+msgctxt "browser bookmark"
+msgid "Move Up"
+msgstr "上移"
+
+msgctxt "browser bookmark"
+msgid "Name"
+msgstr "名称"

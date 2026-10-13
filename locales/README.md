@@ -4,6 +4,15 @@ The UI text in the Rust sources is English. Translations live here, one director
 language, as gettext PO files, and are built into Zed. The same files can also be put
 in your config directory to try a translation without rebuilding Zed.
 
+The bundled languages are Japanese (`ja`), Simplified Chinese (`zh-Hans`), Traditional
+Chinese (`zh-Hant`), Korean (`ko`), German (`de`), French (`fr`), Spanish (`es`) and
+Brazilian Portuguese (`pt-BR`). Part of the entries of the languages other than Japanese
+started from the [zed-i18n](https://github.com/LI-NA/zed-i18n) translations (GPL-3.0,
+commit `955f1f7`, made for Zed v1.23.3) and were reviewed and changed to each language's
+terms and style; see `THIRD_PARTY_NOTICES.md`. When the system language is used, a region
+picks the Chinese script (`zh-CN` → `zh-Hans`, `zh-TW` / `zh-HK` → `zh-Hant`), and a
+language with one shipped variant takes it (`pt-PT` → `pt-BR`).
+
 ## Layout
 
 ```
@@ -61,6 +70,9 @@ msgstr ""
   and leave out `#:` location comments, so that merges stay small. Write every string on
   one line and escape `\`, `"`, newlines (`\n`) and tabs (`\t`). `po-format` (below)
   does all of this.
+- Dialogs recognize their cancel button by the translation of `msgid "Cancel"` without a
+  msgctxt (`gpui.po`), so that Escape and the native dialog's cancel answer with it. No
+  other button may be translated to the same word; `check` reports one that is.
 
 ## Templates and tools
 
@@ -108,7 +120,7 @@ cargo run -p i18n_tool -- <command> ...
   merge conflict (`git show :2:<path>` and `git show :3:<path>`). An entry that is empty on
   one side takes the other side's translation; two different translations are listed and
   nothing is written.
-- `scan` counts string literals that contain Japanese in `crates/`, split into test and
+- `scan` counts string literals that contain CJK or Hangul text in `crates/`, split into test and
   other code (`--list` to see them, `--fail-on-prod` to fail when any is outside tests).
   Test code is an item under a `cfg` that holds only in tests (`test`, `all(test, …)`,
   `feature = "test-support"`; not `any(test, unix)`), a `#[test]`-like function, a file

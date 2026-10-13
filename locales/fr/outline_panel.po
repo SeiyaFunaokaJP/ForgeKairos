@@ -1,0 +1,60 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Clear Filter"
+msgstr "Effacer le filtre"
+
+msgid "Copy Path"
+msgstr "Copier le chemin d'accès"
+
+msgid "Copy Relative Path"
+msgstr "Copier le chemin d'accès relatif"
+
+msgid "Fold Directory"
+msgstr "Replier le répertoire"
+
+msgid "Lines {}- {}"
+msgstr "Lignes {}- {}"
+
+msgid "No matches for query"
+msgstr "Aucun résultat pour la requête"
+
+msgid "No outlines available"
+msgstr "Aucune structure disponible"
+
+msgid "Open in Terminal"
+msgstr "Ouvrir dans le terminal"
+
+msgid "Outline Panel"
+msgstr "Panneau de structure"
+
+msgid "Pin Active Outline"
+msgstr "Épingler la structure active"
+
+msgid "Search buffer symbols…"
+msgstr "Rechercher des symboles du tampon…"
+
+msgid "Searching:"
+msgstr "Recherche en cours :"
+
+msgid "Toggle Panel With"
+msgstr "Afficher/masquer le panneau avec"
+
+msgid "Unfold Directory"
+msgstr "Déplier le répertoire"
+
+msgid "Unknown buffer"
+msgstr "Tampon inconnu"
+
+msgid "Unpin Outline"
+msgstr "Désépingler la structure"
+
+msgid "Untitled"
+msgstr "Sans titre"

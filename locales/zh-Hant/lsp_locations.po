@@ -1,0 +1,36 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Filter declarations…"
+msgstr "篩選宣告…"
+
+msgid "Filter definitions…"
+msgstr "篩選定義…"
+
+msgid "Filter implementations…"
+msgstr "篩選實作…"
+
+msgid "Filter references…"
+msgstr "篩選參考…"
+
+msgid "Filter type definitions…"
+msgstr "篩選型別定義…"
+
+msgid "No declarations found"
+msgstr "找不到宣告"
+
+msgid "No definitions found"
+msgstr "找不到定義"
+
+msgid "No implementations found"
+msgstr "找不到實作"
+
+msgid "No references found"
+msgstr "找不到參考"
+
+msgid "No type definitions found"
+msgstr "找不到型別定義"

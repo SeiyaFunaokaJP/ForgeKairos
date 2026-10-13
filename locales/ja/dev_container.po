@@ -11,9 +11,6 @@ msgstr "キャンセル"
 msgid "Confirm Selections"
 msgstr "選択を確定"
 
-msgid "Continue"
-msgstr "続行"
-
 msgid "Create Dev Container"
 msgstr "Dev Container を作成"
 
@@ -55,3 +52,7 @@ msgstr "追加するフィーチャーを選択"
 
 msgid "Template Option: "
 msgstr "テンプレートのオプション: "
+
+msgctxt "dev container wizard"
+msgid "Continue"
+msgstr "続行"

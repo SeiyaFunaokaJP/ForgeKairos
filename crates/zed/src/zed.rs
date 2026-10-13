@@ -1128,7 +1128,7 @@ fn register_actions(
                         buffer.set_text(json, cx);
                     });
                     workspace.update_in(cx, |workspace, window, cx| {
-                        let title = "Accessibility Tree".to_string();
+                        let title = i18n::t!("Accessibility Tree").to_string();
                         let buffer = cx.new(|cx| {
                             MultiBuffer::singleton(buffer, cx).with_title(title.clone())
                         });
@@ -2012,7 +2012,7 @@ fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Contex
                             |cx| {
                                 cx.new(|cx| {
                                     MessageNotification::new(
-                                        format!(
+                                        i18n::t!(
                                             "Unable to access/open log file at path \
                                                     {}: {e:#}",
                                             paths::log_file().display()
@@ -2042,7 +2042,8 @@ fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Contex
                 buffer.set_text(log, cx);
             });
 
-            let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx).with_title("Log".into()));
+            let buffer =
+                cx.new(|cx| MultiBuffer::singleton(buffer, cx).with_title(i18n::t!("Log").into()));
 
             let editor = cx
                 .new_window_entity(|window, cx| {
@@ -2095,16 +2096,16 @@ fn notify_settings_errors(result: settings::SettingsParseResult, is_user: bool, 
             } else {
                 show_app_notification(id, cx, move |cx| {
                     cx.new(|cx| {
-                        MessageNotification::new(format!("Invalid user settings file\n{error}"), cx)
-                            .primary_message("Open Settings File")
-                            .primary_icon(IconName::Settings)
-                            .primary_on_click(|window, cx| {
-                                window.dispatch_action(
-                                    zed_actions::OpenSettingsFile.boxed_clone(),
-                                    cx,
-                                );
-                                cx.emit(DismissEvent);
-                            })
+                        MessageNotification::new(
+                            i18n::t!("Invalid user settings file\n{error}"),
+                            cx,
+                        )
+                        .primary_message(i18n::t!("Open Settings File"))
+                        .primary_icon(IconName::Settings)
+                        .primary_on_click(|window, cx| {
+                            window.dispatch_action(zed_actions::OpenSettingsFile.boxed_clone(), cx);
+                            cx.emit(DismissEvent);
+                        })
                     })
                 });
                 true
@@ -2126,13 +2127,13 @@ fn notify_settings_errors(result: settings::SettingsParseResult, is_user: bool, 
                 show_app_notification(id, cx, move |cx| {
                     cx.new(|cx| {
                         MessageNotification::new(
-                            format!(
+                            i18n::t!(
                                 "Failed to migrate settings\n\
                                 {err}"
                             ),
                             cx,
                         )
-                        .primary_message("Open Settings File")
+                        .primary_message(i18n::t!("Open Settings File"))
                         .primary_icon(IconName::Settings)
                         .primary_on_click(|window, cx| {
                             window.dispatch_action(zed_actions::OpenSettingsFile.boxed_clone(), cx);
@@ -2165,11 +2166,15 @@ fn init_global_config_error_notifications(cx: &mut App) {
             match result {
                 Ok(_) => dismiss_app_notification(&id, cx),
                 Err(error) => {
-                    let message = format!("Invalid global {file_kind} file\n{error}");
+                    let message = if matches!(event, SettingsObserverEvent::GlobalTasksUpdated(_)) {
+                        i18n::t!("Invalid global tasks file\n{error}")
+                    } else {
+                        i18n::t!("Invalid global debug scenarios file\n{error}")
+                    };
                     show_app_notification(id, cx, move |cx| {
                         cx.new(|cx| {
                             MessageNotification::new(message.clone(), cx)
-                                .primary_message("Open File")
+                                .primary_message(i18n::t!("Open File"))
                                 .primary_icon(IconName::Settings)
                                 .primary_on_click(move |window, cx| {
                                     on_click(window, cx);
@@ -2256,7 +2261,7 @@ pub fn watch_user_agents_md(fs: Arc<dyn fs::Fs>, cx: &mut App) {
         UserAgentsMdState::Error(message) => {
             let path = paths::agents_file().display().to_string();
             log::error!("Failed to load user AGENTS.md from {path}: {message}");
-            let body = format!("Failed to load {path}\n{message}");
+            let body = i18n::t!("Failed to load {path}\n{message}");
             let notification_id = notification_id.clone();
             show_app_notification(notification_id, cx, move |cx| {
                 let body = body.clone();
@@ -2420,11 +2425,11 @@ fn show_keymap_file_json_error(
     cx: &mut App,
 ) {
     let message: SharedString =
-        format!("JSON parse error in keymap file. Bindings not reloaded.\n\n{error}").into();
+        i18n::t!("JSON parse error in keymap file. Bindings not reloaded.\n\n{error}").into();
     show_app_notification(notification_id, cx, move |cx| {
         cx.new(|cx| {
             MessageNotification::new(message.clone(), cx)
-                .primary_message("Open Keymap File")
+                .primary_message(i18n::t!("Open Keymap File"))
                 .primary_icon(IconName::Settings)
                 .primary_on_click(|window, cx| {
                     window.dispatch_action(zed_actions::OpenKeymapFile.boxed_clone(), cx);
@@ -2810,7 +2815,7 @@ fn open_local_file(
         struct NoOpenFolders;
 
         workspace.show_notification(NotificationId::unique::<NoOpenFolders>(), cx, |cx| {
-            cx.new(|cx| MessageNotification::new("This project has no folders open.", cx))
+            cx.new(|cx| MessageNotification::new(i18n::t!("This project has no folders open."), cx))
         });
         None
     }

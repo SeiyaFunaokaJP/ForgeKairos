@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Delete from Recent Tasks"
+msgstr "Eliminar de tareas recientes"
+
+msgid "Find a task, or run a command"
+msgstr "Buscar una tarea o ejecutar un comando"
+
+msgid "Find a task, or run a command in the central pane"
+msgstr "Buscar una tarea o ejecutar un comando en el panel central"
+
+msgid "Rerun"
+msgstr "Volver a ejecutar"
+
+msgid "Rerun Last Task"
+msgstr "Volver a ejecutar la última tarea"
+
+msgid "Rerun Without History"
+msgstr "Volver a ejecutar sin historial"
+
+msgid "Spawn"
+msgstr "Iniciar"
+
+msgid "Spawn Oneshot"
+msgstr "Iniciar ejecución única"
+
+msgid "Spawn Oneshot Without History"
+msgstr "Iniciar ejecución única sin historial"
+
+msgid "Spawn Without History"
+msgstr "Iniciar sin historial"

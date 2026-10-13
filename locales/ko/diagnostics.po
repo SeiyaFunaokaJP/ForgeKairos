@@ -1,0 +1,84 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Buffer Diagnostics"
+msgstr "버퍼 진단"
+
+msgid "Buffer Diagnostics - {}"
+msgstr "버퍼 진단 - {}"
+
+msgid "Buffer Search"
+msgstr "버퍼 검색"
+
+msgid "Copy Diagnostic"
+msgstr "진단 복사"
+
+msgid "Diagnostics"
+msgstr "진단"
+
+msgid "Exclude Warnings"
+msgstr "경고 제외"
+
+msgid "Expand Diagnostics"
+msgstr "진단 확장"
+
+msgid "Include Warnings"
+msgstr "경고 포함"
+
+msgid "Inline Assist"
+msgstr "인라인 어시스트"
+
+msgid "Next Diagnostic"
+msgstr "다음 진단"
+
+msgid "No errors in workspace"
+msgstr "작업 영역에 오류 없음"
+
+msgid "No errors in {file}"
+msgstr "{file}에 오류 없음"
+
+msgid "No problems"
+msgstr "문제 없음"
+
+msgid "No problems in workspace"
+msgstr "작업 영역에 문제 없음"
+
+msgid "No problems in {file}"
+msgstr "{file}에 문제 없음"
+
+msgid "Open File"
+msgstr "파일 열기"
+
+msgid "Project Diagnostics"
+msgstr "프로젝트 진단"
+
+msgid "Project diagnostics: no problems"
+msgstr "프로젝트 진단: 문제 없음"
+
+msgid "Project diagnostics: {}"
+msgstr "프로젝트 진단: {}"
+
+msgid "Refresh Diagnostics"
+msgstr "진단 새로 고침"
+
+msgid "Show {count} warning"
+msgid_plural "Show {count} warnings"
+msgstr[0] "경고 {count}개 표시"
+
+msgid "Stop Diagnostics Update"
+msgstr "진단 업데이트 중지"
+
+msgid "{count} error"
+msgid_plural "{count} errors"
+msgstr[0] "오류 {count}개"
+
+msgid "{count} warning"
+msgid_plural "{count} warnings"
+msgstr[0] "경고 {count}개"

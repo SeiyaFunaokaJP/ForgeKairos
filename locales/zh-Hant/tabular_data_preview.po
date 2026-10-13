@@ -1,0 +1,543 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " ({count} row hidden)"
+msgid_plural " ({count} rows hidden)"
+msgstr[0] " （已隱藏 {count} 列）"
+
+msgid "(Blank)"
+msgstr "（空白）"
+
+msgid "A single cell is compared against the clipboard, but the clipboard is empty (select several ranges with Ctrl, or two or more columns or rows, to compare within them)"
+msgstr "單一儲存格會與剪貼簿比較，但剪貼簿是空的（使用 Ctrl 選取多個範圍，或選取兩欄或兩列以上，即可在其中比較）"
+
+msgid "A-Z, then Count"
+msgstr "A-Z，再依數量"
+
+msgid "Add Column"
+msgstr "新增欄"
+
+msgid "Add Row"
+msgstr "新增列"
+
+msgid "Add a column at the end"
+msgstr "在結尾新增一欄"
+
+msgid "Add a row at the end"
+msgstr "在結尾新增一列"
+
+msgid "Alt+Enter for a line break in a cell"
+msgstr "按 Alt+Enter 在儲存格內換行"
+
+msgid "Begins With"
+msgstr "開頭為"
+
+msgid "Blank"
+msgstr "空白"
+
+msgid "Cell Comparison ({} ↔ {})"
+msgstr "儲存格比較（{} ↔ {}）"
+
+msgid "Center"
+msgstr "置中"
+
+msgid "Choose how filter values are sorted in the filter menu"
+msgstr "選擇篩選選單中篩選值的排序方式"
+
+msgid "Choose vertical text alignment within cells"
+msgstr "選擇儲存格內的垂直文字對齊方式"
+
+msgid "Choose what to compare on this side"
+msgstr "選擇此側要比較的內容"
+
+msgid "Clear Colors"
+msgstr "清除色彩"
+
+msgid "Clear Contents"
+msgstr "清除內容"
+
+msgid "Clear Filters"
+msgstr "清除篩選"
+
+msgid "Clear Second"
+msgstr "清除第二個"
+
+msgid "Clear Selection Contents"
+msgstr "清除選取範圍的內容"
+
+msgid "Clear Sort"
+msgstr "清除排序"
+
+msgid "Clears the filters of every column. Filter a single column from the ▾ in its heading"
+msgstr "清除每一欄的篩選。若要篩選單一欄，請使用其標題中的 ▾"
+
+msgid "Clears this column's filters"
+msgstr "清除此欄的篩選"
+
+msgid "Clipboard"
+msgstr "剪貼簿"
+
+msgid "Color"
+msgstr "色彩"
+
+msgid "Colors aren't saved for this file"
+msgstr "此檔案的色彩不會儲存"
+
+msgid "Column {label}"
+msgstr "欄 {label}"
+
+msgid "Columns"
+msgstr "欄位"
+
+msgid "Compare"
+msgstr "比較"
+
+msgid "Compare Again"
+msgstr "重新比較"
+
+msgid "Compare Selected Cells"
+msgstr "比較選取的儲存格"
+
+msgid "Compare this table with another version or another file"
+msgstr "將此表格與其他版本或其他檔案比較"
+
+msgid "Compare with File…"
+msgstr "與檔案比較…"
+
+msgid "Compare with HEAD"
+msgstr "與 HEAD 比較"
+
+msgid "Comparing…"
+msgstr "正在比較…"
+
+msgid "Condition: {}"
+msgstr "條件：{}"
+
+msgid "Contains"
+msgstr "包含"
+
+msgid "Copy"
+msgstr "複製"
+
+msgid "Couldn't read the chosen file"
+msgstr "無法讀取選擇的檔案"
+
+msgid "Count, then A-Z"
+msgstr "數量，再依 A-Z"
+
+msgid "Creates the first row"
+msgstr "建立第一列"
+
+msgid "Cut"
+msgstr "剪下"
+
+msgid "Delete Columns"
+msgstr "刪除欄"
+
+msgid "Delete Rows"
+msgstr "刪除列"
+
+msgid "Delete Selected Columns"
+msgstr "刪除選取的欄"
+
+msgid "Delete Selected Rows"
+msgstr "刪除選取的列"
+
+msgid "Dev-only section used for debugging purposes.\nWill be removed on public release of the tabular data preview feature"
+msgstr "僅供開發使用的偵錯區段。\n將在表格資料預覽功能正式發佈時移除"
+
+msgid "Dev-only: Rendering Mode"
+msgstr "僅供開發：轉譯模式"
+
+msgid "Diff"
+msgstr "差異"
+
+msgid "Diff of {} and {}"
+msgstr "{} 與 {} 的差異"
+
+msgid "Display multiline rows"
+msgstr "顯示多行資料列"
+
+msgid "Does Not Contain"
+msgstr "不包含"
+
+msgid "Ends With"
+msgstr "結尾為"
+
+msgid "Equals"
+msgstr "等於"
+
+msgid "Fill Color"
+msgstr "填滿色彩"
+
+msgid "Filter Sort"
+msgstr "篩選排序"
+
+msgid "Filter and sort menu (Alt+↓)"
+msgstr "篩選與排序選單（Alt+↓）"
+
+msgid "Filtered by the chosen values. Click to change"
+msgstr "已依選擇的值篩選。按一下以變更"
+
+msgid "Filtering by this condition. Click to clear"
+msgstr "正在依此條件篩選。按一下以清除"
+
+msgid "Filtering: {}. Click to change"
+msgstr "正在篩選：{}。按一下以變更"
+
+msgid "Filters to only the values listed now (use it together with the search)"
+msgstr "只篩選出目前列出的值（請搭配搜尋使用）"
+
+msgid "Filter…"
+msgstr "篩選…"
+
+msgid "First Row Is Header"
+msgstr "第一列為標題"
+
+msgid "Hidden by other filters"
+msgstr "已被其他篩選條件隱藏"
+
+msgid "Insert a column here"
+msgstr "在此插入一欄"
+
+msgid "Insert a row here"
+msgstr "在此插入一列"
+
+msgid "Joins the first condition with \"{}\" to show {}"
+msgstr "以「{}」連接第一個條件，以顯示 {}"
+
+msgid "Joins the two conditions with \"{}\""
+msgstr "以「{}」連接兩個條件"
+
+msgid "Loading…"
+msgstr "正在載入…"
+
+msgid "Makes the next condition you press the second, joined with \"{}\""
+msgstr "將下一個按下的條件設為第二個條件，並以「{}」連接"
+
+msgid "Next Difference"
+msgstr "下一個差異"
+
+msgid "No differences"
+msgstr "沒有差異"
+
+msgid "No matching values. The conditions below can still use this text"
+msgstr "沒有符合的值。下方的條件仍可使用此文字"
+
+msgid "Not Blank"
+msgstr "非空白"
+
+msgid "Not sorted. Click to sort ascending"
+msgstr "未排序。按一下以遞增排序"
+
+msgid "Nothing to compare"
+msgstr "沒有可比較的內容"
+
+msgid "Only the first {} rows were compared"
+msgstr "僅比較了前 {} 列"
+
+msgid "Open Text Beside"
+msgstr "在旁邊開啟文字"
+
+msgid "Opens the underlying text in the adjacent pane"
+msgstr "在相鄰窗格中開啟基礎文字"
+
+msgid "Paste"
+msgstr "貼上"
+
+msgid "Pick values, or filter with the conditions below"
+msgstr "選取值，或使用下方的條件篩選"
+
+msgid "Previous Difference"
+msgstr "上一個差異"
+
+msgid "Reads both sides again and compares them"
+msgstr "重新讀取兩側並加以比較"
+
+msgid "Removes the second condition and filters by the first one only"
+msgstr "移除第二個條件，只依第一個條件篩選"
+
+msgid "Restored the previous filters"
+msgstr "已還原先前的篩選"
+
+msgid "Restored the previous filters and sorting"
+msgstr "已還原先前的篩選與排序"
+
+msgid "Restored the previous sorting"
+msgstr "已還原先前的排序"
+
+msgid "Row {number}"
+msgstr "第 {number} 列"
+
+msgid "Row {}"
+msgstr "第 {} 列"
+
+msgid "Rows"
+msgstr "列"
+
+msgid "Rows can't be inserted above the header row"
+msgstr "無法在標題列上方插入列"
+
+msgid "Search {} values, or type text for a condition"
+msgstr "搜尋 {} 個值，或輸入條件文字"
+
+msgid "Second Condition"
+msgstr "第二個條件"
+
+msgid "Select All"
+msgstr "全選"
+
+msgid "Select All Cells"
+msgstr "選取所有儲存格"
+
+msgid "Show Only Rows with Differences"
+msgstr "只顯示有差異的列"
+
+msgid "Show cell positions"
+msgstr "顯示儲存格位置"
+
+msgid "Show perf metrics"
+msgstr "顯示效能指標"
+
+msgid "Showing file line numbers.\nClick to show sequential row numbers."
+msgstr "目前顯示檔案行號。\n按一下以顯示連續列號。"
+
+msgid "Showing sequential row numbers.\nClick to show file line numbers."
+msgstr "目前顯示連續列號。\n按一下以顯示檔案行號。"
+
+msgid "Shows only {kept}"
+msgstr "只顯示 {kept}"
+
+msgid "Sort Ascending"
+msgstr "遞增排序"
+
+msgid "Sort Descending"
+msgstr "遞減排序"
+
+msgid "Sorted ascending. Click to sort descending"
+msgstr "已遞增排序。按一下以遞減排序"
+
+msgid "Sorted descending. Click to clear"
+msgstr "已遞減排序。按一下以清除"
+
+msgid "Table Settings"
+msgstr "表格設定"
+
+msgid "Text Alignment"
+msgstr "文字對齊"
+
+msgid "That makes {count} things to compare. Select again so that there are at most {MAX_CELL_CANDIDATES} (the candidates are the ranges selected with Ctrl, the rows selected by their numbers, the columns when two or more are selected, or the cells of a single column)"
+msgstr "這樣會有 {count} 個比較對象。請重新選取，使其不超過 {MAX_CELL_CANDIDATES} 個（候選對象為使用 Ctrl 選取的範圍、依列號選取的列、選取兩欄以上時的欄，或單一欄中的儲存格）"
+
+msgid "The added row is hidden by the filters"
+msgstr "新增的列已被篩選隱藏"
+
+msgid "The candidates add up to {} cells. Comparing three or more is limited to {} cells (select a smaller range, or only two columns, two rows or two ranges to compare)"
+msgstr "候選對象合計 {} 個儲存格。比較三個以上時，上限為 {} 個儲存格（請選取較小的範圍，或只選取要比較的兩欄、兩列或兩個範圍）"
+
+msgid "The next condition you press becomes the second, joined with \"{}\". Press again to cancel"
+msgstr "下一個按下的條件將成為第二個條件，並以「{}」連接。再按一次即可取消"
+
+msgid "The original table's tab is closed, so this can't be redone"
+msgstr "原始表格的分頁已關閉，因此無法重新執行"
+
+msgid "The original table's tab is closed, so this comparison can't be redone"
+msgstr "原始表格的分頁已關閉，因此無法重新執行此比較"
+
+msgid "The selection is too large (up to {limit} cells) to set colors"
+msgstr "選取範圍過大（上限 {limit} 個儲存格），無法設定色彩"
+
+msgid "The selection is too large (up to {limit} cells). Open the text beside the grid to edit it"
+msgstr "選取範圍過大（上限 {limit} 個儲存格）。請在格線旁開啟文字以進行編輯"
+
+msgid "This file is empty. Typing in a cell creates the first row"
+msgstr "此檔案是空的。在儲存格中輸入即可建立第一列"
+
+msgid "This file isn't tracked by git or has never been committed"
+msgstr "此檔案未受 git 追蹤，或從未提交過"
+
+msgid "This file no longer exists in {} (showing the last contents that could be read)"
+msgstr "此檔案已不存在於 {} 中（顯示最後能讀取的內容）"
+
+msgid "This operation can't be performed on multiple selections."
+msgstr "無法對多個選取範圍執行此操作。"
+
+msgid "Too many matches; only the first 100,000 are included"
+msgstr "符合項目過多；只包含前 100,000 個"
+
+msgid "Top"
+msgstr "頂端"
+
+msgid "Type in the search box, then press \"{}\""
+msgstr "請在搜尋方塊中輸入文字，然後按「{}」"
+
+msgid "Uniform Height"
+msgstr "統一高度"
+
+msgid "Untitled"
+msgstr "未命名"
+
+msgid "Use First Row as Header"
+msgstr "使用第一列作為標題"
+
+msgid "Used as the second condition. Click to clear"
+msgstr "已作為第二個條件使用。按一下以清除"
+
+msgid "Variable Height"
+msgstr "可變高度"
+
+msgid "When enabled, row height grows to show all content. When disabled, only the first line is visible — hover a cell to see the rest."
+msgstr "啟用時，資料列高度會增加以顯示所有內容。停用時，僅顯示第一行 — 將滑鼠暫留在儲存格上即可檢視其餘內容。"
+
+msgid "When off, the first row is treated as data too"
+msgstr "關閉時，第一列也會被視為資料"
+
+msgid "begins with \"{needle}\""
+msgstr "開頭為「{needle}」"
+
+msgid "contains \"{needle}\""
+msgstr "包含「{needle}」"
+
+msgid "does not contain \"{needle}\""
+msgstr "不包含「{needle}」"
+
+msgid "ends with \"{needle}\""
+msgstr "結尾為「{needle}」"
+
+msgid "equals \"{needle}\""
+msgstr "等於「{needle}」"
+
+msgid "is blank"
+msgstr "為空白"
+
+msgid "is not blank"
+msgstr "非空白"
+
+msgid "rows where the cell {}"
+msgstr "儲存格 {} 的列"
+
+msgid "rows with blank cells"
+msgstr "有空白儲存格的列"
+
+msgid "rows with non-blank cells"
+msgstr "有非空白儲存格的列"
+
+msgid "{count} cell wasn't replaced because its content had changed"
+msgid_plural "{count} cells weren't replaced because their content had changed"
+msgstr[0] "有 {count} 個儲存格因內容已變更而未取代"
+
+msgid "{count} column"
+msgid_plural "{count} columns"
+msgstr[0] "{count} 欄"
+
+msgid "{count} difference ({} added / {} removed / {} changed)"
+msgid_plural "{count} differences ({} added / {} removed / {} changed)"
+msgstr[0] "{count} 項差異（新增 {} / 移除 {} / 變更 {}）"
+
+msgid "{count} row"
+msgid_plural "{count} rows"
+msgstr[0] "{count} 列"
+
+msgid "{selected_rows} of {count} row selected"
+msgid_plural "{selected_rows} of {count} rows selected"
+msgstr[0] "已選取 {count} 列中的 {selected_rows} 列"
+
+msgid "{shown_rows} of {count} row"
+msgid_plural "{shown_rows} of {count} rows"
+msgstr[0] "{shown_rows} / {count} 列"
+
+msgid "{} (read at {})"
+msgstr "{}（讀取於 {}）"
+
+msgid "{} to switch this tab instead"
+msgstr "按 {} 改為切換此分頁"
+
+msgid "{} wasn't found (showing the last contents that could be read)"
+msgstr "找不到 {}（顯示最後能讀取的內容）"
+
+msgctxt "cell color"
+msgid "Blue"
+msgstr "藍色"
+
+msgctxt "cell color"
+msgid "Gray"
+msgstr "灰色"
+
+msgctxt "cell color"
+msgid "Green"
+msgstr "綠色"
+
+msgctxt "cell color"
+msgid "None"
+msgstr "無"
+
+msgctxt "cell color"
+msgid "Orange"
+msgstr "橘色"
+
+msgctxt "cell color"
+msgid "Purple"
+msgstr "紫色"
+
+msgctxt "cell color"
+msgid "Red"
+msgstr "紅色"
+
+msgctxt "cell color"
+msgid "Text Color"
+msgstr "文字色彩"
+
+msgctxt "cell color"
+msgid "Yellow"
+msgstr "黃色"
+
+msgctxt "table diff"
+msgid "Current"
+msgstr "目前"
+
+msgctxt "table diff"
+msgid "{current} of {total}"
+msgstr "第 {current} / {total} 處"
+
+msgctxt "table filter"
+msgid "And"
+msgstr "且"
+
+msgctxt "table filter"
+msgid "Clear All"
+msgstr "全部清除"
+
+msgctxt "table filter"
+msgid "Or"
+msgstr "或"
+
+msgctxt "table filter"
+msgid "{} and {}"
+msgstr "{} 且 {}"
+
+msgctxt "table filter"
+msgid "{} or {}"
+msgstr "{} 或 {}"
+
+msgctxt "table grid"
+msgid "Insert Column Left"
+msgstr "在左側插入欄"
+
+msgctxt "table grid"
+msgid "Insert Column Right"
+msgstr "在右側插入欄"
+
+msgctxt "table grid"
+msgid "Insert Row Above"
+msgstr "在上方插入列"
+
+msgctxt "table grid"
+msgid "Insert Row Below"
+msgstr "在下方插入列"

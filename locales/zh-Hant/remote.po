@@ -1,0 +1,202 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Adding rustup target for cross-compilation"
+msgstr "正在新增用於交叉編譯的 rustup 目標"
+
+msgid "Building remote binary from source for {platform_label} with Zig (development build)"
+msgstr "正在以 Zig 從原始碼建置適用於 {platform_label} 的遠端二進位檔（開發建置）"
+
+msgid "Building remote server binary from source for {platform_label} (development build)"
+msgstr "正在從原始碼建置適用於 {platform_label} 的遠端伺服器二進位檔（開發建置）"
+
+msgid "Checking the remote environment"
+msgstr "正在檢查遠端環境"
+
+msgid "Compressing binary"
+msgstr "正在壓縮二進位檔"
+
+msgid "Connecting"
+msgstr "正在連線"
+
+msgid "Connecting (reusing session)"
+msgstr "正在連線（重複使用工作階段）"
+
+msgid "Could not build a PATH that includes the cmake directory"
+msgstr "無法建立包含 cmake 目錄的 PATH"
+
+msgid "Could not create a directory on the remote (check the free disk space and the permissions): {dir}"
+msgstr "無法在遠端建立資料夾（請檢查可用磁碟空間與權限）：{dir}"
+
+msgid "Could not delete the server file on the remote host ({status}): {error}"
+msgstr "無法刪除遠端主機上的伺服器檔案（{status}）：{error}"
+
+msgid "Could not install the remote sandbox helper (slirp4netns). Agent commands that use the network will not run, because no sandbox can be created for them. Check that the remote `~/.zed_server/` is writable (free space and permissions) and that the bundled slirp4netns is in the same folder as Zed, then reconnect: {error}"
+msgstr "無法安裝遠端沙箱輔助程式（slirp4netns）。由於無法為使用網路的代理命令建立沙箱，這些命令將不會執行。請確認遠端的 `~/.zed_server/` 可寫入（可用空間與權限），且隨附的 slirp4netns 與 ForgeKairos 位於同一資料夾，然後重新連線：{error}"
+
+msgid "Could not read the remote development server file: {src_path}"
+msgstr "無法讀取遠端開發伺服器檔案：{src_path}"
+
+msgid "Could not start the command that deletes the server file"
+msgstr "無法啟動刪除伺服器檔案的命令"
+
+msgid "Detecting WSL environment"
+msgstr "正在偵測 WSL 環境"
+
+msgid "Downloading remote development server on host"
+msgstr "正在主機上下載遠端開發伺服器"
+
+msgid "Extracting remote development server"
+msgstr "正在解壓縮遠端開發伺服器"
+
+msgid "Extracting remote server"
+msgstr "正在解壓縮遠端伺服器"
+
+msgid "Failed to connect to host"
+msgstr "無法連線至主機"
+
+msgid "Failed to upload the directory to the remote ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+msgstr "無法將資料夾上傳至遠端（{src_path_display} -> {dest_path_str}）：SCP：{scp}{sftp}"
+
+msgid "Failed to upload the file to the remote ({src_path_display} -> {dest_path_str}): SCP: {scp}{sftp}"
+msgstr "無法將檔案上傳至遠端（{src_path_display} -> {dest_path_str}）：SCP：{scp}{sftp}"
+
+msgid "Initializing remote server"
+msgstr "正在初始化遠端伺服器"
+
+msgid "Installing cargo-zigbuild for cross-compilation"
+msgstr "正在安裝用於交叉編譯的 cargo-zigbuild"
+
+msgid "Neither curl nor wget is available"
+msgstr "遠端主機上沒有 curl 也沒有 wget（無法下載遠端開發伺服器）"
+
+msgid "No remote server binary is available. Not on the remote at {remote_path} / bundled artifact `{artifact}` not found in {search_dirs} / build from source: {source_build_status}. The automatic build fails when cmake or zig is not on PATH. Building with script\\build.ps1 prepares the bundled artifact."
+msgstr "沒有可用的遠端伺服器二進位檔。遠端的 {remote_path} 中沒有 / 在 {search_dirs} 中找不到隨附的成品 `{artifact}` / 從原始碼建置：{source_build_status}。若 cmake 或 zig 不在 PATH 中，自動建置會失敗。使用 script\\build.ps1 建置即可準備隨附的成品。"
+
+msgid "On the remote host, delete the files in {folder} whose names start with {prefix}, then reconnect."
+msgstr "請在遠端主機上刪除 {folder} 中名稱以 {prefix} 開頭的檔案，然後重新連線。"
+
+msgid "Opening workspace"
+msgstr "正在開啟工作區"
+
+msgid "Reinstalling the remote server because it does not match this Zed"
+msgstr "遠端伺服器與此 ForgeKairos 不相符，正在重新安裝"
+
+msgid "Remote binary path not set"
+msgstr "未設定遠端二進位檔路徑（連線初始化失敗）"
+
+msgid "SSH connection canceled"
+msgstr "SSH 連線已取消"
+
+msgid "Starting proxy"
+msgstr "正在啟動 Proxy"
+
+msgid "Streaming remote server into WSL"
+msgstr "正在將遠端伺服器傳送至 WSL"
+
+msgid "The connection to the remote server was lost while checking its protocol revision"
+msgstr "檢查通訊協定修訂版本時，與遠端伺服器的連線中斷"
+
+msgid "The remote development server path has no file name: {src_path}"
+msgstr "遠端開發伺服器路徑中沒有檔案名稱：{src_path}"
+
+msgid "The remote does not have enough free disk space (about {required} MB needed, {free} MB free). Delete files you no longer need on the remote host, then reconnect."
+msgstr "遠端的可用磁碟空間不足（約需 {required} MB，可用 {free} MB）。請刪除遠端主機上不再需要的檔案，然後重新連線。"
+
+msgid "The remote host did not finish deleting the server file within {seconds} seconds"
+msgstr "遠端主機未在 {seconds} 秒內完成刪除伺服器檔案"
+
+msgid "The remote may be out of disk space (currently: {free_space})"
+msgstr "遠端的磁碟空間可能不足（目前：{free_space}）"
+
+msgid "The remote may be out of disk space (the free space could not be determined)"
+msgstr "遠端的磁碟空間可能不足（無法判斷可用空間）"
+
+msgid "The remote server does not match this Zed (it did not answer the protocol revision check; it may be a server from the official Zed or from an older version of this Zed)."
+msgstr "遠端伺服器與此 ForgeKairos 不相符（未回應通訊協定修訂版本檢查；可能是官方版 Zed 的伺服器，或較舊版本 ForgeKairos 的伺服器）。"
+
+msgid "The remote server does not match this Zed (protocol revision: {ours} in this Zed, {theirs} on the server)."
+msgstr "遠端伺服器與此 ForgeKairos 不相符（通訊協定修訂版本：此 ForgeKairos 為 {ours}，伺服器為 {theirs}）。"
+
+msgid "The server that this Zed installs on the remote host may itself not match. Delete {folder} on this computer and reconnect, or update Zed."
+msgstr "此 ForgeKairos 安裝至遠端主機的伺服器本身可能就不相符。請刪除這台電腦上的 {folder} 後重新連線，或更新 ForgeKairos。"
+
+msgid "There is no bundled artifact and the download failed as well. Build with script\\build.ps1 to prepare the bundled artifact, or check that this computer can reach the download server"
+msgstr "沒有隨附的成品，下載也失敗了。請使用 script\\build.ps1 建置以準備隨附的成品，或確認這台電腦能連線至下載伺服器"
+
+msgid "Uploading remote development server"
+msgstr "正在上傳遠端開發伺服器"
+
+msgid "Uploading remote development server ({size})"
+msgstr "正在上傳遠端開發伺服器（{size}）"
+
+msgid "Uploading remote server"
+msgstr "正在上傳遠端伺服器"
+
+msgid "Verifying remote development server"
+msgstr "正在驗證遠端開發伺服器"
+
+msgid "Waiting for existing connection attempt"
+msgstr "正在等待進行中的連線嘗試"
+
+msgid "cmake is not on PATH (it is needed to build remote_server). Add the CMake that comes with Visual Studio (…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin) to PATH, or build with script\\build.ps1 to prepare the bundled artifact"
+msgstr "cmake 不在 PATH 中（建置 remote_server 時需要）。請將 Visual Studio 隨附的 CMake（…\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin）加入 PATH，或使用 script\\build.ps1 建置以準備隨附的成品"
+
+msgid "cmake is not on PATH (it is needed to build remote_server). Install cmake"
+msgstr "cmake 不在 PATH 中（建置 remote_server 時需要）。請安裝 cmake"
+
+msgid "connecting to host timed out"
+msgstr "連線至主機逾時"
+
+msgid "downloading server binary locally"
+msgstr "無法在本機下載伺服器二進位檔"
+
+msgid "extracting server binary"
+msgstr "無法解壓縮伺服器二進位檔"
+
+msgid "failed to connect: {}"
+msgstr "無法連線：{}"
+
+msgid "failed to upload server binary"
+msgstr "無法上傳伺服器二進位檔"
+
+msgid "nocompress (default)"
+msgstr "nocompress（預設）"
+
+msgid "not run (ZED_BUILD_REMOTE_SERVER={build_remote_server})"
+msgstr "未執行（ZED_BUILD_REMOTE_SERVER={build_remote_server}）"
+
+msgid "not searched, because the executable's location is unknown"
+msgstr "未搜尋，因為無法得知執行檔的位置"
+
+msgid "this build cannot build the remote server from source"
+msgstr "此建置版本無法從原始碼建置遠端伺服器"
+
+msgid "uploading server binary"
+msgstr "無法上傳伺服器二進位檔"
+
+msgid "{again} The server still does not match after it was reinstalled. {steps_after_reinstall}"
+msgstr "{again} 重新安裝後伺服器仍不相符。{steps_after_reinstall}"
+
+msgid "{available} free, {capacity} used"
+msgstr "可用 {available}，已使用 {capacity}"
+
+msgid "{free_space} free"
+msgstr "可用 {free_space}"
+
+msgid "{message}\nRemote servers of other release channels ({removed}) were removed automatically, but there is still not enough space."
+msgstr "{message}\n已自動移除其他發行頻道的遠端伺服器（{removed}），但空間仍然不足。"
+
+msgid "{mismatch} The server cannot be reinstalled automatically on this host. {steps}"
+msgstr "{mismatch} 無法在此主機上自動重新安裝伺服器。{steps}"
+
+msgid "{mismatch} The server could not be reinstalled. {steps}"
+msgstr "{mismatch} 無法重新安裝伺服器。{steps}"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"

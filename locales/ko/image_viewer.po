@@ -1,0 +1,30 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Edit Zoom"
+msgstr "확대/축소 편집"
+
+msgid "Fit to View"
+msgstr "보기에 맞춤"
+
+msgid "Right-click to reset to 100%."
+msgstr "100%로 초기화하려면 오른쪽 클릭하세요."
+
+msgid "Unknown"
+msgstr "알 수 없음"
+
+msgid "Zoom In"
+msgstr "확대"
+
+msgid "Zoom Out"
+msgstr "축소"
+
+msgid "{} channels, {} bits per pixel"
+msgstr "채널 {}개, 픽셀당 {}비트"

@@ -1,0 +1,3910 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "\nand {} more…"
+msgstr "\ny {} más…"
+
+msgid " (no branch)"
+msgstr " (sin rama)"
+
+msgid "\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch."
+msgstr "\"Anular\" vuelve a la rama original \"{origin_branch}\" y elimina esta rama temporal."
+
+msgid "\"Continue\" carries on with the rest, and \"Abort\" goes back to where it started."
+msgstr "\"Continuar\" sigue con el resto y \"Anular\" vuelve al punto de partida."
+
+msgid "\"{label}\" is unavailable right now: {refusal}"
+msgstr "\"{label}\" no está disponible en este momento: {refusal}"
+
+msgid "\"{merge_request_branch}\" is a branch under development. Give the MR branch another name."
+msgstr "\"{merge_request_branch}\" es una rama en desarrollo. Asigne otro nombre a la rama de MR."
+
+msgid "\"{merge_request_branch}\" is checked out in another worktree, so it cannot be recreated. Use another name."
+msgstr "\"{merge_request_branch}\" tiene checkout en otro worktree, por lo que no se puede volver a crear. Use otro nombre."
+
+msgid "(binary file not shown)"
+msgstr "(archivo binario no mostrado)"
+
+msgid "(not selected)"
+msgstr "(sin seleccionar)"
+
+msgid ". {count} changed file not from the development branch"
+msgid_plural ". {count} changed files not from the development branch"
+msgstr[0] ". {count} archivo cambiado que no procede de la rama de desarrollo"
+msgstr[1] ". {count} archivos cambiados que no proceden de la rama de desarrollo"
+
+msgid "1. Choose the \"development branch\" (where the commits come from) and the \"base\" (what the MR targets). 2. Drag rows of the Git Graph into the box, or pick them and press \"Add to MR Box\". Set aside what should stay out of the MR by right-clicking its row and choosing \"Exclude from MR\". 3. When \"unplaced\" under the box shows 0, nothing was forgotten (unplaced rows get a small ● in the graph, and \"Go to Next Unplaced\" jumps to them one by one). 4. Enter a message and an MR branch name and press \"Create and Compare\": it creates the MR branch as one commit on top of the base and compares it with the development branch. It cannot be created while there are uncommitted changes, so commit or stash them first."
+msgstr "1. Elija la \"rama de desarrollo\" (de donde proceden los commits) y la \"base\" (el destino de la MR). 2. Arrastre filas del grafo de commits a la caja, o selecciónelas y presione \"Agregar a la caja de MR\". Aparte lo que no deba entrar en la MR haciendo clic con el botón derecho en su fila y eligiendo \"Excluir de la MR\". 3. Cuando \"sin colocar\" bajo la caja muestre 0, no se olvidó nada (las filas sin colocar llevan un pequeño ● en el grafo y \"Ir al siguiente sin colocar\" salta a ellas una por una). 4. Escriba un mensaje y un nombre de rama de MR y presione \"Crear y comparar\": se crea la rama de MR como un único commit sobre la base y se compara con la rama de desarrollo. No se puede crear mientras haya cambios sin commit, así que primero haga commit de ellos o guárdelos en el stash."
+
+msgid "<no branch>"
+msgstr "<sin rama>"
+
+msgid "<no commit message>"
+msgstr "<sin mensaje de commit>"
+
+msgid "<no name>"
+msgstr "<sin nombre>"
+
+msgid "A base change may be missing from the MR"
+msgstr "Puede que falte en la MR un cambio de la base"
+
+msgid "A conflict happened while applying the box's commits. Stopped on the scratch branch \"{}\".\nResolve it and press \"Continue\" in the Git panel's banner, then finish with \"Next Steps\" in the MR box. To give up, \"Abort\" in the banner returns to \"{}\".\n{reason}"
+msgstr "Se produjo un conflicto al aplicar los commits de la caja. Se detuvo en la rama temporal \"{}\".\nResuélvalo y presione \"Continuar\" en el banner del panel de Git; después, termine con \"Pasos siguientes\" en la caja de MR. Para desistir, \"Anular\" en el banner vuelve a \"{}\".\n{reason}"
+
+msgid "A detached HEAD cannot be reordered. Switch to a branch first."
+msgstr "No se puede reordenar en un detached HEAD. Cambie primero a una rama."
+
+msgid "A detached HEAD cannot be rewritten. Switch to a branch first"
+msgstr "No se puede reescribir en un detached HEAD. Cambie primero a una rama"
+
+msgid "A file an excluded commit touched (as intended)."
+msgstr "Un archivo que modificó un commit excluido (según lo previsto)."
+
+msgid "A file history tab has no MR box. Open it in a Git Graph tab."
+msgstr "Una pestaña de historial de archivo no tiene caja de MR. Ábrala en una pestaña de grafo de commits."
+
+msgid "A force push can erase other people's changes. Commits others pushed disappear without a word"
+msgstr "Un push forzado puede borrar los cambios de otras personas. Los commits que otros enviaron desaparecen sin aviso"
+
+msgid "A merge commit and the commits before it cannot be reordered (rewriting them would break the merge)."
+msgstr "Un commit de fusión y los commits anteriores a él no se pueden reordenar (reescribirlos rompería la fusión)."
+
+msgid "A merge commit cannot be cherry-picked."
+msgstr "No se puede aplicar un commit de fusión con cherry-pick."
+
+msgid "A merge commit cannot be reverted."
+msgstr "No se puede revertir un commit de fusión."
+
+msgid "A name cannot start with -."
+msgstr "Un nombre no puede empezar por -."
+
+msgid "A period (3d, 2w, 1m, 1y, a date, \"2026-09-01 12:00\")"
+msgstr "Un período (3d, 2w, 1m, 1y, una fecha, \"2026-09-01 12:00\")"
+
+msgid "A renamed file is split into two rows, \"Deleted\" and \"Added\"."
+msgstr "Un archivo con nombre cambiado se divide en dos filas, \"Eliminado\" y \"Agregado\"."
+
+msgid "A renamed file is split into two rows: its old name and its new name."
+msgstr "Un archivo con nombre cambiado se divide en dos filas: su nombre anterior y su nombre nuevo."
+
+msgid "A value for \"{label}\" cannot contain both spaces and \"."
+msgstr "Un valor de \"{label}\" no puede contener a la vez espacios y \"."
+
+msgid "Abort the {}?"
+msgstr "¿Anular {}?"
+
+msgid "Aborted the {}."
+msgstr "Se anuló {}."
+
+msgid "Add Remote…"
+msgstr "Agregar remoto…"
+
+msgid "Add a fix to an older commit (fixup)"
+msgstr "Agregar una corrección a un commit anterior (fixup)"
+
+msgid "Add co-authored-by"
+msgstr "Agregar co-authored-by"
+
+msgid "Add repo to project"
+msgstr "Agregar repositorio al proyecto"
+
+msgid "Add the {count} Selected Commit to the MR Box"
+msgid_plural "Add the {count} Selected Commits to the MR Box"
+msgstr[0] "Agregar el {count} commit seleccionado a la caja de MR"
+msgstr[1] "Agregar los {count} commits seleccionados a la caja de MR"
+
+msgid "Add to .git/info/exclude"
+msgstr "Agregar a .git/info/exclude"
+
+msgid "Add to .gitignore"
+msgstr "Agregar a .gitignore"
+
+msgid "Add {count} Commit to MR Box"
+msgid_plural "Add {count} Commits to MR Box"
+msgstr[0] "Agregar {count} commit a la caja de MR"
+msgstr[1] "Agregar {count} commits a la caja de MR"
+
+msgid "Added or removed lines contain \"foo\" (slow)"
+msgstr "Las líneas agregadas o eliminadas contienen \"foo\" (lento)"
+
+msgid "Added the remote {remote_name}."
+msgstr "Se agregó el remoto {remote_name}."
+
+msgid "Adds a \"Signed-off-by: name <email>\" line at the end of the commit message. Use it when the project's rules ask for it"
+msgstr "Agrega una línea \"Signed-off-by: nombre <correo>\" al final del mensaje del commit. Úselo cuando las normas del proyecto lo exijan"
+
+msgid "Adds or removes the stage mark of the chosen change (hunk: one block of changes)"
+msgstr "Agrega o quita la marca de preparación del cambio elegido (fragmento: un bloque de cambios)"
+
+msgid "Adds the changes of the {count} picked commit to the tip of the current branch as a new commit (cherry-pick)."
+msgid_plural "Adds the changes of the {count} picked commits to the tip of the current branch as new commits (cherry-pick)."
+msgstr[0] "Agrega los cambios del {count} commit elegido al extremo de la rama actual como un commit nuevo (cherry-pick)."
+msgstr[1] "Agrega los cambios de los {count} commits elegidos al extremo de la rama actual como commits nuevos (cherry-pick)."
+
+msgid "Adds the changes of {sha} to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgstr "Agrega los cambios de {sha} al extremo de la rama actual {branch} como un commit nuevo (cherry-pick)."
+
+msgid "Adds this file to the ignore list at the top of the repository (.gitignore), so that it no longer shows among the changes. Once the .gitignore change is committed, it applies to others too"
+msgstr "Agrega este archivo a la lista de ignorados en la raíz del repositorio (.gitignore) para que deje de aparecer entre los cambios. Una vez que se haga commit del cambio en .gitignore, también se aplica a los demás"
+
+msgid "Adds this file to your own local ignore list (.git/info/exclude). It is not committed and does not apply to others"
+msgstr "Agrega este archivo a su propia lista local de ignorados (.git/info/exclude). No se incluye en ningún commit y no se aplica a los demás"
+
+msgid "Adds your uncommitted changes into this commit"
+msgstr "Agrega sus cambios sin commit a este commit"
+
+msgid "After resolving the conflict and pressing \"Continue\" in the Git panel's banner, \"Next Steps\" updates the MR branch and goes back to \"{}\"."
+msgstr "Después de resolver el conflicto y presionar \"Continuar\" en el banner del panel de Git, \"Pasos siguientes\" actualiza la rama de MR y vuelve a \"{}\"."
+
+msgid "After rewriting pushed commits with amend, fixup, reordering and so on, push with \"Force Push (with lease)\". Because of the lease, commits someone else pushed first are not overwritten."
+msgstr "Después de reescribir commits ya enviados con amend, fixup, reordenación, etc., haga push con \"Forzar push (con lease)\". Gracias al lease, no se sobrescriben los commits que otra persona haya enviado antes."
+
+msgid "After the rewrite there will be {count} commit, with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgid_plural "After the rewrite there will be {count} commits, each with a new SHA.\nThe rewrite applies to the current branch \"{branch}\". The work happens on a temporary branch \"{scratch_branch}\", and \"{branch}\" is moved there at the end (the temporary branch is deleted once it succeeds).\nIf the branch was already pushed, it needs a force push afterwards."
+msgstr[0] "Después de la reescritura habrá {count} commit, con un SHA nuevo.\nLa reescritura se aplica a la rama actual \"{branch}\". El trabajo se hace en una rama temporal \"{scratch_branch}\" y \"{branch}\" se mueve allí al final (la rama temporal se elimina cuando todo sale bien).\nSi la rama ya se había enviado con push, después será necesario un push forzado."
+msgstr[1] "Después de la reescritura habrá {count} commits, cada uno con un SHA nuevo.\nLa reescritura se aplica a la rama actual \"{branch}\". El trabajo se hace en una rama temporal \"{scratch_branch}\" y \"{branch}\" se mueve allí al final (la rama temporal se elimina cuando todo sale bien).\nSi la rama ya se había enviado con push, después será necesario un push forzado."
+
+msgid "All Branches"
+msgstr "Todas las ramas"
+
+msgid "All changes ({count} tracked file)"
+msgid_plural "All changes ({count} tracked files)"
+msgstr[0] "Todos los cambios ({count} archivo con seguimiento)"
+msgstr[1] "Todos los cambios ({count} archivos con seguimiento)"
+
+msgid "All conflicts marked as resolved"
+msgstr "Todos los conflictos marcados como resueltos"
+
+msgid "All three move the current branch back to the chosen commit and undo the commits after it. soft keeps the undone commits' changes as staged changes and mixed as unstaged ones, so you can commit them again. hard throws away the undone commits' changes and the changes you have not committed yet as well (uncommitted changes cannot be recovered)."
+msgstr "Las tres opciones devuelven la rama actual al commit elegido y deshacen los commits posteriores. soft conserva los cambios de los commits deshechos como cambios preparados y mixed como cambios sin preparar, para que pueda volver a hacer commit de ellos. hard descarta los cambios de los commits deshechos y también los cambios de los que aún no hizo commit (los cambios sin commit no se pueden recuperar)."
+
+msgid "Already pushed, so a force push (with lease) is needed afterwards"
+msgstr "Ya se hizo push, así que después será necesario un push forzado (con lease)"
+
+msgid "Also changed on the base · changed by an excluded commit"
+msgstr "También cambiado en la base · cambiado por un commit excluido"
+
+msgid "Also changed on the base: the diff includes the base's changes"
+msgstr "También cambiado en la base: las diferencias incluyen los cambios de la base"
+
+msgid "Amend"
+msgstr "Enmendar"
+
+msgid "Amend Tracked"
+msgstr "Enmendar cambios con seguimiento"
+
+msgid "Another remote operation is running. Push again once it has finished."
+msgstr "Hay otra operación remota en ejecución. Vuelva a hacer push cuando termine."
+
+msgid "Applied the patch file with a 3-way merge and staged it."
+msgstr "Se aplicó el archivo de parche con una fusión de 3 vías y se preparó."
+
+msgid "Applied the patch file."
+msgstr "Se aplicó el archivo de parche."
+
+msgid "Applies the changes written in a patch file to your current files. Nothing is committed, so check the result before you commit"
+msgstr "Aplica los cambios escritos en un archivo de parche a sus archivos actuales. No se hace ningún commit, así que revise el resultado antes de hacer commit"
+
+msgid "Applies to: {}"
+msgstr "Se aplica a: {}"
+
+msgid "Apply"
+msgstr "Aplicar"
+
+msgid "Apply Patch File…"
+msgstr "Aplicar archivo de parche…"
+
+msgid "Apply stash@{{{}}}?"
+msgstr "¿Aplicar stash@{{{}}}?"
+
+msgid "Apply the patch file {}?"
+msgstr "¿Aplicar el archivo de parche {}?"
+
+msgid "Are you sure you want to discard changes to {}?"
+msgstr "¿Está seguro de que desea descartar los cambios de {}?"
+
+msgid "Are you sure you want to restore {}?"
+msgstr "¿Está seguro de que desea restaurar {}?"
+
+msgid "Are you sure?"
+msgstr "¿Está seguro?"
+
+msgid "Author"
+msgstr "Autor"
+
+msgid "Base commit: {}"
+msgstr "Commit base: {}"
+
+msgid "Base: {base_ref}"
+msgstr "Base: {base_ref}"
+
+msgid "Based off the current branch"
+msgstr "A partir de la rama actual"
+
+msgid "Based off {url}"
+msgstr "Basado en {url}"
+
+msgid "Based off {}"
+msgstr "A partir de {}"
+
+msgid "Binary files cannot be shown side by side."
+msgstr "Los archivos binarios no se pueden mostrar en paralelo."
+
+msgid "Blame Previous Revision"
+msgstr "Ver autoría de la revisión anterior"
+
+msgid "Blame Revision"
+msgstr "Ver autoría de la revisión"
+
+msgid "Branch \"{branch_name}\" is not fully merged. Force delete it?"
+msgstr "La rama \"{branch_name}\" no está completamente fusionada. ¿Forzar su eliminación?"
+
+msgid "Branch \"{branch_name}\" was not found."
+msgstr "No se encontró la rama \"{branch_name}\"."
+
+msgid "Branch \"{merge_request_branch}\" already exists. Check the recreate option to rebuild it."
+msgstr "La rama \"{merge_request_branch}\" ya existe. Marque la opción de volver a crear para reconstruirla."
+
+msgid "Branch / tag to compare from (the source)"
+msgstr "Rama / etiqueta desde la que comparar (el origen)"
+
+msgid "Branch / tag to compare with (the target)"
+msgstr "Rama / etiqueta con la que comparar (el destino)"
+
+msgid "Branched off at {}."
+msgstr "Se bifurcó en {}."
+
+msgid "Branches"
+msgstr "Ramas"
+
+msgid "Bring over a commit from another branch (cherry-pick)"
+msgstr "Traer un commit de otra rama (cherry-pick)"
+
+msgid "Brings a deleted file back with its content in the last commit"
+msgstr "Recupera un archivo eliminado con su contenido del último commit"
+
+msgid "Brings in the latest from the remote and replays your commits that were not pushed yet on top of it. History stays in a straight line"
+msgstr "Trae lo más reciente del remoto y vuelve a aplicar encima sus commits aún no enviados. El historial se mantiene en línea recta"
+
+msgid "Brings the chosen branch's changes into the current branch. Both histories are kept. If the current branch has new commits too, a commit that joins the two (a merge commit) is created"
+msgstr "Incorpora los cambios de la rama elegida a la rama actual. Se conservan ambos historiales. Si la rama actual también tiene commits nuevos, se crea un commit que une ambas (un commit de fusión)"
+
+msgid "Buffer Search"
+msgstr "Búsqueda en búfer"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Cancel Commit Message Generation"
+msgstr "Cancelar generación de mensaje de commit"
+
+msgid "Cannot create an MR branch on a detached HEAD. Switch to a branch first."
+msgstr "No se puede crear una rama de MR en un detached HEAD. Cambie primero a una rama."
+
+msgid "Cannot create it on the scratch branch \"{origin_branch}\". Go back to the original branch first."
+msgstr "No se puede crear en la rama temporal \"{origin_branch}\". Vuelva primero a la rama original."
+
+msgid "Cannot fixup: {}"
+msgstr "No se puede hacer fixup: {}"
+
+msgid "Cannot push from a collaborative project."
+msgstr "No se puede hacer push desde un proyecto colaborativo."
+
+msgid "Caution: {caution}"
+msgstr "Precaución: {caution}"
+
+msgid "Changed by an excluded commit"
+msgstr "Cambiado por un commit excluido"
+
+msgid "Changed on the development branch, but different on the MR branch. The commits below may be missing."
+msgstr "Se cambió en la rama de desarrollo, pero es distinto en la rama de MR. Puede que falten los commits siguientes."
+
+msgid "Changes"
+msgstr "Cambios"
+
+msgid "Changes how the list of changes is shown (list or tree, sort order, grouping). Does nothing to the files"
+msgstr "Cambia cómo se muestra la lista de cambios (lista o árbol, orden, agrupación). No modifica los archivos"
+
+msgid "Changes in the working tree (git diff)"
+msgstr "Cambios en el árbol de trabajo (git diff)"
+
+msgid "Changes only this commit's message"
+msgstr "Cambia solo el mensaje de este commit"
+
+msgid "Changes since {}"
+msgstr "Cambios desde {}"
+
+msgid "Changes to Fold In"
+msgstr "Cambios para incorporar"
+
+msgid "Changes to the same lines on both sides cause a conflict"
+msgstr "Los cambios en las mismas líneas en ambos lados provocan un conflicto"
+
+msgid "Check Out This Commit (detached)"
+msgstr "Hacer checkout de este commit (detached)"
+
+msgid "Checked out {} (detached HEAD)."
+msgstr "Se hizo checkout de {} (detached HEAD)."
+
+msgid "Cherry-Pick This Commit onto the Current Branch"
+msgstr "Aplicar este commit en la rama actual con cherry-pick"
+
+msgid "Cherry-Pick the {count} Selected Commit onto the Current Branch"
+msgid_plural "Cherry-Pick the {count} Selected Commits onto the Current Branch"
+msgstr[0] "Aplicar el {count} commit seleccionado en la rama actual con cherry-pick"
+msgstr[1] "Aplicar los {count} commits seleccionados en la rama actual con cherry-pick"
+
+msgid "Cherry-pick the selected commits onto the current branch?"
+msgstr "¿Aplicar los commits seleccionados en la rama actual con cherry-pick?"
+
+msgid "Cherry-pick the {count} picked commit, reorder it or add it to the MR box. Hover over a button to learn more"
+msgid_plural "Cherry-pick the {count} picked commits together, reorder them or add them to the MR box. Hover over a button to learn more"
+msgstr[0] "Aplique con cherry-pick el {count} commit elegido, reordénelo o agréguelo a la caja de MR. Pase el cursor por encima de un botón para obtener más información"
+msgstr[1] "Aplique con cherry-pick los {count} commits elegidos a la vez, reordénelos o agréguelos a la caja de MR. Pase el cursor por encima de un botón para obtener más información"
+
+msgid "Cherry-pick this commit onto the current branch?"
+msgstr "¿Aplicar este commit en la rama actual con cherry-pick?"
+
+msgid "Cherry-pick {count} commit onto the current branch?"
+msgid_plural "Cherry-pick {count} commits onto the current branch?"
+msgstr[0] "¿Aplicar {count} commit en la rama actual con cherry-pick?"
+msgstr[1] "¿Aplicar {count} commits en la rama actual con cherry-pick?"
+
+msgid "Cherry-picked {}."
+msgstr "Se aplicó {} con cherry-pick."
+
+msgid "Cherry-picks {count} commit: adds it, oldest first, to the tip of the current branch {branch} as a new commit (cherry-pick)."
+msgid_plural "Cherry-picks {count} commits: adds them, oldest first, to the tip of the current branch {branch} as new commits (cherry-pick)."
+msgstr[0] "Aplica {count} commit con cherry-pick: lo agrega, empezando por el más antiguo, al extremo de la rama actual {branch} como un commit nuevo (cherry-pick)."
+msgstr[1] "Aplica {count} commits con cherry-pick: los agrega, empezando por el más antiguo, al extremo de la rama actual {branch} como commits nuevos (cherry-pick)."
+
+msgid "Choose What the Patch File Contains (Whole Repository: {})"
+msgstr "Elegir qué contiene el archivo de parche (repositorio completo: {})"
+
+msgid "Choose a Branch…"
+msgstr "Elegir una rama…"
+
+msgid "Choose a base."
+msgstr "Elija una base."
+
+msgid "Choose a commit (right-click one in the history tab or the Git Graph)"
+msgstr "Elija un commit (haga clic con el botón derecho en uno en la pestaña de historial o en el grafo de commits)"
+
+msgid "Choose a development branch and a base to check for left-out commits."
+msgstr "Elija una rama de desarrollo y una base para comprobar si faltan commits."
+
+msgid "Choose a development branch."
+msgstr "Elija una rama de desarrollo."
+
+msgid "Choose a file from the list on the left to show the development branch (left) and the MR branch (right) side by side. Rows in the warning color show the base (left) and the MR branch (right)."
+msgstr "Elija un archivo de la lista de la izquierda para mostrar en paralelo la rama de desarrollo (izquierda) y la rama de MR (derecha). Las filas en el color de advertencia muestran la base (izquierda) y la rama de MR (derecha)."
+
+msgid "Choose the Base Branch or Tag (Where the MR Goes)"
+msgstr "Elegir la rama o etiqueta base (destino de la MR)"
+
+msgid "Choose the Development Branch (Where the Commits Come From)"
+msgstr "Elegir la rama de desarrollo (de donde proceden los commits)"
+
+msgid "Choose the MR's base (merge target) and reopen as a comparison that the base's own changes do not bury."
+msgstr "Elija la base de la MR (destino de la fusión) y vuelva a abrir como una comparación en la que los cambios propios de la base no oculten nada."
+
+msgid "Choose two branches / tags to list the commits only one of them has and how their contents differ. Useful to check that nothing was left out when porting."
+msgstr "Elija dos ramas / etiquetas para enumerar los commits que solo tiene una de ellas y cómo difiere su contenido. Útil para comprobar que no se omitió nada al portar."
+
+msgid "Chooses the branches the list shows: all, yours (local) or the server's (remote)"
+msgstr "Elige las ramas que muestra la lista: todas, las suyas (locales) o las del servidor (remotas)"
+
+msgid "Chooses the commits the graph shows: all branches, the current branch or a chosen branch"
+msgstr "Elige los commits que muestra el grafo: todas las ramas, la rama actual o una rama elegida"
+
+msgid "Chooses the remote to send to, then sends your commits"
+msgstr "Elige el remoto al que enviar y luego envía sus commits"
+
+msgid "Click to Resolve with Agent"
+msgstr "Haga clic para resolver con el agente"
+
+msgid "Clipboard ↔ {selection_location_path}"
+msgstr "Portapapeles ↔ {selection_location_path}"
+
+msgid "Clipboard ↔ {selection_location_title}"
+msgstr "Portapapeles ↔ {selection_location_title}"
+
+msgid "Clone a repository from GitHub or other sources."
+msgstr "Clona un repositorio desde GitHub u otros orígenes."
+
+msgid "Close"
+msgstr "Cerrar"
+
+msgid "Close (they show again next time)"
+msgstr "Cerrar (se volverán a mostrar la próxima vez)"
+
+msgid "Close the Box (Its Contents Are Kept)"
+msgstr "Cerrar la caja (se conserva su contenido)"
+
+msgid "Collapse"
+msgstr "Contraer"
+
+msgid "Collapse Commit Editor"
+msgstr "Contraer editor de mensajes de commit"
+
+msgid "Collect a development branch's commits in the \"MR box\" and they are squashed into one commit on a new branch for the MR. The original branch stays as it is."
+msgstr "Reúna los commits de una rama de desarrollo en la \"caja de MR\" y se combinarán en un único commit en una rama nueva para la MR. La rama original se queda como está."
+
+msgid "Collects commits in a box and creates a branch with them squashed into one commit for an MR (merge request)"
+msgstr "Reúne commits en una caja y crea una rama con ellos combinados en un único commit para una MR (solicitud de fusión)"
+
+msgid "Collects commits in the MR box. From them you can create a branch squashed into one commit for the MR"
+msgstr "Reúne commits en la caja de MR. A partir de ellos puede crear una rama combinada en un único commit para la MR"
+
+msgid "Columns"
+msgstr "Columnas"
+
+msgid "Combines the picked consecutive commits into a single commit"
+msgstr "Combina los commits consecutivos elegidos en un único commit"
+
+msgid "Commit"
+msgstr "Commit"
+
+msgid "Commit SHA"
+msgstr "SHA de commit"
+
+msgid "Commit SHA Copied!"
+msgstr "¡SHA de commit copiado!"
+
+msgid "Commit Tracked"
+msgstr "Hacer commit de cambios con seguimiento"
+
+msgid "Commit and Push As"
+msgstr "Hacer commit y push como"
+
+msgid "Commit in progress"
+msgstr "Commit en curso"
+
+msgid "Commit message for the MR"
+msgstr "Mensaje del commit para la MR"
+
+msgid "Commit message title exceeds {max_title_length}-character limit."
+msgstr "El título del mensaje de commit supera el límite de {max_title_length} caracteres."
+
+msgid "Commit or stash the uncommitted changes first"
+msgstr "Primero haga commit de los cambios sin commit o guárdelos en el stash"
+
+msgid "Commit or stash the uncommitted changes first ({operation})."
+msgstr "Primero haga commit de los cambios sin commit o guárdelos en el stash ({operation})."
+
+msgid "Commit {sha_short}"
+msgstr "Commit {sha_short}"
+
+msgid "Commits and pushes as git is configured. Click to pick a git account."
+msgstr "Hace commit y push según la configuración de git. Haga clic para elegir una cuenta de Git."
+
+msgid "Commits are reordered one at a time. Drag a single commit."
+msgstr "Los commits se reordenan de uno en uno. Arrastre un único commit."
+
+msgid "Commits as {name} <{email}> (git account \"{id}\")"
+msgstr "Hace commit como {name} <{email}> (cuenta de Git \"{id}\")"
+
+msgid "Commits as {name} <{email}> (git account \"{id}\"). The account's SSH key is not used: {reason}"
+msgstr "Hace commit como {name} <{email}> (cuenta de Git \"{id}\"). No se usa la clave SSH de la cuenta: {reason}"
+
+msgid "Commits on feature that the default branch does not have"
+msgstr "Commits de feature que no tiene la rama predeterminada"
+
+msgid "Commits that are not in the current branch's history cannot be reordered. Switch to that branch, then try again."
+msgstr "No se pueden reordenar commits que no están en el historial de la rama actual. Cambie a esa rama e inténtelo de nuevo."
+
+msgid "Commits that are only on that branch can no longer be seen"
+msgstr "Los commits que solo están en esa rama dejarán de verse"
+
+msgid "Commits that changed that file or folder (* for patterns)"
+msgstr "Commits que cambiaron ese archivo o carpeta (* para patrones)"
+
+msgid "Commits that tags with \"v1.2\" in their name point to"
+msgstr "Commits a los que apuntan las etiquetas con \"v1.2\" en su nombre"
+
+msgid "Commits whose SHA starts like this"
+msgstr "Commits cuyo SHA empieza así"
+
+msgid "Commits without the checks that run automatically before a commit (hooks)"
+msgstr "Hace commit sin las comprobaciones que se ejecutan automáticamente antes de un commit (hooks)"
+
+msgid "Compare two branches"
+msgstr "Comparar dos ramas"
+
+msgid "Compares only the files {} changed after it branched off {merge_request_base} (the base)."
+msgstr "Compara solo los archivos que {} cambió después de bifurcarse de {merge_request_base} (la base)."
+
+msgid "Compares the contents of two branches or tags themselves. If there are no differences, everything has been ported."
+msgstr "Compara el contenido de las propias ramas o etiquetas. Si no hay diferencias, se portó todo."
+
+msgid "Compares the contents of two branches or tags. Useful to check that no commit was left behind"
+msgstr "Compara el contenido de dos ramas o etiquetas. Útil para comprobar que no quedó atrás ningún commit"
+
+msgid "Comparing needs at least two branches or tags."
+msgstr "Para comparar se necesitan al menos dos ramas o etiquetas."
+
+msgid "Comparison of {} (source) and {} (target)"
+msgstr "Comparación de {} (origen) y {} (destino)"
+
+msgid "Comparison of {} and {}"
+msgstr "Comparación de {} y {}"
+
+msgid "Configure Provider"
+msgstr "Configurar proveedor"
+
+msgid "Configure an LLM provider to generate commit messages."
+msgstr "Configura un proveedor de LLM para generar mensajes de commit."
+
+msgid "Confirm"
+msgstr "Confirmar"
+
+msgid "Conflict marked as resolved"
+msgstr "Conflicto marcado como resuelto"
+
+msgid "Conflicts"
+msgstr "Conflictos"
+
+msgid "Conflicts marked as resolved"
+msgstr "Conflictos marcados como resueltos"
+
+msgid "Contains Unpushed Changes — {}"
+msgstr "Contiene cambios sin push — {}"
+
+msgid "Continued the {}."
+msgstr "Se continuó {}."
+
+msgid "Copied {text}."
+msgstr "Se copió {text}."
+
+msgid "Copies how many commits past the nearest tag this is (in git describe form)"
+msgstr "Copia cuántos commits hay desde la etiqueta más cercana (en formato git describe)"
+
+msgid "Copies only this commit's changes onto the current branch as a new commit. The original stays"
+msgstr "Copia solo los cambios de este commit en la rama actual como un commit nuevo. El original se conserva"
+
+msgid "Copies the file's location as a full (absolute) path to the clipboard"
+msgstr "Copia la ubicación del archivo como ruta completa (absoluta) en el portapapeles"
+
+msgid "Copies the file's location as a path relative to the project folder to the clipboard"
+msgstr "Copia la ubicación del archivo como ruta relativa a la carpeta del proyecto en el portapapeles"
+
+msgid "Copies the picked commits' changes onto the current branch, oldest first. The originals stay"
+msgstr "Copia los cambios de los commits elegidos en la rama actual, empezando por el más antiguo. Los originales se conservan"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Copy Commit SHA"
+msgstr "Copiar SHA del commit"
+
+msgid "Copy Distance from Latest Tag"
+msgstr "Copiar distancia desde la última etiqueta"
+
+msgid "Copy Email"
+msgstr "Copiar correo electrónico"
+
+msgid "Copy Path"
+msgstr "Copiar ruta"
+
+msgid "Copy Ref Name"
+msgstr "Copiar nombre de referencia"
+
+msgid "Copy Relative Path"
+msgstr "Copiar ruta relativa"
+
+msgid "Copy SHA"
+msgstr "Copiar SHA"
+
+msgid "Copy SHA ({count} Commit)"
+msgid_plural "Copy SHAs ({count} Commits)"
+msgstr[0] "Copiar SHA ({count} commit)"
+msgstr[1] "Copiar SHA ({count} commits)"
+
+msgid "Copy Tag"
+msgstr "Copiar etiqueta"
+
+msgid "Copy the Full Error"
+msgstr "Copiar el error completo"
+
+msgid "Could not commit (a hook, for example). The history is unchanged and the changes are still there."
+msgstr "No se pudo hacer commit (por un hook, por ejemplo). El historial no cambió y los cambios siguen ahí."
+
+msgid "Could not commit, but HEAD has moved. Check it with git reflog."
+msgstr "No se pudo hacer commit, pero HEAD se movió. Compruébelo con git reflog."
+
+msgid "Could not compare"
+msgstr "No se pudo comparar"
+
+msgid "Could not compare the base and the MR branch"
+msgstr "No se pudo comparar la base y la rama de MR"
+
+msgid "Could not compare the development branch and the MR branch"
+msgstr "No se pudo comparar la rama de desarrollo y la rama de MR"
+
+msgid "Could not compare the histories of the base and the MR branch: {}"
+msgstr "No se pudo comparar el historial de la base y de la rama de MR: {}"
+
+msgid "Could not create the MR branch\n{reason}"
+msgstr "No se pudo crear la rama de MR\n{reason}"
+
+msgid "Could not fixup: {}"
+msgstr "No se pudo hacer fixup: {}"
+
+msgid "Could not fold into {short} (the rebase could not start). The history is unchanged and the changes are left staged."
+msgstr "No se pudo incorporar en {short} (no se pudo iniciar el rebase). El historial no cambió y los cambios quedan preparados."
+
+msgid "Could not fold into {short} (the rebase failed). The changes are left at the tip as the \"{fixup_subject}\" commit. Check the working tree with git status too."
+msgstr "No se pudo incorporar en {short} (el rebase falló). Los cambios quedan en el extremo como el commit \"{fixup_subject}\". Compruebe también el árbol de trabajo con git status."
+
+msgid "Could not get the file's contents."
+msgstr "No se pudo obtener el contenido del archivo."
+
+msgid "Could not go back to {}. Still on the scratch branch \"{}\".\n{}"
+msgstr "No se pudo volver a {}. Sigue en la rama temporal \"{}\".\n{}"
+
+msgid "Could not load the commits to reorder. Wait a moment and try again."
+msgstr "No se pudieron cargar los commits para reordenar. Espere un momento e inténtelo de nuevo."
+
+msgid "Could not load the selected commits. Wait a moment and try again."
+msgstr "No se pudieron cargar los commits seleccionados. Espere un momento e inténtelo de nuevo."
+
+msgid "Could not pack the branches and tags\n{reason}"
+msgstr "No se pudieron empaquetar las ramas y etiquetas\n{reason}"
+
+msgid "Could not read the Git status"
+msgstr "No se pudo leer el estado de Git"
+
+msgid "Could not read the changes on the base"
+msgstr "No se pudieron leer los cambios de la base"
+
+msgid "Could not read the common ancestor: {merge_base}"
+msgstr "No se pudo leer el ancestro común: {merge_base}"
+
+msgid "Could not read the current branch."
+msgstr "No se pudo leer la rama actual."
+
+msgid "Could not read the development branch's changes"
+msgstr "No se pudieron leer los cambios de la rama de desarrollo"
+
+msgid "Could not read the development branch's history: {}"
+msgstr "No se pudo leer el historial de la rama de desarrollo: {}"
+
+msgid "Could not read the development branch's range: {}"
+msgstr "No se pudo leer el intervalo de la rama de desarrollo: {}"
+
+msgid "Could not read the excluded commits: {}"
+msgstr "No se pudieron leer los commits excluidos: {}"
+
+msgid "Could not read the patch file {}"
+msgstr "No se pudo leer el archivo de parche {}"
+
+msgid "Could not read the range to reorder."
+msgstr "No se pudo leer el intervalo para reordenar."
+
+msgid "Could not read {merge_request_base} and {source}: {}"
+msgstr "No se pudieron leer {merge_request_base} y {source}: {}"
+
+msgid "Could not run the MR check"
+msgstr "No se pudo ejecutar la comprobación de la MR"
+
+msgid "Could not save the patch file {}"
+msgstr "No se pudo guardar el archivo de parche {}"
+
+msgid "Could not tell which commits touched it (it may have come in through a merge)."
+msgstr "No se pudo determinar qué commits lo modificaron (puede haber llegado a través de una fusión)."
+
+msgid "Could not undo\n{failure}"
+msgstr "No se pudo deshacer\n{failure}"
+
+msgid "Could not update the MR branch\n{reason}"
+msgstr "No se pudo actualizar la rama de MR\n{reason}"
+
+msgid "Could not update the MR branch. Still on the scratch branch \"{}\".\n{reason}"
+msgstr "No se pudo actualizar la rama de MR. Sigue en la rama temporal \"{}\".\n{reason}"
+
+msgid "Create"
+msgstr "Crear"
+
+msgid "Create Branch Here…"
+msgstr "Crear rama aquí…"
+
+msgid "Create Branch from {}"
+msgstr "Crear rama desde {}"
+
+msgid "Create Branch: \"{name}\"…"
+msgstr "Crear rama: \"{name}\"…"
+
+msgid "Create Merge Request"
+msgstr "Crear solicitud de fusión"
+
+msgid "Create New From: {default_branch}"
+msgstr "Crear nueva desde: {default_branch}"
+
+msgid "Create Only"
+msgstr "Solo crear"
+
+msgid "Create Patch File…"
+msgstr "Crear archivo de parche…"
+
+msgid "Create Pull Request"
+msgstr "Crear solicitud de cambios"
+
+msgid "Create Remote Repository"
+msgstr "Crear repositorio remoto"
+
+msgid "Create Remote: \"{name}\""
+msgstr "Crear remoto: \"{name}\""
+
+msgid "Create Tag"
+msgstr "Crear etiqueta"
+
+msgid "Create Tag at {}"
+msgstr "Crear etiqueta en {}"
+
+msgid "Create and Compare"
+msgstr "Crear y comparar"
+
+msgid "Create and Switch"
+msgstr "Crear y cambiar"
+
+msgid "Create branch \"{name}\"?"
+msgstr "¿Crear la rama \"{name}\"?"
+
+msgid "Create or switch branches"
+msgstr "Crear o cambiar de rama"
+
+msgid "Create the MR branch?"
+msgstr "¿Crear la rama de MR?"
+
+msgid "Created branch \"{name}\" and switched to it."
+msgstr "Se creó la rama \"{name}\" y se cambió a ella."
+
+msgid "Created branch \"{name}\"."
+msgstr "Se creó la rama \"{name}\"."
+
+msgid "Created tag \"{name}\"."
+msgstr "Se creó la etiqueta \"{name}\"."
+
+msgid "Created the MR branch \"{}\", but still on the scratch branch \"{}\"."
+msgstr "Se creó la rama de MR \"{}\", pero sigue en la rama temporal \"{}\"."
+
+msgid "Created the MR branch {merge_request_branch}"
+msgstr "Se creó la rama de MR {merge_request_branch}"
+
+msgid "Created the MR branch {}, but could not go back to {} (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "Se creó la rama de MR {}, pero no se pudo volver a {} (\"Volver\" en la caja de MR lo devuelve allí).\n{failure}"
+
+msgid "Created the MR branch {}, but could not go back to {}. You are on the scratch branch \"{}\" (\"Go Back\" in the MR box returns you).\n{failure}"
+msgstr "Se creó la rama de MR {}, pero no se pudo volver a {}. Está en la rama temporal \"{}\" (\"Volver\" en la caja de MR lo devuelve allí).\n{failure}"
+
+msgid "Creates \"{branch}\" on top of the base \"{base}\" from the box's {count} commit.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgid_plural "Creates \"{branch}\" on top of the base \"{base}\" by squashing the box's {count} commits into one.\nThe work is done on the scratch branch \"{scratch}\", and then Zed returns to \"{origin}\"."
+msgstr[0] "Crea \"{branch}\" sobre la base \"{base}\" a partir del {count} commit de la caja.\nEl trabajo se hace en la rama temporal \"{scratch}\" y después ForgeKairos vuelve a \"{origin}\"."
+msgstr[1] "Crea \"{branch}\" sobre la base \"{base}\" combinando en uno los {count} commits de la caja.\nEl trabajo se hace en la rama temporal \"{scratch}\" y después ForgeKairos vuelve a \"{origin}\"."
+
+msgid "Creates a new branch (a line of work) starting at this commit. Your current work stays as it is"
+msgstr "Crea una rama nueva (una línea de trabajo) que empieza en este commit. Su trabajo actual se queda como está"
+
+msgid "Creates a new branch starting from the default branch (main, for example) instead of the current branch"
+msgstr "Crea una rama nueva a partir de la rama predeterminada (main, por ejemplo) en lugar de la rama actual"
+
+msgid "Creates a new commit that applies this commit's changes in reverse. History is kept, so it is safe after sharing"
+msgstr "Crea un commit nuevo que aplica los cambios de este commit a la inversa. El historial se conserva, así que es seguro después de compartirlo"
+
+msgid "Creates an MR branch that squashes the box's commits into one on top of the base, and compares it with the development branch"
+msgstr "Crea una rama de MR que combina en uno los commits de la caja sobre la base y la compara con la rama de desarrollo"
+
+msgid "Create…"
+msgstr "Crear…"
+
+msgid "Current Branch"
+msgstr "Rama actual"
+
+msgid "Current Branch ({branch})"
+msgstr "Rama actual ({branch})"
+
+msgid "Current branch (the branch checked out now)"
+msgstr "Rama actual (la rama con checkout en este momento)"
+
+msgid "Custom Commands"
+msgstr "Comandos personalizados"
+
+msgid "Cut"
+msgstr "Cortar"
+
+msgid "Cut off at {count} commit. Add conditions to narrow the search."
+msgid_plural "Cut off at {count} commits. Add conditions to narrow the search."
+msgstr[0] "Se cortó en {count} commit. Agregue condiciones para acotar la búsqueda."
+msgstr[1] "Se cortó en {count} commits. Agregue condiciones para acotar la búsqueda."
+
+msgid "Date"
+msgstr "Fecha"
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Delete Branch"
+msgstr "Eliminar rama"
+
+msgid "Deleted on both the development branch and the MR branch."
+msgstr "Eliminado tanto en la rama de desarrollo como en la rama de MR."
+
+msgid "Deletes a local branch even if it has commits that were not merged"
+msgstr "Elimina una rama local aunque tenga commits que no se fusionaron"
+
+msgid "Deletes a local branch. If it has commits that are not in the current branch (or its upstream), it stops and asks whether to force delete. For a remote branch only your local copy goes; the branch on the server stays"
+msgstr "Elimina una rama local. Si tiene commits que no están en la rama actual (o en su rama de seguimiento), se detiene y pregunta si se fuerza la eliminación. En una rama remota solo se elimina su copia local; la rama del servidor se conserva"
+
+msgid "Deletes the scratch branch \"{}\" and returns to \"{}\". The commits on the scratch branch (conflict resolutions included) are thrown away (they stay in the reflog).\nIf a cherry-pick is still stopped, press \"Abort\" in the Git panel's banner first."
+msgstr "Elimina la rama temporal \"{}\" y vuelve a \"{}\". Los commits de la rama temporal (incluidas las resoluciones de conflictos) se descartan (permanecen en el reflog).\nSi un cherry-pick sigue detenido, presione primero \"Anular\" en el banner del panel de Git."
+
+msgid "Description"
+msgstr "Descripción"
+
+msgid "Detected dubious ownership in repository at {}. This happens when the .git/ directory is not owned by the current user. If you want to learn more about safe directories, visit git's documentation."
+msgstr "Se detectó una propiedad dudosa en el repositorio en {}. Esto ocurre cuando el directorio .git/ no pertenece al usuario actual. Si desea obtener más información sobre los directorios seguros, consulte la documentación de git."
+
+msgid "Development Branch"
+msgstr "Rama de desarrollo"
+
+msgid "Diff ({count} file)"
+msgid_plural "Diff ({count} files)"
+msgstr[0] "Diferencias ({count} archivo)"
+msgstr[1] "Diferencias ({count} archivos)"
+
+msgid "Discard Changes"
+msgstr "Descartar cambios"
+
+msgid "Discard Changes to {count} Files"
+msgstr "Descartar los cambios de {count} archivos"
+
+msgid "Discard Everything (--hard)"
+msgstr "Descartar todo (--hard)"
+
+msgid "Discard Tracked Changes"
+msgstr "Descartar cambios con seguimiento"
+
+msgid "Discard changes to these files?"
+msgstr "¿Descartar los cambios en estos archivos?"
+
+msgid "Discard changes to these files? New files are moved to the trash."
+msgstr "¿Descartar los cambios de estos archivos? Los archivos nuevos se mueven a la papelera."
+
+msgid "Discards this file's changes and returns it to its content in the last commit"
+msgstr "Descarta los cambios de este archivo y lo devuelve a su contenido del último commit"
+
+msgid "Don't Show Again"
+msgstr "No volver a mostrar"
+
+msgid "Downloads the latest from the remote and brings it into the current branch (fetch + merge; when the git setting pull.rebase is set, it rebases as that says)"
+msgstr "Descarga lo más reciente del remoto y lo incorpora a la rama actual (fetch + merge; si la opción de git pull.rebase está configurada, hace rebase según indique)"
+
+msgid "Drag a commit onto a branch to cherry-pick it, onto a row to reorder, or into the MR box"
+msgstr "Arrastre un commit a una rama para aplicarlo con cherry-pick, a una fila para reordenarlo o a la caja de MR"
+
+msgid "Drag commits here (a multiple selection moves together)"
+msgstr "Arrastre commits aquí (una selección múltiple se mueve a la vez)"
+
+msgid "Drag: into Staged / onto a commit to fix it up"
+msgstr "Arrastrar: a Preparados / a un commit para hacer fixup"
+
+msgid "Drag: onto a branch to cherry-pick / onto another row to reorder / into the MR box"
+msgstr "Arrastrar: a una rama para cherry-pick / a otra fila para reordenar / a la caja de MR"
+
+msgid "Drop"
+msgstr "Descartar"
+
+msgid "Drop Commit"
+msgstr "Descartar commit"
+
+msgid "Drop Stash"
+msgstr "Descartar stash"
+
+msgid "Drop This Commit…"
+msgstr "Descartar este commit…"
+
+msgid "Drop files from the Git panel onto a commit to add the fix to that commit (fixup)"
+msgstr "Suelte archivos del panel de Git en un commit para agregar la corrección a ese commit (fixup)"
+
+msgid "Drop here to stage"
+msgstr "Soltar aquí para preparar"
+
+msgid "Drop here to unstage"
+msgstr "Soltar aquí para quitar de preparados"
+
+msgid "Drop here: add to this commit (fixup)"
+msgstr "Soltar aquí: agregar a este commit (fixup)"
+
+msgid "Drop here: cherry-pick"
+msgstr "Soltar aquí: cherry-pick"
+
+msgid "Drop here: cherry-pick {count} commit"
+msgid_plural "Drop here: cherry-pick {count} commits"
+msgstr[0] "Soltar aquí: cherry-pick de {count} commit"
+msgstr[1] "Soltar aquí: cherry-pick de {count} commits"
+
+msgid "Drop here: move to this position (reorder)"
+msgstr "Soltar aquí: mover a esta posición (reordenar)"
+
+msgid "Drop here: move {name} here"
+msgstr "Soltar aquí: mover {name} aquí"
+
+msgid "Drop here: reset {name} to here (reset)"
+msgstr "Soltar aquí: restablecer {name} hasta aquí (reset)"
+
+msgid "Drop here: switch to {branch} and cherry-pick"
+msgstr "Soltar aquí: cambiar a {branch} y hacer cherry-pick"
+
+msgid "Drop here: switch to {branch} and cherry-pick {count} commit"
+msgid_plural "Drop here: switch to {branch} and cherry-pick {count} commits"
+msgstr[0] "Soltar aquí: cambiar a {branch} y hacer cherry-pick de {count} commit"
+msgstr[1] "Soltar aquí: cambiar a {branch} y hacer cherry-pick de {count} commits"
+
+msgid "Drop stash@{{{}}}?"
+msgstr "¿Descartar stash@{{{}}}?"
+
+msgid "Drop {short} from the history?"
+msgstr "¿Quitar {short} del historial?"
+
+msgid "Dropped on the same commit, so the order does not change."
+msgstr "Se soltó sobre el mismo commit, así que el orden no cambia."
+
+msgid "Dropped {} from the history."
+msgstr "Se quitó {} del historial."
+
+msgid "Edit {count} Commit"
+msgid_plural "Edit {count} Commits"
+msgstr[0] "Editar {count} commit"
+msgstr[1] "Editar {count} commits"
+
+msgid "Email Copied!"
+msgstr "¡Correo copiado!"
+
+msgid "Enter a commit message."
+msgstr "Escriba un mensaje del commit."
+
+msgid "Enter a name for this remote…"
+msgstr "Escriba un nombre para este remoto…"
+
+msgid "Enter a name."
+msgstr "Escriba un nombre."
+
+msgid "Enter both a remote name and a URL."
+msgstr "Escriba un nombre de remoto y una URL."
+
+msgid "Enter commit message"
+msgstr "Escriba el mensaje del commit"
+
+msgid "Enter git ref..."
+msgstr "Escriba una referencia de Git..."
+
+msgid "Enter repository URL…"
+msgstr "Escriba la URL del repositorio…"
+
+msgid "Error loading: {}"
+msgstr "Error al cargar: {}"
+
+msgid "Error parsing date"
+msgstr "Error al analizar la fecha"
+
+msgid "Every commit after {short} gets a new SHA."
+msgstr "Todos los commits posteriores a {short} obtienen un SHA nuevo."
+
+msgid "Every commit of the development branch is checked ({} placed / {} excluded)"
+msgstr "Se comprobaron todos los commits de la rama de desarrollo ({} colocados / {} excluidos)"
+
+msgid "Every uncommitted change is lost."
+msgstr "Se pierden todos los cambios sin commit."
+
+msgid "Exclude {count} Commit from MR"
+msgid_plural "Exclude {count} Commits from MR"
+msgstr[0] "Excluir {count} commit de la MR"
+msgstr[1] "Excluir {count} commits de la MR"
+
+msgid "Expand Commit Description"
+msgstr "Expandir descripción del commit"
+
+msgid "Expand Commit Editor"
+msgstr "Expandir editor de mensajes de commit"
+
+msgid "Failed to apply stash"
+msgstr "No se pudo aplicar el stash"
+
+msgid "Failed to change branch"
+msgstr "No se pudo cambiar de rama"
+
+msgid "Failed to create branch"
+msgstr "No se pudo crear la rama"
+
+msgid "Failed to create remote"
+msgstr "No se pudo crear el remoto"
+
+msgid "Failed to discard changes"
+msgstr "No se pudieron descartar los cambios"
+
+msgid "Failed to drop stash"
+msgstr "No se pudo descartar el stash"
+
+msgid "Failed to generate commit message: {err}"
+msgstr "No se pudo generar el mensaje del commit: {err}"
+
+msgid "Failed to load commit history"
+msgstr "No se pudo cargar el historial de commits"
+
+msgid "Failed to load commits"
+msgstr "No se pudieron cargar los commits"
+
+msgid "Failed to pop stash"
+msgstr "No se pudo extraer el stash"
+
+msgid "Failed to rename branch"
+msgstr "No se pudo cambiar el nombre de la rama"
+
+msgid "Failed to trash file"
+msgstr "No se pudo mover el archivo a la papelera"
+
+msgid "Failed to trash files"
+msgstr "No se pudieron mover los archivos a la papelera"
+
+msgid "Failed to trash {failed_count} of {total_count} files: {first_error}"
+msgstr "No se pudieron mover a la papelera {failed_count} de {total_count} archivos: {first_error}"
+
+msgid "Fast forwarded from {}"
+msgstr "Avance rápido realizado desde {}"
+
+msgid "Fetch"
+msgstr "Fetch"
+
+msgid "Fetch From"
+msgstr "Hacer fetch desde"
+
+msgid "Fetch Missing History"
+msgstr "Obtener el historial que falta"
+
+msgid "Fetch in Progress…"
+msgstr "Fetch en curso…"
+
+msgid "Fetch updates from remote"
+msgstr "Hacer fetch de actualizaciones del remoto"
+
+msgid "Fetch: Already up to date"
+msgstr "Fetch: ya está actualizado"
+
+msgid "Fetched the missing commit history"
+msgstr "Se obtuvo el historial de commits que faltaba"
+
+msgid "Fetches the remote, then makes the current branch the same as the remote branch"
+msgstr "Hace fetch del remoto y después deja la rama actual igual que la rama remota"
+
+msgid "Fetches {remote_name}, then runs git reset --hard {target_ref}.\nEvery uncommitted change and every commit the remote does not have is lost."
+msgstr "Hace fetch de {remote_name} y después ejecuta git reset --hard {target_ref}.\nSe pierden todos los cambios sin commit y todos los commits que no tiene el remoto."
+
+msgid "Files from another repository cannot go into this graph's commits."
+msgstr "Los archivos de otro repositorio no pueden entrar en los commits de este grafo."
+
+msgid "Filter Branches"
+msgstr "Filtrar ramas"
+
+msgid "Find a Git operation by what you want to do"
+msgstr "Buscar una operación de Git según lo que quiere hacer"
+
+msgid "Find or add a tag (tag)"
+msgstr "Buscar o agregar una etiqueta (tag)"
+
+msgid "Find past changes (search)"
+msgstr "Buscar cambios anteriores (búsqueda)"
+
+msgid "Find what you want to do and press \"Try It\" to start that operation."
+msgstr "Busque lo que quiere hacer y presione \"Probar\" para iniciar esa operación."
+
+msgid "Fix a commit message (reword)"
+msgstr "Corregir el mensaje de un commit (reword)"
+
+msgid "Fix the last commit (amend)"
+msgstr "Corregir el último commit (amend)"
+
+msgid "Fold Commit Description"
+msgstr "Plegar descripción del commit"
+
+msgid "Fold Current Changes into This Commit (fixup)…"
+msgstr "Incorporar los cambios actuales en este commit (fixup)…"
+
+msgid "Fold Current Changes into {short} (fixup)"
+msgstr "Incorporar los cambios actuales en {short} (fixup)"
+
+msgid "Fold into Commit"
+msgstr "Incorporar en el commit"
+
+msgid "Fold into Previous"
+msgstr "Incorporar en el anterior"
+
+msgid "Folded the changes into {short}. However, {}\nPrevious tip: {} (recoverable from the reflog)"
+msgstr "Se incorporaron los cambios en {short}. Sin embargo, {}\nExtremo anterior: {} (recuperable desde el reflog)"
+
+msgid "Folded the changes into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "Se incorporaron los cambios en {short}. Extremo anterior: {} (recuperable desde el reflog)"
+
+msgid "For when you notice something missing right after committing. Check \"Amend\" in the Git panel and the last commit's message comes back; committing then replaces the last commit."
+msgstr "Para cuando nota que falta algo justo después de hacer commit. Marque \"Enmendar\" en el panel de Git y vuelve el mensaje del último commit; al hacer commit, se reemplaza el último commit."
+
+msgid "Force Delete"
+msgstr "Forzar eliminación"
+
+msgid "Force Delete Branch"
+msgstr "Forzar eliminación de rama"
+
+msgid "Force Push"
+msgstr "Forzar push"
+
+msgid "Force Push (Without Lease)"
+msgstr "Forzar push (sin lease)"
+
+msgid "Force Push (with lease)"
+msgstr "Forzar push (con lease)"
+
+msgid "Force Push Without Lease…"
+msgstr "Forzar push sin lease…"
+
+msgid "Force push (with lease)?"
+msgstr "¿Forzar push (con lease)?"
+
+msgid "Force push without a lease?"
+msgstr "¿Forzar push sin lease?"
+
+msgid "Found {count} conflict across the codebase"
+msgid_plural "Found {count} conflicts across the codebase"
+msgstr[0] "Se encontró {count} conflicto en todo el código base"
+msgstr[1] "Se encontraron {count} conflictos en todo el código base"
+
+msgid "Generate Commit Message"
+msgstr "Generar mensaje de commit"
+
+msgid "Generating Commit…"
+msgstr "Generando commit…"
+
+msgid "Generating commit message..."
+msgstr "Generando mensaje de commit..."
+
+msgid "Git Clone: {}"
+msgstr "Clonación de Git: {}"
+
+msgid "Git Graph"
+msgstr "Grafo de commits"
+
+msgid "Git Guide"
+msgstr "Guía de Git"
+
+msgid "Git Guide (find an operation by what you want to do)"
+msgstr "Guía de Git (buscar una operación según lo que quiere hacer)"
+
+msgid "Git Job Queue: {repo_path}"
+msgstr "Cola de trabajos de Git: {repo_path}"
+
+msgid "Git Panel"
+msgstr "Panel de Git"
+
+msgid "Git accounts don't apply to a project shared by a collaborator. It commits and pushes as git is configured on its host."
+msgstr "Las cuentas de Git no se aplican a un proyecto compartido por un colaborador. Hace commit y push según la configuración de git de su host."
+
+msgid "Git's Own Configuration"
+msgstr "Configuración propia de Git"
+
+msgid "Git's history has no copy of it, so once the trash is emptied it cannot be restored"
+msgstr "El historial de Git no tiene una copia, así que una vez vaciada la papelera no se puede restaurar"
+
+msgid "Git's history has no copy of them, so once the trash is emptied they cannot be restored"
+msgstr "El historial de Git no tiene una copia de ellos, así que una vez vaciada la papelera no se pueden restaurar"
+
+msgid "Gives this commit a marker name (a tag), for example to record a released version"
+msgstr "Asigna a este commit un nombre de referencia (una etiqueta), por ejemplo para registrar una versión publicada"
+
+msgid "Gives up the operation and returns to the state before it started"
+msgstr "Abandona la operación y vuelve al estado anterior a su inicio"
+
+msgid "Go Back to \"{}\" (Delete the Scratch Branch)"
+msgstr "Volver a \"{}\" (eliminar la rama temporal)"
+
+msgid "Go back to before the fixup?"
+msgstr "¿Volver al estado anterior al fixup?"
+
+msgid "Go back to the state before the reorder?"
+msgstr "¿Volver al estado anterior a la reordenación?"
+
+msgid "Go to Next Hunk"
+msgstr "Ir al fragmento siguiente"
+
+msgid "Go to Next Unplaced"
+msgstr "Ir al siguiente sin colocar"
+
+msgid "Go to Previous Hunk"
+msgstr "Ir al fragmento anterior"
+
+msgid "Graph"
+msgstr "Grafo"
+
+msgid "Group By"
+msgstr "Agrupar por"
+
+msgid "Groups the changed files by folder hierarchy, with folders you can expand and collapse"
+msgstr "Agrupa los archivos cambiados por jerarquía de carpetas, con carpetas que se pueden expandir y contraer"
+
+msgid "HEAD has moved or another branch was checked out since the fixup, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "HEAD se movió o se hizo checkout de otra rama después del fixup, así que no se puede deshacer desde aquí. Deshágalo manualmente con git reflog."
+
+msgid "HEAD has moved since the rewrite, so it cannot be undone from here. Undo it by hand with git reflog."
+msgstr "HEAD se movió después de la reescritura, así que no se puede deshacer desde aquí. Deshágalo manualmente con git reflog."
+
+msgid "History"
+msgstr "Historial"
+
+msgid "History (Graph)"
+msgstr "Historial (grafo)"
+
+msgid "Hold {} to force delete"
+msgstr "Mantenga presionado {} para forzar la eliminación"
+
+msgid "Hover over a button to see what it does here. The Git guide explains the terms too"
+msgstr "Pase el cursor por encima de un botón para ver aquí lo que hace. La guía de Git también explica los términos"
+
+msgid "How soft / mixed / hard differ in \"Reset to This Commit\""
+msgstr "En qué se diferencian soft / mixed / hard en \"Restablecer a este commit\""
+
+msgid "How to Write a Search"
+msgstr "Cómo escribir una búsqueda"
+
+msgid "I changed commits I had already pushed"
+msgstr "Cambié commits que ya había enviado con push"
+
+msgid "If the commit was already pushed, you will need to force push"
+msgstr "Si ya se hizo push del commit, será necesario un push forzado"
+
+msgid "If your current changes touch the same files, it stops or ends in a conflict. On a conflict, the changes also stay in the stash"
+msgstr "Si sus cambios actuales afectan a los mismos archivos, se detiene o termina en un conflicto. En caso de conflicto, los cambios también permanecen en el stash"
+
+msgid "In the Git Graph, pick rows while holding Ctrl / Shift and press \"Reorder / Squash / Drop…\" above to edit the order, what to squash and the messages. You can also reorder a single commit by dragging it onto another row. Mind that the changes of dropped commits are lost (the SHAs of the commits from there on change)."
+msgstr "En el grafo de commits, elija filas manteniendo presionado Ctrl / Shift y presione \"Reordenar / combinar / descartar…\" arriba para editar el orden, qué combinar y los mensajes. También puede reordenar un único commit arrastrándolo a otra fila. Tenga en cuenta que los cambios de los commits descartados se pierden (cambian los SHA de los commits a partir de ese punto)."
+
+msgid "Initialize Repository"
+msgstr "Inicializar repositorio"
+
+msgid "Instead of adding a new commit, the next commit rebuilds the last commit from the current changes and message"
+msgstr "En lugar de agregar un commit nuevo, el siguiente commit reconstruye el último commit a partir de los cambios y el mensaje actuales"
+
+msgid "It was pushed, so it needs a force push (with lease) afterwards."
+msgstr "Ya se hizo push, así que después necesita un push forzado (con lease)."
+
+msgid "It was pushed, so it needs a force push (with lease)."
+msgstr "Ya se hizo push, así que necesita un push forzado (con lease)."
+
+msgid "Its parent history was not fetched, so the changes it introduced cannot be shown."
+msgstr "No se obtuvo el historial de sus commits padre, por lo que no se pueden mostrar los cambios que introdujo."
+
+msgid "Its remote-tracking branches are removed as well."
+msgstr "También se eliminan sus ramas de seguimiento remoto."
+
+msgid "Keeps both the upper side (ours) and the lower side (theirs) of the conflict, one above the other"
+msgstr "Conserva tanto el lado superior (ours) como el lado inferior (theirs) del conflicto, uno encima del otro"
+
+msgid "Latest tag: checking…"
+msgstr "Última etiqueta: comprobando…"
+
+msgid "Latest tag: none"
+msgstr "Última etiqueta: ninguna"
+
+msgid "Latest tag: {tag} (this commit itself)"
+msgstr "Última etiqueta: {tag} (este mismo commit)"
+
+msgid "Latest tag: {tag} ({count} commit before this one)"
+msgid_plural "Latest tag: {tag} ({count} commits before this one)"
+msgstr[0] "Última etiqueta: {tag} ({count} commit antes de este)"
+msgstr[1] "Última etiqueta: {tag} ({count} commits antes de este)"
+
+msgid "Learn More"
+msgstr "Más información"
+
+msgid "Leaves out merge commits (yes, no, only)"
+msgstr "Omite los commits de fusión (yes, no, only)"
+
+msgid "Leaves the current tip {short_new} and goes back to {short_old} (git reset --soft).\nThe folded changes stay as staged changes."
+msgstr "Deja el extremo actual {short_new} y vuelve a {short_old} (git reset --soft).\nLos cambios incorporados quedan como cambios preparados."
+
+msgid "Left: {} / Right: {}"
+msgstr "Izquierda: {} / Derecha: {}"
+
+msgid "List"
+msgstr "Lista"
+
+msgid "Load File Snapshot"
+msgstr "Cargar instantánea del archivo"
+
+msgid "Load Full Snapshot"
+msgstr "Cargar instantánea completa"
+
+msgid "Loading"
+msgstr "Cargando"
+
+msgid "Loading Commit History…"
+msgstr "Cargando historial de commits…"
+
+msgid "Loading comparison…"
+msgstr "Cargando comparación…"
+
+msgid "Loading tags…"
+msgstr "Cargando etiquetas…"
+
+msgid "Loading the development branch's commits…"
+msgstr "Cargando los commits de la rama de desarrollo…"
+
+msgid "Loading the tag list…"
+msgstr "Cargando la lista de etiquetas…"
+
+msgid "Loading…"
+msgstr "Cargando…"
+
+msgid "Local Branches"
+msgstr "Ramas locales"
+
+msgid "Local branch (a branch on this computer)"
+msgstr "Rama local (una rama en este equipo)"
+
+msgid "MR Box"
+msgstr "Caja de MR"
+
+msgid "MR Branch Name"
+msgstr "Nombre de la rama de MR"
+
+msgid "MR Check {} → {}"
+msgstr "Comprobación de MR {} → {}"
+
+msgid "MR Check: {} (development branch) → {} (MR branch)"
+msgstr "Comprobación de MR: {} (rama de desarrollo) → {} (rama de MR)"
+
+msgid "MR's Base (Merge Target) Branch"
+msgstr "Rama base de la MR (destino de la fusión)"
+
+msgid "Make one commit for an MR (MR box)"
+msgstr "Crear un único commit para una MR (caja de MR)"
+
+msgid "Manage Git Accounts…"
+msgstr "Administrar cuentas de Git…"
+
+msgid "Marks every change in this folder to go into the next commit"
+msgstr "Marca todos los cambios de esta carpeta para incluirlos en el siguiente commit"
+
+msgid "Marks every change under this heading to go into the next commit"
+msgstr "Marca todos los cambios bajo este encabezado para incluirlos en el siguiente commit"
+
+msgid "Marks every changed file to go into the next commit (stages it). The files' contents do not change"
+msgstr "Marca todos los archivos cambiados para incluirlos en el siguiente commit (los prepara). El contenido de los archivos no cambia"
+
+msgid "Marks only this change (hunk: one block of changes) to go into the next commit. The file's contents do not change"
+msgstr "Marca solo este cambio (fragmento: un bloque de cambios) para incluirlo en el siguiente commit. El contenido del archivo no cambia"
+
+msgid "Marks the commit as one you decided to keep out of the MR, so that the check for forgotten commits no longer counts it as \"unplaced\". If it is in the box, it is taken out too"
+msgstr "Marca el commit como uno que decidió dejar fuera de la MR, para que la comprobación de commits olvidados ya no lo cuente como \"sin colocar\". Si está en la caja, también se saca"
+
+msgid "Marks this file's changes to go into the next commit. The file's contents do not change"
+msgstr "Marca los cambios de este archivo para incluirlos en el siguiente commit. El contenido del archivo no cambia"
+
+msgid "Match Case Sensitivity"
+msgstr "Coincidir mayúsculas y minúsculas"
+
+msgid "Matches"
+msgstr "Coincidencias"
+
+msgid "Merge Branch…"
+msgstr "Fusionar rama…"
+
+msgid "Merge commits cannot go into the box ({count} was left out)."
+msgid_plural "Merge commits cannot go into the box ({count} were left out)."
+msgstr[0] "Los commits de fusión no pueden entrar en la caja (se omitió {count})."
+msgstr[1] "Los commits de fusión no pueden entrar en la caja (se omitieron {count})."
+
+msgid "Merged from {}"
+msgstr "Fusionado desde {}"
+
+msgid "Merged {branch}."
+msgstr "Se fusionó {branch}."
+
+msgid "Merged {count} file change from {remote}"
+msgid_plural "Merged {count} file changes from {remote}"
+msgstr[0] "Se fusionó {count} cambio de archivo desde {remote}"
+msgstr[1] "Se fusionaron {count} cambios de archivos desde {remote}"
+
+msgid "Message (leave empty for a lightweight tag)"
+msgstr "Mensaje (déjelo vacío para una etiqueta ligera)"
+
+msgid "Mismatches Only"
+msgstr "Solo discrepancias"
+
+msgid "Move {branch} to this commit?"
+msgstr "¿Mover {branch} a este commit?"
+
+msgid "Moves a new file that was never committed to the system trash. It can be restored from the trash"
+msgstr "Mueve a la papelera del sistema un archivo nuevo del que nunca se hizo commit. Se puede restaurar desde la papelera"
+
+msgid "Moves new files Git does not manage yet (untracked) to the system trash. They can be restored from the trash"
+msgstr "Mueve a la papelera del sistema los archivos nuevos que Git aún no administra (sin seguimiento). Se pueden restaurar desde la papelera"
+
+msgid "Moves only the branch back. The later changes stay staged and in the working tree"
+msgstr "Solo hace retroceder la rama. Los cambios posteriores permanecen preparados y en el árbol de trabajo"
+
+msgid "Moves the branch back and unstages. The later changes stay in the working tree's files"
+msgstr "Hace retroceder la rama y quita de preparados. Los cambios posteriores permanecen en los archivos del árbol de trabajo"
+
+msgid "Moves the current branch back to here. Choose soft / mixed / hard for the later changes"
+msgstr "Hace retroceder la rama actual hasta aquí. Elija soft / mixed / hard para los cambios posteriores"
+
+msgid "New branch name"
+msgstr "Nombre de la rama nueva"
+
+msgid "New commit message"
+msgstr "Nuevo mensaje del commit"
+
+msgid "Next Steps (Update the MR Branch and Go Back)"
+msgstr "Pasos siguientes (actualizar la rama de MR y volver)"
+
+msgid "No Changes to Commit"
+msgstr "No hay cambios para hacer commit"
+
+msgid "No Git Repositories"
+msgstr "No hay repositorios Git"
+
+msgid "No Git repository is open."
+msgstr "No hay ningún repositorio de Git abierto."
+
+msgid "No active branch"
+msgstr "No hay ninguna rama activa"
+
+msgid "No active repository"
+msgstr "No hay ningún repositorio activo"
+
+msgid "No branch is checked out, so there is nothing to push."
+msgstr "No hay ninguna rama con checkout, así que no hay nada para hacer push."
+
+msgid "No changes"
+msgstr "No hay cambios"
+
+msgid "No changes to commit"
+msgstr "No hay cambios para hacer commit"
+
+msgid "No commit message"
+msgstr "Sin mensaje de commit"
+
+msgid "No commits found"
+msgstr "No se encontraron commits"
+
+msgid "No commits match. Try fewer conditions."
+msgstr "Ningún commit coincide. Pruebe con menos condiciones."
+
+msgid "No commits yet"
+msgstr "Aún no hay commits"
+
+msgid "No development branch is chosen. Choose a development branch first."
+msgstr "No se eligió ninguna rama de desarrollo. Elija primero una rama de desarrollo."
+
+msgid "No differences (everything has been ported)"
+msgstr "Sin diferencias (se portó todo)"
+
+msgid "No files changed on the development branch."
+msgstr "No cambió ningún archivo en la rama de desarrollo."
+
+msgid "No files mismatch. \"All\" also shows the matching files."
+msgstr "No hay archivos con discrepancias. \"Todos\" también muestra los archivos que coinciden."
+
+msgid "No matching tags"
+msgstr "No hay etiquetas que coincidan"
+
+msgid "No remote available to push to. Add a remote to be able to publish changes."
+msgstr "No hay ningún remoto disponible para hacer push. Agregue un remoto para poder publicar cambios."
+
+msgid "No remote configured for repository"
+msgstr "No hay ningún remoto configurado para el repositorio"
+
+msgid "No repository found"
+msgstr "No se encontró ningún repositorio"
+
+msgid "No staged changes"
+msgstr "No hay cambios preparados"
+
+msgid "No staged changes yet"
+msgstr "Aún no hay cambios preparados"
+
+msgid "No stashes found"
+msgstr "No se encontraron entradas de stash"
+
+msgid "No tags"
+msgstr "No hay etiquetas"
+
+msgid "No tracked file has changes"
+msgstr "Ningún archivo con seguimiento tiene cambios"
+
+msgid "No tracked file has staged changes"
+msgstr "Ningún archivo con seguimiento tiene cambios preparados"
+
+msgid "No uncommitted changes"
+msgstr "No hay cambios sin commit"
+
+msgid "No unstaged changes"
+msgstr "No hay cambios sin preparar"
+
+msgid "Not available on a detached HEAD. Switch to a branch first."
+msgstr "No está disponible en un detached HEAD. Cambie primero a una rama."
+
+msgid "Not available while several files are selected"
+msgstr "No está disponible mientras haya varios archivos seleccionados"
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base (a change that came in while resolving a conflict, for example). The base is on the left, the MR branch on the right."
+msgstr "No se cambió en la rama de desarrollo, pero la rama de MR difiere de la base (por ejemplo, un cambio que entró al resolver un conflicto). La base está a la izquierda y la rama de MR a la derecha."
+
+msgid "Not changed on the development branch, yet the MR branch differs from the base. The MR branch was not created from the tip of its base, so it may only lack the base's newer changes (or the change came in while resolving a conflict). The base is on the left, the MR branch on the right."
+msgstr "No se cambió en la rama de desarrollo, pero la rama de MR difiere de la base. La rama de MR no se creó desde el extremo de su base, así que puede que solo le falten los cambios más recientes de la base (o que el cambio entrara al resolver un conflicto). La base está a la izquierda y la rama de MR a la derecha."
+
+msgid "Not every commit could be checked for being left out. Create the MR branch anyway?"
+msgstr "No se pudo comprobar si se omitió algún commit. ¿Crear la rama de MR de todos modos?"
+
+msgid "Not from the development branch"
+msgstr "No procede de la rama de desarrollo"
+
+msgid "Not from the development branch (came in while resolving conflicts, for example)"
+msgstr "No procede de la rama de desarrollo (entró al resolver conflictos, por ejemplo)"
+
+msgid "Not from the development branch (includes newer base changes the MR branch lacks)"
+msgstr "No procede de la rama de desarrollo (incluye cambios más recientes de la base que le faltan a la rama de MR)"
+
+msgid "Nothing has been put away on the shelf (the stash)"
+msgstr "No se guardó nada en el stash"
+
+msgid "Nothing has changed. Reorder the commits or choose an action."
+msgstr "No cambió nada. Reordene los commits o elija una acción."
+
+msgid "Nothing is missing"
+msgstr "No falta nada"
+
+msgid "Nothing is missing, but {count} file needs a look"
+msgid_plural "Nothing is missing, but {count} files need a look"
+msgstr[0] "No falta nada, pero hay {count} archivo que conviene revisar"
+msgstr[1] "No falta nada, pero hay {count} archivos que conviene revisar"
+
+msgid "Once you have a fix that belongs in a commit a few back, pick that commit in the Git Graph and press \"Add Current Changes (fixup)\". You can also drag files from the Git panel onto the commit's row."
+msgstr "Cuando tenga una corrección que pertenezca a un commit de unos cuantos atrás, elija ese commit en el grafo de commits y presione \"Agregar los cambios actuales (fixup)\". También puede arrastrar archivos del panel de Git a la fila del commit."
+
+msgid "Only downloads the latest from the remote (the shared server). Your files and branches do not change"
+msgstr "Solo descarga lo más reciente del remoto (el servidor compartido). Sus archivos y ramas no cambian"
+
+msgid "Only for new files Git does not manage yet (untracked)"
+msgstr "Solo para archivos nuevos que Git aún no administra (sin seguimiento)"
+
+msgid "Only the staged changes ({count} file)"
+msgid_plural "Only the staged changes ({count} files)"
+msgstr[0] "Solo los cambios preparados ({count} archivo)"
+msgstr[1] "Solo los cambios preparados ({count} archivos)"
+
+msgid "Open Commit Modal"
+msgstr "Abrir cuadro de diálogo de commit"
+
+msgid "Open Commit Permalink"
+msgstr "Abrir enlace permanente del commit"
+
+msgid "Open Diff"
+msgstr "Abrir diferencias"
+
+msgid "Open File Diff"
+msgstr "Abrir diferencias del archivo"
+
+msgid "Open File in Project"
+msgstr "Abrir archivo en el proyecto"
+
+msgid "Open Git Graph"
+msgstr "Abrir grafo de commits"
+
+msgid "Open a directory first"
+msgstr "Abra primero un directorio"
+
+msgid "Open repo in new project"
+msgstr "Abrir repositorio en un proyecto nuevo"
+
+msgid "Opens a diff of just this file (before and after the change) in a tab of its own"
+msgstr "Abre las diferencias solo de este archivo (antes y después del cambio) en una pestaña propia"
+
+msgid "Opens a guide that explains Git's terms and the steps of common operations"
+msgstr "Abre una guía que explica los términos de Git y los pasos de las operaciones habituales"
+
+msgid "Opens a screen to rewrite the last commit's message. For an older commit, pick it in the Git Graph and press \"Reword Message\" (the SHAs of the commits from there on change)."
+msgstr "Abre una pantalla para reescribir el mensaje del último commit. Para un commit anterior, elíjalo en el grafo de commits y presione \"Cambiar el mensaje\" (cambian los SHA de los commits a partir de ese punto)."
+
+msgid "Opens the current file itself in the editor, rather than the diff"
+msgstr "Abre el propio archivo actual en el editor, en lugar de las diferencias"
+
+msgid "Opens the difference between this file before and after the change (the diff) in the tab that shows all changes together"
+msgstr "Abre la diferencia entre este archivo antes y después del cambio (las diferencias) en la pestaña que muestra todos los cambios juntos"
+
+msgid "Opens the list of changes put on the shelf (the stash), where you can look inside, pop or drop them"
+msgstr "Abre la lista de cambios guardados en el stash, donde puede ver su contenido, extraerlos o descartarlos"
+
+msgid "Opens the list of commits that changed this file, newest first"
+msgstr "Abre la lista de commits que cambiaron este archivo, empezando por el más reciente"
+
+msgid "Operation was canceled"
+msgstr "Se canceló la operación"
+
+msgid "Operations that did not fit in the row. Open it to see each one explained beside it"
+msgstr "Operaciones que no cupieron en la fila. Ábralo para ver cada una con su explicación al lado"
+
+msgid "Optionally provide a stash message"
+msgstr "Opcionalmente, escriba un mensaje para el stash"
+
+msgid "Other staged changes are not included (after the rewrite they are left unstaged)."
+msgstr "No se incluyen otros cambios preparados (después de la reescritura quedan sin preparar)."
+
+msgid "Outside the development branch"
+msgstr "Fuera de la rama de desarrollo"
+
+msgid "Overwrites the remote branch with your history, without checking"
+msgstr "Sobrescribe la rama remota con su historial, sin comprobar"
+
+msgid "Overwrites the remote branch with your history. Stops if someone else pushed commits after your last fetch"
+msgstr "Sobrescribe la rama remota con su historial. Se detiene si otra persona envió commits después de su último fetch"
+
+msgid "Packed the branches and tags ({seconds} s)"
+msgstr "Se empaquetaron las ramas y etiquetas ({seconds} s)"
+
+msgid "Packing…"
+msgstr "Empaquetando…"
+
+msgid "Packs the refs (branches and tags) stored as separate files into one file."
+msgstr "Empaqueta en un solo archivo las refs (ramas y etiquetas) almacenadas como archivos separados."
+
+msgid "Packs the {count} or more refs (branches and tags) stored as separate files into one file."
+msgstr "Empaqueta en un solo archivo las {count} o más refs (ramas y etiquetas) almacenadas como archivos separados."
+
+msgid "Packs the {formatted} ref (branch or tag) stored as a separate file into one file."
+msgid_plural "Packs the {formatted} refs (branches and tags) stored as separate files into one file."
+msgstr[0] "Empaqueta en un solo archivo la {formatted} ref (rama o etiqueta) almacenada como archivo separado."
+msgstr[1] "Empaqueta en un solo archivo las {formatted} refs (ramas y etiquetas) almacenadas como archivos separados."
+
+msgid "Part of a name or email address"
+msgstr "Parte de un nombre o dirección de correo electrónico"
+
+msgid "Paste"
+msgstr "Pegar"
+
+msgid "Path History"
+msgstr "Historial de ruta"
+
+msgid "Pick a commit and the buttons for it show above"
+msgstr "Elija un commit y sus botones aparecerán arriba"
+
+msgid "Pick a commit in the Git Graph and press \"Check Out\" to put the working tree in that commit's state (detached HEAD). Commits made from there belong to no branch, so to keep working, use \"Branch from Here\". To go back, switch to the original branch from the branch list."
+msgstr "Elija un commit en el grafo de commits y presione \"Hacer checkout\" para dejar el árbol de trabajo en el estado de ese commit (detached HEAD). Los commits que se hagan a partir de ahí no pertenecen a ninguna rama, así que para seguir trabajando use \"Crear rama desde aquí\". Para volver, cambie a la rama original desde la lista de ramas."
+
+msgid "Pick a commit in the Git Graph, then press \"Revert\" to make a commit that undoes its changes, or \"Reset to This Commit ▾\" to move the branch back (hard throws the changes away). After a rewrite, \"Undo…\" on the notification or the reflog brings things back."
+msgstr "Elija un commit en el grafo de commits y presione \"Revertir\" para crear un commit que deshaga sus cambios, o \"Restablecer a este commit ▾\" para hacer retroceder la rama (hard descarta los cambios). Después de una reescritura, \"Deshacer…\" en la notificación o el reflog permiten recuperar lo anterior."
+
+msgid "Pick a commit to get its operations here (right-clicking offers the same)"
+msgstr "Elija un commit para ver aquí sus operaciones (el clic con el botón derecho ofrece lo mismo)"
+
+msgid "Pick an unbroken range"
+msgstr "Elija un intervalo continuo"
+
+msgid "Pick an unbroken range. A range that contains a merge commit cannot be rewritten."
+msgstr "Elija un intervalo continuo. No se puede reescribir un intervalo que contenga un commit de fusión."
+
+msgid "Pick at least two commits to reorder."
+msgstr "Elija al menos dos commits para reordenar."
+
+msgid "Pick commits on the current branch"
+msgstr "Elija commits de la rama actual"
+
+msgid "Pick commits on the current branch."
+msgstr "Elija commits de la rama actual."
+
+msgid "Pick the commit in the Git Graph and press \"Cherry-Pick\" to add its changes to the current branch as a new commit. With several picked through Ctrl / Shift, \"Cherry-Pick N Commits\" adds them oldest first. You can also drag a row onto a branch name. Changes to the same places can end in a conflict."
+msgstr "Elija el commit en el grafo de commits y presione \"Cherry-pick\" para agregar sus cambios a la rama actual como un commit nuevo. Si elige varios con Ctrl / Shift, \"Cherry-pick de N commits\" los agrega empezando por el más antiguo. También puede arrastrar una fila al nombre de una rama. Los cambios en los mismos lugares pueden terminar en un conflicto."
+
+msgid "Pick the commit to add your current changes to, then press \"Add Current Changes (fixup)\" above."
+msgstr "Elija el commit al que agregar sus cambios actuales y presione \"Agregar los cambios actuales (fixup)\" arriba."
+
+msgid "Pick which remote to fetch"
+msgstr "Elija de qué remoto hacer fetch"
+
+msgid "Pick which remote to push to"
+msgstr "Elija a qué remoto hacer push"
+
+msgid "Pick which remote to remove"
+msgstr "Elija el remoto que desea quitar"
+
+msgid "Picks another branch (a line of work) to work on. The files change to that branch's content"
+msgstr "Elige otra rama (una línea de trabajo) en la que trabajar. Los archivos cambian al contenido de esa rama"
+
+msgid "Picks one of the registered remotes and only downloads its latest. The files do not change"
+msgstr "Elige uno de los remotos registrados y solo descarga lo más reciente. Los archivos no cambian"
+
+msgid "Pop"
+msgstr "Extraer"
+
+msgid "Pop Stash"
+msgstr "Extraer stash"
+
+msgid "Pop stash@{{{}}}?"
+msgstr "¿Extraer stash@{{{}}}?"
+
+msgid "Possibly missing"
+msgstr "Posiblemente falta"
+
+msgid "Previous tip: {} (recoverable from the reflog)"
+msgstr "Extremo anterior: {} (recuperable desde el reflog)"
+
+msgid "Problems the checks would have stopped can get into the commit"
+msgstr "Pueden entrar en el commit problemas que las comprobaciones habrían detenido"
+
+msgid "Publish"
+msgstr "Publicar"
+
+msgid "Publish branch to remote"
+msgstr "Publicar rama en el remoto"
+
+msgid "Pull"
+msgstr "Pull"
+
+msgid "Pull (Rebase)"
+msgstr "Pull (rebase)"
+
+msgid "Pull in Progress…"
+msgstr "Pull en curso…"
+
+msgid "Pull: Already up to date"
+msgstr "Pull: ya está actualizado"
+
+msgid "Push"
+msgstr "Push"
+
+msgid "Push To"
+msgstr "Hacer push a"
+
+msgid "Push committed changes to remote"
+msgstr "Hacer push de los cambios con commit al remoto"
+
+msgid "Push in Progress…"
+msgstr "Push en curso…"
+
+msgid "Push: Everything is up-to-date"
+msgstr "Push: todo está actualizado"
+
+msgid "Pushed {} to {}"
+msgstr "Se hizo push de {} a {}"
+
+msgid "Put Back"
+msgstr "Devolver"
+
+msgid "Puts all changes together in one list, without splitting them"
+msgstr "Reúne todos los cambios en una sola lista, sin dividirlos"
+
+msgid "Puts all uncommitted changes, newly created files (untracked) included, away on a temporary shelf (the stash) and returns the files to the last commit. \"Stash Pop\" brings them back later"
+msgstr "Guarda en un estante temporal (el stash) todos los cambios sin commit, incluidos los archivos recién creados (sin seguimiento), y devuelve los archivos al último commit. \"Extraer stash\" los recupera más tarde"
+
+msgid "Puts only the changes to files Git manages (tracked) away on the shelf (the stash). Newly created files are kept"
+msgstr "Guarda en el stash solo los cambios de los archivos que Git administra (con seguimiento). Los archivos recién creados se conservan"
+
+msgid "Puts only the staged changes away on the shelf (the stash). Unstaged changes stay in the files"
+msgstr "Guarda en el stash solo los cambios preparados. Los cambios sin preparar permanecen en los archivos"
+
+msgid "Puts the changes last put on the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "Devuelve a los archivos los últimos cambios guardados en el stash y los quita del stash"
+
+msgid "Puts these changes from the shelf (the stash) back into the files and removes them from the shelf"
+msgstr "Devuelve a los archivos estos cambios del stash y los quita del stash"
+
+msgid "Re-publish branch to remote"
+msgstr "Volver a publicar rama en el remoto"
+
+msgid "Rebuilds the last commit from your changes and message (Git panel)"
+msgstr "Reconstruye el último commit a partir de sus cambios y su mensaje (panel de Git)"
+
+msgid "Received {count} file change from {remote}"
+msgid_plural "Received {count} file changes from {remote}"
+msgstr[0] "Se recibió {count} cambio de archivo desde {remote}"
+msgstr[1] "Se recibieron {count} cambios de archivos desde {remote}"
+
+msgid "Records the names of the people you worked with in \"Co-authored-by\" lines of the commit message"
+msgstr "Registra los nombres de las personas con las que trabajó en líneas \"Co-authored-by\" del mensaje del commit"
+
+msgid "Recreate an MR branch"
+msgstr "Volver a crear una rama de MR"
+
+msgid "Recreate the existing {branch_name} (needs a force push)"
+msgstr "Volver a crear la rama existente {branch_name} (requiere un push forzado)"
+
+msgid "Recreated the MR branch {merge_request_branch}\nPrevious MR branch: {} (recoverable from the reflog)"
+msgstr "Se volvió a crear la rama de MR {merge_request_branch}\nRama de MR anterior: {} (recuperable desde el reflog)"
+
+msgid "Ref {ref_name}"
+msgstr "Ref {ref_name}"
+
+msgid "Registers a folder owned by another user as a place Git may work in"
+msgstr "Registra una carpeta propiedad de otro usuario como un lugar en el que Git puede trabajar"
+
+msgid "Registers a server to push to and fetch from (a remote) by name and URL"
+msgstr "Registra por nombre y URL un servidor al que hacer push y del que hacer fetch (un remoto)"
+
+msgid "Remote Branches"
+msgstr "Ramas remotas"
+
+msgid "Remote Name"
+msgstr "Nombre del remoto"
+
+msgid "Remote branch (a copy of a branch on the server)"
+msgstr "Rama remota (una copia de una rama del servidor)"
+
+msgid "Remote name can't be empty"
+msgstr "El nombre del remoto no puede estar vacío"
+
+msgid "Remote up to date"
+msgstr "Remoto actualizado"
+
+msgid "Remove Remote…"
+msgstr "Quitar remoto…"
+
+msgid "Remove co-authored-by"
+msgstr "Quitar co-authored-by"
+
+msgid "Remove the remote {remote_name}?"
+msgstr "¿Quitar el remoto {remote_name}?"
+
+msgid "Remove this condition and search again"
+msgstr "Quitar esta condición y volver a buscar"
+
+msgid "Removed the remote {remote_name}."
+msgstr "Se quitó el remoto {remote_name}."
+
+msgid "Removes every stage mark in this folder. The changes stay in the files"
+msgstr "Quita todas las marcas de preparación de esta carpeta. Los cambios permanecen en los archivos"
+
+msgid "Removes every stage mark. The changes stay in the files and just no longer go into the next commit"
+msgstr "Quita todas las marcas de preparación. Los cambios permanecen en los archivos y simplemente ya no entran en el siguiente commit"
+
+msgid "Removes the exclusion mark and makes the commit \"unplaced\" again"
+msgstr "Quita la marca de exclusión y vuelve a dejar el commit \"sin colocar\""
+
+msgid "Removes the stage mark of this change (hunk). The change stays in the file"
+msgstr "Quita la marca de preparación de este cambio (fragmento). El cambio permanece en el archivo"
+
+msgid "Removes the stage marks of every change under this heading. The changes stay in the files"
+msgstr "Quita las marcas de preparación de todos los cambios bajo este encabezado. Los cambios permanecen en los archivos"
+
+msgid "Removes this commit and its changes from history"
+msgstr "Quita este commit y sus cambios del historial"
+
+msgid "Removes this file's stage mark. The changes stay in the file"
+msgstr "Quita la marca de preparación de este archivo. Los cambios permanecen en el archivo"
+
+msgid "Rename Branch ({})"
+msgstr "Cambiar nombre de rama ({})"
+
+msgid "Reorder / Squash / Drop the {count} Selected Commit…"
+msgid_plural "Reorder / Squash / Drop the {count} Selected Commits…"
+msgstr[0] "Reordenar / combinar / descartar el {count} commit seleccionado…"
+msgstr[1] "Reordenar / combinar / descartar los {count} commits seleccionados…"
+
+msgid "Reorder / Squash / Drop — {reason}"
+msgstr "Reordenar / combinar / descartar — {reason}"
+
+msgid "Reorder commits: done\nPrevious tip: {short_old} (can be restored from the reflog)"
+msgstr "Reordenar commits: listo\nExtremo anterior: {short_old} (se puede restaurar desde el reflog)"
+
+msgid "Reorder commits: done."
+msgstr "Reordenar commits: listo."
+
+msgid "Reorders, squashes or drops the picked range"
+msgstr "Reordena, combina (squash) o descarta (drop) el intervalo elegido"
+
+msgid "Repository not found."
+msgstr "No se encontró el repositorio."
+
+msgid "Republish"
+msgstr "Volver a publicar"
+
+msgid "Reset (Discard Changes)"
+msgstr "Restablecer (descartar cambios)"
+
+msgid "Reset the local branch to the remote?"
+msgstr "¿Restablecer la rama local al remoto?"
+
+msgid "Reset the local branch to {target_ref}."
+msgstr "Se restableció la rama local a {target_ref}."
+
+msgid "Reset to Remote"
+msgstr "Restablecer al remoto"
+
+msgid "Reset to Remote…"
+msgstr "Restablecer al remoto…"
+
+msgid "Reset to This Commit (hard: {summary})…"
+msgstr "Restablecer a este commit (hard: {summary})…"
+
+msgid "Reset to This Commit (mixed: {summary})"
+msgstr "Restablecer a este commit (mixed: {summary})"
+
+msgid "Reset to This Commit (soft: {summary})"
+msgstr "Restablecer a este commit (soft: {summary})"
+
+msgid "Reset to {short}?"
+msgstr "¿Restablecer a {short}?"
+
+msgid "Reset to {} ({flag})."
+msgstr "Se restableció a {} ({flag})."
+
+msgid "Reset {branch} to this commit?"
+msgstr "¿Restablecer {branch} a este commit?"
+
+msgid "Resets the branch, discarding later and uncommitted changes"
+msgstr "Restablece la rama y descarta los cambios posteriores y los cambios sin commit"
+
+msgid "Resets the current branch {branch} to {short_sha}.\n- Undo Commits Only (--soft): the changes stay staged\n- Unstage Too (--mixed): the changes stay in the working tree\n- Discard Everything (--hard): uncommitted changes are lost too"
+msgstr "Restablece la rama actual {branch} a {short_sha}.\n- Deshacer solo los commits (--soft): los cambios quedan preparados\n- Quitar también de preparados (--mixed): los cambios quedan en el árbol de trabajo\n- Descartar todo (--hard): también se pierden los cambios sin commit"
+
+msgid "Resolve Merge Conflict with Agent"
+msgid_plural "Resolve Merge Conflicts with Agent"
+msgstr[0] "Resolver el conflicto de fusión con el agente"
+msgstr[1] "Resolver los conflictos de fusión con el agente"
+
+msgid "Resolve the conflicts, stage them, then press \"Continue\"."
+msgstr "Resuelva los conflictos, prepárelos y presione \"Continuar\"."
+
+msgid "Resolve with Agent"
+msgstr "Resolver con el agente"
+
+msgid "Resolves the conflict with only the lower side (the >>>>>>> side, theirs). The upper side is thrown away. During a merge that is the side being merged in; during a rebase, your commit being replayed"
+msgstr "Resuelve el conflicto solo con el lado inferior (el lado >>>>>>>, theirs). El lado superior se descarta. Durante una fusión es el lado que se está incorporando; durante un rebase, su commit que se está volviendo a aplicar"
+
+msgid "Resolves the conflict with only the upper side (the <<<<<<< side, ours). The lower side is thrown away. During a merge that is the branch you are on; during a rebase, the branch being rebased onto"
+msgstr "Resuelve el conflicto solo con el lado superior (el lado <<<<<<<, ours). El lado inferior se descarta. Durante una fusión es la rama en la que está; durante un rebase, la rama sobre la que se hace el rebase"
+
+msgid "Restore"
+msgstr "Restaurar"
+
+msgid "Restore All"
+msgstr "Restaurar todo"
+
+msgid "Restore All Changes"
+msgstr "Restaurar todos los cambios"
+
+msgid "Restore File"
+msgstr "Restaurar archivo"
+
+msgid "Restore Hunk"
+msgstr "Restaurar fragmento"
+
+msgid "Restore Selected Hunks"
+msgstr "Restaurar los fragmentos seleccionados"
+
+msgid "Restore Tracked Files"
+msgstr "Restaurar archivos con seguimiento"
+
+msgid "Restore selected hunk"
+msgstr "Restaurar fragmento seleccionado"
+
+msgid "Returns each tracked file that has staged changes to its content in the last commit, unstaged changes included. Files with only unstaged changes and newly created files (untracked) are kept"
+msgstr "Devuelve cada archivo con seguimiento que tiene cambios preparados a su contenido del último commit, incluidos los cambios sin preparar. Se conservan los archivos que solo tienen cambios sin preparar y los archivos recién creados (sin seguimiento)"
+
+msgid "Revert This Commit"
+msgstr "Revertir este commit"
+
+msgid "Reverted {}."
+msgstr "Se revirtió {}."
+
+msgid "Review Diff"
+msgstr "Revisar diferencias"
+
+msgid "Reword Message…"
+msgstr "Cambiar el mensaje…"
+
+msgid "Reword the Message of {}"
+msgstr "Cambiar el mensaje de {}"
+
+msgid "Reworded the message of {}."
+msgstr "Se cambió el mensaje de {}."
+
+msgid "Rewrite"
+msgstr "Reescribir"
+
+msgid "Rewrite History…"
+msgstr "Reescribir el historial…"
+
+msgid "Rewrite the selected commits like this?"
+msgstr "¿Reescribir así los commits seleccionados?"
+
+msgid "Run `git fetch --unshallow` to download the full history"
+msgstr "Ejecute `git fetch --unshallow` para descargar el historial completo"
+
+msgid "Run `git fetch --unshallow` to download the full history, then show this commit's changes."
+msgstr "Ejecute `git fetch --unshallow` para descargar el historial completo y, a continuación, mostrar los cambios de este commit."
+
+msgid "Runs git pack-refs --all. The branches and tags themselves do not change. With tens of thousands of them it takes about a minute, and other Git operations wait meanwhile."
+msgstr "Ejecuta git pack-refs --all. Las ramas y etiquetas en sí no cambian. Con decenas de miles de ellas tarda alrededor de un minuto y, mientras tanto, las demás operaciones de Git esperan."
+
+msgid "Runs git remote add."
+msgstr "Ejecuta git remote add."
+
+msgid "Runs git reset {flag} {short}.\n{kept}"
+msgstr "Ejecuta git reset {flag} {short}.\n{kept}"
+
+msgid "Same contents as on the development branch."
+msgstr "Mismo contenido que en la rama de desarrollo."
+
+msgid "Saved the patch file: {destination}"
+msgstr "Se guardó el archivo de parche: {destination}"
+
+msgid "Saves the staged changes as a single record with a message (a commit). With nothing staged, all tracked changes go in"
+msgstr "Guarda los cambios preparados como un único registro con un mensaje (un commit). Si no hay nada preparado, se incluyen todos los cambios con seguimiento"
+
+msgid "Search"
+msgstr "Búsqueda"
+
+msgid "Search by Conditions"
+msgstr "Buscar por condiciones"
+
+msgid "Search by conditions such as the author, a tag or a period"
+msgstr "Buscar por condiciones como el autor, una etiqueta o un período"
+
+msgid "Search commits… (e.g. author:alice file:src/ since:2w)"
+msgstr "Buscar commits… (p. ej. author:alice file:src/ since:2w)"
+
+msgid "Search for a tag in the Git Graph's \"Tags\" and pick it to jump to its commit. To add a tag, right-click the commit's row and choose \"Tag Here…\" (an empty message makes a lightweight tag)."
+msgstr "Busque una etiqueta en \"Etiquetas\" del grafo de commits y elíjala para saltar a su commit. Para agregar una etiqueta, haga clic con el botón derecho en la fila del commit y elija \"Crear etiqueta aquí…\" (un mensaje vacío crea una etiqueta ligera)."
+
+msgid "Search in the Git Graph's search box. Add author: tag: branch: file: since: until: change: merge: to narrow it down (for example author:alice file:src/main.rs since:2026-01-01)."
+msgstr "Busque en el cuadro de búsqueda del grafo de commits. Agregue author: tag: branch: file: since: until: change: merge: para acotar la búsqueda (por ejemplo author:alice file:src/main.rs since:2026-01-01)."
+
+msgid "Search tags… (newest first)"
+msgstr "Buscar etiquetas… (las más recientes primero)"
+
+msgid "Searches the tags (names given to commits) and jumps to the commit of the one you pick"
+msgstr "Busca en las etiquetas (nombres asignados a commits) y salta al commit de la que elija"
+
+msgid "Searching… {count} commit"
+msgid_plural "Searching… {count} commits"
+msgstr[0] "Buscando… {count} commit"
+msgstr[1] "Buscando… {count} commits"
+
+msgid "See Docs"
+msgstr "Ver documentación"
+
+msgid "See an older commit as it was (checkout)"
+msgstr "Ver un commit anterior tal como era (checkout)"
+
+msgid "Select Base Branch"
+msgstr "Seleccionar rama base"
+
+msgid "Select Next Match"
+msgstr "Seleccionar la coincidencia siguiente"
+
+msgid "Select Previous Match"
+msgstr "Seleccionar la coincidencia anterior"
+
+msgid "Select a Patch File to Apply"
+msgstr "Seleccionar un archivo de parche para aplicar"
+
+msgid "Select a repository..."
+msgstr "Seleccionar un repositorio..."
+
+msgid "Select a stash…"
+msgstr "Seleccionar un stash…"
+
+msgid "Select as Repository Destination"
+msgstr "Seleccionar como destino del repositorio"
+
+msgid "Selected Branch"
+msgstr "Rama seleccionada"
+
+msgid "Selection Actions…"
+msgstr "Acciones de la selección…"
+
+msgid "Selects the next unplaced commit in the graph, starting from the oldest. Press again for the one after it."
+msgstr "Selecciona en el grafo el siguiente commit sin colocar, empezando por el más antiguo. Presione de nuevo para pasar al siguiente."
+
+msgid "Send Review to Agent ({})"
+msgstr "Enviar revisión al agente ({})"
+
+msgid "Send all review comments to the Agent panel"
+msgstr "Enviar todos los comentarios de revisión al panel del agente"
+
+msgid "Send this diff for your last agent to review."
+msgstr "Envía estas diferencias para que el último agente las revise."
+
+msgid "Sends a branch that disappeared from the remote there again and links it again"
+msgstr "Vuelve a enviar al remoto una rama que desapareció de él y la vuelve a vincular"
+
+msgid "Sends this branch to the remote for the first time and links it as the branch to push to and pull from from now on"
+msgstr "Envía esta rama al remoto por primera vez y la vincula como la rama con la que hacer push y pull a partir de ahora"
+
+msgid "Sends your commits to the remote. Changes you have not committed are not sent"
+msgstr "Envía sus commits al remoto. Los cambios de los que no hizo commit no se envían"
+
+msgid "Separate conditions with spaces to find the commits that match all of them. Put a value that contains spaces in \"…\"."
+msgstr "Separe las condiciones con espacios para buscar los commits que cumplan todas. Ponga entre \"…\" un valor que contenga espacios."
+
+msgid "Separates the changes marked to go into the next commit (staged) from the changes not marked yet (unstaged)"
+msgstr "Separa los cambios marcados para el siguiente commit (preparados) de los cambios aún sin marcar (sin preparar)"
+
+msgid "Separates the files Git manages (tracked) from the new files it does not manage yet (untracked)"
+msgstr "Separa los archivos que Git administra (con seguimiento) de los archivos nuevos que aún no administra (sin seguimiento)"
+
+msgid "Shallow clone boundary: earlier history is missing, so these lines may come from an older commit."
+msgstr "Límite del clon superficial: falta el historial anterior, por lo que estas líneas pueden provenir de un commit más antiguo."
+
+msgid "Show Changes Only"
+msgstr "Mostrar solo los cambios"
+
+msgid "Show Flat View"
+msgstr "Mostrar vista plana"
+
+msgid "Show Full File"
+msgstr "Mostrar el archivo completo"
+
+msgid "Show Git Output"
+msgstr "Mostrar la salida de Git"
+
+msgid "Show Tree View"
+msgstr "Mostrar vista de árbol"
+
+msgid "Show every file at this commit as added. This can be slow in large repositories."
+msgstr "Muestra todos los archivos de este commit como agregados. Esto puede ser lento en repositorios grandes."
+
+msgid "Show in Git Graph"
+msgstr "Mostrar en el grafo de commits"
+
+msgid "Show this file's full contents at this commit as added."
+msgstr "Muestra todo el contenido de este archivo en este commit como agregado."
+
+msgid "Show {hidden_count} More"
+msgstr "Mostrar {hidden_count} más"
+
+msgid "Show:"
+msgstr "Mostrar:"
+
+msgid "Shows a diff of only the changes not staged yet (which do not go into the next commit)"
+msgstr "Muestra las diferencias solo de los cambios aún sin preparar (que no entran en el siguiente commit)"
+
+msgid "Shows a diff of only the staged changes (which go into the next commit)"
+msgstr "Muestra las diferencias solo de los cambios preparados (que entran en el siguiente commit)"
+
+msgid "Shows both your branches (local) and the copies of the server's branches (remote)"
+msgstr "Muestra tanto sus ramas (locales) como las copias de las ramas del servidor (remotas)"
+
+msgid "Shows only the branches in your repository. These are the ones you can commit to"
+msgstr "Muestra solo las ramas de su repositorio. Son las ramas en las que puede hacer commit"
+
+msgid "Shows only the copies of the server's branches that the last fetch brought in (origin/… and so on)"
+msgstr "Muestra solo las copias de las ramas del servidor que trajo el último fetch (origin/…, etc.)"
+
+msgid "Shows the changed files in a single column, without splitting them by folder"
+msgstr "Muestra los archivos cambiados en una sola columna, sin dividirlos por carpeta"
+
+msgid "Shows the diff (before and after) of the uncommitted changes together in one tab"
+msgstr "Muestra juntas en una pestaña las diferencias (antes y después) de los cambios sin commit"
+
+msgid "Shows what these changes put on the shelf (the stash) contain, as a diff. Does not pop them"
+msgstr "Muestra como diferencias el contenido de estos cambios guardados en el stash. No los extrae"
+
+msgid "Signoff"
+msgstr "Firmar"
+
+msgid "Skip Hooks"
+msgstr "Omitir hooks"
+
+msgid "Skipped a commit of the {}."
+msgstr "Se omitió un commit de {}."
+
+msgid "Skips the commit it stopped at and moves on to the next commit"
+msgstr "Omite el commit en el que se detuvo y pasa al siguiente commit"
+
+msgid "Some branches could not be loaded"
+msgstr "No se pudieron cargar algunas ramas"
+
+msgid "Some branches could not be loaded: {error}"
+msgstr "No se pudieron cargar algunas ramas: {error}"
+
+msgid "Some files have conflicts. Resolve them first."
+msgstr "Algunos archivos tienen conflictos. Resuélvalos primero."
+
+msgid "Sort By"
+msgstr "Ordenar por"
+
+msgid "Sorts by file name, regardless of the folder"
+msgstr "Ordena por nombre de archivo, sin tener en cuenta la carpeta"
+
+msgid "Sorts by location, folders included (the path). Files in the same folder end up next to each other"
+msgstr "Ordena por ubicación, incluidas las carpetas (la ruta). Los archivos de la misma carpeta quedan juntos"
+
+msgid "Squash into One — {reason}"
+msgstr "Combinar en uno — {reason}"
+
+msgid "Squash the selected commits into one?"
+msgstr "¿Combinar en uno los commits seleccionados?"
+
+msgid "Squash the {count} Selected Commit into One"
+msgid_plural "Squash the {count} Selected Commits into One"
+msgstr[0] "Combinar en uno el {count} commit seleccionado"
+msgstr[1] "Combinar en uno los {count} commits seleccionados"
+
+msgid "Squash the {count} Selected Commit into One Commit on a New MR Branch…"
+msgid_plural "Squash the {count} Selected Commits into One Commit on a New MR Branch…"
+msgstr[0] "Combinar el {count} commit seleccionado en un único commit en una nueva rama de MR…"
+msgstr[1] "Combinar los {count} commits seleccionados en un único commit en una nueva rama de MR…"
+
+msgid "Squash {count} commit"
+msgid_plural "Squash {count} commits"
+msgstr[0] "Combinar {count} commit"
+msgstr[1] "Combinar {count} commits"
+
+msgid "Squash, reorder or drop commits (squash / drop)"
+msgstr "Combinar, reordenar o descartar commits (squash / drop)"
+
+msgid "Squashed the commits (squash)."
+msgstr "Se combinaron los commits (squash)."
+
+msgid "Stage"
+msgstr "Preparar"
+
+msgid "Stage All"
+msgstr "Preparar todo"
+
+msgid "Stage All Changes"
+msgstr "Preparar todos los cambios"
+
+msgid "Stage File"
+msgstr "Preparar archivo"
+
+msgid "Stage Folder"
+msgstr "Preparar carpeta"
+
+msgid "Stage Hunk"
+msgstr "Preparar fragmento"
+
+msgid "Stage Selected Hunks"
+msgstr "Preparar los fragmentos seleccionados"
+
+msgid "Stage and Go to Next Hunk"
+msgstr "Preparar e ir al siguiente fragmento"
+
+msgid "Stage {count} Files"
+msgstr "Preparar {count} archivos"
+
+msgid "Staged"
+msgstr "Preparados"
+
+msgid "Staged & Unstaged"
+msgstr "Preparados y sin preparar"
+
+msgid "Staged Changes"
+msgstr "Cambios preparados"
+
+msgid "Staged changes (git diff --cached)"
+msgstr "Cambios preparados (git diff --cached)"
+
+msgid "Starts using Git in this folder (creates a .git folder). The existing files do not change"
+msgstr "Empieza a usar Git en esta carpeta (crea una carpeta .git). Los archivos existentes no cambian"
+
+msgid "Stash All"
+msgstr "Guardar todo en el stash"
+
+msgid "Stash Pop"
+msgstr "Extraer stash"
+
+msgid "Stash Staged"
+msgstr "Guardar los preparados en el stash"
+
+msgid "Stash Tracked"
+msgstr "Guardar cambios con seguimiento en el stash"
+
+msgid "Stash has changed, drop aborted"
+msgstr "El stash cambió; se anuló el descarte"
+
+msgid "Stash has changed, not applying"
+msgstr "El stash cambió; no se aplicará"
+
+msgid "Stash has changed, pop aborted"
+msgstr "El stash cambió; se anuló la extracción"
+
+msgid "Stashes"
+msgstr "Stashes"
+
+msgid "Still on the scratch branch \"{}\"."
+msgstr "Sigue en la rama temporal \"{}\"."
+
+msgid "Stop Excluding and Mark as Unplaced"
+msgstr "Dejar de excluir y marcar como sin colocar"
+
+msgid "Stop Excluding {count} Commit from MR"
+msgid_plural "Stop Excluding {count} Commits from MR"
+msgstr[0] "Dejar de excluir {count} commit de la MR"
+msgstr[1] "Dejar de excluir {count} commits de la MR"
+
+msgid "Stop and Go Back"
+msgstr "Detener y volver"
+
+msgid "Stop and Go Back…"
+msgstr "Detener y volver…"
+
+msgid "Stop creating the MR branch?"
+msgstr "¿Dejar de crear la rama de MR?"
+
+msgid "Stopped at {count} commit."
+msgid_plural "Stopped at {count} commits."
+msgstr[0] "Se detuvo en {count} commit."
+msgstr[1] "Se detuvo en {count} commits."
+
+msgid "Stops the search. The commits found so far stay"
+msgstr "Detiene la búsqueda. Los commits encontrados hasta ahora se conservan"
+
+msgid "Successfully pulled from {}"
+msgstr "Cambios incorporados correctamente desde {}"
+
+msgid "Successfully rebased from {}"
+msgstr "Rebase realizado correctamente desde {}"
+
+msgid "Switch"
+msgstr "Cambiar"
+
+msgid "Switch Active Repository"
+msgstr "Cambiar repositorio activo"
+
+msgid "Switch Branch"
+msgstr "Cambiar de rama"
+
+msgid "Switch from the branch list. Type a name that is not in the list to create a new branch. To start from an older commit, pick that commit in the Git Graph and press \"Branch from Here\"."
+msgstr "Cambie de rama desde la lista de ramas. Escriba un nombre que no esté en la lista para crear una rama nueva. Para empezar desde un commit anterior, elija ese commit en el grafo de commits y presione \"Crear rama desde aquí\"."
+
+msgid "Switch or type to create a branch…"
+msgstr "Cambiar de rama o escribir un nombre para crear una nueva…"
+
+msgid "Switch to {branch} and then cherry-pick {count} commit?"
+msgid_plural "Switch to {branch} and then cherry-pick {count} commits?"
+msgstr[0] "¿Cambiar a {branch} y después aplicar {count} commit con cherry-pick?"
+msgstr[1] "¿Cambiar a {branch} y después aplicar {count} commits con cherry-pick?"
+
+msgid "Switch to {branch} and then cherry-pick?"
+msgstr "¿Cambiar a {branch} y después hacer cherry-pick?"
+
+msgid "Switched the graph to all branches: the commit was not among the rows loaded for the branch it was showing."
+msgstr "Se cambió el grafo a todas las ramas: el commit no estaba entre las filas cargadas para la rama que se mostraba."
+
+msgid "Switches to this commit (detached HEAD: not on any branch)"
+msgstr "Cambia a este commit (detached HEAD: fuera de cualquier rama)"
+
+msgid "Switches to {branch}, then adds the changes of {sha} as a new commit (checkout + cherry-pick)."
+msgstr "Cambia a {branch} y después agrega los cambios de {sha} como un commit nuevo (checkout + cherry-pick)."
+
+msgid "Switches to {branch}, then cherry-picks {count} commit: adds it, oldest first, as a new commit (checkout + cherry-pick)."
+msgid_plural "Switches to {branch}, then cherry-picks {count} commits: adds them, oldest first, as new commits (checkout + cherry-pick)."
+msgstr[0] "Cambia a {branch} y después aplica {count} commit con cherry-pick: lo agrega, empezando por el más antiguo, como un commit nuevo (checkout + cherry-pick)."
+msgstr[1] "Cambia a {branch} y después aplica {count} commits con cherry-pick: los agrega, empezando por el más antiguo, como commits nuevos (checkout + cherry-pick)."
+
+msgid "Synchronized with remotes"
+msgstr "Sincronizado con los remotos"
+
+msgid "Synchronized with {}"
+msgstr "Sincronizado con {}"
+
+msgid "Tag (a marker given to a particular commit)"
+msgstr "Etiqueta (una marca asignada a un commit concreto)"
+
+msgid "Tag Here…"
+msgstr "Crear etiqueta aquí…"
+
+msgid "Tag name (e.g. v1.2.3)"
+msgstr "Nombre de la etiqueta (p. ej. v1.2.3)"
+
+msgid "Take Out of the Box"
+msgstr "Sacar de la caja"
+
+msgid "Text of added or removed lines (slow)"
+msgstr "Texto de las líneas agregadas o eliminadas (lento)"
+
+msgid "The Git panel has another repository selected. Switch the Git panel to this repository, then amend."
+msgstr "El panel de Git tiene seleccionado otro repositorio. Cambie el panel de Git a este repositorio y después enmiende."
+
+msgid "The MR branch \"{}\" is half created (on the scratch branch \"{}\")."
+msgstr "La rama de MR \"{}\" está a medio crear (en la rama temporal \"{}\")."
+
+msgid "The MR branch matches the development branch, but the base changed this file too and differs from it. Merging the MR may undo the base's change. The base is on the left, the MR branch on the right."
+msgstr "La rama de MR coincide con la rama de desarrollo, pero la base también cambió este archivo y difiere de ella. Fusionar la MR podría deshacer el cambio de la base. La base está a la izquierda y la rama de MR a la derecha."
+
+msgid "The MR branch was not created from the tip of its base (the base is at least {MAX_COUNTED_BASE_COMMITS} commits ahead)"
+msgstr "La rama de MR no se creó desde el extremo de su base (la base va al menos {MAX_COUNTED_BASE_COMMITS} commits por delante)"
+
+msgid "The MR branch was not created from the tip of its base (the base is {count} commit ahead)"
+msgid_plural "The MR branch was not created from the tip of its base (the base is {count} commits ahead)"
+msgstr[0] "La rama de MR no se creó desde el extremo de su base (la base va {count} commit por delante)"
+msgstr[1] "La rama de MR no se creó desde el extremo de su base (la base va {count} commits por delante)"
+
+msgid "The MR has the same contents as the base (fine if the base already took the same change)"
+msgstr "La MR tiene el mismo contenido que la base (no hay problema si la base ya incorporó el mismo cambio)"
+
+msgid "The SHAs of the later commits change"
+msgstr "Cambian los SHA de los commits posteriores"
+
+msgid "The Zed server on the remote host is too old for the MR check (it refuses git rev-parse). Update Zed on the remote host."
+msgstr "El servidor de ForgeKairos del host remoto es demasiado antiguo para la comprobación de MR (rechaza git rev-parse). Actualice ForgeKairos en el host remoto."
+
+msgid "The Zed server on the remote host is too old for this operation. Update the server."
+msgstr "El servidor de ForgeKairos del host remoto es demasiado antiguo para esta operación. Actualice el servidor."
+
+msgid "The Zed server on the remote host is too old to pack branches and tags."
+msgstr "El servidor de ForgeKairos del host remoto es demasiado antiguo para empaquetar ramas y etiquetas."
+
+msgid "The Zed server on the remote host is too old, so this ran as a force push with a lease. Reconnect to update the server."
+msgstr "El servidor de ForgeKairos del host remoto es demasiado antiguo, así que esto se ejecutó como un push forzado con lease. Vuelva a conectar para actualizar el servidor."
+
+msgid "The author's name or email address contains \"alice\""
+msgstr "El nombre o la dirección de correo electrónico del autor contiene \"alice\""
+
+msgid "The base branch \"{merge_request_branch}\" cannot be the MR branch. Use another name."
+msgstr "La rama base \"{merge_request_branch}\" no puede ser la rama de MR. Use otro nombre."
+
+msgid "The box is empty. Drag commits into it."
+msgstr "La caja está vacía. Arrastre commits a ella."
+
+msgid "The changes of {short} are undone, and every commit after it gets a new SHA.\nIf the branch was pushed, it needs a force push afterwards."
+msgstr "Se deshacen los cambios de {short} y todos los commits posteriores obtienen un SHA nuevo.\nSi ya se hizo push de la rama, después será necesario un push forzado."
+
+msgid "The changes stay in the working tree."
+msgstr "Los cambios permanecen en el árbol de trabajo."
+
+msgid "The changes stay staged."
+msgstr "Los cambios quedan preparados."
+
+msgid "The commit {} is not in the graph. Refresh the graph and try again."
+msgstr "El commit {} no está en el grafo. Actualice el grafo e inténtelo de nuevo."
+
+msgid "The commits that touched it are not in the loaded history (the newest {MAX_MERGE_REQUEST_HISTORY_COMMITS} commits)."
+msgstr "Los commits que lo modificaron no están en el historial cargado (los {MAX_MERGE_REQUEST_HISTORY_COMMITS} commits más recientes)."
+
+msgid "The commits were not put in the box because no development branch is chosen. Choose a development branch first."
+msgstr "Los commits no se pusieron en la caja porque no se eligió ninguna rama de desarrollo. Elija primero una rama de desarrollo."
+
+msgid "The conditions you enter are written into the search box."
+msgstr "Las condiciones que escriba se agregan al cuadro de búsqueda."
+
+msgid "The development branch has no commits newer than the base."
+msgstr "La rama de desarrollo no tiene commits más recientes que la base."
+
+msgid "The development branch was rewritten (or merged into the base), so {count} commit was taken out of the box."
+msgid_plural "The development branch was rewritten (or merged into the base), so {count} commits were taken out of the box."
+msgstr[0] "La rama de desarrollo se reescribió (o se fusionó en la base), así que se sacó {count} commit de la caja."
+msgstr[1] "La rama de desarrollo se reescribió (o se fusionó en la base), así que se sacaron {count} commits de la caja."
+
+msgid "The development branch's range could not be read, so left-out commits were not checked."
+msgstr "No se pudo leer el intervalo de la rama de desarrollo, así que no se comprobó si se omitieron commits."
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits, so older commits were not checked for being left out."
+msgstr "El intervalo de la rama de desarrollo tiene más de {MAX_RANGE_COMMITS} commits, así que no se comprobó si se omitieron commits más antiguos."
+
+msgid "The development branch's range has more than {MAX_RANGE_COMMITS} commits. Check that the base is right (older commits are not shown)."
+msgstr "El intervalo de la rama de desarrollo tiene más de {MAX_RANGE_COMMITS} commits. Compruebe que la base sea correcta (no se muestran los commits más antiguos)."
+
+msgid "The development branch's range is too wide (more than {MAX_RANGE_COMMITS} commits). Check that the base is right."
+msgstr "El intervalo de la rama de desarrollo es demasiado amplio (más de {MAX_RANGE_COMMITS} commits). Compruebe que la base sea correcta."
+
+msgid "The dragged order could not be reproduced, so the list opened in the original order."
+msgstr "No se pudo reproducir el orden arrastrado, así que la lista se abrió en el orden original."
+
+msgid "The excluded commit {} was not found."
+msgstr "No se encontró el commit excluido {}."
+
+msgid "The existing \"{}\" ({previous}) is recreated to point at the new commit. If it was pushed, it needs a force push."
+msgstr "La rama existente \"{}\" ({previous}) se vuelve a crear para que apunte al commit nuevo. Si ya se hizo push, necesita un push forzado."
+
+msgid "The folder of the patch file was removed from the project."
+msgstr "La carpeta del archivo de parche se quitó del proyecto."
+
+msgid "The git account \"{id}\" is not in effect on the remote host ({reason}), so commits are refused there. Update the remote server, or pick Git's Own Configuration."
+msgstr "La cuenta de Git \"{id}\" no está en vigor en el host remoto ({reason}), así que allí se rechazan los commits. Actualice el servidor remoto o elija Configuración propia de Git."
+
+msgid "The git account \"{id}\" picked for this repository cannot be used ({reason}), so it commits and pushes as git is configured."
+msgstr "La cuenta de Git \"{id}\" elegida para este repositorio no se puede usar ({reason}), así que hace commit y push según la configuración de git."
+
+msgid "The git command was interrupted."
+msgstr "Se interrumpió el comando git."
+
+msgid "The latest commit (git format-patch -1 HEAD)"
+msgstr "El commit más reciente (git format-patch -1 HEAD)"
+
+msgid "The list is in the order you dragged the commits into. Run it as it is or adjust it here."
+msgstr "La lista está en el orden en que arrastró los commits. Ejecútela tal cual o ajústela aquí."
+
+msgid "The local {base} is {count} commit behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgid_plural "The local {base} is {count} commits behind the remote ({remote}). Use {remote} as the base, or pull first."
+msgstr[0] "La rama local {base} va {count} commit por detrás del remoto ({remote}). Use {remote} como base o haga pull primero."
+msgstr[1] "La rama local {base} va {count} commits por detrás del remoto ({remote}). Use {remote} como base o haga pull primero."
+
+msgid "The merge ran into conflicts. Resolve them, then commit."
+msgstr "La fusión tuvo conflictos. Resuélvalos y después haga commit."
+
+msgid "The message of {} is empty. Enter a message."
+msgstr "El mensaje de {} está vacío. Escriba un mensaje."
+
+msgid "The newest {MAX_RANGE_COMMITS} commits are all placed or excluded, but older commits were not checked."
+msgstr "Los {MAX_RANGE_COMMITS} commits más recientes están todos colocados o excluidos, pero no se comprobaron los commits más antiguos."
+
+msgid "The oldest commit is at the top. Drag the rows or use ↑↓ to reorder them, choose to fold, reword or drop, then run the rewrite."
+msgstr "El commit más antiguo está arriba. Arrastre las filas o use ↑↓ para reordenarlas, elija incorporar, cambiar el mensaje o descartar y después ejecute la reescritura."
+
+msgid "The original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "No se conoce la rama original, así que \"Anular\" no vuelve a ella. Cambie a ella manualmente después de anular."
+
+msgid "The overwritten commits disappear from the remote branch"
+msgstr "Los commits sobrescritos desaparecen de la rama remota"
+
+msgid "The rebase finished, but the \"{fixup_subject}\" commit was not squashed into {short}. Previous tip: {} (recoverable from the reflog)"
+msgstr "El rebase terminó, pero el commit \"{fixup_subject}\" no se combinó en {short}. Extremo anterior: {} (recuperable desde el reflog)"
+
+msgid "The rebase stopped while folding into {short} (a conflict, for example). Continue or abort it from the Git panel's banner. Even after aborting, the changes stay at the tip as the \"{fixup_subject}\" commit ({}). Skipping that commit takes the changes out of the history (recoverable from git reflog). Previous tip: {}"
+msgstr "El rebase se detuvo al incorporar en {short} (por un conflicto, por ejemplo). Continúelo o anúlelo desde el banner del panel de Git. Incluso después de anularlo, los cambios permanecen en el extremo como el commit \"{fixup_subject}\" ({}). Omitir ese commit saca los cambios del historial (recuperable desde git reflog). Extremo anterior: {}"
+
+msgid "The remote host may still commit as the git account picked before, as it did not take the change ({reason}), so commits are refused there. Pick an account again, or reconnect to the remote server."
+msgstr "El host remoto podría seguir haciendo commit con la cuenta de Git elegida antes, ya que no aceptó el cambio ({reason}), así que allí se rechazan los commits. Vuelva a elegir una cuenta o vuelva a conectar con el servidor remoto."
+
+msgid "The replayed commits of yours get new SHAs"
+msgstr "Sus commits que se vuelven a aplicar obtienen SHA nuevos"
+
+msgid "The repository could not be found, so the files cannot go into the commit."
+msgstr "No se encontró el repositorio, así que los archivos no pueden entrar en el commit."
+
+msgid "The scratch branch \"{scratch_branch}\" of the previous attempt is still there. Check its contents and delete it, then try again."
+msgstr "La rama temporal \"{scratch_branch}\" del intento anterior sigue existiendo. Revise su contenido, elimínela e inténtelo de nuevo."
+
+msgid "The scratch branch \"{}\" has moved away from the commit of the MR branch \"{}\", so it is not deleted. Check its contents, then switch to \"{}\" yourself."
+msgstr "La rama temporal \"{}\" se alejó del commit de la rama de MR \"{}\", así que no se elimina. Revise su contenido y después cambie manualmente a \"{}\"."
+
+msgid "The skipped commit's changes are not brought in"
+msgstr "No se incorporan los cambios del commit omitido"
+
+msgid "The tip commit of the current branch is not known, so nothing can be reordered."
+msgstr "No se conoce el commit del extremo de la rama actual, así que no se puede reordenar nada."
+
+msgid "The top commit cannot be folded into a previous one. Put the commit to fold into above it."
+msgstr "El commit superior no se puede incorporar en uno anterior. Coloque encima de él el commit en el que se incorporará."
+
+msgid "The {count} chosen file (staged or not, as it is now)"
+msgid_plural "The {count} chosen files (staged or not, as they are now)"
+msgstr[0] "El {count} archivo elegido (preparado o no, tal como está ahora)"
+msgstr[1] "Los {count} archivos elegidos (preparados o no, tal como están ahora)"
+
+msgid "The {count} commit becomes one, and its SHA changes (squash).\nMessage after squashing: {first_line}"
+msgid_plural "The {count} commits become one, and each SHA changes (squash).\nMessage after squashing: {first_line}"
+msgstr[0] "El {count} commit se convierte en uno y su SHA cambia (squash).\nMensaje después de combinar: {first_line}"
+msgstr[1] "Los {count} commits se convierten en uno y cada SHA cambia (squash).\nMensaje después de combinar: {first_line}"
+
+msgid "There are no changes to put in the commit. Untracked files can be put in once they are staged."
+msgstr "No hay cambios para incluir en el commit. Los archivos sin seguimiento se pueden incluir una vez preparados."
+
+msgid "There are no changes to stage"
+msgstr "No hay cambios para preparar"
+
+msgid "There are no changes to stash"
+msgstr "No hay cambios para guardar en el stash"
+
+msgid "There are no commits yet, or none in the chosen range. Try widening the range with \"Show\" above."
+msgstr "Todavía no hay commits o no hay ninguno en el intervalo elegido. Pruebe a ampliar el intervalo con \"Mostrar\" arriba."
+
+msgid "There are no commits yet. You can only amend once there is a commit."
+msgstr "Todavía no hay commits. Solo se puede enmendar cuando ya existe un commit."
+
+msgid "There are no files to fold in."
+msgstr "No hay archivos para incorporar."
+
+msgid "There are no staged changes"
+msgstr "No hay cambios preparados"
+
+msgid "There are no tags."
+msgstr "No hay etiquetas."
+
+msgid "There are no untracked files"
+msgstr "No hay archivos sin seguimiento"
+
+msgid "There are still conflicts. You must stage these before committing"
+msgstr "Todavía hay conflictos. Hay que prepararlos antes de hacer commit"
+
+msgid "There are uncommitted changes, so it cannot be undone. Commit or stash them, then try again."
+msgstr "Hay cambios sin commit, así que no se puede deshacer. Haga commit de ellos o guárdelos en el stash e inténtelo de nuevo."
+
+msgid "There are uncommitted changes. Commit or stash them before creating the MR branch (the box stays as it is)."
+msgstr "Hay cambios sin commit. Haga commit de ellos o guárdelos en el stash antes de crear la rama de MR (la caja se queda como está)."
+
+msgid "There is no active repository."
+msgstr "No hay ningún repositorio activo."
+
+msgid "There is no remote to remove."
+msgstr "No hay ningún remoto para quitar."
+
+msgid "There were no changes to put in a patch file."
+msgstr "No había cambios para incluir en un archivo de parche."
+
+msgid "They are the rows with a small ● in the graph. Drag them into the box, or set them aside with \"Exclude from MR\" in the right-click menu."
+msgstr "Son las filas con un pequeño ● en el grafo. Arrástrelas a la caja o apártelas con \"Excluir de la MR\" en el menú contextual."
+
+msgid "This branch has no upstream, so whether it was pushed was not checked."
+msgstr "Esta rama no tiene rama de seguimiento, así que no se comprobó si ya se hizo push."
+
+msgid "This cannot be undone"
+msgstr "Esta acción no se puede deshacer"
+
+msgid "This commit is at the boundary of a shallow clone."
+msgstr "Este commit está en el límite de un clon superficial."
+
+msgid "This commit was already pushed to {}."
+msgstr "Ya se hizo push de este commit a {}."
+
+msgid "This commit's SHA changes"
+msgstr "Cambia el SHA de este commit"
+
+msgid "This file changed on the base too, and an excluded commit touched it. The diff mixes both."
+msgstr "Este archivo también cambió en la base y un commit excluido lo modificó. Las diferencias mezclan ambos."
+
+msgid "This file changed on the base too, so the diff includes the base's changes (usually fine)."
+msgstr "Este archivo también cambió en la base, así que las diferencias incluyen los cambios de la base (normalmente no es un problema)."
+
+msgid "This is the tip of the current branch. There is nothing to pick."
+msgstr "Este es el extremo de la rama actual. No hay nada que aplicar."
+
+msgid "This remote host's server does not support git accounts ({reason}); update it to pick one. The project commits and pushes as git is configured on the host."
+msgstr "El servidor de este host remoto no admite cuentas de Git ({reason}); actualícelo para poder elegir una. El proyecto hace commit y push según la configuración de git del host."
+
+msgid "This throws away the current tip {short_new} and goes back to {short_old} (git reset --hard).\nThe commits the reorder made can then only be found through the reflog."
+msgstr "Esto descarta el extremo actual {short_new} y vuelve a {short_old} (git reset --hard).\nA partir de entonces, los commits que creó la reordenación solo se pueden encontrar mediante el reflog."
+
+msgid "This will update your most recent commit."
+msgstr "Esto actualizará el commit más reciente."
+
+msgid "Throws away these changes on the shelf (the stash) without putting them back into the files"
+msgstr "Descarta estos cambios del stash sin devolverlos a los archivos"
+
+msgid "To create it under the same MR branch name, check \"Recreate the existing …\". An MR branch that was already pushed needs a force push (with lease) once recreated. The old MR branch can be restored from the reflog."
+msgstr "Para crearla con el mismo nombre de rama de MR, marque \"Volver a crear la rama existente …\". Una rama de MR de la que ya se hizo push necesita un push forzado (con lease) una vez creada de nuevo. La rama de MR anterior se puede restaurar desde el reflog."
+
+msgid "To work here, create a branch first"
+msgstr "Para trabajar aquí, cree primero una rama"
+
+msgid "Toggle Branch Picker"
+msgstr "Alternar selector de ramas"
+
+msgid "Toggle Folder"
+msgstr "Expandir o contraer carpeta"
+
+msgid "Toggle Staged"
+msgstr "Alternar estado de preparación"
+
+msgid "Toggle Stash Picker"
+msgstr "Alternar selector de stash"
+
+msgid "Toggle {} Tab"
+msgstr "Alternar pestaña {}"
+
+msgid "Too large to show."
+msgstr "Demasiado grande para mostrarse."
+
+msgid "Tracked"
+msgstr "Con seguimiento"
+
+msgid "Tracked & Untracked"
+msgstr "Con seguimiento y sin seguimiento"
+
+msgid "Trash"
+msgstr "Mover a la papelera"
+
+msgid "Trash File"
+msgstr "Mover archivo a la papelera"
+
+msgid "Trash Untracked Files"
+msgstr "Mover archivos sin seguimiento a la papelera"
+
+msgid "Trash these files?"
+msgstr "¿Mover estos archivos a la papelera?"
+
+msgid "Trash {count} Files"
+msgstr "Mover {count} archivos a la papelera"
+
+msgid "Trash {}?"
+msgstr "¿Mover {} a la papelera?"
+
+msgid "Tree"
+msgstr "Árbol"
+
+msgid "Trust Directory"
+msgstr "Confiar en el directorio"
+
+msgid "Try It"
+msgstr "Probar"
+
+msgid "Unable to construct pull request URL"
+msgstr "No se pudo construir la URL de la solicitud de cambios"
+
+msgid "Unable to initialize a git repository"
+msgstr "No se pudo inicializar un repositorio Git"
+
+msgid "Uncommit"
+msgstr "Deshacer commit"
+
+msgid "Uncommitted Changes"
+msgstr "Cambios sin commit"
+
+msgid "Uncommitted changes and your commits that are not on the remote are thrown away and cannot be undone"
+msgstr "Los cambios sin commit y sus commits que no están en el remoto se descartan y no se pueden recuperar"
+
+msgid "Uncommitted changes cannot be recovered"
+msgstr "Los cambios sin commit no se pueden recuperar"
+
+msgid "Undo Commits Only (--soft)"
+msgstr "Deshacer solo los commits (--soft)"
+
+msgid "Undo a mistake (reset / revert / undo)"
+msgstr "Deshacer un error (reset / revert / deshacer)"
+
+msgid "Undoes every unstaged change and returns the files to their staged content. Newly created files are kept"
+msgstr "Deshace todos los cambios sin preparar y devuelve los archivos a su contenido preparado. Los archivos recién creados se conservan"
+
+msgid "Undoes the edits in this change (hunk) and returns the file to its staged content"
+msgstr "Deshace las ediciones de este cambio (fragmento) y devuelve el archivo a su contenido preparado"
+
+msgid "Undoes the last commit and returns its changes to the staged, uncommitted state. The files' contents do not change"
+msgstr "Deshace el último commit y devuelve sus cambios al estado preparado y sin commit. El contenido de los archivos no cambia"
+
+msgid "Undo…"
+msgstr "Deshacer…"
+
+msgid "Unknown"
+msgstr "Desconocido"
+
+msgid "Unregisters a remote. Your local record of that remote's branches goes too. The data on the server is not deleted"
+msgstr "Quita el registro de un remoto. También desaparece su registro local de las ramas de ese remoto. Los datos del servidor no se eliminan"
+
+msgid "Unresolved conflicts remain, but whether a rebase caused them could not be confirmed. Check which changes would be lost before pressing \"Abort\"."
+msgstr "Quedan conflictos sin resolver, pero no se pudo confirmar si los causó un rebase. Compruebe qué cambios se perderían antes de presionar \"Anular\"."
+
+msgid "Unstage"
+msgstr "Quitar de preparados"
+
+msgid "Unstage All"
+msgstr "Quitar todo de preparados"
+
+msgid "Unstage All Changes"
+msgstr "Quitar todos los cambios de preparados"
+
+msgid "Unstage File"
+msgstr "Quitar archivo de preparados"
+
+msgid "Unstage Folder"
+msgstr "Quitar carpeta de preparados"
+
+msgid "Unstage Hunk"
+msgstr "Quitar fragmento de preparados"
+
+msgid "Unstage Selected Hunks"
+msgstr "Quitar los fragmentos seleccionados de preparados"
+
+msgid "Unstage Too (--mixed)"
+msgstr "Quitar también de preparados (--mixed)"
+
+msgid "Unstage and Go to Next Hunk"
+msgstr "Quitar de preparados e ir al fragmento siguiente"
+
+msgid "Unstage {count} Files"
+msgstr "Quitar {count} archivos de preparados"
+
+msgid "Unstaged"
+msgstr "Sin preparar"
+
+msgid "Unstaged Changes"
+msgstr "Cambios sin preparar"
+
+msgid "Unstaged edits are lost"
+msgstr "Se pierden las ediciones sin preparar"
+
+msgid "Unsupported remote URL: {}"
+msgstr "URL de remoto no admitida: {}"
+
+msgid "Untracked"
+msgstr "Sin seguimiento"
+
+msgid "Untracked files are not included unless they are staged."
+msgstr "Los archivos sin seguimiento no se incluyen a menos que estén preparados."
+
+msgid "Use Both"
+msgstr "Usar ambos"
+
+msgid "Use {}"
+msgstr "Usar {}"
+
+msgid "Using the Git Graph"
+msgstr "Uso del grafo de commits"
+
+msgid "Using the MR box (add, exclude, create and compare)"
+msgstr "Uso de la caja de MR (agregar, excluir, crear y comparar)"
+
+msgid "View"
+msgstr "Ver"
+
+msgid "View Branch Diff"
+msgstr "Ver diferencias de rama"
+
+msgid "View Changes"
+msgstr "Ver cambios"
+
+msgid "View Commit"
+msgstr "Ver commit"
+
+msgid "View Commit Diff"
+msgstr "Ver diferencias del commit"
+
+msgid "View Diff"
+msgstr "Ver diferencias"
+
+msgid "View File"
+msgstr "Ver archivo"
+
+msgid "View File History"
+msgstr "Ver historial del archivo"
+
+msgid "View Log"
+msgstr "Ver registro"
+
+msgid "View Merge Request"
+msgstr "Ver solicitud de fusión"
+
+msgid "View Options"
+msgstr "Opciones de vista"
+
+msgid "View Stash"
+msgstr "Ver stash"
+
+msgid "View as MR Check…"
+msgstr "Ver como comprobación de MR…"
+
+msgid "View commit failed"
+msgstr "No se pudo ver el commit"
+
+msgid "View on {}"
+msgstr "Ver en {}"
+
+msgid "Went back to {short_old}."
+msgstr "Se volvió a {short_old}."
+
+msgid "Went back to {short_old}. The folded changes are staged."
+msgstr "Se volvió a {short_old}. Los cambios incorporados están preparados."
+
+msgid "Went back to {} and deleted the scratch branch \"{}\"."
+msgstr "Se volvió a {} y se eliminó la rama temporal \"{}\"."
+
+msgid "Whatever you resolved along the way is thrown away"
+msgstr "Se descarta todo lo que resolvió por el camino"
+
+msgid "When on, the last message is filled in and committing replaces the last commit"
+msgstr "Si está activado, se rellena el último mensaje y al hacer commit se reemplaza el último commit"
+
+msgid "Where the MR goes. The MR branch is created from here"
+msgstr "El destino de la MR. La rama de MR se crea a partir de aquí"
+
+msgid "Where the commits come from. Used to check for left-out commits and for the final comparison"
+msgstr "De donde proceden los commits. Se usa para comprobar si se omitieron commits y para la comparación final"
+
+msgid "Where would you like to initialize this git repository?"
+msgstr "¿Dónde desea inicializar este repositorio Git?"
+
+msgid "With tens of thousands of them this takes about a minute, and other Git operations wait meanwhile. No data changes."
+msgstr "Con decenas de miles de ellas tarda alrededor de un minuto y, mientras tanto, las demás operaciones de Git esperan. No cambia ningún dato."
+
+msgid "With the conflicts resolved and staged, carries on with the rest of the operation that stopped midway"
+msgstr "Con los conflictos resueltos y preparados, sigue con el resto de la operación que se detuvo a medias"
+
+msgid "Writes a text file (a patch) that contains only the changes. Choose the working tree, the staged changes or the last commit. The files themselves do not change"
+msgstr "Escribe un archivo de texto (un parche) que contiene solo los cambios. Elija el árbol de trabajo, los cambios preparados o el último commit. Los archivos en sí no cambian"
+
+msgid "Writes to your user's Git settings as a whole (--global)"
+msgstr "Escribe en la configuración de Git de su usuario en general (--global)"
+
+msgid "You do not have write access to this project"
+msgstr "No se dispone de acceso de escritura a este proyecto"
+
+msgid "You must resolve conflicts before committing"
+msgstr "Se deben resolver los conflictos antes de hacer commit"
+
+msgid "and {left_out} more"
+msgstr "y {left_out} más"
+
+msgid "and {more} more"
+msgstr "y {more} más"
+
+msgid "author:alice"
+msgstr "author:alice"
+
+msgid "branch:feature"
+msgstr "branch:feature"
+
+msgid "change:foo"
+msgstr "change:foo"
+
+msgid "cherry-pick / squash / create an MR branch (also on right-click)"
+msgstr "cherry-pick / squash / crear una rama de MR (también con clic con el botón derecho)"
+
+msgid "discard the changes too"
+msgstr "descartar también los cambios"
+
+msgid "e.g. 2026-09-30"
+msgstr "p. ej. 2026-09-30"
+
+msgid "e.g. 2w, 2026-09-01"
+msgstr "p. ej. 2w, 2026-09-01"
+
+msgid "e.g. feature/login"
+msgstr "p. ej. feature/login"
+
+msgid "e.g. mr/new-feature"
+msgstr "p. ej. mr/new-feature"
+
+msgid "e.g. src/ or *.rs"
+msgstr "p. ej. src/ o *.rs"
+
+msgid "e.g. v1.2"
+msgstr "p. ej. v1.2"
+
+msgid "file:src/"
+msgstr "file:src/"
+
+msgid "git push --force overwrites {branch_name} on the remote.\nWithout a lease, commits others pushed since the last fetch are lost as well."
+msgstr "git push --force sobrescribe {branch_name} en el remoto.\nSin lease, también se pierden los commits que otros enviaron desde el último fetch."
+
+msgid "git push --force-with-lease overwrites {branch_name} on the remote.\nIf others pushed commits since the last fetch, it stops without overwriting them."
+msgstr "git push --force-with-lease sobrescribe {branch_name} en el remoto.\nSi otros enviaron commits desde el último fetch, se detiene sin sobrescribirlos."
+
+msgid "keep the changes staged"
+msgstr "mantener los cambios preparados"
+
+msgid "merge:no"
+msgstr "merge:no"
+
+msgid "project has no worktrees"
+msgstr "el proyecto no tiene worktrees"
+
+msgid "since:2w  until:2026-09-01"
+msgstr "since:2w  until:2026-09-01"
+
+msgid "tag:v1.2"
+msgstr "tag:v1.2"
+
+msgid "unstage only, keep the files"
+msgstr "solo quitar de preparados, conservar los archivos"
+
+msgid "{branch} is checked out in another worktree ({path}), so it cannot be moved."
+msgstr "{branch} tiene checkout en otro worktree ({path}), así que no se puede mover."
+
+msgid "{branch}, which is not checked out, will point to {short_sha}. The working tree does not change."
+msgstr "{branch}, que no tiene checkout, apuntará a {short_sha}. El árbol de trabajo no cambia."
+
+msgid "{count} Changed File"
+msgid_plural "{count} Changed Files"
+msgstr[0] "{count} archivo cambiado"
+msgstr[1] "{count} archivos cambiados"
+
+msgid "{count} Commit Selected"
+msgid_plural "{count} Commits Selected"
+msgstr[0] "{count} commit seleccionado"
+msgstr[1] "{count} commits seleccionados"
+
+msgid "{count} base change possibly missing"
+msgid_plural "{count} base changes possibly missing"
+msgstr[0] "Posiblemente falta {count} cambio de la base"
+msgstr[1] "Posiblemente faltan {count} cambios de la base"
+
+msgid "{count} branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "Hay {count} ramas y etiquetas almacenadas como archivos separados. Empaquetarlas hace que Git sea más rápido."
+
+msgid "{count} commit"
+msgid_plural "{count} commits"
+msgstr[0] "{count} commit"
+msgstr[1] "{count} commits"
+
+msgid "{count} commit is already in the box."
+msgid_plural "{count} commits are already in the box."
+msgstr[0] "{count} commit ya está en la caja."
+msgstr[1] "{count} commits ya están en la caja."
+
+msgid "{count} commit is not placed. Create the MR branch anyway?"
+msgid_plural "{count} commits are not placed. Create the MR branch anyway?"
+msgstr[0] "{count} commit no está colocado. ¿Crear la rama de MR de todos modos?"
+msgstr[1] "{count} commits no están colocados. ¿Crear la rama de MR de todos modos?"
+
+msgid "{count} commit:"
+msgid_plural "{count} commits:"
+msgstr[0] "{count} commit:"
+msgstr[1] "{count} commits:"
+
+msgid "{count} excluded commit."
+msgid_plural "{count} excluded commits."
+msgstr[0] "{count} commit excluido."
+msgstr[1] "{count} commits excluidos."
+
+msgid "{count} file"
+msgid_plural "{count} files"
+msgstr[0] "{count} archivo"
+msgstr[1] "{count} archivos"
+
+msgid "{count} file changed on the development branch: {matched} matching / {mismatched} not matching"
+msgid_plural "{count} files changed on the development branch: {matched} matching / {mismatched} not matching"
+msgstr[0] "{count} archivo cambiado en la rama de desarrollo: {matched} coinciden / {mismatched} no coinciden"
+msgstr[1] "{count} archivos cambiados en la rama de desarrollo: {matched} coinciden / {mismatched} no coinciden"
+
+msgid "{count} file differs. Choose it from the list on the left to show the contents side by side."
+msgid_plural "{count} files differ. Choose one from the list on the left to show the contents side by side."
+msgstr[0] "{count} archivo difiere. Elíjalo en la lista de la izquierda para mostrar el contenido en paralelo."
+msgstr[1] "{count} archivos difieren. Elija uno en la lista de la izquierda para mostrar el contenido en paralelo."
+
+msgid "{count} file possibly missing"
+msgid_plural "{count} files possibly missing"
+msgstr[0] "Posiblemente falta {count} archivo"
+msgstr[1] "Posiblemente faltan {count} archivos"
+
+msgid "{count} merge commit (not included)"
+msgid_plural "{count} merge commits (not included)"
+msgstr[0] "{count} commit de fusión (no incluido)"
+msgstr[1] "{count} commits de fusión (no incluidos)"
+
+msgid "{count} more commit"
+msgid_plural "{count} more commits"
+msgstr[0] "{count} commit más"
+msgstr[1] "{count} commits más"
+
+msgid "{count} or more branches and tags are stored as separate files. Packing them makes Git faster."
+msgstr "Hay {count} o más ramas y etiquetas almacenadas como archivos separados. Empaquetarlas hace que Git sea más rápido."
+
+msgid "{count} selected"
+msgid_plural "{count} selected"
+msgstr[0] "{count} seleccionado"
+msgstr[1] "{count} seleccionados"
+
+msgid "{count} unplaced commit"
+msgid_plural "{count} unplaced commits"
+msgstr[0] "{count} commit sin colocar"
+msgstr[1] "{count} commits sin colocar"
+
+msgid "{explanation}."
+msgstr "{explanation}."
+
+msgid "{explanation}. Caution: {caution}."
+msgstr "{explanation}. Precaución: {caution}."
+
+msgid "{headline}: could not run\n{error}"
+msgstr "{headline}: no se pudo ejecutar\n{error}"
+
+msgid "{headline}: done"
+msgstr "{headline}: listo"
+
+msgid "{headline}: failed\n{failure}"
+msgstr "{headline}: falló\n{failure}"
+
+msgid "{hedge}Creating the MR branch stopped on the scratch branch \"{scratch_branch}\". {resolve}\n{abort}\nOnce \"Continue\" has applied the remaining commits, \"Next Steps\" in the Git Graph's \"MR Box\" updates the MR branch and goes back to the original branch."
+msgstr "{hedge}La creación de la rama de MR se detuvo en la rama temporal \"{scratch_branch}\". {resolve}\n{abort}\nUna vez que \"Continuar\" haya aplicado los commits restantes, \"Pasos siguientes\" en la \"Caja de MR\" del grafo de commits actualiza la rama de MR y vuelve a la rama original."
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\n\"Abort\" goes back to the original branch \"{origin_branch}\" and deletes this scratch branch (the partly rewritten commits stay only in git reflog).\nIf you carry on with \"Continue\", you have to move the original branch onto the result yourself (git rebase --onto)."
+msgstr "{hedge}La reescritura de commits se detuvo en la rama temporal \"{scratch_branch}\". {resolve}\n\"Anular\" vuelve a la rama original \"{origin_branch}\" y elimina esta rama temporal (los commits reescritos parcialmente solo quedan en git reflog).\nSi sigue con \"Continuar\", tendrá que mover manualmente la rama original al resultado (git rebase --onto)."
+
+msgid "{hedge}Rewriting commits stopped on the scratch branch \"{scratch_branch}\". {resolve}\nThe original branch is unknown, so \"Abort\" does not go back to it. Switch to it yourself after aborting."
+msgstr "{hedge}La reescritura de commits se detuvo en la rama temporal \"{scratch_branch}\". {resolve}\nNo se conoce la rama original, así que \"Anular\" no vuelve a ella. Cambie a ella manualmente después de anular."
+
+msgid "{hidden} more (keep typing to narrow them down)"
+msgstr "{hidden} más (siga escribiendo para acotarlos)"
+
+msgid "{merge_request_base} and {source} have no common ancestor (unrelated histories). The MR check cannot run."
+msgstr "{merge_request_base} y {source} no tienen ningún ancestro común (historiales no relacionados). No se puede ejecutar la comprobación de MR."
+
+msgid "{merge_request_base} and {source} have {} common ancestors (a criss-cross merge). The MR check cannot tell where to compare from, so it cannot run."
+msgstr "{merge_request_base} y {source} tienen {} ancestros comunes (una fusión cruzada). La comprobación de MR no puede determinar desde dónde comparar, así que no se puede ejecutar."
+
+msgid "{reason}."
+msgstr "{reason}."
+
+msgid "{}\nHowever, {}"
+msgstr "{}\nSin embargo, {}"
+
+msgid "{}\nRuns git {} --abort. If no rebase is running, git refuses; if one is, whatever was partly resolved is lost."
+msgstr "{}\nEjecuta git {} --abort. Si no hay ningún rebase en curso, git lo rechaza; si lo hay, se pierde todo lo que se resolvió parcialmente."
+
+msgid "{} Excluded"
+msgstr "{} excluidos"
+
+msgid "{} also changed on the base"
+msgstr "{} también cambiados en la base"
+
+msgid "{} and {} have the same contents."
+msgstr "{} y {} tienen el mismo contenido."
+
+msgid "{} excluded"
+msgstr "{} excluidos"
+
+msgid "{} more omitted"
+msgstr "{} más omitidos"
+
+msgid "{} of the excluded commits are not in the recent history of the development branch (at most {MAX_EXCLUDED_COMMIT_LOOKUPS} can be looked up at once)."
+msgstr "{} de los commits excluidos no están en el historial reciente de la rama de desarrollo (se pueden consultar como máximo {MAX_EXCLUDED_COMMIT_LOOKUPS} a la vez)."
+
+msgid "{} possibly missing"
+msgstr "{} posiblemente faltan"
+
+msgid "{} stopped partway"
+msgstr "{} se detuvo a medias"
+
+msgctxt "amend checkbox"
+msgid "Amend"
+msgstr "Enmendar"
+
+msgctxt "commit action"
+msgid "Add Current Changes (fixup)"
+msgstr "Agregar los cambios actuales (fixup)"
+
+msgctxt "commit action"
+msgid "Add to MR Box"
+msgstr "Agregar a la caja de MR"
+
+msgctxt "commit action"
+msgid "Add to MR Box ({count} Commit)"
+msgid_plural "Add to MR Box ({count} Commits)"
+msgstr[0] "Agregar a la caja de MR ({count} commit)"
+msgstr[1] "Agregar a la caja de MR ({count} commits)"
+
+msgctxt "commit action"
+msgid "Amend Last Commit"
+msgstr "Enmendar el último commit"
+
+msgctxt "commit action"
+msgid "Branch from Here"
+msgstr "Crear rama desde aquí"
+
+msgctxt "commit action"
+msgid "Check Out"
+msgstr "Hacer checkout"
+
+msgctxt "commit action"
+msgid "Cherry-Pick"
+msgstr "Cherry-pick"
+
+msgctxt "commit action"
+msgid "Cherry-Pick {count} Commit"
+msgid_plural "Cherry-Pick {count} Commits"
+msgstr[0] "Cherry-pick de {count} commit"
+msgstr[1] "Cherry-pick de {count} commits"
+
+msgctxt "commit action"
+msgid "Exclude from MR"
+msgstr "Excluir de la MR"
+
+msgctxt "commit action"
+msgid "More"
+msgstr "Más"
+
+msgctxt "commit action"
+msgid "Reorder / Squash / Drop…"
+msgstr "Reordenar / combinar / descartar…"
+
+msgctxt "commit action"
+msgid "Reset to This Commit"
+msgstr "Restablecer a este commit"
+
+msgctxt "commit action"
+msgid "Revert"
+msgstr "Revertir"
+
+msgctxt "commit action"
+msgid "Reword Message"
+msgstr "Cambiar el mensaje"
+
+msgctxt "commit action"
+msgid "Stop Excluding from MR"
+msgstr "Dejar de excluir de la MR"
+
+msgctxt "commit button"
+msgid "Commit"
+msgstr "Commit"
+
+msgctxt "commit modal"
+msgid "Signoff"
+msgstr "Firmar"
+
+msgctxt "commit search"
+msgid "Advanced"
+msgstr "Avanzado"
+
+msgctxt "commit search"
+msgid "Author"
+msgstr "Autor"
+
+msgctxt "commit search"
+msgid "Branch"
+msgstr "Rama"
+
+msgctxt "commit search"
+msgid "Changed Text"
+msgstr "Texto cambiado"
+
+msgctxt "commit search"
+msgid "File"
+msgstr "Archivo"
+
+msgctxt "commit search"
+msgid "Merges"
+msgstr "Fusiones"
+
+msgctxt "commit search"
+msgid "Since"
+msgstr "Desde"
+
+msgctxt "commit search"
+msgid "Stop"
+msgstr "Detener"
+
+msgctxt "commit search"
+msgid "Tag"
+msgstr "Etiqueta"
+
+msgctxt "commit search"
+msgid "Until"
+msgstr "Hasta"
+
+msgctxt "file status"
+msgid "Added"
+msgstr "Agregado"
+
+msgctxt "file status"
+msgid "Deleted"
+msgstr "Eliminado"
+
+msgctxt "file status"
+msgid "Modified"
+msgstr "Modificado"
+
+msgctxt "git fetch"
+msgid "Fetching…"
+msgstr "Haciendo fetch…"
+
+msgctxt "git graph hints"
+msgid "Guide"
+msgstr "Guía"
+
+msgctxt "git graph toolbar"
+msgid "Compare…"
+msgstr "Comparar…"
+
+msgctxt "git graph toolbar"
+msgid "Create MR"
+msgstr "Crear MR"
+
+msgctxt "git graph toolbar"
+msgid "Tags"
+msgstr "Etiquetas"
+
+msgctxt "git history"
+msgid "Drop"
+msgstr "Descartar"
+
+msgctxt "git history"
+msgid "Go Back"
+msgstr "Volver"
+
+msgctxt "git operation"
+msgid "Abort (--abort)"
+msgstr "Anular (--abort)"
+
+msgctxt "git operation"
+msgid "Add Current Changes (fixup)"
+msgstr "Agregar los cambios actuales (fixup)"
+
+msgctxt "git operation"
+msgid "Add Remote (remote add)"
+msgstr "Agregar remoto (remote add)"
+
+msgctxt "git operation"
+msgid "Add to .git/info/exclude"
+msgstr "Agregar a .git/info/exclude"
+
+msgctxt "git operation"
+msgid "Add to .gitignore"
+msgstr "Agregar a .gitignore"
+
+msgctxt "git operation"
+msgid "All Branches"
+msgstr "Todas las ramas"
+
+msgctxt "git operation"
+msgid "Amend Last Commit"
+msgstr "Enmendar el último commit"
+
+msgctxt "git operation"
+msgid "Apply Patch File (apply)"
+msgstr "Aplicar archivo de parche (apply)"
+
+msgctxt "git operation"
+msgid "Branch from Here"
+msgstr "Crear rama desde aquí"
+
+msgctxt "git operation"
+msgid "Check Out"
+msgstr "Hacer checkout"
+
+msgctxt "git operation"
+msgid "Cherry-Pick"
+msgstr "Cherry-pick"
+
+msgctxt "git operation"
+msgid "Cherry-Pick Selected"
+msgstr "Cherry-pick de los seleccionados"
+
+msgctxt "git operation"
+msgid "Co-Authors (Co-authored-by)"
+msgstr "Coautores (Co-authored-by)"
+
+msgctxt "git operation"
+msgid "Commit"
+msgstr "Commit"
+
+msgctxt "git operation"
+msgid "Compare"
+msgstr "Comparar"
+
+msgctxt "git operation"
+msgid "Continue (--continue)"
+msgstr "Continuar (--continue)"
+
+msgctxt "git operation"
+msgid "Copy Path"
+msgstr "Copiar ruta"
+
+msgctxt "git operation"
+msgid "Copy Relative Path"
+msgstr "Copiar ruta relativa"
+
+msgctxt "git operation"
+msgid "Create MR"
+msgstr "Crear MR"
+
+msgctxt "git operation"
+msgid "Create Patch File (diff)"
+msgstr "Crear archivo de parche (diff)"
+
+msgctxt "git operation"
+msgid "Create from Default Branch"
+msgstr "Crear desde la rama predeterminada"
+
+msgctxt "git operation"
+msgid "Delete Branch (branch -d)"
+msgstr "Eliminar rama (branch -d)"
+
+msgctxt "git operation"
+msgid "Discard Changes (restore)"
+msgstr "Descartar cambios (restore)"
+
+msgctxt "git operation"
+msgid "Discard Tracked Changes (restore)"
+msgstr "Descartar los cambios con seguimiento (restore)"
+
+msgctxt "git operation"
+msgid "Distance from Tag"
+msgstr "Distancia desde la etiqueta"
+
+msgctxt "git operation"
+msgid "Drop"
+msgstr "Descartar"
+
+msgctxt "git operation"
+msgid "Drop Stash (stash drop)"
+msgstr "Descartar stash (stash drop)"
+
+msgctxt "git operation"
+msgid "Exclude from MR"
+msgstr "Excluir de la MR"
+
+msgctxt "git operation"
+msgid "Fetch"
+msgstr "Fetch"
+
+msgctxt "git operation"
+msgid "Fetch From (fetch)"
+msgstr "Fetch desde (fetch)"
+
+msgctxt "git operation"
+msgid "File History (log)"
+msgstr "Historial del archivo (log)"
+
+msgctxt "git operation"
+msgid "Filter Branches"
+msgstr "Filtrar ramas"
+
+msgctxt "git operation"
+msgid "Force Delete Branch (branch -D)"
+msgstr "Forzar eliminación de rama (branch -D)"
+
+msgctxt "git operation"
+msgid "Force Push (push --force-with-lease)"
+msgstr "Forzar push (push --force-with-lease)"
+
+msgctxt "git operation"
+msgid "Force Push Without Lease (push --force)"
+msgstr "Forzar push sin lease (push --force)"
+
+msgctxt "git operation"
+msgid "Git Guide"
+msgstr "Guía de Git"
+
+msgctxt "git operation"
+msgid "Group by Staged and Unstaged"
+msgstr "Agrupar por preparados y sin preparar"
+
+msgctxt "git operation"
+msgid "Group by Tracked and Untracked"
+msgstr "Agrupar por con seguimiento y sin seguimiento"
+
+msgctxt "git operation"
+msgid "Initialize Repository (init)"
+msgstr "Inicializar repositorio (init)"
+
+msgctxt "git operation"
+msgid "List View"
+msgstr "Vista de lista"
+
+msgctxt "git operation"
+msgid "Local Branches"
+msgstr "Ramas locales"
+
+msgctxt "git operation"
+msgid "MR Box"
+msgstr "Caja de MR"
+
+msgctxt "git operation"
+msgid "Merge Branch"
+msgstr "Fusionar rama"
+
+msgctxt "git operation"
+msgid "More"
+msgstr "Más"
+
+msgctxt "git operation"
+msgid "Move File to Trash"
+msgstr "Mover archivo a la papelera"
+
+msgctxt "git operation"
+msgid "Move Untracked Files to Trash"
+msgstr "Mover archivos sin seguimiento a la papelera"
+
+msgctxt "git operation"
+msgid "No Grouping"
+msgstr "Sin agrupar"
+
+msgctxt "git operation"
+msgid "Open Diff"
+msgstr "Abrir diferencias"
+
+msgctxt "git operation"
+msgid "Open File Diff"
+msgstr "Abrir diferencias del archivo"
+
+msgctxt "git operation"
+msgid "Pop This Stash (stash pop)"
+msgstr "Extraer este stash (stash pop)"
+
+msgctxt "git operation"
+msgid "Publish (push --set-upstream)"
+msgstr "Publicar (push --set-upstream)"
+
+msgctxt "git operation"
+msgid "Pull"
+msgstr "Pull"
+
+msgctxt "git operation"
+msgid "Pull with Rebase (pull --rebase)"
+msgstr "Pull con rebase (pull --rebase)"
+
+msgctxt "git operation"
+msgid "Push"
+msgstr "Push"
+
+msgctxt "git operation"
+msgid "Push To (push)"
+msgstr "Push a (push)"
+
+msgctxt "git operation"
+msgid "Remote Branches"
+msgstr "Ramas remotas"
+
+msgctxt "git operation"
+msgid "Remove Remote (remote remove)"
+msgstr "Quitar remoto (remote remove)"
+
+msgctxt "git operation"
+msgid "Reorder / Squash / Drop"
+msgstr "Reordenar / combinar / descartar"
+
+msgctxt "git operation"
+msgid "Republish (push --set-upstream)"
+msgstr "Volver a publicar (push --set-upstream)"
+
+msgctxt "git operation"
+msgid "Reset to Remote (reset --hard)"
+msgstr "Restablecer al remoto (reset --hard)"
+
+msgctxt "git operation"
+msgid "Reset to This Commit"
+msgstr "Restablecer a este commit"
+
+msgctxt "git operation"
+msgid "Reset: hard"
+msgstr "Restablecer: hard"
+
+msgctxt "git operation"
+msgid "Reset: mixed"
+msgstr "Restablecer: mixed"
+
+msgctxt "git operation"
+msgid "Reset: soft"
+msgstr "Restablecer: soft"
+
+msgctxt "git operation"
+msgid "Restore All (restore)"
+msgstr "Restaurar todo (restore)"
+
+msgctxt "git operation"
+msgid "Restore File (restore)"
+msgstr "Restaurar archivo (restore)"
+
+msgctxt "git operation"
+msgid "Restore Hunk (restore)"
+msgstr "Restaurar fragmento (restore)"
+
+msgctxt "git operation"
+msgid "Revert"
+msgstr "Revertir"
+
+msgctxt "git operation"
+msgid "Reword Message"
+msgstr "Cambiar el mensaje"
+
+msgctxt "git operation"
+msgid "Show"
+msgstr "Mostrar"
+
+msgctxt "git operation"
+msgid "Show Diff"
+msgstr "Mostrar diferencias"
+
+msgctxt "git operation"
+msgid "Signoff"
+msgstr "Firmar"
+
+msgctxt "git operation"
+msgid "Skip (--skip)"
+msgstr "Omitir (--skip)"
+
+msgctxt "git operation"
+msgid "Skip Hooks (--no-verify)"
+msgstr "Omitir hooks (--no-verify)"
+
+msgctxt "git operation"
+msgid "Sort by Name"
+msgstr "Ordenar por nombre"
+
+msgctxt "git operation"
+msgid "Sort by Path"
+msgstr "Ordenar por ruta"
+
+msgctxt "git operation"
+msgid "Squash into One"
+msgstr "Combinar en uno"
+
+msgctxt "git operation"
+msgid "Stage All"
+msgstr "Preparar todo"
+
+msgctxt "git operation"
+msgid "Stage All in Section"
+msgstr "Preparar todo en la sección"
+
+msgctxt "git operation"
+msgid "Stage File"
+msgstr "Preparar archivo"
+
+msgctxt "git operation"
+msgid "Stage Folder"
+msgstr "Preparar carpeta"
+
+msgctxt "git operation"
+msgid "Stage Hunk"
+msgstr "Preparar fragmento"
+
+msgctxt "git operation"
+msgid "Staged Changes"
+msgstr "Cambios preparados"
+
+msgctxt "git operation"
+msgid "Stash All"
+msgstr "Guardar todo en el stash"
+
+msgctxt "git operation"
+msgid "Stash Pop"
+msgstr "Extraer stash"
+
+msgctxt "git operation"
+msgid "Stash Staged (stash --staged)"
+msgstr "Guardar los preparados en el stash (stash --staged)"
+
+msgctxt "git operation"
+msgid "Stash Tracked"
+msgstr "Guardar cambios con seguimiento en el stash"
+
+msgctxt "git operation"
+msgid "Stop Excluding from MR"
+msgstr "Dejar de excluir de la MR"
+
+msgctxt "git operation"
+msgid "Switch Branch"
+msgstr "Cambiar de rama"
+
+msgctxt "git operation"
+msgid "Tag"
+msgstr "Etiqueta"
+
+msgctxt "git operation"
+msgid "Tags"
+msgstr "Etiquetas"
+
+msgctxt "git operation"
+msgid "Toggle Staged"
+msgstr "Alternar estado de preparación"
+
+msgctxt "git operation"
+msgid "Tree View"
+msgstr "Vista de árbol"
+
+msgctxt "git operation"
+msgid "Trust Directory (safe.directory)"
+msgstr "Confiar en el directorio (safe.directory)"
+
+msgctxt "git operation"
+msgid "Uncommit (reset --soft)"
+msgstr "Deshacer commit (reset --soft)"
+
+msgctxt "git operation"
+msgid "Unstage All"
+msgstr "Quitar todo de preparados"
+
+msgctxt "git operation"
+msgid "Unstage All in Section"
+msgstr "Quitar todo de preparados en la sección"
+
+msgctxt "git operation"
+msgid "Unstage File"
+msgstr "Quitar archivo de preparados"
+
+msgctxt "git operation"
+msgid "Unstage Folder"
+msgstr "Quitar carpeta de preparados"
+
+msgctxt "git operation"
+msgid "Unstage Hunk"
+msgstr "Quitar fragmento de preparados"
+
+msgctxt "git operation"
+msgid "Unstaged Changes"
+msgstr "Cambios sin preparar"
+
+msgctxt "git operation"
+msgid "Use Both"
+msgstr "Usar ambos"
+
+msgctxt "git operation"
+msgid "Use Ours"
+msgstr "Usar la nuestra (ours)"
+
+msgctxt "git operation"
+msgid "Use Theirs"
+msgstr "Usar la suya (theirs)"
+
+msgctxt "git operation"
+msgid "View File"
+msgstr "Ver archivo"
+
+msgctxt "git operation"
+msgid "View Options"
+msgstr "Opciones de vista"
+
+msgctxt "git operation"
+msgid "View Stash"
+msgstr "Ver stash"
+
+msgctxt "git operation"
+msgid "View Stash List (stash list)"
+msgstr "Ver la lista de stashes (stash list)"
+
+msgctxt "git panel view options"
+msgid "Name"
+msgstr "Nombre"
+
+msgctxt "git panel view options"
+msgid "None"
+msgstr "Ninguno"
+
+msgctxt "git panel view options"
+msgid "Path"
+msgstr "Ruta"
+
+msgctxt "git panel view options"
+msgid "View"
+msgstr "Ver"
+
+msgctxt "git prompt"
+msgid "Cherry-Pick"
+msgstr "Cherry-pick"
+
+msgctxt "git prompt"
+msgid "Go Back"
+msgstr "Volver"
+
+msgctxt "git prompt"
+msgid "Move"
+msgstr "Mover"
+
+msgctxt "git prompt"
+msgid "Rewrite"
+msgstr "Reescribir"
+
+msgctxt "git prompt"
+msgid "Squash"
+msgstr "Combinar"
+
+msgctxt "git prompt"
+msgid "Switch and Cherry-Pick"
+msgstr "Cambiar y hacer cherry-pick"
+
+msgctxt "git result"
+msgid "Cherry-pick"
+msgstr "Cherry-pick"
+
+msgctxt "git result"
+msgid "Edit commits"
+msgstr "Editar commits"
+
+msgctxt "git result"
+msgid "Move branch"
+msgstr "Mover rama"
+
+msgctxt "git result"
+msgid "Reorder commits"
+msgstr "Reordenar commits"
+
+msgctxt "git result"
+msgid "Reset branch"
+msgstr "Restablecer rama"
+
+msgctxt "git result"
+msgid "Squash"
+msgstr "Combinar"
+
+msgctxt "git result"
+msgid "Squash commits"
+msgstr "Combinar commits"
+
+msgctxt "git result"
+msgid "Switch branch"
+msgstr "Cambiar de rama"
+
+msgctxt "git rewrite"
+msgid "Keep"
+msgstr "Mantener"
+
+msgctxt "git rewrite"
+msgid "Move Down"
+msgstr "Bajar"
+
+msgctxt "git rewrite"
+msgid "Move Up"
+msgstr "Subir"
+
+msgctxt "git rewrite"
+msgid "Reword"
+msgstr "Cambiar el mensaje"
+
+msgctxt "git sequencer"
+msgid "Abort"
+msgstr "Anular"
+
+msgctxt "git sequencer"
+msgid "Continue"
+msgstr "Continuar"
+
+msgctxt "git sequencer"
+msgid "Skip"
+msgstr "Omitir"
+
+msgctxt "git sequencer prompt"
+msgid "Abort"
+msgstr "Anular"
+
+msgctxt "git sequencer prompt"
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "log source"
+msgid "All Branches"
+msgstr "Todas las ramas"
+
+msgctxt "log source"
+msgid "File History"
+msgstr "Historial del archivo"
+
+msgctxt "merge commits"
+msgid "Exclude"
+msgstr "Excluir"
+
+msgctxt "merge commits"
+msgid "Include"
+msgstr "Incluir"
+
+msgctxt "merge commits"
+msgid "Only"
+msgstr "Solo"
+
+msgctxt "merge request box"
+msgid "Base"
+msgstr "Base"
+
+msgctxt "merge request box"
+msgid "Create"
+msgstr "Crear"
+
+msgctxt "merge request box"
+msgid "Message"
+msgstr "Mensaje"
+
+msgctxt "merge request check"
+msgid "All"
+msgstr "Todos"
+
+msgctxt "pack refs"
+msgid "Pack"
+msgstr "Empaquetar"
+
+msgctxt "remove remote"
+msgid "Remove"
+msgstr "Quitar"
+
+msgctxt "two sentences"
+msgid "{0} {1}"
+msgstr "{0} {1}"

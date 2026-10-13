@@ -1067,7 +1067,7 @@ msgstr "報告しない"
 
 msgctxt "StatusUntrackedFilesSetting"
 msgid "Folders Only"
-msgstr "通常"
+msgstr "フォルダーのみ"
 
 msgctxt "SteppingGranularity"
 msgid "Instruction"

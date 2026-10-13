@@ -1,0 +1,410 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(child)"
+msgstr "（子項）"
+
+msgid "1 byte"
+msgstr "1 位元組"
+
+msgid "16 bytes"
+msgstr "16 位元組"
+
+msgid "2 bytes"
+msgstr "2 位元組"
+
+msgid "32 bytes"
+msgstr "32 位元組"
+
+msgid "4 bytes"
+msgstr "4 位元組"
+
+msgid "64 bytes"
+msgstr "64 位元組"
+
+msgid "8 bytes"
+msgstr "8 位元組"
+
+msgid "Allows inspection of memory contents"
+msgstr "允許檢查記憶體內容"
+
+msgid "Attach"
+msgstr "附加"
+
+msgid "Attach the debugger to a running process"
+msgstr "將偵錯工具附加至執行中的處理序"
+
+msgid "Breakpoints"
+msgstr "中斷點"
+
+msgid "Build failed"
+msgstr "建置失敗"
+
+msgid "Change Address of Currently Viewed Memory"
+msgstr "變更目前檢視的記憶體位址"
+
+msgid "Close Panel"
+msgstr "關閉面板"
+
+msgid "Console"
+msgstr "主控台"
+
+msgid "Continue Program"
+msgstr "繼續執行程式"
+
+msgid "Continue Thread"
+msgstr "繼續執行緒"
+
+msgid "Copy Name"
+msgstr "複製名稱"
+
+msgid "Copy Value"
+msgstr "複製值"
+
+msgid "Could not find a valid locator for a build task and configure is invalid with error: {}"
+msgstr "找不到建置工作的有效定位器，且設定無效，錯誤：{}"
+
+msgid "Could not resolve task variables within a debug scenario"
+msgstr "無法解析偵錯情境中的工作變數"
+
+msgid "Current State"
+msgstr "目前狀態"
+
+msgid "Debug"
+msgstr "偵錯"
+
+msgid "Debug Adapter `{adapter_name}` does not support writing to memory"
+msgstr "偵錯介面卡 `{adapter_name}` 不支援寫入記憶體"
+
+msgid "Debug Panel"
+msgstr "偵錯面板"
+
+msgid "Debug terminal"
+msgstr "偵錯終端機"
+
+msgid "Debugger"
+msgstr "偵錯工具"
+
+msgid "Debugger Docs"
+msgstr "偵錯工具文件"
+
+msgid "Debugger Extensions"
+msgstr "偵錯工具擴充功能"
+
+msgid "Debugger:"
+msgstr "偵錯工具："
+
+msgid "Detach"
+msgstr "卸離"
+
+msgid "Disable Breakpoint"
+msgstr "停用中斷點"
+
+msgid "Disable Data Breakpoint"
+msgstr "停用資料中斷點"
+
+msgid "Disable Exception Breakpoint"
+msgstr "停用例外狀況中斷點"
+
+msgid "Disable a breakpoint without removing it from the list"
+msgstr "停用中斷點但不從清單移除"
+
+msgid "Displays program output and allows manual input of debugger commands"
+msgstr "顯示程式輸出並允許手動輸入偵錯工具命令"
+
+msgid "Displays the call stack, letting you navigate between function calls"
+msgstr "顯示呼叫堆疊，讓您在函式呼叫之間導覽"
+
+msgid "Edit Memory at a Selected Address"
+msgstr "在選取的位址編輯記憶體"
+
+msgid "Edit Value"
+msgstr "編輯值"
+
+msgid "Edit debug.json"
+msgstr "編輯 debug.json"
+
+msgid "Edit in debug.json"
+msgstr "在 debug.json 中編輯"
+
+msgid "Enable Breakpoint"
+msgstr "啟用中斷點"
+
+msgid "Enable Data Breakpoint"
+msgstr "啟用資料中斷點"
+
+msgid "Enable Exception Breakpoint"
+msgstr "啟用例外狀況中斷點"
+
+msgid "Evaluate"
+msgstr "評估"
+
+msgid "Evaluate an expression"
+msgstr "評估運算式"
+
+msgid "Exception Breakpoints cannot be removed from the breakpoint list"
+msgstr "無法從中斷點清單移除例外狀況中斷點"
+
+msgid "Failed to edit debug.json"
+msgstr "編輯 debug.json 失敗"
+
+msgid "Find a debug task, or debug a command"
+msgstr "尋找偵錯工作，或偵錯命令"
+
+msgid "Frames"
+msgstr "堆疊框架"
+
+msgid "Go To Memory"
+msgstr "前往記憶體位址"
+
+msgid "Go To Selected Address"
+msgstr "前往所選位址"
+
+msgid "Go to Memory Address / Expression"
+msgstr "移至記憶體位址 / 運算式"
+
+msgid "Language: {name}"
+msgstr "語言：{name}"
+
+msgid "Launch"
+msgstr "啟動"
+
+msgid "Launch Custom"
+msgstr "啟動自訂命令"
+
+msgid "Launch a new process with a debugger"
+msgstr "使用偵錯工具啟動新處理序"
+
+msgid "Lists all active breakpoints set in the code"
+msgstr "列出程式碼中設定的所有作用中的中斷點"
+
+msgid "Lists all source files currently loaded and used by the debugger"
+msgstr "列出偵錯工具目前載入並使用的所有原始碼檔案"
+
+msgid "Memory View"
+msgstr "記憶體檢視"
+
+msgid "Modules"
+msgstr "模組"
+
+msgid "New Session"
+msgstr "新增工作階段"
+
+msgid "No"
+msgstr "否"
+
+msgid "No Breakpoints Set"
+msgstr "未設定中斷點"
+
+msgid "No process selected with config that contains {}"
+msgstr "未針對包含 {} 的設定選取處理序"
+
+msgid "Open Debug Adapter Logs"
+msgstr "開啟偵錯介面卡記錄"
+
+msgid "Open Documentation"
+msgstr "開啟文件"
+
+msgid "Pause Program"
+msgstr "暫停程式"
+
+msgid "Program"
+msgstr "程式"
+
+msgid "Provides an interactive terminal session within the debugging environment"
+msgstr "在偵錯環境中提供互動式終端機工作階段"
+
+msgid "Re-enable a breakpoint"
+msgstr "重新啟用中斷點"
+
+msgid "Remove Breakpoint"
+msgstr "移除中斷點"
+
+msgid "Remove Watch"
+msgstr "移除監看"
+
+msgid "Remove breakpoint from a breakpoint list"
+msgstr "從中斷點清單移除中斷點"
+
+msgid "Remove data breakpoint from a breakpoint list"
+msgstr "從中斷點清單移除資料中斷點"
+
+msgid "Rerun"
+msgstr "重新執行"
+
+msgid "Rerun Session"
+msgstr "重新執行工作階段"
+
+msgid "Restart Stack Frame"
+msgstr "重新啟動堆疊框架"
+
+msgid "Run"
+msgstr "執行"
+
+msgid "Run predefined task"
+msgstr "執行預先定義的工作"
+
+msgid "Select Debugger"
+msgstr "選取偵錯工具"
+
+msgid "Select a Debug Session"
+msgstr "選取偵錯工作階段"
+
+msgid "Select the process you want to attach the debugger to"
+msgstr "選取要附加偵錯工具的處理序"
+
+msgid "Set Condition"
+msgstr "設定條件"
+
+msgid "Set Data Breakpoint"
+msgstr "設定資料中斷點"
+
+msgid "Set Hit Condition"
+msgstr "設定叫用次數條件"
+
+msgid "Set Log Message"
+msgstr "設定記錄訊息"
+
+msgid "Set condition to evaluate when a breakpoint is hit. Program execution will stop only when the condition is met."
+msgstr "設定中斷點命中時要評估的條件。只有在符合條件時，程式執行才會停止。"
+
+msgid "Set expression that controls how many hits of the breakpoint are ignored."
+msgstr "設定運算式，以控制要忽略多少次中斷點叫用。"
+
+msgid "Set log message to display (instead of stopping) when a breakpoint is hit."
+msgstr "設定中斷點觸發時要顯示的記錄訊息（而非停止執行）。"
+
+msgid "Show all stack frames"
+msgstr "顯示所有堆疊框架"
+
+msgid "Show stack frames from your project"
+msgstr "顯示專案中的堆疊框架"
+
+msgid "Show {} more{}"
+msgstr "顯示另外 {} 個{}"
+
+msgid "Shows all modules or libraries loaded by the program"
+msgstr "顯示程式載入的所有模組或程式庫"
+
+msgid "Shows current values of local and global variables in the current stack frame"
+msgstr "顯示目前堆疊框架中區域和全域變數的目前值"
+
+msgid "Sources"
+msgstr "原始檔"
+
+msgid "Spawn"
+msgstr "執行"
+
+msgid "Start"
+msgstr "開始"
+
+msgid "Start Debug Session"
+msgstr "開始偵錯工作階段"
+
+msgid "Start a predefined debug scenario"
+msgstr "開始預先定義的偵錯情境"
+
+msgid "Step Back in Session History"
+msgstr "在工作階段歷程中返回上一步"
+
+msgid "Step In"
+msgstr "逐步執行"
+
+msgid "Step Out"
+msgstr "跳離函式"
+
+msgid "Step Over"
+msgstr "不進入函式"
+
+msgid "Stop on Entry"
+msgstr "進入時停止"
+
+msgid "Terminal"
+msgstr "終端機"
+
+msgid "Terminate All Threads"
+msgstr "終止所有執行緒"
+
+msgid "Terminate Thread"
+msgstr "終止執行緒"
+
+msgid "This Debug Session is still running. Are you sure you want to terminate it?"
+msgstr "此偵錯工作階段仍在執行中。確定要終止嗎？"
+
+msgid "Toggle Data Breakpoint"
+msgstr "切換資料中斷點"
+
+msgid "Toggle {} Data Breakpoint"
+msgstr "切換 {} 資料中斷點"
+
+msgid "Unknown Session"
+msgstr "未知工作階段"
+
+msgid "Variables"
+msgstr "變數"
+
+msgid "Watch Expression"
+msgstr "監看運算式"
+
+msgid "Watch Variable"
+msgstr "監看變數"
+
+msgid "Working Directory"
+msgstr "工作目錄"
+
+msgid "Worktree parent path: {parent_dir}"
+msgstr "工作樹父路徑：{parent_dir}"
+
+msgid "Write to Selected Memory Range"
+msgstr "寫入選取的記憶體範圍"
+
+msgid "Yes"
+msgstr "是"
+
+msgid "Zed cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+msgstr "ForgeKairos 無法判定如何執行此偵錯情境。未提供 `build` 欄位，且偵錯介面卡不接受所提供的設定，原因：{error}"
+
+msgid "history-{}"
+msgstr "歷程記錄-{}"
+
+msgid "in {d}/"
+msgstr "位於 {d}/"
+
+msgid "in {f}"
+msgstr "位於 {f}"
+
+msgid "no active worktree"
+msgstr "沒有使用中的工作樹"
+
+msgid "no scenario to save"
+msgstr "沒有要儲存的情境"
+
+msgid "no task contexts"
+msgstr "沒有工作內容"
+
+msgctxt "data breakpoint access"
+msgid "Read"
+msgstr "讀取"
+
+msgctxt "data breakpoint access"
+msgid "Read/Write"
+msgstr "讀取/寫入"
+
+msgctxt "data breakpoint access"
+msgid "Write"
+msgstr "寫入"
+
+msgctxt "debugger pane zoom"
+msgid "Expand"
+msgstr "展開"
+
+msgctxt "debugger pane zoom"
+msgid "Minimize"
+msgstr "最小化"

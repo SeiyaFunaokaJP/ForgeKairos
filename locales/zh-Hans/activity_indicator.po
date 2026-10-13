@@ -1,0 +1,132 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " + {} more"
+msgstr " + 另外 {} 个"
+
+msgid "({server_name}) Error: "
+msgstr "({server_name}) 错误："
+
+msgid "({server_name}) Warning: "
+msgstr "({server_name}) 警告："
+
+msgid "Add to Allowlist and Retry"
+msgstr "添加到允许列表并重试"
+
+msgid "Building the symbol index ({done} / {total})"
+msgstr "正在构建符号索引（{done} / {total}）"
+
+msgid "Cancel {title}"
+msgstr "取消 {title}"
+
+msgid "Checking for updates to {}..."
+msgstr "正在检查 {} 的更新..."
+
+msgid "Couldn't add the hosts to the allowlist: {error}"
+msgstr "无法将主机添加到允许列表：{error}"
+
+msgid "Couldn't download the {display_name} language server"
+msgstr "无法下载 {display_name} 语言服务器"
+
+msgid "Couldn't download {}. Click to show error."
+msgstr "无法下载 {}。点击以显示错误。"
+
+msgid "Couldn't install {display_name}: {error}"
+msgstr "无法安装 {display_name}：{error}"
+
+msgid "Debug: {}"
+msgstr "调试：{}"
+
+msgid "Directories outside of git repositories and deeper than the `file_scan_depth` setting will be indexed on demand."
+msgstr "位于 Git 仓库之外且深度超过 `file_scan_depth` 设置的目录将按需索引。"
+
+msgid "Don't Allow This Time"
+msgstr "本次不允许"
+
+msgid "Don't Show This Again"
+msgstr "不再显示"
+
+msgid "Downloading the {language} language server"
+msgstr "正在下载 {language} 语言服务器"
+
+msgid "Downloading {display_name} needs the following hosts, but the network allowlist denied them."
+msgstr "下载 {display_name} 需要访问以下主机，但网络允许列表拒绝了它们。"
+
+msgid "Downloading {} was blocked by the egress control. Click to show the hosts it needs."
+msgstr "下载 {} 被外部通信管控阻止。点击以显示所需的主机。"
+
+msgid "Downloading {}..."
+msgstr "正在下载 {}..."
+
+msgid "Failed to run {}. Click to show error."
+msgstr "运行 {} 失败。点击以显示错误。"
+
+msgid "Formatting failed: {failure}. Click to see logs."
+msgstr "格式化失败：{failure}。点击查看日志。"
+
+msgid "If you'd rather not allow them: {}"
+msgstr "如果不想允许它们：{}"
+
+msgid "Install"
+msgstr "安装"
+
+msgid "Install on Remote"
+msgstr "在远程上安装"
+
+msgid "Installed {}"
+msgstr "已安装 {}"
+
+msgid "Installing {display_name}"
+msgstr "正在安装 {display_name}"
+
+msgid "Installing {extension_id} extension…"
+msgstr "正在安装 {extension_id} 扩展…"
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this (e.g. {command})."
+msgstr "在本机（远程连接时为远程主机）上安装 {server_name} 并将其添加到 PATH 也能解决此问题（例如 {command}）。"
+
+msgid "Installing {server_name} on this machine (on the remote host while connected remotely) and adding it to PATH also fixes this."
+msgstr "在本机（远程连接时为远程主机）上安装 {server_name} 并将其添加到 PATH 也能解决此问题。"
+
+msgid "Language server {server_name}:\n\n{status}"
+msgstr "语言服务器 {server_name}：\n\n{status}"
+
+msgid "Partial file index"
+msgstr "部分文件索引"
+
+msgid "Removing {extension_id} extension…"
+msgstr "正在移除 {extension_id} 扩展…"
+
+msgid "The following hosts needed for the download were denied by the network allowlist:\n{}\n\n{}\n\n{error}"
+msgstr "下载所需的以下主机被网络允许列表拒绝：\n{}\n\n{}\n\n{error}"
+
+msgid "The following hosts needed to download {display_name} were denied by the network allowlist:\n{}"
+msgstr "下载 {display_name} 所需的以下主机被网络允许列表拒绝：\n{}"
+
+msgid "They're downloaded over this computer's network and placed only in {host}'s home directory (no administrator rights needed; other users aren't affected)."
+msgstr "它们会通过本机的网络下载，并只放在 {host} 的主目录中（无需管理员权限；不影响其他用户）。"
+
+msgid "They're placed only in this user's data directory."
+msgstr "它们只会放在此用户的数据目录中。"
+
+msgid "Updating {extension_id} extension…"
+msgstr "正在更新 {extension_id} 扩展…"
+
+msgid "{language} tools are missing"
+msgstr "缺少 {language} 工具"
+
+msgid "{language} tools are missing on the remote host ({host})"
+msgstr "远程主机（{host}）上缺少 {language} 工具"
+
+msgid "• {host}"
+msgstr "• {host}"
+
+msgid "• {label}"
+msgstr "• {label}"

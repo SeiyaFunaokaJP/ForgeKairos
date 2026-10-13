@@ -56,7 +56,7 @@ impl Vim {
                 .filter(|reg| !reg.text.is_empty())
                 else {
                     vim.set_status_label(
-                        format!("Nothing in register {}", selected_register.unwrap_or('"')),
+                        i18n::t!("Nothing in register {}", selected_register.unwrap_or('"')),
                         cx,
                     );
                     return;
@@ -319,7 +319,7 @@ impl Vim {
                 })
                 .filter(|reg| !reg.text.is_empty()) else {
                     vim.set_status_label(
-                        format!("Nothing in register {}", selected_register.unwrap_or('"')),
+                        i18n::t!("Nothing in register {}", selected_register.unwrap_or('"')),
                         cx,
                     );
                     return;
@@ -367,7 +367,7 @@ impl Vim {
                 })
                 .filter(|reg| !reg.text.is_empty()) else {
                     vim.set_status_label(
-                        format!("Nothing in register {}", selected_register.unwrap_or('"')),
+                        i18n::t!("Nothing in register {}", selected_register.unwrap_or('"')),
                         cx,
                     );
                     return;

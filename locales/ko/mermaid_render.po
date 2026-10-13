@@ -1,0 +1,3123 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A Note has no target."
+msgstr "대상이 없는 노트가 있습니다."
+
+msgid "A `%%{{` directive is on the same line as a statement or a comment (Mermaid cuts out only the directive and reads the rest as a statement). Write the directive on a line of its own, or edit it as text."
+msgstr "`%%{{` 지시문이 문 또는 주석과 같은 줄에 있습니다 (Mermaid는 지시문만 잘라내고 나머지를 문으로 읽습니다). 지시문을 별도의 줄에 작성하거나 텍스트로 편집하세요."
+
+msgid "A `%%{{` inside a comment runs on to the next line ({line}). Mermaid does not read the lines in between, so the structured editor cannot handle it."
+msgstr "주석 안의 `%%{{`이(가) 다음 줄({line})까지 이어집니다. Mermaid는 그 사이의 줄을 읽지 않으므로 구조화 편집기에서 처리할 수 없습니다."
+
+msgid "A `block` group is not closed with `end`. Edit it as text."
+msgstr "`block` 그룹이 `end`로 닫혀 있지 않습니다. 텍스트로 편집하세요."
+
+msgid "A `section` without a name is not supported by the structured editor ({statement}). Give it a name, or edit it as text."
+msgstr "이름이 없는 `section`은 구조화 편집기에서 지원되지 않습니다 ({statement}). 이름을 지정하거나 텍스트로 편집하세요."
+
+msgid "A `section` without a name is not supported by the structured editor ({trimmed}). Give it a name, or edit it as text."
+msgstr "이름이 없는 `section`은 구조화 편집기에서 지원되지 않습니다 ({trimmed}). 이름을 지정하거나 텍스트로 편집하세요."
+
+msgid "A comment (`%%`) on a line of data `{name}` is lost in the structured editor. Move the comment to a line of its own outside the block, then open it again."
+msgstr "데이터 `{name}` 줄에 있는 주석(`%%`)은 구조화 편집기에서 손실됩니다. 주석을 블록 밖의 별도 줄로 옮긴 다음 다시 여세요."
+
+msgid "A comment at the end of a frame line is lost in the structured editor ({line}). Move the comment to a line of its own, then open it again."
+msgstr "프레임 줄 끝의 주석은 구조화 편집기에서 손실됩니다 ({line}). 주석을 별도의 줄로 옮긴 다음 다시 여세요."
+
+msgid "A comment in the middle or at the end of a statement is lost in the structured editor ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "문 중간이나 끝에 있는 주석은 구조화 편집기에서 손실됩니다 ({trimmed}). 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "A comment inside a `curve` that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside, or edit it as text."
+msgstr "여러 줄에 걸친 `curve` 안의 주석은 구조화 편집기에서 손실됩니다 ({trimmed}). 주석을 밖으로 옮기거나 텍스트로 편집하세요."
+
+msgid "A comment inside a statement that spans several lines is lost in the structured editor ({trimmed}). Move the comment outside the statement, or edit it as text."
+msgstr "여러 줄에 걸친 문 안의 주석은 구조화 편집기에서 손실됩니다 ({trimmed}). 주석을 문 밖으로 옮기거나 텍스트로 편집하세요."
+
+msgid "A comment must be a single line that starts with `%%`."
+msgstr "주석은 `%%`로 시작하는 한 줄이어야 합니다."
+
+msgid "A date cannot be written into `{other}` of `dateFormat`"
+msgstr "`dateFormat`의 `{other}`에는 날짜를 쓸 수 없습니다"
+
+msgid "A deactivate has no target."
+msgstr "대상이 없는 deactivate가 있습니다."
+
+msgid "A field of 0 bits cannot be written ({statement})."
+msgstr "0비트 필드는 작성할 수 없습니다 ({statement})."
+
+msgid "A frame whose name contains %% cannot be handled by the structured editor ({line})."
+msgstr "이름에 %%가 포함된 프레임은 구조화 편집기에서 처리할 수 없습니다 ({line})."
+
+msgid "A group without an ID cannot have a label or a width. Give it an ID."
+msgstr "ID가 없는 그룹에는 레이블이나 너비를 지정할 수 없습니다. ID를 지정하세요."
+
+msgid "A line of the Sankey diagram has a fourth column ({}). Write only the three columns `source,target,value`."
+msgstr "Sankey 다이어그램의 줄에 네 번째 열이 있습니다 ({}). `source,target,value`의 세 열만 작성하세요."
+
+msgid "A line that contains `end note` cannot be written in the text of a note ({trimmed}). Edit it as text."
+msgstr "`end note`가 포함된 줄은 노트 텍스트에 작성할 수 없습니다 ({trimmed}). 텍스트로 편집하세요."
+
+msgid "A multi-line `@{{` is supported only when its first line ends with `@{{` and the lines after it are written as `key: value`."
+msgstr "여러 줄 `@{{`은(는) 첫 줄이 `@{{`(으)로 끝나고 그 뒤의 줄이 `key: value` 형식으로 작성된 경우에만 지원됩니다."
+
+msgid "A node label cannot contain line breaks."
+msgstr "노드 레이블에는 줄 바꿈을 포함할 수 없습니다."
+
+msgid "A node name cannot contain line breaks."
+msgstr "노드 이름에는 줄 바꿈을 포함할 수 없습니다."
+
+msgid "A space is needed after `:` ({trimmed})."
+msgstr "`:` 뒤에 공백이 필요합니다 ({trimmed})."
+
+msgid "A statement follows `%%{{…}}%%` on the same line (line {}). Put the directive on its own line, then open it."
+msgstr "같은 줄에서 `%%{{…}}%%` 뒤에 문이 이어집니다 ({}번째 줄). 지시문을 별도의 줄에 둔 다음 여세요."
+
+msgid "A statement follows `%%{{…}}%%` on the same line ({}). Put the directive and the statement on separate lines, then open the editor."
+msgstr "같은 줄에서 `%%{{…}}%%` 뒤에 문이 이어집니다 ({}). 지시문과 문을 서로 다른 줄에 둔 다음 편집기를 여세요."
+
+msgid "A {what} has an empty ID."
+msgstr "ID가 비어 있는 {what}이(가) 있습니다."
+
+msgid "Aggregation (left is whole)"
+msgstr "집약 (왼쪽이 전체)"
+
+msgid "Aggregation (right is whole)"
+msgstr "집약 (오른쪽이 전체)"
+
+msgid "Alternative (alt)"
+msgstr "대안 (alt)"
+
+msgid "An `accTitle` after `title` becomes the diagram's title, so `title` is not used."
+msgstr "`title` 뒤의 `accTitle`이 다이어그램의 제목이 되므로 `title`은 사용되지 않습니다."
+
+msgid "An activate has no target."
+msgstr "대상이 없는 activate가 있습니다."
+
+msgid "An arrow has no receiver."
+msgstr "수신자가 없는 화살표가 있습니다."
+
+msgid "An arrow has no sender."
+msgstr "발신자가 없는 화살표가 있습니다."
+
+msgid "An empty `\"\"` after `-->` is not supported by the structured editor. Remove it, or edit it as text."
+msgstr "`-->` 뒤의 빈 `\"\"`은(는) 구조화 편집기에서 지원되지 않습니다. 제거하거나 텍스트로 편집하세요."
+
+msgid "An empty label `[\"\"]` is not supported by the structured editor ({line}). Write a label or remove `[\"\"]`, then open it again."
+msgstr "빈 레이블 `[\"\"]`은(는) 구조화 편집기에서 지원되지 않습니다 ({line}). 레이블을 작성하거나 `[\"\"]`을(를) 제거한 다음 다시 여세요."
+
+msgid "An item outside any group is indented. Use “Move into the Group Above” to put it into a group."
+msgstr "그룹 밖의 항목이 들여쓰기되어 있습니다. 그룹에 넣으려면 “위 그룹 안으로 이동”을 사용하세요."
+
+msgid "Arrow"
+msgstr "화살표"
+
+msgid "Association (line only)"
+msgstr "연관 (선만)"
+
+msgid "Association (pointing left)"
+msgstr "연관 (왼쪽 방향)"
+
+msgid "Association (pointing right)"
+msgstr "연관 (오른쪽 방향)"
+
+msgid "At the same time (and)"
+msgstr "동시에 (and)"
+
+msgid "Automation (pcr)"
+msgstr "자동화 (pcr)"
+
+msgid "Background (rect)"
+msgstr "배경 (rect)"
+
+msgid "Bang )) (("
+msgstr "폭발 )) (("
+
+msgid "Because of how `%%{{…}}%%` or similar is written, what the structured editor reads does not match the diagram Mermaid draws. Edit it as text."
+msgstr "`%%{{…}}%%` 등의 작성 방식 때문에 구조화 편집기가 읽은 내용이 Mermaid가 그리는 다이어그램과 일치하지 않습니다. 텍스트로 편집하세요."
+
+msgid "Both inline data and a data reference are written ({line}). Keep only one, then open it again."
+msgstr "인라인 데이터와 데이터 참조가 모두 작성되어 있습니다 ({line}). 하나만 남긴 다음 다시 여세요."
+
+msgid "Bottom to top (BT)"
+msgstr "아래에서 위로 (BT)"
+
+msgid "Box (participant)"
+msgstr "상자 (participant)"
+
+msgid "Branch `{name}` is referenced by operation {list}. Delete it first, or point it at another branch."
+msgid_plural "Branch `{name}` is referenced by operations {list}. Delete them first, or point them at another branch."
+msgstr[0] "브랜치 `{name}`은(는) 작업 {list}에서 참조됩니다. 먼저 해당 작업을 삭제하거나 다른 브랜치를 가리키도록 하세요."
+
+msgid "Break (break)"
+msgstr "중단 (break)"
+
+msgid "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated."
+msgstr "{what}을(를) 참조하는 작업의 날짜를 계산할 수 없으므로 삭제할 수 없습니다."
+
+msgid "Cannot delete {what}, because the dates of the tasks that refer to it cannot be calculated. The diagram cannot be drawn with its current content ({error}). Fix the fields outlined in red first."
+msgstr "{what}을(를) 참조하는 작업의 날짜를 계산할 수 없으므로 삭제할 수 없습니다. 현재 내용으로는 다이어그램을 그릴 수 없습니다 ({error}). 먼저 빨간색 테두리가 표시된 필드를 수정하세요."
+
+msgid "Cannot delete {what}."
+msgstr "{what}을(를) 삭제할 수 없습니다."
+
+msgid "Cannot delete {what}: the end of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+msgstr "{what}을(를) 삭제할 수 없습니다: 이를 참조하는 작업 `{task}`의 종료가 바뀝니다. 먼저 `{task}`의 `after` / `until`을 날짜로 다시 작성하세요."
+
+msgid "Cannot delete {what}: the end of task `{}` would have to be written as a date, which is not possible ({error})."
+msgstr "{what}을(를) 삭제할 수 없습니다: 작업 `{}`의 종료를 날짜로 작성해야 하지만 그렇게 할 수 없습니다 ({error})."
+
+msgid "Cannot delete {what}: the start of task `{task}`, which refers to it, would change. First rewrite the `after` / `until` of `{task}` as a date."
+msgstr "{what}을(를) 삭제할 수 없습니다: 이를 참조하는 작업 `{task}`의 시작이 바뀝니다. 먼저 `{task}`의 `after` / `until`을 날짜로 다시 작성하세요."
+
+msgid "Cannot delete {what}: the start of task `{}` would have to be written as a date, which is not possible ({error})."
+msgstr "{what}을(를) 삭제할 수 없습니다: 작업 `{}`의 시작을 날짜로 작성해야 하지만 그렇게 할 수 없습니다 ({error})."
+
+msgid "Central connections written with `()` are not supported by the structured editor. Edit it as text."
+msgstr "`()`로 작성된 중앙 연결은 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "Choice (option)"
+msgstr "선택 (option)"
+
+msgid "Choice <<choice>>"
+msgstr "분기 <<choice>>"
+
+msgid "Choose the commit to cherry-pick."
+msgstr "체리픽할 커밋을 선택하세요."
+
+msgid "Circle (( ))"
+msgstr "원 (( ))"
+
+msgid "Circle ((point))"
+msgstr "원 ((점))"
+
+msgid "Circle end"
+msgstr "원형 끝"
+
+msgid "Close a one-line `namespace` with `}}` on the same line ({statement}). Split it into several lines, or edit it as text."
+msgstr "한 줄로 작성한 `namespace`는 같은 줄에서 `}}`로 닫으세요 ({statement}). 여러 줄로 나누거나 텍스트로 편집하세요."
+
+msgid "Close the arrow block in `{line}` with `]>`."
+msgstr "`{line}`의 화살표 블록을 `]>`로 닫으세요."
+
+msgid "Close the arrow direction in `{line}` with `)`."
+msgstr "`{line}`의 화살표 방향을 `)`로 닫으세요."
+
+msgid "Cloud"
+msgstr "클라우드"
+
+msgid "Cloud ) ("
+msgstr "구름 ) ("
+
+msgid "Command (cmd)"
+msgstr "명령 (cmd)"
+
+msgid "Comments at the end of a statement (from `#` or `%%` onward) would be lost in the structured editor ({}). Move the comment to its own line, or enclose values that contain `#` in `\"`."
+msgstr "문 끝의 주석(`#` 또는 `%%` 이후)은 구조화 편집기에서 손실됩니다 ({}). 주석을 별도의 줄로 옮기거나, `#`이 포함된 값을 `\"`로 묶으세요."
+
+msgid "Comments inside an attribute block would be lost in the structured editor ({statement}). Move the comment out of the block, or edit it as text."
+msgstr "속성 블록 안의 주석은 구조화 편집기에서 손실됩니다 ({statement}). 주석을 블록 밖으로 옮기거나 텍스트로 편집하세요."
+
+msgid "Commit `{id}` is referenced by the cherry-pick at operation {list}. Delete it first."
+msgid_plural "Commit `{id}` is referenced by the cherry-picks at operations {list}. Delete them first."
+msgstr[0] "커밋 `{id}`은(는) 작업 {list}의 체리픽에서 참조됩니다. 먼저 해당 체리픽을 삭제하세요."
+
+msgid "Component diagram"
+msgstr "컴포넌트 다이어그램"
+
+msgid "Composite states are nested too deeply. Edit it as text."
+msgstr "복합 상태가 너무 깊게 중첩되었습니다. 텍스트로 편집하세요."
+
+msgid "Composition (left is whole)"
+msgstr "합성 (왼쪽이 전체)"
+
+msgid "Composition (right is whole)"
+msgstr "합성 (오른쪽이 전체)"
+
+msgid "Container diagram"
+msgstr "컨테이너 다이어그램"
+
+msgid "Contains (contains)"
+msgstr "포함 (contains)"
+
+msgid "Context diagram"
+msgstr "컨텍스트 다이어그램"
+
+msgid "Copies (copies)"
+msgstr "복사 (copies)"
+
+msgid "Could not determine which item the end-of-line comment ({comment}) belongs to. Move the comment to its own line, or edit it as text."
+msgstr "줄 끝 주석({comment})이 어느 항목에 속하는지 확인하지 못했습니다. 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "Could not find the details of participant `{model_id}`."
+msgstr "참여자 `{model_id}`의 세부 정보를 찾지 못했습니다."
+
+msgid "Could not find the entity on the left side of a relationship."
+msgstr "관계 왼쪽의 엔터티를 찾지 못했습니다."
+
+msgid "Could not find the entity on the right side of a relationship."
+msgstr "관계 오른쪽의 엔터티를 찾지 못했습니다."
+
+msgid "Could not read `{other}` as a requirement field."
+msgstr "`{other}`을(를) 요구 사항 필드로 읽지 못했습니다."
+
+msgid "Could not read `{other}` as an element field."
+msgstr "`{other}`을(를) 요소 필드로 읽지 못했습니다."
+
+msgid "Could not read `{rest}` after the `)` of `{statement}`."
+msgstr "`{statement}`의 `)` 뒤에 있는 `{rest}`을(를) 읽지 못했습니다."
+
+msgid "Could not read `{rest}` after the `class` statement ({statement})."
+msgstr "`class` 문 뒤의 `{rest}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read `{rest}` after the relation ({statement})."
+msgstr "관계 뒤의 `{rest}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read `{statement}` as a C4 diagram statement. Edit it as text."
+msgstr "`{statement}`을(를) C4 다이어그램 문으로 읽지 못했습니다. 텍스트로 편집하세요."
+
+msgid "Could not read `{statement}` as a class assignment."
+msgstr "`{statement}`을(를) 클래스 지정으로 읽지 못했습니다."
+
+msgid "Could not read `{statement}` as a relationship."
+msgstr "`{statement}`을(를) 관계로 읽지 못했습니다."
+
+msgid "Could not read `{statement}` as a requirement diagram statement. Edit it as text."
+msgstr "`{statement}`을(를) 요구 사항 다이어그램 문으로 읽지 못했습니다. 텍스트로 편집하세요."
+
+msgid "Could not read `{statement}` as an item of a block (`{opening}`)."
+msgstr "`{statement}`을(를) 블록(`{opening}`)의 항목으로 읽지 못했습니다."
+
+msgid "Could not read `{statement}`. A class diagram statement is one of `class A`, `A : member`, `A --> B`, `<<annotation>> A` and `note for A \"…\"`."
+msgstr "`{statement}`을(를) 읽지 못했습니다. 클래스 다이어그램 문은 `class A`, `A : member`, `A --> B`, `<<annotation>> A`, `note for A \"…\"` 중 하나입니다."
+
+msgid "Could not read `{trailing}` after the `\"` of `{input}`."
+msgstr "`{input}`의 `\"` 뒤에 있는 `{trailing}`을(를) 읽지 못했습니다."
+
+msgid "Could not read `{value}` of `{name}` ({line}). {number_rule}"
+msgstr "`{name}`의 `{value}`을(를) 읽지 못했습니다 ({line}). {number_rule}"
+
+msgid "Could not read `{}` after `<<annotation>> ClassName` ({statement})."
+msgstr "`<<annotation>> ClassName` 뒤의 `{}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read `{}` after `]` ({statement})."
+msgstr "`]` 뒤의 `{}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read `{}` after axis `{id}` ({line})."
+msgstr "축 `{id}` 뒤의 `{}`을(를) 읽지 못했습니다 ({line})."
+
+msgid "Could not read `{}` after the note ({statement})."
+msgstr "노트 뒤의 `{}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read `{}` after the quotes ({statement})."
+msgstr "따옴표 뒤의 `{}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read `{}` after the range ({statement})."
+msgstr "범위 뒤의 `{}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read `{}` as a risk."
+msgstr "`{}`을(를) 위험으로 읽지 못했습니다."
+
+msgid "Could not read `{}` as a verification method."
+msgstr "`{}`을(를) 검증 방법으로 읽지 못했습니다."
+
+msgid "Could not read `{}` in `{statement}`."
+msgstr "`{statement}`의 `{}`을(를) 읽지 못했습니다."
+
+msgid "Could not read `{}` the way Mermaid does. Edit it as text."
+msgstr "`{}`을(를) Mermaid와 같은 방식으로 읽지 못했습니다. 텍스트로 편집하세요."
+
+msgid "Could not read both ends of `{statement}`."
+msgstr "`{statement}`의 양쪽 끝을 읽지 못했습니다."
+
+msgid "Could not read both ends of `{}`."
+msgstr "`{}`의 양쪽 끝을 읽지 못했습니다."
+
+msgid "Could not read the ID of an edge end ({statement})."
+msgstr "연결선 끝의 ID를 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the ID of the junction ({statement})."
+msgstr "접합점의 ID를 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the ID of the service ({statement})."
+msgstr "서비스의 ID를 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the alias of `{text}` (write the alias as the first argument, without `$…=`)."
+msgstr "`{text}`의 별칭을 읽지 못했습니다 (별칭은 `$…=` 없이 첫 번째 인수로 작성하세요)."
+
+msgid "Could not read the axis ID ({line})."
+msgstr "축 ID를 읽지 못했습니다 ({line})."
+
+msgid "Could not read the class name ({statement})."
+msgstr "클래스 이름을 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the class name `{keyword}` applies to ({statement}). Names enclosed in `` ` `` are not supported by the structured editor. Edit it as text."
+msgstr "`{keyword}`이(가) 적용되는 클래스 이름을 읽지 못했습니다 ({statement}). `` ` ``로 묶은 이름은 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "Could not read the curve ID ({line})."
+msgstr "곡선 ID를 읽지 못했습니다 ({line})."
+
+msgid "Could not read the date and time"
+msgstr "날짜와 시간을 읽지 못했습니다"
+
+msgid "Could not read the end `{end}` ({statement})."
+msgstr "끝 `{end}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the group ID ({statement})."
+msgstr "그룹 ID를 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the group ID after `in` ({statement})."
+msgstr "`in` 뒤의 그룹 ID를 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the one-line `namespace` ({statement})."
+msgstr "한 줄로 작성한 `namespace`를 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the position of a Note."
+msgstr "노트의 위치를 읽지 못했습니다."
+
+msgid "Could not read the range `{min} --> {max}` as numbers ({statement})."
+msgstr "범위 `{min} --> {max}`을(를) 숫자로 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the start `{text}` ({statement})."
+msgstr "시작 `{text}`을(를) 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the target of the style assignment ({text})."
+msgstr "스타일 지정의 대상을 읽지 못했습니다 ({text})."
+
+msgid "Could not read the targets `{}` of `{keyword}`. Write IDs made of ASCII letters, digits, `_` and `-`, separated by spaces."
+msgstr "`{keyword}`의 대상 `{}`을(를) 읽지 못했습니다. ASCII 문자, 숫자, `_`, `-`로 이루어진 ID를 공백으로 구분하여 작성하세요."
+
+msgid "Could not read the task fields `{}` ({statement}). Of `tags, ID, start, end`, write 1 to 3 fields, not counting the tags."
+msgstr "작업 필드 `{}`을(를) 읽지 못했습니다 ({statement}). `tags, ID, start, end` 중 태그를 제외하고 1~3개의 필드를 작성하세요."
+
+msgid "Could not read the value `{entry}` of curve `{curve}` ({line}). {number_rule}"
+msgstr "곡선 `{curve}`의 값 `{entry}`을(를) 읽지 못했습니다 ({line}). {number_rule}"
+
+msgid "Could not read the x-axis ticks ({statement})."
+msgstr "x축 눈금을 읽지 못했습니다 ({statement})."
+
+msgid "Could not read the y-axis range ({statement}). Write it as `0 --> 100`."
+msgstr "y축 범위를 읽지 못했습니다 ({statement}). `0 --> 100` 형식으로 작성하세요."
+
+msgid "Could not read this as a Gantt chart line ({statement}). Write it as `task name :start, end`."
+msgstr "간트 차트 줄로 읽지 못했습니다 ({statement}). `task name :start, end` 형식으로 작성하세요."
+
+msgid "Could not read this as a kanban node ({node_part}). Edit it as text."
+msgstr "칸반 노드로 읽지 못했습니다 ({node_part}). 텍스트로 편집하세요."
+
+msgid "Could not read this as a radar chart statement ({trimmed}). Edit it as text."
+msgstr "레이더 차트 문으로 읽지 못했습니다 ({trimmed}). 텍스트로 편집하세요."
+
+msgid "Could not read this as a style assignment ({text})."
+msgstr "스타일 지정으로 읽지 못했습니다 ({text})."
+
+msgid "Could not read this as an XY chart statement ({statement}). Edit it as text."
+msgstr "XY 차트 문으로 읽지 못했습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "Cross end"
+msgstr "X자 끝"
+
+msgid "Curve `{id}` mixes values with and without axis names ({line})."
+msgstr "곡선 `{id}`에 축 이름이 있는 값과 없는 값이 섞여 있습니다 ({line})."
+
+msgid "Curve `{}` has a value for `{axis}`, but there is no such axis ({line}). Mermaid does not draw this value, so remove it or add the axis, then open it again."
+msgstr "곡선 `{}`에 `{axis}`의 값이 있지만 해당 축이 없습니다 ({line}). Mermaid는 이 값을 그리지 않으므로 값을 제거하거나 축을 추가한 다음 다시 여세요."
+
+msgid "Curve `{}` has no value for axis `{}` ({line})."
+msgstr "곡선 `{}`에 축 `{}`의 값이 없습니다 ({line})."
+
+msgid "Curve `{}` has no values. Write at least one value (Mermaid does not accept an empty curve)."
+msgstr "곡선 `{}`에 값이 없습니다. 값을 하나 이상 작성하세요 (Mermaid는 빈 곡선을 허용하지 않습니다)."
+
+msgid "Curve `{}` has two values for axis `{axis}` ({line}). Mermaid draws only the first one, so keep one, then open it again."
+msgstr "곡선 `{}`에 축 `{axis}`의 값이 두 개 있습니다 ({line}). Mermaid는 첫 번째 값만 그리므로 하나만 남긴 다음 다시 여세요."
+
+msgid "Curve `{}` writes its values with axis names, but there are no axes."
+msgstr "곡선 `{}`은(는) 축 이름과 함께 값을 작성하지만 축이 없습니다."
+
+msgid "Curve `{}` writes its values with axis names, so every axis needs a value."
+msgstr "곡선 `{}`은(는) 축 이름과 함께 값을 작성하므로 모든 축에 값이 필요합니다."
+
+msgid "Curve `{}`: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value)."
+msgstr "곡선 `{}`: 값 {}이(가) 비어 있습니다. 중간의 값은 비워 둘 수 없습니다 (끝의 빈 셀은 값 없음으로 간주됩니다)."
+
+msgid "Cylinder [( )]"
+msgstr "원통 [( )]"
+
+msgid "Dashed (line only)"
+msgstr "파선 (선만)"
+
+msgid "Data `{name}` cannot be handled by the structured editor. Start it with the line `data {name} {{` and end it with a line that is only `}}` at the start (Mermaid does not accept a one-line block)."
+msgstr "데이터 `{name}`은(는) 구조화 편집기에서 처리할 수 없습니다. `data {name} {{` 줄로 시작하고 줄 맨 앞에 `}}`만 있는 줄로 끝내세요 (Mermaid는 한 줄 블록을 허용하지 않습니다)."
+
+msgid "Data `{name}` has no contents."
+msgstr "데이터 `{name}`에 내용이 없습니다."
+
+msgid "Database"
+msgstr "데이터베이스"
+
+msgid "Database [(store)]"
+msgstr "데이터베이스 [(저장소)]"
+
+msgid "Dependency (pointing left)"
+msgstr "종속성 (왼쪽 방향)"
+
+msgid "Dependency (pointing right)"
+msgstr "종속성 (오른쪽 방향)"
+
+msgid "Deployment diagram"
+msgstr "배포 다이어그램"
+
+msgid "Derives (derives)"
+msgstr "파생 (derives)"
+
+msgid "Diagrams that use edge IDs (`{target}@`) are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "연결선 ID(`{target}@`)를 사용하는 다이어그램은 구조화 편집기에서 지원되지 않습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "Diagrams where the edge ID `{id}` is the same as a node or group ID are not supported by the structured editor. Edit it as text."
+msgstr "연결선 ID `{id}`이(가) 노드 또는 그룹 ID와 같은 다이어그램은 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "Diagrams with a class on an edge ({edge}) are not supported by the structured editor. Edit it as text."
+msgstr "연결선({edge})에 클래스가 있는 다이어그램은 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "Diagrams with a duplicate edge ID `{id}` are not supported by the structured editor. Edit it as text."
+msgstr "연결선 ID `{id}`이(가) 중복된 다이어그램은 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "Diamond { }"
+msgstr "마름모 { }"
+
+msgid "Disk"
+msgstr "디스크"
+
+msgid "Dotted arrow"
+msgstr "점선 화살표"
+
+msgid "Dotted arrow (reply)"
+msgstr "점선 화살표 (응답)"
+
+msgid "Dotted async"
+msgstr "점선 비동기"
+
+msgid "Dotted bidirectional"
+msgstr "점선 양방향"
+
+msgid "Dotted cross"
+msgstr "점선 X자"
+
+msgid "Dotted line"
+msgstr "점선"
+
+msgid "Double Circle ((( )))"
+msgstr "이중 원 ((( )))"
+
+msgid "Double circle (((end)))"
+msgstr "이중 원 (((끝)))"
+
+msgid "Dynamic diagram"
+msgstr "동적 다이어그램"
+
+msgid "Ellipse (-ellipse-)"
+msgstr "타원 (-타원-)"
+
+msgid "Enclose the HTML attributes in `{text}` in `'` (Mermaid rewrites `\"` to `'`, which changes where the values are separated)."
+msgstr "`{text}`의 HTML 속성을 `'`로 묶으세요 (Mermaid가 `\"`를 `'`로 다시 쓰므로 값이 구분되는 위치가 바뀝니다)."
+
+msgid "Enclose the label in `{line}` in `\"` (labels in a block diagram need quotes)."
+msgstr "`{line}`의 레이블을 `\"`로 묶으세요 (블록 다이어그램의 레이블에는 따옴표가 필요합니다)."
+
+msgid "Enter the end of task `{}` (a date or a duration such as `5d`)."
+msgstr "작업 `{}`의 끝(날짜 또는 `5d` 같은 기간)을 입력하세요."
+
+msgid "Enter the start date of task `{}`."
+msgstr "작업 `{}`의 시작 날짜를 입력하세요."
+
+msgid "Entity `{name}` is not defined."
+msgstr "엔터티 `{name}`이(가) 정의되지 않았습니다."
+
+msgid "Entity `{}` is defined twice."
+msgstr "엔터티 `{}`이(가) 두 번 정의되었습니다."
+
+msgid "Event (evt)"
+msgstr "이벤트 (evt)"
+
+msgid "Every section after the first needs a name (without one, it merges with the section above)."
+msgstr "첫 번째 이후의 모든 섹션에는 이름이 필요합니다 (이름이 없으면 위 섹션과 합쳐집니다)."
+
+msgid "Exactly one"
+msgstr "정확히 하나"
+
+msgid "Flag > ]"
+msgstr "깃발 > ]"
+
+msgid "Flag >note]"
+msgstr "깃발 >노트]"
+
+msgid "For an `accDescr {{ … }}` closed on one line, Mermaid reads up to the next `}}` line as the description ({trimmed}). Split it over several lines, or edit it as text."
+msgstr "한 줄로 닫힌 `accDescr {{ … }}`의 경우 Mermaid는 다음 `}}` 줄까지를 설명으로 읽습니다 ({trimmed}). 여러 줄로 나누거나 텍스트로 편집하세요."
+
+msgid "Foreign key (FK)"
+msgstr "외래 키 (FK)"
+
+msgid "Fork <<fork>>"
+msgstr "분기 <<fork>>"
+
+msgid "Frame `{}` has both inline data and a data reference. Keep only one."
+msgstr "프레임 `{}`에 인라인 데이터와 데이터 참조가 모두 있습니다. 하나만 남기세요."
+
+msgid "Frame `{}` refers to the data `{reference}`, which does not exist."
+msgstr "프레임 `{}`이(가) 존재하지 않는 데이터 `{reference}`을(를) 참조합니다."
+
+msgid "Give the point two coordinates, `[x, y]` (Mermaid skips any from the third on)."
+msgstr "점에 두 개의 좌표 `[x, y]`를 지정하세요 (Mermaid는 세 번째 이후의 좌표를 건너뜁니다)."
+
+msgid "Hexagon {{ }}"
+msgstr "육각형 {{ }}"
+
+msgid "Hexagon {{{{prepare}}}}"
+msgstr "육각형 {{{{준비}}}}"
+
+msgid "High"
+msgstr "높음"
+
+msgid "IDs referred to by `after` / `until` can only contain ASCII letters, digits, `_` and `-` (`{reference}` in task `{}`)."
+msgstr "`after` / `until`로 참조하는 ID에는 ASCII 문자, 숫자, `_`, `-`만 사용할 수 있습니다 (작업 `{}`의 `{reference}`)."
+
+msgid "Inheritance (left is parent)"
+msgstr "상속 (왼쪽이 부모)"
+
+msgid "Inheritance (right is parent)"
+msgstr "상속 (오른쪽이 부모)"
+
+msgid "Inside the boundary `{alias}`, write `title`, `accTitle` and the like after the first element (Mermaid does not accept them otherwise)."
+msgstr "경계 `{alias}` 안에서는 `title`, `accTitle` 등을 첫 번째 요소 뒤에 작성하세요 (그렇지 않으면 Mermaid가 허용하지 않습니다)."
+
+msgid "Internet"
+msgstr "인터넷"
+
+msgid "Inverted Trapezoid [\\ /]"
+msgstr "역사다리꼴 [\\ /]"
+
+msgid "Invisible (for alignment)"
+msgstr "보이지 않음 (맞춤용)"
+
+msgid "It cannot contain `%%` or line breaks, and it cannot be empty."
+msgstr "`%%` 또는 줄 바꿈을 포함할 수 없으며 비워 둘 수 없습니다."
+
+msgid "It is not closed with `]` ({statement})."
+msgstr "`]`로 닫혀 있지 않습니다 ({statement})."
+
+msgid "Items cannot be placed under the item `{}`, which has a value. To put items inside it, leave its value empty."
+msgstr "값이 있는 항목 `{}` 아래에는 항목을 둘 수 없습니다. 그 안에 항목을 넣으려면 값을 비워 두세요."
+
+msgid "Join <<join>>"
+msgstr "병합 <<join>>"
+
+msgid "Junction `{}` cannot have an icon or a title."
+msgstr "접합점 `{}`에는 아이콘이나 제목을 지정할 수 없습니다."
+
+msgid "Lavender"
+msgstr "라벤더"
+
+msgid "Lean Left [\\ \\]"
+msgstr "왼쪽 기울기 [\\ \\]"
+
+msgid "Lean Right [/ /]"
+msgstr "오른쪽 기울기 [/ /]"
+
+msgid "Left to right (LR)"
+msgstr "왼쪽에서 오른쪽으로 (LR)"
+
+msgid "Light blue"
+msgstr "연한 파랑"
+
+msgid "Light gray"
+msgstr "연한 회색"
+
+msgid "Light green"
+msgstr "연한 초록"
+
+msgid "Light pink"
+msgstr "연한 분홍"
+
+msgid "Light yellow"
+msgstr "연한 노랑"
+
+msgid "Line Only"
+msgstr "선만"
+
+msgid "Line only"
+msgstr "선만"
+
+msgid "Loop (loop)"
+msgstr "반복 (loop)"
+
+msgid "Low"
+msgstr "낮음"
+
+msgid "Maximum (max)"
+msgstr "최대 (max)"
+
+msgid "Medium"
+msgstr "중간"
+
+msgid "Mermaid and the structured editor read this diagram differently. Edit it as text."
+msgstr "Mermaid와 구조화 편집기가 이 다이어그램을 다르게 읽습니다. 텍스트로 편집하세요."
+
+msgid "Mermaid cannot read `{word}` on the frame line ({line}). Names cannot contain spaces, so remove it or make it one word, then open it again."
+msgstr "Mermaid는 프레임 줄의 `{word}`을(를) 읽을 수 없습니다 ({line}). 이름에는 공백을 포함할 수 없으므로 제거하거나 한 단어로 만든 다음 다시 여세요."
+
+msgid "Mermaid cannot read the `:` after the edge in `{line}`."
+msgstr "Mermaid는 `{line}`에서 연결선 뒤의 `:`을(를) 읽을 수 없습니다."
+
+msgid "Mermaid cannot read the coordinate `{value}` (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
+msgstr "Mermaid는 좌표 `{value}`을(를) 읽을 수 없습니다 (0~1: `0`, `1` 또는 `0.`으로 시작하는 소수만 가능)."
+
+msgid "Mermaid collapses the spaces in the unquoted `{text}` when drawing it ({statement}). Enclose it in `\"`, like `\"{text}\"`, then open it again."
+msgstr "Mermaid는 따옴표로 묶지 않은 `{text}`을(를) 그릴 때 공백을 하나로 줄입니다 ({statement}). `\"{text}\"`처럼 `\"`로 묶은 다음 다시 여세요."
+
+msgid "Mermaid could not parse this diagram ({error}). Edit it as text."
+msgstr "Mermaid가 이 다이어그램을 구문 분석하지 못했습니다 ({error}). 텍스트로 편집하세요."
+
+msgid "Mermaid could not read the diagram written back ({error}). Edit it as text."
+msgstr "Mermaid가 다시 쓴 다이어그램을 읽지 못했습니다 ({error}). 텍스트로 편집하세요."
+
+msgid "Mermaid could not read this as a diagram"
+msgstr "Mermaid가 이를 다이어그램으로 읽지 못했습니다"
+
+msgid "Mermaid could not read this as a diagram."
+msgstr "Mermaid가 이를 다이어그램으로 읽지 못했습니다."
+
+msgid "Mermaid does not accept `{tail}` on the `treeView-beta` line. Edit it as text."
+msgstr "Mermaid는 `treeView-beta` 줄의 `{tail}`을(를) 허용하지 않습니다. 텍스트로 편집하세요."
+
+msgid "Mermaid does not know the type `{type_keyword}` and only draws it as a red box ({line}). Use one of ui / pcr / cmd / evt / rmo."
+msgstr "Mermaid는 `{type_keyword}` 타입을 알지 못하며 빨간 상자로만 그립니다 ({line}). ui / pcr / cmd / evt / rmo 중 하나를 사용하세요."
+
+msgid "Mermaid does not read the pair `{start_delimiter}…{end_delimiter}` in `{line}` as a shape (it is drawn as a plain box). Change it to `[ ]` or another shape, then open the editor again."
+msgstr "Mermaid는 `{line}`의 `{start_delimiter}…{end_delimiter}` 쌍을 모양으로 읽지 않습니다 (일반 상자로 그려집니다). `[ ]` 또는 다른 모양으로 바꾼 다음 편집기를 다시 여세요."
+
+msgid "Mermaid draws a line of only `%%` as a period, so the structured editor does not support it. Delete it or edit it as text."
+msgstr "Mermaid는 `%%`만 있는 줄을 기간으로 그리므로 구조화 편집기에서 지원되지 않습니다. 삭제하거나 텍스트로 편집하세요."
+
+msgid "Mermaid ignores `{}` after `\"{name}\"`, so it is not supported by the structured editor."
+msgstr "Mermaid는 `\"{name}\"` 뒤의 `{}`을(를) 무시하므로 구조화 편집기에서 지원되지 않습니다."
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the `axisFormat` value `{value}`. Edit it as text."
+msgstr "Mermaid는 `axisFormat` 값 `{value}`에서 `#` 또는 `;` 이후의 모든 내용을 무시합니다. 텍스트로 편집하세요."
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the `dateFormat` value `{value}`. Edit it as text."
+msgstr "Mermaid는 `dateFormat` 값 `{value}`에서 `#` 또는 `;` 이후의 모든 내용을 무시합니다. 텍스트로 편집하세요."
+
+msgid "Mermaid ignores everything from `#` or `;` onward in the fields of a task ({statement}). Edit it as text."
+msgstr "Mermaid는 작업 필드에서 `#` 또는 `;` 이후의 모든 내용을 무시합니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "Mermaid read this kanban board as {} nodes, but the structured editor read {}. Edit it as text."
+msgstr "Mermaid는 이 칸반 보드를 노드 {}개로 읽었지만 구조화 편집기는 {}개로 읽었습니다. 텍스트로 편집하세요."
+
+msgid "Mermaid read this treemap as {} items, but the structured editor read {}. Edit it as text."
+msgstr "Mermaid는 이 트리맵을 항목 {}개로 읽었지만 구조화 편집기는 {}개로 읽었습니다. 텍스트로 편집하세요."
+
+msgid "Mermaid reads `{line}` as an edge that continues from the block on the previous line. Write an edge on the same line as the blocks at both of its ends."
+msgstr "Mermaid는 `{line}`을(를) 이전 줄의 블록에서 이어지는 연결선으로 읽습니다. 연결선은 양쪽 끝의 블록과 같은 줄에 작성하세요."
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a cause, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+msgstr "Mermaid는 지시문 `%%{{…}}%%` 뒤의 `{rest}`을(를) 원인으로 읽지만, 구조화 편집기는 이를 주석과 함께 이동합니다. 지시문을 별도의 줄에 두세요."
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a node, but the structured editor would move it together with the comment. Put the directive on a line of its own."
+msgstr "Mermaid는 지시문 `%%{{…}}%%` 뒤의 `{rest}`을(를) 노드로 읽지만, 구조화 편집기는 이를 주석과 함께 이동합니다. 지시문을 별도의 줄에 두세요."
+
+msgid "Mermaid reads `{rest}` after the directive `%%{{…}}%%` as a statement, but the structured editor would move it along with the comments. Put the directive on a line of its own."
+msgstr "Mermaid는 지시문 `%%{{…}}%%` 뒤의 `{rest}`을(를) 문으로 읽지만, 구조화 편집기는 이를 주석과 함께 이동합니다. 지시문을 별도의 줄에 두세요."
+
+msgid "Mermaid reads `{tail}` on the `{keyword}` line as the text of the effect, but written back it would become a comment. Edit it as text."
+msgstr "Mermaid는 `{keyword}` 줄의 `{tail}`을(를) 결과의 텍스트로 읽지만, 다시 쓰면 주석이 됩니다. 텍스트로 편집하세요."
+
+msgid "Mermaid reads `{trimmed}` as a character reference, so it cannot be kept as a comment. Edit it as text."
+msgstr "Mermaid는 `{trimmed}`을(를) 문자 참조로 읽으므로 주석으로 유지할 수 없습니다. 텍스트로 편집하세요."
+
+msgid "Mermaid reads the `\"` of `<tag attribute=\"…\">` as `'`, which changes which quotes pair up ({line}). Enclose the attribute in `'`."
+msgstr "Mermaid는 `<tag attribute=\"…\">`의 `\"`를 `'`로 읽으므로 따옴표의 짝이 바뀝니다 ({line}). 속성을 `'`로 묶으세요."
+
+msgid "Mermaid reads the rest of the `eventmodeling` line ({tail}) as the first frame. Move it to the next line, then open it again."
+msgstr "Mermaid는 `eventmodeling` 줄의 나머지 부분({tail})을 첫 번째 프레임으로 읽습니다. 다음 줄로 옮긴 다음 다시 여세요."
+
+msgid "Mermaid reads the second `space` in `{line}` as a block named `space`. The structured editor does not support it."
+msgstr "Mermaid는 `{line}`의 두 번째 `space`를 `space`라는 이름의 블록으로 읽습니다. 구조화 편집기는 이를 지원하지 않습니다."
+
+msgid "Mermaid removes the `;` that follows `:#…` after `style` or `classDef` before reading the line, so writing it back would change its meaning ({trimmed}). Add a space after the `:`, or edit it as text."
+msgstr "Mermaid는 줄을 읽기 전에 `style` 또는 `classDef` 뒤의 `:#…`에 이어지는 `;`를 제거하므로, 다시 쓰면 의미가 바뀝니다 ({trimmed}). `:` 뒤에 공백을 추가하거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips `{after}` after `direction {}` ({statement}). Remove it, then open it again."
+msgstr "Mermaid는 `direction {}` 뒤의 `{after}`을(를) 건너뜁니다 ({statement}). 제거한 다음 다시 여세요."
+
+msgid "Mermaid skips `{tail}` after `::icon(…)` ({rest}). Delete it or edit it as text."
+msgstr "Mermaid는 `::icon(…)` 뒤의 `{tail}`을(를) 건너뜁니다 ({rest}). 삭제하거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips `{tail}` after `@{{ … }}`. Remove it or edit it as text."
+msgstr "Mermaid는 `@{{ … }}` 뒤의 `{tail}`을(를) 건너뜁니다. 제거하거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips a line without a task name ({trimmed}). Give it a name, or edit it as text."
+msgstr "Mermaid는 작업 이름이 없는 줄을 건너뜁니다 ({trimmed}). 이름을 지정하거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips a period from its `#` on as a comment ({trimmed}). Delete the `#`, or edit it as text."
+msgstr "Mermaid는 기간의 `#` 이후를 주석으로 간주하여 건너뜁니다 ({trimmed}). `#`을 삭제하거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips everything after a `%%` in the middle of a line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "Mermaid는 줄 중간의 `%%` 이후 모든 내용을 건너뜁니다 ({trimmed}). 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips everything from `#` or `;` on ({trimmed}). Remove it, or edit it as text."
+msgstr "Mermaid는 `#` 또는 `;` 이후의 모든 내용을 건너뜁니다 ({trimmed}). 제거하거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips everything from the third `:` on ({trimmed}). Remove the `:`, or edit it as text."
+msgstr "Mermaid는 세 번째 `:` 이후의 모든 내용을 건너뜁니다 ({trimmed}). `:`을 제거하거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips everything in a section name from `:` on ({trimmed}). Delete the `:`, or edit it as text."
+msgstr "Mermaid는 섹션 이름에서 `:` 이후의 모든 내용을 건너뜁니다 ({trimmed}). `:`을 삭제하거나 텍스트로 편집하세요."
+
+msgid "Mermaid skips what follows the `;` in `{statement}`. Delete it or edit it as text."
+msgstr "Mermaid는 `{statement}`에서 `;` 뒤의 내용을 건너뜁니다. 삭제하거나 텍스트로 편집하세요."
+
+msgid "Mermaid would no longer read the comment after `{statement}` as a comment. Close the quotes (`\"` `'`), or stop using the tag attribute `=\"…\"`."
+msgstr "Mermaid가 `{statement}` 뒤의 주석을 더 이상 주석으로 읽지 않게 됩니다. 따옴표(`\"` `'`)를 닫거나 태그 속성 `=\"…\"`을 사용하지 마세요."
+
+msgid "Minimum (min)"
+msgstr "최소 (min)"
+
+msgid "Names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "`` ` ``로 묶은 이름은 구조화 편집기에서 지원되지 않습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "None (transparent)"
+msgstr "없음 (투명)"
+
+msgid "Normal State"
+msgstr "일반 상태"
+
+msgid "Nothing can be written after the `{{` of `{statement}`."
+msgstr "`{statement}`의 `{{` 뒤에는 아무것도 작성할 수 없습니다."
+
+msgid "One of the people has an empty name ({trimmed}). Remove it, or edit it as text."
+msgstr "사람 중 하나의 이름이 비어 있습니다 ({trimmed}). 제거하거나 텍스트로 편집하세요."
+
+msgid "One or more"
+msgstr "하나 이상"
+
+msgid "Only boundaries can have `{{` ({statement}). Edit it as text."
+msgstr "`{{`은(는) 경계에만 사용할 수 있습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "Only class declarations, notes and nested `namespace`s can be written inside a `namespace` ({line})."
+msgstr "`namespace` 안에는 클래스 선언, 노트, 중첩된 `namespace`만 작성할 수 있습니다 ({line})."
+
+msgid "Operation {number} (branch): branch `{}` already exists (to switch to it, use a checkout)."
+msgstr "작업 {number} (branch): 브랜치 `{}`이(가) 이미 있습니다 (해당 브랜치로 전환하려면 checkout을 사용하세요)."
+
+msgid "Operation {number} (checkout): branch `{}` has not been created yet (create it with a branch operation first)."
+msgstr "작업 {number} (checkout): 브랜치 `{}`이(가) 아직 만들어지지 않았습니다 (먼저 branch 작업으로 만드세요)."
+
+msgid "Operation {number} (cherry-pick): `{parent}` is not a direct parent of `{}`."
+msgstr "작업 {number} (cherry-pick): `{parent}`은(는) `{}`의 직접 부모가 아닙니다."
+
+msgid "Operation {number} (cherry-pick): `{}` is a merge commit, so specify its parent."
+msgstr "작업 {number} (cherry-pick): `{}`은(는) 병합 커밋이므로 부모를 지정하세요."
+
+msgid "Operation {number} (cherry-pick): `{}` is already on the current branch `{current}`."
+msgstr "작업 {number} (cherry-pick): `{}`은(는) 이미 현재 브랜치 `{current}`에 있습니다."
+
+msgid "Operation {number} (cherry-pick): commit `{}` does not come before it."
+msgstr "작업 {number} (cherry-pick): 커밋 `{}`이(가) 이 작업보다 앞에 있지 않습니다."
+
+msgid "Operation {number} (cherry-pick): the current branch `{current}` has no commits yet."
+msgstr "작업 {number} (cherry-pick): 현재 브랜치 `{current}`에 아직 커밋이 없습니다."
+
+msgid "Operation {number} (commit): the ID `{id}` is used more than once."
+msgstr "작업 {number} (commit): ID `{id}`이(가) 두 번 이상 사용되었습니다."
+
+msgid "Operation {number} (merge): `{current}` has no commits since it branched off `{other}`, so it cannot be merged."
+msgstr "작업 {number} (merge): `{current}`에는 `{other}`에서 분기된 이후 커밋이 없으므로 병합할 수 없습니다."
+
+msgid "Operation {number} (merge): branch `{other}` cannot be merged into itself."
+msgstr "작업 {number} (merge): 브랜치 `{other}`을(를) 자기 자신에 병합할 수 없습니다."
+
+msgid "Operation {number} (merge): branch `{other}` has no commits yet."
+msgstr "작업 {number} (merge): 브랜치 `{other}`에 아직 커밋이 없습니다."
+
+msgid "Operation {number} (merge): branch `{other}` has not been created yet."
+msgstr "작업 {number} (merge): 브랜치 `{other}`이(가) 아직 만들어지지 않았습니다."
+
+msgid "Operation {number} (merge): the ID `{id}` is already in use."
+msgstr "작업 {number} (merge): ID `{id}`은(는) 이미 사용 중입니다."
+
+msgid "Operation {number} (merge): the current branch `{current}` has no commits yet."
+msgstr "작업 {number} (merge): 현재 브랜치 `{current}`에 아직 커밋이 없습니다."
+
+msgid "Operation {number} (merge): the heads of `{current}` and `{other}` are the same commit."
+msgstr "작업 {number} (merge): `{current}`와(과) `{other}`의 헤드가 같은 커밋입니다."
+
+msgid "Operation {}: {problem}"
+msgstr "작업 {}: {problem}"
+
+msgid "Optional (opt)"
+msgstr "선택 사항 (opt)"
+
+msgid "Other: {name}"
+msgstr "기타: {name}"
+
+msgid "Otherwise (else)"
+msgstr "그 외 (else)"
+
+msgid "Overlapping parallel (par_over)"
+msgstr "겹치는 병렬 (par_over)"
+
+msgid "Parallel (par)"
+msgstr "병렬 (par)"
+
+msgid "Parallelogram (reversed) [\\output\\]"
+msgstr "평행사변형 (반대) [\\출력\\]"
+
+msgid "Parallelogram [/input/]"
+msgstr "평행사변형 [/입력/]"
+
+msgid "Parent (u)"
+msgstr "부모 (u)"
+
+msgid "Participant `{id}` is created twice with `create`."
+msgstr "참여자 `{id}`이(가) `create`로 두 번 만들어졌습니다."
+
+msgid "Participant `{id}` is destroyed twice with `destroy`."
+msgstr "참여자 `{id}`이(가) `destroy`로 두 번 제거되었습니다."
+
+msgid "Participant `{id}` is not declared."
+msgstr "참여자 `{id}`이(가) 선언되지 않았습니다."
+
+msgid "Participant `{}` has a config object (`@{{ … }}`), so it cannot have an alias (as)."
+msgstr "참여자 `{}`에는 구성 개체(`@{{ … }}`)가 있으므로 별칭(as)을 지정할 수 없습니다."
+
+msgid "Participant `{}` has a config object (`@{{ … }}`), so it must be a box (participant)."
+msgstr "참여자 `{}`에는 구성 개체(`@{{ … }}`)가 있으므로 상자(participant)여야 합니다."
+
+msgid "Participant `{}` is created with `create`, so it cannot be put in a box."
+msgstr "참여자 `{}`은(는) `create`로 만들어지므로 box에 넣을 수 없습니다."
+
+msgid "Participant `{}` is declared twice."
+msgstr "참여자 `{}`이(가) 두 번 선언되었습니다."
+
+msgid "Participant `{}` refers to a box that does not exist."
+msgstr "참여자 `{}`이(가) 존재하지 않는 box를 참조합니다."
+
+msgid "Participants in the same box must be next to each other."
+msgstr "같은 box에 있는 참여자는 서로 인접해야 합니다."
+
+msgid "Periods before the first section are not drawn when there are sections. Name them as a section, or move the periods into a section below."
+msgstr "섹션이 있으면 첫 번째 섹션 앞의 기간은 그려지지 않습니다. 이름을 지정하여 섹션으로 만들거나 기간을 아래 섹션으로 옮기세요."
+
+msgid "Point `{}` has a style `{}` that cannot be used (separate `radius: 10`, `color: #ff0000`, `stroke-color: #000` and `stroke-width: 2px` with commas)."
+msgstr "점 `{}`에 사용할 수 없는 스타일 `{}`이(가) 있습니다 (`radius: 10`, `color: #ff0000`, `stroke-color: #000`, `stroke-width: 2px`를 쉼표로 구분하세요)."
+
+msgid "Primary key (PK)"
+msgstr "기본 키 (PK)"
+
+msgid "Read by the structured editor, this diagram would become a different packet than Mermaid reads. Edit it as text."
+msgstr "구조화 편집기로 읽으면 이 다이어그램은 Mermaid가 읽는 것과 다른 패킷이 됩니다. 텍스트로 편집하세요."
+
+msgid "Read by the structured editor, this diagram would differ from what Mermaid reads (for example in the order of `text`). Edit it as text."
+msgstr "구조화 편집기로 읽으면 이 다이어그램은 Mermaid가 읽는 것과 달라집니다 (예: `text`의 순서). 텍스트로 편집하세요."
+
+msgid "Read by the structured editor, this diagram would have different flows than Mermaid reads. Edit it as text."
+msgstr "구조화 편집기로 읽으면 이 다이어그램의 흐름이 Mermaid가 읽는 것과 달라집니다. 텍스트로 편집하세요."
+
+msgid "Read model (rmo)"
+msgstr "읽기 모델 (rmo)"
+
+msgid "Realization (left is abstract)"
+msgstr "실체화 (왼쪽이 추상)"
+
+msgid "Realization (right is abstract)"
+msgstr "실체화 (오른쪽이 추상)"
+
+msgid "Rectangle [process]"
+msgstr "사각형 [처리]"
+
+msgid "Refines (refines)"
+msgstr "구체화 (refines)"
+
+msgid "Rhombus {{condition}}"
+msgstr "마름모 {{조건}}"
+
+msgid "Right to left (RL)"
+msgstr "오른쪽에서 왼쪽으로 (RL)"
+
+msgid "Risk: High"
+msgstr "위험: 높음"
+
+msgid "Risk: Low"
+msgstr "위험: 낮음"
+
+msgid "Risk: Medium"
+msgstr "위험: 중간"
+
+msgid "Rounded ( )"
+msgstr "둥근 모서리 ( )"
+
+msgid "Rounded (process)"
+msgstr "둥근 모서리 (처리)"
+
+msgid "Satisfies (satisfies)"
+msgstr "충족 (satisfies)"
+
+msgid "Screen (ui)"
+msgstr "화면 (ui)"
+
+msgid "Series {number} has no values. Mermaid cannot draw a series without values."
+msgstr "계열 {number}에 값이 없습니다. Mermaid는 값이 없는 계열을 그릴 수 없습니다."
+
+msgid "Series {number}: value {} is empty. Values in the middle cannot be empty (empty cells at the end count as no value)."
+msgstr "계열 {number}: 값 {}이(가) 비어 있습니다. 중간의 값은 비워 둘 수 없습니다 (끝의 빈 셀은 값 없음으로 간주됩니다)."
+
+msgid "Server"
+msgstr "서버"
+
+msgid "Several statements separated by `;` are not supported by the structured editor ({trimmed}). Write one per line."
+msgstr "`;`로 구분된 여러 문은 구조화 편집기에서 지원되지 않습니다 ({trimmed}). 한 줄에 하나씩 작성하세요."
+
+msgid "Solid arrow (call)"
+msgstr "실선 화살표 (호출)"
+
+msgid "Solid async"
+msgstr "실선 비동기"
+
+msgid "Solid bidirectional"
+msgstr "실선 양방향"
+
+msgid "Solid cross (failure)"
+msgstr "실선 X자 (실패)"
+
+msgid "Solid line"
+msgstr "실선"
+
+msgid "Some names are read by Mermaid as the same node (for example after it removes HTML tags). Edit it as text."
+msgstr "Mermaid가 같은 노드로 읽는 이름이 있습니다 (예: HTML 태그를 제거한 후). 텍스트로 편집하세요."
+
+msgid "Square [ ]"
+msgstr "사각형 [ ]"
+
+msgid "Stadium ([ ])"
+msgstr "스타디움 ([ ])"
+
+msgid "Stadium ([start])"
+msgstr "스타디움 ([시작])"
+
+msgid "Start a new line after `{{` ({statement}). Mermaid cannot read a member block written on one line either."
+msgstr "`{{` 뒤에서 줄을 바꾸세요 ({statement}). 한 줄로 작성된 멤버 블록은 Mermaid도 읽을 수 없습니다."
+
+msgid "Start a new line after `{{` ({statement}). The structured editor does not support a composite state written on one line."
+msgstr "`{{` 뒤에서 줄을 바꾸세요 ({statement}). 구조화 편집기는 한 줄로 작성된 복합 상태를 지원하지 않습니다."
+
+msgid "Start it with an ASCII letter or `_`, and use only ASCII letters, digits, `_` and `-` (it cannot end with `-`)."
+msgstr "ASCII 문자 또는 `_`로 시작하고 ASCII 문자, 숫자, `_`, `-`만 사용하세요 (`-`로 끝날 수 없음)."
+
+msgid "Statements written after `%%{{ … }}%%` on the same line are not supported by the structured editor ({}). Move the statement to the next line, then open it again."
+msgstr "같은 줄에서 `%%{{ … }}%%` 뒤에 작성된 문은 구조화 편집기에서 지원되지 않습니다 ({}). 문을 다음 줄로 옮긴 다음 다시 여세요."
+
+msgid "Stick figure (actor)"
+msgstr "사람 모양 (actor)"
+
+msgid "Style class names enclosed in `` ` `` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "`` ` ``로 묶은 스타일 클래스 이름은 구조화 편집기에서 지원되지 않습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "Style classes applied with `:::` are not supported by the structured editor ({statement}). Edit it as text."
+msgstr "`:::`로 적용한 스타일 클래스는 구조화 편집기에서 지원되지 않습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "Subroutine [[ ]]"
+msgstr "서브루틴 [[ ]]"
+
+msgid "Subroutine [[process]]"
+msgstr "서브루틴 [[처리]]"
+
+msgid "Task `{}` cannot list the people `{}` (names cannot contain `:`, `,`, `#`, `;` or line breaks, and cannot be empty)."
+msgstr "작업 `{}`에 사람 `{}`을(를) 나열할 수 없습니다 (이름에는 `:`, `,`, `#`, `;` 또는 줄 바꿈을 포함할 수 없으며 비워 둘 수 없음)."
+
+msgid "Task `{}` has a score of {}. Use a score from 1 to 5."
+msgstr "작업 `{}`의 점수가 {}입니다. 1~5 사이의 점수를 사용하세요."
+
+msgid "That operation no longer exists."
+msgstr "해당 작업이 더 이상 존재하지 않습니다."
+
+msgid "The ID `{id}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty; tag names such as `done` cannot be used either)."
+msgstr "ID `{id}`은(는) 사용할 수 없습니다 (`,`, `#`, `;` 및 줄 바꿈은 허용되지 않으며 비워 둘 수 없습니다. `done` 같은 태그 이름도 사용할 수 없습니다)."
+
+msgid "The ID `{id}` cannot be used (letters, digits, `_` and `-`, starting and ending with a letter, digit or `_`. IDs that start with a capital L, R, T or B, IDs that start with `title`, and `group`, `service`, `junction`, `in`, `align`, `row`, `column`, `accTitle` and `accDescr` are not allowed)."
+msgstr "ID `{id}`은(는) 사용할 수 없습니다 (문자, 숫자, `_`, `-`를 사용하며 문자, 숫자 또는 `_`로 시작하고 끝나야 합니다. 대문자 L, R, T, B로 시작하는 ID, `title`로 시작하는 ID 및 `group`, `service`, `junction`, `in`, `align`, `row`, `column`, `accTitle`, `accDescr`는 허용되지 않습니다)."
+
+msgid "The ID `{id}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "ID `{id}`은(는) 사용할 수 없습니다 (`\"`, `%%`, 줄 바꿈 불가)."
+
+msgid "The ID `{id}` cannot be used (spaces and the symbols ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` are not allowed, nor are end / space / columns / class / classDef / style / block / root)."
+msgstr "ID `{id}`은(는) 사용할 수 없습니다 (공백 및 기호 ( ) [ ] {{ }} < > : - \" ' , % = ~ ; # & | \\ / ` 불가. end / space / columns / class / classDef / style / block / root도 불가)."
+
+msgid "The ID `{id}` is not supported by the structured editor ({statement}). `,`, `#`, `;` and line breaks cannot be used, and tag names such as `done` cannot be IDs."
+msgstr "ID `{id}`은(는) 구조화 편집기에서 지원되지 않습니다 ({statement}). `,`, `#`, `;` 및 줄 바꿈은 사용할 수 없으며 `done` 같은 태그 이름은 ID가 될 수 없습니다."
+
+msgid "The ID `{id}` is used by two tasks. Mermaid uses only the later one as the target of `after`, so change one of the IDs."
+msgstr "ID `{id}`이(가) 두 작업에서 사용됩니다. Mermaid는 나중에 작성된 작업만 `after`의 대상으로 사용하므로 ID 중 하나를 변경하세요."
+
+msgid "The ID `{id}` is used twice. Groups, services and junctions all need different IDs."
+msgstr "ID `{id}`이(가) 두 번 사용되었습니다. 그룹, 서비스, 접합점은 모두 서로 다른 ID가 필요합니다."
+
+msgid "The ID `{id}` is used twice. Mermaid does not place the second one, so give it a different ID."
+msgstr "ID `{id}`이(가) 두 번 사용되었습니다. Mermaid는 두 번째 것을 배치하지 않으므로 다른 ID를 지정하세요."
+
+msgid "The ID `{reference}` that task `{}` refers to does not exist."
+msgstr "작업 `{}`이(가) 참조하는 ID `{reference}`이(가) 존재하지 않습니다."
+
+msgid "The ID `{}` is used in two places. Columns and cards all need different IDs."
+msgstr "ID `{}`이(가) 두 곳에서 사용되었습니다. 열과 카드는 모두 서로 다른 ID가 필요합니다."
+
+msgid "The Markdown label in `{line}` is not closed (a ` is needed before the `\"`)."
+msgstr "`{line}`의 Markdown 레이블이 닫혀 있지 않습니다 (`\"` 앞에 `가 필요합니다)."
+
+msgid "The `\"` of `{input}` is not closed."
+msgstr "`{input}`의 `\"`가 닫혀 있지 않습니다."
+
+msgid "The `\"` of the label in `{line}` is not closed."
+msgstr "`{line}`에 있는 레이블의 `\"`가 닫혀 있지 않습니다."
+
+msgid "The `)` of `{statement}` is missing."
+msgstr "`{statement}`의 `)`가 없습니다."
+
+msgid "The `]` of `[\"display name\"]` is missing ({statement})."
+msgstr "`[\"display name\"]`의 `]`가 없습니다 ({statement})."
+
+msgid "The `accTitle` after `title` is used as the diagram's title. Move `accTitle` before `title`, or edit it as text."
+msgstr "`title` 뒤의 `accTitle`이 다이어그램의 제목으로 사용됩니다. `accTitle`을 `title` 앞으로 옮기거나 텍스트로 편집하세요."
+
+msgid "The `after` of task `{}` has no target."
+msgstr "작업 `{}`의 `after`에 대상이 없습니다."
+
+msgid "The `click` line is above task `{id}`. Mermaid does not add links to tasks written after `click`, so move task `{id}` above the `click` line."
+msgstr "`click` 줄이 작업 `{id}`보다 위에 있습니다. Mermaid는 `click` 뒤에 작성된 작업에는 링크를 추가하지 않으므로 작업 `{id}`을(를) `click` 줄 위로 옮기세요."
+
+msgid "The `namespace`s are nested too deeply. Edit it as text."
+msgstr "`namespace`가 너무 깊게 중첩되었습니다. 텍스트로 편집하세요."
+
+msgid "The `text` line is not under any set ({trimmed})."
+msgstr "`text` 줄이 어떤 집합 아래에도 있지 않습니다 ({trimmed})."
+
+msgid "The `until` of task `{}` has no target."
+msgstr "작업 `{}`의 `until`에 대상이 없습니다."
+
+msgid "The `x-axis` ticks are written after a series (bar / line). Mermaid places the values of the series written before them at 1, 2, 3…, so reordering them in the structured editor would change the chart. Move `x-axis` before the series, then open it again."
+msgstr "`x-axis` 눈금이 계열(bar / line) 뒤에 작성되어 있습니다. Mermaid는 그 앞에 작성된 계열의 값을 1, 2, 3… 위치에 배치하므로 구조화 편집기에서 순서를 바꾸면 차트가 바뀝니다. `x-axis`를 계열 앞으로 옮긴 다음 다시 여세요."
+
+msgid "The `{header}` line is not supported by the structured editor (leave only the heading, such as `C4Context`, on the line)."
+msgstr "`{header}` 줄은 구조화 편집기에서 지원되지 않습니다 (줄에 `C4Context` 같은 머리글만 남기세요)."
+
+msgid "The `{id}` that `{line}` refers to is not placed before this line. Mermaid then does not place `{id}`, so write this after the line that places the block."
+msgstr "`{line}`이(가) 참조하는 `{id}`이(가) 이 줄 앞에 배치되어 있지 않습니다. 이 경우 Mermaid는 `{id}`을(를) 배치하지 않으므로 블록을 배치하는 줄 뒤에 이 줄을 작성하세요."
+
+msgid "The `{keyword}` statement is not supported by the structured editor (line {}). Edit it as text."
+msgstr "`{keyword}` 문은 구조화 편집기에서 지원되지 않습니다 ({}번째 줄). 텍스트로 편집하세요."
+
+msgid "The `{opening}` block is not closed with `}}`."
+msgstr "`{opening}` 블록이 `}}`로 닫혀 있지 않습니다."
+
+msgid "The `{separator}` in the description cannot be written as it is ({statement}). Write `:` as `#58;` and `;` as `#59;`, or edit it as text."
+msgstr "설명의 `{separator}`은(는) 그대로 작성할 수 없습니다 ({statement}). `:`은 `#58;`, `;`는 `#59;`로 작성하거나 텍스트로 편집하세요."
+
+msgid "The `{{` of a `namespace` has no matching `}}`."
+msgstr "`namespace`의 `{{`에 대응하는 `}}`가 없습니다."
+
+msgid "The `{{` of the data is not closed ({line})."
+msgstr "데이터의 `{{`이(가) 닫혀 있지 않습니다 ({line})."
+
+msgid "The `{}` block is not closed with `end`."
+msgstr "`{}` 블록이 `end`로 닫혀 있지 않습니다."
+
+msgid "The alias `{alias}` cannot be used (spaces, `\"` `,` `(` `)` `{{` `}}` and names starting with `$` are not allowed)."
+msgstr "별칭 `{alias}`은(는) 사용할 수 없습니다 (공백, `\"` `,` `(` `)` `{{` `}}` 및 `$`로 시작하는 이름 불가)."
+
+msgid "The alias `{alias}` is declared twice. Use a different name."
+msgstr "별칭 `{alias}`이(가) 두 번 선언되었습니다. 다른 이름을 사용하세요."
+
+msgid "The amount “{value}” of {source} → {target} cannot be used (only a number of 0 or more)."
+msgstr "{source} → {target}의 양 “{value}”은(는) 사용할 수 없습니다 (0 이상의 숫자만 가능)."
+
+msgid "The arrow direction `{word}` in `{line}` cannot be read (right / left / up / down / x / y)."
+msgstr "`{line}`의 화살표 방향 `{word}`을(를) 읽을 수 없습니다 (right / left / up / down / x / y)."
+
+msgid "The arrow of frame `{}` points to itself."
+msgstr "프레임 `{}`의 화살표가 자기 자신을 가리킵니다."
+
+msgid "The attributes of entity `{}` need both a type and a name."
+msgstr "엔터티 `{}`의 속성에는 타입과 이름이 모두 필요합니다."
+
+msgid "The axis ID `{}` cannot be used. {id_rule}"
+msgstr "축 ID `{}`은(는) 사용할 수 없습니다. {id_rule}"
+
+msgid "The block `{id}` is placed twice ({line}). Mermaid ignores the second one, so merge them into one, then open the editor again."
+msgstr "블록 `{id}`이(가) 두 번 배치되었습니다 ({line}). Mermaid는 두 번째 것을 무시하므로 하나로 합친 다음 편집기를 다시 여세요."
+
+msgid "The block right after `space` in `{line}` cannot have a width (Mermaid cannot read it)."
+msgstr "`{line}`에서 `space` 바로 뒤의 블록에는 너비를 지정할 수 없습니다 (Mermaid가 읽을 수 없음)."
+
+msgid "The boundary `{alias}` is empty. Mermaid cannot draw an empty boundary, so put at least one element in it or delete the boundary."
+msgstr "경계 `{alias}`이(가) 비어 있습니다. Mermaid는 빈 경계를 그릴 수 없으므로 요소를 하나 이상 넣거나 경계를 삭제하세요."
+
+msgid "The bracket of block `{id}` in `{line}` is not closed."
+msgstr "`{line}`에 있는 블록 `{id}`의 괄호가 닫혀 있지 않습니다."
+
+msgid "The branch name `{name}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "브랜치 이름 `{name}`은(는) 사용할 수 없습니다 (`\"`, `%%`, 줄 바꿈 불가)."
+
+msgid "The branch name is empty."
+msgstr "브랜치 이름이 비어 있습니다."
+
+msgid "The cause `{cause}` cannot be written ({rules})."
+msgstr "원인 `{cause}`은(는) 작성할 수 없습니다 ({rules})."
+
+msgid "The cause `{}` is two or more levels deeper than its parent."
+msgstr "원인 `{}`이(가) 부모보다 두 수준 이상 깊습니다."
+
+msgid "The class `{classes}` of {what} `{}` cannot be written."
+msgstr "{what} `{}`의 클래스 `{classes}`은(는) 작성할 수 없습니다."
+
+msgid "The class `{class}` of the item `{}` cannot be used."
+msgstr "항목 `{}`의 클래스 `{class}`은(는) 사용할 수 없습니다."
+
+msgid "The class name `{class_name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
+msgstr "클래스 이름 `{class_name}`은(는) 사용할 수 없습니다 (ASCII 문자, 숫자, `_`만 가능하며 비워 둘 수 없음)."
+
+msgid "The class name `{}` cannot be used (only ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "클래스 이름 `{}`은(는) 사용할 수 없습니다 (ASCII 문자, 숫자, `_`만 가능하며 문자 또는 `_`로 시작해야 함)."
+
+msgid "The classDef name `{name}` cannot be used (only ASCII letters, digits and `_`, and it cannot be empty)."
+msgstr "classDef 이름 `{name}`은(는) 사용할 수 없습니다 (ASCII 문자, 숫자, `_`만 가능하며 비워 둘 수 없음)."
+
+msgid "The classes `{classes}` of the node `{}` cannot be written (line breaks and `%%{{` are not allowed, and they cannot be empty)."
+msgstr "노드 `{}`의 클래스 `{classes}`은(는) 작성할 수 없습니다 (줄 바꿈과 `%%{{`은(는) 허용되지 않으며 비워 둘 수 없음)."
+
+msgid "The comment at the end of a statement ({comment}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "문 끝의 주석({comment})은 구조화 편집기에서 손실됩니다. 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "The comment at the end of the `erDiagram` line ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "`erDiagram` 줄 끝의 주석({statement})은 구조화 편집기에서 손실됩니다. 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "The comment at the end of the line of {what} `{}` cannot be kept with the line written this way (use `\"` in the title in pairs)."
+msgstr "이렇게 작성된 줄에서는 {what} `{}` 줄 끝의 주석을 유지할 수 없습니다 (제목의 `\"`는 짝을 맞춰 사용하세요)."
+
+msgid "The comment at the end of the line that closes an attribute block ({statement}) would be lost in the structured editor. Move the comment to its own line, or edit it as text."
+msgstr "속성 블록을 닫는 줄 끝의 주석({statement})은 구조화 편집기에서 손실됩니다. 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "The comment line ({}) inside data `{name}` is lost in the structured editor. Move it outside the block, then open it again."
+msgstr "데이터 `{name}` 안의 주석 줄({})은 구조화 편집기에서 손실됩니다. 블록 밖으로 옮긴 다음 다시 여세요."
+
+msgid "The concurrency separator `--` can be written only inside a composite state (`state X {{ … }}`)."
+msgstr "동시성 구분 기호 `--`는 복합 상태(`state X {{ … }}`) 안에서만 작성할 수 있습니다."
+
+msgid "The config object (`@{{ … }}`) of participant `{id}` spans several lines, which is not supported by the structured editor. Edit it as text."
+msgstr "참여자 `{id}`의 구성 개체(`@{{ … }}`)가 여러 줄에 걸쳐 있어 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "The config object of participant `{}` must be on one line and must not contain `}}`."
+msgstr "참여자 `{}`의 구성 개체는 한 줄이어야 하며 `}}`를 포함할 수 없습니다."
+
+msgid "The contents of data `{}` must start on the {{ line and end with a line that is only }} at the start of the line (it cannot be written on one line; no %%)."
+msgstr "데이터 `{}`의 내용은 {{ 줄에서 시작하고 줄 맨 앞에 }}만 있는 줄로 끝나야 합니다 (한 줄로 작성할 수 없으며 %% 불가)."
+
+msgid "The coordinates of the point have no `]`."
+msgstr "점의 좌표에 `]`가 없습니다."
+
+msgid "The curve ID `{}` cannot be used. {id_rule}"
+msgstr "곡선 ID `{}`은(는) 사용할 수 없습니다. {id_rule}"
+
+msgid "The data `{data}` of frame `{}` cannot be written (a single line enclosed in {{ }}; no %%)."
+msgstr "프레임 `{}`의 데이터 `{data}`은(는) 작성할 수 없습니다 ({{ }}로 묶은 한 줄. %% 불가)."
+
+msgid "The data name `{name}` cannot be handled by the structured editor."
+msgstr "데이터 이름 `{name}`은(는) 구조화 편집기에서 처리할 수 없습니다."
+
+msgid "The data name `{}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "데이터 이름 `{}`은(는) 사용할 수 없습니다 (ASCII 문자, 숫자, `_`만 가능하며 문자 또는 `_`로 시작해야 함)."
+
+msgid "The data name `{}` is used more than once."
+msgstr "데이터 이름 `{}`이(가) 두 번 이상 사용되었습니다."
+
+msgid "The data reference `[[{reference}]]` cannot be handled by the structured editor ({line})."
+msgstr "데이터 참조 `[[{reference}]]`은(는) 구조화 편집기에서 처리할 수 없습니다 ({line})."
+
+msgid "The diagram contains an unsupported attribute key `{key}`. Edit it as text."
+msgstr "다이어그램에 지원되지 않는 속성 키 `{key}`이(가) 있습니다. 텍스트로 편집하세요."
+
+msgid "The diagram contains an unsupported cardinality."
+msgstr "다이어그램에 지원되지 않는 카디널리티가 있습니다."
+
+msgid "The diagram contains an unsupported relationship type `{other}`."
+msgstr "다이어그램에 지원되지 않는 관계 종류 `{other}`이(가) 있습니다."
+
+msgid "The diagram contains an unsupported statement (type {other}). Edit it as text."
+msgstr "다이어그램에 지원되지 않는 문(종류 {other})이 있습니다. 텍스트로 편집하세요."
+
+msgid "The edge `{}` → `{}` stays inside one group, so it cannot use “Group Edge”."
+msgstr "연결선 `{}` → `{}`은(는) 한 그룹 안에 머물므로 “그룹 가장자리”를 사용할 수 없습니다."
+
+msgid "The edge end `{}` does not exist. Choose the ID of a service or junction."
+msgstr "연결선 끝 `{}`이(가) 존재하지 않습니다. 서비스 또는 접합점의 ID를 선택하세요."
+
+msgid "The edge end `{}` is a group. Connect edges to services or junctions (to leave from the border of a group, use “Group Edge”)."
+msgstr "연결선 끝 `{}`은(는) 그룹입니다. 연결선은 서비스 또는 접합점에 연결하세요 (그룹 테두리에서 나가려면 “그룹 가장자리”를 사용하세요)."
+
+msgid "The edge label `{label}` cannot be written (`\"` and line breaks are not allowed)."
+msgstr "연결선 레이블 `{label}`은(는) 작성할 수 없습니다 (`\"` 및 줄 바꿈 불가)."
+
+msgid "The edge line `{}` cannot be written."
+msgstr "연결선 줄 `{}`은(는) 작성할 수 없습니다."
+
+msgid "The effect (the problem) is empty. Enter the effect before writing causes."
+msgstr "결과(문제)가 비어 있습니다. 원인을 작성하기 전에 결과를 입력하세요."
+
+msgid "The effect `{effect}` cannot be written ({rules})."
+msgstr "결과 `{effect}`은(는) 작성할 수 없습니다 ({rules})."
+
+msgid "The end `{end}` of a relationship is a boundary. Relationships can only connect elements."
+msgstr "관계의 끝 `{end}`은(는) 경계입니다. 관계는 요소끼리만 연결할 수 있습니다."
+
+msgid "The end `{text}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "작업 `{}`의 끝 `{text}`은(는) 사용할 수 없습니다 (`,`, `#`, `;` 및 줄 바꿈 불가, 비워 둘 수 없음)."
+
+msgid "The end bit comes before the start bit ({statement})."
+msgstr "끝 비트가 시작 비트보다 앞에 있습니다 ({statement})."
+
+msgid "The end cannot be `after` ({statement}). Mermaid reads it as a duration of 0."
+msgstr "끝은 `after`일 수 없습니다 ({statement}). Mermaid는 이를 기간 0으로 읽습니다."
+
+msgid "The end is before the start"
+msgstr "끝이 시작보다 앞에 있습니다"
+
+msgid "The entity name cannot be empty."
+msgstr "엔터티 이름은 비워 둘 수 없습니다."
+
+msgid "The event `{event}` of the period `{}` cannot be written (a space right after `:`, a `:` at the end, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "기간 `{}`의 이벤트 `{event}`은(는) 작성할 수 없습니다 (`:` 바로 뒤의 공백, 끝의 `:`, `%%{{` 및 줄 바꿈 불가, 비워 둘 수 없음)."
+
+msgid "The field does not continue from the previous field ({statement}). Start it at bit {next_bit}."
+msgstr "필드가 이전 필드에서 이어지지 않습니다 ({statement}). {next_bit}번 비트에서 시작하세요."
+
+msgid "The first node of a mindmap must be the root."
+msgstr "마인드맵의 첫 번째 노드는 루트여야 합니다."
+
+msgid "The first task `{}` needs a start date (there is no previous task)."
+msgstr "첫 번째 작업 `{}`에는 시작 날짜가 필요합니다 (이전 작업이 없음)."
+
+msgid "The flows form a cycle ({}). A Sankey diagram cannot draw a cycle."
+msgstr "흐름이 순환을 이룹니다 ({}). Sankey 다이어그램은 순환을 그릴 수 없습니다."
+
+msgid "The frame line has no {what} ({line}). Write it as `tf number type name`."
+msgstr "프레임 줄에 {what}이(가) 없습니다 ({line}). `tf number type name` 형식으로 작성하세요."
+
+msgid "The frame number `{name}` cannot be handled by the structured editor ({line})."
+msgstr "프레임 번호 `{name}`은(는) 구조화 편집기에서 처리할 수 없습니다 ({line})."
+
+msgid "The frame number `{}` cannot be used (1 to 3 ASCII digits)."
+msgstr "프레임 번호 `{}`은(는) 사용할 수 없습니다 (1~3자리 ASCII 숫자)."
+
+msgid "The frame number `{}` is used more than once."
+msgstr "프레임 번호 `{}`이(가) 두 번 이상 사용되었습니다."
+
+msgid "The group in `{line}` cannot have an arrow shape."
+msgstr "`{line}`의 그룹에는 화살표 모양을 지정할 수 없습니다."
+
+msgid "The icon `{icon}` of the node `{}` cannot be written (`)`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "노드 `{}`의 아이콘 `{icon}`은(는) 작성할 수 없습니다 (`)`, `%%{{` 및 줄 바꿈 불가, 비워 둘 수 없음)."
+
+msgid "The icon `{icon}` of {what} `{}` cannot be written."
+msgstr "{what} `{}`의 아이콘 `{icon}`은(는) 작성할 수 없습니다."
+
+msgid "The icon `{rest}` is not supported by the structured editor."
+msgstr "아이콘 `{rest}`은(는) 구조화 편집기에서 지원되지 않습니다."
+
+msgid "The icon of `{id}` cannot be written (a name uses only letters, digits, `_`, `-` and `:`; to show text, enclose it in quotes)."
+msgstr "`{id}`의 아이콘은 작성할 수 없습니다 (이름에는 문자, 숫자, `_`, `-`, `:`만 사용하며 텍스트를 표시하려면 따옴표로 묶으세요)."
+
+msgid "The item `{}` could not be read the same way Mermaid reads it. Edit it as text."
+msgstr "항목 `{}`을(를) Mermaid와 같은 방식으로 읽지 못했습니다. 텍스트로 편집하세요."
+
+msgid "The item `{}` is two or more levels deeper than its parent."
+msgstr "항목 `{}`이(가) 부모보다 두 수준 이상 깊습니다."
+
+msgid "The item name `{}` cannot be written (line breaks, `%%{{`, `=\"` and `#…;` are not allowed, and it cannot contain both `\"` and `'`)."
+msgstr "항목 이름 `{}`은(는) 작성할 수 없습니다 (줄 바꿈, `%%{{`, `=\"`, `#…;` 불가, `\"`와 `'`를 함께 포함할 수 없음)."
+
+msgid "The label `{label}` of arrow `{id}` cannot be written (`\"` and line breaks are not allowed)."
+msgstr "화살표 `{id}`의 레이블 `{label}`은(는) 작성할 수 없습니다 (`\"` 및 줄 바꿈 불가)."
+
+msgid "The label `{label}` of axis `{}` cannot be written. {label_rule}"
+msgstr "축 `{}`의 레이블 `{label}`은(는) 작성할 수 없습니다. {label_rule}"
+
+msgid "The label `{label}` of block `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
+msgstr "블록 `{id}`의 레이블 `{label}`은(는) 작성할 수 없습니다 (`\"` 및 줄 바꿈 불가, `로 시작하는 레이블은 `로 끝나야 함)."
+
+msgid "The label `{label}` of curve `{}` cannot be written. {label_rule}"
+msgstr "곡선 `{}`의 레이블 `{label}`은(는) 작성할 수 없습니다. {label_rule}"
+
+msgid "The label `{label}` of group `{id}` cannot be written (`\"` and line breaks are not allowed, and a label that starts with ` must end with `)."
+msgstr "그룹 `{id}`의 레이블 `{label}`은(는) 작성할 수 없습니다 (`\"` 및 줄 바꿈 불가, `로 시작하는 레이블은 `로 끝나야 함)."
+
+msgid "The label `{label}` of quadrant {} cannot be written (no `\"` or line breaks, and no whitespace at either end)."
+msgstr "사분면 {}의 레이블 `{label}`은(는) 작성할 수 없습니다 (`\"` 및 줄 바꿈 불가, 양쪽 끝의 공백 불가)."
+
+msgid "The label `{title}` of the edge `{}` → `{}` cannot be written ({label_rule})."
+msgstr "연결선 `{}` → `{}`의 레이블 `{title}`은(는) 작성할 수 없습니다 ({label_rule})."
+
+msgid "The label `{}` cannot be written in the default shape (`(` `)` `[` `{{` `}}` and `%%` are not allowed, and it cannot have spaces at either end or start with `::icon(` or `:::`). Change the shape."
+msgstr "레이블 `{}`은(는) 기본 모양으로 작성할 수 없습니다 (`(` `)` `[` `{{` `}}` 및 `%%` 불가, 양쪽 끝의 공백 불가, `::icon(` 또는 `:::`로 시작할 수 없음). 모양을 변경하세요."
+
+msgid "The label `{}` cannot be written in this shape (the closing bracket and `\"` cannot be used together)."
+msgstr "레이블 `{}`은(는) 이 모양으로 작성할 수 없습니다 (닫는 괄호와 `\"`를 함께 사용할 수 없음)."
+
+msgid "The label `{}` cannot contain `%%{{` (Mermaid cuts out everything up to `}}%%`)."
+msgstr "레이블 `{}`에는 `%%{{`을(를) 포함할 수 없습니다 (Mermaid가 `}}%%`까지의 모든 내용을 잘라냅니다)."
+
+msgid "The label is not written as `[\"…\"]` ({line})."
+msgstr "레이블이 `[\"…\"]` 형식으로 작성되지 않았습니다 ({line})."
+
+msgid "The label of node `{node_part}` is not closed. Labels that span several lines are not supported by the structured editor. Edit it as text."
+msgstr "노드 `{node_part}`의 레이블이 닫혀 있지 않습니다. 여러 줄에 걸친 레이블은 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "The label of the node `{statement}` is not closed. The structured editor does not support a label that spans several lines. Edit it as text."
+msgstr "노드 `{statement}`의 레이블이 닫혀 있지 않습니다. 구조화 편집기는 여러 줄에 걸친 레이블을 지원하지 않습니다. 텍스트로 편집하세요."
+
+msgid "The label “{label}” of “{name}” cannot be used (`\"`, line breaks and spaces at either end are not allowed)."
+msgstr "“{name}”의 레이블 “{label}”은(는) 사용할 수 없습니다 (`\"`, 줄 바꿈, 양쪽 끝의 공백 불가)."
+
+msgid "The label “{}” cannot be used (`%%` and line breaks are not allowed)."
+msgstr "레이블 “{}”은(는) 사용할 수 없습니다 (`%%` 및 줄 바꿈 불가)."
+
+msgid "The lane `{namespace}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`)."
+msgstr "레인 `{namespace}`은(는) 사용할 수 없습니다 (ASCII 문자, 숫자, `_`만 가능하며 문자 또는 `_`로 시작해야 함)."
+
+msgid "The line with the end-of-line comment ({comment}) has two or more statements, or it could not be determined which item the comment belongs to. Put one statement on each line, or edit it as text."
+msgstr "줄 끝 주석({comment})이 있는 줄에 문이 두 개 이상 있거나, 주석이 어느 항목에 속하는지 확인하지 못했습니다. 한 줄에 문을 하나씩 작성하거나 텍스트로 편집하세요."
+
+msgid "The member block of `class` has no matching `}}` ({statement})."
+msgstr "`class`의 멤버 블록에 대응하는 `}}`가 없습니다 ({statement})."
+
+msgid "The memberships of group `{}` form a loop. Remove one of them."
+msgstr "그룹 `{}`의 소속 관계가 순환을 이룹니다. 그중 하나를 제거하세요."
+
+msgid "The message `{message}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "메시지 `{message}`은(는) 사용할 수 없습니다 (`\"`, `%%`, 줄 바꿈 불가)."
+
+msgid "The message after `create {created}` must be sent to `{created}`."
+msgstr "`create {created}` 다음 메시지는 `{created}`에 보내야 합니다."
+
+msgid "The message after `destroy {destroyed}` must involve `{destroyed}`."
+msgstr "`destroy {destroyed}` 다음 메시지는 `{destroyed}`와(과) 관련되어야 합니다."
+
+msgid "The metadata `{text}` is not supported by the structured editor (only `key: value`, with a single-line string as the value). Edit it as text."
+msgstr "메타데이터 `{text}`은(는) 구조화 편집기에서 지원되지 않습니다 (`key: value` 형식만 가능하며 값은 한 줄 문자열이어야 함). 텍스트로 편집하세요."
+
+msgid "The name `{name}` is used twice."
+msgstr "이름 `{name}`이(가) 두 번 사용되었습니다."
+
+msgid "The name `{}` cannot be used (ASCII letters, digits and `_`, starting with a letter or `_`. It can be split with `.`, but without a lane a name cannot contain exactly one `.`)."
+msgstr "이름 `{}`은(는) 사용할 수 없습니다 (ASCII 문자, 숫자, `_`만 가능하며 문자 또는 `_`로 시작해야 함. `.`로 구분할 수 있지만, 레인이 없으면 `.`가 정확히 하나만 있는 이름은 사용할 수 없음)."
+
+msgid "The name `{}` has a lane, so it cannot contain `.`."
+msgstr "이름 `{}`에는 레인이 있으므로 `.`를 포함할 수 없습니다."
+
+msgid "The name `{}` of series {number} cannot be written. {text_rule}"
+msgstr "계열 {number}의 이름 `{}`은(는) 작성할 수 없습니다. {text_rule}"
+
+msgid "The name is empty ({statement})."
+msgstr "이름이 비어 있습니다 ({statement})."
+
+msgid "The name of the node `{}` cannot be written (`\"` and `'` cannot both be used)."
+msgstr "노드 `{}`의 이름은 작성할 수 없습니다 (`\"`와 `'`를 함께 사용할 수 없음)."
+
+msgid "The name of the node `{}` cannot be written (when an HTML tag attribute is enclosed in `\"`, Mermaid rewrites it to `'` and the name is cut off)."
+msgstr "노드 `{}`의 이름은 작성할 수 없습니다 (HTML 태그 속성을 `\"`로 묶으면 Mermaid가 이를 `'`로 다시 써서 이름이 잘립니다)."
+
+msgid "The name of the node `{}` cannot contain `%%{{` (Mermaid cuts it out as a directive)."
+msgstr "노드 `{}`의 이름에는 `%%{{`을(를) 포함할 수 없습니다 (Mermaid가 지시문으로 잘라냅니다)."
+
+msgid "The node `{name}` is nested too deeply (Mermaid allows up to {MAX_TREE_VIEW_DEPTH} levels)."
+msgstr "노드 `{name}`이(가) 너무 깊게 중첩되었습니다 (Mermaid는 최대 {MAX_TREE_VIEW_DEPTH}단계까지 허용합니다)."
+
+msgid "The node `{}` is two or more levels deeper than its parent."
+msgstr "노드 `{}`이(가) 부모보다 두 수준 이상 깊습니다."
+
+msgid "The node name “{name}” cannot be used (it cannot be empty, have spaces at either end, or contain line breaks or `\"\"`)."
+msgstr "노드 이름 “{name}”은(는) 사용할 수 없습니다 (비워 둘 수 없으며 양쪽 끝의 공백, 줄 바꿈, `\"\"` 불가)."
+
+msgid "The number of columns must be a whole number of 1 or more, or auto."
+msgstr "열 수는 1 이상의 정수 또는 auto여야 합니다."
+
+msgid "The number of columns of a group must be a whole number of 1 or more, or auto."
+msgstr "그룹의 열 수는 1 이상의 정수 또는 auto여야 합니다."
+
+msgid "The operations right after branch `{}` run on this branch. Delete them first, or move them to another branch."
+msgstr "브랜치 `{}` 바로 뒤의 작업은 이 브랜치에서 실행됩니다. 먼저 해당 작업을 삭제하거나 다른 브랜치로 옮기세요."
+
+msgid "The order of the `create` statements does not match the order of the participants. Order the participants as they are created."
+msgstr "`create` 문의 순서가 참여자의 순서와 일치하지 않습니다. 참여자를 만들어지는 순서대로 정렬하세요."
+
+msgid "The overlap “{name}” contains the same set twice."
+msgstr "겹침 “{name}”에 같은 집합이 두 번 포함되어 있습니다."
+
+msgid "The overlap “{name}” is written before the set “{missing}”. Place an overlap after the sets it uses."
+msgstr "겹침 “{name}”이(가) 집합 “{missing}”보다 앞에 작성되었습니다. 겹침은 사용하는 집합 뒤에 두세요."
+
+msgid "The overlap “{name}” is written twice."
+msgstr "겹침 “{name}”이(가) 두 번 작성되었습니다."
+
+msgid "The participant id `{model_id}` contains characters Mermaid uses internally, so it is not supported by the structured editor. Edit it as text."
+msgstr "참여자 ID `{model_id}`에 Mermaid가 내부적으로 사용하는 문자가 포함되어 있어 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "The participant type `{other}` is not supported by the structured editor. Edit it as text."
+msgstr "참여자 타입 `{other}`은(는) 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "The period `{}` cannot be written (`:`, `#`, `%%{{` and line breaks are not allowed, and it cannot be empty or start with `title`, `section`, `accTitle`, `accDescr` or `%%`)."
+msgstr "기간 `{}`은(는) 작성할 수 없습니다 (`:`, `#`, `%%{{` 및 줄 바꿈 불가, 비워 둘 수 없으며 `title`, `section`, `accTitle`, `accDescr` 또는 `%%`로 시작할 수 없음)."
+
+msgid "The point name `{}` cannot be written (no `\"` or line breaks; it cannot be empty or start or end with whitespace)."
+msgstr "점 이름 `{}`은(는) 작성할 수 없습니다 (`\"` 및 줄 바꿈 불가, 비워 둘 수 없으며 공백으로 시작하거나 끝날 수 없음)."
+
+msgid "The quote of `state \"description\"` is not closed ({statement})."
+msgstr "`state \"description\"`의 따옴표가 닫혀 있지 않습니다 ({statement})."
+
+msgid "The quotes around the display name are not closed ({statement})."
+msgstr "표시 이름을 묶은 따옴표가 닫혀 있지 않습니다 ({statement})."
+
+msgid "The quotes around the multiplicity are not closed ({statement})."
+msgstr "다중성을 묶은 따옴표가 닫혀 있지 않습니다 ({statement})."
+
+msgid "The quotes around the note text are not closed ({statement})."
+msgstr "노트 텍스트를 묶은 따옴표가 닫혀 있지 않습니다 ({statement})."
+
+msgid "The quotes in `@{{{inner}}}` are not closed."
+msgstr "`@{{{inner}}}`의 따옴표가 닫혀 있지 않습니다."
+
+msgid "The same item has two end-of-line comments ({comment}). Merge them into one, or edit it as text."
+msgstr "같은 항목에 줄 끝 주석이 두 개 있습니다 ({comment}). 하나로 합치거나 텍스트로 편집하세요."
+
+msgid "The score `{score_text}` is not supported by the structured editor ({trimmed}). Use a whole number from 1 to 5, or edit it as text."
+msgstr "점수 `{score_text}`은(는) 구조화 편집기에서 지원되지 않습니다 ({trimmed}). 1~5 사이의 정수를 사용하거나 텍스트로 편집하세요."
+
+msgid "The section name `{name}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot be empty)."
+msgstr "섹션 이름 `{name}`은(는) 사용할 수 없습니다 (`:`, `%%{{` 및 줄 바꿈 불가, 비워 둘 수 없음)."
+
+msgid "The section name `{name}` cannot be used (line breaks and `%%{{` are not allowed)."
+msgstr "섹션 이름 `{name}`은(는) 사용할 수 없습니다 (줄 바꿈 및 `%%{{` 불가)."
+
+msgid "The section name `{name}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty)."
+msgstr "섹션 이름 `{name}`은(는) 사용할 수 없습니다 (`:`, `#`, `;`, 줄 바꿈 불가, 비워 둘 수 없음)."
+
+msgid "The section name `{name}` is used twice. Mermaid draws the periods of both in one section of that name, so rename one."
+msgstr "섹션 이름 `{name}`이(가) 두 번 사용되었습니다. Mermaid는 두 섹션의 기간을 해당 이름의 섹션 하나에 그리므로 하나의 이름을 변경하세요."
+
+msgid "The series has no values ({statement})."
+msgstr "계열에 값이 없습니다 ({statement})."
+
+msgid "The series value `{value}` cannot be read as a number ({statement})."
+msgstr "계열 값 `{value}`을(를) 숫자로 읽을 수 없습니다 ({statement})."
+
+msgid "The series values are not written as `[1, 2, 3]` ({statement})."
+msgstr "계열 값이 `[1, 2, 3]` 형식으로 작성되지 않았습니다 ({statement})."
+
+msgid "The set ID “{id}” cannot be used (it cannot be empty, contain `\"` or line breaks, or have spaces at either end)."
+msgstr "집합 ID “{id}”은(는) 사용할 수 없습니다 (비워 둘 수 없으며 `\"`, 줄 바꿈, 양쪽 끝의 공백 불가)."
+
+msgid "The set “{id}” is written twice."
+msgstr "집합 “{id}”이(가) 두 번 작성되었습니다."
+
+msgid "The set “{missing}” of the overlap “{name}” does not exist."
+msgstr "겹침 “{name}”의 집합 “{missing}”이(가) 존재하지 않습니다."
+
+msgid "The shape of `{}` is changed inside an edge ({line}). Write the shape where the block is placed."
+msgstr "연결선 안에서 `{}`의 모양이 변경되었습니다 ({line}). 모양은 블록을 배치하는 곳에 작성하세요."
+
+msgid "The side of an edge is one of L R T B ({statement})."
+msgstr "연결선의 방향은 L R T B 중 하나입니다 ({statement})."
+
+msgid "The size could not be read as a number ({statement})."
+msgstr "크기를 숫자로 읽지 못했습니다 ({statement})."
+
+msgid "The size “{size}” of “{name}” cannot be used (only a number of 0 or more)."
+msgstr "“{name}”의 크기 “{size}”은(는) 사용할 수 없습니다 (0 이상의 숫자만 가능)."
+
+msgid "The source `{source}` of the arrow to frame `{}` is not in an earlier frame."
+msgstr "프레임 `{}`(으)로 향하는 화살표의 출발점 `{source}`이(가) 이전 프레임에 없습니다."
+
+msgid "The start `{date}` of task `{}` cannot be used (`,`, `#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "작업 `{}`의 시작 `{date}`은(는) 사용할 수 없습니다 (`,`, `#`, `;` 및 줄 바꿈 불가, 비워 둘 수 없음)."
+
+msgid "The start cannot be `until` ({statement})."
+msgstr "시작은 `until`일 수 없습니다 ({statement})."
+
+msgid "The structured editor cannot handle `{header}` (write only `venn-beta` on its line, and the statements from the next line on)."
+msgstr "구조화 편집기에서 `{header}`을(를) 처리할 수 없습니다 (해당 줄에는 `venn-beta`만 작성하고 문은 다음 줄부터 작성하세요)."
+
+msgid "The structured editor cannot handle a statement written after `%%{{ … }}%%` on the same line ({statement}). Move the statement to the next line, then open the editor again."
+msgstr "구조화 편집기에서 같은 줄의 `%%{{ … }}%%` 뒤에 작성된 문을 처리할 수 없습니다 ({statement}). 문을 다음 줄로 옮긴 다음 편집기를 다시 여세요."
+
+msgid "The structured editor cannot handle the amount “{value}” ({}). Write a number of 0 or more."
+msgstr "구조화 편집기에서 양 “{value}”을(를) 처리할 수 없습니다 ({}). 0 이상의 숫자를 작성하세요."
+
+msgid "The structured editor cannot keep the comment at the end of this line ({trimmed}). Move the comment to a line of its own, or edit it as text."
+msgstr "구조화 편집기에서 이 줄 끝의 주석을 유지할 수 없습니다 ({trimmed}). 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "The structured editor does not support `:::` without a class ({trimmed})."
+msgstr "구조화 편집기는 클래스가 없는 `:::`을(를) 지원하지 않습니다 ({trimmed})."
+
+msgid "The structured editor does not support `{id}` in `{line}`. {}"
+msgstr "구조화 편집기는 `{line}`의 `{id}`을(를) 지원하지 않습니다. {}"
+
+msgid "The structured editor does not support `{line}` (it could not be read as a block)."
+msgstr "구조화 편집기는 `{line}`을(를) 지원하지 않습니다 (블록으로 읽지 못했습니다)."
+
+msgid "The structured editor does not support `{line}` (write it as `class ID1,ID2 className`)."
+msgstr "구조화 편집기는 `{line}`을(를) 지원하지 않습니다 (`class ID1,ID2 className` 형식으로 작성하세요)."
+
+msgid "The structured editor does not support `{line}` (write it as `style ID style`)."
+msgstr "구조화 편집기는 `{line}`을(를) 지원하지 않습니다 (`style ID style` 형식으로 작성하세요)."
+
+msgid "The structured editor does not support `{rest}` on the `pie` line. Edit it as text."
+msgstr "구조화 편집기는 `pie` 줄의 `{rest}`을(를) 지원하지 않습니다. 텍스트로 편집하세요."
+
+msgid "The structured editor does not support `{statement}` (only the form `classDef name style;`). Edit it as text."
+msgstr "구조화 편집기는 `{statement}`을(를) 지원하지 않습니다 (`classDef name style;` 형식만 가능). 텍스트로 편집하세요."
+
+msgid "The structured editor does not support `{tail}` on the `mindmap` line. Write the nodes on the following lines."
+msgstr "구조화 편집기는 `mindmap` 줄의 `{tail}`을(를) 지원하지 않습니다. 노드는 다음 줄부터 작성하세요."
+
+msgid "The structured editor does not support `{tail}` on the `timeline` line. Edit it as text."
+msgstr "구조화 편집기는 `timeline` 줄의 `{tail}`을(를) 지원하지 않습니다. 텍스트로 편집하세요."
+
+msgid "The structured editor does not support `{tail}` on the `{header}` line (Mermaid cannot draw this diagram)."
+msgstr "구조화 편집기는 `{header}` 줄의 `{tail}`을(를) 지원하지 않습니다 (Mermaid가 이 다이어그램을 그릴 수 없음)."
+
+msgid "The structured editor does not support `{tail}` on the `{}` line. Write it on the next line."
+msgstr "구조화 편집기는 `{}` 줄의 `{tail}`을(를) 지원하지 않습니다. 다음 줄에 작성하세요."
+
+msgid "The structured editor does not support `{tail}` written right after `end`. Write it on the next line."
+msgstr "구조화 편집기는 `end` 바로 뒤에 작성된 `{tail}`을(를) 지원하지 않습니다. 다음 줄에 작성하세요."
+
+msgid "The structured editor does not support `{trimmed}`. Put a space after `title`."
+msgstr "구조화 편집기는 `{trimmed}`을(를) 지원하지 않습니다. `title` 뒤에 공백을 넣으세요."
+
+msgid "The structured editor does not support `{}` written right after `%%{{ … }}%%`. Write it on the next line."
+msgstr "구조화 편집기는 `%%{{ … }}%%` 바로 뒤에 작성된 `{}`을(를) 지원하지 않습니다. 다음 줄에 작성하세요."
+
+msgid "The structured editor does not support `{}` written right after the group heading in `{line}`. Write it on the next line."
+msgstr "구조화 편집기는 `{line}`에서 그룹 머리글 바로 뒤에 작성된 `{}`을(를) 지원하지 않습니다. 다음 줄에 작성하세요."
+
+msgid "The structured editor does not support a `%%` comment in the middle of a line ({line}). Write the comment on a line of its own."
+msgstr "구조화 편집기는 줄 중간의 `%%` 주석을 지원하지 않습니다 ({line}). 주석을 별도의 줄에 작성하세요."
+
+msgid "The structured editor does not support a `%%{{ … }}%%` that spans several lines. Write it on one line at the top of the diagram."
+msgstr "구조화 편집기는 여러 줄에 걸친 `%%{{ … }}%%`을(를) 지원하지 않습니다. 다이어그램 맨 위에 한 줄로 작성하세요."
+
+msgid "The structured editor does not support a line that contains `%%{{`, because Mermaid cuts it out as a directive ({tail})."
+msgstr "Mermaid가 `%%{{`이(가) 포함된 줄을 지시문으로 잘라내므로 구조화 편집기는 이 줄을 지원하지 않습니다 ({tail})."
+
+msgid "The structured editor does not support the `{open}` shape of the node `{statement}` (Mermaid draws it in the default shape). Edit it as text."
+msgstr "구조화 편집기는 노드 `{statement}`의 `{open}` 모양을 지원하지 않습니다 (Mermaid는 기본 모양으로 그립니다). 텍스트로 편집하세요."
+
+msgid "The structured editor does not support the class name in `{line}`."
+msgstr "구조화 편집기는 `{line}`의 클래스 이름을 지원하지 않습니다."
+
+msgid "The structured editor does not support the icon `{trimmed}`."
+msgstr "구조화 편집기는 아이콘 `{trimmed}`을(를) 지원하지 않습니다."
+
+msgid "The structured editor does not support the value `{token}` of the item `{name}` (Mermaid skips everything from a `_` or a second `.` on)."
+msgstr "구조화 편집기는 항목 `{name}`의 값 `{token}`을(를) 지원하지 않습니다 (Mermaid는 `_` 또는 두 번째 `.` 이후의 모든 내용을 건너뜁니다)."
+
+msgid "The structured editor does not support this diagram. Edit it as text."
+msgstr "구조화 편집기는 이 다이어그램을 지원하지 않습니다. 텍스트로 편집하세요."
+
+msgid "The structured editor would lose the comment at the end of the `treeView-beta` line. Move the comment to a line of its own, or edit it as text."
+msgstr "`treeView-beta` 줄 끝의 주석은 구조화 편집기에서 손실됩니다. 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "The structured editor would lose the comment at the end of the statement ({statement}). Move the comment to a line of its own, or edit it as text."
+msgstr "문 끝의 주석은 구조화 편집기에서 손실됩니다 ({statement}). 주석을 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "The structured editor would write statements that follow each other on one line ({trimmed}) back twice. Put the statements on separate lines, or edit it as text."
+msgstr "한 줄에 이어서 작성된 문({trimmed})은 구조화 편집기에서 두 번 다시 쓰입니다. 문을 서로 다른 줄에 두거나 텍스트로 편집하세요."
+
+msgid "The style `{key}` cannot be used (use one of {})."
+msgstr "스타일 `{key}`은(는) 사용할 수 없습니다 ({} 중 하나를 사용하세요)."
+
+msgid "The style `{style}` of the class `{name}` cannot be written (separate `name:value` pairs with `,`; `;` and `%%` are not allowed)."
+msgstr "클래스 `{name}`의 스타일 `{style}`은(는) 작성할 수 없습니다 (`name:value` 쌍을 `,`로 구분하며 `;` 및 `%%` 불가)."
+
+msgid "The style of `{target}` cannot contain line breaks."
+msgstr "`{target}`의 스타일에는 줄 바꿈을 포함할 수 없습니다."
+
+msgid "The style of classDef `{name}` cannot contain line breaks."
+msgstr "classDef `{name}`의 스타일에는 줄 바꿈을 포함할 수 없습니다."
+
+msgid "The tag `{tag}` cannot be used (no `\"`, `%%` or line breaks)."
+msgstr "태그 `{tag}`은(는) 사용할 수 없습니다 (`\"`, `%%`, 줄 바꿈 불가)."
+
+msgid "The task name `{}` cannot be used (`:`, `%%{{` and line breaks are not allowed, and it cannot start with `%%`)."
+msgstr "작업 이름 `{}`은(는) 사용할 수 없습니다 (`:`, `%%{{` 및 줄 바꿈 불가, `%%`로 시작할 수 없음)."
+
+msgid "The task name `{}` cannot be used (no `:`, `#`, `;` or line breaks, and it cannot be empty. It also cannot start with `title `, `section `, `accTitle`, `accDescr` or `%%`)."
+msgstr "작업 이름 `{}`은(는) 사용할 수 없습니다 (`:`, `#`, `;`, 줄 바꿈 불가, 비워 둘 수 없음. `title `, `section `, `accTitle`, `accDescr` 또는 `%%`로 시작할 수도 없음)."
+
+msgid "The text is empty ({statement})."
+msgstr "텍스트가 비어 있습니다 ({statement})."
+
+msgid "The tick count (ticks) `{ticks}` is too large. Use {MAX_TICKS} or less."
+msgstr "눈금 수(ticks) `{ticks}`이(가) 너무 큽니다. {MAX_TICKS} 이하를 사용하세요."
+
+msgid "The title `{title}` cannot be used (line breaks and `%%` are not allowed, and it cannot be empty)."
+msgstr "제목 `{title}`은(는) 사용할 수 없습니다 (줄 바꿈 및 `%%` 불가, 비워 둘 수 없음)."
+
+msgid "The title `{title}` cannot be written (line breaks and `%%` are not allowed, and it cannot be empty or have spaces at either end)."
+msgstr "제목 `{title}`은(는) 작성할 수 없습니다 (줄 바꿈 및 `%%` 불가, 비워 둘 수 없으며 양쪽 끝의 공백 불가)."
+
+msgid "The title `{title}` cannot be written (line breaks, `%%`, `=\"` and `#…;` are not allowed)."
+msgstr "제목 `{title}`은(는) 작성할 수 없습니다 (줄 바꿈, `%%`, `=\"`, `#…;` 불가)."
+
+msgid "The title `{title}` cannot be written (no `%%`, `;` or line breaks, and it cannot start or end with whitespace)."
+msgstr "제목 `{title}`은(는) 작성할 수 없습니다 (`%%`, `;`, 줄 바꿈 불가, 공백으로 시작하거나 끝날 수 없음)."
+
+msgid "The title `{title}` cannot be written in a pie chart (`%%` is not allowed)."
+msgstr "제목 `{title}`은(는) 원형 차트에 작성할 수 없습니다 (`%%` 불가)."
+
+msgid "The title `{title}` of {what} `{}` cannot be written (no line breaks, `%%{{`, `=\"` or `#…;`, and closing brackets cannot be used together with `\"`)."
+msgstr "{what} `{}`의 제목 `{title}`은(는) 작성할 수 없습니다 (줄 바꿈, `%%{{`, `=\"`, `#…;` 불가, 닫는 괄호와 `\"`를 함께 사용할 수 없음)."
+
+msgid "The title `{}` cannot be written. {text_rule}"
+msgstr "제목 `{}`은(는) 작성할 수 없습니다. {text_rule}"
+
+msgid "The title cannot be empty or contain line breaks or `%%` (and cannot start or end with whitespace)."
+msgstr "제목은 비워 둘 수 없으며 줄 바꿈이나 `%%`을(를) 포함할 수 없습니다 (공백으로 시작하거나 끝날 수도 없음)."
+
+msgid "The title cannot contain `%%` or line breaks (and cannot start or end with whitespace)."
+msgstr "제목에는 `%%` 또는 줄 바꿈을 포함할 수 없습니다 (공백으로 시작하거나 끝날 수도 없음)."
+
+msgid "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+msgstr "제목에는 `%%` 또는 줄 바꿈을 포함할 수 없습니다 (양쪽 끝의 공백도 불가)."
+
+msgid "The title cannot contain line breaks or `%%{{` (and cannot be empty)."
+msgstr "제목에는 줄 바꿈이나 `%%{{`을(를) 포함할 수 없습니다 (비워 둘 수도 없음)."
+
+msgid "The title cannot contain line breaks or `%%{{`, and it cannot be empty or have spaces at either end."
+msgstr "제목에는 줄 바꿈이나 `%%{{`을(를) 포함할 수 없으며, 비워 두거나 양쪽 끝에 공백을 둘 수 없습니다."
+
+msgid "The title cannot contain line breaks, `#` or `;` (and cannot start or end with whitespace)."
+msgstr "제목에는 줄 바꿈, `#` 또는 `;`를 포함할 수 없습니다 (공백으로 시작하거나 끝날 수도 없음)."
+
+msgid "The title could not be read the same way Mermaid reads it. Edit it as text."
+msgstr "제목을 Mermaid와 같은 방식으로 읽지 못했습니다. 텍스트로 편집하세요."
+
+msgid "The title of `{id}` cannot be written ({label_rule})."
+msgstr "`{id}`의 제목은 작성할 수 없습니다 ({label_rule})."
+
+msgid "The title of {what} `{}` is empty."
+msgstr "{what} `{}`의 제목이 비어 있습니다."
+
+msgid "The total number of bits ({total}) is too large. Mermaid can draw up to {MAX_PACKET_BITS} bits."
+msgstr "전체 비트 수({total})가 너무 큽니다. Mermaid는 최대 {MAX_PACKET_BITS}비트까지 그릴 수 있습니다."
+
+msgid "The value `{value}` of curve `{}` cannot be written. {number_rule}"
+msgstr "곡선 `{}`의 값 `{value}`은(는) 작성할 수 없습니다. {number_rule}"
+
+msgid "The value `{value}` of series {number} is not a number (for example 12, -3.5, .5)."
+msgstr "계열 {number}의 값 `{value}`은(는) 숫자가 아닙니다 (예: 12, -3.5, .5)."
+
+msgid "The value `{value}` of style `{key}` cannot be used."
+msgstr "스타일 `{key}`의 값 `{value}`은(는) 사용할 수 없습니다."
+
+msgid "The value `{value}` of the item `{}` cannot be read as a number (a number of 0 or more; `,` as a thousands separator and `.` as the decimal point are allowed)."
+msgstr "항목 `{}`의 값 `{value}`을(를) 숫자로 읽을 수 없습니다 (0 이상의 숫자. 천 단위 구분 기호 `,`와 소수점 `.`는 사용 가능)."
+
+msgid "The value of `{keyword}` cannot contain line breaks."
+msgstr "`{keyword}`의 값에는 줄 바꿈을 포함할 수 없습니다."
+
+msgid "The values of curve `{id}` are not written as `{{1, 2, 3}}` ({line})."
+msgstr "곡선 `{id}`의 값이 `{{1, 2, 3}}` 형식으로 작성되지 않았습니다 ({line})."
+
+msgid "The width in `{line}` must be a whole number of 1 or more."
+msgstr "`{line}`의 너비는 1 이상의 정수여야 합니다."
+
+msgid "The width of {what} must be 1 or more."
+msgstr "{what}의 너비는 1 이상이어야 합니다."
+
+msgid "The x axis has an empty category ({statement})."
+msgstr "x축에 빈 범주가 있습니다 ({statement})."
+
+msgid "The x axis has no categories. Add a category, or set the x-axis “Scale” to “None (1, 2, 3…)”."
+msgstr "x축에 범주가 없습니다. 범주를 추가하거나 x축 “눈금”을 “없음 (1, 2, 3…)”으로 설정하세요."
+
+msgid "The x-axis category `{}` cannot be written. {text_rule}"
+msgstr "x축 범주 `{}`은(는) 작성할 수 없습니다. {text_rule}"
+
+msgid "The x-axis name `{}` cannot be written. {text_rule}"
+msgstr "x축 이름 `{}`은(는) 작성할 수 없습니다. {text_rule}"
+
+msgid "The y axis cannot have categories ({statement})."
+msgstr "y축에는 범주를 지정할 수 없습니다 ({statement})."
+
+msgid "The y-axis name `{}` cannot be written. {text_rule}"
+msgstr "y축 이름 `{}`은(는) 작성할 수 없습니다. {text_rule}"
+
+msgid "The year {} cannot be written with 2 digits"
+msgstr "{}년은 2자리로 작성할 수 없습니다"
+
+msgid "The year {} cannot be written with 4 digits"
+msgstr "{}년은 4자리로 작성할 수 없습니다"
+
+msgid "The {axis} `{value}` of point `{}` cannot be used (0 to 1: only `0`, `1`, or a decimal that starts with `0.`)."
+msgstr "점 `{}`의 {axis} `{value}`은(는) 사용할 수 없습니다 (0~1: `0`, `1` 또는 `0.`으로 시작하는 소수만 가능)."
+
+msgid "The {name} label cannot be written (no `\"` or line breaks, and no whitespace at either end)."
+msgstr "{name} 레이블은 작성할 수 없습니다 (`\"` 및 줄 바꿈 불가, 양쪽 끝의 공백 불가)."
+
+msgid "The {what} ID `{}` cannot be used (no brackets, `\"`, `%%`, `@{{`, `#…;` or whitespace at either end)."
+msgstr "{what} ID `{}`은(는) 사용할 수 없습니다 (괄호, `\"`, `%%`, `@{{`, `#…;`, 양쪽 끝의 공백 불가)."
+
+msgid "The {what} `{}` has a value for `{}` that cannot be written (no `}}`, `\"`, `%%`, `#…;`, line breaks or whitespace at either end)."
+msgstr "{what} `{}`에 작성할 수 없는 `{}`의 값이 있습니다 (`}}`, `\"`, `%%`, `#…;`, 줄 바꿈, 양쪽 끝의 공백 불가)."
+
+msgid "There are more `end`s than blocks."
+msgstr "`end`가 블록보다 많습니다."
+
+msgid "There are two `columns` at the same level. Mermaid uses only the last one, so merge them into one."
+msgstr "같은 수준에 `columns`가 두 개 있습니다. Mermaid는 마지막 것만 사용하므로 하나로 합치세요."
+
+msgid "There are two `title`s. Only the last one is used."
+msgstr "`title`이 두 개 있습니다. 마지막 것만 사용됩니다."
+
+msgid "There are two arrows from `{source}` to `{}`."
+msgstr "`{source}`에서 `{}`(으)로 향하는 화살표가 두 개 있습니다."
+
+msgid "There are two roots (`{}`). A mindmap has only one root, and the other nodes are indented deeper than the root."
+msgstr "루트가 두 개 있습니다 (`{}`). 마인드맵에는 루트가 하나만 있으며, 다른 노드는 루트보다 깊게 들여쓰기됩니다."
+
+msgid "There are two roots (`{}`). A mindmap has only one root."
+msgstr "루트가 두 개 있습니다 (`{}`). 마인드맵에는 루트가 하나만 있습니다."
+
+msgid "There are unreadable characters after the `}}` of curve `{id}` ({line})."
+msgstr "곡선 `{id}`의 `}}` 뒤에 읽을 수 없는 문자가 있습니다 ({line})."
+
+msgid "There is a `%%{{` in the middle of a statement ({line}). Mermaid cuts `%%{{ … }}%%` out and joins what is before and after it, so the structured editor cannot handle it."
+msgstr "문 중간에 `%%{{`이(가) 있습니다 ({line}). Mermaid는 `%%{{ … }}%%`을(를) 잘라내고 그 앞뒤를 이어 붙이므로 구조화 편집기에서 처리할 수 없습니다."
+
+msgid "There is a `%%{{` that is never closed ({line}). Mermaid does not read anything after it, so the structured editor cannot handle it."
+msgstr "닫히지 않은 `%%{{`이(가) 있습니다 ({line}). Mermaid는 그 뒤의 내용을 읽지 않으므로 구조화 편집기에서 처리할 수 없습니다."
+
+msgid "There is a `[` inside `[` ({statement})."
+msgstr "`[` 안에 `[`가 있습니다 ({statement})."
+
+msgid "There is a `}}` without a matching `{{`."
+msgstr "대응하는 `{{`이(가) 없는 `}}`가 있습니다."
+
+msgid "There is a `}}` without a matching boundary (line {}). Edit it as text."
+msgstr "대응하는 경계가 없는 `}}`가 있습니다 ({}번째 줄). 텍스트로 편집하세요."
+
+msgid "There is a `}}` without a matching boundary."
+msgstr "대응하는 경계가 없는 `}}`가 있습니다."
+
+msgid "There is a boundary that is not closed (`}}` is missing). Edit it as text."
+msgstr "닫히지 않은 경계가 있습니다 (`}}`가 없음). 텍스트로 편집하세요."
+
+msgid "There is a boundary that is not closed."
+msgstr "닫히지 않은 경계가 있습니다."
+
+msgid "There is a node with an empty label ({trimmed})."
+msgstr "레이블이 비어 있는 노드가 있습니다 ({trimmed})."
+
+msgid "There is a node with an empty label."
+msgstr "레이블이 비어 있는 노드가 있습니다."
+
+msgid "There is a requirement or element with an empty name."
+msgstr "이름이 비어 있는 요구 사항 또는 요소가 있습니다."
+
+msgid "There is a requirement or element without a name ({text})."
+msgstr "이름이 없는 요구 사항 또는 요소가 있습니다 ({text})."
+
+msgid "There is a style assignment without a target."
+msgstr "대상이 없는 스타일 지정이 있습니다."
+
+msgid "There is an `end` without a matching `block`. Mermaid draws it as a block named `end`."
+msgstr "대응하는 `block`이 없는 `end`가 있습니다. Mermaid는 이를 `end`라는 이름의 블록으로 그립니다."
+
+msgid "There is an empty cause."
+msgstr "빈 원인이 있습니다."
+
+msgid "There is an empty event ({trimmed}). Delete it, or edit it as text."
+msgstr "빈 이벤트가 있습니다 ({trimmed}). 삭제하거나 텍스트로 편집하세요."
+
+msgid "There is an extra `{}` after `\"{value}\"`."
+msgstr "`\"{value}\"` 뒤에 불필요한 `{}`이(가) 있습니다."
+
+msgid "There is an item with an empty name."
+msgstr "이름이 비어 있는 항목이 있습니다."
+
+msgid "There is an overlap that contains no set."
+msgstr "집합을 포함하지 않는 겹침이 있습니다."
+
+msgid "There is an unclosed \"` ({statement})."
+msgstr "닫히지 않은 \"`이(가) 있습니다 ({statement})."
+
+msgid "There is an unclosed \"` … `\"."
+msgstr "닫히지 않은 \"` … `\"이(가) 있습니다."
+
+msgid "There is an unclosed `\"` ({statement})."
+msgstr "닫히지 않은 `\"`가 있습니다 ({statement})."
+
+msgid "There is an unclosed `\"` ({text})."
+msgstr "닫히지 않은 `\"`가 있습니다 ({text})."
+
+msgid "There is an unclosed `\"`."
+msgstr "닫히지 않은 `\"`가 있습니다."
+
+msgid "There is an unclosed label ({line})."
+msgstr "닫히지 않은 레이블이 있습니다 ({line})."
+
+msgid "There is no `:` after the label ({statement})."
+msgstr "레이블 뒤에 `:`이 없습니다 ({statement})."
+
+msgid "There is no `[` after the `:` of the point."
+msgstr "점의 `:` 뒤에 `[`가 없습니다."
+
+msgid "There is no `]]` closing `[[` ({line})."
+msgstr "`[[`을(를) 닫는 `]]`가 없습니다 ({line})."
+
+msgid "There is no `]` after the label ({line})."
+msgstr "레이블 뒤에 `]`가 없습니다 ({line})."
+
+msgid "There is no `end note` that matches the `note` ({statement})."
+msgstr "`note`에 대응하는 `end note`가 없습니다 ({statement})."
+
+msgid "There is no `{{` after `{statement}`."
+msgstr "`{statement}` 뒤에 `{{`이(가) 없습니다."
+
+msgid "There is no `}}` that matches a `{{`."
+msgstr "`{{`에 대응하는 `}}`가 없습니다."
+
+msgid "There is no block `{end}` for the edge to connect (written only in an edge, Mermaid places a new block there)."
+msgstr "연결선이 연결할 블록 `{end}`이(가) 없습니다 (연결선에만 작성하면 Mermaid가 그 자리에 새 블록을 배치합니다)."
+
+msgid "There is no block `{target}` to give the class `{class_name}` to."
+msgstr "클래스 `{class_name}`을(를) 지정할 블록 `{target}`이(가) 없습니다."
+
+msgid "There is no block `{target}` to give the style to."
+msgstr "스타일을 지정할 블록 `{target}`이(가) 없습니다."
+
+msgid "There is no block around `{}`."
+msgstr "`{}`을(를) 둘러싼 블록이 없습니다."
+
+msgid "There is no data name after `data`."
+msgstr "`data` 뒤에 데이터 이름이 없습니다."
+
+msgid "There is no element `{end}` for the end of a relationship."
+msgstr "관계의 끝에 해당하는 요소 `{end}`이(가) 없습니다."
+
+msgid "There is no frame number after `->>` ({line})."
+msgstr "`->>` 뒤에 프레임 번호가 없습니다 ({line})."
+
+msgid "There is no node before `:::` ({trimmed})."
+msgstr "`:::` 앞에 노드가 없습니다 ({trimmed})."
+
+msgid "There is no node before `::icon(…)` ({trimmed})."
+msgstr "`::icon(…)` 앞에 노드가 없습니다 ({trimmed})."
+
+msgid "There is no node before `@{{` ({rest}). Mermaid skips this line, so edit it as text."
+msgstr "`@{{` 앞에 노드가 없습니다 ({rest}). Mermaid는 이 줄을 건너뛰므로 텍스트로 편집하세요."
+
+msgid "There is no number after `-->` ({statement})."
+msgstr "`-->` 뒤에 숫자가 없습니다 ({statement})."
+
+msgid "There is no period before the event `{trimmed}`."
+msgstr "이벤트 `{trimmed}` 앞에 기간이 없습니다."
+
+msgid "There is no requirement or element named `{name}` for a relationship to point to."
+msgstr "관계가 가리킬 `{name}`(이)라는 요구 사항 또는 요소가 없습니다."
+
+msgid "There is no requirement or element named `{name}` for a style assignment to point to."
+msgstr "스타일 지정이 가리킬 `{name}`(이)라는 요구 사항 또는 요소가 없습니다."
+
+msgid "There is no start or end after `:` ({statement})."
+msgstr "`:` 뒤에 시작 또는 끝이 없습니다 ({statement})."
+
+msgid "There is no style class name after `:::` ({statement})."
+msgstr "`:::` 뒤에 스타일 클래스 이름이 없습니다 ({statement})."
+
+msgid "There is no task name before `:` ({statement})."
+msgstr "`:` 앞에 작업 이름이 없습니다 ({statement})."
+
+msgid "Thick arrow"
+msgstr "굵은 화살표"
+
+msgid "This commit has the message `{message}`, which a merge cannot have, so it cannot be changed into a merge. Remove the `msg` in the text, or delete the commit and add a merge."
+msgstr "이 커밋에는 병합 커밋이 가질 수 없는 메시지 `{message}`이(가) 있으므로 병합으로 변경할 수 없습니다. 텍스트에서 `msg`를 제거하거나, 커밋을 삭제하고 병합을 추가하세요."
+
+msgid "This could not be read as a mindmap node ({statement}). Edit it as text."
+msgstr "마인드맵 노드로 읽지 못했습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "This could not be read as a node of a tree view ({trimmed}). Enclose a name in \"…\" or '…', and write `title`, `accTitle` and `accDescr` before the first node."
+msgstr "트리 보기의 노드로 읽지 못했습니다 ({trimmed}). 이름은 \"…\" 또는 '…'로 묶고, `title`, `accTitle`, `accDescr`는 첫 번째 노드 앞에 작성하세요."
+
+msgid "This could not be read as a statement of a Venn diagram ({statement}). Edit it as text."
+msgstr "벤 다이어그램의 문으로 읽지 못했습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "This could not be read as a treemap item ({rest}). Write it as `\"name\"` or `\"name\": value`."
+msgstr "트리맵 항목으로 읽지 못했습니다 ({rest}). `\"name\"` 또는 `\"name\": value` 형식으로 작성하세요."
+
+msgid "This could not be read as an event ({trimmed})."
+msgstr "이벤트로 읽지 못했습니다 ({trimmed})."
+
+msgid "This date and time cannot be written in local time"
+msgstr "이 날짜와 시간은 현지 시간으로 작성할 수 없습니다"
+
+msgid "This diagram cannot be opened, because rewriting it would change its content (it depends on the order of the style assignments or the like). Edit it as text."
+msgstr "다시 쓰면 내용이 바뀌므로 이 다이어그램을 열 수 없습니다 (스타일 지정 순서 등에 따라 달라짐). 텍스트로 편집하세요."
+
+msgid "This diagram is not a C4 diagram."
+msgstr "이 다이어그램은 C4 다이어그램이 아닙니다."
+
+msgid "This diagram is not a Gantt chart."
+msgstr "이 다이어그램은 간트 차트가 아닙니다."
+
+msgid "This diagram is not a Git graph."
+msgstr "이 다이어그램은 Git 그래프가 아닙니다."
+
+msgid "This diagram is not a Sankey diagram."
+msgstr "이 다이어그램은 Sankey 다이어그램이 아닙니다."
+
+msgid "This diagram is not a Venn diagram."
+msgstr "이 다이어그램은 벤 다이어그램이 아닙니다."
+
+msgid "This diagram is not a block diagram."
+msgstr "이 다이어그램은 블록 다이어그램이 아닙니다."
+
+msgid "This diagram is not a class diagram."
+msgstr "이 다이어그램은 클래스 다이어그램이 아닙니다."
+
+msgid "This diagram is not a kanban board."
+msgstr "이 다이어그램은 칸반 보드가 아닙니다."
+
+msgid "This diagram is not a mindmap."
+msgstr "이 다이어그램은 마인드맵이 아닙니다."
+
+msgid "This diagram is not a packet diagram."
+msgstr "이 다이어그램은 패킷 다이어그램이 아닙니다."
+
+msgid "This diagram is not a pie chart."
+msgstr "이 다이어그램은 원형 차트가 아닙니다."
+
+msgid "This diagram is not a quadrant chart."
+msgstr "이 다이어그램은 사분면 차트가 아닙니다."
+
+msgid "This diagram is not a radar chart."
+msgstr "이 다이어그램은 레이더 차트가 아닙니다."
+
+msgid "This diagram is not a requirement diagram."
+msgstr "이 다이어그램은 요구 사항 다이어그램이 아닙니다."
+
+msgid "This diagram is not a sequence diagram."
+msgstr "이 다이어그램은 시퀀스 다이어그램이 아닙니다."
+
+msgid "This diagram is not a state diagram."
+msgstr "이 다이어그램은 상태 다이어그램이 아닙니다."
+
+msgid "This diagram is not a timeline."
+msgstr "이 다이어그램은 타임라인이 아닙니다."
+
+msgid "This diagram is not a tree view."
+msgstr "이 다이어그램은 트리 보기가 아닙니다."
+
+msgid "This diagram is not a treemap."
+msgstr "이 다이어그램은 트리맵이 아닙니다."
+
+msgid "This diagram is not a user journey."
+msgstr "이 다이어그램은 사용자 여정이 아닙니다."
+
+msgid "This diagram is not an ER diagram."
+msgstr "이 다이어그램은 ER 다이어그램이 아닙니다."
+
+msgid "This diagram is not an Ishikawa diagram."
+msgstr "이 다이어그램은 이시카와 다이어그램이 아닙니다."
+
+msgid "This diagram is not an XY chart."
+msgstr "이 다이어그램은 XY 차트가 아닙니다."
+
+msgid "This diagram is not an architecture diagram."
+msgstr "이 다이어그램은 아키텍처 다이어그램이 아닙니다."
+
+msgid "This diagram is not an event modeling diagram."
+msgstr "이 다이어그램은 이벤트 모델링 다이어그램이 아닙니다."
+
+msgid "This diagram type is not supported by the structured editor (flowcharts only)."
+msgstr "이 다이어그램 종류는 구조화 편집기에서 지원되지 않습니다 (순서도만 지원)."
+
+msgid "This is not a Gantt chart"
+msgstr "간트 차트가 아닙니다"
+
+msgid "This is not a Gantt chart (only diagrams that start with `gantt` can be edited in the structured editor)."
+msgstr "간트 차트가 아닙니다 (`gantt`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a Git graph (only diagrams that start with `gitGraph` can be edited in the structured editor)."
+msgstr "Git 그래프가 아닙니다 (`gitGraph`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a block diagram (only a diagram that starts with `block-beta` can be edited in the structured editor)."
+msgstr "블록 다이어그램이 아닙니다 (`block-beta`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a class diagram (only diagrams that start with `classDiagram` can be edited in the structured editor)."
+msgstr "클래스 다이어그램이 아닙니다 (`classDiagram`으로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a kanban board (only diagrams that start with `kanban` can be edited in the structured editor)."
+msgstr "칸반 보드가 아닙니다 (`kanban`으로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a mindmap (only a diagram that starts with `mindmap` can be edited in the structured editor)."
+msgstr "마인드맵이 아닙니다 (`mindmap`으로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a pie chart (only a diagram that starts with `pie` can be edited in the structured editor)."
+msgstr "원형 차트가 아닙니다 (`pie`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a quadrant chart (only diagrams that start with `quadrantChart` can be edited in the structured editor)."
+msgstr "사분면 차트가 아닙니다 (`quadrantChart`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a radar chart (only diagrams that start with `radar-beta` can be edited in the structured editor)."
+msgstr "레이더 차트가 아닙니다 (`radar-beta`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a requirement diagram (only diagrams that start with `requirementDiagram` can be edited in the structured editor)."
+msgstr "요구 사항 다이어그램이 아닙니다 (`requirementDiagram`으로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a state diagram (only a diagram that starts with `stateDiagram` can be edited in the structured editor)."
+msgstr "상태 다이어그램이 아닙니다 (`stateDiagram`으로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a timeline (only a diagram that starts with `timeline` can be edited in the structured editor)."
+msgstr "타임라인이 아닙니다 (`timeline`으로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a tree view (only a diagram that starts with `treeView-beta` can be edited in the structured editor)."
+msgstr "트리 보기가 아닙니다 (`treeView-beta`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a treemap (only a diagram that starts with `treemap-beta` can be edited in the structured editor)."
+msgstr "트리맵이 아닙니다 (`treemap-beta`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not a user journey (only diagrams that start with `journey` can be edited in the structured editor)."
+msgstr "사용자 여정이 아닙니다 (`journey`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not an Ishikawa diagram (only a diagram that starts with `ishikawa-beta` or `ishikawa` can be edited in the structured editor)."
+msgstr "이시카와 다이어그램이 아닙니다 (`ishikawa-beta` 또는 `ishikawa`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not an XY chart (only diagrams that start with `xychart-beta` can be edited in the structured editor)."
+msgstr "XY 차트가 아닙니다 (`xychart-beta`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not an architecture diagram (only diagrams that start with `architecture-beta` can be edited in the structured editor)."
+msgstr "아키텍처 다이어그램이 아닙니다 (`architecture-beta`로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This is not an event modeling diagram (only diagrams that start with `eventmodeling` can be edited in the structured editor)."
+msgstr "이벤트 모델링 다이어그램이 아닙니다 (`eventmodeling`으로 시작하는 다이어그램만 구조화 편집기에서 편집할 수 있습니다)."
+
+msgid "This line could not be read as a field of a packet diagram ({statement}). Write it as `0-15: \"label\"` or `+8: \"label\"`."
+msgstr "이 줄을 패킷 다이어그램의 필드로 읽지 못했습니다 ({statement}). `0-15: \"label\"` 또는 `+8: \"label\"` 형식으로 작성하세요."
+
+msgid "This line could not be read as a flow of a Sankey diagram ({}). Write it as `source,target,value`."
+msgstr "이 줄을 Sankey 다이어그램의 흐름으로 읽지 못했습니다 ({}). `source,target,value` 형식으로 작성하세요."
+
+msgid "This line could not be read as a slice of a pie chart ({statement}). Write it as `\"label\" : value`."
+msgstr "이 줄을 원형 차트의 조각으로 읽지 못했습니다 ({statement}). `\"label\" : value` 형식으로 작성하세요."
+
+msgid "Tick count (ticks)"
+msgstr "눈금 수 (ticks)"
+
+msgid "To give task `{}` an ID, make its start a date or `after`."
+msgstr "작업 `{}`에 ID를 지정하려면 시작을 날짜 또는 `after`로 설정하세요."
+
+msgid "Top to bottom (TB / TD)"
+msgstr "위에서 아래로 (TB / TD)"
+
+msgid "Top to bottom (TB)"
+msgstr "위에서 아래로 (TB)"
+
+msgid "Traces (traces)"
+msgstr "추적 (traces)"
+
+msgid "Trapezoid (reversed) [\\manual input/]"
+msgstr "사다리꼴 (반대) [\\수동 입력/]"
+
+msgid "Trapezoid [/ \\]"
+msgstr "사다리꼴 [/ \\]"
+
+msgid "Trapezoid [/manual operation\\]"
+msgstr "사다리꼴 [/수동 작업\\]"
+
+msgid "Two axes have the ID `{}`. It is unclear which axis a value belongs to, so change one of the IDs."
+msgstr "두 축의 ID가 `{}`입니다. 값이 어느 축에 속하는지 알 수 없으므로 ID 중 하나를 변경하세요."
+
+msgid "Two curves have the ID `{}`. Change one of the IDs."
+msgstr "두 곡선의 ID가 `{}`입니다. ID 중 하나를 변경하세요."
+
+msgid "Two-way arrow"
+msgstr "양방향 화살표"
+
+msgid "Unique key (UK)"
+msgstr "고유 키 (UK)"
+
+msgid "Use only letters, digits and `_` in the class name of point `{}`."
+msgstr "점 `{}`의 클래스 이름에는 문자, 숫자, `_`만 사용하세요."
+
+msgid "Verification: Analysis"
+msgstr "검증: 분석"
+
+msgid "Verification: Demonstration"
+msgstr "검증: 시연"
+
+msgid "Verification: Inspection"
+msgstr "검증: 검사"
+
+msgid "Verification: Test"
+msgstr "검증: 테스트"
+
+msgid "Verifies (verifies)"
+msgstr "검증 (verifies)"
+
+msgid "Very High"
+msgstr "매우 높음"
+
+msgid "Very Low"
+msgstr "매우 낮음"
+
+msgid "When text shaped like `<tag …>` contains `=\"…\"`, Mermaid rewrites the `\"` to `'` before reading it, which changes the diagram. Change the `<` of the label or the `=` at its end."
+msgstr "`<tag …>` 형태의 텍스트에 `=\"…\"`이(가) 포함되어 있으면 Mermaid가 읽기 전에 `\"`를 `'`로 다시 쓰므로 다이어그램이 바뀝니다. 레이블의 `<` 또는 끝의 `=`을 변경하세요."
+
+msgid "With the x-axis range `{min}` → `{max}`, Mermaid cannot place the values of series {number} and never finishes drawing. Move the ends of the range apart."
+msgstr "x축 범위 `{min}` → `{max}`에서는 Mermaid가 계열 {number}의 값을 배치할 수 없어 그리기가 끝나지 않습니다. 범위의 양 끝을 더 벌리세요."
+
+msgid "Without `dateFormat`, the end cannot be written as a date"
+msgstr "`dateFormat`이 없으면 끝을 날짜로 작성할 수 없습니다"
+
+msgid "Without categories or a range on the x axis, Mermaid builds the x axis from the number of values in the first series. With only one value in the first series, it cannot place the values of series {number} and never finishes drawing. Add values to the first series, or give the x axis categories or a range."
+msgstr "x축에 범주나 범위가 없으면 Mermaid는 첫 번째 계열의 값 개수로 x축을 만듭니다. 첫 번째 계열에 값이 하나뿐이면 계열 {number}의 값을 배치할 수 없어 그리기가 끝나지 않습니다. 첫 번째 계열에 값을 추가하거나 x축에 범주 또는 범위를 지정하세요."
+
+msgid "Write `graticule` as `circle` or `polygon` ({line})."
+msgstr "`graticule`은 `circle` 또는 `polygon`으로 작성하세요 ({line})."
+
+msgid "Write `showLegend` as `true` or `false` ({line})."
+msgstr "`showLegend`는 `true` 또는 `false`로 작성하세요 ({line})."
+
+msgid "Write a direction such as `(right)` for the arrow block in `{line}`."
+msgstr "`{line}`의 화살표 블록에 `(right)` 같은 방향을 작성하세요."
+
+msgid "Write a generic type as `{name}~T~` ({statement})."
+msgstr "제네릭 타입은 `{name}~T~` 형식으로 작성하세요 ({statement})."
+
+msgid "Write a number of 0 or more like `12`, `0.5` or `.5` (no leading 0, trailing `.` or sign)."
+msgstr "`12`, `0.5`, `.5`처럼 0 이상의 숫자를 작성하세요 (앞의 0, 끝의 `.`, 부호 불가)."
+
+msgid "Write at least one block to give the class `{class_name}` to."
+msgstr "클래스 `{class_name}`을(를) 지정할 블록을 하나 이상 작성하세요."
+
+msgid "Write at least one direction for arrow `{}` (right / left / up / down / x / y)."
+msgstr "화살표 `{}`의 방향을 하나 이상 작성하세요 (right / left / up / down / x / y)."
+
+msgid "Write it as `[\"display name\"]` ({statement})."
+msgstr "`[\"display name\"]` 형식으로 작성하세요 ({statement})."
+
+msgid "Write it as `namespace {name} {{` ({statement})."
+msgstr "`namespace {name} {{` 형식으로 작성하세요 ({statement})."
+
+msgid "Write it as `note \"text\"` ({statement})."
+msgstr "`note \"text\"` 형식으로 작성하세요 ({statement})."
+
+msgid "Write it as `state \"description\" as ID` ({statement})."
+msgstr "`state \"description\" as ID` 형식으로 작성하세요 ({statement})."
+
+msgid "Write one of TB / BT / LR / RL after `direction` ({statement})."
+msgstr "`direction` 뒤에 TB / BT / LR / RL 중 하나를 작성하세요 ({statement})."
+
+msgid "Write the number of bits of “{}” as a whole number of 1 or more."
+msgstr "“{}”의 비트 수를 1 이상의 정수로 작성하세요."
+
+msgid "Write the order `{order}` as a whole number."
+msgstr "순서 `{order}`을(를) 정수로 작성하세요."
+
+msgid "Write the style `{style}` as `name: value`."
+msgstr "스타일 `{style}`을(를) `name: value` 형식으로 작성하세요."
+
+msgid "Write the x-axis range `{min}` → `{max}` as numbers."
+msgstr "x축 범위 `{min}` → `{max}`을(를) 숫자로 작성하세요."
+
+msgid "Write the y-axis range `{}` → `{}` as numbers (leave both empty to set it automatically)."
+msgstr "y축 범위 `{}` → `{}`을(를) 숫자로 작성하세요 (자동으로 설정하려면 둘 다 비워 두세요)."
+
+msgid "Zero or more"
+msgstr "0개 이상"
+
+msgid "Zero or one"
+msgstr "0개 또는 1개"
+
+msgid "`\"` is required"
+msgstr "`\"`가 필요합니다"
+
+msgid "`\"`, `%%` and line breaks are not allowed, and it cannot start or end with whitespace."
+msgstr "`\"`, `%%` 및 줄 바꿈은 허용되지 않으며 공백으로 시작하거나 끝날 수 없습니다."
+
+msgid "`:::` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "노드 `{}`에 `:::`이(가) 두 번 작성되었습니다. Mermaid는 나중 것만 사용하므로 하나로 합친 다음 편집기를 다시 여세요."
+
+msgid "`:::` without a class is not supported by the structured editor ({rest})."
+msgstr "클래스가 없는 `:::`은(는) 구조화 편집기에서 지원되지 않습니다 ({rest})."
+
+msgid "`::icon(` has no closing parenthesis ({rest}). Mermaid skips this line, so close it or edit it as text."
+msgstr "`::icon(`에 닫는 괄호가 없습니다 ({rest}). Mermaid는 이 줄을 건너뛰므로 괄호를 닫거나 텍스트로 편집하세요."
+
+msgid "`::icon(…)` is written twice for the node `{}`. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "노드 `{}`에 `::icon(…)`이(가) 두 번 작성되었습니다. Mermaid는 나중 것만 사용하므로 하나로 합친 다음 편집기를 다시 여세요."
+
+msgid "`<<annotation>>` is not closed ({statement})."
+msgstr "`<<annotation>>`이(가) 닫혀 있지 않습니다 ({statement})."
+
+msgid "`@{{` is not closed with `}}`."
+msgstr "`@{{`이(가) `}}`로 닫혀 있지 않습니다."
+
+msgid "`@{{{inner}}}` has an empty entry."
+msgstr "`@{{{inner}}}`에 빈 항목이 있습니다."
+
+msgid "`UpdateElementStyle({alias}, …)` comes before the declaration of `{alias}`, so it has no effect. Move it after the declaration."
+msgstr "`UpdateElementStyle({alias}, …)`이(가) `{alias}`의 선언보다 앞에 있으므로 효과가 없습니다. 선언 뒤로 옮기세요."
+
+msgid "`UpdateRelStyle({from}, {to}, …)` comes before the relationship, so it has no effect. Move it after the relationship."
+msgstr "`UpdateRelStyle({from}, {to}, …)`이(가) 관계보다 앞에 있으므로 효과가 없습니다. 관계 뒤로 옮기세요."
+
+msgid "`X` (seconds) cannot express less than a second"
+msgstr "`X`(초)로는 1초 미만을 표현할 수 없습니다"
+
+msgid "`[` is missing ({statement})."
+msgstr "`[`가 없습니다 ({statement})."
+
+msgid "`axisFormat` is written twice. Merge them into one, then open it again."
+msgstr "`axisFormat`이 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요."
+
+msgid "`axis` has no axes ({line})."
+msgstr "`axis`에 축이 없습니다 ({line})."
+
+msgid "`branch` cannot take `{other}:`"
+msgstr "`branch`에는 `{other}:`을(를) 사용할 수 없습니다"
+
+msgid "`cherry-pick` cannot take `{other}:`"
+msgstr "`cherry-pick`에는 `{other}:`을(를) 사용할 수 없습니다"
+
+msgid "`commit` cannot take `{other}:`"
+msgstr "`commit`에는 `{other}:`을(를) 사용할 수 없습니다"
+
+msgid "`curve` has no curves ({line})."
+msgstr "`curve`에 곡선이 없습니다 ({line})."
+
+msgid "`dateFormat` is written twice. Merge them into one, then open it again."
+msgstr "`dateFormat`이 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요."
+
+msgid "`destroy {id}` is written twice, which is not supported by the structured editor. Edit it as text."
+msgstr "`destroy {id}`이(가) 두 번 작성되어 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "`direction {rest}` cannot be read (write one of TB / BT / LR / RL)."
+msgstr "`direction {rest}`을(를) 읽을 수 없습니다 (TB / BT / LR / RL 중 하나를 작성하세요)."
+
+msgid "`direction` cannot be written inside a `namespace` ({statement})."
+msgstr "`direction`은 `namespace` 안에 작성할 수 없습니다 ({statement})."
+
+msgid "`direction` is written twice in the same place. Merge them into one, then open the editor again."
+msgstr "`direction`이 같은 위치에 두 번 작성되었습니다. 하나로 합친 다음 편집기를 다시 여세요."
+
+msgid "`direction` is written twice. Merge them into one, then open it again ({statement})."
+msgstr "`direction`이 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요 ({statement})."
+
+msgid "`direction` is written twice. Merge them into one, then open it again."
+msgstr "`direction`이 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요."
+
+msgid "`displayMode` cannot be written in the body ({statement}). In Mermaid, set it with `displayMode: compact` in the front matter or with `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%`. Edit it as text."
+msgstr "`displayMode`는 본문에 작성할 수 없습니다 ({statement}). Mermaid에서는 프런트 매터의 `displayMode: compact` 또는 `%%{{init: {{\"gantt\": {{\"displayMode\": \"compact\"}}}}}}%%`로 설정합니다. 텍스트로 편집하세요."
+
+msgid "`global` is the name of the whole diagram, so it cannot be used as the alias of a boundary."
+msgstr "`global`은 다이어그램 전체의 이름이므로 경계의 별칭으로 사용할 수 없습니다."
+
+msgid "`id:` is missing"
+msgstr "`id:`가 없습니다"
+
+msgid "`merge` cannot take `{other}:`"
+msgstr "`merge`에는 `{other}:`을(를) 사용할 수 없습니다"
+
+msgid "`note` must be followed by `left of` or `right of` ({statement})."
+msgstr "`note` 뒤에는 `left of` 또는 `right of`가 와야 합니다 ({statement})."
+
+msgid "`quadrant-{}` is written twice. Merge them into one, then open it again."
+msgstr "`quadrant-{}`이(가) 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요."
+
+msgid "`title` is written twice. Merge them into one, then open it again."
+msgstr "`title`이 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요."
+
+msgid "`title` is written twice. Mermaid uses only the later one, so merge them into one, then open the editor again."
+msgstr "`title`이 두 번 작성되었습니다. Mermaid는 나중 것만 사용하므로 하나로 합친 다음 편집기를 다시 여세요."
+
+msgid "`title` is written twice. Only the last one is used, so merge them into one, then open it again."
+msgstr "`title`이 두 번 작성되었습니다. 마지막 것만 사용되므로 하나로 합친 다음 다시 여세요."
+
+msgid "`x-axis` has neither a name nor ticks ({statement})."
+msgstr "`x-axis`에 이름과 눈금이 모두 없습니다 ({statement})."
+
+msgid "`x-axis` is written twice. Merge them into one, then open it again."
+msgstr "`x-axis`가 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요."
+
+msgid "`y-axis` has neither a name nor a range ({statement})."
+msgstr "`y-axis`에 이름과 범위가 모두 없습니다 ({statement})."
+
+msgid "`y-axis` is written twice. Merge them into one, then open it again."
+msgstr "`y-axis`가 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요."
+
+msgid "`{annotation}` cannot be used as an annotation ({statement})."
+msgstr "`{annotation}`은(는) 주석으로 사용할 수 없습니다 ({statement})."
+
+msgid "`{class}` cannot be used as a class name ({statement})."
+msgstr "`{class}`은(는) 클래스 이름으로 사용할 수 없습니다 ({statement})."
+
+msgid "`{class}` cannot be used as a class name."
+msgstr "`{class}`은(는) 클래스 이름으로 사용할 수 없습니다."
+
+msgid "`{comment}` cannot be written as an end-of-line comment."
+msgstr "`{comment}`은(는) 줄 끝 주석으로 작성할 수 없습니다."
+
+msgid "`{format}` cannot be used for `{name}` (`#`, `;` and line breaks are not allowed, and it cannot be empty)."
+msgstr "`{format}`은(는) `{name}`에 사용할 수 없습니다 (`#`, `;` 및 줄 바꿈 불가, 비워 둘 수 없음)."
+
+msgid "`{generic}` cannot be used as a generic type ({statement})."
+msgstr "`{generic}`은(는) 제네릭 타입으로 사용할 수 없습니다 ({statement})."
+
+msgid "`{header}` cannot be read as the heading of a Sankey diagram (write only `sankey-beta` on its line)."
+msgstr "`{header}`을(를) Sankey 다이어그램의 머리글로 읽을 수 없습니다 (해당 줄에는 `sankey-beta`만 작성하세요)."
+
+msgid "`{header}` cannot be read as the heading of a packet diagram (write only `packet-beta` on its line)."
+msgstr "`{header}`을(를) 패킷 다이어그램의 머리글로 읽을 수 없습니다 (해당 줄에는 `packet-beta`만 작성하세요)."
+
+msgid "`{id}` appears before its `create`. Put the `create` first."
+msgstr "`{id}`이(가) `create`보다 앞에 나타납니다. `create`를 먼저 두세요."
+
+msgid "`{id}` cannot be placed inside itself."
+msgstr "`{id}`을(를) 자기 자신 안에 둘 수 없습니다."
+
+msgid "`{id}` cannot be used as a state ID ({statement})."
+msgstr "`{id}`은(는) 상태 ID로 사용할 수 없습니다 ({statement})."
+
+msgid "`{id}` cannot be used as a state ID ({statement}). Mermaid cannot read an ID that contains spaces, `:`, `;` or `-`."
+msgstr "`{id}`은(는) 상태 ID로 사용할 수 없습니다 ({statement}). Mermaid는 공백, `:`, `;` 또는 `-`가 포함된 ID를 읽을 수 없습니다."
+
+msgid "`{id}` in `click` is the name a task without an ID gets automatically. It points to a different task when tasks are added, deleted or moved, so give that task an ID and change `click` to use it."
+msgstr "`click`의 `{id}`은(는) ID가 없는 작업에 자동으로 지정되는 이름입니다. 작업을 추가, 삭제 또는 이동하면 다른 작업을 가리키게 되므로 해당 작업에 ID를 지정하고 `click`이 그 ID를 사용하도록 변경하세요."
+
+msgid "`{id}` is not activated, so it cannot be deactivated."
+msgstr "`{id}`이(가) 활성화되지 않았으므로 비활성화할 수 없습니다."
+
+msgid "`{input}` is not enclosed in `\"`."
+msgstr "`{input}`이(가) `\"`로 묶여 있지 않습니다."
+
+msgid "`{keyword}` cannot be used in event modeling (line {}; the official Mermaid does not accept it). Remove the line, or edit it as text."
+msgstr "`{keyword}`은(는) 이벤트 모델링에서 사용할 수 없습니다 ({}번째 줄. 공식 Mermaid가 허용하지 않음). 줄을 제거하거나 텍스트로 편집하세요."
+
+msgid "`{keyword}` cannot be written inside a `namespace` ({statement})."
+msgstr "`{keyword}`은(는) `namespace` 안에 작성할 수 없습니다 ({statement})."
+
+msgid "`{keyword}` is written twice. Merge them into one, then open it again."
+msgstr "`{keyword}`이(가) 두 번 작성되었습니다. 하나로 합친 다음 다시 여세요."
+
+msgid "`{keyword}` statements are not supported by the structured editor ({trimmed}). Edit it as text."
+msgstr "`{keyword}` 문은 구조화 편집기에서 지원되지 않습니다 ({trimmed}). 텍스트로 편집하세요."
+
+msgid "`{key}:` is written twice"
+msgstr "`{key}:`이(가) 중복되었습니다"
+
+msgid "`{key}:` on the element `{target}` is lost in the structured editor ({statement}). Edit it as text."
+msgstr "요소 `{target}`의 `{key}:`은(는) 구조화 편집기에서 손실됩니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "`{key}` of `{opening}` is written twice. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{opening}`의 `{key}`이(가) 두 번 작성되었습니다. Mermaid는 마지막 것만 사용하므로 하나로 합친 다음 다시 여세요."
+
+msgid "`{label}` cannot be used as a task name ({statement}). `:` and words that start a statement, such as `title` and `section`, are not allowed."
+msgstr "`{label}`은(는) 작업 이름으로 사용할 수 없습니다 ({statement}). `:` 및 `title`, `section`처럼 문을 시작하는 단어는 허용되지 않습니다."
+
+msgid "`{line}` cannot be read as a number of columns (a whole number of 1 or more, or auto)."
+msgstr "`{line}`을(를) 열 수로 읽을 수 없습니다 (1 이상의 정수 또는 auto)."
+
+msgid "`{name}` cannot be used as a `:::` style class name ({statement})."
+msgstr "`{name}`은(는) `:::` 스타일 클래스 이름으로 사용할 수 없습니다 ({statement})."
+
+msgid "`{name}` cannot be used as a `namespace` name ({statement})."
+msgstr "`{name}`은(는) `namespace` 이름으로 사용할 수 없습니다 ({statement})."
+
+msgid "`{name}` cannot be used as a class name ({statement})."
+msgstr "`{name}`은(는) 클래스 이름으로 사용할 수 없습니다 ({statement})."
+
+msgid "`{name}` cannot be used as a name (the symbols \" - < > {{ }} : , # % ;, leading and trailing spaces, and the word direction are not allowed)."
+msgstr "`{name}`은(는) 이름으로 사용할 수 없습니다 (기호 \" - < > {{ }} : , # % ;, 앞뒤 공백, 단어 direction 불가)."
+
+msgid "`{name}` is defined twice. Mermaid ignores the second one, so merge them into one, then open it again."
+msgstr "`{name}`이(가) 두 번 정의되었습니다. Mermaid는 두 번째 것을 무시하므로 하나로 합친 다음 다시 여세요."
+
+msgid "`{name}` is not a C4 diagram macro. Edit it as text."
+msgstr "`{name}`은(는) C4 다이어그램 매크로가 아닙니다. 텍스트로 편집하세요."
+
+msgid "`{name}` is written twice ({line}). Merge them into one, then open it again."
+msgstr "`{name}`이(가) 두 번 작성되었습니다 ({line}). 하나로 합친 다음 다시 여세요."
+
+msgid "`{other}` is not a Git graph statement"
+msgstr "`{other}`은(는) Git 그래프 문이 아닙니다"
+
+msgid "`{parent}`, which `{id}` belongs to, is not a group (it does not exist, or it is a service or a junction)."
+msgstr "`{id}`이(가) 속한 `{parent}`은(는) 그룹이 아닙니다 (존재하지 않거나 서비스 또는 접합점입니다)."
+
+msgid "`{remainder}` after the value cannot be written in a pie chart ({statement}). Edit it as text."
+msgstr "값 뒤의 `{remainder}`은(는) 원형 차트에 작성할 수 없습니다 ({statement}). 텍스트로 편집하세요."
+
+msgid "`{rest}` follows `{CLASS_KEYWORD}` on the same line. Move it to the next line, then open it again."
+msgstr "같은 줄에서 `{CLASS_KEYWORD}` 뒤에 `{rest}`이(가) 이어집니다. 다음 줄로 옮긴 다음 다시 여세요."
+
+msgid "`{rest}` follows on the `{}` line. Move it to the next line, then open the editor again."
+msgstr "`{}` 줄에 `{rest}`이(가) 이어집니다. 다음 줄로 옮긴 다음 편집기를 다시 여세요."
+
+msgid "`{segment}` has no name."
+msgstr "`{segment}`에 이름이 없습니다."
+
+msgid "`{segment}` is not in the form `$name=\"value\"`."
+msgstr "`{segment}`이(가) `$name=\"value\"` 형식이 아닙니다."
+
+msgid "`{statement}` after `%%{{…}}%%` is not supported by the structured editor. Put the directive and the statement on separate lines, then open it again."
+msgstr "`%%{{…}}%%` 뒤의 `{statement}`은(는) 구조화 편집기에서 지원되지 않습니다. 지시문과 문을 서로 다른 줄에 둔 다음 다시 여세요."
+
+msgid "`{statement}` cannot be read as an edge (write it as `a:R -- L:b`)."
+msgstr "`{statement}`을(를) 연결선으로 읽을 수 없습니다 (`a:R -- L:b` 형식으로 작성하세요)."
+
+msgid "`{statement}` cannot be used in a C4 diagram (line {}; Mermaid does not accept it). Delete the line, or edit it as text."
+msgstr "`{statement}`은(는) C4 다이어그램에서 사용할 수 없습니다 ({}번째 줄. Mermaid가 허용하지 않음). 줄을 삭제하거나 텍스트로 편집하세요."
+
+msgid "`{statement}` is read as a `direction` statement, so it is not supported by the structured editor. Edit it as text."
+msgstr "`{statement}`은(는) `direction` 문으로 읽히므로 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "`{statement}` needs both an alias and a label. Edit it as text."
+msgstr "`{statement}`에는 별칭과 레이블이 모두 필요합니다. 텍스트로 편집하세요."
+
+msgid "`{statement}` points to `{target}`, which is not defined yet at that point. Mermaid ignores it, so reordering in the structured editor would change the diagram. Move it after the definition, or edit it as text."
+msgstr "`{statement}`은(는) 그 시점에 아직 정의되지 않은 `{target}`을(를) 가리킵니다. Mermaid는 이를 무시하므로 구조화 편집기에서 순서를 바꾸면 다이어그램이 바뀝니다. 정의 뒤로 옮기거나 텍스트로 편집하세요."
+
+msgid "`{statement}`, written after the directive `%%{{…}}%%` on the same line, is not supported by the structured editor. Mermaid removes the directive and reads this statement. Break the line after the directive, then open it again."
+msgstr "같은 줄에서 지시문 `%%{{…}}%%` 뒤에 작성된 `{statement}`은(는) 구조화 편집기에서 지원되지 않습니다. Mermaid는 지시문을 제거하고 이 문을 읽습니다. 지시문 뒤에서 줄을 바꾼 다음 다시 여세요."
+
+msgid "`{tail}` following the `architecture-beta` line is not supported by the structured editor. Move it to a line of its own, or edit it as text."
+msgstr "`architecture-beta` 줄에 이어지는 `{tail}`은(는) 구조화 편집기에서 지원되지 않습니다. 별도의 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "`{tail}` on the `gantt` line is not supported by the structured editor. Move it to the next line, or edit it as text."
+msgstr "`gantt` 줄의 `{tail}`은(는) 구조화 편집기에서 지원되지 않습니다. 다음 줄로 옮기거나 텍스트로 편집하세요."
+
+msgid "`{tail}` on the `gitGraph` line is not supported by the structured editor (the direction is one of LR / TB / BT). Edit it as text."
+msgstr "`gitGraph` 줄의 `{tail}`은(는) 구조화 편집기에서 지원되지 않습니다 (방향은 LR / TB / BT 중 하나). 텍스트로 편집하세요."
+
+msgid "`{tail}` on the `journey` line is not supported by the structured editor. Edit it as text."
+msgstr "`journey` 줄의 `{tail}`은(는) 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "`{tail}` on the `kanban` line is not supported by the structured editor. Write columns on the next line."
+msgstr "`kanban` 줄의 `{tail}`은(는) 구조화 편집기에서 지원되지 않습니다. 열은 다음 줄에 작성하세요."
+
+msgid "`{tail}` on the `quadrantChart` line is not supported by the structured editor. Edit it as text."
+msgstr "`quadrantChart` 줄의 `{tail}`은(는) 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "`{tail}` on the `radar-beta` line is not supported by the structured editor. Edit it as text."
+msgstr "`radar-beta` 줄의 `{tail}`은(는) 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "`{tail}` on the `{}` line is not supported by the structured editor. Edit it as text."
+msgstr "`{}` 줄의 `{tail}`은(는) 구조화 편집기에서 지원되지 않습니다. 텍스트로 편집하세요."
+
+msgid "`{text}` cannot be used (`\"` and line breaks are not allowed)."
+msgstr "`{text}`은(는) 사용할 수 없습니다 (`\"` 및 줄 바꿈 불가)."
+
+msgid "`{text}` cannot be written back"
+msgstr "`{text}`은(는) 다시 쓸 수 없습니다"
+
+msgid "`{token}` cannot hold the milliseconds exactly"
+msgstr "`{token}`(으)로는 밀리초를 정확히 표현할 수 없습니다"
+
+msgid "`{trimmed}` cannot be read as a point (`name: [x, y]`) or as any other statement. Edit it as text."
+msgstr "`{trimmed}`을(를) 점(`name: [x, y]`)이나 다른 문으로 읽을 수 없습니다. 텍스트로 편집하세요."
+
+msgid "`{trimmed}` cannot be read as a point."
+msgstr "`{trimmed}`을(를) 점으로 읽을 수 없습니다."
+
+msgid "`{trimmed}` cannot be read as a task (`name: score: people`) or as any other statement. Edit it as text."
+msgstr "`{trimmed}`을(를) 작업(`name: score: people`)이나 다른 문으로 읽을 수 없습니다. 텍스트로 편집하세요."
+
+msgid "`{trimmed}` is not supported by the structured editor (line {}). Edit it as text."
+msgstr "`{trimmed}`은(는) 구조화 편집기에서 지원되지 않습니다 ({}번째 줄). 텍스트로 편집하세요."
+
+msgid "`{trimmed}` is not supported by the structured editor ({reason}). Edit it as text."
+msgstr "`{trimmed}`은(는) 구조화 편집기에서 지원되지 않습니다 ({reason}). 텍스트로 편집하세요."
+
+msgid "`{trimmed}` is not supported by the structured editor. Close a multi-line `@{{` with a line that is only `}}`."
+msgstr "`{trimmed}`은(는) 구조화 편집기에서 지원되지 않습니다. 여러 줄 `@{{`은(는) `}}`만 있는 줄로 닫으세요."
+
+msgid "`{value}` cannot be read as a value of a pie chart ({statement}). Write a number of 0 or more."
+msgstr "`{value}`을(를) 원형 차트의 값으로 읽을 수 없습니다 ({statement}). 0 이상의 숫자를 작성하세요."
+
+msgid "`{value}` cannot be used for `{owner}` (line breaks, leading and trailing spaces, `%%{{`, values starting with `\"`, and mixing `\"` with `#` / `%%` are not allowed)."
+msgstr "`{value}`은(는) `{owner}`에 사용할 수 없습니다 (줄 바꿈, 앞뒤 공백, `%%{{`, `\"`로 시작하는 값, `\"`와 `#` / `%%`의 혼용 불가)."
+
+msgid "`{word}` cannot be used as an attribute type or name."
+msgstr "`{word}`은(는) 속성 타입이나 이름으로 사용할 수 없습니다."
+
+msgid "`{}` after the branch name is ignored"
+msgstr "브랜치 이름 뒤의 `{}`은(는) 무시됩니다"
+
+msgid "`{}` after the quoted message is ignored"
+msgstr "따옴표로 묶은 메시지 뒤의 `{}`은(는) 무시됩니다"
+
+msgid "`{}` cannot be used as a class name ({statement}). Spaces, symbols and Mermaid's reserved words are not allowed."
+msgstr "`{}`은(는) 클래스 이름으로 사용할 수 없습니다 ({statement}). 공백, 기호, Mermaid 예약어는 허용되지 않습니다."
+
+msgid "`{}` cannot be used as a participant id."
+msgstr "`{}`은(는) 참여자 ID로 사용할 수 없습니다."
+
+msgid "`{}` cannot be used inside `{}`."
+msgstr "`{}`은(는) `{}` 안에서 사용할 수 없습니다."
+
+msgid "`{}` cannot be used on the right side of a relationship."
+msgstr "`{}`은(는) 관계의 오른쪽에 사용할 수 없습니다."
+
+msgid "`{}` cannot come after a participant created with `create`."
+msgstr "`{}`은(는) `create`로 만든 참여자 뒤에 올 수 없습니다."
+
+msgid "`{}` does not have enough arguments."
+msgstr "`{}`의 인수가 부족합니다."
+
+msgid "`{}` follows `}}` on the same line ({trimmed}). Leave `}}` alone on its line, then open it again."
+msgstr "같은 줄에서 `}}` 뒤에 `{}`이(가) 이어집니다 ({trimmed}). `}}`만 별도의 줄에 남긴 다음 다시 여세요."
+
+msgid "`{}` has `:::` twice. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{}`에 `:::`이(가) 두 번 있습니다. Mermaid는 마지막 것만 사용하므로 하나로 합친 다음 다시 여세요."
+
+msgid "`{}` has no alias."
+msgstr "`{}`에 별칭이 없습니다."
+
+msgid "`{}` has two icons. Mermaid uses only the last one, so merge them into one, then open it again."
+msgstr "`{}`에 아이콘이 두 개 있습니다. Mermaid는 마지막 것만 사용하므로 하나로 합친 다음 다시 여세요."
+
+msgid "`{}` is indented less than the first column. Indent columns as deep as the first column, and cards deeper than that."
+msgstr "`{}`이(가) 첫 번째 열보다 얕게 들여쓰기되어 있습니다. 열은 첫 번째 열과 같은 깊이로, 카드는 그보다 깊게 들여쓰기하세요."
+
+msgid "`{}` is not activated, so it cannot be deactivated."
+msgstr "`{}`이(가) 활성화되지 않았으므로 비활성화할 수 없습니다."
+
+msgid "accTitle / accDescr on a line with `;` is not supported by the structured editor ({trimmed}). Write one per line."
+msgstr "`;`가 있는 줄의 accTitle / accDescr는 구조화 편집기에서 지원되지 않습니다 ({trimmed}). 한 줄에 하나씩 작성하세요."
+
+msgid "accTitle / accDescr with an unclosed `\"` or `[` is not supported by the structured editor ({trimmed}). Mermaid reads the lines after it as part of the description."
+msgstr "닫히지 않은 `\"` 또는 `[`가 있는 accTitle / accDescr는 구조화 편집기에서 지원되지 않습니다 ({trimmed}). Mermaid는 그 뒤의 줄도 설명의 일부로 읽습니다."
+
+msgid "arrow `{}`"
+msgstr "화살표 `{}`"
+
+msgid "block `{}`"
+msgstr "블록 `{}`"
+
+msgid "cannot read `{}`"
+msgstr "`{}`을(를) 읽을 수 없음"
+
+msgid "group `{id}`"
+msgstr "그룹 `{id}`"
+
+msgid "line breaks and `%%{{` are not allowed, and it cannot start with `%%` or have spaces at either end"
+msgstr "줄 바꿈과 `%%{{`은(는) 허용되지 않으며, `%%`로 시작하거나 양쪽 끝에 공백을 둘 수 없습니다"
+
+msgid "no `%%` or line breaks, no whitespace at either end, and no `\\` before a quote or at the end"
+msgstr "`%%` 및 줄 바꿈 불가, 양쪽 끝의 공백 불가, 따옴표 앞이나 끝에 `\\` 불가"
+
+msgid "section `{name}`"
+msgstr "섹션 `{name}`"
+
+msgid "task `{}`"
+msgstr "작업 `{}`"
+
+msgid "the branch name `{name}` cannot be written back"
+msgstr "브랜치 이름 `{name}`은(는) 다시 쓸 수 없습니다"
+
+msgid "the branch name is missing"
+msgstr "브랜치 이름이 없습니다"
+
+msgid "the first section"
+msgstr "첫 번째 섹션"
+
+msgid "the order `{value}` is not a whole number"
+msgstr "순서 `{value}`은(는) 정수가 아닙니다"
+
+msgid "the quotes are not closed"
+msgstr "따옴표가 닫혀 있지 않습니다"
+
+msgid "the space"
+msgstr "빈 공간"
+
+msgid "the type `{value}` is not one of NORMAL / REVERSE / HIGHLIGHT"
+msgstr "타입 `{value}`은(는) NORMAL / REVERSE / HIGHLIGHT 중 하나가 아닙니다"
+
+msgid "there is no `:` after `{key}`"
+msgstr "`{key}` 뒤에 `:`이 없습니다"
+
+msgid "{error} Edit it as text."
+msgstr "{error} 텍스트로 편집하세요."
+
+msgid "{name}: `{value}` cannot be written. {number_rule}"
+msgstr "{name}: `{value}`은(는) 작성할 수 없습니다. {number_rule}"
+
+msgid "{problem} Edit it as text."
+msgstr "{problem} 텍스트로 편집하세요."
+
+msgctxt "C4 element"
+msgid "Bidirectional"
+msgstr "양방향"
+
+msgctxt "C4 element"
+msgid "Boundary"
+msgstr "경계"
+
+msgctxt "C4 element"
+msgid "Component"
+msgstr "컴포넌트"
+
+msgctxt "C4 element"
+msgid "Component (DB)"
+msgstr "컴포넌트 (DB)"
+
+msgctxt "C4 element"
+msgid "Component (queue)"
+msgstr "컴포넌트 (큐)"
+
+msgctxt "C4 element"
+msgid "Container"
+msgstr "컨테이너"
+
+msgctxt "C4 element"
+msgid "Container (DB)"
+msgstr "컨테이너 (DB)"
+
+msgctxt "C4 element"
+msgid "Container (queue)"
+msgstr "컨테이너 (큐)"
+
+msgctxt "C4 element"
+msgid "Container boundary"
+msgstr "컨테이너 경계"
+
+msgctxt "C4 element"
+msgid "Deployment node"
+msgstr "배포 노드"
+
+msgctxt "C4 element"
+msgid "Deployment node (left-aligned)"
+msgstr "배포 노드 (왼쪽 맞춤)"
+
+msgctxt "C4 element"
+msgid "Deployment node (right-aligned)"
+msgstr "배포 노드 (오른쪽 맞춤)"
+
+msgctxt "C4 element"
+msgid "Downward"
+msgstr "아래쪽 방향"
+
+msgctxt "C4 element"
+msgid "Enterprise boundary"
+msgstr "엔터프라이즈 경계"
+
+msgctxt "C4 element"
+msgid "External component"
+msgstr "외부 컴포넌트"
+
+msgctxt "C4 element"
+msgid "External component (DB)"
+msgstr "외부 컴포넌트 (DB)"
+
+msgctxt "C4 element"
+msgid "External component (queue)"
+msgstr "외부 컴포넌트 (큐)"
+
+msgctxt "C4 element"
+msgid "External container"
+msgstr "외부 컨테이너"
+
+msgctxt "C4 element"
+msgid "External container (DB)"
+msgstr "외부 컨테이너 (DB)"
+
+msgctxt "C4 element"
+msgid "External container (queue)"
+msgstr "외부 컨테이너 (큐)"
+
+msgctxt "C4 element"
+msgid "External person"
+msgstr "외부 사용자"
+
+msgctxt "C4 element"
+msgid "External system"
+msgstr "외부 시스템"
+
+msgctxt "C4 element"
+msgid "External system (DB)"
+msgstr "외부 시스템 (DB)"
+
+msgctxt "C4 element"
+msgid "External system (queue)"
+msgstr "외부 시스템 (큐)"
+
+msgctxt "C4 element"
+msgid "Leftward"
+msgstr "왼쪽 방향"
+
+msgctxt "C4 element"
+msgid "Person"
+msgstr "사용자"
+
+msgctxt "C4 element"
+msgid "Relationship"
+msgstr "관계"
+
+msgctxt "C4 element"
+msgid "Reverse"
+msgstr "역방향"
+
+msgctxt "C4 element"
+msgid "Rightward"
+msgstr "오른쪽 방향"
+
+msgctxt "C4 element"
+msgid "System"
+msgstr "시스템"
+
+msgctxt "C4 element"
+msgid "System (DB)"
+msgstr "시스템 (DB)"
+
+msgctxt "C4 element"
+msgid "System (queue)"
+msgstr "시스템 (큐)"
+
+msgctxt "C4 element"
+msgid "System boundary"
+msgstr "시스템 경계"
+
+msgctxt "C4 element"
+msgid "Upward"
+msgstr "위쪽 방향"
+
+msgctxt "Gantt task tag"
+msgid "Critical"
+msgstr "중요"
+
+msgctxt "Gantt task tag"
+msgid "Done"
+msgstr "완료"
+
+msgctxt "Gantt task tag"
+msgid "In progress"
+msgstr "진행 중"
+
+msgctxt "Gantt task tag"
+msgid "Milestone"
+msgstr "마일스톤"
+
+msgctxt "Gantt task tag"
+msgid "Vertical line"
+msgstr "세로선"
+
+msgctxt "Mermaid diagram kind"
+msgid "Architecture Diagram"
+msgstr "아키텍처 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "Block Diagram"
+msgstr "블록 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "C4 Diagram"
+msgstr "C4 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "Class Diagram"
+msgstr "클래스 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "ER Diagram"
+msgstr "ER 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "Event Modeling"
+msgstr "이벤트 모델링"
+
+msgctxt "Mermaid diagram kind"
+msgid "Flowchart"
+msgstr "순서도"
+
+msgctxt "Mermaid diagram kind"
+msgid "Gantt Chart"
+msgstr "간트 차트"
+
+msgctxt "Mermaid diagram kind"
+msgid "Git Graph"
+msgstr "Git 그래프"
+
+msgctxt "Mermaid diagram kind"
+msgid "Ishikawa Diagram"
+msgstr "이시카와 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "Kanban"
+msgstr "칸반"
+
+msgctxt "Mermaid diagram kind"
+msgid "Mindmap"
+msgstr "마인드맵"
+
+msgctxt "Mermaid diagram kind"
+msgid "Packet Diagram"
+msgstr "패킷 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "Pie Chart"
+msgstr "원형 차트"
+
+msgctxt "Mermaid diagram kind"
+msgid "Quadrant Chart"
+msgstr "사분면 차트"
+
+msgctxt "Mermaid diagram kind"
+msgid "Radar Chart"
+msgstr "레이더 차트"
+
+msgctxt "Mermaid diagram kind"
+msgid "Requirement Diagram"
+msgstr "요구 사항 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "Sankey Diagram"
+msgstr "Sankey 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "Sequence Diagram"
+msgstr "시퀀스 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "State Diagram"
+msgstr "상태 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "Timeline"
+msgstr "타임라인"
+
+msgctxt "Mermaid diagram kind"
+msgid "Tree View"
+msgstr "트리 보기"
+
+msgctxt "Mermaid diagram kind"
+msgid "Treemap"
+msgstr "트리맵"
+
+msgctxt "Mermaid diagram kind"
+msgid "User Journey"
+msgstr "사용자 여정"
+
+msgctxt "Mermaid diagram kind"
+msgid "Venn Diagram"
+msgstr "벤 다이어그램"
+
+msgctxt "Mermaid diagram kind"
+msgid "XY Chart (Bar/Line)"
+msgstr "XY 차트 (막대/선)"
+
+msgctxt "architecture node"
+msgid "Junction"
+msgstr "접합점"
+
+msgctxt "architecture node"
+msgid "Service"
+msgstr "서비스"
+
+msgctxt "architecture side"
+msgid "Bottom"
+msgstr "아래쪽"
+
+msgctxt "architecture side"
+msgid "Left"
+msgstr "왼쪽"
+
+msgctxt "architecture side"
+msgid "Right"
+msgstr "오른쪽"
+
+msgctxt "architecture side"
+msgid "Top"
+msgstr "위쪽"
+
+msgctxt "block diagram"
+msgid "Arrow"
+msgstr "화살표"
+
+msgctxt "block diagram"
+msgid "Block"
+msgstr "블록"
+
+msgctxt "block diagram"
+msgid "Circle"
+msgstr "원형"
+
+msgctxt "block diagram"
+msgid "Cross"
+msgstr "X자"
+
+msgctxt "block diagram"
+msgid "Group"
+msgstr "그룹"
+
+msgctxt "block diagram"
+msgid "Space"
+msgstr "빈 공간"
+
+msgctxt "event modeling frame field"
+msgid "name"
+msgstr "이름"
+
+msgctxt "event modeling frame field"
+msgid "number"
+msgstr "번호"
+
+msgctxt "event modeling frame field"
+msgid "type"
+msgstr "종류"
+
+msgctxt "gitGraph commit type"
+msgid "Highlight"
+msgstr "강조 표시"
+
+msgctxt "gitGraph commit type"
+msgid "Normal"
+msgstr "일반"
+
+msgctxt "gitGraph commit type"
+msgid "Reverse"
+msgstr "되돌림"
+
+msgctxt "gitGraph operation"
+msgid "Branch"
+msgstr "브랜치"
+
+msgctxt "gitGraph operation"
+msgid "Checkout"
+msgstr "체크아웃"
+
+msgctxt "gitGraph operation"
+msgid "Cherry-pick"
+msgstr "체리픽"
+
+msgctxt "gitGraph operation"
+msgid "Commit"
+msgstr "커밋"
+
+msgctxt "gitGraph operation"
+msgid "Merge"
+msgstr "병합"
+
+msgctxt "gitGraph operation list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "kanban node"
+msgid "card"
+msgstr "카드"
+
+msgctxt "kanban node"
+msgid "column"
+msgstr "열"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "mindmap shape"
+msgid "Default"
+msgstr "기본"
+
+msgctxt "note placement"
+msgid "Left"
+msgstr "왼쪽"
+
+msgctxt "note placement"
+msgid "Right"
+msgstr "오른쪽"
+
+msgctxt "quadrant axis"
+msgid "x axis"
+msgstr "x축"
+
+msgctxt "quadrant axis"
+msgid "y axis"
+msgstr "y축"
+
+msgctxt "radar graticule"
+msgid "Circle"
+msgstr "원"
+
+msgctxt "radar graticule"
+msgid "Polygon"
+msgstr "다각형"
+
+msgctxt "requirement type"
+msgid "Design constraint"
+msgstr "설계 제약 조건"
+
+msgctxt "requirement type"
+msgid "Functional requirement"
+msgstr "기능 요구 사항"
+
+msgctxt "requirement type"
+msgid "Interface requirement"
+msgstr "인터페이스 요구 사항"
+
+msgctxt "requirement type"
+msgid "Performance requirement"
+msgstr "성능 요구 사항"
+
+msgctxt "requirement type"
+msgid "Physical requirement"
+msgstr "물리적 요구 사항"
+
+msgctxt "requirement type"
+msgid "Requirement"
+msgstr "요구 사항"
+
+msgctxt "sequence note placement"
+msgid "Left of"
+msgstr "왼쪽"
+
+msgctxt "sequence note placement"
+msgid "Over"
+msgstr "위"
+
+msgctxt "sequence note placement"
+msgid "Right of"
+msgstr "오른쪽"
+
+msgctxt "xychart orientation"
+msgid "Horizontal"
+msgstr "가로"
+
+msgctxt "xychart orientation"
+msgid "Vertical"
+msgstr "세로"
+
+msgctxt "xychart series"
+msgid "Bar"
+msgstr "막대"
+
+msgctxt "xychart series"
+msgid "Line"
+msgstr "선"

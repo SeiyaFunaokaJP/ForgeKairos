@@ -1,0 +1,181 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Add code block"
+msgstr "Agregar bloque de código"
+
+msgid "Add code cell"
+msgstr "Agregar celda de código"
+
+msgid "Add markdown block"
+msgstr "Agregar bloque Markdown"
+
+msgid "Add markdown cell"
+msgstr "Agregar celda Markdown"
+
+msgid "Clear all outputs"
+msgstr "Borrar todas las salidas"
+
+msgid "Close output area"
+msgstr "Cerrar área de salida"
+
+msgid "Connecting to kernel..."
+msgstr "Conectando con el kernel..."
+
+msgid "Copy Full Error"
+msgstr "Copiar error completo"
+
+msgid "Copy Output"
+msgstr "Copiar salida"
+
+msgid "Delete cell"
+msgstr "Eliminar celda"
+
+msgid "Error: {err}"
+msgstr "Error: {err}"
+
+msgid "Execute all cells"
+msgstr "Ejecutar todas las celdas"
+
+msgid "Executing..."
+msgstr "Ejecutando..."
+
+msgid "Failed to install ipykernel in {}: {}"
+msgstr "No se pudo instalar ipykernel en {}: {}"
+
+msgid "Input:"
+msgstr "Entrada:"
+
+msgid "Install Kernels"
+msgstr "Instalar kernels"
+
+msgid "Installing ipykernel in {}..."
+msgstr "Instalando ipykernel en {}..."
+
+msgid "Interrupt"
+msgstr "Interrumpir"
+
+msgid "Interrupt Kernel"
+msgstr "Interrumpir kernel"
+
+msgid "Jupyter Kernel Sessions"
+msgstr "Sesiones de kernel de Jupyter"
+
+msgid "Jupyter Kernels"
+msgstr "Kernels de Jupyter"
+
+msgid "Kernel Docs"
+msgstr "Documentación del kernel"
+
+msgid "Kernel error: {}"
+msgstr "Error del kernel: {}"
+
+msgid "Kernel restarting..."
+msgstr "Reiniciando kernel..."
+
+msgid "Kernel shutdown"
+msgstr "Kernel apagado"
+
+msgid "Kernel shutting down..."
+msgstr "Apagando kernel..."
+
+msgid "Kernel: {} ({}). Click to change."
+msgstr "Kernel: {} ({}). Haga clic para cambiar."
+
+msgid "More options"
+msgstr "Más opciones"
+
+msgid "Move cell down"
+msgstr "Mover celda abajo"
+
+msgid "Move cell up"
+msgstr "Mover celda arriba"
+
+msgid "No Jupyter Kernel Sessions"
+msgstr "No hay sesiones de kernel de Jupyter"
+
+msgid "No Jupyter Kernels Available"
+msgstr "No hay kernels de Jupyter disponibles"
+
+msgid "Open Full Error in Buffer"
+msgstr "Abrir error completo en el búfer"
+
+msgid "Open in Buffer"
+msgstr "Abrir en búfer"
+
+msgid "Python Environments"
+msgstr "Entornos de Python"
+
+msgid "Queued..."
+msgstr "En cola..."
+
+msgid "REPL Sessions"
+msgstr "Sesiones de REPL"
+
+msgid "Recommended"
+msgstr "Recomendado"
+
+msgid "Remote Servers"
+msgstr "Servidores remotos"
+
+msgid "Restart Kernel"
+msgstr "Reiniciar kernel"
+
+msgid "Restarting"
+msgstr "Reiniciando"
+
+msgid "Running..."
+msgstr "En ejecución..."
+
+msgid "Select Kernel"
+msgstr "Seleccionar kernel"
+
+msgid "Select a kernel..."
+msgstr "Seleccionar un kernel..."
+
+msgid "Shutdown"
+msgstr "Apagar"
+
+msgid "Shutting Down"
+msgstr "Apagando"
+
+msgid "Starting"
+msgstr "Iniciando"
+
+msgid "This notebook is empty."
+msgstr "Este cuaderno está vacío."
+
+msgid "To run code in a Jupyter kernel, select some code and use the 'repl::Run' command."
+msgstr "Para ejecutar código en un kernel de Jupyter, seleccione código y use el comando 'repl::Run'."
+
+msgid "To start interactively running code in your editor, you need to install and configure Jupyter kernels."
+msgstr "Para empezar a ejecutar código de forma interactiva en el editor, es necesario instalar y configurar kernels de Jupyter."
+
+msgid "Type here and press Enter"
+msgstr "Escriba aquí y presione Enter"
+
+msgid "Unknown status"
+msgstr "Estado desconocido"
+
+msgid "WSL Kernels"
+msgstr "Kernels de WSL"
+
+msgid "ipykernel installed in {}"
+msgstr "ipykernel instalado en {}"
+
+msgid "ipykernel not installed"
+msgstr "ipykernel no instalado"
+
+msgid "{} ({}). Click to change kernel."
+msgstr "{} ({}). Haga clic para cambiar el kernel."
+
+msgctxt "kernel status"
+msgid "Shutdown"
+msgstr "Apagar"

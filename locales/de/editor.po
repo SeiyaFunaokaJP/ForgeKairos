@@ -1,0 +1,849 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(anonymous)"
+msgstr "(anonym)"
+
+msgid "2 years, 11 months ago"
+msgstr "vor 2 Jahren und 11 Monaten"
+
+msgid "Accept"
+msgstr "Annehmen"
+
+msgid "Add Bookmark"
+msgstr "Lesezeichen hinzufügen"
+
+msgid "Add Review (drag to select multiple lines)"
+msgstr "Review-Kommentar hinzufügen (ziehen, um mehrere Zeilen auszuwählen)"
+
+msgid "Add a review comment..."
+msgstr "Review-Kommentar hinzufügen..."
+
+msgid "Add comment"
+msgstr "Kommentar hinzufügen"
+
+msgid "Add to Agent Thread"
+msgstr "Zum Agent-Thread hinzufügen"
+
+msgid "Ask Copilot About Selection"
+msgstr "Copilot zur Auswahl fragen"
+
+msgid "Assign Keybinding"
+msgstr "Tastenkombination zuweisen"
+
+msgid "Bookmarks"
+msgstr "Lesezeichen"
+
+msgid "C4Context\n    %% Person is a user, System your system, System_Ext an external one and Rel a relationship\n    title Order System Overview\n    Person(customer, \"Customer\", \"Orders products\")\n    System(shop, \"Order System\", \"Accepts orders\")\n    System_Ext(mail, \"Mail Delivery\", \"Sends notifications\")\n    Rel(customer, shop, \"Places orders\")\n    Rel(shop, mail, \"Requests notifications\")"
+msgstr "C4Context\n    %% Person ist ein Benutzer, System Ihr System, System_Ext ein externes und Rel eine Beziehung\n    title Übersicht Bestellsystem\n    Person(customer, \"Kunde\", \"Bestellt Produkte\")\n    System(shop, \"Bestellsystem\", \"Nimmt Bestellungen an\")\n    System_Ext(mail, \"E-Mail-Versand\", \"Sendet Benachrichtigungen\")\n    Rel(customer, shop, \"Gibt Bestellungen auf\")\n    Rel(shop, mail, \"Fordert Benachrichtigungen an\")"
+
+msgid "Can't change this because the selection covers only part of a link or image syntax (such as [text](URL)). Select the whole link, or only its text."
+msgstr "Dies kann nicht geändert werden, weil die Auswahl nur einen Teil einer Link- oder Bildsyntax (wie [text](URL)) umfasst. Wählen Sie den ganzen Link oder nur seinen Text aus."
+
+msgid "Can't change this because the selection crosses an existing HTML tag (such as a text color or a marker)."
+msgstr "Dies kann nicht geändert werden, weil die Auswahl ein vorhandenes HTML-Tag (etwa eine Textfarbe oder eine Markierung) überschneidet."
+
+msgid "Can't change this because wrapping an HTML block in a tag from its start would turn it into a paragraph. Select only the text inside the element."
+msgstr "Dies kann nicht geändert werden, weil ein HTML-Block, der ab seinem Anfang in ein Tag eingeschlossen wird, zu einem Absatz würde. Wählen Sie nur den Text innerhalb des Elements aus."
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Class"
+msgstr "Klasse"
+
+msgid "Clear Run Status"
+msgstr "Ausführungsstatus löschen"
+
+msgid "Close"
+msgstr "Schließen"
+
+msgid "Close Git Blame"
+msgstr "Git-Blame schließen"
+
+msgid "Color"
+msgstr "Farbe"
+
+msgid "Condition when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "Bedingung, wenn ein Haltepunkt erreicht wird. Ausdrücke in {{}} werden ausgewertet und eingesetzt."
+
+msgid "Confirm"
+msgstr "Bestätigen"
+
+msgid "Conflict with Accept Keybinding"
+msgstr "Konflikt mit der Tastenkombination zum Annehmen"
+
+msgid "Constant"
+msgstr "Konstante"
+
+msgid "Constructor"
+msgstr "Konstruktor"
+
+msgid "Copy"
+msgstr "Kopieren"
+
+msgid "Copy Diagnostic"
+msgstr "Diagnose kopieren"
+
+msgid "Copy Path"
+msgstr "Pfad kopieren"
+
+msgid "Copy Permalink to Line"
+msgstr "Permalink zur Zeile kopieren"
+
+msgid "Copy Relative Path"
+msgstr "Relativen Pfad kopieren"
+
+msgid "Copy Type Contents"
+msgstr "Typinhalt kopieren"
+
+msgid "Copy and Trim"
+msgstr "Kopieren und Leerraum entfernen"
+
+msgid "Cut"
+msgstr "Ausschneiden"
+
+msgid "Declarations"
+msgstr "Deklarationen"
+
+msgid "Definition not found"
+msgstr "Definition nicht gefunden"
+
+msgid "Definition {index} of {total}"
+msgstr "Definition {index} von {total}"
+
+msgid "Definitions"
+msgstr "Definitionen"
+
+msgid "Disable"
+msgstr "Deaktivieren"
+
+msgid "Edit Bookmark"
+msgstr "Lesezeichen bearbeiten"
+
+msgid "Edit Condition Breakpoint"
+msgstr "Bedingten Haltepunkt bearbeiten"
+
+msgid "Edit Hit Condition Breakpoint"
+msgstr "Haltepunkt mit Trefferbedingung bearbeiten"
+
+msgid "Edit Log Breakpoint"
+msgstr "Protokollpunkt bearbeiten"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "Mermaid-Diagramm bearbeiten…"
+
+msgid "Edit Table…"
+msgstr "Tabelle bearbeiten…"
+
+msgid "Enable"
+msgstr "Aktivieren"
+
+msgid "Enter bookmark label (Optional)"
+msgstr "Lesezeichenbeschriftung eingeben (optional)"
+
+msgid "Enum"
+msgstr "Enumeration"
+
+msgid "Enum Member"
+msgstr "Enumerationsmember"
+
+msgid "Evaluate Selection"
+msgstr "Auswahl auswerten"
+
+msgid "Event"
+msgstr "Ereignis"
+
+msgid "Expand Excerpt"
+msgstr "Auszug erweitern"
+
+msgid "Export to PDF"
+msgstr "Als PDF exportieren"
+
+msgid "Failed to copy permalink to line: {err}"
+msgstr "Permalink zur Zeile konnte nicht kopiert werden: {err}"
+
+msgid "Failed to create buffer"
+msgstr "Puffer konnte nicht erstellt werden"
+
+msgid "Failed to open permalink to line: {err}"
+msgstr "Permalink zur Zeile konnte nicht geöffnet werden: {err}"
+
+msgid "Field"
+msgstr "Feld"
+
+msgid "File"
+msgstr "Datei"
+
+msgid "Find All References"
+msgstr "Alle Referenzen suchen"
+
+msgid "Fold All Headings"
+msgstr "Alle Überschriften falten"
+
+msgid "Fold Excerpt"
+msgstr "Auszug falten"
+
+msgid "Folder"
+msgstr "Ordner"
+
+msgid "Format Buffer"
+msgstr "Puffer formatieren"
+
+msgid "Format Selections"
+msgstr "Auswahl formatieren"
+
+msgid "Formatting can't be applied across table cells."
+msgstr "Formatierungen können nicht über Tabellenzellen hinweg angewendet werden."
+
+msgid "Formatting can't be applied inside a link's URL or an image's syntax."
+msgstr "Formatierungen können nicht innerhalb der URL eines Links oder der Syntax eines Bilds angewendet werden."
+
+msgid "Formatting can't be applied inside an HTML tag or comment."
+msgstr "Formatierungen können nicht innerhalb eines HTML-Tags oder -Kommentars angewendet werden."
+
+msgid "Formatting can't be changed inside code."
+msgstr "Formatierungen können innerhalb von Code nicht geändert werden."
+
+msgid "Formatting did not complete within {} seconds."
+msgstr "Die Formatierung wurde nicht innerhalb von {} Sekunden abgeschlossen."
+
+msgid "Function"
+msgstr "Funktion"
+
+msgid "Go to Declaration"
+msgstr "Zur Deklaration wechseln"
+
+msgid "Go to Definition"
+msgstr "Zur Definition wechseln"
+
+msgid "Go to Implementation"
+msgstr "Zur Implementierung wechseln"
+
+msgid "Go to Type Definition"
+msgstr "Zur Typdefinition wechseln"
+
+msgid "Hold"
+msgstr "Gedrückt halten"
+
+msgid "How many breakpoint hits to ignore"
+msgstr "Anzahl der zu ignorierenden Haltepunktauslösungen"
+
+msgid "Implementations"
+msgstr "Implementierungen"
+
+msgid "Indent"
+msgstr "Einzug vergrößern"
+
+msgid "Insert Collapsible Section (details)"
+msgstr "Aufklappbaren Abschnitt einfügen (details)"
+
+msgid "Insert Mermaid Diagram"
+msgstr "Mermaid-Diagramm einfügen"
+
+msgid "Interface"
+msgstr "Schnittstelle"
+
+msgid "Jump"
+msgstr "Springen"
+
+msgid "Jump to Edit"
+msgstr "Zur Bearbeitung springen"
+
+msgid "Jump to {file_name}"
+msgstr "Zu {file_name} springen"
+
+msgid "Jumped by name match (no result from the language server)"
+msgstr "Per Namensübereinstimmung gesprungen (kein Ergebnis vom Sprachserver)"
+
+msgid "Keyword"
+msgstr "Schlüsselwort"
+
+msgid "Line {start_line}"
+msgstr "Zeile {start_line}"
+
+msgid "Lines {start_line}-{end_line}"
+msgstr "Zeilen {start_line}-{end_line}"
+
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+msgid "Message to log when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "Nachricht, die protokolliert wird, wenn ein Haltepunkt erreicht wird. Ausdrücke in {{}} werden ausgewertet und eingesetzt."
+
+msgid "Method"
+msgstr "Methode"
+
+msgid "Module"
+msgstr "Modul"
+
+msgid "Name match"
+msgstr "Namensübereinstimmung"
+
+msgid "Next Definition"
+msgstr "Nächste Definition"
+
+msgid "Next Hunk"
+msgstr "Nächster Hunk"
+
+msgid "Next Signature"
+msgstr "Nächste Signatur"
+
+msgid "No definition found in this file or the headers it includes. Git ignores this file, so the folder's symbol index leaves it out; turn on the `symbol_index.include_ignored` setting to include it."
+msgstr "In dieser Datei und den von ihr eingebundenen Headern wurde keine Definition gefunden. Git ignoriert diese Datei, daher lässt der Symbolindex des Ordners sie aus; schalten Sie die Einstellung `symbol_index.include_ignored` ein, um sie einzubeziehen."
+
+msgid "No definition found in this file. Open the folder that holds it to search the whole folder."
+msgstr "In dieser Datei wurde keine Definition gefunden. Öffnen Sie den Ordner, der sie enthält, um den gesamten Ordner zu durchsuchen."
+
+msgid "No executable code is associated with this line."
+msgstr "Mit dieser Zeile ist kein ausführbarer Code verknüpft."
+
+msgid "No paragraph has a text size set."
+msgstr "Kein Absatz hat eine festgelegte Textgröße."
+
+msgid "No part of the selection has a marker."
+msgstr "Kein Teil der Auswahl hat eine Markierung."
+
+msgid "No part of the selection has a text color."
+msgstr "Kein Teil der Auswahl hat eine Textfarbe."
+
+msgid "Only part is shown"
+msgstr "Nur ein Teil wird angezeigt"
+
+msgid "Only the location of this definition is known"
+msgstr "Von dieser Definition ist nur der Ort bekannt"
+
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Open File"
+msgstr "Datei öffnen"
+
+msgid "Open Git Blame"
+msgstr "Git-Blame öffnen"
+
+msgid "Open Markdown Preview"
+msgstr "Markdown-Vorschau öffnen"
+
+msgid "Open Markdown Preview to the Side"
+msgstr "Markdown-Vorschau seitlich öffnen"
+
+msgid "Open SVG Preview to the Side"
+msgstr "SVG-Vorschau seitlich öffnen"
+
+msgid "Open in Terminal"
+msgstr "Im Terminal öffnen"
+
+msgid "Operator"
+msgstr "Operator"
+
+msgid "Outdent"
+msgstr "Einzug verkleinern"
+
+msgid "Part of the selection couldn't be formatted: {}"
+msgstr "Ein Teil der Auswahl konnte nicht formatiert werden: {}"
+
+msgid "Paste"
+msgstr "Einfügen"
+
+msgid "Preview"
+msgstr "Vorschau"
+
+msgid "Previous Definition"
+msgstr "Vorherige Definition"
+
+msgid "Previous Hunk"
+msgstr "Vorheriger Hunk"
+
+msgid "Previous Signature"
+msgstr "Vorherige Signatur"
+
+msgid "Property"
+msgstr "Eigenschaft"
+
+msgid "Reference"
+msgstr "Referenz"
+
+msgid "References"
+msgstr "Referenzen"
+
+msgid "References to {target}"
+msgstr "Referenzen auf {target}"
+
+msgid "Remove Bookmark"
+msgstr "Lesezeichen entfernen"
+
+msgid "Rename Symbol"
+msgstr "Symbol umbenennen"
+
+msgid "Restore"
+msgstr "Wiederherstellen"
+
+msgid "Restore Hunk"
+msgstr "Hunk wiederherstellen"
+
+msgid "Reveal In Project Panel"
+msgstr "Im Projektpanel anzeigen"
+
+msgid "Right-Click to Copy Path"
+msgstr "Rechtsklick zum Kopieren des Pfads"
+
+msgid "Right-click for more options"
+msgstr "Rechtsklick für weitere Optionen"
+
+msgid "Run to Cursor"
+msgstr "Bis zum Cursor ausführen"
+
+msgid "Scroll"
+msgstr "Scrollen"
+
+msgid "Search Selection on the Web"
+msgstr "Auswahl im Web suchen"
+
+msgid "See Docs"
+msgstr "Dokumentation ansehen"
+
+msgid "Selections for '{title}'"
+msgstr "Auswahlen für „{title}“"
+
+msgid "Send Selection to Claude Code"
+msgstr "Auswahl an Claude Code senden"
+
+msgid "Set Breakpoint"
+msgstr "Haltepunkt setzen"
+
+msgid "Set Condition Breakpoint"
+msgstr "Bedingten Haltepunkt setzen"
+
+msgid "Set Hit Condition Breakpoint"
+msgstr "Haltepunkt mit Trefferbedingung setzen"
+
+msgid "Set Log Breakpoint"
+msgstr "Protokollpunkt setzen"
+
+msgid "Show Callees in Call Graph"
+msgstr "Aufgerufene im Aufrufgraphen anzeigen"
+
+msgid "Show Callers in Call Graph"
+msgstr "Aufrufer im Aufrufgraphen anzeigen"
+
+msgid "Show Code Actions"
+msgstr "Codeaktionen anzeigen"
+
+msgid "Show Incoming Calls"
+msgstr "Eingehende Aufrufe anzeigen"
+
+msgid "Show Outgoing Calls"
+msgstr "Ausgehende Aufrufe anzeigen"
+
+msgid "Show Symbol Outline"
+msgstr "Symbolgliederung anzeigen"
+
+msgid "Snippet"
+msgstr "Snippet"
+
+msgid "Split"
+msgstr "Nebeneinander"
+
+msgid "Split when wider than {} columns"
+msgstr "Nebeneinander, wenn breiter als {} Spalten"
+
+msgid "Stage"
+msgstr "Stagen"
+
+msgid "Stage Hunk"
+msgstr "Hunk stagen"
+
+msgid "Struct"
+msgstr "Struktur"
+
+msgid "Text"
+msgstr "Text"
+
+msgid "Text size can only be set on paragraphs (not on headings, code blocks, tables, or HTML blocks)."
+msgstr "Die Textgröße kann nur für Absätze festgelegt werden (nicht für Überschriften, Codeblöcke, Tabellen oder HTML-Blöcke)."
+
+msgid "The diagram text changed while it was being edited. Open it again."
+msgstr "Der Diagrammtext wurde während der Bearbeitung geändert. Öffnen Sie es erneut."
+
+msgid "The remote instance of Zed does not support this yet. It must be upgraded to {}"
+msgstr "Die Remote-Instanz von ForgeKairos unterstützt dies noch nicht. Sie muss auf {} aktualisiert werden"
+
+msgid "There is no text to format."
+msgstr "Es gibt keinen Text zum Formatieren."
+
+msgid "This buffer is read-only, so the diagram can't be written back."
+msgstr "Dieser Puffer ist schreibgeschützt, daher kann das Diagramm nicht zurückgeschrieben werden."
+
+msgid "Toggle Code Actions"
+msgstr "Codeaktionen umschalten"
+
+msgid "Type Parameter"
+msgstr "Typparameter"
+
+msgid "Type contents are not shown: another window has this folder's symbol index open."
+msgstr "Der Typinhalt wird nicht angezeigt: Ein anderes Fenster hat den Symbolindex dieses Ordners geöffnet."
+
+msgid "Type contents are not shown: the remote server does not support the symbol index."
+msgstr "Der Typinhalt wird nicht angezeigt: Der Remote-Server unterstützt den Symbolindex nicht."
+
+msgid "Type contents are not shown: the symbol index failed ({error})."
+msgstr "Der Typinhalt wird nicht angezeigt: Der Symbolindex ist fehlgeschlagen ({error})."
+
+msgid "Type contents are not shown: the symbol index is not available in a shared project."
+msgstr "Der Typinhalt wird nicht angezeigt: Der Symbolindex ist in einem freigegebenen Projekt nicht verfügbar."
+
+msgid "Type contents: the symbol index is still being built. Hover again in a moment."
+msgstr "Typinhalt: Der Symbolindex wird noch erstellt. Zeigen Sie gleich erneut mit der Maus darauf."
+
+msgid "Type of {name}:"
+msgstr "Typ von {name}:"
+
+msgid "Types"
+msgstr "Typen"
+
+msgid "Unfold All Headings"
+msgstr "Alle Überschriften auffalten"
+
+msgid "Unfold Excerpt"
+msgstr "Auszug auffalten"
+
+msgid "Unified"
+msgstr "Einheitlich"
+
+msgid "Unit"
+msgstr "Einheit"
+
+msgid "Unknown"
+msgstr "Unbekannt"
+
+msgid "Unset Breakpoint"
+msgstr "Haltepunkt entfernen"
+
+msgid "Unset breakpoint"
+msgstr "Haltepunkt entfernen"
+
+msgid "Unstage"
+msgstr "Staging aufheben"
+
+msgid "Unstage Hunk"
+msgstr "Staging für Hunk aufheben"
+
+msgid "Value"
+msgstr "Wert"
+
+msgid "Variable"
+msgstr "Variable"
+
+msgid "View File History"
+msgstr "Dateiverlauf anzeigen"
+
+msgid "Your keymap currently overrides the default accept keybinding. To continue, assign one keybinding for the `editor::AcceptEditPrediction` action."
+msgstr "Ihre Keymap überschreibt derzeit die Standard-Tastenkombination zum Annehmen. Um fortzufahren, weisen Sie der Aktion `editor::AcceptEditPrediction` eine Tastenkombination zu."
+
+msgid "a parameter of this function"
+msgstr "ein Parameter dieser Funktion"
+
+msgid "architecture-beta\n    %% group is a grouping and service a component. :L :R :T :B choose the side a line connects to\n    group app(cloud)[App]\n    service web(server)[Web Server] in app\n    service db(database)[Database] in app\n    service disk(disk)[Storage] in app\n    web:R -- L:db\n    web:B -- T:disk"
+msgstr "architecture-beta\n    %% group ist eine Gruppierung und service eine Komponente. :L :R :T :B wählen die Seite, an der eine Linie andockt\n    group app(cloud)[App]\n    service web(server)[Webserver] in app\n    service db(database)[Datenbank] in app\n    service disk(disk)[Speicher] in app\n    web:R -- L:db\n    web:B -- T:disk"
+
+msgid "at its declaration"
+msgstr "an seiner Deklaration"
+
+msgid "block-beta\n    %% columns sets the number of columns, space is an empty cell and --> an arrow\n    columns 3\n    input[\"Input\"] process[\"Process\"] output[\"Output\"]\n    space log[\"Log\"] space\n    input --> process\n    process --> output\n    process --> log"
+msgstr "block-beta\n    %% columns legt die Anzahl der Spalten fest, space ist eine leere Zelle und --> ein Pfeil\n    columns 3\n    input[\"Eingabe\"] process[\"Verarbeitung\"] output[\"Ausgabe\"]\n    space log[\"Protokoll\"] space\n    input --> process\n    process --> output\n    process --> log"
+
+msgid "classDiagram\n    %% <|-- is inheritance, *-- composition and o-- aggregation\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+msgstr "classDiagram\n    %% <|-- ist Vererbung, *-- Komposition und o-- Aggregation\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+
+msgid "click to change min width"
+msgstr "Klicken, um Mindestbreite zu ändern"
+
+msgid "could not be followed"
+msgstr "konnte nicht weiterverfolgt werden"
+
+msgid "debug: {}"
+msgstr "Debug: {}"
+
+msgid "declared at file scope"
+msgstr "auf Dateiebene deklariert"
+
+msgid "declared in this function"
+msgstr "in dieser Funktion deklariert"
+
+msgid "erDiagram\n    %% ||--o{{ is one-to-many and }}o--o{{ many-to-many\n    CUSTOMER ||--o{{ ORDER : \"places\"\n    ORDER ||--|{{ ORDER_ITEM : \"contains\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+msgstr "erDiagram\n    %% ||--o{{ ist eins-zu-viele und }}o--o{{ viele-zu-viele\n    CUSTOMER ||--o{{ ORDER : \"gibt auf\"\n    ORDER ||--|{{ ORDER_ITEM : \"enthält\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+
+msgid "eventmodeling\n    %% tf number type name. ui is a screen, cmd a command, evt an event and rmo a read model. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+msgstr "eventmodeling\n    %% tf Nummer Typ Name. ui ist ein Bildschirm, cmd ein Befehl, evt ein Ereignis und rmo ein Lesemodell. Schreiben Sie Namen nur mit ASCII-Buchstaben und -Ziffern (Mermaid kann keine Nicht-ASCII-Namen lesen)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+
+msgid "flowchart TD\n    %% [] is a step and {{}} a decision. |label| annotates a branch\n    start[Start] --> condition{{Condition}}\n    condition -->|Yes| work[Process]\n    condition -->|No| finish[End]\n    work --> finish"
+msgstr "flowchart TD\n    %% [] ist ein Schritt und {{}} eine Entscheidung. |Beschriftung| beschriftet einen Zweig\n    start[Start] --> condition{{Bedingung}}\n    condition -->|Ja| work[Verarbeitung]\n    condition -->|Nein| finish[Ende]\n    work --> finish"
+
+msgid "forward declaration"
+msgstr "Vorwärtsdeklaration"
+
+msgid "gantt\n    title Development Schedule\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section Design\n    Requirements :done, req, 2026-01-06, 5d\n    Basic design :active, design, after req, 7d\n    section Implementation\n    Implementation :impl, after design, 10d"
+msgstr "gantt\n    title Entwicklungsplan\n    dateFormat YYYY-MM-DD\n    axisFormat %d.%m.\n    section Entwurf\n    Anforderungen :done, req, 2026-01-06, 5d\n    Grobentwurf :active, design, after req, 7d\n    section Implementierung\n    Implementierung :impl, after design, 10d"
+
+msgid "gitGraph\n    commit id: \"Initial commit\"\n    branch feature\n    checkout feature\n    commit id: \"Add a feature\"\n    checkout main\n    merge feature"
+msgstr "gitGraph\n    commit id: \"Erster Commit\"\n    branch feature\n    checkout feature\n    commit id: \"Feature hinzufügen\"\n    checkout main\n    merge feature"
+
+msgid "guessed by name only"
+msgstr "nur anhand des Namens vermutet"
+
+msgid "ishikawa-beta\n    %% The first line is the effect and indented lines its causes\n    Too many defects\n        People\n            Little experience\n        Method\n            Outdated procedures\n        Material\n            Inconsistent suppliers"
+msgstr "ishikawa-beta\n    %% Die erste Zeile ist die Wirkung, eingerückte Zeilen sind ihre Ursachen\n    Zu viele Fehler\n        Mensch\n            Wenig Erfahrung\n        Methode\n            Veraltete Abläufe\n        Material\n            Schwankende Lieferanten"
+
+msgid "journey\n    %% Task : Satisfaction (1 to 5) : People involved\n    title Path to Purchase\n    section Find\n      Search for a product: 4: Customer\n      Compare: 3: Customer\n    section Buy\n      Add to cart: 5: Customer\n      Pay: 2: Customer, Store"
+msgstr "journey\n    %% Aufgabe : Zufriedenheit (1 bis 5) : Beteiligte\n    title Weg zum Kauf\n    section Finden\n      Produkt suchen: 4: Kunde\n      Vergleichen: 3: Kunde\n    section Kaufen\n      In den Warenkorb legen: 5: Kunde\n      Bezahlen: 2: Kunde, Shop"
+
+msgid "kanban\n    %% Less indented lines are columns and more indented lines cards\n    todo[To Do]\n        spec[Write the spec]\n        screen[Build the screen]\n    doing[In Progress]\n        api[Build the API]\n    done[Done]\n        setup[Set up the environment]"
+msgstr "kanban\n    %% Weniger eingerückte Zeilen sind Spalten, stärker eingerückte Zeilen Karten\n    todo[Zu erledigen]\n        spec[Spezifikation schreiben]\n        screen[Bildschirm erstellen]\n    doing[In Arbeit]\n        api[API erstellen]\n    done[Erledigt]\n        setup[Umgebung einrichten]"
+
+msgid "mindmap\n  root((Central Topic))\n    Category A\n      Item 1\n      Item 2\n    Category B\n      Item 3"
+msgstr "mindmap\n  root((Zentrales Thema))\n    Kategorie A\n      Element 1\n      Element 2\n    Kategorie B\n      Element 3"
+
+msgid "packet-beta\n    %% start bit-end bit: \"Field name\"\n    title UDP Header\n    0-15: \"Source Port\"\n    16-31: \"Destination Port\"\n    32-47: \"Length\"\n    48-63: \"Checksum\"\n    64-95: \"Data (variable length)\""
+msgstr "packet-beta\n    %% Startbit-Endbit: \"Feldname\"\n    title UDP-Header\n    0-15: \"Quellport\"\n    16-31: \"Zielport\"\n    32-47: \"Länge\"\n    48-63: \"Prüfsumme\"\n    64-95: \"Daten (variable Länge)\""
+
+msgid "pie title Breakdown\n    \"Design\" : 30\n    \"Implementation\" : 50\n    \"Testing\" : 20"
+msgstr "pie title Aufteilung\n    \"Entwurf\" : 30\n    \"Implementierung\" : 50\n    \"Test\" : 20"
+
+msgid "quadrantChart\n    %% A point is Name: [x, y], both from 0 to 1\n    title Initiative Priorities\n    x-axis Low Effort --> High Effort\n    y-axis Low Impact --> High Impact\n    quadrant-1 Plan and Do\n    quadrant-2 Do Now\n    quadrant-3 Do Later\n    quadrant-4 Reconsider\n    Initiative A: [0.3, 0.8]\n    Initiative B: [0.7, 0.6]\n    Initiative C: [0.2, 0.3]"
+msgstr "quadrantChart\n    %% Ein Punkt ist Name: [x, y], beide von 0 bis 1\n    title Prioritäten der Maßnahmen\n    x-axis Geringer Aufwand --> Hoher Aufwand\n    y-axis Geringe Wirkung --> Hohe Wirkung\n    quadrant-1 Planen und umsetzen\n    quadrant-2 Sofort umsetzen\n    quadrant-3 Später umsetzen\n    quadrant-4 Überdenken\n    Maßnahme A: [0.3, 0.8]\n    Maßnahme B: [0.7, 0.6]\n    Maßnahme C: [0.2, 0.3]"
+
+msgid "radar-beta\n    %% axis defines the axes and curve a series. List the values in the order of the axes\n    title Skill Comparison\n    axis design[\"Design\"], build[\"Implementation\"], test[\"Testing\"], ops[\"Operations\"]\n    curve a[\"Person A\"]{{4, 3, 5, 2}}\n    curve b[\"Person B\"]{{2, 5, 3, 4}}\n    max 5"
+msgstr "radar-beta\n    %% axis definiert die Achsen und curve eine Reihe. Geben Sie die Werte in der Reihenfolge der Achsen an\n    title Vergleich der Fähigkeiten\n    axis design[\"Entwurf\"], build[\"Implementierung\"], test[\"Test\"], ops[\"Betrieb\"]\n    curve a[\"Person A\"]{{4, 3, 5, 2}}\n    curve b[\"Person B\"]{{2, 5, 3, 4}}\n    max 5"
+
+msgid "recursive"
+msgstr "rekursiv"
+
+msgid "requirementDiagram\n    %% requirement declares a requirement; element declares what satisfies it. Connect them with - satisfies ->\n    requirement login {{\n        id: 1\n        text: \"Users can log in\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"Screen\"\n    }}\n    login_page - satisfies -> login"
+msgstr "requirementDiagram\n    %% requirement deklariert eine Anforderung; element deklariert, was sie erfüllt. Verbinden Sie beide mit - satisfies ->\n    requirement login {{\n        id: 1\n        text: \"Benutzer können sich anmelden\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"Bildschirm\"\n    }}\n    login_page - satisfies -> login"
+
+msgid "sankey-beta\n    %% Each line is source,target,amount. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10"
+msgstr "sankey-beta\n    %% Jede Zeile ist Quelle,Ziel,Menge. Schreiben Sie Namen nur mit ASCII-Buchstaben und -Ziffern (Mermaid kann keine Nicht-ASCII-Namen lesen)\n    Strom,Haushalt,30\n    Strom,Fabrik,50\n    Gas,Haushalt,20\n    Gas,Fabrik,10"
+
+msgid "sequenceDiagram\n    %% ->> is a call and -->> a reply\n    participant User as User\n    participant App as App\n    User->>App: Request\n    App-->>User: Response\n    Note over App: Note"
+msgstr "sequenceDiagram\n    %% ->> ist ein Aufruf und -->> eine Antwort\n    participant User as Benutzer\n    participant App as App\n    User->>App: Anfrage\n    App-->>User: Antwort\n    Note over App: Notiz"
+
+msgid "stateDiagram-v2\n    %% [*] is the start and the end. The text after : on an arrow is the event name\n    [*] --> Idle\n    Idle --> Running: Start\n    Running --> Idle: Finish\n    Running --> [*]: Abort"
+msgstr "stateDiagram-v2\n    %% [*] ist Start und Ende. Der Text nach : an einem Pfeil ist der Name des Ereignisses\n    [*] --> Idle\n    Idle --> Running: Start\n    Running --> Idle: Fertig\n    Running --> [*]: Abbruch"
+
+msgid "the latest version"
+msgstr "die neueste Version"
+
+msgid "timeline\n    title History\n    2024 : Planning\n    2025 : Development : Release\n    2026 : Operation"
+msgstr "timeline\n    title Verlauf\n    2024 : Planung\n    2025 : Entwicklung : Veröffentlichung\n    2026 : Betrieb"
+
+msgid "treeView-beta\n    %% Indentation shows the hierarchy\n    \"Project\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+msgstr "treeView-beta\n    %% Die Einrückung zeigt die Hierarchie\n    \"Projekt\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+
+msgid "treemap-beta\n    %% Indentation nests items. Give each leaf a value after :\n    \"Development\"\n        \"Design\": 30\n        \"Implementation\": 50\n    \"Operations\"\n        \"Maintenance\": 15\n        \"Monitoring\": 5"
+msgstr "treemap-beta\n    %% Einrückung verschachtelt Elemente. Geben Sie jedem Blatt nach : einen Wert\n    \"Entwicklung\"\n        \"Entwurf\": 30\n        \"Implementierung\": 50\n    \"Betrieb\"\n        \"Wartung\": 15\n        \"Überwachung\": 5"
+
+msgid "type named by the language server"
+msgstr "Typ vom Sprachserver benannt"
+
+msgid "venn-beta\n    %% set defines a set and union names an overlap\n    title Overlapping Responsibilities\n    set Front[\"Frontend\"]\n    set Back[\"Backend\"]\n    union Front,Back[\"API\"]"
+msgstr "venn-beta\n    %% set definiert eine Menge und union benennt eine Überschneidung\n    title Überschneidende Zuständigkeiten\n    set Front[\"Frontend\"]\n    set Back[\"Backend\"]\n    union Front,Back[\"API\"]"
+
+msgid "xychart-beta\n    %% bar draws bars and line a line. Give as many values as the x-axis has items\n    title \"Monthly Sales\"\n    x-axis [\"Jan\", \"Feb\", \"Mar\", \"Apr\"]\n    y-axis \"Sales (USD thousands)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+msgstr "xychart-beta\n    %% bar zeichnet Balken und line eine Linie. Geben Sie so viele Werte an, wie die x-Achse Einträge hat\n    title \"Monatlicher Umsatz\"\n    x-axis [\"Jan\", \"Feb\", \"Mär\", \"Apr\"]\n    y-axis \"Umsatz (Tsd. USD)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+
+msgid "{alt_as_text}-click to disable\nright-click for more options"
+msgstr "{alt_as_text}-Klick zum Deaktivieren\nRechtsklick für weitere Optionen"
+
+msgid "{count} Comment"
+msgid_plural "{count} Comments"
+msgstr[0] "{count} Kommentar"
+msgstr[1] "{count} Kommentare"
+
+msgid "{count} more"
+msgid_plural "{count} more"
+msgstr[0] "{count} weitere"
+msgstr[1] "{count} weitere"
+
+msgid "{tab_kind} (name match)"
+msgstr "{tab_kind} (Namensübereinstimmung)"
+
+msgid "{tab_kind} for {target}"
+msgstr "{tab_kind} für {target}"
+
+msgid "{title} (partial: {omitted} not shown)"
+msgstr "{title} (unvollständig: {omitted} nicht angezeigt)"
+
+msgid "{} to toggle all"
+msgstr "{} zum Umschalten aller"
+
+msgctxt "markdown color"
+msgid "Blue"
+msgstr "Blau"
+
+msgctxt "markdown color"
+msgid "Gray"
+msgstr "Grau"
+
+msgctxt "markdown color"
+msgid "Green"
+msgstr "Grün"
+
+msgctxt "markdown color"
+msgid "Orange"
+msgstr "Orange"
+
+msgctxt "markdown color"
+msgid "Pink"
+msgstr "Rosa"
+
+msgctxt "markdown color"
+msgid "Purple"
+msgstr "Lila"
+
+msgctxt "markdown color"
+msgid "Red"
+msgstr "Rot"
+
+msgctxt "markdown color"
+msgid "Yellow"
+msgstr "Gelb"
+
+msgctxt "markdown text size"
+msgid "Extra Large"
+msgstr "Sehr groß"
+
+msgctxt "markdown text size"
+msgid "Large"
+msgstr "Groß"
+
+msgctxt "markdown text size"
+msgid "Small"
+msgstr "Klein"
+
+msgctxt "mermaid diagram"
+msgid "Architecture Diagram"
+msgstr "Architekturdiagramm"
+
+msgctxt "mermaid diagram"
+msgid "Block Diagram"
+msgstr "Blockdiagramm"
+
+msgctxt "mermaid diagram"
+msgid "C4 Diagram"
+msgstr "C4-Diagramm"
+
+msgctxt "mermaid diagram"
+msgid "Class Diagram"
+msgstr "Klassendiagramm"
+
+msgctxt "mermaid diagram"
+msgid "ER Diagram"
+msgstr "ER-Diagramm"
+
+msgctxt "mermaid diagram"
+msgid "Event Modeling"
+msgstr "Event Modeling"
+
+msgctxt "mermaid diagram"
+msgid "Flowchart"
+msgstr "Flussdiagramm"
+
+msgctxt "mermaid diagram"
+msgid "Gantt Chart"
+msgstr "Gantt-Diagramm"
+
+msgctxt "mermaid diagram"
+msgid "Git Graph"
+msgstr "Git-Graph"
+
+msgctxt "mermaid diagram"
+msgid "Ishikawa Diagram"
+msgstr "Ishikawa-Diagramm"
+
+msgctxt "mermaid diagram"
+msgid "Kanban"
+msgstr "Kanban"
+
+msgctxt "mermaid diagram"
+msgid "Mindmap"
+msgstr "Mindmap"
+
+msgctxt "mermaid diagram"
+msgid "Packet Diagram"
+msgstr "Paketdiagramm"
+
+msgctxt "mermaid diagram"
+msgid "Pie Chart"
+msgstr "Kreisdiagramm"
+
+msgctxt "mermaid diagram"
+msgid "Quadrant Chart"
+msgstr "Quadrantendiagramm"
+
+msgctxt "mermaid diagram"
+msgid "Radar Chart"
+msgstr "Radardiagramm"
+
+msgctxt "mermaid diagram"
+msgid "Requirement Diagram"
+msgstr "Anforderungsdiagramm"
+
+msgctxt "mermaid diagram"
+msgid "Sankey Diagram"
+msgstr "Sankey-Diagramm"
+
+msgctxt "mermaid diagram"
+msgid "Sequence Diagram"
+msgstr "Sequenzdiagramm"
+
+msgctxt "mermaid diagram"
+msgid "State Diagram"
+msgstr "Zustandsdiagramm"
+
+msgctxt "mermaid diagram"
+msgid "Timeline"
+msgstr "Zeitleiste"
+
+msgctxt "mermaid diagram"
+msgid "Tree View"
+msgstr "Baumansicht"
+
+msgctxt "mermaid diagram"
+msgid "Treemap"
+msgstr "Treemap"
+
+msgctxt "mermaid diagram"
+msgid "User Journey"
+msgstr "User Journey"
+
+msgctxt "mermaid diagram"
+msgid "Venn Diagram"
+msgstr "Venn-Diagramm"
+
+msgctxt "mermaid diagram"
+msgid "XY Chart (Bar/Line)"
+msgstr "XY-Diagramm (Balken/Linie)"
+
+msgctxt "table alignment"
+msgid "Center"
+msgstr "Zentriert"
+
+msgctxt "table alignment"
+msgid "Default"
+msgstr "Standard"
+
+msgctxt "table alignment"
+msgid "Left"
+msgstr "Links"
+
+msgctxt "table alignment"
+msgid "Right"
+msgstr "Rechts"

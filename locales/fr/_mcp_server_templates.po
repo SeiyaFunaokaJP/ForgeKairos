@@ -1,0 +1,69 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgctxt "mcp_server_template"
+msgid "Absolute path of the file to store the memory in"
+msgstr "Chemin absolu du fichier dans lequel enregistrer la mémoire"
+
+msgctxt "mcp_server_template"
+msgid "Absolute path of the folder the server may use"
+msgstr "Chemin absolu du dossier que le serveur peut utiliser"
+
+msgctxt "mcp_server_template"
+msgid "Bearer <GitHub personal access token>"
+msgstr "Bearer <jeton d'accès personnel GitHub>"
+
+msgctxt "mcp_server_template"
+msgid "Fetch (Web Page Retrieval)"
+msgstr "Fetch (récupération de pages Web)"
+
+msgctxt "mcp_server_template"
+msgid "Fetches the web page at a given URL and passes it on as Markdown."
+msgstr "Récupère la page Web à l'URL indiquée et la transmet au format Markdown."
+
+msgctxt "mcp_server_template"
+msgid "File System"
+msgstr "Système de fichiers"
+
+msgctxt "mcp_server_template"
+msgid "GitHub's official remote MCP server. Works with repositories, issues and pull requests. Requires a GitHub personal access token."
+msgstr "Serveur MCP distant officiel de GitHub. Gère les dépôts, les tickets et les pull requests. Nécessite un jeton d'accès personnel GitHub."
+
+msgctxt "mcp_server_template"
+msgid "Launches a browser and operates it: opens pages, clicks and types."
+msgstr "Lance un navigateur et le pilote : ouvre des pages, clique et saisit du texte."
+
+msgctxt "mcp_server_template"
+msgid "Memory (Knowledge Graph)"
+msgstr "Memory (graphe de connaissances)"
+
+msgctxt "mcp_server_template"
+msgid "Node.js (npx), Google Chrome"
+msgstr "Node.js (npx), Google Chrome"
+
+msgctxt "mcp_server_template"
+msgid "Playwright (Browser Automation)"
+msgstr "Playwright (automatisation du navigateur)"
+
+msgctxt "mcp_server_template"
+msgid "Reads, writes and searches files inside the folders you specify. Folders you don't specify are left alone."
+msgstr "Lit, écrit et recherche des fichiers dans les dossiers que vous indiquez. Les autres dossiers ne sont pas touchés."
+
+msgctxt "mcp_server_template"
+msgid "Saves what should be remembered across conversations to a file, as a knowledge graph."
+msgstr "Enregistre dans un fichier, sous forme de graphe de connaissances, ce qui doit être mémorisé d'une conversation à l'autre."
+
+msgctxt "mcp_server_template"
+msgid "The browser's own traffic may ignore the proxy environment variables, and then the network allowlist does not control it."
+msgstr "Le trafic propre du navigateur peut ignorer les variables d'environnement du proxy ; la liste d'autorisation réseau ne le contrôle alors pas."
+
+msgctxt "mcp_server_template"
+msgid "The hosts of the sites to fetch also have to be added to the network allowlist."
+msgstr "Les hôtes des sites à récupérer doivent aussi être ajoutés à la liste d'autorisation réseau."

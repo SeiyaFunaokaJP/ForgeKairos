@@ -1,0 +1,40 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Add"
+msgstr "Ajouter"
+
+msgid "Add Toolchain"
+msgstr "Ajouter une chaîne d'outils"
+
+msgid "Add {}"
+msgstr "Ajouter {}"
+
+msgid "Select"
+msgstr "Sélectionner"
+
+msgid "Select Toolchain Path"
+msgstr "Sélectionner le chemin d'accès de la chaîne d'outils"
+
+msgid "Select a toolchain…"
+msgstr "Sélectionnez une chaîne d'outils…"
+
+msgid "Select a {} for {pretty_path}…"
+msgstr "Sélectionner {} pour {pretty_path}…"
+
+msgid "Select {}"
+msgstr "Sélectionner {}"
+
+msgid "worktree root"
+msgstr "racine de l'arborescence de travail"
+
+msgctxt "toolchain scope"
+msgid "Scope"
+msgstr "Portée"

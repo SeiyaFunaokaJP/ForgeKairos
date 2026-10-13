@@ -14,9 +14,6 @@ msgstr "Toolchain を追加"
 msgid "Add {}"
 msgstr "{} を追加"
 
-msgid "Scope"
-msgstr "適用範囲"
-
 msgid "Select"
 msgstr "選択"
 
@@ -34,3 +31,7 @@ msgstr "{} を選択"
 
 msgid "worktree root"
 msgstr "ワークツリーのルート"
+
+msgctxt "toolchain scope"
+msgid "Scope"
+msgstr "適用範囲"

@@ -1,0 +1,174 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid ", capture into ${{{capture}}}"
+msgstr ", capturar em ${{{capture}}}"
+
+msgid ", on a match capture into ${{{capture}}}"
+msgstr ", em caso de correspondência, capturar em ${{{capture}}}"
+
+msgid ", {count} step on timeout"
+msgid_plural ", {count} steps on timeout"
+msgstr[0] ", {count} etapa ao esgotar o tempo"
+msgstr[1] ", {count} etapas ao esgotar o tempo"
+
+msgid "A saved password can't answer the host key confirmation of a first connection. Connect once with “Remember password” turned off and confirm the host key."
+msgstr "Uma senha salva não pode responder à confirmação da chave do host em uma primeira conexão. Conecte-se uma vez com “Lembrar senha” desativado e confirme a chave do host."
+
+msgid "Branch: if “{pattern}” is in {target}, run {} step(s), otherwise {} step(s)"
+msgstr "Ramificação: se “{pattern}” estiver em {target}, executar {} etapa(s); caso contrário, {} etapa(s)"
+
+msgid "Clear screen"
+msgstr "Limpar a tela"
+
+msgid "Couldn't delete the password ({url})"
+msgstr "Não foi possível excluir a senha ({url})"
+
+msgid "Couldn't read the password ({url})"
+msgstr "Não foi possível ler a senha ({url})"
+
+msgid "Couldn't save the password ({url})"
+msgstr "Não foi possível salvar a senha ({url})"
+
+msgid "Couldn't write terminal_sessions.json"
+msgstr "Não foi possível gravar terminal_sessions.json"
+
+msgid "Match → Then"
+msgstr "Correspondência → Então"
+
+msgid "No match → Else"
+msgstr "Sem correspondência → Senão"
+
+msgid "Output since last send"
+msgstr "Saída desde o último envio"
+
+msgid "Repeat: until stopped ({count} step)"
+msgid_plural "Repeat: until stopped ({count} steps)"
+msgstr[0] "Repetir: até interromper ({count} etapa)"
+msgstr[1] "Repetir: até interromper ({count} etapas)"
+
+msgid "Repeat: ×{times} ({count} step)"
+msgid_plural "Repeat: ×{times} ({count} steps)"
+msgstr[0] "Repetir: ×{times} ({count} etapa)"
+msgstr[1] "Repetir: ×{times} ({count} etapas)"
+
+msgid "Send: {text}"
+msgstr "Enviar: {text}"
+
+msgid "Sleep: {} s"
+msgstr "Aguardar: {} s"
+
+msgid "Step {label} is of a kind this version can't run (“{kind}”). The macro was not run."
+msgstr "A etapa {label} é de um tipo que esta versão não consegue executar (“{kind}”). A macro não foi executada."
+
+msgid "Step {label} is of a kind this version can't run. The macro was not run."
+msgstr "A etapa {label} é de um tipo que esta versão não consegue executar. A macro não foi executada."
+
+msgid "Step {label}: {problem}. The macro was not run."
+msgstr "Etapa {label}: {problem}. A macro não foi executada."
+
+msgid "Step {step_label}: the regular expression “{display_pattern}” is invalid ({error})"
+msgstr "Etapa {step_label}: a expressão regular “{display_pattern}” é inválida ({error})"
+
+msgid "Step {}: the terminal exited while waiting for “{display_pattern}”"
+msgstr "Etapa {}: o terminal foi encerrado enquanto aguardava “{display_pattern}”"
+
+msgid "Step {}: this version can't run this kind of step"
+msgstr "Etapa {}: esta versão não consegue executar este tipo de etapa"
+
+msgid "Step {}: “{display_pattern}” did not appear within {} s"
+msgstr "Etapa {}: “{display_pattern}” não apareceu em {} s"
+
+msgid "The saved password was rejected. Enter the password again in Quick Connect."
+msgstr "A senha salva foi rejeitada. Insira a senha novamente em Conexão rápida."
+
+msgid "The “{field}” of this “{kind}” step has a value this version can't use"
+msgstr "O campo “{field}” desta etapa “{kind}” tem um valor que esta versão não consegue usar"
+
+msgid "This terminal can't record its output (it has no PTY)"
+msgstr "Este terminal não pode registrar a saída (ele não tem PTY)"
+
+msgid "This “{kind}” step has a field this version doesn't know (“{field}”)"
+msgstr "Esta etapa “{kind}” tem um campo que esta versão não conhece (“{field}”)"
+
+msgid "This “{kind}” step has no “{field}”"
+msgstr "Esta etapa “{kind}” não tem “{field}”"
+
+msgid "Timeout → Continue"
+msgstr "Tempo limite → Continuar"
+
+msgid "Unknown step (this version can't run it)"
+msgstr "Etapa desconhecida (esta versão não consegue executá-la)"
+
+msgid "Unknown step “{kind}” (this version can't run it)"
+msgstr "Etapa desconhecida “{kind}” (esta versão não consegue executá-la)"
+
+msgid "Variable: ${{{name}}} = “{value}”"
+msgstr "Variável: ${{{name}}} = “{value}”"
+
+msgid "Wait for “{pattern}” (up to {} s)"
+msgstr "Aguardar “{pattern}” (até {} s)"
+
+msgid "Whole screen"
+msgstr "Tela inteira"
+
+msgid "[Remote connection lost. The shell keeps running on the remote host; its output will resume after reconnecting]"
+msgstr "[Conexão remota perdida. O shell continua em execução no host remoto; a saída dele será retomada após a reconexão]"
+
+msgid "[Remote connection lost. The shell will restart after reconnecting]"
+msgstr "[Conexão remota perdida. O shell será reiniciado após a reconexão]"
+
+msgid "[password input omitted]"
+msgstr "[entrada de senha omitida]"
+
+msgid "[{working_directory} was not found, so the shell started in the home directory]"
+msgstr "[{working_directory} não foi encontrado, então o shell foi iniciado no diretório pessoal]"
+
+msgid "the output since the last send"
+msgstr "a saída desde o último envio"
+
+msgid "the whole screen"
+msgstr "a tela inteira"
+
+msgctxt "terminal macro"
+msgid "Variable"
+msgstr "Variável"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "Ramificação"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "Limpar a tela"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "Repetir"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "Enviar"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "Definir variável"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "Aguardar segundos"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "Etapa desconhecida"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "Aguardar texto"

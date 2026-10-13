@@ -142,9 +142,9 @@ impl PickerDelegate for OllamaModelPickerDelegate {
         Some(if self.awaiting_consent {
             i18n::t!("Accept the external AI warning to list models from this server.").into()
         } else if self.loading {
-            "Loading models…".into()
+            i18n::t!("Loading models…").into()
         } else {
-            "No models found. Check your Ollama server URL.".into()
+            i18n::t!("No models found. Check your Ollama server URL.").into()
         })
     }
 

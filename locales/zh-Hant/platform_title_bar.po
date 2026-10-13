@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Close Other Tabs"
+msgstr "關閉其他分頁"
+
+msgid "Close Tab"
+msgstr "關閉分頁"
+
+msgid "Move Tab to New Window"
+msgstr "將分頁移至新視窗"
+
+msgid "Show All Tabs"
+msgstr "顯示所有分頁"

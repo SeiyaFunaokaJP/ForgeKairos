@@ -1,0 +1,283 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "\nUnsaved changes are stored locally."
+msgstr "\n未儲存的變更會儲存在本機。"
+
+msgid "Actions"
+msgstr "動作"
+
+msgid "Activate"
+msgstr "切換"
+
+msgid "Add Folder to this Project"
+msgstr "將資料夾新增至此專案"
+
+msgid "Add Folders to this Project"
+msgstr "將多個資料夾新增至此專案"
+
+msgid "Add Nickname to Server"
+msgstr "為伺服器新增暱稱"
+
+msgid "Add WSL Distro"
+msgstr "新增 WSL 發行版"
+
+msgid "Add a nickname for this server"
+msgstr "為此伺服器新增暱稱"
+
+msgid "As a multi-root folder"
+msgstr "作為多根資料夾"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot open Dev Container from remote project"
+msgstr "無法從遠端專案開啟 Dev Container"
+
+msgid "Close Window"
+msgstr "關閉視窗"
+
+msgid "Connect Dev Container"
+msgstr "連線 Dev Container"
+
+msgid "Connect SSH Server"
+msgstr "連線 SSH 伺服器"
+
+msgid "Connect to Remote"
+msgstr "連線至遠端"
+
+msgid "Connect to a remote host"
+msgstr "連線至遠端主機"
+
+msgid "Connected to: {host}"
+msgstr "已連線至：{host}"
+
+msgid "Connecting to: {host}"
+msgstr "正在連線至：{host}"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "與 {host} 的連線嘗試未成功。正在重試..."
+
+msgid "Copied server address ({}) to clipboard"
+msgstr "已將伺服器位址（{}）複製到剪貼簿"
+
+msgid "Copy Server Address"
+msgstr "複製伺服器位址"
+
+msgid "Creating Dev Container"
+msgstr "正在建立 Dev Container"
+
+msgid "Current Folders"
+msgstr "目前資料夾"
+
+msgid "Delete Remote Project"
+msgstr "刪除遠端專案"
+
+msgid "Dev Container"
+msgstr "Dev Container"
+
+msgid "Disconnected"
+msgstr "已中斷連線"
+
+msgid "Disconnected from {host}"
+msgstr "已中斷與 {host} 的連線"
+
+msgid "Don't Show Again"
+msgstr "不要再顯示"
+
+msgid "Edit Nickname"
+msgstr "編輯暱稱"
+
+msgid "Enter WSL distro name"
+msgstr "輸入 WSL 發行版名稱"
+
+msgid "Enter the command you use to SSH into this server."
+msgstr "輸入用來透過 SSH 連線至此伺服器的命令。"
+
+msgid "Error Creating Dev Container:"
+msgstr "建立 Dev Container 時發生錯誤："
+
+msgid "Exit"
+msgstr "離開"
+
+msgid "Failed to connect"
+msgstr "連線失敗"
+
+msgid "Failed to connect over SSH"
+msgstr "透過 SSH 連線失敗"
+
+msgid "Failed to connect to Dev Container"
+msgstr "連線至 Dev Container 失敗"
+
+msgid "Failed to connect to WSL"
+msgstr "連線至 WSL 失敗"
+
+msgid "Failed to connect to the remote host"
+msgstr "無法連線至遠端主機"
+
+msgid "Failed to open project"
+msgstr "開啟專案失敗"
+
+msgid "Failed to reconnect"
+msgstr "重新連線失敗"
+
+msgid "Failed to start Dev Container. See logs for details"
+msgstr "無法啟動 Dev Container。請參閱記錄以取得詳細資料"
+
+msgid "Go Back"
+msgstr "返回"
+
+msgid "Invalid path"
+msgstr "無效的路徑"
+
+msgid "Invalid path specified when trying to open a folder inside WSL.\n\nPlease note that Zed currently does not support opening network share folders inside wsl.\n"
+msgstr "嘗試開啟 WSL 內的資料夾時指定了無效的路徑。\n\n請注意，ForgeKairos 目前不支援在 WSL 內開啟網路共用資料夾。\n"
+
+msgid "Learn More"
+msgstr "深入了解"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "已失去與 {host} 的連線。正在重新連線..."
+
+msgid "No matches"
+msgstr "沒有符合項目"
+
+msgid "No matching remote projects."
+msgstr "沒有相符的遠端專案。"
+
+msgid "No, keep it"
+msgstr "否，保留"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Open Folder"
+msgstr "開啟資料夾"
+
+msgid "Open Local Folders"
+msgstr "開啟本機資料夾"
+
+msgid "Open Project in This Window"
+msgstr "在此視窗中開啟專案"
+
+msgid "Open Remote Folder"
+msgstr "開啟遠端資料夾"
+
+msgid "Open Zed Log"
+msgstr "開啟 ForgeKairos 記錄檔"
+
+msgid "Open devcontainer.json"
+msgstr "開啟 devcontainer.json"
+
+msgid "Open in New Window"
+msgstr "在新視窗中開啟"
+
+msgid "Open projects over SSH, in WSL, or in Dev Containers."
+msgstr "透過 SSH、在 WSL 或 Dev Container 中開啟專案。"
+
+msgid "Recent Projects"
+msgstr "最近的專案"
+
+msgid "Recently opened projects will show up here"
+msgstr "最近開啟的專案將顯示於此"
+
+msgid "Reconnect"
+msgstr "重新連線"
+
+msgid "Remote: {host}"
+msgstr "遠端：{host}"
+
+msgid "Remove"
+msgstr "移除"
+
+msgid "Remove Distro"
+msgstr "移除發行版"
+
+msgid "Remove Folder"
+msgstr "移除資料夾"
+
+msgid "Remove Folder from Project"
+msgstr "從專案移除資料夾"
+
+msgid "Remove Project from Window"
+msgstr "從視窗移除專案"
+
+msgid "Remove Server"
+msgstr "移除伺服器"
+
+msgid "Remove WSL distro `{}`?"
+msgstr "要移除 WSL 發行版 `{}` 嗎？"
+
+msgid "Remove from Recent Projects"
+msgstr "從最近的專案中移除"
+
+msgid "Remove from Window"
+msgstr "從視窗移除"
+
+msgid "Remove server `{}`?"
+msgstr "要移除伺服器 `{}` 嗎？"
+
+msgid "Retry"
+msgstr "重試"
+
+msgid "Search projects…"
+msgstr "搜尋專案…"
+
+msgid "Search remote projects…"
+msgstr "搜尋遠端專案…"
+
+msgid "Select"
+msgstr "選取"
+
+msgid "Select Dev Container Configuration"
+msgstr "選取 Dev Container 設定"
+
+msgid "Start Dev Container"
+msgstr "啟動 Dev Container"
+
+msgid "This Window"
+msgstr "此視窗"
+
+msgid "View Server Options"
+msgstr "檢視伺服器選項"
+
+msgid "Yes, Open in Container"
+msgstr "是，在容器中開啟"
+
+msgid "Yes, remove it"
+msgstr "是，移除"
+
+msgid "Your connection to the remote project has been lost."
+msgstr "與遠端專案的連線已中斷。"
+
+msgid "Your connection to {} has been lost due to the server {reason}.{autosave}"
+msgstr "與 {} 的連線已中斷，原因為伺服器 {reason}。{autosave}"
+
+msgid "could not parse: {}"
+msgstr "無法剖析：{}"
+
+msgid "{worktree_name} contains a Dev Container configuration file. Would you like to re-open it in a container?"
+msgstr "{worktree_name} 包含 Dev Container 設定檔案。要在容器中重新開啟嗎？"
+
+msgctxt "disconnect reason"
+msgid "not responding"
+msgstr "無回應"
+
+msgctxt "disconnect reason"
+msgid "process exiting unexpectedly"
+msgstr "處理序意外結束"
+
+msgctxt "project picker"
+msgid "New Window"
+msgstr "新視窗"
+
+msgctxt "project picker"
+msgid "Open Project in New Window"
+msgstr "在新視窗中開啟專案"

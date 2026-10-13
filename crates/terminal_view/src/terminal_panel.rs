@@ -2102,9 +2102,9 @@ impl Render for TerminalPanel {
         let waiting_for_terminals = self.restoring || self.pending_terminals_to_add > 0;
         let restoring_placeholder = (waiting_for_terminals && no_items_in_panes).then(|| {
             let label = if self.restoring {
-                "Restoring terminals…"
+                i18n::t!("Restoring terminals…")
             } else {
-                "Starting terminal…"
+                i18n::t!("Starting terminal…")
             };
             h_flex()
                 .absolute()

@@ -1,0 +1,182 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Also search files ignored by configuration"
+msgstr "Rechercher aussi dans les fichiers ignorés par la configuration"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Close Search Bar"
+msgstr "Fermer la barre de recherche"
+
+msgid "Collapse All Files"
+msgstr "Réduire tous les fichiers"
+
+msgid "Collapse All Search Results"
+msgstr "Réduire tous les résultats de recherche"
+
+msgid "Don't Save"
+msgstr "Ne pas enregistrer"
+
+msgid "Down"
+msgstr "Bas"
+
+msgid "Exclude: e.g. vendor/*, *.lock"
+msgstr "Exclure : p. ex. vendor/*, *.lock"
+
+msgid "Expand All Files"
+msgstr "Développer tous les fichiers"
+
+msgid "Expand All Search Results"
+msgstr "Développer tous les résultats de recherche"
+
+msgid "Find and replace"
+msgstr "Rechercher et remplacer"
+
+msgid "Find in Results"
+msgstr "Rechercher dans les résultats"
+
+msgid "Fold"
+msgstr "Replier"
+
+msgid "Hit enter to search. For more options:"
+msgstr "Appuyez sur Enter pour lancer la recherche. Pour plus d'options :"
+
+msgid "Include/exclude specific paths"
+msgstr "Inclure/exclure des chemins spécifiques"
+
+msgid "Include: e.g. src/**/*.rs"
+msgstr "Inclure : p. ex. src/**/*.rs"
+
+msgid "Left"
+msgstr "Gauche"
+
+msgid "Loading project…"
+msgstr "Chargement du projet…"
+
+msgid "Match Case Sensitivity"
+msgstr "Respecter la casse"
+
+msgid "Match Whole Words"
+msgstr "Respecter les mots entiers"
+
+msgid "Match case"
+msgstr "Respecter la casse"
+
+msgid "Match whole words"
+msgstr "Respecter les mots entiers"
+
+msgid "Match with regex"
+msgstr "Rechercher avec une expression régulière"
+
+msgid "No Results"
+msgstr "Aucun résultat"
+
+msgid "No more matches"
+msgstr "Plus aucune correspondance"
+
+msgid "No results found in this project for the provided query"
+msgstr "Aucun résultat trouvé dans ce projet pour la requête fournie"
+
+msgid "One Match Per Line"
+msgstr "Une correspondance par ligne"
+
+msgid "Only Search Open Files"
+msgstr "Rechercher uniquement dans les fichiers ouverts"
+
+msgid "Open File"
+msgstr "Ouvrir le fichier"
+
+msgid "Open Multiple"
+msgstr "Ouvrir plusieurs éléments"
+
+msgid "Open as Tab"
+msgstr "Ouvrir en tant qu'onglet"
+
+msgid "Project Search"
+msgstr "Recherche dans le projet"
+
+msgid "Project search buffer contains unsaved edits. Do you want to save it?"
+msgstr "Le tampon de recherche dans le projet contient des modifications non enregistrées. Voulez-vous l'enregistrer ?"
+
+msgid "Replace All Matches"
+msgstr "Remplacer toutes les correspondances"
+
+msgid "Replace Next Match"
+msgstr "Remplacer la correspondance suivante"
+
+msgid "Replace in project…"
+msgstr "Remplacer dans le projet…"
+
+msgid "Replace with…"
+msgstr "Remplacer par…"
+
+msgid "Right"
+msgstr "Droite"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Search All Files"
+msgstr "Rechercher dans tous les fichiers"
+
+msgid "Search Backwards"
+msgstr "Rechercher en arrière"
+
+msgid "Search Limits Reached\nTry narrowing your search"
+msgstr "Limites de recherche atteintes\nEssayez d'affiner votre recherche"
+
+msgid "Search all files…"
+msgstr "Rechercher dans tous les fichiers…"
+
+msgid "Searching…"
+msgstr "Recherche en cours…"
+
+msgid "Search…"
+msgstr "Rechercher…"
+
+msgid "Select All Matches"
+msgstr "Sélectionner toutes les correspondances"
+
+msgid "Split…"
+msgstr "Fractionner…"
+
+msgid "Start typing to search. For more options:"
+msgstr "Commencez à taper pour lancer la recherche. Pour plus d'options :"
+
+msgid "Toggle Filters"
+msgstr "Afficher/masquer les filtres"
+
+msgid "Toggle Replace"
+msgstr "Activer/désactiver le remplacement"
+
+msgid "Toggle Search Selection"
+msgstr "Activer/désactiver la recherche dans la sélection"
+
+msgid "Unfold"
+msgstr "Déplier"
+
+msgid "Up"
+msgstr "Haut"
+
+msgid "Use Regular Expressions"
+msgstr "Utiliser les expressions régulières"
+
+msgid "{} to toggle all"
+msgstr "{} pour tout replier/déplier"
+
+msgctxt "search bar"
+msgid "Select Next Match"
+msgstr "Sélectionner la correspondance suivante"
+
+msgctxt "search bar"
+msgid "Select Previous Match"
+msgstr "Sélectionner la correspondance précédente"

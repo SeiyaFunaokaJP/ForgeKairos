@@ -1,0 +1,1787 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "\"{word}\" cannot be used as an attribute type or name (no whitespace, symbols, or PK / FK / UK)."
+msgstr "\"{word}\" não pode ser usado como tipo ou nome de atributo (sem espaços em branco, símbolos nem PK / FK / UK)."
+
+msgid "(None yet)"
+msgstr "(Nenhum ainda)"
+
+msgid "(Not Set)"
+msgstr "(Não definido)"
+
+msgid "(Select)"
+msgstr "(Selecionar)"
+
+msgid "(automatic when empty)"
+msgstr "(automático quando vazio)"
+
+msgid "(default when empty)"
+msgstr "(padrão quando vazio)"
+
+msgid "(no axis; not drawn)"
+msgstr "(sem eixo; não desenhado)"
+
+msgid "(no category; not drawn)"
+msgstr "(sem categoria; não desenhado)"
+
+msgid "(set by name with $name=; kept as is)"
+msgstr "(definido por nome com $name=; mantido como está)"
+
+msgid "(to rename it, change mainBranchName in the configuration as text)"
+msgstr "(para renomeá-lo, altere mainBranchName na configuração como texto)"
+
+msgid "+method()"
+msgstr "+metodo()"
+
+msgid "1 (Very Bad)"
+msgstr "1 (Muito ruim)"
+
+msgid "3 (Neutral)"
+msgstr "3 (Neutro)"
+
+msgid "5 (Very Good)"
+msgstr "5 (Muito bom)"
+
+msgid "A `namespace` has an empty name."
+msgstr "Um `namespace` tem nome vazio."
+
+msgid "A class definition has an empty name."
+msgstr "Uma definição de classe tem nome vazio."
+
+msgid "A class has an empty name."
+msgstr "Uma classe tem nome vazio."
+
+msgid "A file on this machine is copied to images/ in the remote Markdown file's folder, because the remote cannot refer to files on this machine."
+msgstr "Um arquivo desta máquina é copiado para images/ na pasta do arquivo Markdown remoto, porque o remoto não pode fazer referência a arquivos desta máquina."
+
+msgid "A folder cannot be saved as an image: {}"
+msgstr "Uma pasta não pode ser salva como imagem: {}"
+
+msgid "A later {from} → {to} relationship overrides this one (the later one's kind and text are drawn)."
+msgstr "Um relacionamento {from} → {to} posterior substitui este (o tipo e o texto do posterior são desenhados)."
+
+msgid "A multiplicity cannot contain `\"`, `%%{{` or line breaks."
+msgstr "Uma multiplicidade não pode conter `\"`, `%%{{` nem quebras de linha."
+
+msgid "A participant has an empty ID."
+msgstr "Um participante tem ID vazio."
+
+msgid "A relationship label cannot contain line breaks, `%%{{`, or leading or trailing whitespace."
+msgstr "Um rótulo de relacionamento não pode conter quebras de linha, `%%{{` nem espaços em branco no início ou no fim."
+
+msgid "A remote file cannot be exported to PDF. Save it locally, then run this again."
+msgstr "Um arquivo remoto não pode ser exportado para PDF. Salve-o localmente e execute novamente."
+
+msgid "A row cannot be inserted above the header row"
+msgstr "Não é possível inserir uma linha acima da linha de cabeçalho"
+
+msgid "A state has an empty ID."
+msgstr "Um estado tem ID vazio."
+
+msgid "A time frame with no arrow gets one automatically from the closest earlier frame in another lane"
+msgstr "Um quadro de tempo sem seta recebe uma automaticamente do quadro anterior mais próximo em outra raia"
+
+msgid "Activation"
+msgstr "Ativação"
+
+msgid "Actual Size"
+msgstr "Tamanho real"
+
+msgid "Add Activation"
+msgstr "Adicionar ativação"
+
+msgid "Add Annotation"
+msgstr "Adicionar anotação"
+
+msgid "Add Arrow"
+msgstr "Adicionar seta"
+
+msgid "Add Attribute"
+msgstr "Adicionar atributo"
+
+msgid "Add Autonumber"
+msgstr "Adicionar numeração automática"
+
+msgid "Add Axis"
+msgstr "Adicionar eixo"
+
+msgid "Add Bar"
+msgstr "Adicionar barra"
+
+msgid "Add Block"
+msgstr "Adicionar bloco"
+
+msgid "Add Block Branch"
+msgstr "Adicionar ramificação do bloco"
+
+msgid "Add Block End"
+msgstr "Adicionar fim do bloco"
+
+msgid "Add Block Start"
+msgstr "Adicionar início do bloco"
+
+msgid "Add Boundary"
+msgstr "Adicionar limite"
+
+msgid "Add Branch"
+msgstr "Adicionar branch"
+
+msgid "Add Card"
+msgstr "Adicionar cartão"
+
+msgid "Add Category"
+msgstr "Adicionar categoria"
+
+msgid "Add Central Node"
+msgstr "Adicionar nó central"
+
+msgid "Add Checkout"
+msgstr "Adicionar checkout"
+
+msgid "Add Cherry-pick"
+msgstr "Adicionar cherry-pick"
+
+msgid "Add Child"
+msgstr "Adicionar filho"
+
+msgid "Add Class"
+msgstr "Adicionar classe"
+
+msgid "Add Class Definition"
+msgstr "Adicionar definição de classe"
+
+msgid "Add Column"
+msgstr "Adicionar coluna"
+
+msgid "Add Column at End"
+msgstr "Adicionar coluna no final"
+
+msgid "Add Commit"
+msgstr "Adicionar commit"
+
+msgid "Add Composite State"
+msgstr "Adicionar estado composto"
+
+msgid "Add Concurrency Divider"
+msgstr "Adicionar divisor de concorrência"
+
+msgid "Add Data"
+msgstr "Adicionar dados"
+
+msgid "Add Deactivation"
+msgstr "Adicionar desativação"
+
+msgid "Add Edge"
+msgstr "Adicionar aresta"
+
+msgid "Add Element"
+msgstr "Adicionar elemento"
+
+msgid "Add Entity"
+msgstr "Adicionar entidade"
+
+msgid "Add Event"
+msgstr "Adicionar evento"
+
+msgid "Add Flow"
+msgstr "Adicionar fluxo"
+
+msgid "Add Frame"
+msgstr "Adicionar quadro"
+
+msgid "Add Group"
+msgstr "Adicionar grupo"
+
+msgid "Add Item"
+msgstr "Adicionar item"
+
+msgid "Add Item Below at the Same Level"
+msgstr "Adicionar item abaixo no mesmo nível"
+
+msgid "Add Item Inside (Only Items Without a Value)"
+msgstr "Adicionar item dentro (somente itens sem valor)"
+
+msgid "Add Junction"
+msgstr "Adicionar junção"
+
+msgid "Add Line"
+msgstr "Adicionar linha"
+
+msgid "Add Link"
+msgstr "Adicionar ligação"
+
+msgid "Add Main Bone (Cause)"
+msgstr "Adicionar espinha principal (causa)"
+
+msgid "Add Member"
+msgstr "Adicionar membro"
+
+msgid "Add Member Line"
+msgstr "Adicionar linha de membro"
+
+msgid "Add Merge"
+msgstr "Adicionar merge"
+
+msgid "Add Message"
+msgstr "Adicionar mensagem"
+
+msgid "Add Node"
+msgstr "Adicionar nó"
+
+msgid "Add Note"
+msgstr "Adicionar nota"
+
+msgid "Add Overlap"
+msgstr "Adicionar sobreposição"
+
+msgid "Add Participant"
+msgstr "Adicionar participante"
+
+msgid "Add Participant Creation"
+msgstr "Adicionar criação de participante"
+
+msgid "Add Participant Destruction"
+msgstr "Adicionar destruição de participante"
+
+msgid "Add Period"
+msgstr "Adicionar período"
+
+msgid "Add Point"
+msgstr "Adicionar ponto"
+
+msgid "Add Relationship"
+msgstr "Adicionar relacionamento"
+
+msgid "Add Requirement"
+msgstr "Adicionar requisito"
+
+msgid "Add Row"
+msgstr "Adicionar linha"
+
+msgid "Add Row Below at the Same Level"
+msgstr "Adicionar linha abaixo no mesmo nível"
+
+msgid "Add Row at End"
+msgstr "Adicionar linha no final"
+
+msgid "Add Section"
+msgstr "Adicionar seção"
+
+msgid "Add Series"
+msgstr "Adicionar série"
+
+msgid "Add Service"
+msgstr "Adicionar serviço"
+
+msgid "Add Set"
+msgstr "Adicionar conjunto"
+
+msgid "Add Sibling Below"
+msgstr "Adicionar irmão abaixo"
+
+msgid "Add Space"
+msgstr "Adicionar espaço"
+
+msgid "Add State"
+msgstr "Adicionar estado"
+
+msgid "Add Task"
+msgstr "Adicionar tarefa"
+
+msgid "Add Top-Level Node"
+msgstr "Adicionar nó de nível superior"
+
+msgid "Add Transition"
+msgstr "Adicionar transição"
+
+msgid "Add a Finer Cause"
+msgstr "Adicionar uma causa mais detalhada"
+
+msgid "Add a block first."
+msgstr "Adicione um bloco antes."
+
+msgid "Add a class first."
+msgstr "Adicione uma classe antes."
+
+msgid "Add a node first."
+msgstr "Adicione um nó antes."
+
+msgid "Add a participant first."
+msgstr "Adicione um participante antes."
+
+msgid "Add a requirement or an element first."
+msgstr "Adicione um requisito ou um elemento antes."
+
+msgid "Add a state first."
+msgstr "Adicione um estado antes."
+
+msgid "Add an Element Inside This Boundary"
+msgstr "Adicionar um elemento dentro deste limite"
+
+msgid "Add an element first."
+msgstr "Adicione um elemento antes."
+
+msgid "Add an entity first."
+msgstr "Adicione uma entidade antes."
+
+msgid "Add at least one class."
+msgstr "Adicione pelo menos uma classe."
+
+msgid "Add at least one element or boundary."
+msgstr "Adicione pelo menos um elemento ou limite."
+
+msgid "Add at least one entity."
+msgstr "Adicione pelo menos uma entidade."
+
+msgid "Add at least one flow."
+msgstr "Adicione pelo menos um fluxo."
+
+msgid "Add at least one frame."
+msgstr "Adicione pelo menos um quadro."
+
+msgid "Add at least one group or service."
+msgstr "Adicione pelo menos um grupo ou serviço."
+
+msgid "Add at least one participant."
+msgstr "Adicione pelo menos um participante."
+
+msgid "Add at least two sets first."
+msgstr "Adicione pelo menos dois conjuntos antes."
+
+msgid "Add box"
+msgstr "Adicionar box"
+
+msgid "Add class"
+msgstr "Adicionar class"
+
+msgid "Add classDef"
+msgstr "Adicionar classDef"
+
+msgid "Add namespace"
+msgstr "Adicionar namespace"
+
+msgid "Add style"
+msgstr "Adicionar style"
+
+msgid "Alignment"
+msgstr "Alinhamento"
+
+msgid "Alt Text"
+msgstr "Texto alternativo"
+
+msgid "An aligned image goes after the paragraph the cursor is in."
+msgstr "Uma imagem alinhada é inserida depois do parágrafo em que está o cursor."
+
+msgid "An aligned image goes after the paragraph the cursor is in. The selected text stays as it is."
+msgstr "Uma imagem alinhada é inserida depois do parágrafo em que está o cursor. O texto selecionado permanece como está."
+
+msgid "An element has an empty ID."
+msgstr "Um elemento tem ID vazio."
+
+msgid "An entity has an empty name."
+msgstr "Uma entidade tem nome vazio."
+
+msgid "An image inside HTML cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "Uma imagem dentro de HTML não pode ser alinhada. Defina Alinhamento como \"Não definido\"."
+
+msgid "An image inside a link cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "Uma imagem dentro de um link não pode ser alinhada. Defina Alinhamento como \"Não definido\"."
+
+msgid "An image inside a table cannot be aligned. Set Alignment to \"Not Set\"."
+msgstr "Uma imagem dentro de uma tabela não pode ser alinhada. Defina Alinhamento como \"Não definido\"."
+
+msgid "An overlap needs at least two sets."
+msgstr "Uma sobreposição precisa de pelo menos dois conjuntos."
+
+msgid "Annotation"
+msgstr "Anotação"
+
+msgid "Arrow"
+msgstr "Seta"
+
+msgid "Arrow on. Click to remove the arrow."
+msgstr "Com seta. Clique para remover a seta."
+
+msgid "Arrows"
+msgstr "Setas"
+
+msgid "Assignee"
+msgstr "Responsável"
+
+msgid "Autonumber Start"
+msgstr "Início da numeração automática"
+
+msgid "Axes (an empty name is not written)"
+msgstr "Eixos (um nome vazio não é escrito)"
+
+msgid "Axes and Values (deleting an axis also deletes its value in every series; empty cells at the end are drawn as the minimum)"
+msgstr "Eixos e valores (excluir um eixo também exclui o valor dele em todas as séries; células vazias no final são desenhadas como o mínimo)"
+
+msgid "Axis Format"
+msgstr "Formato do eixo"
+
+msgid "Axis ID"
+msgstr "ID do eixo"
+
+msgid "Axis Labels (an empty axis is not drawn)"
+msgstr "Rótulos dos eixos (um eixo vazio não é desenhado)"
+
+msgid "Axis {number}"
+msgstr "Eixo {number}"
+
+msgid "Blocks (laid out from the top left in the order written; indented rows are nested deeper in groups)"
+msgstr "Blocos (dispostos a partir do canto superior esquerdo na ordem escrita; linhas com recuo ficam aninhadas mais fundo em grupos)"
+
+msgid "Blocks to Apply To"
+msgstr "Blocos aos quais aplicar"
+
+msgid "Bottom Left (3)"
+msgstr "Inferior esquerdo (3)"
+
+msgid "Bottom Right (4)"
+msgstr "Inferior direito (4)"
+
+msgid "Browse…"
+msgstr "Procurar…"
+
+msgid "By Axis Name"
+msgstr "Por nome do eixo"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Cannot build a path to the copied image."
+msgstr "Não é possível montar um caminho para a imagem copiada."
+
+msgid "Cannot build the path: {}"
+msgstr "Não é possível montar o caminho: {}"
+
+msgid "Cannot convert to PDF. Install Microsoft Edge (msedge.exe) or pandoc."
+msgstr "Não é possível converter para PDF. Instale o Microsoft Edge (msedge.exe) ou o pandoc."
+
+msgid "Cannot create the image file: {}"
+msgstr "Não é possível criar o arquivo de imagem: {}"
+
+msgid "Cannot create the images folder: {}"
+msgstr "Não é possível criar a pasta images: {}"
+
+msgid "Cannot insert the image link: {reason}"
+msgstr "Não é possível inserir o link da imagem: {reason}"
+
+msgid "Cannot load the image"
+msgstr "Não é possível carregar a imagem"
+
+msgid "Cannot open the Mermaid diagram in the structured editor: {error}"
+msgstr "Não é possível abrir o diagrama Mermaid no editor estruturado: {error}"
+
+msgid "Cannot paste the image: {reason}"
+msgstr "Não é possível colar a imagem: {reason}"
+
+msgid "Cannot read the file name: {}"
+msgstr "Não é possível ler o nome do arquivo: {}"
+
+msgid "Cannot read the image file: {}"
+msgstr "Não é possível ler o arquivo de imagem: {}"
+
+msgid "Cannot remove the image saved on the remote: {}"
+msgstr "Não é possível remover a imagem salva no remoto: {}"
+
+msgid "Categories"
+msgstr "Categorias"
+
+msgid "Category"
+msgstr "Categoria"
+
+msgid "Category {number}"
+msgstr "Categoria {number}"
+
+msgid "Causes (the leftmost rows are the main bones; indented rows are finer causes)"
+msgstr "Causas (as linhas mais à esquerda são as espinhas principais; linhas com recuo são causas mais detalhadas)"
+
+msgid "Central topic"
+msgstr "Tema central"
+
+msgid "Checking…"
+msgstr "Verificando…"
+
+msgid "Choose a diagram type."
+msgstr "Escolha um tipo de diagrama."
+
+msgid "Choose an image file in the system dialog."
+msgstr "Escolha um arquivo de imagem no diálogo do sistema."
+
+msgid "Choose an image file on this machine in the system dialog and copy it to images/ on the remote."
+msgstr "Escolha um arquivo de imagem desta máquina no diálogo do sistema e copie-o para images/ no remoto."
+
+msgid "Class"
+msgstr "Classe"
+
+msgid "Class Definitions (classDef)"
+msgstr "Definições de classe (classDef)"
+
+msgid "Class Name"
+msgstr "Nome da classe"
+
+msgid "Class Names (renaming updates the references too)"
+msgstr "Nomes de classe (renomear também atualiza as referências)"
+
+msgid "Classes (classDef)"
+msgstr "Classes (classDef)"
+
+msgid "Column"
+msgstr "Coluna"
+
+msgid "Column alignment (click to cycle: default → left → center → right)"
+msgstr "Alinhamento da coluna (clique para alternar: padrão → esquerda → centro → direita)"
+
+msgid "Columns and Cards (columns higher up are drawn further left)"
+msgstr "Colunas e cartões (colunas mais acima são desenhadas mais à esquerda)"
+
+msgid "Comment"
+msgstr "Comentário"
+
+msgid "Commit"
+msgstr "Commit"
+
+msgid "Common Icons"
+msgstr "Ícones comuns"
+
+msgid "Composite"
+msgstr "Composto"
+
+msgid "Composite states are nested too deeply."
+msgstr "Os estados compostos estão aninhados profundamente demais."
+
+msgid "CompositeState"
+msgstr "EstadoComposto"
+
+msgid "Concurrency Divider (--)"
+msgstr "Divisor de concorrência (--)"
+
+msgid "Connection Side"
+msgstr "Lado da conexão"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Copy Link"
+msgstr "Copiar link"
+
+msgid "Copy as Markdown"
+msgstr "Copiar como Markdown"
+
+msgid "Copy to images/ in the Markdown file's folder"
+msgstr "Copiar para images/ na pasta do arquivo Markdown"
+
+msgid "Copying the image…"
+msgstr "Copiando a imagem…"
+
+msgid "Create Mermaid Diagram"
+msgstr "Criar diagrama Mermaid"
+
+msgid "Created by create"
+msgstr "Criado por create"
+
+msgid "Dashed line (non-identifying relationship). Click for a solid line."
+msgstr "Linha tracejada (relacionamento não identificador). Clique para usar uma linha contínua."
+
+msgid "Data"
+msgstr "Dados"
+
+msgid "Data (referenced from frames)"
+msgstr "Dados (referenciados pelos quadros)"
+
+msgid "Date"
+msgstr "Data"
+
+msgid "Date Format"
+msgstr "Formato de data"
+
+msgid "Date or Duration"
+msgstr "Data ou duração"
+
+msgid "Deactivation"
+msgstr "Desativação"
+
+msgid "Default (Left to Right)"
+msgstr "Padrão (da esquerda para a direita)"
+
+msgid "Delete"
+msgstr "Excluir"
+
+msgid "Delete (also deletes the overlaps, text and style statements that include this set)"
+msgstr "Excluir (também exclui as sobreposições e as instruções text e style que incluem este conjunto)"
+
+msgid "Delete (also deletes this node's flows)"
+msgstr "Excluir (também exclui os fluxos deste nó)"
+
+msgid "Delete (also removes the relationships and styles that use this name)"
+msgstr "Excluir (também remove os relacionamentos e estilos que usam este nome)"
+
+msgid "Delete (arrows from this frame are deleted too)"
+msgstr "Excluir (as setas que saem deste quadro também são excluídas)"
+
+msgid "Delete (connected edges and styles are deleted too)"
+msgstr "Excluir (as arestas conectadas e os estilos também são excluídos)"
+
+msgid "Delete (connected edges are deleted too)"
+msgstr "Excluir (as arestas conectadas também são excluídas)"
+
+msgid "Delete (references to this data are removed too)"
+msgstr "Excluir (as referências a estes dados também são removidas)"
+
+msgid "Delete (statements that refer to this class are deleted too)"
+msgstr "Excluir (as instruções que fazem referência a esta classe também são excluídas)"
+
+msgid "Delete (the classes inside are deleted too)"
+msgstr "Excluir (as classes dentro também são excluídas)"
+
+msgid "Delete (the contents move to the enclosing group)"
+msgstr "Excluir (o conteúdo é movido para o grupo que o contém)"
+
+msgid "Delete (the participants inside are kept)"
+msgstr "Excluir (os participantes dentro são mantidos)"
+
+msgid "Delete (the states and transitions inside are deleted too)"
+msgstr "Excluir (os estados e as transições dentro também são excluídos)"
+
+msgid "Delete Card"
+msgstr "Excluir cartão"
+
+msgid "Delete Column"
+msgstr "Excluir coluna"
+
+msgid "Delete Column and Its Cards"
+msgstr "Excluir coluna e os cartões dela"
+
+msgid "Delete Definition (classes already applied stay)"
+msgstr "Excluir definição (as classes já aplicadas permanecem)"
+
+msgid "Delete Event"
+msgstr "Excluir evento"
+
+msgid "Delete Group"
+msgstr "Excluir grupo"
+
+msgid "Delete Relationship"
+msgstr "Excluir relacionamento"
+
+msgid "Delete Row"
+msgstr "Excluir linha"
+
+msgid "Delete Section and Its Periods"
+msgstr "Excluir seção e os períodos dela"
+
+msgid "Delete Task (tasks that refer to this one with after / until get a date at the same point in time instead)"
+msgstr "Excluir tarefa (as tarefas que fazem referência a esta com after / until recebem, no lugar, uma data no mesmo ponto no tempo)"
+
+msgid "Delete This Group and Its Contents (connected edges and styles are deleted too)"
+msgstr "Excluir este grupo e o conteúdo dele (as arestas conectadas e os estilos também são excluídos)"
+
+msgid "Delete This Item and All Items Inside It"
+msgstr "Excluir este item e todos os itens dentro dele"
+
+msgid "Delete This Node and Everything Under It"
+msgstr "Excluir este nó e tudo abaixo dele"
+
+msgid "Delete This Row and All Rows Under It"
+msgstr "Excluir esta linha e todas as linhas abaixo dela"
+
+msgid "Delete the Boundary (the elements inside are kept)"
+msgstr "Excluir o limite (os elementos dentro são mantidos)"
+
+msgid "Delete the Element and Its Relationships"
+msgstr "Excluir o elemento e os relacionamentos dele"
+
+msgid "Delete the Section and Its Tasks"
+msgstr "Excluir a seção e as tarefas dela"
+
+msgid "Description"
+msgstr "Descrição"
+
+msgid "Diagram Content"
+msgstr "Conteúdo do diagrama"
+
+msgid "Diagram Type"
+msgstr "Tipo de diagrama"
+
+msgid "Direction"
+msgstr "Direção"
+
+msgid "Display Name (as)"
+msgstr "Nome de exibição (as)"
+
+msgid "Document reference (docref)"
+msgstr "Referência de documento (docref)"
+
+msgid "Edges"
+msgstr "Arestas"
+
+msgid "Edit Image"
+msgstr "Editar imagem"
+
+msgid "Edit Mermaid Diagram"
+msgstr "Editar diagrama Mermaid"
+
+msgid "Edit Table"
+msgstr "Editar tabela"
+
+msgid "Edit the cells directly. Pasting a range from Excel or a spreadsheet spreads it across the table."
+msgstr "Edite as células diretamente. Colar um intervalo do Excel ou de uma planilha o distribui pela tabela."
+
+msgid "Editing the image at the cursor. Make your changes and click \"Update\" to apply them."
+msgstr "Editando a imagem no cursor. Faça as alterações e clique em \"Atualizar\" para aplicá-las."
+
+msgid "Effect (Problem)"
+msgstr "Efeito (problema)"
+
+msgid "Element"
+msgstr "Elemento"
+
+msgid "Element type (type)"
+msgstr "Tipo do elemento (type)"
+
+msgid "Elements (what satisfies or verifies a requirement)"
+msgstr "Elementos (o que satisfaz ou verifica um requisito)"
+
+msgid "Elements and Boundaries (indented inside a boundary)"
+msgstr "Elementos e limites (com recuo dentro de um limite)"
+
+msgid "End"
+msgstr "Fim"
+
+msgid "Enter a number (px) or a number with %. Leave empty to not set it."
+msgstr "Insira um número (px) ou um número com %. Deixe vazio para não definir."
+
+msgid "Enter the height as a number or a number with %, such as 200 or 50%."
+msgstr "Insira a altura como um número ou um número com %, como 200 ou 50%."
+
+msgid "Enter the width as a number or a number with %, such as 300 or 50%."
+msgstr "Insira a largura como um número ou um número com %, como 300 ou 50%."
+
+msgid "Entities"
+msgstr "Entidades"
+
+msgid "Entity"
+msgstr "Entidade"
+
+msgid "Export to PDF"
+msgstr "Exportar para PDF"
+
+msgid "Exported to PDF: {} — click to open"
+msgstr "Exportado para PDF: {} — clique para abrir"
+
+msgid "Exporting to PDF…"
+msgstr "Exportando para PDF…"
+
+msgid "Failed to check the remote files."
+msgstr "Falha ao verificar os arquivos remotos."
+
+msgid "Failed to copy the image on the remote: {}"
+msgstr "Falha ao copiar a imagem no remoto: {}"
+
+msgid "Failed to copy the image: {error}"
+msgstr "Falha ao copiar a imagem: {error}"
+
+msgid "Failed to export to PDF: {error}"
+msgstr "Falha ao exportar para PDF: {error}"
+
+msgid "Failed to open the file dialog: {error}"
+msgstr "Falha ao abrir o diálogo de arquivo: {error}"
+
+msgid "Failed to render the Mermaid diagram: {error}"
+msgstr "Falha ao renderizar o diagrama Mermaid: {error}"
+
+msgid "Failed to save the image: {}"
+msgstr "Falha ao salvar a imagem: {}"
+
+msgid "Fit to Pane"
+msgstr "Ajustar ao subpainel"
+
+msgid "Flows (source → target, amount)"
+msgstr "Fluxos (origem → destino, quantidade)"
+
+msgid "Fold All Headings"
+msgstr "Dobrar todos os títulos"
+
+msgid "Fold Headings at Level {level}"
+msgstr "Dobrar títulos no nível {level}"
+
+msgid "Follows the Previous Task"
+msgstr "Segue a tarefa anterior"
+
+msgid "Frames (in time order from the top)"
+msgstr "Quadros (em ordem cronológica a partir do topo)"
+
+msgid "Graticule"
+msgstr "Grade"
+
+msgid "Group"
+msgstr "Grupo"
+
+msgid "Group Edge"
+msgstr "Aresta de grupo"
+
+msgid "Groups"
+msgstr "Grupos"
+
+msgid "Header Row"
+msgstr "Linha de cabeçalho"
+
+msgid "Height"
+msgstr "Altura"
+
+msgid "Hidden"
+msgstr "Oculto"
+
+msgid "How the end is written: Date or Duration (5d = 5 days, 2h = 2 hours, 1w = 1 week) / until = until another task starts"
+msgstr "Como o fim é escrito: Data ou duração (5d = 5 dias, 2h = 2 horas, 1w = 1 semana) / until = até outra tarefa começar"
+
+msgid "How the start is written: Date / after = when another task ends / Follows the Previous Task = from the end of the task just before it"
+msgstr "Como o início é escrito: Data / after = quando outra tarefa termina / Segue a tarefa anterior = a partir do fim da tarefa imediatamente anterior"
+
+msgid "How the task is drawn: Done = done / In progress = active / Critical = crit / Milestone = milestone / Vertical line = vert"
+msgstr "Como a tarefa é desenhada: Concluída = done / Em andamento = active / Crítica = crit / Marco = milestone / Linha vertical = vert"
+
+msgid "ID and label are optional"
+msgstr "O ID e o rótulo são opcionais"
+
+msgid "Icon"
+msgstr "Ícone"
+
+msgid "Image File"
+msgstr "Arquivo de imagem"
+
+msgid "Image description"
+msgstr "Descrição da imagem"
+
+msgid "Image file not found: {}"
+msgstr "Arquivo de imagem não encontrado: {}"
+
+msgid "Images are saved in the images folder next to the document. Save the file first."
+msgstr "As imagens são salvas na pasta images ao lado do documento. Salve o arquivo antes."
+
+msgid "Images cannot be saved in a project you joined for collaboration."
+msgstr "Não é possível salvar imagens em um projeto em que você entrou para colaborar."
+
+msgid "Images cannot be saved next to a Markdown file opened on its own. Open the folder that contains the Markdown file."
+msgstr "Não é possível salvar imagens ao lado de um arquivo Markdown aberto isoladamente. Abra a pasta que contém o arquivo Markdown."
+
+msgid "Images from a URL are not shown here."
+msgstr "Imagens de uma URL não são exibidas aqui."
+
+msgid "In Axis Order"
+msgstr "Na ordem dos eixos"
+
+msgid "Indent (Make Child of the Sibling Above)"
+msgstr "Aumentar recuo (tornar filho do irmão acima)"
+
+msgid "Indent (Move into the Item Above That Has No Value)"
+msgstr "Aumentar recuo (mover para dentro do item acima que não tem valor)"
+
+msgid "Insert"
+msgstr "Inserir"
+
+msgid "Insert Column to the Left"
+msgstr "Inserir coluna à esquerda"
+
+msgid "Insert Column to the Right"
+msgstr "Inserir coluna à direita"
+
+msgid "Insert Image"
+msgstr "Inserir imagem"
+
+msgid "Insert Row Above"
+msgstr "Inserir linha acima"
+
+msgid "Insert Row Below"
+msgstr "Inserir linha abaixo"
+
+msgid "Inserts an image at the cursor. An image with an alignment or a size is written as HTML."
+msgstr "Insere uma imagem no cursor. Uma imagem com alinhamento ou tamanho é escrita como HTML."
+
+msgid "Interactions"
+msgstr "Interações"
+
+msgid "Items"
+msgstr "Itens"
+
+msgid "Items (indented rows are nested deeper; an item with a value is a box at the end of the tree, an item without a value is a section around them)"
+msgstr "Itens (linhas com recuo ficam aninhadas mais fundo; um item com valor é uma caixa no fim da árvore, um item sem valor é uma seção ao redor delas)"
+
+msgid "Items (length in bits and label; the ranges are worked out from the top)"
+msgstr "Itens (tamanho em bits e rótulo; os intervalos são calculados a partir do topo)"
+
+msgid "Label"
+msgstr "Rótulo"
+
+msgid "Leave empty to put everything in one row (auto also works)"
+msgstr "Deixe vazio para colocar tudo em uma linha (auto também funciona)"
+
+msgid "Legend"
+msgstr "Legenda"
+
+msgid "Line Style"
+msgstr "Estilo da linha"
+
+msgid "Link {position} has a {id}@{{ … }} line, so its line style cannot set interpolate (the curve)."
+msgstr "A ligação {position} tem uma linha {id}@{{ … }}, então o estilo de linha dela não pode definir interpolate (a curva)."
+
+msgid "Link {position} is already styled by a linkStyle line that is kept as text."
+msgstr "A ligação {position} já tem estilo definido por uma linha linkStyle que é mantida como texto."
+
+msgid "Links"
+msgstr "Ligações"
+
+msgid "Load the Document's Version"
+msgstr "Carregar a versão do documento"
+
+msgid "Looking for image files in the project…"
+msgstr "Procurando arquivos de imagem no projeto…"
+
+msgid "Main Branch: {branch}"
+msgstr "Branch principal: {branch}"
+
+msgid "Markdown Preview"
+msgstr "Visualização do Markdown"
+
+msgid "Max"
+msgstr "Máximo"
+
+msgid "Member"
+msgstr "Membro"
+
+msgid "Memo"
+msgstr "Nota"
+
+msgid "Merge In"
+msgstr "Mesclar"
+
+msgid "Mermaid lays out diagrams automatically (positions cannot be set). Here you edit the diagram's elements, links and text."
+msgstr "O Mermaid organiza os diagramas automaticamente (não é possível definir posições). Aqui você edita os elementos, as ligações e o texto do diagrama."
+
+msgid "Min"
+msgstr "Mínimo"
+
+msgid "Move Column Left"
+msgstr "Mover coluna para a esquerda"
+
+msgid "Move Column Right"
+msgstr "Mover coluna para a direita"
+
+msgid "Move Down"
+msgstr "Mover para baixo"
+
+msgid "Move Left"
+msgstr "Mover para a esquerda"
+
+msgid "Move Out of the Group (After the Group)"
+msgstr "Mover para fora do grupo (depois do grupo)"
+
+msgid "Move Right"
+msgstr "Mover para a direita"
+
+msgid "Move Row Down"
+msgstr "Mover linha para baixo"
+
+msgid "Move Row Up"
+msgstr "Mover linha para cima"
+
+msgid "Move Up"
+msgstr "Mover para cima"
+
+msgid "Move into the Group Above"
+msgstr "Mover para dentro do grupo acima"
+
+msgid "Move to Left Column"
+msgstr "Mover para a coluna à esquerda"
+
+msgid "Move to Right Column"
+msgstr "Mover para a coluna à direita"
+
+msgid "Namespace"
+msgstr "Namespace"
+
+msgid "New Mermaid Diagram ({file})"
+msgstr "Novo diagrama Mermaid ({file})"
+
+msgid "New block"
+msgstr "Novo bloco"
+
+msgid "New boundary"
+msgstr "Novo limite"
+
+msgid "New box…"
+msgstr "Novo box…"
+
+msgid "New card"
+msgstr "Novo cartão"
+
+msgid "New cause"
+msgstr "Nova causa"
+
+msgid "New column"
+msgstr "Nova coluna"
+
+msgid "New element"
+msgstr "Novo elemento"
+
+msgid "New item"
+msgstr "Novo item"
+
+msgid "New node"
+msgstr "Novo nó"
+
+msgid "New period"
+msgstr "Novo período"
+
+msgid "New point"
+msgstr "Novo ponto"
+
+msgid "New section"
+msgstr "Nova seção"
+
+msgid "New sub-cause"
+msgstr "Nova subcausa"
+
+msgid "New task"
+msgstr "Nova tarefa"
+
+msgid "NewParticipant"
+msgstr "NovoParticipante"
+
+msgid "NewState"
+msgstr "NovoEstado"
+
+msgid "No Box"
+msgstr "Sem box"
+
+msgid "No Class"
+msgstr "Sem classe"
+
+msgid "No Group"
+msgstr "Sem grupo"
+
+msgid "No Icon"
+msgstr "Sem ícone"
+
+msgid "No Mermaid diagram code block was found."
+msgstr "Nenhum bloco de código de diagrama Mermaid foi encontrado."
+
+msgid "No Priority"
+msgstr "Sem prioridade"
+
+msgid "No Reference"
+msgstr "Sem referência"
+
+msgid "No Shape (Shows the ID)"
+msgstr "Sem forma (mostra o ID)"
+
+msgid "No arrow. Click to add an arrow."
+msgstr "Sem seta. Clique para adicionar uma seta."
+
+msgid "No file was found at this path."
+msgstr "Nenhum arquivo foi encontrado neste caminho."
+
+msgid "No free name was found in the images folder: {file_name}"
+msgstr "Nenhum nome livre foi encontrado na pasta images: {file_name}"
+
+msgid "No matching image files."
+msgstr "Nenhum arquivo de imagem correspondente."
+
+msgid "Nodes"
+msgstr "Nós"
+
+msgid "Nodes (indented rows are nested deeper)"
+msgstr "Nós (linhas com recuo ficam aninhadas mais fundo)"
+
+msgid "Nodes (renaming a node updates all of its flows)"
+msgstr "Nós (renomear um nó atualiza todos os fluxos dele)"
+
+msgid "Nodes with the same name are merged into one when applied"
+msgstr "Nós com o mesmo nome são mesclados em um só ao aplicar"
+
+msgid "None"
+msgstr "Nenhum"
+
+msgid "None (1, 2, 3…)"
+msgstr "Nenhum (1, 2, 3…)"
+
+msgid "Not Set"
+msgstr "Não definido"
+
+msgid "Not Set (Circle)"
+msgstr "Não definido (círculo)"
+
+msgid "Not Set (Shown)"
+msgstr "Não definido (exibido)"
+
+msgid "Not Set (Vertical)"
+msgstr "Não definido (vertical)"
+
+msgid "Not an image file: {}"
+msgstr "Não é um arquivo de imagem: {}"
+
+msgid "Note"
+msgstr "Observação"
+
+msgid "Number"
+msgstr "Número"
+
+msgid "Number of Columns"
+msgstr "Número de colunas"
+
+msgid "Number, separator, type, lane (optional), name. The second line is data in {{ }}."
+msgstr "Número, separador, tipo, raia (opcional), nome. A segunda linha são dados entre {{ }}."
+
+msgid "Numeric Range"
+msgstr "Intervalo numérico"
+
+msgid "Only a tab with a single file open can be exported to PDF."
+msgstr "Somente uma aba com um único arquivo aberto pode ser exportada para PDF."
+
+msgid "Open"
+msgstr "Abrir"
+
+msgid "Operations (run from top to bottom)"
+msgstr "Operações (executadas de cima para baixo)"
+
+msgid "Order"
+msgstr "Ordem"
+
+msgid "Orientation"
+msgstr "Orientação"
+
+msgid "Original size: {width} × {height}"
+msgstr "Tamanho original: {width} × {height}"
+
+msgid "Outdent (Move After the Parent)"
+msgstr "Diminuir recuo (mover para depois do pai)"
+
+msgid "Overlaps (sets, label, size)"
+msgstr "Sobreposições (conjuntos, rótulo, tamanho)"
+
+msgid "Parent"
+msgstr "Pai"
+
+msgid "Parent Group"
+msgstr "Grupo pai"
+
+msgid "Participant Creation"
+msgstr "Criação de participante"
+
+msgid "Participant Destruction"
+msgstr "Destruição de participante"
+
+msgid "Participants (listed top to bottom, drawn left to right)"
+msgstr "Participantes (listados de cima para baixo, desenhados da esquerda para a direita)"
+
+msgid "Paste Whole Table"
+msgstr "Colar a tabela inteira"
+
+msgid "People"
+msgstr "Pessoas"
+
+msgid "Period"
+msgstr "Período"
+
+msgid "Points (name, x, y; coordinates run from 0 to 1)"
+msgstr "Pontos (nome, x, y; as coordenadas vão de 0 a 1)"
+
+msgid "Preview"
+msgstr "Visualização"
+
+msgid "Preview {}"
+msgstr "Visualização de {}"
+
+msgid "Priority: {label}"
+msgstr "Prioridade: {label}"
+
+msgid "Quadrant Labels (1–4 are Mermaid's quadrant numbers)"
+msgstr "Rótulos dos quadrantes (1–4 são os números de quadrante do Mermaid)"
+
+msgid "Range"
+msgstr "Intervalo"
+
+msgid "Reference: {shown}"
+msgstr "Referência: {shown}"
+
+msgid "Relationship"
+msgstr "Relacionamento"
+
+msgid "Relationships"
+msgstr "Relacionamentos"
+
+msgid "Remove the arrow drawn after the label (the `-->` with nothing after it)"
+msgstr "Remover a seta desenhada depois do rótulo (o `-->` sem nada depois)"
+
+msgid "Rename in All Tasks"
+msgstr "Renomear em todas as tarefas"
+
+msgid "Rendering…"
+msgstr "Renderizando…"
+
+msgid "Replaces the whole table with the Excel / CSV contents of the clipboard."
+msgstr "Substitui a tabela inteira pelo conteúdo Excel / CSV da área de transferência."
+
+msgid "Requirement"
+msgstr "Requisito"
+
+msgid "Requirement text (text)"
+msgstr "Texto do requisito (text)"
+
+msgid "Requirements"
+msgstr "Requisitos"
+
+msgid "Reset (rf): takes no arrow and starts a new flow"
+msgstr "Redefinir (rf): não recebe seta e inicia um novo fluxo"
+
+msgid "Rewrite the reference definition {head} (this also changes {count} other place)"
+msgid_plural "Rewrite the reference definition {head} (this also changes {count} other places)"
+msgstr[0] "Reescrever a definição de referência {head} (isso também altera {count} outro local)"
+msgstr[1] "Reescrever a definição de referência {head} (isso também altera {count} outros locais)"
+
+msgid "Rewrites the path in the reference definition {head}."
+msgstr "Reescreve o caminho na definição de referência {head}."
+
+msgid "Risk: Not Set"
+msgstr "Risco: não definido"
+
+msgid "Save the file with a name before exporting it to PDF."
+msgstr "Salve o arquivo com um nome antes de exportá-lo para PDF."
+
+msgid "Saving the image was interrupted."
+msgstr "O salvamento da imagem foi interrompido."
+
+msgid "Scale"
+msgstr "Escala"
+
+msgid "Score {current}"
+msgstr "Pontuação {current}"
+
+msgid "Section"
+msgstr "Seção"
+
+msgid "Sections and Periods"
+msgstr "Seções e períodos"
+
+msgid "Sections and Tasks"
+msgstr "Seções e tarefas"
+
+msgid "Select Image"
+msgstr "Selecionar imagem"
+
+msgid "Select a Markdown editor, then run this again."
+msgstr "Selecione um editor de Markdown e execute isto novamente."
+
+msgid "Select a Mermaid diagram type to insert…"
+msgstr "Selecione um tipo de diagrama Mermaid para inserir…"
+
+msgid "Select a heading level to fold…"
+msgstr "Selecione um nível de título para dobrar…"
+
+msgid "Series (ID and legend name; the ID is shown when the name is empty)"
+msgstr "Séries (ID e nome na legenda; o ID é mostrado quando o nome está vazio)"
+
+msgid "Series (in drawing order; names do not appear in the diagram)"
+msgstr "Séries (na ordem de desenho; os nomes não aparecem no diagrama)"
+
+msgid "Service"
+msgstr "Serviço"
+
+msgid "Services and Junctions"
+msgstr "Serviços e junções"
+
+msgid "Set by a linkStyle line in the text"
+msgstr "Definido por uma linha linkStyle no texto"
+
+msgid "Sets (ID, label, size)"
+msgstr "Conjuntos (ID, rótulo, tamanho)"
+
+msgid "Settings @{{{settings}}}"
+msgstr "Configurações @{{{settings}}}"
+
+msgid "Show Numbers"
+msgstr "Mostrar números"
+
+msgid "Show Values"
+msgstr "Mostrar valores"
+
+msgid "Shown"
+msgstr "Mostrado"
+
+msgid "Shown once a diagram type is chosen"
+msgstr "Mostrado depois que um tipo de diagrama é escolhido"
+
+msgid "Shows the ID as is"
+msgstr "Mostra o ID como está"
+
+msgid "Size"
+msgstr "Tamanho"
+
+msgid "Size and alignment cannot be written in the reference form ![…][…], so this image is written as HTML. The reference definition {head} stays as it is."
+msgstr "O tamanho e o alinhamento não podem ser escritos na forma de referência ![…][…], então esta imagem é escrita como HTML. A definição de referência {head} permanece como está."
+
+msgid "Solid line (identifying relationship). Click for a dashed line."
+msgstr "Linha contínua (relacionamento identificador). Clique para usar uma linha tracejada."
+
+msgid "Some classDef lines cannot be edited here, such as a line with several names or a name defined more than once (they are kept as text)."
+msgstr "Algumas linhas classDef não podem ser editadas aqui, como uma linha com vários nomes ou um nome definido mais de uma vez (elas são mantidas como texto)."
+
+msgid "Specify an image file."
+msgstr "Especifique um arquivo de imagem."
+
+msgid "Start"
+msgstr "Iniciar"
+
+msgid "State IDs (renaming updates the references too)"
+msgstr "IDs de estado (renomear também atualiza as referências)"
+
+msgid "Step"
+msgstr "Passo"
+
+msgid "Style"
+msgstr "Estilo"
+
+msgid "Styles (classDef defines a class and class applies it; style styles one block directly)"
+msgstr "Estilos (classDef define uma classe e class a aplica; style estiliza um bloco diretamente)"
+
+msgid "Suggestions"
+msgstr "Sugestões"
+
+msgid "Tab / arrow keys move between cells. Ctrl+Enter applies the table to the document."
+msgstr "Tab / teclas de seta movem entre as células. Ctrl+Enter aplica a tabela ao documento."
+
+msgid "Tab moves between fields. Ctrl+Enter applies to the document."
+msgstr "Tab move entre os campos. Ctrl+Enter aplica ao documento."
+
+msgid "Tag"
+msgstr "Tag"
+
+msgid "Tags"
+msgstr "Tags"
+
+msgid "Technology"
+msgstr "Tecnologia"
+
+msgid "The ID \"{id}\" is not valid (ASCII letters, digits and _ only; no Mermaid keywords)."
+msgstr "O ID \"{id}\" não é válido (somente letras ASCII, dígitos e _; sem palavras-chave do Mermaid)."
+
+msgid "The ID \"{id}\" is not valid (no symbols or Mermaid keywords)."
+msgstr "O ID \"{id}\" não é válido (sem símbolos nem palavras-chave do Mermaid)."
+
+msgid "The ID \"{id}\" is not valid (no symbols, and it cannot start with a digit)."
+msgstr "O ID \"{id}\" não é válido (sem símbolos, e não pode começar com um dígito)."
+
+msgid "The ID \"{id}\" is used more than once."
+msgstr "O ID \"{id}\" é usado mais de uma vez."
+
+msgid "The ID \"{id}\" of link {position} is not valid (ASCII letters, digits and _ only; no Mermaid keywords)."
+msgstr "O ID \"{id}\" da ligação {position} não é válido (somente letras ASCII, dígitos e _; sem palavras-chave do Mermaid)."
+
+msgid "The Markdown buffer could not be found."
+msgstr "Não foi possível encontrar o buffer do Markdown."
+
+msgid "The Markdown file is not saved, so the image cannot be copied. Save it first."
+msgstr "O arquivo Markdown não está salvo, então a imagem não pode ser copiada. Salve-o primeiro."
+
+msgid "The Markdown file is not saved, so the path is written as entered. The image may not show, depending on where the file is saved."
+msgstr "O arquivo Markdown não está salvo, então o caminho é escrito como foi inserido. A imagem pode não aparecer, dependendo de onde o arquivo for salvo."
+
+msgid "The Markdown file is not saved."
+msgstr "O arquivo Markdown não está salvo."
+
+msgid "The `namespace` \"{name}\" is empty. Put a class in it or delete the `namespace` (Mermaid cannot draw an empty `namespace`)."
+msgstr "O `namespace` \"{name}\" está vazio. Coloque uma classe nele ou exclua o `namespace` (o Mermaid não consegue desenhar um `namespace` vazio)."
+
+msgid "The `namespace` name \"{name}\" is not valid."
+msgstr "O nome de `namespace` \"{name}\" não é válido."
+
+msgid "The annotation \"{annotation}\" is not valid (no `<`, `>`, `\"`, `%%`, or leading or trailing whitespace)."
+msgstr "A anotação \"{annotation}\" não é válida (sem `<`, `>`, `\"`, `%%` nem espaços em branco no início ou no fim)."
+
+msgid "The buffer became read-only, so the image link could not be inserted."
+msgstr "O buffer passou a ser somente leitura, então não foi possível inserir o link da imagem."
+
+msgid "The class definition \"{name}\" is defined more than once."
+msgstr "A definição de classe \"{name}\" está definida mais de uma vez."
+
+msgid "The class definition name \"{name}\" is not valid (no whitespace or symbols such as , ; : # %)."
+msgstr "O nome da definição de classe \"{name}\" não é válido (sem espaços em branco nem símbolos como , ; : # %)."
+
+msgid "The class name \"{name}\" is not valid (no whitespace, symbols or Mermaid keywords)."
+msgstr "O nome de classe \"{name}\" não é válido (sem espaços em branco, símbolos nem palavras-chave do Mermaid)."
+
+msgid "The classDef names and the name typed here are offered under \"Class\"."
+msgstr "Os nomes de classDef e o nome digitado aqui são oferecidos em \"Classe\"."
+
+msgid "The clipboard has nothing that can be read as a table."
+msgstr "A área de transferência não tem nada que possa ser lido como uma tabela."
+
+msgid "The diagram was changed in the document after this tab read it. Applying will not write over it: load the document's version, or save this tab to choose whether to overwrite it."
+msgstr "O diagrama foi alterado no documento depois que esta aba o leu. Aplicar não o sobrescreverá: carregue a versão do documento ou salve esta aba para escolher se deseja sobrescrevê-lo."
+
+msgid "The diagram's code block, or the editor it was opened from, is gone, so these edits cannot be applied."
+msgstr "O bloco de código do diagrama, ou o editor de onde ele foi aberto, não existe mais, então estas edições não podem ser aplicadas."
+
+msgid "The display name of a `namespace` cannot contain `\"` or `%%{{`."
+msgstr "O nome de exibição de um `namespace` não pode conter `\"` nem `%%{{`."
+
+msgid "The display name of a class cannot contain `\"`, `%%{{` or line breaks."
+msgstr "O nome de exibição de uma classe não pode conter `\"`, `%%{{` nem quebras de linha."
+
+msgid "The generic type \"{generic}\" is not valid."
+msgstr "O tipo genérico \"{generic}\" não é válido."
+
+msgid "The image is too large ({} MiB). Images of up to {} MiB can be saved."
+msgstr "A imagem é grande demais ({} MiB). Podem ser salvas imagens de até {} MiB."
+
+msgid "The image's reference definition changed after the dialog was opened. Open the dialog again."
+msgstr "A definição de referência da imagem foi alterada depois que a caixa de diálogo foi aberta. Abra a caixa de diálogo novamente."
+
+msgid "The label \"{label}\" is not valid (it cannot be empty or contain `%%`)."
+msgstr "O rótulo \"{label}\" não é válido (não pode estar vazio nem conter `%%`)."
+
+msgid "The line style of link {position} has characters that cannot be used (; or %%, an unclosed quote, a trailing {{, or a leading comma)."
+msgstr "O estilo de linha da ligação {position} tem caracteres que não podem ser usados (; ou %%, uma aspa não fechada, um {{ no final ou uma vírgula no início)."
+
+msgid "The link ID \"{id}\" is the same as the ID of a node or group."
+msgstr "O ID de ligação \"{id}\" é igual ao ID de um nó ou grupo."
+
+msgid "The link ID \"{id}\" is used more than once."
+msgstr "O ID de ligação \"{id}\" é usado mais de uma vez."
+
+msgid "The member \"{member}\" is not valid (no line starting with `}}`, no `%%{{`, and no leading or trailing whitespace)."
+msgstr "O membro \"{member}\" não é válido (sem linha começando com `}}`, sem `%%{{` e sem espaços em branco no início ou no fim)."
+
+msgid "The member \"{text}\" is not valid (no leading or trailing whitespace, no `%%{{`, and not a line of only `}}`)."
+msgstr "O membro \"{text}\" não é válido (sem espaços em branco no início ou no fim, sem `%%{{` e sem uma linha contendo somente `}}`)."
+
+msgid "The new Mermaid diagram in \"{file}\" has unsaved edits. Do you want to save it?"
+msgstr "O novo diagrama Mermaid em \"{file}\" tem edições não salvas. Deseja salvá-lo?"
+
+msgid "The note text cannot contain `\"`, `%%{{` or line breaks."
+msgstr "O texto da nota não pode conter `\"`, `%%{{` nem quebras de linha."
+
+msgid "The note text contains characters that are not allowed (leading or trailing whitespace, line breaks, or `%%{{`)."
+msgstr "O texto da nota contém caracteres não permitidos (espaços em branco no início ou no fim, quebras de linha ou `%%{{`)."
+
+msgid "The path cannot be made relative to the Markdown file, so it is written as an absolute path. The image will not show on other machines."
+msgstr "O caminho não pode ser tornado relativo ao arquivo Markdown, então é escrito como um caminho absoluto. A imagem não aparecerá em outras máquinas."
+
+msgid "The path contains characters that cannot be handled."
+msgstr "O caminho contém caracteres que não podem ser tratados."
+
+msgid "The previous image is still being saved. Try again when it finishes."
+msgstr "A imagem anterior ainda está sendo salva. Tente novamente quando terminar."
+
+msgid "The project has no image files."
+msgstr "O projeto não tem arquivos de imagem."
+
+msgid "The project was closed."
+msgstr "O projeto foi fechado."
+
+msgid "The reference definition {head} is also used in {count} other place, so only this image is rewritten in the inline form ![…](…)."
+msgid_plural "The reference definition {head} is also used in {count} other places, so only this image is rewritten in the inline form ![…](…)."
+msgstr[0] "A definição de referência {head} também é usada em {count} outro local, então somente esta imagem é reescrita na forma embutida ![…](…)."
+msgstr[1] "A definição de referência {head} também é usada em {count} outros locais, então somente esta imagem é reescrita na forma embutida ![…](…)."
+
+msgid "The relationship symbol \"{arrow}\" is not valid."
+msgstr "O símbolo de relacionamento \"{arrow}\" não é válido."
+
+msgid "The remote connection could not be found."
+msgstr "Não foi possível encontrar a conexão remota."
+
+msgid "The saved location could not be determined, so the file was not exported to PDF."
+msgstr "Não foi possível determinar o local de salvamento, então o arquivo não foi exportado para PDF."
+
+msgid "The selected image is shown here."
+msgstr "A imagem selecionada é mostrada aqui."
+
+msgid "The source changed, so this label could not be rewritten."
+msgstr "A origem foi alterada, então não foi possível reescrever este rótulo."
+
+msgid "The style of the class definition \"{name}\" has characters that cannot be used (; or %%, an unclosed quote, or a trailing {{)."
+msgstr "O estilo da definição de classe \"{name}\" tem caracteres que não podem ser usados (; ou %%, uma aspa não fechada ou um {{ no final)."
+
+msgid "The text the image is written into changed after the dialog was opened. Open the dialog again."
+msgstr "O texto em que a imagem é escrita foi alterado depois que a caixa de diálogo foi aberta. Abra a caixa de diálogo novamente."
+
+msgid "The title cannot contain `%%` or line breaks (nor spaces at either end)."
+msgstr "O título não pode conter `%%` nem quebras de linha (nem espaços em qualquer uma das extremidades)."
+
+msgid "The value \"{value}\" of \"{label}\" is not valid (only decimal numbers of 0 or more)."
+msgstr "O valor \"{value}\" de \"{label}\" não é válido (somente números decimais iguais ou maiores que 0)."
+
+msgid "The worktree that contains the Markdown file could not be found."
+msgstr "Não foi possível encontrar a árvore de trabalho que contém o arquivo Markdown."
+
+msgid "The worktree that contains the Markdown file was closed."
+msgstr "A árvore de trabalho que contém o arquivo Markdown foi fechada."
+
+msgid "The {kind} in \"{file}\" has unsaved edits. Do you want to save them?"
+msgstr "Há edições não salvas em {kind} de \"{file}\". Deseja salvá-las?"
+
+msgid "There is no pair of frames to add an arrow between. Add a frame first."
+msgstr "Não há um par de quadros entre os quais adicionar uma seta. Adicione um quadro primeiro."
+
+msgid "This buffer does not belong to a project, so there is nowhere to save the image."
+msgstr "Este buffer não pertence a um projeto, então não há onde salvar a imagem."
+
+msgid "This buffer is read-only, so an image cannot be inserted."
+msgstr "Este buffer é somente leitura, então não é possível inserir uma imagem."
+
+msgid "This buffer is read-only, so the diagram cannot be edited."
+msgstr "Este buffer é somente leitura, então o diagrama não pode ser editado."
+
+msgid "This content cannot be written back: {error}"
+msgstr "Este conteúdo não pode ser gravado de volta: {error}"
+
+msgid "This diagram is not supported by the structured editor. Edit it as text. (Diagrams the structured editor supports: {kinds})"
+msgstr "Este diagrama não é suportado pelo editor estruturado. Edite-o como texto. (Diagramas suportados pelo editor estruturado: {kinds})"
+
+msgid "This kind of link cannot be opened from the preview"
+msgstr "Este tipo de link não pode ser aberto a partir da visualização"
+
+msgid "Ticket"
+msgstr "Tíquete"
+
+msgid "Ticks"
+msgstr "Marcações"
+
+msgid "Time (tf): an arrow continues from the previous frame"
+msgstr "Tempo (tf): uma seta continua a partir do quadro anterior"
+
+msgid "Title"
+msgstr "Título"
+
+msgid "To choose again, cancel and open the editor again."
+msgstr "Para escolher novamente, cancele e abra o editor de novo."
+
+msgid "Top Left (2)"
+msgstr "Superior esquerdo (2)"
+
+msgid "Top Level"
+msgstr "Nível superior"
+
+msgid "Top Right (1)"
+msgstr "Superior direito (1)"
+
+msgid "Type"
+msgstr "Tipo"
+
+msgid "Type: Default"
+msgstr "Tipo: padrão"
+
+msgid "Unfold All Headings"
+msgstr "Desdobrar todos os títulos"
+
+msgid "Unsupported diagram type"
+msgstr "Tipo de diagrama não suportado"
+
+msgid "Untitled"
+msgstr "Sem título"
+
+msgid "Unused (not written until a flow uses it)"
+msgstr "Não usado (não é escrito até que um fluxo o use)"
+
+msgid "Update"
+msgstr "Atualizar"
+
+msgid "Values (deleting a row also deletes its value in every series)"
+msgstr "Valores (excluir uma linha também exclui o valor dela em todas as séries)"
+
+msgid "Values beyond the number of axes are not drawn. Adding an axis gives those values an axis."
+msgstr "Valores além do número de eixos não são desenhados. Adicionar um eixo dá um eixo a esses valores."
+
+msgid "Values beyond the number of categories are not drawn. Adding a category gives those values a name."
+msgstr "Valores além do número de categorias não são desenhados. Adicionar uma categoria dá um nome a esses valores."
+
+msgid "Verification: Not Set"
+msgstr "Verificação: não definido"
+
+msgid "When only one side is set, the aspect ratio is kept."
+msgstr "Quando somente um lado é definido, a proporção é mantida."
+
+msgid "Width"
+msgstr "Largura"
+
+msgid "Wrap"
+msgstr "Quebra"
+
+msgid "Write a classDef, or type a name in \"Class Name\"."
+msgstr "Escreva um classDef ou digite um nome em \"Nome da classe\"."
+
+msgid "X Axis"
+msgstr "Eixo X"
+
+msgid "Y Axis"
+msgstr "Eixo Y"
+
+msgid "Zoom In (Ctrl+Scroll)"
+msgstr "Ampliar (Ctrl+Rolagem)"
+
+msgid "Zoom Out (Ctrl+Scroll)"
+msgstr "Reduzir (Ctrl+Rolagem)"
+
+msgid "[*] Start / End"
+msgstr "[*] Início / fim"
+
+msgid "`namespace` blocks are nested too deeply."
+msgstr "Os blocos `namespace` estão aninhados profundamente demais."
+
+msgid "after (After Another Task)"
+msgstr "after (depois de outra tarefa)"
+
+msgid "bits"
+msgstr "bits"
+
+msgid "box (Group of Participants)"
+msgstr "box (grupo de participantes)"
+
+msgid "e.g. 200"
+msgstr "ex.: 200"
+
+msgid "e.g. 300 / 50%"
+msgstr "ex.: 300 / 50%"
+
+msgid "e.g. fill:#f96,stroke:#333"
+msgstr "ex.: fill:#f96,stroke:#333"
+
+msgid "e.g. stroke:#f00,stroke-width:2px"
+msgstr "ex.: stroke:#f00,stroke-width:2px"
+
+msgid "end (End of Block)"
+msgstr "end (fim do bloco)"
+
+msgid "right / left / up / down / x / y, separated by commas"
+msgstr "right / left / up / down / x / y, separados por vírgulas"
+
+msgid "until (Until Another Task Starts)"
+msgstr "until (até outra tarefa começar)"
+
+msgid "x-axis, left → right"
+msgstr "eixo x, esquerda → direita"
+
+msgid "y-axis, bottom → top"
+msgstr "eixo y, baixo → cima"
+
+msgid "{count} line of data (edit multiple lines as text)"
+msgid_plural "{count} lines of data (edit multiple lines as text)"
+msgstr[0] "{count} linha de dados (edite várias linhas como texto)"
+msgstr[1] "{count} linhas de dados (edite várias linhas como texto)"
+
+msgid "{count} style statement (UpdateElementStyle and the like) is kept as is and follows alias changes."
+msgid_plural "{count} style statements (UpdateElementStyle and the like) are kept as is and follow alias changes."
+msgstr[0] "{count} instrução de estilo (UpdateElementStyle e semelhantes) é mantida como está e acompanha as alterações de alias."
+msgstr[1] "{count} instruções de estilo (UpdateElementStyle e semelhantes) são mantidas como estão e acompanham as alterações de alias."
+
+msgid "{count} text or style statement is kept as is and follows sets that are renamed or deleted."
+msgid_plural "{count} text and style statements are kept as is and follow sets that are renamed or deleted."
+msgstr[0] "{count} instrução text ou style é mantida como está e acompanha os conjuntos renomeados ou excluídos."
+msgstr[1] "{count} instruções text e style são mantidas como estão e acompanham os conjuntos renomeados ou excluídos."
+
+msgid "{count} text statement"
+msgid_plural "{count} text statements"
+msgstr[0] "{count} instrução text"
+msgstr[1] "{count} instruções text"
+
+msgid "{kind} ({file})"
+msgstr "{kind} ({file})"
+
+msgid "{label} (Unnamed)"
+msgstr "{label} (sem nome)"
+
+msgid "{refusal} The image is referenced without being copied."
+msgstr "{refusal} A imagem é referenciada sem ser copiada."
+
+msgid "{}: cannot make a path relative to the document"
+msgstr "{}: não é possível tornar um caminho relativo ao documento"
+
+msgctxt "event modeling frame"
+msgid "Reset"
+msgstr "Redefinir"
+
+msgctxt "event modeling frame"
+msgid "Time"
+msgstr "Tempo"
+
+msgctxt "image alignment"
+msgid "Center"
+msgstr "Centro"
+
+msgctxt "image alignment"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "image alignment"
+msgid "Right"
+msgstr "Direita"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "mermaid block arrow"
+msgid "Direction"
+msgstr "Direção"
+
+msgctxt "mermaid c4 element"
+msgid "Parent"
+msgstr "Pai"
+
+msgctxt "mermaid edge end"
+msgid "From"
+msgstr "De"
+
+msgctxt "mermaid edge end"
+msgid "To"
+msgstr "Para"
+
+msgctxt "mermaid editor"
+msgid "Apply"
+msgstr "Aplicar"
+
+msgctxt "mermaid editor"
+msgid "Revert"
+msgstr "Reverter"
+
+msgctxt "mermaid gantt tag separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "mermaid gantt task"
+msgid "Start"
+msgstr "Início"
+
+msgctxt "mermaid journey"
+msgid "Add Task"
+msgstr "Adicionar tarefa"
+
+msgctxt "mermaid journey"
+msgid "Delete the Section and Its Tasks"
+msgstr "Excluir a seção e suas tarefas"
+
+msgctxt "mermaid journey"
+msgid "New task"
+msgstr "Nova tarefa"
+
+msgctxt "mermaid journey"
+msgid "Sections and Tasks (task name, score and people, separated by commas)"
+msgstr "Seções e tarefas (nome da tarefa, pontuação e pessoas, separados por vírgulas)"
+
+msgctxt "mermaid timeline"
+msgid "Event"
+msgstr "Evento"
+
+msgctxt "xychart series heading"
+msgid "{kind} {number}"
+msgstr "{kind} {number}"

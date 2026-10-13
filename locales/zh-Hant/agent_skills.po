@@ -1,0 +1,48 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Failed to read SKILL.md metadata: {}"
+msgstr "無法讀取 SKILL.md 中繼資料：{}"
+
+msgid "Failed to read file: {}"
+msgstr "無法讀取檔案：{}"
+
+msgid "Invalid YAML frontmatter"
+msgstr "YAML 前置資料無效"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md 檔案超過 {}KB 的大小上限"
+
+msgid "SKILL.md missing closing frontmatter delimiter (---)"
+msgstr "SKILL.md 缺少前置資料的結尾分隔符號（---）"
+
+msgid "SKILL.md must start with YAML frontmatter (---)"
+msgstr "SKILL.md 必須以 YAML 前置資料（---）開頭"
+
+msgid "Skill description cannot be empty"
+msgstr "技能描述不可為空白"
+
+msgid "Skill description is {actual_len} characters, exceeding the {max_len}-character limit. The skill was loaded, but long descriptions may consume more model-context tokens."
+msgstr "技能描述為 {actual_len} 個字元，超過 {max_len} 個字元的上限。技能已載入，但較長的描述可能會消耗更多模型上下文 Token。"
+
+msgid "Skill description must be at most 1024 characters"
+msgstr "技能描述最多 1024 個字元"
+
+msgid "Skill name cannot be empty"
+msgstr "技能名稱不可為空白"
+
+msgid "Skill name must be at most 64 characters"
+msgstr "技能名稱最多 64 個字元"
+
+msgid "Skill name must contain only lowercase letters, numbers, and hyphens"
+msgstr "技能名稱只能包含小寫字母、數字與連字號"
+
+msgid "Skill name must not start or end with a hyphen"
+msgstr "技能名稱的開頭與結尾不可為連字號"

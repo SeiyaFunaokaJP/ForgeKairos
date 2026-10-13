@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Arguments"
+msgstr "引數"
+
+msgid "Executing command…"
+msgstr "正在執行命令…"
+
+msgid "Failed to execute LSP command {command}: {error}"
+msgstr "無法執行 LSP 命令 {command}：{error}"
+
+msgid "JSON arguments (42, {{\"key\": \"value\"}}, …) or plain text for one string"
+msgstr "JSON 引數（42、{{\"key\": \"value\"}}、…），或作為單一字串的純文字"
+
+msgid "Select a language server command…"
+msgstr "選取語言伺服器命令…"
+
+msgid "to switch focus"
+msgstr "以切換焦點"

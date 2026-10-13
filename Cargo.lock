@@ -5491,6 +5491,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "gpui",
+ "i18n",
  "net",
  "serde",
  "serde_json",
@@ -5886,6 +5887,7 @@ dependencies = [
  "feature_flags_macros",
  "fs",
  "gpui",
+ "i18n",
  "inventory",
  "schemars 1.0.4",
  "serde_json",
@@ -6963,6 +6965,7 @@ dependencies = [
  "hdrhistogram",
  "heapless",
  "http_client",
+ "i18n",
  "image",
  "inventory",
  "itertools 0.14.0",
@@ -9917,6 +9920,7 @@ dependencies = [
  "futures 0.3.34",
  "fuzzy",
  "gpui",
+ "i18n",
  "language",
  "log",
  "lsp",
@@ -9941,6 +9945,7 @@ dependencies = [
  "file_icons",
  "fuzzy",
  "gpui",
+ "i18n",
  "indoc",
  "language",
  "log",
@@ -10551,6 +10556,7 @@ version = "0.1.0"
 dependencies = [
  "command_palette_hooks",
  "gpui",
+ "i18n",
  "rpc",
  "serde_json",
  "settings",
@@ -13011,6 +13017,7 @@ name = "platform_title_bar"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "i18n",
  "project",
  "settings",
  "smallvec",
@@ -18281,6 +18288,7 @@ version = "0.1.0"
 dependencies = [
  "component",
  "gpui",
+ "i18n",
  "ui",
 ]
 

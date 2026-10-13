@@ -1,0 +1,36 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Built on DeltaDB, so your threads and code stay in sync across machines and teammates."
+msgstr "DeltaDB를 기반으로 구축되어 스레드와 코드가 여러 기기와 팀원 간에 동기화된 상태로 유지됩니다."
+
+msgid "Introducing Delta"
+msgstr "Delta 소개"
+
+msgid "Learn More"
+msgstr "자세히 알아보기"
+
+msgid "Made by the Zed team, with the same quality and performance"
+msgstr "Zed 팀이 만들어 동일한 품질과 성능을 제공합니다"
+
+msgid "Pick up your thread on the web or your phone, without committing or pushing"
+msgstr "커밋하거나 푸시하지 않고 웹이나 휴대폰에서 스레드를 이어가세요"
+
+msgid "Try Delta"
+msgstr "Delta 사용해 보기"
+
+msgid "Updated to {app_name} {}"
+msgstr "{app_name} {}(으)로 업데이트됨"
+
+msgid "View Release Notes"
+msgstr "릴리스 노트 보기"
+
+msgid "Work with teammates and agents in the same thread, live or later"
+msgstr "같은 스레드에서 팀원 및 에이전트와 실시간으로 또는 나중에 함께 작업하세요"

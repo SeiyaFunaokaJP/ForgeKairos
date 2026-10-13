@@ -1,0 +1,283 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "\nUnsaved changes are stored locally."
+msgstr "\nLes modifications non enregistrées sont stockées localement."
+
+msgid "Actions"
+msgstr "Actions"
+
+msgid "Activate"
+msgstr "Basculer vers"
+
+msgid "Add Folder to this Project"
+msgstr "Ajouter un dossier à ce projet"
+
+msgid "Add Folders to this Project"
+msgstr "Ajouter des dossiers à ce projet"
+
+msgid "Add Nickname to Server"
+msgstr "Ajouter un pseudonyme au serveur"
+
+msgid "Add WSL Distro"
+msgstr "Ajouter une distribution WSL"
+
+msgid "Add a nickname for this server"
+msgstr "Ajouter un pseudonyme pour ce serveur"
+
+msgid "As a multi-root folder"
+msgstr "En tant que dossier multi-racine"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Cannot open Dev Container from remote project"
+msgstr "Impossible d'ouvrir un conteneur de développement depuis un projet distant"
+
+msgid "Close Window"
+msgstr "Fermer la fenêtre"
+
+msgid "Connect Dev Container"
+msgstr "Connecter un conteneur de développement"
+
+msgid "Connect SSH Server"
+msgstr "Connecter un serveur SSH"
+
+msgid "Connect to Remote"
+msgstr "Se connecter à un hôte distant"
+
+msgid "Connect to a remote host"
+msgstr "Se connecter à un hôte distant"
+
+msgid "Connected to: {host}"
+msgstr "Connecté à : {host}"
+
+msgid "Connecting to: {host}"
+msgstr "Connexion à : {host}"
+
+msgid "Connection attempt to {host} missed. Retrying..."
+msgstr "Tentative de connexion à {host} manquée. Nouvelle tentative..."
+
+msgid "Copied server address ({}) to clipboard"
+msgstr "Adresse du serveur ({}) copiée dans le presse-papiers"
+
+msgid "Copy Server Address"
+msgstr "Copier l'adresse du serveur"
+
+msgid "Creating Dev Container"
+msgstr "Création du conteneur de développement"
+
+msgid "Current Folders"
+msgstr "Dossiers actuels"
+
+msgid "Delete Remote Project"
+msgstr "Supprimer le projet distant"
+
+msgid "Dev Container"
+msgstr "Conteneur de développement"
+
+msgid "Disconnected"
+msgstr "Déconnecté"
+
+msgid "Disconnected from {host}"
+msgstr "Déconnecté de {host}"
+
+msgid "Don't Show Again"
+msgstr "Ne plus afficher"
+
+msgid "Edit Nickname"
+msgstr "Modifier le pseudonyme"
+
+msgid "Enter WSL distro name"
+msgstr "Saisissez le nom de la distribution WSL"
+
+msgid "Enter the command you use to SSH into this server."
+msgstr "Saisissez la commande SSH que vous utilisez pour vous connecter à ce serveur."
+
+msgid "Error Creating Dev Container:"
+msgstr "Erreur lors de la création du conteneur de développement :"
+
+msgid "Exit"
+msgstr "Quitter"
+
+msgid "Failed to connect"
+msgstr "Échec de la connexion"
+
+msgid "Failed to connect over SSH"
+msgstr "Échec de la connexion via SSH"
+
+msgid "Failed to connect to Dev Container"
+msgstr "Échec de la connexion au conteneur de développement"
+
+msgid "Failed to connect to WSL"
+msgstr "Échec de la connexion à WSL"
+
+msgid "Failed to connect to the remote host"
+msgstr "Impossible de se connecter à l'hôte distant"
+
+msgid "Failed to open project"
+msgstr "Échec de l'ouverture du projet"
+
+msgid "Failed to reconnect"
+msgstr "Échec de la reconnexion"
+
+msgid "Failed to start Dev Container. See logs for details"
+msgstr "Échec du démarrage du conteneur de développement. Consultez les journaux pour plus de détails"
+
+msgid "Go Back"
+msgstr "Précédent"
+
+msgid "Invalid path"
+msgstr "Chemin d'accès non valide"
+
+msgid "Invalid path specified when trying to open a folder inside WSL.\n\nPlease note that Zed currently does not support opening network share folders inside wsl.\n"
+msgstr "Chemin non valide indiqué lors de l'ouverture d'un dossier dans WSL.\n\nForgeKairos ne prend pas encore en charge l'ouverture de dossiers partagés en réseau dans WSL.\n"
+
+msgid "Learn More"
+msgstr "En savoir plus"
+
+msgid "Lost connection to {host}. Reconnecting..."
+msgstr "Connexion à {host} perdue. Reconnexion..."
+
+msgid "No matches"
+msgstr "Aucun résultat"
+
+msgid "No matching remote projects."
+msgstr "Aucun projet distant correspondant."
+
+msgid "No, keep it"
+msgstr "Non, conserver"
+
+msgid "Open"
+msgstr "Ouvrir"
+
+msgid "Open Folder"
+msgstr "Ouvrir un dossier"
+
+msgid "Open Local Folders"
+msgstr "Ouvrir les dossiers locaux"
+
+msgid "Open Project in This Window"
+msgstr "Ouvrir le projet dans cette fenêtre"
+
+msgid "Open Remote Folder"
+msgstr "Ouvrir le dossier distant"
+
+msgid "Open Zed Log"
+msgstr "Ouvrir le journal de ForgeKairos"
+
+msgid "Open devcontainer.json"
+msgstr "Ouvrir devcontainer.json"
+
+msgid "Open in New Window"
+msgstr "Ouvrir dans une nouvelle fenêtre"
+
+msgid "Open projects over SSH, in WSL, or in Dev Containers."
+msgstr "Ouvrez des projets via SSH, dans WSL ou dans des conteneurs de développement."
+
+msgid "Recent Projects"
+msgstr "Projets récents"
+
+msgid "Recently opened projects will show up here"
+msgstr "Les projets récemment ouverts s'afficheront ici"
+
+msgid "Reconnect"
+msgstr "Se reconnecter"
+
+msgid "Remote: {host}"
+msgstr "Distant : {host}"
+
+msgid "Remove"
+msgstr "Supprimer"
+
+msgid "Remove Distro"
+msgstr "Supprimer la distribution"
+
+msgid "Remove Folder"
+msgstr "Retirer le dossier"
+
+msgid "Remove Folder from Project"
+msgstr "Retirer le dossier du projet"
+
+msgid "Remove Project from Window"
+msgstr "Retirer le projet de la fenêtre"
+
+msgid "Remove Server"
+msgstr "Supprimer le serveur"
+
+msgid "Remove WSL distro `{}`?"
+msgstr "Supprimer la distribution WSL `{}` ?"
+
+msgid "Remove from Recent Projects"
+msgstr "Retirer des projets récents"
+
+msgid "Remove from Window"
+msgstr "Retirer de la fenêtre"
+
+msgid "Remove server `{}`?"
+msgstr "Supprimer le serveur `{}` ?"
+
+msgid "Retry"
+msgstr "Réessayer"
+
+msgid "Search projects…"
+msgstr "Rechercher des projets…"
+
+msgid "Search remote projects…"
+msgstr "Rechercher des projets distants…"
+
+msgid "Select"
+msgstr "Sélectionner"
+
+msgid "Select Dev Container Configuration"
+msgstr "Sélectionner la configuration du conteneur de développement"
+
+msgid "Start Dev Container"
+msgstr "Démarrer le conteneur de développement"
+
+msgid "This Window"
+msgstr "Cette fenêtre"
+
+msgid "View Server Options"
+msgstr "Afficher les options du serveur"
+
+msgid "Yes, Open in Container"
+msgstr "Oui, ouvrir dans le conteneur"
+
+msgid "Yes, remove it"
+msgstr "Oui, supprimer"
+
+msgid "Your connection to the remote project has been lost."
+msgstr "La connexion au projet distant a été perdue."
+
+msgid "Your connection to {} has been lost due to the server {reason}.{autosave}"
+msgstr "La connexion à {} a été perdue, car le serveur {reason}.{autosave}"
+
+msgid "could not parse: {}"
+msgstr "analyse impossible : {}"
+
+msgid "{worktree_name} contains a Dev Container configuration file. Would you like to re-open it in a container?"
+msgstr "{worktree_name} contient un fichier de configuration de conteneur de développement. Voulez-vous le rouvrir dans un conteneur ?"
+
+msgctxt "disconnect reason"
+msgid "not responding"
+msgstr "ne répond pas"
+
+msgctxt "disconnect reason"
+msgid "process exiting unexpectedly"
+msgstr "s'est arrêté de manière inattendue"
+
+msgctxt "project picker"
+msgid "New Window"
+msgstr "Nouvelle fenêtre"
+
+msgctxt "project picker"
+msgid "Open Project in New Window"
+msgstr "Ouvrir le projet dans une nouvelle fenêtre"

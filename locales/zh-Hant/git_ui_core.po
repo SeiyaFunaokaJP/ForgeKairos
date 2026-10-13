@@ -1,0 +1,108 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A worktree with this name already exists"
+msgstr "已存在同名工作樹"
+
+msgid "Automate Setup"
+msgstr "自動化設定"
+
+msgid "Automate Worktree Setup"
+msgstr "自動化工作樹設定"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot create a named worktree in a project with multiple repositories"
+msgstr "無法在含多個儲存庫的專案中建立具名工作樹"
+
+msgid "Create"
+msgstr "建立"
+
+msgid "Create \"{name}\" based on {branch_label}"
+msgstr "以 {branch_label} 為基礎建立「{name}」"
+
+msgid "Create new worktree based on {branch_label}"
+msgstr "以 {branch_label} 為基礎建立新工作樹"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "Delete Worktree"
+msgstr "刪除工作樹"
+
+msgid "Deleting…"
+msgstr "正在刪除…"
+
+msgid "Failed to connect"
+msgstr "連線失敗"
+
+msgid "Force Delete"
+msgstr "強制刪除"
+
+msgid "Force Delete Worktree"
+msgstr "強制刪除工作樹"
+
+msgid "Hold {} to force delete"
+msgstr "按住 {} 以強制刪除"
+
+msgid "Learn more"
+msgstr "深入了解"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Open in New Window"
+msgstr "在新視窗中開啟"
+
+msgid "Output from git {operation}"
+msgstr "git {operation} 的輸出"
+
+msgid "Remove Worktree from Window"
+msgstr "從視窗移除工作樹"
+
+msgid "Requires a Git repository in the project"
+msgstr "專案中需要 Git 儲存庫"
+
+msgid "Select or type to create a worktree…"
+msgstr "選取或輸入以建立工作樹…"
+
+msgid "Show Error Logs"
+msgstr "顯示錯誤記錄"
+
+msgid "Some project folders are not git repositories. They were included as-is without creating a worktree."
+msgstr "部分專案資料夾不是 Git 儲存庫。已原樣包含，未建立工作樹。"
+
+msgid "This Window"
+msgstr "此視窗"
+
+msgid "Use local {}"
+msgstr "使用本機 {}"
+
+msgid "View Log"
+msgstr "檢視記錄"
+
+msgid "Worktree \"{display_name}\" contains modified or untracked files. Force delete it?"
+msgstr "工作樹「{display_name}」包含已修改或未追蹤的檔案。要強制刪除嗎？"
+
+msgid "Worktree creation is not supported in collaborative projects"
+msgstr "協作專案不支援建立工作樹"
+
+msgid "You may need to configure git for Github."
+msgstr "可能需要為 GitHub 設定 Git。"
+
+msgid "current branches"
+msgstr "目前的各分支"
+
+msgid "git fetch failed for {}"
+msgstr "對 {} 執行 git fetch 失敗"
+
+msgid "git {} failed"
+msgstr "git {} 失敗"

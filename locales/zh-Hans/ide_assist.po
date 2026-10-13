@@ -1,0 +1,79 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(image)"
+msgstr "（图像）"
+
+msgid "(image: {alt})"
+msgstr "（图像：{alt}）"
+
+msgid "Annotation from {label}"
+msgstr "来自 {label} 的注释"
+
+msgid "Can't open this step ({reason})"
+msgstr "无法打开此步骤（{reason}）"
+
+msgid "Couldn't open the file ({error})"
+msgstr "无法打开文件（{error}）"
+
+msgid "End Tour"
+msgstr "结束导览"
+
+msgid "File not found"
+msgstr "未找到文件"
+
+msgid "Folders can't be shown"
+msgstr "无法显示文件夹"
+
+msgid "Invalid line range (lines {}-{})"
+msgstr "无效的行范围（第 {}-{} 行）"
+
+msgid "Line {start_line} is past the end of the file ({line_count} lines)"
+msgstr "第 {start_line} 行超出了文件末尾（文件共 {line_count} 行）"
+
+msgid "Line {}"
+msgstr "第 {} 行"
+
+msgid "Lines {}-{}"
+msgstr "第 {}-{} 行"
+
+msgid "Next Step"
+msgstr "下一步"
+
+msgid "Next ›"
+msgstr "下一步 ›"
+
+msgid "Not a regular file"
+msgstr "不是常规文件"
+
+msgid "Previous Step"
+msgstr "上一步"
+
+msgid "The file is too large (over 4 MiB)"
+msgstr "文件过大（超过 4 MiB）"
+
+msgid "Too long, cut to {max_chars} characters"
+msgstr "内容过长，已截断为 {max_chars} 个字符"
+
+msgid "Tour from {}: {}"
+msgstr "来自 {} 的导览：{}"
+
+msgid "Tour from {}: {} (click to go to the current step)"
+msgstr "来自 {} 的导览：{}（点击转到当前步骤）"
+
+msgid "Tour {}/{}"
+msgstr "导览 {}/{}"
+
+msgid "‹ Previous"
+msgstr "‹ 上一步"
+
+msgctxt "tour"
+msgid "End"
+msgstr "结束"

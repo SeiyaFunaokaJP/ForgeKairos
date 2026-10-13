@@ -5371,10 +5371,10 @@ impl AcpThread {
             None => {
                 // Tool call not found - create a failed tool call entry
                 let failed_tool_call = ToolCall::from_acp(
-                    acp_v1::ToolCall::new(update.id().clone(), "Tool call not found")
+                    acp_v1::ToolCall::new(update.id().clone(), i18n::t!("Tool call not found"))
                         .kind(acp_v1::ToolKind::Fetch)
                         .status(acp_v1::ToolCallStatus::Failed)
-                        .content(vec!["Tool call not found".into()]),
+                        .content(vec![i18n::t!("Tool call not found").into()]),
                     Some(ToolCallStatus::Failed),
                     languages,
                     &self.terminals,

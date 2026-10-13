@@ -776,7 +776,7 @@ impl Inventory {
                             settings_location.path.as_std_path().join(task_file_name())
                         }
                     },
-                    message: format!("Failed to parse tasks file content as a JSON array: {e}"),
+                    message: i18n::t!("Failed to parse tasks file content as a JSON array: {e}"),
                 });
             }
         };
@@ -890,7 +890,7 @@ impl Inventory {
                             .as_std_path()
                             .join(debug_task_file_name()),
                     },
-                    message: format!("Failed to parse tasks file content as a JSON array: {e}"),
+                    message: i18n::t!("Failed to parse tasks file content as a JSON array: {e}"),
                 });
             }
         };

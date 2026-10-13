@@ -1,0 +1,535 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A zip archive cannot be extracted in the WSL sandbox (the distro has no `unzip`). Specify a Linux archive in a format such as tar.gz."
+msgstr "zip 압축 파일은 WSL 샌드박스에서 압축을 풀 수 없습니다 (배포판에 `unzip`이 없습니다). tar.gz 같은 형식의 Linux 압축 파일을 지정하세요."
+
+msgid "Could not check the agent executable"
+msgstr "에이전트 실행 파일을 확인하지 못했습니다"
+
+msgid "Could not check the agent executable in {distro} ({error})."
+msgstr "{distro}에서 에이전트 실행 파일을 확인하지 못했습니다 ({error})."
+
+msgid "Could not check the agent executable in {distro}."
+msgstr "{distro}에서 에이전트 실행 파일을 확인하지 못했습니다."
+
+msgid "Could not check the agent executable in {distro}{details}. Run `wsl --update` and try again."
+msgstr "{distro}에서 에이전트 실행 파일을 확인하지 못했습니다{details}. `wsl --update`를 실행한 후 다시 시도하세요."
+
+msgid "Could not check the agent runtime in {distro} ({error})."
+msgstr "{distro}에서 에이전트 런타임을 확인하지 못했습니다 ({error})."
+
+msgid "Could not check the agent runtime in {distro}{details}."
+msgstr "{distro}에서 에이전트 런타임을 확인하지 못했습니다{details}."
+
+msgid "Could not check the always-protected path `{path}` ({error}). Commands never run without that protection, so stopping."
+msgstr "항상 보호되는 경로 `{path}`을(를) 확인하지 못했습니다 ({error}). 이 보호 없이는 명령을 실행하지 않으므로 중지합니다."
+
+msgid "Could not check the npm package"
+msgstr "npm 패키지를 확인하지 못했습니다"
+
+msgid "Could not check the npm package executable"
+msgstr "npm 패키지 실행 파일을 확인하지 못했습니다"
+
+msgid "Could not check the npm package executable in {distro}."
+msgstr "{distro}에서 npm 패키지 실행 파일을 확인하지 못했습니다."
+
+msgid "Could not check the path shown read-only `{path}` ({error}). Nothing unchecked is shown, so stopping."
+msgstr "읽기 전용으로 표시되는 경로 `{path}`을(를) 확인하지 못했습니다 ({error}). 확인되지 않은 항목은 표시하지 않으므로 중지합니다."
+
+msgid "Could not check the sandbox helper in {distro} ({error})."
+msgstr "{distro}에서 샌드박스 도우미를 확인하지 못했습니다 ({error})."
+
+msgid "Could not check the sandbox helper in {distro}{details}. Run `wsl --update` and try again."
+msgstr "{distro}에서 샌드박스 도우미를 확인하지 못했습니다{details}. `wsl --update`를 실행한 후 다시 시도하세요."
+
+msgid "Could not copy the {file} to {distro} ({error})."
+msgstr "{file}을(를) {distro}에 복사하지 못했습니다 ({error})."
+
+msgid "Could not copy the {file} to {distro}{details}. Check the free space in WSL and that the home directory is writable."
+msgstr "{file}을(를) {distro}에 복사하지 못했습니다{details}. WSL의 여유 공간과 홈 디렉터리에 쓸 수 있는지 확인하세요."
+
+msgid "Could not create the IDE integration lock file (check the owner and permissions of {path} {home}, and that it is not a symbolic link)."
+msgstr "IDE 연동 잠금 파일을 만들지 못했습니다 ({path} {home}의 소유자와 권한, 그리고 심볼릭 링크가 아닌지 확인하세요)."
+
+msgid "Could not create the IDE integration's rendezvous socket (check the owner and permissions of {path} {home})."
+msgstr "IDE 연동의 랑데부 소켓을 만들지 못했습니다 ({path} {home}의 소유자와 권한을 확인하세요)."
+
+msgid "Could not create the agent settings folder"
+msgstr "에이전트 설정 폴더를 만들지 못했습니다"
+
+msgid "Could not create the agent settings folder in {distro}."
+msgstr "{distro}에서 에이전트 설정 폴더를 만들지 못했습니다."
+
+msgid "Could not create the npm working folder"
+msgstr "npm 작업 폴더를 만들지 못했습니다"
+
+msgid "Could not create the npm working folder in {distro}."
+msgstr "{distro}에서 npm 작업 폴더를 만들지 못했습니다."
+
+msgid "Could not create the sandbox in WSL"
+msgstr "WSL에서 샌드박스를 만들지 못했습니다"
+
+msgid "Could not extract the agent runtime"
+msgstr "에이전트 런타임의 압축을 풀지 못했습니다"
+
+msgid "Could not find Zed's data folder in {distro}{details}."
+msgstr "{distro}에서 ForgeKairos의 데이터 폴더를 찾을 수 없습니다{details}."
+
+msgid "Could not find the architecture of {distro}{details}."
+msgstr "{distro}의 아키텍처를 찾을 수 없습니다{details}."
+
+msgid "Could not find the home directory of {distro}{details}."
+msgstr "{distro}의 홈 디렉터리를 찾을 수 없습니다{details}."
+
+msgid "Could not finish {description} in {distro}{details}"
+msgstr "{distro}에서 {description}을(를) 완료하지 못했습니다{details}"
+
+msgid "Could not handle the processes in the sandbox in {distro}:{detail}"
+msgstr "{distro}에서 샌드박스 내부의 프로세스를 처리하지 못했습니다:{detail}"
+
+msgid "Could not install the agent runtime"
+msgstr "에이전트 런타임을 설치하지 못했습니다"
+
+msgid "Could not install the npm package"
+msgstr "npm 패키지를 설치하지 못했습니다"
+
+msgid "Could not pass the connection details to the IDE integration relay"
+msgstr "IDE 연동 중계에 연결 정보를 전달하지 못했습니다"
+
+msgid "Could not pass the connection details to the IDE integration relay."
+msgstr "IDE 연동 중계에 연결 정보를 전달하지 못했습니다."
+
+msgid "Could not pass the path of the {description} to the sandbox: {path}"
+msgstr "{description}의 경로를 샌드박스에 전달하지 못했습니다: {path}"
+
+msgid "Could not read inside the writable path `{path}` ({error}). The paths to protect cannot be separated out, so stopping."
+msgstr "쓰기 허용 경로 `{path}`의 내부를 읽지 못했습니다 ({error}). 보호할 경로를 구분할 수 없으므로 중지합니다."
+
+msgid "Could not read the bundled sandbox helper `{path}` ({error}). Reinstall Zed."
+msgstr "번들된 샌드박스 도우미 `{path}`을(를) 읽지 못했습니다 ({error}). ForgeKairos를 다시 설치하세요."
+
+msgid "Could not read the {file} `{path}` ({error}). {fix}"
+msgstr "{file} `{path}`을(를) 읽지 못했습니다 ({error}). {fix}"
+
+msgid "Could not resolve the paths in {distro} ({error})."
+msgstr "{distro}에서 경로를 확인하지 못했습니다 ({error})."
+
+msgid "Could not resolve the paths in {distro}{details}. Run `wsl --update` and try again."
+msgstr "{distro}에서 경로를 확인하지 못했습니다{details}. `wsl --update`를 실행한 후 다시 시도하세요."
+
+msgid "Could not resolve the writable path `{path}` on Windows."
+msgstr "Windows에서 쓰기 허용 경로 `{path}`을(를) 확인하지 못했습니다."
+
+msgid "Could not resolve the writable path `{path}`.{details}"
+msgstr "쓰기 허용 경로 `{path}`을(를) 확인하지 못했습니다.{details}"
+
+msgid "Could not run `npm install {package_spec}` in the sandbox{details}"
+msgstr "샌드박스에서 `npm install {package_spec}`을(를) 실행하지 못했습니다{details}"
+
+msgid "Could not run the sandbox helper in {distro}{details} ({error}). Update WSL with `wsl --update` and try again."
+msgstr "{distro}에서 샌드박스 도우미를 실행하지 못했습니다{details} ({error}). `wsl --update`로 WSL을 업데이트한 후 다시 시도하세요."
+
+msgid "Could not start WSL for {description} ({error}). Run `wsl --update` or restart Windows, then try again."
+msgstr "{description}을(를) 위해 WSL을 시작하지 못했습니다 ({error}). `wsl --update`를 실행하거나 Windows를 다시 시작한 후 다시 시도하세요."
+
+msgid "Could not start the IDE integration relay (unknown reason: {other})."
+msgstr "IDE 연동 중계를 시작하지 못했습니다 (알 수 없는 이유: {other})."
+
+msgid "Could not start the IDE integration relay (wsl.exe)"
+msgstr "IDE 연동 중계(wsl.exe)를 시작하지 못했습니다"
+
+msgid "Download it again."
+msgstr "다시 다운로드하세요."
+
+msgid "Download the agent again."
+msgstr "에이전트를 다시 다운로드하세요."
+
+msgid "No WSL distro is registered. Add one with `wsl --install -d Ubuntu` or similar (any distro works, but it must run on WSL 2)."
+msgstr "등록된 WSL 배포판이 없습니다. `wsl --install -d Ubuntu` 등으로 추가하세요 (어떤 배포판이든 되지만 WSL 2에서 실행되어야 합니다)."
+
+msgid "No default WSL distro is set. List the distros with `wsl --list --verbose` and make a WSL 2 distro the default with `wsl --set-default <name>`."
+msgstr "기본 WSL 배포판이 설정되어 있지 않습니다. `wsl --list --verbose`로 배포판 목록을 확인하고 `wsl --set-default <name>`으로 WSL 2 배포판을 기본값으로 설정하세요."
+
+msgid "Reinstall Zed."
+msgstr "ForgeKairos를 다시 설치하세요."
+
+msgid "Set the environment variable `ZED_WSL_SANDBOX_HELPER` to an absolute path inside WSL (UTF-8)."
+msgstr "환경 변수 `ZED_WSL_SANDBOX_HELPER`를 WSL 내부의 절대 경로(UTF-8)로 설정하세요."
+
+msgid "The IDE integration relay could not be started because the home directory {home} could not be determined."
+msgstr "홈 디렉터리 {home}을(를) 확인하지 못했으므로 IDE 연동 중계를 시작하지 못했습니다."
+
+msgid "The IDE integration relay could not set up its signal handling."
+msgstr "IDE 연동 중계가 시그널 처리를 설정하지 못했습니다."
+
+msgid "The IDE integration relay exited before it was ready."
+msgstr "IDE 연동 중계가 준비되기 전에 종료되었습니다."
+
+msgid "The IDE integration relay for this configuration is already running"
+msgstr "이 구성의 IDE 연동 중계가 이미 실행 중입니다"
+
+msgid "The IDE integration relay was not ready within {seconds} seconds."
+msgstr "IDE 연동 중계가 {seconds}초 안에 준비되지 않았습니다."
+
+msgid "The IDE integration relay was started with invalid arguments (internal error)."
+msgstr "IDE 연동 중계가 잘못된 인수로 시작되었습니다 (내부 오류)."
+
+msgid "The IDE lock file is larger than {limit} bytes (internal error)"
+msgstr "IDE 잠금 파일이 {limit}바이트보다 큽니다 (내부 오류)"
+
+msgid "The IDE port inside the sandbox is 0 (internal error)"
+msgstr "샌드박스 내부의 IDE 포트가 0입니다 (내부 오류)"
+
+msgid "The WSL distro `{name}` is not registered. Check its name with `wsl --list --verbose`."
+msgstr "WSL 배포판 `{name}`이(가) 등록되어 있지 않습니다. `wsl --list --verbose`로 이름을 확인하세요."
+
+msgid "The WSL distro `{name}` runs on WSL 1, but the sandbox needs WSL 2. Convert it with `wsl --set-version {name} 2`, or make a WSL 2 distro the default with `wsl --set-default <name>`."
+msgstr "WSL 배포판 `{name}`은(는) WSL 1에서 실행되지만 샌드박스에는 WSL 2가 필요합니다. `wsl --set-version {name} 2`로 변환하거나 `wsl --set-default <name>`으로 WSL 2 배포판을 기본값으로 설정하세요."
+
+msgid "The WSL sandbox helper returned a canonical path that is not UTF-8 (internal error)"
+msgstr "WSL 샌드박스 도우미가 UTF-8이 아닌 정규 경로를 반환했습니다 (내부 오류)"
+
+msgid "The agent executable was installed in {distro}, but it could not be verified. Try again."
+msgstr "{distro}에 에이전트 실행 파일을 설치했지만 확인하지 못했습니다. 다시 시도하세요."
+
+msgid "The agent folder name is not a single name (internal error): {folder_name}"
+msgstr "에이전트 폴더 이름이 단일 이름이 아닙니다 (내부 오류): {folder_name}"
+
+msgid "The agent runtime was extracted in {distro}, but it could not be verified. Try again."
+msgstr "{distro}에 에이전트 런타임의 압축을 풀었지만 확인하지 못했습니다. 다시 시도하세요."
+
+msgid "The agent runtime was installed in {distro}, but it could not be verified. Try again."
+msgstr "{distro}에 에이전트 런타임을 설치했지만 확인하지 못했습니다. 다시 시도하세요."
+
+msgid "The bundled sandbox helper `{path}` is damaged ({error}). Reinstall Zed."
+msgstr "번들된 샌드박스 도우미 `{path}`이(가) 손상되었습니다 ({error}). ForgeKairos를 다시 설치하세요."
+
+msgid "The home directory could not be determined, so the paths shown read-only cannot be checked. Stopping without building the sandbox."
+msgstr "홈 디렉터리를 확인할 수 없으므로 읽기 전용으로 표시되는 경로를 검사할 수 없습니다. 샌드박스를 만들지 않고 중지합니다."
+
+msgid "The home directory could not be determined, so the paths that are always protected (credentials, shell startup files, settings folders) cannot be settled. Stopping without building the sandbox."
+msgstr "홈 디렉터리를 확인할 수 없으므로 항상 보호되는 경로(자격 증명, 셸 시작 파일, 설정 폴더)를 확정할 수 없습니다. 샌드박스를 만들지 않고 중지합니다."
+
+msgid "The home directory could not be determined, so the paths that must not be read (credentials, agent settings) cannot be settled. Stopping without building the sandbox."
+msgstr "홈 디렉터리를 확인할 수 없으므로 읽으면 안 되는 경로(자격 증명, 에이전트 설정)를 확정할 수 없습니다. 샌드박스를 만들지 않고 중지합니다."
+
+msgid "The npm package was installed in {distro}, but it could not be verified. Try again."
+msgstr "{distro}에 npm 패키지를 설치했지만 확인하지 못했습니다. 다시 시도하세요."
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only because it overlaps `{entry}`, which must not be read."
+msgstr "경로 `{path}`(실제 위치 `{canonical}`)은(는) 읽으면 안 되는 `{entry}`과(와) 겹치므로 읽기 전용으로 표시할 수 없습니다."
+
+msgid "The path `{path}` (actually `{canonical}`) cannot be shown read-only. Only the agent installations (`external_agents`) and Node.js (`node`) inside Zed's data folder (`{data_directory}`) can be shown (credentials and Zed's database, settings and logs are never shown)."
+msgstr "경로 `{path}`(실제 위치 `{canonical}`)은(는) 읽기 전용으로 표시할 수 없습니다. ForgeKairos 데이터 폴더(`{data_directory}`) 내부의 에이전트 설치(`external_agents`)와 Node.js(`node`)만 표시할 수 있습니다 (자격 증명과 ForgeKairos의 데이터베이스, 설정, 로그는 표시하지 않습니다)."
+
+msgid "The path is in the WSL distro `{requested}`, but this session runs in `{session}`."
+msgstr "경로가 WSL 배포판 `{requested}`에 있지만 이 세션은 `{session}`에서 실행 중입니다."
+
+msgid "The path shown read-only `{path}` was replaced after it was checked and now points somewhere else (`{canonical}`). Stopping for safety."
+msgstr "읽기 전용으로 표시되는 경로 `{path}`이(가) 확인 후에 바뀌어 지금은 다른 위치(`{canonical}`)를 가리킵니다. 안전을 위해 중지합니다."
+
+msgid "The project identifier is invalid (internal error): {project_key}"
+msgstr "프로젝트 식별자가 잘못되었습니다 (내부 오류): {project_key}"
+
+msgid "The readable path was not resolved (internal error)"
+msgstr "읽기 허용 경로가 확인되지 않았습니다 (내부 오류)"
+
+msgid "The readable path was passed on unresolved (internal error)"
+msgstr "읽기 허용 경로가 확인되지 않은 채 전달되었습니다 (내부 오류)"
+
+msgid "The sandbox cannot be created because the kernel of {distro} does not support Landlock. Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again."
+msgstr "{distro}의 커널이 Landlock을 지원하지 않으므로 샌드박스를 만들 수 없습니다. `wsl --update`로 WSL을 업데이트하고 `wsl --shutdown`으로 다시 시작한 후 다시 시도하세요."
+
+msgid "The sandbox cannot be created because {distro} cannot create user namespaces ({reason}). Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again (WSL 2 is required)."
+msgstr "{distro}에서 사용자 네임스페이스를 만들 수 없으므로 샌드박스를 만들 수 없습니다 ({reason}). `wsl --update`로 WSL을 업데이트하고 `wsl --shutdown`으로 다시 시작한 후 다시 시도하세요 (WSL 2가 필요합니다)."
+
+msgid "The sandbox helper was installed in {distro}, but it could not be verified. Try again."
+msgstr "{distro}에 샌드박스 도우미를 설치했지만 확인하지 못했습니다. 다시 시도하세요."
+
+msgid "The sandbox helpers (`{server_name}` and `{slirp_name}`) were not found where Zed is installed. Reinstall Zed. In a development build, `script/build.ps1` puts them in `target\\debug` (searched: {searched})."
+msgstr "ForgeKairos가 설치된 위치에서 샌드박스 도우미(`{server_name}` 및 `{slirp_name}`)를 찾을 수 없습니다. ForgeKairos를 다시 설치하세요. 개발 빌드에서는 `script/build.ps1`이 `target\\debug`에 배치합니다 (검색한 위치: {searched})."
+
+msgid "The terminal's working folder was not resolved (internal error)"
+msgstr "터미널의 작업 폴더가 확인되지 않았습니다 (내부 오류)"
+
+msgid "The terminal's working folder was passed on unresolved (internal error)"
+msgstr "터미널의 작업 폴더가 확인되지 않은 채 전달되었습니다 (내부 오류)"
+
+msgid "The writable path `{writable}` overlaps the always-protected path `{protected}` (writing to credentials, shell startup files and settings folders cannot be allowed)."
+msgstr "쓰기 허용 경로 `{writable}`이(가) 항상 보호되는 경로 `{protected}`과(와) 겹칩니다 (자격 증명, 셸 시작 파일, 설정 폴더에 대한 쓰기는 허용할 수 없습니다)."
+
+msgid "The writable path was not resolved (internal error)"
+msgstr "쓰기 허용 경로가 확인되지 않았습니다 (내부 오류)"
+
+msgid "The writable path was passed on unresolved (internal error)"
+msgstr "쓰기 허용 경로가 확인되지 않은 채 전달되었습니다 (내부 오류)"
+
+msgid "The {description} contains a component that cannot be used (internal error): {segment} in {relative}"
+msgstr "{description}에 사용할 수 없는 구성 요소가 포함되어 있습니다 (내부 오류): {relative}의 {segment}"
+
+msgid "The {description} is not a relative path (internal error): {path}"
+msgstr "{description}이(가) 상대 경로가 아닙니다 (내부 오류): {path}"
+
+msgid "The {description} is not a relative path below the data directory (internal error): {relative}"
+msgstr "{description}이(가) 데이터 디렉터리 아래의 상대 경로가 아닙니다 (내부 오류): {relative}"
+
+msgid "The {description} is not an absolute Linux path (internal error): {path}"
+msgstr "{description}이(가) Linux 절대 경로가 아닙니다 (내부 오류): {path}"
+
+msgid "The {description} points outside the package (internal error): {path}"
+msgstr "{description}이(가) 패키지 외부를 가리킵니다 (내부 오류): {path}"
+
+msgid "The {description} points to nothing (internal error): {path}"
+msgstr "{description}이(가) 아무것도 가리키지 않습니다 (내부 오류): {path}"
+
+msgid "The {file} `{name}` copied to {distro} does not match the original ({sent} bytes sent, {received} bytes received). Try again. If that does not help, check the free space in WSL."
+msgstr "{distro}에 복사한 {file} `{name}`이(가) 원본과 일치하지 않습니다 ({sent}바이트 보냄, {received}바이트 받음). 다시 시도하세요. 그래도 해결되지 않으면 WSL의 여유 공간을 확인하세요."
+
+msgid "The {file} `{path}` is damaged ({error}). {fix}"
+msgstr "{file} `{path}`이(가) 손상되었습니다 ({error}). {fix}"
+
+msgid "WSL is not installed. On Windows, agent commands run in a sandbox inside WSL 2. Open PowerShell as an administrator, run `wsl --install`, and restart the computer."
+msgstr "WSL이 설치되어 있지 않습니다. Windows에서는 에이전트 명령이 WSL 2 내부의 샌드박스에서 실행됩니다. 관리자 권한으로 PowerShell을 열고 `wsl --install`을 실행한 후 컴퓨터를 다시 시작하세요."
+
+msgid "Writing to `{path}` cannot be allowed"
+msgstr "`{path}`에 대한 쓰기는 허용할 수 없습니다"
+
+msgid "Writing to `{path}` cannot be allowed: it is a whole WSL distro, not a folder inside one."
+msgstr "`{path}`에 대한 쓰기는 허용할 수 없습니다: WSL 배포판 내부의 폴더가 아니라 WSL 배포판 전체입니다."
+
+msgid "Writing to `{path}` cannot be allowed: it resolves to `{resolved}`, which is not a path on a Windows drive."
+msgstr "`{path}`에 대한 쓰기는 허용할 수 없습니다: `{resolved}`(으)로 확인되며, 이는 Windows 드라이브의 경로가 아닙니다."
+
+msgid "Writing to `{path}` cannot be allowed: only a path on a Windows drive (`C:\\...`), an absolute WSL path (`/...`), or a folder inside a WSL distro (`\\\\wsl.localhost\\<distro>\\...`) can be given."
+msgstr "`{path}`에 대한 쓰기는 허용할 수 없습니다: Windows 드라이브의 경로(`C:\\...`), WSL 절대 경로(`/...`) 또는 WSL 배포판 내부의 폴더(`\\\\wsl.localhost\\<distro>\\...`)만 지정할 수 있습니다."
+
+msgid "`sha256sum` is missing in {distro}, so it cannot be verified that the agent executable has not been replaced. Install coreutils and try again."
+msgstr "{distro}에 `sha256sum`이 없으므로 에이전트 실행 파일이 바뀌지 않았는지 확인할 수 없습니다. coreutils를 설치한 후 다시 시도하세요."
+
+msgid "`sha256sum` is missing in {distro}, so it cannot be verified that the sandbox helper has not been replaced. Install coreutils and try again."
+msgstr "{distro}에 `sha256sum`이 없으므로 샌드박스 도우미가 바뀌지 않았는지 확인할 수 없습니다. coreutils를 설치한 후 다시 시도하세요."
+
+msgid "ended by a signal"
+msgstr "시그널로 종료됨"
+
+msgid "exit code {code}"
+msgstr "종료 코드 {code}"
+
+msgid "the WSL distro `{distro}`"
+msgstr "WSL 배포판 `{distro}`"
+
+msgid "the default WSL distro"
+msgstr "기본 WSL 배포판"
+
+msgid "{count} IDE integration relays are already running, so no more can be started. Close the agent threads and terminals you are not using and try again."
+msgstr "IDE 연동 중계가 이미 {count}개 실행 중이어서 더 이상 시작할 수 없습니다. 사용하지 않는 에이전트 스레드와 터미널을 닫은 후 다시 시도하세요."
+
+msgid "{exit_status}, error output: {stderr}"
+msgstr "{exit_status}, 오류 출력: {stderr}"
+
+msgid "{exit_status}, npm output: {tail}"
+msgstr "{exit_status}, npm 출력: {tail}"
+
+msgid "{what} in {distro}{reason}{details}."
+msgstr "{distro}에서 {what}{reason}{details}."
+
+msgctxt "ide bridge host"
+msgid "in WSL"
+msgstr "WSL의"
+
+msgctxt "ide bridge host"
+msgid "on the remote host"
+msgstr "원격 호스트의"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "
+
+msgctxt "wsl sandbox file"
+msgid "agent executable"
+msgstr "에이전트 실행 파일"
+
+msgctxt "wsl sandbox file"
+msgid "agent runtime archive"
+msgstr "에이전트 런타임 압축 파일"
+
+msgctxt "wsl sandbox file"
+msgid "bundled sandbox helper"
+msgstr "번들된 샌드박스 도우미"
+
+msgctxt "wsl sandbox file"
+msgid "downloaded agent runtime archive"
+msgstr "다운로드한 에이전트 런타임 압축 파일"
+
+msgctxt "wsl sandbox file"
+msgid "sandbox helper"
+msgstr "샌드박스 도우미"
+
+msgctxt "wsl sandbox path"
+msgid "IDE bridge's own folder"
+msgstr "IDE 브리지 전용 폴더"
+
+msgctxt "wsl sandbox path"
+msgid "IDE lock file"
+msgstr "IDE 잠금 파일"
+
+msgctxt "wsl sandbox path"
+msgid "IDE rendezvous socket"
+msgstr "IDE 랑데부 소켓"
+
+msgctxt "wsl sandbox path"
+msgid "Node.js installation folder"
+msgstr "Node.js 설치 폴더"
+
+msgctxt "wsl sandbox path"
+msgid "agent folder name"
+msgstr "에이전트 폴더 이름"
+
+msgctxt "wsl sandbox path"
+msgid "entry in the agent folder"
+msgstr "에이전트 폴더의 항목"
+
+msgctxt "wsl sandbox path"
+msgid "npm package destination"
+msgstr "npm 패키지 설치 위치"
+
+msgctxt "wsl sandbox path"
+msgid "npm package executable"
+msgstr "npm 패키지 실행 파일"
+
+msgctxt "wsl sandbox path"
+msgid "npm package installation folder"
+msgstr "npm 패키지 설치 폴더"
+
+msgctxt "wsl sandbox path"
+msgid "npm package name"
+msgstr "npm 패키지 이름"
+
+msgctxt "wsl sandbox path"
+msgid "npm working folder"
+msgstr "npm 작업 폴더"
+
+msgctxt "wsl sandbox path"
+msgid "runtime destination"
+msgstr "런타임 설치 위치"
+
+msgctxt "wsl sandbox path"
+msgid "runtime executable"
+msgstr "런타임 실행 파일"
+
+msgctxt "wsl sandbox path"
+msgid "runtime folder"
+msgstr "런타임 폴더"
+
+msgctxt "wsl sandbox step"
+msgid "checking Zed's data folder"
+msgstr "ForgeKairos 데이터 폴더 확인"
+
+msgctxt "wsl sandbox step"
+msgid "checking the WSL architecture"
+msgstr "WSL 아키텍처 확인"
+
+msgctxt "wsl sandbox step"
+msgid "checking the agent executable"
+msgstr "에이전트 실행 파일 확인"
+
+msgctxt "wsl sandbox step"
+msgid "checking the agent runtime"
+msgstr "에이전트 런타임 확인"
+
+msgctxt "wsl sandbox step"
+msgid "checking the home directory"
+msgstr "홈 디렉터리 확인"
+
+msgctxt "wsl sandbox step"
+msgid "checking the npm package"
+msgstr "npm 패키지 확인"
+
+msgctxt "wsl sandbox step"
+msgid "checking the npm package executable"
+msgstr "npm 패키지 실행 파일 확인"
+
+msgctxt "wsl sandbox step"
+msgid "checking the sandbox helper"
+msgstr "샌드박스 도우미 확인"
+
+msgctxt "wsl sandbox step"
+msgid "cleaning up after the IDE integration"
+msgstr "IDE 연동 후 정리"
+
+msgctxt "wsl sandbox step"
+msgid "copying the agent executable"
+msgstr "에이전트 실행 파일 복사"
+
+msgctxt "wsl sandbox step"
+msgid "copying the agent runtime"
+msgstr "에이전트 런타임 복사"
+
+msgctxt "wsl sandbox step"
+msgid "copying the sandbox helper"
+msgstr "샌드박스 도우미 복사"
+
+msgctxt "wsl sandbox step"
+msgid "creating the agent settings folder"
+msgstr "에이전트 설정 폴더 만들기"
+
+msgctxt "wsl sandbox step"
+msgid "creating the npm working folder"
+msgstr "npm 작업 폴더 만들기"
+
+msgctxt "wsl sandbox step"
+msgid "extracting the agent runtime"
+msgstr "에이전트 런타임 압축 해제"
+
+msgctxt "wsl sandbox step"
+msgid "installing the agent executable"
+msgstr "에이전트 실행 파일 설치"
+
+msgctxt "wsl sandbox step"
+msgid "installing the agent runtime"
+msgstr "에이전트 런타임 설치"
+
+msgctxt "wsl sandbox step"
+msgid "installing the npm package"
+msgstr "npm 패키지 설치"
+
+msgctxt "wsl sandbox step"
+msgid "installing the sandbox helper"
+msgstr "샌드박스 도우미 설치"
+
+msgctxt "wsl sandbox step"
+msgid "listing the processes in the sandbox"
+msgstr "샌드박스의 프로세스 나열"
+
+msgctxt "wsl sandbox step"
+msgid "removing a partly copied file"
+msgstr "일부만 복사된 파일 제거"
+
+msgctxt "wsl sandbox step"
+msgid "removing the npm working folder"
+msgstr "npm 작업 폴더 제거"
+
+msgctxt "wsl sandbox step"
+msgid "resolving paths"
+msgstr "경로 확인"
+
+msgctxt "wsl sandbox step"
+msgid "resolving the writable path"
+msgstr "쓰기 허용 경로 확인"
+
+msgctxt "wsl sandbox step"
+msgid "running npm install in the sandbox"
+msgstr "샌드박스에서 npm install 실행"
+
+msgctxt "wsl sandbox step"
+msgid "stopping the processes in the sandbox"
+msgstr "샌드박스의 프로세스 중지"
+
+msgctxt "wsl sandbox step"
+msgid "testing the sandbox helper"
+msgstr "샌드박스 도우미 테스트"

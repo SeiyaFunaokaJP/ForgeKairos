@@ -2493,11 +2493,9 @@ impl RemoteServerProjects {
                     .child(
                         v_flex()
                             .pb_1()
-                            .child(
-                                ModalHeader::new().child(
-                                    Headline::new("Dev Container").size(HeadlineSize::XSmall),
-                                ),
-                            )
+                            .child(ModalHeader::new().child(
+                                Headline::new(i18n::t!("Dev Container")).size(HeadlineSize::XSmall),
+                            ))
                             .child(ListSeparator)
                             .child(
                                 ListItem::new("creating")

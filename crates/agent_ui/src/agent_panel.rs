@@ -5033,23 +5033,31 @@ impl AgentPanel {
         cx: &mut Context<Self>,
     ) {
         let Some(thread_id) = self.active_thread_id(cx) else {
-            Self::show_deferred_toast(&self.workspace, "No active thread", cx);
+            Self::show_deferred_toast(&self.workspace, i18n::t!("No active thread"), cx);
             return;
         };
 
         let Some(store) = ThreadMetadataStore::try_global(cx) else {
-            Self::show_deferred_toast(&self.workspace, "Thread metadata store not available", cx);
+            Self::show_deferred_toast(
+                &self.workspace,
+                i18n::t!("Thread metadata store not available"),
+                cx,
+            );
             return;
         };
 
         let Some(metadata) = store.read(cx).entry(thread_id).cloned() else {
-            Self::show_deferred_toast(&self.workspace, "No metadata found for active thread", cx);
+            Self::show_deferred_toast(
+                &self.workspace,
+                i18n::t!("No metadata found for active thread"),
+                cx,
+            );
             return;
         };
 
         let json = thread_metadata_to_debug_json(&metadata);
         let text = serde_json::to_string_pretty(&json).unwrap_or_default();
-        let title = format!("Thread Metadata: {}", metadata.display_title());
+        let title = i18n::t!("Thread Metadata: {}", metadata.display_title());
 
         self.open_json_buffer(title, text, window, cx);
     }
@@ -5061,7 +5069,11 @@ impl AgentPanel {
         cx: &mut Context<Self>,
     ) {
         let Some(store) = ThreadMetadataStore::try_global(cx) else {
-            Self::show_deferred_toast(&self.workspace, "Thread metadata store not available", cx);
+            Self::show_deferred_toast(
+                &self.workspace,
+                i18n::t!("Thread metadata store not available"),
+                cx,
+            );
             return;
         };
 
@@ -5075,7 +5087,12 @@ impl AgentPanel {
         let json = serde_json::Value::Array(entries);
         let text = serde_json::to_string_pretty(&json).unwrap_or_default();
 
-        self.open_json_buffer("All Sidebar Thread Metadata".to_string(), text, window, cx);
+        self.open_json_buffer(
+            i18n::t!("All Sidebar Thread Metadata").to_string(),
+            text,
+            window,
+            cx,
+        );
     }
 
     fn open_json_buffer(
@@ -8106,7 +8123,7 @@ impl AgentPanel {
                         }
 
                         if let Some(conversation_view) = conversation_view.as_ref() {
-                            menu = menu.entry("Reload Agent", None, {
+                            menu = menu.entry(i18n::t!("Reload Agent"), None, {
                                 let conversation_view = conversation_view.clone();
                                 move |window, cx| {
                                     conversation_view.update(cx, |conversation_view, cx| {

@@ -1,0 +1,57 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Character Count (Selection)"
+msgstr "字元數（選取範圍）"
+
+msgid "Character Count (Whole Document)"
+msgstr "字元數（整份文件）"
+
+msgid "Current Line: {} of {} (column {})"
+msgstr "目前行：第 {} 行，共 {} 行（第 {} 欄）"
+
+msgid "Go to Line/Column"
+msgstr "移至行/欄"
+
+msgid "Go to line {line}"
+msgstr "移至第 {line} 行"
+
+msgid "Go to line {line}, character {character}"
+msgstr "移至第 {line} 行第 {character} 個字元"
+
+msgid "Go to line {target_line} ({offset} from current)"
+msgstr "移至第 {target_line} 行（距目前位置 {offset}）"
+
+msgid "Line {}, column {}"
+msgstr "第 {} 行，第 {} 欄"
+
+msgid "{count} character"
+msgid_plural "{count} characters"
+msgstr[0] "{count} 個字元"
+
+msgid "{count} line"
+msgid_plural "{count} lines"
+msgstr[0] "{count} 行"
+
+msgid "{count} selection"
+msgid_plural "{count} selections"
+msgstr[0] "{count} 個選取範圍"
+
+msgctxt "abbreviated count"
+msgid "{characters} c"
+msgstr "{characters} 字"
+
+msgctxt "abbreviated count"
+msgid "{lines} l"
+msgstr "{lines} 行"
+
+msgctxt "abbreviated count"
+msgid "{selections} s"
+msgstr "{selections} 選取"

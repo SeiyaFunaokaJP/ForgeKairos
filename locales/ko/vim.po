@@ -1,0 +1,87 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " [modified]"
+msgstr " [수정됨]"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "같은 이름의 파일이나 폴더가 이미 있습니다. 바꾸면 현재 내용을 덮어씁니다."
+
+msgid "Argument required"
+msgstr "인수가 필요합니다"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Cannot save buffer with absolute path"
+msgstr "절대 경로로는 버퍼를 저장할 수 없습니다"
+
+msgid "Default Vim Bindings"
+msgstr "기본 Vim 바인딩"
+
+msgid "Disable Vim Mode"
+msgstr "Vim 모드 비활성화"
+
+msgid "Enable Vim Mode"
+msgstr "Vim 모드 활성화"
+
+msgid "Failed to :w"
+msgstr ":w를 실행하지 못했습니다"
+
+msgid "Failed to save"
+msgstr "저장하지 못했습니다"
+
+msgid "Failed to write lines"
+msgstr "줄을 쓰지 못했습니다"
+
+msgid "Invalid argument: {}"
+msgstr "잘못된 인수: {}"
+
+msgid "No file name"
+msgstr "파일 이름 없음"
+
+msgid "Nothing in register {}"
+msgstr "레지스터 {}이(가) 비어 있습니다"
+
+msgid "Overwriting the current file with selected buffer content requires '!'."
+msgstr "버퍼에서 선택한 내용으로 현재 파일을 덮어쓰려면 '!'가 필요합니다."
+
+msgid "Partial buffer write requires file name."
+msgstr "버퍼의 일부를 쓰려면 파일 이름이 필요합니다."
+
+msgid "Replace"
+msgstr "바꾸기"
+
+msgid "Use ! to write partial buffer"
+msgstr "버퍼의 일부를 쓰려면 !를 사용하세요"
+
+msgid "Vim: Off"
+msgstr "Vim: 꺼짐"
+
+msgid "Vim: On"
+msgstr "Vim: 켜짐"
+
+msgid "When disabled, you can type as soon as you open a file, just like in VSCode."
+msgstr "비활성화하면 VSCode처럼 파일을 열자마자 바로 입력할 수 있습니다."
+
+msgid "When enabled, you edit with Vim key bindings."
+msgstr "활성화하면 Vim 키 바인딩으로 편집합니다."
+
+msgid "[No Name]"
+msgstr "[이름 없음]"
+
+msgid "{filename}{modified} {lines} lines --{percentage}%--"
+msgstr "{filename}{modified} {lines}줄 --{percentage}%--"
+
+msgid "{path} already exists. Do you want to replace it?"
+msgstr "{path}이(가) 이미 있습니다. 바꾸시겠습니까?"
+
+msgid "{} already exists. Do you want to replace it?"
+msgstr "{}이(가) 이미 있습니다. 바꾸시겠습니까?"

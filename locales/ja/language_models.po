@@ -35,6 +35,9 @@ msgstr "Ollama のサーバーに接続することもできます。URL と API
 msgid "Attach the necessary Bedrock permissions to"
 msgstr "必要な Bedrock の権限を付与する先:"
 
+msgid "Authentication failed for Vercel AI Gateway. Check that your Vercel AI Gateway key starts with vck_ and is active."
+msgstr "Vercel AI Gateway の認証に失敗しました。Vercel AI Gateway のキーが vck_ で始まり、有効であることを確認してください。"
+
 msgid "Authentication failed for Vercel AI Gateway. Use a Vercel AI Gateway key (vck_...).\nCreate or manage keys in Vercel AI Gateway console.\nIf this persists, regenerate the key and update it in Vercel AI Gateway provider settings in Zed."
 msgstr "Vercel AI Gateway の認証に失敗しました。Vercel AI Gateway のキー (vck_...) を使ってください。\nキーは Vercel AI Gateway のコンソールで作成・管理できます。\n解決しない場合は、キーを作り直し、ForgeKairos の Vercel AI Gateway プロバイダーの設定で更新してください。"
 
@@ -107,11 +110,32 @@ msgstr "Ollama をダウンロード"
 msgid "Download and install Ollama from"
 msgstr "Ollama をダウンロードしてインストール:"
 
+msgid "Enable Fast Mode for Anthropic?"
+msgstr "Anthropic のファストモードを有効にしますか?"
+
+msgid "Enable Fast Mode for OpenAI?"
+msgstr "OpenAI のファストモードを有効にしますか?"
+
+msgid "Enable Fast Mode for Zed?"
+msgstr "Zed のファストモードを有効にしますか?"
+
 msgid "Enter either access keys OR a Bedrock API Key below (not both)"
 msgstr "下にアクセスキーか Bedrock の API キーのどちらか一方を入力してください (両方は不可)"
 
+msgid "Failed to fetch model from API: {error}"
+msgstr "API からモデルを取得できませんでした: {error}"
+
 msgid "Failed to load OpenCode {subscription} models: {error}"
 msgstr "OpenCode {subscription} のモデルを読み込めませんでした: {error}"
+
+msgid "Fast mode lets requests use your Anthropic Priority Tier capacity, which Anthropic prioritizes over standard requests during peak load. Requires a Priority Tier commitment with Anthropic; without one, requests behave the same as the standard tier."
+msgstr "ファストモードでは、リクエストが Anthropic の Priority Tier の容量を使います。混雑時、Anthropic はこれを通常のリクエストより優先します。Anthropic との Priority Tier の契約が必要で、契約が無い場合は通常の Tier と同じ扱いになります。"
+
+msgid "Fast mode routes requests through the upstream provider's fast mode or priority tier. The upstream provider's premium per-token pricing applies and is passed through to your Zed billing."
+msgstr "ファストモードでは、リクエストを提供元のファストモードまたは優先 Tier に送ります。提供元のトークン単位の割増料金が適用され、そのまま Zed の請求に反映されます。"
+
+msgid "Fast mode sends requests using OpenAI's Priority processing tier, which targets significantly lower latency than the standard tier and is billed at a premium per-token rate."
+msgstr "ファストモードでは、OpenAI の Priority processing tier でリクエストを送ります。通常の Tier より大幅に低い遅延を目指すもので、トークン単位の割増料金で請求されます。"
 
 msgid "For Bedrock API Keys: Generate an API key from the"
 msgstr "Bedrock の API キーの場合: API キーを次で発行します:"

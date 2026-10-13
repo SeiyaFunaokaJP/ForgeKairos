@@ -1,0 +1,163 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "$10 of tokens in Zed agent"
+msgstr "Zed 代理中 $10 的 Token"
+
+msgid "$5 of GPT Luna"
+msgstr "$5 的 GPT Luna 額度"
+
+msgid "$5 of tokens in Zed agent"
+msgstr "Zed 代理中 $5 的 Token"
+
+msgid "(Current Plan)"
+msgstr "（目前方案）"
+
+msgid "14 days from trial start, no credit card required"
+msgstr "自試用開始起算 14 天，無需信用卡"
+
+msgid "2,000 accepted edit predictions"
+msgstr "2,000 次已接受的編輯預測"
+
+msgid "API Keys"
+msgstr "API 金鑰"
+
+msgid "Add your own keys to use AI without signing in."
+msgstr "新增自己的金鑰，無需登入即可使用 AI。"
+
+msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
+msgstr "代理的命令會在作業系統沙箱內執行。存取專案外的檔案或開啟新的網路存取前，會先詢問您。預設不允許在沙箱外執行。即使允許，每個終端機命令仍會詢問您，但在沙箱外啟動的代理可能不經詢問就使用其本身的工具。"
+
+msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
+msgstr "或者，由於 GitHub Copilot 已設定完成，您也可以繼續使用它。"
+
+msgid "Alternatively, you can use GitHub Copilot as your edit prediction provider."
+msgstr "或者，您也可以使用 GitHub Copilot 作為編輯預測提供者。"
+
+msgid "Before You Use AI"
+msgstr "使用 AI 之前"
+
+msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
+msgstr "代理執行的命令以及外部代理本身，都會在作業系統沙箱內執行（macOS 為 Seatbelt，Linux 為 bubblewrap，Windows 為 WSL）。專案外的檔案操作與新的網路存取會要求您確認。預設不允許在沙箱外執行，可在沙箱設定中允許。即使如此，在沙箱外執行的終端機命令仍會逐一要求您確認，但在沙箱外啟動的外部代理或 Claude Code 可能不經詢問就使用其本身的工具。"
+
+msgid "Configure Copilot"
+msgstr "設定 Copilot"
+
+msgid "Configure Providers"
+msgstr "設定提供者"
+
+msgid "Connections made by AI (model providers, agent tools, MCP servers, and external agents) are denied by default unless their host is on the network allowlist, and adding a host asks for your confirmation. The list is under Settings → Network → Network Allowlist. The IDE's own tooling, such as language servers and extensions, is not affected. For an agent started outside the sandbox, the allowlist only reaches programs that honor its proxy settings; it is not enforced."
+msgstr "AI 所建立的連線（模型提供者、代理工具、MCP 伺服器與外部代理），除非其主機在網路允許清單中，否則預設會遭拒絕，而新增主機時會要求您確認。該清單位於「設定 → 網路 → 網路允許清單」。語言伺服器、擴充功能等 IDE 本身的工具不受影響。對於在沙箱外啟動的代理，允許清單只對遵循其 Proxy 設定的程式有效，不會強制執行。"
+
+msgid "Connections made by AI are denied unless their host is on the network allowlist, and adding a host asks you first."
+msgstr "除非主機在網路允許清單中，否則 AI 所建立的連線會遭拒絕，而新增主機前會先詢問您。"
+
+msgid "Dismiss"
+msgstr "關閉"
+
+msgid "External AI (cloud APIs and external agents) receives the code, file contents, and conversations you give it, and depending on the provider's terms may store them or use them to train models. Local models served on this machine (loopback) send nothing out. Before using external AI for work, check your organization's policy."
+msgstr "外部 AI（雲端 API 與外部代理）會收到您提供的程式碼、檔案內容與對話，且視提供者的條款而定，可能會儲存這些資料或用於訓練模型。在這台電腦上提供的本機模型（回送）不會向外傳送任何資料。將外部 AI 用於工作之前，請先確認您組織的政策。"
+
+msgid "External AI receives the code, files, and conversations you give it and may store them or train on them. Local models on this machine send nothing out."
+msgstr "外部 AI 會收到您提供的程式碼、檔案與對話，並可能儲存或用於訓練。這台電腦上的本機模型不會向外傳送任何資料。"
+
+msgid "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
+msgstr "GitHub Copilot 也可作為編輯預測提供者使用，但它是外部 AI 服務。請在「AI」頁面的「設定提供者」中啟用編輯預測，並檢閱模型訓練風險的警告。"
+
+msgid "Here's what you get:"
+msgstr "以下是可享有的權益："
+
+msgid "Included for 14 days from when your trial started:"
+msgstr "試用開始後 14 天內包含："
+
+msgid "Network"
+msgstr "網路"
+
+msgid "No credit card required"
+msgstr "無需信用卡"
+
+msgid "Open AI Settings"
+msgstr "開啟 AI 設定"
+
+msgid "Open Configure Providers"
+msgstr "開啟「設定提供者」"
+
+msgid "Open Sandbox Settings"
+msgstr "開啟沙箱設定"
+
+msgid "Optional credit packs for additional usage"
+msgstr "可選購額外用量的點數包"
+
+msgid "Pro Trial"
+msgstr "Pro 試用"
+
+msgid "Sandbox"
+msgstr "沙箱"
+
+msgid "Sign In to Try GPT Luna"
+msgstr "登入以試用 GPT Luna"
+
+msgid "Sign in to try GPT Luna. Your 14 days begin when you start the trial."
+msgstr "登入以試用 GPT Luna。14 天試用期從開始試用時起算。"
+
+msgid "Start Free Trial"
+msgstr "開始免費試用"
+
+msgid "Start now using API keys from your environment for the following providers:"
+msgstr "立即使用環境中的 API 金鑰開始使用下列提供者："
+
+msgid "To prevent abuse of our service, GitHub accounts created fewer than 30 days ago are not eligible for the Pro trial. You can request an exception by reaching out to billing-support@zed.dev"
+msgstr "為了防止濫用我們的服務，建立未滿 30 天的 GitHub 帳戶不符合 Pro 試用資格。您可以聯絡 billing-support@zed.dev 申請例外。"
+
+msgid "Tokens in the Zed agent"
+msgstr "Zed 代理中的 Token"
+
+msgid "Unlimited edit predictions"
+msgstr "無限制編輯預測"
+
+msgid "Unlimited prompts with your AI API keys"
+msgstr "使用自己的 AI API 金鑰無限制傳送提示"
+
+msgid "Unlimited use of external agents"
+msgstr "無限制使用外部代理"
+
+msgid "Usage-based billing"
+msgstr "依用量計費"
+
+msgid "Usage-based billing beyond $5"
+msgstr "超過 $5 後依用量計費"
+
+msgid "Use Copilot"
+msgstr "使用 Copilot"
+
+msgid "Welcome to Zed Business"
+msgstr "歡迎使用 Zed Business"
+
+msgid "Welcome to Zed Pro"
+msgstr "歡迎使用 Zed Pro"
+
+msgid "Welcome to Zed Student"
+msgstr "歡迎使用 Zed Student"
+
+msgid "Welcome to Zed VIP"
+msgstr "歡迎使用 Zed VIP"
+
+msgid "Welcome to the Zed Pro Trial"
+msgstr "歡迎使用 Zed Pro 試用版"
+
+msgid "Your data"
+msgstr "您的資料"
+
+msgid "Zed AI (External Service)"
+msgstr "Zed AI（外部服務）"
+
+msgctxt "plan"
+msgid "Get Started"
+msgstr "開始使用"

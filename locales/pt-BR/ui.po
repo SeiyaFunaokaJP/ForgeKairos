@@ -1,0 +1,223 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "1 day"
+msgstr "1 dia"
+
+msgid "1 hour"
+msgstr "1 hora"
+
+msgid "1 minute"
+msgstr "1 minuto"
+
+msgid "1 month"
+msgstr "1 mês"
+
+msgid "1 year"
+msgstr "1 ano"
+
+msgid "10 seconds"
+msgstr "10 segundos"
+
+msgid "2 months"
+msgstr "2 meses"
+
+msgid "2 years"
+msgstr "2 anos"
+
+msgid "20 seconds"
+msgstr "20 segundos"
+
+msgid "5 seconds"
+msgstr "5 segundos"
+
+msgid "Authentication Required."
+msgstr "Autenticação necessária."
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Checking for Zed Updates…"
+msgstr "Verificando atualizações do ForgeKairos…"
+
+msgid "Choose one of the options below to use the {}"
+msgstr "Escolha uma das opções abaixo para usar {}"
+
+msgid "Client Secret Required."
+msgstr "Segredo do cliente necessário."
+
+msgid "Clone Repository"
+msgstr "Clonar repositório"
+
+msgid "Copied!"
+msgstr "Copiado!"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Dismiss"
+msgstr "Ignorar"
+
+msgid "Downloading Zed Update…"
+msgstr "Baixando atualização do ForgeKairos…"
+
+msgid "Downloading version {version} needs network access to {hosts}"
+msgstr "Baixar a versão {version} requer acesso à rede para {hosts}"
+
+msgid "Failed to Update"
+msgstr "Falha ao atualizar"
+
+msgid "Installing Zed Update…"
+msgstr "Instalando atualização do ForgeKairos…"
+
+msgid "Learn More"
+msgstr "Saiba mais"
+
+msgid "No items"
+msgstr "Nenhum item"
+
+msgid "Open Project"
+msgstr "Abrir projeto"
+
+msgid "Restart to Update"
+msgstr "Reiniciar para atualizar"
+
+msgid "Reveal in File Explorer"
+msgstr "Mostrar no Explorador de Arquivos"
+
+msgid "Reveal in File Manager"
+msgstr "Mostrar no gerenciador de arquivos"
+
+msgid "Reveal in Finder"
+msgstr "Mostrar no Finder"
+
+msgid "Server has an error."
+msgstr "O servidor tem um erro."
+
+msgid "Server is active."
+msgstr "O servidor está ativo."
+
+msgid "Server is starting."
+msgstr "O servidor está iniciando."
+
+msgid "Server is stopped."
+msgstr "O servidor está parado."
+
+msgid "Thread has an Error"
+msgstr "A conversa tem um erro"
+
+msgid "Up to Date"
+msgstr "Atualizado"
+
+msgid "Update Needs Permission"
+msgstr "A atualização requer permissão"
+
+msgid "Update to Version: {version}"
+msgstr "Atualizar para a versão: {version}"
+
+msgid "Waiting for Authorization…"
+msgstr "Aguardando autorização…"
+
+msgid "Waiting for Confirmation"
+msgstr "Aguardando confirmação"
+
+msgid "Waiting for approval."
+msgstr "Aguardando aprovação."
+
+msgid "a minute"
+msgstr "um minuto"
+
+msgid "about 1 hour"
+msgstr "cerca de 1 hora"
+
+msgid "about 1 month"
+msgstr "cerca de 1 mês"
+
+msgid "about 1 year"
+msgstr "cerca de 1 ano"
+
+msgid "about 2 months"
+msgstr "cerca de 2 meses"
+
+msgid "about {} hours"
+msgstr "cerca de {} horas"
+
+msgid "about {} years"
+msgstr "cerca de {} anos"
+
+msgid "almost 2 years"
+msgstr "quase 2 anos"
+
+msgid "almost {} years"
+msgstr "quase {} anos"
+
+msgid "half a minute"
+msgstr "meio minuto"
+
+msgid "less than 10 seconds"
+msgstr "menos de 10 segundos"
+
+msgid "less than 20 seconds"
+msgstr "menos de 20 segundos"
+
+msgid "less than 5 seconds"
+msgstr "menos de 5 segundos"
+
+msgid "less than a minute"
+msgstr "menos de um minuto"
+
+msgid "or"
+msgstr "ou"
+
+msgid "over 1 year"
+msgstr "mais de 1 ano"
+
+msgid "over {} years"
+msgstr "mais de {} anos"
+
+msgid "{label} is defined in the project's settings."
+msgstr "{label} está definido nas configurações do projeto."
+
+msgid "{label} was configured manually."
+msgstr "{label} foi configurado manualmente."
+
+msgid "{label} was installed from an extension."
+msgstr "{label} foi instalado a partir de uma extensão."
+
+msgid "{label} was installed from the ACP registry."
+msgstr "{label} foi instalado a partir do registro ACP."
+
+msgid "{message} ({}% downloaded)"
+msgstr "{message} ({}% baixado)"
+
+msgid "{string} ago"
+msgstr "há {string}"
+
+msgid "{string} from now"
+msgstr "daqui a {string}"
+
+msgid "{} days"
+msgstr "{} dias"
+
+msgid "{} hours"
+msgstr "{} horas"
+
+msgid "{} minutes"
+msgstr "{} minutos"
+
+msgid "{} months"
+msgstr "{} meses"
+
+msgid "{} years"
+msgstr "{} anos"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

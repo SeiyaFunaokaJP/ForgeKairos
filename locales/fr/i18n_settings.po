@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "\"{}\" is not a language tag; showing English."
+msgstr "\"{}\" n'est pas une balise de langue ; affichage en anglais."
+
+msgid "Problems in the UI translation files"
+msgstr "Problèmes dans les fichiers de traduction de l'interface"
+
+msgid "Restart Now"
+msgstr "Redémarrer maintenant"
+
+msgid "Some parts of the UI switch to the new language after a restart."
+msgstr "Certaines parties de l'interface passent à la nouvelle langue après un redémarrage."
+
+msgid "There is no translation for \"{}\"; showing English."
+msgstr "Il n'existe aucune traduction pour \"{}\" ; affichage en anglais."
+
+msgid "…and {} more (see the log)."
+msgstr "…et {} de plus (voir le journal)."
+
+msgctxt "dialog title"
+msgid "Critical"
+msgstr "Critique"
+
+msgctxt "dialog title"
+msgid "Info"
+msgstr "Information"
+
+msgctxt "dialog title"
+msgid "Warning"
+msgstr "Avertissement"

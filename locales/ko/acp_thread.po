@@ -1,0 +1,175 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A folder allowed for writing is your Windows user folder itself or contains it, which the sandbox can't use (it keeps the credentials inside it from being read). Open the project from a folder below it."
+msgstr "쓰기가 허용된 폴더가 Windows 사용자 폴더 자체이거나 이를 포함하고 있어 샌드박스에서 사용할 수 없습니다(그 안의 자격 증명을 읽지 못하도록 막고 있기 때문입니다). 그 아래 폴더에서 프로젝트를 여세요."
+
+msgid "A path allowed for writing was replaced after the approval so that it points somewhere else (through a symbolic link, for example). The command wasn't run, to be safe."
+msgstr "쓰기가 허용된 경로가 승인 후 다른 위치를 가리키도록(예: 심볼릭 링크를 통해) 바뀌었습니다. 안전을 위해 명령을 실행하지 않았습니다."
+
+msgid "A path the agent asked to see read-only, as something it needs to run, is neither the agent's install folder (`external_agents`) nor Node.js (`node`) in Zed's data folder (or it overlaps credentials), so the command wasn't run."
+msgstr "에이전트가 실행에 필요하다며 읽기 전용으로 볼 수 있게 요청한 경로가 ForgeKairos 데이터 폴더 안의 에이전트 설치 폴더(`external_agents`)도 Node.js(`node`)도 아니므로(또는 자격 증명과 겹치므로) 명령을 실행하지 않았습니다."
+
+msgid "Allow once"
+msgstr "한 번 허용"
+
+msgid "An internal error occurred while preparing the sandbox ({code})."
+msgstr "샌드박스를 준비하는 중 내부 오류가 발생했습니다 ({code})."
+
+msgid "Asking you, because the call has no arguments"
+msgstr "호출에 인수가 없으므로 확인을 요청합니다"
+
+msgid "Collaboration"
+msgstr "협업"
+
+msgid "Could not create the sandbox in WSL: "
+msgstr "WSL에서 샌드박스를 만들지 못했습니다: "
+
+msgid "Could not create the sandbox in WSL: WSL didn't respond within {seconds} seconds ({attempts} attempts). WSL may be slow to start. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
+msgstr "WSL에서 샌드박스를 만들지 못했습니다: WSL이 {seconds}초 안에 응답하지 않았습니다({attempts}회 시도). WSL 시작이 느릴 수 있습니다. 잠시 후 다시 시도하고, 그래도 해결되지 않으면 `wsl --shutdown`으로 WSL을 다시 시작하세요."
+
+msgid "Couldn't create the sandbox on the remote host: "
+msgstr "원격 호스트에서 샌드박스를 만들지 못했습니다: "
+
+msgid "Deny"
+msgstr "거부"
+
+msgid "Edit {path} (agent configuration)"
+msgstr "{path} 편집 (에이전트 구성)"
+
+msgid "Edit {path} (agent skills)"
+msgstr "{path} 편집 (에이전트 스킬)"
+
+msgid "Edit {path} (local settings)"
+msgstr "{path} 편집 (프로젝트 설정)"
+
+msgid "Edit {path} (settings)"
+msgstr "{path} 편집 (설정)"
+
+msgid "Neither file isolation method (Landlock or mounts) is available."
+msgstr "파일 격리 방식(Landlock 또는 마운트)을 둘 다 사용할 수 없습니다."
+
+msgid "Network control couldn't be set up."
+msgstr "네트워크 통제를 설정하지 못했습니다."
+
+msgid "No usable `bwrap` binary was found on your PATH. Install Bubblewrap to let the agent sandbox terminal commands."
+msgstr "PATH에서 사용할 수 있는 `bwrap` 바이너리를 찾지 못했습니다. 에이전트가 터미널 명령을 샌드박스에서 실행할 수 있도록 Bubblewrap을 설치하세요."
+
+msgid "Remote"
+msgstr "원격"
+
+msgid "SSH (not Linux)"
+msgstr "SSH (Linux 아님)"
+
+msgid "The WSL home directory couldn't be determined (the command isn't run, because the paths that are always protected can't be settled)."
+msgstr "WSL 홈 디렉터리를 확인하지 못했습니다(항상 보호되는 경로를 확정할 수 없어 명령을 실행하지 않습니다)."
+
+msgid "The command couldn't be started inside the sandbox."
+msgstr "샌드박스 안에서 명령을 시작하지 못했습니다."
+
+msgid "The command's capabilities couldn't be dropped."
+msgstr "명령의 권한(capability)을 제거하지 못했습니다."
+
+msgid "The file write restrictions couldn't be applied."
+msgstr "파일 쓰기 제한을 적용하지 못했습니다."
+
+msgid "The folder (or socket) that carries the IDE integration isn't in a safe state (its permissions aren't 0700, it has another owner, or it lies outside the protected paths), so the command wasn't run. Restart Zed and try again."
+msgstr "IDE 연동을 전달하는 폴더(또는 소켓)가 안전한 상태가 아니므로(권한이 0700이 아니거나, 소유자가 다르거나, 보호된 경로 밖에 있음) 명령을 실행하지 않았습니다. ForgeKairos를 다시 시작한 후 다시 시도하세요."
+
+msgid "The only `bwrap` available is setuid-root, which Zed refuses to run. Install a non-setuid Bubblewrap to let the agent sandbox terminal commands."
+msgstr "사용 가능한 유일한 `bwrap`이 setuid-root라서 ForgeKairos가 실행을 거부합니다. 에이전트가 터미널 명령을 샌드박스에서 실행할 수 있도록 setuid가 아닌 Bubblewrap을 설치하세요."
+
+msgid "The protected paths (credentials and shell startup files such as `.git`, `~/.ssh` and `~/.bashrc`) couldn't be checked (check their permissions)."
+msgstr "보호된 경로(`.git`, `~/.ssh`, `~/.bashrc` 같은 자격 증명 및 셸 시작 파일)를 확인하지 못했습니다(권한을 확인하세요)."
+
+msgid "The remote home directory couldn't be determined (the command isn't run, because the paths that are always protected can't be settled)."
+msgstr "원격 홈 디렉터리를 확인하지 못했습니다(항상 보호되는 경로를 확정할 수 없어 명령을 실행하지 않습니다)."
+
+msgid "The remote kernel refused to create a PID namespace, so processes left behind when the command ends can't be reliably stopped. The command wasn't run, to be safe (a `user.max_pid_namespaces=0` setting or a container's seccomp profile can cause this)."
+msgstr "원격 커널이 PID 네임스페이스 생성을 거부하여 명령이 끝난 후 남은 프로세스를 확실하게 중지할 수 없습니다. 안전을 위해 명령을 실행하지 않았습니다(`user.max_pid_namespaces=0` 설정이나 컨테이너의 seccomp 프로필 때문일 수 있습니다)."
+
+msgid "The remote kernel refused to let the helper reap child processes (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be cleaned up. The command wasn't run, to be safe."
+msgstr "원격 커널이 도우미의 자식 프로세스 회수(PR_SET_CHILD_SUBREAPER)를 거부하여 명령이 끝난 후 남은 프로세스를 정리할 수 없습니다. 안전을 위해 명령을 실행하지 않았습니다."
+
+msgid "The run was canceled"
+msgstr "실행이 취소되었습니다"
+
+msgid "The sandbox helper (or slirp4netns) doesn't match the one bundled with this Zed (it was replaced or is damaged). The command wasn't run, to be safe. Restarting Zed puts it back."
+msgstr "샌드박스 도우미(또는 slirp4netns)가 이 ForgeKairos에 포함된 것과 일치하지 않습니다(교체되었거나 손상됨). 안전을 위해 명령을 실행하지 않았습니다. ForgeKairos를 다시 시작하면 다시 배치됩니다."
+
+msgid "The sandbox helper (slirp4netns) is missing from `~/.zed_server/` on the remote host, so network access can't be isolated. Reconnecting puts it back."
+msgstr "원격 호스트의 `~/.zed_server/`에 샌드박스 도우미(slirp4netns)가 없어 네트워크 액세스를 격리할 수 없습니다. 다시 연결하면 다시 배치됩니다."
+
+msgid "The sandbox helper (slirp4netns) wasn't found inside WSL, so network access can't be isolated. Restarting Zed puts it back."
+msgstr "WSL 안에서 샌드박스 도우미(slirp4netns)를 찾을 수 없어 네트워크 액세스를 격리할 수 없습니다. ForgeKairos를 다시 시작하면 다시 배치됩니다."
+
+msgid "The sandbox helper's signal handling couldn't be set up. The command wasn't run, to be safe."
+msgstr "샌드박스 도우미의 시그널 처리를 설정하지 못했습니다. 안전을 위해 명령을 실행하지 않았습니다."
+
+msgid "The sandbox is turned off in the settings"
+msgstr "설정에서 샌드박스가 꺼져 있습니다"
+
+msgid "The sandbox's launch arguments are invalid (internal error)."
+msgstr "샌드박스 시작 인수가 잘못되었습니다(내부 오류)."
+
+msgid "The system call restrictions couldn't be applied."
+msgstr "시스템 호출 제한을 적용하지 못했습니다."
+
+msgid "The user ID mapping (uid_map / gid_map) couldn't be set up in the user namespace."
+msgstr "사용자 네임스페이스에서 사용자 ID 매핑(uid_map / gid_map)을 설정하지 못했습니다."
+
+msgid "These hosts aren't in the editor-wide allowlist: {}"
+msgstr "다음 호스트가 편집기 전체 허용 목록에 없습니다: {}"
+
+msgid "This project can't use the sandbox ({project_kind})"
+msgstr "이 프로젝트에서는 샌드박스를 사용할 수 없습니다 ({project_kind})"
+
+msgid "This thread is a conversation with an agent that was started outside the sandbox"
+msgstr "이 스레드는 샌드박스 외부에서 시작된 에이전트와의 대화입니다"
+
+msgid "Tool call not found"
+msgstr "도구 호출을 찾을 수 없습니다"
+
+msgid "Unknown reason ({other})"
+msgstr "알 수 없는 이유 ({other})"
+
+msgid "Update WSL with `wsl --update`, restart it with `wsl --shutdown`, and try again."
+msgstr "`wsl --update`로 WSL을 업데이트하고 `wsl --shutdown`으로 다시 시작한 후 다시 시도하세요."
+
+msgid "User namespaces can't be created (they may be disabled). In a dev container (Docker), the default seccomp profile refuses `unshare`, so add `--cap-add SYS_ADMIN` (or `--security-opt seccomp=unconfined`) to `runArgs`, and `--device /dev/net/tun` for commands that use the network."
+msgstr "사용자 네임스페이스를 만들 수 없습니다(비활성화되어 있을 수 있습니다). Dev Container(Docker)에서는 기본 seccomp 프로필이 `unshare`를 거부하므로 `runArgs`에 `--cap-add SYS_ADMIN`(또는 `--security-opt seccomp=unconfined`)을 추가하고, 네트워크를 사용하는 명령을 위해 `--device /dev/net/tun`도 추가하세요."
+
+msgid "User namespaces can't be created in WSL."
+msgstr "WSL에서 사용자 네임스페이스를 만들 수 없습니다."
+
+msgid "WSL remote"
+msgstr "WSL 원격"
+
+msgid "WSL's kernel doesn't support Landlock."
+msgstr "WSL 커널이 Landlock을 지원하지 않습니다."
+
+msgid "WSL's kernel refused to create a PID namespace, so processes left behind when the command ends can't be reliably stopped. The command wasn't run, to be safe (a `user.max_pid_namespaces=0` setting can cause this)."
+msgstr "WSL 커널이 PID 네임스페이스 생성을 거부하여 명령이 끝난 후 남은 프로세스를 확실하게 중지할 수 없습니다. 안전을 위해 명령을 실행하지 않았습니다(`user.max_pid_namespaces=0` 설정 때문일 수 있습니다)."
+
+msgid "WSL's kernel refused to let the helper reap child processes (PR_SET_CHILD_SUBREAPER), so processes left behind when the command ends can't be cleaned up. The command wasn't run, to be safe."
+msgstr "WSL 커널이 도우미의 자식 프로세스 회수(PR_SET_CHILD_SUBREAPER)를 거부하여 명령이 끝난 후 남은 프로세스를 정리할 수 없습니다. 안전을 위해 명령을 실행하지 않았습니다."
+
+msgid "`bwrap` is installed but couldn't create a sandbox, likely because unprivileged user namespaces are disabled on this system (Ubuntu 23.10 and later need an AppArmor profile for Bubblewrap)."
+msgstr "`bwrap`이 설치되어 있지만 샌드박스를 만들지 못했습니다. 이 시스템에서 비특권 사용자 네임스페이스가 비활성화되어 있기 때문일 수 있습니다(Ubuntu 23.10 이상에서는 Bubblewrap용 AppArmor 프로필이 필요합니다)."
+
+msgid "not supported on this OS"
+msgstr "이 OS에서는 지원되지 않음"
+
+msgid "sandboxing is turned off"
+msgstr "샌드박스가 꺼져 있음"
+
+msgctxt "list separator"
+msgid ", "
+msgstr ", "

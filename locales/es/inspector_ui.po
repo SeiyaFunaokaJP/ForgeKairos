@@ -1,0 +1,69 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Bounds: ⌜{} - {}⌟"
+msgstr "Límites: ⌜{} - {}⌟"
+
+msgid "Click to open by running Zed CLI"
+msgstr "Haga clic para abrir ejecutando la CLI de ForgeKairos"
+
+msgid "Content size: {}"
+msgstr "Tamaño del contenido: {}"
+
+msgid "Disambiguates elements from the same source location"
+msgstr "Distingue elementos de la misma ubicación de origen"
+
+msgid "Element ID"
+msgstr "ID de elemento"
+
+msgid "Failed to convert style to JSON: {err}"
+msgstr "No se pudo convertir el estilo a JSON: {err}"
+
+msgid "Failed to create buffers for style editing: {err}"
+msgstr "No se pudieron crear los búferes para editar el estilo: {err}"
+
+msgid "GPUI Inspector"
+msgstr "Inspector de GPUI"
+
+msgid "GlobalElementId of the nearest ancestor with an ID"
+msgstr "GlobalElementId del ancestro más cercano con un ID"
+
+msgid "Instance {}"
+msgstr "Instancia {}"
+
+msgid "JSON Style"
+msgstr "Estilo JSON"
+
+msgid "Layout"
+msgstr "Diseño"
+
+msgid "Loading..."
+msgstr "Cargando..."
+
+msgid "Reset style"
+msgstr "Restablecer estilo"
+
+msgid "Rust Style"
+msgstr "Estilo Rust"
+
+msgid "Size of the element's children"
+msgstr "Tamaño de los elementos secundarios del elemento"
+
+msgid "Size: {}"
+msgstr "Tamaño: {}"
+
+msgid "Start inspector pick mode"
+msgstr "Iniciar modo de selección del inspector"
+
+msgid "dev::ToggleInspector is only available in debug builds"
+msgstr "dev::ToggleInspector solo está disponible en compilaciones de depuración"
+
+msgid "unrecognized"
+msgstr "no reconocido"

@@ -1,0 +1,27 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Cannot change encoding during collaboration"
+msgstr "Codierung kann während der Zusammenarbeit nicht geändert werden"
+
+msgid "Cannot change encoding of remote server file"
+msgstr "Codierung einer Remote-Server-Datei kann nicht geändert werden"
+
+msgid "Reopen with Encoding"
+msgstr "Mit Codierung erneut öffnen"
+
+msgid "Reopen with encoding..."
+msgstr "Mit Codierung erneut öffnen..."
+
+msgid "Save file to change encoding"
+msgstr "Datei speichern, um die Codierung zu ändern"
+
+msgid "{} (current)"
+msgstr "{} (aktuell)"

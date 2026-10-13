@@ -1,0 +1,211 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(file scope)"
+msgstr "(ámbito de archivo)"
+
+msgid "All Sources"
+msgstr "Todos los orígenes"
+
+msgid "Call Graph Options"
+msgstr "Opciones del grafo de llamadas"
+
+msgid "Call Graph Panel"
+msgstr "Panel de grafo de llamadas"
+
+msgid "Callees"
+msgstr "Llamados"
+
+msgid "Callees in the call_graph_panel.excluded_callees setting. Click to show them."
+msgstr "Llamados incluidos en la configuración call_graph_panel.excluded_callees. Haga clic para mostrarlos."
+
+msgid "Callers"
+msgstr "Llamadores"
+
+msgid "Calls come from the language server. For C and C++, clangd needs a compile_commands.json to find them."
+msgstr "Las llamadas proceden del servidor de lenguaje. En C y C++, clangd necesita un compile_commands.json para encontrarlas."
+
+msgid "Collapse All"
+msgstr "Contraer todo"
+
+msgid "Could not find the function at the cursor: {error}"
+msgstr "No se pudo encontrar la función en la posición del cursor: {error}"
+
+msgid "Could not get the calls: {message}"
+msgstr "No se pudieron obtener las llamadas: {message}"
+
+msgid "Definition not found"
+msgstr "No se encontró la definición"
+
+msgid "Exact: answered by the language server"
+msgstr "Exacto: respuesta del servidor de lenguaje"
+
+msgid "Filter shown functions…"
+msgstr "Filtrar las funciones mostradas…"
+
+msgid "Folders deeper than the file scan depth outside git repositories are not in the symbol index."
+msgstr "Las carpetas fuera de los repositorios de Git que superan la profundidad del análisis de archivos no están en el índice de símbolos."
+
+msgid "Follow the Cursor"
+msgstr "Seguir el cursor"
+
+msgid "Function pointer candidate"
+msgstr "Candidato de puntero a función"
+
+msgid "Function pointer candidate: stored into the member this indirect call goes through, so it may be called there"
+msgstr "Candidato de puntero a función: se almacena en el miembro a través del cual pasa esta llamada indirecta, por lo que puede llamarse aquí"
+
+msgid "If the language server is still indexing, this is tried again when it finishes."
+msgstr "Si el servidor de lenguaje todavía está indexando, se vuelve a intentar cuando termine."
+
+msgid "Indexing symbols {done} / {total}"
+msgstr "Indexando símbolos {done} / {total}"
+
+msgid "Indirect call: .{field}"
+msgstr "Llamada indirecta: .{field}"
+
+msgid "Inspect Cursor"
+msgstr "Inspeccionar el cursor"
+
+msgid "Inspect the Function at the Cursor"
+msgstr "Inspeccionar la función en la posición del cursor"
+
+msgid "It does not offer call hierarchy. Another language server for this language may."
+msgstr "No ofrece jerarquía de llamadas. Es posible que otro servidor de lenguaje para este lenguaje sí lo haga."
+
+msgid "Language Server Only"
+msgstr "Solo servidor de lenguaje"
+
+msgid "Language server"
+msgstr "Servidor de lenguaje"
+
+msgid "Looking for the function at the cursor…"
+msgstr "Buscando la función en la posición del cursor…"
+
+msgid "Macro"
+msgstr "Macro"
+
+msgid "Macro: a macro the symbol index found by name"
+msgstr "Macro: una macro que el índice de símbolos encontró por nombre"
+
+msgid "Name Matches Only"
+msgstr "Solo coincidencias por nombre"
+
+msgid "Name match"
+msgstr "Coincidencia por nombre"
+
+msgid "Name match: found by the symbol index by name, not resolved by a language server"
+msgstr "Coincidencia por nombre: la encontró el índice de símbolos por nombre, no la resolvió un servidor de lenguaje"
+
+msgid "Name matches found so far may be incomplete; they are asked for again when indexing ends."
+msgstr "Las coincidencias por nombre encontradas hasta ahora pueden estar incompletas; se vuelven a solicitar cuando termina la indexación."
+
+msgid "Next Root"
+msgstr "Raíz siguiente"
+
+msgid "No callees"
+msgstr "No hay llamados"
+
+msgid "No callers"
+msgstr "No hay llamadores"
+
+msgid "No function selected"
+msgstr "No hay ninguna función seleccionada"
+
+msgid "No language server is running for this file."
+msgstr "No hay ningún servidor de lenguaje en ejecución para este archivo."
+
+msgid "Nothing is asked for until then, and each level is asked for only when you expand it."
+msgstr "Hasta entonces no se solicita nada, y cada nivel se solicita solo cuando se expande."
+
+msgid "Only the first {limit} calls are shown"
+msgstr "Solo se muestran las primeras {limit} llamadas"
+
+msgid "Open a file and put the cursor on a function."
+msgstr "Abra un archivo y coloque el cursor sobre una función."
+
+msgid "Open the Setting"
+msgstr "Abrir la configuración"
+
+msgid "Preparing the symbol index…"
+msgstr "Preparando el índice de símbolos…"
+
+msgid "Previous Root"
+msgstr "Raíz anterior"
+
+msgid "Put the cursor on a function and inspect it to see its calls."
+msgstr "Coloque el cursor sobre una función e inspecciónela para ver sus llamadas."
+
+msgid "Rebuild the Symbol Index"
+msgstr "Reconstruir el índice de símbolos"
+
+msgid "Recursive: this function is already on the path above"
+msgstr "Recursiva: esta función ya está en la ruta superior"
+
+msgid "Retry"
+msgstr "Reintentar"
+
+msgid "Several functions are named {name}. Choose the root:"
+msgstr "Hay varias funciones llamadas {name}. Elija la raíz:"
+
+msgid "Show {count} more"
+msgid_plural "Show {count} more"
+msgstr[0] "Mostrar {count} más"
+msgstr[1] "Mostrar {count} más"
+
+msgid "Symbol index: in use by another window"
+msgstr "Índice de símbolos: en uso por otra ventana"
+
+msgid "Symbol index: not available in a shared project"
+msgstr "Índice de símbolos: no disponible en un proyecto compartido"
+
+msgid "Symbol index: this server does not support it"
+msgstr "Índice de símbolos: este servidor no lo admite"
+
+msgid "Symbol index: {error}"
+msgstr "Índice de símbolos: {error}"
+
+msgid "Symbol index: {files} files, {definitions} definitions"
+msgstr "Índice de símbolos: {files} archivos, {definitions} definiciones"
+
+msgid "The language server for this file cannot list calls."
+msgstr "El servidor de lenguaje de este archivo no puede enumerar las llamadas."
+
+msgid "The symbol index is off"
+msgstr "El índice de símbolos está desactivado"
+
+msgid "There is no function at the cursor."
+msgstr "No hay ninguna función en la posición del cursor."
+
+msgid "Turn it on with the symbol_index.enabled setting to find calls by name in C and C++."
+msgstr "Actívelo con la configuración symbol_index.enabled para buscar llamadas por nombre en C y C++."
+
+msgid "{count} definition with this name"
+msgid_plural "{count} definitions with this name"
+msgstr[0] "{count} definición con este nombre"
+msgstr[1] "{count} definiciones con este nombre"
+
+msgid "{count} excluded"
+msgid_plural "{count} excluded"
+msgstr[0] "{count} excluido"
+msgstr[1] "{count} excluidos"
+
+msgid "{count} more are not listed"
+msgid_plural "{count} more are not listed"
+msgstr[0] "{count} más no aparece en la lista"
+msgstr[1] "{count} más no aparecen en la lista"
+
+msgctxt "call graph panel"
+msgid "Refresh"
+msgstr "Actualizar"
+
+msgctxt "call graph panel"
+msgid "Sources"
+msgstr "Fuentes"

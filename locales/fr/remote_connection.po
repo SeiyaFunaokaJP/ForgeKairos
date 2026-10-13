@@ -1,0 +1,30 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Caps lock is on."
+msgstr "Le verrouillage des majuscules est activé."
+
+msgid "Connecting"
+msgstr "Connexion"
+
+msgid "Downloading remote server binary (version: {}, os: {}, arch: {})"
+msgstr "Échec du téléchargement du binaire du serveur distant (version : {}, OS : {}, architecture : {})"
+
+msgid "Toggle to Mask Password"
+msgstr "Masquer le mot de passe"
+
+msgid "Toggle to Unmask Password"
+msgstr "Afficher le mot de passe"
+
+msgid "unknown"
+msgstr "inconnu"

@@ -71,7 +71,7 @@ const ALLOWLIST_RELOAD_ATTEMPTS: usize = 50;
 fn linux_rsync_install_hint() -> &'static str {
     let os_release = match std::fs::read_to_string("/etc/os-release") {
         Ok(os_release) => os_release,
-        Err(_) => return "Please install rsync using your package manager",
+        Err(_) => return i18n::t!("Please install rsync using your package manager"),
     };
 
     let mut distribution_ids = Vec::new();
@@ -90,12 +90,12 @@ fn linux_rsync_install_hint() -> &'static str {
         .iter()
         .any(|distribution_id| distribution_id == "arch")
     {
-        Some("Install it with: sudo pacman -S rsync")
+        Some(i18n::t!("Install it with: sudo pacman -S rsync"))
     } else if distribution_ids
         .iter()
         .any(|distribution_id| distribution_id == "debian" || distribution_id == "ubuntu")
     {
-        Some("Install it with: sudo apt install rsync")
+        Some(i18n::t!("Install it with: sudo apt install rsync"))
     } else if distribution_ids.iter().any(|distribution_id| {
         distribution_id == "fedora"
             || distribution_id == "rhel"
@@ -103,17 +103,17 @@ fn linux_rsync_install_hint() -> &'static str {
             || distribution_id == "rocky"
             || distribution_id == "almalinux"
     }) {
-        Some("Install it with: sudo dnf install rsync")
+        Some(i18n::t!("Install it with: sudo dnf install rsync"))
     } else if distribution_ids
         .iter()
         .any(|distribution_id| distribution_id == "nixos")
     {
-        Some("Install pkgs.rsync from nixpkgs")
+        Some(i18n::t!("Install pkgs.rsync from nixpkgs"))
     } else {
         None
     };
 
-    package_manager_hint.unwrap_or("Please install rsync using your package manager")
+    package_manager_hint.unwrap_or(i18n::t!("Please install rsync using your package manager"))
 }
 
 actions!(
@@ -372,8 +372,8 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
     } else {
         drop(window.prompt(
             gpui::PromptLevel::Info,
-            "Could not check for updates",
-            Some("Auto-updates disabled for non-bundled app."),
+            i18n::t!("Could not check for updates"),
+            Some(i18n::t!("Auto-updates disabled for non-bundled app.")),
             &["OK"],
             cx,
         ));
@@ -1025,7 +1025,7 @@ impl AutoUpdater {
         #[cfg(target_os = "linux")]
         if which::which("rsync").is_err() {
             let install_hint = linux_rsync_install_hint();
-            return Err(MissingDependencyError(format!(
+            return Err(MissingDependencyError(i18n::t!(
                 "rsync is required for auto-updates but is not installed. {install_hint}"
             ))
             .into());
@@ -1034,7 +1034,7 @@ impl AutoUpdater {
         #[cfg(target_os = "macos")]
         anyhow::ensure!(
             which::which("rsync").is_ok(),
-            "Could not auto-update because the required rsync utility was not found."
+            i18n::t!("Could not auto-update because the required rsync utility was not found.")
         );
 
         Ok(())

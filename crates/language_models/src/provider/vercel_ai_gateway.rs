@@ -409,7 +409,7 @@ fn clean_error_message(message: &str) -> String {
     }
 
     if lower.contains("invalid api key") || lower.contains("invalid_api_key") {
-        return "Authentication failed for Vercel AI Gateway. Check that your Vercel AI Gateway key starts with vck_ and is active.".to_string();
+        return i18n::t!("Authentication failed for Vercel AI Gateway. Check that your Vercel AI Gateway key starts with vck_ and is active.").to_string();
     }
 
     message.to_string()

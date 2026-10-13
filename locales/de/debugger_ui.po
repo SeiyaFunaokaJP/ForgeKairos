@@ -1,0 +1,410 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(child)"
+msgstr "(untergeordnet)"
+
+msgid "1 byte"
+msgstr "1 Byte"
+
+msgid "16 bytes"
+msgstr "16 Byte"
+
+msgid "2 bytes"
+msgstr "2 Byte"
+
+msgid "32 bytes"
+msgstr "32 Byte"
+
+msgid "4 bytes"
+msgstr "4 Byte"
+
+msgid "64 bytes"
+msgstr "64 Byte"
+
+msgid "8 bytes"
+msgstr "8 Byte"
+
+msgid "Allows inspection of memory contents"
+msgstr "Ermöglicht die Untersuchung von Speicherinhalten"
+
+msgid "Attach"
+msgstr "Anfügen"
+
+msgid "Attach the debugger to a running process"
+msgstr "Debugger an einen laufenden Prozess anfügen"
+
+msgid "Breakpoints"
+msgstr "Haltepunkte"
+
+msgid "Build failed"
+msgstr "Build fehlgeschlagen"
+
+msgid "Change Address of Currently Viewed Memory"
+msgstr "Adresse in der aktuellen Speicheransicht ändern"
+
+msgid "Close Panel"
+msgstr "Panel schließen"
+
+msgid "Console"
+msgstr "Konsole"
+
+msgid "Continue Program"
+msgstr "Programm fortsetzen"
+
+msgid "Continue Thread"
+msgstr "Thread fortsetzen"
+
+msgid "Copy Name"
+msgstr "Name kopieren"
+
+msgid "Copy Value"
+msgstr "Wert kopieren"
+
+msgid "Could not find a valid locator for a build task and configure is invalid with error: {}"
+msgstr "Für eine Build-Aufgabe wurde kein gültiger Locator gefunden, und die Konfiguration ist ungültig. Fehler: {}"
+
+msgid "Could not resolve task variables within a debug scenario"
+msgstr "Die Aufgabenvariablen im Debugszenario konnten nicht aufgelöst werden"
+
+msgid "Current State"
+msgstr "Aktueller Zustand"
+
+msgid "Debug"
+msgstr "Debuggen"
+
+msgid "Debug Adapter `{adapter_name}` does not support writing to memory"
+msgstr "Debugadapter `{adapter_name}` unterstützt das Schreiben in den Speicher nicht"
+
+msgid "Debug Panel"
+msgstr "Debug-Panel"
+
+msgid "Debug terminal"
+msgstr "Debug-Terminal"
+
+msgid "Debugger"
+msgstr "Debugger"
+
+msgid "Debugger Docs"
+msgstr "Debugger-Dokumentation"
+
+msgid "Debugger Extensions"
+msgstr "Debugger-Erweiterungen"
+
+msgid "Debugger:"
+msgstr "Debugger:"
+
+msgid "Detach"
+msgstr "Trennen"
+
+msgid "Disable Breakpoint"
+msgstr "Haltepunkt deaktivieren"
+
+msgid "Disable Data Breakpoint"
+msgstr "Datenhaltepunkt deaktivieren"
+
+msgid "Disable Exception Breakpoint"
+msgstr "Ausnahmehaltepunkt deaktivieren"
+
+msgid "Disable a breakpoint without removing it from the list"
+msgstr "Haltepunkt deaktivieren, ohne ihn aus der Liste zu entfernen"
+
+msgid "Displays program output and allows manual input of debugger commands"
+msgstr "Zeigt die Programmausgabe an und ermöglicht die manuelle Eingabe von Debugger-Befehlen"
+
+msgid "Displays the call stack, letting you navigate between function calls"
+msgstr "Zeigt die Aufrufliste an und ermöglicht die Navigation zwischen Funktionsaufrufen"
+
+msgid "Edit Memory at a Selected Address"
+msgstr "Speicher an einer ausgewählten Adresse bearbeiten"
+
+msgid "Edit Value"
+msgstr "Wert bearbeiten"
+
+msgid "Edit debug.json"
+msgstr "debug.json bearbeiten"
+
+msgid "Edit in debug.json"
+msgstr "In debug.json bearbeiten"
+
+msgid "Enable Breakpoint"
+msgstr "Haltepunkt aktivieren"
+
+msgid "Enable Data Breakpoint"
+msgstr "Datenhaltepunkt aktivieren"
+
+msgid "Enable Exception Breakpoint"
+msgstr "Ausnahmehaltepunkt aktivieren"
+
+msgid "Evaluate"
+msgstr "Auswerten"
+
+msgid "Evaluate an expression"
+msgstr "Ausdruck auswerten"
+
+msgid "Exception Breakpoints cannot be removed from the breakpoint list"
+msgstr "Ausnahmehaltepunkte können nicht aus der Haltepunktliste entfernt werden"
+
+msgid "Failed to edit debug.json"
+msgstr "debug.json konnte nicht bearbeitet werden"
+
+msgid "Find a debug task, or debug a command"
+msgstr "Debugaufgabe suchen oder Befehl debuggen"
+
+msgid "Frames"
+msgstr "Frames"
+
+msgid "Go To Memory"
+msgstr "Zum Speicher wechseln"
+
+msgid "Go To Selected Address"
+msgstr "Zur ausgewählten Adresse wechseln"
+
+msgid "Go to Memory Address / Expression"
+msgstr "Zur Speicheradresse / zum Ausdruck wechseln"
+
+msgid "Language: {name}"
+msgstr "Sprache: {name}"
+
+msgid "Launch"
+msgstr "Starten"
+
+msgid "Launch Custom"
+msgstr "Benutzerdefiniert starten"
+
+msgid "Launch a new process with a debugger"
+msgstr "Neuen Prozess mit einem Debugger starten"
+
+msgid "Lists all active breakpoints set in the code"
+msgstr "Listet alle im Code gesetzten aktiven Haltepunkte auf"
+
+msgid "Lists all source files currently loaded and used by the debugger"
+msgstr "Listet alle Quelldateien auf, die aktuell vom Debugger geladen und verwendet werden"
+
+msgid "Memory View"
+msgstr "Speicheransicht"
+
+msgid "Modules"
+msgstr "Module"
+
+msgid "New Session"
+msgstr "Neue Sitzung"
+
+msgid "No"
+msgstr "Nein"
+
+msgid "No Breakpoints Set"
+msgstr "Keine Haltepunkte gesetzt"
+
+msgid "No process selected with config that contains {}"
+msgstr "Für die Konfiguration mit {} wurde kein Prozess ausgewählt"
+
+msgid "Open Debug Adapter Logs"
+msgstr "Debugadapter-Protokolle öffnen"
+
+msgid "Open Documentation"
+msgstr "Dokumentation öffnen"
+
+msgid "Pause Program"
+msgstr "Programm anhalten"
+
+msgid "Program"
+msgstr "Programm"
+
+msgid "Provides an interactive terminal session within the debugging environment"
+msgstr "Stellt eine interaktive Terminalsitzung innerhalb der Debugging-Umgebung bereit"
+
+msgid "Re-enable a breakpoint"
+msgstr "Haltepunkt erneut aktivieren"
+
+msgid "Remove Breakpoint"
+msgstr "Haltepunkt entfernen"
+
+msgid "Remove Watch"
+msgstr "Überwachung entfernen"
+
+msgid "Remove breakpoint from a breakpoint list"
+msgstr "Haltepunkt aus der Haltepunktliste entfernen"
+
+msgid "Remove data breakpoint from a breakpoint list"
+msgstr "Datenhaltepunkt aus der Haltepunktliste entfernen"
+
+msgid "Rerun"
+msgstr "Erneut ausführen"
+
+msgid "Rerun Session"
+msgstr "Sitzung erneut ausführen"
+
+msgid "Restart Stack Frame"
+msgstr "Stapelrahmen neu starten"
+
+msgid "Run"
+msgstr "Ausführen"
+
+msgid "Run predefined task"
+msgstr "Vordefinierte Aufgabe ausführen"
+
+msgid "Select Debugger"
+msgstr "Debugger auswählen"
+
+msgid "Select a Debug Session"
+msgstr "Debugsitzung auswählen"
+
+msgid "Select the process you want to attach the debugger to"
+msgstr "Wählen Sie den Prozess aus, an den der Debugger angefügt werden soll"
+
+msgid "Set Condition"
+msgstr "Bedingung festlegen"
+
+msgid "Set Data Breakpoint"
+msgstr "Datenhaltepunkt setzen"
+
+msgid "Set Hit Condition"
+msgstr "Trefferbedingung festlegen"
+
+msgid "Set Log Message"
+msgstr "Protokollnachricht festlegen"
+
+msgid "Set condition to evaluate when a breakpoint is hit. Program execution will stop only when the condition is met."
+msgstr "Bedingung festlegen, die beim Erreichen des Haltepunkts ausgewertet wird. Die Programmausführung stoppt nur, wenn die Bedingung erfüllt ist."
+
+msgid "Set expression that controls how many hits of the breakpoint are ignored."
+msgstr "Ausdruck festlegen, der steuert, wie viele Treffer des Haltepunkts ignoriert werden."
+
+msgid "Set log message to display (instead of stopping) when a breakpoint is hit."
+msgstr "Protokollnachricht festlegen, die beim Erreichen des Haltepunkts angezeigt wird (anstelle des Anhaltens)."
+
+msgid "Show all stack frames"
+msgstr "Alle Stapelrahmen anzeigen"
+
+msgid "Show stack frames from your project"
+msgstr "Stapelrahmen aus Ihrem Projekt anzeigen"
+
+msgid "Show {} more{}"
+msgstr "{} weitere{} anzeigen"
+
+msgid "Shows all modules or libraries loaded by the program"
+msgstr "Zeigt alle vom Programm geladenen Module oder Bibliotheken an"
+
+msgid "Shows current values of local and global variables in the current stack frame"
+msgstr "Zeigt aktuelle Werte lokaler und globaler Variablen im aktuellen Stapelrahmen an"
+
+msgid "Sources"
+msgstr "Quellen"
+
+msgid "Spawn"
+msgstr "Starten"
+
+msgid "Start"
+msgstr "Starten"
+
+msgid "Start Debug Session"
+msgstr "Debugsitzung starten"
+
+msgid "Start a predefined debug scenario"
+msgstr "Vordefiniertes Debugszenario starten"
+
+msgid "Step Back in Session History"
+msgstr "Im Sitzungsverlauf einen Schritt zurückgehen"
+
+msgid "Step In"
+msgstr "Einzelschritt"
+
+msgid "Step Out"
+msgstr "Rücksprung"
+
+msgid "Step Over"
+msgstr "Prozedurschritt"
+
+msgid "Stop on Entry"
+msgstr "Beim Einstieg anhalten"
+
+msgid "Terminal"
+msgstr "Terminal"
+
+msgid "Terminate All Threads"
+msgstr "Alle Threads beenden"
+
+msgid "Terminate Thread"
+msgstr "Thread beenden"
+
+msgid "This Debug Session is still running. Are you sure you want to terminate it?"
+msgstr "Diese Debugsitzung wird noch ausgeführt. Möchten Sie sie wirklich beenden?"
+
+msgid "Toggle Data Breakpoint"
+msgstr "Datenhaltepunkt umschalten"
+
+msgid "Toggle {} Data Breakpoint"
+msgstr "Datenhaltepunkt ({}) umschalten"
+
+msgid "Unknown Session"
+msgstr "Unbekannte Sitzung"
+
+msgid "Variables"
+msgstr "Variablen"
+
+msgid "Watch Expression"
+msgstr "Ausdruck überwachen"
+
+msgid "Watch Variable"
+msgstr "Variable überwachen"
+
+msgid "Working Directory"
+msgstr "Arbeitsverzeichnis"
+
+msgid "Worktree parent path: {parent_dir}"
+msgstr "Übergeordneter Pfad des Worktrees: {parent_dir}"
+
+msgid "Write to Selected Memory Range"
+msgstr "In ausgewählten Speicherbereich schreiben"
+
+msgid "Yes"
+msgstr "Ja"
+
+msgid "Zed cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+msgstr "ForgeKairos kann nicht ermitteln, wie dieses Debugszenario ausgeführt werden soll. Das Feld `build` wurde nicht angegeben, und der Debugadapter akzeptiert die angegebene Konfiguration nicht, weil: {error}"
+
+msgid "history-{}"
+msgstr "Verlauf-{}"
+
+msgid "in {d}/"
+msgstr "in {d}/"
+
+msgid "in {f}"
+msgstr "in {f}"
+
+msgid "no active worktree"
+msgstr "kein aktiver Worktree"
+
+msgid "no scenario to save"
+msgstr "kein zu speicherndes Szenario"
+
+msgid "no task contexts"
+msgstr "keine Aufgabenkontexte"
+
+msgctxt "data breakpoint access"
+msgid "Read"
+msgstr "Lesen"
+
+msgctxt "data breakpoint access"
+msgid "Read/Write"
+msgstr "Lesen/Schreiben"
+
+msgctxt "data breakpoint access"
+msgid "Write"
+msgstr "Schreiben"
+
+msgctxt "debugger pane zoom"
+msgid "Expand"
+msgstr "Maximieren"
+
+msgctxt "debugger pane zoom"
+msgid "Minimize"
+msgstr "Minimieren"

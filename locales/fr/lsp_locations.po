@@ -1,0 +1,36 @@
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Filter declarations…"
+msgstr "Filtrer les déclarations…"
+
+msgid "Filter definitions…"
+msgstr "Filtrer les définitions…"
+
+msgid "Filter implementations…"
+msgstr "Filtrer les implémentations…"
+
+msgid "Filter references…"
+msgstr "Filtrer les références…"
+
+msgid "Filter type definitions…"
+msgstr "Filtrer les définitions de type…"
+
+msgid "No declarations found"
+msgstr "Aucune déclaration trouvée"
+
+msgid "No definitions found"
+msgstr "Aucune définition trouvée"
+
+msgid "No implementations found"
+msgstr "Aucune implémentation trouvée"
+
+msgid "No references found"
+msgstr "Aucune référence trouvée"
+
+msgid "No type definitions found"
+msgstr "Aucune définition de type trouvée"

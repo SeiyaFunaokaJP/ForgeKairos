@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Close Other Tabs"
+msgstr "다른 탭 닫기"
+
+msgid "Close Tab"
+msgstr "탭 닫기"
+
+msgid "Move Tab to New Window"
+msgstr "탭을 새 창으로 이동"
+
+msgid "Show All Tabs"
+msgstr "모든 탭 표시"

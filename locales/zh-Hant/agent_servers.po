@@ -1,0 +1,172 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(none)"
+msgstr "（無）"
+
+msgid "(not given)"
+msgstr "（未指定）"
+
+msgid "Agents can't be started in a sandbox in a project that has no folder open."
+msgstr "在未開啟任何資料夾的專案中，無法於沙箱內啟動代理。"
+
+msgid "Agents can't be started in a sandbox on this remote host (it isn't a Linux host, or the sandbox helper can't be put on it)."
+msgstr "無法在此遠端主機上於沙箱內啟動代理（它不是 Linux 主機，或無法在其上放置沙箱輔助程式）。"
+
+msgid "An I/O error occurred while preparing the sandbox."
+msgstr "準備沙箱時發生 I/O 錯誤。"
+
+msgid "Arguments (one per line)"
+msgstr "引數（每行一個）"
+
+msgid "Command"
+msgstr "命令"
+
+msgid "Couldn't check the agent's install folder `{}`"
+msgstr "無法檢查代理的安裝資料夾 `{}`"
+
+msgid "Couldn't check the folder `{}` that writing is allowed in"
+msgstr "無法檢查允許寫入的資料夾 `{}`"
+
+msgid "Couldn't create the sandbox."
+msgstr "無法建立沙箱。"
+
+msgid "Couldn't prepare the agent's configuration folder"
+msgstr "無法準備代理的設定資料夾"
+
+msgid "Couldn't prepare the agent's configuration folder."
+msgstr "無法準備代理的設定資料夾。"
+
+msgid "Couldn't put the sandbox configuration together"
+msgstr "無法組合沙箱設定"
+
+msgid "Couldn't read from {store}"
+msgstr "無法從 {store} 讀取"
+
+msgid "Couldn't remove the key from {store}"
+msgstr "無法從 {store} 移除金鑰"
+
+msgid "Couldn't start the agent in the sandbox"
+msgstr "無法在沙箱中啟動代理"
+
+msgid "Couldn't start the sign-in in the sandbox"
+msgstr "無法在沙箱中開始登入"
+
+msgid "Couldn't write to {store}"
+msgstr "無法寫入 {store}"
+
+msgid "Environment Variables the Agent Sets"
+msgstr "代理設定的環境變數"
+
+msgid "Parts of this are left out because it is long. If you allow it, it runs in full, including the parts left out."
+msgstr "由於內容過長，已省略部分內容。若您允許，將會完整執行，包括省略的部分。"
+
+msgid "Running outside the sandbox is not allowed. To allow it, turn on \"Allow Running Outside the Sandbox\" in Settings > AI > Sandbox."
+msgstr "不允許在沙箱外執行。若要允許，請在「設定 > AI > 沙箱」中開啟「允許在沙箱外執行」。"
+
+msgid "Technical details"
+msgstr "技術詳細資料"
+
+msgid "The Zed server on the remote host is too old to start agents in a sandbox. Reconnect to update the server."
+msgstr "遠端主機上的 ForgeKairos 伺服器版本太舊，無法在沙箱中啟動代理。請重新連線以更新伺服器。"
+
+msgid "The agent was started outside the sandbox (on this PC), so its commands run on this PC too (Windows commands don't run in the WSL sandbox)"
+msgstr "代理是在沙箱外（這台電腦上）啟動的，因此其命令也會在這台電腦上執行（Windows 命令無法在 WSL 沙箱中執行）"
+
+msgid "The folder {} can't be shown to the sandbox"
+msgstr "無法讓沙箱看到資料夾 {}"
+
+msgid "The project is in the WSL distribution `{project}`, but the name of the default distribution the sandbox runs in isn't known."
+msgstr "專案位於 WSL 發行版 `{project}` 中，但無法得知沙箱所執行之預設發行版的名稱。"
+
+msgid "The project is in the WSL distribution `{project}`, but the sandbox runs in `{sandbox}`."
+msgstr "專案位於 WSL 發行版 `{project}` 中，但沙箱是在 `{sandbox}` 中執行。"
+
+msgid "The project's folders span two WSL distributions (`{first}`, `{second}`), and the sandbox runs in only one."
+msgstr "專案的資料夾橫跨兩個 WSL 發行版（`{first}`、`{second}`），而沙箱只能在其中一個中執行。"
+
+msgid "The reason was written to Zed's log."
+msgstr "原因已寫入 ForgeKairos 的記錄。"
+
+msgid "The request to the sandbox is invalid."
+msgstr "對沙箱的要求無效。"
+
+msgid "The requested sandbox configuration can't be applied in this environment."
+msgstr "無法在此環境中套用所要求的沙箱設定。"
+
+msgid "The sandbox is turned off in the settings. The agent runs inside WSL, so its commands run in the same WSL, without the write and network restrictions"
+msgstr "沙箱已在設定中關閉。代理在 WSL 內執行，因此其命令會在同一個 WSL 中執行，且不受寫入與網路的限制"
+
+msgid "The sandbox's bridge executable wasn't found. Zed's installation may be damaged."
+msgstr "找不到沙箱的橋接執行檔。ForgeKairos 的安裝可能已損毀。"
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "設定允許寫入檔案系統中的任何位置"
+
+msgid "The value of {name} contains a line break or a control character"
+msgstr "{name} 的值包含換行或控制字元"
+
+msgid "There's no sandbox implementation for this OS."
+msgstr "此作業系統沒有沙箱實作。"
+
+msgid "This agent takes no API key (internal error)"
+msgstr "此代理不接受 API 金鑰（內部錯誤）"
+
+msgid "This project's folders can't be shown to the WSL sandbox: {}"
+msgstr "無法讓 WSL 沙箱看到此專案的資料夾：{}"
+
+msgid "This way of starting the agent can't use the WSL sandbox (on Windows, agents run as their Linux versions inside WSL)."
+msgstr "這種啟動代理的方式無法使用 WSL 沙箱（在 Windows 上，代理會以其 Linux 版本在 WSL 內執行）。"
+
+msgid "WSL didn't respond within {} seconds. Wait a moment and try again, and if that doesn't help, restart WSL with `wsl --shutdown`."
+msgstr "WSL 未在 {} 秒內回應。請稍候再試；若仍無法解決，請以 `wsl --shutdown` 重新啟動 WSL。"
+
+msgid "Windows Credential Manager"
+msgstr "Windows 認證管理員"
+
+msgid "Working Directory"
+msgstr "工作目錄"
+
+msgid "Writing to the settings file didn't finish"
+msgstr "寫入設定檔案未完成"
+
+msgid "`{name}` can't be used as a WSL distribution name."
+msgstr "`{name}` 無法作為 WSL 發行版名稱。"
+
+msgid "macOS Keychain"
+msgstr "macOS 鑰匙圈"
+
+msgid "the system keyring (Secret Service)"
+msgstr "系統金鑰圈（Secret Service）"
+
+msgid "{headline}."
+msgstr "{headline}。"
+
+msgid "{headline}: {reason}"
+msgstr "{headline}：{reason}"
+
+msgid "{kept}… ({count} byte left out)"
+msgid_plural "{kept}… ({count} bytes left out)"
+msgstr[0] "{kept}…（已省略 {count} 位元組）"
+
+msgid "{name} has no value"
+msgstr "{name} 沒有值"
+
+msgid "{} is a Windows drive seen through WSL. Open it by its drive letter."
+msgstr "{} 是透過 WSL 看到的 Windows 磁碟機。請以其磁碟機代號開啟。"
+
+msgid "{} is on a network share, which the WSL sandbox can't reach."
+msgstr "{} 位於網路共用上，WSL 沙箱無法存取。"
+
+msgid "{} isn't an absolute Windows path."
+msgstr "{} 不是 Windows 的絕對路徑。"
+
+msgid "… ({remaining} more)"
+msgstr "…（還有 {remaining} 個）"

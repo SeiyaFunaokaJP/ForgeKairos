@@ -1,0 +1,108 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "A worktree with this name already exists"
+msgstr "Ein Worktree mit diesem Namen ist bereits vorhanden"
+
+msgid "Automate Setup"
+msgstr "Einrichtung automatisieren"
+
+msgid "Automate Worktree Setup"
+msgstr "Worktree-Einrichtung automatisieren"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Cannot create a named worktree in a project with multiple repositories"
+msgstr "In einem Projekt mit mehreren Repositorys kann kein benannter Worktree erstellt werden"
+
+msgid "Create"
+msgstr "Erstellen"
+
+msgid "Create \"{name}\" based on {branch_label}"
+msgstr "„{name}“ basierend auf {branch_label} erstellen"
+
+msgid "Create new worktree based on {branch_label}"
+msgstr "Neuen Worktree auf Basis von {branch_label} erstellen"
+
+msgid "Delete"
+msgstr "Löschen"
+
+msgid "Delete Worktree"
+msgstr "Worktree löschen"
+
+msgid "Deleting…"
+msgstr "Wird gelöscht…"
+
+msgid "Failed to connect"
+msgstr "Verbindung konnte nicht hergestellt werden"
+
+msgid "Force Delete"
+msgstr "Löschen erzwingen"
+
+msgid "Force Delete Worktree"
+msgstr "Löschen des Worktrees erzwingen"
+
+msgid "Hold {} to force delete"
+msgstr "{} gedrückt halten, um das Löschen zu erzwingen"
+
+msgid "Learn more"
+msgstr "Mehr erfahren"
+
+msgid "Open"
+msgstr "Öffnen"
+
+msgid "Open in New Window"
+msgstr "In neuem Fenster öffnen"
+
+msgid "Output from git {operation}"
+msgstr "Ausgabe von git {operation}"
+
+msgid "Remove Worktree from Window"
+msgstr "Worktree aus dem Fenster entfernen"
+
+msgid "Requires a Git repository in the project"
+msgstr "Erfordert ein Git-Repository im Projekt"
+
+msgid "Select or type to create a worktree…"
+msgstr "Auswählen oder eingeben, um einen Worktree zu erstellen…"
+
+msgid "Show Error Logs"
+msgstr "Fehlerprotokolle anzeigen"
+
+msgid "Some project folders are not git repositories. They were included as-is without creating a worktree."
+msgstr "Einige Projektordner sind keine Git-Repositorys. Sie wurden ohne Erstellen eines Worktrees unverändert eingebunden."
+
+msgid "This Window"
+msgstr "Dieses Fenster"
+
+msgid "Use local {}"
+msgstr "Lokale Version von {} verwenden"
+
+msgid "View Log"
+msgstr "Protokoll anzeigen"
+
+msgid "Worktree \"{display_name}\" contains modified or untracked files. Force delete it?"
+msgstr "Worktree „{display_name}“ enthält geänderte oder nicht verfolgte Dateien. Löschen erzwingen?"
+
+msgid "Worktree creation is not supported in collaborative projects"
+msgstr "Das Erstellen von Worktrees wird in kollaborativen Projekten nicht unterstützt"
+
+msgid "You may need to configure git for Github."
+msgstr "Möglicherweise müssen Sie Git für GitHub konfigurieren."
+
+msgid "current branches"
+msgstr "aktuelle Branches"
+
+msgid "git fetch failed for {}"
+msgstr "git fetch für {} fehlgeschlagen"
+
+msgid "git {} failed"
+msgstr "git {} ist fehlgeschlagen"

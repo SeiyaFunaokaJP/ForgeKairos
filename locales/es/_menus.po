@@ -1,0 +1,589 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "menu"
+msgid "AI Browser Panel"
+msgstr "Panel del navegador de IA"
+
+msgctxt "menu"
+msgid "About Zed"
+msgstr "Acerca de ForgeKairos"
+
+msgctxt "menu"
+msgid "Add Cursor Above"
+msgstr "Agregar cursor arriba"
+
+msgctxt "menu"
+msgid "Add Cursor Below"
+msgstr "Agregar cursor abajo"
+
+msgctxt "menu"
+msgid "Add Folder to Project…"
+msgstr "Agregar carpeta al proyecto…"
+
+msgctxt "menu"
+msgid "Agent Panel"
+msgstr "Panel del agente"
+
+msgctxt "menu"
+msgid "Amend Last Commit"
+msgstr "Enmendar el último commit"
+
+msgctxt "menu"
+msgid "Back"
+msgstr "Atrás"
+
+msgctxt "menu"
+msgid "Browser Panel"
+msgstr "Panel del navegador"
+
+msgctxt "menu"
+msgid "Call Graph Panel"
+msgstr "Panel de grafo de llamadas"
+
+msgctxt "menu"
+msgid "Change Folder…"
+msgstr "Cambiar carpeta…"
+
+msgctxt "menu"
+msgid "Check for Updates"
+msgstr "Buscar actualizaciones"
+
+msgctxt "menu"
+msgid "Clear All Breakpoints"
+msgstr "Borrar todos los puntos de interrupción"
+
+msgctxt "menu"
+msgid "Close Editor"
+msgstr "Cerrar editor"
+
+msgctxt "menu"
+msgid "Close Project"
+msgstr "Cerrar proyecto"
+
+msgctxt "menu"
+msgid "Close Window"
+msgstr "Cerrar ventana"
+
+msgctxt "menu"
+msgid "Command Palette..."
+msgstr "Paleta de comandos..."
+
+msgctxt "menu"
+msgid "Compare Two Branches…"
+msgstr "Comparar dos ramas…"
+
+msgctxt "menu"
+msgid "Continue"
+msgstr "Continuar"
+
+msgctxt "menu"
+msgid "Copy"
+msgstr "Copiar"
+
+msgctxt "menu"
+msgid "Copy and Trim"
+msgstr "Copiar y recortar"
+
+msgctxt "menu"
+msgid "Create Branch…"
+msgstr "Crear rama…"
+
+msgctxt "menu"
+msgid "Create Merge Request"
+msgstr "Crear solicitud de fusión"
+
+msgctxt "menu"
+msgid "Cut"
+msgstr "Cortar"
+
+msgctxt "menu"
+msgid "Debugger Panel"
+msgstr "Panel del depurador"
+
+msgctxt "menu"
+msgid "Diagnostics"
+msgstr "Diagnósticos"
+
+msgctxt "menu"
+msgid "Documentation"
+msgstr "Documentación"
+
+msgctxt "menu"
+msgid "Duplicate Selection"
+msgstr "Duplicar selección"
+
+msgctxt "menu"
+msgid "Edit"
+msgstr "Editar"
+
+msgctxt "menu"
+msgid "Edit Breakpoint"
+msgstr "Editar punto de interrupción"
+
+msgctxt "menu"
+msgid "Edit debug.json…"
+msgstr "Editar debug.json…"
+
+msgctxt "menu"
+msgid "Edit tasks.json…"
+msgstr "Editar tasks.json…"
+
+msgctxt "menu"
+msgid "Editor Layout"
+msgstr "Diseño del editor"
+
+msgctxt "menu"
+msgid "Email Us..."
+msgstr "Contactar con nosotros por correo electrónico..."
+
+msgctxt "menu"
+msgid "Expand Selection"
+msgstr "Expandir selección"
+
+msgctxt "menu"
+msgid "Extensions"
+msgstr "Extensiones"
+
+msgctxt "menu"
+msgid "Fetch"
+msgstr "Fetch"
+
+msgctxt "menu"
+msgid "File"
+msgstr "Archivo"
+
+msgctxt "menu"
+msgid "File Bug Report..."
+msgstr "Enviar informe de error..."
+
+msgctxt "menu"
+msgid "Find"
+msgstr "Buscar"
+
+msgctxt "menu"
+msgid "Find All References"
+msgstr "Buscar todas las referencias"
+
+msgctxt "menu"
+msgid "Find in Project"
+msgstr "Buscar en el proyecto"
+
+msgctxt "menu"
+msgid "Fixup into an Earlier Commit…"
+msgstr "Incorporar en un commit anterior (fixup)…"
+
+msgctxt "menu"
+msgid "Force Push with Lease…"
+msgstr "Forzar push con lease…"
+
+msgctxt "menu"
+msgid "Forward"
+msgstr "Adelante"
+
+msgctxt "menu"
+msgid "Git"
+msgstr "Git"
+
+msgctxt "menu"
+msgid "Git Guide"
+msgstr "Guía de Git"
+
+msgctxt "menu"
+msgid "Git Panel"
+msgstr "Panel de Git"
+
+msgctxt "menu"
+msgid "Go"
+msgstr "Ir"
+
+msgctxt "menu"
+msgid "Go to Declaration"
+msgstr "Ir a la declaración"
+
+msgctxt "menu"
+msgid "Go to Definition"
+msgstr "Ir a la definición"
+
+msgctxt "menu"
+msgid "Go to File..."
+msgstr "Ir al archivo..."
+
+msgctxt "menu"
+msgid "Go to Line/Column..."
+msgstr "Ir a la línea/columna..."
+
+msgctxt "menu"
+msgid "Go to Symbol in Editor..."
+msgstr "Ir al símbolo en el editor..."
+
+msgctxt "menu"
+msgid "Go to Type Definition"
+msgstr "Ir a la definición de tipo"
+
+msgctxt "menu"
+msgid "Help"
+msgstr "Ayuda"
+
+msgctxt "menu"
+msgid "Hide Others"
+msgstr "Ocultar otros"
+
+msgctxt "menu"
+msgid "Hide Zed"
+msgstr "Ocultar ForgeKairos"
+
+msgctxt "menu"
+msgid "Install CLI"
+msgstr "Instalar CLI"
+
+msgctxt "menu"
+msgid "Join the Team"
+msgstr "Unirse al equipo"
+
+msgctxt "menu"
+msgid "Minimize"
+msgstr "Minimizar"
+
+msgctxt "menu"
+msgid "Move Line Down"
+msgstr "Mover línea abajo"
+
+msgctxt "menu"
+msgid "Move Line Up"
+msgstr "Mover línea arriba"
+
+msgctxt "menu"
+msgid "New"
+msgstr "Nuevo"
+
+msgctxt "menu"
+msgid "New Browser Tab"
+msgstr "Nueva pestaña del navegador"
+
+msgctxt "menu"
+msgid "New Window"
+msgstr "Nueva ventana"
+
+msgctxt "menu"
+msgid "Next Problem"
+msgstr "Problema siguiente"
+
+msgctxt "menu"
+msgid "Open Default Key Bindings"
+msgstr "Abrir atajos de teclado predeterminados"
+
+msgctxt "menu"
+msgid "Open Default Settings"
+msgstr "Abrir configuración predeterminada"
+
+msgctxt "menu"
+msgid "Open File..."
+msgstr "Abrir archivo..."
+
+msgctxt "menu"
+msgid "Open Folder..."
+msgstr "Abrir carpeta..."
+
+msgctxt "menu"
+msgid "Open Git Graph"
+msgstr "Abrir grafo de commits"
+
+msgctxt "menu"
+msgid "Open Keymap"
+msgstr "Abrir mapa de teclas"
+
+msgctxt "menu"
+msgid "Open Keymap File"
+msgstr "Abrir archivo de mapa de teclas"
+
+msgctxt "menu"
+msgid "Open Project Settings"
+msgstr "Abrir configuración del proyecto"
+
+msgctxt "menu"
+msgid "Open Project Settings File"
+msgstr "Abrir archivo de configuración del proyecto"
+
+msgctxt "menu"
+msgid "Open Recent…"
+msgstr "Abrir reciente…"
+
+msgctxt "menu"
+msgid "Open Remote…"
+msgstr "Abrir proyecto remoto…"
+
+msgctxt "menu"
+msgid "Open Settings"
+msgstr "Abrir configuración"
+
+msgctxt "menu"
+msgid "Open Settings File"
+msgstr "Abrir archivo de configuración"
+
+msgctxt "menu"
+msgid "Open…"
+msgstr "Abrir…"
+
+msgctxt "menu"
+msgid "Outline Panel"
+msgstr "Panel de esquema"
+
+msgctxt "menu"
+msgid "Paste"
+msgstr "Pegar"
+
+msgctxt "menu"
+msgid "Previous Problem"
+msgstr "Problema anterior"
+
+msgctxt "menu"
+msgid "Project Panel"
+msgstr "Panel de proyecto"
+
+msgctxt "menu"
+msgid "Pull"
+msgstr "Pull"
+
+msgctxt "menu"
+msgid "Push"
+msgstr "Push"
+
+msgctxt "menu"
+msgid "Quit Zed"
+msgstr "Salir de ForgeKairos"
+
+msgctxt "menu"
+msgid "Redo"
+msgstr "Rehacer"
+
+msgctxt "menu"
+msgid "Request Feature..."
+msgstr "Solicitar una función..."
+
+msgctxt "menu"
+msgid "Reset All Zoom"
+msgstr "Restablecer todos los niveles de zoom"
+
+msgctxt "menu"
+msgid "Reset Zoom"
+msgstr "Restablecer zoom"
+
+msgctxt "menu"
+msgid "Run"
+msgstr "Ejecutar"
+
+msgctxt "menu"
+msgid "Save"
+msgstr "Guardar"
+
+msgctxt "menu"
+msgid "Save All"
+msgstr "Guardar todo"
+
+msgctxt "menu"
+msgid "Save As…"
+msgstr "Guardar como…"
+
+msgctxt "menu"
+msgid "Select All"
+msgstr "Seleccionar todo"
+
+msgctxt "menu"
+msgid "Select All Occurrences"
+msgstr "Seleccionar todas las apariciones"
+
+msgctxt "menu"
+msgid "Select Icon Theme..."
+msgstr "Seleccionar tema de iconos..."
+
+msgctxt "menu"
+msgid "Select Next Occurrence"
+msgstr "Seleccionar siguiente aparición"
+
+msgctxt "menu"
+msgid "Select Next Sibling"
+msgstr "Seleccionar siguiente elemento del mismo nivel"
+
+msgctxt "menu"
+msgid "Select Previous Occurrence"
+msgstr "Seleccionar aparición anterior"
+
+msgctxt "menu"
+msgid "Select Previous Sibling"
+msgstr "Seleccionar elemento anterior del mismo nivel"
+
+msgctxt "menu"
+msgid "Select Theme..."
+msgstr "Seleccionar tema..."
+
+msgctxt "menu"
+msgid "Selection"
+msgstr "Selección"
+
+msgctxt "menu"
+msgid "Services"
+msgstr "Servicios"
+
+msgctxt "menu"
+msgid "Settings"
+msgstr "Configuración"
+
+msgctxt "menu"
+msgid "Show All"
+msgstr "Mostrar todo"
+
+msgctxt "menu"
+msgid "Show Callees in Call Graph"
+msgstr "Mostrar los llamados en el grafo de llamadas"
+
+msgctxt "menu"
+msgid "Show Callers in Call Graph"
+msgstr "Mostrar los llamadores en el grafo de llamadas"
+
+msgctxt "menu"
+msgid "Show Incoming Calls"
+msgstr "Mostrar llamadas entrantes"
+
+msgctxt "menu"
+msgid "Show Outgoing Calls"
+msgstr "Mostrar llamadas salientes"
+
+msgctxt "menu"
+msgid "Show Welcome"
+msgstr "Mostrar bienvenida"
+
+msgctxt "menu"
+msgid "Shrink Selection"
+msgstr "Reducir selección"
+
+msgctxt "menu"
+msgid "Spawn Task"
+msgstr "Ejecutar tarea"
+
+msgctxt "menu"
+msgid "Split Down"
+msgstr "Dividir hacia abajo"
+
+msgctxt "menu"
+msgid "Split Left"
+msgstr "Dividir hacia la izquierda"
+
+msgctxt "menu"
+msgid "Split Right"
+msgstr "Dividir hacia la derecha"
+
+msgctxt "menu"
+msgid "Split Up"
+msgstr "Dividir hacia arriba"
+
+msgctxt "menu"
+msgid "Start Debugger"
+msgstr "Iniciar depurador"
+
+msgctxt "menu"
+msgid "Stash…"
+msgstr "Stash…"
+
+msgctxt "menu"
+msgid "Step Into"
+msgstr "Paso a paso por instrucciones"
+
+msgctxt "menu"
+msgid "Step Out"
+msgstr "Paso a paso para salir"
+
+msgctxt "menu"
+msgid "Step Over"
+msgstr "Paso a paso por procedimientos"
+
+msgctxt "menu"
+msgid "Switch Branch…"
+msgstr "Cambiar de rama…"
+
+msgctxt "menu"
+msgid "Terminal Panel"
+msgstr "Panel del terminal"
+
+msgctxt "menu"
+msgid "Toggle All Docks"
+msgstr "Mostrar u ocultar todos los docks"
+
+msgctxt "menu"
+msgid "Toggle Bottom Dock"
+msgstr "Mostrar u ocultar el dock inferior"
+
+msgctxt "menu"
+msgid "Toggle Breakpoint"
+msgstr "Alternar punto de interrupción"
+
+msgctxt "menu"
+msgid "Toggle GPUI Inspector"
+msgstr "Alternar inspector de GPUI"
+
+msgctxt "menu"
+msgid "Toggle Left Dock"
+msgstr "Mostrar u ocultar el dock izquierdo"
+
+msgctxt "menu"
+msgid "Toggle Line Comment"
+msgstr "Alternar comentario de línea"
+
+msgctxt "menu"
+msgid "Toggle Right Dock"
+msgstr "Mostrar u ocultar el dock derecho"
+
+msgctxt "menu"
+msgid "Undo"
+msgstr "Deshacer"
+
+msgctxt "menu"
+msgid "View"
+msgstr "Ver"
+
+msgctxt "menu"
+msgid "View Dependency Licenses"
+msgstr "Ver licencias de dependencias"
+
+msgctxt "menu"
+msgid "View Release Notes Locally"
+msgstr "Ver notas de la versión localmente"
+
+msgctxt "menu"
+msgid "View Telemetry"
+msgstr "Ver telemetría"
+
+msgctxt "menu"
+msgid "Window"
+msgstr "Ventana"
+
+msgctxt "menu"
+msgid "Zed"
+msgstr "ForgeKairos"
+
+msgctxt "menu"
+msgid "Zed Repository"
+msgstr "Repositorio de Zed"
+
+msgctxt "menu"
+msgid "Zed Twitter"
+msgstr "Twitter de Zed"
+
+msgctxt "menu"
+msgid "Zoom"
+msgstr "Zoom"
+
+msgctxt "menu"
+msgid "Zoom In"
+msgstr "Acercar"
+
+msgctxt "menu"
+msgid "Zoom Out"
+msgstr "Alejar"

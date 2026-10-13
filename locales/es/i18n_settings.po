@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "\"{}\" is not a language tag; showing English."
+msgstr "\"{}\" no es una etiqueta de idioma; se muestra en inglés."
+
+msgid "Problems in the UI translation files"
+msgstr "Problemas en los archivos de traducción de la interfaz"
+
+msgid "Restart Now"
+msgstr "Reiniciar ahora"
+
+msgid "Some parts of the UI switch to the new language after a restart."
+msgstr "Algunas partes de la interfaz cambian al nuevo idioma después de reiniciar."
+
+msgid "There is no translation for \"{}\"; showing English."
+msgstr "No hay traducción para \"{}\"; se muestra en inglés."
+
+msgid "…and {} more (see the log)."
+msgstr "…y {} más (consulte el registro)."
+
+msgctxt "dialog title"
+msgid "Critical"
+msgstr "Advertencia"
+
+msgctxt "dialog title"
+msgid "Info"
+msgstr "Información"
+
+msgctxt "dialog title"
+msgid "Warning"
+msgstr "Advertencia"

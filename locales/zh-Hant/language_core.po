@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Available in all locations in your current project."
+msgstr "可在目前專案中的所有位置使用。"
+
+msgid "Available in all of your projects on this machine."
+msgstr "可在這台電腦上的所有專案中使用。"
+
+msgid "Available only in the subproject you're currently in."
+msgstr "僅可在您目前所在的子專案中使用。"
+
+msgid "Global"
+msgstr "全域"
+
+msgid "Project"
+msgstr "專案"
+
+msgid "Subproject"
+msgstr "子專案"

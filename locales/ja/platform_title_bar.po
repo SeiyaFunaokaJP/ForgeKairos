@@ -1,0 +1,18 @@
+msgid ""
+msgstr ""
+"Language: ja\n"
+"X-Language-Name: 日本語\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Close Other Tabs"
+msgstr "ほかのタブを閉じる"
+
+msgid "Close Tab"
+msgstr "タブを閉じる"
+
+msgid "Move Tab to New Window"
+msgstr "タブを新しいウィンドウへ移動"
+
+msgid "Show All Tabs"
+msgstr "すべてのタブを表示"

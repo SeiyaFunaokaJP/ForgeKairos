@@ -1,0 +1,410 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "(child)"
+msgstr "(enfant)"
+
+msgid "1 byte"
+msgstr "1 octet"
+
+msgid "16 bytes"
+msgstr "16 octets"
+
+msgid "2 bytes"
+msgstr "2 octets"
+
+msgid "32 bytes"
+msgstr "32 octets"
+
+msgid "4 bytes"
+msgstr "4 octets"
+
+msgid "64 bytes"
+msgstr "64 octets"
+
+msgid "8 bytes"
+msgstr "8 octets"
+
+msgid "Allows inspection of memory contents"
+msgstr "Permet l'inspection du contenu de la mémoire"
+
+msgid "Attach"
+msgstr "Attacher"
+
+msgid "Attach the debugger to a running process"
+msgstr "Attacher le débogueur à un processus en cours d'exécution"
+
+msgid "Breakpoints"
+msgstr "Points d'arrêt"
+
+msgid "Build failed"
+msgstr "Échec de la compilation"
+
+msgid "Change Address of Currently Viewed Memory"
+msgstr "Changer l'adresse de la mémoire actuellement affichée"
+
+msgid "Close Panel"
+msgstr "Fermer le panneau"
+
+msgid "Console"
+msgstr "Console"
+
+msgid "Continue Program"
+msgstr "Continuer le programme"
+
+msgid "Continue Thread"
+msgstr "Continuer le thread"
+
+msgid "Copy Name"
+msgstr "Copier le nom"
+
+msgid "Copy Value"
+msgstr "Copier la valeur"
+
+msgid "Could not find a valid locator for a build task and configure is invalid with error: {}"
+msgstr "Aucun localisateur valide n'a été trouvé pour une tâche de compilation et la configuration est invalide, avec l'erreur : {}"
+
+msgid "Could not resolve task variables within a debug scenario"
+msgstr "Impossible de résoudre les variables de tâche dans un scénario de débogage"
+
+msgid "Current State"
+msgstr "État actuel"
+
+msgid "Debug"
+msgstr "Déboguer"
+
+msgid "Debug Adapter `{adapter_name}` does not support writing to memory"
+msgstr "L'adaptateur de débogage `{adapter_name}` ne prend pas en charge l'écriture en mémoire"
+
+msgid "Debug Panel"
+msgstr "Panneau de débogage"
+
+msgid "Debug terminal"
+msgstr "Terminal de débogage"
+
+msgid "Debugger"
+msgstr "Débogueur"
+
+msgid "Debugger Docs"
+msgstr "Documentation du débogueur"
+
+msgid "Debugger Extensions"
+msgstr "Extensions du débogueur"
+
+msgid "Debugger:"
+msgstr "Débogueur :"
+
+msgid "Detach"
+msgstr "Détacher"
+
+msgid "Disable Breakpoint"
+msgstr "Désactiver le point d'arrêt"
+
+msgid "Disable Data Breakpoint"
+msgstr "Désactiver le point d'arrêt sur données"
+
+msgid "Disable Exception Breakpoint"
+msgstr "Désactiver le point d'arrêt sur exception"
+
+msgid "Disable a breakpoint without removing it from the list"
+msgstr "Désactiver un point d'arrêt sans le retirer de la liste"
+
+msgid "Displays program output and allows manual input of debugger commands"
+msgstr "Affiche la sortie du programme et permet la saisie manuelle de commandes du débogueur"
+
+msgid "Displays the call stack, letting you navigate between function calls"
+msgstr "Affiche la pile des appels, permettant de naviguer entre les appels de fonctions"
+
+msgid "Edit Memory at a Selected Address"
+msgstr "Modifier la mémoire à une adresse sélectionnée"
+
+msgid "Edit Value"
+msgstr "Modifier la valeur"
+
+msgid "Edit debug.json"
+msgstr "Modifier debug.json"
+
+msgid "Edit in debug.json"
+msgstr "Modifier dans debug.json"
+
+msgid "Enable Breakpoint"
+msgstr "Activer le point d'arrêt"
+
+msgid "Enable Data Breakpoint"
+msgstr "Activer le point d'arrêt sur données"
+
+msgid "Enable Exception Breakpoint"
+msgstr "Activer le point d'arrêt sur exception"
+
+msgid "Evaluate"
+msgstr "Évaluer"
+
+msgid "Evaluate an expression"
+msgstr "Évaluer une expression"
+
+msgid "Exception Breakpoints cannot be removed from the breakpoint list"
+msgstr "Les points d'arrêt sur exception ne peuvent pas être retirés de la liste des points d'arrêt"
+
+msgid "Failed to edit debug.json"
+msgstr "Échec de la modification de debug.json"
+
+msgid "Find a debug task, or debug a command"
+msgstr "Rechercher une tâche de débogage ou déboguer une commande"
+
+msgid "Frames"
+msgstr "Frames"
+
+msgid "Go To Memory"
+msgstr "Atteindre la mémoire"
+
+msgid "Go To Selected Address"
+msgstr "Atteindre l'adresse sélectionnée"
+
+msgid "Go to Memory Address / Expression"
+msgstr "Atteindre l'adresse mémoire / l'expression"
+
+msgid "Language: {name}"
+msgstr "Langage : {name}"
+
+msgid "Launch"
+msgstr "Lancer"
+
+msgid "Launch Custom"
+msgstr "Lancement personnalisé"
+
+msgid "Launch a new process with a debugger"
+msgstr "Lancer un nouveau processus avec un débogueur"
+
+msgid "Lists all active breakpoints set in the code"
+msgstr "Répertorie tous les points d'arrêt actifs définis dans le code"
+
+msgid "Lists all source files currently loaded and used by the debugger"
+msgstr "Répertorie tous les fichiers source actuellement chargés et utilisés par le débogueur"
+
+msgid "Memory View"
+msgstr "Vue mémoire"
+
+msgid "Modules"
+msgstr "Modules"
+
+msgid "New Session"
+msgstr "Nouvelle session"
+
+msgid "No"
+msgstr "Non"
+
+msgid "No Breakpoints Set"
+msgstr "Aucun point d'arrêt défini"
+
+msgid "No process selected with config that contains {}"
+msgstr "Aucun processus sélectionné avec une configuration contenant {}"
+
+msgid "Open Debug Adapter Logs"
+msgstr "Ouvrir les journaux de l'adaptateur de débogage"
+
+msgid "Open Documentation"
+msgstr "Ouvrir la documentation"
+
+msgid "Pause Program"
+msgstr "Suspendre le programme"
+
+msgid "Program"
+msgstr "Programme"
+
+msgid "Provides an interactive terminal session within the debugging environment"
+msgstr "Fournit une session de terminal interactive dans l'environnement de débogage"
+
+msgid "Re-enable a breakpoint"
+msgstr "Réactiver un point d'arrêt"
+
+msgid "Remove Breakpoint"
+msgstr "Supprimer le point d'arrêt"
+
+msgid "Remove Watch"
+msgstr "Supprimer l'espion"
+
+msgid "Remove breakpoint from a breakpoint list"
+msgstr "Retirer le point d'arrêt de la liste des points d'arrêt"
+
+msgid "Remove data breakpoint from a breakpoint list"
+msgstr "Retirer le point d'arrêt sur données de la liste des points d'arrêt"
+
+msgid "Rerun"
+msgstr "Réexécuter"
+
+msgid "Rerun Session"
+msgstr "Réexécuter la session"
+
+msgid "Restart Stack Frame"
+msgstr "Redémarrer le frame de pile"
+
+msgid "Run"
+msgstr "Exécuter"
+
+msgid "Run predefined task"
+msgstr "Exécuter une tâche prédéfinie"
+
+msgid "Select Debugger"
+msgstr "Sélectionner le débogueur"
+
+msgid "Select a Debug Session"
+msgstr "Sélectionner une session de débogage"
+
+msgid "Select the process you want to attach the debugger to"
+msgstr "Sélectionnez le processus auquel attacher le débogueur"
+
+msgid "Set Condition"
+msgstr "Définir une condition"
+
+msgid "Set Data Breakpoint"
+msgstr "Définir un point d'arrêt sur données"
+
+msgid "Set Hit Condition"
+msgstr "Définir une condition d'accès"
+
+msgid "Set Log Message"
+msgstr "Définir un message de journal"
+
+msgid "Set condition to evaluate when a breakpoint is hit. Program execution will stop only when the condition is met."
+msgstr "Définit la condition à évaluer lors de l'atteinte d'un point d'arrêt. L'exécution du programme s'arrête uniquement lorsque la condition est satisfaite."
+
+msgid "Set expression that controls how many hits of the breakpoint are ignored."
+msgstr "Définit l'expression contrôlant le nombre d'accès au point d'arrêt à ignorer."
+
+msgid "Set log message to display (instead of stopping) when a breakpoint is hit."
+msgstr "Définit le message de journal à afficher (au lieu de s'arrêter) lors de l'atteinte d'un point d'arrêt."
+
+msgid "Show all stack frames"
+msgstr "Afficher tous les frames de pile"
+
+msgid "Show stack frames from your project"
+msgstr "Afficher les frames de pile de votre projet"
+
+msgid "Show {} more{}"
+msgstr "Afficher {} de plus{}"
+
+msgid "Shows all modules or libraries loaded by the program"
+msgstr "Affiche tous les modules ou bibliothèques chargés par le programme"
+
+msgid "Shows current values of local and global variables in the current stack frame"
+msgstr "Affiche les valeurs actuelles des variables locales et globales dans le frame de pile actuel"
+
+msgid "Sources"
+msgstr "Sources"
+
+msgid "Spawn"
+msgstr "Exécuter"
+
+msgid "Start"
+msgstr "Démarrer"
+
+msgid "Start Debug Session"
+msgstr "Démarrer une session de débogage"
+
+msgid "Start a predefined debug scenario"
+msgstr "Démarrer un scénario de débogage prédéfini"
+
+msgid "Step Back in Session History"
+msgstr "Revenir en arrière dans l'historique de la session"
+
+msgid "Step In"
+msgstr "Pas à pas détaillé"
+
+msgid "Step Out"
+msgstr "Pas à pas sortant"
+
+msgid "Step Over"
+msgstr "Pas à pas principal"
+
+msgid "Stop on Entry"
+msgstr "Arrêter à l'entrée"
+
+msgid "Terminal"
+msgstr "Terminal"
+
+msgid "Terminate All Threads"
+msgstr "Terminer tous les threads"
+
+msgid "Terminate Thread"
+msgstr "Terminer le thread"
+
+msgid "This Debug Session is still running. Are you sure you want to terminate it?"
+msgstr "Cette session de débogage est toujours en cours. Voulez-vous vraiment la terminer ?"
+
+msgid "Toggle Data Breakpoint"
+msgstr "Activer/désactiver le point d'arrêt sur données"
+
+msgid "Toggle {} Data Breakpoint"
+msgstr "Activer/désactiver le point d'arrêt sur données {}"
+
+msgid "Unknown Session"
+msgstr "Session inconnue"
+
+msgid "Variables"
+msgstr "Variables"
+
+msgid "Watch Expression"
+msgstr "Ajouter l'expression aux espions"
+
+msgid "Watch Variable"
+msgstr "Ajouter la variable aux espions"
+
+msgid "Working Directory"
+msgstr "Répertoire de travail"
+
+msgid "Worktree parent path: {parent_dir}"
+msgstr "Chemin d'accès parent de l'arborescence de travail : {parent_dir}"
+
+msgid "Write to Selected Memory Range"
+msgstr "Écrire dans la plage mémoire sélectionnée"
+
+msgid "Yes"
+msgstr "Oui"
+
+msgid "Zed cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+msgstr "ForgeKairos ne peut pas déterminer comment exécuter ce scénario de débogage. Le champ `build` n'a pas été fourni et l'adaptateur de débogage n'accepte pas la configuration fournie pour la raison suivante : {error}"
+
+msgid "history-{}"
+msgstr "historique-{}"
+
+msgid "in {d}/"
+msgstr "dans {d}/"
+
+msgid "in {f}"
+msgstr "dans {f}"
+
+msgid "no active worktree"
+msgstr "aucune arborescence de travail active"
+
+msgid "no scenario to save"
+msgstr "aucun scénario à enregistrer"
+
+msgid "no task contexts"
+msgstr "aucun contexte de tâche"
+
+msgctxt "data breakpoint access"
+msgid "Read"
+msgstr "Lecture"
+
+msgctxt "data breakpoint access"
+msgid "Read/Write"
+msgstr "Lecture/écriture"
+
+msgctxt "data breakpoint access"
+msgid "Write"
+msgstr "Écriture"
+
+msgctxt "debugger pane zoom"
+msgid "Expand"
+msgstr "Développer"
+
+msgctxt "debugger pane zoom"
+msgid "Minimize"
+msgstr "Réduire"

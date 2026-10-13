@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Failed to initialize the repository"
+msgstr "No se pudo inicializar el repositorio"
+
+msgid "Failed to set the initial branch"
+msgstr "No se pudo establecer la rama inicial"

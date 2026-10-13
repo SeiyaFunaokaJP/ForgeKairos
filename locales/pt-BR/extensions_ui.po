@@ -1,0 +1,236 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "(v{installed_version} installed)"
+msgstr "(v{installed_version} instalada)"
+
+msgid "Agent Servers"
+msgstr "Servidores de agente"
+
+msgid "All"
+msgstr "Todos"
+
+msgid "Basedpyright (Python language server) support is built-in to Zed!"
+msgstr "O suporte ao Basedpyright (servidor de linguagem Python) já está integrado ao ForgeKairos!"
+
+msgid "C support is built-in to Zed!"
+msgstr "O suporte a C já está integrado ao ForgeKairos!"
+
+msgid "C++ support is built-in to Zed!"
+msgstr "O suporte a C++ já está integrado ao ForgeKairos!"
+
+msgid "Claude Agent support is built-in to Zed!"
+msgstr "O suporte ao Claude Agent já está integrado ao ForgeKairos!"
+
+msgid "Codex CLI support is built-in to Zed!"
+msgstr "O suporte ao Codex CLI já está integrado ao ForgeKairos!"
+
+msgid "Copy Author Info"
+msgstr "Copiar informações do autor"
+
+msgid "Copy Extension ID"
+msgstr "Copiar ID da extensão"
+
+msgid "Couldn't install the '{extension_id}' extension: the network allowlist blocked the connection to {hosts}."
+msgstr "Não foi possível instalar a extensão '{extension_id}': a lista de permissões de rede bloqueou a conexão com {hosts}."
+
+msgid "Couldn't install the '{extension_id}' extension: {error}"
+msgstr "Não foi possível instalar a extensão '{extension_id}': {error}"
+
+msgid "Debug Adapters"
+msgstr "Adaptadores de depuração"
+
+msgid "Dev extension '{extension_id}' is not installed."
+msgstr "A extensão de desenvolvimento '{extension_id}' não está instalada."
+
+msgid "Do you want to install the recommended '{extension_id}' extension for '{file_name_or_extension}' files?"
+msgstr "Deseja instalar a extensão recomendada '{extension_id}' para arquivos '{file_name_or_extension}'?"
+
+msgid "Don't show again"
+msgstr "Não mostrar novamente"
+
+msgid "Downloads: {}"
+msgstr "Downloads: {}"
+
+msgid "Emmet expands abbreviations such as `ul>li*3` into HTML and `m10` into CSS."
+msgstr "O Emmet expande abreviações como `ul>li*3` em HTML e `m10` em CSS."
+
+msgid "Emmet is available for this file"
+msgstr "O Emmet está disponível para este arquivo"
+
+msgid "Enable Vim mode"
+msgstr "Habilitar modo Vim"
+
+msgid "Extensions"
+msgstr "Extensões"
+
+msgid "Failed to install dev extension: {}"
+msgstr "Falha ao instalar a extensão de desenvolvimento: {}"
+
+msgid "Failed to load extensions. Please check your connection and try again."
+msgstr "Falha ao carregar as extensões. Verifique sua conexão e tente novamente."
+
+msgid "Gemini CLI support is built-in to Zed!"
+msgstr "O suporte ao Gemini CLI já está integrado ao ForgeKairos!"
+
+msgid "Go support is built-in to Zed!"
+msgstr "O suporte a Go já está integrado ao ForgeKairos!"
+
+msgid "Grammars"
+msgstr "Gramáticas"
+
+msgid "Icon Themes"
+msgstr "Temas de ícones"
+
+msgid "Incompatible"
+msgstr "Incompatível"
+
+msgid "Indexed Docs Providers"
+msgstr "Provedores de documentação indexada"
+
+msgid "Install"
+msgstr "Instalar"
+
+msgid "Install Another Version..."
+msgstr "Instalar outra versão..."
+
+msgid "Install Dev Extension"
+msgstr "Instalar extensão de desenvolvimento"
+
+msgid "Install Emmet"
+msgstr "Instalar Emmet"
+
+msgid "Installed"
+msgstr "Instalado"
+
+msgid "Language Servers"
+msgstr "Servidores de linguagem"
+
+msgid "Languages"
+msgstr "Linguagens"
+
+msgid "Learn more"
+msgstr "Saiba mais"
+
+msgid "Loading extensions…"
+msgstr "Carregando extensões…"
+
+msgid "MCP Servers"
+msgstr "Servidores MCP"
+
+msgid "No dev extensions are installed."
+msgstr "Nenhuma extensão de desenvolvimento está instalada."
+
+msgid "No dev extensions found"
+msgstr "Nenhuma extensão de desenvolvimento encontrada"
+
+msgid "No extensions that match your search."
+msgstr "Nenhuma extensão corresponde à pesquisa."
+
+msgid "No extensions."
+msgstr "Nenhuma extensão."
+
+msgid "No installed extensions that match your search."
+msgstr "Nenhuma extensão instalada corresponde à pesquisa."
+
+msgid "No installed extensions."
+msgstr "Nenhuma extensão instalada."
+
+msgid "No not installed extensions that match your search."
+msgstr "Nenhuma extensão não instalada corresponde à pesquisa."
+
+msgid "No not installed extensions."
+msgstr "Nenhuma extensão não instalada."
+
+msgid "No, don't install it"
+msgstr "Não, não instalar"
+
+msgid "Not Installed"
+msgstr "Não instalado"
+
+msgid "Overridden by dev extension."
+msgstr "Substituída por extensão de desenvolvimento."
+
+msgid "Python support is built-in to Zed!"
+msgstr "O suporte a Python já está integrado ao ForgeKairos!"
+
+msgid "React support is built-in to Zed!"
+msgstr "O suporte a React já está integrado ao ForgeKairos!"
+
+msgid "Rebuild"
+msgstr "Recompilar"
+
+msgid "Rebuild dev extension…"
+msgstr "Recompilar extensão de desenvolvimento…"
+
+msgid "Ruff (linter for Python) support is built-in to Zed!"
+msgstr "O suporte ao Ruff (linter para Python) já está integrado ao ForgeKairos!"
+
+msgid "Rust support is built-in to Zed!"
+msgstr "O suporte a Rust já está integrado ao ForgeKairos!"
+
+msgid "Search extensions..."
+msgstr "Pesquisar extensões..."
+
+msgid "Select extension version..."
+msgstr "Selecionar versão da extensão..."
+
+msgid "Shell support is built-in to Zed!"
+msgstr "O suporte a shell já está integrado ao ForgeKairos!"
+
+msgid "Slash Commands"
+msgstr "Comandos de barra"
+
+msgid "Snippets"
+msgstr "Snippets"
+
+msgid "Tailwind CSS support is built-in to Zed!"
+msgstr "O suporte a Tailwind CSS já está integrado ao ForgeKairos!"
+
+msgid "Themes"
+msgstr "Temas"
+
+msgid "Ty (Python language server) support is built-in to Zed!"
+msgstr "O suporte ao Ty (servidor de linguagem Python) já está integrado ao ForgeKairos!"
+
+msgid "Typescript support is built-in to Zed!"
+msgstr "O suporte ao TypeScript já está integrado ao ForgeKairos!"
+
+msgid "Uninstall"
+msgstr "Desinstalar"
+
+msgid "View Documentation"
+msgstr "Exibir documentação"
+
+msgid "Vim support is built-in to Zed!"
+msgstr "O suporte a Vim já está integrado ao ForgeKairos!"
+
+msgid "Visit Extension Repository"
+msgstr "Visitar repositório da extensão"
+
+msgid "Yes, install extension"
+msgstr "Sim, instalar extensão"
+
+msgid "Zed comes with basic Git support—more features are coming in the future."
+msgstr "O ForgeKairos inclui suporte básico ao Git — mais recursos estão por vir."
+
+msgid "Zed supports linking to a source line on GitHub and others."
+msgstr "O ForgeKairos suporta vinculação a uma linha de código no GitHub e em outras plataformas."
+
+msgid "v{version} is not compatible with this version of Zed."
+msgstr "v{version} não é compatível com esta versão do ForgeKairos."
+
+msgctxt "extension card"
+msgid "Configure"
+msgstr "Configurar"
+
+msgctxt "extension card"
+msgid "Upgrade"
+msgstr "Atualizar"

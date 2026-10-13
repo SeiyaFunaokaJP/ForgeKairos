@@ -1,0 +1,966 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " Checks right away without waiting."
+msgstr " 不等待，立即檢查。"
+
+msgid " If it doesn't, runs the “On Timeout” steps and moves on."
+msgstr " 若未出現，則執行「逾時時」的步驟並繼續。"
+
+msgid " If it doesn't, stops the macro."
+msgstr " 若未出現，則停止巨集。"
+
+msgid " On a match, puts the line found into ${{{name}}}."
+msgstr " 符合時，將找到的行放入 ${{{name}}}。"
+
+msgid " On a match, puts the matched part into ${{{name}}}."
+msgstr " 符合時，將符合的部分放入 ${{{name}}}。"
+
+msgid " Puts the line found into ${{{name}}}."
+msgstr " 將找到的行放入 ${{{name}}}。"
+
+msgid " Puts the matched part into ${{{name}}}."
+msgstr " 將符合的部分放入 ${{{name}}}。"
+
+msgid "${{{name}}} (step {})"
+msgstr "${{{name}}}（步驟 {}）"
+
+msgid "${{{name}}} gets its value only after this branch, so “Else” runs here."
+msgstr "${{{name}}} 要到此分支之後才會取得值，因此此處會執行「否則」。"
+
+msgid "(0 = repeat until stopped)"
+msgstr "（0 = 重複直到停止）"
+
+msgid "(0 repeats until stopped)"
+msgstr "（0 會重複直到停止）"
+
+msgid "(No folder)"
+msgstr "（無資料夾）"
+
+msgid "(None)"
+msgstr "（無）"
+
+msgid "A folder with this name already exists."
+msgstr "已存在同名的資料夾。"
+
+msgid "A repetition right after ${{{name}}} applies only to the last character of its value, and when the value is empty it applies to the character before it or makes the regular expression invalid. To apply it to the whole value, wrap it as (?:${{{name}}})."
+msgstr "緊接在 ${{{name}}} 之後的重複指定只會套用至其值的最後一個字元；若值為空，則會套用至前一個字元，或使規則運算式無效。若要套用至整個值，請將其包成 (?:${{{name}}})。"
+
+msgid "A step of a kind this version can't run"
+msgstr "此版本無法執行的步驟類型"
+
+msgid "A step of a kind this version can't run (“{kind}”)"
+msgstr "此版本無法執行的步驟類型（「{kind}」）"
+
+msgid "A step of a kind this version can't run (“{kind}”). Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "此版本無法執行的步驟類型（「{kind}」）。儲存時會保持原樣，但包含它的巨集無法執行。"
+
+msgid "A step of a kind this version can't run. Saving keeps it as it was, but a macro that contains it can't be run."
+msgstr "此版本無法執行的步驟類型。儲存時會保持原樣，但包含它的巨集無法執行。"
+
+msgid "Add Step"
+msgstr "新增步驟"
+
+msgid "Add a step here"
+msgstr "在此新增步驟"
+
+msgid "Another connection took over this shell"
+msgstr "其他連線已接管此 Shell"
+
+msgid "Branch: runs the “Then” steps if the “Target” (output since last send / whole screen / variable) contains the “Text to match”, and the “Else” steps if not. It checks right away without waiting, so to check a response, put a “Wait for Text” step before it."
+msgstr "分支：若「目標」（上次傳送後的輸出 / 整個畫面 / 變數）包含「要比對的文字」，則執行「則」的步驟，否則執行「否則」的步驟。它會立即檢查而不等待，因此若要檢查回應，請在前面放置「等待字串」步驟。"
+
+msgid "Branching on a value: set the branch's “Target” to “Variable” to check the value of that variable. A variable that has no value yet takes “Else”. Named groups of a regular expression can pull part of a value out into another variable."
+msgstr "依值分支：將分支的「目標」設為「變數」，即可檢查該變數的值。尚未有值的變數會走「否則」。規則運算式的具名群組可將值的一部分擷取至另一個變數。"
+
+msgid "Brings the shell back to this tab (the other connection is detached)"
+msgstr "將 Shell 移回此分頁（另一個連線會被中斷）"
+
+msgid "Broadcast Input to All Panes"
+msgstr "同步輸入至所有窗格"
+
+msgid "Broadcasting input"
+msgstr "同步輸入中"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cancel creating the folder"
+msgstr "取消建立資料夾"
+
+msgid "Cancel renaming"
+msgstr "取消重新命名"
+
+msgid "Capture Into"
+msgstr "擷取至"
+
+msgid "Chooses the steps to run by whether the output or a variable contains some text"
+msgstr "依輸出或變數是否包含某段文字，選擇要執行的步驟"
+
+msgid "Claude Code (Outside the Sandbox)"
+msgstr "Claude Code（沙箱外）"
+
+msgid "Clears the screen and the scrollback"
+msgstr "清除畫面與捲動緩衝區"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Close Help"
+msgstr "關閉說明"
+
+msgid "Close Terminal Tab"
+msgstr "關閉終端機分頁"
+
+msgid "Collapse All"
+msgstr "全部摺疊"
+
+msgid "Connect"
+msgstr "連線"
+
+msgid "Connection name (for saving)"
+msgstr "連線名稱（用於儲存）"
+
+msgid "Connects to network devices over SSH or Telnet."
+msgstr "透過 SSH 或 Telnet 連線至網路裝置。"
+
+msgid "Copy"
+msgstr "複製"
+
+msgid "Couldn't choose a location: {error}"
+msgstr "無法選擇位置：{error}"
+
+msgid "Couldn't connect: {error}"
+msgstr "無法連線：{error}"
+
+msgid "Couldn't create the folder"
+msgstr "無法建立資料夾"
+
+msgid "Couldn't delete"
+msgstr "無法刪除"
+
+msgid "Couldn't delete the folder"
+msgstr "無法刪除資料夾"
+
+msgid "Couldn't move the folder"
+msgstr "無法移動資料夾"
+
+msgid "Couldn't open the log: {error}"
+msgstr "無法開啟記錄檔：{error}"
+
+msgid "Couldn't reach the remote shell, so the terminal restarted with a new shell."
+msgstr "無法連線至遠端 Shell，因此終端機已使用新的 Shell 重新啟動。"
+
+msgid "Couldn't reach the remote shell, so the terminal restarted without surviving disconnects."
+msgstr "無法連線至遠端 Shell，因此終端機已在不具斷線保留功能的情況下重新啟動。"
+
+msgid "Couldn't rename the folder"
+msgstr "無法重新命名資料夾"
+
+msgid "Couldn't restart the terminal: {error}"
+msgstr "無法重新啟動終端機：{error}"
+
+msgid "Couldn't resume logging: {error}"
+msgstr "無法繼續記錄：{error}"
+
+msgid "Couldn't run the command in the terminal: {error}"
+msgstr "無法在終端機中執行命令：{error}"
+
+msgid "Couldn't save whether the folder is open"
+msgstr "無法儲存資料夾的開啟狀態"
+
+msgid "Couldn't save: {error}"
+msgstr "無法儲存：{error}"
+
+msgid "Couldn't start logging: {error}"
+msgstr "無法開始記錄：{error}"
+
+msgid "Create New"
+msgstr "新增"
+
+msgid "Create a folder with this name"
+msgstr "以此名稱建立資料夾"
+
+msgid "Creates a folder to group macros"
+msgstr "建立用於分組巨集的資料夾"
+
+msgid "Delete"
+msgstr "刪除"
+
+msgid "Delete with Macros"
+msgstr "連同巨集一起刪除"
+
+msgid "Delete “{name}”?"
+msgstr "要刪除「{name}」嗎？"
+
+msgid "Deletes this connection (and its saved password)"
+msgstr "刪除此連線目標（及其已儲存的密碼）"
+
+msgid "Deletes this step"
+msgstr "刪除此步驟"
+
+msgid "Delete…"
+msgstr "刪除…"
+
+msgid "Deleting the folder “{folder}”. What should happen to the macros in it?"
+msgstr "正在刪除資料夾「{folder}」。其中的巨集要如何處理？"
+
+msgid "Description (optional)"
+msgstr "描述（選用）"
+
+msgid "Discard and Switch"
+msgstr "捨棄並切換"
+
+msgid "Drag onto a “+” along or at the end of a line to move the step"
+msgstr "拖曳至線上或線尾的「+」以移動步驟"
+
+msgid "Duplicate"
+msgstr "建立副本"
+
+msgid "Edit"
+msgstr "編輯"
+
+msgid "Edit Macros…"
+msgstr "編輯巨集…"
+
+msgid "Edit Settings"
+msgstr "編輯設定"
+
+msgid "Edit settings.json"
+msgstr "編輯 settings.json"
+
+msgid "Edit “{name}”"
+msgstr "編輯「{name}」"
+
+msgid "Enter a folder name."
+msgstr "請輸入資料夾名稱。"
+
+msgid "Enter a host name or IP address."
+msgstr "請輸入主機名稱或 IP 位址。"
+
+msgid "Enter a macro name."
+msgstr "請輸入巨集名稱。"
+
+msgid "Enter a variable name and a value. Wherever a later step says ${{name}}, it becomes the value."
+msgstr "請輸入變數名稱與值。之後的步驟中凡是寫成 ${{名稱}} 的地方，都會變成該值。"
+
+msgid "Enter the interval in seconds, 0 or more."
+msgstr "請輸入 0 以上的間隔秒數。"
+
+msgid "Enter the repeat count as a whole number, 0 or more."
+msgstr "請輸入 0 以上的整數作為重複次數。"
+
+msgid "Enter the repeat interval in seconds, 0 or more."
+msgstr "請輸入 0 以上的重複間隔秒數。"
+
+msgid "Example: Send “show version” → Wait for Text “Version (?<ver>[0-9.]+)” (regular expression) → Branch (Target: variable ver, text to match “^15\\.”, regular expression) → Then: Send “…”"
+msgstr "範例：傳送「show version」→ 等待字串「Version (?<ver>[0-9.]+)」（規則運算式）→ 分支（目標：變數 ver，要比對的文字「^15\\.」，規則運算式）→ 則：傳送「…」"
+
+msgid "Expand All"
+msgstr "全部展開"
+
+msgid "Expected text (${{variable}} allowed)"
+msgstr "預期的文字（可使用 ${{變數}}）"
+
+msgid "Failed to spawn terminal"
+msgstr "啟動終端機失敗"
+
+msgid "File Transfer…"
+msgstr "檔案傳輸…"
+
+msgid "Filter by folder, name, or tag"
+msgstr "依資料夾、名稱或標籤篩選"
+
+msgid "Filter by folder, name, or tag…"
+msgstr "依資料夾、名稱或標籤篩選…"
+
+msgid "Folder"
+msgstr "資料夾"
+
+msgid "Folder (e.g. Sites/HQ; optional)"
+msgstr "資料夾（例如：Sites/HQ；選用）"
+
+msgid "Folder name"
+msgstr "資料夾名稱"
+
+msgid "Forgets the saved password of this connection"
+msgstr "清除此連線目標已儲存的密碼"
+
+msgid "Hides the list of saved macros to widen the editor"
+msgstr "隱藏已儲存的巨集清單以加寬編輯器"
+
+msgid "Host name / IP address"
+msgstr "主機名稱 / IP 位址"
+
+msgid "How Branches and Variables Work"
+msgstr "分支與變數的運作方式"
+
+msgid "Inline Assist"
+msgstr "內嵌輔助"
+
+msgid "Install Claude Code"
+msgstr "安裝 Claude Code"
+
+msgid "Interval (seconds)"
+msgstr "間隔（秒）"
+
+msgid "Invalid port number."
+msgstr "連接埠號碼無效。"
+
+msgid "Invalid regular expression: {error}"
+msgstr "規則運算式無效：{error}"
+
+msgid "Keep Editing"
+msgstr "繼續編輯"
+
+msgid "Kind"
+msgstr "類型"
+
+msgid "Launch Claude Code"
+msgstr "啟動 Claude Code"
+
+msgid "Launch Claude Code Outside the Sandbox"
+msgstr "在沙箱外啟動 Claude Code"
+
+msgid "Loading…"
+msgstr "正在載入…"
+
+msgid "Location: {}"
+msgstr "位置：{}"
+
+msgid "Logging to {file_name}"
+msgstr "正在記錄至 {file_name}"
+
+msgid "Macro"
+msgstr "巨集"
+
+msgid "Macro name"
+msgstr "巨集名稱"
+
+msgid "Macro to Run After Connecting"
+msgstr "連線後執行的巨集"
+
+msgid "Macro “{name}” finished"
+msgstr "巨集「{name}」已完成"
+
+msgid "Macro “{name}”: {error}"
+msgstr "巨集「{name}」：{error}"
+
+msgid "Macro: {name}"
+msgstr "巨集：{name}"
+
+msgid "More Buttons"
+msgstr "更多按鈕"
+
+msgid "Move Down"
+msgstr "下移"
+
+msgid "Move Macros to Unfiled"
+msgstr "將巨集移至未分類"
+
+msgid "Move Up"
+msgstr "上移"
+
+msgid "New Center Terminal"
+msgstr "新增中央終端機"
+
+msgid "New Folder…"
+msgstr "新增資料夾…"
+
+msgid "New Macro"
+msgstr "新增巨集"
+
+msgid "New Macro in Folder"
+msgstr "在資料夾中新增巨集"
+
+msgid "New Terminal"
+msgstr "新增終端機"
+
+msgid "New…"
+msgstr "新增…"
+
+msgid "No macros match the filter"
+msgstr "沒有符合篩選條件的巨集"
+
+msgid "No macros — add one here"
+msgstr "沒有巨集 — 在此新增"
+
+msgid "No saved macros"
+msgstr "沒有已儲存的巨集"
+
+msgid "No step sets ${{{name}}}, so this branch always runs “Else”."
+msgstr "沒有任何步驟設定 ${{{name}}}，因此此分支一律執行「否則」。"
+
+msgid "No step sets {nowhere}. When the macro runs, it stays as written."
+msgstr "沒有任何步驟設定 {nowhere}。巨集執行時，它會保持原本寫入的文字。"
+
+msgid "Open File Transfer"
+msgstr "開啟檔案傳輸"
+
+msgid "Open Log File Location"
+msgstr "開啟記錄檔位置"
+
+msgid "Open Log in Editor"
+msgstr "在編輯器中開啟記錄檔"
+
+msgid "Open Settings"
+msgstr "開啟設定"
+
+msgid "Opens a new macro with the same contents"
+msgstr "以相同內容開啟新的巨集"
+
+msgid "Opens an empty macro on the right"
+msgstr "在右側開啟空白巨集"
+
+msgid "Opens the menu for moving and folding"
+msgstr "開啟用於移動與摺疊的選單"
+
+msgid "Optional"
+msgstr "選用"
+
+msgid "Overwrite"
+msgstr "覆寫"
+
+msgid "Password (optional)"
+msgstr "密碼（選用）"
+
+msgid "Paste"
+msgstr "貼上"
+
+msgid "Paste Text"
+msgstr "貼上文字"
+
+msgid "Port"
+msgstr "連接埠"
+
+msgid "Prefixes each line of the log being recorded with the time. Takes effect from the next line."
+msgstr "在記錄中的每一行開頭加上時間。從下一行開始生效。"
+
+msgid "Process ID (PID): {}"
+msgstr "處理序 ID（PID）：{}"
+
+msgid "Quick Connect"
+msgstr "快速連線"
+
+msgid "Quick Connect…"
+msgstr "快速連線…"
+
+msgid "Reconnect"
+msgstr "重新連線"
+
+msgid "Reconnects to the remote shell and resumes its output"
+msgstr "重新連線至遠端 Shell 並繼續顯示其輸出"
+
+msgid "Record a Log"
+msgstr "記錄"
+
+msgid "Regular Expression"
+msgstr "規則運算式"
+
+msgid "Remember password"
+msgstr "記住密碼"
+
+msgid "Remote connection lost"
+msgstr "遠端連線中斷"
+
+msgid "Remote connection lost. The shell keeps running on the remote host; reconnect to resume its output"
+msgstr "遠端連線中斷。Shell 仍在遠端主機上執行；重新連線即可繼續顯示其輸出"
+
+msgid "Rename"
+msgstr "重新命名"
+
+msgid "Rename Folder"
+msgstr "重新命名資料夾"
+
+msgid "Rename to this name"
+msgstr "重新命名為此名稱"
+
+msgid "Renames the folder (the macros in it move along)"
+msgstr "重新命名資料夾（其中的巨集會一併移動）"
+
+msgid "Repeat Count"
+msgstr "重複次數"
+
+msgid "Repeats the steps inside it the given number of times"
+msgstr "將其中的步驟重複指定的次數"
+
+msgid "Repeats until stopped"
+msgstr "重複直到停止"
+
+msgid "Repeats {count} time"
+msgid_plural "Repeats {count} times"
+msgstr[0] "重複 {count} 次"
+
+msgid "Rerun task"
+msgstr "重新執行工作"
+
+msgid "Restart"
+msgstr "重新啟動"
+
+msgid "Restarts the shell in the same working directory"
+msgstr "在相同的工作目錄中重新啟動 Shell"
+
+msgid "Restoring terminals…"
+msgstr "正在還原終端機…"
+
+msgid "Run"
+msgstr "執行"
+
+msgid "Run Macro…"
+msgstr "執行巨集…"
+
+msgid "Run Repeatedly"
+msgstr "重複執行"
+
+msgid "Run Repeatedly…"
+msgstr "重複執行…"
+
+msgid "Run the Next Step"
+msgstr "執行下一個步驟"
+
+msgid "Running macro “{name}” ({detail})"
+msgstr "正在執行巨集「{name}」（{detail}）"
+
+msgid "Runs the macro “{name}” repeatedly."
+msgstr "重複執行巨集「{name}」。"
+
+msgid "Runs this macro with a repeat count and interval you choose."
+msgstr "以您選擇的重複次數與間隔執行此巨集。"
+
+msgid "Runs “Then” if {target} contains {}, and “Else” if not."
+msgstr "若 {target} 包含 {}，則執行「則」，否則執行「否則」。"
+
+msgid "Runs “Then” if {target} matches the regular expression {}, and “Else” if not."
+msgstr "若 {target} 符合規則運算式 {}，則執行「則」，否則執行「否則」。"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Saved"
+msgstr "已儲存"
+
+msgid "Saved Connections"
+msgstr "已儲存的連線目標"
+
+msgid "Saved Macros ({listed} / {total})"
+msgstr "已儲存的巨集（{listed} / {total}）"
+
+msgid "Saved Macros ({total})"
+msgstr "已儲存的巨集（{total}）"
+
+msgid "Seconds"
+msgstr "秒數"
+
+msgid "Select All"
+msgstr "全選"
+
+msgid "Send Enter at the End"
+msgstr "在結尾傳送 Enter"
+
+msgid "Sends text to the terminal"
+msgstr "傳送文字至終端機"
+
+msgid "Sets ${{{name}}} to {}. Wherever a later step says ${{{name}}}, it becomes this value."
+msgstr "將 ${{{name}}} 設為 {}。之後的步驟中凡是寫成 ${{{name}}} 的地方，都會變成此值。"
+
+msgid "Sets a variable. Wherever a later step says ${{name}}, it becomes the value"
+msgstr "設定變數。之後的步驟中凡是寫成 ${{名稱}} 的地方，都會變成該值"
+
+msgid "Setting variables: a “Set Variable” step, or the “Capture Into” field of “Wait for Text” and “Branch” (it gets the line found, or the matched part for a regular expression). A named group (?<name>…) of a regular expression puts the part it matched into the variable of that name."
+msgstr "設定變數：使用「設定變數」步驟，或「等待字串」與「分支」的「擷取至」欄位（會取得找到的行；若為規則運算式，則取得符合的部分）。規則運算式的具名群組 (?<名稱>…) 會將其符合的部分放入同名的變數。"
+
+msgid "Shows only the heading and summary of every step"
+msgstr "只顯示每個步驟的標題與摘要"
+
+msgid "Shows the fields of every step"
+msgstr "顯示每個步驟的欄位"
+
+msgid "Shows the list of saved macros"
+msgstr "顯示已儲存的巨集清單"
+
+msgid "Spawn Task"
+msgstr "執行工作"
+
+msgid "Split Down"
+msgstr "向下分割"
+
+msgid "Split Left"
+msgstr "向左分割"
+
+msgid "Split Pane"
+msgstr "分割窗格"
+
+msgid "Split Right"
+msgstr "向右分割"
+
+msgid "Split Up"
+msgstr "向上分割"
+
+msgid "Split into 2×2"
+msgstr "分割為 2×2"
+
+msgid "Split into 3 Columns"
+msgstr "分割為 3 欄"
+
+msgid "Start Logging (Choose Location)…"
+msgstr "開始記錄（選擇位置）…"
+
+msgid "Start Logging (Default Location)"
+msgstr "開始記錄（預設位置）"
+
+msgid "Starting terminal…"
+msgstr "正在啟動終端機…"
+
+msgid "Step {label}: enter a variable name."
+msgstr "步驟 {label}：請輸入變數名稱。"
+
+msgid "Step {label}: enter the expected text."
+msgstr "步驟 {label}：請輸入預期的文字。"
+
+msgid "Step {label}: enter the repeat count as a whole number, 0 or more."
+msgstr "步驟 {label}：請輸入 0 以上的整數作為重複次數。"
+
+msgid "Step {label}: enter the text to match."
+msgstr "步驟 {label}：請輸入要比對的文字。"
+
+msgid "Step {label}: enter the variable to check."
+msgstr "步驟 {label}：請輸入要檢查的變數。"
+
+msgid "Step {label}: invalid number of seconds."
+msgstr "步驟 {label}：秒數無效。"
+
+msgid "Step {label}: invalid regular expression."
+msgstr "步驟 {label}：規則運算式無效。"
+
+msgid "Step {label}: the variable name can't contain $, {{ or }}."
+msgstr "步驟 {label}：變數名稱不能包含 $、{{ 或 }}。"
+
+msgid "Step {label}: the variable to capture into can't contain $, {{ or }}."
+msgstr "步驟 {label}：要擷取至的變數不能包含 $、{{ 或 }}。"
+
+msgid "Step {label}: the variable to check can't contain $, {{ or }}."
+msgstr "步驟 {label}：要檢查的變數不能包含 $、{{ 或 }}。"
+
+msgid "Steps ({})"
+msgstr "步驟（{}）"
+
+msgid "Steps to Repeat ({})"
+msgstr "要重複的步驟（{}）"
+
+msgid "Stop Broadcasting Input to All Panes"
+msgstr "停止同步輸入至所有窗格"
+
+msgid "Stop Logging"
+msgstr "停止記錄"
+
+msgid "Stop the Macro"
+msgstr "停止巨集"
+
+msgid "Stopped macro “{}”"
+msgstr "已停止巨集「{}」"
+
+msgid "Tags (comma-separated, optional)"
+msgstr "標籤（以逗號分隔，選用）"
+
+msgid "Terminal Panel"
+msgstr "終端機面板"
+
+msgid "Text to match (${{variable}} allowed)"
+msgstr "要比對的文字（可使用 ${{變數}}）"
+
+msgid "Text to send (${{variable}} allowed)"
+msgstr "要傳送的文字（可使用 ${{變數}}）"
+
+msgid "The host name contains characters that aren't allowed."
+msgstr "主機名稱包含不允許的字元。"
+
+msgid "The macro \"{name}\" has unsaved edits. Do you want to save it?"
+msgstr "巨集「{name}」有未儲存的編輯。要儲存嗎？"
+
+msgid "The password is kept in the OS credential manager and is never written to terminal_sessions.json"
+msgstr "密碼會保存在作業系統的認證資訊管理員中，絕不會寫入 terminal_sessions.json"
+
+msgid "The remote Zed server doesn't support surviving disconnects, so the terminal restarted with a plain shell."
+msgstr "遠端 ForgeKairos 伺服器不支援斷線保留，因此終端機已使用一般 Shell 重新啟動。"
+
+msgid "The repeat count is empty"
+msgstr "重複次數為空"
+
+msgid "The settings file hasn't finished loading. Wait a moment and try again."
+msgstr "設定檔案尚未載入完成。請稍候再試一次。"
+
+msgid "The terminal panel is unavailable."
+msgstr "無法使用終端機面板。"
+
+msgid "The user name contains characters that aren't allowed."
+msgstr "使用者名稱包含不允許的字元。"
+
+msgid "There is no terminal to run the macro in. Open a terminal."
+msgstr "沒有可執行巨集的終端機。請開啟終端機。"
+
+msgid "This folder already has a macro with this name."
+msgstr "此資料夾中已有同名的巨集。"
+
+msgid "This macro has been changed elsewhere since this tab opened it. Do you want to overwrite it?"
+msgstr "自此分頁開啟此巨集後，它已在其他地方被變更。要覆寫嗎？"
+
+msgid "This macro has been deleted or renamed elsewhere. Saving creates it again as “{name}”."
+msgstr "此巨集已在其他地方被刪除或重新命名。儲存時會以「{name}」重新建立。"
+
+msgid "This new macro has unsaved edits. Do you want to save it?"
+msgstr "此新巨集有未儲存的編輯。要儲存嗎？"
+
+msgid "Timeout (seconds)"
+msgstr "逾時（秒）"
+
+msgid "Timestamps"
+msgstr "時間戳記"
+
+msgid "Transfers files with this host over SFTP / FTP"
+msgstr "透過 SFTP / FTP 與此主機傳輸檔案"
+
+msgid "Unfiled"
+msgstr "未分類"
+
+msgid "User name (SSH)"
+msgstr "使用者名稱（SSH）"
+
+msgid "Using variables: write ${{name}} in the text to send, the expected text, the text to match, or the value to set, and it is replaced by the value when the macro runs. To send ${{ as text, write $${{."
+msgstr "使用變數：在要傳送的文字、預期的文字、要比對的文字或要設定的值中寫入 ${{名稱}}，巨集執行時就會被取代為其值。若要將 ${{ 作為文字傳送，請寫成 $${{。"
+
+msgid "Value"
+msgstr "值"
+
+msgid "Value to set (${{variable}} allowed too)"
+msgstr "要設定的值（也可使用 ${{變數}}）"
+
+msgid "Variable name"
+msgstr "變數名稱"
+
+msgid "Variable to Check"
+msgstr "要檢查的變數"
+
+msgid "Variables: none yet (create them with “Set Variable” or “Capture Into”)"
+msgstr "變數：尚無（可使用「設定變數」或「擷取至」建立）"
+
+msgid "Variables: {listed}"
+msgstr "變數：{listed}"
+
+msgid "Waits for the given number of seconds"
+msgstr "等待指定的秒數"
+
+msgid "Waits until the given text appears in the output"
+msgstr "等待直到指定的文字出現在輸出中"
+
+msgid "Waits up to {seconds} s for {} to appear in new output.{}"
+msgstr "等待 {} 出現在新的輸出中，最多 {seconds} 秒。{}"
+
+msgid "Waits {seconds} s"
+msgstr "等待 {seconds} 秒"
+
+msgid "Your changes haven't been saved. Discard them and open a new macro?"
+msgstr "您的變更尚未儲存。要捨棄變更並開啟新的巨集嗎？"
+
+msgid "Your changes haven't been saved. Discard them and open “{}”?"
+msgstr "您的變更尚未儲存。要捨棄變更並開啟「{}」嗎？"
+
+msgid "an empty string"
+msgstr "空字串"
+
+msgid "claude was not found on PATH. Run “terminal: install claude code” from the command palette first."
+msgstr "在 PATH 中找不到 claude。請先從命令選擇區執行「終端機: 安裝 Claude Code（官方命令）」。"
+
+msgid "claude was not found on the remote host. Install it by running this command in a terminal on the remote host:\ncurl -fsSL https://claude.ai/install.sh | bash\nIt is installed to `~/.local/bin/claude` and can be launched from then on."
+msgstr "在遠端主機上找不到 claude。請在遠端主機的終端機中執行下列命令進行安裝：\ncurl -fsSL https://claude.ai/install.sh | bash\n它會安裝至 `~/.local/bin/claude`，之後即可啟動。"
+
+msgid "no count"
+msgstr "無次數"
+
+msgid "npm was not found on PATH. Installing Claude Code requires Node.js. Install Node.js from https://nodejs.org/ and try again."
+msgstr "在 PATH 中找不到 npm。安裝 Claude Code 需要 Node.js。請從 https://nodejs.org/ 安裝 Node.js 後再試一次。"
+
+msgid "npm was not found on the remote host. Install Node.js in a terminal on the remote host and try again."
+msgstr "在遠端主機上找不到 npm。請在遠端主機的終端機中安裝 Node.js 後再試一次。"
+
+msgid "repeat {}, step"
+msgstr "第 {} 次重複，步驟"
+
+msgid "repeat {}/{count}, step"
+msgstr "第 {}/{count} 次重複，步驟"
+
+msgid "run {}, step {step}"
+msgstr "第 {} 次執行，步驟 {step}"
+
+msgid "run {}/{count}, step {step}"
+msgstr "第 {}/{count} 次執行，步驟 {step}"
+
+msgid "telnet was not found. Add “Telnet Client” from Windows “Optional features”, or run `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient` in PowerShell as an administrator."
+msgstr "找不到 telnet。請從 Windows 的「選用功能」新增「Telnet 用戶端」，或以系統管理員身分在 PowerShell 中執行 `Enable-WindowsOptionalFeature -Online -FeatureName TelnetClient`。"
+
+msgid "the expected text"
+msgstr "預期的文字"
+
+msgid "the output after the last send"
+msgstr "上次傳送後的輸出"
+
+msgid "the text to match"
+msgstr "要比對的文字"
+
+msgid "the value of ${{{name}}}"
+msgstr "${{{name}}} 的值"
+
+msgid "the variable's value"
+msgstr "變數的值"
+
+msgid "the whole screen"
+msgstr "整個畫面"
+
+msgid "until stopped"
+msgstr "直到停止"
+
+msgid "{base} (copy {suffix})"
+msgstr "{base}（複本 {suffix}）"
+
+msgid "{base} (copy)"
+msgstr "{base}（複本）"
+
+msgid "{count} step"
+msgid_plural "{count} steps"
+msgstr[0] "{count} 個步驟"
+
+msgid "{count} time"
+msgid_plural "{count} times"
+msgstr[0] "{count} 次"
+
+msgid "{detail} → {inner_iteration} {}/{} “{}”"
+msgstr "{detail} → {inner_iteration} {}/{}「{}」"
+
+msgid "{detail}, branch: {}"
+msgstr "{detail}，分支：{}"
+
+msgid "{display_path}\nClick to open it in the editor and follow its end."
+msgstr "{display_path}\n按一下即可在編輯器中開啟並追蹤其結尾。"
+
+msgid "{heading}: {count} step (edit deeper nesting in the JSON file)"
+msgid_plural "{heading}: {count} steps (edit deeper nesting in the JSON file)"
+msgstr[0] "{heading}：{count} 個步驟（更深層的巢狀結構請在 JSON 檔案中編輯）"
+
+msgid "{later} gets its value only after this step. Here it stays as written."
+msgstr "{later} 要到此步驟之後才會取得值。在此處它會保持原本寫入的文字。"
+
+msgid "{problem}. Fix it in terminal_sessions.json. Saving here keeps it as it was, but a macro that contains it can't be run."
+msgstr "{problem}。請在 terminal_sessions.json 中修正。在此處儲存會保持原樣，但包含它的巨集無法執行。"
+
+msgid "{program} was not found on PATH."
+msgstr "在 PATH 中找不到 {program}。"
+
+msgid "{steps} / until stopped"
+msgstr "{steps} / 直到停止"
+
+msgid "{steps} / ×{times}"
+msgstr "{steps} / ×{times}"
+
+msgid "“{fallback}”"
+msgstr "「{fallback}」"
+
+msgid "“{text}”"
+msgstr "「{text}」"
+
+msgctxt "list separator"
+msgid ", "
+msgstr "、"
+
+msgctxt "terminal"
+msgid "Add to Agent Thread"
+msgstr "加入代理會話"
+
+msgctxt "terminal"
+msgid "Clear"
+msgstr "清除"
+
+msgctxt "terminal"
+msgid "Stop Logging"
+msgstr "停止記錄"
+
+msgctxt "terminal"
+msgid "Zoom In"
+msgstr "放大"
+
+msgctxt "terminal"
+msgid "Zoom Out"
+msgstr "縮小"
+
+msgctxt "terminal macro"
+msgid "Cancel"
+msgstr "停止"
+
+msgctxt "terminal macro"
+msgid "Collapse"
+msgstr "摺疊"
+
+msgctxt "terminal macro"
+msgid "Else"
+msgstr "否則"
+
+msgctxt "terminal macro"
+msgid "Expand"
+msgstr "展開"
+
+msgctxt "terminal macro"
+msgid "New"
+msgstr "新增"
+
+msgctxt "terminal macro"
+msgid "On Timeout"
+msgstr "逾時時"
+
+msgctxt "terminal macro"
+msgid "Target"
+msgstr "目標"
+
+msgctxt "terminal macro"
+msgid "Then"
+msgstr "則"
+
+msgctxt "terminal macro step"
+msgid "Branch"
+msgstr "分支"
+
+msgctxt "terminal macro step"
+msgid "Clear Screen"
+msgstr "清除畫面"
+
+msgctxt "terminal macro step"
+msgid "Repeat"
+msgstr "重複"
+
+msgctxt "terminal macro step"
+msgid "Send"
+msgstr "傳送"
+
+msgctxt "terminal macro step"
+msgid "Set Variable"
+msgstr "設定變數"
+
+msgctxt "terminal macro step"
+msgid "Sleep"
+msgstr "等待秒數"
+
+msgctxt "terminal macro step"
+msgid "Unknown Step"
+msgstr "未知的步驟"
+
+msgctxt "terminal macro step"
+msgid "Wait for Text"
+msgstr "等待字串"
+
+msgctxt "terminal tab title"
+msgid "Failed to spawn terminal"
+msgstr "啟動終端機失敗"

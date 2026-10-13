@@ -1,0 +1,436 @@
+{
+  "Mermaid 순서도": {
+    "prefix": "mermaid-flowchart",
+    "description": "Mermaid 순서도를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "flowchart ${1:TD}",
+      "    %% []는 단계, {}는 분기입니다. |레이블|로 분기에 주석을 답니다",
+      "    start[${2:시작}] --> condition{${3:조건}}",
+      "    condition -->|예| work[${4:처리}]",
+      "    condition -->|아니요| finish[${5:종료}]",
+      "    work --> finish",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 시퀀스 다이어그램": {
+    "prefix": "mermaid-sequence",
+    "description": "Mermaid 시퀀스 다이어그램을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "sequenceDiagram",
+      "    %% ->>는 호출, -->>는 응답입니다",
+      "    participant User as ${1:사용자}",
+      "    participant App as ${2:앱}",
+      "    User->>App: ${3:요청}",
+      "    App-->>User: ${4:응답}",
+      "    Note over App: ${5:메모}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 클래스 다이어그램": {
+    "prefix": "mermaid-class",
+    "description": "Mermaid 클래스 다이어그램을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "classDiagram",
+      "    %% <|--는 상속, *--는 합성, o--는 집합입니다",
+      "    class ${1:Base} {",
+      "        +${2:field}: ${3:Type}",
+      "        +${4:method}()",
+      "    }",
+      "    class ${5:Derived} {",
+      "        +${6:extra}()",
+      "    }",
+      "    ${1:Base} <|-- ${5:Derived}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 상태 다이어그램": {
+    "prefix": "mermaid-state",
+    "description": "Mermaid 상태 다이어그램을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "stateDiagram-v2",
+      "    %% [*]는 시작과 끝입니다. 화살표의 : 뒤 텍스트는 이벤트 이름입니다",
+      "    [*] --> ${1:Idle}",
+      "    ${1:Idle} --> ${2:Running}: ${3:시작}",
+      "    ${2:Running} --> ${1:Idle}: ${4:완료}",
+      "    ${2:Running} --> [*]: ${5:중단}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid ER 다이어그램": {
+    "prefix": "mermaid-er",
+    "description": "Mermaid ER 다이어그램 (개체 관계 다이어그램)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "erDiagram",
+      "    %% ||--o{는 일대다, }o--o{는 다대다입니다",
+      "    ${1:CUSTOMER} ||--o{ ${2:ORDER} : \"${3:주문함}\"",
+      "    ${2:ORDER} ||--|{ ${4:ORDER_ITEM} : \"${5:포함함}\"",
+      "    ${1:CUSTOMER} {",
+      "        int id",
+      "        string name",
+      "    }",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 간트 차트": {
+    "prefix": "mermaid-gantt",
+    "description": "Mermaid 간트 차트를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "gantt",
+      "    title ${1:개발 일정}",
+      "    dateFormat YYYY-MM-DD",
+      "    axisFormat %m/%d",
+      "    section ${2:설계}",
+      "    ${3:요구 사항 정의} :done, req, ${4:2026-01-06}, 5d",
+      "    ${5:기본 설계} :active, design, after req, 7d",
+      "    section ${6:구현}",
+      "    ${7:구현} :impl, after design, 10d",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 원형 차트": {
+    "prefix": "mermaid-pie",
+    "description": "Mermaid 원형 차트를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "pie title ${1:내역}",
+      "    \"${2:설계}\" : ${3:30}",
+      "    \"${4:구현}\" : ${5:50}",
+      "    \"${6:테스트}\" : ${7:20}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid Git 그래프": {
+    "prefix": "mermaid-gitgraph",
+    "description": "Mermaid Git 그래프 (브랜치 다이어그램)를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "gitGraph",
+      "    commit id: \"${1:초기 커밋}\"",
+      "    branch ${2:feature}",
+      "    checkout ${2:feature}",
+      "    commit id: \"${3:기능 추가}\"",
+      "    checkout main",
+      "    merge ${2:feature}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 마인드맵": {
+    "prefix": "mermaid-mindmap",
+    "description": "Mermaid 마인드맵을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "mindmap",
+      "  root((${1:중심 주제}))",
+      "    ${2:분류 A}",
+      "      ${3:항목 1}",
+      "      ${4:항목 2}",
+      "    ${5:분류 B}",
+      "      ${6:항목 3}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 타임라인": {
+    "prefix": "mermaid-timeline",
+    "description": "Mermaid 타임라인을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "timeline",
+      "    title ${1:연혁}",
+      "    ${2:2024} : ${3:기획}",
+      "    ${4:2025} : ${5:개발} : ${6:출시}",
+      "    ${7:2026} : ${8:운영}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 사용자 여정": {
+    "prefix": "mermaid-journey",
+    "description": "Mermaid 사용자 여정 (경험의 단계와 각 단계의 만족도)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "journey",
+      "    %% 작업 : 만족도 (1~5) : 관련된 사람",
+      "    title ${1:구매까지의 과정}",
+      "    section ${2:찾기}",
+      "      ${3:상품 검색}: ${4:4}: ${5:고객}",
+      "      비교: 3: 고객",
+      "    section ${6:구매}",
+      "      장바구니에 담기: 5: 고객",
+      "      ${7:결제}: ${8:2}: ${9:고객, 매장}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 사분면 차트": {
+    "prefix": "mermaid-quadrant",
+    "description": "Mermaid 사분면 차트 (두 축의 산점도)를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "quadrantChart",
+      "    %% 점은 이름: [x, y] 형식이며, 둘 다 0에서 1 사이입니다",
+      "    title ${1:과제 우선순위}",
+      "    x-axis ${2:적은 노력} --> ${3:많은 노력}",
+      "    y-axis ${4:낮은 효과} --> ${5:높은 효과}",
+      "    quadrant-1 ${6:계획하고 실행}",
+      "    quadrant-2 ${7:즉시 실행}",
+      "    quadrant-3 ${8:나중에 실행}",
+      "    quadrant-4 ${9:재검토}",
+      "    ${10:과제 A}: [${11:0.3}, ${12:0.8}]",
+      "    과제 B: [0.7, 0.6]",
+      "    과제 C: [0.2, 0.3]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid XY 차트": {
+    "prefix": "mermaid-xychart",
+    "description": "Mermaid XY 차트 (막대 또는 선 차트)를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "xychart-beta",
+      "    %% bar는 막대, line은 선을 그립니다. x축 항목 수만큼 값을 지정하세요",
+      "    title \"${1:월별 매출}\"",
+      "    x-axis [${2:\"1월\", \"2월\", \"3월\", \"4월\"}]",
+      "    y-axis \"${3:매출 (천 USD)}\" ${4:0} --> ${5:100}",
+      "    bar [${6:30, 45, 60, 80}]",
+      "    line [${7:30, 45, 60, 80}]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 레이더 차트": {
+    "prefix": "mermaid-radar",
+    "description": "Mermaid 레이더 차트 (축마다의 값으로 계열을 비교하는 차트)를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "radar-beta",
+      "    %% axis는 축, curve는 계열을 정의합니다. 값은 축 순서대로 나열하세요",
+      "    title ${1:기술 비교}",
+      "    axis design[\"설계\"], build[\"구현\"], test[\"테스트\"], ops[\"운영\"]",
+      "    curve a[\"A 씨\"]{4, 3, 5, 2}",
+      "    curve b[\"B 씨\"]{2, 5, 3, 4}",
+      "    max 5",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 요구 사항 다이어그램": {
+    "prefix": "mermaid-requirement",
+    "description": "Mermaid 요구 사항 다이어그램 (요구 사항과 이를 충족하는 요소)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "requirementDiagram",
+      "    %% requirement는 요구 사항을, element는 이를 충족하는 대상을 선언합니다. - satisfies ->로 연결합니다",
+      "    requirement ${1:login} {",
+      "        id: 1",
+      "        text: \"사용자가 로그인할 수 있음\"",
+      "        risk: high",
+      "        verifymethod: test",
+      "    }",
+      "    element ${2:login_page} {",
+      "        type: \"화면\"",
+      "    }",
+      "    ${2:login_page} - satisfies -> ${1:login}",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid C4 다이어그램": {
+    "prefix": "mermaid-c4",
+    "description": "Mermaid C4 다이어그램 (시스템, 사용자 및 관련된 외부 시스템)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "C4Context",
+      "    %% Person은 사용자, System은 자체 시스템, System_Ext는 외부 시스템, Rel은 관계입니다",
+      "    title ${1:주문 시스템 개요}",
+      "    Person(customer, \"고객\", \"상품을 주문합니다\")",
+      "    System(shop, \"주문 시스템\", \"주문을 접수합니다\")",
+      "    System_Ext(mail, \"메일 발송\", \"알림을 보냅니다\")",
+      "    Rel(customer, shop, \"주문합니다\")",
+      "    Rel(shop, mail, \"알림을 요청합니다\")",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 블록 다이어그램": {
+    "prefix": "mermaid-block",
+    "description": "Mermaid 블록 다이어그램 (격자에 놓고 화살표로 연결한 상자)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "block-beta",
+      "    %% columns는 열 수를 정하고, space는 빈 칸, -->는 화살표입니다",
+      "    columns 3",
+      "    input[\"${1:입력}\"] process[\"${2:처리}\"] output[\"${3:출력}\"]",
+      "    space log[\"로그\"] space",
+      "    input --> process",
+      "    process --> output",
+      "    process --> log",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid Sankey 다이어그램": {
+    "prefix": "mermaid-sankey",
+    "description": "Mermaid Sankey 다이어그램 (양의 흐름)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "sankey-beta",
+      "    %% 각 줄은 원본,대상,양입니다. 이름은 ASCII 영문자와 숫자로 쓰세요 (Mermaid는 ASCII가 아닌 이름을 읽을 수 없습니다)",
+      "    ${1:Power},Home,30",
+      "    ${1:Power},Factory,50",
+      "    ${2:Gas},Home,20",
+      "    ${2:Gas},Factory,10",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 패킷 다이어그램": {
+    "prefix": "mermaid-packet",
+    "description": "Mermaid 패킷 다이어그램 (비트 단위로 배치한 필드)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "packet-beta",
+      "    %% 시작 비트-끝 비트: \"필드 이름\"",
+      "    title ${1:UDP 헤더}",
+      "    0-15: \"원본 포트\"",
+      "    16-31: \"대상 포트\"",
+      "    32-47: \"길이\"",
+      "    48-63: \"체크섬\"",
+      "    64-95: \"데이터 (가변 길이)\"",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 벤 다이어그램": {
+    "prefix": "mermaid-venn",
+    "description": "Mermaid 벤 다이어그램 (겹치는 집합)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "venn-beta",
+      "    %% set은 집합을 정의하고, union은 겹치는 부분에 이름을 붙입니다",
+      "    title ${1:담당 영역의 겹침}",
+      "    set Front[\"프런트엔드\"]",
+      "    set Back[\"백엔드\"]",
+      "    union Front,Back[\"API\"]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 칸반": {
+    "prefix": "mermaid-kanban",
+    "description": "Mermaid 칸반 보드 (열별 카드)를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "kanban",
+      "    %% 들여쓰기가 얕은 줄은 열, 깊은 줄은 카드입니다",
+      "    todo[${1:할 일}]",
+      "        spec[사양 작성]",
+      "        screen[화면 만들기]",
+      "    doing[${2:진행 중}]",
+      "        api[API 만들기]",
+      "    done[${3:완료}]",
+      "        setup[환경 설정]",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 트리맵": {
+    "prefix": "mermaid-treemap",
+    "description": "Mermaid 트리맵 (중첩된 면적으로 나타낸 양)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "treemap-beta",
+      "    %% 들여쓰기로 항목을 중첩합니다. 각 말단 항목에는 : 뒤에 값을 지정하세요",
+      "    \"${1:개발}\"",
+      "        \"설계\": 30",
+      "        \"구현\": 50",
+      "    \"${2:운영}\"",
+      "        \"유지 관리\": 15",
+      "        \"모니터링\": 5",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 아키텍처 다이어그램": {
+    "prefix": "mermaid-architecture",
+    "description": "Mermaid 아키텍처 다이어그램 (구성 요소와 연결 방식)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "architecture-beta",
+      "    %% group은 그룹, service는 구성 요소입니다. :L :R :T :B로 선이 연결될 변을 선택합니다",
+      "    group app(cloud)[\"${1:앱}\"]",
+      "    service web(server)[\"웹 서버\"] in app",
+      "    service db(database)[\"데이터베이스\"] in app",
+      "    service disk(disk)[\"스토리지\"] in app",
+      "    web:R -- L:db",
+      "    web:B -- T:disk",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 트리 보기": {
+    "prefix": "mermaid-treeview",
+    "description": "Mermaid 트리 보기 (폴더 트리 같은 계층 구조)를 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "treeView-beta",
+      "    %% 들여쓰기로 계층을 나타냅니다",
+      "    \"${1:프로젝트}\"",
+      "        \"src\"",
+      "            \"main.rs\"",
+      "            \"lib.rs\"",
+      "        \"docs\"",
+      "            \"README.md\"",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 이시카와 다이어그램": {
+    "prefix": "mermaid-ishikawa",
+    "description": "Mermaid 이시카와 다이어그램 (결과와 원인을 나타낸 생선뼈 그림)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "ishikawa-beta",
+      "    %% 첫 줄은 결과, 들여쓴 줄은 원인입니다",
+      "    ${1:불량이 너무 많음}",
+      "        사람",
+      "            경험 부족",
+      "        방법",
+      "            오래된 절차",
+      "        재료",
+      "            공급업체의 품질 편차",
+      "```",
+      "$0"
+    ]
+  },
+  "Mermaid 이벤트 모델링": {
+    "prefix": "mermaid-eventmodeling",
+    "description": "Mermaid 이벤트 모델 (화면, 명령, 이벤트의 흐름)을 삽입합니다.",
+    "body": [
+      "```mermaid",
+      "eventmodeling",
+      "    %% tf 번호 종류 이름. ui는 화면, cmd는 명령, evt는 이벤트, rmo는 읽기 모델입니다. 이름은 ASCII 영문자와 숫자로 쓰세요 (Mermaid는 ASCII가 아닌 이름을 읽을 수 없습니다)",
+      "    tf 01 ui ${1:CartScreen}",
+      "    tf 02 cmd AddItem",
+      "    tf 03 evt ItemAdded",
+      "    tf 04 rmo CartItems ->> 03",
+      "```",
+      "$0"
+    ]
+  }
+}

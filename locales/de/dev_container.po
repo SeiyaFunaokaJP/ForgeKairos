@@ -1,0 +1,61 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Confirm Selections"
+msgstr "Auswahl bestätigen"
+
+msgid "Create Dev Container"
+msgstr "Dev-Container erstellen"
+
+msgid "Error Creating Dev Container Definition"
+msgstr "Fehler beim Erstellen der Dev-Container-Definition"
+
+msgid "Error Retrieving Templates"
+msgstr "Fehler beim Abrufen der Vorlagen"
+
+msgid "Go Back"
+msgstr "Zurück"
+
+msgid "Multiple containers match this project's dev container labels ({ids}). Zed can't decide which to connect to. Stop and remove the stale one(s) with `docker stop <id>` and `docker rm <id>`, then try again."
+msgstr "Mehrere Container entsprechen den Dev-Container-Labels dieses Projekts ({ids}). ForgeKairos kann nicht entscheiden, mit welchem eine Verbindung hergestellt werden soll. Beenden und entfernen Sie die veralteten Container mit `docker stop <id>` und `docker rm <id>` und versuchen Sie es dann erneut."
+
+msgid "Overwrite"
+msgstr "Überschreiben"
+
+msgid "Overwrite Existing Configuration?"
+msgstr "Vorhandene Konfiguration überschreiben?"
+
+msgid "Querying features..."
+msgstr "Features werden abgefragt..."
+
+msgid "Querying template registry..."
+msgstr "Vorlagenverzeichnis wird abgefragt..."
+
+msgid "Search for Dev Container Templates"
+msgstr "Nach Dev-Container-Vorlagen suchen"
+
+msgid "Select Feature"
+msgstr "Feature auswählen"
+
+msgid "Select a template"
+msgstr "Vorlage auswählen"
+
+msgid "Select features to add"
+msgstr "Hinzuzufügende Features auswählen"
+
+msgid "Template Option: "
+msgstr "Vorlagenoption: "
+
+msgctxt "dev container wizard"
+msgid "Continue"
+msgstr "Weiter"

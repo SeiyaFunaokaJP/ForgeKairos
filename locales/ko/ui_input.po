@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Hide"
+msgstr "숨기기"
+
+msgid "Show"
+msgstr "표시"

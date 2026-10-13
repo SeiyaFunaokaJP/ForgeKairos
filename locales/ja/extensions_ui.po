@@ -5,6 +5,9 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "(v{installed_version} installed)"
+msgstr "(v{installed_version} をインストール済み)"
+
 msgid "Agent Servers"
 msgstr "エージェントサーバー"
 
@@ -191,9 +194,6 @@ msgstr "TypeScript のサポートは ForgeKairos に組み込まれています
 msgid "Uninstall"
 msgstr "アンインストール"
 
-msgid "Upgrade"
-msgstr "アップグレード"
-
 msgid "View Documentation"
 msgstr "ドキュメントを表示"
 
@@ -218,3 +218,7 @@ msgstr "v{version} はこのバージョンの ForgeKairos と互換性があり
 msgctxt "extension card"
 msgid "Configure"
 msgstr "構成"
+
+msgctxt "extension card"
+msgid "Upgrade"
+msgstr "アップグレード"

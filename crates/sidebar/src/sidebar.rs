@@ -6762,7 +6762,7 @@ impl Sidebar {
                 let sidebar = sidebar.clone();
                 let rename_title = rename_title.clone();
                 ContextMenu::build(window, cx, move |menu, _window, _cx| {
-                    menu.entry("Rename Title", None, move |window, cx| {
+                    menu.entry(i18n::t!("Rename Title"), None, move |window, cx| {
                         sidebar
                             .update(cx, |sidebar, cx| {
                                 sidebar.start_renaming_entry(
@@ -8343,7 +8343,7 @@ pub fn dump_workspace_info(
         });
 
         let buffer = cx.new(|cx| {
-            editor::MultiBuffer::singleton(buffer, cx).with_title("Workspace Info".into())
+            editor::MultiBuffer::singleton(buffer, cx).with_title(i18n::t!("Workspace Info").into())
         });
 
         _this.update_in(cx, |workspace, window, cx| {
@@ -8353,7 +8353,7 @@ pub fn dump_workspace_info(
                         editor::Editor::for_multibuffer(buffer, Some(project.clone()), window, cx);
                     editor.set_read_only(true);
                     editor.set_should_serialize(false, cx);
-                    editor.set_breadcrumb_header("Workspace Info".into());
+                    editor.set_breadcrumb_header(i18n::t!("Workspace Info").into());
                     editor
                 })),
                 None,

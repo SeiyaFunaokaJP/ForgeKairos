@@ -45,7 +45,7 @@ const PROXY_CHILD_PROCESSES_NOTE: &str = i18n::msg!(
 /// English catalog included).
 const FILE_TEMPLATE_HEADER: &str = i18n::msg!(
     "\
-// Zed egress allowlist (.forgekairos-docs/DESIGN.md §4)
+// Zed egress allowlist
 //
 // Outbound traffic that AI initiates (AI providers, agent tools, MCP servers,
 // external agent processes) is allowed only to the hosts written here.
@@ -1428,7 +1428,7 @@ mod tests {
             );
             let english = file_template();
             assert!(
-                english.starts_with("// ForgeKairos egress allowlist (.forgekairos-docs/DESIGN.md"),
+                english.starts_with("// ForgeKairos egress allowlist\n//\n"),
                 "{english}"
             );
         }

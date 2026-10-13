@@ -1,0 +1,241 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "<global>"
+msgstr "<global>"
+
+msgid "<no arguments>"
+msgstr "<sem argumentos>"
+
+msgid "Action"
+msgstr "Ação"
+
+msgid "Action '{}' not found"
+msgstr "Ação '{}' não encontrada"
+
+msgid "Action Arguments"
+msgstr "Argumentos da ação"
+
+msgid "Action name is required"
+msgstr "O nome da ação é obrigatório"
+
+msgid "Arguments"
+msgstr "Argumentos"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Cannot remove a keybinding that does not exist"
+msgstr "Não é possível remover uma associação de teclas que não existe"
+
+msgid "Clear Keystrokes"
+msgstr "Limpar sequência de teclas"
+
+msgid "Copy Action"
+msgstr "Copiar ação"
+
+msgid "Copy Context"
+msgstr "Copiar contexto"
+
+msgid "Could not save updated keybinding"
+msgstr "Não foi possível salvar a associação de teclas atualizada"
+
+msgid "Create Keybinding"
+msgstr "Criar associação de teclas"
+
+msgid "Delete"
+msgstr "Excluir"
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "Edit Arguments"
+msgstr "Editar argumentos"
+
+msgid "Edit Context"
+msgstr "Editar contexto"
+
+msgid "Edit Keybinding"
+msgstr "Editar associação de teclas"
+
+msgid "Edit Keystroke"
+msgstr "Editar sequência de teclas"
+
+msgid "Edit in JSON"
+msgstr "Editar em JSON"
+
+msgid "Edit this binding"
+msgstr "Editar esta associação de teclas"
+
+msgid "Failed to load keymap file"
+msgstr "Falha ao carregar o arquivo de mapa de teclas"
+
+msgid "Failed to parse action arguments as JSON"
+msgstr "Falha ao analisar os argumentos da ação como JSON"
+
+msgid "Failed to parse key context"
+msgstr "Falha ao analisar o contexto de teclas"
+
+msgid "Failed to update keybinding"
+msgstr "Falha ao atualizar a associação de teclas"
+
+msgid "Failed to validate action arguments"
+msgstr "Falha ao validar os argumentos da ação"
+
+msgid "Failed to write keymap file"
+msgstr "Falha ao gravar o arquivo de mapa de teclas"
+
+msgid "Filter action names…"
+msgstr "Filtrar nomes de ação…"
+
+msgid "Filters"
+msgstr "Filtros"
+
+msgid "Hit it three times to execute"
+msgstr "Pressione três vezes para executar"
+
+msgid "Keybinding Context"
+msgstr "Contexto de associação de teclas"
+
+msgid "Keymap Editor"
+msgstr "Editor de mapa de teclas"
+
+msgid "Keystrokes"
+msgstr "Sequência de teclas"
+
+msgid "Keystrokes cannot be empty"
+msgstr "A sequência de teclas não pode ficar vazia"
+
+msgid "No Action"
+msgstr "Nenhuma ação"
+
+msgid "No conflicting keybinds found"
+msgstr "Nenhuma associação de teclas conflitante encontrada"
+
+msgid "No conflicting keybinds found that match the provided query"
+msgstr "Nenhuma associação de teclas conflitante corresponde à consulta fornecida"
+
+msgid "No keybinds found matching the entered keystrokes"
+msgstr "Nenhuma associação de teclas encontrada para a sequência de teclas inserida"
+
+msgid "No matches found for the provided query"
+msgstr "Nenhuma correspondência encontrada para a consulta fornecida"
+
+msgid "REC"
+msgstr "GRAV"
+
+msgid "SEARCH"
+msgstr "PESQUISAR"
+
+msgid "Save"
+msgstr "Salvar"
+
+msgid "Saved edits to the {} action."
+msgstr "Edições salvas na ação {}."
+
+msgid "Search by Keystrokes"
+msgstr "Pesquisar por sequência de teclas"
+
+msgid "Show Matching Keybindings"
+msgstr "Mostrar associações de teclas correspondentes"
+
+msgid "Show matching keybinds"
+msgstr "Mostrar associações de teclas correspondentes"
+
+msgid "Source"
+msgstr "Origem"
+
+msgid "Start Recording"
+msgstr "Iniciar gravação"
+
+msgid "Start Searching"
+msgstr "Iniciar pesquisa"
+
+msgid "Stop Recording"
+msgstr "Parar gravação"
+
+msgid "Stop Searching"
+msgstr "Parar pesquisa"
+
+msgid "There is {count} binding with the same keystrokes."
+msgid_plural "There are {count} bindings with the same keystrokes."
+msgstr[0] "Há {count} associação com a mesma sequência de teclas."
+msgstr[1] "Há {count} associações com a mesma sequência de teclas."
+
+msgid "This action is unbound"
+msgstr "Esta ação não tem associação de teclas"
+
+msgid "This binding is overridden by other bindings."
+msgstr "Esta associação é substituída por outras associações."
+
+msgid "This binding is overridden by other bindings.\nUse {}+click to edit this binding"
+msgstr "Esta associação é substituída por outras associações.\nUse {}+clique para editar esta associação"
+
+msgid "This binding is overridden."
+msgstr "Esta associação é substituída."
+
+msgid "This keybinding is overridden by the '{}' binding from {}."
+msgstr "Esta associação de teclas é substituída pela associação '{}' de {}."
+
+msgid "Toggle Exact Match Mode"
+msgstr "Alternar modo de correspondência exata"
+
+msgid "Type an action name"
+msgstr "Digite o nome de uma ação"
+
+msgid "Use {}+click to show all conflicts"
+msgstr "Use {}+clique para mostrar todos os conflitos"
+
+msgid "User"
+msgstr "Usuário"
+
+msgid "View"
+msgstr "Exibir"
+
+msgid "View conflicts"
+msgstr "Exibir conflitos"
+
+msgid "Your keybind would conflict with other actions"
+msgstr "Sua associação de teclas entraria em conflito com outras ações"
+
+msgid "Your keybind would conflict with the \"{}\" action"
+msgstr "Sua associação de teclas entraria em conflito com a ação \"{}\""
+
+msgid "Your keybind would conflict with the \"{}\" action and {} other bindings"
+msgstr "A sua associação de teclas entraria em conflito com a ação \"{}\" e com {} outras associações"
+
+msgid "the vim keymap"
+msgstr "o mapa de teclas do Vim"
+
+msgid "your base keymap"
+msgstr "o seu mapa de teclas base"
+
+msgid "your keymap"
+msgstr "o seu mapa de teclas"
+
+msgctxt "keybinding"
+msgid "Categories"
+msgstr "Categorias"
+
+msgctxt "keybinding"
+msgid "Conflicts"
+msgstr "Conflitos"
+
+msgctxt "keybinding"
+msgid "Context"
+msgstr "Contexto"
+
+msgctxt "keybinding"
+msgid "Create"
+msgstr "Adicionar"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "Padrão"

@@ -88,9 +88,7 @@ crates/keymap_editor/src/keymap_editor.rs	fact	Zed Keybind Context
 crates/language_models/src/provider.rs	log	ignoring custom {provider_name} header `{name}`: managed by Zed and cannot be overridden
 crates/language_models/src/provider/cloud.rs	service	Business Plan - Zed models disabled
 crates/language_models/src/provider/cloud.rs	service	Business Plan - Zed models enabled
-crates/language_models/src/provider/cloud.rs	service	Enable Fast Mode for Zed?
 crates/language_models/src/provider/cloud.rs	service	Failed to sign in with your Zed account (401).
-crates/language_models/src/provider/cloud.rs	service	Fast mode routes requests through the upstream provider's fast mode or priority tier. The upstream provider's premium per-token pricing applies and is passed through to your Zed billing.
 crates/language_models/src/provider/cloud.rs	service	The configuration surface for Zed's hosted AI models, showing the user's connection status, current plan, trial eligibility, and entry points for enabling the Zed model provider.
 crates/language_models/src/provider/cloud.rs	service	You are not signed in to your Zed account. Sign in to continue.
 crates/language_models_cloud/src/language_models_cloud.rs	service	Not signed in to Zed.
@@ -133,7 +131,6 @@ crates/zed/src/reliability/hang_detection.rs	dev	Hanging the foreground executor
 crates/zed/src/reliability/hang_detection.rs	dev	Hanging the foreground for {hang_time:?} by blocking in an action. Zed will be unresponsive for that time. This should trigger a report in the log
 crates/zed/src/visual_test_runner.rs	dev	# Test Project\n\nThis is a test project for visual testing of Zed.\n\n## Features\n\n- Feature 1\n- Feature 2\n- Feature 3\n\n## Usage\n\n```bash\ncargo run\n```\n
 crates/zed/src/visual_test_runner.rs	dev	Show me the Zed logo
-crates/zed/src/watcher_debug.rs	dev	Patterns Zed skips when scanning your open local projects. Excluded files may still produce watcher events.
 crates/zed/src/zed.rs	log	  {\n    // Runs automatically after Zed creates a new git worktree.\n    // $ZED_WORKTREE_ROOT is the new worktree's root directory, and\n    // $ZED_MAIN_GIT_WORKTREE is the original repository's working directory.\n    \"label\": \"Set up new worktree\",\n    \"command\": \"echo \\\"Setting up $ZED_WORKTREE_ROOT — edit this command\\\"\",\n    \"cwd\": \"$ZED_WORKTREE_ROOT\",\n    \"hooks\": [\"create_worktree\"]\n  }
 crates/zed/src/zed/windows_only_instance.rs	identifier	Handshake after Zed spawn
 crates/zed/src/zed/windows_only_instance.rs	identifier	Handshake before Zed spawn

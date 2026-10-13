@@ -1,0 +1,30 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Edit Zoom"
+msgstr "Modifier le zoom"
+
+msgid "Fit to View"
+msgstr "Ajuster à la vue"
+
+msgid "Right-click to reset to 100%."
+msgstr "Clic droit pour réinitialiser à 100 %."
+
+msgid "Unknown"
+msgstr "Inconnu"
+
+msgid "Zoom In"
+msgstr "Zoom avant"
+
+msgid "Zoom Out"
+msgstr "Zoom arrière"
+
+msgid "{} channels, {} bits per pixel"
+msgstr "{} canaux, {} bits par pixel"

@@ -1,0 +1,34 @@
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "All threads"
+msgstr "所有线程"
+
+msgid "Include profiler timings"
+msgstr "包含分析器自身的计时"
+
+msgid "Pause"
+msgstr "暂停"
+
+msgid "Profiler Window"
+msgstr "分析器窗口"
+
+msgid "Remote: All threads"
+msgstr "远程：所有线程"
+
+msgid "Remote: Foreground"
+msgstr "远程：前台"
+
+msgid "Resume"
+msgstr "继续"
+
+msgid "Save"
+msgstr "保存"
+
+msgctxt "profiler thread"
+msgid "Foreground"
+msgstr "前台"

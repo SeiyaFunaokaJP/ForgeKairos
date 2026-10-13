@@ -1,0 +1,575 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "'{path}' does not exist"
+msgstr "「{path}」不存在"
+
+msgid "A language server"
+msgstr "語言伺服器"
+
+msgid "Are you sure you want to restart?"
+msgstr "確定要重新啟動嗎？"
+
+msgid "Body Text"
+msgstr "內文"
+
+msgid "Bottom"
+msgstr "下方"
+
+msgid "Bottom dock"
+msgstr "底部停駐區"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot drop files on a remote project"
+msgstr "無法將檔案拖放到遠端專案上"
+
+msgid "Cannot drop local files on a remote SSH/Docker project"
+msgstr "無法將本機檔案拖放至遠端 SSH/Docker 專案"
+
+msgid "Click to Close"
+msgstr "按一下以關閉"
+
+msgid "Click to close"
+msgstr "按一下以關閉"
+
+msgid "Clone Repository"
+msgstr "複製儲存庫"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Close All"
+msgstr "全部關閉"
+
+msgid "Close Clean"
+msgstr "關閉未修改"
+
+msgid "Close Left"
+msgstr "關閉左側"
+
+msgid "Close Multibuffers"
+msgstr "關閉多重緩衝區"
+
+msgid "Close Others"
+msgstr "關閉其他"
+
+msgid "Close Right"
+msgstr "關閉右側"
+
+msgid "Close Tab"
+msgstr "關閉分頁"
+
+msgid "Close Without Saving"
+msgstr "不儲存直接關閉"
+
+msgid "Close window and hang up"
+msgstr "關閉視窗並掛斷"
+
+msgid "Close {} Dock"
+msgstr "關閉 {} 停駐區"
+
+msgid "Collaborate with Agents"
+msgstr "與代理協作"
+
+msgid "Colors"
+msgstr "色彩"
+
+msgid "Configure"
+msgstr "設定"
+
+msgid "Copy Description"
+msgstr "複製描述"
+
+msgid "Copy File Permalink"
+msgstr "複製檔案永久連結"
+
+msgid "Copy Message"
+msgstr "複製訊息"
+
+msgid "Copy Path"
+msgstr "複製路徑"
+
+msgid "Copy Relative Path"
+msgstr "複製相對路徑"
+
+msgid "Could not open file"
+msgstr "無法開啟檔案"
+
+msgid "Could not translate the dropped paths into WSL paths"
+msgstr "無法將拖放的路徑轉換為 WSL 路徑"
+
+msgid "Customize Keymaps"
+msgstr "自訂按鍵對應"
+
+msgid "Discard Edits"
+msgstr "捨棄編輯"
+
+msgid "Discard all"
+msgstr "全部捨棄"
+
+msgid "Dismiss"
+msgstr "關閉"
+
+msgid "Do you want to leave the current call?"
+msgstr "要離開目前的通話嗎？"
+
+msgid "Do you want to save all changes in the following files?"
+msgstr "要儲存下列檔案中的所有變更嗎？"
+
+msgid "Do you want to save changes to the following files?"
+msgstr "要儲存下列檔案的變更嗎？"
+
+msgid "Do you want to switch channels?"
+msgstr "要切換頻道嗎？"
+
+msgid "Dock {}"
+msgstr "停駐 {}"
+
+msgid "Don't Save"
+msgstr "不要儲存"
+
+msgid "Drag to move to another dock"
+msgstr "拖曳以移至其他停駐區"
+
+msgid "Editor"
+msgstr "編輯器"
+
+msgid "Enter a folder to trust"
+msgstr "輸入要信任的資料夾"
+
+msgid "Enter an absolute folder path"
+msgstr "輸入絕對資料夾路徑"
+
+msgid "Explore Extensions"
+msgstr "探索擴充功能"
+
+msgid "Failed to copy file permalink: {err}"
+msgstr "無法複製檔案的永久連結：{err}"
+
+msgid "Failed to join channel"
+msgstr "加入頻道失敗"
+
+msgid "Failed to join project"
+msgstr "加入專案失敗"
+
+msgid "Failed to load the database file."
+msgstr "無法載入資料庫檔案。"
+
+msgid "Failed to open file permalink: {err}"
+msgstr "無法開啟檔案的永久連結：{err}"
+
+msgid "Failed to save"
+msgstr "儲存失敗"
+
+msgid "File an Issue"
+msgstr "回報問題"
+
+msgid "Fixed Width"
+msgstr "固定寬度"
+
+msgid "Flex Width"
+msgstr "彈性寬度"
+
+msgid "Folder to trust"
+msgstr "要信任的資料夾"
+
+msgid "Follow {} to their active project"
+msgstr "跟隨 {} 前往其使用中的專案"
+
+msgid "Get Started"
+msgstr "開始使用"
+
+msgid "Go Back"
+msgstr "返回"
+
+msgid "Go Forward"
+msgstr "前進"
+
+msgid "Headline 1"
+msgstr "標題 1"
+
+msgid "Headline 2"
+msgstr "標題 2"
+
+msgid "Headline 3"
+msgstr "標題 3"
+
+msgid "Headline 4"
+msgstr "標題 4"
+
+msgid "Headline 5"
+msgstr "標題 5"
+
+msgid "Headline Sizes"
+msgstr "標題大小"
+
+msgid "Hide Button"
+msgstr "隱藏按鈕"
+
+msgid "Hide {icon_tooltip}"
+msgstr "隱藏 {icon_tooltip}"
+
+msgid "Language servers from running"
+msgstr "語言伺服器的執行"
+
+msgid "Leaving this call will unshare your current project."
+msgstr "離開此通話將取消分享目前的專案。"
+
+msgid "Left"
+msgstr "左"
+
+msgid "Left dock"
+msgstr "左側停駐區"
+
+msgid "Locked Tab"
+msgstr "已鎖定的分頁"
+
+msgid "MCP Server integrations from installing"
+msgstr "MCP 伺服器整合的安裝"
+
+msgid "Make Tab Editable"
+msgstr "設為可編輯"
+
+msgid "Make Tab Read-Only"
+msgstr "設為唯讀"
+
+msgid "Move to New Window"
+msgstr "移至新視窗"
+
+msgid "Move to {} Dock"
+msgstr "移至 {} 停駐區"
+
+msgid "Must be a parent folder of the project"
+msgstr "必須是專案的上層資料夾"
+
+msgid "New Center Terminal"
+msgstr "新增中央終端機"
+
+msgid "New File"
+msgstr "新增檔案"
+
+msgid "New Terminal"
+msgstr "新增終端機"
+
+msgid "New Window"
+msgstr "新視窗"
+
+msgid "New…"
+msgstr "新增…"
+
+msgid "No matching channel was found. Please check the link and try again."
+msgstr "找不到相符的頻道。請檢查連結後再試一次。"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Open Agent Panel"
+msgstr "開啟代理面板"
+
+msgid "Open Command Palette"
+msgstr "開啟命令選擇區"
+
+msgid "Open File"
+msgstr "開啟檔案"
+
+msgid "Open File Permalink"
+msgstr "開啟檔案永久連結"
+
+msgid "Open Project"
+msgstr "開啟專案"
+
+msgid "Open Settings"
+msgstr "開啟設定"
+
+msgid "Open Threads Sidebar"
+msgstr "開啟會話側邊欄"
+
+msgid "Open a link from a language server?"
+msgstr "要開啟來自語言伺服器的連結嗎？"
+
+msgid "Open in Default App"
+msgstr "以預設應用程式開啟"
+
+msgid "Open in Terminal"
+msgstr "在終端機中開啟"
+
+msgid "Open in WSL"
+msgstr "在 WSL 中開啟"
+
+msgid "Open threads sidebar"
+msgstr "開啟會話側邊欄"
+
+msgid "Overview"
+msgstr "概觀"
+
+msgid "Overwrite"
+msgstr "覆寫"
+
+msgid "Pin Tab"
+msgstr "釘選分頁"
+
+msgid "Please check your internet connection and try again."
+msgstr "請檢查網路連線後再試一次。"
+
+msgid "Please sign in to continue."
+msgstr "請登入以繼續。"
+
+msgid "Pop Out to New Window"
+msgstr "彈出至新視窗"
+
+msgid "Project settings from being applied"
+msgstr "專案設定的套用"
+
+msgid "Read-Only Tab"
+msgstr "唯讀分頁"
+
+msgid "Recent Projects"
+msgstr "最近的專案"
+
+msgid "Rename"
+msgstr "重新命名"
+
+msgid "Restart"
+msgstr "重新啟動"
+
+msgid "Restricted Mode prevents:"
+msgstr "受限模式將阻止："
+
+msgid "Return to Onboarding"
+msgstr "返回新手導覽"
+
+msgid "Reveal In Project Panel"
+msgstr "在專案面板中顯示"
+
+msgid "Review .zed/settings.json for any extensions or commands configured by this project."
+msgstr "請檢閱 .zed/settings.json，確認此專案設定的擴充功能或命令。"
+
+msgid "Right"
+msgstr "右"
+
+msgid "Right dock"
+msgstr "右側停駐區"
+
+msgid "Right-click or Shift-click to stack below"
+msgstr "按右鍵或 Shift+按一下以在下方並列"
+
+msgid "Right-click or Shift-click to stack side by side"
+msgstr "按右鍵或 Shift+按一下以在旁邊並列"
+
+msgid "Run multiple threads at once, mix and match any ACP-compatible agent, and keep work conflict-free with worktrees."
+msgstr "一次執行多個會話，混搭任何 ACP 相容的代理，並透過工作樹避免工作衝突。"
+
+msgid "Save"
+msgstr "儲存"
+
+msgid "Save all"
+msgstr "全部儲存"
+
+msgid "Search Project"
+msgstr "搜尋專案"
+
+msgid "Search Symbols"
+msgstr "搜尋符號"
+
+msgid "See docs"
+msgstr "查看文件"
+
+msgid "Shift-click to Suppress"
+msgstr "Shift+按一下以抑制"
+
+msgid "Split Down"
+msgstr "向下分割"
+
+msgid "Split Left"
+msgstr "向左分割"
+
+msgid "Split Pane"
+msgstr "分割窗格"
+
+msgid "Split Right"
+msgstr "向右分割"
+
+msgid "Split Up"
+msgstr "向上分割"
+
+msgid "Stack Below"
+msgstr "在下方並列"
+
+msgid "Stack Side by Side"
+msgstr "在旁邊並列"
+
+msgid "Stack in {} Dock"
+msgstr "在 {} 停駐區中並列"
+
+msgid "Stack {icon_tooltip} Below"
+msgstr "將 {icon_tooltip} 在下方並列"
+
+msgid "Stack {icon_tooltip} Side by Side"
+msgstr "將 {icon_tooltip} 在旁邊並列"
+
+msgid "Status bar"
+msgstr "狀態列"
+
+msgid "Stay in Restricted Mode"
+msgstr "保持受限模式"
+
+msgid "Suppress"
+msgstr "抑制"
+
+msgid "Suppress with shift-click"
+msgstr "使用 Shift+按一下以抑制"
+
+msgid "Task spawn failed: {e}"
+msgstr "工作執行失敗：{e}"
+
+msgid "Text"
+msgstr "文字"
+
+msgid "Text Colors"
+msgstr "文字色彩"
+
+msgid "The editor for what's next"
+msgstr "面向未來的編輯器"
+
+msgid "The folders were not changed because the selected folders could not be opened"
+msgstr "無法開啟選取的資料夾，因此未變更資料夾"
+
+msgid "Theme Preview"
+msgstr "佈景主題預覽"
+
+msgid "This buffer contains unsaved edits. Do you want to save it?"
+msgstr "此緩衝區包含未儲存的編輯。要儲存嗎？"
+
+msgid "This channel is private, and you do not have access. Please ask someone to add you and try again."
+msgstr "此頻道為私人頻道，您沒有存取權。請要求他人將您加入後再試一次。"
+
+msgid "This file has been deleted on disk since you started editing it. Do you want to recreate it?"
+msgstr "此檔案在開始編輯後已從磁碟刪除。要重新建立它嗎？"
+
+msgid "This file has changed on disk since you started editing it. Do you want to overwrite it?"
+msgstr "此檔案在開始編輯後已於磁碟上變更。要覆寫它嗎？"
+
+msgid "This tab is read-only"
+msgstr "此分頁為唯讀"
+
+msgid "This will make this tab editable"
+msgstr "這將使此分頁可編輯"
+
+msgid "Title bar"
+msgstr "標題列"
+
+msgid "Trust all projects in"
+msgstr "信任以下路徑中的所有專案"
+
+msgid "Trust all projects in the parent folders"
+msgstr "信任上層資料夾中的所有專案"
+
+msgid "Trust all projects in the {} folder"
+msgstr "信任 {} 資料夾中的所有專案"
+
+msgid "Trust all single files"
+msgstr "信任所有單一檔案"
+
+msgid "Trust and Continue"
+msgstr "信任並繼續"
+
+msgid "Typography"
+msgstr "排版"
+
+msgid "Unable to save file: {err}"
+msgstr "無法儲存檔案：{err}"
+
+msgid "Unlock Tab"
+msgstr "解除鎖定分頁"
+
+msgid "Unpin Tab"
+msgstr "取消釘選分頁"
+
+msgid "Unrecognized Project"
+msgstr "無法辨識的專案"
+
+msgid "Unrecognized Projects ({})"
+msgstr "無法辨識的專案（{}）"
+
+msgid "Unstack"
+msgstr "取消並列"
+
+msgid "Untitled"
+msgstr "未命名"
+
+msgid "Untrusted projects are opened in Restricted Mode to protect your system."
+msgstr "不受信任的專案會以受限模式開啟，以保護系統。"
+
+msgid "Welcome"
+msgstr "歡迎使用"
+
+msgid "Welcome back to Zed"
+msgstr "歡迎回到 ForgeKairos"
+
+msgid "Welcome to Zed"
+msgstr "歡迎使用 ForgeKairos"
+
+msgid "Wrapping Text"
+msgstr "換行文字"
+
+msgid "Yes, Join Channel"
+msgstr "是，加入頻道"
+
+msgid "You cannot add folders to someone else's project"
+msgstr "無法將資料夾新增至他人的專案"
+
+msgid "You cannot change the folders of someone else's project"
+msgstr "您無法變更他人專案的資料夾"
+
+msgid "Your are running an unsupported version of Zed. Please update to continue."
+msgstr "您正在執行不受支援的 ForgeKairos 版本。請更新以繼續。"
+
+msgid "empty project"
+msgstr "空專案"
+
+msgid "{display_path} is inside a WSL filesystem, some features may not work unless you open it with WSL remote"
+msgstr "{display_path} 位於 WSL 檔案系統中，某些功能可能無法運作，除非使用 WSL 遠端開啟"
+
+msgid "{server} asks to open this address in your browser:\n\n{url}"
+msgstr "{server} 要求在瀏覽器中開啟此網址：\n\n{url}"
+
+msgid "{}\n\nPlease try again."
+msgstr "{}\n\n請再試一次。"
+
+msgid "{}\n.. and {} more"
+msgstr "{}\n.. 還有 {} 個"
+
+msgid "{} Preview"
+msgstr "{} 預覽"
+
+msgid "{} contains unsaved edits. Do you want to save it?"
+msgstr "{} 包含未儲存的編輯。要儲存嗎？"
+
+msgid "{} is in an unshared pane"
+msgstr "{} 位於未分享的窗格中"
+
+msgid "{} is viewing a window outside of Zed"
+msgstr "{} 正在檢視 ForgeKairos 以外的視窗"
+
+msgid "{} is viewing an unshared Zed project"
+msgstr "{} 正在檢視未分享的 ForgeKairos 專案"
+
+msgid "{}'s screen"
+msgstr "{} 的螢幕"
+
+msgctxt "pane"
+msgid "Zoom In"
+msgstr "放大"
+
+msgctxt "pane"
+msgid "Zoom Out"
+msgstr "縮小"

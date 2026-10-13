@@ -1,0 +1,9 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Could not install the Go language server `gopls`, because `go` was not found."
+msgstr "找不到 `go`，因此無法安裝 Go 語言伺服器 `gopls`。"

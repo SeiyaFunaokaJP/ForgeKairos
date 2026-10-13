@@ -1,0 +1,79 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(image)"
+msgstr "(이미지)"
+
+msgid "(image: {alt})"
+msgstr "(이미지: {alt})"
+
+msgid "Annotation from {label}"
+msgstr "{label}의 주석"
+
+msgid "Can't open this step ({reason})"
+msgstr "이 단계를 열 수 없습니다 ({reason})"
+
+msgid "Couldn't open the file ({error})"
+msgstr "파일을 열지 못했습니다 ({error})"
+
+msgid "End Tour"
+msgstr "투어 종료"
+
+msgid "File not found"
+msgstr "파일을 찾을 수 없음"
+
+msgid "Folders can't be shown"
+msgstr "폴더는 표시할 수 없습니다"
+
+msgid "Invalid line range (lines {}-{})"
+msgstr "잘못된 줄 범위 ({}-{}줄)"
+
+msgid "Line {start_line} is past the end of the file ({line_count} lines)"
+msgstr "{start_line}줄이 파일 끝을 벗어났습니다 (파일은 {line_count}줄)"
+
+msgid "Line {}"
+msgstr "{}줄"
+
+msgid "Lines {}-{}"
+msgstr "{}-{}줄"
+
+msgid "Next Step"
+msgstr "다음 단계"
+
+msgid "Next ›"
+msgstr "다음 ›"
+
+msgid "Not a regular file"
+msgstr "일반 파일이 아님"
+
+msgid "Previous Step"
+msgstr "이전 단계"
+
+msgid "The file is too large (over 4 MiB)"
+msgstr "파일이 너무 큽니다 (4 MiB 초과)"
+
+msgid "Too long, cut to {max_chars} characters"
+msgstr "너무 길어서 {max_chars}자로 잘렸습니다"
+
+msgid "Tour from {}: {}"
+msgstr "{}의 투어: {}"
+
+msgid "Tour from {}: {} (click to go to the current step)"
+msgstr "{}의 투어: {} (클릭하여 현재 단계로 이동)"
+
+msgid "Tour {}/{}"
+msgstr "투어 {}/{}"
+
+msgid "‹ Previous"
+msgstr "‹ 이전"
+
+msgctxt "tour"
+msgid "End"
+msgstr "종료"

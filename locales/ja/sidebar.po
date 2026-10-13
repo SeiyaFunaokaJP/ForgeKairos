@@ -137,6 +137,9 @@ msgstr "他のチャンネルのスレッドが見つかりました"
 msgid "Toggle Sidebar"
 msgstr "サイドバーの表示切り替え"
 
+msgid "Workspace Info"
+msgstr "ワークスペース情報"
+
 msgid "{count} thread is waiting for confirmation"
 msgid_plural "{count} threads are waiting for confirmation"
 msgstr[0] "{count} 件のスレッドが確認待ちです"

@@ -363,9 +363,9 @@ impl DapStore {
                     })
                 })
             }
-            DapStoreMode::Collab => {
-                Task::ready(Err(anyhow!("Debugging is not yet supported via collab")))
-            }
+            DapStoreMode::Collab => Task::ready(Err(anyhow!(i18n::t!(
+                "Debugging is not yet supported via collab"
+            )))),
         }
     }
 
@@ -411,16 +411,16 @@ impl DapStore {
                             return Ok(result);
                         }
 
-                        anyhow::bail!(
+                        anyhow::bail!(i18n::t!(
                             "None of the locators for task `{}` completed successfully",
                             build_command.label
-                        )
+                        ))
                     })
                 } else {
-                    Task::ready(Err(anyhow!(
+                    Task::ready(Err(anyhow!(i18n::t!(
                         "Couldn't find any locator for task `{}`. Specify the `attach` or `launch` arguments in your debug scenario definition",
                         build_command.label
-                    )))
+                    ))))
                 }
             }
             DapStoreMode::Remote(remote) => {
@@ -434,9 +434,9 @@ impl DapStore {
                     DebugRequest::from_proto(response)
                 })
             }
-            DapStoreMode::Collab => {
-                Task::ready(Err(anyhow!("Debugging is not yet supported via collab")))
-            }
+            DapStoreMode::Collab => Task::ready(Err(anyhow!(i18n::t!(
+                "Debugging is not yet supported via collab"
+            )))),
         }
     }
 

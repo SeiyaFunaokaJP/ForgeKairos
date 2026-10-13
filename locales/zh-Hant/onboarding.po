@@ -1,0 +1,117 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Agent Setup"
+msgstr "代理設定"
+
+msgid "Automatically mark all new projects as trusted to unlock all Zed's features"
+msgstr "自動將所有新專案標記為受信任，以解鎖 ForgeKairos 的所有功能"
+
+msgid "Automatically pull your settings from other editors"
+msgstr "自動從其他編輯器匯入設定"
+
+msgid "Base Keymap"
+msgstr "基礎按鍵對應"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Could not find or load a {source} settings file"
+msgstr "找不到或無法載入 {source} 設定檔案"
+
+msgid "Dark"
+msgstr "深色"
+
+msgid "Dismiss Hint"
+msgstr "關閉提示"
+
+msgid "Edit and save files directly in the results multibuffer!"
+msgstr "直接在結果多重緩衝區中編輯並儲存檔案！"
+
+msgid "Editing Mode"
+msgstr "編輯模式"
+
+msgid "Failed to import settings. See log for details"
+msgstr "無法匯入設定。如需詳細資訊，請查看記錄"
+
+msgid "Finish Setup"
+msgstr "完成設定"
+
+msgid "Help fix Zed by sending crash reports so we can fix critical issues fast"
+msgstr "傳送當機報告以協助修復 Zed 的重大問題"
+
+msgid "Help improve Zed by sending anonymous usage data"
+msgstr "傳送匿名使用資料以協助改善 Zed"
+
+msgid "Import"
+msgstr "匯入"
+
+msgid "Import Settings"
+msgstr "匯入設定"
+
+msgid "Importing {} settings may overwrite your existing settings. Will import settings from {}"
+msgstr "匯入 {} 的設定可能會覆寫現有設定。將從 {} 匯入設定。"
+
+msgid "Install"
+msgstr "安裝"
+
+msgid "Install your favorite agents and start your first thread."
+msgstr "安裝喜愛的代理並開始第一個會話。"
+
+msgid "Learn More"
+msgstr "深入了解"
+
+msgid "Light"
+msgstr "淺色"
+
+msgid "Normal"
+msgstr "一般"
+
+msgid "Onboarding"
+msgstr "新手導覽"
+
+msgid "Open Log"
+msgstr "開啟記錄檔"
+
+msgid "Select a base keymap..."
+msgstr "選取基礎按鍵對應..."
+
+msgid "Sign In"
+msgstr "登入"
+
+msgid "Signing In…"
+msgstr "正在登入…"
+
+msgid "Start Free Trial"
+msgstr "開始免費試用"
+
+msgid "System"
+msgstr "系統"
+
+msgid "The editor for what's next"
+msgstr "面向未來的編輯器"
+
+msgid "Theme"
+msgstr "佈景主題"
+
+msgid "Trust All Projects By Default"
+msgstr "預設信任所有專案"
+
+msgid "Vim and Helix work on top of the base keymap. Emacs is a base keymap of its own, so choosing it also selects it above."
+msgstr "Vim 與 Helix 會在基礎按鍵對應之上運作。Emacs 本身就是基礎按鍵對應，因此選擇它也會在上方選取 Emacs。"
+
+msgid "Welcome to Zed"
+msgstr "歡迎使用 ForgeKairos"
+
+msgid "Your {} settings were successfully imported."
+msgstr "{} 設定已成功匯入。"
+
+msgid "Zed can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted."
+msgstr "ForgeKairos 只有在您將新專案標記為受信任後，才能允許語言伺服器、專案設定和 MCP 伺服器等服務執行。"

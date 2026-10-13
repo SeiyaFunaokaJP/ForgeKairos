@@ -1,0 +1,60 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Clear Filter"
+msgstr "清除篩選"
+
+msgid "Copy Path"
+msgstr "複製路徑"
+
+msgid "Copy Relative Path"
+msgstr "複製相對路徑"
+
+msgid "Fold Directory"
+msgstr "摺疊資料夾"
+
+msgid "Lines {}- {}"
+msgstr "第 {} - {} 行"
+
+msgid "No matches for query"
+msgstr "沒有符合查詢的結果"
+
+msgid "No outlines available"
+msgstr "沒有可用的大綱"
+
+msgid "Open in Terminal"
+msgstr "在終端機中開啟"
+
+msgid "Outline Panel"
+msgstr "大綱面板"
+
+msgid "Pin Active Outline"
+msgstr "釘選目前大綱"
+
+msgid "Search buffer symbols…"
+msgstr "搜尋緩衝區符號…"
+
+msgid "Searching:"
+msgstr "正在搜尋："
+
+msgid "Toggle Panel With"
+msgstr "切換面板快速鍵"
+
+msgid "Unfold Directory"
+msgstr "展開資料夾"
+
+msgid "Unknown buffer"
+msgstr "未知緩衝區"
+
+msgid "Unpin Outline"
+msgstr "取消釘選大綱"
+
+msgid "Untitled"
+msgstr "未命名"

@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Failed to initialize the repository"
+msgstr "Impossible d'initialiser le dépôt"
+
+msgid "Failed to set the initial branch"
+msgstr "Impossible de définir la branche initiale"

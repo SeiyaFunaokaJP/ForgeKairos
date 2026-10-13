@@ -1,0 +1,240 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "<global>"
+msgstr "<전역>"
+
+msgid "<no arguments>"
+msgstr "<인수 없음>"
+
+msgid "Action"
+msgstr "작업"
+
+msgid "Action '{}' not found"
+msgstr "작업 '{}'을(를) 찾을 수 없습니다"
+
+msgid "Action Arguments"
+msgstr "작업 인수"
+
+msgid "Action name is required"
+msgstr "작업 이름은 필수입니다"
+
+msgid "Arguments"
+msgstr "인수"
+
+msgid "Cancel"
+msgstr "취소"
+
+msgid "Cannot remove a keybinding that does not exist"
+msgstr "존재하지 않는 키 바인딩은 제거할 수 없습니다"
+
+msgid "Clear Keystrokes"
+msgstr "키 입력 지우기"
+
+msgid "Copy Action"
+msgstr "작업 복사"
+
+msgid "Copy Context"
+msgstr "컨텍스트 복사"
+
+msgid "Could not save updated keybinding"
+msgstr "수정한 키 바인딩을 저장하지 못했습니다"
+
+msgid "Create Keybinding"
+msgstr "키 바인딩 만들기"
+
+msgid "Delete"
+msgstr "삭제"
+
+msgid "Edit"
+msgstr "편집"
+
+msgid "Edit Arguments"
+msgstr "인수 편집"
+
+msgid "Edit Context"
+msgstr "컨텍스트 편집"
+
+msgid "Edit Keybinding"
+msgstr "키 바인딩 편집"
+
+msgid "Edit Keystroke"
+msgstr "키 입력 편집"
+
+msgid "Edit in JSON"
+msgstr "JSON으로 편집"
+
+msgid "Edit this binding"
+msgstr "이 바인딩 편집"
+
+msgid "Failed to load keymap file"
+msgstr "키맵 파일을 로드하지 못했습니다"
+
+msgid "Failed to parse action arguments as JSON"
+msgstr "작업 인수를 JSON으로 구문 분석하지 못했습니다"
+
+msgid "Failed to parse key context"
+msgstr "키 컨텍스트를 구문 분석하지 못했습니다"
+
+msgid "Failed to update keybinding"
+msgstr "키 바인딩을 업데이트하지 못했습니다"
+
+msgid "Failed to validate action arguments"
+msgstr "작업 인수를 검증하지 못했습니다"
+
+msgid "Failed to write keymap file"
+msgstr "키맵 파일을 쓰지 못했습니다"
+
+msgid "Filter action names…"
+msgstr "작업 이름 필터…"
+
+msgid "Filters"
+msgstr "필터"
+
+msgid "Hit it three times to execute"
+msgstr "실행하려면 세 번 누르세요"
+
+msgid "Keybinding Context"
+msgstr "키 바인딩 컨텍스트"
+
+msgid "Keymap Editor"
+msgstr "키맵 편집기"
+
+msgid "Keystrokes"
+msgstr "키 입력"
+
+msgid "Keystrokes cannot be empty"
+msgstr "키 입력은 비워둘 수 없습니다"
+
+msgid "No Action"
+msgstr "작업 없음"
+
+msgid "No conflicting keybinds found"
+msgstr "충돌하는 키 바인딩이 없습니다"
+
+msgid "No conflicting keybinds found that match the provided query"
+msgstr "입력한 검색어와 일치하는 충돌하는 키 바인딩이 없습니다"
+
+msgid "No keybinds found matching the entered keystrokes"
+msgstr "입력한 키 입력과 일치하는 키 바인딩을 찾을 수 없습니다"
+
+msgid "No matches found for the provided query"
+msgstr "입력한 검색어와 일치하는 항목을 찾을 수 없습니다"
+
+msgid "REC"
+msgstr "기록 중"
+
+msgid "SEARCH"
+msgstr "검색"
+
+msgid "Save"
+msgstr "저장"
+
+msgid "Saved edits to the {} action."
+msgstr "{} 작업의 편집 내용을 저장했습니다."
+
+msgid "Search by Keystrokes"
+msgstr "키 입력으로 검색"
+
+msgid "Show Matching Keybindings"
+msgstr "일치하는 키 바인딩 표시"
+
+msgid "Show matching keybinds"
+msgstr "일치하는 키 바인딩 표시"
+
+msgid "Source"
+msgstr "소스"
+
+msgid "Start Recording"
+msgstr "기록 시작"
+
+msgid "Start Searching"
+msgstr "검색 시작"
+
+msgid "Stop Recording"
+msgstr "기록 중지"
+
+msgid "Stop Searching"
+msgstr "검색 중지"
+
+msgid "There is {count} binding with the same keystrokes."
+msgid_plural "There are {count} bindings with the same keystrokes."
+msgstr[0] "같은 키 입력을 사용하는 바인딩이 {count}개 있습니다."
+
+msgid "This action is unbound"
+msgstr "이 작업은 바인딩되지 않았습니다"
+
+msgid "This binding is overridden by other bindings."
+msgstr "이 바인딩은 다른 바인딩에 의해 재정의되었습니다."
+
+msgid "This binding is overridden by other bindings.\nUse {}+click to edit this binding"
+msgstr "이 바인딩은 다른 바인딩에 의해 재정의됩니다.\n이 바인딩을 편집하려면 {}+클릭하세요"
+
+msgid "This binding is overridden."
+msgstr "이 바인딩은 재정의되었습니다."
+
+msgid "This keybinding is overridden by the '{}' binding from {}."
+msgstr "이 키 바인딩은 '{}' 바인딩(출처: {})에 의해 재정의됩니다."
+
+msgid "Toggle Exact Match Mode"
+msgstr "정확히 일치 모드 전환"
+
+msgid "Type an action name"
+msgstr "작업 이름을 입력하세요"
+
+msgid "Use {}+click to show all conflicts"
+msgstr "모든 충돌을 표시하려면 {}+클릭하세요"
+
+msgid "User"
+msgstr "사용자"
+
+msgid "View"
+msgstr "보기"
+
+msgid "View conflicts"
+msgstr "충돌 보기"
+
+msgid "Your keybind would conflict with other actions"
+msgstr "키 바인딩이 다른 작업과 충돌합니다"
+
+msgid "Your keybind would conflict with the \"{}\" action"
+msgstr "키 바인딩이 \"{}\" 작업과 충돌합니다"
+
+msgid "Your keybind would conflict with the \"{}\" action and {} other bindings"
+msgstr "이 키 바인딩은 \"{}\" 작업 및 다른 바인딩 {}개와 충돌합니다"
+
+msgid "the vim keymap"
+msgstr "Vim 키맵"
+
+msgid "your base keymap"
+msgstr "기본 키맵"
+
+msgid "your keymap"
+msgstr "사용자 키맵"
+
+msgctxt "keybinding"
+msgid "Categories"
+msgstr "범주"
+
+msgctxt "keybinding"
+msgid "Conflicts"
+msgstr "충돌"
+
+msgctxt "keybinding"
+msgid "Context"
+msgstr "컨텍스트"
+
+msgctxt "keybinding"
+msgid "Create"
+msgstr "만들기"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "기본값"

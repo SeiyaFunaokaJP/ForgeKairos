@@ -1,0 +1,849 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "(anonymous)"
+msgstr "(anônimo)"
+
+msgid "2 years, 11 months ago"
+msgstr "há 2 anos e 11 meses"
+
+msgid "Accept"
+msgstr "Aceitar"
+
+msgid "Add Bookmark"
+msgstr "Adicionar marcador"
+
+msgid "Add Review (drag to select multiple lines)"
+msgstr "Adicionar comentário de revisão (arraste para selecionar múltiplas linhas)"
+
+msgid "Add a review comment..."
+msgstr "Adicionar um comentário de revisão..."
+
+msgid "Add comment"
+msgstr "Adicionar comentário"
+
+msgid "Add to Agent Thread"
+msgstr "Adicionar à conversa do agente"
+
+msgid "Ask Copilot About Selection"
+msgstr "Perguntar ao Copilot sobre a seleção"
+
+msgid "Assign Keybinding"
+msgstr "Atribuir associação de teclas"
+
+msgid "Bookmarks"
+msgstr "Marcadores"
+
+msgid "C4Context\n    %% Person is a user, System your system, System_Ext an external one and Rel a relationship\n    title Order System Overview\n    Person(customer, \"Customer\", \"Orders products\")\n    System(shop, \"Order System\", \"Accepts orders\")\n    System_Ext(mail, \"Mail Delivery\", \"Sends notifications\")\n    Rel(customer, shop, \"Places orders\")\n    Rel(shop, mail, \"Requests notifications\")"
+msgstr "C4Context\n    %% Person é um usuário, System o seu sistema, System_Ext um sistema externo e Rel um relacionamento\n    title Visão geral do sistema de pedidos\n    Person(customer, \"Cliente\", \"Faz pedidos de produtos\")\n    System(shop, \"Sistema de pedidos\", \"Recebe pedidos\")\n    System_Ext(mail, \"Envio de e-mails\", \"Envia notificações\")\n    Rel(customer, shop, \"Faz pedidos\")\n    Rel(shop, mail, \"Solicita notificações\")"
+
+msgid "Can't change this because the selection covers only part of a link or image syntax (such as [text](URL)). Select the whole link, or only its text."
+msgstr "Não é possível alterar isto porque a seleção abrange só parte da sintaxe de um link ou imagem (como [texto](URL)). Selecione o link inteiro ou somente o texto dele."
+
+msgid "Can't change this because the selection crosses an existing HTML tag (such as a text color or a marker)."
+msgstr "Não é possível alterar isto porque a seleção atravessa uma tag HTML existente (como uma cor de texto ou um marcador)."
+
+msgid "Can't change this because wrapping an HTML block in a tag from its start would turn it into a paragraph. Select only the text inside the element."
+msgstr "Não é possível alterar isto porque envolver um bloco HTML em uma tag desde o início o transformaria em um parágrafo. Selecione somente o texto dentro do elemento."
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Class"
+msgstr "Classe"
+
+msgid "Clear Run Status"
+msgstr "Limpar status de execução"
+
+msgid "Close"
+msgstr "Fechar"
+
+msgid "Close Git Blame"
+msgstr "Fechar blame do Git"
+
+msgid "Color"
+msgstr "Cor"
+
+msgid "Condition when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "Condição quando um ponto de interrupção é atingido. Expressões dentro de {{}} são interpoladas."
+
+msgid "Confirm"
+msgstr "Confirmar"
+
+msgid "Conflict with Accept Keybinding"
+msgstr "Conflito com associação de teclas para aceitar"
+
+msgid "Constant"
+msgstr "Constante"
+
+msgid "Constructor"
+msgstr "Construtor"
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Copy Diagnostic"
+msgstr "Copiar diagnóstico"
+
+msgid "Copy Path"
+msgstr "Copiar caminho"
+
+msgid "Copy Permalink to Line"
+msgstr "Copiar link permanente para a linha"
+
+msgid "Copy Relative Path"
+msgstr "Copiar caminho relativo"
+
+msgid "Copy Type Contents"
+msgstr "Copiar conteúdo do tipo"
+
+msgid "Copy and Trim"
+msgstr "Copiar e cortar espaços"
+
+msgid "Cut"
+msgstr "Recortar"
+
+msgid "Declarations"
+msgstr "Declarações"
+
+msgid "Definition not found"
+msgstr "Definição não encontrada"
+
+msgid "Definition {index} of {total}"
+msgstr "Definição {index} de {total}"
+
+msgid "Definitions"
+msgstr "Definições"
+
+msgid "Disable"
+msgstr "Desabilitar"
+
+msgid "Edit Bookmark"
+msgstr "Editar marcador"
+
+msgid "Edit Condition Breakpoint"
+msgstr "Editar ponto de interrupção condicional"
+
+msgid "Edit Hit Condition Breakpoint"
+msgstr "Editar ponto de interrupção de contagem de ocorrências"
+
+msgid "Edit Log Breakpoint"
+msgstr "Editar ponto de log"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "Editar diagrama Mermaid…"
+
+msgid "Edit Table…"
+msgstr "Editar tabela…"
+
+msgid "Enable"
+msgstr "Habilitar"
+
+msgid "Enter bookmark label (Optional)"
+msgstr "Insira o rótulo do marcador (opcional)"
+
+msgid "Enum"
+msgstr "Enumeração"
+
+msgid "Enum Member"
+msgstr "Membro da enumeração"
+
+msgid "Evaluate Selection"
+msgstr "Avaliar seleção"
+
+msgid "Event"
+msgstr "Evento"
+
+msgid "Expand Excerpt"
+msgstr "Expandir trecho"
+
+msgid "Export to PDF"
+msgstr "Exportar para PDF"
+
+msgid "Failed to copy permalink to line: {err}"
+msgstr "Falha ao copiar o link permanente para a linha: {err}"
+
+msgid "Failed to create buffer"
+msgstr "Falha ao criar o buffer"
+
+msgid "Failed to open permalink to line: {err}"
+msgstr "Falha ao abrir o link permanente para a linha: {err}"
+
+msgid "Field"
+msgstr "Campo"
+
+msgid "File"
+msgstr "Arquivo"
+
+msgid "Find All References"
+msgstr "Localizar todas as referências"
+
+msgid "Fold All Headings"
+msgstr "Dobrar todos os títulos"
+
+msgid "Fold Excerpt"
+msgstr "Dobrar trecho"
+
+msgid "Folder"
+msgstr "Pasta"
+
+msgid "Format Buffer"
+msgstr "Formatar buffer"
+
+msgid "Format Selections"
+msgstr "Formatar seleções"
+
+msgid "Formatting can't be applied across table cells."
+msgstr "Não é possível aplicar formatação atravessando células de tabela."
+
+msgid "Formatting can't be applied inside a link's URL or an image's syntax."
+msgstr "Não é possível aplicar formatação dentro da URL de um link ou da sintaxe de uma imagem."
+
+msgid "Formatting can't be applied inside an HTML tag or comment."
+msgstr "Não é possível aplicar formatação dentro de uma tag ou comentário HTML."
+
+msgid "Formatting can't be changed inside code."
+msgstr "Não é possível alterar a formatação dentro de código."
+
+msgid "Formatting did not complete within {} seconds."
+msgstr "A formatação não foi concluída em {} segundos."
+
+msgid "Function"
+msgstr "Função"
+
+msgid "Go to Declaration"
+msgstr "Ir para declaração"
+
+msgid "Go to Definition"
+msgstr "Ir para definição"
+
+msgid "Go to Implementation"
+msgstr "Ir para implementação"
+
+msgid "Go to Type Definition"
+msgstr "Ir para definição de tipo"
+
+msgid "Hold"
+msgstr "Manter pressionado"
+
+msgid "How many breakpoint hits to ignore"
+msgstr "Quantas ocorrências do ponto de interrupção ignorar"
+
+msgid "Implementations"
+msgstr "Implementações"
+
+msgid "Indent"
+msgstr "Aumentar recuo"
+
+msgid "Insert Collapsible Section (details)"
+msgstr "Inserir seção recolhível (details)"
+
+msgid "Insert Mermaid Diagram"
+msgstr "Inserir diagrama Mermaid"
+
+msgid "Interface"
+msgstr "Interface"
+
+msgid "Jump"
+msgstr "Ir"
+
+msgid "Jump to Edit"
+msgstr "Ir para a edição"
+
+msgid "Jump to {file_name}"
+msgstr "Ir para {file_name}"
+
+msgid "Jumped by name match (no result from the language server)"
+msgstr "Salto por correspondência de nome (sem resultado do servidor de linguagem)"
+
+msgid "Keyword"
+msgstr "Palavra-chave"
+
+msgid "Line {start_line}"
+msgstr "Linha {start_line}"
+
+msgid "Lines {start_line}-{end_line}"
+msgstr "Linhas {start_line}-{end_line}"
+
+msgid "Loading…"
+msgstr "Carregando…"
+
+msgid "Message to log when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "Mensagem a registrar no log quando um ponto de interrupção é atingido. Expressões dentro de {{}} são interpoladas."
+
+msgid "Method"
+msgstr "Método"
+
+msgid "Module"
+msgstr "Módulo"
+
+msgid "Name match"
+msgstr "Correspondência de nome"
+
+msgid "Next Definition"
+msgstr "Próxima definição"
+
+msgid "Next Hunk"
+msgstr "Próximo bloco"
+
+msgid "Next Signature"
+msgstr "Próxima assinatura"
+
+msgid "No definition found in this file or the headers it includes. Git ignores this file, so the folder's symbol index leaves it out; turn on the `symbol_index.include_ignored` setting to include it."
+msgstr "Nenhuma definição encontrada neste arquivo nem nos cabeçalhos que ele inclui. O Git ignora este arquivo, então o índice de símbolos da pasta o deixa de fora; ative a configuração `symbol_index.include_ignored` para incluí-lo."
+
+msgid "No definition found in this file. Open the folder that holds it to search the whole folder."
+msgstr "Nenhuma definição encontrada neste arquivo. Abra a pasta que o contém para pesquisar a pasta inteira."
+
+msgid "No executable code is associated with this line."
+msgstr "Nenhum código executável está associado a esta linha."
+
+msgid "No paragraph has a text size set."
+msgstr "Nenhum parágrafo tem tamanho de texto definido."
+
+msgid "No part of the selection has a marker."
+msgstr "Nenhuma parte da seleção tem marcador."
+
+msgid "No part of the selection has a text color."
+msgstr "Nenhuma parte da seleção tem cor de texto."
+
+msgid "Only part is shown"
+msgstr "Só uma parte é mostrada"
+
+msgid "Only the location of this definition is known"
+msgstr "Só o local desta definição é conhecido"
+
+msgid "Open"
+msgstr "Abrir"
+
+msgid "Open File"
+msgstr "Abrir arquivo"
+
+msgid "Open Git Blame"
+msgstr "Abrir blame do Git"
+
+msgid "Open Markdown Preview"
+msgstr "Abrir visualização do Markdown"
+
+msgid "Open Markdown Preview to the Side"
+msgstr "Abrir visualização do Markdown ao lado"
+
+msgid "Open SVG Preview to the Side"
+msgstr "Abrir visualização do SVG ao lado"
+
+msgid "Open in Terminal"
+msgstr "Abrir no terminal"
+
+msgid "Operator"
+msgstr "Operador"
+
+msgid "Outdent"
+msgstr "Diminuir recuo"
+
+msgid "Part of the selection couldn't be formatted: {}"
+msgstr "Não foi possível formatar parte da seleção: {}"
+
+msgid "Paste"
+msgstr "Colar"
+
+msgid "Preview"
+msgstr "Visualização"
+
+msgid "Previous Definition"
+msgstr "Definição anterior"
+
+msgid "Previous Hunk"
+msgstr "Bloco anterior"
+
+msgid "Previous Signature"
+msgstr "Assinatura anterior"
+
+msgid "Property"
+msgstr "Propriedade"
+
+msgid "Reference"
+msgstr "Referência"
+
+msgid "References"
+msgstr "Referências"
+
+msgid "References to {target}"
+msgstr "Referências a {target}"
+
+msgid "Remove Bookmark"
+msgstr "Remover marcador"
+
+msgid "Rename Symbol"
+msgstr "Renomear símbolo"
+
+msgid "Restore"
+msgstr "Restaurar"
+
+msgid "Restore Hunk"
+msgstr "Restaurar bloco"
+
+msgid "Reveal In Project Panel"
+msgstr "Revelar no painel do projeto"
+
+msgid "Right-Click to Copy Path"
+msgstr "Clique com o botão direito para copiar o caminho"
+
+msgid "Right-click for more options"
+msgstr "Clique com o botão direito para mais opções"
+
+msgid "Run to Cursor"
+msgstr "Executar até o cursor"
+
+msgid "Scroll"
+msgstr "Rolar"
+
+msgid "Search Selection on the Web"
+msgstr "Pesquisar seleção na Web"
+
+msgid "See Docs"
+msgstr "Ver documentação"
+
+msgid "Selections for '{title}'"
+msgstr "Seleções de '{title}'"
+
+msgid "Send Selection to Claude Code"
+msgstr "Enviar seleção ao Claude Code"
+
+msgid "Set Breakpoint"
+msgstr "Definir ponto de interrupção"
+
+msgid "Set Condition Breakpoint"
+msgstr "Definir ponto de interrupção condicional"
+
+msgid "Set Hit Condition Breakpoint"
+msgstr "Definir ponto de interrupção de contagem de ocorrências"
+
+msgid "Set Log Breakpoint"
+msgstr "Definir ponto de log"
+
+msgid "Show Callees in Call Graph"
+msgstr "Mostrar chamados no grafo de chamadas"
+
+msgid "Show Callers in Call Graph"
+msgstr "Mostrar chamadores no grafo de chamadas"
+
+msgid "Show Code Actions"
+msgstr "Mostrar ações de código"
+
+msgid "Show Incoming Calls"
+msgstr "Mostrar chamadas de entrada"
+
+msgid "Show Outgoing Calls"
+msgstr "Mostrar chamadas de saída"
+
+msgid "Show Symbol Outline"
+msgstr "Mostrar estrutura do código"
+
+msgid "Snippet"
+msgstr "Snippet"
+
+msgid "Split"
+msgstr "Lado a lado"
+
+msgid "Split when wider than {} columns"
+msgstr "Lado a lado quando mais largo que {} colunas"
+
+msgid "Stage"
+msgstr "Preparar"
+
+msgid "Stage Hunk"
+msgstr "Preparar bloco"
+
+msgid "Struct"
+msgstr "Struct"
+
+msgid "Text"
+msgstr "Texto"
+
+msgid "Text size can only be set on paragraphs (not on headings, code blocks, tables, or HTML blocks)."
+msgstr "O tamanho do texto só pode ser definido em parágrafos (não em títulos, blocos de código, tabelas ou blocos HTML)."
+
+msgid "The diagram text changed while it was being edited. Open it again."
+msgstr "O texto do diagrama mudou enquanto era editado. Abra-o novamente."
+
+msgid "The remote instance of Zed does not support this yet. It must be upgraded to {}"
+msgstr "A instância remota do ForgeKairos ainda não oferece suporte a isso. Ela deve ser atualizada para {}"
+
+msgid "There is no text to format."
+msgstr "Não há texto para formatar."
+
+msgid "This buffer is read-only, so the diagram can't be written back."
+msgstr "Este buffer é somente leitura, então o diagrama não pode ser gravado de volta."
+
+msgid "Toggle Code Actions"
+msgstr "Alternar ações de código"
+
+msgid "Type Parameter"
+msgstr "Parâmetro de tipo"
+
+msgid "Type contents are not shown: another window has this folder's symbol index open."
+msgstr "O conteúdo do tipo não é mostrado: outra janela está com o índice de símbolos desta pasta aberto."
+
+msgid "Type contents are not shown: the remote server does not support the symbol index."
+msgstr "O conteúdo do tipo não é mostrado: o servidor remoto não oferece suporte ao índice de símbolos."
+
+msgid "Type contents are not shown: the symbol index failed ({error})."
+msgstr "O conteúdo do tipo não é mostrado: o índice de símbolos falhou ({error})."
+
+msgid "Type contents are not shown: the symbol index is not available in a shared project."
+msgstr "O conteúdo do tipo não é mostrado: o índice de símbolos não está disponível em um projeto compartilhado."
+
+msgid "Type contents: the symbol index is still being built. Hover again in a moment."
+msgstr "Conteúdo do tipo: o índice de símbolos ainda está sendo criado. Passe o cursor novamente em instantes."
+
+msgid "Type of {name}:"
+msgstr "Tipo de {name}:"
+
+msgid "Types"
+msgstr "Tipos"
+
+msgid "Unfold All Headings"
+msgstr "Desdobrar todos os títulos"
+
+msgid "Unfold Excerpt"
+msgstr "Desdobrar trecho"
+
+msgid "Unified"
+msgstr "Unificado"
+
+msgid "Unit"
+msgstr "Unidade"
+
+msgid "Unknown"
+msgstr "Desconhecido"
+
+msgid "Unset Breakpoint"
+msgstr "Remover ponto de interrupção"
+
+msgid "Unset breakpoint"
+msgstr "Remover ponto de interrupção"
+
+msgid "Unstage"
+msgstr "Cancelar preparação"
+
+msgid "Unstage Hunk"
+msgstr "Cancelar preparação do bloco"
+
+msgid "Value"
+msgstr "Valor"
+
+msgid "Variable"
+msgstr "Variável"
+
+msgid "View File History"
+msgstr "Exibir histórico do arquivo"
+
+msgid "Your keymap currently overrides the default accept keybinding. To continue, assign one keybinding for the `editor::AcceptEditPrediction` action."
+msgstr "Seu mapa de teclas atualmente substitui a associação de teclas padrão de aceite. Para continuar, atribua uma associação de teclas para a ação `editor::AcceptEditPrediction`."
+
+msgid "a parameter of this function"
+msgstr "um parâmetro desta função"
+
+msgid "architecture-beta\n    %% group is a grouping and service a component. :L :R :T :B choose the side a line connects to\n    group app(cloud)[App]\n    service web(server)[Web Server] in app\n    service db(database)[Database] in app\n    service disk(disk)[Storage] in app\n    web:R -- L:db\n    web:B -- T:disk"
+msgstr "architecture-beta\n    %% group é um agrupamento e service um componente. :L :R :T :B escolhem o lado ao qual a linha se conecta\n    group app(cloud)[Aplicativo]\n    service web(server)[Servidor Web] in app\n    service db(database)[Banco de dados] in app\n    service disk(disk)[Armazenamento] in app\n    web:R -- L:db\n    web:B -- T:disk"
+
+msgid "at its declaration"
+msgstr "na própria declaração"
+
+msgid "block-beta\n    %% columns sets the number of columns, space is an empty cell and --> an arrow\n    columns 3\n    input[\"Input\"] process[\"Process\"] output[\"Output\"]\n    space log[\"Log\"] space\n    input --> process\n    process --> output\n    process --> log"
+msgstr "block-beta\n    %% columns define o número de colunas, space é uma célula vazia e --> uma seta\n    columns 3\n    input[\"Entrada\"] process[\"Processamento\"] output[\"Saída\"]\n    space log[\"Log\"] space\n    input --> process\n    process --> output\n    process --> log"
+
+msgid "classDiagram\n    %% <|-- is inheritance, *-- composition and o-- aggregation\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+msgstr "classDiagram\n    %% <|-- é herança, *-- composição e o-- agregação\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+
+msgid "click to change min width"
+msgstr "clique para alterar a largura mínima"
+
+msgid "could not be followed"
+msgstr "não pôde ser seguido"
+
+msgid "debug: {}"
+msgstr "depuração: {}"
+
+msgid "declared at file scope"
+msgstr "declarado no escopo do arquivo"
+
+msgid "declared in this function"
+msgstr "declarado nesta função"
+
+msgid "erDiagram\n    %% ||--o{{ is one-to-many and }}o--o{{ many-to-many\n    CUSTOMER ||--o{{ ORDER : \"places\"\n    ORDER ||--|{{ ORDER_ITEM : \"contains\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+msgstr "erDiagram\n    %% ||--o{{ é um-para-muitos e }}o--o{{ muitos-para-muitos\n    CUSTOMER ||--o{{ ORDER : \"faz\"\n    ORDER ||--|{{ ORDER_ITEM : \"contém\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+
+msgid "eventmodeling\n    %% tf number type name. ui is a screen, cmd a command, evt an event and rmo a read model. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+msgstr "eventmodeling\n    %% tf número tipo nome. ui é uma tela, cmd um comando, evt um evento e rmo um modelo de leitura. Escreva os nomes com letras e dígitos ASCII (o Mermaid não consegue ler nomes não ASCII)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+
+msgid "flowchart TD\n    %% [] is a step and {{}} a decision. |label| annotates a branch\n    start[Start] --> condition{{Condition}}\n    condition -->|Yes| work[Process]\n    condition -->|No| finish[End]\n    work --> finish"
+msgstr "flowchart TD\n    %% [] é uma etapa e {{}} uma decisão. |rótulo| anota uma ramificação\n    start[Início] --> condition{{Condição}}\n    condition -->|Sim| work[Processar]\n    condition -->|Não| finish[Fim]\n    work --> finish"
+
+msgid "forward declaration"
+msgstr "declaração antecipada"
+
+msgid "gantt\n    title Development Schedule\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section Design\n    Requirements :done, req, 2026-01-06, 5d\n    Basic design :active, design, after req, 7d\n    section Implementation\n    Implementation :impl, after design, 10d"
+msgstr "gantt\n    title Cronograma de desenvolvimento\n    dateFormat YYYY-MM-DD\n    axisFormat %d/%m\n    section Projeto\n    Requisitos :done, req, 2026-01-06, 5d\n    Projeto básico :active, design, after req, 7d\n    section Implementação\n    Implementação :impl, after design, 10d"
+
+msgid "gitGraph\n    commit id: \"Initial commit\"\n    branch feature\n    checkout feature\n    commit id: \"Add a feature\"\n    checkout main\n    merge feature"
+msgstr "gitGraph\n    commit id: \"Commit inicial\"\n    branch feature\n    checkout feature\n    commit id: \"Adicionar um recurso\"\n    checkout main\n    merge feature"
+
+msgid "guessed by name only"
+msgstr "deduzido somente pelo nome"
+
+msgid "ishikawa-beta\n    %% The first line is the effect and indented lines its causes\n    Too many defects\n        People\n            Little experience\n        Method\n            Outdated procedures\n        Material\n            Inconsistent suppliers"
+msgstr "ishikawa-beta\n    %% A primeira linha é o efeito e as linhas recuadas são as causas\n    Defeitos demais\n        Pessoas\n            Pouca experiência\n        Método\n            Procedimentos desatualizados\n        Material\n            Fornecedores inconsistentes"
+
+msgid "journey\n    %% Task : Satisfaction (1 to 5) : People involved\n    title Path to Purchase\n    section Find\n      Search for a product: 4: Customer\n      Compare: 3: Customer\n    section Buy\n      Add to cart: 5: Customer\n      Pay: 2: Customer, Store"
+msgstr "journey\n    %% Tarefa : Satisfação (1 a 5) : Pessoas envolvidas\n    title Caminho até a compra\n    section Encontrar\n      Pesquisar um produto: 4: Cliente\n      Comparar: 3: Cliente\n    section Comprar\n      Adicionar ao carrinho: 5: Cliente\n      Pagar: 2: Cliente, Loja"
+
+msgid "kanban\n    %% Less indented lines are columns and more indented lines cards\n    todo[To Do]\n        spec[Write the spec]\n        screen[Build the screen]\n    doing[In Progress]\n        api[Build the API]\n    done[Done]\n        setup[Set up the environment]"
+msgstr "kanban\n    %% Linhas menos recuadas são colunas e linhas mais recuadas são cartões\n    todo[A fazer]\n        spec[Escrever a especificação]\n        screen[Criar a tela]\n    doing[Em andamento]\n        api[Criar a API]\n    done[Concluído]\n        setup[Configurar o ambiente]"
+
+msgid "mindmap\n  root((Central Topic))\n    Category A\n      Item 1\n      Item 2\n    Category B\n      Item 3"
+msgstr "mindmap\n  root((Tema central))\n    Categoria A\n      Item 1\n      Item 2\n    Categoria B\n      Item 3"
+
+msgid "packet-beta\n    %% start bit-end bit: \"Field name\"\n    title UDP Header\n    0-15: \"Source Port\"\n    16-31: \"Destination Port\"\n    32-47: \"Length\"\n    48-63: \"Checksum\"\n    64-95: \"Data (variable length)\""
+msgstr "packet-beta\n    %% bit inicial-bit final: \"Nome do campo\"\n    title Cabeçalho UDP\n    0-15: \"Porta de origem\"\n    16-31: \"Porta de destino\"\n    32-47: \"Comprimento\"\n    48-63: \"Soma de verificação\"\n    64-95: \"Dados (comprimento variável)\""
+
+msgid "pie title Breakdown\n    \"Design\" : 30\n    \"Implementation\" : 50\n    \"Testing\" : 20"
+msgstr "pie title Distribuição\n    \"Design\" : 30\n    \"Implementação\" : 50\n    \"Testes\" : 20"
+
+msgid "quadrantChart\n    %% A point is Name: [x, y], both from 0 to 1\n    title Initiative Priorities\n    x-axis Low Effort --> High Effort\n    y-axis Low Impact --> High Impact\n    quadrant-1 Plan and Do\n    quadrant-2 Do Now\n    quadrant-3 Do Later\n    quadrant-4 Reconsider\n    Initiative A: [0.3, 0.8]\n    Initiative B: [0.7, 0.6]\n    Initiative C: [0.2, 0.3]"
+msgstr "quadrantChart\n    %% Um ponto é Nome: [x, y], ambos de 0 a 1\n    title Prioridades das iniciativas\n    x-axis Pouco esforço --> Muito esforço\n    y-axis Pouco impacto --> Muito impacto\n    quadrant-1 Planejar e fazer\n    quadrant-2 Fazer agora\n    quadrant-3 Fazer depois\n    quadrant-4 Reconsiderar\n    Iniciativa A: [0.3, 0.8]\n    Iniciativa B: [0.7, 0.6]\n    Iniciativa C: [0.2, 0.3]"
+
+msgid "radar-beta\n    %% axis defines the axes and curve a series. List the values in the order of the axes\n    title Skill Comparison\n    axis design[\"Design\"], build[\"Implementation\"], test[\"Testing\"], ops[\"Operations\"]\n    curve a[\"Person A\"]{{4, 3, 5, 2}}\n    curve b[\"Person B\"]{{2, 5, 3, 4}}\n    max 5"
+msgstr "radar-beta\n    %% axis define os eixos e curve uma série. Liste os valores na ordem dos eixos\n    title Comparação de habilidades\n    axis design[\"Design\"], build[\"Implementação\"], test[\"Testes\"], ops[\"Operações\"]\n    curve a[\"Pessoa A\"]{{4, 3, 5, 2}}\n    curve b[\"Pessoa B\"]{{2, 5, 3, 4}}\n    max 5"
+
+msgid "recursive"
+msgstr "recursivo"
+
+msgid "requirementDiagram\n    %% requirement declares a requirement; element declares what satisfies it. Connect them with - satisfies ->\n    requirement login {{\n        id: 1\n        text: \"Users can log in\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"Screen\"\n    }}\n    login_page - satisfies -> login"
+msgstr "requirementDiagram\n    %% requirement declara um requisito; element declara o que o satisfaz. Ligue-os com - satisfies ->\n    requirement login {{\n        id: 1\n        text: \"Os usuários podem fazer login\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"Tela\"\n    }}\n    login_page - satisfies -> login"
+
+msgid "sankey-beta\n    %% Each line is source,target,amount. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10"
+msgstr "sankey-beta\n    %% Cada linha é origem,destino,quantidade. Escreva os nomes com letras e dígitos ASCII (o Mermaid não consegue ler nomes não ASCII)\n    Eletricidade,Casa,30\n    Eletricidade,Industria,50\n    Gas,Casa,20\n    Gas,Industria,10"
+
+msgid "sequenceDiagram\n    %% ->> is a call and -->> a reply\n    participant User as User\n    participant App as App\n    User->>App: Request\n    App-->>User: Response\n    Note over App: Note"
+msgstr "sequenceDiagram\n    %% ->> é uma chamada e -->> uma resposta\n    participant User as Usuário\n    participant App as Aplicativo\n    User->>App: Solicitação\n    App-->>User: Resposta\n    Note over App: Observação"
+
+msgid "stateDiagram-v2\n    %% [*] is the start and the end. The text after : on an arrow is the event name\n    [*] --> Idle\n    Idle --> Running: Start\n    Running --> Idle: Finish\n    Running --> [*]: Abort"
+msgstr "stateDiagram-v2\n    %% [*] é o início e o fim. O texto após : em uma seta é o nome do evento\n    [*] --> Idle\n    Idle --> Running: Iniciar\n    Running --> Idle: Concluir\n    Running --> [*]: Abortar"
+
+msgid "the latest version"
+msgstr "a versão mais recente"
+
+msgid "timeline\n    title History\n    2024 : Planning\n    2025 : Development : Release\n    2026 : Operation"
+msgstr "timeline\n    title Histórico\n    2024 : Planejamento\n    2025 : Desenvolvimento : Lançamento\n    2026 : Operação"
+
+msgid "treeView-beta\n    %% Indentation shows the hierarchy\n    \"Project\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+msgstr "treeView-beta\n    %% O recuo mostra a hierarquia\n    \"Projeto\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+
+msgid "treemap-beta\n    %% Indentation nests items. Give each leaf a value after :\n    \"Development\"\n        \"Design\": 30\n        \"Implementation\": 50\n    \"Operations\"\n        \"Maintenance\": 15\n        \"Monitoring\": 5"
+msgstr "treemap-beta\n    %% O recuo aninha os itens. Dê a cada folha um valor após :\n    \"Desenvolvimento\"\n        \"Design\": 30\n        \"Implementação\": 50\n    \"Operações\"\n        \"Manutenção\": 15\n        \"Monitoramento\": 5"
+
+msgid "type named by the language server"
+msgstr "tipo nomeado pelo servidor de linguagem"
+
+msgid "venn-beta\n    %% set defines a set and union names an overlap\n    title Overlapping Responsibilities\n    set Front[\"Frontend\"]\n    set Back[\"Backend\"]\n    union Front,Back[\"API\"]"
+msgstr "venn-beta\n    %% set define um conjunto e union dá nome a uma sobreposição\n    title Responsabilidades sobrepostas\n    set Front[\"Frontend\"]\n    set Back[\"Backend\"]\n    union Front,Back[\"API\"]"
+
+msgid "xychart-beta\n    %% bar draws bars and line a line. Give as many values as the x-axis has items\n    title \"Monthly Sales\"\n    x-axis [\"Jan\", \"Feb\", \"Mar\", \"Apr\"]\n    y-axis \"Sales (USD thousands)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+msgstr "xychart-beta\n    %% bar desenha barras e line uma linha. Forneça tantos valores quantos forem os itens do eixo x\n    title \"Vendas mensais\"\n    x-axis [\"jan\", \"fev\", \"mar\", \"abr\"]\n    y-axis \"Vendas (milhares de USD)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+
+msgid "{alt_as_text}-click to disable\nright-click for more options"
+msgstr "{alt_as_text} + clique para desabilitar\nclique com o botão direito para mais opções"
+
+msgid "{count} Comment"
+msgid_plural "{count} Comments"
+msgstr[0] "{count} comentário"
+msgstr[1] "{count} comentários"
+
+msgid "{count} more"
+msgid_plural "{count} more"
+msgstr[0] "Mais {count}"
+msgstr[1] "Mais {count}"
+
+msgid "{tab_kind} (name match)"
+msgstr "{tab_kind} (correspondência de nome)"
+
+msgid "{tab_kind} for {target}"
+msgstr "{tab_kind} de {target}"
+
+msgid "{title} (partial: {omitted} not shown)"
+msgstr "{title} (parcial: {omitted} não mostrados)"
+
+msgid "{} to toggle all"
+msgstr "{} para alternar tudo"
+
+msgctxt "markdown color"
+msgid "Blue"
+msgstr "Azul"
+
+msgctxt "markdown color"
+msgid "Gray"
+msgstr "Cinza"
+
+msgctxt "markdown color"
+msgid "Green"
+msgstr "Verde"
+
+msgctxt "markdown color"
+msgid "Orange"
+msgstr "Laranja"
+
+msgctxt "markdown color"
+msgid "Pink"
+msgstr "Rosa"
+
+msgctxt "markdown color"
+msgid "Purple"
+msgstr "Roxo"
+
+msgctxt "markdown color"
+msgid "Red"
+msgstr "Vermelho"
+
+msgctxt "markdown color"
+msgid "Yellow"
+msgstr "Amarelo"
+
+msgctxt "markdown text size"
+msgid "Extra Large"
+msgstr "Extragrande"
+
+msgctxt "markdown text size"
+msgid "Large"
+msgstr "Grande"
+
+msgctxt "markdown text size"
+msgid "Small"
+msgstr "Pequeno"
+
+msgctxt "mermaid diagram"
+msgid "Architecture Diagram"
+msgstr "Diagrama de arquitetura"
+
+msgctxt "mermaid diagram"
+msgid "Block Diagram"
+msgstr "Diagrama de blocos"
+
+msgctxt "mermaid diagram"
+msgid "C4 Diagram"
+msgstr "Diagrama C4"
+
+msgctxt "mermaid diagram"
+msgid "Class Diagram"
+msgstr "Diagrama de classes"
+
+msgctxt "mermaid diagram"
+msgid "ER Diagram"
+msgstr "Diagrama ER"
+
+msgctxt "mermaid diagram"
+msgid "Event Modeling"
+msgstr "Modelagem de eventos"
+
+msgctxt "mermaid diagram"
+msgid "Flowchart"
+msgstr "Fluxograma"
+
+msgctxt "mermaid diagram"
+msgid "Gantt Chart"
+msgstr "Gráfico de Gantt"
+
+msgctxt "mermaid diagram"
+msgid "Git Graph"
+msgstr "Gráfico do Git"
+
+msgctxt "mermaid diagram"
+msgid "Ishikawa Diagram"
+msgstr "Diagrama de Ishikawa"
+
+msgctxt "mermaid diagram"
+msgid "Kanban"
+msgstr "Kanban"
+
+msgctxt "mermaid diagram"
+msgid "Mindmap"
+msgstr "Mapa mental"
+
+msgctxt "mermaid diagram"
+msgid "Packet Diagram"
+msgstr "Diagrama de pacotes"
+
+msgctxt "mermaid diagram"
+msgid "Pie Chart"
+msgstr "Gráfico de pizza"
+
+msgctxt "mermaid diagram"
+msgid "Quadrant Chart"
+msgstr "Gráfico de quadrantes"
+
+msgctxt "mermaid diagram"
+msgid "Radar Chart"
+msgstr "Gráfico de radar"
+
+msgctxt "mermaid diagram"
+msgid "Requirement Diagram"
+msgstr "Diagrama de requisitos"
+
+msgctxt "mermaid diagram"
+msgid "Sankey Diagram"
+msgstr "Diagrama de Sankey"
+
+msgctxt "mermaid diagram"
+msgid "Sequence Diagram"
+msgstr "Diagrama de sequência"
+
+msgctxt "mermaid diagram"
+msgid "State Diagram"
+msgstr "Diagrama de estados"
+
+msgctxt "mermaid diagram"
+msgid "Timeline"
+msgstr "Linha do tempo"
+
+msgctxt "mermaid diagram"
+msgid "Tree View"
+msgstr "Visualização em árvore"
+
+msgctxt "mermaid diagram"
+msgid "Treemap"
+msgstr "Treemap"
+
+msgctxt "mermaid diagram"
+msgid "User Journey"
+msgstr "Jornada do usuário"
+
+msgctxt "mermaid diagram"
+msgid "Venn Diagram"
+msgstr "Diagrama de Venn"
+
+msgctxt "mermaid diagram"
+msgid "XY Chart (Bar/Line)"
+msgstr "Gráfico XY (barras/linhas)"
+
+msgctxt "table alignment"
+msgid "Center"
+msgstr "Centro"
+
+msgctxt "table alignment"
+msgid "Default"
+msgstr "Padrão"
+
+msgctxt "table alignment"
+msgid "Left"
+msgstr "Esquerda"
+
+msgctxt "table alignment"
+msgid "Right"
+msgstr "Direita"

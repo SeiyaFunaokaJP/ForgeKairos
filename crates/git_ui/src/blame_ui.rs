@@ -640,7 +640,7 @@ fn open_buffer_blame_at_revision(
                             worktree_id_for_repo_path(repository.read(cx), project, &path, cx),
                         )
                     })?;
-                let worktree_id = worktree_id.context("project has no worktrees")?;
+                let worktree_id = worktree_id.context(i18n::t!("project has no worktrees"))?;
 
                 let file_name = path
                     .file_name()

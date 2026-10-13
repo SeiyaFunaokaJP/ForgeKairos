@@ -1,0 +1,24 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Add Keybinding…"
+msgstr "Ajouter une combinaison de touches…"
+
+msgid "Change Keybinding…"
+msgstr "Modifier la combinaison de touches…"
+
+msgid "Execute a command..."
+msgstr "Exécuter une commande..."
+
+msgid "Remove from Command History"
+msgstr "Retirer de l'historique des commandes"
+
+msgid "Run"
+msgstr "Exécuter"

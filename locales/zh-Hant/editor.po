@@ -1,0 +1,847 @@
+# Entries that zed-i18n also translates started from its zh-TW translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "(anonymous)"
+msgstr "（匿名）"
+
+msgid "2 years, 11 months ago"
+msgstr "2 年 11 個月前"
+
+msgid "Accept"
+msgstr "接受"
+
+msgid "Add Bookmark"
+msgstr "新增書籤"
+
+msgid "Add Review (drag to select multiple lines)"
+msgstr "新增檢閱留言（拖曳以選取多行）"
+
+msgid "Add a review comment..."
+msgstr "新增檢閱留言..."
+
+msgid "Add comment"
+msgstr "新增留言"
+
+msgid "Add to Agent Thread"
+msgstr "加入代理會話"
+
+msgid "Ask Copilot About Selection"
+msgstr "就選取範圍詢問 Copilot"
+
+msgid "Assign Keybinding"
+msgstr "指派按鍵繫結"
+
+msgid "Bookmarks"
+msgstr "書籤"
+
+msgid "C4Context\n    %% Person is a user, System your system, System_Ext an external one and Rel a relationship\n    title Order System Overview\n    Person(customer, \"Customer\", \"Orders products\")\n    System(shop, \"Order System\", \"Accepts orders\")\n    System_Ext(mail, \"Mail Delivery\", \"Sends notifications\")\n    Rel(customer, shop, \"Places orders\")\n    Rel(shop, mail, \"Requests notifications\")"
+msgstr "C4Context\n    %% Person 是使用者，System 是您的系統，System_Ext 是外部系統，Rel 是關係\n    title 訂單系統概觀\n    Person(customer, \"顧客\", \"訂購商品\")\n    System(shop, \"訂單系統\", \"接受訂單\")\n    System_Ext(mail, \"郵件傳遞\", \"傳送通知\")\n    Rel(customer, shop, \"下訂單\")\n    Rel(shop, mail, \"要求傳送通知\")"
+
+msgid "Can't change this because the selection covers only part of a link or image syntax (such as [text](URL)). Select the whole link, or only its text."
+msgstr "選取範圍只涵蓋連結或影像語法（例如 [text](URL)）的一部分，因此無法變更。請選取整個連結，或只選取其文字。"
+
+msgid "Can't change this because the selection crosses an existing HTML tag (such as a text color or a marker)."
+msgstr "選取範圍跨越了既有的 HTML 標籤（例如文字色彩或螢光標記），因此無法變更。"
+
+msgid "Can't change this because wrapping an HTML block in a tag from its start would turn it into a paragraph. Select only the text inside the element."
+msgstr "從 HTML 區塊的開頭以標籤包住會使其變成段落，因此無法變更。請只選取元素內的文字。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Class"
+msgstr "類別"
+
+msgid "Clear Run Status"
+msgstr "清除執行狀態"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Close Git Blame"
+msgstr "關閉 Git Blame"
+
+msgid "Color"
+msgstr "色彩"
+
+msgid "Condition when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "到達中斷點時的條件。{{}} 內的運算式會被代入。"
+
+msgid "Confirm"
+msgstr "確認"
+
+msgid "Conflict with Accept Keybinding"
+msgstr "與接受按鍵繫結衝突"
+
+msgid "Constant"
+msgstr "常數"
+
+msgid "Constructor"
+msgstr "建構函式"
+
+msgid "Copy"
+msgstr "複製"
+
+msgid "Copy Diagnostic"
+msgstr "複製診斷訊息"
+
+msgid "Copy Path"
+msgstr "複製路徑"
+
+msgid "Copy Permalink to Line"
+msgstr "複製行的永久連結"
+
+msgid "Copy Relative Path"
+msgstr "複製相對路徑"
+
+msgid "Copy Type Contents"
+msgstr "複製型別內容"
+
+msgid "Copy and Trim"
+msgstr "複製並修剪"
+
+msgid "Cut"
+msgstr "剪下"
+
+msgid "Declarations"
+msgstr "宣告"
+
+msgid "Definition not found"
+msgstr "找不到定義"
+
+msgid "Definition {index} of {total}"
+msgstr "第 {index} 個定義，共 {total} 個"
+
+msgid "Definitions"
+msgstr "定義"
+
+msgid "Disable"
+msgstr "停用"
+
+msgid "Edit Bookmark"
+msgstr "編輯書籤"
+
+msgid "Edit Condition Breakpoint"
+msgstr "編輯條件中斷點"
+
+msgid "Edit Hit Condition Breakpoint"
+msgstr "編輯叫用次數條件中斷點"
+
+msgid "Edit Log Breakpoint"
+msgstr "編輯記錄中斷點"
+
+msgid "Edit Mermaid Diagram…"
+msgstr "編輯 Mermaid 圖表…"
+
+msgid "Edit Table…"
+msgstr "編輯表格…"
+
+msgid "Enable"
+msgstr "啟用"
+
+msgid "Enter bookmark label (Optional)"
+msgstr "輸入書籤標籤（選用）"
+
+msgid "Enum"
+msgstr "列舉"
+
+msgid "Enum Member"
+msgstr "列舉成員"
+
+msgid "Evaluate Selection"
+msgstr "評估選取範圍"
+
+msgid "Event"
+msgstr "事件"
+
+msgid "Expand Excerpt"
+msgstr "展開摘錄"
+
+msgid "Export to PDF"
+msgstr "匯出為 PDF"
+
+msgid "Failed to copy permalink to line: {err}"
+msgstr "無法複製行的永久連結：{err}"
+
+msgid "Failed to create buffer"
+msgstr "建立緩衝區失敗"
+
+msgid "Failed to open permalink to line: {err}"
+msgstr "無法開啟行的永久連結：{err}"
+
+msgid "Field"
+msgstr "欄位"
+
+msgid "File"
+msgstr "檔案"
+
+msgid "Find All References"
+msgstr "尋找所有參考"
+
+msgid "Fold All Headings"
+msgstr "摺疊所有標題"
+
+msgid "Fold Excerpt"
+msgstr "摺疊摘錄"
+
+msgid "Folder"
+msgstr "資料夾"
+
+msgid "Format Buffer"
+msgstr "格式化緩衝區"
+
+msgid "Format Selections"
+msgstr "格式化選取範圍"
+
+msgid "Formatting can't be applied across table cells."
+msgstr "無法跨表格儲存格套用格式。"
+
+msgid "Formatting can't be applied inside a link's URL or an image's syntax."
+msgstr "無法在連結的 URL 或影像語法內套用格式。"
+
+msgid "Formatting can't be applied inside an HTML tag or comment."
+msgstr "無法在 HTML 標籤或註解內套用格式。"
+
+msgid "Formatting can't be changed inside code."
+msgstr "無法在程式碼內變更格式。"
+
+msgid "Formatting did not complete within {} seconds."
+msgstr "格式化未在 {} 秒內完成。"
+
+msgid "Function"
+msgstr "函式"
+
+msgid "Go to Declaration"
+msgstr "前往宣告"
+
+msgid "Go to Definition"
+msgstr "前往定義"
+
+msgid "Go to Implementation"
+msgstr "前往實作"
+
+msgid "Go to Type Definition"
+msgstr "前往型別定義"
+
+msgid "Hold"
+msgstr "按住"
+
+msgid "How many breakpoint hits to ignore"
+msgstr "要忽略的中斷點命中次數"
+
+msgid "Implementations"
+msgstr "實作"
+
+msgid "Indent"
+msgstr "縮排"
+
+msgid "Insert Collapsible Section (details)"
+msgstr "插入可摺疊區段（details）"
+
+msgid "Insert Mermaid Diagram"
+msgstr "插入 Mermaid 圖表"
+
+msgid "Interface"
+msgstr "介面"
+
+msgid "Jump"
+msgstr "跳至"
+
+msgid "Jump to Edit"
+msgstr "跳至編輯處"
+
+msgid "Jump to {file_name}"
+msgstr "跳至 {file_name}"
+
+msgid "Jumped by name match (no result from the language server)"
+msgstr "已依名稱相符跳轉（語言伺服器沒有結果）"
+
+msgid "Keyword"
+msgstr "關鍵字"
+
+msgid "Line {start_line}"
+msgstr "第 {start_line} 行"
+
+msgid "Lines {start_line}-{end_line}"
+msgstr "第 {start_line}-{end_line} 行"
+
+msgid "Loading…"
+msgstr "正在載入…"
+
+msgid "Message to log when a breakpoint is hit. Expressions within {{}} are interpolated."
+msgstr "到達中斷點時要記錄的訊息。{{}} 內的運算式會被代入。"
+
+msgid "Method"
+msgstr "方法"
+
+msgid "Module"
+msgstr "模組"
+
+msgid "Name match"
+msgstr "名稱相符"
+
+msgid "Next Definition"
+msgstr "下一個定義"
+
+msgid "Next Hunk"
+msgstr "下一個區塊"
+
+msgid "Next Signature"
+msgstr "下一個簽章"
+
+msgid "No definition found in this file or the headers it includes. Git ignores this file, so the folder's symbol index leaves it out; turn on the `symbol_index.include_ignored` setting to include it."
+msgstr "在此檔案或其所 include 的標頭檔中找不到定義。Git 會忽略此檔案，因此資料夾的符號索引不包含它；若要包含，請開啟 `symbol_index.include_ignored` 設定。"
+
+msgid "No definition found in this file. Open the folder that holds it to search the whole folder."
+msgstr "在此檔案中找不到定義。開啟包含此檔案的資料夾即可搜尋整個資料夾。"
+
+msgid "No executable code is associated with this line."
+msgstr "此行沒有關聯的可執行程式碼。"
+
+msgid "No paragraph has a text size set."
+msgstr "沒有任何段落設定了文字大小。"
+
+msgid "No part of the selection has a marker."
+msgstr "選取範圍中沒有任何部分有螢光標記。"
+
+msgid "No part of the selection has a text color."
+msgstr "選取範圍中沒有任何部分有文字色彩。"
+
+msgid "Only part is shown"
+msgstr "只顯示部分內容"
+
+msgid "Only the location of this definition is known"
+msgstr "只知道此定義的位置"
+
+msgid "Open"
+msgstr "開啟"
+
+msgid "Open File"
+msgstr "開啟檔案"
+
+msgid "Open Git Blame"
+msgstr "開啟 Git Blame"
+
+msgid "Open Markdown Preview"
+msgstr "開啟 Markdown 預覽"
+
+msgid "Open Markdown Preview to the Side"
+msgstr "在側邊開啟 Markdown 預覽"
+
+msgid "Open SVG Preview to the Side"
+msgstr "在側邊開啟 SVG 預覽"
+
+msgid "Open in Terminal"
+msgstr "在終端機中開啟"
+
+msgid "Operator"
+msgstr "運算子"
+
+msgid "Outdent"
+msgstr "凸排"
+
+msgid "Part of the selection couldn't be formatted: {}"
+msgstr "無法為部分選取範圍套用格式：{}"
+
+msgid "Paste"
+msgstr "貼上"
+
+msgid "Preview"
+msgstr "預覽"
+
+msgid "Previous Definition"
+msgstr "上一個定義"
+
+msgid "Previous Hunk"
+msgstr "上一個區塊"
+
+msgid "Previous Signature"
+msgstr "上一個簽章"
+
+msgid "Property"
+msgstr "屬性"
+
+msgid "Reference"
+msgstr "參考"
+
+msgid "References"
+msgstr "參考"
+
+msgid "References to {target}"
+msgstr "{target} 的參考"
+
+msgid "Remove Bookmark"
+msgstr "移除書籤"
+
+msgid "Rename Symbol"
+msgstr "重新命名符號"
+
+msgid "Restore"
+msgstr "還原"
+
+msgid "Restore Hunk"
+msgstr "還原區塊"
+
+msgid "Reveal In Project Panel"
+msgstr "在專案面板中顯示"
+
+msgid "Right-Click to Copy Path"
+msgstr "按右鍵以複製路徑"
+
+msgid "Right-click for more options"
+msgstr "按右鍵以顯示更多選項"
+
+msgid "Run to Cursor"
+msgstr "執行至游標處"
+
+msgid "Scroll"
+msgstr "捲動"
+
+msgid "Search Selection on the Web"
+msgstr "在網路上搜尋選取的文字"
+
+msgid "See Docs"
+msgstr "檢視文件"
+
+msgid "Selections for '{title}'"
+msgstr "「{title}」的選取範圍"
+
+msgid "Send Selection to Claude Code"
+msgstr "將選取範圍傳送至 Claude Code"
+
+msgid "Set Breakpoint"
+msgstr "設定中斷點"
+
+msgid "Set Condition Breakpoint"
+msgstr "設定條件中斷點"
+
+msgid "Set Hit Condition Breakpoint"
+msgstr "設定叫用次數條件中斷點"
+
+msgid "Set Log Breakpoint"
+msgstr "設定記錄中斷點"
+
+msgid "Show Callees in Call Graph"
+msgstr "在呼叫圖中顯示被呼叫端"
+
+msgid "Show Callers in Call Graph"
+msgstr "在呼叫圖中顯示呼叫端"
+
+msgid "Show Code Actions"
+msgstr "顯示程式碼動作"
+
+msgid "Show Incoming Calls"
+msgstr "顯示來電呼叫"
+
+msgid "Show Outgoing Calls"
+msgstr "顯示撥出呼叫"
+
+msgid "Show Symbol Outline"
+msgstr "顯示符號大綱"
+
+msgid "Snippet"
+msgstr "程式碼片段"
+
+msgid "Split"
+msgstr "並排顯示"
+
+msgid "Split when wider than {} columns"
+msgstr "寬度超過 {} 欄時分割"
+
+msgid "Stage"
+msgstr "暫存"
+
+msgid "Stage Hunk"
+msgstr "暫存區塊"
+
+msgid "Struct"
+msgstr "結構"
+
+msgid "Text"
+msgstr "文字"
+
+msgid "Text size can only be set on paragraphs (not on headings, code blocks, tables, or HTML blocks)."
+msgstr "文字大小只能設定於段落（不能設定於標題、程式碼區塊、表格或 HTML 區塊）。"
+
+msgid "The diagram text changed while it was being edited. Open it again."
+msgstr "圖表文字在編輯期間已變更。請重新開啟。"
+
+msgid "The remote instance of Zed does not support this yet. It must be upgraded to {}"
+msgstr "遠端 ForgeKairos 執行個體尚不支援此功能。必須升級至 {}"
+
+msgid "There is no text to format."
+msgstr "沒有可套用格式的文字。"
+
+msgid "This buffer is read-only, so the diagram can't be written back."
+msgstr "此緩衝區為唯讀，因此無法寫回圖表。"
+
+msgid "Toggle Code Actions"
+msgstr "切換程式碼動作"
+
+msgid "Type Parameter"
+msgstr "型別參數"
+
+msgid "Type contents are not shown: another window has this folder's symbol index open."
+msgstr "未顯示型別內容：另一個視窗已開啟此資料夾的符號索引。"
+
+msgid "Type contents are not shown: the remote server does not support the symbol index."
+msgstr "未顯示型別內容：遠端伺服器不支援符號索引。"
+
+msgid "Type contents are not shown: the symbol index failed ({error})."
+msgstr "未顯示型別內容：符號索引失敗（{error}）。"
+
+msgid "Type contents are not shown: the symbol index is not available in a shared project."
+msgstr "未顯示型別內容：無法在共用專案中使用符號索引。"
+
+msgid "Type contents: the symbol index is still being built. Hover again in a moment."
+msgstr "型別內容：符號索引仍在建立中。請稍後再暫留一次。"
+
+msgid "Type of {name}:"
+msgstr "{name} 的型別："
+
+msgid "Types"
+msgstr "型別"
+
+msgid "Unfold All Headings"
+msgstr "展開所有標題"
+
+msgid "Unfold Excerpt"
+msgstr "展開摘錄"
+
+msgid "Unified"
+msgstr "內嵌顯示"
+
+msgid "Unit"
+msgstr "單位"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Unset Breakpoint"
+msgstr "移除中斷點"
+
+msgid "Unset breakpoint"
+msgstr "移除中斷點"
+
+msgid "Unstage"
+msgstr "取消暫存"
+
+msgid "Unstage Hunk"
+msgstr "取消暫存區塊"
+
+msgid "Value"
+msgstr "值"
+
+msgid "Variable"
+msgstr "變數"
+
+msgid "View File History"
+msgstr "檢視檔案歷程"
+
+msgid "Your keymap currently overrides the default accept keybinding. To continue, assign one keybinding for the `editor::AcceptEditPrediction` action."
+msgstr "目前的按鍵對應已覆寫預設的接受按鍵繫結。若要繼續，請為 `editor::AcceptEditPrediction` 動作指定一個按鍵繫結。"
+
+msgid "a parameter of this function"
+msgstr "此函式的參數"
+
+msgid "architecture-beta\n    %% group is a grouping and service a component. :L :R :T :B choose the side a line connects to\n    group app(cloud)[App]\n    service web(server)[Web Server] in app\n    service db(database)[Database] in app\n    service disk(disk)[Storage] in app\n    web:R -- L:db\n    web:B -- T:disk"
+msgstr "architecture-beta\n    %% group 是群組，service 是元件。:L :R :T :B 選擇線條連接的邊\n    group app(cloud)[\"應用程式\"]\n    service web(server)[\"Web 伺服器\"] in app\n    service db(database)[\"資料庫\"] in app\n    service disk(disk)[\"儲存空間\"] in app\n    web:R -- L:db\n    web:B -- T:disk"
+
+msgid "at its declaration"
+msgstr "位於其宣告處"
+
+msgid "block-beta\n    %% columns sets the number of columns, space is an empty cell and --> an arrow\n    columns 3\n    input[\"Input\"] process[\"Process\"] output[\"Output\"]\n    space log[\"Log\"] space\n    input --> process\n    process --> output\n    process --> log"
+msgstr "block-beta\n    %% columns 設定欄數，space 是空白儲存格，--> 是箭頭\n    columns 3\n    input[\"輸入\"] process[\"處理\"] output[\"輸出\"]\n    space log[\"記錄\"] space\n    input --> process\n    process --> output\n    process --> log"
+
+msgid "classDiagram\n    %% <|-- is inheritance, *-- composition and o-- aggregation\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+msgstr "classDiagram\n    %% <|-- 是繼承，*-- 是組合，o-- 是聚合\n    class Base {{\n        +field: Type\n        +method()\n    }}\n    class Derived {{\n        +extra()\n    }}\n    Base <|-- Derived"
+
+msgid "click to change min width"
+msgstr "按一下以變更最小寬度"
+
+msgid "could not be followed"
+msgstr "無法繼續追蹤"
+
+msgid "debug: {}"
+msgstr "偵錯：{}"
+
+msgid "declared at file scope"
+msgstr "宣告於檔案範圍"
+
+msgid "declared in this function"
+msgstr "宣告於此函式內"
+
+msgid "erDiagram\n    %% ||--o{{ is one-to-many and }}o--o{{ many-to-many\n    CUSTOMER ||--o{{ ORDER : \"places\"\n    ORDER ||--|{{ ORDER_ITEM : \"contains\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+msgstr "erDiagram\n    %% ||--o{{ 是一對多，}}o--o{{ 是多對多\n    CUSTOMER ||--o{{ ORDER : \"下訂\"\n    ORDER ||--|{{ ORDER_ITEM : \"包含\"\n    CUSTOMER {{\n        int id\n        string name\n    }}"
+
+msgid "eventmodeling\n    %% tf number type name. ui is a screen, cmd a command, evt an event and rmo a read model. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+msgstr "eventmodeling\n    %% tf 編號 類型 名稱。ui 是畫面，cmd 是命令，evt 是事件，rmo 是讀取模型。名稱請以 ASCII 英文字母與數字撰寫（Mermaid 無法讀取非 ASCII 的名稱）\n    tf 01 ui CartScreen\n    tf 02 cmd AddItem\n    tf 03 evt ItemAdded\n    tf 04 rmo CartItems ->> 03"
+
+msgid "flowchart TD\n    %% [] is a step and {{}} a decision. |label| annotates a branch\n    start[Start] --> condition{{Condition}}\n    condition -->|Yes| work[Process]\n    condition -->|No| finish[End]\n    work --> finish"
+msgstr "flowchart TD\n    %% [] 是步驟，{{}} 是判斷。|標籤| 為分支加上註記\n    start[開始] --> condition{{條件}}\n    condition -->|是| work[處理]\n    condition -->|否| finish[結束]\n    work --> finish"
+
+msgid "forward declaration"
+msgstr "前向宣告"
+
+msgid "gantt\n    title Development Schedule\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section Design\n    Requirements :done, req, 2026-01-06, 5d\n    Basic design :active, design, after req, 7d\n    section Implementation\n    Implementation :impl, after design, 10d"
+msgstr "gantt\n    title 開發時程\n    dateFormat YYYY-MM-DD\n    axisFormat %m/%d\n    section 設計\n    需求定義 :done, req, 2026-01-06, 5d\n    基本設計 :active, design, after req, 7d\n    section 實作\n    實作 :impl, after design, 10d"
+
+msgid "gitGraph\n    commit id: \"Initial commit\"\n    branch feature\n    checkout feature\n    commit id: \"Add a feature\"\n    checkout main\n    merge feature"
+msgstr "gitGraph\n    commit id: \"初始提交\"\n    branch feature\n    checkout feature\n    commit id: \"新增功能\"\n    checkout main\n    merge feature"
+
+msgid "guessed by name only"
+msgstr "僅依名稱推測"
+
+msgid "ishikawa-beta\n    %% The first line is the effect and indented lines its causes\n    Too many defects\n        People\n            Little experience\n        Method\n            Outdated procedures\n        Material\n            Inconsistent suppliers"
+msgstr "ishikawa-beta\n    %% 第一行是結果，縮排的行是其原因\n    瑕疵過多\n        人員\n            經驗不足\n        方法\n            程序過時\n        材料\n            供應商品質不一"
+
+msgid "journey\n    %% Task : Satisfaction (1 to 5) : People involved\n    title Path to Purchase\n    section Find\n      Search for a product: 4: Customer\n      Compare: 3: Customer\n    section Buy\n      Add to cart: 5: Customer\n      Pay: 2: Customer, Store"
+msgstr "journey\n    %% 工作 : 滿意度（1 到 5） : 相關人員\n    title 購買流程\n    section 尋找\n      搜尋商品: 4: 顧客\n      比較: 3: 顧客\n    section 購買\n      加入購物車: 5: 顧客\n      付款: 2: 顧客, 商店"
+
+msgid "kanban\n    %% Less indented lines are columns and more indented lines cards\n    todo[To Do]\n        spec[Write the spec]\n        screen[Build the screen]\n    doing[In Progress]\n        api[Build the API]\n    done[Done]\n        setup[Set up the environment]"
+msgstr "kanban\n    %% 縮排較淺的行是欄，縮排較深的行是卡片\n    todo[待辦]\n        spec[撰寫規格]\n        screen[製作畫面]\n    doing[進行中]\n        api[製作 API]\n    done[完成]\n        setup[建置環境]"
+
+msgid "mindmap\n  root((Central Topic))\n    Category A\n      Item 1\n      Item 2\n    Category B\n      Item 3"
+msgstr "mindmap\n  root((中心主題))\n    類別 A\n      項目 1\n      項目 2\n    類別 B\n      項目 3"
+
+msgid "packet-beta\n    %% start bit-end bit: \"Field name\"\n    title UDP Header\n    0-15: \"Source Port\"\n    16-31: \"Destination Port\"\n    32-47: \"Length\"\n    48-63: \"Checksum\"\n    64-95: \"Data (variable length)\""
+msgstr "packet-beta\n    %% 起始位元-結束位元: \"欄位名稱\"\n    title UDP 標頭\n    0-15: \"來源連接埠\"\n    16-31: \"目的地連接埠\"\n    32-47: \"長度\"\n    48-63: \"總和檢查碼\"\n    64-95: \"資料（可變長度）\""
+
+msgid "pie title Breakdown\n    \"Design\" : 30\n    \"Implementation\" : 50\n    \"Testing\" : 20"
+msgstr "pie title 細目\n    \"設計\" : 30\n    \"實作\" : 50\n    \"測試\" : 20"
+
+msgid "quadrantChart\n    %% A point is Name: [x, y], both from 0 to 1\n    title Initiative Priorities\n    x-axis Low Effort --> High Effort\n    y-axis Low Impact --> High Impact\n    quadrant-1 Plan and Do\n    quadrant-2 Do Now\n    quadrant-3 Do Later\n    quadrant-4 Reconsider\n    Initiative A: [0.3, 0.8]\n    Initiative B: [0.7, 0.6]\n    Initiative C: [0.2, 0.3]"
+msgstr "quadrantChart\n    %% 點的格式為 名稱: [x, y]，兩者皆介於 0 到 1\n    title 措施優先順序\n    x-axis 投入少 --> 投入多\n    y-axis 效果小 --> 效果大\n    quadrant-1 規劃後執行\n    quadrant-2 立即執行\n    quadrant-3 稍後執行\n    quadrant-4 重新考慮\n    措施 A: [0.3, 0.8]\n    措施 B: [0.7, 0.6]\n    措施 C: [0.2, 0.3]"
+
+msgid "radar-beta\n    %% axis defines the axes and curve a series. List the values in the order of the axes\n    title Skill Comparison\n    axis design[\"Design\"], build[\"Implementation\"], test[\"Testing\"], ops[\"Operations\"]\n    curve a[\"Person A\"]{{4, 3, 5, 2}}\n    curve b[\"Person B\"]{{2, 5, 3, 4}}\n    max 5"
+msgstr "radar-beta\n    %% axis 定義座標軸，curve 定義數列。請依座標軸的順序列出值\n    title 技能比較\n    axis design[\"設計\"], build[\"實作\"], test[\"測試\"], ops[\"維運\"]\n    curve a[\"人員 A\"]{{4, 3, 5, 2}}\n    curve b[\"人員 B\"]{{2, 5, 3, 4}}\n    max 5"
+
+msgid "recursive"
+msgstr "遞迴"
+
+msgid "requirementDiagram\n    %% requirement declares a requirement; element declares what satisfies it. Connect them with - satisfies ->\n    requirement login {{\n        id: 1\n        text: \"Users can log in\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"Screen\"\n    }}\n    login_page - satisfies -> login"
+msgstr "requirementDiagram\n    %% requirement 宣告需求；element 宣告滿足需求的對象。以 - satisfies -> 連接兩者\n    requirement login {{\n        id: 1\n        text: \"使用者可以登入\"\n        risk: high\n        verifymethod: test\n    }}\n    element login_page {{\n        type: \"畫面\"\n    }}\n    login_page - satisfies -> login"
+
+msgid "sankey-beta\n    %% Each line is source,target,amount. Write names in ASCII letters and digits (Mermaid cannot read non-ASCII names)\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10"
+msgstr "sankey-beta\n    %% 每一行為 來源,目標,數量。名稱請以 ASCII 英文字母與數字撰寫（Mermaid 無法讀取非 ASCII 的名稱）\n    Power,Home,30\n    Power,Factory,50\n    Gas,Home,20\n    Gas,Factory,10"
+
+msgid "sequenceDiagram\n    %% ->> is a call and -->> a reply\n    participant User as User\n    participant App as App\n    User->>App: Request\n    App-->>User: Response\n    Note over App: Note"
+msgstr "sequenceDiagram\n    %% ->> 是呼叫，-->> 是回覆\n    participant User as 使用者\n    participant App as 應用程式\n    User->>App: 要求\n    App-->>User: 回應\n    Note over App: 附註"
+
+msgid "stateDiagram-v2\n    %% [*] is the start and the end. The text after : on an arrow is the event name\n    [*] --> Idle\n    Idle --> Running: Start\n    Running --> Idle: Finish\n    Running --> [*]: Abort"
+msgstr "stateDiagram-v2\n    %% [*] 是開始與結束。箭頭上 : 之後的文字是事件名稱\n    [*] --> Idle\n    Idle --> Running: 開始\n    Running --> Idle: 完成\n    Running --> [*]: 中止"
+
+msgid "the latest version"
+msgstr "最新版本"
+
+msgid "timeline\n    title History\n    2024 : Planning\n    2025 : Development : Release\n    2026 : Operation"
+msgstr "timeline\n    title 沿革\n    2024 : 規劃\n    2025 : 開發 : 發行\n    2026 : 維運"
+
+msgid "treeView-beta\n    %% Indentation shows the hierarchy\n    \"Project\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+msgstr "treeView-beta\n    %% 縮排表示階層\n    \"專案\"\n        \"src\"\n            \"main.rs\"\n            \"lib.rs\"\n        \"docs\"\n            \"README.md\""
+
+msgid "treemap-beta\n    %% Indentation nests items. Give each leaf a value after :\n    \"Development\"\n        \"Design\": 30\n        \"Implementation\": 50\n    \"Operations\"\n        \"Maintenance\": 15\n        \"Monitoring\": 5"
+msgstr "treemap-beta\n    %% 縮排會使項目巢狀。請在每個末端項目的 : 之後提供值\n    \"開發\"\n        \"設計\": 30\n        \"實作\": 50\n    \"維運\"\n        \"維護\": 15\n        \"監控\": 5"
+
+msgid "type named by the language server"
+msgstr "型別名稱來自語言伺服器"
+
+msgid "venn-beta\n    %% set defines a set and union names an overlap\n    title Overlapping Responsibilities\n    set Front[\"Frontend\"]\n    set Back[\"Backend\"]\n    union Front,Back[\"API\"]"
+msgstr "venn-beta\n    %% set 定義集合，union 為重疊部分命名\n    title 職責的重疊\n    set Front[\"前端\"]\n    set Back[\"後端\"]\n    union Front,Back[\"API\"]"
+
+msgid "xychart-beta\n    %% bar draws bars and line a line. Give as many values as the x-axis has items\n    title \"Monthly Sales\"\n    x-axis [\"Jan\", \"Feb\", \"Mar\", \"Apr\"]\n    y-axis \"Sales (USD thousands)\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+msgstr "xychart-beta\n    %% bar 繪製長條，line 繪製折線。請提供與 x 軸項目數量相同的值\n    title \"每月銷售額\"\n    x-axis [\"1月\", \"2月\", \"3月\", \"4月\"]\n    y-axis \"銷售額（千美元）\" 0 --> 100\n    bar [30, 45, 60, 80]\n    line [30, 45, 60, 80]"
+
+msgid "{alt_as_text}-click to disable\nright-click for more options"
+msgstr "按住 {alt_as_text} 並按一下以停用\n按右鍵以顯示更多選項"
+
+msgid "{count} Comment"
+msgid_plural "{count} Comments"
+msgstr[0] "{count} 則留言"
+
+msgid "{count} more"
+msgid_plural "{count} more"
+msgstr[0] "還有 {count} 個"
+
+msgid "{tab_kind} (name match)"
+msgstr "{tab_kind}（名稱相符）"
+
+msgid "{tab_kind} for {target}"
+msgstr "{target} 的{tab_kind}"
+
+msgid "{title} (partial: {omitted} not shown)"
+msgstr "{title}（部分顯示：未顯示 {omitted} 個）"
+
+msgid "{} to toggle all"
+msgstr "按 {} 以切換全部"
+
+msgctxt "markdown color"
+msgid "Blue"
+msgstr "藍色"
+
+msgctxt "markdown color"
+msgid "Gray"
+msgstr "灰色"
+
+msgctxt "markdown color"
+msgid "Green"
+msgstr "綠色"
+
+msgctxt "markdown color"
+msgid "Orange"
+msgstr "橘色"
+
+msgctxt "markdown color"
+msgid "Pink"
+msgstr "粉紅色"
+
+msgctxt "markdown color"
+msgid "Purple"
+msgstr "紫色"
+
+msgctxt "markdown color"
+msgid "Red"
+msgstr "紅色"
+
+msgctxt "markdown color"
+msgid "Yellow"
+msgstr "黃色"
+
+msgctxt "markdown text size"
+msgid "Extra Large"
+msgstr "特大"
+
+msgctxt "markdown text size"
+msgid "Large"
+msgstr "大"
+
+msgctxt "markdown text size"
+msgid "Small"
+msgstr "小"
+
+msgctxt "mermaid diagram"
+msgid "Architecture Diagram"
+msgstr "架構圖"
+
+msgctxt "mermaid diagram"
+msgid "Block Diagram"
+msgstr "區塊圖"
+
+msgctxt "mermaid diagram"
+msgid "C4 Diagram"
+msgstr "C4 圖表"
+
+msgctxt "mermaid diagram"
+msgid "Class Diagram"
+msgstr "類別圖"
+
+msgctxt "mermaid diagram"
+msgid "ER Diagram"
+msgstr "ER 圖"
+
+msgctxt "mermaid diagram"
+msgid "Event Modeling"
+msgstr "事件模型圖"
+
+msgctxt "mermaid diagram"
+msgid "Flowchart"
+msgstr "流程圖"
+
+msgctxt "mermaid diagram"
+msgid "Gantt Chart"
+msgstr "甘特圖"
+
+msgctxt "mermaid diagram"
+msgid "Git Graph"
+msgstr "Git 圖表"
+
+msgctxt "mermaid diagram"
+msgid "Ishikawa Diagram"
+msgstr "魚骨圖"
+
+msgctxt "mermaid diagram"
+msgid "Kanban"
+msgstr "看板"
+
+msgctxt "mermaid diagram"
+msgid "Mindmap"
+msgstr "心智圖"
+
+msgctxt "mermaid diagram"
+msgid "Packet Diagram"
+msgstr "封包圖"
+
+msgctxt "mermaid diagram"
+msgid "Pie Chart"
+msgstr "圓餅圖"
+
+msgctxt "mermaid diagram"
+msgid "Quadrant Chart"
+msgstr "象限圖"
+
+msgctxt "mermaid diagram"
+msgid "Radar Chart"
+msgstr "雷達圖"
+
+msgctxt "mermaid diagram"
+msgid "Requirement Diagram"
+msgstr "需求圖"
+
+msgctxt "mermaid diagram"
+msgid "Sankey Diagram"
+msgstr "桑基圖"
+
+msgctxt "mermaid diagram"
+msgid "Sequence Diagram"
+msgstr "循序圖"
+
+msgctxt "mermaid diagram"
+msgid "State Diagram"
+msgstr "狀態圖"
+
+msgctxt "mermaid diagram"
+msgid "Timeline"
+msgstr "時間軸"
+
+msgctxt "mermaid diagram"
+msgid "Tree View"
+msgstr "樹狀檢視"
+
+msgctxt "mermaid diagram"
+msgid "Treemap"
+msgstr "矩形樹狀圖"
+
+msgctxt "mermaid diagram"
+msgid "User Journey"
+msgstr "使用者旅程圖"
+
+msgctxt "mermaid diagram"
+msgid "Venn Diagram"
+msgstr "文氏圖"
+
+msgctxt "mermaid diagram"
+msgid "XY Chart (Bar/Line)"
+msgstr "XY 圖表（長條圖/折線圖）"
+
+msgctxt "table alignment"
+msgid "Center"
+msgstr "置中"
+
+msgctxt "table alignment"
+msgid "Default"
+msgstr "預設"
+
+msgctxt "table alignment"
+msgid "Left"
+msgstr "靠左"
+
+msgctxt "table alignment"
+msgid "Right"
+msgstr "靠右"

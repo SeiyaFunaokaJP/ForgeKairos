@@ -1,0 +1,102 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A Gantt chart title cannot be empty."
+msgstr "간트 차트 제목은 비워 둘 수 없습니다."
+
+msgid "A class diagram relationship label cannot contain %%. Use a different symbol instead."
+msgstr "클래스 다이어그램 관계 레이블에는 %%를 사용할 수 없습니다. 다른 기호를 사용하세요."
+
+msgid "A pie chart item name cannot be empty or contain `%%`."
+msgstr "원형 차트 항목 이름은 비워 둘 수 없으며 `%%`를 포함할 수 없습니다."
+
+msgid "A pie chart title cannot contain `%%`."
+msgstr "원형 차트 제목에는 `%%`를 포함할 수 없습니다."
+
+msgid "A section name cannot be empty."
+msgstr "섹션 이름은 비워 둘 수 없습니다."
+
+msgid "A section with the same name already exists. Sections with the same name are drawn as one, so use a different name."
+msgstr "같은 이름의 섹션이 이미 있습니다. 같은 이름의 섹션은 하나로 그려지므로 다른 이름을 사용하세요."
+
+msgid "A task name cannot be empty, contain `:`, or start with a keyword such as `title` or `section`."
+msgstr "작업 이름은 비워 둘 수 없으며, `:`를 포함하거나 `title` 또는 `section` 같은 키워드로 시작할 수 없습니다."
+
+msgid "An empty label cannot be edited here. Add text to it in \"Edit Mermaid Diagram\"."
+msgstr "빈 레이블은 여기에서 편집할 수 없습니다. \"Mermaid 다이어그램 편집\"에서 텍스트를 추가하세요."
+
+msgid "An item with the same name already exists. A pie chart does not draw a second item with the same name, so use a different name."
+msgstr "같은 이름의 항목이 이미 있습니다. 원형 차트는 같은 이름의 두 번째 항목을 그리지 않으므로 다른 이름을 사용하세요."
+
+msgid "Code"
+msgstr "코드"
+
+msgid "Details"
+msgstr "세부 정보"
+
+msgid "Double-click to edit the text"
+msgstr "더블 클릭하여 텍스트 편집"
+
+msgid "Edit Mermaid Diagram"
+msgstr "Mermaid 다이어그램 편집"
+
+msgid "Failed to Load Mermaid Diagram"
+msgstr "Mermaid 다이어그램을 불러오지 못했습니다"
+
+msgid "Failed to Load: {link_label}"
+msgstr "불러오기 실패: {link_label}"
+
+msgid "Failed to load mermaid diagram"
+msgstr "Mermaid 다이어그램을 불러오지 못했습니다"
+
+msgid "Failed to render the Mermaid diagram: {error}"
+msgstr "Mermaid 다이어그램을 렌더링하지 못했습니다: {error}"
+
+msgid "Image failed to load. Open `zed: log` for more details."
+msgstr "이미지를 불러오지 못했습니다. 자세한 내용은 `zed: log`를 여세요."
+
+msgid "In a sequence diagram, a leading wrap: or nowrap: is read as a wrapping directive, so the text cannot start with it."
+msgstr "시퀀스 다이어그램에서는 앞의 wrap: 또는 nowrap:이 줄 바꿈 지시문으로 읽히므로 텍스트를 이것으로 시작할 수 없습니다."
+
+msgid "Preview"
+msgstr "미리 보기"
+
+msgid "Rendering..."
+msgstr "렌더링 중..."
+
+msgid "Reset Zoom"
+msgstr "확대/축소 초기화"
+
+msgid "Sequence diagram text cannot be empty. Edit it in \"Edit Mermaid Diagram\"."
+msgstr "시퀀스 다이어그램 텍스트는 비워 둘 수 없습니다. \"Mermaid 다이어그램 편집\"에서 편집하세요."
+
+msgid "Several elements share this name or ID, so it cannot be edited here. Fix it in \"Edit Mermaid Diagram\"."
+msgstr "여러 요소가 이 이름 또는 ID를 공유하므로 여기에서 편집할 수 없습니다. \"Mermaid 다이어그램 편집\"에서 수정하세요."
+
+msgid "The attribute name contains characters that cannot be used. Whitespace, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` and key names such as `PK` are not allowed."
+msgstr "속성 이름에 사용할 수 없는 문자가 포함되어 있습니다. 공백, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` 및 `PK` 같은 키 이름은 사용할 수 없습니다."
+
+msgid "The source location of this label could not be found."
+msgstr "이 레이블의 소스 위치를 찾을 수 없습니다."
+
+msgid "This element shows its ID as is. To change what is shown, give it a description or an alias in \"Edit Mermaid Diagram\"."
+msgstr "이 요소는 ID를 그대로 표시합니다. 표시 내용을 변경하려면 \"Mermaid 다이어그램 편집\"에서 설명이나 별칭을 지정하세요."
+
+msgid "This line's label is shared by several links, so it cannot be edited here."
+msgstr "이 선의 레이블은 여러 연결선에서 공유되므로 여기에서 편집할 수 없습니다."
+
+msgid "Unwrap Content"
+msgstr "줄 바꿈 해제"
+
+msgid "Wrap Content"
+msgstr "내용 줄 바꿈"
+
+msgid "Zoom {percentage}%"
+msgstr "확대/축소 {percentage}%"

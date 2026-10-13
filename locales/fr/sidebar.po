@@ -1,0 +1,149 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid " and "
+msgstr " et "
+
+msgid "-click"
+msgstr "-clic"
+
+msgid "Add Project"
+msgstr "Ajouter un projet"
+
+msgid "Archive Thread"
+msgstr "Archiver la conversation"
+
+msgid "Based on {}"
+msgstr "Basé sur {}"
+
+msgid "Clear Search"
+msgstr "Effacer la recherche"
+
+msgid "Close Terminal"
+msgstr "Fermer le terminal"
+
+msgid "Close Worktree"
+msgstr "Fermer l'arborescence de travail"
+
+msgid "Create New Worktree…"
+msgstr "Créer une nouvelle arborescence de travail…"
+
+msgid "Discard Draft"
+msgstr "Abandonner le brouillon"
+
+msgid "Failed to regenerate thread title."
+msgstr "Impossible de régénérer le titre de la conversation."
+
+msgid "Failed to restore worktree: {error}"
+msgstr "Impossible de restaurer l'arborescence de travail : {error}"
+
+msgid "Focus Last Project"
+msgstr "Placer le focus sur le dernier projet"
+
+msgid "Focus Project"
+msgstr "Placer le focus sur le projet"
+
+msgid "Focus Sidebar"
+msgstr "Placer le focus sur la barre latérale"
+
+msgid "Hide Thread History"
+msgstr "Masquer l'historique des conversations"
+
+msgid "Import Threads"
+msgstr "Importer les conversations"
+
+msgid "Import Threads from External Agents"
+msgstr "Importer des conversations depuis des agents externes"
+
+msgid "Import Threads from Other Channels"
+msgstr "Importer des conversations depuis d'autres canaux"
+
+msgid "Import threads from agents like Claude Agent, Codex, and more, whether started in Zed or another client."
+msgstr "Importez des conversations depuis des agents comme Claude Agent, Codex et d'autres, qu'elles aient été démarrées dans ForgeKairos ou dans un autre client."
+
+msgid "Import threads from {} to continue where you left off."
+msgstr "Importez des conversations depuis {} pour reprendre là où vous vous étiez arrêté."
+
+msgid "Looking for threads from external agents?"
+msgstr "Vous cherchez des conversations d'agents externes ?"
+
+msgid "Move Down"
+msgstr "Descendre"
+
+msgid "Move Up"
+msgstr "Monter"
+
+msgid "New Thread In…"
+msgstr "Nouvelle conversation dans…"
+
+msgid "No model is configured for summarizing thread titles."
+msgstr "Aucun modèle n'est configuré pour résumer les titres de conversation."
+
+msgid "No threads match your search."
+msgstr "Aucune conversation ne correspond à votre recherche."
+
+msgid "No threads yet"
+msgstr "Aucune conversation pour l'instant"
+
+msgid "Open Project in New Window"
+msgstr "Ouvrir le projet dans une nouvelle fenêtre"
+
+msgid "Open Thread as Markdown"
+msgstr "Ouvrir la conversation au format Markdown"
+
+msgid "Open Worktrees"
+msgstr "Arborescences de travail ouvertes"
+
+msgid "Regenerate Thread Title"
+msgstr "Régénérer le titre de la conversation"
+
+msgid "Remote Project"
+msgstr "Projet distant"
+
+msgid "Remove"
+msgstr "Supprimer"
+
+msgid "Rename Thread"
+msgstr "Renommer la conversation"
+
+msgid "Rename Title"
+msgstr "Renommer le titre"
+
+msgid "Search threads…"
+msgstr "Rechercher des conversations…"
+
+msgid "Show Thread History"
+msgstr "Afficher l'historique des conversations"
+
+msgid "Start New Agent Thread"
+msgstr "Démarrer une nouvelle conversation avec l'agent"
+
+msgid "Stop Generation"
+msgstr "Arrêter la génération"
+
+msgid "Thread started outside the sandbox"
+msgstr "Conversation démarrée hors du bac à sable"
+
+msgid "Threads Sidebar"
+msgstr "Barre latérale des conversations"
+
+msgid "Threads found from other channels"
+msgstr "Conversations trouvées dans d'autres canaux"
+
+msgid "Toggle Sidebar"
+msgstr "Afficher/masquer la barre latérale"
+
+msgid "Workspace Info"
+msgstr "Informations sur l'espace de travail"
+
+msgid "{count} thread is waiting for confirmation"
+msgid_plural "{count} threads are waiting for confirmation"
+msgstr[0] "{count} conversation en attente de confirmation"
+msgstr[1] "{count} conversations en attente de confirmation"

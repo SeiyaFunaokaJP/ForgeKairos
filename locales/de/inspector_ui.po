@@ -1,0 +1,69 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Bounds: ⌜{} - {}⌟"
+msgstr "Grenzen: ⌜{} - {}⌟"
+
+msgid "Click to open by running Zed CLI"
+msgstr "Zum Öffnen durch Ausführen der ForgeKairos-CLI klicken"
+
+msgid "Content size: {}"
+msgstr "Inhaltsgröße: {}"
+
+msgid "Disambiguates elements from the same source location"
+msgstr "Unterscheidet Elemente aus derselben Quellposition"
+
+msgid "Element ID"
+msgstr "Element-ID"
+
+msgid "Failed to convert style to JSON: {err}"
+msgstr "Der Stil konnte nicht in JSON umgewandelt werden: {err}"
+
+msgid "Failed to create buffers for style editing: {err}"
+msgstr "Die Puffer für die Stilbearbeitung konnten nicht erstellt werden: {err}"
+
+msgid "GPUI Inspector"
+msgstr "GPUI-Inspektor"
+
+msgid "GlobalElementId of the nearest ancestor with an ID"
+msgstr "GlobalElementId des nächsten Vorfahren mit einer ID"
+
+msgid "Instance {}"
+msgstr "Instanz {}"
+
+msgid "JSON Style"
+msgstr "JSON-Stil"
+
+msgid "Layout"
+msgstr "Layout"
+
+msgid "Loading..."
+msgstr "Wird geladen..."
+
+msgid "Reset style"
+msgstr "Stil zurücksetzen"
+
+msgid "Rust Style"
+msgstr "Rust-Stil"
+
+msgid "Size of the element's children"
+msgstr "Größe der untergeordneten Elemente des Elements"
+
+msgid "Size: {}"
+msgstr "Größe: {}"
+
+msgid "Start inspector pick mode"
+msgstr "Inspektor-Auswahlmodus starten"
+
+msgid "dev::ToggleInspector is only available in debug builds"
+msgstr "dev::ToggleInspector ist nur in Debug-Builds verfügbar"
+
+msgid "unrecognized"
+msgstr "nicht erkannt"

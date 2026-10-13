@@ -1749,6 +1749,10 @@ msgctxt "mermaid gantt tag separator"
 msgid ", "
 msgstr "・"
 
+msgctxt "mermaid gantt task"
+msgid "Start"
+msgstr "開始"
+
 msgctxt "mermaid journey"
 msgid "Add Task"
 msgstr "作業を追加"

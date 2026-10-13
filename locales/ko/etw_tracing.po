@@ -1,0 +1,60 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Cancelling ETW recording..."
+msgstr "ETW 추적 기록 취소 중..."
+
+msgid "ETW recording cancelled"
+msgstr "ETW 추적 기록을 취소했습니다"
+
+msgid "ETW recording ended unexpectedly"
+msgstr "ETW 추적 기록이 예기치 않게 종료되었습니다"
+
+msgid "ETW recording failed: {message}"
+msgstr "ETW 추적 기록 실패: {message}"
+
+msgid "ETW recording is already in progress"
+msgstr "ETW 추적 기록이 이미 진행 중입니다"
+
+msgid "ETW recording is already stopping"
+msgstr "ETW 추적 기록이 이미 중지되는 중입니다"
+
+msgid "ETW recording is already waiting for a save location"
+msgstr "ETW 추적 기록이 이미 저장 위치 선택을 기다리고 있습니다"
+
+msgid "ETW recording started"
+msgstr "ETW 추적 기록을 시작했습니다"
+
+msgid "ETW trace saved to {}"
+msgstr "ETW 추적을 {}에 저장했습니다"
+
+msgid "Failed to cancel ETW recording: {error}"
+msgstr "ETW 추적 기록을 취소하지 못했습니다: {error}"
+
+msgid "Failed to complete ETW recording: {error}"
+msgstr "ETW 추적 기록을 완료하지 못했습니다: {error}"
+
+msgid "Failed to pick save location: {error}"
+msgstr "저장 위치를 선택하지 못했습니다: {error}"
+
+msgid "Failed to start ETW recording: {error}"
+msgstr "ETW 추적 기록을 시작하지 못했습니다: {error}"
+
+msgid "Failed to stop ETW recording: {error}"
+msgstr "ETW 추적 기록을 중지하지 못했습니다: {error}"
+
+msgid "No active ETW recording to cancel"
+msgstr "취소할 활성 ETW 추적 기록이 없습니다"
+
+msgid "No active ETW recording to stop"
+msgstr "중지할 활성 ETW 추적 기록이 없습니다"
+
+msgid "Show in File Manager"
+msgstr "파일 관리자에서 보기"
+
+msgid "Stopping ETW recording..."
+msgstr "ETW 추적 기록 중지 중..."

@@ -7374,7 +7374,7 @@ impl GitPanel {
                         workspace.show_toast(
                             workspace::Toast::new(
                                 NotificationId::unique::<GitJobQueueToast>(),
-                                "No active repository",
+                                i18n::t!("No active repository"),
                             )
                             .autohide(),
                             cx,
@@ -7387,7 +7387,7 @@ impl GitPanel {
 
         let repo_path = repo.read(cx).work_directory_abs_path.display().to_string();
         let queue_value = repo.read(cx).job_debug_queue().to_debug_value();
-        let title = format!("Git Job Queue: {repo_path}");
+        let title = i18n::t!("Git Job Queue: {repo_path}");
 
         let json_language = self.project.read(cx).languages().language_for_name("JSON");
         let project = self.project.clone();
@@ -7856,7 +7856,7 @@ impl GitPanel {
                 i18n::t!("Amend")
             }
         } else if self.has_staged_changes() {
-            i18n::t!("Commit")
+            i18n::tc!("commit button", "Commit")
         } else {
             i18n::t!("Commit Tracked")
         }

@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Failed to initialize the repository"
+msgstr "저장소를 초기화하지 못했습니다"
+
+msgid "Failed to set the initial branch"
+msgstr "초기 브랜치를 설정하지 못했습니다"

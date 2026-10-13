@@ -1,0 +1,102 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "A Gantt chart title cannot be empty."
+msgstr "Le titre d'un diagramme de Gantt ne peut pas être vide."
+
+msgid "A class diagram relationship label cannot contain %%. Use a different symbol instead."
+msgstr "Le libellé d'une relation de diagramme de classes ne peut pas contenir %%. Utilisez un autre symbole."
+
+msgid "A pie chart item name cannot be empty or contain `%%`."
+msgstr "Le nom d'un élément de graphique en secteurs ne peut pas être vide ni contenir `%%`."
+
+msgid "A pie chart title cannot contain `%%`."
+msgstr "Le titre d'un graphique en secteurs ne peut pas contenir `%%`."
+
+msgid "A section name cannot be empty."
+msgstr "Le nom d'une section ne peut pas être vide."
+
+msgid "A section with the same name already exists. Sections with the same name are drawn as one, so use a different name."
+msgstr "Une section portant le même nom existe déjà. Les sections de même nom sont dessinées comme une seule : utilisez un autre nom."
+
+msgid "A task name cannot be empty, contain `:`, or start with a keyword such as `title` or `section`."
+msgstr "Le nom d'une tâche ne peut pas être vide, contenir `:` ni commencer par un mot-clé tel que `title` ou `section`."
+
+msgid "An empty label cannot be edited here. Add text to it in \"Edit Mermaid Diagram\"."
+msgstr "Un libellé vide ne peut pas être modifié ici. Ajoutez-y du texte dans \"Modifier le diagramme Mermaid\"."
+
+msgid "An item with the same name already exists. A pie chart does not draw a second item with the same name, so use a different name."
+msgstr "Un élément portant le même nom existe déjà. Un graphique en secteurs ne dessine pas un second élément de même nom : utilisez un autre nom."
+
+msgid "Code"
+msgstr "Code"
+
+msgid "Details"
+msgstr "Détails"
+
+msgid "Double-click to edit the text"
+msgstr "Double-cliquez pour modifier le texte"
+
+msgid "Edit Mermaid Diagram"
+msgstr "Modifier le diagramme Mermaid"
+
+msgid "Failed to Load Mermaid Diagram"
+msgstr "Échec du chargement du diagramme Mermaid"
+
+msgid "Failed to Load: {link_label}"
+msgstr "Échec du chargement : {link_label}"
+
+msgid "Failed to load mermaid diagram"
+msgstr "Échec du chargement du diagramme Mermaid"
+
+msgid "Failed to render the Mermaid diagram: {error}"
+msgstr "Impossible d'afficher le diagramme Mermaid : {error}"
+
+msgid "Image failed to load. Open `zed: log` for more details."
+msgstr "Échec du chargement de l'image. Ouvrez `zed: log` pour plus de détails."
+
+msgid "In a sequence diagram, a leading wrap: or nowrap: is read as a wrapping directive, so the text cannot start with it."
+msgstr "Dans un diagramme de séquence, un wrap: ou nowrap: initial est lu comme une directive de retour à la ligne : le texte ne peut donc pas commencer ainsi."
+
+msgid "Preview"
+msgstr "Aperçu"
+
+msgid "Rendering..."
+msgstr "Rendu en cours..."
+
+msgid "Reset Zoom"
+msgstr "Réinitialiser le zoom"
+
+msgid "Sequence diagram text cannot be empty. Edit it in \"Edit Mermaid Diagram\"."
+msgstr "Le texte d'un diagramme de séquence ne peut pas être vide. Modifiez-le dans \"Modifier le diagramme Mermaid\"."
+
+msgid "Several elements share this name or ID, so it cannot be edited here. Fix it in \"Edit Mermaid Diagram\"."
+msgstr "Plusieurs éléments partagent ce nom ou cet ID : il ne peut donc pas être modifié ici. Corrigez-le dans \"Modifier le diagramme Mermaid\"."
+
+msgid "The attribute name contains characters that cannot be used. Whitespace, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` and key names such as `PK` are not allowed."
+msgstr "Le nom de l'attribut contient des caractères non autorisés. Les espaces blancs, `,`, `\"`, `{{`, `}}`, `#`, `%`, `;` et les noms de clés tels que `PK` ne sont pas autorisés."
+
+msgid "The source location of this label could not be found."
+msgstr "L'emplacement de ce libellé dans la source est introuvable."
+
+msgid "This element shows its ID as is. To change what is shown, give it a description or an alias in \"Edit Mermaid Diagram\"."
+msgstr "Cet élément affiche son ID tel quel. Pour modifier ce qui est affiché, donnez-lui une description ou un alias dans \"Modifier le diagramme Mermaid\"."
+
+msgid "This line's label is shared by several links, so it cannot be edited here."
+msgstr "Le libellé de cette ligne est partagé par plusieurs liens : il ne peut donc pas être modifié ici."
+
+msgid "Unwrap Content"
+msgstr "Désactiver le retour à la ligne du contenu"
+
+msgid "Wrap Content"
+msgstr "Activer le retour à la ligne du contenu"
+
+msgid "Zoom {percentage}%"
+msgstr "Zoom {percentage} %"

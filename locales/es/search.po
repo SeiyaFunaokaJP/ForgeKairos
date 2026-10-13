@@ -1,0 +1,182 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Also search files ignored by configuration"
+msgstr "Buscar también en archivos ignorados por la configuración"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Close Search Bar"
+msgstr "Cerrar barra de búsqueda"
+
+msgid "Collapse All Files"
+msgstr "Contraer todos los archivos"
+
+msgid "Collapse All Search Results"
+msgstr "Contraer todos los resultados de búsqueda"
+
+msgid "Don't Save"
+msgstr "No guardar"
+
+msgid "Down"
+msgstr "Abajo"
+
+msgid "Exclude: e.g. vendor/*, *.lock"
+msgstr "Excluir: p. ej., vendor/*, *.lock"
+
+msgid "Expand All Files"
+msgstr "Expandir todos los archivos"
+
+msgid "Expand All Search Results"
+msgstr "Expandir todos los resultados de búsqueda"
+
+msgid "Find and replace"
+msgstr "Buscar y reemplazar"
+
+msgid "Find in Results"
+msgstr "Buscar en resultados"
+
+msgid "Fold"
+msgstr "Plegar"
+
+msgid "Hit enter to search. For more options:"
+msgstr "Presione Enter para buscar. Para ver más opciones:"
+
+msgid "Include/exclude specific paths"
+msgstr "Incluir/excluir rutas específicas"
+
+msgid "Include: e.g. src/**/*.rs"
+msgstr "Incluir: p. ej., src/**/*.rs"
+
+msgid "Left"
+msgstr "Izquierda"
+
+msgid "Loading project…"
+msgstr "Cargando proyecto…"
+
+msgid "Match Case Sensitivity"
+msgstr "Coincidir mayúsculas y minúsculas"
+
+msgid "Match Whole Words"
+msgstr "Solo palabras completas"
+
+msgid "Match case"
+msgstr "Coincidir mayúsculas y minúsculas"
+
+msgid "Match whole words"
+msgstr "Solo palabras completas"
+
+msgid "Match with regex"
+msgstr "Usar expresión regular"
+
+msgid "No Results"
+msgstr "No hay resultados"
+
+msgid "No more matches"
+msgstr "No hay más coincidencias"
+
+msgid "No results found in this project for the provided query"
+msgstr "No se encontraron resultados en este proyecto para la consulta indicada"
+
+msgid "One Match Per Line"
+msgstr "Una coincidencia por línea"
+
+msgid "Only Search Open Files"
+msgstr "Buscar solo en archivos abiertos"
+
+msgid "Open File"
+msgstr "Abrir archivo"
+
+msgid "Open Multiple"
+msgstr "Abrir varios"
+
+msgid "Open as Tab"
+msgstr "Abrir como pestaña"
+
+msgid "Project Search"
+msgstr "Búsqueda en el proyecto"
+
+msgid "Project search buffer contains unsaved edits. Do you want to save it?"
+msgstr "El búfer de búsqueda del proyecto contiene cambios sin guardar. ¿Desea guardarlo?"
+
+msgid "Replace All Matches"
+msgstr "Reemplazar todas las coincidencias"
+
+msgid "Replace Next Match"
+msgstr "Reemplazar la siguiente coincidencia"
+
+msgid "Replace in project…"
+msgstr "Reemplazar en el proyecto…"
+
+msgid "Replace with…"
+msgstr "Reemplazar por…"
+
+msgid "Right"
+msgstr "Derecha"
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Search All Files"
+msgstr "Buscar en todos los archivos"
+
+msgid "Search Backwards"
+msgstr "Buscar hacia atrás"
+
+msgid "Search Limits Reached\nTry narrowing your search"
+msgstr "Se alcanzaron los límites de búsqueda\nIntente acotar la búsqueda"
+
+msgid "Search all files…"
+msgstr "Buscar en todos los archivos…"
+
+msgid "Searching…"
+msgstr "Buscando…"
+
+msgid "Search…"
+msgstr "Buscar…"
+
+msgid "Select All Matches"
+msgstr "Seleccionar todas las coincidencias"
+
+msgid "Split…"
+msgstr "Dividir…"
+
+msgid "Start typing to search. For more options:"
+msgstr "Empiece a escribir para buscar. Para ver más opciones:"
+
+msgid "Toggle Filters"
+msgstr "Alternar filtros"
+
+msgid "Toggle Replace"
+msgstr "Alternar reemplazo"
+
+msgid "Toggle Search Selection"
+msgstr "Alternar búsqueda en selección"
+
+msgid "Unfold"
+msgstr "Desplegar"
+
+msgid "Up"
+msgstr "Arriba"
+
+msgid "Use Regular Expressions"
+msgstr "Usar expresiones regulares"
+
+msgid "{} to toggle all"
+msgstr "{} para alternar todo"
+
+msgctxt "search bar"
+msgid "Select Next Match"
+msgstr "Seleccionar la coincidencia siguiente"
+
+msgctxt "search bar"
+msgid "Select Previous Match"
+msgstr "Seleccionar la coincidencia anterior"

@@ -1,0 +1,33 @@
+# Entries that zed-i18n also translates started from its ko-KR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Emacs (beta)"
+msgstr "Emacs (베타)"
+
+msgid "Unknown"
+msgstr "알 수 없음"
+
+msgid "User"
+msgstr "사용자"
+
+msgid "Zed (Default)"
+msgstr "ForgeKairos (기본값)"
+
+msgctxt "BaseKeymap"
+msgid "Cursor"
+msgstr "커서"
+
+msgctxt "keybinding source"
+msgid "Base"
+msgstr "기본"
+
+msgctxt "keybinding source"
+msgid "Default"
+msgstr "기본값"

@@ -102,14 +102,26 @@ pub fn check(
         }
     }
     languages.sort();
+    // `--lang zh_hans` names `locales/zh-Hans` as a language tag does, regardless of case.
+    let is_requested = |language: &str, requested: &str| {
+        i18n_catalog::normalize_tag(requested).eq_ignore_ascii_case(language)
+    };
     for requested in options.languages {
-        if !languages.contains(requested) {
+        if !languages
+            .iter()
+            .any(|language| is_requested(language, requested))
+        {
             anyhow::bail!("there is no directory locales/{requested}");
         }
     }
     let mut results = BTreeMap::new();
     for language in languages {
-        if !options.languages.is_empty() && !options.languages.contains(&language) {
+        if !options.languages.is_empty()
+            && !options
+                .languages
+                .iter()
+                .any(|requested| is_requested(&language, requested))
+        {
             continue;
         }
         let files = read_language(repository, &language)?;
@@ -445,7 +457,58 @@ fn check_language(
             });
         }
     }
+    findings.extend(cancel_collisions(files, selected));
     findings.sort();
+    findings
+}
+
+const AREA_CONTEXTS: [&str; 5] = [
+    i18n::context::ACTION,
+    i18n::context::MENU,
+    i18n::context::SETTINGS,
+    i18n::context::ACTION_DOCUMENTATION,
+    i18n::context::SETTINGS_SCHEMA,
+];
+
+/// (c) A dialog takes an answer whose label is the translation of "Cancel" (without a
+/// msgctxt) for its cancel button, which Escape and the close box answer with, so no
+/// other message may be translated the same: in a dialog that offers it, Escape would
+/// pick it. The names the command palette, the menus and the settings show are never
+/// dialog answers.
+fn cancel_collisions(files: &[LanguageFile], selected: impl Fn(&str) -> bool) -> Vec<Finding> {
+    let Some(cancel) = files
+        .iter()
+        .flat_map(|file| &file.file.entries)
+        .find(|entry| entry.context.is_none() && entry.msgid == "Cancel" && entry.is_translated())
+        .and_then(|entry| entry.msgstr.first())
+    else {
+        return Vec::new();
+    };
+    let cancel = cancel.to_lowercase();
+    let mut findings = Vec::new();
+    for language_file in files.iter().filter(|file| selected(&file.stem)) {
+        for entry in &language_file.file.entries {
+            let is_area = entry
+                .context
+                .as_deref()
+                .is_some_and(|context| AREA_CONTEXTS.contains(&context));
+            if entry.msgid == "Cancel" || is_area || !entry.is_translated() {
+                continue;
+            }
+            if entry
+                .msgstr
+                .iter()
+                .any(|form| form.to_lowercase() == cancel)
+            {
+                findings.push(Finding::Lint(format!(
+                    "{}:{}: {}: translated as the translation of \"Cancel\", so Escape would answer a dialog with it",
+                    language_file.path,
+                    entry.line,
+                    describe_key(entry)
+                )));
+            }
+        }
+    }
     findings
 }
 
@@ -879,5 +942,89 @@ mod tests {
             |finding| !matches!(finding, Finding::Lint(text) if text.contains("_action_docs")),
         );
         assert!(only_doc_findings, "{output}");
+    }
+
+    /// Escape answers a dialog with the button labelled as the translation of "Cancel", so
+    /// no other answer may share that label, in any language.
+    #[test]
+    fn a_translation_equal_to_cancel_is_reported_in_every_language() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path();
+        write(
+            root,
+            "crates/alpha/src/alpha.rs",
+            "fn ui() { i18n::t!(\"Cancel\"); i18n::t!(\"Abort\"); i18n::t!(\"Discard\"); i18n::tc!(\"bookmark\", \"Cancel\"); }",
+        );
+        let header = |language: &str| {
+            format!(
+                "msgid \"\"\nmsgstr \"\"\n\"Language: {language}\n\"\n\"Plural-Forms: nplurals=2; plural=(n != 1);\n\"\n\n"
+            )
+        };
+        write(
+            root,
+            "locales/de/alpha.po",
+            &format!(
+                "{}msgid \"Abort\"\nmsgstr \"Abbrechen\"\n\nmsgid \"Cancel\"\nmsgstr \"Abbrechen\"\n\nmsgid \"Discard\"\nmsgstr \"Verwerfen\"\n\nmsgctxt \"bookmark\"\nmsgid \"Cancel\"\nmsgstr \"Verwerfen\"\n",
+                header("de")
+            ),
+        );
+        write(
+            root,
+            "locales/zh-Hans/alpha.po",
+            &format!(
+                "{}msgid \"Abort\"\nmsgstr \"中止\"\n\nmsgid \"Cancel\"\nmsgstr \"取消\"\n\nmsgid \"Discard\"\nmsgstr \"放弃\"\n\nmsgctxt \"bookmark\"\nmsgid \"Cancel\"\nmsgstr \"取消\"\n",
+                header("zh-Hans")
+            ),
+        );
+        write(
+            root,
+            "locales/zh-Hans/_actions.po",
+            &format!(
+                "{}msgctxt \"action\"\nmsgid \"editor::Cancel\"\nmsgstr \"取消\"\n",
+                header("zh-Hans")
+            ),
+        );
+        let files = crate::sources::load_crates(root, &[]).expect("load");
+        let extraction = crate::sources::extract(&files);
+        let check_languages = |languages: &[String]| {
+            check(
+                root,
+                &extraction,
+                &CheckOptions {
+                    languages,
+                    crates: &[],
+                    action_documentation: None,
+                    settings_schema_descriptions: None,
+                    action_argument_descriptions: None,
+                },
+            )
+            .expect("check")
+        };
+        let results = check_languages(&[]);
+        let collisions = |language: &str| -> Vec<String> {
+            results[language]
+                .iter()
+                .filter_map(|finding| match finding {
+                    Finding::Lint(text) if text.contains("translation of \"Cancel\"") => {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let german = collisions("de");
+        assert_eq!(german.len(), 1, "{german:?}");
+        assert!(
+            german[0].starts_with("locales/de/alpha.po:") && german[0].contains(": \"Abort\": "),
+            "{german:?}"
+        );
+        assert_eq!(collisions("zh-Hans"), Vec::<String>::new());
+
+        let only_chinese = check_languages(&["ZH_hans".to_string()]);
+        assert_eq!(
+            only_chinese.keys().collect::<Vec<_>>(),
+            ["zh-Hans"],
+            "--lang names a directory as a language tag does"
+        );
     }
 }

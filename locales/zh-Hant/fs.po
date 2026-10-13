@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: zh-Hant\n"
+"X-Language-Name: 繁體中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Failed to initialize the repository"
+msgstr "無法初始化儲存庫"
+
+msgid "Failed to set the initial branch"
+msgstr "無法設定初始分支"

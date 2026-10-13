@@ -1594,7 +1594,7 @@ impl BrowserView {
                         let focus_handle = focus_handle.clone();
                         move |_, cx| {
                             Tooltip::for_action_in(
-                                i18n::t!("Bookmarks"),
+                                i18n::tc!("browser bookmark", "Bookmarks"),
                                 &ToggleBookmarks,
                                 &focus_handle,
                                 cx,
@@ -1931,7 +1931,7 @@ impl BrowserView {
                     .border_b_1()
                     .border_color(cx.theme().colors().border)
                     .child(
-                        Label::new(i18n::t!("Bookmarks"))
+                        Label::new(i18n::tc!("browser bookmark", "Bookmarks"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -2161,9 +2161,9 @@ impl BrowserView {
         let form = self.bookmark_form.as_ref()?;
         let title = match (&form.editing, form.is_folder) {
             (Some(_), true) => i18n::t!("Edit Folder"),
-            (Some(_), false) => i18n::t!("Edit Bookmark"),
+            (Some(_), false) => i18n::tc!("browser bookmark", "Edit Bookmark"),
             (None, true) => i18n::t!("Add Folder"),
-            (None, false) => i18n::t!("Add Bookmark"),
+            (None, false) => i18n::tc!("browser bookmark", "Add Bookmark"),
         };
         let name_focused = form.name.focus_handle(cx).contains_focused(window, cx);
         let url_focused = form.url.focus_handle(cx).contains_focused(window, cx);

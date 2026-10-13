@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Could not download {url} (HTTP {status})."
+msgstr "无法下载 {url}（HTTP {status}）。"
+
+msgid "The SHA-256 of the file downloaded from {url} does not match the expected one (expected {expected}, got {digest}). It may have been tampered with, so the downloaded file was deleted. Check the network path (proxies, corporate TLS interception) and try again."
+msgstr "从 {url} 下载的文件的 SHA-256 与预期不符（预期 {expected}，实际 {digest}）。文件可能已被篡改，因此已删除下载的文件。请检查网络路径（代理、企业 TLS 拦截）后重试。"

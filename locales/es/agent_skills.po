@@ -1,0 +1,48 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Failed to read SKILL.md metadata: {}"
+msgstr "No se pudieron leer los metadatos de SKILL.md: {}"
+
+msgid "Failed to read file: {}"
+msgstr "No se pudo leer el archivo: {}"
+
+msgid "Invalid YAML frontmatter"
+msgstr "Front matter YAML no válido"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "El archivo SKILL.md supera el tamaño máximo de {}KB"
+
+msgid "SKILL.md missing closing frontmatter delimiter (---)"
+msgstr "Falta en SKILL.md el delimitador de cierre del front matter (---)"
+
+msgid "SKILL.md must start with YAML frontmatter (---)"
+msgstr "SKILL.md debe comenzar con front matter YAML (---)"
+
+msgid "Skill description cannot be empty"
+msgstr "La descripción de la habilidad no puede estar vacía"
+
+msgid "Skill description is {actual_len} characters, exceeding the {max_len}-character limit. The skill was loaded, but long descriptions may consume more model-context tokens."
+msgstr "La descripción de la habilidad tiene {actual_len} caracteres, lo que supera el límite de {max_len} caracteres. La habilidad se cargó, pero las descripciones largas pueden consumir más tokens del contexto del modelo."
+
+msgid "Skill description must be at most 1024 characters"
+msgstr "La descripción de la habilidad debe tener como máximo 1024 caracteres"
+
+msgid "Skill name cannot be empty"
+msgstr "El nombre de la habilidad no puede estar vacío"
+
+msgid "Skill name must be at most 64 characters"
+msgstr "El nombre de la habilidad debe tener como máximo 64 caracteres"
+
+msgid "Skill name must contain only lowercase letters, numbers, and hyphens"
+msgstr "El nombre de la habilidad solo puede contener letras minúsculas, números y guiones"
+
+msgid "Skill name must not start or end with a hyphen"
+msgstr "El nombre de la habilidad no puede empezar ni terminar con un guion"

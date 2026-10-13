@@ -52009,13 +52009,25 @@ fn test_mermaid_snippets_insert_the_same_text_as_the_menu(_cx: &mut TestAppConte
         "English",
     );
 
-    let _locale = i18n::test_support::LocaleOverride::new(Some(
-        i18n_catalog::test_support::bundled_catalog("ja"),
-    ));
-    assert_every_template_has_a_snippet(
-        &expanded_mermaid_snippet_bodies(include_str!("../../../assets/snippets/ja/markdown.json")),
-        "Japanese",
+    let shipped_languages = i18n_catalog::available_locales(None);
+    assert!(
+        shipped_languages.iter().any(|locale| locale.tag == "ja"),
+        "the shipped languages should include Japanese"
     );
+    for locale in shipped_languages {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(format!("../../assets/snippets/{}/markdown.json", locale.tag));
+        let file = std::fs::read_to_string(&path).unwrap_or_else(|error| {
+            panic!("{} ships no Markdown snippets at {path:?}: {error}", locale.tag)
+        });
+        let _locale = i18n::test_support::LocaleOverride::new(Some(
+            i18n_catalog::test_support::bundled_catalog(&locale.tag),
+        ));
+        assert_every_template_has_a_snippet(
+            &expanded_mermaid_snippet_bodies(&file),
+            &locale.tag,
+        );
+    }
 }
 
 #[track_caller]

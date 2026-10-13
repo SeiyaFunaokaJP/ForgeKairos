@@ -1,0 +1,63 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "A file or folder with the same name already exists. Replacing it will overwrite its current contents."
+msgstr "已存在同名文件或文件夹。替换它将覆盖其当前内容。"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Cannot open {dir}: {error}"
+msgstr "无法打开 {dir}：{error}"
+
+msgid "Enter: Go into Folder"
+msgstr "Enter：进入文件夹"
+
+msgid "Enter: Open"
+msgstr "Enter：打开"
+
+msgid "No such file or directory"
+msgstr "没有此文件或目录"
+
+msgid "Open This Folder"
+msgstr "打开此文件夹"
+
+msgid "Open {listed_directory} itself"
+msgstr "直接打开 {listed_directory}"
+
+msgid "Replace"
+msgstr "替换"
+
+msgid "Type a path…"
+msgstr "输入路径…"
+
+msgid "[directory{}]filename.ext"
+msgstr "[目录{}]文件名.扩展名"
+
+msgid "go to parent directory"
+msgstr "转到上级目录"
+
+msgid "go to parent directory ({parent})"
+msgstr "转到上级目录（{parent}）"
+
+msgid "open this directory"
+msgstr "打开此目录"
+
+msgid "{confirm_hint} / Ctrl+Enter: Choose Selected Folder"
+msgstr "{confirm_hint} / Ctrl+Enter：选择所选文件夹"
+
+msgid "{label} (create)"
+msgstr "{label}（创建）"
+
+msgid "{label} (replace)"
+msgstr "{label}（替换）"
+
+msgid "{prompted_path} already exists. Do you want to replace it?"
+msgstr "{prompted_path} 已存在。是否替换？"

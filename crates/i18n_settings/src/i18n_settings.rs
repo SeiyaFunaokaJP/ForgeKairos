@@ -476,7 +476,7 @@ mod tests {
 
         let directory = tempfile::tempdir().expect("create a temporary directory");
         write(
-            &directory.path().join("fr/test.po"),
+            &directory.path().join("qaa/test.po"),
             "msgid \"\"\nmsgstr \"X-Language-Name: Français\\n\"\n\nmsgid \"i18n_settings test: Open\"\nmsgstr \"Ouvrir\"\n",
         );
         write(
@@ -515,23 +515,23 @@ mod tests {
         );
 
         let before = active(cx).generation;
-        set_user_settings("{ \"ui_language\": \"fr\" }", cx);
-        assert_eq!(i18n::current_locale(), "fr");
-        assert_eq!(active(cx).locale.as_ref(), "fr");
+        set_user_settings("{ \"ui_language\": \"qaa\" }", cx);
+        assert_eq!(i18n::current_locale(), "qaa");
+        assert_eq!(active(cx).locale.as_ref(), "qaa");
         assert!(active(cx).generation > before);
         assert_eq!(i18n::tr("i18n_settings test: Open"), "Ouvrir");
 
         let options = cx.update(|cx| language_options(cx));
         let french = options
             .iter()
-            .find(|option| option.tag == "fr")
-            .expect("the user's fr is offered");
+            .find(|option| option.tag == "qaa")
+            .expect("the user's qaa is offered");
         assert_eq!(french.display_name, "Français");
         assert!(options.iter().any(|option| option.tag == "ja"));
 
         // An unrelated change must not reinstall the catalog.
         let generation = active(cx).generation;
-        set_user_settings("{ \"ui_language\": \"fr\", \"vim_mode\": true }", cx);
+        set_user_settings("{ \"ui_language\": \"qaa\", \"vim_mode\": true }", cx);
         assert_eq!(active(cx).generation, generation);
         assert_eq!(i18n::generation(), generation);
 
@@ -554,7 +554,7 @@ mod tests {
             "i18n_settings test: Open"
         );
 
-        set_user_settings("{ \"ui_language\": \"../fr\" }", cx);
+        set_user_settings("{ \"ui_language\": \"../qaa\" }", cx);
         assert_eq!(active(cx).locale.as_ref(), "en");
 
         set_user_settings("{ \"ui_language\": \"en\" }", cx);

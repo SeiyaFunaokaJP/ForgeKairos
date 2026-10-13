@@ -1,0 +1,96 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Agent"
+msgstr "Agent"
+
+msgid "Claude Code (Sandbox): Connected"
+msgstr "Claude Code (bac à sable) : connecté"
+
+msgid "Claude Code in the sandbox is connected to this project (connections: {connection_count}). Click to open the menu\n{assist_summary}"
+msgstr "Claude Code dans le bac à sable est connecté à ce projet (connexions : {connection_count}). Cliquez pour ouvrir le menu\n{assist_summary}"
+
+msgid "Claude Code isn't connected"
+msgstr "Claude Code n'est pas connecté"
+
+msgid "Copied the MCP configuration. The auth token changes every time Zed starts, so paste it again each time"
+msgstr "Configuration MCP copiée. Le jeton d'authentification change à chaque démarrage de ForgeKairos : collez-la donc à nouveau à chaque fois"
+
+msgid "Copy MCP Configuration"
+msgstr "Copier la configuration MCP"
+
+msgid "Couldn't create the MCP configuration: {error}"
+msgstr "Impossible de créer la configuration MCP : {error}"
+
+msgid "External Agent"
+msgstr "Agent externe"
+
+msgid "IDE Server: Starting…"
+msgstr "Serveur IDE : démarrage…"
+
+msgid "IDE Server: {port}"
+msgstr "Serveur IDE : {port}"
+
+msgid "IDE Server: {port} ({connected_clients} connected)"
+msgstr "Serveur IDE : {port} ({connected_clients} connectés)"
+
+msgid "IDE tools: highlights, annotations, tours, definitions, references, symbol search"
+msgstr "Outils IDE : surbrillances, annotations, visites, définitions, références, recherche de symboles"
+
+msgid "IDE tools: off (turn them on in the \"AI\" settings)"
+msgstr "Outils IDE : désactivés (activez-les dans les paramètres \"IA\")"
+
+msgid "Listening on 127.0.0.1:{port} (connections: {connection_count}). Click to open the menu\n{assist_summary}"
+msgstr "À l'écoute sur 127.0.0.1:{port} (connexions : {connection_count}). Cliquez pour ouvrir le menu\n{assist_summary}"
+
+msgid "Listening on 127.0.0.1:{port} (connections: {connection_count}). This is a remote workspace, so there is no lock file for CLIs to find it by (paste what \"Copy MCP Configuration\" gives you to connect)\n{assist_summary}"
+msgstr "À l'écoute sur 127.0.0.1:{port} (connexions : {connection_count}). Il s'agit d'un espace de travail distant : il n'y a donc pas de fichier de verrouillage permettant aux CLI de le trouver (collez ce que donne \"Copier la configuration MCP\" pour vous connecter)\n{assist_summary}"
+
+msgid "Proposed by the agent: {}"
+msgstr "Proposé par l'agent : {}"
+
+msgid "Reason for rejecting (optional, sent to the agent)"
+msgstr "Motif du rejet (facultatif, envoyé à l'agent)"
+
+msgid "Remote workspaces get no lock file. From a CLI, use the HTTP endpoint that \"Copy MCP Configuration\" gives you"
+msgstr "Les espaces de travail distants n'ont pas de fichier de verrouillage. Depuis une CLI, utilisez le point de terminaison HTTP que donne \"Copier la configuration MCP\""
+
+msgid "Reveal Lock File"
+msgstr "Afficher le fichier de verrouillage"
+
+msgid "The IDE server isn't running"
+msgstr "Le serveur IDE n'est pas en cours d'exécution"
+
+msgid "There's no editor to send"
+msgstr "Aucun éditeur à envoyer"
+
+msgid "This diff has been handled"
+msgstr "Ces différences ont déjà été traitées"
+
+msgid "Unsaved buffers can't be sent to Claude Code"
+msgstr "Les tampons non enregistrés ne peuvent pas être envoyés à Claude Code"
+
+msgid "Waiting for a port to listen on"
+msgstr "En attente d'un port d'écoute"
+
+msgid "{} (connections: {})"
+msgstr "{} (connexions : {})"
+
+msgctxt "ide server"
+msgid "Disable"
+msgstr "Désactiver"
+
+msgctxt "proposed diff"
+msgid "Accept"
+msgstr "Accepter"
+
+msgctxt "proposed diff"
+msgid "Reject"
+msgstr "Rejeter"

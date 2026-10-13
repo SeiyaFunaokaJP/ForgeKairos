@@ -11799,7 +11799,7 @@ impl Repository {
         anyhow::ensure!(
             previous_sha.is_none() || recreate,
             i18n::t!(
-                "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch}\"."
+                "Branch \"{merge_request_branch}\" already exists. To recreate it, check \"Recreate the existing {merge_request_branch} (needs a force push)\"."
             )
         );
         Ok(previous_sha)

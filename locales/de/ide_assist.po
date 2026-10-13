@@ -1,0 +1,79 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(image)"
+msgstr "(Bild)"
+
+msgid "(image: {alt})"
+msgstr "(Bild: {alt})"
+
+msgid "Annotation from {label}"
+msgstr "Anmerkung von {label}"
+
+msgid "Can't open this step ({reason})"
+msgstr "Dieser Schritt kann nicht geöffnet werden ({reason})"
+
+msgid "Couldn't open the file ({error})"
+msgstr "Die Datei konnte nicht geöffnet werden ({error})"
+
+msgid "End Tour"
+msgstr "Tour beenden"
+
+msgid "File not found"
+msgstr "Datei nicht gefunden"
+
+msgid "Folders can't be shown"
+msgstr "Ordner können nicht angezeigt werden"
+
+msgid "Invalid line range (lines {}-{})"
+msgstr "Ungültiger Zeilenbereich (Zeilen {}-{})"
+
+msgid "Line {start_line} is past the end of the file ({line_count} lines)"
+msgstr "Zeile {start_line} liegt hinter dem Dateiende ({line_count} Zeilen)"
+
+msgid "Line {}"
+msgstr "Zeile {}"
+
+msgid "Lines {}-{}"
+msgstr "Zeilen {}-{}"
+
+msgid "Next Step"
+msgstr "Nächster Schritt"
+
+msgid "Next ›"
+msgstr "Weiter ›"
+
+msgid "Not a regular file"
+msgstr "Keine reguläre Datei"
+
+msgid "Previous Step"
+msgstr "Vorheriger Schritt"
+
+msgid "The file is too large (over 4 MiB)"
+msgstr "Die Datei ist zu groß (über 4 MiB)"
+
+msgid "Too long, cut to {max_chars} characters"
+msgstr "Zu lang, auf {max_chars} Zeichen gekürzt"
+
+msgid "Tour from {}: {}"
+msgstr "Tour von {}: {}"
+
+msgid "Tour from {}: {} (click to go to the current step)"
+msgstr "Tour von {}: {} (klicken, um zum aktuellen Schritt zu wechseln)"
+
+msgid "Tour {}/{}"
+msgstr "Tour {}/{}"
+
+msgid "‹ Previous"
+msgstr "‹ Zurück"
+
+msgctxt "tour"
+msgid "End"
+msgstr "Ende"

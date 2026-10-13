@@ -1,0 +1,70 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Just now"
+msgstr "Ahora mismo"
+
+msgid "Today"
+msgstr "Hoy"
+
+msgid "Today at {}"
+msgstr "Hoy a las {}"
+
+msgid "Yesterday"
+msgstr "Ayer"
+
+msgid "Yesterday at {}"
+msgstr "Ayer a las {}"
+
+msgid "{count} day ago"
+msgid_plural "{count} days ago"
+msgstr[0] "hace {count} día"
+msgstr[1] "hace {count} días"
+
+msgid "{count} hour ago"
+msgid_plural "{count} hours ago"
+msgstr[0] "hace {count} hora"
+msgstr[1] "hace {count} horas"
+
+msgid "{count} minute ago"
+msgid_plural "{count} minutes ago"
+msgstr[0] "hace {count} minuto"
+msgstr[1] "hace {count} minutos"
+
+msgid "{count} month"
+msgid_plural "{count} months"
+msgstr[0] "{count} mes"
+msgstr[1] "{count} meses"
+
+msgid "{count} month ago"
+msgid_plural "{count} months ago"
+msgstr[0] "hace {count} mes"
+msgstr[1] "hace {count} meses"
+
+msgid "{count} week ago"
+msgid_plural "{count} weeks ago"
+msgstr[0] "hace {count} semana"
+msgstr[1] "hace {count} semanas"
+
+msgid "{count} year"
+msgid_plural "{count} years"
+msgstr[0] "{count} año"
+msgstr[1] "{count} años"
+
+msgid "{count} year ago"
+msgid_plural "{count} years ago"
+msgstr[0] "hace {count} año"
+msgstr[1] "hace {count} años"
+
+msgid "{month}/{day}/{year}"
+msgstr "{day}/{month}/{year}"
+
+msgid "{years}, {months} ago"
+msgstr "hace {years} y {months}"

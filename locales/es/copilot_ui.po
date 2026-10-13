@@ -1,0 +1,135 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "An Error Happened"
+msgstr "Se produjo un error"
+
+msgid "Authenticate To Use"
+msgstr "Autenticarse para usar"
+
+msgid "Authorized"
+msgstr "Autorizado"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Connect to GitHub"
+msgstr "Conectarse a GitHub"
+
+msgid "Copied!"
+msgstr "¡Copiado!"
+
+msgid "Copilot Chat Enabled!"
+msgstr "¡Copilot Chat habilitado!"
+
+msgid "Copilot Chat had an issue signing in. Please try again."
+msgstr "Se produjo un problema al iniciar sesión en Copilot Chat. Inténtelo de nuevo."
+
+msgid "Copilot Chat requires an active GitHub Copilot subscription. Please ensure Copilot Chat is configured and try again, or use a different LLM provider."
+msgstr "Copilot Chat requiere una suscripción activa a GitHub Copilot. Asegúrese de que Copilot Chat esté configurado e inténtelo de nuevo, o use otro proveedor de LLM."
+
+msgid "Copilot Edit Predictions Enabled!"
+msgstr "¡Copilot Edit Predictions habilitado!"
+
+msgid "Copilot Edit Predictions had issues starting. You can try reinstalling it and signing in again."
+msgstr "Copilot Edit Predictions tuvo problemas al iniciarse. Puede intentar reinstalarlo e iniciar sesión de nuevo."
+
+msgid "Copilot Edit Predictions has started."
+msgstr "Copilot Edit Predictions se inició."
+
+msgid "Copilot Edit Predictions is reinstalling…"
+msgstr "Copilot Edit Predictions se está reinstalando…"
+
+msgid "Copilot Edit Predictions is starting…"
+msgstr "Copilot Edit Predictions se está iniciando…"
+
+msgid "Copilot Edit Predictions requires an active GitHub Copilot subscription. Please ensure Copilot Edit Predictions is configured and try again, or use a different edit predictions provider."
+msgstr "Copilot Edit Predictions requiere una suscripción activa a GitHub Copilot. Asegúrese de que Copilot Edit Predictions esté configurado e inténtelo de nuevo, o use otro proveedor de predicciones de edición."
+
+msgid "Copy"
+msgstr "Copiar"
+
+msgid "Done"
+msgstr "Listo"
+
+msgid "Enable Copilot edit predictions by connecting your existing license once you have subscribed or renewed your subscription."
+msgstr "Habilite las predicciones de edición de Copilot vinculando su licencia existente una vez que se haya suscrito o haya renovado la suscripción."
+
+msgid "Error: {err}"
+msgstr "Error: {err}"
+
+msgid "Paste this code into GitHub after clicking the button below."
+msgstr "Pegue este código en GitHub después de hacer clic en el botón siguiente."
+
+msgid "Reinstall Copilot Edit Predictions and Sign In"
+msgstr "Reinstalar Copilot Edit Predictions e iniciar sesión"
+
+msgid "Reinstall Copilot and Sign in"
+msgstr "Reinstalar Copilot e iniciar sesión"
+
+msgid "Reinstall and Sign in"
+msgstr "Reinstalar e iniciar sesión"
+
+msgid "Sign In"
+msgstr "Iniciar sesión"
+
+msgid "Sign Out"
+msgstr "Cerrar sesión"
+
+msgid "Sign in to GitHub"
+msgstr "Iniciar sesión en GitHub"
+
+msgid "Signed out of Copilot Edit Predictions"
+msgstr "Sesión cerrada en Copilot Edit Predictions"
+
+msgid "Signing into {product}…"
+msgstr "Iniciando sesión en {product}…"
+
+msgid "Signing out of Copilot Edit Predictions…"
+msgstr "Cerrando sesión en Copilot Edit Predictions…"
+
+msgid "Starting {product}…"
+msgstr "Iniciando {product}…"
+
+msgid "Subscribe on GitHub"
+msgstr "Suscribirse en GitHub"
+
+msgid "To use Copilot for edit predictions, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot subscription."
+msgstr "Para usar Copilot para predicciones de edición, es necesario haber iniciado sesión en GitHub. Tenga en cuenta que la cuenta de GitHub debe tener una suscripción activa a Copilot."
+
+msgid "To use Zed's agent with GitHub Copilot Chat, you need to be logged in to GitHub. Note that your GitHub account must have an active Copilot Chat subscription."
+msgstr "Para usar el agente de ForgeKairos con GitHub Copilot Chat, es necesario haber iniciado sesión en GitHub. Tenga en cuenta que la cuenta de GitHub debe tener una suscripción activa a Copilot Chat."
+
+msgid "Use GitHub Copilot Chat in Zed"
+msgstr "Usar GitHub Copilot Chat en ForgeKairos"
+
+msgid "Use GitHub Copilot Edit Predictions in Zed"
+msgstr "Usar GitHub Copilot Edit Predictions en ForgeKairos"
+
+msgid "Use GitHub Copilot in Zed"
+msgstr "Usar GitHub Copilot en ForgeKairos"
+
+msgid "Using Copilot Chat requires an active subscription on GitHub."
+msgstr "Para usar Copilot Chat se requiere una suscripción activa en GitHub."
+
+msgid "Using Copilot edit predictions requires an active subscription on GitHub."
+msgstr "Para usar las predicciones de edición de Copilot se requiere una suscripción activa en GitHub."
+
+msgid "Waiting for connection…"
+msgstr "Esperando conexión…"
+
+msgid "You must have an active GitHub Copilot subscription."
+msgstr "Debe tener una suscripción activa a GitHub Copilot."
+
+msgid "You're all set to use Copilot Chat."
+msgstr "Todo está listo para usar Copilot Chat."
+
+msgid "You're all set to use Copilot edit predictions."
+msgstr "Todo está listo para usar las predicciones de edición de Copilot."

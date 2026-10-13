@@ -1,0 +1,12 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Could not download {url} (HTTP {status})."
+msgstr "No se pudo descargar {url} (HTTP {status})."
+
+msgid "The SHA-256 of the file downloaded from {url} does not match the expected one (expected {expected}, got {digest}). It may have been tampered with, so the downloaded file was deleted. Check the network path (proxies, corporate TLS interception) and try again."
+msgstr "El SHA-256 del archivo descargado de {url} no coincide con el esperado (se esperaba {expected} y se obtuvo {digest}). Es posible que se haya alterado, por lo que se eliminó el archivo descargado. Compruebe la ruta de red (proxies, interceptación TLS corporativa) e inténtelo de nuevo."

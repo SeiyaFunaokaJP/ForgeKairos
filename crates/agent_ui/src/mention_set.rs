@@ -1081,7 +1081,9 @@ impl MentionSet {
 
         if is_raster_image_path(&abs_path) {
             if !supports_images {
-                return Task::ready(Err(anyhow!("This model does not support images yet")));
+                return Task::ready(Err(anyhow!(i18n::t!(
+                    "This model does not support images yet"
+                ))));
             }
             let task = project.update(cx, |project, cx| project.open_image(project_path, cx));
             return cx.spawn(async move |_, cx| {
@@ -1096,7 +1098,7 @@ impl MentionSet {
                         format: LanguageModelImage::FORMAT,
                     }))
                 } else {
-                    Err(anyhow!("Failed to convert image"))
+                    Err(anyhow!(i18n::t!("Failed to convert image")))
                 }
             });
         }

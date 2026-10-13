@@ -1,0 +1,574 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid " (case-sensitive)"
+msgstr "（区分大小写）"
+
+msgid "Abort"
+msgstr "中止"
+
+msgid "Allow"
+msgstr "允许"
+
+msgid "Allow always"
+msgstr "始终允许"
+
+msgid "Allow for this subagent"
+msgstr "在此子智能体中允许"
+
+msgid "Allow for this thread"
+msgstr "在此会话中允许"
+
+msgid "Allow once"
+msgstr "允许一次"
+
+msgid "Always for `{}`"
+msgstr "始终用于 `{}`"
+
+msgid "Always for `{}` commands"
+msgstr "始终用于 `{}` 命令"
+
+msgid "Always for {display_name} MCP tool"
+msgstr "始终用于 {display_name} MCP 工具"
+
+msgid "Always for {}"
+msgstr "始终用于 {}"
+
+msgid "Annotate code"
+msgstr "为代码添加注释"
+
+msgid "Annotate code ({count} note)"
+msgid_plural "Annotate code ({count} notes)"
+msgstr[0] "为代码添加注释（{count} 条）"
+
+msgid "Answered: {selected}"
+msgstr "已回答：{selected}"
+
+msgid "Apply code action"
+msgstr "应用代码操作"
+
+msgid "Apply code action #{}"
+msgstr "应用代码操作 #{}"
+
+msgid "Apply code action: {title}"
+msgstr "应用代码操作：{title}"
+
+msgid "Asking a question"
+msgstr "正在提问"
+
+msgid "Asking you, because no model is set for the review"
+msgstr "由于未设置用于审查的模型，需要你确认"
+
+msgid "Asking you, because the review couldn't decide"
+msgstr "由于审查无法做出判断，需要你确认"
+
+msgid "Asking you, because the review didn't finish in time"
+msgstr "由于审查未能及时完成，需要你确认"
+
+msgid "Asking you, because the review's answer couldn't be read"
+msgstr "由于无法读取审查的答复，需要你确认"
+
+msgid "Build a repository map"
+msgstr "构建仓库地图"
+
+msgid "Build a repository map of {path}"
+msgstr "构建 {path} 的仓库地图"
+
+msgid "Call hierarchy"
+msgstr "调用层次结构"
+
+msgid "Callers of {}"
+msgstr "{} 的调用方"
+
+msgid "Calls made by {}"
+msgstr "{} 调用的函数"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Check diagnostics for {}"
+msgstr "检查 {} 的诊断"
+
+msgid "Check project diagnostics"
+msgstr "检查项目诊断"
+
+msgid "Check the changes (git diff)"
+msgstr "检查更改（git diff）"
+
+msgid "Check the changes (git diff) in {path}"
+msgstr "检查 {path} 中的更改（git diff）"
+
+msgid "Choose an option"
+msgstr "选择选项"
+
+msgid "Clear the editor annotations"
+msgstr "清除编辑器注释"
+
+msgid "Click on the page"
+msgstr "点击页面"
+
+msgid "Click {}"
+msgstr "点击 {}"
+
+msgid "Close AI tab {}"
+msgstr "关闭 AI 标签页 {}"
+
+msgid "Close an AI tab"
+msgstr "关闭 AI 标签页"
+
+msgid "Code tour"
+msgstr "代码导览"
+
+msgid "Code tour “{title}” ({count} step)"
+msgid_plural "Code tour “{title}” ({count} steps)"
+msgstr[0] "代码导览“{title}”（{count} 个步骤）"
+
+msgid "Continue"
+msgstr "继续"
+
+msgid "Copy path"
+msgstr "复制路径"
+
+msgid "Copy {src} to {dest}"
+msgstr "将 {src} 复制到 {dest}"
+
+msgid "Create directory"
+msgstr "创建目录"
+
+msgid "Create directory {}"
+msgstr "创建目录 {}"
+
+msgid "Create thread"
+msgstr "创建会话"
+
+msgid "Create thread: {}"
+msgstr "创建会话：{}"
+
+msgid "Delete path"
+msgstr "删除路径"
+
+msgid "Delete {}"
+msgstr "删除 {}"
+
+msgid "Delete “`{}`”"
+msgstr "删除“`{}`”"
+
+msgid "Deny"
+msgstr "拒绝"
+
+msgid "Edit {}"
+msgstr "编辑 {}"
+
+msgid "Editing file"
+msgstr "正在编辑文件"
+
+msgid "Failed to read file: {}"
+msgstr "读取文件失败：{}"
+
+msgid "Failed to scan project skills: {}"
+msgstr "扫描项目技能失败：{}"
+
+msgid "Fetch URL"
+msgstr "获取 URL"
+
+msgid "Fetch {}"
+msgstr "获取 {}"
+
+msgid "Find on the page"
+msgstr "在页面中查找"
+
+msgid "Find paths"
+msgstr "查找路径"
+
+msgid "Find paths matching “`{}`”"
+msgstr "查找与“`{}`”匹配的路径"
+
+msgid "Find references"
+msgstr "查找引用"
+
+msgid "Find references to `{symbol_name}`"
+msgstr "查找 `{symbol_name}` 的引用"
+
+msgid "Find {} on the page"
+msgstr "在页面中查找 {}"
+
+msgid "Get code actions"
+msgstr "获取代码操作"
+
+msgid "Get code actions for `{symbol_name}`"
+msgstr "获取 `{symbol_name}` 的代码操作"
+
+msgid "Get hover information"
+msgstr "获取悬停信息"
+
+msgid "Get page {page} of search results for regex {regex_str}{case_info}"
+msgstr "获取正则表达式 {regex_str}{case_info} 的第 {page} 页搜索结果"
+
+msgid "Go back in the browser"
+msgstr "在浏览器中后退"
+
+msgid "Go forward in the browser"
+msgstr "在浏览器中前进"
+
+msgid "Go to definition"
+msgstr "转到定义"
+
+msgid "Go to definition of `{symbol_name}`"
+msgstr "转到 `{symbol_name}` 的定义"
+
+msgid "Highlight code"
+msgstr "高亮代码"
+
+msgid "Highlight code ({count} place)"
+msgid_plural "Highlight code ({count} places)"
+msgstr[0] "高亮代码（{count} 处）"
+
+msgid "Hover information for line {1} of {0}"
+msgstr "{0} 第 {1} 行的悬停信息"
+
+msgid "Hover information for {}"
+msgstr "{} 的悬停信息"
+
+msgid "Hover on the page"
+msgstr "在页面上悬停"
+
+msgid "Hover over {}"
+msgstr "悬停在 {} 上"
+
+msgid "List agents and models"
+msgstr "列出智能体和模型"
+
+msgid "List directory"
+msgstr "列出目录"
+
+msgid "List the browser's AI tabs"
+msgstr "列出浏览器的 AI 标签页"
+
+msgid "List the page's network requests"
+msgstr "列出页面的网络请求"
+
+msgid "List the {path} directory's contents"
+msgstr "列出 {path} 目录的内容"
+
+msgid "Move path"
+msgstr "移动路径"
+
+msgid "Move {src} to {dest}"
+msgstr "将 {src} 移至 {dest}"
+
+msgid "Navigate the browser"
+msgstr "在浏览器中打开页面"
+
+msgid "Navigate to {}"
+msgstr "导航到 {}"
+
+msgid "No matches"
+msgstr "无匹配项"
+
+msgid "Only this time"
+msgstr "仅本次"
+
+msgid "Open a new AI tab"
+msgstr "打开新的 AI 标签页"
+
+msgid "Open {} in a new AI tab"
+msgstr "在新的 AI 标签页中打开 {}"
+
+msgid "Or type your own answer"
+msgstr "或输入你自己的回答"
+
+msgid "Press keys in the page"
+msgstr "在页面中按键"
+
+msgid "Press {}"
+msgstr "按 {}"
+
+msgid "Read file"
+msgstr "读取文件"
+
+msgid "Read file `{path}`"
+msgstr "读取文件 `{path}`"
+
+msgid "Read file `{path}` (from line {})"
+msgstr "读取文件 `{path}`（从第 {} 行起）"
+
+msgid "Read file `{path}` (lines {}-{})"
+msgstr "读取文件 `{path}`（第 {} 至 {} 行）"
+
+msgid "Read the page's console"
+msgstr "读取页面的控制台"
+
+msgid "Read the page's text"
+msgstr "读取页面的文本"
+
+msgid "Recommended"
+msgstr "推荐"
+
+msgid "Reload the page"
+msgstr "重新加载页面"
+
+msgid "Rename `{symbol_name}` to `{new_name}`"
+msgstr "将 `{symbol_name}` 重命名为 `{new_name}`"
+
+msgid "Rename symbol"
+msgstr "重命名符号"
+
+msgid "Rename {src} to {filename}"
+msgstr "将 {src} 重命名为 {filename}"
+
+msgid "Retry"
+msgstr "重试"
+
+msgid "Retry (attempt {})"
+msgstr "重试（第 {} 次）"
+
+msgid "Reviewed as safe"
+msgstr "已审查为安全"
+
+msgid "Run JavaScript in the page"
+msgstr "在页面中运行 JavaScript"
+
+msgid "Run MCP tool `{}`"
+msgstr "运行 MCP 工具 `{}`"
+
+msgid "Run MCP tool `{}` {}"
+msgstr "运行 MCP 工具 `{}` {}"
+
+msgid "Run a git command"
+msgstr "运行 git 命令"
+
+msgid "Run {}"
+msgstr "运行 {}"
+
+msgid "Run {} in the page"
+msgstr "在页面中运行 {}"
+
+msgid "SKILL.md file exceeds maximum size of {}KB"
+msgstr "SKILL.md 文件超过最大大小 {}KB"
+
+msgid "Scroll the page"
+msgstr "滚动页面"
+
+msgid "Search files for regex {regex_str}{case_info}"
+msgstr "在文件中搜索正则表达式 {regex_str}{case_info}"
+
+msgid "Search symbols"
+msgstr "搜索符号"
+
+msgid "Search symbols: {}"
+msgstr "搜索符号：{}"
+
+msgid "Search the web for {}"
+msgstr "在网上搜索 {}"
+
+msgid "Search with regex"
+msgstr "使用正则表达式搜索"
+
+msgid "Searched the web: {count} result"
+msgid_plural "Searched the web: {count} results"
+msgstr[0] "已在网上搜索：{count} 个结果"
+
+msgid "Searching the Web"
+msgstr "正在搜索网页"
+
+msgid "Set a form value"
+msgstr "设置表单值"
+
+msgid "Set the value of {}"
+msgstr "设置 {} 的值"
+
+msgid "Skill"
+msgstr "技能"
+
+msgid "Spawning agent"
+msgstr "正在启动智能体"
+
+msgid "Switch AI tabs"
+msgstr "切换 AI 标签页"
+
+msgid "Switch to AI tab {}"
+msgstr "切换到 AI 标签页 {}"
+
+msgid "Take a screenshot of the page"
+msgstr "截取页面的屏幕截图"
+
+msgid "Take a snapshot of the page"
+msgstr "获取页面的快照"
+
+msgid "Terminal command"
+msgstr "终端命令"
+
+msgid "The review was stopped because the settings changed"
+msgstr "由于设置已更改，审查已停止"
+
+msgid "The settings allow writing anywhere in the file system"
+msgstr "设置允许写入文件系统中的任何位置"
+
+msgid "Type into the page"
+msgstr "在页面中输入"
+
+msgid "Type layout"
+msgstr "类型布局"
+
+msgid "Type layout of {}"
+msgstr "{} 的类型布局"
+
+msgid "Type {}"
+msgstr "输入 {}"
+
+msgid "Use the browser"
+msgstr "使用浏览器"
+
+msgid "Wait for the page"
+msgstr "等待页面"
+
+msgid "Web Search Failed"
+msgstr "网页搜索失败"
+
+msgid "Writing file"
+msgstr "正在写入文件"
+
+msgid "Your answer"
+msgstr "你的回答"
+
+msgid "`{}` Skill"
+msgstr "`{}` 技能"
+
+msgid "`{}` points outside the project (symlink to `{}`)"
+msgstr "`{}` 指向项目之外（符号链接指向 `{}`）"
+
+msgid "line {1} of {0}"
+msgstr "{0} 第 {1} 行"
+
+msgid "outside the project"
+msgstr "项目之外"
+
+msgid "which worktree is ambiguous: approving copies it to {destination}"
+msgstr "无法确定是哪个工作树：批准后会将其复制到 {destination}"
+
+msgid "which worktree is ambiguous: approving moves it to {destination}"
+msgstr "无法确定是哪个工作树：批准后会将其移动到 {destination}"
+
+msgid "which worktree is ambiguous: approving writes it to {destination}"
+msgstr "无法确定是哪个工作树：批准后会将其写入 {destination}"
+
+msgid "{count} match"
+msgid_plural "{count} matches"
+msgstr[0] "{count} 个匹配项"
+
+msgid "{title} (agent skills)"
+msgstr "{title}（智能体技能）"
+
+msgid "{title} (local settings)"
+msgstr "{title}（项目设置）"
+
+msgid "{title} (no language server)"
+msgstr "{title}（无语言服务器）"
+
+msgid "{title} (settings)"
+msgstr "{title}（设置）"
+
+msgid "{} (no name index)"
+msgstr "{}（无名称索引）"
+
+msgid "{} (symlinks outside project)"
+msgstr "{}（符号链接指向项目之外）"
+
+msgctxt "list conjunction"
+msgid " and "
+msgstr " 和 "
+
+msgctxt "tool name"
+msgid "apply code action"
+msgstr "应用代码操作"
+
+msgctxt "tool name"
+msgid "browser: click"
+msgstr "浏览器: 点击"
+
+msgctxt "tool name"
+msgid "browser: close tab"
+msgstr "浏览器: 关闭标签页"
+
+msgctxt "tool name"
+msgid "browser: hover"
+msgstr "浏览器: 悬停"
+
+msgctxt "tool name"
+msgid "browser: navigate"
+msgstr "浏览器: 导航"
+
+msgctxt "tool name"
+msgid "browser: open tab"
+msgstr "浏览器: 打开标签页"
+
+msgctxt "tool name"
+msgid "browser: press key"
+msgstr "浏览器: 按键"
+
+msgctxt "tool name"
+msgid "browser: run script"
+msgstr "浏览器: 运行脚本"
+
+msgctxt "tool name"
+msgid "browser: scroll"
+msgstr "浏览器: 滚动"
+
+msgctxt "tool name"
+msgid "browser: select tab"
+msgstr "浏览器: 切换标签页"
+
+msgctxt "tool name"
+msgid "browser: set value"
+msgstr "浏览器: 设置值"
+
+msgctxt "tool name"
+msgid "browser: type"
+msgstr "浏览器: 输入文字"
+
+msgctxt "tool name"
+msgid "copy path"
+msgstr "复制路径"
+
+msgctxt "tool name"
+msgid "create directory"
+msgstr "创建目录"
+
+msgctxt "tool name"
+msgid "delete path"
+msgstr "删除路径"
+
+msgctxt "tool name"
+msgid "edit file"
+msgstr "编辑文件"
+
+msgctxt "tool name"
+msgid "fetch"
+msgstr "获取 URL"
+
+msgctxt "tool name"
+msgid "move path"
+msgstr "移动路径"
+
+msgctxt "tool name"
+msgid "rename symbol"
+msgstr "重命名符号"
+
+msgctxt "tool name"
+msgid "sandboxed terminal"
+msgstr "沙盒终端"
+
+msgctxt "tool name"
+msgid "terminal"
+msgstr "终端"
+
+msgctxt "tool name"
+msgid "write file"
+msgstr "写入文件"

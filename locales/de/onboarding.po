@@ -1,0 +1,117 @@
+# Entries that zed-i18n also translates started from its de-DE translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: de\n"
+"X-Language-Name: Deutsch\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Agent Setup"
+msgstr "Agent-Einrichtung"
+
+msgid "Automatically mark all new projects as trusted to unlock all Zed's features"
+msgstr "Alle neuen Projekte automatisch als vertrauenswürdig markieren, um alle Funktionen von ForgeKairos freizuschalten"
+
+msgid "Automatically pull your settings from other editors"
+msgstr "Einstellungen automatisch aus anderen Editoren importieren"
+
+msgid "Base Keymap"
+msgstr "Basis-Keymap"
+
+msgid "Cancel"
+msgstr "Abbrechen"
+
+msgid "Could not find or load a {source} settings file"
+msgstr "Die Einstellungsdatei {source} konnte nicht gefunden oder geladen werden"
+
+msgid "Dark"
+msgstr "Dunkel"
+
+msgid "Dismiss Hint"
+msgstr "Hinweis schließen"
+
+msgid "Edit and save files directly in the results multibuffer!"
+msgstr "Dateien direkt im Ergebnis-Multibuffer bearbeiten und speichern!"
+
+msgid "Editing Mode"
+msgstr "Bearbeitungsmodus"
+
+msgid "Failed to import settings. See log for details"
+msgstr "Einstellungen konnten nicht importiert werden. Details finden Sie im Protokoll"
+
+msgid "Finish Setup"
+msgstr "Einrichtung abschließen"
+
+msgid "Help fix Zed by sending crash reports so we can fix critical issues fast"
+msgstr "Helfen Sie dabei, Fehler in Zed zu beheben, indem Sie Absturzberichte senden, damit kritische Probleme schnell behoben werden können"
+
+msgid "Help improve Zed by sending anonymous usage data"
+msgstr "Helfen Sie dabei, Zed zu verbessern, indem Sie anonyme Nutzungsdaten senden"
+
+msgid "Import"
+msgstr "Importieren"
+
+msgid "Import Settings"
+msgstr "Einstellungen importieren"
+
+msgid "Importing {} settings may overwrite your existing settings. Will import settings from {}"
+msgstr "Das Importieren der {}-Einstellungen kann Ihre vorhandenen Einstellungen überschreiben. Einstellungen werden aus {} importiert"
+
+msgid "Install"
+msgstr "Installieren"
+
+msgid "Install your favorite agents and start your first thread."
+msgstr "Installieren Sie Ihre bevorzugten Agenten und starten Sie Ihren ersten Thread."
+
+msgid "Learn More"
+msgstr "Mehr erfahren"
+
+msgid "Light"
+msgstr "Hell"
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "Onboarding"
+msgstr "Einführung"
+
+msgid "Open Log"
+msgstr "Protokoll öffnen"
+
+msgid "Select a base keymap..."
+msgstr "Basis-Keymap auswählen..."
+
+msgid "Sign In"
+msgstr "Anmelden"
+
+msgid "Signing In…"
+msgstr "Anmeldung läuft…"
+
+msgid "Start Free Trial"
+msgstr "Kostenlose Testversion starten"
+
+msgid "System"
+msgstr "System"
+
+msgid "The editor for what's next"
+msgstr "Der Editor für die Zukunft"
+
+msgid "Theme"
+msgstr "Design"
+
+msgid "Trust All Projects By Default"
+msgstr "Allen Projekten standardmäßig vertrauen"
+
+msgid "Vim and Helix work on top of the base keymap. Emacs is a base keymap of its own, so choosing it also selects it above."
+msgstr "Vim und Helix setzen auf der Basis-Keymap auf. Emacs ist selbst eine Basis-Keymap, daher wird es bei Auswahl auch oben ausgewählt."
+
+msgid "Welcome to Zed"
+msgstr "Willkommen bei ForgeKairos"
+
+msgid "Your {} settings were successfully imported."
+msgstr "Ihre {}-Einstellungen wurden erfolgreich importiert."
+
+msgid "Zed can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted."
+msgstr "ForgeKairos kann Dienste wie Sprachserver, Projekteinstellungen und MCP-Server erst ausführen lassen, nachdem Sie ein neues Projekt als vertrauenswürdig markiert haben."

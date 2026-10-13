@@ -1,0 +1,79 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "(image)"
+msgstr "(image)"
+
+msgid "(image: {alt})"
+msgstr "(image : {alt})"
+
+msgid "Annotation from {label}"
+msgstr "Annotation de {label}"
+
+msgid "Can't open this step ({reason})"
+msgstr "Impossible d'ouvrir cette étape ({reason})"
+
+msgid "Couldn't open the file ({error})"
+msgstr "Impossible d'ouvrir le fichier ({error})"
+
+msgid "End Tour"
+msgstr "Terminer la visite"
+
+msgid "File not found"
+msgstr "Fichier introuvable"
+
+msgid "Folders can't be shown"
+msgstr "Les dossiers ne peuvent pas être affichés"
+
+msgid "Invalid line range (lines {}-{})"
+msgstr "Plage de lignes non valide (lignes {}-{})"
+
+msgid "Line {start_line} is past the end of the file ({line_count} lines)"
+msgstr "La ligne {start_line} se trouve après la fin du fichier ({line_count} lignes)"
+
+msgid "Line {}"
+msgstr "Ligne {}"
+
+msgid "Lines {}-{}"
+msgstr "Lignes {}-{}"
+
+msgid "Next Step"
+msgstr "Étape suivante"
+
+msgid "Next ›"
+msgstr "Suivant ›"
+
+msgid "Not a regular file"
+msgstr "Pas un fichier ordinaire"
+
+msgid "Previous Step"
+msgstr "Étape précédente"
+
+msgid "The file is too large (over 4 MiB)"
+msgstr "Le fichier est trop volumineux (plus de 4 Mio)"
+
+msgid "Too long, cut to {max_chars} characters"
+msgstr "Trop long, tronqué à {max_chars} caractères"
+
+msgid "Tour from {}: {}"
+msgstr "Visite de {} : {}"
+
+msgid "Tour from {}: {} (click to go to the current step)"
+msgstr "Visite de {} : {} (cliquez pour atteindre l'étape actuelle)"
+
+msgid "Tour {}/{}"
+msgstr "Visite {}/{}"
+
+msgid "‹ Previous"
+msgstr "‹ Précédent"
+
+msgctxt "tour"
+msgid "End"
+msgstr "Fin"

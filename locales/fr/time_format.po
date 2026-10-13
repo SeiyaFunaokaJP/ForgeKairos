@@ -1,0 +1,70 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Just now"
+msgstr "À l'instant"
+
+msgid "Today"
+msgstr "Aujourd'hui"
+
+msgid "Today at {}"
+msgstr "Aujourd'hui à {}"
+
+msgid "Yesterday"
+msgstr "Hier"
+
+msgid "Yesterday at {}"
+msgstr "Hier à {}"
+
+msgid "{count} day ago"
+msgid_plural "{count} days ago"
+msgstr[0] "il y a {count} jour"
+msgstr[1] "il y a {count} jours"
+
+msgid "{count} hour ago"
+msgid_plural "{count} hours ago"
+msgstr[0] "il y a {count} heure"
+msgstr[1] "il y a {count} heures"
+
+msgid "{count} minute ago"
+msgid_plural "{count} minutes ago"
+msgstr[0] "il y a {count} minute"
+msgstr[1] "il y a {count} minutes"
+
+msgid "{count} month"
+msgid_plural "{count} months"
+msgstr[0] "{count} mois"
+msgstr[1] "{count} mois"
+
+msgid "{count} month ago"
+msgid_plural "{count} months ago"
+msgstr[0] "il y a {count} mois"
+msgstr[1] "il y a {count} mois"
+
+msgid "{count} week ago"
+msgid_plural "{count} weeks ago"
+msgstr[0] "il y a {count} semaine"
+msgstr[1] "il y a {count} semaines"
+
+msgid "{count} year"
+msgid_plural "{count} years"
+msgstr[0] "{count} an"
+msgstr[1] "{count} ans"
+
+msgid "{count} year ago"
+msgid_plural "{count} years ago"
+msgstr[0] "il y a {count} an"
+msgstr[1] "il y a {count} ans"
+
+msgid "{month}/{day}/{year}"
+msgstr "{day}/{month}/{year}"
+
+msgid "{years}, {months} ago"
+msgstr "il y a {years} et {months}"

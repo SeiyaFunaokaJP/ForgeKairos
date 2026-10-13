@@ -1,0 +1,24 @@
+msgid ""
+msgstr ""
+"Language: ko\n"
+"X-Language-Name: 한국어\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Available in all locations in your current project."
+msgstr "현재 프로젝트의 모든 위치에서 사용할 수 있습니다."
+
+msgid "Available in all of your projects on this machine."
+msgstr "이 PC의 모든 프로젝트에서 사용할 수 있습니다."
+
+msgid "Available only in the subproject you're currently in."
+msgstr "현재 있는 하위 프로젝트에서만 사용할 수 있습니다."
+
+msgid "Global"
+msgstr "전역"
+
+msgid "Project"
+msgstr "프로젝트"
+
+msgid "Subproject"
+msgstr "하위 프로젝트"

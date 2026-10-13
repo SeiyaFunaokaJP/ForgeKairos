@@ -1,0 +1,39 @@
+# Entries that zed-i18n also translates started from its pt-BR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: pt-BR\n"
+"X-Language-Name: Português (Brasil)\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "Clear Messages"
+msgstr "Limpar mensagens"
+
+msgid "Copy All Messages"
+msgstr "Copiar todas as mensagens"
+
+msgid "Disconnected"
+msgstr "Desconectado"
+
+msgid "No active connection"
+msgstr "Nenhuma conexão ativa"
+
+msgid "No active connections"
+msgstr "Nenhuma conexão ativa"
+
+msgid "No connection selected"
+msgstr "Nenhuma conexão selecionada"
+
+msgid "No messages recorded yet"
+msgstr "Nenhuma mensagem registrada ainda"
+
+msgid "Reconnecting to {}"
+msgstr "Reconectando a {}"
+
+msgid "Restart Connection"
+msgstr "Reiniciar conexão"
+
+msgid "[unrecognized response]"
+msgstr "[resposta não reconhecida]"

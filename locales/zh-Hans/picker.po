@@ -1,0 +1,36 @@
+# Entries that zed-i18n also translates started from its zh-CN translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Actions…"
+msgstr "操作…"
+
+msgid "No matches"
+msgstr "无匹配项"
+
+msgid "Open"
+msgstr "打开"
+
+msgid "Preview"
+msgstr "预览"
+
+msgid "Preview Below"
+msgstr "在下方预览"
+
+msgid "Preview to the Right"
+msgstr "在右侧预览"
+
+msgid "Project Scan in Progress…"
+msgstr "项目扫描进行中…"
+
+msgid "Select"
+msgstr "选择"
+
+msgid "Toggle Multi Select"
+msgstr "切换多选"

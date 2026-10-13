@@ -1,0 +1,228 @@
+# Entries that zed-i18n also translates started from its fr-FR translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: fr\n"
+"X-Language-Name: Français\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "AI Browser"
+msgstr "Navigateur IA"
+
+msgid "AI agents open the browser tabs they drive here, to debug web apps. These AI tabs use their own browser profile, and their traffic is limited to the network allowlist; localhost is always allowed. Your own browser tabs are never shown to AI agents."
+msgstr "Les agents IA ouvrent ici les onglets de navigateur qu'ils pilotent, pour déboguer des applications web. Ces onglets IA utilisent leur propre profil de navigateur, et leur trafic est limité à la liste d'autorisation réseau ; localhost est toujours autorisé. Vos propres onglets de navigateur ne sont jamais montrés aux agents IA."
+
+msgid "AI control is off"
+msgstr "Le contrôle par l'IA est désactivé"
+
+msgid "AI control of the built-in browser is off, so AI agents cannot open tabs here."
+msgstr "Le contrôle du navigateur intégré par l'IA est désactivé : les agents IA ne peuvent donc pas ouvrir d'onglets ici."
+
+msgid "AI control of the built-in browser is on: AI agents can open and drive tabs here."
+msgstr "Le contrôle du navigateur intégré par l'IA est activé : les agents IA peuvent ouvrir et piloter des onglets ici."
+
+msgid "AI control paused"
+msgstr "Contrôle par l'IA suspendu"
+
+msgid "AI is operating…"
+msgstr "L'IA est aux commandes…"
+
+msgid "AI tab: separate profile, network limited to the allowlist"
+msgstr "Onglet IA : profil distinct, réseau limité à la liste d'autorisation"
+
+msgid "AI tabs need the network allowlist proxy, which is not running, so this tab cannot open pages."
+msgstr "Les onglets IA ont besoin du proxy de la liste d'autorisation réseau, qui n'est pas en cours d'exécution : cet onglet ne peut donc pas ouvrir de pages."
+
+msgid "Add Folder"
+msgstr "Ajouter un dossier"
+
+msgid "Back"
+msgstr "Précédent"
+
+msgid "Blocked a download in this AI tab: {url}"
+msgstr "Téléchargement bloqué dans cet onglet IA : {url}"
+
+msgid "Blocked {url}: AI tabs only open http and https pages on the network allowlist."
+msgstr "{url} bloqué : les onglets IA n'ouvrent que les pages http et https de la liste d'autorisation réseau."
+
+msgid "Bookmark This Page"
+msgstr "Ajouter un signet pour cette page"
+
+msgid "Bookmarks are still loading. Try again in a moment."
+msgstr "Les signets sont encore en cours de chargement. Réessayez dans un instant."
+
+msgid "Browser"
+msgstr "Navigateur"
+
+msgid "Browser Panel"
+msgstr "Panneau Navigateur"
+
+msgid "Close Bookmarks"
+msgstr "Fermer les signets"
+
+msgid "Copied the selection to the clipboard. Paste it to ask your question."
+msgstr "Sélection copiée dans le presse-papiers. Collez-la pour poser votre question."
+
+msgid "Couldn't load the page."
+msgstr "Impossible de charger la page."
+
+msgid "Couldn't save the bookmarks."
+msgstr "Impossible d'enregistrer les signets."
+
+msgid "Delete"
+msgstr "Supprimer"
+
+msgid "Delete the folder and everything in it?"
+msgstr "Supprimer le dossier et tout son contenu ?"
+
+msgid "Delete?"
+msgstr "Supprimer ?"
+
+msgid "Edit"
+msgstr "Modifier"
+
+msgid "Edit Folder"
+msgstr "Modifier le dossier"
+
+msgid "Enter a URL or search terms"
+msgstr "Saisissez une URL ou des termes de recherche"
+
+msgid "Enter a URL."
+msgstr "Saisissez une URL."
+
+msgid "Enter a name."
+msgstr "Saisissez un nom."
+
+msgid "Forward"
+msgstr "Suivant"
+
+msgid "Loading…"
+msgstr "Chargement…"
+
+msgid "Move to Editor Area"
+msgstr "Déplacer vers la zone d'édition"
+
+msgid "New AI Tab"
+msgstr "Nouvel onglet IA"
+
+msgid "New Tab"
+msgstr "Nouvel onglet"
+
+msgid "No bookmarks yet. Use the star button in the toolbar to add the current page."
+msgstr "Aucun signet pour l'instant. Utilisez le bouton étoile de la barre d'outils pour ajouter la page actuelle."
+
+msgid "Open Developer Tools"
+msgstr "Ouvrir les outils de développement"
+
+msgid "Open Download Page"
+msgstr "Ouvrir la page de téléchargement"
+
+msgid "Open This Page at Startup"
+msgstr "Ouvrir cette page au démarrage"
+
+msgid "Open a page first."
+msgstr "Ouvrez d'abord une page."
+
+msgid "Open in External Browser"
+msgstr "Ouvrir dans le navigateur externe"
+
+msgid "Open the Setting"
+msgstr "Ouvrir le paramètre"
+
+msgid "Reload"
+msgstr "Recharger"
+
+msgid "Resume"
+msgstr "Reprendre"
+
+msgid "Save"
+msgstr "Enregistrer"
+
+msgid "Set the startup page to {url}."
+msgstr "Page de démarrage définie sur {url}."
+
+msgid "Show Folder Contents"
+msgstr "Afficher le contenu du dossier"
+
+msgid "Show Window"
+msgstr "Afficher la fenêtre"
+
+msgid "Shown in a separate window"
+msgstr "Affiché dans une fenêtre distincte"
+
+msgid "Split Right"
+msgstr "Fractionner à droite"
+
+msgid "Starting the built-in browser…"
+msgstr "Démarrage du navigateur intégré…"
+
+msgid "Stop AI"
+msgstr "Arrêter l'IA"
+
+msgid "The AI tab's browser could not start: {detail}"
+msgstr "Le navigateur de l'onglet IA n'a pas pu démarrer : {detail}"
+
+msgid "The WebView2 Runtime wasn't found. Install the Microsoft Edge WebView2 Runtime."
+msgstr "Le runtime WebView2 est introuvable. Installez le runtime Microsoft Edge WebView2."
+
+msgid "The built-in browser couldn't be started in this window."
+msgstr "Impossible de démarrer le navigateur intégré dans cette fenêtre."
+
+msgid "The built-in browser isn't supported on this platform."
+msgstr "Le navigateur intégré n'est pas pris en charge sur cette plateforme."
+
+msgid "This page stopped working."
+msgstr "Cette page a cessé de fonctionner."
+
+msgid "Top Level"
+msgstr "Niveau supérieur"
+
+msgid "Turn On in Settings"
+msgstr "Activer dans les paramètres"
+
+msgid "WebKitGTK 4.1 wasn't found. Install libwebkit2gtk-4.1-0 (Debian/Ubuntu) or webkit2gtk4.1 (Fedora)."
+msgstr "WebKitGTK 4.1 est introuvable. Installez libwebkit2gtk-4.1-0 (Debian/Ubuntu) ou webkit2gtk4.1 (Fedora)."
+
+msgid "You can also open an AI tab yourself, for example to sign in to the app under test first."
+msgstr "Vous pouvez aussi ouvrir vous-même un onglet IA, par exemple pour vous connecter d'abord à l'application testée."
+
+msgid "{url} — Ctrl-click or middle-click to open in a new tab"
+msgstr "{url} — Ctrl+clic ou clic du milieu pour ouvrir dans un nouvel onglet"
+
+msgctxt "browser AI tab badge"
+msgid "AI"
+msgstr "IA"
+
+msgctxt "browser bookmark"
+msgid "Add Bookmark"
+msgstr "Ajouter un signet"
+
+msgctxt "browser bookmark"
+msgid "Bookmarks"
+msgstr "Signets"
+
+msgctxt "browser bookmark"
+msgid "Cancel"
+msgstr "Annuler"
+
+msgctxt "browser bookmark"
+msgid "Edit Bookmark"
+msgstr "Modifier le signet"
+
+msgctxt "browser bookmark"
+msgid "Location"
+msgstr "Emplacement"
+
+msgctxt "browser bookmark"
+msgid "Move Down"
+msgstr "Descendre"
+
+msgctxt "browser bookmark"
+msgid "Move Up"
+msgstr "Monter"
+
+msgctxt "browser bookmark"
+msgid "Name"
+msgstr "Nom"

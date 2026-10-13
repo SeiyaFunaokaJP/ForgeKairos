@@ -1,0 +1,410 @@
+# Entries that zed-i18n also translates started from its es-ES translations
+# (https://github.com/LI-NA/zed-i18n, GPL-3.0, commit 955f1f7, for Zed v1.23.3)
+# and were changed to the terms and style of the other files. See THIRD_PARTY_NOTICES.md.
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "(child)"
+msgstr "(secundario)"
+
+msgid "1 byte"
+msgstr "1 byte"
+
+msgid "16 bytes"
+msgstr "16 bytes"
+
+msgid "2 bytes"
+msgstr "2 bytes"
+
+msgid "32 bytes"
+msgstr "32 bytes"
+
+msgid "4 bytes"
+msgstr "4 bytes"
+
+msgid "64 bytes"
+msgstr "64 bytes"
+
+msgid "8 bytes"
+msgstr "8 bytes"
+
+msgid "Allows inspection of memory contents"
+msgstr "Permite inspeccionar el contenido de la memoria"
+
+msgid "Attach"
+msgstr "Asociar"
+
+msgid "Attach the debugger to a running process"
+msgstr "Asociar el depurador a un proceso en ejecución"
+
+msgid "Breakpoints"
+msgstr "Puntos de interrupción"
+
+msgid "Build failed"
+msgstr "No se pudo compilar"
+
+msgid "Change Address of Currently Viewed Memory"
+msgstr "Cambiar la dirección en la vista de memoria actual"
+
+msgid "Close Panel"
+msgstr "Cerrar panel"
+
+msgid "Console"
+msgstr "Consola"
+
+msgid "Continue Program"
+msgstr "Continuar programa"
+
+msgid "Continue Thread"
+msgstr "Continuar subproceso"
+
+msgid "Copy Name"
+msgstr "Copiar nombre"
+
+msgid "Copy Value"
+msgstr "Copiar valor"
+
+msgid "Could not find a valid locator for a build task and configure is invalid with error: {}"
+msgstr "No se encontró un localizador válido para una tarea de compilación y la configuración no es válida por el error: {}"
+
+msgid "Could not resolve task variables within a debug scenario"
+msgstr "No se pudieron resolver las variables de tarea dentro de un escenario de depuración"
+
+msgid "Current State"
+msgstr "Estado actual"
+
+msgid "Debug"
+msgstr "Depurar"
+
+msgid "Debug Adapter `{adapter_name}` does not support writing to memory"
+msgstr "El adaptador de depuración `{adapter_name}` no admite la escritura en memoria"
+
+msgid "Debug Panel"
+msgstr "Panel de depuración"
+
+msgid "Debug terminal"
+msgstr "Terminal de depuración"
+
+msgid "Debugger"
+msgstr "Depurador"
+
+msgid "Debugger Docs"
+msgstr "Documentación del depurador"
+
+msgid "Debugger Extensions"
+msgstr "Extensiones del depurador"
+
+msgid "Debugger:"
+msgstr "Depurador:"
+
+msgid "Detach"
+msgstr "Desasociar"
+
+msgid "Disable Breakpoint"
+msgstr "Deshabilitar punto de interrupción"
+
+msgid "Disable Data Breakpoint"
+msgstr "Deshabilitar punto de interrupción de datos"
+
+msgid "Disable Exception Breakpoint"
+msgstr "Deshabilitar punto de interrupción de excepción"
+
+msgid "Disable a breakpoint without removing it from the list"
+msgstr "Deshabilitar un punto de interrupción sin quitarlo de la lista"
+
+msgid "Displays program output and allows manual input of debugger commands"
+msgstr "Muestra la salida del programa y permite escribir manualmente comandos del depurador"
+
+msgid "Displays the call stack, letting you navigate between function calls"
+msgstr "Muestra la pila de llamadas, lo que permite navegar entre llamadas a funciones"
+
+msgid "Edit Memory at a Selected Address"
+msgstr "Editar memoria en una dirección seleccionada"
+
+msgid "Edit Value"
+msgstr "Editar valor"
+
+msgid "Edit debug.json"
+msgstr "Editar debug.json"
+
+msgid "Edit in debug.json"
+msgstr "Editar en debug.json"
+
+msgid "Enable Breakpoint"
+msgstr "Habilitar punto de interrupción"
+
+msgid "Enable Data Breakpoint"
+msgstr "Habilitar punto de interrupción de datos"
+
+msgid "Enable Exception Breakpoint"
+msgstr "Habilitar punto de interrupción de excepción"
+
+msgid "Evaluate"
+msgstr "Evaluar"
+
+msgid "Evaluate an expression"
+msgstr "Evaluar una expresión"
+
+msgid "Exception Breakpoints cannot be removed from the breakpoint list"
+msgstr "Los puntos de interrupción de excepciones no se pueden quitar de la lista de puntos de interrupción"
+
+msgid "Failed to edit debug.json"
+msgstr "No se pudo editar debug.json"
+
+msgid "Find a debug task, or debug a command"
+msgstr "Buscar una tarea de depuración o depurar un comando"
+
+msgid "Frames"
+msgstr "Marcos"
+
+msgid "Go To Memory"
+msgstr "Ir a memoria"
+
+msgid "Go To Selected Address"
+msgstr "Ir a la dirección seleccionada"
+
+msgid "Go to Memory Address / Expression"
+msgstr "Ir a dirección de memoria / expresión"
+
+msgid "Language: {name}"
+msgstr "Lenguaje: {name}"
+
+msgid "Launch"
+msgstr "Iniciar"
+
+msgid "Launch Custom"
+msgstr "Iniciar comando personalizado"
+
+msgid "Launch a new process with a debugger"
+msgstr "Iniciar un nuevo proceso con un depurador"
+
+msgid "Lists all active breakpoints set in the code"
+msgstr "Enumera todos los puntos de interrupción activos definidos en el código"
+
+msgid "Lists all source files currently loaded and used by the debugger"
+msgstr "Enumera todos los archivos de origen cargados actualmente y utilizados por el depurador"
+
+msgid "Memory View"
+msgstr "Vista de memoria"
+
+msgid "Modules"
+msgstr "Módulos"
+
+msgid "New Session"
+msgstr "Nueva sesión"
+
+msgid "No"
+msgstr "No"
+
+msgid "No Breakpoints Set"
+msgstr "No hay puntos de interrupción definidos"
+
+msgid "No process selected with config that contains {}"
+msgstr "No se seleccionó ningún proceso con una configuración que contenga {}"
+
+msgid "Open Debug Adapter Logs"
+msgstr "Abrir registros del adaptador de depuración"
+
+msgid "Open Documentation"
+msgstr "Abrir documentación"
+
+msgid "Pause Program"
+msgstr "Pausar programa"
+
+msgid "Program"
+msgstr "Programa"
+
+msgid "Provides an interactive terminal session within the debugging environment"
+msgstr "Proporciona una sesión de terminal interactiva dentro del entorno de depuración"
+
+msgid "Re-enable a breakpoint"
+msgstr "Volver a habilitar un punto de interrupción"
+
+msgid "Remove Breakpoint"
+msgstr "Quitar punto de interrupción"
+
+msgid "Remove Watch"
+msgstr "Quitar inspección"
+
+msgid "Remove breakpoint from a breakpoint list"
+msgstr "Quitar punto de interrupción de la lista de puntos de interrupción"
+
+msgid "Remove data breakpoint from a breakpoint list"
+msgstr "Quitar punto de interrupción de datos de la lista de puntos de interrupción"
+
+msgid "Rerun"
+msgstr "Volver a ejecutar"
+
+msgid "Rerun Session"
+msgstr "Volver a ejecutar sesión"
+
+msgid "Restart Stack Frame"
+msgstr "Reiniciar marco de pila"
+
+msgid "Run"
+msgstr "Ejecutar"
+
+msgid "Run predefined task"
+msgstr "Ejecutar tarea predefinida"
+
+msgid "Select Debugger"
+msgstr "Seleccionar depurador"
+
+msgid "Select a Debug Session"
+msgstr "Seleccionar una sesión de depuración"
+
+msgid "Select the process you want to attach the debugger to"
+msgstr "Seleccione el proceso al que desea asociar el depurador"
+
+msgid "Set Condition"
+msgstr "Establecer condición"
+
+msgid "Set Data Breakpoint"
+msgstr "Establecer punto de interrupción de datos"
+
+msgid "Set Hit Condition"
+msgstr "Establecer condición de visitas"
+
+msgid "Set Log Message"
+msgstr "Establecer mensaje de registro"
+
+msgid "Set condition to evaluate when a breakpoint is hit. Program execution will stop only when the condition is met."
+msgstr "Establece la condición que se evalúa cuando se alcanza un punto de interrupción. La ejecución del programa se detendrá solo cuando se cumpla la condición."
+
+msgid "Set expression that controls how many hits of the breakpoint are ignored."
+msgstr "Establece la expresión que controla cuántas veces se ignora el punto de interrupción al alcanzarse."
+
+msgid "Set log message to display (instead of stopping) when a breakpoint is hit."
+msgstr "Establece el mensaje de registro que se muestra (en lugar de detenerse) cuando se alcanza un punto de interrupción."
+
+msgid "Show all stack frames"
+msgstr "Mostrar todos los marcos de pila"
+
+msgid "Show stack frames from your project"
+msgstr "Mostrar marcos de pila del proyecto"
+
+msgid "Show {} more{}"
+msgstr "Mostrar {} más{}"
+
+msgid "Shows all modules or libraries loaded by the program"
+msgstr "Muestra todos los módulos o bibliotecas cargados por el programa"
+
+msgid "Shows current values of local and global variables in the current stack frame"
+msgstr "Muestra los valores actuales de las variables locales y globales en el marco de pila actual"
+
+msgid "Sources"
+msgstr "Fuentes"
+
+msgid "Spawn"
+msgstr "Iniciar"
+
+msgid "Start"
+msgstr "Iniciar"
+
+msgid "Start Debug Session"
+msgstr "Iniciar sesión de depuración"
+
+msgid "Start a predefined debug scenario"
+msgstr "Iniciar un escenario de depuración predefinido"
+
+msgid "Step Back in Session History"
+msgstr "Retroceder en el historial de la sesión"
+
+msgid "Step In"
+msgstr "Paso a paso por instrucciones"
+
+msgid "Step Out"
+msgstr "Paso a paso para salir"
+
+msgid "Step Over"
+msgstr "Paso a paso por procedimientos"
+
+msgid "Stop on Entry"
+msgstr "Detener al entrar"
+
+msgid "Terminal"
+msgstr "Terminal"
+
+msgid "Terminate All Threads"
+msgstr "Finalizar todos los subprocesos"
+
+msgid "Terminate Thread"
+msgstr "Finalizar subproceso"
+
+msgid "This Debug Session is still running. Are you sure you want to terminate it?"
+msgstr "Esta sesión de depuración sigue en ejecución. ¿Está seguro de que desea finalizarla?"
+
+msgid "Toggle Data Breakpoint"
+msgstr "Alternar punto de interrupción de datos"
+
+msgid "Toggle {} Data Breakpoint"
+msgstr "Alternar punto de interrupción de datos de {}"
+
+msgid "Unknown Session"
+msgstr "Sesión desconocida"
+
+msgid "Variables"
+msgstr "Variables"
+
+msgid "Watch Expression"
+msgstr "Inspeccionar expresión"
+
+msgid "Watch Variable"
+msgstr "Inspeccionar variable"
+
+msgid "Working Directory"
+msgstr "Directorio de trabajo"
+
+msgid "Worktree parent path: {parent_dir}"
+msgstr "Ruta del directorio padre del worktree: {parent_dir}"
+
+msgid "Write to Selected Memory Range"
+msgstr "Escribir en el intervalo de memoria seleccionado"
+
+msgid "Yes"
+msgstr "Sí"
+
+msgid "Zed cannot determine how to run this debug scenario. `build` field was not provided and Debug Adapter won't accept provided configuration because: {error}"
+msgstr "ForgeKairos no puede determinar cómo ejecutar este escenario de depuración. No se proporcionó el campo `build` y el adaptador de depuración no acepta la configuración proporcionada porque: {error}"
+
+msgid "history-{}"
+msgstr "historial-{}"
+
+msgid "in {d}/"
+msgstr "en {d}/"
+
+msgid "in {f}"
+msgstr "en {f}"
+
+msgid "no active worktree"
+msgstr "no hay ningún worktree activo"
+
+msgid "no scenario to save"
+msgstr "no hay ningún escenario para guardar"
+
+msgid "no task contexts"
+msgstr "no hay contextos de tarea"
+
+msgctxt "data breakpoint access"
+msgid "Read"
+msgstr "Lectura"
+
+msgctxt "data breakpoint access"
+msgid "Read/Write"
+msgstr "Lectura/escritura"
+
+msgctxt "data breakpoint access"
+msgid "Write"
+msgstr "Escritura"
+
+msgctxt "debugger pane zoom"
+msgid "Expand"
+msgstr "Expandir"
+
+msgctxt "debugger pane zoom"
+msgid "Minimize"
+msgstr "Minimizar"
