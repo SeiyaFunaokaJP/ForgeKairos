@@ -4187,9 +4187,11 @@ impl GitStore {
             .transpose()?
             .map(Arc::new);
         let serves_remote_client = this.read_with(&cx, |this, _| match &this.state {
-            GitStoreState::Local { downstream, .. } => downstream.as_ref().is_some_and(
-                |downstream| downstream.project_id.0 == proto::REMOTE_SERVER_PROJECT_ID,
-            ),
+            GitStoreState::Local { downstream, .. } => {
+                downstream.as_ref().is_some_and(|downstream| {
+                    downstream.project_id.0 == proto::REMOTE_SERVER_PROJECT_ID
+                })
+            }
             GitStoreState::Remote { .. } => false,
         });
         anyhow::ensure!(
@@ -7590,6 +7592,28 @@ impl Repository {
         R: Send + 'static,
     {
         self.send_keyed_job(description, None, status, job)
+    }
+
+    /// ADR-F93: [`Self::send_job`] for a job that makes commits through
+    /// [`Self::run_step_in_job`], which [`Self::run_git_command`]'s check of the subcommand does
+    /// not see. On a remote host that did not take the picked account, it fails before anything
+    /// runs rather than commit as someone else.
+    fn send_commit_making_job<F, Fut, T>(
+        &mut self,
+        description: &'static str,
+        status: Option<SharedString>,
+        job: F,
+    ) -> oneshot::Receiver<Result<T>>
+    where
+        F: FnOnce(RepositoryState, AsyncApp) -> Fut + 'static,
+        Fut: Future<Output = Result<T>> + 'static,
+        T: Send + 'static,
+    {
+        let account_applied = self.remote_git_account.applied.clone();
+        self.send_job(description, status, move |repo, cx| async move {
+            crate::git_accounts::ensure_remote_git_account_applied(account_applied).await?;
+            job(repo, cx).await
+        })
     }
 
     fn send_keyed_job<F, Fut, R>(
@@ -11051,7 +11075,7 @@ impl Repository {
     ) -> oneshot::Receiver<Result<GitCommandOutput>> {
         let id = self.id;
         let branch_name = self.current_branch_name();
-        let receiver = self.send_job(
+        let receiver = self.send_commit_making_job(
             "reword_commit",
             Some(format!("git commit-tree {sha}").into()),
             move |repo, _cx| async move {
@@ -11143,7 +11167,7 @@ impl Repository {
     ) -> oneshot::Receiver<Result<GitCommandOutput>> {
         let id = self.id;
         let branch_name = self.current_branch_name();
-        let receiver = self.send_job(
+        let receiver = self.send_commit_making_job(
             "squash_range",
             Some(format!("git commit-tree {newest_sha}").into()),
             move |repo, _cx| async move {
@@ -11223,7 +11247,7 @@ impl Repository {
         cx: &mut Context<Self>,
     ) -> oneshot::Receiver<Result<MergeRequestBuildOutcome>> {
         let id = self.id;
-        let receiver = self.send_job(
+        let receiver = self.send_commit_making_job(
             "build_merge_request_branch",
             Some(format!("git switch -c {}", build.scratch_branch).into()),
             move |repo, _cx| async move {
@@ -11397,7 +11421,7 @@ impl Repository {
         cx: &mut Context<Self>,
     ) -> oneshot::Receiver<Result<MergeRequestBuildOutcome>> {
         let id = self.id;
-        let receiver = self.send_job(
+        let receiver = self.send_commit_making_job(
             "finish_merge_request_branch",
             Some(format!("git switch {}", continuation.origin_branch).into()),
             move |repo, _cx| async move {
@@ -11738,7 +11762,7 @@ impl Repository {
         let id = self.id;
         let branch_name = self.current_branch_name();
         let scratch_branch = git::repository::rewrite_scratch_branch_name(&newest_sha);
-        let receiver = self.send_job(
+        let receiver = self.send_commit_making_job(
             "rewrite_range",
             Some(format!("git switch -c {scratch_branch}").into()),
             move |repo, _cx| async move {
@@ -11973,7 +11997,7 @@ impl Repository {
     ) -> oneshot::Receiver<Result<GitCommandOutput>> {
         let id = self.id;
         let branch_name = self.current_branch_name();
-        let receiver = self.send_job(
+        let receiver = self.send_commit_making_job(
             "drop_commit",
             Some(format!("git rebase --onto {sha}^").into()),
             move |repo, _cx| async move {
@@ -12079,7 +12103,7 @@ impl Repository {
             FixupChanges::Paths(paths) => self.untracked_paths_among(paths),
             FixupChanges::Staged | FixupChanges::AllTracked => Vec::new(),
         };
-        let receiver = self.send_job(
+        let receiver = self.send_commit_making_job(
             "fixup_commit",
             Some(format!("git commit --fixup={sha}").into()),
             move |repo, _cx| async move {
@@ -17754,6 +17778,87 @@ mod tests {
             installed_git_output(&remote, &["rev-parse", "mr/dev"]),
             shas["A"]
         );
+    }
+
+    /// ADR-F93: only the client a store serves as its remote server picks who the store's
+    /// repositories commit as. Neither an unshared project nor collaborators of a shared one may.
+    #[gpui::test]
+    async fn test_only_a_remote_servers_client_sets_the_git_account(cx: &mut TestAppContext) {
+        use rpc::NoopProtoClient;
+        use util::path;
+
+        init_test(cx);
+        let project_root = Path::new(path!("/project"));
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(project_root, json!({ ".git": {}, "a.txt": "a\n" }))
+            .await;
+        let project = Project::test(fs.clone(), [project_root], cx).await;
+        project
+            .update(cx, |project, cx| project.git_scans_complete(cx))
+            .await;
+        let git_store = project.read_with(cx, |project, _| project.git_store().clone());
+        let repository = git_store.read_with(cx, |git_store, _| {
+            git_store
+                .repositories()
+                .values()
+                .next()
+                .expect("the project has a repository")
+                .clone()
+        });
+        let repository_id = repository.read_with(cx, |repository, _| repository.id);
+        let set_identity = |cx: &mut TestAppContext| {
+            GitStore::handle_set_git_account_identity(
+                git_store.clone(),
+                TypedEnvelope {
+                    sender_id: proto::PeerId { owner_id: 1, id: 1 },
+                    original_sender_id: None,
+                    message_id: 0,
+                    payload: proto::SetGitAccountIdentity {
+                        project_id: 0,
+                        repository_id: repository_id.to_proto(),
+                        identity: Some(proto::GitAccountIdentity {
+                            name: "Eve".to_string(),
+                            email: "eve@example.com".to_string(),
+                            signing_key: None,
+                            https_host: None,
+                            https_login: None,
+                        }),
+                    },
+                    received_at: std::time::Instant::now(),
+                },
+                cx.to_async(),
+            )
+        };
+        let identity_name = |cx: &mut TestAppContext| {
+            repository.read_with(cx, |repository, _| {
+                repository
+                    .identity_from_client
+                    .as_ref()
+                    .map(|identity| identity.name.clone())
+            })
+        };
+
+        assert!(set_identity(cx).await.is_err(), "an unshared project");
+        assert_eq!(identity_name(cx), None);
+
+        git_store.update(cx, |git_store, cx| {
+            git_store.shared(1, AnyProtoClient::new(NoopProtoClient::new()), cx)
+        });
+        cx.run_until_parked();
+        assert!(set_identity(cx).await.is_err(), "a collaborator");
+        assert_eq!(identity_name(cx), None);
+
+        git_store.update(cx, |git_store, cx| {
+            git_store.unshared(cx);
+            git_store.shared(
+                proto::REMOTE_SERVER_PROJECT_ID,
+                AnyProtoClient::new(NoopProtoClient::new()),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        set_identity(cx).await.unwrap();
+        assert_eq!(identity_name(cx), Some("Eve".to_string()));
     }
 }
 

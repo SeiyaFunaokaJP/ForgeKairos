@@ -5696,11 +5696,17 @@ async fn test_remote_git_account_is_picked_on_the_client(
         .expect("the host was told the account");
     assert_eq!(identity.name, "Ada Work");
     assert_eq!(
-        identity.https_login.as_ref().map(|login| login.login.as_str()),
+        identity
+            .https_login
+            .as_ref()
+            .map(|login| login.login.as_str()),
         Some("ada-work"),
         "the host's credential helpers stand aside for the login"
     );
-    assert_eq!(identity.ssh_key, None, "a key path of the client stays there");
+    assert_eq!(
+        identity.ssh_key, None,
+        "a key path of the client stays there"
+    );
     commit("as the account", cx).await.unwrap().unwrap();
     assert_eq!(
         git(&work_dir, &["log", "-1", "--format=%an <%ae>|%cn <%ce>"]),
@@ -5750,11 +5756,42 @@ async fn test_remote_git_account_is_picked_on_the_client(
         git(&work_dir, &["log", "-1", "--format=%s"]),
         "as the host's git"
     );
+    // The multi-step rewrites make their commits with `commit-tree` and `rebase` inside one job,
+    // past the check of `run_git_command`'s subcommand.
+    let head = git(&work_dir, &["rev-parse", "HEAD"]);
+    let reworded = repository
+        .update(cx, |repository, cx| {
+            repository.reword_commit(head.clone(), "must not be reworded".to_string(), cx)
+        })
+        .await
+        .unwrap();
+    let error = reworded.unwrap_err();
+    assert!(
+        format!("{error:#}").contains("not in effect on the remote host"),
+        "{error:#}"
+    );
+    assert_eq!(git(&work_dir, &["rev-parse", "HEAD"]), head);
+
+    // The host cannot set the account of the client's repositories either.
+    let session = headless_project.read_with(server_cx, |headless_project, _| {
+        headless_project.session.clone()
+    });
+    let repository_id = repository.read_with(cx, |repository, _| repository.id.to_proto());
+    let from_the_host = session.request(proto::SetGitAccountIdentity {
+        project_id: proto::REMOTE_SERVER_PROJECT_ID,
+        repository_id,
+        identity: None,
+    });
+    settle(cx, server_cx);
+    assert!(from_the_host.await.is_err());
 
     // Picking git's own configuration again commits as the host's git, as the picker says.
     pick("ada@other.example", false, cx);
     settle(cx, server_cx);
-    commit("as the host's git again", cx).await.unwrap().unwrap();
+    commit("as the host's git again", cx)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
         git(&work_dir, &["log", "-1", "--format=%s|%an"]),
         "as the host's git again|Host User"
