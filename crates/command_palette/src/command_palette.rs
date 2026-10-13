@@ -251,6 +251,39 @@ impl Command {
     }
 }
 
+/// A translated command matches against "label + English alias", and nucleo matches each
+/// space-separated word of the query independently, so a word that occurs in both parts (e.g.
+/// `Mermaid`) may be matched in the alias and lose its highlight in the label. Matching the query
+/// against the label alone recovers label positions whenever the whole query fits the label.
+fn rematch_within_names(commands: &[Command], matches: &mut [StringMatch], query: &str) {
+    let label_candidates = matches
+        .iter()
+        .enumerate()
+        .filter_map(|(match_ix, string_match)| {
+            let name = &commands.get(string_match.candidate_id)?.name;
+            string_match
+                .positions
+                .iter()
+                .any(|position| *position >= name.len())
+                .then(|| StringMatchCandidate::new(match_ix, name))
+        })
+        .collect::<Vec<_>>();
+    if label_candidates.is_empty() {
+        return;
+    }
+    for label_match in fuzzy_nucleo::match_strings(
+        &label_candidates,
+        query,
+        fuzzy_nucleo::Case::Smart,
+        fuzzy_nucleo::LengthPenalty::Off,
+        label_candidates.len(),
+    ) {
+        if let Some(string_match) = matches.get_mut(label_match.candidate_id) {
+            string_match.positions = label_match.positions;
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct CommandUsage {
     last_invoked: i64,
@@ -659,6 +692,7 @@ impl PickerDelegate for CommandPaletteDelegate {
                     executor,
                 )
                 .await;
+                rematch_within_names(&commands, &mut matches, &query);
 
                 let used_commands = commands
                     .iter()
@@ -1012,6 +1046,60 @@ mod tests {
     use project::Project;
     use settings::KeymapFile;
     use workspace::{AppState, MultiWorkspace, Workspace};
+
+    #[test]
+    fn test_translated_name_highlights() {
+        let entries = [
+            (
+                "Markdown: Mermaid-Diagramm einfügen",
+                "Mermaid-Diagramm einfügen",
+                "Mermaid-Diagrammeinfügen",
+            ),
+            (
+                "Markdown: Mermaid 다이어그램 삽입",
+                "Mermaid 다이어그램 삽입",
+                "Mermaid다이어그램삽입",
+            ),
+            (
+                "Markdown: 插入 Mermaid 圖表",
+                "插入 Mermaid 圖表",
+                "插入Mermaid圖表",
+            ),
+            (
+                "Markdown: insertar diagrama de Mermaid",
+                "insertar diagrama de Mermaid",
+                "insertardiagramadeMermaid",
+            ),
+            // A query word only in the English alias filters but cannot be highlighted.
+            ("Markdown: 插入 Mermaid 圖表", "insert 圖表", "圖表"),
+        ];
+        for (name, query, expected_highlight) in entries {
+            let search_text = format!("{name} markdown: insert mermaid diagram");
+            let commands = vec![Command {
+                name: SharedString::from(name),
+                search_text: search_text.clone(),
+                usage_key: SharedString::from("markdown: insert mermaid diagram"),
+                action: menu::Confirm.boxed_clone(),
+                usage: None,
+            }];
+            let query = normalize_action_query(query);
+            let mut matches = fuzzy_nucleo::match_strings(
+                &[StringMatchCandidate::new(0, &search_text)],
+                &query,
+                fuzzy_nucleo::Case::Smart,
+                fuzzy_nucleo::LengthPenalty::On,
+                10,
+            );
+            rematch_within_names(&commands, &mut matches, &query);
+            assert_eq!(matches.len(), 1, "{query:?}");
+            let positions = commands[0].highlights_within_name(&matches[0].positions);
+            let highlighted = positions
+                .iter()
+                .filter_map(|position| name.get(*position..)?.chars().next())
+                .collect::<String>();
+            assert_eq!(highlighted, expected_highlight, "{query:?}");
+        }
+    }
 
     fn actions_catalog() -> &'static i18n_catalog::PoCatalog {
         i18n_catalog::test_support::bundled_catalog("ja")

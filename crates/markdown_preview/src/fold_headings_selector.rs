@@ -23,6 +23,8 @@ use crate::markdown_preview_view::MarkdownPreviewView;
 /// The deepest heading Markdown has.
 const MAX_HEADING_LEVEL: u32 = 6;
 
+const SELECTOR_WIDTH: f32 = 24.;
+
 pub fn register(workspace: &mut Workspace) {
     workspace.register_action(|workspace, _: &FoldHeadingsPicker, window, cx| {
         let Some(editor) =
@@ -48,14 +50,21 @@ impl FoldHeadingsSelector {
             matches: FoldHeadingsChoice::all(),
             selected_index: 0,
         };
-        let picker = cx.new(|cx| Picker::uniform_list(delegate, window, cx));
+        // The picker draws its own width (34 rem by default) and overflows the
+        // narrower container, whose background stops short of the rows.
+        let picker = cx.new(|cx| {
+            Picker::uniform_list(delegate, window, cx).initial_width(rems(SELECTOR_WIDTH))
+        });
         Self { picker }
     }
 }
 
 impl Render for FoldHeadingsSelector {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex().w(rems(24.)).child(self.picker.clone())
+        v_flex()
+            .w(rems(SELECTOR_WIDTH))
+            .debug_selector(|| "markdown-selector".into())
+            .child(self.picker.clone())
     }
 }
 

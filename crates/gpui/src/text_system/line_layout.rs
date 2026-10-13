@@ -244,7 +244,10 @@ impl LineLayout {
                     last_candidate_x = x;
                 }
             } else {
-                if ch != ' ' && first_non_whitespace_ix.is_some() {
+                if ch != ' '
+                    && first_non_whitespace_ix.is_some()
+                    && !LineWrapper::is_kinsoku_prohibited_break(prev_ch, ch)
+                {
                     last_candidate_ix = Some(boundary);
                     last_candidate_x = x;
                 }
@@ -1241,6 +1244,64 @@ mod tests {
             .iter()
             .map(|g| f32::from(g.position.x))
             .collect()
+    }
+
+    #[test]
+    fn test_wrap_boundaries_kinsoku_across_runs() {
+        // Each character is one 10px glyph; the closing mark starts the second run, as after a
+        // code span or bold text in a Markdown description.
+        let layout_for = |runs: &[&str]| {
+            let mut index = 0;
+            let mut x = 0.;
+            let runs = runs
+                .iter()
+                .map(|run| ShapedRun {
+                    font_id: FontId(0),
+                    font_size: None,
+                    glyphs: run
+                        .chars()
+                        .map(|character| {
+                            let glyph = glyph_at(x, index);
+                            index += character.len_utf8();
+                            x += 10.;
+                            glyph
+                        })
+                        .collect(),
+                })
+                .collect();
+            LineLayout {
+                font_size: px(16.),
+                width: px(x),
+                ascent: px(12.),
+                descent: px(4.),
+                runs,
+                len: index,
+            }
+        };
+
+        let text = "あいうえおかき。く";
+        let layout = layout_for(&["あいうえおかき", "。く"]);
+        assert_eq!(
+            layout
+                .compute_wrap_boundaries(text, px(75.), None)
+                .as_slice(),
+            [WrapBoundary {
+                run_ix: 0,
+                glyph_ix: 6
+            }]
+        );
+
+        let text = "あいうえおか「きく";
+        let layout = layout_for(&["あいうえおか「", "きく"]);
+        assert_eq!(
+            layout
+                .compute_wrap_boundaries(text, px(75.), None)
+                .as_slice(),
+            [WrapBoundary {
+                run_ix: 0,
+                glyph_ix: 6
+            }]
+        );
     }
 
     #[test]
