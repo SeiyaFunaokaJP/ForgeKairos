@@ -4527,8 +4527,8 @@ msgid "Whether to keep the text selection after copying it to the clipboard.\n\n
 msgstr "將選取的文字複製到剪貼簿後，是否保留選取範圍。\n\n預設值：true"
 
 msgctxt "settings schema"
-msgid "Whether to limit the content width in the agent panel. When enabled,\ncontent will be constrained to `max_content_width` and centered when\nthe panel is wider than that value, for optimal readability.\n\nDefault: true"
-msgstr "是否限制代理面板中的內容寬度。啟用時，內容會限制在 `max_content_width` 以內，且面板寬於該值時會置中，以獲得最佳的可讀性。\n\n預設值：true"
+msgid "Whether to limit the content width in the agent panel. When enabled,\ncontent will be constrained to `max_content_width` and centered when\nthe panel is wider than that value, for optimal readability.\n\nDefault: false"
+msgstr "是否限制代理面板中的內容寬度。啟用時，內容會限制在 `max_content_width` 以內，且面板寬於該值時會置中，以獲得最佳的可讀性。\n\n預設值：false"
 
 msgctxt "settings schema"
 msgid "Whether to limit the width of the rendered markdown content. When\nenabled, content is constrained to `max_width` and centered\nhorizontally within the preview pane, for optimal readability.\n\nDefault: false"

@@ -1361,7 +1361,10 @@
     // Whether to limit the content width in the agent panel. When enabled,
     // content will be constrained to `max_content_width` and centered when
     // the panel is wider, for optimal readability.
-    "limit_content_width": true,
+    //
+    // Off by default in this fork: the panel's tab row always spans the full
+    // width, so a centered toolbar and message editor sit out of line with it.
+    "limit_content_width": false,
     // Maximum content width in pixels when limit_content_width is enabled.
     // Content will be centered within the panel.
     "max_content_width": 850,

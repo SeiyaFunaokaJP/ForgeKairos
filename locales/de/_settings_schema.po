@@ -4527,8 +4527,8 @@ msgid "Whether to keep the text selection after copying it to the clipboard.\n\n
 msgstr "Legt fest, ob die Textauswahl nach dem Kopieren in die Zwischenablage erhalten bleibt.\n\nStandard: true"
 
 msgctxt "settings schema"
-msgid "Whether to limit the content width in the agent panel. When enabled,\ncontent will be constrained to `max_content_width` and centered when\nthe panel is wider than that value, for optimal readability.\n\nDefault: true"
-msgstr "Legt fest, ob die Inhaltsbreite im Agent-Panel begrenzt wird. Wenn aktiviert, wird der Inhalt für optimale Lesbarkeit auf `max_content_width` begrenzt und zentriert, wenn das Panel breiter als dieser Wert ist.\n\nStandard: true"
+msgid "Whether to limit the content width in the agent panel. When enabled,\ncontent will be constrained to `max_content_width` and centered when\nthe panel is wider than that value, for optimal readability.\n\nDefault: false"
+msgstr "Legt fest, ob die Inhaltsbreite im Agent-Panel begrenzt wird. Wenn aktiviert, wird der Inhalt für optimale Lesbarkeit auf `max_content_width` begrenzt und zentriert, wenn das Panel breiter als dieser Wert ist.\n\nStandard: false"
 
 msgctxt "settings schema"
 msgid "Whether to limit the width of the rendered markdown content. When\nenabled, content is constrained to `max_width` and centered\nhorizontally within the preview pane, for optimal readability.\n\nDefault: false"

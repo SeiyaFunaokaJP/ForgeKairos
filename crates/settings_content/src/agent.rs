@@ -351,7 +351,7 @@ pub struct AgentSettingsContent {
     /// content will be constrained to `max_content_width` and centered when
     /// the panel is wider than that value, for optimal readability.
     ///
-    /// Default: true
+    /// Default: false
     pub limit_content_width: Option<bool>,
     /// Maximum content width in pixels for the agent panel. Content will be
     /// centered when the panel is wider than this value.
