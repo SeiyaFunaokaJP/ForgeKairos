@@ -6670,6 +6670,12 @@ msgctxt "action documentation"
 msgid "vim::YankToEndOfLine"
 msgstr "커서부터 줄 끝까지 yank합니다."
 
+#. Shows the bindings that can complete the pending key sequence. Must be bound to a
+#. single keystroke.
+msgctxt "action documentation"
+msgid "which_key::ShowPendingBindings"
+msgstr "보류 중인 키 시퀀스를 완성할 수 있는 키 바인딩을 표시합니다. 단일 키 입력에 바인딩해야 합니다."
+
 #. Activates the last pane in the workspace.
 msgctxt "action documentation"
 msgid "workspace::ActivateLastPane"

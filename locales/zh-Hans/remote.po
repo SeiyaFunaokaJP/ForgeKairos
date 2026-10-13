@@ -5,11 +5,17 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Adding llvm-tools for cross-compilation"
+msgstr "正在添加用于交叉编译的 llvm-tools"
+
 msgid "Adding rustup target for cross-compilation"
 msgstr "正在添加用于交叉编译的 rustup 目标"
 
 msgid "Building remote binary from source for {platform_label} with Zig (development build)"
 msgstr "正在使用 Zig 从源代码为 {platform_label} 构建远程二进制文件（开发版本）"
+
+msgid "Building remote binary from source for {platform_label} with xwin (development build)"
+msgstr "正在使用 xwin 从源代码为 {platform_label} 构建远程二进制文件（开发构建）"
 
 msgid "Building remote server binary from source for {platform_label} (development build)"
 msgstr "正在从源代码为 {platform_label} 构建远程服务器二进制文件（开发版本）"

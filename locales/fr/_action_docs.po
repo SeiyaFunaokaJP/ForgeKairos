@@ -6670,6 +6670,12 @@ msgctxt "action documentation"
 msgid "vim::YankToEndOfLine"
 msgstr "Copie (yank) le texte à partir du curseur jusqu'à la fin de la ligne."
 
+#. Shows the bindings that can complete the pending key sequence. Must be bound to a
+#. single keystroke.
+msgctxt "action documentation"
+msgid "which_key::ShowPendingBindings"
+msgstr "Affiche les combinaisons de touches qui peuvent compléter la séquence de touches en attente. Cette action doit être attribuée à une seule frappe."
+
 #. Activates the last pane in the workspace.
 msgctxt "action documentation"
 msgid "workspace::ActivateLastPane"

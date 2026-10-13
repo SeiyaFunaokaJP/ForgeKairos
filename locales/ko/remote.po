@@ -5,11 +5,17 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Adding llvm-tools for cross-compilation"
+msgstr "크로스 컴파일용 llvm-tools 추가 중"
+
 msgid "Adding rustup target for cross-compilation"
 msgstr "크로스 컴파일용 rustup 타깃 추가 중"
 
 msgid "Building remote binary from source for {platform_label} with Zig (development build)"
 msgstr "Zig로 {platform_label}용 원격 바이너리를 소스에서 빌드 중 (개발 빌드)"
+
+msgid "Building remote binary from source for {platform_label} with xwin (development build)"
+msgstr "xwin으로 {platform_label}용 원격 바이너리를 소스에서 빌드 중 (개발 빌드)"
 
 msgid "Building remote server binary from source for {platform_label} (development build)"
 msgstr "{platform_label}용 원격 서버 바이너리를 소스에서 빌드 중 (개발 빌드)"

@@ -42,6 +42,9 @@ msgstr "开头是"
 msgid "Blank"
 msgstr "空白"
 
+msgid "Cannot preview JSONL line {line_number}: expected a JSON object"
+msgstr "无法预览 JSONL 第 {line_number} 行：应为 JSON 对象"
+
 msgid "Cell Comparison ({} ↔ {})"
 msgstr "单元格比较（{} ↔ {}）"
 
@@ -210,6 +213,12 @@ msgstr "在此处插入一列"
 msgid "Insert a row here"
 msgstr "在此处插入一行"
 
+msgid "JSON Lines files can't be compared as tables"
+msgstr "JSON Lines 文件无法作为表格进行比较"
+
+msgid "JSON Lines files can't be edited in the grid. Open the text to edit them"
+msgstr "JSON Lines 文件无法在网格中编辑。请打开文本进行编辑"
+
 msgid "Joins the first condition with \"{}\" to show {}"
 msgstr "用“{}”连接第一个条件，以显示{}"
 
@@ -254,6 +263,9 @@ msgstr "粘贴"
 
 msgid "Pick values, or filter with the conditions below"
 msgstr "选择值，或使用下方的条件进行筛选"
+
+msgid "Preview requires a single file"
+msgstr "预览需要单个文件"
 
 msgid "Previous Difference"
 msgstr "上一处差异"

@@ -42,6 +42,9 @@ msgstr "시작 문자"
 msgid "Blank"
 msgstr "공백"
 
+msgid "Cannot preview JSONL line {line_number}: expected a JSON object"
+msgstr "JSONL {line_number}번째 줄을 미리 볼 수 없습니다: JSON 객체가 아닙니다"
+
 msgid "Cell Comparison ({} ↔ {})"
 msgstr "셀 비교 ({} ↔ {})"
 
@@ -210,6 +213,12 @@ msgstr "여기에 열 삽입"
 msgid "Insert a row here"
 msgstr "여기에 행 삽입"
 
+msgid "JSON Lines files can't be compared as tables"
+msgstr "JSON Lines 파일은 표로 비교할 수 없습니다"
+
+msgid "JSON Lines files can't be edited in the grid. Open the text to edit them"
+msgstr "JSON Lines 파일은 그리드에서 편집할 수 없습니다. 편집하려면 텍스트를 여세요"
+
 msgid "Joins the first condition with \"{}\" to show {}"
 msgstr "첫 번째 조건과 \"{}\"(으)로 연결하여 {}을(를) 표시합니다"
 
@@ -254,6 +263,9 @@ msgstr "붙여넣기"
 
 msgid "Pick values, or filter with the conditions below"
 msgstr "값을 선택하거나 아래 조건으로 필터링하세요"
+
+msgid "Preview requires a single file"
+msgstr "미리 보기에는 단일 파일이 필요합니다"
 
 msgid "Previous Difference"
 msgstr "이전 차이"

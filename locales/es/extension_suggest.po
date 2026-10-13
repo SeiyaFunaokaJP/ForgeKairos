@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: es\n"
+"X-Language-Name: Español\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Emmet expands abbreviations such as `ul>li*3` into HTML and `m10` into CSS."
+msgstr "Emmet expande abreviaturas como `ul>li*3` en HTML y `m10` en CSS."
+
+msgid "Emmet is available for this file"
+msgstr "Emmet está disponible para este archivo"
+
+msgid "Install Emmet"
+msgstr "Instalar Emmet"

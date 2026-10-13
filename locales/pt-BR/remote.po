@@ -5,11 +5,17 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
+msgid "Adding llvm-tools for cross-compilation"
+msgstr "Adicionando llvm-tools para compilação cruzada"
+
 msgid "Adding rustup target for cross-compilation"
 msgstr "Adicionando o target do rustup para compilação cruzada"
 
 msgid "Building remote binary from source for {platform_label} with Zig (development build)"
 msgstr "Compilando o binário remoto a partir do código-fonte para {platform_label} com o Zig (build de desenvolvimento)"
+
+msgid "Building remote binary from source for {platform_label} with xwin (development build)"
+msgstr "Compilando o binário remoto a partir do código-fonte para {platform_label} com o xwin (build de desenvolvimento)"
 
 msgid "Building remote server binary from source for {platform_label} (development build)"
 msgstr "Compilando o binário do servidor remoto a partir do código-fonte para {platform_label} (build de desenvolvimento)"

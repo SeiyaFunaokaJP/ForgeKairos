@@ -879,6 +879,9 @@ msgid_plural "Diff ({count} files)"
 msgstr[0] "Différences ({count} fichier)"
 msgstr[1] "Différences ({count} fichiers)"
 
+msgid "Discard"
+msgstr "Abandonner"
+
 msgid "Discard Changes"
 msgstr "Abandonner les modifications"
 
@@ -891,11 +894,17 @@ msgstr "Tout abandonner (--hard)"
 msgid "Discard Tracked Changes"
 msgstr "Abandonner les modifications suivies"
 
+msgid "Discard and Trash"
+msgstr "Abandonner et mettre à la corbeille"
+
 msgid "Discard changes to these files?"
 msgstr "Abandonner les modifications de ces fichiers ?"
 
-msgid "Discard changes to these files? New files are moved to the trash."
-msgstr "Abandonner les modifications de ces fichiers ? Les nouveaux fichiers sont mis à la corbeille."
+msgid "Discard changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "Abandonner les modifications de {tracked_count} fichiers et mettre {untracked_count} fichiers à la corbeille ?"
+
+msgid "Discard changes to {tracked_count} files?"
+msgstr "Abandonner les modifications de {tracked_count} fichiers ?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Abandonne les modifications de ce fichier et rétablit son contenu de la dernière validation"
@@ -1046,11 +1055,11 @@ msgstr "Échec de la création de la branche"
 msgid "Failed to create remote"
 msgstr "Échec de la création du dépôt distant"
 
-msgid "Failed to discard changes"
-msgstr "Impossible d'abandonner les modifications"
-
 msgid "Failed to drop stash"
 msgstr "Échec de la suppression de la remise"
+
+msgid "Failed to generate commit message: {error}"
+msgstr "Échec de la génération du message de validation : {error}"
 
 msgid "Failed to generate commit message: {err}"
 msgstr "Échec de la génération du message de validation : {err}"
@@ -1067,8 +1076,8 @@ msgstr "Échec de l'application et de la suppression de la remise"
 msgid "Failed to rename branch"
 msgstr "Échec du renommage de la branche"
 
-msgid "Failed to trash file"
-msgstr "Impossible de mettre le fichier à la corbeille"
+msgid "Failed to revert changes"
+msgstr "Impossible de restaurer les modifications"
 
 msgid "Failed to trash files"
 msgstr "Échec de la mise des fichiers à la corbeille"
@@ -2732,6 +2741,9 @@ msgstr "Mettre ces fichiers à la corbeille ?"
 
 msgid "Trash {count} Files"
 msgstr "Mettre {count} fichiers à la corbeille"
+
+msgid "Trash {untracked_count} files?"
+msgstr "Mettre {untracked_count} fichiers à la corbeille ?"
 
 msgid "Trash {}?"
 msgstr "Mettre {} à la corbeille ?"

@@ -161,6 +161,12 @@ msgstr "代理設定檔"
 msgid "Agent Update Available"
 msgstr "有代理更新可用"
 
+msgid "Agent refused to respond to this request"
+msgstr "代理拒絕回應此要求"
+
+msgid "Agent stopped at the output token limit"
+msgstr "代理已因達到輸出 Token 上限而停止"
+
 msgid "Agent stopped due to an error"
 msgstr "代理因錯誤而停止"
 
@@ -308,6 +314,9 @@ msgstr "已取消檢查 Claude Code 更新。"
 msgid "Canceled downloading the Linux build of Claude Code."
 msgstr "已取消下載 Claude Code 的 Linux 版本。"
 
+msgid "Cancelled"
+msgstr "已取消"
+
 msgid "Cannot switch to the form because the JSON could not be read: {error}"
 msgstr "無法讀取 JSON，因此無法切換至表單：{error}"
 
@@ -437,9 +446,6 @@ msgstr "壓縮失敗"
 msgid "Completed"
 msgstr "已完成"
 
-msgid "Completed Plan"
-msgstr "已完成的計畫"
-
 msgid "Configure"
 msgstr "設定"
 
@@ -517,6 +523,9 @@ msgstr "複製此代理回應"
 
 msgid "Copy as Markdown"
 msgstr "複製為 Markdown"
+
+msgid "Copy into an empty composer. The saved submission is kept until discarded."
+msgstr "複製到空白的輸入框。已儲存的送出內容會保留到捨棄為止。"
 
 msgid "Cost"
 msgstr "費用"
@@ -701,6 +710,9 @@ msgstr "停用思考模式"
 msgid "Disabled in Restricted Mode"
 msgstr "在受限模式中停用"
 
+msgid "Discard"
+msgstr "捨棄"
+
 msgid "Discard Interrupted Edit"
 msgstr "捨棄已中斷的編輯"
 
@@ -872,6 +884,9 @@ msgstr "正在取得工作階段…"
 
 msgid "Files & Directories"
 msgstr "檔案與資料夾"
+
+msgid "Finished"
+msgstr "已完成"
 
 msgid "Finished running tools"
 msgstr "工具執行完成"
@@ -1103,6 +1118,15 @@ msgstr "將子代理設為全螢幕"
 msgid "Manage AI Connections…"
 msgstr "管理 AI 連線…"
 
+msgid "Message"
+msgstr "訊息"
+
+msgid "Message cancelled"
+msgstr "已取消傳送訊息"
+
+msgid "Message failed to send: {}"
+msgstr "無法傳送訊息：{}"
+
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "傳送訊息給 {} — @ 以加入上下文，/ 以使用命令"
 
@@ -1237,6 +1261,9 @@ msgstr "沒有設定檔。"
 
 msgid "No recent projects found"
 msgstr "找不到最近的專案"
+
+msgid "No text preview available"
+msgstr "沒有可用的文字預覽"
 
 msgid "No threads"
 msgstr "沒有會話"
@@ -1535,6 +1562,9 @@ msgstr "在沙箱外重新啟動…"
 msgid "Restart Transform"
 msgstr "重新啟動轉換"
 
+msgid "Restore"
+msgstr "還原"
+
 msgid "Restore Checkpoint"
 msgstr "還原檢查點"
 
@@ -1708,6 +1738,9 @@ msgstr "以摘要傳送"
 
 msgid "Send in Full"
 msgstr "傳送全文"
+
+msgid "Sending message…"
+msgstr "正在傳送訊息…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "在檢查其簽章與雜湊後傳送至遠端主機。"
@@ -1907,6 +1940,9 @@ msgstr "代理的網路存取需要將主機加入允許清單"
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "與 {provider} 的 API 連線已中斷。ForgeKairos 會自動重試。問題持續發生時，請檢查網路連線。"
 
+msgid "The conversation was rewound, but the message became read-only and was not resent."
+msgstr "對話已倒回，但訊息已變成唯讀，因此未重新傳送。"
+
 msgid "The extension's settings must be a JSON object ({{ … }})."
 msgstr "擴充功能的設定必須是 JSON 物件（{{ … }}）。"
 
@@ -2069,6 +2105,9 @@ msgstr "此擴充功能的設定無法以表單顯示，因此會以 JSON 編輯
 
 msgid "This internationalized address displays as {decoded_host}. Verify it carefully."
 msgstr "此國際化位址顯示為 {decoded_host}。請仔細核對。"
+
+msgid "This message contains unsupported content and cannot be edited or resent."
+msgstr "此訊息包含不支援的內容，無法編輯或重新傳送。"
 
 msgid "This model does not support images yet"
 msgstr "此模型尚不支援影像"
@@ -2265,6 +2304,9 @@ msgstr "正在等待完成"
 msgid "Waiting for input"
 msgstr "正在等待輸入"
 
+msgid "Waiting for message to appear…"
+msgstr "正在等待訊息顯示…"
+
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "正在等待允許清單的變更生效…"
 
@@ -2321,6 +2363,9 @@ msgstr "Zed Pro 試用已到期"
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "會直接使用您平常的設定與登入狀態。"
+
+msgid "[Unsupported message content — this message cannot be edited or resent]"
+msgstr "[不支援的訊息內容 — 無法編輯或重新傳送此訊息]"
 
 msgid "a URI"
 msgstr "URI"
@@ -2538,10 +2583,6 @@ msgstr "{} 個 Token"
 msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— 已變更 {count} 個檔案"
-
-msgid "— {count} step"
-msgid_plural "— {count} steps"
-msgstr[0] "— {count} 個步驟"
 
 msgid "“{value}” contains potentially surprising Unicode characters"
 msgstr "「{value}」包含可能出乎預期的 Unicode 字元"

@@ -615,6 +615,22 @@ msgid "Contained between the left and right docks"
 msgstr "包含在左右停駐區之間"
 
 msgctxt "settings schema"
+msgid "Continuation lines get 1 extra indent level beyond the original."
+msgstr "後續行比原始行多縮排 1 層。"
+
+msgctxt "settings schema"
+msgid "Continuation lines get 2 extra indent levels beyond the original."
+msgstr "後續行比原始行多縮排 2 層。"
+
+msgctxt "settings schema"
+msgid "Continuation lines match the original line's indentation."
+msgstr "後續行與原始行的縮排相同。"
+
+msgctxt "settings schema"
+msgid "Continuation lines start at column 0."
+msgstr "後續行從第 0 欄開始。"
+
+msgctxt "settings schema"
 msgid "Control what info is collected by Zed."
 msgstr "控制 Zed 收集哪些資訊。"
 
@@ -1535,6 +1551,10 @@ msgid "How to highlight the current line in the minimap.\n\nDefault: inherits ed
 msgstr "在縮圖中醒目提示目前行的方式。\n\n預設值：繼承編輯器的行醒目提示設定"
 
 msgctxt "settings schema"
+msgid "How to indent soft-wrapped continuation lines.\n\nDefault: same"
+msgstr "自動換行後續行的縮排方式。\n\n預設值：same"
+
+msgctxt "settings schema"
 msgid "How to order sibling entries in the project panel.\n\nDefault: directories_first"
 msgstr "專案面板中同層項目的排序方式。\n\n預設值：directories_first"
 
@@ -1797,6 +1817,10 @@ msgstr "縮圖中顯示的欄數上限。\n\n預設值：80"
 msgctxt "settings schema"
 msgid "Maximum number of columns to keep in REPL's scrollback buffer.\nClamped with [20, 512] range.\n\nDefault: 128"
 msgstr "REPL 捲動緩衝區中保留的欄數上限。\n限制在 [20, 512] 範圍內。\n\n預設值：128"
+
+msgctxt "settings schema"
+msgid "Maximum number of idle threads with loadable sessions to retain in the\nagent panel. Set to 0 to unload every eligible idle thread when it is\nno longer active.\n\nDefault: 5"
+msgstr "在代理面板中保留的閒置會話（具有可重新載入的工作階段）的最大數量。設為 0 時，所有符合條件的閒置會話一旦不再使用中就會卸載。\n\n預設值：5"
 
 msgctxt "settings schema"
 msgid "Maximum number of lines of output to display before scrolling.\nSet to 0 to disable output height limits.\n\nDefault: 0"
@@ -4301,6 +4325,10 @@ msgstr "是否自動開啟從外部來源拖放的檔案。\n\n預設值：true"
 msgctxt "settings schema"
 msgid "Whether to automatically open newly created files in the editor.\n\nDefault: true"
 msgstr "是否自動在編輯器中開啟新建立的檔案。\n\n預設值：true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically open the menus in the title bar on hover.\n\nDefault: false"
+msgstr "是否在滑鼠暫留時自動開啟標題列中的選單。\n\n預設值：false"
 
 msgctxt "settings schema"
 msgid "Whether to automatically show a signature help pop-up or not.\n\nDefault: false"

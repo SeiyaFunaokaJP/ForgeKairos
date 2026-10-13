@@ -212,8 +212,8 @@ msgstr "Copilot-Bearbeitungsvorhersagen neu installieren"
 msgid "Show Edit Predictions For"
 msgstr "Bearbeitungsvorhersagen anzeigen für"
 
-msgid "Sign In & Start Using"
-msgstr "Anmelden und loslegen"
+msgid "Sign In"
+msgstr "Anmelden"
 
 msgid "Sign In Or Configure a Provider"
 msgstr "Anmelden oder einen Anbieter konfigurieren"
@@ -230,6 +230,9 @@ msgstr "Abonnieren, um das Limit zu erhöhen"
 msgid "Suggested Edits"
 msgstr "Vorgeschlagene Bearbeitungen"
 
+msgid "Suggestions at every keystroke, powered by Zeta, our open-source, open-data model. Included with Zed Pro and the Pro trial."
+msgstr "Vorschläge bei jedem Tastenanschlag, bereitgestellt von Zeta, unserem Open-Source-Modell mit offenen Daten. Enthalten in Zed Pro und der Pro-Testversion."
+
 msgid "This Buffer"
 msgstr "Dieser Puffer"
 
@@ -238,6 +241,9 @@ msgstr "Diese Datei ist ausgeschlossen."
 
 msgid "Training Data Collection"
 msgstr "Trainingsdaten-Erfassung"
+
+msgid "Upgrade to Pro"
+msgstr "Upgrade auf Pro"
 
 msgid "Upgrade to Zed Pro or contact us."
 msgstr "Auf Zed Pro upgraden oder Kontakt aufnehmen."
@@ -251,14 +257,14 @@ msgstr "Nutzung"
 msgid "View Docs"
 msgstr "Dokumentation anzeigen"
 
-msgid "You get 2,000 accepted suggestions at every keystroke for free, powered by Zeta, our open-source, open-data model"
-msgstr "Sie erhalten kostenlos 2.000 angenommene Vorschläge bei jedem Tastenanschlag, unterstützt von Zeta, unserem Open-Source-Modell mit offenen Daten"
-
 msgid "You have an outstanding invoice"
 msgstr "Sie haben eine ausstehende Rechnung"
 
 msgid "Your GitHub account is less than 30 days old."
 msgstr "Ihr GitHub-Konto ist weniger als 30 Tage alt."
+
+msgid "Zed's edit predictions not included in the Free plan."
+msgstr "Die Bearbeitungsvorhersagen von Zed sind im kostenlosen Tarif nicht enthalten."
 
 msgid "{tooltip_text} • Trigger: {trigger_tooltip}"
 msgstr "{tooltip_text} • Auslöser: {trigger_tooltip}"

@@ -1,0 +1,15 @@
+msgid ""
+msgstr ""
+"Language: zh-Hans\n"
+"X-Language-Name: 简体中文\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Emmet expands abbreviations such as `ul>li*3` into HTML and `m10` into CSS."
+msgstr "Emmet 可将 `ul>li*3` 等缩写展开为 HTML，将 `m10` 展开为 CSS。"
+
+msgid "Emmet is available for this file"
+msgstr "此文件可使用 Emmet"
+
+msgid "Install Emmet"
+msgstr "安装 Emmet"

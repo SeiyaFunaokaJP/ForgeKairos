@@ -1036,6 +1036,22 @@ msgctxt "SoftWrap"
 msgid "Prefer Line"
 msgstr "偏好單行"
 
+msgctxt "SoftWrapIndent"
+msgid "Extra One"
+msgstr "多縮排一層"
+
+msgctxt "SoftWrapIndent"
+msgid "Extra Two"
+msgstr "多縮排兩層"
+
+msgctxt "SoftWrapIndent"
+msgid "None"
+msgstr "不縮排"
+
+msgctxt "SoftWrapIndent"
+msgid "Same"
+msgstr "與原始行相同"
+
 msgctxt "StatusStyle"
 msgid "Icon"
 msgstr "圖示"
@@ -1519,6 +1535,10 @@ msgstr "自動關閉已刪除的檔案。"
 msgctxt "settings"
 msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
 msgstr "代理的上下文過大時自動壓縮，摘要較早的訊息以釋放模型上下文視窗空間。"
+
+msgctxt "settings"
+msgid "Automatically open menus in the titlebar on hover."
+msgstr "滑鼠暫留時自動開啟標題列中的選單。"
 
 msgctxt "settings"
 msgid "Automatically show a signature help pop-up."
@@ -2945,6 +2965,10 @@ msgid "How to highlight the current line."
 msgstr "醒目提示目前行的方式。"
 
 msgctxt "settings"
+msgid "How to indent soft-wrapped lines."
+msgstr "自動換行後續行的縮排方式。"
+
+msgctxt "settings"
 msgid "How to perform a buffer format."
 msgstr "執行緩衝區格式化的方式。"
 
@@ -3265,6 +3289,10 @@ msgid "Max Content Width"
 msgstr "最大內容寬度"
 
 msgctxt "settings"
+msgid "Max Idle Threads"
+msgstr "閒置會話上限"
+
+msgctxt "settings"
 msgid "Max Output Tokens"
 msgstr "輸出 Token 上限"
 
@@ -3319,6 +3347,10 @@ msgstr "顯示警告前，提交訊息標題的最大長度。設為 0 可停用
 msgctxt "settings"
 msgid "Maximum number of columns to display in the minimap."
 msgstr "縮圖顯示的最大欄數。"
+
+msgctxt "settings"
+msgid "Maximum number of idle agent threads with loadable sessions to keep loaded. When the limit is exceeded, the least recently updated threads are unloaded."
+msgstr "保持載入的閒置代理會話（具有可重新載入的工作階段）的最大數量。超過上限時，會從最久未更新的會話開始卸載。"
 
 msgctxt "settings"
 msgid "Maximum number of lines to keep in scrollback history (max: 100,000; 0 disables scrolling)."
@@ -3475,6 +3507,10 @@ msgstr "開啟時摺疊巨集資料夾"
 msgctxt "settings"
 msgid "Open Markdown Files in Preview"
 msgstr "在預覽中開啟 Markdown 檔案"
+
+msgctxt "settings"
+msgid "Open Menus on Hover"
+msgstr "暫留時開啟選單"
 
 msgctxt "settings"
 msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
@@ -4463,6 +4499,10 @@ msgstr "程式碼片段排序順序"
 msgctxt "settings"
 msgid "Soft Wrap"
 msgstr "自動換行"
+
+msgctxt "settings"
+msgid "Soft Wrap Indent"
+msgstr "自動換行縮排"
 
 msgctxt "settings"
 msgid "Sort By"

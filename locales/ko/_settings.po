@@ -1036,6 +1036,22 @@ msgctxt "SoftWrap"
 msgid "Prefer Line"
 msgstr "한 줄 선호"
 
+msgctxt "SoftWrapIndent"
+msgid "Extra One"
+msgstr "한 단계 더"
+
+msgctxt "SoftWrapIndent"
+msgid "Extra Two"
+msgstr "두 단계 더"
+
+msgctxt "SoftWrapIndent"
+msgid "None"
+msgstr "들여쓰지 않음"
+
+msgctxt "SoftWrapIndent"
+msgid "Same"
+msgstr "원래 줄과 같음"
+
 msgctxt "StatusStyle"
 msgid "Icon"
 msgstr "아이콘"
@@ -1519,6 +1535,10 @@ msgstr "삭제된 파일을 자동으로 닫습니다."
 msgctxt "settings"
 msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
 msgstr "에이전트의 컨텍스트가 너무 커지면 이전 메시지를 요약하여 모델의 컨텍스트 창에 여유 공간을 확보하도록 컨텍스트를 자동으로 압축합니다."
+
+msgctxt "settings"
+msgid "Automatically open menus in the titlebar on hover."
+msgstr "마우스를 올리면 제목 표시줄의 메뉴를 자동으로 엽니다."
 
 msgctxt "settings"
 msgid "Automatically show a signature help pop-up."
@@ -2945,6 +2965,10 @@ msgid "How to highlight the current line."
 msgstr "현재 줄을 강조 표시하는 방식입니다."
 
 msgctxt "settings"
+msgid "How to indent soft-wrapped lines."
+msgstr "소프트 줄 바꿈된 줄의 들여쓰기 방식입니다."
+
+msgctxt "settings"
 msgid "How to perform a buffer format."
 msgstr "버퍼를 포맷하는 방식입니다."
 
@@ -3265,6 +3289,10 @@ msgid "Max Content Width"
 msgstr "최대 콘텐츠 너비"
 
 msgctxt "settings"
+msgid "Max Idle Threads"
+msgstr "최대 유휴 스레드 수"
+
+msgctxt "settings"
 msgid "Max Output Tokens"
 msgstr "최대 출력 토큰"
 
@@ -3319,6 +3347,10 @@ msgstr "경고가 표시되기 전 커밋 메시지 제목의 최대 길이입�
 msgctxt "settings"
 msgid "Maximum number of columns to display in the minimap."
 msgstr "미니맵에 표시할 최대 열 수입니다."
+
+msgctxt "settings"
+msgid "Maximum number of idle agent threads with loadable sessions to keep loaded. When the limit is exceeded, the least recently updated threads are unloaded."
+msgstr "다시 로드할 수 있는 세션이 있는 유휴 에이전트 스레드를 로드된 상태로 유지할 최대 개수입니다. 한도를 초과하면 가장 오래전에 업데이트된 스레드부터 언로드합니다."
 
 msgctxt "settings"
 msgid "Maximum number of lines to keep in scrollback history (max: 100,000; 0 disables scrolling)."
@@ -3475,6 +3507,10 @@ msgstr "매크로 폴더를 접은 상태로 열기"
 msgctxt "settings"
 msgid "Open Markdown Files in Preview"
 msgstr "Markdown 파일을 미리 보기에서 열기"
+
+msgctxt "settings"
+msgid "Open Menus on Hover"
+msgstr "마우스를 올리면 메뉴 열기"
 
 msgctxt "settings"
 msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
@@ -4463,6 +4499,10 @@ msgstr "스니펫 정렬 순서"
 msgctxt "settings"
 msgid "Soft Wrap"
 msgstr "소프트 줄 바꿈"
+
+msgctxt "settings"
+msgid "Soft Wrap Indent"
+msgstr "소프트 줄 바꿈 들여쓰기"
 
 msgctxt "settings"
 msgid "Sort By"

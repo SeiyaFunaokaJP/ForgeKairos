@@ -348,7 +348,7 @@ msgid "To use local Ollama:"
 msgstr "使用本地 Ollama："
 
 msgid "Upgrade to Pro"
-msgstr "升级至 Pro"
+msgstr "升级到 Pro"
 
 msgid "Using AWS SSO profile: {profile_name}"
 msgstr "正在使用 AWS SSO 配置文件：{profile_name}"

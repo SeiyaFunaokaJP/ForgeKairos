@@ -23,9 +23,6 @@ msgstr "(현재 플랜)"
 msgid "14 days from trial start, no credit card required"
 msgstr "체험 시작 시점부터 14일, 신용카드 필요 없음"
 
-msgid "2,000 accepted edit predictions"
-msgstr "수락된 편집 예측 2,000개"
-
 msgid "API Keys"
 msgstr "API 키"
 
@@ -35,20 +32,11 @@ msgstr "로그인하지 않고 AI를 사용하려면 본인의 키를 추가하�
 msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
 msgstr "에이전트 명령은 OS 샌드박스 안에서 실행됩니다. 프로젝트 외부의 파일을 건드리거나 새 네트워크 액세스를 열 때는 먼저 확인합니다. 샌드박스 외부 실행은 기본적으로 허용되지 않습니다. 허용하더라도 터미널 명령은 하나씩 확인하지만, 외부에서 시작된 에이전트는 자체 도구를 확인 없이 사용할 수 있습니다."
 
-msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
-msgstr "또는 이미 설정되어 있는 GitHub Copilot을 계속 사용할 수도 있습니다."
-
-msgid "Alternatively, you can use GitHub Copilot as your edit prediction provider."
-msgstr "또는 GitHub Copilot을 편집 예측 프로바이더로 사용할 수도 있습니다."
-
 msgid "Before You Use AI"
 msgstr "AI를 사용하기 전에"
 
 msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
 msgstr "에이전트가 실행하는 명령과 외부 에이전트 자체는 OS 샌드박스(macOS에서는 Seatbelt, Linux에서는 bubblewrap, Windows에서는 WSL) 안에서 실행됩니다. 프로젝트 외부의 파일 작업과 새 네트워크 액세스는 확인을 요청합니다. 샌드박스 외부 실행은 기본적으로 허용되지 않으며 샌드박스 설정에서 허용할 수 있습니다. 그 경우에도 외부에서 실행되는 터미널 명령은 하나씩 확인을 요청하지만, 샌드박스 외부에서 시작된 외부 에이전트나 Claude Code는 자체 도구를 확인 없이 사용할 수 있습니다."
-
-msgid "Configure Copilot"
-msgstr "Copilot 구성"
 
 msgid "Configure Providers"
 msgstr "프로바이더 구성"
@@ -68,9 +56,6 @@ msgstr "외부 AI(클라우드 API 및 외부 에이전트)는 사용자가 제�
 msgid "External AI receives the code, files, and conversations you give it and may store them or train on them. Local models on this machine send nothing out."
 msgstr "외부 AI는 사용자가 제공한 코드, 파일, 대화를 받으며 이를 저장하거나 학습에 사용할 수 있습니다. 이 PC의 로컬 모델은 외부로 아무것도 보내지 않습니다."
 
-msgid "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
-msgstr "GitHub Copilot도 편집 예측 프로바이더로 사용할 수 있지만 외부 AI 서비스입니다. AI 페이지의 프로바이더 구성에서 편집 예측을 활성화하고 모델 학습 위험 경고를 확인하세요."
-
 msgid "Here's what you get:"
 msgstr "제공되는 혜택:"
 
@@ -85,9 +70,6 @@ msgstr "신용카드 필요 없음"
 
 msgid "Open AI Settings"
 msgstr "AI 설정 열기"
-
-msgid "Open Configure Providers"
-msgstr "프로바이더 구성 열기"
 
 msgid "Open Sandbox Settings"
 msgstr "샌드박스 설정 열기"
@@ -133,9 +115,6 @@ msgstr "사용량 기반 청구"
 
 msgid "Usage-based billing beyond $5"
 msgstr "$5 초과분에 대한 사용량 기반 청구"
-
-msgid "Use Copilot"
-msgstr "Copilot 사용"
 
 msgid "Welcome to Zed Business"
 msgstr "Zed Business에 오신 것을 환영합니다"

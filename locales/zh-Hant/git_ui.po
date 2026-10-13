@@ -865,6 +865,9 @@ msgid "Diff ({count} file)"
 msgid_plural "Diff ({count} files)"
 msgstr[0] "差異（{count} 個檔案）"
 
+msgid "Discard"
+msgstr "捨棄"
+
 msgid "Discard Changes"
 msgstr "捨棄變更"
 
@@ -877,11 +880,17 @@ msgstr "全部捨棄（--hard）"
 msgid "Discard Tracked Changes"
 msgstr "捨棄已追蹤的變更"
 
+msgid "Discard and Trash"
+msgstr "捨棄並移至垃圾桶"
+
 msgid "Discard changes to these files?"
 msgstr "要捨棄這些檔案的變更嗎？"
 
-msgid "Discard changes to these files? New files are moved to the trash."
-msgstr "要捨棄這些檔案的變更嗎？新檔案會移至垃圾桶。"
+msgid "Discard changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "要捨棄 {tracked_count} 個檔案的變更，並將 {untracked_count} 個檔案移至垃圾桶嗎？"
+
+msgid "Discard changes to {tracked_count} files?"
+msgstr "要捨棄 {tracked_count} 個檔案的變更嗎？"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "捨棄此檔案的變更，並將其還原為最後一次提交中的內容"
@@ -1028,11 +1037,11 @@ msgstr "建立分支失敗"
 msgid "Failed to create remote"
 msgstr "建立遠端失敗"
 
-msgid "Failed to discard changes"
-msgstr "無法捨棄變更"
-
 msgid "Failed to drop stash"
 msgstr "捨棄貯藏失敗"
+
+msgid "Failed to generate commit message: {error}"
+msgstr "無法產生提交訊息：{error}"
 
 msgid "Failed to generate commit message: {err}"
 msgstr "無法產生提交訊息：{err}"
@@ -1049,8 +1058,8 @@ msgstr "取出貯藏失敗"
 msgid "Failed to rename branch"
 msgstr "重新命名分支失敗"
 
-msgid "Failed to trash file"
-msgstr "無法將檔案移至垃圾桶"
+msgid "Failed to revert changes"
+msgstr "無法還原變更"
 
 msgid "Failed to trash files"
 msgstr "將檔案移至垃圾桶失敗"
@@ -2691,6 +2700,9 @@ msgstr "要將這些檔案移至垃圾桶嗎？"
 
 msgid "Trash {count} Files"
 msgstr "將 {count} 個檔案移至垃圾桶"
+
+msgid "Trash {untracked_count} files?"
+msgstr "要將 {untracked_count} 個檔案移至垃圾桶嗎？"
 
 msgid "Trash {}?"
 msgstr "要將 {} 移至垃圾桶嗎？"

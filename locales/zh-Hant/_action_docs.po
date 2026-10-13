@@ -6670,6 +6670,12 @@ msgctxt "action documentation"
 msgid "vim::YankToEndOfLine"
 msgstr "從游標複製至行尾。"
 
+#. Shows the bindings that can complete the pending key sequence. Must be bound to a
+#. single keystroke.
+msgctxt "action documentation"
+msgid "which_key::ShowPendingBindings"
+msgstr "顯示可以完成等待中按鍵序列的按鍵繫結。必須繫結至單一按鍵輸入。"
+
 #. Activates the last pane in the workspace.
 msgctxt "action documentation"
 msgid "workspace::ActivateLastPane"

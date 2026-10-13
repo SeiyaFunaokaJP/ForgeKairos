@@ -59,12 +59,6 @@ msgstr "Não mostrar novamente"
 msgid "Downloads: {}"
 msgstr "Downloads: {}"
 
-msgid "Emmet expands abbreviations such as `ul>li*3` into HTML and `m10` into CSS."
-msgstr "O Emmet expande abreviações como `ul>li*3` em HTML e `m10` em CSS."
-
-msgid "Emmet is available for this file"
-msgstr "O Emmet está disponível para este arquivo"
-
 msgid "Enable Vim mode"
 msgstr "Habilitar modo Vim"
 
@@ -103,9 +97,6 @@ msgstr "Instalar outra versão..."
 
 msgid "Install Dev Extension"
 msgstr "Instalar extensão de desenvolvimento"
-
-msgid "Install Emmet"
-msgstr "Instalar Emmet"
 
 msgid "Installed"
 msgstr "Instalado"

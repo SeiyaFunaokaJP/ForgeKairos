@@ -865,6 +865,9 @@ msgid "Diff ({count} file)"
 msgid_plural "Diff ({count} files)"
 msgstr[0] "Diff (파일 {count}개)"
 
+msgid "Discard"
+msgstr "버리기"
+
 msgid "Discard Changes"
 msgstr "변경 사항 버리기"
 
@@ -877,11 +880,17 @@ msgstr "모두 버리기 (--hard)"
 msgid "Discard Tracked Changes"
 msgstr "추적된 변경 사항 버리기"
 
+msgid "Discard and Trash"
+msgstr "버리고 휴지통으로 이동"
+
 msgid "Discard changes to these files?"
 msgstr "이 파일들의 변경 사항을 버리시겠습니까?"
 
-msgid "Discard changes to these files? New files are moved to the trash."
-msgstr "이 파일들의 변경 사항을 버리시겠습니까? 새 파일은 휴지통으로 이동합니다."
+msgid "Discard changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "파일 {tracked_count}개의 변경 사항을 버리고 파일 {untracked_count}개를 휴지통으로 이동하시겠습니까?"
+
+msgid "Discard changes to {tracked_count} files?"
+msgstr "파일 {tracked_count}개의 변경 사항을 버리시겠습니까?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "이 파일의 변경 사항을 버리고 마지막 커밋의 내용으로 되돌립니다"
@@ -1028,11 +1037,11 @@ msgstr "브랜치를 만들지 못했습니다"
 msgid "Failed to create remote"
 msgstr "원격을 만들지 못했습니다"
 
-msgid "Failed to discard changes"
-msgstr "변경 사항을 버리지 못했습니다"
-
 msgid "Failed to drop stash"
 msgstr "스태시를 삭제하지 못했습니다"
+
+msgid "Failed to generate commit message: {error}"
+msgstr "커밋 메시지를 생성하지 못했습니다: {error}"
 
 msgid "Failed to generate commit message: {err}"
 msgstr "커밋 메시지를 생성하지 못했습니다: {err}"
@@ -1049,8 +1058,8 @@ msgstr "스태시를 꺼내지 못했습니다"
 msgid "Failed to rename branch"
 msgstr "브랜치 이름을 변경하지 못했습니다"
 
-msgid "Failed to trash file"
-msgstr "파일을 휴지통으로 이동하지 못했습니다"
+msgid "Failed to revert changes"
+msgstr "변경 사항을 되돌리지 못했습니다"
 
 msgid "Failed to trash files"
 msgstr "파일을 휴지통으로 이동하지 못했습니다"
@@ -2691,6 +2700,9 @@ msgstr "이 파일들을 휴지통으로 이동하시겠습니까?"
 
 msgid "Trash {count} Files"
 msgstr "파일 {count}개를 휴지통으로 이동"
+
+msgid "Trash {untracked_count} files?"
+msgstr "파일 {untracked_count}개를 휴지통으로 이동하시겠습니까?"
 
 msgid "Trash {}?"
 msgstr "{}을(를) 휴지통으로 이동하시겠습니까?"

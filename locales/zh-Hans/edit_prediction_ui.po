@@ -212,8 +212,8 @@ msgstr "重新安装 Copilot Edit Predictions"
 msgid "Show Edit Predictions For"
 msgstr "显示编辑预测范围"
 
-msgid "Sign In & Start Using"
-msgstr "登录并开始使用"
+msgid "Sign In"
+msgstr "登录"
 
 msgid "Sign In Or Configure a Provider"
 msgstr "登录或配置提供商"
@@ -230,6 +230,9 @@ msgstr "订阅以提升使用限额"
 msgid "Suggested Edits"
 msgstr "建议编辑"
 
+msgid "Suggestions at every keystroke, powered by Zeta, our open-source, open-data model. Included with Zed Pro and the Pro trial."
+msgstr "每次按键都提供建议，由我们开源、开放数据的模型 Zeta 驱动。包含在 Zed Pro 和 Pro 试用中。"
+
 msgid "This Buffer"
 msgstr "此缓冲区"
 
@@ -238,6 +241,9 @@ msgstr "此文件已被排除。"
 
 msgid "Training Data Collection"
 msgstr "训练数据收集"
+
+msgid "Upgrade to Pro"
+msgstr "升级到 Pro"
 
 msgid "Upgrade to Zed Pro or contact us."
 msgstr "升级至 Zed Pro 或联系我们。"
@@ -251,14 +257,14 @@ msgstr "用量"
 msgid "View Docs"
 msgstr "查看文档"
 
-msgid "You get 2,000 accepted suggestions at every keystroke for free, powered by Zeta, our open-source, open-data model"
-msgstr "由我们的开源、开放数据模型 Zeta 提供支持，你可以免费获得 2,000 次每次按键时被接受的建议"
-
 msgid "You have an outstanding invoice"
 msgstr "你有未结清的账单"
 
 msgid "Your GitHub account is less than 30 days old."
 msgstr "你的 GitHub 账户创建时间不足 30 天。"
+
+msgid "Zed's edit predictions not included in the Free plan."
+msgstr "Free 套餐不包含 Zed 的编辑预测。"
 
 msgid "{tooltip_text} • Trigger: {trigger_tooltip}"
 msgstr "{tooltip_text} • 触发方式：{trigger_tooltip}"

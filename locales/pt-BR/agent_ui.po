@@ -161,6 +161,12 @@ msgstr "Perfis do agente"
 msgid "Agent Update Available"
 msgstr "Atualização do agente disponível"
 
+msgid "Agent refused to respond to this request"
+msgstr "O agente recusou-se a responder a esta solicitação"
+
+msgid "Agent stopped at the output token limit"
+msgstr "O agente parou no limite de tokens de saída"
+
 msgid "Agent stopped due to an error"
 msgstr "O agente parou devido a um erro"
 
@@ -308,6 +314,9 @@ msgstr "A verificação de atualizações do Claude Code foi cancelada."
 msgid "Canceled downloading the Linux build of Claude Code."
 msgstr "O download da versão Linux do Claude Code foi cancelado."
 
+msgid "Cancelled"
+msgstr "Cancelada"
+
 msgid "Cannot switch to the form because the JSON could not be read: {error}"
 msgstr "Não é possível alternar para o formulário porque o JSON não pôde ser lido: {error}"
 
@@ -437,9 +446,6 @@ msgstr "Compactação falhou"
 msgid "Completed"
 msgstr "Concluído"
 
-msgid "Completed Plan"
-msgstr "Plano concluído"
-
 msgid "Configure"
 msgstr "Configurar"
 
@@ -517,6 +523,9 @@ msgstr "Copiar esta resposta do agente"
 
 msgid "Copy as Markdown"
 msgstr "Copiar como Markdown"
+
+msgid "Copy into an empty composer. The saved submission is kept until discarded."
+msgstr "Copia para um campo de mensagem vazio. O envio salvo é mantido até ser descartado."
 
 msgid "Cost"
 msgstr "Custo"
@@ -701,6 +710,9 @@ msgstr "Desabilitar modo de raciocínio"
 msgid "Disabled in Restricted Mode"
 msgstr "Desabilitado no modo restrito"
 
+msgid "Discard"
+msgstr "Descartar"
+
 msgid "Discard Interrupted Edit"
 msgstr "Descartar edição interrompida"
 
@@ -873,6 +885,9 @@ msgstr "Buscando sessões…"
 
 msgid "Files & Directories"
 msgstr "Arquivos e diretórios"
+
+msgid "Finished"
+msgstr "Concluída"
 
 msgid "Finished running tools"
 msgstr "Execução de ferramentas concluída"
@@ -1106,6 +1121,15 @@ msgstr "Maximizar subagente"
 msgid "Manage AI Connections…"
 msgstr "Gerenciar conexões de IA…"
 
+msgid "Message"
+msgstr "Mensagem"
+
+msgid "Message cancelled"
+msgstr "Mensagem cancelada"
+
+msgid "Message failed to send: {}"
+msgstr "Falha ao enviar a mensagem: {}"
+
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "Enviar mensagem para {}, @ para incluir contexto, / para comandos"
 
@@ -1240,6 +1264,9 @@ msgstr "Nenhum perfil."
 
 msgid "No recent projects found"
 msgstr "Nenhum projeto recente encontrado"
+
+msgid "No text preview available"
+msgstr "Nenhuma visualização de texto disponível"
 
 msgid "No threads"
 msgstr "Nenhuma conversa"
@@ -1538,6 +1565,9 @@ msgstr "Reiniciar fora do sandbox…"
 msgid "Restart Transform"
 msgstr "Reiniciar transformação"
 
+msgid "Restore"
+msgstr "Restaurar"
+
 msgid "Restore Checkpoint"
 msgstr "Restaurar ponto de verificação"
 
@@ -1711,6 +1741,9 @@ msgstr "Enviar como resumo"
 
 msgid "Send in Full"
 msgstr "Enviar completo"
+
+msgid "Sending message…"
+msgstr "Enviando mensagem…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "Envia-o ao host remoto depois de verificar a assinatura e o hash."
@@ -1910,6 +1943,9 @@ msgstr "O acesso à rede do agente precisa que hosts sejam adicionados à lista 
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "A conexão com a API de {provider} foi interrompida. O ForgeKairos tentará novamente automaticamente. Se o problema persistir, verifique sua conexão de rede."
 
+msgid "The conversation was rewound, but the message became read-only and was not resent."
+msgstr "A conversa foi rebobinada, mas a mensagem se tornou somente leitura e não foi reenviada."
+
 msgid "The extension's settings must be a JSON object ({{ … }})."
 msgstr "As configurações da extensão devem ser um objeto JSON ({{ … }})."
 
@@ -2073,6 +2109,9 @@ msgstr "As configurações desta extensão não podem ser mostradas como formul�
 
 msgid "This internationalized address displays as {decoded_host}. Verify it carefully."
 msgstr "Este endereço internacionalizado é exibido como {decoded_host}. Verifique-o cuidadosamente."
+
+msgid "This message contains unsupported content and cannot be edited or resent."
+msgstr "Esta mensagem tem conteúdo não suportado e não pode ser editada nem reenviada."
 
 msgid "This model does not support images yet"
 msgstr "Este modelo ainda não oferece suporte a imagens"
@@ -2269,6 +2308,9 @@ msgstr "Aguardando conclusão"
 msgid "Waiting for input"
 msgstr "Aguardando entrada"
 
+msgid "Waiting for message to appear…"
+msgstr "Aguardando a mensagem aparecer…"
+
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "Aguardando a alteração da lista de permissões entrar em vigor…"
 
@@ -2325,6 +2367,9 @@ msgstr "Seu período de avaliação do Zed Pro expirou"
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "Suas configurações e seu login habituais são usados como estão."
+
+msgid "[Unsupported message content — this message cannot be edited or resent]"
+msgstr "[Conteúdo de mensagem não suportado — esta mensagem não pode ser editada nem reenviada]"
 
 msgid "a URI"
 msgstr "um URI"
@@ -2549,11 +2594,6 @@ msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— {count} arquivo alterado"
 msgstr[1] "— {count} arquivos alterados"
-
-msgid "— {count} step"
-msgid_plural "— {count} steps"
-msgstr[0] "— {count} etapa"
-msgstr[1] "— {count} etapas"
 
 msgid "“{value}” contains potentially surprising Unicode characters"
 msgstr "“{value}” contém caracteres Unicode potencialmente inesperados"

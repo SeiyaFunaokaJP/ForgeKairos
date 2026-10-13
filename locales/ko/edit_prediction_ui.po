@@ -212,8 +212,8 @@ msgstr "Copilot 편집 예측 재설치"
 msgid "Show Edit Predictions For"
 msgstr "편집 예측 표시 대상"
 
-msgid "Sign In & Start Using"
-msgstr "로그인하고 사용 시작"
+msgid "Sign In"
+msgstr "로그인"
 
 msgid "Sign In Or Configure a Provider"
 msgstr "로그인하거나 프로바이더를 구성하세요"
@@ -230,6 +230,9 @@ msgstr "구독하여 한도 늘리기"
 msgid "Suggested Edits"
 msgstr "제안된 편집"
 
+msgid "Suggestions at every keystroke, powered by Zeta, our open-source, open-data model. Included with Zed Pro and the Pro trial."
+msgstr "오픈 소스, 오픈 데이터 모델인 Zeta 기반으로 키를 입력할 때마다 제안합니다. Zed Pro 및 Pro 체험에 포함되어 있습니다."
+
 msgid "This Buffer"
 msgstr "이 버퍼"
 
@@ -238,6 +241,9 @@ msgstr "이 파일은 제외되었습니다."
 
 msgid "Training Data Collection"
 msgstr "학습 데이터 수집"
+
+msgid "Upgrade to Pro"
+msgstr "Pro로 업그레이드"
 
 msgid "Upgrade to Zed Pro or contact us."
 msgstr "Zed Pro로 업그레이드하거나 문의하세요."
@@ -251,14 +257,14 @@ msgstr "사용량"
 msgid "View Docs"
 msgstr "문서 보기"
 
-msgid "You get 2,000 accepted suggestions at every keystroke for free, powered by Zeta, our open-source, open-data model"
-msgstr "오픈 소스, 오픈 데이터 모델인 Zeta를 통해 키 입력마다 수락된 제안 2,000개를 무료로 사용할 수 있습니다"
-
 msgid "You have an outstanding invoice"
 msgstr "미결제 청구서가 있습니다"
 
 msgid "Your GitHub account is less than 30 days old."
 msgstr "GitHub 계정을 만든 지 30일이 지나지 않았습니다."
+
+msgid "Zed's edit predictions not included in the Free plan."
+msgstr "Zed의 편집 예측은 무료 플랜에 포함되어 있지 않습니다."
 
 msgid "{tooltip_text} • Trigger: {trigger_tooltip}"
 msgstr "{tooltip_text} • 트리거: {trigger_tooltip}"

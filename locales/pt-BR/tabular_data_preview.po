@@ -43,6 +43,9 @@ msgstr "Começa com"
 msgid "Blank"
 msgstr "Em branco"
 
+msgid "Cannot preview JSONL line {line_number}: expected a JSON object"
+msgstr "Não é possível visualizar a linha {line_number} do JSONL: era esperado um objeto JSON"
+
 msgid "Cell Comparison ({} ↔ {})"
 msgstr "Comparação de células ({} ↔ {})"
 
@@ -211,6 +214,12 @@ msgstr "Inserir uma coluna aqui"
 msgid "Insert a row here"
 msgstr "Inserir uma linha aqui"
 
+msgid "JSON Lines files can't be compared as tables"
+msgstr "Arquivos JSON Lines não podem ser comparados como tabelas"
+
+msgid "JSON Lines files can't be edited in the grid. Open the text to edit them"
+msgstr "Arquivos JSON Lines não podem ser editados na grade. Abra o texto para editá-los"
+
 msgid "Joins the first condition with \"{}\" to show {}"
 msgstr "Une a primeira condição com \"{}\" para mostrar {}"
 
@@ -255,6 +264,9 @@ msgstr "Colar"
 
 msgid "Pick values, or filter with the conditions below"
 msgstr "Escolha valores ou filtre com as condições abaixo"
+
+msgid "Preview requires a single file"
+msgstr "A visualização exige um único arquivo"
 
 msgid "Previous Difference"
 msgstr "Diferença anterior"

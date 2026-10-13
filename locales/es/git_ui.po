@@ -879,6 +879,9 @@ msgid_plural "Diff ({count} files)"
 msgstr[0] "Diferencias ({count} archivo)"
 msgstr[1] "Diferencias ({count} archivos)"
 
+msgid "Discard"
+msgstr "Descartar"
+
 msgid "Discard Changes"
 msgstr "Descartar cambios"
 
@@ -891,11 +894,17 @@ msgstr "Descartar todo (--hard)"
 msgid "Discard Tracked Changes"
 msgstr "Descartar cambios con seguimiento"
 
+msgid "Discard and Trash"
+msgstr "Descartar y mover a la papelera"
+
 msgid "Discard changes to these files?"
 msgstr "¿Descartar los cambios en estos archivos?"
 
-msgid "Discard changes to these files? New files are moved to the trash."
-msgstr "¿Descartar los cambios de estos archivos? Los archivos nuevos se mueven a la papelera."
+msgid "Discard changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "¿Descartar los cambios de {tracked_count} archivos y mover {untracked_count} archivos a la papelera?"
+
+msgid "Discard changes to {tracked_count} files?"
+msgstr "¿Descartar los cambios de {tracked_count} archivos?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Descarta los cambios de este archivo y lo devuelve a su contenido del último commit"
@@ -1046,11 +1055,11 @@ msgstr "No se pudo crear la rama"
 msgid "Failed to create remote"
 msgstr "No se pudo crear el remoto"
 
-msgid "Failed to discard changes"
-msgstr "No se pudieron descartar los cambios"
-
 msgid "Failed to drop stash"
 msgstr "No se pudo descartar el stash"
+
+msgid "Failed to generate commit message: {error}"
+msgstr "No se pudo generar el mensaje del commit: {error}"
 
 msgid "Failed to generate commit message: {err}"
 msgstr "No se pudo generar el mensaje del commit: {err}"
@@ -1067,8 +1076,8 @@ msgstr "No se pudo extraer el stash"
 msgid "Failed to rename branch"
 msgstr "No se pudo cambiar el nombre de la rama"
 
-msgid "Failed to trash file"
-msgstr "No se pudo mover el archivo a la papelera"
+msgid "Failed to revert changes"
+msgstr "No se pudieron revertir los cambios"
 
 msgid "Failed to trash files"
 msgstr "No se pudieron mover los archivos a la papelera"
@@ -2732,6 +2741,9 @@ msgstr "¿Mover estos archivos a la papelera?"
 
 msgid "Trash {count} Files"
 msgstr "Mover {count} archivos a la papelera"
+
+msgid "Trash {untracked_count} files?"
+msgstr "¿Mover {untracked_count} archivos a la papelera?"
 
 msgid "Trash {}?"
 msgstr "¿Mover {} a la papelera?"

@@ -23,9 +23,6 @@ msgstr "（当前套餐）"
 msgid "14 days from trial start, no credit card required"
 msgstr "自试用开始起 14 天，无需信用卡"
 
-msgid "2,000 accepted edit predictions"
-msgstr "2,000 次被接受的编辑预测"
-
 msgid "API Keys"
 msgstr "API 密钥"
 
@@ -35,20 +32,11 @@ msgstr "添加你自己的密钥，无需登录即可使用 AI。"
 msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
 msgstr "智能体的命令在操作系统沙盒内运行。操作项目之外的文件或开启新的网络访问时会先询问你。默认不允许在沙盒外运行。即使允许，每条终端命令也会询问你，但在沙盒外启动的智能体可以不经询问使用其自身的工具。"
 
-msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
-msgstr "或者，由于 GitHub Copilot 已经设置好，你也可以继续使用它。"
-
-msgid "Alternatively, you can use GitHub Copilot as your edit prediction provider."
-msgstr "或者，你也可以使用 GitHub Copilot 作为编辑预测提供商。"
-
 msgid "Before You Use AI"
 msgstr "使用 AI 之前"
 
 msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
 msgstr "智能体运行的命令以及外部智能体本身都在操作系统沙盒内运行（macOS 上为 Seatbelt，Linux 上为 bubblewrap，Windows 上为 WSL）。项目之外的文件操作和新的网络访问需要你确认。默认不允许在沙盒外运行，可以在沙盒设置中允许。即便如此，在沙盒外运行的终端命令也会逐条请求你确认，但在沙盒外启动的外部智能体或 Claude Code 可能会不经询问使用其自身的工具。"
-
-msgid "Configure Copilot"
-msgstr "配置 Copilot"
 
 msgid "Configure Providers"
 msgstr "配置提供商"
@@ -68,9 +56,6 @@ msgstr "外部 AI（云 API 和外部智能体）会接收你提供给它的代�
 msgid "External AI receives the code, files, and conversations you give it and may store them or train on them. Local models on this machine send nothing out."
 msgstr "外部 AI 会接收你提供给它的代码、文件和对话，并可能存储或用其进行训练。本机上的本地模型不会向外发送任何内容。"
 
-msgid "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
-msgstr "GitHub Copilot 也可以用作编辑预测提供商，但它是外部 AI 服务。请在“AI”页面的“配置提供商”中启用编辑预测，并查看模型训练风险警告。"
-
 msgid "Here's what you get:"
 msgstr "以下是你可获得的内容："
 
@@ -85,9 +70,6 @@ msgstr "无需信用卡"
 
 msgid "Open AI Settings"
 msgstr "打开 AI 设置"
-
-msgid "Open Configure Providers"
-msgstr "打开“配置提供商”"
 
 msgid "Open Sandbox Settings"
 msgstr "打开沙盒设置"
@@ -133,9 +115,6 @@ msgstr "按用量计费"
 
 msgid "Usage-based billing beyond $5"
 msgstr "超出 $5 后按用量计费"
-
-msgid "Use Copilot"
-msgstr "使用 Copilot"
 
 msgid "Welcome to Zed Business"
 msgstr "欢迎使用 Zed Business"

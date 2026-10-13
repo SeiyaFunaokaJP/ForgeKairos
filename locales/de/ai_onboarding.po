@@ -23,9 +23,6 @@ msgstr "(Aktueller Tarif)"
 msgid "14 days from trial start, no credit card required"
 msgstr "14 Tage ab Start der Testversion, keine Kreditkarte erforderlich"
 
-msgid "2,000 accepted edit predictions"
-msgstr "2.000 angenommene Bearbeitungsvorhersagen"
-
 msgid "API Keys"
 msgstr "API-Schlüssel"
 
@@ -35,20 +32,11 @@ msgstr "Eigene API-Schlüssel hinzufügen, um KI ohne Anmeldung zu nutzen."
 msgid "Agent commands run inside an OS sandbox. Touching files outside the project or opening new network access asks you first. Running outside the sandbox is not allowed by default. Even when allowed, each terminal command asks you, but an agent started outside can use its own tools without asking."
 msgstr "Befehle des Agenten werden in einer Betriebssystem-Sandbox ausgeführt. Bei Zugriffen auf Dateien außerhalb des Projekts oder neuem Netzwerkzugriff werden Sie zuerst gefragt. Die Ausführung außerhalb der Sandbox ist standardmäßig nicht erlaubt. Auch wenn sie erlaubt ist, werden Sie bei jedem Terminalbefehl gefragt, ein außerhalb gestarteter Agent kann seine eigenen Tools jedoch ohne Rückfrage verwenden."
 
-msgid "Alternatively, you can continue to use GitHub Copilot as that's already set up."
-msgstr "Alternativ können Sie weiterhin GitHub Copilot verwenden, da es bereits eingerichtet ist."
-
-msgid "Alternatively, you can use GitHub Copilot as your edit prediction provider."
-msgstr "Alternativ können Sie GitHub Copilot als Anbieter für Bearbeitungsvorhersagen verwenden."
-
 msgid "Before You Use AI"
 msgstr "Bevor Sie KI verwenden"
 
 msgid "Commands the agent runs, and external agents themselves, run inside an OS sandbox (Seatbelt on macOS, bubblewrap on Linux, WSL on Windows). File operations outside the project and new network access ask for your confirmation. Running outside the sandbox is not allowed by default and can be allowed in the sandbox settings. Even then, terminal commands that run outside ask for your confirmation one at a time, but an external agent or Claude Code started outside the sandbox may use its own tools without asking."
 msgstr "Befehle, die der Agent ausführt, und externe Agenten selbst laufen in einer Betriebssystem-Sandbox (Seatbelt unter macOS, bubblewrap unter Linux, WSL unter Windows). Dateivorgänge außerhalb des Projekts und neuer Netzwerkzugriff erfordern Ihre Bestätigung. Die Ausführung außerhalb der Sandbox ist standardmäßig nicht erlaubt und kann in den Sandbox-Einstellungen erlaubt werden. Auch dann erfordern Terminalbefehle, die außerhalb laufen, einzeln Ihre Bestätigung, ein externer Agent oder Claude Code, der außerhalb der Sandbox gestartet wurde, kann seine eigenen Tools jedoch ohne Rückfrage verwenden."
-
-msgid "Configure Copilot"
-msgstr "Copilot konfigurieren"
 
 msgid "Configure Providers"
 msgstr "Anbieter konfigurieren"
@@ -68,9 +56,6 @@ msgstr "Externe KI (Cloud-APIs und externe Agenten) erhält den Code, die Dateii
 msgid "External AI receives the code, files, and conversations you give it and may store them or train on them. Local models on this machine send nothing out."
 msgstr "Externe KI erhält den Code, die Dateien und die Unterhaltungen, die Sie ihr geben, und kann sie speichern oder damit trainieren. Lokale Modelle auf diesem Computer senden nichts nach außen."
 
-msgid "GitHub Copilot can also be used as an edit prediction provider, but it is an external AI service. Enable edit predictions under Configure Providers on the AI page and review the model-training risk warning."
-msgstr "GitHub Copilot kann auch als Anbieter für Bearbeitungsvorhersagen verwendet werden, ist aber ein externer KI-Dienst. Aktivieren Sie Bearbeitungsvorhersagen unter „Anbieter konfigurieren“ auf der Seite „KI“ und lesen Sie die Warnung zum Risiko des Modelltrainings."
-
 msgid "Here's what you get:"
 msgstr "Das erhalten Sie:"
 
@@ -85,9 +70,6 @@ msgstr "Keine Kreditkarte erforderlich"
 
 msgid "Open AI Settings"
 msgstr "KI-Einstellungen öffnen"
-
-msgid "Open Configure Providers"
-msgstr "„Anbieter konfigurieren“ öffnen"
 
 msgid "Open Sandbox Settings"
 msgstr "Sandbox-Einstellungen öffnen"
@@ -133,9 +115,6 @@ msgstr "Nutzungsbasierte Abrechnung"
 
 msgid "Usage-based billing beyond $5"
 msgstr "Nutzungsbasierte Abrechnung über 5 $ hinaus"
-
-msgid "Use Copilot"
-msgstr "Copilot verwenden"
 
 msgid "Welcome to Zed Business"
 msgstr "Willkommen bei Zed Business"

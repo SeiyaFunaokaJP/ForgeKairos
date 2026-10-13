@@ -615,6 +615,22 @@ msgid "Contained between the left and right docks"
 msgstr "왼쪽 및 오른쪽 도크 사이에 위치합니다"
 
 msgctxt "settings schema"
+msgid "Continuation lines get 1 extra indent level beyond the original."
+msgstr "이어지는 줄을 원래 줄보다 한 단계 더 들여씁니다."
+
+msgctxt "settings schema"
+msgid "Continuation lines get 2 extra indent levels beyond the original."
+msgstr "이어지는 줄을 원래 줄보다 두 단계 더 들여씁니다."
+
+msgctxt "settings schema"
+msgid "Continuation lines match the original line's indentation."
+msgstr "이어지는 줄을 원래 줄과 같은 깊이로 들여씁니다."
+
+msgctxt "settings schema"
+msgid "Continuation lines start at column 0."
+msgstr "이어지는 줄을 0열부터 시작합니다."
+
+msgctxt "settings schema"
 msgid "Control what info is collected by Zed."
 msgstr "Zed에서 수집하는 정보를 제어합니다."
 
@@ -1535,6 +1551,10 @@ msgid "How to highlight the current line in the minimap.\n\nDefault: inherits ed
 msgstr "미니맵에서 현재 줄을 강조 표시하는 방법입니다.\n\n기본값: 편집기의 줄 강조 표시 설정을 상속"
 
 msgctxt "settings schema"
+msgid "How to indent soft-wrapped continuation lines.\n\nDefault: same"
+msgstr "소프트 줄 바꿈으로 이어지는 줄의 들여쓰기 방식입니다.\n\n기본값: same"
+
+msgctxt "settings schema"
 msgid "How to order sibling entries in the project panel.\n\nDefault: directories_first"
 msgstr "프로젝트 패널에서 같은 수준의 항목을 정렬하는 방법입니다.\n\n기본값: directories_first"
 
@@ -1797,6 +1817,10 @@ msgstr "미니맵에 표시할 최대 열 수입니다.\n\n기본값: 80"
 msgctxt "settings schema"
 msgid "Maximum number of columns to keep in REPL's scrollback buffer.\nClamped with [20, 512] range.\n\nDefault: 128"
 msgstr "REPL 스크롤백 버퍼에 유지할 최대 열 수입니다.\n[20, 512] 범위로 제한됩니다.\n\n기본값: 128"
+
+msgctxt "settings schema"
+msgid "Maximum number of idle threads with loadable sessions to retain in the\nagent panel. Set to 0 to unload every eligible idle thread when it is\nno longer active.\n\nDefault: 5"
+msgstr "에이전트 패널에 유지할, 다시 로드할 수 있는 세션이 있는 유휴 스레드의 최대 개수입니다. 0으로 설정하면 대상이 되는 모든 유휴 스레드를 더 이상 활성 상태가 아닐 때 언로드합니다.\n\n기본값: 5"
 
 msgctxt "settings schema"
 msgid "Maximum number of lines of output to display before scrolling.\nSet to 0 to disable output height limits.\n\nDefault: 0"
@@ -4301,6 +4325,10 @@ msgstr "외부에서 놓은 파일을 자동으로 열지 여부입니다.\n\n�
 msgctxt "settings schema"
 msgid "Whether to automatically open newly created files in the editor.\n\nDefault: true"
 msgstr "새로 만든 파일을 편집기에서 자동으로 열지 여부입니다.\n\n기본값: true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically open the menus in the title bar on hover.\n\nDefault: false"
+msgstr "마우스를 올리면 제목 표시줄의 메뉴를 자동으로 열지 여부입니다.\n\n기본값: false"
 
 msgctxt "settings schema"
 msgid "Whether to automatically show a signature help pop-up or not.\n\nDefault: false"

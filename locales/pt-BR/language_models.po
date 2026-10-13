@@ -348,7 +348,7 @@ msgid "To use local Ollama:"
 msgstr "Para usar o Ollama localmente:"
 
 msgid "Upgrade to Pro"
-msgstr "Fazer upgrade para Pro"
+msgstr "Fazer upgrade para o Pro"
 
 msgid "Using AWS SSO profile: {profile_name}"
 msgstr "Usando perfil AWS SSO: {profile_name}"

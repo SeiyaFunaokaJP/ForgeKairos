@@ -161,6 +161,12 @@ msgstr "Agent-Profile"
 msgid "Agent Update Available"
 msgstr "Agent-Update verfügbar"
 
+msgid "Agent refused to respond to this request"
+msgstr "Der Agent hat die Antwort auf diese Anfrage verweigert"
+
+msgid "Agent stopped at the output token limit"
+msgstr "Der Agent wurde am Limit der Ausgabetoken angehalten"
+
 msgid "Agent stopped due to an error"
 msgstr "Agent aufgrund eines Fehlers gestoppt"
 
@@ -308,6 +314,9 @@ msgstr "Die Suche nach Updates für Claude Code wurde abgebrochen."
 msgid "Canceled downloading the Linux build of Claude Code."
 msgstr "Das Herunterladen der Linux-Version von Claude Code wurde abgebrochen."
 
+msgid "Cancelled"
+msgstr "Abgebrochen"
+
 msgid "Cannot switch to the form because the JSON could not be read: {error}"
 msgstr "Wechsel zum Formular nicht möglich, weil das JSON nicht gelesen werden konnte: {error}"
 
@@ -437,9 +446,6 @@ msgstr "Komprimierung fehlgeschlagen"
 msgid "Completed"
 msgstr "Abgeschlossen"
 
-msgid "Completed Plan"
-msgstr "Abgeschlossener Plan"
-
 msgid "Configure"
 msgstr "Konfigurieren"
 
@@ -517,6 +523,9 @@ msgstr "Diese Agent-Antwort kopieren"
 
 msgid "Copy as Markdown"
 msgstr "Als Markdown kopieren"
+
+msgid "Copy into an empty composer. The saved submission is kept until discarded."
+msgstr "In ein leeres Eingabefeld kopieren. Die gespeicherte Eingabe bleibt erhalten, bis sie verworfen wird."
 
 msgid "Cost"
 msgstr "Kosten"
@@ -701,6 +710,9 @@ msgstr "Denkmodus deaktivieren"
 msgid "Disabled in Restricted Mode"
 msgstr "Deaktiviert im eingeschränkten Modus"
 
+msgid "Discard"
+msgstr "Verwerfen"
+
 msgid "Discard Interrupted Edit"
 msgstr "Unterbrochene Bearbeitung verwerfen"
 
@@ -873,6 +885,9 @@ msgstr "Sitzungen werden abgerufen…"
 
 msgid "Files & Directories"
 msgstr "Dateien & Verzeichnisse"
+
+msgid "Finished"
+msgstr "Beendet"
 
 msgid "Finished running tools"
 msgstr "Toolausführung abgeschlossen"
@@ -1106,6 +1121,15 @@ msgstr "Unteragent im Vollbild anzeigen"
 msgid "Manage AI Connections…"
 msgstr "KI-Verbindungen verwalten…"
 
+msgid "Message"
+msgstr "Nachricht"
+
+msgid "Message cancelled"
+msgstr "Nachricht abgebrochen"
+
+msgid "Message failed to send: {}"
+msgstr "Die Nachricht konnte nicht gesendet werden: {}"
+
 msgid "Message the {}, @ to include context, / for commands"
 msgstr "{} anschreiben – @ für Kontext, / für Befehle"
 
@@ -1240,6 +1264,9 @@ msgstr "Keine Profile."
 
 msgid "No recent projects found"
 msgstr "Keine zuletzt verwendeten Projekte gefunden"
+
+msgid "No text preview available"
+msgstr "Keine Textvorschau verfügbar"
 
 msgid "No threads"
 msgstr "Keine Threads"
@@ -1538,6 +1565,9 @@ msgstr "Außerhalb der Sandbox neu starten…"
 msgid "Restart Transform"
 msgstr "Transformation neu starten"
 
+msgid "Restore"
+msgstr "Wiederherstellen"
+
 msgid "Restore Checkpoint"
 msgstr "Prüfpunkt wiederherstellen"
 
@@ -1711,6 +1741,9 @@ msgstr "Als Zusammenfassung senden"
 
 msgid "Send in Full"
 msgstr "Vollständig senden"
+
+msgid "Sending message…"
+msgstr "Nachricht wird gesendet…"
 
 msgid "Sends it to the remote host after checking its signature and hash."
 msgstr "Sendet es nach Prüfung von Signatur und Hash an den Remote-Host."
@@ -1910,6 +1943,9 @@ msgstr "Für den Netzwerkzugriff des Agenten müssen Hosts zur Zulassungsliste h
 msgid "The connection to {provider}'s API was interrupted. Zed will retry automatically. If the problem persists, check your network connection."
 msgstr "Die Verbindung zur API von {provider} wurde unterbrochen. ForgeKairos wiederholt den Versuch automatisch. Wenn das Problem weiterhin besteht, überprüfen Sie Ihre Netzwerkverbindung."
 
+msgid "The conversation was rewound, but the message became read-only and was not resent."
+msgstr "Die Unterhaltung wurde zurückgesetzt, aber die Nachricht wurde schreibgeschützt und nicht erneut gesendet."
+
 msgid "The extension's settings must be a JSON object ({{ … }})."
 msgstr "Die Einstellungen der Erweiterung müssen ein JSON-Objekt sein ({{ … }})."
 
@@ -2073,6 +2109,9 @@ msgstr "Die Einstellungen dieser Erweiterung können nicht als Formular dargeste
 
 msgid "This internationalized address displays as {decoded_host}. Verify it carefully."
 msgstr "Diese internationalisierte Adresse wird als {decoded_host} angezeigt. Prüfen Sie sie sorgfältig."
+
+msgid "This message contains unsupported content and cannot be edited or resent."
+msgstr "Diese Nachricht enthält nicht unterstützte Inhalte und kann nicht bearbeitet oder erneut gesendet werden."
 
 msgid "This model does not support images yet"
 msgstr "Dieses Modell unterstützt noch keine Bilder"
@@ -2269,6 +2308,9 @@ msgstr "Warten auf Abschluss"
 msgid "Waiting for input"
 msgstr "Warten auf Eingabe"
 
+msgid "Waiting for message to appear…"
+msgstr "Warten, bis die Nachricht erscheint…"
+
 msgid "Waiting for the allowlist change to take effect…"
 msgstr "Warten, bis die Änderung der Zulassungsliste wirksam wird…"
 
@@ -2325,6 +2367,9 @@ msgstr "Ihre Zed-Pro-Testversion ist abgelaufen"
 
 msgid "Your usual settings and sign-in are used as they are."
 msgstr "Ihre üblichen Einstellungen und Ihre Anmeldung werden unverändert verwendet."
+
+msgid "[Unsupported message content — this message cannot be edited or resent]"
+msgstr "[Nicht unterstützter Nachrichteninhalt – diese Nachricht kann nicht bearbeitet oder erneut gesendet werden]"
 
 msgid "a URI"
 msgstr "eine URI"
@@ -2549,11 +2594,6 @@ msgid "— {count} file changed"
 msgid_plural "— {count} files changed"
 msgstr[0] "— {count} Datei geändert"
 msgstr[1] "— {count} Dateien geändert"
-
-msgid "— {count} step"
-msgid_plural "— {count} steps"
-msgstr[0] "— {count} Schritt"
-msgstr[1] "— {count} Schritte"
 
 msgid "“{value}” contains potentially surprising Unicode characters"
 msgstr "„{value}“ enthält möglicherweise unerwartete Unicode-Zeichen"

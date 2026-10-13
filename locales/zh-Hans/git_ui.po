@@ -865,6 +865,9 @@ msgid "Diff ({count} file)"
 msgid_plural "Diff ({count} files)"
 msgstr[0] "差异（{count} 个文件）"
 
+msgid "Discard"
+msgstr "放弃"
+
 msgid "Discard Changes"
 msgstr "放弃更改"
 
@@ -877,11 +880,17 @@ msgstr "全部放弃（--hard）"
 msgid "Discard Tracked Changes"
 msgstr "放弃已跟踪的更改"
 
+msgid "Discard and Trash"
+msgstr "放弃并移至回收站"
+
 msgid "Discard changes to these files?"
 msgstr "要放弃对这些文件的更改吗？"
 
-msgid "Discard changes to these files? New files are moved to the trash."
-msgstr "要放弃对这些文件的更改吗？新文件将移至回收站。"
+msgid "Discard changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "放弃对 {tracked_count} 个文件的更改，并将 {untracked_count} 个文件移至回收站？"
+
+msgid "Discard changes to {tracked_count} files?"
+msgstr "放弃对 {tracked_count} 个文件的更改？"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "放弃此文件的更改，并将其恢复为最后一次提交中的内容"
@@ -1028,11 +1037,11 @@ msgstr "创建分支失败"
 msgid "Failed to create remote"
 msgstr "创建远程失败"
 
-msgid "Failed to discard changes"
-msgstr "放弃更改失败"
-
 msgid "Failed to drop stash"
 msgstr "删除储藏失败"
+
+msgid "Failed to generate commit message: {error}"
+msgstr "生成提交消息失败：{error}"
 
 msgid "Failed to generate commit message: {err}"
 msgstr "生成提交消息失败：{err}"
@@ -1049,8 +1058,8 @@ msgstr "弹出储藏失败"
 msgid "Failed to rename branch"
 msgstr "重命名分支失败"
 
-msgid "Failed to trash file"
-msgstr "无法将文件移至回收站"
+msgid "Failed to revert changes"
+msgstr "还原更改失败"
 
 msgid "Failed to trash files"
 msgstr "将文件移至回收站失败"
@@ -2691,6 +2700,9 @@ msgstr "要将这些文件移至回收站吗？"
 
 msgid "Trash {count} Files"
 msgstr "将 {count} 个文件移至回收站"
+
+msgid "Trash {untracked_count} files?"
+msgstr "将 {untracked_count} 个文件移至回收站？"
 
 msgid "Trash {}?"
 msgstr "要将 {} 移至回收站吗？"

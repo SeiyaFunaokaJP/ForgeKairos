@@ -615,6 +615,22 @@ msgid "Contained between the left and right docks"
 msgstr "Zwischen dem linken und rechten Dock eingeschlossen"
 
 msgctxt "settings schema"
+msgid "Continuation lines get 1 extra indent level beyond the original."
+msgstr "Fortsetzungszeilen werden um eine Einzugsebene tiefer als die Originalzeile eingerückt."
+
+msgctxt "settings schema"
+msgid "Continuation lines get 2 extra indent levels beyond the original."
+msgstr "Fortsetzungszeilen werden um zwei Einzugsebenen tiefer als die Originalzeile eingerückt."
+
+msgctxt "settings schema"
+msgid "Continuation lines match the original line's indentation."
+msgstr "Fortsetzungszeilen übernehmen die Einrückung der Originalzeile."
+
+msgctxt "settings schema"
+msgid "Continuation lines start at column 0."
+msgstr "Fortsetzungszeilen beginnen in Spalte 0."
+
+msgctxt "settings schema"
 msgid "Control what info is collected by Zed."
 msgstr "Steuert, welche Informationen Zed erfasst."
 
@@ -1535,6 +1551,10 @@ msgid "How to highlight the current line in the minimap.\n\nDefault: inherits ed
 msgstr "Wie die aktuelle Zeile in der Minimap hervorgehoben wird.\n\nStandard: übernimmt die Zeilenhervorhebungs-Einstellung des Editors"
 
 msgctxt "settings schema"
+msgid "How to indent soft-wrapped continuation lines.\n\nDefault: same"
+msgstr "Legt fest, wie weich umbrochene Fortsetzungszeilen eingerückt werden.\n\nStandard: same"
+
+msgctxt "settings schema"
 msgid "How to order sibling entries in the project panel.\n\nDefault: directories_first"
 msgstr "Wie Einträge derselben Ebene im Projektpanel angeordnet werden.\n\nStandard: directories_first"
 
@@ -1797,6 +1817,10 @@ msgstr "Maximale Anzahl Spalten, die in der Minimap angezeigt werden.\n\nStandar
 msgctxt "settings schema"
 msgid "Maximum number of columns to keep in REPL's scrollback buffer.\nClamped with [20, 512] range.\n\nDefault: 128"
 msgstr "Maximale Anzahl Spalten im Scrollback-Puffer der REPL.\nWird auf den Bereich [20, 512] begrenzt.\n\nStandard: 128"
+
+msgctxt "settings schema"
+msgid "Maximum number of idle threads with loadable sessions to retain in the\nagent panel. Set to 0 to unload every eligible idle thread when it is\nno longer active.\n\nDefault: 5"
+msgstr "Maximale Anzahl inaktiver Threads mit ladbaren Sitzungen, die im Agent-Panel erhalten bleiben. Bei 0 wird jeder infrage kommende inaktive Thread entladen, sobald er nicht mehr aktiv ist.\n\nStandard: 5"
 
 msgctxt "settings schema"
 msgid "Maximum number of lines of output to display before scrolling.\nSet to 0 to disable output height limits.\n\nDefault: 0"
@@ -4301,6 +4325,10 @@ msgstr "Legt fest, ob aus externen Quellen abgelegte Dateien automatisch geöffn
 msgctxt "settings schema"
 msgid "Whether to automatically open newly created files in the editor.\n\nDefault: true"
 msgstr "Legt fest, ob neu erstellte Dateien automatisch im Editor geöffnet werden.\n\nStandard: true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically open the menus in the title bar on hover.\n\nDefault: false"
+msgstr "Legt fest, ob die Menüs in der Titelleiste automatisch geöffnet werden, wenn Sie mit der Maus darauf zeigen.\n\nStandard: false"
 
 msgctxt "settings schema"
 msgid "Whether to automatically show a signature help pop-up or not.\n\nDefault: false"

@@ -615,6 +615,22 @@ msgid "Contained between the left and right docks"
 msgstr "Contenu entre les docks gauche et droit"
 
 msgctxt "settings schema"
+msgid "Continuation lines get 1 extra indent level beyond the original."
+msgstr "Les lignes de continuation reçoivent 1 niveau d'indentation de plus que la ligne d'origine."
+
+msgctxt "settings schema"
+msgid "Continuation lines get 2 extra indent levels beyond the original."
+msgstr "Les lignes de continuation reçoivent 2 niveaux d'indentation de plus que la ligne d'origine."
+
+msgctxt "settings schema"
+msgid "Continuation lines match the original line's indentation."
+msgstr "Les lignes de continuation reprennent l'indentation de la ligne d'origine."
+
+msgctxt "settings schema"
+msgid "Continuation lines start at column 0."
+msgstr "Les lignes de continuation commencent à la colonne 0."
+
+msgctxt "settings schema"
 msgid "Control what info is collected by Zed."
 msgstr "Contrôle les informations collectées par Zed."
 
@@ -1535,6 +1551,10 @@ msgid "How to highlight the current line in the minimap.\n\nDefault: inherits ed
 msgstr "Manière de mettre en surbrillance la ligne actuelle dans la minicarte.\n\nValeur par défaut : hérite du paramètre de surbrillance des lignes de l'éditeur"
 
 msgctxt "settings schema"
+msgid "How to indent soft-wrapped continuation lines.\n\nDefault: same"
+msgstr "Détermine l'indentation des lignes de continuation du retour à la ligne automatique.\n\nValeur par défaut : same"
+
+msgctxt "settings schema"
 msgid "How to order sibling entries in the project panel.\n\nDefault: directories_first"
 msgstr "Manière d'ordonner les entrées voisines dans le panneau de projet.\n\nValeur par défaut : directories_first"
 
@@ -1797,6 +1817,10 @@ msgstr "Nombre maximal de colonnes à afficher dans la minicarte.\n\nValeur par 
 msgctxt "settings schema"
 msgid "Maximum number of columns to keep in REPL's scrollback buffer.\nClamped with [20, 512] range.\n\nDefault: 128"
 msgstr "Nombre maximal de colonnes à conserver dans le tampon d'historique du REPL. Limité à la plage [20, 512].\n\nValeur par défaut : 128"
+
+msgctxt "settings schema"
+msgid "Maximum number of idle threads with loadable sessions to retain in the\nagent panel. Set to 0 to unload every eligible idle thread when it is\nno longer active.\n\nDefault: 5"
+msgstr "Le nombre maximal de conversations inactives aux sessions rechargeables à conserver dans le panneau de l'agent. Avec 0, chaque conversation inactive concernée est déchargée dès qu'elle n'est plus active.\n\nValeur par défaut : 5"
 
 msgctxt "settings schema"
 msgid "Maximum number of lines of output to display before scrolling.\nSet to 0 to disable output height limits.\n\nDefault: 0"
@@ -4301,6 +4325,10 @@ msgstr "Indique s'il faut ouvrir automatiquement les fichiers déposés depuis d
 msgctxt "settings schema"
 msgid "Whether to automatically open newly created files in the editor.\n\nDefault: true"
 msgstr "Indique s'il faut ouvrir automatiquement dans l'éditeur les fichiers nouvellement créés.\n\nValeur par défaut : true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically open the menus in the title bar on hover.\n\nDefault: false"
+msgstr "Indique s'il faut ouvrir automatiquement les menus de la barre de titre au survol.\n\nValeur par défaut : false"
 
 msgctxt "settings schema"
 msgid "Whether to automatically show a signature help pop-up or not.\n\nDefault: false"

@@ -615,6 +615,22 @@ msgid "Contained between the left and right docks"
 msgstr "位于左右停靠栏之间"
 
 msgctxt "settings schema"
+msgid "Continuation lines get 1 extra indent level beyond the original."
+msgstr "后续行比原行多缩进 1 级。"
+
+msgctxt "settings schema"
+msgid "Continuation lines get 2 extra indent levels beyond the original."
+msgstr "后续行比原行多缩进 2 级。"
+
+msgctxt "settings schema"
+msgid "Continuation lines match the original line's indentation."
+msgstr "后续行与原行的缩进相同。"
+
+msgctxt "settings schema"
+msgid "Continuation lines start at column 0."
+msgstr "后续行从第 0 列开始。"
+
+msgctxt "settings schema"
 msgid "Control what info is collected by Zed."
 msgstr "控制 Zed 收集哪些信息。"
 
@@ -1535,6 +1551,10 @@ msgid "How to highlight the current line in the minimap.\n\nDefault: inherits ed
 msgstr "缩略图中当前行的高亮方式。\n\n默认值：继承编辑器的行高亮设置"
 
 msgctxt "settings schema"
+msgid "How to indent soft-wrapped continuation lines.\n\nDefault: same"
+msgstr "软换行后续行的缩进方式。\n\n默认值：same"
+
+msgctxt "settings schema"
 msgid "How to order sibling entries in the project panel.\n\nDefault: directories_first"
 msgstr "项目面板中同级条目的排序方式。\n\n默认值：directories_first"
 
@@ -1797,6 +1817,10 @@ msgstr "缩略图中显示的最大列数。\n\n默认值：80"
 msgctxt "settings schema"
 msgid "Maximum number of columns to keep in REPL's scrollback buffer.\nClamped with [20, 512] range.\n\nDefault: 128"
 msgstr "REPL 回滚缓冲区中保留的最大列数。限制在 [20, 512] 范围内。\n\n默认值：128"
+
+msgctxt "settings schema"
+msgid "Maximum number of idle threads with loadable sessions to retain in the\nagent panel. Set to 0 to unload every eligible idle thread when it is\nno longer active.\n\nDefault: 5"
+msgstr "智能体面板中保留的、会话可重新加载的空闲会话的最大数量。设为 0 时，每个符合条件的空闲会话在不再处于活动状态时都会被卸载。\n\n默认值：5"
 
 msgctxt "settings schema"
 msgid "Maximum number of lines of output to display before scrolling.\nSet to 0 to disable output height limits.\n\nDefault: 0"
@@ -4301,6 +4325,10 @@ msgstr "是否自动打开从外部来源拖放进来的文件。\n\n默认值�
 msgctxt "settings schema"
 msgid "Whether to automatically open newly created files in the editor.\n\nDefault: true"
 msgstr "是否在编辑器中自动打开新创建的文件。\n\n默认值：true"
+
+msgctxt "settings schema"
+msgid "Whether to automatically open the menus in the title bar on hover.\n\nDefault: false"
+msgstr "是否在悬停时自动打开标题栏中的菜单。\n\n默认值：false"
 
 msgctxt "settings schema"
 msgid "Whether to automatically show a signature help pop-up or not.\n\nDefault: false"

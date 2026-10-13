@@ -879,6 +879,9 @@ msgid_plural "Diff ({count} files)"
 msgstr[0] "Diff ({count} Datei)"
 msgstr[1] "Diff ({count} Dateien)"
 
+msgid "Discard"
+msgstr "Verwerfen"
+
 msgid "Discard Changes"
 msgstr "Änderungen verwerfen"
 
@@ -891,11 +894,17 @@ msgstr "Alles verwerfen (--hard)"
 msgid "Discard Tracked Changes"
 msgstr "Verfolgte Änderungen verwerfen"
 
+msgid "Discard and Trash"
+msgstr "Verwerfen und in den Papierkorb verschieben"
+
 msgid "Discard changes to these files?"
 msgstr "Änderungen an diesen Dateien verwerfen?"
 
-msgid "Discard changes to these files? New files are moved to the trash."
-msgstr "Änderungen an diesen Dateien verwerfen? Neue Dateien werden in den Papierkorb verschoben."
+msgid "Discard changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "Änderungen an {tracked_count} Dateien verwerfen und {untracked_count} Dateien in den Papierkorb verschieben?"
+
+msgid "Discard changes to {tracked_count} files?"
+msgstr "Änderungen an {tracked_count} Dateien verwerfen?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Verwirft die Änderungen dieser Datei und setzt sie auf ihren Inhalt im letzten Commit zurück"
@@ -1046,11 +1055,11 @@ msgstr "Branch konnte nicht erstellt werden"
 msgid "Failed to create remote"
 msgstr "Remote konnte nicht erstellt werden"
 
-msgid "Failed to discard changes"
-msgstr "Die Änderungen konnten nicht verworfen werden"
-
 msgid "Failed to drop stash"
 msgstr "Stash konnte nicht verworfen werden"
+
+msgid "Failed to generate commit message: {error}"
+msgstr "Die Commit-Nachricht konnte nicht generiert werden: {error}"
 
 msgid "Failed to generate commit message: {err}"
 msgstr "Commit-Nachricht konnte nicht generiert werden: {err}"
@@ -1067,8 +1076,8 @@ msgstr "Stash konnte nicht gepoppt werden"
 msgid "Failed to rename branch"
 msgstr "Branch konnte nicht umbenannt werden"
 
-msgid "Failed to trash file"
-msgstr "Die Datei konnte nicht in den Papierkorb verschoben werden"
+msgid "Failed to revert changes"
+msgstr "Die Änderungen konnten nicht rückgängig gemacht werden"
 
 msgid "Failed to trash files"
 msgstr "Dateien konnten nicht in den Papierkorb verschoben werden"
@@ -2732,6 +2741,9 @@ msgstr "Diese Dateien in den Papierkorb verschieben?"
 
 msgid "Trash {count} Files"
 msgstr "{count} Dateien in den Papierkorb verschieben"
+
+msgid "Trash {untracked_count} files?"
+msgstr "{untracked_count} Dateien in den Papierkorb verschieben?"
 
 msgid "Trash {}?"
 msgstr "{} in den Papierkorb verschieben?"

@@ -879,6 +879,9 @@ msgid_plural "Diff ({count} files)"
 msgstr[0] "Diff ({count} arquivo)"
 msgstr[1] "Diff ({count} arquivos)"
 
+msgid "Discard"
+msgstr "Descartar"
+
 msgid "Discard Changes"
 msgstr "Descartar alterações"
 
@@ -891,11 +894,17 @@ msgstr "Descartar tudo (--hard)"
 msgid "Discard Tracked Changes"
 msgstr "Descartar alterações rastreadas"
 
+msgid "Discard and Trash"
+msgstr "Descartar e mover para a lixeira"
+
 msgid "Discard changes to these files?"
 msgstr "Descartar alterações nestes arquivos?"
 
-msgid "Discard changes to these files? New files are moved to the trash."
-msgstr "Descartar as alterações nestes arquivos? Arquivos novos são movidos para a lixeira."
+msgid "Discard changes to {tracked_count} files and trash {untracked_count} files?"
+msgstr "Descartar as alterações em {tracked_count} arquivos e mover {untracked_count} arquivos para a lixeira?"
+
+msgid "Discard changes to {tracked_count} files?"
+msgstr "Descartar as alterações em {tracked_count} arquivos?"
 
 msgid "Discards this file's changes and returns it to its content in the last commit"
 msgstr "Descarta as alterações deste arquivo e o retorna ao conteúdo do último commit"
@@ -1046,11 +1055,11 @@ msgstr "Falha ao criar o branch"
 msgid "Failed to create remote"
 msgstr "Falha ao criar o remoto"
 
-msgid "Failed to discard changes"
-msgstr "Falha ao descartar as alterações"
-
 msgid "Failed to drop stash"
 msgstr "Falha ao descartar o stash"
+
+msgid "Failed to generate commit message: {error}"
+msgstr "Falha ao gerar a mensagem de commit: {error}"
 
 msgid "Failed to generate commit message: {err}"
 msgstr "Falha ao gerar a mensagem de commit: {err}"
@@ -1067,8 +1076,8 @@ msgstr "Falha ao fazer pop do stash"
 msgid "Failed to rename branch"
 msgstr "Falha ao renomear o branch"
 
-msgid "Failed to trash file"
-msgstr "Falha ao mover o arquivo para a lixeira"
+msgid "Failed to revert changes"
+msgstr "Falha ao reverter as alterações"
 
 msgid "Failed to trash files"
 msgstr "Falha ao mover os arquivos para a lixeira"
@@ -2732,6 +2741,9 @@ msgstr "Mover estes arquivos para a lixeira?"
 
 msgid "Trash {count} Files"
 msgstr "Mover {count} arquivos para a lixeira"
+
+msgid "Trash {untracked_count} files?"
+msgstr "Mover {untracked_count} arquivos para a lixeira?"
 
 msgid "Trash {}?"
 msgstr "Mover {} para a lixeira?"

@@ -1036,6 +1036,22 @@ msgctxt "SoftWrap"
 msgid "Prefer Line"
 msgstr "Preferir linha única"
 
+msgctxt "SoftWrapIndent"
+msgid "Extra One"
+msgstr "Um nível a mais"
+
+msgctxt "SoftWrapIndent"
+msgid "Extra Two"
+msgstr "Dois níveis a mais"
+
+msgctxt "SoftWrapIndent"
+msgid "None"
+msgstr "Sem recuo"
+
+msgctxt "SoftWrapIndent"
+msgid "Same"
+msgstr "Igual à original"
+
 msgctxt "StatusStyle"
 msgid "Icon"
 msgstr "Ícone"
@@ -1519,6 +1535,10 @@ msgstr "Fecha automaticamente os arquivos que foram excluídos."
 msgctxt "settings"
 msgid "Automatically compact the agent's context when it grows too large, summarizing earlier messages to free up room in the model's context window."
 msgstr "Compacta automaticamente o contexto do agente quando ele fica muito grande, resumindo as mensagens anteriores para liberar espaço na janela de contexto do modelo."
+
+msgctxt "settings"
+msgid "Automatically open menus in the titlebar on hover."
+msgstr "Abre automaticamente os menus da barra de título ao passar o cursor."
 
 msgctxt "settings"
 msgid "Automatically show a signature help pop-up."
@@ -2945,6 +2965,10 @@ msgid "How to highlight the current line."
 msgstr "Define como destacar a linha atual."
 
 msgctxt "settings"
+msgid "How to indent soft-wrapped lines."
+msgstr "Define como aplicar recuo às linhas com quebra automática."
+
+msgctxt "settings"
 msgid "How to perform a buffer format."
 msgstr "Define como executar a formatação de um buffer."
 
@@ -3265,6 +3289,10 @@ msgid "Max Content Width"
 msgstr "Largura máxima do conteúdo"
 
 msgctxt "settings"
+msgid "Max Idle Threads"
+msgstr "Máximo de conversas ociosas"
+
+msgctxt "settings"
 msgid "Max Output Tokens"
 msgstr "Máximo de tokens de saída"
 
@@ -3319,6 +3347,10 @@ msgstr "Comprimento máximo do título da mensagem de commit antes que um aviso 
 msgctxt "settings"
 msgid "Maximum number of columns to display in the minimap."
 msgstr "Número máximo de colunas a exibir no minimapa."
+
+msgctxt "settings"
+msgid "Maximum number of idle agent threads with loadable sessions to keep loaded. When the limit is exceeded, the least recently updated threads are unloaded."
+msgstr "Número máximo de conversas ociosas do agente com sessões recarregáveis que são mantidas carregadas. Quando o limite é excedido, as conversas atualizadas há mais tempo são descarregadas."
 
 msgctxt "settings"
 msgid "Maximum number of lines to keep in scrollback history (max: 100,000; 0 disables scrolling)."
@@ -3475,6 +3507,10 @@ msgstr "Abrir pastas de macros recolhidas"
 msgctxt "settings"
 msgid "Open Markdown Files in Preview"
 msgstr "Abrir arquivos Markdown na visualização"
+
+msgctxt "settings"
+msgid "Open Menus on Hover"
+msgstr "Abrir menus ao passar o cursor"
 
 msgctxt "settings"
 msgid "Optimize Zed's interface for assistive technology such as screen readers. When enabled, otherwise-collapsed controls stay expanded and keyboard-reachable."
@@ -4463,6 +4499,10 @@ msgstr "Ordem de classificação de snippets"
 msgctxt "settings"
 msgid "Soft Wrap"
 msgstr "Quebra automática de linha"
+
+msgctxt "settings"
+msgid "Soft Wrap Indent"
+msgstr "Recuo da quebra automática"
 
 msgctxt "settings"
 msgid "Sort By"
